@@ -1,3 +1,71 @@
-from django.shortcuts import render
+"""Fiş giriş/görüntüleme görünümleri."""
+from decimal import Decimal
 
-# Create your views here.
+from django.contrib import messages
+from django.forms import formset_factory
+from django.shortcuts import get_object_or_404, redirect, render
+
+from core.forms import FisForm, SatirForm
+from core.models import YevmiyeFisi
+from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
+
+SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
+
+
+def fis_ekle(request):
+    if request.method == "POST":
+        fform = FisForm(request.POST)
+        formset = SatirFormSet(request.POST)
+        if fform.is_valid() and formset.is_valid():
+            satirlar = []
+            for f in formset:
+                if not f.temiz_mi():
+                    continue
+                cd = f.cleaned_data
+                satirlar.append(
+                    SatirGirdi(
+                        hesap_kodu=cd["hesap"].hesap_kodu,
+                        taraf=cd["taraf"],
+                        islem_tutari=cd["islem_tutari"],
+                        islem_pb=cd["islem_pb"],
+                        islem_kuru=cd.get("islem_kuru") or Decimal("1"),
+                        aciklama=cd.get("aciklama", ""),
+                    )
+                )
+            try:
+                fis = fis_olustur(
+                    tarih=fform.cleaned_data["tarih"],
+                    aciklama=fform.cleaned_data.get("aciklama", ""),
+                    kur_usd=fform.cleaned_data.get("kur_usd"),
+                    satirlar=satirlar,
+                )
+                messages.success(
+                    request, f"Fiş kaydedildi: {fis.yil}/{fis.fis_no}"
+                )
+                return redirect("core:fis_detay", pk=fis.pk)
+            except YevmiyeHatasi as e:
+                # Çekirdek reddetti -> kullanıcıya dostça bildir.
+                fform.add_error(None, str(e))
+    else:
+        fform = FisForm()
+        formset = SatirFormSet()
+    return render(
+        request, "core/fis_ekle.html", {"fform": fform, "formset": formset}
+    )
+
+
+def fis_detay(request, pk):
+    fis = get_object_or_404(YevmiyeFisi, pk=pk)
+    satirlar = fis.satirlar.select_related("hesap").all()
+    toplam_borc = sum((s.borc for s in satirlar), Decimal("0.00"))
+    toplam_alacak = sum((s.alacak for s in satirlar), Decimal("0.00"))
+    return render(
+        request,
+        "core/fis_detay.html",
+        {
+            "fis": fis,
+            "satirlar": satirlar,
+            "toplam_borc": toplam_borc,
+            "toplam_alacak": toplam_alacak,
+        },
+    )

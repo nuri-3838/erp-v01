@@ -1,0 +1,45 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fiş {{ fis.yil }}/{{ fis.fis_no }} · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Yevmiye Fişi {{ fis.yil }}/{{ fis.fis_no }}</h1>
+
+<table>
+  <tr><th>Muhasebe tarihi</th><td>{{ fis.tarih|date:"d.m.Y" }}</td></tr>
+  <tr><th>Açıklama</th><td>{{ fis.aciklama|default:"—" }}</td></tr>
+  <tr><th>Kaynak</th><td>{{ fis.get_kaynak_display }}</td></tr>
+  <tr><th>USD kuru</th><td class="sag">{{ fis.kur_usd|tr_kur|default:"—" }}</td></tr>
+</table>
+
+<h2 class="etiket">Satırlar</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Hesap</th><th>Açıklama</th><th>İşlem</th>
+      <th class="sag">Borç (TL)</th><th class="sag">Alacak (TL)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in satirlar %}
+      <tr>
+        <td>{{ s.hesap.hesap_kodu }} {{ s.hesap.hesap_adi }}</td>
+        <td>{{ s.aciklama|default:"—" }}</td>
+        <td>{{ s.islem_tutari|tr_para }} {{ s.islem_pb }}
+            {% if s.islem_pb != "TRY" %}× {{ s.islem_kuru|tr_kur }}{% endif %}</td>
+        <td class="sag">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th colspan="3" class="sag">Toplam</th>
+      <th class="sag">{{ toplam_borc|tr_para }}</th>
+      <th class="sag">{{ toplam_alacak|tr_para }}</th>
+    </tr>
+  </tfoot>
+</table>
+
+<p><a href="{% url 'core:fis_ekle' %}">← Yeni fiş gir</a></p>
+{% endblock %}

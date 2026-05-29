@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block baslik %}ERP v0.1{% endblock %}</title>
+  <style>
+    :root { --cizgi:#d0d0d0; --hata:#b00020; --ok:#0a7d28; }
+    body { font-family: system-ui, Segoe UI, Arial, sans-serif; margin: 0 auto;
+           max-width: 1000px; color:#1b1b1b; background:#ffffff; padding: 2rem 1rem; }
+    h1, h2 { font-weight: 650; }
+    /* Statik etiketler/başlıklar BÜYÜK görünür (veri değişmez; lang=tr ile doğru İ). */
+    label, th, .etiket, .ust-baslik { text-transform: uppercase; }
+    table { border-collapse: collapse; width: 100%; margin:.5rem 0 1rem; }
+    th, td { border: 1px solid var(--cizgi); padding: .4rem .5rem; vertical-align: top; }
+    th { background:#f6f6f6; text-align:left; font-size:.85rem; letter-spacing:.02em; }
+    td.sag, th.sag { text-align: right; font-variant-numeric: tabular-nums; }
+    input, select { padding:.35rem .4rem; font: inherit; box-sizing:border-box; width:100%; }
+    td select { min-width: 6rem; }
+    input[type=date] { width:auto; }
+    .satir-form input[name$="tutari"], .satir-form input[name$="kuru"] { text-align:right; }
+    button { font: inherit; padding:.45rem .9rem; cursor:pointer; border:1px solid #888;
+             border-radius:6px; background:#fafafa; }
+    button.birincil { background:#1b5e20; color:#fff; border-color:#1b5e20; }
+    .alan { margin:.6rem 0; }
+    .alan > label { display:block; font-size:.8rem; margin-bottom:.2rem; }
+    .hata { color: var(--hata); font-weight:600; }
+    .uyari { background:#fff4f4; border:1px solid #f0c0c0; color:var(--hata);
+             padding:.6rem .8rem; border-radius:6px; margin:.8rem 0; }
+    .basari { background:#f0fff3; border:1px solid #bfe6c7; color:var(--ok);
+              padding:.6rem .8rem; border-radius:6px; margin:.8rem 0; }
+    .toplamlar { display:flex; gap:1.5rem; align-items:center; font-size:1.05rem;
+                 margin:1rem 0; padding:.6rem .8rem; border:1px solid var(--cizgi);
+                 border-radius:8px; background:#fafafa; }
+    .toplamlar .deger { font-weight:700; font-variant-numeric: tabular-nums; }
+    .denge.dengeli { color: var(--ok); } .denge.dengesiz { color: var(--hata); }
+    .yardim { color:#666; font-size:.8rem; }
+  </style>
+</head>
+<body>
+  {% if messages %}
+    {% for m in messages %}<div class="basari">{{ m }}</div>{% endfor %}
+  {% endif %}
+  {% block content %}{% endblock %}
+</body>
+</html>
