@@ -74,3 +74,108 @@ class HesapPlani(TemelModel):
 
     def __str__(self):
         return f"{self.hesap_kodu} {self.hesap_adi}"
+
+
+class Kur(TemelModel):
+    """Günlük TCMB alış kurları (spec bölüm 2 — Tablo: KUR).
+
+    v0.1'de elle girilir. islem_kuru ve fişin kur_usd alanı buradan beslenir.
+    Hafta sonu/tatilde kur yoktur → tüketici tarafta son yayımlanan kur kullanılır.
+    """
+
+    tarih = models.DateField("tarih", primary_key=True)
+    usd_alis = models.DecimalField("USD alış", max_digits=18, decimal_places=6)
+    eur_alis = models.DecimalField("EUR alış", max_digits=18, decimal_places=6)
+    gbp_alis = models.DecimalField("GBP alış", max_digits=18, decimal_places=6)
+
+    class Meta:
+        db_table = "kur"
+        verbose_name = "kur"
+        verbose_name_plural = "kurlar"
+        ordering = ["-tarih"]
+
+    def __str__(self):
+        return f"{self.tarih} USD={self.usd_alis}"
+
+
+class YevmiyeFisi(TemelModel):
+    """Yevmiye fişi başlığı (spec bölüm 2 — Tablo: YEVMIYE_FISI).
+
+    İç PK ``id`` teknik; insana görünen ``fis_no`` mali yıl içinde müteselsil ve
+    boşluksuzdur. İptal edilen (soft-delete) fişin numarası korunur, yeniden
+    kullanılmaz. Dengeli fiş kuralı servis katmanında zorlanır.
+    """
+
+    class Kaynak(models.TextChoices):
+        MANUEL = "MANUEL", "Manuel"
+
+    yil = models.IntegerField("mali yıl")
+    fis_no = models.PositiveIntegerField("fiş no")
+    tarih = models.DateField("muhasebe tarihi")
+    aciklama = models.CharField("açıklama", max_length=500, blank=True)
+    kaynak = models.CharField(
+        "kaynak", max_length=20, choices=Kaynak.choices, default=Kaynak.MANUEL
+    )
+    # USD raporlama için fiş tarihindeki TCMB USD alış kuru (snapshot).
+    # Kur yoksa boş kalabilir; USD sonra tamamlanır.
+    kur_usd = models.DecimalField(
+        "USD kuru", max_digits=18, decimal_places=6, null=True, blank=True
+    )
+
+    class Meta:
+        db_table = "yevmiye_fisi"
+        verbose_name = "yevmiye fişi"
+        verbose_name_plural = "yevmiye fişleri"
+        ordering = ["yil", "fis_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["yil", "fis_no"], name="uq_yevmiye_yil_fisno"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.yil}/{self.fis_no}"
+
+
+class YevmiyeSatir(TemelModel):
+    """Yevmiye satırı (spec bölüm 2 — Tablo: YEVMIYE_SATIR).
+
+    ``borc``/``alacak`` her zaman TL (fonksiyonel). Yabancı işlemde TL,
+    ``islem_tutari × islem_kuru``'dan türetilir; TRY'de islem_kuru=1.
+    """
+
+    class IslemPB(models.TextChoices):
+        TRY = "TRY", "TRY"
+        USD = "USD", "USD"
+        EUR = "EUR", "EUR"
+        GBP = "GBP", "GBP"
+
+    fis = models.ForeignKey(
+        YevmiyeFisi, verbose_name="fiş", related_name="satirlar",
+        on_delete=models.CASCADE,
+    )
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="hesap", related_name="satirlar",
+        on_delete=models.PROTECT,
+    )
+    borc = models.DecimalField("borç (TL)", max_digits=18, decimal_places=2, default=0)
+    alacak = models.DecimalField("alacak (TL)", max_digits=18, decimal_places=2, default=0)
+    islem_pb = models.CharField(
+        "işlem PB", max_length=3, choices=IslemPB.choices, default=IslemPB.TRY
+    )
+    islem_tutari = models.DecimalField(
+        "işlem tutarı", max_digits=18, decimal_places=2
+    )
+    islem_kuru = models.DecimalField(
+        "işlem kuru", max_digits=18, decimal_places=6
+    )
+    aciklama = models.CharField("açıklama", max_length=500, blank=True)
+
+    class Meta:
+        db_table = "yevmiye_satir"
+        verbose_name = "yevmiye satırı"
+        verbose_name_plural = "yevmiye satırları"
+        ordering = ["fis", "id"]
+
+    def __str__(self):
+        return f"{self.fis} {self.hesap_id} B={self.borc} A={self.alacak}"
