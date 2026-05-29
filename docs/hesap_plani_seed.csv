@@ -1,0 +1,82 @@
+hesap_kodu,hesap_adi,rapor_grubu,rapor_kalemi,parasal,aktif
+100,Kasa,BILANCO,DV,evet,evet
+101,Alınan Çekler,BILANCO,DV,evet,evet
+102,Bankalar,BILANCO,DV,evet,evet
+103,Verilen Çekler ve Ödeme Emirleri (-),BILANCO,DV,evet,evet
+108,Diğer Hazır Değerler,BILANCO,DV,evet,evet
+120,Alıcılar,BILANCO,DV,evet,evet
+121,Alacak Senetleri,BILANCO,DV,evet,evet
+126,Verilen Depozito ve Teminatlar,BILANCO,DV,evet,evet
+131,Ortaklardan Alacaklar,BILANCO,DV,evet,evet
+136,Diğer Çeşitli Alacaklar,BILANCO,DV,evet,evet
+150,İlk Madde ve Malzeme,BILANCO,DV,hayir,evet
+151,Yarı Mamuller - Üretim,BILANCO,DV,hayir,evet
+152,Mamuller,BILANCO,DV,hayir,evet
+153,Ticari Mallar,BILANCO,DV,hayir,evet
+159,Verilen Sipariş Avansları,BILANCO,DV,hayir,evet
+180,Gelecek Aylara Ait Giderler,BILANCO,DV,hayir,evet
+190,Devreden KDV,BILANCO,DV,evet,evet
+191,İndirilecek KDV,BILANCO,DV,evet,evet
+193,Peşin Ödenen Vergiler ve Fonlar,BILANCO,DV,evet,evet
+252,Binalar,BILANCO,DDV,hayir,evet
+253,Tesis Makine ve Cihazlar,BILANCO,DDV,hayir,evet
+254,Taşıtlar,BILANCO,DDV,hayir,evet
+255,Demirbaşlar,BILANCO,DDV,hayir,evet
+257,Birikmiş Amortismanlar (-),BILANCO,DDV,hayir,evet
+258,Yapılmakta Olan Yatırımlar,BILANCO,DDV,hayir,evet
+259,Verilen Avanslar,BILANCO,DDV,hayir,evet
+260,Haklar,BILANCO,DDV,hayir,evet
+300,Banka Kredileri,BILANCO,KVYK,evet,evet
+303,Uzun Vadeli Kredilerin Anapara Taksitleri,BILANCO,KVYK,evet,evet
+320,Satıcılar,BILANCO,KVYK,evet,evet
+321,Borç Senetleri,BILANCO,KVYK,evet,evet
+326,Alınan Depozito ve Teminatlar,BILANCO,KVYK,evet,evet
+331,Ortaklara Borçlar,BILANCO,KVYK,evet,evet
+335,Personele Borçlar,BILANCO,KVYK,evet,evet
+336,Diğer Çeşitli Borçlar,BILANCO,KVYK,evet,evet
+360,Ödenecek Vergi ve Fonlar,BILANCO,KVYK,evet,evet
+361,Ödenecek Sosyal Güvenlik Kesintileri,BILANCO,KVYK,evet,evet
+370,Dönem Kârı Vergi ve Yasal Yük. Karşılıkları,BILANCO,KVYK,evet,evet
+391,Hesaplanan KDV,BILANCO,KVYK,evet,evet
+400,Banka Kredileri,BILANCO,UVYK,evet,evet
+420,Satıcılar,BILANCO,UVYK,evet,evet
+500,Sermaye,BILANCO,OZK,hayir,evet
+570,Geçmiş Yıllar Kârları,BILANCO,OZK,hayir,evet
+580,Geçmiş Yıllar Zararları (-),BILANCO,OZK,hayir,evet
+590,Dönem Net Kârı (Zararı),BILANCO,OZK,hayir,evet
+600,Yurtiçi Satışlar,GELIR_TABLOSU,A,-,evet
+601,Yurtdışı Satışlar,GELIR_TABLOSU,A,-,evet
+602,Diğer Gelirler,GELIR_TABLOSU,A,-,evet
+610,Satıştan İadeler (-),GELIR_TABLOSU,B,-,evet
+611,Satış İskontoları (-),GELIR_TABLOSU,B,-,evet
+620,Satılan Mamuller Maliyeti (-),GELIR_TABLOSU,C,-,evet
+621,Satılan Ticari Mallar Maliyeti (-),GELIR_TABLOSU,C,-,evet
+622,Satılan Hizmet Maliyeti (-),GELIR_TABLOSU,C,-,evet
+631,Pazarlama Satış ve Dağıtım Giderleri (-),GELIR_TABLOSU,D,-,evet
+632,Genel Yönetim Giderleri (-),GELIR_TABLOSU,D,-,evet
+642,Faiz Gelirleri,GELIR_TABLOSU,E,-,evet
+646,Kambiyo Kârları,GELIR_TABLOSU,E,-,evet
+649,Diğer Olağan Gelir ve Kârlar,GELIR_TABLOSU,E,-,evet
+653,Komisyon Giderleri (-),GELIR_TABLOSU,F,-,evet
+656,Kambiyo Zararları (-),GELIR_TABLOSU,F,-,evet
+659,Diğer Olağan Gider ve Zararlar (-),GELIR_TABLOSU,F,-,evet
+660,Kısa Vadeli Borçlanma Giderleri (-),GELIR_TABLOSU,G,-,evet
+661,Uzun Vadeli Borçlanma Giderleri (-),GELIR_TABLOSU,G,-,evet
+679,Diğer Olağandışı Gelir ve Kârlar,GELIR_TABLOSU,H,-,evet
+689,Diğer Olağandışı Gider ve Zararlar (-),GELIR_TABLOSU,I,-,evet
+691,Dönem Kârı Vergi ve Yasal Yük. Karşılıkları (-),GELIR_TABLOSU,J,-,evet
+690,Dönem Kârı veya Zararı,GELIR_TABLOSU,-,-,evet
+710,Direkt İlk Madde ve Malzeme Giderleri,MALIYET,-,-,evet
+711,Direkt İlk Madde ve Malzeme Yansıtma,MALIYET,-,-,evet
+720,Direkt İşçilik Giderleri,MALIYET,-,-,evet
+721,Direkt İşçilik Yansıtma,MALIYET,-,-,evet
+730,Genel Üretim Giderleri,MALIYET,-,-,evet
+731,Genel Üretim Giderleri Yansıtma,MALIYET,-,-,evet
+740,Hizmet Üretim Maliyeti,MALIYET,-,-,evet
+741,Hizmet Üretim Maliyeti Yansıtma,MALIYET,-,-,evet
+760,Pazarlama Satış Dağıtım Giderleri,MALIYET,-,-,evet
+761,Pazarlama Satış Dağıtım Giderleri Yansıtma,MALIYET,-,-,evet
+770,Genel Yönetim Giderleri,MALIYET,-,-,evet
+771,Genel Yönetim Giderleri Yansıtma,MALIYET,-,-,evet
+780,Finansman Giderleri,MALIYET,-,-,evet
+781,Finansman Giderleri Yansıtma,MALIYET,-,-,evet

@@ -1,0 +1,18 @@
+# Gizli bilgi — koda/repoya girmez
+.env
+
+# Python / venv
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Django
+db.sqlite3
+/staticfiles/
+/media/
+
+# Araç/IDE
+.vscode/
+.idea/
+*.log
