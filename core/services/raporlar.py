@@ -1,7 +1,10 @@
 """Rapor servisleri — hepsi YALNIZCA yevmiye satırlarından hesaplanır.
 
-Değişmez (spec 3b): saklanan bakiye YOK; mizan/bilanço/gelir tablosu (TL ve USD)
-her zaman ``YevmiyeSatir``'dan türetilir. İptal (soft-delete) fiş/satır hariç.
+Değişmez (spec 3b): saklanan bakiye YOK. İptal (soft-delete) fiş/satır hariç.
+
+USD modeli (TARİHSEL/donmuş): her satırın USD karşılığı, KENDİ fişinin tarihindeki
+kurla hesaplanıp donar. Rapor anında tek kurla bölme veya kapanış-kuru revalüasyonu
+YOKTUR. USD bilanço/gelir tablosu, USD mizandan TL ile AYNI mantıkla türetilir.
 """
 from __future__ import annotations
 
@@ -13,7 +16,6 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from core.models import YevmiyeSatir
-from core.services.yevmiye import kur_usd_bul
 
 SIFIR = Decimal("0.00")
 
@@ -50,7 +52,7 @@ def _hareketler(baslangic: datetime.date, bitis: datetime.date) -> list[dict]:
 
 
 def _satirlar(baslangic: datetime.date, bitis: datetime.date):
-    """Ham yevmiye satırları (iptal hariç) — satır bazlı (tarihi kur) çevrim için."""
+    """Ham yevmiye satırları (iptal hariç) — satır bazlı USD çevrimi için."""
     return (
         YevmiyeSatir.objects.filter(
             silindi=False, fis__silindi=False,
@@ -60,7 +62,7 @@ def _satirlar(baslangic: datetime.date, bitis: datetime.date):
 
 
 # ---------------------------------------------------------------------------
-# MİZAN (5a)
+# MİZAN (TL) — 5a
 # ---------------------------------------------------------------------------
 @dataclass
 class MizanSatir:
@@ -112,7 +114,7 @@ class Mizan:
 
 
 def mizan(baslangic=None, bitis=None) -> Mizan:
-    """Tarih aralığındaki (varsayılan: mali yıl) mizanı üretir. İptal hariç."""
+    """Tarih aralığındaki (varsayılan: mali yıl) TL mizanı. İptal hariç."""
     baslangic, bitis = _varsayilan(baslangic, bitis)
     satirlar = [
         MizanSatir(h["kod"], h["ad"], h["borc"], h["alacak"])
@@ -122,7 +124,7 @@ def mizan(baslangic=None, bitis=None) -> Mizan:
 
 
 # ---------------------------------------------------------------------------
-# BİLANÇO (5b/5c) — sınıf 1-5; rapor_kalemi'ne göre gruplu
+# Gruplama / harita yardımcıları (TL ve USD ortak)
 # ---------------------------------------------------------------------------
 AKTIF_KALEM = [("DV", "Dönen Varlıklar"), ("DDV", "Duran Varlıklar")]
 PASIF_KALEM = [
@@ -150,6 +152,26 @@ class BilancoGrup:
         return sum((s.tutar for s in self.satirlar), SIFIR)
 
 
+def _bilanco_kur(satir_listesi):
+    """(kod, ad, grup, kalem, net) tuple'larından Aktif/Pasif gruplarını + dönem
+    sonucunu kurar. TL ve USD bilançonun ORTAK mantığı (tutarlar dışında aynı)."""
+    aktif = {k: BilancoGrup(k, ad) for k, ad in AKTIF_KALEM}
+    pasif = {k: BilancoGrup(k, ad) for k, ad in PASIF_KALEM}
+    donem = SIFIR
+    for kod, ad, grup, kalem, net in satir_listesi:
+        if grup == "BILANCO":
+            if kalem in aktif:
+                aktif[kalem].satirlar.append(BilancoSatir(kod, ad, net))
+            elif kalem in pasif:
+                pasif[kalem].satirlar.append(BilancoSatir(kod, ad, -net))
+        else:
+            donem += -net  # net = borç-alacak; kâr = alacak-borç = -net
+    pasif["OZK"].satirlar.append(
+        BilancoSatir("—", "DÖNEM NET KÂRI/ZARARI (HESAPLANAN)", donem)
+    )
+    return list(aktif.values()), list(pasif.values()), donem
+
+
 @dataclass
 class Bilanco:
     baslangic: datetime.date
@@ -172,33 +194,18 @@ class Bilanco:
 
 
 def bilanco(baslangic=None, bitis=None) -> Bilanco:
-    """Canlı bilanço (TL). Aktif = Pasif; dönem sonucu (sınıf 6+7 neti)
-    Özkaynaklar'a 'Dönem Net Kârı/Zararı' olarak eklenir."""
+    """Canlı bilanço (TL). Aktif = Pasif; dönem sonucu Özkaynaklar'a eklenir."""
     baslangic, bitis = _varsayilan(baslangic, bitis)
-    aktif = {k: BilancoGrup(k, ad) for k, ad in AKTIF_KALEM}
-    pasif = {k: BilancoGrup(k, ad) for k, ad in PASIF_KALEM}
-    donem_sonucu = SIFIR
-
-    for h in _hareketler(baslangic, bitis):
-        if h["grup"] == "BILANCO":
-            net = h["borc"] - h["alacak"]
-            kalem = h["kalem"]
-            if kalem in aktif:
-                aktif[kalem].satirlar.append(BilancoSatir(h["kod"], h["ad"], net))
-            elif kalem in pasif:
-                pasif[kalem].satirlar.append(BilancoSatir(h["kod"], h["ad"], -net))
-        else:
-            donem_sonucu += h["alacak"] - h["borc"]
-
-    pasif["OZK"].satirlar.append(
-        BilancoSatir("—", "DÖNEM NET KÂRI/ZARARI (HESAPLANAN)", donem_sonucu)
-    )
-    return Bilanco(baslangic, bitis, list(aktif.values()), list(pasif.values()),
-                   donem_sonucu)
+    satirlar = [
+        (h["kod"], h["ad"], h["grup"], h["kalem"], h["borc"] - h["alacak"])
+        for h in _hareketler(baslangic, bitis)
+    ]
+    aktif, pasif, donem = _bilanco_kur(satirlar)
+    return Bilanco(baslangic, bitis, aktif, pasif, donem)
 
 
 # ---------------------------------------------------------------------------
-# GELİR TABLOSU (5b/5c) — YALNIZCA 6'lı; spec bölüm 4 haritası
+# GELİR TABLOSU haritası (TL ve USD ortak)
 # ---------------------------------------------------------------------------
 @dataclass
 class GelirSatir:
@@ -209,7 +216,7 @@ class GelirSatir:
 
 
 def _gelir_rows(alacak_net, borc_net):
-    """A→Dönem Net Kârı satırlarını verilen net fonksiyonlarıyla kurar."""
+    """A→Dönem Net Kârı satırları (spec bölüm 4); verilen net fonksiyonlarıyla."""
     rows: list[GelirSatir] = []
     A = alacak_net(["600", "601", "602"])
     rows.append(GelirSatir("A. Brüt Satışlar", A, isaret="+"))
@@ -275,66 +282,110 @@ def gelir_tablosu(baslangic=None, bitis=None) -> GelirTablosu:
     return GelirTablosu(baslangic, bitis, rows, net)
 
 
-# ---------------------------------------------------------------------------
-# USD GELİR TABLOSU (5c) — her hareket KENDİ fişinin kur_usd'siyle (tarihi kur)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# USD MİZAN — tarihsel/donmuş (5c, yeniden yazıldı)
+# ===========================================================================
 @dataclass
-class GelirTablosuUSD:
+class MizanUSDSatir:
+    hesap_kodu: str
+    hesap_adi: str
+    grup: str
+    kalem: str
+    usd_borc: Decimal
+    usd_alacak: Decimal
+
+    @property
+    def borc_bakiye(self) -> Decimal:
+        n = self.usd_borc - self.usd_alacak
+        return n if n > 0 else SIFIR
+
+    @property
+    def alacak_bakiye(self) -> Decimal:
+        n = self.usd_alacak - self.usd_borc
+        return n if n > 0 else SIFIR
+
+
+@dataclass
+class MizanUSD:
     baslangic: datetime.date
     bitis: datetime.date
     satirlar: list
-    donem_net_kari: Decimal
-    haric_tl: Decimal     # kur_usd'si girilmemiş, USD'ye dahil edilemeyen tutar (TL)
+    haric_tl: Decimal     # kur_usd'si girilmemiş fişlerin USD'ye giremeyen tutarı (TL)
 
-    def deger(self, etiket_baslangic: str):
-        for s in self.satirlar:
-            if s.etiket.startswith(etiket_baslangic):
-                return s.tutar
-        return None
+    @property
+    def toplam_borc(self) -> Decimal:
+        return sum((s.usd_borc for s in self.satirlar), SIFIR)
+
+    @property
+    def toplam_alacak(self) -> Decimal:
+        return sum((s.usd_alacak for s in self.satirlar), SIFIR)
+
+    @property
+    def toplam_borc_bakiye(self) -> Decimal:
+        return sum((s.borc_bakiye for s in self.satirlar), SIFIR)
+
+    @property
+    def toplam_alacak_bakiye(self) -> Decimal:
+        return sum((s.alacak_bakiye for s in self.satirlar), SIFIR)
+
+    @property
+    def hareket_denk(self) -> bool:
+        return self.toplam_borc == self.toplam_alacak
 
 
-def gelir_tablosu_usd(baslangic=None, bitis=None) -> GelirTablosuUSD:
-    """USD gelir tablosu: her 6'lı hareket USD = TL ÷ fiş.kur_usd (tarihi kur).
-    kur_usd'si boş fişlerin hareketleri DAHİL EDİLMEZ; toplamı ``haric_tl``'de."""
+def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
+    """USD mizan (tarihsel/donmuş). Her satır KENDİ fişinin kuruyla USD'ye çevrilir:
+
+    - islem_pb == USD  -> satırın ORİJİNAL USD tutarı (islem_tutari) kullanılır.
+    - aksi (TRY/EUR/GBP) -> USD = TL ÷ fiş.kur_usd (TL, o günün kuruyla zaten
+      hesaplandığından EUR/GBP de doğru çevrilir).
+    - kur_usd boş fiş -> USD'ye giremez; tutarı haric_tl'ye eklenir.
+
+    Rapor günü kuru sonucu ETKİLEMEZ (donmuş değerlerin toplamı).
+    """
     baslangic, bitis = _varsayilan(baslangic, bitis)
-    usd_borc: dict[str, Decimal] = {}
-    usd_alacak: dict[str, Decimal] = {}
+    acc: dict[str, dict] = {}
     haric = SIFIR
 
     for ln in _satirlar(baslangic, bitis):
-        kod = ln.hesap_id
-        if not kod.startswith("6"):
-            continue
         kur = ln.fis.kur_usd
         if not kur or kur <= 0:
-            haric += ln.borc + ln.alacak
+            haric += ln.borc          # fiş başına borç toplamı = hariç kalan TL tutar
             continue
-        usd_borc[kod] = usd_borc.get(kod, SIFIR) + ln.borc / kur
-        usd_alacak[kod] = usd_alacak.get(kod, SIFIR) + ln.alacak / kur
+        d = acc.get(ln.hesap_id)
+        if d is None:
+            d = acc[ln.hesap_id] = dict(
+                ad=ln.hesap.hesap_adi, grup=ln.hesap.rapor_grubu,
+                kalem=ln.hesap.rapor_kalemi, ub=SIFIR, ua=SIFIR,
+            )
+        if ln.islem_pb == "USD":
+            # Zaten USD işlem: orijinal USD tutarı, TL'nin olduğu tarafa.
+            if ln.borc > 0:
+                d["ub"] += ln.islem_tutari
+            elif ln.alacak > 0:
+                d["ua"] += ln.islem_tutari
+        else:
+            d["ub"] += ln.borc / kur
+            d["ua"] += ln.alacak / kur
 
-    def alacak_net(kodlar):
-        return sum((usd_alacak.get(k, SIFIR) - usd_borc.get(k, SIFIR) for k in kodlar), SIFIR)
-
-    def borc_net(kodlar):
-        return sum((usd_borc.get(k, SIFIR) - usd_alacak.get(k, SIFIR) for k in kodlar), SIFIR)
-
-    rows, net = _gelir_rows(alacak_net, borc_net)
-    return GelirTablosuUSD(baslangic, bitis, rows, net, haric)
+    satirlar = [
+        MizanUSDSatir(kod, v["ad"], v["grup"], v["kalem"], v["ub"], v["ua"])
+        for kod, v in sorted(acc.items())
+    ]
+    return MizanUSD(baslangic, bitis, satirlar, haric)
 
 
 # ---------------------------------------------------------------------------
-# USD BİLANÇO (5c) — parasal: rapor tarihi kuru; parasal değil: tarihi kur
+# USD BİLANÇO — USD mizandan, TL ile AYNI gruplama (revalüasyon/çevrim farkı YOK)
 # ---------------------------------------------------------------------------
 @dataclass
 class BilancoUSD:
     baslangic: datetime.date
     bitis: datetime.date
-    rapor_tarihi: datetime.date
-    kur: Decimal | None        # rapor tarihi (kapanış) USD kuru
     aktif: list
     pasif: list
-    cevrim_farki: Decimal
-    kur_yok: bool = False
+    donem_sonucu: Decimal
+    haric_tl: Decimal
 
     @property
     def aktif_toplam(self) -> Decimal:
@@ -350,69 +401,44 @@ class BilancoUSD:
 
 
 def bilanco_usd(baslangic=None, bitis=None) -> BilancoUSD:
-    """USD bilanço (parasal revalüasyon). ``bitis`` = rapor tarihi.
+    """USD bilanço — USD mizandan türetilir; TL bilançoyla AYNI mantık, tutarlar USD."""
+    m = mizan_usd(baslangic, bitis)
+    satirlar = [
+        (s.hesap_kodu, s.hesap_adi, s.grup, s.kalem, s.usd_borc - s.usd_alacak)
+        for s in m.satirlar
+    ]
+    aktif, pasif, donem = _bilanco_kur(satirlar)
+    return BilancoUSD(m.baslangic, m.bitis, aktif, pasif, donem, m.haric_tl)
 
-    - parasal=evet kalemler: rapor tarihi (kapanış) kuruyla (TL ÷ kapanış kuru).
-    - parasal=hayır kalemler: tarihi kurla (her hareket kendi fiş.kur_usd'siyle).
-    - Aradaki denge plug'ı 'kur çevrim farkı' (TL tutmaktan doğan USD kâr/zararı).
-    - Rapor tarihinde kur yoksa son yayımlanan TCMB kuru; o da yoksa kur_yok=True.
-    """
-    baslangic, bitis = _varsayilan(baslangic, bitis)
-    kapanis = kur_usd_bul(bitis)
-    if not kapanis or kapanis <= 0:
-        return BilancoUSD(
-            baslangic, bitis, bitis, None,
-            [BilancoGrup(k, ad) for k, ad in AKTIF_KALEM],
-            [BilancoGrup(k, ad) for k, ad in PASIF_KALEM],
-            SIFIR, kur_yok=True,
-        )
 
-    tl: dict[str, Decimal] = {}        # hesap TL net (borç-alacak)
-    hist: dict[str, Decimal] = {}      # hesap tarihi USD net (Σ net/kur)
-    meta: dict[str, tuple] = {}        # kod -> (ad, grup, kalem, parasal)
-    donem_hist = SIFIR                 # sınıf 6+7 tarihi USD sonucu (kâr=alacak-borç)
+# ---------------------------------------------------------------------------
+# USD GELİR TABLOSU — USD mizandan, spec bölüm 4 haritası (yalnızca 6'lı)
+# ---------------------------------------------------------------------------
+@dataclass
+class GelirTablosuUSD:
+    baslangic: datetime.date
+    bitis: datetime.date
+    satirlar: list
+    donem_net_kari: Decimal
+    haric_tl: Decimal
 
-    for ln in _satirlar(baslangic, bitis):
-        kod = ln.hesap_id
-        meta[kod] = (ln.hesap.hesap_adi, ln.hesap.rapor_grubu,
-                     ln.hesap.rapor_kalemi, ln.hesap.parasal)
-        kur = ln.fis.kur_usd
-        if kod.startswith("6") or kod.startswith("7"):
-            if kur and kur > 0:
-                donem_hist += (ln.alacak - ln.borc) / kur
-            continue
-        net_tl = ln.borc - ln.alacak
-        tl[kod] = tl.get(kod, SIFIR) + net_tl
-        if kur and kur > 0:
-            hist[kod] = hist.get(kod, SIFIR) + net_tl / kur
+    def deger(self, etiket_baslangic: str):
+        for s in self.satirlar:
+            if s.etiket.startswith(etiket_baslangic):
+                return s.tutar
+        return None
 
-    aktif = {k: BilancoGrup(k, ad) for k, ad in AKTIF_KALEM}
-    pasif = {k: BilancoGrup(k, ad) for k, ad in PASIF_KALEM}
 
-    for kod, (ad, grup, kalem, parasal) in sorted(meta.items()):
-        if grup != "BILANCO":
-            continue
-        if parasal:                              # parasal -> kapanış kuru
-            usd = tl.get(kod, SIFIR) / kapanis
-        else:                                    # parasal değil -> tarihi kur
-            usd = hist.get(kod, SIFIR)
-        if kalem in aktif:
-            aktif[kalem].satirlar.append(BilancoSatir(kod, ad, usd))
-        elif kalem in pasif:
-            pasif[kalem].satirlar.append(BilancoSatir(kod, ad, -usd))
+def gelir_tablosu_usd(baslangic=None, bitis=None) -> GelirTablosuUSD:
+    """USD gelir tablosu — USD mizandan türetilir (donmuş USD'ler). Yalnızca 6'lı."""
+    m = mizan_usd(baslangic, bitis)
+    by = {s.hesap_kodu: s for s in m.satirlar}
 
-    pasif["OZK"].satirlar.append(
-        BilancoSatir("—", "DÖNEM NET KÂRI/ZARARI (HESAPLANAN)", donem_hist)
-    )
+    def alacak_net(kodlar):
+        return sum((by[k].usd_alacak - by[k].usd_borc for k in kodlar if k in by), SIFIR)
 
-    aktif_top = sum((g.toplam for g in aktif.values()), SIFIR)
-    pasif_acc = sum((g.toplam for g in pasif.values()), SIFIR)
-    cevrim = aktif_top - pasif_acc               # dengeyi kuran çevrim farkı
-    pasif["OZK"].satirlar.append(
-        BilancoSatir("—", "KUR ÇEVRİM FARKI", cevrim)
-    )
+    def borc_net(kodlar):
+        return sum((by[k].usd_borc - by[k].usd_alacak for k in kodlar if k in by), SIFIR)
 
-    return BilancoUSD(
-        baslangic, bitis, bitis, kapanis,
-        list(aktif.values()), list(pasif.values()), cevrim,
-    )
+    rows, net = _gelir_rows(alacak_net, borc_net)
+    return GelirTablosuUSD(m.baslangic, m.bitis, rows, net, m.haric_tl)

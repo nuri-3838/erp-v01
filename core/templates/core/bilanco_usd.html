@@ -8,7 +8,7 @@
 <form method="get" class="alan">
   <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
   {{ form.baslangic }}
-  <label for="{{ form.bitis.id_for_label }}">Rapor tarihi</label>
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
   {{ form.bitis }}
   <button type="submit">Göster</button>
   {% if form.non_field_errors %}
@@ -16,61 +16,57 @@
   {% endif %}
 </form>
 
-{% if bilanco.kur_yok %}
-  <div class="uyari">⚠️ Rapor tarihi ({{ bilanco.rapor_tarihi|date:"d.m.Y" }}) için TCMB USD kuru
-    bulunamadı; USD bilanço hesaplanamadı. Önce KUR girilmeli.</div>
-{% else %}
-  <p class="yardim">Rapor tarihi: {{ bilanco.rapor_tarihi|date:"d.m.Y" }}
-    · Kapanış kuru: {{ bilanco.kur|tr_kur }} · Dönem: {{ bilanco.baslangic|date:"d.m.Y" }} – {{ bilanco.bitis|date:"d.m.Y" }} · İptal hariç.</p>
-  <p class="yardim">Parasal kalemler kapanış kuruyla, parasal olmayanlar tarihi kurla değerlenir;
-    aradaki fark <b>Kur Çevrim Farkı</b> (TL tutmaktan doğan USD kâr/zararı).</p>
+<p class="yardim">Dönem: {{ bilanco.baslangic|date:"d.m.Y" }} – {{ bilanco.bitis|date:"d.m.Y" }}
+  · Tarihsel USD: her satır kendi fişinin kuruyla donar · İptal hariç · Bakiyeler saklanmaz.</p>
 
-  <div class="toplamlar">
-    {% if bilanco.denk_mi %}
-      <span class="denge dengeli">✓ AKTİF = PASİF</span>
-    {% else %}
-      <span class="denge dengesiz">⚠️ AKTİF ≠ PASİF</span>
-    {% endif %}
-    <span class="etiket">Aktif (USD):</span> <span class="deger">{{ bilanco.aktif_toplam|tr_para }}</span>
-    <span class="etiket">Pasif (USD):</span> <span class="deger">{{ bilanco.pasif_toplam|tr_para }}</span>
-    <span class="etiket">Kur çevrim farkı:</span>
-    <span class="deger {% if bilanco.cevrim_farki < 0 %}denge dengesiz{% endif %}">{{ bilanco.cevrim_farki|tr_para }}</span>
-  </div>
-
-  <h2 class="etiket">Aktif (Varlıklar) — USD</h2>
-  <div class="tablo-kapsayici">
-  <table>
-    <thead><tr><th>Hesap</th><th>Hesap Adı</th><th class="sag">Tutar (USD)</th></tr></thead>
-    <tbody>
-      {% for g in bilanco.aktif %}
-        <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
-        {% for s in g.satirlar %}
-          <tr><td>{{ s.kod }}</td><td>{{ s.ad }}</td>
-            <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td></tr>
-        {% endfor %}
-      {% endfor %}
-    </tbody>
-    <tfoot><tr class="sonuc"><th colspan="2" class="sag">AKTİF TOPLAMI</th>
-      <th class="sag">{{ bilanco.aktif_toplam|tr_para }}</th></tr></tfoot>
-  </table>
-  </div>
-
-  <h2 class="etiket">Pasif (Kaynaklar) — USD</h2>
-  <div class="tablo-kapsayici">
-  <table>
-    <thead><tr><th>Hesap</th><th>Hesap Adı</th><th class="sag">Tutar (USD)</th></tr></thead>
-    <tbody>
-      {% for g in bilanco.pasif %}
-        <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
-        {% for s in g.satirlar %}
-          <tr><td>{{ s.kod }}</td><td>{{ s.ad }}</td>
-            <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td></tr>
-        {% endfor %}
-      {% endfor %}
-    </tbody>
-    <tfoot><tr class="sonuc"><th colspan="2" class="sag">PASİF TOPLAMI</th>
-      <th class="sag">{{ bilanco.pasif_toplam|tr_para }}</th></tr></tfoot>
-  </table>
-  </div>
+{% if bilanco.haric_tl %}
+  <div class="uyari">⚠️ USD'ye dahil edilemeyen, kuru girilmemiş fiş tutarı:
+    <b>{{ bilanco.haric_tl|tr_para }} TL</b>. İlgili fişlere USD kuru girilince yansır.</div>
 {% endif %}
+
+<div class="toplamlar">
+  {% if bilanco.denk_mi %}
+    <span class="denge dengeli">✓ AKTİF = PASİF</span>
+  {% else %}
+    <span class="denge dengesiz">⚠️ AKTİF ≠ PASİF</span>
+  {% endif %}
+  <span class="etiket">Aktif (USD):</span> <span class="deger">{{ bilanco.aktif_toplam|tr_para }}</span>
+  <span class="etiket">Pasif (USD):</span> <span class="deger">{{ bilanco.pasif_toplam|tr_para }}</span>
+</div>
+
+<h2 class="etiket">Aktif (Varlıklar) — USD</h2>
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Hesap</th><th>Hesap Adı</th><th class="sag">Tutar (USD)</th></tr></thead>
+  <tbody>
+    {% for g in bilanco.aktif %}
+      <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
+      {% for s in g.satirlar %}
+        <tr><td>{{ s.kod }}</td><td>{{ s.ad }}</td>
+          <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td></tr>
+      {% endfor %}
+    {% endfor %}
+  </tbody>
+  <tfoot><tr class="sonuc"><th colspan="2" class="sag">AKTİF TOPLAMI</th>
+    <th class="sag">{{ bilanco.aktif_toplam|tr_para }}</th></tr></tfoot>
+</table>
+</div>
+
+<h2 class="etiket">Pasif (Kaynaklar) — USD</h2>
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Hesap</th><th>Hesap Adı</th><th class="sag">Tutar (USD)</th></tr></thead>
+  <tbody>
+    {% for g in bilanco.pasif %}
+      <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
+      {% for s in g.satirlar %}
+        <tr><td>{{ s.kod }}</td><td>{{ s.ad }}</td>
+          <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td></tr>
+      {% endfor %}
+    {% endfor %}
+  </tbody>
+  <tfoot><tr class="sonuc"><th colspan="2" class="sag">PASİF TOPLAMI</th>
+    <th class="sag">{{ bilanco.pasif_toplam|tr_para }}</th></tr></tfoot>
+</table>
+</div>
 {% endblock %}
