@@ -18,6 +18,7 @@ hesap_kodu,hesap_adi,rapor_grubu,rapor_kalemi,parasal,aktif
 190,Devreden KDV,BILANCO,DV,evet,evet
 191,İndirilecek KDV,BILANCO,DV,evet,evet
 193,Peşin Ödenen Vergiler ve Fonlar,BILANCO,DV,evet,evet
+250,Arazi ve Arsalar,BILANCO,DDV,hayir,evet
 252,Binalar,BILANCO,DDV,hayir,evet
 253,Tesis Makine ve Cihazlar,BILANCO,DDV,hayir,evet
 254,Taşıtlar,BILANCO,DDV,hayir,evet
