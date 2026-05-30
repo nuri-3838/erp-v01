@@ -10,4 +10,6 @@ urlpatterns = [
     path("mizan/", views.mizan_gorunum, name="mizan"),
     path("bilanco/", views.bilanco_gorunum, name="bilanco"),
     path("gelir-tablosu/", views.gelir_tablosu_gorunum, name="gelir_tablosu"),
+    path("gelir-tablosu-usd/", views.gelir_tablosu_usd_gorunum, name="gelir_tablosu_usd"),
+    path("bilanco-usd/", views.bilanco_usd_gorunum, name="bilanco_usd"),
 ]

@@ -4,11 +4,13 @@ from decimal import Decimal
 from django.contrib import messages
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from core.forms import FisForm, MizanFiltreForm, SatirForm
 from core.models import YevmiyeFisi
 from core.services.raporlar import (
-    bilanco, gelir_tablosu, mali_yil_araligi, mizan,
+    bilanco, bilanco_usd, gelir_tablosu, gelir_tablosu_usd,
+    mali_yil_araligi, mizan,
 )
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
 
@@ -42,19 +44,14 @@ def fis_ekle(request):
                     kur_usd=fform.cleaned_data.get("kur_usd"),
                     satirlar=satirlar,
                 )
-                messages.success(
-                    request, f"Fiş kaydedildi: {fis.yil}/{fis.fis_no}"
-                )
+                messages.success(request, f"Fiş kaydedildi: {fis.yil}/{fis.fis_no}")
                 return redirect("core:fis_detay", pk=fis.pk)
             except YevmiyeHatasi as e:
-                # Çekirdek reddetti -> kullanıcıya dostça bildir.
                 fform.add_error(None, str(e))
     else:
         fform = FisForm()
         formset = SatirFormSet()
-    return render(
-        request, "core/fis_ekle.html", {"fform": fform, "formset": formset}
-    )
+    return render(request, "core/fis_ekle.html", {"fform": fform, "formset": formset})
 
 
 def fis_detay(request, pk):
@@ -63,23 +60,20 @@ def fis_detay(request, pk):
     toplam_borc = sum((s.borc for s in satirlar), Decimal("0.00"))
     toplam_alacak = sum((s.alacak for s in satirlar), Decimal("0.00"))
     return render(
-        request,
-        "core/fis_detay.html",
-        {
-            "fis": fis,
-            "satirlar": satirlar,
-            "toplam_borc": toplam_borc,
-            "toplam_alacak": toplam_alacak,
-        },
+        request, "core/fis_detay.html",
+        {"fis": fis, "satirlar": satirlar,
+         "toplam_borc": toplam_borc, "toplam_alacak": toplam_alacak},
     )
 
 
-def _tarih_araligi(request):
-    """GET'ten tarih aralığı; yoksa varsayılan mali yıl (form önceden doldurulur)."""
+def _tarih_araligi(request, bitis_bugun=False):
+    """GET'ten tarih aralığı; yoksa varsayılan (mali yıl, ya da bitiş=bugün)."""
     form = MizanFiltreForm(request.GET or None)
     if form.is_valid():
         return form, form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
     baslangic, bitis = mali_yil_araligi()
+    if bitis_bugun:
+        bitis = timezone.localdate()
     if not request.GET:
         form = MizanFiltreForm(initial={"baslangic": baslangic, "bitis": bitis})
     return form, baslangic, bitis
@@ -97,6 +91,18 @@ def bilanco_gorunum(request):
 
 def gelir_tablosu_gorunum(request):
     form, b, s = _tarih_araligi(request)
-    return render(
-        request, "core/gelir_tablosu.html", {"form": form, "gt": gelir_tablosu(b, s)}
-    )
+    return render(request, "core/gelir_tablosu.html",
+                  {"form": form, "gt": gelir_tablosu(b, s)})
+
+
+def gelir_tablosu_usd_gorunum(request):
+    form, b, s = _tarih_araligi(request)
+    return render(request, "core/gelir_tablosu_usd.html",
+                  {"form": form, "gt": gelir_tablosu_usd(b, s)})
+
+
+def bilanco_usd_gorunum(request):
+    # Rapor tarihi (kapanış kuru) = bitiş; varsayılan bugün.
+    form, b, s = _tarih_araligi(request, bitis_bugun=True)
+    return render(request, "core/bilanco_usd.html",
+                  {"form": form, "bilanco": bilanco_usd(b, s)})

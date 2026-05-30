@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Gelir Tablosu (USD) · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Gelir Tablosu (USD)</h1>
+
+<form method="get" class="alan">
+  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+  {{ form.baslangic }}
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+  {{ form.bitis }}
+  <button type="submit">Göster</button>
+  {% if form.non_field_errors %}
+    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+  {% endif %}
+</form>
+
+<p class="yardim">Dönem: {{ gt.baslangic|date:"d.m.Y" }} – {{ gt.bitis|date:"d.m.Y" }}
+  · Her hareket KENDİ fişinin kuruyla: USD = TL ÷ fiş kuru (tarihi kur) · Yalnızca 6'lı · İptal hariç.</p>
+
+{% if gt.haric_tl %}
+  <div class="uyari">⚠️ USD'ye dahil edilemeyen, kuru girilmemiş fiş tutarı:
+    <b>{{ gt.haric_tl|tr_para }} TL</b>. İlgili fişlere USD kuru girilince USD gelir tablosuna yansır.</div>
+{% endif %}
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Kalem</th><th class="sag">Tutar (USD)</th></tr></thead>
+  <tbody>
+    {% for s in gt.satirlar %}
+      <tr class="{% if s.etiket == 'DÖNEM NET KÂRI' %}sonuc{% elif s.ara %}ara{% endif %}">
+        <td>{% if s.isaret %}{{ s.isaret }} {% endif %}{{ s.etiket }}</td>
+        <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
