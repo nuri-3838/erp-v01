@@ -257,3 +257,4 @@ Her sürüm, bir öncekinin "bitti" kutuları dolmadan başlamaz.
 
 ## Yol haritası notu (2026-05-30)
 - **Görsel otomatik küçültme (0b-b):** v0.1'de görsel yükleme yapılan bir yer yok; bu kural, görsel ekleyen İLK modülle (örn. fişe belge/foto ekleme) birlikte uygulanacak. Kapsam genişletilmedi. (v0.2+)
+- **Alt hesap / muavin (v0.3, cari modülüyle):** `HesapPlani`'ya nullable self-FK `ust_hesap` eklenecek; kayıt yalnızca **yaprak hesaba** atılacak (ana hesap bakiyesi = alt hesaplar toplamı); **gelir tablosu raporları ana hesaba yuvarlanacak** (gelir tablosu birebir 3 haneli kod listesi kullanıyor — tek kırılgan nokta); **mizanda ana hesap / muavin görünümü**. Model bugün bilinçli olarak düz bırakıldı: sonradan eklemeli (additive) migration temiz, backfill gerekmez; PK `hesap_kodu` metin + max_length=20 olduğundan `120.001` gibi kodlar zaten sığar. (Değerlendirme: 2026-05-30)
