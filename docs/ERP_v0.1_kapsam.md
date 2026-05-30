@@ -252,3 +252,8 @@ Uygulama hem masaüstü hem **telefon tarayıcısında** düzgün çalışmalı.
 - **v0.7+:** Raporlama detayı, yetki, çoklu depo
 
 Her sürüm, bir öncekinin "bitti" kutuları dolmadan başlamaz.
+
+---
+
+## Yol haritası notu (2026-05-30)
+- **Görsel otomatik küçültme (0b-b):** v0.1'de görsel yükleme yapılan bir yer yok; bu kural, görsel ekleyen İLK modülle (örn. fişe belge/foto ekleme) birlikte uygulanacak. Kapsam genişletilmedi. (v0.2+)
