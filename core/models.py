@@ -85,8 +85,8 @@ class Kur(TemelModel):
 
     tarih = models.DateField("tarih", primary_key=True)
     usd_alis = models.DecimalField("USD alış", max_digits=18, decimal_places=6)
-    eur_alis = models.DecimalField("EUR alış", max_digits=18, decimal_places=6)
-    gbp_alis = models.DecimalField("GBP alış", max_digits=18, decimal_places=6)
+    eur_alis = models.DecimalField("EUR alış", max_digits=18, decimal_places=6, null=True, blank=True)
+    gbp_alis = models.DecimalField("GBP alış", max_digits=18, decimal_places=6, null=True, blank=True)
 
     class Meta:
         db_table = "kur"
