@@ -63,6 +63,8 @@
   <nav>
     <a href="{% url 'core:fis_ekle' %}">Fiş Gir</a>
     <a href="{% url 'core:mizan' %}">Mizan</a>
+    <a href="{% url 'core:bilanco' %}">Bilanço</a>
+    <a href="{% url 'core:gelir_tablosu' %}">Gelir Tablosu</a>
   </nav>
   {% if messages %}
     {% for m in messages %}<div class="basari">{{ m }}</div>{% endfor %}

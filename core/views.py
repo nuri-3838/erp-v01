@@ -1,4 +1,4 @@
-"""Fiş giriş/görüntüleme görünümleri."""
+"""Fiş giriş/görüntüleme ve rapor görünümleri."""
 from decimal import Decimal
 
 from django.contrib import messages
@@ -7,7 +7,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from core.forms import FisForm, MizanFiltreForm, SatirForm
 from core.models import YevmiyeFisi
-from core.services.raporlar import mali_yil_araligi, mizan
+from core.services.raporlar import (
+    bilanco, gelir_tablosu, mali_yil_araligi, mizan,
+)
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
@@ -72,15 +74,29 @@ def fis_detay(request, pk):
     )
 
 
-def mizan_gorunum(request):
+def _tarih_araligi(request):
+    """GET'ten tarih aralığı; yoksa varsayılan mali yıl (form önceden doldurulur)."""
     form = MizanFiltreForm(request.GET or None)
     if form.is_valid():
-        baslangic = form.cleaned_data["baslangic"]
-        bitis = form.cleaned_data["bitis"]
-    else:
-        baslangic, bitis = mali_yil_araligi()
-        if not request.GET:
-            form = MizanFiltreForm(initial={"baslangic": baslangic, "bitis": bitis})
+        return form, form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
+    baslangic, bitis = mali_yil_araligi()
+    if not request.GET:
+        form = MizanFiltreForm(initial={"baslangic": baslangic, "bitis": bitis})
+    return form, baslangic, bitis
+
+
+def mizan_gorunum(request):
+    form, b, s = _tarih_araligi(request)
+    return render(request, "core/mizan.html", {"form": form, "mizan": mizan(b, s)})
+
+
+def bilanco_gorunum(request):
+    form, b, s = _tarih_araligi(request)
+    return render(request, "core/bilanco.html", {"form": form, "bilanco": bilanco(b, s)})
+
+
+def gelir_tablosu_gorunum(request):
+    form, b, s = _tarih_araligi(request)
     return render(
-        request, "core/mizan.html", {"form": form, "mizan": mizan(baslangic, bitis)}
+        request, "core/gelir_tablosu.html", {"form": form, "gt": gelir_tablosu(b, s)}
     )
