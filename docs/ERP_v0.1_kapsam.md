@@ -70,6 +70,14 @@ Manuel ay sonu kapanışı yapılan dönem **kilitlenir**; açıkça yeniden aç
 ### h) Kodlama ve sıralama
 Veritabanı **UTF-8**; **Türkçe collation** ile kurulur ki ç/ğ/ı/ö/ş/ü doğru sıralansın.
 
+### i) Responsive (mobil uyumlu) tasarım — en baştan
+Uygulama hem masaüstü hem **telefon tarayıcısında** düzgün çalışmalı. Ayrı bir mobil uygulama DEĞİL; aynı web arayüzü ekran boyutuna göre uyarlanır.
+- `<meta name="viewport" content="width=device-width, initial-scale=1">` her sayfada.
+- Mobil öncelikli (mobile-first) CSS; dokunmaya uygun buton/giriş boyutları.
+- **Geniş tablolar (yevmiye, mizan, bilanço)** dar ekranda: ya yatay kaydırılabilir kapsayıcı, ya da satırların "kart" görünümüne dönüşmesi.
+- Bu kural **mevcut ekranlar dahil** tüm ekranlara uygulanır (fiş giriş, mizan, bilanço/gelir tablosu).
+- Test: ~375px genişlikte taşma/kırpma olmadan kullanılabilir olmalı.
+
 ---
 
 ## 1. v0.1'in tanımı

@@ -1,0 +1,75 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Bilanço · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Bilanço</h1>
+
+<form method="get" class="alan">
+  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+  {{ form.baslangic }}
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+  {{ form.bitis }}
+  <button type="submit">Göster</button>
+  {% if form.non_field_errors %}
+    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+  {% endif %}
+</form>
+
+<p class="yardim">Dönem: {{ bilanco.baslangic|date:"d.m.Y" }} – {{ bilanco.bitis|date:"d.m.Y" }}
+  · İptal fişler hariç · Bakiyeler saklanmaz, yevmiyeden hesaplanır.</p>
+
+<div class="toplamlar">
+  {% if bilanco.denk_mi %}
+    <span class="denge dengeli">✓ AKTİF = PASİF</span>
+  {% else %}
+    <span class="denge dengesiz">⚠️ AKTİF ≠ PASİF</span>
+  {% endif %}
+  <span class="etiket">Aktif:</span> <span class="deger">{{ bilanco.aktif_toplam|tr_para }}</span>
+  <span class="etiket">Pasif:</span> <span class="deger">{{ bilanco.pasif_toplam|tr_para }}</span>
+</div>
+
+<h2 class="etiket">Aktif (Varlıklar)</h2>
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Hesap</th><th>Hesap Adı</th><th class="sag">Tutar (TL)</th></tr></thead>
+  <tbody>
+    {% for g in bilanco.aktif %}
+      <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
+      {% for s in g.satirlar %}
+        <tr>
+          <td>{{ s.kod }}</td><td>{{ s.ad }}</td>
+          <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td>
+        </tr>
+      {% endfor %}
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr class="sonuc"><th colspan="2" class="sag">AKTİF TOPLAMI</th>
+      <th class="sag">{{ bilanco.aktif_toplam|tr_para }}</th></tr>
+  </tfoot>
+</table>
+</div>
+
+<h2 class="etiket">Pasif (Kaynaklar)</h2>
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Hesap</th><th>Hesap Adı</th><th class="sag">Tutar (TL)</th></tr></thead>
+  <tbody>
+    {% for g in bilanco.pasif %}
+      <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
+      {% for s in g.satirlar %}
+        <tr>
+          <td>{{ s.kod }}</td><td>{{ s.ad }}</td>
+          <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td>
+        </tr>
+      {% endfor %}
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr class="sonuc"><th colspan="2" class="sag">PASİF TOPLAMI</th>
+      <th class="sag">{{ bilanco.pasif_toplam|tr_para }}</th></tr>
+  </tfoot>
+</table>
+</div>
+{% endblock %}
