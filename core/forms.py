@@ -44,7 +44,7 @@ class TRDecimalField(forms.CharField):
 class FisForm(forms.Form):
     tarih = forms.DateField(
         label="Muhasebe tarihi",
-        widget=forms.DateInput(attrs={"type": "date"}),
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate,
     )
     aciklama = forms.CharField(
@@ -110,3 +110,21 @@ class SatirForm(forms.Form):
     def temiz_mi(self) -> bool:
         """Satırda geçerli/dolu veri var mı (boş satırları elemek için)."""
         return bool(getattr(self, "cleaned_data", {}).get("taraf"))
+
+
+class MizanFiltreForm(forms.Form):
+    baslangic = forms.DateField(
+        label="Başlangıç",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+    )
+    bitis = forms.DateField(
+        label="Bitiş",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+    )
+
+    def clean(self):
+        cd = super().clean()
+        b, s = cd.get("baslangic"), cd.get("bitis")
+        if b and s and b > s:
+            raise forms.ValidationError("Başlangıç, bitişten sonra olamaz.")
+        return cd

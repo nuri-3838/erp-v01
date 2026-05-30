@@ -5,8 +5,9 @@ from django.contrib import messages
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 
-from core.forms import FisForm, SatirForm
+from core.forms import FisForm, MizanFiltreForm, SatirForm
 from core.models import YevmiyeFisi
+from core.services.raporlar import mali_yil_araligi, mizan
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
@@ -68,4 +69,18 @@ def fis_detay(request, pk):
             "toplam_borc": toplam_borc,
             "toplam_alacak": toplam_alacak,
         },
+    )
+
+
+def mizan_gorunum(request):
+    form = MizanFiltreForm(request.GET or None)
+    if form.is_valid():
+        baslangic = form.cleaned_data["baslangic"]
+        bitis = form.cleaned_data["bitis"]
+    else:
+        baslangic, bitis = mali_yil_araligi()
+        if not request.GET:
+            form = MizanFiltreForm(initial={"baslangic": baslangic, "bitis": bitis})
+    return render(
+        request, "core/mizan.html", {"form": form, "mizan": mizan(baslangic, bitis)}
     )

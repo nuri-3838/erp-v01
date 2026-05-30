@@ -1,0 +1,66 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Mizan · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Mizan</h1>
+
+<form method="get" class="alan">
+  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+  {{ form.baslangic }}
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+  {{ form.bitis }}
+  <button type="submit">Göster</button>
+  {% if form.non_field_errors %}
+    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+  {% endif %}
+</form>
+
+<p class="yardim">Dönem: {{ mizan.baslangic|date:"d.m.Y" }} – {{ mizan.bitis|date:"d.m.Y" }}
+  · İptal edilen fişler hariç · Bakiyeler saklanmaz, yevmiyeden hesaplanır.</p>
+
+<div class="toplamlar">
+  {% if mizan.hareket_denk %}
+    <span class="denge dengeli">✓ MİZAN TUTUYOR</span>
+  {% else %}
+    <span class="denge dengesiz">⚠️ MİZAN TUTMUYOR</span>
+  {% endif %}
+  <span class="etiket">Toplam borç:</span> <span class="deger">{{ mizan.toplam_borc|tr_para }}</span>
+  <span class="etiket">Toplam alacak:</span> <span class="deger">{{ mizan.toplam_alacak|tr_para }}</span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Hesap</th><th>Hesap Adı</th>
+      <th class="sag">Borç</th><th class="sag">Alacak</th>
+      <th class="sag">Borç Bakiye</th><th class="sag">Alacak Bakiye</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in mizan.satirlar %}
+      <tr>
+        <td>{{ s.hesap_kodu }}</td>
+        <td>{{ s.hesap_adi }}</td>
+        <td class="sag">{{ s.borc|tr_para }}</td>
+        <td class="sag">{{ s.alacak|tr_para }}</td>
+        <td class="sag">{% if s.borc_bakiye %}{{ s.borc_bakiye|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.alacak_bakiye %}{{ s.alacak_bakiye|tr_para }}{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim">Bu aralıkta hareket yok.</td></tr>
+    {% endfor %}
+  </tbody>
+  {% if mizan.satirlar %}
+  <tfoot>
+    <tr>
+      <th colspan="2" class="sag">Toplam</th>
+      <th class="sag">{{ mizan.toplam_borc|tr_para }}</th>
+      <th class="sag">{{ mizan.toplam_alacak|tr_para }}</th>
+      <th class="sag">{{ mizan.toplam_borc_bakiye|tr_para }}</th>
+      <th class="sag">{{ mizan.toplam_alacak_bakiye|tr_para }}</th>
+    </tr>
+  </tfoot>
+  {% endif %}
+</table>
+{% endblock %}
