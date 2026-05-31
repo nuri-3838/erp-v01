@@ -1,0 +1,78 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Kurlar · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kurlar{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Kurlar</h1>
+
+<p class="yardim">TCMB günlük döviz kurları (USD / EUR / GBP, 4 kur tipi). Bir iş gününde
+  yayınlanan kur, bir sonraki yayına kadarki günler için geçerlidir (kaydırmalı): TCMB'nin
+  yayın günü kuru ertesi takvim gününe yazılır; yayın olmayan gün (hafta sonu/tatil)
+  atlanır. Mevcut fiş USD kuru otomatik doldurma "MB Alış"ı kullanır.</p>
+
+<form method="post">
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+  {% endif %}
+  <div class="kur-cek-alanlar">
+    <div class="alan">
+      <label for="{{ form.baslangic.id_for_label }}">Başlangıç</label>
+      {{ form.baslangic }}{{ form.baslangic.errors }}
+    </div>
+    <div class="alan">
+      <label for="{{ form.bitis.id_for_label }}">Bitiş</label>
+      {{ form.bitis }}{{ form.bitis.errors }}
+    </div>
+    <button type="submit" class="birincil">TCMB'den Çek</button>
+  </div>
+  <p class="yardim">Geçmiş kurları doldurmak için tarih aralığı seçin (tek seferde en
+    fazla ~2 ay; büyük aralıkları bölün).</p>
+</form>
+
+<nav class="tablar">
+  <a href="?pb=USD" class="{% if pb == 'USD' %}aktif{% endif %}">USD</a>
+  <a href="?pb=EUR" class="{% if pb == 'EUR' %}aktif{% endif %}">EUR</a>
+  <a href="?pb=GBP" class="{% if pb == 'GBP' %}aktif{% endif %}">GBP</a>
+</nav>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr>
+      <th>Tarih</th>
+      <th class="sag">MB Alış</th>
+      <th class="sag">MB Satış</th>
+      <th class="sag">MB Efektif Alış</th>
+      <th class="sag">MB Efektif Satış</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for k in kayitlar %}
+      <tr>
+        <td>{{ k.tarih|date:"d.m.Y" }}</td>
+        {% if pb == 'EUR' %}
+          <td class="sag">{{ k.eur_alis|tr_kur }}</td>
+          <td class="sag">{{ k.eur_satis|tr_kur }}</td>
+          <td class="sag">{{ k.eur_efektif_alis|tr_kur }}</td>
+          <td class="sag">{{ k.eur_efektif_satis|tr_kur }}</td>
+        {% elif pb == 'GBP' %}
+          <td class="sag">{{ k.gbp_alis|tr_kur }}</td>
+          <td class="sag">{{ k.gbp_satis|tr_kur }}</td>
+          <td class="sag">{{ k.gbp_efektif_alis|tr_kur }}</td>
+          <td class="sag">{{ k.gbp_efektif_satis|tr_kur }}</td>
+        {% else %}
+          <td class="sag">{{ k.usd_alis|tr_kur }}</td>
+          <td class="sag">{{ k.usd_satis|tr_kur }}</td>
+          <td class="sag">{{ k.usd_efektif_alis|tr_kur }}</td>
+          <td class="sag">{{ k.usd_efektif_satis|tr_kur }}</td>
+        {% endif %}
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim">Henüz kur yok. Yukarıdan bir tarih aralığı çekin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

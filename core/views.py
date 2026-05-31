@@ -12,7 +12,7 @@ from django.urls import reverse
 from core.forms import (
     FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
 )
-from core.models import EkranYetki, HesapPlani, YevmiyeFisi
+from core.models import EkranYetki, HesapPlani, Kur, YevmiyeFisi
 from core.moduller import MODULLER
 from core.services.raporlar import (
     bilanco, bilanco_usd, ekstre as ekstre_servis, gelir_tablosu, gelir_tablosu_usd,
@@ -21,6 +21,7 @@ from core.services.raporlar import (
 from core.services.yevmiye import (
     SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur,
 )
+from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -163,6 +164,33 @@ def _tarih_araligi(request):
     if not request.GET:
         form = MizanFiltreForm(initial={"baslangic": baslangic, "bitis": bitis})
     return form, baslangic, bitis
+
+
+@ekran_gerekli("kurlar")
+def kurlar(request):
+    pb = (request.GET.get("pb") or "USD").upper()
+    if pb not in ("USD", "EUR", "GBP"):
+        pb = "USD"
+    form = MizanFiltreForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            ozet = kurlari_guncelle(
+                form.cleaned_data["baslangic"], form.cleaned_data["bitis"],
+                kullanici=request.user,
+            )
+        except TcmbHatasi as e:
+            form.add_error(None, str(e))
+        else:
+            messages.success(
+                request,
+                f"TCMB çekildi: {ozet['yayin']} gün yayın bulundu, "
+                f"{ozet['yazilan']} kur satırı yazıldı, "
+                f"{ozet['atlanan']} gün yayın yok (atlandı).",
+            )
+            return redirect(f"{reverse('core:kurlar')}?pb={pb}")
+    kayitlar = Kur.objects.filter(silindi=False).order_by("-tarih")
+    return render(request, "core/kurlar.html",
+                  {"form": form, "pb": pb, "kayitlar": kayitlar})
 
 
 @ekran_gerekli("mizan")

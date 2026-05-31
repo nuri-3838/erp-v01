@@ -148,6 +148,15 @@
     .sayfa-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem;
                  flex-wrap:wrap; margin-bottom:1rem; }
     .sayfa-ust h1 { margin:0; }
+    .tablar { display:flex; gap:.3rem; border-bottom:2px solid var(--cizgi);
+              margin:1rem 0; flex-wrap:wrap; }
+    .tablar a { padding:.5rem 1rem; text-decoration:none; color:var(--metin-soluk);
+                font-weight:600; border-bottom:3px solid transparent; margin-bottom:-2px; }
+    .tablar a:hover { color:var(--lacivert); }
+    .tablar a.aktif { color:var(--turuncu-koyu); border-bottom-color:var(--turuncu); }
+    .kur-cek-alanlar { display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;
+                       margin:.5rem 0 .3rem; }
+    .kur-cek-alanlar .alan { margin:0; }
     a { color:var(--lacivert-acik); }
     label, th, .etiket, .ust-baslik { text-transform: uppercase; }
     .tablo-kapsayici { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:.6rem 0 1.2rem;

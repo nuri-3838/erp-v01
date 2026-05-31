@@ -8,6 +8,7 @@ urlpatterns = [
     path("", views.pano, name="pano"),
     path("fis-gir/", views.fis_ekle, name="fis_ekle"),
     path("fisler/", views.fis_listesi, name="fis_listesi"),
+    path("kurlar/", views.kurlar, name="kurlar"),
     path("fis/<int:pk>/", views.fis_detay, name="fis_detay"),
     path("fis/<int:pk>/duzenle/", views.fis_duzenle, name="fis_duzenle"),
     path("fis/<int:pk>/iptal/", views.fis_iptal_gorunum, name="fis_iptal"),

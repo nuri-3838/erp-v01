@@ -87,6 +87,15 @@ class Kur(TemelModel):
     usd_alis = models.DecimalField("USD alış", max_digits=18, decimal_places=6)
     eur_alis = models.DecimalField("EUR alış", max_digits=18, decimal_places=6, null=True, blank=True)
     gbp_alis = models.DecimalField("GBP alış", max_digits=18, decimal_places=6, null=True, blank=True)
+    usd_satis = models.DecimalField("USD MB satış", max_digits=18, decimal_places=6, null=True, blank=True)
+    usd_efektif_alis = models.DecimalField("USD MB efektif alış", max_digits=18, decimal_places=6, null=True, blank=True)
+    usd_efektif_satis = models.DecimalField("USD MB efektif satış", max_digits=18, decimal_places=6, null=True, blank=True)
+    eur_satis = models.DecimalField("EUR MB satış", max_digits=18, decimal_places=6, null=True, blank=True)
+    eur_efektif_alis = models.DecimalField("EUR MB efektif alış", max_digits=18, decimal_places=6, null=True, blank=True)
+    eur_efektif_satis = models.DecimalField("EUR MB efektif satış", max_digits=18, decimal_places=6, null=True, blank=True)
+    gbp_satis = models.DecimalField("GBP MB satış", max_digits=18, decimal_places=6, null=True, blank=True)
+    gbp_efektif_alis = models.DecimalField("GBP MB efektif alış", max_digits=18, decimal_places=6, null=True, blank=True)
+    gbp_efektif_satis = models.DecimalField("GBP MB efektif satış", max_digits=18, decimal_places=6, null=True, blank=True)
 
     class Meta:
         db_table = "kur"
