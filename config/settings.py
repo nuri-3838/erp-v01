@@ -103,5 +103,5 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # --- Kimlik doğrulama (giriş + kullanıcı bazlı ekran yetkisi; v0.1'e bilinçli eklendi) ---
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "/"
+LOGIN_REDIRECT_URL = "core:pano"   # giriş sonrası PANO açılır
 LOGOUT_REDIRECT_URL = "login"

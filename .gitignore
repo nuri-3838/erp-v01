@@ -15,4 +15,5 @@ db.sqlite3
 # Araç/IDE
 .vscode/
 .idea/
+.claude/
 *.log

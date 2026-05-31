@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Sum
 from django.forms import formset_factory
@@ -26,6 +27,13 @@ from core.yetki import (
 )
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
+
+
+@login_required
+def pano(request):
+    """Giriş sonrası açılan PANO (dashboard). Şimdilik karşılama;
+    ileride özet/grafik eklenecek (yol haritası)."""
+    return render(request, "core/pano.html")
 
 
 def _satir_girdileri(formset):

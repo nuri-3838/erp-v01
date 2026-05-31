@@ -1,0 +1,69 @@
+{% extends "core/base.html" %}
+{% block baslik %}Pano · SEMTA ERP{% endblock %}
+{% block sayfa_adi %}Pano{% endblock %}
+
+{% block content %}
+<div class="pano-head">
+  <h1 class="pano-merhaba">Hoş geldin{% if user.first_name %}, {{ user.first_name }}{% endif %}</h1>
+  <p class="pano-alt">SEMTA ERP — Muhasebe paneli. Soldaki menüden bir ekrana geçebilirsin.</p>
+</div>
+
+<div class="pano-kartlar">
+  <div class="pano-kart">
+    <div class="pk-ust">
+      <span class="pk-ikon pk-mavi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+      </span>
+      <span class="pk-rozet">YAKINDA</span>
+    </div>
+    <span class="pk-deger">—</span>
+    <span class="pk-etiket">Dönem Mizan Durumu</span>
+  </div>
+
+  <div class="pano-kart">
+    <div class="pk-ust">
+      <span class="pk-ikon pk-turuncu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      </span>
+      <span class="pk-rozet">YAKINDA</span>
+    </div>
+    <span class="pk-deger">—</span>
+    <span class="pk-etiket">Bu Ay İşlenen Fiş</span>
+  </div>
+
+  <div class="pano-kart">
+    <div class="pk-ust">
+      <span class="pk-ikon pk-yesil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </span>
+      <span class="pk-rozet">YAKINDA</span>
+    </div>
+    <span class="pk-deger">—</span>
+    <span class="pk-etiket">Nakit / Banka (TL)</span>
+  </div>
+
+  <div class="pano-kart">
+    <div class="pk-ust">
+      <span class="pk-ikon pk-mor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </span>
+      <span class="pk-rozet">YAKINDA</span>
+    </div>
+    <span class="pk-deger">—</span>
+    <span class="pk-etiket">Dönem Net Kâr/Zarar</span>
+  </div>
+</div>
+
+<div class="pano-genis">
+  <div class="pg-ust">
+    <span class="pk-ikon pk-turuncu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    </span>
+    <div>
+      <strong>Gelir / Gider Grafiği</strong>
+      <span class="yardim">Aylık özet grafiği ileride burada görünecek.</span>
+    </div>
+  </div>
+  <div class="pg-iskele"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+</div>
+{% endblock %}
