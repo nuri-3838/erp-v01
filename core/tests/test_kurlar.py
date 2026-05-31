@@ -1,5 +1,5 @@
-"""Kurlar (TCMB) testleri — XML parse, KAYDIRMALI tarih, yayın olmayan gün atlama,
-fiş kur_usd otomatik doldurma bozulmadı, ekran yetkisi."""
+"""Kurlar (TCMB) testleri — XML parse, KAYDIRMALI + YOĞUN yazma (hafta sonu/tatil
+günlerine de önceki iş günü kuru), seed, kur_usd otomatik doldurma, ekran yetkisi."""
 import datetime
 from decimal import Decimal
 
@@ -62,13 +62,16 @@ def _kur(alis):
     return {"USD": _blok(a), "EUR": _blok(a + Decimal("3")), "GBP": _blok(a + Decimal("8"))}
 
 
-# İş günü yayınları (Pzt-Cum); 13 Cmt + 14 Paz yayın yok
+# Senaryo: 8-14 Ocak 2024 (Pzt-Paz). 10 Ocak Çarşamba RESMÎ TATİL (yayın yok),
+# 13-14 hafta sonu. 5 Ocak Cuma = aralık öncesi seed.
 YAYIN = {
+    D(2024, 1, 5): _kur("30.00"),   # önceki Cuma (seed)
     D(2024, 1, 8): _kur("30.10"),   # Pazartesi
     D(2024, 1, 9): _kur("30.20"),   # Salı
-    D(2024, 1, 10): _kur("30.30"),  # Çarşamba
+    # 1/10 Çarşamba TATİL -> yok
     D(2024, 1, 11): _kur("30.40"),  # Perşembe
     D(2024, 1, 12): _kur("30.50"),  # Cuma
+    # 1/13 Cmt, 1/14 Paz -> yok
 }
 
 
@@ -76,37 +79,61 @@ def _sahte_cekici(gun):
     return YAYIN.get(gun)   # yayın yoksa None
 
 
-class TarihKaymasiTest(TestCase):
-    def test_kaydirma_ve_atlama(self):
-        ozet = kurlari_guncelle(D(2024, 1, 8), D(2024, 1, 14), cekici=_sahte_cekici)
-        self.assertEqual(ozet["yayin"], 5)     # Pzt-Cum
-        self.assertEqual(ozet["atlanan"], 2)   # Cmt+Paz yayın yok
-        self.assertEqual(ozet["yazilan"], 5)
-        # D yayını D+1'e: Pazartesi(8) kuru Salı(9)'ya; Mon gününe satır yazılmaz
-        self.assertFalse(Kur.objects.filter(tarih=D(2024, 1, 8)).exists())
-        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 9)).usd_alis, Decimal("30.10"))
-        # Cuma(12) kuru Cumartesi(13)'ye
-        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 13)).usd_alis, Decimal("30.50"))
-        # 4 kur tipi + EUR/GBP de yazıldı (Salı satırında Pazartesi yayını)
+class KaydirmaYogunTest(TestCase):
+    def setUp(self):
+        self.ozet = kurlari_guncelle(D(2024, 1, 8), D(2024, 1, 14), cekici=_sahte_cekici)
+
+    def test_her_takvim_gunu_satir_acilir(self):
+        # 8..14 = 7 takvim günü, hepsinde satır (hafta sonu/tatil DAHİL)
+        self.assertEqual(
+            Kur.objects.filter(tarih__gte=D(2024, 1, 8), tarih__lte=D(2024, 1, 14)).count(), 7)
+
+    def test_seed_baslangica_onceki_isgunu(self):
+        # 8 Pzt -> önceki iş günü 5 Cuma kuru (aralık dışından seed)
+        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 8)).usd_alis, Decimal("30.00"))
+
+    def test_kaydirma_isgunu(self):
+        # Salı(9) -> Pazartesi(8) kuru 30.10 (kaydırma)
         s = Kur.objects.get(tarih=D(2024, 1, 9))
+        self.assertEqual(s.usd_alis, Decimal("30.10"))
         self.assertEqual(s.usd_satis, Decimal("30.15"))
         self.assertEqual(s.usd_efektif_alis, Decimal("30.09"))
         self.assertEqual(s.eur_alis, Decimal("33.10"))
         self.assertEqual(s.gbp_alis, Decimal("38.10"))
 
-    def test_lookup_ornekleri(self):
-        kurlari_guncelle(D(2024, 1, 8), D(2024, 1, 14), cekici=_sahte_cekici)
-        # "Normal Salı → Çarşamba": Çarşamba fişi Salı'nın kurunu kullanır
-        self.assertEqual(kur_usd_bul(D(2024, 1, 10)), Decimal("30.20"))
-        # Cuma kuru Cmt+Paz+(sonraki)Pzt için geçerli
-        self.assertEqual(kur_usd_bul(D(2024, 1, 13)), Decimal("30.50"))  # Cmt
-        self.assertEqual(kur_usd_bul(D(2024, 1, 14)), Decimal("30.50"))  # Paz
+    def test_tatil_gunune_onceki_isgunu_kuru(self):
+        # Çarşamba(10) TATİL (yayın yok) -> Salı(9) kuru 30.20
+        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 10)).usd_alis, Decimal("30.20"))
+
+    def test_haftasonu_gunlerine_onceki_isgunu_kuru(self):
+        # Cmt(13)+Paz(14) -> Cuma(12) kuru 30.50
+        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 13)).usd_alis, Decimal("30.50"))
+        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 14)).usd_alis, Decimal("30.50"))
+
+    def test_ozet(self):
+        self.assertEqual(self.ozet["yayin"], 4)     # 8,9,11,12 (10 tatil)
+        self.assertEqual(self.ozet["atlanan"], 3)   # 10(tatil)+13+14
+        self.assertEqual(self.ozet["yazilan"], 7)   # 8..14 hepsi
+
+    def test_lookup_kur_usd(self):
+        self.assertEqual(kur_usd_bul(D(2024, 1, 10)), Decimal("30.20"))  # Çarşamba
+        self.assertEqual(kur_usd_bul(D(2024, 1, 14)), Decimal("30.50"))  # Pazar
         self.assertEqual(kur_usd_bul(D(2024, 1, 15)), Decimal("30.50"))  # sonraki Pzt
 
     def test_idempotent(self):
-        kurlari_guncelle(D(2024, 1, 8), D(2024, 1, 12), cekici=_sahte_cekici)
-        kurlari_guncelle(D(2024, 1, 8), D(2024, 1, 12), cekici=_sahte_cekici)  # tekrar
-        self.assertEqual(Kur.objects.count(), 5)  # çift kayıt olmaz
+        kurlari_guncelle(D(2024, 1, 8), D(2024, 1, 14), cekici=_sahte_cekici)  # tekrar
+        self.assertEqual(
+            Kur.objects.filter(tarih__gte=D(2024, 1, 8), tarih__lte=D(2024, 1, 14)).count(), 7)
+
+
+class HaftasonuAraligiTest(TestCase):
+    def test_sadece_haftasonu_cekilince_seed_kullanilir(self):
+        # Yalnız Cmt+Paz çekilir; önceki Cuma (12) seed -> ikisine de 30.50 yazılır
+        ozet = kurlari_guncelle(D(2024, 1, 13), D(2024, 1, 14), cekici=_sahte_cekici)
+        self.assertEqual(ozet["yayin"], 0)
+        self.assertEqual(ozet["atlanan"], 2)
+        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 13)).usd_alis, Decimal("30.50"))
+        self.assertEqual(Kur.objects.get(tarih=D(2024, 1, 14)).usd_alis, Decimal("30.50"))
 
 
 class KurUsdOtomatikTest(TestCase):
@@ -117,7 +144,7 @@ class KurUsdOtomatikTest(TestCase):
 
     def test_fis_kur_usd_kaydirmali_doldurulur(self):
         kurlari_guncelle(D(2024, 1, 8), D(2024, 1, 14), cekici=_sahte_cekici)
-        fis = fis_olustur(   # Çarşamba tarihli -> Salı'nın MB Alış'ı (30.20)
+        fis = fis_olustur(   # Çarşamba(tatil) tarihli -> Salı'nın MB Alış'ı (30.20)
             tarih=D(2024, 1, 10), kullanici=self.u,
             satirlar=[SatirGirdi("100", "B", "1.000,00"),
                       SatirGirdi("600", "A", "1.000,00")],

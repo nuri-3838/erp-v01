@@ -6,10 +6,10 @@
 {% block content %}
 <h1 class="ust-baslik">Kurlar</h1>
 
-<p class="yardim">TCMB günlük döviz kurları (USD / EUR / GBP, 4 kur tipi). Bir iş gününde
-  yayınlanan kur, bir sonraki yayına kadarki günler için geçerlidir (kaydırmalı): TCMB'nin
-  yayın günü kuru ertesi takvim gününe yazılır; yayın olmayan gün (hafta sonu/tatil)
-  atlanır. Mevcut fiş USD kuru otomatik doldurma "MB Alış"ı kullanır.</p>
+<p class="yardim">TCMB günlük döviz kurları (USD / EUR / GBP, 4 kur tipi). Bir takvim
+  gününün kuru, o günden önceki son iş gününde (TCMB yayını olan gün) yayınlanan kurdur
+  (kaydırmalı). Hafta sonu ve resmî tatil günlerine de bir önceki iş gününün kuru yazılır
+  (TCMB o gün yayın yapmaz). Mevcut fiş USD kuru otomatik doldurma "MB Alış"ı kullanır.</p>
 
 <form method="post">
   {% csrf_token %}

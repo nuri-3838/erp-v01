@@ -185,7 +185,7 @@ def kurlar(request):
                 request,
                 f"TCMB çekildi: {ozet['yayin']} gün yayın bulundu, "
                 f"{ozet['yazilan']} kur satırı yazıldı, "
-                f"{ozet['atlanan']} gün yayın yok (atlandı).",
+                f"{ozet['atlanan']} gün yayın yok (hafta sonu/tatil — önceki iş günü kuru yazıldı).",
             )
             return redirect(f"{reverse('core:kurlar')}?pb={pb}")
     kayitlar = Kur.objects.filter(silindi=False).order_by("-tarih")
