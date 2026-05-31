@@ -202,3 +202,33 @@ class Profil(TemelModel):
 
     def __str__(self):
         return f"{self.kullanici_id} profil"
+
+
+
+
+class EkranYetki(TemelModel):
+    """Kullanıcının görebileceği bir EKRAN (moduller.py'deki Ekran.kod).
+
+    Güvenli varsayılan: satır VARSA kullanıcı o ekranı görür; YOKSA göremez.
+    Yeni kullanıcıda hiç satır olmadığından tüm ekranlar kapalıdır.
+    Yönetici (superuser/profil.yonetici) bu tablodan bağımsız her şeyi görür.
+    """
+
+    kullanici = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="ekran_yetkileri", verbose_name="kullanıcı",
+    )
+    ekran_kod = models.CharField("ekran kodu", max_length=50)
+
+    class Meta:
+        db_table = "ekran_yetki"
+        verbose_name = "ekran yetkisi"
+        verbose_name_plural = "ekran yetkileri"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kullanici", "ekran_kod"], name="uq_ekran_yetki"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.kullanici_id}:{self.ekran_kod}"

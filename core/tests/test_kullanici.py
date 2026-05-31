@@ -6,7 +6,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.dogrulama import tc_gecerli, telefon_dogrula, telefon_kanonik
-from core.models import Profil
+from core.models import EkranYetki, Profil
 
 GECERLI_TC = "10000000146"
 GUCLU_SIFRE = "Abc12345!"
@@ -87,7 +87,8 @@ class KullaniciYonetimTest(TestCase):
         self.assertContains(r, "Ayarlar")
         self.assertContains(r, "Kullanıcılar")
         self.assertContains(r, "Kullanıcı Yetkileri")
-        # Normal kullanıcı: Ayarlar modülü menüde YOK
+        # Normal kullanıcı (fiş ekranına yetkili): Ayarlar modülü menüde YOK
+        EkranYetki.objects.create(kullanici=self.normal, ekran_kod="fis_ekle")
         self.client.force_login(self.normal)
         r = self.client.get(reverse("core:fis_ekle"))
         self.assertNotContains(r, "Kullanıcılar")
@@ -151,6 +152,7 @@ class KullaniciYonetimTest(TestCase):
     def test_menude_isim_soyisim_gorunur(self):
         u = User.objects.create_user("adsoyad", password="x",
                                      first_name="NURİ", last_name="ÖZER")
+        EkranYetki.objects.create(kullanici=u, ekran_kod="fis_ekle")
         self.client.force_login(u)
         r = self.client.get(reverse("core:fis_ekle"))
         self.assertContains(r, "NURİ ÖZER")

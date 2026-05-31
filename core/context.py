@@ -1,12 +1,11 @@
 """Şablon context processor'ları."""
-from core.moduller import menu_moduller
-from core.yetki import yonetici_mi
+from core.yetki import kullanici_menusu, yonetici_mi
 
 
 def yetki(request):
-    """Tüm şablonlara yetki bayrağını ve menü modüllerini verir."""
-    yonetici = yonetici_mi(getattr(request, "user", None))
+    """Tüm şablonlara yetki bayrağını ve kullanıcıya göre filtrelenmiş menüyü verir."""
+    user = getattr(request, "user", None)
     return {
-        "kullanici_yonetici": yonetici,
-        "menu_moduller": menu_moduller(yonetici),
+        "kullanici_yonetici": yonetici_mi(user),
+        "menu_moduller": kullanici_menusu(user),
     }

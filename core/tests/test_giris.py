@@ -3,6 +3,8 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
+from core.models import EkranYetki
+
 KORUNAN = [
     "core:fis_ekle", "core:mizan", "core:bilanco", "core:gelir_tablosu",
     "core:mizan_usd", "core:bilanco_usd", "core:gelir_tablosu_usd",
@@ -13,6 +15,8 @@ class GirisTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.kullanici = User.objects.create_user("ali", password="parola1234")
+        for _ad in KORUNAN:
+            EkranYetki.objects.create(kullanici=cls.kullanici, ekran_kod=_ad.split(":")[1])
 
     def test_login_ekrani_acik(self):
         r = self.client.get(reverse("login"))

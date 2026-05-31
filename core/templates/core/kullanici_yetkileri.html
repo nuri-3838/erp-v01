@@ -3,10 +3,47 @@
 
 {% block content %}
 <h1 class="ust-baslik">Kullanıcı Yetkileri</h1>
-<p class="yardim">Ayarlar modülü.</p>
+<p class="yardim">Bir kullanıcı seçin, görebileceği ekranları işaretleyin.
+  Güvenli varsayılan: işaretlenmemiş ekranlar kapalıdır. (Ayarlar modülü zaten
+  yalnızca yöneticilere açıktır.)</p>
 
-<div class="uyari" style="background:#fff8e8;border-color:#f0dca0;color:#7a5a00">
-  Bu ekran <b>Adım 3</b>'te doldurulacak: her kullanıcı için MUHASEBE modülüne
-  girebilir mi + 7 ekranın her biri için görür/göremez işareti.
-</div>
+<form method="get" class="alan">
+  <label for="kullanici-sec">Kullanıcı</label>
+  <select id="kullanici-sec" name="kullanici" onchange="this.form.submit()">
+    <option value="">— kullanıcı seç —</option>
+    {% for k in kullanicilar %}
+      <option value="{{ k.pk }}" {% if secili and k.pk == secili.pk %}selected{% endif %}>
+        {{ k.get_full_name|default:k.username }} ({{ k.username }})
+      </option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit">Göster</button></noscript>
+</form>
+
+{% if secili %}
+  {% if secili_yonetici %}
+    <div class="uyari" style="background:#fff8e8;border-color:#f0dca0;color:#7a5a00">
+      <b>{{ secili.get_full_name|default:secili.username }}</b> yöneticidir — tüm
+      ekranları görür, ekran yetkisi gerekmez.
+    </div>
+  {% else %}
+    <form method="post" style="max-width:480px">
+      {% csrf_token %}
+      <input type="hidden" name="kullanici" value="{{ secili.pk }}">
+      {% for modul in yetki_modulleri %}
+        <h2 class="etiket">{{ modul.ad }}</h2>
+        {% for ekran in modul.ekranlar %}
+          <div class="alan onay-alan">
+            <label>
+              <input type="checkbox" name="ekranlar" value="{{ ekran.kod }}"
+                     {% if ekran.kod in mevcut %}checked{% endif %}>
+              {{ ekran.ad }}
+            </label>
+          </div>
+        {% endfor %}
+      {% endfor %}
+      <button type="submit" class="birincil">Kaydet</button>
+    </form>
+  {% endif %}
+{% endif %}
 {% endblock %}

@@ -27,7 +27,7 @@ class MizanTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
-        cls.kullanici = User.objects.create_user("test", password="parola1234")
+        cls.kullanici = User.objects.create_superuser("test", password="parola1234")
 
     def setUp(self):
         self.client.force_login(self.kullanici)

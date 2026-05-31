@@ -1,27 +1,28 @@
-"""Fiş giriş/görüntüleme, rapor ve kullanıcı yönetimi görünümleri."""
+"""Fiş giriş/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
 from decimal import Decimal
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from core.forms import (
     FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
 )
-from core.models import YevmiyeFisi
+from core.models import EkranYetki, YevmiyeFisi
+from core.moduller import MODULLER
 from core.services.raporlar import (
     bilanco, bilanco_usd, gelir_tablosu, gelir_tablosu_usd,
     mali_yil_araligi, mizan, mizan_usd,
 )
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
-from core.yetki import yonetici_gerekli
+from core.yetki import ekran_gerekli, yonetici_gerekli, yonetici_mi
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
 
 
-@login_required
+@ekran_gerekli("fis_ekle")
 def fis_ekle(request):
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -60,7 +61,7 @@ def fis_ekle(request):
     return render(request, "core/fis_ekle.html", {"fform": fform, "formset": formset})
 
 
-@login_required
+@ekran_gerekli("fis_ekle")
 def fis_detay(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
     satirlar = fis.satirlar.select_related("hesap").all()
@@ -83,40 +84,40 @@ def _tarih_araligi(request):
     return form, baslangic, bitis
 
 
-@login_required
+@ekran_gerekli("mizan")
 def mizan_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/mizan.html", {"form": form, "mizan": mizan(b, s)})
 
 
-@login_required
+@ekran_gerekli("bilanco")
 def bilanco_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/bilanco.html", {"form": form, "bilanco": bilanco(b, s)})
 
 
-@login_required
+@ekran_gerekli("gelir_tablosu")
 def gelir_tablosu_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/gelir_tablosu.html",
                   {"form": form, "gt": gelir_tablosu(b, s)})
 
 
-@login_required
+@ekran_gerekli("mizan_usd")
 def mizan_usd_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/mizan_usd.html",
                   {"form": form, "mizan": mizan_usd(b, s)})
 
 
-@login_required
+@ekran_gerekli("gelir_tablosu_usd")
 def gelir_tablosu_usd_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/gelir_tablosu_usd.html",
                   {"form": form, "gt": gelir_tablosu_usd(b, s)})
 
 
-@login_required
+@ekran_gerekli("bilanco_usd")
 def bilanco_usd_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/bilanco_usd.html",
@@ -164,5 +165,30 @@ def kullanici_duzenle(request, pk):
 
 @yonetici_gerekli
 def kullanici_yetkileri(request):
-    # İskelet — içerik Adım 3'te (kullanıcı bazlı ekran yetkisi).
-    return render(request, "core/kullanici_yetkileri.html", {})
+    kullanicilar = User.objects.order_by("username")
+    pk = request.POST.get("kullanici") or request.GET.get("kullanici")
+    secili = get_object_or_404(User, pk=pk) if pk else None
+
+    if request.method == "POST" and secili:
+        gecerli = {e.kod for m in MODULLER if not m.yonetici_modulu for e in m.ekranlar}
+        secilenler = set(request.POST.getlist("ekranlar")) & gecerli
+        EkranYetki.objects.filter(kullanici=secili).delete()
+        EkranYetki.objects.bulk_create(
+            [EkranYetki(kullanici=secili, ekran_kod=k) for k in sorted(secilenler)]
+        )
+        ad = secili.get_full_name() or secili.username
+        messages.success(request, f"{ad} için ekran yetkileri güncellendi.")
+        return redirect(f"{reverse('core:kullanici_yetkileri')}?kullanici={secili.pk}")
+
+    mevcut = set()
+    if secili:
+        mevcut = set(
+            EkranYetki.objects.filter(kullanici=secili).values_list("ekran_kod", flat=True)
+        )
+    return render(request, "core/kullanici_yetkileri.html", {
+        "kullanicilar": kullanicilar,
+        "secili": secili,
+        "mevcut": mevcut,
+        "yetki_modulleri": [m for m in MODULLER if not m.yonetici_modulu],
+        "secili_yonetici": yonetici_mi(secili) if secili else False,
+    })
