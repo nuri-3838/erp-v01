@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fiş Listesi · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Fiş Listesi</h1>
+
+<form method="get" class="alan">
+  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+  {{ form.baslangic }}
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+  {{ form.bitis }}
+  <button type="submit">Göster</button>
+  {% if form.non_field_errors %}
+    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+  {% endif %}
+</form>
+
+<p class="yardim">İptal edilen fişler de listelenir (İPTAL damgalı) ama mizan/bilanço/gelir
+  tablosuna girmez. Aktif fişe tıklayınca düzenleme açılır.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr>
+      <th>Fiş No</th><th>Tarih</th><th>Açıklama</th>
+      <th class="sag">Borç</th><th class="sag">Alacak</th><th>Durum</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in fisler %}
+      <tr{% if f.silindi %} class="pasif"{% endif %}>
+        <td>
+          {% if f.silindi %}
+            <a href="{% url 'core:fis_detay' f.pk %}">{{ f.yil }}/{{ f.fis_no }}</a>
+          {% else %}
+            <a href="{% url 'core:fis_duzenle' f.pk %}">{{ f.yil }}/{{ f.fis_no }}</a>
+          {% endif %}
+        </td>
+        <td>{{ f.tarih|date:"d.m.Y" }}</td>
+        <td>{{ f.aciklama|default:"—" }}</td>
+        <td class="sag">{{ f.t_borc|tr_para }}</td>
+        <td class="sag">{{ f.t_alacak|tr_para }}</td>
+        <td>{% if f.silindi %}<span class="hata">İPTAL</span>{% else %}Aktif{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim">Bu aralıkta fiş yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<p><a class="dugme" href="{% url 'core:fis_ekle' %}">+ Yeni fiş gir</a></p>
+{% endblock %}

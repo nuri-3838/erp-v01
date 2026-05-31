@@ -1,0 +1,22 @@
+{% extends "core/base.html" %}
+{% block baslik %}Fiş Düzenle {{ fis.yil }}/{{ fis.fis_no }} · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Yevmiye Fişi Düzenle — {{ fis.yil }}/{{ fis.fis_no }}</h1>
+<p class="yardim">Fiş no ve mali yıl değişmez. Borç = Alacak dengesi zorunludur;
+  kaydedince satırlar güncellenir.</p>
+
+<form method="post" id="fis-form" novalidate>
+  {% csrf_token %}
+  {% include "core/_fis_form_govde.html" %}
+  <button type="submit" class="birincil">Değişiklikleri kaydet</button>
+</form>
+
+<form method="post" action="{% url 'core:fis_iptal' fis.pk %}" class="alan"
+      onsubmit="return confirm('Fiş {{ fis.yil }}/{{ fis.fis_no }} iptal edilsin mi? Geri alınamaz.');">
+  {% csrf_token %}
+  <button type="submit" style="border-color:var(--hata); color:var(--hata)">Fişi iptal et</button>
+</form>
+
+<p><a href="{% url 'core:fis_listesi' %}">← Fiş listesi</a></p>
+{% endblock %}

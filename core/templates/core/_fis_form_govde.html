@@ -1,0 +1,138 @@
+{% if fform.non_field_errors %}
+  <div class="uyari">
+    {% for e in fform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}
+  </div>
+{% endif %}
+
+<div class="alan">
+  <label for="{{ fform.tarih.id_for_label }}">{{ fform.tarih.label }}</label>
+  {{ fform.tarih }}
+  {% for e in fform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+</div>
+
+<div class="alan">
+  <label for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
+  {{ fform.aciklama }}
+  <div class="yardim">Açıklama büyük harfe çevrilerek saklanır.</div>
+</div>
+
+<div class="alan">
+  <label for="{{ fform.kur_usd.id_for_label }}">{{ fform.kur_usd.label }}</label>
+  {{ fform.kur_usd }}
+  {% for e in fform.kur_usd.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  <div class="yardim">Boş bırakılırsa fiş tarihine göre KUR tablosundan doldurulur.</div>
+</div>
+
+{{ formset.management_form }}
+{% if formset.non_form_errors %}
+  <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+{% endif %}
+
+<h2 class="etiket">Satırlar</h2>
+<p class="yardim">Tutarı <b>Borç</b> ya da <b>Alacak</b> sütununa yazın — yazdığınız sütun tarafı belirler. Bir satırda yalnızca biri dolu olabilir.</p>
+<div class="tablo-kapsayici genis">
+<table>
+  <colgroup>
+    <col style="width:24%"><col style="width:11%"><col style="width:16%">
+    <col style="width:16%"><col style="width:15%"><col>
+  </colgroup>
+  <thead>
+    <tr>
+      <th>Hesap</th><th>İşlem PB</th>
+      <th class="sag">Borç</th><th class="sag">Alacak</th>
+      <th class="sag">İşlem Kuru</th><th>Açıklama</th>
+    </tr>
+  </thead>
+  <tbody id="satir-govde">
+    {% for f in formset %}
+      <tr class="satir-form">
+        <td>{{ f.hesap }}</td>
+        <td>{{ f.islem_pb }}</td>
+        <td class="sag">{{ f.borc }}{% for e in f.borc.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+        <td class="sag">{{ f.alacak }}{% for e in f.alacak.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+        <td class="sag">{{ f.islem_kuru }}</td>
+        <td>{{ f.aciklama }}</td>
+        {% for e in f.non_field_errors %}
+          <td class="hata" style="border:none">{{ e }}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th colspan="2" class="sag">Toplam</th>
+      <th class="sag deger" id="tBorc">0,00</th>
+      <th class="sag deger" id="tAlacak">0,00</th>
+      <th colspan="2"></th>
+    </tr>
+  </tfoot>
+</table>
+</div>
+
+<button type="button" id="satir-ekle">+ Satır ekle</button>
+
+<div class="toplamlar">
+  <span class="denge dengesiz" id="denge">—</span>
+  <span class="hata" id="ikili-uyari" style="display:none">⚠️ Bir satırda hem Borç hem Alacak dolu olamaz.</span>
+</div>
+
+<template id="bos-satir">
+  <td>{{ formset.empty_form.hesap }}</td>
+  <td>{{ formset.empty_form.islem_pb }}</td>
+  <td class="sag">{{ formset.empty_form.borc }}</td>
+  <td class="sag">{{ formset.empty_form.alacak }}</td>
+  <td class="sag">{{ formset.empty_form.islem_kuru }}</td>
+  <td>{{ formset.empty_form.aciklama }}</td>
+</template>
+
+<script>
+  function parseTR(s){
+    if(!s) return 0;
+    s = String(s).trim();
+    if(s.indexOf(',') >= 0){ s = s.replace(/\./g,'').replace(',','.'); }
+    else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s = s.replace(/\./g,''); }
+    var n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+  function fmtTR(n){
+    return n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function val(row, suf){
+    var el = row.querySelector('[name$="'+suf+'"]');
+    return el ? el.value : '';
+  }
+  function hesapla(){
+    var tb=0, ta=0, ikili=false;
+    document.querySelectorAll('.satir-form').forEach(function(r){
+      var b = parseTR(val(r,'-borc'));
+      var a = parseTR(val(r,'-alacak'));
+      var pb = val(r,'islem_pb');
+      var kur = (pb === 'TRY') ? 1 : parseTR(val(r,'islem_kuru'));
+      if(b > 0 && a > 0) ikili = true;
+      if(b > 0) tb += Math.round(b*kur*100)/100;
+      else if(a > 0) ta += Math.round(a*kur*100)/100;
+    });
+    document.getElementById('tBorc').textContent = fmtTR(tb);
+    document.getElementById('tAlacak').textContent = fmtTR(ta);
+    document.getElementById('ikili-uyari').style.display = ikili ? '' : 'none';
+    var d = document.getElementById('denge');
+    var fark = Math.round((tb-ta)*100)/100;
+    if(ikili){ d.textContent = '—'; d.className = 'denge dengesiz'; }
+    else if(fark === 0 && (tb>0 || ta>0)){ d.textContent = '✓ DENGELİ'; d.className = 'denge dengeli'; }
+    else { d.textContent = '⚠️ FARK: ' + fmtTR(fark); d.className = 'denge dengesiz'; }
+  }
+  function satirEkle(){
+    var tf = document.getElementById('id_form-TOTAL_FORMS');
+    var i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr');
+    tr.className = 'satir-form';
+    tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    document.getElementById('satir-govde').appendChild(tr);
+    tf.value = i + 1;
+  }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  var form = document.getElementById('fis-form');
+  form.addEventListener('input', hesapla);
+  form.addEventListener('change', hesapla);
+  hesapla();
+</script>

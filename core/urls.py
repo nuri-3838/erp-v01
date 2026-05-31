@@ -6,7 +6,10 @@ app_name = "core"
 
 urlpatterns = [
     path("", views.fis_ekle, name="fis_ekle"),
+    path("fisler/", views.fis_listesi, name="fis_listesi"),
     path("fis/<int:pk>/", views.fis_detay, name="fis_detay"),
+    path("fis/<int:pk>/duzenle/", views.fis_duzenle, name="fis_duzenle"),
+    path("fis/<int:pk>/iptal/", views.fis_iptal_gorunum, name="fis_iptal"),
     path("mizan/", views.mizan_gorunum, name="mizan"),
     path("bilanco/", views.bilanco_gorunum, name="bilanco"),
     path("gelir-tablosu/", views.gelir_tablosu_gorunum, name="gelir_tablosu"),

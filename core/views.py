@@ -1,8 +1,9 @@
-"""Fiş giriş/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
+"""Fiş giriş/liste/düzenleme/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
 from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.models import User
+from django.db.models import Sum
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -16,10 +17,35 @@ from core.services.raporlar import (
     bilanco, bilanco_usd, gelir_tablosu, gelir_tablosu_usd,
     mali_yil_araligi, mizan, mizan_usd,
 )
-from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
-from core.yetki import ekran_gerekli, yonetici_gerekli, yonetici_mi
+from core.services.yevmiye import (
+    SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur,
+)
+from core.yetki import (
+    ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
+    yonetici_mi,
+)
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
+
+
+def _satir_girdileri(formset):
+    """Geçerli formset'ten dolu satırları SatirGirdi listesine çevirir."""
+    satirlar = []
+    for f in formset:
+        if not f.temiz_mi():
+            continue
+        cd = f.cleaned_data
+        satirlar.append(
+            SatirGirdi(
+                hesap_kodu=cd["hesap"].hesap_kodu,
+                taraf=cd["taraf"],
+                islem_tutari=cd["islem_tutari"],
+                islem_pb=cd["islem_pb"],
+                islem_kuru=cd.get("islem_kuru") or Decimal("1"),
+                aciklama=cd.get("aciklama", ""),
+            )
+        )
+    return satirlar
 
 
 @ekran_gerekli("fis_ekle")
@@ -28,27 +54,12 @@ def fis_ekle(request):
         fform = FisForm(request.POST)
         formset = SatirFormSet(request.POST)
         if fform.is_valid() and formset.is_valid():
-            satirlar = []
-            for f in formset:
-                if not f.temiz_mi():
-                    continue
-                cd = f.cleaned_data
-                satirlar.append(
-                    SatirGirdi(
-                        hesap_kodu=cd["hesap"].hesap_kodu,
-                        taraf=cd["taraf"],
-                        islem_tutari=cd["islem_tutari"],
-                        islem_pb=cd["islem_pb"],
-                        islem_kuru=cd.get("islem_kuru") or Decimal("1"),
-                        aciklama=cd.get("aciklama", ""),
-                    )
-                )
             try:
                 fis = fis_olustur(
                     tarih=fform.cleaned_data["tarih"],
                     aciklama=fform.cleaned_data.get("aciklama", ""),
                     kur_usd=fform.cleaned_data.get("kur_usd"),
-                    satirlar=satirlar,
+                    satirlar=_satir_girdileri(formset),
                     kullanici=request.user,
                 )
                 messages.success(request, f"Fiş kaydedildi: {fis.yil}/{fis.fis_no}")
@@ -61,7 +72,72 @@ def fis_ekle(request):
     return render(request, "core/fis_ekle.html", {"fform": fform, "formset": formset})
 
 
-@ekran_gerekli("fis_ekle")
+@ekran_gerekli("fis_listesi")
+def fis_listesi(request):
+    form, b, s = _tarih_araligi(request)
+    # İptal fişler de listelenir (durum sütununda ayırt edilir). Borç/alacak
+    # toplamları satırlardan; düzenleme eski satırları fiziksel sildiği için
+    # hem aktif (güncel) hem iptal (son hâl) fişte tek Sum doğru sonucu verir.
+    fisler = (
+        YevmiyeFisi.objects.filter(tarih__gte=b, tarih__lte=s)
+        .annotate(t_borc=Sum("satirlar__borc"), t_alacak=Sum("satirlar__alacak"))
+        .order_by("yil", "fis_no")
+    )
+    return render(request, "core/fis_listesi.html", {"form": form, "fisler": fisler})
+
+
+@ekran_gerekli("fis_listesi")
+def fis_duzenle(request, pk):
+    fis = get_object_or_404(YevmiyeFisi, pk=pk)
+    if fis.silindi:
+        # İptal edilmiş fiş düzenlenemez → salt-okunur detaya yönlendir.
+        return redirect("core:fis_detay", pk=fis.pk)
+
+    if request.method == "POST":
+        fform = FisForm(request.POST)
+        formset = SatirFormSet(request.POST)
+        if fform.is_valid() and formset.is_valid():
+            try:
+                fis_guncelle(
+                    fis,
+                    tarih=fform.cleaned_data["tarih"],
+                    aciklama=fform.cleaned_data.get("aciklama", ""),
+                    kur_usd=fform.cleaned_data.get("kur_usd"),
+                    satirlar=_satir_girdileri(formset),
+                    kullanici=request.user,
+                )
+                messages.success(request, f"Fiş güncellendi: {fis.yil}/{fis.fis_no}")
+                return redirect("core:fis_detay", pk=fis.pk)
+            except YevmiyeHatasi as e:
+                fform.add_error(None, str(e))
+    else:
+        fform = FisForm(initial={
+            "tarih": fis.tarih, "aciklama": fis.aciklama, "kur_usd": fis.kur_usd,
+        })
+        ilk = [
+            {"hesap": s.hesap_id, "islem_pb": s.islem_pb,
+             "borc": s.borc or None, "alacak": s.alacak or None,
+             "islem_kuru": s.islem_kuru, "aciklama": s.aciklama}
+            for s in fis.satirlar.filter(silindi=False).select_related("hesap")
+        ]
+        formset = SatirFormSet(initial=ilk)
+    return render(request, "core/fis_duzenle.html",
+                  {"fform": fform, "formset": formset, "fis": fis})
+
+
+@ekran_gerekli("fis_listesi")
+def fis_iptal_gorunum(request, pk):
+    fis = get_object_or_404(YevmiyeFisi, pk=pk)
+    if request.method == "POST":
+        if fis.silindi:
+            messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
+        else:
+            fis_iptal(fis, kullanici=request.user)
+            messages.success(request, f"Fiş iptal edildi: {fis.yil}/{fis.fis_no}")
+    return redirect("core:fis_detay", pk=fis.pk)
+
+
+@ekran_gerekli_herhangi("fis_ekle", "fis_listesi")
 def fis_detay(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
     satirlar = fis.satirlar.select_related("hesap").all()
@@ -70,7 +146,8 @@ def fis_detay(request, pk):
     return render(
         request, "core/fis_detay.html",
         {"fis": fis, "satirlar": satirlar,
-         "toplam_borc": toplam_borc, "toplam_alacak": toplam_alacak},
+         "toplam_borc": toplam_borc, "toplam_alacak": toplam_alacak,
+         "fis_listesi_yetkili": ekran_gorebilir(request.user, "fis_listesi")},
     )
 
 

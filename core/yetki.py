@@ -83,3 +83,20 @@ def ekran_gerekli(ekran_kod):
             return view(request, *args, **kwargs)
         return sarmal
     return dekorator
+
+
+def ekran_gerekli_herhangi(*ekran_kodlar):
+    """Görünümü, verilen ekranlardan EN AZ BİRİNE yetkili kullanıcılara açar (403).
+
+    Fiş detayı gibi birden çok akışın (Fiş Gir sonrası yönlendirme + Fiş Listesi'nden
+    görüntüleme) paylaştığı ekranlar için. Yönetici hep girer.
+    """
+    def dekorator(view):
+        @wraps(view)
+        @login_required
+        def sarmal(request, *args, **kwargs):
+            if not any(ekran_gorebilir(request.user, k) for k in ekran_kodlar):
+                raise PermissionDenied("Bu ekran için yetkiniz yok.")
+            return view(request, *args, **kwargs)
+        return sarmal
+    return dekorator

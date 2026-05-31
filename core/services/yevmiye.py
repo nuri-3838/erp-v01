@@ -1,4 +1,4 @@
-"""Yevmiye servis katmanı — fiş oluşturma/iptal kuralları tek noktada (spec 3).
+"""Yevmiye servis katmanı — fiş oluşturma/güncelleme/iptal kuralları tek noktada (spec 3).
 
 Tüm değişmezler burada zorlanır; UI'ya güvenilmez:
 - Fişte en az 2 satır.
@@ -10,6 +10,9 @@ Tüm değişmezler burada zorlanır; UI'ya güvenilmez:
 - fis_no mali yıl içinde müteselsil/boşluksuz; iptal numarayı korur (yeniden
   kullanılmaz). kur_usd fiş tarihine göre KUR'dan doldurulur (yoksa son yayımlanan;
   o da yoksa boş bırakılır, fiş yine kaydedilir), elle override edilebilir.
+- Düzenleme (fis_guncelle): yıl/fiş no korunur; satırlar değiştirilir (eski satır
+  kayıtları fiziksel silinip yenileri yazılır — kullanıcı kararı; fiş başlığı yine
+  asla fiziksel silinmez, audit updated_by/at korunur). İptal edilmiş fiş düzenlenemez.
 """
 from __future__ import annotations
 
@@ -65,16 +68,21 @@ def kur_usd_bul(tarih: _dt.date):
     return k.usd_alis if k else None
 
 
-@transaction.atomic
-def fis_olustur(*, tarih, satirlar, aciklama="", kur_usd=None,
-                kaynak=YevmiyeFisi.Kaynak.MANUEL, kullanici=None) -> YevmiyeFisi:
-    """Dengeli bir yevmiye fişini satırlarıyla atomik oluşturur.
+def _kur_usd_coz(kur_usd, tarih: _dt.date):
+    """kur_usd None ise fiş tarihine göre KUR'dan doldur; verilmişse Decimal'e çevir."""
+    if kur_usd is None:
+        return kur_usd_bul(tarih)
+    if not isinstance(kur_usd, Decimal):
+        return _dec(kur_usd, "kur_usd")
+    return kur_usd
 
-    `satirlar`: `SatirGirdi` listesi. Kurallardan biri ihlal edilirse hiçbir şey
-    yazılmaz (transaction geri alınır) ve :class:`YevmiyeHatasi` yükselir.
+
+def _satirlari_dogrula(satirlar) -> list[dict]:
+    """Satırları doğrular, TL'leri türetir ve dengeyi denetler (oluştur/güncelle ortak).
+
+    Geçerliyse her satır için ``YevmiyeSatir`` alanlarını içeren dict listesi döner;
+    bir kural ihlalinde :class:`YevmiyeHatasi` yükseltir (hiçbir DB değişikliği yapmaz).
     """
-    if not isinstance(tarih, _dt.date):
-        raise YevmiyeHatasi("tarih bir date olmalı.")
     if len(satirlar) < 2:
         raise YevmiyeHatasi("Fişte en az 2 satır olmalı.")
 
@@ -131,6 +139,21 @@ def fis_olustur(*, tarih, satirlar, aciklama="", kur_usd=None,
         raise YevmiyeHatasi(
             f"Fiş dengesiz: borç {toplam_borc} ≠ alacak {toplam_alacak}."
         )
+    return hazir
+
+
+@transaction.atomic
+def fis_olustur(*, tarih, satirlar, aciklama="", kur_usd=None,
+                kaynak=YevmiyeFisi.Kaynak.MANUEL, kullanici=None) -> YevmiyeFisi:
+    """Dengeli bir yevmiye fişini satırlarıyla atomik oluşturur.
+
+    `satirlar`: `SatirGirdi` listesi. Kurallardan biri ihlal edilirse hiçbir şey
+    yazılmaz (transaction geri alınır) ve :class:`YevmiyeHatasi` yükselir.
+    """
+    if not isinstance(tarih, _dt.date):
+        raise YevmiyeHatasi("tarih bir date olmalı.")
+
+    hazir = _satirlari_dogrula(satirlar)
 
     yil = tarih.year
     # Mali yıl içinde müteselsil; iptal edilenler dahil (numara korunur, yeniden
@@ -143,17 +166,52 @@ def fis_olustur(*, tarih, satirlar, aciklama="", kur_usd=None,
     )
     fis_no = son + 1
 
-    if kur_usd is None:
-        kur_usd = kur_usd_bul(tarih)
-    elif not isinstance(kur_usd, Decimal):
-        kur_usd = _dec(kur_usd, "kur_usd")
-
     fis = YevmiyeFisi.objects.create(
         yil=yil, fis_no=fis_no, tarih=tarih,
         aciklama=buyuk_harf_tr((aciklama or "").strip()),
-        kaynak=kaynak, kur_usd=kur_usd,
+        kaynak=kaynak, kur_usd=_kur_usd_coz(kur_usd, tarih),
         created_by=kullanici, updated_by=kullanici,
     )
+    for s in hazir:
+        YevmiyeSatir.objects.create(
+            fis=fis, created_by=kullanici, updated_by=kullanici, **s
+        )
+    return fis
+
+
+@transaction.atomic
+def fis_guncelle(fis: YevmiyeFisi, *, tarih, satirlar, aciklama="",
+                 kur_usd=None, kullanici=None) -> YevmiyeFisi:
+    """Mevcut (iptal edilmemiş) fişi atomik günceller.
+
+    - Yıl ve fiş no DEĞİŞMEZ (müteselsil/boşluksuz numara korunur); bu yüzden yeni
+      tarihin yılı fişin yılıyla aynı olmalıdır.
+    - Denge (borç=alacak) ve tüm satır kuralları yeniden zorlanır.
+    - Satırlar değiştirilir: eski satır kayıtları fiziksel silinip yenileri yazılır.
+    - Audit: updated_by/updated_at güncellenir; created_by/at korunur.
+
+    Kural ihlalinde hiçbir şey değişmez (transaction geri alınır).
+    """
+    if fis.silindi:
+        raise YevmiyeHatasi("İptal edilmiş fiş düzenlenemez.")
+    if not isinstance(tarih, _dt.date):
+        raise YevmiyeHatasi("tarih bir date olmalı.")
+    if tarih.year != fis.yil:
+        raise YevmiyeHatasi(
+            f"Düzenlemede fişin mali yılı ({fis.yil}) değiştirilemez; "
+            f"tarih {fis.yil} yılı içinde olmalı."
+        )
+
+    hazir = _satirlari_dogrula(satirlar)
+
+    fis.tarih = tarih
+    fis.aciklama = buyuk_harf_tr((aciklama or "").strip())
+    fis.kur_usd = _kur_usd_coz(kur_usd, tarih)
+    fis.updated_by = kullanici
+    fis.save(update_fields=["tarih", "aciklama", "kur_usd", "updated_by", "updated_at"])
+
+    # Eski satırlar fiziksel silinir, yenileri yazılır (kullanıcı kararı).
+    fis.satirlar.all().delete()
     for s in hazir:
         YevmiyeSatir.objects.create(
             fis=fis, created_by=kullanici, updated_by=kullanici, **s

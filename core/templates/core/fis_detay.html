@@ -3,13 +3,15 @@
 {% block baslik %}Fiş {{ fis.yil }}/{{ fis.fis_no }} · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Yevmiye Fişi {{ fis.yil }}/{{ fis.fis_no }}</h1>
+<h1 class="ust-baslik">Yevmiye Fişi {{ fis.yil }}/{{ fis.fis_no }}
+  {% if fis.silindi %}<span class="hata">· İPTAL</span>{% endif %}</h1>
 
 <table>
   <tr><th>Muhasebe tarihi</th><td>{{ fis.tarih|date:"d.m.Y" }}</td></tr>
   <tr><th>Açıklama</th><td>{{ fis.aciklama|default:"—" }}</td></tr>
   <tr><th>Kaynak</th><td>{{ fis.get_kaynak_display }}</td></tr>
   <tr><th>USD kuru</th><td class="sag">{{ fis.kur_usd|tr_kur|default:"—" }}</td></tr>
+  <tr><th>Durum</th><td>{% if fis.silindi %}<span class="hata">İPTAL EDİLDİ</span>{% else %}Aktif{% endif %}</td></tr>
 </table>
 
 <h2 class="etiket">Satırlar</h2>
@@ -41,5 +43,19 @@
   </tfoot>
 </table>
 
-<p><a href="{% url 'core:fis_ekle' %}">← Yeni fiş gir</a></p>
+{% if fis_listesi_yetkili and not fis.silindi %}
+<div class="alan">
+  <a class="dugme" href="{% url 'core:fis_duzenle' fis.pk %}">Düzenle</a>
+  <form method="post" action="{% url 'core:fis_iptal' fis.pk %}" style="display:inline"
+        onsubmit="return confirm('Fiş {{ fis.yil }}/{{ fis.fis_no }} iptal edilsin mi? Geri alınamaz.');">
+    {% csrf_token %}
+    <button type="submit" style="border-color:var(--hata); color:var(--hata)">İptal et</button>
+  </form>
+</div>
+{% endif %}
+
+<p>
+  {% if fis_listesi_yetkili %}<a href="{% url 'core:fis_listesi' %}">← Fiş listesi</a> · {% endif %}
+  <a href="{% url 'core:fis_ekle' %}">Yeni fiş gir</a>
+</p>
 {% endblock %}
