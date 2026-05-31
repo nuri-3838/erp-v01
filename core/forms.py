@@ -59,7 +59,8 @@ class FisForm(forms.Form):
 
 
 def _aktif_hesaplar():
-    return HesapPlani.objects.filter(aktif=True, silindi=False).order_by("hesap_kodu")
+    from core.services.hesap_plani import yaprak_hesaplar
+    return yaprak_hesaplar()
 
 
 class SatirForm(forms.Form):

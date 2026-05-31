@@ -64,6 +64,10 @@ class HesapPlani(TemelModel):
     # Parasal mı? (USD bilanço için: parasal => kapanış kuru, değil => tarihi kur)
     # Yalnızca bilanço hesaplarında dolu; gelir/maliyet hesaplarında boş (CSV'de "-").
     parasal = models.BooleanField("parasal", null=True, blank=True)
+    ust_hesap = models.ForeignKey(
+        "self", verbose_name="üst hesap", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="alt_hesaplar",
+    )
     aktif = models.BooleanField("aktif", default=True)
 
     class Meta:

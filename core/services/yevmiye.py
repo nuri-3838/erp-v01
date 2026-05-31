@@ -121,6 +121,10 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
             raise YevmiyeHatasi(
                 f"Satır {i}: hesap bulunamadı/aktif değil: {g.hesap_kodu!r}"
             )
+        if hesap.alt_hesaplar.filter(silindi=False).exists():
+            raise YevmiyeHatasi(
+                f"Satır {i}: {hesap.hesap_kodu} üst hesaptır; fiş yalnızca yaprak hesaba kesilir."
+            )
 
         if taraf == "B":
             borc, alacak = tl, SIFIR

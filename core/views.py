@@ -16,7 +16,7 @@ from django.utils import timezone
 from core.forms import (
     FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
 )
-from core.models import EkranYetki, HesapPlani, Kur, YevmiyeFisi
+from core.models import EkranYetki, HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
 from core.sayi import SayiHatasi, parse_tr
@@ -28,6 +28,7 @@ from core.services.yevmiye import (
     SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur,
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
+from core.services import hesap_plani as hp
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -249,6 +250,91 @@ def kurlar(request):
         "form": form, "pb": pb, "kayitlar": kayitlar,
         "liste_bas": liste_bas, "liste_bit": liste_bit,
     })
+
+
+RAPOR_KALEMLERI = [
+    ("", "— (gelir/maliyet hesabı)"),
+    ("DV", "Dönen Varlıklar"), ("DDV", "Duran Varlıklar"),
+    ("KVYK", "Kısa Vadeli Yabancı Kaynaklar"),
+    ("UVYK", "Uzun Vadeli Yabancı Kaynaklar"), ("OZK", "Özkaynaklar"),
+]
+
+
+@ekran_gerekli("hesap_plani")
+def hesap_plani(request):
+    ust_kodlari = set(
+        HesapPlani.objects.filter(silindi=False, ust_hesap__isnull=False)
+        .values_list("ust_hesap_id", flat=True)
+    )
+    yevmiyeli = set(YevmiyeSatir.objects.values_list("hesap_id", flat=True).distinct())
+    agac = []
+    for h in HesapPlani.objects.filter(silindi=False).order_by("hesap_kodu"):
+        ust = h.hesap_kodu in ust_kodlari
+        agac.append({
+            "kod": h.hesap_kodu, "ad": h.hesap_adi,
+            "seviye": h.hesap_kodu.count("."),
+            "yaprak": not ust,
+            "silinebilir": (not ust) and (h.hesap_kodu not in yevmiyeli),
+        })
+    ust_kodu = request.GET.get("ust")
+    ust_hesap = (HesapPlani.objects.filter(hesap_kodu=ust_kodu, silindi=False).first()
+                 if ust_kodu else None)
+    onerilen = hp.alt_kod_oner(ust_hesap) if ust_hesap else ""
+    duzenle_kod = request.GET.get("duzenle")
+    duzenlenecek = (HesapPlani.objects.filter(hesap_kodu=duzenle_kod, silindi=False).first()
+                    if duzenle_kod else None)
+    return render(request, "core/hesap_plani.html", {
+        "agac": agac, "ust": ust_hesap, "onerilen_kod": onerilen,
+        "duzenlenecek": duzenlenecek,
+        "rapor_gruplari": HesapPlani.RaporGrubu.choices,
+        "rapor_kalemleri": RAPOR_KALEMLERI,
+    })
+
+
+def _parasal_coz(deger):
+    return {"e": True, "h": False}.get(deger)
+
+
+@ekran_gerekli("hesap_plani")
+def hesap_ekle(request):
+    if request.method == "POST":
+        try:
+            h = hp.hesap_olustur(
+                kod=request.POST.get("kod", ""),
+                ad=request.POST.get("ad", ""),
+                ust_kodu=(request.POST.get("ust_kodu") or "").strip() or None,
+                rapor_grubu=(request.POST.get("rapor_grubu") or "").strip() or None,
+                rapor_kalemi=(request.POST.get("rapor_kalemi") or "").strip(),
+                parasal=_parasal_coz(request.POST.get("parasal")),
+                kullanici=request.user,
+            )
+            messages.success(request, f"Hesap eklendi: {h.hesap_kodu} — {h.hesap_adi}")
+        except hp.HesapHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:hesap_plani")
+
+
+@ekran_gerekli("hesap_plani")
+def hesap_ad_guncelle(request, kod):
+    if request.method == "POST":
+        try:
+            h = hp.hesap_adi_guncelle(kod=kod, yeni_ad=request.POST.get("ad", ""),
+                                      kullanici=request.user)
+            messages.success(request, f"Hesap adı güncellendi: {h.hesap_kodu} — {h.hesap_adi}")
+        except hp.HesapHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:hesap_plani")
+
+
+@ekran_gerekli("hesap_plani")
+def hesap_sil(request, kod):
+    if request.method == "POST":
+        try:
+            h = hp.hesap_sil(kod=kod, kullanici=request.user)
+            messages.success(request, f"Hesap silindi (pasifleştirildi): {h.hesap_kodu}")
+        except hp.HesapHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:hesap_plani")
 
 
 @ekran_gerekli("mizan")

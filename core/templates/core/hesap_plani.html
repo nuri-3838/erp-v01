@@ -1,0 +1,100 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Hesap Planı · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Hesap Planı{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik">Hesap Planı</h1>
+</div>
+
+<details class="kart-form" {% if ust %}open{% endif %}>
+  <summary>{% if ust %}Alt hesap ekle — {{ ust.hesap_kodu }} {{ ust.hesap_adi }}{% else %}Yeni ana hesap ekle{% endif %}</summary>
+  <form method="post" action="{% url 'core:hesap_ekle' %}">
+    {% csrf_token %}
+    <input type="hidden" name="ust_kodu" value="{{ ust.hesap_kodu|default:'' }}">
+    <div class="kur-cek-alanlar">
+      <div class="alan">
+        <label for="kod">Hesap kodu</label>
+        <input type="text" id="kod" name="kod" value="{{ onerilen_kod }}" inputmode="numeric" required>
+      </div>
+      <div class="alan" style="flex:1 1 14rem">
+        <label for="ad">Hesap adı</label>
+        <input type="text" id="ad" name="ad" maxlength="200" required>
+      </div>
+    </div>
+    {% if ust %}
+      <p class="yardim">Rapor grubu / kalemi / parasal üst hesaptan
+        (<strong>{{ ust.hesap_adi }}</strong>) miras alınır.</p>
+    {% else %}
+      <div class="kur-cek-alanlar">
+        <div class="alan">
+          <label for="rapor_grubu">Rapor grubu</label>
+          <select id="rapor_grubu" name="rapor_grubu">
+            <option value="">— seçin —</option>
+            {% for v, ad in rapor_gruplari %}<option value="{{ v }}">{{ ad }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="alan">
+          <label for="rapor_kalemi">Rapor kalemi (bilanço)</label>
+          <select id="rapor_kalemi" name="rapor_kalemi">
+            {% for v, ad in rapor_kalemleri %}<option value="{{ v }}">{{ ad }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="alan">
+          <label for="parasal">Parasal</label>
+          <select id="parasal" name="parasal">
+            <option value="">—</option>
+            <option value="e">Evet</option>
+            <option value="h">Hayır</option>
+          </select>
+        </div>
+      </div>
+    {% endif %}
+    <button type="submit" class="birincil">Ekle</button>
+    {% if ust %}<a href="{% url 'core:hesap_plani' %}">Vazgeç</a>{% endif %}
+  </form>
+</details>
+
+{% if duzenlenecek %}
+<form method="post" action="{% url 'core:hesap_ad_guncelle' duzenlenecek.hesap_kodu %}"
+      class="kur-cek-alanlar" style="margin-top:1rem">
+  {% csrf_token %}
+  <div class="alan" style="flex:1 1 16rem">
+    <label for="yeni_ad">{{ duzenlenecek.hesap_kodu }} — yeni ad</label>
+    <input type="text" id="yeni_ad" name="ad" value="{{ duzenlenecek.hesap_adi }}" maxlength="200" required>
+  </div>
+  <button type="submit" class="birincil">Kaydet</button>
+  <a href="{% url 'core:hesap_plani' %}">Vazgeç</a>
+</form>
+{% endif %}
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr><th>Kod</th><th>Hesap Adı</th><th>Tür</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for h in agac %}
+      <tr>
+        <td class="sev-{{ h.seviye }}">{{ h.kod }}</td>
+        <td>{{ h.ad }}</td>
+        <td>{% if h.yaprak %}<span class="yardim">yaprak</span>{% else %}<strong>üst</strong>{% endif %}</td>
+        <td class="hesap-islem">
+          {% if h.seviye < 2 %}<a href="?ust={{ h.kod }}">+ Alt</a>{% endif %}
+          <a href="?duzenle={{ h.kod }}">Ad</a>
+          {% if h.silinebilir %}
+            <form method="post" action="{% url 'core:hesap_sil' h.kod %}"
+                  onsubmit="return confirm('{{ h.kod }} hesabı silinsin mi?')">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="yardim">Hesap yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="yardim">Fiş yalnızca <strong>yaprak</strong> hesaba kesilir (alt hesabı olan üst
+  hesaba kesilemez). Yevmiye satırı olan ya da alt hesabı olan hesap silinemez.</p>
+{% endblock %}
