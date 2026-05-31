@@ -1,6 +1,7 @@
 """Manuel fiş giriş ekranı (view) testleri — TR sayı parse/format + denge + Borç/Alacak sütunları."""
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -32,6 +33,10 @@ class FisEkleViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        cls.kullanici = User.objects.create_user("test", password="parola1234")
+
+    def setUp(self):
+        self.client.force_login(self.kullanici)
 
     def test_get_form_acilir(self):
         r = self.client.get(reverse("core:fis_ekle"))
@@ -45,28 +50,27 @@ class FisEkleViewTest(TestCase):
         fis = YevmiyeFisi.objects.get()
         self.assertEqual(fis.aciklama, "KASA TAHSİLATI")  # buyuk_harf_tr
         borc = fis.satirlar.get(hesap_id="100")
-        self.assertEqual(borc.borc, Decimal("1000.00"))   # "1.000,00" -> 1000.00 (Borç sütunu)
+        self.assertEqual(borc.borc, Decimal("1000.00"))
         self.assertEqual(borc.alacak, Decimal("0.00"))
         alacak = fis.satirlar.get(hesap_id="600")
-        self.assertEqual(alacak.alacak, Decimal("1000.00"))  # Alacak sütunu
+        self.assertEqual(alacak.alacak, Decimal("1000.00"))
 
     def test_detay_tr_formatli_gosterir(self):
         self.client.post(reverse("core:fis_ekle"), _payload())
         fis = YevmiyeFisi.objects.get()
         r = self.client.get(reverse("core:fis_detay", args=[fis.pk]))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "1.000,00")  # format_tr çıktısı
+        self.assertContains(r, "1.000,00")
 
     def test_dengesiz_dostca_uyari_ve_kayit_yok(self):
         r = self.client.post(reverse("core:fis_ekle"), _payload(**{
             "form-1-alacak": "900,00",
         }))
-        self.assertEqual(r.status_code, 200)  # yeniden render
-        self.assertContains(r, "dengesiz")   # dostça uyarı
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "dengesiz")
         self.assertEqual(YevmiyeFisi.objects.count(), 0)
 
     def test_iki_taraf_dolu_reddedilir(self):
-        # Aynı satırda hem Borç hem Alacak -> form hatası, kayıt yok
         r = self.client.post(reverse("core:fis_ekle"), _payload(**{
             "form-0-alacak": "1.000,00",
         }))

@@ -2,6 +2,7 @@
 import datetime
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -26,12 +27,16 @@ class MizanTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        cls.kullanici = User.objects.create_user("test", password="parola1234")
+
+    def setUp(self):
+        self.client.force_login(self.kullanici)
 
     def test_mizan_tutar_ve_bakiye(self):
         fis_olustur(tarih=D(2026, 3, 10), satirlar=[
             _satir("100", "B", "1000"), _satir("600", "A", "1000")])
         m = mizan(D(2026, 1, 1), D(2026, 12, 31))
-        self.assertTrue(m.hareket_denk)               # SUM(borç)=SUM(alacak)
+        self.assertTrue(m.hareket_denk)
         self.assertEqual(m.toplam_borc, Decimal("1000.00"))
         self.assertEqual(m.toplam_alacak, Decimal("1000.00"))
         s = _harita(m)
@@ -49,7 +54,7 @@ class MizanTest(TestCase):
         s = _harita(m)
         self.assertEqual(s["100"].borc, Decimal("1000.00"))
         self.assertEqual(s["100"].alacak, Decimal("300.00"))
-        self.assertEqual(s["100"].borc_bakiye, Decimal("700.00"))  # net borç
+        self.assertEqual(s["100"].borc_bakiye, Decimal("700.00"))
         self.assertTrue(m.hareket_denk)
         self.assertTrue(m.bakiye_denk)
         self.assertEqual(m.toplam_borc_bakiye, m.toplam_alacak_bakiye)

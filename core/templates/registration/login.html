@@ -1,0 +1,25 @@
+{% extends "core/base.html" %}
+{% block baslik %}Giriş · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Giriş</h1>
+<p class="yardim">ERP v0.1 — Muhasebe. Devam etmek için giriş yapın.</p>
+
+{% if form.errors %}
+  <div class="uyari">Kullanıcı adı veya şifre hatalı.</div>
+{% endif %}
+
+<form method="post" style="max-width:360px">
+  {% csrf_token %}
+  <div class="alan">
+    <label for="{{ form.username.id_for_label }}">Kullanıcı adı</label>
+    {{ form.username }}
+  </div>
+  <div class="alan">
+    <label for="{{ form.password.id_for_label }}">Şifre</label>
+    {{ form.password }}
+  </div>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button type="submit" class="birincil">Giriş yap</button>
+</form>
+{% endblock %}

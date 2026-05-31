@@ -2,6 +2,7 @@
 import datetime
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -37,9 +38,12 @@ class BilancoTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        cls.kullanici = User.objects.create_user("test", password="parola1234")
+
+    def setUp(self):
+        self.client.force_login(self.kullanici)
 
     def test_acilis_dengeli(self):
-        # Açılış: Kasa 5.000 borç / Sermaye 5.000 alacak
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "5000"), _s("500", "A", "5000")])
         b = bilanco(*YIL)
         self.assertTrue(b.denk_mi)
@@ -53,18 +57,17 @@ class BilancoTest(TestCase):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "5000"), _s("500", "A", "5000")])
         fis_olustur(tarih=D(2026, 3, 2), satirlar=[_s("100", "B", "1000"), _s("600", "A", "1000")])
         b = bilanco(*YIL)
-        self.assertEqual(b.donem_sonucu, Decimal("1000.00"))   # kâr (6xx)
+        self.assertEqual(b.donem_sonucu, Decimal("1000.00"))
         self.assertEqual(b.aktif_toplam, Decimal("6000.00"))
         self.assertEqual(b.pasif_toplam, Decimal("6000.00"))
         self.assertTrue(b.denk_mi)
 
     def test_kontra_negatif_ve_gider_dengeyi_bozmaz(self):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "10000"), _s("500", "A", "10000")])
-        # Amortisman gideri: 632 borç / 257 (-) alacak
         fis_olustur(tarih=D(2026, 3, 2), satirlar=[_s("632", "B", "1000"), _s("257", "A", "1000")])
         b = bilanco(*YIL)
-        self.assertEqual(_tutar(_grup(b, "DDV"), "257"), Decimal("-1000.00"))  # kontra negatif
-        self.assertEqual(b.donem_sonucu, Decimal("-1000.00"))                  # gider -> zarar
+        self.assertEqual(_tutar(_grup(b, "DDV"), "257"), Decimal("-1000.00"))
+        self.assertEqual(b.donem_sonucu, Decimal("-1000.00"))
         self.assertEqual(b.aktif_toplam, Decimal("9000.00"))
         self.assertEqual(b.pasif_toplam, Decimal("9000.00"))
         self.assertTrue(b.denk_mi)

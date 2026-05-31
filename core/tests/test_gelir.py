@@ -2,6 +2,7 @@
 import datetime
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -23,9 +24,12 @@ class GelirTablosuTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        cls.kullanici = User.objects.create_user("test", password="parola1234")
+
+    def setUp(self):
+        self.client.force_login(self.kullanici)
 
     def test_satis_ve_gider_net_kar(self):
-        # Satış 1.000 (600), gider 300 (632 Genel Yönetim)
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "1000"), _s("600", "A", "1000")])
         fis_olustur(tarih=D(2026, 3, 2), satirlar=[_s("632", "B", "300"), _s("100", "A", "300")])
         gt = gelir_tablosu(*YIL)
@@ -37,14 +41,12 @@ class GelirTablosuTest(TestCase):
 
     def test_7li_hesaplar_rapora_girmez(self):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "1000"), _s("600", "A", "1000")])
-        # 710 Direkt İlk Madde (7'li) — gelir tablosuna GİRMEMELİ
         fis_olustur(tarih=D(2026, 3, 3), satirlar=[_s("710", "B", "500"), _s("100", "A", "500")])
         gt = gelir_tablosu(*YIL)
-        self.assertEqual(gt.donem_net_kari, Decimal("1000.00"))  # 710 etkilemez
+        self.assertEqual(gt.donem_net_kari, Decimal("1000.00"))
 
     def test_satis_iadeleri_dusulur(self):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "1000"), _s("600", "A", "1000")])
-        # 610 Satıştan İadeler (-): borç
         fis_olustur(tarih=D(2026, 3, 2), satirlar=[_s("610", "B", "100"), _s("100", "A", "100")])
         gt = gelir_tablosu(*YIL)
         self.assertEqual(gt.deger("B."), Decimal("100.00"))

@@ -40,3 +40,6 @@ Stok · cari · satınalma/satış · üretim · ürün ağacı · otomatik yans
 
 ## Dokunma
 Eski `semta_erp` projesiyle ilgisi yok. Buraya hiçbir şey kopyalama; o sadece ayrı bir referans.
+
+## Kapsam genişletme notu (bilinçli, 2026-05-30)
+Giriş + kullanıcı bazlı ekran yetkisi v0.1'e **bilinçli** eklendi (normalde v0.7). Gerekçe: sistem ekipçe kullanılacak. Mimari: modül (MUHASEBE) → ekran (7 rapor/giriş ekranı) → **kullanıcı bazlı** erişim (sabit rol yok). Şimdilik yalnızca erişim düzeyi (görür/göremez); "görür ama değiştiremez" ileride. Yeni modüller (Stok/Cari/Üretim) aynı mantıkla eklenecek.

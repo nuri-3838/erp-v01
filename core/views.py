@@ -1,7 +1,8 @@
-"""Fiş giriş/görüntüleme ve rapor görünümleri."""
+"""Fiş giriş/görüntüleme ve rapor görünümleri. Hepsi giriş gerektirir (login)."""
 from decimal import Decimal
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -16,6 +17,7 @@ from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
 
 
+@login_required
 def fis_ekle(request):
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -53,6 +55,7 @@ def fis_ekle(request):
     return render(request, "core/fis_ekle.html", {"fform": fform, "formset": formset})
 
 
+@login_required
 def fis_detay(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
     satirlar = fis.satirlar.select_related("hesap").all()
@@ -76,34 +79,40 @@ def _tarih_araligi(request):
     return form, baslangic, bitis
 
 
+@login_required
 def mizan_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/mizan.html", {"form": form, "mizan": mizan(b, s)})
 
 
+@login_required
 def bilanco_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/bilanco.html", {"form": form, "bilanco": bilanco(b, s)})
 
 
+@login_required
 def gelir_tablosu_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/gelir_tablosu.html",
                   {"form": form, "gt": gelir_tablosu(b, s)})
 
 
+@login_required
 def mizan_usd_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/mizan_usd.html",
                   {"form": form, "mizan": mizan_usd(b, s)})
 
 
+@login_required
 def gelir_tablosu_usd_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/gelir_tablosu_usd.html",
                   {"form": form, "gt": gelir_tablosu_usd(b, s)})
 
 
+@login_required
 def bilanco_usd_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/bilanco_usd.html",
