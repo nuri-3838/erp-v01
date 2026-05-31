@@ -1,0 +1,70 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ ekstre.hesap_kodu }} Ekstresi · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Hesap Ekstresi — {{ ekstre.hesap_kodu }} {{ ekstre.hesap_adi }}</h1>
+
+<form method="get" class="alan">
+  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+  {{ form.baslangic }}
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+  {{ form.bitis }}
+  <button type="submit">Göster</button>
+  {% if form.non_field_errors %}
+    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+  {% endif %}
+</form>
+
+<p class="yardim">Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
+  · İptal edilen fişler hariç · Bakiyeler yevmiyeden hesaplanır.</p>
+
+<div class="toplamlar">
+  <span class="etiket">Toplam borç:</span> <span class="deger">{{ ekstre.toplam_borc|tr_para }}</span>
+  <span class="etiket">Toplam alacak:</span> <span class="deger">{{ ekstre.toplam_alacak|tr_para }}</span>
+  <span class="etiket">Bakiye:</span>
+  <span class="deger {% if ekstre.bakiye > 0 %}dengeli{% elif ekstre.bakiye < 0 %}dengesiz{% endif %}">
+    {{ ekstre.bakiye|tr_bakiye }}
+  </span>
+</div>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr>
+      <th>Tarih</th><th>Fiş No</th><th>Açıklama</th>
+      <th class="sag">Borç</th><th class="sag">Alacak</th>
+      <th class="sag">Bakiye</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in ekstre.satirlar %}
+      <tr>
+        <td>{{ s.tarih|date:"d.m.Y" }}</td>
+        <td><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
+        <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
+        <td class="sag">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
+        <td class="sag">{{ s.yur_bakiye|tr_bakiye }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim">Bu aralıkta hareket yok.</td></tr>
+    {% endfor %}
+  </tbody>
+  {% if ekstre.satirlar %}
+  <tfoot>
+    <tr>
+      <th colspan="3" class="sag">Toplam</th>
+      <th class="sag">{{ ekstre.toplam_borc|tr_para }}</th>
+      <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
+      <th class="sag">{{ ekstre.bakiye|tr_bakiye }}</th>
+    </tr>
+  </tfoot>
+  {% endif %}
+</table>
+</div>
+
+<p>
+  <a href="{% url 'core:mizan' %}?baslangic={{ ekstre.baslangic|date:'Y-m-d' }}&bitis={{ ekstre.bitis|date:'Y-m-d' }}">← Mizana dön</a>
+</p>
+{% endblock %}

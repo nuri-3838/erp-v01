@@ -17,7 +17,8 @@
 </form>
 
 <p class="yardim">Dönem: {{ mizan.baslangic|date:"d.m.Y" }} – {{ mizan.bitis|date:"d.m.Y" }}
-  · İptal edilen fişler hariç · Bakiyeler saklanmaz, yevmiyeden hesaplanır.</p>
+  · İptal edilen fişler hariç · Bakiyeler saklanmaz, yevmiyeden hesaplanır.
+  · Hesap koduna tıklayınca hesap ekstresi açılır.</p>
 
 <div class="toplamlar">
   {% if mizan.hareket_denk %}
@@ -41,7 +42,9 @@
   <tbody>
     {% for s in mizan.satirlar %}
       <tr>
-        <td>{{ s.hesap_kodu }}</td>
+        <td>
+          <a href="{% url 'core:hesap_ekstresi' s.hesap_kodu %}?baslangic={{ mizan.baslangic|date:'Y-m-d' }}&bitis={{ mizan.bitis|date:'Y-m-d' }}">{{ s.hesap_kodu }}</a>
+        </td>
         <td>{{ s.hesap_adi }}</td>
         <td class="sag">{{ s.borc|tr_para }}</td>
         <td class="sag">{{ s.alacak|tr_para }}</td>

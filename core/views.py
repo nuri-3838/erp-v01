@@ -11,10 +11,10 @@ from django.urls import reverse
 from core.forms import (
     FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
 )
-from core.models import EkranYetki, YevmiyeFisi
+from core.models import EkranYetki, HesapPlani, YevmiyeFisi
 from core.moduller import MODULLER
 from core.services.raporlar import (
-    bilanco, bilanco_usd, gelir_tablosu, gelir_tablosu_usd,
+    bilanco, bilanco_usd, ekstre as ekstre_servis, gelir_tablosu, gelir_tablosu_usd,
     mali_yil_araligi, mizan, mizan_usd,
 )
 from core.services.yevmiye import (
@@ -75,9 +75,6 @@ def fis_ekle(request):
 @ekran_gerekli("fis_listesi")
 def fis_listesi(request):
     form, b, s = _tarih_araligi(request)
-    # İptal fişler de listelenir (durum sütununda ayırt edilir). Borç/alacak
-    # toplamları satırlardan; düzenleme eski satırları fiziksel sildiği için
-    # hem aktif (güncel) hem iptal (son hâl) fişte tek Sum doğru sonucu verir.
     fisler = (
         YevmiyeFisi.objects.filter(tarih__gte=b, tarih__lte=s)
         .annotate(t_borc=Sum("satirlar__borc"), t_alacak=Sum("satirlar__alacak"))
@@ -90,7 +87,6 @@ def fis_listesi(request):
 def fis_duzenle(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
     if fis.silindi:
-        # İptal edilmiş fiş düzenlenemez → salt-okunur detaya yönlendir.
         return redirect("core:fis_detay", pk=fis.pk)
 
     if request.method == "POST":
@@ -165,6 +161,14 @@ def _tarih_araligi(request):
 def mizan_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/mizan.html", {"form": form, "mizan": mizan(b, s)})
+
+
+@ekran_gerekli("mizan")
+def hesap_ekstresi(request, hesap_kodu):
+    get_object_or_404(HesapPlani, hesap_kodu=hesap_kodu)
+    form, b, s = _tarih_araligi(request)
+    eks = ekstre_servis(hesap_kodu, b, s)
+    return render(request, "core/hesap_ekstresi.html", {"form": form, "ekstre": eks})
 
 
 @ekran_gerekli("bilanco")

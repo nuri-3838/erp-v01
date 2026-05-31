@@ -22,3 +22,16 @@ def tr_kur(value):
     if value is None or value == "":
         return ""
     return format_tr(value if isinstance(value, Decimal) else Decimal(str(value)), 6)
+
+
+@register.filter
+def tr_bakiye(value):
+    """Yürüyen bakiye: pozitif → '1.234,56 B', negatif → '1.234,56 A', sıfır → '0,00'."""
+    if value is None or value == "":
+        return ""
+    d = value if isinstance(value, Decimal) else Decimal(str(value))
+    if d > 0:
+        return format_tr(d, 2) + " B"
+    elif d < 0:
+        return format_tr(-d, 2) + " A"
+    return "0,00"

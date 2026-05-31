@@ -11,6 +11,7 @@ urlpatterns = [
     path("fis/<int:pk>/duzenle/", views.fis_duzenle, name="fis_duzenle"),
     path("fis/<int:pk>/iptal/", views.fis_iptal_gorunum, name="fis_iptal"),
     path("mizan/", views.mizan_gorunum, name="mizan"),
+    path("ekstre/<str:hesap_kodu>/", views.hesap_ekstresi, name="hesap_ekstresi"),
     path("bilanco/", views.bilanco_gorunum, name="bilanco"),
     path("gelir-tablosu/", views.gelir_tablosu_gorunum, name="gelir_tablosu"),
     path("mizan-usd/", views.mizan_usd_gorunum, name="mizan_usd"),
