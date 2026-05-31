@@ -5,8 +5,8 @@ from core import views
 app_name = "core"
 
 urlpatterns = [
-    path("pano/", views.pano, name="pano"),
-    path("", views.fis_ekle, name="fis_ekle"),
+    path("", views.pano, name="pano"),
+    path("fis-gir/", views.fis_ekle, name="fis_ekle"),
     path("fisler/", views.fis_listesi, name="fis_listesi"),
     path("fis/<int:pk>/", views.fis_detay, name="fis_detay"),
     path("fis/<int:pk>/duzenle/", views.fis_duzenle, name="fis_duzenle"),
