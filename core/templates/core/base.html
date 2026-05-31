@@ -7,29 +7,28 @@
   <style>
     :root { --cizgi:#d0d0d0; --hata:#b00020; --ok:#0a7d28; }
     * { box-sizing: border-box; }
-    /* Mobile-first: dar ekranda küçük kenar boşluğu; geniş ekranda artar. */
     body { font-family: system-ui, Segoe UI, Arial, sans-serif; margin: 0 auto;
            max-width: 1000px; color:#1b1b1b; background:#ffffff; padding: 1rem; }
     @media (min-width: 700px) { body { padding: 2rem 1rem; } }
     h1 { font-size: 1.5rem; } h2 { font-size: 1.15rem; }
     h1, h2 { font-weight: 650; }
-    /* Statik etiketler/başlıklar BÜYÜK görünür (veri değişmez; lang=tr ile doğru İ). */
     label, th, .etiket, .ust-baslik { text-transform: uppercase; }
     table { border-collapse: collapse; width: 100%; margin:0; }
     th, td { border: 1px solid var(--cizgi); padding: .5rem; vertical-align: top; }
     th { background:#f6f6f6; text-align:left; font-size:.85rem; letter-spacing:.02em; }
     td.sag, th.sag { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    /* Dokunmaya uygun giriş/buton; 16px iOS'ta otomatik yakınlaştırmayı önler. */
     input, select, button { font-size: 16px; min-height: 44px; }
     input, select { padding:.45rem .5rem; font-family: inherit; box-sizing:border-box; width:100%; }
     td select { min-width: 7rem; }
     input[type=date] { width:auto; max-width:100%; }
+    input[type=checkbox] { width:auto; min-height:auto; }
     .satir-form input[name$="borc"], .satir-form input[name$="alacak"],
     .satir-form input[name$="kuru"] { text-align:right; }
     button { padding:.5rem 1rem; cursor:pointer; border:1px solid #888;
              border-radius:8px; background:#fafafa; }
-    button.birincil { background:#1b5e20; color:#fff; border-color:#1b5e20; }
-    /* Geniş tabloları dar ekranda yatay kaydırılabilir yap (0b-i). */
+    button.birincil, a.dugme { background:#1b5e20; color:#fff; border-color:#1b5e20;
+             text-decoration:none; display:inline-block; padding:.5rem 1rem;
+             border-radius:8px; }
     .tablo-kapsayici { overflow-x: auto; -webkit-overflow-scrolling: touch;
                        margin: .5rem 0 1rem; border: 1px solid var(--cizgi);
                        border-radius: 8px; }
@@ -37,7 +36,9 @@
     .tablo-kapsayici.genis > table { min-width: 760px; }
     .alan { margin:.7rem 0; }
     .alan > label { display:block; font-size:.8rem; margin-bottom:.25rem; }
+    .onay-alan label { text-transform:none; display:inline; }
     .hata { color: var(--hata); font-weight:600; }
+    ul.errorlist { margin:.2rem 0; padding-left:1.1rem; color:var(--hata); font-size:.85rem; }
     .uyari { background:#fff4f4; border:1px solid #f0c0c0; color:var(--hata);
              padding:.6rem .8rem; border-radius:6px; margin:.8rem 0; }
     .basari { background:#f0fff3; border:1px solid #bfe6c7; color:var(--ok);
@@ -48,12 +49,11 @@
     .toplamlar .deger { font-weight:700; font-variant-numeric: tabular-nums; }
     .denge.dengeli { color: var(--ok); } .denge.dengesiz { color: var(--hata); }
     .yardim { color:#666; font-size:.8rem; }
-    /* Rapor tabloları */
+    .pasif { color:#999; }
     tr.grup th { background:#eef2ee; text-transform:uppercase; }
     tr.ara td, tr.ara th { font-weight:700; background:#f3f6f3; }
     tr.sonuc td, tr.sonuc th { font-weight:700; background:#e7f1e7; }
     td.eksi { color:var(--hata); }
-    /* Gezinme: dar ekranda sarsın, dokunma hedefleri rahat. */
     nav { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem .9rem;
           margin-bottom:1.2rem; border-bottom:2px solid #1b5e20; padding-bottom:.6rem; }
     nav a { padding:.2rem 0; }
@@ -72,7 +72,10 @@
     <a href="{% url 'core:mizan_usd' %}">Mizan (USD)</a>
     <a href="{% url 'core:bilanco_usd' %}">Bilanço (USD)</a>
     <a href="{% url 'core:gelir_tablosu_usd' %}">Gelir T. (USD)</a>
-    <span class="kullanici">{{ user.username }}</span>
+    {% if kullanici_yonetici %}
+      <a href="{% url 'core:kullanici_listesi' %}">Kullanıcılar</a>
+    {% endif %}
+    <span class="kullanici">{{ user.get_full_name|default:user.username }}</span>
     <form method="post" action="{% url 'logout' %}">
       {% csrf_token %}
       <button type="submit" class="cikis">Çıkış</button>

@@ -179,3 +179,26 @@ class YevmiyeSatir(TemelModel):
 
     def __str__(self):
         return f"{self.fis} {self.hesap_id} B={self.borc} A={self.alacak}"
+
+
+class Profil(TemelModel):
+    """Kullanıcıya ek alanlar (Django User'da olmayan): telefon + yönetici işareti.
+
+    TC (kullanıcı adı), isim/soyisim (first/last name), e-posta Django User'dadır;
+    burada yalnızca ek alanlar tutulur. Aktif/pasif = User.is_active.
+    """
+
+    kullanici = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="profil", verbose_name="kullanıcı",
+    )
+    telefon = models.CharField("telefon", max_length=20, blank=True)
+    yonetici = models.BooleanField("yönetici", default=False)
+
+    class Meta:
+        db_table = "profil"
+        verbose_name = "profil"
+        verbose_name_plural = "profiller"
+
+    def __str__(self):
+        return f"{self.kullanici_id} profil"

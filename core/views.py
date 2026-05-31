@@ -1,18 +1,22 @@
-"""Fiş giriş/görüntüleme ve rapor görünümleri. Hepsi giriş gerektirir (login)."""
+"""Fiş giriş/görüntüleme, rapor ve kullanıcı yönetimi görünümleri."""
 from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 
-from core.forms import FisForm, MizanFiltreForm, SatirForm
+from core.forms import (
+    FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
+)
 from core.models import YevmiyeFisi
 from core.services.raporlar import (
     bilanco, bilanco_usd, gelir_tablosu, gelir_tablosu_usd,
     mali_yil_araligi, mizan, mizan_usd,
 )
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
+from core.yetki import yonetici_gerekli
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
 
@@ -44,6 +48,7 @@ def fis_ekle(request):
                     aciklama=fform.cleaned_data.get("aciklama", ""),
                     kur_usd=fform.cleaned_data.get("kur_usd"),
                     satirlar=satirlar,
+                    kullanici=request.user,
                 )
                 messages.success(request, f"Fiş kaydedildi: {fis.yil}/{fis.fis_no}")
                 return redirect("core:fis_detay", pk=fis.pk)
@@ -69,7 +74,6 @@ def fis_detay(request, pk):
 
 
 def _tarih_araligi(request):
-    """GET'ten tarih aralığı; yoksa varsayılan mali yıl (form önceden doldurulur)."""
     form = MizanFiltreForm(request.GET or None)
     if form.is_valid():
         return form, form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
@@ -117,3 +121,42 @@ def bilanco_usd_gorunum(request):
     form, b, s = _tarih_araligi(request)
     return render(request, "core/bilanco_usd.html",
                   {"form": form, "bilanco": bilanco_usd(b, s)})
+
+
+# --- Kullanıcı yönetimi (yalnızca yönetici) --------------------------------
+@yonetici_gerekli
+def kullanici_listesi(request):
+    kullanicilar = User.objects.select_related("profil").order_by("username")
+    return render(request, "core/kullanici_listesi.html",
+                  {"kullanicilar": kullanicilar})
+
+
+@yonetici_gerekli
+def kullanici_ekle(request):
+    if request.method == "POST":
+        form = KullaniciEkleForm(request.POST)
+        if form.is_valid():
+            u = form.kaydet()
+            messages.success(
+                request, f"Kullanıcı eklendi: {u.get_full_name()} ({u.username})"
+            )
+            return redirect("core:kullanici_listesi")
+    else:
+        form = KullaniciEkleForm()
+    return render(request, "core/kullanici_form.html",
+                  {"form": form, "baslik": "Yeni Kullanıcı"})
+
+
+@yonetici_gerekli
+def kullanici_duzenle(request, pk):
+    kullanici = get_object_or_404(User, pk=pk)
+    if request.method == "POST":
+        form = KullaniciDuzenleForm(request.POST, kullanici=kullanici)
+        if form.is_valid():
+            form.kaydet()
+            messages.success(request, "Kullanıcı güncellendi.")
+            return redirect("core:kullanici_listesi")
+    else:
+        form = KullaniciDuzenleForm(kullanici=kullanici)
+    return render(request, "core/kullanici_form.html",
+                  {"form": form, "baslik": "Kullanıcı Düzenle", "duzenlenen": kullanici})

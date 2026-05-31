@@ -1,0 +1,28 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">{{ baslik }}</h1>
+
+{% if duzenlenen %}
+  <p class="yardim">TC Kimlik No: <b>{{ duzenlenen.username }}</b> (değiştirilemez)</p>
+{% endif %}
+
+{% if form.non_field_errors %}
+  <div class="uyari">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>
+{% endif %}
+
+<form method="post" style="max-width:480px">
+  {% csrf_token %}
+  {% for field in form %}
+    <div class="alan {% if field.field.widget.input_type == 'checkbox' %}onay-alan{% endif %}">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+    </div>
+  {% endfor %}
+  <p class="yardim">Şifre kuralı: en az 8 karakter; en az 1 küçük harf, 1 büyük harf, 1 rakam, 1 sembol.</p>
+  <button type="submit" class="birincil">Kaydet</button>
+  <a href="{% url 'core:kullanici_listesi' %}" style="margin-left:1rem">Vazgeç</a>
+</form>
+{% endblock %}

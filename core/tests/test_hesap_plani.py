@@ -4,6 +4,9 @@ from django.test import TestCase
 
 from core.models import HesapPlani
 
+# 81 TDHP hesabı + sonradan eklenen 250 Arazi ve Arsalar = 82.
+TOPLAM_HESAP = 82
+
 
 class SeedHesapPlaniTest(TestCase):
     @classmethod
@@ -11,7 +14,7 @@ class SeedHesapPlaniTest(TestCase):
         call_command("seed_hesap_plani")
 
     def test_toplam_sayisi(self):
-        self.assertEqual(HesapPlani.objects.count(), 81)
+        self.assertEqual(HesapPlani.objects.count(), TOPLAM_HESAP)
 
     def test_her_grup_dolu(self):
         for grup in HesapPlani.RaporGrubu.values:
@@ -56,4 +59,4 @@ class SeedHesapPlaniTest(TestCase):
 
     def test_idempotent(self):
         call_command("seed_hesap_plani")
-        self.assertEqual(HesapPlani.objects.count(), 81)
+        self.assertEqual(HesapPlani.objects.count(), TOPLAM_HESAP)
