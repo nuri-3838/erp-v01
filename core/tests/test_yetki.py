@@ -63,7 +63,7 @@ class EkranYetkiTest(TestCase):
     def test_yonetici_menude_hepsi(self):
         self.client.force_login(self.yonetici)
         r = self.client.get(reverse("core:fis_ekle"))
-        for ad in ["Fiş Gir", "Mizan", "Bilanço", "Gelir Tablosu",
+        for ad in ["Yevmiye Fişleri", "Mizan", "Bilanço", "Gelir Tablosu",
                    "Bilanço (USD)", "Kullanıcılar", "Kullanıcı Yetkileri"]:
             with self.subTest(metin=ad):
                 self.assertContains(r, ad)

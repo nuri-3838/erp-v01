@@ -1,9 +1,13 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
-{% block baslik %}Fiş Listesi · ERP v0.1{% endblock %}
+{% block baslik %}Yevmiye Fişleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yevmiye Fişleri{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Fiş Listesi</h1>
+<div class="sayfa-ust">
+  <h1 class="ust-baslik">Yevmiye Fişleri</h1>
+  <a class="dugme" href="{% url 'core:fis_ekle' %}">+ Yeni Fiş</a>
+</div>
 
 <form method="get" class="alan">
   <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
@@ -49,6 +53,4 @@
   </tbody>
 </table>
 </div>
-
-<p><a class="dugme" href="{% url 'core:fis_ekle' %}">+ Yeni fiş gir</a></p>
 {% endblock %}

@@ -56,7 +56,7 @@ def _satir_girdileri(formset):
     return satirlar
 
 
-@ekran_gerekli("fis_ekle")
+@ekran_gerekli_herhangi("fis_listesi", "fis_ekle")
 def fis_ekle(request):
     if request.method == "POST":
         fform = FisForm(request.POST)

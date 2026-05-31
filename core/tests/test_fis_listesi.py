@@ -164,9 +164,9 @@ class FisListesiYetkiTest(TestCase):
     def test_menude_yetkisize_gizli(self):
         self.client.force_login(self.kisitli)
         r = self.client.get(reverse("core:mizan"))
-        self.assertNotContains(r, "Fiş Listesi")
+        self.assertNotContains(r, "Yevmiye Fişleri")
 
     def test_menude_yetkiliye_gorunur(self):
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:fis_listesi"))
-        self.assertContains(r, "Fiş Listesi")
+        self.assertContains(r, "Yevmiye Fişleri")

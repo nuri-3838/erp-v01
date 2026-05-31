@@ -23,8 +23,7 @@ class Modul:
 
 MODULLER = (
     Modul("MUHASEBE", "Muhasebe", (
-        Ekran("fis_ekle", "Fiş Gir", "core:fis_ekle"),
-        Ekran("fis_listesi", "Fiş Listesi", "core:fis_listesi"),
+        Ekran("fis_listesi", "Yevmiye Fişleri", "core:fis_listesi"),
         Ekran("mizan", "Mizan", "core:mizan"),
         Ekran("bilanco", "Bilanço", "core:bilanco"),
         Ekran("gelir_tablosu", "Gelir Tablosu", "core:gelir_tablosu"),
