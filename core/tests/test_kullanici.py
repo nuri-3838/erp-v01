@@ -1,11 +1,11 @@
-"""Kullanıcı yönetimi testleri (Adım 2) — TC, şifre kuralı, yönetici yetkisi, isim."""
+"""Kullanıcı yönetimi testleri (Adım 2) — TC, telefon, şifre, yönetici, isim."""
 from django.contrib.auth import password_validation
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from core.dogrulama import tc_gecerli
+from core.dogrulama import tc_gecerli, telefon_dogrula, telefon_kanonik
 from core.models import Profil
 
 GECERLI_TC = "10000000146"   # standart algoritmaya uyan geçerli örnek
@@ -23,6 +23,22 @@ class TcDogrulamaTest(SimpleTestCase):
                 self.assertFalse(tc_gecerli(tc))
 
 
+class TelefonTest(SimpleTestCase):
+    def test_gecerli_formatlar_kanonik(self):
+        # +90'lı, 0'lı, sade ve ayraçlı biçimler -> aynı kanonik forma iner
+        for giris in ["+905327024005", "905327024005", "05327024005",
+                      "5327024005", "+90 532 702 40 05", "(0532) 702-40-05"]:
+            with self.subTest(giris=giris):
+                telefon_dogrula(giris)  # hata yükseltmemeli
+                self.assertEqual(telefon_kanonik(giris), "05327024005")
+
+    def test_gecersizler(self):
+        for giris in ["123", "12345678901234", "abc", ""]:
+            with self.subTest(giris=giris):
+                with self.assertRaises(ValidationError):
+                    telefon_dogrula(giris)
+
+
 class SifreKuraliTest(SimpleTestCase):
     def test_zayif_reddedilir(self):
         for s in ["abc", "abcdefgh", "ABCDEFGH", "abcd1234", "Abcd1234"]:
@@ -31,7 +47,7 @@ class SifreKuraliTest(SimpleTestCase):
                     password_validation.validate_password(s)
 
     def test_guclu_gecer(self):
-        password_validation.validate_password(GUCLU_SIFRE)  # hata yükseltmemeli
+        password_validation.validate_password(GUCLU_SIFRE)
 
 
 class KullaniciYonetimTest(TestCase):
@@ -68,18 +84,26 @@ class KullaniciYonetimTest(TestCase):
         r = self.client.post(reverse("core:kullanici_ekle"), self._veri())
         self.assertEqual(r.status_code, 302)
         u = User.objects.get(username=GECERLI_TC)
-        self.assertEqual(u.first_name, "NURİ")     # TR büyük harf (i->İ)
+        self.assertEqual(u.first_name, "NURİ")
         self.assertEqual(u.last_name, "ÖZER")
-        self.assertEqual(u.email, "nuri@x.com")    # küçük
+        self.assertEqual(u.email, "nuri@x.com")
         self.assertTrue(u.check_password(GUCLU_SIFRE))
-        self.assertEqual(u.profil.telefon, "05321234567")  # normalize
+        self.assertEqual(u.profil.telefon, "05321234567")
         self.assertTrue(u.profil.yonetici)
+
+    def test_uluslararasi_telefon_kabul(self):
+        self.client.force_login(self.yonetici)
+        r = self.client.post(reverse("core:kullanici_ekle"),
+                             self._veri(telefon="+90 532 702 40 05"))
+        self.assertEqual(r.status_code, 302)
+        u = User.objects.get(username=GECERLI_TC)
+        self.assertEqual(u.profil.telefon, "05327024005")  # kanonik
 
     def test_zayif_sifre_reddedilir_turkce(self):
         self.client.force_login(self.yonetici)
         r = self.client.post(reverse("core:kullanici_ekle"), self._veri(sifre="abc"))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "içermeli")  # Türkçe şifre kuralı mesajı
+        self.assertContains(r, "içermeli")
         self.assertFalse(User.objects.filter(username=GECERLI_TC).exists())
 
     def test_gecersiz_tc_reddedilir(self):
@@ -96,7 +120,6 @@ class KullaniciYonetimTest(TestCase):
         r = self.client.post(reverse("core:kullanici_duzenle", args=[u.pk]), {
             "isim": "nuri", "soyisim": "özer", "email": "nuri@x.com",
             "telefon": "05321234567", "yonetici": "on", "sifre": "",
-            # "aktif" gönderilmiyor -> pasif
         })
         self.assertEqual(r.status_code, 302)
         u.refresh_from_db()

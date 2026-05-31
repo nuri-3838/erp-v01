@@ -12,7 +12,9 @@ from django.contrib.auth import password_validation
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_normalize
+from core.dogrulama import (
+    tc_dogrula, telefon_dogrula, telefon_kanonik,
+)
 from core.metin import buyuk_harf_tr
 from core.models import HesapPlani, Profil, YevmiyeSatir
 from core.sayi import SayiHatasi, format_tr, parse_tr
@@ -124,16 +126,35 @@ class MizanFiltreForm(forms.Form):
 
 
 # ---------------------------------------------------------------------------
-# Kullanıcı yönetimi formları (Adım 2)
+# Kullanıcı yönetimi formları (Adım 2) — tarayıcı otomatik tamamlama KAPALI
 # ---------------------------------------------------------------------------
+_KAPALI = {"autocomplete": "off"}
+
+
 class KullaniciEkleForm(forms.Form):
-    tc = forms.CharField(label="TC Kimlik No", max_length=11, validators=[tc_dogrula])
-    isim = forms.CharField(label="İsim", max_length=150)
-    soyisim = forms.CharField(label="Soyisim", max_length=150)
-    email = forms.EmailField(label="E-posta", required=False)
-    telefon = forms.CharField(label="Telefon", validators=[telefon_dogrula])
+    tc = forms.CharField(
+        label="TC Kimlik No", max_length=11, validators=[tc_dogrula],
+        widget=forms.TextInput(attrs={**_KAPALI, "inputmode": "numeric"}),
+    )
+    isim = forms.CharField(
+        label="İsim", max_length=150, widget=forms.TextInput(attrs=_KAPALI),
+    )
+    soyisim = forms.CharField(
+        label="Soyisim", max_length=150, widget=forms.TextInput(attrs=_KAPALI),
+    )
+    email = forms.EmailField(
+        label="E-posta", required=False, widget=forms.EmailInput(attrs=_KAPALI),
+    )
+    telefon = forms.CharField(
+        label="Telefon", validators=[telefon_dogrula],
+        widget=forms.TextInput(attrs={**_KAPALI, "inputmode": "tel",
+                                      "placeholder": "+905327024005 / 05327024005"}),
+    )
     yonetici = forms.BooleanField(label="Yönetici", required=False)
-    sifre = forms.CharField(label="Şifre", widget=forms.PasswordInput)
+    sifre = forms.CharField(
+        label="Şifre",
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
+    )
 
     def clean_tc(self):
         tc = self.cleaned_data["tc"].strip()
@@ -158,22 +179,31 @@ class KullaniciEkleForm(forms.Form):
         u.set_password(cd["sifre"])
         u.save()
         Profil.objects.create(
-            kullanici=u, telefon=telefon_normalize(cd["telefon"]),
+            kullanici=u, telefon=telefon_kanonik(cd["telefon"]),
             yonetici=cd["yonetici"],
         )
         return u
 
 
 class KullaniciDuzenleForm(forms.Form):
-    isim = forms.CharField(label="İsim", max_length=150)
-    soyisim = forms.CharField(label="Soyisim", max_length=150)
-    email = forms.EmailField(label="E-posta", required=False)
-    telefon = forms.CharField(label="Telefon", validators=[telefon_dogrula])
+    isim = forms.CharField(
+        label="İsim", max_length=150, widget=forms.TextInput(attrs=_KAPALI),
+    )
+    soyisim = forms.CharField(
+        label="Soyisim", max_length=150, widget=forms.TextInput(attrs=_KAPALI),
+    )
+    email = forms.EmailField(
+        label="E-posta", required=False, widget=forms.EmailInput(attrs=_KAPALI),
+    )
+    telefon = forms.CharField(
+        label="Telefon", validators=[telefon_dogrula],
+        widget=forms.TextInput(attrs={**_KAPALI, "inputmode": "tel"}),
+    )
     yonetici = forms.BooleanField(label="Yönetici", required=False)
     aktif = forms.BooleanField(label="Aktif", required=False)
     sifre = forms.CharField(
-        label="Yeni şifre (boş = değiştirme)", widget=forms.PasswordInput,
-        required=False,
+        label="Yeni şifre (boş = değiştirme)", required=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
     )
 
     def __init__(self, *args, kullanici=None, **kwargs):
@@ -210,7 +240,7 @@ class KullaniciDuzenleForm(forms.Form):
             u.set_password(cd["sifre"])
         u.save()
         profil, _ = Profil.objects.get_or_create(kullanici=u)
-        profil.telefon = telefon_normalize(cd["telefon"])
+        profil.telefon = telefon_kanonik(cd["telefon"])
         profil.yonetici = cd["yonetici"]
         profil.save()
         return u

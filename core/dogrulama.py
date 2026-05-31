@@ -34,17 +34,32 @@ def tc_dogrula(deger):
 
 # --- Telefon --------------------------------------------------------------
 def telefon_normalize(deger) -> str:
+    """Yalnızca rakamları bırakır (boşluk/parantez/tire/+ temizlenir)."""
     return re.sub(r"\D", "", str(deger or ""))
 
 
+def telefon_kanonik(deger):
+    """Kabul edilen biçimleri tek kanonik biçime indirger: ``0XXXXXXXXXX`` (11 hane).
+
+    Kabul: +905327024005 / 905327024005 / 05327024005 / 5327024005
+    (boşluk, parantez, tire önce temizlenir). Geçersizse None döner.
+    """
+    r = telefon_normalize(deger)
+    if len(r) == 12 and r.startswith("90"):   # +90... (uluslararası)
+        r = r[2:]
+    elif len(r) == 11 and r.startswith("0"):  # 0...
+        r = r[1:]
+    if len(r) == 10:                          # çekirdek 10 hane
+        return "0" + r
+    return None
+
+
 def telefon_dogrula(deger):
-    rakam = telefon_normalize(deger)
-    if len(rakam) not in (10, 11):
+    if telefon_kanonik(deger) is None:
         raise ValidationError(
-            "Geçersiz telefon: 10 veya 11 haneli olmalı (örn. 0532 123 45 67)."
+            "Geçersiz telefon. Örnek geçerli biçimler: +905327024005, "
+            "05327024005 veya 5327024005 (boşluk/parantez/tire serbest)."
         )
-    if len(rakam) == 11 and rakam[0] != "0":
-        raise ValidationError("11 haneli telefon 0 ile başlamalı.")
 
 
 # --- Şifre karmaşıklığı (Django password validator) -----------------------
