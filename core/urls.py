@@ -13,8 +13,9 @@ urlpatterns = [
     path("mizan-usd/", views.mizan_usd_gorunum, name="mizan_usd"),
     path("bilanco-usd/", views.bilanco_usd_gorunum, name="bilanco_usd"),
     path("gelir-tablosu-usd/", views.gelir_tablosu_usd_gorunum, name="gelir_tablosu_usd"),
-    # Kullanıcı yönetimi (yalnızca yönetici)
+    # Ayarlar modülü (yalnızca yönetici)
     path("kullanicilar/", views.kullanici_listesi, name="kullanici_listesi"),
     path("kullanicilar/ekle/", views.kullanici_ekle, name="kullanici_ekle"),
     path("kullanicilar/<int:pk>/duzenle/", views.kullanici_duzenle, name="kullanici_duzenle"),
+    path("ayarlar/kullanici-yetkileri/", views.kullanici_yetkileri, name="kullanici_yetkileri"),
 ]

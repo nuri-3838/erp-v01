@@ -1,4 +1,4 @@
-"""Kullanıcı yönetimi testleri (Adım 2) — TC, telefon, şifre, yönetici, isim."""
+"""Kullanıcı yönetimi + modül/menü testleri (Adım 2-2.5)."""
 from django.contrib.auth import password_validation
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -8,7 +8,7 @@ from django.urls import reverse
 from core.dogrulama import tc_gecerli, telefon_dogrula, telefon_kanonik
 from core.models import Profil
 
-GECERLI_TC = "10000000146"   # standart algoritmaya uyan geçerli örnek
+GECERLI_TC = "10000000146"
 GUCLU_SIFRE = "Abc12345!"
 
 
@@ -25,11 +25,10 @@ class TcDogrulamaTest(SimpleTestCase):
 
 class TelefonTest(SimpleTestCase):
     def test_gecerli_formatlar_kanonik_plus90(self):
-        # Tüm biçimler tek kanonik +90'lı forma iner.
         for giris in ["+905327024005", "905327024005", "05327024005",
                       "5327024005", "+90 532 702 40 05", "(0532) 702-40-05"]:
             with self.subTest(giris=giris):
-                telefon_dogrula(giris)  # hata yükseltmemeli
+                telefon_dogrula(giris)
                 self.assertEqual(telefon_kanonik(giris), "+905327024005")
 
     def test_gecersizler(self):
@@ -74,10 +73,25 @@ class KullaniciYonetimTest(TestCase):
         self.client.force_login(self.normal)
         self.assertEqual(self.client.get(reverse("core:kullanici_listesi")).status_code, 403)
         self.assertEqual(self.client.get(reverse("core:kullanici_ekle")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("core:kullanici_yetkileri")).status_code, 403)
 
     def test_yonetici_girebilir(self):
         self.client.force_login(self.yonetici)
         self.assertEqual(self.client.get(reverse("core:kullanici_listesi")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("core:kullanici_yetkileri")).status_code, 200)
+
+    def test_ayarlar_modulu_yalnizca_yoneticiye_menude(self):
+        # Yönetici: Ayarlar modülü + ekranları menüde
+        self.client.force_login(self.yonetici)
+        r = self.client.get(reverse("core:fis_ekle"))
+        self.assertContains(r, "Ayarlar")
+        self.assertContains(r, "Kullanıcılar")
+        self.assertContains(r, "Kullanıcı Yetkileri")
+        # Normal kullanıcı: Ayarlar modülü menüde YOK
+        self.client.force_login(self.normal)
+        r = self.client.get(reverse("core:fis_ekle"))
+        self.assertNotContains(r, "Kullanıcılar")
+        self.assertNotContains(r, "Kullanıcı Yetkileri")
 
     def test_kullanici_olusturma_isim_buyuk_email_kucuk(self):
         self.client.force_login(self.yonetici)
@@ -88,7 +102,7 @@ class KullaniciYonetimTest(TestCase):
         self.assertEqual(u.last_name, "ÖZER")
         self.assertEqual(u.email, "nuri@x.com")
         self.assertTrue(u.check_password(GUCLU_SIFRE))
-        self.assertEqual(u.profil.telefon, "+905321234567")  # +90'lı kanonik
+        self.assertEqual(u.profil.telefon, "+905321234567")
         self.assertTrue(u.profil.yonetici)
 
     def test_uluslararasi_telefon_kabul(self):

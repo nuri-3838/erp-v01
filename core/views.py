@@ -123,7 +123,7 @@ def bilanco_usd_gorunum(request):
                   {"form": form, "bilanco": bilanco_usd(b, s)})
 
 
-# --- Kullanıcı yönetimi (yalnızca yönetici) --------------------------------
+# --- Ayarlar modülü (yalnızca yönetici) ------------------------------------
 @yonetici_gerekli
 def kullanici_listesi(request):
     kullanicilar = User.objects.select_related("profil").order_by("username")
@@ -160,3 +160,9 @@ def kullanici_duzenle(request, pk):
         form = KullaniciDuzenleForm(kullanici=kullanici)
     return render(request, "core/kullanici_form.html",
                   {"form": form, "baslik": "Kullanıcı Düzenle", "duzenlenen": kullanici})
+
+
+@yonetici_gerekli
+def kullanici_yetkileri(request):
+    # İskelet — içerik Adım 3'te (kullanıcı bazlı ekran yetkisi).
+    return render(request, "core/kullanici_yetkileri.html", {})
