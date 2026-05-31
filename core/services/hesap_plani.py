@@ -58,6 +58,34 @@ def alt_kod_oner(ust: HesapPlani) -> str:
     return f"{ust.hesap_kodu}.{str(sonraki).zfill(genislik)}"
 
 
+def sonraki_alt_kod(ust_kodu: str, *, genislik=None) -> str:
+    """Üst hesabın altında SIRADAKİ BOŞ alt kodu üretir (stok/cari altyapısı).
+
+    En küçük kullanılmamış sıra numarasını bulur (boşlukları doldurur); çakışma
+    olmaması için SİLİNMİŞ (soft-delete) hesaplar dahil tüm mevcut kodlarla
+    karşılaştırır. L2 -> 2 hane, L3 -> 4 hane (genislik ile değiştirilebilir).
+    """
+    ust = HesapPlani.objects.filter(hesap_kodu=ust_kodu).first()
+    if ust is None:
+        raise HesapHatasi(f"Üst hesap bulunamadı: {ust_kodu}")
+    cocuk_nokta = ust_kodu.count(".") + 1
+    if cocuk_nokta > 2:
+        raise HesapHatasi("En fazla 3 seviye; bu hesabın altına alt hesap açılamaz.")
+    if genislik is None:
+        genislik = 2 if cocuk_nokta == 1 else 4
+    on = ust_kodu + "."
+    mevcut = set()
+    for k in HesapPlani.objects.filter(hesap_kodu__startswith=on).values_list("hesap_kodu", flat=True):
+        if k.count(".") == cocuk_nokta:        # yalnız doğrudan çocuklar
+            son = k.split(".")[-1]
+            if son.isdigit():
+                mevcut.add(int(son))
+    n = 1
+    while n in mevcut:
+        n += 1
+    return f"{ust_kodu}.{str(n).zfill(genislik)}"
+
+
 def _kod_dogrula(kod: str, ust):
     if not kod:
         raise HesapHatasi("Hesap kodu boş olamaz.")

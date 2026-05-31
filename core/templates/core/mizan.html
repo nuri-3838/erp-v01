@@ -1,24 +1,41 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
 {% block baslik %}Mizan · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Mizan{% endblock %}
 
 {% block content %}
 <h1 class="ust-baslik">Mizan</h1>
 
-<form method="get" class="alan">
-  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
-  {{ form.baslangic }}
-  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
-  {{ form.bitis }}
+<form method="get" class="kur-cek-alanlar">
+  <input type="hidden" name="gorunum" value="{% if detay %}detay{% else %}ozet{% endif %}">
+  <div class="alan">
+    <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+    {{ form.baslangic }}
+  </div>
+  <div class="alan">
+    <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+    {{ form.bitis }}
+  </div>
   <button type="submit">Göster</button>
-  {% if form.non_field_errors %}
-    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
-  {% endif %}
 </form>
+{% if form.non_field_errors %}
+  <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+{% endif %}
+
+{% with bas=mizan.baslangic|date:'Y-m-d' bit=mizan.bitis|date:'Y-m-d' %}
+<nav class="tablar">
+  <a href="?gorunum=ozet&amp;baslangic={{ bas }}&amp;bitis={{ bit }}"
+     class="{% if not detay %}aktif{% endif %}">Özet</a>
+  <a href="?gorunum=detay&amp;baslangic={{ bas }}&amp;bitis={{ bit }}"
+     class="{% if detay %}aktif{% endif %}">Detay (muavin)</a>
+</nav>
+{% endwith %}
 
 <p class="yardim">Dönem: {{ mizan.baslangic|date:"d.m.Y" }} – {{ mizan.bitis|date:"d.m.Y" }}
   · İptal edilen fişler hariç · Bakiyeler saklanmaz, yevmiyeden hesaplanır.
-  · Hesap koduna tıklayınca hesap ekstresi açılır.</p>
+  {% if detay %}· Ana hesap satırı, altındaki hesapların toplamıdır (rolled).
+  {% else %}· Özet: alt hesaplar ana hesapta toplanır. Detay için sekmeyi değiştirin.{% endif %}
+  · Hesap koduna tıklayınca ekstre açılır.</p>
 
 <div class="toplamlar">
   {% if mizan.hareket_denk %}
@@ -41,8 +58,8 @@
   </thead>
   <tbody>
     {% for s in mizan.satirlar %}
-      <tr>
-        <td>
+      <tr{% if detay and s.seviye == 0 %} class="ara"{% endif %}>
+        <td class="sev-{{ s.seviye }}">
           <a href="{% url 'core:hesap_ekstresi' s.hesap_kodu %}?baslangic={{ mizan.baslangic|date:'Y-m-d' }}&bitis={{ mizan.bitis|date:'Y-m-d' }}">{{ s.hesap_kodu }}</a>
         </td>
         <td>{{ s.hesap_adi }}</td>

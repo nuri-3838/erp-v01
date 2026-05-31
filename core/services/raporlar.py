@@ -61,6 +61,59 @@ def _satirlar(baslangic: datetime.date, bitis: datetime.date):
     )
 
 
+def _ana_kod(kod: str) -> str:
+    """Hesabın ANA (üst) hesabı = ilk segment (320.10.0001 -> 320)."""
+    return kod.split(".")[0]
+
+
+def _ana_topla(har: list) -> list:
+    """Per-hesap hareketleri ANA hesaba toplar (roll-up). grup/kalem ana hesaptan.
+    Alt hesapsız planda her hesap kendi anasıdır -> sonuç değişmez."""
+    grup = {}
+    for h in har:
+        ak = _ana_kod(h["kod"])
+        d = grup.get(ak)
+        if d is None:
+            d = grup[ak] = dict(borc=SIFIR, alacak=SIFIR)
+        d["borc"] += h["borc"]
+        d["alacak"] += h["alacak"]
+    metalar = {x.hesap_kodu: x for x in
+               HesapPlani.objects.filter(hesap_kodu__in=list(grup))}
+    sonuc = []
+    for ak in sorted(grup):
+        m = metalar.get(ak)
+        d = grup[ak]
+        sonuc.append(dict(
+            kod=ak, ad=(m.hesap_adi if m else ak),
+            grup=(m.rapor_grubu if m else ""), kalem=(m.rapor_kalemi if m else ""),
+            borc=d["borc"], alacak=d["alacak"]))
+    return sonuc
+
+
+def _mizan_detay_satirlar(har: list) -> list:
+    """Muavin: her ana hesap (rolled, seviye 0) + altındaki hesaplar (seviye>0)."""
+    har_map = {h["kod"]: h for h in har}
+    gruplar = {}
+    for h in har:
+        gruplar.setdefault(_ana_kod(h["kod"]), []).append(h["kod"])
+    metalar = {x.hesap_kodu: x for x in
+               HesapPlani.objects.filter(hesap_kodu__in=list(gruplar))}
+    satirlar = []
+    for ak in sorted(gruplar):
+        kodlar = gruplar[ak]
+        b = sum((har_map[k]["borc"] for k in kodlar), SIFIR)
+        a = sum((har_map[k]["alacak"] for k in kodlar), SIFIR)
+        m = metalar.get(ak)
+        satirlar.append(MizanSatir(ak, m.hesap_adi if m else ak, b, a, seviye=0))
+        for k in sorted(kodlar):
+            if k == ak:
+                continue   # ana hesabın doğrudan hareketi başlıkta toplandı
+            h = har_map[k]
+            satirlar.append(MizanSatir(k, h["ad"], h["borc"], h["alacak"],
+                                       seviye=k.count(".")))
+    return satirlar
+
+
 # ---------------------------------------------------------------------------
 # MİZAN (TL) — 5a
 # ---------------------------------------------------------------------------
@@ -70,6 +123,7 @@ class MizanSatir:
     hesap_adi: str
     borc: Decimal
     alacak: Decimal
+    seviye: int = 0
 
     @property
     def borc_bakiye(self) -> Decimal:
@@ -87,22 +141,28 @@ class Mizan:
     baslangic: datetime.date
     bitis: datetime.date
     satirlar: list = field(default_factory=list)
+    detay: bool = False
+
+    @property
+    def _ana(self):
+        # Toplamlar yalnız ANA (seviye 0, rolled) satırlardan -> detay’da çift sayma yok.
+        return [s for s in self.satirlar if getattr(s, "seviye", 0) == 0]
 
     @property
     def toplam_borc(self) -> Decimal:
-        return sum((s.borc for s in self.satirlar), SIFIR)
+        return sum((s.borc for s in self._ana), SIFIR)
 
     @property
     def toplam_alacak(self) -> Decimal:
-        return sum((s.alacak for s in self.satirlar), SIFIR)
+        return sum((s.alacak for s in self._ana), SIFIR)
 
     @property
     def toplam_borc_bakiye(self) -> Decimal:
-        return sum((s.borc_bakiye for s in self.satirlar), SIFIR)
+        return sum((s.borc_bakiye for s in self._ana), SIFIR)
 
     @property
     def toplam_alacak_bakiye(self) -> Decimal:
-        return sum((s.alacak_bakiye for s in self.satirlar), SIFIR)
+        return sum((s.alacak_bakiye for s in self._ana), SIFIR)
 
     @property
     def hareket_denk(self) -> bool:
@@ -113,14 +173,17 @@ class Mizan:
         return self.toplam_borc_bakiye == self.toplam_alacak_bakiye
 
 
-def mizan(baslangic=None, bitis=None) -> Mizan:
-    """Tarih aralığındaki (varsayılan: mali yıl) TL mizanı. İptal hariç."""
+def mizan(baslangic=None, bitis=None, detay=False) -> Mizan:
+    """TL mizan. detay=False -> ÖZET (ana hesaplar, alt bakiyeler toplanmış);
+    detay=True -> MUAVİN (ana + alt hiyerarşik). İkisinde de denge tutar."""
     baslangic, bitis = _varsayilan(baslangic, bitis)
-    satirlar = [
-        MizanSatir(h["kod"], h["ad"], h["borc"], h["alacak"])
-        for h in _hareketler(baslangic, bitis)
-    ]
-    return Mizan(baslangic=baslangic, bitis=bitis, satirlar=satirlar)
+    har = _hareketler(baslangic, bitis)
+    if detay:
+        satirlar = _mizan_detay_satirlar(har)
+    else:
+        satirlar = [MizanSatir(o["kod"], o["ad"], o["borc"], o["alacak"])
+                    for o in _ana_topla(har)]
+    return Mizan(baslangic=baslangic, bitis=bitis, satirlar=satirlar, detay=detay)
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +344,8 @@ def bilanco(baslangic=None, bitis=None) -> Bilanco:
     """Canlı bilanço (TL). Aktif = Pasif; dönem sonucu Özkaynaklar'a eklenir."""
     baslangic, bitis = _varsayilan(baslangic, bitis)
     satirlar = [
-        (h["kod"], h["ad"], h["grup"], h["kalem"], h["borc"] - h["alacak"])
-        for h in _hareketler(baslangic, bitis)
+        (o["kod"], o["ad"], o["grup"], o["kalem"], o["borc"] - o["alacak"])
+        for o in _ana_topla(_hareketler(baslangic, bitis))
     ]
     aktif, pasif, donem = _bilanco_kur(satirlar)
     return Bilanco(baslangic, bitis, aktif, pasif, donem)
@@ -354,7 +417,7 @@ class GelirTablosu:
 def gelir_tablosu(baslangic=None, bitis=None) -> GelirTablosu:
     """Canlı gelir tablosu (TL). Yalnızca 6'lı; 7'liler GİRMEZ."""
     baslangic, bitis = _varsayilan(baslangic, bitis)
-    har = {h["kod"]: h for h in _hareketler(baslangic, bitis)}
+    har = {o["kod"]: o for o in _ana_topla(_hareketler(baslangic, bitis))}
 
     def alacak_net(kodlar):
         return sum((har[k]["alacak"] - har[k]["borc"] for k in kodlar if k in har), SIFIR)
@@ -428,22 +491,19 @@ def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
     Rapor günü kuru sonucu ETKİLEMEZ (donmuş değerlerin toplamı).
     """
     baslangic, bitis = _varsayilan(baslangic, bitis)
-    acc: dict[str, dict] = {}
+    acc: dict[str, dict] = {}       # ANA hesap koduna göre (roll-up)
     haric = SIFIR
 
     for ln in _satirlar(baslangic, bitis):
         kur = ln.fis.kur_usd
         if not kur or kur <= 0:
-            haric += ln.borc          # fiş başına borç toplamı = hariç kalan TL tutar
+            haric += ln.borc
             continue
-        d = acc.get(ln.hesap_id)
+        ana = _ana_kod(ln.hesap_id)
+        d = acc.get(ana)
         if d is None:
-            d = acc[ln.hesap_id] = dict(
-                ad=ln.hesap.hesap_adi, grup=ln.hesap.rapor_grubu,
-                kalem=ln.hesap.rapor_kalemi, ub=SIFIR, ua=SIFIR,
-            )
+            d = acc[ana] = dict(ub=SIFIR, ua=SIFIR)
         if ln.islem_pb == "USD":
-            # Zaten USD işlem: orijinal USD tutarı, TL'nin olduğu tarafa.
             if ln.borc > 0:
                 d["ub"] += ln.islem_tutari
             elif ln.alacak > 0:
@@ -452,8 +512,13 @@ def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
             d["ub"] += ln.borc / kur
             d["ua"] += ln.alacak / kur
 
+    metalar = {x.hesap_kodu: x for x in
+               HesapPlani.objects.filter(hesap_kodu__in=list(acc))}
     satirlar = [
-        MizanUSDSatir(kod, v["ad"], v["grup"], v["kalem"], v["ub"], v["ua"])
+        MizanUSDSatir(kod, (metalar[kod].hesap_adi if kod in metalar else kod),
+                      (metalar[kod].rapor_grubu if kod in metalar else ""),
+                      (metalar[kod].rapor_kalemi if kod in metalar else ""),
+                      v["ub"], v["ua"])
         for kod, v in sorted(acc.items())
     ]
     return MizanUSD(baslangic, bitis, satirlar, haric)

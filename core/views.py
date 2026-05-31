@@ -340,7 +340,10 @@ def hesap_sil(request, kod):
 @ekran_gerekli("mizan")
 def mizan_gorunum(request):
     form, b, s = _tarih_araligi(request)
-    return render(request, "core/mizan.html", {"form": form, "mizan": mizan(b, s)})
+    detay = request.GET.get("gorunum") == "detay"
+    return render(request, "core/mizan.html", {
+        "form": form, "mizan": mizan(b, s, detay=detay), "detay": detay,
+    })
 
 
 @ekran_gerekli("mizan")
