@@ -39,18 +39,18 @@ def telefon_normalize(deger) -> str:
 
 
 def telefon_kanonik(deger):
-    """Kabul edilen biçimleri tek kanonik biçime indirger: ``0XXXXXXXXXX`` (11 hane).
+    """Kabul edilen biçimleri tek kanonik biçime indirger: ``+90XXXXXXXXXX``.
 
     Kabul: +905327024005 / 905327024005 / 05327024005 / 5327024005
     (boşluk, parantez, tire önce temizlenir). Geçersizse None döner.
     """
     r = telefon_normalize(deger)
-    if len(r) == 12 and r.startswith("90"):   # +90... (uluslararası)
+    if len(r) == 12 and r.startswith("90"):   # +90... / 90... (uluslararası)
         r = r[2:]
     elif len(r) == 11 and r.startswith("0"):  # 0...
         r = r[1:]
     if len(r) == 10:                          # çekirdek 10 hane
-        return "0" + r
+        return "+90" + r
     return None
 
 

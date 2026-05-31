@@ -12,9 +12,7 @@ from django.contrib.auth import password_validation
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from core.dogrulama import (
-    tc_dogrula, telefon_dogrula, telefon_kanonik,
-)
+from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import HesapPlani, Profil, YevmiyeSatir
 from core.sayi import SayiHatasi, format_tr, parse_tr
@@ -147,8 +145,7 @@ class KullaniciEkleForm(forms.Form):
     )
     telefon = forms.CharField(
         label="Telefon", validators=[telefon_dogrula],
-        widget=forms.TextInput(attrs={**_KAPALI, "inputmode": "tel",
-                                      "placeholder": "+905327024005 / 05327024005"}),
+        widget=forms.TextInput(attrs={**_KAPALI, "inputmode": "tel"}),
     )
     yonetici = forms.BooleanField(label="Yönetici", required=False)
     sifre = forms.CharField(
