@@ -165,9 +165,11 @@ class KurlarEkranYetkiTest(TestCase):
         self.assertEqual(self.client.get(reverse("core:kurlar")).status_code, 403)
 
     def test_yetkili_200_ve_tablar(self):
-        Kur.objects.create(tarih=D(2024, 1, 9), usd_alis=Decimal("30.10"))
+        Kur.objects.create(tarih=D(2024, 1, 9), usd_alis=Decimal("45.6312"))
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:kurlar"))
         self.assertEqual(r.status_code, 200)
         for t in ["Kurlar", "USD", "EUR", "GBP", "MB Alış", "MB Efektif Satış"]:
             self.assertContains(r, t)
+        self.assertContains(r, "45,6312")          # 4 ondalık gösterim
+        self.assertNotContains(r, "45,631200")     # 6 ondalık DEĞİL

@@ -17,11 +17,11 @@ def tr_para(value):
 
 
 @register.filter
-def tr_kur(value):
-    """Kur gösterimi: 6 ondalık, TR (30,123456)."""
+def tr_kur(value, basamak=6):
+    """Kur gösterimi: varsayılan 6 ondalık; ``:4`` ile 4 ondalık (TCMB kurları)."""
     if value is None or value == "":
         return ""
-    return format_tr(value if isinstance(value, Decimal) else Decimal(str(value)), 6)
+    return format_tr(value if isinstance(value, Decimal) else Decimal(str(value)), basamak)
 
 
 @register.filter

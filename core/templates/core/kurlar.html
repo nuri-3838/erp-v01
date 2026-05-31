@@ -53,20 +53,20 @@
       <tr>
         <td>{{ k.tarih|date:"d.m.Y" }}</td>
         {% if pb == 'EUR' %}
-          <td class="sag">{{ k.eur_alis|tr_kur }}</td>
-          <td class="sag">{{ k.eur_satis|tr_kur }}</td>
-          <td class="sag">{{ k.eur_efektif_alis|tr_kur }}</td>
-          <td class="sag">{{ k.eur_efektif_satis|tr_kur }}</td>
+          <td class="sag">{{ k.eur_alis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.eur_satis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.eur_efektif_alis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.eur_efektif_satis|tr_kur:4 }}</td>
         {% elif pb == 'GBP' %}
-          <td class="sag">{{ k.gbp_alis|tr_kur }}</td>
-          <td class="sag">{{ k.gbp_satis|tr_kur }}</td>
-          <td class="sag">{{ k.gbp_efektif_alis|tr_kur }}</td>
-          <td class="sag">{{ k.gbp_efektif_satis|tr_kur }}</td>
+          <td class="sag">{{ k.gbp_alis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.gbp_satis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.gbp_efektif_alis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.gbp_efektif_satis|tr_kur:4 }}</td>
         {% else %}
-          <td class="sag">{{ k.usd_alis|tr_kur }}</td>
-          <td class="sag">{{ k.usd_satis|tr_kur }}</td>
-          <td class="sag">{{ k.usd_efektif_alis|tr_kur }}</td>
-          <td class="sag">{{ k.usd_efektif_satis|tr_kur }}</td>
+          <td class="sag">{{ k.usd_alis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.usd_satis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.usd_efektif_alis|tr_kur:4 }}</td>
+          <td class="sag">{{ k.usd_efektif_satis|tr_kur:4 }}</td>
         {% endif %}
       </tr>
     {% empty %}
