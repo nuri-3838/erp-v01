@@ -1,4 +1,5 @@
 """Fiş giriş/liste/düzenleme/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
+import datetime
 from decimal import Decimal
 
 from django.contrib import messages
@@ -8,6 +9,7 @@ from django.db.models import Sum
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from core.forms import (
     FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
@@ -171,7 +173,12 @@ def kurlar(request):
     pb = (request.GET.get("pb") or "USD").upper()
     if pb not in ("USD", "EUR", "GBP"):
         pb = "USD"
-    form = MizanFiltreForm(request.POST or None)
+    bugun = timezone.localdate()
+    # Çekme formu (POST) — varsayılan son 7 gün
+    form = MizanFiltreForm(
+        request.POST or None,
+        initial={"baslangic": bugun - datetime.timedelta(days=7), "bitis": bugun},
+    )
     if request.method == "POST" and form.is_valid():
         try:
             ozet = kurlari_guncelle(
@@ -188,9 +195,26 @@ def kurlar(request):
                 f"{ozet['atlanan']} gün yayın yok (hafta sonu/tatil — önceki iş günü kuru yazıldı).",
             )
             return redirect(f"{reverse('core:kurlar')}?pb={pb}")
-    kayitlar = Kur.objects.filter(silindi=False).order_by("-tarih")
-    return render(request, "core/kurlar.html",
-                  {"form": form, "pb": pb, "kayitlar": kayitlar})
+
+    # Liste filtresi (GET) — varsayılan son 30 gün
+    def _tarih(ad, varsayilan):
+        ham = request.GET.get(ad)
+        if ham:
+            try:
+                return datetime.date.fromisoformat(ham)
+            except ValueError:
+                pass
+        return varsayilan
+    liste_bit = _tarih("lbit", bugun)
+    liste_bas = _tarih("lbas", bugun - datetime.timedelta(days=30))
+    kayitlar = (
+        Kur.objects.filter(silindi=False, tarih__gte=liste_bas, tarih__lte=liste_bit)
+        .order_by("-tarih")
+    )
+    return render(request, "core/kurlar.html", {
+        "form": form, "pb": pb, "kayitlar": kayitlar,
+        "liste_bas": liste_bas, "liste_bit": liste_bit,
+    })
 
 
 @ekran_gerekli("mizan")

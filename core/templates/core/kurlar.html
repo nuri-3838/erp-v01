@@ -31,10 +31,27 @@
     fazla ~2 ay; büyük aralıkları bölün).</p>
 </form>
 
+<!-- Liste tarih filtresi (varsayılan son 30 gün) -->
+<form method="get" class="kur-cek-alanlar">
+  <input type="hidden" name="pb" value="{{ pb }}">
+  <div class="alan">
+    <label for="lbas">Liste başlangıç</label>
+    <input type="date" id="lbas" name="lbas" value="{{ liste_bas|date:'Y-m-d' }}">
+  </div>
+  <div class="alan">
+    <label for="lbit">Liste bitiş</label>
+    <input type="date" id="lbit" name="lbit" value="{{ liste_bit|date:'Y-m-d' }}">
+  </div>
+  <button type="submit">Göster</button>
+</form>
+
 <nav class="tablar">
-  <a href="?pb=USD" class="{% if pb == 'USD' %}aktif{% endif %}">USD</a>
-  <a href="?pb=EUR" class="{% if pb == 'EUR' %}aktif{% endif %}">EUR</a>
-  <a href="?pb=GBP" class="{% if pb == 'GBP' %}aktif{% endif %}">GBP</a>
+  <a href="?pb=USD&amp;lbas={{ liste_bas|date:'Y-m-d' }}&amp;lbit={{ liste_bit|date:'Y-m-d' }}"
+     class="{% if pb == 'USD' %}aktif{% endif %}">USD</a>
+  <a href="?pb=EUR&amp;lbas={{ liste_bas|date:'Y-m-d' }}&amp;lbit={{ liste_bit|date:'Y-m-d' }}"
+     class="{% if pb == 'EUR' %}aktif{% endif %}">EUR</a>
+  <a href="?pb=GBP&amp;lbas={{ liste_bas|date:'Y-m-d' }}&amp;lbit={{ liste_bit|date:'Y-m-d' }}"
+     class="{% if pb == 'GBP' %}aktif{% endif %}">GBP</a>
 </nav>
 
 <div class="tablo-kapsayici genis">
@@ -70,7 +87,7 @@
         {% endif %}
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="yardim">Henüz kur yok. Yukarıdan bir tarih aralığı çekin.</td></tr>
+      <tr><td colspan="5" class="yardim">Bu aralıkta kur yok. Tarih aralığını değiştirin ya da yukarıdan TCMB'den çekin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

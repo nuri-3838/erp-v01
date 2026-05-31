@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import EkranYetki, Kur
 from core.services.tcmb import kurlari_guncelle, parse_tcmb_xml
@@ -167,9 +168,27 @@ class KurlarEkranYetkiTest(TestCase):
     def test_yetkili_200_ve_tablar(self):
         Kur.objects.create(tarih=D(2024, 1, 9), usd_alis=Decimal("45.6312"))
         self.client.force_login(self.yetkili)
-        r = self.client.get(reverse("core:kurlar"))
+        r = self.client.get(reverse("core:kurlar"),
+                             {"lbas": "2024-01-01", "lbit": "2024-01-31"})
         self.assertEqual(r.status_code, 200)
         for t in ["Kurlar", "USD", "EUR", "GBP", "MB Alış", "MB Efektif Satış"]:
             self.assertContains(r, t)
         self.assertContains(r, "45,6312")          # 4 ondalık gösterim
         self.assertNotContains(r, "45,631200")     # 6 ondalık DEĞİL
+
+    def test_liste_varsayilan_son_30_gun(self):
+        bugun = timezone.localdate()
+        Kur.objects.create(tarih=bugun, usd_alis=Decimal("50.0000"))
+        Kur.objects.create(tarih=bugun - datetime.timedelta(days=60),
+                           usd_alis=Decimal("40.0000"))
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:kurlar"))   # varsayılan son 30 gün
+        self.assertContains(r, "50,0000")       # bugün -> görünür
+        self.assertNotContains(r, "40,0000")    # 60 gün önce -> filtre dışı
+
+    def test_cek_formu_varsayilan_son_7_gun(self):
+        bugun = timezone.localdate()
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:kurlar"))
+        self.assertContains(r, (bugun - datetime.timedelta(days=7)).isoformat())
+        self.assertContains(r, bugun.isoformat())
