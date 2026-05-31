@@ -136,6 +136,9 @@ class YevmiyeFisi(TemelModel):
         verbose_name = "yevmiye fişi"
         verbose_name_plural = "yevmiye fişleri"
         ordering = ["yil", "fis_no"]
+        indexes = [
+            models.Index(fields=["tarih"], name="idx_yevmiye_tarih"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["yil", "fis_no"], name="uq_yevmiye_yil_fisno"

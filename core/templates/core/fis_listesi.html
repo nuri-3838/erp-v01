@@ -9,19 +9,29 @@
   <a class="dugme" href="{% url 'core:fis_ekle' %}">+ Yeni Fiş</a>
 </div>
 
-<form method="get" class="alan">
-  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
-  {{ form.baslangic }}
-  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
-  {{ form.bitis }}
+<form method="get" class="kur-cek-alanlar">
+  <div class="alan" style="flex:1 1 15rem">
+    <label for="ara">Ara</label>
+    <input type="search" id="ara" name="ara" value="{{ ara }}"
+           placeholder="fiş no · açıklama · hesap kodu/adı · tutar">
+  </div>
+  <div class="alan">
+    <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+    {{ form.baslangic }}
+  </div>
+  <div class="alan">
+    <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+    {{ form.bitis }}
+  </div>
   <button type="submit">Göster</button>
-  {% if form.non_field_errors %}
-    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
-  {% endif %}
 </form>
+{% if form.non_field_errors %}
+  <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
+{% endif %}
 
 <p class="yardim">İptal edilen fişler de listelenir (İPTAL damgalı) ama mizan/bilanço/gelir
-  tablosuna girmez. Aktif fişe tıklayınca düzenleme açılır.</p>
+  tablosuna girmez. Aktif fişe tıklayınca düzenleme açılır.{% if ara %}
+  &nbsp;Arama: "<strong>{{ ara }}</strong>" — {{ fisler.paginator.count }} sonuç.{% endif %}</p>
 
 <div class="tablo-kapsayici genis">
 <table>
@@ -48,9 +58,22 @@
         <td>{% if f.silindi %}<span class="hata">İPTAL</span>{% else %}Aktif{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">Bu aralıkta fiş yok.</td></tr>
+      <tr><td colspan="6" class="yardim">{% if ara %}Aramaya uygun fiş yok.{% else %}Bu aralıkta fiş yok.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>
 </div>
+
+{% if fisler.paginator.num_pages > 1 %}
+<nav class="sayfalama">
+  {% if fisler.has_previous %}
+    <a href="?{{ sorgu }}sayfa={{ fisler.previous_page_number }}">‹ Önceki</a>
+  {% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  <span class="sayfalama-bilgi">Sayfa {{ fisler.number }} / {{ fisler.paginator.num_pages }}
+    · {{ fisler.paginator.count }} fiş</span>
+  {% if fisler.has_next %}
+    <a href="?{{ sorgu }}sayfa={{ fisler.next_page_number }}">Sonraki ›</a>
+  {% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}

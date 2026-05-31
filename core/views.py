@@ -1,11 +1,13 @@
 """Fiş giriş/liste/düzenleme/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
 import datetime
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import Sum
+from django.core.paginator import Paginator
+from django.db.models import Q, Sum
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -16,6 +18,8 @@ from core.forms import (
 )
 from core.models import EkranYetki, HesapPlani, Kur, YevmiyeFisi
 from core.moduller import MODULLER
+from core.metin import buyuk_harf_tr
+from core.sayi import SayiHatasi, parse_tr
 from core.services.raporlar import (
     bilanco, bilanco_usd, ekstre as ekstre_servis, gelir_tablosu, gelir_tablosu_usd,
     mali_yil_araligi, mizan, mizan_usd,
@@ -86,12 +90,42 @@ def fis_ekle(request):
 @ekran_gerekli("fis_listesi")
 def fis_listesi(request):
     form, b, s = _tarih_araligi(request)
+    # Yalnız "ara" gelince (tarih GET'te yok) tarih formu varsayılanı göstersin
+    if not (request.GET.get("baslangic") and request.GET.get("bitis")):
+        form = MizanFiltreForm(initial={"baslangic": b, "bitis": s})
+
+    ara = (request.GET.get("ara") or "").strip()
+    taban = YevmiyeFisi.objects.filter(tarih__gte=b, tarih__lte=s)
+    if ara:
+        kosul = (
+            Q(aciklama__contains=buyuk_harf_tr(ara))
+            | Q(satirlar__hesap__hesap_kodu__contains=ara)
+            | Q(satirlar__hesap__hesap_adi__contains=buyuk_harf_tr(ara))
+        )
+        if ara.isdigit():
+            kosul |= Q(fis_no=int(ara))
+        try:
+            tutar = parse_tr(ara)
+        except SayiHatasi:
+            pass
+        else:
+            kosul |= Q(satirlar__borc=tutar) | Q(satirlar__alacak=tutar)
+        # Aramayı ALT SORGU ile uygula: toplam annotate'i join çakışmasından korunur
+        eslesen = taban.filter(kosul).values("pk").distinct()
+        taban = YevmiyeFisi.objects.filter(pk__in=eslesen)
+
     fisler = (
-        YevmiyeFisi.objects.filter(tarih__gte=b, tarih__lte=s)
-        .annotate(t_borc=Sum("satirlar__borc"), t_alacak=Sum("satirlar__alacak"))
+        taban.annotate(t_borc=Sum("satirlar__borc"), t_alacak=Sum("satirlar__alacak"))
         .order_by("yil", "fis_no")
     )
-    return render(request, "core/fis_listesi.html", {"form": form, "fisler": fisler})
+    sayfa = Paginator(fisler, 50).get_page(request.GET.get("sayfa"))
+
+    params = {"baslangic": b.isoformat(), "bitis": s.isoformat()}
+    if ara:
+        params["ara"] = ara
+    sorgu = urlencode(params) + "&"
+    return render(request, "core/fis_listesi.html",
+                  {"form": form, "fisler": sayfa, "ara": ara, "sorgu": sorgu})
 
 
 @ekran_gerekli("fis_listesi")

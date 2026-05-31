@@ -142,6 +142,47 @@ class FisListesiTest(TestCase):
         self.assertEqual(f.updated_by_id, self.yon.pk)
         self.assertIsNotNone(f.silindi_at)
 
+    # --- Arama + sayfalama -------------------------------------------------
+    def test_arama_aciklama(self):
+        self._fis(aciklama="alfa")
+        self._fis(aciklama="beta")
+        r = self.client.get(reverse("core:fis_listesi"),
+                             {"ara": "alfa", "baslangic": "2026-01-01", "bitis": "2026-12-31"})
+        self.assertContains(r, "ALFA")
+        self.assertNotContains(r, "BETA")
+        self.assertContains(r, "1.000,00")   # toplam tam (arama join'i bozmaz)
+
+    def test_arama_tutar(self):
+        self._fis(tutar="1.000,00", aciklama="alfa")
+        self._fis(tutar="2.500,00", aciklama="beta")
+        r = self.client.get(reverse("core:fis_listesi"),
+                             {"ara": "2.500,00", "baslangic": "2026-01-01", "bitis": "2026-12-31"})
+        self.assertContains(r, "BETA")
+        self.assertNotContains(r, "ALFA")
+
+    def test_arama_hesap_kodu(self):
+        self._fis(aciklama="gama")   # 100 + 600 hesaplı
+        r = self.client.get(reverse("core:fis_listesi"),
+                             {"ara": "600", "baslangic": "2026-01-01", "bitis": "2026-12-31"})
+        self.assertContains(r, "GAMA")
+
+    def test_arama_fis_no(self):
+        f = self._fis(aciklama="delta")
+        r = self.client.get(reverse("core:fis_listesi"),
+                             {"ara": str(f.fis_no), "baslangic": "2026-01-01", "bitis": "2026-12-31"})
+        self.assertContains(r, "DELTA")
+
+    def test_sayfalama(self):
+        for _ in range(51):
+            self._fis(aciklama="kayit")
+        ortak = {"baslangic": "2026-01-01", "bitis": "2026-12-31"}
+        r = self.client.get(reverse("core:fis_listesi"), ortak)
+        self.assertEqual(len(r.context["fisler"]), 50)
+        self.assertEqual(r.context["fisler"].paginator.count, 51)
+        self.assertEqual(r.context["fisler"].paginator.num_pages, 2)
+        r2 = self.client.get(reverse("core:fis_listesi"), {**ortak, "sayfa": "2"})
+        self.assertEqual(len(r2.context["fisler"]), 1)
+
 
 class FisListesiYetkiTest(TestCase):
     @classmethod
