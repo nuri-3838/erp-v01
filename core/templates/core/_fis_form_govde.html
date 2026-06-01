@@ -13,7 +13,6 @@
   <div class="alan fis-aciklama">
     <label for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
     {{ fform.aciklama }}
-    <div class="yardim">Büyük harfe çevrilir. Satır açıklamalarına otomatik gelir (satırda elle değiştirilebilir).</div>
   </div>
 </div>
 
@@ -23,8 +22,6 @@
 {% endif %}
 
 <h2 class="etiket">Satırlar</h2>
-<p class="yardim">Tutarı <b>Borç</b> ya da <b>Alacak</b> sütununa, satırın <b>İşlem PB</b>'si cinsinden yazın.
-  Yabancı para biriminde <b>İşlem Kuru</b> ile çarpılıp <b>TL</b> karşılığı türetilir. Bir satırda yalnızca biri dolu olabilir.</p>
 
 <div class="tablo-kapsayici genis">
 <table class="satir-tablo">
@@ -77,10 +74,8 @@
 </div>
 
 <div class="usd-onizleme">
-  <h2 class="etiket">USD Yevmiye Önizleme <span class="yardim" id="usd-kur-bilgi"></span></h2>
-  <p class="yardim">USD mizan / bilanço / gelir tablosu bu kayıttan üretilir. Kur fiş tarihine göre
-    otomatik (TCMB MB Alış). <b>Tüm satırlar</b> TL tutarın USD kuruna bölünmesiyle gelir.
-    Kur yoksa fiş <b>kaydedilemez</b>.</p>
+  <h2 class="etiket">USD Yevmiye Önizleme
+    <span class="usd-kur-etiket">MB ALIŞ KURU: <span id="usd-kur-deger" class="usd-kur-deger">—</span></span></h2>
   <div class="tablo-kapsayici">
   <table>
     <thead><tr><th>Hesap</th><th class="sag">USD Borç</th><th class="sag">USD Alacak</th></tr></thead>
@@ -210,10 +205,9 @@
     if(!satirVar) gov.innerHTML='<tr><td colspan="3" class="yardim">Satır doldurdukça önizleme oluşur.</td></tr>';
     document.getElementById('uBorc').textContent=fmt(ub,4);
     document.getElementById('uAlacak').textContent=fmt(ua,4);
-    var bil=document.getElementById('usd-kur-bilgi');
-    bil.textContent = kurUsd ? '— kur: '+fmt(kurUsd,4)
-                             : '⚠ bu tarih için USD kuru yok — fiş kaydedilemez (Kurlar ekranından çekin)';
-    bil.classList.toggle('hata', !kurUsd);
+    var deg=document.getElementById('usd-kur-deger');
+    deg.textContent = kurUsd ? fmt(kurUsd, 4) : 'kur bilgisi yok';
+    deg.classList.toggle('hata', !kurUsd);
   }
 
   function aciklamaYansit(){
