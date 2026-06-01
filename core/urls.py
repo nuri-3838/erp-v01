@@ -34,6 +34,7 @@ urlpatterns = [
     # STOKLAR modülü
     path("stoklar/", views.stoklar, name="stoklar"),
     path("stoklar/ekle/", views.stok_ekle, name="stok_ekle"),
+    path("api/stok-kod/", views.stok_kod_api, name="stok_kod_api"),
     path("stoklar/<int:pk>/duzenle/", views.stok_duzenle, name="stok_duzenle"),
     path("stoklar/<int:pk>/sil/", views.stok_sil, name="stok_sil"),
     path("stoklar/kategoriler/", views.kategoriler, name="kategoriler"),

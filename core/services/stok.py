@@ -67,18 +67,21 @@ def _cevirici_dogrula(deger):
     return c
 
 
-def _kdv_dogrula(deger):
+def _negatif_olmaz(deger, etiket) -> Decimal:
+    """≥ 0 ondalık doğrular; boş/None -> 0 (alanlar opsiyonel, varsayılan 0)."""
     try:
-        k = Decimal(deger if deger is not None else 0)
+        d = Decimal(deger if deger not in (None, "") else 0)
     except (TypeError, ValueError, ArithmeticError):
-        raise StokHatasi("KDV oranı geçerli bir sayı olmalı.")
-    if k < 0:
-        raise StokHatasi("KDV oranı negatif olamaz.")
-    return k
+        raise StokHatasi(f"{etiket} geçerli bir sayı olmalı.")
+    if d < 0:
+        raise StokHatasi(f"{etiket} negatif olamaz.")
+    return d
 
 
 def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
-                 cevirici=Decimal("1"), kdv_orani=Decimal("0"), kullanici=None) -> Stok:
+                 cevirici=Decimal("1"), kdv_orani=Decimal("0"),
+                 tevkifat_orani=Decimal("0"), kritik_stok=Decimal("0"),
+                 tedarikci="", kullanici=None) -> Stok:
     ad = _ad_dogrula(ad)
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
@@ -87,28 +90,36 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         raise StokHatasi("Stok yalnız ALT kategoriye açılabilir (üst kategori değil).")
     uretim = _birim_coz(uretim_birimi_id, "Üretim birimi")
     fatura = _birim_coz(fatura_birimi_id, "Fatura birimi")
-    c = _cevirici_dogrula(cevirici)
-    kdv = _kdv_dogrula(kdv_orani)
     return Stok.objects.create(
         kod=sonraki_stok_kodu(kategori), ad=ad, kategori=kategori,
-        uretim_birimi=uretim, fatura_birimi=fatura, cevirici=c, kdv_orani=kdv,
+        uretim_birimi=uretim, fatura_birimi=fatura,
+        cevirici=_cevirici_dogrula(cevirici),
+        kdv_orani=_negatif_olmaz(kdv_orani, "KDV oranı"),
+        tevkifat_orani=_negatif_olmaz(tevkifat_orani, "Tevkifat oranı"),
+        kritik_stok=_negatif_olmaz(kritik_stok, "Kritik stok seviyesi"),
+        tedarikci=buyuk_harf_tr((tedarikci or "").strip()),
         created_by=kullanici, updated_by=kullanici,
     )
 
 
 def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
-                  cevirici, kdv_orani, kullanici=None) -> Stok:
-    """Ad, birimler, çevirici, KDV güncellenir. KOD ve KATEGORİ DEĞİŞMEZ."""
+                  cevirici, kdv_orani, tevkifat_orani=Decimal("0"),
+                  kritik_stok=Decimal("0"), tedarikci="", kullanici=None) -> Stok:
+    """Ad, birimler, çevirici, vergi/stok alanları güncellenir. KOD ve KATEGORİ DEĞİŞMEZ."""
     if stok.silindi:
         raise StokHatasi("Silinmiş stok düzenlenemez.")
     stok.ad = _ad_dogrula(ad)
     stok.uretim_birimi = _birim_coz(uretim_birimi_id, "Üretim birimi")
     stok.fatura_birimi = _birim_coz(fatura_birimi_id, "Fatura birimi")
     stok.cevirici = _cevirici_dogrula(cevirici)
-    stok.kdv_orani = _kdv_dogrula(kdv_orani)
+    stok.kdv_orani = _negatif_olmaz(kdv_orani, "KDV oranı")
+    stok.tevkifat_orani = _negatif_olmaz(tevkifat_orani, "Tevkifat oranı")
+    stok.kritik_stok = _negatif_olmaz(kritik_stok, "Kritik stok seviyesi")
+    stok.tedarikci = buyuk_harf_tr((tedarikci or "").strip())
     stok.updated_by = kullanici
     stok.save(update_fields=["ad", "uretim_birimi", "fatura_birimi", "cevirici",
-                             "kdv_orani", "updated_by", "updated_at"])
+                             "kdv_orani", "tevkifat_orani", "kritik_stok",
+                             "tedarikci", "updated_by", "updated_at"])
     return stok
 
 

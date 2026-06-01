@@ -304,6 +304,13 @@ class StokForm(forms.Form):
         empty_label="— birim seç —")
     cevirici = TRDecimalField(label="Çevirici", basamak=4, initial=Decimal("1"))
     kdv_orani = TRDecimalField(label="KDV oranı (%)", basamak=2, initial=Decimal("20"))
+    tevkifat_orani = TRDecimalField(
+        label="Tevkifat oranı (%)", basamak=2, initial=Decimal("0"), required=False)
+    kritik_stok = TRDecimalField(
+        label="Kritik stok seviyesi", basamak=3, initial=Decimal("0"), required=False)
+    tedarikci = forms.CharField(
+        label="Tedarikçi (Cari)", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
     def __init__(self, *args, duzenle: bool = False, **kwargs):
         super().__init__(*args, **kwargs)

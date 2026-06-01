@@ -47,6 +47,24 @@ class StokServisTest(TestCase):
         _, alt, _, adet, kg = _veri()
         self.assertEqual(self._stok(alt, adet, kg).ad, "ALÜMİNYUM LEVHA")
 
+    def test_yeni_alanlar(self):
+        _, alt, _, adet, kg = _veri()
+        s = stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_orani=Decimal("20"), tevkifat_orani=Decimal("50"),
+                         kritik_stok=Decimal("100"), tedarikci="acme metal")
+        self.assertEqual(s.tevkifat_orani, Decimal("50.00"))
+        self.assertEqual(s.kritik_stok, Decimal("100.000"))
+        self.assertEqual(s.tedarikci, "ACME METAL")      # TR büyük harf
+
+    def test_tevkifat_kritik_negatif_red(self):
+        _, alt, _, adet, kg = _veri()
+        for alan in ("tevkifat_orani", "kritik_stok"):
+            with self.assertRaises(StokHatasi):
+                stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                             fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                             **{alan: Decimal("-1")})
+
     def test_ust_kategoriye_stok_red(self):
         ust, _, _, adet, kg = _veri()
         with self.assertRaises(StokHatasi):
@@ -186,3 +204,11 @@ class StokViewTest(TestCase):
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:stoklar")).status_code, 403)
         self.assertEqual(self.client.get(reverse("core:stok_ekle")).status_code, 403)
+
+    def test_kod_api(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_kod_api"), {"kategori": self.alt.pk})
+        self.assertEqual(r.json()["kod"], "150-10-0001")
+        # üst kategori -> kod yok
+        r2 = self.client.get(reverse("core:stok_kod_api"), {"kategori": self.ust.pk})
+        self.assertIsNone(r2.json()["kod"])

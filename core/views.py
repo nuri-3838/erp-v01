@@ -548,6 +548,9 @@ def stok_ekle(request):
                     uretim_birimi_id=cd["uretim_birimi"].pk,
                     fatura_birimi_id=cd["fatura_birimi"].pk,
                     cevirici=cd["cevirici"], kdv_orani=cd["kdv_orani"],
+                    tevkifat_orani=cd.get("tevkifat_orani"),
+                    kritik_stok=cd.get("kritik_stok"),
+                    tedarikci=cd.get("tedarikci", ""),
                     kullanici=request.user)
                 messages.success(request, f"Stok eklendi: {s.kod} — {s.ad}")
                 return redirect("core:stoklar")
@@ -572,6 +575,9 @@ def stok_duzenle(request, pk):
                     uretim_birimi_id=cd["uretim_birimi"].pk,
                     fatura_birimi_id=cd["fatura_birimi"].pk,
                     cevirici=cd["cevirici"], kdv_orani=cd["kdv_orani"],
+                    tevkifat_orani=cd.get("tevkifat_orani"),
+                    kritik_stok=cd.get("kritik_stok"),
+                    tedarikci=cd.get("tedarikci", ""),
                     kullanici=request.user)
                 messages.success(request, "Stok güncellendi.")
                 return redirect("core:stoklar")
@@ -581,7 +587,8 @@ def stok_duzenle(request, pk):
         form = StokForm(duzenle=True, initial={
             "ad": stok.ad, "uretim_birimi": stok.uretim_birimi_id,
             "fatura_birimi": stok.fatura_birimi_id, "cevirici": stok.cevirici,
-            "kdv_orani": stok.kdv_orani})
+            "kdv_orani": stok.kdv_orani, "tevkifat_orani": stok.tevkifat_orani,
+            "kritik_stok": stok.kritik_stok, "tedarikci": stok.tedarikci})
     return render(request, "core/stok_form.html",
                   {"form": form, "baslik": "Stok Düzenle", "duzenlenen": stok})
 
@@ -593,6 +600,19 @@ def stok_sil(request, pk):
         stok_servis.stok_sil(stok, kullanici=request.user)
         messages.success(request, f"Stok silindi: {stok.kod}")
     return redirect("core:stoklar")
+
+
+@ekran_gerekli("stoklar")
+def stok_kod_api(request):
+    """Yeni stok ekranı için: seçilen ALT kategoriye göre sıradaki otomatik kodu döndürür."""
+    kod = None
+    ham = request.GET.get("kategori")
+    if ham:
+        kategori = Kategori.objects.filter(
+            pk=ham, silindi=False, ust__isnull=False).select_related("ust").first()
+        if kategori is not None:
+            kod = stok_servis.sonraki_stok_kodu(kategori)
+    return JsonResponse({"kod": kod})
 
 
 @ekran_gerekli("kategoriler")
