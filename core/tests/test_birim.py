@@ -153,12 +153,12 @@ class BirimViewTest(TestCase):
         self.assertEqual(self.client.get(reverse("core:birimler")).status_code, 403)
         self.assertEqual(self.client.get(reverse("core:stoklar")).status_code, 403)
 
-    def test_placeholder_ekran(self):
+    def test_stoklar_ekran_yetkiyle_acilir(self):
         EkranYetki.objects.create(kullanici=self.bos, ekran_kod="stoklar")
         self.client.force_login(self.bos)
         r = self.client.get(reverse("core:stoklar"))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Yakında")
+        self.assertContains(r, "+ Yeni Stok")
 
     def test_menude_stoklar_modulu(self):
         self.client.force_login(self.yon)
