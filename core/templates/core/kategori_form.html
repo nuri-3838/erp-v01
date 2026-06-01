@@ -14,7 +14,7 @@
   <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
 {% endif %}
 
-<form method="post" autocomplete="off" style="max-width:760px">
+<form method="post" autocomplete="off" style="max-width:760px;margin:0 auto">
   {% csrf_token %}
   <div class="alan">
     <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }}</label>
