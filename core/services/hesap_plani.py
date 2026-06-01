@@ -26,9 +26,11 @@ class HesapHatasi(ValueError):
 # raporlar.py AKTIF_KALEM/PASIF_KALEM bilanço kodları + gelir tablosu bölümleri A..J).
 BILANCO_KALEMLERI = ("DV", "DDV", "KVYK", "UVYK", "OZK")
 GELIR_KALEMLERI = ("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
+# Boş kalemle (gelir tablosu satırı olmayan) açılabilen ÖZET/sonuç gelir hesapları (690).
+GELIR_OZET_KODLARI = ("690",)
 
 
-def _kalem_dogrula(rapor_grubu, rapor_kalemi):
+def _kalem_dogrula(rapor_grubu, rapor_kalemi, hesap_kodu=""):
     """rapor_kalemi'nin rapor_grubu'na uygun GEÇERLİ bir değer olduğunu zorlar.
 
     Aksi halde hesap raporlardan sessizce düşer: yanlış/boş kalemli bir BİLANÇO hesabı
@@ -44,10 +46,18 @@ def _kalem_dogrula(rapor_grubu, rapor_kalemi):
                 f"yer almaz ve bilanço dengesizleşir. Girilen: {kalem or '(boş)'}."
             )
     elif rapor_grubu == HesapPlani.RaporGrubu.GELIR_TABLOSU:
-        if kalem and kalem not in GELIR_KALEMLERI:
+        if not kalem:
+            # Boş kalem yalnız özet/sonuç gelir hesabında (690) geçerli; aksi halde
+            # hesap standart A–J bölümlerinde görünmez (yansıtılmamış satırına düşer).
+            if (hesap_kodu or "").split(".")[0] not in GELIR_OZET_KODLARI:
+                raise HesapHatasi(
+                    "Gelir tablosu hesabı için rapor kalemi A–J arası bir bölüm "
+                    "seçilmeli; boş bırakılamaz (boş yalnız 690 gibi özet hesaplarda olur)."
+                )
+        elif kalem not in GELIR_KALEMLERI:
             raise HesapHatasi(
-                "Gelir tablosu hesabı için rapor kalemi A–J arası bir bölüm olmalı "
-                f"(özet hesap için boş bırakılabilir). Girilen: {kalem}."
+                "Gelir tablosu hesabı için rapor kalemi A–J arası bir bölüm olmalı. "
+                f"Girilen: {kalem}."
             )
     elif rapor_grubu == HesapPlani.RaporGrubu.MALIYET:
         if kalem:
@@ -166,7 +176,7 @@ def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
     elif rapor_grubu not in HesapPlani.RaporGrubu.values:
         raise HesapHatasi("Ana hesap için geçerli bir rapor grubu seçin.")
     # Kalem grubuyla uyumlu mu? (ana: kullanıcı girdisi; alt: üstten miras — yine de kontrol)
-    _kalem_dogrula(rapor_grubu, rapor_kalemi)
+    _kalem_dogrula(rapor_grubu, rapor_kalemi, kod)
     return HesapPlani.objects.create(
         hesap_kodu=kod, hesap_adi=ad, ust_hesap=ust,
         rapor_grubu=rapor_grubu, rapor_kalemi=(rapor_kalemi or ""),

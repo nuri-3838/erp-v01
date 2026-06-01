@@ -82,12 +82,23 @@ class HesapOlusturTest(TestCase):
                           rapor_kalemi="A", kullanici=self.u)
         self.assertEqual((b.rapor_kalemi, g.rapor_kalemi), ("DV", "A"))
 
-    def test_gelir_ozet_bos_ve_maliyet_bos_gecerli(self):
-        g = hesap_olustur(kod="920", ad="ozet gelir", rapor_grubu="GELIR_TABLOSU",
-                          rapor_kalemi="", kullanici=self.u)       # 690 gibi özet hesap
+    def test_maliyet_bos_kalem_gecerli(self):
         m = hesap_olustur(kod="930", ad="maliyet", rapor_grubu="MALIYET",
                           rapor_kalemi="", kullanici=self.u)
-        self.assertEqual((g.rapor_kalemi, m.rapor_kalemi), ("", ""))
+        self.assertEqual(m.rapor_kalemi, "")
+
+    def test_yeni_gelir_bos_kalem_reddedilir(self):
+        # Yeni gelir hesabı boş kalemle açılamaz (standart A-J bölümlerinde görünmezdi).
+        with self.assertRaises(HesapHatasi) as cm:
+            hesap_olustur(kod="920", ad="x", rapor_grubu="GELIR_TABLOSU",
+                          rapor_kalemi="", kullanici=self.u)
+        self.assertIn("A–J", str(cm.exception))
+        self.assertFalse(HesapPlani.objects.filter(hesap_kodu="920").exists())
+
+    def test_690_ozet_altinda_bos_kalem_gecerli(self):
+        # 690 (özet/sonuç) ailesinde boş kalem geçerli (miras yoluyla).
+        alt = hesap_olustur(kod="690.01", ad="alt ozet", ust_kodu="690", kullanici=self.u)
+        self.assertEqual(alt.rapor_kalemi, "")
 
     def test_bilanco_bos_kalem_reddedilir(self):
         with self.assertRaises(HesapHatasi) as cm:
@@ -114,7 +125,7 @@ class HesapOlusturTest(TestCase):
         from core.services.hesap_plani import _kalem_dogrula
         for h in HesapPlani.objects.all():
             try:
-                _kalem_dogrula(h.rapor_grubu, h.rapor_kalemi)      # raise ETMEMELİ
+                _kalem_dogrula(h.rapor_grubu, h.rapor_kalemi, h.hesap_kodu)  # raise ETMEMELİ
             except HesapHatasi:
                 self.fail(f"Mevcut hesap geçersiz sayıldı: {h.hesap_kodu} "
                           f"{h.rapor_grubu}/{h.rapor_kalemi!r}")
@@ -235,3 +246,21 @@ class HesapPlaniEkranTest(TestCase):
         self.client.force_login(self.yetkili)
         self.client.post(reverse("core:hesap_sil", args=["100"]))
         self.assertFalse(HesapPlani.objects.get(hesap_kodu="100").silindi)
+
+
+class HiyerarsiCheckTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_hesap_plani")
+
+    def test_tutarli_seed_hata_yok(self):
+        from core.checks import hesap_hiyerarsi_tutarli
+        self.assertEqual(hesap_hiyerarsi_tutarli(None), [])
+
+    def test_ayrik_hiyerarsi_yakalanir(self):
+        from core.checks import hesap_hiyerarsi_tutarli
+        # kod noktali (100.99) ama ust_hesap None -> beklenen ust 100 -> tutarsiz
+        HesapPlani.objects.create(hesap_kodu="100.99", hesap_adi="X",
+                                  rapor_grubu="BILANCO", rapor_kalemi="DV", ust_hesap=None)
+        hatalar = hesap_hiyerarsi_tutarli(None)
+        self.assertTrue(any(h.id == "core.E001" for h in hatalar))
