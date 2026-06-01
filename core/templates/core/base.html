@@ -173,6 +173,28 @@
     .kart-form { border:1px solid var(--cizgi); border-radius:12px; padding:.4rem 1rem 1rem;
                  background:#fff; box-shadow:var(--golge-sm); margin-bottom:1rem; }
     .kart-form summary { font-weight:600; cursor:pointer; color:var(--lacivert); padding:.6rem 0; }
+    /* ---- Manuel fiş ekranı ---- */
+    .fis-ust { display:flex; gap:1.2rem; flex-wrap:wrap; align-items:flex-start; }
+    .fis-ust .fis-tarih { flex:0 0 auto; }
+    .fis-ust .fis-aciklama { flex:1 1 24rem; }
+    .tablo-kapsayici.genis > table.satir-tablo { min-width:1000px; }
+    .akilli { position:relative; }
+    .akilli-gizli { display:none !important; }
+    .akilli-girdi { width:100%; }
+    .akilli-liste { position:fixed; z-index:1000; max-height:260px; overflow-y:auto;
+                    background:#fff; border:1px solid var(--cizgi-koyu);
+                    border-radius:0 0 10px 10px; box-shadow:var(--golge-lg); display:none; }
+    .akilli-secenek { padding:.5rem .7rem; cursor:pointer; font-size:.88rem; white-space:nowrap;
+                      overflow:hidden; text-overflow:ellipsis; }
+    .akilli-secenek:hover { background:rgba(240,124,0,.13); color:var(--turuncu-koyu); }
+    .para { display:flex; align-items:center; gap:.35rem; }
+    .pb-simge { font-weight:700; color:var(--metin-soluk); min-width:1ch; text-align:center; }
+    td.tl-borc, td.tl-alacak { font-variant-numeric:tabular-nums; color:var(--lacivert-acik);
+                               background:#f5f8fc; font-weight:600; }
+    .satir-alt { display:flex; align-items:center; gap:1rem 1.5rem; flex-wrap:wrap; margin:.9rem 0 1.4rem; }
+    .usd-onizleme { margin-top:1.6rem; border-top:2px dashed var(--cizgi-koyu); padding-top:1.1rem; }
+    .usd-onizleme h2 { display:flex; align-items:baseline; gap:.5rem; flex-wrap:wrap; margin-bottom:.3rem; }
+    .usd-onizleme h2 .yardim { text-transform:none; font-weight:400; }
     a { color:var(--lacivert-acik); }
     label, th, .etiket, .ust-baslik { text-transform: uppercase; }
     .tablo-kapsayici { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:.6rem 0 1.2rem;

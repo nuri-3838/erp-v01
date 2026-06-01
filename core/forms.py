@@ -53,9 +53,6 @@ class FisForm(forms.Form):
         label="Açıklama", required=False,
         widget=forms.TextInput(attrs={"maxlength": 500}),
     )
-    kur_usd = TRDecimalField(
-        label="USD kuru (boşsa KUR tablosundan)", basamak=6, required=False,
-    )
 
 
 def _aktif_hesaplar():

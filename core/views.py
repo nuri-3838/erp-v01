@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum
 from django.forms import formset_factory
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -25,7 +26,7 @@ from core.services.raporlar import (
     mali_yil_araligi, mizan, mizan_usd,
 )
 from core.services.yevmiye import (
-    SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur,
+    SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur, kur_usd_bul,
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import hesap_plani as hp
@@ -74,7 +75,6 @@ def fis_ekle(request):
                 fis = fis_olustur(
                     tarih=fform.cleaned_data["tarih"],
                     aciklama=fform.cleaned_data.get("aciklama", ""),
-                    kur_usd=fform.cleaned_data.get("kur_usd"),
                     satirlar=_satir_girdileri(formset),
                     kullanici=request.user,
                 )
@@ -144,7 +144,6 @@ def fis_duzenle(request, pk):
                     fis,
                     tarih=fform.cleaned_data["tarih"],
                     aciklama=fform.cleaned_data.get("aciklama", ""),
-                    kur_usd=fform.cleaned_data.get("kur_usd"),
                     satirlar=_satir_girdileri(formset),
                     kullanici=request.user,
                 )
@@ -154,7 +153,7 @@ def fis_duzenle(request, pk):
                 fform.add_error(None, str(e))
     else:
         fform = FisForm(initial={
-            "tarih": fis.tarih, "aciklama": fis.aciklama, "kur_usd": fis.kur_usd,
+            "tarih": fis.tarih, "aciklama": fis.aciklama,
         })
         ilk = [
             {"hesap": s.hesap_id, "islem_pb": s.islem_pb,
@@ -201,6 +200,23 @@ def _tarih_araligi(request):
     if not request.GET:
         form = MizanFiltreForm(initial={"baslangic": baslangic, "bitis": bitis})
     return form, baslangic, bitis
+
+
+@login_required
+def kur_usd_api(request):
+    """Fiş ekranı USD önizleme için: fiş tarihine göre USD kuru (TCMB MB Alış)."""
+    ham = request.GET.get("tarih")
+    kur = None
+    if ham:
+        try:
+            t = datetime.date.fromisoformat(ham)
+        except ValueError:
+            t = None
+        if t is not None:
+            k = kur_usd_bul(t)
+            if k is not None:
+                kur = str(k)
+    return JsonResponse({"kur": kur})
 
 
 @ekran_gerekli("kurlar")

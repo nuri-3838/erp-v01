@@ -9,6 +9,7 @@ urlpatterns = [
     path("fis-gir/", views.fis_ekle, name="fis_ekle"),
     path("fisler/", views.fis_listesi, name="fis_listesi"),
     path("kurlar/", views.kurlar, name="kurlar"),
+    path("api/kur-usd/", views.kur_usd_api, name="kur_usd_api"),
     path("hesap-plani/", views.hesap_plani, name="hesap_plani"),
     path("hesap-plani/ekle/", views.hesap_ekle, name="hesap_ekle"),
     path("hesap-plani/<str:kod>/ad/", views.hesap_ad_guncelle, name="hesap_ad_guncelle"),

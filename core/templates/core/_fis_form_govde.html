@@ -4,23 +4,17 @@
   </div>
 {% endif %}
 
-<div class="alan">
-  <label for="{{ fform.tarih.id_for_label }}">{{ fform.tarih.label }}</label>
-  {{ fform.tarih }}
-  {% for e in fform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-</div>
-
-<div class="alan">
-  <label for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
-  {{ fform.aciklama }}
-  <div class="yardim">Açıklama büyük harfe çevrilerek saklanır.</div>
-</div>
-
-<div class="alan">
-  <label for="{{ fform.kur_usd.id_for_label }}">{{ fform.kur_usd.label }}</label>
-  {{ fform.kur_usd }}
-  {% for e in fform.kur_usd.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-  <div class="yardim">Boş bırakılırsa fiş tarihine göre KUR tablosundan doldurulur.</div>
+<div class="fis-ust">
+  <div class="alan fis-tarih">
+    <label for="{{ fform.tarih.id_for_label }}">{{ fform.tarih.label }}</label>
+    {{ fform.tarih }}
+    {% for e in fform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  </div>
+  <div class="alan fis-aciklama">
+    <label for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
+    {{ fform.aciklama }}
+    <div class="yardim">Büyük harfe çevrilir. Satır açıklamalarına otomatik gelir (satırda elle değiştirilebilir).</div>
+  </div>
 </div>
 
 {{ formset.management_form }}
@@ -29,110 +23,240 @@
 {% endif %}
 
 <h2 class="etiket">Satırlar</h2>
-<p class="yardim">Tutarı <b>Borç</b> ya da <b>Alacak</b> sütununa yazın — yazdığınız sütun tarafı belirler. Bir satırda yalnızca biri dolu olabilir.</p>
+<p class="yardim">Tutarı <b>Borç</b> ya da <b>Alacak</b> sütununa, satırın <b>İşlem PB</b>'si cinsinden yazın.
+  Yabancı para biriminde <b>İşlem Kuru</b> ile çarpılıp <b>TL</b> karşılığı türetilir. Bir satırda yalnızca biri dolu olabilir.</p>
+
 <div class="tablo-kapsayici genis">
-<table>
+<table class="satir-tablo">
   <colgroup>
-    <col style="width:24%"><col style="width:11%"><col style="width:16%">
-    <col style="width:16%"><col style="width:15%"><col>
+    <col style="width:22%"><col style="width:8%">
+    <col style="width:12%"><col style="width:12%"><col style="width:11%">
+    <col style="width:12%"><col style="width:12%"><col>
   </colgroup>
   <thead>
     <tr>
       <th>Hesap</th><th>İşlem PB</th>
       <th class="sag">Borç</th><th class="sag">Alacak</th>
-      <th class="sag">İşlem Kuru</th><th>Açıklama</th>
+      <th class="sag">İşlem Kuru</th>
+      <th class="sag">TL Borç</th><th class="sag">TL Alacak</th>
+      <th>Açıklama</th>
     </tr>
   </thead>
   <tbody id="satir-govde">
     {% for f in formset %}
       <tr class="satir-form">
-        <td>{{ f.hesap }}</td>
+        <td class="hesap-hucre">{{ f.hesap }}</td>
         <td>{{ f.islem_pb }}</td>
-        <td class="sag">{{ f.borc }}{% for e in f.borc.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
-        <td class="sag">{{ f.alacak }}{% for e in f.alacak.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+        <td class="sag"><span class="para"><span class="pb-simge">₺</span>{{ f.borc }}</span>
+          {% for e in f.borc.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+        <td class="sag"><span class="para"><span class="pb-simge">₺</span>{{ f.alacak }}</span>
+          {% for e in f.alacak.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
         <td class="sag">{{ f.islem_kuru }}</td>
+        <td class="sag tl-borc">—</td>
+        <td class="sag tl-alacak">—</td>
         <td>{{ f.aciklama }}</td>
-        {% for e in f.non_field_errors %}
-          <td class="hata" style="border:none">{{ e }}</td>
-        {% endfor %}
+        {% for e in f.non_field_errors %}<td class="hata" style="border:none">{{ e }}</td>{% endfor %}
       </tr>
     {% endfor %}
   </tbody>
   <tfoot>
     <tr>
-      <th colspan="2" class="sag">Toplam</th>
+      <th colspan="5" class="sag">Toplam (TL)</th>
       <th class="sag deger" id="tBorc">0,00</th>
       <th class="sag deger" id="tAlacak">0,00</th>
-      <th colspan="2"></th>
+      <th></th>
     </tr>
   </tfoot>
 </table>
 </div>
 
-<button type="button" id="satir-ekle">+ Satır ekle</button>
-
-<div class="toplamlar">
+<div class="satir-alt">
+  <button type="button" id="satir-ekle" class="dugme-ikincil">+ Satır ekle</button>
   <span class="denge dengesiz" id="denge">—</span>
   <span class="hata" id="ikili-uyari" style="display:none">⚠️ Bir satırda hem Borç hem Alacak dolu olamaz.</span>
 </div>
 
+<div class="usd-onizleme">
+  <h2 class="etiket">USD Yevmiye Önizleme <span class="yardim" id="usd-kur-bilgi"></span></h2>
+  <p class="yardim">USD mizan / bilanço / gelir tablosu bu kayıttan üretilir. Kur fiş tarihine göre
+    otomatik (TCMB MB Alış). USD işlem satırı orijinal USD tutarıyla; diğerleri TL ÷ kur ile çevrilir.</p>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Hesap</th><th class="sag">USD Borç</th><th class="sag">USD Alacak</th></tr></thead>
+    <tbody id="usd-govde"><tr><td colspan="3" class="yardim">Satır doldurdukça önizleme oluşur.</td></tr></tbody>
+    <tfoot><tr><th class="sag">Toplam (USD)</th>
+      <th class="sag deger" id="uBorc">0,00</th><th class="sag deger" id="uAlacak">0,00</th></tr></tfoot>
+  </table>
+  </div>
+</div>
+
 <template id="bos-satir">
-  <td>{{ formset.empty_form.hesap }}</td>
+  <td class="hesap-hucre">{{ formset.empty_form.hesap }}</td>
   <td>{{ formset.empty_form.islem_pb }}</td>
-  <td class="sag">{{ formset.empty_form.borc }}</td>
-  <td class="sag">{{ formset.empty_form.alacak }}</td>
+  <td class="sag"><span class="para"><span class="pb-simge">₺</span>{{ formset.empty_form.borc }}</span></td>
+  <td class="sag"><span class="para"><span class="pb-simge">₺</span>{{ formset.empty_form.alacak }}</span></td>
   <td class="sag">{{ formset.empty_form.islem_kuru }}</td>
+  <td class="sag tl-borc">—</td>
+  <td class="sag tl-alacak">—</td>
   <td>{{ formset.empty_form.aciklama }}</td>
 </template>
 
 <script>
+(function(){
+  var PB = {TRY:'₺', USD:'$', EUR:'€', GBP:'£'};
+  var KUR_API = '{% url "core:kur_usd_api" %}';
+  var kurUsd = null;
+
   function parseTR(s){
-    if(!s) return 0;
-    s = String(s).trim();
+    if(!s) return 0; s = String(s).trim();
     if(s.indexOf(',') >= 0){ s = s.replace(/\./g,'').replace(',','.'); }
     else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s = s.replace(/\./g,''); }
-    var n = parseFloat(s);
-    return isNaN(n) ? 0 : n;
+    var n = parseFloat(s); return isNaN(n) ? 0 : n;
   }
-  function fmtTR(n){
-    return n.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  function fmt(n, d){ d = (d==null)?2:d;
+    return n.toLocaleString('tr-TR', {minimumFractionDigits:d, maximumFractionDigits:d}); }
+  function el(row, suf){ return row.querySelector('[name$="'+suf+'"]'); }
+  function val(row, suf){ var e = el(row, suf); return e ? e.value : ''; }
+
+  // ---- Akıllı hesap arama: tek paylaşımlı, body'ye sabitlenmiş açılır liste (kırpılmaz) ----
+  var aktifSel = null, aktifInp = null;
+  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+  document.body.appendChild(gListe);
+  function konumla(inp){ var r = inp.getBoundingClientRect();
+    gListe.style.left = r.left + 'px'; gListe.style.top = r.bottom + 'px'; gListe.style.width = r.width + 'px'; }
+  function secVal(sel, v, t){ sel.value = v;
+    var inp = sel.parentNode.querySelector('.akilli-girdi'); if(inp) inp.value = t;
+    gListe.style.display = 'none'; sel.dispatchEvent(new Event('change', {bubbles:true})); }
+  function ac(sel, inp, filt){
+    aktifSel = sel; aktifInp = inp; konumla(inp);
+    filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML = ''; var n = 0;
+    Array.prototype.forEach.call(sel.options, function(o){
+      if(!o.value) return; var t = o.textContent.trim();
+      if(filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(n++ > 80) return;
+      var d = document.createElement('div'); d.className = 'akilli-secenek'; d.textContent = t;
+      d.addEventListener('mousedown', function(ev){ ev.preventDefault(); secVal(sel, o.value, t); });
+      gListe.appendChild(d);
+    });
+    gListe.style.display = gListe.children.length ? 'block' : 'none';
   }
-  function val(row, suf){
-    var el = row.querySelector('[name$="'+suf+'"]');
-    return el ? el.value : '';
+  function akilli(sel){
+    if(sel.dataset.akilli) return; sel.dataset.akilli = '1';
+    var sar = document.createElement('div'); sar.className = 'akilli';
+    var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'akilli-girdi';
+    inp.placeholder = 'hesap ara / seç…'; inp.autocomplete = 'off';
+    sel.parentNode.insertBefore(sar, sel); sar.appendChild(inp); sar.appendChild(sel);
+    sel.classList.add('akilli-gizli');
+    function metin(v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null; return o ? o.textContent.trim() : ''; }
+    if(sel.value) inp.value = metin(sel.value);
+    inp.addEventListener('focus', function(){ ac(sel, inp, sel.value ? '' : inp.value); });
+    inp.addEventListener('input', function(){ sel.value = ''; ac(sel, inp, inp.value); });
+    inp.addEventListener('blur', function(){ setTimeout(function(){
+      gListe.style.display = 'none'; inp.value = metin(sel.value); }, 150); });
   }
+  window.addEventListener('scroll', function(){
+    if(gListe.style.display === 'block' && aktifInp) konumla(aktifInp); }, true);
+  window.addEventListener('resize', function(){
+    if(gListe.style.display === 'block' && aktifInp) konumla(aktifInp); });
+
+  function pbSimge(r){ var p = val(r,'islem_pb') || 'TRY'; var s = PB[p] || '';
+    r.querySelectorAll('.pb-simge').forEach(function(x){ x.textContent = s; }); }
+
   function hesapla(){
     var tb=0, ta=0, ikili=false;
     document.querySelectorAll('.satir-form').forEach(function(r){
-      var b = parseTR(val(r,'-borc'));
-      var a = parseTR(val(r,'-alacak'));
-      var pb = val(r,'islem_pb');
-      var kur = (pb === 'TRY') ? 1 : parseTR(val(r,'islem_kuru'));
-      if(b > 0 && a > 0) ikili = true;
-      if(b > 0) tb += Math.round(b*kur*100)/100;
-      else if(a > 0) ta += Math.round(a*kur*100)/100;
+      pbSimge(r);
+      var b=parseTR(val(r,'-borc')), a=parseTR(val(r,'-alacak'));
+      var p=val(r,'islem_pb')||'TRY';
+      var kur=(p==='TRY')?1:parseTR(val(r,'islem_kuru'));
+      var tlb=Math.round(b*kur*100)/100, tla=Math.round(a*kur*100)/100;
+      var cb=r.querySelector('.tl-borc'), ca=r.querySelector('.tl-alacak');
+      if(cb) cb.textContent = b>0 ? fmt(tlb) : '—';
+      if(ca) ca.textContent = a>0 ? fmt(tla) : '—';
+      if(b>0 && a>0) ikili=true;
+      if(b>0) tb+=tlb; else if(a>0) ta+=tla;
     });
-    document.getElementById('tBorc').textContent = fmtTR(tb);
-    document.getElementById('tAlacak').textContent = fmtTR(ta);
+    document.getElementById('tBorc').textContent = fmt(tb);
+    document.getElementById('tAlacak').textContent = fmt(ta);
     document.getElementById('ikili-uyari').style.display = ikili ? '' : 'none';
-    var d = document.getElementById('denge');
-    var fark = Math.round((tb-ta)*100)/100;
-    if(ikili){ d.textContent = '—'; d.className = 'denge dengesiz'; }
-    else if(fark === 0 && (tb>0 || ta>0)){ d.textContent = '✓ DENGELİ'; d.className = 'denge dengeli'; }
-    else { d.textContent = '⚠️ FARK: ' + fmtTR(fark); d.className = 'denge dengesiz'; }
+    var d=document.getElementById('denge'); var fark=Math.round((tb-ta)*100)/100;
+    if(ikili){ d.textContent='—'; d.className='denge dengesiz'; }
+    else if(fark===0 && (tb>0||ta>0)){ d.textContent='✓ DENGELİ'; d.className='denge dengeli'; }
+    else { d.textContent='⚠️ FARK: '+fmt(fark); d.className='denge dengesiz'; }
+    usdOnizleme();
   }
+
+  function usdOnizleme(){
+    var gov=document.getElementById('usd-govde'); if(!gov) return;
+    gov.innerHTML=''; var ub=0, ua=0, satirVar=false;
+    document.querySelectorAll('.satir-form').forEach(function(r){
+      var sel=el(r,'-hesap');
+      var hesap = (sel && sel.value && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].textContent.trim() : '';
+      var b=parseTR(val(r,'-borc')), a=parseTR(val(r,'-alacak'));
+      if(!hesap || (b<=0 && a<=0)) return;
+      satirVar=true;
+      var p=val(r,'islem_pb')||'TRY'; var kur=(p==='TRY')?1:parseTR(val(r,'islem_kuru'));
+      var uB=0, uA=0, gecersiz=false;
+      if(p==='USD'){ uB=b; uA=a; }
+      else if(kurUsd){ uB=(b*kur)/kurUsd; uA=(a*kur)/kurUsd; }
+      else { gecersiz=true; }
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td>'+hesap+'</td>'
+        + '<td class="sag">'+(gecersiz?'<span class="hata">kur yok</span>':(uB>0?fmt(uB,4):''))+'</td>'
+        + '<td class="sag">'+(gecersiz?'—':(uA>0?fmt(uA,4):''))+'</td>';
+      gov.appendChild(tr);
+      if(!gecersiz){ ub+=uB; ua+=uA; }
+    });
+    if(!satirVar) gov.innerHTML='<tr><td colspan="3" class="yardim">Satır doldurdukça önizleme oluşur.</td></tr>';
+    document.getElementById('uBorc').textContent=fmt(ub,4);
+    document.getElementById('uAlacak').textContent=fmt(ua,4);
+    var bil=document.getElementById('usd-kur-bilgi');
+    bil.textContent = kurUsd ? '— kur: '+fmt(kurUsd,4)
+                             : '— bu tarih için kur yok (TRY/EUR/GBP satırları USD raporuna giremez)';
+  }
+
+  function aciklamaYansit(){
+    var fa=document.querySelector('[name="aciklama"]'); if(!fa) return;
+    document.querySelectorAll('.satir-form').forEach(function(r){
+      var sa=el(r,'-aciklama'); if(sa && !sa.dataset.elle) sa.value = fa.value;
+    });
+  }
+  function aciklamaDinle(r){
+    var sa=el(r,'-aciklama'); if(sa && !sa.dataset.bagli){ sa.dataset.bagli='1';
+      sa.addEventListener('input', function(){ sa.dataset.elle='1'; }); }
+  }
+
+  function kurCek(){
+    var t=document.querySelector('[name="tarih"]');
+    if(!t || !t.value){ kurUsd=null; usdOnizleme(); return; }
+    fetch(KUR_API + '?tarih=' + encodeURIComponent(t.value), {headers:{'X-Requested-With':'fetch'}})
+      .then(function(r){ return r.json(); })
+      .then(function(j){ kurUsd = j.kur ? parseFloat(j.kur) : null; usdOnizleme(); })
+      .catch(function(){ kurUsd=null; usdOnizleme(); });
+  }
+
   function satirEkle(){
-    var tf = document.getElementById('id_form-TOTAL_FORMS');
-    var i = parseInt(tf.value, 10);
-    var tr = document.createElement('tr');
-    tr.className = 'satir-form';
-    tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);
+    var tr=document.createElement('tr'); tr.className='satir-form';
+    tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
     document.getElementById('satir-govde').appendChild(tr);
-    tf.value = i + 1;
+    tf.value=i+1;
+    var sel=el(tr,'-hesap'); if(sel) akilli(sel);
+    aciklamaDinle(tr);
+    var sa=el(tr,'-aciklama'), fa=document.querySelector('[name="aciklama"]');
+    if(sa && fa && !sa.dataset.elle) sa.value = fa.value;
+    hesapla();
   }
+
+  document.querySelectorAll('.satir-form').forEach(function(r){
+    var s=el(r,'-hesap'); if(s) akilli(s); aciklamaDinle(r);
+  });
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
-  var form = document.getElementById('fis-form');
+  var fa=document.querySelector('[name="aciklama"]'); if(fa) fa.addEventListener('input', aciklamaYansit);
+  var ti=document.querySelector('[name="tarih"]'); if(ti) ti.addEventListener('change', kurCek);
+  var form=document.getElementById('fis-form');
   form.addEventListener('input', hesapla);
   form.addEventListener('change', hesapla);
-  hesapla();
+  kurCek(); hesapla();
+})();
 </script>
