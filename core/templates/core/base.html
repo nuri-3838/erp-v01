@@ -184,8 +184,11 @@
     td.sev-1 { padding-left:1.8rem; } td.sev-2 { padding-left:3.4rem; }
     .hesap-islem { white-space:nowrap; }
     .hesap-islem a, .hesap-islem form { display:inline; margin-right:.6rem; font-size:.85rem; }
-    .hesap-islem .sil { background:none; border:none; color:var(--hata); cursor:pointer;
-                        padding:0; font-size:.85rem; min-height:auto; }
+    .hesap-islem a { padding:.28rem .55rem; border-radius:8px; }
+    .hesap-islem a:hover { background:#eef3fb; }
+    .hesap-islem .sil { background:#fdeef0; border:1px solid #f3c9d2; color:var(--hata); cursor:pointer;
+                        padding:.26rem .55rem; font-size:.78rem; min-height:auto; border-radius:8px; }
+    .hesap-islem .sil:hover { background:#fbdbe1; }
     .kart-form { border:1px solid var(--cizgi); border-radius:12px; padding:.4rem 1rem 1rem;
                  background:#fff; box-shadow:var(--golge-sm); margin-bottom:1rem; }
     .kart-form summary { font-weight:600; cursor:pointer; color:var(--lacivert); padding:.6rem 0; }
@@ -235,6 +238,8 @@
     tbody tr { transition:background .12s; }
     tbody tr:hover td { background:rgba(255,255,255,.72); }
     td.sag, th.sag { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    td.sag { font-family:"SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+             letter-spacing:-.01em; }
     input, select, button { font-size:16px; min-height:44px; }
     input, select { padding:.5rem .65rem; font-family:inherit; box-sizing:border-box; width:100%;
                     border:1px solid var(--cizgi-koyu); border-radius:12px; background:rgba(255,255,255,.9);

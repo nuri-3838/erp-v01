@@ -3,7 +3,7 @@
 {% block baslik %}Bilanço (USD) · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Bilanço (USD)</h1>
+<h1 class="ust-baslik"><span class="emoji">⚖️</span>Bilanço (USD)</h1>
 
 <form method="get" class="alan">
   <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
@@ -42,7 +42,7 @@
     {% for g in bilanco.aktif %}
       <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
       {% for s in g.satirlar %}
-        <tr><td>{{ s.kod }}</td><td>{{ s.ad }}</td>
+        <tr><td class="mono">{{ s.kod }}</td><td>{{ s.ad }}</td>
           <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td></tr>
       {% endfor %}
     {% endfor %}
@@ -60,7 +60,7 @@
     {% for g in bilanco.pasif %}
       <tr class="grup"><th colspan="2">{{ g.ad }}</th><th class="sag">{{ g.toplam|tr_para }}</th></tr>
       {% for s in g.satirlar %}
-        <tr><td>{{ s.kod }}</td><td>{{ s.ad }}</td>
+        <tr><td class="mono">{{ s.kod }}</td><td>{{ s.ad }}</td>
           <td class="sag {% if s.tutar < 0 %}eksi{% endif %}">{{ s.tutar|tr_para }}</td></tr>
       {% endfor %}
     {% endfor %}

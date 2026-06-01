@@ -3,7 +3,7 @@
 {% block baslik %}Mizan (USD) · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Mizan (USD)</h1>
+<h1 class="ust-baslik"><span class="emoji">📊</span>Mizan (USD)</h1>
 
 <form method="get" class="alan">
   <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
@@ -46,7 +46,7 @@
   <tbody>
     {% for s in mizan.satirlar %}
       <tr>
-        <td>{{ s.hesap_kodu }}</td>
+        <td class="mono">{{ s.hesap_kodu }}</td>
         <td>{{ s.hesap_adi }}</td>
         <td class="sag">{{ s.usd_borc|tr_para }}</td>
         <td class="sag">{{ s.usd_alacak|tr_para }}</td>

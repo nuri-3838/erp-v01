@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="sayfa-ust">
-  <h1 class="ust-baslik">Veritabanı Yedekleri</h1>
+  <h1 class="ust-baslik"><span class="emoji">💾</span>Veritabanı Yedekleri</h1>
   <form method="post" action="{% url 'core:yedek' %}">
     {% csrf_token %}
     <button type="submit" class="dugme">Şimdi Yedek Al</button>

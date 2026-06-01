@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="sayfa-ust">
-  <h1 class="ust-baslik">Yevmiye Fişleri</h1>
+  <h1 class="ust-baslik"><span class="emoji">📒</span>Yevmiye Fişleri</h1>
   <a class="dugme" href="{% url 'core:fis_ekle' %}">+ Yeni Fiş</a>
 </div>
 
@@ -58,7 +58,7 @@
   <tbody>
     {% for f in fisler %}
       <tr{% if f.silindi %} class="pasif"{% endif %}>
-        <td>
+        <td class="mono">
           {% if f.silindi %}
             <a href="{% url 'core:fis_detay' f.pk %}">{{ f.yil }}/{{ f.fis_no }}</a>
           {% else %}
@@ -79,7 +79,7 @@
           <td class="sag">{{ f.t_borc|tr_para }}</td>
           <td class="sag">{{ f.t_alacak|tr_para }}</td>
         {% endif %}
-        <td>{% if f.silindi %}<span class="hata">İPTAL</span>{% else %}Aktif{% endif %}</td>
+        <td>{% if f.silindi %}<span class="rozet rozet-pasif">İPTAL</span>{% else %}<span class="rozet rozet-aktif">Aktif</span>{% endif %}</td>
       </tr>
     {% empty %}
       <tr><td colspan="{% if usd %}7{% else %}6{% endif %}" class="yardim">{% if ara %}Aramaya uygun fiş yok.{% else %}Bu aralıkta fiş yok.{% endif %}</td></tr>

@@ -2,7 +2,7 @@
 {% block baslik %}Kullanıcılar · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Kullanıcılar</h1>
+<h1 class="ust-baslik"><span class="emoji">👥</span>Kullanıcılar</h1>
 
 <p><a class="dugme" href="{% url 'core:kullanici_ekle' %}">+ Yeni kullanıcı</a></p>
 
@@ -17,13 +17,13 @@
   <tbody>
     {% for k in kullanicilar %}
       <tr {% if not k.is_active %}class="pasif"{% endif %}>
-        <td>{{ k.username }}</td>
+        <td class="mono">{{ k.username }}</td>
         <td>{{ k.get_full_name|default:"—" }}</td>
         <td>{{ k.email|default:"—" }}</td>
         <td>{{ k.profil.telefon|default:"—" }}</td>
-        <td>{% if k.is_superuser or k.profil.yonetici %}Evet{% else %}Hayır{% endif %}</td>
-        <td>{% if k.is_active %}Aktif{% else %}Pasif{% endif %}</td>
-        <td><a href="{% url 'core:kullanici_duzenle' k.pk %}">Düzenle</a></td>
+        <td>{% if k.is_superuser or k.profil.yonetici %}<span class="rozet rozet-aktif">Evet</span>{% else %}<span class="rozet rozet-notr">Hayır</span>{% endif %}</td>
+        <td>{% if k.is_active %}<span class="rozet rozet-aktif">Aktif</span>{% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
+        <td><span class="islem-bag"><a href="{% url 'core:kullanici_duzenle' k.pk %}">Düzenle</a></span></td>
       </tr>
     {% empty %}
       <tr><td colspan="7" class="yardim">Kullanıcı yok.</td></tr>

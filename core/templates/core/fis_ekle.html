@@ -2,7 +2,8 @@
 {% block baslik %}Manuel Fiş Girişi · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Manuel Fiş Girişi</h1>
+<a class="ust-link" href="{% url 'core:fis_listesi' %}">← Yevmiye Fişleri</a>
+<h1 class="ust-baslik"><span class="emoji">🧾</span>Manuel Fiş Girişi</h1>
 
 <form method="post" id="fis-form" novalidate>
   {% csrf_token %}

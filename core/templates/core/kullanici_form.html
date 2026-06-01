@@ -2,7 +2,8 @@
 {% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">{{ baslik }}</h1>
+<a class="ust-link" href="{% url 'core:kullanici_listesi' %}">← Kullanıcılar</a>
+<h1 class="ust-baslik"><span class="emoji">👤</span>{{ baslik }}</h1>
 
 {% if duzenlenen %}
   <p class="yardim">TC Kimlik No: <b>{{ duzenlenen.username }}</b> (değiştirilemez)</p>

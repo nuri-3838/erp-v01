@@ -3,7 +3,8 @@
 {% block baslik %}{{ ekstre.hesap_kodu }} Ekstresi · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Hesap Ekstresi — {{ ekstre.hesap_kodu }} {{ ekstre.hesap_adi }}</h1>
+<a class="ust-link" href="{% url 'core:mizan' %}?baslangic={{ ekstre.baslangic|date:'Y-m-d' }}&bitis={{ ekstre.bitis|date:'Y-m-d' }}">← Mizan</a>
+<h1 class="ust-baslik"><span class="emoji">📄</span>Hesap Ekstresi — {{ ekstre.hesap_kodu }} {{ ekstre.hesap_adi }}</h1>
 
 <form method="get" class="alan">
   <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
@@ -51,8 +52,8 @@
     {% for s in ekstre.satirlar %}
       <tr>
         <td>{{ s.tarih|date:"d.m.Y" }}</td>
-        <td><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
-        <td><a href="{% url 'core:hesap_ekstresi' s.hesap_kodu %}?baslangic={{ ekstre.baslangic|date:'Y-m-d' }}&amp;bitis={{ ekstre.bitis|date:'Y-m-d' }}">{{ s.hesap_kodu }}</a></td>
+        <td class="mono"><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
+        <td class="mono"><a href="{% url 'core:hesap_ekstresi' s.hesap_kodu %}?baslangic={{ ekstre.baslangic|date:'Y-m-d' }}&amp;bitis={{ ekstre.bitis|date:'Y-m-d' }}">{{ s.hesap_kodu }}</a></td>
         <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
         <td class="sag">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
         <td class="sag">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>

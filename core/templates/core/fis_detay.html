@@ -3,15 +3,16 @@
 {% block baslik %}Fiş {{ fis.yil }}/{{ fis.fis_no }} · ERP v0.1{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Yevmiye Fişi {{ fis.yil }}/{{ fis.fis_no }}
-  {% if fis.silindi %}<span class="hata">· İPTAL</span>{% endif %}</h1>
+<a class="ust-link" href="{% url 'core:fis_listesi' %}">← Yevmiye Fişleri</a>
+<h1 class="ust-baslik"><span class="emoji">🧾</span>Yevmiye Fişi {{ fis.yil }}/{{ fis.fis_no }}
+  {% if fis.silindi %}<span class="rozet rozet-pasif">İPTAL</span>{% endif %}</h1>
 
 <table>
   <tr><th>Muhasebe tarihi</th><td>{{ fis.tarih|date:"d.m.Y" }}</td></tr>
   <tr><th>Açıklama</th><td>{{ fis.aciklama|default:"—" }}</td></tr>
   <tr><th>Kaynak</th><td>{{ fis.get_kaynak_display }}</td></tr>
   <tr><th>USD kuru</th><td class="sag">{{ fis.kur_usd|tr_kur|default:"—" }}</td></tr>
-  <tr><th>Durum</th><td>{% if fis.silindi %}<span class="hata">İPTAL EDİLDİ</span>{% else %}Aktif{% endif %}</td></tr>
+  <tr><th>Durum</th><td>{% if fis.silindi %}<span class="rozet rozet-pasif">İPTAL EDİLDİ</span>{% else %}<span class="rozet rozet-aktif">Aktif</span>{% endif %}</td></tr>
 </table>
 
 <h2 class="etiket">Satırlar</h2>

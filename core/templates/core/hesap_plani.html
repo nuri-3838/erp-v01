@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="sayfa-ust">
-  <h1 class="ust-baslik">Hesap Planı</h1>
+  <h1 class="ust-baslik"><span class="emoji">📚</span>Hesap Planı</h1>
 </div>
 
 <details class="kart-form" {% if ust %}open{% endif %}>
@@ -75,7 +75,7 @@
   <tbody>
     {% for h in agac %}
       <tr>
-        <td class="sev-{{ h.seviye }}">{{ h.kod }}</td>
+        <td class="sev-{{ h.seviye }} mono">{{ h.kod }}</td>
         <td>{{ h.ad }}</td>
         <td>{% if h.yaprak %}<span class="yardim">yaprak</span>{% else %}<strong>üst</strong>{% endif %}</td>
         <td class="hesap-islem">
