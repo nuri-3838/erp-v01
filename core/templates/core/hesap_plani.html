@@ -4,6 +4,15 @@
 {% block sayfa_adi %}Hesap Planı{% endblock %}
 
 {% block content %}
+<style>
+  /* Hesap planı ağacı — seviyeye göre koyuluk (üst koyu/kalın → alt daha açık) */
+  tr.hp-sev-0 > td { font-weight:700; color:var(--lacivert); background:rgba(21,41,77,.055); }
+  tr.hp-sev-1 > td { font-weight:600; color:var(--lacivert-acik); }
+  tr.hp-sev-2 > td { font-weight:400; color:var(--metin-soluk); }
+  /* İşlem hücresindeki bağlar/butonlar kendi renklerini korusun */
+  tr.hp-sev-0 > td.hesap-islem, tr.hp-sev-1 > td.hesap-islem,
+  tr.hp-sev-2 > td.hesap-islem { color:var(--metin); }
+</style>
 <div class="sayfa-ust">
   <h1 class="ust-baslik"><span class="emoji">📚</span>Hesap Planı</h1>
 </div>
@@ -74,7 +83,7 @@
   <thead><tr><th>Kod</th><th>Hesap Adı</th><th>Tür</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for h in agac %}
-      <tr>
+      <tr class="hp-sev-{{ h.seviye }}">
         <td class="sev-{{ h.seviye }} mono">{{ h.kod }}</td>
         <td>{{ h.ad }}</td>
         <td>{% if h.yaprak %}<span class="yardim">yaprak</span>{% else %}<strong>üst</strong>{% endif %}</td>
