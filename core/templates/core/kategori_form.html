@@ -14,69 +14,121 @@
   <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
 {% endif %}
 
-<form method="post" autocomplete="off" style="max-width:480px">
+<form method="post" autocomplete="off" style="max-width:760px">
   {% csrf_token %}
   <div class="alan">
     <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }}</label>
     {{ form.ad }}
     {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
   </div>
+  <div class="alan">
+    <label for="{{ form.kod.id_for_label }}">{{ form.kod.label }}</label>
+    {{ form.kod }}
+    {% for e in form.kod.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  </div>
 
-  {% if form.ust %}
+  {% if ekle %}
   <div class="alan">
     <label for="{{ form.ust.id_for_label }}">{{ form.ust.label }}</label>
     {{ form.ust }}
     {% for e in form.ust.errors %}<div class="hata">{{ e }}</div>{% endfor %}
     <p class="yardim">Boş = en üst kategori. Bir üst seçilirse onun altına eklenir
-      (en fazla 2 seviye).</p>
+      (en fazla 2 seviye). Muhasebe kodları yalnız <strong>alt</strong> kategoride tutulur.</p>
   </div>
   {% endif %}
 
-  <div class="alan">
-    <label for="{{ form.hesap.id_for_label }}">{{ form.hesap.label }}</label>
-    <div class="akilli" id="hesap-sar">{{ form.hesap }}</div>
-    {% for e in form.hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-    <p class="yardim">Opsiyonel. Yazarak kod/ad ile arayın; yalnızca yaprak hesaplar listelenir.</p>
+  {% if ekle or kat_alt %}
+  <div id="harita-bolum">
+    <h2 class="etiket">Muhasebe Kodları</h2>
+    <p class="yardim">Her fatura tipi için kesilecek muhasebe hesabı (opsiyonel; yazarak
+      kod/ad ile arayın, yalnız yaprak hesaplar gelir).</p>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Fatura Tipi</th><th>Muhasebe Hesabı</th></tr></thead>
+      <tbody>
+        <tr class="grup"><th colspan="2">Satış İçin</th></tr>
+        {% for row in harita_satis %}
+          <tr>
+            <td>{{ row.ft.ad }}</td>
+            <td><select name="hesap_{{ row.ft.pk }}" class="akilli-hesap">
+              <option value="">— (bağ yok) —</option>
+              {% for h in yaprak %}
+                <option value="{{ h.hesap_kodu }}" {% if h.hesap_kodu == row.secili %}selected{% endif %}>{{ h }}</option>
+              {% endfor %}
+            </select></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="2" class="yardim">Aktif satış fatura tipi yok.</td></tr>
+        {% endfor %}
+        <tr class="grup"><th colspan="2">Alış İçin</th></tr>
+        {% for row in harita_alis %}
+          <tr>
+            <td>{{ row.ft.ad }}</td>
+            <td><select name="hesap_{{ row.ft.pk }}" class="akilli-hesap">
+              <option value="">— (bağ yok) —</option>
+              {% for h in yaprak %}
+                <option value="{{ h.hesap_kodu }}" {% if h.hesap_kodu == row.secili %}selected{% endif %}>{{ h }}</option>
+              {% endfor %}
+            </select></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="2" class="yardim">Aktif alış fatura tipi yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
   </div>
+  {% endif %}
 
-  <p class="yardim">Ad otomatik BÜYÜK harfe çevrilir.</p>
+  <p class="yardim">Ad otomatik BÜYÜK harfe çevrilir. Kod benzersiz olmalıdır.</p>
   <button type="submit" class="birincil">Kaydet</button>
   <a href="{% url 'core:kategoriler' %}" style="margin-left:1rem">Vazgeç</a>
 </form>
 
 <script>
 (function(){
-  var sel = document.getElementById('id_hesap');
-  if(!sel) return;
-  var liste = document.createElement('div'); liste.className = 'akilli-liste';
-  document.body.appendChild(liste);
-  var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'akilli-girdi';
-  inp.placeholder = 'hesap ara / seç…'; inp.autocomplete = 'off';
-  sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
-  function metin(v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
+  // ---- Çoklu akıllı hesap arama: paylaşımlı, body'ye sabit açılır liste ----
+  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+  document.body.appendChild(gListe);
+  var aktifInp = null;
+  function konumla(inp){ var r = inp.getBoundingClientRect();
+    gListe.style.left = r.left + 'px'; gListe.style.top = r.bottom + 'px'; gListe.style.width = r.width + 'px'; }
+  function metin(sel, v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
     return o && o.value ? o.textContent.trim() : ''; }
-  if(sel.value) inp.value = metin(sel.value);
-  function konumla(){ var r = inp.getBoundingClientRect();
-    liste.style.left = r.left + 'px'; liste.style.top = r.bottom + 'px'; liste.style.width = r.width + 'px'; }
-  function ac(filt){
-    konumla(); filt = (filt||'').toLocaleLowerCase('tr'); liste.innerHTML = ''; var n = 0;
+  function ac(sel, inp, filt){
+    aktifInp = inp; konumla(inp);
+    filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML = ''; var n = 0;
     Array.prototype.forEach.call(sel.options, function(o){
       var t = o.value ? o.textContent.trim() : '— (bağ yok) —';
       if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
       if(n++ > 80) return;
       var d = document.createElement('div'); d.className = 'akilli-secenek'; d.textContent = t;
       d.addEventListener('mousedown', function(ev){ ev.preventDefault();
-        sel.value = o.value; inp.value = o.value ? t : ''; liste.style.display = 'none'; });
-      liste.appendChild(d);
+        sel.value = o.value; inp.value = o.value ? t : ''; gListe.style.display = 'none'; });
+      gListe.appendChild(d);
     });
-    liste.style.display = liste.children.length ? 'block' : 'none';
+    gListe.style.display = gListe.children.length ? 'block' : 'none';
   }
-  inp.addEventListener('focus', function(){ ac(sel.value ? '' : inp.value); });
-  inp.addEventListener('input', function(){ sel.value = ''; ac(inp.value); });
-  inp.addEventListener('blur', function(){ setTimeout(function(){
-    liste.style.display = 'none'; inp.value = metin(sel.value); }, 150); });
-  window.addEventListener('scroll', function(){ if(liste.style.display === 'block') konumla(); }, true);
-  window.addEventListener('resize', function(){ if(liste.style.display === 'block') konumla(); });
+  function akilli(sel){
+    var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'akilli-girdi';
+    inp.placeholder = 'hesap ara / seç…'; inp.autocomplete = 'off';
+    sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
+    if(sel.value) inp.value = metin(sel, sel.value);
+    inp.addEventListener('focus', function(){ ac(sel, inp, sel.value ? '' : inp.value); });
+    inp.addEventListener('input', function(){ sel.value = ''; ac(sel, inp, inp.value); });
+    inp.addEventListener('blur', function(){ setTimeout(function(){
+      gListe.style.display = 'none'; inp.value = metin(sel, sel.value); }, 150); });
+  }
+  document.querySelectorAll('select.akilli-hesap').forEach(akilli);
+  window.addEventListener('scroll', function(){ if(gListe.style.display === 'block' && aktifInp) konumla(aktifInp); }, true);
+  window.addEventListener('resize', function(){ if(gListe.style.display === 'block' && aktifInp) konumla(aktifInp); });
+
+  // ---- Ekle: üst seçimine göre harita göster/gizle (harita yalnız ALT'ta) ----
+  var ust = document.getElementById('id_ust'); var bolum = document.getElementById('harita-bolum');
+  if(ust && bolum){
+    function gus(){ bolum.style.display = ust.value ? '' : 'none'; }
+    ust.addEventListener('change', gus); gus();
+  }
 })();
 </script>
 {% endblock %}

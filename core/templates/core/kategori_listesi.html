@@ -11,20 +11,20 @@
   <a class="dugme" href="{% url 'core:kategori_ekle' %}">+ Yeni Üst</a>
 </div>
 <p class="sayfa-alt">İki seviyeli: <strong>üst kategori</strong> (başlık) → <strong>alt
-  kategori</strong>. Stok kartı sonraki aşamada alt kategoriye açılacak. Muhasebe hesabı
-  bağı opsiyoneldir.</p>
+  kategori</strong>. Muhasebe hesabı haritası (fatura tipine göre) yalnız alt kategoride
+  tutulur; “Eşleşme” o kategoride hesap bağlı fatura tipi sayısıdır.</p>
 
 <div class="tablo-kapsayici">
 <table>
   <thead>
-    <tr><th>Kategori</th><th>Muhasebe Hesabı</th><th>İşlem</th></tr>
+    <tr><th>Kategori</th><th>Kod</th><th class="sag">Eşleşme</th><th>İşlem</th></tr>
   </thead>
   <tbody>
     {% for kok in koklar %}
       <tr>
         <td><strong>{{ kok.ad }}</strong></td>
-        <td>{% if kok.hesap %}<span class="mono">{{ kok.hesap.hesap_kodu }}</span>
-            {{ kok.hesap.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="mono">{{ kok.kod }}</td>
+        <td class="sag"><span class="pasif">—</span></td>
         <td>
           <span class="islem-bag">
             <a href="{% url 'core:kategori_ekle' %}?ust={{ kok.pk }}">+ Alt</a>
@@ -39,8 +39,9 @@
       {% for alt in kok.alt_kategoriler.all %}
         <tr>
           <td class="sev-1">{{ alt.ad }}</td>
-          <td>{% if alt.hesap %}<span class="mono">{{ alt.hesap.hesap_kodu }}</span>
-              {{ alt.hesap.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td class="mono">{{ alt.kod }}</td>
+          <td class="sag">{% if alt.es %}<span class="rozet rozet-aktif">{{ alt.es }} tip</span>
+              {% else %}<span class="pasif">—</span>{% endif %}</td>
           <td>
             <span class="islem-bag">
               <a href="{% url 'core:kategori_duzenle' alt.pk %}">Düzenle</a>
@@ -53,7 +54,7 @@
         </tr>
       {% endfor %}
     {% empty %}
-      <tr><td colspan="3" class="yardim">Henüz kategori yok. “+ Yeni Üst” ile başlayın.</td></tr>
+      <tr><td colspan="4" class="yardim">Henüz kategori yok. “+ Yeni Üst” ile başlayın.</td></tr>
     {% endfor %}
   </tbody>
 </table>

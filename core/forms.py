@@ -257,27 +257,27 @@ class BirimForm(forms.Form):
 
 
 class KategoriForm(forms.Form):
-    """Kategori ekle/düzenle (STOKLAR). Ad TR büyük harf (serviste); ``ust`` yalnızca
-    eklemede (düzenlemede üst değişmez); ``hesap`` akıllı arama ile YAPRAK hesap.
+    """Kategori ekle/düzenle (STOKLAR). Ad + Kod (benzersiz) TR büyük harf/benzersizlik
+    serviste; ``ust`` yalnızca eklemede (düzenlemede üst değişmez).
 
+    Muhasebe hesabı haritası (ALT × fatura tipi → yaprak hesap) bu formda DEĞİL; şablonda
+    ``hesap_<fatura_tipi_id>`` adlı select'lerle gelir, view + servis kaydeder.
     Düzenlemede ``duzenle=True`` ile ``ust`` alanı kaldırılır.
     """
 
     ad = forms.CharField(
         label="Ad", max_length=100,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kod = forms.CharField(
+        label="Kod", max_length=30,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
     ust = forms.ModelChoiceField(
         label="Üst Kategori", queryset=Kategori.objects.none(),
         required=False, empty_label="— (en üst kategori) —")
-    hesap = forms.ModelChoiceField(
-        label="Muhasebe Hesabı", queryset=HesapPlani.objects.none(),
-        to_field_name="hesap_kodu", required=False, empty_label="— (bağ yok) —")
 
     def __init__(self, *args, duzenle: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.hesap_plani import yaprak_hesaplar
         from core.services.kategori import ust_kategoriler
-        self.fields["hesap"].queryset = yaprak_hesaplar()
         if duzenle:
             self.fields.pop("ust")
         else:

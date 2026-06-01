@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
-from django.db.models import Prefetch, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from django.forms import formset_factory
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -537,28 +537,41 @@ def stoklar(request):
 
 @ekran_gerekli("kategoriler")
 def kategoriler(request):
-    alt_qs = (Kategori.objects.filter(silindi=False)
-              .select_related("hesap").order_by("ad"))
+    es = Count("hesap_baglari", filter=Q(hesap_baglari__silindi=False))
+    alt_qs = Kategori.objects.filter(silindi=False).order_by("ad").annotate(es=es)
     koklar = (Kategori.objects.filter(silindi=False, ust__isnull=True)
-              .select_related("hesap").order_by("ad")
+              .order_by("ad").annotate(es=es)
               .prefetch_related(Prefetch("alt_kategoriler", queryset=alt_qs)))
     return render(request, "core/kategori_listesi.html", {"koklar": koklar})
 
 
+def _harita_gruplari(aktif_ft, secili_map):
+    """Şablon için fatura tiplerini SATIŞ/ALIŞ gruplar; her birine seçili hesap kodunu ekler."""
+    satis, alis = [], []
+    for ft in aktif_ft:
+        satir = {"ft": ft, "secili": secili_map.get(ft.pk, "")}
+        (satis if ft.yon == FaturaTipi.Yon.SATIS else alis).append(satir)
+    return satis, alis
+
+
 @ekran_gerekli("kategoriler")
 def kategori_ekle(request):
+    aktif_ft = list(fatura_tipi_servis.aktif_fatura_tipleri())
+    secili_map = {}
     if request.method == "POST":
         form = KategoriForm(request.POST)
+        secili_map = {ft.pk: (request.POST.get(f"hesap_{ft.pk}") or "").strip()
+                      for ft in aktif_ft}
         if form.is_valid():
             try:
                 ust = form.cleaned_data.get("ust")
-                hesap = form.cleaned_data.get("hesap")
                 k = kategori_servis.kategori_olustur(
-                    ad=form.cleaned_data["ad"],
-                    ust_id=ust.pk if ust else None,
-                    hesap_kodu=hesap.hesap_kodu if hesap else None,
-                    kullanici=request.user,
+                    ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
+                    ust_id=ust.pk if ust else None, kullanici=request.user,
                 )
+                if k.ust_id:           # harita yalnız ALT kategoride
+                    kategori_servis.kategori_hesaplari_kaydet(
+                        k, eslesmeler=secili_map, kullanici=request.user)
                 messages.success(request, f"Kategori eklendi: {k.ad}")
                 return redirect("core:kategoriler")
             except kategori_servis.KategoriHatasi as e:
@@ -570,32 +583,44 @@ def kategori_ekle(request):
                 pk=ust_id, silindi=False, ust__isnull=True).exists():
             initial["ust"] = ust_id
         form = KategoriForm(initial=initial)
-    return render(request, "core/kategori_form.html",
-                  {"form": form, "baslik": "Yeni Kategori"})
+    satis, alis = _harita_gruplari(aktif_ft, secili_map)
+    return render(request, "core/kategori_form.html", {
+        "form": form, "baslik": "Yeni Kategori", "ekle": True,
+        "harita_satis": satis, "harita_alis": alis, "yaprak": hp.yaprak_hesaplar(),
+    })
 
 
 @ekran_gerekli("kategoriler")
 def kategori_duzenle(request, pk):
     kat = get_object_or_404(Kategori, pk=pk, silindi=False)
+    kat_alt = kat.ust_id is not None
+    aktif_ft = list(fatura_tipi_servis.aktif_fatura_tipleri())
     if request.method == "POST":
         form = KategoriForm(request.POST, duzenle=True)
+        secili_map = {ft.pk: (request.POST.get(f"hesap_{ft.pk}") or "").strip()
+                      for ft in aktif_ft}
         if form.is_valid():
             try:
-                hesap = form.cleaned_data.get("hesap")
                 kategori_servis.kategori_guncelle(
-                    kat, ad=form.cleaned_data["ad"],
-                    hesap_kodu=hesap.hesap_kodu if hesap else None,
-                    kullanici=request.user,
-                )
+                    kat, ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
+                    kullanici=request.user)
+                if kat_alt:
+                    kategori_servis.kategori_hesaplari_kaydet(
+                        kat, eslesmeler=secili_map, kullanici=request.user)
                 messages.success(request, "Kategori güncellendi.")
                 return redirect("core:kategoriler")
             except kategori_servis.KategoriHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = KategoriForm(duzenle=True,
-                            initial={"ad": kat.ad, "hesap": kat.hesap_id})
-    return render(request, "core/kategori_form.html",
-                  {"form": form, "baslik": "Kategori Düzenle", "duzenlenen": kat})
+        form = KategoriForm(duzenle=True, initial={"ad": kat.ad, "kod": kat.kod})
+        mevcut = kategori_servis.kategori_hesaplari(kat)
+        secili_map = {ft_id: kh.hesap_id for ft_id, kh in mevcut.items()}
+    satis, alis = _harita_gruplari(aktif_ft, secili_map)
+    return render(request, "core/kategori_form.html", {
+        "form": form, "baslik": "Kategori Düzenle", "duzenlenen": kat,
+        "ekle": False, "kat_alt": kat_alt,
+        "harita_satis": satis, "harita_alis": alis, "yaprak": hp.yaprak_hesaplar(),
+    })
 
 
 @ekran_gerekli("kategoriler")

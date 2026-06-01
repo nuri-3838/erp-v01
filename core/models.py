@@ -311,19 +311,18 @@ class Kategori(TemelModel):
     """Stok kategorisi (STOKLAR modülü). İki seviye: ÜST kategori (ust=None) →
     ALT kategori (ust=bir ÜST kategori).
 
-    Stok kartı sonraki aşamada ALT kategoriye açılacak. ``hesap`` (opsiyonel) hesap
-    planından bir YAPRAK hesabı işaret eder (muhasebe hesabı bağı). İki seviye sınırı
-    ve yaprak kuralı servis katmanında zorlanır.
+    Stok kartı sonraki aşamada ALT kategoriye açılacak. ``kod`` elle girilir ve
+    silinmemişler arasında benzersizdir. Muhasebe hesabı bağı artık tekil değil:
+    ALT kategori × fatura tipi → yaprak hesap haritası ``KategoriHesap``'ta tutulur.
+    İki seviye sınırı, kod benzersizliği ve yaprak kuralı servis katmanında zorlanır.
     """
 
     ad = models.CharField("ad", max_length=100)
+    # default="" yalnız migration kolaylığı için; servis boş/benzersiz olmayan kodu reddeder.
+    kod = models.CharField("kod", max_length=30, default="")
     ust = models.ForeignKey(
         "self", verbose_name="üst kategori", null=True, blank=True,
         on_delete=models.PROTECT, related_name="alt_kategoriler",
-    )
-    hesap = models.ForeignKey(
-        HesapPlani, verbose_name="muhasebe hesabı", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="kategoriler",
     )
 
     class Meta:
@@ -331,6 +330,11 @@ class Kategori(TemelModel):
         verbose_name = "kategori"
         verbose_name_plural = "kategoriler"
         ordering = ["ad"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kod"], condition=models.Q(silindi=False),
+                name="uq_kategori_kod_aktif"),
+        ]
 
     def __str__(self):
         return self.ad
@@ -366,3 +370,38 @@ class FaturaTipi(TemelModel):
 
     def __str__(self):
         return self.ad
+
+
+class KategoriHesap(TemelModel):
+    """ALT kategori × fatura tipi → muhasebe (yaprak) hesabı haritası.
+
+    Her ALT kategori, her fatura tipi için (Satış Faturası, Alış Faturası-Gider, …)
+    farklı bir muhasebe hesabına bağlanabilir. Bir (kategori, fatura_tipi) çifti için
+    en fazla bir kayıt (unique). "Bağ kaldır" = soft-delete; yeniden bağlanınca aynı
+    satır canlanır (servis update_or_create mantığı). Yaprak hesap kuralı serviste.
+    """
+
+    kategori = models.ForeignKey(
+        Kategori, verbose_name="kategori", related_name="hesap_baglari",
+        on_delete=models.CASCADE,
+    )
+    fatura_tipi = models.ForeignKey(
+        FaturaTipi, verbose_name="fatura tipi", related_name="kategori_baglari",
+        on_delete=models.PROTECT,
+    )
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", related_name="kategori_baglari",
+        on_delete=models.PROTECT,
+    )
+
+    class Meta:
+        db_table = "kategori_hesap"
+        verbose_name = "kategori hesap bağı"
+        verbose_name_plural = "kategori hesap bağları"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kategori", "fatura_tipi"], name="uq_kategori_fatura_tipi"),
+        ]
+
+    def __str__(self):
+        return f"{self.kategori_id}:{self.fatura_tipi_id} -> {self.hesap_id}"

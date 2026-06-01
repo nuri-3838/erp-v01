@@ -4,15 +4,15 @@ Kurallar tek noktada (UI'a güvenilmez):
 - Ad TR büyük harfe çevrilir; boş olamaz; silinmemişler arasında BENZERSİZ (DB'de de
   kısmi unique kısıtı var).
 - Yön yalnız SATIS / ALIS olabilir.
-- Silme: soft-delete (iz kalır). Faz 2'de bir kategori haritasında kullanılıyorsa
-  engellenecek (şimdilik harita yok → serbest).
+- Silme: soft-delete (iz kalır). Bir kategori hesap haritasında AKTİF olarak
+  kullanılıyorsa silinemez (önce o bağları kaldır).
 """
 from __future__ import annotations
 
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import FaturaTipi
+from core.models import FaturaTipi, KategoriHesap
 
 
 class FaturaTipiHatasi(ValueError):
@@ -65,9 +65,14 @@ def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, aktif,
 
 
 def fatura_tipi_sil(tip: FaturaTipi, kullanici=None) -> FaturaTipi:
-    """Soft-delete (iz kalır)."""
+    """Soft-delete (iz kalır). Aktif bir kategori bağında kullanılıyorsa engellenir."""
     if tip.silindi:
         return tip
+    if KategoriHesap.objects.filter(fatura_tipi=tip, silindi=False).exists():
+        raise FaturaTipiHatasi(
+            "Bu fatura tipi bir veya daha fazla kategorinin hesap haritasında "
+            "kullanılıyor; önce o bağları kaldırın."
+        )
     tip.silindi = True
     tip.silindi_at = timezone.now()
     tip.updated_by = kullanici

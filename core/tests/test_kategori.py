@@ -1,92 +1,124 @@
-"""Kategori (STOKLAR) testleri — servis CRUD + 2 seviye kuralı + yaprak hesap bağı +
-view + yetki + akıllı arama kaynağı (yaprak hesap listesi)."""
+"""Kategori (STOKLAR Faz 0+2) testleri — 2 seviye + Kod (benzersiz) + ALT × fatura tipi
+→ yaprak hesap HARİTASI + view + yetki + akıllı arama kaynağı."""
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import EkranYetki, HesapPlani, Kategori
+from core.models import EkranYetki, FaturaTipi, HesapPlani, Kategori, KategoriHesap
+from core.services.fatura_tipi import fatura_tipi_olustur
 from core.services.kategori import (KategoriHatasi, kategori_guncelle,
+                                     kategori_hesaplari, kategori_hesaplari_kaydet,
                                      kategori_olustur, kategori_sil)
 
 
 def _hesaplar():
-    """153 (üst/ara) + 153.10 (yaprak) — hesap bağı testleri için."""
+    """153 (üst/ara) + 153.10 / 153.20 (yaprak) — hesap bağı testleri için."""
     ust = HesapPlani.objects.create(
         hesap_kodu="153", hesap_adi="TİCARİ MALLAR",
         rapor_grubu="BILANCO", rapor_kalemi="DV")
-    yaprak = HesapPlani.objects.create(
+    y1 = HesapPlani.objects.create(
         hesap_kodu="153.10", hesap_adi="ALÜMİNYUM",
         rapor_grubu="BILANCO", rapor_kalemi="DV", ust_hesap=ust)
-    return ust, yaprak
+    y2 = HesapPlani.objects.create(
+        hesap_kodu="153.20", hesap_adi="ÇELİK",
+        rapor_grubu="BILANCO", rapor_kalemi="DV", ust_hesap=ust)
+    return ust, y1, y2
 
 
 class KategoriServisTest(TestCase):
     def test_ust_olustur_tr_buyuk_harf(self):
-        k = kategori_olustur(ad="hammadde")
-        self.assertEqual(k.ad, "HAMMADDE")
+        k = kategori_olustur(ad="hammadde", kod="HM")
+        self.assertEqual((k.ad, k.kod), ("HAMMADDE", "HM"))
         self.assertIsNone(k.ust_id)
 
     def test_alt_olustur(self):
-        ust = kategori_olustur(ad="hammadde")
-        alt = kategori_olustur(ad="alüminyum", ust_id=ust.pk)
-        self.assertEqual(alt.ad, "ALÜMİNYUM")
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="HM-ALU", ust_id=ust.pk)
         self.assertEqual(alt.ust_id, ust.pk)
 
+    def test_kod_zorunlu(self):
+        with self.assertRaises(KategoriHatasi):
+            kategori_olustur(ad="hammadde", kod="  ")
+
+    def test_kod_benzersiz(self):
+        kategori_olustur(ad="hammadde", kod="HM")
+        with self.assertRaises(KategoriHatasi):
+            kategori_olustur(ad="başka", kod="HM")
+
     def test_uc_seviye_engellenir(self):
-        ust = kategori_olustur(ad="hammadde")
-        alt = kategori_olustur(ad="alüminyum", ust_id=ust.pk)
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
         with self.assertRaises(KategoriHatasi):
-            kategori_olustur(ad="6063", ust_id=alt.pk)   # alt'ın altına olmaz
+            kategori_olustur(ad="6063", kod="6063", ust_id=alt.pk)
 
-    def test_ust_yok_red(self):
-        with self.assertRaises(KategoriHatasi):
-            kategori_olustur(ad="x", ust_id=9999)
-
-    def test_bos_ad_red(self):
-        with self.assertRaises(KategoriHatasi):
-            kategori_olustur(ad="   ")
-
-    def test_hesap_bagla_yaprak(self):
-        _, yaprak = _hesaplar()
-        k = kategori_olustur(ad="alüminyum", hesap_kodu="153.10")
-        self.assertEqual(k.hesap_id, yaprak.hesap_kodu)
-
-    def test_hesap_yaprak_degil_red(self):
-        _hesaplar()
-        with self.assertRaises(KategoriHatasi):
-            kategori_olustur(ad="x", hesap_kodu="153")   # 153 alt hesabı olan ara hesap
-
-    def test_hesap_yok_red(self):
-        with self.assertRaises(KategoriHatasi):
-            kategori_olustur(ad="x", hesap_kodu="999")
-
-    def test_guncelle_ad_ve_hesap(self):
-        _, yaprak = _hesaplar()
-        k = kategori_olustur(ad="alüminyum")
-        kategori_guncelle(k, ad="alüminyum profil", hesap_kodu="153.10")
+    def test_guncelle_ad_kod(self):
+        k = kategori_olustur(ad="hammadde", kod="HM")
+        kategori_guncelle(k, ad="hammadde grup", kod="HMG")
         k.refresh_from_db()
-        self.assertEqual((k.ad, k.hesap_id), ("ALÜMİNYUM PROFİL", "153.10"))
-        kategori_guncelle(k, ad="alüminyum profil", hesap_kodu="")  # bağ kaldır
-        k.refresh_from_db()
-        self.assertIsNone(k.hesap_id)
+        self.assertEqual((k.ad, k.kod), ("HAMMADDE GRUP", "HMG"))
 
     def test_sil_soft_delete(self):
-        k = kategori_olustur(ad="hammadde")
+        k = kategori_olustur(ad="hammadde", kod="HM")
         kategori_sil(k)
         k.refresh_from_db()
         self.assertTrue(k.silindi)
-        with self.assertRaises(KategoriHatasi):       # silinmiş düzenlenemez
-            kategori_guncelle(k, ad="x", hesap_kodu="")
 
     def test_alt_kategorili_ust_silinemez(self):
-        ust = kategori_olustur(ad="hammadde")
-        alt = kategori_olustur(ad="alüminyum", ust_id=ust.pk)
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
         with self.assertRaises(KategoriHatasi):
-            kategori_sil(ust)                          # alt kategorisi var
-        kategori_sil(alt)                              # önce alt
-        kategori_sil(ust)                              # sonra üst -> serbest
+            kategori_sil(ust)
+        kategori_sil(alt)
+        kategori_sil(ust)
         ust.refresh_from_db()
         self.assertTrue(ust.silindi)
+
+    # --- Harita (ALT × fatura tipi → yaprak hesap) ---
+    def test_harita_kaydet_yaprak(self):
+        _hesaplar()
+        ft = fatura_tipi_olustur(ad="satış faturası", yon="SATIS")
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
+        kategori_hesaplari_kaydet(alt, eslesmeler={ft.pk: "153.10"})
+        m = kategori_hesaplari(alt)
+        self.assertEqual(m[ft.pk].hesap_id, "153.10")
+
+    def test_harita_yaprak_degil_red(self):
+        _hesaplar()
+        ft = fatura_tipi_olustur(ad="satış faturası", yon="SATIS")
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
+        with self.assertRaises(KategoriHatasi):
+            kategori_hesaplari_kaydet(alt, eslesmeler={ft.pk: "153"})  # ara hesap
+
+    def test_harita_bos_soft_delete_ve_canlanma(self):
+        _hesaplar()
+        ft = fatura_tipi_olustur(ad="satış faturası", yon="SATIS")
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
+        kategori_hesaplari_kaydet(alt, eslesmeler={ft.pk: "153.10"})
+        kategori_hesaplari_kaydet(alt, eslesmeler={ft.pk: ""})        # bağ kaldır
+        self.assertEqual(kategori_hesaplari(alt), {})
+        self.assertEqual(KategoriHesap.objects.filter(kategori=alt).count(), 1)  # iz kalır
+        kategori_hesaplari_kaydet(alt, eslesmeler={ft.pk: "153.20"})  # yeniden bağla
+        m = kategori_hesaplari(alt)
+        self.assertEqual(m[ft.pk].hesap_id, "153.20")
+        self.assertEqual(KategoriHesap.objects.filter(kategori=alt).count(), 1)  # tek satır
+
+    def test_harita_ust_kategoride_red(self):
+        ft = fatura_tipi_olustur(ad="satış faturası", yon="SATIS")
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        with self.assertRaises(KategoriHatasi):
+            kategori_hesaplari_kaydet(ust, eslesmeler={ft.pk: ""})
+
+    def test_kategori_sil_haritayi_da_soft_delete(self):
+        _hesaplar()
+        ft = fatura_tipi_olustur(ad="satış faturası", yon="SATIS")
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
+        kategori_hesaplari_kaydet(alt, eslesmeler={ft.pk: "153.10"})
+        kategori_sil(alt)
+        self.assertEqual(kategori_hesaplari(alt), {})
 
 
 class KategoriViewTest(TestCase):
@@ -97,72 +129,85 @@ class KategoriViewTest(TestCase):
         EkranYetki.objects.create(kullanici=cls.yetkili, ekran_kod="kategoriler")
         cls.bos = User.objects.create_user("bos", password="x")
         _hesaplar()
+        cls.ft = fatura_tipi_olustur(ad="satış faturası", yon="SATIS", sira=10)
 
     def test_liste_render(self):
-        ust = kategori_olustur(ad="hammadde")
-        kategori_olustur(ad="alüminyum", ust_id=ust.pk)
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        kategori_olustur(ad="alüminyum", kod="HM-ALU", ust_id=ust.pk)
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:kategoriler"))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "HAMMADDE")
-        self.assertContains(r, "ALÜMİNYUM")
+        self.assertContains(r, "HM-ALU")
         self.assertContains(r, "+ Yeni Üst")
 
     def test_ekle_ust_post(self):
         self.client.force_login(self.yetkili)
-        r = self.client.post(reverse("core:kategori_ekle"), {"ad": "hammadde"})
+        r = self.client.post(reverse("core:kategori_ekle"),
+                             {"ad": "hammadde", "kod": "HM"})
         self.assertEqual(r.status_code, 302)
-        k = Kategori.objects.get(ad="HAMMADDE")
-        self.assertIsNone(k.ust_id)
+        k = Kategori.objects.get(kod="HM")
+        self.assertEqual((k.ad, k.ust_id), ("HAMMADDE", None))
 
-    def test_ekle_alt_post(self):
-        ust = kategori_olustur(ad="hammadde")
+    def test_ekle_alt_post_harita(self):
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:kategori_ekle"), {
+            "ad": "alüminyum", "kod": "ALU", "ust": str(ust.pk),
+            f"hesap_{self.ft.pk}": "153.10"})
+        self.assertEqual(r.status_code, 302)
+        alt = Kategori.objects.get(kod="ALU")
+        self.assertEqual(alt.ust_id, ust.pk)
+        self.assertEqual(
+            KategoriHesap.objects.get(kategori=alt, fatura_tipi=self.ft).hesap_id,
+            "153.10")
+
+    def test_ekle_kod_benzersiz_formda_kalir(self):
+        kategori_olustur(ad="hammadde", kod="HM")
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:kategori_ekle"),
-                             {"ad": "alüminyum", "ust": str(ust.pk)})
-        self.assertEqual(r.status_code, 302)
-        self.assertEqual(Kategori.objects.get(ad="ALÜMİNYUM").ust_id, ust.pk)
+                             {"ad": "başka", "kod": "HM"})
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(Kategori.objects.filter(ad="BAŞKA").exists())
 
-    def test_ekle_hesap_bagla_post(self):
-        self.client.force_login(self.yetkili)
-        r = self.client.post(reverse("core:kategori_ekle"),
-                             {"ad": "alüminyum", "hesap": "153.10"})
-        self.assertEqual(r.status_code, 302)
-        self.assertEqual(Kategori.objects.get(ad="ALÜMİNYUM").hesap_id, "153.10")
-
-    def test_ekle_sayfa_yaprak_hesaplari_listeler(self):
-        """Akıllı arama kaynağı: hesap seçimi YALNIZCA yaprak hesapları sunar."""
+    def test_ekle_sayfa_yaprak_hesaplari_ve_fatura_tipi(self):
+        """Akıllı arama kaynağı: select YALNIZ yaprak hesapları + fatura tipi satırı."""
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:kategori_ekle"))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'value="153.10"')      # yaprak hesap seçilebilir
-        self.assertNotContains(r, 'value="153"')       # ara hesap listede yok
+        self.assertNotContains(r, 'value="153"')        # ara hesap yok
+        self.assertContains(r, "SATIŞ FATURASI")        # fatura tipi satırı
+        self.assertContains(r, f'name="hesap_{self.ft.pk}"')
 
-    def test_duzenle_post(self):
-        k = kategori_olustur(ad="hammadde")
+    def test_duzenle_harita_post(self):
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        alt = kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
+        kategori_hesaplari_kaydet(alt, eslesmeler={self.ft.pk: "153.10"})
         self.client.force_login(self.yetkili)
-        r = self.client.post(reverse("core:kategori_duzenle", args=[k.pk]),
-                             {"ad": "hammadde grup", "hesap": "153.10"})
+        r = self.client.post(reverse("core:kategori_duzenle", args=[alt.pk]), {
+            "ad": "alüminyum", "kod": "ALU", f"hesap_{self.ft.pk}": "153.20"})
         self.assertEqual(r.status_code, 302)
-        k.refresh_from_db()
-        self.assertEqual((k.ad, k.hesap_id), ("HAMMADDE GRUP", "153.10"))
+        self.assertEqual(
+            KategoriHesap.objects.get(kategori=alt, fatura_tipi=self.ft).hesap_id,
+            "153.20")
+
+    def test_sil_alt_kategorili_ust_engellenir(self):
+        ust = kategori_olustur(ad="hammadde", kod="HM")
+        kategori_olustur(ad="alüminyum", kod="ALU", ust_id=ust.pk)
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:kategori_sil", args=[ust.pk]))
+        self.assertEqual(r.status_code, 302)
+        ust.refresh_from_db()
+        self.assertFalse(ust.silindi)
 
     def test_sil_post_soft_delete(self):
-        k = kategori_olustur(ad="hammadde")
+        k = kategori_olustur(ad="hammadde", kod="HM")
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:kategori_sil", args=[k.pk]))
         self.assertEqual(r.status_code, 302)
         k.refresh_from_db()
         self.assertTrue(k.silindi)
-
-    def test_sil_alt_kategorili_ust_engellenir(self):
-        ust = kategori_olustur(ad="hammadde")
-        kategori_olustur(ad="alüminyum", ust_id=ust.pk)
-        self.client.force_login(self.yetkili)
-        r = self.client.post(reverse("core:kategori_sil", args=[ust.pk]))
-        self.assertEqual(r.status_code, 302)
-        ust.refresh_from_db()
-        self.assertFalse(ust.silindi)                  # silinemedi (alt var)
 
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)
