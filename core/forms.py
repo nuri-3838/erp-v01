@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
-from core.models import HesapPlani, Profil, YevmiyeSatir
+from core.models import HesapPlani, Kategori, Profil, YevmiyeSatir
 from core.sayi import SayiHatasi, format_tr, parse_tr
 
 
@@ -254,3 +254,31 @@ class BirimForm(forms.Form):
         label="Ondalık hane (0-6)", min_value=0, max_value=6, initial=0,
         widget=forms.NumberInput(attrs={"min": 0, "max": 6, "inputmode": "numeric"}))
     aktif = forms.BooleanField(label="Aktif", required=False, initial=True)
+
+
+class KategoriForm(forms.Form):
+    """Kategori ekle/düzenle (STOKLAR). Ad TR büyük harf (serviste); ``ust`` yalnızca
+    eklemede (düzenlemede üst değişmez); ``hesap`` akıllı arama ile YAPRAK hesap.
+
+    Düzenlemede ``duzenle=True`` ile ``ust`` alanı kaldırılır.
+    """
+
+    ad = forms.CharField(
+        label="Ad", max_length=100,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ust = forms.ModelChoiceField(
+        label="Üst Kategori", queryset=Kategori.objects.none(),
+        required=False, empty_label="— (en üst kategori) —")
+    hesap = forms.ModelChoiceField(
+        label="Muhasebe Hesabı", queryset=HesapPlani.objects.none(),
+        to_field_name="hesap_kodu", required=False, empty_label="— (bağ yok) —")
+
+    def __init__(self, *args, duzenle: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        from core.services.kategori import ust_kategoriler
+        self.fields["hesap"].queryset = yaprak_hesaplar()
+        if duzenle:
+            self.fields.pop("ust")
+        else:
+            self.fields["ust"].queryset = ust_kategoriler()

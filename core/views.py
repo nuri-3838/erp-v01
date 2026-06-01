@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
-from django.db.models import Q, Sum
+from django.db.models import Prefetch, Q, Sum
 from django.forms import formset_factory
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,10 +15,12 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    BirimForm, FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm,
-    SatirForm,
+    BirimForm, FisForm, KategoriForm, KullaniciDuzenleForm, KullaniciEkleForm,
+    MizanFiltreForm, SatirForm,
 )
-from core.models import Birim, EkranYetki, HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
+from core.models import (
+    Birim, EkranYetki, HesapPlani, Kategori, Kur, YevmiyeFisi, YevmiyeSatir,
+)
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
 from core.sayi import SayiHatasi, parse_tr
@@ -33,6 +35,7 @@ from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import birim as birim_servis
+from core.services import kategori as kategori_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -532,8 +535,77 @@ def stoklar(request):
 
 @ekran_gerekli("kategoriler")
 def kategoriler(request):
-    return render(request, "core/yakinda.html",
-                  {"baslik": "Kategoriler", "aciklama": "Kategoriler sonraki aşamada gelecek."})
+    alt_qs = (Kategori.objects.filter(silindi=False)
+              .select_related("hesap").order_by("ad"))
+    koklar = (Kategori.objects.filter(silindi=False, ust__isnull=True)
+              .select_related("hesap").order_by("ad")
+              .prefetch_related(Prefetch("alt_kategoriler", queryset=alt_qs)))
+    return render(request, "core/kategori_listesi.html", {"koklar": koklar})
+
+
+@ekran_gerekli("kategoriler")
+def kategori_ekle(request):
+    if request.method == "POST":
+        form = KategoriForm(request.POST)
+        if form.is_valid():
+            try:
+                ust = form.cleaned_data.get("ust")
+                hesap = form.cleaned_data.get("hesap")
+                k = kategori_servis.kategori_olustur(
+                    ad=form.cleaned_data["ad"],
+                    ust_id=ust.pk if ust else None,
+                    hesap_kodu=hesap.hesap_kodu if hesap else None,
+                    kullanici=request.user,
+                )
+                messages.success(request, f"Kategori eklendi: {k.ad}")
+                return redirect("core:kategoriler")
+            except kategori_servis.KategoriHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        ust_id = request.GET.get("ust")
+        initial = {}
+        if ust_id and Kategori.objects.filter(
+                pk=ust_id, silindi=False, ust__isnull=True).exists():
+            initial["ust"] = ust_id
+        form = KategoriForm(initial=initial)
+    return render(request, "core/kategori_form.html",
+                  {"form": form, "baslik": "Yeni Kategori"})
+
+
+@ekran_gerekli("kategoriler")
+def kategori_duzenle(request, pk):
+    kat = get_object_or_404(Kategori, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = KategoriForm(request.POST, duzenle=True)
+        if form.is_valid():
+            try:
+                hesap = form.cleaned_data.get("hesap")
+                kategori_servis.kategori_guncelle(
+                    kat, ad=form.cleaned_data["ad"],
+                    hesap_kodu=hesap.hesap_kodu if hesap else None,
+                    kullanici=request.user,
+                )
+                messages.success(request, "Kategori güncellendi.")
+                return redirect("core:kategoriler")
+            except kategori_servis.KategoriHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KategoriForm(duzenle=True,
+                            initial={"ad": kat.ad, "hesap": kat.hesap_id})
+    return render(request, "core/kategori_form.html",
+                  {"form": form, "baslik": "Kategori Düzenle", "duzenlenen": kat})
+
+
+@ekran_gerekli("kategoriler")
+def kategori_sil(request, pk):
+    kat = get_object_or_404(Kategori, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            kategori_servis.kategori_sil(kat, kullanici=request.user)
+            messages.success(request, f"Kategori silindi: {kat.ad}")
+        except kategori_servis.KategoriHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:kategoriler")
 
 
 @ekran_gerekli("birimler")

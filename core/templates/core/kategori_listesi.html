@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% block baslik %}Kategoriler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kategoriler{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
+    <h1 class="ust-baslik"><span class="emoji">🗂️</span>Kategoriler</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:kategori_ekle' %}">+ Yeni Üst</a>
+</div>
+<p class="sayfa-alt">İki seviyeli: <strong>üst kategori</strong> (başlık) → <strong>alt
+  kategori</strong>. Stok kartı sonraki aşamada alt kategoriye açılacak. Muhasebe hesabı
+  bağı opsiyoneldir.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr><th>Kategori</th><th>Muhasebe Hesabı</th><th>İşlem</th></tr>
+  </thead>
+  <tbody>
+    {% for kok in koklar %}
+      <tr>
+        <td><strong>{{ kok.ad }}</strong></td>
+        <td>{% if kok.hesap %}<span class="mono">{{ kok.hesap.hesap_kodu }}</span>
+            {{ kok.hesap.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:kategori_ekle' %}?ust={{ kok.pk }}">+ Alt</a>
+            <a href="{% url 'core:kategori_duzenle' kok.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:kategori_sil' kok.pk %}"
+                  onsubmit="return confirm('{{ kok.ad }} kategorisi silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
+        </td>
+      </tr>
+      {% for alt in kok.alt_kategoriler.all %}
+        <tr>
+          <td class="sev-1">{{ alt.ad }}</td>
+          <td>{% if alt.hesap %}<span class="mono">{{ alt.hesap.hesap_kodu }}</span>
+              {{ alt.hesap.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td>
+            <span class="islem-bag">
+              <a href="{% url 'core:kategori_duzenle' alt.pk %}">Düzenle</a>
+              <form method="post" action="{% url 'core:kategori_sil' alt.pk %}"
+                    onsubmit="return confirm('{{ alt.ad }} kategorisi silinsin mi?');">
+                {% csrf_token %}<button type="submit" class="sil">Sil</button>
+              </form>
+            </span>
+          </td>
+        </tr>
+      {% endfor %}
+    {% empty %}
+      <tr><td colspan="3" class="yardim">Henüz kategori yok. “+ Yeni Üst” ile başlayın.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

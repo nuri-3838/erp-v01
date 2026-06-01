@@ -305,3 +305,32 @@ class Birim(TemelModel):
 
     def __str__(self):
         return f"{self.ad} ({self.kisa_ad})"
+
+
+class Kategori(TemelModel):
+    """Stok kategorisi (STOKLAR modülü). İki seviye: ÜST kategori (ust=None) →
+    ALT kategori (ust=bir ÜST kategori).
+
+    Stok kartı sonraki aşamada ALT kategoriye açılacak. ``hesap`` (opsiyonel) hesap
+    planından bir YAPRAK hesabı işaret eder (muhasebe hesabı bağı). İki seviye sınırı
+    ve yaprak kuralı servis katmanında zorlanır.
+    """
+
+    ad = models.CharField("ad", max_length=100)
+    ust = models.ForeignKey(
+        "self", verbose_name="üst kategori", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="alt_kategoriler",
+    )
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kategoriler",
+    )
+
+    class Meta:
+        db_table = "kategori"
+        verbose_name = "kategori"
+        verbose_name_plural = "kategoriler"
+        ordering = ["ad"]
+
+    def __str__(self):
+        return self.ad
