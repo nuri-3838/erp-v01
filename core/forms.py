@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
-from core.models import HesapPlani, Kategori, Profil, YevmiyeSatir
+from core.models import FaturaTipi, HesapPlani, Kategori, Profil, YevmiyeSatir
 from core.sayi import SayiHatasi, format_tr, parse_tr
 
 
@@ -282,3 +282,16 @@ class KategoriForm(forms.Form):
             self.fields.pop("ust")
         else:
             self.fields["ust"].queryset = ust_kategoriler()
+
+
+class FaturaTipiForm(forms.Form):
+    """Fatura tipi ekle/düzenle (STOKLAR). Ad TR büyük harf + benzersizlik serviste."""
+
+    ad = forms.CharField(
+        label="Ad", max_length=100,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    yon = forms.ChoiceField(label="Yön", choices=FaturaTipi.Yon.choices)
+    sira = forms.IntegerField(
+        label="Sıra", min_value=0, initial=0,
+        widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+    aktif = forms.BooleanField(label="Aktif", required=False, initial=True)

@@ -1,0 +1,65 @@
+{% extends "core/base.html" %}
+{% block baslik %}Fatura Tipleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fatura Tipleri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>Fatura Tipleri</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:fatura_tipi_ekle' %}">+ Yeni</a>
+</div>
+<p class="sayfa-alt">Satış ve alış faturalarının türleri. Faz 2'de alt kategorilere bu
+  tipler için ayrı muhasebe hesabı bağlanacak.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr><th class="sag">Sıra</th><th>Ad</th><th>Durum</th><th>İşlem</th></tr>
+  </thead>
+  <tbody>
+    <tr class="grup"><th colspan="4">Satış İçin</th></tr>
+    {% for t in satis %}
+      <tr>
+        <td class="sag mono">{{ t.sira }}</td>
+        <td>{{ t.ad }}</td>
+        <td>{% if t.aktif %}<span class="rozet rozet-aktif">Aktif</span>
+            {% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:fatura_tipi_duzenle' t.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:fatura_tipi_sil' t.pk %}"
+                  onsubmit="return confirm('{{ t.ad }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="yardim">Satış fatura tipi yok.</td></tr>
+    {% endfor %}
+    <tr class="grup"><th colspan="4">Alış İçin</th></tr>
+    {% for t in alis %}
+      <tr>
+        <td class="sag mono">{{ t.sira }}</td>
+        <td>{{ t.ad }}</td>
+        <td>{% if t.aktif %}<span class="rozet rozet-aktif">Aktif</span>
+            {% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:fatura_tipi_duzenle' t.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:fatura_tipi_sil' t.pk %}"
+                  onsubmit="return confirm('{{ t.ad }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="yardim">Alış fatura tipi yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

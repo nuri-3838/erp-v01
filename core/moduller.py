@@ -36,6 +36,7 @@ MODULLER = (
     Modul("STOKLAR", "Stoklar", (
         Ekran("stoklar", "Stoklar", "core:stoklar"),
         Ekran("kategoriler", "Kategoriler", "core:kategoriler"),
+        Ekran("fatura_tipleri", "Fatura Tipleri", "core:fatura_tipleri"),
         Ekran("birimler", "Birimler", "core:birimler"),
     )),
     Modul("AYARLAR", "Ayarlar", (

@@ -1,0 +1,31 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fatura_tipleri' %}">← Fatura Tipleri</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik }}</h1>
+  </div>
+</div>
+
+{% if form.non_field_errors %}
+  <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+{% endif %}
+
+<form method="post" autocomplete="off" style="max-width:480px">
+  {% csrf_token %}
+  {% for field in form %}
+    <div class="alan {% if field.field.widget.input_type == 'checkbox' %}onay-alan{% endif %}">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+    </div>
+  {% endfor %}
+  <p class="yardim">Ad otomatik BÜYÜK harfe çevrilir ve benzersiz olmalıdır. Sıra,
+    listede gösterim düzenini belirler (satış 10'lar, alış 50'ler).</p>
+  <button type="submit" class="birincil">Kaydet</button>
+  <a href="{% url 'core:fatura_tipleri' %}" style="margin-left:1rem">Vazgeç</a>
+</form>
+{% endblock %}

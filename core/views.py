@@ -15,11 +15,12 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    BirimForm, FisForm, KategoriForm, KullaniciDuzenleForm, KullaniciEkleForm,
-    MizanFiltreForm, SatirForm,
+    BirimForm, FaturaTipiForm, FisForm, KategoriForm, KullaniciDuzenleForm,
+    KullaniciEkleForm, MizanFiltreForm, SatirForm,
 )
 from core.models import (
-    Birim, EkranYetki, HesapPlani, Kategori, Kur, YevmiyeFisi, YevmiyeSatir,
+    Birim, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, YevmiyeFisi,
+    YevmiyeSatir,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -36,6 +37,7 @@ from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import birim as birim_servis
 from core.services import kategori as kategori_servis
+from core.services import fatura_tipi as fatura_tipi_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -656,3 +658,62 @@ def birim_sil(request, pk):
         birim_servis.birim_sil(birim, kullanici=request.user)
         messages.success(request, f"Birim silindi: {birim.ad}")
     return redirect("core:birimler")
+
+
+@ekran_gerekli("fatura_tipleri")
+def fatura_tipleri(request):
+    tipler = fatura_tipi_servis.aktif_fatura_tipleri()
+    return render(request, "core/fatura_tipi_listesi.html", {
+        "satis": [t for t in tipler if t.yon == FaturaTipi.Yon.SATIS],
+        "alis": [t for t in tipler if t.yon == FaturaTipi.Yon.ALIS],
+    })
+
+
+@ekran_gerekli("fatura_tipleri")
+def fatura_tipi_ekle(request):
+    if request.method == "POST":
+        form = FaturaTipiForm(request.POST)
+        if form.is_valid():
+            try:
+                t = fatura_tipi_servis.fatura_tipi_olustur(
+                    **form.cleaned_data, kullanici=request.user)
+                messages.success(request, f"Fatura tipi eklendi: {t.ad}")
+                return redirect("core:fatura_tipleri")
+            except fatura_tipi_servis.FaturaTipiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = FaturaTipiForm()
+    return render(request, "core/fatura_tipi_form.html",
+                  {"form": form, "baslik": "Yeni Fatura Tipi"})
+
+
+@ekran_gerekli("fatura_tipleri")
+def fatura_tipi_duzenle(request, pk):
+    tip = get_object_or_404(FaturaTipi, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = FaturaTipiForm(request.POST)
+        if form.is_valid():
+            try:
+                fatura_tipi_servis.fatura_tipi_guncelle(
+                    tip, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Fatura tipi güncellendi.")
+                return redirect("core:fatura_tipleri")
+            except fatura_tipi_servis.FaturaTipiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = FaturaTipiForm(initial={
+            "ad": tip.ad, "yon": tip.yon, "sira": tip.sira, "aktif": tip.aktif})
+    return render(request, "core/fatura_tipi_form.html",
+                  {"form": form, "baslik": "Fatura Tipi Düzenle", "duzenlenen": tip})
+
+
+@ekran_gerekli("fatura_tipleri")
+def fatura_tipi_sil(request, pk):
+    tip = get_object_or_404(FaturaTipi, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fatura_tipi_servis.fatura_tipi_sil(tip, kullanici=request.user)
+            messages.success(request, f"Fatura tipi silindi: {tip.ad}")
+        except fatura_tipi_servis.FaturaTipiHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fatura_tipleri")

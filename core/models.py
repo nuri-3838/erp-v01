@@ -334,3 +334,35 @@ class Kategori(TemelModel):
 
     def __str__(self):
         return self.ad
+
+
+class FaturaTipi(TemelModel):
+    """Fatura tipi (STOKLAR) — yönetilebilir liste. Satış/alış faturalarının türleri;
+    Faz 2'de ALT kategori × fatura tipi → muhasebe hesabı haritası bunlara bağlanacak.
+
+    Ad silinmemişler arasında benzersiz (kısmi unique). Sıra menü/listede gösterim
+    düzenini verir (satış 10'lar, alış 50'ler gibi).
+    """
+
+    class Yon(models.TextChoices):
+        SATIS = "SATIS", "Satış"
+        ALIS = "ALIS", "Alış"
+
+    ad = models.CharField("ad", max_length=100)
+    yon = models.CharField("yön", max_length=5, choices=Yon.choices)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+    aktif = models.BooleanField("aktif", default=True)
+
+    class Meta:
+        db_table = "fatura_tipi"
+        verbose_name = "fatura tipi"
+        verbose_name_plural = "fatura tipleri"
+        ordering = ["sira", "ad"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ad"], condition=models.Q(silindi=False),
+                name="uq_fatura_tipi_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return self.ad
