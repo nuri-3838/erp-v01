@@ -549,18 +549,31 @@ def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
     acc: dict[str, dict] = {}       # ANA hesap koduna göre (roll-up)
     haric = SIFIR
 
-    for ln in _satirlar(baslangic, bitis):
-        kur = ln.fis.kur_usd
-        if not kur or kur <= 0:
-            haric += ln.borc
+    # Ağır iş DB'de: (hesap, fiş USD kuru) bazında TL borç/alacak toplamı tek sorguda
+    # toplanır. Bölme + roll-up Python'da YALNIZ bu gruplar üzerinde yapılır (yevmiye
+    # satırı sayısı kadar DEĞİL) -> büyük veride yavaşlamaz. Aynı (hesap, kur) grubunda
+    # tek Decimal bölme; 2-ondalık rapor değerleri eski yöntemle BİREBİR aynı kalır.
+    gruplar = (
+        YevmiyeSatir.objects.filter(
+            silindi=False, fis__silindi=False,
+            fis__tarih__gte=baslangic, fis__tarih__lte=bitis,
+        )
+        .values("hesap_id", "fis__kur_usd")
+        .annotate(tb=Sum("borc"), ta=Sum("alacak"))
+    )
+    for g in gruplar:
+        kur = g["fis__kur_usd"]
+        tb = g["tb"] or SIFIR
+        ta = g["ta"] or SIFIR
+        if not kur or kur <= 0:        # kur_usd boş/0 fiş (eski/legacy) -> USD'ye giremez
+            haric += tb
             continue
-        ana = _ana_kod(ln.hesap_id)
+        ana = _ana_kod(g["hesap_id"])
         d = acc.get(ana)
         if d is None:
             d = acc[ana] = dict(ub=SIFIR, ua=SIFIR)
-        # TÜM satırlar: USD = satırın TL tutarı ÷ fiş.kur_usd (USD işlem satırı dahil).
-        d["ub"] += ln.borc / kur
-        d["ua"] += ln.alacak / kur
+        d["ub"] += tb / kur
+        d["ua"] += ta / kur
 
     metalar = {x.hesap_kodu: x for x in
                HesapPlani.objects.filter(hesap_kodu__in=list(acc))}
