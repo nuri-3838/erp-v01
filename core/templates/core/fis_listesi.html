@@ -10,6 +10,7 @@
 </div>
 
 <form method="get" class="kur-cek-alanlar">
+  <input type="hidden" name="gorunum" value="{% if usd %}usd{% else %}tl{% endif %}">
   <div class="alan" style="flex:1 1 15rem">
     <label for="ara">Ara</label>
     <input type="search" id="ara" name="ara" value="{{ ara }}"
@@ -29,8 +30,16 @@
   <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
 {% endif %}
 
+<nav class="tablar">
+  <a href="?baslangic={{ bas }}&amp;bitis={{ bit }}{% if ara %}&amp;ara={{ ara|urlencode }}{% endif %}"
+     class="{% if not usd %}aktif{% endif %}">Yevmiye Fişleri</a>
+  <a href="?gorunum=usd&amp;baslangic={{ bas }}&amp;bitis={{ bit }}{% if ara %}&amp;ara={{ ara|urlencode }}{% endif %}"
+     class="{% if usd %}aktif{% endif %}">USD Yevmiye Fişleri</a>
+</nav>
+
 <p class="yardim">İptal edilen fişler de listelenir (İPTAL damgalı) ama mizan/bilanço/gelir
-  tablosuna girmez. Aktif fişe tıklayınca düzenleme açılır.{% if ara %}
+  tablosuna girmez. Aktif fişe tıklayınca düzenleme açılır.{% if usd %}
+  &nbsp;USD tutarlar, fişin TL toplamının o fiş tarihindeki MB Alış kuruna bölünmesiyle gösterilir.{% endif %}{% if ara %}
   &nbsp;Arama: "<strong>{{ ara }}</strong>" — {{ fisler.paginator.count }} sonuç.{% endif %}</p>
 
 <div class="tablo-kapsayici genis">
@@ -38,7 +47,12 @@
   <thead>
     <tr>
       <th>Fiş No</th><th>Tarih</th><th>Açıklama</th>
-      <th class="sag">Borç</th><th class="sag">Alacak</th><th>Durum</th>
+      {% if usd %}
+        <th class="sag">USD Borç</th><th class="sag">USD Alacak</th><th class="sag">MB Alış Kuru</th>
+      {% else %}
+        <th class="sag">Borç</th><th class="sag">Alacak</th>
+      {% endif %}
+      <th>Durum</th>
     </tr>
   </thead>
   <tbody>
@@ -53,12 +67,22 @@
         </td>
         <td>{{ f.tarih|date:"d.m.Y" }}</td>
         <td>{{ f.aciklama|default:"—" }}</td>
-        <td class="sag">{{ f.t_borc|tr_para }}</td>
-        <td class="sag">{{ f.t_alacak|tr_para }}</td>
+        {% if usd %}
+          {% if f.kur_usd %}
+            <td class="sag">{{ f.usd_borc|tr_para }}</td>
+            <td class="sag">{{ f.usd_alacak|tr_para }}</td>
+            <td class="sag">{{ f.kur_usd|tr_kur:4 }}</td>
+          {% else %}
+            <td class="sag">—</td><td class="sag">—</td><td class="sag">—</td>
+          {% endif %}
+        {% else %}
+          <td class="sag">{{ f.t_borc|tr_para }}</td>
+          <td class="sag">{{ f.t_alacak|tr_para }}</td>
+        {% endif %}
         <td>{% if f.silindi %}<span class="hata">İPTAL</span>{% else %}Aktif{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">{% if ara %}Aramaya uygun fiş yok.{% else %}Bu aralıkta fiş yok.{% endif %}</td></tr>
+      <tr><td colspan="{% if usd %}7{% else %}6{% endif %}" class="yardim">{% if ara %}Aramaya uygun fiş yok.{% else %}Bu aralıkta fiş yok.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>

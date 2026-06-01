@@ -189,6 +189,21 @@ class FisListesiTest(TestCase):
         r2 = self.client.get(reverse("core:fis_listesi"), {**ortak, "sayfa": "2"})
         self.assertEqual(len(r2.context["fisler"]), 1)
 
+    # --- USD sekmesi ---------------------------------------------------------
+    def test_usd_sekmesi_tl_bolu_kur(self):
+        self._fis(tutar="3.000,00")           # kur 30 -> USD 100,00
+        r = self.client.get(reverse("core:fis_listesi"), {"gorunum": "usd"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "USD Borç")
+        self.assertContains(r, "100,00")      # 3000 / 30
+        self.assertContains(r, "30,0000")     # MB Alış kuru (4 ondalık)
+
+    def test_tl_sekmesi_usd_sutunu_yok(self):
+        self._fis(tutar="1.000,00")
+        r = self.client.get(reverse("core:fis_listesi"))
+        self.assertNotContains(r, "USD Borç")
+        self.assertContains(r, "1.000,00")    # TL toplamı görünür
+
 
 class FisListesiYetkiTest(TestCase):
     @classmethod

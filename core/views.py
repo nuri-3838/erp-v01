@@ -95,6 +95,7 @@ def fis_listesi(request):
     if not (request.GET.get("baslangic") and request.GET.get("bitis")):
         form = MizanFiltreForm(initial={"baslangic": b, "bitis": s})
 
+    usd = request.GET.get("gorunum") == "usd"
     ara = (request.GET.get("ara") or "").strip()
     taban = YevmiyeFisi.objects.filter(tarih__gte=b, tarih__lte=s)
     if ara:
@@ -120,13 +121,23 @@ def fis_listesi(request):
         .order_by("yil", "fis_no")
     )
     sayfa = Paginator(fisler, 50).get_page(request.GET.get("sayfa"))
+    if usd:
+        for f in sayfa:
+            if f.kur_usd and f.t_borc is not None:
+                f.usd_borc = f.t_borc / f.kur_usd
+                f.usd_alacak = f.t_alacak / f.kur_usd
+            else:
+                f.usd_borc = f.usd_alacak = None
 
     params = {"baslangic": b.isoformat(), "bitis": s.isoformat()}
     if ara:
         params["ara"] = ara
+    if usd:
+        params["gorunum"] = "usd"
     sorgu = urlencode(params) + "&"
     return render(request, "core/fis_listesi.html",
-                  {"form": form, "fisler": sayfa, "ara": ara, "sorgu": sorgu})
+                  {"form": form, "fisler": sayfa, "ara": ara, "sorgu": sorgu,
+                   "usd": usd, "bas": b.isoformat(), "bit": s.isoformat()})
 
 
 @ekran_gerekli("fis_listesi")
