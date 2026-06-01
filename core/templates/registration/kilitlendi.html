@@ -1,0 +1,16 @@
+{% extends "core/base.html" %}
+{% block baslik %}Giriş geçici olarak kilitli · ERP v0.1{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">Giriş geçici olarak kilitlendi</h1>
+
+<div class="uyari" style="max-width:480px">
+  <p style="margin:0 0 .5rem"><strong>Çok fazla hatalı giriş denemesi.</strong></p>
+  <p style="margin:0 0 .5rem">Güvenlik için bu hesap geçici olarak kilitlendi.
+    Lütfen <strong>30 dakika</strong> sonra tekrar deneyin.</p>
+  <p class="yardim" style="margin:0">Şifrenizi unuttuysanız sistem yöneticinizle
+    iletişime geçin.</p>
+</div>
+
+<p style="margin-top:1rem"><a href="{% url 'login' %}">← Giriş sayfasına dön</a></p>
+{% endblock %}

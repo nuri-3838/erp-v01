@@ -1,6 +1,7 @@
 """Django settings for config project (ERP v0.1)."""
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -35,6 +36,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'core',
+    'axes',
 ]
 
 MIDDLEWARE = [
@@ -45,6 +47,13 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'axes.middleware.AxesMiddleware',  # EN SON: kilit kontrolu
+]
+
+AUTHENTICATION_BACKENDS = [
+    # AxesStandaloneBackend ONCE: kilitliyse girisi en basta reddeder.
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -129,3 +138,14 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = False
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_REFERRER_POLICY = "same-origin"
+
+
+# --- Login brute-force korumasi (django-axes) ------------------------------
+# Yalniz prod (DEBUG=False) aktif; WSL/dev ve test (DEBUG=True) KAPALI ->
+# yerel gelistirme/giris ve test suite bozulmaz.
+AXES_ENABLED = not DEBUG
+AXES_FAILURE_LIMIT = 5                                   # 5 hatali deneme -> kilit
+AXES_COOLOFF_TIME = timedelta(minutes=30)               # 30 dk sonra otomatik acilir
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]  # kullanici + IP kombinasyonu
+AXES_RESET_ON_SUCCESS = True                            # basarili giriste sayac sifir
+AXES_LOCKOUT_TEMPLATE = "registration/kilitlendi.html"  # Turkce, sik kilit sayfasi
