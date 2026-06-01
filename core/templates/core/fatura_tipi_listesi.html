@@ -16,16 +16,14 @@
 <div class="tablo-kapsayici">
 <table>
   <thead>
-    <tr><th class="sag">Sıra</th><th>Ad</th><th>Durum</th><th>İşlem</th></tr>
+    <tr><th class="sag">Sıra</th><th>Ad</th><th>İşlem</th></tr>
   </thead>
   <tbody>
-    <tr class="grup"><th colspan="4">Satış İçin</th></tr>
+    <tr class="grup"><th colspan="3">Satış İçin</th></tr>
     {% for t in satis %}
       <tr>
         <td class="sag mono">{{ t.sira }}</td>
         <td>{{ t.ad }}</td>
-        <td>{% if t.aktif %}<span class="rozet rozet-aktif">Aktif</span>
-            {% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
         <td>
           <span class="islem-bag">
             <a href="{% url 'core:fatura_tipi_duzenle' t.pk %}">Düzenle</a>
@@ -37,15 +35,13 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="4" class="yardim">Satış fatura tipi yok.</td></tr>
+      <tr><td colspan="3" class="yardim">Satış fatura tipi yok.</td></tr>
     {% endfor %}
-    <tr class="grup"><th colspan="4">Alış İçin</th></tr>
+    <tr class="grup"><th colspan="3">Alış İçin</th></tr>
     {% for t in alis %}
       <tr>
         <td class="sag mono">{{ t.sira }}</td>
         <td>{{ t.ad }}</td>
-        <td>{% if t.aktif %}<span class="rozet rozet-aktif">Aktif</span>
-            {% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
         <td>
           <span class="islem-bag">
             <a href="{% url 'core:fatura_tipi_duzenle' t.pk %}">Düzenle</a>
@@ -57,7 +53,7 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="4" class="yardim">Alış fatura tipi yok.</td></tr>
+      <tr><td colspan="3" class="yardim">Alış fatura tipi yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>

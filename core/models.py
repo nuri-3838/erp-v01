@@ -291,7 +291,6 @@ class Birim(TemelModel):
     ad = models.CharField("ad", max_length=50)
     kisa_ad = models.CharField("kısa ad", max_length=10)
     ondalik = models.PositiveSmallIntegerField("ondalık hane", default=0)
-    aktif = models.BooleanField("aktif", default=True)
 
     class Meta:
         db_table = "birim"
@@ -301,6 +300,11 @@ class Birim(TemelModel):
         constraints = [
             models.CheckConstraint(condition=models.Q(ondalik__lte=6),
                                    name="ck_birim_ondalik_0_6"),
+            # Ad ve kısa ad silinmemişler arasında benzersiz (kısmi unique).
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_birim_ad_aktif"),
+            models.UniqueConstraint(fields=["kisa_ad"], condition=models.Q(silindi=False),
+                                    name="uq_birim_kisa_ad_aktif"),
         ]
 
     def __str__(self):
@@ -358,7 +362,6 @@ class FaturaTipi(TemelModel):
     ad = models.CharField("ad", max_length=100)
     yon = models.CharField("yön", max_length=5, choices=Yon.choices)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
-    aktif = models.BooleanField("aktif", default=True)
 
     class Meta:
         db_table = "fatura_tipi"

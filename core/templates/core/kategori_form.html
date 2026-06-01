@@ -27,17 +27,19 @@
     {% for e in form.kod.errors %}<div class="hata">{{ e }}</div>{% endfor %}
   </div>
 
-  {% if ekle %}
+  {% if kat_alt %}
   <div class="alan">
-    <label for="{{ form.ust.id_for_label }}">{{ form.ust.label }}</label>
-    {{ form.ust }}
-    {% for e in form.ust.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-    <p class="yardim">Boş = en üst kategori. Bir üst seçilirse onun altına eklenir
-      (en fazla 2 seviye). Muhasebe kodları yalnız <strong>alt</strong> kategoride tutulur.</p>
+    <label>Üst Kategori</label>
+    <p style="margin:.2rem 0"><span class="mono">{{ ust.kod }}</span> — <strong>{{ ust.ad }}</strong></p>
+    {% if ekle %}<input type="hidden" name="ust" value="{{ ust.pk }}">{% endif %}
+    <p class="yardim">Bu, seçilen üstün altına bir <strong>alt kategori</strong>dir; üst değişmez.</p>
   </div>
+  {% else %}
+  <p class="yardim">Bu bir <strong>üst (kök) kategori</strong>dir; muhasebe kodları yalnız
+    alt kategorilerde tutulur.</p>
   {% endif %}
 
-  {% if ekle or kat_alt %}
+  {% if kat_alt %}
   <div id="harita-bolum">
     <h2 class="etiket">Muhasebe Kodları</h2>
     <p class="yardim">Her fatura tipi için kesilecek muhasebe hesabı (opsiyonel; yazarak
@@ -122,13 +124,6 @@
   document.querySelectorAll('select.akilli-hesap').forEach(akilli);
   window.addEventListener('scroll', function(){ if(gListe.style.display === 'block' && aktifInp) konumla(aktifInp); }, true);
   window.addEventListener('resize', function(){ if(gListe.style.display === 'block' && aktifInp) konumla(aktifInp); });
-
-  // ---- Ekle: üst seçimine göre harita göster/gizle (harita yalnız ALT'ta) ----
-  var ust = document.getElementById('id_ust'); var bolum = document.getElementById('harita-bolum');
-  if(ust && bolum){
-    function gus(){ bolum.style.display = ust.value ? '' : 'none'; }
-    ust.addEventListener('change', gus); gus();
-  }
 })();
 </script>
 {% endblock %}

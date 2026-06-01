@@ -195,15 +195,23 @@ class KategoriViewTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertFalse(Kategori.objects.filter(ad="BAŞKA").exists())
 
-    def test_ekle_sayfa_yaprak_hesaplari_ve_fatura_tipi(self):
-        """Akıllı arama kaynağı: select YALNIZ yaprak hesapları + fatura tipi satırı."""
+    def test_ekle_alt_sayfa_yaprak_hesaplari_ve_fatura_tipi(self):
+        """Akıllı arama kaynağı (ALT bağlamında): select YALNIZ yaprak hesapları + fatura tipi."""
+        ust = kategori_olustur(ad="hammadde", kod="HM")
         self.client.force_login(self.yetkili)
-        r = self.client.get(reverse("core:kategori_ekle"))
+        r = self.client.get(reverse("core:kategori_ekle") + f"?ust={ust.pk}")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'value="153.10"')      # yaprak hesap seçilebilir
         self.assertNotContains(r, 'value="153"')        # ara hesap yok
         self.assertContains(r, "SATIŞ FATURASI")        # fatura tipi satırı
         self.assertContains(r, f'name="hesap_{self.ft.pk}"')
+
+    def test_ekle_ust_sayfada_harita_yok(self):
+        """Kök (üst) ekleme sayfasında muhasebe kodları haritası RENDER EDİLMEZ."""
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:kategori_ekle"))
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, "Muhasebe Kodları")
 
     def test_duzenle_harita_post(self):
         ust = kategori_olustur(ad="hammadde", kod="HM")

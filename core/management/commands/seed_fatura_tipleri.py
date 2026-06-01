@@ -29,7 +29,7 @@ class Command(BaseCommand):
             _, olusturuldu = FaturaTipi.objects.update_or_create(
                 ad=buyuk_harf_tr(ad),
                 defaults={
-                    "yon": yon, "sira": sira, "aktif": True,
+                    "yon": yon, "sira": sira,
                     "silindi": False, "silindi_at": None,
                 },
             )

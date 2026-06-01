@@ -18,7 +18,7 @@
 <table>
   <thead>
     <tr>
-      <th>Ad</th><th>Kısa Ad</th><th class="sag">Ondalık</th><th>Durum</th><th>İşlem</th>
+      <th>Ad</th><th>Kısa Ad</th><th class="sag">Ondalık</th><th>İşlem</th>
     </tr>
   </thead>
   <tbody>
@@ -27,8 +27,6 @@
         <td>{{ b.ad }}</td>
         <td class="mono">{{ b.kisa_ad }}</td>
         <td class="sag mono">{{ b.ondalik }}</td>
-        <td>{% if b.aktif %}<span class="rozet rozet-aktif">Aktif</span>
-            {% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
         <td>
           <span class="islem-bag">
             <a href="{% url 'core:birim_duzenle' b.pk %}">Düzenle</a>
@@ -40,7 +38,7 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="yardim">Henüz birim yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="4" class="yardim">Henüz birim yok. “+ Yeni” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

@@ -1,4 +1,4 @@
-"""Fatura tipi (STOKLAR Faz 1) testleri — servis CRUD, TR büyük harf, benzersizlik,
+"""Fatura tipi (STOKLAR) testleri — servis CRUD, TR büyük harf, benzersizlik,
 yön doğrulama, DB kısmi-unique, 8 seed (4+4), view + yetki."""
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -32,32 +32,31 @@ class FaturaTipiServisTest(TestCase):
 
     def test_guncelle(self):
         t = fatura_tipi_olustur(ad="satış", yon="SATIS", sira=10)
-        fatura_tipi_guncelle(t, ad="satış faturası", yon="SATIS", sira=15, aktif=False)
+        fatura_tipi_guncelle(t, ad="satış faturası", yon="SATIS", sira=15)
         t.refresh_from_db()
-        self.assertEqual((t.ad, t.sira, t.aktif), ("SATIŞ FATURASI", 15, False))
+        self.assertEqual((t.ad, t.sira), ("SATIŞ FATURASI", 15))
 
     def test_guncelle_kendi_adi_serbest(self):
         t = fatura_tipi_olustur(ad="satış", yon="SATIS")
-        fatura_tipi_guncelle(t, ad="satış", yon="ALIS", sira=0, aktif=True)  # aynı ad, kendi
+        fatura_tipi_guncelle(t, ad="satış", yon="ALIS", sira=0)   # aynı ad, kendi
         t.refresh_from_db()
         self.assertEqual(t.yon, "ALIS")
 
-    def test_sil_soft_delete_ve_pasif_listede(self):
+    def test_sil_soft_delete(self):
         t = fatura_tipi_olustur(ad="satış", yon="SATIS")
-        p = fatura_tipi_olustur(ad="alış", yon="ALIS", aktif=False)
+        p = fatura_tipi_olustur(ad="alış", yon="ALIS")
         fatura_tipi_sil(t)
         t.refresh_from_db()
         self.assertTrue(t.silindi)
         self.assertNotIn(t, list(aktif_fatura_tipleri()))     # silinen listeden kalkar
-        self.assertIn(p, list(aktif_fatura_tipleri()))        # pasif ama silinmemiş kalır
+        self.assertIn(p, list(aktif_fatura_tipleri()))        # diğeri kalır
         with self.assertRaises(FaturaTipiHatasi):
-            fatura_tipi_guncelle(t, ad="x", yon="SATIS", sira=0, aktif=True)
+            fatura_tipi_guncelle(t, ad="x", yon="SATIS", sira=0)
 
     def test_silinen_ad_yeniden_kullanilabilir(self):
         t = fatura_tipi_olustur(ad="satış", yon="SATIS")
         fatura_tipi_sil(t)
-        # silinen ad serbest: kısmi unique yalnız silinmemişlerde
-        t2 = fatura_tipi_olustur(ad="satış", yon="SATIS")
+        t2 = fatura_tipi_olustur(ad="satış", yon="SATIS")     # silinen ad serbest
         self.assertNotEqual(t.pk, t2.pk)
 
     def test_db_kismi_unique(self):
@@ -105,11 +104,10 @@ class FaturaTipiViewTest(TestCase):
     def test_ekle_post(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:fatura_tipi_ekle"),
-                             {"ad": "satış faturası", "yon": "SATIS",
-                              "sira": "10", "aktif": "on"})
+                             {"ad": "satış faturası", "yon": "SATIS", "sira": "10"})
         self.assertEqual(r.status_code, 302)
         t = FaturaTipi.objects.get(ad="SATIŞ FATURASI")
-        self.assertEqual((t.yon, t.sira, t.aktif), ("SATIS", 10, True))
+        self.assertEqual((t.yon, t.sira), ("SATIS", 10))
 
     def test_ekle_tekrar_ad_formda_kalir(self):
         fatura_tipi_olustur(ad="satış faturası", yon="SATIS")
@@ -126,7 +124,7 @@ class FaturaTipiViewTest(TestCase):
                              {"ad": "satış faturası", "yon": "SATIS", "sira": "12"})
         self.assertEqual(r.status_code, 302)
         t.refresh_from_db()
-        self.assertEqual((t.ad, t.sira, t.aktif), ("SATIŞ FATURASI", 12, False))
+        self.assertEqual((t.ad, t.sira), ("SATIŞ FATURASI", 12))
 
     def test_sil_post_soft_delete(self):
         t = fatura_tipi_olustur(ad="satış", yon="SATIS")

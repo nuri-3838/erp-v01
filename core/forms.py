@@ -253,16 +253,13 @@ class BirimForm(forms.Form):
     ondalik = forms.IntegerField(
         label="Ondalık hane (0-6)", min_value=0, max_value=6, initial=0,
         widget=forms.NumberInput(attrs={"min": 0, "max": 6, "inputmode": "numeric"}))
-    aktif = forms.BooleanField(label="Aktif", required=False, initial=True)
 
 
 class KategoriForm(forms.Form):
-    """Kategori ekle/düzenle (STOKLAR). Ad + Kod (benzersiz) TR büyük harf/benzersizlik
-    serviste; ``ust`` yalnızca eklemede (düzenlemede üst değişmez).
-
-    Muhasebe hesabı haritası (ALT × fatura tipi → yaprak hesap) bu formda DEĞİL; şablonda
-    ``hesap_<fatura_tipi_id>`` adlı select'lerle gelir, view + servis kaydeder.
-    Düzenlemede ``duzenle=True`` ile ``ust`` alanı kaldırılır.
+    """Kategori ekle/düzenle (STOKLAR). Yalnız Ad + Kod; TR büyük harf/benzersizlik
+    serviste. Üst kategori formda DEĞİL — ekleme giriş noktasıyla belirlenir
+    (kök: "+ Yeni Üst"; alt: bir üstün "+ Alt"'ından, ``?ust=`` ile). Muhasebe hesabı
+    haritası da şablonda ``hesap_<fatura_tipi_id>`` select'leriyle gelir.
     """
 
     ad = forms.CharField(
@@ -271,17 +268,6 @@ class KategoriForm(forms.Form):
     kod = forms.CharField(
         label="Kod", max_length=30,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
-    ust = forms.ModelChoiceField(
-        label="Üst Kategori", queryset=Kategori.objects.none(),
-        required=False, empty_label="— (en üst kategori) —")
-
-    def __init__(self, *args, duzenle: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        from core.services.kategori import ust_kategoriler
-        if duzenle:
-            self.fields.pop("ust")
-        else:
-            self.fields["ust"].queryset = ust_kategoriler()
 
 
 class FaturaTipiForm(forms.Form):
@@ -294,4 +280,3 @@ class FaturaTipiForm(forms.Form):
     sira = forms.IntegerField(
         label="Sıra", min_value=0, initial=0,
         widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
-    aktif = forms.BooleanField(label="Aktif", required=False, initial=True)

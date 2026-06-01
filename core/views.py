@@ -556,20 +556,25 @@ def _harita_gruplari(aktif_ft, secili_map):
 
 @ekran_gerekli("kategoriler")
 def kategori_ekle(request):
-    aktif_ft = list(fatura_tipi_servis.aktif_fatura_tipleri())
+    # Üst, GİRİŞ NOKTASIYLA belirlenir: ?ust=<kök pk> → ALT (o üstün altına, harita var);
+    # yoksa → KÖK kategori (harita yok). POST'ta üst gizli alandan gelir.
+    ham_ust = request.POST.get("ust") if request.method == "POST" else request.GET.get("ust")
+    ust = (Kategori.objects.filter(pk=ham_ust, silindi=False, ust__isnull=True).first()
+           if ham_ust else None)
+    alt_mod = ust is not None
+    aktif_ft = list(fatura_tipi_servis.aktif_fatura_tipleri()) if alt_mod else []
     secili_map = {}
     if request.method == "POST":
         form = KategoriForm(request.POST)
-        secili_map = {ft.pk: (request.POST.get(f"hesap_{ft.pk}") or "").strip()
-                      for ft in aktif_ft}
+        if alt_mod:
+            secili_map = {ft.pk: (request.POST.get(f"hesap_{ft.pk}") or "").strip()
+                          for ft in aktif_ft}
         if form.is_valid():
             try:
-                ust = form.cleaned_data.get("ust")
                 k = kategori_servis.kategori_olustur(
                     ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
-                    ust_id=ust.pk if ust else None, kullanici=request.user,
-                )
-                if k.ust_id:           # harita yalnız ALT kategoride
+                    ust_id=ust.pk if ust else None, kullanici=request.user)
+                if alt_mod:
                     kategori_servis.kategori_hesaplari_kaydet(
                         k, eslesmeler=secili_map, kullanici=request.user)
                 messages.success(request, f"Kategori eklendi: {k.ad}")
@@ -577,15 +582,11 @@ def kategori_ekle(request):
             except kategori_servis.KategoriHatasi as e:
                 form.add_error(None, str(e))
     else:
-        ust_id = request.GET.get("ust")
-        initial = {}
-        if ust_id and Kategori.objects.filter(
-                pk=ust_id, silindi=False, ust__isnull=True).exists():
-            initial["ust"] = ust_id
-        form = KategoriForm(initial=initial)
+        form = KategoriForm()
     satis, alis = _harita_gruplari(aktif_ft, secili_map)
+    baslik = (f"{ust.ad} → Yeni Alt Kategori" if alt_mod else "Yeni Üst Kategori")
     return render(request, "core/kategori_form.html", {
-        "form": form, "baslik": "Yeni Kategori", "ekle": True,
+        "form": form, "baslik": baslik, "ekle": True, "ust": ust, "kat_alt": alt_mod,
         "harita_satis": satis, "harita_alis": alis, "yaprak": hp.yaprak_hesaplar(),
     })
 
@@ -594,9 +595,9 @@ def kategori_ekle(request):
 def kategori_duzenle(request, pk):
     kat = get_object_or_404(Kategori, pk=pk, silindi=False)
     kat_alt = kat.ust_id is not None
-    aktif_ft = list(fatura_tipi_servis.aktif_fatura_tipleri())
+    aktif_ft = list(fatura_tipi_servis.aktif_fatura_tipleri()) if kat_alt else []
     if request.method == "POST":
-        form = KategoriForm(request.POST, duzenle=True)
+        form = KategoriForm(request.POST)
         secili_map = {ft.pk: (request.POST.get(f"hesap_{ft.pk}") or "").strip()
                       for ft in aktif_ft}
         if form.is_valid():
@@ -612,13 +613,13 @@ def kategori_duzenle(request, pk):
             except kategori_servis.KategoriHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = KategoriForm(duzenle=True, initial={"ad": kat.ad, "kod": kat.kod})
+        form = KategoriForm(initial={"ad": kat.ad, "kod": kat.kod})
         mevcut = kategori_servis.kategori_hesaplari(kat)
         secili_map = {ft_id: kh.hesap_id for ft_id, kh in mevcut.items()}
     satis, alis = _harita_gruplari(aktif_ft, secili_map)
     return render(request, "core/kategori_form.html", {
         "form": form, "baslik": "Kategori Düzenle", "duzenlenen": kat,
-        "ekle": False, "kat_alt": kat_alt,
+        "ekle": False, "ust": kat.ust, "kat_alt": kat_alt,
         "harita_satis": satis, "harita_alis": alis, "yaprak": hp.yaprak_hesaplar(),
     })
 
@@ -671,7 +672,7 @@ def birim_duzenle(request, pk):
                 form.add_error(None, str(e))
     else:
         form = BirimForm(initial={"ad": birim.ad, "kisa_ad": birim.kisa_ad,
-                                  "ondalik": birim.ondalik, "aktif": birim.aktif})
+                                  "ondalik": birim.ondalik})
     return render(request, "core/birim_form.html",
                   {"form": form, "baslik": "Birim Düzenle", "duzenlenen": birim})
 
@@ -727,7 +728,7 @@ def fatura_tipi_duzenle(request, pk):
                 form.add_error(None, str(e))
     else:
         form = FaturaTipiForm(initial={
-            "ad": tip.ad, "yon": tip.yon, "sira": tip.sira, "aktif": tip.aktif})
+            "ad": tip.ad, "yon": tip.yon, "sira": tip.sira})
     return render(request, "core/fatura_tipi_form.html",
                   {"form": form, "baslik": "Fatura Tipi Düzenle", "duzenlenen": tip})
 

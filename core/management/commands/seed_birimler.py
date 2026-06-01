@@ -27,7 +27,7 @@ class Command(BaseCommand):
                 ad=buyuk_harf_tr(ad),
                 defaults={
                     "kisa_ad": buyuk_harf_tr(kisa), "ondalik": ondalik,
-                    "aktif": True, "silindi": False, "silindi_at": None,
+                    "silindi": False, "silindi_at": None,
                 },
             )
             eklenen += int(olusturuldu)

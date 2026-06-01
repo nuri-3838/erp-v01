@@ -1,5 +1,5 @@
-"""Birim (STOKLAR ilk aşama) testleri — servis CRUD, ondalık doğrulama, TR büyük harf,
-DB kısıtı, 5 seed birimi, view + yetki."""
+"""Birim (STOKLAR) testleri — servis CRUD, ondalık doğrulama, TR büyük harf,
+ad/kısa ad benzersizliği, DB kısıtları, 5 seed birimi, view + yetki."""
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
@@ -22,7 +22,7 @@ class BirimServisTest(TestCase):
         birim_olustur(ad="metre", kisa_ad="mt", ondalik=6)   # 6 geçerli
         for i, kotu in enumerate((7, -1, "abc", None)):
             with self.assertRaises(BirimHatasi):
-                birim_olustur(ad=f"kotu{i}", kisa_ad="x", ondalik=kotu)
+                birim_olustur(ad=f"kotu{i}", kisa_ad=f"k{i}", ondalik=kotu)
 
     def test_bos_ad_red(self):
         with self.assertRaises(BirimHatasi):
@@ -30,12 +30,27 @@ class BirimServisTest(TestCase):
         with self.assertRaises(BirimHatasi):
             birim_olustur(ad="kg", kisa_ad="", ondalik=0)
 
+    def test_ad_benzersiz(self):
+        birim_olustur(ad="metre", kisa_ad="mt", ondalik=0)
+        with self.assertRaises(BirimHatasi):
+            birim_olustur(ad="METRE", kisa_ad="mtr", ondalik=0)   # aynı ad
+
+    def test_kisa_ad_benzersiz(self):
+        birim_olustur(ad="metre", kisa_ad="mt", ondalik=0)
+        with self.assertRaises(BirimHatasi):
+            birim_olustur(ad="mil", kisa_ad="MT", ondalik=0)      # aynı kısa ad
+
     def test_guncelle(self):
         b = birim_olustur(ad="adet", kisa_ad="ad", ondalik=0)
-        birim_guncelle(b, ad="adet yeni", kisa_ad="adt", ondalik=1, aktif=False)
+        birim_guncelle(b, ad="adet yeni", kisa_ad="adt", ondalik=1)
         b.refresh_from_db()
-        self.assertEqual((b.ad, b.kisa_ad, b.ondalik, b.aktif),
-                         ("ADET YENİ", "ADT", 1, False))
+        self.assertEqual((b.ad, b.kisa_ad, b.ondalik), ("ADET YENİ", "ADT", 1))
+
+    def test_guncelle_kendi_adi_serbest(self):
+        b = birim_olustur(ad="adet", kisa_ad="ad", ondalik=0)
+        birim_guncelle(b, ad="adet", kisa_ad="ad", ondalik=2)     # aynı ad/kısa, kendisi
+        b.refresh_from_db()
+        self.assertEqual(b.ondalik, 2)
 
     def test_sil_soft_delete(self):
         b = birim_olustur(ad="kutu", kisa_ad="kt", ondalik=0)
@@ -44,15 +59,22 @@ class BirimServisTest(TestCase):
         self.assertTrue(b.silindi)
         self.assertNotIn(b, list(aktif_birimler()))          # listeden kalkar
         with self.assertRaises(BirimHatasi):                 # silinmiş düzenlenemez
-            birim_guncelle(b, ad="x", kisa_ad="x", ondalik=0, aktif=True)
+            birim_guncelle(b, ad="x", kisa_ad="x", ondalik=0)
 
-    def test_pasif_birim_listede_kalir(self):
-        b = birim_olustur(ad="boy", kisa_ad="boy", ondalik=0, aktif=False)
-        self.assertIn(b, list(aktif_birimler()))             # pasif ama silinmemiş -> listede
+    def test_silinen_ad_yeniden_kullanilabilir(self):
+        b = birim_olustur(ad="kutu", kisa_ad="kt", ondalik=0)
+        birim_sil(b)
+        b2 = birim_olustur(ad="kutu", kisa_ad="kt", ondalik=0)   # silinen ad/kısa serbest
+        self.assertNotEqual(b.pk, b2.pk)
 
     def test_db_kisit_ondalik_7_red(self):
         with self.assertRaises(IntegrityError), transaction.atomic():
             Birim.objects.create(ad="X", kisa_ad="X", ondalik=7)
+
+    def test_db_ad_unique(self):
+        Birim.objects.create(ad="METRE", kisa_ad="MT", ondalik=0)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Birim.objects.create(ad="METRE", kisa_ad="MTR", ondalik=0)
 
 
 class BirimSeedTest(TestCase):
@@ -89,26 +111,34 @@ class BirimViewTest(TestCase):
     def test_ekle_post(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:birim_ekle"),
-                             {"ad": "kilogram", "kisa_ad": "kg", "ondalik": "3", "aktif": "on"})
+                             {"ad": "kilogram", "kisa_ad": "kg", "ondalik": "3"})
         self.assertEqual(r.status_code, 302)
         b = Birim.objects.get(ad="KİLOGRAM")
-        self.assertEqual((b.kisa_ad, b.ondalik, b.aktif), ("KG", 3, True))
+        self.assertEqual((b.kisa_ad, b.ondalik), ("KG", 3))
 
     def test_ekle_gecersiz_ondalik(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:birim_ekle"),
-                             {"ad": "x", "kisa_ad": "x", "ondalik": "9", "aktif": "on"})
+                             {"ad": "x", "kisa_ad": "x", "ondalik": "9"})
         self.assertEqual(r.status_code, 200)                 # formda kalır (kaydedilmez)
         self.assertFalse(Birim.objects.filter(ad="X").exists())
 
-    def test_duzenle_post_aktif_kapanir(self):
+    def test_ekle_tekrar_ad_formda_kalir(self):
+        birim_olustur(ad="metre", kisa_ad="mt", ondalik=0)
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:birim_ekle"),
+                             {"ad": "metre", "kisa_ad": "mtr", "ondalik": "0"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Birim.objects.filter(silindi=False).count(), 1)
+
+    def test_duzenle_post(self):
         b = birim_olustur(ad="adet", kisa_ad="ad", ondalik=0)
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:birim_duzenle", args=[b.pk]),
-                             {"ad": "adet", "kisa_ad": "adt", "ondalik": "0"})  # aktif yok
+                             {"ad": "adet", "kisa_ad": "adt", "ondalik": "1"})
         self.assertEqual(r.status_code, 302)
         b.refresh_from_db()
-        self.assertEqual((b.kisa_ad, b.aktif), ("ADT", False))
+        self.assertEqual((b.kisa_ad, b.ondalik), ("ADT", 1))
 
     def test_sil_post_soft_delete(self):
         b = birim_olustur(ad="kutu", kisa_ad="kt", ondalik=0)

@@ -42,25 +42,23 @@ def _ad_dogrula(ad, *, haric_pk=None):
     return ad
 
 
-def fatura_tipi_olustur(*, ad, yon, sira=0, aktif=True, kullanici=None) -> FaturaTipi:
+def fatura_tipi_olustur(*, ad, yon, sira=0, kullanici=None) -> FaturaTipi:
     yon = _yon_dogrula(yon)
     ad = _ad_dogrula(ad)
     return FaturaTipi.objects.create(
-        ad=ad, yon=yon, sira=int(sira or 0), aktif=bool(aktif),
+        ad=ad, yon=yon, sira=int(sira or 0),
         created_by=kullanici, updated_by=kullanici,
     )
 
 
-def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, aktif,
-                         kullanici=None) -> FaturaTipi:
+def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, kullanici=None) -> FaturaTipi:
     if tip.silindi:
         raise FaturaTipiHatasi("Silinmiş fatura tipi düzenlenemez.")
     tip.yon = _yon_dogrula(yon)
     tip.ad = _ad_dogrula(ad, haric_pk=tip.pk)
     tip.sira = int(sira or 0)
-    tip.aktif = bool(aktif)
     tip.updated_by = kullanici
-    tip.save(update_fields=["ad", "yon", "sira", "aktif", "updated_by", "updated_at"])
+    tip.save(update_fields=["ad", "yon", "sira", "updated_by", "updated_at"])
     return tip
 
 
