@@ -502,7 +502,7 @@ def kullanici_yetkileri(request):
 def yedek_yonetim(request):
     """AYARLAR > Yedek: liste + Şimdi Yedek Al (Aşama 1 motorunu tetikler)."""
     if request.method == "POST":
-        basari, mesaj = yedek_servis.yedek_al()
+        basari, mesaj = yedek_servis.yedek_al_arkaplan()   # bekletmez (arka plan)
         (messages.success if basari else messages.error)(request, mesaj)
         return redirect("core:yedek")
     yedekler = yedek_servis.yedekleri_listele()

@@ -109,3 +109,24 @@ def yedek_al(timeout: int = 600):
         ayrinti = (sonuc.stderr or sonuc.stdout or "").strip()
         return False, f"Yedek başarısız (kod {sonuc.returncode}). {ayrinti[-300:]}"
     return True, "Yedek başarıyla alındı."
+
+
+def yedek_al_arkaplan():
+    """Yedeği ARKA PLANDA başlatır (web isteğini bekletmez); büyük DB'de sayfa donmaz.
+
+    Süreç ayrı bir oturumda (start_new_session) başlatılır; sonuç + bütünlük testi
+    ``logs/backup.log``'a yazılır, yeni dosya birkaç saniye içinde listede görünür.
+    (basari: bool, mesaj: str) — yalnız BAŞLATILABİLDİ mi bilgisini döner.
+    """
+    script = _script_yolu()
+    if not script.is_file():
+        return False, "Yedek scripti bulunamadı (scripts/db_backup.sh)."
+    try:
+        subprocess.Popen(
+            ["bash", str(script)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as e:
+        return False, f"Yedek başlatılamadı: {e}"
+    return True, "Yedek arka planda başlatıldı; birkaç saniye içinde listede görünür (sayfayı yenileyin)."

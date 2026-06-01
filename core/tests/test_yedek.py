@@ -82,6 +82,14 @@ class YedekServisTest(YedekTestTemel):
         self.assertFalse(basari)
         self.assertIn("başarısız", mesaj)
 
+    def test_yedek_al_arkaplan_baslatir(self):
+        # Popen MOCK: gerçek süreç başlatılmaz; çağrıldığını + "arka planda" mesajını doğrula
+        with mock.patch("core.services.yedek.subprocess.Popen") as m:
+            basari, mesaj = yedek_servis.yedek_al_arkaplan()
+        self.assertTrue(basari)
+        self.assertTrue(m.called)
+        self.assertIn("arka planda", mesaj)
+
 
 class YedekEkranTest(YedekTestTemel):
     def test_yetkisiz_403(self):
@@ -129,12 +137,12 @@ class YedekEkranTest(YedekTestTemel):
             .status_code, 403)
 
     def test_simdi_yedek_al_post(self):
+        # Artık ARKA PLANDA (Popen) çalışır; web isteğini bekletmez.
         self.client.force_login(self.yon)
-        sahte = mock.Mock(returncode=0, stdout="OK", stderr="")
-        with mock.patch("core.services.yedek.subprocess.run", return_value=sahte) as m:
+        with mock.patch("core.services.yedek.subprocess.Popen") as m:
             r = self.client.post(reverse("core:yedek"), follow=True)
-        self.assertTrue(m.called)                       # Aşama 1 motoru çağrıldı
-        self.assertContains(r, "başarıyla alındı")
+        self.assertTrue(m.called)                       # Aşama 1 motoru arka planda tetiklendi
+        self.assertContains(r, "arka planda başlatıldı")
 
     def test_menude_yonetici_gorur(self):
         self.client.force_login(self.yon)
