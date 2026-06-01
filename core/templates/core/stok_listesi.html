@@ -22,8 +22,8 @@
   <tbody>
     {% for s in stoklar %}
       <tr>
-        <td class="mono">{{ s.kod }}</td>
-        <td>{{ s.ad }}</td>
+        <td class="mono"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.kod }}</a></td>
+        <td><a href="{% url 'core:stok_detay' s.pk %}" style="color:inherit;text-decoration:none;font-weight:600">{{ s.ad }}</a></td>
         <td>{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</td>
         <td>{{ s.uretim_birimi.kisa_ad }}</td>
         <td>{{ s.fatura_birimi.kisa_ad }}</td>

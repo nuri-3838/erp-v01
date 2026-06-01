@@ -615,6 +615,21 @@ def stok_kod_api(request):
     return JsonResponse({"kod": kod})
 
 
+@ekran_gerekli("stoklar")
+def stok_detay(request, pk):
+    """Stok kartı detay sayfası (master-detail, read-only). Temel bilgiler + kategoriden
+    gelen muhasebe hesabı haritası + audit. Stok hareketleri/bakiye Faz B'de gelecek."""
+    stok = get_object_or_404(
+        Stok.objects.select_related(
+            "kategori", "kategori__ust", "uretim_birimi", "fatura_birimi",
+            "created_by", "updated_by"),
+        pk=pk, silindi=False)
+    harita = kategori_servis.kategori_hesaplari(stok.kategori)
+    baglar = sorted(harita.values(),
+                    key=lambda kh: (kh.fatura_tipi.sira, kh.fatura_tipi.ad))
+    return render(request, "core/stok_detay.html", {"stok": stok, "baglar": baglar})
+
+
 @ekran_gerekli("kategoriler")
 def kategoriler(request):
     es = Count("hesap_baglari", filter=Q(hesap_baglari__silindi=False))

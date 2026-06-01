@@ -212,3 +212,32 @@ class StokViewTest(TestCase):
         # üst kategori -> kod yok
         r2 = self.client.get(reverse("core:stok_kod_api"), {"kategori": self.ust.pk})
         self.assertIsNone(r2.json()["kod"])
+
+    def _ornek_stok(self):
+        return stok_olustur(ad="alüminyum levha", kategori_id=self.alt.pk,
+                            uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
+                            cevirici=Decimal("3"), kdv_orani=Decimal("20"))
+
+    def test_detay_render(self):
+        s = self._ornek_stok()
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "150-10-0001")
+        self.assertContains(r, "ALÜMİNYUM LEVHA")
+        self.assertContains(r, "Temel Bilgiler")
+        self.assertContains(r, "Stok Hareketleri")
+        self.assertContains(r, "Kayıt Bilgisi")
+        self.assertContains(r, "ALÜMİNYUM")          # kategori adı
+
+    def test_liste_detay_linki(self):
+        s = self._ornek_stok()
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:stoklar"))
+        self.assertContains(r, reverse("core:stok_detay", args=[s.pk]))
+
+    def test_detay_yetkisiz_403(self):
+        s = self._ornek_stok()
+        self.client.force_login(self.bos)
+        self.assertEqual(
+            self.client.get(reverse("core:stok_detay", args=[s.pk])).status_code, 403)

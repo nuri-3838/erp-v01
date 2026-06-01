@@ -1,0 +1,166 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ stok.kod }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Stok Detayı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .detay-kapsa { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+  .detay-ustbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .detay-aksiyon { display:flex; gap:.5rem; }
+  .detay-baslik-kart { background:linear-gradient(135deg, #21385f 0%, var(--lacivert) 55%, var(--lacivert-koyu) 100%);
+    color:#fff; border-radius:22px; padding:1.3rem 1.5rem; display:flex; gap:1.15rem; align-items:flex-start;
+    box-shadow:var(--golge-lg); border-bottom:4px solid transparent;
+    border-image:linear-gradient(90deg,var(--turuncu),#36d399) 1; }
+  .detay-ikon { width:64px; height:64px; border-radius:16px; background:rgba(255,255,255,.12);
+    display:grid; place-items:center; font-size:1.9rem; flex:0 0 auto; }
+  .detay-rozetler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.45rem; }
+  .d-rozet { font-size:.7rem; font-weight:700; padding:.22rem .62rem; border-radius:999px; }
+  .d-rozet.kod { background:var(--turuncu); color:#fff; font-family:"Cascadia Mono",Consolas,monospace; }
+  .d-rozet.aktif { background:rgba(54,211,153,.22); color:#bff5d8; }
+  .d-rozet.tip { background:rgba(255,255,255,.16); color:#dbe6ff; }
+  .detay-ad { font-size:1.5rem; font-weight:750; margin:.05rem 0; letter-spacing:-.01em; line-height:1.2; }
+  .detay-alt { color:rgba(255,255,255,.82); font-size:.92rem; }
+  .ozet-izgara { display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; }
+  @media (max-width:760px){ .ozet-izgara { grid-template-columns:1fr; } }
+  .ozet-kart .ozet-bsl { font-size:.74rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--metin-soluk); margin:0 0 .8rem; display:flex; align-items:center; gap:.4rem; }
+  .ozet-bos { color:var(--metin-soluk); text-align:center; padding:1.4rem 0; font-size:.92rem; }
+  /* CSS-only sekmeler */
+  .sek-radio { position:absolute; opacity:0; pointer-events:none; }
+  .sek-bar { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.9rem; }
+  .sek-bar label { display:inline-flex; align-items:center; gap:.4rem; cursor:pointer; user-select:none;
+    padding:.55rem 1rem; border-radius:12px; font-weight:600; font-size:.9rem; color:var(--metin-soluk);
+    background:rgba(255,255,255,.5); border:1px solid var(--cizgi); }
+  .sek-bar label:hover { color:var(--lacivert); }
+  .sek-panel { display:none; }
+  #sek-temel:checked ~ .sek-bar label[for="sek-temel"],
+  #sek-hareket:checked ~ .sek-bar label[for="sek-hareket"],
+  #sek-kayit:checked ~ .sek-bar label[for="sek-kayit"] {
+    background:linear-gradient(135deg,var(--turuncu),var(--turuncu-koyu)); color:#fff; border-color:transparent;
+    box-shadow:0 6px 14px rgba(213,110,0,.32); }
+  #sek-temel:checked ~ #panel-temel,
+  #sek-hareket:checked ~ #panel-hareket,
+  #sek-kayit:checked ~ #panel-kayit { display:block; }
+  .kv { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:.9rem 1.6rem; }
+  @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
+  .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
+  .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .kv .dg { font-weight:600; font-size:.98rem; }
+</style>
+
+<div class="detay-kapsa">
+  <div class="detay-ustbar">
+    <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
+    <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:stok_duzenle' stok.pk %}">✏️ Düzenle</a>
+      <form method="post" action="{% url 'core:stok_sil' stok.pk %}" style="margin:0"
+            onsubmit="return confirm('{{ stok.kod }} stoğu silinsin mi?');">
+        {% csrf_token %}<button type="submit" class="sil">Sil</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="detay-baslik-kart">
+    <span class="detay-ikon">📦</span>
+    <div>
+      <div class="detay-rozetler">
+        <span class="d-rozet kod">{{ stok.kod }}</span>
+        <span class="d-rozet aktif">● Aktif</span>
+      </div>
+      <div class="detay-ad">{{ stok.ad }}</div>
+      <div class="detay-alt">{{ stok.kategori.ust.ad }} → {{ stok.kategori.ad }}</div>
+    </div>
+  </div>
+
+  <div class="ozet-izgara">
+    <section class="icerik-kart ozet-kart">
+      <h2 class="ozet-bsl"><span>📦</span>Toplam Bakiye</h2>
+      <div class="ozet-bos">Stok hareketleri ve bakiye <strong>Faz B</strong>'de gelecek.</div>
+    </section>
+    <section class="icerik-kart ozet-kart">
+      <h2 class="ozet-bsl"><span>📍</span>Depo Bakiyeleri</h2>
+      <div class="ozet-bos">Henüz depoda hareket yok <span class="yardim">(Faz B)</span>.</div>
+    </section>
+  </div>
+
+  <section class="icerik-kart">
+    <input type="radio" name="detay-sekme" id="sek-temel" class="sek-radio" checked>
+    <input type="radio" name="detay-sekme" id="sek-hareket" class="sek-radio">
+    <input type="radio" name="detay-sekme" id="sek-kayit" class="sek-radio">
+
+    <div class="sek-bar">
+      <label for="sek-temel">📋 Temel Bilgiler</label>
+      <label for="sek-hareket">📦 Stok Hareketleri</label>
+      <label for="sek-kayit">🕓 Kayıt Bilgisi</label>
+    </div>
+
+    <div class="sek-panel" id="panel-temel">
+      <div class="kv">
+        <div class="satir"><span class="et">Kategori</span>
+          <span class="dg"><span class="mono">{{ stok.kategori.ust.kod }}-{{ stok.kategori.kod }}</span> · {{ stok.kategori.ust.ad }} › {{ stok.kategori.ad }}</span></div>
+        <div class="satir"><span class="et">Çevirici</span>
+          <span class="dg">1 {{ stok.uretim_birimi.kisa_ad }} = <span class="mono">{{ stok.cevirici|tr_kur:4 }}</span> {{ stok.fatura_birimi.kisa_ad }}</span></div>
+        <div class="satir"><span class="et">Üretim / Stok Birimi</span>
+          <span class="dg">{{ stok.uretim_birimi.ad }} ({{ stok.uretim_birimi.kisa_ad }})</span></div>
+        <div class="satir"><span class="et">Fatura Birimi</span>
+          <span class="dg">{{ stok.fatura_birimi.ad }} ({{ stok.fatura_birimi.kisa_ad }})</span></div>
+        <div class="satir"><span class="et">KDV Oranı</span>
+          <span class="dg mono">%{{ stok.kdv_orani|tr_kur:2 }}</span></div>
+        <div class="satir"><span class="et">Tevkifat Oranı</span>
+          <span class="dg mono">%{{ stok.tevkifat_orani|tr_kur:2 }}</span></div>
+        <div class="satir"><span class="et">Kritik Stok Seviyesi</span>
+          <span class="dg"><span class="mono">{{ stok.kritik_stok|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</span></div>
+        <div class="satir"><span class="et">Tedarikçi (Cari)</span>
+          <span class="dg">{{ stok.tedarikci|default:"—" }}</span></div>
+      </div>
+
+      <h2 class="bolum-baslik" style="margin-top:1.6rem"><span class="emoji">🧾</span>Muhasebe Hesabı Haritası
+        <span class="yardim" style="text-transform:none;letter-spacing:0;font-weight:500">— kategoriden gelir</span></h2>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Fatura Tipi</th><th>Yön</th><th>Muhasebe Hesabı</th></tr></thead>
+        <tbody>
+          {% for kh in baglar %}
+            <tr>
+              <td>{{ kh.fatura_tipi.ad }}</td>
+              <td>{% if kh.fatura_tipi.yon == 'SATIS' %}<span class="rozet rozet-notr">Satış</span>{% else %}<span class="rozet rozet-notr">Alış</span>{% endif %}</td>
+              <td><span class="mono">{{ kh.hesap.hesap_kodu }}</span> {{ kh.hesap.hesap_adi }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" class="yardim">Bu kategoride henüz fatura tipi → hesap bağı yok.
+              <a href="{% url 'core:kategori_duzenle' stok.kategori.pk %}">Kategoriyi düzenle</a></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="sek-panel" id="panel-hareket">
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Tarih</th><th>Tip</th><th>Depo</th><th class="sag">Miktar</th><th>Belge</th><th>Not</th></tr></thead>
+        <tbody>
+          <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+            📦 Stok hareketleri <strong>Faz B</strong>'de gelecek (giriş/çıkış, depo, eldeki miktar).</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="sek-panel" id="panel-kayit">
+      <div class="kv">
+        <div class="satir"><span class="et">Oluşturan</span>
+          <span class="dg">{{ stok.created_by.get_full_name|default:stok.created_by.username|default:"—" }}</span></div>
+        <div class="satir"><span class="et">Oluşturma</span>
+          <span class="dg mono">{{ stok.created_at|date:"d.m.Y H:i" }}</span></div>
+        <div class="satir"><span class="et">Son Güncelleyen</span>
+          <span class="dg">{{ stok.updated_by.get_full_name|default:stok.updated_by.username|default:"—" }}</span></div>
+        <div class="satir"><span class="et">Son Güncelleme</span>
+          <span class="dg mono">{{ stok.updated_at|date:"d.m.Y H:i" }}</span></div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
