@@ -17,3 +17,6 @@ db.sqlite3
 .idea/
 .claude/
 *.log
+
+# Yedekler (DB dump dosyalari) - repoya girmez
+/backups/
