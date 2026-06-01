@@ -5,6 +5,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block baslik %}SEMTA ERP{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       /* MARKA */
@@ -20,12 +23,15 @@
     }
     * { box-sizing: border-box; }
     html { -webkit-text-size-adjust:100%; }
-    body { font-family:"Segoe UI", -apple-system, system-ui, Roboto, Arial, sans-serif;
+    body { font-family:"Inter", "Segoe UI", -apple-system, system-ui, Roboto, Arial, sans-serif;
            margin:0; color:var(--metin); -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
-           background:#eef2f8;
-           background-image:radial-gradient(1200px 600px at 100% -5%, #e7edf7 0%, rgba(231,237,247,0) 55%),
-                            linear-gradient(180deg, #f5f8fc 0%, #eef2f8 100%);
+           background:#eef1f9;
+           background-image:radial-gradient(820px 480px at 100% -8%, #e8e5fb 0%, rgba(232,229,251,0) 56%),
+                            radial-gradient(760px 480px at -6% 112%, #fdeede 0%, rgba(253,238,222,0) 56%),
+                            linear-gradient(158deg, #f4f2fb 0%, #eef2fb 52%, #fdf4ec 100%);
            background-attachment:fixed; }
+    .mono { font-family:"SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+            font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
 
     /* ================= YERLEŞİM ================= */
     .kabuk { display:flex; align-items:stretch; min-height:100vh; }
@@ -35,16 +41,20 @@
     .kabuk-yalniz .govde { max-width:420px; margin:3.5rem auto; }
 
     /* İçerik kartı — TÜM ekranların ortak yüzeyi (ferah, yumuşak, ortalı) */
-    .icerik-kart { background:#fff; border:1px solid var(--cizgi); border-radius:18px;
-                   box-shadow:var(--golge-md); padding:1.35rem 1.15rem; }
-    @media (min-width:700px){ .icerik-kart { padding:1.9rem 2.05rem; } }
-    .icerik-kart.kart-yok { background:none; border:none; box-shadow:none; padding:0; }
+    .icerik-kart { background:rgba(255,255,255,.72);
+                   backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%);
+                   border:1px solid rgba(255,255,255,.75); border-radius:24px;
+                   box-shadow:0 12px 34px rgba(20,30,60,.09); padding:1.4rem 1.2rem; }
+    @media (min-width:700px){ .icerik-kart { padding:2rem 2.15rem; } }
+    .icerik-kart.kart-yok { background:none; border:none; box-shadow:none; padding:0;
+                            backdrop-filter:none; -webkit-backdrop-filter:none; }
 
     /* ================= SOL DİKEY MENÜ ================= */
     .yan { flex:0 0 var(--yan-en); width:var(--yan-en); color:#c4cee0;
            display:flex; flex-direction:column; position:sticky; top:0; height:100vh;
-           background:linear-gradient(180deg, #1d3460 0%, #15294d 55%, #102241 100%);
-           box-shadow:inset -1px 0 0 rgba(255,255,255,.05), 4px 0 24px rgba(15,31,61,.10); }
+           background:linear-gradient(180deg, rgba(29,52,96,.93) 0%, rgba(21,41,77,.94) 55%, rgba(16,34,65,.95) 100%);
+           backdrop-filter:blur(16px) saturate(160%); -webkit-backdrop-filter:blur(16px) saturate(160%);
+           box-shadow:inset -1px 0 0 rgba(255,255,255,.06), 4px 0 24px rgba(15,31,61,.12); }
     .yan-logo { padding:1.25rem 1.15rem 1rem; display:flex; justify-content:center; }
     .yan-logo .chip { background:#fff; border-radius:13px; padding:.6rem 1rem; line-height:0;
                       box-shadow:0 4px 14px rgba(0,0,0,.22); }
@@ -212,22 +222,22 @@
     label, th, .etiket { text-transform: uppercase; }
     .ust-baslik { text-transform:none; letter-spacing:-.02em; font-weight:750; }
     .tablo-kapsayici { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:.2rem 0 1.1rem;
-                       border:1px solid var(--cizgi); border-radius:14px; background:#fff; }
+                       border:1px solid rgba(255,255,255,.65); border-radius:18px; background:transparent; }
     .tablo-kapsayici > table { min-width:640px; }
     .tablo-kapsayici.genis > table { min-width:760px; }
-    table { border-collapse:separate; border-spacing:0; width:100%; margin:0; background:var(--kart);
-            border-radius:14px; overflow:hidden; }
-    th, td { border-bottom:1px solid var(--cizgi); padding:.74rem .9rem; vertical-align:middle; }
-    th { background:#f5f7fb; text-align:left; font-size:.74rem; letter-spacing:.04em; color:var(--metin-soluk);
-         font-weight:700; border-bottom:1px solid var(--cizgi-koyu); position:sticky; top:0; }
+    table { border-collapse:separate; border-spacing:0; width:100%; margin:0;
+            background:rgba(255,255,255,.6); border-radius:18px; overflow:hidden; }
+    th, td { border-bottom:1px solid rgba(120,130,160,.16); padding:.74rem .9rem; vertical-align:middle; }
+    th { background:rgba(244,247,251,.85); text-align:left; font-size:.74rem; letter-spacing:.04em; color:var(--metin-soluk);
+         font-weight:700; border-bottom:1px solid rgba(120,130,160,.22); position:sticky; top:0; }
     td { font-size:.9rem; }
     tbody tr:last-child td { border-bottom:none; }
     tbody tr { transition:background .12s; }
-    tbody tr:hover td { background:#f3f7fd; }
+    tbody tr:hover td { background:rgba(255,255,255,.72); }
     td.sag, th.sag { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
     input, select, button { font-size:16px; min-height:44px; }
-    input, select { padding:.5rem .6rem; font-family:inherit; box-sizing:border-box; width:100%;
-                    border:1px solid var(--cizgi-koyu); border-radius:10px; background:#fff;
+    input, select { padding:.5rem .65rem; font-family:inherit; box-sizing:border-box; width:100%;
+                    border:1px solid var(--cizgi-koyu); border-radius:12px; background:rgba(255,255,255,.9);
                     transition:border-color .15s, box-shadow .15s; }
     input:focus, select:focus { outline:none; border-color:var(--turuncu);
                     box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
@@ -236,15 +246,15 @@
     input[type=checkbox] { width:auto; min-height:auto; accent-color:var(--turuncu); }
     .satir-form input[name$="borc"], .satir-form input[name$="alacak"],
     .satir-form input[name$="kuru"] { text-align:right; }
-    button { padding:.55rem 1.1rem; cursor:pointer; border:1px solid var(--cizgi-koyu); border-radius:10px;
-             background:#fff; color:var(--metin); font-weight:600; transition:all .15s; box-shadow:var(--golge-sm); }
+    button { padding:.55rem 1.1rem; cursor:pointer; border:1px solid var(--cizgi-koyu); border-radius:12px;
+             background:rgba(255,255,255,.85); color:var(--metin); font-weight:600; transition:all .15s; box-shadow:var(--golge-sm); }
     button:hover { border-color:#b9c1cf; box-shadow:var(--golge-md); }
     button.birincil, a.dugme { background:linear-gradient(135deg, var(--turuncu) 0%, var(--turuncu-koyu) 100%);
              color:#fff; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:.4rem;
-             padding:.6rem 1.25rem; border-radius:10px; font-weight:600;
-             box-shadow:0 4px 12px rgba(213,110,0,.30); }
+             padding:.62rem 1.3rem; border-radius:13px; font-weight:600;
+             box-shadow:0 6px 16px rgba(213,110,0,.32); }
     button.birincil:hover, a.dugme:hover { filter:brightness(1.05);
-             box-shadow:0 6px 18px rgba(213,110,0,.40); transform:translateY(-1px); }
+             box-shadow:0 9px 22px rgba(213,110,0,.42); transform:translateY(-1px) scale(1.02); }
     .alan { margin:.85rem 0; }
     .alan > label { display:block; font-size:.76rem; margin-bottom:.3rem; color:var(--metin-soluk);
                     font-weight:700; letter-spacing:.03em; }
@@ -257,7 +267,7 @@
               padding:.7rem .9rem; border-radius:11px; margin:.9rem 0; box-shadow:var(--golge-sm); }
     .toplamlar { display:flex; flex-wrap:wrap; gap:.6rem 1.4rem; align-items:center;
                  font-size:1.05rem; margin:0 0 1.2rem; padding:.85rem 1.1rem;
-                 border:1px solid var(--cizgi); border-radius:14px; background:#f7f9fc; }
+                 border:1px solid rgba(255,255,255,.7); border-radius:16px; background:rgba(255,255,255,.5); }
     .toplamlar .deger { font-weight:700; font-variant-numeric:tabular-nums; }
     .denge.dengeli { color:var(--ok); } .denge.dengesiz { color:var(--hata); }
     .yardim { color:var(--metin-soluk); font-size:.82rem; }
@@ -265,6 +275,9 @@
     /* Başlık altı küçük gri bilgi satırı (X kayıt / kısa açıklama) */
     .sayfa-alt { color:var(--metin-soluk); font-size:.9rem; font-weight:500;
                  margin:-.35rem 0 1.35rem; }
+    .ust-link { display:inline-block; font-size:.8rem; color:var(--metin-soluk);
+                text-decoration:none; font-weight:600; margin-bottom:.2rem; }
+    .ust-link:hover { color:var(--turuncu-koyu); }
     .ust-baslik .emoji { font-size:.9em; margin-right:.1em; }
     /* Durum rozetleri (yumuşak zeminli pill) */
     .rozet { display:inline-flex; align-items:center; gap:.3rem; padding:.22rem .64rem;

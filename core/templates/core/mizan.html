@@ -62,7 +62,7 @@
   <tbody>
     {% for s in mizan.satirlar %}
       <tr{% if detay and s.seviye == 0 %} class="ara"{% endif %}>
-        <td class="sev-{{ s.seviye }}">
+        <td class="sev-{{ s.seviye }} mono">
           <a href="{% url 'core:hesap_ekstresi' s.hesap_kodu %}?baslangic={{ mizan.baslangic|date:'Y-m-d' }}&bitis={{ mizan.bitis|date:'Y-m-d' }}">{{ s.hesap_kodu }}</a>
         </td>
         <td>{{ s.hesap_adi }}</td>
