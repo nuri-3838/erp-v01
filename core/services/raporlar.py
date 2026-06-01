@@ -483,10 +483,9 @@ class MizanUSD:
 def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
     """USD mizan (tarihsel/donmuş). Her satır KENDİ fişinin kuruyla USD'ye çevrilir:
 
-    - islem_pb == USD  -> satırın ORİJİNAL USD tutarı (islem_tutari) kullanılır.
-    - aksi (TRY/EUR/GBP) -> USD = TL ÷ fiş.kur_usd (TL, o günün kuruyla zaten
-      hesaplandığından EUR/GBP de doğru çevrilir).
-    - kur_usd boş fiş -> USD'ye giremez; tutarı haric_tl'ye eklenir.
+    - TÜM satırlar: USD = satırın TL tutarı ÷ fiş.kur_usd (USD işlem satırı dahil).
+    - kur_usd boş fiş (eski/legacy) -> USD'ye giremez; tutarı haric_tl'ye eklenir.
+      (Yeni fişlerde kur zorunlu olduğundan bu durum yalnız eski veride olur.)
 
     Rapor günü kuru sonucu ETKİLEMEZ (donmuş değerlerin toplamı).
     """
@@ -503,14 +502,9 @@ def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
         d = acc.get(ana)
         if d is None:
             d = acc[ana] = dict(ub=SIFIR, ua=SIFIR)
-        if ln.islem_pb == "USD":
-            if ln.borc > 0:
-                d["ub"] += ln.islem_tutari
-            elif ln.alacak > 0:
-                d["ua"] += ln.islem_tutari
-        else:
-            d["ub"] += ln.borc / kur
-            d["ua"] += ln.alacak / kur
+        # TÜM satırlar: USD = satırın TL tutarı ÷ fiş.kur_usd (USD işlem satırı dahil).
+        d["ub"] += ln.borc / kur
+        d["ua"] += ln.alacak / kur
 
     metalar = {x.hesap_kodu: x for x in
                HesapPlani.objects.filter(hesap_kodu__in=list(acc))}

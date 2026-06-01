@@ -69,9 +69,16 @@ def kur_usd_bul(tarih: _dt.date):
 
 
 def _kur_usd_coz(kur_usd, tarih: _dt.date):
-    """kur_usd None ise fiş tarihine göre KUR'dan doldur; verilmişse Decimal'e çevir."""
+    """kur_usd None ise fiş tarihine göre KUR'dan doldur; verilmişse Decimal'e çevir.
+    Çözülemezse (o tarih için kur yok) HATA: her fişin USD karşılığı zorunludur."""
     if kur_usd is None:
-        return kur_usd_bul(tarih)
+        bulunan = kur_usd_bul(tarih)
+        if bulunan is None:
+            raise YevmiyeHatasi(
+                f"{tarih:%d.%m.%Y} için USD kuru yok; Kurlar ekranından bu tarihi çekmeden "
+                f"fiş kaydedilemez (her fişin USD karşılığı zorunludur)."
+            )
+        return bulunan
     if not isinstance(kur_usd, Decimal):
         return _dec(kur_usd, "kur_usd")
     return kur_usd

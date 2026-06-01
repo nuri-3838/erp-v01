@@ -24,6 +24,10 @@ class GelirTablosuTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        from core.models import Kur as _Kur
+        from decimal import Decimal as _Dec
+        import datetime as _dtk
+        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
         cls.kullanici = User.objects.create_superuser("test", password="parola1234")
 
     def setUp(self):

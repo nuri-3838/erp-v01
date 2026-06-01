@@ -20,6 +20,10 @@ class RollupTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        from core.models import Kur as _Kur
+        from decimal import Decimal as _Dec
+        import datetime as _dtk
+        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
         cls.u = User.objects.create_superuser("yon", password="x")
         # 100 (KASA, BILANCO/DV) ve 600 (Yurtiçi Satışlar, GELIR) altına alt hesaplar
         hesap_olustur(kod="100.01", ad="kasa a", ust_kodu="100", kullanici=cls.u)
@@ -70,6 +74,10 @@ class OtomatikKodTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        from core.models import Kur as _Kur
+        from decimal import Decimal as _Dec
+        import datetime as _dtk
+        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
         cls.u = User.objects.create_superuser("yon", password="x")
         hesap_olustur(kod="320.10", ad="a", ust_kodu="320", kullanici=cls.u)
 

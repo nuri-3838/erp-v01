@@ -24,6 +24,10 @@ class EkstreServisTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        from core.models import Kur as _Kur
+        from decimal import Decimal as _Dec
+        import datetime as _dtk
+        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
 
     def test_dogru_hesabın_satirlarini_gosterir(self):
         fis_olustur(tarih=D(2026, 3, 10), satirlar=[
@@ -115,6 +119,10 @@ class EkstreViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        from core.models import Kur as _Kur
+        from decimal import Decimal as _Dec
+        import datetime as _dtk
+        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
         cls.yon = User.objects.create_superuser("yon", password="parola1234")
         cls.mizan_user = User.objects.create_user("miz", password="x")
         EkranYetki.objects.create(kullanici=cls.mizan_user, ekran_kod="mizan")

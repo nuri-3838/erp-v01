@@ -21,6 +21,10 @@ class YevmiyeTestTemel(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_hesap_plani")
+        from core.models import Kur as _Kur
+        from decimal import Decimal as _Dec
+        import datetime as _dtk
+        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
 
 
 class GecerliFisTest(YevmiyeTestTemel):
@@ -176,11 +180,12 @@ class KurUsdTest(YevmiyeTestTemel):
             _try_satir("100", "B", "10,00"), _try_satir("600", "A", "10,00")])
         self.assertEqual(fis.kur_usd, Decimal("33.000000"))
 
-    def test_kur_yoksa_bos_ama_fis_kaydedilir(self):
-        fis = fis_olustur(tarih=D(2026, 3, 10), satirlar=[
-            _try_satir("100", "B", "10,00"), _try_satir("600", "A", "10,00")])
-        self.assertIsNone(fis.kur_usd)
-        self.assertEqual(YevmiyeFisi.objects.count(), 1)
+    def test_kur_yoksa_fis_kaydedilmez(self):
+        Kur.objects.all().delete()   # hiç kur yok
+        with self.assertRaises(YevmiyeHatasi):
+            fis_olustur(tarih=D(2026, 3, 10), satirlar=[
+                _try_satir("100", "B", "10,00"), _try_satir("600", "A", "10,00")])
+        self.assertEqual(YevmiyeFisi.objects.count(), 0)
 
     def test_elle_override(self):
         self._kur(2026, 3, 10, "32")

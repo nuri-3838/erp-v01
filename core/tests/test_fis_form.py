@@ -50,10 +50,11 @@ class FisFormRevizyonTest(TestCase):
         fis = YevmiyeFisi.objects.latest("id")
         self.assertEqual(fis.kur_usd, Decimal("32.5000"))      # KUR tablosundan otomatik
 
-    def test_kur_yoksa_bos(self):
+    def test_kur_yoksa_kaydedilmez(self):
         r = self.client.post(reverse("core:fis_ekle"), _payload(tarih="2030-01-01"))
-        self.assertEqual(r.status_code, 302)
-        self.assertIsNone(YevmiyeFisi.objects.latest("id").kur_usd)
+        self.assertEqual(r.status_code, 200)        # formda kalır (kaydedilmez)
+        self.assertEqual(YevmiyeFisi.objects.count(), 0)
+        self.assertContains(r, "USD kuru yok")
 
     def test_kur_api(self):
         Kur.objects.create(tarih=D(2026, 3, 9), usd_alis=Decimal("32.5000"))

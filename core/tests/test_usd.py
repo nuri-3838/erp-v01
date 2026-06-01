@@ -13,6 +13,7 @@ from django.urls import reverse
 
 from core.sayi import yuvarla
 from core.services.raporlar import bilanco_usd, gelir_tablosu_usd, mizan_usd
+from core.models import YevmiyeFisi
 from core.services.yevmiye import SatirGirdi, fis_iptal, fis_olustur
 
 D = datetime.date
@@ -58,17 +59,20 @@ class MizanUSDTest(_Girisli):
         self.assertEqual(_harita(m1)["600"].usd_alacak, _harita(m2)["600"].usd_alacak)
         self.assertEqual(yuvarla(_harita(m1)["600"].usd_alacak, 2), Decimal("1000.00"))
 
-    def test_usd_islem_satiri_orijinal_usd_kullanir(self):
+    def test_usd_satiri_da_tl_bolu_kur(self):
+        # Artık USD işlem satırı da orijinal USD değil, TL ÷ fiş.kur_usd kullanır.
         fis_olustur(tarih=D(2026, 3, 1), kur_usd=Decimal("44"), satirlar=[
-            SatirGirdi("120", "B", Decimal("1000"), "USD", Decimal("45")),
+            SatirGirdi("120", "B", Decimal("1000"), "USD", Decimal("45")),  # TL = 45.000
             _s("601", "A", "45000"),
         ])
         d = _harita(mizan_usd(*YIL))
-        self.assertEqual(yuvarla(d["120"].usd_borc, 2), Decimal("1000.00"))
+        self.assertEqual(yuvarla(d["120"].usd_borc, 2), Decimal("1022.73"))  # 45000/44
 
     def test_kursuz_fis_haric(self):
-        fis_olustur(tarih=D(2026, 3, 1), kur_usd=None,
-                    satirlar=[_s("100", "B", "30000"), _s("600", "A", "30000")])
+        # Yeni fişte kur zorunlu; "kursuz" yalnız eski veride (kur_usd elle silinmiş) olabilir.
+        f = fis_olustur(tarih=D(2026, 3, 1), kur_usd=Decimal("30"),
+                        satirlar=[_s("100", "B", "30000"), _s("600", "A", "30000")])
+        YevmiyeFisi.objects.filter(pk=f.pk).update(kur_usd=None)
         fis_olustur(tarih=D(2026, 3, 2), kur_usd=Decimal("30"),
                     satirlar=[_s("100", "B", "15000"), _s("600", "A", "15000")])
         m = mizan_usd(*YIL)
@@ -95,8 +99,9 @@ class GelirUSDTest(_Girisli):
         self.assertEqual(yuvarla(gt.donem_net_kari, 2), Decimal("1750.00"))
 
     def test_kursuz_haric(self):
-        fis_olustur(tarih=D(2026, 3, 1), kur_usd=None,
-                    satirlar=[_s("100", "B", "30000"), _s("600", "A", "30000")])
+        f = fis_olustur(tarih=D(2026, 3, 1), kur_usd=Decimal("30"),
+                        satirlar=[_s("100", "B", "30000"), _s("600", "A", "30000")])
+        YevmiyeFisi.objects.filter(pk=f.pk).update(kur_usd=None)
         gt = gelir_tablosu_usd(*YIL)
         self.assertEqual(yuvarla(gt.haric_tl, 2), Decimal("30000.00"))
         self.assertEqual(gt.donem_net_kari, Decimal("0.00"))

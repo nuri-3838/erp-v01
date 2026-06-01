@@ -79,7 +79,8 @@
 <div class="usd-onizleme">
   <h2 class="etiket">USD Yevmiye Önizleme <span class="yardim" id="usd-kur-bilgi"></span></h2>
   <p class="yardim">USD mizan / bilanço / gelir tablosu bu kayıttan üretilir. Kur fiş tarihine göre
-    otomatik (TCMB MB Alış). USD işlem satırı orijinal USD tutarıyla; diğerleri TL ÷ kur ile çevrilir.</p>
+    otomatik (TCMB MB Alış). <b>Tüm satırlar</b> TL tutarın USD kuruna bölünmesiyle gelir.
+    Kur yoksa fiş <b>kaydedilemez</b>.</p>
   <div class="tablo-kapsayici">
   <table>
     <thead><tr><th>Hesap</th><th class="sag">USD Borç</th><th class="sag">USD Alacak</th></tr></thead>
@@ -197,8 +198,7 @@
       satirVar=true;
       var p=val(r,'islem_pb')||'TRY'; var kur=(p==='TRY')?1:parseTR(val(r,'islem_kuru'));
       var uB=0, uA=0, gecersiz=false;
-      if(p==='USD'){ uB=b; uA=a; }
-      else if(kurUsd){ uB=(b*kur)/kurUsd; uA=(a*kur)/kurUsd; }
+      if(kurUsd){ uB=(b*kur)/kurUsd; uA=(a*kur)/kurUsd; }   // TÜM satırlar TL÷kur
       else { gecersiz=true; }
       var tr=document.createElement('tr');
       tr.innerHTML='<td>'+hesap+'</td>'
@@ -212,7 +212,8 @@
     document.getElementById('uAlacak').textContent=fmt(ua,4);
     var bil=document.getElementById('usd-kur-bilgi');
     bil.textContent = kurUsd ? '— kur: '+fmt(kurUsd,4)
-                             : '— bu tarih için kur yok (TRY/EUR/GBP satırları USD raporuna giremez)';
+                             : '⚠ bu tarih için USD kuru yok — fiş kaydedilemez (Kurlar ekranından çekin)';
+    bil.classList.toggle('hata', !kurUsd);
   }
 
   function aciklamaYansit(){
