@@ -116,6 +116,35 @@ class EkstreServisTest(TestCase):
         eks = ekstre_servis("100", D(2026, 1, 1), D(2026, 12, 31))
         self.assertEqual(eks.satirlar[-1].yur_bakiye, eks.bakiye)
 
+    # --- Roll-up: üst hesaba basınca alt hesap yevmiyeleri ---------------
+    def test_ust_hesaba_basinca_alt_hesap_satirlari_gelir(self):
+        from core.services.hesap_plani import hesap_olustur
+        hesap_olustur(kod="100.01", ad="merkez kasa", ust_kodu="100")
+        hesap_olustur(kod="100.02", ad="yan kasa", ust_kodu="100")
+        fis_olustur(tarih=D(2026, 3, 1), satirlar=[
+            _try("100.01", "B", "700"), _try("600", "A", "700")])
+        fis_olustur(tarih=D(2026, 3, 2), satirlar=[
+            _try("100.02", "B", "300"), _try("600", "A", "300")])
+        eks = ekstre_servis("100", D(2026, 1, 1), D(2026, 12, 31))
+        self.assertEqual(len(eks.satirlar), 2)        # üst hesap iki alt hesabı toplar
+        self.assertEqual({s.hesap_kodu for s in eks.satirlar}, {"100.01", "100.02"})
+        self.assertEqual(eks.toplam_borc, Decimal("1000.00"))
+        self.assertTrue(eks.cok_hesap)
+        self.assertIn("KASA", eks.hesap_adi)          # başlık üst hesabın adı
+
+    # --- Döviz çift bakiye ----------------------------------------------
+    def test_doviz_cift_bakiye(self):
+        fis_olustur(tarih=D(2026, 3, 1), satirlar=[
+            SatirGirdi(hesap_kodu="102", taraf="B", islem_tutari=Decimal("100"),
+                       islem_pb="USD", islem_kuru=Decimal("30")),
+            _try("600", "A", "3000")])
+        eks = ekstre_servis("102", D(2026, 1, 1), D(2026, 12, 31))
+        self.assertEqual(eks.satirlar[0].borc, Decimal("3000.00"))      # TL
+        self.assertEqual(eks.satirlar[0].dvz_borc, Decimal("100.00"))   # orijinal USD
+        self.assertEqual(eks.satirlar[0].pb, "USD")
+        self.assertEqual(eks.satirlar[0].dvz_yur_bakiye, Decimal("100.00"))
+        self.assertEqual(eks.dvz_toplamlar["USD"]["bakiye"], Decimal("100.00"))
+
 
 class EkstreViewTest(TestCase):
     @classmethod
@@ -137,6 +166,14 @@ class EkstreViewTest(TestCase):
 
     def _url(self, kod="100", b="2026-01-01", s="2026-12-31"):
         return reverse("core:hesap_ekstresi", args=[kod]) + f"?baslangic={b}&bitis={s}"
+
+    def test_doviz_sutunlari_render(self):
+        fis_olustur(tarih=D(2026, 3, 1), satirlar=[
+            _try("100", "B", "1000"), _try("600", "A", "1000")])
+        r = self.client.get(self._url("100"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Döviz")
+        self.assertContains(r, "TRY")
 
     def test_view_200_ve_hesap_adi(self):
         fis_olustur(tarih=D(2026, 3, 10), satirlar=[

@@ -17,24 +17,34 @@
 </form>
 
 <p class="yardim">Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
-  · İptal edilen fişler hariç · Bakiyeler yevmiyeden hesaplanır.</p>
+  · İptal edilen fişler hariç · Bakiyeler yevmiyeden hesaplanır.
+  {% if ekstre.cok_hesap %}· Üst hesap: altındaki tüm alt hesapların hareketleri dahildir.{% endif %}
+  · TL'nin yanında işlem para biriminin borç/alacak/bakiyesi de gösterilir (çift bakiye).</p>
 
 <div class="toplamlar">
-  <span class="etiket">Toplam borç:</span> <span class="deger">{{ ekstre.toplam_borc|tr_para }}</span>
-  <span class="etiket">Toplam alacak:</span> <span class="deger">{{ ekstre.toplam_alacak|tr_para }}</span>
-  <span class="etiket">Bakiye:</span>
+  <span class="etiket">Toplam borç (TL):</span> <span class="deger">{{ ekstre.toplam_borc|tr_para }}</span>
+  <span class="etiket">Toplam alacak (TL):</span> <span class="deger">{{ ekstre.toplam_alacak|tr_para }}</span>
+  <span class="etiket">Bakiye (TL):</span>
   <span class="deger {% if ekstre.bakiye > 0 %}dengeli{% elif ekstre.bakiye < 0 %}dengesiz{% endif %}">
     {{ ekstre.bakiye|tr_bakiye }}
   </span>
+  {% for pb, t in ekstre.dvz_toplamlar.items %}{% if pb != "TRY" %}
+    <span class="etiket">Bakiye ({{ pb }}):</span> <span class="deger">{{ t.bakiye|tr_bakiye }} {{ pb }}</span>
+  {% endif %}{% endfor %}
 </div>
 
 <div class="tablo-kapsayici genis">
 <table>
   <thead>
     <tr>
-      <th>Tarih</th><th>Fiş No</th><th>Açıklama</th>
-      <th class="sag">Borç</th><th class="sag">Alacak</th>
-      <th class="sag">Bakiye</th>
+      <th rowspan="2">Tarih</th><th rowspan="2">Fiş No</th><th rowspan="2">Hesap</th>
+      <th rowspan="2">Açıklama</th>
+      <th colspan="3" class="ekstre-grup">TL</th>
+      <th colspan="4" class="ekstre-grup kolon-ayrac">Döviz (işlem PB)</th>
+    </tr>
+    <tr>
+      <th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
+      <th class="kolon-ayrac">PB</th><th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
     </tr>
   </thead>
   <tbody>
@@ -42,23 +52,38 @@
       <tr>
         <td>{{ s.tarih|date:"d.m.Y" }}</td>
         <td><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
+        <td><a href="{% url 'core:hesap_ekstresi' s.hesap_kodu %}?baslangic={{ ekstre.baslangic|date:'Y-m-d' }}&amp;bitis={{ ekstre.bitis|date:'Y-m-d' }}">{{ s.hesap_kodu }}</a></td>
         <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
         <td class="sag">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
         <td class="sag">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
         <td class="sag">{{ s.yur_bakiye|tr_bakiye }}</td>
+        <td class="kolon-ayrac">{{ s.pb }}</td>
+        <td class="sag">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
+        <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">Bu aralıkta hareket yok.</td></tr>
+      <tr><td colspan="11" class="yardim">Bu aralıkta hareket yok.</td></tr>
     {% endfor %}
   </tbody>
   {% if ekstre.satirlar %}
   <tfoot>
     <tr>
-      <th colspan="3" class="sag">Toplam</th>
+      <th colspan="4" class="sag">Toplam (TL)</th>
       <th class="sag">{{ ekstre.toplam_borc|tr_para }}</th>
       <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
       <th class="sag">{{ ekstre.bakiye|tr_bakiye }}</th>
+      <th colspan="4" class="kolon-ayrac"></th>
     </tr>
+    {% for pb, t in ekstre.dvz_toplamlar.items %}
+    <tr>
+      <th colspan="7" class="sag">Toplam ({{ pb }})</th>
+      <th class="kolon-ayrac">{{ pb }}</th>
+      <th class="sag">{{ t.borc|tr_para }}</th>
+      <th class="sag">{{ t.alacak|tr_para }}</th>
+      <th class="sag">{{ t.bakiye|tr_bakiye }}</th>
+    </tr>
+    {% endfor %}
   </tfoot>
   {% endif %}
 </table>

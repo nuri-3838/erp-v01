@@ -12,7 +12,7 @@ import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from core.models import HesapPlani, YevmiyeSatir
@@ -197,9 +197,15 @@ class EkstreSatir:
     fis_no: int
     fis_aciklama: str
     satir_aciklama: str
+    hesap_kodu: str
+    hesap_adi: str
     borc: Decimal
     alacak: Decimal
     yur_bakiye: Decimal  # kümülatif borç − alacak; + = borç bakiye, − = alacak bakiye
+    pb: str
+    dvz_borc: Decimal
+    dvz_alacak: Decimal
+    dvz_yur_bakiye: Decimal
 
 
 @dataclass
@@ -223,6 +229,23 @@ class Ekstre:
         """Net borç pozisyonu: pozitif = borç bakiye, negatif = alacak bakiye."""
         return self.toplam_borc - self.toplam_alacak
 
+    @property
+    def cok_hesap(self) -> bool:
+        """Birden çok (alt) hesabın satırı var mı (üst hesap roll-up)?"""
+        return len({s.hesap_kodu for s in self.satirlar}) > 1
+
+    @property
+    def dvz_toplamlar(self) -> dict:
+        """İşlem PB başına döviz toplamı: {pb: {borc, alacak, bakiye}}."""
+        d = {}
+        for s in self.satirlar:
+            t = d.setdefault(s.pb, {"borc": SIFIR, "alacak": SIFIR, "bakiye": SIFIR})
+            t["borc"] += s.dvz_borc
+            t["alacak"] += s.dvz_alacak
+        for t in d.values():
+            t["bakiye"] = t["borc"] - t["alacak"]
+        return d
+
 
 def ekstre(hesap_kodu: str, baslangic=None, bitis=None) -> Ekstre:
     """Belirtilen hesabın tarih aralığındaki hareket ekstresi, yürüyen bakiyeli.
@@ -233,20 +256,21 @@ def ekstre(hesap_kodu: str, baslangic=None, bitis=None) -> Ekstre:
     baslangic, bitis = _varsayilan(baslangic, bitis)
     qs = (
         YevmiyeSatir.objects.filter(
-            hesap_id=hesap_kodu,
+            Q(hesap_id=hesap_kodu) | Q(hesap__hesap_kodu__startswith=hesap_kodu + "."),
             silindi=False, fis__silindi=False,
             fis__tarih__gte=baslangic, fis__tarih__lte=bitis,
         )
         .select_related("fis", "hesap")
         .order_by("fis__tarih", "fis__fis_no", "id")
     )
-    hesap_adi = ""
     satirlar = []
     kumulatif = SIFIR
+    kum_dvz = {}
     for ln in qs:
-        if not hesap_adi:
-            hesap_adi = ln.hesap.hesap_adi
         kumulatif += ln.borc - ln.alacak
+        dvz_b = ln.islem_tutari if ln.borc else SIFIR
+        dvz_a = ln.islem_tutari if ln.alacak else SIFIR
+        kum_dvz[ln.islem_pb] = kum_dvz.get(ln.islem_pb, SIFIR) + (dvz_b - dvz_a)
         satirlar.append(EkstreSatir(
             tarih=ln.fis.tarih,
             fis_pk=ln.fis.pk,
@@ -254,13 +278,18 @@ def ekstre(hesap_kodu: str, baslangic=None, bitis=None) -> Ekstre:
             fis_no=ln.fis.fis_no,
             fis_aciklama=ln.fis.aciklama,
             satir_aciklama=ln.aciklama,
+            hesap_kodu=ln.hesap_id,
+            hesap_adi=ln.hesap.hesap_adi,
             borc=ln.borc,
             alacak=ln.alacak,
             yur_bakiye=kumulatif,
+            pb=ln.islem_pb,
+            dvz_borc=dvz_b,
+            dvz_alacak=dvz_a,
+            dvz_yur_bakiye=kum_dvz[ln.islem_pb],
         ))
-    if not hesap_adi:
-        h = HesapPlani.objects.filter(hesap_kodu=hesap_kodu).first()
-        hesap_adi = h.hesap_adi if h else hesap_kodu
+    h = HesapPlani.objects.filter(hesap_kodu=hesap_kodu).first()
+    hesap_adi = h.hesap_adi if h else hesap_kodu
     return Ekstre(
         hesap_kodu=hesap_kodu,
         hesap_adi=hesap_adi,
