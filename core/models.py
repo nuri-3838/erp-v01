@@ -411,3 +411,50 @@ class KategoriHesap(TemelModel):
 
     def __str__(self):
         return f"{self.kategori_id}:{self.fatura_tipi_id} -> {self.hesap_id}"
+
+
+class Stok(TemelModel):
+    """Stok/ürün kartı (STOKLAR — master). Miktar BURADA tutulmaz (bakiye saklanmaz
+    ilkesi); eldeki miktar ileride stok hareketlerinden hesaplanacak.
+
+    ``kod`` otomatik üretilir: ``ÜST.kod-ALT.kod-NNNN`` (örn. 150-10-0001); sıra her ALT
+    kategori içinde ayrı ilerler (servis). Kart bir ALT kategoriye bağlıdır; muhasebe
+    hesapları kartta DEĞİL, o kategorinin fatura-tipi haritasından gelir. Üretim ve fatura
+    birimi farklı olabilir: ``cevirici`` = 1 üretim birimi kaç fatura birimi eder.
+    Kod ve kategori oluşturmadan sonra DEĞİŞMEZ (servis zorlar).
+    """
+
+    kod = models.CharField("kod", max_length=40)
+    ad = models.CharField("ad", max_length=200)
+    kategori = models.ForeignKey(
+        Kategori, verbose_name="alt kategori", related_name="stoklar",
+        on_delete=models.PROTECT,
+    )
+    uretim_birimi = models.ForeignKey(
+        Birim, verbose_name="üretim birimi", related_name="uretim_stoklari",
+        on_delete=models.PROTECT,
+    )
+    fatura_birimi = models.ForeignKey(
+        Birim, verbose_name="fatura birimi", related_name="fatura_stoklari",
+        on_delete=models.PROTECT,
+    )
+    # 1 üretim birimi = cevirici × fatura birimi.
+    cevirici = models.DecimalField("çevirici", max_digits=18, decimal_places=6, default=1)
+    kdv_orani = models.DecimalField("KDV oranı (%)", max_digits=5, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = "stok"
+        verbose_name = "stok"
+        verbose_name_plural = "stoklar"
+        ordering = ["kod"]
+        constraints = [
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
+                                    name="uq_stok_kod_aktif"),
+            models.CheckConstraint(condition=models.Q(cevirici__gt=0),
+                                   name="ck_stok_cevirici_gt0"),
+            models.CheckConstraint(condition=models.Q(kdv_orani__gte=0),
+                                   name="ck_stok_kdv_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.kod} {self.ad}"

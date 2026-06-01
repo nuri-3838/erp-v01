@@ -16,10 +16,10 @@ from django.utils import timezone
 
 from core.forms import (
     BirimForm, FaturaTipiForm, FisForm, KategoriForm, KullaniciDuzenleForm,
-    KullaniciEkleForm, MizanFiltreForm, SatirForm,
+    KullaniciEkleForm, MizanFiltreForm, SatirForm, StokForm,
 )
 from core.models import (
-    Birim, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, YevmiyeFisi,
+    Birim, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, Stok, YevmiyeFisi,
     YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -38,6 +38,7 @@ from core.services import yedek as yedek_servis
 from core.services import birim as birim_servis
 from core.services import kategori as kategori_servis
 from core.services import fatura_tipi as fatura_tipi_servis
+from core.services import stok as stok_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -531,8 +532,67 @@ def yedek_indir(request, ad):
 # --- STOKLAR modülü --------------------------------------------------------
 @ekran_gerekli("stoklar")
 def stoklar(request):
-    return render(request, "core/yakinda.html",
-                  {"baslik": "Stoklar", "aciklama": "Stok kartları sonraki aşamada gelecek."})
+    return render(request, "core/stok_listesi.html",
+                  {"stoklar": stok_servis.aktif_stoklar()})
+
+
+@ekran_gerekli("stoklar")
+def stok_ekle(request):
+    if request.method == "POST":
+        form = StokForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                s = stok_servis.stok_olustur(
+                    ad=cd["ad"], kategori_id=cd["kategori"].pk,
+                    uretim_birimi_id=cd["uretim_birimi"].pk,
+                    fatura_birimi_id=cd["fatura_birimi"].pk,
+                    cevirici=cd["cevirici"], kdv_orani=cd["kdv_orani"],
+                    kullanici=request.user)
+                messages.success(request, f"Stok eklendi: {s.kod} — {s.ad}")
+                return redirect("core:stoklar")
+            except stok_servis.StokHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = StokForm()
+    return render(request, "core/stok_form.html", {"form": form, "baslik": "Yeni Stok"})
+
+
+@ekran_gerekli("stoklar")
+def stok_duzenle(request, pk):
+    stok = get_object_or_404(
+        Stok.objects.select_related("kategori", "kategori__ust"), pk=pk, silindi=False)
+    if request.method == "POST":
+        form = StokForm(request.POST, duzenle=True)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                stok_servis.stok_guncelle(
+                    stok, ad=cd["ad"],
+                    uretim_birimi_id=cd["uretim_birimi"].pk,
+                    fatura_birimi_id=cd["fatura_birimi"].pk,
+                    cevirici=cd["cevirici"], kdv_orani=cd["kdv_orani"],
+                    kullanici=request.user)
+                messages.success(request, "Stok güncellendi.")
+                return redirect("core:stoklar")
+            except stok_servis.StokHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = StokForm(duzenle=True, initial={
+            "ad": stok.ad, "uretim_birimi": stok.uretim_birimi_id,
+            "fatura_birimi": stok.fatura_birimi_id, "cevirici": stok.cevirici,
+            "kdv_orani": stok.kdv_orani})
+    return render(request, "core/stok_form.html",
+                  {"form": form, "baslik": "Stok Düzenle", "duzenlenen": stok})
+
+
+@ekran_gerekli("stoklar")
+def stok_sil(request, pk):
+    stok = get_object_or_404(Stok, pk=pk, silindi=False)
+    if request.method == "POST":
+        stok_servis.stok_sil(stok, kullanici=request.user)
+        messages.success(request, f"Stok silindi: {stok.kod}")
+    return redirect("core:stoklar")
 
 
 @ekran_gerekli("kategoriler")

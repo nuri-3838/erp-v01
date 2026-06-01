@@ -1,0 +1,110 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
+    <h1 class="ust-baslik"><span class="emoji">📦</span>{{ baslik }}</h1>
+  </div>
+</div>
+
+{% if form.non_field_errors %}
+  <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+{% endif %}
+
+<form method="post" autocomplete="off" style="max-width:560px">
+  {% csrf_token %}
+
+  {% if duzenlenen %}
+  <div class="alan">
+    <label>Kod</label>
+    <p style="margin:.2rem 0"><span class="mono">{{ duzenlenen.kod }}</span></p>
+  </div>
+  <div class="alan">
+    <label>Alt Kategori</label>
+    <p style="margin:.2rem 0"><span class="mono">{{ duzenlenen.kategori.ust.kod }}-{{ duzenlenen.kategori.kod }}</span>
+       — {{ duzenlenen.kategori.ust.ad }} › {{ duzenlenen.kategori.ad }}</p>
+    <p class="yardim">Kod ve kategori sabittir, değiştirilemez.</p>
+  </div>
+  {% endif %}
+
+  <div class="alan">
+    <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }}</label>
+    {{ form.ad }}
+    {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  </div>
+
+  {% if form.kategori %}
+  <div class="alan">
+    <label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label>
+    <div class="akilli" id="kat-sar">{{ form.kategori }}</div>
+    {% for e in form.kategori.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+    <p class="yardim">Yalnız alt kategoriler. Kod otomatik atanır:
+      <span class="mono">ÜST-ALT-SIRA</span> (örn. 150-10-0001).</p>
+  </div>
+  {% endif %}
+
+  <div class="alan">
+    <label for="{{ form.uretim_birimi.id_for_label }}">{{ form.uretim_birimi.label }}</label>
+    {{ form.uretim_birimi }}
+    {% for e in form.uretim_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  </div>
+  <div class="alan">
+    <label for="{{ form.fatura_birimi.id_for_label }}">{{ form.fatura_birimi.label }}</label>
+    {{ form.fatura_birimi }}
+    {% for e in form.fatura_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  </div>
+  <div class="alan">
+    <label for="{{ form.cevirici.id_for_label }}">{{ form.cevirici.label }}</label>
+    {{ form.cevirici }}
+    {% for e in form.cevirici.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+    <p class="yardim">1 üretim birimi kaç fatura birimi eder. (Üretim = fatura birimiyse 1.)</p>
+  </div>
+  <div class="alan">
+    <label for="{{ form.kdv_orani.id_for_label }}">{{ form.kdv_orani.label }}</label>
+    {{ form.kdv_orani }}
+    {% for e in form.kdv_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  </div>
+
+  <button type="submit" class="birincil">Kaydet</button>
+  <a href="{% url 'core:stoklar' %}" style="margin-left:1rem">Vazgeç</a>
+</form>
+
+<script>
+(function(){
+  var sel = document.getElementById('id_kategori');
+  if(!sel) return;
+  var liste = document.createElement('div'); liste.className = 'akilli-liste';
+  document.body.appendChild(liste);
+  var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'akilli-girdi';
+  inp.placeholder = 'kategori ara / seç…'; inp.autocomplete = 'off';
+  sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
+  function metin(v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
+    return o && o.value ? o.textContent.trim() : ''; }
+  if(sel.value) inp.value = metin(sel.value);
+  function konumla(){ var r = inp.getBoundingClientRect();
+    liste.style.left = r.left + 'px'; liste.style.top = r.bottom + 'px'; liste.style.width = r.width + 'px'; }
+  function ac(filt){
+    konumla(); filt = (filt||'').toLocaleLowerCase('tr'); liste.innerHTML = ''; var n = 0;
+    Array.prototype.forEach.call(sel.options, function(o){
+      if(!o.value) return; var t = o.textContent.trim();
+      if(filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(n++ > 100) return;
+      var d = document.createElement('div'); d.className = 'akilli-secenek'; d.textContent = t;
+      d.addEventListener('mousedown', function(ev){ ev.preventDefault();
+        sel.value = o.value; inp.value = t; liste.style.display = 'none'; });
+      liste.appendChild(d);
+    });
+    liste.style.display = liste.children.length ? 'block' : 'none';
+  }
+  inp.addEventListener('focus', function(){ ac(sel.value ? '' : inp.value); });
+  inp.addEventListener('input', function(){ sel.value = ''; ac(inp.value); });
+  inp.addEventListener('blur', function(){ setTimeout(function(){
+    liste.style.display = 'none'; inp.value = metin(sel.value); }, 150); });
+  window.addEventListener('scroll', function(){ if(liste.style.display === 'block') konumla(); }, true);
+  window.addEventListener('resize', function(){ if(liste.style.display === 'block') konumla(); });
+})();
+</script>
+{% endblock %}

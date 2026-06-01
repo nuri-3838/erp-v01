@@ -1,0 +1,48 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Stoklar · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Stoklar{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">📦</span>Stoklar</h1>
+  <a class="dugme" href="{% url 'core:stok_ekle' %}">+ Yeni Stok</a>
+</div>
+<p class="sayfa-alt">{{ stoklar|length }} stok kartı · kod otomatik (ÜST-ALT-sıra).
+  Muhasebe hesapları bağlı kategorinin fatura-tipi haritasından gelir.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr>
+      <th>Kod</th><th>Ad</th><th>Kategori</th>
+      <th>Üretim Br.</th><th>Fatura Br.</th><th class="sag">Çevirici</th><th>İşlem</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in stoklar %}
+      <tr>
+        <td class="mono">{{ s.kod }}</td>
+        <td>{{ s.ad }}</td>
+        <td>{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</td>
+        <td>{{ s.uretim_birimi.kisa_ad }}</td>
+        <td>{{ s.fatura_birimi.kisa_ad }}</td>
+        <td class="sag mono">{{ s.cevirici|tr_kur:4 }}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:stok_duzenle' s.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:stok_sil' s.pk %}"
+                  onsubmit="return confirm('{{ s.kod }} stoğu silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim">Henüz stok yok. “+ Yeni Stok” ile ekleyin.
+        (Önce en az bir <strong>alt kategori</strong> tanımlı olmalı.)</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

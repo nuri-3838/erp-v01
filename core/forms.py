@@ -14,7 +14,9 @@ from django.utils import timezone
 
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
-from core.models import FaturaTipi, HesapPlani, Kategori, Profil, YevmiyeSatir
+from core.models import (
+    Birim, FaturaTipi, HesapPlani, Kategori, Profil, YevmiyeSatir,
+)
 from core.sayi import SayiHatasi, format_tr, parse_tr
 
 
@@ -280,3 +282,40 @@ class FaturaTipiForm(forms.Form):
     sira = forms.IntegerField(
         label="Sıra", min_value=0, initial=0,
         widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+
+
+class StokForm(forms.Form):
+    """Stok kartı ekle/düzenle (STOKLAR). Kod OTOMATİK (formda yok). Kategori yalnız
+    eklemede (akıllı arama; düzenlemede ``duzenle=True`` ile kaldırılır — kod/kategori
+    sabit). Ad TR büyük harf + doğrulamalar serviste.
+    """
+
+    ad = forms.CharField(
+        label="Ad", max_length=200,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kategori = forms.ModelChoiceField(
+        label="Alt Kategori", queryset=Kategori.objects.none(),
+        empty_label="— alt kategori seç —")
+    uretim_birimi = forms.ModelChoiceField(
+        label="Üretim Birimi", queryset=Birim.objects.none(),
+        empty_label="— birim seç —")
+    fatura_birimi = forms.ModelChoiceField(
+        label="Fatura Birimi", queryset=Birim.objects.none(),
+        empty_label="— birim seç —")
+    cevirici = TRDecimalField(label="Çevirici", basamak=4, initial=Decimal("1"))
+    kdv_orani = TRDecimalField(label="KDV oranı (%)", basamak=2, initial=Decimal("20"))
+
+    def __init__(self, *args, duzenle: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.birim import aktif_birimler
+        b = aktif_birimler()
+        self.fields["uretim_birimi"].queryset = b
+        self.fields["fatura_birimi"].queryset = b
+        if duzenle:
+            self.fields.pop("kategori")
+        else:
+            self.fields["kategori"].queryset = (
+                Kategori.objects.filter(silindi=False, ust__isnull=False)
+                .select_related("ust").order_by("kod"))
+            self.fields["kategori"].label_from_instance = (
+                lambda o: f"{o.ust.kod}-{o.kod}  {o.ust.ad} › {o.ad}")
