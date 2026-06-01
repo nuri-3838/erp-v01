@@ -109,3 +109,23 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "core:pano"   # giriş sonrası PANO açılır
 LOGOUT_REDIRECT_URL = "login"
+
+
+# --- Güvenlik sıkılaştırma (YALNIZ prod / DEBUG=False) ---------------------
+# Yerel/WSL geliştirmede (DEBUG=True) KAPALI kalır; aksi halde HTTP üzerinden
+# giriş yapılamaz hale gelir (secure çerez + SSL redirect). nginx HTTPS’i
+# sonlandırıyor ve X-Forwarded-Proto başlığını geçiriyor; bu header olmadan
+# SECURE_SSL_REDIRECT sonsuz yönlendirme döngüsüne yol açar.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # HSTS: ÖNCE küçük (5 dk); canlıda çalıştığı doğrulanınca büyütülecek.
+    # include_subdomains/preload ŞİMDİLİK KAPALI — yalnız test.semtahome.com’a
+    # uygulanır; subdomainler ve eski sistem (erp.semtahome.com) etkilenmez.
+    SECURE_HSTS_SECONDS = 300
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
