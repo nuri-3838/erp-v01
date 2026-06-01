@@ -4,6 +4,7 @@ Burada yalnızca tüm tabloların paylaştığı invariant taban (audit + soft d
 spec 0b-g) ile v0.1 veri modelinin ilk tablosu HESAP_PLANI (spec bölüm 2) var.
 """
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
 
@@ -75,6 +76,13 @@ class HesapPlani(TemelModel):
         verbose_name = "hesap"
         verbose_name_plural = "hesap planı"
         ordering = ["hesap_kodu"]
+        indexes = [
+            # Fiş listesi aramasında hesap kodu/adı "%...%" (içeren) sorgusu için trigram.
+            GinIndex(fields=["hesap_adi"], name="gin_hesap_adi",
+                     opclasses=["gin_trgm_ops"]),
+            GinIndex(fields=["hesap_kodu"], name="gin_hesap_kodu",
+                     opclasses=["gin_trgm_ops"]),
+        ]
 
     def __str__(self):
         return f"{self.hesap_kodu} {self.hesap_adi}"
@@ -106,6 +114,10 @@ class Kur(TemelModel):
         verbose_name = "kur"
         verbose_name_plural = "kurlar"
         ordering = ["-tarih"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(usd_alis__gt=0),
+                                   name="ck_kur_usd_alis_gt0"),
+        ]
 
     def __str__(self):
         return f"{self.tarih} USD={self.usd_alis}"
@@ -142,11 +154,18 @@ class YevmiyeFisi(TemelModel):
         ordering = ["yil", "fis_no"]
         indexes = [
             models.Index(fields=["tarih"], name="idx_yevmiye_tarih"),
+            # Fiş listesi aramasında açıklama "%...%" (içeren) sorgusu için trigram.
+            GinIndex(fields=["aciklama"], name="gin_fis_aciklama",
+                     opclasses=["gin_trgm_ops"]),
         ]
         constraints = [
             models.UniqueConstraint(
                 fields=["yil", "fis_no"], name="uq_yevmiye_yil_fisno"
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kur_usd__isnull=True) | models.Q(kur_usd__gt=0),
+                name="ck_fis_kur_usd_gt0",
+            ),
         ]
 
     def __str__(self):
@@ -192,6 +211,19 @@ class YevmiyeSatir(TemelModel):
         verbose_name = "yevmiye satırı"
         verbose_name_plural = "yevmiye satırları"
         ordering = ["fis", "id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(borc__gte=0),
+                                   name="ck_satir_borc_gte0"),
+            models.CheckConstraint(condition=models.Q(alacak__gte=0),
+                                   name="ck_satir_alacak_gte0"),
+            # Bir satır ya borç ya alacak olur; ikisi birden pozitif olamaz.
+            models.CheckConstraint(condition=models.Q(borc=0) | models.Q(alacak=0),
+                                   name="ck_satir_tek_taraf"),
+            models.CheckConstraint(condition=models.Q(islem_tutari__gte=0),
+                                   name="ck_satir_islem_tutari_gte0"),
+            models.CheckConstraint(condition=models.Q(islem_kuru__gt=0),
+                                   name="ck_satir_islem_kuru_gt0"),
+        ]
 
     def __str__(self):
         return f"{self.fis} {self.hesap_id} B={self.borc} A={self.alacak}"
