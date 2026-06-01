@@ -1,0 +1,9 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik">{{ baslik }}</h1>
+<p class="yardim">{{ aciklama|default:"Bu ekran sonraki aşamada gelecek." }}
+  <strong>(Yakında)</strong></p>
+{% endblock %}

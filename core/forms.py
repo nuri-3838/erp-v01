@@ -239,3 +239,18 @@ class KullaniciDuzenleForm(forms.Form):
         profil.yonetici = cd["yonetici"]
         profil.save()
         return u
+
+
+class BirimForm(forms.Form):
+    """Birim ekle/düzenle formu (STOKLAR). TR büyük harf + ondalık doğrulama serviste."""
+
+    ad = forms.CharField(
+        label="Ad", max_length=50,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kisa_ad = forms.CharField(
+        label="Kısa Ad", max_length=10,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ondalik = forms.IntegerField(
+        label="Ondalık hane (0-6)", min_value=0, max_value=6, initial=0,
+        widget=forms.NumberInput(attrs={"min": 0, "max": 6, "inputmode": "numeric"}))
+    aktif = forms.BooleanField(label="Aktif", required=False, initial=True)

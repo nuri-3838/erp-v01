@@ -31,4 +31,11 @@ urlpatterns = [
     path("ayarlar/kullanici-yetkileri/", views.kullanici_yetkileri, name="kullanici_yetkileri"),
     path("ayarlar/yedek/", views.yedek_yonetim, name="yedek"),
     path("ayarlar/yedek/indir/<str:ad>/", views.yedek_indir, name="yedek_indir"),
+    # STOKLAR modülü
+    path("stoklar/", views.stoklar, name="stoklar"),
+    path("stoklar/kategoriler/", views.kategoriler, name="kategoriler"),
+    path("stoklar/birimler/", views.birimler, name="birimler"),
+    path("stoklar/birimler/ekle/", views.birim_ekle, name="birim_ekle"),
+    path("stoklar/birimler/<int:pk>/duzenle/", views.birim_duzenle, name="birim_duzenle"),
+    path("stoklar/birimler/<int:pk>/sil/", views.birim_sil, name="birim_sil"),
 ]

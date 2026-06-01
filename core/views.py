@@ -15,9 +15,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
+    BirimForm, FisForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm,
+    SatirForm,
 )
-from core.models import EkranYetki, HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
+from core.models import Birim, EkranYetki, HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
 from core.sayi import SayiHatasi, parse_tr
@@ -31,6 +32,7 @@ from core.services.yevmiye import (
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
+from core.services import birim as birim_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -519,3 +521,66 @@ def yedek_indir(request, ad):
     if yol is None:
         raise Http404("Yedek bulunamadı.")
     return FileResponse(open(yol, "rb"), as_attachment=True, filename=yol.name)
+
+
+# --- STOKLAR modülü --------------------------------------------------------
+@ekran_gerekli("stoklar")
+def stoklar(request):
+    return render(request, "core/yakinda.html",
+                  {"baslik": "Stoklar", "aciklama": "Stok kartları sonraki aşamada gelecek."})
+
+
+@ekran_gerekli("kategoriler")
+def kategoriler(request):
+    return render(request, "core/yakinda.html",
+                  {"baslik": "Kategoriler", "aciklama": "Kategoriler sonraki aşamada gelecek."})
+
+
+@ekran_gerekli("birimler")
+def birimler(request):
+    return render(request, "core/birim_listesi.html",
+                  {"birimler": birim_servis.aktif_birimler()})
+
+
+@ekran_gerekli("birimler")
+def birim_ekle(request):
+    if request.method == "POST":
+        form = BirimForm(request.POST)
+        if form.is_valid():
+            try:
+                b = birim_servis.birim_olustur(**form.cleaned_data, kullanici=request.user)
+                messages.success(request, f"Birim eklendi: {b.ad} ({b.kisa_ad})")
+                return redirect("core:birimler")
+            except birim_servis.BirimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BirimForm()
+    return render(request, "core/birim_form.html", {"form": form, "baslik": "Yeni Birim"})
+
+
+@ekran_gerekli("birimler")
+def birim_duzenle(request, pk):
+    birim = get_object_or_404(Birim, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = BirimForm(request.POST)
+        if form.is_valid():
+            try:
+                birim_servis.birim_guncelle(birim, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Birim güncellendi.")
+                return redirect("core:birimler")
+            except birim_servis.BirimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BirimForm(initial={"ad": birim.ad, "kisa_ad": birim.kisa_ad,
+                                  "ondalik": birim.ondalik, "aktif": birim.aktif})
+    return render(request, "core/birim_form.html",
+                  {"form": form, "baslik": "Birim Düzenle", "duzenlenen": birim})
+
+
+@ekran_gerekli("birimler")
+def birim_sil(request, pk):
+    birim = get_object_or_404(Birim, pk=pk, silindi=False)
+    if request.method == "POST":
+        birim_servis.birim_sil(birim, kullanici=request.user)
+        messages.success(request, f"Birim silindi: {birim.ad}")
+    return redirect("core:birimler")

@@ -33,6 +33,11 @@ MODULLER = (
         Ekran("bilanco_usd", "Bilanço (USD)", "core:bilanco_usd"),
         Ekran("gelir_tablosu_usd", "Gelir Tablosu (USD)", "core:gelir_tablosu_usd"),
     )),
+    Modul("STOKLAR", "Stoklar", (
+        Ekran("stoklar", "Stoklar", "core:stoklar"),
+        Ekran("kategoriler", "Kategoriler", "core:kategoriler"),
+        Ekran("birimler", "Birimler", "core:birimler"),
+    )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),

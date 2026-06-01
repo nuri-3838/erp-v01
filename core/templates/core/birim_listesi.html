@@ -1,0 +1,44 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Birimler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Birimler{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik">Birimler</h1>
+  <a class="dugme" href="{% url 'core:birim_ekle' %}">+ Yeni</a>
+</div>
+
+<p class="yardim">Stok birimleri. Ondalık hane miktar gösteriminde kullanılır
+  (KG = 3 → 1,250 kg; ADET = 0 → tam sayı). Silinen birim listeden kalkar (iz kalır).</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr>
+      <th>Ad</th><th>Kısa Ad</th><th class="sag">Ondalık</th><th>Durum</th><th>İşlem</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in birimler %}
+      <tr{% if not b.aktif %} class="pasif"{% endif %}>
+        <td>{{ b.ad }}</td>
+        <td>{{ b.kisa_ad }}</td>
+        <td class="sag">{{ b.ondalik }}</td>
+        <td>{% if b.aktif %}Aktif{% else %}Pasif{% endif %}</td>
+        <td>
+          <a href="{% url 'core:birim_duzenle' b.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:birim_sil' b.pk %}"
+                style="display:inline; margin-left:.5rem"
+                onsubmit="return confirm('{{ b.ad }} birimi silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button>
+          </form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim">Henüz birim yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

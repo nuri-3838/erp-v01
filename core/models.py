@@ -280,3 +280,28 @@ class EkranYetki(TemelModel):
 
     def __str__(self):
         return f"{self.kullanici_id}:{self.ekran_kod}"
+
+
+class Birim(TemelModel):
+    """Stok birimi (STOKLAR modülü). Ondalık hane: KG=3 (1,250 kg), ADET=0 (tam).
+
+    İleride stok kartı bu birime bağlanacak; o yüzden audit + soft-delete baştan tutulur.
+    """
+
+    ad = models.CharField("ad", max_length=50)
+    kisa_ad = models.CharField("kısa ad", max_length=10)
+    ondalik = models.PositiveSmallIntegerField("ondalık hane", default=0)
+    aktif = models.BooleanField("aktif", default=True)
+
+    class Meta:
+        db_table = "birim"
+        verbose_name = "birim"
+        verbose_name_plural = "birimler"
+        ordering = ["ad"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(ondalik__lte=6),
+                                   name="ck_birim_ondalik_0_6"),
+        ]
+
+    def __str__(self):
+        return f"{self.ad} ({self.kisa_ad})"
