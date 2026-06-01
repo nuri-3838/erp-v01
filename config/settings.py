@@ -11,6 +11,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Gizli bilgi koda girmez: .env dosyasından okunur (bkz. .env.example).
 load_dotenv(BASE_DIR / ".env")
 
+# Yedekleme (Asama 1 motoru + dizin) — ekran (Asama 2) bunlari kullanir.
+BACKUP_DIR = BASE_DIR / "backups"
+BACKUP_SCRIPT = BASE_DIR / "scripts" / "db_backup.sh"
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 

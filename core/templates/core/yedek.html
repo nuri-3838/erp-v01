@@ -1,0 +1,48 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Yedek · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yedek{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik">Veritabanı Yedekleri</h1>
+  <form method="post" action="{% url 'core:yedek' %}">
+    {% csrf_token %}
+    <button type="submit" class="dugme">Şimdi Yedek Al</button>
+  </form>
+</div>
+
+<p class="yardim">Her gece otomatik yedek alınır (03:00). Yedekler sunucuda saklanır
+  (son 15 gün); eskiler otomatik silinir. Bu ekran yalnızca yöneticilere açıktır.
+  Güvenlik gereği <strong>geri yükleme bu ekranda yer almaz</strong>.
+  {% if son_yedek %}· <strong>Son yedek:</strong>
+  {{ son_yedek.tarih|date:"d.m.Y H:i" }} ({{ son_yedek.boyut_h }}).
+  {% else %}· Henüz yedek yok.{% endif %}</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr>
+      <th>Tarih / Saat</th><th class="sag">Boyut</th><th>Dosya</th><th class="sag">İndir</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for y in yedekler %}
+      <tr>
+        <td>{{ y.tarih|date:"d.m.Y H:i:s" }}</td>
+        <td class="sag">{{ y.boyut_h }}</td>
+        <td><code>{{ y.ad }}</code></td>
+        <td class="sag"><a href="{% url 'core:yedek_indir' y.ad %}">İndir ↓</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="yardim">Henüz yedek yok. “Şimdi Yedek Al” ile ilk
+        yedeği oluşturabilirsiniz.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<p class="yardim">İpucu: Yedekleri düzenli olarak indirip <strong>sunucu dışında</strong>
+  (kendi bilgisayarınız/bulut) saklayın — offsite kopya, sunucu kaybına karşı en
+  güvenli korumadır.</p>
+{% endblock %}

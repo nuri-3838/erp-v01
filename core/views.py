@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum
 from django.forms import formset_factory
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -30,6 +30,7 @@ from core.services.yevmiye import (
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import hesap_plani as hp
+from core.services import yedek as yedek_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -483,3 +484,26 @@ def kullanici_yetkileri(request):
         "yetki_modulleri": [m for m in MODULLER if not m.yonetici_modulu],
         "secili_yonetici": yonetici_mi(secili) if secili else False,
     })
+
+
+@yonetici_gerekli
+def yedek_yonetim(request):
+    """AYARLAR > Yedek: liste + Şimdi Yedek Al (Aşama 1 motorunu tetikler)."""
+    if request.method == "POST":
+        basari, mesaj = yedek_servis.yedek_al()
+        (messages.success if basari else messages.error)(request, mesaj)
+        return redirect("core:yedek")
+    yedekler = yedek_servis.yedekleri_listele()
+    return render(request, "core/yedek.html", {
+        "yedekler": yedekler,
+        "son_yedek": yedekler[0] if yedekler else None,
+    })
+
+
+@yonetici_gerekli
+def yedek_indir(request, ad):
+    """Bir yedek dosyasını tarayıcıdan indir (offsite kopya). Geçersiz ad => 404."""
+    yol = yedek_servis.yedek_yolu(ad)
+    if yol is None:
+        raise Http404("Yedek bulunamadı.")
+    return FileResponse(open(yol, "rb"), as_attachment=True, filename=yol.name)

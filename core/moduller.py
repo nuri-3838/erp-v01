@@ -36,6 +36,7 @@ MODULLER = (
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),
+        Ekran("yedek", "Yedek", "core:yedek"),
     ), yonetici_modulu=True),
 )
 

@@ -29,4 +29,6 @@ urlpatterns = [
     path("kullanicilar/ekle/", views.kullanici_ekle, name="kullanici_ekle"),
     path("kullanicilar/<int:pk>/duzenle/", views.kullanici_duzenle, name="kullanici_duzenle"),
     path("ayarlar/kullanici-yetkileri/", views.kullanici_yetkileri, name="kullanici_yetkileri"),
+    path("ayarlar/yedek/", views.yedek_yonetim, name="yedek"),
+    path("ayarlar/yedek/indir/<str:ad>/", views.yedek_indir, name="yedek_indir"),
 ]
