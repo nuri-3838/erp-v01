@@ -24,7 +24,9 @@ class YevmiyeTestTemel(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
 
 
 class GecerliFisTest(YevmiyeTestTemel):
@@ -164,8 +166,11 @@ class IptalTest(YevmiyeTestTemel):
 
 class KurUsdTest(YevmiyeTestTemel):
     def _kur(self, y, m, d, usd):
-        return Kur.objects.create(tarih=D(y, m, d), usd_alis=Decimal(usd),
-                                  eur_alis=Decimal("38"), gbp_alis=Decimal("44"))
+        obj, _ = Kur.objects.update_or_create(
+            tarih=D(y, m, d),
+            defaults=dict(usd_alis=Decimal(usd), eur_alis=Decimal("38"),
+                          gbp_alis=Decimal("44"), silindi=False))
+        return obj
 
     def test_otomatik_fis_tarihine_gore(self):
         self._kur(2026, 3, 10, "32.5")
@@ -173,12 +178,15 @@ class KurUsdTest(YevmiyeTestTemel):
             _try_satir("100", "B", "10,00"), _try_satir("600", "A", "10,00")])
         self.assertEqual(fis.kur_usd, Decimal("32.500000"))
 
-    def test_hafta_sonu_son_yayimlanan(self):
-        self._kur(2026, 3, 13, "33")  # Cuma
-        # 2026-03-14 Cumartesi -> kur yok -> son yayımlanan (Cuma) kullanılır
-        fis = fis_olustur(tarih=D(2026, 3, 14), satirlar=[
-            _try_satir("100", "B", "10,00"), _try_satir("600", "A", "10,00")])
-        self.assertEqual(fis.kur_usd, Decimal("33.000000"))
+    def test_kur_yoksa_eski_kur_tasinmaz(self):
+        # Önceki tarihte kur var ama fiş tarihinde BİREBİR kur yok -> eski kur
+        # taşınmaz, fiş kaydedilmez (kullanıcının bildirdiği hata: 25.06.2026).
+        Kur.objects.all().delete()
+        self._kur(2026, 3, 13, "33")  # yalnız önceki tarihte kur
+        with self.assertRaises(YevmiyeHatasi):
+            fis_olustur(tarih=D(2026, 3, 14), satirlar=[
+                _try_satir("100", "B", "10,00"), _try_satir("600", "A", "10,00")])
+        self.assertEqual(YevmiyeFisi.objects.count(), 0)
 
     def test_kur_yoksa_fis_kaydedilmez(self):
         Kur.objects.all().delete()   # hiç kur yok

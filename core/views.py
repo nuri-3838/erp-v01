@@ -26,7 +26,7 @@ from core.services.raporlar import (
     mali_yil_araligi, mizan, mizan_usd,
 )
 from core.services.yevmiye import (
-    SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur, kur_usd_bul,
+    SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur, kur_usd_birebir,
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import hesap_plani as hp
@@ -213,7 +213,7 @@ def kur_usd_api(request):
         except ValueError:
             t = None
         if t is not None:
-            k = kur_usd_bul(t)
+            k = kur_usd_birebir(t)
             if k is not None:
                 kur = str(k)
     return JsonResponse({"kur": kur})

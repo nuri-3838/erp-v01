@@ -27,7 +27,9 @@ class EkstreServisTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
 
     def test_dogru_hesabın_satirlarini_gosterir(self):
         fis_olustur(tarih=D(2026, 3, 10), satirlar=[
@@ -122,7 +124,9 @@ class EkstreViewTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
         cls.yon = User.objects.create_superuser("yon", password="parola1234")
         cls.mizan_user = User.objects.create_user("miz", password="x")
         EkranYetki.objects.create(kullanici=cls.mizan_user, ekran_kod="mizan")

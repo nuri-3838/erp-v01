@@ -68,11 +68,18 @@ def kur_usd_bul(tarih: _dt.date):
     return k.usd_alis if k else None
 
 
+def kur_usd_birebir(tarih: _dt.date):
+    """Yalnız o tarihe ait (BİREBİR) USD alış kuru; yoksa None. Carry-forward YOK —
+    fiş kaydı için fiş tarihinin kuru fiilen KUR tablosunda bulunmalıdır."""
+    k = Kur.objects.filter(tarih=tarih, silindi=False, usd_alis__isnull=False).first()
+    return k.usd_alis if k else None
+
+
 def _kur_usd_coz(kur_usd, tarih: _dt.date):
     """kur_usd None ise fiş tarihine göre KUR'dan doldur; verilmişse Decimal'e çevir.
     Çözülemezse (o tarih için kur yok) HATA: her fişin USD karşılığı zorunludur."""
     if kur_usd is None:
-        bulunan = kur_usd_bul(tarih)
+        bulunan = kur_usd_birebir(tarih)
         if bulunan is None:
             raise YevmiyeHatasi(
                 f"{tarih:%d.%m.%Y} için USD kuru yok; Kurlar ekranından bu tarihi çekmeden "

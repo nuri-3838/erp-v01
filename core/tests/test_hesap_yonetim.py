@@ -32,7 +32,9 @@ class HesapOlusturTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
         cls.u = User.objects.create_superuser("yon", password="x")
 
     def test_alt_hesap_ve_miras(self):
@@ -89,7 +91,9 @@ class YapragaFisTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
         cls.u = User.objects.create_superuser("yon", password="x")
 
     def test_ust_hesaba_fis_engellenir(self):
@@ -117,7 +121,9 @@ class HesapSilmeTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
         cls.u = User.objects.create_superuser("yon", password="x")
 
     def test_yevmiyeli_silinemez(self):
@@ -146,7 +152,9 @@ class HesapPlaniEkranTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
         cls.yetkili = User.objects.create_user("yet", password="x")
         EkranYetki.objects.create(kullanici=cls.yetkili, ekran_kod="hesap_plani")
         cls.kisitli = User.objects.create_user("kis", password="x")

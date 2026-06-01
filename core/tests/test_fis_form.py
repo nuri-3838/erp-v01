@@ -44,7 +44,7 @@ class FisFormRevizyonTest(TestCase):
         self.assertNotContains(r, 'name="kur_usd"')
 
     def test_kur_usd_otomatik_dolar(self):
-        Kur.objects.create(tarih=D(2026, 3, 9), usd_alis=Decimal("32.5000"))
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("32.5000"))
         r = self.client.post(reverse("core:fis_ekle"), _payload(tarih="2026-03-10"))
         self.assertEqual(r.status_code, 302)
         fis = YevmiyeFisi.objects.latest("id")
@@ -57,7 +57,7 @@ class FisFormRevizyonTest(TestCase):
         self.assertContains(r, "USD kuru yok")
 
     def test_kur_api(self):
-        Kur.objects.create(tarih=D(2026, 3, 9), usd_alis=Decimal("32.5000"))
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("32.5000"))
         r = self.client.get(reverse("core:kur_usd_api"), {"tarih": "2026-03-10"})
         self.assertEqual(r.json()["kur"], "32.500000")
         self.assertIsNone(self.client.get(reverse("core:kur_usd_api"),

@@ -47,7 +47,9 @@ class FisListesiTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
         cls.yon = User.objects.create_superuser("yon", password="parola1234")
 
     def setUp(self):
@@ -195,7 +197,9 @@ class FisListesiYetkiTest(TestCase):
         from core.models import Kur as _Kur
         from decimal import Decimal as _Dec
         import datetime as _dtk
-        _Kur.objects.get_or_create(tarih=_dtk.date(2020, 1, 1), defaults={"usd_alis": _Dec("30")})
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
         cls.kisitli = User.objects.create_user(
             "kis", password="x", first_name="AYŞE", last_name="DEMİR")
         EkranYetki.objects.create(kullanici=cls.kisitli, ekran_kod="mizan")
