@@ -391,42 +391,60 @@ class GelirSatir:
     isaret: str = ""
 
 
-def _gelir_rows(alacak_net, borc_net):
-    """A→Dönem Net Kârı satırları (spec bölüm 4); verilen net fonksiyonlarıyla."""
+def _donem_sonucu(rolled_har) -> Decimal:
+    """Dönem net kârı TEK kaynağı: TÜM sonuç hesapları (BILANCO olmayan) net'i
+    = Σ(alacak − borç). Bilanço dönem plug'ı ve gelir tablosu net kârı bundan türer
+    → iki rapor her zaman birebir tutar (7xx ve yeni eklenen hesaplar dahil)."""
+    return sum((o["alacak"] - o["borc"] for o in rolled_har if o["grup"] != "BILANCO"),
+               SIFIR)
+
+
+def _gelir_rows(alacak_net, borc_net, donem_sonucu):
+    """Standart gelir tablosu satırları — bölümler hesap planı rapor_kalemi (A..J)
+    harfinden VERİ-GÜDÜMLÜ gelir (sabit kod listesi YOK; yeni GELIR hesabı doğru
+    kalemle açılınca otomatik düşer). DÖNEM NET KÂRI = donem_sonucu (= bilanço dönem
+    sonucu). 6'lı standart satır toplamı ile donem_sonucu arasındaki fark (7/A
+    yansıtılmamış maliyet + kalemsiz/sınıflandırılmamış hesaplar) şeffaf bir satırda
+    gösterilir; böylece gelir tablosu net kârı ile bilanço dönem sonucu HER ZAMAN tutar."""
     rows: list[GelirSatir] = []
-    A = alacak_net(["600", "601", "602"])
+    A = alacak_net("A")
     rows.append(GelirSatir("A. Brüt Satışlar", A, isaret="+"))
-    B = borc_net(["610", "611", "612"])
+    B = borc_net("B")
     rows.append(GelirSatir("B. Satış İndirimleri (-)", B, isaret="-"))
     net_satislar = A - B
     rows.append(GelirSatir("Net Satışlar", net_satislar, ara=True))
-    C = borc_net(["620", "621", "622", "623"])
+    C = borc_net("C")
     rows.append(GelirSatir("C. Satışların Maliyeti (-)", C, isaret="-"))
     brut = net_satislar - C
     rows.append(GelirSatir("BRÜT SATIŞ KÂRI", brut, ara=True))
-    D = borc_net(["630", "631", "632"])
+    D = borc_net("D")
     rows.append(GelirSatir("D. Faaliyet Giderleri (-)", D, isaret="-"))
     faaliyet = brut - D
     rows.append(GelirSatir("FAALİYET KÂRI", faaliyet, ara=True))
-    E = alacak_net(["640", "642", "645", "646", "647", "649"])
+    E = alacak_net("E")
     rows.append(GelirSatir("E. Diğer Olağan Gelir ve Kârlar", E, isaret="+"))
-    F = borc_net(["653", "654", "655", "656", "657", "659"])
+    F = borc_net("F")
     rows.append(GelirSatir("F. Diğer Olağan Gider ve Zararlar (-)", F, isaret="-"))
-    G = borc_net(["660", "661"])
+    G = borc_net("G")
     rows.append(GelirSatir("G. Finansman Giderleri (-)", G, isaret="-"))
     olagan = faaliyet + E - F - G
     rows.append(GelirSatir("OLAĞAN KÂR", olagan, ara=True))
-    H = alacak_net(["671", "679"])
+    H = alacak_net("H")
     rows.append(GelirSatir("H. Olağandışı Gelir ve Kârlar", H, isaret="+"))
-    I = borc_net(["680", "681", "689"])
+    I = borc_net("I")
     rows.append(GelirSatir("I. Olağandışı Gider ve Zararlar (-)", I, isaret="-"))
     donem_kari = olagan + H - I
     rows.append(GelirSatir("DÖNEM KÂRI", donem_kari, ara=True))
-    J = borc_net(["691"])
+    J = borc_net("J")
     rows.append(GelirSatir("J. Dönem Kârı Vergi Karşılığı (-)", J, isaret="-"))
-    net = donem_kari - J
-    rows.append(GelirSatir("DÖNEM NET KÂRI", net, ara=True))
-    return rows, net
+    net6 = donem_kari - J
+    yansitilmamis = donem_sonucu - net6
+    if yansitilmamis != SIFIR:
+        rows.append(GelirSatir("Vergi Sonrası Kâr (6'lı hesaplar)", net6, ara=True))
+        rows.append(GelirSatir(
+            "Yansıtılmamış maliyet ve diğer (7/A vb.)", yansitilmamis, isaret="±"))
+    rows.append(GelirSatir("DÖNEM NET KÂRI", donem_sonucu, ara=True))
+    return rows, donem_sonucu
 
 
 @dataclass
@@ -444,17 +462,26 @@ class GelirTablosu:
 
 
 def gelir_tablosu(baslangic=None, bitis=None) -> GelirTablosu:
-    """Canlı gelir tablosu (TL). Yalnızca 6'lı; 7'liler GİRMEZ."""
+    """Canlı gelir tablosu (TL). Bölümler hesap planından (rapor_kalemi A..J) türetilir;
+    DÖNEM NET KÂRI = bilanço dönem sonucu (tüm sonuç hesapları) → iki rapor hep tutar."""
     baslangic, bitis = _varsayilan(baslangic, bitis)
-    har = {o["kod"]: o for o in _ana_topla(_hareketler(baslangic, bitis))}
+    rolled = _ana_topla(_hareketler(baslangic, bitis))
+    kalem = {}
+    for o in rolled:
+        if o["grup"] == "GELIR_TABLOSU":
+            t = kalem.setdefault(o["kalem"], {"borc": SIFIR, "alacak": SIFIR})
+            t["borc"] += o["borc"]
+            t["alacak"] += o["alacak"]
 
-    def alacak_net(kodlar):
-        return sum((har[k]["alacak"] - har[k]["borc"] for k in kodlar if k in har), SIFIR)
+    def alacak_net(k):
+        t = kalem.get(k)
+        return (t["alacak"] - t["borc"]) if t else SIFIR
 
-    def borc_net(kodlar):
-        return sum((har[k]["borc"] - har[k]["alacak"] for k in kodlar if k in har), SIFIR)
+    def borc_net(k):
+        t = kalem.get(k)
+        return (t["borc"] - t["alacak"]) if t else SIFIR
 
-    rows, net = _gelir_rows(alacak_net, borc_net)
+    rows, net = _gelir_rows(alacak_net, borc_net, _donem_sonucu(rolled))
     return GelirTablosu(baslangic, bitis, rows, net)
 
 
@@ -602,15 +629,25 @@ class GelirTablosuUSD:
 
 
 def gelir_tablosu_usd(baslangic=None, bitis=None) -> GelirTablosuUSD:
-    """USD gelir tablosu — USD mizandan türetilir (donmuş USD'ler). Yalnızca 6'lı."""
+    """USD gelir tablosu — USD mizandan (donmuş). Bölümler rapor_kalemi'nden türetilir;
+    DÖNEM NET KÂRI = USD bilanço dönem sonucu → iki USD rapor hep tutar."""
     m = mizan_usd(baslangic, bitis)
-    by = {s.hesap_kodu: s for s in m.satirlar}
+    kalem = {}
+    for s in m.satirlar:
+        if s.grup == "GELIR_TABLOSU":
+            t = kalem.setdefault(s.kalem, {"borc": SIFIR, "alacak": SIFIR})
+            t["borc"] += s.usd_borc
+            t["alacak"] += s.usd_alacak
+    donem = sum((s.usd_alacak - s.usd_borc for s in m.satirlar if s.grup != "BILANCO"),
+                SIFIR)
 
-    def alacak_net(kodlar):
-        return sum((by[k].usd_alacak - by[k].usd_borc for k in kodlar if k in by), SIFIR)
+    def alacak_net(k):
+        t = kalem.get(k)
+        return (t["alacak"] - t["borc"]) if t else SIFIR
 
-    def borc_net(kodlar):
-        return sum((by[k].usd_borc - by[k].usd_alacak for k in kodlar if k in by), SIFIR)
+    def borc_net(k):
+        t = kalem.get(k)
+        return (t["borc"] - t["alacak"]) if t else SIFIR
 
-    rows, net = _gelir_rows(alacak_net, borc_net)
+    rows, net = _gelir_rows(alacak_net, borc_net, donem)
     return GelirTablosuUSD(m.baslangic, m.bitis, rows, net, m.haric_tl)

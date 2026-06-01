@@ -17,7 +17,8 @@
 </form>
 
 <p class="yardim">Dönem: {{ gt.baslangic|date:"d.m.Y" }} – {{ gt.bitis|date:"d.m.Y" }}
-  · Her hareket KENDİ fişinin kuruyla: USD = TL ÷ fiş kuru (tarihi kur) · Yalnızca 6'lı · İptal hariç.</p>
+  · Her hareket KENDİ fişinin kuruyla: USD = TL ÷ fiş kuru (tarihi kur) · Bölümler hesap
+  planından türetilir · DÖNEM NET KÂRI, USD bilanço ile birebir · İptal hariç.</p>
 
 {% if gt.haric_tl %}
   <div class="uyari">⚠️ USD'ye dahil edilemeyen, kuru girilmemiş fiş tutarı:
