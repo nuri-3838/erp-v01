@@ -39,15 +39,18 @@ def _ad_dogrula(ad):
     return ad
 
 
-def _kod_dogrula(kod, *, haric_pk=None):
+def _kod_dogrula(kod, ust_id, *, haric_pk=None):
+    """Kod, bağlı olduğu ÜST grubun içinde benzersiz olmalı (kardeşler arası); kök
+    kategoriler (ust_id=None) kendi arasında. Farklı üst altında aynı kod serbesttir."""
     kod = (kod or "").strip()
     if not kod:
         raise KategoriHatasi("Kategori kodu boş olamaz.")
-    cak = Kategori.objects.filter(silindi=False, kod=kod)
+    cak = Kategori.objects.filter(silindi=False, kod=kod, ust_id=ust_id)
     if haric_pk is not None:
         cak = cak.exclude(pk=haric_pk)
     if cak.exists():
-        raise KategoriHatasi(f"Bu kod zaten kayıtlı: {kod}")
+        yer = "kök kategoriler arasında" if ust_id is None else "bu üst kategori altında"
+        raise KategoriHatasi(f"Bu kod {yer} zaten kayıtlı: {kod}")
     return kod
 
 
@@ -70,7 +73,6 @@ def _yaprak_hesap_coz(hesap_kodu):
 def kategori_olustur(*, ad, kod, ust_id=None, kullanici=None) -> Kategori:
     """Yeni ÜST (ust_id=None) ya da ALT kategori oluşturur. KategoriHatasi yükseltebilir."""
     ad = _ad_dogrula(ad)
-    kod = _kod_dogrula(kod)
     ust = None
     if ust_id:
         ust = Kategori.objects.filter(pk=ust_id, silindi=False).first()
@@ -80,6 +82,7 @@ def kategori_olustur(*, ad, kod, ust_id=None, kullanici=None) -> Kategori:
             raise KategoriHatasi(
                 "En fazla 2 seviye: bir alt kategorinin altına kategori açılamaz."
             )
+    kod = _kod_dogrula(kod, ust.pk if ust else None)
     return Kategori.objects.create(
         ad=ad, kod=kod, ust=ust,
         created_by=kullanici, updated_by=kullanici,
@@ -91,7 +94,7 @@ def kategori_guncelle(kategori: Kategori, *, ad, kod, kullanici=None) -> Kategor
     if kategori.silindi:
         raise KategoriHatasi("Silinmiş kategori düzenlenemez.")
     kategori.ad = _ad_dogrula(ad)
-    kategori.kod = _kod_dogrula(kod, haric_pk=kategori.pk)
+    kategori.kod = _kod_dogrula(kod, kategori.ust_id, haric_pk=kategori.pk)
     kategori.updated_by = kullanici
     kategori.save(update_fields=["ad", "kod", "updated_by", "updated_at"])
     return kategori

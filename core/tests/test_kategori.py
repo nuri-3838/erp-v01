@@ -1,6 +1,7 @@
 """Kategori (STOKLAR Faz 0+2) testleri — 2 seviye + Kod (benzersiz) + ALT × fatura tipi
 → yaprak hesap HARİTASI + view + yetki + akıllı arama kaynağı."""
 from django.contrib.auth.models import User
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
 
@@ -40,10 +41,34 @@ class KategoriServisTest(TestCase):
         with self.assertRaises(KategoriHatasi):
             kategori_olustur(ad="hammadde", kod="  ")
 
-    def test_kod_benzersiz(self):
-        kategori_olustur(ad="hammadde", kod="HM")
-        with self.assertRaises(KategoriHatasi):
-            kategori_olustur(ad="başka", kod="HM")
+    def test_kod_kok_benzersiz(self):
+        kategori_olustur(ad="hammadde", kod="150")
+        with self.assertRaises(KategoriHatasi):           # iki kök aynı kod
+            kategori_olustur(ad="başka", kod="150")
+
+    def test_kod_ayni_ust_altinda_benzersiz(self):
+        ust = kategori_olustur(ad="hammadde", kod="150")
+        kategori_olustur(ad="alüminyum", kod="10", ust_id=ust.pk)
+        with self.assertRaises(KategoriHatasi):           # aynı üst altında aynı kod
+            kategori_olustur(ad="çelik", kod="10", ust_id=ust.pk)
+
+    def test_kod_farkli_ust_altinda_serbest(self):
+        u1 = kategori_olustur(ad="hammadde", kod="150")
+        u2 = kategori_olustur(ad="yarı mamuller", kod="151")
+        a1 = kategori_olustur(ad="alüminyum", kod="10", ust_id=u1.pk)
+        a2 = kategori_olustur(ad="kesilmiş", kod="10", ust_id=u2.pk)   # FARKLI üst → serbest
+        self.assertEqual((a1.kod, a2.kod), ("10", "10"))
+
+    def test_db_ayni_ust_kod_unique(self):
+        ust = kategori_olustur(ad="hammadde", kod="150")
+        Kategori.objects.create(ad="A", kod="10", ust=ust)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Kategori.objects.create(ad="B", kod="10", ust=ust)
+
+    def test_db_kok_kod_unique_nulls_not_distinct(self):
+        Kategori.objects.create(ad="A", kod="150")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Kategori.objects.create(ad="B", kod="150")   # iki kök (ust=NULL) aynı kod
 
     def test_uc_seviye_engellenir(self):
         ust = kategori_olustur(ad="hammadde", kod="HM")

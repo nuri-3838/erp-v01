@@ -331,9 +331,12 @@ class Kategori(TemelModel):
         verbose_name_plural = "kategoriler"
         ordering = ["ad"]
         constraints = [
+            # Kod, bağlı olduğu ÜST grubun içinde benzersiz (kardeşler arası); kök
+            # kategoriler kendi arasında. ust=NULL'lar da çakışsın diye nulls_distinct=False
+            # (PG15+). Böylece farklı üstler altında aynı kod (örn. her grupta 10) kullanılabilir.
             models.UniqueConstraint(
-                fields=["kod"], condition=models.Q(silindi=False),
-                name="uq_kategori_kod_aktif"),
+                fields=["ust", "kod"], condition=models.Q(silindi=False),
+                nulls_distinct=False, name="uq_kategori_ust_kod_aktif"),
         ]
 
     def __str__(self):
