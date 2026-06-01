@@ -5,12 +5,11 @@
 
 {% block content %}
 <div class="sayfa-ust">
-  <h1 class="ust-baslik">Birimler</h1>
+  <h1 class="ust-baslik"><span class="emoji">📦</span>Birimler</h1>
   <a class="dugme" href="{% url 'core:birim_ekle' %}">+ Yeni</a>
 </div>
-
-<p class="yardim">Stok birimleri. Ondalık hane miktar gösteriminde kullanılır
-  (KG = 3 → 1,250 kg; ADET = 0 → tam sayı). Silinen birim listeden kalkar (iz kalır).</p>
+<p class="sayfa-alt">{{ birimler|length }} birim tanımlı · ondalık hane miktar gösteriminde
+  kullanılır (KG = 3 → 1,250 kg; ADET = 0 → tam sayı).</p>
 
 <div class="tablo-kapsayici">
 <table>
@@ -21,18 +20,20 @@
   </thead>
   <tbody>
     {% for b in birimler %}
-      <tr{% if not b.aktif %} class="pasif"{% endif %}>
+      <tr>
         <td>{{ b.ad }}</td>
         <td>{{ b.kisa_ad }}</td>
         <td class="sag">{{ b.ondalik }}</td>
-        <td>{% if b.aktif %}Aktif{% else %}Pasif{% endif %}</td>
+        <td>{% if b.aktif %}<span class="rozet rozet-aktif">Aktif</span>
+            {% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
         <td>
-          <a href="{% url 'core:birim_duzenle' b.pk %}">Düzenle</a>
-          <form method="post" action="{% url 'core:birim_sil' b.pk %}"
-                style="display:inline; margin-left:.5rem"
-                onsubmit="return confirm('{{ b.ad }} birimi silinsin mi?');">
-            {% csrf_token %}<button type="submit" class="sil">Sil</button>
-          </form>
+          <span class="islem-bag">
+            <a href="{% url 'core:birim_duzenle' b.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:birim_sil' b.pk %}"
+                  onsubmit="return confirm('{{ b.ad }} birimi silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
         </td>
       </tr>
     {% empty %}

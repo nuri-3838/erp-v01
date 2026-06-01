@@ -4,7 +4,10 @@
 {% block sayfa_adi %}Mizan{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">Mizan</h1>
+<h1 class="ust-baslik"><span class="emoji">📊</span>Mizan</h1>
+<p class="sayfa-alt">{{ mizan.satirlar|length }} hesap ·
+  {{ mizan.baslangic|date:"d.m.Y" }} – {{ mizan.bitis|date:"d.m.Y" }} ·
+  iptal fişler hariç, bakiyeler yevmiyeden hesaplanır.</p>
 
 <form method="get" class="kur-cek-alanlar">
   <input type="hidden" name="gorunum" value="{% if detay %}detay{% else %}ozet{% endif %}">
