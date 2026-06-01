@@ -73,6 +73,57 @@ class HesapOlusturTest(TestCase):
         with self.assertRaises(HesapHatasi):
             hesap_olustur(kod="320", ad="a", rapor_grubu="BILANCO", kullanici=self.u)
 
+    # --- rapor_kalemi doğrulaması (Aşama 2) — kod 9xx: grup açıkça verildiğinden
+    #     TDHP anlamı önemsiz; yalnız grup ↔ kalem uyumu sınanır.
+    def test_gecerli_kalemle_acilir(self):
+        b = hesap_olustur(kod="910", ad="bilanco hesabi", rapor_grubu="BILANCO",
+                          rapor_kalemi="DV", kullanici=self.u)
+        g = hesap_olustur(kod="920", ad="gelir hesabi", rapor_grubu="GELIR_TABLOSU",
+                          rapor_kalemi="A", kullanici=self.u)
+        self.assertEqual((b.rapor_kalemi, g.rapor_kalemi), ("DV", "A"))
+
+    def test_gelir_ozet_bos_ve_maliyet_bos_gecerli(self):
+        g = hesap_olustur(kod="920", ad="ozet gelir", rapor_grubu="GELIR_TABLOSU",
+                          rapor_kalemi="", kullanici=self.u)       # 690 gibi özet hesap
+        m = hesap_olustur(kod="930", ad="maliyet", rapor_grubu="MALIYET",
+                          rapor_kalemi="", kullanici=self.u)
+        self.assertEqual((g.rapor_kalemi, m.rapor_kalemi), ("", ""))
+
+    def test_bilanco_bos_kalem_reddedilir(self):
+        with self.assertRaises(HesapHatasi) as cm:
+            hesap_olustur(kod="910", ad="x", rapor_grubu="BILANCO",
+                          rapor_kalemi="", kullanici=self.u)
+        self.assertIn("Bilanço", str(cm.exception))
+        self.assertFalse(HesapPlani.objects.filter(hesap_kodu="910").exists())
+
+    def test_uyumsuz_kalem_reddedilir(self):
+        with self.assertRaises(HesapHatasi):                       # bilançoya gelir kalemi
+            hesap_olustur(kod="910", ad="x", rapor_grubu="BILANCO",
+                          rapor_kalemi="A", kullanici=self.u)
+        with self.assertRaises(HesapHatasi):                       # gelire bilanço kalemi
+            hesap_olustur(kod="920", ad="x", rapor_grubu="GELIR_TABLOSU",
+                          rapor_kalemi="DV", kullanici=self.u)
+        with self.assertRaises(HesapHatasi):                       # gelirde A-J dışı
+            hesap_olustur(kod="921", ad="x", rapor_grubu="GELIR_TABLOSU",
+                          rapor_kalemi="Z", kullanici=self.u)
+        with self.assertRaises(HesapHatasi):                       # maliyete dolu kalem
+            hesap_olustur(kod="930", ad="x", rapor_grubu="MALIYET",
+                          rapor_kalemi="A", kullanici=self.u)
+
+    def test_mevcut_hesaplarin_hepsi_gecerli(self):
+        from core.services.hesap_plani import _kalem_dogrula
+        for h in HesapPlani.objects.all():
+            try:
+                _kalem_dogrula(h.rapor_grubu, h.rapor_kalemi)      # raise ETMEMELİ
+            except HesapHatasi:
+                self.fail(f"Mevcut hesap geçersiz sayıldı: {h.hesap_kodu} "
+                          f"{h.rapor_grubu}/{h.rapor_kalemi!r}")
+
+    def test_alt_hesap_miras_kalem_gecerli(self):
+        ana = HesapPlani.objects.get(hesap_kodu="100")            # BILANCO / DV
+        alt = hesap_olustur(kod="100.01", ad="merkez kasa", ust_kodu="100", kullanici=self.u)
+        self.assertEqual(alt.rapor_kalemi, ana.rapor_kalemi)      # miras -> uyumlu
+
     def test_kod_oneri(self):
         ana = HesapPlani.objects.get(hesap_kodu="320")
         self.assertEqual(alt_kod_oner(ana), "320.10")

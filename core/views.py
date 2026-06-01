@@ -281,10 +281,22 @@ def kurlar(request):
 
 
 RAPOR_KALEMLERI = [
-    ("", "— (gelir/maliyet hesabı)"),
-    ("DV", "Dönen Varlıklar"), ("DDV", "Duran Varlıklar"),
-    ("KVYK", "Kısa Vadeli Yabancı Kaynaklar"),
-    ("UVYK", "Uzun Vadeli Yabancı Kaynaklar"), ("OZK", "Özkaynaklar"),
+    ("", "— (maliyet 7/A · ya da özet hesap)"),
+    ("DV", "Bilanço · Dönen Varlıklar"),
+    ("DDV", "Bilanço · Duran Varlıklar"),
+    ("KVYK", "Bilanço · Kısa Vadeli Yabancı Kaynaklar"),
+    ("UVYK", "Bilanço · Uzun Vadeli Yabancı Kaynaklar"),
+    ("OZK", "Bilanço · Özkaynaklar"),
+    ("A", "Gelir · A. Brüt Satışlar"),
+    ("B", "Gelir · B. Satış İndirimleri"),
+    ("C", "Gelir · C. Satışların Maliyeti"),
+    ("D", "Gelir · D. Faaliyet Giderleri"),
+    ("E", "Gelir · E. Diğer Olağan Gelir/Kâr"),
+    ("F", "Gelir · F. Diğer Olağan Gider/Zarar"),
+    ("G", "Gelir · G. Finansman Giderleri"),
+    ("H", "Gelir · H. Olağandışı Gelir/Kâr"),
+    ("I", "Gelir · I. Olağandışı Gider/Zarar"),
+    ("J", "Gelir · J. Dönem Kârı Vergi Karşılığı"),
 ]
 
 

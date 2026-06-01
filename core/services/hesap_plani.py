@@ -22,6 +22,43 @@ class HesapHatasi(ValueError):
     """Hesap planı kural ihlali (Türkçe mesaj)."""
 
 
+# rapor_grubu -> kabul edilen rapor_kalemi değerleri (mevcut seed/şema ile birebir;
+# raporlar.py AKTIF_KALEM/PASIF_KALEM bilanço kodları + gelir tablosu bölümleri A..J).
+BILANCO_KALEMLERI = ("DV", "DDV", "KVYK", "UVYK", "OZK")
+GELIR_KALEMLERI = ("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
+
+
+def _kalem_dogrula(rapor_grubu, rapor_kalemi):
+    """rapor_kalemi'nin rapor_grubu'na uygun GEÇERLİ bir değer olduğunu zorlar.
+
+    Aksi halde hesap raporlardan sessizce düşer: yanlış/boş kalemli bir BİLANÇO hesabı
+    ne aktif ne pasif gruba girer -> aktif ≠ pasif (bilanço dengesizleşir). Mevcut 84
+    hesabın hepsi şu anki kalemleriyle geçerlidir; yalnız yeni hatalı giriş engellenir.
+    """
+    kalem = (rapor_kalemi or "").strip()
+    if rapor_grubu == HesapPlani.RaporGrubu.BILANCO:
+        if kalem not in BILANCO_KALEMLERI:
+            raise HesapHatasi(
+                "Bilanço hesabı için rapor kalemi DV (Dönen Varlıklar), DDV (Duran "
+                "Varlıklar), KVYK, UVYK veya OZK olmalı; aksi halde hesap bilançoda "
+                f"yer almaz ve bilanço dengesizleşir. Girilen: {kalem or '(boş)'}."
+            )
+    elif rapor_grubu == HesapPlani.RaporGrubu.GELIR_TABLOSU:
+        if kalem and kalem not in GELIR_KALEMLERI:
+            raise HesapHatasi(
+                "Gelir tablosu hesabı için rapor kalemi A–J arası bir bölüm olmalı "
+                f"(özet hesap için boş bırakılabilir). Girilen: {kalem}."
+            )
+    elif rapor_grubu == HesapPlani.RaporGrubu.MALIYET:
+        if kalem:
+            raise HesapHatasi(
+                "Maliyet (7/A) hesabı rapor kalemi kullanmaz; boş bırakın. "
+                f"Girilen: {kalem}."
+            )
+    else:
+        raise HesapHatasi(f"Geçersiz rapor grubu: {rapor_grubu!r}.")
+
+
 def yaprak_mi(hesap: HesapPlani) -> bool:
     """Hesabın aktif alt hesabı yoksa yapraktır (fişe kesilebilir)."""
     return not hesap.alt_hesaplar.filter(silindi=False).exists()
@@ -128,6 +165,8 @@ def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
         parasal = ust.parasal
     elif rapor_grubu not in HesapPlani.RaporGrubu.values:
         raise HesapHatasi("Ana hesap için geçerli bir rapor grubu seçin.")
+    # Kalem grubuyla uyumlu mu? (ana: kullanıcı girdisi; alt: üstten miras — yine de kontrol)
+    _kalem_dogrula(rapor_grubu, rapor_kalemi)
     return HesapPlani.objects.create(
         hesap_kodu=kod, hesap_adi=ad, ust_hesap=ust,
         rapor_grubu=rapor_grubu, rapor_kalemi=(rapor_kalemi or ""),
