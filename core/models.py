@@ -469,3 +469,48 @@ class Stok(TemelModel):
 
     def __str__(self):
         return f"{self.kod} {self.ad}"
+
+
+# === CARİLER modülü — Ülke / Şehir (lokasyon master data) ===
+class Ulke(TemelModel):
+    """ISO 3166-1 ülke. ``kod`` 2 harf (TR, DE…), silinmemişler arası benzersiz."""
+
+    kod = models.CharField("ISO kod", max_length=2)
+    ad = models.CharField("ad", max_length=80)
+    ad_en = models.CharField("İngilizce ad", max_length=80, blank=True)
+
+    class Meta:
+        db_table = "ulke"
+        verbose_name = "ülke"
+        verbose_name_plural = "ülkeler"
+        ordering = ["ad"]
+        constraints = [
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
+                                    name="uq_ulke_kod_aktif"),
+        ]
+
+    def __str__(self):
+        return self.ad
+
+
+class Sehir(TemelModel):
+    """Şehir — ülkeye bağlı. ``kod`` plaka/kod (opsiyonel). Ad, ülke içinde benzersiz."""
+
+    ulke = models.ForeignKey(
+        Ulke, verbose_name="ülke", related_name="sehirler", on_delete=models.PROTECT)
+    kod = models.CharField("plaka/kod", max_length=10, blank=True)
+    ad = models.CharField("ad", max_length=80)
+    ad_en = models.CharField("İngilizce ad", max_length=80, blank=True)
+
+    class Meta:
+        db_table = "sehir"
+        verbose_name = "şehir"
+        verbose_name_plural = "şehirler"
+        ordering = ["ulke", "ad"]
+        constraints = [
+            models.UniqueConstraint(fields=["ulke", "ad"], condition=models.Q(silindi=False),
+                                    name="uq_sehir_ulke_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.ad} ({self.ulke.kod})"

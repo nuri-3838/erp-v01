@@ -16,11 +16,11 @@ from django.utils import timezone
 
 from core.forms import (
     BirimForm, FaturaTipiForm, FisForm, KategoriForm, KullaniciDuzenleForm,
-    KullaniciEkleForm, MizanFiltreForm, SatirForm, StokForm,
+    KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm, StokForm, UlkeForm,
 )
 from core.models import (
-    Birim, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, Stok, YevmiyeFisi,
-    YevmiyeSatir,
+    Birim, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, Sehir, Stok, Ulke,
+    YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -38,6 +38,7 @@ from core.services import yedek as yedek_servis
 from core.services import birim as birim_servis
 from core.services import kategori as kategori_servis
 from core.services import fatura_tipi as fatura_tipi_servis
+from core.services import lokasyon as lokasyon_servis
 from core.services import stok as stok_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
@@ -838,3 +839,110 @@ def fatura_tipi_sil(request, pk):
         except fatura_tipi_servis.FaturaTipiHatasi as e:
             messages.error(request, str(e))
     return redirect("core:fatura_tipleri")
+
+
+# --- CARİLER modülü — Ülke / Şehir -----------------------------------------
+@ekran_gerekli("lokasyonlar")
+def lokasyonlar(request):
+    from django.db.models import Count, Q
+    ulkeler = (lokasyon_servis.aktif_ulkeler()
+               .annotate(sehir_sayisi=Count("sehirler",
+                                            filter=Q(sehirler__silindi=False))))
+    return render(request, "core/lokasyon_listesi.html", {
+        "ulkeler": ulkeler, "sehirler": lokasyon_servis.aktif_sehirler()})
+
+
+@ekran_gerekli("lokasyonlar")
+def ulke_ekle(request):
+    if request.method == "POST":
+        form = UlkeForm(request.POST)
+        if form.is_valid():
+            try:
+                lokasyon_servis.ulke_olustur(**form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Ülke eklendi.")
+                return redirect("core:lokasyonlar")
+            except lokasyon_servis.LokasyonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = UlkeForm()
+    return render(request, "core/ulke_form.html", {"form": form, "baslik": "Yeni Ülke"})
+
+
+@ekran_gerekli("lokasyonlar")
+def ulke_duzenle(request, pk):
+    ulke = get_object_or_404(Ulke, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = UlkeForm(request.POST)
+        if form.is_valid():
+            try:
+                lokasyon_servis.ulke_guncelle(ulke, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Ülke güncellendi.")
+                return redirect("core:lokasyonlar")
+            except lokasyon_servis.LokasyonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = UlkeForm(initial={"kod": ulke.kod, "ad": ulke.ad, "ad_en": ulke.ad_en})
+    return render(request, "core/ulke_form.html",
+                  {"form": form, "baslik": "Ülke Düzenle", "duzenlenen": ulke})
+
+
+@ekran_gerekli("lokasyonlar")
+def ulke_sil(request, pk):
+    ulke = get_object_or_404(Ulke, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            lokasyon_servis.ulke_sil(ulke, kullanici=request.user)
+            messages.success(request, f"Ülke silindi: {ulke.ad}")
+        except lokasyon_servis.LokasyonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:lokasyonlar")
+
+
+@ekran_gerekli("lokasyonlar")
+def sehir_ekle(request):
+    if request.method == "POST":
+        form = SehirForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                lokasyon_servis.sehir_olustur(
+                    ulke_id=cd["ulke"].pk, ad=cd["ad"], kod=cd.get("kod", ""),
+                    ad_en=cd.get("ad_en", ""), kullanici=request.user)
+                messages.success(request, "Şehir eklendi.")
+                return redirect("core:lokasyonlar")
+            except lokasyon_servis.LokasyonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = SehirForm()
+    return render(request, "core/sehir_form.html", {"form": form, "baslik": "Yeni Şehir"})
+
+
+@ekran_gerekli("lokasyonlar")
+def sehir_duzenle(request, pk):
+    sehir = get_object_or_404(Sehir, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = SehirForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                lokasyon_servis.sehir_guncelle(
+                    sehir, ulke_id=cd["ulke"].pk, ad=cd["ad"], kod=cd.get("kod", ""),
+                    ad_en=cd.get("ad_en", ""), kullanici=request.user)
+                messages.success(request, "Şehir güncellendi.")
+                return redirect("core:lokasyonlar")
+            except lokasyon_servis.LokasyonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = SehirForm(initial={"ulke": sehir.ulke_id, "ad": sehir.ad,
+                                  "kod": sehir.kod, "ad_en": sehir.ad_en})
+    return render(request, "core/sehir_form.html",
+                  {"form": form, "baslik": "Şehir Düzenle", "duzenlenen": sehir})
+
+
+@ekran_gerekli("lokasyonlar")
+def sehir_sil(request, pk):
+    sehir = get_object_or_404(Sehir, pk=pk, silindi=False)
+    if request.method == "POST":
+        lokasyon_servis.sehir_sil(sehir, kullanici=request.user)
+        messages.success(request, f"Şehir silindi: {sehir.ad}")
+    return redirect("core:lokasyonlar")

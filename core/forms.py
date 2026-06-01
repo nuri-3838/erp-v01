@@ -15,7 +15,7 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Birim, FaturaTipi, HesapPlani, Kategori, Profil, YevmiyeSatir,
+    Birim, FaturaTipi, HesapPlani, Kategori, Profil, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr
 
@@ -326,3 +326,36 @@ class StokForm(forms.Form):
                 .select_related("ust").order_by("kod"))
             self.fields["kategori"].label_from_instance = (
                 lambda o: f"{o.ust.kod}-{o.kod}  {o.ust.ad} › {o.ad}")
+
+
+class UlkeForm(forms.Form):
+    """Ülke ekle/düzenle (CARİLER). Kod (ISO 2 harf) + ad TR büyük harf serviste."""
+
+    kod = forms.CharField(
+        label="ISO Kod (2 harf)", max_length=2,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "style": "text-transform:uppercase"}))
+    ad = forms.CharField(
+        label="Ad", max_length=80, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ad_en = forms.CharField(
+        label="İngilizce Ad", max_length=80, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+class SehirForm(forms.Form):
+    """Şehir ekle/düzenle (CARİLER). Ad ülke içinde benzersiz (serviste)."""
+
+    ulke = forms.ModelChoiceField(
+        label="Ülke", queryset=Ulke.objects.none(), empty_label="— ülke seç —")
+    ad = forms.CharField(
+        label="Ad", max_length=80, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kod = forms.CharField(
+        label="Plaka / Kod", max_length=10, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ad_en = forms.CharField(
+        label="İngilizce Ad", max_length=80, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.lokasyon import aktif_ulkeler
+        self.fields["ulke"].queryset = aktif_ulkeler()

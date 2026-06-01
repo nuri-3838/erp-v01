@@ -1,0 +1,80 @@
+{% extends "core/base.html" %}
+{% block baslik %}Ülke / Şehir · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Ülke / Şehir{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <h1 class="ust-baslik"><span class="emoji">🌍</span>Ülke / Şehir</h1>
+  </div>
+  <p class="sayfa-alt">Cari kartlarının adres bilgisinde kullanılır.
+    {{ ulkeler|length }} ülke · {{ sehirler|length }} şehir.</p>
+
+  <section class="icerik-kart">
+    <div class="sayfa-ust">
+      <h2 class="bolum-baslik"><span class="emoji">🏳️</span>Ülkeler</h2>
+      <a class="dugme" href="{% url 'core:ulke_ekle' %}">+ Yeni Ülke</a>
+    </div>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Kod</th><th>Ad</th><th>İngilizce</th><th class="sag">Şehir</th><th>İşlem</th></tr></thead>
+      <tbody>
+        {% for u in ulkeler %}
+          <tr>
+            <td class="mono">{{ u.kod }}</td>
+            <td>{{ u.ad }}</td>
+            <td>{{ u.ad_en|default:"—" }}</td>
+            <td class="sag mono">{{ u.sehir_sayisi }}</td>
+            <td>
+              <span class="islem-bag">
+                <a href="{% url 'core:ulke_duzenle' u.pk %}">Düzenle</a>
+                <form method="post" action="{% url 'core:ulke_sil' u.pk %}"
+                      onsubmit="return confirm('{{ u.ad }} silinsin mi?');">
+                  {% csrf_token %}<button type="submit" class="sil">Sil</button>
+                </form>
+              </span>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="yardim">Henüz ülke yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="icerik-kart">
+    <div class="sayfa-ust">
+      <h2 class="bolum-baslik"><span class="emoji">🏙️</span>Şehirler</h2>
+      <a class="dugme" href="{% url 'core:sehir_ekle' %}">+ Yeni Şehir</a>
+    </div>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Ülke</th><th>Plaka/Kod</th><th>Ad</th><th>İngilizce</th><th>İşlem</th></tr></thead>
+      <tbody>
+        {% for s in sehirler %}
+          <tr>
+            <td>{{ s.ulke.ad }} <span class="mono yardim">({{ s.ulke.kod }})</span></td>
+            <td class="mono">{{ s.kod|default:"—" }}</td>
+            <td>{{ s.ad }}</td>
+            <td>{{ s.ad_en|default:"—" }}</td>
+            <td>
+              <span class="islem-bag">
+                <a href="{% url 'core:sehir_duzenle' s.pk %}">Düzenle</a>
+                <form method="post" action="{% url 'core:sehir_sil' s.pk %}"
+                      onsubmit="return confirm('{{ s.ad }} silinsin mi?');">
+                  {% csrf_token %}<button type="submit" class="sil">Sil</button>
+                </form>
+              </span>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="yardim">Henüz şehir yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
