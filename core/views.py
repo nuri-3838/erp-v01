@@ -538,9 +538,9 @@ def stoklar(request):
 @ekran_gerekli("kategoriler")
 def kategoriler(request):
     es = Count("hesap_baglari", filter=Q(hesap_baglari__silindi=False))
-    alt_qs = Kategori.objects.filter(silindi=False).order_by("ad").annotate(es=es)
+    alt_qs = Kategori.objects.filter(silindi=False).order_by("kod").annotate(es=es)
     koklar = (Kategori.objects.filter(silindi=False, ust__isnull=True)
-              .order_by("ad").annotate(es=es)
+              .order_by("kod").annotate(es=es)
               .prefetch_related(Prefetch("alt_kategoriler", queryset=alt_qs)))
     return render(request, "core/kategori_listesi.html", {"koklar": koklar})
 
