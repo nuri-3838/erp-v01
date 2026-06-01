@@ -264,6 +264,27 @@
     .alan > label { display:block; font-size:.76rem; margin-bottom:.3rem; color:var(--metin-soluk);
                     font-weight:700; letter-spacing:.03em; }
     .onay-alan label { text-transform:none; display:inline; }
+
+    /* ===== ORTAK FORM TASARIM SİSTEMİ (bölüm kartı + ızgara + yapışkan alt bar) ===== */
+    .form-kapsa { max-width:980px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+    .form-kapsa.form-dar { max-width:620px; }
+    .form-kapsa .form-ust { margin-bottom:.2rem; }
+    .bolum-baslik { font-size:.74rem; letter-spacing:.07em; text-transform:uppercase;
+                    font-weight:800; color:var(--metin-soluk); margin:0 0 1.05rem;
+                    display:flex; align-items:center; gap:.45rem; }
+    .izgara { display:grid; grid-template-columns:1fr 1fr; gap:.2rem 1.1rem; }
+    .izgara-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.2rem 1.1rem; }
+    .izgara .tam, .izgara-3 .tam { grid-column:1 / -1; }
+    @media (max-width:680px){ .izgara, .izgara-3 { grid-template-columns:1fr; } }
+    .zorunlu { color:var(--hata); }
+    .kod-salt { background:#eef1f7; color:var(--metin-soluk); cursor:not-allowed; border-style:dashed; }
+    .form-altbar { position:sticky; bottom:.6rem; z-index:5; display:flex; justify-content:flex-end;
+                   gap:.7rem; align-items:center; margin-top:.2rem; padding:.7rem .1rem;
+                   background:linear-gradient(to top, rgba(244,242,251,.96) 30%, rgba(244,242,251,0)); }
+    .iptal-bag { display:inline-flex; align-items:center; min-height:44px; padding:0 1.25rem;
+                 border-radius:13px; background:rgba(255,255,255,.72); border:1px solid var(--cizgi-koyu);
+                 color:var(--metin); text-decoration:none; font-weight:600; }
+    .iptal-bag:hover { background:#fff; }
     .hata { color:var(--hata); font-weight:600; }
     ul.errorlist { margin:.2rem 0; padding-left:1.1rem; color:var(--hata); font-size:.85rem; }
     .uyari { background:#fdf2f4; border:1px solid #f3c9d2; color:var(--hata);

@@ -1,91 +1,99 @@
 {% extends "core/base.html" %}
 {% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
-  <div>
+<div class="form-kapsa">
+  <div class="form-ust">
     <a class="ust-link" href="{% url 'core:kategoriler' %}">← Kategoriler</a>
     <h1 class="ust-baslik"><span class="emoji">🗂️</span>{{ baslik }}</h1>
   </div>
-</div>
 
-{% if form.non_field_errors %}
-  <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
-{% endif %}
-
-<form method="post" autocomplete="off" style="max-width:760px;margin:0 auto">
-  {% csrf_token %}
-  <div class="alan">
-    <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }}</label>
-    {{ form.ad }}
-    {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-  </div>
-  <div class="alan">
-    <label for="{{ form.kod.id_for_label }}">{{ form.kod.label }}</label>
-    {{ form.kod }}
-    {% for e in form.kod.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-  </div>
-
-  {% if kat_alt %}
-  <div class="alan">
-    <label>Üst Kategori</label>
-    <p style="margin:.2rem 0"><span class="mono">{{ ust.kod }}</span> — <strong>{{ ust.ad }}</strong></p>
-    {% if ekle %}<input type="hidden" name="ust" value="{{ ust.pk }}">{% endif %}
-    <p class="yardim">Bu, seçilen üstün altına bir <strong>alt kategori</strong>dir; üst değişmez.</p>
-  </div>
-  {% else %}
-  <p class="yardim">Bu bir <strong>üst (kök) kategori</strong>dir; muhasebe kodları yalnız
-    alt kategorilerde tutulur.</p>
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
   {% endif %}
 
-  {% if kat_alt %}
-  <div id="harita-bolum">
-    <h2 class="etiket">Muhasebe Kodları</h2>
-    <p class="yardim">Her fatura tipi için kesilecek muhasebe hesabı (opsiyonel; yazarak
-      kod/ad ile arayın, yalnız yaprak hesaplar gelir).</p>
-    <div class="tablo-kapsayici">
-    <table>
-      <thead><tr><th>Fatura Tipi</th><th>Muhasebe Hesabı</th></tr></thead>
-      <tbody>
-        <tr class="grup"><th colspan="2">Satış İçin</th></tr>
-        {% for row in harita_satis %}
-          <tr>
-            <td>{{ row.ft.ad }}</td>
-            <td><select name="hesap_{{ row.ft.pk }}" class="akilli-hesap">
-              <option value="">— (bağ yok) —</option>
-              {% for h in yaprak %}
-                <option value="{{ h.hesap_kodu }}" {% if h.hesap_kodu == row.secili %}selected{% endif %}>{{ h }}</option>
-              {% endfor %}
-            </select></td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="2" class="yardim">Aktif satış fatura tipi yok.</td></tr>
-        {% endfor %}
-        <tr class="grup"><th colspan="2">Alış İçin</th></tr>
-        {% for row in harita_alis %}
-          <tr>
-            <td>{{ row.ft.ad }}</td>
-            <td><select name="hesap_{{ row.ft.pk }}" class="akilli-hesap">
-              <option value="">— (bağ yok) —</option>
-              {% for h in yaprak %}
-                <option value="{{ h.hesap_kodu }}" {% if h.hesap_kodu == row.secili %}selected{% endif %}>{{ h }}</option>
-              {% endfor %}
-            </select></td>
-          </tr>
-        {% empty %}
-          <tr><td colspan="2" class="yardim">Aktif alış fatura tipi yok.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Genel Bilgiler</h2>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>
+          {{ form.ad }}
+          {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.kod.id_for_label }}">{{ form.kod.label }} <span class="zorunlu">*</span></label>
+          {{ form.kod }}
+          {% for e in form.kod.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% if kat_alt %}
+        <div class="alan tam">
+          <label>Üst Kategori</label>
+          <input type="text" class="mono kod-salt" value="{{ ust.kod }} · {{ ust.ad }}" readonly>
+          {% if ekle %}<input type="hidden" name="ust" value="{{ ust.pk }}">{% endif %}
+          <p class="yardim">Bu, seçilen üstün altına bir <strong>alt kategori</strong>dir; üst değişmez.</p>
+        </div>
+        {% endif %}
+      </div>
+      {% if not kat_alt %}
+      <p class="yardim">Bu bir <strong>üst (kök) kategori</strong>dir; muhasebe kodları yalnız
+        alt kategorilerde tutulur. Ad BÜYÜK harfe çevrilir; kod benzersiz olmalıdır.</p>
+      {% endif %}
+    </section>
+
+    {% if kat_alt %}
+    <section class="icerik-kart" id="harita-bolum">
+      <h2 class="bolum-baslik"><span class="emoji">🧾</span>Muhasebe Kodları</h2>
+      <p class="yardim">Her fatura tipi için kesilecek muhasebe hesabı (opsiyonel; yazarak
+        kod/ad ile arayın, yalnız yaprak hesaplar gelir).</p>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Fatura Tipi</th><th>Muhasebe Hesabı</th></tr></thead>
+        <tbody>
+          <tr class="grup"><th colspan="2">Satış İçin</th></tr>
+          {% for row in harita_satis %}
+            <tr>
+              <td>{{ row.ft.ad }}</td>
+              <td><select name="hesap_{{ row.ft.pk }}" class="akilli-hesap">
+                <option value="">— (bağ yok) —</option>
+                {% for h in yaprak %}
+                  <option value="{{ h.hesap_kodu }}" {% if h.hesap_kodu == row.secili %}selected{% endif %}>{{ h }}</option>
+                {% endfor %}
+              </select></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="2" class="yardim">Aktif satış fatura tipi yok.</td></tr>
+          {% endfor %}
+          <tr class="grup"><th colspan="2">Alış İçin</th></tr>
+          {% for row in harita_alis %}
+            <tr>
+              <td>{{ row.ft.ad }}</td>
+              <td><select name="hesap_{{ row.ft.pk }}" class="akilli-hesap">
+                <option value="">— (bağ yok) —</option>
+                {% for h in yaprak %}
+                  <option value="{{ h.hesap_kodu }}" {% if h.hesap_kodu == row.secili %}selected{% endif %}>{{ h }}</option>
+                {% endfor %}
+              </select></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="2" class="yardim">Aktif alış fatura tipi yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:kategoriler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
     </div>
-  </div>
-  {% endif %}
-
-  <p class="yardim">Ad otomatik BÜYÜK harfe çevrilir. Kod benzersiz olmalıdır.</p>
-  <button type="submit" class="birincil">Kaydet</button>
-  <a href="{% url 'core:kategoriler' %}" style="margin-left:1rem">Vazgeç</a>
-</form>
+  </form>
+</div>
 
 <script>
 (function(){

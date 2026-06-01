@@ -1,26 +1,39 @@
 {% extends "core/base.html" %}
 {% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<h1 class="ust-baslik">{{ baslik }}</h1>
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:birimler' %}">← Birimler</a>
+    <h1 class="ust-baslik"><span class="emoji">📏</span>{{ baslik }}</h1>
+  </div>
 
-{% if form.non_field_errors %}
-  <div class="uyari">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>
-{% endif %}
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
 
-<form method="post" autocomplete="off" style="max-width:420px;margin:0 auto">
-  {% csrf_token %}
-  {% for field in form %}
-    <div class="alan {% if field.field.widget.input_type == 'checkbox' %}onay-alan{% endif %}">
-      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-      {{ field }}
-      {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Genel Bilgiler</h2>
+      <div class="izgara">
+        {% for field in form %}
+          <div class="alan {% if field.field.widget.input_type == 'checkbox' %}onay-alan tam{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="yardim">Ad ve Kısa Ad otomatik BÜYÜK harfe çevrilir ve benzersizdir.
+        Ondalık hane 0–6 (KG = 3, ADET = 0).</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:birimler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
     </div>
-  {% endfor %}
-  <p class="yardim">Ad ve Kısa Ad otomatik BÜYÜK harfe çevrilir. Ondalık hane 0–6
-    (KG = 3, ADET = 0).</p>
-  <button type="submit" class="birincil">Kaydet</button>
-  <a href="{% url 'core:birimler' %}" style="margin-left:1rem">Vazgeç</a>
-</form>
+  </form>
+</div>
 {% endblock %}
