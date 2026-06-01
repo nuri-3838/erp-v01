@@ -1,132 +1,138 @@
 {% extends "core/base.html" %}
 {% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
 <style>
-  .bolum { margin-top:1.5rem; }
-  .bolum:first-of-type { margin-top:.3rem; }
-  .bolum-baslik { font-size:.78rem; letter-spacing:.06em; text-transform:uppercase;
-    color:var(--turuncu-koyu); font-weight:800; border-bottom:2px solid var(--cizgi);
-    padding-bottom:.4rem; margin:0 0 .6rem; }
-  .alan-satir { display:flex; gap:1rem; align-items:flex-start; flex-wrap:wrap; }
-  .alan-satir .alan { margin:.4rem 0; flex:1 1 13rem; }
-  .alan-satir .alan.dar { flex:0 1 9rem; }
-  .salt-deger { margin:.2rem 0; font-weight:600; }
+  .stok-kapsa { max-width:980px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+  .stok-ust { margin-bottom:.2rem; }
+  .bolum-baslik { font-size:.74rem; letter-spacing:.07em; text-transform:uppercase;
+    font-weight:800; color:var(--metin-soluk); margin:0 0 1.05rem;
+    display:flex; align-items:center; gap:.45rem; }
+  .izgara { display:grid; grid-template-columns:1fr 1fr; gap:.2rem 1.1rem; }
+  .izgara-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.2rem 1.1rem; }
+  .izgara .tam { grid-column:1 / -1; }
+  @media (max-width:680px){ .izgara, .izgara-3 { grid-template-columns:1fr; } }
+  .zorunlu { color:var(--hata); }
+  .kod-salt { background:#eef1f7; color:var(--metin-soluk); cursor:not-allowed;
+    border-style:dashed; }
+  .form-altbar { position:sticky; bottom:.6rem; z-index:5; display:flex; justify-content:flex-end;
+    gap:.7rem; align-items:center; margin-top:.2rem; padding:.7rem .1rem;
+    background:linear-gradient(to top, rgba(244,242,251,.96) 30%, rgba(244,242,251,0)); }
+  .iptal-bag { display:inline-flex; align-items:center; min-height:44px; padding:0 1.25rem;
+    border-radius:13px; background:rgba(255,255,255,.72); border:1px solid var(--cizgi-koyu);
+    color:var(--metin); text-decoration:none; font-weight:600; }
+  .iptal-bag:hover { background:#fff; }
 </style>
 
-<div class="sayfa-ust">
-  <div>
+<div class="stok-kapsa">
+  <div class="stok-ust">
     <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
     <h1 class="ust-baslik"><span class="emoji">📦</span>{{ baslik }}</h1>
   </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Genel Bilgiler</h2>
+      <div class="izgara">
+        <div class="alan">
+          <label for="stok-kod-onizleme">Stok Kodu</label>
+          {% if duzenlenen %}
+            <input type="text" id="stok-kod-onizleme" class="mono kod-salt" value="{{ duzenlenen.kod }}" readonly>
+          {% else %}
+            <input type="text" id="stok-kod-onizleme" class="mono kod-salt"
+                   placeholder="(otomatik atanacak)" readonly>
+          {% endif %}
+        </div>
+        <div class="alan">
+          <label {% if form.kategori %}for="{{ form.kategori.id_for_label }}"{% endif %}>Alt Kategori <span class="zorunlu">*</span></label>
+          {% if form.kategori %}
+            <div class="akilli" id="kat-sar">{{ form.kategori }}</div>
+            {% for e in form.kategori.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          {% else %}
+            <input type="text" class="mono kod-salt"
+                   value="{{ duzenlenen.kategori.ust.kod }}-{{ duzenlenen.kategori.kod }} · {{ duzenlenen.kategori.ust.ad }} › {{ duzenlenen.kategori.ad }}" readonly>
+          {% endif %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.ad.id_for_label }}">Stok Adı <span class="zorunlu">*</span></label>
+          {{ form.ad }}
+          {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <p class="yardim">Kod kategoriye göre otomatik atanır, elle değişmez.
+        {% if duzenlenen %}Kod ve kategori sabittir.{% endif %}</p>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📏</span>Birim</h2>
+      <div class="izgara-3">
+        <div class="alan">
+          <label for="{{ form.uretim_birimi.id_for_label }}">Üretim / Stok Birimi <span class="zorunlu">*</span></label>
+          {{ form.uretim_birimi }}
+          {% for e in form.uretim_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.fatura_birimi.id_for_label }}">Fatura Birimi <span class="zorunlu">*</span></label>
+          {{ form.fatura_birimi }}
+          {% for e in form.fatura_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.cevirici.id_for_label }}">Çevirici (1 üretim = ? fatura)</label>
+          {{ form.cevirici }}
+          {% for e in form.cevirici.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi &amp; Stok Seviyesi</h2>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.kdv_orani.id_for_label }}">KDV Oranı (%)</label>
+          {{ form.kdv_orani }}
+          {% for e in form.kdv_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tevkifat_orani.id_for_label }}">Tevkifat Oranı (%)</label>
+          {{ form.tevkifat_orani }}
+          {% for e in form.tevkifat_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.kritik_stok.id_for_label }}">Kritik Stok Seviyesi</label>
+          {{ form.kritik_stok }}
+          {% for e in form.kritik_stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Üretim biriminde eşik (Faz B'de uyarı için).</p>
+        </div>
+        <div class="alan">
+          <label for="{{ form.tedarikci.id_for_label }}">Tedarikçi (Cari)</label>
+          {{ form.tedarikci }}
+          {% for e in form.tedarikci.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Şimdilik serbest metin (Cari modülü ileride).</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:stoklar' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
 </div>
-
-{% if form.non_field_errors %}
-  <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
-{% endif %}
-
-<form method="post" autocomplete="off" style="max-width:740px;margin:0 auto">
-  {% csrf_token %}
-
-  <div class="bolum">
-    <h2 class="bolum-baslik">Genel Bilgiler</h2>
-    <div class="alan-satir">
-      <div class="alan">
-        <label for="stok-kod-onizleme">Stok Kodu</label>
-        {% if duzenlenen %}
-          <input type="text" id="stok-kod-onizleme" class="mono" value="{{ duzenlenen.kod }}" readonly>
-        {% else %}
-          <input type="text" id="stok-kod-onizleme" class="mono"
-                 placeholder="kategori seçince otomatik oluşur" readonly>
-        {% endif %}
-        <p class="yardim">Otomatik: <span class="mono">ÜST-ALT-SIRA</span>, elle değişmez.</p>
-      </div>
-      <div class="alan">
-        <label {% if form.kategori %}for="{{ form.kategori.id_for_label }}"{% endif %}>Alt Kategori</label>
-        {% if form.kategori %}
-          <div class="akilli" id="kat-sar">{{ form.kategori }}</div>
-          {% for e in form.kategori.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <p class="yardim">Yalnız alt kategoriler.</p>
-        {% else %}
-          <p class="salt-deger"><span class="mono">{{ duzenlenen.kategori.ust.kod }}-{{ duzenlenen.kategori.kod }}</span>
-             — {{ duzenlenen.kategori.ust.ad }} › {{ duzenlenen.kategori.ad }}</p>
-          <p class="yardim">Kod ve kategori sabittir, değiştirilemez.</p>
-        {% endif %}
-      </div>
-    </div>
-    <div class="alan">
-      <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }}</label>
-      {{ form.ad }}
-      {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-    </div>
-  </div>
-
-  <div class="bolum">
-    <h2 class="bolum-baslik">Birim</h2>
-    <div class="alan-satir">
-      <div class="alan">
-        <label for="{{ form.uretim_birimi.id_for_label }}">{{ form.uretim_birimi.label }}</label>
-        {{ form.uretim_birimi }}
-        {% for e in form.uretim_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-      </div>
-      <div class="alan">
-        <label for="{{ form.fatura_birimi.id_for_label }}">{{ form.fatura_birimi.label }}</label>
-        {{ form.fatura_birimi }}
-        {% for e in form.fatura_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-      </div>
-      <div class="alan dar">
-        <label for="{{ form.cevirici.id_for_label }}">{{ form.cevirici.label }}</label>
-        {{ form.cevirici }}
-        {% for e in form.cevirici.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-      </div>
-    </div>
-    <p class="yardim">Çevirici: 1 üretim birimi kaç fatura birimi eder. (Üretim = fatura birimiyse 1.)</p>
-  </div>
-
-  <div class="bolum">
-    <h2 class="bolum-baslik">Vergi &amp; Stok Seviyesi</h2>
-    <div class="alan-satir">
-      <div class="alan">
-        <label for="{{ form.kdv_orani.id_for_label }}">{{ form.kdv_orani.label }}</label>
-        {{ form.kdv_orani }}
-        {% for e in form.kdv_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-      </div>
-      <div class="alan">
-        <label for="{{ form.tevkifat_orani.id_for_label }}">{{ form.tevkifat_orani.label }}</label>
-        {{ form.tevkifat_orani }}
-        {% for e in form.tevkifat_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-      </div>
-    </div>
-    <div class="alan-satir">
-      <div class="alan">
-        <label for="{{ form.kritik_stok.id_for_label }}">{{ form.kritik_stok.label }}</label>
-        {{ form.kritik_stok }}
-        {% for e in form.kritik_stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        <p class="yardim">Üretim biriminde eşik (Faz B'de uyarı için).</p>
-      </div>
-      <div class="alan">
-        <label for="{{ form.tedarikci.id_for_label }}">{{ form.tedarikci.label }}</label>
-        {{ form.tedarikci }}
-        {% for e in form.tedarikci.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        <p class="yardim">Şimdilik serbest metin (Cari modülü ileride).</p>
-      </div>
-    </div>
-  </div>
-
-  <div style="margin-top:1.6rem">
-    <button type="submit" class="birincil">Kaydet</button>
-    <a href="{% url 'core:stoklar' %}" style="margin-left:1rem">Vazgeç</a>
-  </div>
-</form>
 
 <script>
 (function(){
   var sel = document.getElementById('id_kategori');
   var kodInp = document.getElementById('stok-kod-onizleme');
-  if(!sel) return;   // düzenlemede kategori sabit; akıllı arama/önizleme yok
+  if(!sel) return;   // düzenlemede kategori sabit
   var KOD_API = '{% url "core:stok_kod_api" %}';
-
   function kodCek(){
     if(!sel.value){ if(kodInp) kodInp.value = ''; return; }
     fetch(KOD_API + '?kategori=' + encodeURIComponent(sel.value))
@@ -134,8 +140,6 @@
       .then(function(j){ if(kodInp) kodInp.value = j.kod || ''; })
       .catch(function(){ if(kodInp) kodInp.value = ''; });
   }
-
-  // ---- Akıllı kategori arama (paylaşımlı, body'ye sabit liste) ----
   var liste = document.createElement('div'); liste.className = 'akilli-liste';
   document.body.appendChild(liste);
   var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'akilli-girdi';
@@ -165,8 +169,7 @@
     liste.style.display = 'none'; inp.value = metin(sel.value); }, 150); });
   window.addEventListener('scroll', function(){ if(liste.style.display === 'block') konumla(); }, true);
   window.addEventListener('resize', function(){ if(liste.style.display === 'block') konumla(); });
-
-  if(sel.value) kodCek();   // POST sonrası seçili kaldıysa önizlemeyi doldur
+  if(sel.value) kodCek();
 })();
 </script>
 {% endblock %}
