@@ -15,12 +15,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    BirimForm, FaturaTipiForm, FisForm, KategoriForm, KullaniciDuzenleForm,
-    KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm, StokForm, UlkeForm,
+    BirimForm, CariKategoriForm, FaturaTipiForm, FisForm, KategoriForm,
+    KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm,
+    StokForm, UlkeForm,
 )
 from core.models import (
-    Birim, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, Sehir, Stok, Ulke,
-    YevmiyeFisi, YevmiyeSatir,
+    Birim, CariKategori, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, Sehir,
+    Stok, Ulke, YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -39,6 +40,7 @@ from core.services import birim as birim_servis
 from core.services import kategori as kategori_servis
 from core.services import fatura_tipi as fatura_tipi_servis
 from core.services import lokasyon as lokasyon_servis
+from core.services import cari_kategori as cari_kategori_servis
 from core.services import stok as stok_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
@@ -946,3 +948,74 @@ def sehir_sil(request, pk):
         lokasyon_servis.sehir_sil(sehir, kullanici=request.user)
         messages.success(request, f"Şehir silindi: {sehir.ad}")
     return redirect("core:lokasyonlar")
+
+
+# --- CARİLER modülü — Cari Kategorileri ------------------------------------
+@ekran_gerekli("cari_kategoriler")
+def cari_kategoriler(request):
+    alt_qs = CariKategori.objects.filter(silindi=False).order_by("kod")
+    koklar = (CariKategori.objects.filter(silindi=False, ust__isnull=True)
+              .order_by("kod")
+              .prefetch_related(Prefetch("alt_kategoriler", queryset=alt_qs)))
+    return render(request, "core/cari_kategori_listesi.html", {"koklar": koklar})
+
+
+@ekran_gerekli("cari_kategoriler")
+def cari_kategori_ekle(request):
+    ham_ust = (request.POST.get("ust") if request.method == "POST"
+               else request.GET.get("ust"))
+    ust = (CariKategori.objects.filter(pk=ham_ust, silindi=False, ust__isnull=True).first()
+           if ham_ust else None)
+    if request.method == "POST":
+        form = CariKategoriForm(request.POST)
+        if form.is_valid():
+            try:
+                k = cari_kategori_servis.cari_kategori_olustur(
+                    ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
+                    ust_id=ust.pk if ust else None,
+                    aciklama=form.cleaned_data.get("aciklama", ""),
+                    kullanici=request.user)
+                messages.success(request, f"Cari kategori eklendi: {k.ad}")
+                return redirect("core:cari_kategoriler")
+            except cari_kategori_servis.CariKategoriHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariKategoriForm()
+    baslik = (f"{ust.ad} → Yeni Alt Kategori" if ust else "Yeni Üst Kategori")
+    return render(request, "core/cari_kategori_form.html",
+                  {"form": form, "baslik": baslik, "ekle": True, "ust": ust})
+
+
+@ekran_gerekli("cari_kategoriler")
+def cari_kategori_duzenle(request, pk):
+    kat = get_object_or_404(CariKategori, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CariKategoriForm(request.POST)
+        if form.is_valid():
+            try:
+                cari_kategori_servis.cari_kategori_guncelle(
+                    kat, ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
+                    aciklama=form.cleaned_data.get("aciklama", ""),
+                    kullanici=request.user)
+                messages.success(request, "Cari kategori güncellendi.")
+                return redirect("core:cari_kategoriler")
+            except cari_kategori_servis.CariKategoriHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariKategoriForm(initial={"ad": kat.ad, "kod": kat.kod,
+                                         "aciklama": kat.aciklama})
+    return render(request, "core/cari_kategori_form.html",
+                  {"form": form, "baslik": "Cari Kategori Düzenle", "ekle": False,
+                   "ust": kat.ust, "duzenlenen": kat})
+
+
+@ekran_gerekli("cari_kategoriler")
+def cari_kategori_sil(request, pk):
+    kat = get_object_or_404(CariKategori, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            cari_kategori_servis.cari_kategori_sil(kat, kullanici=request.user)
+            messages.success(request, f"Cari kategori silindi: {kat.ad}")
+        except cari_kategori_servis.CariKategoriHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:cari_kategoriler")

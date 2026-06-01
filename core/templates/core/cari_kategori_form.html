@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cari_kategoriler' %}">← Cari Kategorileri</a>
+    <h1 class="ust-baslik"><span class="emoji">🗂️</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kategori Bilgileri</h2>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>
+          {{ form.ad }}
+          {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.kod.id_for_label }}">{{ form.kod.label }} <span class="zorunlu">*</span></label>
+          {{ form.kod }}
+          {% for e in form.kod.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% if ust %}
+        <div class="alan tam">
+          <label>Üst Kategori</label>
+          <input type="text" class="mono kod-salt" value="{{ ust.kod }} · {{ ust.ad }}" readonly>
+          {% if ekle %}<input type="hidden" name="ust" value="{{ ust.pk }}">{% endif %}
+          <p class="yardim">Bu, seçilen üstün altına bir alt kategoridir; üst değişmez.</p>
+        </div>
+        {% endif %}
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
+          {{ form.aciklama }}
+          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <p class="yardim">Ad ve Kod otomatik BÜYÜK harfe çevrilir; üst grup içinde benzersizdir.</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cari_kategoriler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

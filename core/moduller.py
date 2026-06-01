@@ -40,6 +40,7 @@ MODULLER = (
         Ekran("birimler", "Birimler", "core:birimler"),
     )),
     Modul("CARILER", "Cariler", (
+        Ekran("cari_kategoriler", "Cari Kategorileri", "core:cari_kategoriler"),
         Ekran("lokasyonlar", "Ülke / Şehir", "core:lokasyonlar"),
     )),
     Modul("AYARLAR", "Ayarlar", (

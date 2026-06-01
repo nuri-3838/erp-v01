@@ -50,7 +50,11 @@ urlpatterns = [
     path("stoklar/birimler/ekle/", views.birim_ekle, name="birim_ekle"),
     path("stoklar/birimler/<int:pk>/duzenle/", views.birim_duzenle, name="birim_duzenle"),
     path("stoklar/birimler/<int:pk>/sil/", views.birim_sil, name="birim_sil"),
-    # CARİLER modülü — Ülke / Şehir
+    # CARİLER modülü
+    path("cariler/kategoriler/", views.cari_kategoriler, name="cari_kategoriler"),
+    path("cariler/kategoriler/ekle/", views.cari_kategori_ekle, name="cari_kategori_ekle"),
+    path("cariler/kategoriler/<int:pk>/duzenle/", views.cari_kategori_duzenle, name="cari_kategori_duzenle"),
+    path("cariler/kategoriler/<int:pk>/sil/", views.cari_kategori_sil, name="cari_kategori_sil"),
     path("cariler/lokasyonlar/", views.lokasyonlar, name="lokasyonlar"),
     path("cariler/ulke/ekle/", views.ulke_ekle, name="ulke_ekle"),
     path("cariler/ulke/<int:pk>/duzenle/", views.ulke_duzenle, name="ulke_duzenle"),

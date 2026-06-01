@@ -1,0 +1,57 @@
+{% extends "core/base.html" %}
+{% block baslik %}Cari Kategorileri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Cari Kategorileri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">🗂️</span>Cari Kategorileri</h1>
+  <a class="dugme" href="{% url 'core:cari_kategori_ekle' %}">+ Yeni Üst</a>
+</div>
+<p class="sayfa-alt">İki seviyeli: <strong>üst</strong> → <strong>alt</strong>. Cari kodu
+  bu kategorinin kod yolundan türetilir (örn. 320-10 → 320-10-0001).</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr><th>Kategori</th><th>Kod</th><th>Kod Yolu</th><th>İşlem</th></tr>
+  </thead>
+  <tbody>
+    {% for kok in koklar %}
+      <tr>
+        <td><strong>{{ kok.ad }}</strong></td>
+        <td class="mono">{{ kok.kod }}</td>
+        <td class="mono">{{ kok.kod_yolu }}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:cari_kategori_ekle' %}?ust={{ kok.pk }}">+ Alt</a>
+            <a href="{% url 'core:cari_kategori_duzenle' kok.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:cari_kategori_sil' kok.pk %}"
+                  onsubmit="return confirm('{{ kok.ad }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
+        </td>
+      </tr>
+      {% for alt in kok.alt_kategoriler.all %}
+        <tr>
+          <td class="sev-1">{{ alt.ad }}</td>
+          <td class="mono">{{ alt.kod }}</td>
+          <td class="mono">{{ alt.kod_yolu }}</td>
+          <td>
+            <span class="islem-bag">
+              <a href="{% url 'core:cari_kategori_duzenle' alt.pk %}">Düzenle</a>
+              <form method="post" action="{% url 'core:cari_kategori_sil' alt.pk %}"
+                    onsubmit="return confirm('{{ alt.ad }} silinsin mi?');">
+                {% csrf_token %}<button type="submit" class="sil">Sil</button>
+              </form>
+            </span>
+          </td>
+        </tr>
+      {% endfor %}
+    {% empty %}
+      <tr><td colspan="4" class="yardim">Henüz cari kategori yok. “+ Yeni Üst” ile başlayın.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

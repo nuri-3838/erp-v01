@@ -359,3 +359,16 @@ class SehirForm(forms.Form):
         super().__init__(*args, **kwargs)
         from core.services.lokasyon import aktif_ulkeler
         self.fields["ulke"].queryset = aktif_ulkeler()
+
+
+class CariKategoriForm(forms.Form):
+    """Cari kategori ekle/düzenle (CARİLER). Ad+Kod TR büyük harf + benzersizlik serviste.
+    Üst kategori formda değil — ekleme giriş noktasıyla belirlenir (kök / +Alt)."""
+
+    ad = forms.CharField(
+        label="Ad", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kod = forms.CharField(
+        label="Kod", max_length=10, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    aciklama = forms.CharField(
+        label="Açıklama", required=False,
+        widget=forms.Textarea(attrs={"rows": 2, "autocomplete": "off"}))

@@ -514,3 +514,43 @@ class Sehir(TemelModel):
 
     def __str__(self):
         return f"{self.ad} ({self.ulke.kod})"
+
+
+class CariKategori(TemelModel):
+    """Cari kategorisi (CARİLER) — 2 seviye: ÜST (ust=None) → ALT. Kod ve ad, bağlı olduğu
+    üst grup içinde benzersiz. ``kod_yolu`` üstten alta kodları '-' ile birleştirir
+    (örn. 320-10) — cari kodu Faz 3'te bundan türetilecek.
+    """
+
+    ad = models.CharField("ad", max_length=100)
+    kod = models.CharField("kod", max_length=10)
+    ust = models.ForeignKey(
+        "self", verbose_name="üst kategori", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="alt_kategoriler")
+    aciklama = models.TextField("açıklama", blank=True)
+
+    class Meta:
+        db_table = "cari_kategori"
+        verbose_name = "cari kategori"
+        verbose_name_plural = "cari kategorileri"
+        ordering = ["kod"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ust", "kod"], condition=models.Q(silindi=False),
+                nulls_distinct=False, name="uq_carikat_ust_kod_aktif"),
+            models.UniqueConstraint(
+                fields=["ust", "ad"], condition=models.Q(silindi=False),
+                nulls_distinct=False, name="uq_carikat_ust_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return self.ad
+
+    @property
+    def kod_yolu(self):
+        parcalar, k = [], self
+        while k is not None:
+            if k.kod:
+                parcalar.insert(0, k.kod)
+            k = k.ust
+        return "-".join(parcalar)
