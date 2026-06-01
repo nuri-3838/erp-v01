@@ -152,11 +152,11 @@
     <div class="sek-panel" id="panel-kayit">
       <div class="kv">
         <div class="satir"><span class="et">Oluşturan</span>
-          <span class="dg">{{ stok.created_by.get_full_name|default:stok.created_by.username|default:"—" }}</span></div>
+          <span class="dg">{% if stok.created_by %}{{ stok.created_by.get_full_name|default:stok.created_by.username }}{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Oluşturma</span>
           <span class="dg mono">{{ stok.created_at|date:"d.m.Y H:i" }}</span></div>
         <div class="satir"><span class="et">Son Güncelleyen</span>
-          <span class="dg">{{ stok.updated_by.get_full_name|default:stok.updated_by.username|default:"—" }}</span></div>
+          <span class="dg">{% if stok.updated_by %}{{ stok.updated_by.get_full_name|default:stok.updated_by.username }}{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Son Güncelleme</span>
           <span class="dg mono">{{ stok.updated_at|date:"d.m.Y H:i" }}</span></div>
       </div>
