@@ -16,7 +16,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Birim, Kategori, KdvOrani, Stok, TevkifatOrani
+from core.models import Birim, Cari, Kategori, KdvOrani, Stok, TevkifatOrani
 from core.sayi import SayiHatasi, parse_tr
 
 
@@ -28,7 +28,7 @@ def aktif_stoklar():
     """Silinmemiş stoklar (kod sırasıyla); kategori + birimler birlikte çekilir."""
     return (Stok.objects.filter(silindi=False)
             .select_related("kategori", "kategori__ust", "uretim_birimi",
-                            "fatura_birimi", "kdv", "tevkifat")
+                            "fatura_birimi", "kdv", "tevkifat", "tedarikci")
             .order_by("kod"))
 
 
@@ -79,6 +79,16 @@ def _tevkifat_coz(tevkifat_id):
     return t
 
 
+def _tedarikci_coz(tedarikci_id):
+    """Opsiyonel tedarikçi (Cari) FK çözümü (boşsa None)."""
+    if not tedarikci_id:
+        return None
+    c = Cari.objects.filter(pk=tedarikci_id, silindi=False).first()
+    if c is None:
+        raise StokHatasi("Tedarikçi cari bulunamadı.")
+    return c
+
+
 def _cevirici_dogrula(deger):
     try:
         c = parse_tr(deger)
@@ -102,7 +112,7 @@ def _negatif_olmaz(deger, etiket) -> Decimal:
 
 def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  cevirici=Decimal("1"), kdv_id=None, tevkifat_id=None,
-                 kritik_stok=Decimal("0"), tedarikci="", kullanici=None) -> Stok:
+                 kritik_stok=Decimal("0"), tedarikci_id=None, kullanici=None) -> Stok:
     ad = _ad_dogrula(ad)
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
@@ -117,14 +127,14 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         cevirici=_cevirici_dogrula(cevirici),
         kdv=_kdv_coz(kdv_id), tevkifat=_tevkifat_coz(tevkifat_id),
         kritik_stok=_negatif_olmaz(kritik_stok, "Kritik stok seviyesi"),
-        tedarikci=buyuk_harf_tr((tedarikci or "").strip()),
+        tedarikci=_tedarikci_coz(tedarikci_id),
         created_by=kullanici, updated_by=kullanici,
     )
 
 
 def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   cevirici, kdv_id=None, tevkifat_id=None,
-                  kritik_stok=Decimal("0"), tedarikci="", kullanici=None) -> Stok:
+                  kritik_stok=Decimal("0"), tedarikci_id=None, kullanici=None) -> Stok:
     """Ad, birimler, çevirici, vergi/stok alanları güncellenir. KOD ve KATEGORİ DEĞİŞMEZ."""
     if stok.silindi:
         raise StokHatasi("Silinmiş stok düzenlenemez.")
@@ -135,7 +145,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.kdv = _kdv_coz(kdv_id)
     stok.tevkifat = _tevkifat_coz(tevkifat_id)
     stok.kritik_stok = _negatif_olmaz(kritik_stok, "Kritik stok seviyesi")
-    stok.tedarikci = buyuk_harf_tr((tedarikci or "").strip())
+    stok.tedarikci = _tedarikci_coz(tedarikci_id)
     stok.updated_by = kullanici
     stok.save(update_fields=["ad", "uretim_birimi", "fatura_birimi", "cevirici",
                              "kdv", "tevkifat", "kritik_stok",

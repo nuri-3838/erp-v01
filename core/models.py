@@ -451,8 +451,10 @@ class Stok(TemelModel):
     # Kritik stok seviyesi: üretim biriminde miktar eşiği (Faz B'de uyarı için).
     kritik_stok = models.DecimalField("kritik stok seviyesi", max_digits=18,
                                       decimal_places=3, default=0)
-    # Tedarikçi: Cari modülü henüz yok -> şimdilik serbest metin (ileride FK olacak).
-    tedarikci = models.CharField("tedarikçi (cari)", max_length=200, blank=True)
+    # Tedarikçi: Cari modülüne FK (opsiyonel). Eski serbest metin kaldırıldı.
+    tedarikci = models.ForeignKey(
+        "Cari", verbose_name="tedarikçi (cari)", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="tedarik_stoklari")
 
     class Meta:
         db_table = "stok"

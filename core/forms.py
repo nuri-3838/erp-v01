@@ -312,9 +312,9 @@ class StokForm(forms.Form):
         empty_label="— yok —")
     kritik_stok = TRDecimalField(
         label="Kritik stok seviyesi", basamak=3, initial=Decimal("0"), required=False)
-    tedarikci = forms.CharField(
-        label="Tedarikçi (Cari)", max_length=200, required=False,
-        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    tedarikci = forms.ModelChoiceField(
+        label="Tedarikçi (Cari)", queryset=Cari.objects.none(), required=False,
+        empty_label="— tedarikçi seç —")
 
     def __init__(self, *args, duzenle: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -328,6 +328,9 @@ class StokForm(forms.Form):
             TevkifatOrani.objects.filter(silindi=False).order_by("kod"))
         self.fields["tevkifat"].label_from_instance = (
             lambda o: f"{o.pay}/{o.payda} {o.aciklama}".strip())
+        self.fields["tedarikci"].queryset = (
+            Cari.objects.filter(silindi=False).order_by("unvan"))
+        self.fields["tedarikci"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         if duzenle:
             self.fields.pop("kategori")
         else:

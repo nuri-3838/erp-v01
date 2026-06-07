@@ -36,6 +36,13 @@ def _tevkifat(kod="7/10", pay=7, payda=10):
     return t
 
 
+def _cari(unvan="ACME METAL", kod="320-99-0001"):
+    from core.models import Cari
+    c, _ = Cari.objects.get_or_create(
+        kod=kod, silindi=False, defaults={"unvan": unvan, "para_birimi": "TRY"})
+    return c
+
+
 class StokServisTest(TestCase):
     def _stok(self, alt, adet, kg, ad="alüminyum levha"):
         return stok_olustur(ad=ad, kategori_id=alt.pk, uretim_birimi_id=adet.pk,
@@ -59,16 +66,24 @@ class StokServisTest(TestCase):
         _, alt, _, adet, kg = _veri()
         self.assertEqual(self._stok(alt, adet, kg).ad, "ALÜMİNYUM LEVHA")
 
-    def test_kdv_tevkifat_fk(self):
+    def test_kdv_tevkifat_tedarikci_fk(self):
         _, alt, _, adet, kg = _veri()
+        c = _cari()
         s = stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
                          fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
                          kdv_id=_kdv("20").pk, tevkifat_id=_tevkifat().pk,
-                         kritik_stok=Decimal("100"), tedarikci="acme metal")
+                         kritik_stok=Decimal("100"), tedarikci_id=c.pk)
         self.assertEqual(s.kdv.oran, Decimal("20.00"))
         self.assertEqual((s.tevkifat.pay, s.tevkifat.payda), (7, 10))
         self.assertEqual(s.kritik_stok, Decimal("100.000"))
-        self.assertEqual(s.tedarikci, "ACME METAL")      # TR büyük harf
+        self.assertEqual(s.tedarikci_id, c.pk)           # Cari FK
+
+    def test_tedarikci_gecersiz_id_red(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(StokHatasi):
+            stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         tedarikci_id=99999)
 
     def test_kdv_tevkifat_opsiyonel(self):
         _, alt, _, adet, kg = _veri()

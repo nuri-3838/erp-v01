@@ -113,7 +113,7 @@
         <div class="satir"><span class="et">Kritik Stok Seviyesi</span>
           <span class="dg"><span class="mono">{{ stok.kritik_stok|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</span></div>
         <div class="satir"><span class="et">Tedarikçi (Cari)</span>
-          <span class="dg">{{ stok.tedarikci|default:"—" }}</span></div>
+          <span class="dg">{% if stok.tedarikci %}<span class="mono">{{ stok.tedarikci.kod }}</span> {{ stok.tedarikci.unvan }}{% else %}—{% endif %}</span></div>
       </div>
 
       <h2 class="bolum-baslik" style="margin-top:1.6rem"><span class="emoji">🧾</span>Muhasebe Hesabı Haritası
