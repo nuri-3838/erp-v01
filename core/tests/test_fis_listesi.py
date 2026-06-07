@@ -93,17 +93,23 @@ class FisListesiTest(TestCase):
         self.assertContains(r, "KASA TAHSİLATI")
         self.assertContains(r, "1.000,00")
 
-    def test_duzenle_gunceller_ve_eski_satir_silinir(self):
+    def test_duzenle_gunceller_eski_satir_soft_silinir(self):
         f = self._fis(tutar="1.000,00")
+        eski_ids = list(f.satirlar.values_list("id", flat=True))
         r = self.client.post(reverse("core:fis_duzenle", args=[f.pk]),
                              _duzenle_payload(tutar="2.500,00", aciklama="düzeltildi"))
         self.assertEqual(r.status_code, 302)
         f.refresh_from_db()
         self.assertEqual(f.aciklama, "DÜZELTİLDİ")
-        self.assertEqual(f.satirlar.get(hesap_id="100").borc, Decimal("2500.00"))
-        # Eski satırlar fiziksel silindi → fişe bağlı tam 2 satır var, denk
-        self.assertEqual(YevmiyeSatir.objects.filter(fis=f).count(), 2)
-        self.assertEqual(f.satirlar.get(hesap_id="600").alacak, Decimal("2500.00"))
+        # Aktif (silindi=False) satırlar yeni tutarla, denk
+        aktif = f.satirlar.filter(silindi=False)
+        self.assertEqual(aktif.count(), 2)
+        self.assertEqual(aktif.get(hesap_id="100").borc, Decimal("2500.00"))
+        self.assertEqual(aktif.get(hesap_id="600").alacak, Decimal("2500.00"))
+        # Eski satırlar FİZİKSEL silinmez, silindi=True olarak DB'de durur (denetim izi)
+        eski = YevmiyeSatir.objects.filter(id__in=eski_ids)
+        self.assertEqual(eski.count(), 2)
+        self.assertTrue(all(s.silindi for s in eski))
 
     def test_duzenle_dengesiz_reddedilir_degismez(self):
         f = self._fis(tutar="1.000,00")
