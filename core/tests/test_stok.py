@@ -10,9 +10,11 @@ from django.urls import reverse
 
 from core.models import Birim, EkranYetki, KdvOrani, Stok, TevkifatOrani
 from core.services.birim import birim_olustur
+from core.services.cari import CariHatasi, cari_sil
 from core.services.kategori import kategori_olustur
 from core.services.stok import (StokHatasi, sonraki_stok_kodu, stok_guncelle,
                                  stok_olustur, stok_sil)
+from core.services.tanim import (TanimHatasi, kdv_orani_sil, tevkifat_orani_sil)
 
 
 def _veri():
@@ -169,6 +171,39 @@ class StokServisTest(TestCase):
         with self.assertRaises(IntegrityError), transaction.atomic():
             Stok.objects.create(kod="150-10-5000", ad="B", kategori=alt,
                                 uretim_birimi=adet, fatura_birimi=kg)
+
+
+class KullanimdaSilmeKorumaTest(TestCase):
+    """#9: Stok kullandığı KDV/tevkifat/cari soft-delete edilemez."""
+
+    def _stok(self, **kw):
+        _, alt, _, adet, kg = _veri()
+        return stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                            fatura_birimi_id=kg.pk, cevirici=Decimal("1"), **kw)
+
+    def test_kullanilan_kdv_silinemez(self):
+        k = _kdv("20")
+        self._stok(kdv_id=k.pk)
+        with self.assertRaises(TanimHatasi):
+            kdv_orani_sil(k)
+
+    def test_kullanilan_tevkifat_silinemez(self):
+        t = _tevkifat()
+        self._stok(tevkifat_id=t.pk)
+        with self.assertRaises(TanimHatasi):
+            tevkifat_orani_sil(t)
+
+    def test_kullanilan_cari_silinemez(self):
+        c = _cari()
+        self._stok(tedarikci_id=c.pk)
+        with self.assertRaises(CariHatasi):
+            cari_sil(c)
+
+    def test_kullanilmayan_kdv_silinebilir(self):
+        k = _kdv("20")
+        kdv_orani_sil(k)
+        k.refresh_from_db()
+        self.assertTrue(k.silindi)
 
 
 class StokViewTest(TestCase):

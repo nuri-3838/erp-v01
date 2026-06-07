@@ -1114,8 +1114,11 @@ def cari_detay(request, pk):
 def cari_sil(request, pk):
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
     if request.method == "POST":
-        cari_servis.cari_sil(cari, kullanici=request.user)
-        messages.success(request, f"Cari silindi: {cari.kod}")
+        try:
+            cari_servis.cari_sil(cari, kullanici=request.user)
+            messages.success(request, f"Cari silindi: {cari.kod}")
+        except cari_servis.CariHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:cariler")
 
 
@@ -1287,8 +1290,11 @@ def kdv_orani_duzenle(request, pk):
 def kdv_orani_sil(request, pk):
     k = get_object_or_404(KdvOrani, pk=pk, silindi=False)
     if request.method == "POST":
-        tanim_servis.kdv_orani_sil(k, kullanici=request.user)
-        messages.success(request, "KDV oranı silindi.")
+        try:
+            tanim_servis.kdv_orani_sil(k, kullanici=request.user)
+            messages.success(request, "KDV oranı silindi.")
+        except tanim_servis.TanimHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:kdv_oranlari")
 
 
@@ -1346,6 +1352,9 @@ def tevkifat_orani_duzenle(request, pk):
 def tevkifat_orani_sil(request, pk):
     t = get_object_or_404(TevkifatOrani, pk=pk, silindi=False)
     if request.method == "POST":
-        tanim_servis.tevkifat_orani_sil(t, kullanici=request.user)
-        messages.success(request, "Tevkifat oranı silindi.")
+        try:
+            tanim_servis.tevkifat_orani_sil(t, kullanici=request.user)
+            messages.success(request, "Tevkifat oranı silindi.")
+        except tanim_servis.TanimHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:tevkifat_oranlari")

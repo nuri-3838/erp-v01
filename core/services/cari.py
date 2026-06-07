@@ -214,6 +214,9 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
 def cari_sil(cari: Cari, kullanici=None) -> Cari:
     if cari.silindi:
         return cari
+    if cari.tedarik_stoklari.filter(silindi=False).exists():
+        raise CariHatasi(
+            "Bu cari stoklarda tedarikçi olarak kullanılıyor; önce ilgili stoklardan kaldırın.")
     cari.silindi = True
     cari.silindi_at = timezone.now()
     cari.updated_by = kullanici

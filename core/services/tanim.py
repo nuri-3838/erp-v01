@@ -89,6 +89,9 @@ def kdv_orani_guncelle(k: KdvOrani, *, aciklama, oran, sira=0, hesap_borc_kodu="
 def kdv_orani_sil(k: KdvOrani, kullanici=None) -> KdvOrani:
     if k.silindi:
         return k
+    if k.stoklar.filter(silindi=False).exists():
+        raise TanimHatasi(
+            "Bu KDV oranı stoklarda kullanılıyor; önce ilgili stoklardan kaldırın.")
     k.silindi = True
     k.silindi_at = timezone.now()
     k.updated_by = kullanici
@@ -141,6 +144,9 @@ def tevkifat_orani_guncelle(t: TevkifatOrani, *, kod, pay, payda, aciklama="",
 def tevkifat_orani_sil(t: TevkifatOrani, kullanici=None) -> TevkifatOrani:
     if t.silindi:
         return t
+    if t.stoklar.filter(silindi=False).exists():
+        raise TanimHatasi(
+            "Bu tevkifat oranı stoklarda kullanılıyor; önce ilgili stoklardan kaldırın.")
     t.silindi = True
     t.silindi_at = timezone.now()
     t.updated_by = kullanici
