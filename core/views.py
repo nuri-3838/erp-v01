@@ -1117,6 +1117,15 @@ def cari_sil(request, pk):
     return redirect("core:cariler")
 
 
+@ekran_gerekli("cariler")
+def cari_kod_api(request):
+    """Yeni cari ekranı için: seçilen kategoriye göre sıradaki otomatik kodu döndürür."""
+    ham = request.GET.get("kategori")
+    kategori = (CariKategori.objects.filter(pk=ham, silindi=False).select_related("ust").first()
+                if ham else None)
+    return JsonResponse({"kod": cari_servis.sonraki_cari_kodu(kategori)})
+
+
 # --- Cari banka hesapları ---------------------------------------------------
 @ekran_gerekli("cariler")
 def banka_ekle(request, cari_pk):

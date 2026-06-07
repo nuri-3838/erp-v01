@@ -21,9 +21,12 @@
       <h2 class="bolum-baslik">Kimlik</h2>
       <div class="izgara">
         <div class="alan tam"><label for="{{ form.unvan.id_for_label }}">{{ form.unvan.label }} <span class="zorunlu">*</span></label>{{ form.unvan }}{% for e in form.unvan.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-        <div class="alan"><label for="{{ form.kisa_ad.id_for_label }}">{{ form.kisa_ad.label }}</label>{{ form.kisa_ad }}</div>
-        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div>
-          <p class="yardim">Kod, kategori kod yolundan otomatik atanır.</p></div>
+        <div class="alan"><label for="cari-kod-onizleme">Cari Kodu</label>
+          {% if duzenlenen %}<input type="text" id="cari-kod-onizleme" class="mono kod-salt" value="{{ duzenlenen.kod }}" readonly>
+          {% else %}<input type="text" id="cari-kod-onizleme" class="mono kod-salt" placeholder="(otomatik atanacak)" readonly>{% endif %}
+          <p class="yardim">Otomatik; elle değişmez (kategori kod yolundan).</p></div>
+        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div></div>
+        <div class="alan tam"><label for="{{ form.kisa_ad.id_for_label }}">{{ form.kisa_ad.label }}</label>{{ form.kisa_ad }}</div>
       </div>
     </section>
 
@@ -60,13 +63,15 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">🚚</span>Sevk Adresi</h2>
       <div class="alan onay-alan">{{ form.sevk_farkli }} <label for="{{ form.sevk_farkli.id_for_label }}" style="display:inline">{{ form.sevk_farkli.label }}</label></div>
-      <div class="izgara">
-        <div class="alan"><label for="{{ form.sevk_ulke.id_for_label }}">{{ form.sevk_ulke.label }}</label><div class="akilli">{{ form.sevk_ulke }}</div></div>
-        <div class="alan"><label for="{{ form.sevk_sehir.id_for_label }}">{{ form.sevk_sehir.label }}</label><div class="akilli">{{ form.sevk_sehir }}</div></div>
-        <div class="alan tam"><label for="{{ form.sevk_adres.id_for_label }}">{{ form.sevk_adres.label }}</label>{{ form.sevk_adres }}</div>
-        <div class="alan"><label for="{{ form.sevk_posta_kodu.id_for_label }}">{{ form.sevk_posta_kodu.label }}</label>{{ form.sevk_posta_kodu }}</div>
+      <div id="sevk-alanlar">
+        <div class="izgara">
+          <div class="alan"><label for="{{ form.sevk_ulke.id_for_label }}">{{ form.sevk_ulke.label }}</label><div class="akilli">{{ form.sevk_ulke }}</div></div>
+          <div class="alan"><label for="{{ form.sevk_sehir.id_for_label }}">{{ form.sevk_sehir.label }}</label><div class="akilli">{{ form.sevk_sehir }}</div></div>
+          <div class="alan tam"><label for="{{ form.sevk_adres.id_for_label }}">{{ form.sevk_adres.label }}</label>{{ form.sevk_adres }}</div>
+          <div class="alan"><label for="{{ form.sevk_posta_kodu.id_for_label }}">{{ form.sevk_posta_kodu.label }}</label>{{ form.sevk_posta_kodu }}</div>
+        </div>
       </div>
-      <p class="yardim">“Sevk adresi farklı” işaretli değilse sevk alanları yok sayılır.</p>
+      <p class="yardim" id="sevk-not" style="display:none">İşaretli olmadığı için sevk adresi kaydedilmez (ana adres kullanılır).</p>
     </section>
 
     <section class="icerik-kart">
@@ -109,7 +114,8 @@
       if(n++ > 80) return;
       var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
       d.addEventListener('mousedown', function(ev){ ev.preventDefault();
-        sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none'; });
+        sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
+        sel.dispatchEvent(new Event('change', {bubbles:true})); });
       gListe.appendChild(d);
     });
     gListe.style.display = gListe.children.length ? 'block' : 'none';
@@ -126,6 +132,34 @@
   });
   window.addEventListener('scroll', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); }, true);
   window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
+
+  // ---- Cari kodu canlı önizleme (yalnız ekle; düzenlemede kod sabit) ----
+  var katSel = document.getElementById('id_kategori');
+  var kodInp = document.getElementById('cari-kod-onizleme');
+  if(katSel && kodInp && !kodInp.value){
+    var KOD_API = '{% url "core:cari_kod_api" %}';
+    function kodCek(){
+      var q = katSel.value ? ('?kategori=' + encodeURIComponent(katSel.value)) : '';
+      fetch(KOD_API + q).then(function(r){ return r.json(); })
+        .then(function(j){ kodInp.value = j.kod || ''; }).catch(function(){});
+    }
+    katSel.addEventListener('change', kodCek);
+    kodCek();
+  }
+
+  // ---- Sevk adresi: işaretli değilse alanları gizle ----
+  var sevkCb = document.getElementById('id_sevk_farkli');
+  var sevkAlan = document.getElementById('sevk-alanlar');
+  var sevkNot = document.getElementById('sevk-not');
+  if(sevkCb && sevkAlan){
+    function sevkGuncelle(){
+      var ac = sevkCb.checked;
+      sevkAlan.style.display = ac ? '' : 'none';
+      if(sevkNot) sevkNot.style.display = ac ? 'none' : '';
+    }
+    sevkCb.addEventListener('change', sevkGuncelle);
+    sevkGuncelle();
+  }
 })();
 </script>
 {% endblock %}
