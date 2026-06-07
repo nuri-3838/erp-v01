@@ -437,7 +437,8 @@ class CariForm(forms.Form):
         super().__init__(*args, **kwargs)
         from core.services.cari_kategori import aktif_cari_kategoriler
         from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
-        self.fields["kategori"].queryset = aktif_cari_kategoriler()
+        # Cari yalnız ALT kategoriye bağlanır; üst (ana) kategoriler seçilemez.
+        self.fields["kategori"].queryset = aktif_cari_kategoriler().filter(ust__isnull=False)
         self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
         ulk = aktif_ulkeler()
         seh = aktif_sehirler()

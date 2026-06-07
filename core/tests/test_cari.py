@@ -134,6 +134,20 @@ class CariViewTest(TestCase):
         c = Cari.objects.get(unvan="YENİ CARİ")
         self.assertEqual(c.kod, "320-10-0001")
 
+    def test_form_yalniz_alt_kategori(self):
+        """Kategori seçiminde üst (ana) kategori yok; yalnız alt seçilebilir."""
+        from core.forms import CariForm
+        qs = list(CariForm().fields["kategori"].queryset)
+        self.assertIn(self.alt, qs)
+        self.assertNotIn(self.ust, qs)
+
+    def test_ekle_ust_kategori_reddedilir(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:cari_ekle"), {
+            "unvan": "x", "kategori": str(self.ust.pk), "para_birimi": "TRY"})
+        self.assertEqual(r.status_code, 200)                    # formda kalır
+        self.assertFalse(Cari.objects.filter(unvan="X").exists())
+
     def test_detay_render(self):
         c = _olustur(unvan="formal", kategori_id=self.alt.pk)
         self.client.force_login(self.yetkili)
