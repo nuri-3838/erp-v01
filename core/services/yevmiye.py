@@ -20,7 +20,7 @@ import datetime as _dt
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.utils import timezone
 
@@ -160,6 +160,11 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
     return hazir
 
 
+def _sonraki_fis_no(yil: int) -> int:
+    """Mali yıl içinde sıradaki fiş no (iptaller dahil; numara yeniden kullanılmaz)."""
+    return (YevmiyeFisi.objects.filter(yil=yil).aggregate(m=Max("fis_no"))["m"] or 0) + 1
+
+
 @transaction.atomic
 def fis_olustur(*, tarih, satirlar, aciklama="", kur_usd=None,
                 kaynak=YevmiyeFisi.Kaynak.MANUEL, kullanici=None) -> YevmiyeFisi:
@@ -167,34 +172,38 @@ def fis_olustur(*, tarih, satirlar, aciklama="", kur_usd=None,
 
     `satirlar`: `SatirGirdi` listesi. Kurallardan biri ihlal edilirse hiçbir şey
     yazılmaz (transaction geri alınır) ve :class:`YevmiyeHatasi` yükselir.
+
+    Numara çakışması (eşzamanlı/otomatik fiş): (yıl, fiş_no) benzersiz kısıtı
+    çarparsa savepoint geri alınır ve bir sonraki numarayla yeniden denenir.
     """
     if not isinstance(tarih, _dt.date):
         raise YevmiyeHatasi("tarih bir date olmalı.")
 
     hazir = _satirlari_dogrula(satirlar)
-
     yil = tarih.year
-    # Mali yıl içinde müteselsil; iptal edilenler dahil (numara korunur, yeniden
-    # kullanılmaz). Tek kullanıcılı v0.1'de select_for_update + unique kısıt yeterli.
-    son = (
-        YevmiyeFisi.objects.select_for_update()
-        .filter(yil=yil)
-        .aggregate(m=Max("fis_no"))["m"]
-        or 0
-    )
-    fis_no = son + 1
+    kur = _kur_usd_coz(kur_usd, tarih)
+    aciklama = buyuk_harf_tr((aciklama or "").strip())
 
-    fis = YevmiyeFisi.objects.create(
-        yil=yil, fis_no=fis_no, tarih=tarih,
-        aciklama=buyuk_harf_tr((aciklama or "").strip()),
-        kaynak=kaynak, kur_usd=_kur_usd_coz(kur_usd, tarih),
-        created_by=kullanici, updated_by=kullanici,
+    son_hata = None
+    for _ in range(10):
+        try:
+            with transaction.atomic():   # savepoint: çakışmada yalnız bunu geri al
+                fis = YevmiyeFisi.objects.create(
+                    yil=yil, fis_no=_sonraki_fis_no(yil), tarih=tarih,
+                    aciklama=aciklama, kaynak=kaynak, kur_usd=kur,
+                    created_by=kullanici, updated_by=kullanici,
+                )
+                for s in hazir:
+                    YevmiyeSatir.objects.create(
+                        fis=fis, created_by=kullanici, updated_by=kullanici, **s
+                    )
+            return fis
+        except IntegrityError as e:
+            son_hata = e   # numara kapılmış olabilir; bir sonrakiyle tekrar dene
+    raise YevmiyeHatasi(
+        "Fiş numarası üretilemedi (çok fazla eşzamanlı kayıt). "
+        f"Lütfen tekrar deneyin. ({son_hata})"
     )
-    for s in hazir:
-        YevmiyeSatir.objects.create(
-            fis=fis, created_by=kullanici, updated_by=kullanici, **s
-        )
-    return fis
 
 
 @transaction.atomic

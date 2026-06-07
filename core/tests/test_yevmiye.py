@@ -149,6 +149,19 @@ class MuteselsilNoTest(YevmiyeTestTemel):
         self.assertEqual((f2.yil, f2.fis_no), (2026, 2))
         self.assertEqual((f3.yil, f3.fis_no), (2027, 1))
 
+    def test_no_carpismasinda_retry(self):
+        # #3: numara çakışmasını (yarış koşulu) taklit et — _sonraki_fis_no ilk
+        # çağrıda kapılmış (1) döndürsün, sonra doğru (2). fis_olustur retry'lemeli.
+        from unittest.mock import patch
+        f1 = fis_olustur(tarih=D(2026, 5, 1), satirlar=[
+            _try_satir("100", "B", "10,00"), _try_satir("600", "A", "10,00")])
+        self.assertEqual(f1.fis_no, 1)
+        with patch("core.services.yevmiye._sonraki_fis_no", side_effect=[1, 2]):
+            f2 = fis_olustur(tarih=D(2026, 5, 2), satirlar=[
+                _try_satir("100", "B", "20,00"), _try_satir("600", "A", "20,00")])
+        self.assertEqual(f2.fis_no, 2)                 # çakışmadan sonra ikinci deneme tuttu
+        self.assertEqual(YevmiyeFisi.objects.filter(yil=2026).count(), 2)
+
 
 class IptalTest(YevmiyeTestTemel):
     def test_iptal_numarayi_korur(self):
