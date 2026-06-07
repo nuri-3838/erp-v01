@@ -495,13 +495,16 @@ class KdvOraniForm(forms.Form):
     aciklama = forms.CharField(label="Açıklama", max_length=100,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
     oran = TRDecimalField(label="KDV Oranı (%)", basamak=2)
-    hesap = _yaprak_hesap_alani("Muhasebe Hesap Kodu")
+    hesap_borc = _yaprak_hesap_alani("Borç Hesabı (İndirilecek KDV)")
+    hesap_alacak = _yaprak_hesap_alani("Alacak Hesabı (Hesaplanan KDV)")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.hesap_plani import yaprak_hesaplar
-        self.fields["hesap"].queryset = yaprak_hesaplar()
-        self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+        yp = yaprak_hesaplar()
+        for f in ("hesap_borc", "hesap_alacak"):
+            self.fields[f].queryset = yp
+            self.fields[f].widget.attrs["class"] = "akilli-sec"
 
 
 class TevkifatOraniForm(forms.Form):

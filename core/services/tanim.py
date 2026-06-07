@@ -42,20 +42,22 @@ def _sayi(deger, etiket, *, pozitif=False):
 # --- KDV oranları -----------------------------------------------------------
 def aktif_kdv_oranlari():
     return (KdvOrani.objects.filter(silindi=False)
-            .select_related("hesap").order_by("sira", "oran"))
+            .select_related("hesap_borc", "hesap_alacak").order_by("sira", "oran"))
 
 
-def kdv_orani_olustur(*, aciklama, oran, sira=0, hesap_kodu="", kullanici=None) -> KdvOrani:
+def kdv_orani_olustur(*, aciklama, oran, sira=0, hesap_borc_kodu="", hesap_alacak_kodu="",
+                      kullanici=None) -> KdvOrani:
     aciklama = buyuk_harf_tr((aciklama or "").strip())
     if not aciklama:
         raise TanimHatasi("Açıklama boş olamaz.")
     return KdvOrani.objects.create(
         aciklama=aciklama, oran=_sayi(oran, "KDV oranı"), sira=int(sira or 0),
-        hesap=_hesap_coz(hesap_kodu), created_by=kullanici, updated_by=kullanici)
+        hesap_borc=_hesap_coz(hesap_borc_kodu), hesap_alacak=_hesap_coz(hesap_alacak_kodu),
+        created_by=kullanici, updated_by=kullanici)
 
 
-def kdv_orani_guncelle(k: KdvOrani, *, aciklama, oran, sira=0, hesap_kodu="",
-                       kullanici=None) -> KdvOrani:
+def kdv_orani_guncelle(k: KdvOrani, *, aciklama, oran, sira=0, hesap_borc_kodu="",
+                       hesap_alacak_kodu="", kullanici=None) -> KdvOrani:
     if k.silindi:
         raise TanimHatasi("Silinmiş kayıt düzenlenemez.")
     aciklama = buyuk_harf_tr((aciklama or "").strip())
@@ -64,9 +66,11 @@ def kdv_orani_guncelle(k: KdvOrani, *, aciklama, oran, sira=0, hesap_kodu="",
     k.aciklama = aciklama
     k.oran = _sayi(oran, "KDV oranı")
     k.sira = int(sira or 0)
-    k.hesap = _hesap_coz(hesap_kodu)
+    k.hesap_borc = _hesap_coz(hesap_borc_kodu)
+    k.hesap_alacak = _hesap_coz(hesap_alacak_kodu)
     k.updated_by = kullanici
-    k.save(update_fields=["aciklama", "oran", "sira", "hesap", "updated_by", "updated_at"])
+    k.save(update_fields=["aciklama", "oran", "sira", "hesap_borc", "hesap_alacak",
+                          "updated_by", "updated_at"])
     return k
 
 

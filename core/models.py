@@ -683,9 +683,13 @@ class KdvOrani(TemelModel):
     sira = models.PositiveSmallIntegerField("sıra", default=0)
     aciklama = models.CharField("açıklama", max_length=100)
     oran = models.DecimalField("KDV oranı (%)", max_digits=5, decimal_places=2)
-    hesap = models.ForeignKey(
-        HesapPlani, verbose_name="muhasebe hesabı", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="kdv_oranlari")
+    # Borç = İndirilecek KDV (191, alış); Alacak = Hesaplanan KDV (391, satış).
+    hesap_borc = models.ForeignKey(
+        HesapPlani, verbose_name="borç hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kdv_borc_oranlari")
+    hesap_alacak = models.ForeignKey(
+        HesapPlani, verbose_name="alacak hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kdv_alacak_oranlari")
 
     class Meta:
         db_table = "kdv_orani"

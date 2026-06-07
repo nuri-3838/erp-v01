@@ -1217,8 +1217,9 @@ def yetkili_sil(request, pk):
 
 
 # --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------
-def _hesap_kodu(cd):
-    return cd["hesap"].hesap_kodu if cd.get("hesap") else ""
+def _hesap_kodu(cd, alan="hesap"):
+    h = cd.get(alan)
+    return h.hesap_kodu if h else ""
 
 
 @yonetici_gerekli
@@ -1241,7 +1242,9 @@ def kdv_orani_ekle(request):
                 cd = form.cleaned_data
                 tanim_servis.kdv_orani_olustur(
                     aciklama=cd["aciklama"], oran=cd["oran"], sira=cd["sira"],
-                    hesap_kodu=_hesap_kodu(cd), kullanici=request.user)
+                    hesap_borc_kodu=_hesap_kodu(cd, "hesap_borc"),
+                    hesap_alacak_kodu=_hesap_kodu(cd, "hesap_alacak"),
+                    kullanici=request.user)
                 messages.success(request, "KDV oranı eklendi.")
                 return redirect("core:kdv_oranlari")
             except tanim_servis.TanimHatasi as e:
@@ -1262,14 +1265,17 @@ def kdv_orani_duzenle(request, pk):
                 cd = form.cleaned_data
                 tanim_servis.kdv_orani_guncelle(
                     k, aciklama=cd["aciklama"], oran=cd["oran"], sira=cd["sira"],
-                    hesap_kodu=_hesap_kodu(cd), kullanici=request.user)
+                    hesap_borc_kodu=_hesap_kodu(cd, "hesap_borc"),
+                    hesap_alacak_kodu=_hesap_kodu(cd, "hesap_alacak"),
+                    kullanici=request.user)
                 messages.success(request, "KDV oranı güncellendi.")
                 return redirect("core:kdv_oranlari")
             except tanim_servis.TanimHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = KdvOraniForm(initial={"aciklama": k.aciklama, "oran": k.oran,
-                                     "sira": k.sira, "hesap": k.hesap_id})
+                                     "sira": k.sira, "hesap_borc": k.hesap_borc_id,
+                                     "hesap_alacak": k.hesap_alacak_id})
     return render(request, "core/kdv_orani_form.html",
                   {"form": form, "baslik": "KDV Oranı Düzenle", "duzenlenen": k})
 

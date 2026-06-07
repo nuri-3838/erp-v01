@@ -17,11 +17,12 @@ def _hesap(kod="191", ad="İNDİRİLECEK KDV"):
 
 class KdvOraniServisTest(TestCase):
     def test_olustur(self):
-        h = _hesap()
+        _hesap("191", "İNDİRİLECEK KDV")
+        _hesap("391", "HESAPLANAN KDV")
         k = kdv_orani_olustur(aciklama="genel oran", oran="20", sira=10,
-                              hesap_kodu="191")
-        self.assertEqual((k.aciklama, k.oran, k.sira, k.hesap_id),
-                         ("GENEL ORAN", Decimal("20.00"), 10, "191"))
+                              hesap_borc_kodu="191", hesap_alacak_kodu="391")
+        self.assertEqual((k.aciklama, k.oran, k.sira, k.hesap_borc_id, k.hesap_alacak_id),
+                         ("GENEL ORAN", Decimal("20.00"), 10, "191", "391"))
 
     def test_aciklama_zorunlu(self):
         with self.assertRaises(TanimHatasi):
@@ -33,15 +34,17 @@ class KdvOraniServisTest(TestCase):
 
     def test_hesap_yok_red(self):
         with self.assertRaises(TanimHatasi):
-            kdv_orani_olustur(aciklama="x", oran="20", hesap_kodu="999")
+            kdv_orani_olustur(aciklama="x", oran="20", hesap_borc_kodu="999")
 
     def test_hesapsiz_serbest(self):
         k = kdv_orani_olustur(aciklama="x", oran="10")
-        self.assertIsNone(k.hesap_id)
+        self.assertIsNone(k.hesap_borc_id)
+        self.assertIsNone(k.hesap_alacak_id)
 
     def test_guncelle(self):
         k = kdv_orani_olustur(aciklama="x", oran="10")
-        kdv_orani_guncelle(k, aciklama="indirimli", oran="10", sira=5, hesap_kodu="")
+        kdv_orani_guncelle(k, aciklama="indirimli", oran="10", sira=5,
+                           hesap_borc_kodu="", hesap_alacak_kodu="")
         k.refresh_from_db()
         self.assertEqual((k.aciklama, k.sira), ("İNDİRİMLİ", 5))
 
@@ -80,13 +83,16 @@ class TanimViewTest(TestCase):
         self.assertEqual(self.client.get(reverse("core:tevkifat_oranlari")).status_code, 200)
 
     def test_kdv_ekle_post(self):
-        _hesap()
+        _hesap("191", "İNDİRİLECEK KDV")
+        _hesap("391", "HESAPLANAN KDV")
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:kdv_orani_ekle"),
-                             {"sira": "10", "aciklama": "genel", "oran": "20", "hesap": "191"})
+                             {"sira": "10", "aciklama": "genel", "oran": "20",
+                              "hesap_borc": "191", "hesap_alacak": "391"})
         self.assertEqual(r.status_code, 302)
         k = KdvOrani.objects.get(aciklama="GENEL")
-        self.assertEqual((k.oran, k.hesap_id), (Decimal("20.00"), "191"))
+        self.assertEqual((k.oran, k.hesap_borc_id, k.hesap_alacak_id),
+                         (Decimal("20.00"), "191", "391"))
 
     def test_tevkifat_ekle_post(self):
         self.client.force_login(self.yon)

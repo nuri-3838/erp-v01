@@ -20,14 +20,14 @@
       <h2 class="bolum-baslik">KDV Oranı</h2>
       <div class="izgara">
         {% for field in form %}
-          <div class="alan {% if field.name == 'hesap' or field.name == 'aciklama' %}tam{% endif %}">
+          <div class="alan {% if 'hesap' in field.name or field.name == 'aciklama' %}tam{% endif %}">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {% if field.name == 'hesap' %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
+            {% if 'hesap' in field.name %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         {% endfor %}
       </div>
-      <p class="yardim">Muhasebe hesabı opsiyonel (örn. İndirilecek KDV 191). Sonra da bağlayabilirsiniz.</p>
+      <p class="yardim">Hesaplar opsiyonel: Borç = İndirilecek KDV (191, alış), Alacak = Hesaplanan KDV (391, satış). Sonra da bağlayabilirsiniz.</p>
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:kdv_oranlari' %}">İptal</a>

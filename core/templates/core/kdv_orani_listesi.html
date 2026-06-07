@@ -15,14 +15,15 @@
 <div class="tablo-kapsayici">
 <table>
   <thead><tr><th class="sag">Sıra</th><th>Açıklama</th><th class="sag">Oran</th>
-    <th>Muhasebe Hesabı</th><th>İşlem</th></tr></thead>
+    <th>Borç Hesabı</th><th>Alacak Hesabı</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for k in kdvler %}
       <tr>
         <td class="sag mono">{{ k.sira }}</td>
         <td>{{ k.aciklama }}</td>
         <td class="sag mono">%{{ k.oran|tr_kur:2 }}</td>
-        <td>{% if k.hesap %}<span class="mono">{{ k.hesap.hesap_kodu }}</span> {{ k.hesap.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if k.hesap_borc %}<span class="mono">{{ k.hesap_borc.hesap_kodu }}</span> {{ k.hesap_borc.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if k.hesap_alacak %}<span class="mono">{{ k.hesap_alacak.hesap_kodu }}</span> {{ k.hesap_alacak.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:kdv_orani_duzenle' k.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:kdv_orani_sil' k.pk %}" onsubmit="return confirm('Silinsin mi?');">
@@ -30,7 +31,7 @@
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="yardim">Henüz KDV oranı yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="6" class="yardim">Henüz KDV oranı yok. “+ Yeni” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>
