@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import Birim, Kategori, Stok
+from core.sayi import SayiHatasi, parse_tr
 
 
 class StokHatasi(ValueError):
@@ -59,8 +60,8 @@ def _birim_coz(birim_id, etiket):
 
 def _cevirici_dogrula(deger):
     try:
-        c = Decimal(deger)
-    except (TypeError, ValueError, ArithmeticError):
+        c = parse_tr(deger)
+    except SayiHatasi:
         raise StokHatasi("Çevirici geçerli bir sayı olmalı.")
     if c <= 0:
         raise StokHatasi("Çevirici sıfırdan büyük olmalı.")
@@ -70,8 +71,8 @@ def _cevirici_dogrula(deger):
 def _negatif_olmaz(deger, etiket) -> Decimal:
     """≥ 0 ondalık doğrular; boş/None -> 0 (alanlar opsiyonel, varsayılan 0)."""
     try:
-        d = Decimal(deger if deger not in (None, "") else 0)
-    except (TypeError, ValueError, ArithmeticError):
+        d = parse_tr(deger if deger not in (None, "") else 0)
+    except SayiHatasi:
         raise StokHatasi(f"{etiket} geçerli bir sayı olmalı.")
     if d < 0:
         raise StokHatasi(f"{etiket} negatif olamaz.")

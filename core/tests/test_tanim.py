@@ -48,6 +48,11 @@ class KdvOraniServisTest(TestCase):
         k.refresh_from_db()
         self.assertEqual((k.aciklama, k.sira), ("İNDİRİMLİ", 5))
 
+    def test_oran_tr_format(self):
+        # #8: servis TR biçimli string'i de tek parser ile çözer (virgül = ondalık)
+        k = kdv_orani_olustur(aciklama="ondalik", oran="8,5")
+        self.assertEqual(k.oran, Decimal("8.5"))
+
     def test_oran_benzersiz(self):
         kdv_orani_olustur(aciklama="genel", oran="20")
         with self.assertRaises(TanimHatasi):

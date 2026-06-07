@@ -112,7 +112,7 @@ def sonraki_alt_kod(ust_kodu: str, *, genislik=None) -> str:
     olmaması için SİLİNMİŞ (soft-delete) hesaplar dahil tüm mevcut kodlarla
     karşılaştırır. L2 -> 2 hane, L3 -> 4 hane (genislik ile değiştirilebilir).
     """
-    ust = HesapPlani.objects.filter(hesap_kodu=ust_kodu).first()
+    ust = HesapPlani.objects.filter(hesap_kodu=ust_kodu, silindi=False).first()
     if ust is None:
         raise HesapHatasi(f"Üst hesap bulunamadı: {ust_kodu}")
     cocuk_nokta = ust_kodu.count(".") + 1

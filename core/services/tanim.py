@@ -5,12 +5,11 @@ oran/pay/payda doğrulanır; muhasebe hesabı opsiyonel (sonra da bağlanabilir)
 """
 from __future__ import annotations
 
-from decimal import Decimal
-
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import HesapPlani, KdvOrani, TevkifatOrani
+from core.sayi import SayiHatasi, parse_tr
 
 
 class TanimHatasi(ValueError):
@@ -29,8 +28,8 @@ def _hesap_coz(hesap_kodu):
 
 def _sayi(deger, etiket, *, pozitif=False):
     try:
-        d = Decimal(deger if deger not in (None, "") else 0)
-    except Exception:
+        d = parse_tr(deger if deger not in (None, "") else 0)
+    except SayiHatasi:
         raise TanimHatasi(f"{etiket} geçerli bir sayı olmalı.")
     if pozitif and d <= 0:
         raise TanimHatasi(f"{etiket} sıfırdan büyük olmalı.")

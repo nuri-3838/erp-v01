@@ -9,14 +9,13 @@
 """
 from __future__ import annotations
 
-from decimal import Decimal
-
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import (
     Cari, CariBanka, CariKategori, CariYetkili, HesapPlani, Sehir, Ulke,
 )
+from core.sayi import SayiHatasi, parse_tr
 from core.services import hesap_plani as hp
 
 
@@ -77,8 +76,8 @@ def _vergi_benzersiz(vkn_tckn, tax_id, *, haric_pk=None):
 
 def _para_dogrula(deger, etiket):
     try:
-        d = Decimal(deger if deger not in (None, "") else 0)
-    except Exception:
+        d = parse_tr(deger if deger not in (None, "") else 0)
+    except SayiHatasi:
         raise CariHatasi(f"{etiket} geçerli bir sayı olmalı.")
     if d < 0:
         raise CariHatasi(f"{etiket} negatif olamaz.")
@@ -164,7 +163,7 @@ def muhasebe_hesabi_ac(cari: Cari, kullanici=None) -> str:
     for i in range(1, len(seg)):
         prefix = ".".join(seg[:i + 1])
         ust = ".".join(seg[:i])
-        if HesapPlani.objects.filter(hesap_kodu=prefix).exists():
+        if HesapPlani.objects.filter(hesap_kodu=prefix, silindi=False).exists():
             continue
         leaf = (i == len(seg) - 1)
         ad = cari.unvan if leaf else (cari.kategori.ad if cari.kategori_id else prefix)
