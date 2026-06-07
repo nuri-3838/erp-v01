@@ -1392,7 +1392,7 @@ def fatura_ekle(request):
                     cari_id=fform.cleaned_data["cari"].pk,
                     tarih=fform.cleaned_data["tarih"],
                     fatura_no=fform.cleaned_data.get("fatura_no", ""),
-                    para_birimi="TRY",
+                    para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
                     satirlar=satirlar,
                     kullanici=request.user,
                 )

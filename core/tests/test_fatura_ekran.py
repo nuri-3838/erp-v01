@@ -46,7 +46,7 @@ class FaturaEkranTest(TestCase):
     def _post_data(self, miktar="10", fiyat="100"):
         return {
             "tip": str(self.alis.pk), "cari": str(self.cari.pk),
-            "tarih": "2026-03-10", "fatura_no": "A-1",
+            "tarih": "2026-03-10", "fatura_no": "A-1", "para_birimi": "TRY",
             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
             "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": str(self.stok.pk), "form-0-miktar": miktar,

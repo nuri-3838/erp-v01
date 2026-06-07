@@ -18,7 +18,7 @@ from django.db import transaction
 
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
-                         KategoriHesap, Stok, YevmiyeFisi)
+                         KategoriHesap, Kur, Stok, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
                                    fis_olustur)
@@ -47,13 +47,29 @@ def aktif_faturalar():
             .select_related("tip", "cari", "fis").order_by("-tarih", "-id"))
 
 
+def _kur_coz(pb, tarih):
+    """Fatura para biriminin fiş tarihindeki TCMB alış kuru. TRY -> 1.
+    Döviz için o tarihin KUR kaydı ve ilgili PB alanı dolu olmalı (carry-forward yok)."""
+    if pb == "TRY":
+        return Decimal("1")
+    k = Kur.objects.filter(tarih=tarih, silindi=False).first()
+    alan = {"USD": "usd_alis", "EUR": "eur_alis", "GBP": "gbp_alis"}.get(pb)
+    deger = getattr(k, alan) if (k and alan) else None
+    if not deger:
+        raise FaturaHatasi(
+            f"{tarih:%d.%m.%Y} için {pb} kuru yok; Kurlar ekranından bu tarihi çekmeden "
+            f"döviz faturası kesilemez.")
+    return deger
+
+
 @transaction.atomic
 def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
-                   para_birimi="TRY", kur=Decimal("1"), kullanici=None) -> Fatura:
+                   para_birimi="TRY", kullanici=None) -> Fatura:
     """Faturayı + otomatik dengeli yevmiye fişini atomik oluşturur.
 
-    `satirlar`: dict listesi [{stok_id, miktar, birim_fiyat}]. Eksik muhasebe
-    haritası / dengesizlik -> FaturaHatasi (hiçbir şey kaydedilmez).
+    `satirlar`: dict listesi [{stok_id, miktar, birim_fiyat}]. Para birimi TRY değilse
+    kur fiş tarihinin TCMB kurundan ÇÖZÜLÜR. Eksik muhasebe haritası / kur yok /
+    dengesizlik -> FaturaHatasi (hiçbir şey kaydedilmez).
     """
     tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first()
     if tip is None:
@@ -75,12 +91,13 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
     pb = (para_birimi or "TRY").strip().upper()
     if pb not in dict(Cari.PARA_CHOICES):
         raise FaturaHatasi("Geçersiz para birimi.")
-    kur = _sayi(kur, "Kur", pozitif=True)
+    kur = _kur_coz(pb, tarih)
 
     yevmiye_satirlari = []
     kdv_hesap_toplam = {}          # hesap_kodu -> KDV tutarı (PB)
     toplam_mal = SIFIR
     toplam_kdv = SIFIR
+    karsi_tl = SIFIR               # mal+KDV satırlarının TL toplamı (denge için)
     hazir = []                     # FaturaSatir için (stok, miktar, fiyat, kdv)
 
     for i, g in enumerate(satirlar, start=1):
@@ -106,6 +123,7 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
         toplam_kdv += satir_kdv
 
         # Mal/gelir satırı (alış: Borç, satış: Alacak)
+        karsi_tl += yuvarla(satir_tutar * kur, 2)
         yevmiye_satirlari.append(SatirGirdi(
             hesap_kodu=kh.hesap.hesap_kodu, taraf=("B" if alis else "A"),
             islem_tutari=satir_tutar, islem_pb=pb, islem_kuru=kur, aciklama=stok.ad))
@@ -127,15 +145,18 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
 
     # KDV satırları (alış: Borç, satış: Alacak)
     for hkod, tutar in kdv_hesap_toplam.items():
+        karsi_tl += yuvarla(tutar * kur, 2)
         yevmiye_satirlari.append(SatirGirdi(
             hesap_kodu=hkod, taraf=("B" if alis else "A"),
             islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV"))
 
-    # Karşı taraf (cari): alış -> Alacak, satış -> Borç
+    # Karşı taraf (cari): alış -> Alacak, satış -> Borç. TL'si DENGE için sayaç
+    # satırlarının TL toplamı (tl_override) -> döviz kuruş yuvarlama farkı oluşmaz.
     genel = toplam_mal + toplam_kdv
     yevmiye_satirlari.append(SatirGirdi(
         hesap_kodu=cari_hesap.hesap_kodu, taraf=("A" if alis else "B"),
-        islem_tutari=genel, islem_pb=pb, islem_kuru=kur, aciklama=cari.unvan))
+        islem_tutari=genel, islem_pb=pb, islem_kuru=kur, aciklama=cari.unvan,
+        tl_override=karsi_tl))
 
     fatura_no = (fatura_no or "").strip()
     aciklama = buyuk_harf_tr(f"{tip.ad} - {cari.unvan}" + (f" - {fatura_no}" if fatura_no else ""))

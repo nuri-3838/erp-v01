@@ -554,6 +554,8 @@ class FaturaForm(forms.Form):
     fatura_no = forms.CharField(
         label="Fatura No", max_length=50, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    para_birimi = forms.ChoiceField(
+        label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

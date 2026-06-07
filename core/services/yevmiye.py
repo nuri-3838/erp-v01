@@ -45,6 +45,10 @@ class SatirGirdi:
     islem_pb: str = "TRY"
     islem_kuru: object = Decimal("1")
     aciklama: str = ""
+    # TL (borç/alacak) normalde yuvarla(islem_tutari × islem_kuru). Yalnız döviz
+    # DENGE satırında (fatura cari satırı), kuruş yuvarlama farkını gidermek için
+    # TL doğrudan verilebilir (sayaç satırlarının TL toplamı). Manuel fişte KULLANILMAZ.
+    tl_override: object = None
 
 
 def _dec(deger, alan: str) -> Decimal:
@@ -122,7 +126,10 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
         if pb == "TRY" and kur != Decimal("1"):
             raise YevmiyeHatasi(f"Satır {i}: TRY için islem_kuru 1 olmalı.")
 
-        tl = yuvarla(tutar * kur, 2)
+        if getattr(g, "tl_override", None) is not None:
+            tl = yuvarla(_dec(g.tl_override, f"Satır {i} tl_override"), 2)
+        else:
+            tl = yuvarla(tutar * kur, 2)
         if tl <= 0:
             raise YevmiyeHatasi(f"Satır {i}: TL tutarı 0'dan büyük olmalı.")
 

@@ -20,7 +20,8 @@ def _hesap(kod, ad, grup="BILANCO", kalem="DV"):
 class FaturaTestTemel(TestCase):
     @classmethod
     def setUpTestData(cls):
-        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("30"))
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("30"),
+                           eur_alis=Decimal("35.123456"))
         _hesap("153.10", "ALÜMİNYUM MAL")
         _hesap("191", "İNDİRİLECEK KDV")
         _hesap("391", "HESAPLANAN KDV", kalem="KVYK")
@@ -98,6 +99,36 @@ class SatisFaturaTest(FaturaTestTemel):
         tb = sum(s.borc for s in f.fis.satirlar.all())
         ta = sum(s.alacak for s in f.fis.satirlar.all())
         self.assertEqual(tb, ta)
+
+
+class DovizFaturaTest(FaturaTestTemel):
+    def test_eur_kurus_yuvarlama_dengeli(self):
+        # 33,33 EUR mal + %20 KDV, kur 35.123456 -> satır TL'leri yuvarlanınca
+        # genel×kur ile 1 kuruş fark eder; denge satırı (tl_override) bunu giderir.
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="EUR",
+                           satirlar=[{"stok_id": self.stok.pk, "miktar": "1",
+                                      "birim_fiyat": "33,33"}])
+        self.assertEqual(f.para_birimi, "EUR")
+        self.assertEqual(f.kur, Decimal("35.123456"))
+        sat = {s.hesap_id: (s.borc, s.alacak, s.islem_pb, s.islem_tutari)
+               for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["153.10"][:2], (Decimal("1170.66"), Decimal("0.00")))
+        self.assertEqual(sat["191"][:2], (Decimal("234.27"), Decimal("0.00")))
+        # cari TL = mal+KDV TL = 1404.93 (genel×kur=1404.94 DEĞİL) -> denge
+        self.assertEqual(sat["320.10.0001"][:2], (Decimal("0.00"), Decimal("1404.93")))
+        self.assertEqual(sat["320.10.0001"][2], "EUR")
+        self.assertEqual(sat["320.10.0001"][3], Decimal("40.00"))   # döviz tutarı korunur
+        tb = sum(s.borc for s in f.fis.satirlar.all())
+        ta = sum(s.alacak for s in f.fis.satirlar.all())
+        self.assertEqual(tb, ta)                                    # DENGELİ
+
+    def test_kur_yoksa_hata(self):
+        with self.assertRaises(FaturaHatasi):
+            fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="GBP",   # gbp_alis yok
+                           satirlar=[{"stok_id": self.stok.pk, "miktar": "1",
+                                      "birim_fiyat": "100"}])
 
 
 class FaturaIptalTest(FaturaTestTemel):
