@@ -15,13 +15,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    BirimForm, CariForm, CariKategoriForm, FaturaTipiForm, FisForm, KategoriForm,
-    KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm,
-    StokForm, UlkeForm,
+    BirimForm, CariBankaForm, CariForm, CariKategoriForm, CariYetkiliForm,
+    FaturaTipiForm, FisForm, KategoriForm, KullaniciDuzenleForm, KullaniciEkleForm,
+    MizanFiltreForm, SatirForm, SehirForm, StokForm, UlkeForm,
 )
 from core.models import (
-    Birim, Cari, CariKategori, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur,
-    Sehir, Stok, Ulke, YevmiyeFisi, YevmiyeSatir,
+    Birim, Cari, CariBanka, CariKategori, CariYetkili, EkranYetki, FaturaTipi,
+    HesapPlani, Kategori, Kur, Sehir, Stok, Ulke, YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -1102,7 +1102,10 @@ def cari_detay(request, pk):
         Cari.objects.select_related("kategori", "ulke", "sehir", "sevk_ulke",
                                     "sevk_sehir", "created_by", "updated_by"),
         pk=pk, silindi=False)
-    return render(request, "core/cari_detay.html", {"cari": cari})
+    return render(request, "core/cari_detay.html", {
+        "cari": cari,
+        "bankalar": cari_servis.aktif_bankalar(cari),
+        "yetkililer": cari_servis.aktif_yetkililer(cari)})
 
 
 @ekran_gerekli("cariler")
@@ -1112,3 +1115,94 @@ def cari_sil(request, pk):
         cari_servis.cari_sil(cari, kullanici=request.user)
         messages.success(request, f"Cari silindi: {cari.kod}")
     return redirect("core:cariler")
+
+
+# --- Cari banka hesapları ---------------------------------------------------
+@ekran_gerekli("cariler")
+def banka_ekle(request, cari_pk):
+    cari = get_object_or_404(Cari, pk=cari_pk, silindi=False)
+    if request.method == "POST":
+        form = CariBankaForm(request.POST)
+        if form.is_valid():
+            try:
+                cari_servis.banka_ekle(cari, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Banka hesabı eklendi.")
+                return redirect("core:cari_detay", pk=cari.pk)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariBankaForm()
+    return render(request, "core/cari_banka_form.html",
+                  {"form": form, "baslik": "Yeni Banka Hesabı", "cari": cari})
+
+
+@ekran_gerekli("cariler")
+def banka_duzenle(request, pk):
+    banka = get_object_or_404(CariBanka, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CariBankaForm(request.POST)
+        if form.is_valid():
+            try:
+                cari_servis.banka_guncelle(banka, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Banka hesabı güncellendi.")
+                return redirect("core:cari_detay", pk=banka.cari_id)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariBankaForm(initial={
+            "banka_adi": banka.banka_adi, "hesap_sahibi": banka.hesap_sahibi,
+            "iban": banka.iban, "swift": banka.swift, "para_birimi": banka.para_birimi,
+            "aciklama": banka.aciklama, "varsayilan": banka.varsayilan})
+    return render(request, "core/cari_banka_form.html",
+                  {"form": form, "baslik": "Banka Hesabı Düzenle", "cari": banka.cari})
+
+
+@ekran_gerekli("cariler")
+def banka_sil(request, pk):
+    banka = get_object_or_404(CariBanka, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.banka_sil(banka, kullanici=request.user)
+        messages.success(request, "Banka hesabı silindi.")
+    return redirect("core:cari_detay", pk=banka.cari_id)
+
+
+# --- Cari yetkili kişiler ---------------------------------------------------
+@ekran_gerekli("cariler")
+def yetkili_ekle(request, cari_pk):
+    cari = get_object_or_404(Cari, pk=cari_pk, silindi=False)
+    if request.method == "POST":
+        form = CariYetkiliForm(request.POST)
+        if form.is_valid():
+            cari_servis.yetkili_ekle(cari, **form.cleaned_data, kullanici=request.user)
+            messages.success(request, "Yetkili kişi eklendi.")
+            return redirect("core:cari_detay", pk=cari.pk)
+    else:
+        form = CariYetkiliForm()
+    return render(request, "core/cari_yetkili_form.html",
+                  {"form": form, "baslik": "Yeni Yetkili Kişi", "cari": cari})
+
+
+@ekran_gerekli("cariler")
+def yetkili_duzenle(request, pk):
+    yetkili = get_object_or_404(CariYetkili, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CariYetkiliForm(request.POST)
+        if form.is_valid():
+            cari_servis.yetkili_guncelle(yetkili, **form.cleaned_data, kullanici=request.user)
+            messages.success(request, "Yetkili kişi güncellendi.")
+            return redirect("core:cari_detay", pk=yetkili.cari_id)
+    else:
+        form = CariYetkiliForm(initial={
+            "ad_soyad": yetkili.ad_soyad, "unvan": yetkili.unvan,
+            "telefon": yetkili.telefon, "eposta": yetkili.eposta, "notlar": yetkili.notlar})
+    return render(request, "core/cari_yetkili_form.html",
+                  {"form": form, "baslik": "Yetkili Kişi Düzenle", "cari": yetkili.cari})
+
+
+@ekran_gerekli("cariler")
+def yetkili_sil(request, pk):
+    yetkili = get_object_or_404(CariYetkili, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.yetkili_sil(yetkili, kullanici=request.user)
+        messages.success(request, "Yetkili kişi silindi.")
+    return redirect("core:cari_detay", pk=yetkili.cari_id)

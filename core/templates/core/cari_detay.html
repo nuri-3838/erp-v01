@@ -28,10 +28,13 @@
     background:rgba(255,255,255,.5); border:1px solid var(--cizgi); }
   .sek-panel { display:none; }
   #sek-bilgi:checked ~ .sek-bar label[for="sek-bilgi"],
+  #sek-banka:checked ~ .sek-bar label[for="sek-banka"],
+  #sek-yetkili:checked ~ .sek-bar label[for="sek-yetkili"],
   #sek-kayit:checked ~ .sek-bar label[for="sek-kayit"] {
     background:linear-gradient(135deg,var(--turuncu),var(--turuncu-koyu)); color:#fff; border-color:transparent;
     box-shadow:0 6px 14px rgba(213,110,0,.32); }
-  #sek-bilgi:checked ~ #panel-bilgi, #sek-kayit:checked ~ #panel-kayit { display:block; }
+  #sek-bilgi:checked ~ #panel-bilgi, #sek-banka:checked ~ #panel-banka,
+  #sek-yetkili:checked ~ #panel-yetkili, #sek-kayit:checked ~ #panel-kayit { display:block; }
   .kv { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem 1.6rem; }
   @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
   .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
@@ -67,9 +70,13 @@
 
   <section class="icerik-kart">
     <input type="radio" name="cari-sekme" id="sek-bilgi" class="sek-radio" checked>
+    <input type="radio" name="cari-sekme" id="sek-banka" class="sek-radio">
+    <input type="radio" name="cari-sekme" id="sek-yetkili" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-kayit" class="sek-radio">
     <div class="sek-bar">
       <label for="sek-bilgi">📋 Bilgiler</label>
+      <label for="sek-banka">🏦 Banka Hesapları ({{ bankalar|length }})</label>
+      <label for="sek-yetkili">👤 Yetkili Kişiler ({{ yetkililer|length }})</label>
       <label for="sek-kayit">🕓 Kayıt Bilgisi</label>
     </div>
 
@@ -122,6 +129,65 @@
       {% endif %}
     </div>
 
+    <div class="sek-panel" id="panel-banka">
+      <div class="sayfa-ust">
+        <h2 class="bolum-baslik"><span class="emoji">🏦</span>Banka Hesapları</h2>
+        <a class="dugme" href="{% url 'core:banka_ekle' cari.pk %}">+ Banka Ekle</a>
+      </div>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Banka</th><th>IBAN</th><th>SWIFT</th><th>PB</th><th>Varsayılan</th><th>İşlem</th></tr></thead>
+        <tbody>
+          {% for b in bankalar %}
+            <tr>
+              <td>{{ b.banka_adi }}{% if b.hesap_sahibi %}<br><span class="yardim">{{ b.hesap_sahibi }}</span>{% endif %}</td>
+              <td class="mono">{{ b.iban|default:"—" }}</td>
+              <td class="mono">{{ b.swift|default:"—" }}</td>
+              <td class="mono">{{ b.para_birimi }}</td>
+              <td>{% if b.varsayilan %}<span class="rozet rozet-aktif">Varsayılan</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+              <td><span class="islem-bag">
+                <a href="{% url 'core:banka_duzenle' b.pk %}">Düzenle</a>
+                <form method="post" action="{% url 'core:banka_sil' b.pk %}" onsubmit="return confirm('Banka hesabı silinsin mi?');">
+                  {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+              </span></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="yardim">Banka hesabı yok. “+ Banka Ekle” ile ekleyin.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="sek-panel" id="panel-yetkili">
+      <div class="sayfa-ust">
+        <h2 class="bolum-baslik"><span class="emoji">👤</span>Yetkili Kişiler</h2>
+        <a class="dugme" href="{% url 'core:yetkili_ekle' cari.pk %}">+ Yetkili Ekle</a>
+      </div>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Ad Soyad</th><th>Görev</th><th>Telefon</th><th>E-posta</th><th>İşlem</th></tr></thead>
+        <tbody>
+          {% for y in yetkililer %}
+            <tr>
+              <td>{{ y.ad_soyad }}</td>
+              <td>{{ y.unvan|default:"—" }}</td>
+              <td>{{ y.telefon|default:"—" }}</td>
+              <td>{{ y.eposta|default:"—" }}</td>
+              <td><span class="islem-bag">
+                <a href="{% url 'core:yetkili_duzenle' y.pk %}">Düzenle</a>
+                <form method="post" action="{% url 'core:yetkili_sil' y.pk %}" onsubmit="return confirm('Yetkili silinsin mi?');">
+                  {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+              </span></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="yardim">Yetkili kişi yok. “+ Yetkili Ekle” ile ekleyin.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
     <div class="sek-panel" id="panel-kayit">
       <div class="kv">
         <div class="satir"><span class="et">Oluşturan</span><span class="dg">{% if cari.created_by %}{{ cari.created_by.get_full_name|default:cari.created_by.username }}{% else %}—{% endif %}</span></div>
@@ -129,7 +195,7 @@
         <div class="satir"><span class="et">Son Güncelleyen</span><span class="dg">{% if cari.updated_by %}{{ cari.updated_by.get_full_name|default:cari.updated_by.username }}{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Son Güncelleme</span><span class="dg mono">{{ cari.updated_at|date:"d.m.Y H:i" }}</span></div>
       </div>
-      <p class="yardim" style="margin-top:1rem">📦 Banka hesapları, yetkili kişiler ve cari hareketleri sonraki aşamada bu sayfada sekme olarak gelecek.</p>
+      <p class="yardim" style="margin-top:1rem">📦 Cari hesap hareketleri/ekstre Faz 4'te (finans) bu sayfaya eklenecek.</p>
     </div>
   </section>
 </div>

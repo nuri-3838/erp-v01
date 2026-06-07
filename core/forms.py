@@ -448,3 +448,35 @@ class CariForm(forms.Form):
             self.fields[f].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
         for f in ("kategori", "ulke", "sehir", "sevk_ulke", "sevk_sehir"):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
+
+
+class CariBankaForm(forms.Form):
+    """Cari banka hesabı ekle/düzenle. TR büyük harf serviste."""
+
+    banka_adi = forms.CharField(label="Banka", max_length=100,
+                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    hesap_sahibi = forms.CharField(label="Hesap Sahibi", max_length=200, required=False,
+                                   widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    iban = forms.CharField(label="IBAN", max_length=34, required=False,
+                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    swift = forms.CharField(label="SWIFT/BIC", max_length=15, required=False,
+                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    varsayilan = forms.BooleanField(label="Varsayılan", required=False)
+
+
+class CariYetkiliForm(forms.Form):
+    """Cari yetkili kişi ekle/düzenle. TR büyük harf serviste."""
+
+    ad_soyad = forms.CharField(label="Ad Soyad", max_length=120,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    unvan = forms.CharField(label="Görev / Unvan", max_length=80, required=False,
+                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    telefon = forms.CharField(label="Telefon", max_length=20, required=False,
+                              widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
+    eposta = forms.EmailField(label="E-posta", required=False,
+                              widget=forms.EmailInput(attrs={"autocomplete": "off"}))
+    notlar = forms.CharField(label="Notlar", max_length=200, required=False,
+                             widget=forms.TextInput(attrs={"autocomplete": "off"}))

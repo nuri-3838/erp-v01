@@ -14,7 +14,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Cari, CariKategori, Sehir, Ulke
+from core.models import Cari, CariBanka, CariKategori, CariYetkili, Sehir, Ulke
 
 
 class CariHatasi(ValueError):
@@ -176,3 +176,120 @@ def cari_sil(cari: Cari, kullanici=None) -> Cari:
     cari.updated_by = kullanici
     cari.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return cari
+
+
+# --- Banka hesapları ---------------------------------------------------------
+def aktif_bankalar(cari):
+    return cari.banka_hesaplari.filter(silindi=False).order_by("-varsayilan", "banka_adi")
+
+
+def _diger_varsayilanlari_kapat(cari, haric):
+    cari.banka_hesaplari.filter(silindi=False, varsayilan=True).exclude(
+        pk=haric.pk).update(varsayilan=False)
+
+
+def banka_ekle(cari, *, banka_adi, hesap_sahibi="", iban="", swift="",
+               para_birimi="TRY", aciklama="", varsayilan=False, kullanici=None) -> CariBanka:
+    banka_adi = buyuk_harf_tr((banka_adi or "").strip())
+    if not banka_adi:
+        raise CariHatasi("Banka adı boş olamaz.")
+    if para_birimi not in dict(Cari.PARA_CHOICES):
+        raise CariHatasi("Geçersiz para birimi.")
+    ilk = not cari.banka_hesaplari.filter(silindi=False).exists()
+    b = CariBanka.objects.create(
+        cari=cari, banka_adi=banka_adi,
+        hesap_sahibi=buyuk_harf_tr((hesap_sahibi or "").strip()),
+        iban=buyuk_harf_tr((iban or "").strip()),
+        swift=buyuk_harf_tr((swift or "").strip()),
+        para_birimi=para_birimi, aciklama=(aciklama or "").strip(),
+        varsayilan=bool(varsayilan) or ilk,
+        created_by=kullanici, updated_by=kullanici)
+    if b.varsayilan:
+        _diger_varsayilanlari_kapat(cari, b)
+    return b
+
+
+def banka_guncelle(banka: CariBanka, *, banka_adi, hesap_sahibi="", iban="", swift="",
+                   para_birimi="TRY", aciklama="", varsayilan=False, kullanici=None) -> CariBanka:
+    if banka.silindi:
+        raise CariHatasi("Silinmiş banka hesabı düzenlenemez.")
+    banka_adi = buyuk_harf_tr((banka_adi or "").strip())
+    if not banka_adi:
+        raise CariHatasi("Banka adı boş olamaz.")
+    if para_birimi not in dict(Cari.PARA_CHOICES):
+        raise CariHatasi("Geçersiz para birimi.")
+    banka.banka_adi = banka_adi
+    banka.hesap_sahibi = buyuk_harf_tr((hesap_sahibi or "").strip())
+    banka.iban = buyuk_harf_tr((iban or "").strip())
+    banka.swift = buyuk_harf_tr((swift or "").strip())
+    banka.para_birimi = para_birimi
+    banka.aciklama = (aciklama or "").strip()
+    banka.varsayilan = bool(varsayilan)
+    banka.updated_by = kullanici
+    banka.save()
+    if banka.varsayilan:
+        _diger_varsayilanlari_kapat(banka.cari, banka)
+    return banka
+
+
+def banka_sil(banka: CariBanka, kullanici=None) -> CariBanka:
+    if banka.silindi:
+        return banka
+    cari = banka.cari
+    idi_varsayilan = banka.varsayilan
+    banka.silindi = True
+    banka.silindi_at = timezone.now()
+    banka.varsayilan = False
+    banka.updated_by = kullanici
+    banka.save(update_fields=["silindi", "silindi_at", "varsayilan",
+                              "updated_by", "updated_at"])
+    if idi_varsayilan:   # kalan ilk hesabı varsayılan yap
+        kalan = cari.banka_hesaplari.filter(silindi=False).order_by("banka_adi").first()
+        if kalan is not None:
+            kalan.varsayilan = True
+            kalan.save(update_fields=["varsayilan", "updated_at"])
+    return banka
+
+
+# --- Yetkili kişiler ---------------------------------------------------------
+def aktif_yetkililer(cari):
+    return cari.yetkililer.filter(silindi=False).order_by("ad_soyad")
+
+
+def yetkili_ekle(cari, *, ad_soyad, unvan="", telefon="", eposta="", notlar="",
+                 kullanici=None) -> CariYetkili:
+    ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
+    if not ad_soyad:
+        raise CariHatasi("Ad soyad boş olamaz.")
+    return CariYetkili.objects.create(
+        cari=cari, ad_soyad=ad_soyad, unvan=buyuk_harf_tr((unvan or "").strip()),
+        telefon=(telefon or "").strip(), eposta=(eposta or "").strip().lower(),
+        notlar=(notlar or "").strip(), created_by=kullanici, updated_by=kullanici)
+
+
+def yetkili_guncelle(yetkili: CariYetkili, *, ad_soyad, unvan="", telefon="",
+                     eposta="", notlar="", kullanici=None) -> CariYetkili:
+    if yetkili.silindi:
+        raise CariHatasi("Silinmiş yetkili düzenlenemez.")
+    ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
+    if not ad_soyad:
+        raise CariHatasi("Ad soyad boş olamaz.")
+    yetkili.ad_soyad = ad_soyad
+    yetkili.unvan = buyuk_harf_tr((unvan or "").strip())
+    yetkili.telefon = (telefon or "").strip()
+    yetkili.eposta = (eposta or "").strip().lower()
+    yetkili.notlar = (notlar or "").strip()
+    yetkili.updated_by = kullanici
+    yetkili.save(update_fields=["ad_soyad", "unvan", "telefon", "eposta", "notlar",
+                                "updated_by", "updated_at"])
+    return yetkili
+
+
+def yetkili_sil(yetkili: CariYetkili, kullanici=None) -> CariYetkili:
+    if yetkili.silindi:
+        return yetkili
+    yetkili.silindi = True
+    yetkili.silindi_at = timezone.now()
+    yetkili.updated_by = kullanici
+    yetkili.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return yetkili
