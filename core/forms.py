@@ -15,8 +15,8 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Birim, Cari, CariKategori, FaturaTipi, HesapPlani, Kategori, Profil, Sehir,
-    Ulke, YevmiyeSatir,
+    Birim, Cari, CariKategori, FaturaTipi, HesapPlani, Kategori, KdvOrani, Profil,
+    Sehir, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr
 
@@ -304,9 +304,12 @@ class StokForm(forms.Form):
         label="Fatura Birimi", queryset=Birim.objects.none(),
         empty_label="— birim seç —")
     cevirici = TRDecimalField(label="Çevirici", basamak=4, initial=Decimal("1"))
-    kdv_orani = TRDecimalField(label="KDV oranı (%)", basamak=2, initial=Decimal("20"))
-    tevkifat_orani = TRDecimalField(
-        label="Tevkifat oranı (%)", basamak=2, initial=Decimal("0"), required=False)
+    kdv = forms.ModelChoiceField(
+        label="KDV Oranı", queryset=KdvOrani.objects.none(), required=False,
+        empty_label="— KDV oranı seç —")
+    tevkifat = forms.ModelChoiceField(
+        label="Tevkifat Oranı", queryset=TevkifatOrani.objects.none(), required=False,
+        empty_label="— yok —")
     kritik_stok = TRDecimalField(
         label="Kritik stok seviyesi", basamak=3, initial=Decimal("0"), required=False)
     tedarikci = forms.CharField(
@@ -319,6 +322,12 @@ class StokForm(forms.Form):
         b = aktif_birimler()
         self.fields["uretim_birimi"].queryset = b
         self.fields["fatura_birimi"].queryset = b
+        self.fields["kdv"].queryset = KdvOrani.objects.filter(silindi=False).order_by("oran")
+        self.fields["kdv"].label_from_instance = lambda o: f"%{o.oran:g} {o.aciklama}"
+        self.fields["tevkifat"].queryset = (
+            TevkifatOrani.objects.filter(silindi=False).order_by("kod"))
+        self.fields["tevkifat"].label_from_instance = (
+            lambda o: f"{o.pay}/{o.payda} {o.aciklama}".strip())
         if duzenle:
             self.fields.pop("kategori")
         else:

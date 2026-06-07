@@ -555,8 +555,9 @@ def stok_ekle(request):
                     ad=cd["ad"], kategori_id=cd["kategori"].pk,
                     uretim_birimi_id=cd["uretim_birimi"].pk,
                     fatura_birimi_id=cd["fatura_birimi"].pk,
-                    cevirici=cd["cevirici"], kdv_orani=cd["kdv_orani"],
-                    tevkifat_orani=cd.get("tevkifat_orani"),
+                    cevirici=cd["cevirici"],
+                    kdv_id=cd["kdv"].pk if cd.get("kdv") else None,
+                    tevkifat_id=cd["tevkifat"].pk if cd.get("tevkifat") else None,
                     kritik_stok=cd.get("kritik_stok"),
                     tedarikci=cd.get("tedarikci", ""),
                     kullanici=request.user)
@@ -582,8 +583,9 @@ def stok_duzenle(request, pk):
                     stok, ad=cd["ad"],
                     uretim_birimi_id=cd["uretim_birimi"].pk,
                     fatura_birimi_id=cd["fatura_birimi"].pk,
-                    cevirici=cd["cevirici"], kdv_orani=cd["kdv_orani"],
-                    tevkifat_orani=cd.get("tevkifat_orani"),
+                    cevirici=cd["cevirici"],
+                    kdv_id=cd["kdv"].pk if cd.get("kdv") else None,
+                    tevkifat_id=cd["tevkifat"].pk if cd.get("tevkifat") else None,
                     kritik_stok=cd.get("kritik_stok"),
                     tedarikci=cd.get("tedarikci", ""),
                     kullanici=request.user)
@@ -595,7 +597,7 @@ def stok_duzenle(request, pk):
         form = StokForm(duzenle=True, initial={
             "ad": stok.ad, "uretim_birimi": stok.uretim_birimi_id,
             "fatura_birimi": stok.fatura_birimi_id, "cevirici": stok.cevirici,
-            "kdv_orani": stok.kdv_orani, "tevkifat_orani": stok.tevkifat_orani,
+            "kdv": stok.kdv_id, "tevkifat": stok.tevkifat_id,
             "kritik_stok": stok.kritik_stok, "tedarikci": stok.tedarikci})
     return render(request, "core/stok_form.html",
                   {"form": form, "baslik": "Stok Düzenle", "duzenlenen": stok})

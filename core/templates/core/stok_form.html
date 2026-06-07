@@ -74,14 +74,14 @@
       <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi &amp; Stok Seviyesi</h2>
       <div class="izgara">
         <div class="alan">
-          <label for="{{ form.kdv_orani.id_for_label }}">KDV Oranı (%)</label>
-          {{ form.kdv_orani }}
-          {% for e in form.kdv_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <label for="{{ form.kdv.id_for_label }}">KDV Oranı</label>
+          {{ form.kdv }}
+          {% for e in form.kdv.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan">
-          <label for="{{ form.tevkifat_orani.id_for_label }}">Tevkifat Oranı (%)</label>
-          {{ form.tevkifat_orani }}
-          {% for e in form.tevkifat_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <label for="{{ form.tevkifat.id_for_label }}">Tevkifat Oranı</label>
+          {{ form.tevkifat }}
+          {% for e in form.tevkifat.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan">
           <label for="{{ form.kritik_stok.id_for_label }}">Kritik Stok Seviyesi</label>

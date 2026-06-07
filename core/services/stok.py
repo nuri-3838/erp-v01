@@ -16,7 +16,7 @@ from decimal import Decimal
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Birim, Kategori, Stok
+from core.models import Birim, Kategori, KdvOrani, Stok, TevkifatOrani
 from core.sayi import SayiHatasi, parse_tr
 
 
@@ -27,7 +27,8 @@ class StokHatasi(ValueError):
 def aktif_stoklar():
     """Silinmemiş stoklar (kod sırasıyla); kategori + birimler birlikte çekilir."""
     return (Stok.objects.filter(silindi=False)
-            .select_related("kategori", "kategori__ust", "uretim_birimi", "fatura_birimi")
+            .select_related("kategori", "kategori__ust", "uretim_birimi",
+                            "fatura_birimi", "kdv", "tevkifat")
             .order_by("kod"))
 
 
@@ -58,6 +59,26 @@ def _birim_coz(birim_id, etiket):
     return b
 
 
+def _kdv_coz(kdv_id):
+    """Opsiyonel KDV oranı FK çözümü (boşsa None)."""
+    if not kdv_id:
+        return None
+    k = KdvOrani.objects.filter(pk=kdv_id, silindi=False).first()
+    if k is None:
+        raise StokHatasi("KDV oranı bulunamadı.")
+    return k
+
+
+def _tevkifat_coz(tevkifat_id):
+    """Opsiyonel tevkifat oranı FK çözümü (boşsa None)."""
+    if not tevkifat_id:
+        return None
+    t = TevkifatOrani.objects.filter(pk=tevkifat_id, silindi=False).first()
+    if t is None:
+        raise StokHatasi("Tevkifat oranı bulunamadı.")
+    return t
+
+
 def _cevirici_dogrula(deger):
     try:
         c = parse_tr(deger)
@@ -80,9 +101,8 @@ def _negatif_olmaz(deger, etiket) -> Decimal:
 
 
 def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
-                 cevirici=Decimal("1"), kdv_orani=Decimal("0"),
-                 tevkifat_orani=Decimal("0"), kritik_stok=Decimal("0"),
-                 tedarikci="", kullanici=None) -> Stok:
+                 cevirici=Decimal("1"), kdv_id=None, tevkifat_id=None,
+                 kritik_stok=Decimal("0"), tedarikci="", kullanici=None) -> Stok:
     ad = _ad_dogrula(ad)
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
@@ -95,8 +115,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         kod=sonraki_stok_kodu(kategori), ad=ad, kategori=kategori,
         uretim_birimi=uretim, fatura_birimi=fatura,
         cevirici=_cevirici_dogrula(cevirici),
-        kdv_orani=_negatif_olmaz(kdv_orani, "KDV oranı"),
-        tevkifat_orani=_negatif_olmaz(tevkifat_orani, "Tevkifat oranı"),
+        kdv=_kdv_coz(kdv_id), tevkifat=_tevkifat_coz(tevkifat_id),
         kritik_stok=_negatif_olmaz(kritik_stok, "Kritik stok seviyesi"),
         tedarikci=buyuk_harf_tr((tedarikci or "").strip()),
         created_by=kullanici, updated_by=kullanici,
@@ -104,7 +123,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
 
 
 def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
-                  cevirici, kdv_orani, tevkifat_orani=Decimal("0"),
+                  cevirici, kdv_id=None, tevkifat_id=None,
                   kritik_stok=Decimal("0"), tedarikci="", kullanici=None) -> Stok:
     """Ad, birimler, çevirici, vergi/stok alanları güncellenir. KOD ve KATEGORİ DEĞİŞMEZ."""
     if stok.silindi:
@@ -113,13 +132,13 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.uretim_birimi = _birim_coz(uretim_birimi_id, "Üretim birimi")
     stok.fatura_birimi = _birim_coz(fatura_birimi_id, "Fatura birimi")
     stok.cevirici = _cevirici_dogrula(cevirici)
-    stok.kdv_orani = _negatif_olmaz(kdv_orani, "KDV oranı")
-    stok.tevkifat_orani = _negatif_olmaz(tevkifat_orani, "Tevkifat oranı")
+    stok.kdv = _kdv_coz(kdv_id)
+    stok.tevkifat = _tevkifat_coz(tevkifat_id)
     stok.kritik_stok = _negatif_olmaz(kritik_stok, "Kritik stok seviyesi")
     stok.tedarikci = buyuk_harf_tr((tedarikci or "").strip())
     stok.updated_by = kullanici
     stok.save(update_fields=["ad", "uretim_birimi", "fatura_birimi", "cevirici",
-                             "kdv_orani", "tevkifat_orani", "kritik_stok",
+                             "kdv", "tevkifat", "kritik_stok",
                              "tedarikci", "updated_by", "updated_at"])
     return stok
 

@@ -440,9 +440,14 @@ class Stok(TemelModel):
     )
     # 1 üretim birimi = cevirici × fatura birimi.
     cevirici = models.DecimalField("çevirici", max_digits=18, decimal_places=6, default=1)
-    kdv_orani = models.DecimalField("KDV oranı (%)", max_digits=5, decimal_places=2, default=0)
-    tevkifat_orani = models.DecimalField("tevkifat oranı (%)", max_digits=5,
-                                         decimal_places=2, default=0)
+    # KDV/tevkifat artık serbest sayı değil; AYARLAR tanım listelerine FK (otomatik
+    # yevmiye buradan muhasebe hesabını/oranı okur). Opsiyonel.
+    kdv = models.ForeignKey(
+        "KdvOrani", verbose_name="KDV oranı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stoklar")
+    tevkifat = models.ForeignKey(
+        "TevkifatOrani", verbose_name="tevkifat oranı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stoklar")
     # Kritik stok seviyesi: üretim biriminde miktar eşiği (Faz B'de uyarı için).
     kritik_stok = models.DecimalField("kritik stok seviyesi", max_digits=18,
                                       decimal_places=3, default=0)
@@ -459,10 +464,6 @@ class Stok(TemelModel):
                                     name="uq_stok_kod_aktif"),
             models.CheckConstraint(condition=models.Q(cevirici__gt=0),
                                    name="ck_stok_cevirici_gt0"),
-            models.CheckConstraint(condition=models.Q(kdv_orani__gte=0),
-                                   name="ck_stok_kdv_gte0"),
-            models.CheckConstraint(condition=models.Q(tevkifat_orani__gte=0),
-                                   name="ck_stok_tevkifat_gte0"),
             models.CheckConstraint(condition=models.Q(kritik_stok__gte=0),
                                    name="ck_stok_kritik_gte0"),
         ]

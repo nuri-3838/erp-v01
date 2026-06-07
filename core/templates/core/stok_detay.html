@@ -107,9 +107,9 @@
         <div class="satir"><span class="et">Fatura Birimi</span>
           <span class="dg">{{ stok.fatura_birimi.ad }} ({{ stok.fatura_birimi.kisa_ad }})</span></div>
         <div class="satir"><span class="et">KDV Oranı</span>
-          <span class="dg mono">%{{ stok.kdv_orani|tr_kur:2 }}</span></div>
+          <span class="dg">{% if stok.kdv %}<span class="mono">%{{ stok.kdv.oran|tr_kur:2 }}</span> {{ stok.kdv.aciklama }}{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Tevkifat Oranı</span>
-          <span class="dg mono">%{{ stok.tevkifat_orani|tr_kur:2 }}</span></div>
+          <span class="dg">{% if stok.tevkifat %}<span class="mono">{{ stok.tevkifat.pay }}/{{ stok.tevkifat.payda }}</span> {{ stok.tevkifat.aciklama }}{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Kritik Stok Seviyesi</span>
           <span class="dg"><span class="mono">{{ stok.kritik_stok|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</span></div>
         <div class="satir"><span class="et">Tedarikçi (Cari)</span>
