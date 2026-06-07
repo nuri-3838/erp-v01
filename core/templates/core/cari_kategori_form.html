@@ -37,11 +37,6 @@
           <p class="yardim">Bu, seçilen üstün altına bir alt kategoridir; üst değişmez.</p>
         </div>
         {% endif %}
-        <div class="alan tam">
-          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
-          {{ form.aciklama }}
-          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
       </div>
       <p class="yardim">Ad ve Kod otomatik BÜYÜK harfe çevrilir; üst grup içinde benzersizdir.</p>
     </section>

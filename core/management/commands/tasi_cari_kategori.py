@@ -49,8 +49,7 @@ class Command(BaseCommand):
                     kod=buyuk_harf_tr((r["kod"] or "").strip())).first()
                 if mevcut is None:
                     mevcut = K.cari_kategori_olustur(
-                        ad=r["ad"], kod=r["kod"], ust_id=ust_id,
-                        aciklama=r.get("aciklama", ""))
+                        ad=r["ad"], kod=r["kod"], ust_id=ust_id)
                     eklenen += 1
                 harita[r["id"]] = mevcut
                 ilerleme = True

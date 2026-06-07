@@ -527,7 +527,6 @@ class CariKategori(TemelModel):
     ust = models.ForeignKey(
         "self", verbose_name="üst kategori", null=True, blank=True,
         on_delete=models.PROTECT, related_name="alt_kategoriler")
-    aciklama = models.TextField("açıklama", blank=True)
 
     class Meta:
         db_table = "cari_kategori"

@@ -370,9 +370,6 @@ class CariKategoriForm(forms.Form):
         label="Ad", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
     kod = forms.CharField(
         label="Kod", max_length=10, widget=forms.TextInput(attrs={"autocomplete": "off"}))
-    aciklama = forms.CharField(
-        label="Açıklama", required=False,
-        widget=forms.Textarea(attrs={"rows": 2, "autocomplete": "off"}))
 
 
 class CariForm(forms.Form):

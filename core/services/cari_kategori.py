@@ -48,7 +48,7 @@ def _kod_dogrula(kod, ust_id, *, haric_pk=None):
     return kod
 
 
-def cari_kategori_olustur(*, ad, kod, ust_id=None, aciklama="", kullanici=None) -> CariKategori:
+def cari_kategori_olustur(*, ad, kod, ust_id=None, kullanici=None) -> CariKategori:
     ust = None
     if ust_id:
         ust = CariKategori.objects.filter(pk=ust_id, silindi=False).first()
@@ -60,20 +60,19 @@ def cari_kategori_olustur(*, ad, kod, ust_id=None, aciklama="", kullanici=None) 
     ad = _ad_dogrula(ad, ust.pk if ust else None)
     kod = _kod_dogrula(kod, ust.pk if ust else None)
     return CariKategori.objects.create(
-        ad=ad, kod=kod, ust=ust, aciklama=(aciklama or "").strip(),
+        ad=ad, kod=kod, ust=ust,
         created_by=kullanici, updated_by=kullanici)
 
 
-def cari_kategori_guncelle(kategori: CariKategori, *, ad, kod, aciklama="",
+def cari_kategori_guncelle(kategori: CariKategori, *, ad, kod,
                            kullanici=None) -> CariKategori:
-    """Ad + Kod + Açıklama günceller (üst kategori DEĞİŞMEZ)."""
+    """Ad + Kod günceller (üst kategori DEĞİŞMEZ)."""
     if kategori.silindi:
         raise CariKategoriHatasi("Silinmiş kategori düzenlenemez.")
     kategori.ad = _ad_dogrula(ad, kategori.ust_id, haric_pk=kategori.pk)
     kategori.kod = _kod_dogrula(kod, kategori.ust_id, haric_pk=kategori.pk)
-    kategori.aciklama = (aciklama or "").strip()
     kategori.updated_by = kullanici
-    kategori.save(update_fields=["ad", "kod", "aciklama", "updated_by", "updated_at"])
+    kategori.save(update_fields=["ad", "kod", "updated_by", "updated_at"])
     return kategori
 
 

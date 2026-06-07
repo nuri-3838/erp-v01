@@ -973,9 +973,7 @@ def cari_kategori_ekle(request):
             try:
                 k = cari_kategori_servis.cari_kategori_olustur(
                     ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
-                    ust_id=ust.pk if ust else None,
-                    aciklama=form.cleaned_data.get("aciklama", ""),
-                    kullanici=request.user)
+                    ust_id=ust.pk if ust else None, kullanici=request.user)
                 messages.success(request, f"Cari kategori eklendi: {k.ad}")
                 return redirect("core:cari_kategoriler")
             except cari_kategori_servis.CariKategoriHatasi as e:
@@ -996,15 +994,13 @@ def cari_kategori_duzenle(request, pk):
             try:
                 cari_kategori_servis.cari_kategori_guncelle(
                     kat, ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
-                    aciklama=form.cleaned_data.get("aciklama", ""),
                     kullanici=request.user)
                 messages.success(request, "Cari kategori güncellendi.")
                 return redirect("core:cari_kategoriler")
             except cari_kategori_servis.CariKategoriHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariKategoriForm(initial={"ad": kat.ad, "kod": kat.kod,
-                                         "aciklama": kat.aciklama})
+        form = CariKategoriForm(initial={"ad": kat.ad, "kod": kat.kod})
     return render(request, "core/cari_kategori_form.html",
                   {"form": form, "baslik": "Cari Kategori Düzenle", "ekle": False,
                    "ust": kat.ust, "duzenlenen": kat})

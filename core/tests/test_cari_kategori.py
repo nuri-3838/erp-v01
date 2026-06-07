@@ -46,9 +46,9 @@ class CariKategoriServisTest(TestCase):
 
     def test_guncelle(self):
         k = cari_kategori_olustur(ad="müşteriler", kod="120")
-        cari_kategori_guncelle(k, ad="müşteriler grup", kod="121", aciklama="not")
+        cari_kategori_guncelle(k, ad="müşteriler grup", kod="121")
         k.refresh_from_db()
-        self.assertEqual((k.ad, k.kod, k.aciklama), ("MÜŞTERİLER GRUP", "121", "not"))
+        self.assertEqual((k.ad, k.kod), ("MÜŞTERİLER GRUP", "121"))
 
     def test_alt_kategorili_ust_silinemez(self):
         ust = cari_kategori_olustur(ad="t", kod="320")
