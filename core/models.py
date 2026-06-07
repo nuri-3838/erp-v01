@@ -131,6 +131,7 @@ class YevmiyeFisi(TemelModel):
 
     class Kaynak(models.TextChoices):
         MANUEL = "MANUEL", "Manuel"
+        FATURA = "FATURA", "Fatura (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -737,3 +738,67 @@ class TevkifatOrani(TemelModel):
 
     def __str__(self):
         return f"{self.kod} ({self.pay}/{self.payda})"
+
+
+# === FATURALAR — Alış/Satış faturası (otomatik yevmiye üretir) ===
+class Fatura(TemelModel):
+    """Alış/Satış faturası başlığı. Kaydında otomatik DENGELİ yevmiye fişi üretilir
+    ve `fis`'e bağlanır (servis: fatura_olustur). Yön (alış/satış) `tip`ten gelir.
+
+    Muhasebe haritası: mal/gelir hesabı = stok kategorisi × fatura tipi (KategoriHesap);
+    KDV hesabı = stoğun KDV oranının borç (alış 191) / alacak (satış 391) hesabı;
+    karşı taraf = carinin muhasebe hesabı. Tutarlar satırlardan hesaplanır (saklanmaz)."""
+
+    tip = models.ForeignKey(
+        FaturaTipi, verbose_name="fatura tipi", related_name="faturalar",
+        on_delete=models.PROTECT)
+    cari = models.ForeignKey(
+        Cari, verbose_name="cari", related_name="faturalar", on_delete=models.PROTECT)
+    tarih = models.DateField("fatura tarihi")
+    fatura_no = models.CharField("fatura no", max_length=50, blank=True)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    kur = models.DecimalField("kur (TL)", max_digits=18, decimal_places=6, default=1)
+    fis = models.ForeignKey(
+        YevmiyeFisi, verbose_name="yevmiye fişi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="faturalar")
+
+    class Meta:
+        db_table = "fatura"
+        verbose_name = "fatura"
+        verbose_name_plural = "faturalar"
+        ordering = ["-tarih", "-id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(kur__gt=0), name="ck_fatura_kur_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.tip_id} {self.fatura_no} ({self.cari_id})"
+
+
+class FaturaSatir(TemelModel):
+    """Fatura kalemi: stok × miktar × birim fiyat (+ KDV oranı snapshot)."""
+
+    fatura = models.ForeignKey(
+        Fatura, verbose_name="fatura", related_name="satirlar", on_delete=models.CASCADE)
+    stok = models.ForeignKey(
+        Stok, verbose_name="stok", related_name="fatura_satirlari", on_delete=models.PROTECT)
+    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
+    birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
+    # KDV oranı snapshot (fatura anındaki); stok sonradan değişse fatura korunur.
+    kdv = models.ForeignKey(
+        KdvOrani, verbose_name="KDV oranı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fatura_satirlari")
+
+    class Meta:
+        db_table = "fatura_satir"
+        verbose_name = "fatura satırı"
+        verbose_name_plural = "fatura satırları"
+        ordering = ["fatura", "id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_fatura_satir_miktar_gt0"),
+            models.CheckConstraint(condition=models.Q(birim_fiyat__gte=0), name="ck_fatura_satir_fiyat_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.stok_id} x {self.miktar}"
