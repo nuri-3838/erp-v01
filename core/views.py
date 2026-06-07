@@ -15,13 +15,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    BirimForm, CariKategoriForm, FaturaTipiForm, FisForm, KategoriForm,
+    BirimForm, CariForm, CariKategoriForm, FaturaTipiForm, FisForm, KategoriForm,
     KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm,
     StokForm, UlkeForm,
 )
 from core.models import (
-    Birim, CariKategori, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur, Sehir,
-    Stok, Ulke, YevmiyeFisi, YevmiyeSatir,
+    Birim, Cari, CariKategori, EkranYetki, FaturaTipi, HesapPlani, Kategori, Kur,
+    Sehir, Stok, Ulke, YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -41,6 +41,7 @@ from core.services import kategori as kategori_servis
 from core.services import fatura_tipi as fatura_tipi_servis
 from core.services import lokasyon as lokasyon_servis
 from core.services import cari_kategori as cari_kategori_servis
+from core.services import cari as cari_servis
 from core.services import stok as stok_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
@@ -1019,3 +1020,95 @@ def cari_kategori_sil(request, pk):
         except cari_kategori_servis.CariKategoriHatasi as e:
             messages.error(request, str(e))
     return redirect("core:cari_kategoriler")
+
+
+# --- CARİLER modülü — Cari kartı --------------------------------------------
+def _cari_form_kw(cd):
+    """CariForm cleaned_data -> cari servis kwargs (FK'ler -> *_id)."""
+    g = lambda x: x.pk if x else None
+    return dict(
+        unvan=cd["unvan"], kategori_id=g(cd["kategori"]), kisa_ad=cd["kisa_ad"],
+        vergi_dairesi=cd["vergi_dairesi"], vkn_tckn=cd["vkn_tckn"], tax_id=cd["tax_id"],
+        telefon=cd["telefon"], telefon_2=cd["telefon_2"], eposta=cd["eposta"],
+        web=cd["web"], kep_adresi=cd["kep_adresi"],
+        ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
+        posta_kodu=cd["posta_kodu"], sevk_farkli=cd["sevk_farkli"],
+        sevk_ulke_id=g(cd["sevk_ulke"]), sevk_sehir_id=g(cd["sevk_sehir"]),
+        sevk_adres=cd["sevk_adres"], sevk_posta_kodu=cd["sevk_posta_kodu"],
+        para_birimi=cd["para_birimi"], kredi_limiti=cd["kredi_limiti"],
+        iskonto_yuzdesi=cd["iskonto_yuzdesi"], notlar=cd["notlar"])
+
+
+@ekran_gerekli("cariler")
+def cariler(request):
+    ara = (request.GET.get("ara") or "").strip()
+    qs = cari_servis.aktif_cariler()
+    if ara:
+        qs = qs.filter(
+            Q(unvan__contains=buyuk_harf_tr(ara)) | Q(kod__contains=ara)
+            | Q(vkn_tckn__contains=ara) | Q(tax_id__contains=ara))
+    return render(request, "core/cari_listesi.html", {"cariler": qs, "ara": ara})
+
+
+@ekran_gerekli("cariler")
+def cari_ekle(request):
+    if request.method == "POST":
+        form = CariForm(request.POST)
+        if form.is_valid():
+            try:
+                c = cari_servis.cari_olustur(**_cari_form_kw(form.cleaned_data),
+                                             kullanici=request.user)
+                messages.success(request, f"Cari eklendi: {c.kod} — {c.unvan}")
+                return redirect("core:cari_detay", pk=c.pk)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariForm()
+    return render(request, "core/cari_form.html", {"form": form, "baslik": "Yeni Cari"})
+
+
+@ekran_gerekli("cariler")
+def cari_duzenle(request, pk):
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CariForm(request.POST)
+        if form.is_valid():
+            try:
+                cari_servis.cari_guncelle(cari, **_cari_form_kw(form.cleaned_data),
+                                          kullanici=request.user)
+                messages.success(request, "Cari güncellendi.")
+                return redirect("core:cari_detay", pk=cari.pk)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariForm(initial={
+            "unvan": cari.unvan, "kisa_ad": cari.kisa_ad, "kategori": cari.kategori_id,
+            "vergi_dairesi": cari.vergi_dairesi, "vkn_tckn": cari.vkn_tckn,
+            "tax_id": cari.tax_id, "telefon": cari.telefon, "telefon_2": cari.telefon_2,
+            "eposta": cari.eposta, "web": cari.web, "kep_adresi": cari.kep_adresi,
+            "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
+            "posta_kodu": cari.posta_kodu, "sevk_farkli": cari.sevk_farkli,
+            "sevk_ulke": cari.sevk_ulke_id, "sevk_sehir": cari.sevk_sehir_id,
+            "sevk_adres": cari.sevk_adres, "sevk_posta_kodu": cari.sevk_posta_kodu,
+            "para_birimi": cari.para_birimi, "kredi_limiti": cari.kredi_limiti,
+            "iskonto_yuzdesi": cari.iskonto_yuzdesi, "notlar": cari.notlar})
+    return render(request, "core/cari_form.html",
+                  {"form": form, "baslik": "Cari Düzenle", "duzenlenen": cari})
+
+
+@ekran_gerekli("cariler")
+def cari_detay(request, pk):
+    cari = get_object_or_404(
+        Cari.objects.select_related("kategori", "ulke", "sehir", "sevk_ulke",
+                                    "sevk_sehir", "created_by", "updated_by"),
+        pk=pk, silindi=False)
+    return render(request, "core/cari_detay.html", {"cari": cari})
+
+
+@ekran_gerekli("cariler")
+def cari_sil(request, pk):
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.cari_sil(cari, kullanici=request.user)
+        messages.success(request, f"Cari silindi: {cari.kod}")
+    return redirect("core:cariler")

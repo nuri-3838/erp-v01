@@ -1,0 +1,131 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cariler' %}">← Cariler</a>
+    <h1 class="ust-baslik"><span class="emoji">🧑‍💼</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kimlik</h2>
+      <div class="izgara">
+        <div class="alan tam"><label for="{{ form.unvan.id_for_label }}">{{ form.unvan.label }} <span class="zorunlu">*</span></label>{{ form.unvan }}{% for e in form.unvan.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.kisa_ad.id_for_label }}">{{ form.kisa_ad.label }}</label>{{ form.kisa_ad }}</div>
+        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div>
+          <p class="yardim">Kod, kategori kod yolundan otomatik atanır.</p></div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi</h2>
+      <div class="izgara">
+        <div class="alan tam"><label for="{{ form.vergi_dairesi.id_for_label }}">{{ form.vergi_dairesi.label }}</label>{{ form.vergi_dairesi }}</div>
+        <div class="alan"><label for="{{ form.vkn_tckn.id_for_label }}">{{ form.vkn_tckn.label }}</label>{{ form.vkn_tckn }}{% for e in form.vkn_tckn.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.tax_id.id_for_label }}">{{ form.tax_id.label }}</label>{{ form.tax_id }}{% for e in form.tax_id.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📞</span>İletişim</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.telefon.id_for_label }}">{{ form.telefon.label }}</label>{{ form.telefon }}</div>
+        <div class="alan"><label for="{{ form.telefon_2.id_for_label }}">{{ form.telefon_2.label }}</label>{{ form.telefon_2 }}</div>
+        <div class="alan"><label for="{{ form.eposta.id_for_label }}">{{ form.eposta.label }}</label>{{ form.eposta }}{% for e in form.eposta.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.web.id_for_label }}">{{ form.web.label }}</label>{{ form.web }}{% for e in form.web.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.kep_adresi.id_for_label }}">{{ form.kep_adresi.label }}</label>{{ form.kep_adresi }}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📍</span>Adres</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
+        <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
+        <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}</div>
+        <div class="alan"><label for="{{ form.posta_kodu.id_for_label }}">{{ form.posta_kodu.label }}</label>{{ form.posta_kodu }}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🚚</span>Sevk Adresi</h2>
+      <div class="alan onay-alan">{{ form.sevk_farkli }} <label for="{{ form.sevk_farkli.id_for_label }}" style="display:inline">{{ form.sevk_farkli.label }}</label></div>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.sevk_ulke.id_for_label }}">{{ form.sevk_ulke.label }}</label><div class="akilli">{{ form.sevk_ulke }}</div></div>
+        <div class="alan"><label for="{{ form.sevk_sehir.id_for_label }}">{{ form.sevk_sehir.label }}</label><div class="akilli">{{ form.sevk_sehir }}</div></div>
+        <div class="alan tam"><label for="{{ form.sevk_adres.id_for_label }}">{{ form.sevk_adres.label }}</label>{{ form.sevk_adres }}</div>
+        <div class="alan"><label for="{{ form.sevk_posta_kodu.id_for_label }}">{{ form.sevk_posta_kodu.label }}</label>{{ form.sevk_posta_kodu }}</div>
+      </div>
+      <p class="yardim">“Sevk adresi farklı” işaretli değilse sevk alanları yok sayılır.</p>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">💱</span>Ticari</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}</div>
+        <div class="alan"><label for="{{ form.kredi_limiti.id_for_label }}">{{ form.kredi_limiti.label }}</label>{{ form.kredi_limiti }}{% for e in form.kredi_limiti.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.iskonto_yuzdesi.id_for_label }}">{{ form.iskonto_yuzdesi.label }}</label>{{ form.iskonto_yuzdesi }}{% for e in form.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
+      <div class="alan">{{ form.notlar }}</div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cariler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+  document.body.appendChild(gListe);
+  var aktifInp = null;
+  function konumla(inp){ var r = inp.getBoundingClientRect();
+    gListe.style.left = r.left+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = r.width+'px'; }
+  function metin(sel, v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
+    return o && o.value ? o.textContent.trim() : ''; }
+  function ac(sel, inp, filt){
+    aktifInp = inp; konumla(inp);
+    filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
+    var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
+    Array.prototype.forEach.call(sel.options, function(o){
+      var t = o.value ? o.textContent.trim() : bos;
+      if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(n++ > 80) return;
+      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
+      d.addEventListener('mousedown', function(ev){ ev.preventDefault();
+        sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none'; });
+      gListe.appendChild(d);
+    });
+    gListe.style.display = gListe.children.length ? 'block' : 'none';
+  }
+  document.querySelectorAll('select.akilli-sec').forEach(function(sel){
+    var inp = document.createElement('input'); inp.type='text'; inp.className='akilli-girdi';
+    inp.placeholder='ara / seç…'; inp.autocomplete='off';
+    sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
+    if(sel.value) inp.value = metin(sel, sel.value);
+    inp.addEventListener('focus', function(){ ac(sel, inp, sel.value?'':inp.value); });
+    inp.addEventListener('input', function(){ sel.value=''; ac(sel, inp, inp.value); });
+    inp.addEventListener('blur', function(){ setTimeout(function(){
+      gListe.style.display='none'; inp.value=metin(sel, sel.value); }, 150); });
+  });
+  window.addEventListener('scroll', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); }, true);
+  window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
+})();
+</script>
+{% endblock %}

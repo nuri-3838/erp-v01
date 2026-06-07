@@ -1,0 +1,51 @@
+{% extends "core/base.html" %}
+{% block baslik %}Cariler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Cariler{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">🧑‍💼</span>Cariler</h1>
+  <a class="dugme" href="{% url 'core:cari_ekle' %}">+ Yeni Cari</a>
+</div>
+
+<form method="get" class="kur-cek-alanlar" style="margin:.4rem 0 1rem">
+  <div class="alan" style="flex:1 1 18rem;margin:0">
+    <label for="ara">Ara (unvan / kod / VKN)</label>
+    <input type="text" id="ara" name="ara" value="{{ ara }}" autocomplete="off">
+  </div>
+  <button type="submit" class="birincil">Ara</button>
+  {% if ara %}<a href="{% url 'core:cariler' %}" style="margin-left:.4rem">Temizle</a>{% endif %}
+</form>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr><th>Kod</th><th>Unvan</th><th>Kategori</th><th>Şehir / Ülke</th>
+        <th>PB</th><th>Telefon</th><th>İşlem</th></tr>
+  </thead>
+  <tbody>
+    {% for c in cariler %}
+      <tr>
+        <td class="mono"><a href="{% url 'core:cari_detay' c.pk %}">{{ c.kod }}</a></td>
+        <td><a href="{% url 'core:cari_detay' c.pk %}" style="color:inherit;text-decoration:none;font-weight:600">{{ c.unvan }}</a></td>
+        <td>{% if c.kategori %}{{ c.kategori.ad }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if c.sehir %}{{ c.sehir.ad }}{% endif %}{% if c.ulke %} <span class="mono yardim">({{ c.ulke.kod }})</span>{% endif %}{% if not c.sehir and not c.ulke %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="mono">{{ c.para_birimi }}</td>
+        <td>{{ c.telefon|default:"—" }}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:cari_duzenle' c.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:cari_sil' c.pk %}"
+                  onsubmit="return confirm('{{ c.unvan }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim">{% if ara %}Eşleşen cari yok.{% else %}Henüz cari yok. “+ Yeni Cari” ile ekleyin.{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

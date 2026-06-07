@@ -554,3 +554,121 @@ class CariKategori(TemelModel):
                 parcalar.insert(0, k.kod)
             k = k.ust
         return "-".join(parcalar)
+
+
+class Cari(TemelModel):
+    """Cari kartı (CARİLER) — müşteri/tedarikçi. ``kod`` kategori kod yolundan otomatik
+    (örn. 320-10-0001), kategorisizse CAR-NNNN. Ödeme şekli/vade tipi v0.1'de YOK.
+    Cari hesap hareketi/ekstre Faz 4 (finans gerektirir).
+    """
+
+    PARA_CHOICES = YevmiyeSatir.IslemPB.choices   # TRY/USD/EUR/GBP
+
+    # Kimlik
+    kod = models.CharField("cari kodu", max_length=30)
+    unvan = models.CharField("unvan / ad soyad", max_length=200)
+    kisa_ad = models.CharField("kısa ad", max_length=80, blank=True)
+    kategori = models.ForeignKey(
+        CariKategori, verbose_name="kategori", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cariler")
+    # Vergi
+    vergi_dairesi = models.CharField("vergi dairesi", max_length=100, blank=True)
+    vkn_tckn = models.CharField("VKN / TCKN", max_length=15, blank=True, db_index=True)
+    tax_id = models.CharField("Tax ID (yurtdışı)", max_length=30, blank=True, db_index=True)
+    # İletişim
+    telefon = models.CharField("telefon", max_length=20, blank=True)
+    telefon_2 = models.CharField("telefon 2", max_length=20, blank=True)
+    eposta = models.EmailField("e-posta", blank=True)
+    web = models.URLField("web", blank=True)
+    kep_adresi = models.CharField("KEP", max_length=100, blank=True)
+    # Ana adres
+    ulke = models.ForeignKey(
+        Ulke, verbose_name="ülke", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cariler")
+    sehir = models.ForeignKey(
+        Sehir, verbose_name="şehir", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cariler")
+    adres = models.TextField("adres", blank=True)
+    posta_kodu = models.CharField("posta kodu", max_length=15, blank=True)
+    # Sevk adresi (farklıysa)
+    sevk_farkli = models.BooleanField("sevk adresi farklı", default=False)
+    sevk_ulke = models.ForeignKey(
+        Ulke, verbose_name="sevk ülke", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="sevk_cariler")
+    sevk_sehir = models.ForeignKey(
+        Sehir, verbose_name="sevk şehir", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="sevk_cariler")
+    sevk_adres = models.TextField("sevk adres", blank=True)
+    sevk_posta_kodu = models.CharField("sevk posta kodu", max_length=15, blank=True)
+    # Ticari
+    para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES, default="TRY")
+    kredi_limiti = models.DecimalField("kredi/risk limiti", max_digits=14, decimal_places=2, default=0)
+    iskonto_yuzdesi = models.DecimalField("varsayılan iskonto %", max_digits=5, decimal_places=2, default=0)
+    notlar = models.TextField("notlar", blank=True)
+
+    class Meta:
+        db_table = "cari"
+        verbose_name = "cari"
+        verbose_name_plural = "cariler"
+        ordering = ["unvan"]
+        indexes = [models.Index(fields=["unvan"])]
+        constraints = [
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
+                                    name="uq_cari_kod_aktif"),
+            models.UniqueConstraint(
+                fields=["vkn_tckn"],
+                condition=models.Q(silindi=False) & ~models.Q(vkn_tckn=""),
+                name="uq_cari_vkn_dolu"),
+            models.UniqueConstraint(
+                fields=["tax_id"],
+                condition=models.Q(silindi=False) & ~models.Q(tax_id=""),
+                name="uq_cari_taxid_dolu"),
+        ]
+
+    def __str__(self):
+        return f"{self.kod} — {self.unvan}" if self.kod else self.unvan
+
+
+class CariBanka(TemelModel):
+    """Cariye ait banka hesabı (çoklu)."""
+
+    cari = models.ForeignKey(Cari, verbose_name="cari", related_name="banka_hesaplari",
+                             on_delete=models.CASCADE)
+    banka_adi = models.CharField("banka", max_length=100)
+    hesap_sahibi = models.CharField("hesap sahibi", max_length=200, blank=True)
+    iban = models.CharField("IBAN", max_length=34, blank=True)
+    swift = models.CharField("SWIFT/BIC", max_length=15, blank=True)
+    para_birimi = models.CharField("para birimi", max_length=3,
+                                   choices=YevmiyeSatir.IslemPB.choices, default="TRY")
+    aciklama = models.CharField("açıklama", max_length=200, blank=True)
+    varsayilan = models.BooleanField("varsayılan", default=False)
+
+    class Meta:
+        db_table = "cari_banka"
+        verbose_name = "banka hesabı"
+        verbose_name_plural = "banka hesapları"
+        ordering = ["-varsayilan", "banka_adi"]
+
+    def __str__(self):
+        return f"{self.banka_adi} — {self.iban}"
+
+
+class CariYetkili(TemelModel):
+    """Cariye ait yetkili kişi (çoklu)."""
+
+    cari = models.ForeignKey(Cari, verbose_name="cari", related_name="yetkililer",
+                             on_delete=models.CASCADE)
+    ad_soyad = models.CharField("ad soyad", max_length=120)
+    unvan = models.CharField("görev/unvan", max_length=80, blank=True)
+    telefon = models.CharField("telefon", max_length=20, blank=True)
+    eposta = models.EmailField("e-posta", blank=True)
+    notlar = models.CharField("notlar", max_length=200, blank=True)
+
+    class Meta:
+        db_table = "cari_yetkili"
+        verbose_name = "yetkili kişi"
+        verbose_name_plural = "yetkili kişiler"
+        ordering = ["ad_soyad"]
+
+    def __str__(self):
+        return self.ad_soyad

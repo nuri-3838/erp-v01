@@ -15,7 +15,8 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Birim, FaturaTipi, HesapPlani, Kategori, Profil, Ulke, YevmiyeSatir,
+    Birim, Cari, CariKategori, FaturaTipi, HesapPlani, Kategori, Profil, Sehir,
+    Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr
 
@@ -372,3 +373,78 @@ class CariKategoriForm(forms.Form):
     aciklama = forms.CharField(
         label="Açıklama", required=False,
         widget=forms.Textarea(attrs={"rows": 2, "autocomplete": "off"}))
+
+
+class CariForm(forms.Form):
+    """Cari kartı ekle/düzenle (CARİLER). Kod OTOMATİK (formda yok). Ödeme şekli/vade YOK.
+    Büyük harf/benzersizlik/sevk temizliği serviste."""
+
+    _K = {"autocomplete": "off"}
+    # Kimlik
+    unvan = forms.CharField(label="Unvan / Ad Soyad", max_length=200,
+                            widget=forms.TextInput(attrs=_K))
+    kisa_ad = forms.CharField(label="Kısa Ad", max_length=80, required=False,
+                              widget=forms.TextInput(attrs=_K))
+    kategori = forms.ModelChoiceField(label="Kategori", queryset=CariKategori.objects.none(),
+                                      required=False, empty_label="— kategori seç —")
+    # Vergi
+    vergi_dairesi = forms.CharField(label="Vergi Dairesi", max_length=100, required=False,
+                                    widget=forms.TextInput(attrs=_K))
+    vkn_tckn = forms.CharField(label="VKN / TCKN", max_length=15, required=False,
+                               widget=forms.TextInput(attrs={**_K, "inputmode": "numeric"}))
+    tax_id = forms.CharField(label="Tax ID (yurtdışı)", max_length=30, required=False,
+                             widget=forms.TextInput(attrs=_K))
+    # İletişim
+    telefon = forms.CharField(label="Telefon", max_length=20, required=False,
+                              widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    telefon_2 = forms.CharField(label="Telefon 2", max_length=20, required=False,
+                                widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    eposta = forms.EmailField(label="E-posta", required=False,
+                              widget=forms.EmailInput(attrs=_K))
+    web = forms.URLField(label="Web", required=False, assume_scheme="https",
+                         widget=forms.URLInput(attrs=_K))
+    kep_adresi = forms.CharField(label="KEP", max_length=100, required=False,
+                                 widget=forms.TextInput(attrs=_K))
+    # Ana adres
+    ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
+                                  required=False, empty_label="— ülke seç —")
+    sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
+                                   required=False, empty_label="— şehir seç —")
+    adres = forms.CharField(label="Adres", required=False,
+                            widget=forms.Textarea(attrs={"rows": 2, **_K}))
+    posta_kodu = forms.CharField(label="Posta Kodu", max_length=15, required=False,
+                                 widget=forms.TextInput(attrs=_K))
+    # Sevk
+    sevk_farkli = forms.BooleanField(label="Sevk adresi farklı", required=False)
+    sevk_ulke = forms.ModelChoiceField(label="Sevk Ülke", queryset=Ulke.objects.none(),
+                                       required=False, empty_label="— ülke seç —")
+    sevk_sehir = forms.ModelChoiceField(label="Sevk Şehir", queryset=Sehir.objects.none(),
+                                        required=False, empty_label="— şehir seç —")
+    sevk_adres = forms.CharField(label="Sevk Adres", required=False,
+                                 widget=forms.Textarea(attrs={"rows": 2, **_K}))
+    sevk_posta_kodu = forms.CharField(label="Sevk Posta Kodu", max_length=15, required=False,
+                                      widget=forms.TextInput(attrs=_K))
+    # Ticari
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    kredi_limiti = TRDecimalField(label="Kredi/Risk Limiti", basamak=2,
+                                  initial=Decimal("0"), required=False)
+    iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
+                                     initial=Decimal("0"), required=False)
+    notlar = forms.CharField(label="Notlar", required=False,
+                             widget=forms.Textarea(attrs={"rows": 3, **_K}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cari_kategori import aktif_cari_kategoriler
+        from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
+        self.fields["kategori"].queryset = aktif_cari_kategoriler()
+        self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
+        ulk = aktif_ulkeler()
+        seh = aktif_sehirler()
+        for f in ("ulke", "sevk_ulke"):
+            self.fields[f].queryset = ulk
+        for f in ("sehir", "sevk_sehir"):
+            self.fields[f].queryset = seh
+            self.fields[f].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
+        for f in ("kategori", "ulke", "sehir", "sevk_ulke", "sevk_sehir"):
+            self.fields[f].widget.attrs["class"] = "akilli-sec"
