@@ -177,6 +177,27 @@ class IptalTest(YevmiyeTestTemel):
         self.assertEqual(f2.fis_no, 2)
 
 
+class FisGuncelleSoftDeleteTest(YevmiyeTestTemel):
+    def test_guncelleme_eski_satirlari_soft_siler(self):
+        # #2: düzenlemede eski satırlar fiziksel silinmez, silindi=True işaretlenir.
+        from decimal import Decimal as _D
+        from django.db.models import Sum
+        from core.services.yevmiye import fis_guncelle
+        f = fis_olustur(tarih=D(2026, 4, 1), satirlar=[
+            _try_satir("100", "B", "100,00"), _try_satir("600", "A", "100,00")])
+        eski_ids = list(f.satirlar.values_list("id", flat=True))
+        fis_guncelle(f, tarih=D(2026, 4, 1), satirlar=[
+            _try_satir("100", "B", "150,00"), _try_satir("600", "A", "150,00")])
+        # Eski satırlar DB'de DURUYOR ama silindi=True (iz korunur)
+        eski = YevmiyeSatir.objects.filter(id__in=eski_ids)
+        self.assertEqual(eski.count(), 2)
+        self.assertTrue(all(s.silindi for s in eski))
+        # Aktif satırlar yeni tutarla; gizli satırlar toplama girmez
+        aktif = f.satirlar.filter(silindi=False)
+        self.assertEqual(aktif.count(), 2)
+        self.assertEqual(aktif.aggregate(t=Sum("borc"))["t"], _D("150.00"))
+
+
 class KurUsdTest(YevmiyeTestTemel):
     def _kur(self, y, m, d, usd):
         obj, _ = Kur.objects.update_or_create(

@@ -203,7 +203,7 @@ def hesap_sil(*, kod, kullanici=None) -> HesapPlani:
     h = HesapPlani.objects.filter(hesap_kodu=kod, silindi=False).first()
     if h is None:
         raise HesapHatasi("Hesap bulunamadı.")
-    if YevmiyeSatir.objects.filter(hesap_id=kod).exists():
+    if YevmiyeSatir.objects.filter(hesap_id=kod, silindi=False).exists():
         raise HesapHatasi("Bu hesaba kesilmiş yevmiye satırı var; silinemez.")
     if h.alt_hesaplar.filter(silindi=False).exists():
         raise HesapHatasi("Bu hesabın alt hesabı var; önce alt hesapları silin.")

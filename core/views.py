@@ -208,7 +208,7 @@ def fis_iptal_gorunum(request, pk):
 @ekran_gerekli_herhangi("fis_ekle", "fis_listesi")
 def fis_detay(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
-    satirlar = fis.satirlar.select_related("hesap").all()
+    satirlar = fis.satirlar.filter(silindi=False).select_related("hesap")
     toplam_borc = sum((s.borc for s in satirlar), Decimal("0.00"))
     toplam_alacak = sum((s.alacak for s in satirlar), Decimal("0.00"))
     return render(
@@ -321,7 +321,8 @@ def hesap_plani(request):
         HesapPlani.objects.filter(silindi=False, ust_hesap__isnull=False)
         .values_list("ust_hesap_id", flat=True)
     )
-    yevmiyeli = set(YevmiyeSatir.objects.values_list("hesap_id", flat=True).distinct())
+    yevmiyeli = set(YevmiyeSatir.objects.filter(silindi=False)
+                    .values_list("hesap_id", flat=True).distinct())
     agac = []
     for h in HesapPlani.objects.filter(silindi=False).order_by("hesap_kodu"):
         ust = h.hesap_kodu in ust_kodlari

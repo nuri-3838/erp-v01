@@ -237,8 +237,10 @@ def fis_guncelle(fis: YevmiyeFisi, *, tarih, satirlar, aciklama="",
     fis.updated_by = kullanici
     fis.save(update_fields=["tarih", "aciklama", "kur_usd", "updated_by", "updated_at"])
 
-    # Eski satırlar fiziksel silinir, yenileri yazılır (kullanıcı kararı).
-    fis.satirlar.all().delete()
+    # Eski satırlar SOFT-DELETE ile gizlenir (iz/denetim korunur), yenileri yazılır.
+    # Raporlar/ekstre/detay zaten silindi=False filtreler -> gizli satır toplama girmez.
+    fis.satirlar.filter(silindi=False).update(
+        silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     for s in hazir:
         YevmiyeSatir.objects.create(
             fis=fis, created_by=kullanici, updated_by=kullanici, **s
