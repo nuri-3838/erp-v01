@@ -19,10 +19,10 @@ def _hesaplar():
         rapor_grubu="BILANCO", rapor_kalemi="DV")
     y1 = HesapPlani.objects.create(
         hesap_kodu="153.10", hesap_adi="ALÜMİNYUM",
-        rapor_grubu="BILANCO", rapor_kalemi="DV", ust_hesap=ust)
+        rapor_grubu="BILANCO", rapor_kalemi="DV")
     y2 = HesapPlani.objects.create(
         hesap_kodu="153.20", hesap_adi="ÇELİK",
-        rapor_grubu="BILANCO", rapor_kalemi="DV", ust_hesap=ust)
+        rapor_grubu="BILANCO", rapor_kalemi="DV")
     return ust, y1, y2
 
 

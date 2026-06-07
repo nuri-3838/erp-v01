@@ -69,19 +69,32 @@ def _kalem_dogrula(rapor_grubu, rapor_kalemi, hesap_kodu=""):
         raise HesapHatasi(f"Geçersiz rapor grubu: {rapor_grubu!r}.")
 
 
+def ust_kodu(kod: str):
+    """Koddan üst hesap kodu (320.10.0001 -> 320.10; 320 -> None). TEK hiyerarşi kaynağı."""
+    return kod.rsplit(".", 1)[0] if "." in kod else None
+
+
+def _alt_hesaplar_qs(kod: str):
+    """kod'un (silinmemiş) alt hesapları — 'kod.' önekiyle başlayan tüm hesaplar."""
+    return HesapPlani.objects.filter(hesap_kodu__startswith=kod + ".", silindi=False)
+
+
+def _ust_kod_kumesi() -> set:
+    """Silinmemiş hesapların kodlarından türetilen TÜM üst (ara/ana) hesap kodları."""
+    kodlar = HesapPlani.objects.filter(silindi=False).values_list("hesap_kodu", flat=True)
+    return {u for k in kodlar if (u := ust_kodu(k)) is not None}
+
+
 def yaprak_mi(hesap: HesapPlani) -> bool:
-    """Hesabın aktif alt hesabı yoksa yapraktır (fişe kesilebilir)."""
-    return not hesap.alt_hesaplar.filter(silindi=False).exists()
+    """Hesabın aktif alt hesabı yoksa yapraktır (fişe kesilebilir). Hiyerarşi koddan."""
+    return not _alt_hesaplar_qs(hesap.hesap_kodu).exists()
 
 
 def yaprak_hesaplar():
-    """Fişe kesilebilir hesaplar: aktif + yaprak (üst/ara hesaplar hariç)."""
-    ust_kodlari = HesapPlani.objects.filter(
-        silindi=False, ust_hesap__isnull=False
-    ).values_list("ust_hesap_id", flat=True)
+    """Fişe kesilebilir hesaplar: aktif + yaprak (üst/ara hesaplar hariç). Koddan türetilir."""
     return (
         HesapPlani.objects.filter(aktif=True, silindi=False)
-        .exclude(hesap_kodu__in=ust_kodlari)
+        .exclude(hesap_kodu__in=_ust_kod_kumesi())
         .order_by("hesap_kodu")
     )
 
@@ -96,9 +109,12 @@ def alt_kod_oner(ust: HesapPlani) -> str:
         genislik, artis, ilk = 2, 10, 10
     else:
         genislik, artis, ilk = 4, 1, 1
+    cocuk_nokta = ust.hesap_kodu.count(".") + 1
     sonlar = []
-    for c in ust.alt_hesaplar.filter(silindi=False):
-        son = c.hesap_kodu.split(".")[-1]
+    for k in _alt_hesaplar_qs(ust.hesap_kodu).values_list("hesap_kodu", flat=True):
+        if k.count(".") != cocuk_nokta:        # yalnız doğrudan çocuklar
+            continue
+        son = k.split(".")[-1]
         if son.isdigit():
             sonlar.append(int(son))
     sonraki = (max(sonlar) + artis) if sonlar else ilk
@@ -178,7 +194,7 @@ def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
     # Kalem grubuyla uyumlu mu? (ana: kullanıcı girdisi; alt: üstten miras — yine de kontrol)
     _kalem_dogrula(rapor_grubu, rapor_kalemi, kod)
     return HesapPlani.objects.create(
-        hesap_kodu=kod, hesap_adi=ad, ust_hesap=ust,
+        hesap_kodu=kod, hesap_adi=ad,
         rapor_grubu=rapor_grubu, rapor_kalemi=(rapor_kalemi or ""),
         parasal=parasal, aktif=True,
         created_by=kullanici, updated_by=kullanici,
@@ -205,7 +221,7 @@ def hesap_sil(*, kod, kullanici=None) -> HesapPlani:
         raise HesapHatasi("Hesap bulunamadı.")
     if YevmiyeSatir.objects.filter(hesap_id=kod, silindi=False).exists():
         raise HesapHatasi("Bu hesaba kesilmiş yevmiye satırı var; silinemez.")
-    if h.alt_hesaplar.filter(silindi=False).exists():
+    if _alt_hesaplar_qs(kod).exists():
         raise HesapHatasi("Bu hesabın alt hesabı var; önce alt hesapları silin.")
     h.silindi = True
     h.silindi_at = timezone.now()

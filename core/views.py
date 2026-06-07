@@ -317,10 +317,12 @@ RAPOR_KALEMLERI = [
 
 @ekran_gerekli("hesap_plani")
 def hesap_plani(request):
-    ust_kodlari = set(
-        HesapPlani.objects.filter(silindi=False, ust_hesap__isnull=False)
-        .values_list("ust_hesap_id", flat=True)
-    )
+    # Üst (ara/ana) hesap kodları KODDAN türetilir (ayrı ust_hesap FK yok).
+    ust_kodlari = set()
+    for k in (HesapPlani.objects.filter(silindi=False)
+              .values_list("hesap_kodu", flat=True)):
+        if "." in k:
+            ust_kodlari.add(k.rsplit(".", 1)[0])
     yevmiyeli = set(YevmiyeSatir.objects.filter(silindi=False)
                     .values_list("hesap_id", flat=True).distinct())
     agac = []

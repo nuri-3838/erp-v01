@@ -38,18 +38,21 @@ class HesapOlusturTest(TestCase):
         cls.u = User.objects.create_superuser("yon", password="x")
 
     def test_alt_hesap_ve_miras(self):
+        from core.services.hesap_plani import ust_kodu, yaprak_mi
         ana = HesapPlani.objects.get(hesap_kodu="320")
         alt = hesap_olustur(kod="320.10", ad="tedarikçi a", ust_kodu="320", kullanici=self.u)
-        self.assertEqual(alt.ust_hesap_id, "320")
+        self.assertEqual(ust_kodu(alt.hesap_kodu), "320")       # hiyerarşi koddan
+        self.assertFalse(yaprak_mi(ana))                        # 320 artık yaprak değil
         self.assertEqual(alt.hesap_adi, "TEDARİKÇİ A")          # TR büyük
         self.assertEqual(alt.rapor_grubu, ana.rapor_grubu)      # miras
         self.assertEqual(alt.rapor_kalemi, ana.rapor_kalemi)
         self.assertEqual(alt.parasal, ana.parasal)
 
     def test_ucuncu_seviye(self):
+        from core.services.hesap_plani import ust_kodu
         hesap_olustur(kod="320.10", ad="a", ust_kodu="320", kullanici=self.u)
         h3 = hesap_olustur(kod="320.10.0001", ad="b", ust_kodu="320.10", kullanici=self.u)
-        self.assertEqual(h3.ust_hesap_id, "320.10")
+        self.assertEqual(ust_kodu(h3.hesap_kodu), "320.10")
 
     def test_dorduncu_seviye_engellenir(self):
         hesap_olustur(kod="320.10", ad="a", ust_kodu="320", kullanici=self.u)
@@ -248,19 +251,11 @@ class HesapPlaniEkranTest(TestCase):
         self.assertFalse(HesapPlani.objects.get(hesap_kodu="100").silindi)
 
 
-class HiyerarsiCheckTest(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        call_command("seed_hesap_plani")
+class HiyerarsiKoddanTest(TestCase):
+    """ust_hesap FK kaldırıldı; hiyerarşi tek kaynaktan (kod). Türetme doğru mu?"""
 
-    def test_tutarli_seed_hata_yok(self):
-        from core.checks import hesap_hiyerarsi_tutarli
-        self.assertEqual(hesap_hiyerarsi_tutarli(None), [])
-
-    def test_ayrik_hiyerarsi_yakalanir(self):
-        from core.checks import hesap_hiyerarsi_tutarli
-        # kod noktali (100.99) ama ust_hesap None -> beklenen ust 100 -> tutarsiz
-        HesapPlani.objects.create(hesap_kodu="100.99", hesap_adi="X",
-                                  rapor_grubu="BILANCO", rapor_kalemi="DV", ust_hesap=None)
-        hatalar = hesap_hiyerarsi_tutarli(None)
-        self.assertTrue(any(h.id == "core.E001" for h in hatalar))
+    def test_ust_kodu_turetme(self):
+        from core.services.hesap_plani import ust_kodu
+        self.assertEqual(ust_kodu("320.10.0001"), "320.10")
+        self.assertEqual(ust_kodu("320.10"), "320")
+        self.assertIsNone(ust_kodu("320"))
