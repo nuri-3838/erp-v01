@@ -699,6 +699,10 @@ class KdvOrani(TemelModel):
         constraints = [
             models.CheckConstraint(condition=models.Q(oran__gte=0),
                                    name="ck_kdv_orani_gte0"),
+            # Aynı oran (ör. %20) iki kez tanımlanamaz; otomatik yevmiyede orana
+            # göre eşleştirmede belirsizlik olmasın diye benzersiz.
+            models.UniqueConstraint(fields=["oran"], condition=models.Q(silindi=False),
+                                    name="uq_kdv_oran_aktif"),
         ]
 
     def __str__(self):

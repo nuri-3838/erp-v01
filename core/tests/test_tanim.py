@@ -48,6 +48,21 @@ class KdvOraniServisTest(TestCase):
         k.refresh_from_db()
         self.assertEqual((k.aciklama, k.sira), ("İNDİRİMLİ", 5))
 
+    def test_oran_benzersiz(self):
+        kdv_orani_olustur(aciklama="genel", oran="20")
+        with self.assertRaises(TanimHatasi):
+            kdv_orani_olustur(aciklama="ikinci yirmi", oran="20")
+
+    def test_oran_benzersiz_guncellemede(self):
+        kdv_orani_olustur(aciklama="genel", oran="20")
+        k = kdv_orani_olustur(aciklama="indirimli", oran="10")
+        with self.assertRaises(TanimHatasi):
+            kdv_orani_guncelle(k, aciklama="indirimli", oran="20")
+        # kendi oranını koruyarak güncelleme serbest
+        kdv_orani_guncelle(k, aciklama="indirimli2", oran="10")
+        k.refresh_from_db()
+        self.assertEqual(k.aciklama, "İNDİRİMLİ2")
+
 
 class TevkifatOraniServisTest(TestCase):
     def test_olustur(self):

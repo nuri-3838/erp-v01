@@ -45,13 +45,24 @@ def aktif_kdv_oranlari():
             .select_related("hesap_borc", "hesap_alacak").order_by("sira", "oran"))
 
 
+def _kdv_oran_benzersiz(oran, *, haric_pk=None):
+    """Aynı KDV oranı silinmemişler arasında ikinci kez tanımlanamaz."""
+    qs = KdvOrani.objects.filter(silindi=False, oran=oran)
+    if haric_pk is not None:
+        qs = qs.exclude(pk=haric_pk)
+    if qs.exists():
+        raise TanimHatasi(f"Bu KDV oranı zaten kayıtlı: %{oran}")
+
+
 def kdv_orani_olustur(*, aciklama, oran, sira=0, hesap_borc_kodu="", hesap_alacak_kodu="",
                       kullanici=None) -> KdvOrani:
     aciklama = buyuk_harf_tr((aciklama or "").strip())
     if not aciklama:
         raise TanimHatasi("Açıklama boş olamaz.")
+    oran = _sayi(oran, "KDV oranı")
+    _kdv_oran_benzersiz(oran)
     return KdvOrani.objects.create(
-        aciklama=aciklama, oran=_sayi(oran, "KDV oranı"), sira=int(sira or 0),
+        aciklama=aciklama, oran=oran, sira=int(sira or 0),
         hesap_borc=_hesap_coz(hesap_borc_kodu), hesap_alacak=_hesap_coz(hesap_alacak_kodu),
         created_by=kullanici, updated_by=kullanici)
 
@@ -63,8 +74,10 @@ def kdv_orani_guncelle(k: KdvOrani, *, aciklama, oran, sira=0, hesap_borc_kodu="
     aciklama = buyuk_harf_tr((aciklama or "").strip())
     if not aciklama:
         raise TanimHatasi("Açıklama boş olamaz.")
+    oran = _sayi(oran, "KDV oranı")
+    _kdv_oran_benzersiz(oran, haric_pk=k.pk)
     k.aciklama = aciklama
-    k.oran = _sayi(oran, "KDV oranı")
+    k.oran = oran
     k.sira = int(sira or 0)
     k.hesap_borc = _hesap_coz(hesap_borc_kodu)
     k.hesap_alacak = _hesap_coz(hesap_alacak_kodu)
