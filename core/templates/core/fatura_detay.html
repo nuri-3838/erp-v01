@@ -34,7 +34,7 @@
   <div class="tablo-kapsayici">
   <table>
     <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
-      <th class="sag">Tutar</th><th class="sag">KDV</th></tr></thead>
+      <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
     <tbody>
       {% for s in satirlar %}
         <tr>
@@ -43,13 +43,15 @@
           <td class="sag mono">{{ s.birim_fiyat|tr_kur:2 }}</td>
           <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
           <td class="sag mono">{% if s.kdv %}%{{ s.kdv.oran|tr_kur:0 }} · {{ s.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{% if s.tevkifat %}{{ s.tevkifat.kod }} · {{ s.tevkifat_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
         </tr>
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ fatura.ara_toplam|tr_kur:2 }}</th><th></th></tr>
-      <tr><th colspan="3" class="sag">KDV Toplam</th><th></th><th class="sag mono">{{ fatura.kdv_toplam|tr_kur:2 }}</th></tr>
-      <tr><th colspan="3" class="sag">Genel Toplam</th><th colspan="2" class="sag mono">{{ fatura.genel_toplam|tr_kur:2 }} {{ fatura.para_birimi }}</th></tr>
+      <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ fatura.ara_toplam|tr_kur:2 }}</th><th></th><th></th></tr>
+      <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag mono">{{ fatura.kdv_toplam|tr_kur:2 }}</th><th></th></tr>
+      {% if fatura.tevkifat_toplam %}<tr><th colspan="3" class="sag">Tevkifat (−)</th><th></th><th></th><th class="sag mono">{{ fatura.tevkifat_toplam|tr_kur:2 }}</th></tr>{% endif %}
+      <tr><th colspan="3" class="sag">Ödenecek</th><th colspan="3" class="sag mono">{{ fatura.odenecek|tr_kur:2 }} {{ fatura.para_birimi }}</th></tr>
     </tfoot>
   </table>
   </div>

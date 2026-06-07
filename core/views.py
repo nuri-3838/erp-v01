@@ -1419,10 +1419,13 @@ def fatura_ekle(request):
     else:
         fform = FaturaForm()
         formset = FaturaSatirFormSet()
-    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
-                for s in Stok.objects.filter(silindi=False).select_related("kdv")}
+    _stoklar = list(Stok.objects.filter(silindi=False).select_related("kdv", "tevkifat"))
+    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0 for s in _stoklar}
+    stok_tevkifat = {str(s.pk): (float(s.tevkifat.pay) / float(s.tevkifat.payda))
+                     if (s.tevkifat_id and s.tevkifat.payda) else 0 for s in _stoklar}
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
+                   "stok_tevkifat": stok_tevkifat,
                    "baslik": "Yeni Fatura", "iptal_url": reverse("core:fatura_listesi")})
 
 
@@ -1465,10 +1468,13 @@ def fatura_duzenle(request, pk):
         ilk = [{"stok": s.stok_id, "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False).select_related("stok")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk)
-    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
-                for s in Stok.objects.filter(silindi=False).select_related("kdv")}
+    _stoklar = list(Stok.objects.filter(silindi=False).select_related("kdv", "tevkifat"))
+    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0 for s in _stoklar}
+    stok_tevkifat = {str(s.pk): (float(s.tevkifat.pay) / float(s.tevkifat.payda))
+                     if (s.tevkifat_id and s.tevkifat.payda) else 0 for s in _stoklar}
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
+                   "stok_tevkifat": stok_tevkifat,
                    "baslik": "Fatura Düzenle",
                    "iptal_url": reverse("core:fatura_detay", args=[fatura.pk])})
 

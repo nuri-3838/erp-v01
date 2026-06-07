@@ -787,8 +787,19 @@ class Fatura(TemelModel):
         return sum((s.kdv_tutari for s in self.satirlar.filter(silindi=False)), Decimal("0.00"))
 
     @property
+    def tevkifat_toplam(self):
+        from decimal import Decimal
+        return sum((s.tevkifat_tutari for s in self.satirlar.filter(silindi=False)), Decimal("0.00"))
+
+    @property
     def genel_toplam(self):
+        """KDV dahil brüt (mal + KDV)."""
         return self.ara_toplam + self.kdv_toplam
+
+    @property
+    def odenecek(self):
+        """Carinin borç/alacağı = mal + KDV − tevkifat (tevkifat karşı tarafa ödenmez)."""
+        return self.genel_toplam - self.tevkifat_toplam
 
 
 class FaturaSatir(TemelModel):
@@ -803,6 +814,11 @@ class FaturaSatir(TemelModel):
     # KDV oranı snapshot (fatura anındaki); stok sonradan değişse fatura korunur.
     kdv = models.ForeignKey(
         KdvOrani, verbose_name="KDV oranı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fatura_satirlari")
+    # Tevkifat oranı snapshot (varsa). Alışta KDV'nin pay/payda kadarı 360'a alacak;
+    # satışta Hesaplanan KDV o kadar azalır.
+    tevkifat = models.ForeignKey(
+        TevkifatOrani, verbose_name="tevkifat oranı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fatura_satirlari")
 
     class Meta:
@@ -829,3 +845,13 @@ class FaturaSatir(TemelModel):
         from core.sayi import yuvarla
         oran = self.kdv.oran if self.kdv_id else Decimal("0")
         return yuvarla(self.tutar * oran / Decimal("100"), 2)
+
+    @property
+    def tevkifat_tutari(self):
+        """KDV'nin tevkifata düşen (alınan/ödenen) kısmı = KDV × pay/payda."""
+        from decimal import Decimal
+        from core.sayi import yuvarla
+        if not self.tevkifat_id or not self.tevkifat.payda:
+            return Decimal("0.00")
+        return yuvarla(self.kdv_tutari * Decimal(self.tevkifat.pay)
+                       / Decimal(self.tevkifat.payda), 2)

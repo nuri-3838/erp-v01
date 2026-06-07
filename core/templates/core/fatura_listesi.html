@@ -13,7 +13,7 @@
 <table>
   <thead><tr>
     <th>Tarih</th><th>Tip</th><th>Cari</th>
-    <th class="sag">Genel Toplam</th><th>Fiş</th><th>İşlem</th>
+    <th class="sag">Ödenecek</th><th>Fiş</th><th>İşlem</th>
   </tr></thead>
   <tbody>
     {% for f in faturalar %}
@@ -22,7 +22,7 @@
         <td>{{ f.tip.ad }}</td>
         <td><a href="{% url 'core:fatura_detay' f.pk %}">{{ f.cari.unvan }}</a>
           {% if f.fatura_no %}<span class="pasif"> · {{ f.fatura_no }}</span>{% endif %}</td>
-        <td class="sag mono">{{ f.genel_toplam|tr_kur:2 }} {{ f.para_birimi }}</td>
+        <td class="sag mono">{{ f.odenecek|tr_kur:2 }} {{ f.para_birimi }}</td>
         <td>{% if f.fis %}<a class="mono" href="{% url 'core:fis_detay' f.fis.pk %}">{{ f.fis.yil }}/{{ f.fis.fis_no }}</a>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:fatura_detay' f.pk %}">Detay</a>

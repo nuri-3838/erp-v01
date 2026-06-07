@@ -88,11 +88,20 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
     kur = _kur_coz(pb, tarih)
 
     yevmiye_satirlari = []
-    kdv_hesap_toplam = {}          # hesap_kodu -> KDV tutarı (PB)
-    toplam_mal = SIFIR
-    toplam_kdv = SIFIR
-    karsi_tl = SIFIR               # mal+KDV satırlarının TL toplamı (denge için)
-    hazir = []                     # FaturaSatir için (stok, miktar, fiyat, kdv)
+    kdv_hesap_toplam = {}          # hesap_kodu -> KDV tutarı (PB) [alışta tam, satışta net]
+    tevkifat_hesap_toplam = {}     # hesap_kodu -> tevkifat tutarı (PB) [yalnız ALIŞ -> 360]
+    borc_tl = SIFIR               # cari HARİÇ borç satırlarının TL toplamı
+    alacak_tl = SIFIR             # cari HARİÇ alacak satırlarının TL toplamı
+    cari_pb = SIFIR               # carinin PB tutarı = mal + (KDV − tevkifat)
+    hazir = []                     # FaturaSatir için (stok, miktar, fiyat, kdv, tevkifat)
+
+    def _ekle(taraf, tutar_pb):
+        nonlocal borc_tl, alacak_tl
+        tl = yuvarla(tutar_pb * kur, 2)
+        if taraf == "B":
+            borc_tl += tl
+        else:
+            alacak_tl += tl
 
     for i, g in enumerate(satirlar, start=1):
         stok = Stok.objects.filter(pk=g.get("stok_id"), silindi=False).first()
@@ -113,17 +122,24 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
         kdv = stok.kdv
         oran = kdv.oran if kdv else SIFIR
         satir_kdv = yuvarla(satir_tutar * oran / Decimal("100"), 2)
-        toplam_mal += satir_tutar
-        toplam_kdv += satir_kdv
+
+        # Tevkifat (varsa): KDV'nin pay/payda kadarı
+        tevkifat = stok.tevkifat
+        tev = SIFIR
+        if tevkifat and tevkifat.payda and satir_kdv > 0:
+            tev = yuvarla(satir_kdv * Decimal(tevkifat.pay) / Decimal(tevkifat.payda), 2)
+        kdv_net = satir_kdv - tev      # cariye yansıyan KDV
 
         # Mal/gelir satırı (alış: Borç, satış: Alacak)
-        karsi_tl += yuvarla(satir_tutar * kur, 2)
+        mal_taraf = "B" if alis else "A"
+        _ekle(mal_taraf, satir_tutar)
         yevmiye_satirlari.append(SatirGirdi(
-            hesap_kodu=kh.hesap.hesap_kodu, taraf=("B" if alis else "A"),
+            hesap_kodu=kh.hesap.hesap_kodu, taraf=mal_taraf,
             islem_tutari=satir_tutar, islem_pb=pb, islem_kuru=kur, aciklama=stok.ad))
 
-        # KDV hesabı (alış: borç hesabı 191, satış: alacak hesabı 391)
-        if satir_kdv > 0:
+        # KDV hesabı — ALIŞ: 191 TAM KDV (borç); SATIŞ: 391 NET KDV (alacak)
+        kdv_post = satir_kdv if alis else kdv_net
+        if kdv_post > 0:
             if kdv is None:
                 raise FaturaHatasi(f"Satır {i}: {stok.kod} için KDV oranı tanımlı değil.")
             kdv_hesap = kdv.hesap_borc if alis else kdv.hesap_alacak
@@ -133,24 +149,44 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
                     f"Satır {i}: %{oran} KDV oranının {yer} hesabı tanımlı değil "
                     f"(AYARLAR > KDV Oranları).")
             kdv_hesap_toplam[kdv_hesap.hesap_kodu] = (
-                kdv_hesap_toplam.get(kdv_hesap.hesap_kodu, SIFIR) + satir_kdv)
+                kdv_hesap_toplam.get(kdv_hesap.hesap_kodu, SIFIR) + kdv_post)
 
-        hazir.append((stok, miktar, birim, kdv))
+        # Tevkifat — yalnız ALIŞ'ta 360'a (Ödenecek) alacak yazılır
+        if alis and tev > 0:
+            tev_hesap = tevkifat.hesap
+            if tev_hesap is None:
+                raise FaturaHatasi(
+                    f"Satır {i}: {tevkifat.kod} tevkifatının muhasebe hesabı tanımlı "
+                    f"değil (AYARLAR > Tevkifat Oranları).")
+            tevkifat_hesap_toplam[tev_hesap.hesap_kodu] = (
+                tevkifat_hesap_toplam.get(tev_hesap.hesap_kodu, SIFIR) + tev)
+
+        cari_pb += satir_tutar + kdv_net
+        hazir.append((stok, miktar, birim, kdv, tevkifat))
 
     # KDV satırları (alış: Borç, satış: Alacak)
     for hkod, tutar in kdv_hesap_toplam.items():
-        karsi_tl += yuvarla(tutar * kur, 2)
+        kdv_taraf = "B" if alis else "A"
+        _ekle(kdv_taraf, tutar)
         yevmiye_satirlari.append(SatirGirdi(
-            hesap_kodu=hkod, taraf=("B" if alis else "A"),
+            hesap_kodu=hkod, taraf=kdv_taraf,
             islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV"))
 
-    # Karşı taraf (cari): alış -> Alacak, satış -> Borç. TL'si DENGE için sayaç
-    # satırlarının TL toplamı (tl_override) -> döviz kuruş yuvarlama farkı oluşmaz.
-    genel = toplam_mal + toplam_kdv
+    # Tevkifat satırları (ALIŞ -> 360 Alacak)
+    for hkod, tutar in tevkifat_hesap_toplam.items():
+        _ekle("A", tutar)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=hkod, taraf="A",
+            islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV TEVKİFATI"))
+
+    # Karşı taraf (cari): alış -> Alacak, satış -> Borç. TL'si DENGE için diğer
+    # satırların TL'sinden türetilir (tl_override) -> döviz kuruş farkı oluşmaz.
+    cari_taraf = "A" if alis else "B"
+    cari_tl = (borc_tl - alacak_tl) if cari_taraf == "A" else (alacak_tl - borc_tl)
     yevmiye_satirlari.append(SatirGirdi(
-        hesap_kodu=cari_hesap.hesap_kodu, taraf=("A" if alis else "B"),
-        islem_tutari=genel, islem_pb=pb, islem_kuru=kur, aciklama=cari.unvan,
-        tl_override=karsi_tl))
+        hesap_kodu=cari_hesap.hesap_kodu, taraf=cari_taraf,
+        islem_tutari=cari_pb, islem_pb=pb, islem_kuru=kur, aciklama=cari.unvan,
+        tl_override=cari_tl))
 
     return tip, cari, pb, kur, yevmiye_satirlari, hazir
 
@@ -160,10 +196,10 @@ def _aciklama(tip, cari, fatura_no):
 
 
 def _satirlari_yaz(fatura, hazir, kullanici):
-    for stok, miktar, birim, kdv in hazir:
+    for stok, miktar, birim, kdv, tevkifat in hazir:
         FaturaSatir.objects.create(
             fatura=fatura, stok=stok, miktar=miktar, birim_fiyat=birim, kdv=kdv,
-            created_by=kullanici, updated_by=kullanici)
+            tevkifat=tevkifat, created_by=kullanici, updated_by=kullanici)
 
 
 @transaction.atomic

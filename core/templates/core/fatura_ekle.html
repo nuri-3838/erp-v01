@@ -5,6 +5,7 @@
 
 {% block content %}
 {{ stok_kdv|json_script:"stok-kdv" }}
+{{ stok_tevkifat|json_script:"stok-tevkifat" }}
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{{ iptal_url|default:'/faturalar/' }}">← Geri</a>
@@ -58,8 +59,9 @@
         </tbody>
         <tfoot>
           <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th></tr>
-          <tr><th colspan="3" class="sag">KDV Toplam</th><th></th><th class="sag deger" id="tKdv">0,00</th></tr>
-          <tr><th colspan="3" class="sag">Genel Toplam</th><th colspan="2" class="sag deger" id="tGenel">0,00</th></tr>
+          <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag deger" id="tKdv">0,00</th></tr>
+          <tr><th colspan="3" class="sag">Tevkifat (−)</th><th></th><th class="sag deger" id="tTev">0,00</th></tr>
+          <tr><th colspan="3" class="sag">Ödenecek</th><th colspan="2" class="sag deger" id="tGenel">0,00</th></tr>
         </tfoot>
       </table>
       </div>
@@ -86,6 +88,7 @@
 <script>
 (function(){
   var KDV = JSON.parse(document.getElementById('stok-kdv').textContent);
+  var TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
     else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
@@ -93,20 +96,24 @@
   function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
   function hesapla(){
-    var mal=0, kdv=0;
+    var mal=0, kdv=0, tev=0;
     document.querySelectorAll('.satir-form').forEach(function(r){
       var sel=el(r,'-stok'); var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
       var f=parseTR(el(r,'-birim_fiyat')?el(r,'-birim_fiyat').value:'');
       var oran=(sel&&sel.value&&KDV[sel.value]!=null)?KDV[sel.value]:0;
-      var tutar=Math.round(m*f*100)/100; var skdv=Math.round(tutar*oran)/100;
+      var ratio=(sel&&sel.value&&TEV[sel.value]!=null)?TEV[sel.value]:0;
+      var tutar=Math.round(m*f*100)/100;
+      var skdv=Math.round(tutar*oran)/100;
+      var stev=Math.round(skdv*ratio*100)/100;
       var ct=r.querySelector('.tutar'), ck=r.querySelector('.kdv');
       if(ct) ct.textContent = tutar>0?fmt(tutar):'—';
       if(ck) ck.textContent = skdv>0?fmt(skdv):'—';
-      mal+=tutar; kdv+=skdv;
+      mal+=tutar; kdv+=skdv; tev+=stev;
     });
     document.getElementById('tMal').textContent=fmt(mal);
     document.getElementById('tKdv').textContent=fmt(kdv);
-    document.getElementById('tGenel').textContent=fmt(mal+kdv);
+    document.getElementById('tTev').textContent=fmt(tev);
+    document.getElementById('tGenel').textContent=fmt(mal+kdv-tev);
   }
   function satirEkle(){
     var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);

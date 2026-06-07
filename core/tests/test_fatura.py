@@ -6,7 +6,8 @@ from decimal import Decimal
 from django.test import TestCase
 
 from core.models import (Birim, Cari, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
-                         Kategori, KategoriHesap, KdvOrani, Kur, Stok, YevmiyeFisi)
+                         Kategori, KategoriHesap, KdvOrani, Kur, Stok, TevkifatOrani,
+                         YevmiyeFisi)
 from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_iptal,
                                   fatura_olustur)
 
@@ -130,6 +131,61 @@ class DovizFaturaTest(FaturaTestTemel):
                            tarih=D(2026, 3, 10), para_birimi="GBP",   # gbp_alis yok
                            satirlar=[{"stok_id": self.stok.pk, "miktar": "1",
                                       "birim_fiyat": "100"}])
+
+
+class TevkifatTest(FaturaTestTemel):
+    def _tev(self, hesapli=True):
+        h = _hesap("360.10", "ÖDENECEK KDV TEVKİFATI", kalem="KVYK") if hesapli else None
+        tev = TevkifatOrani.objects.create(kod="5/10", pay=5, payda=10, hesap=h)
+        Stok.objects.filter(pk=self.stok.pk).update(tevkifat=tev)
+        return tev
+
+    def test_alis_tevkifat(self):
+        # 1000 mal, 200 KDV (%20), 5/10 tevkifat -> 100 tevkifat
+        self._tev()
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), satirlar=self._satir())
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["153.10"], (Decimal("1000.00"), Decimal("0.00")))   # mal
+        self.assertEqual(sat["191"], (Decimal("200.00"), Decimal("0.00")))       # TAM KDV indirilir
+        self.assertEqual(sat["360.10"], (Decimal("0.00"), Decimal("100.00")))    # tevkifat -> 360
+        self.assertEqual(sat["320.10.0001"], (Decimal("0.00"), Decimal("1100.00")))  # cari = 1000+100
+        tb = sum(s.borc for s in f.fis.satirlar.filter(silindi=False))
+        ta = sum(s.alacak for s in f.fis.satirlar.filter(silindi=False))
+        self.assertEqual(tb, ta)
+        self.assertEqual(f.tevkifat_toplam, Decimal("100.00"))
+        self.assertEqual(f.odenecek, Decimal("1100.00"))
+
+    def test_satis_tevkifat(self):
+        self._tev()
+        f = fatura_olustur(tip_id=self.satis.pk, cari_id=self.musteri.pk,
+                           tarih=D(2026, 3, 10), satirlar=self._satir())
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["600"], (Decimal("0.00"), Decimal("1000.00")))      # gelir
+        self.assertEqual(sat["391"], (Decimal("0.00"), Decimal("100.00")))       # NET KDV (200-100)
+        self.assertEqual(sat["120.10.0001"], (Decimal("1100.00"), Decimal("0.00")))  # cari borç
+        self.assertNotIn("360.10", sat)                                          # satışta 360 yok
+        tb = sum(s.borc for s in f.fis.satirlar.filter(silindi=False))
+        ta = sum(s.alacak for s in f.fis.satirlar.filter(silindi=False))
+        self.assertEqual(tb, ta)
+
+    def test_alis_tevkifat_hesabi_yoksa_hata(self):
+        self._tev(hesapli=False)
+        with self.assertRaises(FaturaHatasi):
+            fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), satirlar=self._satir())
+        self.assertEqual(YevmiyeFisi.objects.count(), 0)
+
+    def test_doviz_tevkifat_dengeli(self):
+        self._tev()
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="EUR",
+                           satirlar=[{"stok_id": self.stok.pk, "miktar": "1",
+                                      "birim_fiyat": "33,33"}])
+        tb = sum(s.borc for s in f.fis.satirlar.filter(silindi=False))
+        ta = sum(s.alacak for s in f.fis.satirlar.filter(silindi=False))
+        self.assertEqual(tb, ta)                       # döviz + tevkifat dengeli
+        self.assertEqual(f.para_birimi, "EUR")
 
 
 class FaturaGuncelleTest(FaturaTestTemel):
