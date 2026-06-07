@@ -181,6 +181,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
     unvan = buyuk_harf_tr((unvan or "").strip())
     if not unvan:
         raise CariHatasi("Unvan boş olamaz.")
+    eski_unvan = cari.unvan
     kategori = None
     if kategori_id:
         kategori = CariKategori.objects.filter(pk=kategori_id, silindi=False).first()
@@ -200,6 +201,13 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
         setattr(cari, alan, deger)
     cari.updated_by = kullanici
     cari.save()
+    # Muhasebe hesabının (yaprak) adını cari unvanıyla senkron tut.
+    if cari.muhasebe_kodu and unvan != eski_unvan:
+        try:
+            hp.hesap_adi_guncelle(kod=cari.muhasebe_kodu, yeni_ad=unvan,
+                                  kullanici=kullanici)
+        except hp.HesapHatasi:
+            pass   # hesap silinmiş/bulunamamış olabilir — cari yine güncellenir
     return cari
 
 
@@ -210,6 +218,13 @@ def cari_sil(cari: Cari, kullanici=None) -> Cari:
     cari.silindi_at = timezone.now()
     cari.updated_by = kullanici
     cari.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    # Hareketsizse cari'nin yaprak muhasebe hesabını da gizle. Yevmiye satırı
+    # varsa hesap_sil zaten reddeder (hesap korunur) — ara hesaba dokunulmaz.
+    if cari.muhasebe_kodu:
+        try:
+            hp.hesap_sil(kod=cari.muhasebe_kodu, kullanici=kullanici)
+        except hp.HesapHatasi:
+            pass
     return cari
 
 

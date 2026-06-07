@@ -222,3 +222,21 @@ class CariMuhasebeTest(TestCase):
         call_command("cari_muhasebe_ac")
         c.refresh_from_db()
         self.assertEqual(c.muhasebe_kodu, "320.10.0001")
+
+    def test_unvan_degisince_hesap_adi_senkron(self):
+        # #4: cari adı değişince yaprak muhasebe hesabının adı da güncellenir.
+        alt = self._kur()
+        c = cari_olustur(unvan="eski unvan", kategori_id=alt.pk, para_birimi="TRY")
+        cari_guncelle(c, unvan="yeni unvan", kategori_id=alt.pk, para_birimi="TRY")
+        yaprak = HesapPlani.objects.get(hesap_kodu="320.10.0001")
+        self.assertEqual(yaprak.hesap_adi, "YENİ UNVAN")
+
+    def test_sil_hareketsiz_hesabi_gizler(self):
+        # #4: hareketsiz cari silinince yaprak muhasebe hesabı da soft-delete olur.
+        alt = self._kur()
+        c = cari_olustur(unvan="silinecek", kategori_id=alt.pk, para_birimi="TRY")
+        cari_sil(c)
+        yaprak = HesapPlani.objects.get(hesap_kodu="320.10.0001")
+        self.assertTrue(yaprak.silindi)
+        # ara hesap (320.10) korunur — başka cariler paylaşabilir
+        self.assertFalse(HesapPlani.objects.get(hesap_kodu="320.10").silindi)
