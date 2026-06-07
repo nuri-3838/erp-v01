@@ -565,6 +565,9 @@ class Cari(TemelModel):
 
     # Kimlik
     kod = models.CharField("cari kodu", max_length=30)
+    # Hesap planındaki muhasebe hesap kodu (kod'un noktalı hâli, örn. 320.10.0003).
+    # Servis cari kodundan türetir ve hesap planında otomatik açar.
+    muhasebe_kodu = models.CharField("muhasebe kodu", max_length=40, blank=True, default="")
     unvan = models.CharField("unvan / ad soyad", max_length=200)
     kisa_ad = models.CharField("kısa ad", max_length=80, blank=True)
     kategori = models.ForeignKey(

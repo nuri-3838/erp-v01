@@ -26,7 +26,11 @@
           {% else %}<input type="text" id="cari-kod-onizleme" class="mono kod-salt" placeholder="(otomatik atanacak)" readonly>{% endif %}
           <p class="yardim">Otomatik; elle değişmez (kategori kod yolundan).</p></div>
         <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div></div>
-        <div class="alan tam"><label for="{{ form.kisa_ad.id_for_label }}">{{ form.kisa_ad.label }}</label>{{ form.kisa_ad }}</div>
+        <div class="alan"><label for="cari-muhasebe-onizleme">Muhasebe Kodu</label>
+          {% if duzenlenen %}<input type="text" id="cari-muhasebe-onizleme" class="mono kod-salt" value="{{ duzenlenen.muhasebe_kodu }}" readonly>
+          {% else %}<input type="text" id="cari-muhasebe-onizleme" class="mono kod-salt" placeholder="(otomatik)" readonly>{% endif %}
+          <p class="yardim">Hesap planında otomatik açılır (kod'un noktalı hâli).</p></div>
+        <div class="alan"><label for="{{ form.kisa_ad.id_for_label }}">{{ form.kisa_ad.label }}</label>{{ form.kisa_ad }}</div>
       </div>
     </section>
 
@@ -136,12 +140,15 @@
   // ---- Cari kodu canlı önizleme (yalnız ekle; düzenlemede kod sabit) ----
   var katSel = document.getElementById('id_kategori');
   var kodInp = document.getElementById('cari-kod-onizleme');
+  var muhInp = document.getElementById('cari-muhasebe-onizleme');
   if(katSel && kodInp && !kodInp.value){
     var KOD_API = '{% url "core:cari_kod_api" %}';
     function kodCek(){
       var q = katSel.value ? ('?kategori=' + encodeURIComponent(katSel.value)) : '';
       fetch(KOD_API + q).then(function(r){ return r.json(); })
-        .then(function(j){ kodInp.value = j.kod || ''; }).catch(function(){});
+        .then(function(j){ var k = j.kod || '';
+          kodInp.value = k;
+          if(muhInp) muhInp.value = k.replace(/-/g, '.'); }).catch(function(){});
     }
     katSel.addEventListener('change', kodCek);
     kodCek();

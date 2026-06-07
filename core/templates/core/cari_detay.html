@@ -61,6 +61,7 @@
     <div>
       <div class="detay-rozetler">
         <span class="d-rozet kod">{{ cari.kod }}</span>
+        {% if cari.muhasebe_kodu %}<span class="d-rozet pb">Muh: {{ cari.muhasebe_kodu }}</span>{% endif %}
         <span class="d-rozet pb">{{ cari.para_birimi }}</span>
       </div>
       <div class="detay-ad">{{ cari.unvan }}</div>

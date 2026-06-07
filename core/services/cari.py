@@ -14,7 +14,10 @@ from decimal import Decimal
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Cari, CariBanka, CariKategori, CariYetkili, Sehir, Ulke
+from core.models import (
+    Cari, CariBanka, CariKategori, CariYetkili, HesapPlani, Sehir, Ulke,
+)
+from core.services import hesap_plani as hp
 
 
 class CariHatasi(ValueError):
@@ -135,8 +138,41 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
         raise CariHatasi(f"Cari kodu zaten kayıtlı: {kod}")
-    return Cari.objects.create(kod=kod, unvan=unvan, kategori=kategori,
+    cari = Cari.objects.create(kod=kod, unvan=unvan, kategori=kategori,
                                created_by=kullanici, updated_by=kullanici, **veri)
+    muh = muhasebe_hesabi_ac(cari, kullanici=kullanici)   # hesap planında otomatik aç
+    if muh and cari.muhasebe_kodu != muh:
+        cari.muhasebe_kodu = muh
+        cari.save(update_fields=["muhasebe_kodu"])
+    return cari
+
+
+def muhasebe_hesabi_ac(cari: Cari, kullanici=None) -> str:
+    """Cari kodundan muhasebe hesabını (eksik ara hesaplarla birlikte) hesap planında
+    açar ve noktalı muhasebe kodunu döndürür. ÜST grup/kalem/parasal üstten miras alınır.
+    Ara hesap adı = cari kategorisi, yaprak hesap adı = cari unvanı. Best-effort: kök yoksa
+    ya da kod rakamsal değilse (CAR-...) boş döner. İdempotent (var olanı yeniden açmaz)."""
+    kod = (cari.kod or "").strip()
+    if not kod:
+        return ""
+    seg = kod.replace("-", ".").split(".")
+    if len(seg) < 2 or not all(s.isdigit() for s in seg):
+        return ""   # ör. CAR-0001 -> hesap planı kod kuralına uymaz
+    noktali = ".".join(seg)
+    if not HesapPlani.objects.filter(hesap_kodu=seg[0], silindi=False).exists():
+        return ""   # kök hesap (320 vb.) yoksa açma
+    for i in range(1, len(seg)):
+        prefix = ".".join(seg[:i + 1])
+        ust = ".".join(seg[:i])
+        if HesapPlani.objects.filter(hesap_kodu=prefix).exists():
+            continue
+        leaf = (i == len(seg) - 1)
+        ad = cari.unvan if leaf else (cari.kategori.ad if cari.kategori_id else prefix)
+        try:
+            hp.hesap_olustur(kod=prefix, ad=ad, ust_kodu=ust, kullanici=kullanici)
+        except hp.HesapHatasi:
+            return ""
+    return noktali
 
 
 def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) -> Cari:

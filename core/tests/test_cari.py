@@ -9,8 +9,9 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import Cari, CariKategori, EkranYetki, Sehir, Ulke
-from core.services.cari import CariHatasi, cari_guncelle, cari_olustur, cari_sil
+from core.models import Cari, CariKategori, EkranYetki, HesapPlani, Sehir, Ulke
+from core.services.cari import (CariHatasi, cari_guncelle, cari_olustur, cari_sil,
+                                muhasebe_hesabi_ac)
 
 
 def _veri():
@@ -179,3 +180,45 @@ class CariViewTest(TestCase):
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:cariler")).status_code, 403)
         self.assertEqual(self.client.get(reverse("core:cari_ekle")).status_code, 403)
+
+
+class CariMuhasebeTest(TestCase):
+    def _kur(self):
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        ust = CariKategori.objects.create(ad="TEDARİKÇİLER", kod="320")
+        alt = CariKategori.objects.create(ad="HAMMADDE", kod="10", ust=ust)
+        return alt
+
+    def test_muhasebe_hesabi_otomatik(self):
+        alt = self._kur()
+        c = cari_olustur(unvan="formal", kategori_id=alt.pk, para_birimi="TRY")
+        self.assertEqual((c.kod, c.muhasebe_kodu), ("320-10-0001", "320.10.0001"))
+        ara = HesapPlani.objects.get(hesap_kodu="320.10")
+        self.assertEqual(ara.hesap_adi, "HAMMADDE")          # ara = kategori adı
+        yaprak = HesapPlani.objects.get(hesap_kodu="320.10.0001")
+        self.assertEqual(yaprak.hesap_adi, "FORMAL")          # yaprak = cari unvanı
+        self.assertEqual(yaprak.rapor_kalemi, "KVYK")          # üstten miras
+
+    def test_ikinci_cari_ayni_ara_tek(self):
+        alt = self._kur()
+        cari_olustur(unvan="a", kategori_id=alt.pk, para_birimi="TRY")
+        c2 = cari_olustur(unvan="b", kategori_id=alt.pk, para_birimi="TRY")
+        self.assertEqual(c2.muhasebe_kodu, "320.10.0002")
+        self.assertEqual(HesapPlani.objects.filter(hesap_kodu="320.10").count(), 1)
+
+    def test_kok_yoksa_muhasebe_bos(self):
+        ust = CariKategori.objects.create(ad="T", kod="320")
+        alt = CariKategori.objects.create(ad="H", kod="10", ust=ust)
+        c = cari_olustur(unvan="x", kategori_id=alt.pk, para_birimi="TRY")
+        self.assertEqual(c.muhasebe_kodu, "")                 # kök hesap yok
+        self.assertFalse(HesapPlani.objects.filter(hesap_kodu="320.10").exists())
+
+    def test_backfill_komutu(self):
+        alt = self._kur()
+        c = cari_olustur(unvan="formal", kategori_id=alt.pk, para_birimi="TRY")
+        c.muhasebe_kodu = ""        # eski kayıt taklidi
+        c.save(update_fields=["muhasebe_kodu"])
+        call_command("cari_muhasebe_ac")
+        c.refresh_from_db()
+        self.assertEqual(c.muhasebe_kodu, "320.10.0001")
