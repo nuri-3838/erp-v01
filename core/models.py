@@ -674,3 +674,57 @@ class CariYetkili(TemelModel):
 
     def __str__(self):
         return self.ad_soyad
+
+
+# === AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) ===
+class KdvOrani(TemelModel):
+    """KDV oranı tanımı — otomatik yevmiyede indirilecek/hesaplanan KDV hesabını besler."""
+
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+    aciklama = models.CharField("açıklama", max_length=100)
+    oran = models.DecimalField("KDV oranı (%)", max_digits=5, decimal_places=2)
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kdv_oranlari")
+
+    class Meta:
+        db_table = "kdv_orani"
+        verbose_name = "KDV oranı"
+        verbose_name_plural = "KDV oranları"
+        ordering = ["sira", "oran"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(oran__gte=0),
+                                   name="ck_kdv_orani_gte0"),
+        ]
+
+    def __str__(self):
+        return f"%{self.oran} {self.aciklama}"
+
+
+class TevkifatOrani(TemelModel):
+    """Tevkifat oranı tanımı (pay/payda, örn. 5/10) — otomatik yevmiyede tevkifat hesabını besler."""
+
+    kod = models.CharField("kod", max_length=20)
+    pay = models.PositiveSmallIntegerField("pay")
+    payda = models.PositiveSmallIntegerField("payda")
+    aciklama = models.CharField("açıklama", max_length=200, blank=True)
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="tevkifat_oranlari")
+
+    class Meta:
+        db_table = "tevkifat_orani"
+        verbose_name = "tevkifat oranı"
+        verbose_name_plural = "tevkifat oranları"
+        ordering = ["kod"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(pay__gte=0),
+                                   name="ck_tevkifat_pay_gte0"),
+            models.CheckConstraint(condition=models.Q(payda__gt=0),
+                                   name="ck_tevkifat_payda_gt0"),
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
+                                    name="uq_tevkifat_kod_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.kod} ({self.pay}/{self.payda})"

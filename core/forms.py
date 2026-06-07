@@ -478,3 +478,47 @@ class CariYetkiliForm(forms.Form):
                               widget=forms.EmailInput(attrs={"autocomplete": "off"}))
     notlar = forms.CharField(label="Notlar", max_length=200, required=False,
                              widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+def _yaprak_hesap_alani(label):
+    """Tanım listeleri için ortak: yaprak hesap akıllı-arama seçimi (opsiyonel)."""
+    return forms.ModelChoiceField(
+        label=label, queryset=HesapPlani.objects.none(), required=False,
+        to_field_name="hesap_kodu", empty_label="— hesap seç (opsiyonel) —")
+
+
+class KdvOraniForm(forms.Form):
+    """KDV oranı ekle/düzenle (AYARLAR > Tanım Listeleri)."""
+
+    sira = forms.IntegerField(label="Sıra", min_value=0, initial=0,
+                              widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+    aciklama = forms.CharField(label="Açıklama", max_length=100,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    oran = TRDecimalField(label="KDV Oranı (%)", basamak=2)
+    hesap = _yaprak_hesap_alani("Muhasebe Hesap Kodu")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        self.fields["hesap"].queryset = yaprak_hesaplar()
+        self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+
+
+class TevkifatOraniForm(forms.Form):
+    """Tevkifat oranı ekle/düzenle (AYARLAR > Tanım Listeleri)."""
+
+    kod = forms.CharField(label="Kod", max_length=20,
+                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    pay = forms.IntegerField(label="Pay", min_value=0,
+                             widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+    payda = forms.IntegerField(label="Payda", min_value=1,
+                               widget=forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}))
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    hesap = _yaprak_hesap_alani("Muhasebe Hesap Kodu")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        self.fields["hesap"].queryset = yaprak_hesaplar()
+        self.fields["hesap"].widget.attrs["class"] = "akilli-sec"

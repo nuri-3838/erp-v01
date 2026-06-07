@@ -1,0 +1,37 @@
+{% extends "core/base.html" %}
+{% block baslik %}Tevkifat Oranları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Tevkifat Oranları{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:tanim_listeleri' %}">← Tanım Listeleri</a>
+    <h1 class="ust-baslik"><span class="emoji">🧮</span>Tevkifat Oranları</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:tevkifat_orani_ekle' %}">+ Yeni</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Kod</th><th class="sag">Oran</th><th>Açıklama</th>
+    <th>Muhasebe Hesabı</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for t in tevkifatlar %}
+      <tr>
+        <td class="mono">{{ t.kod }}</td>
+        <td class="sag mono">{{ t.pay }}/{{ t.payda }}</td>
+        <td>{{ t.aciklama|default:"—" }}</td>
+        <td>{% if t.hesap %}<span class="mono">{{ t.hesap.hesap_kodu }}</span> {{ t.hesap.hesap_adi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:tevkifat_orani_duzenle' t.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:tevkifat_orani_sil' t.pk %}" onsubmit="return confirm('Silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim">Henüz tevkifat oranı yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

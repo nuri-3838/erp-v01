@@ -1,0 +1,34 @@
+{% extends "core/base.html" %}
+{% block baslik %}Tanım Listeleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Tanım Listeleri{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .tanim-izgara { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:1.1rem; max-width:760px; }
+  .tanim-kart { display:flex; align-items:center; gap:1rem; padding:1.4rem 1.5rem; text-decoration:none;
+    color:var(--metin); }
+  .tanim-kart .ik { width:52px; height:52px; border-radius:14px; display:grid; place-items:center;
+    font-size:1.6rem; background:rgba(240,124,0,.14); flex:0 0 auto; }
+  .tanim-kart strong { display:block; color:var(--lacivert); font-size:1.05rem; }
+  .tanim-kart span { color:var(--metin-soluk); font-size:.85rem; }
+  .tanim-kart:hover { transform:translateY(-2px); transition:transform .15s; }
+</style>
+
+<div class="form-ust">
+  <a class="ust-link" href="{% url 'core:pano' %}">← Pano</a>
+  <h1 class="ust-baslik"><span class="emoji">🗂️</span>Tanım Listeleri</h1>
+</div>
+<p class="sayfa-alt">Otomatik muhasebeleştirmede kullanılan tanımlar.</p>
+
+<div class="tanim-izgara">
+  <a class="icerik-kart tanim-kart" href="{% url 'core:kdv_oranlari' %}">
+    <span class="ik">％</span>
+    <span><strong>KDV Oranları</strong><span>Oran + indirilecek/hesaplanan KDV hesabı</span></span>
+  </a>
+  <a class="icerik-kart tanim-kart" href="{% url 'core:tevkifat_oranlari' %}">
+    <span class="ik">🧮</span>
+    <span><strong>Tevkifat Oranları</strong><span>Pay/Payda + tevkifat hesabı</span></span>
+  </a>
+</div>
+{% endblock %}

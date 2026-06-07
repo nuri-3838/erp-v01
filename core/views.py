@@ -16,12 +16,14 @@ from django.utils import timezone
 
 from core.forms import (
     BirimForm, CariBankaForm, CariForm, CariKategoriForm, CariYetkiliForm,
-    FaturaTipiForm, FisForm, KategoriForm, KullaniciDuzenleForm, KullaniciEkleForm,
-    MizanFiltreForm, SatirForm, SehirForm, StokForm, UlkeForm,
+    FaturaTipiForm, FisForm, KategoriForm, KdvOraniForm, KullaniciDuzenleForm,
+    KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm, StokForm,
+    TevkifatOraniForm, UlkeForm,
 )
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, EkranYetki, FaturaTipi,
-    HesapPlani, Kategori, Kur, Sehir, Stok, Ulke, YevmiyeFisi, YevmiyeSatir,
+    HesapPlani, Kategori, KdvOrani, Kur, Sehir, Stok, TevkifatOrani, Ulke,
+    YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -42,6 +44,7 @@ from core.services import fatura_tipi as fatura_tipi_servis
 from core.services import lokasyon as lokasyon_servis
 from core.services import cari_kategori as cari_kategori_servis
 from core.services import cari as cari_servis
+from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
@@ -1211,3 +1214,129 @@ def yetkili_sil(request, pk):
         cari_servis.yetkili_sil(yetkili, kullanici=request.user)
         messages.success(request, "Yetkili kişi silindi.")
     return redirect("core:cari_detay", pk=yetkili.cari_id)
+
+
+# --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------
+def _hesap_kodu(cd):
+    return cd["hesap"].hesap_kodu if cd.get("hesap") else ""
+
+
+@yonetici_gerekli
+def tanim_listeleri(request):
+    return render(request, "core/tanim_listeleri.html")
+
+
+@yonetici_gerekli
+def kdv_oranlari(request):
+    return render(request, "core/kdv_orani_listesi.html",
+                  {"kdvler": tanim_servis.aktif_kdv_oranlari()})
+
+
+@yonetici_gerekli
+def kdv_orani_ekle(request):
+    if request.method == "POST":
+        form = KdvOraniForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                tanim_servis.kdv_orani_olustur(
+                    aciklama=cd["aciklama"], oran=cd["oran"], sira=cd["sira"],
+                    hesap_kodu=_hesap_kodu(cd), kullanici=request.user)
+                messages.success(request, "KDV oranı eklendi.")
+                return redirect("core:kdv_oranlari")
+            except tanim_servis.TanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KdvOraniForm()
+    return render(request, "core/kdv_orani_form.html",
+                  {"form": form, "baslik": "Yeni KDV Oranı"})
+
+
+@yonetici_gerekli
+def kdv_orani_duzenle(request, pk):
+    k = get_object_or_404(KdvOrani, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = KdvOraniForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                tanim_servis.kdv_orani_guncelle(
+                    k, aciklama=cd["aciklama"], oran=cd["oran"], sira=cd["sira"],
+                    hesap_kodu=_hesap_kodu(cd), kullanici=request.user)
+                messages.success(request, "KDV oranı güncellendi.")
+                return redirect("core:kdv_oranlari")
+            except tanim_servis.TanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KdvOraniForm(initial={"aciklama": k.aciklama, "oran": k.oran,
+                                     "sira": k.sira, "hesap": k.hesap_id})
+    return render(request, "core/kdv_orani_form.html",
+                  {"form": form, "baslik": "KDV Oranı Düzenle", "duzenlenen": k})
+
+
+@yonetici_gerekli
+def kdv_orani_sil(request, pk):
+    k = get_object_or_404(KdvOrani, pk=pk, silindi=False)
+    if request.method == "POST":
+        tanim_servis.kdv_orani_sil(k, kullanici=request.user)
+        messages.success(request, "KDV oranı silindi.")
+    return redirect("core:kdv_oranlari")
+
+
+@yonetici_gerekli
+def tevkifat_oranlari(request):
+    return render(request, "core/tevkifat_orani_listesi.html",
+                  {"tevkifatlar": tanim_servis.aktif_tevkifat_oranlari()})
+
+
+@yonetici_gerekli
+def tevkifat_orani_ekle(request):
+    if request.method == "POST":
+        form = TevkifatOraniForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                tanim_servis.tevkifat_orani_olustur(
+                    kod=cd["kod"], pay=cd["pay"], payda=cd["payda"],
+                    aciklama=cd["aciklama"], hesap_kodu=_hesap_kodu(cd),
+                    kullanici=request.user)
+                messages.success(request, "Tevkifat oranı eklendi.")
+                return redirect("core:tevkifat_oranlari")
+            except tanim_servis.TanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = TevkifatOraniForm()
+    return render(request, "core/tevkifat_orani_form.html",
+                  {"form": form, "baslik": "Yeni Tevkifat Oranı"})
+
+
+@yonetici_gerekli
+def tevkifat_orani_duzenle(request, pk):
+    t = get_object_or_404(TevkifatOrani, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = TevkifatOraniForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                tanim_servis.tevkifat_orani_guncelle(
+                    t, kod=cd["kod"], pay=cd["pay"], payda=cd["payda"],
+                    aciklama=cd["aciklama"], hesap_kodu=_hesap_kodu(cd),
+                    kullanici=request.user)
+                messages.success(request, "Tevkifat oranı güncellendi.")
+                return redirect("core:tevkifat_oranlari")
+            except tanim_servis.TanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = TevkifatOraniForm(initial={"kod": t.kod, "pay": t.pay, "payda": t.payda,
+                                          "aciklama": t.aciklama, "hesap": t.hesap_id})
+    return render(request, "core/tevkifat_orani_form.html",
+                  {"form": form, "baslik": "Tevkifat Oranı Düzenle", "duzenlenen": t})
+
+
+@yonetici_gerekli
+def tevkifat_orani_sil(request, pk):
+    t = get_object_or_404(TevkifatOrani, pk=pk, silindi=False)
+    if request.method == "POST":
+        tanim_servis.tevkifat_orani_sil(t, kullanici=request.user)
+        messages.success(request, "Tevkifat oranı silindi.")
+    return redirect("core:tevkifat_oranlari")

@@ -31,6 +31,16 @@ urlpatterns = [
     path("ayarlar/kullanici-yetkileri/", views.kullanici_yetkileri, name="kullanici_yetkileri"),
     path("ayarlar/yedek/", views.yedek_yonetim, name="yedek"),
     path("ayarlar/yedek/indir/<str:ad>/", views.yedek_indir, name="yedek_indir"),
+    # AYARLAR > Tanım Listeleri
+    path("ayarlar/tanimlar/", views.tanim_listeleri, name="tanim_listeleri"),
+    path("ayarlar/tanimlar/kdv/", views.kdv_oranlari, name="kdv_oranlari"),
+    path("ayarlar/tanimlar/kdv/ekle/", views.kdv_orani_ekle, name="kdv_orani_ekle"),
+    path("ayarlar/tanimlar/kdv/<int:pk>/duzenle/", views.kdv_orani_duzenle, name="kdv_orani_duzenle"),
+    path("ayarlar/tanimlar/kdv/<int:pk>/sil/", views.kdv_orani_sil, name="kdv_orani_sil"),
+    path("ayarlar/tanimlar/tevkifat/", views.tevkifat_oranlari, name="tevkifat_oranlari"),
+    path("ayarlar/tanimlar/tevkifat/ekle/", views.tevkifat_orani_ekle, name="tevkifat_orani_ekle"),
+    path("ayarlar/tanimlar/tevkifat/<int:pk>/duzenle/", views.tevkifat_orani_duzenle, name="tevkifat_orani_duzenle"),
+    path("ayarlar/tanimlar/tevkifat/<int:pk>/sil/", views.tevkifat_orani_sil, name="tevkifat_orani_sil"),
     # STOKLAR modülü
     path("stoklar/", views.stoklar, name="stoklar"),
     path("stoklar/ekle/", views.stok_ekle, name="stok_ekle"),
