@@ -1,0 +1,39 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Faturalar · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Faturalar{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div><h1 class="ust-baslik"><span class="emoji">🧾</span>Faturalar</h1></div>
+  <a class="dugme" href="{% url 'core:fatura_ekle' %}">+ Yeni Fatura</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr>
+    <th>Tarih</th><th>Tip</th><th>Cari</th>
+    <th class="sag">Genel Toplam</th><th>Fiş</th><th>İşlem</th>
+  </tr></thead>
+  <tbody>
+    {% for f in faturalar %}
+      <tr>
+        <td class="mono">{{ f.tarih|date:"d.m.Y" }}</td>
+        <td>{{ f.tip.ad }}</td>
+        <td><a href="{% url 'core:fatura_detay' f.pk %}">{{ f.cari.unvan }}</a>
+          {% if f.fatura_no %}<span class="pasif"> · {{ f.fatura_no }}</span>{% endif %}</td>
+        <td class="sag mono">{{ f.genel_toplam|tr_kur:2 }} {{ f.para_birimi }}</td>
+        <td>{% if f.fis %}<a class="mono" href="{% url 'core:fis_detay' f.fis.pk %}">{{ f.fis.yil }}/{{ f.fis.fis_no }}</a>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:fatura_detay' f.pk %}">Detay</a>
+          <form method="post" action="{% url 'core:fatura_iptal' f.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim">Henüz fatura yok. “+ Yeni Fatura” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

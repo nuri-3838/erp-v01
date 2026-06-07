@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fatura · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fatura{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fatura_listesi' %}">← Faturalar</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ fatura.tip.ad }}{% if fatura.fatura_no %} · {{ fatura.fatura_no }}{% endif %}</h1>
+  </div>
+  {% if not fatura.silindi %}
+  <form method="post" action="{% url 'core:fatura_iptal' fatura.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
+    {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+  {% endif %}
+</div>
+
+{% if fatura.silindi %}<div class="uyari"><div>⚠️ Bu fatura iptal edilmiş.</div></div>{% endif %}
+
+<section class="icerik-kart">
+  <div class="satir"><span class="et">Cari</span>
+    <span class="dg"><span class="mono">{{ fatura.cari.kod }}</span> {{ fatura.cari.unvan }}</span></div>
+  <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ fatura.tarih|date:"d.m.Y" }}</span></div>
+  <div class="satir"><span class="et">Para Birimi</span><span class="dg">{{ fatura.para_birimi }}{% if fatura.para_birimi != "TRY" %} (kur {{ fatura.kur|tr_kur:4 }}){% endif %}</span></div>
+  <div class="satir"><span class="et">Yevmiye Fişi</span>
+    <span class="dg">{% if fatura.fis %}<a class="mono" href="{% url 'core:fis_detay' fatura.fis.pk %}">{{ fatura.fis.yil }}/{{ fatura.fis.fis_no }}</a>{% else %}—{% endif %}</span></div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Kalemler</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
+      <th class="sag">Tutar</th><th class="sag">KDV</th></tr></thead>
+    <tbody>
+      {% for s in satirlar %}
+        <tr>
+          <td><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td>
+          <td class="sag mono">{{ s.miktar|tr_kur:3 }}</td>
+          <td class="sag mono">{{ s.birim_fiyat|tr_kur:2 }}</td>
+          <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
+          <td class="sag mono">{% if s.kdv %}%{{ s.kdv.oran|tr_kur:0 }} · {{ s.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ fatura.ara_toplam|tr_kur:2 }}</th><th></th></tr>
+      <tr><th colspan="3" class="sag">KDV Toplam</th><th></th><th class="sag mono">{{ fatura.kdv_toplam|tr_kur:2 }}</th></tr>
+      <tr><th colspan="3" class="sag">Genel Toplam</th><th colspan="2" class="sag mono">{{ fatura.genel_toplam|tr_kur:2 }} {{ fatura.para_birimi }}</th></tr>
+    </tfoot>
+  </table>
+  </div>
+</section>
+{% endblock %}

@@ -16,12 +16,12 @@ from django.utils import timezone
 
 from core.forms import (
     BirimForm, CariBankaForm, CariForm, CariKategoriForm, CariYetkiliForm,
-    FaturaTipiForm, FisForm, KategoriForm, KdvOraniForm, KullaniciDuzenleForm,
-    KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm, StokForm,
-    TevkifatOraniForm, UlkeForm,
+    FaturaForm, FaturaSatirForm, FaturaTipiForm, FisForm, KategoriForm, KdvOraniForm,
+    KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm,
+    StokForm, TevkifatOraniForm, UlkeForm,
 )
 from core.models import (
-    Birim, Cari, CariBanka, CariKategori, CariYetkili, EkranYetki, FaturaTipi,
+    Birim, Cari, CariBanka, CariKategori, CariYetkili, EkranYetki, Fatura, FaturaTipi,
     HesapPlani, Kategori, KdvOrani, Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
@@ -46,6 +46,7 @@ from core.services import cari_kategori as cari_kategori_servis
 from core.services import cari as cari_servis
 from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
+from core.services import fatura as fatura_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -1360,3 +1361,68 @@ def tevkifat_orani_sil(request, pk):
         except tanim_servis.TanimHatasi as e:
             messages.error(request, str(e))
     return redirect("core:tevkifat_oranlari")
+
+
+# === FATURALAR — Alış/Satış faturası (otomatik yevmiye) ===
+FaturaSatirFormSet = formset_factory(FaturaSatirForm, extra=0, min_num=1, validate_min=True)
+
+
+@ekran_gerekli("faturalar")
+def fatura_listesi(request):
+    faturalar = fatura_servis.aktif_faturalar().prefetch_related("satirlar__kdv")
+    sayfa = Paginator(faturalar, 50).get_page(request.GET.get("sayfa"))
+    return render(request, "core/fatura_listesi.html", {"faturalar": sayfa})
+
+
+@ekran_gerekli("faturalar")
+def fatura_ekle(request):
+    if request.method == "POST":
+        fform = FaturaForm(request.POST)
+        formset = FaturaSatirFormSet(request.POST)
+        if fform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk,
+                 "miktar": f.cleaned_data["miktar"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
+                for f in formset if f.dolu_mu()
+            ]
+            try:
+                fatura = fatura_servis.fatura_olustur(
+                    tip_id=fform.cleaned_data["tip"].pk,
+                    cari_id=fform.cleaned_data["cari"].pk,
+                    tarih=fform.cleaned_data["tarih"],
+                    fatura_no=fform.cleaned_data.get("fatura_no", ""),
+                    para_birimi="TRY",
+                    satirlar=satirlar,
+                    kullanici=request.user,
+                )
+                messages.success(
+                    request, f"Fatura kaydedildi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu.")
+                return redirect("core:fatura_detay", pk=fatura.pk)
+            except fatura_servis.FaturaHatasi as e:
+                fform.add_error(None, str(e))
+    else:
+        fform = FaturaForm()
+        formset = FaturaSatirFormSet()
+    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
+                for s in Stok.objects.filter(silindi=False).select_related("kdv")}
+    return render(request, "core/fatura_ekle.html",
+                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv})
+
+
+@ekran_gerekli("faturalar")
+def fatura_detay(request, pk):
+    fatura = get_object_or_404(
+        Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
+    satirlar = fatura.satirlar.select_related("stok", "kdv").all()
+    return render(request, "core/fatura_detay.html",
+                  {"fatura": fatura, "satirlar": satirlar})
+
+
+@ekran_gerekli("faturalar")
+def fatura_iptal_gorunum(request, pk):
+    fatura = get_object_or_404(Fatura, pk=pk, silindi=False)
+    if request.method == "POST":
+        fatura_servis.fatura_iptal(fatura, kullanici=request.user)
+        messages.success(request, "Fatura ve bağlı fiş iptal edildi.")
+    return redirect("core:fatura_listesi")

@@ -775,6 +775,21 @@ class Fatura(TemelModel):
     def __str__(self):
         return f"{self.tip_id} {self.fatura_no} ({self.cari_id})"
 
+    # --- Görüntüleme toplamları (fatura para biriminde; saklanmaz, satırdan) ---
+    @property
+    def ara_toplam(self):
+        from decimal import Decimal
+        return sum((s.tutar for s in self.satirlar.all()), Decimal("0.00"))
+
+    @property
+    def kdv_toplam(self):
+        from decimal import Decimal
+        return sum((s.kdv_tutari for s in self.satirlar.all()), Decimal("0.00"))
+
+    @property
+    def genel_toplam(self):
+        return self.ara_toplam + self.kdv_toplam
+
 
 class FaturaSatir(TemelModel):
     """Fatura kalemi: stok × miktar × birim fiyat (+ KDV oranı snapshot)."""
@@ -802,3 +817,15 @@ class FaturaSatir(TemelModel):
 
     def __str__(self):
         return f"{self.stok_id} x {self.miktar}"
+
+    @property
+    def tutar(self):
+        from core.sayi import yuvarla
+        return yuvarla(self.miktar * self.birim_fiyat, 2)
+
+    @property
+    def kdv_tutari(self):
+        from decimal import Decimal
+        from core.sayi import yuvarla
+        oran = self.kdv.oran if self.kdv_id else Decimal("0")
+        return yuvarla(self.tutar * oran / Decimal("100"), 2)
