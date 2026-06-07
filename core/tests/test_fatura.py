@@ -7,7 +7,8 @@ from django.test import TestCase
 
 from core.models import (Birim, Cari, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          Kategori, KategoriHesap, KdvOrani, Kur, Stok, YevmiyeFisi)
-from core.services.fatura import FaturaHatasi, fatura_iptal, fatura_olustur
+from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_iptal,
+                                  fatura_olustur)
 
 D = datetime.date
 
@@ -129,6 +130,33 @@ class DovizFaturaTest(FaturaTestTemel):
                            tarih=D(2026, 3, 10), para_birimi="GBP",   # gbp_alis yok
                            satirlar=[{"stok_id": self.stok.pk, "miktar": "1",
                                       "birim_fiyat": "100"}])
+
+
+class FaturaGuncelleTest(FaturaTestTemel):
+    def test_guncelle_fisi_yeniler(self):
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), fatura_no="A-1", satirlar=self._satir())
+        fis_pk = f.fis_id
+        fis_no = f.fis.fis_no
+        eski_ids = list(f.satirlar.values_list("id", flat=True))
+        fatura_guncelle(f, tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                        tarih=D(2026, 3, 10), fatura_no="A-1",
+                        satirlar=[{"stok_id": self.stok.pk, "miktar": "20",
+                                   "birim_fiyat": "100"}])
+        f.refresh_from_db()
+        self.assertEqual(f.fis_id, fis_pk)               # aynı fiş (no korunur)
+        self.assertEqual(f.fis.fis_no, fis_no)
+        self.assertEqual(f.genel_toplam, Decimal("2400.00"))   # 20×100×1,20
+        self.assertEqual(f.satirlar.filter(silindi=False).count(), 1)
+        eski = FaturaSatir.objects.filter(id__in=eski_ids)
+        self.assertTrue(all(s.silindi for s in eski))    # eski satırlar soft-delete
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["153.10"], (Decimal("2000.00"), Decimal("0.00")))
+        self.assertEqual(sat["191"], (Decimal("400.00"), Decimal("0.00")))
+        self.assertEqual(sat["320.10.0001"], (Decimal("0.00"), Decimal("2400.00")))
+        tb = sum(s.borc for s in f.fis.satirlar.filter(silindi=False))
+        ta = sum(s.alacak for s in f.fis.satirlar.filter(silindi=False))
+        self.assertEqual(tb, ta)
 
 
 class FaturaIptalTest(FaturaTestTemel):

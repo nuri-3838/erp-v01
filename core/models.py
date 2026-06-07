@@ -779,12 +779,12 @@ class Fatura(TemelModel):
     @property
     def ara_toplam(self):
         from decimal import Decimal
-        return sum((s.tutar for s in self.satirlar.all()), Decimal("0.00"))
+        return sum((s.tutar for s in self.satirlar.filter(silindi=False)), Decimal("0.00"))
 
     @property
     def kdv_toplam(self):
         from decimal import Decimal
-        return sum((s.kdv_tutari for s in self.satirlar.all()), Decimal("0.00"))
+        return sum((s.kdv_tutari for s in self.satirlar.filter(silindi=False)), Decimal("0.00"))
 
     @property
     def genel_toplam(self):

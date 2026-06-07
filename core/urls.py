@@ -19,6 +19,7 @@ urlpatterns = [
     path("fis/<int:pk>/iptal/", views.fis_iptal_gorunum, name="fis_iptal"),
     path("faturalar/", views.fatura_listesi, name="fatura_listesi"),
     path("faturalar/ekle/", views.fatura_ekle, name="fatura_ekle"),
+    path("faturalar/<int:pk>/duzenle/", views.fatura_duzenle, name="fatura_duzenle"),
     path("faturalar/<int:pk>/", views.fatura_detay, name="fatura_detay"),
     path("faturalar/<int:pk>/iptal/", views.fatura_iptal_gorunum, name="fatura_iptal"),
     path("mizan/", views.mizan_gorunum, name="mizan"),

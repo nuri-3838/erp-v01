@@ -1,14 +1,14 @@
 {% extends "core/base.html" %}
-{% block baslik %}Yeni Fatura · ERP v0.1{% endblock %}
-{% block sayfa_adi %}Yeni Fatura{% endblock %}
+{% block baslik %}{{ baslik|default:"Yeni Fatura" }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik|default:"Yeni Fatura" }}{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
 {{ stok_kdv|json_script:"stok-kdv" }}
 <div class="form-kapsa">
   <div class="form-ust">
-    <a class="ust-link" href="{% url 'core:fatura_listesi' %}">← Faturalar</a>
-    <h1 class="ust-baslik"><span class="emoji">🧾</span>Yeni Fatura</h1>
+    <a class="ust-link" href="{{ iptal_url|default:'/faturalar/' }}">← Geri</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik|default:"Yeni Fatura" }}</h1>
   </div>
 
   {% if fform.non_field_errors %}
@@ -77,7 +77,7 @@
     </template>
 
     <div class="form-altbar">
-      <a class="iptal-bag" href="{% url 'core:fatura_listesi' %}">İptal</a>
+      <a class="iptal-bag" href="{{ iptal_url|default:'/faturalar/' }}">İptal</a>
       <button type="submit" class="birincil">Faturayı kaydet</button>
     </div>
   </form>

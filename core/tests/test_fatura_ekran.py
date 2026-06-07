@@ -97,6 +97,39 @@ class FaturaEkranTest(TestCase):
         self.assertTrue(f.silindi)
         self.assertTrue(YevmiyeFisi.objects.get(pk=fis_id).silindi)
 
+    def test_duzenle_post(self):
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        f = Fatura.objects.get(fatura_no="A-1")
+        r = self.client.post(reverse("core:fatura_duzenle", args=[f.pk]),
+                             self._post_data(miktar="20"))
+        self.assertEqual(r.status_code, 302)
+        f.refresh_from_db()
+        self.assertEqual(f.genel_toplam, Decimal("2400.00"))     # 20×100×1,20
+        self.assertEqual(f.satirlar.filter(silindi=False).count(), 1)
+
+    def test_fatura_fisi_dogrudan_duzenlenemez(self):
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        f = Fatura.objects.get(fatura_no="A-1")
+        r = self.client.get(reverse("core:fis_duzenle", args=[f.fis_id]))
+        self.assertEqual(r.status_code, 302)
+        self.assertIn(reverse("core:fatura_duzenle", args=[f.pk]), r.url)
+
+    def test_doviz_fis_duzenle_islem_tutari_gosterir(self):
+        # #bug: döviz fişte düzenleme kutusu TL'yi (1500) değil işlem tutarını (50) gösterir
+        from core.services.yevmiye import SatirGirdi, fis_olustur
+        fis = fis_olustur(tarih=D(2026, 3, 10), kullanici=self.yon, satirlar=[
+            SatirGirdi(hesap_kodu="153.10", taraf="B", islem_tutari="50",
+                       islem_pb="USD", islem_kuru="30"),
+            SatirGirdi(hesap_kodu="320.10.0001", taraf="A", islem_tutari="50",
+                       islem_pb="USD", islem_kuru="30")])
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:fis_duzenle", args=[fis.pk]))
+        self.assertEqual(r.status_code, 200)
+        ilk = r.context["formset"].forms[0].initial
+        self.assertEqual(ilk["borc"], Decimal("50.00"))          # işlem tutarı, 1500 TL değil
+
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:fatura_listesi")).status_code, 403)

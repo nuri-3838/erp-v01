@@ -20,8 +20,8 @@ from core.metin import buyuk_harf_tr
 from core.models import (Cari, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          KategoriHesap, Kur, Stok, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
-                                   fis_olustur)
+from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
+                                   fis_iptal, fis_olustur)
 
 SIFIR = Decimal("0.00")
 
@@ -62,15 +62,9 @@ def _kur_coz(pb, tarih):
     return deger
 
 
-@transaction.atomic
-def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
-                   para_birimi="TRY", kullanici=None) -> Fatura:
-    """Faturayı + otomatik dengeli yevmiye fişini atomik oluşturur.
-
-    `satirlar`: dict listesi [{stok_id, miktar, birim_fiyat}]. Para birimi TRY değilse
-    kur fiş tarihinin TCMB kurundan ÇÖZÜLÜR. Eksik muhasebe haritası / kur yok /
-    dengesizlik -> FaturaHatasi (hiçbir şey kaydedilmez).
-    """
+def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
+    """Ortak hazırlık (oluştur+güncelle): doğrula, kur çöz, yevmiye satırlarını ve
+    FaturaSatir verisini kur. (tip, cari, pb, kur, yevmiye_satirlari, hazir) döner."""
     tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first()
     if tip is None:
         raise FaturaHatasi("Fatura tipi bulunamadı.")
@@ -158,21 +152,70 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
         islem_tutari=genel, islem_pb=pb, islem_kuru=kur, aciklama=cari.unvan,
         tl_override=karsi_tl))
 
-    fatura_no = (fatura_no or "").strip()
-    aciklama = buyuk_harf_tr(f"{tip.ad} - {cari.unvan}" + (f" - {fatura_no}" if fatura_no else ""))
-    try:
-        fis = fis_olustur(tarih=tarih, satirlar=yevmiye_satirlari, aciklama=aciklama,
-                          kur_usd=None, kaynak=YevmiyeFisi.Kaynak.FATURA, kullanici=kullanici)
-    except YevmiyeHatasi as e:
-        raise FaturaHatasi(str(e))
+    return tip, cari, pb, kur, yevmiye_satirlari, hazir
 
-    fatura = Fatura.objects.create(
-        tip=tip, cari=cari, tarih=tarih, fatura_no=fatura_no, para_birimi=pb,
-        kur=kur, fis=fis, created_by=kullanici, updated_by=kullanici)
+
+def _aciklama(tip, cari, fatura_no):
+    return buyuk_harf_tr(f"{tip.ad} - {cari.unvan}" + (f" - {fatura_no}" if fatura_no else ""))
+
+
+def _satirlari_yaz(fatura, hazir, kullanici):
     for stok, miktar, birim, kdv in hazir:
         FaturaSatir.objects.create(
             fatura=fatura, stok=stok, miktar=miktar, birim_fiyat=birim, kdv=kdv,
             created_by=kullanici, updated_by=kullanici)
+
+
+@transaction.atomic
+def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
+                   para_birimi="TRY", kullanici=None) -> Fatura:
+    """Faturayı + otomatik dengeli yevmiye fişini atomik oluşturur. Para birimi TRY
+    değilse kur fiş tarihinin TCMB kurundan çözülür. Eksik harita / kur yok /
+    dengesizlik -> FaturaHatasi (hiçbir şey kaydedilmez)."""
+    tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
+        tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
+        para_birimi=para_birimi)
+    fatura_no = (fatura_no or "").strip()
+    try:
+        fis = fis_olustur(tarih=tarih, satirlar=yevmiye_satirlari,
+                          aciklama=_aciklama(tip, cari, fatura_no), kur_usd=None,
+                          kaynak=YevmiyeFisi.Kaynak.FATURA, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise FaturaHatasi(str(e))
+    fatura = Fatura.objects.create(
+        tip=tip, cari=cari, tarih=tarih, fatura_no=fatura_no, para_birimi=pb,
+        kur=kur, fis=fis, created_by=kullanici, updated_by=kullanici)
+    _satirlari_yaz(fatura, hazir, kullanici)
+    return fatura
+
+
+@transaction.atomic
+def fatura_guncelle(fatura: Fatura, *, tip_id, cari_id, tarih, satirlar,
+                    fatura_no="", para_birimi="TRY", kullanici=None) -> Fatura:
+    """Faturayı + bağlı yevmiye fişini günceller (fiş no/yıl korunur). Eski FaturaSatır
+    ve fiş satırları soft-delete edilir, yenileri yazılır. Atomik."""
+    from django.utils import timezone
+    if fatura.silindi:
+        raise FaturaHatasi("Silinmiş fatura düzenlenemez.")
+    if fatura.fis_id is None or fatura.fis.silindi:
+        raise FaturaHatasi("Faturanın aktif yevmiye fişi yok; düzenlenemez.")
+    tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
+        tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
+        para_birimi=para_birimi)
+    fatura_no = (fatura_no or "").strip()
+    try:
+        fis_guncelle(fatura.fis, tarih=tarih, satirlar=yevmiye_satirlari,
+                     aciklama=_aciklama(tip, cari, fatura_no), kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise FaturaHatasi(str(e))
+    fatura.tip, fatura.cari, fatura.tarih = tip, cari, tarih
+    fatura.fatura_no, fatura.para_birimi, fatura.kur = fatura_no, pb, kur
+    fatura.updated_by = kullanici
+    fatura.save(update_fields=["tip", "cari", "tarih", "fatura_no", "para_birimi",
+                               "kur", "updated_by", "updated_at"])
+    fatura.satirlar.filter(silindi=False).update(
+        silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    _satirlari_yaz(fatura, hazir, kullanici)
     return fatura
 
 

@@ -26,6 +26,7 @@
         <td>{% if f.fis %}<a class="mono" href="{% url 'core:fis_detay' f.fis.pk %}">{{ f.fis.yil }}/{{ f.fis.fis_no }}</a>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:fatura_detay' f.pk %}">Detay</a>
+          <a href="{% url 'core:fatura_duzenle' f.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:fatura_iptal' f.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
         </span></td>

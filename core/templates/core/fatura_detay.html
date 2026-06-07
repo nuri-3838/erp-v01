@@ -10,8 +10,11 @@
     <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ fatura.tip.ad }}{% if fatura.fatura_no %} · {{ fatura.fatura_no }}{% endif %}</h1>
   </div>
   {% if not fatura.silindi %}
-  <form method="post" action="{% url 'core:fatura_iptal' fatura.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
-    {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+  <span class="islem-bag">
+    <a class="dugme" href="{% url 'core:fatura_duzenle' fatura.pk %}">Düzenle</a>
+    <form method="post" action="{% url 'core:fatura_iptal' fatura.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
+      {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+  </span>
   {% endif %}
 </div>
 

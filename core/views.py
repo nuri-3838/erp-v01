@@ -162,6 +162,10 @@ def fis_duzenle(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
     if fis.silindi:
         return redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.FATURA:
+        fat = fis.faturalar.filter(silindi=False).first()
+        messages.info(request, "Bu fiş bir faturadan oluştu; düzenlemek için faturayı düzenleyin.")
+        return redirect("core:fatura_duzenle", pk=fat.pk) if fat else redirect("core:fis_detay", pk=fis.pk)
 
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -183,12 +187,18 @@ def fis_duzenle(request, pk):
         fform = FisForm(initial={
             "tarih": fis.tarih, "aciklama": fis.aciklama,
         })
-        ilk = [
-            {"hesap": s.hesap_id, "islem_pb": s.islem_pb,
-             "borc": s.borc or None, "alacak": s.alacak or None,
-             "islem_kuru": s.islem_kuru, "aciklama": s.aciklama}
-            for s in fis.satirlar.filter(silindi=False).select_related("hesap")
-        ]
+        # NOT: Borç/Alacak alanları İŞLEM TUTARINI (döviz) taşır; TL değil. Döviz
+        # fişte TL = islem_tutari × kur olduğundan kutuya islem_tutari konur (çift
+        # çevrim olmaz). TRY'de islem_tutari == TL zaten.
+        ilk = []
+        for s in fis.satirlar.filter(silindi=False).select_related("hesap"):
+            borc_taraf = bool(s.borc and s.borc > 0)
+            ilk.append({
+                "hesap": s.hesap_id, "islem_pb": s.islem_pb,
+                "borc": s.islem_tutari if borc_taraf else None,
+                "alacak": None if borc_taraf else s.islem_tutari,
+                "islem_kuru": s.islem_kuru, "aciklama": s.aciklama,
+            })
         formset = SatirFormSet(initial=ilk)
     return render(request, "core/fis_duzenle.html",
                   {"fform": fform, "formset": formset, "fis": fis})
@@ -197,6 +207,11 @@ def fis_duzenle(request, pk):
 @ekran_gerekli("fis_listesi")
 def fis_iptal_gorunum(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.FATURA and not fis.silindi:
+        fat = fis.faturalar.filter(silindi=False).first()
+        if fat:
+            messages.info(request, "Bu fiş bir faturadan oluştu; iptal için faturayı iptal edin.")
+            return redirect("core:fatura_detay", pk=fat.pk)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1407,14 +1422,62 @@ def fatura_ekle(request):
     stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
                 for s in Stok.objects.filter(silindi=False).select_related("kdv")}
     return render(request, "core/fatura_ekle.html",
-                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv})
+                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
+                   "baslik": "Yeni Fatura", "iptal_url": reverse("core:fatura_listesi")})
+
+
+FaturaSatirDuzenleFormSet = formset_factory(FaturaSatirForm, extra=0, min_num=1, validate_min=True)
+
+
+@ekran_gerekli("faturalar")
+def fatura_duzenle(request, pk):
+    fatura = get_object_or_404(Fatura, pk=pk, silindi=False)
+    if request.method == "POST":
+        fform = FaturaForm(request.POST)
+        formset = FaturaSatirDuzenleFormSet(request.POST)
+        if fform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk,
+                 "miktar": f.cleaned_data["miktar"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
+                for f in formset if f.dolu_mu()
+            ]
+            try:
+                fatura_servis.fatura_guncelle(
+                    fatura,
+                    tip_id=fform.cleaned_data["tip"].pk,
+                    cari_id=fform.cleaned_data["cari"].pk,
+                    tarih=fform.cleaned_data["tarih"],
+                    fatura_no=fform.cleaned_data.get("fatura_no", ""),
+                    para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
+                    satirlar=satirlar,
+                    kullanici=request.user,
+                )
+                messages.success(
+                    request, f"Fatura güncellendi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} yenilendi.")
+                return redirect("core:fatura_detay", pk=fatura.pk)
+            except fatura_servis.FaturaHatasi as e:
+                fform.add_error(None, str(e))
+    else:
+        fform = FaturaForm(initial={
+            "tip": fatura.tip_id, "cari": fatura.cari_id, "tarih": fatura.tarih,
+            "fatura_no": fatura.fatura_no, "para_birimi": fatura.para_birimi})
+        ilk = [{"stok": s.stok_id, "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
+               for s in fatura.satirlar.filter(silindi=False).select_related("stok")]
+        formset = FaturaSatirDuzenleFormSet(initial=ilk)
+    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
+                for s in Stok.objects.filter(silindi=False).select_related("kdv")}
+    return render(request, "core/fatura_ekle.html",
+                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
+                   "baslik": "Fatura Düzenle",
+                   "iptal_url": reverse("core:fatura_detay", args=[fatura.pk])})
 
 
 @ekran_gerekli("faturalar")
 def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
-    satirlar = fatura.satirlar.select_related("stok", "kdv").all()
+    satirlar = fatura.satirlar.filter(silindi=False).select_related("stok", "kdv")
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar})
 
