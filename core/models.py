@@ -855,3 +855,65 @@ class FaturaSatir(TemelModel):
             return Decimal("0.00")
         return yuvarla(self.kdv_tutari * Decimal(self.tevkifat.pay)
                        / Decimal(self.tevkifat.payda), 2)
+
+
+# === STOKLAR Faz B — Depo (çok depo) ===
+class Depo(TemelModel):
+    """Stok deposu. Çok depo destekli; eldeki miktar depo bazında hareketlerden
+    HESAPLANIR (saklanmaz). Kod elle, ad+kod silinmemişler arasında benzersiz."""
+
+    kod = models.CharField("kod", max_length=20)
+    ad = models.CharField("ad", max_length=100)
+
+    class Meta:
+        db_table = "depo"
+        verbose_name = "depo"
+        verbose_name_plural = "depolar"
+        ordering = ["kod"]
+        constraints = [
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
+                                    name="uq_depo_kod_aktif"),
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_depo_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.kod} {self.ad}"
+
+
+class StokHareket(TemelModel):
+    """Stok miktar hareketi (giriş/çıkış). Eldeki miktar = Σgiriş − Σçıkış (saklanmaz).
+    Miktar üretim biriminde, daima pozitif; yön ``tur`` ile. Muhasebeden BAĞIMSIZ
+    (TL tarafını fatura işler) — bu defter yalnız MİKTAR izler."""
+
+    class Tur(models.TextChoices):
+        GIRIS = "GIRIS", "Giriş"
+        CIKIS = "CIKIS", "Çıkış"
+
+    class Kaynak(models.TextChoices):
+        MANUEL = "MANUEL", "Manuel"
+
+    stok = models.ForeignKey(
+        Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
+    depo = models.ForeignKey(
+        Depo, verbose_name="depo", related_name="hareketler", on_delete=models.PROTECT)
+    tarih = models.DateField("tarih")
+    tur = models.CharField("tür", max_length=5, choices=Tur.choices)
+    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True)
+    kaynak = models.CharField("kaynak", max_length=20, choices=Kaynak.choices,
+                              default=Kaynak.MANUEL)
+
+    class Meta:
+        db_table = "stok_hareket"
+        verbose_name = "stok hareketi"
+        verbose_name_plural = "stok hareketleri"
+        ordering = ["-tarih", "-id"]
+        indexes = [models.Index(fields=["stok", "depo"], name="idx_stokhareket_stok_depo")]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0),
+                                   name="ck_stok_hareket_miktar_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.stok_id} {self.tur} {self.miktar}"

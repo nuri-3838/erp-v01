@@ -138,12 +138,35 @@
     </div>
 
     <div class="sek-panel" id="panel-hareket">
+      <div class="sayfa-ust" style="margin-bottom:1rem">
+        <div>
+          <strong>Eldeki Toplam:</strong>
+          <span class="mono">{{ eldeki|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}
+          {% for d, m in depo_bakiye %}
+            <span class="pasif"> · {{ d.kod }}:</span> <span class="mono">{{ m|tr_kur:3 }}</span>
+          {% endfor %}
+        </div>
+        <a class="dugme" href="{% url 'core:stok_hareket_ekle' stok.pk %}">+ Hareket</a>
+      </div>
       <div class="tablo-kapsayici">
       <table>
-        <thead><tr><th>Tarih</th><th>Tip</th><th>Depo</th><th class="sag">Miktar</th><th>Belge</th><th>Not</th></tr></thead>
+        <thead><tr><th>Tarih</th><th>Tür</th><th>Depo</th><th class="sag">Miktar</th><th>Açıklama</th><th>İşlem</th></tr></thead>
         <tbody>
-          <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-            📦 Stok hareketleri <strong>Faz B</strong>'de gelecek (giriş/çıkış, depo, eldeki miktar).</td></tr>
+          {% for h in hareketler %}
+            <tr>
+              <td class="mono">{{ h.tarih|date:"d.m.Y" }}</td>
+              <td>{% if h.tur == 'GIRIS' %}<span class="rozet rozet-notr">Giriş ▲</span>{% else %}<span class="rozet rozet-notr">Çıkış ▼</span>{% endif %}</td>
+              <td class="mono">{{ h.depo.kod }}</td>
+              <td class="sag mono">{{ h.miktar|tr_kur:3 }}</td>
+              <td>{{ h.aciklama|default:"—" }}</td>
+              <td><form method="post" action="{% url 'core:stok_hareket_sil' h.pk %}"
+                       onsubmit="return confirm('Hareket silinsin mi?');">
+                {% csrf_token %}<button type="submit" class="sil">Sil</button></form></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+              📦 Henüz hareket yok. “+ Hareket” ile giriş/çıkış ekleyin.</td></tr>
+          {% endfor %}
         </tbody>
       </table>
       </div>

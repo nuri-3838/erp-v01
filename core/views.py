@@ -16,13 +16,13 @@ from django.utils import timezone
 
 from core.forms import (
     BirimForm, CariBankaForm, CariForm, CariKategoriForm, CariYetkiliForm,
-    FaturaForm, FaturaSatirForm, FaturaTipiForm, FisForm, KategoriForm, KdvOraniForm,
-    KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm, SehirForm,
-    StokForm, TevkifatOraniForm, UlkeForm,
+    DepoForm, FaturaForm, FaturaSatirForm, FaturaTipiForm, FisForm, KategoriForm,
+    KdvOraniForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
+    SehirForm, StokForm, StokHareketForm, TevkifatOraniForm, UlkeForm,
 )
 from core.models import (
-    Birim, Cari, CariBanka, CariKategori, CariYetkili, EkranYetki, Fatura, FaturaTipi,
-    HesapPlani, Kategori, KdvOrani, Kur, Sehir, Stok, TevkifatOrani, Ulke,
+    Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
+    FaturaTipi, HesapPlani, Kategori, KdvOrani, Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -47,6 +47,8 @@ from core.services import cari as cari_servis
 from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
+from core.services import depo as depo_servis
+from core.services import hareket as hareket_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -655,7 +657,101 @@ def stok_detay(request, pk):
     harita = kategori_servis.kategori_hesaplari(stok.kategori)
     baglar = sorted(harita.values(),
                     key=lambda kh: (kh.fatura_tipi.sira, kh.fatura_tipi.ad))
-    return render(request, "core/stok_detay.html", {"stok": stok, "baglar": baglar})
+    return render(request, "core/stok_detay.html", {
+        "stok": stok, "baglar": baglar,
+        "eldeki": hareket_servis.eldeki_miktar(stok),
+        "depo_bakiye": hareket_servis.depo_bazinda_eldeki(stok),
+        "hareketler": hareket_servis.stok_hareketleri(stok)[:100],
+    })
+
+
+# === STOKLAR Faz B — Depolar (CRUD) + Stok hareketleri ===
+@ekran_gerekli("depolar")
+def depolar(request):
+    return render(request, "core/depo_listesi.html",
+                  {"depolar": depo_servis.aktif_depolar()})
+
+
+@ekran_gerekli("depolar")
+def depo_ekle(request):
+    if request.method == "POST":
+        form = DepoForm(request.POST)
+        if form.is_valid():
+            try:
+                d = depo_servis.depo_olustur(**form.cleaned_data, kullanici=request.user)
+                messages.success(request, f"Depo eklendi: {d.kod} — {d.ad}")
+                return redirect("core:depolar")
+            except depo_servis.DepoHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = DepoForm()
+    return render(request, "core/depo_form.html", {"form": form, "baslik": "Yeni Depo"})
+
+
+@ekran_gerekli("depolar")
+def depo_duzenle(request, pk):
+    depo = get_object_or_404(Depo, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = DepoForm(request.POST)
+        if form.is_valid():
+            try:
+                depo_servis.depo_guncelle(depo, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Depo güncellendi.")
+                return redirect("core:depolar")
+            except depo_servis.DepoHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = DepoForm(initial={"kod": depo.kod, "ad": depo.ad})
+    return render(request, "core/depo_form.html",
+                  {"form": form, "baslik": "Depo Düzenle", "duzenlenen": depo})
+
+
+@ekran_gerekli("depolar")
+def depo_sil(request, pk):
+    depo = get_object_or_404(Depo, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            depo_servis.depo_sil(depo, kullanici=request.user)
+            messages.success(request, f"Depo silindi: {depo.kod}")
+        except depo_servis.DepoHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:depolar")
+
+
+@ekran_gerekli("stoklar")
+def stok_hareket_ekle(request, pk):
+    stok = get_object_or_404(Stok.objects.select_related("uretim_birimi"),
+                             pk=pk, silindi=False)
+    if request.method == "POST":
+        form = StokHareketForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                hareket_servis.hareket_ekle(
+                    stok_id=stok.pk, depo_id=cd["depo"].pk, tarih=cd["tarih"],
+                    tur=cd["tur"], miktar=cd["miktar"],
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, "Stok hareketi eklendi.")
+                return redirect("core:stok_detay", pk=stok.pk)
+            except hareket_servis.HareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = StokHareketForm()
+    return render(request, "core/stok_hareket_form.html", {"form": form, "stok": stok})
+
+
+@ekran_gerekli("stoklar")
+def stok_hareket_sil(request, pk):
+    from core.models import StokHareket
+    hareket = get_object_or_404(StokHareket, pk=pk, silindi=False)
+    stok_pk = hareket.stok_id
+    if request.method == "POST":
+        try:
+            hareket_servis.hareket_sil(hareket, kullanici=request.user)
+            messages.success(request, "Stok hareketi silindi.")
+        except hareket_servis.HareketHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:stok_detay", pk=stok_pk)
 
 
 @ekran_gerekli("kategoriler")

@@ -15,8 +15,8 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Birim, Cari, CariKategori, FaturaTipi, HesapPlani, Kategori, KdvOrani, Profil,
-    Sehir, Stok, TevkifatOrani, Ulke, YevmiyeSatir,
+    Birim, Cari, CariKategori, Depo, FaturaTipi, HesapPlani, Kategori, KdvOrani,
+    Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr
 
@@ -596,3 +596,32 @@ class FaturaSatirForm(forms.Form):
 
     def dolu_mu(self) -> bool:
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+# ---------------------------------------------------------------------------
+# STOKLAR Faz B — Depo + Stok hareketi
+# ---------------------------------------------------------------------------
+class DepoForm(forms.Form):
+    kod = forms.CharField(label="Kod", max_length=20,
+                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ad = forms.CharField(label="Ad", max_length=100,
+                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+class StokHareketForm(forms.Form):
+    depo = forms.ModelChoiceField(
+        label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    tur = forms.ChoiceField(label="Tür", choices=StokHareket.Tur.choices,
+                            initial=StokHareket.Tur.GIRIS)
+    miktar = TRDecimalField(label="Miktar", basamak=3)
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.depo import aktif_depolar
+        self.fields["depo"].queryset = aktif_depolar()
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"

@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% block baslik %}Depolar · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Depolar{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
+    <h1 class="ust-baslik"><span class="emoji">🏬</span>Depolar</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:depo_ekle' %}">+ Yeni</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Kod</th><th>Ad</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for d in depolar %}
+      <tr>
+        <td class="mono">{{ d.kod }}</td>
+        <td>{{ d.ad }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:depo_duzenle' d.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:depo_sil' d.pk %}"
+                onsubmit="return confirm('{{ d.ad }} deposu silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="yardim">Henüz depo yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
