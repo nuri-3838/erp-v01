@@ -51,7 +51,7 @@ class BilancoTest(TestCase):
 
     def test_acilis_dengeli(self):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "5000"), _s("500", "A", "5000")])
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         self.assertTrue(b.denk_mi)
         self.assertEqual(b.aktif_toplam, Decimal("5000.00"))
         self.assertEqual(b.pasif_toplam, Decimal("5000.00"))
@@ -62,7 +62,7 @@ class BilancoTest(TestCase):
     def test_kar_pasife_yansir_ve_denge_korunur(self):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "5000"), _s("500", "A", "5000")])
         fis_olustur(tarih=D(2026, 3, 2), satirlar=[_s("100", "B", "1000"), _s("600", "A", "1000")])
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         self.assertEqual(b.donem_sonucu, Decimal("1000.00"))
         self.assertEqual(b.aktif_toplam, Decimal("6000.00"))
         self.assertEqual(b.pasif_toplam, Decimal("6000.00"))
@@ -71,7 +71,7 @@ class BilancoTest(TestCase):
     def test_kontra_negatif_ve_gider_dengeyi_bozmaz(self):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "10000"), _s("500", "A", "10000")])
         fis_olustur(tarih=D(2026, 3, 2), satirlar=[_s("632", "B", "1000"), _s("257", "A", "1000")])
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         self.assertEqual(_tutar(_grup(b, "DDV"), "257"), Decimal("-1000.00"))
         self.assertEqual(b.donem_sonucu, Decimal("-1000.00"))
         self.assertEqual(b.aktif_toplam, Decimal("9000.00"))
@@ -81,10 +81,20 @@ class BilancoTest(TestCase):
     def test_iptal_haric(self):
         f = fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "5000"), _s("500", "A", "5000")])
         fis_iptal(f)
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         self.assertEqual(b.aktif_toplam, Decimal("0.00"))
         self.assertEqual(b.pasif_toplam, Decimal("0.00"))
         self.assertTrue(b.denk_mi)
+
+    def test_tek_tarih_kumulatif(self):
+        # Bilanço TEK tarih: o tarihe KADAR birikmiş durum; sonraki hareketleri içermez.
+        fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "5000"), _s("500", "A", "5000")])
+        fis_olustur(tarih=D(2026, 6, 1), satirlar=[_s("100", "B", "2000"), _s("500", "A", "2000")])
+        erken = bilanco(D(2026, 3, 31))
+        self.assertEqual(erken.aktif_toplam, Decimal("5000.00"))   # haziran daha gelmedi
+        gec = bilanco(D(2026, 6, 30))
+        self.assertEqual(gec.aktif_toplam, Decimal("7000.00"))     # ikisi birikti (kümülatif)
+        self.assertEqual(gec.tarih, D(2026, 6, 30))
 
     def test_view(self):
         bugun = timezone.localdate()

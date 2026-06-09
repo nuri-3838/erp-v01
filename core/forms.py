@@ -124,6 +124,13 @@ class MizanFiltreForm(forms.Form):
         return cd
 
 
+class BilancoTarihForm(forms.Form):
+    """Bilanço TEK tarihtir (o tarihteki anlık durum), aralık değil."""
+    tarih = forms.DateField(
+        label="Bilanço Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+
+
 # ---------------------------------------------------------------------------
 # Kullanıcı yönetimi formları (Adım 2) — tarayıcı otomatik tamamlama KAPALI
 # ---------------------------------------------------------------------------

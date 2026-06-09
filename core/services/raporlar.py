@@ -31,15 +31,16 @@ def _varsayilan(baslangic, bitis):
     return (baslangic or vb), (bitis or vs)
 
 
-def _hareketler(baslangic: datetime.date, bitis: datetime.date) -> list[dict]:
-    """Tarih aralığında hesap bazında borç/alacak toplamları (iptal hariç)."""
+def _hareketler(baslangic, bitis: datetime.date) -> list[dict]:
+    """Hesap bazında borç/alacak toplamları (iptal hariç). baslangic None ise alt
+    sınır yok (bilanço: açılıştan o tarihe KÜMÜLATİF)."""
+    qs = YevmiyeSatir.objects.filter(
+        silindi=False, fis__silindi=False, fis__tarih__lte=bitis)
+    if baslangic is not None:
+        qs = qs.filter(fis__tarih__gte=baslangic)
     qs = (
-        YevmiyeSatir.objects.filter(
-            silindi=False, fis__silindi=False,
-            fis__tarih__gte=baslangic, fis__tarih__lte=bitis,
-        )
-        .values("hesap_id", "hesap__hesap_adi",
-                "hesap__rapor_grubu", "hesap__rapor_kalemi")
+        qs.values("hesap_id", "hesap__hesap_adi",
+                  "hesap__rapor_grubu", "hesap__rapor_kalemi")
         .annotate(borc=Sum("borc"), alacak=Sum("alacak"))
         .order_by("hesap_id")
     )
@@ -350,8 +351,7 @@ def _bilanco_kur(satir_listesi):
 
 @dataclass
 class Bilanco:
-    baslangic: datetime.date
-    bitis: datetime.date
+    tarih: datetime.date
     aktif: list
     pasif: list
     donem_sonucu: Decimal
@@ -369,15 +369,16 @@ class Bilanco:
         return self.aktif_toplam == self.pasif_toplam
 
 
-def bilanco(baslangic=None, bitis=None) -> Bilanco:
-    """Canlı bilanço (TL). Aktif = Pasif; dönem sonucu Özkaynaklar'a eklenir."""
-    baslangic, bitis = _varsayilan(baslangic, bitis)
+def bilanco(tarih=None) -> Bilanco:
+    """Canlı bilanço (TL) — BELİRLİ BİR TARİHTEKİ anlık durum (açılıştan o tarihe
+    kümülatif). Aktif = Pasif; dönem sonucu Özkaynaklar'a eklenir."""
+    tarih = tarih or timezone.localdate()
     satirlar = [
         (o["kod"], o["ad"], o["grup"], o["kalem"], o["borc"] - o["alacak"])
-        for o in _ana_topla(_hareketler(baslangic, bitis))
+        for o in _ana_topla(_hareketler(None, tarih))
     ]
     aktif, pasif, donem = _bilanco_kur(satirlar)
-    return Bilanco(baslangic, bitis, aktif, pasif, donem)
+    return Bilanco(tarih, aktif, pasif, donem)
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +537,7 @@ class MizanUSD:
         return self.toplam_borc == self.toplam_alacak
 
 
-def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
+def mizan_usd(baslangic=None, bitis=None, kumulatif=False) -> MizanUSD:
     """USD mizan (tarihsel/donmuş). Her satır KENDİ fişinin kuruyla USD'ye çevrilir:
 
     - TÜM satırlar: USD = satırın TL tutarı ÷ fiş.kur_usd (USD işlem satırı dahil).
@@ -545,7 +546,12 @@ def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
 
     Rapor günü kuru sonucu ETKİLEMEZ (donmuş değerlerin toplamı).
     """
-    baslangic, bitis = _varsayilan(baslangic, bitis)
+    # kumulatif=True (bilanço): alt sınır yok, açılıştan `bitis` tarihine birikmiş.
+    if kumulatif:
+        bitis = bitis or timezone.localdate()
+        baslangic = None
+    else:
+        baslangic, bitis = _varsayilan(baslangic, bitis)
     acc: dict[str, dict] = {}       # ANA hesap koduna göre (roll-up)
     haric = SIFIR
 
@@ -553,14 +559,12 @@ def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
     # toplanır. Bölme + roll-up Python'da YALNIZ bu gruplar üzerinde yapılır (yevmiye
     # satırı sayısı kadar DEĞİL) -> büyük veride yavaşlamaz. Aynı (hesap, kur) grubunda
     # tek Decimal bölme; 2-ondalık rapor değerleri eski yöntemle BİREBİR aynı kalır.
-    gruplar = (
-        YevmiyeSatir.objects.filter(
-            silindi=False, fis__silindi=False,
-            fis__tarih__gte=baslangic, fis__tarih__lte=bitis,
-        )
-        .values("hesap_id", "fis__kur_usd")
-        .annotate(tb=Sum("borc"), ta=Sum("alacak"))
-    )
+    gruplar = YevmiyeSatir.objects.filter(
+        silindi=False, fis__silindi=False, fis__tarih__lte=bitis)
+    if baslangic is not None:
+        gruplar = gruplar.filter(fis__tarih__gte=baslangic)
+    gruplar = (gruplar.values("hesap_id", "fis__kur_usd")
+               .annotate(tb=Sum("borc"), ta=Sum("alacak")))
     for g in gruplar:
         kur = g["fis__kur_usd"]
         tb = g["tb"] or SIFIR
@@ -592,8 +596,7 @@ def mizan_usd(baslangic=None, bitis=None) -> MizanUSD:
 # ---------------------------------------------------------------------------
 @dataclass
 class BilancoUSD:
-    baslangic: datetime.date
-    bitis: datetime.date
+    tarih: datetime.date
     aktif: list
     pasif: list
     donem_sonucu: Decimal
@@ -612,15 +615,17 @@ class BilancoUSD:
         return self.aktif_toplam == self.pasif_toplam
 
 
-def bilanco_usd(baslangic=None, bitis=None) -> BilancoUSD:
-    """USD bilanço — USD mizandan türetilir; TL bilançoyla AYNI mantık, tutarlar USD."""
-    m = mizan_usd(baslangic, bitis)
+def bilanco_usd(tarih=None) -> BilancoUSD:
+    """USD bilanço — BELİRLİ TARİHTE (açılıştan kümülatif). USD mizandan türetilir;
+    TL bilançoyla AYNI mantık, tutarlar USD."""
+    tarih = tarih or timezone.localdate()
+    m = mizan_usd(bitis=tarih, kumulatif=True)
     satirlar = [
         (s.hesap_kodu, s.hesap_adi, s.grup, s.kalem, s.usd_borc - s.usd_alacak)
         for s in m.satirlar
     ]
     aktif, pasif, donem = _bilanco_kur(satirlar)
-    return BilancoUSD(m.baslangic, m.bitis, aktif, pasif, donem, m.haric_tl)
+    return BilancoUSD(tarih, aktif, pasif, donem, m.haric_tl)
 
 
 # ---------------------------------------------------------------------------

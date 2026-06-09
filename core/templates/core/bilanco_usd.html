@@ -6,18 +6,15 @@
 <h1 class="ust-baslik"><span class="emoji">⚖️</span>Bilanço (USD)</h1>
 
 <form method="get" class="alan">
-  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
-  {{ form.baslangic }}
-  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
-  {{ form.bitis }}
+  <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
+  {{ form.tarih }}
   <button type="submit">Göster</button>
-  {% if form.non_field_errors %}
-    <div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>
-  {% endif %}
+  {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
 </form>
 
-<p class="yardim">Dönem: {{ bilanco.baslangic|date:"d.m.Y" }} – {{ bilanco.bitis|date:"d.m.Y" }}
-  · Tarihsel USD: her satır kendi fişinin kuruyla donar · İptal hariç · Bakiyeler saklanmaz.</p>
+<p class="yardim">Bilanço tarihi: {{ bilanco.tarih|date:"d.m.Y" }}
+  · O tarihteki anlık durum (açılıştan kümülatif) · Tarihsel USD: her satır kendi
+  fişinin kuruyla donar · İptal hariç · Bakiyeler saklanmaz.</p>
 
 {% if bilanco.haric_tl %}
   <div class="uyari">⚠️ USD'ye dahil edilemeyen, kuru girilmemiş fiş tutarı:

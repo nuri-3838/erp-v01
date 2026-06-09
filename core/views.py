@@ -15,10 +15,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    BirimForm, CariBankaForm, CariForm, CariKategoriForm, CariYetkiliForm,
-    DepoForm, FaturaForm, FaturaSatirForm, FaturaTipiForm, FisForm, KategoriForm,
-    KdvOraniForm, KullaniciDuzenleForm, KullaniciEkleForm, MizanFiltreForm, SatirForm,
-    SehirForm, StokForm, StokHareketForm, TevkifatOraniForm, UlkeForm,
+    BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
+    CariYetkiliForm, DepoForm, FaturaForm, FaturaSatirForm, FaturaTipiForm, FisForm,
+    KategoriForm, KdvOraniForm, KullaniciDuzenleForm, KullaniciEkleForm,
+    MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
+    UlkeForm,
 )
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
@@ -430,10 +431,21 @@ def hesap_ekstresi(request, hesap_kodu):
     return render(request, "core/hesap_ekstresi.html", {"form": form, "ekstre": eks})
 
 
+def _bilanco_tarihi(request):
+    """Bilanço TEK tarih (anlık durum). Varsayılan: bugün."""
+    form = BilancoTarihForm(request.GET or None)
+    if form.is_valid():
+        return form, form.cleaned_data["tarih"]
+    t = timezone.localdate()
+    if not request.GET:
+        form = BilancoTarihForm(initial={"tarih": t})
+    return form, t
+
+
 @ekran_gerekli("bilanco")
 def bilanco_gorunum(request):
-    form, b, s = _tarih_araligi(request)
-    return render(request, "core/bilanco.html", {"form": form, "bilanco": bilanco(b, s)})
+    form, t = _bilanco_tarihi(request)
+    return render(request, "core/bilanco.html", {"form": form, "bilanco": bilanco(t)})
 
 
 @ekran_gerekli("gelir_tablosu")
@@ -459,9 +471,9 @@ def gelir_tablosu_usd_gorunum(request):
 
 @ekran_gerekli("bilanco_usd")
 def bilanco_usd_gorunum(request):
-    form, b, s = _tarih_araligi(request)
+    form, t = _bilanco_tarihi(request)
     return render(request, "core/bilanco_usd.html",
-                  {"form": form, "bilanco": bilanco_usd(b, s)})
+                  {"form": form, "bilanco": bilanco_usd(t)})
 
 
 # --- Ayarlar modülü (yalnızca yönetici) ------------------------------------

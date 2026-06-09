@@ -119,7 +119,7 @@ class BilancoUSDTest(_Girisli):
     def test_usd_mizandan_dengeli(self):
         fis_olustur(tarih=D(2026, 1, 1), kur_usd=Decimal("30"),
                     satirlar=[_s("100", "B", "100000"), _s("500", "A", "100000")])
-        b = bilanco_usd(*YIL)
+        b = bilanco_usd(YIL[1])
         self.assertTrue(b.denk_mi)
         kasa = [s for g in b.aktif for s in g.satirlar if s.kod == "100"][0]
         sermaye = [s for g in b.pasif for s in g.satirlar if s.kod == "500"][0]
@@ -131,7 +131,7 @@ class BilancoUSDTest(_Girisli):
                     satirlar=[_s("100", "B", "30000"), _s("500", "A", "30000")])
         fis_olustur(tarih=D(2026, 2, 1), kur_usd=Decimal("30"),
                     satirlar=[_s("100", "B", "3000"), _s("600", "A", "3000")])
-        b = bilanco_usd(*YIL)
+        b = bilanco_usd(YIL[1])
         self.assertEqual(yuvarla(b.donem_sonucu, 2), Decimal("100.00"))
         self.assertTrue(b.denk_mi)
 

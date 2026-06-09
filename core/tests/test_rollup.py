@@ -64,7 +64,7 @@ class RollupTest(TestCase):
         self.assertEqual(m.toplam_borc, m.toplam_alacak)
 
     def test_bilanco_gelir_rollup_tutarli(self):
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         g = gelir_tablosu(*YIL)
         self.assertTrue(b.denk_mi)                               # aktif = pasif
         self.assertEqual(b.donem_sonucu, g.donem_net_kari)       # TUTARLI

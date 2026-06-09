@@ -52,7 +52,7 @@ class GelirTablosuTest(TestCase):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "1000"), _s("600", "A", "1000")])
         fis_olustur(tarih=D(2026, 3, 3), satirlar=[_s("710", "B", "500"), _s("100", "A", "500")])
         gt = gelir_tablosu(*YIL)
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         self.assertEqual(gt.deger("Vergi Sonrası Kâr"), Decimal("1000.00"))   # 6'lı kârı
         self.assertEqual(gt.deger("Yansıtılmamış"), Decimal("-500.00"))        # 7xx şeffaf
         self.assertEqual(gt.donem_net_kari, Decimal("500.00"))                 # 1000 - 500
@@ -67,7 +67,7 @@ class GelirTablosuTest(TestCase):
                       rapor_grubu="GELIR_TABLOSU", rapor_kalemi="A")
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "700"), _s("603", "A", "700")])
         gt = gelir_tablosu(*YIL)
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         self.assertEqual(gt.deger("A."), Decimal("700.00"))     # otomatik A bölümünde
         self.assertEqual(gt.donem_net_kari, Decimal("700.00"))
         self.assertEqual(b.donem_sonucu, gt.donem_net_kari)     # bilanço = gelir
@@ -78,7 +78,7 @@ class GelirTablosuTest(TestCase):
         fis_olustur(tarih=D(2026, 3, 2), satirlar=[_s("632", "B", "800"), _s("100", "A", "800")])
         fis_olustur(tarih=D(2026, 3, 3), satirlar=[_s("770", "B", "600"), _s("100", "A", "600")])
         gt = gelir_tablosu(*YIL)
-        b = bilanco(*YIL)
+        b = bilanco(YIL[1])
         self.assertEqual(b.donem_sonucu, gt.donem_net_kari)
         self.assertTrue(b.denk_mi)
 
@@ -87,7 +87,7 @@ class GelirTablosuTest(TestCase):
         fis_olustur(tarih=D(2026, 3, 1), satirlar=[_s("100", "B", "3000"), _s("600", "A", "3000")])
         fis_olustur(tarih=D(2026, 3, 3), satirlar=[_s("710", "B", "900"), _s("100", "A", "900")])
         gu = gelir_tablosu_usd(*YIL)
-        bu = bilanco_usd(*YIL)
+        bu = bilanco_usd(YIL[1])
         self.assertEqual(bu.donem_sonucu, gu.donem_net_kari)   # USD'de de her zaman eşit
 
     def test_satis_iadeleri_dusulur(self):
