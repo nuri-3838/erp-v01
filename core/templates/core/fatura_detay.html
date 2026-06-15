@@ -6,7 +6,7 @@
 {% block content %}
 <div class="sayfa-ust">
   <div>
-    <a class="ust-link" href="{% url 'core:fatura_listesi' %}">← Faturalar</a>
+    <a class="ust-link" href="{% url liste_url %}">← Faturalar</a>
     <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ fatura.tip.ad }}{% if fatura.fatura_no %} · {{ fatura.fatura_no }}{% endif %}</h1>
   </div>
   {% if not fatura.silindi %}

@@ -1,12 +1,12 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
-{% block baslik %}Faturalar · ERP v0.1{% endblock %}
-{% block sayfa_adi %}Faturalar{% endblock %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
 
 {% block content %}
 <div class="sayfa-ust">
-  <div><h1 class="ust-baslik"><span class="emoji">🧾</span>Faturalar</h1></div>
-  <a class="dugme" href="{% url 'core:fatura_ekle' %}">+ Yeni Fatura</a>
+  <div><h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik }}</h1></div>
+  <a class="dugme" href="{% url ekle_url %}">+ Yeni</a>
 </div>
 
 <div class="tablo-kapsayici">

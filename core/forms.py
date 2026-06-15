@@ -564,9 +564,12 @@ class FaturaForm(forms.Form):
     para_birimi = forms.ChoiceField(
         label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["tip"].queryset = FaturaTipi.objects.filter(silindi=False).order_by("sira", "ad")
+        tipler = FaturaTipi.objects.filter(silindi=False)
+        if yon:
+            tipler = tipler.filter(yon=yon)
+        self.fields["tip"].queryset = tipler.order_by("sira", "ad")
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"

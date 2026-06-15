@@ -55,7 +55,7 @@ class FaturaEkranTest(TestCase):
 
     def test_ekle_post_fatura_ve_fis(self):
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        r = self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
         self.assertEqual(r.status_code, 302)
         f = Fatura.objects.get(fatura_no="A-1")
         self.assertIsNotNone(f.fis_id)
@@ -70,16 +70,16 @@ class FaturaEkranTest(TestCase):
         # mal hesabı bağı silinince hata -> form 200, kayıt yok
         KategoriHesap.objects.all().delete()
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        r = self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
         self.assertEqual(r.status_code, 200)
         self.assertEqual(Fatura.objects.count(), 0)
         self.assertEqual(YevmiyeFisi.objects.count(), 0)
 
     def test_liste_ve_detay(self):
         self.client.force_login(self.yon)
-        self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
         f = Fatura.objects.get(fatura_no="A-1")
-        r = self.client.get(reverse("core:fatura_listesi"))
+        r = self.client.get(reverse("core:alis_faturalari"))
         self.assertContains(r, "TEDARİKÇİ A")
         r2 = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
         self.assertEqual(r2.status_code, 200)
@@ -88,7 +88,7 @@ class FaturaEkranTest(TestCase):
 
     def test_iptal(self):
         self.client.force_login(self.yon)
-        self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
         f = Fatura.objects.get(fatura_no="A-1")
         fis_id = f.fis_id
         r = self.client.post(reverse("core:fatura_iptal", args=[f.pk]))
@@ -99,7 +99,7 @@ class FaturaEkranTest(TestCase):
 
     def test_duzenle_post(self):
         self.client.force_login(self.yon)
-        self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
         f = Fatura.objects.get(fatura_no="A-1")
         r = self.client.post(reverse("core:fatura_duzenle", args=[f.pk]),
                              self._post_data(miktar="20"))
@@ -110,7 +110,7 @@ class FaturaEkranTest(TestCase):
 
     def test_fatura_fisi_dogrudan_duzenlenemez(self):
         self.client.force_login(self.yon)
-        self.client.post(reverse("core:fatura_ekle"), self._post_data())
+        self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
         f = Fatura.objects.get(fatura_no="A-1")
         r = self.client.get(reverse("core:fis_duzenle", args=[f.fis_id]))
         self.assertEqual(r.status_code, 302)
@@ -132,5 +132,18 @@ class FaturaEkranTest(TestCase):
 
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)
-        self.assertEqual(self.client.get(reverse("core:fatura_listesi")).status_code, 403)
-        self.assertEqual(self.client.get(reverse("core:fatura_ekle")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("core:alis_faturalari")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("core:alis_fatura_ekle")).status_code, 403)
+
+    def test_satis_listesi_yuklenir(self):
+        self.client.force_login(self.yon)
+        self.assertEqual(self.client.get(reverse("core:satis_faturalari")).status_code, 200)
+
+    def test_alis_formu_yon_filtreler(self):
+        # Alış ekle formundaki tip dropdown'u yalnız ALIŞ tiplerini gösterir
+        satis = FaturaTipi.objects.create(ad="SATIŞ FATURASI", yon=FaturaTipi.Yon.SATIS)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:alis_fatura_ekle"))
+        tipler = list(r.context["fform"].fields["tip"].queryset)
+        self.assertIn(self.alis, tipler)
+        self.assertNotIn(satis, tipler)

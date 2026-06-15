@@ -34,7 +34,8 @@ MODULLER = (
         Ekran("gelir_tablosu_usd", "Gelir Tablosu (USD)", "core:gelir_tablosu_usd"),
     )),
     Modul("FATURALAR", "Faturalar", (
-        Ekran("faturalar", "Faturalar", "core:fatura_listesi"),
+        Ekran("alis_faturalari", "Alış Faturaları", "core:alis_faturalari"),
+        Ekran("satis_faturalari", "Satış Faturaları", "core:satis_faturalari"),
     )),
     Modul("STOKLAR", "Stoklar", (
         Ekran("stoklar", "Stoklar", "core:stoklar"),
