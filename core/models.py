@@ -762,6 +762,10 @@ class Fatura(TemelModel):
     fis = models.ForeignKey(
         YevmiyeFisi, verbose_name="yevmiye fişi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="faturalar")
+    # Stok hareketlerinin yazılacağı depo (alış→giriş, satış→çıkış). Boşsa hareket üretilmez.
+    depo = models.ForeignKey(
+        "Depo", verbose_name="depo", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="faturalar")
 
     class Meta:
         db_table = "fatura"
@@ -892,6 +896,7 @@ class StokHareket(TemelModel):
 
     class Kaynak(models.TextChoices):
         MANUEL = "MANUEL", "Manuel"
+        FATURA = "FATURA", "Fatura"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -901,6 +906,10 @@ class StokHareket(TemelModel):
     tur = models.CharField("tür", max_length=5, choices=Tur.choices)
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
     aciklama = models.CharField("açıklama", max_length=300, blank=True)
+    # Faturadan otomatik üretilen hareketler bu kaleme bağlanır (iptal/güncellemede izlenir).
+    fatura_satir = models.ForeignKey(
+        "FaturaSatir", verbose_name="kaynak fatura satırı", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="stok_hareketleri")
     kaynak = models.CharField("kaynak", max_length=20, choices=Kaynak.choices,
                               default=Kaynak.MANUEL)
 

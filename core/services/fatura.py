@@ -17,9 +17,10 @@ from decimal import Decimal
 from django.db import transaction
 
 from core.metin import buyuk_harf_tr
-from core.models import (Cari, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
-                         KategoriHesap, Kur, Stok, YevmiyeFisi)
+from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
+                         KategoriHesap, Kur, Stok, StokHareket, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
+from core.services.hareket import HareketHatasi, hareket_ekle
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
                                    fis_iptal, fis_olustur)
 
@@ -202,15 +203,53 @@ def _satirlari_yaz(fatura, hazir, kullanici):
             tevkifat=tevkifat, created_by=kullanici, updated_by=kullanici)
 
 
+def _depo_coz(depo_id):
+    """depo_id boşsa None (hareket üretilmez); doluysa aktif depoyu çözer."""
+    if depo_id in (None, ""):
+        return None
+    depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
+    if depo is None:
+        raise FaturaHatasi("Depo bulunamadı.")
+    return depo
+
+
+def _hareketleri_yaz(fatura, depo, *, kullanici):
+    """Fatura kalemleri için stok hareketi: ALIŞ→giriş, SATIŞ→çıkış. Miktar fatura
+    biriminden üretim birimine çevrilir (çevirici). Çıkışta eldeki yetmezse engellenir."""
+    alis = (fatura.tip.yon == FaturaTipi.Yon.ALIS)
+    tur = StokHareket.Tur.GIRIS if alis else StokHareket.Tur.CIKIS
+    for satir in fatura.satirlar.filter(silindi=False).select_related("stok"):
+        cevirici = satir.stok.cevirici or Decimal("1")
+        uretim_miktar = yuvarla(satir.miktar / cevirici, 3)
+        if uretim_miktar <= 0:
+            continue
+        try:
+            hareket_ekle(
+                stok_id=satir.stok_id, depo_id=depo.pk, tarih=fatura.tarih, tur=tur,
+                miktar=uretim_miktar,
+                aciklama=_aciklama(fatura.tip, fatura.cari, fatura.fatura_no),
+                kaynak=StokHareket.Kaynak.FATURA, fatura_satir=satir, kullanici=kullanici)
+        except HareketHatasi as e:
+            raise FaturaHatasi(str(e))
+
+
+def _hareketleri_iptal(fatura, *, kullanici):
+    """Faturaya bağlı silinmemiş stok hareketlerini soft-delete eder."""
+    from django.utils import timezone
+    StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False).update(
+        silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+
+
 @transaction.atomic
 def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
-                   para_birimi="TRY", kullanici=None) -> Fatura:
-    """Faturayı + otomatik dengeli yevmiye fişini atomik oluşturur. Para birimi TRY
-    değilse kur fiş tarihinin TCMB kurundan çözülür. Eksik harita / kur yok /
-    dengesizlik -> FaturaHatasi (hiçbir şey kaydedilmez)."""
+                   para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
+    """Faturayı + otomatik dengeli yevmiye fişini + (depo verildiyse) stok hareketlerini
+    atomik oluşturur. Para birimi TRY değilse kur fiş tarihinin TCMB kurundan çözülür.
+    Eksik harita / kur yok / dengesizlik / yetersiz stok -> FaturaHatasi (hiçbir şey kaydedilmez)."""
     tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
         para_birimi=para_birimi)
+    depo = _depo_coz(depo_id)
     fatura_no = (fatura_no or "").strip()
     try:
         fis = fis_olustur(tarih=tarih, satirlar=yevmiye_satirlari,
@@ -220,16 +259,18 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
         raise FaturaHatasi(str(e))
     fatura = Fatura.objects.create(
         tip=tip, cari=cari, tarih=tarih, fatura_no=fatura_no, para_birimi=pb,
-        kur=kur, fis=fis, created_by=kullanici, updated_by=kullanici)
+        kur=kur, fis=fis, depo=depo, created_by=kullanici, updated_by=kullanici)
     _satirlari_yaz(fatura, hazir, kullanici)
+    if depo is not None:
+        _hareketleri_yaz(fatura, depo, kullanici=kullanici)
     return fatura
 
 
 @transaction.atomic
 def fatura_guncelle(fatura: Fatura, *, tip_id, cari_id, tarih, satirlar,
-                    fatura_no="", para_birimi="TRY", kullanici=None) -> Fatura:
-    """Faturayı + bağlı yevmiye fişini günceller (fiş no/yıl korunur). Eski FaturaSatır
-    ve fiş satırları soft-delete edilir, yenileri yazılır. Atomik."""
+                    fatura_no="", para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
+    """Faturayı + bağlı yevmiye fişini + stok hareketlerini günceller (fiş no/yıl korunur).
+    Eski FaturaSatır, fiş satırları ve stok hareketleri soft-delete edilir, yenileri yazılır."""
     from django.utils import timezone
     if fatura.silindi:
         raise FaturaHatasi("Silinmiş fatura düzenlenemez.")
@@ -238,31 +279,37 @@ def fatura_guncelle(fatura: Fatura, *, tip_id, cari_id, tarih, satirlar,
     tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
         para_birimi=para_birimi)
+    depo = _depo_coz(depo_id)
     fatura_no = (fatura_no or "").strip()
     try:
         fis_guncelle(fatura.fis, tarih=tarih, satirlar=yevmiye_satirlari,
                      aciklama=_aciklama(tip, cari, fatura_no), kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise FaturaHatasi(str(e))
-    fatura.tip, fatura.cari, fatura.tarih = tip, cari, tarih
-    fatura.fatura_no, fatura.para_birimi, fatura.kur = fatura_no, pb, kur
-    fatura.updated_by = kullanici
-    fatura.save(update_fields=["tip", "cari", "tarih", "fatura_no", "para_birimi",
-                               "kur", "updated_by", "updated_at"])
+    # Eski stok hareketleri + satırları geri al (yeni çıkış kontrolü doğru eldekiyi görsün)
+    _hareketleri_iptal(fatura, kullanici=kullanici)
     fatura.satirlar.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    fatura.tip, fatura.cari, fatura.tarih = tip, cari, tarih
+    fatura.fatura_no, fatura.para_birimi, fatura.kur, fatura.depo = fatura_no, pb, kur, depo
+    fatura.updated_by = kullanici
+    fatura.save(update_fields=["tip", "cari", "tarih", "fatura_no", "para_birimi",
+                               "kur", "depo", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
+    if depo is not None:
+        _hareketleri_yaz(fatura, depo, kullanici=kullanici)
     return fatura
 
 
 @transaction.atomic
 def fatura_iptal(fatura: Fatura, kullanici=None) -> Fatura:
-    """Faturayı soft-delete eder ve bağlı yevmiye fişini de iptal eder (ters değil, iptal)."""
+    """Faturayı soft-delete eder; bağlı yevmiye fişini ve stok hareketlerini de iptal eder."""
     from django.utils import timezone
     if fatura.silindi:
         return fatura
     if fatura.fis_id and not fatura.fis.silindi:
         fis_iptal(fatura.fis, kullanici=kullanici)
+    _hareketleri_iptal(fatura, kullanici=kullanici)
     fatura.silindi = True
     fatura.silindi_at = timezone.now()
     fatura.updated_by = kullanici
