@@ -20,7 +20,7 @@ from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          KategoriHesap, Kur, Stok, StokHareket, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services.hareket import HareketHatasi, hareket_ekle
+from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
                                    fis_iptal, fis_olustur)
 
@@ -222,7 +222,9 @@ def _hareketleri_yaz(fatura, depo, *, kullanici):
         cevirici = satir.stok.cevirici or Decimal("1")
         uretim_miktar = yuvarla(satir.miktar / cevirici, 3)
         if uretim_miktar <= 0:
-            continue
+            raise FaturaHatasi(
+                f"{satir.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar "
+                f"sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
         try:
             hareket_ekle(
                 stok_id=satir.stok_id, depo_id=depo.pk, tarih=fatura.tarih, tur=tur,
@@ -238,6 +240,23 @@ def _hareketleri_iptal(fatura, *, kullanici):
     from django.utils import timezone
     StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+
+
+def _fatura_hareket_ciftleri(fatura):
+    """Faturanın aktif stok hareketlerinin (stok_id, depo_id) kümesi."""
+    return set(StokHareket.objects.filter(
+        fatura_satir__fatura=fatura, silindi=False).values_list("stok_id", "depo_id"))
+
+
+def _negatif_eldeki_dogrula(ciftler):
+    """Verilen (stok_id, depo_id) çiftlerinde eldeki negatife düştüyse hata. Bir alış
+    faturası, malı satıldıktan sonra aşağı düzenlenince eldekinin eksiye düşmesini engeller
+    (giriş `hareket_ekle`'de kontrol edilmez; bu güncelleme-sonrası backstop o açığı kapatır)."""
+    for stok_id, depo_id in ciftler:
+        if eldeki_miktar(stok_id, depo_id) < 0:
+            raise FaturaHatasi(
+                "Bu güncelleme bir stok+depoda eldeki miktarı negatife düşürüyor; "
+                "önce o stoğun bağlı çıkış/satış hareketlerini düzeltin.")
 
 
 @transaction.atomic
@@ -286,6 +305,8 @@ def fatura_guncelle(fatura: Fatura, *, tip_id, cari_id, tarih, satirlar,
                      aciklama=_aciklama(tip, cari, fatura_no), kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise FaturaHatasi(str(e))
+    # Etkilenen (stok, depo) çiftleri — eski + yeni; güncelleme sonrası NEGATİF eldeki backstop'u.
+    etkilenen = _fatura_hareket_ciftleri(fatura)
     # Eski stok hareketleri + satırları geri al (yeni çıkış kontrolü doğru eldekiyi görsün)
     _hareketleri_iptal(fatura, kullanici=kullanici)
     fatura.satirlar.filter(silindi=False).update(
@@ -298,6 +319,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id, cari_id, tarih, satirlar,
     _satirlari_yaz(fatura, hazir, kullanici)
     if depo is not None:
         _hareketleri_yaz(fatura, depo, kullanici=kullanici)
+    _negatif_eldeki_dogrula(etkilenen | _fatura_hareket_ciftleri(fatura))
     return fatura
 
 

@@ -1548,11 +1548,14 @@ def _fatura_ekle(request, yon, baslik):
                     tarih=fform.cleaned_data["tarih"],
                     fatura_no=fform.cleaned_data.get("fatura_no", ""),
                     para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
+                    depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
-                messages.success(
-                    request, f"Fatura kaydedildi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu.")
+                mesaj = f"Fatura kaydedildi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu."
+                if fform.cleaned_data.get("depo") is None:
+                    mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
+                messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
                 fform.add_error(None, str(e))
@@ -1601,18 +1604,22 @@ def fatura_duzenle(request, pk):
                     tarih=fform.cleaned_data["tarih"],
                     fatura_no=fform.cleaned_data.get("fatura_no", ""),
                     para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
+                    depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
-                messages.success(
-                    request, f"Fatura güncellendi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} yenilendi.")
+                mesaj = f"Fatura güncellendi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} yenilendi."
+                if fform.cleaned_data.get("depo") is None:
+                    mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
+                messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
                 fform.add_error(None, str(e))
     else:
         fform = FaturaForm(yon=yon, initial={
             "tip": fatura.tip_id, "cari": fatura.cari_id, "tarih": fatura.tarih,
-            "fatura_no": fatura.fatura_no, "para_birimi": fatura.para_birimi})
+            "fatura_no": fatura.fatura_no, "para_birimi": fatura.para_birimi,
+            "depo": fatura.depo_id})
         ilk = [{"stok": s.stok_id, "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False).select_related("stok")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk)

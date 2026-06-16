@@ -83,3 +83,39 @@ class FaturaStokTest(FaturaTestTemel):
                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"))
         self.assertIsNone(f.depo_id)
         self.assertFalse(StokHareket.objects.filter(fatura_satir__fatura=f).exists())
+
+    def test_alis_dusurme_satilmis_stoku_negatife_dusuremez(self):
+        # Alış 10 -> satış 8 (eldeki 2). Alış'ı 5'e düşürmek eldekiyi -3 yapardı -> ENGEL.
+        fa = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
+                            depo_id=self.depo.pk)
+        fatura_olustur(tip_id=self.satis.pk, cari_id=self.musteri.pk,
+                       tarih=D(2026, 3, 10), satirlar=self._satir(miktar="8"),
+                       depo_id=self.depo.pk)
+        self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("2.000"))
+        with self.assertRaises(FaturaHatasi):
+            fatura_guncelle(fa, tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="5"),
+                            depo_id=self.depo.pk)
+        self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("2.000"))  # rollback
+
+    def test_depo_degisimi_eski_depoyu_bosaltir(self):
+        d2 = Depo.objects.create(kod="02", ad="ÜRETİM")
+        fa = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
+                            depo_id=self.depo.pk)
+        fatura_guncelle(fa, tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                        tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"), depo_id=d2.pk)
+        self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("0.000"))
+        self.assertEqual(eldeki_miktar(self.stok, d2), Decimal("10.000"))
+
+    def test_cevirici_sifira_yuvarlarsa_hata(self):
+        adet = Birim.objects.create(ad="ADET9", kisa_ad="AD9", ondalik=0)
+        st = Stok.objects.create(kod="153-10-0009", ad="MİKRO", kategori=self.alt,
+                                 uretim_birimi=adet, fatura_birimi=adet,
+                                 cevirici=Decimal("100000"), kdv=self.kdv)
+        with self.assertRaises(FaturaHatasi):
+            fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10),
+                           satirlar=[{"stok_id": st.pk, "miktar": "1", "birim_fiyat": "1"}],
+                           depo_id=self.depo.pk)

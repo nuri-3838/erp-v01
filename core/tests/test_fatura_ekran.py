@@ -6,8 +6,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import (Birim, Cari, EkranYetki, Fatura, FaturaTipi, HesapPlani,
+from core.models import (Birim, Cari, Depo, EkranYetki, Fatura, FaturaTipi, HesapPlani,
                          Kategori, KategoriHesap, KdvOrani, Kur, Stok, YevmiyeFisi)
+from core.services.hareket import eldeki_miktar
 
 D = datetime.date
 
@@ -42,6 +43,7 @@ class FaturaEkranTest(TestCase):
                                      hesap=HesapPlani.objects.get(hesap_kodu="153.10"))
         cls.cari = Cari.objects.create(kod="320-10-0001", unvan="TEDARİKÇİ A",
                                        para_birimi="TRY", muhasebe_kodu="320.10.0001")
+        cls.depo = Depo.objects.create(kod="01", ad="ANA DEPO")
 
     def _post_data(self, miktar="10", fiyat="100"):
         return {
@@ -147,3 +149,19 @@ class FaturaEkranTest(TestCase):
         tipler = list(r.context["fform"].fields["tip"].queryset)
         self.assertIn(self.alis, tipler)
         self.assertNotIn(satis, tipler)
+
+    def test_depolu_alis_stok_girisi_uretir(self):
+        # Ekrandan depo seçili alış faturası -> otomatik stok girişi
+        self.client.force_login(self.yon)
+        data = self._post_data(miktar="10")
+        data["depo"] = str(self.depo.pk)
+        r = self.client.post(reverse("core:alis_fatura_ekle"), data)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("10.000"))
+
+    def test_deposuz_alis_hareket_uretmez(self):
+        # depo gönderilmezse hareket üretilmez (geri-uyum)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:alis_fatura_ekle"), self._post_data(miktar="7"))
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("0.000"))
