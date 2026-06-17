@@ -78,12 +78,27 @@ class FinansDigerServisTest(TestCase):
         _hesap("309.01", "KREDİ KARTI")
         _hesap("101.01", "ALINAN ÇEKLER")
 
-    def test_banka_olustur(self):
-        from core.services.finans import banka_olustur
-        b = banka_olustur(ad="ana banka", iban="tr12 0006 4000", muhasebe_kodu="102.01")
-        self.assertEqual(b.ad, "ANA BANKA")
-        self.assertEqual(b.iban, "TR1200064000")          # boşluksuz + büyük
-        self.assertEqual(b.muhasebe.hesap_kodu, "102.01")
+    def test_banka_kurum_ve_hesap(self):
+        from core.services.finans import (banka_hesap_olustur, banka_hesaplari,
+                                          banka_olustur)
+        b = banka_olustur(ad="akbank", kisa_ad="ak", sube="merkez",
+                          swift_kod="akbktris")
+        self.assertEqual(b.ad, "AKBANK")
+        self.assertEqual(b.swift_kod, "AKBKTRIS")
+        h = banka_hesap_olustur(banka=b, ad="tl mevduat", iban="tr12 0006 4000",
+                                muhasebe_kodu="102.01")
+        self.assertEqual(h.ad, "TL MEVDUAT")
+        self.assertEqual(h.iban, "TR1200064000")          # boşluksuz + büyük
+        self.assertEqual(h.muhasebe.hesap_kodu, "102.01")
+        self.assertEqual(list(banka_hesaplari(b)), [h])
+
+    def test_banka_hesapli_silinemez(self):
+        from core.services.finans import (FinansHatasi, banka_hesap_olustur,
+                                          banka_olustur, banka_sil)
+        b = banka_olustur(ad="garanti")
+        banka_hesap_olustur(banka=b, ad="tl", muhasebe_kodu="102.01")
+        with self.assertRaises(FinansHatasi):
+            banka_sil(b)
 
     def test_kredi_karti_gun_araligi_ve_limit(self):
         from decimal import Decimal
@@ -130,13 +145,20 @@ class FinansDigerViewTest(TestCase):
         for ad in ("bankalar", "kredi_kartlari", "krediler", "cek_senetler"):
             self.assertEqual(self.client.get(reverse("core:" + ad)).status_code, 200)
 
-    def test_banka_ekle_post(self):
-        from core.models import Banka
+    def test_banka_kurum_ve_hesap_post(self):
+        from core.models import Banka, BankaHesap
+        from core.services.finans import banka_olustur
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:banka_hesap_ekle"),
-                             {"ad": "merkez", "para_birimi": "TRY", "muhasebe": "102.01"})
+        r = self.client.post(reverse("core:banka_kurum_ekle"),
+                             {"ad": "akbank", "kisa_ad": "", "sube": "",
+                              "swift_kod": "", "adres": ""})
         self.assertEqual(r.status_code, 302)
-        self.assertTrue(Banka.objects.filter(ad="MERKEZ").exists())
+        self.assertTrue(Banka.objects.filter(ad="AKBANK").exists())
+        b = banka_olustur(ad="garanti")
+        r2 = self.client.post(reverse("core:banka_hesap_ekle", args=[b.pk]),
+                              {"ad": "tl", "para_birimi": "TRY", "muhasebe": "102.01"})
+        self.assertEqual(r2.status_code, 302)
+        self.assertTrue(BankaHesap.objects.filter(banka=b, ad="TL").exists())
 
     def test_cek_senet_ekle_post(self):
         from decimal import Decimal

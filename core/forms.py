@@ -573,9 +573,15 @@ def _muhasebe_kur(form):
 
 
 class BankaForm(forms.Form):
-    ad = forms.CharField(label="Hesap Adı", max_length=100)
-    banka_adi = forms.CharField(label="Banka Adı", max_length=150, required=False)
+    ad = forms.CharField(label="Banka Adı", max_length=150)
+    kisa_ad = forms.CharField(label="Kısa Ad", max_length=50, required=False)
     sube = forms.CharField(label="Şube", max_length=100, required=False)
+    swift_kod = forms.CharField(label="SWIFT/BIC", max_length=11, required=False)
+    adres = forms.CharField(label="Adres", max_length=255, required=False)
+
+
+class BankaHesapForm(forms.Form):
+    ad = forms.CharField(label="Hesap Adı", max_length=100)
     hesap_no = forms.CharField(label="Hesap No", max_length=40, required=False)
     iban = forms.CharField(label="IBAN", max_length=34, required=False)
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")

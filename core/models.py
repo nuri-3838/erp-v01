@@ -956,11 +956,34 @@ class Kasa(TemelModel):
 
 
 class Banka(TemelModel):
-    """Banka (mevduat) hesabı tanımı. Bakiye muhasebe hesabından (saklanmaz)."""
+    """Banka (kurum). Altındaki hesaplar BankaHesap'ta; muhasebe hesabı HESAP düzeyinde."""
 
+    ad = models.CharField("banka adı", max_length=150)
+    kisa_ad = models.CharField("kısa ad", max_length=50, blank=True, default="")
+    sube = models.CharField("şube", max_length=100, blank=True, default="")
+    swift_kod = models.CharField("SWIFT/BIC", max_length=11, blank=True, default="")
+    adres = models.CharField("adres", max_length=255, blank=True, default="")
+
+    class Meta:
+        db_table = "finans_banka"
+        verbose_name = "banka"
+        verbose_name_plural = "bankalar"
+        ordering = ["ad"]
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_banka_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return self.ad
+
+
+class BankaHesap(TemelModel):
+    """Bir bankaya bağlı hesap. Bakiye bağlı yaprak muhasebe hesabından (saklanmaz)."""
+
+    banka = models.ForeignKey(Banka, verbose_name="banka", on_delete=models.CASCADE,
+                              related_name="hesaplar")
     ad = models.CharField("hesap adı", max_length=100)
-    banka_adi = models.CharField("banka adı", max_length=150, blank=True)
-    sube = models.CharField("şube", max_length=100, blank=True)
     hesap_no = models.CharField("hesap no", max_length=40, blank=True)
     iban = models.CharField("IBAN", max_length=34, blank=True)
     para_birimi = models.CharField(
@@ -970,17 +993,17 @@ class Banka(TemelModel):
         related_name="banka_hesaplari")
 
     class Meta:
-        db_table = "finans_banka"
+        db_table = "finans_banka_hesap"
         verbose_name = "banka hesabı"
         verbose_name_plural = "banka hesapları"
-        ordering = ["ad"]
+        ordering = ["banka", "ad"]
         constraints = [
-            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
-                                    name="uq_banka_ad_aktif"),
+            models.UniqueConstraint(fields=["banka", "ad"], condition=models.Q(silindi=False),
+                                    name="uq_banka_hesap_ad_aktif"),
         ]
 
     def __str__(self):
-        return self.ad
+        return f"{self.banka_id} {self.ad}"
 
 
 class KrediKarti(TemelModel):

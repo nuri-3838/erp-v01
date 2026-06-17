@@ -9,7 +9,8 @@ from __future__ import annotations
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Banka, Cari, CekSenet, HesapPlani, Kasa, Kredi, KrediKarti
+from core.models import (Banka, BankaHesap, Cari, CekSenet, HesapPlani, Kasa, Kredi,
+                         KrediKarti)
 from core.sayi import SayiHatasi, parse_tr
 
 
@@ -114,39 +115,83 @@ def _cari_coz(cari_id):
     return c
 
 
-# --- Banka ------------------------------------------------------------------
+# --- Banka (kurum) ----------------------------------------------------------
 def aktif_bankalar():
-    return Banka.objects.filter(silindi=False).select_related("muhasebe").order_by("ad")
+    return Banka.objects.filter(silindi=False).order_by("ad")
 
 
-def banka_olustur(*, ad, banka_adi="", sube="", hesap_no="", iban="", para_birimi="TRY",
-                  muhasebe_kodu, kullanici=None) -> Banka:
+def banka_olustur(*, ad, kisa_ad="", sube="", swift_kod="", adres="", kullanici=None) -> Banka:
     return Banka.objects.create(
-        ad=_ad_dogrula(Banka, ad), banka_adi=buyuk_harf_tr((banka_adi or "").strip()),
-        sube=buyuk_harf_tr((sube or "").strip()), hesap_no=(hesap_no or "").strip(),
-        iban=(iban or "").strip().upper().replace(" ", ""), para_birimi=(para_birimi or "TRY"),
-        muhasebe=_yaprak_hesap_coz(muhasebe_kodu), created_by=kullanici, updated_by=kullanici)
+        ad=_ad_dogrula(Banka, ad), kisa_ad=buyuk_harf_tr((kisa_ad or "").strip()),
+        sube=buyuk_harf_tr((sube or "").strip()), swift_kod=(swift_kod or "").strip().upper(),
+        adres=(adres or "").strip(), created_by=kullanici, updated_by=kullanici)
 
 
-def banka_guncelle(b: Banka, *, ad, banka_adi="", sube="", hesap_no="", iban="",
-                   para_birimi="TRY", muhasebe_kodu, kullanici=None) -> Banka:
+def banka_guncelle(b: Banka, *, ad, kisa_ad="", sube="", swift_kod="", adres="",
+                   kullanici=None) -> Banka:
     if b.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
     b.ad = _ad_dogrula(Banka, ad, haric_pk=b.pk)
-    b.banka_adi = buyuk_harf_tr((banka_adi or "").strip())
+    b.kisa_ad = buyuk_harf_tr((kisa_ad or "").strip())
     b.sube = buyuk_harf_tr((sube or "").strip())
-    b.hesap_no = (hesap_no or "").strip()
-    b.iban = (iban or "").strip().upper().replace(" ", "")
-    b.para_birimi = (para_birimi or "TRY")
-    b.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
+    b.swift_kod = (swift_kod or "").strip().upper()
+    b.adres = (adres or "").strip()
     b.updated_by = kullanici
-    b.save(update_fields=["ad", "banka_adi", "sube", "hesap_no", "iban", "para_birimi",
-                          "muhasebe", "updated_by", "updated_at"])
+    b.save(update_fields=["ad", "kisa_ad", "sube", "swift_kod", "adres",
+                          "updated_by", "updated_at"])
     return b
 
 
 def banka_sil(b: Banka, kullanici=None) -> Banka:
+    if b.silindi:
+        return b
+    if b.hesaplar.filter(silindi=False).exists():
+        raise FinansHatasi("Bu bankaya bağlı hesap var; önce hesapları silin.")
     return _soft_sil(b, kullanici)
+
+
+# --- Banka Hesabı (bankaya bağlı) -------------------------------------------
+def banka_hesaplari(banka):
+    return banka.hesaplar.filter(silindi=False).select_related("muhasebe").order_by("ad")
+
+
+def _banka_hesap_ad(banka, ad, *, haric_pk=None):
+    ad = buyuk_harf_tr((ad or "").strip())
+    if not ad:
+        raise FinansHatasi("Hesap adı boş olamaz.")
+    qs = BankaHesap.objects.filter(silindi=False, banka=banka, ad=ad)
+    if haric_pk is not None:
+        qs = qs.exclude(pk=haric_pk)
+    if qs.exists():
+        raise FinansHatasi(f"Bu bankada '{ad}' adlı hesap zaten var.")
+    return ad
+
+
+def banka_hesap_olustur(*, banka, ad, hesap_no="", iban="", para_birimi="TRY",
+                        muhasebe_kodu, kullanici=None) -> BankaHesap:
+    return BankaHesap.objects.create(
+        banka=banka, ad=_banka_hesap_ad(banka, ad), hesap_no=(hesap_no or "").strip(),
+        iban=(iban or "").strip().upper().replace(" ", ""), para_birimi=(para_birimi or "TRY"),
+        muhasebe=_yaprak_hesap_coz(muhasebe_kodu), created_by=kullanici, updated_by=kullanici)
+
+
+def banka_hesap_guncelle(h: BankaHesap, *, ad, hesap_no="", iban="", para_birimi="TRY",
+                         muhasebe_kodu, kullanici=None) -> BankaHesap:
+    if h.silindi:
+        raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
+    h.ad = _banka_hesap_ad(h.banka, ad, haric_pk=h.pk)
+    h.hesap_no = (hesap_no or "").strip()
+    h.iban = (iban or "").strip().upper().replace(" ", "")
+    h.para_birimi = (para_birimi or "TRY")
+    h.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
+    h.updated_by = kullanici
+    h.save(update_fields=["ad", "hesap_no", "iban", "para_birimi", "muhasebe",
+                          "updated_by", "updated_at"])
+    return h
+
+
+def banka_hesap_sil(h: BankaHesap, kullanici=None) -> BankaHesap:
+    return _soft_sil(h, kullanici)
 
 
 # --- Kredi Kartı ------------------------------------------------------------

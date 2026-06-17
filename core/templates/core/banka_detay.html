@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ banka.ad }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Banka Detayı{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:bankalar' %}">← Banka</a>
+    <h1 class="ust-baslik"><span class="emoji">🏦</span>{{ banka.ad }}</h1>
+  </div>
+  <span class="islem-bag">
+    <a class="dugme" href="{% url 'core:banka_kurum_duzenle' banka.pk %}">Düzenle</a>
+    <form method="post" action="{% url 'core:banka_kurum_sil' banka.pk %}" onsubmit="return confirm('Banka silinsin mi?');">
+      {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+  </span>
+</div>
+
+<section class="icerik-kart">
+  <div class="satir"><span class="et">Kısa Ad</span><span class="dg">{{ banka.kisa_ad|default:"—" }}</span></div>
+  <div class="satir"><span class="et">Şube</span><span class="dg">{{ banka.sube|default:"—" }}</span></div>
+  <div class="satir"><span class="et">SWIFT/BIC</span><span class="dg mono">{{ banka.swift_kod|default:"—" }}</span></div>
+  <div class="satir"><span class="et">Adres</span><span class="dg">{{ banka.adres|default:"—" }}</span></div>
+</section>
+
+<div class="sayfa-ust">
+  <div><h2 class="bolum-baslik">Hesaplar</h2></div>
+  <a class="dugme" href="{% url 'core:banka_hesap_ekle' banka.pk %}">+ Hesap Ekle</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Hesap Adı</th><th>Hesap No</th><th>IBAN</th><th>PB</th><th>Muhasebe Hesabı</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for h in hesaplar %}
+      <tr>
+        <td>{{ h.ad }}</td>
+        <td class="mono">{{ h.hesap_no|default:"—" }}</td>
+        <td class="mono">{{ h.iban|default:"—" }}</td>
+        <td class="mono">{{ h.para_birimi }}</td>
+        <td><span class="mono">{{ h.muhasebe.hesap_kodu }}</span> {{ h.muhasebe.hesap_adi }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:banka_hesap_duzenle' h.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:banka_hesap_sil' h.pk %}" onsubmit="return confirm('Hesap silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim">Bu bankada henüz hesap yok. “+ Hesap Ekle” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

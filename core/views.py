@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHesapForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -25,7 +25,7 @@ from core.forms import (
 )
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
-    Banka, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
+    Banka, BankaHesap, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
@@ -1313,7 +1313,7 @@ def kasa_sil(request, pk):
     return redirect("core:kasalar")
 
 
-# === FİNANS — Banka ===
+# === FİNANS — Banka (kurum) + bağlı hesaplar (master-detail) ===
 @ekran_gerekli("banka")
 def bankalar(request):
     return render(request, "core/banka_listesi.html",
@@ -1321,29 +1321,35 @@ def bankalar(request):
 
 
 @ekran_gerekli("banka")
-def banka_hesap_ekle(request):
+def banka_detay(request, pk):
+    banka = get_object_or_404(Banka, pk=pk, silindi=False)
+    return render(request, "core/banka_detay.html",
+                  {"banka": banka, "hesaplar": finans_servis.banka_hesaplari(banka)})
+
+
+@ekran_gerekli("banka")
+def banka_kurum_ekle(request):
     if request.method == "POST":
         form = BankaForm(request.POST)
         if form.is_valid():
             cd = form.cleaned_data
             try:
-                finans_servis.banka_olustur(
-                    ad=cd["ad"], banka_adi=cd["banka_adi"], sube=cd["sube"],
-                    hesap_no=cd["hesap_no"], iban=cd["iban"], para_birimi=cd["para_birimi"],
-                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
-                messages.success(request, "Banka hesabı eklendi.")
-                return redirect("core:bankalar")
+                banka = finans_servis.banka_olustur(
+                    ad=cd["ad"], kisa_ad=cd["kisa_ad"], sube=cd["sube"],
+                    swift_kod=cd["swift_kod"], adres=cd["adres"], kullanici=request.user)
+                messages.success(request, "Banka eklendi. Şimdi hesap ekleyebilirsiniz.")
+                return redirect("core:banka_detay", pk=banka.pk)
             except finans_servis.FinansHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = BankaForm()
     return render(request, "core/finans_form.html",
-                  {"form": form, "baslik": "Yeni Banka Hesabı", "emoji": "🏦",
+                  {"form": form, "baslik": "Yeni Banka", "emoji": "🏦",
                    "iptal_url": reverse("core:bankalar")})
 
 
 @ekran_gerekli("banka")
-def banka_hesap_duzenle(request, pk):
+def banka_kurum_duzenle(request, pk):
     banka = get_object_or_404(Banka, pk=pk, silindi=False)
     if request.method == "POST":
         form = BankaForm(request.POST)
@@ -1351,30 +1357,90 @@ def banka_hesap_duzenle(request, pk):
             cd = form.cleaned_data
             try:
                 finans_servis.banka_guncelle(
-                    banka, ad=cd["ad"], banka_adi=cd["banka_adi"], sube=cd["sube"],
-                    hesap_no=cd["hesap_no"], iban=cd["iban"], para_birimi=cd["para_birimi"],
-                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
-                messages.success(request, "Banka hesabı güncellendi.")
-                return redirect("core:bankalar")
+                    banka, ad=cd["ad"], kisa_ad=cd["kisa_ad"], sube=cd["sube"],
+                    swift_kod=cd["swift_kod"], adres=cd["adres"], kullanici=request.user)
+                messages.success(request, "Banka güncellendi.")
+                return redirect("core:banka_detay", pk=banka.pk)
             except finans_servis.FinansHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = BankaForm(initial={
-            "ad": banka.ad, "banka_adi": banka.banka_adi, "sube": banka.sube,
-            "hesap_no": banka.hesap_no, "iban": banka.iban, "para_birimi": banka.para_birimi,
-            "muhasebe": banka.muhasebe.hesap_kodu})
+            "ad": banka.ad, "kisa_ad": banka.kisa_ad, "sube": banka.sube,
+            "swift_kod": banka.swift_kod, "adres": banka.adres})
     return render(request, "core/finans_form.html",
-                  {"form": form, "baslik": "Banka Hesabı Düzenle", "emoji": "🏦",
-                   "iptal_url": reverse("core:bankalar")})
+                  {"form": form, "baslik": "Banka Düzenle", "emoji": "🏦",
+                   "iptal_url": reverse("core:banka_detay", args=[banka.pk])})
+
+
+@ekran_gerekli("banka")
+def banka_kurum_sil(request, pk):
+    banka = get_object_or_404(Banka, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            finans_servis.banka_sil(banka, kullanici=request.user)
+            messages.success(request, "Banka silindi.")
+        except finans_servis.FinansHatasi as e:
+            messages.error(request, str(e))
+            return redirect("core:banka_detay", pk=banka.pk)
+    return redirect("core:bankalar")
+
+
+@ekran_gerekli("banka")
+def banka_hesap_ekle(request, banka_pk):
+    banka = get_object_or_404(Banka, pk=banka_pk, silindi=False)
+    if request.method == "POST":
+        form = BankaHesapForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.banka_hesap_olustur(
+                    banka=banka, ad=cd["ad"], hesap_no=cd["hesap_no"], iban=cd["iban"],
+                    para_birimi=cd["para_birimi"], muhasebe_kodu=cd["muhasebe"].hesap_kodu,
+                    kullanici=request.user)
+                messages.success(request, "Hesap eklendi.")
+                return redirect("core:banka_detay", pk=banka.pk)
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BankaHesapForm()
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Yeni Hesap — " + banka.ad, "emoji": "🏦",
+                   "iptal_url": reverse("core:banka_detay", args=[banka.pk])})
+
+
+@ekran_gerekli("banka")
+def banka_hesap_duzenle(request, pk):
+    hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = BankaHesapForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.banka_hesap_guncelle(
+                    hesap, ad=cd["ad"], hesap_no=cd["hesap_no"], iban=cd["iban"],
+                    para_birimi=cd["para_birimi"], muhasebe_kodu=cd["muhasebe"].hesap_kodu,
+                    kullanici=request.user)
+                messages.success(request, "Hesap güncellendi.")
+                return redirect("core:banka_detay", pk=hesap.banka_id)
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BankaHesapForm(initial={
+            "ad": hesap.ad, "hesap_no": hesap.hesap_no, "iban": hesap.iban,
+            "para_birimi": hesap.para_birimi, "muhasebe": hesap.muhasebe.hesap_kodu})
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Hesap Düzenle", "emoji": "🏦",
+                   "iptal_url": reverse("core:banka_detay", args=[hesap.banka_id])})
 
 
 @ekran_gerekli("banka")
 def banka_hesap_sil(request, pk):
-    banka = get_object_or_404(Banka, pk=pk, silindi=False)
+    hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
+    banka_pk = hesap.banka_id
     if request.method == "POST":
-        finans_servis.banka_sil(banka, kullanici=request.user)
-        messages.success(request, "Banka hesabı silindi.")
-    return redirect("core:bankalar")
+        finans_servis.banka_hesap_sil(hesap, kullanici=request.user)
+        messages.success(request, "Hesap silindi.")
+    return redirect("core:banka_detay", pk=banka_pk)
 
 
 # === FİNANS — Kredi Kartı ===

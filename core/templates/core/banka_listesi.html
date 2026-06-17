@@ -6,29 +6,28 @@
 {% block content %}
 <div class="sayfa-ust">
   <div><h1 class="ust-baslik"><span class="emoji">🏦</span>Banka</h1></div>
-  <a class="dugme" href="{% url 'core:banka_hesap_ekle' %}">+ Yeni</a>
+  <a class="dugme" href="{% url 'core:banka_kurum_ekle' %}">+ Yeni Banka</a>
 </div>
 
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th>Ad</th><th>Banka</th><th>Şube</th><th>IBAN</th><th>PB</th><th>Muhasebe</th><th>İşlem</th></tr></thead>
+  <thead><tr><th>Banka</th><th>Kısa Ad</th><th>Şube</th><th>SWIFT</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for b in bankalar %}
       <tr>
-        <td>{{ b.ad }}</td>
-        <td>{{ b.banka_adi|default:"—" }}</td>
+        <td><a href="{% url 'core:banka_detay' b.pk %}">{{ b.ad }}</a></td>
+        <td>{{ b.kisa_ad|default:"—" }}</td>
         <td>{{ b.sube|default:"—" }}</td>
-        <td class="mono">{{ b.iban|default:"—" }}</td>
-        <td class="mono">{{ b.para_birimi }}</td>
-        <td><span class="mono">{{ b.muhasebe.hesap_kodu }}</span> {{ b.muhasebe.hesap_adi }}</td>
+        <td class="mono">{{ b.swift_kod|default:"—" }}</td>
         <td><span class="islem-bag">
-          <a href="{% url 'core:banka_hesap_duzenle' b.pk %}">Düzenle</a>
-          <form method="post" action="{% url 'core:banka_hesap_sil' b.pk %}" onsubmit="return confirm('Silinsin mi?');">
+          <a href="{% url 'core:banka_detay' b.pk %}">Detay</a>
+          <a href="{% url 'core:banka_kurum_duzenle' b.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:banka_kurum_sil' b.pk %}" onsubmit="return confirm('Banka silinsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="7" class="yardim">Henüz banka hesabı yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="5" class="yardim">Henüz banka yok. “+ Yeni Banka” ile ekleyin, sonra içinden hesap açın.</td></tr>
     {% endfor %}
   </tbody>
 </table>
