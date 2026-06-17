@@ -49,6 +49,9 @@ MODULLER = (
         Ekran("cari_kategoriler", "Cari Kategorileri", "core:cari_kategoriler"),
         Ekran("lokasyonlar", "Ülke / Şehir", "core:lokasyonlar"),
     )),
+    Modul("FINANS", "Finans", (
+        Ekran("kasa", "Kasa", "core:kasalar"),
+    )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),

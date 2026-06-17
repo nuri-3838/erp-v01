@@ -1,0 +1,33 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Kasa · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kasa{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div><h1 class="ust-baslik"><span class="emoji">💵</span>Kasa</h1></div>
+  <a class="dugme" href="{% url 'core:kasa_ekle' %}">+ Yeni</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Ad</th><th>Para Birimi</th><th>Muhasebe Hesabı</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for k in kasalar %}
+      <tr>
+        <td>{{ k.ad }}</td>
+        <td class="mono">{{ k.para_birimi }}</td>
+        <td><span class="mono">{{ k.muhasebe.hesap_kodu }}</span> {{ k.muhasebe.hesap_adi }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:kasa_duzenle' k.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:kasa_sil' k.pk %}" onsubmit="return confirm('Silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="yardim">Henüz kasa yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

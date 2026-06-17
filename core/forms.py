@@ -546,6 +546,20 @@ class TevkifatOraniForm(forms.Form):
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
 
 
+class KasaForm(forms.Form):
+    ad = forms.CharField(label="Kasa Adı", max_length=100)
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    muhasebe = forms.ModelChoiceField(
+        label="Muhasebe Hesabı", queryset=HesapPlani.objects.none(),
+        to_field_name="hesap_kodu", empty_label="— hesap seç —")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        self.fields["muhasebe"].queryset = yaprak_hesaplar()
+        self.fields["muhasebe"].widget.attrs["class"] = "akilli-sec"
+
+
 # ---------------------------------------------------------------------------
 # FATURALAR — Alış/Satış faturası giriş (otomatik yevmiye motoru besler)
 # ---------------------------------------------------------------------------

@@ -17,13 +17,13 @@ from django.utils import timezone
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
     CariYetkiliForm, DepoForm, FaturaForm, FaturaSatirForm, FaturaTipiForm, FisForm,
-    KategoriForm, KdvOraniForm, KullaniciDuzenleForm, KullaniciEkleForm,
+    KasaForm, KategoriForm, KdvOraniForm, KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm,
 )
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
-    FaturaTipi, HesapPlani, Kategori, KdvOrani, Kur, Sehir, Stok, TevkifatOrani, Ulke,
+    FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -51,6 +51,7 @@ from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
 from core.services import depo as depo_servis
 from core.services import hareket as hareket_servis
+from core.services import finans as finans_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -1244,6 +1245,69 @@ def cari_ekstresi(request, pk):
     eks = ekstre_devirli_servis(cari.muhasebe_kodu, b, s) if cari.muhasebe_kodu else None
     return render(request, "core/cari_ekstresi.html",
                   {"cari": cari, "form": form, "ekstre": eks})
+
+
+# === FİNANS — Kasa ===
+@ekran_gerekli("kasa")
+def kasalar(request):
+    return render(request, "core/kasa_listesi.html",
+                  {"kasalar": finans_servis.aktif_kasalar()})
+
+
+@ekran_gerekli("kasa")
+def kasa_ekle(request):
+    if request.method == "POST":
+        form = KasaForm(request.POST)
+        if form.is_valid():
+            try:
+                finans_servis.kasa_olustur(
+                    ad=form.cleaned_data["ad"],
+                    para_birimi=form.cleaned_data["para_birimi"],
+                    muhasebe_kodu=form.cleaned_data["muhasebe"].hesap_kodu,
+                    kullanici=request.user)
+                messages.success(request, "Kasa eklendi.")
+                return redirect("core:kasalar")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KasaForm()
+    return render(request, "core/kasa_form.html",
+                  {"form": form, "baslik": "Yeni Kasa", "iptal_url": reverse("core:kasalar")})
+
+
+@ekran_gerekli("kasa")
+def kasa_duzenle(request, pk):
+    kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = KasaForm(request.POST)
+        if form.is_valid():
+            try:
+                finans_servis.kasa_guncelle(
+                    kasa, ad=form.cleaned_data["ad"],
+                    para_birimi=form.cleaned_data["para_birimi"],
+                    muhasebe_kodu=form.cleaned_data["muhasebe"].hesap_kodu,
+                    kullanici=request.user)
+                messages.success(request, "Kasa güncellendi.")
+                return redirect("core:kasalar")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KasaForm(initial={"ad": kasa.ad, "para_birimi": kasa.para_birimi,
+                                 "muhasebe": kasa.muhasebe.hesap_kodu})
+    return render(request, "core/kasa_form.html",
+                  {"form": form, "baslik": "Kasa Düzenle", "iptal_url": reverse("core:kasalar")})
+
+
+@ekran_gerekli("kasa")
+def kasa_sil(request, pk):
+    kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            finans_servis.kasa_sil(kasa, kullanici=request.user)
+            messages.success(request, "Kasa silindi.")
+        except finans_servis.FinansHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:kasalar")
 
 
 @ekran_gerekli("cariler")

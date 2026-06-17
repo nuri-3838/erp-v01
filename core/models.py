@@ -926,3 +926,30 @@ class StokHareket(TemelModel):
 
     def __str__(self):
         return f"{self.stok_id} {self.tur} {self.miktar}"
+
+
+# === FİNANS modülü — tanımlar (Kasa/Banka/Çek-Senet/Kredi/Kredi Kartı) ===
+# Her finans hesabı bir YAPRAK muhasebe hesabına bağlanır; bakiye SAKLANMAZ,
+# o hesabın yevmiyesinden hesaplanır (cari/ekstre mantığı). İşlem motoru yok.
+class Kasa(TemelModel):
+    """Kasa tanımı. Bakiye bağlı muhasebe hesabının yevmiyesinden gelir (saklanmaz)."""
+
+    ad = models.CharField("kasa adı", max_length=100)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    muhasebe = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", on_delete=models.PROTECT,
+        related_name="kasalar")
+
+    class Meta:
+        db_table = "kasa"
+        verbose_name = "kasa"
+        verbose_name_plural = "kasalar"
+        ordering = ["ad"]
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_kasa_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return self.ad
