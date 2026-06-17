@@ -1,0 +1,36 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Banka · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Banka{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div><h1 class="ust-baslik"><span class="emoji">🏦</span>Banka</h1></div>
+  <a class="dugme" href="{% url 'core:banka_hesap_ekle' %}">+ Yeni</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Ad</th><th>Banka</th><th>Şube</th><th>IBAN</th><th>PB</th><th>Muhasebe</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for b in bankalar %}
+      <tr>
+        <td>{{ b.ad }}</td>
+        <td>{{ b.banka_adi|default:"—" }}</td>
+        <td>{{ b.sube|default:"—" }}</td>
+        <td class="mono">{{ b.iban|default:"—" }}</td>
+        <td class="mono">{{ b.para_birimi }}</td>
+        <td><span class="mono">{{ b.muhasebe.hesap_kodu }}</span> {{ b.muhasebe.hesap_adi }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:banka_hesap_duzenle' b.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:banka_hesap_sil' b.pk %}" onsubmit="return confirm('Silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim">Henüz banka hesabı yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -68,3 +68,83 @@ class KasaViewTest(TestCase):
         self.assertEqual(self.client.get(reverse("core:kasalar")).status_code, 200)
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:kasalar")).status_code, 403)
+
+
+class FinansDigerServisTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        _hesap("102.01", "İŞ BANKASI")
+        _hesap("300.01", "KREDİ HESABI")
+        _hesap("309.01", "KREDİ KARTI")
+        _hesap("101.01", "ALINAN ÇEKLER")
+
+    def test_banka_olustur(self):
+        from core.services.finans import banka_olustur
+        b = banka_olustur(ad="ana banka", iban="tr12 0006 4000", muhasebe_kodu="102.01")
+        self.assertEqual(b.ad, "ANA BANKA")
+        self.assertEqual(b.iban, "TR1200064000")          # boşluksuz + büyük
+        self.assertEqual(b.muhasebe.hesap_kodu, "102.01")
+
+    def test_kredi_karti_gun_araligi_ve_limit(self):
+        from decimal import Decimal
+        from core.services.finans import FinansHatasi, kredi_karti_olustur
+        with self.assertRaises(FinansHatasi):
+            kredi_karti_olustur(ad="X", kesim_gunu=40, muhasebe_kodu="309.01")
+        k = kredi_karti_olustur(ad="WORLD", limit="10.000,50", kesim_gunu=15,
+                                muhasebe_kodu="309.01")
+        self.assertEqual(k.limit, Decimal("10000.50"))
+        self.assertEqual(k.kesim_gunu, 15)
+
+    def test_kredi_olustur(self):
+        from decimal import Decimal
+        from core.services.finans import kredi_olustur
+        k = kredi_olustur(ad="TAŞIT", anapara="250.000", faiz_orani="3,75",
+                          muhasebe_kodu="300.01")
+        self.assertEqual(k.anapara, Decimal("250000"))
+        self.assertEqual(k.faiz_orani, Decimal("3.75"))
+
+    def test_cek_senet_olustur_ve_tutar_kontrol(self):
+        import datetime
+        from core.models import CekSenet
+        from core.services.finans import FinansHatasi, cek_senet_olustur
+        cs = cek_senet_olustur(tip="CEK", yon="ALINAN", tutar="5.000",
+                               vade=datetime.date(2026, 9, 1), kesideci="ahmet",
+                               muhasebe_kodu="101.01")
+        self.assertEqual(cs.tip, "CEK")
+        self.assertEqual(cs.durum, CekSenet.Durum.PORTFOYDE)   # varsayılan
+        self.assertEqual(cs.kesideci, "AHMET")
+        with self.assertRaises(FinansHatasi):
+            cek_senet_olustur(tip="CEK", yon="ALINAN", tutar="0",
+                              vade=datetime.date(2026, 9, 1), muhasebe_kodu="101.01")
+
+
+class FinansDigerViewTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.yon = User.objects.create_superuser("fyon", password="x")
+        _hesap("102.01", "İŞ BANKASI")
+        _hesap("101.01", "ALINAN ÇEKLER")
+
+    def test_listeler_200(self):
+        self.client.force_login(self.yon)
+        for ad in ("bankalar", "kredi_kartlari", "krediler", "cek_senetler"):
+            self.assertEqual(self.client.get(reverse("core:" + ad)).status_code, 200)
+
+    def test_banka_ekle_post(self):
+        from core.models import Banka
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:banka_hesap_ekle"),
+                             {"ad": "merkez", "para_birimi": "TRY", "muhasebe": "102.01"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(Banka.objects.filter(ad="MERKEZ").exists())
+
+    def test_cek_senet_ekle_post(self):
+        from decimal import Decimal
+        from core.models import CekSenet
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:cek_senet_ekle"), {
+            "tip": "CEK", "yon": "ALINAN", "tutar": "1.500", "para_birimi": "TRY",
+            "vade": "2026-09-01", "kesideci": "veli", "belge_no": "A123",
+            "durum": "PORTFOYDE", "muhasebe": "101.01"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(CekSenet.objects.filter(belge_no="A123", tutar=Decimal("1500")).exists())

@@ -15,7 +15,7 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Birim, Cari, CariKategori, Depo, FaturaTipi, HesapPlani, Kategori, KdvOrani,
+    Birim, Cari, CariKategori, CekSenet, Depo, FaturaTipi, HesapPlani, Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr
@@ -558,6 +558,84 @@ class KasaForm(forms.Form):
         from core.services.hesap_plani import yaprak_hesaplar
         self.fields["muhasebe"].queryset = yaprak_hesaplar()
         self.fields["muhasebe"].widget.attrs["class"] = "akilli-sec"
+
+
+def _muhasebe_alani():
+    return forms.ModelChoiceField(
+        label="Muhasebe Hesabı", queryset=HesapPlani.objects.none(),
+        to_field_name="hesap_kodu", empty_label="— hesap seç —")
+
+
+def _muhasebe_kur(form):
+    from core.services.hesap_plani import yaprak_hesaplar
+    form.fields["muhasebe"].queryset = yaprak_hesaplar()
+    form.fields["muhasebe"].widget.attrs["class"] = "akilli-sec"
+
+
+class BankaForm(forms.Form):
+    ad = forms.CharField(label="Hesap Adı", max_length=100)
+    banka_adi = forms.CharField(label="Banka Adı", max_length=150, required=False)
+    sube = forms.CharField(label="Şube", max_length=100, required=False)
+    hesap_no = forms.CharField(label="Hesap No", max_length=40, required=False)
+    iban = forms.CharField(label="IBAN", max_length=34, required=False)
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    muhasebe = _muhasebe_alani()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _muhasebe_kur(self)
+
+
+class KrediKartiForm(forms.Form):
+    ad = forms.CharField(label="Kart Adı", max_length=100)
+    banka_adi = forms.CharField(label="Banka Adı", max_length=150, required=False)
+    kart_son4 = forms.CharField(label="Kart No (Son 4)", max_length=4, required=False)
+    limit = TRDecimalField(label="Kart Limiti", basamak=2, required=False)
+    kesim_gunu = forms.IntegerField(label="Hesap Kesim Günü", min_value=1, max_value=31, required=False)
+    son_odeme_gunu = forms.IntegerField(label="Son Ödeme Günü", min_value=1, max_value=31, required=False)
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    muhasebe = _muhasebe_alani()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _muhasebe_kur(self)
+
+
+class KrediForm(forms.Form):
+    ad = forms.CharField(label="Kredi Adı", max_length=100)
+    banka_adi = forms.CharField(label="Banka Adı", max_length=150, required=False)
+    anapara = TRDecimalField(label="Anapara", basamak=2, required=False)
+    faiz_orani = TRDecimalField(label="Aylık Faiz Oranı (%)", basamak=4, required=False)
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    muhasebe = _muhasebe_alani()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _muhasebe_kur(self)
+
+
+class CekSenetForm(forms.Form):
+    tip = forms.ChoiceField(label="Tip", choices=CekSenet.Tip.choices)
+    yon = forms.ChoiceField(label="Yön", choices=CekSenet.Yon.choices)
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    vade = forms.DateField(
+        label="Vade Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    kesideci = forms.CharField(label="Keşideci", max_length=200, required=False)
+    belge_no = forms.CharField(label="Belge No", max_length=50, required=False)
+    durum = forms.ChoiceField(label="Durum", choices=CekSenet.Durum.choices,
+                              initial=CekSenet.Durum.PORTFOYDE)
+    cari = forms.ModelChoiceField(label="Cari (opsiyonel)", queryset=Cari.objects.none(),
+                                  required=False, empty_label="— cari seç —")
+    muhasebe = _muhasebe_alani()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _muhasebe_kur(self)
+        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
 
 # ---------------------------------------------------------------------------

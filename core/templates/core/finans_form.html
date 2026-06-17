@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{{ iptal_url }}">← Geri</a>
+    <h1 class="ust-baslik"><span class="emoji">{{ emoji|default:"💰" }}</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{{ baslik }}</h2>
+      <div class="izgara">
+        {% for field in form %}
+          <div class="alan {% if field.name == 'muhasebe' or field.name == 'cari' %}tam{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {% if field.name == 'muhasebe' or field.name == 'cari' %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="yardim">Bakiye saklanmaz; bağlı muhasebe hesabının yevmiyesinden hesaplanır (cari gibi).</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{{ iptal_url }}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

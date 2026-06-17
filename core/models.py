@@ -953,3 +953,145 @@ class Kasa(TemelModel):
 
     def __str__(self):
         return self.ad
+
+
+class Banka(TemelModel):
+    """Banka (mevduat) hesabı tanımı. Bakiye muhasebe hesabından (saklanmaz)."""
+
+    ad = models.CharField("hesap adı", max_length=100)
+    banka_adi = models.CharField("banka adı", max_length=150, blank=True)
+    sube = models.CharField("şube", max_length=100, blank=True)
+    hesap_no = models.CharField("hesap no", max_length=40, blank=True)
+    iban = models.CharField("IBAN", max_length=34, blank=True)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    muhasebe = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", on_delete=models.PROTECT,
+        related_name="banka_hesaplari")
+
+    class Meta:
+        db_table = "finans_banka"
+        verbose_name = "banka hesabı"
+        verbose_name_plural = "banka hesapları"
+        ordering = ["ad"]
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_banka_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return self.ad
+
+
+class KrediKarti(TemelModel):
+    """Kredi kartı tanımı. Bakiye muhasebe hesabından (saklanmaz). Kart no yalnız son 4."""
+
+    ad = models.CharField("kart adı", max_length=100)
+    banka_adi = models.CharField("banka adı", max_length=150, blank=True)
+    kart_son4 = models.CharField("kart no (son 4)", max_length=4, blank=True)
+    limit = models.DecimalField("kart limiti", max_digits=14, decimal_places=2, default=0)
+    kesim_gunu = models.PositiveSmallIntegerField("hesap kesim günü", null=True, blank=True)
+    son_odeme_gunu = models.PositiveSmallIntegerField("son ödeme günü", null=True, blank=True)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    muhasebe = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", on_delete=models.PROTECT,
+        related_name="kredi_kartlari")
+
+    class Meta:
+        db_table = "finans_kredi_karti"
+        verbose_name = "kredi kartı"
+        verbose_name_plural = "kredi kartları"
+        ordering = ["ad"]
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_kredi_karti_ad_aktif"),
+            models.CheckConstraint(condition=models.Q(limit__gte=0),
+                                   name="ck_kredi_karti_limit_gte0"),
+        ]
+
+    def __str__(self):
+        return self.ad
+
+
+class Kredi(TemelModel):
+    """Kredi tanımı. Bakiye (kalan borç) muhasebe hesabından (saklanmaz)."""
+
+    ad = models.CharField("kredi adı", max_length=100)
+    banka_adi = models.CharField("banka adı", max_length=150, blank=True)
+    anapara = models.DecimalField("anapara", max_digits=14, decimal_places=2, default=0)
+    faiz_orani = models.DecimalField("aylık faiz oranı (%)", max_digits=6, decimal_places=4,
+                                     default=0)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    muhasebe = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", on_delete=models.PROTECT,
+        related_name="krediler")
+
+    class Meta:
+        db_table = "finans_kredi"
+        verbose_name = "kredi"
+        verbose_name_plural = "krediler"
+        ordering = ["ad"]
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_kredi_ad_aktif"),
+            models.CheckConstraint(condition=models.Q(anapara__gte=0),
+                                   name="ck_kredi_anapara_gte0"),
+            models.CheckConstraint(condition=models.Q(faiz_orani__gte=0),
+                                   name="ck_kredi_faiz_gte0"),
+        ]
+
+    def __str__(self):
+        return self.ad
+
+
+class CekSenet(TemelModel):
+    """Çek/Senet (kıymetli evrak) tanımı. Tutar; bağlı muhasebe hesabına işlenir.
+    İşlem/yaşam-döngüsü motoru YOK (durum elle güncellenir)."""
+
+    class Tip(models.TextChoices):
+        CEK = "CEK", "Çek"
+        SENET = "SENET", "Senet"
+
+    class Yon(models.TextChoices):
+        ALINAN = "ALINAN", "Alınan"
+        VERILEN = "VERILEN", "Verilen"
+
+    class Durum(models.TextChoices):
+        PORTFOYDE = "PORTFOYDE", "Portföyde"
+        TAHSIL = "TAHSIL", "Tahsil Edildi"
+        ODENDI = "ODENDI", "Ödendi"
+        CIRO = "CIRO", "Ciro Edildi"
+        IADE = "IADE", "İade"
+        KARSILIKSIZ = "KARSILIKSIZ", "Karşılıksız"
+
+    tip = models.CharField("tip", max_length=5, choices=Tip.choices)
+    yon = models.CharField("yön", max_length=7, choices=Yon.choices)
+    tutar = models.DecimalField("tutar", max_digits=14, decimal_places=2)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    vade = models.DateField("vade tarihi")
+    kesideci = models.CharField("keşideci", max_length=200, blank=True)
+    belge_no = models.CharField("belge no", max_length=50, blank=True)
+    durum = models.CharField("durum", max_length=12, choices=Durum.choices,
+                             default=Durum.PORTFOYDE)
+    cari = models.ForeignKey(
+        "Cari", verbose_name="cari", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="cek_senetler")
+    muhasebe = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", on_delete=models.PROTECT,
+        related_name="cek_senetler")
+
+    class Meta:
+        db_table = "finans_cek_senet"
+        verbose_name = "çek/senet"
+        verbose_name_plural = "çek/senetler"
+        ordering = ["vade", "-id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(tutar__gt=0),
+                                   name="ck_cek_senet_tutar_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.tip} {self.belge_no} {self.tutar}"

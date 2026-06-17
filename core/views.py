@@ -16,14 +16,17 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    CariYetkiliForm, DepoForm, FaturaForm, FaturaSatirForm, FaturaTipiForm, FisForm,
-    KasaForm, KategoriForm, KdvOraniForm, KullaniciDuzenleForm, KullaniciEkleForm,
+    BankaForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
+    FaturaTipiForm, FisForm,
+    KasaForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
+    KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm,
 )
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
-    FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kur, Sehir, Stok, TevkifatOrani, Ulke,
+    Banka, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
+    Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -1308,6 +1311,269 @@ def kasa_sil(request, pk):
         except finans_servis.FinansHatasi as e:
             messages.error(request, str(e))
     return redirect("core:kasalar")
+
+
+# === FİNANS — Banka ===
+@ekran_gerekli("banka")
+def bankalar(request):
+    return render(request, "core/banka_listesi.html",
+                  {"bankalar": finans_servis.aktif_bankalar()})
+
+
+@ekran_gerekli("banka")
+def banka_hesap_ekle(request):
+    if request.method == "POST":
+        form = BankaForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.banka_olustur(
+                    ad=cd["ad"], banka_adi=cd["banka_adi"], sube=cd["sube"],
+                    hesap_no=cd["hesap_no"], iban=cd["iban"], para_birimi=cd["para_birimi"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                messages.success(request, "Banka hesabı eklendi.")
+                return redirect("core:bankalar")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BankaForm()
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Yeni Banka Hesabı", "emoji": "🏦",
+                   "iptal_url": reverse("core:bankalar")})
+
+
+@ekran_gerekli("banka")
+def banka_hesap_duzenle(request, pk):
+    banka = get_object_or_404(Banka, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = BankaForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.banka_guncelle(
+                    banka, ad=cd["ad"], banka_adi=cd["banka_adi"], sube=cd["sube"],
+                    hesap_no=cd["hesap_no"], iban=cd["iban"], para_birimi=cd["para_birimi"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                messages.success(request, "Banka hesabı güncellendi.")
+                return redirect("core:bankalar")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BankaForm(initial={
+            "ad": banka.ad, "banka_adi": banka.banka_adi, "sube": banka.sube,
+            "hesap_no": banka.hesap_no, "iban": banka.iban, "para_birimi": banka.para_birimi,
+            "muhasebe": banka.muhasebe.hesap_kodu})
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Banka Hesabı Düzenle", "emoji": "🏦",
+                   "iptal_url": reverse("core:bankalar")})
+
+
+@ekran_gerekli("banka")
+def banka_hesap_sil(request, pk):
+    banka = get_object_or_404(Banka, pk=pk, silindi=False)
+    if request.method == "POST":
+        finans_servis.banka_sil(banka, kullanici=request.user)
+        messages.success(request, "Banka hesabı silindi.")
+    return redirect("core:bankalar")
+
+
+# === FİNANS — Kredi Kartı ===
+@ekran_gerekli("kredi_karti")
+def kredi_kartlari(request):
+    return render(request, "core/kredi_karti_listesi.html",
+                  {"kartlar": finans_servis.aktif_kredi_kartlari()})
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_ekle(request):
+    if request.method == "POST":
+        form = KrediKartiForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.kredi_karti_olustur(
+                    ad=cd["ad"], banka_adi=cd["banka_adi"], kart_son4=cd["kart_son4"],
+                    limit=cd["limit"], kesim_gunu=cd["kesim_gunu"],
+                    son_odeme_gunu=cd["son_odeme_gunu"], para_birimi=cd["para_birimi"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                messages.success(request, "Kredi kartı eklendi.")
+                return redirect("core:kredi_kartlari")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KrediKartiForm()
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Yeni Kredi Kartı", "emoji": "💳",
+                   "iptal_url": reverse("core:kredi_kartlari")})
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_duzenle(request, pk):
+    kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = KrediKartiForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.kredi_karti_guncelle(
+                    kart, ad=cd["ad"], banka_adi=cd["banka_adi"], kart_son4=cd["kart_son4"],
+                    limit=cd["limit"], kesim_gunu=cd["kesim_gunu"],
+                    son_odeme_gunu=cd["son_odeme_gunu"], para_birimi=cd["para_birimi"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                messages.success(request, "Kredi kartı güncellendi.")
+                return redirect("core:kredi_kartlari")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KrediKartiForm(initial={
+            "ad": kart.ad, "banka_adi": kart.banka_adi, "kart_son4": kart.kart_son4,
+            "limit": kart.limit, "kesim_gunu": kart.kesim_gunu,
+            "son_odeme_gunu": kart.son_odeme_gunu, "para_birimi": kart.para_birimi,
+            "muhasebe": kart.muhasebe.hesap_kodu})
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Kredi Kartı Düzenle", "emoji": "💳",
+                   "iptal_url": reverse("core:kredi_kartlari")})
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_sil(request, pk):
+    kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
+    if request.method == "POST":
+        finans_servis.kredi_karti_sil(kart, kullanici=request.user)
+        messages.success(request, "Kredi kartı silindi.")
+    return redirect("core:kredi_kartlari")
+
+
+# === FİNANS — Kredi ===
+@ekran_gerekli("kredi")
+def krediler(request):
+    return render(request, "core/kredi_listesi.html",
+                  {"krediler": finans_servis.aktif_krediler()})
+
+
+@ekran_gerekli("kredi")
+def kredi_ekle(request):
+    if request.method == "POST":
+        form = KrediForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.kredi_olustur(
+                    ad=cd["ad"], banka_adi=cd["banka_adi"], anapara=cd["anapara"],
+                    faiz_orani=cd["faiz_orani"], para_birimi=cd["para_birimi"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                messages.success(request, "Kredi eklendi.")
+                return redirect("core:krediler")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KrediForm()
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Yeni Kredi", "emoji": "🏛️",
+                   "iptal_url": reverse("core:krediler")})
+
+
+@ekran_gerekli("kredi")
+def kredi_duzenle(request, pk):
+    kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = KrediForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.kredi_guncelle(
+                    kredi, ad=cd["ad"], banka_adi=cd["banka_adi"], anapara=cd["anapara"],
+                    faiz_orani=cd["faiz_orani"], para_birimi=cd["para_birimi"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                messages.success(request, "Kredi güncellendi.")
+                return redirect("core:krediler")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KrediForm(initial={
+            "ad": kredi.ad, "banka_adi": kredi.banka_adi, "anapara": kredi.anapara,
+            "faiz_orani": kredi.faiz_orani, "para_birimi": kredi.para_birimi,
+            "muhasebe": kredi.muhasebe.hesap_kodu})
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Kredi Düzenle", "emoji": "🏛️",
+                   "iptal_url": reverse("core:krediler")})
+
+
+@ekran_gerekli("kredi")
+def kredi_sil(request, pk):
+    kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
+    if request.method == "POST":
+        finans_servis.kredi_sil(kredi, kullanici=request.user)
+        messages.success(request, "Kredi silindi.")
+    return redirect("core:krediler")
+
+
+# === FİNANS — Çek / Senet ===
+@ekran_gerekli("cek_senet")
+def cek_senetler(request):
+    return render(request, "core/cek_senet_listesi.html",
+                  {"kayitlar": finans_servis.aktif_cek_senetler()})
+
+
+@ekran_gerekli("cek_senet")
+def cek_senet_ekle(request):
+    if request.method == "POST":
+        form = CekSenetForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.cek_senet_olustur(
+                    tip=cd["tip"], yon=cd["yon"], tutar=cd["tutar"], vade=cd["vade"],
+                    para_birimi=cd["para_birimi"], kesideci=cd["kesideci"],
+                    belge_no=cd["belge_no"], durum=cd["durum"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu,
+                    cari_id=(cd["cari"].pk if cd.get("cari") else None), kullanici=request.user)
+                messages.success(request, "Çek/Senet eklendi.")
+                return redirect("core:cek_senetler")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CekSenetForm()
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Yeni Çek / Senet", "emoji": "📜",
+                   "iptal_url": reverse("core:cek_senetler")})
+
+
+@ekran_gerekli("cek_senet")
+def cek_senet_duzenle(request, pk):
+    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CekSenetForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                finans_servis.cek_senet_guncelle(
+                    cs, tip=cd["tip"], yon=cd["yon"], tutar=cd["tutar"], vade=cd["vade"],
+                    para_birimi=cd["para_birimi"], kesideci=cd["kesideci"],
+                    belge_no=cd["belge_no"], durum=cd["durum"],
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu,
+                    cari_id=(cd["cari"].pk if cd.get("cari") else None), kullanici=request.user)
+                messages.success(request, "Çek/Senet güncellendi.")
+                return redirect("core:cek_senetler")
+            except finans_servis.FinansHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CekSenetForm(initial={
+            "tip": cs.tip, "yon": cs.yon, "tutar": cs.tutar, "vade": cs.vade,
+            "para_birimi": cs.para_birimi, "kesideci": cs.kesideci, "belge_no": cs.belge_no,
+            "durum": cs.durum, "cari": cs.cari_id, "muhasebe": cs.muhasebe.hesap_kodu})
+    return render(request, "core/finans_form.html",
+                  {"form": form, "baslik": "Çek / Senet Düzenle", "emoji": "📜",
+                   "iptal_url": reverse("core:cek_senetler")})
+
+
+@ekran_gerekli("cek_senet")
+def cek_senet_sil(request, pk):
+    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
+    if request.method == "POST":
+        finans_servis.cek_senet_sil(cs, kullanici=request.user)
+        messages.success(request, "Çek/Senet silindi.")
+    return redirect("core:cek_senetler")
 
 
 @ekran_gerekli("cariler")
