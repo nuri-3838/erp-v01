@@ -30,7 +30,8 @@ from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
 from core.sayi import SayiHatasi, parse_tr
 from core.services.raporlar import (
-    bilanco, bilanco_usd, ekstre as ekstre_servis, gelir_tablosu, gelir_tablosu_usd,
+    bilanco, bilanco_usd, ekstre as ekstre_servis,
+    ekstre_devirli as ekstre_devirli_servis, gelir_tablosu, gelir_tablosu_usd,
     mali_yil_araligi, mizan, mizan_usd,
 )
 from core.services.yevmiye import (
@@ -1234,6 +1235,15 @@ def cari_detay(request, pk):
         "cari": cari,
         "bankalar": cari_servis.aktif_bankalar(cari),
         "yetkililer": cari_servis.aktif_yetkililer(cari)})
+
+
+@ekran_gerekli("cariler")
+def cari_ekstresi(request, pk):
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    form, b, s = _tarih_araligi(request)
+    eks = ekstre_devirli_servis(cari.muhasebe_kodu, b, s) if cari.muhasebe_kodu else None
+    return render(request, "core/cari_ekstresi.html",
+                  {"cari": cari, "form": form, "ekstre": eks})
 
 
 @ekran_gerekli("cariler")

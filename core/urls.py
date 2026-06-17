@@ -78,6 +78,7 @@ urlpatterns = [
     path("cariler/ekle/", views.cari_ekle, name="cari_ekle"),
     path("api/cari-kod/", views.cari_kod_api, name="cari_kod_api"),
     path("cariler/<int:pk>/", views.cari_detay, name="cari_detay"),
+    path("cariler/<int:pk>/ekstre/", views.cari_ekstresi, name="cari_ekstresi"),
     path("cariler/<int:pk>/duzenle/", views.cari_duzenle, name="cari_duzenle"),
     path("cariler/<int:pk>/sil/", views.cari_sil, name="cari_sil"),
     path("cariler/<int:cari_pk>/banka/ekle/", views.banka_ekle, name="banka_ekle"),

@@ -1,0 +1,88 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ cari.unvan }} Ekstresi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Cari Ekstresi{% endblock %}
+
+{% block content %}
+<a class="ust-link" href="{% url 'core:cari_detay' cari.pk %}">← {{ cari.kod }} {{ cari.unvan }}</a>
+<h1 class="ust-baslik"><span class="emoji">📄</span>Cari Ekstresi — {{ cari.unvan }}</h1>
+
+{% if not ekstre %}
+  <div class="uyari"><div>⚠️ Bu carinin muhasebe hesabı tanımlı değil; ekstre üretilemiyor.</div></div>
+{% else %}
+<p class="yardim">Hesap: <span class="mono">{{ ekstre.hesap_kodu }}</span> {{ ekstre.hesap_adi }}</p>
+
+<form method="get" class="alan">
+  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+  {{ form.baslangic }}
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+  {{ form.bitis }}
+  <button type="submit">Göster</button>
+  {% if form.non_field_errors %}<div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>{% endif %}
+</form>
+
+<p class="yardim">Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
+  · İptal edilen fişler hariç · Bakiyeler yevmiyeden hesaplanır{% if ekstre.cok_hesap %} · alt hesap hareketleri dahil{% endif %}.
+  <br>Pozitif bakiye = <strong>borç</strong> (cari bize borçlu), negatif = <strong>alacak</strong> (biz cariye borçluyuz).</p>
+
+<div class="toplamlar">
+  <span class="etiket">Devir (TL):</span> <span class="deger">{{ ekstre.acilis|tr_bakiye }}</span>
+  <span class="etiket">Dönem borç:</span> <span class="deger">{{ ekstre.toplam_borc|tr_para }}</span>
+  <span class="etiket">Dönem alacak:</span> <span class="deger">{{ ekstre.toplam_alacak|tr_para }}</span>
+  <span class="etiket">Kapanış bakiye (TL):</span>
+  <span class="deger {% if ekstre.kapanis_bakiye > 0 %}dengeli{% elif ekstre.kapanis_bakiye < 0 %}dengesiz{% endif %}">{{ ekstre.kapanis_bakiye|tr_bakiye }}</span>
+  {% for pb, t in ekstre.dvz_toplamlar.items %}{% if pb != "TRY" %}
+    <span class="etiket">Bakiye ({{ pb }}):</span> <span class="deger">{{ t.bakiye|tr_bakiye }} {{ pb }}</span>
+  {% endif %}{% endfor %}
+</div>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Tarih</th><th rowspan="2">Fiş No</th><th rowspan="2">Açıklama</th>
+      <th colspan="3" class="ekstre-grup">TL</th>
+      <th colspan="4" class="ekstre-grup kolon-ayrac">Döviz (işlem PB)</th>
+    </tr>
+    <tr>
+      <th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
+      <th class="kolon-ayrac">PB</th><th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="pasif">
+      <td colspan="3"><strong>Devir (açılış bakiyesi)</strong></td>
+      <td class="sag" colspan="2"></td>
+      <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
+      <td colspan="4" class="kolon-ayrac"></td>
+    </tr>
+    {% for s in ekstre.satirlar %}
+      <tr>
+        <td>{{ s.tarih|date:"d.m.Y" }}</td>
+        <td class="mono"><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
+        <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
+        <td class="sag">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
+        <td class="sag">{{ s.yur_bakiye|tr_bakiye }}</td>
+        <td class="kolon-ayrac">{{ s.pb }}</td>
+        <td class="sag">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
+        <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10" class="yardim">Bu aralıkta hareket yok.</td></tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th colspan="3" class="sag">Kapanış (TL)</th>
+      <th class="sag">{{ ekstre.toplam_borc|tr_para }}</th>
+      <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
+      <th class="sag">{{ ekstre.kapanis_bakiye|tr_bakiye }}</th>
+      <th colspan="4" class="kolon-ayrac"></th>
+    </tr>
+  </tfoot>
+</table>
+</div>
+{% endif %}
+{% endblock %}

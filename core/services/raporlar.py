@@ -216,6 +216,8 @@ class Ekstre:
     baslangic: datetime.date
     bitis: datetime.date
     satirlar: list  # list[EkstreSatir]
+    acilis: Decimal = SIFIR           # dönem öncesi net devir (borç−alacak); 0 = devirsiz
+    acilis_dvz: dict = None            # devir döviz: {pb: net}
 
     @property
     def toplam_borc(self) -> Decimal:
@@ -229,6 +231,11 @@ class Ekstre:
     def bakiye(self) -> Decimal:
         """Net borç pozisyonu: pozitif = borç bakiye, negatif = alacak bakiye."""
         return self.toplam_borc - self.toplam_alacak
+
+    @property
+    def kapanis_bakiye(self) -> Decimal:
+        """Kapanış bakiyesi = açılış devri + dönem net (borç−alacak)."""
+        return self.acilis + self.bakiye
 
     @property
     def cok_hesap(self) -> bool:
@@ -248,7 +255,7 @@ class Ekstre:
         return d
 
 
-def ekstre(hesap_kodu: str, baslangic=None, bitis=None) -> Ekstre:
+def ekstre(hesap_kodu: str, baslangic=None, bitis=None, acilis=None, acilis_dvz=None) -> Ekstre:
     """Belirtilen hesabın tarih aralığındaki hareket ekstresi, yürüyen bakiyeli.
 
     Yalnızca aktif (iptal edilmemiş) fişlerin satırları; fiş tarih + fis_no + satır id
@@ -265,8 +272,8 @@ def ekstre(hesap_kodu: str, baslangic=None, bitis=None) -> Ekstre:
         .order_by("fis__tarih", "fis__fis_no", "id")
     )
     satirlar = []
-    kumulatif = SIFIR
-    kum_dvz = {}
+    kumulatif = acilis if acilis is not None else SIFIR
+    kum_dvz = dict(acilis_dvz) if acilis_dvz else {}
     for ln in qs:
         kumulatif += ln.borc - ln.alacak
         dvz_b = ln.islem_tutari if ln.borc else SIFIR
@@ -297,7 +304,31 @@ def ekstre(hesap_kodu: str, baslangic=None, bitis=None) -> Ekstre:
         baslangic=baslangic,
         bitis=bitis,
         satirlar=satirlar,
+        acilis=(acilis if acilis is not None else SIFIR),
+        acilis_dvz=(dict(acilis_dvz) if acilis_dvz else {}),
     )
+
+
+def _devir(hesap_kodu, once):
+    """`once` tarihinden ÖNCEki aktif hareketlerin net devri (borç−alacak) + döviz devri (pb)."""
+    qs = YevmiyeSatir.objects.filter(
+        Q(hesap_id=hesap_kodu) | Q(hesap__hesap_kodu__startswith=hesap_kodu + "."),
+        silindi=False, fis__silindi=False, fis__tarih__lt=once)
+    devir = SIFIR
+    devir_dvz = {}
+    for ln in qs.only("borc", "alacak", "islem_pb", "islem_tutari"):
+        devir += ln.borc - ln.alacak
+        d = ln.islem_tutari if ln.borc else (-ln.islem_tutari if ln.alacak else SIFIR)
+        devir_dvz[ln.islem_pb] = devir_dvz.get(ln.islem_pb, SIFIR) + d
+    return devir, devir_dvz
+
+
+def ekstre_devirli(hesap_kodu, baslangic=None, bitis=None) -> Ekstre:
+    """Devirli ekstre: aralık ÖNCESİ net devir (açılış bakiyesi) + aralık hareketleri.
+    Yürüyen bakiye devirden başlar; kapanis_bakiye = devir + dönem net. Cari ekstresi için."""
+    baslangic, bitis = _varsayilan(baslangic, bitis)
+    devir, devir_dvz = _devir(hesap_kodu, baslangic)
+    return ekstre(hesap_kodu, baslangic, bitis, acilis=devir, acilis_dvz=devir_dvz)
 
 
 # ---------------------------------------------------------------------------

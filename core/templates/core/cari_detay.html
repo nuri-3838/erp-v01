@@ -48,6 +48,7 @@
   <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:cariler' %}">← Cariler</a>
     <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:cari_ekstresi' cari.pk %}">📄 Ekstre</a>
       <a class="dugme" href="{% url 'core:cari_duzenle' cari.pk %}">✏️ Düzenle</a>
       <form method="post" action="{% url 'core:cari_sil' cari.pk %}" style="margin:0"
             onsubmit="return confirm('{{ cari.unvan }} silinsin mi?');">
