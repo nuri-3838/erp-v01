@@ -100,6 +100,17 @@ class FinansDigerServisTest(TestCase):
         with self.assertRaises(FinansHatasi):
             banka_sil(b)
 
+    def test_para_birimi_servis_dogrular(self):
+        """Geçersiz para birimi servis katmanında reddedilir (UI'a güvenilmez)."""
+        from core.services.finans import (FinansHatasi, banka_hesap_olustur,
+                                          banka_olustur, kasa_olustur)
+        with self.assertRaises(FinansHatasi):
+            kasa_olustur(ad="GEÇERSİZ PB", para_birimi="XYZ", muhasebe_kodu="102.01")
+        b = banka_olustur(ad="finansbank")
+        with self.assertRaises(FinansHatasi):
+            banka_hesap_olustur(banka=b, ad="usd", para_birimi="usd",
+                                muhasebe_kodu="102.01")   # küçük harf → geçersiz
+
     def test_kredi_karti_gun_araligi_ve_limit(self):
         from decimal import Decimal
         from core.services.finans import FinansHatasi, kredi_karti_olustur

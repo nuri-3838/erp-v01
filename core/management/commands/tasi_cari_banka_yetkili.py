@@ -36,7 +36,7 @@ class Command(BaseCommand):
             if cari is None:
                 continue
             ad = buyuk_harf_tr((r.get("banka_adi") or "").strip())
-            iban = buyuk_harf_tr((r.get("iban") or "").strip())
+            iban = (r.get("iban") or "").strip().upper().replace(" ", "")
             if CariBanka.objects.filter(cari=cari, silindi=False, banka_adi=ad,
                                         iban=iban).exists():
                 continue

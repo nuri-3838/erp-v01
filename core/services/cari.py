@@ -252,8 +252,8 @@ def banka_ekle(cari, *, banka_adi, hesap_sahibi="", iban="", swift="",
     b = CariBanka.objects.create(
         cari=cari, banka_adi=banka_adi,
         hesap_sahibi=buyuk_harf_tr((hesap_sahibi or "").strip()),
-        iban=buyuk_harf_tr((iban or "").strip()),
-        swift=buyuk_harf_tr((swift or "").strip()),
+        iban=(iban or "").strip().upper().replace(" ", ""),
+        swift=(swift or "").strip().upper(),
         para_birimi=para_birimi, aciklama=(aciklama or "").strip(),
         varsayilan=bool(varsayilan) or ilk,
         created_by=kullanici, updated_by=kullanici)
@@ -273,8 +273,8 @@ def banka_guncelle(banka: CariBanka, *, banka_adi, hesap_sahibi="", iban="", swi
         raise CariHatasi("Geçersiz para birimi.")
     banka.banka_adi = banka_adi
     banka.hesap_sahibi = buyuk_harf_tr((hesap_sahibi or "").strip())
-    banka.iban = buyuk_harf_tr((iban or "").strip())
-    banka.swift = buyuk_harf_tr((swift or "").strip())
+    banka.iban = (iban or "").strip().upper().replace(" ", "")
+    banka.swift = (swift or "").strip().upper()
     banka.para_birimi = para_birimi
     banka.aciklama = (aciklama or "").strip()
     banka.varsayilan = bool(varsayilan)

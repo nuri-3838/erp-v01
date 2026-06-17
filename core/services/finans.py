@@ -44,6 +44,14 @@ def _ad_dogrula(model, ad, *, haric_pk=None):
     return ad
 
 
+def _pb(para_birimi):
+    """Para birimini doğrula (servis katmanı zorlar; UI'a güvenilmez). Boş → TRY."""
+    pb = (para_birimi or "TRY")
+    if pb not in dict(Cari.PARA_CHOICES):
+        raise FinansHatasi(f"Geçersiz para birimi: {pb}")
+    return pb
+
+
 # --- Kasa -------------------------------------------------------------------
 def aktif_kasalar():
     return Kasa.objects.filter(silindi=False).select_related("muhasebe").order_by("ad")
@@ -52,7 +60,7 @@ def aktif_kasalar():
 def kasa_olustur(*, ad, para_birimi="TRY", muhasebe_kodu, kullanici=None) -> Kasa:
     ad = _ad_dogrula(Kasa, ad)
     return Kasa.objects.create(
-        ad=ad, para_birimi=(para_birimi or "TRY"),
+        ad=ad, para_birimi=_pb(para_birimi),
         muhasebe=_yaprak_hesap_coz(muhasebe_kodu),
         created_by=kullanici, updated_by=kullanici)
 
@@ -61,7 +69,7 @@ def kasa_guncelle(k: Kasa, *, ad, para_birimi="TRY", muhasebe_kodu, kullanici=No
     if k.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
     k.ad = _ad_dogrula(Kasa, ad, haric_pk=k.pk)
-    k.para_birimi = (para_birimi or "TRY")
+    k.para_birimi = _pb(para_birimi)
     k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
     k.updated_by = kullanici
     k.save(update_fields=["ad", "para_birimi", "muhasebe", "updated_by", "updated_at"])
@@ -171,7 +179,7 @@ def banka_hesap_olustur(*, banka, ad, hesap_no="", iban="", para_birimi="TRY",
                         muhasebe_kodu, kullanici=None) -> BankaHesap:
     return BankaHesap.objects.create(
         banka=banka, ad=_banka_hesap_ad(banka, ad), hesap_no=(hesap_no or "").strip(),
-        iban=(iban or "").strip().upper().replace(" ", ""), para_birimi=(para_birimi or "TRY"),
+        iban=(iban or "").strip().upper().replace(" ", ""), para_birimi=_pb(para_birimi),
         muhasebe=_yaprak_hesap_coz(muhasebe_kodu), created_by=kullanici, updated_by=kullanici)
 
 
@@ -182,7 +190,7 @@ def banka_hesap_guncelle(h: BankaHesap, *, ad, hesap_no="", iban="", para_birimi
     h.ad = _banka_hesap_ad(h.banka, ad, haric_pk=h.pk)
     h.hesap_no = (hesap_no or "").strip()
     h.iban = (iban or "").strip().upper().replace(" ", "")
-    h.para_birimi = (para_birimi or "TRY")
+    h.para_birimi = _pb(para_birimi)
     h.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
     h.updated_by = kullanici
     h.save(update_fields=["ad", "hesap_no", "iban", "para_birimi", "muhasebe",
@@ -207,7 +215,7 @@ def kredi_karti_olustur(*, ad, banka_adi="", kart_son4="", limit=0, kesim_gunu=N
         kart_son4=(kart_son4 or "").strip(), limit=_sayi(limit, "Limit"),
         kesim_gunu=_gun(kesim_gunu, "Kesim günü"),
         son_odeme_gunu=_gun(son_odeme_gunu, "Son ödeme günü"),
-        para_birimi=(para_birimi or "TRY"), muhasebe=_yaprak_hesap_coz(muhasebe_kodu),
+        para_birimi=_pb(para_birimi), muhasebe=_yaprak_hesap_coz(muhasebe_kodu),
         created_by=kullanici, updated_by=kullanici)
 
 
@@ -222,7 +230,7 @@ def kredi_karti_guncelle(k: KrediKarti, *, ad, banka_adi="", kart_son4="", limit
     k.limit = _sayi(limit, "Limit")
     k.kesim_gunu = _gun(kesim_gunu, "Kesim günü")
     k.son_odeme_gunu = _gun(son_odeme_gunu, "Son ödeme günü")
-    k.para_birimi = (para_birimi or "TRY")
+    k.para_birimi = _pb(para_birimi)
     k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
     k.updated_by = kullanici
     k.save(update_fields=["ad", "banka_adi", "kart_son4", "limit", "kesim_gunu",
@@ -244,7 +252,7 @@ def kredi_olustur(*, ad, banka_adi="", anapara=0, faiz_orani=0, para_birimi="TRY
     return Kredi.objects.create(
         ad=_ad_dogrula(Kredi, ad), banka_adi=buyuk_harf_tr((banka_adi or "").strip()),
         anapara=_sayi(anapara, "Anapara"), faiz_orani=_sayi(faiz_orani, "Faiz oranı"),
-        para_birimi=(para_birimi or "TRY"), muhasebe=_yaprak_hesap_coz(muhasebe_kodu),
+        para_birimi=_pb(para_birimi), muhasebe=_yaprak_hesap_coz(muhasebe_kodu),
         created_by=kullanici, updated_by=kullanici)
 
 
@@ -256,7 +264,7 @@ def kredi_guncelle(k: Kredi, *, ad, banka_adi="", anapara=0, faiz_orani=0, para_
     k.banka_adi = buyuk_harf_tr((banka_adi or "").strip())
     k.anapara = _sayi(anapara, "Anapara")
     k.faiz_orani = _sayi(faiz_orani, "Faiz oranı")
-    k.para_birimi = (para_birimi or "TRY")
+    k.para_birimi = _pb(para_birimi)
     k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
     k.updated_by = kullanici
     k.save(update_fields=["ad", "banka_adi", "anapara", "faiz_orani", "para_birimi",
@@ -289,7 +297,7 @@ def cek_senet_olustur(*, tip, yon, tutar, vade, para_birimi="TRY", kesideci="", 
     tip, yon, durum = _cek_alanlar(tip, yon, durum)
     return CekSenet.objects.create(
         tip=tip, yon=yon, tutar=_sayi(tutar, "Tutar", pozitif=True), vade=vade,
-        para_birimi=(para_birimi or "TRY"), kesideci=buyuk_harf_tr((kesideci or "").strip()),
+        para_birimi=_pb(para_birimi), kesideci=buyuk_harf_tr((kesideci or "").strip()),
         belge_no=(belge_no or "").strip(), durum=durum,
         muhasebe=_yaprak_hesap_coz(muhasebe_kodu), cari=_cari_coz(cari_id),
         created_by=kullanici, updated_by=kullanici)
@@ -304,7 +312,7 @@ def cek_senet_guncelle(cs: CekSenet, *, tip, yon, tutar, vade, para_birimi="TRY"
     cs.tip, cs.yon, cs.durum = tip, yon, durum
     cs.tutar = _sayi(tutar, "Tutar", pozitif=True)
     cs.vade = vade
-    cs.para_birimi = (para_birimi or "TRY")
+    cs.para_birimi = _pb(para_birimi)
     cs.kesideci = buyuk_harf_tr((kesideci or "").strip())
     cs.belge_no = (belge_no or "").strip()
     cs.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)

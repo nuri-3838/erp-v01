@@ -40,6 +40,15 @@ class CariBankaServisTest(TestCase):
         b2.refresh_from_db()
         self.assertTrue(b2.varsayilan)                     # kalan varsayılan oldu
 
+    def test_iban_swift_normalize(self):
+        """IBAN/SWIFT sistem kimliği: düz .upper() + boşluksuz; Türkçe büyük harf DEĞİL (i→İ olmaz)."""
+        c = _cari()
+        b = banka_ekle(c, banka_adi="x", iban="tr33 0001 i", swift="abci")
+        self.assertEqual(b.iban, "TR330001I")
+        self.assertEqual(b.swift, "ABCI")
+        b2 = banka_guncelle(b, banka_adi="x", iban="tr44i", swift="defi")
+        self.assertEqual((b2.iban, b2.swift), ("TR44I", "DEFI"))
+
     def test_yetkili_ekle_upper(self):
         c = _cari()
         y = yetkili_ekle(c, ad_soyad="ali veli", unvan="müdür")
