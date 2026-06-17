@@ -553,11 +553,9 @@ class KasaForm(forms.Form):
         label="Muhasebe Hesabı", queryset=HesapPlani.objects.none(),
         to_field_name="hesap_kodu", empty_label="— hesap seç —")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mevcut_hesap=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.hesap_plani import yaprak_hesaplar
-        self.fields["muhasebe"].queryset = yaprak_hesaplar()
-        self.fields["muhasebe"].widget.attrs["class"] = "akilli-sec"
+        _muhasebe_kur(self, mevcut_hesap)
 
 
 def _muhasebe_alani():
@@ -566,9 +564,21 @@ def _muhasebe_alani():
         to_field_name="hesap_kodu", empty_label="— hesap seç —")
 
 
-def _muhasebe_kur(form):
+def _muhasebe_kur(form, mevcut_kod=None):
+    """Yaprak hesap dropdown'u. Düzenlemede mevcut bağlı hesap yaprak olmaktan
+    çıkmışsa (sonradan alt hesap eklenmiş) ya da soft-delete edilmişse bile queryset'e
+    dahil et — yoksa form boş render olur ve kayıt düzenlenemez hâle gelir. Yaprak
+    olmayan hesap seçili bırakılırsa servis katmanı (_yaprak_hesap_coz) net hatayla reddeder."""
+    from django.db.models import Q
+
     from core.services.hesap_plani import yaprak_hesaplar
-    form.fields["muhasebe"].queryset = yaprak_hesaplar()
+    qs = yaprak_hesaplar()
+    if mevcut_kod and not qs.filter(hesap_kodu=mevcut_kod).exists():
+        leaf_pks = list(qs.values_list("pk", flat=True))
+        qs = (HesapPlani.objects.filter(silindi=False)
+              .filter(Q(pk__in=leaf_pks) | Q(hesap_kodu=mevcut_kod))
+              .order_by("hesap_kodu"))
+    form.fields["muhasebe"].queryset = qs
     form.fields["muhasebe"].widget.attrs["class"] = "akilli-sec"
 
 
@@ -587,9 +597,9 @@ class BankaHesapForm(forms.Form):
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     muhasebe = _muhasebe_alani()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mevcut_hesap=None, **kwargs):
         super().__init__(*args, **kwargs)
-        _muhasebe_kur(self)
+        _muhasebe_kur(self, mevcut_hesap)
 
 
 class KrediKartiForm(forms.Form):
@@ -602,9 +612,9 @@ class KrediKartiForm(forms.Form):
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     muhasebe = _muhasebe_alani()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mevcut_hesap=None, **kwargs):
         super().__init__(*args, **kwargs)
-        _muhasebe_kur(self)
+        _muhasebe_kur(self, mevcut_hesap)
 
 
 class KrediForm(forms.Form):
@@ -615,9 +625,9 @@ class KrediForm(forms.Form):
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     muhasebe = _muhasebe_alani()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mevcut_hesap=None, **kwargs):
         super().__init__(*args, **kwargs)
-        _muhasebe_kur(self)
+        _muhasebe_kur(self, mevcut_hesap)
 
 
 class CekSenetForm(forms.Form):
@@ -636,9 +646,9 @@ class CekSenetForm(forms.Form):
                                   required=False, empty_label="— cari seç —")
     muhasebe = _muhasebe_alani()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mevcut_hesap=None, **kwargs):
         super().__init__(*args, **kwargs)
-        _muhasebe_kur(self)
+        _muhasebe_kur(self, mevcut_hesap)
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"

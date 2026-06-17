@@ -47,6 +47,25 @@ class KasaServisTest(TestCase):
         k.refresh_from_db()
         self.assertTrue(k.silindi)
 
+    def test_bagli_hesap_silinemez(self):
+        """Kasa bağlı bir muhasebe hesabı soft-delete edilemez (öksüz kalmasın)."""
+        from core.services.hesap_plani import HesapHatasi, hesap_sil
+        kasa_olustur(ad="ANA KASA", muhasebe_kodu="100.01")
+        with self.assertRaises(HesapHatasi):
+            hesap_sil(kod="100.01")
+
+    def test_yaprak_olmayan_hesap_duzenlemede_kalir(self):
+        """100.01'e alt hesap eklenince yaprak olmaktan çıkar; düzenleme formu yine de
+        bağlı hesabı listede tutmalı (yoksa kayıt düzenlenemez). Ekleme formu tutmaz."""
+        from core.forms import KasaForm
+        from core.services.hesap_plani import yaprak_hesaplar
+        _hesap("100.01.0001", "ALT")          # 100.01 artık yaprak değil
+        self.assertFalse(yaprak_hesaplar().filter(hesap_kodu="100.01").exists())
+        duz = KasaForm(mevcut_hesap="100.01")
+        self.assertTrue(duz.fields["muhasebe"].queryset.filter(hesap_kodu="100.01").exists())
+        ekle = KasaForm()
+        self.assertFalse(ekle.fields["muhasebe"].queryset.filter(hesap_kodu="100.01").exists())
+
 
 class KasaViewTest(TestCase):
     @classmethod

@@ -214,8 +214,36 @@ def hesap_adi_guncelle(*, kod, yeni_ad, kullanici=None) -> HesapPlani:
     return h
 
 
+# Bu hesaba bağlı olabilecek tanım kayıtları (reverse FK related_name → insan-adı).
+# Hesap soft-delete edilince bu tanımlar öksüz kalmasın diye önce engellenir.
+# (FK'ler PROTECT ama soft-delete .delete() çağırmadığı için PROTECT tetiklenmez.)
+_BAGLI_TANIM_RELS = (
+    ("kasalar", "kasa"),
+    ("banka_hesaplari", "banka hesabı"),
+    ("kredi_kartlari", "kredi kartı"),
+    ("krediler", "kredi"),
+    ("cek_senetler", "çek/senet"),
+    ("kdv_borc_oranlari", "KDV oranı"),
+    ("kdv_alacak_oranlari", "KDV oranı"),
+    ("tevkifat_oranlari", "tevkifat oranı"),
+    ("kategori_baglari", "kategori-hesap bağı"),
+)
+
+
+def _bagli_tanim_dogrula(h: HesapPlani):
+    """Hesaba bağlı aktif tanım (finans/KDV/tevkifat/kategori) varsa sildirme."""
+    bagli = []
+    for rel, etiket in _BAGLI_TANIM_RELS:
+        mgr = getattr(h, rel, None)
+        if mgr is not None and mgr.filter(silindi=False).exists():
+            bagli.append(etiket)
+    if bagli:
+        kayit = ", ".join(dict.fromkeys(bagli))   # tekrarsız, sıralı
+        raise HesapHatasi(f"Bu hesaba bağlı tanım var ({kayit}); önce onları kaldırın.")
+
+
 def hesap_sil(*, kod, kullanici=None) -> HesapPlani:
-    """Soft-delete. Yevmiye satırı olan ya da aktif alt hesabı olan hesap silinemez."""
+    """Soft-delete. Yevmiye satırı, aktif alt hesabı ya da bağlı tanımı olan hesap silinemez."""
     h = HesapPlani.objects.filter(hesap_kodu=kod, silindi=False).first()
     if h is None:
         raise HesapHatasi("Hesap bulunamadı.")
@@ -223,6 +251,7 @@ def hesap_sil(*, kod, kullanici=None) -> HesapPlani:
         raise HesapHatasi("Bu hesaba kesilmiş yevmiye satırı var; silinemez.")
     if _alt_hesaplar_qs(kod).exists():
         raise HesapHatasi("Bu hesabın alt hesabı var; önce alt hesapları silin.")
+    _bagli_tanim_dogrula(h)
     h.silindi = True
     h.silindi_at = timezone.now()
     h.updated_by = kullanici

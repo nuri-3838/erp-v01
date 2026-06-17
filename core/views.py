@@ -1282,7 +1282,7 @@ def kasa_ekle(request):
 def kasa_duzenle(request, pk):
     kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
     if request.method == "POST":
-        form = KasaForm(request.POST)
+        form = KasaForm(request.POST, mevcut_hesap=kasa.muhasebe.hesap_kodu)
         if form.is_valid():
             try:
                 finans_servis.kasa_guncelle(
@@ -1296,7 +1296,8 @@ def kasa_duzenle(request, pk):
                 form.add_error(None, str(e))
     else:
         form = KasaForm(initial={"ad": kasa.ad, "para_birimi": kasa.para_birimi,
-                                 "muhasebe": kasa.muhasebe.hesap_kodu})
+                                 "muhasebe": kasa.muhasebe.hesap_kodu},
+                        mevcut_hesap=kasa.muhasebe.hesap_kodu)
     return render(request, "core/kasa_form.html",
                   {"form": form, "baslik": "Kasa Düzenle", "iptal_url": reverse("core:kasalar")})
 
@@ -1412,7 +1413,7 @@ def banka_hesap_ekle(request, banka_pk):
 def banka_hesap_duzenle(request, pk):
     hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
     if request.method == "POST":
-        form = BankaHesapForm(request.POST)
+        form = BankaHesapForm(request.POST, mevcut_hesap=hesap.muhasebe.hesap_kodu)
         if form.is_valid():
             cd = form.cleaned_data
             try:
@@ -1427,7 +1428,8 @@ def banka_hesap_duzenle(request, pk):
     else:
         form = BankaHesapForm(initial={
             "ad": hesap.ad, "hesap_no": hesap.hesap_no, "iban": hesap.iban,
-            "para_birimi": hesap.para_birimi, "muhasebe": hesap.muhasebe.hesap_kodu})
+            "para_birimi": hesap.para_birimi, "muhasebe": hesap.muhasebe.hesap_kodu},
+            mevcut_hesap=hesap.muhasebe.hesap_kodu)
     return render(request, "core/finans_form.html",
                   {"form": form, "baslik": "Hesap Düzenle", "emoji": "🏦",
                    "iptal_url": reverse("core:banka_detay", args=[hesap.banka_id])})
@@ -1477,7 +1479,7 @@ def kredi_karti_ekle(request):
 def kredi_karti_duzenle(request, pk):
     kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
     if request.method == "POST":
-        form = KrediKartiForm(request.POST)
+        form = KrediKartiForm(request.POST, mevcut_hesap=kart.muhasebe.hesap_kodu)
         if form.is_valid():
             cd = form.cleaned_data
             try:
@@ -1495,7 +1497,7 @@ def kredi_karti_duzenle(request, pk):
             "ad": kart.ad, "banka_adi": kart.banka_adi, "kart_son4": kart.kart_son4,
             "limit": kart.limit, "kesim_gunu": kart.kesim_gunu,
             "son_odeme_gunu": kart.son_odeme_gunu, "para_birimi": kart.para_birimi,
-            "muhasebe": kart.muhasebe.hesap_kodu})
+            "muhasebe": kart.muhasebe.hesap_kodu}, mevcut_hesap=kart.muhasebe.hesap_kodu)
     return render(request, "core/finans_form.html",
                   {"form": form, "baslik": "Kredi Kartı Düzenle", "emoji": "💳",
                    "iptal_url": reverse("core:kredi_kartlari")})
@@ -1543,7 +1545,7 @@ def kredi_ekle(request):
 def kredi_duzenle(request, pk):
     kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
     if request.method == "POST":
-        form = KrediForm(request.POST)
+        form = KrediForm(request.POST, mevcut_hesap=kredi.muhasebe.hesap_kodu)
         if form.is_valid():
             cd = form.cleaned_data
             try:
@@ -1559,7 +1561,7 @@ def kredi_duzenle(request, pk):
         form = KrediForm(initial={
             "ad": kredi.ad, "banka_adi": kredi.banka_adi, "anapara": kredi.anapara,
             "faiz_orani": kredi.faiz_orani, "para_birimi": kredi.para_birimi,
-            "muhasebe": kredi.muhasebe.hesap_kodu})
+            "muhasebe": kredi.muhasebe.hesap_kodu}, mevcut_hesap=kredi.muhasebe.hesap_kodu)
     return render(request, "core/finans_form.html",
                   {"form": form, "baslik": "Kredi Düzenle", "emoji": "🏛️",
                    "iptal_url": reverse("core:krediler")})
@@ -1609,7 +1611,7 @@ def cek_senet_ekle(request):
 def cek_senet_duzenle(request, pk):
     cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
     if request.method == "POST":
-        form = CekSenetForm(request.POST)
+        form = CekSenetForm(request.POST, mevcut_hesap=cs.muhasebe.hesap_kodu)
         if form.is_valid():
             cd = form.cleaned_data
             try:
@@ -1627,7 +1629,8 @@ def cek_senet_duzenle(request, pk):
         form = CekSenetForm(initial={
             "tip": cs.tip, "yon": cs.yon, "tutar": cs.tutar, "vade": cs.vade,
             "para_birimi": cs.para_birimi, "kesideci": cs.kesideci, "belge_no": cs.belge_no,
-            "durum": cs.durum, "cari": cs.cari_id, "muhasebe": cs.muhasebe.hesap_kodu})
+            "durum": cs.durum, "cari": cs.cari_id, "muhasebe": cs.muhasebe.hesap_kodu},
+            mevcut_hesap=cs.muhasebe.hesap_kodu)
     return render(request, "core/finans_form.html",
                   {"form": form, "baslik": "Çek / Senet Düzenle", "emoji": "📜",
                    "iptal_url": reverse("core:cek_senetler")})
