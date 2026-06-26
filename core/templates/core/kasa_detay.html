@@ -1,0 +1,126 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ kasa.ad }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kasa Detayı{% endblock %}
+
+{% block content %}
+<style>
+  .hareket-menu{position:relative;display:inline-block}
+  .hareket-menu>summary{list-style:none;cursor:pointer}
+  .hareket-menu>summary::-webkit-details-marker{display:none}
+  .hareket-menu-icerik{position:absolute;right:0;top:calc(100% + 6px);z-index:40;
+    min-width:230px;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:14px;
+    box-shadow:0 12px 32px rgba(0,0,0,.18);padding:8px;display:grid;gap:2px}
+  .hareket-menu-icerik a{display:block;padding:10px 12px;border-radius:10px;
+    text-decoration:none;color:inherit;font-weight:600;white-space:nowrap}
+  .hareket-menu-icerik a:hover{background:rgba(21,41,77,.08)}
+</style>
+
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:kasalar' %}">← Kasa</a>
+    <h1 class="ust-baslik"><span class="emoji">💵</span>{{ kasa.ad }}</h1>
+  </div>
+  <span class="islem-bag">
+    <details class="hareket-menu">
+      <summary class="dugme">＋ Kasa Hareketi ▾</summary>
+      <div class="hareket-menu-icerik">
+        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'cari_tahsilat' %}">💰 Cari Tahsilat</a>
+        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'cari_odeme' %}">💸 Cari Ödeme</a>
+        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'banka_yatan' %}">🏦 Banka Yatan</a>
+        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'banka_cekilen' %}">🏧 Banka Çekilen</a>
+        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'kasa_virman' %}">🔁 Kasa Virman</a>
+      </div>
+    </details>
+    <a class="dugme" href="{% url 'core:kasa_duzenle' kasa.pk %}">Düzenle</a>
+  </span>
+</div>
+
+<section class="icerik-kart">
+  <div class="satir"><span class="et">Para Birimi</span><span class="dg mono">{{ kasa.para_birimi }}</span></div>
+  <div class="satir"><span class="et">Muhasebe Hesabı</span>
+    <span class="dg"><span class="mono">{{ kasa.muhasebe.hesap_kodu }}</span> {{ kasa.muhasebe.hesap_adi }}</span></div>
+</section>
+
+<div class="sayfa-ust">
+  <div><h2 class="bolum-baslik">Kasa Ekstresi</h2></div>
+</div>
+
+{% if not ekstre %}
+  <div class="uyari"><div>⚠️ Kasanın muhasebe hesabı tanımlı değil; ekstre üretilemiyor.</div></div>
+{% else %}
+<form method="get" class="alan">
+  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+  {{ form.baslangic }}
+  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+  {{ form.bitis }}
+  <button type="submit">Göster</button>
+  {% if form.non_field_errors %}<div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>{% endif %}
+</form>
+
+<p class="yardim">Hesap: <span class="mono">{{ ekstre.hesap_kodu }}</span> {{ ekstre.hesap_adi }}
+  · Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
+  · İptal edilen fişler hariç · Bakiye yevmiyeden hesaplanır.
+  <br>Pozitif = <strong>borç bakiye</strong> (kasada para var), negatif = alacak.</p>
+
+<div class="toplamlar">
+  <span class="etiket">Devir (TL):</span> <span class="deger">{{ ekstre.acilis|tr_bakiye }}</span>
+  <span class="etiket">Dönem giriş (borç):</span> <span class="deger">{{ ekstre.toplam_borc|tr_para }}</span>
+  <span class="etiket">Dönem çıkış (alacak):</span> <span class="deger">{{ ekstre.toplam_alacak|tr_para }}</span>
+  <span class="etiket">Kalan bakiye (TL):</span>
+  <span class="deger {% if ekstre.kapanis_bakiye > 0 %}dengeli{% elif ekstre.kapanis_bakiye < 0 %}dengesiz{% endif %}">{{ ekstre.kapanis_bakiye|tr_bakiye }}</span>
+  {% for pb, t in ekstre.dvz_toplamlar.items %}{% if pb != "TRY" %}
+    <span class="etiket">Bakiye ({{ pb }}):</span> <span class="deger">{{ t.bakiye|tr_bakiye }} {{ pb }}</span>
+  {% endif %}{% endfor %}
+</div>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Tarih</th><th rowspan="2">Fiş No</th><th rowspan="2">Açıklama</th>
+      <th colspan="3" class="ekstre-grup">TL</th>
+      <th colspan="4" class="ekstre-grup kolon-ayrac">Döviz (işlem PB)</th>
+    </tr>
+    <tr>
+      <th class="sag">Borç (giriş)</th><th class="sag">Alacak (çıkış)</th><th class="sag">Bakiye</th>
+      <th class="kolon-ayrac">PB</th><th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="pasif">
+      <td colspan="3"><strong>Devir (açılış bakiyesi)</strong></td>
+      <td class="sag" colspan="2"></td>
+      <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
+      <td colspan="4" class="kolon-ayrac"></td>
+    </tr>
+    {% for s in ekstre.satirlar %}
+      <tr>
+        <td>{{ s.tarih|date:"d.m.Y" }}</td>
+        <td class="mono"><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
+        <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
+        <td class="sag">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
+        <td class="sag">{{ s.yur_bakiye|tr_bakiye }}</td>
+        <td class="kolon-ayrac">{{ s.pb }}</td>
+        <td class="sag">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
+        <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
+        <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10" class="yardim">Bu aralıkta hareket yok.</td></tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th colspan="3" class="sag">Kapanış (TL)</th>
+      <th class="sag">{{ ekstre.toplam_borc|tr_para }}</th>
+      <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
+      <th class="sag">{{ ekstre.kapanis_bakiye|tr_bakiye }}</th>
+      <th colspan="4" class="kolon-ayrac"></th>
+    </tr>
+  </tfoot>
+</table>
+</div>
+{% endif %}
+{% endblock %}

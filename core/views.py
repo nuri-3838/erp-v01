@@ -1314,6 +1314,40 @@ def kasa_sil(request, pk):
     return redirect("core:kasalar")
 
 
+# Kasa hareket tipleri (Slice 2'de tipe göre otomatik dengeli fiş üretilecek).
+KASA_HAREKET_TIPLERI = {
+    "cari_tahsilat": "Cari Tahsilat",
+    "cari_odeme": "Cari Ödeme",
+    "banka_yatan": "Banka Yatan",
+    "banka_cekilen": "Banka Çekilen",
+    "kasa_virman": "Kasa Virman",
+}
+
+
+@ekran_gerekli("kasa")
+def kasa_detay(request, pk):
+    """Kasa detayı (master-detail): üstte 'Kasa Hareketi' menüsü + tarih filtresi,
+    altta kasa ekstresi (bağlı muhasebe hesabının devirli ekstresi)."""
+    kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
+    form, b, s = _tarih_araligi(request)
+    ekstre = (ekstre_devirli_servis(kasa.muhasebe.hesap_kodu, b, s)
+              if kasa.muhasebe_id else None)
+    return render(request, "core/kasa_detay.html",
+                  {"kasa": kasa, "form": form, "ekstre": ekstre})
+
+
+@ekran_gerekli("kasa")
+def kasa_hareket_ekle(request, pk, tip):
+    """Kasa hareketi girişi. Slice 1: menü + yer tutucu; Slice 2'de tipe göre
+    form + otomatik dengeli fiş (kaynak=KASA) gelecek."""
+    kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
+    if tip not in KASA_HAREKET_TIPLERI:
+        messages.error(request, "Geçersiz hareket tipi.")
+        return redirect("core:kasa_detay", pk=kasa.pk)
+    return render(request, "core/kasa_hareket_yakinda.html",
+                  {"kasa": kasa, "tip": tip, "tip_ad": KASA_HAREKET_TIPLERI[tip]})
+
+
 # === FİNANS — Banka (kurum) + bağlı hesaplar (master-detail) ===
 @ekran_gerekli("banka")
 def bankalar(request):

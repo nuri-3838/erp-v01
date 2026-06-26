@@ -1,0 +1,16 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ tip_ad }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kasa Hareketi{% endblock %}
+
+{% block content %}
+<a class="ust-link" href="{% url 'core:kasa_detay' kasa.pk %}">← {{ kasa.ad }}</a>
+<h1 class="ust-baslik"><span class="emoji">🧾</span>{{ tip_ad }}</h1>
+
+<section class="icerik-kart">
+  <p>🚧 <strong>{{ tip_ad }}</strong> formu bir sonraki dilimde eklenecek.</p>
+  <p class="yardim">Kasa: <strong>{{ kasa.ad }}</strong> ({{ kasa.para_birimi }}) ·
+    Hesap <span class="mono">{{ kasa.muhasebe.hesap_kodu }}</span>.
+    Hareket kaydedildiğinde otomatik dengeli yevmiye fişi üretilecek ve bu kasanın
+    ekstresinde görünecek.</p>
+</section>
+{% endblock %}

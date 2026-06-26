@@ -15,10 +15,11 @@
   <tbody>
     {% for k in kasalar %}
       <tr>
-        <td>{{ k.ad }}</td>
+        <td><a href="{% url 'core:kasa_detay' k.pk %}">{{ k.ad }}</a></td>
         <td class="mono">{{ k.para_birimi }}</td>
         <td><span class="mono">{{ k.muhasebe.hesap_kodu }}</span> {{ k.muhasebe.hesap_adi }}</td>
         <td><span class="islem-bag">
+          <a href="{% url 'core:kasa_detay' k.pk %}">Detay</a>
           <a href="{% url 'core:kasa_duzenle' k.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:kasa_sil' k.pk %}" onsubmit="return confirm('Silinsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">Sil</button></form>

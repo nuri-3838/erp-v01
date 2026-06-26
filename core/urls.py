@@ -82,6 +82,8 @@ urlpatterns = [
     # FİNANS modülü
     path("finans/kasa/", views.kasalar, name="kasalar"),
     path("finans/kasa/ekle/", views.kasa_ekle, name="kasa_ekle"),
+    path("finans/kasa/<int:pk>/", views.kasa_detay, name="kasa_detay"),
+    path("finans/kasa/<int:pk>/hareket/<str:tip>/", views.kasa_hareket_ekle, name="kasa_hareket_ekle"),
     path("finans/kasa/<int:pk>/duzenle/", views.kasa_duzenle, name="kasa_duzenle"),
     path("finans/kasa/<int:pk>/sil/", views.kasa_sil, name="kasa_sil"),
     path("finans/banka/", views.bankalar, name="bankalar"),

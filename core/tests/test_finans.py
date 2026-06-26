@@ -88,6 +88,24 @@ class KasaViewTest(TestCase):
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:kasalar")).status_code, 403)
 
+    def test_detay_ekstre_ve_hareket_menu(self):
+        k = kasa_olustur(ad="ANA KASA", muhasebe_kodu="100.01")
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:kasa_detay", args=[k.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Kasa Ekstresi")
+        for ad in ("Cari Tahsilat", "Cari Ödeme", "Banka Yatan", "Banka Çekilen", "Kasa Virman"):
+            self.assertContains(r, ad)                 # menüde 5 buton
+        self.assertEqual(self.client.get(
+            reverse("core:kasa_hareket_ekle", args=[k.pk, "cari_tahsilat"])).status_code, 200)
+        self.assertEqual(self.client.get(            # geçersiz tip → kasa detaya redirect
+            reverse("core:kasa_hareket_ekle", args=[k.pk, "xyz"])).status_code, 302)
+
+    def test_detay_yetkisiz_403(self):
+        k = kasa_olustur(ad="ANA KASA", muhasebe_kodu="100.01")
+        self.client.force_login(self.bos)
+        self.assertEqual(self.client.get(reverse("core:kasa_detay", args=[k.pk])).status_code, 403)
+
 
 class FinansDigerServisTest(TestCase):
     @classmethod
