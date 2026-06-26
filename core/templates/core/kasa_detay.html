@@ -2,125 +2,191 @@
 {% load core_extras %}
 {% block baslik %}{{ kasa.ad }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}Kasa Detayı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
 <style>
-  .hareket-menu{position:relative;display:inline-block}
-  .hareket-menu>summary{list-style:none;cursor:pointer}
-  .hareket-menu>summary::-webkit-details-marker{display:none}
-  .hareket-menu-icerik{position:absolute;right:0;top:calc(100% + 6px);z-index:40;
-    min-width:230px;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:14px;
-    box-shadow:0 12px 32px rgba(0,0,0,.18);padding:8px;display:grid;gap:2px}
-  .hareket-menu-icerik a{display:block;padding:10px 12px;border-radius:10px;
-    text-decoration:none;color:inherit;font-weight:600;white-space:nowrap}
-  .hareket-menu-icerik a:hover{background:rgba(21,41,77,.08)}
+  .detay-kapsa { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+  .detay-ustbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .detay-aksiyon { display:flex; gap:.5rem; align-items:center; }
+  .detay-baslik-kart { background:linear-gradient(135deg, #21385f 0%, var(--lacivert) 55%, var(--lacivert-koyu) 100%);
+    color:#fff; border-radius:22px; padding:1.3rem 1.5rem; display:flex; gap:1.15rem; align-items:flex-start;
+    box-shadow:var(--golge-lg); border-bottom:4px solid transparent;
+    border-image:linear-gradient(90deg,var(--turuncu),#36d399) 1; }
+  .detay-ikon { width:64px; height:64px; border-radius:16px; background:rgba(255,255,255,.12);
+    display:grid; place-items:center; font-size:1.9rem; flex:0 0 auto; }
+  .detay-rozetler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.45rem; }
+  .d-rozet { font-size:.7rem; font-weight:700; padding:.22rem .62rem; border-radius:999px; }
+  .d-rozet.kod { background:var(--turuncu); color:#fff; font-family:"Cascadia Mono",Consolas,monospace; }
+  .d-rozet.pb { background:rgba(255,255,255,.16); color:#dbe6ff; }
+  .d-rozet.aktif { background:rgba(54,211,153,.22); color:#bff5d8; }
+  .detay-ad { font-size:1.5rem; font-weight:750; margin:.05rem 0; letter-spacing:-.01em; line-height:1.2; }
+  .detay-alt { color:rgba(255,255,255,.82); font-size:.92rem; }
+  /* Hareket aksiyonları */
+  .hareket-bsl { font-size:.74rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--metin-soluk); margin:0 0 .8rem; }
+  .hareket-bar { display:grid; grid-template-columns:repeat(5,1fr); gap:.6rem; }
+  @media (max-width:760px){ .hareket-bar { grid-template-columns:repeat(2,1fr); } }
+  .hareket-dugme { display:flex; flex-direction:column; align-items:center; gap:.35rem; padding:.9rem .5rem;
+    border-radius:14px; background:rgba(255,255,255,.85); border:1px solid var(--cizgi); text-decoration:none;
+    color:var(--metin); box-shadow:var(--golge-sm); transition:transform .12s, box-shadow .12s; text-align:center; }
+  .hareket-dugme:hover { transform:translateY(-2px); box-shadow:var(--golge-md); border-color:var(--cizgi-koyu); }
+  .hareket-dugme .hd-ik { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; font-size:1.1rem; }
+  .hareket-dugme .hd-ad { font-size:.84rem; font-weight:600; line-height:1.15; }
+  .hareket-dugme .hd-yon { font-size:.64rem; font-weight:700; letter-spacing:.04em; }
+  .hareket-dugme.giris .hd-ik { background:rgba(10,125,40,.12); } .hareket-dugme.giris .hd-yon { color:var(--ok); }
+  .hareket-dugme.cikis .hd-ik { background:rgba(193,21,57,.10); } .hareket-dugme.cikis .hd-yon { color:var(--hata); }
+  .hareket-dugme.notr .hd-ik { background:rgba(33,56,95,.10); } .hareket-dugme.notr .hd-yon { color:var(--lacivert-acik); }
+  /* Ekstre */
+  .ekstre-bsl { display:flex; align-items:center; gap:.4rem; margin:0 0 1rem; }
+  .ekstre-filtre { display:flex; gap:.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem; }
+  .ekstre-filtre .alan { margin:0; }
+  .ekstre-filtre .alan.aciklama { flex:1 1 15rem; }
+  .ekstre-filtre label { display:block; font-size:.76rem; margin-bottom:.3rem; color:var(--metin-soluk);
+    font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+  .ekstre-tablo .gir { color:var(--ok); font-weight:600; }
+  .ekstre-tablo .cik { color:var(--hata); font-weight:600; }
+  .ekstre-tablo tr.devir td { background:rgba(240,124,0,.06); font-weight:600; color:var(--lacivert); }
 </style>
 
-<div class="sayfa-ust">
-  <div>
+<div class="detay-kapsa">
+  <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:kasalar' %}">← Kasa</a>
-    <h1 class="ust-baslik"><span class="emoji">💵</span>{{ kasa.ad }}</h1>
+    <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:kasa_duzenle' kasa.pk %}">✏️ Düzenle</a>
+      <form method="post" action="{% url 'core:kasa_sil' kasa.pk %}" style="margin:0"
+            onsubmit="return confirm('{{ kasa.ad }} kasası silinsin mi?');">
+        {% csrf_token %}<button type="submit" class="sil">Sil</button>
+      </form>
+    </div>
   </div>
-  <span class="islem-bag">
-    <details class="hareket-menu">
-      <summary class="dugme">＋ Kasa Hareketi ▾</summary>
-      <div class="hareket-menu-icerik">
-        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'cari_tahsilat' %}">💰 Cari Tahsilat</a>
-        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'cari_odeme' %}">💸 Cari Ödeme</a>
-        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'banka_yatan' %}">🏦 Banka Yatan</a>
-        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'banka_cekilen' %}">🏧 Banka Çekilen</a>
-        <a href="{% url 'core:kasa_hareket_ekle' kasa.pk 'kasa_virman' %}">🔁 Kasa Virman</a>
+
+  <div class="detay-baslik-kart">
+    <span class="detay-ikon">💵</span>
+    <div>
+      <div class="detay-rozetler">
+        {% if kasa.muhasebe %}<span class="d-rozet kod">{{ kasa.muhasebe.hesap_kodu }}</span>{% endif %}
+        <span class="d-rozet pb">{{ kasa.para_birimi }}</span>
+        <span class="d-rozet aktif">● Aktif</span>
       </div>
-    </details>
-    <a class="dugme" href="{% url 'core:kasa_duzenle' kasa.pk %}">Düzenle</a>
-  </span>
+      <div class="detay-ad">{{ kasa.ad }}</div>
+      <div class="detay-alt">{% if kasa.muhasebe %}{{ kasa.muhasebe.hesap_kodu }} {{ kasa.muhasebe.hesap_adi }}{% else %}Muhasebe hesabı tanımsız{% endif %}</div>
+    </div>
+  </div>
+
+  {% if not ekstre %}
+    <section class="icerik-kart">
+      <div class="uyari"><div>⚠️ Kasanın muhasebe hesabı tanımlı değil; ekstre üretilemiyor.</div></div>
+    </section>
+  {% else %}
+
+  <section class="icerik-kart">
+    <div class="hareket-bsl">Kasa Hareketi Ekle</div>
+    <div class="hareket-bar">
+      <a class="hareket-dugme giris" href="{% url 'core:kasa_hareket_ekle' kasa.pk 'cari_tahsilat' %}">
+        <span class="hd-ik">📥</span><span class="hd-ad">Cari Tahsilat</span><span class="hd-yon">GİRİŞ</span></a>
+      <a class="hareket-dugme cikis" href="{% url 'core:kasa_hareket_ekle' kasa.pk 'cari_odeme' %}">
+        <span class="hd-ik">📤</span><span class="hd-ad">Cari Ödeme</span><span class="hd-yon">ÇIKIŞ</span></a>
+      <a class="hareket-dugme cikis" href="{% url 'core:kasa_hareket_ekle' kasa.pk 'banka_yatan' %}">
+        <span class="hd-ik">🏦</span><span class="hd-ad">Banka Yatan</span><span class="hd-yon">ÇIKIŞ</span></a>
+      <a class="hareket-dugme giris" href="{% url 'core:kasa_hareket_ekle' kasa.pk 'banka_cekilen' %}">
+        <span class="hd-ik">🏧</span><span class="hd-ad">Banka Çekilen</span><span class="hd-yon">GİRİŞ</span></a>
+      <a class="hareket-dugme notr" href="{% url 'core:kasa_hareket_ekle' kasa.pk 'kasa_virman' %}">
+        <span class="hd-ik">🔁</span><span class="hd-ad">Kasa Virman</span><span class="hd-yon">TRANSFER</span></a>
+    </div>
+  </section>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik ekstre-bsl"><span class="emoji">📄</span>Kasa Ekstresi</h2>
+
+    <form method="get" class="ekstre-filtre">
+      <div class="alan">
+        <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+        {{ form.baslangic }}
+      </div>
+      <div class="alan">
+        <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+        {{ form.bitis }}
+      </div>
+      <div class="alan aciklama">
+        <label for="kasa-aciklama">Açıklama</label>
+        <input type="text" id="kasa-aciklama" name="aciklama" value="{{ aciklama }}"
+               placeholder="Açıklamada ara…" autocomplete="off">
+      </div>
+      <button type="submit">Göster</button>
+      {% if form.non_field_errors %}<div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </form>
+
+    {% if aciklama %}
+      <p class="yardim">🔎 <strong>“{{ aciklama }}”</strong> araması · {{ satirlar|length }} hareket ·
+        yürüyen bakiye tüm dönemi yansıtır.</p>
+    {% endif %}
+
+    <div class="tablo-kapsayici {% if kasa.para_birimi != 'TRY' %}genis{% endif %}">
+    <table class="ekstre-tablo">
+      <thead>
+        {% if kasa.para_birimi != 'TRY' %}
+        <tr>
+          <th rowspan="2">Tarih</th><th rowspan="2">Fiş No</th><th rowspan="2">Açıklama</th>
+          <th colspan="3" class="ekstre-grup">TL</th>
+          <th colspan="4" class="ekstre-grup kolon-ayrac">Döviz (işlem PB)</th>
+        </tr>
+        <tr>
+          <th class="sag">Giriş (Borç)</th><th class="sag">Çıkış (Alacak)</th><th class="sag">Bakiye</th>
+          <th class="kolon-ayrac">PB</th><th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
+        </tr>
+        {% else %}
+        <tr>
+          <th>Tarih</th><th>Fiş No</th><th>Açıklama</th>
+          <th class="sag">Giriş (Borç)</th><th class="sag">Çıkış (Alacak)</th><th class="sag">Bakiye</th>
+        </tr>
+        {% endif %}
+      </thead>
+      <tbody>
+        {% if not aciklama %}
+        <tr class="devir">
+          <td colspan="3">Devir (açılış bakiyesi)</td>
+          <td class="sag"></td><td class="sag"></td>
+          <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
+          {% if kasa.para_birimi != 'TRY' %}<td colspan="4" class="kolon-ayrac"></td>{% endif %}
+        </tr>
+        {% endif %}
+        {% for s in satirlar %}
+          <tr>
+            <td>{{ s.tarih|date:"d.m.Y" }}</td>
+            <td class="mono"><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
+            <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
+            <td class="sag gir">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
+            <td class="sag cik">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
+            <td class="sag">{{ s.yur_bakiye|tr_bakiye }}</td>
+            {% if kasa.para_birimi != 'TRY' %}
+              <td class="kolon-ayrac mono">{{ s.pb }}</td>
+              <td class="sag">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
+              <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
+              <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
+            {% endif %}
+          </tr>
+        {% empty %}
+          <tr><td colspan="{% if kasa.para_birimi != 'TRY' %}10{% else %}6{% endif %}" class="yardim"
+                  style="text-align:center;padding:1.6rem 0">📄 {% if aciklama %}Bu açıklamayla eşleşen hareket yok.{% else %}Bu aralıkta hareket yok.{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if not aciklama %}
+      <tfoot>
+        <tr>
+          <th colspan="3" class="sag">Kapanış (TL)</th>
+          <th class="sag">{{ ekstre.toplam_borc|tr_para }}</th>
+          <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
+          <th class="sag">{{ ekstre.kapanis_bakiye|tr_bakiye }}</th>
+          {% if kasa.para_birimi != 'TRY' %}<th colspan="4" class="kolon-ayrac"></th>{% endif %}
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+    </div>
+    <p class="yardim">İptal edilen fişler hariç · Bakiye yevmiyeden hesaplanır ·
+      Pozitif = <strong>borç bakiye</strong> (kasada para var), negatif = alacak.</p>
+  </section>
+  {% endif %}
 </div>
-
-<section class="icerik-kart">
-  <div class="satir"><span class="et">Para Birimi</span><span class="dg mono">{{ kasa.para_birimi }}</span></div>
-  <div class="satir"><span class="et">Muhasebe Hesabı</span>
-    <span class="dg"><span class="mono">{{ kasa.muhasebe.hesap_kodu }}</span> {{ kasa.muhasebe.hesap_adi }}</span></div>
-</section>
-
-<div class="sayfa-ust">
-  <div><h2 class="bolum-baslik">Kasa Ekstresi</h2></div>
-</div>
-
-{% if not ekstre %}
-  <div class="uyari"><div>⚠️ Kasanın muhasebe hesabı tanımlı değil; ekstre üretilemiyor.</div></div>
-{% else %}
-<form method="get" class="alan">
-  <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
-  {{ form.baslangic }}
-  <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
-  {{ form.bitis }}
-  <button type="submit">Göster</button>
-  {% if form.non_field_errors %}<div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>{% endif %}
-</form>
-
-<p class="yardim">Hesap: <span class="mono">{{ ekstre.hesap_kodu }}</span> {{ ekstre.hesap_adi }}
-  · Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
-  · İptal edilen fişler hariç · Bakiye yevmiyeden hesaplanır.
-  <br>Pozitif = <strong>borç bakiye</strong> (kasada para var), negatif = alacak.</p>
-
-<div class="toplamlar">
-  <span class="etiket">Devir (TL):</span> <span class="deger">{{ ekstre.acilis|tr_bakiye }}</span>
-  <span class="etiket">Dönem giriş (borç):</span> <span class="deger">{{ ekstre.toplam_borc|tr_para }}</span>
-  <span class="etiket">Dönem çıkış (alacak):</span> <span class="deger">{{ ekstre.toplam_alacak|tr_para }}</span>
-  <span class="etiket">Kalan bakiye (TL):</span>
-  <span class="deger {% if ekstre.kapanis_bakiye > 0 %}dengeli{% elif ekstre.kapanis_bakiye < 0 %}dengesiz{% endif %}">{{ ekstre.kapanis_bakiye|tr_bakiye }}</span>
-  {% for pb, t in ekstre.dvz_toplamlar.items %}{% if pb != "TRY" %}
-    <span class="etiket">Bakiye ({{ pb }}):</span> <span class="deger">{{ t.bakiye|tr_bakiye }} {{ pb }}</span>
-  {% endif %}{% endfor %}
-</div>
-
-<div class="tablo-kapsayici genis">
-<table>
-  <thead>
-    <tr>
-      <th rowspan="2">Tarih</th><th rowspan="2">Fiş No</th><th rowspan="2">Açıklama</th>
-      <th colspan="3" class="ekstre-grup">TL</th>
-      <th colspan="4" class="ekstre-grup kolon-ayrac">Döviz (işlem PB)</th>
-    </tr>
-    <tr>
-      <th class="sag">Borç (giriş)</th><th class="sag">Alacak (çıkış)</th><th class="sag">Bakiye</th>
-      <th class="kolon-ayrac">PB</th><th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr class="pasif">
-      <td colspan="3"><strong>Devir (açılış bakiyesi)</strong></td>
-      <td class="sag" colspan="2"></td>
-      <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
-      <td colspan="4" class="kolon-ayrac"></td>
-    </tr>
-    {% for s in ekstre.satirlar %}
-      <tr>
-        <td>{{ s.tarih|date:"d.m.Y" }}</td>
-        <td class="mono"><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
-        <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
-        <td class="sag">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
-        <td class="sag">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
-        <td class="sag">{{ s.yur_bakiye|tr_bakiye }}</td>
-        <td class="kolon-ayrac">{{ s.pb }}</td>
-        <td class="sag">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
-        <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
-        <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="10" class="yardim">Bu aralıkta hareket yok.</td></tr>
-    {% endfor %}
-  </tbody>
-  <tfoot>
-    <tr>
-      <th colspan="3" class="sag">Kapanış (TL)</th>
-      <th class="sag">{{ ekstre.toplam_borc|tr_para }}</th>
-      <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
-      <th class="sag">{{ ekstre.kapanis_bakiye|tr_bakiye }}</th>
-      <th colspan="4" class="kolon-ayrac"></th>
-    </tr>
-  </tfoot>
-</table>
-</div>
-{% endif %}
 {% endblock %}

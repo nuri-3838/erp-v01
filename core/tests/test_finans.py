@@ -93,9 +93,10 @@ class KasaViewTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:kasa_detay", args=[k.pk]))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Kasa Ekstresi")
+        self.assertContains(r, "Kasa Ekstresi")        # ekstre bölümü
+        self.assertContains(r, 'name="aciklama"')      # açıklama filtresi
         for ad in ("Cari Tahsilat", "Cari Ödeme", "Banka Yatan", "Banka Çekilen", "Kasa Virman"):
-            self.assertContains(r, ad)                 # menüde 5 buton
+            self.assertContains(r, ad)                 # 5 hareket aksiyonu
         self.assertEqual(self.client.get(
             reverse("core:kasa_hareket_ekle", args=[k.pk, "cari_tahsilat"])).status_code, 200)
         self.assertEqual(self.client.get(            # geçersiz tip → kasa detaya redirect
@@ -105,6 +106,28 @@ class KasaViewTest(TestCase):
         k = kasa_olustur(ad="ANA KASA", muhasebe_kodu="100.01")
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:kasa_detay", args=[k.pk])).status_code, 403)
+
+    def test_ekstre_aciklama_filtresi(self):
+        """Açıklama filtresi yalnız eşleşen hareketleri gösterir; filtresiz hepsi."""
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.yevmiye import fis_olustur, SatirGirdi
+        _hesap("120.01", "ALICI")
+        k = kasa_olustur(ad="ANA KASA", muhasebe_kodu="100.01")
+        t = timezone.localdate()
+        for ack, tutar in (("KİRA ÖDEMESİ", "1000"), ("MAL SATIŞI", "2000")):
+            fis_olustur(tarih=t, aciklama=ack, kur_usd=Decimal("40"), satirlar=[
+                SatirGirdi(hesap_kodu="100.01", taraf="B", islem_tutari=Decimal(tutar)),
+                SatirGirdi(hesap_kodu="120.01", taraf="A", islem_tutari=Decimal(tutar))])
+        self.client.force_login(self.yon)
+        url = reverse("core:kasa_detay", args=[k.pk])
+        r = self.client.get(url, {"baslangic": t.isoformat(), "bitis": t.isoformat(),
+                                  "aciklama": "kira"})   # TR büyük-harf duyarsız (kira→KİRA)
+        self.assertContains(r, "KİRA ÖDEMESİ")
+        self.assertNotContains(r, "MAL SATIŞI")
+        r2 = self.client.get(url)                        # filtresiz (varsayılan son 1 ay)
+        self.assertContains(r2, "KİRA ÖDEMESİ")
+        self.assertContains(r2, "MAL SATIŞI")
 
 
 class FinansDigerServisTest(TestCase):

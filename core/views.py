@@ -1,4 +1,5 @@
 """Fiş giriş/liste/düzenleme/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
+import calendar
 import datetime
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -1324,16 +1325,45 @@ KASA_HAREKET_TIPLERI = {
 }
 
 
+def _son_bir_ay(bugun):
+    """bugün − 1 takvim ayı (ayın günü taşarsa o ayın son gününe kırpılır)."""
+    ay = bugun.month - 1 or 12
+    yil = bugun.year - (1 if bugun.month == 1 else 0)
+    gun = min(bugun.day, calendar.monthrange(yil, ay)[1])
+    return datetime.date(yil, ay, gun)
+
+
 @ekran_gerekli("kasa")
 def kasa_detay(request, pk):
-    """Kasa detayı (master-detail): üstte 'Kasa Hareketi' menüsü + tarih filtresi,
-    altta kasa ekstresi (bağlı muhasebe hesabının devirli ekstresi)."""
+    """Kasa detayı: lacivert başlık + 5 hareket aksiyonu + kasa ekstresi
+    (bağlı muhasebe hesabının devirli ekstresi). Tarih + açıklama filtreli;
+    varsayılan dönem SON 1 AY. Açıklama filtresi yürüyen bakiyeyi bozmaz:
+    ekstre tüm dönem için hesaplanır, satırlar yalnız gösterimde süzülür."""
     kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
-    form, b, s = _tarih_araligi(request)
+
+    bugun = timezone.localdate()
+    form = MizanFiltreForm(request.GET) if request.GET else None
+    if form and form.is_valid():
+        b, s = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
+    else:
+        b, s = _son_bir_ay(bugun), bugun
+        form = MizanFiltreForm(initial={"baslangic": b, "bitis": s})
+
     ekstre = (ekstre_devirli_servis(kasa.muhasebe.hesap_kodu, b, s)
               if kasa.muhasebe_id else None)
+
+    aciklama = (request.GET.get("aciklama") or "").strip()
+    if ekstre and aciklama:
+        ara = buyuk_harf_tr(aciklama)
+        satirlar = [r for r in ekstre.satirlar
+                    if ara in buyuk_harf_tr(r.fis_aciklama or "")
+                    or ara in buyuk_harf_tr(r.satir_aciklama or "")]
+    else:
+        satirlar = ekstre.satirlar if ekstre else []
+
     return render(request, "core/kasa_detay.html",
-                  {"kasa": kasa, "form": form, "ekstre": ekstre})
+                  {"kasa": kasa, "form": form, "ekstre": ekstre,
+                   "satirlar": satirlar, "aciklama": aciklama})
 
 
 @ekran_gerekli("kasa")
