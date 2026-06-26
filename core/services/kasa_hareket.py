@@ -1,12 +1,19 @@
-"""KASA hareket motoru — kasa hareketinden OTOMATİK dengeli yevmiye fişi (Slice 2).
+"""KASA hareket motoru — kasa hareketinden OTOMATİK dengeli yevmiye fişi.
 
 Mimari: her kasa hareketi = bir yevmiye fişi (kaynak=KASA, kaynak kasaya bağlı).
-YENİ bakiye/hareket modeli YOK; kasa bakiyesi/ekstresi bağlı muhasebe hesabının
-yevmiyesinden gelir. Fiş hem kasanın hem karşı tarafın (cari) hesabını işlediği
-için kasa ekstresinde de cari ekstresinde de otomatik görünür.
+YENİ bakiye/hareket modeli YOK; bakiye/ekstre bağlı muhasebe hesabının
+yevmiyesinden gelir. Fiş hem kasanın hem karşı tarafın hesabını işlediği için
+ilgili tüm ekstrelerde otomatik görünür.
 
-Slice 2: **Cari Tahsilat** (Kasa borç / Cari alacak). İlk dilim TL; döviz kasa
-işlem PB + TCMB kuruyla (fatura `_kur_coz` deseni). Diğer 4 tip Slice 3.
+5 hareket tipi — kasa perspektifi (yönler KİLİTLİ):
+  cari_tahsilat  Kasa B / Cari A        (giriş, karşı=Cari)
+  cari_odeme     Kasa A / Cari B         (çıkış, karşı=Cari)
+  banka_yatan    Kasa A / Banka B        (çıkış, karşı=BankaHesap)  kasadan bankaya
+  banka_cekilen  Kasa B / Banka A        (giriş, karşı=BankaHesap)  bankadan kasaya
+  kasa_virman    Kaynak Kasa A / Hedef Kasa B  (transfer, karşı=Kasa)
+
+İlk dilim: kasanın para birimi + TCMB kuru (fatura `_kur_coz` deseni). Banka/virman
+karşı tarafı kasayla AYNI para biriminde olmalı (çapraz kur sonraki dilim).
 """
 from __future__ import annotations
 
@@ -23,6 +30,27 @@ from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
 
 class KasaHareketHatasi(ValueError):
     """Kasa hareketi kural ihlali (Türkçe mesaj)."""
+
+
+# tip -> davranış. kasa: kasanın tarafı (B=giriş/A=çıkış); karsi: karşı taraf tipi;
+# yon: gösterim (giris/cikis/notr); ikon + ack (fiş açıklaması ön eki) + aciklama (form ipucu).
+HAREKET = {
+    "cari_tahsilat": {"ad": "Cari Tahsilat", "kasa": "B", "karsi": "cari", "yon": "giris",
+                      "ikon": "📥", "ack": "TAHSİLAT",
+                      "aciklama": "Müşteriden kasaya giriş — Kasa borç / Cari alacak."},
+    "cari_odeme": {"ad": "Cari Ödeme", "kasa": "A", "karsi": "cari", "yon": "cikis",
+                   "ikon": "📤", "ack": "ÖDEME",
+                   "aciklama": "Tedarikçiye kasadan ödeme — Cari borç / Kasa alacak."},
+    "banka_yatan": {"ad": "Banka Yatan", "kasa": "A", "karsi": "banka", "yon": "cikis",
+                    "ikon": "🏦", "ack": "BANKAYA YATAN",
+                    "aciklama": "Kasadan bankaya — Banka borç / Kasa alacak."},
+    "banka_cekilen": {"ad": "Banka Çekilen", "kasa": "B", "karsi": "banka", "yon": "giris",
+                      "ikon": "🏧", "ack": "BANKADAN ÇEKİLEN",
+                      "aciklama": "Bankadan kasaya — Kasa borç / Banka alacak."},
+    "kasa_virman": {"ad": "Kasa Virman", "kasa": "A", "karsi": "kasa", "yon": "notr",
+                    "ikon": "🔁", "ack": "VİRMAN",
+                    "aciklama": "Kasadan kasaya transfer — Hedef kasa borç / Kaynak kasa alacak."},
+}
 
 
 def _kur_coz(pb, tarih):
@@ -51,7 +79,6 @@ def _tutar(deger):
 
 
 def _cari_hesap(cari):
-    """Carinin yaprak muhasebe hesabı (HesapPlani) — yoksa hata."""
     hesap = (HesapPlani.objects.filter(hesap_kodu=cari.muhasebe_kodu, silindi=False).first()
              if cari.muhasebe_kodu else None)
     if hesap is None:
@@ -60,28 +87,52 @@ def _cari_hesap(cari):
     return hesap
 
 
-@transaction.atomic
-def cari_tahsilat(*, kasa, cari, tutar, tarih, aciklama="", kullanici=None) -> YevmiyeFisi:
-    """Cari Tahsilat: müşteriden kasaya giriş. **Kasa borç / Cari alacak.**
+def _karsi_coz(tip, kasa, karsi):
+    """Karşı taraf nesnesinden (Cari/BankaHesap/Kasa) muhasebe hesabı + ad döner;
+    banka/virman'da para birimi kasayla aynı olmalı (tek-para fiş, ilk dilim)."""
+    tur = HAREKET[tip]["karsi"]
+    if tur == "cari":
+        return _cari_hesap(karsi).hesap_kodu, karsi.unvan
+    if tur == "banka":
+        if karsi.para_birimi != kasa.para_birimi:
+            raise KasaHareketHatasi(
+                f"Banka hesabı ({karsi.para_birimi}) ile kasa ({kasa.para_birimi}) para "
+                f"birimi farklı; çapraz kurlu hareket sonraki dilimde.")
+        return karsi.muhasebe.hesap_kodu, f"{karsi.banka.ad} - {karsi.ad}"
+    if tur == "kasa":
+        if karsi.pk == kasa.pk:
+            raise KasaHareketHatasi("Virman aynı kasaya yapılamaz.")
+        if karsi.para_birimi != kasa.para_birimi:
+            raise KasaHareketHatasi(
+                f"Hedef kasa ({karsi.para_birimi}) ile kaynak kasa ({kasa.para_birimi}) "
+                f"para birimi farklı; çapraz kurlu virman sonraki dilimde.")
+        return karsi.muhasebe.hesap_kodu, karsi.ad
+    raise KasaHareketHatasi("Geçersiz hareket tipi.")
 
-    Dengeli bir yevmiye fişi üretir (kaynak=KASA, kaynak kasa=`kasa`). Tutar kasanın
-    para biriminde; TL değeri fiş tarihinin kuruyla. Kural ihlalinde hiçbir şey
-    kaydedilmez (transaction geri alınır)."""
+
+@transaction.atomic
+def hareket_olustur(*, kasa, tip, karsi, tutar, tarih, aciklama="", kullanici=None) -> YevmiyeFisi:
+    """Bir kasa hareketinden otomatik DENGELİ yevmiye fişi üretir (kaynak=KASA,
+    kaynak kasa=`kasa`). `karsi` tipe göre Cari / BankaHesap / (hedef) Kasa.
+    Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır)."""
+    if tip not in HAREKET:
+        raise KasaHareketHatasi("Geçersiz hareket tipi.")
     if kasa.muhasebe_id is None:
         raise KasaHareketHatasi("Kasanın muhasebe hesabı tanımlı değil.")
-    cari_hesap = _cari_hesap(cari)
+    tan = HAREKET[tip]
+    karsi_kod, karsi_ad = _karsi_coz(tip, kasa, karsi)
     tut = _tutar(tutar)
     pb = kasa.para_birimi
     kur = _kur_coz(pb, tarih)
+    kasa_taraf = tan["kasa"]
+    karsi_taraf = "A" if kasa_taraf == "B" else "B"
     ack = (buyuk_harf_tr((aciklama or "").strip())
-           or buyuk_harf_tr(f"KASA TAHSİLAT - {cari.unvan}"))
+           or buyuk_harf_tr(f"KASA {tan['ack']} - {karsi_ad}"))
 
-    # Satır açıklaması boş: açıklama fiş başlığında ("KASA TAHSİLAT - <cari>" ya da
-    # kullanıcının girdiği) tutulur; ekstrede tekrar (cari adı iki kez) olmasın.
     satirlar = [
-        SatirGirdi(hesap_kodu=kasa.muhasebe.hesap_kodu, taraf="B",
+        SatirGirdi(hesap_kodu=kasa.muhasebe.hesap_kodu, taraf=kasa_taraf,
                    islem_tutari=tut, islem_pb=pb, islem_kuru=kur),
-        SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf="A",
+        SatirGirdi(hesap_kodu=karsi_kod, taraf=karsi_taraf,
                    islem_tutari=tut, islem_pb=pb, islem_kuru=kur),
     ]
     try:
@@ -92,6 +143,12 @@ def cari_tahsilat(*, kasa, cari, tutar, tarih, aciklama="", kullanici=None) -> Y
     fis.kasa = kasa
     fis.save(update_fields=["kasa", "updated_at"])
     return fis
+
+
+def cari_tahsilat(*, kasa, cari, tutar, tarih, aciklama="", kullanici=None) -> YevmiyeFisi:
+    """Cari Tahsilat kısayolu (Kasa borç / Cari alacak)."""
+    return hareket_olustur(kasa=kasa, tip="cari_tahsilat", karsi=cari, tutar=tutar,
+                           tarih=tarih, aciklama=aciklama, kullanici=kullanici)
 
 
 def hareket_iptal(*, fis, kasa, kullanici=None):

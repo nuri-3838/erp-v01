@@ -19,7 +19,7 @@ from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
     BankaForm, BankaHesapForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
-    KasaForm, KasaTahsilatForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
+    KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm,
@@ -1325,15 +1325,6 @@ def kasa_sil(request, pk):
 
 
 # Kasa hareket tipleri (Slice 2'de tipe göre otomatik dengeli fiş üretilecek).
-KASA_HAREKET_TIPLERI = {
-    "cari_tahsilat": "Cari Tahsilat",
-    "cari_odeme": "Cari Ödeme",
-    "banka_yatan": "Banka Yatan",
-    "banka_cekilen": "Banka Çekilen",
-    "kasa_virman": "Kasa Virman",
-}
-
-
 def _son_bir_ay(bugun):
     """bugün − 1 takvim ayı (ayın günü taşarsa o ayın son gününe kırpılır)."""
     ay = bugun.month - 1 or 12
@@ -1369,6 +1360,7 @@ def kasa_detay(request, pk):
                     or ara in buyuk_harf_tr(r.satir_aciklama or "")]
     else:
         satirlar = ekstre.satirlar if ekstre else []
+    satirlar = list(reversed(satirlar))   # ekstre yeni tarihten eskiye (yürüyen bakiye değişmez)
 
     # Bu kasanın hareketi olan (kaynak=KASA) fişler -> ekstrede İptal aksiyonu için.
     kasa_fis_pks = set(YevmiyeFisi.objects.filter(
@@ -1381,38 +1373,42 @@ def kasa_detay(request, pk):
                    "kasa_fis_pks": kasa_fis_pks})
 
 
-def _kasa_cari_tahsilat(request, kasa):
-    """Cari Tahsilat formu (GET) / kaydı (POST) → otomatik dengeli fiş."""
+def _kasa_hareket_form(request, kasa, tip):
+    """Tipe göre kasa hareketi formu (GET) / kaydı (POST) → otomatik dengeli fiş."""
+    tan = kasa_hareket_servis.HAREKET[tip]
+    if tan["karsi"] == "kasa" and not Kasa.objects.filter(
+            silindi=False).exclude(pk=kasa.pk).exists():
+        messages.error(request, "Virman için en az iki kasa tanımlı olmalı.")
+        return redirect("core:kasa_detay", pk=kasa.pk)
+    if tan["karsi"] == "banka" and not BankaHesap.objects.filter(silindi=False).exists():
+        messages.error(request, "Önce FİNANS > Banka'dan bir banka hesabı tanımlayın.")
+        return redirect("core:kasa_detay", pk=kasa.pk)
     if request.method == "POST":
-        form = KasaTahsilatForm(request.POST)
+        form = KasaHareketForm(request.POST, tip=tip, kasa=kasa)
         if form.is_valid():
             try:
-                fis = kasa_hareket_servis.cari_tahsilat(
-                    kasa=kasa, cari=form.cleaned_data["cari"],
+                fis = kasa_hareket_servis.hareket_olustur(
+                    kasa=kasa, tip=tip, karsi=form.cleaned_data["karsi"],
                     tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                     aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
-                messages.success(request, f"Tahsilat kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
+                messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kasa_detay", pk=kasa.pk)
             except kasa_hareket_servis.KasaHareketHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = KasaTahsilatForm()
-    return render(request, "core/kasa_tahsilat_form.html",
-                  {"kasa": kasa, "form": form, "tip_ad": KASA_HAREKET_TIPLERI["cari_tahsilat"]})
+        form = KasaHareketForm(tip=tip, kasa=kasa)
+    return render(request, "core/kasa_hareket_form.html",
+                  {"kasa": kasa, "form": form, "tip": tip, "tan": tan})
 
 
 @ekran_gerekli("kasa")
 def kasa_hareket_ekle(request, pk, tip):
-    """Kasa hareketi girişi. Slice 2: Cari Tahsilat gerçek form → otomatik dengeli
-    fiş (kaynak=KASA). Diğer 4 tip henüz yer tutucu (Slice 3)."""
+    """Kasa hareketi girişi — 5 tip de tipe göre form + otomatik dengeli fiş (kaynak=KASA)."""
     kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
-    if tip not in KASA_HAREKET_TIPLERI:
+    if tip not in kasa_hareket_servis.HAREKET:
         messages.error(request, "Geçersiz hareket tipi.")
         return redirect("core:kasa_detay", pk=kasa.pk)
-    if tip == "cari_tahsilat":
-        return _kasa_cari_tahsilat(request, kasa)
-    return render(request, "core/kasa_hareket_yakinda.html",
-                  {"kasa": kasa, "tip": tip, "tip_ad": KASA_HAREKET_TIPLERI[tip]})
+    return _kasa_hareket_form(request, kasa, tip)
 
 
 @ekran_gerekli("kasa")

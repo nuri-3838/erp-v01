@@ -1,14 +1,14 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
-{% block baslik %}Cari Tahsilat · {{ kasa.ad }}{% endblock %}
-{% block sayfa_adi %}Cari Tahsilat{% endblock %}
+{% block baslik %}{{ tan.ad }} · {{ kasa.ad }}{% endblock %}
+{% block sayfa_adi %}{{ tan.ad }}{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
 <div class="form-kapsa form-dar">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:kasa_detay' kasa.pk %}">← {{ kasa.ad }}</a>
-    <h1 class="ust-baslik"><span class="emoji">📥</span>Cari Tahsilat</h1>
+    <h1 class="ust-baslik"><span class="emoji">{{ tan.ikon }}</span>{{ tan.ad }}</h1>
   </div>
 
   {% if form.non_field_errors %}
@@ -18,15 +18,15 @@
   <form method="post" autocomplete="off" style="display:contents">
     {% csrf_token %}
     <section class="icerik-kart">
-      <h2 class="bolum-baslik"><span class="emoji">💵</span>{{ kasa.ad }} — Tahsilat</h2>
+      <h2 class="bolum-baslik"><span class="emoji">💵</span>{{ kasa.ad }} — {{ tan.ad }}</h2>
       <p class="yardim" style="margin-top:-.3rem">Para birimi <span class="mono">{{ kasa.para_birimi }}</span> ·
         Hesap <span class="mono">{{ kasa.muhasebe.hesap_kodu }}</span> {{ kasa.muhasebe.hesap_adi }} ·
-        Kayıtta <strong>Kasa borç / Cari alacak</strong> dengeli fiş otomatik üretilir.</p>
+        {{ tan.aciklama }}</p>
       <div class="izgara">
         <div class="alan tam">
-          <label for="{{ form.cari.id_for_label }}">Cari (karşı taraf)</label>
-          {{ form.cari }}
-          {% for e in form.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <label for="{{ form.karsi.id_for_label }}">{{ form.karsi.label }}</label>
+          {{ form.karsi }}
+          {% for e in form.karsi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan">
           <label for="{{ form.tutar.id_for_label }}">Tutar ({{ kasa.para_birimi }})</label>
@@ -47,7 +47,7 @@
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:kasa_detay' kasa.pk %}">İptal</a>
-      <button type="submit" class="birincil">Tahsilatı Kaydet</button>
+      <button type="submit" class="birincil">{{ tan.ad }} Kaydet</button>
     </div>
   </form>
 </div>

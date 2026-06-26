@@ -145,15 +145,6 @@
         {% endif %}
       </thead>
       <tbody>
-        {% if not aciklama %}
-        <tr class="devir">
-          <td colspan="3">Devir (açılış bakiyesi)</td>
-          <td class="sag"></td><td class="sag"></td>
-          <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
-          {% if kasa.para_birimi != 'TRY' %}<td colspan="4" class="kolon-ayrac"></td>{% endif %}
-          <td></td>
-        </tr>
-        {% endif %}
         {% for s in satirlar %}
           <tr>
             <td>{{ s.tarih|date:"d.m.Y" }}</td>
@@ -178,6 +169,15 @@
           <tr><td colspan="{% if kasa.para_birimi != 'TRY' %}11{% else %}7{% endif %}" class="yardim"
                   style="text-align:center;padding:1.6rem 0">📄 {% if aciklama %}Bu açıklamayla eşleşen hareket yok.{% else %}Bu aralıkta hareket yok.{% endif %}</td></tr>
         {% endfor %}
+        {% if not aciklama %}
+        <tr class="devir">
+          <td colspan="3">Devir (açılış bakiyesi)</td>
+          <td class="sag"></td><td class="sag"></td>
+          <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
+          {% if kasa.para_birimi != 'TRY' %}<td colspan="4" class="kolon-ayrac"></td>{% endif %}
+          <td></td>
+        </tr>
+        {% endif %}
       </tbody>
       {% if not aciklama %}
       <tfoot>

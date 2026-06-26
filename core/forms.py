@@ -15,7 +15,8 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Birim, Cari, CariKategori, CekSenet, Depo, FaturaTipi, HesapPlani, Kategori, KdvOrani,
+    BankaHesap, Birim, Cari, CariKategori, CekSenet, Depo, FaturaTipi, HesapPlani, Kasa,
+    Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr
@@ -727,11 +728,11 @@ class FaturaSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
-class KasaTahsilatForm(forms.Form):
-    """Cari Tahsilat (kasa hareketi): cari + tutar + tarih + açıklama.
-    Kasa URL'den gelir; fiş Kasa borç / Cari alacak olarak otomatik üretilir."""
-    cari = forms.ModelChoiceField(
-        label="Cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
+class KasaHareketForm(forms.Form):
+    """Kasa hareketi: karşı taraf (tipe göre Cari / BankaHesap / hedef Kasa) +
+    tutar + tarih + açıklama. Kasa ve tip URL'den gelir; fiş otomatik üretilir."""
+    karsi = forms.ModelChoiceField(
+        label="Karşı taraf", queryset=Cari.objects.none(), empty_label="— seç —")
     tutar = TRDecimalField(label="Tutar", basamak=2)
     tarih = forms.DateField(
         label="Tarih",
@@ -742,11 +743,28 @@ class KasaTahsilatForm(forms.Form):
         widget=forms.TextInput(attrs={"autocomplete": "off",
                                       "placeholder": "Boş bırakılırsa otomatik"}))
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, tip=None, kasa=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
-        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
-        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        from core.services.kasa_hareket import HAREKET
+        tur = HAREKET.get(tip, {}).get("karsi", "cari")
+        f = self.fields["karsi"]
+        if tur == "banka":
+            f.queryset = (BankaHesap.objects.filter(silindi=False)
+                          .select_related("banka").order_by("banka__ad", "ad"))
+            f.label_from_instance = lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})"
+            f.label, f.empty_label = "Banka Hesabı", "— banka hesabı seç —"
+        elif tur == "kasa":
+            qs = Kasa.objects.filter(silindi=False)
+            if kasa is not None:
+                qs = qs.exclude(pk=kasa.pk)
+            f.queryset = qs.order_by("ad")
+            f.label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+            f.label, f.empty_label = "Hedef Kasa", "— hedef kasa seç —"
+        else:
+            f.queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+            f.label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+            f.label, f.empty_label = "Cari (karşı taraf)", "— cari seç —"
+        f.widget.attrs["class"] = "akilli-sec"
 
 
 # ---------------------------------------------------------------------------
