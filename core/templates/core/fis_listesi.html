@@ -59,7 +59,7 @@
     {% for f in fisler %}
       <tr{% if f.silindi %} class="pasif"{% endif %}>
         <td class="mono">
-          {% if f.silindi %}
+          {% if f.silindi or f.kaynak != 'MANUEL' %}
             <a href="{% url 'core:fis_detay' f.pk %}">{{ f.yil }}/{{ f.fis_no }}</a>
           {% else %}
             <a href="{% url 'core:fis_duzenle' f.pk %}">{{ f.yil }}/{{ f.fis_no }}</a>

@@ -46,12 +46,18 @@
 
 {% if fis_listesi_yetkili and not fis.silindi %}
 <div class="alan">
-  <a class="dugme" href="{% url 'core:fis_duzenle' fis.pk %}">Düzenle</a>
-  <form method="post" action="{% url 'core:fis_iptal' fis.pk %}" style="display:inline"
-        onsubmit="return confirm('Fiş {{ fis.yil }}/{{ fis.fis_no }} iptal edilsin mi? Geri alınamaz.');">
-    {% csrf_token %}
-    <button type="submit" style="border-color:var(--hata); color:var(--hata)">İptal et</button>
-  </form>
+  {% if fis.kaynak == 'KASA' %}
+    <p class="yardim" style="margin:0 0 .6rem">💵 Bu fiş bir <strong>kasa hareketinden</strong> otomatik oluştu;
+      düzenleme/iptal kasa ekranından yapılır.</p>
+    {% if fis.kasa_id %}<a class="dugme" href="{% url 'core:kasa_detay' fis.kasa_id %}">💵 Kasaya git</a>{% endif %}
+  {% else %}
+    <a class="dugme" href="{% url 'core:fis_duzenle' fis.pk %}">Düzenle</a>
+    <form method="post" action="{% url 'core:fis_iptal' fis.pk %}" style="display:inline"
+          onsubmit="return confirm('Fiş {{ fis.yil }}/{{ fis.fis_no }} iptal edilsin mi? Geri alınamaz.');">
+      {% csrf_token %}
+      <button type="submit" style="border-color:var(--hata); color:var(--hata)">İptal et</button>
+    </form>
+  {% endif %}
 </div>
 {% endif %}
 

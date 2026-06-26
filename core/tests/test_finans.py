@@ -130,6 +130,115 @@ class KasaViewTest(TestCase):
         self.assertContains(r2, "MAL SATIŞI")
 
 
+class KasaHareketTest(TestCase):
+    """KASA hareket motoru (Slice 2) — Cari Tahsilat → otomatik dengeli fiş (kaynak=KASA)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Kur
+        cls.yon = User.objects.create_superuser("yonk", password="x")
+        cls.bos = User.objects.create_user("bosk", password="x")
+        _hesap("100", "KASA")
+        _hesap("100.01", "MERKEZ KASA")
+        _hesap("120.01", "MÜŞTERİ A")
+        Kur.objects.create(tarih=timezone.localdate(), usd_alis=Decimal("40"))  # fiş USD kuru zorunlu
+
+    def _kasa_cari(self):
+        from core.models import Cari
+        k = kasa_olustur(ad="MERKEZ KASA", muhasebe_kodu="100.01")
+        c = Cari.objects.create(kod="CAR-1", unvan="MÜŞTERİ A", muhasebe_kodu="120.01",
+                                created_by=self.yon, updated_by=self.yon)
+        return k, c
+
+    def test_cari_tahsilat_dengeli_fis(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import YevmiyeFisi
+        from core.services.kasa_hareket import cari_tahsilat
+        k, c = self._kasa_cari()
+        fis = cari_tahsilat(kasa=k, cari=c, tutar=Decimal("1000"),
+                            tarih=timezone.localdate(), kullanici=self.yon)
+        self.assertEqual(fis.kaynak, YevmiyeFisi.Kaynak.KASA)
+        self.assertEqual(fis.kasa_id, k.pk)
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+        self.assertEqual(s["100.01"], (Decimal("1000.00"), Decimal("0.00")))   # kasa borç
+        self.assertEqual(s["120.01"], (Decimal("0.00"), Decimal("1000.00")))   # cari alacak
+
+    def test_cari_muhasebesiz_reddedilir(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Cari
+        from core.services.kasa_hareket import KasaHareketHatasi, cari_tahsilat
+        k = kasa_olustur(ad="MERKEZ KASA", muhasebe_kodu="100.01")
+        c = Cari.objects.create(kod="CAR-2", unvan="MÜŞTERİ B", muhasebe_kodu="",
+                                created_by=self.yon, updated_by=self.yon)
+        with self.assertRaises(KasaHareketHatasi):
+            cari_tahsilat(kasa=k, cari=c, tutar=Decimal("1"),
+                          tarih=timezone.localdate(), kullanici=self.yon)
+
+    def test_tahsilat_view_form_ve_post(self):
+        from django.utils import timezone
+        from core.models import YevmiyeFisi
+        k, c = self._kasa_cari()
+        self.client.force_login(self.yon)
+        url = reverse("core:kasa_hareket_ekle", args=[k.pk, "cari_tahsilat"])
+        g = self.client.get(url)
+        self.assertContains(g, "Cari Tahsilat")                 # form açılır
+        self.assertContains(g, "select.akilli-sec")            # akıllı arama enhancer dahil
+        r = self.client.post(url, {"cari": c.pk, "tutar": "1.500,00",
+                                   "tarih": timezone.localdate().isoformat(), "aciklama": ""})
+        self.assertRedirects(r, reverse("core:kasa_detay", args=[k.pk]))
+        self.assertTrue(YevmiyeFisi.objects.filter(
+            kasa=k, kaynak=YevmiyeFisi.Kaynak.KASA, silindi=False).exists())
+
+    def test_kasa_fisi_ham_ekrandan_kilitli(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.kasa_hareket import cari_tahsilat
+        k, c = self._kasa_cari()
+        fis = cari_tahsilat(kasa=k, cari=c, tutar=Decimal("100"),
+                            tarih=timezone.localdate(), kullanici=self.yon)
+        self.client.force_login(self.yon)
+        self.assertRedirects(self.client.get(reverse("core:fis_duzenle", args=[fis.pk])),
+                             reverse("core:kasa_detay", args=[k.pk]))     # düzenle kilitli
+        self.assertRedirects(self.client.post(reverse("core:fis_iptal", args=[fis.pk])),
+                             reverse("core:kasa_detay", args=[k.pk]))     # ham iptal kilitli
+        fis.refresh_from_db()
+        self.assertFalse(fis.silindi)
+
+    def test_hareket_iptal_kasadan(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.kasa_hareket import cari_tahsilat
+        k, c = self._kasa_cari()
+        fis = cari_tahsilat(kasa=k, cari=c, tutar=Decimal("100"),
+                            tarih=timezone.localdate(), kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:kasa_hareket_iptal", args=[k.pk, fis.pk]))
+        self.assertRedirects(r, reverse("core:kasa_detay", args=[k.pk]))
+        fis.refresh_from_db()
+        self.assertTrue(fis.silindi)
+
+    def test_kasa_fisi_listede_detaya_baglanir(self):
+        """Fiş listesinde KASA fişi düzenleme'ye değil DETAY'a bağlanır (kasaya bounce etmez);
+        detay açılır + 'kasaya git' notu gösterir."""
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.kasa_hareket import cari_tahsilat
+        k, c = self._kasa_cari()
+        fis = cari_tahsilat(kasa=k, cari=c, tutar=Decimal("100"),
+                            tarih=timezone.localdate(), kullanici=self.yon)
+        self.client.force_login(self.yon)
+        lst = self.client.get(reverse("core:fis_listesi"))
+        self.assertContains(lst, reverse("core:fis_detay", args=[fis.pk]))      # detaya link
+        d = self.client.get(reverse("core:fis_detay", args=[fis.pk]))
+        self.assertEqual(d.status_code, 200)                                    # açılır
+        self.assertContains(d, "kasa hareketinden")                            # bilgi notu
+        self.assertContains(d, reverse("core:kasa_detay", args=[k.pk]))         # kasaya git
+
+
 class FinansDigerServisTest(TestCase):
     @classmethod
     def setUpTestData(cls):

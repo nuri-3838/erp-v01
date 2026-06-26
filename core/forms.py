@@ -727,6 +727,28 @@ class FaturaSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+class KasaTahsilatForm(forms.Form):
+    """Cari Tahsilat (kasa hareketi): cari + tutar + tarih + açıklama.
+    Kasa URL'den gelir; fiş Kasa borç / Cari alacak olarak otomatik üretilir."""
+    cari = forms.ModelChoiceField(
+        label="Cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+    tarih = forms.DateField(
+        label="Tarih",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "Boş bırakılırsa otomatik"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+
+
 # ---------------------------------------------------------------------------
 # STOKLAR Faz B — Depo + Stok hareketi
 # ---------------------------------------------------------------------------

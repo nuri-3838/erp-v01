@@ -132,6 +132,7 @@ class YevmiyeFisi(TemelModel):
     class Kaynak(models.TextChoices):
         MANUEL = "MANUEL", "Manuel"
         FATURA = "FATURA", "Fatura (otomatik)"
+        KASA = "KASA", "Kasa Hareketi (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -139,6 +140,12 @@ class YevmiyeFisi(TemelModel):
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
     kaynak = models.CharField(
         "kaynak", max_length=20, choices=Kaynak.choices, default=Kaynak.MANUEL
+    )
+    # Kaynak=KASA fişin kaynağı olan kasa (hareket motoru). Ham fiş ekranından
+    # düzenleme/iptal kilidi + kasa detayından iptal için fiş→kasa bağı.
+    kasa = models.ForeignKey(
+        "Kasa", verbose_name="kaynak kasa", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fisler",
     )
     # USD raporlama için fiş tarihindeki TCMB USD alış kuru (snapshot).
     # Kur yoksa boş kalabilir; USD sonra tamamlanır.

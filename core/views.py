@@ -19,7 +19,7 @@ from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
     BankaForm, BankaHesapForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
-    KasaForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
+    KasaForm, KasaTahsilatForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm,
@@ -56,6 +56,7 @@ from core.services import fatura as fatura_servis
 from core.services import depo as depo_servis
 from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
+from core.services import kasa_hareket as kasa_hareket_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -175,6 +176,11 @@ def fis_duzenle(request, pk):
         fat = fis.faturalar.filter(silindi=False).first()
         messages.info(request, "Bu fiş bir faturadan oluştu; düzenlemek için faturayı düzenleyin.")
         return redirect("core:fatura_duzenle", pk=fat.pk) if fat else redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.KASA:
+        messages.info(request, "Bu fiş bir kasa hareketinden oluştu; düzenlenemez. "
+                               "Gerekirse hareketi iptal edip yeniden girin.")
+        return (redirect("core:kasa_detay", pk=fis.kasa_id) if fis.kasa_id
+                else redirect("core:fis_detay", pk=fis.pk))
 
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -221,6 +227,9 @@ def fis_iptal_gorunum(request, pk):
         if fat:
             messages.info(request, "Bu fiş bir faturadan oluştu; iptal için faturayı iptal edin.")
             return redirect("core:fatura_detay", pk=fat.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.KASA and not fis.silindi and fis.kasa_id:
+        messages.info(request, "Bu fiş bir kasa hareketinden oluştu; iptal için kasa detayını kullanın.")
+        return redirect("core:kasa_detay", pk=fis.kasa_id)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1361,21 +1370,63 @@ def kasa_detay(request, pk):
     else:
         satirlar = ekstre.satirlar if ekstre else []
 
+    # Bu kasanın hareketi olan (kaynak=KASA) fişler -> ekstrede İptal aksiyonu için.
+    kasa_fis_pks = set(YevmiyeFisi.objects.filter(
+        kasa=kasa, kaynak=YevmiyeFisi.Kaynak.KASA, silindi=False
+    ).values_list("pk", flat=True))
+
     return render(request, "core/kasa_detay.html",
                   {"kasa": kasa, "form": form, "ekstre": ekstre,
-                   "satirlar": satirlar, "aciklama": aciklama})
+                   "satirlar": satirlar, "aciklama": aciklama,
+                   "kasa_fis_pks": kasa_fis_pks})
+
+
+def _kasa_cari_tahsilat(request, kasa):
+    """Cari Tahsilat formu (GET) / kaydı (POST) → otomatik dengeli fiş."""
+    if request.method == "POST":
+        form = KasaTahsilatForm(request.POST)
+        if form.is_valid():
+            try:
+                fis = kasa_hareket_servis.cari_tahsilat(
+                    kasa=kasa, cari=form.cleaned_data["cari"],
+                    tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                messages.success(request, f"Tahsilat kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:kasa_detay", pk=kasa.pk)
+            except kasa_hareket_servis.KasaHareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KasaTahsilatForm()
+    return render(request, "core/kasa_tahsilat_form.html",
+                  {"kasa": kasa, "form": form, "tip_ad": KASA_HAREKET_TIPLERI["cari_tahsilat"]})
 
 
 @ekran_gerekli("kasa")
 def kasa_hareket_ekle(request, pk, tip):
-    """Kasa hareketi girişi. Slice 1: menü + yer tutucu; Slice 2'de tipe göre
-    form + otomatik dengeli fiş (kaynak=KASA) gelecek."""
+    """Kasa hareketi girişi. Slice 2: Cari Tahsilat gerçek form → otomatik dengeli
+    fiş (kaynak=KASA). Diğer 4 tip henüz yer tutucu (Slice 3)."""
     kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
     if tip not in KASA_HAREKET_TIPLERI:
         messages.error(request, "Geçersiz hareket tipi.")
         return redirect("core:kasa_detay", pk=kasa.pk)
+    if tip == "cari_tahsilat":
+        return _kasa_cari_tahsilat(request, kasa)
     return render(request, "core/kasa_hareket_yakinda.html",
                   {"kasa": kasa, "tip": tip, "tip_ad": KASA_HAREKET_TIPLERI[tip]})
+
+
+@ekran_gerekli("kasa")
+def kasa_hareket_iptal(request, pk, fis_pk):
+    """Kasa hareketi (kaynak=KASA fiş) iptali — kasa detayından (ham fiş ekranı kilitli)."""
+    kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
+    fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    if request.method == "POST":
+        try:
+            kasa_hareket_servis.hareket_iptal(fis=fis, kasa=kasa, kullanici=request.user)
+            messages.success(request, f"Hareket iptal edildi: fiş {fis.yil}/{fis.fis_no}.")
+        except kasa_hareket_servis.KasaHareketHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:kasa_detay", pk=kasa.pk)
 
 
 # === FİNANS — Banka (kurum) + bağlı hesaplar (master-detail) ===
