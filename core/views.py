@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHesapForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -57,6 +57,7 @@ from core.services import depo as depo_servis
 from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
 from core.services import kasa_hareket as kasa_hareket_servis
+from core.services import banka_hareket as banka_hareket_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -181,6 +182,11 @@ def fis_duzenle(request, pk):
                                "Gerekirse hareketi iptal edip yeniden girin.")
         return (redirect("core:kasa_detay", pk=fis.kasa_id) if fis.kasa_id
                 else redirect("core:fis_detay", pk=fis.pk))
+    if fis.kaynak == YevmiyeFisi.Kaynak.BANKA:
+        messages.info(request, "Bu fiş bir banka hareketinden oluştu; düzenlenemez. "
+                               "Gerekirse hareketi iptal edip yeniden girin.")
+        return (redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id) if fis.banka_hesap_id
+                else redirect("core:fis_detay", pk=fis.pk))
 
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -230,6 +236,9 @@ def fis_iptal_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.KASA and not fis.silindi and fis.kasa_id:
         messages.info(request, "Bu fiş bir kasa hareketinden oluştu; iptal için kasa detayını kullanın.")
         return redirect("core:kasa_detay", pk=fis.kasa_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.BANKA and not fis.silindi and fis.banka_hesap_id:
+        messages.info(request, "Bu fiş bir banka hareketinden oluştu; iptal için banka hesabı detayını kullanın.")
+        return redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1423,6 +1432,96 @@ def kasa_hareket_iptal(request, pk, fis_pk):
         except kasa_hareket_servis.KasaHareketHatasi as e:
             messages.error(request, str(e))
     return redirect("core:kasa_detay", pk=kasa.pk)
+
+
+@ekran_gerekli("banka")
+def banka_hesap_detay(request, pk):
+    """Banka hesabı detayı: lacivert başlık + 5 hareket aksiyonu + hesap ekstresi
+    (bağlı muhasebe hesabının devirli ekstresi). Tarih + açıklama filtreli;
+    varsayılan dönem SON 1 AY. Kasa detayıyla aynı desen, ekstre yeni→eski."""
+    hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
+
+    bugun = timezone.localdate()
+    form = MizanFiltreForm(request.GET) if request.GET else None
+    if form and form.is_valid():
+        b, s = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
+    else:
+        b, s = _son_bir_ay(bugun), bugun
+        form = MizanFiltreForm(initial={"baslangic": b, "bitis": s})
+
+    ekstre = (ekstre_devirli_servis(hesap.muhasebe.hesap_kodu, b, s)
+              if hesap.muhasebe_id else None)
+
+    aciklama = (request.GET.get("aciklama") or "").strip()
+    if ekstre and aciklama:
+        ara = buyuk_harf_tr(aciklama)
+        satirlar = [r for r in ekstre.satirlar
+                    if ara in buyuk_harf_tr(r.fis_aciklama or "")
+                    or ara in buyuk_harf_tr(r.satir_aciklama or "")]
+    else:
+        satirlar = ekstre.satirlar if ekstre else []
+    satirlar = list(reversed(satirlar))   # ekstre yeni tarihten eskiye (yürüyen bakiye değişmez)
+
+    banka_fis_pks = set(YevmiyeFisi.objects.filter(
+        banka_hesap=hesap, kaynak=YevmiyeFisi.Kaynak.BANKA, silindi=False
+    ).values_list("pk", flat=True))
+
+    return render(request, "core/banka_hesap_detay.html",
+                  {"hesap": hesap, "form": form, "ekstre": ekstre,
+                   "satirlar": satirlar, "aciklama": aciklama,
+                   "banka_fis_pks": banka_fis_pks})
+
+
+def _banka_hareket_form(request, hesap, tip):
+    """Tipe göre banka hesabı hareketi formu (GET) / kaydı (POST) → otomatik dengeli fiş."""
+    tan = banka_hareket_servis.HAREKET[tip]
+    if tan["karsi"] == "banka" and not BankaHesap.objects.filter(
+            silindi=False).exclude(pk=hesap.pk).exists():
+        messages.error(request, "Virman için en az iki banka hesabı tanımlı olmalı.")
+        return redirect("core:banka_hesap_detay", pk=hesap.pk)
+    if tan["karsi"] == "kasa" and not Kasa.objects.filter(silindi=False).exists():
+        messages.error(request, "Önce FİNANS > Kasa'dan bir kasa tanımlayın.")
+        return redirect("core:banka_hesap_detay", pk=hesap.pk)
+    if request.method == "POST":
+        form = BankaHareketForm(request.POST, tip=tip, banka_hesap=hesap)
+        if form.is_valid():
+            try:
+                fis = banka_hareket_servis.hareket_olustur(
+                    banka_hesap=hesap, tip=tip, karsi=form.cleaned_data["karsi"],
+                    tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:banka_hesap_detay", pk=hesap.pk)
+            except banka_hareket_servis.BankaHareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BankaHareketForm(tip=tip, banka_hesap=hesap)
+    return render(request, "core/banka_hareket_form.html",
+                  {"hesap": hesap, "form": form, "tip": tip, "tan": tan})
+
+
+@ekran_gerekli("banka")
+def banka_hareket_ekle(request, pk, tip):
+    """Banka hesabı hareketi — 5 tip de tipe göre form + otomatik dengeli fiş (kaynak=BANKA)."""
+    hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
+    if tip not in banka_hareket_servis.HAREKET:
+        messages.error(request, "Geçersiz hareket tipi.")
+        return redirect("core:banka_hesap_detay", pk=hesap.pk)
+    return _banka_hareket_form(request, hesap, tip)
+
+
+@ekran_gerekli("banka")
+def banka_hareket_iptal(request, pk, fis_pk):
+    """Banka hareketi (kaynak=BANKA fiş) iptali — hesap detayından (ham fiş ekranı kilitli)."""
+    hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
+    fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    if request.method == "POST":
+        try:
+            banka_hareket_servis.hareket_iptal(fis=fis, banka_hesap=hesap, kullanici=request.user)
+            messages.success(request, f"Hareket iptal edildi: fiş {fis.yil}/{fis.fis_no}.")
+        except banka_hareket_servis.BankaHareketHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:banka_hesap_detay", pk=hesap.pk)
 
 
 # === FİNANS — Banka (kurum) + bağlı hesaplar (master-detail) ===

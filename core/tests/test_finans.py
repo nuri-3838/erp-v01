@@ -424,3 +424,135 @@ class FinansDigerViewTest(TestCase):
             "durum": "PORTFOYDE", "muhasebe": "101.01"})
         self.assertEqual(r.status_code, 302)
         self.assertTrue(CekSenet.objects.filter(belge_no="A123", tutar=Decimal("1500")).exists())
+
+
+class BankaHareketTest(TestCase):
+    """Banka hesabı hareket motoru (5 tip, ortak motor) — kasa deseninin banka karşılığı."""
+    @classmethod
+    def setUpTestData(cls):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Kur
+        cls.yon = User.objects.create_superuser("byon", password="x")
+        cls.bos = User.objects.create_user("bbos", password="x")
+        for kod, ad in (("100.01", "MERKEZ KASA"), ("102.01", "İŞ BANKASI VADESİZ"),
+                        ("102.02", "İŞ BANKASI 2"), ("120.01", "MÜŞTERİ A")):
+            _hesap(kod, ad)
+        Kur.objects.create(tarih=timezone.localdate(), usd_alis=Decimal("40"))
+
+    def _kur(self, pb1="TRY", pb2="TRY"):
+        from core.models import Banka, BankaHesap, Cari
+        b = Banka.objects.create(ad="İŞ BANKASI", created_by=self.yon, updated_by=self.yon)
+        bh1 = BankaHesap.objects.create(banka=b, ad="VADESİZ TL", muhasebe_id="102.01",
+                                        para_birimi=pb1, created_by=self.yon, updated_by=self.yon)
+        bh2 = BankaHesap.objects.create(banka=b, ad="İKİNCİ", muhasebe_id="102.02",
+                                        para_birimi=pb2, created_by=self.yon, updated_by=self.yon)
+        cari = Cari.objects.create(kod="CAR-1", unvan="MÜŞTERİ A", muhasebe_kodu="120.01",
+                                   created_by=self.yon, updated_by=self.yon)
+        return bh1, bh2, cari
+
+    def _s(self, fis):
+        return {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+
+    def test_cari_tahsilat_ve_odeme(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur
+        bh1, _, cari = self._kur()
+        t = timezone.localdate()
+        f1 = hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
+                             tutar=Decimal("1000"), tarih=t, kullanici=self.yon)
+        s1 = self._s(f1)
+        self.assertEqual(s1["102.01"], (Decimal("1000.00"), Decimal("0.00")))  # banka borç (giriş)
+        self.assertEqual(s1["120.01"], (Decimal("0.00"), Decimal("1000.00")))  # cari alacak
+        self.assertEqual(f1.banka_hesap_id, bh1.pk)
+        f2 = hareket_olustur(banka_hesap=bh1, tip="cari_odeme", karsi=cari,
+                             tutar=Decimal("400"), tarih=t, kullanici=self.yon)
+        s2 = self._s(f2)
+        self.assertEqual(s2["102.01"], (Decimal("0.00"), Decimal("400.00")))   # banka alacak (çıkış)
+        self.assertEqual(s2["120.01"], (Decimal("400.00"), Decimal("0.00")))   # cari borç
+
+    def test_banka_virman(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur
+        bh1, bh2, _ = self._kur()
+        fis = hareket_olustur(banka_hesap=bh1, tip="banka_virman", karsi=bh2,
+                              tutar=Decimal("700"), tarih=timezone.localdate(), kullanici=self.yon)
+        s = self._s(fis)
+        self.assertEqual(s["102.01"], (Decimal("0.00"), Decimal("700.00")))    # kaynak alacak
+        self.assertEqual(s["102.02"], (Decimal("700.00"), Decimal("0.00")))    # hedef borç
+        self.assertEqual(fis.banka_hesap_id, bh1.pk)
+
+    def test_banka_yatan_ve_cekilen(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur
+        bh1, _, _ = self._kur()
+        kasa = kasa_olustur(ad="MERKEZ KASA", muhasebe_kodu="100.01")
+        t = timezone.localdate()
+        f1 = hareket_olustur(banka_hesap=bh1, tip="banka_yatan", karsi=kasa,
+                             tutar=Decimal("500"), tarih=t, kullanici=self.yon)
+        s1 = self._s(f1)
+        self.assertEqual(s1["102.01"], (Decimal("500.00"), Decimal("0.00")))   # banka borç (giriş)
+        self.assertEqual(s1["100.01"], (Decimal("0.00"), Decimal("500.00")))   # kasa alacak
+        f2 = hareket_olustur(banka_hesap=bh1, tip="banka_cekilen", karsi=kasa,
+                             tutar=Decimal("300"), tarih=t, kullanici=self.yon)
+        s2 = self._s(f2)
+        self.assertEqual(s2["102.01"], (Decimal("0.00"), Decimal("300.00")))   # banka alacak (çıkış)
+        self.assertEqual(s2["100.01"], (Decimal("300.00"), Decimal("0.00")))   # kasa borç
+
+    def test_farkli_pb_reddedilir(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur, BankaHareketHatasi
+        bh1, bh2, _ = self._kur(pb1="TRY", pb2="USD")
+        with self.assertRaises(BankaHareketHatasi):
+            hareket_olustur(banka_hesap=bh1, tip="banka_virman", karsi=bh2,
+                            tutar=Decimal("1"), tarih=timezone.localdate(), kullanici=self.yon)
+
+    def test_detay_formlar_ve_kilit(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur
+        bh1, bh2, cari = self._kur()
+        kasa_olustur(ad="MERKEZ KASA", muhasebe_kodu="100.01")
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:banka_hesap_detay", args=[bh1.pk]))
+        self.assertEqual(d.status_code, 200)
+        self.assertContains(d, "Hesap Ekstresi")
+        for ad in ("Cari Tahsilat", "Cari Ödeme", "Banka Virman", "Banka Yatan", "Banka Çekilen"):
+            self.assertContains(d, ad)
+        for tip, et in (("cari_tahsilat", "Cari (karşı taraf)"), ("cari_odeme", "Cari (karşı taraf)"),
+                        ("banka_virman", "Hedef Banka Hesabı"), ("banka_yatan", "— kasa seç —"),
+                        ("banka_cekilen", "— kasa seç —")):
+            r = self.client.get(reverse("core:banka_hareket_ekle", args=[bh1.pk, tip]))
+            self.assertEqual(r.status_code, 200, tip)
+            self.assertContains(r, et)
+        fis = hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
+                              tutar=Decimal("100"), tarih=timezone.localdate(), kullanici=self.yon)
+        lst = self.client.get(reverse("core:fis_listesi"))
+        self.assertContains(lst, reverse("core:fis_detay", args=[fis.pk]))      # detaya link
+        fd = self.client.get(reverse("core:fis_detay", args=[fis.pk]))
+        self.assertContains(fd, "banka hareketinden")                          # bilgi notu
+        self.assertContains(fd, reverse("core:banka_hesap_detay", args=[bh1.pk]))
+        duz = self.client.get(reverse("core:fis_duzenle", args=[fis.pk]))      # ham düzenleme kilitli
+        self.assertRedirects(duz, reverse("core:banka_hesap_detay", args=[bh1.pk]))
+
+    def test_hareket_iptal_view(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur
+        bh1, _, cari = self._kur()
+        fis = hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
+                              tutar=Decimal("100"), tarih=timezone.localdate(), kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:banka_hareket_iptal", args=[bh1.pk, fis.pk]))
+        self.assertRedirects(r, reverse("core:banka_hesap_detay", args=[bh1.pk]))
+        fis.refresh_from_db()
+        self.assertTrue(fis.silindi)
+
+    def test_detay_yetkisiz_403(self):
+        bh1, _, _ = self._kur()
+        self.client.force_login(self.bos)
+        self.assertEqual(self.client.get(reverse("core:banka_hesap_detay", args=[bh1.pk])).status_code, 403)

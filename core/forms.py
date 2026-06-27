@@ -767,6 +767,44 @@ class KasaHareketForm(forms.Form):
         f.widget.attrs["class"] = "akilli-sec"
 
 
+class BankaHareketForm(forms.Form):
+    """Banka hesabı hareketi: karşı taraf (tipe göre Cari / hedef BankaHesap / Kasa)
+    + tutar + tarih + açıklama. Banka hesabı ve tip URL'den; fiş otomatik üretilir."""
+    karsi = forms.ModelChoiceField(
+        label="Karşı taraf", queryset=Cari.objects.none(), empty_label="— seç —")
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+    tarih = forms.DateField(
+        label="Tarih",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "Boş bırakılırsa otomatik"}))
+
+    def __init__(self, *args, tip=None, banka_hesap=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.banka_hareket import HAREKET
+        tur = HAREKET.get(tip, {}).get("karsi", "cari")
+        f = self.fields["karsi"]
+        if tur == "banka":
+            qs = BankaHesap.objects.filter(silindi=False).select_related("banka")
+            if banka_hesap is not None:
+                qs = qs.exclude(pk=banka_hesap.pk)
+            f.queryset = qs.order_by("banka__ad", "ad")
+            f.label_from_instance = lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})"
+            f.label, f.empty_label = "Hedef Banka Hesabı", "— hedef hesap seç —"
+        elif tur == "kasa":
+            f.queryset = Kasa.objects.filter(silindi=False).order_by("ad")
+            f.label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+            f.label, f.empty_label = "Kasa", "— kasa seç —"
+        else:
+            f.queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+            f.label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+            f.label, f.empty_label = "Cari (karşı taraf)", "— cari seç —"
+        f.widget.attrs["class"] = "akilli-sec"
+
+
 # ---------------------------------------------------------------------------
 # STOKLAR Faz B — Depo + Stok hareketi
 # ---------------------------------------------------------------------------

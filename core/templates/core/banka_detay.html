@@ -34,12 +34,13 @@
   <tbody>
     {% for h in hesaplar %}
       <tr>
-        <td>{{ h.ad }}</td>
+        <td><a href="{% url 'core:banka_hesap_detay' h.pk %}">{{ h.ad }}</a></td>
         <td class="mono">{{ h.hesap_no|default:"—" }}</td>
         <td class="mono">{{ h.iban|default:"—" }}</td>
         <td class="mono">{{ h.para_birimi }}</td>
         <td><span class="mono">{{ h.muhasebe.hesap_kodu }}</span> {{ h.muhasebe.hesap_adi }}</td>
         <td><span class="islem-bag">
+          <a href="{% url 'core:banka_hesap_detay' h.pk %}">Detay</a>
           <a href="{% url 'core:banka_hesap_duzenle' h.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:banka_hesap_sil' h.pk %}" onsubmit="return confirm('Hesap silinsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
