@@ -211,7 +211,7 @@ class CariGirisBordroTest(TestCase):
         self.assertEqual(gun2, 45)
         self.assertEqual(ortalama_vade([], baz), (None, None))    # boş
 
-    def test_detay_ve_yazdir_ortalama_vade_gosterir(self):
+    def test_detay_ortalama_vade_ve_pdf(self):
         import datetime
         b = self._olustur([
             {"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 9, 1)},
@@ -219,8 +219,8 @@ class CariGirisBordroTest(TestCase):
         self.client.force_login(self.yon)
         d = self.client.get(reverse("core:cek_bordro_detay", args=[b.pk]))
         self.assertContains(d, "Ortalama Vade")
-        self.assertContains(d, reverse("core:cek_bordro_yazdir", args=[b.pk]))   # Yazdır butonu
-        y = self.client.get(reverse("core:cek_bordro_yazdir", args=[b.pk]))
-        self.assertEqual(y.status_code, 200)
-        self.assertContains(y, "Ortalama Vade")
-        self.assertContains(y, "Bordrosu")
+        self.assertContains(d, reverse("core:cek_bordro_pdf", args=[b.pk]))   # PDF butonu
+        p = self.client.get(reverse("core:cek_bordro_pdf", args=[b.pk]))      # gerçek PDF üretilir
+        self.assertEqual(p.status_code, 200)
+        self.assertEqual(p["Content-Type"], "application/pdf")
+        self.assertEqual(p.content[:5], b"%PDF-")

@@ -10,8 +10,9 @@ from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Count, Prefetch, Q, Sum
 from django.forms import formset_factory
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1876,10 +1877,24 @@ def cek_bordro_detay(request, pk):
 
 
 @ekran_gerekli("cek_senet")
-def cek_bordro_yazdir(request, pk):
-    """Bordronun yazdırılabilir (A4) görünümü — temiz belge, otomatik yazdır."""
+def cek_bordro_pdf(request, pk):
+    """Bordronun PDF'i (WeasyPrint, A4) — tarayıcıda açılır, oradan yazdırılır/kaydedilir."""
+    import base64
+
+    from django.contrib.staticfiles import finders
+    from weasyprint import HTML
+
     bordro = get_object_or_404(CekBordrosu, pk=pk, silindi=False)
-    return render(request, "core/cek_bordro_yazdir.html", _bordro_baglam(bordro))
+    ctx = _bordro_baglam(bordro)
+    logo_yol = finders.find("core/img/semta-logo.png")
+    if logo_yol:
+        with open(logo_yol, "rb") as f:
+            ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
+    html = render_to_string("core/cek_bordro_pdf.html", ctx)
+    pdf = HTML(string=html).write_pdf()
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    resp["Content-Disposition"] = f'inline; filename="cek-senet-bordro-{bordro.pk}.pdf"'
+    return resp
 
 
 @ekran_gerekli("cek_senet")

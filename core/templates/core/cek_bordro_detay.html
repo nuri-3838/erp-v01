@@ -33,7 +33,7 @@
   <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:cek_senetler' %}">← Çek / Senet</a>
     <div style="display:flex; gap:.5rem; align-items:center;">
-      <a class="dugme" href="{% url 'core:cek_bordro_yazdir' bordro.pk %}" target="_blank">🖨️ Yazdır</a>
+      <a class="dugme" href="{% url 'core:cek_bordro_pdf' bordro.pk %}" target="_blank">📄 PDF</a>
       <form method="post" action="{% url 'core:cek_bordro_sil' bordro.pk %}" style="margin:0"
             onsubmit="return confirm('Bordro geri alınsın mı? Bağlı fiş iptal edilir, evraklar silinir.');">
         {% csrf_token %}<button type="submit" class="sil">Bordroyu Geri Al</button>
