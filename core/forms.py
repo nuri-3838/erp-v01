@@ -685,7 +685,7 @@ class CariGirisBordroForm(forms.Form):
 
 
 class CekKalemForm(forms.Form):
-    """Bordro satırı: bir çek/senet (tip + tutar + vade + belge no + keşideci)."""
+    """Bordro satırı: bir çek/senet (tip + tutar + vade + belge no + keşideci + ön/arka görsel)."""
     tip = forms.ChoiceField(label="Tip", choices=CekSenet.Tip.choices)
     tutar = TRDecimalField(label="Tutar", basamak=2, required=False)
     vade = forms.DateField(
@@ -693,6 +693,12 @@ class CekKalemForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     belge_no = forms.CharField(label="Belge No", max_length=50, required=False)
     kesideci = forms.CharField(label="Keşideci", max_length=200, required=False)
+    on_yuz = forms.ImageField(
+        label="Ön Yüz", required=False,
+        widget=forms.ClearableFileInput(attrs={"accept": "image/*"}))
+    arka_yuz = forms.ImageField(
+        label="Arka Yüz", required=False,
+        widget=forms.ClearableFileInput(attrs={"accept": "image/*"}))
 
     def dolu_mu(self):
         cd = getattr(self, "cleaned_data", {})

@@ -1820,14 +1820,21 @@ def cek_cari_giris(request):
     """Cari Giriş bordrosu: tek cari + çok çek/senet satırı → N evrak (PORTFÖYDE) + tek fiş."""
     if request.method == "POST":
         bform = CariGirisBordroForm(request.POST)
-        formset = CekKalemFormSet(request.POST)
+        formset = CekKalemFormSet(request.POST, request.FILES)
         if bform.is_valid() and formset.is_valid():
-            satirlar = [
-                {"tip": f.cleaned_data["tip"], "tutar": f.cleaned_data["tutar"],
-                 "vade": f.cleaned_data["vade"], "belge_no": f.cleaned_data["belge_no"],
-                 "kesideci": f.cleaned_data["kesideci"]}
-                for f in formset if f.dolu_mu()
-            ]
+            satirlar = []
+            for f in formset:
+                if not f.dolu_mu():
+                    continue
+                cd = f.cleaned_data
+                satirlar.append({
+                    "tip": cd["tip"], "tutar": cd["tutar"], "vade": cd["vade"],
+                    "belge_no": cd["belge_no"], "kesideci": cd["kesideci"],
+                    "on_yuz": (gorsel.kucult_webp(cd["on_yuz"], max_kenar=1600, kalite=80, ad="cek_on")
+                               if cd.get("on_yuz") else None),
+                    "arka_yuz": (gorsel.kucult_webp(cd["arka_yuz"], max_kenar=1600, kalite=80, ad="cek_arka")
+                                 if cd.get("arka_yuz") else None),
+                })
             try:
                 bordro = cek_servis.cari_giris_bordrosu_olustur(
                     cari_id=bform.cleaned_data["cari"].pk,

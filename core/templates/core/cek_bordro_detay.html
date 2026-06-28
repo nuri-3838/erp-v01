@@ -23,6 +23,10 @@
   .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
   .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
   .kv .dg { font-weight:600; font-size:.98rem; }
+  .cek-foto { display:inline-flex; gap:.3rem; }
+  .cek-foto a img { width:46px; height:32px; object-fit:cover; border-radius:5px;
+    border:1px solid var(--cizgi); display:block; transition:transform .12s; }
+  .cek-foto a img:hover { transform:scale(1.06); }
 </style>
 
 <div class="detay-kapsa">
@@ -56,7 +60,7 @@
     <h2 class="bolum-baslik"><span class="emoji">📜</span>Çek / Senetler</h2>
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Tip</th><th class="sag">Tutar</th><th>Vade</th><th>Belge No</th><th>Keşideci</th><th>Durum</th></tr></thead>
+      <thead><tr><th>Tip</th><th class="sag">Tutar</th><th>Vade</th><th>Belge No</th><th>Keşideci</th><th>Durum</th><th>Görsel</th></tr></thead>
       <tbody>
         {% for c in cekler %}
           <tr>
@@ -66,9 +70,17 @@
             <td class="mono">{{ c.belge_no|default:"—" }}</td>
             <td>{{ c.kesideci|default:"—" }}</td>
             <td>{{ c.get_durum_display }}</td>
+            <td>
+              {% if c.on_yuz or c.arka_yuz %}
+                <span class="cek-foto">
+                  {% if c.on_yuz %}<a href="{{ c.on_yuz.url }}" target="_blank" title="Ön yüz"><img src="{{ c.on_yuz.url }}" alt="ön"></a>{% endif %}
+                  {% if c.arka_yuz %}<a href="{{ c.arka_yuz.url }}" target="_blank" title="Arka yüz"><img src="{{ c.arka_yuz.url }}" alt="arka"></a>{% endif %}
+                </span>
+              {% else %}<span class="yardim">—</span>{% endif %}
+            </td>
           </tr>
         {% empty %}
-          <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.2rem 0">Evrak yok.</td></tr>
+          <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.2rem 0">Evrak yok.</td></tr>
         {% endfor %}
       </tbody>
     </table>

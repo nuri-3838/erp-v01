@@ -4,6 +4,12 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
+<style>
+  .gorsel-hucre label { display:flex; align-items:center; gap:.35rem; font-size:.72rem;
+    font-weight:600; color:var(--metin-soluk); margin-bottom:.25rem; white-space:nowrap; }
+  .gorsel-hucre label span { width:2.6rem; flex:0 0 auto; }
+  .gorsel-hucre input[type=file] { font-size:.72rem; max-width:170px; padding:.25rem; }
+</style>
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:cek_senetler' %}">← Çek / Senet</a>
@@ -14,7 +20,7 @@
     <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
   {% endif %}
 
-  <form method="post" id="bordro-form" autocomplete="off">
+  <form method="post" id="bordro-form" autocomplete="off" enctype="multipart/form-data">
     {% csrf_token %}
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Bordro Bilgileri</h2>
@@ -40,10 +46,11 @@
       <h2 class="bolum-baslik">Çek / Senet Kalemleri</h2>
       <div class="tablo-kapsayici genis">
       <table class="satir-tablo">
-        <colgroup><col style="width:14%"><col style="width:20%"><col style="width:20%">
-          <col style="width:21%"><col style="width:25%"></colgroup>
+        <colgroup><col style="width:11%"><col style="width:15%"><col style="width:15%">
+          <col style="width:15%"><col style="width:19%"><col style="width:25%"></colgroup>
         <thead><tr>
           <th>Tip</th><th class="sag">Tutar</th><th>Vade</th><th>Belge No</th><th>Keşideci</th>
+          <th>Görseller (Ön / Arka)</th>
         </tr></thead>
         <tbody id="satir-govde">
           {% for f in formset %}
@@ -53,11 +60,15 @@
               <td>{{ f.vade }}{% for e in f.vade.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td>{{ f.belge_no }}</td>
               <td>{{ f.kesideci }}</td>
+              <td class="gorsel-hucre">
+                <label><span>Ön</span>{{ f.on_yuz }}</label>
+                <label><span>Arka</span>{{ f.arka_yuz }}</label>
+              </td>
             </tr>
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr><th class="sag">Toplam</th><th class="sag deger" id="tToplam">0,00</th><th colspan="3"></th></tr>
+          <tr><th class="sag">Toplam</th><th class="sag deger" id="tToplam">0,00</th><th colspan="4"></th></tr>
         </tfoot>
       </table>
       </div>
@@ -72,6 +83,10 @@
       <td>{{ formset.empty_form.vade }}</td>
       <td>{{ formset.empty_form.belge_no }}</td>
       <td>{{ formset.empty_form.kesideci }}</td>
+      <td class="gorsel-hucre">
+        <label><span>Ön</span>{{ formset.empty_form.on_yuz }}</label>
+        <label><span>Arka</span>{{ formset.empty_form.arka_yuz }}</label>
+      </td>
     </template>
 
     <div class="form-altbar">

@@ -164,3 +164,31 @@ class CariGirisBordroTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:cek_senetler"))
         self.assertContains(r, reverse("core:cek_cari_giris"))   # Cari Giriş aktif link
+
+    def test_gorsel_yuklenir_ve_kuculur(self):
+        import io, tempfile
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from core.models import CekSenet
+        buf = io.BytesIO()
+        Image.new("RGB", (2400, 1200), "white").save(buf, "PNG")   # büyük görsel
+        on = SimpleUploadedFile("on.png", buf.getvalue(), content_type="image/png")
+        self.client.force_login(self.yon)
+        data = {
+            "cari": self.cari.pk, "tarih": "2026-06-28", "para_birimi": "TRY",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-tip": "CEK", "form-0-tutar": "1.000", "form-0-vade": "2026-09-01",
+            "form-0-belge_no": "B9", "form-0-kesideci": "",
+            "form-0-on_yuz": on,
+        }
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            r = self.client.post(reverse("core:cek_cari_giris"), data)
+            self.assertEqual(r.status_code, 302)
+            c = CekSenet.objects.filter(silindi=False, belge_no="B9").get()
+            self.assertTrue(c.on_yuz)                              # görsel kaydedildi
+            self.assertTrue(c.on_yuz.name.endswith(".webp"))      # WebP'ye çevrildi
+            self.assertFalse(c.arka_yuz)                           # arka yüklenmedi
+            im = Image.open(c.on_yuz.path)
+            self.assertLessEqual(max(im.size), 1600)              # en uzun kenar ≤ 1600

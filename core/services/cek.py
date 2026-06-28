@@ -126,6 +126,7 @@ def _kalemleri_dogrula(satirlar):
             "tip": tip, "tutar": _tutar(s.get("tutar")), "vade": s.get("vade"),
             "belge_no": (s.get("belge_no") or "").strip(),
             "kesideci": buyuk_harf_tr((s.get("kesideci") or "").strip()),
+            "on_yuz": s.get("on_yuz"), "arka_yuz": s.get("arka_yuz"),
         })
     if not temiz:
         raise CekHatasi("En az bir çek/senet satırı girilmeli.")
@@ -162,6 +163,7 @@ def cari_giris_bordrosu_olustur(*, cari_id, tarih, para_birimi="TRY", satirlar,
             tip=s["tip"], yon=CekSenet.Yon.ALINAN, tutar=s["tutar"], para_birimi=pb,
             vade=s["vade"], belge_no=s["belge_no"], kesideci=s["kesideci"],
             durum=CekSenet.Durum.PORTFOYDE, cari=cari, giris_bordrosu=bordro,
+            on_yuz=s.get("on_yuz"), arka_yuz=s.get("arka_yuz"),
             created_by=kullanici, updated_by=kullanici)
     girdiler = [SatirGirdi(hesap_kodu=kod, taraf="B", islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
                 for kod, tut in borc_satir]

@@ -1202,6 +1202,8 @@ class CekSenet(TemelModel):
     giris_bordrosu = models.ForeignKey(
         CekBordrosu, verbose_name="giriş bordrosu", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cek_senetler")
+    on_yuz = models.ImageField("ön yüz görseli", upload_to="cek_senet/", null=True, blank=True)
+    arka_yuz = models.ImageField("arka yüz görseli", upload_to="cek_senet/", null=True, blank=True)
 
     class Meta:
         db_table = "finans_cek_senet"
