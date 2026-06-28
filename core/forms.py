@@ -590,6 +590,7 @@ class BankaForm(forms.Form):
     swift_kod = forms.CharField(label="SWIFT/BIC", max_length=11, required=False)
     musteri_no = forms.CharField(label="Müşteri No", max_length=50, required=False)
     adres = forms.CharField(label="Adres", max_length=255, required=False)
+    logo = forms.ImageField(label="Logo", required=False)
 
 
 class BankaHesapForm(forms.Form):

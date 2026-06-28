@@ -115,6 +115,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# --- Yüklenen görseller (ilk görsel modülü: banka logoları) ---
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 # --- Kimlik doğrulama (giriş + kullanıcı bazlı ekran yetkisi; v0.1'e bilinçli eklendi) ---
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "core:pano"   # giriş sonrası PANO açılır

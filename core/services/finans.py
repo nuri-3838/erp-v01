@@ -128,17 +128,41 @@ def aktif_bankalar():
     return Banka.objects.filter(silindi=False).order_by("ad")
 
 
+# Banka adı anahtar kelimesi -> havuzdaki (banka_logo/_havuz/) logo dosyası.
+# Havuz `tasi_banka_logo` komutuyla doldurulur; logosuz banka açılınca/atanırken
+# isim eşleşirse otomatik kullanılır (Vakıf vb. "ileriye hazır").
+LOGO_HAVUZ = {"ZİRAAT": "ziraat.webp", "HALK": "halk.webp",
+              "VAKIF": "vakif.webp", "VAKİF": "vakif.webp"}
+
+
+def _havuz_logo(ad):
+    """Banka adına göre havuzdan logo öner; varsa ContentFile döner, yoksa None."""
+    from pathlib import Path
+    from django.conf import settings
+    from django.core.files.base import ContentFile
+    ust = buyuk_harf_tr(ad or "")
+    for anahtar, dosya in LOGO_HAVUZ.items():
+        if anahtar in ust:
+            yol = Path(settings.MEDIA_ROOT) / "banka_logo" / "_havuz" / dosya
+            if yol.exists():
+                return ContentFile(yol.read_bytes(), name=dosya)
+    return None
+
+
 def banka_olustur(*, ad, kisa_ad="", sube="", swift_kod="", musteri_no="", adres="",
-                  kullanici=None) -> Banka:
+                  logo=None, kullanici=None) -> Banka:
+    ad_d = _ad_dogrula(Banka, ad)
+    if logo is None:                       # logo yüklenmediyse havuzdan isimle öner
+        logo = _havuz_logo(ad_d)
     return Banka.objects.create(
-        ad=_ad_dogrula(Banka, ad), kisa_ad=buyuk_harf_tr((kisa_ad or "").strip()),
+        ad=ad_d, kisa_ad=buyuk_harf_tr((kisa_ad or "").strip()),
         sube=buyuk_harf_tr((sube or "").strip()), swift_kod=(swift_kod or "").strip().upper(),
-        musteri_no=(musteri_no or "").strip(),
-        adres=(adres or "").strip(), created_by=kullanici, updated_by=kullanici)
+        musteri_no=(musteri_no or "").strip(), adres=(adres or "").strip(),
+        logo=logo, created_by=kullanici, updated_by=kullanici)
 
 
 def banka_guncelle(b: Banka, *, ad, kisa_ad="", sube="", swift_kod="", musteri_no="", adres="",
-                   kullanici=None) -> Banka:
+                   logo=None, kullanici=None) -> Banka:
     if b.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
     b.ad = _ad_dogrula(Banka, ad, haric_pk=b.pk)
@@ -148,8 +172,12 @@ def banka_guncelle(b: Banka, *, ad, kisa_ad="", sube="", swift_kod="", musteri_n
     b.musteri_no = (musteri_no or "").strip()
     b.adres = (adres or "").strip()
     b.updated_by = kullanici
-    b.save(update_fields=["ad", "kisa_ad", "sube", "swift_kod", "musteri_no", "adres",
-                          "updated_by", "updated_at"])
+    alanlar = ["ad", "kisa_ad", "sube", "swift_kod", "musteri_no", "adres",
+               "updated_by", "updated_at"]
+    if logo is not None:                   # yalnız yeni logo yüklendiyse değiştir
+        b.logo = logo
+        alanlar.append("logo")
+    b.save(update_fields=alanlar)
     return b
 
 

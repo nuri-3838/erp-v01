@@ -977,6 +977,7 @@ class Banka(TemelModel):
     swift_kod = models.CharField("SWIFT/BIC", max_length=11, blank=True, default="")
     musteri_no = models.CharField("müşteri no", max_length=50, blank=True, default="")
     adres = models.CharField("adres", max_length=255, blank=True, default="")
+    logo = models.ImageField("logo", upload_to="banka_logo/", blank=True, null=True)
 
     class Meta:
         db_table = "finans_banka"

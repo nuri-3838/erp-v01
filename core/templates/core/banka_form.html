@@ -1,0 +1,64 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .logo-alan { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+  .logo-onizleme { width:72px; height:72px; border-radius:14px; border:1px solid var(--cizgi);
+    background:#fff; display:grid; place-items:center; overflow:hidden; flex:0 0 auto; }
+  .logo-onizleme img { max-width:100%; max-height:100%; object-fit:contain; }
+  .logo-onizleme .bos { font-size:1.6rem; opacity:.5; }
+</style>
+
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{{ iptal_url }}">← Geri</a>
+    <h1 class="ust-baslik"><span class="emoji">🏦</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{{ baslik }}</h2>
+      <div class="izgara">
+        {% for field in form %}
+          {% if field.name != 'logo' %}
+            <div class="alan {% if field.name == 'adres' %}tam{% endif %}">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🖼️</span>Logo</h2>
+      <div class="logo-alan">
+        <div class="logo-onizleme">
+          {% if banka and banka.logo %}<img src="{{ banka.logo.url }}" alt="logo">{% else %}<span class="bos">🏦</span>{% endif %}
+        </div>
+        <div style="flex:1 1 16rem">
+          <label for="{{ form.logo.id_for_label }}">{{ form.logo.label }}</label>
+          {{ form.logo }}
+          {% for e in form.logo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.4rem 0 0">Şeffaf PNG önerilir; otomatik küçültülüp WebP'ye çevrilir.
+            {% if banka and banka.logo %} Yeni dosya seçmezsen mevcut logo korunur.{% endif %}</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{{ iptal_url }}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

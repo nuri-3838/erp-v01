@@ -32,6 +32,7 @@ from core.models import (
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
+from core import gorsel
 from core.sayi import SayiHatasi, parse_tr
 from core.services.raporlar import (
     bilanco, bilanco_usd, ekstre as ekstre_servis,
@@ -1541,22 +1542,23 @@ def banka_detay(request, pk):
 @ekran_gerekli("banka")
 def banka_kurum_ekle(request):
     if request.method == "POST":
-        form = BankaForm(request.POST)
+        form = BankaForm(request.POST, request.FILES)
         if form.is_valid():
             cd = form.cleaned_data
             try:
+                logo = gorsel.kucult_webp(cd["logo"], ad="banka") if cd.get("logo") else None
                 banka = finans_servis.banka_olustur(
                     ad=cd["ad"], kisa_ad=cd["kisa_ad"], sube=cd["sube"],
                     swift_kod=cd["swift_kod"], musteri_no=cd["musteri_no"],
-                    adres=cd["adres"], kullanici=request.user)
+                    adres=cd["adres"], logo=logo, kullanici=request.user)
                 messages.success(request, "Banka eklendi. Şimdi hesap ekleyebilirsiniz.")
                 return redirect("core:banka_detay", pk=banka.pk)
             except finans_servis.FinansHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = BankaForm()
-    return render(request, "core/finans_form.html",
-                  {"form": form, "baslik": "Yeni Banka", "emoji": "🏦",
+    return render(request, "core/banka_form.html",
+                  {"form": form, "banka": None, "baslik": "Yeni Banka",
                    "iptal_url": reverse("core:bankalar")})
 
 
@@ -1564,14 +1566,15 @@ def banka_kurum_ekle(request):
 def banka_kurum_duzenle(request, pk):
     banka = get_object_or_404(Banka, pk=pk, silindi=False)
     if request.method == "POST":
-        form = BankaForm(request.POST)
+        form = BankaForm(request.POST, request.FILES)
         if form.is_valid():
             cd = form.cleaned_data
             try:
+                logo = gorsel.kucult_webp(cd["logo"], ad="banka") if cd.get("logo") else None
                 finans_servis.banka_guncelle(
                     banka, ad=cd["ad"], kisa_ad=cd["kisa_ad"], sube=cd["sube"],
                     swift_kod=cd["swift_kod"], musteri_no=cd["musteri_no"],
-                    adres=cd["adres"], kullanici=request.user)
+                    adres=cd["adres"], logo=logo, kullanici=request.user)
                 messages.success(request, "Banka güncellendi.")
                 return redirect("core:banka_detay", pk=banka.pk)
             except finans_servis.FinansHatasi as e:
@@ -1581,8 +1584,8 @@ def banka_kurum_duzenle(request, pk):
             "ad": banka.ad, "kisa_ad": banka.kisa_ad, "sube": banka.sube,
             "swift_kod": banka.swift_kod, "musteri_no": banka.musteri_no,
             "adres": banka.adres})
-    return render(request, "core/finans_form.html",
-                  {"form": form, "baslik": "Banka Düzenle", "emoji": "🏦",
+    return render(request, "core/banka_form.html",
+                  {"form": form, "banka": banka, "baslik": "Banka Düzenle",
                    "iptal_url": reverse("core:banka_detay", args=[banka.pk])})
 
 
