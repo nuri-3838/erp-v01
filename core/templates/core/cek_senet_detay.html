@@ -27,6 +27,7 @@
   .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
   .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
   .kv .dg { font-weight:600; font-size:.98rem; }
+  .islem-dugmeler { display:flex; gap:.55rem; flex-wrap:wrap; }
 </style>
 
 <div class="detay-kapsa">
@@ -70,14 +71,18 @@
   {% if cs.durum == 'PORTFOYDE' %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">⚡</span>İşlem</h2>
-    {% if cs.yon == 'ALINAN' %}
-      <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'tahsil' %}">💰 Tahsil Et (Kasa / Banka)</a>
-    {% else %}
-      <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'odendi' %}">💸 Ödendi (Banka / Kasa)</a>
-    {% endif %}
-    <p class="yardim" style="margin:.6rem 0 0">Ciro · Karşılıksız · İade işlemleri sonraki dilimde.</p>
+    <div class="islem-dugmeler">
+      {% if cs.yon == 'ALINAN' %}
+        <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'tahsil' %}">💰 Tahsil Et (Kasa / Banka)</a>
+        <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'ciro' %}">🔁 Ciro Et</a>
+        <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'karsiliksiz' %}">⛔ Karşılıksız</a>
+      {% else %}
+        <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'odendi' %}">💸 Ödendi (Banka / Kasa)</a>
+      {% endif %}
+      <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'iade' %}">↩️ İade</a>
+    </div>
   </section>
-  {% elif cs.durum == 'TAHSIL' or cs.durum == 'ODENDI' %}
+  {% else %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">⚡</span>İşlem</h2>
     <p class="yardim" style="margin:0 0 .6rem">Durum: <strong>{{ cs.get_durum_display }}</strong>.
@@ -107,7 +112,6 @@
       </tbody>
     </table>
     </div>
-    <p class="yardim">📌 Ciro · Karşılıksız · İade işlemleri sonraki dilimde eklenecek.</p>
   </section>
 </div>
 {% endblock %}

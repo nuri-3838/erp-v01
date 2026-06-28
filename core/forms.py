@@ -675,6 +675,33 @@ class CekIslemForm(forms.Form):
         self.fields["hedef"].widget.attrs["class"] = "akilli-sec"
 
 
+class CekCiroForm(forms.Form):
+    """Çek/senet ciro: ciro edilen cari (yeni hamil) + işlem tarihi."""
+    cari = forms.ModelChoiceField(label="Ciro Edilen Cari (yeni hamil)",
+                                  queryset=Cari.objects.none(), empty_label="— cari seç —")
+    tarih = forms.DateField(
+        label="İşlem Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+
+    def __init__(self, *args, haric_pk=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = Cari.objects.filter(silindi=False)
+        if haric_pk:
+            qs = qs.exclude(pk=haric_pk)
+        self.fields["cari"].queryset = qs.order_by("unvan")
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+
+
+class CekTarihForm(forms.Form):
+    """Karşılıksız / İade işlemi: yalnız işlem tarihi (karşı taraf = evrakın carisi)."""
+    tarih = forms.DateField(
+        label="İşlem Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+
+
 # ---------------------------------------------------------------------------
 # FATURALAR — Alış/Satış faturası giriş (otomatik yevmiye motoru besler)
 # ---------------------------------------------------------------------------

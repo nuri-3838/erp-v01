@@ -6,8 +6,11 @@ Slice 1 — GİRİŞ (oluşturma). Çek/senet kaydedilince otomatik dengeli giri
   VERİLEN: cari borç / çek hesabı (103) alacak     (cariye evrakla ödeme)
 Cari ZORUNLU. Para birimi = evrakın PB'si + TCMB kuru (TRY=1). Giriş fişinin tarihi
 işlemin kaydedildiği gün (vade ≠ fiş tarihi). Düzenleme yalnız PORTFÖYDE iken
-(giriş fişi yeniden yazılır); işlem görmüşse kilit. Tahsil/Ciro/Karşılıksız/İade/
-Ödendi → sonraki dilimler.
+(giriş fişi yeniden yazılır); işlem görmüşse kilit.
+
+İŞLEM MOTORU (PORTFÖYDE → terminal durum, ortak `cek_islem`):
+  tahsil/ödendi (kasa/banka) · ciro (cari) · karşılıksız · iade. Hepsi tek `cek_islem`
+  + ortak `cek_islem_geri_al` (işlem fişini iptal, portföye dön).
 """
 from __future__ import annotations
 
@@ -170,15 +173,27 @@ def cek_senet_sil(cs: CekSenet, kullanici=None) -> CekSenet:
     return _soft_sil(cs, kullanici)
 
 
-# === Slice 2: Tahsil / Ödendi (PORTFÖYDE → terminal durum) ===
-# islem -> gereken yön + çekin fiş tarafı + yeni durum + etiket.
-#   tahsil (ALINAN): hedef(kasa/banka) borç / çek(101) alacak  → TAHSIL
-#   odendi (VERİLEN): çek(103) borç / hedef(banka/kasa) alacak → ÖDENDİ
+# === İşlem motoru: PORTFÖYDE → terminal durum (Slice 2 + 3) ===
+# Her işlem 2 satırlı fiş: çek hesabı (cs.muhasebe) bir tarafta, KARŞI hesap diğerde.
+# Çek tarafı YÖNDEN türer (giriş fişinin tersi): ALINAN→alacak (çıkış), VERİLEN→borç
+# (kapanış). Karşı hesabın KAYNAĞI işleme göre değişir:
+#   tahsil  (ALINAN): hedef(kasa/banka) borç / çek(101) alacak        → TAHSIL
+#   odendi  (VERİLEN): çek(103) borç / hedef(banka/kasa) alacak       → ÖDENDİ
+#   ciro    (ALINAN): ciro carisi borç / çek(101) alacak              → CİRO  (yeni cari)
+#   karsiliksiz (ALINAN): evrak carisi borç / çek(101) alacak         → KARŞILIKSIZ
+#   iade    (her yön): giriş fişinin tersi (evrak carisi ile)         → İADE
+#   kaynak: hedef = kasa/banka · ciro = ciro edilen cari · cari = evrakın kendi carisi
 ISLEM = {
-    "tahsil": {"yon": CekSenet.Yon.ALINAN, "cek_taraf": "A",
-               "durum": CekSenet.Durum.TAHSIL, "ad": "TAHSİL"},
-    "odendi": {"yon": CekSenet.Yon.VERILEN, "cek_taraf": "B",
-               "durum": CekSenet.Durum.ODENDI, "ad": "ÖDENDİ"},
+    "tahsil":      {"yon": CekSenet.Yon.ALINAN,  "kaynak": "hedef",
+                    "durum": CekSenet.Durum.TAHSIL,      "ad": "TAHSİL"},
+    "odendi":      {"yon": CekSenet.Yon.VERILEN, "kaynak": "hedef",
+                    "durum": CekSenet.Durum.ODENDI,      "ad": "ÖDENDİ"},
+    "ciro":        {"yon": CekSenet.Yon.ALINAN,  "kaynak": "ciro",
+                    "durum": CekSenet.Durum.CIRO,        "ad": "CİRO"},
+    "karsiliksiz": {"yon": CekSenet.Yon.ALINAN,  "kaynak": "cari",
+                    "durum": CekSenet.Durum.KARSILIKSIZ, "ad": "KARŞILIKSIZ"},
+    "iade":        {"yon": None,                 "kaynak": "cari",
+                    "durum": CekSenet.Durum.IADE,        "ad": "İADE"},
 }
 
 
@@ -208,24 +223,52 @@ def _hedef_coz(hedef, cs):
     return obj.muhasebe.hesap_kodu, ad
 
 
+def _ciro_coz(hedef, cs):
+    """Form'dan gelen 'cari:<pk>' → ciro edilen carinin (muhasebe hesap kodu, ünvan).
+    Evrakın kendi carisine ciro edilemez (anlamsız)."""
+    try:
+        tur, pk = (hedef or "").split(":")
+        pk = int(pk)
+    except (ValueError, AttributeError):
+        raise CekSenetHatasi("Ciro edilecek cari seçilmedi.")
+    if tur != "cari":
+        raise CekSenetHatasi("Geçersiz ciro hedefi.")
+    if pk == cs.cari_id:
+        raise CekSenetHatasi("Evrakın kendi carisine ciro edilemez; farklı bir cari seçin.")
+    cari, hesap = _cari_coz(pk)
+    return hesap.hesap_kodu, cari.unvan
+
+
+def _karsi_coz(tan, hedef, cs):
+    """İşlemin karşı hesabını çöz → (hesap kodu, etiket)."""
+    kaynak = tan["kaynak"]
+    if kaynak == "hedef":
+        return _hedef_coz(hedef, cs)
+    if kaynak == "ciro":
+        return _ciro_coz(hedef, cs)
+    cari, hesap = _cari_coz(cs.cari_id)          # "cari" → evrakın kendi carisi
+    return hesap.hesap_kodu, cari.unvan
+
+
 @transaction.atomic
-def cek_islem(cs: CekSenet, *, islem, hedef, tarih, kullanici=None) -> CekSenet:
-    """Portföydeki çek/senete tahsil/ödendi işler → otomatik fiş + durum değişimi."""
+def cek_islem(cs: CekSenet, *, islem, hedef=None, tarih, kullanici=None) -> CekSenet:
+    """Portföydeki çek/senete işlem (tahsil/ödendi/ciro/karşılıksız/iade) → otomatik
+    fiş + durum geçişi. Çek tarafı yönden türer; karşı hesap işleme göre çözülür."""
     tan = ISLEM.get(islem)
     if tan is None:
         raise CekSenetHatasi("Geçersiz işlem.")
     if cs.silindi or cs.durum != CekSenet.Durum.PORTFOYDE:
         raise CekSenetHatasi("Yalnız portföydeki çek/senet üzerinde işlem yapılır.")
-    if cs.yon != tan["yon"]:
+    if tan["yon"] is not None and cs.yon != tan["yon"]:
         raise CekSenetHatasi("Bu işlem bu evrak yönü için geçerli değil.")
-    kod, ad = _hedef_coz(hedef, cs)
+    kod, ad = _karsi_coz(tan, hedef, cs)
     kur = _kur_coz(cs.para_birimi, tarih)
-    cek_taraf = tan["cek_taraf"]
-    hedef_taraf = "A" if cek_taraf == "B" else "B"
+    cek_taraf = "A" if cs.yon == CekSenet.Yon.ALINAN else "B"   # giriş fişinin tersi
+    karsi_taraf = "B" if cek_taraf == "A" else "A"
     satirlar = [
         SatirGirdi(hesap_kodu=cs.muhasebe.hesap_kodu, taraf=cek_taraf,
                    islem_tutari=cs.tutar, islem_pb=cs.para_birimi, islem_kuru=kur),
-        SatirGirdi(hesap_kodu=kod, taraf=hedef_taraf,
+        SatirGirdi(hesap_kodu=kod, taraf=karsi_taraf,
                    islem_tutari=cs.tutar, islem_pb=cs.para_birimi, islem_kuru=kur),
     ]
     tipad = "ÇEK" if cs.tip == CekSenet.Tip.CEK else "SENET"
@@ -245,10 +288,10 @@ def cek_islem(cs: CekSenet, *, islem, hedef, tarih, kullanici=None) -> CekSenet:
 
 @transaction.atomic
 def cek_islem_geri_al(cs: CekSenet, kullanici=None) -> CekSenet:
-    """Tahsil/Ödendi'yi geri al: işlem fişini iptal et + PORTFÖYDE'ye dön
-    (giriş fişi korunur)."""
-    if cs.durum not in (CekSenet.Durum.TAHSIL, CekSenet.Durum.ODENDI):
-        raise CekSenetHatasi("Geri alınacak tahsil/ödendi işlemi yok.")
+    """İşlemi geri al: işlem fişini iptal et + PORTFÖYDE'ye dön (giriş fişi korunur).
+    Tahsil/Ödendi/Ciro/Karşılıksız/İade için ortak."""
+    if cs.silindi or cs.durum == CekSenet.Durum.PORTFOYDE:
+        raise CekSenetHatasi("Geri alınacak işlem yok.")
     fisler = list(cs.fisler.filter(silindi=False).order_by("id"))   # [giriş, işlem]
     if len(fisler) < 2:
         raise CekSenetHatasi("İşlem fişi bulunamadı.")

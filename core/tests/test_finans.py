@@ -716,3 +716,109 @@ class CekSenetEngineTest(TestCase):
         with self.assertRaises(CekSenetHatasi):
             cek_islem(cs, islem="odendi", hedef="kasa:%d" % self.kasa.pk,
                       tarih=timezone.localdate(), kullanici=self.yon)
+
+    # --- Slice 3: Ciro / Karşılıksız / İade ---
+    def _islem_satir(self, cs):
+        fis = cs.fisler.filter(silindi=False).order_by("id").last()
+        return {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+
+    def test_ciro_alinan_cariye(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import CekSenet
+        from core.services.cek_senet import cek_islem
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        cek_islem(cs, islem="ciro", hedef="cari:%d" % self.satici.pk,
+                  tarih=timezone.localdate(), kullanici=self.yon)
+        cs.refresh_from_db()
+        self.assertEqual(cs.durum, CekSenet.Durum.CIRO)
+        s = self._islem_satir(cs)
+        self.assertEqual(s["320.01"], (Decimal("1000.00"), Decimal("0.00")))   # ciro carisi borç
+        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("1000.00")))   # çek alacak (çıkış)
+
+    def test_ciro_kendi_carisine_reddedilir(self):
+        from django.utils import timezone
+        from core.services.cek_senet import cek_islem, CekSenetHatasi
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        with self.assertRaises(CekSenetHatasi):
+            cek_islem(cs, islem="ciro", hedef="cari:%d" % self.alici.pk,
+                      tarih=timezone.localdate(), kullanici=self.yon)
+
+    def test_ciro_verilen_reddedilir(self):
+        from django.utils import timezone
+        from core.services.cek_senet import cek_islem, CekSenetHatasi
+        cs = self._olustur("VERILEN", "103.01", self.satici)   # ciro yalnız ALINAN
+        with self.assertRaises(CekSenetHatasi):
+            cek_islem(cs, islem="ciro", hedef="cari:%d" % self.alici.pk,
+                      tarih=timezone.localdate(), kullanici=self.yon)
+
+    def test_karsiliksiz_alinan(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import CekSenet
+        from core.services.cek_senet import cek_islem
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        cek_islem(cs, islem="karsiliksiz", tarih=timezone.localdate(), kullanici=self.yon)
+        cs.refresh_from_db()
+        self.assertEqual(cs.durum, CekSenet.Durum.KARSILIKSIZ)
+        s = self._islem_satir(cs)
+        self.assertEqual(s["120.01"], (Decimal("1000.00"), Decimal("0.00")))   # cari borç (alacak geri doğar)
+        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("1000.00")))   # çek alacak
+
+    def test_iade_alinan(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import CekSenet
+        from core.services.cek_senet import cek_islem
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        cek_islem(cs, islem="iade", tarih=timezone.localdate(), kullanici=self.yon)
+        cs.refresh_from_db()
+        self.assertEqual(cs.durum, CekSenet.Durum.IADE)
+        s = self._islem_satir(cs)
+        self.assertEqual(s["120.01"], (Decimal("1000.00"), Decimal("0.00")))   # cari borç
+        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("1000.00")))   # çek alacak
+
+    def test_iade_verilen_giris_tersi(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import CekSenet
+        from core.services.cek_senet import cek_islem
+        cs = self._olustur("VERILEN", "103.01", self.satici)
+        cek_islem(cs, islem="iade", tarih=timezone.localdate(), kullanici=self.yon)
+        cs.refresh_from_db()
+        self.assertEqual(cs.durum, CekSenet.Durum.IADE)
+        s = self._islem_satir(cs)
+        self.assertEqual(s["103.01"], (Decimal("1000.00"), Decimal("0.00")))   # çek borç (kapanış)
+        self.assertEqual(s["320.01"], (Decimal("0.00"), Decimal("1000.00")))   # cari alacak (borç geri doğar)
+
+    def test_ciro_geri_al(self):
+        from django.utils import timezone
+        from core.models import CekSenet
+        from core.services.cek_senet import cek_islem, cek_islem_geri_al
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        cek_islem(cs, islem="ciro", hedef="cari:%d" % self.satici.pk,
+                  tarih=timezone.localdate(), kullanici=self.yon)
+        islem_fis = cs.fisler.order_by("id").last()
+        cek_islem_geri_al(cs, kullanici=self.yon)
+        cs.refresh_from_db(); islem_fis.refresh_from_db()
+        self.assertEqual(cs.durum, CekSenet.Durum.PORTFOYDE)
+        self.assertTrue(islem_fis.silindi)
+        self.assertEqual(cs.fisler.filter(silindi=False).count(), 1)   # sadece giriş kaldı
+
+    def test_islem_form_view_acilir(self):
+        self.client.force_login(self.yon)
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        for islem in ("ciro", "karsiliksiz", "iade"):
+            r = self.client.get(reverse("core:cek_senet_islem", args=[cs.pk, islem]))
+            self.assertEqual(r.status_code, 200, islem)
+
+    def test_iade_view_post_ve_durum(self):
+        from django.utils import timezone
+        from core.models import CekSenet
+        self.client.force_login(self.yon)
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        r = self.client.post(reverse("core:cek_senet_islem", args=[cs.pk, "iade"]),
+                             {"tarih": timezone.localdate().isoformat()})
+        self.assertRedirects(r, reverse("core:cek_senet_detay", args=[cs.pk]))
+        cs.refresh_from_db()
+        self.assertEqual(cs.durum, CekSenet.Durum.IADE)
