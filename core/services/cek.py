@@ -134,11 +134,26 @@ def _kalemleri_dogrula(satirlar):
     return temiz
 
 
+# Giriş/çıkış bordrosu yönleri. cek_taraf = çek hesap satırının fiş tarafı (cari TERS).
+#   giriş  (ALINAN): portföy çek/senet BORÇ / cari ALACAK   → durum PORTFOYDE
+#   çıkış (VERİLEN): cari BORÇ / verilen çek/senet ALACAK    → durum VERILDI
+GIRIS_TANIM = {
+    "giris": {"tur": CekBordrosu.Tur.CARI_GIRIS, "yon": CekSenet.Yon.ALINAN,
+              "durum": CekSenet.Durum.PORTFOYDE, "oneki": "portfoy", "cek_taraf": "B",
+              "ack": "ÇEK/SENET GİRİŞ"},
+    "cikis": {"tur": CekBordrosu.Tur.FIRMA_CIKIS, "yon": CekSenet.Yon.VERILEN,
+              "durum": CekSenet.Durum.VERILDI, "oneki": "verilen", "cek_taraf": "A",
+              "ack": "FİRMA ÇEK/SENET"},
+}
+# Bordro türü -> oluşturduğu çek/senetlerin giriş durumu (bordro_sil "işlem görmüş" kontrolü).
+_GIRIS_DURUM = {t["tur"]: t["durum"] for t in GIRIS_TANIM.values()}
+
+
 @transaction.atomic
-def cari_giris_bordrosu_olustur(*, cari_id, tarih, para_birimi="TRY", satirlar,
-                                aciklama="", kullanici=None) -> CekBordrosu:
-    """Cari Giriş: alınan çek/senetler portföye girer. N adet CekSenet (PORTFÖYDE) +
-    TEK birleşik fiş (portföy çek/senet borç / cari alacak). Hesaplar config matrisinden."""
+def _bordro_olustur(tan, *, cari_id, tarih, para_birimi="TRY", satirlar,
+                    aciklama="", kullanici=None) -> CekBordrosu:
+    """Giriş/çıkış bordrosu ortak motoru: N adet CekSenet + TEK birleşik fiş.
+    tan = GIRIS_TANIM['giris'|'cikis']. Hesaplar config matrisinden (evrak tipine göre)."""
     cari, cari_hesap = _cari_coz(cari_id)
     pb = _pb_coz(para_birimi)
     kur = _kur_coz(pb, tarih)
@@ -146,29 +161,29 @@ def cari_giris_bordrosu_olustur(*, cari_id, tarih, para_birimi="TRY", satirlar,
     temiz = _kalemleri_dogrula(satirlar)
     cek_top = sum((s["tutar"] for s in temiz if s["tip"] == CekSenet.Tip.CEK), Decimal("0"))
     senet_top = sum((s["tutar"] for s in temiz if s["tip"] == CekSenet.Tip.SENET), Decimal("0"))
-    # Hesap doğrulamasını fiş satırlarını kurarken yap (eksikse net hata, kayıt açılmadan).
-    borc_satir = []
+    # Çek hesabı satırları (config'den; eksikse net hata — kayıt açılmadan önce).
+    cek_satir = []
     if cek_top > 0:
-        h = _ayar_hesap(ayar, "portfoy", CekSenet.Tip.CEK)
-        borc_satir.append((h.hesap_kodu, cek_top))
+        cek_satir.append((_ayar_hesap(ayar, tan["oneki"], CekSenet.Tip.CEK).hesap_kodu, cek_top))
     if senet_top > 0:
-        h = _ayar_hesap(ayar, "portfoy", CekSenet.Tip.SENET)
-        borc_satir.append((h.hesap_kodu, senet_top))
+        cek_satir.append((_ayar_hesap(ayar, tan["oneki"], CekSenet.Tip.SENET).hesap_kodu, senet_top))
     toplam = cek_top + senet_top
     bordro = CekBordrosu.objects.create(
-        tur=CekBordrosu.Tur.CARI_GIRIS, tarih=tarih, cari=cari,
-        aciklama=(aciklama.strip() or buyuk_harf_tr(f"ÇEK/SENET GİRİŞ - {cari.unvan}")),
+        tur=tan["tur"], tarih=tarih, cari=cari,
+        aciklama=(aciklama.strip() or buyuk_harf_tr(f"{tan['ack']} - {cari.unvan}")),
         created_by=kullanici, updated_by=kullanici)
     for s in temiz:
         CekSenet.objects.create(
-            tip=s["tip"], yon=CekSenet.Yon.ALINAN, tutar=s["tutar"], para_birimi=pb,
+            tip=s["tip"], yon=tan["yon"], tutar=s["tutar"], para_birimi=pb,
             vade=s["vade"], belge_no=s["belge_no"], kesideci=s["kesideci"],
-            durum=CekSenet.Durum.PORTFOYDE, cari=cari, giris_bordrosu=bordro,
+            durum=tan["durum"], cari=cari, giris_bordrosu=bordro,
             on_yuz=s.get("on_yuz"), arka_yuz=s.get("arka_yuz"),
             created_by=kullanici, updated_by=kullanici)
-    girdiler = [SatirGirdi(hesap_kodu=kod, taraf="B", islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
-                for kod, tut in borc_satir]
-    girdiler.append(SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf="A",
+    cek_taraf = tan["cek_taraf"]
+    cari_taraf = "A" if cek_taraf == "B" else "B"
+    girdiler = [SatirGirdi(hesap_kodu=kod, taraf=cek_taraf, islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
+                for kod, tut in cek_satir]
+    girdiler.append(SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf=cari_taraf,
                                islem_tutari=toplam, islem_pb=pb, islem_kuru=kur))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=bordro.aciklama,
@@ -180,14 +195,25 @@ def cari_giris_bordrosu_olustur(*, cari_id, tarih, para_birimi="TRY", satirlar,
     return bordro
 
 
+def cari_giris_bordrosu_olustur(**kwargs) -> CekBordrosu:
+    """Cari Giriş: alınan çek/senetler portföye girer (portföy çek/senet borç / cari alacak)."""
+    return _bordro_olustur(GIRIS_TANIM["giris"], **kwargs)
+
+
+def firma_cikis_bordrosu_olustur(**kwargs) -> CekBordrosu:
+    """Firma Çek-Senet: kendi çek/senedimizi cariye veririz (cari borç / verilen çek-senet alacak)."""
+    return _bordro_olustur(GIRIS_TANIM["cikis"], **kwargs)
+
+
 @transaction.atomic
 def bordro_sil(bordro: CekBordrosu, kullanici=None) -> CekBordrosu:
     """Bordroyu geri al: bağlı fiş(ler) iptal + oluşturduğu çek/senetler soft-delete + bordro
-    soft-delete. Çek/senet işlem görmüşse (durum ≠ PORTFÖYDE) engellenir."""
+    soft-delete. Evrak giriş durumundan çıkmışsa (işlem görmüşse) engellenir."""
     if bordro.silindi:
         return bordro
     cekler = bordro.cek_senetler.filter(silindi=False)
-    if cekler.exclude(durum=CekSenet.Durum.PORTFOYDE).exists():
+    beklenen = _GIRIS_DURUM.get(bordro.tur)
+    if beklenen and cekler.exclude(durum=beklenen).exists():
         raise CekHatasi("Bu bordrodaki bazı çek/senetler işlem görmüş; önce o işlemleri geri alın.")
     for fis in bordro.fisler.filter(silindi=False):
         fis_iptal(fis, kullanici=kullanici)

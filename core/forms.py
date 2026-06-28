@@ -667,18 +667,19 @@ class CekHesapAyariForm(forms.Form):
             f.widget.attrs["class"] = "akilli-sec"
 
 
-class CariGirisBordroForm(forms.Form):
-    """Cari Giriş bordrosu başlığı: cari (çeki veren) + işlem tarihi + para birimi."""
-    cari = forms.ModelChoiceField(label="Cari (çeki/senedi veren)",
-                                  queryset=Cari.objects.none(), empty_label="— cari seç —")
+class BordroBaslikForm(forms.Form):
+    """Çek/senet bordrosu başlığı: cari + işlem tarihi + para birimi (giriş ve çıkış ortak)."""
+    cari = forms.ModelChoiceField(label="Cari", queryset=Cari.objects.none(),
+                                  empty_label="— cari seç —")
     tarih = forms.DateField(
         label="İşlem Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, cari_label="Cari", **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["cari"].label = cari_label
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"

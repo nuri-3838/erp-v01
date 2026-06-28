@@ -94,8 +94,11 @@ class CariGirisBordroTest(TestCase):
         cls.yon = User.objects.create_superuser("cgyon", password="x")
         _hesap("101.01", "ALINAN ÇEKLER")
         _hesap("121.01", "ALACAK SENETLERİ")
+        _hesap("103.01", "VERİLEN ÇEKLER")
+        _hesap("321.01", "BORÇ SENETLERİ")
         _hesap("120.01", "ALICILAR")
-        hesap_ayari_kaydet({"portfoy_cek": "101.01", "portfoy_senet": "121.01"}, kullanici=cls.yon)
+        hesap_ayari_kaydet({"portfoy_cek": "101.01", "portfoy_senet": "121.01",
+                            "verilen_cek": "103.01", "verilen_senet": "321.01"}, kullanici=cls.yon)
         cls.cari = Cari.objects.create(kod="C1", unvan="MÜŞTERİ A", muhasebe_kodu="120.01",
                                        created_by=cls.yon, updated_by=cls.yon)
         Kur.objects.create(tarih=datetime.date(2026, 6, 28), usd_alis=Decimal("40"))
@@ -210,6 +213,45 @@ class CariGirisBordroTest(TestCase):
              (Decimal("1000"), baz + datetime.timedelta(days=60))], baz)
         self.assertEqual(gun2, 45)
         self.assertEqual(ortalama_vade([], baz), (None, None))    # boş
+
+    def test_firma_cikis_bordrosu_ve_fis(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import CekBordrosu
+        from core.services.cek import firma_cikis_bordrosu_olustur
+        b = firma_cikis_bordrosu_olustur(
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 28), para_birimi="TRY",
+            satirlar=[{"tip": "CEK", "tutar": "5.000", "vade": datetime.date(2026, 9, 1)},
+                      {"tip": "SENET", "tutar": "2.000", "vade": datetime.date(2026, 10, 1)}],
+            kullanici=self.yon)
+        self.assertEqual(b.tur, CekBordrosu.Tur.FIRMA_CIKIS)
+        self.assertTrue(all(c.yon == "VERILEN" and c.durum == "VERILDI"
+                            for c in b.cek_senetler.all()))
+        fis = b.fisler.get()
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.all()}
+        self.assertEqual(s["120.01"], (Decimal("7000.00"), Decimal("0.00")))   # cari borç toplam
+        self.assertEqual(s["103.01"], (Decimal("0.00"), Decimal("5000.00")))   # verilen çek alacak
+        self.assertEqual(s["321.01"], (Decimal("0.00"), Decimal("2000.00")))   # verilen senet alacak
+
+    def test_firma_cikis_bordro_sil(self):
+        import datetime
+        from core.services.cek import bordro_sil, firma_cikis_bordrosu_olustur
+        b = firma_cikis_bordrosu_olustur(
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 28), para_birimi="TRY",
+            satirlar=[{"tip": "CEK", "tutar": "5.000", "vade": datetime.date(2026, 9, 1)}],
+            kullanici=self.yon)
+        fis = b.fisler.get()
+        bordro_sil(b, kullanici=self.yon)   # VERİLDİ evrak da silinebilmeli (giriş durumu)
+        b.refresh_from_db(); fis.refresh_from_db()
+        self.assertTrue(b.silindi)
+        self.assertTrue(fis.silindi)
+        self.assertEqual(b.cek_senetler.filter(silindi=False).count(), 0)
+
+    def test_firma_cikis_view_ve_aktif_buton(self):
+        self.client.force_login(self.yon)
+        self.assertEqual(self.client.get(reverse("core:cek_firma_cikis")).status_code, 200)
+        r = self.client.get(reverse("core:cek_senetler"))
+        self.assertContains(r, reverse("core:cek_firma_cikis"))   # aktif buton
 
     def test_detay_ortalama_vade_ve_pdf(self):
         import datetime

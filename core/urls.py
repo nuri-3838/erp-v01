@@ -109,6 +109,7 @@ urlpatterns = [
     path("finans/cek-senet/", views.cek_senetler, name="cek_senetler"),
     path("finans/cek-senet/hesap-ayari/", views.cek_hesap_ayari, name="cek_hesap_ayari"),
     path("finans/cek-senet/cari-giris/", views.cek_cari_giris, name="cek_cari_giris"),
+    path("finans/cek-senet/firma-cikis/", views.cek_firma_cikis, name="cek_firma_cikis"),
     path("finans/cek-senet/bordro/<int:pk>/", views.cek_bordro_detay, name="cek_bordro_detay"),
     path("finans/cek-senet/bordro/<int:pk>/pdf/", views.cek_bordro_pdf, name="cek_bordro_pdf"),
     path("finans/cek-senet/bordro/<int:pk>/sil/", views.cek_bordro_sil, name="cek_bordro_sil"),

@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, CariGirisBordroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BordroBaslikForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1816,11 +1816,10 @@ def cek_senetler(request):
     })
 
 
-@ekran_gerekli("cek_senet")
-def cek_cari_giris(request):
-    """Cari Giriş bordrosu: tek cari + çok çek/senet satırı → N evrak (PORTFÖYDE) + tek fiş."""
+def _bordro_giris_view(request, *, servis_fn, cari_label, baslik, emoji, yardim, basari_ek):
+    """Giriş/çıkış bordrosu giriş ekranı ortak gövdesi (çok satır + görsel + tek fiş)."""
     if request.method == "POST":
-        bform = CariGirisBordroForm(request.POST)
+        bform = BordroBaslikForm(request.POST, cari_label=cari_label)
         formset = CekKalemFormSet(request.POST, request.FILES)
         if bform.is_valid() and formset.is_valid():
             satirlar = []
@@ -1837,22 +1836,43 @@ def cek_cari_giris(request):
                                  if cd.get("arka_yuz") else None),
                 })
             try:
-                bordro = cek_servis.cari_giris_bordrosu_olustur(
+                bordro = servis_fn(
                     cari_id=bform.cleaned_data["cari"].pk,
                     tarih=bform.cleaned_data["tarih"],
                     para_birimi=bform.cleaned_data["para_birimi"],
                     satirlar=satirlar, kullanici=request.user)
-                messages.success(request, f"Giriş bordrosu kaydedildi; {bordro.cek_senetler.count()} "
-                                          f"evrak portföye girdi, fiş oluşturuldu.")
+                messages.success(request, f"Bordro kaydedildi; {bordro.cek_senetler.count()} "
+                                          f"evrak {basari_ek}, fiş oluşturuldu.")
                 return redirect("core:cek_bordro_detay", pk=bordro.pk)
             except cek_servis.CekHatasi as e:
                 bform.add_error(None, str(e))
     else:
-        bform = CariGirisBordroForm()
+        bform = BordroBaslikForm(cari_label=cari_label)
         formset = CekKalemFormSet()
-    return render(request, "core/cek_cari_giris.html",
-                  {"bform": bform, "formset": formset,
-                   "baslik": "Cari Giriş Bordrosu", "emoji": "🤝"})
+    return render(request, "core/cek_bordro_form.html",
+                  {"bform": bform, "formset": formset, "baslik": baslik, "emoji": emoji, "yardim": yardim})
+
+
+@ekran_gerekli("cek_senet")
+def cek_cari_giris(request):
+    """Cari Giriş: alınan çek/senetler portföye girer → N evrak (PORTFÖYDE) + tek fiş."""
+    return _bordro_giris_view(
+        request, servis_fn=cek_servis.cari_giris_bordrosu_olustur,
+        cari_label="Cari (çeki/senedi veren)", baslik="Cari Giriş Bordrosu", emoji="🤝",
+        yardim="Alınan çek/senetler portföye girer; bordro için tek birleşik yevmiye fişi oluşur "
+               "(Portföydeki çek/senet borç / cari alacak). Hesaplar Muhasebe Hesap Kodları'ndan gelir.",
+        basari_ek="portföye girdi")
+
+
+@ekran_gerekli("cek_senet")
+def cek_firma_cikis(request):
+    """Firma Çek-Senet: kendi çek/senedimizi cariye veririz → N evrak (VERİLDİ) + tek fiş."""
+    return _bordro_giris_view(
+        request, servis_fn=cek_servis.firma_cikis_bordrosu_olustur,
+        cari_label="Cari (çek/senedi verdiğimiz)", baslik="Firma Çek-Senet Bordrosu", emoji="🏭",
+        yardim="Kendi çek/senedimiz cariye verilir; bordro için tek birleşik yevmiye fişi oluşur "
+               "(cari borç / Verilen çek/senet alacak). Hesaplar Muhasebe Hesap Kodları'ndan gelir.",
+        basari_ek="verildi")
 
 
 def _bordro_baglam(bordro):
