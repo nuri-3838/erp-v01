@@ -54,7 +54,6 @@ MODULLER = (
         Ekran("banka", "Banka", "core:bankalar"),
         Ekran("kredi_karti", "Kredi Kartı", "core:kredi_kartlari"),
         Ekran("kredi", "Kredi", "core:krediler"),
-        Ekran("cek_senet", "Çek-Senet", "core:cek_senetler"),
     )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),

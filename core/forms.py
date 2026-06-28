@@ -15,7 +15,7 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    BankaHesap, Birim, Cari, CariKategori, CekSenet, Depo, FaturaTipi, HesapPlani, Kasa,
+    BankaHesap, Birim, Cari, CariKategori, Depo, FaturaTipi, HesapPlani, Kasa,
     Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
 )
@@ -631,75 +631,6 @@ class KrediForm(forms.Form):
     def __init__(self, *args, mevcut_hesap=None, **kwargs):
         super().__init__(*args, **kwargs)
         _muhasebe_kur(self, mevcut_hesap)
-
-
-class CekSenetForm(forms.Form):
-    tip = forms.ChoiceField(label="Tip", choices=CekSenet.Tip.choices)
-    yon = forms.ChoiceField(label="Yön", choices=CekSenet.Yon.choices)
-    tutar = TRDecimalField(label="Tutar", basamak=2)
-    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
-    vade = forms.DateField(
-        label="Vade Tarihi",
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
-    kesideci = forms.CharField(label="Keşideci", max_length=200, required=False)
-    belge_no = forms.CharField(label="Belge No", max_length=50, required=False)
-    cari = forms.ModelChoiceField(label="Cari (karşı taraf)", queryset=Cari.objects.none(),
-                                  empty_label="— cari seç —")
-    muhasebe = _muhasebe_alani()
-
-    def __init__(self, *args, mevcut_hesap=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        _muhasebe_kur(self, mevcut_hesap)
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
-        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
-        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
-
-
-class CekIslemForm(forms.Form):
-    """Çek/senet tahsil/ödendi işlemi: hedef hesap (kasa veya banka) + tarih."""
-    hedef = forms.ChoiceField(label="Hedef Hesap")
-    tarih = forms.DateField(
-        label="İşlem Tarihi",
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
-
-    def __init__(self, *args, pb="TRY", **kwargs):
-        super().__init__(*args, **kwargs)
-        sec = [("", "— hesap seç —")]
-        for k in Kasa.objects.filter(silindi=False, para_birimi=pb).order_by("ad"):
-            sec.append((f"kasa:{k.pk}", f"Kasa · {k.ad}"))
-        for h in (BankaHesap.objects.filter(silindi=False, para_birimi=pb)
-                  .select_related("banka").order_by("banka__ad", "ad")):
-            sec.append((f"banka:{h.pk}", f"Banka · {h.banka.ad} - {h.ad}"))
-        self.fields["hedef"].choices = sec
-        self.fields["hedef"].widget.attrs["class"] = "akilli-sec"
-
-
-class CekCiroForm(forms.Form):
-    """Çek/senet ciro: ciro edilen cari (yeni hamil) + işlem tarihi."""
-    cari = forms.ModelChoiceField(label="Ciro Edilen Cari (yeni hamil)",
-                                  queryset=Cari.objects.none(), empty_label="— cari seç —")
-    tarih = forms.DateField(
-        label="İşlem Tarihi",
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
-
-    def __init__(self, *args, haric_pk=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        qs = Cari.objects.filter(silindi=False)
-        if haric_pk:
-            qs = qs.exclude(pk=haric_pk)
-        self.fields["cari"].queryset = qs.order_by("unvan")
-        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
-        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
-
-
-class CekTarihForm(forms.Form):
-    """Karşılıksız / İade işlemi: yalnız işlem tarihi (karşı taraf = evrakın carisi)."""
-    tarih = forms.DateField(
-        label="İşlem Tarihi",
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""FİNANS modülü servis katmanı — Kasa/Banka/Çek-Senet/Kredi/Kredi Kartı TANIMLARI.
+"""FİNANS modülü servis katmanı — Kasa/Banka/Kredi/Kredi Kartı TANIMLARI.
 
 Her tanım bir YAPRAK muhasebe hesabına bağlanır; bakiye SAKLANMAZ, o hesabın
 yevmiyesinden hesaplanır (cari/ekstre mantığı). İşlem motoru (tahsilat/ödeme) yok.
@@ -9,7 +9,7 @@ from __future__ import annotations
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import (Banka, BankaHesap, Cari, CekSenet, HesapPlani, Kasa, Kredi,
+from core.models import (Banka, BankaHesap, Cari, HesapPlani, Kasa, Kredi,
                          KrediKarti)
 from core.sayi import SayiHatasi, parse_tr
 
@@ -305,23 +305,3 @@ def kredi_guncelle(k: Kredi, *, ad, banka_adi="", anapara=0, faiz_orani=0, para_
 
 def kredi_sil(k: Kredi, kullanici=None) -> Kredi:
     return _soft_sil(k, kullanici)
-
-
-# --- Çek / Senet ------------------------------------------------------------
-def aktif_cek_senetler():
-    return (CekSenet.objects.filter(silindi=False)
-            .select_related("muhasebe", "cari").order_by("vade", "-id"))
-
-
-def _cek_alanlar(tip, yon, durum):
-    if tip not in CekSenet.Tip.values:
-        raise FinansHatasi("Tip Çek veya Senet olmalı.")
-    if yon not in CekSenet.Yon.values:
-        raise FinansHatasi("Yön Alınan veya Verilen olmalı.")
-    if durum and durum not in CekSenet.Durum.values:
-        raise FinansHatasi("Geçersiz durum.")
-    return tip, yon, (durum or CekSenet.Durum.PORTFOYDE)
-
-
-# NOT: çek/senet oluştur/güncelle/sil ARTIK core/services/cek_senet.py'de
-# (giriş fişi üreten yaşam-döngüsü motoru). _cek_alanlar + aktif_cek_senetler burada kaldı.

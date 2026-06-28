@@ -222,7 +222,6 @@ _BAGLI_TANIM_RELS = (
     ("banka_hesaplari", "banka hesabı"),
     ("kredi_kartlari", "kredi kartı"),
     ("krediler", "kredi"),
-    ("cek_senetler", "çek/senet"),
     ("kdv_borc_oranlari", "KDV oranı"),
     ("kdv_alacak_oranlari", "KDV oranı"),
     ("tevkifat_oranlari", "tevkifat oranı"),

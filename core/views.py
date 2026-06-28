@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, CekCiroForm, CekIslemForm, CekSenetForm, CekTarihForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -26,7 +26,7 @@ from core.forms import (
 )
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
-    Banka, BankaHesap, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
+    Banka, BankaHesap, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
@@ -59,7 +59,6 @@ from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
-from core.services import cek_senet as cek_senet_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -189,11 +188,6 @@ def fis_duzenle(request, pk):
                                "Gerekirse hareketi iptal edip yeniden girin.")
         return (redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id) if fis.banka_hesap_id
                 else redirect("core:fis_detay", pk=fis.pk))
-    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET:
-        messages.info(request, "Bu fiş bir çek/senet işleminden oluştu; düzenlenemez. "
-                               "Gerekirse evraktan iptal edip yeniden girin.")
-        return (redirect("core:cek_senet_detay", pk=fis.cek_senet_id) if fis.cek_senet_id
-                else redirect("core:fis_detay", pk=fis.pk))
 
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -246,9 +240,6 @@ def fis_iptal_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.BANKA and not fis.silindi and fis.banka_hesap_id:
         messages.info(request, "Bu fiş bir banka hareketinden oluştu; iptal için banka hesabı detayını kullanın.")
         return redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id)
-    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET and not fis.silindi and fis.cek_senet_id:
-        messages.info(request, "Bu fiş bir çek/senet işleminden oluştu; iptal için çek/senet detayını kullanın.")
-        return redirect("core:cek_senet_detay", pk=fis.cek_senet_id)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1799,150 +1790,6 @@ def kredi_sil(request, pk):
         finans_servis.kredi_sil(kredi, kullanici=request.user)
         messages.success(request, "Kredi silindi.")
     return redirect("core:krediler")
-
-
-# === FİNANS — Çek / Senet ===
-@ekran_gerekli("cek_senet")
-def cek_senetler(request):
-    return render(request, "core/cek_senet_listesi.html",
-                  {"kayitlar": finans_servis.aktif_cek_senetler()})
-
-
-@ekran_gerekli("cek_senet")
-def cek_senet_detay(request, pk):
-    """Çek/senet detayı: evrak bilgisi + durum + bağlı yevmiye fişleri.
-    (İşlem butonları — tahsil/ödendi/ciro… — sonraki dilimde.)"""
-    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
-    fisler = cs.fisler.filter(silindi=False).order_by("yil", "fis_no")
-    return render(request, "core/cek_senet_detay.html", {"cs": cs, "fisler": fisler})
-
-
-@ekran_gerekli("cek_senet")
-def cek_senet_ekle(request):
-    if request.method == "POST":
-        form = CekSenetForm(request.POST)
-        if form.is_valid():
-            cd = form.cleaned_data
-            try:
-                cs = cek_senet_servis.cek_senet_olustur(
-                    tip=cd["tip"], yon=cd["yon"], tutar=cd["tutar"], vade=cd["vade"],
-                    para_birimi=cd["para_birimi"], kesideci=cd["kesideci"],
-                    belge_no=cd["belge_no"], muhasebe_kodu=cd["muhasebe"].hesap_kodu,
-                    cari_id=cd["cari"].pk, kullanici=request.user)
-                messages.success(request, "Çek/Senet eklendi; giriş fişi oluşturuldu.")
-                return redirect("core:cek_senet_detay", pk=cs.pk)
-            except cek_senet_servis.CekSenetHatasi as e:
-                form.add_error(None, str(e))
-    else:
-        form = CekSenetForm()
-    return render(request, "core/finans_form.html",
-                  {"form": form, "baslik": "Yeni Çek / Senet", "emoji": "📜",
-                   "iptal_url": reverse("core:cek_senetler")})
-
-
-@ekran_gerekli("cek_senet")
-def cek_senet_duzenle(request, pk):
-    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
-    if request.method == "POST":
-        form = CekSenetForm(request.POST, mevcut_hesap=cs.muhasebe.hesap_kodu)
-        if form.is_valid():
-            cd = form.cleaned_data
-            try:
-                cek_senet_servis.cek_senet_guncelle(
-                    cs, tip=cd["tip"], yon=cd["yon"], tutar=cd["tutar"], vade=cd["vade"],
-                    para_birimi=cd["para_birimi"], kesideci=cd["kesideci"],
-                    belge_no=cd["belge_no"], muhasebe_kodu=cd["muhasebe"].hesap_kodu,
-                    cari_id=cd["cari"].pk, kullanici=request.user)
-                messages.success(request, "Çek/Senet güncellendi.")
-                return redirect("core:cek_senet_detay", pk=cs.pk)
-            except cek_senet_servis.CekSenetHatasi as e:
-                form.add_error(None, str(e))
-    else:
-        form = CekSenetForm(initial={
-            "tip": cs.tip, "yon": cs.yon, "tutar": cs.tutar, "vade": cs.vade,
-            "para_birimi": cs.para_birimi, "kesideci": cs.kesideci, "belge_no": cs.belge_no,
-            "cari": cs.cari_id, "muhasebe": cs.muhasebe.hesap_kodu},
-            mevcut_hesap=cs.muhasebe.hesap_kodu)
-    return render(request, "core/finans_form.html",
-                  {"form": form, "baslik": "Çek / Senet Düzenle", "emoji": "📜",
-                   "iptal_url": reverse("core:cek_senet_detay", args=[cs.pk])})
-
-
-@ekran_gerekli("cek_senet")
-def cek_senet_sil(request, pk):
-    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
-    if request.method == "POST":
-        try:
-            cek_senet_servis.cek_senet_sil(cs, kullanici=request.user)
-            messages.success(request, "Çek/Senet silindi (bağlı fiş iptal edildi).")
-        except cek_senet_servis.CekSenetHatasi as e:
-            messages.error(request, str(e))
-    return redirect("core:cek_senetler")
-
-
-@ekran_gerekli("cek_senet")
-def cek_senet_islem(request, pk, islem):
-    """Portföydeki çek/senete işlem → otomatik fiş + durum geçişi.
-    tahsil/ödendi (kasa/banka) · ciro (cari) · karşılıksız · iade. Karşı hesabın
-    kaynağına göre form/şablon değişir; servis tek `cek_islem`."""
-    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
-    tan = cek_senet_servis.ISLEM.get(islem)
-    if tan is None:
-        messages.error(request, "Geçersiz işlem.")
-        return redirect("core:cek_senet_detay", pk=cs.pk)
-    if cs.durum != CekSenet.Durum.PORTFOYDE or (tan["yon"] and cs.yon != tan["yon"]):
-        messages.error(request, "Bu evrak için bu işlem yapılamaz.")
-        return redirect("core:cek_senet_detay", pk=cs.pk)
-    kaynak = tan["kaynak"]
-    if kaynak == "hedef":
-        if not (Kasa.objects.filter(silindi=False, para_birimi=cs.para_birimi).exists()
-                or BankaHesap.objects.filter(silindi=False, para_birimi=cs.para_birimi).exists()):
-            messages.error(request, f"{cs.para_birimi} para biriminde kasa/banka hesabı yok; "
-                                    f"önce FİNANS > Kasa/Banka'dan tanımlayın.")
-            return redirect("core:cek_senet_detay", pk=cs.pk)
-        FormCls, form_kwargs, sablon = CekIslemForm, {"pb": cs.para_birimi}, \
-            "core/cek_senet_islem_form.html"
-    elif kaynak == "ciro":
-        if not Cari.objects.filter(silindi=False).exclude(pk=cs.cari_id).exists():
-            messages.error(request, "Ciro edilecek başka cari yok; önce CARİ ekranından ekleyin.")
-            return redirect("core:cek_senet_detay", pk=cs.pk)
-        FormCls, form_kwargs, sablon = CekCiroForm, {"haric_pk": cs.cari_id}, \
-            "core/cek_senet_durum_form.html"
-    else:  # "cari" → karşılıksız / iade (karşı taraf evrakın carisi)
-        FormCls, form_kwargs, sablon = CekTarihForm, {}, "core/cek_senet_durum_form.html"
-    if request.method == "POST":
-        form = FormCls(request.POST, **form_kwargs)
-        if form.is_valid():
-            cd = form.cleaned_data
-            if kaynak == "hedef":
-                hedef = cd["hedef"]
-            elif kaynak == "ciro":
-                hedef = f"cari:{cd['cari'].pk}"
-            else:
-                hedef = None
-            try:
-                cek_senet_servis.cek_islem(
-                    cs, islem=islem, hedef=hedef, tarih=cd["tarih"], kullanici=request.user)
-                messages.success(request, f"{tan['ad']} işlendi; fiş oluşturuldu.")
-                return redirect("core:cek_senet_detay", pk=cs.pk)
-            except cek_senet_servis.CekSenetHatasi as e:
-                form.add_error(None, str(e))
-    else:
-        form = FormCls(**form_kwargs)
-    return render(request, sablon,
-                  {"cs": cs, "form": form, "islem": islem, "tan_ad": tan["ad"], "kaynak": kaynak})
-
-
-@ekran_gerekli("cek_senet")
-def cek_senet_islem_geri_al(request, pk):
-    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
-    if request.method == "POST":
-        try:
-            cek_senet_servis.cek_islem_geri_al(cs, kullanici=request.user)
-            messages.success(request, "İşlem geri alındı; çek/senet portföye döndü.")
-        except cek_senet_servis.CekSenetHatasi as e:
-            messages.error(request, str(e))
-    return redirect("core:cek_senet_detay", pk=cs.pk)
 
 
 @ekran_gerekli("cariler")

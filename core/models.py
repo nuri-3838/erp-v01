@@ -134,7 +134,6 @@ class YevmiyeFisi(TemelModel):
         FATURA = "FATURA", "Fatura (otomatik)"
         KASA = "KASA", "Kasa Hareketi (otomatik)"
         BANKA = "BANKA", "Banka Hareketi (otomatik)"
-        CEK_SENET = "CEK_SENET", "Çek/Senet (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -152,11 +151,6 @@ class YevmiyeFisi(TemelModel):
     # Kaynak=BANKA fişin kaynağı olan banka hesabı (hareket motoru); kasa ile aynı amaç.
     banka_hesap = models.ForeignKey(
         "BankaHesap", verbose_name="kaynak banka hesabı", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="fisler",
-    )
-    # Kaynak=CEK_SENET fişin kaynağı olan çek/senet (yaşam döngüsü motoru).
-    cek_senet = models.ForeignKey(
-        "CekSenet", verbose_name="kaynak çek/senet", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fisler",
     )
     # USD raporlama için fiş tarihindeki TCMB USD alış kuru (snapshot).
@@ -947,7 +941,7 @@ class StokHareket(TemelModel):
         return f"{self.stok_id} {self.tur} {self.miktar}"
 
 
-# === FİNANS modülü — tanımlar (Kasa/Banka/Çek-Senet/Kredi/Kredi Kartı) ===
+# === FİNANS modülü — tanımlar (Kasa/Banka/Kredi/Kredi Kartı) ===
 # Her finans hesabı bir YAPRAK muhasebe hesabına bağlanır; bakiye SAKLANMAZ,
 # o hesabın yevmiyesinden hesaplanır (cari/ekstre mantığı). İşlem motoru yok.
 class Kasa(TemelModel):
@@ -1088,54 +1082,3 @@ class Kredi(TemelModel):
 
     def __str__(self):
         return self.ad
-
-
-class CekSenet(TemelModel):
-    """Çek/Senet (kıymetli evrak) tanımı. Tutar; bağlı muhasebe hesabına işlenir.
-    İşlem/yaşam-döngüsü motoru YOK (durum elle güncellenir)."""
-
-    class Tip(models.TextChoices):
-        CEK = "CEK", "Çek"
-        SENET = "SENET", "Senet"
-
-    class Yon(models.TextChoices):
-        ALINAN = "ALINAN", "Alınan"
-        VERILEN = "VERILEN", "Verilen"
-
-    class Durum(models.TextChoices):
-        PORTFOYDE = "PORTFOYDE", "Portföyde"
-        TAHSIL = "TAHSIL", "Tahsil Edildi"
-        ODENDI = "ODENDI", "Ödendi"
-        CIRO = "CIRO", "Ciro Edildi"
-        IADE = "IADE", "İade"
-        KARSILIKSIZ = "KARSILIKSIZ", "Karşılıksız"
-
-    tip = models.CharField("tip", max_length=5, choices=Tip.choices)
-    yon = models.CharField("yön", max_length=7, choices=Yon.choices)
-    tutar = models.DecimalField("tutar", max_digits=14, decimal_places=2)
-    para_birimi = models.CharField(
-        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
-    vade = models.DateField("vade tarihi")
-    kesideci = models.CharField("keşideci", max_length=200, blank=True)
-    belge_no = models.CharField("belge no", max_length=50, blank=True)
-    durum = models.CharField("durum", max_length=12, choices=Durum.choices,
-                             default=Durum.PORTFOYDE)
-    cari = models.ForeignKey(
-        "Cari", verbose_name="cari", null=True, blank=True, on_delete=models.PROTECT,
-        related_name="cek_senetler")
-    muhasebe = models.ForeignKey(
-        HesapPlani, verbose_name="muhasebe hesabı", on_delete=models.PROTECT,
-        related_name="cek_senetler")
-
-    class Meta:
-        db_table = "finans_cek_senet"
-        verbose_name = "çek/senet"
-        verbose_name_plural = "çek/senetler"
-        ordering = ["vade", "-id"]
-        constraints = [
-            models.CheckConstraint(condition=models.Q(tutar__gt=0),
-                                   name="ck_cek_senet_tutar_gt0"),
-        ]
-
-    def __str__(self):
-        return f"{self.tip} {self.belge_no} {self.tutar}"
