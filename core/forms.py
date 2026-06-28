@@ -655,6 +655,26 @@ class CekSenetForm(forms.Form):
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
 
+class CekIslemForm(forms.Form):
+    """Çek/senet tahsil/ödendi işlemi: hedef hesap (kasa veya banka) + tarih."""
+    hedef = forms.ChoiceField(label="Hedef Hesap")
+    tarih = forms.DateField(
+        label="İşlem Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+
+    def __init__(self, *args, pb="TRY", **kwargs):
+        super().__init__(*args, **kwargs)
+        sec = [("", "— hesap seç —")]
+        for k in Kasa.objects.filter(silindi=False, para_birimi=pb).order_by("ad"):
+            sec.append((f"kasa:{k.pk}", f"Kasa · {k.ad}"))
+        for h in (BankaHesap.objects.filter(silindi=False, para_birimi=pb)
+                  .select_related("banka").order_by("banka__ad", "ad")):
+            sec.append((f"banka:{h.pk}", f"Banka · {h.banka.ad} - {h.ad}"))
+        self.fields["hedef"].choices = sec
+        self.fields["hedef"].widget.attrs["class"] = "akilli-sec"
+
+
 # ---------------------------------------------------------------------------
 # FATURALAR — Alış/Satış faturası giriş (otomatik yevmiye motoru besler)
 # ---------------------------------------------------------------------------

@@ -67,6 +67,28 @@
     </div>
   </section>
 
+  {% if cs.durum == 'PORTFOYDE' %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">⚡</span>İşlem</h2>
+    {% if cs.yon == 'ALINAN' %}
+      <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'tahsil' %}">💰 Tahsil Et (Kasa / Banka)</a>
+    {% else %}
+      <a class="dugme" href="{% url 'core:cek_senet_islem' cs.pk 'odendi' %}">💸 Ödendi (Banka / Kasa)</a>
+    {% endif %}
+    <p class="yardim" style="margin:.6rem 0 0">Ciro · Karşılıksız · İade işlemleri sonraki dilimde.</p>
+  </section>
+  {% elif cs.durum == 'TAHSIL' or cs.durum == 'ODENDI' %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">⚡</span>İşlem</h2>
+    <p class="yardim" style="margin:0 0 .6rem">Durum: <strong>{{ cs.get_durum_display }}</strong>.
+      Hatalıysa işlemi geri alıp evrağı portföye döndürebilirsin (işlem fişi iptal edilir).</p>
+    <form method="post" action="{% url 'core:cek_senet_islem_geri_al' cs.pk %}" style="margin:0"
+          onsubmit="return confirm('İşlem geri alınsın mı? Çek/senet portföye döner, işlem fişi iptal edilir.');">
+      {% csrf_token %}<button type="submit">↩️ İşlemi Geri Al</button>
+    </form>
+  </section>
+  {% endif %}
+
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">🧾</span>Yevmiye Fişleri</h2>
     <div class="tablo-kapsayici">
@@ -85,7 +107,7 @@
       </tbody>
     </table>
     </div>
-    <p class="yardim">📌 Tahsil · Ödendi · Ciro · Karşılıksız · İade işlemleri sonraki dilimde eklenecek.</p>
+    <p class="yardim">📌 Ciro · Karşılıksız · İade işlemleri sonraki dilimde eklenecek.</p>
   </section>
 </div>
 {% endblock %}

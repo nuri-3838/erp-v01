@@ -17,7 +17,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Cari, CekSenet, HesapPlani, Kur, YevmiyeFisi
+from core.models import BankaHesap, Cari, CekSenet, HesapPlani, Kasa, Kur, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr
 from core.services.finans import _cek_alanlar, _soft_sil, _yaprak_hesap_coz
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
@@ -168,3 +168,92 @@ def cek_senet_sil(cs: CekSenet, kullanici=None) -> CekSenet:
     for fis in cs.fisler.filter(silindi=False):
         fis_iptal(fis, kullanici=kullanici)
     return _soft_sil(cs, kullanici)
+
+
+# === Slice 2: Tahsil / Ödendi (PORTFÖYDE → terminal durum) ===
+# islem -> gereken yön + çekin fiş tarafı + yeni durum + etiket.
+#   tahsil (ALINAN): hedef(kasa/banka) borç / çek(101) alacak  → TAHSIL
+#   odendi (VERİLEN): çek(103) borç / hedef(banka/kasa) alacak → ÖDENDİ
+ISLEM = {
+    "tahsil": {"yon": CekSenet.Yon.ALINAN, "cek_taraf": "A",
+               "durum": CekSenet.Durum.TAHSIL, "ad": "TAHSİL"},
+    "odendi": {"yon": CekSenet.Yon.VERILEN, "cek_taraf": "B",
+               "durum": CekSenet.Durum.ODENDI, "ad": "ÖDENDİ"},
+}
+
+
+def _hedef_coz(hedef, cs):
+    """Form'dan gelen 'kasa:<pk>' / 'banka:<pk>' → (muhasebe hesap kodu, ad).
+    Hedef hesabın PB'si çekle aynı olmalı (tek-para fiş)."""
+    try:
+        tur, pk = (hedef or "").split(":")
+        pk = int(pk)
+    except (ValueError, AttributeError):
+        raise CekSenetHatasi("Hedef hesap seçilmedi.")
+    if tur == "kasa":
+        obj = Kasa.objects.filter(pk=pk, silindi=False).first()
+        ad = obj.ad if obj else None
+    elif tur == "banka":
+        obj = (BankaHesap.objects.filter(pk=pk, silindi=False)
+               .select_related("banka").first())
+        ad = f"{obj.banka.ad} - {obj.ad}" if obj else None
+    else:
+        raise CekSenetHatasi("Geçersiz hedef hesap.")
+    if obj is None:
+        raise CekSenetHatasi("Hedef hesap bulunamadı.")
+    if obj.para_birimi != cs.para_birimi:
+        raise CekSenetHatasi(
+            f"Hedef hesap ({obj.para_birimi}) ile çek/senet ({cs.para_birimi}) "
+            f"para birimi farklı; çapraz kur sonraki dilimde.")
+    return obj.muhasebe.hesap_kodu, ad
+
+
+@transaction.atomic
+def cek_islem(cs: CekSenet, *, islem, hedef, tarih, kullanici=None) -> CekSenet:
+    """Portföydeki çek/senete tahsil/ödendi işler → otomatik fiş + durum değişimi."""
+    tan = ISLEM.get(islem)
+    if tan is None:
+        raise CekSenetHatasi("Geçersiz işlem.")
+    if cs.silindi or cs.durum != CekSenet.Durum.PORTFOYDE:
+        raise CekSenetHatasi("Yalnız portföydeki çek/senet üzerinde işlem yapılır.")
+    if cs.yon != tan["yon"]:
+        raise CekSenetHatasi("Bu işlem bu evrak yönü için geçerli değil.")
+    kod, ad = _hedef_coz(hedef, cs)
+    kur = _kur_coz(cs.para_birimi, tarih)
+    cek_taraf = tan["cek_taraf"]
+    hedef_taraf = "A" if cek_taraf == "B" else "B"
+    satirlar = [
+        SatirGirdi(hesap_kodu=cs.muhasebe.hesap_kodu, taraf=cek_taraf,
+                   islem_tutari=cs.tutar, islem_pb=cs.para_birimi, islem_kuru=kur),
+        SatirGirdi(hesap_kodu=kod, taraf=hedef_taraf,
+                   islem_tutari=cs.tutar, islem_pb=cs.para_birimi, islem_kuru=kur),
+    ]
+    tipad = "ÇEK" if cs.tip == CekSenet.Tip.CEK else "SENET"
+    try:
+        fis = fis_olustur(tarih=tarih, satirlar=satirlar,
+                          aciklama=buyuk_harf_tr(f"{tipad} {tan['ad']} - {ad}"),
+                          kur_usd=None, kaynak=YevmiyeFisi.Kaynak.CEK_SENET, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise CekSenetHatasi(str(e))
+    fis.cek_senet = cs
+    fis.save(update_fields=["cek_senet", "updated_at"])
+    cs.durum = tan["durum"]
+    cs.updated_by = kullanici
+    cs.save(update_fields=["durum", "updated_by", "updated_at"])
+    return cs
+
+
+@transaction.atomic
+def cek_islem_geri_al(cs: CekSenet, kullanici=None) -> CekSenet:
+    """Tahsil/Ödendi'yi geri al: işlem fişini iptal et + PORTFÖYDE'ye dön
+    (giriş fişi korunur)."""
+    if cs.durum not in (CekSenet.Durum.TAHSIL, CekSenet.Durum.ODENDI):
+        raise CekSenetHatasi("Geri alınacak tahsil/ödendi işlemi yok.")
+    fisler = list(cs.fisler.filter(silindi=False).order_by("id"))   # [giriş, işlem]
+    if len(fisler) < 2:
+        raise CekSenetHatasi("İşlem fişi bulunamadı.")
+    fis_iptal(fisler[-1], kullanici=kullanici)
+    cs.durum = CekSenet.Durum.PORTFOYDE
+    cs.updated_by = kullanici
+    cs.save(update_fields=["durum", "updated_by", "updated_at"])
+    return cs

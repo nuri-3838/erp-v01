@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, CekIslemForm, CekSenetForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1878,6 +1878,51 @@ def cek_senet_sil(request, pk):
         except cek_senet_servis.CekSenetHatasi as e:
             messages.error(request, str(e))
     return redirect("core:cek_senetler")
+
+
+@ekran_gerekli("cek_senet")
+def cek_senet_islem(request, pk, islem):
+    """Tahsil (alınan→kasa/banka) / Ödendi (verilen→banka/kasa) → otomatik fiş + durum."""
+    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
+    tan = cek_senet_servis.ISLEM.get(islem)
+    if tan is None:
+        messages.error(request, "Geçersiz işlem.")
+        return redirect("core:cek_senet_detay", pk=cs.pk)
+    if cs.durum != CekSenet.Durum.PORTFOYDE or cs.yon != tan["yon"]:
+        messages.error(request, "Bu evrak için bu işlem yapılamaz.")
+        return redirect("core:cek_senet_detay", pk=cs.pk)
+    if not (Kasa.objects.filter(silindi=False, para_birimi=cs.para_birimi).exists()
+            or BankaHesap.objects.filter(silindi=False, para_birimi=cs.para_birimi).exists()):
+        messages.error(request, f"{cs.para_birimi} para biriminde kasa/banka hesabı yok; "
+                                f"önce FİNANS > Kasa/Banka'dan tanımlayın.")
+        return redirect("core:cek_senet_detay", pk=cs.pk)
+    if request.method == "POST":
+        form = CekIslemForm(request.POST, pb=cs.para_birimi)
+        if form.is_valid():
+            try:
+                cek_senet_servis.cek_islem(
+                    cs, islem=islem, hedef=form.cleaned_data["hedef"],
+                    tarih=form.cleaned_data["tarih"], kullanici=request.user)
+                messages.success(request, f"{tan['ad']} işlendi; fiş oluşturuldu.")
+                return redirect("core:cek_senet_detay", pk=cs.pk)
+            except cek_senet_servis.CekSenetHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CekIslemForm(pb=cs.para_birimi)
+    return render(request, "core/cek_senet_islem_form.html",
+                  {"cs": cs, "form": form, "islem": islem, "tan_ad": tan["ad"]})
+
+
+@ekran_gerekli("cek_senet")
+def cek_senet_islem_geri_al(request, pk):
+    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            cek_senet_servis.cek_islem_geri_al(cs, kullanici=request.user)
+            messages.success(request, "İşlem geri alındı; çek/senet portföye döndü.")
+        except cek_senet_servis.CekSenetHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:cek_senet_detay", pk=cs.pk)
 
 
 @ekran_gerekli("cariler")

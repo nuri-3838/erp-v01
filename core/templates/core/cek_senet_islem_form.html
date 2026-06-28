@@ -1,0 +1,47 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ tan_ad }} · Çek/Senet{% endblock %}
+{% block sayfa_adi %}Çek/Senet İşlemi{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cek_senet_detay' cs.pk %}">← Çek/Senet</a>
+    <h1 class="ust-baslik"><span class="emoji">{% if islem == 'tahsil' %}💰{% else %}💸{% endif %}</span>{{ tan_ad }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{{ cs.get_tip_display }} · {{ cs.tutar|tr_para }} {{ cs.para_birimi }} — {{ tan_ad }}</h2>
+      <p class="yardim" style="margin-top:-.3rem">
+        {% if islem == 'tahsil' %}Alınan çek/senet seçtiğin hesaba tahsil edilir (hesap borç / çek hesabı alacak).
+        {% else %}Verilen çek/senet seçtiğin hesaptan ödenir (çek hesabı borç / hesap alacak).{% endif %}
+        Hedef hesap çekle aynı para biriminde (<span class="mono">{{ cs.para_birimi }}</span>) olmalı.</p>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.hedef.id_for_label }}">{{ form.hedef.label }}</label>
+          <div class="akilli">{{ form.hedef }}</div>
+          {% for e in form.hedef.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
+          {{ form.tarih }}
+          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cek_senet_detay' cs.pk %}">İptal</a>
+      <button type="submit" class="birincil">{{ tan_ad }} Kaydet</button>
+    </div>
+  </form>
+</div>
+
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}
