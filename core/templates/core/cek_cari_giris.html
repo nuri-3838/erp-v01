@@ -68,7 +68,8 @@
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr><th class="sag">Toplam</th><th class="sag deger" id="tToplam">0,00</th><th colspan="4"></th></tr>
+          <tr><th class="sag">Toplam</th><th class="sag deger" id="tToplam">0,00</th>
+            <th colspan="4" style="text-align:left; font-weight:600; color:var(--lacivert);" id="tOrtVade"></th></tr>
         </tfoot>
       </table>
       </div>
@@ -104,12 +105,28 @@
     var n=parseFloat(s); return isNaN(n)?0:n; }
   function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
+  function parseDate(s){ if(!s) return null; var p=String(s).split('-');
+    if(p.length!==3) return null; var d=new Date(+p[0], +p[1]-1, +p[2]);
+    return isNaN(d.getTime())?null:d; }
+  function fmtDate(d){ var g=('0'+d.getDate()).slice(-2), a=('0'+(d.getMonth()+1)).slice(-2);
+    return g+'.'+a+'.'+d.getFullYear(); }
   function hesapla(){
-    var t=0;
+    var t=0, agirlikGun=0, agirlikTutar=0;
+    var islemEl=document.querySelector('[name="tarih"]');
+    var islem=parseDate(islemEl?islemEl.value:'');
     document.querySelectorAll('.satir-form').forEach(function(r){
-      var i=el(r,'-tutar'); t+=parseTR(i?i.value:'');
+      var i=el(r,'-tutar'); var tutar=parseTR(i?i.value:''); t+=tutar;
+      var vd=parseDate((el(r,'-vade')||{}).value);
+      if(tutar>0 && vd && islem){
+        agirlikGun += tutar * Math.round((vd-islem)/86400000); agirlikTutar += tutar; }
     });
     document.getElementById('tToplam').textContent=fmt(t);
+    var ov=document.getElementById('tOrtVade');
+    if(islem && agirlikTutar>0){
+      var ortGun=Math.round(agirlikGun/agirlikTutar);
+      var ortVade=new Date(islem.getTime()); ortVade.setDate(ortVade.getDate()+ortGun);
+      ov.textContent='📅 Ort. Vade: '+fmtDate(ortVade)+' ('+ortGun+' gün)';
+    } else { ov.textContent=''; }
   }
   function satirEkle(){
     var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);

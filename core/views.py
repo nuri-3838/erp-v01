@@ -1854,14 +1854,32 @@ def cek_cari_giris(request):
                    "baslik": "Cari Giriş Bordrosu", "emoji": "🤝"})
 
 
+def _bordro_baglam(bordro):
+    """Bordro + çek/senetleri + fişleri + toplam + AĞIRLIKLI ORTALAMA VADE bağlamı."""
+    cekler = list(bordro.cek_senetler.filter(silindi=False).order_by("vade", "id"))
+    toplam = sum((c.tutar for c in cekler), Decimal("0"))
+    ort_vade, vade_gun = cek_servis.ortalama_vade(
+        [(c.tutar, c.vade) for c in cekler], bordro.tarih)
+    return {
+        "bordro": bordro, "cekler": cekler,
+        "fisler": bordro.fisler.filter(silindi=False).order_by("yil", "fis_no"),
+        "toplam": toplam, "para_birimi": (cekler[0].para_birimi if cekler else "TRY"),
+        "ort_vade": ort_vade, "vade_gun": vade_gun,
+    }
+
+
 @ekran_gerekli("cek_senet")
 def cek_bordro_detay(request, pk):
-    """Bordro detayı: başlık + içindeki çek/senetler + bağlı yevmiye fişi."""
+    """Bordro detayı: başlık + çek/senetler + toplam/ortalama vade + bağlı yevmiye fişi."""
     bordro = get_object_or_404(CekBordrosu, pk=pk, silindi=False)
-    cekler = bordro.cek_senetler.filter(silindi=False).order_by("vade", "id")
-    fisler = bordro.fisler.filter(silindi=False).order_by("yil", "fis_no")
-    return render(request, "core/cek_bordro_detay.html",
-                  {"bordro": bordro, "cekler": cekler, "fisler": fisler})
+    return render(request, "core/cek_bordro_detay.html", _bordro_baglam(bordro))
+
+
+@ekran_gerekli("cek_senet")
+def cek_bordro_yazdir(request, pk):
+    """Bordronun yazdırılabilir (A4) görünümü — temiz belge, otomatik yazdır."""
+    bordro = get_object_or_404(CekBordrosu, pk=pk, silindi=False)
+    return render(request, "core/cek_bordro_yazdir.html", _bordro_baglam(bordro))
 
 
 @ekran_gerekli("cek_senet")

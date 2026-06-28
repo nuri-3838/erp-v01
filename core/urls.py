@@ -110,6 +110,7 @@ urlpatterns = [
     path("finans/cek-senet/hesap-ayari/", views.cek_hesap_ayari, name="cek_hesap_ayari"),
     path("finans/cek-senet/cari-giris/", views.cek_cari_giris, name="cek_cari_giris"),
     path("finans/cek-senet/bordro/<int:pk>/", views.cek_bordro_detay, name="cek_bordro_detay"),
+    path("finans/cek-senet/bordro/<int:pk>/yazdir/", views.cek_bordro_yazdir, name="cek_bordro_yazdir"),
     path("finans/cek-senet/bordro/<int:pk>/sil/", views.cek_bordro_sil, name="cek_bordro_sil"),
     path("cariler/<int:pk>/duzenle/", views.cari_duzenle, name="cari_duzenle"),
     path("cariler/<int:pk>/sil/", views.cari_sil, name="cari_sil"),

@@ -32,10 +32,13 @@
 <div class="detay-kapsa">
   <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:cek_senetler' %}">← Çek / Senet</a>
-    <form method="post" action="{% url 'core:cek_bordro_sil' bordro.pk %}" style="margin:0"
-          onsubmit="return confirm('Bordro geri alınsın mı? Bağlı fiş iptal edilir, evraklar silinir.');">
-      {% csrf_token %}<button type="submit" class="sil">Bordroyu Geri Al</button>
-    </form>
+    <div style="display:flex; gap:.5rem; align-items:center;">
+      <a class="dugme" href="{% url 'core:cek_bordro_yazdir' bordro.pk %}" target="_blank">🖨️ Yazdır</a>
+      <form method="post" action="{% url 'core:cek_bordro_sil' bordro.pk %}" style="margin:0"
+            onsubmit="return confirm('Bordro geri alınsın mı? Bağlı fiş iptal edilir, evraklar silinir.');">
+        {% csrf_token %}<button type="submit" class="sil">Bordroyu Geri Al</button>
+      </form>
+    </div>
   </div>
 
   <div class="detay-baslik-kart">
@@ -83,6 +86,19 @@
           <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.2rem 0">Evrak yok.</td></tr>
         {% endfor %}
       </tbody>
+      {% if cekler %}
+      <tfoot>
+        <tr>
+          <th class="sag">Toplam</th>
+          <th class="sag mono">{{ toplam|tr_para }} {{ para_birimi }}</th>
+          <th colspan="5" style="text-align:left; font-weight:600;">
+            {% if ort_vade %}📅 Ağırlıklı Ortalama Vade:
+              <span class="mono">{{ ort_vade|date:"d.m.Y" }}</span>
+              <span class="yardim" style="font-weight:500;">({{ vade_gun }} gün)</span>{% endif %}
+          </th>
+        </tr>
+      </tfoot>
+      {% endif %}
     </table>
     </div>
   </section>

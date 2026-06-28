@@ -192,3 +192,35 @@ class CariGirisBordroTest(TestCase):
             self.assertFalse(c.arka_yuz)                           # arka yüklenmedi
             im = Image.open(c.on_yuz.path)
             self.assertLessEqual(max(im.size), 1600)              # en uzun kenar ≤ 1600
+
+    def test_ortalama_vade_agirlikli(self):
+        import datetime
+        from decimal import Decimal
+        from core.services.cek import ortalama_vade
+        baz = datetime.date(2026, 6, 28)
+        # 1000 @ +30g, 3000 @ +60g → (1000·30 + 3000·60)/4000 = 52,5 → 53 (HALF_UP)
+        ov, gun = ortalama_vade(
+            [(Decimal("1000"), baz + datetime.timedelta(days=30)),
+             (Decimal("3000"), baz + datetime.timedelta(days=60))], baz)
+        self.assertEqual(gun, 53)
+        self.assertEqual(ov, baz + datetime.timedelta(days=53))
+        # eşit ağırlık → ortalama 45 gün
+        _, gun2 = ortalama_vade(
+            [(Decimal("1000"), baz + datetime.timedelta(days=30)),
+             (Decimal("1000"), baz + datetime.timedelta(days=60))], baz)
+        self.assertEqual(gun2, 45)
+        self.assertEqual(ortalama_vade([], baz), (None, None))    # boş
+
+    def test_detay_ve_yazdir_ortalama_vade_gosterir(self):
+        import datetime
+        b = self._olustur([
+            {"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 9, 1)},
+            {"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 11, 1)}])
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:cek_bordro_detay", args=[b.pk]))
+        self.assertContains(d, "Ortalama Vade")
+        self.assertContains(d, reverse("core:cek_bordro_yazdir", args=[b.pk]))   # Yazdır butonu
+        y = self.client.get(reverse("core:cek_bordro_yazdir", args=[b.pk]))
+        self.assertEqual(y.status_code, 200)
+        self.assertContains(y, "Ortalama Vade")
+        self.assertContains(y, "Bordrosu")

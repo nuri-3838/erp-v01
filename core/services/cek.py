@@ -6,7 +6,8 @@ evrak tipine (çek/senet) bakarak üretir. Bordro motoru sonraki dilimlerde.
 """
 from __future__ import annotations
 
-from decimal import Decimal
+import datetime
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 
@@ -203,3 +204,18 @@ def aktif_bordrolar():
 def aktif_cek_senetler():
     return (CekSenet.objects.filter(silindi=False)
             .select_related("cari", "giris_bordrosu").order_by("vade", "-id"))
+
+
+def ortalama_vade(kalemler, baz_tarih):
+    """Tutara göre AĞIRLIKLI ortalama vade (çek/senet bordrosu standardı).
+
+    kalemler: [(tutar, vade), ...] (vade = date). baz_tarih = referans (genelde bordro
+    işlem tarihi). Döner: (ortalama_vade_tarihi, gun). Boş/sıfır toplamda (None, None).
+    gun = baz_tarih'ten ortalama vadeye gün sayısı (ROUND_HALF_UP)."""
+    kalemler = [(Decimal(t), v) for t, v in kalemler if t and v]
+    toplam = sum((t for t, v in kalemler), Decimal("0"))
+    if toplam <= 0:
+        return None, None
+    agirlikli = sum((t * (v - baz_tarih).days for t, v in kalemler), Decimal("0")) / toplam
+    gun = int(agirlikli.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return baz_tarih + datetime.timedelta(days=gun), gun
