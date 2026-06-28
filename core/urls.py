@@ -108,6 +108,7 @@ urlpatterns = [
     path("finans/kredi/<int:pk>/sil/", views.kredi_sil, name="kredi_sil"),
     path("finans/cek-senet/", views.cek_senetler, name="cek_senetler"),
     path("finans/cek-senet/ekle/", views.cek_senet_ekle, name="cek_senet_ekle"),
+    path("finans/cek-senet/<int:pk>/", views.cek_senet_detay, name="cek_senet_detay"),
     path("finans/cek-senet/<int:pk>/duzenle/", views.cek_senet_duzenle, name="cek_senet_duzenle"),
     path("finans/cek-senet/<int:pk>/sil/", views.cek_senet_sil, name="cek_senet_sil"),
     path("cariler/<int:pk>/duzenle/", views.cari_duzenle, name="cari_duzenle"),

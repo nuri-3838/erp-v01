@@ -316,10 +316,12 @@ class KasaHareketTest(TestCase):
 class FinansDigerServisTest(TestCase):
     @classmethod
     def setUpTestData(cls):
+        cls.yon = User.objects.create_superuser("dsyon", password="x")
         _hesap("102.01", "İŞ BANKASI")
         _hesap("300.01", "KREDİ HESABI")
         _hesap("309.01", "KREDİ KARTI")
         _hesap("101.01", "ALINAN ÇEKLER")
+        _hesap("120.01", "ALICI")
 
     def test_banka_kurum_ve_hesap(self):
         from core.services.finans import (banka_hesap_olustur, banka_hesaplari,
@@ -373,19 +375,33 @@ class FinansDigerServisTest(TestCase):
         self.assertEqual(k.anapara, Decimal("250000"))
         self.assertEqual(k.faiz_orani, Decimal("3.75"))
 
-    def test_cek_senet_olustur_ve_tutar_kontrol(self):
+    def test_cek_senet_olustur_giris_fisi(self):
         import datetime
-        from core.models import CekSenet
-        from core.services.finans import FinansHatasi, cek_senet_olustur
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Cari, CekSenet, Kur, YevmiyeFisi
+        from core.services.cek_senet import CekSenetHatasi, cek_senet_olustur
+        Kur.objects.get_or_create(tarih=timezone.localdate(),
+                                  defaults={"usd_alis": Decimal("40")})
+        cari = Cari.objects.create(kod="CR1", unvan="AHMET LTD", muhasebe_kodu="120.01",
+                                   created_by=self.yon, updated_by=self.yon)
         cs = cek_senet_olustur(tip="CEK", yon="ALINAN", tutar="5.000",
                                vade=datetime.date(2026, 9, 1), kesideci="ahmet",
-                               muhasebe_kodu="101.01")
+                               muhasebe_kodu="101.01", cari_id=cari.pk, kullanici=self.yon)
         self.assertEqual(cs.tip, "CEK")
-        self.assertEqual(cs.durum, CekSenet.Durum.PORTFOYDE)   # varsayılan
+        self.assertEqual(cs.durum, CekSenet.Durum.PORTFOYDE)
         self.assertEqual(cs.kesideci, "AHMET")
-        with self.assertRaises(FinansHatasi):
-            cek_senet_olustur(tip="CEK", yon="ALINAN", tutar="0",
-                              vade=datetime.date(2026, 9, 1), muhasebe_kodu="101.01")
+        fis = cs.fisler.get()                                   # giriş fişi
+        self.assertEqual(fis.kaynak, YevmiyeFisi.Kaynak.CEK_SENET)
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.all()}
+        self.assertEqual(s["101.01"], (Decimal("5000.00"), Decimal("0.00")))  # çek borç
+        self.assertEqual(s["120.01"], (Decimal("0.00"), Decimal("5000.00")))  # cari alacak
+        with self.assertRaises(CekSenetHatasi):                 # tutar 0
+            cek_senet_olustur(tip="CEK", yon="ALINAN", tutar="0", vade=datetime.date(2026, 9, 1),
+                              muhasebe_kodu="101.01", cari_id=cari.pk, kullanici=self.yon)
+        with self.assertRaises(CekSenetHatasi):                 # cari zorunlu
+            cek_senet_olustur(tip="CEK", yon="ALINAN", tutar="100", vade=datetime.date(2026, 9, 1),
+                              muhasebe_kodu="101.01", cari_id=None, kullanici=self.yon)
 
 
 class FinansDigerViewTest(TestCase):
@@ -394,6 +410,7 @@ class FinansDigerViewTest(TestCase):
         cls.yon = User.objects.create_superuser("fyon", password="x")
         _hesap("102.01", "İŞ BANKASI")
         _hesap("101.01", "ALINAN ÇEKLER")
+        _hesap("120.01", "ALICI")
 
     def test_listeler_200(self):
         self.client.force_login(self.yon)
@@ -417,14 +434,21 @@ class FinansDigerViewTest(TestCase):
 
     def test_cek_senet_ekle_post(self):
         from decimal import Decimal
-        from core.models import CekSenet
+        from django.utils import timezone
+        from core.models import Cari, CekSenet, Kur
+        Kur.objects.get_or_create(tarih=timezone.localdate(),
+                                  defaults={"usd_alis": Decimal("40")})
+        cari = Cari.objects.create(kod="CR9", unvan="VELİ LTD", muhasebe_kodu="120.01",
+                                   created_by=self.yon, updated_by=self.yon)
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:cek_senet_ekle"), {
             "tip": "CEK", "yon": "ALINAN", "tutar": "1.500", "para_birimi": "TRY",
             "vade": "2026-09-01", "kesideci": "veli", "belge_no": "A123",
-            "durum": "PORTFOYDE", "muhasebe": "101.01"})
+            "cari": cari.pk, "muhasebe": "101.01"})
         self.assertEqual(r.status_code, 302)
-        self.assertTrue(CekSenet.objects.filter(belge_no="A123", tutar=Decimal("1500")).exists())
+        cs = CekSenet.objects.get(belge_no="A123")
+        self.assertEqual(cs.tutar, Decimal("1500"))
+        self.assertTrue(cs.fisler.filter(kaynak="CEK_SENET", silindi=False).exists())  # giriş fişi
 
 
 class BankaHareketTest(TestCase):
@@ -557,3 +581,77 @@ class BankaHareketTest(TestCase):
         bh1, _, _ = self._kur()
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:banka_hesap_detay", args=[bh1.pk])).status_code, 403)
+
+
+class CekSenetEngineTest(TestCase):
+    """Çek/Senet Slice 1: giriş oto-fiş (yönler), detay, ham fiş kilidi, sil, düzenle re-post."""
+    @classmethod
+    def setUpTestData(cls):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Cari, Kur
+        cls.yon = User.objects.create_superuser("cyon", password="x")
+        cls.bos = User.objects.create_user("cbos", password="x")
+        for kod, ad in (("101.01", "ALINAN ÇEKLER"), ("103.01", "VERİLEN ÇEKLER"),
+                        ("120.01", "ALICI"), ("320.01", "SATICI")):
+            _hesap(kod, ad)
+        Kur.objects.create(tarih=timezone.localdate(), usd_alis=Decimal("40"))
+        cls.alici = Cari.objects.create(kod="A1", unvan="ALICI A", muhasebe_kodu="120.01",
+                                        created_by=cls.yon, updated_by=cls.yon)
+        cls.satici = Cari.objects.create(kod="S1", unvan="SATICI S", muhasebe_kodu="320.01",
+                                         created_by=cls.yon, updated_by=cls.yon)
+
+    def _olustur(self, yon, hesap, cari):
+        import datetime
+        from decimal import Decimal
+        from core.services.cek_senet import cek_senet_olustur
+        return cek_senet_olustur(tip="CEK", yon=yon, tutar=Decimal("1000"),
+                                 vade=datetime.date(2026, 12, 1), muhasebe_kodu=hesap,
+                                 cari_id=cari.pk, kullanici=self.yon)
+
+    def test_verilen_giris_yon(self):
+        from decimal import Decimal
+        cs = self._olustur("VERILEN", "103.01", self.satici)
+        s = {x.hesap_id: (x.borc, x.alacak) for x in cs.fisler.get().satirlar.all()}
+        self.assertEqual(s["320.01"], (Decimal("1000.00"), Decimal("0.00")))   # cari borç
+        self.assertEqual(s["103.01"], (Decimal("0.00"), Decimal("1000.00")))   # çek alacak
+
+    def test_detay_ve_fis_kilidi(self):
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        fis = cs.fisler.get()
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:cek_senet_detay", args=[cs.pk]))
+        self.assertEqual(d.status_code, 200)
+        self.assertContains(d, reverse("core:fis_detay", args=[fis.pk]))
+        self.assertRedirects(self.client.get(reverse("core:fis_duzenle", args=[fis.pk])),
+                             reverse("core:cek_senet_detay", args=[cs.pk]))      # ham düzenleme kilitli
+        self.assertContains(self.client.get(reverse("core:fis_listesi")),
+                            reverse("core:fis_detay", args=[fis.pk]))            # listede detaya bağlı
+
+    def test_sil_fisi_iptal_eder(self):
+        from core.services.cek_senet import cek_senet_sil
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        fis = cs.fisler.get()
+        cek_senet_sil(cs, kullanici=self.yon)
+        cs.refresh_from_db(); fis.refresh_from_db()
+        self.assertTrue(cs.silindi)
+        self.assertTrue(fis.silindi)
+
+    def test_duzenle_repost_ve_islem_gormus_kilit(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import CekSenet
+        from core.services.cek_senet import CekSenetHatasi, cek_senet_guncelle
+        cs = self._olustur("ALINAN", "101.01", self.alici)
+        cek_senet_guncelle(cs, tip="CEK", yon="ALINAN", tutar=Decimal("2500"),
+                           vade=datetime.date(2026, 12, 1), muhasebe_kodu="101.01",
+                           cari_id=self.alici.pk, kullanici=self.yon)
+        fis = cs.fisler.filter(silindi=False).get()
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+        self.assertEqual(s["101.01"][0], Decimal("2500.00"))   # giriş fişi yeniden yazıldı
+        cs.durum = CekSenet.Durum.TAHSIL                        # işlem görmüş -> kilit
+        cs.save(update_fields=["durum"])
+        with self.assertRaises(CekSenetHatasi):
+            cek_senet_guncelle(cs, tip="CEK", yon="ALINAN", tutar=Decimal("99"),
+                               vade=datetime.date(2026, 12, 1), muhasebe_kodu="101.01",
+                               cari_id=self.alici.pk, kullanici=self.yon)

@@ -59,6 +59,7 @@ from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
+from core.services import cek_senet as cek_senet_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -188,6 +189,11 @@ def fis_duzenle(request, pk):
                                "Gerekirse hareketi iptal edip yeniden girin.")
         return (redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id) if fis.banka_hesap_id
                 else redirect("core:fis_detay", pk=fis.pk))
+    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET:
+        messages.info(request, "Bu fiş bir çek/senet işleminden oluştu; düzenlenemez. "
+                               "Gerekirse evraktan iptal edip yeniden girin.")
+        return (redirect("core:cek_senet_detay", pk=fis.cek_senet_id) if fis.cek_senet_id
+                else redirect("core:fis_detay", pk=fis.pk))
 
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -240,6 +246,9 @@ def fis_iptal_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.BANKA and not fis.silindi and fis.banka_hesap_id:
         messages.info(request, "Bu fiş bir banka hareketinden oluştu; iptal için banka hesabı detayını kullanın.")
         return redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET and not fis.silindi and fis.cek_senet_id:
+        messages.info(request, "Bu fiş bir çek/senet işleminden oluştu; iptal için çek/senet detayını kullanın.")
+        return redirect("core:cek_senet_detay", pk=fis.cek_senet_id)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1800,21 +1809,29 @@ def cek_senetler(request):
 
 
 @ekran_gerekli("cek_senet")
+def cek_senet_detay(request, pk):
+    """Çek/senet detayı: evrak bilgisi + durum + bağlı yevmiye fişleri.
+    (İşlem butonları — tahsil/ödendi/ciro… — sonraki dilimde.)"""
+    cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
+    fisler = cs.fisler.filter(silindi=False).order_by("yil", "fis_no")
+    return render(request, "core/cek_senet_detay.html", {"cs": cs, "fisler": fisler})
+
+
+@ekran_gerekli("cek_senet")
 def cek_senet_ekle(request):
     if request.method == "POST":
         form = CekSenetForm(request.POST)
         if form.is_valid():
             cd = form.cleaned_data
             try:
-                finans_servis.cek_senet_olustur(
+                cs = cek_senet_servis.cek_senet_olustur(
                     tip=cd["tip"], yon=cd["yon"], tutar=cd["tutar"], vade=cd["vade"],
                     para_birimi=cd["para_birimi"], kesideci=cd["kesideci"],
-                    belge_no=cd["belge_no"], durum=cd["durum"],
-                    muhasebe_kodu=cd["muhasebe"].hesap_kodu,
-                    cari_id=(cd["cari"].pk if cd.get("cari") else None), kullanici=request.user)
-                messages.success(request, "Çek/Senet eklendi.")
-                return redirect("core:cek_senetler")
-            except finans_servis.FinansHatasi as e:
+                    belge_no=cd["belge_no"], muhasebe_kodu=cd["muhasebe"].hesap_kodu,
+                    cari_id=cd["cari"].pk, kullanici=request.user)
+                messages.success(request, "Çek/Senet eklendi; giriş fişi oluşturuldu.")
+                return redirect("core:cek_senet_detay", pk=cs.pk)
+            except cek_senet_servis.CekSenetHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = CekSenetForm()
@@ -1831,33 +1848,35 @@ def cek_senet_duzenle(request, pk):
         if form.is_valid():
             cd = form.cleaned_data
             try:
-                finans_servis.cek_senet_guncelle(
+                cek_senet_servis.cek_senet_guncelle(
                     cs, tip=cd["tip"], yon=cd["yon"], tutar=cd["tutar"], vade=cd["vade"],
                     para_birimi=cd["para_birimi"], kesideci=cd["kesideci"],
-                    belge_no=cd["belge_no"], durum=cd["durum"],
-                    muhasebe_kodu=cd["muhasebe"].hesap_kodu,
-                    cari_id=(cd["cari"].pk if cd.get("cari") else None), kullanici=request.user)
+                    belge_no=cd["belge_no"], muhasebe_kodu=cd["muhasebe"].hesap_kodu,
+                    cari_id=cd["cari"].pk, kullanici=request.user)
                 messages.success(request, "Çek/Senet güncellendi.")
-                return redirect("core:cek_senetler")
-            except finans_servis.FinansHatasi as e:
+                return redirect("core:cek_senet_detay", pk=cs.pk)
+            except cek_senet_servis.CekSenetHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = CekSenetForm(initial={
             "tip": cs.tip, "yon": cs.yon, "tutar": cs.tutar, "vade": cs.vade,
             "para_birimi": cs.para_birimi, "kesideci": cs.kesideci, "belge_no": cs.belge_no,
-            "durum": cs.durum, "cari": cs.cari_id, "muhasebe": cs.muhasebe.hesap_kodu},
+            "cari": cs.cari_id, "muhasebe": cs.muhasebe.hesap_kodu},
             mevcut_hesap=cs.muhasebe.hesap_kodu)
     return render(request, "core/finans_form.html",
                   {"form": form, "baslik": "Çek / Senet Düzenle", "emoji": "📜",
-                   "iptal_url": reverse("core:cek_senetler")})
+                   "iptal_url": reverse("core:cek_senet_detay", args=[cs.pk])})
 
 
 @ekran_gerekli("cek_senet")
 def cek_senet_sil(request, pk):
     cs = get_object_or_404(CekSenet, pk=pk, silindi=False)
     if request.method == "POST":
-        finans_servis.cek_senet_sil(cs, kullanici=request.user)
-        messages.success(request, "Çek/Senet silindi.")
+        try:
+            cek_senet_servis.cek_senet_sil(cs, kullanici=request.user)
+            messages.success(request, "Çek/Senet silindi (bağlı fiş iptal edildi).")
+        except cek_senet_servis.CekSenetHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:cek_senetler")
 
 

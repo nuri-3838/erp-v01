@@ -643,10 +643,8 @@ class CekSenetForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     kesideci = forms.CharField(label="Keşideci", max_length=200, required=False)
     belge_no = forms.CharField(label="Belge No", max_length=50, required=False)
-    durum = forms.ChoiceField(label="Durum", choices=CekSenet.Durum.choices,
-                              initial=CekSenet.Durum.PORTFOYDE)
-    cari = forms.ModelChoiceField(label="Cari (opsiyonel)", queryset=Cari.objects.none(),
-                                  required=False, empty_label="— cari seç —")
+    cari = forms.ModelChoiceField(label="Cari (karşı taraf)", queryset=Cari.objects.none(),
+                                  empty_label="— cari seç —")
     muhasebe = _muhasebe_alani()
 
     def __init__(self, *args, mevcut_hesap=None, **kwargs):

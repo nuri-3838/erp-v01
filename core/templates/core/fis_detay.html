@@ -54,6 +54,10 @@
     <p class="yardim" style="margin:0 0 .6rem">🏦 Bu fiş bir <strong>banka hareketinden</strong> otomatik oluştu;
       düzenleme/iptal banka hesabı ekranından yapılır.</p>
     {% if fis.banka_hesap_id %}<a class="dugme" href="{% url 'core:banka_hesap_detay' fis.banka_hesap_id %}">🏦 Banka hesabına git</a>{% endif %}
+  {% elif fis.kaynak == 'CEK_SENET' %}
+    <p class="yardim" style="margin:0 0 .6rem">📜 Bu fiş bir <strong>çek/senet işleminden</strong> otomatik oluştu;
+      düzenleme/iptal çek/senet ekranından yapılır.</p>
+    {% if fis.cek_senet_id %}<a class="dugme" href="{% url 'core:cek_senet_detay' fis.cek_senet_id %}">📜 Çek/Senet'e git</a>{% endif %}
   {% else %}
     <a class="dugme" href="{% url 'core:fis_duzenle' fis.pk %}">Düzenle</a>
     <form method="post" action="{% url 'core:fis_iptal' fis.pk %}" style="display:inline"

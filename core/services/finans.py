@@ -323,36 +323,5 @@ def _cek_alanlar(tip, yon, durum):
     return tip, yon, (durum or CekSenet.Durum.PORTFOYDE)
 
 
-def cek_senet_olustur(*, tip, yon, tutar, vade, para_birimi="TRY", kesideci="", belge_no="",
-                      durum="", muhasebe_kodu, cari_id=None, kullanici=None) -> CekSenet:
-    tip, yon, durum = _cek_alanlar(tip, yon, durum)
-    return CekSenet.objects.create(
-        tip=tip, yon=yon, tutar=_sayi(tutar, "Tutar", pozitif=True), vade=vade,
-        para_birimi=_pb(para_birimi), kesideci=buyuk_harf_tr((kesideci or "").strip()),
-        belge_no=(belge_no or "").strip(), durum=durum,
-        muhasebe=_yaprak_hesap_coz(muhasebe_kodu), cari=_cari_coz(cari_id),
-        created_by=kullanici, updated_by=kullanici)
-
-
-def cek_senet_guncelle(cs: CekSenet, *, tip, yon, tutar, vade, para_birimi="TRY", kesideci="",
-                       belge_no="", durum="", muhasebe_kodu, cari_id=None,
-                       kullanici=None) -> CekSenet:
-    if cs.silindi:
-        raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
-    tip, yon, durum = _cek_alanlar(tip, yon, durum)
-    cs.tip, cs.yon, cs.durum = tip, yon, durum
-    cs.tutar = _sayi(tutar, "Tutar", pozitif=True)
-    cs.vade = vade
-    cs.para_birimi = _pb(para_birimi)
-    cs.kesideci = buyuk_harf_tr((kesideci or "").strip())
-    cs.belge_no = (belge_no or "").strip()
-    cs.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
-    cs.cari = _cari_coz(cari_id)
-    cs.updated_by = kullanici
-    cs.save(update_fields=["tip", "yon", "tutar", "vade", "para_birimi", "kesideci",
-                           "belge_no", "durum", "muhasebe", "cari", "updated_by", "updated_at"])
-    return cs
-
-
-def cek_senet_sil(cs: CekSenet, kullanici=None) -> CekSenet:
-    return _soft_sil(cs, kullanici)
+# NOT: çek/senet oluştur/güncelle/sil ARTIK core/services/cek_senet.py'de
+# (giriş fişi üreten yaşam-döngüsü motoru). _cek_alanlar + aktif_cek_senetler burada kaldı.

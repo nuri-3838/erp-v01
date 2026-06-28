@@ -18,7 +18,7 @@
       <tr>
         <td>{{ c.get_tip_display }}</td>
         <td>{{ c.get_yon_display }}</td>
-        <td class="mono">{{ c.belge_no|default:"—" }}</td>
+        <td class="mono"><a href="{% url 'core:cek_senet_detay' c.pk %}">{{ c.belge_no|default:"detay" }}</a></td>
         <td class="sag mono">{{ c.tutar|tr_para }} {{ c.para_birimi }}</td>
         <td class="mono">{{ c.vade|date:"d.m.Y" }}</td>
         <td>{{ c.kesideci|default:"—" }}</td>
@@ -26,7 +26,8 @@
         <td>{% if c.cari %}{{ c.cari.unvan }}{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="mono">{{ c.muhasebe.hesap_kodu }}</span></td>
         <td><span class="islem-bag">
-          <a href="{% url 'core:cek_senet_duzenle' c.pk %}">Düzenle</a>
+          <a href="{% url 'core:cek_senet_detay' c.pk %}">Detay</a>
+          {% if c.durum == 'PORTFOYDE' %}<a href="{% url 'core:cek_senet_duzenle' c.pk %}">Düzenle</a>{% endif %}
           <form method="post" action="{% url 'core:cek_senet_sil' c.pk %}" onsubmit="return confirm('Silinsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
         </span></td>
