@@ -1,0 +1,109 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Cari Ciro · Çek/Senet{% endblock %}
+{% block sayfa_adi %}Çek/Senet · Cari Ciro{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .pf-cb { width:18px; height:18px; cursor:pointer; }
+  .pf-tablo tr.secili td { background:rgba(240,124,0,.08); }
+  #pf-ozet { font-weight:650; color:var(--lacivert); }
+</style>
+
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cek_senetler' %}">← Çek / Senet</a>
+    <h1 class="ust-baslik"><span class="emoji">🔁</span>Cari Ciro</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" id="ciro-form" autocomplete="off">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Ciro Bilgileri</h2>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.cari.id_for_label }}">{{ form.cari.label }}</label>
+          <div class="akilli">{{ form.cari }}</div>
+          {% for e in form.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
+          {{ form.tarih }}
+          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <p class="yardim">Portföydeki alınan çek/senetler seçtiğin cariye ciro edilir
+        (<span class="mono">ciro carisi borç / Portföydeki çek-senet alacak</span>). Seçilenler aynı para
+        biriminde olmalı; ciro edilen evrak portföyden çıkar.</p>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Portföydeki Çek / Senetler</h2>
+      {% if portfoy %}
+      <div class="tablo-kapsayici">
+      <table class="pf-tablo">
+        <thead><tr>
+          <th style="width:36px"></th><th>Tip</th><th>Belge No</th><th>Keşideci</th>
+          <th>Vade</th><th class="sag">Tutar</th><th>PB</th><th>Cari</th>
+        </tr></thead>
+        <tbody>
+          {% for c in portfoy %}
+          <tr>
+            <td><input type="checkbox" class="pf-cb" name="cek_ids" value="{{ c.pk }}"
+                       data-pb="{{ c.para_birimi }}" data-tutar="{{ c.tutar }}"></td>
+            <td>{{ c.get_tip_display }}</td>
+            <td class="mono">{{ c.belge_no|default:"—" }}</td>
+            <td>{{ c.kesideci|default:"—" }}</td>
+            <td class="mono">{{ c.vade|date:"d.m.Y" }}</td>
+            <td class="sag mono">{{ c.tutar|tr_para }}</td>
+            <td class="mono">{{ c.para_birimi }}</td>
+            <td>{% if c.cari %}{{ c.cari.unvan }}{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="yardim" id="pf-ozet" style="margin-top:.7rem">Seçili: 0 evrak</p>
+      {% else %}
+      <p class="yardim">Portföyde ciro edilebilecek alınan çek/senet yok. Önce <strong>Cari Giriş</strong> ile ekleyin.</p>
+      {% endif %}
+    </section>
+
+    {% if portfoy %}
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cek_senetler' %}">İptal</a>
+      <button type="submit" class="birincil">Ciro Et</button>
+    </div>
+    {% endif %}
+  </form>
+</div>
+
+<script>
+(function(){
+  var cbs = Array.prototype.slice.call(document.querySelectorAll('.pf-cb'));
+  var ozet = document.getElementById('pf-ozet');
+  if(!cbs.length) return;
+  function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function guncelle(){
+    var sec = cbs.filter(function(c){ return c.checked; });
+    var pb = sec.length ? sec[0].dataset.pb : null;
+    cbs.forEach(function(c){
+      c.disabled = !!pb && c.dataset.pb !== pb;          // aynı PB zorla
+      c.closest('tr').classList.toggle('secili', c.checked);
+    });
+    var top = 0; sec.forEach(function(c){ top += parseFloat(c.dataset.tutar) || 0; });
+    ozet.textContent = sec.length
+      ? ('Seçili: ' + sec.length + ' evrak · Toplam: ' + fmt(top) + ' ' + pb)
+      : 'Seçili: 0 evrak';
+  }
+  cbs.forEach(function(c){ c.addEventListener('change', guncelle); });
+  guncelle();
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

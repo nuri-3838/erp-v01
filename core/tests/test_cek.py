@@ -97,10 +97,13 @@ class CariGirisBordroTest(TestCase):
         _hesap("103.01", "VERİLEN ÇEKLER")
         _hesap("321.01", "BORÇ SENETLERİ")
         _hesap("120.01", "ALICILAR")
+        _hesap("320.01", "SATICILAR")
         hesap_ayari_kaydet({"portfoy_cek": "101.01", "portfoy_senet": "121.01",
                             "verilen_cek": "103.01", "verilen_senet": "321.01"}, kullanici=cls.yon)
         cls.cari = Cari.objects.create(kod="C1", unvan="MÜŞTERİ A", muhasebe_kodu="120.01",
                                        created_by=cls.yon, updated_by=cls.yon)
+        cls.satici = Cari.objects.create(kod="S1", unvan="SATICI A", muhasebe_kodu="320.01",
+                                         created_by=cls.yon, updated_by=cls.yon)
         Kur.objects.create(tarih=datetime.date(2026, 6, 28), usd_alis=Decimal("40"))
 
     def _olustur(self, satirlar):
@@ -252,6 +255,47 @@ class CariGirisBordroTest(TestCase):
         self.assertEqual(self.client.get(reverse("core:cek_firma_cikis")).status_code, 200)
         r = self.client.get(reverse("core:cek_senetler"))
         self.assertContains(r, reverse("core:cek_firma_cikis"))   # aktif buton
+
+    def test_cari_ciro_bordrosu_ve_geri_al(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import CekBordrosu, CekSenet
+        from core.services.cek import bordro_sil, cari_ciro_bordrosu_olustur
+        g = self._olustur([{"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 9, 1)},
+                           {"tip": "CEK", "tutar": "2.000", "vade": datetime.date(2026, 10, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        cb = cari_ciro_bordrosu_olustur(ciro_cari_id=self.satici.pk, tarih=datetime.date(2026, 6, 28),
+                                        cek_ids=cek_ids, kullanici=self.yon)
+        self.assertEqual(cb.tur, CekBordrosu.Tur.CARI_CIRO)
+        self.assertEqual(cb.evrak_qs().count(), 2)
+        self.assertTrue(all(c.durum == "CIRO" for c in CekSenet.objects.filter(pk__in=cek_ids)))
+        fis = cb.fisler.get()
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.all()}
+        self.assertEqual(s["320.01"], (Decimal("3000.00"), Decimal("0.00")))   # ciro carisi borç
+        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("3000.00")))   # portföy çek alacak
+        # geri-al → portföye döner
+        bordro_sil(cb, kullanici=self.yon)
+        cb.refresh_from_db(); fis.refresh_from_db()
+        self.assertTrue(cb.silindi)
+        self.assertTrue(fis.silindi)
+        self.assertTrue(all(c.durum == "PORTFOYDE" for c in CekSenet.objects.filter(pk__in=cek_ids)))
+
+    def test_ciro_portfoyde_olmayan_reddedilir(self):
+        import datetime
+        from core.services.cek import CekHatasi, cari_ciro_bordrosu_olustur
+        g = self._olustur([{"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 9, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        cari_ciro_bordrosu_olustur(ciro_cari_id=self.satici.pk, tarih=datetime.date(2026, 6, 28),
+                                   cek_ids=cek_ids, kullanici=self.yon)
+        with self.assertRaises(CekHatasi):           # artık CIRO; tekrar ciro edilemez
+            cari_ciro_bordrosu_olustur(ciro_cari_id=self.satici.pk, tarih=datetime.date(2026, 6, 28),
+                                       cek_ids=cek_ids, kullanici=self.yon)
+
+    def test_ciro_view_ve_aktif_buton(self):
+        self.client.force_login(self.yon)
+        self.assertEqual(self.client.get(reverse("core:cek_cari_ciro")).status_code, 200)
+        r = self.client.get(reverse("core:cek_senetler"))
+        self.assertContains(r, reverse("core:cek_cari_ciro"))
 
     def test_detay_ortalama_vade_ve_pdf(self):
         import datetime

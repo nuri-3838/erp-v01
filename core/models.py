@@ -1153,6 +1153,9 @@ class CekBordrosu(TemelModel):
         "BankaHesap", verbose_name="banka hesabı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cek_bordrolari")
 
+    # Evrak OLUŞTURAN bordro türleri (giriş/çıkış). Diğerleri mevcut evrakı SEÇER (işlem bordrosu).
+    GIRIS_TURLERI = (Tur.CARI_GIRIS, Tur.FIRMA_CIKIS)
+
     class Meta:
         db_table = "finans_cek_bordrosu"
         verbose_name = "çek/senet bordrosu"
@@ -1161,6 +1164,14 @@ class CekBordrosu(TemelModel):
 
     def __str__(self):
         return f"{self.get_tur_display()} #{self.pk}"
+
+    def evrak_qs(self):
+        """Bu bordronun çek/senetleri: giriş/çıkış → oluşturduğu (giris_bordrosu);
+        işlem bordrosu → seçtiği (CekBordroSatir)."""
+        if self.tur in self.GIRIS_TURLERI:
+            return self.cek_senetler.filter(silindi=False)
+        return CekSenet.objects.filter(bordro_satirlari__bordro=self,
+                                       bordro_satirlari__silindi=False, silindi=False)
 
 
 class CekSenet(TemelModel):
@@ -1217,3 +1228,24 @@ class CekSenet(TemelModel):
 
     def __str__(self):
         return f"{self.get_tip_display()} {self.belge_no} {self.tutar}"
+
+
+class CekBordroSatir(TemelModel):
+    """İşlem bordrosu (ciro/tahsil/teminat…) ile işlenen çek/senet bağı + işlem ÖNCESİ durum
+    (geri-al için). Giriş/çıkış bordroları evrakı CekSenet.giris_bordrosu ile bağlar; bu model
+    yalnız MEVCUT evrakı SEÇEN işlem bordroları içindir."""
+
+    bordro = models.ForeignKey(CekBordrosu, verbose_name="bordro",
+                               on_delete=models.PROTECT, related_name="satirlar")
+    cek_senet = models.ForeignKey(CekSenet, verbose_name="çek/senet",
+                                  on_delete=models.PROTECT, related_name="bordro_satirlari")
+    onceki_durum = models.CharField("önceki durum", max_length=12, choices=CekSenet.Durum.choices)
+
+    class Meta:
+        db_table = "finans_cek_bordro_satir"
+        verbose_name = "çek/senet bordro satırı"
+        verbose_name_plural = "çek/senet bordro satırları"
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"Bordro #{self.bordro_id} · {self.cek_senet_id}"

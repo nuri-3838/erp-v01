@@ -12,8 +12,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db import transaction
 
 from core.metin import buyuk_harf_tr
-from core.models import (Cari, CekBordrosu, CekHesapAyari, CekSenet, HesapPlani,
-                         Kur, YevmiyeFisi)
+from core.models import (Cari, CekBordrosu, CekBordroSatir, CekHesapAyari, CekSenet,
+                         HesapPlani, Kur, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr
 from core.services.finans import FinansHatasi, _soft_sil, _yaprak_hesap_coz
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
@@ -205,20 +205,108 @@ def firma_cikis_bordrosu_olustur(**kwargs) -> CekBordrosu:
     return _bordro_olustur(GIRIS_TANIM["cikis"], **kwargs)
 
 
+# === İşlem bordroları (mevcut evrakı SEÇER): Cari Ciro (Tahsil/Teminat sonraki dilim) ===
+# İşlem bordrosunun çeke verdiği sonuç durum (geri-al güvenlik kontrolü için).
+_ISLEM_SONUC = {CekBordrosu.Tur.CARI_CIRO: CekSenet.Durum.CIRO}
+
+
+def portfoydeki_cekler(yon=CekSenet.Yon.ALINAN, durum=CekSenet.Durum.PORTFOYDE):
+    """Seçim ekranı için uygun (alınan/portföyde) çek/senetler — vade sırasıyla."""
+    return (CekSenet.objects.filter(silindi=False, yon=yon, durum=durum)
+            .select_related("cari").order_by("para_birimi", "vade", "id"))
+
+
+def _secim_coz(cek_ids, *, yon=CekSenet.Yon.ALINAN, durum=CekSenet.Durum.PORTFOYDE):
+    """Form'dan gelen pk listesini doğrula → CekSenet listesi (hepsi uygun + tek PB)."""
+    try:
+        ids = [int(x) for x in cek_ids if str(x).strip()]
+    except (TypeError, ValueError):
+        raise CekHatasi("Geçersiz çek/senet seçimi.")
+    if not ids:
+        raise CekHatasi("En az bir çek/senet seçilmeli.")
+    cekler = list(CekSenet.objects.filter(pk__in=set(ids), silindi=False))
+    if len(cekler) != len(set(ids)):
+        raise CekHatasi("Seçilen çek/senetlerden bazıları bulunamadı.")
+    for c in cekler:
+        if c.yon != yon or c.durum != durum:
+            raise CekHatasi(f"{c.belge_no or c.pk} bu işlem için uygun değil "
+                            f"(yalnız portföydeki alınan evrak).")
+    if len({c.para_birimi for c in cekler}) > 1:
+        raise CekHatasi("Seçilen çek/senetler aynı para biriminde olmalı (tek fiş).")
+    return cekler
+
+
+@transaction.atomic
+def cari_ciro_bordrosu_olustur(*, ciro_cari_id, tarih, cek_ids, aciklama="", kullanici=None) -> CekBordrosu:
+    """Portföydeki alınan çek/senetleri bir cariye CİRO: ciro carisi BORÇ / Portföydeki
+    çek-senet ALACAK. Seçilen evrak PORTFÖYDE+ALINAN+aynı PB; durumları CIRO'ya geçer."""
+    cari, cari_hesap = _cari_coz(ciro_cari_id)
+    cekler = _secim_coz(cek_ids)
+    pb = cekler[0].para_birimi
+    kur = _kur_coz(pb, tarih)
+    ayar = CekHesapAyari.get()
+    cek_top = sum((c.tutar for c in cekler if c.tip == CekSenet.Tip.CEK), Decimal("0"))
+    senet_top = sum((c.tutar for c in cekler if c.tip == CekSenet.Tip.SENET), Decimal("0"))
+    alacak_satir = []
+    if cek_top > 0:
+        alacak_satir.append((_ayar_hesap(ayar, "portfoy", CekSenet.Tip.CEK).hesap_kodu, cek_top))
+    if senet_top > 0:
+        alacak_satir.append((_ayar_hesap(ayar, "portfoy", CekSenet.Tip.SENET).hesap_kodu, senet_top))
+    toplam = cek_top + senet_top
+    bordro = CekBordrosu.objects.create(
+        tur=CekBordrosu.Tur.CARI_CIRO, tarih=tarih, cari=cari,
+        aciklama=(aciklama.strip() or buyuk_harf_tr(f"ÇEK/SENET CİRO - {cari.unvan}")),
+        created_by=kullanici, updated_by=kullanici)
+    for c in cekler:
+        CekBordroSatir.objects.create(bordro=bordro, cek_senet=c, onceki_durum=c.durum,
+                                      created_by=kullanici, updated_by=kullanici)
+        c.durum = CekSenet.Durum.CIRO
+        c.updated_by = kullanici
+        c.save(update_fields=["durum", "updated_by", "updated_at"])
+    girdiler = [SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf="B",
+                           islem_tutari=toplam, islem_pb=pb, islem_kuru=kur)]
+    girdiler += [SatirGirdi(hesap_kodu=kod, taraf="A", islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
+                 for kod, tut in alacak_satir]
+    try:
+        fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=bordro.aciklama,
+                          kur_usd=None, kaynak=YevmiyeFisi.Kaynak.CEK_SENET, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise CekHatasi(str(e))
+    fis.cek_bordrosu = bordro
+    fis.save(update_fields=["cek_bordrosu", "updated_at"])
+    return bordro
+
+
 @transaction.atomic
 def bordro_sil(bordro: CekBordrosu, kullanici=None) -> CekBordrosu:
-    """Bordroyu geri al: bağlı fiş(ler) iptal + oluşturduğu çek/senetler soft-delete + bordro
-    soft-delete. Evrak giriş durumundan çıkmışsa (işlem görmüşse) engellenir."""
+    """Bordroyu geri al: bağlı fiş(ler) iptal + bordro soft-delete.
+    Giriş/çıkış bordrosu: oluşturduğu evrakı soft-delete (evrak işlem görmüşse engellenir).
+    İşlem bordrosu: seçtiği evrakın durumunu ÖNCEKİ haline döndürür (sonradan işlem görmüşse engellenir)."""
     if bordro.silindi:
         return bordro
-    cekler = bordro.cek_senetler.filter(silindi=False)
-    beklenen = _GIRIS_DURUM.get(bordro.tur)
-    if beklenen and cekler.exclude(durum=beklenen).exists():
-        raise CekHatasi("Bu bordrodaki bazı çek/senetler işlem görmüş; önce o işlemleri geri alın.")
-    for fis in bordro.fisler.filter(silindi=False):
-        fis_iptal(fis, kullanici=kullanici)
-    for cek in cekler:
-        _soft_sil(cek, kullanici)
+    if bordro.tur in CekBordrosu.GIRIS_TURLERI:
+        cekler = bordro.cek_senetler.filter(silindi=False)
+        beklenen = _GIRIS_DURUM.get(bordro.tur)
+        if beklenen and cekler.exclude(durum=beklenen).exists():
+            raise CekHatasi("Bu bordrodaki bazı çek/senetler işlem görmüş; önce o işlemleri geri alın.")
+        for fis in bordro.fisler.filter(silindi=False):
+            fis_iptal(fis, kullanici=kullanici)
+        for cek in cekler:
+            _soft_sil(cek, kullanici)
+    else:
+        satirlar = list(bordro.satirlar.filter(silindi=False).select_related("cek_senet"))
+        sonuc = _ISLEM_SONUC.get(bordro.tur)
+        if sonuc and any(s.cek_senet.durum != sonuc for s in satirlar):
+            raise CekHatasi("Bu bordrodaki bazı çek/senetler sonradan işlem görmüş; "
+                            "önce o işlemleri geri alın.")
+        for fis in bordro.fisler.filter(silindi=False):
+            fis_iptal(fis, kullanici=kullanici)
+        for s in satirlar:
+            c = s.cek_senet
+            c.durum = s.onceki_durum
+            c.updated_by = kullanici
+            c.save(update_fields=["durum", "updated_by", "updated_at"])
+            _soft_sil(s, kullanici)
     return _soft_sil(bordro, kullanici)
 
 

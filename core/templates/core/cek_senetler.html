@@ -48,15 +48,15 @@
     <p class="cs-grup-baslik">⬆️ Çıkış</p>
     <div class="cs-butonlar">
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_firma_cikis' %}">🏭 Firma Çek-Senet</a>
-      <span class="cs-islem">🔁 Cari Ciro</span>
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_cari_ciro' %}">🔁 Cari Ciro</a>
       <span class="cs-islem">🏦 Banka Tahsil</span>
       <span class="cs-islem">🔒 Banka Teminat</span>
       <span class="cs-islem">↩️ Cari İade</span>
     </div>
   </div>
-  <p class="yardim" style="margin-top:1rem"><strong>Cari Giriş</strong> ve <strong>Firma Çek-Senet</strong> aktif.
-    Diğer işlemler sıradaki adımlarda aktifleşecek. İşlemler yevmiye fişini ⚙️ <strong>Muhasebe Hesap Kodları</strong>'ndaki
-    eşlemeden üretir (önce orayı tanımlayın).</p>
+  <p class="yardim" style="margin-top:1rem"><strong>Cari Giriş</strong>, <strong>Firma Çek-Senet</strong> ve
+    <strong>Cari Ciro</strong> aktif. Diğer işlemler sıradaki adımlarda aktifleşecek. İşlemler yevmiye fişini
+    ⚙️ <strong>Muhasebe Hesap Kodları</strong>'ndaki eşlemeden üretir (önce orayı tanımlayın).</p>
 </section>
 
 <input type="radio" name="cs-tab" id="cs-tab-bordro" class="cs-tab-girdi" checked>
@@ -75,7 +75,7 @@
           <td><a href="{% url 'core:cek_bordro_detay' b.pk %}">{{ b.get_tur_display }} #{{ b.pk }}</a></td>
           <td class="mono">{{ b.tarih|date:"d.m.Y" }}</td>
           <td>{% if b.cari %}{{ b.cari.unvan }}{% else %}—{% endif %}</td>
-          <td class="sag mono">{{ b.cek_senetler.count }}</td>
+          <td class="sag mono">{{ b.evrak_qs.count }}</td>
         </tr>
       {% empty %}
         <tr><td colspan="4" class="yardim" style="text-align:center;padding:1.2rem 0">Henüz bordro yok.</td></tr>

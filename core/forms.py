@@ -685,6 +685,23 @@ class BordroBaslikForm(forms.Form):
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
 
+class CariCiroForm(forms.Form):
+    """Cari Ciro başlığı: ciro edilen cari (yeni hamil) + işlem tarihi. (Evrak seçimi
+    şablonda checkbox listesiyle; PB seçilen evraktan türer.)"""
+    cari = forms.ModelChoiceField(label="Ciro Edilen Cari (yeni hamil)",
+                                  queryset=Cari.objects.none(), empty_label="— cari seç —")
+    tarih = forms.DateField(
+        label="İşlem Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+
+
 class CekKalemForm(forms.Form):
     """Bordro satırı: bir çek/senet (tip + tutar + vade + belge no + keşideci + ön/arka görsel)."""
     tip = forms.ChoiceField(label="Tip", choices=CekSenet.Tip.choices)

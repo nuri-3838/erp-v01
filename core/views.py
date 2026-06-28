@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BordroBaslikForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1875,9 +1875,33 @@ def cek_firma_cikis(request):
         basari_ek="verildi")
 
 
+@ekran_gerekli("cek_senet")
+def cek_cari_ciro(request):
+    """Cari Ciro: portföydeki alınan çek/senetleri listeden seçip bir cariye ciro et."""
+    if request.method == "POST":
+        form = CariCiroForm(request.POST)
+        cek_ids = request.POST.getlist("cek_ids")
+        if form.is_valid():
+            try:
+                bordro = cek_servis.cari_ciro_bordrosu_olustur(
+                    ciro_cari_id=form.cleaned_data["cari"].pk,
+                    tarih=form.cleaned_data["tarih"],
+                    cek_ids=cek_ids, kullanici=request.user)
+                messages.success(request, f"Ciro bordrosu kaydedildi; {len(cek_ids)} evrak "
+                                          f"ciro edildi, fiş oluşturuldu.")
+                return redirect("core:cek_bordro_detay", pk=bordro.pk)
+            except cek_servis.CekHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariCiroForm()
+    return render(request, "core/cek_cari_ciro.html",
+                  {"form": form, "portfoy": cek_servis.portfoydeki_cekler()})
+
+
 def _bordro_baglam(bordro):
-    """Bordro + çek/senetleri + fişleri + toplam + AĞIRLIKLI ORTALAMA VADE bağlamı."""
-    cekler = list(bordro.cek_senetler.filter(silindi=False).order_by("vade", "id"))
+    """Bordro + çek/senetleri + fişleri + toplam + ORTALAMA VADE bağlamı.
+    Evrak: giriş/çıkış → oluşturduğu; işlem bordrosu → seçtiği (evrak_qs)."""
+    cekler = list(bordro.evrak_qs().order_by("vade", "id"))
     toplam = sum((c.tutar for c in cekler), Decimal("0"))
     ort_vade, vade_gun = cek_servis.ortalama_vade(
         [(c.tutar, c.vade) for c in cekler], bordro.tarih)
