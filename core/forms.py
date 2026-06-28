@@ -588,6 +588,7 @@ class BankaForm(forms.Form):
     kisa_ad = forms.CharField(label="Kısa Ad", max_length=50, required=False)
     sube = forms.CharField(label="Şube", max_length=100, required=False)
     swift_kod = forms.CharField(label="SWIFT/BIC", max_length=11, required=False)
+    musteri_no = forms.CharField(label="Müşteri No", max_length=50, required=False)
     adres = forms.CharField(label="Adres", max_length=255, required=False)
 
 

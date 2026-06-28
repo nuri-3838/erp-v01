@@ -325,9 +325,10 @@ class FinansDigerServisTest(TestCase):
         from core.services.finans import (banka_hesap_olustur, banka_hesaplari,
                                           banka_olustur)
         b = banka_olustur(ad="akbank", kisa_ad="ak", sube="merkez",
-                          swift_kod="akbktris")
+                          swift_kod="akbktris", musteri_no="  12345-Ab1  ")
         self.assertEqual(b.ad, "AKBANK")
         self.assertEqual(b.swift_kod, "AKBKTRIS")
+        self.assertEqual(b.musteri_no, "12345-Ab1")          # strip; TR büyük-harf YOK (sistem kimliği)
         h = banka_hesap_olustur(banka=b, ad="tl mevduat", iban="tr12 0006 4000",
                                 muhasebe_kodu="102.01")
         self.assertEqual(h.ad, "TL MEVDUAT")

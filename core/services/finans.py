@@ -128,14 +128,16 @@ def aktif_bankalar():
     return Banka.objects.filter(silindi=False).order_by("ad")
 
 
-def banka_olustur(*, ad, kisa_ad="", sube="", swift_kod="", adres="", kullanici=None) -> Banka:
+def banka_olustur(*, ad, kisa_ad="", sube="", swift_kod="", musteri_no="", adres="",
+                  kullanici=None) -> Banka:
     return Banka.objects.create(
         ad=_ad_dogrula(Banka, ad), kisa_ad=buyuk_harf_tr((kisa_ad or "").strip()),
         sube=buyuk_harf_tr((sube or "").strip()), swift_kod=(swift_kod or "").strip().upper(),
+        musteri_no=(musteri_no or "").strip(),
         adres=(adres or "").strip(), created_by=kullanici, updated_by=kullanici)
 
 
-def banka_guncelle(b: Banka, *, ad, kisa_ad="", sube="", swift_kod="", adres="",
+def banka_guncelle(b: Banka, *, ad, kisa_ad="", sube="", swift_kod="", musteri_no="", adres="",
                    kullanici=None) -> Banka:
     if b.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
@@ -143,9 +145,10 @@ def banka_guncelle(b: Banka, *, ad, kisa_ad="", sube="", swift_kod="", adres="",
     b.kisa_ad = buyuk_harf_tr((kisa_ad or "").strip())
     b.sube = buyuk_harf_tr((sube or "").strip())
     b.swift_kod = (swift_kod or "").strip().upper()
+    b.musteri_no = (musteri_no or "").strip()
     b.adres = (adres or "").strip()
     b.updated_by = kullanici
-    b.save(update_fields=["ad", "kisa_ad", "sube", "swift_kod", "adres",
+    b.save(update_fields=["ad", "kisa_ad", "sube", "swift_kod", "musteri_no", "adres",
                           "updated_by", "updated_at"])
     return b
 

@@ -975,6 +975,7 @@ class Banka(TemelModel):
     kisa_ad = models.CharField("kısa ad", max_length=50, blank=True, default="")
     sube = models.CharField("şube", max_length=100, blank=True, default="")
     swift_kod = models.CharField("SWIFT/BIC", max_length=11, blank=True, default="")
+    musteri_no = models.CharField("müşteri no", max_length=50, blank=True, default="")
     adres = models.CharField("adres", max_length=255, blank=True, default="")
 
     class Meta:

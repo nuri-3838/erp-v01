@@ -1547,7 +1547,8 @@ def banka_kurum_ekle(request):
             try:
                 banka = finans_servis.banka_olustur(
                     ad=cd["ad"], kisa_ad=cd["kisa_ad"], sube=cd["sube"],
-                    swift_kod=cd["swift_kod"], adres=cd["adres"], kullanici=request.user)
+                    swift_kod=cd["swift_kod"], musteri_no=cd["musteri_no"],
+                    adres=cd["adres"], kullanici=request.user)
                 messages.success(request, "Banka eklendi. Şimdi hesap ekleyebilirsiniz.")
                 return redirect("core:banka_detay", pk=banka.pk)
             except finans_servis.FinansHatasi as e:
@@ -1569,7 +1570,8 @@ def banka_kurum_duzenle(request, pk):
             try:
                 finans_servis.banka_guncelle(
                     banka, ad=cd["ad"], kisa_ad=cd["kisa_ad"], sube=cd["sube"],
-                    swift_kod=cd["swift_kod"], adres=cd["adres"], kullanici=request.user)
+                    swift_kod=cd["swift_kod"], musteri_no=cd["musteri_no"],
+                    adres=cd["adres"], kullanici=request.user)
                 messages.success(request, "Banka güncellendi.")
                 return redirect("core:banka_detay", pk=banka.pk)
             except finans_servis.FinansHatasi as e:
@@ -1577,7 +1579,8 @@ def banka_kurum_duzenle(request, pk):
     else:
         form = BankaForm(initial={
             "ad": banka.ad, "kisa_ad": banka.kisa_ad, "sube": banka.sube,
-            "swift_kod": banka.swift_kod, "adres": banka.adres})
+            "swift_kod": banka.swift_kod, "musteri_no": banka.musteri_no,
+            "adres": banka.adres})
     return render(request, "core/finans_form.html",
                   {"form": form, "baslik": "Banka Düzenle", "emoji": "🏦",
                    "iptal_url": reverse("core:banka_detay", args=[banka.pk])})

@@ -2,54 +2,99 @@
 {% load core_extras %}
 {% block baslik %}{{ banka.ad }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}Banka Detayı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
-  <div>
+<style>
+  .detay-kapsa { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+  .detay-ustbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .detay-aksiyon { display:flex; gap:.5rem; align-items:center; }
+  .detay-baslik-kart { background:linear-gradient(135deg, #21385f 0%, var(--lacivert) 55%, var(--lacivert-koyu) 100%);
+    color:#fff; border-radius:22px; padding:1.3rem 1.5rem; display:flex; gap:1.15rem; align-items:flex-start;
+    box-shadow:var(--golge-lg); border-bottom:4px solid transparent;
+    border-image:linear-gradient(90deg,var(--turuncu),#36d399) 1; }
+  .detay-ikon { width:64px; height:64px; border-radius:16px; background:rgba(255,255,255,.12);
+    display:grid; place-items:center; font-size:1.9rem; flex:0 0 auto; }
+  .detay-rozetler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.45rem; }
+  .d-rozet { font-size:.7rem; font-weight:700; padding:.22rem .62rem; border-radius:999px; }
+  .d-rozet.kod { background:var(--turuncu); color:#fff; font-family:"Cascadia Mono",Consolas,monospace; }
+  .d-rozet.pb { background:rgba(255,255,255,.16); color:#dbe6ff; font-family:"Cascadia Mono",Consolas,monospace; }
+  .detay-ad { font-size:1.5rem; font-weight:750; margin:.05rem 0; letter-spacing:-.01em; line-height:1.2; }
+  .detay-alt { color:rgba(255,255,255,.82); font-size:.92rem; }
+  .kv { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:.9rem 1.6rem; }
+  @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
+  .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
+  .kv .satir.tam { grid-column:1 / -1; }
+  .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .kv .dg { font-weight:600; font-size:.98rem; }
+  .bolum-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+</style>
+
+<div class="detay-kapsa">
+  <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:bankalar' %}">← Banka</a>
-    <h1 class="ust-baslik"><span class="emoji">🏦</span>{{ banka.ad }}</h1>
+    <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:banka_kurum_duzenle' banka.pk %}">✏️ Düzenle</a>
+      <form method="post" action="{% url 'core:banka_kurum_sil' banka.pk %}" style="margin:0"
+            onsubmit="return confirm('{{ banka.ad }} silinsin mi?');">
+        {% csrf_token %}<button type="submit" class="sil">Sil</button>
+      </form>
+    </div>
   </div>
-  <span class="islem-bag">
-    <a class="dugme" href="{% url 'core:banka_kurum_duzenle' banka.pk %}">Düzenle</a>
-    <form method="post" action="{% url 'core:banka_kurum_sil' banka.pk %}" onsubmit="return confirm('Banka silinsin mi?');">
-      {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-  </span>
-</div>
 
-<section class="icerik-kart">
-  <div class="satir"><span class="et">Kısa Ad</span><span class="dg">{{ banka.kisa_ad|default:"—" }}</span></div>
-  <div class="satir"><span class="et">Şube</span><span class="dg">{{ banka.sube|default:"—" }}</span></div>
-  <div class="satir"><span class="et">SWIFT/BIC</span><span class="dg mono">{{ banka.swift_kod|default:"—" }}</span></div>
-  <div class="satir"><span class="et">Adres</span><span class="dg">{{ banka.adres|default:"—" }}</span></div>
-</section>
+  <div class="detay-baslik-kart">
+    <span class="detay-ikon">🏦</span>
+    <div>
+      <div class="detay-rozetler">
+        {% if banka.kisa_ad %}<span class="d-rozet kod">{{ banka.kisa_ad }}</span>{% endif %}
+        {% if banka.swift_kod %}<span class="d-rozet pb">{{ banka.swift_kod }}</span>{% endif %}
+      </div>
+      <div class="detay-ad">{{ banka.ad }}</div>
+      <div class="detay-alt">{% if banka.sube %}{{ banka.sube }}{% else %}Şube belirtilmemiş{% endif %}</div>
+    </div>
+  </div>
 
-<div class="sayfa-ust">
-  <div><h2 class="bolum-baslik">Hesaplar</h2></div>
-  <a class="dugme" href="{% url 'core:banka_hesap_ekle' banka.pk %}">+ Hesap Ekle</a>
-</div>
+  <section class="icerik-kart">
+    <div class="kv">
+      <div class="satir"><span class="et">Kısa Ad</span><span class="dg">{{ banka.kisa_ad|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Şube</span><span class="dg">{{ banka.sube|default:"—" }}</span></div>
+      <div class="satir"><span class="et">SWIFT / BIC</span><span class="dg mono">{{ banka.swift_kod|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Müşteri No</span><span class="dg mono">{{ banka.musteri_no|default:"—" }}</span></div>
+      <div class="satir tam"><span class="et">Adres</span><span class="dg">{{ banka.adres|default:"—" }}</span></div>
+    </div>
+  </section>
 
-<div class="tablo-kapsayici">
-<table>
-  <thead><tr><th>Hesap Adı</th><th>Hesap No</th><th>IBAN</th><th>PB</th><th>Muhasebe Hesabı</th><th>İşlem</th></tr></thead>
-  <tbody>
-    {% for h in hesaplar %}
-      <tr>
-        <td><a href="{% url 'core:banka_hesap_detay' h.pk %}">{{ h.ad }}</a></td>
-        <td class="mono">{{ h.hesap_no|default:"—" }}</td>
-        <td class="mono">{{ h.iban|default:"—" }}</td>
-        <td class="mono">{{ h.para_birimi }}</td>
-        <td><span class="mono">{{ h.muhasebe.hesap_kodu }}</span> {{ h.muhasebe.hesap_adi }}</td>
-        <td><span class="islem-bag">
-          <a href="{% url 'core:banka_hesap_detay' h.pk %}">Detay</a>
-          <a href="{% url 'core:banka_hesap_duzenle' h.pk %}">Düzenle</a>
-          <form method="post" action="{% url 'core:banka_hesap_sil' h.pk %}" onsubmit="return confirm('Hesap silinsin mi?');">
-            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-        </span></td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="6" class="yardim">Bu bankada henüz hesap yok. “+ Hesap Ekle” ile ekleyin.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+  <section class="icerik-kart">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik" style="margin:0"><span class="emoji">💳</span>Hesaplar
+        <span class="yardim" style="text-transform:none;letter-spacing:0;font-weight:500">({{ hesaplar|length }})</span></h2>
+      <a class="dugme" href="{% url 'core:banka_hesap_ekle' banka.pk %}">+ Hesap Ekle</a>
+    </div>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Hesap Adı</th><th>Hesap No</th><th>IBAN</th><th>PB</th><th>Muhasebe Hesabı</th><th>İşlem</th></tr></thead>
+      <tbody>
+        {% for h in hesaplar %}
+          <tr>
+            <td><a href="{% url 'core:banka_hesap_detay' h.pk %}">{{ h.ad }}</a></td>
+            <td class="mono">{{ h.hesap_no|default:"—" }}</td>
+            <td class="mono">{{ h.iban|default:"—" }}</td>
+            <td class="mono">{{ h.para_birimi }}</td>
+            <td><span class="mono">{{ h.muhasebe.hesap_kodu }}</span> {{ h.muhasebe.hesap_adi }}</td>
+            <td><span class="islem-bag">
+              <a href="{% url 'core:banka_hesap_detay' h.pk %}">Detay</a>
+              <a href="{% url 'core:banka_hesap_duzenle' h.pk %}">Düzenle</a>
+              <form method="post" action="{% url 'core:banka_hesap_sil' h.pk %}" onsubmit="return confirm('Hesap silinsin mi?');">
+                {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+            </span></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+            🏦 Bu bankada henüz hesap yok. “+ Hesap Ekle” ile ekleyin.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
 </div>
 {% endblock %}
