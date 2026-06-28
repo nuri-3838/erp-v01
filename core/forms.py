@@ -633,6 +633,40 @@ class KrediForm(forms.Form):
         _muhasebe_kur(self, mevcut_hesap)
 
 
+class CekHesapAyariForm(forms.Form):
+    """Çek/Senet muhasebe hesap eşlemesi: her durum için çek + senet hesabı (opsiyonel)."""
+    portfoy_cek = _muhasebe_alani()
+    portfoy_senet = _muhasebe_alani()
+    tahsilde_cek = _muhasebe_alani()
+    tahsilde_senet = _muhasebe_alani()
+    teminatta_cek = _muhasebe_alani()
+    teminatta_senet = _muhasebe_alani()
+    verilen_cek = _muhasebe_alani()
+    verilen_senet = _muhasebe_alani()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cek import AYAR_ALANLARI
+        from core.services.hesap_plani import yaprak_hesaplar
+        from django.db.models import Q
+        qs = yaprak_hesaplar()
+        leaf_pks = None
+        for ad in AYAR_ALANLARI:
+            f = self.fields[ad]
+            f.required = False
+            # Düzenlemede mevcut hesap yaprak olmaktan çıkmış/silinmişse bile koru.
+            mevcut = (self.initial.get(ad) or self.data.get(ad) or "")
+            if mevcut and not qs.filter(hesap_kodu=mevcut).exists():
+                if leaf_pks is None:
+                    leaf_pks = list(yaprak_hesaplar().values_list("pk", flat=True))
+                f.queryset = (HesapPlani.objects.filter(silindi=False)
+                              .filter(Q(pk__in=leaf_pks) | Q(hesap_kodu=mevcut))
+                              .order_by("hesap_kodu"))
+            else:
+                f.queryset = qs
+            f.widget.attrs["class"] = "akilli-sec"
+
+
 # ---------------------------------------------------------------------------
 # FATURALAR — Alış/Satış faturası giriş (otomatik yevmiye motoru besler)
 # ---------------------------------------------------------------------------

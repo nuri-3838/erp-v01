@@ -1,0 +1,76 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Muhasebe Hesap Kodları · Çek/Senet{% endblock %}
+{% block sayfa_adi %}Çek/Senet · Muhasebe Hesap Kodları{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .ha-kapsa { max-width:900px; }
+  .ha-tablo { width:100%; border-collapse:separate; border-spacing:0 .5rem; }
+  .ha-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--metin-soluk); padding:0 .6rem .2rem; }
+  .ha-tablo td { vertical-align:middle; padding:.15rem .6rem; }
+  .ha-durum { font-weight:650; color:var(--lacivert); white-space:nowrap; }
+  .ha-durum small { display:block; font-weight:500; color:var(--metin-soluk); font-size:.74rem; }
+  .ha-tablo .akilli { min-width:200px; }
+  /* Çek/senet HER ZAMAN yan yana iki sütun; dar ekranda yatay kaydır (alt alta inmez). */
+  .ha-sar { overflow-x:auto; }
+  .ha-tablo th, .ha-tablo td { min-width:140px; }
+  .ha-tablo th:first-child, .ha-tablo td:first-child { min-width:auto; }
+</style>
+
+<div class="form-kapsa ha-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cek_senetler' %}">← Çek / Senet</a>
+    <h1 class="ust-baslik"><span class="emoji">⚙️</span>Muhasebe Hesap Kodları</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Durum Bazında Çek / Senet Hesapları</h2>
+      <p class="yardim" style="margin-top:-.3rem">Her durum için çek ve senet ayrı yaprak hesaba bağlanır
+        (örn. alınan çek 101 / senet 121; verilen çek 103 / senet 321). Boş bıraktığın durum henüz tanımlanmamış sayılır.
+        Bordro işlemleri yevmiye fişini bu eşlemeden, evrak tipine göre üretir.</p>
+      <div class="ha-sar">
+      <table class="ha-tablo">
+        <thead><tr><th>Durum</th><th>Çek Hesabı</th><th>Senet Hesabı</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="ha-durum">Portföydeki<small>alınan, elimizde</small></td>
+            <td><div class="akilli">{{ form.portfoy_cek }}</div></td>
+            <td><div class="akilli">{{ form.portfoy_senet }}</div></td>
+          </tr>
+          <tr>
+            <td class="ha-durum">Bankada Tahsilde<small>tahsile verilen</small></td>
+            <td><div class="akilli">{{ form.tahsilde_cek }}</div></td>
+            <td><div class="akilli">{{ form.tahsilde_senet }}</div></td>
+          </tr>
+          <tr>
+            <td class="ha-durum">Bankada Teminatta<small>teminata verilen</small></td>
+            <td><div class="akilli">{{ form.teminatta_cek }}</div></td>
+            <td><div class="akilli">{{ form.teminatta_senet }}</div></td>
+          </tr>
+          <tr>
+            <td class="ha-durum">Firma / Verilen<small>kendi evrakımız</small></td>
+            <td><div class="akilli">{{ form.verilen_cek }}</div></td>
+            <td><div class="akilli">{{ form.verilen_senet }}</div></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cek_senetler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

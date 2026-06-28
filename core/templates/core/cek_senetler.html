@@ -1,0 +1,70 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Çek / Senet · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Çek / Senet{% endblock %}
+
+{% block content %}
+<style>
+  .cs-grup { margin-top:1.1rem; }
+  .cs-grup:first-child { margin-top:.2rem; }
+  .cs-grup-baslik { font-size:.74rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+    color:var(--metin-soluk); margin:0 0 .55rem; }
+  .cs-butonlar { display:flex; gap:.55rem; flex-wrap:wrap; }
+  .cs-islem { display:inline-flex; align-items:center; gap:.4rem; padding:.6rem .95rem; border-radius:12px;
+    font-weight:650; font-size:.92rem; background:rgba(244,247,251,.9); color:var(--metin);
+    border:1px solid var(--cizgi); cursor:not-allowed; opacity:.6; }
+  /* CSS-only tablar (radio) */
+  .cs-tab-girdi { position:absolute; opacity:0; pointer-events:none; }
+  .cs-tablar { display:flex; gap:.35rem; border-bottom:2px solid var(--cizgi); margin-top:1.7rem; }
+  .cs-tab-et { padding:.55rem 1.05rem; font-weight:650; cursor:pointer; border-radius:10px 10px 0 0;
+    color:var(--metin-soluk); }
+  .cs-tab-et:hover { color:var(--lacivert); }
+  #cs-tab-bordro:checked ~ .cs-tablar label[for="cs-tab-bordro"],
+  #cs-tab-cek:checked ~ .cs-tablar label[for="cs-tab-cek"] {
+    color:var(--lacivert); border-bottom:2px solid var(--lacivert); margin-bottom:-2px; }
+  .cs-panel { display:none; padding-top:1.1rem; }
+  #cs-tab-bordro:checked ~ #cs-panel-bordro,
+  #cs-tab-cek:checked ~ #cs-panel-cek { display:block; }
+</style>
+
+<div class="sayfa-ust">
+  <div><h1 class="ust-baslik"><span class="emoji">📜</span>Çek / Senet</h1></div>
+  <a class="dugme" href="{% url 'core:cek_hesap_ayari' %}">⚙️ Muhasebe Hesap Kodları</a>
+</div>
+
+<section class="icerik-kart">
+  <div class="cs-grup">
+    <p class="cs-grup-baslik">⬇️ Giriş</p>
+    <div class="cs-butonlar">
+      <span class="cs-islem">🤝 Cari Giriş</span>
+      <span class="cs-islem">↩️ Banka Tahsil İade</span>
+      <span class="cs-islem">↩️ Banka Teminat İade</span>
+    </div>
+  </div>
+  <div class="cs-grup">
+    <p class="cs-grup-baslik">⬆️ Çıkış</p>
+    <div class="cs-butonlar">
+      <span class="cs-islem">🏭 Firma Çek-Senet</span>
+      <span class="cs-islem">🔁 Cari Ciro</span>
+      <span class="cs-islem">🏦 Banka Tahsil</span>
+      <span class="cs-islem">🔒 Banka Teminat</span>
+      <span class="cs-islem">↩️ Cari İade</span>
+    </div>
+  </div>
+  <p class="yardim" style="margin-top:1rem">İşlem butonları sıradaki adımlarda <strong>bordro girişiyle</strong> aktifleşecek.
+    Önce ⚙️ <strong>Muhasebe Hesap Kodları</strong>'nı tanımlayın — yevmiye fişleri buna göre üretilecek.</p>
+</section>
+
+<input type="radio" name="cs-tab" id="cs-tab-bordro" class="cs-tab-girdi" checked>
+<input type="radio" name="cs-tab" id="cs-tab-cek" class="cs-tab-girdi">
+<div class="cs-tablar">
+  <label class="cs-tab-et" for="cs-tab-bordro">📋 Bordrolar</label>
+  <label class="cs-tab-et" for="cs-tab-cek">📜 Çek-Senetler</label>
+</div>
+<div class="cs-panel" id="cs-panel-bordro">
+  <p class="yardim">Henüz bordro yok. Bir işlem butonuyla bordro girince burada listelenecek.</p>
+</div>
+<div class="cs-panel" id="cs-panel-cek">
+  <p class="yardim">Henüz çek/senet yok. Giriş bordrosuyla eklenince burada listelenecek.</p>
+</div>
+{% endblock %}

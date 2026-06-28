@@ -1082,3 +1082,42 @@ class Kredi(TemelModel):
 
     def __str__(self):
         return self.ad
+
+
+def _cek_hesap_fk(adi):
+    """CekHesapAyari için yaprak muhasebe hesabına opsiyonel bağ (tekil ayar alanı)."""
+    return models.ForeignKey(
+        HesapPlani, verbose_name=adi, null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+
+
+class CekHesapAyari(TemelModel):
+    """Çek/Senet modülü muhasebe hesap eşlemesi — TEKİL ayar kaydı (pk=1).
+
+    Her DURUM için çek ve senet AYRI hesaba bağlanır (alınan çek 101 / senet 121;
+    verilen çek 103 / senet 321 gibi). Bordro işlemleri yevmiye fişini bu eşlemeden,
+    evrak tipine (çek/senet) bakarak üretir. Boş alan = o durum henüz tanımlanmadı.
+    """
+
+    portfoy_cek = _cek_hesap_fk("portföydeki çek hesabı")
+    portfoy_senet = _cek_hesap_fk("portföydeki senet hesabı")
+    tahsilde_cek = _cek_hesap_fk("bankada tahsildeki çek hesabı")
+    tahsilde_senet = _cek_hesap_fk("bankada tahsildeki senet hesabı")
+    teminatta_cek = _cek_hesap_fk("bankada teminattaki çek hesabı")
+    teminatta_senet = _cek_hesap_fk("bankada teminattaki senet hesabı")
+    verilen_cek = _cek_hesap_fk("verilen çek hesabı")
+    verilen_senet = _cek_hesap_fk("verilen senet hesabı")
+
+    class Meta:
+        db_table = "finans_cek_hesap_ayari"
+        verbose_name = "çek/senet hesap ayarı"
+        verbose_name_plural = "çek/senet hesap ayarı"
+
+    def __str__(self):
+        return "Çek/Senet Hesap Ayarı"
+
+    @classmethod
+    def get(cls):
+        """Tekil ayar kaydı (yoksa oluşturur)."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

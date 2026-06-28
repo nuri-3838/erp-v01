@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, CekHesapAyariForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -59,6 +59,7 @@ from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
+from core.services import cek as cek_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -1790,6 +1791,36 @@ def kredi_sil(request, pk):
         finans_servis.kredi_sil(kredi, kullanici=request.user)
         messages.success(request, "Kredi silindi.")
     return redirect("core:krediler")
+
+
+# === FİNANS — Çek / Senet (bordro mantığı; yeniden inşa) ===
+@ekran_gerekli("cek_senet")
+def cek_senetler(request):
+    """Çek/Senet ana sayfa: Muhasebe Hesap Kodları butonu + giriş/çıkış işlem
+    butonları (sıradaki dilimlerde aktifleşir) + Bordrolar/Çek-Senetler tabları."""
+    return render(request, "core/cek_senetler.html", {})
+
+
+@ekran_gerekli("cek_senet")
+def cek_hesap_ayari(request):
+    """Çek/Senet muhasebe hesap eşlemesi (durum × çek/senet matrisi)."""
+    ayar = cek_servis.hesap_ayari()
+    if request.method == "POST":
+        form = CekHesapAyariForm(request.POST)
+        if form.is_valid():
+            try:
+                kodlar = {a: (form.cleaned_data[a].hesap_kodu if form.cleaned_data[a] else "")
+                          for a in cek_servis.AYAR_ALANLARI}
+                cek_servis.hesap_ayari_kaydet(kodlar, kullanici=request.user)
+                messages.success(request, "Çek/Senet muhasebe hesapları kaydedildi.")
+                return redirect("core:cek_senetler")
+            except cek_servis.CekHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CekHesapAyariForm(initial={
+            a: (getattr(ayar, a).hesap_kodu if getattr(ayar, a) else None)
+            for a in cek_servis.AYAR_ALANLARI})
+    return render(request, "core/cek_hesap_ayari.html", {"form": form})
 
 
 @ekran_gerekli("cariler")
