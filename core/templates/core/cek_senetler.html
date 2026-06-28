@@ -13,6 +13,9 @@
   .cs-islem { display:inline-flex; align-items:center; gap:.4rem; padding:.6rem .95rem; border-radius:12px;
     font-weight:650; font-size:.92rem; background:rgba(244,247,251,.9); color:var(--metin);
     border:1px solid var(--cizgi); cursor:not-allowed; opacity:.6; }
+  a.cs-islem.cs-aktif { opacity:1; cursor:pointer; text-decoration:none; color:#fff; border-color:transparent;
+    background:linear-gradient(135deg, #2c4d86 0%, var(--lacivert) 100%); box-shadow:var(--golge-sm); }
+  a.cs-islem.cs-aktif:hover { box-shadow:var(--golge-md); }
   /* CSS-only tablar (radio) */
   .cs-tab-girdi { position:absolute; opacity:0; pointer-events:none; }
   .cs-tablar { display:flex; gap:.35rem; border-bottom:2px solid var(--cizgi); margin-top:1.7rem; }
@@ -36,7 +39,7 @@
   <div class="cs-grup">
     <p class="cs-grup-baslik">⬇️ Giriş</p>
     <div class="cs-butonlar">
-      <span class="cs-islem">🤝 Cari Giriş</span>
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_cari_giris' %}">🤝 Cari Giriş</a>
       <span class="cs-islem">↩️ Banka Tahsil İade</span>
       <span class="cs-islem">↩️ Banka Teminat İade</span>
     </div>
@@ -51,8 +54,9 @@
       <span class="cs-islem">↩️ Cari İade</span>
     </div>
   </div>
-  <p class="yardim" style="margin-top:1rem">İşlem butonları sıradaki adımlarda <strong>bordro girişiyle</strong> aktifleşecek.
-    Önce ⚙️ <strong>Muhasebe Hesap Kodları</strong>'nı tanımlayın — yevmiye fişleri buna göre üretilecek.</p>
+  <p class="yardim" style="margin-top:1rem"><strong>Cari Giriş</strong> aktif. Diğer işlemler sıradaki adımlarda
+    aktifleşecek. İşlemler yevmiye fişini ⚙️ <strong>Muhasebe Hesap Kodları</strong>'ndaki eşlemeden üretir
+    (önce orayı tanımlayın).</p>
 </section>
 
 <input type="radio" name="cs-tab" id="cs-tab-bordro" class="cs-tab-girdi" checked>
@@ -62,9 +66,43 @@
   <label class="cs-tab-et" for="cs-tab-cek">📜 Çek-Senetler</label>
 </div>
 <div class="cs-panel" id="cs-panel-bordro">
-  <p class="yardim">Henüz bordro yok. Bir işlem butonuyla bordro girince burada listelenecek.</p>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Tür</th><th>Tarih</th><th>Cari</th><th class="sag">Evrak</th></tr></thead>
+    <tbody>
+      {% for b in bordrolar %}
+        <tr>
+          <td><a href="{% url 'core:cek_bordro_detay' b.pk %}">{{ b.get_tur_display }} #{{ b.pk }}</a></td>
+          <td class="mono">{{ b.tarih|date:"d.m.Y" }}</td>
+          <td>{% if b.cari %}{{ b.cari.unvan }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{{ b.cek_senetler.count }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="yardim" style="text-align:center;padding:1.2rem 0">Henüz bordro yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </div>
 <div class="cs-panel" id="cs-panel-cek">
-  <p class="yardim">Henüz çek/senet yok. Giriş bordrosuyla eklenince burada listelenecek.</p>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Tip</th><th class="sag">Tutar</th><th>Vade</th><th>Belge No</th><th>Cari</th><th>Durum</th></tr></thead>
+    <tbody>
+      {% for c in cekler %}
+        <tr>
+          <td>{% if c.giris_bordrosu_id %}<a href="{% url 'core:cek_bordro_detay' c.giris_bordrosu_id %}">{{ c.get_tip_display }}</a>{% else %}{{ c.get_tip_display }}{% endif %}</td>
+          <td class="sag mono">{{ c.tutar|tr_para }} {{ c.para_birimi }}</td>
+          <td class="mono">{{ c.vade|date:"d.m.Y" }}</td>
+          <td class="mono">{{ c.belge_no|default:"—" }}</td>
+          <td>{% if c.cari %}{{ c.cari.unvan }}{% else %}—{% endif %}</td>
+          <td>{{ c.get_durum_display }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.2rem 0">Henüz çek/senet yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </div>
 {% endblock %}

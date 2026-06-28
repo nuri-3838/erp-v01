@@ -134,6 +134,7 @@ class YevmiyeFisi(TemelModel):
         FATURA = "FATURA", "Fatura (otomatik)"
         KASA = "KASA", "Kasa Hareketi (otomatik)"
         BANKA = "BANKA", "Banka Hareketi (otomatik)"
+        CEK_SENET = "CEK_SENET", "Çek/Senet Bordrosu (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -151,6 +152,11 @@ class YevmiyeFisi(TemelModel):
     # Kaynak=BANKA fişin kaynağı olan banka hesabı (hareket motoru); kasa ile aynı amaç.
     banka_hesap = models.ForeignKey(
         "BankaHesap", verbose_name="kaynak banka hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fisler",
+    )
+    # Kaynak=CEK_SENET fişin kaynağı olan çek/senet bordrosu (bordro başına TEK fiş).
+    cek_bordrosu = models.ForeignKey(
+        "CekBordrosu", verbose_name="kaynak çek/senet bordrosu", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fisler",
     )
     # USD raporlama için fiş tarihindeki TCMB USD alış kuru (snapshot).
@@ -1121,3 +1127,91 @@ class CekHesapAyari(TemelModel):
         """Tekil ayar kaydı (yoksa oluşturur)."""
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+
+class CekBordrosu(TemelModel):
+    """Çek/Senet bordrosu — toplu işlem belgesi. Bordro başına TEK birleşik yevmiye fişi
+    (kaynak=CEK_SENET, fiş→bordro bağı). Giriş bordrosu N adet CekSenet oluşturur."""
+
+    class Tur(models.TextChoices):
+        CARI_GIRIS = "CARI_GIRIS", "Cari Giriş"
+        FIRMA_CIKIS = "FIRMA_CIKIS", "Firma Çek-Senet"
+        CARI_CIRO = "CARI_CIRO", "Cari Ciro"
+        BANKA_TAHSIL = "BANKA_TAHSIL", "Banka Tahsil"
+        BANKA_TEMINAT = "BANKA_TEMINAT", "Banka Teminat"
+        CARI_IADE = "CARI_IADE", "Cari İade"
+        BANKA_TAHSIL_IADE = "BANKA_TAHSIL_IADE", "Banka Tahsil İade"
+        BANKA_TEMINAT_IADE = "BANKA_TEMINAT_IADE", "Banka Teminat İade"
+
+    tur = models.CharField("tür", max_length=20, choices=Tur.choices)
+    tarih = models.DateField("işlem tarihi")
+    aciklama = models.CharField("açıklama", max_length=300, blank=True)
+    cari = models.ForeignKey(
+        "Cari", verbose_name="cari", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="cek_bordrolari")
+    banka_hesap = models.ForeignKey(
+        "BankaHesap", verbose_name="banka hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cek_bordrolari")
+
+    class Meta:
+        db_table = "finans_cek_bordrosu"
+        verbose_name = "çek/senet bordrosu"
+        verbose_name_plural = "çek/senet bordroları"
+        ordering = ["-tarih", "-id"]
+
+    def __str__(self):
+        return f"{self.get_tur_display()} #{self.pk}"
+
+
+class CekSenet(TemelModel):
+    """Tek bir çek/senet (kıymetli evrak). Bir GİRİŞ bordrosuyla portföye girer; sonraki
+    bordro işlemleriyle durumu değişir. Bakiye saklanmaz; muhasebe hesabı ayar matrisinden."""
+
+    class Tip(models.TextChoices):
+        CEK = "CEK", "Çek"
+        SENET = "SENET", "Senet"
+
+    class Yon(models.TextChoices):
+        ALINAN = "ALINAN", "Alınan"
+        VERILEN = "VERILEN", "Verilen"
+
+    class Durum(models.TextChoices):
+        PORTFOYDE = "PORTFOYDE", "Portföyde"
+        TAHSILDE = "TAHSILDE", "Bankada Tahsilde"
+        TEMINATTA = "TEMINATTA", "Bankada Teminatta"
+        CIRO = "CIRO", "Ciro Edildi"
+        IADE = "IADE", "İade Edildi"
+        TAHSIL = "TAHSIL", "Tahsil Edildi"
+        VERILDI = "VERILDI", "Verildi"
+        ODENDI = "ODENDI", "Ödendi"
+        KARSILIKSIZ = "KARSILIKSIZ", "Karşılıksız"
+
+    tip = models.CharField("tip", max_length=5, choices=Tip.choices)
+    yon = models.CharField("yön", max_length=7, choices=Yon.choices)
+    tutar = models.DecimalField("tutar", max_digits=14, decimal_places=2)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    vade = models.DateField("vade tarihi")
+    kesideci = models.CharField("keşideci", max_length=200, blank=True)
+    belge_no = models.CharField("belge no", max_length=50, blank=True)
+    durum = models.CharField("durum", max_length=12, choices=Durum.choices,
+                             default=Durum.PORTFOYDE)
+    cari = models.ForeignKey(
+        "Cari", verbose_name="cari", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="cek_senetler")
+    giris_bordrosu = models.ForeignKey(
+        CekBordrosu, verbose_name="giriş bordrosu", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cek_senetler")
+
+    class Meta:
+        db_table = "finans_cek_senet"
+        verbose_name = "çek/senet"
+        verbose_name_plural = "çek/senetler"
+        ordering = ["vade", "-id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(tutar__gt=0),
+                                   name="ck_cek_senet_tutar_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_tip_display()} {self.belge_no} {self.tutar}"

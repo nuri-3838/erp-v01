@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, CariYetkiliForm, CekHesapAyariForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, CariGirisBordroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -26,7 +26,7 @@ from core.forms import (
 )
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
-    Banka, BankaHesap, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
+    Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
@@ -189,6 +189,11 @@ def fis_duzenle(request, pk):
                                "Gerekirse hareketi iptal edip yeniden girin.")
         return (redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id) if fis.banka_hesap_id
                 else redirect("core:fis_detay", pk=fis.pk))
+    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET:
+        messages.info(request, "Bu fiş bir çek/senet bordrosundan oluştu; düzenlenemez. "
+                               "Gerekirse bordroyu geri alıp yeniden girin.")
+        return (redirect("core:cek_bordro_detay", pk=fis.cek_bordrosu_id) if fis.cek_bordrosu_id
+                else redirect("core:fis_detay", pk=fis.pk))
 
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -241,6 +246,9 @@ def fis_iptal_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.BANKA and not fis.silindi and fis.banka_hesap_id:
         messages.info(request, "Bu fiş bir banka hareketinden oluştu; iptal için banka hesabı detayını kullanın.")
         return redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET and not fis.silindi and fis.cek_bordrosu_id:
+        messages.info(request, "Bu fiş bir çek/senet bordrosundan oluştu; iptal için bordro detayını kullanın.")
+        return redirect("core:cek_bordro_detay", pk=fis.cek_bordrosu_id)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1794,11 +1802,72 @@ def kredi_sil(request, pk):
 
 
 # === FİNANS — Çek / Senet (bordro mantığı; yeniden inşa) ===
+CekKalemFormSet = formset_factory(CekKalemForm, extra=0, min_num=1, validate_min=True)
+
+
 @ekran_gerekli("cek_senet")
 def cek_senetler(request):
     """Çek/Senet ana sayfa: Muhasebe Hesap Kodları butonu + giriş/çıkış işlem
-    butonları (sıradaki dilimlerde aktifleşir) + Bordrolar/Çek-Senetler tabları."""
-    return render(request, "core/cek_senetler.html", {})
+    butonları + Bordrolar/Çek-Senetler tabları (listeler)."""
+    return render(request, "core/cek_senetler.html", {
+        "bordrolar": cek_servis.aktif_bordrolar(),
+        "cekler": cek_servis.aktif_cek_senetler(),
+    })
+
+
+@ekran_gerekli("cek_senet")
+def cek_cari_giris(request):
+    """Cari Giriş bordrosu: tek cari + çok çek/senet satırı → N evrak (PORTFÖYDE) + tek fiş."""
+    if request.method == "POST":
+        bform = CariGirisBordroForm(request.POST)
+        formset = CekKalemFormSet(request.POST)
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"tip": f.cleaned_data["tip"], "tutar": f.cleaned_data["tutar"],
+                 "vade": f.cleaned_data["vade"], "belge_no": f.cleaned_data["belge_no"],
+                 "kesideci": f.cleaned_data["kesideci"]}
+                for f in formset if f.dolu_mu()
+            ]
+            try:
+                bordro = cek_servis.cari_giris_bordrosu_olustur(
+                    cari_id=bform.cleaned_data["cari"].pk,
+                    tarih=bform.cleaned_data["tarih"],
+                    para_birimi=bform.cleaned_data["para_birimi"],
+                    satirlar=satirlar, kullanici=request.user)
+                messages.success(request, f"Giriş bordrosu kaydedildi; {bordro.cek_senetler.count()} "
+                                          f"evrak portföye girdi, fiş oluşturuldu.")
+                return redirect("core:cek_bordro_detay", pk=bordro.pk)
+            except cek_servis.CekHatasi as e:
+                bform.add_error(None, str(e))
+    else:
+        bform = CariGirisBordroForm()
+        formset = CekKalemFormSet()
+    return render(request, "core/cek_cari_giris.html",
+                  {"bform": bform, "formset": formset,
+                   "baslik": "Cari Giriş Bordrosu", "emoji": "🤝"})
+
+
+@ekran_gerekli("cek_senet")
+def cek_bordro_detay(request, pk):
+    """Bordro detayı: başlık + içindeki çek/senetler + bağlı yevmiye fişi."""
+    bordro = get_object_or_404(CekBordrosu, pk=pk, silindi=False)
+    cekler = bordro.cek_senetler.filter(silindi=False).order_by("vade", "id")
+    fisler = bordro.fisler.filter(silindi=False).order_by("yil", "fis_no")
+    return render(request, "core/cek_bordro_detay.html",
+                  {"bordro": bordro, "cekler": cekler, "fisler": fisler})
+
+
+@ekran_gerekli("cek_senet")
+def cek_bordro_sil(request, pk):
+    bordro = get_object_or_404(CekBordrosu, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            cek_servis.bordro_sil(bordro, kullanici=request.user)
+            messages.success(request, "Bordro geri alındı (fiş iptal, evraklar silindi).")
+            return redirect("core:cek_senetler")
+        except cek_servis.CekHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:cek_bordro_detay", pk=bordro.pk)
 
 
 @ekran_gerekli("cek_senet")
