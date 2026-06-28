@@ -64,8 +64,8 @@
   <div class="accent"></div>
 
   <div class="bilgi">
-    <div class="kutu"><div class="et">Cari</div>
-      <div class="dg">{% if bordro.cari %}{{ bordro.cari.unvan }}{% else %}—{% endif %}</div></div>
+    {% if bordro.cari %}<div class="kutu"><div class="et">Cari</div>
+      <div class="dg">{{ bordro.cari.unvan }}</div></div>{% endif %}
     {% if bordro.banka_hesap %}<div class="kutu"><div class="et">Banka Hesabı</div>
       <div class="dg">{{ bordro.banka_hesap.banka.ad }} · {{ bordro.banka_hesap.ad }}</div></div>{% endif %}
     <div class="kutu"><div class="et">Evrak Adedi</div><div class="dg">{{ cekler|length }}</div></div>

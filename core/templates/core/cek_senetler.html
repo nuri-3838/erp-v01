@@ -49,13 +49,13 @@
     <div class="cs-butonlar">
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_firma_cikis' %}">🏭 Firma Çek-Senet</a>
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_cari_ciro' %}">🔁 Cari Ciro</a>
-      <span class="cs-islem">🏦 Banka Tahsil</span>
-      <span class="cs-islem">🔒 Banka Teminat</span>
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_banka_tahsil' %}">🏦 Banka Tahsil</a>
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_banka_teminat' %}">🔒 Banka Teminat</a>
       <span class="cs-islem">↩️ Cari İade</span>
     </div>
   </div>
-  <p class="yardim" style="margin-top:1rem"><strong>Cari Giriş</strong>, <strong>Firma Çek-Senet</strong> ve
-    <strong>Cari Ciro</strong> aktif. Diğer işlemler sıradaki adımlarda aktifleşecek. İşlemler yevmiye fişini
+  <p class="yardim" style="margin-top:1rem">Giriş, Firma Çek-Senet, Cari Ciro, Banka Tahsil ve Banka Teminat
+    aktif. İade işlemleri (Banka Tahsil/Teminat İade, Cari İade) sıradaki adımda. İşlemler yevmiye fişini
     ⚙️ <strong>Muhasebe Hesap Kodları</strong>'ndaki eşlemeden üretir (önce orayı tanımlayın).</p>
 </section>
 
@@ -74,7 +74,7 @@
         <tr>
           <td><a href="{% url 'core:cek_bordro_detay' b.pk %}">{{ b.get_tur_display }} #{{ b.pk }}</a></td>
           <td class="mono">{{ b.tarih|date:"d.m.Y" }}</td>
-          <td>{% if b.cari %}{{ b.cari.unvan }}{% else %}—{% endif %}</td>
+          <td>{% if b.cari %}{{ b.cari.unvan }}{% elif b.banka_hesap %}{{ b.banka_hesap.banka.ad }} · {{ b.banka_hesap.ad }}{% else %}—{% endif %}</td>
           <td class="sag mono">{{ b.evrak_qs.count }}</td>
         </tr>
       {% empty %}

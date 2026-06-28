@@ -54,7 +54,8 @@
     <div class="kv">
       <div class="satir"><span class="et">Tür</span><span class="dg">{{ bordro.get_tur_display }}</span></div>
       <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ bordro.tarih|date:"d.m.Y" }}</span></div>
-      <div class="satir"><span class="et">Cari</span><span class="dg">{% if bordro.cari %}<span class="mono">{{ bordro.cari.kod }}</span> {{ bordro.cari.unvan }}{% else %}—{% endif %}</span></div>
+      {% if bordro.cari %}<div class="satir"><span class="et">Cari</span><span class="dg"><span class="mono">{{ bordro.cari.kod }}</span> {{ bordro.cari.unvan }}</span></div>{% endif %}
+      {% if bordro.banka_hesap %}<div class="satir"><span class="et">Banka Hesabı</span><span class="dg">{{ bordro.banka_hesap.banka.ad }} · {{ bordro.banka_hesap.ad }}</span></div>{% endif %}
       <div class="satir"><span class="et">Açıklama</span><span class="dg">{{ bordro.aciklama|default:"—" }}</span></div>
     </div>
   </section>

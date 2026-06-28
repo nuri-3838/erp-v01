@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
-{% block baslik %}Cari Ciro · Çek/Senet{% endblock %}
-{% block sayfa_adi %}Çek/Senet · Cari Ciro{% endblock %}
+{% block baslik %}{{ baslik }} · Çek/Senet{% endblock %}
+{% block sayfa_adi %}Çek/Senet · {{ baslik }}{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
@@ -14,32 +14,27 @@
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:cek_senetler' %}">← Çek / Senet</a>
-    <h1 class="ust-baslik"><span class="emoji">🔁</span>Cari Ciro</h1>
+    <h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ baslik }}</h1>
   </div>
 
   {% if form.non_field_errors %}
     <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
   {% endif %}
 
-  <form method="post" id="ciro-form" autocomplete="off">
+  <form method="post" id="islem-form" autocomplete="off">
     {% csrf_token %}
     <section class="icerik-kart">
-      <h2 class="bolum-baslik">Ciro Bilgileri</h2>
+      <h2 class="bolum-baslik">{{ baslik }} Bilgileri</h2>
       <div class="izgara">
-        <div class="alan tam">
-          <label for="{{ form.cari.id_for_label }}">{{ form.cari.label }}</label>
-          <div class="akilli">{{ form.cari }}</div>
-          {% for e in form.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
-        <div class="alan">
-          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
-          {{ form.tarih }}
-          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
+        {% for field in form %}
+          <div class="alan {% if field.name == 'cari' or field.name == 'banka_hesap' %}tam{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {% if field.name == 'cari' or field.name == 'banka_hesap' %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
       </div>
-      <p class="yardim">Portföydeki alınan çek/senetler seçtiğin cariye ciro edilir
-        (<span class="mono">ciro carisi borç / Portföydeki çek-senet alacak</span>). Seçilenler aynı para
-        biriminde olmalı; ciro edilen evrak portföyden çıkar.</p>
+      <p class="yardim">{{ yardim }}</p>
     </section>
 
     <section class="icerik-kart">
@@ -70,14 +65,14 @@
       </div>
       <p class="yardim" id="pf-ozet" style="margin-top:.7rem">Seçili: 0 evrak</p>
       {% else %}
-      <p class="yardim">Portföyde ciro edilebilecek alınan çek/senet yok. Önce <strong>Cari Giriş</strong> ile ekleyin.</p>
+      <p class="yardim">Portföyde uygun alınan çek/senet yok. Önce <strong>Cari Giriş</strong> ile ekleyin.</p>
       {% endif %}
     </section>
 
     {% if portfoy %}
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:cek_senetler' %}">İptal</a>
-      <button type="submit" class="birincil">Ciro Et</button>
+      <button type="submit" class="birincil">{{ buton }}</button>
     </div>
     {% endif %}
   </form>
@@ -93,7 +88,7 @@
     var sec = cbs.filter(function(c){ return c.checked; });
     var pb = sec.length ? sec[0].dataset.pb : null;
     cbs.forEach(function(c){
-      c.disabled = !!pb && c.dataset.pb !== pb;          // aynı PB zorla
+      c.disabled = !!pb && c.dataset.pb !== pb;          // aynı PB zorla (tek fiş)
       c.closest('tr').classList.toggle('secili', c.checked);
     });
     var top = 0; sec.forEach(function(c){ top += parseFloat(c.dataset.tutar) || 0; });

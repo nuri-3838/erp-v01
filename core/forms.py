@@ -702,6 +702,25 @@ class CariCiroForm(forms.Form):
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
 
+class BankaIslemForm(forms.Form):
+    """Banka Tahsil/Teminat başlığı: banka hesabı + işlem tarihi. (Evrak seçimi şablonda
+    checkbox listesiyle; PB seçilen evraktan türer.)"""
+    banka_hesap = forms.ModelChoiceField(label="Banka Hesabı", queryset=BankaHesap.objects.none(),
+                                         empty_label="— banka hesabı seç —")
+    tarih = forms.DateField(
+        label="İşlem Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["banka_hesap"].queryset = (BankaHesap.objects.filter(silindi=False)
+                                               .select_related("banka").order_by("banka__ad", "ad"))
+        self.fields["banka_hesap"].label_from_instance = (
+            lambda o: f"{o.banka.ad} - {o.ad} ({o.para_birimi})")
+        self.fields["banka_hesap"].widget.attrs["class"] = "akilli-sec"
+
+
 class CekKalemForm(forms.Form):
     """Bordro satırı: bir çek/senet (tip + tutar + vade + belge no + keşideci + ön/arka görsel)."""
     tip = forms.ChoiceField(label="Tip", choices=CekSenet.Tip.choices)

@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1875,27 +1875,61 @@ def cek_firma_cikis(request):
         basari_ek="verildi")
 
 
-@ekran_gerekli("cek_senet")
-def cek_cari_ciro(request):
-    """Cari Ciro: portföydeki alınan çek/senetleri listeden seçip bir cariye ciro et."""
+def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoji, yardim, buton, basari):
+    """Portföy-seçim işlem bordrosu ortak gövdesi (Ciro / Banka Tahsil / Banka Teminat)."""
     if request.method == "POST":
-        form = CariCiroForm(request.POST)
+        form = form_cls(request.POST)
         cek_ids = request.POST.getlist("cek_ids")
         if form.is_valid():
             try:
-                bordro = cek_servis.cari_ciro_bordrosu_olustur(
-                    ciro_cari_id=form.cleaned_data["cari"].pk,
-                    tarih=form.cleaned_data["tarih"],
-                    cek_ids=cek_ids, kullanici=request.user)
-                messages.success(request, f"Ciro bordrosu kaydedildi; {len(cek_ids)} evrak "
-                                          f"ciro edildi, fiş oluşturuldu.")
+                bordro = servis_fn(hedef_id=form.cleaned_data[hedef_alani].pk,
+                                   tarih=form.cleaned_data["tarih"], cek_ids=cek_ids,
+                                   kullanici=request.user)
+                messages.success(request, f"Bordro kaydedildi; {len(cek_ids)} evrak {basari}, "
+                                          f"fiş oluşturuldu.")
                 return redirect("core:cek_bordro_detay", pk=bordro.pk)
             except cek_servis.CekHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariCiroForm()
-    return render(request, "core/cek_cari_ciro.html",
-                  {"form": form, "portfoy": cek_servis.portfoydeki_cekler()})
+        form = form_cls()
+    return render(request, "core/cek_islem_secim.html",
+                  {"form": form, "portfoy": cek_servis.portfoydeki_cekler(),
+                   "baslik": baslik, "emoji": emoji, "yardim": yardim, "buton": buton})
+
+
+@ekran_gerekli("cek_senet")
+def cek_cari_ciro(request):
+    """Cari Ciro: portföydeki alınan çek/senetleri listeden seçip bir cariye ciro."""
+    return _islem_secim_view(
+        request, form_cls=CariCiroForm, hedef_alani="cari",
+        servis_fn=cek_servis.cari_ciro_bordrosu_olustur, baslik="Cari Ciro", emoji="🔁",
+        yardim="Portföydeki alınan çek/senetler seçtiğin cariye ciro edilir "
+               "(ciro carisi borç / Portföydeki çek-senet alacak). Seçilenler aynı para biriminde olmalı.",
+        buton="Ciro Et", basari="ciro edildi")
+
+
+@ekran_gerekli("cek_senet")
+def cek_banka_tahsil(request):
+    """Banka Tahsil: portföydeki çek/senetleri seçip bankaya tahsile ver (→ Bankada Tahsilde)."""
+    return _islem_secim_view(
+        request, form_cls=BankaIslemForm, hedef_alani="banka_hesap",
+        servis_fn=cek_servis.banka_tahsil_bordrosu_olustur, baslik="Banka Tahsil", emoji="🏦",
+        yardim="Portföydeki çek/senetler seçtiğin bankaya tahsile verilir; Bankada Tahsildeki "
+               "hesabına geçer (Tahsildeki çek-senet borç / Portföydeki çek-senet alacak). "
+               "Para vade gelince ayrı işlenir; yanlışsa geri alınabilir.",
+        buton="Tahsile Ver", basari="tahsile verildi")
+
+
+@ekran_gerekli("cek_senet")
+def cek_banka_teminat(request):
+    """Banka Teminat: portföydeki çek/senetleri seçip bankaya teminat ver (→ Bankada Teminatta)."""
+    return _islem_secim_view(
+        request, form_cls=BankaIslemForm, hedef_alani="banka_hesap",
+        servis_fn=cek_servis.banka_teminat_bordrosu_olustur, baslik="Banka Teminat", emoji="🔒",
+        yardim="Portföydeki çek/senetler seçtiğin bankaya teminat olarak verilir; Bankada "
+               "Teminattaki hesabına geçer (Teminattaki çek-senet borç / Portföydeki çek-senet alacak). "
+               "Banka iade ederse geri alınabilir.",
+        buton="Teminata Ver", basari="teminata verildi")
 
 
 def _bordro_baglam(bordro):
