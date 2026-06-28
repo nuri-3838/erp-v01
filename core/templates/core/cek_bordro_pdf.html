@@ -103,9 +103,8 @@
     </div>
     {% if ort_vade %}
     <div class="kart vade">
-      <div class="et">Ağırlıklı Ortalama Vade</div>
-      <div class="buyuk">{{ ort_vade|date:"d.m.Y" }}</div>
-      <div class="alt">{{ vade_gun }} gün · {{ bordro.tarih|date:"d.m.Y" }} tarihinden (tutara göre ağırlıklı)</div>
+      <div class="et">Ortalama Vade</div>
+      <div class="buyuk">{{ ort_vade|date:"d.m.Y" }} ({{ vade_gun }} gün)</div>
     </div>
     {% endif %}
   </div>

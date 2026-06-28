@@ -125,7 +125,7 @@
     if(islem && agirlikTutar>0){
       var ortGun=Math.round(agirlikGun/agirlikTutar);
       var ortVade=new Date(islem.getTime()); ortVade.setDate(ortVade.getDate()+ortGun);
-      ov.textContent='📅 Ort. Vade: '+fmtDate(ortVade)+' ('+ortGun+' gün)';
+      ov.textContent='📅 Ortalama Vade: '+fmtDate(ortVade)+' ('+ortGun+' gün)';
     } else { ov.textContent=''; }
   }
   function satirEkle(){
