@@ -40,8 +40,8 @@
     <p class="cs-grup-baslik">⬇️ Giriş</p>
     <div class="cs-butonlar">
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_cari_giris' %}">🤝 Cari Giriş</a>
-      <span class="cs-islem">↩️ Banka Tahsil İade</span>
-      <span class="cs-islem">↩️ Banka Teminat İade</span>
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_banka_tahsil_iade' %}">↩️ Banka Tahsil İade</a>
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_banka_teminat_iade' %}">↩️ Banka Teminat İade</a>
     </div>
   </div>
   <div class="cs-grup">
@@ -51,11 +51,10 @@
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_cari_ciro' %}">🔁 Cari Ciro</a>
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_banka_tahsil' %}">🏦 Banka Tahsil</a>
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_banka_teminat' %}">🔒 Banka Teminat</a>
-      <span class="cs-islem">↩️ Cari İade</span>
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_cari_iade' %}">↩️ Cari İade</a>
     </div>
   </div>
-  <p class="yardim" style="margin-top:1rem">Giriş, Firma Çek-Senet, Cari Ciro, Banka Tahsil ve Banka Teminat
-    aktif. İade işlemleri (Banka Tahsil/Teminat İade, Cari İade) sıradaki adımda. İşlemler yevmiye fişini
+  <p class="yardim" style="margin-top:1rem">Tüm işlemler aktif. Yevmiye fişini
     ⚙️ <strong>Muhasebe Hesap Kodları</strong>'ndaki eşlemeden üretir (önce orayı tanımlayın).</p>
 </section>
 

@@ -205,19 +205,32 @@ def firma_cikis_bordrosu_olustur(**kwargs) -> CekBordrosu:
     return _bordro_olustur(GIRIS_TANIM["cikis"], **kwargs)
 
 
-# === İşlem bordroları (mevcut evrakı SEÇER): Cari Ciro · Banka Tahsil · Banka Teminat ===
+# === İşlem bordroları (mevcut evrakı SEÇER): Cari Ciro/İade · Banka Tahsil/Teminat (+İade) ===
 # İşlem bordrosunun çeke verdiği SONUÇ durum (geri-al güvenlik kontrolü için).
 _ISLEM_SONUC = {
     CekBordrosu.Tur.CARI_CIRO: CekSenet.Durum.CIRO,
     CekBordrosu.Tur.BANKA_TAHSIL: CekSenet.Durum.TAHSILDE,
     CekBordrosu.Tur.BANKA_TEMINAT: CekSenet.Durum.TEMINATTA,
+    CekBordrosu.Tur.BANKA_TAHSIL_IADE: CekSenet.Durum.PORTFOYDE,
+    CekBordrosu.Tur.BANKA_TEMINAT_IADE: CekSenet.Durum.PORTFOYDE,
+    CekBordrosu.Tur.CARI_IADE: CekSenet.Durum.IADE,
 }
-# Banka reclass işlemleri (portföy → ara durum; hedef çek hesabı borç / portföy alacak).
+# Banka reclass işlemleri — iki yönlü: ileri (tahsil/teminat: portföy→ara durum, banka hesabı
+# zorunlu, belge bilgisi) ve İADE (ara durum→portföy, hedef seçilmez, mevcut duruma bakılır).
+# kaynak = ALACAK (evrak çıkar), hedef = BORÇ (evrak girer).
 _RECLASS = {
-    "tahsil": {"tur": CekBordrosu.Tur.BANKA_TAHSIL, "durum": CekSenet.Durum.TAHSILDE,
-               "oneki": "tahsilde", "ack": "BANKA TAHSİL"},
-    "teminat": {"tur": CekBordrosu.Tur.BANKA_TEMINAT, "durum": CekSenet.Durum.TEMINATTA,
-                "oneki": "teminatta", "ack": "BANKA TEMİNAT"},
+    "tahsil": {"tur": CekBordrosu.Tur.BANKA_TAHSIL, "kaynak_durum": CekSenet.Durum.PORTFOYDE,
+               "hedef_durum": CekSenet.Durum.TAHSILDE, "kaynak_oneki": "portfoy",
+               "hedef_oneki": "tahsilde", "banka_gerekli": True, "ack": "BANKA TAHSİL"},
+    "teminat": {"tur": CekBordrosu.Tur.BANKA_TEMINAT, "kaynak_durum": CekSenet.Durum.PORTFOYDE,
+                "hedef_durum": CekSenet.Durum.TEMINATTA, "kaynak_oneki": "portfoy",
+                "hedef_oneki": "teminatta", "banka_gerekli": True, "ack": "BANKA TEMİNAT"},
+    "tahsil_iade": {"tur": CekBordrosu.Tur.BANKA_TAHSIL_IADE, "kaynak_durum": CekSenet.Durum.TAHSILDE,
+                    "hedef_durum": CekSenet.Durum.PORTFOYDE, "kaynak_oneki": "tahsilde",
+                    "hedef_oneki": "portfoy", "banka_gerekli": False, "ack": "BANKA TAHSİL İADE"},
+    "teminat_iade": {"tur": CekBordrosu.Tur.BANKA_TEMINAT_IADE, "kaynak_durum": CekSenet.Durum.TEMINATTA,
+                     "hedef_durum": CekSenet.Durum.PORTFOYDE, "kaynak_oneki": "teminatta",
+                     "hedef_oneki": "portfoy", "banka_gerekli": False, "ack": "BANKA TEMİNAT İADE"},
 }
 
 
@@ -246,13 +259,65 @@ def _secim_coz(cek_ids, *, yon=CekSenet.Yon.ALINAN, durum=CekSenet.Durum.PORTFOY
     cekler = list(CekSenet.objects.filter(pk__in=set(ids), silindi=False))
     if len(cekler) != len(set(ids)):
         raise CekHatasi("Seçilen çek/senetlerden bazıları bulunamadı.")
+    durum_ad = dict(CekSenet.Durum.choices).get(durum, durum)
     for c in cekler:
         if c.yon != yon or c.durum != durum:
             raise CekHatasi(f"{c.belge_no or c.pk} bu işlem için uygun değil "
-                            f"(yalnız portföydeki alınan evrak).")
+                            f"(yalnız \"{durum_ad}\" durumundaki alınan evrak seçilebilir).")
     if len({c.para_birimi for c in cekler}) > 1:
         raise CekHatasi("Seçilen çek/senetler aynı para biriminde olmalı (tek fiş).")
     return cekler
+
+
+@transaction.atomic
+def cari_iade_bordrosu_olustur(*, tarih, cek_ids, aciklama="", kullanici=None) -> CekBordrosu:
+    """Cari İade: portföydeki alınan çek/senetler kendi carisine (evrakı veren) iade edilir.
+    Her evrakın kendi carisi BORÇ (borcu geri doğar) / Portföydeki çek-senet ALACAK. Durum
+    PORTFOYDE → IADE (terminal). Seçimde farklı cariler olabilir (her biri kendi hesabına
+    borçlanır); aynı para birimi zorunlu (tek fiş). Hedef seçilmez — evrağın kendi carisidir."""
+    cekler = _secim_coz(cek_ids)
+    pb = cekler[0].para_birimi
+    kur = _kur_coz(pb, tarih)
+    ayar = CekHesapAyari.get()
+    cek_top = sum((c.tutar for c in cekler if c.tip == CekSenet.Tip.CEK), Decimal("0"))
+    senet_top = sum((c.tutar for c in cekler if c.tip == CekSenet.Tip.SENET), Decimal("0"))
+    alacak_satir = []
+    if cek_top > 0:
+        alacak_satir.append((_ayar_hesap(ayar, "portfoy", CekSenet.Tip.CEK).hesap_kodu, cek_top))
+    if senet_top > 0:
+        alacak_satir.append((_ayar_hesap(ayar, "portfoy", CekSenet.Tip.SENET).hesap_kodu, senet_top))
+    cari_toplam, cari_nesne = {}, {}
+    for c in cekler:
+        cari_toplam[c.cari_id] = cari_toplam.get(c.cari_id, Decimal("0")) + c.tutar
+        cari_nesne[c.cari_id] = c.cari
+    borc_satir = []
+    for cari_id, tutar in cari_toplam.items():
+        _, hesap = _cari_coz(cari_id)
+        borc_satir.append((hesap.hesap_kodu, tutar))
+    tek_cari = next(iter(cari_nesne.values())) if len(cari_nesne) == 1 else None
+    bordro = CekBordrosu.objects.create(
+        tur=CekBordrosu.Tur.CARI_IADE, tarih=tarih, cari=tek_cari,
+        aciklama=(aciklama.strip() or buyuk_harf_tr(
+            f"ÇEK/SENET CARİ İADE - {tek_cari.unvan}" if tek_cari else "ÇEK/SENET CARİ İADE")),
+        created_by=kullanici, updated_by=kullanici)
+    for c in cekler:
+        CekBordroSatir.objects.create(bordro=bordro, cek_senet=c, onceki_durum=c.durum,
+                                      created_by=kullanici, updated_by=kullanici)
+        c.durum = CekSenet.Durum.IADE
+        c.updated_by = kullanici
+        c.save(update_fields=["durum", "updated_by", "updated_at"])
+    girdiler = [SatirGirdi(hesap_kodu=kod, taraf="B", islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
+                for kod, tut in borc_satir]
+    girdiler += [SatirGirdi(hesap_kodu=kod, taraf="A", islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
+                 for kod, tut in alacak_satir]
+    try:
+        fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=bordro.aciklama,
+                          kur_usd=None, kaynak=YevmiyeFisi.Kaynak.CEK_SENET, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise CekHatasi(str(e))
+    fis.cek_bordrosu = bordro
+    fis.save(update_fields=["cek_bordrosu", "updated_at"])
+    return bordro
 
 
 @transaction.atomic
@@ -298,12 +363,12 @@ def cari_ciro_bordrosu_olustur(*, hedef_id, tarih, cek_ids, aciklama="", kullani
 
 
 @transaction.atomic
-def _banka_reclass_bordrosu(tan, *, hedef_id, tarih, cek_ids, aciklama="", kullanici=None) -> CekBordrosu:
-    """Banka Tahsil/Teminat: portföydeki alınan çek/senetler bir banka hesabına verilir.
-    RECLASS — hedef çek hesabı (Tahsilde/Teminatta) BORÇ / Portföydeki çek hesabı ALACAK
-    (her tip için; banka hesabı yalnız belge bilgisidir, fişte nakit satırı yok). hedef_id = banka hesabı pk."""
-    bh = _banka_hesap_coz(hedef_id)
-    cekler = _secim_coz(cek_ids)
+def _reclass_bordrosu(tan, *, tarih, cek_ids, hedef_id=None, aciklama="", kullanici=None) -> CekBordrosu:
+    """Banka Tahsil/Teminat (ileri) veya İade (geri): portföy ↔ ara durum RECLASS.
+    Kaynak hesap ALACAK (evrak çıkar) / hedef hesap BORÇ (evrak girer), her tip için ayrı
+    satır. Banka hesabı yalnız İLERİ yönde zorunlu (belge bilgisi; fişte nakit satırı yok —
+    hesaplar hep config'den). hedef_id = banka hesabı pk (yalnız ileri yönde kullanılır)."""
+    cekler = _secim_coz(cek_ids, durum=tan["kaynak_durum"])
     pb = cekler[0].para_birimi
     kur = _kur_coz(pb, tarih)
     ayar = CekHesapAyari.get()
@@ -312,20 +377,22 @@ def _banka_reclass_bordrosu(tan, *, hedef_id, tarih, cek_ids, aciklama="", kulla
     girdiler = []
     for tip, top in ((CekSenet.Tip.CEK, cek_top), (CekSenet.Tip.SENET, senet_top)):
         if top > 0:
-            hedef_h = _ayar_hesap(ayar, tan["oneki"], tip)     # tahsilde/teminatta (borç)
-            portfoy_h = _ayar_hesap(ayar, "portfoy", tip)      # portföydeki (alacak)
+            hedef_h = _ayar_hesap(ayar, tan["hedef_oneki"], tip)
+            kaynak_h = _ayar_hesap(ayar, tan["kaynak_oneki"], tip)
             girdiler.append(SatirGirdi(hesap_kodu=hedef_h.hesap_kodu, taraf="B",
                                        islem_tutari=top, islem_pb=pb, islem_kuru=kur))
-            girdiler.append(SatirGirdi(hesap_kodu=portfoy_h.hesap_kodu, taraf="A",
+            girdiler.append(SatirGirdi(hesap_kodu=kaynak_h.hesap_kodu, taraf="A",
                                        islem_tutari=top, islem_pb=pb, islem_kuru=kur))
+    bh = _banka_hesap_coz(hedef_id) if tan["banka_gerekli"] else None
+    ack_ek = f" - {bh.banka.ad} {bh.ad}" if bh else ""
     bordro = CekBordrosu.objects.create(
         tur=tan["tur"], tarih=tarih, banka_hesap=bh,
-        aciklama=(aciklama.strip() or buyuk_harf_tr(f"{tan['ack']} - {bh.banka.ad} {bh.ad}")),
+        aciklama=(aciklama.strip() or buyuk_harf_tr(f"{tan['ack']}{ack_ek}")),
         created_by=kullanici, updated_by=kullanici)
     for c in cekler:
         CekBordroSatir.objects.create(bordro=bordro, cek_senet=c, onceki_durum=c.durum,
                                       created_by=kullanici, updated_by=kullanici)
-        c.durum = tan["durum"]
+        c.durum = tan["hedef_durum"]
         c.updated_by = kullanici
         c.save(update_fields=["durum", "updated_by", "updated_at"])
     try:
@@ -340,12 +407,22 @@ def _banka_reclass_bordrosu(tan, *, hedef_id, tarih, cek_ids, aciklama="", kulla
 
 def banka_tahsil_bordrosu_olustur(**kwargs) -> CekBordrosu:
     """Portföydeki çek/senetleri bankaya TAHSİLE ver (→ Bankada Tahsilde). hedef_id = banka hesabı."""
-    return _banka_reclass_bordrosu(_RECLASS["tahsil"], **kwargs)
+    return _reclass_bordrosu(_RECLASS["tahsil"], **kwargs)
 
 
 def banka_teminat_bordrosu_olustur(**kwargs) -> CekBordrosu:
     """Portföydeki çek/senetleri bankaya TEMİNAT ver (→ Bankada Teminatta). hedef_id = banka hesabı."""
-    return _banka_reclass_bordrosu(_RECLASS["teminat"], **kwargs)
+    return _reclass_bordrosu(_RECLASS["teminat"], **kwargs)
+
+
+def banka_tahsil_iade_bordrosu_olustur(**kwargs) -> CekBordrosu:
+    """Bankada Tahsildeki çek/senetler PORTFÖYE iade edilir (banka tahsil edemedi/vazgeçildi)."""
+    return _reclass_bordrosu(_RECLASS["tahsil_iade"], **kwargs)
+
+
+def banka_teminat_iade_bordrosu_olustur(**kwargs) -> CekBordrosu:
+    """Bankada Teminattaki çek/senetler PORTFÖYE iade edilir (teminat çözüldü)."""
+    return _reclass_bordrosu(_RECLASS["teminat_iade"], **kwargs)
 
 
 @transaction.atomic

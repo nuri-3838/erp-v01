@@ -721,6 +721,15 @@ class BankaIslemForm(forms.Form):
         self.fields["banka_hesap"].widget.attrs["class"] = "akilli-sec"
 
 
+class IslemTarihForm(forms.Form):
+    """Yalnız işlem tarihi — hedef zaten evraktan/duruma bellidir (Banka Tahsil/Teminat İade,
+    Cari İade). Portföy-seçim ekranında hedef seçici gerektirmeyen işlemler için."""
+    tarih = forms.DateField(
+        label="İşlem Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+
+
 class CekKalemForm(forms.Form):
     """Bordro satırı: bir çek/senet (tip + tutar + vade + belge no + keşideci + ön/arka görsel)."""
     tip = forms.ChoiceField(label="Tip", choices=CekSenet.Tip.choices)

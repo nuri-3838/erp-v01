@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1875,16 +1875,21 @@ def cek_firma_cikis(request):
         basari_ek="verildi")
 
 
-def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoji, yardim, buton, basari):
-    """Portföy-seçim işlem bordrosu ortak gövdesi (Ciro / Banka Tahsil / Banka Teminat)."""
+def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoji, yardim, buton,
+                      basari, durum=CekSenet.Durum.PORTFOYDE):
+    """Portföy-seçim işlem bordrosu ortak gövdesi (Ciro / Banka Tahsil / Teminat / İade / Cari İade).
+    hedef_alani=None → formda hedef seçici yok (İade işlemleri; hedef zaten mevcut duruma bağlı).
+    durum → seçim listesindeki evrakın aranan durumu (İade'de TAHSILDE/TEMINATTA)."""
     if request.method == "POST":
         form = form_cls(request.POST)
         cek_ids = request.POST.getlist("cek_ids")
         if form.is_valid():
             try:
-                bordro = servis_fn(hedef_id=form.cleaned_data[hedef_alani].pk,
-                                   tarih=form.cleaned_data["tarih"], cek_ids=cek_ids,
-                                   kullanici=request.user)
+                kwargs = {"tarih": form.cleaned_data["tarih"], "cek_ids": cek_ids,
+                         "kullanici": request.user}
+                if hedef_alani:
+                    kwargs["hedef_id"] = form.cleaned_data[hedef_alani].pk
+                bordro = servis_fn(**kwargs)
                 messages.success(request, f"Bordro kaydedildi; {len(cek_ids)} evrak {basari}, "
                                           f"fiş oluşturuldu.")
                 return redirect("core:cek_bordro_detay", pk=bordro.pk)
@@ -1893,7 +1898,7 @@ def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoj
     else:
         form = form_cls()
     return render(request, "core/cek_islem_secim.html",
-                  {"form": form, "portfoy": cek_servis.portfoydeki_cekler(),
+                  {"form": form, "portfoy": cek_servis.portfoydeki_cekler(durum=durum),
                    "baslik": baslik, "emoji": emoji, "yardim": yardim, "buton": buton})
 
 
@@ -1930,6 +1935,42 @@ def cek_banka_teminat(request):
                "Teminattaki hesabına geçer (Teminattaki çek-senet borç / Portföydeki çek-senet alacak). "
                "Banka iade ederse geri alınabilir.",
         buton="Teminata Ver", basari="teminata verildi")
+
+
+@ekran_gerekli("cek_senet")
+def cek_banka_tahsil_iade(request):
+    """Banka Tahsil İade: Bankada Tahsildeki çek/senetler portföye iade edilir (banka tahsil
+    edemedi / işlemden vazgeçildi)."""
+    return _islem_secim_view(
+        request, form_cls=IslemTarihForm, hedef_alani=None,
+        servis_fn=cek_servis.banka_tahsil_iade_bordrosu_olustur, baslik="Banka Tahsil İade", emoji="↩️",
+        yardim="Bankada Tahsildeki çek/senetler portföye iade edilir (Portföydeki çek-senet borç / "
+               "Tahsildeki çek-senet alacak). Hangi banka olduğu önemli değil; hedef seçilmez.",
+        buton="Portföye İade Al", basari="portföye iade alındı",
+        durum=CekSenet.Durum.TAHSILDE)
+
+
+@ekran_gerekli("cek_senet")
+def cek_banka_teminat_iade(request):
+    """Banka Teminat İade: Bankada Teminattaki çek/senetler portföye iade edilir (teminat çözüldü)."""
+    return _islem_secim_view(
+        request, form_cls=IslemTarihForm, hedef_alani=None,
+        servis_fn=cek_servis.banka_teminat_iade_bordrosu_olustur, baslik="Banka Teminat İade", emoji="↩️",
+        yardim="Bankada Teminattaki çek/senetler portföye iade edilir (Portföydeki çek-senet borç / "
+               "Teminattaki çek-senet alacak). Teminat çözüldüğünde kullanılır.",
+        buton="Portföye İade Al", basari="portföye iade alındı",
+        durum=CekSenet.Durum.TEMINATTA)
+
+
+@ekran_gerekli("cek_senet")
+def cek_cari_iade(request):
+    """Cari İade: portföydeki alınan çek/senetler kendi carisine (evrakı veren) iade edilir."""
+    return _islem_secim_view(
+        request, form_cls=IslemTarihForm, hedef_alani=None,
+        servis_fn=cek_servis.cari_iade_bordrosu_olustur, baslik="Cari İade", emoji="↩️",
+        yardim="Portföydeki alınan çek/senetler kendi carisine (evrakı veren) iade edilir "
+               "(cari borç / Portföydeki çek-senet alacak). Evrak portföyden çıkar (İade Edildi).",
+        buton="Cariye İade Et", basari="cariye iade edildi")
 
 
 def _bordro_baglam(bordro):
