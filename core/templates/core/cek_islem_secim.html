@@ -27,23 +27,32 @@
       <h2 class="bolum-baslik">{{ baslik }} Bilgileri</h2>
       <div class="izgara">
         {% for field in form %}
-          <div class="alan {% if field.name == 'cari' or field.name == 'banka_hesap' %}tam{% endif %}">
+          {% if field.name == 'cari' or field.name == 'banka_hesap' or field.name == 'kasa' %}
+          <div class="alan tam">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {% if field.name == 'cari' or field.name == 'banka_hesap' %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
+            <div class="akilli">{{ field }}</div>
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
+          {% else %}
+          <div class="alan">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          {% endif %}
         {% endfor %}
       </div>
       <p class="yardim">{{ yardim }}</p>
     </section>
 
     <section class="icerik-kart">
-      <h2 class="bolum-baslik">Portföydeki Çek / Senetler</h2>
+      <h2 class="bolum-baslik">{{ liste_baslik|default:"Portföydeki Çek / Senetler" }}</h2>
       {% if portfoy %}
       <div class="tablo-kapsayici">
       <table class="pf-tablo">
         <thead><tr>
-          <th style="width:36px"></th><th>Tip</th><th>Belge No</th><th>Keşideci</th>
+          <th style="width:36px"></th><th>Tip</th>{% if durum_goster %}<th>Durum</th>{% endif %}
+          <th>Belge No</th><th>Keşideci</th>
           <th>Vade</th><th class="sag">Tutar</th><th>PB</th><th>Cari</th>
         </tr></thead>
         <tbody>
@@ -52,6 +61,7 @@
             <td><input type="checkbox" class="pf-cb" name="cek_ids" value="{{ c.pk }}"
                        data-pb="{{ c.para_birimi }}" data-tutar="{{ c.tutar }}"></td>
             <td>{{ c.get_tip_display }}</td>
+            {% if durum_goster %}<td>{{ c.get_durum_display }}</td>{% endif %}
             <td class="mono">{{ c.belge_no|default:"—" }}</td>
             <td>{{ c.kesideci|default:"—" }}</td>
             <td class="mono">{{ c.vade|date:"d.m.Y" }}</td>

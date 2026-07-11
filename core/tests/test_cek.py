@@ -476,3 +476,103 @@ class CariGirisBordroTest(TestCase):
         self.assertEqual(p.status_code, 200)
         self.assertEqual(p["Content-Type"], "application/pdf")
         self.assertEqual(p.content[:5], b"%PDF-")
+
+    # --- Tahsil gerçekleşme (nakit giriş): TAHSILDE/PORTFOYDE -> TAHSIL ---
+    def _kasa(self):
+        from core.models import Kasa
+        _hesap("100.01", "MERKEZ KASA")
+        return Kasa.objects.create(ad="MERKEZ KASA", para_birimi="TRY", muhasebe_id="100.01",
+                                   created_by=self.yon, updated_by=self.yon)
+
+    def test_tahsil_banka_hedef_tahsildeden(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import CekBordrosu, CekSenet
+        from core.services.cek import (banka_tahsil_bordrosu_olustur, bordro_sil,
+                                       tahsil_bordrosu_olustur)
+        g = self._olustur([{"tip": "CEK", "tutar": "4.000", "vade": datetime.date(2026, 9, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        banka_tahsil_bordrosu_olustur(hedef_id=self.bh.pk, tarih=datetime.date(2026, 6, 28),
+                                      cek_ids=cek_ids, kullanici=self.yon)   # -> TAHSILDE
+        cb = tahsil_bordrosu_olustur(banka_hesap_id=self.bh.pk, tarih=datetime.date(2026, 6, 28),
+                                     cek_ids=cek_ids, kullanici=self.yon)
+        self.assertEqual(cb.tur, CekBordrosu.Tur.TAHSIL)
+        self.assertEqual(cb.banka_hesap_id, self.bh.pk)
+        self.assertTrue(all(c.durum == "TAHSIL" for c in CekSenet.objects.filter(pk__in=cek_ids)))
+        fis = cb.fisler.get()
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.all()}
+        self.assertEqual(s["102.01"], (Decimal("4000.00"), Decimal("0.00")))   # banka borç (nakit girer)
+        self.assertEqual(s["101.02"], (Decimal("0.00"), Decimal("4000.00")))   # tahsildeki çek alacak
+        bordro_sil(cb, kullanici=self.yon)                                     # geri-al -> TAHSILDE
+        self.assertTrue(all(c.durum == "TAHSILDE" for c in CekSenet.objects.filter(pk__in=cek_ids)))
+
+    def test_tahsil_kasa_hedef_portfoyden(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import CekBordrosu, CekSenet
+        from core.services.cek import tahsil_bordrosu_olustur
+        kasa = self._kasa()
+        g = self._olustur([{"tip": "CEK", "tutar": "1.500", "vade": datetime.date(2026, 9, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        cb = tahsil_bordrosu_olustur(kasa_id=kasa.pk, tarih=datetime.date(2026, 6, 28),
+                                     cek_ids=cek_ids, kullanici=self.yon)
+        self.assertEqual(cb.kasa_id, kasa.pk)
+        self.assertIsNone(cb.banka_hesap_id)
+        self.assertTrue(all(c.durum == "TAHSIL" for c in CekSenet.objects.filter(pk__in=cek_ids)))
+        fis = cb.fisler.get()
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.all()}
+        self.assertEqual(s["100.01"], (Decimal("1500.00"), Decimal("0.00")))   # kasa borç
+        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("1500.00")))   # portföydeki çek alacak
+
+    def test_tahsil_karisik_kaynak_tek_fis(self):
+        import datetime
+        from decimal import Decimal
+        from core.services.cek import (banka_tahsil_bordrosu_olustur, tahsil_bordrosu_olustur)
+        g = self._olustur([
+            {"tip": "CEK", "tutar": "4.000", "vade": datetime.date(2026, 9, 1)},
+            {"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 10, 1)}])
+        ids = list(g.cek_senetler.order_by("tutar").values_list("pk", flat=True))
+        portfoyde_id, tahsilde_id = ids[0], ids[1]      # 1.000 portföyde kalır, 4.000 tahsile gider
+        banka_tahsil_bordrosu_olustur(hedef_id=self.bh.pk, tarih=datetime.date(2026, 6, 28),
+                                      cek_ids=[tahsilde_id], kullanici=self.yon)
+        cb = tahsil_bordrosu_olustur(banka_hesap_id=self.bh.pk, tarih=datetime.date(2026, 6, 28),
+                                     cek_ids=[portfoyde_id, tahsilde_id], kullanici=self.yon)
+        fis = cb.fisler.get()
+        s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.all()}
+        self.assertEqual(s["102.01"], (Decimal("5000.00"), Decimal("0.00")))   # banka borç toplam
+        self.assertEqual(s["101.02"], (Decimal("0.00"), Decimal("4000.00")))   # tahsildeki (banka tahsile verilen)
+        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("1000.00")))   # portföydeki (elden)
+
+    def test_tahsil_hedef_biri_zorunlu(self):
+        import datetime
+        from core.services.cek import CekHatasi, tahsil_bordrosu_olustur
+        kasa = self._kasa()
+        g = self._olustur([{"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 9, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        with self.assertRaises(CekHatasi):        # hiçbiri
+            tahsil_bordrosu_olustur(tarih=datetime.date(2026, 6, 28), cek_ids=cek_ids,
+                                    kullanici=self.yon)
+        with self.assertRaises(CekHatasi):        # ikisi birden
+            tahsil_bordrosu_olustur(banka_hesap_id=self.bh.pk, kasa_id=kasa.pk,
+                                    tarih=datetime.date(2026, 6, 28), cek_ids=cek_ids,
+                                    kullanici=self.yon)
+
+    def test_tahsil_view_ve_aktif_buton(self):
+        self.client.force_login(self.yon)
+        self.assertEqual(self.client.get(reverse("core:cek_tahsil")).status_code, 200)
+        r = self.client.get(reverse("core:cek_senetler"))
+        self.assertContains(r, reverse("core:cek_tahsil"))
+
+    def test_tahsil_view_post_olusturur(self):
+        import datetime
+        from core.models import CekBordrosu, CekSenet
+        kasa = self._kasa()
+        g = self._olustur([{"tip": "CEK", "tutar": "1.500", "vade": datetime.date(2026, 9, 1)}])
+        cek_id = g.cek_senetler.get().pk
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:cek_tahsil"), {
+            "kasa": kasa.pk, "banka_hesap": "", "tarih": "2026-06-28", "cek_ids": [cek_id]})
+        cb = CekBordrosu.objects.filter(tur=CekBordrosu.Tur.TAHSIL, silindi=False).get()
+        self.assertRedirects(r, reverse("core:cek_bordro_detay", args=[cb.pk]))
+        self.assertEqual(CekSenet.objects.get(pk=cek_id).durum, "TAHSIL")
+        self.assertEqual(cb.kasa_id, kasa.pk)

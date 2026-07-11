@@ -730,6 +730,39 @@ class IslemTarihForm(forms.Form):
         initial=timezone.localdate)
 
 
+class CekTahsilForm(forms.Form):
+    """Tahsil gerçekleşme başlığı: nakit hedefi Banka hesabı VEYA Kasa (yalnız biri) + tarih.
+    (Evrak seçimi şablonda checkbox listesiyle; PB seçilen evraktan türer.)"""
+    banka_hesap = forms.ModelChoiceField(
+        label="Banka Hesabı", required=False, queryset=BankaHesap.objects.none(),
+        empty_label="— banka hesabı —")
+    kasa = forms.ModelChoiceField(
+        label="Kasa", required=False, queryset=Kasa.objects.none(), empty_label="— kasa —")
+    tarih = forms.DateField(
+        label="İşlem Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        bh = self.fields["banka_hesap"]
+        bh.queryset = (BankaHesap.objects.filter(silindi=False)
+                       .select_related("banka").order_by("banka__ad", "ad"))
+        bh.label_from_instance = lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})"
+        bh.widget.attrs["class"] = "akilli-sec"
+        ks = self.fields["kasa"]
+        ks.queryset = Kasa.objects.filter(silindi=False).order_by("ad")
+        ks.label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+        ks.widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        if bool(cd.get("banka_hesap")) == bool(cd.get("kasa")):
+            raise forms.ValidationError(
+                "Nakit hedefi olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
+        return cd
+
+
 class CekKalemForm(forms.Form):
     """Bordro satırı: bir çek/senet (tip + tutar + vade + belge no + keşideci + ön/arka görsel)."""
     tip = forms.ChoiceField(label="Tip", choices=CekSenet.Tip.choices)

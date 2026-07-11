@@ -54,6 +54,12 @@
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_cari_iade' %}">↩️ Cari İade</a>
     </div>
   </div>
+  <div class="cs-grup">
+    <p class="cs-grup-baslik">💰 Gerçekleşme (Nakit)</p>
+    <div class="cs-butonlar">
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_tahsil' %}">💰 Tahsil Gerçekleşme</a>
+    </div>
+  </div>
   <p class="yardim" style="margin-top:1rem">Tüm işlemler aktif. Yevmiye fişini
     ⚙️ <strong>Muhasebe Hesap Kodları</strong>'ndaki eşlemeden üretir (önce orayı tanımlayın).</p>
 </section>
@@ -73,7 +79,7 @@
         <tr>
           <td><a href="{% url 'core:cek_bordro_detay' b.pk %}">{{ b.get_tur_display }} #{{ b.pk }}</a></td>
           <td class="mono">{{ b.tarih|date:"d.m.Y" }}</td>
-          <td>{% if b.cari %}{{ b.cari.unvan }}{% elif b.banka_hesap %}{{ b.banka_hesap.banka.ad }} · {{ b.banka_hesap.ad }}{% else %}—{% endif %}</td>
+          <td>{% if b.cari %}{{ b.cari.unvan }}{% elif b.banka_hesap %}{{ b.banka_hesap.banka.ad }} · {{ b.banka_hesap.ad }}{% elif b.kasa %}{{ b.kasa.ad }}{% else %}—{% endif %}</td>
           <td class="sag mono">{{ b.evrak_qs.count }}</td>
         </tr>
       {% empty %}

@@ -1142,6 +1142,7 @@ class CekBordrosu(TemelModel):
         CARI_IADE = "CARI_IADE", "Cari İade"
         BANKA_TAHSIL_IADE = "BANKA_TAHSIL_IADE", "Banka Tahsil İade"
         BANKA_TEMINAT_IADE = "BANKA_TEMINAT_IADE", "Banka Teminat İade"
+        TAHSIL = "TAHSIL", "Tahsil Gerçekleşme"
 
     tur = models.CharField("tür", max_length=20, choices=Tur.choices)
     tarih = models.DateField("işlem tarihi")
@@ -1151,6 +1152,10 @@ class CekBordrosu(TemelModel):
         related_name="cek_bordrolari")
     banka_hesap = models.ForeignKey(
         "BankaHesap", verbose_name="banka hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="cek_bordrolari")
+    # Tahsil gerçekleşmede nakit Kasa'ya girdiyse hedef (Banka veya Kasa; ikisinden biri).
+    kasa = models.ForeignKey(
+        "Kasa", verbose_name="kasa", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cek_bordrolari")
 
     # Evrak OLUŞTURAN bordro türleri (giriş/çıkış). Diğerleri mevcut evrakı SEÇER (işlem bordrosu).

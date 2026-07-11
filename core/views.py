@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekTahsilForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1971,6 +1971,40 @@ def cek_cari_iade(request):
         yardim="Portföydeki alınan çek/senetler kendi carisine (evrakı veren) iade edilir "
                "(cari borç / Portföydeki çek-senet alacak). Evrak portföyden çıkar (İade Edildi).",
         buton="Cariye İade Et", basari="cariye iade edildi")
+
+
+@ekran_gerekli("cek_senet")
+def cek_tahsil(request):
+    """Tahsil Gerçekleşme: Bankada Tahsildeki veya Portföydeki alınan çek/senetler nakde
+    döner; para seçilen Banka hesabı VEYA Kasa'ya girer (evrak durumu → Tahsil Edildi)."""
+    if request.method == "POST":
+        form = CekTahsilForm(request.POST)
+        cek_ids = request.POST.getlist("cek_ids")
+        if form.is_valid():
+            try:
+                bh = form.cleaned_data.get("banka_hesap")
+                ks = form.cleaned_data.get("kasa")
+                bordro = cek_servis.tahsil_bordrosu_olustur(
+                    tarih=form.cleaned_data["tarih"], cek_ids=cek_ids,
+                    banka_hesap_id=bh.pk if bh else None,
+                    kasa_id=ks.pk if ks else None, kullanici=request.user)
+                messages.success(request, f"Bordro kaydedildi; {len(cek_ids)} evrak tahsil edildi, "
+                                          f"fiş oluşturuldu.")
+                return redirect("core:cek_bordro_detay", pk=bordro.pk)
+            except cek_servis.CekHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CekTahsilForm()
+    return render(request, "core/cek_islem_secim.html", {
+        "form": form, "baslik": "Tahsil Gerçekleşme", "emoji": "💰",
+        "yardim": "Bankada Tahsildeki veya Portföydeki alınan çek/senetler seçilir; para seçtiğin "
+                  "Banka hesabı ya da Kasa'ya girer (nakit hesabı borç / kaynak çek-senet alacak). "
+                  "Evrak durumu Tahsil Edildi olur; yanlışsa bordrodan geri alınabilir.",
+        "buton": "Tahsil Et", "durum_goster": True,
+        "liste_baslik": "Tahsil Edilebilir Çek / Senetler (Bankada Tahsilde + Portföyde)",
+        "portfoy": cek_servis.portfoydeki_cekler(
+            durum=(CekSenet.Durum.TAHSILDE, CekSenet.Durum.PORTFOYDE)),
+    })
 
 
 def _bordro_baglam(bordro):
