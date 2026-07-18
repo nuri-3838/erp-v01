@@ -22,6 +22,7 @@ from core.forms import (
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
+    TeklifSiparisForm, TeklifSiparisKalemForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm,
@@ -29,7 +30,7 @@ from core.forms import (
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, Sehir, Stok, TevkifatOrani, Ulke,
+    KrediTaksit, Kur, Sehir, Stok, TeklifSiparis, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -56,6 +57,7 @@ from core.services import cari as cari_servis
 from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
+from core.services import teklif_siparis as teklif_siparis_servis
 from core.services import depo as depo_servis
 from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
@@ -1714,6 +1716,128 @@ def satis_teklifleri(request):
 @ekran_gerekli("satis_siparisleri")
 def satis_siparisleri(request):
     return _teklif_siparis_iskelet(request, "Satış Siparişleri", "📦")
+
+
+# === TEKLİF & SİPARİŞ — Satınalma/Satış Teklifi ve Siparişi (yevmiye/stok üretmez) ===
+_TS_EKRAN = {
+    (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.ALIS): "satinalma_teklifleri",
+    (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS): "satinalma_siparisleri",
+    (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS): "satis_teklifleri",
+    (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS): "satis_siparisleri",
+}
+_TS_EKLE = {
+    (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.ALIS): "satinalma_teklif_ekle",
+    (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS): "satinalma_siparis_ekle",
+    (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS): "satis_teklif_ekle",
+    (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS): "satis_siparis_ekle",
+}
+TeklifSiparisKalemFormSet = formset_factory(
+    TeklifSiparisKalemForm, extra=0, min_num=1, validate_min=True)
+
+
+def _ts_liste(request, belge_tur, yon, baslik, emoji):
+    kayitlar = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
+                .prefetch_related("kalemler__kdv"))
+    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
+    return render(request, "core/teklif_siparis_listesi.html",
+                  {"kayitlar": sayfa, "baslik": baslik, "emoji": emoji,
+                   "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
+
+
+@ekran_gerekli("satinalma_teklifleri")
+def satinalma_teklifleri(request):
+    return _ts_liste(request, TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.ALIS,
+                     "Satınalma Teklifleri", "📥")
+
+
+@ekran_gerekli("satinalma_siparisleri")
+def satinalma_siparisleri(request):
+    return _ts_liste(request, TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS,
+                     "Satınalma Siparişleri", "🛒")
+
+
+@ekran_gerekli("satis_teklifleri")
+def satis_teklifleri(request):
+    return _ts_liste(request, TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS,
+                     "Satış Teklifleri", "📤")
+
+
+@ekran_gerekli("satis_siparisleri")
+def satis_siparisleri(request):
+    return _ts_liste(request, TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS,
+                     "Satış Siparişleri", "📦")
+
+
+def _ts_ekle(request, belge_tur, yon, baslik, emoji):
+    ekran = _TS_EKRAN[(belge_tur, yon)]
+    if request.method == "POST":
+        bform = TeklifSiparisForm(request.POST, belge_tur=belge_tur)
+        formset = TeklifSiparisKalemFormSet(request.POST)
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
+                for f in formset if f.dolu_mu()
+            ]
+            try:
+                ts = teklif_siparis_servis.teklif_siparis_olustur(
+                    belge_tur=belge_tur, yon=yon, cari_id=bform.cleaned_data["cari"].pk,
+                    tarih=bform.cleaned_data["tarih"],
+                    gecerlilik_teslim_tarihi=bform.cleaned_data.get("gecerlilik_teslim_tarihi"),
+                    belge_no=bform.cleaned_data.get("belge_no", ""),
+                    para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
+                    aciklama=bform.cleaned_data.get("aciklama", ""),
+                    satirlar=satirlar, kullanici=request.user)
+                messages.success(request, f"{ts.get_belge_tur_display()} kaydedildi.")
+                return redirect("core:teklif_siparis_detay", pk=ts.pk)
+            except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                bform.add_error(None, str(e))
+    else:
+        bform = TeklifSiparisForm(belge_tur=belge_tur)
+        formset = TeklifSiparisKalemFormSet()
+    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
+               for s in Stok.objects.filter(silindi=False).select_related("kdv")}
+    return render(request, "core/teklif_siparis_ekle.html",
+                  {"bform": bform, "formset": formset, "baslik": baslik, "emoji": emoji,
+                   "stok_kdv": stok_kdv, "iptal_url": reverse("core:" + ekran)})
+
+
+@ekran_gerekli("satinalma_teklifleri")
+def satinalma_teklif_ekle(request):
+    return _ts_ekle(request, TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.ALIS,
+                    "Yeni Satınalma Teklifi", "📥")
+
+
+@ekran_gerekli("satinalma_siparisleri")
+def satinalma_siparis_ekle(request):
+    return _ts_ekle(request, TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS,
+                    "Yeni Satınalma Siparişi", "🛒")
+
+
+@ekran_gerekli("satis_teklifleri")
+def satis_teklif_ekle(request):
+    return _ts_ekle(request, TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS,
+                    "Yeni Satış Teklifi", "📤")
+
+
+@ekran_gerekli("satis_siparisleri")
+def satis_siparis_ekle(request):
+    return _ts_ekle(request, TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS,
+                    "Yeni Satış Siparişi", "📦")
+
+
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satis_teklifleri", "satis_siparisleri")
+def teklif_siparis_detay(request, pk):
+    ts = get_object_or_404(
+        TeklifSiparis.objects.select_related("cari"), pk=pk, silindi=False)
+    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv")
+    ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
+    emoji = {"satinalma_teklifleri": "📥", "satinalma_siparisleri": "🛒",
+            "satis_teklifleri": "📤", "satis_siparisleri": "📦"}[ekran]
+    return render(request, "core/teklif_siparis_detay.html",
+                  {"ts": ts, "kalemler": kalemler, "emoji": emoji,
+                   "liste_url": "core:" + ekran})
 
 
 # === FİNANS — Kredi Kartı ===

@@ -892,6 +892,104 @@ class FaturaSatir(TemelModel):
                        / Decimal(self.tevkifat.payda), 2)
 
 
+class TeklifSiparis(TemelModel):
+    """Satınalma/Satış Teklifi veya Siparişi — TİCARİ belge, yevmiye ÜRETMEZ ve stok
+    hareketi YARATMAZ (muhasebe ve stok her zaman faturayla girer). belge_tur × yon
+    (2×2) dört ekranı tek modelden besler. Tutarlar kalemlerden (saklanmaz)."""
+
+    class BelgeTur(models.TextChoices):
+        TEKLIF = "TEKLIF", "Teklif"
+        SIPARIS = "SIPARIS", "Sipariş"
+
+    class Yon(models.TextChoices):
+        ALIS = "ALIS", "Alış"
+        SATIS = "SATIS", "Satış"
+
+    belge_tur = models.CharField("belge türü", max_length=7, choices=BelgeTur.choices)
+    yon = models.CharField("yön", max_length=5, choices=Yon.choices)
+    cari = models.ForeignKey(
+        Cari, verbose_name="cari", related_name="teklif_siparisler", on_delete=models.PROTECT)
+    tarih = models.DateField("belge tarihi")
+    # Teklifte geçerlilik, siparişte teslim tarihi — tek alan, etiket ekranda değişir.
+    gecerlilik_teslim_tarihi = models.DateField(
+        "geçerlilik / teslim tarihi", null=True, blank=True)
+    belge_no = models.CharField("belge no", max_length=50, blank=True)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    aciklama = models.CharField("açıklama", max_length=500, blank=True)
+
+    class Meta:
+        db_table = "teklif_siparis"
+        verbose_name = "teklif / sipariş"
+        verbose_name_plural = "teklif / siparişler"
+        ordering = ["-tarih", "-id"]
+
+    def __str__(self):
+        return f"{self.get_belge_tur_display()} {self.belge_no} ({self.cari_id})"
+
+    # --- Görüntüleme toplamları (belge para biriminde; saklanmaz, kalemden) ---
+    @property
+    def ara_toplam(self):
+        from decimal import Decimal
+        return sum((k.tutar for k in self.kalemler.filter(silindi=False)), Decimal("0.00"))
+
+    @property
+    def kdv_toplam(self):
+        from decimal import Decimal
+        return sum((k.kdv_tutari for k in self.kalemler.filter(silindi=False)), Decimal("0.00"))
+
+    @property
+    def genel_toplam(self):
+        return self.ara_toplam + self.kdv_toplam
+
+
+class TeklifSiparisKalem(TemelModel):
+    """Teklif/Sipariş kalemi: stok × miktar × birim fiyat (+ KDV oranı snapshot)."""
+
+    teklif_siparis = models.ForeignKey(
+        TeklifSiparis, verbose_name="teklif / sipariş", related_name="kalemler",
+        on_delete=models.CASCADE)
+    stok = models.ForeignKey(
+        Stok, verbose_name="stok", related_name="teklif_siparis_kalemleri",
+        on_delete=models.PROTECT)
+    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
+    birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
+    kdv = models.ForeignKey(
+        KdvOrani, verbose_name="KDV oranı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="teklif_siparis_kalemleri")
+
+    class Meta:
+        db_table = "teklif_siparis_kalem"
+        verbose_name = "teklif / sipariş kalemi"
+        verbose_name_plural = "teklif / sipariş kalemleri"
+        ordering = ["teklif_siparis", "id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0),
+                                   name="ck_ts_kalem_miktar_gt0"),
+            models.CheckConstraint(condition=models.Q(birim_fiyat__gte=0),
+                                   name="ck_ts_kalem_fiyat_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.stok_id} x {self.miktar}"
+
+    @property
+    def tutar(self):
+        from core.sayi import yuvarla
+        return yuvarla(self.miktar * self.birim_fiyat, 2)
+
+    @property
+    def kdv_tutari(self):
+        from decimal import Decimal
+        from core.sayi import yuvarla
+        oran = self.kdv.oran if self.kdv_id else Decimal("0")
+        return yuvarla(self.tutar * oran / Decimal("100"), 2)
+
+    @property
+    def genel_toplam(self):
+        return self.tutar + self.kdv_tutari
+
+
 # === STOKLAR Faz B — Depo (çok depo) ===
 class Depo(TemelModel):
     """Stok deposu. Çok depo destekli; eldeki miktar depo bazında hareketlerden

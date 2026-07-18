@@ -1,0 +1,41 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div><h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ baslik }}</h1></div>
+  <a class="dugme" href="{% url ekle_url %}">+ Yeni</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr>
+    <th>Tarih</th><th>Cari</th><th>Belge No</th><th class="sag">Genel Toplam</th><th>İşlem</th>
+  </tr></thead>
+  <tbody>
+    {% for k in kayitlar %}
+      <tr>
+        <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
+        <td><a href="{% url 'core:teklif_siparis_detay' k.pk %}">{{ k.cari.unvan }}</a></td>
+        <td>{% if k.belge_no %}<span class="mono">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="sag mono">{{ k.genel_toplam|tr_kur:2 }} {{ k.para_birimi }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if kayitlar.paginator.num_pages > 1 %}
+<div class="sayfalama">
+  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}">‹ Önceki</a>{% endif %}
+  <span>{{ kayitlar.number }} / {{ kayitlar.paginator.num_pages }}</span>
+  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}">Sonraki ›</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
