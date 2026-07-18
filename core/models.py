@@ -1145,6 +1145,7 @@ class CekBordrosu(TemelModel):
         TAHSIL = "TAHSIL", "Tahsil Gerçekleşme"
         ODEME = "ODEME", "Firma Çek Ödeme"
         KARSILIKSIZ = "KARSILIKSIZ", "Karşılıksız"
+        FIRMA_KARSILIKSIZ = "FIRMA_KARSILIKSIZ", "Firma Çek Karşılıksız"
 
     tur = models.CharField("tür", max_length=20, choices=Tur.choices)
     tarih = models.DateField("işlem tarihi")

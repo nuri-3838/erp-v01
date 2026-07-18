@@ -843,3 +843,81 @@ class CariGirisBordroTest(TestCase):
         self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("3648.82")))   # portföy çek alacak
         self.assertEqual(s["121.01"], (Decimal("0.00"), Decimal("7301.28")))   # portföy senet alacak
         self.assertEqual(sum(v[0] for v in s.values()), sum(v[1] for v in s.values()))
+
+
+    def test_firma_karsiliksiz_verildiden(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import CekBordrosu, CekSenet
+        from core.services.cek import firma_karsiliksiz_bordrosu_olustur
+        g = self._firma_cikis([{"tip": "CEK", "tutar": "2.500", "vade": datetime.date(2026, 9, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))       # VERILEN + VERILDI
+        cb = firma_karsiliksiz_bordrosu_olustur(tarih=datetime.date(2026, 6, 28), cek_ids=cek_ids,
+                                                kullanici=self.yon)
+        self.assertEqual(cb.tur, CekBordrosu.Tur.FIRMA_KARSILIKSIZ)
+        self.assertEqual(cb.cari_id, self.satici.pk)
+        self.assertTrue(all(c.durum == "KARSILIKSIZ" for c in CekSenet.objects.filter(pk__in=cek_ids)))
+        s = {x.hesap_id: (x.borc, x.alacak) for x in cb.fisler.get().satirlar.all()}
+        self.assertEqual(s["103.01"], (Decimal("2500.00"), Decimal("0.00")))   # verilen çek borç (kalkar)
+        self.assertEqual(s["320.01"], (Decimal("0.00"), Decimal("2500.00")))   # cari alacak (borç geri)
+
+    def test_firma_karsiliksiz_karisik_tip(self):
+        import datetime
+        from decimal import Decimal
+        from core.services.cek import firma_karsiliksiz_bordrosu_olustur
+        g = self._firma_cikis([{"tip": "CEK", "tutar": "2.000", "vade": datetime.date(2026, 9, 1)},
+                               {"tip": "SENET", "tutar": "1.000", "vade": datetime.date(2026, 10, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        cb = firma_karsiliksiz_bordrosu_olustur(tarih=datetime.date(2026, 6, 28), cek_ids=cek_ids,
+                                                kullanici=self.yon)
+        s = {x.hesap_id: (x.borc, x.alacak) for x in cb.fisler.get().satirlar.all()}
+        self.assertEqual(s["103.01"], (Decimal("2000.00"), Decimal("0.00")))   # verilen çek borç
+        self.assertEqual(s["321.01"], (Decimal("1000.00"), Decimal("0.00")))   # verilen senet borç
+        self.assertEqual(s["320.01"], (Decimal("0.00"), Decimal("3000.00")))   # cari alacak toplam
+
+    def test_firma_karsiliksiz_geri_al(self):
+        import datetime
+        from core.models import CekSenet
+        from core.services.cek import bordro_sil, firma_karsiliksiz_bordrosu_olustur
+        g = self._firma_cikis([{"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 9, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        cb = firma_karsiliksiz_bordrosu_olustur(tarih=datetime.date(2026, 6, 28), cek_ids=cek_ids,
+                                                kullanici=self.yon)
+        bordro_sil(cb, kullanici=self.yon)
+        self.assertTrue(all(c.durum == "VERILDI" for c in CekSenet.objects.filter(pk__in=cek_ids)))
+
+    def test_firma_karsiliksiz_alinan_evrak_reddedilir(self):
+        import datetime
+        from core.services.cek import CekHatasi, firma_karsiliksiz_bordrosu_olustur
+        g = self._olustur([{"tip": "CEK", "tutar": "1.000", "vade": datetime.date(2026, 9, 1)}])
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))           # ALINAN + PORTFOYDE
+        with self.assertRaises(CekHatasi):
+            firma_karsiliksiz_bordrosu_olustur(tarih=datetime.date(2026, 6, 28), cek_ids=cek_ids,
+                                               kullanici=self.yon)
+
+    def test_firma_karsiliksiz_doviz_ters_taraf_denge(self):
+        # Verilen tarafta cari ALACAK anchor, çek-senet BORÇ; son çek-senet satırı tl_override.
+        import datetime
+        from decimal import Decimal
+        from core.models import Kur
+        from core.services.cek import firma_karsiliksiz_bordrosu_olustur
+        Kur.objects.create(tarih=datetime.date(2026, 6, 29), usd_alis=Decimal("36.4517"))
+        g = self._firma_cikis([{"tip": "CEK", "tutar": "100,10", "vade": datetime.date(2026, 9, 1)},
+                               {"tip": "SENET", "tutar": "200,30", "vade": datetime.date(2026, 10, 1)}],
+                              pb="USD")
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        cb = firma_karsiliksiz_bordrosu_olustur(tarih=datetime.date(2026, 6, 29), cek_ids=cek_ids,
+                                                kullanici=self.yon)
+        s = {x.hesap_id: (x.borc, x.alacak) for x in cb.fisler.get().satirlar.all()}
+        self.assertEqual(s["103.01"], (Decimal("3648.82"), Decimal("0.00")))   # verilen çek borç
+        self.assertEqual(s["321.01"], (Decimal("7301.27"), Decimal("0.00")))   # verilen senet borç (override)
+        self.assertEqual(s["320.01"], (Decimal("0.00"), Decimal("10950.09")))  # cari alacak = denge
+        self.assertEqual(sum(v[0] for v in s.values()), sum(v[1] for v in s.values()))
+
+    def test_firma_karsiliksiz_view_ve_aktif_buton(self):
+        from django.urls import reverse
+        self.client.force_login(self.yon)
+        self.assertEqual(self.client.get(reverse("core:cek_firma_karsiliksiz")).status_code, 200)
+        r = self.client.get(reverse("core:cek_senetler"))
+        self.assertContains(r, reverse("core:cek_firma_karsiliksiz"))
+        self.assertContains(r, "Firma Çek Karşılıksız")

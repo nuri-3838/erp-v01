@@ -1876,7 +1876,7 @@ def cek_firma_cikis(request):
 
 
 def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoji, yardim, buton,
-                      basari, durum=CekSenet.Durum.PORTFOYDE):
+                      basari, durum=CekSenet.Durum.PORTFOYDE, yon=CekSenet.Yon.ALINAN):
     """Portföy-seçim işlem bordrosu ortak gövdesi (Ciro / Banka Tahsil / Teminat / İade / Cari İade).
     hedef_alani=None → formda hedef seçici yok (İade işlemleri; hedef zaten mevcut duruma bağlı).
     durum → seçim listesindeki evrakın aranan durumu (İade'de TAHSILDE/TEMINATTA)."""
@@ -1898,7 +1898,7 @@ def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoj
     else:
         form = form_cls()
     return render(request, "core/cek_islem_secim.html",
-                  {"form": form, "portfoy": cek_servis.portfoydeki_cekler(durum=durum),
+                  {"form": form, "portfoy": cek_servis.portfoydeki_cekler(yon=yon, durum=durum),
                    "baslik": baslik, "emoji": emoji, "yardim": yardim, "buton": buton,
                    "secili_ids": request.POST.getlist("cek_ids")})
 
@@ -1986,6 +1986,21 @@ def cek_karsiliksiz(request):
                "çek-senet alacak). Nakit hareketi yoktur; durum Karşılıksız (terminal) olur.",
         buton="Karşılıksız İşle", basari="karşılıksız işlendi",
         durum=(CekSenet.Durum.PORTFOYDE, CekSenet.Durum.TAHSILDE, CekSenet.Durum.TEMINATTA))
+
+
+@ekran_gerekli("cek_senet")
+def cek_firma_karsiliksiz(request):
+    """Firma Çek Karşılıksız: Verildi durumundaki kendi (verilen) çek/senetlerimiz
+    karşılıksız çıkar; verilen çek-senet borç / cari alacak (borcumuz geri doğar)."""
+    return _islem_secim_view(
+        request, form_cls=IslemTarihForm, hedef_alani=None,
+        servis_fn=cek_servis.firma_karsiliksiz_bordrosu_olustur,
+        baslik="Firma Çek Karşılıksız", emoji="🚫",
+        yardim="Verildi durumundaki kendi (verilen) çek/senetlerimiz karşılıksız çıktığında "
+               "seçilir; verilen çek-senet borç / cari alacak (borcumuz geri doğar). Nakit "
+               "hareketi yoktur; durum Karşılıksız (terminal) olur.",
+        buton="Karşılıksız İşle", basari="karşılıksız işlendi",
+        yon=CekSenet.Yon.VERILEN, durum=CekSenet.Durum.VERILDI)
 
 
 def _nakit_islem_view(request, *, servis_fn, yon, durum, baslik, emoji, yardim, buton,

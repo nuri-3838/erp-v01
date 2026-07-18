@@ -222,6 +222,7 @@ _ISLEM_SONUC = {
     CekBordrosu.Tur.TAHSIL: CekSenet.Durum.TAHSIL,
     CekBordrosu.Tur.ODEME: CekSenet.Durum.ODENDI,
     CekBordrosu.Tur.KARSILIKSIZ: CekSenet.Durum.KARSILIKSIZ,
+    CekBordrosu.Tur.FIRMA_KARSILIKSIZ: CekSenet.Durum.KARSILIKSIZ,
 }
 # Banka reclass işlemleri — iki yönlü: ileri (tahsil/teminat: portföy→ara durum, banka hesabı
 # zorunlu, belge bilgisi) ve İADE (ara durum→portföy, hedef seçilmez, mevcut duruma bakılır).
@@ -288,50 +289,61 @@ def _secim_coz(cek_ids, *, yon=CekSenet.Yon.ALINAN, durum=CekSenet.Durum.PORTFOY
     return cekler
 
 
-# === Cari terminal bordroları: Cari İade / Karşılıksız ===
-# Her evrakın KENDİ carisi BORÇ (borç geri doğar) / kaynak çek-senet hesabı (durum × tip)
-# ALACAK; nakit hareketi yok. Durum → tan["sonuc"] (terminal). onek: kabul edilen kaynak
-# durumlar → config ön eki (Cari İade yalnız Portföy; Karşılıksız Portföy/Tahsilde/Teminatta).
+# === Cari terminal bordroları: Cari İade / Karşılıksız / Firma Çek Karşılıksız ===
+# Cari(ler) ile kaynak çek-senet hesabı (durum öneki × tip) karşılıklı; nakit yok. Durum →
+# tan["sonuc"] (terminal). Alınan tarafta CARI BORÇ / çek-senet ALACAK (borç geri doğar);
+# verilen tarafta ters (verilen çek-senet BORÇ / cari ALACAK — borcumuz geri doğar). Yön ve
+# cari tarafı config'de. onek: kabul edilen kaynak durumlar → config ön eki.
 _CARI_TERMINAL = {
     "iade": {"tur": CekBordrosu.Tur.CARI_IADE, "sonuc": CekSenet.Durum.IADE,
+             "yon": CekSenet.Yon.ALINAN, "cari_taraf": "B",
              "onek": {CekSenet.Durum.PORTFOYDE: "portfoy"}, "ack": "ÇEK/SENET CARİ İADE"},
     "karsiliksiz": {"tur": CekBordrosu.Tur.KARSILIKSIZ, "sonuc": CekSenet.Durum.KARSILIKSIZ,
+                    "yon": CekSenet.Yon.ALINAN, "cari_taraf": "B",
                     "onek": {CekSenet.Durum.PORTFOYDE: "portfoy",
                              CekSenet.Durum.TAHSILDE: "tahsilde",
                              CekSenet.Durum.TEMINATTA: "teminatta"},
                     "ack": "ÇEK/SENET KARŞILIKSIZ"},
+    "firma_karsiliksiz": {"tur": CekBordrosu.Tur.FIRMA_KARSILIKSIZ,
+                          "sonuc": CekSenet.Durum.KARSILIKSIZ,
+                          "yon": CekSenet.Yon.VERILEN, "cari_taraf": "A",
+                          "onek": {CekSenet.Durum.VERILDI: "verilen"},
+                          "ack": "FİRMA ÇEK/SENET KARŞILIKSIZ"},
 }
 
 
 @transaction.atomic
 def _cari_terminal_bordrosu(tan, *, tarih, cek_ids, aciklama="", kullanici=None) -> CekBordrosu:
-    """Cari İade / Karşılıksız ortak motoru: seçilen alınan çek/senetlerin borcu KENDİ carisine
-    geri yüklenir. Cari(ler) BORÇ / kaynak çek-senet hesabı (durum öneki × tip) ALACAK — nakit
-    yok. Durum → tan["sonuc"] (terminal). Farklı cariler olabilir (her biri kendi hesabına);
-    aynı para birimi zorunlu (tek fiş). Hedef seçilmez — evrakın kendi carisidir.
-    Dövizde çok gruplu bordroda satır-bazlı kuruş yuvarlaması fişi bozmasın diye ALACAK son
-    satırı tl_override ile BORÇ TL toplamına denklenir (kambiyo farkı v0.1 kapsam dışı)."""
-    cekler = _secim_coz(cek_ids, durum=tuple(tan["onek"]))
+    """Cari İade / Karşılıksız / Firma Çek Karşılıksız ortak motoru: seçilen çek/senetlerin borcu
+    KENDİ carisine geri yüklenir. Cari(ler) tan["cari_taraf"] tarafına / kaynak çek-senet hesabı
+    (durum öneki × tip) ters tarafa — nakit yok. Durum → tan["sonuc"] (terminal). Farklı cariler
+    olabilir (her biri kendi hesabına); aynı para birimi zorunlu (tek fiş). Hedef seçilmez —
+    evrakın kendi carisidir. Dövizde çok gruplu bordroda satır-bazlı kuruş yuvarlaması fişi
+    bozmasın diye ÇEK-SENET son satırı tl_override ile CARİ TL toplamına denklenir (anchor =
+    cari tarafı; kambiyo farkı v0.1 kapsam dışı)."""
+    cekler = _secim_coz(cek_ids, yon=tan["yon"], durum=tuple(tan["onek"]))
     pb = cekler[0].para_birimi
     kur = _kur_coz(pb, tarih)
     ayar = CekHesapAyari.get()
-    # BORÇ: her cari kendi toplamına (TL satır bazında yuvarlanır → anchor).
+    cari_taraf = tan["cari_taraf"]
+    cek_taraf = "A" if cari_taraf == "B" else "B"
+    # CARİ tarafı: her cari kendi toplamına (TL satır bazında yuvarlanır → anchor).
     cari_toplam, cari_nesne = {}, {}
     for c in cekler:
         cari_toplam[c.cari_id] = cari_toplam.get(c.cari_id, Decimal("0")) + c.tutar
         cari_nesne[c.cari_id] = c.cari
-    borc_satir, borc_tl = [], Decimal("0")
+    cari_satir, cari_tl = [], Decimal("0")
     for cari_id, tutar in cari_toplam.items():
         _, hesap = _cari_coz(cari_id)
-        borc_satir.append((hesap.hesap_kodu, tutar))
-        borc_tl += yuvarla(tutar * kur, 2)
-    # ALACAK: (durum öneki, tip) grubu → config hesabı.
+        cari_satir.append((hesap.hesap_kodu, tutar))
+        cari_tl += yuvarla(tutar * kur, 2)
+    # ÇEK-SENET tarafı: (durum öneki, tip) grubu → config hesabı.
     grup = {}
     for c in cekler:
         anahtar = (tan["onek"][c.durum], c.tip)
         grup[anahtar] = grup.get(anahtar, Decimal("0")) + c.tutar
-    alacak_satir = [(_ayar_hesap(ayar, oneki, tip).hesap_kodu, top)
-                    for (oneki, tip), top in grup.items()]
+    cek_satir = [(_ayar_hesap(ayar, oneki, tip).hesap_kodu, top)
+                 for (oneki, tip), top in grup.items()]
     tek_cari = next(iter(cari_nesne.values())) if len(cari_nesne) == 1 else None
     bordro = CekBordrosu.objects.create(
         tur=tan["tur"], tarih=tarih, cari=tek_cari,
@@ -344,16 +356,16 @@ def _cari_terminal_bordrosu(tan, *, tarih, cek_ids, aciklama="", kullanici=None)
         c.durum = tan["sonuc"]
         c.updated_by = kullanici
         c.save(update_fields=["durum", "updated_by", "updated_at"])
-    girdiler = [SatirGirdi(hesap_kodu=kod, taraf="B", islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
-                for kod, tut in borc_satir]
-    alacak_tl = Decimal("0")
-    for i, (kod, top) in enumerate(alacak_satir):
-        if i == len(alacak_satir) - 1:      # son satır: kalan farkı denkle (döviz yuvarlaması)
-            girdiler.append(SatirGirdi(hesap_kodu=kod, taraf="A", islem_tutari=top,
-                                       islem_pb=pb, islem_kuru=kur, tl_override=borc_tl - alacak_tl))
+    girdiler = [SatirGirdi(hesap_kodu=kod, taraf=cari_taraf, islem_tutari=tut,
+                           islem_pb=pb, islem_kuru=kur) for kod, tut in cari_satir]
+    cek_tl = Decimal("0")
+    for i, (kod, top) in enumerate(cek_satir):
+        if i == len(cek_satir) - 1:         # son satır: kalan farkı denkle (döviz yuvarlaması)
+            girdiler.append(SatirGirdi(hesap_kodu=kod, taraf=cek_taraf, islem_tutari=top,
+                                       islem_pb=pb, islem_kuru=kur, tl_override=cari_tl - cek_tl))
         else:
-            alacak_tl += yuvarla(top * kur, 2)
-            girdiler.append(SatirGirdi(hesap_kodu=kod, taraf="A", islem_tutari=top,
+            cek_tl += yuvarla(top * kur, 2)
+            girdiler.append(SatirGirdi(hesap_kodu=kod, taraf=cek_taraf, islem_tutari=top,
                                        islem_pb=pb, islem_kuru=kur))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=bordro.aciklama,
@@ -376,6 +388,13 @@ def karsiliksiz_bordrosu_olustur(**kwargs) -> CekBordrosu:
     çıkar; borç KENDİ carisine geri yüklenir (cari borç / kaynak çek-senet alacak). Durum →
     KARSILIKSIZ (terminal)."""
     return _cari_terminal_bordrosu(_CARI_TERMINAL["karsiliksiz"], **kwargs)
+
+
+def firma_karsiliksiz_bordrosu_olustur(**kwargs) -> CekBordrosu:
+    """Firma Çek Karşılıksız: Verildi durumundaki kendi (verilen) çek/senetlerimiz karşılıksız
+    çıkar; verilen çek-senet BORÇ (yükümlülük kalkar) / cari ALACAK (borcumuz geri doğar).
+    Durum VERILDI → KARSILIKSIZ (terminal)."""
+    return _cari_terminal_bordrosu(_CARI_TERMINAL["firma_karsiliksiz"], **kwargs)
 
 
 @transaction.atomic
