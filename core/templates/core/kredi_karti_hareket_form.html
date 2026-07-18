@@ -39,6 +39,24 @@
         </div>
       {% endif %}
 
+      {% if form.taksit_adedi %}
+        <div class="izgara">
+          <div class="alan">
+            <label for="{{ form.taksit_adedi.id_for_label }}">{{ form.taksit_adedi.label }}</label>
+            {{ form.taksit_adedi }}
+            {% for e in form.taksit_adedi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan">
+            <label for="{{ form.ilk_vade.id_for_label }}">{{ form.ilk_vade.label }}</label>
+            {{ form.ilk_vade }}
+            {% for e in form.ilk_vade.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <p class="yardim">Peşin için taksit sayısını <strong>1</strong> bırakın. Taksitli ise
+          ilk taksit tarihi zorunlu; muhasebe yine <strong>tam tutar tek fiştir</strong>, taksitler
+          kart detayında takvim olarak görünür.</p>
+      {% endif %}
+
       {% if form.banka_hesap or form.kasa %}
         <p class="yardim">Nakit kaynağı: <strong>Banka hesabı</strong> veya <strong>Kasa</strong> — yalnız birini seçin.</p>
         <div class="izgara">

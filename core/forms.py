@@ -992,6 +992,12 @@ class KrediKartiHareketForm(forms.Form):
                 queryset=Kasa.objects.filter(silindi=False).order_by("ad"),
                 widget=forms.Select(attrs={"class": "akilli-sec"}))
             self.fields["kasa"].label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+        if tip == "harcama":
+            self.fields["taksit_adedi"] = forms.IntegerField(
+                label="Taksit Sayısı", min_value=1, max_value=60, initial=1, required=False)
+            self.fields["ilk_vade"] = forms.DateField(
+                label="İlk Taksit Tarihi", required=False,
+                widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
 
     def clean(self):
         cd = super().clean()
@@ -999,6 +1005,9 @@ class KrediKartiHareketForm(forms.Form):
         if len(secili) != 1:
             raise forms.ValidationError("Tam olarak bir karşı taraf seçin.")
         cd["karsi"] = secili[0]
+        adet = cd.get("taksit_adedi") or 1
+        if int(adet) > 1 and not cd.get("ilk_vade"):
+            self.add_error("ilk_vade", "Taksitli harcamada ilk taksit tarihi zorunlu.")
         return cd
 
 

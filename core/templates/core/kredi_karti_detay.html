@@ -109,6 +109,29 @@
     </div>
   </section>
 
+  {% if taksitler %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🗓️</span>Taksit Takvimi</h2>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Vade</th><th>Harcama</th><th>Taksit</th><th class="sag">Tutar</th></tr></thead>
+      <tbody>
+        {% for t in taksitler %}
+        <tr>
+          <td class="mono">{{ t.vade|date:"d.m.Y" }}</td>
+          <td><a href="{% url 'core:fis_detay' t.fis.pk %}">{{ t.aciklama|default:"—"|truncatechars:44 }}</a></td>
+          <td class="mono">{{ t.sira }}/{{ t.adet }}</td>
+          <td class="sag mono">{{ t.tutar|tr_para }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="yardim">Taksitler <strong>bilgi amaçlıdır</strong>; muhasebe borcu harcama anında
+      tam tutardır. Ödeme, Kart Ödeme ile işlenir.</p>
+  </section>
+  {% endif %}
+
   <section class="icerik-kart">
     <h2 class="bolum-baslik ekstre-bsl"><span class="emoji">📄</span>Kart Ekstresi</h2>
 

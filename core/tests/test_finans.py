@@ -707,3 +707,80 @@ class KrediKartiHareketTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:fis_duzenle", args=[f.pk]))
         self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
+
+    def test_taksitli_harcama_plan_ve_fis(self):
+        from decimal import Decimal
+        from core.models import KrediKartiTaksit
+        from core.services.kredi_karti_hareket import harcama_olustur
+        f = harcama_olustur(kart=self.kart, karsi=self.gider, tutar=Decimal("12000"),
+                            tarih=self.t, taksit_adedi=3, ilk_vade=self.t, kullanici=self.yon)
+        s = self._s(f)
+        self.assertEqual(s["309.01"], (Decimal("0.00"), Decimal("12000.00")))   # kart alacak TAM tutar
+        self.assertEqual(s["770.01"], (Decimal("12000.00"), Decimal("0.00")))   # gider borç TAM tutar
+        plan = KrediKartiTaksit.objects.get(fis=f)
+        self.assertEqual(plan.taksit_adedi, 3)
+        self.assertEqual(plan.toplam_tutar, Decimal("12000.00"))
+
+    def test_pesin_harcama_plan_yok(self):
+        from decimal import Decimal
+        from core.models import KrediKartiTaksit
+        from core.services.kredi_karti_hareket import harcama_olustur
+        f = harcama_olustur(kart=self.kart, karsi=self.gider, tutar=Decimal("500"),
+                            tarih=self.t, taksit_adedi=1, kullanici=self.yon)
+        self.assertFalse(KrediKartiTaksit.objects.filter(fis=f).exists())
+
+    def test_taksit_takvimi_yuvarlama(self):
+        from decimal import Decimal
+        from core.models import KrediKartiTaksit
+        from core.services.kredi_karti_hareket import harcama_olustur, taksit_takvimi
+        f = harcama_olustur(kart=self.kart, karsi=self.gider, tutar=Decimal("12001"),
+                            tarih=self.t, taksit_adedi=3, ilk_vade=self.t, kullanici=self.yon)
+        tk = taksit_takvimi(KrediKartiTaksit.objects.get(fis=f))
+        self.assertEqual([r["tutar"] for r in tk],
+                         [Decimal("4000.33"), Decimal("4000.33"), Decimal("4000.34")])
+        self.assertEqual(sum((r["tutar"] for r in tk), Decimal("0")), Decimal("12001"))
+
+    def test_taksit_vade_ay_ve_yil_gecisi(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import KrediKartiTaksit
+        from core.services.kredi_karti_hareket import harcama_olustur, taksit_takvimi
+        f = harcama_olustur(kart=self.kart, karsi=self.gider, tutar=Decimal("300"),
+                            tarih=self.t, taksit_adedi=3, ilk_vade=datetime.date(2026, 11, 30),
+                            kullanici=self.yon)
+        tk = taksit_takvimi(KrediKartiTaksit.objects.get(fis=f))
+        self.assertEqual([r["vade"] for r in tk],
+                         [datetime.date(2026, 11, 30), datetime.date(2026, 12, 30),
+                          datetime.date(2027, 1, 30)])
+
+    def test_taksitli_iptal_plan_geri_alinir(self):
+        from decimal import Decimal
+        from core.models import KrediKartiTaksit
+        from core.services.kredi_karti_hareket import harcama_olustur, hareket_iptal
+        f = harcama_olustur(kart=self.kart, karsi=self.gider, tutar=Decimal("600"),
+                            tarih=self.t, taksit_adedi=2, ilk_vade=self.t, kullanici=self.yon)
+        self.assertTrue(KrediKartiTaksit.objects.filter(fis=f, silindi=False).exists())
+        hareket_iptal(fis=f, kart=self.kart, kullanici=self.yon)
+        self.assertFalse(KrediKartiTaksit.objects.filter(fis=f, silindi=False).exists())
+
+    def test_form_taksit_vade_zorunlu(self):
+        from core.forms import KrediKartiHareketForm
+        base = {"tutar": "1200", "tarih": "2026-06-28", "gider": self.gider.pk}
+        fbad = KrediKartiHareketForm({**base, "taksit_adedi": "3"}, tip="harcama", kart=self.kart)
+        self.assertFalse(fbad.is_valid())                      # vade yok -> geçersiz
+        fok = KrediKartiHareketForm({**base, "taksit_adedi": "3", "ilk_vade": "2026-07-28"},
+                                    tip="harcama", kart=self.kart)
+        self.assertTrue(fok.is_valid())
+
+    def test_view_taksitli_harcama_ve_takvim(self):
+        from core.models import KrediKartiTaksit
+        self.client.force_login(self.yon)
+        r = self.client.post(
+            reverse("core:kredi_karti_hareket_ekle", args=[self.kart.pk, "harcama"]),
+            {"gider": self.gider.pk, "tutar": "9000", "tarih": "2026-06-28",
+             "taksit_adedi": "3", "ilk_vade": "2026-07-28"})
+        self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
+        self.assertEqual(KrediKartiTaksit.objects.filter(kart=self.kart, silindi=False).count(), 1)
+        d = self.client.get(reverse("core:kredi_karti_detay", args=[self.kart.pk]))
+        self.assertContains(d, "Taksit Takvimi")
+        self.assertContains(d, "1/3")

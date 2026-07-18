@@ -6,13 +6,16 @@ Fiş kartın para biriminde tek para; Banka/Kasa PB'si kartla aynı olmalı (ça
 """
 from __future__ import annotations
 
+import calendar
+import datetime
 from decimal import Decimal
 
 from django.db import transaction
 
 from core.metin import buyuk_harf_tr
-from core.models import BankaHesap, Cari, HesapPlani, Kasa, KrediKarti, Kur, YevmiyeFisi
-from core.sayi import SayiHatasi, parse_tr
+from core.models import (BankaHesap, Cari, HesapPlani, Kasa, KrediKarti, KrediKartiTaksit,
+                         Kur, YevmiyeFisi)
+from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_iptal, fis_olustur
 
 
@@ -142,11 +145,69 @@ def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=No
     return fis
 
 
+@transaction.atomic
 def hareket_iptal(*, fis, kart, kullanici=None):
-    """Kredi kartı hareketi (kaynak=KREDI_KARTI) iptali → bağlı fişi soft-delete eder.
-    Fiş bu kartın bir hareketi değilse reddeder."""
+    """Kredi kartı hareketi (kaynak=KREDI_KARTI) iptali → bağlı fişi + varsa taksit planını
+    soft-delete eder. Fiş bu kartın bir hareketi değilse reddeder."""
     if fis.kaynak != YevmiyeFisi.Kaynak.KREDI_KARTI or fis.kredi_karti_id != kart.pk:
         raise KrediKartiHareketHatasi("Bu fiş bu kartın hareketi değil.")
     if fis.silindi:
         return fis
+    for plan in KrediKartiTaksit.objects.filter(fis=fis, silindi=False):
+        plan.silindi = True
+        plan.updated_by = kullanici
+        plan.save(update_fields=["silindi", "updated_by", "updated_at"])
     return fis_iptal(fis, kullanici=kullanici)
+
+
+def _ay_ekle(tarih, n):
+    """tarih + n ay (yıl taşması + gün kırpma: 31 Oca + 1 ay → 28/29 Şub)."""
+    ay = tarih.month - 1 + n
+    yil = tarih.year + ay // 12
+    ay = ay % 12 + 1
+    gun = min(tarih.day, calendar.monthrange(yil, ay)[1])
+    return datetime.date(yil, ay, gun)
+
+
+@transaction.atomic
+def harcama_olustur(*, kart, karsi, tutar, tarih, taksit_adedi=1, ilk_vade=None,
+                    aciklama="", kullanici=None) -> YevmiyeFisi:
+    """Harcama (peşin ya da taksitli). Muhasebe HER ZAMAN tam tutar tek fiş (borç anında gerçek);
+    taksit_adedi>1 ise ayrıca BİLGİ amaçlı KrediKartiTaksit planı oluşur (ledger'ı etkilemez)."""
+    fis = hareket_olustur(kart=kart, tip="harcama", karsi=karsi, tutar=tutar, tarih=tarih,
+                          aciklama=aciklama, kullanici=kullanici)
+    adet = int(taksit_adedi or 1)
+    if adet > 1:
+        if not ilk_vade:
+            raise KrediKartiHareketHatasi("Taksitli harcamada ilk taksit tarihi zorunlu.")
+        KrediKartiTaksit.objects.create(
+            kart=kart, fis=fis, taksit_adedi=adet, ilk_vade=ilk_vade,
+            toplam_tutar=_tutar(tutar), para_birimi=kart.para_birimi,
+            created_by=kullanici, updated_by=kullanici)
+    return fis
+
+
+def taksit_takvimi(plan):
+    """plan → [{sira, vade, tutar}] eşit taksit; son taksit yuvarlama farkını üstlenir."""
+    adet = plan.taksit_adedi
+    her = yuvarla(plan.toplam_tutar / adet, 2)
+    satirlar, biriken = [], Decimal("0")
+    for k in range(adet):
+        tutar = (plan.toplam_tutar - biriken) if k == adet - 1 else her
+        if k != adet - 1:
+            biriken += her
+        satirlar.append({"sira": k + 1, "vade": _ay_ekle(plan.ilk_vade, k), "tutar": tutar})
+    return satirlar
+
+
+def kart_taksit_takvimi(kart):
+    """Kartın AKTİF taksit planlarının tüm taksitleri, vade artan. Her satır: vade, tutar, sira,
+    adet, fis, pb, aciklama. Kart detayında 'Taksit Takvimi' bölümü için."""
+    hepsi = []
+    for p in (KrediKartiTaksit.objects.filter(kart=kart, silindi=False)
+              .select_related("fis").order_by("ilk_vade", "id")):
+        for t in taksit_takvimi(p):
+            hepsi.append({**t, "adet": p.taksit_adedi, "fis": p.fis, "pb": p.para_birimi,
+                          "aciklama": p.fis.aciklama})
+    hepsi.sort(key=lambda x: (x["vade"], x["fis"].pk, x["sira"]))
+    return hepsi

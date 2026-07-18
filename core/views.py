@@ -1727,10 +1727,11 @@ def kredi_karti_detay(request, pk):
     kk_fis_pks = set(YevmiyeFisi.objects.filter(
         kredi_karti=kart, kaynak=YevmiyeFisi.Kaynak.KREDI_KARTI, silindi=False
     ).values_list("pk", flat=True))
+    taksitler = kredi_karti_hareket_servis.kart_taksit_takvimi(kart)
     return render(request, "core/kredi_karti_detay.html",
                   {"kart": kart, "form": form, "ekstre": ekstre, "satirlar": satirlar,
                    "aciklama": aciklama, "borc": borc, "kullanilabilir": kullanilabilir,
-                   "kk_fis_pks": kk_fis_pks})
+                   "kk_fis_pks": kk_fis_pks, "taksitler": taksitler})
 
 
 def _kredi_karti_hareket_form(request, kart, tip):
@@ -1739,10 +1740,18 @@ def _kredi_karti_hareket_form(request, kart, tip):
         form = KrediKartiHareketForm(request.POST, tip=tip, kart=kart)
         if form.is_valid():
             try:
-                fis = kredi_karti_hareket_servis.hareket_olustur(
-                    kart=kart, tip=tip, karsi=form.cleaned_data["karsi"],
-                    tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
-                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                if tip == "harcama":
+                    fis = kredi_karti_hareket_servis.harcama_olustur(
+                        kart=kart, karsi=form.cleaned_data["karsi"],
+                        tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                        taksit_adedi=form.cleaned_data.get("taksit_adedi") or 1,
+                        ilk_vade=form.cleaned_data.get("ilk_vade"),
+                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                else:
+                    fis = kredi_karti_hareket_servis.hareket_olustur(
+                        kart=kart, tip=tip, karsi=form.cleaned_data["karsi"],
+                        tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
                 messages.success(request, tan["ad"] + f" kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_karti_detay", pk=kart.pk)
             except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:

@@ -1066,6 +1066,36 @@ class KrediKarti(TemelModel):
         return self.ad
 
 
+class KrediKartiTaksit(TemelModel):
+    """Taksitli harcama planı (yalnız BİLGİ/TAKİP). Harcama fişi TAM tutardadır (borç anında
+    gerçek); bu kayıt taksit takvimini saklar. Eşit taksit; son taksit yuvarlamayı üstlenir."""
+
+    kart = models.ForeignKey(
+        KrediKarti, verbose_name="kredi kartı", on_delete=models.PROTECT,
+        related_name="taksit_planlari")
+    fis = models.ForeignKey(
+        "YevmiyeFisi", verbose_name="harcama fişi", on_delete=models.PROTECT,
+        related_name="taksit_planlari")
+    taksit_adedi = models.PositiveSmallIntegerField("taksit adedi")
+    ilk_vade = models.DateField("ilk taksit tarihi")
+    toplam_tutar = models.DecimalField("toplam tutar", max_digits=18, decimal_places=2)
+    para_birimi = models.CharField(
+        "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+
+    class Meta:
+        db_table = "finans_kredi_karti_taksit"
+        verbose_name = "kredi kartı taksit planı"
+        verbose_name_plural = "kredi kartı taksit planları"
+        ordering = ["ilk_vade", "id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(taksit_adedi__gte=2),
+                                   name="ck_kk_taksit_adedi_gte2"),
+        ]
+
+    def __str__(self):
+        return f"{self.kart.ad} {self.taksit_adedi} taksit"
+
+
 class Kredi(TemelModel):
     """Kredi tanımı. Bakiye (kalan borç) muhasebe hesabından (saklanmaz)."""
 
