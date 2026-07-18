@@ -113,6 +113,31 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
     return ts
 
 
+@transaction.atomic
+def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> TeklifSiparis:
+    """Teklifi siparişe çevirir: aynı cari/yön/para birimi, kalemler (stok/miktar/fiyat/KDV
+    snapshot) kopyalanır. Yalnız aktif TEKLİF + henüz dönüştürülmemiş teklif çevrilebilir
+    (tek seferlik — servis katmanında zorlanır, DB kısıtı değil)."""
+    if teklif.silindi:
+        raise TeklifSiparisHatasi("İptal edilmiş teklif siparişe çevrilemez.")
+    if teklif.belge_tur != TeklifSiparis.BelgeTur.TEKLIF:
+        raise TeklifSiparisHatasi("Yalnız teklif siparişe çevrilebilir.")
+    if teklif.donusen_siparisler.filter(silindi=False).exists():
+        raise TeklifSiparisHatasi("Bu teklif zaten bir siparişe dönüştürülmüş.")
+    kalemler = list(teklif.kalemler.filter(silindi=False))
+    if not kalemler:
+        raise TeklifSiparisHatasi("Teklifte kalem yok; sipariş oluşturulamaz.")
+    siparis = TeklifSiparis.objects.create(
+        belge_tur=TeklifSiparis.BelgeTur.SIPARIS, yon=teklif.yon, cari=teklif.cari,
+        tarih=tarih, para_birimi=teklif.para_birimi, aciklama=teklif.aciklama,
+        kaynak_teklif=teklif, created_by=kullanici, updated_by=kullanici)
+    for k in kalemler:
+        TeklifSiparisKalem.objects.create(
+            teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            kdv=k.kdv, created_by=kullanici, updated_by=kullanici)
+    return siparis
+
+
 def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     """Belgeyi soft-delete eder (kalemler kalır; geçmiş görüntüleme için)."""
     from django.utils import timezone

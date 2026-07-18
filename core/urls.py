@@ -35,6 +35,7 @@ urlpatterns = [
     path("teklif-siparis/<int:pk>/", views.teklif_siparis_detay, name="teklif_siparis_detay"),
     path("teklif-siparis/<int:pk>/duzenle/", views.teklif_siparis_duzenle, name="teklif_siparis_duzenle"),
     path("teklif-siparis/<int:pk>/iptal/", views.teklif_siparis_iptal_gorunum, name="teklif_siparis_iptal"),
+    path("teklif-siparis/<int:pk>/siparise-cevir/", views.teklif_siparise_cevir, name="teklif_siparise_cevir"),
     path("mizan/", views.mizan_gorunum, name="mizan"),
     path("ekstre/<str:hesap_kodu>/", views.hesap_ekstresi, name="hesap_ekstresi"),
     path("bilanco/", views.bilanco_gorunum, name="bilanco"),

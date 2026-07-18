@@ -1830,14 +1830,35 @@ def satis_siparis_ekle(request):
                         "satis_teklifleri", "satis_siparisleri")
 def teklif_siparis_detay(request, pk):
     # silindi filtrelenmez: iptal edilmiş belge de görüntülenebilir (uyarı banner'ıyla).
-    ts = get_object_or_404(TeklifSiparis.objects.select_related("cari"), pk=pk)
+    ts = get_object_or_404(
+        TeklifSiparis.objects.select_related("cari", "kaynak_teklif"), pk=pk)
     kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv")
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = {"satinalma_teklifleri": "📥", "satinalma_siparisleri": "🛒",
             "satis_teklifleri": "📤", "satis_siparisleri": "📦"}[ekran]
+    donusturuldu_mu = (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+                      and ts.donusen_siparisler.filter(silindi=False).exists())
+    donusen_siparis = (ts.donusen_siparisler.filter(silindi=False).first()
+                       if donusturuldu_mu else None)
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
-                   "liste_url": "core:" + ekran})
+                   "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis})
+
+
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satis_teklifleri", "satis_siparisleri")
+def teklif_siparise_cevir(request, pk):
+    teklif = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            siparis = teklif_siparis_servis.teklifi_siparise_cevir(
+                teklif, tarih=timezone.localdate(), kullanici=request.user)
+            messages.success(
+                request, f"{siparis.get_belge_tur_display()} oluşturuldu (teklif {teklif.pk} kaynaklı).")
+            return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=teklif.pk)
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",

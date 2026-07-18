@@ -917,6 +917,11 @@ class TeklifSiparis(TemelModel):
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
+    # SIPARIS ise: hangi TEKLIF'ten dönüştürüldüğü (self-FK). Tek seferlik dönüşüm —
+    # servis katmanı zaten dönüştürülmüş teklifi tekrar çevirmeyi engeller.
+    kaynak_teklif = models.ForeignKey(
+        "self", verbose_name="kaynak teklif", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="donusen_siparisler")
 
     class Meta:
         db_table = "teklif_siparis"

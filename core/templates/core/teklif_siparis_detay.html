@@ -11,6 +11,10 @@
   </div>
   {% if not ts.silindi %}
   <span class="islem-bag">
+    {% if ts.belge_tur == "TEKLIF" and not donusen_siparis %}
+    <form method="post" action="{% url 'core:teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
+      {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
+    {% endif %}
     <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">Düzenle</a>
     <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');">
       {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
@@ -31,6 +35,14 @@
   {% endif %}
   <div class="satir"><span class="et">Para Birimi</span><span class="dg">{{ ts.para_birimi }}</span></div>
   {% if ts.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ ts.aciklama }}</span></div>{% endif %}
+  {% if ts.kaynak_teklif %}
+  <div class="satir"><span class="et">Kaynak Teklif</span>
+    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' ts.kaynak_teklif.pk %}">{{ ts.kaynak_teklif.get_belge_tur_display }}{% if ts.kaynak_teklif.belge_no %} · {{ ts.kaynak_teklif.belge_no }}{% endif %}</a></span></div>
+  {% endif %}
+  {% if donusen_siparis %}
+  <div class="satir"><span class="et">Dönüştüğü Sipariş</span>
+    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' donusen_siparis.pk %}">{{ donusen_siparis.get_belge_tur_display }}{% if donusen_siparis.belge_no %} · {{ donusen_siparis.belge_no }}{% endif %}</a></span></div>
+  {% endif %}
 </section>
 
 <section class="icerik-kart">
