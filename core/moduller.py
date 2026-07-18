@@ -37,6 +37,14 @@ MODULLER = (
         Ekran("alis_faturalari", "Alış Faturaları", "core:alis_faturalari"),
         Ekran("satis_faturalari", "Satış Faturaları", "core:satis_faturalari"),
     )),
+    Modul("SATINALMA", "Satınalma", (
+        Ekran("satinalma_teklifleri", "Satınalma Teklifleri", "core:satinalma_teklifleri"),
+        Ekran("satinalma_siparisleri", "Satınalma Siparişleri", "core:satinalma_siparisleri"),
+    )),
+    Modul("SATIS", "Satış", (
+        Ekran("satis_teklifleri", "Satış Teklifleri", "core:satis_teklifleri"),
+        Ekran("satis_siparisleri", "Satış Siparişleri", "core:satis_siparisleri"),
+    )),
     Modul("STOKLAR", "Stoklar", (
         Ekran("stoklar", "Stoklar", "core:stoklar"),
         Ekran("kategoriler", "Kategoriler", "core:kategoriler"),

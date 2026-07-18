@@ -1690,6 +1690,32 @@ def banka_hesap_sil(request, pk):
     return redirect("core:banka_detay", pk=banka_pk)
 
 
+# === TEKLİF & SİPARİŞ — iskelet (model/CRUD sonraki dilimde) ===
+def _teklif_siparis_iskelet(request, baslik, emoji):
+    return render(request, "core/teklif_siparis_iskelet.html",
+                  {"baslik": baslik, "emoji": emoji})
+
+
+@ekran_gerekli("satinalma_teklifleri")
+def satinalma_teklifleri(request):
+    return _teklif_siparis_iskelet(request, "Satınalma Teklifleri", "📥")
+
+
+@ekran_gerekli("satinalma_siparisleri")
+def satinalma_siparisleri(request):
+    return _teklif_siparis_iskelet(request, "Satınalma Siparişleri", "🛒")
+
+
+@ekran_gerekli("satis_teklifleri")
+def satis_teklifleri(request):
+    return _teklif_siparis_iskelet(request, "Satış Teklifleri", "📤")
+
+
+@ekran_gerekli("satis_siparisleri")
+def satis_siparisleri(request):
+    return _teklif_siparis_iskelet(request, "Satış Siparişleri", "📦")
+
+
 # === FİNANS — Kredi Kartı ===
 @ekran_gerekli("kredi_karti")
 def kredi_kartlari(request):
