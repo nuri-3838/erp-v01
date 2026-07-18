@@ -16,8 +16,8 @@
   <tbody>
     {% for k in krediler %}
       <tr>
-        <td>{{ k.ad }}</td>
-        <td>{{ k.banka_adi|default:"—" }}</td>
+        <td><a href="{% url 'core:kredi_detay' k.pk %}">{{ k.ad }}</a></td>
+        <td>{% if k.banka %}{{ k.banka.kisa_ad|default:k.banka.ad }}{% else %}—{% endif %}</td>
         <td class="sag mono">{{ k.anapara|tr_para }}</td>
         <td class="sag mono">%{{ k.faiz_orani|tr_kur:4 }}</td>
         <td class="mono">{{ k.para_birimi }}</td>

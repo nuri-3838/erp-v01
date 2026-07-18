@@ -1,0 +1,66 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ tan.ad }} · {{ kredi.ad }}{% endblock %}
+{% block sayfa_adi %}{{ tan.ad }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:kredi_detay' kredi.pk %}">← {{ kredi.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">{{ tan.ikon }}</span>{{ tan.ad }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🏛️</span>{{ kredi.ad }} — {{ tan.ad }}</h2>
+      <p class="yardim" style="margin-top:-.3rem">Para birimi <span class="mono">{{ kredi.para_birimi }}</span> ·
+        Hesap <span class="mono">{{ kredi.muhasebe.hesap_kodu }}</span> {{ kredi.muhasebe.hesap_adi }} ·
+        {{ tan.aciklama }}</p>
+
+      <p class="yardim">Nakit hesabı: <strong>Banka hesabı</strong> veya <strong>Kasa</strong> — yalnız birini seçin.</p>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.banka_hesap.id_for_label }}">{{ form.banka_hesap.label }}</label>
+          {{ form.banka_hesap }}
+          {% for e in form.banka_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.kasa.id_for_label }}">{{ form.kasa.label }}</label>
+          {{ form.kasa }}
+          {% for e in form.kasa.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.tutar.id_for_label }}">Tutar ({{ kredi.para_birimi }})</label>
+          {{ form.tutar }}
+          {% for e in form.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
+          {{ form.tarih }}
+          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
+          {{ form.aciklama }}
+          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:kredi_detay' kredi.pk %}">İptal</a>
+      <button type="submit" class="birincil">{{ tan.ad }} Kaydet</button>
+    </div>
+  </form>
+</div>
+
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

@@ -631,7 +631,9 @@ class KrediKartiForm(forms.Form):
 
 class KrediForm(forms.Form):
     ad = forms.CharField(label="Kredi Adı", max_length=100)
-    banka_adi = forms.CharField(label="Banka Adı", max_length=150, required=False)
+    banka = BankaKisaChoiceField(
+        label="Banka", required=False, empty_label="— seçiniz —",
+        queryset=Banka.objects.filter(silindi=False).order_by("ad"))
     anapara = TRDecimalField(label="Anapara", basamak=2, required=False)
     faiz_orani = TRDecimalField(label="Aylık Faiz Oranı (%)", basamak=4, required=False)
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
@@ -1008,6 +1010,44 @@ class KrediKartiHareketForm(forms.Form):
         adet = cd.get("taksit_adedi") or 1
         if int(adet) > 1 and not cd.get("ilk_vade"):
             self.add_error("ilk_vade", "Taksitli harcamada ilk taksit tarihi zorunlu.")
+        return cd
+
+
+class KrediHareketForm(forms.Form):
+    """Kredi hareketi (Dilim 1: Kullandırım): nakit hesabı Banka VEYA Kasa (tam biri) + tutar +
+    tarih + açıklama. Kredi ve tip URL'den; fiş otomatik üretilir."""
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+    tarih = forms.DateField(
+        label="Tarih",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "Boş bırakılırsa otomatik"}))
+    banka_hesap = forms.ModelChoiceField(
+        label="Banka Hesabı", required=False, empty_label="— banka hesabı seç —",
+        queryset=(BankaHesap.objects.filter(silindi=False)
+                  .select_related("banka").order_by("banka__ad", "ad")),
+        widget=forms.Select(attrs={"class": "akilli-sec"}))
+    kasa = forms.ModelChoiceField(
+        label="Kasa", required=False, empty_label="— kasa seç —",
+        queryset=Kasa.objects.filter(silindi=False).order_by("ad"),
+        widget=forms.Select(attrs={"class": "akilli-sec"}))
+
+    def __init__(self, *args, tip=None, kredi=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["banka_hesap"].label_from_instance = (
+            lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})")
+        self.fields["kasa"].label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+
+    def clean(self):
+        cd = super().clean()
+        secili = [cd[k] for k in ("banka_hesap", "kasa") if cd.get(k)]
+        if len(secili) != 1:
+            raise forms.ValidationError(
+                "Nakit hesabı olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
+        cd["karsi"] = secili[0]
         return cd
 
 

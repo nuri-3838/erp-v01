@@ -784,3 +784,127 @@ class KrediKartiHareketTest(TestCase):
         d = self.client.get(reverse("core:kredi_karti_detay", args=[self.kart.pk]))
         self.assertContains(d, "Taksit Takvimi")
         self.assertContains(d, "1/3")
+
+
+class KrediHareketTest(TestCase):
+    """Kredi hareket motoru Dilim 1 — Kullandırım (kredi alacak / nakit borç) + banka FK/kısa ad."""
+    @classmethod
+    def setUpTestData(cls):
+        import datetime
+        from decimal import Decimal
+        from core.models import Banka, BankaHesap, Kasa, Kur
+        from core.services.finans import kredi_olustur
+        cls.yon = User.objects.create_superuser("kryon", password="x")
+        cls.bos = User.objects.create_user("krbos", password="x")
+        for kod, ad in (("300.01", "BANKA KREDİLERİ"), ("300.02", "USD KREDİ"),
+                        ("102.01", "İŞ BANKASI"), ("100.01", "MERKEZ KASA")):
+            _hesap(kod, ad)
+        cls.t = datetime.date(2026, 6, 28)
+        Kur.objects.create(tarih=cls.t, usd_alis=Decimal("40"))
+        b = Banka.objects.create(ad="TÜRKİYE İŞ BANKASI A.Ş.", kisa_ad="İŞ BANKASI",
+                                 created_by=cls.yon, updated_by=cls.yon)
+        cls.banka = b
+        cls.kredi = kredi_olustur(ad="ticari kredi", banka=b, anapara=Decimal("100000"),
+                                  faiz_orani=Decimal("3.5"), para_birimi="TRY",
+                                  muhasebe_kodu="300.01", kullanici=cls.yon)
+        cls.bh = BankaHesap.objects.create(banka=b, ad="VADESİZ", muhasebe_id="102.01",
+                                           para_birimi="TRY", created_by=cls.yon, updated_by=cls.yon)
+        cls.kasa = Kasa.objects.create(ad="MERKEZ", muhasebe_id="100.01", para_birimi="TRY",
+                                       created_by=cls.yon, updated_by=cls.yon)
+
+    def _s(self, fis):
+        return {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+
+    def test_kullandirim_banka(self):
+        from decimal import Decimal
+        from core.models import YevmiyeFisi
+        from core.services.kredi_hareket import hareket_olustur
+        f = hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.bh,
+                            tutar=Decimal("100000"), tarih=self.t, kullanici=self.yon)
+        self.assertEqual(f.kaynak, YevmiyeFisi.Kaynak.KREDI)
+        self.assertEqual(f.kredi_id, self.kredi.pk)
+        s = self._s(f)
+        self.assertEqual(s["300.01"], (Decimal("0.00"), Decimal("100000.00")))   # kredi alacak (borç doğar)
+        self.assertEqual(s["102.01"], (Decimal("100000.00"), Decimal("0.00")))    # banka borç (para girer)
+
+    def test_kullandirim_kasa(self):
+        from decimal import Decimal
+        from core.services.kredi_hareket import hareket_olustur
+        f = hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.kasa,
+                            tutar=Decimal("5000"), tarih=self.t, kullanici=self.yon)
+        s = self._s(f)
+        self.assertEqual(s["300.01"], (Decimal("0.00"), Decimal("5000.00")))
+        self.assertEqual(s["100.01"], (Decimal("5000.00"), Decimal("0.00")))
+
+    def test_iptal_ve_yanlis_kredi_reddedilir(self):
+        from decimal import Decimal
+        from core.services.finans import kredi_olustur
+        from core.services.kredi_hareket import (KrediHareketHatasi, hareket_iptal, hareket_olustur)
+        f = hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.bh,
+                            tutar=Decimal("1000"), tarih=self.t, kullanici=self.yon)
+        _hesap("300.03", "İKİNCİ KREDİ")
+        kredi2 = kredi_olustur(ad="ikinci", para_birimi="TRY", muhasebe_kodu="300.03",
+                               kullanici=self.yon)
+        with self.assertRaises(KrediHareketHatasi):
+            hareket_iptal(fis=f, kredi=kredi2, kullanici=self.yon)
+        hareket_iptal(fis=f, kredi=self.kredi, kullanici=self.yon)
+        f.refresh_from_db()
+        self.assertTrue(f.silindi)
+
+    def test_pb_uyusmazligi_reddedilir(self):
+        from decimal import Decimal
+        from core.services.finans import kredi_olustur
+        from core.services.kredi_hareket import KrediHareketHatasi, hareket_olustur
+        kredi_usd = kredi_olustur(ad="dolar kredi", para_birimi="USD", muhasebe_kodu="300.02",
+                                  kullanici=self.yon)
+        with self.assertRaises(KrediHareketHatasi):
+            hareket_olustur(kredi=kredi_usd, tip="kullandirim", karsi=self.bh,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+
+    def test_form_nakit_tam_bir(self):
+        from core.forms import KrediHareketForm
+        base = {"tutar": "1000", "tarih": "2026-06-28"}
+        f0 = KrediHareketForm(base, tip="kullandirim", kredi=self.kredi)
+        self.assertFalse(f0.is_valid())                       # 0 nakit
+        f2 = KrediHareketForm({**base, "banka_hesap": self.bh.pk, "kasa": self.kasa.pk},
+                              tip="kullandirim", kredi=self.kredi)
+        self.assertFalse(f2.is_valid())                       # 2 nakit
+        f1 = KrediHareketForm({**base, "banka_hesap": self.bh.pk}, tip="kullandirim", kredi=self.kredi)
+        self.assertTrue(f1.is_valid())
+
+    def test_view_kullandirim_iptal_ve_kisa_ad(self):
+        from core.models import YevmiyeFisi
+        self.client.force_login(self.yon)
+        # detay: banka KISA ad gösterilir, tam ad değil
+        d = self.client.get(reverse("core:kredi_detay", args=[self.kredi.pk]))
+        self.assertEqual(d.status_code, 200)
+        self.assertContains(d, "İŞ BANKASI")
+        self.assertNotContains(d, "A.Ş.")
+        self.assertContains(d, "Kullandırım")
+        # kullandırım POST
+        self.assertEqual(self.client.get(
+            reverse("core:kredi_hareket_ekle", args=[self.kredi.pk, "kullandirim"])).status_code, 200)
+        r = self.client.post(
+            reverse("core:kredi_hareket_ekle", args=[self.kredi.pk, "kullandirim"]),
+            {"banka_hesap": self.bh.pk, "tutar": "20000", "tarih": "2026-06-28"})
+        self.assertRedirects(r, reverse("core:kredi_detay", args=[self.kredi.pk]))
+        fis = YevmiyeFisi.objects.filter(kredi=self.kredi, silindi=False).get()
+        ri = self.client.post(reverse("core:kredi_hareket_iptal", args=[self.kredi.pk, fis.pk]))
+        self.assertRedirects(ri, reverse("core:kredi_detay", args=[self.kredi.pk]))
+        fis.refresh_from_db()
+        self.assertTrue(fis.silindi)
+
+    def test_ham_fis_duzenleme_kilidi(self):
+        from decimal import Decimal
+        from core.services.kredi_hareket import hareket_olustur
+        f = hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.bh,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:fis_duzenle", args=[f.pk]))
+        self.assertRedirects(r, reverse("core:kredi_detay", args=[self.kredi.pk]))
+
+    def test_liste_kisa_ad_ve_detay_link(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:krediler"))
+        self.assertContains(r, reverse("core:kredi_detay", args=[self.kredi.pk]))
+        self.assertContains(r, "İŞ BANKASI")

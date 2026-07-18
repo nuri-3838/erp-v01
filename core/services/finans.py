@@ -278,27 +278,27 @@ def aktif_krediler():
     return Kredi.objects.filter(silindi=False).select_related("muhasebe").order_by("ad")
 
 
-def kredi_olustur(*, ad, banka_adi="", anapara=0, faiz_orani=0, para_birimi="TRY",
+def kredi_olustur(*, ad, banka=None, anapara=0, faiz_orani=0, para_birimi="TRY",
                   muhasebe_kodu, kullanici=None) -> Kredi:
     return Kredi.objects.create(
-        ad=_ad_dogrula(Kredi, ad), banka_adi=buyuk_harf_tr((banka_adi or "").strip()),
+        ad=_ad_dogrula(Kredi, ad), banka=banka,
         anapara=_sayi(anapara, "Anapara"), faiz_orani=_sayi(faiz_orani, "Faiz oranı"),
         para_birimi=_pb(para_birimi), muhasebe=_yaprak_hesap_coz(muhasebe_kodu),
         created_by=kullanici, updated_by=kullanici)
 
 
-def kredi_guncelle(k: Kredi, *, ad, banka_adi="", anapara=0, faiz_orani=0, para_birimi="TRY",
+def kredi_guncelle(k: Kredi, *, ad, banka=None, anapara=0, faiz_orani=0, para_birimi="TRY",
                    muhasebe_kodu, kullanici=None) -> Kredi:
     if k.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
     k.ad = _ad_dogrula(Kredi, ad, haric_pk=k.pk)
-    k.banka_adi = buyuk_harf_tr((banka_adi or "").strip())
+    k.banka = banka
     k.anapara = _sayi(anapara, "Anapara")
     k.faiz_orani = _sayi(faiz_orani, "Faiz oranı")
     k.para_birimi = _pb(para_birimi)
     k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
     k.updated_by = kullanici
-    k.save(update_fields=["ad", "banka_adi", "anapara", "faiz_orani", "para_birimi",
+    k.save(update_fields=["ad", "banka", "anapara", "faiz_orani", "para_birimi",
                           "muhasebe", "updated_by", "updated_at"])
     return k
 

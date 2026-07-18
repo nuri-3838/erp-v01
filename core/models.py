@@ -136,6 +136,7 @@ class YevmiyeFisi(TemelModel):
         BANKA = "BANKA", "Banka Hareketi (otomatik)"
         CEK_SENET = "CEK_SENET", "Çek/Senet Bordrosu (otomatik)"
         KREDI_KARTI = "KREDI_KARTI", "Kredi Kartı Hareketi (otomatik)"
+        KREDI = "KREDI", "Kredi Hareketi (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -163,6 +164,11 @@ class YevmiyeFisi(TemelModel):
     # Kaynak=KREDI_KARTI fişin kaynağı olan kredi kartı (hareket motoru); kasa ile aynı amaç.
     kredi_karti = models.ForeignKey(
         "KrediKarti", verbose_name="kaynak kredi kartı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fisler",
+    )
+    # Kaynak=KREDI fişin kaynağı olan kredi (hareket motoru); kasa ile aynı amaç.
+    kredi = models.ForeignKey(
+        "Kredi", verbose_name="kaynak kredi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fisler",
     )
     # USD raporlama için fiş tarihindeki TCMB USD alış kuru (snapshot).
@@ -1100,7 +1106,9 @@ class Kredi(TemelModel):
     """Kredi tanımı. Bakiye (kalan borç) muhasebe hesabından (saklanmaz)."""
 
     ad = models.CharField("kredi adı", max_length=100)
-    banka_adi = models.CharField("banka adı", max_length=150, blank=True)
+    banka = models.ForeignKey(
+        Banka, verbose_name="banka", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="krediler")
     anapara = models.DecimalField("anapara", max_digits=14, decimal_places=2, default=0)
     faiz_orani = models.DecimalField("aylık faiz oranı (%)", max_digits=6, decimal_places=4,
                                      default=0)

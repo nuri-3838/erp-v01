@@ -1,0 +1,205 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ kredi.ad }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kredi Detayı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .detay-kapsa { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+  .detay-ustbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .detay-aksiyon { display:flex; gap:.5rem; align-items:center; }
+  .detay-baslik-kart { background:linear-gradient(135deg, #21385f 0%, var(--lacivert) 55%, var(--lacivert-koyu) 100%);
+    color:#fff; border-radius:22px; padding:1.3rem 1.5rem; display:flex; gap:1.15rem; align-items:flex-start;
+    box-shadow:var(--golge-lg); border-bottom:4px solid transparent;
+    border-image:linear-gradient(90deg,var(--turuncu),#e0245e) 1; }
+  .detay-ikon { width:64px; height:64px; border-radius:16px; background:rgba(255,255,255,.12);
+    display:grid; place-items:center; font-size:1.9rem; flex:0 0 auto; }
+  .detay-rozetler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.45rem; }
+  .d-rozet { font-size:.7rem; font-weight:700; padding:.22rem .62rem; border-radius:999px; }
+  .d-rozet.kod { background:var(--turuncu); color:#fff; font-family:"Cascadia Mono",Consolas,monospace; }
+  .d-rozet.pb { background:rgba(255,255,255,.16); color:#dbe6ff; }
+  .d-rozet.yuk { background:rgba(224,36,94,.22); color:#ffd0dd; }
+  .detay-ad { font-size:1.5rem; font-weight:750; margin:.05rem 0; letter-spacing:-.01em; line-height:1.2; }
+  .detay-alt { color:rgba(255,255,255,.82); font-size:.92rem; }
+  .kk-ozet { display:grid; grid-template-columns:repeat(4,1fr); gap:.7rem; }
+  @media (max-width:760px){ .kk-ozet { grid-template-columns:repeat(2,1fr); } }
+  .kk-kutu { background:rgba(255,255,255,.85); border:1px solid var(--cizgi); border-radius:14px;
+    padding:.85rem 1rem; box-shadow:var(--golge-sm); }
+  .kk-kutu .et { font-size:.7rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--metin-soluk); margin-bottom:.3rem; }
+  .kk-kutu .dg { font-size:1.15rem; font-weight:750; font-family:"Cascadia Mono",Consolas,monospace; }
+  .kk-kutu.borc .dg { color:var(--hata); }
+  .hareket-bsl { font-size:.74rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--metin-soluk); margin:0 0 .8rem; }
+  .hareket-bar { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; max-width:640px; }
+  @media (max-width:760px){ .hareket-bar { grid-template-columns:1fr; } }
+  .hareket-dugme { display:flex; flex-direction:column; align-items:center; gap:.35rem; padding:.9rem .5rem;
+    border-radius:14px; background:rgba(255,255,255,.85); border:1px solid var(--cizgi); text-decoration:none;
+    color:var(--metin); box-shadow:var(--golge-sm); transition:transform .12s, box-shadow .12s; text-align:center; }
+  .hareket-dugme:hover { transform:translateY(-2px); box-shadow:var(--golge-md); border-color:var(--cizgi-koyu); }
+  .hareket-dugme .hd-ik { width:36px; height:36px; border-radius:10px; display:grid; place-items:center;
+    font-size:1.1rem; background:rgba(10,125,40,.12); }
+  .hareket-dugme .hd-ad { font-size:.84rem; font-weight:600; line-height:1.15; }
+  .hareket-dugme .hd-yon { font-size:.64rem; font-weight:700; letter-spacing:.04em; color:var(--hata); }
+  .ekstre-bsl { display:flex; align-items:center; gap:.4rem; margin:0 0 1rem; }
+  .ekstre-filtre { display:flex; gap:.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem; }
+  .ekstre-filtre .alan { margin:0; }
+  .ekstre-filtre .alan.aciklama { flex:1 1 15rem; }
+  .ekstre-filtre label { display:block; font-size:.76rem; margin-bottom:.3rem; color:var(--metin-soluk);
+    font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+  .ekstre-tablo .gir { color:var(--ok); font-weight:600; }
+  .ekstre-tablo .cik { color:var(--hata); font-weight:600; }
+  .ekstre-tablo tr.devir td { background:rgba(240,124,0,.06); font-weight:600; color:var(--lacivert); }
+</style>
+
+<div class="detay-kapsa">
+  <div class="detay-ustbar">
+    <a class="ust-link" href="{% url 'core:krediler' %}">← Kredi</a>
+    <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:kredi_duzenle' kredi.pk %}">✏️ Düzenle</a>
+      <form method="post" action="{% url 'core:kredi_sil' kredi.pk %}" style="margin:0"
+            onsubmit="return confirm('{{ kredi.ad }} kredisi silinsin mi?');">
+        {% csrf_token %}<button type="submit" class="sil">Sil</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="detay-baslik-kart">
+    <span class="detay-ikon">🏛️</span>
+    <div>
+      <div class="detay-rozetler">
+        {% if kredi.muhasebe %}<span class="d-rozet kod">{{ kredi.muhasebe.hesap_kodu }}</span>{% endif %}
+        <span class="d-rozet pb">{{ kredi.para_birimi }}</span>
+        <span class="d-rozet yuk">● Yükümlülük</span>
+      </div>
+      <div class="detay-ad">{{ kredi.ad }}</div>
+      <div class="detay-alt">{% if kredi.banka %}{{ kredi.banka.kisa_ad|default:kredi.banka.ad }} · {% endif %}{% if kredi.muhasebe %}{{ kredi.muhasebe.hesap_kodu }} {{ kredi.muhasebe.hesap_adi }}{% else %}Muhasebe hesabı tanımsız{% endif %}</div>
+    </div>
+  </div>
+
+  {% if not ekstre %}
+    <section class="icerik-kart">
+      <div class="uyari"><div>⚠️ Kredinin muhasebe hesabı tanımlı değil; ekstre üretilemiyor.</div></div>
+    </section>
+  {% else %}
+
+  <div class="kk-ozet">
+    <div class="kk-kutu"><div class="et">Anapara</div><div class="dg">{{ kredi.anapara|tr_para }}</div></div>
+    <div class="kk-kutu"><div class="et">Aylık Faiz</div><div class="dg">%{{ kredi.faiz_orani|tr_kur:4 }}</div></div>
+    <div class="kk-kutu borc"><div class="et">Kalan Borç</div><div class="dg">{{ kalan|tr_para }}</div></div>
+    <div class="kk-kutu"><div class="et">Banka</div><div class="dg" style="font-size:.95rem">{% if kredi.banka %}{{ kredi.banka.kisa_ad|default:kredi.banka.ad }}{% else %}—{% endif %}</div></div>
+  </div>
+
+  <section class="icerik-kart">
+    <div class="hareket-bsl">Kredi Hareketi Ekle</div>
+    <div class="hareket-bar">
+      <a class="hareket-dugme" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'kullandirim' %}">
+        <span class="hd-ik">💰</span><span class="hd-ad">Kullandırım</span><span class="hd-yon">BORÇ ↑</span></a>
+    </div>
+    <p class="yardim" style="margin-top:.8rem">Geri ödeme (anapara + faiz) bir sonraki dilimde eklenecek.</p>
+  </section>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik ekstre-bsl"><span class="emoji">📄</span>Kredi Ekstresi</h2>
+
+    <form method="get" class="ekstre-filtre">
+      <div class="alan">
+        <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+        {{ form.baslangic }}
+      </div>
+      <div class="alan">
+        <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+        {{ form.bitis }}
+      </div>
+      <div class="alan aciklama">
+        <label for="kredi-aciklama">Açıklama</label>
+        <input type="text" id="kredi-aciklama" name="aciklama" value="{{ aciklama }}"
+               placeholder="Açıklamada ara…" autocomplete="off">
+      </div>
+      <button type="submit">Göster</button>
+      {% if form.non_field_errors %}<div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>{% endif %}
+    </form>
+
+    {% if aciklama %}
+      <p class="yardim">🔎 <strong>“{{ aciklama }}”</strong> araması · {{ satirlar|length }} hareket ·
+        yürüyen bakiye tüm dönemi yansıtır.</p>
+    {% endif %}
+
+    <div class="tablo-kapsayici {% if kredi.para_birimi != 'TRY' %}genis{% endif %}">
+    <table class="ekstre-tablo">
+      <thead>
+        {% if kredi.para_birimi != 'TRY' %}
+        <tr>
+          <th rowspan="2">Tarih</th><th rowspan="2">Fiş No</th><th rowspan="2">Açıklama</th>
+          <th colspan="3" class="ekstre-grup">TL</th>
+          <th colspan="4" class="ekstre-grup kolon-ayrac">Döviz (işlem PB)</th>
+          <th rowspan="2">İşlem</th>
+        </tr>
+        <tr>
+          <th class="sag">Borç (geri ödeme)</th><th class="sag">Alacak (kullandırım)</th><th class="sag">Bakiye</th>
+          <th class="kolon-ayrac">PB</th><th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th>
+        </tr>
+        {% else %}
+        <tr>
+          <th>Tarih</th><th>Fiş No</th><th>Açıklama</th>
+          <th class="sag">Borç (geri ödeme)</th><th class="sag">Alacak (kullandırım)</th><th class="sag">Bakiye</th>
+          <th>İşlem</th>
+        </tr>
+        {% endif %}
+      </thead>
+      <tbody>
+        {% for s in satirlar %}
+          <tr>
+            <td>{{ s.tarih|date:"d.m.Y" }}</td>
+            <td class="mono"><a href="{% url 'core:fis_detay' s.fis_pk %}">{{ s.fis_yil }}/{{ s.fis_no }}</a></td>
+            <td>{{ s.fis_aciklama|default:"—" }}{% if s.satir_aciklama %} · {{ s.satir_aciklama }}{% endif %}</td>
+            <td class="sag gir">{% if s.borc %}{{ s.borc|tr_para }}{% endif %}</td>
+            <td class="sag cik">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
+            <td class="sag">{{ s.yur_bakiye|tr_bakiye }}</td>
+            {% if kredi.para_birimi != 'TRY' %}
+              <td class="kolon-ayrac mono">{{ s.pb }}</td>
+              <td class="sag">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
+              <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
+              <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
+            {% endif %}
+            <td class="islem-hucre">{% if s.fis_pk in kredi_fis_pks %}
+              <form method="post" action="{% url 'core:kredi_hareket_iptal' kredi.pk s.fis_pk %}"
+                    onsubmit="return confirm('Bu kredi hareketi iptal edilsin mi?');" style="margin:0">
+                {% csrf_token %}<button type="submit" class="sil">İptal</button>
+              </form>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="{% if kredi.para_birimi != 'TRY' %}11{% else %}7{% endif %}" class="yardim"
+                  style="text-align:center;padding:1.6rem 0">📄 {% if aciklama %}Bu açıklamayla eşleşen hareket yok.{% else %}Bu aralıkta hareket yok.{% endif %}</td></tr>
+        {% endfor %}
+        {% if not aciklama %}
+        <tr class="devir">
+          <td colspan="3">Devir (açılış bakiyesi)</td>
+          <td class="sag"></td><td class="sag"></td>
+          <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
+          {% if kredi.para_birimi != 'TRY' %}<td colspan="4" class="kolon-ayrac"></td>{% endif %}
+          <td></td>
+        </tr>
+        {% endif %}
+      </tbody>
+      {% if not aciklama %}
+      <tfoot>
+        <tr>
+          <th colspan="3" class="sag">Kapanış (TL)</th>
+          <th class="sag">{{ ekstre.toplam_borc|tr_para }}</th>
+          <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
+          <th class="sag">{{ ekstre.kapanis_bakiye|tr_bakiye }}</th>
+          {% if kredi.para_birimi != 'TRY' %}<th colspan="4" class="kolon-ayrac"></th>{% endif %}
+          <th></th>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+    </div>
+    <p class="yardim">İptal edilen fişler hariç · Bakiye yevmiyeden hesaplanır ·
+      Negatif = <strong>kalan kredi borcu</strong> (yükümlülük).</p>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
