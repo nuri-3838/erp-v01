@@ -114,6 +114,66 @@ class TeklifSiparisModelServisTest(TestCase):
         self.assertEqual(aktif_teklif_siparisler("SIPARIS", "SATIS").count(), 1)
         self.assertEqual(aktif_teklif_siparisler("TEKLIF", "ALIS").count(), 0)
 
+    def test_guncelle_kalemleri_degistirir(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_guncelle, teklif_siparis_olustur
+        stok2 = Stok.objects.create(kod="S9", ad="ÜRÜN GÜNCEL", kategori=self.kat, kdv=self.kdv,
+                                    uretim_birimi=self.birim, fatura_birimi=self.birim,
+                                    created_by=self.yon, updated_by=self.yon)
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            belge_no="ESKI", kullanici=self.yon)
+        eski_kalem_pk = ts.kalemler.get().pk
+        teklif_siparis_guncelle(
+            ts, cari_id=self.cari.pk, tarih=datetime.date(2026, 7, 1),
+            satirlar=[{"stok_id": stok2.pk, "miktar": "3", "birim_fiyat": "20"}],
+            belge_no="YENI", kullanici=self.yon)
+        ts.refresh_from_db()
+        self.assertEqual(ts.belge_no, "YENI")
+        self.assertEqual(ts.tarih, datetime.date(2026, 7, 1))
+        self.assertEqual(ts.genel_toplam, Decimal("72.00"))       # 3x20=60 + %20 KDV=12
+        aktif = list(ts.kalemler.filter(silindi=False))
+        self.assertEqual(len(aktif), 1)
+        self.assertEqual(aktif[0].stok_id, stok2.pk)
+        from core.models import TeklifSiparisKalem
+        self.assertTrue(TeklifSiparisKalem.objects.get(pk=eski_kalem_pk).silindi)  # eski soft-delete
+        # belge_tur/yon SABİT kalır
+        self.assertEqual(ts.belge_tur, "TEKLIF")
+        self.assertEqual(ts.yon, "SATIS")
+
+    def test_iptal_edilmis_duzenlenemez(self):
+        import datetime
+        from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_siparis_guncelle,
+                                                   teklif_siparis_iptal, teklif_siparis_olustur)
+        ts = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="ALIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_iptal(ts, kullanici=self.yon)
+        ts.refresh_from_db()
+        self.assertTrue(ts.silindi)
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_guncelle(
+                ts, cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 28),
+                satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+                kullanici=self.yon)
+
+    def test_iptal_tekrar_cagrilinca_sessiz(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_iptal, teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="ALIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_iptal(ts, kullanici=self.yon)
+        teklif_siparis_iptal(ts, kullanici=self.yon)   # ikinci çağrı hata vermez
+        ts.refresh_from_db()
+        self.assertTrue(ts.silindi)
+
 
 class TeklifSiparisViewTest(TestCase):
     @classmethod
@@ -191,3 +251,70 @@ class TeklifSiparisViewTest(TestCase):
         self.assertContains(r, "Satış")
         for ad in EKRANLAR:
             self.assertContains(r, reverse("core:" + ad))
+
+    def test_duzenle_get_ve_post(self):
+        from core.models import TeklifSiparis
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            belge_no="D-1", kullanici=self.yon)
+        self.client.force_login(self.yon)
+        g = self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk]))
+        self.assertEqual(g.status_code, 200)
+        self.assertContains(g, "D-1")
+        r = self.client.post(reverse("core:teklif_siparis_duzenle", args=[ts.pk]), {
+            "cari": self.cari.pk, "tarih": "2026-07-01", "para_birimi": "TRY",
+            "belge_no": "D-2",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "5", "form-0-birim_fiyat": "40",
+        })
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        ts = TeklifSiparis.objects.get(pk=ts.pk)
+        self.assertEqual(ts.belge_no, "D-2")
+        self.assertEqual(ts.kalemler.filter(silindi=False).count(), 1)
+        self.assertEqual(ts.kalemler.filter(silindi=False).first().miktar, Decimal("5"))
+
+    def test_iptal_view_detay_hala_gorunur_liste_kaybolur(self):
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            belge_no="I-1", kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:teklif_siparis_iptal", args=[ts.pk]))
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertEqual(d.status_code, 200)                      # 404 değil — hâlâ görüntülenir
+        self.assertContains(d, "iptal edilmiş")
+        rl = self.client.get(reverse("core:satis_siparisleri"))
+        self.assertNotContains(rl, "I-1")                          # listeden düşer
+
+    def test_iptal_sonrasi_duzenle_404(self):
+        from core.services.teklif_siparis import teklif_siparis_iptal, teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="ALIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_iptal(ts, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        self.assertEqual(
+            self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk])).status_code, 404)
+
+    def test_duzenle_iptal_yetkisiz_403(self):
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="ALIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.bos)
+        self.assertEqual(
+            self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk])).status_code, 403)
+        self.assertEqual(
+            self.client.post(reverse("core:teklif_siparis_iptal", args=[ts.pk])).status_code, 403)
+

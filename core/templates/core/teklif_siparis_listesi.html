@@ -23,6 +23,9 @@
         <td class="sag mono">{{ k.genel_toplam|tr_kur:2 }} {{ k.para_birimi }}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>
+          <a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:teklif_siparis_iptal' k.pk %}" onsubmit="return confirm('{{ k.get_belge_tur_display }} iptal edilsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
         </span></td>
       </tr>
     {% empty %}

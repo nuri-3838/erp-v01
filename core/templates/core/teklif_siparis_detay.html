@@ -9,6 +9,13 @@
     <a class="ust-link" href="{% url liste_url %}">← Geri</a>
     <h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ ts.get_belge_tur_display }}{% if ts.belge_no %} · {{ ts.belge_no }}{% endif %}</h1>
   </div>
+  {% if not ts.silindi %}
+  <span class="islem-bag">
+    <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">Düzenle</a>
+    <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');">
+      {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+  </span>
+  {% endif %}
 </div>
 
 {% if ts.silindi %}<div class="uyari"><div>⚠️ Bu belge iptal edilmiş.</div></div>{% endif %}

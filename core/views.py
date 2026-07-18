@@ -1829,8 +1829,8 @@ def satis_siparis_ekle(request):
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
                         "satis_teklifleri", "satis_siparisleri")
 def teklif_siparis_detay(request, pk):
-    ts = get_object_or_404(
-        TeklifSiparis.objects.select_related("cari"), pk=pk, silindi=False)
+    # silindi filtrelenmez: iptal edilmiş belge de görüntülenebilir (uyarı banner'ıyla).
+    ts = get_object_or_404(TeklifSiparis.objects.select_related("cari"), pk=pk)
     kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv")
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = {"satinalma_teklifleri": "📥", "satinalma_siparisleri": "🛒",
@@ -1838,6 +1838,62 @@ def teklif_siparis_detay(request, pk):
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
                    "liste_url": "core:" + ekran})
+
+
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satis_teklifleri", "satis_siparisleri")
+def teklif_siparis_duzenle(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
+    emoji = {"satinalma_teklifleri": "📥", "satinalma_siparisleri": "🛒",
+            "satis_teklifleri": "📤", "satis_siparisleri": "📦"}[ekran]
+    if request.method == "POST":
+        bform = TeklifSiparisForm(request.POST, belge_tur=ts.belge_tur)
+        formset = TeklifSiparisKalemFormSet(request.POST)
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
+                for f in formset if f.dolu_mu()
+            ]
+            try:
+                teklif_siparis_servis.teklif_siparis_guncelle(
+                    ts, cari_id=bform.cleaned_data["cari"].pk,
+                    tarih=bform.cleaned_data["tarih"],
+                    gecerlilik_teslim_tarihi=bform.cleaned_data.get("gecerlilik_teslim_tarihi"),
+                    belge_no=bform.cleaned_data.get("belge_no", ""),
+                    para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
+                    aciklama=bform.cleaned_data.get("aciklama", ""),
+                    satirlar=satirlar, kullanici=request.user)
+                messages.success(request, f"{ts.get_belge_tur_display()} güncellendi.")
+                return redirect("core:teklif_siparis_detay", pk=ts.pk)
+            except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                bform.add_error(None, str(e))
+    else:
+        bform = TeklifSiparisForm(belge_tur=ts.belge_tur, initial={
+            "cari": ts.cari_id, "tarih": ts.tarih,
+            "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
+            "belge_no": ts.belge_no, "para_birimi": ts.para_birimi, "aciklama": ts.aciklama})
+        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
+               for k in ts.kalemler.filter(silindi=False).select_related("stok")]
+        formset = TeklifSiparisKalemFormSet(initial=ilk)
+    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
+               for s in Stok.objects.filter(silindi=False).select_related("kdv")}
+    return render(request, "core/teklif_siparis_ekle.html",
+                  {"bform": bform, "formset": formset,
+                   "baslik": f"{ts.get_belge_tur_display()} Düzenle", "emoji": emoji,
+                   "stok_kdv": stok_kdv,
+                   "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
+
+
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satis_teklifleri", "satis_siparisleri")
+def teklif_siparis_iptal_gorunum(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        teklif_siparis_servis.teklif_siparis_iptal(ts, kullanici=request.user)
+        messages.success(request, f"{ts.get_belge_tur_display()} iptal edildi.")
+    return redirect("core:teklif_siparis_detay", pk=ts.pk)
 
 
 # === FİNANS — Kredi Kartı ===

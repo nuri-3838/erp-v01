@@ -2,8 +2,8 @@
 
 TİCARİ belge: yevmiye fişi ÜRETMEZ, stok hareketi YARATMAZ (muhasebe ve stok her
 zaman faturayla girer). belge_tur (Teklif/Sipariş) × yon (Alış/Satış) — dört ekranı
-tek modelden besler. İlk dilim: liste + oluştur + görüntüle (düzenle/sil/dönüşüm
-sonraki dilimde).
+tek modelden besler. Kapsam: liste + oluştur + düzenle + iptal + görüntüle
+(teklif→sipariş/sipariş→fatura dönüşümü ve durum akışı sonraki dilimde).
 """
 from __future__ import annotations
 
@@ -86,4 +86,40 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
         belge_no=(belge_no or "").strip(), para_birimi=pb, aciklama=(aciklama or "").strip(),
         created_by=kullanici, updated_by=kullanici)
     _kalemleri_yaz(ts, hazir, kullanici)
+    return ts
+
+
+@transaction.atomic
+def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
+                            gecerlilik_teslim_tarihi=None, belge_no="", para_birimi="TRY",
+                            aciklama="", kullanici=None) -> TeklifSiparis:
+    """Teklif/Sipariş başlığı + kalemlerini günceller (belge_tur/yon SABİT — hangi ekrana
+    ait olduğunu belirler, değişmez). Eski kalemler soft-delete edilir, yenileri yazılır."""
+    from django.utils import timezone
+    if ts.silindi:
+        raise TeklifSiparisHatasi("İptal edilmiş belge düzenlenemez.")
+    cari, hazir = _hazirla(cari_id=cari_id, satirlar=satirlar)
+    pb = _pb_dogrula(para_birimi)
+    ts.kalemler.filter(silindi=False).update(
+        silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    ts.cari, ts.tarih = cari, tarih
+    ts.gecerlilik_teslim_tarihi = gecerlilik_teslim_tarihi
+    ts.belge_no, ts.para_birimi = (belge_no or "").strip(), pb
+    ts.aciklama = (aciklama or "").strip()
+    ts.updated_by = kullanici
+    ts.save(update_fields=["cari", "tarih", "gecerlilik_teslim_tarihi", "belge_no",
+                           "para_birimi", "aciklama", "updated_by", "updated_at"])
+    _kalemleri_yaz(ts, hazir, kullanici)
+    return ts
+
+
+def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
+    """Belgeyi soft-delete eder (kalemler kalır; geçmiş görüntüleme için)."""
+    from django.utils import timezone
+    if ts.silindi:
+        return ts
+    ts.silindi = True
+    ts.silindi_at = timezone.now()
+    ts.updated_by = kullanici
+    ts.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return ts
