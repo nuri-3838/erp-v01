@@ -730,9 +730,9 @@ class IslemTarihForm(forms.Form):
         initial=timezone.localdate)
 
 
-class CekTahsilForm(forms.Form):
-    """Tahsil gerçekleşme başlığı: nakit hedefi Banka hesabı VEYA Kasa (yalnız biri) + tarih.
-    (Evrak seçimi şablonda checkbox listesiyle; PB seçilen evraktan türer.)"""
+class CekNakitForm(forms.Form):
+    """Nakit gerçekleşme başlığı (Tahsil / Firma Çek Ödeme): nakit hesabı Banka hesabı VEYA
+    Kasa (yalnız biri) + tarih. (Evrak seçimi şablonda checkbox listesiyle; PB evraktan türer.)"""
     banka_hesap = forms.ModelChoiceField(
         label="Banka Hesabı", required=False, queryset=BankaHesap.objects.none(),
         empty_label="— banka hesabı —")
@@ -759,7 +759,7 @@ class CekTahsilForm(forms.Form):
         cd = super().clean()
         if bool(cd.get("banka_hesap")) == bool(cd.get("kasa")):
             raise forms.ValidationError(
-                "Nakit hedefi olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
+                "Nakit hesabı olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
         return cd
 
 

@@ -1143,6 +1143,7 @@ class CekBordrosu(TemelModel):
         BANKA_TAHSIL_IADE = "BANKA_TAHSIL_IADE", "Banka Tahsil İade"
         BANKA_TEMINAT_IADE = "BANKA_TEMINAT_IADE", "Banka Teminat İade"
         TAHSIL = "TAHSIL", "Tahsil Gerçekleşme"
+        ODEME = "ODEME", "Firma Çek Ödeme"
 
     tur = models.CharField("tür", max_length=20, choices=Tur.choices)
     tarih = models.DateField("işlem tarihi")

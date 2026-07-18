@@ -68,6 +68,8 @@
       <div class="dg">{{ bordro.cari.unvan }}</div></div>{% endif %}
     {% if bordro.banka_hesap %}<div class="kutu"><div class="et">Banka Hesabı</div>
       <div class="dg">{{ bordro.banka_hesap.banka.ad }} · {{ bordro.banka_hesap.ad }}</div></div>{% endif %}
+    {% if bordro.kasa %}<div class="kutu"><div class="et">Kasa</div>
+      <div class="dg">{{ bordro.kasa.ad }}</div></div>{% endif %}
     <div class="kutu"><div class="et">Evrak Adedi</div><div class="dg">{{ cekler|length }}</div></div>
   </div>
 

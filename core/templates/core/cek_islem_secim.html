@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load core_extras %}
+{% load core_extras l10n %}
 {% block baslik %}{{ baslik }} · Çek/Senet{% endblock %}
 {% block sayfa_adi %}Çek/Senet · {{ baslik }}{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
@@ -59,7 +59,8 @@
           {% for c in portfoy %}
           <tr>
             <td><input type="checkbox" class="pf-cb" name="cek_ids" value="{{ c.pk }}"
-                       data-pb="{{ c.para_birimi }}" data-tutar="{{ c.tutar }}"></td>
+                       data-pb="{{ c.para_birimi }}" data-tutar="{{ c.tutar|unlocalize }}"
+                       {% if c.pk|stringformat:"s" in secili_ids %}checked{% endif %}></td>
             <td>{{ c.get_tip_display }}</td>
             {% if durum_goster %}<td>{{ c.get_durum_display }}</td>{% endif %}
             <td class="mono">{{ c.belge_no|default:"—" }}</td>
@@ -75,7 +76,7 @@
       </div>
       <p class="yardim" id="pf-ozet" style="margin-top:.7rem">Seçili: 0 evrak</p>
       {% else %}
-      <p class="yardim">Portföyde uygun alınan çek/senet yok. Önce <strong>Cari Giriş</strong> ile ekleyin.</p>
+      <p class="yardim">{{ bos_metin|default:"Portföyde uygun alınan çek/senet yok. Önce Cari Giriş ile ekleyin." }}</p>
       {% endif %}
     </section>
 

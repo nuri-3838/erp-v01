@@ -14,7 +14,7 @@ from django.db import transaction
 from core.metin import buyuk_harf_tr
 from core.models import (BankaHesap, Cari, CekBordrosu, CekBordroSatir, CekHesapAyari,
                          CekSenet, HesapPlani, Kasa, Kur, YevmiyeFisi)
-from core.sayi import SayiHatasi, parse_tr
+from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.finans import FinansHatasi, _soft_sil, _yaprak_hesap_coz
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
                                    fis_olustur)
@@ -215,6 +215,7 @@ _ISLEM_SONUC = {
     CekBordrosu.Tur.BANKA_TEMINAT_IADE: CekSenet.Durum.PORTFOYDE,
     CekBordrosu.Tur.CARI_IADE: CekSenet.Durum.IADE,
     CekBordrosu.Tur.TAHSIL: CekSenet.Durum.TAHSIL,
+    CekBordrosu.Tur.ODEME: CekSenet.Durum.ODENDI,
 }
 # Banka reclass işlemleri — iki yönlü: ileri (tahsil/teminat: portföy→ara durum, banka hesabı
 # zorunlu, belge bilgisi) ve İADE (ara durum→portföy, hedef seçilmez, mevcut duruma bakılır).
@@ -271,10 +272,11 @@ def _secim_coz(cek_ids, *, yon=CekSenet.Yon.ALINAN, durum=CekSenet.Durum.PORTFOY
     izin = _durum_kumesi(durum)
     ad = dict(CekSenet.Durum.choices)
     durum_ad = " / ".join(ad.get(d, d) for d in izin)
+    yon_ad = dict(CekSenet.Yon.choices).get(yon, yon).lower()
     for c in cekler:
         if c.yon != yon or c.durum not in izin:
             raise CekHatasi(f"{c.belge_no or c.pk} bu işlem için uygun değil "
-                            f"(yalnız \"{durum_ad}\" durumundaki alınan evrak seçilebilir).")
+                            f"(yalnız \"{durum_ad}\" durumundaki {yon_ad} evrak seçilebilir).")
     if len({c.para_birimi for c in cekler}) > 1:
         raise CekHatasi("Seçilen çek/senetler aynı para biriminde olmalı (tek fiş).")
     return cekler
@@ -436,16 +438,28 @@ def banka_teminat_iade_bordrosu_olustur(**kwargs) -> CekBordrosu:
     return _reclass_bordrosu(_RECLASS["teminat_iade"], **kwargs)
 
 
-# === Tahsil gerçekleşme (nakit giriş): TAHSILDE/PORTFOYDE → TAHSIL ===
-# Seçilen evrakın kaynak durumuna göre ALACAK yazılacak çek/senet hesabının ön eki.
-_TAHSIL_ONEK = {CekSenet.Durum.PORTFOYDE: "portfoy", CekSenet.Durum.TAHSILDE: "tahsilde"}
+# === Nakit gerçekleşme: Tahsil (para GİRER) / Firma Çek Ödeme (para ÇIKAR) ===
+# nakit_taraf = nakit hesabının fiş tarafı; çek-senet satırları TERS taraf.
+# onek: evrakın kaynak durumuna göre karşı çek/senet hesabının config ön eki
+# (anahtar kümesi aynı zamanda işlemin kabul ettiği kaynak durumlar).
+_NAKIT = {
+    "tahsil": {"tur": CekBordrosu.Tur.TAHSIL, "yon": CekSenet.Yon.ALINAN,
+               "sonuc": CekSenet.Durum.TAHSIL, "nakit_taraf": "B",
+               "onek": {CekSenet.Durum.PORTFOYDE: "portfoy",
+                        CekSenet.Durum.TAHSILDE: "tahsilde"},
+               "ack": "ÇEK/SENET TAHSİL"},
+    "odeme": {"tur": CekBordrosu.Tur.ODEME, "yon": CekSenet.Yon.VERILEN,
+              "sonuc": CekSenet.Durum.ODENDI, "nakit_taraf": "A",
+              "onek": {CekSenet.Durum.VERILDI: "verilen"},
+              "ack": "FİRMA ÇEK/SENET ÖDEME"},
+}
 
 
 def _nakit_hedef_coz(banka_hesap_id, kasa_id):
-    """Tahsil nakit hedefi: Banka hesabı VEYA Kasa (yalnız biri). Döner:
+    """Nakit ayağı hedefi: Banka hesabı VEYA Kasa (yalnız biri). Döner:
     (hesap_kodu, ad, banka_obj|None, kasa_obj|None)."""
     if bool(banka_hesap_id) == bool(kasa_id):
-        raise CekHatasi("Nakit hedefi olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
+        raise CekHatasi("Nakit hesabı olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
     if banka_hesap_id:
         bh = _banka_hesap_coz(banka_hesap_id)
         if bh.muhasebe_id is None:
@@ -460,38 +474,49 @@ def _nakit_hedef_coz(banka_hesap_id, kasa_id):
 
 
 @transaction.atomic
-def tahsil_bordrosu_olustur(*, tarih, cek_ids, banka_hesap_id=None, kasa_id=None,
-                            aciklama="", kullanici=None) -> CekBordrosu:
-    """Tahsil gerçekleşme: TAHSILDE/PORTFOYDE alınan çek/senetler nakde döner (para GİRİŞİ).
-    Nakit hedefi Banka hesabı VEYA Kasa (yalnız biri). Hedef nakit hesabı BORÇ (toplam) /
-    kaynak çek-senet hesabı ALACAK — her evrakın KENDİ durumuna (Tahsildeki/Portföydeki) ve
-    tipine göre ayrı satır. Durum → TAHSIL (terminal). Karışık kaynak (bir kısmı bankada
-    tahsilde, bir kısmı portföyde) tek bordroda olabilir; aynı para birimi zorunlu (tek fiş)."""
+def _nakit_bordrosu(tan, *, tarih, cek_ids, banka_hesap_id=None, kasa_id=None,
+                    aciklama="", kullanici=None) -> CekBordrosu:
+    """Nakit gerçekleşme ortak motoru (tan = _NAKIT['tahsil'|'odeme']). Nakit hesabı
+    tan["nakit_taraf"] tarafına toplam; karşı çek-senet hesapları ters tarafa, her evrakın
+    KENDİ durumuna ve tipine göre ayrı satır. Durum → tan["sonuc"] (terminal). Karışık
+    kaynak durum tek bordroda olabilir; aynı para birimi zorunlu (tek fiş)."""
     hedef_kod, hedef_ad, banka, kasa = _nakit_hedef_coz(banka_hesap_id, kasa_id)
-    cekler = _secim_coz(cek_ids, durum=(CekSenet.Durum.TAHSILDE, CekSenet.Durum.PORTFOYDE))
+    cekler = _secim_coz(cek_ids, yon=tan["yon"], durum=tuple(tan["onek"]))
     pb = cekler[0].para_birimi
+    # Nakit hesabının PB'si evrak PB'siyle aynı olmalı (kasa/banka motorlarıyla aynı
+    # invariant); çapraz kurlu işlem v0.1 kapsamı dışında.
+    hedef_pb = banka.para_birimi if banka else kasa.para_birimi
+    if hedef_pb != pb:
+        raise CekHatasi(f"{hedef_ad} hesabının para birimi ({hedef_pb}) evrak para "
+                        f"birimiyle ({pb}) aynı olmalı; çapraz kurlu işlem desteklenmiyor.")
     kur = _kur_coz(pb, tarih)
     ayar = CekHesapAyari.get()
-    # Kaynak (alacak) satırları: (durum öneki, tip) grubuna göre topla → config hesabı.
+    # Karşı satırlar: (durum öneki, tip) grubuna göre topla → config hesabı.
     grup = {}
     for c in cekler:
-        anahtar = (_TAHSIL_ONEK[c.durum], c.tip)
+        anahtar = (tan["onek"][c.durum], c.tip)
         grup[anahtar] = grup.get(anahtar, Decimal("0")) + c.tutar
     toplam = sum(grup.values(), Decimal("0"))
-    girdiler = [SatirGirdi(hesap_kodu=hedef_kod, taraf="B", islem_tutari=toplam,
-                           islem_pb=pb, islem_kuru=kur)]
+    nakit_taraf = tan["nakit_taraf"]
+    karsi_taraf = "A" if nakit_taraf == "B" else "B"
+    girdiler, karsi_tl = [], Decimal("0")
     for (oneki, tip), top in grup.items():
-        kaynak_h = _ayar_hesap(ayar, oneki, tip)
-        girdiler.append(SatirGirdi(hesap_kodu=kaynak_h.hesap_kodu, taraf="A",
+        karsi_h = _ayar_hesap(ayar, oneki, tip)
+        karsi_tl += yuvarla(top * kur, 2)
+        girdiler.append(SatirGirdi(hesap_kodu=karsi_h.hesap_kodu, taraf=karsi_taraf,
                                    islem_tutari=top, islem_pb=pb, islem_kuru=kur))
+    # Nakit DENGE satırı: TL'si karşı satırların yuvarlanmış TL toplamı (tl_override) —
+    # dövizde çok gruplu bordroda kuruş yuvarlama farkı fişi dengesiz bırakmasın.
+    girdiler.insert(0, SatirGirdi(hesap_kodu=hedef_kod, taraf=nakit_taraf, islem_tutari=toplam,
+                                  islem_pb=pb, islem_kuru=kur, tl_override=karsi_tl))
     bordro = CekBordrosu.objects.create(
-        tur=CekBordrosu.Tur.TAHSIL, tarih=tarih, banka_hesap=banka, kasa=kasa,
-        aciklama=(aciklama.strip() or buyuk_harf_tr(f"ÇEK/SENET TAHSİL - {hedef_ad}")),
+        tur=tan["tur"], tarih=tarih, banka_hesap=banka, kasa=kasa,
+        aciklama=(aciklama.strip() or buyuk_harf_tr(f"{tan['ack']} - {hedef_ad}")),
         created_by=kullanici, updated_by=kullanici)
     for c in cekler:
         CekBordroSatir.objects.create(bordro=bordro, cek_senet=c, onceki_durum=c.durum,
                                       created_by=kullanici, updated_by=kullanici)
-        c.durum = CekSenet.Durum.TAHSIL
+        c.durum = tan["sonuc"]
         c.updated_by = kullanici
         c.save(update_fields=["durum", "updated_by", "updated_at"])
     try:
@@ -502,6 +527,19 @@ def tahsil_bordrosu_olustur(*, tarih, cek_ids, banka_hesap_id=None, kasa_id=None
     fis.cek_bordrosu = bordro
     fis.save(update_fields=["cek_bordrosu", "updated_at"])
     return bordro
+
+
+def tahsil_bordrosu_olustur(**kwargs) -> CekBordrosu:
+    """Tahsil gerçekleşme: TAHSILDE/PORTFOYDE alınan çek/senetler nakde döner (para GİRİŞİ).
+    Nakit hesabı (Banka/Kasa) BORÇ / kaynak çek-senet hesabı ALACAK; durum → TAHSIL."""
+    return _nakit_bordrosu(_NAKIT["tahsil"], **kwargs)
+
+
+def odeme_bordrosu_olustur(**kwargs) -> CekBordrosu:
+    """Firma Çek Ödeme: VERİLDİ durumundaki verilen çek/senetler ödenir (para ÇIKIŞI).
+    Verilen çek-senet hesabı BORÇ (borç kapanır) / nakit hesabı (Banka/Kasa) ALACAK;
+    durum → ODENDI."""
+    return _nakit_bordrosu(_NAKIT["odeme"], **kwargs)
 
 
 @transaction.atomic

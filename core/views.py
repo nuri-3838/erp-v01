@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekTahsilForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1899,7 +1899,8 @@ def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoj
         form = form_cls()
     return render(request, "core/cek_islem_secim.html",
                   {"form": form, "portfoy": cek_servis.portfoydeki_cekler(durum=durum),
-                   "baslik": baslik, "emoji": emoji, "yardim": yardim, "buton": buton})
+                   "baslik": baslik, "emoji": emoji, "yardim": yardim, "buton": buton,
+                   "secili_ids": request.POST.getlist("cek_ids")})
 
 
 @ekran_gerekli("cek_senet")
@@ -1973,38 +1974,67 @@ def cek_cari_iade(request):
         buton="Cariye İade Et", basari="cariye iade edildi")
 
 
-@ekran_gerekli("cek_senet")
-def cek_tahsil(request):
-    """Tahsil Gerçekleşme: Bankada Tahsildeki veya Portföydeki alınan çek/senetler nakde
-    döner; para seçilen Banka hesabı VEYA Kasa'ya girer (evrak durumu → Tahsil Edildi)."""
+def _nakit_islem_view(request, *, servis_fn, yon, durum, baslik, emoji, yardim, buton,
+                      basari, liste_baslik, bos_metin):
+    """Nakit gerçekleşme ekranı ortak gövdesi (Tahsil / Firma Çek Ödeme): evrak seçimi +
+    nakit hesabı (Banka VEYA Kasa) + tarih → tek birleşik fiş."""
     if request.method == "POST":
-        form = CekTahsilForm(request.POST)
+        form = CekNakitForm(request.POST)
         cek_ids = request.POST.getlist("cek_ids")
         if form.is_valid():
             try:
                 bh = form.cleaned_data.get("banka_hesap")
                 ks = form.cleaned_data.get("kasa")
-                bordro = cek_servis.tahsil_bordrosu_olustur(
+                bordro = servis_fn(
                     tarih=form.cleaned_data["tarih"], cek_ids=cek_ids,
                     banka_hesap_id=bh.pk if bh else None,
                     kasa_id=ks.pk if ks else None, kullanici=request.user)
-                messages.success(request, f"Bordro kaydedildi; {len(cek_ids)} evrak tahsil edildi, "
+                messages.success(request, f"Bordro kaydedildi; {len(cek_ids)} evrak {basari}, "
                                           f"fiş oluşturuldu.")
                 return redirect("core:cek_bordro_detay", pk=bordro.pk)
             except cek_servis.CekHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CekTahsilForm()
+        form = CekNakitForm()
     return render(request, "core/cek_islem_secim.html", {
-        "form": form, "baslik": "Tahsil Gerçekleşme", "emoji": "💰",
-        "yardim": "Bankada Tahsildeki veya Portföydeki alınan çek/senetler seçilir; para seçtiğin "
-                  "Banka hesabı ya da Kasa'ya girer (nakit hesabı borç / kaynak çek-senet alacak). "
-                  "Evrak durumu Tahsil Edildi olur; yanlışsa bordrodan geri alınabilir.",
-        "buton": "Tahsil Et", "durum_goster": True,
-        "liste_baslik": "Tahsil Edilebilir Çek / Senetler (Bankada Tahsilde + Portföyde)",
-        "portfoy": cek_servis.portfoydeki_cekler(
-            durum=(CekSenet.Durum.TAHSILDE, CekSenet.Durum.PORTFOYDE)),
+        "form": form, "baslik": baslik, "emoji": emoji, "yardim": yardim, "buton": buton,
+        "durum_goster": True, "liste_baslik": liste_baslik, "bos_metin": bos_metin,
+        "portfoy": cek_servis.portfoydeki_cekler(yon=yon, durum=durum),
+        "secili_ids": request.POST.getlist("cek_ids"),
     })
+
+
+@ekran_gerekli("cek_senet")
+def cek_tahsil(request):
+    """Tahsil Gerçekleşme: Bankada Tahsildeki veya Portföydeki alınan çek/senetler nakde
+    döner; para seçilen Banka hesabı VEYA Kasa'ya girer (evrak durumu → Tahsil Edildi)."""
+    return _nakit_islem_view(
+        request, servis_fn=cek_servis.tahsil_bordrosu_olustur,
+        yon=CekSenet.Yon.ALINAN, durum=(CekSenet.Durum.TAHSILDE, CekSenet.Durum.PORTFOYDE),
+        baslik="Tahsil Gerçekleşme", emoji="💰",
+        yardim="Bankada Tahsildeki veya Portföydeki alınan çek/senetler seçilir; para seçtiğin "
+               "Banka hesabı ya da Kasa'ya girer (nakit hesabı borç / kaynak çek-senet alacak). "
+               "Evrak durumu Tahsil Edildi olur; yanlışsa bordrodan geri alınabilir.",
+        buton="Tahsil Et", basari="tahsil edildi",
+        liste_baslik="Tahsil Edilebilir Çek / Senetler (Bankada Tahsilde + Portföyde)",
+        bos_metin="Tahsil edilebilir alınan çek/senet yok (Bankada Tahsilde veya Portföyde "
+                  "evrak gerekli).")
+
+
+@ekran_gerekli("cek_senet")
+def cek_odeme(request):
+    """Firma Çek Ödeme: Verildi durumundaki verilen çek/senetler ödenir; para seçilen
+    Banka hesabı VEYA Kasa'dan çıkar (evrak durumu → Ödendi)."""
+    return _nakit_islem_view(
+        request, servis_fn=cek_servis.odeme_bordrosu_olustur,
+        yon=CekSenet.Yon.VERILEN, durum=CekSenet.Durum.VERILDI,
+        baslik="Firma Çek Ödeme", emoji="💸",
+        yardim="Verildi durumundaki kendi çek/senetlerimiz seçilir; para seçtiğin Banka hesabı "
+               "ya da Kasa'dan çıkar (Verilen çek-senet borç / nakit hesabı alacak). Evrak "
+               "durumu Ödendi olur; yanlışsa bordrodan geri alınabilir.",
+        buton="Öde", basari="ödendi",
+        liste_baslik="Ödenecek Firma Çek / Senetleri (Verildi)",
+        bos_metin="Ödenecek verilen çek/senet yok. Önce Firma Çek-Senet ile evrak verin.")
 
 
 def _bordro_baglam(bordro):
@@ -2019,6 +2049,7 @@ def _bordro_baglam(bordro):
         "fisler": bordro.fisler.filter(silindi=False).order_by("yil", "fis_no"),
         "toplam": toplam, "para_birimi": (cekler[0].para_birimi if cekler else "TRY"),
         "ort_vade": ort_vade, "vade_gun": vade_gun,
+        "giris_mi": bordro.tur in CekBordrosu.GIRIS_TURLERI,
     }
 
 
@@ -2056,7 +2087,9 @@ def cek_bordro_sil(request, pk):
     if request.method == "POST":
         try:
             cek_servis.bordro_sil(bordro, kullanici=request.user)
-            messages.success(request, "Bordro geri alındı (fiş iptal, evraklar silindi).")
+            evrak_ek = ("evraklar silindi" if bordro.tur in CekBordrosu.GIRIS_TURLERI
+                        else "evraklar önceki durumuna döndü")
+            messages.success(request, f"Bordro geri alındı (fiş iptal, {evrak_ek}).")
             return redirect("core:cek_senetler")
         except cek_servis.CekHatasi as e:
             messages.error(request, str(e))
