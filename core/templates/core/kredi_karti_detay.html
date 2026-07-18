@@ -91,9 +91,9 @@
   {% else %}
 
   <div class="kk-ozet">
-    <div class="kk-kutu"><div class="et">Limit</div><div class="dg">{{ kart.limit|tr_para }}</div></div>
-    <div class="kk-kutu borc"><div class="et">Güncel Borç</div><div class="dg">{{ borc|tr_para }}</div></div>
-    <div class="kk-kutu kullanilabilir"><div class="et">Kullanılabilir</div><div class="dg">{{ kullanilabilir|tr_para }}</div></div>
+    <div class="kk-kutu"><div class="et">Limit ({{ kart.para_birimi }})</div><div class="dg">{{ kart.limit|tr_para }}</div></div>
+    <div class="kk-kutu borc"><div class="et">Güncel Borç ({{ kart.para_birimi }})</div><div class="dg">{{ borc|tr_para }}</div></div>
+    <div class="kk-kutu kullanilabilir"><div class="et">Kullanılabilir ({{ kart.para_birimi }})</div><div class="dg">{{ kullanilabilir|tr_para }}</div></div>
     <div class="kk-kutu"><div class="et">Kesim / Son Ödeme</div><div class="dg">{{ kart.kesim_gunu|default:"—" }} / {{ kart.son_odeme_gunu|default:"—" }}</div></div>
   </div>
 

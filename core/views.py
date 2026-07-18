@@ -1726,11 +1726,17 @@ def kredi_karti_detay(request, pk):
         satirlar = ekstre.satirlar if ekstre else []
     satirlar = list(reversed(satirlar))   # yeni tarihten eskiye (yürüyen bakiye değişmez)
 
-    # Güncel borç = kapanış ALACAK bakiyesi (yükümlülük). ekstre bakiye pozitif=borç →
-    # kart borcu negatif bakiyedir; borç = -bakiye. Kullanılabilir = limit - borç.
+    # Güncel borç = kapanış ALACAK bakiyesi (yükümlülük); TRY kartta TL kapanıştan, DÖVİZ
+    # kartta döviz kapanıştan (kur farkı TL bakiyeyi saptırır; limit de kart PB'sinde).
     borc = Decimal("0")
-    if ekstre and ekstre.kapanis_bakiye < 0:
-        borc = -ekstre.kapanis_bakiye
+    if ekstre:
+        if kart.para_birimi == "TRY":
+            net = ekstre.kapanis_bakiye
+        else:
+            d = ekstre.dvz_toplamlar.get(kart.para_birimi, {}).get("bakiye", Decimal("0"))
+            net = (ekstre.acilis_dvz or {}).get(kart.para_birimi, Decimal("0")) + d
+        if net < 0:
+            borc = -net
     kullanilabilir = (kart.limit or Decimal("0")) - borc
 
     kk_fis_pks = set(YevmiyeFisi.objects.filter(
@@ -1931,9 +1937,17 @@ def kredi_detay(request, pk):
     else:
         satirlar = ekstre.satirlar if ekstre else []
     satirlar = list(reversed(satirlar))
+    # Kalan borç: TRY kredide TL kapanıştan; DÖVİZ kredide döviz kapanıştan — kur farkı
+    # TL bakiyeyi saptırır, kalan borç kredinin KENDİ para biriminde anlamlıdır.
     kalan = Decimal("0")
-    if ekstre and ekstre.kapanis_bakiye < 0:
-        kalan = -ekstre.kapanis_bakiye
+    if ekstre:
+        if kredi.para_birimi == "TRY":
+            net = ekstre.kapanis_bakiye
+        else:
+            d = ekstre.dvz_toplamlar.get(kredi.para_birimi, {}).get("bakiye", Decimal("0"))
+            net = (ekstre.acilis_dvz or {}).get(kredi.para_birimi, Decimal("0")) + d
+        if net < 0:
+            kalan = -net
     kredi_fis_pks = set(YevmiyeFisi.objects.filter(
         kredi=kredi, kaynak=YevmiyeFisi.Kaynak.KREDI, silindi=False
     ).values_list("pk", flat=True))

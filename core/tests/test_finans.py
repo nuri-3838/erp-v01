@@ -154,6 +154,21 @@ class KasaHareketTest(TestCase):
                                 created_by=self.yon, updated_by=self.yon)
         return k, c
 
+    def test_hareketli_kasa_silinemez(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.finans import FinansHatasi, kasa_sil
+        from core.services.kasa_hareket import cari_tahsilat, hareket_iptal
+        k, c = self._kasa_cari()
+        fis = cari_tahsilat(kasa=k, cari=c, tutar=Decimal("100"),
+                            tarih=timezone.localdate(), kullanici=self.yon)
+        with self.assertRaises(FinansHatasi):
+            kasa_sil(k, kullanici=self.yon)               # aktif hareket -> silinemez
+        hareket_iptal(fis=fis, kasa=k, kullanici=self.yon)
+        kasa_sil(k, kullanici=self.yon)                   # hareketler iptal -> silinir
+        k.refresh_from_db()
+        self.assertTrue(k.silindi)
+
     def test_cari_tahsilat_dengeli_fis(self):
         from decimal import Decimal
         from django.utils import timezone
@@ -455,6 +470,17 @@ class BankaHareketTest(TestCase):
     def _s(self, fis):
         return {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
 
+    def test_hareketli_hesap_silinemez(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur
+        from core.services.finans import FinansHatasi, banka_hesap_sil
+        bh1, _, cari = self._kur()
+        hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
+                        tutar=Decimal("100"), tarih=timezone.localdate(), kullanici=self.yon)
+        with self.assertRaises(FinansHatasi):
+            banka_hesap_sil(bh1, kullanici=self.yon)
+
     def test_cari_tahsilat_ve_odeme(self):
         from decimal import Decimal
         from django.utils import timezone
@@ -588,6 +614,22 @@ class KrediKartiHareketTest(TestCase):
 
     def _s(self, fis):
         return {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+
+    def test_hareketli_kart_silinemez_ve_hesap_kilidi(self):
+        from decimal import Decimal
+        from core.services.finans import FinansHatasi, kredi_karti_guncelle, kredi_karti_sil
+        from core.services.kredi_karti_hareket import hareket_iptal, hareket_olustur
+        f = hareket_olustur(kart=self.kart, tip="harcama", karsi=self.cari,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+        with self.assertRaises(FinansHatasi):
+            kredi_karti_sil(self.kart, kullanici=self.yon)          # hareketli -> silinemez
+        with self.assertRaises(FinansHatasi):                       # hesap değişimi kilitli
+            kredi_karti_guncelle(self.kart, ad=self.kart.ad, muhasebe_kodu="309.02",
+                                 para_birimi="TRY", kullanici=self.yon)
+        kredi_karti_guncelle(self.kart, ad="bonus yeni", muhasebe_kodu="309.01",
+                             para_birimi="TRY", kullanici=self.yon)  # ad değişimi serbest
+        hareket_iptal(fis=f, kart=self.kart, kullanici=self.yon)
+        kredi_karti_sil(self.kart, kullanici=self.yon)              # iptal sonrası silinir
 
     def test_harcama_cari(self):
         from decimal import Decimal
@@ -814,6 +856,47 @@ class KrediHareketTest(TestCase):
 
     def _s(self, fis):
         return {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+
+    def test_hareketli_kredi_silinemez_ve_hesap_kilidi(self):
+        from decimal import Decimal
+        from core.services.finans import FinansHatasi, kredi_guncelle, kredi_sil
+        from core.services.kredi_hareket import hareket_iptal, hareket_olustur
+        f = hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.bh,
+                            tutar=Decimal("1000"), tarih=self.t, kullanici=self.yon)
+        with self.assertRaises(FinansHatasi):
+            kredi_sil(self.kredi, kullanici=self.yon)               # hareketli -> silinemez
+        with self.assertRaises(FinansHatasi):                       # hesap değişimi kilitli
+            kredi_guncelle(self.kredi, ad=self.kredi.ad, muhasebe_kodu="300.02",
+                           para_birimi="TRY", kullanici=self.yon)
+        with self.assertRaises(FinansHatasi):                       # PB değişimi kilitli
+            kredi_guncelle(self.kredi, ad=self.kredi.ad, muhasebe_kodu="300.01",
+                           para_birimi="USD", kullanici=self.yon)
+        kredi_guncelle(self.kredi, ad="ticari kredi 2", muhasebe_kodu="300.01",
+                       para_birimi="TRY", kullanici=self.yon)        # ad değişimi serbest
+        hareket_iptal(fis=f, kredi=self.kredi, kullanici=self.yon)
+        kredi_sil(self.kredi, kullanici=self.yon)                   # iptal sonrası silinir
+
+    def test_doviz_kredi_kalan_borc_dovizden(self):
+        # Döviz kredide Kalan Borç TL değil DÖVİZ kapanışından (kur farkı TL'yi saptırır).
+        from decimal import Decimal
+        from core.models import BankaHesap
+        from core.services.finans import kredi_olustur
+        from core.services.kredi_hareket import hareket_olustur
+        _hesap("102.03", "USD BANKA 2")
+        bh_usd = BankaHesap.objects.create(banka=self.banka, ad="USD HESAP 2",
+                                           muhasebe_id="102.03", para_birimi="USD",
+                                           created_by=self.yon, updated_by=self.yon)
+        kredi_usd = kredi_olustur(ad="dolar kredi 3", para_birimi="USD",
+                                  muhasebe_kodu="300.02", kullanici=self.yon)
+        hareket_olustur(kredi=kredi_usd, tip="kullandirim", karsi=bh_usd,
+                        tutar=Decimal("1000"), tarih=self.t, kullanici=self.yon)  # @40
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:kredi_detay", args=[kredi_usd.pk]),
+                            {"baslangic": "2026-06-01", "bitis": "2026-06-30"})
+        self.assertContains(d, "Kalan Borç (USD)")
+        # Kart döviz kalan borcu gösterir (eski kod TL kapanışı 40.000,00 basardı);
+        # ekstrenin TL kolonlarında 40.000,00 görünmesi meşru — karta bakıyoruz.
+        self.assertContains(d, "Kalan Borç (USD)</div><div class=\"dg\">1.000,00", html=False)
 
     def test_kullandirim_banka(self):
         from decimal import Decimal

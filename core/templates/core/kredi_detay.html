@@ -39,9 +39,12 @@
     color:var(--metin); box-shadow:var(--golge-sm); transition:transform .12s, box-shadow .12s; text-align:center; }
   .hareket-dugme:hover { transform:translateY(-2px); box-shadow:var(--golge-md); border-color:var(--cizgi-koyu); }
   .hareket-dugme .hd-ik { width:36px; height:36px; border-radius:10px; display:grid; place-items:center;
-    font-size:1.1rem; background:rgba(10,125,40,.12); }
+    font-size:1.1rem; background:rgba(33,56,95,.08); }
   .hareket-dugme .hd-ad { font-size:.84rem; font-weight:600; line-height:1.15; }
-  .hareket-dugme .hd-yon { font-size:.64rem; font-weight:700; letter-spacing:.04em; color:var(--hata); }
+  .hareket-dugme .hd-yon { font-size:.64rem; font-weight:700; letter-spacing:.04em; }
+  /* Renk dili aile deseniyle aynı (kredi kartı/kasa): borç ARTIRAN kırmızı, AZALTAN yeşil. */
+  .hareket-dugme.artis .hd-ik { background:rgba(193,21,57,.10); } .hareket-dugme.artis .hd-yon { color:var(--hata); }
+  .hareket-dugme.azalis .hd-ik { background:rgba(10,125,40,.12); } .hareket-dugme.azalis .hd-yon { color:var(--ok); }
   .ekstre-bsl { display:flex; align-items:center; gap:.4rem; margin:0 0 1rem; }
   .ekstre-filtre { display:flex; gap:.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem; }
   .ekstre-filtre .alan { margin:0; }
@@ -87,17 +90,17 @@
   <div class="kk-ozet">
     <div class="kk-kutu"><div class="et">Anapara</div><div class="dg">{{ kredi.anapara|tr_para }}</div></div>
     <div class="kk-kutu"><div class="et">Aylık Faiz</div><div class="dg">%{{ kredi.faiz_orani|tr_kur:4 }}</div></div>
-    <div class="kk-kutu borc"><div class="et">Kalan Borç</div><div class="dg">{{ kalan|tr_para }}</div></div>
+    <div class="kk-kutu borc"><div class="et">Kalan Borç ({{ kredi.para_birimi }})</div><div class="dg">{{ kalan|tr_para }}</div></div>
     <div class="kk-kutu"><div class="et">Banka</div><div class="dg" style="font-size:.95rem">{% if kredi.banka %}{{ kredi.banka.kisa_ad|default:kredi.banka.ad }}{% else %}—{% endif %}</div></div>
   </div>
 
   <section class="icerik-kart">
     <div class="hareket-bsl">Kredi Hareketi Ekle</div>
     <div class="hareket-bar">
-      <a class="hareket-dugme" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'kullandirim' %}">
+      <a class="hareket-dugme artis" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'kullandirim' %}">
         <span class="hd-ik">💰</span><span class="hd-ad">Kullandırım</span><span class="hd-yon">BORÇ ↑</span></a>
-      <a class="hareket-dugme" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'geri_odeme' %}">
-        <span class="hd-ik" style="background:rgba(193,21,57,.10)">💸</span><span class="hd-ad">Geri Ödeme</span><span class="hd-yon" style="color:var(--ok)">BORÇ ↓</span></a>
+      <a class="hareket-dugme azalis" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'geri_odeme' %}">
+        <span class="hd-ik">💸</span><span class="hd-ad">Geri Ödeme</span><span class="hd-yon">BORÇ ↓</span></a>
     </div>
     <p class="yardim" style="margin-top:.8rem">Geri ödemede anapara + faiz <strong>elle</strong> girilir;
       faiz varsa gider hesabına yazılır (amortisman planı üretilmez).</p>

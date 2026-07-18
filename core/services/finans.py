@@ -65,18 +65,36 @@ def kasa_olustur(*, ad, para_birimi="TRY", muhasebe_kodu, kullanici=None) -> Kas
         created_by=kullanici, updated_by=kullanici)
 
 
+def _hareket_kilidi(obj, *, yeni_pb, yeni_muhasebe, ad):
+    """Aktif kaynak fişi (hareket) olan tanımda muhasebe hesabı / para birimi DEĞİŞTİRİLEMEZ:
+    bakiye yevmiyeden hesaplandığı için hesap/PB kayarsa eski hareketler ekstreden kaybolur ve
+    kalan borç yanlışlanır (invariant: bakiyeler hesaplanır, saklanmaz). Diğer alanlar serbest."""
+    if not obj.fisler.filter(silindi=False).exists():
+        return
+    if yeni_muhasebe.pk != obj.muhasebe_id:
+        raise FinansHatasi(f"{ad} aktif hareket fişleri var; muhasebe hesabı değiştirilemez "
+                           f"(önce hareketleri iptal edin).")
+    if yeni_pb != obj.para_birimi:
+        raise FinansHatasi(f"{ad} aktif hareket fişleri var; para birimi değiştirilemez "
+                           f"(önce hareketleri iptal edin).")
+
+
 def kasa_guncelle(k: Kasa, *, ad, para_birimi="TRY", muhasebe_kodu, kullanici=None) -> Kasa:
     if k.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
     k.ad = _ad_dogrula(Kasa, ad, haric_pk=k.pk)
-    k.para_birimi = _pb(para_birimi)
-    k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
+    pb, hesap = _pb(para_birimi), _yaprak_hesap_coz(muhasebe_kodu)
+    _hareket_kilidi(k, yeni_pb=pb, yeni_muhasebe=hesap, ad="Kasanın")
+    k.para_birimi = pb
+    k.muhasebe = hesap
     k.updated_by = kullanici
     k.save(update_fields=["ad", "para_birimi", "muhasebe", "updated_by", "updated_at"])
     return k
 
 
 def kasa_sil(k: Kasa, kullanici=None) -> Kasa:
+    if k.fisler.filter(silindi=False).exists():
+        raise FinansHatasi("Bu kasanın aktif hareket fişleri var; önce hareketleri iptal edin.")
     return _soft_sil(k, kullanici)
 
 
@@ -221,8 +239,10 @@ def banka_hesap_guncelle(h: BankaHesap, *, ad, hesap_no="", iban="", para_birimi
     h.ad = _banka_hesap_ad(h.banka, ad, haric_pk=h.pk)
     h.hesap_no = (hesap_no or "").strip()
     h.iban = (iban or "").strip().upper().replace(" ", "")
-    h.para_birimi = _pb(para_birimi)
-    h.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
+    pb, hesap = _pb(para_birimi), _yaprak_hesap_coz(muhasebe_kodu)
+    _hareket_kilidi(h, yeni_pb=pb, yeni_muhasebe=hesap, ad="Banka hesabının")
+    h.para_birimi = pb
+    h.muhasebe = hesap
     h.updated_by = kullanici
     h.save(update_fields=["ad", "hesap_no", "iban", "para_birimi", "muhasebe",
                           "updated_by", "updated_at"])
@@ -230,6 +250,8 @@ def banka_hesap_guncelle(h: BankaHesap, *, ad, hesap_no="", iban="", para_birimi
 
 
 def banka_hesap_sil(h: BankaHesap, kullanici=None) -> BankaHesap:
+    if h.fisler.filter(silindi=False).exists():
+        raise FinansHatasi("Bu hesabın aktif hareket fişleri var; önce hareketleri iptal edin.")
     return _soft_sil(h, kullanici)
 
 
@@ -261,8 +283,10 @@ def kredi_karti_guncelle(k: KrediKarti, *, ad, banka=None, kart_son4="", limit=0
     k.limit = _sayi(limit, "Limit")
     k.kesim_gunu = _gun(kesim_gunu, "Kesim günü")
     k.son_odeme_gunu = _gun(son_odeme_gunu, "Son ödeme günü")
-    k.para_birimi = _pb(para_birimi)
-    k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
+    pb, hesap = _pb(para_birimi), _yaprak_hesap_coz(muhasebe_kodu)
+    _hareket_kilidi(k, yeni_pb=pb, yeni_muhasebe=hesap, ad="Kartın")
+    k.para_birimi = pb
+    k.muhasebe = hesap
     k.updated_by = kullanici
     k.save(update_fields=["ad", "banka", "kart_son4", "limit", "kesim_gunu",
                           "son_odeme_gunu", "para_birimi", "muhasebe", "updated_by", "updated_at"])
@@ -270,6 +294,8 @@ def kredi_karti_guncelle(k: KrediKarti, *, ad, banka=None, kart_son4="", limit=0
 
 
 def kredi_karti_sil(k: KrediKarti, kullanici=None) -> KrediKarti:
+    if k.fisler.filter(silindi=False).exists():
+        raise FinansHatasi("Bu kartın aktif hareket fişleri var; önce hareketleri iptal edin.")
     return _soft_sil(k, kullanici)
 
 
@@ -295,8 +321,10 @@ def kredi_guncelle(k: Kredi, *, ad, banka=None, anapara=0, faiz_orani=0, para_bi
     k.banka = banka
     k.anapara = _sayi(anapara, "Anapara")
     k.faiz_orani = _sayi(faiz_orani, "Faiz oranı")
-    k.para_birimi = _pb(para_birimi)
-    k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
+    pb, hesap = _pb(para_birimi), _yaprak_hesap_coz(muhasebe_kodu)
+    _hareket_kilidi(k, yeni_pb=pb, yeni_muhasebe=hesap, ad="Kredinin")
+    k.para_birimi = pb
+    k.muhasebe = hesap
     k.updated_by = kullanici
     k.save(update_fields=["ad", "banka", "anapara", "faiz_orani", "para_birimi",
                           "muhasebe", "updated_by", "updated_at"])
@@ -304,4 +332,6 @@ def kredi_guncelle(k: Kredi, *, ad, banka=None, anapara=0, faiz_orani=0, para_bi
 
 
 def kredi_sil(k: Kredi, kullanici=None) -> Kredi:
+    if k.fisler.filter(silindi=False).exists():
+        raise FinansHatasi("Bu kredinin aktif hareket fişleri var; önce hareketleri iptal edin.")
     return _soft_sil(k, kullanici)
