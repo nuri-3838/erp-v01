@@ -99,6 +99,7 @@ urlpatterns = [
     path("finans/banka-hesap/<int:pk>/duzenle/", views.banka_hesap_duzenle, name="banka_hesap_duzenle"),
     path("finans/banka-hesap/<int:pk>/sil/", views.banka_hesap_sil, name="banka_hesap_sil"),
     path("finans/kredi-karti/", views.kredi_kartlari, name="kredi_kartlari"),
+    path("finans/kredi-karti/<int:pk>/", views.kredi_karti_detay, name="kredi_karti_detay"),
     path("finans/kredi-karti/ekle/", views.kredi_karti_ekle, name="kredi_karti_ekle"),
     path("finans/kredi-karti/<int:pk>/duzenle/", views.kredi_karti_duzenle, name="kredi_karti_duzenle"),
     path("finans/kredi-karti/<int:pk>/sil/", views.kredi_karti_sil, name="kredi_karti_sil"),

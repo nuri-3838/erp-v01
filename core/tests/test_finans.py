@@ -400,6 +400,23 @@ class FinansDigerViewTest(TestCase):
         self.assertEqual(r2.status_code, 302)
         self.assertTrue(BankaHesap.objects.filter(banka=b, ad="TL").exists())
 
+    def test_kredi_karti_detay_ve_liste_link(self):
+        from decimal import Decimal
+        from core.services.finans import kredi_karti_olustur
+        _hesap("309.01", "KREDİ KARTLARI")
+        k = kredi_karti_olustur(ad="bonus", banka_adi="garanti", kart_son4="1234",
+                                limit=Decimal("10000"), kesim_gunu=15, son_odeme_gunu=25,
+                                para_birimi="TRY", muhasebe_kodu="309.01", kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:kredi_karti_detay", args=[k.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "BONUS")                 # kart adı TR büyük harf
+        self.assertContains(r, "Kart Ekstresi")
+        self.assertContains(r, "DİLİM 2")               # hareket iskelet rozeti
+        self.assertContains(r, "Güncel Borç")
+        rl = self.client.get(reverse("core:kredi_kartlari"))
+        self.assertContains(rl, reverse("core:kredi_karti_detay", args=[k.pk]))
+
 
 class BankaHareketTest(TestCase):
     """Banka hesabı hareket motoru (5 tip, ortak motor) — kasa deseninin banka karşılığı."""

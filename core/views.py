@@ -1679,6 +1679,47 @@ def kredi_kartlari(request):
 
 
 @ekran_gerekli("kredi_karti")
+def kredi_karti_detay(request, pk):
+    """Kredi kartı detayı (Dilim 1): lacivert başlık + kart özeti + hareket buton İSKELETİ
+    (yer tutucu, motor Dilim 2'de) + kart ekstresi (bağlı muhasebe hesabının devirli ekstresi).
+    Kredi kartı bir YÜKÜMLÜLÜK: bakiye alacak yönlü → güncel borç = negatif kapanış bakiyesi.
+    Tarih + açıklama filtreli; varsayılan dönem SON 1 AY."""
+    kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
+
+    bugun = timezone.localdate()
+    form = MizanFiltreForm(request.GET) if request.GET else None
+    if form and form.is_valid():
+        b, s = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
+    else:
+        b, s = _son_bir_ay(bugun), bugun
+        form = MizanFiltreForm(initial={"baslangic": b, "bitis": s})
+
+    ekstre = (ekstre_devirli_servis(kart.muhasebe.hesap_kodu, b, s)
+              if kart.muhasebe_id else None)
+
+    aciklama = (request.GET.get("aciklama") or "").strip()
+    if ekstre and aciklama:
+        ara = buyuk_harf_tr(aciklama)
+        satirlar = [r for r in ekstre.satirlar
+                    if ara in buyuk_harf_tr(r.fis_aciklama or "")
+                    or ara in buyuk_harf_tr(r.satir_aciklama or "")]
+    else:
+        satirlar = ekstre.satirlar if ekstre else []
+    satirlar = list(reversed(satirlar))   # yeni tarihten eskiye (yürüyen bakiye değişmez)
+
+    # Güncel borç = kapanış ALACAK bakiyesi (yükümlülük). ekstre bakiye pozitif=borç →
+    # kart borcu negatif bakiyedir; borç = -bakiye. Kullanılabilir = limit - borç.
+    borc = Decimal("0")
+    if ekstre and ekstre.kapanis_bakiye < 0:
+        borc = -ekstre.kapanis_bakiye
+    kullanilabilir = (kart.limit or Decimal("0")) - borc
+
+    return render(request, "core/kredi_karti_detay.html",
+                  {"kart": kart, "form": form, "ekstre": ekstre, "satirlar": satirlar,
+                   "aciklama": aciklama, "borc": borc, "kullanilabilir": kullanilabilir})
+
+
+@ekran_gerekli("kredi_karti")
 def kredi_karti_ekle(request):
     if request.method == "POST":
         form = KrediKartiForm(request.POST)

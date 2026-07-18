@@ -16,7 +16,7 @@
   <tbody>
     {% for k in kartlar %}
       <tr>
-        <td>{{ k.ad }}</td>
+        <td><a href="{% url 'core:kredi_karti_detay' k.pk %}">{{ k.ad }}</a></td>
         <td>{{ k.banka_adi|default:"—" }}</td>
         <td class="mono">{% if k.kart_son4 %}**** {{ k.kart_son4 }}{% else %}—{% endif %}</td>
         <td class="sag mono">{{ k.limit|tr_para }}</td>
