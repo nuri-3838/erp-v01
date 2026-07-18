@@ -21,7 +21,7 @@ from core.forms import (
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
-    KrediKartiHareketForm, KrediHareketForm,
+    KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm,
@@ -29,7 +29,7 @@ from core.forms import (
 from core.models import (
     Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    Kur, Sehir, Stok, TevkifatOrani, Ulke,
+    KrediTaksit, Kur, Sehir, Stok, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -1951,9 +1951,13 @@ def kredi_detay(request, pk):
     kredi_fis_pks = set(YevmiyeFisi.objects.filter(
         kredi=kredi, kaynak=YevmiyeFisi.Kaynak.KREDI, silindi=False
     ).values_list("pk", flat=True))
+    tozet = kredi_hareket_servis.taksit_ozet(kredi)
     return render(request, "core/kredi_detay.html",
                   {"kredi": kredi, "form": form, "ekstre": ekstre, "satirlar": satirlar,
-                   "aciklama": aciklama, "kalan": kalan, "kredi_fis_pks": kredi_fis_pks})
+                   "aciklama": aciklama, "kalan": kalan, "kredi_fis_pks": kredi_fis_pks,
+                   "taksitler": tozet["taksitler"], "bekleyen": tozet["bekleyen"],
+                   "odenen": tozet["odenen"], "bekleyen_sayi": tozet["bekleyen_sayi"],
+                   "odeme_form": KrediTaksitOdemeForm()})
 
 
 def _kredi_hareket_form(request, kredi, tip):
@@ -1962,19 +1966,10 @@ def _kredi_hareket_form(request, kredi, tip):
         form = KrediHareketForm(request.POST, tip=tip, kredi=kredi)
         if form.is_valid():
             try:
-                if tip == "geri_odeme":
-                    fis = kredi_hareket_servis.geri_odeme_olustur(
-                        kredi=kredi, karsi=form.cleaned_data["karsi"],
-                        anapara=form.cleaned_data["anapara"],
-                        faiz=form.cleaned_data.get("faiz") or 0,
-                        faiz_hesap=form.cleaned_data.get("faiz_hesap"),
-                        tarih=form.cleaned_data["tarih"],
-                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
-                else:
-                    fis = kredi_hareket_servis.hareket_olustur(
-                        kredi=kredi, tip=tip, karsi=form.cleaned_data["karsi"],
-                        tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
-                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                fis = kredi_hareket_servis.hareket_olustur(
+                    kredi=kredi, tip=tip, karsi=form.cleaned_data["karsi"],
+                    tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
                 messages.success(request, tan["ad"] + f" kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_detay", pk=kredi.pk)
             except kredi_hareket_servis.KrediHareketHatasi as e:
@@ -2004,6 +1999,65 @@ def kredi_hareket_iptal(request, pk, fis_pk):
             messages.success(request, "Kredi hareketi iptal edildi.")
         except kredi_hareket_servis.KrediHareketHatasi as e:
             messages.error(request, str(e))
+    return redirect("core:kredi_detay", pk=kredi.pk)
+
+
+KrediTaksitFormSet = formset_factory(KrediTaksitForm, extra=0, min_num=1, validate_min=True)
+
+
+@ekran_gerekli("kredi")
+def kredi_taksit_ekle(request, pk):
+    """Ödeme planına ELLE taksit(ler) ekle (formset: vade + anapara + faiz)."""
+    kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
+    if request.method == "POST":
+        formset = KrediTaksitFormSet(request.POST)
+        if formset.is_valid():
+            satirlar = [f.cleaned_data for f in formset if f.dolu_mu()]
+            try:
+                olusan = kredi_hareket_servis.taksit_plani_ekle(
+                    kredi=kredi, satirlar=satirlar, kullanici=request.user)
+                messages.success(request, f"{len(olusan)} taksit eklendi.")
+                return redirect("core:kredi_detay", pk=kredi.pk)
+            except kredi_hareket_servis.KrediHareketHatasi as e:
+                formset.forms[0].add_error(None, str(e))
+    else:
+        formset = KrediTaksitFormSet(initial=[{}])
+    return render(request, "core/kredi_taksit_ekle.html", {"kredi": kredi, "formset": formset})
+
+
+@ekran_gerekli("kredi")
+def kredi_taksit_sil(request, pk, taksit_pk):
+    kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
+    taksit = get_object_or_404(KrediTaksit, pk=taksit_pk, kredi=kredi, silindi=False)
+    if request.method == "POST":
+        try:
+            kredi_hareket_servis.taksit_sil(taksit, kullanici=request.user)
+            messages.success(request, "Taksit silindi.")
+        except kredi_hareket_servis.KrediHareketHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:kredi_detay", pk=kredi.pk)
+
+
+@ekran_gerekli("kredi")
+def kredi_taksit_ode(request, pk):
+    """Seçilen bekleyen taksitleri tek geri ödeme fişiyle öder."""
+    kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = KrediTaksitOdemeForm(request.POST)
+        taksit_ids = request.POST.getlist("taksit_ids")
+        if form.is_valid():
+            try:
+                fis = kredi_hareket_servis.taksitleri_ode(
+                    kredi=kredi, taksit_ids=taksit_ids, karsi=form.cleaned_data["karsi"],
+                    faiz_hesap=form.cleaned_data.get("faiz_hesap"),
+                    tarih=form.cleaned_data["tarih"], aciklama=form.cleaned_data["aciklama"],
+                    kullanici=request.user)
+                messages.success(request,
+                                 f"{len(taksit_ids)} taksit ödendi: fiş {fis.yil}/{fis.fis_no}.")
+            except kredi_hareket_servis.KrediHareketHatasi as e:
+                messages.error(request, str(e))
+        else:
+            messages.error(request, "Nakit hesabı olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
     return redirect("core:kredi_detay", pk=kredi.pk)
 
 

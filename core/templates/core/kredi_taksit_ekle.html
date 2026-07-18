@@ -1,0 +1,87 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Taksit Ekle · {{ kredi.ad }}{% endblock %}
+{% block sayfa_adi %}Ödeme Planı — Taksit Ekle{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:kredi_detay' kredi.pk %}">← {{ kredi.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🗓️</span>Ödeme Planı — Taksit Ekle</h1>
+  </div>
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}<div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
+    {% for e in formset.forms.0.non_field_errors %}<div class="uyari"><div>⚠️ {{ e }}</div></div>{% endfor %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{{ kredi.ad }} — Taksitler ({{ kredi.para_birimi }})</h2>
+      <p class="yardim" style="margin-top:-.3rem">Her taksit için vade + anapara + faiz banka ödeme
+        planındaki gibi <strong>elle</strong> girilir. Faiz yoksa boş bırakın.</p>
+      <div class="tablo-kapsayici">
+      <table class="satir-tablo">
+        <colgroup><col style="width:28%"><col style="width:26%"><col style="width:24%"><col style="width:22%"></colgroup>
+        <thead><tr><th>Vade</th><th class="sag">Anapara</th><th class="sag">Faiz</th><th class="sag">Toplam</th></tr></thead>
+        <tbody id="satir-govde">
+          {% for f in formset %}
+          <tr class="satir-form">
+            <td>{{ f.vade }}{% for e in f.vade.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+            <td class="sag">{{ f.anapara }}{% for e in f.anapara.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+            <td class="sag">{{ f.faiz }}{% for e in f.faiz.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+            <td class="sag deger satir-toplam">0,00</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="3" class="sag">Genel Toplam</th><th class="sag deger" id="gToplam">0,00</th></tr></tfoot>
+      </table>
+      </div>
+      <div class="satir-alt"><button type="button" id="satir-ekle" class="dugme-ikincil">+ Taksit ekle</button></div>
+    </section>
+
+    <template id="bos-satir">
+      <td>{{ formset.empty_form.vade }}</td>
+      <td class="sag">{{ formset.empty_form.anapara }}</td>
+      <td class="sag">{{ formset.empty_form.faiz }}</td>
+      <td class="sag deger satir-toplam">0,00</td>
+    </template>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:kredi_detay' kredi.pk %}">İptal</a>
+      <button type="submit" class="birincil">Taksitleri kaydet</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  function parseTR(s){ if(!s) return 0; s=String(s).trim();
+    if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
+    else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
+    var n=parseFloat(s); return isNaN(n)?0:n; }
+  function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
+  function hesapla(){
+    var g=0;
+    document.querySelectorAll('.satir-form').forEach(function(r){
+      var a=parseTR((el(r,'-anapara')||{}).value), f=parseTR((el(r,'-faiz')||{}).value);
+      var t=a+f; g+=t;
+      var td=r.querySelector('.satir-toplam'); if(td) td.textContent=fmt(t);
+    });
+    var gt=document.getElementById('gToplam'); if(gt) gt.textContent=fmt(g);
+  }
+  var govde=document.getElementById('satir-govde');
+  var tf=document.querySelector('input[name$="-TOTAL_FORMS"]');
+  document.getElementById('satir-ekle').addEventListener('click', function(){
+    var i=parseInt(tf.value,10);
+    var tr=document.createElement('tr'); tr.className='satir-form';
+    tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    govde.appendChild(tr); tf.value=i+1;
+  });
+  document.addEventListener('input', function(e){ if(e.target.closest('.satir-form')) hesapla(); });
+  hesapla();
+})();
+</script>
+{% endblock %}

@@ -99,11 +99,60 @@
     <div class="hareket-bar">
       <a class="hareket-dugme artis" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'kullandirim' %}">
         <span class="hd-ik">💰</span><span class="hd-ad">Kullandırım</span><span class="hd-yon">BORÇ ↑</span></a>
-      <a class="hareket-dugme azalis" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'geri_odeme' %}">
-        <span class="hd-ik">💸</span><span class="hd-ad">Geri Ödeme</span><span class="hd-yon">BORÇ ↓</span></a>
     </div>
-    <p class="yardim" style="margin-top:.8rem">Geri ödemede anapara + faiz <strong>elle</strong> girilir;
-      faiz varsa gider hesabına yazılır (amortisman planı üretilmez).</p>
+    <p class="yardim" style="margin-top:.8rem">Geri ödeme aşağıdaki <strong>Ödeme Planı</strong>'ndan
+      yapılır: taksitleri seçip öde.</p>
+  </section>
+
+  <section class="icerik-kart">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:.9rem">
+      <h2 class="bolum-baslik" style="margin:0"><span class="emoji">🗓️</span>Ödeme Planı</h2>
+      <a class="dugme" href="{% url 'core:kredi_taksit_ekle' kredi.pk %}">+ Taksit Ekle</a>
+    </div>
+    {% if taksitler %}
+    <form method="post" action="{% url 'core:kredi_taksit_ode' kredi.pk %}" autocomplete="off">
+      {% csrf_token %}
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th></th><th>Sıra</th><th>Vade</th><th class="sag">Anapara</th><th class="sag">Faiz</th>
+          <th class="sag">Toplam</th><th>Durum</th><th>İşlem</th></tr></thead>
+        <tbody>
+          {% for t in taksitler %}
+          <tr>
+            <td>{% if t.durum == 'BEKLIYOR' %}<input type="checkbox" name="taksit_ids" value="{{ t.pk }}">{% endif %}</td>
+            <td class="mono">{{ t.sira }}</td>
+            <td class="mono">{{ t.vade|date:"d.m.Y" }}</td>
+            <td class="sag mono">{{ t.anapara|tr_para }}</td>
+            <td class="sag mono">{{ t.faiz|tr_para }}</td>
+            <td class="sag mono">{{ t.toplam|tr_para }}</td>
+            <td>{% if t.durum == 'ODENDI' %}<span style="color:var(--ok);font-weight:600">● Ödendi</span>{% if t.odeme_fisi_id %} <a href="{% url 'core:fis_detay' t.odeme_fisi_id %}" class="mono">fiş</a>{% endif %}{% else %}<span style="color:var(--metin-soluk);font-weight:600">○ Bekliyor</span>{% endif %}</td>
+            <td>{% if t.durum == 'BEKLIYOR' %}<button type="submit" class="sil" formaction="{% url 'core:kredi_taksit_sil' kredi.pk t.pk %}" formnovalidate onclick="return confirm('{{ t.sira }}. taksit silinsin mi?');">Sil</button>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="5" class="sag">Bekleyen / Ödenen ({{ kredi.para_birimi }})</th>
+          <th class="sag mono">{{ bekleyen|tr_para }} / {{ odenen|tr_para }}</th><th colspan="2"></th></tr></tfoot>
+      </table>
+      </div>
+      {% if bekleyen_sayi %}
+      <div class="izgara" style="margin-top:1.1rem">
+        <div class="alan"><label for="{{ odeme_form.banka_hesap.id_for_label }}">{{ odeme_form.banka_hesap.label }}</label>{{ odeme_form.banka_hesap }}</div>
+        <div class="alan"><label for="{{ odeme_form.kasa.id_for_label }}">{{ odeme_form.kasa.label }}</label>{{ odeme_form.kasa }}</div>
+        <div class="alan"><label for="{{ odeme_form.faiz_hesap.id_for_label }}">{{ odeme_form.faiz_hesap.label }}</label>{{ odeme_form.faiz_hesap }}</div>
+        <div class="alan"><label for="{{ odeme_form.tarih.id_for_label }}">{{ odeme_form.tarih.label }}</label>{{ odeme_form.tarih }}</div>
+        <div class="alan tam"><label for="{{ odeme_form.aciklama.id_for_label }}">{{ odeme_form.aciklama.label }}</label>{{ odeme_form.aciklama }}</div>
+      </div>
+      <p class="yardim">Ödemek istediğin <strong>bekleyen</strong> taksitleri işaretle → nakit hesabını
+        (Banka/Kasa) seç, faiz varsa faiz gider hesabını seç → tek geri ödeme fişi oluşur
+        (Σanapara Kredi borç + Σfaiz Faiz gideri borç / nakit alacak). Ödenen taksit, fişi iptal
+        edilince tekrar Bekliyor olur.</p>
+      <div class="form-altbar"><button type="submit" class="birincil">💸 Seçilenleri Öde</button></div>
+      {% endif %}
+    </form>
+    {% else %}
+    <p class="yardim">Henüz taksit yok. <strong>+ Taksit Ekle</strong> ile ödeme planını oluşturun
+      (vade + anapara + faiz elle).</p>
+    {% endif %}
   </section>
 
   <section class="icerik-kart">

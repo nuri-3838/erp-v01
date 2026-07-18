@@ -992,6 +992,114 @@ class KrediHareketTest(TestCase):
         self.assertContains(r, reverse("core:kredi_detay", args=[self.kredi.pk]))
         self.assertContains(r, "İŞ BANKASI")
 
+    # --- Ödeme planı + taksit seçip ödeme (Dilim 3) ---
+    def _plan3(self):
+        import datetime
+        from core.services.kredi_hareket import taksit_plani_ekle
+        return taksit_plani_ekle(kredi=self.kredi, satirlar=[
+            {"vade": datetime.date(2026, 8, 1), "anapara": "3000", "faiz": "500"},
+            {"vade": datetime.date(2026, 9, 1), "anapara": "3000", "faiz": "350"},
+            {"vade": datetime.date(2026, 10, 1), "anapara": "3000", "faiz": "200"}],
+            kullanici=self.yon)
+
+    def test_taksit_plani_ekle(self):
+        from decimal import Decimal
+        from core.models import KrediTaksit
+        pl = self._plan3()
+        self.assertEqual([t.sira for t in pl], [1, 2, 3])
+        self.assertTrue(all(t.durum == "BEKLIYOR" for t in pl))
+        self.assertEqual(pl[0].toplam, Decimal("3500"))
+        # ikinci ekleme sırayı devam ettirir
+        import datetime
+        from core.services.kredi_hareket import taksit_plani_ekle
+        pl2 = taksit_plani_ekle(kredi=self.kredi, satirlar=[
+            {"vade": datetime.date(2026, 11, 1), "anapara": "3000", "faiz": "0"}],
+            kullanici=self.yon)
+        self.assertEqual(pl2[0].sira, 4)
+
+    def test_taksitleri_ode_ve_durum(self):
+        from decimal import Decimal
+        from core.models import KrediTaksit, YevmiyeFisi
+        from core.services.kredi_hareket import taksitleri_ode
+        pl = self._plan3()
+        fis = taksitleri_ode(kredi=self.kredi, taksit_ids=[pl[0].pk, pl[1].pk], karsi=self.bh,
+                             faiz_hesap=_hesap("780.05", "FAİZ 5", kalem="GIDER"),
+                             tarih=self.t, kullanici=self.yon)
+        self.assertEqual(fis.kaynak, YevmiyeFisi.Kaynak.KREDI)
+        s = self._s(fis)
+        self.assertEqual(s["300.01"], (Decimal("6000.00"), Decimal("0.00")))   # Σanapara kredi borç
+        self.assertEqual(s["780.05"], (Decimal("850.00"), Decimal("0.00")))    # Σfaiz gider borç
+        self.assertEqual(s["102.01"], (Decimal("0.00"), Decimal("6850.00")))   # banka alacak toplam
+        self.assertEqual(KrediTaksit.objects.get(pk=pl[0].pk).durum, "ODENDI")
+        self.assertEqual(KrediTaksit.objects.get(pk=pl[0].pk).odeme_fisi_id, fis.pk)
+        self.assertEqual(KrediTaksit.objects.get(pk=pl[2].pk).durum, "BEKLIYOR")
+
+    def test_odeme_iptal_taksitleri_geri_alir(self):
+        from core.models import KrediTaksit
+        from core.services.kredi_hareket import hareket_iptal, taksitleri_ode
+        pl = self._plan3()
+        fis = taksitleri_ode(kredi=self.kredi, taksit_ids=[pl[0].pk], karsi=self.bh,
+                             faiz_hesap=_hesap("780.06", "FAİZ 6", kalem="GIDER"),
+                             tarih=self.t, kullanici=self.yon)
+        hareket_iptal(fis=fis, kredi=self.kredi, kullanici=self.yon)
+        t = KrediTaksit.objects.get(pk=pl[0].pk)
+        self.assertEqual(t.durum, "BEKLIYOR")
+        self.assertIsNone(t.odeme_fisi_id)
+
+    def test_odenmis_taksit_tekrar_secilemez_ve_silinemez(self):
+        from core.models import KrediTaksit
+        from core.services.kredi_hareket import (KrediHareketHatasi, taksit_sil,
+                                                 taksitleri_ode)
+        pl = self._plan3()
+        taksitleri_ode(kredi=self.kredi, taksit_ids=[pl[0].pk], karsi=self.bh,
+                       faiz_hesap=_hesap("780.07", "FAİZ 7", kalem="GIDER"),
+                       tarih=self.t, kullanici=self.yon)
+        with self.assertRaises(KrediHareketHatasi):                    # ödenmiş tekrar ödenemez
+            taksitleri_ode(kredi=self.kredi, taksit_ids=[pl[0].pk], karsi=self.bh,
+                           tarih=self.t, kullanici=self.yon)
+        with self.assertRaises(KrediHareketHatasi):                    # ödenmiş silinemez
+            taksit_sil(KrediTaksit.objects.get(pk=pl[0].pk), kullanici=self.yon)
+        taksit_sil(KrediTaksit.objects.get(pk=pl[2].pk), kullanici=self.yon)   # bekleyen silinir
+        self.assertTrue(KrediTaksit.objects.get(pk=pl[2].pk).silindi)
+
+    def test_odeme_faiz_hesapsiz_reddedilir(self):
+        from core.services.kredi_hareket import KrediHareketHatasi, taksitleri_ode
+        pl = self._plan3()   # taksit 1 faiz=500 var
+        with self.assertRaises(KrediHareketHatasi):
+            taksitleri_ode(kredi=self.kredi, taksit_ids=[pl[0].pk], karsi=self.bh,
+                           faiz_hesap=None, tarih=self.t, kullanici=self.yon)
+
+    def test_view_taksit_ekle_ve_ode(self):
+        from decimal import Decimal
+        from core.models import KrediTaksit, YevmiyeFisi
+        fh = _hesap("780.08", "FAİZ 8", kalem="GIDER")
+        self.client.force_login(self.yon)
+        # planı görüntüle (boş) → 200 + Taksit Ekle linki
+        d0 = self.client.get(reverse("core:kredi_detay", args=[self.kredi.pk]))
+        self.assertContains(d0, reverse("core:kredi_taksit_ekle", args=[self.kredi.pk]))
+        # formset ile 2 taksit ekle
+        r = self.client.post(reverse("core:kredi_taksit_ekle", args=[self.kredi.pk]), {
+            "form-TOTAL_FORMS": "2", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-vade": "2026-08-01", "form-0-anapara": "3.000", "form-0-faiz": "500",
+            "form-1-vade": "2026-09-01", "form-1-anapara": "3.000", "form-1-faiz": "0"})
+        self.assertRedirects(r, reverse("core:kredi_detay", args=[self.kredi.pk]))
+        self.assertEqual(KrediTaksit.objects.filter(kredi=self.kredi, silindi=False).count(), 2)
+        ids = list(KrediTaksit.objects.filter(kredi=self.kredi, silindi=False)
+                   .values_list("pk", flat=True))
+        # taksit ödeme POST (ikisi de)
+        ro = self.client.post(reverse("core:kredi_taksit_ode", args=[self.kredi.pk]), {
+            "taksit_ids": ids, "banka_hesap": self.bh.pk, "faiz_hesap": fh.pk,
+            "tarih": "2026-06-28"})
+        self.assertRedirects(ro, reverse("core:kredi_detay", args=[self.kredi.pk]))
+        fis = YevmiyeFisi.objects.filter(kredi=self.kredi, silindi=False).get()
+        s = self._s(fis)
+        self.assertEqual(s["300.01"], (Decimal("6000.00"), Decimal("0.00")))
+        self.assertEqual(s["780.08"], (Decimal("500.00"), Decimal("0.00")))
+        self.assertEqual(s["102.01"], (Decimal("0.00"), Decimal("6500.00")))
+        self.assertTrue(all(t.durum == "ODENDI" for t in
+                            KrediTaksit.objects.filter(kredi=self.kredi, silindi=False)))
+
     def test_geri_odeme_banka_faizli(self):
         from decimal import Decimal
         from core.services.kredi_hareket import geri_odeme_olustur
@@ -1052,39 +1160,3 @@ class KrediHareketTest(TestCase):
         self.assertEqual(s["102.02"], (Decimal("0.00"), Decimal("10950.10")))
         self.assertEqual(sum(v[0] for v in s.values()), sum(v[1] for v in s.values()))
 
-    def test_form_geri_odeme_dogrulama(self):
-        from core.forms import KrediHareketForm
-        fh = _hesap("780.03", "FAİZ GİDERİ 3", kalem="GIDER")
-        base = {"tarih": "2026-06-28", "banka_hesap": self.bh.pk}
-        f0 = KrediHareketForm(base, tip="geri_odeme", kredi=self.kredi)
-        self.assertFalse(f0.is_valid())                                        # anapara zorunlu
-        f1 = KrediHareketForm({**base, "anapara": "1.000", "faiz": "50"},
-                              tip="geri_odeme", kredi=self.kredi)
-        self.assertFalse(f1.is_valid())                                        # faiz var, hesap yok
-        self.assertIn("faiz_hesap", f1.errors)
-        f2 = KrediHareketForm({**base, "anapara": "1.000", "faiz": "50", "faiz_hesap": fh.pk},
-                              tip="geri_odeme", kredi=self.kredi)
-        self.assertTrue(f2.is_valid())
-        f3 = KrediHareketForm({**base, "anapara": "1.000"}, tip="geri_odeme", kredi=self.kredi)
-        self.assertTrue(f3.is_valid())                                         # faizsiz de olur
-
-    def test_view_geri_odeme_post_ve_buton(self):
-        from decimal import Decimal
-        from core.models import YevmiyeFisi
-        fh = _hesap("780.04", "FAİZ GİDERİ 4", kalem="GIDER")
-        self.client.force_login(self.yon)
-        d = self.client.get(reverse("core:kredi_detay", args=[self.kredi.pk]))
-        self.assertContains(d, reverse("core:kredi_hareket_ekle",
-                                       args=[self.kredi.pk, "geri_odeme"]))    # buton aktif
-        self.assertEqual(self.client.get(reverse(
-            "core:kredi_hareket_ekle", args=[self.kredi.pk, "geri_odeme"])).status_code, 200)
-        r = self.client.post(
-            reverse("core:kredi_hareket_ekle", args=[self.kredi.pk, "geri_odeme"]),
-            {"banka_hesap": self.bh.pk, "anapara": "2.000", "faiz": "300",
-             "faiz_hesap": fh.pk, "tarih": "2026-06-28"})
-        self.assertRedirects(r, reverse("core:kredi_detay", args=[self.kredi.pk]))
-        fis = YevmiyeFisi.objects.filter(kredi=self.kredi, silindi=False).get()
-        s = self._s(fis)
-        self.assertEqual(s["300.01"], (Decimal("2000.00"), Decimal("0.00")))
-        self.assertEqual(s["780.04"], (Decimal("300.00"), Decimal("0.00")))
-        self.assertEqual(s["102.01"], (Decimal("0.00"), Decimal("2300.00")))

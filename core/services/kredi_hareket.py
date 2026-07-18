@@ -9,9 +9,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Max
 
 from core.metin import buyuk_harf_tr
-from core.models import BankaHesap, Kasa, Kredi, Kur, YevmiyeFisi
+from core.models import BankaHesap, Kasa, Kredi, KrediTaksit, Kur, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_iptal, fis_olustur
 
@@ -26,10 +27,6 @@ HAREKET = {
                     "ikon": "💰", "ack": "KULLANDIRIM",
                     "aciklama": "Kredi kullanımı — anapara nakit hesaba girer (Banka·Kasa borç / "
                                 "Kredi alacak). Borç doğar."},
-    "geri_odeme": {"ad": "Geri Ödeme", "kredi": "B", "karsi": ("banka", "kasa"), "yon": "azalis",
-                   "ikon": "💸", "ack": "GERİ ÖDEME",
-                   "aciklama": "Taksit ödemesi — anapara + faiz elle girilir (Kredi borç anapara, "
-                               "Faiz gideri borç faiz / Banka·Kasa alacak toplam). Borç azalır."},
 }
 
 
@@ -166,11 +163,100 @@ def geri_odeme_olustur(*, kredi, karsi, anapara, faiz=0, faiz_hesap=None, tarih,
     return fis
 
 
+@transaction.atomic
 def hareket_iptal(*, fis, kredi, kullanici=None):
-    """Kredi hareketi (kaynak=KREDI) iptali → bağlı fişi soft-delete eder.
-    Fiş bu kredinin bir hareketi değilse reddeder."""
+    """Kredi hareketi (kaynak=KREDI) iptali → bağlı fişi soft-delete eder; fiş bir ödeme fişiyse
+    ödediği taksitler BEKLİYOR'a döner. Fiş bu kredinin bir hareketi değilse reddeder."""
     if fis.kaynak != YevmiyeFisi.Kaynak.KREDI or fis.kredi_id != kredi.pk:
         raise KrediHareketHatasi("Bu fiş bu kredinin hareketi değil.")
     if fis.silindi:
         return fis
+    for t in KrediTaksit.objects.filter(odeme_fisi=fis, silindi=False):
+        t.durum = KrediTaksit.Durum.BEKLIYOR
+        t.odeme_fisi = None
+        t.updated_by = kullanici
+        t.save(update_fields=["durum", "odeme_fisi", "updated_by", "updated_at"])
     return fis_iptal(fis, kullanici=kullanici)
+
+
+# ===== Elle geri ödeme planı + taksit seçip ödeme =====
+@transaction.atomic
+def taksit_plani_ekle(*, kredi, satirlar, kullanici=None):
+    """Elle plana taksit(ler) ekler. satirlar: [{vade, anapara, faiz}]. Sıra mevcut en yüksekten
+    devam eder; her satır: vade zorunlu, anapara>0, faiz>=0. En az bir dolu satır gerekir."""
+    mevcut = kredi.taksitler.filter(silindi=False).aggregate(m=Max("sira"))["m"] or 0
+    olusan = []
+    for r in satirlar:
+        vade = r.get("vade")
+        if not vade:
+            raise KrediHareketHatasi("Her taksit için vade zorunlu.")
+        anapara = _tutar(r.get("anapara"))
+        faiz = _tutar0(r.get("faiz"), "Faiz")
+        mevcut += 1
+        olusan.append(KrediTaksit.objects.create(
+            kredi=kredi, sira=mevcut, vade=vade, anapara=anapara, faiz=faiz,
+            durum=KrediTaksit.Durum.BEKLIYOR, created_by=kullanici, updated_by=kullanici))
+    if not olusan:
+        raise KrediHareketHatasi("En az bir taksit girilmeli.")
+    return olusan
+
+
+def taksit_sil(taksit, kullanici=None):
+    """Bekleyen taksiti sil (soft). Ödenmiş taksit silinemez (önce ödemeyi iptal et)."""
+    if taksit.durum == KrediTaksit.Durum.ODENDI:
+        raise KrediHareketHatasi("Ödenmiş taksit silinemez; önce ödeme fişini iptal edin.")
+    if taksit.silindi:
+        return taksit
+    taksit.silindi = True
+    taksit.updated_by = kullanici
+    taksit.save(update_fields=["silindi", "updated_by", "updated_at"])
+    return taksit
+
+
+def _taksit_secim_coz(kredi, taksit_ids):
+    try:
+        ids = [int(x) for x in taksit_ids if str(x).strip()]
+    except (TypeError, ValueError):
+        raise KrediHareketHatasi("Geçersiz taksit seçimi.")
+    if not ids:
+        raise KrediHareketHatasi("En az bir taksit seçilmeli.")
+    taksitler = list(KrediTaksit.objects.filter(pk__in=set(ids), kredi=kredi, silindi=False))
+    if len(taksitler) != len(set(ids)):
+        raise KrediHareketHatasi("Seçilen taksitlerden bazıları bulunamadı.")
+    for t in taksitler:
+        if t.durum != KrediTaksit.Durum.BEKLIYOR:
+            raise KrediHareketHatasi(
+                f"{t.sira}. taksit zaten ödenmiş; yalnız bekleyen taksitler seçilebilir.")
+    return taksitler
+
+
+@transaction.atomic
+def taksitleri_ode(*, kredi, taksit_ids, karsi, faiz_hesap=None, tarih, aciklama="",
+                   kullanici=None) -> YevmiyeFisi:
+    """Seçilen BEKLİYOR taksitleri TEK geri ödeme fişiyle öder: Σanapara Kredi borç + Σfaiz Faiz
+    gideri borç / nakit (Banka·Kasa) alacak Σ(anapara+faiz). Taksitler ODENDI + fişe bağlanır."""
+    taksitler = _taksit_secim_coz(kredi, taksit_ids)
+    toplam_ana = sum((t.anapara for t in taksitler), Decimal("0"))
+    toplam_faiz = sum((t.faiz for t in taksitler), Decimal("0"))
+    fis = geri_odeme_olustur(kredi=kredi, karsi=karsi, anapara=toplam_ana, faiz=toplam_faiz,
+                             faiz_hesap=faiz_hesap, tarih=tarih, aciklama=aciklama,
+                             kullanici=kullanici)
+    for t in taksitler:
+        t.durum = KrediTaksit.Durum.ODENDI
+        t.odeme_fisi = fis
+        t.updated_by = kullanici
+        t.save(update_fields=["durum", "odeme_fisi", "updated_by", "updated_at"])
+    return fis
+
+
+def taksit_ozet(kredi):
+    """Kredi detayı için: taksitler + bekleyen/ödenen toplam ve bekleyen sayısı."""
+    taksitler = list(kredi.taksitler.filter(silindi=False)
+                     .select_related("odeme_fisi").order_by("sira", "id"))
+    bekleyen = sum((t.toplam for t in taksitler if t.durum == KrediTaksit.Durum.BEKLIYOR),
+                   Decimal("0"))
+    odenen = sum((t.toplam for t in taksitler if t.durum == KrediTaksit.Durum.ODENDI),
+                 Decimal("0"))
+    return {"taksitler": taksitler, "bekleyen": bekleyen, "odenen": odenen,
+            "bekleyen_sayi": sum(1 for t in taksitler
+                                 if t.durum == KrediTaksit.Durum.BEKLIYOR)}

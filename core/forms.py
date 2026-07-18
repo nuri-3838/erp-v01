@@ -1040,19 +1040,6 @@ class KrediHareketForm(forms.Form):
         self.fields["banka_hesap"].label_from_instance = (
             lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})")
         self.fields["kasa"].label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
-        self.tip = tip
-        if tip == "geri_odeme":
-            # Anapara + faiz ELLE girilir (amortisman planı yok — bilinçli karar).
-            from core.services.hesap_plani import yaprak_hesaplar
-            del self.fields["tutar"]
-            self.fields["anapara"] = TRDecimalField(label="Anapara", basamak=2)
-            self.fields["faiz"] = TRDecimalField(label="Faiz", basamak=2, required=False)
-            self.fields["faiz_hesap"] = forms.ModelChoiceField(
-                label="Faiz Gider Hesabı", required=False,
-                empty_label="— gider hesabı seç —", queryset=yaprak_hesaplar(),
-                widget=forms.Select(attrs={"class": "akilli-sec"}))
-            self.fields["faiz_hesap"].label_from_instance = (
-                lambda o: f"{o.hesap_kodu}  {o.hesap_adi}")
 
     def clean(self):
         cd = super().clean()
@@ -1061,8 +1048,63 @@ class KrediHareketForm(forms.Form):
             raise forms.ValidationError(
                 "Nakit hesabı olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
         cd["karsi"] = secili[0]
-        if self.tip == "geri_odeme" and (cd.get("faiz") or 0) > 0 and not cd.get("faiz_hesap"):
-            self.add_error("faiz_hesap", "Faiz girildiyse faiz gider hesabı seçilmeli.")
+        return cd
+
+
+class KrediTaksitForm(forms.Form):
+    """Ödeme planı satırı: vade + anapara + faiz (üçü de ELLE)."""
+    vade = forms.DateField(
+        label="Vade", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    anapara = TRDecimalField(label="Anapara", basamak=2, required=False)
+    faiz = TRDecimalField(label="Faiz", basamak=2, required=False)
+
+    def dolu_mu(self):
+        cd = getattr(self, "cleaned_data", {})
+        return bool(cd.get("vade") or cd.get("anapara") or cd.get("faiz"))
+
+
+class KrediTaksitOdemeForm(forms.Form):
+    """Taksit ödeme başlığı: nakit hesabı (Banka VEYA Kasa) + faiz gider hesabı + tarih.
+    Taksit seçimi şablonda checkbox'larla; faiz>0 ise faiz hesabı gerekir (serviste zorlanır)."""
+    banka_hesap = forms.ModelChoiceField(
+        label="Banka Hesabı", required=False, empty_label="— banka hesabı seç —",
+        queryset=(BankaHesap.objects.filter(silindi=False)
+                  .select_related("banka").order_by("banka__ad", "ad")),
+        widget=forms.Select(attrs={"class": "akilli-sec"}))
+    kasa = forms.ModelChoiceField(
+        label="Kasa", required=False, empty_label="— kasa seç —",
+        queryset=Kasa.objects.filter(silindi=False).order_by("ad"),
+        widget=forms.Select(attrs={"class": "akilli-sec"}))
+    faiz_hesap = forms.ModelChoiceField(
+        label="Faiz Gider Hesabı", required=False, empty_label="— gider hesabı seç —",
+        queryset=HesapPlani.objects.none(),
+        widget=forms.Select(attrs={"class": "akilli-sec"}))
+    tarih = forms.DateField(
+        label="Ödeme Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "Boş bırakılırsa otomatik"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        self.fields["faiz_hesap"].queryset = yaprak_hesaplar()
+        self.fields["banka_hesap"].label_from_instance = (
+            lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})")
+        self.fields["kasa"].label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+        self.fields["faiz_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+
+    def clean(self):
+        cd = super().clean()
+        secili = [cd[k] for k in ("banka_hesap", "kasa") if cd.get(k)]
+        if len(secili) != 1:
+            raise forms.ValidationError(
+                "Nakit hesabı olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
+        cd["karsi"] = secili[0]
         return cd
 
 

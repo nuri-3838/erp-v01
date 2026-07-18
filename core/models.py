@@ -1136,6 +1136,47 @@ class Kredi(TemelModel):
         return self.ad
 
 
+class KrediTaksit(TemelModel):
+    """Kredi geri ödeme planı satırı — ELLE girilir (vade + anapara + faiz). Ödeme, plandaki
+    BEKLİYOR taksitler seçilip ödenerek yapılır (tek geri ödeme fişi); ödenen taksitler ODENDI +
+    ödeme fişine bağlanır. Muhasebe fişte tutulur; bu satır plan/takip amaçlıdır."""
+
+    class Durum(models.TextChoices):
+        BEKLIYOR = "BEKLIYOR", "Bekliyor"
+        ODENDI = "ODENDI", "Ödendi"
+
+    kredi = models.ForeignKey(
+        Kredi, verbose_name="kredi", on_delete=models.PROTECT, related_name="taksitler")
+    sira = models.PositiveSmallIntegerField("sıra")
+    vade = models.DateField("vade")
+    anapara = models.DecimalField("anapara", max_digits=18, decimal_places=2)
+    faiz = models.DecimalField("faiz", max_digits=18, decimal_places=2, default=0)
+    durum = models.CharField("durum", max_length=10, choices=Durum.choices,
+                             default=Durum.BEKLIYOR)
+    odeme_fisi = models.ForeignKey(
+        "YevmiyeFisi", verbose_name="ödeme fişi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="odenen_taksitler")
+
+    class Meta:
+        db_table = "finans_kredi_taksit"
+        verbose_name = "kredi taksiti"
+        verbose_name_plural = "kredi taksitleri"
+        ordering = ["kredi_id", "sira", "id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(anapara__gt=0),
+                                   name="ck_kredi_taksit_anapara_gt0"),
+            models.CheckConstraint(condition=models.Q(faiz__gte=0),
+                                   name="ck_kredi_taksit_faiz_gte0"),
+        ]
+
+    @property
+    def toplam(self):
+        return self.anapara + self.faiz
+
+    def __str__(self):
+        return f"{self.kredi.ad} taksit {self.sira}"
+
+
 def _cek_hesap_fk(adi):
     """CekHesapAyari için yaprak muhasebe hesabına opsiyonel bağ (tekil ayar alanı)."""
     return models.ForeignKey(
