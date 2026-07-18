@@ -7,27 +7,39 @@
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url liste_url %}">← Geri</a>
-    <h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ ts.get_belge_tur_display }}{% if ts.belge_no %} · {{ ts.belge_no }}{% endif %}</h1>
+    <h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ ts.get_belge_tur_display }}{% if ts.belge_no %} · {{ ts.belge_no }}{% endif %}
+      {% if not ts.silindi %}<span class="rozet {% if ts.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}" style="font-size:.6em;vertical-align:middle;margin-left:.5rem">{{ ts.get_durum_display }}</span>{% endif %}</h1>
   </div>
-  {% if not ts.silindi %}
   <span class="islem-bag">
-    {% if ts.belge_tur == "TEKLIF" and not donusen_siparis %}
-    <form method="post" action="{% url 'core:teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
-      {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
+    <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}" target="_blank">📄 PDF</a>
+    {% if not ts.silindi %}
+      {% if ts.durum == "TASLAK" %}
+      <form method="post" action="{% url 'core:teklif_siparis_onayla' ts.pk %}" style="margin:0">
+        {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
+      {% elif not donusen_siparis and not donusen_fatura %}
+      <form method="post" action="{% url 'core:teklif_siparis_onayi_geri_al' ts.pk %}" onsubmit="return confirm('Onay geri alınsın mı? Belge tekrar taslağa döner.');" style="margin:0">
+        {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">↩️ Onayı Geri Al</button></form>
+      {% endif %}
+      {% if ts.belge_tur == "TEKLIF" and ts.durum == "ONAYLI" and not donusen_siparis %}
+      <form method="post" action="{% url 'core:teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
+        {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
+      {% endif %}
+      {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and not donusen_fatura %}
+      <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
+      {% endif %}
+      {% if ts.durum == "TASLAK" %}
+      <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">Düzenle</a>
+      {% endif %}
+      <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');">
+        {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
     {% endif %}
-    {% if ts.belge_tur == "SIPARIS" and not donusen_fatura %}
-    <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
-    {% endif %}
-    <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">Düzenle</a>
-    <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');">
-      {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
   </span>
-  {% endif %}
 </div>
 
 {% if ts.silindi %}<div class="uyari"><div>⚠️ Bu belge iptal edilmiş.</div></div>{% endif %}
 
 <section class="icerik-kart">
+  <div class="satir"><span class="et">Durum</span><span class="dg">{{ ts.get_durum_display }}</span></div>
   <div class="satir"><span class="et">Yön</span><span class="dg">{{ ts.get_yon_display }}</span></div>
   <div class="satir"><span class="et">Cari</span>
     <span class="dg"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }}</span></div>

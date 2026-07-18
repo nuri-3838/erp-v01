@@ -905,15 +905,25 @@ class TeklifSiparis(TemelModel):
         ALIS = "ALIS", "Alış"
         SATIS = "SATIS", "Satış"
 
+    class Durum(models.TextChoices):
+        TASLAK = "TASLAK", "Taslak"
+        ONAYLI = "ONAYLI", "Onaylı"
+
     belge_tur = models.CharField("belge türü", max_length=7, choices=BelgeTur.choices)
     yon = models.CharField("yön", max_length=5, choices=Yon.choices)
+    durum = models.CharField("durum", max_length=6, choices=Durum.choices,
+                             default=Durum.TASLAK)
     cari = models.ForeignKey(
         Cari, verbose_name="cari", related_name="teklif_siparisler", on_delete=models.PROTECT)
     tarih = models.DateField("belge tarihi")
     # Teklifte geçerlilik, siparişte teslim tarihi — tek alan, etiket ekranda değişir.
     gecerlilik_teslim_tarihi = models.DateField(
         "geçerlilik / teslim tarihi", null=True, blank=True)
-    belge_no = models.CharField("belge no", max_length=50, blank=True)
+    # belge_no OTOMATİK üretilir (yil+sira'dan, kullanıcı girmez/değiştirmez) — insana görünen
+    # numara müteselsil/boşluksuz, iç PK'dan ayrı (fiş no ile aynı invariant/desen).
+    belge_no = models.CharField("belge no", max_length=50, blank=True, editable=False)
+    yil = models.PositiveSmallIntegerField("yıl", null=True, blank=True, editable=False)
+    sira = models.PositiveIntegerField("sıra", null=True, blank=True, editable=False)
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
@@ -933,6 +943,12 @@ class TeklifSiparis(TemelModel):
         verbose_name = "teklif / sipariş"
         verbose_name_plural = "teklif / siparişler"
         ordering = ["-tarih", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["belge_tur", "yon", "yil", "sira"],
+                condition=models.Q(sira__isnull=False),
+                name="uq_teklif_siparis_tur_yon_yil_sira"),
+        ]
 
     def __str__(self):
         return f"{self.get_belge_tur_display()} {self.belge_no} ({self.cari_id})"

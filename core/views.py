@@ -1784,7 +1784,6 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
                     belge_tur=belge_tur, yon=yon, cari_id=bform.cleaned_data["cari"].pk,
                     tarih=bform.cleaned_data["tarih"],
                     gecerlilik_teslim_tarihi=bform.cleaned_data.get("gecerlilik_teslim_tarihi"),
-                    belge_no=bform.cleaned_data.get("belge_no", ""),
                     para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
                     aciklama=bform.cleaned_data.get("aciklama", ""),
                     satirlar=satirlar, kullanici=request.user)
@@ -1875,6 +1874,9 @@ def siparis_faturaya_cevir(request, pk):
     if siparis.fatura_id:
         messages.info(request, "Bu sipariş zaten faturalandırılmış.")
         return redirect("core:fatura_detay", pk=siparis.fatura_id)
+    if siparis.durum != TeklifSiparis.Durum.ONAYLI:
+        messages.error(request, "Yalnız onaylı sipariş faturaya çevrilebilir.")
+        return redirect("core:teklif_siparis_detay", pk=siparis.pk)
     yon = FaturaTipi.Yon.ALIS if siparis.yon == TeklifSiparis.Yon.ALIS else FaturaTipi.Yon.SATIS
     if request.method == "POST":
         fform = FaturaForm(request.POST, yon=yon)
@@ -1940,7 +1942,6 @@ def teklif_siparis_duzenle(request, pk):
                     ts, cari_id=bform.cleaned_data["cari"].pk,
                     tarih=bform.cleaned_data["tarih"],
                     gecerlilik_teslim_tarihi=bform.cleaned_data.get("gecerlilik_teslim_tarihi"),
-                    belge_no=bform.cleaned_data.get("belge_no", ""),
                     para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
                     aciklama=bform.cleaned_data.get("aciklama", ""),
                     satirlar=satirlar, kullanici=request.user)
@@ -1952,7 +1953,7 @@ def teklif_siparis_duzenle(request, pk):
         bform = TeklifSiparisForm(belge_tur=ts.belge_tur, initial={
             "cari": ts.cari_id, "tarih": ts.tarih,
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
-            "belge_no": ts.belge_no, "para_birimi": ts.para_birimi, "aciklama": ts.aciklama})
+            "para_birimi": ts.para_birimi, "aciklama": ts.aciklama})
         ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
                for k in ts.kalemler.filter(silindi=False).select_related("stok")]
         formset = TeklifSiparisKalemFormSet(initial=ilk)
@@ -1973,6 +1974,55 @@ def teklif_siparis_iptal_gorunum(request, pk):
         teklif_siparis_servis.teklif_siparis_iptal(ts, kullanici=request.user)
         messages.success(request, f"{ts.get_belge_tur_display()} iptal edildi.")
     return redirect("core:teklif_siparis_detay", pk=ts.pk)
+
+
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satis_teklifleri", "satis_siparisleri")
+def teklif_siparis_onayla(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            teklif_siparis_servis.teklif_siparis_onayla(ts, kullanici=request.user)
+            messages.success(request, f"{ts.get_belge_tur_display()} onaylandı.")
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+
+
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satis_teklifleri", "satis_siparisleri")
+def teklif_siparis_onayi_geri_al(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            teklif_siparis_servis.teklif_siparis_onayi_geri_al(ts, kullanici=request.user)
+            messages.success(request, f"{ts.get_belge_tur_display()} onayı geri alındı.")
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+
+
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satis_teklifleri", "satis_siparisleri")
+def teklif_siparis_pdf(request, pk):
+    """Belgenin PDF'i (WeasyPrint, A4) — çek bordrosu PDF'iyle aynı desen."""
+    import base64
+
+    from django.contrib.staticfiles import finders
+    from weasyprint import HTML
+
+    ts = get_object_or_404(TeklifSiparis.objects.select_related("cari"), pk=pk)
+    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv")
+    ctx = {"ts": ts, "kalemler": kalemler}
+    logo_yol = finders.find("core/img/semta-logo.png")
+    if logo_yol:
+        with open(logo_yol, "rb") as f:
+            ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
+    html = render_to_string("core/teklif_siparis_pdf.html", ctx)
+    pdf = HTML(string=html).write_pdf()
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    resp["Content-Disposition"] = f'inline; filename="{ts.belge_no or ts.pk}.pdf"'
+    return resp
 
 
 # === FİNANS — Kredi Kartı ===

@@ -1,0 +1,112 @@
+{% load core_extras %}<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4; margin: 15mm 14mm 18mm;
+    @bottom-left  { content: "SEMTA ERP · Teklif / Sipariş"; font-size: 8px; color: #9ca3af; }
+    @bottom-right { content: "Sayfa " counter(page) " / " counter(pages); font-size: 8px; color: #9ca3af; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; color: #1c2533; font-size: 11px;
+    line-height: 1.45; margin: 0; }
+  .header { display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 10px; border-bottom: 3px solid #15294d; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand img { height: 44px; }
+  .brand .ad { font-size: 19px; font-weight: 800; color: #15294d; letter-spacing: .5px; }
+  .brand .ad small { display: block; font-size: 9px; font-weight: 500; color: #6b7280; letter-spacing: 0; }
+  .doc { text-align: right; }
+  .doc h1 { margin: 0; font-size: 15px; color: #15294d; text-transform: uppercase; letter-spacing: .6px; }
+  .doc .meta { margin-top: 5px; font-size: 10.5px; color: #374151; }
+  .doc .meta b { color: #15294d; }
+  .accent { height: 4px; background: #f07c00; border-radius: 2px; margin: 0 0 16px; }
+  .bilgi { display: flex; gap: 12px; margin-bottom: 14px; }
+  .bilgi .kutu { background: #f4f6fa; border: 1px solid #e3e8f0; border-radius: 8px;
+    padding: 8px 14px; }
+  .bilgi .et { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; }
+  .bilgi .dg { font-weight: 700; color: #15294d; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #15294d; color: #fff; padding: 8px 10px; text-align: left;
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #e6eaf1; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
+  .sag { text-align: right; }
+  .mono { font-variant-numeric: tabular-nums; }
+  tfoot td { padding: 9px 10px; font-weight: 800; color: #15294d; border-top: 2px solid #15294d;
+    background: #eef2f8; }
+  .ozet { display: flex; gap: 12px; margin-top: 16px; }
+  .ozet .kart { padding: 12px 16px; border-radius: 10px; }
+  .ozet .toplam { background: #15294d; color: #fff; min-width: 200px; }
+  .ozet .et { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; opacity: .9; margin-bottom: 2px; }
+  .ozet .buyuk { font-size: 18px; font-weight: 800; }
+  .imza { display: flex; gap: 60px; margin-top: 54px; }
+  .imza .kol { flex: 1; text-align: center; }
+  .imza .cizgi { border-top: 1px solid #15294d; margin: 0 6px 7px; }
+  .imza .rol { font-weight: 700; color: #15294d; font-size: 11px; }
+  .imza .as { font-size: 9px; color: #9ca3af; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="SEMTA">{% endif %}
+      <div class="ad">SEMTA<small>Alüminyum Merdiven İmalatı</small></div>
+    </div>
+    <div class="doc">
+      <h1>{{ ts.get_belge_tur_display }} ({{ ts.get_yon_display }})</h1>
+      <div class="meta">Belge No: <b>{{ ts.belge_no|default:"—" }}</b> &nbsp;·&nbsp; Tarih: <b>{{ ts.tarih|date:"d.m.Y" }}</b></div>
+    </div>
+  </div>
+  <div class="accent"></div>
+
+  <div class="bilgi">
+    <div class="kutu"><div class="et">Cari</div><div class="dg">{{ ts.cari.unvan }}</div></div>
+    {% if ts.gecerlilik_teslim_tarihi %}
+    <div class="kutu"><div class="et">{% if ts.belge_tur == "SIPARIS" %}Teslim Tarihi{% else %}Geçerlilik Tarihi{% endif %}</div>
+      <div class="dg">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</div></div>
+    {% endif %}
+    <div class="kutu"><div class="et">Durum</div><div class="dg">{{ ts.get_durum_display }}</div></div>
+    <div class="kutu"><div class="et">Kalem Adedi</div><div class="dg">{{ kalemler|length }}</div></div>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th style="width:30px">#</th><th>Stok</th><th class="sag" style="width:80px">Miktar</th>
+      <th class="sag" style="width:90px">Birim Fiyat</th><th class="sag" style="width:90px">Tutar</th>
+      <th class="sag" style="width:90px">KDV</th>
+    </tr></thead>
+    <tbody>
+      {% for k in kalemler %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td><span class="mono">{{ k.stok.kod }}</span> {{ k.stok.ad }}</td>
+          <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
+          <td class="sag mono">{{ k.birim_fiyat|tr_kur:2 }}</td>
+          <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>
+          <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }} · {{ k.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" style="text-align:center;color:#777;padding:14px">Kalem yok.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><td colspan="4" class="sag">GENEL TOPLAM</td>
+        <td colspan="2" class="sag mono">{{ ts.genel_toplam|tr_para }} {{ ts.para_birimi }}</td></tr>
+    </tfoot>
+  </table>
+
+  <div class="ozet">
+    <div class="kart toplam">
+      <div class="et">Genel Toplam</div>
+      <div class="buyuk">{{ ts.genel_toplam|tr_para }} {{ ts.para_birimi }}</div>
+    </div>
+  </div>
+
+  <div class="imza">
+    <div class="kol"><div class="cizgi"></div><div class="rol">Hazırlayan</div><div class="as">Ad Soyad · İmza</div></div>
+    <div class="kol"><div class="cizgi"></div><div class="rol">Onaylayan</div><div class="as">Ad Soyad · İmza</div></div>
+  </div>
+</body>
+</html>

@@ -12,7 +12,7 @@
 <div class="tablo-kapsayici">
 <table>
   <thead><tr>
-    <th>Tarih</th><th>Cari</th><th>Belge No</th><th class="sag">Genel Toplam</th><th>İşlem</th>
+    <th>Tarih</th><th>Cari</th><th>Belge No</th><th>Durum</th><th class="sag">Genel Toplam</th><th>İşlem</th>
   </tr></thead>
   <tbody>
     {% for k in kayitlar %}
@@ -20,16 +20,18 @@
         <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
         <td><a href="{% url 'core:teklif_siparis_detay' k.pk %}">{{ k.cari.unvan }}</a></td>
         <td>{% if k.belge_no %}<span class="mono">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
         <td class="sag mono">{{ k.genel_toplam|tr_kur:2 }} {{ k.para_birimi }}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>
-          <a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>
+          <a href="{% url 'core:teklif_siparis_pdf' k.pk %}" target="_blank">PDF</a>
+          {% if k.durum == "TASLAK" %}<a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>{% endif %}
           <form method="post" action="{% url 'core:teklif_siparis_iptal' k.pk %}" onsubmit="return confirm('{{ k.get_belge_tur_display }} iptal edilsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="6" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

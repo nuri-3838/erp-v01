@@ -1109,8 +1109,8 @@ class KrediTaksitOdemeForm(forms.Form):
 
 
 class TeklifSiparisForm(forms.Form):
-    """Teklif/Sipariş başlığı: cari + tarih + geçerlilik-teslim tarihi + belge no + PB +
-    açıklama. belge_tur/yon URL'den (view sabit); form alanı değil."""
+    """Teklif/Sipariş başlığı: cari + tarih + geçerlilik-teslim tarihi + PB + açıklama.
+    belge_tur/yon URL'den (view sabit); belge no OTOMATİK (müteselsil) — form alanı değil."""
     cari = forms.ModelChoiceField(
         label="Cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
     tarih = forms.DateField(
@@ -1120,9 +1120,6 @@ class TeklifSiparisForm(forms.Form):
     gecerlilik_teslim_tarihi = forms.DateField(
         label="Tarih", required=False,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
-    belge_no = forms.CharField(
-        label="Belge No", max_length=50, required=False,
-        widget=forms.TextInput(attrs={"autocomplete": "off"}))
     para_birimi = forms.ChoiceField(
         label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     aciklama = forms.CharField(
