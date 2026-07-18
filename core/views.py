@@ -1974,6 +1974,20 @@ def cek_cari_iade(request):
         buton="Cariye İade Et", basari="cariye iade edildi")
 
 
+@ekran_gerekli("cek_senet")
+def cek_karsiliksiz(request):
+    """Karşılıksız: Portföyde / Bankada Tahsilde / Teminattaki alınan çek/senetler
+    karşılıksız çıkar; borç kendi carisine geri yüklenir (durum → Karşılıksız)."""
+    return _islem_secim_view(
+        request, form_cls=IslemTarihForm, hedef_alani=None,
+        servis_fn=cek_servis.karsiliksiz_bordrosu_olustur, baslik="Karşılıksız", emoji="⛔",
+        yardim="Portföyde, Bankada Tahsilde veya Teminattaki alınan çek/senetler karşılıksız "
+               "çıktığında seçilir; borç kendi carisine geri yüklenir (cari borç / kaynak "
+               "çek-senet alacak). Nakit hareketi yoktur; durum Karşılıksız (terminal) olur.",
+        buton="Karşılıksız İşle", basari="karşılıksız işlendi",
+        durum=(CekSenet.Durum.PORTFOYDE, CekSenet.Durum.TAHSILDE, CekSenet.Durum.TEMINATTA))
+
+
 def _nakit_islem_view(request, *, servis_fn, yon, durum, baslik, emoji, yardim, buton,
                       basari, liste_baslik, bos_metin):
     """Nakit gerçekleşme ekranı ortak gövdesi (Tahsil / Firma Çek Ödeme): evrak seçimi +

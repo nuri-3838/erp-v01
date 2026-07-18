@@ -61,6 +61,12 @@
       <a class="cs-islem cs-aktif" href="{% url 'core:cek_odeme' %}">💸 Firma Çek Ödeme</a>
     </div>
   </div>
+  <div class="cs-grup">
+    <p class="cs-grup-baslik">⚠️ Sorunlu</p>
+    <div class="cs-butonlar">
+      <a class="cs-islem cs-aktif" href="{% url 'core:cek_karsiliksiz' %}">⛔ Karşılıksız</a>
+    </div>
+  </div>
   <p class="yardim" style="margin-top:1rem">Tüm işlemler aktif. Yevmiye fişini
     ⚙️ <strong>Muhasebe Hesap Kodları</strong>'ndaki eşlemeden üretir (önce orayı tanımlayın).</p>
 </section>
