@@ -922,6 +922,11 @@ class TeklifSiparis(TemelModel):
     kaynak_teklif = models.ForeignKey(
         "self", verbose_name="kaynak teklif", null=True, blank=True,
         on_delete=models.PROTECT, related_name="donusen_siparisler")
+    # SIPARIS ise: hangi Fatura'ya dönüştürüldüğü. Fatura modülü TeklifSiparis'i BİLMEZ —
+    # bağlantı burada, sipariş tarafında kurulur (Fatura oluştuktan SONRA set edilir).
+    fatura = models.ForeignKey(
+        "Fatura", verbose_name="fatura", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kaynak_siparisler")
 
     class Meta:
         db_table = "teklif_siparis"

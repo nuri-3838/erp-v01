@@ -28,6 +28,12 @@
   <div class="satir"><span class="et">Depo</span><span class="dg">{% if fatura.depo %}<span class="mono">{{ fatura.depo.kod }}</span> {{ fatura.depo.ad }}{% else %}<span class="pasif">— (stok hareketi yok)</span>{% endif %}</span></div>
   <div class="satir"><span class="et">Yevmiye Fişi</span>
     <span class="dg">{% if fatura.fis %}<a class="mono" href="{% url 'core:fis_detay' fatura.fis.pk %}">{{ fatura.fis.yil }}/{{ fatura.fis.fis_no }}</a>{% else %}—{% endif %}</span></div>
+  {% with kaynak_siparis=fatura.kaynak_siparisler.first %}
+  {% if kaynak_siparis %}
+  <div class="satir"><span class="et">Kaynak Sipariş</span>
+    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' kaynak_siparis.pk %}">{{ kaynak_siparis.get_belge_tur_display }}{% if kaynak_siparis.belge_no %} · {{ kaynak_siparis.belge_no }}{% endif %}</a></span></div>
+  {% endif %}
+  {% endwith %}
 </section>
 
 <section class="icerik-kart">

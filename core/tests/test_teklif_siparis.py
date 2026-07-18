@@ -433,3 +433,134 @@ class TeklifSiparisViewTest(TestCase):
         self.assertEqual(
             self.client.post(reverse("core:teklif_siparise_cevir", args=[t.pk])).status_code, 403)
 
+
+class TeklifSiparisFaturayaCevirTest(TestCase):
+    """Sipariş→Fatura dönüşümü: Fatura ekle formunu (Fatura'nın kendi şablonu) sipariş
+    verileriyle ön-doldurur; kullanıcı tip/depo seçip onaylar (tam otomatik değil)."""
+    @classmethod
+    def setUpTestData(cls):
+        import datetime
+        from decimal import Decimal
+        from core.models import (Birim, FaturaTipi, Kategori, KategoriHesap, Kur)
+        cls.yon = User.objects.create_superuser("tsfyon", password="x")
+        cls.bos = User.objects.create_user("tsfbos", password="x")
+        Kur.objects.create(tarih=datetime.date(2026, 6, 28), usd_alis=Decimal("40"))
+        _hesap("153.10", "ALÜMİNYUM MAL")
+        _hesap("191", "İNDİRİLECEK KDV")
+        _hesap("391", "HESAPLANAN KDV", kalem="KVYK")
+        _hesap("600", "YURTİÇİ SATIŞLAR", kalem="A")
+        _hesap("320.20.0001", "TEDARİKÇİ B", kalem="KVYK")
+        _hesap("120.20.0001", "MÜŞTERİ B")
+        cls.kdv = KdvOrani.objects.create(
+            aciklama="GENEL2", oran=Decimal("20"),
+            hesap_borc=HesapPlani.objects.get(hesap_kodu="191"),
+            hesap_alacak=HesapPlani.objects.get(hesap_kodu="391"))
+        ust = Kategori.objects.create(ad="HAMMADDE2", kod="153f")
+        alt = Kategori.objects.create(ad="ALÜMİNYUM2", kod="10f", ust=ust)
+        birim = Birim.objects.create(ad="ADET2", kisa_ad="AD2", ondalik=0)
+        cls.stok = Stok.objects.create(kod="Sf1", ad="ÜRÜN FATURA", kategori=alt, kdv=cls.kdv,
+                                       uretim_birimi=birim, fatura_birimi=birim,
+                                       created_by=cls.yon, updated_by=cls.yon)
+        cls.alis_tip = FaturaTipi.objects.create(ad="ALIŞ FATURASI2", yon=FaturaTipi.Yon.ALIS)
+        cls.satis_tip = FaturaTipi.objects.create(ad="SATIŞ FATURASI2", yon=FaturaTipi.Yon.SATIS)
+        KategoriHesap.objects.create(kategori=alt, fatura_tipi=cls.alis_tip,
+                                     hesap=HesapPlani.objects.get(hesap_kodu="153.10"))
+        KategoriHesap.objects.create(kategori=alt, fatura_tipi=cls.satis_tip,
+                                     hesap=HesapPlani.objects.get(hesap_kodu="600"))
+        cls.tedarikci = Cari.objects.create(kod="C-F1", unvan="TEDARİKÇİ B",
+                                            muhasebe_kodu="320.20.0001",
+                                            created_by=cls.yon, updated_by=cls.yon)
+        cls.musteri = Cari.objects.create(kod="C-F2", unvan="MÜŞTERİ B",
+                                          muhasebe_kodu="120.20.0001",
+                                          created_by=cls.yon, updated_by=cls.yon)
+
+    def _siparis(self, yon="SATIS", cari=None):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        return teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon=yon, cari_id=(cari or self.musteri).pk,
+            tarih=datetime.date(2026, 6, 28), belge_no="SIP-F1",
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "3", "birim_fiyat": "50"}],
+            kullanici=self.yon)
+
+    def test_get_form_on_doldurulmus(self):
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:siparis_faturaya_cevir", args=[sip.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, f"Sipariş {sip.pk} kaynaklı")
+        self.assertContains(r, "MÜŞTERİ B")
+
+    def test_post_fatura_olusturur_ve_baglar(self):
+        from core.models import Fatura, TeklifSiparis
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28",
+            "para_birimi": "TRY", "depo": "",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50",
+        })
+        fatura = Fatura.objects.get(cari=self.musteri, tip=self.satis_tip)
+        self.assertRedirects(r, reverse("core:fatura_detay", args=[fatura.pk]))
+        sip = TeklifSiparis.objects.get(pk=sip.pk)
+        self.assertEqual(sip.fatura_id, fatura.pk)
+        self.assertEqual(fatura.satirlar.filter(silindi=False).count(), 1)
+        self.assertIsNotNone(fatura.fis_id)                        # yevmiye fişi de üretildi
+
+    def test_ikinci_kez_cevrilemez_faturaya_yonlenir(self):
+        from core.models import Fatura
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28",
+            "para_birimi": "TRY", "depo": "",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50",
+        })
+        fatura = Fatura.objects.get(cari=self.musteri, tip=self.satis_tip)
+        r2 = self.client.get(reverse("core:siparis_faturaya_cevir", args=[sip.pk]))
+        self.assertRedirects(r2, reverse("core:fatura_detay", args=[fatura.pk]))
+
+    def test_teklif_dogrudan_faturaya_cevrilemez(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        teklif = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.musteri.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        self.assertEqual(
+            self.client.get(reverse("core:siparis_faturaya_cevir", args=[teklif.pk])).status_code, 404)
+
+    def test_buton_gorunurluk_ve_fatura_detay_kaynak_linki(self):
+        from core.models import Fatura
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[sip.pk]))
+        self.assertContains(d0, reverse("core:siparis_faturaya_cevir", args=[sip.pk]))
+        self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28",
+            "para_birimi": "TRY", "depo": "",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50",
+        })
+        fatura = Fatura.objects.get(cari=self.musteri, tip=self.satis_tip)
+        # sipariş detayında artık buton değil, Fatura linki
+        d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[sip.pk]))
+        self.assertNotContains(d1, reverse("core:siparis_faturaya_cevir", args=[sip.pk]))
+        self.assertContains(d1, reverse("core:fatura_detay", args=[fatura.pk]))
+        # fatura detayında kaynak sipariş linki
+        d2 = self.client.get(reverse("core:fatura_detay", args=[fatura.pk]))
+        self.assertContains(d2, "Kaynak Sipariş")
+        self.assertContains(d2, reverse("core:teklif_siparis_detay", args=[sip.pk]))
+
+    def test_yetkisiz_403(self):
+        sip = self._siparis()
+        self.client.force_login(self.bos)
+        self.assertEqual(
+            self.client.get(reverse("core:siparis_faturaya_cevir", args=[sip.pk])).status_code, 403)

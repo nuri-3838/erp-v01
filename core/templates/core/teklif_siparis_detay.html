@@ -15,6 +15,9 @@
     <form method="post" action="{% url 'core:teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
       {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
     {% endif %}
+    {% if ts.belge_tur == "SIPARIS" and not donusen_fatura %}
+    <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
+    {% endif %}
     <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">Düzenle</a>
     <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');">
       {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
@@ -42,6 +45,10 @@
   {% if donusen_siparis %}
   <div class="satir"><span class="et">Dönüştüğü Sipariş</span>
     <span class="dg"><a href="{% url 'core:teklif_siparis_detay' donusen_siparis.pk %}">{{ donusen_siparis.get_belge_tur_display }}{% if donusen_siparis.belge_no %} · {{ donusen_siparis.belge_no }}{% endif %}</a></span></div>
+  {% endif %}
+  {% if donusen_fatura %}
+  <div class="satir"><span class="et">Fatura</span>
+    <span class="dg"><a href="{% url 'core:fatura_detay' donusen_fatura.pk %}">{{ donusen_fatura.tip.ad }}{% if donusen_fatura.fatura_no %} · {{ donusen_fatura.fatura_no }}{% endif %}</a></span></div>
   {% endif %}
 </section>
 

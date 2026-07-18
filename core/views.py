@@ -1842,7 +1842,8 @@ def teklif_siparis_detay(request, pk):
                        if donusturuldu_mu else None)
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
-                   "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis})
+                   "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis,
+                   "donusen_fatura": ts.fatura})
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
@@ -1859,6 +1860,63 @@ def teklif_siparise_cevir(request, pk):
         except teklif_siparis_servis.TeklifSiparisHatasi as e:
             messages.error(request, str(e))
     return redirect("core:teklif_siparis_detay", pk=teklif.pk)
+
+
+@ekran_gerekli_herhangi("satinalma_siparisleri", "satis_siparisleri")
+def siparis_faturaya_cevir(request, pk):
+    """Siparişi faturaya çevir: Fatura ekle formunu (core/fatura_ekle.html — Fatura'nın KENDİ
+    şablonu, aynen yeniden kullanılır) sipariş verileriyle ön-doldurur. Fatura tipi + depo
+    BİLEREK ön-doldurulmaz — bunlar muhasebe hesap haritası/stok deposu belirleyen fatura-
+    özel kararlardır; kullanıcı burada seçer/onaylar (tam otomatik DEĞİL, tek tık + gözden
+    geçirme). Fatura oluşunca sipariş.fatura set edilir (tek seferlik — TeklifSiparis
+    tarafında; Fatura modülü TeklifSiparis'i hiç bilmez)."""
+    siparis = get_object_or_404(
+        TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.SIPARIS)
+    if siparis.fatura_id:
+        messages.info(request, "Bu sipariş zaten faturalandırılmış.")
+        return redirect("core:fatura_detay", pk=siparis.fatura_id)
+    yon = FaturaTipi.Yon.ALIS if siparis.yon == TeklifSiparis.Yon.ALIS else FaturaTipi.Yon.SATIS
+    if request.method == "POST":
+        fform = FaturaForm(request.POST, yon=yon)
+        formset = FaturaSatirFormSet(request.POST)
+        if fform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk,
+                 "miktar": f.cleaned_data["miktar"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
+                for f in formset if f.dolu_mu()
+            ]
+            try:
+                fatura = fatura_servis.fatura_olustur(
+                    tip_id=fform.cleaned_data["tip"].pk,
+                    cari_id=fform.cleaned_data["cari"].pk,
+                    tarih=fform.cleaned_data["tarih"],
+                    fatura_no=fform.cleaned_data.get("fatura_no", ""),
+                    para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
+                    depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
+                    satirlar=satirlar, kullanici=request.user)
+                siparis.fatura = fatura
+                siparis.updated_by = request.user
+                siparis.save(update_fields=["fatura", "updated_by", "updated_at"])
+                messages.success(
+                    request, f"Fatura oluşturuldu (sipariş {siparis.pk} kaynaklı); "
+                             f"fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu.")
+                return redirect("core:fatura_detay", pk=fatura.pk)
+            except fatura_servis.FaturaHatasi as e:
+                fform.add_error(None, str(e))
+    else:
+        fform = FaturaForm(yon=yon, initial={
+            "cari": siparis.cari_id, "tarih": timezone.localdate(),
+            "para_birimi": siparis.para_birimi})
+        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
+               for k in siparis.kalemler.filter(silindi=False).select_related("stok")]
+        formset = FaturaSatirFormSet(initial=ilk)
+    stok_kdv, stok_tevkifat = _stok_kdv_tevkifat()
+    return render(request, "core/fatura_ekle.html",
+                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
+                   "stok_tevkifat": stok_tevkifat,
+                   "baslik": f"Fatura Oluştur (Sipariş {siparis.pk} kaynaklı)",
+                   "iptal_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
