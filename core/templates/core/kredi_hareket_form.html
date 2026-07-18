@@ -37,12 +37,36 @@
         </div>
       </div>
 
+      {% if form.anapara %}
+        <div class="izgara">
+          <div class="alan">
+            <label for="{{ form.anapara.id_for_label }}">Anapara ({{ kredi.para_birimi }})</label>
+            {{ form.anapara }}
+            {% for e in form.anapara.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan">
+            <label for="{{ form.faiz.id_for_label }}">Faiz ({{ kredi.para_birimi }})</label>
+            {{ form.faiz }}
+            {% for e in form.faiz.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan tam">
+            <label for="{{ form.faiz_hesap.id_for_label }}">{{ form.faiz_hesap.label }}</label>
+            {{ form.faiz_hesap }}
+            {% for e in form.faiz_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <p class="yardim">Anapara + faiz banka dekontundaki gibi <strong>elle</strong> girilir;
+          faiz 0 ise gider hesabı gerekmez. Ödeme toplamı = anapara + faiz.</p>
+      {% endif %}
+
       <div class="izgara">
+        {% if form.tutar %}
         <div class="alan">
           <label for="{{ form.tutar.id_for_label }}">Tutar ({{ kredi.para_birimi }})</label>
           {{ form.tutar }}
           {% for e in form.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% endif %}
         <div class="alan">
           <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
           {{ form.tarih }}

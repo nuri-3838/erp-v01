@@ -1948,10 +1948,19 @@ def _kredi_hareket_form(request, kredi, tip):
         form = KrediHareketForm(request.POST, tip=tip, kredi=kredi)
         if form.is_valid():
             try:
-                fis = kredi_hareket_servis.hareket_olustur(
-                    kredi=kredi, tip=tip, karsi=form.cleaned_data["karsi"],
-                    tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
-                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                if tip == "geri_odeme":
+                    fis = kredi_hareket_servis.geri_odeme_olustur(
+                        kredi=kredi, karsi=form.cleaned_data["karsi"],
+                        anapara=form.cleaned_data["anapara"],
+                        faiz=form.cleaned_data.get("faiz") or 0,
+                        faiz_hesap=form.cleaned_data.get("faiz_hesap"),
+                        tarih=form.cleaned_data["tarih"],
+                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                else:
+                    fis = kredi_hareket_servis.hareket_olustur(
+                        kredi=kredi, tip=tip, karsi=form.cleaned_data["karsi"],
+                        tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
                 messages.success(request, tan["ad"] + f" kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_detay", pk=kredi.pk)
             except kredi_hareket_servis.KrediHareketHatasi as e:

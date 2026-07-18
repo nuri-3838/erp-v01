@@ -1040,6 +1040,19 @@ class KrediHareketForm(forms.Form):
         self.fields["banka_hesap"].label_from_instance = (
             lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})")
         self.fields["kasa"].label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+        self.tip = tip
+        if tip == "geri_odeme":
+            # Anapara + faiz ELLE girilir (amortisman planı yok — bilinçli karar).
+            from core.services.hesap_plani import yaprak_hesaplar
+            del self.fields["tutar"]
+            self.fields["anapara"] = TRDecimalField(label="Anapara", basamak=2)
+            self.fields["faiz"] = TRDecimalField(label="Faiz", basamak=2, required=False)
+            self.fields["faiz_hesap"] = forms.ModelChoiceField(
+                label="Faiz Gider Hesabı", required=False,
+                empty_label="— gider hesabı seç —", queryset=yaprak_hesaplar(),
+                widget=forms.Select(attrs={"class": "akilli-sec"}))
+            self.fields["faiz_hesap"].label_from_instance = (
+                lambda o: f"{o.hesap_kodu}  {o.hesap_adi}")
 
     def clean(self):
         cd = super().clean()
@@ -1048,6 +1061,8 @@ class KrediHareketForm(forms.Form):
             raise forms.ValidationError(
                 "Nakit hesabı olarak Banka hesabı VEYA Kasa (yalnız biri) seçin.")
         cd["karsi"] = secili[0]
+        if self.tip == "geri_odeme" and (cd.get("faiz") or 0) > 0 and not cd.get("faiz_hesap"):
+            self.add_error("faiz_hesap", "Faiz girildiyse faiz gider hesabı seçilmeli.")
         return cd
 
 

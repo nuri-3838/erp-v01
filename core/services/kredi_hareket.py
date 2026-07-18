@@ -12,7 +12,7 @@ from django.db import transaction
 
 from core.metin import buyuk_harf_tr
 from core.models import BankaHesap, Kasa, Kredi, Kur, YevmiyeFisi
-from core.sayi import SayiHatasi, parse_tr
+from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_iptal, fis_olustur
 
 
@@ -26,6 +26,10 @@ HAREKET = {
                     "ikon": "💰", "ack": "KULLANDIRIM",
                     "aciklama": "Kredi kullanımı — anapara nakit hesaba girer (Banka·Kasa borç / "
                                 "Kredi alacak). Borç doğar."},
+    "geri_odeme": {"ad": "Geri Ödeme", "kredi": "B", "karsi": ("banka", "kasa"), "yon": "azalis",
+                   "ikon": "💸", "ack": "GERİ ÖDEME",
+                   "aciklama": "Taksit ödemesi — anapara + faiz elle girilir (Kredi borç anapara, "
+                               "Faiz gideri borç faiz / Banka·Kasa alacak toplam). Borç azalır."},
 }
 
 
@@ -98,6 +102,62 @@ def hareket_olustur(*, kredi, tip, karsi, tutar, tarih, aciklama="", kullanici=N
     ]
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack, kur_usd=None,
+                          kaynak=YevmiyeFisi.Kaynak.KREDI, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise KrediHareketHatasi(str(e))
+    fis.kredi = kredi
+    fis.save(update_fields=["kredi", "updated_at"])
+    return fis
+
+
+def _tutar0(deger, ad):
+    """0 dahil negatif olmayan tutar (faiz için; boş → 0)."""
+    try:
+        d = parse_tr(deger if deger not in (None, "") else 0)
+    except SayiHatasi:
+        raise KrediHareketHatasi(f"{ad} geçerli bir sayı olmalı.")
+    if d < 0:
+        raise KrediHareketHatasi(f"{ad} negatif olamaz.")
+    return d
+
+
+@transaction.atomic
+def geri_odeme_olustur(*, kredi, karsi, anapara, faiz=0, faiz_hesap=None, tarih,
+                       aciklama="", kullanici=None) -> YevmiyeFisi:
+    """Geri Ödeme (taksit): anapara + faiz ELLE girilir (amortisman planı üretilmez — bilinçli
+    karar). Kredi BORÇ (anapara, borç kapanır) + Faiz gideri BORÇ (faiz>0 ise; yaprak gider
+    hesabı zorunlu) / nakit (Banka·Kasa) ALACAK (toplam). Dövizde nakit satırı tl_override ile
+    borç satırlarının yuvarlanmış TL toplamına denklenir (dengeli fiş invariant'ı)."""
+    if kredi.muhasebe_id is None:
+        raise KrediHareketHatasi("Kredinin muhasebe hesabı tanımlı değil.")
+    karsi_kod, karsi_ad = _nakit_coz(karsi, kredi)
+    ana = _tutar(anapara)
+    fz = _tutar0(faiz, "Faiz")
+    pb = kredi.para_birimi
+    kur = _kur_coz(pb, tarih)
+    girdiler = [SatirGirdi(hesap_kodu=kredi.muhasebe.hesap_kodu, taraf="B",
+                           islem_tutari=ana, islem_pb=pb, islem_kuru=kur)]
+    borc_tl = yuvarla(ana * kur, 2)
+    if fz > 0:
+        if faiz_hesap is None:
+            raise KrediHareketHatasi("Faiz girildiyse faiz gider hesabı seçilmeli.")
+        from core.services.finans import FinansHatasi, _yaprak_hesap_coz
+        try:
+            fh = _yaprak_hesap_coz(getattr(faiz_hesap, "hesap_kodu", faiz_hesap))
+        except FinansHatasi as e:
+            raise KrediHareketHatasi(str(e))
+        if fh.pk == kredi.muhasebe_id:
+            raise KrediHareketHatasi("Faiz gider hesabı kredinin kendi hesabı olamaz.")
+        girdiler.append(SatirGirdi(hesap_kodu=fh.hesap_kodu, taraf="B",
+                                   islem_tutari=fz, islem_pb=pb, islem_kuru=kur))
+        borc_tl += yuvarla(fz * kur, 2)
+    ack = (buyuk_harf_tr((aciklama or "").strip())
+           or buyuk_harf_tr(f"KREDİ GERİ ÖDEME - {karsi_ad}"))
+    # Nakit DENGE satırı: toplam işlem tutarı, TL'si borç satırları toplamı (döviz yuvarlaması).
+    girdiler.append(SatirGirdi(hesap_kodu=karsi_kod, taraf="A", islem_tutari=ana + fz,
+                               islem_pb=pb, islem_kuru=kur, tl_override=borc_tl))
+    try:
+        fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=ack, kur_usd=None,
                           kaynak=YevmiyeFisi.Kaynak.KREDI, kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise KrediHareketHatasi(str(e))

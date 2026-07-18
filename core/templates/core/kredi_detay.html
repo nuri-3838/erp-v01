@@ -96,8 +96,11 @@
     <div class="hareket-bar">
       <a class="hareket-dugme" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'kullandirim' %}">
         <span class="hd-ik">💰</span><span class="hd-ad">Kullandırım</span><span class="hd-yon">BORÇ ↑</span></a>
+      <a class="hareket-dugme" href="{% url 'core:kredi_hareket_ekle' kredi.pk 'geri_odeme' %}">
+        <span class="hd-ik" style="background:rgba(193,21,57,.10)">💸</span><span class="hd-ad">Geri Ödeme</span><span class="hd-yon" style="color:var(--ok)">BORÇ ↓</span></a>
     </div>
-    <p class="yardim" style="margin-top:.8rem">Geri ödeme (anapara + faiz) bir sonraki dilimde eklenecek.</p>
+    <p class="yardim" style="margin-top:.8rem">Geri ödemede anapara + faiz <strong>elle</strong> girilir;
+      faiz varsa gider hesabına yazılır (amortisman planı üretilmez).</p>
   </section>
 
   <section class="icerik-kart">
