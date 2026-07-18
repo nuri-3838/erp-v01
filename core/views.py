@@ -21,6 +21,7 @@ from core.forms import (
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
+    KrediKartiHareketForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm,
@@ -60,6 +61,7 @@ from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
+from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
 from core.services import cek as cek_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
@@ -195,6 +197,11 @@ def fis_duzenle(request, pk):
                                "Gerekirse bordroyu geri alıp yeniden girin.")
         return (redirect("core:cek_bordro_detay", pk=fis.cek_bordrosu_id) if fis.cek_bordrosu_id
                 else redirect("core:fis_detay", pk=fis.pk))
+    if fis.kaynak == YevmiyeFisi.Kaynak.KREDI_KARTI:
+        messages.info(request, "Bu fiş bir kredi kartı hareketinden oluştu; düzenlenemez. "
+                               "Gerekirse hareketi iptal edip yeniden girin.")
+        return (redirect("core:kredi_karti_detay", pk=fis.kredi_karti_id) if fis.kredi_karti_id
+                else redirect("core:fis_detay", pk=fis.pk))
 
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -250,6 +257,9 @@ def fis_iptal_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET and not fis.silindi and fis.cek_bordrosu_id:
         messages.info(request, "Bu fiş bir çek/senet bordrosundan oluştu; iptal için bordro detayını kullanın.")
         return redirect("core:cek_bordro_detay", pk=fis.cek_bordrosu_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.KREDI_KARTI and not fis.silindi and fis.kredi_karti_id:
+        messages.info(request, "Bu fiş bir kredi kartı hareketinden oluştu; iptal için kredi kartı detayını kullanın.")
+        return redirect("core:kredi_karti_detay", pk=fis.kredi_karti_id)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1714,9 +1724,55 @@ def kredi_karti_detay(request, pk):
         borc = -ekstre.kapanis_bakiye
     kullanilabilir = (kart.limit or Decimal("0")) - borc
 
+    kk_fis_pks = set(YevmiyeFisi.objects.filter(
+        kredi_karti=kart, kaynak=YevmiyeFisi.Kaynak.KREDI_KARTI, silindi=False
+    ).values_list("pk", flat=True))
     return render(request, "core/kredi_karti_detay.html",
                   {"kart": kart, "form": form, "ekstre": ekstre, "satirlar": satirlar,
-                   "aciklama": aciklama, "borc": borc, "kullanilabilir": kullanilabilir})
+                   "aciklama": aciklama, "borc": borc, "kullanilabilir": kullanilabilir,
+                   "kk_fis_pks": kk_fis_pks})
+
+
+def _kredi_karti_hareket_form(request, kart, tip):
+    tan = kredi_karti_hareket_servis.HAREKET[tip]
+    if request.method == "POST":
+        form = KrediKartiHareketForm(request.POST, tip=tip, kart=kart)
+        if form.is_valid():
+            try:
+                fis = kredi_karti_hareket_servis.hareket_olustur(
+                    kart=kart, tip=tip, karsi=form.cleaned_data["karsi"],
+                    tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                messages.success(request, tan["ad"] + f" kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:kredi_karti_detay", pk=kart.pk)
+            except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = KrediKartiHareketForm(tip=tip, kart=kart)
+    return render(request, "core/kredi_karti_hareket_form.html",
+                  {"kart": kart, "form": form, "tip": tip, "tan": tan})
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_hareket_ekle(request, pk, tip):
+    kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
+    if tip not in kredi_karti_hareket_servis.HAREKET:
+        messages.error(request, "Geçersiz hareket tipi.")
+        return redirect("core:kredi_karti_detay", pk=kart.pk)
+    return _kredi_karti_hareket_form(request, kart, tip)
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_hareket_iptal(request, pk, fis_pk):
+    kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
+    fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    if request.method == "POST":
+        try:
+            kredi_karti_hareket_servis.hareket_iptal(fis=fis, kart=kart, kullanici=request.user)
+            messages.success(request, "Kart hareketi iptal edildi.")
+        except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:kredi_karti_detay", pk=kart.pk)
 
 
 @ekran_gerekli("kredi_karti")

@@ -415,7 +415,7 @@ class FinansDigerViewTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "BONUS")                 # kart adı TR büyük harf
         self.assertContains(r, "Kart Ekstresi")
-        self.assertContains(r, "DİLİM 2")               # hareket iskelet rozeti
+        self.assertContains(r, reverse("core:kredi_karti_hareket_ekle", args=[k.pk, "harcama"]))  # aktif buton
         self.assertContains(r, "Güncel Borç")
         self.assertContains(r, "GARANTİ")               # banka KISA ad gösterilir (detay)
         self.assertNotContains(r, "A.Ş.")               # uzun resmi ad değil
@@ -557,3 +557,153 @@ class BankaHareketTest(TestCase):
         bh1, _, _ = self._kur()
         self.client.force_login(self.bos)
         self.assertEqual(self.client.get(reverse("core:banka_hesap_detay", args=[bh1.pk])).status_code, 403)
+
+
+class KrediKartiHareketTest(TestCase):
+    """Kredi kartı hareket motoru — Harcama/Ödeme/İade; karşı Cari/Gider/Banka/Kasa."""
+    @classmethod
+    def setUpTestData(cls):
+        import datetime
+        from decimal import Decimal
+        from core.models import Banka, BankaHesap, Cari, Kasa, Kur
+        from core.services.finans import kredi_karti_olustur
+        cls.yon = User.objects.create_superuser("kkyon", password="x")
+        cls.bos = User.objects.create_user("kkbos", password="x")
+        for kod, ad in (("309.01", "KREDİ KARTLARI"), ("309.02", "USD KART"),
+                        ("770.01", "GENEL GİDER"), ("120.01", "MÜŞTERİ A"),
+                        ("102.01", "İŞ BANKASI"), ("100.01", "MERKEZ KASA")):
+            _hesap(kod, ad)
+        cls.t = datetime.date(2026, 6, 28)
+        Kur.objects.create(tarih=cls.t, usd_alis=Decimal("40"))
+        cls.kart = kredi_karti_olustur(ad="bonus", limit=Decimal("10000"),
+                                       para_birimi="TRY", muhasebe_kodu="309.01", kullanici=cls.yon)
+        cls.gider = HesapPlani.objects.get(hesap_kodu="770.01")
+        cls.cari = Cari.objects.create(kod="C1", unvan="MÜŞTERİ A", muhasebe_kodu="120.01",
+                                       created_by=cls.yon, updated_by=cls.yon)
+        b = Banka.objects.create(ad="İŞ BANKASI", created_by=cls.yon, updated_by=cls.yon)
+        cls.bh = BankaHesap.objects.create(banka=b, ad="VADESİZ", muhasebe_id="102.01",
+                                           para_birimi="TRY", created_by=cls.yon, updated_by=cls.yon)
+        cls.kasa = Kasa.objects.create(ad="MERKEZ", muhasebe_id="100.01", para_birimi="TRY",
+                                       created_by=cls.yon, updated_by=cls.yon)
+
+    def _s(self, fis):
+        return {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.filter(silindi=False)}
+
+    def test_harcama_cari(self):
+        from decimal import Decimal
+        from core.models import YevmiyeFisi
+        from core.services.kredi_karti_hareket import hareket_olustur
+        f = hareket_olustur(kart=self.kart, tip="harcama", karsi=self.cari,
+                            tutar=Decimal("1500"), tarih=self.t, kullanici=self.yon)
+        self.assertEqual(f.kaynak, YevmiyeFisi.Kaynak.KREDI_KARTI)
+        self.assertEqual(f.kredi_karti_id, self.kart.pk)
+        s = self._s(f)
+        self.assertEqual(s["120.01"], (Decimal("1500.00"), Decimal("0.00")))   # cari borç
+        self.assertEqual(s["309.01"], (Decimal("0.00"), Decimal("1500.00")))   # kart alacak (borç artar)
+
+    def test_harcama_gider(self):
+        from decimal import Decimal
+        from core.services.kredi_karti_hareket import hareket_olustur
+        f = hareket_olustur(kart=self.kart, tip="harcama", karsi=self.gider,
+                            tutar=Decimal("800"), tarih=self.t, kullanici=self.yon)
+        s = self._s(f)
+        self.assertEqual(s["770.01"], (Decimal("800.00"), Decimal("0.00")))    # gider borç
+        self.assertEqual(s["309.01"], (Decimal("0.00"), Decimal("800.00")))    # kart alacak
+
+    def test_odeme_banka(self):
+        from decimal import Decimal
+        from core.services.kredi_karti_hareket import hareket_olustur
+        f = hareket_olustur(kart=self.kart, tip="odeme", karsi=self.bh,
+                            tutar=Decimal("500"), tarih=self.t, kullanici=self.yon)
+        s = self._s(f)
+        self.assertEqual(s["309.01"], (Decimal("500.00"), Decimal("0.00")))    # kart borç (azalır)
+        self.assertEqual(s["102.01"], (Decimal("0.00"), Decimal("500.00")))    # banka alacak (para çıkar)
+
+    def test_odeme_kasa(self):
+        from decimal import Decimal
+        from core.services.kredi_karti_hareket import hareket_olustur
+        f = hareket_olustur(kart=self.kart, tip="odeme", karsi=self.kasa,
+                            tutar=Decimal("300"), tarih=self.t, kullanici=self.yon)
+        s = self._s(f)
+        self.assertEqual(s["309.01"], (Decimal("300.00"), Decimal("0.00")))
+        self.assertEqual(s["100.01"], (Decimal("0.00"), Decimal("300.00")))
+
+    def test_iade_cari(self):
+        from decimal import Decimal
+        from core.services.kredi_karti_hareket import hareket_olustur
+        f = hareket_olustur(kart=self.kart, tip="iade", karsi=self.cari,
+                            tutar=Decimal("250"), tarih=self.t, kullanici=self.yon)
+        s = self._s(f)
+        self.assertEqual(s["309.01"], (Decimal("250.00"), Decimal("0.00")))    # kart borç (azalır)
+        self.assertEqual(s["120.01"], (Decimal("0.00"), Decimal("250.00")))    # cari alacak
+
+    def test_iptal_ve_yanlis_kart_reddedilir(self):
+        from decimal import Decimal
+        from core.services.finans import kredi_karti_olustur
+        from core.services.kredi_karti_hareket import (KrediKartiHareketHatasi, hareket_iptal,
+                                                       hareket_olustur)
+        f = hareket_olustur(kart=self.kart, tip="harcama", karsi=self.cari,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+        _hesap("309.03", "İKİNCİ KART")
+        kart2 = kredi_karti_olustur(ad="ikinci", para_birimi="TRY", muhasebe_kodu="309.03",
+                                    kullanici=self.yon)
+        with self.assertRaises(KrediKartiHareketHatasi):
+            hareket_iptal(fis=f, kart=kart2, kullanici=self.yon)   # başka kartın hareketi
+        hareket_iptal(fis=f, kart=self.kart, kullanici=self.yon)
+        f.refresh_from_db()
+        self.assertTrue(f.silindi)
+
+    def test_karsi_tip_uyumsuz_reddedilir(self):
+        from decimal import Decimal
+        from core.services.kredi_karti_hareket import KrediKartiHareketHatasi, hareket_olustur
+        with self.assertRaises(KrediKartiHareketHatasi):        # harcama'ya banka
+            hareket_olustur(kart=self.kart, tip="harcama", karsi=self.bh,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+        with self.assertRaises(KrediKartiHareketHatasi):        # ödeme'ye cari
+            hareket_olustur(kart=self.kart, tip="odeme", karsi=self.cari,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+
+    def test_pb_uyusmazligi_reddedilir(self):
+        from decimal import Decimal
+        from core.services.finans import kredi_karti_olustur
+        from core.services.kredi_karti_hareket import KrediKartiHareketHatasi, hareket_olustur
+        kart_usd = kredi_karti_olustur(ad="dolar", para_birimi="USD", muhasebe_kodu="309.02",
+                                       kullanici=self.yon)
+        with self.assertRaises(KrediKartiHareketHatasi):        # USD kart + TRY banka
+            hareket_olustur(kart=kart_usd, tip="odeme", karsi=self.bh,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+
+    def test_form_tam_bir_karsi(self):
+        from core.forms import KrediKartiHareketForm
+        ortak = {"tutar": "100", "tarih": "2026-06-28"}
+        f0 = KrediKartiHareketForm(ortak, tip="harcama", kart=self.kart)
+        self.assertFalse(f0.is_valid())                        # 0 karşı
+        f2 = KrediKartiHareketForm({**ortak, "cari": self.cari.pk, "gider": self.gider.pk},
+                                   tip="harcama", kart=self.kart)
+        self.assertFalse(f2.is_valid())                        # 2 karşı
+        f1 = KrediKartiHareketForm({**ortak, "cari": self.cari.pk}, tip="harcama", kart=self.kart)
+        self.assertTrue(f1.is_valid())                         # tam 1 karşı
+
+    def test_view_ekle_ve_iptal(self):
+        from core.models import YevmiyeFisi
+        self.client.force_login(self.yon)
+        self.assertEqual(self.client.get(
+            reverse("core:kredi_karti_hareket_ekle", args=[self.kart.pk, "harcama"])).status_code, 200)
+        r = self.client.post(
+            reverse("core:kredi_karti_hareket_ekle", args=[self.kart.pk, "harcama"]),
+            {"cari": self.cari.pk, "tutar": "300", "tarih": "2026-06-28"})
+        self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
+        fis = YevmiyeFisi.objects.filter(kredi_karti=self.kart, silindi=False).get()
+        ri = self.client.post(reverse("core:kredi_karti_hareket_iptal", args=[self.kart.pk, fis.pk]))
+        self.assertRedirects(ri, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
+        fis.refresh_from_db()
+        self.assertTrue(fis.silindi)
+
+    def test_ham_fis_duzenleme_kilidi(self):
+        from decimal import Decimal
+        from core.services.kredi_karti_hareket import hareket_olustur
+        f = hareket_olustur(kart=self.kart, tip="harcama", karsi=self.cari,
+                            tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:fis_duzenle", args=[f.pk]))
+        self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))

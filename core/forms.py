@@ -949,6 +949,59 @@ class BankaHareketForm(forms.Form):
         f.widget.attrs["class"] = "akilli-sec"
 
 
+class KrediKartiHareketForm(forms.Form):
+    """Kredi kartı hareketi: karşı taraf (Harcama/İade → Cari VEYA Gider; Ödeme → Banka VEYA
+    Kasa) + tutar + tarih + açıklama. Karşı alanlar tipe göre __init__'te eklenir; tam olarak
+    biri seçilmeli (clean). Kart ve tip URL'den; fiş otomatik üretilir."""
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+    tarih = forms.DateField(
+        label="Tarih",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "Boş bırakılırsa otomatik"}))
+
+    def __init__(self, *args, tip=None, kart=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        from core.services.kredi_karti_hareket import HAREKET
+        turler = HAREKET.get(tip, {}).get("karsi", ())
+        if "cari" in turler:
+            self.fields["cari"] = forms.ModelChoiceField(
+                label="Cari", required=False, empty_label="— cari seç —",
+                queryset=Cari.objects.filter(silindi=False).order_by("unvan"),
+                widget=forms.Select(attrs={"class": "akilli-sec"}))
+            self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+            self.fields["gider"] = forms.ModelChoiceField(
+                label="Gider Hesabı", required=False, empty_label="— gider hesabı seç —",
+                queryset=yaprak_hesaplar(),
+                widget=forms.Select(attrs={"class": "akilli-sec"}))
+            self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        if "banka" in turler:
+            self.fields["banka_hesap"] = forms.ModelChoiceField(
+                label="Banka Hesabı", required=False, empty_label="— banka hesabı seç —",
+                queryset=(BankaHesap.objects.filter(silindi=False)
+                          .select_related("banka").order_by("banka__ad", "ad")),
+                widget=forms.Select(attrs={"class": "akilli-sec"}))
+            self.fields["banka_hesap"].label_from_instance = (
+                lambda o: f"{o.banka.ad} · {o.ad} ({o.para_birimi})")
+            self.fields["kasa"] = forms.ModelChoiceField(
+                label="Kasa", required=False, empty_label="— kasa seç —",
+                queryset=Kasa.objects.filter(silindi=False).order_by("ad"),
+                widget=forms.Select(attrs={"class": "akilli-sec"}))
+            self.fields["kasa"].label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
+
+    def clean(self):
+        cd = super().clean()
+        secili = [cd[k] for k in ("cari", "gider", "banka_hesap", "kasa") if cd.get(k)]
+        if len(secili) != 1:
+            raise forms.ValidationError("Tam olarak bir karşı taraf seçin.")
+        cd["karsi"] = secili[0]
+        return cd
+
+
 # ---------------------------------------------------------------------------
 # STOKLAR Faz B — Depo + Stok hareketi
 # ---------------------------------------------------------------------------

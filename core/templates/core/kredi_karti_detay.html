@@ -32,22 +32,21 @@
   .kk-kutu .dg { font-size:1.15rem; font-weight:750; font-family:"Cascadia Mono",Consolas,monospace; }
   .kk-kutu.borc .dg { color:var(--hata); }
   .kk-kutu.kullanilabilir .dg { color:var(--ok); }
-  /* Hareket aksiyonları (İSKELET — pasif) */
+  /* Hareket aksiyonları */
   .hareket-bsl { font-size:.74rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
-    color:var(--metin-soluk); margin:0 0 .8rem; display:flex; align-items:center; gap:.5rem; }
-  .hareket-bsl .rozet-yakinda { background:var(--turuncu); color:#fff; font-size:.62rem; padding:.15rem .5rem;
-    border-radius:999px; letter-spacing:.03em; }
+    color:var(--metin-soluk); margin:0 0 .8rem; }
   .hareket-bar { display:grid; grid-template-columns:repeat(3,1fr); gap:.6rem; max-width:640px; }
   @media (max-width:760px){ .hareket-bar { grid-template-columns:1fr; } }
   .hareket-dugme { display:flex; flex-direction:column; align-items:center; gap:.35rem; padding:.9rem .5rem;
-    border-radius:14px; background:rgba(255,255,255,.5); border:1px dashed var(--cizgi-koyu);
-    color:var(--metin-soluk); text-align:center; opacity:.72; cursor:not-allowed; }
+    border-radius:14px; background:rgba(255,255,255,.85); border:1px solid var(--cizgi); text-decoration:none;
+    color:var(--metin); box-shadow:var(--golge-sm); transition:transform .12s, box-shadow .12s; text-align:center; }
+  .hareket-dugme:hover { transform:translateY(-2px); box-shadow:var(--golge-md); border-color:var(--cizgi-koyu); }
   .hareket-dugme .hd-ik { width:36px; height:36px; border-radius:10px; display:grid; place-items:center;
     font-size:1.1rem; background:rgba(33,56,95,.08); }
-  .hareket-dugme .hd-ad { font-size:.84rem; font-weight:600; line-height:1.15; color:var(--metin); }
+  .hareket-dugme .hd-ad { font-size:.84rem; font-weight:600; line-height:1.15; }
   .hareket-dugme .hd-yon { font-size:.64rem; font-weight:700; letter-spacing:.04em; }
-  .hareket-dugme.artis .hd-yon { color:var(--hata); }
-  .hareket-dugme.azalis .hd-yon { color:var(--ok); }
+  .hareket-dugme.artis .hd-ik { background:rgba(193,21,57,.10); } .hareket-dugme.artis .hd-yon { color:var(--hata); }
+  .hareket-dugme.azalis .hd-ik { background:rgba(10,125,40,.12); } .hareket-dugme.azalis .hd-yon { color:var(--ok); }
   /* Ekstre */
   .ekstre-bsl { display:flex; align-items:center; gap:.4rem; margin:0 0 1rem; }
   .ekstre-filtre { display:flex; gap:.6rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem; }
@@ -81,7 +80,7 @@
         <span class="d-rozet yuk">● Yükümlülük</span>
       </div>
       <div class="detay-ad">{{ kart.ad }}{% if kart.kart_son4 %} <span style="opacity:.7;font-weight:600">**** {{ kart.kart_son4 }}</span>{% endif %}</div>
-      <div class="detay-alt">{{ kart.banka.kisa_ad|default:kart.banka.ad }}{% if kart.banka %} · {% endif %}{% if kart.muhasebe %}{{ kart.muhasebe.hesap_kodu }} {{ kart.muhasebe.hesap_adi }}{% else %}Muhasebe hesabı tanımsız{% endif %}</div>
+      <div class="detay-alt">{% if kart.banka %}{{ kart.banka.kisa_ad|default:kart.banka.ad }} · {% endif %}{% if kart.muhasebe %}{{ kart.muhasebe.hesap_kodu }} {{ kart.muhasebe.hesap_adi }}{% else %}Muhasebe hesabı tanımsız{% endif %}</div>
     </div>
   </div>
 
@@ -99,17 +98,15 @@
   </div>
 
   <section class="icerik-kart">
-    <div class="hareket-bsl">Kart Hareketi Ekle <span class="rozet-yakinda">DİLİM 2'DE AKTİF</span></div>
+    <div class="hareket-bsl">Kart Hareketi Ekle</div>
     <div class="hareket-bar">
-      <span class="hareket-dugme artis" title="Dilim 2'de aktifleşecek">
-        <span class="hd-ik">🛒</span><span class="hd-ad">Harcama</span><span class="hd-yon">BORÇ ↑</span></span>
-      <span class="hareket-dugme azalis" title="Dilim 2'de aktifleşecek">
-        <span class="hd-ik">💸</span><span class="hd-ad">Kart Ödeme</span><span class="hd-yon">BORÇ ↓</span></span>
-      <span class="hareket-dugme azalis" title="Dilim 2'de aktifleşecek">
-        <span class="hd-ik">↩️</span><span class="hd-ad">Harcama İade</span><span class="hd-yon">BORÇ ↓</span></span>
+      <a class="hareket-dugme artis" href="{% url 'core:kredi_karti_hareket_ekle' kart.pk 'harcama' %}">
+        <span class="hd-ik">🛒</span><span class="hd-ad">Harcama</span><span class="hd-yon">BORÇ ↑</span></a>
+      <a class="hareket-dugme azalis" href="{% url 'core:kredi_karti_hareket_ekle' kart.pk 'odeme' %}">
+        <span class="hd-ik">💸</span><span class="hd-ad">Kart Ödeme</span><span class="hd-yon">BORÇ ↓</span></a>
+      <a class="hareket-dugme azalis" href="{% url 'core:kredi_karti_hareket_ekle' kart.pk 'iade' %}">
+        <span class="hd-ik">↩️</span><span class="hd-ad">Harcama İade</span><span class="hd-yon">BORÇ ↓</span></a>
     </div>
-    <p class="yardim" style="margin-top:.8rem">Hareket motoru bir sonraki dilimde eklenecek
-      (otomatik dengeli fiş: Harcama → karşı borç / kart alacak; Ödeme → kart borç / banka·kasa alacak).</p>
   </section>
 
   <section class="icerik-kart">
@@ -146,6 +143,7 @@
           <th rowspan="2">Tarih</th><th rowspan="2">Fiş No</th><th rowspan="2">Açıklama</th>
           <th colspan="3" class="ekstre-grup">TL</th>
           <th colspan="4" class="ekstre-grup kolon-ayrac">Döviz (işlem PB)</th>
+          <th rowspan="2">İşlem</th>
         </tr>
         <tr>
           <th class="sag">Borç (ödeme/iade)</th><th class="sag">Alacak (harcama)</th><th class="sag">Bakiye</th>
@@ -155,6 +153,7 @@
         <tr>
           <th>Tarih</th><th>Fiş No</th><th>Açıklama</th>
           <th class="sag">Borç (ödeme/iade)</th><th class="sag">Alacak (harcama)</th><th class="sag">Bakiye</th>
+          <th>İşlem</th>
         </tr>
         {% endif %}
       </thead>
@@ -173,9 +172,14 @@
               <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
               <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
             {% endif %}
+            <td class="islem-hucre">{% if s.fis_pk in kk_fis_pks %}
+              <form method="post" action="{% url 'core:kredi_karti_hareket_iptal' kart.pk s.fis_pk %}"
+                    onsubmit="return confirm('Bu kart hareketi iptal edilsin mi?');" style="margin:0">
+                {% csrf_token %}<button type="submit" class="sil">İptal</button>
+              </form>{% endif %}</td>
           </tr>
         {% empty %}
-          <tr><td colspan="{% if kart.para_birimi != 'TRY' %}10{% else %}6{% endif %}" class="yardim"
+          <tr><td colspan="{% if kart.para_birimi != 'TRY' %}11{% else %}7{% endif %}" class="yardim"
                   style="text-align:center;padding:1.6rem 0">📄 {% if aciklama %}Bu açıklamayla eşleşen hareket yok.{% else %}Bu aralıkta hareket yok.{% endif %}</td></tr>
         {% endfor %}
         {% if not aciklama %}
@@ -184,6 +188,7 @@
           <td class="sag"></td><td class="sag"></td>
           <td class="sag mono">{{ ekstre.acilis|tr_bakiye }}</td>
           {% if kart.para_birimi != 'TRY' %}<td colspan="4" class="kolon-ayrac"></td>{% endif %}
+          <td></td>
         </tr>
         {% endif %}
       </tbody>
@@ -195,6 +200,7 @@
           <th class="sag">{{ ekstre.toplam_alacak|tr_para }}</th>
           <th class="sag">{{ ekstre.kapanis_bakiye|tr_bakiye }}</th>
           {% if kart.para_birimi != 'TRY' %}<th colspan="4" class="kolon-ayrac"></th>{% endif %}
+          <th></th>
         </tr>
       </tfoot>
       {% endif %}
