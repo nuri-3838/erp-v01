@@ -1031,7 +1031,9 @@ class KrediKarti(TemelModel):
     """Kredi kartı tanımı. Bakiye muhasebe hesabından (saklanmaz). Kart no yalnız son 4."""
 
     ad = models.CharField("kart adı", max_length=100)
-    banka_adi = models.CharField("banka adı", max_length=150, blank=True)
+    banka = models.ForeignKey(
+        Banka, verbose_name="banka", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="kredi_kartlari")
     kart_son4 = models.CharField("kart no (son 4)", max_length=4, blank=True)
     limit = models.DecimalField("kart limiti", max_digits=14, decimal_places=2, default=0)
     kesim_gunu = models.PositiveSmallIntegerField("hesap kesim günü", null=True, blank=True)

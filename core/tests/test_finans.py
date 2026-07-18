@@ -403,8 +403,10 @@ class FinansDigerViewTest(TestCase):
     def test_kredi_karti_detay_ve_liste_link(self):
         from decimal import Decimal
         from core.services.finans import kredi_karti_olustur
+        from core.models import Banka
         _hesap("309.01", "KREDİ KARTLARI")
-        k = kredi_karti_olustur(ad="bonus", banka_adi="garanti", kart_son4="1234",
+        b = Banka.objects.create(ad="GARANTİ", created_by=self.yon, updated_by=self.yon)
+        k = kredi_karti_olustur(ad="bonus", banka=b, kart_son4="1234",
                                 limit=Decimal("10000"), kesim_gunu=15, son_odeme_gunu=25,
                                 para_birimi="TRY", muhasebe_kodu="309.01", kullanici=self.yon)
         self.client.force_login(self.yon)

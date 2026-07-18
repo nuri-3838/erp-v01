@@ -15,7 +15,7 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    BankaHesap, Birim, Cari, CariKategori, CekSenet, Depo, FaturaTipi, HesapPlani, Kasa,
+    Banka, BankaHesap, Birim, Cari, CariKategori, CekSenet, Depo, FaturaTipi, HesapPlani, Kasa,
     Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
 )
@@ -607,7 +607,9 @@ class BankaHesapForm(forms.Form):
 
 class KrediKartiForm(forms.Form):
     ad = forms.CharField(label="Kart Adı", max_length=100)
-    banka_adi = forms.CharField(label="Banka Adı", max_length=150, required=False)
+    banka = forms.ModelChoiceField(
+        label="Banka", required=False, empty_label="— seçiniz —",
+        queryset=Banka.objects.filter(silindi=False).order_by("ad"))
     kart_son4 = forms.CharField(label="Kart No (Son 4)", max_length=4, required=False)
     limit = TRDecimalField(label="Kart Limiti", basamak=2, required=False)
     kesim_gunu = forms.IntegerField(label="Hesap Kesim Günü", min_value=1, max_value=31, required=False)

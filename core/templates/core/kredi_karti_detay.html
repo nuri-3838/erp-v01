@@ -81,7 +81,7 @@
         <span class="d-rozet yuk">● Yükümlülük</span>
       </div>
       <div class="detay-ad">{{ kart.ad }}{% if kart.kart_son4 %} <span style="opacity:.7;font-weight:600">**** {{ kart.kart_son4 }}</span>{% endif %}</div>
-      <div class="detay-alt">{{ kart.banka_adi|default:"" }}{% if kart.banka_adi %} · {% endif %}{% if kart.muhasebe %}{{ kart.muhasebe.hesap_kodu }} {{ kart.muhasebe.hesap_adi }}{% else %}Muhasebe hesabı tanımsız{% endif %}</div>
+      <div class="detay-alt">{{ kart.banka.ad|default:"" }}{% if kart.banka %} · {% endif %}{% if kart.muhasebe %}{{ kart.muhasebe.hesap_kodu }} {{ kart.muhasebe.hesap_adi }}{% else %}Muhasebe hesabı tanımsız{% endif %}</div>
     </div>
   </div>
 

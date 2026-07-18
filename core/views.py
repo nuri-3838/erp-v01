@@ -1727,7 +1727,7 @@ def kredi_karti_ekle(request):
             cd = form.cleaned_data
             try:
                 finans_servis.kredi_karti_olustur(
-                    ad=cd["ad"], banka_adi=cd["banka_adi"], kart_son4=cd["kart_son4"],
+                    ad=cd["ad"], banka=cd["banka"], kart_son4=cd["kart_son4"],
                     limit=cd["limit"], kesim_gunu=cd["kesim_gunu"],
                     son_odeme_gunu=cd["son_odeme_gunu"], para_birimi=cd["para_birimi"],
                     muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
@@ -1751,7 +1751,7 @@ def kredi_karti_duzenle(request, pk):
             cd = form.cleaned_data
             try:
                 finans_servis.kredi_karti_guncelle(
-                    kart, ad=cd["ad"], banka_adi=cd["banka_adi"], kart_son4=cd["kart_son4"],
+                    kart, ad=cd["ad"], banka=cd["banka"], kart_son4=cd["kart_son4"],
                     limit=cd["limit"], kesim_gunu=cd["kesim_gunu"],
                     son_odeme_gunu=cd["son_odeme_gunu"], para_birimi=cd["para_birimi"],
                     muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
@@ -1761,7 +1761,7 @@ def kredi_karti_duzenle(request, pk):
                 form.add_error(None, str(e))
     else:
         form = KrediKartiForm(initial={
-            "ad": kart.ad, "banka_adi": kart.banka_adi, "kart_son4": kart.kart_son4,
+            "ad": kart.ad, "banka": kart.banka_id, "kart_son4": kart.kart_son4,
             "limit": kart.limit, "kesim_gunu": kart.kesim_gunu,
             "son_odeme_gunu": kart.son_odeme_gunu, "para_birimi": kart.para_birimi,
             "muhasebe": kart.muhasebe.hesap_kodu}, mevcut_hesap=kart.muhasebe.hesap_kodu)

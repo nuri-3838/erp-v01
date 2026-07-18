@@ -238,11 +238,11 @@ def aktif_kredi_kartlari():
     return KrediKarti.objects.filter(silindi=False).select_related("muhasebe").order_by("ad")
 
 
-def kredi_karti_olustur(*, ad, banka_adi="", kart_son4="", limit=0, kesim_gunu=None,
+def kredi_karti_olustur(*, ad, banka=None, kart_son4="", limit=0, kesim_gunu=None,
                         son_odeme_gunu=None, para_birimi="TRY", muhasebe_kodu,
                         kullanici=None) -> KrediKarti:
     return KrediKarti.objects.create(
-        ad=_ad_dogrula(KrediKarti, ad), banka_adi=buyuk_harf_tr((banka_adi or "").strip()),
+        ad=_ad_dogrula(KrediKarti, ad), banka=banka,
         kart_son4=(kart_son4 or "").strip(), limit=_sayi(limit, "Limit"),
         kesim_gunu=_gun(kesim_gunu, "Kesim günü"),
         son_odeme_gunu=_gun(son_odeme_gunu, "Son ödeme günü"),
@@ -250,13 +250,13 @@ def kredi_karti_olustur(*, ad, banka_adi="", kart_son4="", limit=0, kesim_gunu=N
         created_by=kullanici, updated_by=kullanici)
 
 
-def kredi_karti_guncelle(k: KrediKarti, *, ad, banka_adi="", kart_son4="", limit=0,
+def kredi_karti_guncelle(k: KrediKarti, *, ad, banka=None, kart_son4="", limit=0,
                          kesim_gunu=None, son_odeme_gunu=None, para_birimi="TRY",
                          muhasebe_kodu, kullanici=None) -> KrediKarti:
     if k.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
     k.ad = _ad_dogrula(KrediKarti, ad, haric_pk=k.pk)
-    k.banka_adi = buyuk_harf_tr((banka_adi or "").strip())
+    k.banka = banka
     k.kart_son4 = (kart_son4 or "").strip()
     k.limit = _sayi(limit, "Limit")
     k.kesim_gunu = _gun(kesim_gunu, "Kesim günü")
@@ -264,7 +264,7 @@ def kredi_karti_guncelle(k: KrediKarti, *, ad, banka_adi="", kart_son4="", limit
     k.para_birimi = _pb(para_birimi)
     k.muhasebe = _yaprak_hesap_coz(muhasebe_kodu)
     k.updated_by = kullanici
-    k.save(update_fields=["ad", "banka_adi", "kart_son4", "limit", "kesim_gunu",
+    k.save(update_fields=["ad", "banka", "kart_son4", "limit", "kesim_gunu",
                           "son_odeme_gunu", "para_birimi", "muhasebe", "updated_by", "updated_at"])
     return k
 
