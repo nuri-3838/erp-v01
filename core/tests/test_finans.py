@@ -405,7 +405,8 @@ class FinansDigerViewTest(TestCase):
         from core.services.finans import kredi_karti_olustur
         from core.models import Banka
         _hesap("309.01", "KREDİ KARTLARI")
-        b = Banka.objects.create(ad="GARANTİ", created_by=self.yon, updated_by=self.yon)
+        b = Banka.objects.create(ad="GARANTİ BANKASI A.Ş.", kisa_ad="GARANTİ",
+                                 created_by=self.yon, updated_by=self.yon)
         k = kredi_karti_olustur(ad="bonus", banka=b, kart_son4="1234",
                                 limit=Decimal("10000"), kesim_gunu=15, son_odeme_gunu=25,
                                 para_birimi="TRY", muhasebe_kodu="309.01", kullanici=self.yon)
@@ -416,8 +417,14 @@ class FinansDigerViewTest(TestCase):
         self.assertContains(r, "Kart Ekstresi")
         self.assertContains(r, "DİLİM 2")               # hareket iskelet rozeti
         self.assertContains(r, "Güncel Borç")
+        self.assertContains(r, "GARANTİ")               # banka KISA ad gösterilir (detay)
+        self.assertNotContains(r, "A.Ş.")               # uzun resmi ad değil
         rl = self.client.get(reverse("core:kredi_kartlari"))
         self.assertContains(rl, reverse("core:kredi_karti_detay", args=[k.pk]))
+        self.assertContains(rl, "GARANTİ")              # listede de kısa ad
+        rf = self.client.get(reverse("core:kredi_karti_ekle"))
+        self.assertContains(rf, "GARANTİ")              # dropdown etiketi = kısa ad
+        self.assertNotContains(rf, "A.Ş.")
 
 
 class BankaHareketTest(TestCase):

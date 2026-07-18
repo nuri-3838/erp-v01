@@ -605,9 +605,16 @@ class BankaHesapForm(forms.Form):
         _muhasebe_kur(self, mevcut_hesap)
 
 
+class BankaKisaChoiceField(forms.ModelChoiceField):
+    """Banka açılır listesi etiketi = kısa ad (yoksa tam ad)."""
+
+    def label_from_instance(self, obj):
+        return obj.kisa_ad or obj.ad
+
+
 class KrediKartiForm(forms.Form):
     ad = forms.CharField(label="Kart Adı", max_length=100)
-    banka = forms.ModelChoiceField(
+    banka = BankaKisaChoiceField(
         label="Banka", required=False, empty_label="— seçiniz —",
         queryset=Banka.objects.filter(silindi=False).order_by("ad"))
     kart_son4 = forms.CharField(label="Kart No (Son 4)", max_length=4, required=False)
