@@ -803,3 +803,43 @@ class CariGirisBordroTest(TestCase):
         self.assertContains(r, reverse("core:cek_karsiliksiz"))
         self.assertContains(r, "Karşılıksız")
         self.assertContains(r, "Sorunlu")
+
+
+    def test_giris_doviz_karisik_tip_denge(self):
+        # Çok gruplu (çek+senet) döviz Cari Giriş: cari DENGE satırı tl_override ile denklenir.
+        import datetime
+        from decimal import Decimal
+        from core.models import Kur
+        from core.services.cek import cari_giris_bordrosu_olustur
+        Kur.objects.create(tarih=datetime.date(2026, 6, 29), usd_alis=Decimal("36.4517"))
+        g = cari_giris_bordrosu_olustur(
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 29), para_birimi="USD",
+            satirlar=[{"tip": "CEK", "tutar": "100,10", "vade": datetime.date(2026, 9, 1)},
+                      {"tip": "SENET", "tutar": "200,30", "vade": datetime.date(2026, 10, 1)}],
+            kullanici=self.yon)
+        s = {x.hesap_id: (x.borc, x.alacak) for x in g.fisler.get().satirlar.all()}
+        self.assertEqual(s["101.01"], (Decimal("3648.82"), Decimal("0.00")))   # portföy çek borç
+        self.assertEqual(s["121.01"], (Decimal("7301.28"), Decimal("0.00")))   # portföy senet borç
+        self.assertEqual(s["120.01"], (Decimal("0.00"), Decimal("10950.10")))  # cari alacak = denge
+        self.assertEqual(sum(v[0] for v in s.values()), sum(v[1] for v in s.values()))
+
+    def test_ciro_doviz_karisik_tip_denge(self):
+        # Çok gruplu döviz Cari Ciro: cari DENGE satırı (borç) tl_override ile denklenir.
+        import datetime
+        from decimal import Decimal
+        from core.models import Kur
+        from core.services.cek import cari_ciro_bordrosu_olustur, cari_giris_bordrosu_olustur
+        Kur.objects.create(tarih=datetime.date(2026, 6, 29), usd_alis=Decimal("36.4517"))
+        g = cari_giris_bordrosu_olustur(
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 29), para_birimi="USD",
+            satirlar=[{"tip": "CEK", "tutar": "100,10", "vade": datetime.date(2026, 9, 1)},
+                      {"tip": "SENET", "tutar": "200,30", "vade": datetime.date(2026, 10, 1)}],
+            kullanici=self.yon)
+        cek_ids = list(g.cek_senetler.values_list("pk", flat=True))
+        cb = cari_ciro_bordrosu_olustur(hedef_id=self.satici.pk, tarih=datetime.date(2026, 6, 29),
+                                        cek_ids=cek_ids, kullanici=self.yon)
+        s = {x.hesap_id: (x.borc, x.alacak) for x in cb.fisler.get().satirlar.all()}
+        self.assertEqual(s["320.01"], (Decimal("10950.10"), Decimal("0.00")))  # ciro carisi borç = denge
+        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("3648.82")))   # portföy çek alacak
+        self.assertEqual(s["121.01"], (Decimal("0.00"), Decimal("7301.28")))   # portföy senet alacak
+        self.assertEqual(sum(v[0] for v in s.values()), sum(v[1] for v in s.values()))

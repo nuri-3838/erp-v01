@@ -181,10 +181,15 @@ def _bordro_olustur(tan, *, cari_id, tarih, para_birimi="TRY", satirlar,
             created_by=kullanici, updated_by=kullanici)
     cek_taraf = tan["cek_taraf"]
     cari_taraf = "A" if cek_taraf == "B" else "B"
-    girdiler = [SatirGirdi(hesap_kodu=kod, taraf=cek_taraf, islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
-                for kod, tut in cek_satir]
+    # Çek/senet satırları (per tip) + cari DENGE satırı: dövizde per-tip yuvarlama toplamı tek
+    # cari satırından sapmasın diye cari TL'si tl_override ile çek satırları toplamına eşitlenir.
+    girdiler, cek_tl = [], Decimal("0")
+    for kod, tut in cek_satir:
+        cek_tl += yuvarla(tut * kur, 2)
+        girdiler.append(SatirGirdi(hesap_kodu=kod, taraf=cek_taraf,
+                                   islem_tutari=tut, islem_pb=pb, islem_kuru=kur))
     girdiler.append(SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf=cari_taraf,
-                               islem_tutari=toplam, islem_pb=pb, islem_kuru=kur))
+                               islem_tutari=toplam, islem_pb=pb, islem_kuru=kur, tl_override=cek_tl))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=bordro.aciklama,
                           kur_usd=None, kaynak=YevmiyeFisi.Kaynak.CEK_SENET, kullanici=kullanici)
@@ -401,10 +406,15 @@ def cari_ciro_bordrosu_olustur(*, hedef_id, tarih, cek_ids, aciklama="", kullani
         c.durum = CekSenet.Durum.CIRO
         c.updated_by = kullanici
         c.save(update_fields=["durum", "updated_by", "updated_at"])
+    # Alacak (per tip) + cari DENGE satırı (borç): dövizde yuvarlama farkını cari tl_override kapatır.
+    alacak_girdiler, alacak_tl = [], Decimal("0")
+    for kod, tut in alacak_satir:
+        alacak_tl += yuvarla(tut * kur, 2)
+        alacak_girdiler.append(SatirGirdi(hesap_kodu=kod, taraf="A",
+                                          islem_tutari=tut, islem_pb=pb, islem_kuru=kur))
     girdiler = [SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf="B",
-                           islem_tutari=toplam, islem_pb=pb, islem_kuru=kur)]
-    girdiler += [SatirGirdi(hesap_kodu=kod, taraf="A", islem_tutari=tut, islem_pb=pb, islem_kuru=kur)
-                 for kod, tut in alacak_satir]
+                           islem_tutari=toplam, islem_pb=pb, islem_kuru=kur, tl_override=alacak_tl)]
+    girdiler += alacak_girdiler
     try:
         fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=bordro.aciklama,
                           kur_usd=None, kaynak=YevmiyeFisi.Kaynak.CEK_SENET, kullanici=kullanici)
