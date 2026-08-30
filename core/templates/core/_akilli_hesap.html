@@ -1,6 +1,8 @@
-{# Ortak: select.akilli-sec öğelerini akıllı aramalı (filtreli açılır) hâle getirir.
-   Sayfa yüklenince mevcut tüm select.akilli-sec'ler otomatik bağlanır. Sonradan JS ile
-   eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) çağrılabilir. #}
+{% comment %}
+Ortak: select.akilli-sec öğelerini akıllı aramalı (filtreli açılır) hâle getirir.
+Sayfa yüklenince mevcut tüm select.akilli-sec'ler otomatik bağlanır. Sonradan JS ile
+eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) çağrılabilir.
+{% endcomment %}
 <script>
 (function(){
   var gListe = document.querySelector('.akilli-liste');
