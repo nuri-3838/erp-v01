@@ -55,8 +55,7 @@
 <table id="stk-tablo">
   <thead>
     <tr>
-      <th>Stok</th><th>Kategori</th>
-      <th>Üretim Br.</th><th>Fatura Br.</th><th class="sag">Çevirici</th><th>İşlem</th>
+      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th>
     </tr>
   </thead>
   <tbody>
@@ -73,25 +72,14 @@
         </td>
         <td><span class="rozet rozet-notr">{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</span></td>
         <td>{{ s.uretim_birimi.kisa_ad }}</td>
-        <td>{{ s.fatura_birimi.kisa_ad }}</td>
-        <td class="sag mono">{{ s.cevirici|tr_kur:4 }}</td>
-        <td>
-          <span class="islem-bag">
-            <a href="{% url 'core:stok_duzenle' s.pk %}">Düzenle</a>
-            <form method="post" action="{% url 'core:stok_sil' s.pk %}"
-                  onsubmit="return confirm('{{ s.kod }} stoğu silinsin mi?');">
-              {% csrf_token %}<button type="submit" class="sil">Sil</button>
-            </form>
-          </span>
-        </td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if ara %}🔍 “{{ ara }}” ile eşleşen stok yok.
         {% else %}📦 Henüz stok yok. “+ Yeni Stok” ile ekleyin.
           (Önce en az bir <strong>alt kategori</strong> tanımlı olmalı.){% endif %}</td></tr>
     {% endfor %}
-    <tr class="stk-bos-js"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+    <tr class="stk-bos-js"><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">
       🔍 Eşleşen stok yok.</td></tr>
   </tbody>
 </table>
