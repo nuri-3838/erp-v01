@@ -1764,6 +1764,17 @@ def satis_siparisleri(request):
                      "Satış Siparişleri", "📦")
 
 
+def _stok_meta():
+    """Kalem satırı JS'i için stok başına KDV oranı + üretim/fatura birim çevirisi."""
+    return {str(s.pk): {
+        "kdv": float(s.kdv.oran) if s.kdv_id else 0,
+        "cevirici": float(s.cevirici),
+        "uretim": s.uretim_birimi.kisa_ad,
+        "fatura": s.fatura_birimi.kisa_ad,
+    } for s in Stok.objects.filter(silindi=False)
+      .select_related("kdv", "uretim_birimi", "fatura_birimi")}
+
+
 def _ts_ekle(request, belge_tur, yon, baslik, emoji):
     ekran = _TS_EKRAN[(belge_tur, yon)]
     if request.method == "POST":
@@ -1790,11 +1801,9 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
     else:
         bform = TeklifSiparisForm(belge_tur=belge_tur)
         formset = TeklifSiparisKalemFormSet()
-    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
-               for s in Stok.objects.filter(silindi=False).select_related("kdv")}
     return render(request, "core/teklif_siparis_ekle.html",
                   {"bform": bform, "formset": formset, "baslik": baslik, "emoji": emoji,
-                   "stok_kdv": stok_kdv, "iptal_url": reverse("core:" + ekran)})
+                   "stok_meta": _stok_meta(), "iptal_url": reverse("core:" + ekran)})
 
 
 @ekran_gerekli("satinalma_teklifleri")
@@ -1953,12 +1962,10 @@ def teklif_siparis_duzenle(request, pk):
         ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
                for k in ts.kalemler.filter(silindi=False).select_related("stok")]
         formset = TeklifSiparisKalemFormSet(initial=ilk)
-    stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0
-               for s in Stok.objects.filter(silindi=False).select_related("kdv")}
     return render(request, "core/teklif_siparis_ekle.html",
                   {"bform": bform, "formset": formset,
                    "baslik": f"{ts.get_belge_tur_display()} Düzenle", "emoji": emoji,
-                   "stok_kdv": stok_kdv,
+                   "stok_meta": _stok_meta(),
                    "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
 

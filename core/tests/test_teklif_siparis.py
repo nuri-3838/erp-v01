@@ -432,6 +432,19 @@ class TeklifSiparisViewTest(TestCase):
             self.assertEqual(
                 self.client.get(reverse("core:" + EKLE_URL[ad])).status_code, 403)
 
+    def test_ekle_formunda_stok_meta_cevirici_ve_birimler(self):
+        """Kalem satırındaki 'Üretim Miktarı' JS'i stok_meta context'ine bağlı: her stok
+        için KDV oranı + çevirici + üretim/fatura birim kısa adı gelmeli."""
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satinalma_teklif_ekle"))
+        self.assertEqual(r.status_code, 200)
+        meta = r.context["stok_meta"][str(self.stok.pk)]
+        self.assertEqual(meta["cevirici"], float(self.stok.cevirici))
+        self.assertEqual(meta["uretim"], self.stok.uretim_birimi.kisa_ad)
+        self.assertEqual(meta["fatura"], self.stok.fatura_birimi.kisa_ad)
+        self.assertContains(r, "Üretim Miktarı")
+        self.assertContains(r, "uretim-miktar-yardimci")
+
     def test_her_4_ekranda_olustur_ve_detay(self):
         from core.models import TeklifSiparis
         self.client.force_login(self.yon)
