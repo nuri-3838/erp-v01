@@ -471,7 +471,10 @@ class Stok(TemelModel):
     # 1 üretim birimi = cevirici × fatura birimi.
     cevirici = models.DecimalField("çevirici", max_digits=18, decimal_places=6, default=1)
     # KDV/tevkifat artık serbest sayı değil; AYARLAR tanım listelerine FK (otomatik
-    # yevmiye buradan muhasebe hesabını/oranı okur). Opsiyonel.
+    # yevmiye buradan muhasebe hesabını/oranı okur). KDV formda/serviste ZORUNLU
+    # (stok_olustur/stok_guncelle boşsa reddeder); model null=True kalır çünkü
+    # KDV'siz kart senaryosu başka noktalarda (örn. teklif/sipariş KDV=0 hesap testi)
+    # bilinçli olarak destekleniyor. Tevkifat tamamen opsiyonel.
     kdv = models.ForeignKey(
         "KdvOrani", verbose_name="KDV oranı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="stoklar")

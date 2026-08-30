@@ -6,7 +6,7 @@
 - Kart yalnız ALT (yaprak değil — "alt") kategoriye bağlanır (ust dolu). Üst kategoriye
   stok açılamaz. Kategori ve kod oluşturmadan sonra DEĞİŞMEZ.
 - Üretim ve fatura birimi farklı olabilir; ``cevirici`` = 1 üretim birimi kaç fatura
-  birimi eder (> 0). KDV oranı ≥ 0.
+  birimi eder (> 0). KDV oranı ZORUNLU (tevkifat opsiyonel kalır).
 - Silme: soft-delete (iz kalır).
 """
 from __future__ import annotations
@@ -60,9 +60,9 @@ def _birim_coz(birim_id, etiket):
 
 
 def _kdv_coz(kdv_id):
-    """Opsiyonel KDV oranı FK çözümü (boşsa None)."""
+    """Zorunlu KDV oranı FK çözümü."""
     if not kdv_id:
-        return None
+        raise StokHatasi("KDV oranı seçilmelidir.")
     k = KdvOrani.objects.filter(pk=kdv_id, silindi=False).first()
     if k is None:
         raise StokHatasi("KDV oranı bulunamadı.")

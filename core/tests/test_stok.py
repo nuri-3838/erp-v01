@@ -85,13 +85,20 @@ class StokServisTest(TestCase):
         with self.assertRaises(StokHatasi):
             stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
                          fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
-                         tedarikci_id=99999)
+                         kdv_id=_kdv("20").pk, tedarikci_id=99999)
 
-    def test_kdv_tevkifat_opsiyonel(self):
+    def test_kdv_zorunlu(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(StokHatasi):
+            stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"))
+
+    def test_tevkifat_opsiyonel(self):
         _, alt, _, adet, kg = _veri()
         s = stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
-                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"))
-        self.assertIsNone(s.kdv_id)
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk)
+        self.assertIsNotNone(s.kdv_id)
         self.assertIsNone(s.tevkifat_id)
 
     def test_kdv_gecersiz_id_red(self):
@@ -106,7 +113,7 @@ class StokServisTest(TestCase):
         with self.assertRaises(StokHatasi):
             stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
                          fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
-                         kritik_stok=Decimal("-1"))
+                         kdv_id=_kdv("20").pk, kritik_stok=Decimal("-1"))
 
     def test_ust_kategoriye_stok_red(self):
         ust, _, _, adet, kg = _veri()
@@ -178,6 +185,7 @@ class KullanimdaSilmeKorumaTest(TestCase):
 
     def _stok(self, **kw):
         _, alt, _, adet, kg = _veri()
+        kw.setdefault("kdv_id", _kdv("20").pk)
         return stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
                             fatura_birimi_id=kg.pk, cevirici=Decimal("1"), **kw)
 
@@ -264,7 +272,7 @@ class StokViewTest(TestCase):
     def test_sil_post(self):
         s = stok_olustur(ad="levha", kategori_id=self.alt.pk,
                          uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
-                         cevirici=Decimal("1"))
+                         cevirici=Decimal("1"), kdv_id=_kdv("20").pk)
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:stok_sil", args=[s.pk]))
         self.assertEqual(r.status_code, 302)
@@ -312,3 +320,25 @@ class StokViewTest(TestCase):
         self.client.force_login(self.bos)
         self.assertEqual(
             self.client.get(reverse("core:stok_detay", args=[s.pk])).status_code, 403)
+
+    def test_kategori_sirasi_ust_kod_once(self):
+        """Alt kategori seçimi önce ÜST kodu, sonra ALT kodu ile sıralanmalı
+        (yalnız alt koduna göre sıralarsa farklı üstlerin altları karışır)."""
+        ust_b = kategori_olustur(ad="ust b", kod="200")
+        kategori_olustur(ad="alt kucuk kod", kod="10", ust_id=ust_b.pk)
+        ust_a = kategori_olustur(ad="ust a", kod="100")
+        kategori_olustur(ad="alt buyuk kod", kod="20", ust_id=ust_a.pk)
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_ekle"))
+        etiketler = [f"{k.ust.kod}-{k.kod}"
+                    for k in r.context["form"].fields["kategori"].queryset]
+        self.assertLess(etiketler.index("100-20"), etiketler.index("200-10"))
+
+    def test_ekle_kdv_bos_reddedilir(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:stok_ekle"), {
+            "ad": "kdvsiz", "kategori": str(self.alt.pk),
+            "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
+            "cevirici": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(Stok.objects.filter(ad="KDVSIZ").exists())

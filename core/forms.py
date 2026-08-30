@@ -313,7 +313,7 @@ class StokForm(forms.Form):
         empty_label="— birim seç —")
     cevirici = TRDecimalField(label="Çevirici", basamak=4, initial=Decimal("1"))
     kdv = forms.ModelChoiceField(
-        label="KDV Oranı", queryset=KdvOrani.objects.none(), required=False,
+        label="KDV Oranı", queryset=KdvOrani.objects.none(),
         empty_label="— KDV oranı seç —")
     tevkifat = forms.ModelChoiceField(
         label="Tevkifat Oranı", queryset=TevkifatOrani.objects.none(), required=False,
@@ -339,12 +339,13 @@ class StokForm(forms.Form):
         self.fields["tedarikci"].queryset = (
             Cari.objects.filter(silindi=False).order_by("unvan"))
         self.fields["tedarikci"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["tedarikci"].widget.attrs["class"] = "akilli-sec"
         if duzenle:
             self.fields.pop("kategori")
         else:
             self.fields["kategori"].queryset = (
                 Kategori.objects.filter(silindi=False, ust__isnull=False)
-                .select_related("ust").order_by("kod"))
+                .select_related("ust").order_by("ust__kod", "kod"))
             self.fields["kategori"].label_from_instance = (
                 lambda o: f"{o.ust.kod}-{o.kod}  {o.ust.ad} › {o.ad}")
 

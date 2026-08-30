@@ -74,7 +74,7 @@
       <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi &amp; Stok Seviyesi</h2>
       <div class="izgara">
         <div class="alan">
-          <label for="{{ form.kdv.id_for_label }}">KDV Oranı</label>
+          <label for="{{ form.kdv.id_for_label }}">KDV Oranı <span class="zorunlu">*</span></label>
           {{ form.kdv }}
           {% for e in form.kdv.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
@@ -93,7 +93,6 @@
           <label for="{{ form.tedarikci.id_for_label }}">Tedarikçi (Cari)</label>
           {{ form.tedarikci }}
           {% for e in form.tedarikci.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <p class="yardim">Şimdilik serbest metin (Cari modülü ileride).</p>
         </div>
       </div>
     </section>
@@ -150,4 +149,5 @@
   if(sel.value) kodCek();
 })();
 </script>
+{% include "core/_akilli_hesap.html" %}
 {% endblock %}
