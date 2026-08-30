@@ -13,7 +13,7 @@ from core.services.birim import birim_olustur
 from core.services.cari import CariHatasi, cari_sil
 from core.services.kategori import kategori_olustur
 from core.services.stok import (StokHatasi, sonraki_stok_kodu, stok_guncelle,
-                                 stok_olustur, stok_sil)
+                                 stok_kopyala, stok_olustur, stok_sil)
 from core.services.tanim import (TanimHatasi, kdv_orani_sil, tevkifat_orani_sil)
 
 
@@ -154,6 +154,25 @@ class StokServisTest(TestCase):
         self.assertEqual((s.ad, s.uretim_birimi_id, s.kdv.oran),
                          ("YENİ AD", kg.pk, Decimal("10.00")))
 
+    def test_kopyala_ayni_bilgiler_yeni_kod(self):
+        _, alt, _, adet, kg = _veri()
+        c = _cari()
+        s = stok_olustur(ad="orijinal", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("2.5"),
+                         kdv_id=_kdv("20").pk, tevkifat_id=_tevkifat().pk,
+                         kritik_stok=Decimal("50"), tedarikci_id=c.pk)
+        kopya = stok_kopyala(s, kullanici=None)
+        self.assertNotEqual(kopya.pk, s.pk)
+        self.assertEqual(kopya.kod, "150-10-0002")          # sıradaki numara
+        self.assertEqual(
+            (kopya.ad, kopya.kategori_id, kopya.uretim_birimi_id, kopya.fatura_birimi_id,
+             kopya.cevirici, kopya.kdv_id, kopya.tevkifat_id, kopya.kritik_stok,
+             kopya.tedarikci_id),
+            (s.ad, s.kategori_id, s.uretim_birimi_id, s.fatura_birimi_id,
+             s.cevirici, s.kdv_id, s.tevkifat_id, s.kritik_stok, s.tedarikci_id))
+        s.refresh_from_db()
+        self.assertEqual(s.kod, "150-10-0001")               # orijinal değişmedi
+
     def test_sil_soft_delete(self):
         _, alt, _, adet, kg = _veri()
         s = self._stok(alt, adet, kg)
@@ -278,6 +297,23 @@ class StokViewTest(TestCase):
         self.assertEqual(r.status_code, 302)
         s.refresh_from_db()
         self.assertTrue(s.silindi)
+
+    def test_kopyala_post(self):
+        s = self._ornek_stok()
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:stok_kopyala", args=[s.pk]))
+        kopya = Stok.objects.exclude(pk=s.pk).get(ad=s.ad)
+        self.assertRedirects(r, reverse("core:stok_detay", args=[kopya.pk]))
+        self.assertEqual((kopya.ad, kopya.kategori_id, kopya.kdv_id, kopya.cevirici),
+                         (s.ad, s.kategori_id, s.kdv_id, s.cevirici))
+        self.assertNotEqual(kopya.kod, s.kod)
+
+    def test_kopyala_get_kopyalamiyor(self):
+        s = self._ornek_stok()
+        onceki = Stok.objects.count()
+        self.client.force_login(self.yetkili)
+        self.client.get(reverse("core:stok_kopyala", args=[s.pk]))
+        self.assertEqual(Stok.objects.count(), onceki)
 
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)

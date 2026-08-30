@@ -77,6 +77,7 @@ urlpatterns = [
     path("stoklar/depolar/<int:pk>/sil/", views.depo_sil, name="depo_sil"),
     path("stoklar/<int:pk>/duzenle/", views.stok_duzenle, name="stok_duzenle"),
     path("stoklar/<int:pk>/sil/", views.stok_sil, name="stok_sil"),
+    path("stoklar/<int:pk>/kopyala/", views.stok_kopyala, name="stok_kopyala"),
     path("stoklar/kategoriler/", views.kategoriler, name="kategoriler"),
     path("stoklar/kategoriler/ekle/", views.kategori_ekle, name="kategori_ekle"),
     path("stoklar/kategoriler/<int:pk>/duzenle/", views.kategori_duzenle, name="kategori_duzenle"),

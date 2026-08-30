@@ -55,6 +55,9 @@
     <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
     <div class="detay-aksiyon">
       <a class="dugme" href="{% url 'core:stok_duzenle' stok.pk %}">✏️ Düzenle</a>
+      <form method="post" action="{% url 'core:stok_kopyala' stok.pk %}" style="margin:0">
+        {% csrf_token %}<button type="submit" class="dugme-ikincil">📄 Kopya</button>
+      </form>
       <form method="post" action="{% url 'core:stok_sil' stok.pk %}" style="margin:0"
             onsubmit="return confirm('{{ stok.kod }} stoğu silinsin mi?');">
         {% csrf_token %}<button type="submit" class="sil">Sil</button>

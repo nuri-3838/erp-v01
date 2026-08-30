@@ -701,6 +701,16 @@ def stok_sil(request, pk):
 
 
 @ekran_gerekli("stoklar")
+def stok_kopyala(request, pk):
+    stok = get_object_or_404(Stok, pk=pk, silindi=False)
+    if request.method == "POST":
+        yeni = stok_servis.stok_kopyala(stok, kullanici=request.user)
+        messages.success(request, f"Stok kopyalandı: {yeni.kod} — {yeni.ad}")
+        return redirect("core:stok_detay", pk=yeni.pk)
+    return redirect("core:stok_detay", pk=stok.pk)
+
+
+@ekran_gerekli("stoklar")
 def stok_kod_api(request):
     """Yeni stok ekranı için: seçilen ALT kategoriye göre sıradaki otomatik kodu döndürür."""
     kod = None
