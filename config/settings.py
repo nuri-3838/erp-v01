@@ -136,8 +136,8 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     # HSTS: ÖNCE küçük (5 dk); canlıda çalıştığı doğrulanınca büyütülecek.
-    # include_subdomains/preload ŞİMDİLİK KAPALI — yalnız test.semtahome.com’a
-    # uygulanır; subdomainler ve eski sistem (erp.semtahome.com) etkilenmez.
+    # include_subdomains/preload ŞİMDİLİK KAPALI — yalnız erp.semtahome.com’a
+    # uygulanır; subdomainler etkilenmez.
     SECURE_HSTS_SECONDS = 300
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False
     SECURE_HSTS_PRELOAD = False
