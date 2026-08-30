@@ -735,6 +735,10 @@ class TeklifSiparisViewTest(TestCase):
         # teklif detayında artık "Siparişe Çevir" değil, dönüştüğü siparişe link var
         d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
         self.assertNotContains(d1, reverse("core:teklif_siparise_cevir", args=[t.pk]))
+        self.assertContains(d1, "Siparişe Dönüştü")            # hero rozeti
+        # liste sayfasında da aynı belge için rozet görünmeli
+        rl = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertContains(rl, "Siparişe Dönüştü")
         self.assertContains(d1, reverse("core:teklif_siparis_detay", args=[siparis.pk]))
         # sipariş detayında kaynak teklife link var
         d2 = self.client.get(reverse("core:teklif_siparis_detay", args=[siparis.pk]))
@@ -743,6 +747,19 @@ class TeklifSiparisViewTest(TestCase):
         # tekrar dönüştürme denemesi hata mesajıyla teklife geri döner
         r2 = self.client.post(reverse("core:teklif_siparise_cevir", args=[t.pk]))
         self.assertRedirects(r2, reverse("core:teklif_siparis_detay", args=[t.pk]))
+
+    def test_donusmemis_onayli_teklifte_rozet_yok(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        t = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(t, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
+        self.assertNotContains(d, "Siparişe Dönüştü")
 
     def test_taslak_teklifte_donusturme_butonu_yok(self):
         import datetime
@@ -857,6 +874,10 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         self.assertEqual(sip.fatura_id, fatura.pk)
         self.assertEqual(fatura.satirlar.filter(silindi=False).count(), 1)
         self.assertIsNotNone(fatura.fis_id)                        # yevmiye fişi de üretildi
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[sip.pk]))
+        self.assertContains(d, "Faturaya Dönüştü")                 # hero rozeti
+        rl = self.client.get(reverse("core:satis_siparisleri"))
+        self.assertContains(rl, "Faturaya Dönüştü")                # liste rozeti
 
     def test_taslak_siparis_faturaya_cevrilemez(self):
         import datetime

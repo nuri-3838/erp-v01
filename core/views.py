@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
 from django.forms import formset_factory
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -1732,7 +1732,10 @@ TeklifSiparisKalemFormSet = formset_factory(
 
 def _ts_liste(request, belge_tur, yon, baslik, emoji):
     ara = (request.GET.get("ara") or "").strip()
+    donusen_siparis_var = TeklifSiparis.objects.filter(
+        kaynak_teklif=OuterRef("pk"), silindi=False)
     kayitlar = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
+                .annotate(donustu=Exists(donusen_siparis_var))
                 .prefetch_related("kalemler__kdv", "kalemler__tevkifat"))
     if ara:
         buyuk = buyuk_harf_tr(ara)

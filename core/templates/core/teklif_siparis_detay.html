@@ -47,6 +47,8 @@
         {% elif ts.durum == 'ONAYLI' %}<span class="d-rozet aktif">● Onaylı</span>
         {% else %}<span class="d-rozet notr">Taslak</span>{% endif %}
         <span class="d-rozet tip">{{ ts.get_yon_display }}</span>
+        {% if donusen_siparis %}<span class="d-rozet aktif">🔁 Siparişe Dönüştü</span>{% endif %}
+        {% if donusen_fatura %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% endif %}
       </div>
       <div class="detay-ad">{{ ts.get_belge_tur_display }}</div>
       <div class="detay-alt"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }} · {{ ts.tarih|date:"d.m.Y" }}</div>

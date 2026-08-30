@@ -70,7 +70,9 @@
         </td>
         <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
         <td>{% if k.belge_no %}<span class="ts-belge-no">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
-        <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
+        <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>
+          {% if k.donustu %}<span class="rozet rozet-notr">🔁 Siparişe Dönüştü</span>{% endif %}
+          {% if k.fatura_id %}<span class="rozet rozet-notr">🧾 Faturaya Dönüştü</span>{% endif %}</td>
         <td class="sag mono">{{ k.odenecek|tr_kur:2 }} {{ k.para_birimi }}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>
