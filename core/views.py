@@ -1708,32 +1708,6 @@ def banka_hesap_sil(request, pk):
     return redirect("core:banka_detay", pk=banka_pk)
 
 
-# === TEKLİF & SİPARİŞ — iskelet (model/CRUD sonraki dilimde) ===
-def _teklif_siparis_iskelet(request, baslik, emoji):
-    return render(request, "core/teklif_siparis_iskelet.html",
-                  {"baslik": baslik, "emoji": emoji})
-
-
-@ekran_gerekli("satinalma_teklifleri")
-def satinalma_teklifleri(request):
-    return _teklif_siparis_iskelet(request, "Satınalma Teklifleri", "📥")
-
-
-@ekran_gerekli("satinalma_siparisleri")
-def satinalma_siparisleri(request):
-    return _teklif_siparis_iskelet(request, "Satınalma Siparişleri", "🛒")
-
-
-@ekran_gerekli("satis_teklifleri")
-def satis_teklifleri(request):
-    return _teklif_siparis_iskelet(request, "Satış Teklifleri", "📤")
-
-
-@ekran_gerekli("satis_siparisleri")
-def satis_siparisleri(request):
-    return _teklif_siparis_iskelet(request, "Satış Siparişleri", "📦")
-
-
 # === TEKLİF & SİPARİŞ — Satınalma/Satış Teklifi ve Siparişi (yevmiye/stok üretmez) ===
 _TS_EKRAN = {
     (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.ALIS): "satinalma_teklifleri",
@@ -1752,11 +1726,17 @@ TeklifSiparisKalemFormSet = formset_factory(
 
 
 def _ts_liste(request, belge_tur, yon, baslik, emoji):
+    ara = (request.GET.get("ara") or "").strip()
     kayitlar = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
                 .prefetch_related("kalemler__kdv"))
+    if ara:
+        buyuk = buyuk_harf_tr(ara)
+        kayitlar = kayitlar.filter(
+            Q(cari__unvan__contains=buyuk) | Q(cari__kod__icontains=ara)
+            | Q(belge_no__icontains=ara))
     sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
     return render(request, "core/teklif_siparis_listesi.html",
-                  {"kayitlar": sayfa, "baslik": baslik, "emoji": emoji,
+                  {"kayitlar": sayfa, "baslik": baslik, "emoji": emoji, "ara": ara,
                    "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
 
 

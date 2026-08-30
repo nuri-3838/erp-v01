@@ -4,22 +4,72 @@
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
-  <div><h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ baslik }}</h1></div>
+<style>
+  .ts-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .ts-arama-cubuk { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .ts-arama-kutu { position:relative; flex:1 1 20rem; }
+  .ts-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
+    border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
+    font-size:.95rem; transition:border-color .15s, box-shadow .15s; }
+  .ts-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
+    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
+  .ts-arama-ikon { position:absolute; left:.85rem; top:50%; transform:translateY(-50%);
+    font-size:1rem; opacity:.55; pointer-events:none; }
+  .ts-arama-temizle { display:none; }
+  .ts-arama-temizle.gorunur { display:inline-flex; }
+
+  .ts-hucre { display:flex; align-items:center; gap:.65rem; }
+  .ts-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
+    font-size:1.05rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
+    border:1px solid rgba(33,56,95,.08); }
+  .ts-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
+  .ts-hucre .ad a { color:inherit; text-decoration:none; }
+  .ts-hucre .ad a:hover { color:var(--turuncu-koyu); }
+  .ts-hucre .alt { font-size:.78rem; color:var(--metin-soluk); }
+  .ts-belge-no { font-family:"Cascadia Mono",Consolas,monospace; font-size:.85rem; }
+
+  .ts-satir[hidden] { display:none; }
+  .ts-bos-js { display:none; }
+  .ts-bos-js.gorunur { display:table-row; }
+</style>
+
+<div class="ts-ust">
+  <h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ baslik }}</h1>
   <a class="dugme" href="{% url ekle_url %}">+ Yeni</a>
 </div>
 
+<form method="get" class="ts-arama-cubuk" id="ts-arama-form">
+  <div class="ts-arama-kutu">
+    <span class="ts-arama-ikon">🔍</span>
+    <input type="text" id="ts-arama" name="ara" value="{{ ara }}"
+           placeholder="Cari veya belge no ara…" autocomplete="off">
+  </div>
+  <button type="submit" class="birincil">Ara</button>
+  <a class="iptal-bag ts-arama-temizle{% if ara %} gorunur{% endif %}" id="ts-arama-temizle"
+     href="?">Temizle</a>
+</form>
+
+<p class="sayfa-alt">{{ kayitlar.paginator.count }} kayıt{% if kayitlar.paginator.num_pages > 1 %} · sayfa {{ kayitlar.number }}/{{ kayitlar.paginator.num_pages }}{% endif %}.</p>
+
 <div class="tablo-kapsayici">
-<table>
+<table id="ts-tablo">
   <thead><tr>
-    <th>Tarih</th><th>Cari</th><th>Belge No</th><th>Durum</th><th class="sag">Genel Toplam</th><th>İşlem</th>
+    <th>Cari</th><th>Tarih</th><th>Belge No</th><th>Durum</th><th class="sag">Genel Toplam</th><th>İşlem</th>
   </tr></thead>
   <tbody>
     {% for k in kayitlar %}
-      <tr>
+      <tr class="ts-satir">
+        <td>
+          <div class="ts-hucre">
+            <span class="ts-ikon">🧑‍💼</span>
+            <div>
+              <div class="ad"><a href="{% url 'core:teklif_siparis_detay' k.pk %}">{{ k.cari.unvan }}</a></div>
+              <div class="alt">{{ k.cari.kod }}</div>
+            </div>
+          </div>
+        </td>
         <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
-        <td><a href="{% url 'core:teklif_siparis_detay' k.pk %}">{{ k.cari.unvan }}</a></td>
-        <td>{% if k.belge_no %}<span class="mono">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if k.belge_no %}<span class="ts-belge-no">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
         <td class="sag mono">{{ k.genel_toplam|tr_kur:2 }} {{ k.para_birimi }}</td>
         <td><span class="islem-bag">
@@ -31,16 +81,51 @@
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara %}🔍 “{{ ara }}” ile eşleşen kayıt yok.
+        {% else %}{{ emoji }} Henüz kayıt yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
+    <tr class="ts-bos-js"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+      🔍 Eşleşen kayıt yok.</td></tr>
   </tbody>
 </table>
 </div>
 {% if kayitlar.paginator.num_pages > 1 %}
 <div class="sayfalama">
-  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}">‹ Önceki</a>{% endif %}
+  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}{% if ara %}&ara={{ ara|urlencode }}{% endif %}">‹ Önceki</a>{% endif %}
   <span>{{ kayitlar.number }} / {{ kayitlar.paginator.num_pages }}</span>
-  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}">Sonraki ›</a>{% endif %}
+  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}{% if ara %}&ara={{ ara|urlencode }}{% endif %}">Sonraki ›</a>{% endif %}
 </div>
 {% endif %}
+
+<script>
+(function(){
+  var girdi = document.getElementById('ts-arama');
+  var satirlar = Array.prototype.slice.call(document.querySelectorAll('.ts-satir'));
+  var bosSatir = document.querySelector('.ts-bos-js');
+  var temizle = document.getElementById('ts-arama-temizle');
+  if(!girdi || !satirlar.length) return;
+
+  // Aranabilir metin satırın kendi görünen içeriğinden türetilir (TR-uyumlu küçük harf).
+  // Not: bu yalnız BU SAYFADAKİ (sayfalanmış) satırları anında filtreler; tüm kayıtlar
+  // arasında aramak için "Ara" butonu/Enter sunucu tarafı aramayı tetikler.
+  satirlar.forEach(function(tr){
+    tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
+  });
+
+  function filtrele(){
+    var q = girdi.value.trim().toLocaleLowerCase('tr');
+    var n = 0;
+    satirlar.forEach(function(tr){
+      var gorunsun = !q || tr.dataset.arama.indexOf(q) > -1;
+      tr.hidden = !gorunsun;
+      if(gorunsun) n++;
+    });
+    if(bosSatir) bosSatir.classList.toggle('gorunur', n === 0 && !!q);
+    if(temizle) temizle.classList.toggle('gorunur', !!q);
+  }
+  girdi.addEventListener('input', filtrele);
+  if(girdi.value) filtrele();
+})();
+</script>
 {% endblock %}

@@ -460,6 +460,25 @@ class TeklifSiparisViewTest(TestCase):
             rl = self.client.get(reverse("core:" + ekran))
             self.assertContains(rl, reverse("core:teklif_siparis_detay", args=[ts.pk]))
 
+    def test_liste_arama_cari_ve_belge_no(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(ts, kullanici=self.yon)   # belge_no yalnız onaylıda üretilir
+        ts.refresh_from_db()
+        self.client.force_login(self.yon)
+        r_cari = self.client.get(reverse("core:satis_teklifleri"), {"ara": "müşteri b"})
+        self.assertContains(r_cari, ts.belge_no)
+        r_belge = self.client.get(reverse("core:satis_teklifleri"), {"ara": ts.belge_no})
+        self.assertContains(r_belge, ts.belge_no)
+        r_yok = self.client.get(reverse("core:satis_teklifleri"), {"ara": "olmayan-xyz"})
+        self.assertNotContains(r_yok, ts.belge_no)
+        self.assertContains(r_yok, "eşleşen kayıt yok")
+
     def test_bos_kalemle_kaydedilmez(self):
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:satis_teklif_ekle"), {

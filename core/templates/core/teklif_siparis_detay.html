@@ -2,91 +2,132 @@
 {% load core_extras %}
 {% block baslik %}{{ ts.get_belge_tur_display }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ ts.get_belge_tur_display }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
-  <div>
+<style>
+  .detay-kapsa { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+  .detay-ustbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .detay-aksiyon { display:flex; gap:.5rem; flex-wrap:wrap; }
+  .detay-baslik-kart { background:linear-gradient(135deg, #21385f 0%, var(--lacivert) 55%, var(--lacivert-koyu) 100%);
+    color:#fff; border-radius:22px; padding:1.3rem 1.5rem; display:flex; gap:1.15rem; align-items:flex-start;
+    box-shadow:var(--golge-lg); border-bottom:4px solid transparent;
+    border-image:linear-gradient(90deg,var(--turuncu),#36d399) 1; }
+  .detay-ikon { width:64px; height:64px; border-radius:16px; background:rgba(255,255,255,.12);
+    display:grid; place-items:center; font-size:1.9rem; flex:0 0 auto; }
+  .detay-rozetler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.45rem; }
+  .d-rozet { font-size:.7rem; font-weight:700; padding:.22rem .62rem; border-radius:999px; }
+  .d-rozet.kod { background:var(--turuncu); color:#fff; font-family:"Cascadia Mono",Consolas,monospace; }
+  .d-rozet.aktif { background:rgba(54,211,153,.22); color:#bff5d8; }
+  .d-rozet.notr { background:rgba(255,255,255,.16); color:#dbe6ff; }
+  .d-rozet.tip { background:rgba(255,255,255,.16); color:#dbe6ff; }
+  .d-rozet.hata { background:rgba(255,107,129,.24); color:#ffd9df; }
+  .detay-ad { font-size:1.5rem; font-weight:750; margin:.05rem 0; letter-spacing:-.01em; line-height:1.2; }
+  .detay-alt { color:rgba(255,255,255,.82); font-size:.92rem; }
+  .kv { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:.9rem 1.6rem; }
+  @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
+  .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
+  .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .kv .dg { font-weight:600; font-size:.98rem; }
+</style>
+
+<div class="detay-kapsa">
+  <div class="detay-ustbar">
     <a class="ust-link" href="{% url liste_url %}">← Geri</a>
-    <h1 class="ust-baslik"><span class="emoji">{{ emoji }}</span>{{ ts.get_belge_tur_display }}{% if ts.belge_no %} · {{ ts.belge_no }}{% endif %}
-      {% if not ts.silindi %}<span class="rozet {% if ts.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}" style="font-size:.6em;vertical-align:middle;margin-left:.5rem">{{ ts.get_durum_display }}</span>{% endif %}</h1>
   </div>
-  <span class="islem-bag">
-    <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}" target="_blank">📄 PDF</a>
-    {% if not ts.silindi %}
-      {% if ts.durum == "TASLAK" %}
-      <form method="post" action="{% url 'core:teklif_siparis_onayla' ts.pk %}" style="margin:0">
-        {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
-      {% elif not donusen_siparis and not donusen_fatura %}
-      <form method="post" action="{% url 'core:teklif_siparis_onayi_geri_al' ts.pk %}" onsubmit="return confirm('Onay geri alınsın mı? Belge tekrar taslağa döner.');" style="margin:0">
-        {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">↩️ Onayı Geri Al</button></form>
+
+  {% if ts.silindi %}<div class="uyari"><div>⚠️ Bu belge iptal edilmiş.</div></div>{% endif %}
+
+  <div class="detay-baslik-kart">
+    <span class="detay-ikon">{{ emoji }}</span>
+    <div style="flex:1">
+      <div class="detay-rozetler">
+        {% if ts.belge_no %}<span class="d-rozet kod">{{ ts.belge_no }}</span>{% endif %}
+        {% if ts.silindi %}<span class="d-rozet hata">İptal Edildi</span>
+        {% elif ts.durum == 'ONAYLI' %}<span class="d-rozet aktif">● Onaylı</span>
+        {% else %}<span class="d-rozet notr">Taslak</span>{% endif %}
+        <span class="d-rozet tip">{{ ts.get_yon_display }}</span>
+      </div>
+      <div class="detay-ad">{{ ts.get_belge_tur_display }}</div>
+      <div class="detay-alt"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }} · {{ ts.tarih|date:"d.m.Y" }}</div>
+    </div>
+    <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}" target="_blank">📄 PDF</a>
+      {% if not ts.silindi %}
+        {% if ts.durum == "TASLAK" %}
+        <form method="post" action="{% url 'core:teklif_siparis_onayla' ts.pk %}" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
+        {% elif not donusen_siparis and not donusen_fatura %}
+        <form method="post" action="{% url 'core:teklif_siparis_onayi_geri_al' ts.pk %}" onsubmit="return confirm('Onay geri alınsın mı? Belge tekrar taslağa döner.');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">↩️ Onayı Geri Al</button></form>
+        {% endif %}
+        {% if ts.belge_tur == "TEKLIF" and ts.durum == "ONAYLI" and not donusen_siparis %}
+        <form method="post" action="{% url 'core:teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
+        {% endif %}
+        {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and not donusen_fatura %}
+        <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
+        {% endif %}
+        {% if ts.durum == "TASLAK" %}
+        <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">✏️ Düzenle</a>
+        {% endif %}
+        <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
       {% endif %}
-      {% if ts.belge_tur == "TEKLIF" and ts.durum == "ONAYLI" and not donusen_siparis %}
-      <form method="post" action="{% url 'core:teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
-        {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
+    </div>
+  </div>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📋</span>Belge Bilgileri</h2>
+    <div class="kv">
+      <div class="satir"><span class="et">Cari</span>
+        <span class="dg"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }}</span></div>
+      <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ ts.tarih|date:"d.m.Y" }}</span></div>
+      {% if ts.gecerlilik_teslim_tarihi %}
+      <div class="satir"><span class="et">{% if ts.belge_tur == "SIPARIS" %}Teslim Tarihi{% else %}Geçerlilik Tarihi{% endif %}</span>
+        <span class="dg mono">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</span></div>
       {% endif %}
-      {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and not donusen_fatura %}
-      <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
+      <div class="satir"><span class="et">Para Birimi</span><span class="dg">{{ ts.para_birimi }}</span></div>
+      {% if ts.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ ts.aciklama }}</span></div>{% endif %}
+      {% if ts.kaynak_teklif %}
+      <div class="satir"><span class="et">Kaynak Teklif</span>
+        <span class="dg"><a href="{% url 'core:teklif_siparis_detay' ts.kaynak_teklif.pk %}">{{ ts.kaynak_teklif.get_belge_tur_display }}{% if ts.kaynak_teklif.belge_no %} · {{ ts.kaynak_teklif.belge_no }}{% endif %}</a></span></div>
       {% endif %}
-      {% if ts.durum == "TASLAK" %}
-      <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">Düzenle</a>
+      {% if donusen_siparis %}
+      <div class="satir"><span class="et">Dönüştüğü Sipariş</span>
+        <span class="dg"><a href="{% url 'core:teklif_siparis_detay' donusen_siparis.pk %}">{{ donusen_siparis.get_belge_tur_display }}{% if donusen_siparis.belge_no %} · {{ donusen_siparis.belge_no }}{% endif %}</a></span></div>
       {% endif %}
-      <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');">
-        {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
-    {% endif %}
-  </span>
+      {% if donusen_fatura %}
+      <div class="satir"><span class="et">Fatura</span>
+        <span class="dg"><a href="{% url 'core:fatura_detay' donusen_fatura.pk %}">{{ donusen_fatura.tip.ad }}{% if donusen_fatura.fatura_no %} · {{ donusen_fatura.fatura_no }}{% endif %}</a></span></div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📦</span>Kalemler</h2>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
+        <th class="sag">Tutar</th><th class="sag">KDV</th></tr></thead>
+      <tbody>
+        {% for k in kalemler %}
+          <tr>
+            <td><span class="mono">{{ k.stok.kod }}</span> {{ k.stok.ad }}</td>
+            <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
+            <td class="sag mono">{{ k.birim_fiyat|tr_kur:2 }}</td>
+            <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>
+            <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }} · {{ k.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ ts.ara_toplam|tr_kur:2 }}</th><th></th></tr>
+        <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag mono">{{ ts.kdv_toplam|tr_kur:2 }}</th></tr>
+        <tr><th colspan="3" class="sag">Genel Toplam</th><th colspan="2" class="sag mono">{{ ts.genel_toplam|tr_kur:2 }} {{ ts.para_birimi }}</th></tr>
+      </tfoot>
+    </table>
+    </div>
+  </section>
 </div>
-
-{% if ts.silindi %}<div class="uyari"><div>⚠️ Bu belge iptal edilmiş.</div></div>{% endif %}
-
-<section class="icerik-kart">
-  <div class="satir"><span class="et">Durum</span><span class="dg">{{ ts.get_durum_display }}</span></div>
-  <div class="satir"><span class="et">Yön</span><span class="dg">{{ ts.get_yon_display }}</span></div>
-  <div class="satir"><span class="et">Cari</span>
-    <span class="dg"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }}</span></div>
-  <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ ts.tarih|date:"d.m.Y" }}</span></div>
-  {% if ts.gecerlilik_teslim_tarihi %}
-  <div class="satir"><span class="et">{% if ts.belge_tur == "SIPARIS" %}Teslim Tarihi{% else %}Geçerlilik Tarihi{% endif %}</span>
-    <span class="dg mono">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</span></div>
-  {% endif %}
-  <div class="satir"><span class="et">Para Birimi</span><span class="dg">{{ ts.para_birimi }}</span></div>
-  {% if ts.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ ts.aciklama }}</span></div>{% endif %}
-  {% if ts.kaynak_teklif %}
-  <div class="satir"><span class="et">Kaynak Teklif</span>
-    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' ts.kaynak_teklif.pk %}">{{ ts.kaynak_teklif.get_belge_tur_display }}{% if ts.kaynak_teklif.belge_no %} · {{ ts.kaynak_teklif.belge_no }}{% endif %}</a></span></div>
-  {% endif %}
-  {% if donusen_siparis %}
-  <div class="satir"><span class="et">Dönüştüğü Sipariş</span>
-    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' donusen_siparis.pk %}">{{ donusen_siparis.get_belge_tur_display }}{% if donusen_siparis.belge_no %} · {{ donusen_siparis.belge_no }}{% endif %}</a></span></div>
-  {% endif %}
-  {% if donusen_fatura %}
-  <div class="satir"><span class="et">Fatura</span>
-    <span class="dg"><a href="{% url 'core:fatura_detay' donusen_fatura.pk %}">{{ donusen_fatura.tip.ad }}{% if donusen_fatura.fatura_no %} · {{ donusen_fatura.fatura_no }}{% endif %}</a></span></div>
-  {% endif %}
-</section>
-
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Kalemler</h2>
-  <div class="tablo-kapsayici">
-  <table>
-    <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
-      <th class="sag">Tutar</th><th class="sag">KDV</th></tr></thead>
-    <tbody>
-      {% for k in kalemler %}
-        <tr>
-          <td><span class="mono">{{ k.stok.kod }}</span> {{ k.stok.ad }}</td>
-          <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
-          <td class="sag mono">{{ k.birim_fiyat|tr_kur:2 }}</td>
-          <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>
-          <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }} · {{ k.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-    <tfoot>
-      <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ ts.ara_toplam|tr_kur:2 }}</th><th></th></tr>
-      <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag mono">{{ ts.kdv_toplam|tr_kur:2 }}</th></tr>
-      <tr><th colspan="3" class="sag">Genel Toplam</th><th colspan="2" class="sag mono">{{ ts.genel_toplam|tr_kur:2 }} {{ ts.para_birimi }}</th></tr>
-    </tfoot>
-  </table>
-  </div>
-</section>
 {% endblock %}

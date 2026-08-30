@@ -1,10 +1,11 @@
-{# Ortak: select.akilli-sec öğelerini akıllı aramalı (filtreli açılır) hâle getirir. #}
+{# Ortak: select.akilli-sec öğelerini akıllı aramalı (filtreli açılır) hâle getirir.
+   Sayfa yüklenince mevcut tüm select.akilli-sec'ler otomatik bağlanır. Sonradan JS ile
+   eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) çağrılabilir. #}
 <script>
 (function(){
-  var secler = document.querySelectorAll('select.akilli-sec');
-  if(!secler.length) return;
-  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
-  document.body.appendChild(gListe);
+  var gListe = document.querySelector('.akilli-liste');
+  if(!gListe){ gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+    document.body.appendChild(gListe); }
   var aktifInp = null;
   function konumla(inp){ var r = inp.getBoundingClientRect();
     gListe.style.left = r.left+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = r.width+'px'; }
@@ -26,7 +27,8 @@
     });
     gListe.style.display = gListe.children.length ? 'block' : 'none';
   }
-  secler.forEach(function(sel){
+  function kur(sel){
+    if(!sel || sel.classList.contains('akilli-gizli')) return;   // zaten bağlı — tekrar sarmalama
     var inp = document.createElement('input'); inp.type='text'; inp.className='akilli-girdi';
     inp.placeholder='ara / seç…'; inp.autocomplete='off';
     sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
@@ -35,7 +37,9 @@
     inp.addEventListener('input', function(){ sel.value=''; ac(sel, inp, inp.value); });
     inp.addEventListener('blur', function(){ setTimeout(function(){
       gListe.style.display='none'; inp.value=metin(sel, sel.value); }, 150); });
-  });
+  }
+  document.querySelectorAll('select.akilli-sec').forEach(kur);
+  window.akilliSecKur = kur;   // dinamik eklenen satırlar için (satirEkle vb.)
   window.addEventListener('scroll', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); }, true);
   window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
 })();
