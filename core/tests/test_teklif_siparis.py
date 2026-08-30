@@ -101,6 +101,82 @@ class TeklifSiparisModelServisTest(TestCase):
         self.assertEqual(ts.kdv_toplam, Decimal("0.00"))
         self.assertEqual(ts.genel_toplam, Decimal("50.00"))
 
+    def test_tevkifatli_stok_otomatik_snapshot_ve_odenecek(self):
+        """Stokta tanımlı tevkifat kalemde otomatik snapshot alınır (kullanıcı seçmez);
+        Ödenecek = mal+KDV-tevkifat, Genel Toplam ise tevkifattan etkilenmez."""
+        import datetime
+        from core.models import TevkifatOrani
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        tevkifat = TevkifatOrani.objects.create(kod="7/10", pay=7, payda=10,
+                                                created_by=self.yon, updated_by=self.yon)
+        stok3 = Stok.objects.create(kod="S4", ad="ÜRÜN TEVKİFATLI", kategori=self.kat,
+                                    kdv=self.kdv, tevkifat=tevkifat,
+                                    uretim_birimi=self.birim, fatura_birimi=self.birim,
+                                    created_by=self.yon, updated_by=self.yon)
+        ts = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": stok3.pk, "miktar": "10", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+        k = ts.kalemler.get()
+        self.assertEqual(k.tevkifat_id, tevkifat.pk)
+        # 1000 mal, %20 KDV=200, tevkifat 7/10 * 200 = 140
+        self.assertEqual(k.kdv_tutari, Decimal("200.00"))
+        self.assertEqual(k.tevkifat_tutari, Decimal("140.00"))
+        self.assertEqual(ts.tevkifat_toplam, Decimal("140.00"))
+        self.assertEqual(ts.genel_toplam, Decimal("1200.00"))     # mal+KDV, tevkifattan etkilenmez
+        self.assertEqual(ts.odenecek, Decimal("1060.00"))         # 1200 - 140
+
+    def test_tevkifatsiz_odenecek_genel_toplama_esit(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "25,50"}],
+            kullanici=self.yon)
+        self.assertEqual(ts.tevkifat_toplam, Decimal("0.00"))
+        self.assertEqual(ts.odenecek, ts.genel_toplam)
+
+    def test_teklifi_siparise_cevir_tevkifat_kopyalanir(self):
+        import datetime
+        from core.models import TevkifatOrani
+        from core.services.teklif_siparis import (teklif_siparis_olustur,
+                                                    teklif_siparis_onayla,
+                                                    teklifi_siparise_cevir)
+        tevkifat = TevkifatOrani.objects.create(kod="5/10", pay=5, payda=10,
+                                                created_by=self.yon, updated_by=self.yon)
+        stok4 = Stok.objects.create(kod="S5", ad="ÜRÜN T2", kategori=self.kat,
+                                    kdv=self.kdv, tevkifat=tevkifat,
+                                    uretim_birimi=self.birim, fatura_birimi=self.birim,
+                                    created_by=self.yon, updated_by=self.yon)
+        teklif = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="ALIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": stok4.pk, "miktar": "1", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        siparis = teklifi_siparise_cevir(teklif, tarih=datetime.date(2026, 6, 29),
+                                         kullanici=self.yon)
+        self.assertEqual(siparis.kalemler.get().tevkifat_id, tevkifat.pk)
+
+    def test_miktar_toplam_birim_bazinda_gruplar(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        kg = Birim.objects.create(ad="KİLOGRAM", kisa_ad="KG", ondalik=3)
+        stok_kg = Stok.objects.create(kod="S6", ad="ÜRÜN KG", kategori=self.kat, kdv=self.kdv,
+                                      uretim_birimi=self.birim, fatura_birimi=kg,
+                                      created_by=self.yon, updated_by=self.yon)
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "3", "birim_fiyat": "10"},
+                     {"stok_id": stok_kg.pk, "miktar": "9,015", "birim_fiyat": "50"}],
+            kullanici=self.yon)
+        toplam = ts.miktar_toplam
+        self.assertEqual(toplam["AD"], Decimal("3.000"))
+        self.assertEqual(toplam["KG"], Decimal("9.015"))
+
     def test_aktif_teklif_siparisler_belge_tur_yon_filtreler(self):
         import datetime
         from core.services.teklif_siparis import (aktif_teklif_siparisler,
@@ -431,6 +507,32 @@ class TeklifSiparisViewTest(TestCase):
             self.assertEqual(self.client.get(reverse("core:" + ad)).status_code, 403)
             self.assertEqual(
                 self.client.get(reverse("core:" + EKLE_URL[ad])).status_code, 403)
+
+    def test_detay_ve_pdf_tevkifat_ve_toplam_miktar_gosterir(self):
+        import datetime
+        from core.models import TevkifatOrani
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        tevkifat = TevkifatOrani.objects.create(kod="9/10", pay=9, payda=10,
+                                                created_by=self.yon, updated_by=self.yon)
+        stok_tev = Stok.objects.create(kod="S7", ad="ÜRÜN TEVKİFAT GÖRÜNÜM", kategori=self.kat,
+                                       kdv=self.kdv, tevkifat=tevkifat,
+                                       uretim_birimi=self.birim, fatura_birimi=self.birim,
+                                       created_by=self.yon, updated_by=self.yon)
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": stok_tev.pk, "miktar": "2", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertContains(d, "9/10")
+        self.assertContains(d, "Tevkifat (−)")
+        self.assertContains(d, "Ödenecek")
+        self.assertContains(d, "Toplam miktar")
+        self.assertContains(d, "AD")
+        pdf = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
 
     def test_ekle_formunda_stok_meta_cevirici_ve_birimler(self):
         """Kalem satırındaki 'Üretim Miktarı' JS'i stok_meta context'ine bağlı: her stok

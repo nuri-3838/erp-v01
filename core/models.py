@@ -968,8 +968,29 @@ class TeklifSiparis(TemelModel):
         return sum((k.kdv_tutari for k in self.kalemler.filter(silindi=False)), Decimal("0.00"))
 
     @property
+    def tevkifat_toplam(self):
+        from decimal import Decimal
+        return sum((k.tevkifat_tutari for k in self.kalemler.filter(silindi=False)), Decimal("0.00"))
+
+    @property
     def genel_toplam(self):
+        """KDV dahil brüt (mal + KDV)."""
         return self.ara_toplam + self.kdv_toplam
+
+    @property
+    def odenecek(self):
+        """Carinin borç/alacağı = mal + KDV − tevkifat (tevkifat karşı tarafa ödenmez)."""
+        return self.genel_toplam - self.tevkifat_toplam
+
+    @property
+    def miktar_toplam(self):
+        """Fatura birimi bazında miktar toplamları (örn. {"KG": Decimal("9.015")})."""
+        from decimal import Decimal
+        toplam = {}
+        for k in self.kalemler.filter(silindi=False).select_related("stok__fatura_birimi"):
+            birim = k.stok.fatura_birimi.kisa_ad
+            toplam[birim] = toplam.get(birim, Decimal("0")) + k.miktar
+        return toplam
 
 
 class TeklifSiparisKalem(TemelModel):
@@ -985,6 +1006,10 @@ class TeklifSiparisKalem(TemelModel):
     birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
     kdv = models.ForeignKey(
         KdvOrani, verbose_name="KDV oranı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="teklif_siparis_kalemleri")
+    # Tevkifat oranı snapshot (varsa, stoktan otomatik gelir — kullanıcı seçmez).
+    tevkifat = models.ForeignKey(
+        TevkifatOrani, verbose_name="tevkifat oranı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="teklif_siparis_kalemleri")
 
     class Meta:
@@ -1013,6 +1038,16 @@ class TeklifSiparisKalem(TemelModel):
         from core.sayi import yuvarla
         oran = self.kdv.oran if self.kdv_id else Decimal("0")
         return yuvarla(self.tutar * oran / Decimal("100"), 2)
+
+    @property
+    def tevkifat_tutari(self):
+        """KDV'nin tevkifata düşen (alınan/ödenen) kısmı = KDV × pay/payda."""
+        from decimal import Decimal
+        from core.sayi import yuvarla
+        if not self.tevkifat_id or not self.tevkifat.payda:
+            return Decimal("0.00")
+        return yuvarla(self.kdv_tutari * Decimal(self.tevkifat.pay)
+                       / Decimal(self.tevkifat.payda), 2)
 
     @property
     def genel_toplam(self):

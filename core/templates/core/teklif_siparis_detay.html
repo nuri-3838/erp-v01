@@ -106,10 +106,14 @@
 
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📦</span>Kalemler</h2>
+    {% if ts.miktar_toplam %}
+    <p class="yardim">Toplam miktar:
+      {% for birim, m in ts.miktar_toplam.items %}{{ m|tr_kur:3 }} {{ birim }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+    {% endif %}
     <div class="tablo-kapsayici">
     <table>
       <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
-        <th class="sag">Tutar</th><th class="sag">KDV</th></tr></thead>
+        <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
       <tbody>
         {% for k in kalemler %}
           <tr>
@@ -118,13 +122,15 @@
             <td class="sag mono">{{ k.birim_fiyat|tr_kur:2 }}</td>
             <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>
             <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }} · {{ k.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
+            <td class="sag mono">{% if k.tevkifat %}{{ k.tevkifat.kod }} · {{ k.tevkifat_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>
       <tfoot>
-        <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ ts.ara_toplam|tr_kur:2 }}</th><th></th></tr>
-        <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag mono">{{ ts.kdv_toplam|tr_kur:2 }}</th></tr>
-        <tr><th colspan="3" class="sag">Genel Toplam</th><th colspan="2" class="sag mono">{{ ts.genel_toplam|tr_kur:2 }} {{ ts.para_birimi }}</th></tr>
+        <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ ts.ara_toplam|tr_kur:2 }}</th><th></th><th></th></tr>
+        <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag mono">{{ ts.kdv_toplam|tr_kur:2 }}</th><th></th></tr>
+        {% if ts.tevkifat_toplam %}<tr><th colspan="3" class="sag">Tevkifat (−)</th><th></th><th></th><th class="sag mono">{{ ts.tevkifat_toplam|tr_kur:2 }}</th></tr>{% endif %}
+        <tr><th colspan="3" class="sag">Ödenecek</th><th colspan="3" class="sag mono">{{ ts.odenecek|tr_kur:2 }} {{ ts.para_birimi }}</th></tr>
       </tfoot>
     </table>
     </div>

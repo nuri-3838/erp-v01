@@ -69,13 +69,17 @@
     {% endif %}
     <div class="kutu"><div class="et">Durum</div><div class="dg">{{ ts.get_durum_display }}</div></div>
     <div class="kutu"><div class="et">Kalem Adedi</div><div class="dg">{{ kalemler|length }}</div></div>
+    {% if ts.miktar_toplam %}
+    <div class="kutu"><div class="et">Toplam Miktar</div>
+      <div class="dg">{% for birim, m in ts.miktar_toplam.items %}{{ m|tr_kur:3 }} {{ birim }}{% if not forloop.last %} · {% endif %}{% endfor %}</div></div>
+    {% endif %}
   </div>
 
   <table>
     <thead><tr>
       <th style="width:30px">#</th><th>Stok</th><th class="sag" style="width:80px">Miktar</th>
       <th class="sag" style="width:90px">Birim Fiyat</th><th class="sag" style="width:90px">Tutar</th>
-      <th class="sag" style="width:90px">KDV</th>
+      <th class="sag" style="width:90px">KDV</th><th class="sag" style="width:90px">Tevkifat</th>
     </tr></thead>
     <tbody>
       {% for k in kalemler %}
@@ -86,21 +90,30 @@
           <td class="sag mono">{{ k.birim_fiyat|tr_kur:2 }}</td>
           <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>
           <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }} · {{ k.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{% if k.tevkifat %}{{ k.tevkifat.kod }} · {{ k.tevkifat_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="6" style="text-align:center;color:#777;padding:14px">Kalem yok.</td></tr>
+        <tr><td colspan="7" style="text-align:center;color:#777;padding:14px">Kalem yok.</td></tr>
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><td colspan="4" class="sag">GENEL TOPLAM</td>
-        <td colspan="2" class="sag mono">{{ ts.genel_toplam|tr_para }} {{ ts.para_birimi }}</td></tr>
+      <tr><td colspan="4" class="sag">ARA TOPLAM</td>
+        <td class="sag mono">{{ ts.ara_toplam|tr_para }}</td><td></td><td></td></tr>
+      <tr><td colspan="4" class="sag">KDV</td><td></td>
+        <td class="sag mono">{{ ts.kdv_toplam|tr_para }}</td><td></td></tr>
+      {% if ts.tevkifat_toplam %}
+      <tr><td colspan="4" class="sag">TEVKİFAT (−)</td><td></td><td></td>
+        <td class="sag mono">{{ ts.tevkifat_toplam|tr_para }}</td></tr>
+      {% endif %}
+      <tr><td colspan="4" class="sag">ÖDENECEK</td>
+        <td colspan="3" class="sag mono">{{ ts.odenecek|tr_para }} {{ ts.para_birimi }}</td></tr>
     </tfoot>
   </table>
 
   <div class="ozet">
     <div class="kart toplam">
-      <div class="et">Genel Toplam</div>
-      <div class="buyuk">{{ ts.genel_toplam|tr_para }} {{ ts.para_birimi }}</div>
+      <div class="et">Ödenecek</div>
+      <div class="buyuk">{{ ts.odenecek|tr_para }} {{ ts.para_birimi }}</div>
     </div>
   </div>
 

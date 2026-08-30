@@ -67,10 +67,12 @@
         <tfoot>
           <tr><th colspan="4" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th></tr>
           <tr><th colspan="4" class="sag">KDV</th><th></th><th class="sag deger" id="tKdv">0,00</th></tr>
-          <tr><th colspan="4" class="sag">Genel Toplam</th><th colspan="2" class="sag deger" id="tGenel">0,00</th></tr>
+          <tr id="satirTevkifat" hidden><th colspan="4" class="sag">Tevkifat (−)</th><th></th><th class="sag deger" id="tTev">0,00</th></tr>
+          <tr><th colspan="4" class="sag">Ödenecek</th><th colspan="2" class="sag deger" id="tGenel">0,00</th></tr>
         </tfoot>
       </table>
       </div>
+      <p class="yardim" id="miktarToplam" hidden>Toplam miktar: <span id="tMiktar"></span></p>
       <div class="satir-alt">
         <button type="button" id="satir-ekle" class="dugme-ikincil">+ Kalem ekle</button>
       </div>
@@ -106,21 +108,29 @@
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
   function stokMeta(row){ var sel=el(row,'-stok'); return (sel&&sel.value&&META[sel.value])?META[sel.value]:null; }
   function hesapla(){
-    var mal=0, kdv=0;
+    var mal=0, kdv=0, tev=0, miktarBirim={};
     document.querySelectorAll('.satir-form').forEach(function(r){
       var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
       var f=parseTR(el(r,'-birim_fiyat')?el(r,'-birim_fiyat').value:'');
-      var meta=stokMeta(r); var oran=meta?meta.kdv:0;
+      var meta=stokMeta(r); var oran=meta?meta.kdv:0; var tevOran=meta?meta.tevkifat:0;
       var tutar=Math.round(m*f*100)/100;
       var skdv=Math.round(tutar*oran)/100;
+      var stev=Math.round(skdv*tevOran*100)/100;
       var ct=r.querySelector('.tutar'), ck=r.querySelector('.kdv');
       if(ct) ct.textContent = tutar>0?fmt(tutar):'—';
       if(ck) ck.textContent = skdv>0?fmt(skdv):'—';
-      mal+=tutar; kdv+=skdv;
+      mal+=tutar; kdv+=skdv; tev+=stev;
+      if(meta && m>0){ miktarBirim[meta.fatura]=(miktarBirim[meta.fatura]||0)+m; }
     });
     document.getElementById('tMal').textContent=fmt(mal);
     document.getElementById('tKdv').textContent=fmt(kdv);
-    document.getElementById('tGenel').textContent=fmt(mal+kdv);
+    document.getElementById('tTev').textContent=fmt(tev);
+    document.getElementById('satirTevkifat').hidden = tev<=0;
+    document.getElementById('tGenel').textContent=fmt(mal+kdv-tev);
+    var parcalar=Object.keys(miktarBirim).map(function(b){
+      return miktarBirim[b].toLocaleString('tr-TR',{minimumFractionDigits:3,maximumFractionDigits:3})+' '+b; });
+    document.getElementById('tMiktar').textContent=parcalar.join(' · ');
+    document.getElementById('miktarToplam').hidden = parcalar.length===0;
   }
   function birimGuncelle(row){
     var meta=stokMeta(row);

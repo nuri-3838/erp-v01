@@ -1728,7 +1728,7 @@ TeklifSiparisKalemFormSet = formset_factory(
 def _ts_liste(request, belge_tur, yon, baslik, emoji):
     ara = (request.GET.get("ara") or "").strip()
     kayitlar = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
-                .prefetch_related("kalemler__kdv"))
+                .prefetch_related("kalemler__kdv", "kalemler__tevkifat"))
     if ara:
         buyuk = buyuk_harf_tr(ara)
         kayitlar = kayitlar.filter(
@@ -1765,14 +1765,17 @@ def satis_siparisleri(request):
 
 
 def _stok_meta():
-    """Kalem satırı JS'i için stok başına KDV oranı + üretim/fatura birim çevirisi."""
+    """Kalem satırı JS'i için stok başına KDV oranı + tevkifat oranı + üretim/fatura
+    birim çevirisi."""
     return {str(s.pk): {
         "kdv": float(s.kdv.oran) if s.kdv_id else 0,
+        "tevkifat": (float(s.tevkifat.pay) / float(s.tevkifat.payda))
+                    if (s.tevkifat_id and s.tevkifat.payda) else 0,
         "cevirici": float(s.cevirici),
         "uretim": s.uretim_birimi.kisa_ad,
         "fatura": s.fatura_birimi.kisa_ad,
     } for s in Stok.objects.filter(silindi=False)
-      .select_related("kdv", "uretim_birimi", "fatura_birimi")}
+      .select_related("kdv", "tevkifat", "uretim_birimi", "fatura_birimi")}
 
 
 def _ts_ekle(request, belge_tur, yon, baslik, emoji):
@@ -1836,7 +1839,7 @@ def teklif_siparis_detay(request, pk):
     # silindi filtrelenmez: iptal edilmiş belge de görüntülenebilir (uyarı banner'ıyla).
     ts = get_object_or_404(
         TeklifSiparis.objects.select_related("cari", "kaynak_teklif"), pk=pk)
-    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv")
+    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat")
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = {"satinalma_teklifleri": "📥", "satinalma_siparisleri": "🛒",
             "satis_teklifleri": "📤", "satis_siparisleri": "📦"}[ekran]
@@ -2015,7 +2018,7 @@ def teklif_siparis_pdf(request, pk):
     from weasyprint import HTML
 
     ts = get_object_or_404(TeklifSiparis.objects.select_related("cari"), pk=pk)
-    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv")
+    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat")
     ctx = {"ts": ts, "kalemler": kalemler}
     logo_yol = finders.find("core/img/semta-logo.png")
     if logo_yol:

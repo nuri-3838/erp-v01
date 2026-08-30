@@ -49,7 +49,7 @@ def aktif_teklif_siparisler(belge_tur, yon):
 
 def _hazirla(*, cari_id, satirlar):
     """Ortak hazırlık (oluştur): cari + satırları doğrula. (cari, hazir) döner —
-    hazir = [(stok, miktar, birim_fiyat, kdv), ...]."""
+    hazir = [(stok, miktar, birim_fiyat, kdv, tevkifat), ...]."""
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise TeklifSiparisHatasi("Cari bulunamadı.")
@@ -57,12 +57,13 @@ def _hazirla(*, cari_id, satirlar):
         raise TeklifSiparisHatasi("En az bir kalem olmalı.")
     hazir = []
     for s in satirlar:
-        stok = Stok.objects.filter(pk=s["stok_id"], silindi=False).select_related("kdv").first()
+        stok = (Stok.objects.filter(pk=s["stok_id"], silindi=False)
+                .select_related("kdv", "tevkifat").first())
         if stok is None:
             raise TeklifSiparisHatasi("Stok bulunamadı.")
         miktar = _sayi(s.get("miktar"), "Miktar", pozitif=True)
         birim_fiyat = _sayi(s.get("birim_fiyat"), "Birim fiyat")
-        hazir.append((stok, miktar, birim_fiyat, stok.kdv))
+        hazir.append((stok, miktar, birim_fiyat, stok.kdv, stok.tevkifat))
     return cari, hazir
 
 
@@ -74,10 +75,10 @@ def _pb_dogrula(para_birimi):
 
 
 def _kalemleri_yaz(ts, hazir, kullanici):
-    for stok, miktar, birim_fiyat, kdv in hazir:
+    for stok, miktar, birim_fiyat, kdv, tevkifat in hazir:
         TeklifSiparisKalem.objects.create(
             teklif_siparis=ts, stok=stok, miktar=miktar, birim_fiyat=birim_fiyat, kdv=kdv,
-            created_by=kullanici, updated_by=kullanici)
+            tevkifat=tevkifat, created_by=kullanici, updated_by=kullanici)
 
 
 def _sonraki_sira(belge_tur, yon, yil):
@@ -211,7 +212,7 @@ def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> T
     for k in kalemler:
         TeklifSiparisKalem.objects.create(
             teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
-            kdv=k.kdv, created_by=kullanici, updated_by=kullanici)
+            kdv=k.kdv, tevkifat=k.tevkifat, created_by=kullanici, updated_by=kullanici)
     return siparis
 
 
