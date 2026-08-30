@@ -12,14 +12,15 @@
 <div class="tablo-kapsayici">
 <table>
   <thead><tr>
-    <th>Tarih</th><th>Tip</th><th>Cari</th>
+    <th>Tarih</th><th>Tip</th><th>Durum</th><th>Cari</th>
     <th class="sag">Ödenecek</th><th>Fiş</th><th>İşlem</th>
   </tr></thead>
   <tbody>
     {% for f in faturalar %}
       <tr>
         <td class="mono">{{ f.tarih|date:"d.m.Y" }}</td>
-        <td>{{ f.tip.ad }}</td>
+        <td>{% if f.tip %}{{ f.tip.ad }}{% else %}<span class="pasif">— seçilmedi</span>{% endif %}</td>
+        <td><span class="rozet {% if f.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ f.get_durum_display }}</span></td>
         <td><a href="{% url 'core:fatura_detay' f.pk %}">{{ f.cari.unvan }}</a>
           {% if f.fatura_no %}<span class="pasif"> · {{ f.fatura_no }}</span>{% endif %}</td>
         <td class="sag mono">{{ f.odenecek|tr_kur:2 }} {{ f.para_birimi }}</td>
@@ -32,7 +33,7 @@
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">Henüz fatura yok. “+ Yeni Fatura” ile ekleyin.</td></tr>
+      <tr><td colspan="7" class="yardim">Henüz fatura yok. “+ Yeni Fatura” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

@@ -1143,6 +1143,12 @@ class TeklifSiparisForm(forms.Form):
             self.fields["gecerlilik_teslim_tarihi"].label = "Teslim Tarihi"
         else:
             self.fields["gecerlilik_teslim_tarihi"].label = "Geçerlilik Tarihi"
+        # İrsaliye gerçek stok hareketi yazar — hangi depoya girdiği zorunlu.
+        if belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
+            self.fields["depo"] = forms.ModelChoiceField(
+                label="Depo", queryset=Depo.objects.filter(silindi=False).order_by("kod"),
+                empty_label="— depo seç —")
+            self.fields["depo"].widget.attrs["class"] = "akilli-sec"
 
 
 class TeklifSiparisKalemForm(forms.Form):

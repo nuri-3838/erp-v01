@@ -7,10 +7,15 @@
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url liste_url %}">← Faturalar</a>
-    <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ fatura.tip.ad }}{% if fatura.fatura_no %} · {{ fatura.fatura_no }}{% endif %}</h1>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>{% if fatura.tip %}{{ fatura.tip.ad }}{% else %}Taslak Fatura{% endif %}{% if fatura.fatura_no %} · {{ fatura.fatura_no }}{% endif %}
+      <span class="rozet {% if fatura.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ fatura.get_durum_display }}</span></h1>
   </div>
   {% if not fatura.silindi %}
   <span class="islem-bag">
+    {% if fatura.durum == "TASLAK" %}
+    <form method="post" action="{% url 'core:fatura_onayla' fatura.pk %}" style="margin:0">
+      {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
+    {% endif %}
     <a class="dugme" href="{% url 'core:fatura_duzenle' fatura.pk %}">Düzenle</a>
     <form method="post" action="{% url 'core:fatura_iptal' fatura.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
       {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
@@ -19,6 +24,7 @@
 </div>
 
 {% if fatura.silindi %}<div class="uyari"><div>⚠️ Bu fatura iptal edilmiş.</div></div>{% endif %}
+{% if fatura.durum == "TASLAK" and not fatura.tip %}<div class="uyari"><div>⚠️ Bu taslağın fatura tipi henüz seçilmedi — Düzenle'den seçip Onayla'ya basın.</div></div>{% endif %}
 
 <section class="icerik-kart">
   <div class="satir"><span class="et">Cari</span>
@@ -30,7 +36,7 @@
     <span class="dg">{% if fatura.fis %}<a class="mono" href="{% url 'core:fis_detay' fatura.fis.pk %}">{{ fatura.fis.yil }}/{{ fatura.fis.fis_no }}</a>{% else %}—{% endif %}</span></div>
   {% with kaynak_siparis=fatura.kaynak_siparisler.first %}
   {% if kaynak_siparis %}
-  <div class="satir"><span class="et">Kaynak Sipariş</span>
+  <div class="satir"><span class="et">Kaynak {{ kaynak_siparis.get_belge_tur_display }}</span>
     <span class="dg"><a href="{% url 'core:teklif_siparis_detay' kaynak_siparis.pk %}">{{ kaynak_siparis.get_belge_tur_display }}{% if kaynak_siparis.belge_no %} · {{ kaynak_siparis.belge_no }}{% endif %}</a></span></div>
   {% endif %}
   {% endwith %}

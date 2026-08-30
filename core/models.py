@@ -795,9 +795,21 @@ class Fatura(TemelModel):
     KDV hesabı = stoğun KDV oranının borç (alış 191) / alacak (satış 391) hesabı;
     karşı taraf = carinin muhasebe hesabı. Tutarlar satırlardan hesaplanır (saklanmaz)."""
 
+    class Durum(models.TextChoices):
+        TASLAK = "TASLAK", "Taslak"
+        ONAYLI = "ONAYLI", "Onaylı"
+
+    # tip boş olabilir: İrsaliye'den otomatik açılan taslak faturanın tipi henüz bilinmez
+    # (kullanıcı onaylamadan önce seçer — fatura_onayla tip olmadan onaylamayı reddeder).
     tip = models.ForeignKey(
-        FaturaTipi, verbose_name="fatura tipi", related_name="faturalar",
+        FaturaTipi, verbose_name="fatura tipi", related_name="faturalar", null=True, blank=True,
         on_delete=models.PROTECT)
+    # tip boşken bile yön bilinsin diye ayrıca saklanır (normalde tip.yon'dan türetilebilirdi,
+    # ama tip=None durumunda listelerde görünmesi ve view'ların çökmemesi için gerekli).
+    yon = models.CharField(
+        "yön", max_length=5, choices=FaturaTipi.Yon.choices, null=True, blank=True)
+    durum = models.CharField("durum", max_length=6, choices=Durum.choices,
+                             default=Durum.TASLAK)
     cari = models.ForeignKey(
         Cari, verbose_name="cari", related_name="faturalar", on_delete=models.PROTECT)
     tarih = models.DateField("fatura tarihi")
@@ -915,6 +927,7 @@ class TeklifSiparis(TemelModel):
     class BelgeTur(models.TextChoices):
         TEKLIF = "TEKLIF", "Teklif"
         SIPARIS = "SIPARIS", "Sipariş"
+        IRSALIYE = "IRSALIYE", "İrsaliye"
 
     class Yon(models.TextChoices):
         ALIS = "ALIS", "Alış"
@@ -924,7 +937,7 @@ class TeklifSiparis(TemelModel):
         TASLAK = "TASLAK", "Taslak"
         ONAYLI = "ONAYLI", "Onaylı"
 
-    belge_tur = models.CharField("belge türü", max_length=7, choices=BelgeTur.choices)
+    belge_tur = models.CharField("belge türü", max_length=8, choices=BelgeTur.choices)
     yon = models.CharField("yön", max_length=5, choices=Yon.choices)
     durum = models.CharField("durum", max_length=6, choices=Durum.choices,
                              default=Durum.TASLAK)
@@ -947,8 +960,16 @@ class TeklifSiparis(TemelModel):
     kaynak_teklif = models.ForeignKey(
         "self", verbose_name="kaynak teklif", null=True, blank=True,
         on_delete=models.PROTECT, related_name="donusen_siparisler")
-    # SIPARIS ise: hangi Fatura'ya dönüştürüldüğü. Fatura modülü TeklifSiparis'i BİLMEZ —
-    # bağlantı burada, sipariş tarafında kurulur (Fatura oluştuktan SONRA set edilir).
+    # IRSALIYE ise: hangi SIPARIS'ten dönüştürüldüğü (self-FK, bir kademe aşağısı).
+    kaynak_siparis = models.ForeignKey(
+        "self", verbose_name="kaynak sipariş", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="donusen_irsaliyeler")
+    # IRSALIYE ise: malın girdiği depo (gerçek stok hareketi için gerekli — serviste zorunlu).
+    depo = models.ForeignKey(
+        "Depo", verbose_name="depo", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="teklif_siparisler")
+    # SIPARIS/IRSALIYE ise: hangi Fatura'ya dönüştürüldüğü. Fatura modülü TeklifSiparis'i BİLMEZ —
+    # bağlantı burada, sipariş/irsaliye tarafında kurulur (Fatura oluştuktan SONRA set edilir).
     fatura = models.ForeignKey(
         "Fatura", verbose_name="fatura", null=True, blank=True,
         on_delete=models.PROTECT, related_name="kaynak_siparisler")
@@ -1102,6 +1123,7 @@ class StokHareket(TemelModel):
     class Kaynak(models.TextChoices):
         MANUEL = "MANUEL", "Manuel"
         FATURA = "FATURA", "Fatura"
+        IRSALIYE = "IRSALIYE", "İrsaliye"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -1114,6 +1136,10 @@ class StokHareket(TemelModel):
     # Faturadan otomatik üretilen hareketler bu kaleme bağlanır (iptal/güncellemede izlenir).
     fatura_satir = models.ForeignKey(
         "FaturaSatir", verbose_name="kaynak fatura satırı", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="stok_hareketleri")
+    # İrsaliyeden otomatik üretilen hareketler bu kaleme bağlanır (fatura_satir'in İrsaliye karşılığı).
+    teklif_siparis_kalem = models.ForeignKey(
+        "TeklifSiparisKalem", verbose_name="kaynak irsaliye kalemi", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="stok_hareketleri")
     kaynak = models.CharField("kaynak", max_length=20, choices=Kaynak.choices,
                               default=Kaynak.MANUEL)

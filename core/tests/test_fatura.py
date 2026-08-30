@@ -9,7 +9,7 @@ from core.models import (Birim, Cari, Fatura, FaturaSatir, FaturaTipi, HesapPlan
                          Kategori, KategoriHesap, KdvOrani, Kur, Stok, TevkifatOrani,
                          YevmiyeFisi)
 from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_iptal,
-                                  fatura_olustur)
+                                  fatura_olustur, fatura_onayla, fatura_taslak_olustur)
 
 D = datetime.date
 
@@ -226,3 +226,45 @@ class FaturaIptalTest(FaturaTestTemel):
         fis = YevmiyeFisi.objects.get(pk=fis_id)
         self.assertTrue(fis.silindi)
         self.assertTrue(all(s.silindi for s in fis.satirlar.all()))
+
+    def test_taslak_fatura_da_sorunsuz_iptal_edilir(self):
+        # tip=None taslak — hiç fiş/stok hareketi yok; iptal bunu sorunsuz kabul etmeli.
+        f = fatura_taslak_olustur(cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
+                                  satirlar=self._satir(), yon="ALIS")
+        self.assertIsNone(f.tip_id)
+        self.assertIsNone(f.fis_id)
+        fatura_iptal(f)
+        f.refresh_from_db()
+        self.assertTrue(f.silindi)
+
+
+class FaturaOnaylaTest(FaturaTestTemel):
+    def test_taslak_tip_olmadan_onaylanamaz(self):
+        f = fatura_taslak_olustur(cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
+                                  satirlar=self._satir(), yon="ALIS")
+        with self.assertRaises(FaturaHatasi):
+            fatura_onayla(f)
+        f.refresh_from_db()
+        self.assertEqual(f.durum, "TASLAK")
+        self.assertIsNone(f.fis_id)
+
+    def test_taslak_tip_atanip_onaylaninca_fis_uretir(self):
+        f = fatura_taslak_olustur(cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
+                                  satirlar=self._satir(), yon="ALIS")
+        f.tip = self.alis
+        f.save(update_fields=["tip"])
+        fatura_onayla(f)
+        f.refresh_from_db()
+        self.assertEqual(f.durum, "ONAYLI")
+        self.assertIsNotNone(f.fis_id)
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["153.10"], (Decimal("1000.00"), Decimal("0.00")))
+
+    def test_onayla_idempotent(self):
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), satirlar=self._satir())
+        fis_id = f.fis_id
+        fatura_onayla(f)                    # zaten onaylı — sessiz
+        f.refresh_from_db()
+        self.assertEqual(f.fis_id, fis_id)
+        self.assertEqual(f.durum, "ONAYLI")

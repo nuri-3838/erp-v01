@@ -139,11 +139,12 @@ class TeklifSiparisModelServisTest(TestCase):
         self.assertEqual(ts.odenecek, ts.genel_toplam)
 
     def test_teklifi_siparise_cevir_tevkifat_kopyalanir(self):
+        """ALIŞ yönünde onay artık OTOMATİK siparişe çevirir (zincir) — bu yüzden burada
+        teklifi_siparise_cevir'i AYRICA elle çağırmıyoruz (zaten dönüştürülmüş olur, hata
+        verir); otomatik oluşan siparişi donusen_siparisler'den okuyoruz."""
         import datetime
         from core.models import TevkifatOrani
-        from core.services.teklif_siparis import (teklif_siparis_olustur,
-                                                    teklif_siparis_onayla,
-                                                    teklifi_siparise_cevir)
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
         tevkifat = TevkifatOrani.objects.create(kod="5/10", pay=5, payda=10,
                                                 created_by=self.yon, updated_by=self.yon)
         stok4 = Stok.objects.create(kod="S5", ad="ÜRÜN T2", kategori=self.kat,
@@ -156,8 +157,7 @@ class TeklifSiparisModelServisTest(TestCase):
             satirlar=[{"stok_id": stok4.pk, "miktar": "1", "birim_fiyat": "100"}],
             kullanici=self.yon)
         teklif_siparis_onayla(teklif, kullanici=self.yon)
-        siparis = teklifi_siparise_cevir(teklif, tarih=datetime.date(2026, 6, 29),
-                                         kullanici=self.yon)
+        siparis = teklif.donusen_siparisler.get()
         self.assertEqual(siparis.kalemler.get().tevkifat_id, tevkifat.pk)
 
     def test_miktar_toplam_birim_bazinda_gruplar(self):
@@ -294,6 +294,8 @@ class TeklifSiparisModelServisTest(TestCase):
             teklifi_siparise_cevir(t, tarih=datetime.date(2026, 6, 28), kullanici=self.yon)
 
     def test_iki_kez_cevrilemez(self):
+        """ALIŞ yönünde onay OTOMATİK olarak (zincirle) bir kez siparişe çevirir; elle
+        ikinci bir çevirme denemesi (zaten dönüştürülmüş olduğu için) reddedilir."""
         import datetime
         from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_siparis_olustur,
                                                    teklif_siparis_onayla, teklifi_siparise_cevir)
@@ -303,20 +305,24 @@ class TeklifSiparisModelServisTest(TestCase):
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
         teklif_siparis_onayla(t, kullanici=self.yon)
-        teklifi_siparise_cevir(t, tarih=datetime.date(2026, 6, 28), kullanici=self.yon)
+        self.assertEqual(t.donusen_siparisler.filter(silindi=False).count(), 1)
         with self.assertRaises(TeklifSiparisHatasi):
             teklifi_siparise_cevir(t, tarih=datetime.date(2026, 6, 28), kullanici=self.yon)
 
     def test_siparis_cevrilemez(self):
         import datetime
+        from core.models import Depo
         from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_siparis_olustur,
                                                    teklif_siparis_onayla, teklifi_siparise_cevir)
+        Depo.objects.create(kod="D1", ad="ANA DEPO", created_by=self.yon, updated_by=self.yon)
         sip = teklif_siparis_olustur(
             belge_tur="SIPARIS", yon="ALIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
-        teklif_siparis_onayla(sip, kullanici=self.yon)              # onaylı olsa bile SIPARIS çevrilemez
+        # onaylı olsa bile SIPARIS teklifi_siparise_cevir'e çevrilemez (yalnız TEKLİF çevrilir);
+        # onay ayrıca otomatik zincirle irsaliyeye de çevirir (aktif depo var).
+        teklif_siparis_onayla(sip, kullanici=self.yon)
         with self.assertRaises(TeklifSiparisHatasi):
             teklifi_siparise_cevir(sip, tarih=datetime.date(2026, 6, 28), kullanici=self.yon)
 
@@ -837,6 +843,9 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         cls.musteri = Cari.objects.create(kod="C-F2", unvan="MÜŞTERİ B",
                                           muhasebe_kodu="120.20.0001",
                                           created_by=cls.yon, updated_by=cls.yon)
+        from core.models import Depo
+        cls.depo = Depo.objects.create(kod="DF1", ad="FATURA DEPO",
+                                       created_by=cls.yon, updated_by=cls.yon)
 
     def _siparis(self, yon="SATIS", cari=None):
         """ONAYLI bir sipariş — bu sınıftaki her senaryo faturaya çevirmeyi hedefler."""
@@ -918,6 +927,24 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         self.assertEqual(
             self.client.get(reverse("core:siparis_faturaya_cevir", args=[teklif.pk])).status_code, 404)
 
+    def test_alis_siparis_dogrudan_post_ile_de_faturaya_cevrilemez(self):
+        """Yalnız buton gizlemek yetmez — ALIŞ sipariş onaylanınca zaten otomatik irsaliyeye
+        (ve oradan faturaya) dönüşür, Sipariş.fatura HİÇ dolmaz — bu yüzden mevcut
+        `if siparis.fatura_id` koruması bunu yakalamaz; ayrı bir yon==ALIS erken reddi şart."""
+        from core.models import Fatura
+        sip = self._siparis(yon="ALIS", cari=self.tedarikci)
+        onceki_fatura_sayisi = Fatura.objects.count()
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
+            "tip": self.alis_tip.pk, "cari": self.tedarikci.pk, "tarih": "2026-06-28",
+            "para_birimi": "TRY", "depo": "",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50",
+        })
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[sip.pk]))
+        self.assertEqual(Fatura.objects.count(), onceki_fatura_sayisi)
+
     def test_buton_gorunurluk_ve_fatura_detay_kaynak_linki(self):
         from core.models import Fatura
         sip = self._siparis()
@@ -946,3 +973,128 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         self.client.force_login(self.bos)
         self.assertEqual(
             self.client.get(reverse("core:siparis_faturaya_cevir", args=[sip.pk])).status_code, 403)
+
+
+class SatinalmaZinciriTest(TestCase):
+    """Teklif→Sipariş→İrsaliye→Fatura otomasyon zinciri (yalnız ALIŞ) uçtan uca."""
+    @classmethod
+    def setUpTestData(cls):
+        import datetime
+        from core.models import Depo, FaturaTipi, KategoriHesap, Kur
+        cls.yon = User.objects.create_superuser("zincyon", password="x")
+        Kur.objects.create(tarih=datetime.date(2026, 6, 28), usd_alis=Decimal("30"),
+                           created_by=cls.yon, updated_by=cls.yon)
+        _hesap("153.20", "ZİNCİR MAL")
+        _hesap("191", "İNDİRİLECEK KDV Z")
+        _hesap("391", "HESAPLANAN KDV Z", kalem="KVYK")
+        _hesap("320.30.0001", "TEDARİKÇİ Z", kalem="KVYK")
+        cls.kdv = KdvOrani.objects.create(
+            aciklama="Zincir Genel", oran=Decimal("20"),
+            hesap_borc=HesapPlani.objects.get(hesap_kodu="191"),
+            hesap_alacak=HesapPlani.objects.get(hesap_kodu="391"),
+            created_by=cls.yon, updated_by=cls.yon)
+        cls.kat = Kategori.objects.create(kod="KZ1", ad="ZİNCİR KATEGORİ",
+                                          created_by=cls.yon, updated_by=cls.yon)
+        cls.birim = Birim.objects.create(ad="ZİNCİR ADET", kisa_ad="ZAD", ondalik=0)
+        cls.stok = Stok.objects.create(
+            kod="SZ1", ad="ZİNCİR ÜRÜN", kategori=cls.kat, kdv=cls.kdv,
+            uretim_birimi=cls.birim, fatura_birimi=cls.birim,
+            created_by=cls.yon, updated_by=cls.yon)
+        cls.alis_tipi = FaturaTipi.objects.create(ad="ZİNCİR ALIŞ FATURASI", yon=FaturaTipi.Yon.ALIS)
+        KategoriHesap.objects.create(kategori=cls.kat, fatura_tipi=cls.alis_tipi,
+                                     hesap=HesapPlani.objects.get(hesap_kodu="153.20"))
+        cls.cari = Cari.objects.create(kod="CZ1", unvan="TEDARİKÇİ Z",
+                                       muhasebe_kodu="320.30.0001", para_birimi="TRY",
+                                       created_by=cls.yon, updated_by=cls.yon)
+        cls.depo = Depo.objects.create(kod="DZ1", ad="ZİNCİR DEPO",
+                                       created_by=cls.yon, updated_by=cls.yon)
+        cls.tarih = datetime.date(2026, 6, 28)
+
+    def _teklif(self):
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        return teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+
+    def test_tam_zincir_teklif_siparise_irsaliyeye_faturaya(self):
+        from core.models import Fatura, StokHareket
+        from core.services.fatura import fatura_onayla
+        from core.services.teklif_siparis import teklif_siparis_onayla
+
+        teklif = self._teklif()
+        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        siparis = teklif.donusen_siparisler.get()
+        self.assertEqual(siparis.durum, "TASLAK")
+        self.assertEqual(siparis.belge_tur, "SIPARIS")
+        self.assertEqual(siparis.kalemler.get().miktar, Decimal("10"))
+
+        teklif_siparis_onayla(siparis, kullanici=self.yon)
+        irsaliye = siparis.donusen_irsaliyeler.get()
+        self.assertEqual(irsaliye.durum, "TASLAK")
+        self.assertEqual(irsaliye.belge_tur, "IRSALIYE")
+        self.assertEqual(irsaliye.depo_id, self.depo.pk)
+        self.assertEqual(irsaliye.kalemler.get().miktar, Decimal("10"))
+        self.assertEqual(StokHareket.objects.count(), 0)          # irsaliye henüz onaylanmadı
+
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        self.assertEqual(StokHareket.objects.count(), 1)
+        hareket = StokHareket.objects.get()
+        self.assertEqual(hareket.tur, "GIRIS")
+        self.assertEqual(hareket.kaynak, "IRSALIYE")
+        self.assertEqual(hareket.miktar, Decimal("10.000"))
+        self.assertEqual(hareket.depo_id, self.depo.pk)
+
+        irsaliye.refresh_from_db()
+        fatura = irsaliye.fatura
+        self.assertIsNotNone(fatura)
+        self.assertIsNone(fatura.tip_id)
+        self.assertEqual(fatura.yon, "ALIS")
+        self.assertEqual(fatura.durum, "TASLAK")
+        self.assertIsNone(fatura.fis_id)
+        self.assertEqual(fatura.satirlar.filter(silindi=False).count(), 1)
+
+        fatura.tip = self.alis_tipi
+        fatura.save(update_fields=["tip"])
+        fatura_onayla(fatura, kullanici=self.yon)
+        fatura.refresh_from_db()
+        self.assertEqual(fatura.durum, "ONAYLI")
+        self.assertIsNotNone(fatura.fis_id)
+        self.assertEqual(StokHareket.objects.count(), 1)          # ÇİFTE SAYIM YOK
+
+    def test_satis_yonunde_onay_zincir_tetiklemez(self):
+        from core.models import Fatura, StokHareket, TeklifSiparis
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        t = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk, tarih=self.tarih,
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(t, kullanici=self.yon)
+        self.assertEqual(t.donusen_siparisler.count(), 0)
+        self.assertEqual(TeklifSiparis.objects.filter(belge_tur="SIPARIS").count(), 0)
+        self.assertEqual(StokHareket.objects.count(), 0)
+        self.assertEqual(Fatura.objects.count(), 0)
+
+    def test_aktif_depo_yoksa_siparis_onayi_geri_alinir(self):
+        from core.models import Depo
+        from core.services.teklif_siparis import TeklifSiparisHatasi, teklif_siparis_onayla
+        Depo.objects.filter(pk=self.depo.pk).update(silindi=True)
+        teklif = self._teklif()
+        teklif_siparis_onayla(teklif, kullanici=self.yon)     # teklif -> sipariş kısmı sorunsuz
+        siparis = teklif.donusen_siparisler.get()
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_onayla(siparis, kullanici=self.yon)
+        siparis.refresh_from_db()
+        self.assertEqual(siparis.durum, "TASLAK")              # atomik geri alındı
+        self.assertEqual(siparis.donusen_irsaliyeler.count(), 0)
+
+    def test_irsaliyeye_donusmus_siparisin_onayi_geri_alinamaz(self):
+        from core.services.teklif_siparis import (TeklifSiparisHatasi,
+                                                   teklif_siparis_onayi_geri_al,
+                                                   teklif_siparis_onayla)
+        teklif = self._teklif()
+        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        siparis = teklif.donusen_siparisler.get()
+        teklif_siparis_onayla(siparis, kullanici=self.yon)      # -> irsaliyeye dönüşür
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_onayi_geri_al(siparis, kullanici=self.yon)

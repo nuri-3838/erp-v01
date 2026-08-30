@@ -18,7 +18,7 @@ from django.db import transaction
 
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
-                         KategoriHesap, Kur, Stok, StokHareket, YevmiyeFisi)
+                         KategoriHesap, Kur, Stok, StokHareket, TeklifSiparis, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
@@ -192,6 +192,131 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
     return tip, cari, pb, kur, yevmiye_satirlari, hazir
 
 
+def _hazirla_taslak(*, cari_id, satirlar, para_birimi):
+    """Taslak oluştur/güncelle ortak hazırlığı: cari + satırları doğrular — TİP'e ihtiyaç
+    DUYMAZ (muhasebe haritası + yevmiye satırları onaylamaya ertelenir, bkz. fatura_onayla).
+    KDV/tevkifat stoktan bu anda (taslak anında) çekilip FaturaSatir'e SNAPSHOT yazılır.
+    (cari, pb, hazir) döner — hazir = [(stok, miktar, fiyat, kdv, tevkifat), ...]."""
+    cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
+    if cari is None:
+        raise FaturaHatasi("Cari bulunamadı.")
+    if not satirlar:
+        raise FaturaHatasi("Faturada en az bir satır olmalı.")
+    pb = (para_birimi or "TRY").strip().upper()
+    if pb not in dict(Cari.PARA_CHOICES):
+        raise FaturaHatasi("Geçersiz para birimi.")
+
+    hazir = []
+    for i, g in enumerate(satirlar, start=1):
+        stok = Stok.objects.filter(pk=g.get("stok_id"), silindi=False).first()
+        if stok is None:
+            raise FaturaHatasi(f"Satır {i}: stok bulunamadı.")
+        miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
+        birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
+        hazir.append((stok, miktar, birim, stok.kdv, stok.tevkifat))
+    return cari, pb, hazir
+
+
+def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
+    """fatura_onayla için: yevmiye satırlarını RAM'deki girdiden değil, faturaya zaten
+    YAZILMIŞ FaturaSatir satırlarının KDV/tevkifat SNAPSHOT'ından kurar — taslak ile onay
+    arasında stoğun KDV oranı değişse bile kullanıcının gördüğü taslak tutarlar korunur."""
+    alis = (tip.yon == FaturaTipi.Yon.ALIS)
+    cari_hesap = HesapPlani.objects.filter(
+        hesap_kodu=cari.muhasebe_kodu, silindi=False).first() if cari.muhasebe_kodu else None
+    if cari_hesap is None:
+        raise FaturaHatasi(
+            f"{cari.unvan} carisinin muhasebe hesabı yok; önce hesap planında açılmalı.")
+
+    satirlar = list(fatura.satirlar.filter(silindi=False)
+                    .select_related("stok__kategori", "kdv", "tevkifat"))
+    if not satirlar:
+        raise FaturaHatasi("Faturada en az bir satır olmalı.")
+
+    yevmiye_satirlari = []
+    kdv_hesap_toplam = {}
+    tevkifat_hesap_toplam = {}
+    borc_tl = SIFIR
+    alacak_tl = SIFIR
+    cari_pb = SIFIR
+
+    def _ekle(taraf, tutar_pb):
+        nonlocal borc_tl, alacak_tl
+        tl = yuvarla(tutar_pb * kur, 2)
+        if taraf == "B":
+            borc_tl += tl
+        else:
+            alacak_tl += tl
+
+    for i, satir in enumerate(satirlar, start=1):
+        stok = satir.stok
+        kh = KategoriHesap.objects.filter(
+            kategori=stok.kategori, fatura_tipi=tip, silindi=False).first()
+        if kh is None:
+            raise FaturaHatasi(
+                f"Satır {i}: {stok.kod} kategorisinin '{tip.ad}' için muhasebe hesabı "
+                f"tanımlı değil (STOKLAR > Kategoriler'den bağlayın).")
+
+        satir_tutar = satir.tutar
+        kdv = satir.kdv
+        satir_kdv = satir.kdv_tutari
+        tevkifat = satir.tevkifat
+        tev = satir.tevkifat_tutari
+        kdv_net = satir_kdv - tev
+
+        mal_taraf = "B" if alis else "A"
+        _ekle(mal_taraf, satir_tutar)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=kh.hesap.hesap_kodu, taraf=mal_taraf,
+            islem_tutari=satir_tutar, islem_pb=pb, islem_kuru=kur, aciklama=stok.ad))
+
+        kdv_post = satir_kdv if alis else kdv_net
+        if kdv_post > 0:
+            if kdv is None:
+                raise FaturaHatasi(f"Satır {i}: {stok.kod} için KDV oranı tanımlı değil.")
+            kdv_hesap = kdv.hesap_borc if alis else kdv.hesap_alacak
+            if kdv_hesap is None:
+                yer = "borç (İndirilecek)" if alis else "alacak (Hesaplanan)"
+                raise FaturaHatasi(
+                    f"Satır {i}: %{kdv.oran} KDV oranının {yer} hesabı tanımlı değil "
+                    f"(AYARLAR > KDV Oranları).")
+            kdv_hesap_toplam[kdv_hesap.hesap_kodu] = (
+                kdv_hesap_toplam.get(kdv_hesap.hesap_kodu, SIFIR) + kdv_post)
+
+        if alis and tev > 0:
+            tev_hesap = tevkifat.hesap
+            if tev_hesap is None:
+                raise FaturaHatasi(
+                    f"Satır {i}: {tevkifat.kod} tevkifatının muhasebe hesabı tanımlı "
+                    f"değil (AYARLAR > Tevkifat Oranları).")
+            tevkifat_hesap_toplam[tev_hesap.hesap_kodu] = (
+                tevkifat_hesap_toplam.get(tev_hesap.hesap_kodu, SIFIR) + tev)
+
+        cari_pb += satir_tutar + kdv_net
+
+    for hkod, tutar in kdv_hesap_toplam.items():
+        kdv_taraf = "B" if alis else "A"
+        _ekle(kdv_taraf, tutar)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=hkod, taraf=kdv_taraf,
+            islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV"))
+
+    for hkod, tutar in tevkifat_hesap_toplam.items():
+        _ekle("A", tutar)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=hkod, taraf="A",
+            islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV TEVKİFATI"))
+
+    cari_taraf = "A" if alis else "B"
+    cari_tl = (borc_tl - alacak_tl) if cari_taraf == "A" else (alacak_tl - borc_tl)
+    yevmiye_satirlari.append(SatirGirdi(
+        hesap_kodu=cari_hesap.hesap_kodu, taraf=cari_taraf,
+        islem_tutari=cari_pb, islem_pb=pb, islem_kuru=kur, aciklama=cari.unvan,
+        tl_override=cari_tl))
+
+    return yevmiye_satirlari
+
+
 def _aciklama(tip, cari, fatura_no):
     return buyuk_harf_tr(f"{tip.ad} - {cari.unvan}" + (f" - {fatura_no}" if fatura_no else ""))
 
@@ -260,39 +385,109 @@ def _negatif_eldeki_dogrula(ciftler):
 
 
 @transaction.atomic
-def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
-                   para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
-    """Faturayı + otomatik dengeli yevmiye fişini + (depo verildiyse) stok hareketlerini
-    atomik oluşturur. Para birimi TRY değilse kur fiş tarihinin TCMB kurundan çözülür.
-    Eksik harita / kur yok / dengesizlik / yetersiz stok -> FaturaHatasi (hiçbir şey kaydedilmez)."""
-    tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
-        tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
-        para_birimi=para_birimi)
+def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fatura_no="",
+                          para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
+    """Faturayı TASLAK olarak oluşturur — fiş/stok hareketi ÜRETMEZ (bkz. fatura_onayla).
+    tip_id verilirse yön ondan türetilir; verilmezse `yon` zorunludur (İrsaliye'den otomatik
+    açılan, tipi henüz bilinmeyen taslaklar için)."""
+    cari, pb, hazir = _hazirla_taslak(
+        cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi)
+    tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first() if tip_id else None
+    if tip is not None:
+        cozulen_yon = tip.yon
+    elif yon in FaturaTipi.Yon.values:
+        cozulen_yon = yon
+    else:
+        raise FaturaHatasi("Fatura yönü belirlenemedi.")
     depo = _depo_coz(depo_id)
     fatura_no = (fatura_no or "").strip()
-    try:
-        fis = fis_olustur(tarih=tarih, satirlar=yevmiye_satirlari,
-                          aciklama=_aciklama(tip, cari, fatura_no), kur_usd=None,
-                          kaynak=YevmiyeFisi.Kaynak.FATURA, kullanici=kullanici)
-    except YevmiyeHatasi as e:
-        raise FaturaHatasi(str(e))
     fatura = Fatura.objects.create(
-        tip=tip, cari=cari, tarih=tarih, fatura_no=fatura_no, para_birimi=pb,
-        kur=kur, fis=fis, depo=depo, created_by=kullanici, updated_by=kullanici)
+        tip=tip, yon=cozulen_yon, durum=Fatura.Durum.TASLAK, cari=cari, tarih=tarih,
+        fatura_no=fatura_no, para_birimi=pb, kur=1, fis=None, depo=depo,
+        created_by=kullanici, updated_by=kullanici)
     _satirlari_yaz(fatura, hazir, kullanici)
-    if depo is not None:
-        _hareketleri_yaz(fatura, depo, kullanici=kullanici)
     return fatura
 
 
 @transaction.atomic
-def fatura_guncelle(fatura: Fatura, *, tip_id, cari_id, tarih, satirlar,
+def fatura_onayla(fatura: Fatura, kullanici=None) -> Fatura:
+    """TASLAK → ONAYLI: muhasebe haritasını (tip artık zorunlu) çözer, dengeli yevmiye
+    fişini üretir ve — bu fatura bir İRSALİYE'den doğmadıysa (o zaten stokladı, çifte
+    sayım olmasın) — depo verilmişse stok hareketlerini yazar. İdempotent (zaten onaylıysa
+    sessiz)."""
+    if fatura.silindi:
+        raise FaturaHatasi("İptal edilmiş fatura onaylanamaz.")
+    if fatura.durum == Fatura.Durum.ONAYLI:
+        return fatura
+    if fatura.tip_id is None:
+        raise FaturaHatasi("Fatura tipi seçilmeden onaylanamaz.")
+    if fatura.tip.yon != fatura.yon:
+        raise FaturaHatasi("Fatura tipi, faturanın yönüyle uyuşmuyor.")
+    tip, cari = fatura.tip, fatura.cari
+    kur = _kur_coz(fatura.para_birimi, fatura.tarih)
+    yevmiye_satirlari = _muhasebe_satirlari(fatura, tip, cari, fatura.para_birimi, kur)
+    try:
+        fis = fis_olustur(tarih=fatura.tarih, satirlar=yevmiye_satirlari,
+                          aciklama=_aciklama(tip, cari, fatura.fatura_no), kur_usd=None,
+                          kaynak=YevmiyeFisi.Kaynak.FATURA, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise FaturaHatasi(str(e))
+    fatura.fis, fatura.kur, fatura.durum = fis, kur, Fatura.Durum.ONAYLI
+    fatura.updated_by = kullanici
+    fatura.save(update_fields=["fis", "kur", "durum", "updated_by", "updated_at"])
+    zaten_stoklandi = fatura.kaynak_siparisler.filter(
+        belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).exists()
+    if fatura.depo_id and not zaten_stoklandi:
+        _hareketleri_yaz(fatura, fatura.depo, kullanici=kullanici)
+    return fatura
+
+
+@transaction.atomic
+def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
+                   para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
+    """Kolaylık sarmalayıcısı: taslak oluşturur ve tip zaten bilindiği için HEMEN onaylar —
+    tek atomik blok, onaylama başarısız olursa (eksik harita/kur/vb.) taslak da geri alınır
+    (eskisi gibi tam atomik: ya hepsi ya hiçbiri). Tip'in önceden bilinmediği tek durum —
+    İrsaliye'den otomatik açılan taslak — bunun yerine doğrudan fatura_taslak_olustur kullanır."""
+    fatura = fatura_taslak_olustur(
+        cari_id=cari_id, tarih=tarih, satirlar=satirlar, tip_id=tip_id,
+        fatura_no=fatura_no, para_birimi=para_birimi, depo_id=depo_id, kullanici=kullanici)
+    return fatura_onayla(fatura, kullanici=kullanici)
+
+
+@transaction.atomic
+def fatura_guncelle(fatura: Fatura, *, tip_id=None, yon=None, cari_id, tarih, satirlar,
                     fatura_no="", para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
-    """Faturayı + bağlı yevmiye fişini + stok hareketlerini günceller (fiş no/yıl korunur).
-    Eski FaturaSatır, fiş satırları ve stok hareketleri soft-delete edilir, yenileri yazılır."""
+    """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
+    serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
+    hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir."""
     from django.utils import timezone
     if fatura.silindi:
         raise FaturaHatasi("Silinmiş fatura düzenlenemez.")
+
+    if fatura.durum == Fatura.Durum.TASLAK:
+        cari, pb, hazir = _hazirla_taslak(
+            cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi)
+        tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first() if tip_id else None
+        if tip is not None:
+            cozulen_yon = tip.yon
+        elif yon in FaturaTipi.Yon.values:
+            cozulen_yon = yon
+        else:
+            cozulen_yon = fatura.yon
+        depo = _depo_coz(depo_id)
+        fatura_no = (fatura_no or "").strip()
+        fatura.satirlar.filter(silindi=False).update(
+            silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+        fatura.tip, fatura.yon, fatura.cari, fatura.tarih = tip, cozulen_yon, cari, tarih
+        fatura.fatura_no, fatura.para_birimi, fatura.depo = fatura_no, pb, depo
+        fatura.updated_by = kullanici
+        fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no",
+                                   "para_birimi", "depo", "updated_by", "updated_at"])
+        _satirlari_yaz(fatura, hazir, kullanici)
+        return fatura
+
+    # ONAYLI — bugünkü mevcut mantık aynen.
     if fatura.fis_id is None or fatura.fis.silindi:
         raise FaturaHatasi("Faturanın aktif yevmiye fişi yok; düzenlenemez.")
     tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
@@ -311,10 +506,10 @@ def fatura_guncelle(fatura: Fatura, *, tip_id, cari_id, tarih, satirlar,
     _hareketleri_iptal(fatura, kullanici=kullanici)
     fatura.satirlar.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    fatura.tip, fatura.cari, fatura.tarih = tip, cari, tarih
+    fatura.tip, fatura.yon, fatura.cari, fatura.tarih = tip, tip.yon, cari, tarih
     fatura.fatura_no, fatura.para_birimi, fatura.kur, fatura.depo = fatura_no, pb, kur, depo
     fatura.updated_by = kullanici
-    fatura.save(update_fields=["tip", "cari", "tarih", "fatura_no", "para_birimi",
+    fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
                                "kur", "depo", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
     if depo is not None:

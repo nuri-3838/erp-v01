@@ -40,6 +40,7 @@ MODULLER = (
     Modul("SATINALMA", "Satınalma", (
         Ekran("satinalma_teklifleri", "Satınalma Teklifleri", "core:satinalma_teklifleri"),
         Ekran("satinalma_siparisleri", "Satınalma Siparişleri", "core:satinalma_siparisleri"),
+        Ekran("satinalma_irsaliyeleri", "Satınalma İrsaliyeleri", "core:satinalma_irsaliyeleri"),
     )),
     Modul("SATIS", "Satış", (
         Ekran("satis_teklifleri", "Satış Teklifleri", "core:satis_teklifleri"),
