@@ -654,6 +654,8 @@ def stok_ekle(request):
                     tevkifat_id=cd["tevkifat"].pk if cd.get("tevkifat") else None,
                     kritik_stok=cd.get("kritik_stok"),
                     tedarikci_id=cd["tedarikci"].pk if cd.get("tedarikci") else None,
+                    alis_fiyati=cd.get("alis_fiyati"),
+                    alis_fiyati_pb=cd.get("alis_fiyati_pb"),
                     kullanici=request.user)
                 messages.success(request, f"Stok eklendi: {s.kod} — {s.ad}")
                 return redirect("core:stoklar")
@@ -682,6 +684,8 @@ def stok_duzenle(request, pk):
                     tevkifat_id=cd["tevkifat"].pk if cd.get("tevkifat") else None,
                     kritik_stok=cd.get("kritik_stok"),
                     tedarikci_id=cd["tedarikci"].pk if cd.get("tedarikci") else None,
+                    alis_fiyati=cd.get("alis_fiyati"),
+                    alis_fiyati_pb=cd.get("alis_fiyati_pb"),
                     kullanici=request.user)
                 messages.success(request, "Stok güncellendi.")
                 return redirect("core:stoklar")
@@ -692,7 +696,8 @@ def stok_duzenle(request, pk):
             "ad": stok.ad, "uretim_birimi": stok.uretim_birimi_id,
             "fatura_birimi": stok.fatura_birimi_id, "cevirici": stok.cevirici,
             "kdv": stok.kdv_id, "tevkifat": stok.tevkifat_id,
-            "kritik_stok": stok.kritik_stok, "tedarikci": stok.tedarikci_id})
+            "kritik_stok": stok.kritik_stok, "tedarikci": stok.tedarikci_id,
+            "alis_fiyati": stok.alis_fiyati, "alis_fiyati_pb": stok.alis_fiyati_pb})
     return render(request, "core/stok_form.html",
                   {"form": form, "baslik": "Stok Düzenle", "duzenlenen": stok})
 

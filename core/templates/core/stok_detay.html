@@ -117,6 +117,8 @@
           <span class="dg"><span class="mono">{{ stok.kritik_stok|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</span></div>
         <div class="satir"><span class="et">Tedarikçi (Cari)</span>
           <span class="dg">{% if stok.tedarikci %}<span class="mono">{{ stok.tedarikci.kod }}</span> {{ stok.tedarikci.unvan }}{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Alış Fiyatı</span>
+          <span class="dg">{% if stok.alis_fiyati %}<span class="mono">{{ stok.alis_fiyati|tr_kur:2 }}</span> {{ stok.alis_fiyati_pb }}{% else %}—{% endif %}</span></div>
       </div>
 
       <h2 class="bolum-baslik" style="margin-top:1.6rem"><span class="emoji">🧾</span>Muhasebe Hesabı Haritası

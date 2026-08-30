@@ -7,6 +7,8 @@
   stok açılamaz. Kategori ve kod oluşturmadan sonra DEĞİŞMEZ.
 - Üretim ve fatura birimi farklı olabilir; ``cevirici`` = 1 üretim birimi kaç fatura
   birimi eder (> 0). KDV oranı ZORUNLU (tevkifat opsiyonel kalır).
+- Alış fiyatı (tutar + para birimi) tamamen opsiyonel, yalnız BİLGİ amaçlı — fatura/
+  teklif-sipariş fiyatını ETKİLEMEZ, muhasebeye yansımaz.
 - Silme: soft-delete (iz kalır).
 """
 from __future__ import annotations
@@ -110,9 +112,31 @@ def _negatif_olmaz(deger, etiket) -> Decimal:
     return d
 
 
+def _tutar_opsiyonel(deger, etiket):
+    """≥ 0 ondalık veya None — boş girilirse "bilinmiyor" demektir, 0 değil."""
+    if deger in (None, ""):
+        return None
+    try:
+        d = parse_tr(deger)
+    except SayiHatasi:
+        raise StokHatasi(f"{etiket} geçerli bir sayı olmalı.")
+    if d < 0:
+        raise StokHatasi(f"{etiket} negatif olamaz.")
+    return d
+
+
+def _pb_dogrula(para_birimi):
+    from core.models import YevmiyeSatir
+    pb = (para_birimi or "TRY").strip().upper()
+    if pb not in dict(YevmiyeSatir.IslemPB.choices):
+        raise StokHatasi("Geçersiz para birimi.")
+    return pb
+
+
 def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  cevirici=Decimal("1"), kdv_id=None, tevkifat_id=None,
-                 kritik_stok=Decimal("0"), tedarikci_id=None, kullanici=None) -> Stok:
+                 kritik_stok=Decimal("0"), tedarikci_id=None,
+                 alis_fiyati=None, alis_fiyati_pb="TRY", kullanici=None) -> Stok:
     ad = _ad_dogrula(ad)
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
@@ -128,6 +152,8 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         kdv=_kdv_coz(kdv_id), tevkifat=_tevkifat_coz(tevkifat_id),
         kritik_stok=_negatif_olmaz(kritik_stok, "Kritik stok seviyesi"),
         tedarikci=_tedarikci_coz(tedarikci_id),
+        alis_fiyati=_tutar_opsiyonel(alis_fiyati, "Alış fiyatı"),
+        alis_fiyati_pb=_pb_dogrula(alis_fiyati_pb),
         created_by=kullanici, updated_by=kullanici,
     )
 
@@ -136,19 +162,21 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
     """Var olan bir stok kartının birebir kopyasını oluşturur. ``kod`` farklıdır
     (aynı kategoride sıradaki numarayı otomatik alır); ``ad`` sonuna " KOPYA"
     eklenir (hangisinin kopya olduğu ayırt edilsin diye) — kategori, birimler,
-    çevirici, KDV/tevkifat, kritik stok ve tedarikçi aynen kopyalanır.
+    çevirici, KDV/tevkifat, kritik stok, tedarikçi ve alış fiyatı aynen kopyalanır.
     """
     return stok_olustur(
         ad=f"{stok.ad} KOPYA", kategori_id=stok.kategori_id,
         uretim_birimi_id=stok.uretim_birimi_id, fatura_birimi_id=stok.fatura_birimi_id,
         cevirici=stok.cevirici, kdv_id=stok.kdv_id, tevkifat_id=stok.tevkifat_id,
         kritik_stok=stok.kritik_stok, tedarikci_id=stok.tedarikci_id,
+        alis_fiyati=stok.alis_fiyati, alis_fiyati_pb=stok.alis_fiyati_pb,
         kullanici=kullanici)
 
 
 def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   cevirici, kdv_id=None, tevkifat_id=None,
-                  kritik_stok=Decimal("0"), tedarikci_id=None, kullanici=None) -> Stok:
+                  kritik_stok=Decimal("0"), tedarikci_id=None,
+                  alis_fiyati=None, alis_fiyati_pb="TRY", kullanici=None) -> Stok:
     """Ad, birimler, çevirici, vergi/stok alanları güncellenir. KOD ve KATEGORİ DEĞİŞMEZ."""
     if stok.silindi:
         raise StokHatasi("Silinmiş stok düzenlenemez.")
@@ -160,10 +188,12 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.tevkifat = _tevkifat_coz(tevkifat_id)
     stok.kritik_stok = _negatif_olmaz(kritik_stok, "Kritik stok seviyesi")
     stok.tedarikci = _tedarikci_coz(tedarikci_id)
+    stok.alis_fiyati = _tutar_opsiyonel(alis_fiyati, "Alış fiyatı")
+    stok.alis_fiyati_pb = _pb_dogrula(alis_fiyati_pb)
     stok.updated_by = kullanici
     stok.save(update_fields=["ad", "uretim_birimi", "fatura_birimi", "cevirici",
-                             "kdv", "tevkifat", "kritik_stok",
-                             "tedarikci", "updated_by", "updated_at"])
+                             "kdv", "tevkifat", "kritik_stok", "tedarikci",
+                             "alis_fiyati", "alis_fiyati_pb", "updated_by", "updated_at"])
     return stok
 
 

@@ -323,6 +323,12 @@ class StokForm(forms.Form):
     tedarikci = forms.ModelChoiceField(
         label="Tedarikçi (Cari)", queryset=Cari.objects.none(), required=False,
         empty_label="— tedarikçi seç —")
+    alis_fiyati_pb = forms.ChoiceField(
+        label="Alış Fiyatı Para Birimi", choices=Cari.PARA_CHOICES, required=False,
+        initial="TRY")
+    alis_fiyati = TRDecimalField(
+        label="Alış Fiyatı", basamak=6, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "— girilmedi —"}))
 
     def __init__(self, *args, duzenle: bool = False, **kwargs):
         super().__init__(*args, **kwargs)

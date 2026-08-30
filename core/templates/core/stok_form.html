@@ -97,6 +97,22 @@
       </div>
     </section>
 
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">💰</span>Alış Fiyatı</h2>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.alis_fiyati_pb.id_for_label }}">Para Birimi</label>
+          {{ form.alis_fiyati_pb }}
+        </div>
+        <div class="alan">
+          <label for="{{ form.alis_fiyati.id_for_label }}">Tutar</label>
+          {{ form.alis_fiyati }}
+          {% for e in form.alis_fiyati.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <p class="yardim">Opsiyonel, yalnız bilgi amaçlı — fatura/teklif fiyatını etkilemez.</p>
+    </section>
+
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:stoklar' %}">İptal</a>
       <button type="submit" class="birincil">Kaydet</button>

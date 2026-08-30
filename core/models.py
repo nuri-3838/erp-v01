@@ -488,6 +488,15 @@ class Stok(TemelModel):
     tedarikci = models.ForeignKey(
         "Cari", verbose_name="tedarikçi (cari)", null=True, blank=True,
         on_delete=models.PROTECT, related_name="tedarik_stoklari")
+    # Alış fiyatı — bilgi amaçlı (muhasebe/fatura fiyatını ETKİLEMEZ, yalnız referans).
+    # Opsiyonel. Para birimi: YevmiyeSatir.IslemPB.choices ile aynı kaynak (Cari.PARA_CHOICES
+    # bunu aliaslar, ama Cari bu dosyada Stok'tan SONRA tanımlı — ileri referans olmasın diye
+    # doğrudan IslemPB kullanılıyor).
+    alis_fiyati = models.DecimalField(
+        "alış fiyatı", max_digits=18, decimal_places=6, null=True, blank=True)
+    alis_fiyati_pb = models.CharField(
+        "alış fiyatı para birimi", max_length=3,
+        choices=YevmiyeSatir.IslemPB.choices, default="TRY")
 
     class Meta:
         db_table = "stok"
@@ -501,6 +510,9 @@ class Stok(TemelModel):
                                    name="ck_stok_cevirici_gt0"),
             models.CheckConstraint(condition=models.Q(kritik_stok__gte=0),
                                    name="ck_stok_kritik_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(alis_fiyati__isnull=True) | models.Q(alis_fiyati__gte=0),
+                name="ck_stok_alis_fiyati_gte0"),
         ]
 
     def __str__(self):

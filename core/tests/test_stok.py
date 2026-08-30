@@ -115,6 +115,36 @@ class StokServisTest(TestCase):
                          fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
                          kdv_id=_kdv("20").pk, kritik_stok=Decimal("-1"))
 
+    def test_alis_fiyati_opsiyonel_bos_none_kalir(self):
+        _, alt, _, adet, kg = _veri()
+        s = stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk)
+        self.assertIsNone(s.alis_fiyati)
+        self.assertEqual(s.alis_fiyati_pb, "TRY")
+
+    def test_alis_fiyati_kaydedilir(self):
+        _, alt, _, adet, kg = _veri()
+        s = stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk, alis_fiyati="12,50", alis_fiyati_pb="usd")
+        self.assertEqual(s.alis_fiyati, Decimal("12.50"))
+        self.assertEqual(s.alis_fiyati_pb, "USD")             # büyük harfe çevrilir
+
+    def test_alis_fiyati_negatif_red(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(StokHatasi):
+            stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk, alis_fiyati="-1")
+
+    def test_alis_fiyati_gecersiz_pb_red(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(StokHatasi):
+            stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk, alis_fiyati="10", alis_fiyati_pb="XYZ")
+
     def test_ust_kategoriye_stok_red(self):
         ust, _, _, adet, kg = _veri()
         with self.assertRaises(StokHatasi):
@@ -160,7 +190,8 @@ class StokServisTest(TestCase):
         s = stok_olustur(ad="orijinal", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
                          fatura_birimi_id=kg.pk, cevirici=Decimal("2.5"),
                          kdv_id=_kdv("20").pk, tevkifat_id=_tevkifat().pk,
-                         kritik_stok=Decimal("50"), tedarikci_id=c.pk)
+                         kritik_stok=Decimal("50"), tedarikci_id=c.pk,
+                         alis_fiyati="99,90", alis_fiyati_pb="eur")
         kopya = stok_kopyala(s, kullanici=None)
         self.assertNotEqual(kopya.pk, s.pk)
         self.assertEqual(kopya.kod, "150-10-0002")          # sıradaki numara
@@ -168,9 +199,10 @@ class StokServisTest(TestCase):
         self.assertEqual(
             (kopya.kategori_id, kopya.uretim_birimi_id, kopya.fatura_birimi_id,
              kopya.cevirici, kopya.kdv_id, kopya.tevkifat_id, kopya.kritik_stok,
-             kopya.tedarikci_id),
+             kopya.tedarikci_id, kopya.alis_fiyati, kopya.alis_fiyati_pb),
             (s.kategori_id, s.uretim_birimi_id, s.fatura_birimi_id,
-             s.cevirici, s.kdv_id, s.tevkifat_id, s.kritik_stok, s.tedarikci_id))
+             s.cevirici, s.kdv_id, s.tevkifat_id, s.kritik_stok, s.tedarikci_id,
+             s.alis_fiyati, s.alis_fiyati_pb))
         s.refresh_from_db()
         self.assertEqual((s.kod, s.ad), ("150-10-0001", "ORİJİNAL"))   # orijinal değişmedi
 
@@ -190,6 +222,13 @@ class StokServisTest(TestCase):
             Stok.objects.create(kod="150-10-9001", ad="X", kategori=alt,
                                  uretim_birimi=adet, fatura_birimi=kg,
                                  cevirici=Decimal("0"))
+
+    def test_db_alis_fiyati_kisit(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Stok.objects.create(kod="150-10-9002", ad="Y", kategori=alt,
+                                 uretim_birimi=adet, fatura_birimi=kg,
+                                 alis_fiyati=Decimal("-5"))
 
     def test_db_kod_unique(self):
         _, alt, _, adet, kg = _veri()
@@ -295,6 +334,21 @@ class StokViewTest(TestCase):
         s = Stok.objects.get(ad="ALÜMİNYUM LEVHA")
         self.assertEqual((s.kod, s.kategori_id, s.kdv_id),
                          ("150-10-0001", self.alt.pk, k.pk))
+
+    def test_ekle_post_alis_fiyati_kaydedilir_ve_detayda_gorunur(self):
+        k = _kdv("20")
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:stok_ekle"), {
+            "ad": "profil", "kategori": str(self.alt.pk),
+            "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
+            "cevirici": "3", "kdv": str(k.pk),
+            "alis_fiyati": "45,75", "alis_fiyati_pb": "USD"})
+        self.assertEqual(r.status_code, 302)
+        s = Stok.objects.get(ad="PROFİL")
+        self.assertEqual((s.alis_fiyati, s.alis_fiyati_pb), (Decimal("45.75"), "USD"))
+        d = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(d, "45,75")
+        self.assertContains(d, "USD")
 
     def test_ekle_ust_kategori_secilemez(self):
         self.client.force_login(self.yetkili)
