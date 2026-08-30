@@ -534,6 +534,27 @@ class TeklifSiparisViewTest(TestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
 
+    def test_birim_fiyat_4_basamak_yazilir_ve_gosterilir(self):
+        """Birim fiyat 4 ondalık basamağa kadar hem forma yazılabilmeli hem de detay/PDF
+        görünümünde tam olarak gösterilmeli (2 basamağa yuvarlanıp kaybolmamalı)."""
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="ALIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "45,6789"}],
+            kullanici=self.yon)
+        k = ts.kalemler.get()
+        self.assertEqual(k.birim_fiyat, Decimal("45.6789"))
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertContains(d, "45,6789")
+        e = self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk]))
+        self.assertContains(e, "45,6789")                  # düzenleme formunda kaybolmuyor
+        pdf = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(pdf["Content-Type"], "application/pdf")
+
     def test_ekle_formunda_stok_meta_cevirici_ve_birimler(self):
         """Kalem satırındaki 'Üretim Miktarı' JS'i stok_meta context'ine bağlı: her stok
         için KDV oranı + çevirici + üretim/fatura birim kısa adı gelmeli."""

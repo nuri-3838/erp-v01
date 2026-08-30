@@ -1146,11 +1146,12 @@ class TeklifSiparisForm(forms.Form):
 
 
 class TeklifSiparisKalemForm(forms.Form):
-    """Teklif/Sipariş kalemi: stok × miktar × birim fiyat (Fatura kalem formuyla aynı şekil)."""
+    """Teklif/Sipariş kalemi: stok × miktar × birim fiyat (Fatura kalem formuyla aynı şekil,
+    yalnız birim fiyat 4 ondalık basamak — Satınalma tarafının isteği)."""
     stok = forms.ModelChoiceField(
         label="Stok", queryset=Stok.objects.none(), required=False, empty_label="— stok seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
-    birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=2, required=False)
+    birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
