@@ -68,6 +68,9 @@
       <div class="dg">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</div></div>
     {% endif %}
     <div class="kutu"><div class="et">Durum</div><div class="dg">{{ ts.get_durum_display }}</div></div>
+    {% if ts.belge_tur == "IRSALIYE" and ts.irsaliye_no %}
+    <div class="kutu"><div class="et">İrsaliye No</div><div class="dg">{{ ts.irsaliye_no }}</div></div>
+    {% endif %}
     <div class="kutu"><div class="et">Kalem Adedi</div><div class="dg">{{ kalemler|length }}</div></div>
     {% if ts.miktar_toplam %}
     <div class="kutu"><div class="et">Toplam Miktar</div>

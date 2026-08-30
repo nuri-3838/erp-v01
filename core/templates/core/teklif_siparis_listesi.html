@@ -69,7 +69,8 @@
           </div>
         </td>
         <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
-        <td>{% if k.belge_no %}<span class="ts-belge-no">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if k.belge_no %}<span class="ts-belge-no">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}
+          {% if k.irsaliye_no %}<br><span class="pasif ts-belge-no">{{ k.irsaliye_no }}</span>{% endif %}</td>
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>
           {% if k.donustu %}<span class="rozet rozet-notr">{{ donustu_etiket }}</span>{% endif %}
           {% if k.fatura_id %}<span class="rozet rozet-notr">🧾 Faturaya Dönüştü</span>{% endif %}</td>

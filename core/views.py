@@ -1831,6 +1831,7 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
                     aciklama=bform.cleaned_data.get("aciklama", ""),
                     depo_id=(bform.cleaned_data["depo"].pk
                              if bform.cleaned_data.get("depo") else None),
+                    irsaliye_no=bform.cleaned_data.get("irsaliye_no", ""),
                     satirlar=satirlar, kullanici=request.user)
                 messages.success(request, f"{ts.get_belge_tur_display()} kaydedildi.")
                 return redirect("core:teklif_siparis_detay", pk=ts.pk)
@@ -2005,6 +2006,7 @@ def teklif_siparis_duzenle(request, pk):
                     aciklama=bform.cleaned_data.get("aciklama", ""),
                     depo_id=(bform.cleaned_data["depo"].pk
                              if bform.cleaned_data.get("depo") else None),
+                    irsaliye_no=bform.cleaned_data.get("irsaliye_no", ""),
                     satirlar=satirlar, kullanici=request.user)
                 messages.success(request, f"{ts.get_belge_tur_display()} güncellendi.")
                 return redirect("core:teklif_siparis_detay", pk=ts.pk)
@@ -2014,7 +2016,8 @@ def teklif_siparis_duzenle(request, pk):
         bform = TeklifSiparisForm(belge_tur=ts.belge_tur, initial={
             "cari": ts.cari_id, "tarih": ts.tarih,
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
-            "para_birimi": ts.para_birimi, "aciklama": ts.aciklama, "depo": ts.depo_id})
+            "para_birimi": ts.para_birimi, "aciklama": ts.aciklama, "depo": ts.depo_id,
+            "irsaliye_no": ts.irsaliye_no})
         ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
                for k in ts.kalemler.filter(silindi=False).select_related("stok")]
         formset = TeklifSiparisKalemFormSet(initial=ilk)

@@ -968,6 +968,9 @@ class TeklifSiparis(TemelModel):
     depo = models.ForeignKey(
         "Depo", verbose_name="depo", null=True, blank=True,
         on_delete=models.PROTECT, related_name="teklif_siparisler")
+    # IRSALIYE ise: tedarikçinin KENDİ (kağıt) irsaliye numarası — bizim otomatik belge_no'muzdan
+    # ayrı, serbest metin, opsiyonel (Fatura.fatura_no ile aynı desen).
+    irsaliye_no = models.CharField("irsaliye no", max_length=50, blank=True)
     # SIPARIS/IRSALIYE ise: hangi Fatura'ya dönüştürüldüğü. Fatura modülü TeklifSiparis'i BİLMEZ —
     # bağlantı burada, sipariş/irsaliye tarafında kurulur (Fatura oluştuktan SONRA set edilir).
     fatura = models.ForeignKey(

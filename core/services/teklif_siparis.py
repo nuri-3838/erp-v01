@@ -106,7 +106,7 @@ def _sonraki_sira(belge_tur, yon, yil):
 
 def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, para_birimi,
                    aciklama, kaynak_teklif=None, kaynak_siparis=None, depo=None,
-                   kullanici=None) -> TeklifSiparis:
+                   irsaliye_no="", kullanici=None) -> TeklifSiparis:
     """Numaralı başlık oluşturur: belge_no = ÖNEK-yıl-sıra (müteselsil/boşluksuz — fiş no ile
     aynı invariant, kullanıcı giremez/değiştiremez). Numara çakışırsa (eşzamanlı oluşturma)
     savepoint geri alınır, bir sonraki sırayla yeniden denenir (fis_olustur ile aynı desen)."""
@@ -122,6 +122,7 @@ def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, par
                     belge_no=f"{onek}-{yil}-{sira:04d}", yil=yil, sira=sira,
                     para_birimi=para_birimi, aciklama=(aciklama or "").strip(),
                     kaynak_teklif=kaynak_teklif, kaynak_siparis=kaynak_siparis, depo=depo,
+                    irsaliye_no=(irsaliye_no or "").strip(),
                     created_by=kullanici, updated_by=kullanici)
         except IntegrityError as e:
             if "uq_teklif_siparis_tur_yon_yil_sira" not in str(e):
@@ -133,7 +134,8 @@ def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, par
 @transaction.atomic
 def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
                            gecerlilik_teslim_tarihi=None, para_birimi="TRY",
-                           aciklama="", depo_id=None, kullanici=None) -> TeklifSiparis:
+                           aciklama="", depo_id=None, irsaliye_no="",
+                           kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini oluşturur. Yevmiye ÜRETMEZ; İRSALİYE
     stok hareketi de ÜRETMEZ (o yalnız onaylanınca — bkz. teklif_siparis_onayla). Durum
     TASLAK başlar; belge_no otomatik (müteselsil) üretilir."""
@@ -146,6 +148,7 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
     depo = _depo_coz_irsaliye(belge_tur, depo_id)
     ts = _belge_olustur(belge_tur=belge_tur, yon=yon, cari=cari, tarih=tarih,
                         gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
+                        irsaliye_no=irsaliye_no,
                         para_birimi=pb, aciklama=aciklama, depo=depo, kullanici=kullanici)
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
@@ -154,7 +157,8 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
 @transaction.atomic
 def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
                             gecerlilik_teslim_tarihi=None, para_birimi="TRY",
-                            aciklama="", depo_id=None, kullanici=None) -> TeklifSiparis:
+                            aciklama="", depo_id=None, irsaliye_no="",
+                            kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini günceller (belge_tur/yon/belge_no SABİT —
     hangi ekrana ait olduğunu ve numarasını belirler, değişmez). Onaylı belge düzenlenemez
     (önce onayı geri alın). Eski kalemler soft-delete edilir, yenileri yazılır."""
@@ -173,9 +177,10 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
     ts.para_birimi = pb
     ts.aciklama = (aciklama or "").strip()
     ts.depo = depo
+    ts.irsaliye_no = (irsaliye_no or "").strip()
     ts.updated_by = kullanici
-    ts.save(update_fields=["cari", "tarih", "gecerlilik_teslim_tarihi",
-                           "para_birimi", "aciklama", "depo", "updated_by", "updated_at"])
+    ts.save(update_fields=["cari", "tarih", "gecerlilik_teslim_tarihi", "para_birimi",
+                           "aciklama", "depo", "irsaliye_no", "updated_by", "updated_at"])
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
 

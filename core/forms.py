@@ -1149,6 +1149,11 @@ class TeklifSiparisForm(forms.Form):
                 label="Depo", queryset=Depo.objects.filter(silindi=False).order_by("kod"),
                 empty_label="— depo seç —")
             self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+            # Tedarikçinin KENDİ (kağıt) irsaliye numarası — bizim otomatik belge_no'muzdan
+            # ayrı, serbest metin, opsiyonel (Fatura.fatura_no ile aynı desen).
+            self.fields["irsaliye_no"] = forms.CharField(
+                label="İrsaliye No", max_length=50, required=False,
+                widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
 
 class TeklifSiparisKalemForm(forms.Form):

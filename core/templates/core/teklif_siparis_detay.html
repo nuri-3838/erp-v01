@@ -94,6 +94,8 @@
       {% if ts.belge_tur == "IRSALIYE" %}
       <div class="satir"><span class="et">Depo</span>
         <span class="dg">{% if ts.depo %}<span class="mono">{{ ts.depo.kod }}</span> {{ ts.depo.ad }}{% else %}—{% endif %}</span></div>
+      <div class="satir"><span class="et">İrsaliye No</span>
+        <span class="dg">{% if ts.irsaliye_no %}{{ ts.irsaliye_no }}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
       {% endif %}
       {% if ts.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ ts.aciklama }}</span></div>{% endif %}
       {% if ts.kaynak_teklif %}

@@ -9,11 +9,12 @@ from django.urls import reverse
 
 from core.models import Birim, Cari, HesapPlani, KdvOrani, Kategori, Stok
 
-EKRANLAR = ("satinalma_teklifleri", "satinalma_siparisleri",
+EKRANLAR = ("satinalma_teklifleri", "satinalma_siparisleri", "satinalma_irsaliyeleri",
             "satis_teklifleri", "satis_siparisleri")
 EKLE_URL = {
     "satinalma_teklifleri": "satinalma_teklif_ekle",
     "satinalma_siparisleri": "satinalma_siparis_ekle",
+    "satinalma_irsaliyeleri": "satinalma_irsaliye_ekle",
     "satis_teklifleri": "satis_teklif_ekle",
     "satis_siparisleri": "satis_siparis_ekle",
 }
@@ -488,6 +489,7 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
 class TeklifSiparisViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from core.models import Depo
         cls.yon = User.objects.create_superuser("tsvyon", password="x")
         cls.bos = User.objects.create_user("tsvbos", password="x")
         _hesap("120.02", "MÜŞTERİ B")
@@ -500,6 +502,8 @@ class TeklifSiparisViewTest(TestCase):
         cls.birim = Birim.objects.create(ad="ADET", kisa_ad="AD", ondalik=0)
         cls.stok = Stok.objects.create(kod="S3", ad="ÜRÜN C", kategori=cls.kat, kdv=cls.kdv,
                                        uretim_birimi=cls.birim, fatura_birimi=cls.birim,
+                                       created_by=cls.yon, updated_by=cls.yon)
+        cls.depo = Depo.objects.create(kod="DV1", ad="VIEW TEST DEPO",
                                        created_by=cls.yon, updated_by=cls.yon)
 
     def test_liste_ekranlari_200(self):
@@ -1098,3 +1102,73 @@ class SatinalmaZinciriTest(TestCase):
         teklif_siparis_onayla(siparis, kullanici=self.yon)      # -> irsaliyeye dönüşür
         with self.assertRaises(TeklifSiparisHatasi):
             teklif_siparis_onayi_geri_al(siparis, kullanici=self.yon)
+
+
+class TeklifSiparisIrsaliyeNoTest(TestCase):
+    """İrsaliye No: tedarikçinin KENDİ (kağıt) irsaliye numarasını girebileceğimiz serbest
+    metin alan — Fatura.fatura_no ile aynı desen, yalnız belge_tur=IRSALIYE'de gösterilir."""
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Depo
+        cls.yon = User.objects.create_superuser("tsinyon", password="x")
+        _hesap("120.09", "MÜŞTERİ IN")
+        cls.cari = Cari.objects.create(kod="CIN1", unvan="MÜŞTERİ IN", muhasebe_kodu="120.09",
+                                       created_by=cls.yon, updated_by=cls.yon)
+        cls.kat = Kategori.objects.create(kod="KIN1", ad="GENEL IN", created_by=cls.yon,
+                                          updated_by=cls.yon)
+        cls.birim = Birim.objects.create(ad="ADET IN", kisa_ad="ADIN", ondalik=0)
+        cls.stok = Stok.objects.create(kod="SIN1", ad="ÜRÜN IN", kategori=cls.kat,
+                                       uretim_birimi=cls.birim, fatura_birimi=cls.birim,
+                                       created_by=cls.yon, updated_by=cls.yon)
+        cls.depo = Depo.objects.create(kod="DIN1", ad="IN DEPO",
+                                       created_by=cls.yon, updated_by=cls.yon)
+
+    def test_irsaliye_formunda_alan_var_ve_kaydedilir(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satinalma_irsaliye_ekle"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "İrsaliye No")
+        self.assertContains(r, "Depo")
+        post = self.client.post(reverse("core:satinalma_irsaliye_ekle"), {
+            "cari": self.cari.pk, "tarih": "2026-06-28", "para_birimi": "TRY",
+            "depo": self.depo.pk, "irsaliye_no": "İRS-2026/00042",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "10",
+        })
+        from core.models import TeklifSiparis
+        irsaliye = TeklifSiparis.objects.get(belge_tur="IRSALIYE", cari=self.cari)
+        self.assertRedirects(post, reverse("core:teklif_siparis_detay", args=[irsaliye.pk]))
+        self.assertEqual(irsaliye.irsaliye_no, "İRS-2026/00042")
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[irsaliye.pk]))
+        self.assertContains(d, "İRS-2026/00042")
+        rl = self.client.get(reverse("core:satinalma_irsaliyeleri"))
+        self.assertContains(rl, "İRS-2026/00042")
+
+    def test_teklif_ve_siparis_formunda_alan_yok(self):
+        """İrsaliye No yalnız İRSALİYE ekranında görünür — Teklif/Sipariş formunda olmamalı."""
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satinalma_teklif_ekle"))
+        self.assertNotContains(r, "İrsaliye No")
+
+    def test_duzenlemede_irsaliye_no_degistirilebilir(self):
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="IRSALIYE", yon="ALIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 6, 28), depo_id=self.depo.pk,
+            irsaliye_no="ESKİ-001",
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.assertEqual(ts.irsaliye_no, "ESKİ-001")
+        self.client.force_login(self.yon)
+        e = self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk]))
+        self.assertContains(e, "ESKİ-001")
+        self.client.post(reverse("core:teklif_siparis_duzenle", args=[ts.pk]), {
+            "cari": self.cari.pk, "tarih": "2026-06-28", "para_birimi": "TRY",
+            "depo": self.depo.pk, "irsaliye_no": "YENİ-002",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "1", "form-0-birim_fiyat": "10",
+        })
+        ts.refresh_from_db()
+        self.assertEqual(ts.irsaliye_no, "YENİ-002")
