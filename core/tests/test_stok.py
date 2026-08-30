@@ -164,14 +164,15 @@ class StokServisTest(TestCase):
         kopya = stok_kopyala(s, kullanici=None)
         self.assertNotEqual(kopya.pk, s.pk)
         self.assertEqual(kopya.kod, "150-10-0002")          # sıradaki numara
+        self.assertEqual(kopya.ad, f"{s.ad} KOPYA")         # ad ayırt edici sonek alır
         self.assertEqual(
-            (kopya.ad, kopya.kategori_id, kopya.uretim_birimi_id, kopya.fatura_birimi_id,
+            (kopya.kategori_id, kopya.uretim_birimi_id, kopya.fatura_birimi_id,
              kopya.cevirici, kopya.kdv_id, kopya.tevkifat_id, kopya.kritik_stok,
              kopya.tedarikci_id),
-            (s.ad, s.kategori_id, s.uretim_birimi_id, s.fatura_birimi_id,
+            (s.kategori_id, s.uretim_birimi_id, s.fatura_birimi_id,
              s.cevirici, s.kdv_id, s.tevkifat_id, s.kritik_stok, s.tedarikci_id))
         s.refresh_from_db()
-        self.assertEqual(s.kod, "150-10-0001")               # orijinal değişmedi
+        self.assertEqual((s.kod, s.ad), ("150-10-0001", "ORİJİNAL"))   # orijinal değişmedi
 
     def test_sil_soft_delete(self):
         _, alt, _, adet, kg = _veri()
@@ -302,10 +303,10 @@ class StokViewTest(TestCase):
         s = self._ornek_stok()
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:stok_kopyala", args=[s.pk]))
-        kopya = Stok.objects.exclude(pk=s.pk).get(ad=s.ad)
+        kopya = Stok.objects.exclude(pk=s.pk).get(ad=f"{s.ad} KOPYA")
         self.assertRedirects(r, reverse("core:stok_detay", args=[kopya.pk]))
-        self.assertEqual((kopya.ad, kopya.kategori_id, kopya.kdv_id, kopya.cevirici),
-                         (s.ad, s.kategori_id, s.kdv_id, s.cevirici))
+        self.assertEqual((kopya.kategori_id, kopya.kdv_id, kopya.cevirici),
+                         (s.kategori_id, s.kdv_id, s.cevirici))
         self.assertNotEqual(kopya.kod, s.kod)
 
     def test_kopyala_get_kopyalamiyor(self):

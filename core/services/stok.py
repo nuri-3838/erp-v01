@@ -133,12 +133,13 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
 
 
 def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
-    """Var olan bir stok kartının birebir kopyasını oluşturur. Yalnız ``kod``
-    farklıdır (aynı kategoride sıradaki numarayı otomatik alır) — ad, kategori,
-    birimler, çevirici, KDV/tevkifat, kritik stok ve tedarikçi aynen kopyalanır.
+    """Var olan bir stok kartının birebir kopyasını oluşturur. ``kod`` farklıdır
+    (aynı kategoride sıradaki numarayı otomatik alır); ``ad`` sonuna " KOPYA"
+    eklenir (hangisinin kopya olduğu ayırt edilsin diye) — kategori, birimler,
+    çevirici, KDV/tevkifat, kritik stok ve tedarikçi aynen kopyalanır.
     """
     return stok_olustur(
-        ad=stok.ad, kategori_id=stok.kategori_id,
+        ad=f"{stok.ad} KOPYA", kategori_id=stok.kategori_id,
         uretim_birimi_id=stok.uretim_birimi_id, fatura_birimi_id=stok.fatura_birimi_id,
         cevirici=stok.cevirici, kdv_id=stok.kdv_id, tevkifat_id=stok.tevkifat_id,
         kritik_stok=stok.kritik_stok, tedarikci_id=stok.tedarikci_id,
