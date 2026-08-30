@@ -565,8 +565,23 @@ class TeklifSiparisViewTest(TestCase):
         self.assertEqual(meta["cevirici"], float(self.stok.cevirici))
         self.assertEqual(meta["uretim"], self.stok.uretim_birimi.kisa_ad)
         self.assertEqual(meta["fatura"], self.stok.fatura_birimi.kisa_ad)
+        self.assertIsNone(meta["alisFiyati"])                # bu stokta alış fiyatı yok
         self.assertContains(r, "Üretim Miktarı")
         self.assertContains(r, "uretim-miktar-yardimci")
+
+    def test_ekle_formunda_stok_meta_alis_fiyati(self):
+        """Stokta alış fiyatı varsa stok_meta'ya gelmeli (JS bunu Birim Fiyat'a önerir)."""
+        stok_af = Stok.objects.create(
+            kod="S8", ad="ÜRÜN ALIŞ FİYATLI", kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.birim, fatura_birimi=self.birim,
+            alis_fiyati=Decimal("45.6789"), alis_fiyati_pb="USD",
+            created_by=self.yon, updated_by=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satinalma_teklif_ekle"))
+        meta = r.context["stok_meta"][str(stok_af.pk)]
+        self.assertEqual(meta["alisFiyati"], 45.6789)
+        self.assertEqual(meta["alisFiyatiPb"], "USD")
+        self.assertContains(r, "birim-fiyat-etiket")
 
     def test_her_4_ekranda_olustur_ve_detay(self):
         from core.models import TeklifSiparis

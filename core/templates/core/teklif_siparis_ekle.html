@@ -58,7 +58,7 @@
                 <span class="birim-etiket birim-uretim"></span>
               </td>
               <td class="sag">{{ f.miktar }}<span class="birim-etiket birim-fatura"></span></td>
-              <td class="sag">{{ f.birim_fiyat }}</td>
+              <td class="sag">{{ f.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
               <td class="sag tutar mono">—</td>
               <td class="sag kdv mono">—</td>
             </tr>
@@ -85,7 +85,7 @@
         <span class="birim-etiket birim-uretim"></span>
       </td>
       <td class="sag">{{ formset.empty_form.miktar }}<span class="birim-etiket birim-fatura"></span></td>
-      <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
+      <td class="sag">{{ formset.empty_form.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
       <td class="sag tutar mono">—</td>
       <td class="sag kdv mono">—</td>
     </template>
@@ -138,6 +138,22 @@
     if(eu) eu.textContent = meta ? meta.uretim : '';
     if(ef) ef.textContent = meta ? meta.fatura : '';
   }
+  function alisFiyatiOner(row){
+    var meta=stokMeta(row);
+    var fiyatInp=el(row,'-birim_fiyat');
+    var etiket=row.querySelector('.birim-fiyat-etiket');
+    if(!meta || meta.alisFiyati==null || !fiyatInp){ if(etiket) etiket.textContent=''; return; }
+    if(!fiyatInp.value){
+      fiyatInp.value=meta.alisFiyati.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:4});
+    }
+    if(etiket){
+      var belgePbSec=document.getElementById('id_para_birimi');
+      var belgePb=belgePbSec?belgePbSec.value:'';
+      var farkli=belgePb && meta.alisFiyatiPb && belgePb!==meta.alisFiyatiPb;
+      etiket.textContent='Stok alış fiyatı: '+meta.alisFiyati.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+meta.alisFiyatiPb
+        +(farkli?' ⚠ belge '+belgePb:'');
+    }
+  }
   function uretimdenMiktarHesapla(row){
     var meta=stokMeta(row); var um=row.querySelector('.uretim-miktar-yardimci'); var mi=el(row,'-miktar');
     if(!meta || !um || !mi || !um.value) return;
@@ -161,10 +177,17 @@
   });
   form.addEventListener('change', function(e){
     var row=e.target.closest('.satir-form');
-    if(row) birimGuncelle(row);
+    if(row){
+      birimGuncelle(row);
+      if(e.target.name && e.target.name.indexOf('-stok')>-1) alisFiyatiOner(row);
+    }
     hesapla();
   });
-  document.querySelectorAll('.satir-form').forEach(birimGuncelle);
+  document.querySelectorAll('.satir-form').forEach(function(r){ birimGuncelle(r); alisFiyatiOner(r); });
+  var pbSec=document.getElementById('id_para_birimi');
+  if(pbSec) pbSec.addEventListener('change', function(){
+    document.querySelectorAll('.satir-form').forEach(alisFiyatiOner);
+  });
   hesapla();
 })();
 </script>

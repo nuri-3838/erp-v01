@@ -1771,7 +1771,7 @@ def satis_siparisleri(request):
 
 def _stok_meta():
     """Kalem satırı JS'i için stok başına KDV oranı + tevkifat oranı + üretim/fatura
-    birim çevirisi."""
+    birim çevirisi + alış fiyatı (varsa Birim Fiyat'a otomatik öneri için)."""
     return {str(s.pk): {
         "kdv": float(s.kdv.oran) if s.kdv_id else 0,
         "tevkifat": (float(s.tevkifat.pay) / float(s.tevkifat.payda))
@@ -1779,6 +1779,8 @@ def _stok_meta():
         "cevirici": float(s.cevirici),
         "uretim": s.uretim_birimi.kisa_ad,
         "fatura": s.fatura_birimi.kisa_ad,
+        "alisFiyati": float(s.alis_fiyati) if s.alis_fiyati is not None else None,
+        "alisFiyatiPb": s.alis_fiyati_pb,
     } for s in Stok.objects.filter(silindi=False)
       .select_related("kdv", "tevkifat", "uretim_birimi", "fatura_birimi")}
 
