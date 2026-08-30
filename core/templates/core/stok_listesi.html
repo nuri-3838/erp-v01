@@ -4,27 +4,74 @@
 {% block sayfa_adi %}Stoklar{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
+<style>
+  .stk-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .stk-arama-cubuk { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .stk-arama-kutu { position:relative; flex:1 1 20rem; }
+  .stk-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
+    border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
+    font-size:.95rem; transition:border-color .15s, box-shadow .15s; }
+  .stk-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
+    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
+  .stk-arama-ikon { position:absolute; left:.85rem; top:50%; transform:translateY(-50%);
+    font-size:1rem; opacity:.55; pointer-events:none; }
+  .stk-arama-temizle { display:none; }
+  .stk-arama-temizle.gorunur { display:inline-flex; }
+
+  .stk-hucre { display:flex; align-items:center; gap:.65rem; }
+  .stk-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
+    font-size:1.05rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
+    border:1px solid rgba(33,56,95,.08); }
+  .stk-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
+  .stk-hucre .ad a { color:inherit; text-decoration:none; }
+  .stk-hucre .ad a:hover { color:var(--turuncu-koyu); }
+  .stk-hucre .kod { font-size:.78rem; color:var(--metin-soluk); font-family:"Cascadia Mono",Consolas,monospace; }
+
+  .stk-satir[hidden] { display:none; }
+  .stk-bos-js { display:none; }
+  .stk-bos-js.gorunur { display:table-row; }
+</style>
+
+<div class="stk-ust">
   <h1 class="ust-baslik"><span class="emoji">📦</span>Stoklar</h1>
   <a class="dugme" href="{% url 'core:stok_ekle' %}">+ Yeni Stok</a>
 </div>
-<p class="sayfa-alt">{{ stoklar|length }} stok kartı · kod otomatik (ÜST-ALT-sıra).
+
+<form method="get" class="stk-arama-cubuk" id="stk-arama-form">
+  <div class="stk-arama-kutu">
+    <span class="stk-arama-ikon">🔍</span>
+    <input type="text" id="stk-arama" name="ara" value="{{ ara }}"
+           placeholder="Kod, ad veya kategori ara…" autocomplete="off">
+  </div>
+  <button type="submit" class="birincil">Ara</button>
+  <a class="iptal-bag stk-arama-temizle{% if ara %} gorunur{% endif %}" id="stk-arama-temizle"
+     href="{% url 'core:stoklar' %}">Temizle</a>
+</form>
+
+<p class="sayfa-alt"><span id="stk-sayac-sayi">{{ stoklar|length }}</span> stok kartı · kod otomatik (ÜST-ALT-sıra).
   Muhasebe hesapları bağlı kategorinin fatura-tipi haritasından gelir.</p>
 
 <div class="tablo-kapsayici genis">
-<table>
+<table id="stk-tablo">
   <thead>
     <tr>
-      <th>Kod</th><th>Ad</th><th>Kategori</th>
+      <th>Stok</th><th>Kategori</th>
       <th>Üretim Br.</th><th>Fatura Br.</th><th class="sag">Çevirici</th><th>İşlem</th>
     </tr>
   </thead>
   <tbody>
     {% for s in stoklar %}
-      <tr>
-        <td class="mono"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.kod }}</a></td>
-        <td><a href="{% url 'core:stok_detay' s.pk %}" style="color:inherit;text-decoration:none;font-weight:600">{{ s.ad }}</a></td>
-        <td>{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</td>
+      <tr class="stk-satir">
+        <td>
+          <div class="stk-hucre">
+            <span class="stk-ikon">📦</span>
+            <div>
+              <div class="ad"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.ad }}</a></div>
+              <div class="kod">{{ s.kod }}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="rozet rozet-notr">{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</span></td>
         <td>{{ s.uretim_birimi.kisa_ad }}</td>
         <td>{{ s.fatura_birimi.kisa_ad }}</td>
         <td class="sag mono">{{ s.cevirici|tr_kur:4 }}</td>
@@ -39,10 +86,47 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="7" class="yardim">Henüz stok yok. “+ Yeni Stok” ile ekleyin.
-        (Önce en az bir <strong>alt kategori</strong> tanımlı olmalı.)</td></tr>
+      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara %}🔍 “{{ ara }}” ile eşleşen stok yok.
+        {% else %}📦 Henüz stok yok. “+ Yeni Stok” ile ekleyin.
+          (Önce en az bir <strong>alt kategori</strong> tanımlı olmalı.){% endif %}</td></tr>
     {% endfor %}
+    <tr class="stk-bos-js"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+      🔍 Eşleşen stok yok.</td></tr>
   </tbody>
 </table>
 </div>
+
+<script>
+(function(){
+  var girdi = document.getElementById('stk-arama');
+  var satirlar = Array.prototype.slice.call(document.querySelectorAll('.stk-satir'));
+  var bosSatir = document.querySelector('.stk-bos-js');
+  var sayacSayi = document.getElementById('stk-sayac-sayi');
+  var temizle = document.getElementById('stk-arama-temizle');
+  if(!girdi || !satirlar.length) return;
+
+  // Aranabilir metin satırın kendi görünen içeriğinden türetilir (TR-uyumlu küçük harf,
+  // sunucudan gelen |lower filtresine güvenilmez -- Python .lower() İ/I harflerini
+  // yanlış çevirir, arama sorgusundaki toLocaleLowerCase('tr') ile eşleşmeyebilir).
+  satirlar.forEach(function(tr){
+    tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
+  });
+
+  function filtrele(){
+    var q = girdi.value.trim().toLocaleLowerCase('tr');
+    var n = 0;
+    satirlar.forEach(function(tr){
+      var gorunsun = !q || tr.dataset.arama.indexOf(q) > -1;
+      tr.hidden = !gorunsun;
+      if(gorunsun) n++;
+    });
+    if(bosSatir) bosSatir.classList.toggle('gorunur', n === 0 && !!q);
+    if(sayacSayi) sayacSayi.textContent = n;
+    if(temizle) temizle.classList.toggle('gorunur', !!q);
+  }
+  girdi.addEventListener('input', filtrele);
+  if(girdi.value) filtrele();
+})();
+</script>
 {% endblock %}

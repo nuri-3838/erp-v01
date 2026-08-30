@@ -628,8 +628,14 @@ def yedek_indir(request, ad):
 # --- STOKLAR modülü --------------------------------------------------------
 @ekran_gerekli("stoklar")
 def stoklar(request):
-    return render(request, "core/stok_listesi.html",
-                  {"stoklar": stok_servis.aktif_stoklar()})
+    ara = (request.GET.get("ara") or "").strip()
+    qs = stok_servis.aktif_stoklar()
+    if ara:
+        buyuk = buyuk_harf_tr(ara)
+        qs = qs.filter(
+            Q(kod__icontains=ara) | Q(ad__contains=buyuk)
+            | Q(kategori__ad__contains=buyuk) | Q(kategori__ust__ad__contains=buyuk))
+    return render(request, "core/stok_listesi.html", {"stoklar": qs, "ara": ara})
 
 
 @ekran_gerekli("stoklar")

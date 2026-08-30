@@ -254,6 +254,36 @@ class StokViewTest(TestCase):
         self.assertContains(r, "ALÜMİNYUM LEVHA")
         self.assertContains(r, "+ Yeni Stok")
 
+    def test_liste_arama_kod(self):
+        stok_olustur(ad="levha", kategori_id=self.alt.pk, uretim_birimi_id=self.adet.pk,
+                     fatura_birimi_id=self.kg.pk, cevirici=Decimal("1"), kdv_id=_kdv("20").pk)
+        stok_olustur(ad="boru", kategori_id=self.alt2.pk, uretim_birimi_id=self.adet.pk,
+                     fatura_birimi_id=self.kg.pk, cevirici=Decimal("1"), kdv_id=_kdv("20").pk)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:stoklar"), {"ara": "150-10"})
+        self.assertContains(r, "LEVHA")
+        self.assertNotContains(r, "BORU")
+
+    def test_liste_arama_ad_tr_buyuk_harf(self):
+        stok_olustur(ad="alüminyum profil", kategori_id=self.alt.pk,
+                     uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
+                     cevirici=Decimal("1"), kdv_id=_kdv("20").pk)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:stoklar"), {"ara": "profil"})
+        self.assertContains(r, "ALÜMİNYUM PROFİL")
+
+    def test_liste_arama_kategori_adi(self):
+        stok_olustur(ad="sac levha", kategori_id=self.alt2.pk, uretim_birimi_id=self.adet.pk,
+                     fatura_birimi_id=self.kg.pk, cevirici=Decimal("1"), kdv_id=_kdv("20").pk)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:stoklar"), {"ara": "çelik"})
+        self.assertContains(r, "SAC LEVHA")
+
+    def test_liste_arama_sonuc_yok(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:stoklar"), {"ara": "olmayan-kod-xyz"})
+        self.assertContains(r, "eşleşen stok yok")
+
     def test_ekle_post_otomatik_kod(self):
         k = _kdv("20")
         self.client.force_login(self.yetkili)
