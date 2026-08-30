@@ -120,6 +120,7 @@
     var tr=document.createElement('tr'); tr.className='satir-form';
     tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g,i);
     document.getElementById('satir-govde').appendChild(tr); tf.value=i+1; hesapla();
+    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
   var form=document.getElementById('fatura-form');
@@ -127,4 +128,5 @@
   hesapla();
 })();
 </script>
+{% include "core/_akilli_hesap.html" %}
 {% endblock %}
