@@ -18,7 +18,7 @@ from django.db.models import Max
 
 from core.models import Cari, Depo, KdvOrani, Stok, StokHareket, TeklifSiparis, TeklifSiparisKalem
 from core.sayi import SayiHatasi, parse_tr
-from core.services.hareket import HareketHatasi, hareket_ekle
+from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
 
 
 class TeklifSiparisHatasi(ValueError):
@@ -208,7 +208,10 @@ def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
                 teklifi_siparise_cevir(ts, tarih=ts.tarih, kullanici=kullanici)
         elif ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS:
             if not ts.donusen_irsaliyeler.filter(silindi=False).exists():
-                depo = Depo.objects.filter(silindi=False).order_by("kod").first()
+                # FaturaForm ile aynı desen: önce ANA DEPO'yu dene, yoksa ilk aktif depo.
+                aktif_depolar = Depo.objects.filter(silindi=False)
+                depo = (aktif_depolar.filter(ad="ANA DEPO").first()
+                       or aktif_depolar.order_by("kod").first())
                 if depo is None:
                     raise TeklifSiparisHatasi(
                         "Aktif depo yok; sipariş irsaliyeye otomatik çevrilemedi. Önce "
@@ -353,11 +356,29 @@ def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> Teklif
     return irsaliye
 
 
+def _irsaliye_hareketleri_iptal(irsaliye: TeklifSiparis, kullanici):
+    """İrsaliye iptal edilince onun onaylanınca yazdığı GERÇEK stok girişini de geri alır
+    (hareket_sil'in kendi negatif-eldeki koruması aynen geçerli — bir stok+depoda eldeki
+    miktarı negatife düşürüyorsa TeklifSiparisHatasi ile iptal engellenir)."""
+    hareketler = list(StokHareket.objects.filter(
+        teklif_siparis_kalem__teklif_siparis=irsaliye, silindi=False))
+    for h in hareketler:
+        try:
+            hareket_sil(h, kullanici=kullanici)
+        except HareketHatasi as e:
+            raise TeklifSiparisHatasi(str(e))
+
+
+@transaction.atomic
 def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
-    """Belgeyi soft-delete eder (kalemler kalır; geçmiş görüntüleme için)."""
+    """Belgeyi soft-delete eder (kalemler kalır; geçmiş görüntüleme için). İRSALİYE ise,
+    onaylanınca yazdığı GERÇEK stok girişi de geri alınır (bir stok+depoda eldeki miktarı
+    negatife düşürüyorsa iptal engellenir — bkz. _irsaliye_hareketleri_iptal)."""
     from django.utils import timezone
     if ts.silindi:
         return ts
+    if ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
+        _irsaliye_hareketleri_iptal(ts, kullanici)
     ts.silindi = True
     ts.silindi_at = timezone.now()
     ts.updated_by = kullanici

@@ -27,6 +27,7 @@
   .ozet-kart .ozet-bsl { font-size:.74rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
     color:var(--metin-soluk); margin:0 0 .8rem; display:flex; align-items:center; gap:.4rem; }
   .ozet-bos { color:var(--metin-soluk); text-align:center; padding:1.4rem 0; font-size:.92rem; }
+  .ozet-buyuk { font-size:1.3rem; font-weight:750; color:var(--lacivert); line-height:1.5; }
   /* CSS-only sekmeler */
   .sek-radio { position:absolute; opacity:0; pointer-events:none; }
   .sek-bar { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.9rem; }
@@ -80,11 +81,19 @@
   <div class="ozet-izgara">
     <section class="icerik-kart ozet-kart">
       <h2 class="ozet-bsl"><span>📦</span>Toplam Bakiye</h2>
-      <div class="ozet-bos">Stok hareketleri ve bakiye <strong>Faz B</strong>'de gelecek.</div>
+      <div class="ozet-buyuk"><span class="mono">{{ eldeki|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</div>
     </section>
     <section class="icerik-kart ozet-kart">
       <h2 class="ozet-bsl"><span>📍</span>Depo Bakiyeleri</h2>
-      <div class="ozet-bos">Henüz depoda hareket yok <span class="yardim">(Faz B)</span>.</div>
+      {% if depo_bakiye %}
+        <div class="ozet-buyuk">
+          {% for d, m in depo_bakiye %}
+            <div><span class="mono">{{ d.kod }}</span> {{ d.ad }}: <span class="mono">{{ m|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="ozet-bos">Henüz depoda hareket yok.</div>
+      {% endif %}
     </section>
   </div>
 

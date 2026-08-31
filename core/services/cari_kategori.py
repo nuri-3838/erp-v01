@@ -82,6 +82,9 @@ def cari_kategori_sil(kategori: CariKategori, kullanici=None) -> CariKategori:
     if kategori.alt_kategoriler.filter(silindi=False).exists():
         raise CariKategoriHatasi(
             "Bu kategorinin alt kategorisi var; önce alt kategorileri silin.")
+    if kategori.cariler.filter(silindi=False).exists():
+        raise CariKategoriHatasi(
+            "Bu kategoriye bağlı aktif cari var; önce carileri başka kategoriye taşıyın.")
     kategori.silindi = True
     kategori.silindi_at = timezone.now()
     kategori.updated_by = kullanici

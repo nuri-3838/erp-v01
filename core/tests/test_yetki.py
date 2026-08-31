@@ -81,9 +81,12 @@ class EkranYetkiTest(TestCase):
             "ekranlar": ["bilanco", "gelir_tablosu"],
         })
         self.assertEqual(r.status_code, 302)
-        kodlar = set(EkranYetki.objects.filter(kullanici=self.kisitli)
+        kodlar = set(EkranYetki.objects.filter(kullanici=self.kisitli, silindi=False)
                      .values_list("ekran_kod", flat=True))
         self.assertEqual(kodlar, {"bilanco", "gelir_tablosu"})
+        # Kaldırılan yetki FİZİKSEL silinmez, soft-delete edilir (CLAUDE.md audit kuralı).
+        self.assertTrue(EkranYetki.objects.filter(
+            kullanici=self.kisitli, ekran_kod="mizan", silindi=True).exists())
         # Yeni yetkiyle erişim değişti: mizan kapandı, bilanco açıldı
         self.client.force_login(self.kisitli)
         self.assertEqual(self.client.get(reverse("core:bilanco")).status_code, 200)

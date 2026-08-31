@@ -8,8 +8,9 @@ Tüm değişmezler burada zorlanır; UI'ya güvenilmez:
 - TL (borç/alacak) = yuvarla(islem_tutari × islem_kuru); TRY'de TL = islem_tutari.
 - Dengeli fiş: SUM(borç) = SUM(alacak), aksi halde fiş kaydedilmez (atomik).
 - fis_no mali yıl içinde müteselsil/boşluksuz; iptal numarayı korur (yeniden
-  kullanılmaz). kur_usd fiş tarihine göre KUR'dan doldurulur (yoksa son yayımlanan;
-  o da yoksa boş bırakılır, fiş yine kaydedilir), elle override edilebilir.
+  kullanılmaz). kur_usd fiş tarihine göre KUR'dan BİREBİR doldurulur (carry-forward
+  YOK — o tarihe ait kur yoksa fiş HİÇ kaydedilmez, YevmiyeHatasi yükselir), elle
+  override edilebilir.
 - Düzenleme (fis_guncelle): yıl/fiş no korunur; satırlar değiştirilir (eski satır
   kayıtları fiziksel silinip yenileri yazılır — kullanıcı kararı; fiş başlığı yine
   asla fiziksel silinmez, audit updated_by/at korunur). İptal edilmiş fiş düzenlenemez.
@@ -108,6 +109,18 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
     toplam_borc = SIFIR
     toplam_alacak = SIFIR
 
+    # Hesapları + "üst hesap mı" bilgisini TOPLU çek (satır başına 2 sorgu yerine 2 sorgu
+    # TOPLAM — hesap_plani.py::_ust_kod_kumesi ile aynı desen: kodun son segmenti atılarak
+    # üst hesap kodu türetilir; hiyerarşi her seviyenin kendi satırı olmasını gerektirdiği
+    # için bu, "başka bir kod bu kodla başlıyor mu" sorgusuyla matematiksel olarak eştir).
+    istenen_kodlar = {(g.hesap_kodu or "").strip() for g in satirlar}
+    hesaplar = {
+        h.hesap_kodu: h for h in
+        HesapPlani.objects.filter(hesap_kodu__in=istenen_kodlar, aktif=True, silindi=False)
+    }
+    tum_kodlar = HesapPlani.objects.filter(silindi=False).values_list("hesap_kodu", flat=True)
+    ust_kod_kumesi = {k.rsplit(".", 1)[0] for k in tum_kodlar if "." in k}
+
     for i, g in enumerate(satirlar, start=1):
         taraf = (g.taraf or "").strip().upper()
         if taraf not in ("B", "A"):
@@ -133,18 +146,12 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
         if tl <= 0:
             raise YevmiyeHatasi(f"Satır {i}: TL tutarı 0'dan büyük olmalı.")
 
-        hesap = (
-            HesapPlani.objects.filter(
-                hesap_kodu=(g.hesap_kodu or "").strip(), aktif=True, silindi=False
-            ).first()
-        )
+        hesap = hesaplar.get((g.hesap_kodu or "").strip())
         if hesap is None:
             raise YevmiyeHatasi(
                 f"Satır {i}: hesap bulunamadı/aktif değil: {g.hesap_kodu!r}"
             )
-        if HesapPlani.objects.filter(
-            hesap_kodu__startswith=hesap.hesap_kodu + ".", silindi=False
-        ).exists():
+        if hesap.hesap_kodu in ust_kod_kumesi:
             raise YevmiyeHatasi(
                 f"Satır {i}: {hesap.hesap_kodu} üst hesaptır; fiş yalnızca yaprak hesaba kesilir."
             )

@@ -101,7 +101,7 @@ def _satir_girdileri(formset):
     return satirlar
 
 
-@ekran_gerekli_herhangi("fis_listesi", "fis_ekle")
+@ekran_gerekli("fis_listesi")
 def fis_ekle(request):
     if request.method == "POST":
         fform = FisForm(request.POST)
@@ -280,7 +280,7 @@ def fis_iptal_gorunum(request, pk):
     return redirect("core:fis_detay", pk=fis.pk)
 
 
-@ekran_gerekli_herhangi("fis_ekle", "fis_listesi")
+@ekran_gerekli("fis_listesi")
 def fis_detay(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
     satirlar = fis.satirlar.filter(silindi=False).select_related("hesap")
@@ -580,10 +580,31 @@ def kullanici_yetkileri(request):
     if request.method == "POST" and secili:
         gecerli = {e.kod for m in MODULLER if not m.yonetici_modulu for e in m.ekranlar}
         secilenler = set(request.POST.getlist("ekranlar")) & gecerli
-        EkranYetki.objects.filter(kullanici=secili).delete()
-        EkranYetki.objects.bulk_create(
-            [EkranYetki(kullanici=secili, ekran_kod=k) for k in sorted(secilenler)]
-        )
+        kayitlar = EkranYetki.objects.filter(kullanici=secili)
+        aktif_kodlar = set(
+            kayitlar.filter(silindi=False).values_list("ekran_kod", flat=True))
+        simdi = timezone.now()
+        # Artık seçilmeyenler: SOFT-DELETE (fiziksel silme yok — CLAUDE.md audit kuralı).
+        kaldirilanlar = aktif_kodlar - secilenler
+        if kaldirilanlar:
+            kayitlar.filter(silindi=False, ekran_kod__in=kaldirilanlar).update(
+                silindi=True, silindi_at=simdi, updated_by=request.user, updated_at=simdi)
+        # Yeni seçilenler: daha önce soft-delete edilmişse CANLANDIR, hiç yoksa oluştur.
+        yeni_secilenler = secilenler - aktif_kodlar
+        if yeni_secilenler:
+            canlanacaklar = set(
+                kayitlar.filter(silindi=True, ekran_kod__in=yeni_secilenler)
+                .values_list("ekran_kod", flat=True))
+            if canlanacaklar:
+                kayitlar.filter(ekran_kod__in=canlanacaklar).update(
+                    silindi=False, silindi_at=None, updated_by=request.user,
+                    updated_at=simdi)
+            olusturulacaklar = yeni_secilenler - canlanacaklar
+            EkranYetki.objects.bulk_create([
+                EkranYetki(kullanici=secili, ekran_kod=k,
+                          created_by=request.user, updated_by=request.user)
+                for k in sorted(olusturulacaklar)
+            ])
         ad = secili.get_full_name() or secili.username
         messages.success(request, f"{ad} için ekran yetkileri güncellendi.")
         return redirect(f"{reverse('core:kullanici_yetkileri')}?kullanici={secili.pk}")
@@ -591,7 +612,8 @@ def kullanici_yetkileri(request):
     mevcut = set()
     if secili:
         mevcut = set(
-            EkranYetki.objects.filter(kullanici=secili).values_list("ekran_kod", flat=True)
+            EkranYetki.objects.filter(kullanici=secili, silindi=False)
+            .values_list("ekran_kod", flat=True)
         )
     return render(request, "core/kullanici_yetkileri.html", {
         "kullanicilar": kullanicilar,
@@ -1163,7 +1185,7 @@ def sehir_sil(request, pk):
 # --- CARİLER modülü — Cari Kategorileri ------------------------------------
 @ekran_gerekli("cari_kategoriler")
 def cari_kategoriler(request):
-    alt_qs = CariKategori.objects.filter(silindi=False).order_by("kod")
+    alt_qs = CariKategori.objects.filter(silindi=False).select_related("ust").order_by("kod")
     koklar = (CariKategori.objects.filter(silindi=False, ust__isnull=True)
               .order_by("kod")
               .prefetch_related(Prefetch("alt_kategoriler", queryset=alt_qs)))
@@ -1304,7 +1326,7 @@ def cari_duzenle(request, pk):
 @ekran_gerekli("cariler")
 def cari_detay(request, pk):
     cari = get_object_or_404(
-        Cari.objects.select_related("kategori", "ulke", "sehir", "sevk_ulke",
+        Cari.objects.select_related("kategori", "kategori__ust", "ulke", "sehir", "sevk_ulke",
                                     "sevk_sehir", "created_by", "updated_by"),
         pk=pk, silindi=False)
     return render(request, "core/cari_detay.html", {
@@ -1708,8 +1730,11 @@ def banka_hesap_sil(request, pk):
     hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
     banka_pk = hesap.banka_id
     if request.method == "POST":
-        finans_servis.banka_hesap_sil(hesap, kullanici=request.user)
-        messages.success(request, "Hesap silindi.")
+        try:
+            finans_servis.banka_hesap_sil(hesap, kullanici=request.user)
+            messages.success(request, "Hesap silindi.")
+        except finans_servis.FinansHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:banka_detay", pk=banka_pk)
 
 
@@ -2033,8 +2058,11 @@ def teklif_siparis_duzenle(request, pk):
 def teklif_siparis_iptal_gorunum(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
     if request.method == "POST":
-        teklif_siparis_servis.teklif_siparis_iptal(ts, kullanici=request.user)
-        messages.success(request, f"{ts.get_belge_tur_display()} iptal edildi.")
+        try:
+            teklif_siparis_servis.teklif_siparis_iptal(ts, kullanici=request.user)
+            messages.success(request, f"{ts.get_belge_tur_display()} iptal edildi.")
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:teklif_siparis_detay", pk=ts.pk)
 
 
@@ -2251,8 +2279,11 @@ def kredi_karti_duzenle(request, pk):
 def kredi_karti_sil(request, pk):
     kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
     if request.method == "POST":
-        finans_servis.kredi_karti_sil(kart, kullanici=request.user)
-        messages.success(request, "Kredi kartı silindi.")
+        try:
+            finans_servis.kredi_karti_sil(kart, kullanici=request.user)
+            messages.success(request, "Kredi kartı silindi.")
+        except finans_servis.FinansHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:kredi_kartlari")
 
 
@@ -2462,8 +2493,11 @@ def kredi_taksit_ode(request, pk):
 def kredi_sil(request, pk):
     kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
     if request.method == "POST":
-        finans_servis.kredi_sil(kredi, kullanici=request.user)
-        messages.success(request, "Kredi silindi.")
+        try:
+            finans_servis.kredi_sil(kredi, kullanici=request.user)
+            messages.success(request, "Kredi silindi.")
+        except finans_servis.FinansHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:krediler")
 
 

@@ -9,6 +9,9 @@ KORUNAN = [
     "core:fis_ekle", "core:mizan", "core:bilanco", "core:gelir_tablosu",
     "core:mizan_usd", "core:bilanco_usd", "core:gelir_tablosu_usd",
 ]
+# fis_ekle URL'i "fis_listesi" ekran koduna bağlı (ayrı bir "fis_ekle" ekran kodu yok —
+# Fiş Gir + Fiş Listesi tek ekranda birleşti).
+_EKRAN_KOD = {"fis_ekle": "fis_listesi"}
 
 
 class GirisTest(TestCase):
@@ -16,7 +19,9 @@ class GirisTest(TestCase):
     def setUpTestData(cls):
         cls.kullanici = User.objects.create_user("ali", password="parola1234")
         for _ad in KORUNAN:
-            EkranYetki.objects.create(kullanici=cls.kullanici, ekran_kod=_ad.split(":")[1])
+            kod = _ad.split(":")[1]
+            EkranYetki.objects.create(
+                kullanici=cls.kullanici, ekran_kod=_EKRAN_KOD.get(kod, kod))
 
     def test_login_ekrani_acik(self):
         r = self.client.get(reverse("login"))

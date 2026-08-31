@@ -32,13 +32,17 @@ def eldeki_miktar(stok, depo=None) -> Decimal:
 
 
 def depo_bazinda_eldeki(stok):
-    """[(depo, miktar)] — stoğun hareket gördüğü depolar bazında eldeki (≠0 dahil hepsi)."""
-    depo_ids = (StokHareket.objects.filter(stok=stok, silindi=False)
-                .values_list("depo_id", flat=True).distinct())
-    sonuc = []
-    for d in Depo.objects.filter(pk__in=list(depo_ids), silindi=False).order_by("kod"):
-        sonuc.append((d, eldeki_miktar(stok, d)))
-    return sonuc
+    """[(depo, miktar)] — stoğun hareket gördüğü depolar bazında eldeki (≠0 dahil hepsi).
+    Depo başına ayrı sorgu yerine TEK gruplu sorgu (depo × tür toplamı), giriş-çıkış farkı
+    Python'da hesaplanır."""
+    gruplu = (StokHareket.objects.filter(stok=stok, silindi=False)
+              .values("depo_id", "tur").annotate(t=Sum("miktar")))
+    eldeki = {}
+    for g in gruplu:
+        fark = g["t"] if g["tur"] == StokHareket.Tur.GIRIS else -g["t"]
+        eldeki[g["depo_id"]] = eldeki.get(g["depo_id"], SIFIR) + fark
+    depolar = Depo.objects.filter(pk__in=eldeki.keys(), silindi=False).order_by("kod")
+    return [(d, eldeki[d.pk]) for d in depolar]
 
 
 def stok_hareketleri(stok):

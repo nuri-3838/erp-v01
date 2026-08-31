@@ -126,6 +126,8 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
         kategori = CariKategori.objects.filter(pk=kategori_id, silindi=False).first()
         if kategori is None:
             raise CariHatasi("Kategori bulunamadı.")
+        if kategori.ust_id is None:
+            raise CariHatasi("Cari yalnız alt kategoriye bağlanabilir; üst kategori seçilemez.")
     _vergi_benzersiz(kw.get("vkn_tckn"), kw.get("tax_id"))
     veri = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
@@ -187,6 +189,8 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
         kategori = CariKategori.objects.filter(pk=kategori_id, silindi=False).first()
         if kategori is None:
             raise CariHatasi("Kategori bulunamadı.")
+        if kategori.ust_id is None:
+            raise CariHatasi("Cari yalnız alt kategoriye bağlanabilir; üst kategori seçilemez.")
     _vergi_benzersiz(kw.get("vkn_tckn"), kw.get("tax_id"), haric_pk=cari.pk)
     veri = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
@@ -271,6 +275,7 @@ def banka_guncelle(banka: CariBanka, *, banka_adi, hesap_sahibi="", iban="", swi
         raise CariHatasi("Banka adı boş olamaz.")
     if para_birimi not in dict(Cari.PARA_CHOICES):
         raise CariHatasi("Geçersiz para birimi.")
+    idi_varsayilan = banka.varsayilan
     banka.banka_adi = banka_adi
     banka.hesap_sahibi = buyuk_harf_tr((hesap_sahibi or "").strip())
     banka.iban = (iban or "").strip().upper().replace(" ", "")
@@ -282,6 +287,15 @@ def banka_guncelle(banka: CariBanka, *, banka_adi, hesap_sahibi="", iban="", swi
     banka.save()
     if banka.varsayilan:
         _diger_varsayilanlari_kapat(banka.cari, banka)
+    elif idi_varsayilan and not banka.cari.banka_hesaplari.filter(
+            silindi=False, varsayilan=True).exists():
+        # Tek/son varsayılan hesabın işareti kaldırıldı -> kalan ilk hesabı varsayılan yap
+        # (banka_sil'deki "her zaman bir varsayılan olsun" invaryantıyla aynı desen).
+        kalan = banka.cari.banka_hesaplari.filter(silindi=False).exclude(
+            pk=banka.pk).order_by("banka_adi").first()
+        if kalan is not None:
+            kalan.varsayilan = True
+            kalan.save(update_fields=["varsayilan", "updated_at"])
     return banka
 
 

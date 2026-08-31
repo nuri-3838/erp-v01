@@ -19,7 +19,7 @@ from core.models import (
     Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
 )
-from core.sayi import SayiHatasi, format_tr, parse_tr
+from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
 
 
 class TRDecimalField(forms.CharField):
@@ -43,7 +43,14 @@ class TRDecimalField(forms.CharField):
 
     def prepare_value(self, value):
         if isinstance(value, Decimal):
-            return format_tr(value, self.basamak)
+            # basamak yalnız TİPİK gösterim hassasiyetidir — değerin kendisi ondan FAZLA
+            # anlamlı ondalık taşıyorsa (örn. model alanı basamak'tan derin bir
+            # decimal_places'e sahipse) round-trip'te (formu HİÇ değiştirmeden yeniden
+            # kaydetmede) sessiz veri kaybı olmasın diye tam hassasiyetle gösterilir.
+            if yuvarla(value, self.basamak) == value:
+                return format_tr(value, self.basamak)
+            tam_basamak = max(self.basamak, -value.normalize().as_tuple().exponent)
+            return format_tr(value, tam_basamak)
         return value
 
 

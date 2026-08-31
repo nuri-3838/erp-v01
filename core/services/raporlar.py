@@ -367,7 +367,7 @@ def _bilanco_kur(satir_listesi):
     pasif = {k: BilancoGrup(k, ad) for k, ad in PASIF_KALEM}
     donem = SIFIR
     for kod, ad, grup, kalem, net in satir_listesi:
-        if grup == "BILANCO":
+        if grup == HesapPlani.RaporGrubu.BILANCO:
             if kalem in aktif:
                 aktif[kalem].satirlar.append(BilancoSatir(kod, ad, net))
             elif kalem in pasif:
@@ -427,8 +427,8 @@ def _donem_sonucu(rolled_har) -> Decimal:
     """Dönem net kârı TEK kaynağı: TÜM sonuç hesapları (BILANCO olmayan) net'i
     = Σ(alacak − borç). Bilanço dönem plug'ı ve gelir tablosu net kârı bundan türer
     → iki rapor her zaman birebir tutar (7xx ve yeni eklenen hesaplar dahil)."""
-    return sum((o["alacak"] - o["borc"] for o in rolled_har if o["grup"] != "BILANCO"),
-               SIFIR)
+    return sum((o["alacak"] - o["borc"] for o in rolled_har
+               if o["grup"] != HesapPlani.RaporGrubu.BILANCO), SIFIR)
 
 
 def _gelir_rows(alacak_net, borc_net, donem_sonucu):
@@ -500,7 +500,7 @@ def gelir_tablosu(baslangic=None, bitis=None) -> GelirTablosu:
     rolled = _ana_topla(_hareketler(baslangic, bitis))
     kalem = {}
     for o in rolled:
-        if o["grup"] == "GELIR_TABLOSU":
+        if o["grup"] == HesapPlani.RaporGrubu.GELIR_TABLOSU:
             t = kalem.setdefault(o["kalem"], {"borc": SIFIR, "alacak": SIFIR})
             t["borc"] += o["borc"]
             t["alacak"] += o["alacak"]
@@ -683,12 +683,12 @@ def gelir_tablosu_usd(baslangic=None, bitis=None) -> GelirTablosuUSD:
     m = mizan_usd(baslangic, bitis)
     kalem = {}
     for s in m.satirlar:
-        if s.grup == "GELIR_TABLOSU":
+        if s.grup == HesapPlani.RaporGrubu.GELIR_TABLOSU:
             t = kalem.setdefault(s.kalem, {"borc": SIFIR, "alacak": SIFIR})
             t["borc"] += s.usd_borc
             t["alacak"] += s.usd_alacak
-    donem = sum((s.usd_alacak - s.usd_borc for s in m.satirlar if s.grup != "BILANCO"),
-                SIFIR)
+    donem = sum((s.usd_alacak - s.usd_borc for s in m.satirlar
+                if s.grup != HesapPlani.RaporGrubu.BILANCO), SIFIR)
 
     def alacak_net(k):
         t = kalem.get(k)

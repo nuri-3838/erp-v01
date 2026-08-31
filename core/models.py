@@ -304,7 +304,8 @@ class EkranYetki(TemelModel):
         verbose_name_plural = "ekran yetkileri"
         constraints = [
             models.UniqueConstraint(
-                fields=["kullanici", "ekran_kod"], name="uq_ekran_yetki"
+                fields=["kullanici", "ekran_kod"], condition=models.Q(silindi=False),
+                name="uq_ekran_yetki"
             )
         ]
 
@@ -1299,6 +1300,8 @@ class KrediKartiTaksit(TemelModel):
         constraints = [
             models.CheckConstraint(condition=models.Q(taksit_adedi__gte=2),
                                    name="ck_kk_taksit_adedi_gte2"),
+            models.CheckConstraint(condition=models.Q(toplam_tutar__gt=0),
+                                   name="ck_kk_taksit_toplam_gt0"),
         ]
 
     def __str__(self):

@@ -3,7 +3,7 @@
 - Ad ve Kısa Ad TR büyük harfe çevrilir (tek fonksiyon: buyuk_harf_tr).
 - Ad ve Kısa Ad silinmemişler arasında BENZERSİZ (DB'de de kısmi unique kısıtı var).
 - Ondalık hane 0-6 arası tam sayı (KG=3, ADET=0...). DB'de de CHECK kısıtı var.
-- Silme: soft-delete (iz kalır). İleride stok kartı kullanıyorsa engellenecek.
+- Silme: soft-delete (iz kalır). Aktif stok kartı (üretim/fatura birimi olarak) kullanıyorsa engellenir.
 """
 from __future__ import annotations
 
@@ -74,10 +74,15 @@ def birim_guncelle(birim: Birim, *, ad, kisa_ad, ondalik, kullanici=None) -> Bir
 
 
 def birim_sil(birim: Birim, kullanici=None) -> Birim:
-    """Soft-delete (iz kalır). Şimdilik stok kartı yok -> serbest; ileride kullanımdaysa
-    engellenecek."""
+    """Soft-delete (iz kalır). Üretim veya fatura birimi olarak kullanan aktif stok kartı
+    varsa silinemez."""
     if birim.silindi:
         return birim
+    if (birim.uretim_stoklari.filter(silindi=False).exists()
+            or birim.fatura_stoklari.filter(silindi=False).exists()):
+        raise BirimHatasi(
+            "Bu birim stoklarda kullanılıyor; önce ilgili stoklardan kaldırın."
+        )
     birim.silindi = True
     birim.silindi_at = timezone.now()
     birim.updated_by = kullanici

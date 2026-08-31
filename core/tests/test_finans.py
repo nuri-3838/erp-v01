@@ -481,6 +481,21 @@ class BankaHareketTest(TestCase):
         with self.assertRaises(FinansHatasi):
             banka_hesap_sil(bh1, kullanici=self.yon)
 
+    def test_hareketli_hesap_silinemez_view_500_vermez(self):
+        """View katmanı FinansHatasi'yi yakalamazsa kullanıcı 500 alır — regresyon."""
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.banka_hareket import hareket_olustur
+        bh1, _, cari = self._kur()
+        hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
+                        tutar=Decimal("100"), tarih=timezone.localdate(), kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:banka_hesap_sil", args=[bh1.pk]))
+        self.assertEqual(r.status_code, 302)   # 500 değil
+        self.assertRedirects(r, reverse("core:banka_detay", args=[bh1.banka_id]))
+        bh1.refresh_from_db()
+        self.assertFalse(bh1.silindi)          # silinmedi
+
     def test_cari_tahsilat_ve_odeme(self):
         from decimal import Decimal
         from django.utils import timezone
@@ -630,6 +645,19 @@ class KrediKartiHareketTest(TestCase):
                              para_birimi="TRY", kullanici=self.yon)  # ad değişimi serbest
         hareket_iptal(fis=f, kart=self.kart, kullanici=self.yon)
         kredi_karti_sil(self.kart, kullanici=self.yon)              # iptal sonrası silinir
+
+    def test_hareketli_kart_silinemez_view_500_vermez(self):
+        """View katmanı FinansHatasi'yi yakalamazsa kullanıcı 500 alır — regresyon."""
+        from decimal import Decimal
+        from core.services.kredi_karti_hareket import hareket_olustur
+        hareket_olustur(kart=self.kart, tip="harcama", karsi=self.cari,
+                        tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:kredi_karti_sil", args=[self.kart.pk]))
+        self.assertEqual(r.status_code, 302)   # 500 değil
+        self.assertRedirects(r, reverse("core:kredi_kartlari"))
+        self.kart.refresh_from_db()
+        self.assertFalse(self.kart.silindi)    # silinmedi
 
     def test_harcama_cari(self):
         from decimal import Decimal
@@ -875,6 +903,19 @@ class KrediHareketTest(TestCase):
                        para_birimi="TRY", kullanici=self.yon)        # ad değişimi serbest
         hareket_iptal(fis=f, kredi=self.kredi, kullanici=self.yon)
         kredi_sil(self.kredi, kullanici=self.yon)                   # iptal sonrası silinir
+
+    def test_hareketli_kredi_silinemez_view_500_vermez(self):
+        """View katmanı FinansHatasi'yi yakalamazsa kullanıcı 500 alır — regresyon."""
+        from decimal import Decimal
+        from core.services.kredi_hareket import hareket_olustur
+        hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.bh,
+                        tutar=Decimal("1000"), tarih=self.t, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:kredi_sil", args=[self.kredi.pk]))
+        self.assertEqual(r.status_code, 302)   # 500 değil
+        self.assertRedirects(r, reverse("core:krediler"))
+        self.kredi.refresh_from_db()
+        self.assertFalse(self.kredi.silindi)   # silinmedi
 
     def test_doviz_kredi_kalan_borc_dovizden(self):
         # Döviz kredide Kalan Borç TL değil DÖVİZ kapanışından (kur farkı TL'yi saptırır).

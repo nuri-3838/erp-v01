@@ -28,7 +28,8 @@ def _izinli_kodlar(user):
     if not getattr(user, "is_authenticated", False):
         return set()
     return set(
-        EkranYetki.objects.filter(kullanici=user).values_list("ekran_kod", flat=True)
+        EkranYetki.objects.filter(kullanici=user, silindi=False)
+        .values_list("ekran_kod", flat=True)
     )
 
 

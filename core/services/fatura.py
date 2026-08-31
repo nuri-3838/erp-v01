@@ -105,7 +105,8 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
             alacak_tl += tl
 
     for i, g in enumerate(satirlar, start=1):
-        stok = Stok.objects.filter(pk=g.get("stok_id"), silindi=False).first()
+        stok = (Stok.objects.filter(pk=g.get("stok_id"), silindi=False)
+               .select_related("kategori", "kdv", "tevkifat").first())
         if stok is None:
             raise FaturaHatasi(f"Satır {i}: stok bulunamadı.")
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
@@ -208,7 +209,8 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi):
 
     hazir = []
     for i, g in enumerate(satirlar, start=1):
-        stok = Stok.objects.filter(pk=g.get("stok_id"), silindi=False).first()
+        stok = (Stok.objects.filter(pk=g.get("stok_id"), silindi=False)
+               .select_related("kdv", "tevkifat").first())
         if stok is None:
             raise FaturaHatasi(f"Satır {i}: stok bulunamadı.")
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
@@ -456,7 +458,7 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
 
 
 @transaction.atomic
-def fatura_guncelle(fatura: Fatura, *, tip_id=None, yon=None, cari_id, tarih, satirlar,
+def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                     fatura_no="", para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
     """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
     serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
@@ -469,12 +471,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, yon=None, cari_id, tarih, sa
         cari, pb, hazir = _hazirla_taslak(
             cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi)
         tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first() if tip_id else None
-        if tip is not None:
-            cozulen_yon = tip.yon
-        elif yon in FaturaTipi.Yon.values:
-            cozulen_yon = yon
-        else:
-            cozulen_yon = fatura.yon
+        cozulen_yon = tip.yon if tip is not None else fatura.yon
         depo = _depo_coz(depo_id)
         fatura_no = (fatura_no or "").strip()
         fatura.satirlar.filter(silindi=False).update(
@@ -520,13 +517,17 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, yon=None, cari_id, tarih, sa
 
 @transaction.atomic
 def fatura_iptal(fatura: Fatura, kullanici=None) -> Fatura:
-    """Faturayı soft-delete eder; bağlı yevmiye fişini ve stok hareketlerini de iptal eder."""
+    """Faturayı soft-delete eder; bağlı yevmiye fişini ve stok hareketlerini de iptal eder.
+    Alış faturasıyla gelen mal başka bir hareketle tüketildiyse (eldeki negatife düşerse)
+    iptal engellenir — fatura_guncelle'nin ONAYLI dalıyla aynı backstop."""
     from django.utils import timezone
     if fatura.silindi:
         return fatura
     if fatura.fis_id and not fatura.fis.silindi:
         fis_iptal(fatura.fis, kullanici=kullanici)
+    etkilenen = _fatura_hareket_ciftleri(fatura)
     _hareketleri_iptal(fatura, kullanici=kullanici)
+    _negatif_eldeki_dogrula(etkilenen)
     fatura.silindi = True
     fatura.silindi_at = timezone.now()
     fatura.updated_by = kullanici

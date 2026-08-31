@@ -101,12 +101,18 @@ def kategori_guncelle(kategori: Kategori, *, ad, kod, kullanici=None) -> Kategor
 
 
 def kategori_sil(kategori: Kategori, kullanici=None) -> Kategori:
-    """Soft-delete. Aktif alt kategorisi olan ÜST silinemez. Harita satırları da soft-delete."""
+    """Soft-delete. Aktif alt kategorisi olan ÜST silinemez; aktif stok kartı olan ALT
+    silinemez. Harita satırları da soft-delete."""
     if kategori.silindi:
         return kategori
     if kategori.alt_kategoriler.filter(silindi=False).exists():
         raise KategoriHatasi(
             "Bu kategorinin alt kategorisi var; önce alt kategorileri silin."
+        )
+    if kategori.stoklar.filter(silindi=False).exists():
+        raise KategoriHatasi(
+            "Bu kategoride aktif stok kartı var; önce ilgili stokları başka "
+            "kategoriye taşıyın veya silin."
         )
     simdi = timezone.now()
     kategori.hesap_baglari.filter(silindi=False).update(
