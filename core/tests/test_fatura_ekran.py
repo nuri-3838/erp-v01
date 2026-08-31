@@ -110,6 +110,29 @@ class FaturaEkranTest(TestCase):
         self.assertEqual(f.genel_toplam, Decimal("2400.00"))     # 20×100×1,20
         self.assertEqual(f.satirlar.filter(silindi=False).count(), 1)
 
+    def test_birim_fiyat_4_basamak_kaydedilir_gosterilir_ve_duzenlemede_kaybolmaz(self):
+        """Fatura kalemi birim fiyatı da (Teklif/Sipariş gibi) 4 ondalık basamak taşımalı —
+        özellikle Satınalma zincirinde bir Sipariş/İrsaliye'den 4 basamaklı fiyatla devralınan
+        TASLAK fatura Düzenle'den (tip atamak için zorunlu adım) kaydedilince eskiden sessizce
+        2 basamağa yuvarlanıyordu (FaturaSatirForm basamak=2 idi)."""
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:alis_fatura_ekle"),
+                         self._post_data(miktar="1", fiyat="45,6789"))
+        f = Fatura.objects.get(fatura_no="A-1")
+        self.assertEqual(f.satirlar.get().birim_fiyat, Decimal("45.6789"))
+        d = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
+        self.assertContains(d, "45,6789")
+        e = self.client.get(reverse("core:fatura_duzenle", args=[f.pk]))
+        self.assertContains(e, "45,6789")              # düzenleme formunda kaybolmuyor
+        # Formu HİÇBİR ŞEY DEĞİŞTİRMEDEN (aynı 4 basamaklı fiyatla) tekrar kaydet — bu, form
+        # basamak=2 olsaydı sessizce "45,68"e yuvarlardı.
+        r = self.client.post(reverse("core:fatura_duzenle", args=[f.pk]),
+                             self._post_data(miktar="1", fiyat="45,6789"))
+        self.assertEqual(r.status_code, 302)
+        f.refresh_from_db()
+        self.assertEqual(f.satirlar.filter(silindi=False).get().birim_fiyat,
+                         Decimal("45.6789"))
+
     def test_fatura_fisi_dogrudan_duzenlenemez(self):
         self.client.force_login(self.yon)
         self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())

@@ -53,7 +53,7 @@
         <tr>
           <td><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td>
           <td class="sag mono">{{ s.miktar|tr_kur:3 }}</td>
-          <td class="sag mono">{{ s.birim_fiyat|tr_kur:2 }}</td>
+          <td class="sag mono">{{ s.birim_fiyat|tr_kur:4 }}</td>
           <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
           <td class="sag mono">{% if s.kdv %}%{{ s.kdv.oran|tr_kur:0 }} · {{ s.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
           <td class="sag mono">{% if s.tevkifat %}{{ s.tevkifat.kod }} · {{ s.tevkifat_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>

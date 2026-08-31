@@ -849,10 +849,16 @@ class FaturaForm(forms.Form):
 
 
 class FaturaSatirForm(forms.Form):
+    """Fatura kalemi — Teklif/Sipariş kalem formuyla aynı şekil, aynı sebeple birim fiyat
+    4 ondalık basamak (bkz. TeklifSiparisKalemForm): fatura kalemleri artık Satınalma
+    zincirinde bir Sipariş/İrsaliye'den 4 basamaklı fiyatla devralınabiliyor — form yalnız
+    2 basamak destekleseydi (eski hâli), TASLAK faturayı Düzenle'den tip atayıp kaydederken
+    (fatura_onayla'dan önce zorunlu adım) fiyat sessizce 2 basamağa yuvarlanıp kalıcı veri
+    kaybına yol açardı (`prepare_value` initial'ı basamak sayısına göre biçimlendirir)."""
     stok = forms.ModelChoiceField(
         label="Stok", queryset=Stok.objects.none(), required=False, empty_label="— stok seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
-    birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=2, required=False)
+    birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
