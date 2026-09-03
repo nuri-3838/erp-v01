@@ -1318,7 +1318,8 @@ def cari_ekle(request):
             except cari_servis.CariHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariForm()
+        turkiye = Ulke.objects.filter(silindi=False, kod="TR").first()
+        form = CariForm(initial={"ulke": turkiye})
     return render(request, "core/cari_form.html", {"form": form, "baslik": "Yeni Cari"})
 
 

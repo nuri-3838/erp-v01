@@ -442,7 +442,7 @@ class CariForm(forms.Form):
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
                                    required=False, empty_label="— şehir seç —")
     adres = forms.CharField(label="Adres", required=False,
-                            widget=forms.Textarea(attrs={"rows": 4, **_K}))
+                            widget=forms.Textarea(attrs={"rows": 7, **_K}))
     posta_kodu = forms.CharField(label="Posta Kodu", max_length=15, required=False,
                                  widget=forms.TextInput(attrs=_K))
     # Sevk
