@@ -3,32 +3,80 @@
 {% block sayfa_adi %}Cariler{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
+<style>
+  .crl-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .crl-arama-cubuk { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .crl-arama-kutu { position:relative; flex:1 1 20rem; }
+  .crl-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
+    border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
+    font-size:.95rem; transition:border-color .15s, box-shadow .15s; }
+  .crl-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
+    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
+  .crl-arama-ikon { position:absolute; left:.85rem; top:50%; transform:translateY(-50%);
+    font-size:1rem; opacity:.55; pointer-events:none; }
+  .crl-arama-temizle { display:none; }
+  .crl-arama-temizle.gorunur { display:inline-flex; }
+
+  .crl-hucre { display:flex; align-items:center; gap:.65rem; }
+  .crl-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
+    font-size:1.05rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
+    border:1px solid rgba(33,56,95,.08); }
+  .crl-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
+  .crl-hucre .ad a { color:inherit; text-decoration:none; }
+  .crl-hucre .ad a:hover { color:var(--turuncu-koyu); }
+  .crl-hucre .kod { font-size:.78rem; color:var(--metin-soluk); font-family:"Cascadia Mono",Consolas,monospace; }
+
+  .crl-satir[hidden] { display:none; }
+  .crl-bos-js { display:none; }
+  .crl-bos-js.gorunur { display:table-row; }
+
+  #crl-tablo { table-layout:fixed; }
+  #crl-tablo th:nth-child(1), #crl-tablo td:nth-child(1) { width:27%; }
+  #crl-tablo th:nth-child(2), #crl-tablo td:nth-child(2) { width:23%; }
+  #crl-tablo th:nth-child(3), #crl-tablo td:nth-child(3) { width:12%; }
+  #crl-tablo th:nth-child(4), #crl-tablo td:nth-child(4) { width:7%; }
+  #crl-tablo th:nth-child(5), #crl-tablo td:nth-child(5) { width:14%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #crl-tablo th:nth-child(6), #crl-tablo td:nth-child(6) { width:17%; }
+  #crl-tablo td { overflow-wrap:break-word; }
+  #crl-tablo td:nth-child(2) .rozet { white-space:normal; text-align:left; line-height:1.3; }
+</style>
+
+<div class="crl-ust">
   <h1 class="ust-baslik"><span class="emoji">🧑‍💼</span>Cariler</h1>
   <a class="dugme" href="{% url 'core:cari_ekle' %}">+ Yeni Cari</a>
 </div>
 
-<form method="get" class="kur-cek-alanlar" style="margin:.4rem 0 1rem">
-  <div class="alan" style="flex:1 1 18rem;margin:0">
-    <label for="ara">Ara (unvan / kod / VKN)</label>
-    <input type="text" id="ara" name="ara" value="{{ ara }}" autocomplete="off">
+<form method="get" class="crl-arama-cubuk" id="crl-arama-form">
+  <div class="crl-arama-kutu">
+    <span class="crl-arama-ikon">🔍</span>
+    <input type="text" id="crl-arama" name="ara" value="{{ ara }}"
+           placeholder="Unvan, kod veya VKN/TCKN ara…" autocomplete="off">
   </div>
   <button type="submit" class="birincil">Ara</button>
-  {% if ara %}<a href="{% url 'core:cariler' %}" style="margin-left:.4rem">Temizle</a>{% endif %}
+  <a class="iptal-bag crl-arama-temizle{% if ara %} gorunur{% endif %}" id="crl-arama-temizle"
+     href="{% url 'core:cariler' %}">Temizle</a>
 </form>
 
+<p class="sayfa-alt"><span id="crl-sayac-sayi">{{ cariler|length }}</span> cari kayıtlı.</p>
+
 <div class="tablo-kapsayici genis">
-<table>
+<table id="crl-tablo">
   <thead>
-    <tr><th>Kod</th><th>Unvan</th><th>Kategori</th><th>Şehir / Ülke</th>
-        <th>PB</th><th>Telefon</th><th>İşlem</th></tr>
+    <tr><th>Cari</th><th>Kategori</th><th>Şehir / Ülke</th><th>PB</th><th>Telefon</th><th>İşlem</th></tr>
   </thead>
   <tbody>
     {% for c in cariler %}
-      <tr>
-        <td class="mono"><a href="{% url 'core:cari_detay' c.pk %}">{{ c.kod }}</a></td>
-        <td><a href="{% url 'core:cari_detay' c.pk %}" style="color:inherit;text-decoration:none;font-weight:600">{{ c.unvan }}</a></td>
-        <td>{% if c.kategori %}{{ c.kategori.ad }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+      <tr class="crl-satir">
+        <td>
+          <div class="crl-hucre">
+            <span class="crl-ikon">🧑‍💼</span>
+            <div>
+              <div class="ad"><a href="{% url 'core:cari_detay' c.pk %}">{{ c.unvan }}</a></div>
+              <div class="kod">{{ c.kod }}</div>
+            </div>
+          </div>
+        </td>
+        <td>{% if c.kategori %}<span class="rozet rozet-notr">{{ c.kategori.ad }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td>{% if c.sehir %}{{ c.sehir.ad }}{% endif %}{% if c.ulke %} <span class="mono yardim">({{ c.ulke.kod }})</span>{% endif %}{% if not c.sehir and not c.ulke %}<span class="pasif">—</span>{% endif %}</td>
         <td class="mono">{{ c.para_birimi }}</td>
         <td>{{ c.telefon|default:"—" }}</td>
@@ -43,9 +91,46 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="7" class="yardim">{% if ara %}Eşleşen cari yok.{% else %}Henüz cari yok. “+ Yeni Cari” ile ekleyin.{% endif %}</td></tr>
+      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara %}🔍 “{{ ara }}” ile eşleşen cari yok.
+        {% else %}🧑‍💼 Henüz cari yok. “+ Yeni Cari” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
+    <tr class="crl-bos-js"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+      🔍 Eşleşen cari yok.</td></tr>
   </tbody>
 </table>
 </div>
+
+<script>
+(function(){
+  var girdi = document.getElementById('crl-arama');
+  var satirlar = Array.prototype.slice.call(document.querySelectorAll('.crl-satir'));
+  var bosSatir = document.querySelector('.crl-bos-js');
+  var sayacSayi = document.getElementById('crl-sayac-sayi');
+  var temizle = document.getElementById('crl-arama-temizle');
+  if(!girdi || !satirlar.length) return;
+
+  // Aranabilir metin satırın kendi görünen içeriğinden türetilir (TR-uyumlu küçük harf,
+  // sunucudan gelen |lower filtresine güvenilmez -- Python .lower() İ/I harflerini
+  // yanlış çevirir, arama sorgusundaki toLocaleLowerCase('tr') ile eşleşmeyebilir).
+  satirlar.forEach(function(tr){
+    tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
+  });
+
+  function filtrele(){
+    var q = girdi.value.trim().toLocaleLowerCase('tr');
+    var n = 0;
+    satirlar.forEach(function(tr){
+      var gorunsun = !q || tr.dataset.arama.indexOf(q) > -1;
+      tr.hidden = !gorunsun;
+      if(gorunsun) n++;
+    });
+    if(bosSatir) bosSatir.classList.toggle('gorunur', n === 0 && !!q);
+    if(sayacSayi) sayacSayi.textContent = n;
+    if(temizle) temizle.classList.toggle('gorunur', !!q);
+  }
+  girdi.addEventListener('input', filtrele);
+  if(girdi.value) filtrele();
+})();
+</script>
 {% endblock %}
