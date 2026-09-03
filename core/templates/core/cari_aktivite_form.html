@@ -68,11 +68,17 @@
 
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">📎</span>{% if ekler %}Yeni Dosya Ekle{% else %}Dosya Ekleri{% endif %}</h2>
-      <div class="alan">
-        <label for="id_dosyalar">Dosya (opsiyonel)</label>
-        <input type="file" id="id_dosyalar" name="dosyalar" multiple accept="image/*,application/pdf">
-        <p class="yardim" style="margin:.4rem 0 0">Resim veya PDF, birden çok seçilebilir. Resimler otomatik küçültülüp WebP'ye çevrilir.</p>
+      <div class="izgara">
+        <div class="alan">
+          <label for="id_kamera">📷 Kameradan Çek</label>
+          <input type="file" id="id_kamera" name="dosyalar" accept="image/*" capture="environment">
+        </div>
+        <div class="alan">
+          <label for="id_dosyalar">🖼️ Dosyalardan Seç</label>
+          <input type="file" id="id_dosyalar" name="dosyalar" multiple accept="image/*,application/pdf">
+        </div>
       </div>
+      <p class="yardim" style="margin:.4rem 0 0">Her ikisi de opsiyonel, birlikte kullanılabilir. Resim veya PDF, birden çok seçilebilir. Resimler otomatik küçültülüp WebP'ye çevrilir.</p>
     </section>
 
     <div class="form-altbar">
