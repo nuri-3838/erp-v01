@@ -5,7 +5,8 @@
 - UPPER alanlar (unvan/kısa ad/vergi dairesi/adres) TR büyük harfe çevrilir.
 - VKN/TCKN ve Tax ID dolu ise silinmemişler arası benzersiz.
 - Sevk (teslimat) adresleri artık ayrı ``CariSevkAdresi`` tablosunda (çoklu, banka
-  hesapları/yetkili kişilerle aynı desen).
+  hesapları/yetkili kişilerle aynı desen). ``cari_olustur`` cari'nin kendi adresi
+  doluysa "Merkez Adres" adıyla otomatik + varsayılan bir sevk adresi de açar.
 - Silme: soft-delete.
 """
 from __future__ import annotations
@@ -95,7 +96,7 @@ def _para_dogrula(deger, etiket):
 
 
 def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
-            eposta, web, kep_adresi, adres, posta_kodu, para_birimi, kredi_limiti,
+            eposta, web, kep_adresi, adres, para_birimi, kredi_limiti,
             iskonto_yuzdesi, notlar, ulke, sehir):
     """Ortak alan hazırlığı (create/update paylaşır). dict döner."""
     if para_birimi not in dict(Cari.PARA_CHOICES):
@@ -108,7 +109,6 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         eposta=(eposta or "").strip().lower(), web=(web or "").strip(),
         kep_adresi=(kep_adresi or "").strip(),
         ulke=ulke, sehir=sehir, adres=buyuk_harf_tr((adres or "").strip()),
-        posta_kodu=(posta_kodu or "").strip(),
         para_birimi=para_birimi,
         kredi_limiti=_para_dogrula(kredi_limiti, "Kredi limiti"),
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
@@ -132,13 +132,18 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_2", "eposta", "web", "kep_adresi", "adres",
-                        "posta_kodu", "para_birimi", "kredi_limiti",
+                        "para_birimi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
         raise CariHatasi(f"Cari kodu zaten kayıtlı: {kod}")
     cari = Cari.objects.create(kod=kod, unvan=unvan, kategori=kategori,
                                created_by=kullanici, updated_by=kullanici, **veri)
+    if cari.ulke_id or cari.sehir_id or cari.adres:
+        # Cari'nin kendi adresi doluysa, ilk sevk adresi olarak "Merkez Adres" adıyla
+        # otomatik + varsayılan eklenir (kullanıcı aynı adresi ikinci kez girmesin).
+        sevk_adresi_ekle(cari, ad="Merkez Adres", ulke_id=cari.ulke_id, sehir_id=cari.sehir_id,
+                         adres=cari.adres, varsayilan=True, kullanici=kullanici)
     muh = muhasebe_hesabi_ac(cari, kullanici=kullanici)   # hesap planında otomatik aç
     if muh and cari.muhasebe_kodu != muh:
         cari.muhasebe_kodu = muh
@@ -194,7 +199,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_2", "eposta", "web", "kep_adresi", "adres",
-                        "posta_kodu", "para_birimi", "kredi_limiti",
+                        "para_birimi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     cari.unvan = unvan
     cari.kategori = kategori

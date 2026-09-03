@@ -1261,7 +1261,6 @@ def _cari_form_kw(cd):
         telefon=cd["telefon"], telefon_2=cd["telefon_2"], eposta=cd["eposta"],
         web=cd["web"], kep_adresi=cd["kep_adresi"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
-        posta_kodu=cd["posta_kodu"],
         para_birimi=cd["para_birimi"], kredi_limiti=cd["kredi_limiti"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"], notlar=cd["notlar"])
 
@@ -1342,7 +1341,6 @@ def cari_duzenle(request, pk):
             "tax_id": cari.tax_id, "telefon": cari.telefon, "telefon_2": cari.telefon_2,
             "eposta": cari.eposta, "web": cari.web, "kep_adresi": cari.kep_adresi,
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
-            "posta_kodu": cari.posta_kodu,
             "para_birimi": cari.para_birimi, "kredi_limiti": cari.kredi_limiti,
             "iskonto_yuzdesi": cari.iskonto_yuzdesi, "notlar": cari.notlar})
     return render(request, "core/cari_form.html",

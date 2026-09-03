@@ -443,8 +443,6 @@ class CariForm(forms.Form):
                                    required=False, empty_label="— şehir seç —")
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 7, **_K}))
-    posta_kodu = forms.CharField(label="Posta Kodu", max_length=15, required=False,
-                                 widget=forms.TextInput(attrs=_K))
     # Ticari
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     kredi_limiti = TRDecimalField(label="Kredi/Risk Limiti", basamak=2,

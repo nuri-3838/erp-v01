@@ -84,6 +84,31 @@ class CariSevkAdresiServisTest(TestCase):
         self.assertEqual(liste[0].ad, "A DEPO")            # varsayılan önce
 
 
+class CariOlusturMerkezAdresTest(TestCase):
+    """cari_olustur: cari'nin kendi adresi doluysa otomatik "Merkez Adres" sevk adresi açılır."""
+
+    def test_adres_doluysa_merkez_adres_otomatik_acilir(self):
+        tr, kayseri = _lokasyon()
+        c = cari_olustur(unvan="formal", para_birimi="TRY", ulke_id=tr.pk,
+                         sehir_id=kayseri.pk, adres="fabrika caddesi 5")
+        adresler = list(aktif_sevk_adresleri(c))
+        self.assertEqual(len(adresler), 1)
+        s = adresler[0]
+        self.assertEqual((s.ad, s.ulke_id, s.sehir_id, s.adres, s.varsayilan),
+                         ("MERKEZ ADRES", tr.pk, kayseri.pk, "FABRİKA CADDESİ 5", True))
+
+    def test_adres_bossa_sevk_adresi_acilmaz(self):
+        c = cari_olustur(unvan="formal", para_birimi="TRY")
+        self.assertEqual(list(aktif_sevk_adresleri(c)), [])
+
+    def test_yalniz_ulke_doluysa_yine_acilir(self):
+        tr, _ = _lokasyon()
+        c = cari_olustur(unvan="formal", para_birimi="TRY", ulke_id=tr.pk)
+        adresler = list(aktif_sevk_adresleri(c))
+        self.assertEqual(len(adresler), 1)
+        self.assertEqual(adresler[0].ad, "MERKEZ ADRES")
+
+
 class CariSevkAdresiViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):

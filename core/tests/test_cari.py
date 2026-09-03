@@ -78,7 +78,7 @@ class CariTasimaTest(TestCase):
             "kod": "320-10-0001", "unvan": "FORMAL ALÜMİNYUM", "kisa_ad": "",
             "kategori": "320-10", "vergi_dairesi": "", "vkn_tckn": "111", "tax_id": "",
             "telefon": "", "telefon_2": "", "eposta": "", "web": "", "kep_adresi": "",
-            "ulke": "TR", "sehir": "KAYSERİ", "adres": "", "posta_kodu": "",
+            "ulke": "TR", "sehir": "KAYSERİ", "adres": "",
             "sevk_farkli": False, "sevk_ulke": None, "sevk_sehir": None,
             "sevk_adres": "", "para_birimi": "USD",
             "kredi_limiti": "0", "iskonto_yuzdesi": "0", "notlar": ""}]}

@@ -640,7 +640,6 @@ class Cari(TemelModel):
         Sehir, verbose_name="şehir", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cariler")
     adres = models.TextField("adres", blank=True)
-    posta_kodu = models.CharField("posta kodu", max_length=15, blank=True)
     # Ticari
     para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES, default="TRY")
     kredi_limiti = models.DecimalField("kredi/risk limiti", max_digits=14, decimal_places=2, default=0)

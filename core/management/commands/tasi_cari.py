@@ -3,7 +3,7 @@
 Beklenen JSON kaydı (her cari):
   {"kod","unvan","kisa_ad","kategori"(kod_yolu|null),"vergi_dairesi","vkn_tckn","tax_id",
    "telefon","telefon_2","eposta","web","kep_adresi","ulke"(kod|null),"sehir"(ad|null),
-   "adres","posta_kodu","sevk_farkli","sevk_ulke"(kod|null),"sevk_sehir"(ad|null),
+   "adres","sevk_farkli","sevk_ulke"(kod|null),"sevk_sehir"(ad|null),
    "sevk_adres","para_birimi","kredi_limiti","iskonto_yuzdesi","notlar"}
 Kategori kod yoluna, ülke koduna, şehir (ülke+ad) eşleştirilir. Var olan kod atlanır.
 """
@@ -61,7 +61,7 @@ class Command(BaseCommand):
                 eposta=r.get("eposta", ""), web=r.get("web", ""),
                 kep_adresi=r.get("kep_adresi", ""),
                 ulke_id=ulke_id(r.get("ulke")), sehir_id=sehir_id(r.get("ulke"), r.get("sehir")),
-                adres=r.get("adres", ""), posta_kodu=r.get("posta_kodu", ""),
+                adres=r.get("adres", ""),
                 para_birimi=r.get("para_birimi", "TRY"),
                 kredi_limiti=r.get("kredi_limiti", 0),
                 iskonto_yuzdesi=r.get("iskonto_yuzdesi", 0), notlar=r.get("notlar", ""))
