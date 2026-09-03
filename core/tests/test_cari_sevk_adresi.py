@@ -1,6 +1,7 @@
 """Cari sevk (teslimat) adresi (çoklu, CariBanka ile aynı varsayılan-yönetimi deseni)
 testleri: servis, view (cari-scoped CRUD + detay sekmesi), yetki."""
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
@@ -107,6 +108,44 @@ class CariOlusturMerkezAdresTest(TestCase):
         adresler = list(aktif_sevk_adresleri(c))
         self.assertEqual(len(adresler), 1)
         self.assertEqual(adresler[0].ad, "MERKEZ ADRES")
+
+
+class CariMerkezAdresAcKomutuTest(TestCase):
+    """cari_merkez_adres_ac: bu özellik eklenmeden ÖNCE oluşturulmuş carileri
+    geriye dönük tamamlayan tek-seferlik komut."""
+
+    def test_eski_cariyi_tamamlar(self):
+        tr, kayseri = _lokasyon()
+        c = cari_olustur(unvan="eski cari", para_birimi="TRY", ulke_id=tr.pk,
+                         sehir_id=kayseri.pk, adres="eski adres")
+        # cari_olustur zaten otomatik açtı; özellik eklenmeden önceki cariyi taklit
+        # etmek için o kaydı siliyoruz.
+        CariSevkAdresi.objects.filter(cari=c).delete()
+        self.assertEqual(list(aktif_sevk_adresleri(c)), [])
+        call_command("cari_merkez_adres_ac")
+        adresler = list(aktif_sevk_adresleri(c))
+        self.assertEqual(len(adresler), 1)
+        self.assertEqual((adresler[0].ad, adresler[0].varsayilan), ("MERKEZ ADRES", True))
+
+    def test_idempotent(self):
+        tr, _ = _lokasyon()
+        c = cari_olustur(unvan="cari", para_birimi="TRY", ulke_id=tr.pk, adres="adres")
+        call_command("cari_merkez_adres_ac")
+        call_command("cari_merkez_adres_ac")
+        self.assertEqual(CariSevkAdresi.objects.filter(cari=c, silindi=False).count(), 1)
+
+    def test_var_olan_sevk_adresini_bozmaz(self):
+        tr, _ = _lokasyon()
+        c = cari_olustur(unvan="cari", para_birimi="TRY", ulke_id=tr.pk, adres="ana adres")
+        sevk_adresi_ekle(c, ad="Özel Depo")           # cari_olustur'un açtığına ek
+        call_command("cari_merkez_adres_ac")
+        # zaten sevk adresi vardı -> backfill atlar, kopya oluşmaz.
+        self.assertEqual(CariSevkAdresi.objects.filter(cari=c, silindi=False).count(), 2)
+
+    def test_adressiz_cari_atlanir(self):
+        cari_olustur(unvan="adressiz", para_birimi="TRY")
+        call_command("cari_merkez_adres_ac")           # hata vermeden çalışır
+        self.assertEqual(CariSevkAdresi.objects.count(), 0)
 
 
 class CariSevkAdresiViewTest(TestCase):
