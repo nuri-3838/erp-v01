@@ -17,7 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    BilancoTarihForm, BirimForm, CariBankaForm, CariForm, CariKategoriForm,
+    BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
@@ -28,7 +28,8 @@ from core.forms import (
     UlkeForm,
 )
 from core.models import (
-    Birim, Cari, CariBanka, CariKategori, CariYetkili, Depo, EkranYetki, Fatura,
+    Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariYetkili, Depo,
+    EkranYetki, Fatura,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TeklifSiparis, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
@@ -1359,7 +1360,8 @@ def cari_detay(request, pk):
     return render(request, "core/cari_detay.html", {
         "cari": cari,
         "bankalar": cari_servis.aktif_bankalar(cari),
-        "yetkililer": cari_servis.aktif_yetkililer(cari)})
+        "yetkililer": cari_servis.aktif_yetkililer(cari),
+        "aktiviteler": cari_servis.aktif_aktiviteler(cari)})
 
 
 @ekran_gerekli("cariler")
@@ -2983,6 +2985,75 @@ def yetkili_sil(request, pk):
         cari_servis.yetkili_sil(yetkili, kullanici=request.user)
         messages.success(request, "Yetkili kişi silindi.")
     return redirect("core:cari_detay", pk=yetkili.cari_id)
+
+
+# --- Cari aktiviteler (görüşme/temas kayıtları) -----------------------------
+def _aktivite_ekleri_kaydet(request, aktivite, dosyalar):
+    for f in dosyalar:
+        try:
+            cari_servis.aktivite_ek_ekle(aktivite, dosya=f, kullanici=request.user)
+        except cari_servis.CariHatasi as e:
+            messages.warning(request, str(e))
+
+
+@ekran_gerekli("cariler")
+def aktivite_ekle(request, cari_pk):
+    cari = get_object_or_404(Cari, pk=cari_pk, silindi=False)
+    if request.method == "POST":
+        form = CariAktiviteForm(request.POST)
+        if form.is_valid():
+            try:
+                aktivite = cari_servis.aktivite_ekle(
+                    cari, **form.cleaned_data, kullanici=request.user)
+                _aktivite_ekleri_kaydet(request, aktivite, request.FILES.getlist("dosyalar"))
+                messages.success(request, "Aktivite eklendi.")
+                return redirect("core:cari_detay", pk=cari.pk)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariAktiviteForm()
+    return render(request, "core/cari_aktivite_form.html",
+                  {"form": form, "baslik": "Yeni Aktivite", "cari": cari})
+
+
+@ekran_gerekli("cariler")
+def aktivite_duzenle(request, pk):
+    aktivite = get_object_or_404(CariAktivite, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CariAktiviteForm(request.POST)
+        if form.is_valid():
+            try:
+                cari_servis.aktivite_guncelle(
+                    aktivite, **form.cleaned_data, kullanici=request.user)
+                _aktivite_ekleri_kaydet(request, aktivite, request.FILES.getlist("dosyalar"))
+                messages.success(request, "Aktivite güncellendi.")
+                return redirect("core:cari_detay", pk=aktivite.cari_id)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariAktiviteForm(initial={
+            "tarih": aktivite.tarih, "tur": aktivite.tur, "aciklama": aktivite.aciklama})
+    return render(request, "core/cari_aktivite_form.html", {
+        "form": form, "baslik": "Aktivite Düzenle", "cari": aktivite.cari,
+        "aktivite": aktivite, "ekler": aktivite.ekler.filter(silindi=False)})
+
+
+@ekran_gerekli("cariler")
+def aktivite_sil(request, pk):
+    aktivite = get_object_or_404(CariAktivite, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.aktivite_sil(aktivite, kullanici=request.user)
+        messages.success(request, "Aktivite silindi.")
+    return redirect("core:cari_detay", pk=aktivite.cari_id)
+
+
+@ekran_gerekli("cariler")
+def aktivite_ek_sil(request, pk):
+    ek = get_object_or_404(CariAktiviteEk, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.aktivite_ek_sil(ek, kullanici=request.user)
+        messages.success(request, "Dosya silindi.")
+    return redirect("core:aktivite_duzenle", pk=ek.aktivite_id)
 
 
 # --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------

@@ -9,14 +9,22 @@
 """
 from __future__ import annotations
 
+import os
+
+from django.db.models import Prefetch
 from django.utils import timezone
 
+from core import gorsel
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Cari, CariBanka, CariKategori, CariYetkili, HesapPlani, Sehir, Ulke,
+    Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariYetkili, HesapPlani, Sehir,
+    Ulke,
 )
 from core.sayi import SayiHatasi, parse_tr
 from core.services import hesap_plani as hp
+
+AKTIVITE_IZINLI_UZANTI = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"}
+AKTIVITE_MAKS_BOYUT = 10 * 1024 * 1024   # 10 MB
 
 
 class CariHatasi(ValueError):
@@ -360,3 +368,84 @@ def yetkili_sil(yetkili: CariYetkili, kullanici=None) -> CariYetkili:
     yetkili.updated_by = kullanici
     yetkili.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return yetkili
+
+
+# --- Aktiviteler (görüşme/temas kayıtları) -----------------------------------
+def aktif_aktiviteler(cari):
+    return (cari.aktiviteler.filter(silindi=False)
+            .select_related("created_by")
+            .prefetch_related(Prefetch(
+                "ekler", queryset=CariAktiviteEk.objects.filter(silindi=False)))
+            .order_by("-tarih", "-id"))
+
+
+def aktivite_ekle(cari, *, tarih, tur, aciklama, kullanici=None) -> CariAktivite:
+    aciklama = (aciklama or "").strip()
+    if not aciklama:
+        raise CariHatasi("Açıklama boş olamaz.")
+    if tur not in CariAktivite.Tur.values:
+        raise CariHatasi("Geçersiz aktivite türü.")
+    return CariAktivite.objects.create(
+        cari=cari, tarih=tarih, tur=tur, aciklama=aciklama,
+        created_by=kullanici, updated_by=kullanici)
+
+
+def aktivite_guncelle(aktivite: CariAktivite, *, tarih, tur, aciklama,
+                      kullanici=None) -> CariAktivite:
+    if aktivite.silindi:
+        raise CariHatasi("Silinmiş aktivite düzenlenemez.")
+    aciklama = (aciklama or "").strip()
+    if not aciklama:
+        raise CariHatasi("Açıklama boş olamaz.")
+    if tur not in CariAktivite.Tur.values:
+        raise CariHatasi("Geçersiz aktivite türü.")
+    aktivite.tarih = tarih
+    aktivite.tur = tur
+    aktivite.aciklama = aciklama
+    aktivite.updated_by = kullanici
+    aktivite.save(update_fields=["tarih", "tur", "aciklama", "updated_by", "updated_at"])
+    return aktivite
+
+
+def aktivite_sil(aktivite: CariAktivite, kullanici=None) -> CariAktivite:
+    if aktivite.silindi:
+        return aktivite
+    aktivite.silindi = True
+    aktivite.silindi_at = timezone.now()
+    aktivite.updated_by = kullanici
+    aktivite.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return aktivite
+
+
+def aktivite_ek_ekle(aktivite: CariAktivite, *, dosya, kullanici=None) -> CariAktiviteEk:
+    """Aktiviteye tek dosya ekler (çoklu yükleme view katmanında döngüyle bu fonksiyonu çağırır).
+    Resim ise WebP'ye küçültülür (spec görsel invariant'ı: en uzun kenar ~1600px, ~%80 kalite);
+    PDF olduğu gibi saklanır."""
+    if aktivite.silindi:
+        raise CariHatasi("Silinmiş aktiviteye dosya eklenemez.")
+    ad = dosya.name or "dosya"
+    uzanti = os.path.splitext(ad)[1].lower()
+    if uzanti not in AKTIVITE_IZINLI_UZANTI:
+        raise CariHatasi(f"Desteklenmeyen dosya türü: {ad} (yalnız resim veya PDF).")
+    if dosya.size > AKTIVITE_MAKS_BOYUT:
+        raise CariHatasi(f"Dosya çok büyük (10 MB üzeri): {ad}")
+    if uzanti == ".pdf":
+        saklanan = dosya
+    else:
+        try:
+            saklanan = gorsel.kucult_webp(dosya, max_kenar=1600, kalite=80, ad="cari_aktivite")
+        except Exception:
+            raise CariHatasi(f"Geçersiz resim dosyası: {ad}")
+    return CariAktiviteEk.objects.create(
+        aktivite=aktivite, dosya=saklanan, orijinal_ad=ad,
+        created_by=kullanici, updated_by=kullanici)
+
+
+def aktivite_ek_sil(ek: CariAktiviteEk, kullanici=None) -> CariAktiviteEk:
+    if ek.silindi:
+        return ek
+    ek.silindi = True
+    ek.silindi_at = timezone.now()
+    ek.updated_by = kullanici
+    ek.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return ek

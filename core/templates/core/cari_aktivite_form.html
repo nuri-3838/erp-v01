@@ -1,0 +1,84 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .akt-ek-galeri { display:flex; flex-wrap:wrap; gap:.7rem; margin:.6rem 0 1rem; }
+  .akt-ek-kart { position:relative; width:96px; }
+  .akt-ek-onizleme { width:96px; height:96px; border-radius:12px; border:1px solid var(--cizgi);
+    background:#fff; display:grid; place-items:center; overflow:hidden; }
+  .akt-ek-onizleme img { width:100%; height:100%; object-fit:cover; }
+  .akt-ek-onizleme .pdf-ikon { font-size:2rem; }
+  .akt-ek-ad { display:block; font-size:.7rem; color:var(--metin-soluk); margin-top:.25rem;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .akt-ek-sil { position:absolute; top:-.4rem; right:-.4rem; width:22px; height:22px; border-radius:50%;
+    background:var(--hata); color:#fff; border:2px solid #fff; font-size:.75rem; line-height:1;
+    display:grid; place-items:center; cursor:pointer; padding:0; }
+</style>
+
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cari_detay' cari.pk %}">← {{ cari.unvan }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🕓</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  {% if ekler %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📎</span>Mevcut Dosya Ekleri</h2>
+      <p class="yardim" style="margin:0 0 .3rem">Silmek için üzerindeki ✕'e tıklayın.</p>
+      <div class="akt-ek-galeri">
+        {% for ek in ekler %}
+          <div class="akt-ek-kart">
+            <a href="{{ ek.dosya.url }}" target="_blank" class="akt-ek-onizleme">
+              {% if ek.resim_mi %}<img src="{{ ek.dosya.url }}" alt="">
+              {% else %}<span class="pdf-ikon">📄</span>{% endif %}
+            </a>
+            <span class="akt-ek-ad" title="{{ ek.orijinal_ad }}">{{ ek.orijinal_ad }}</span>
+            {# Silme formu kasıtlı olarak aşağıdaki ana form'un dışında — form içinde form olmaz. #}
+            <form method="post" action="{% url 'core:aktivite_ek_sil' ek.pk %}"
+                  onsubmit="return confirm('{{ ek.orijinal_ad }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="akt-ek-sil" title="Sil">✕</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Aktivite</h2>
+      <div class="izgara">
+        {% for field in form %}
+          <div class="alan{% if field.name == 'aciklama' %} tam{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📎</span>{% if ekler %}Yeni Dosya Ekle{% else %}Dosya Ekleri{% endif %}</h2>
+      <div class="alan">
+        <label for="id_dosyalar">Dosya (opsiyonel)</label>
+        <input type="file" id="id_dosyalar" name="dosyalar" multiple accept="image/*,application/pdf">
+        <p class="yardim" style="margin:.4rem 0 0">Resim veya PDF, birden çok seçilebilir. Resimler otomatik küçültülüp WebP'ye çevrilir.</p>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cari_detay' cari.pk %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

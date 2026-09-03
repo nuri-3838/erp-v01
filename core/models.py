@@ -725,6 +725,55 @@ class CariYetkili(TemelModel):
         return self.ad_soyad
 
 
+class CariAktivite(TemelModel):
+    """Cariyle yapılan görüşme/temas kaydı (çoklu) — cari detay sayfasında zaman çizelgesi."""
+
+    class Tur(models.TextChoices):
+        GORUSME = "GORUSME", "Görüşme"
+        TELEFON = "TELEFON", "Telefon"
+        TOPLANTI = "TOPLANTI", "Toplantı"
+        EPOSTA = "EPOSTA", "E-posta"
+        NOT = "NOT", "Not"
+
+    cari = models.ForeignKey(Cari, verbose_name="cari", related_name="aktiviteler",
+                             on_delete=models.CASCADE)
+    tarih = models.DateField("tarih")
+    tur = models.CharField("tür", max_length=10, choices=Tur.choices, default=Tur.NOT)
+    aciklama = models.TextField("açıklama")
+
+    class Meta:
+        db_table = "cari_aktivite"
+        verbose_name = "cari aktivite"
+        verbose_name_plural = "cari aktiviteler"
+        ordering = ["-tarih", "-id"]
+
+    def __str__(self):
+        return f"{self.cari.unvan} — {self.get_tur_display()} ({self.tarih})"
+
+
+class CariAktiviteEk(TemelModel):
+    """Aktiviteye eklenen dosya (çoklu) — resim yüklemede WebP'ye küçültülür (spec invariant'ı),
+    PDF olduğu gibi saklanır."""
+
+    aktivite = models.ForeignKey(CariAktivite, verbose_name="aktivite", related_name="ekler",
+                                 on_delete=models.CASCADE)
+    dosya = models.FileField("dosya", upload_to="cari_aktivite/")
+    orijinal_ad = models.CharField("orijinal dosya adı", max_length=255, blank=True)
+
+    class Meta:
+        db_table = "cari_aktivite_ek"
+        verbose_name = "aktivite eki"
+        verbose_name_plural = "aktivite ekleri"
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.orijinal_ad or self.dosya.name
+
+    @property
+    def resim_mi(self):
+        return self.dosya.name.lower().endswith(".webp")
+
+
 # === AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) ===
 class KdvOrani(TemelModel):
     """KDV oranı tanımı — otomatik yevmiyede indirilecek/hesaplanan KDV hesabını besler."""

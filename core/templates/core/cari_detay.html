@@ -30,11 +30,13 @@
   #sek-bilgi:checked ~ .sek-bar label[for="sek-bilgi"],
   #sek-banka:checked ~ .sek-bar label[for="sek-banka"],
   #sek-yetkili:checked ~ .sek-bar label[for="sek-yetkili"],
+  #sek-aktivite:checked ~ .sek-bar label[for="sek-aktivite"],
   #sek-kayit:checked ~ .sek-bar label[for="sek-kayit"] {
     background:linear-gradient(135deg,var(--turuncu),var(--turuncu-koyu)); color:#fff; border-color:transparent;
     box-shadow:0 6px 14px rgba(213,110,0,.32); }
   #sek-bilgi:checked ~ #panel-bilgi, #sek-banka:checked ~ #panel-banka,
-  #sek-yetkili:checked ~ #panel-yetkili, #sek-kayit:checked ~ #panel-kayit { display:block; }
+  #sek-yetkili:checked ~ #panel-yetkili, #sek-aktivite:checked ~ #panel-aktivite,
+  #sek-kayit:checked ~ #panel-kayit { display:block; }
   .kv { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem 1.6rem; }
   @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
   .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
@@ -42,6 +44,17 @@
   .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
   .kv .dg { font-weight:600; font-size:.98rem; white-space:pre-line; }
   .grup-ara { margin:1.4rem 0 .2rem; }
+
+  .akt-satir { border:1px solid var(--cizgi); border-radius:14px; padding:.85rem 1rem; margin-bottom:.8rem; }
+  .akt-ust { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+  .akt-tarih { font-weight:700; font-family:"Cascadia Mono",Consolas,monospace; font-size:.88rem; }
+  .akt-aciklama { margin:.55rem 0 0; white-space:pre-line; }
+  .akt-alt { margin-top:.5rem; font-size:.76rem; color:var(--metin-soluk); }
+  .akt-ek-galeri { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.6rem; }
+  .akt-ek-onizleme { width:64px; height:64px; border-radius:10px; border:1px solid var(--cizgi);
+    background:#fff; display:grid; place-items:center; overflow:hidden; }
+  .akt-ek-onizleme img { width:100%; height:100%; object-fit:cover; }
+  .akt-ek-onizleme .pdf-ikon { font-size:1.4rem; }
 </style>
 
 <div class="detay-kapsa">
@@ -74,11 +87,13 @@
     <input type="radio" name="cari-sekme" id="sek-bilgi" class="sek-radio" checked>
     <input type="radio" name="cari-sekme" id="sek-banka" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-yetkili" class="sek-radio">
+    <input type="radio" name="cari-sekme" id="sek-aktivite" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-kayit" class="sek-radio">
     <div class="sek-bar">
       <label for="sek-bilgi">📋 Bilgiler</label>
       <label for="sek-banka">🏦 Banka Hesapları ({{ bankalar|length }})</label>
       <label for="sek-yetkili">👤 Yetkili Kişiler ({{ yetkililer|length }})</label>
+      <label for="sek-aktivite">🗓️ Aktiviteler ({{ aktiviteler|length }})</label>
       <label for="sek-kayit">🕓 Kayıt Bilgisi</label>
     </div>
 
@@ -188,6 +203,40 @@
         </tbody>
       </table>
       </div>
+    </div>
+
+    <div class="sek-panel" id="panel-aktivite">
+      <div class="sayfa-ust">
+        <h2 class="bolum-baslik"><span class="emoji">🗓️</span>Aktiviteler</h2>
+        <a class="dugme" href="{% url 'core:aktivite_ekle' cari.pk %}">+ Aktivite Ekle</a>
+      </div>
+      {% for a in aktiviteler %}
+        <div class="akt-satir">
+          <div class="akt-ust">
+            <span class="akt-tarih">{{ a.tarih|date:"d.m.Y" }}</span>
+            <span class="rozet rozet-notr">{{ a.get_tur_display }}</span>
+            <span class="islem-bag" style="margin-left:auto">
+              <a href="{% url 'core:aktivite_duzenle' a.pk %}">Düzenle</a>
+              <form method="post" action="{% url 'core:aktivite_sil' a.pk %}" onsubmit="return confirm('Aktivite silinsin mi?');">
+                {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+            </span>
+          </div>
+          <p class="akt-aciklama">{{ a.aciklama }}</p>
+          {% if a.ekler.all %}
+            <div class="akt-ek-galeri">
+              {% for ek in a.ekler.all %}
+                <a href="{{ ek.dosya.url }}" target="_blank" class="akt-ek-onizleme" title="{{ ek.orijinal_ad }}">
+                  {% if ek.resim_mi %}<img src="{{ ek.dosya.url }}" alt="">
+                  {% else %}<span class="pdf-ikon">📄</span>{% endif %}
+                </a>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="akt-alt">{% if a.created_by %}{{ a.created_by.get_full_name|default:a.created_by.username }} ·{% endif %} {{ a.created_at|date:"d.m.Y H:i" }}</div>
+        </div>
+      {% empty %}
+        <p class="yardim">Henüz aktivite yok. “+ Aktivite Ekle” ile ilk görüşme/temas kaydını girin.</p>
+      {% endfor %}
     </div>
 
     <div class="sek-panel" id="panel-kayit">

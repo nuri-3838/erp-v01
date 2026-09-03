@@ -15,8 +15,8 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Banka, BankaHesap, Birim, Cari, CariKategori, CekSenet, Depo, FaturaTipi, HesapPlani, Kasa,
-    Kategori, KdvOrani,
+    Banka, BankaHesap, Birim, Cari, CariAktivite, CariKategori, CekSenet, Depo, FaturaTipi,
+    HesapPlani, Kasa, Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
@@ -512,6 +512,16 @@ class CariYetkiliForm(forms.Form):
                               widget=forms.EmailInput(attrs={"autocomplete": "off"}))
     notlar = forms.CharField(label="Notlar", max_length=200, required=False,
                              widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+class CariAktiviteForm(forms.Form):
+    """Cari aktivite (görüşme/temas) ekle/düzenle. Dosya ekleri ayrı, çoklu işlenir (view'da)."""
+
+    tarih = forms.DateField(
+        label="Tarih", initial=timezone.localdate,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    tur = forms.ChoiceField(label="Tür", choices=CariAktivite.Tur.choices)
+    aciklama = forms.CharField(label="Açıklama", widget=forms.Textarea(attrs={"rows": 4}))
 
 
 def _yaprak_hesap_alani(label):
