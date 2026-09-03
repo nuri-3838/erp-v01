@@ -641,16 +641,6 @@ class Cari(TemelModel):
         on_delete=models.PROTECT, related_name="cariler")
     adres = models.TextField("adres", blank=True)
     posta_kodu = models.CharField("posta kodu", max_length=15, blank=True)
-    # Sevk adresi (farklıysa)
-    sevk_farkli = models.BooleanField("sevk adresi farklı", default=False)
-    sevk_ulke = models.ForeignKey(
-        Ulke, verbose_name="sevk ülke", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="sevk_cariler")
-    sevk_sehir = models.ForeignKey(
-        Sehir, verbose_name="sevk şehir", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="sevk_cariler")
-    sevk_adres = models.TextField("sevk adres", blank=True)
-    sevk_posta_kodu = models.CharField("sevk posta kodu", max_length=15, blank=True)
     # Ticari
     para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES, default="TRY")
     kredi_limiti = models.DecimalField("kredi/risk limiti", max_digits=14, decimal_places=2, default=0)
@@ -702,6 +692,33 @@ class CariBanka(TemelModel):
 
     def __str__(self):
         return f"{self.banka_adi} — {self.iban}"
+
+
+class CariSevkAdresi(TemelModel):
+    """Cariye ait sevk (teslimat) adresi (çoklu) — bir carinin birden fazla teslimat
+    noktası olabilir (depo, şube, fabrika vb.)."""
+
+    cari = models.ForeignKey(Cari, verbose_name="cari", related_name="sevk_adresleri",
+                             on_delete=models.CASCADE)
+    ad = models.CharField("adres adı", max_length=100)
+    ulke = models.ForeignKey(
+        Ulke, verbose_name="ülke", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="sevk_adresleri")
+    sehir = models.ForeignKey(
+        Sehir, verbose_name="şehir", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="sevk_adresleri")
+    adres = models.TextField("adres", blank=True)
+    posta_kodu = models.CharField("posta kodu", max_length=15, blank=True)
+    varsayilan = models.BooleanField("varsayılan", default=False)
+
+    class Meta:
+        db_table = "cari_sevk_adresi"
+        verbose_name = "sevk adresi"
+        verbose_name_plural = "sevk adresleri"
+        ordering = ["-varsayilan", "ad"]
+
+    def __str__(self):
+        return self.ad
 
 
 class CariYetkili(TemelModel):

@@ -65,20 +65,6 @@
     </section>
 
     <section class="icerik-kart">
-      <h2 class="bolum-baslik"><span class="emoji">🚚</span>Sevk Adresi</h2>
-      <div class="alan onay-alan">{{ form.sevk_farkli }} <label for="{{ form.sevk_farkli.id_for_label }}" style="display:inline">{{ form.sevk_farkli.label }}</label></div>
-      <div id="sevk-alanlar">
-        <div class="izgara">
-          <div class="alan"><label for="{{ form.sevk_ulke.id_for_label }}">{{ form.sevk_ulke.label }}</label><div class="akilli">{{ form.sevk_ulke }}</div></div>
-          <div class="alan"><label for="{{ form.sevk_sehir.id_for_label }}">{{ form.sevk_sehir.label }}</label><div class="akilli">{{ form.sevk_sehir }}</div></div>
-          <div class="alan tam"><label for="{{ form.sevk_adres.id_for_label }}">{{ form.sevk_adres.label }}</label>{{ form.sevk_adres }}</div>
-          <div class="alan"><label for="{{ form.sevk_posta_kodu.id_for_label }}">{{ form.sevk_posta_kodu.label }}</label>{{ form.sevk_posta_kodu }}</div>
-        </div>
-      </div>
-      <p class="yardim" id="sevk-not" style="display:none">İşaretli olmadığı için sevk adresi kaydedilmez (ana adres kullanılır).</p>
-    </section>
-
-    <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">💱</span>Ticari</h2>
       <div class="izgara">
         <div class="alan"><label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}</div>
@@ -152,20 +138,6 @@
     }
     katSel.addEventListener('change', kodCek);
     kodCek();
-  }
-
-  // ---- Sevk adresi: işaretli değilse alanları gizle ----
-  var sevkCb = document.getElementById('id_sevk_farkli');
-  var sevkAlan = document.getElementById('sevk-alanlar');
-  var sevkNot = document.getElementById('sevk-not');
-  if(sevkCb && sevkAlan){
-    function sevkGuncelle(){
-      var ac = sevkCb.checked;
-      sevkAlan.style.display = ac ? '' : 'none';
-      if(sevkNot) sevkNot.style.display = ac ? 'none' : '';
-    }
-    sevkCb.addEventListener('change', sevkGuncelle);
-    sevkGuncelle();
   }
 })();
 </script>

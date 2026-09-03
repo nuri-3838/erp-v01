@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from core.forms import (
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
+    CariSevkAdresiForm,
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
@@ -28,8 +29,8 @@ from core.forms import (
     UlkeForm,
 )
 from core.models import (
-    Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariYetkili, Depo,
-    EkranYetki, Fatura,
+    Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
+    CariYetkili, Depo, EkranYetki, Fatura,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TeklifSiparis, TevkifatOrani, Ulke,
     YevmiyeFisi, YevmiyeSatir,
@@ -1260,9 +1261,7 @@ def _cari_form_kw(cd):
         telefon=cd["telefon"], telefon_2=cd["telefon_2"], eposta=cd["eposta"],
         web=cd["web"], kep_adresi=cd["kep_adresi"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
-        posta_kodu=cd["posta_kodu"], sevk_farkli=cd["sevk_farkli"],
-        sevk_ulke_id=g(cd["sevk_ulke"]), sevk_sehir_id=g(cd["sevk_sehir"]),
-        sevk_adres=cd["sevk_adres"], sevk_posta_kodu=cd["sevk_posta_kodu"],
+        posta_kodu=cd["posta_kodu"],
         para_birimi=cd["para_birimi"], kredi_limiti=cd["kredi_limiti"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"], notlar=cd["notlar"])
 
@@ -1343,9 +1342,7 @@ def cari_duzenle(request, pk):
             "tax_id": cari.tax_id, "telefon": cari.telefon, "telefon_2": cari.telefon_2,
             "eposta": cari.eposta, "web": cari.web, "kep_adresi": cari.kep_adresi,
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
-            "posta_kodu": cari.posta_kodu, "sevk_farkli": cari.sevk_farkli,
-            "sevk_ulke": cari.sevk_ulke_id, "sevk_sehir": cari.sevk_sehir_id,
-            "sevk_adres": cari.sevk_adres, "sevk_posta_kodu": cari.sevk_posta_kodu,
+            "posta_kodu": cari.posta_kodu,
             "para_birimi": cari.para_birimi, "kredi_limiti": cari.kredi_limiti,
             "iskonto_yuzdesi": cari.iskonto_yuzdesi, "notlar": cari.notlar})
     return render(request, "core/cari_form.html",
@@ -1355,13 +1352,14 @@ def cari_duzenle(request, pk):
 @ekran_gerekli("cariler")
 def cari_detay(request, pk):
     cari = get_object_or_404(
-        Cari.objects.select_related("kategori", "kategori__ust", "ulke", "sehir", "sevk_ulke",
-                                    "sevk_sehir", "created_by", "updated_by"),
+        Cari.objects.select_related("kategori", "kategori__ust", "ulke", "sehir",
+                                    "created_by", "updated_by"),
         pk=pk, silindi=False)
     return render(request, "core/cari_detay.html", {
         "cari": cari,
         "bankalar": cari_servis.aktif_bankalar(cari),
         "yetkililer": cari_servis.aktif_yetkililer(cari),
+        "sevk_adresleri": cari_servis.aktif_sevk_adresleri(cari),
         "aktiviteler": cari_servis.aktif_aktiviteler(cari)})
 
 
@@ -2944,6 +2942,62 @@ def banka_sil(request, pk):
         cari_servis.banka_sil(banka, kullanici=request.user)
         messages.success(request, "Banka hesabı silindi.")
     return redirect("core:cari_detay", pk=banka.cari_id)
+
+
+# --- Cari sevk (teslimat) adresleri ------------------------------------------
+def _sevk_form_kw(cd):
+    g = lambda x: x.pk if x else None
+    return dict(ad=cd["ad"], ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]),
+                adres=cd["adres"], posta_kodu=cd["posta_kodu"], varsayilan=cd["varsayilan"])
+
+
+@ekran_gerekli("cariler")
+def sevk_adresi_ekle(request, cari_pk):
+    cari = get_object_or_404(Cari, pk=cari_pk, silindi=False)
+    if request.method == "POST":
+        form = CariSevkAdresiForm(request.POST)
+        if form.is_valid():
+            try:
+                cari_servis.sevk_adresi_ekle(cari, **_sevk_form_kw(form.cleaned_data),
+                                             kullanici=request.user)
+                messages.success(request, "Sevk adresi eklendi.")
+                return redirect("core:cari_detay", pk=cari.pk)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariSevkAdresiForm()
+    return render(request, "core/cari_sevk_adresi_form.html",
+                  {"form": form, "baslik": "Yeni Sevk Adresi", "cari": cari})
+
+
+@ekran_gerekli("cariler")
+def sevk_adresi_duzenle(request, pk):
+    sevk = get_object_or_404(CariSevkAdresi, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CariSevkAdresiForm(request.POST)
+        if form.is_valid():
+            try:
+                cari_servis.sevk_adresi_guncelle(sevk, **_sevk_form_kw(form.cleaned_data),
+                                                 kullanici=request.user)
+                messages.success(request, "Sevk adresi güncellendi.")
+                return redirect("core:cari_detay", pk=sevk.cari_id)
+            except cari_servis.CariHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariSevkAdresiForm(initial={
+            "ad": sevk.ad, "ulke": sevk.ulke_id, "sehir": sevk.sehir_id,
+            "adres": sevk.adres, "posta_kodu": sevk.posta_kodu, "varsayilan": sevk.varsayilan})
+    return render(request, "core/cari_sevk_adresi_form.html",
+                  {"form": form, "baslik": "Sevk Adresi Düzenle", "cari": sevk.cari})
+
+
+@ekran_gerekli("cariler")
+def sevk_adresi_sil(request, pk):
+    sevk = get_object_or_404(CariSevkAdresi, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.sevk_adresi_sil(sevk, kullanici=request.user)
+        messages.success(request, "Sevk adresi silindi.")
+    return redirect("core:cari_detay", pk=sevk.cari_id)
 
 
 # --- Cari yetkili kişiler ---------------------------------------------------

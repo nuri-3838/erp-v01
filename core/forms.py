@@ -445,16 +445,6 @@ class CariForm(forms.Form):
                             widget=forms.Textarea(attrs={"rows": 7, **_K}))
     posta_kodu = forms.CharField(label="Posta Kodu", max_length=15, required=False,
                                  widget=forms.TextInput(attrs=_K))
-    # Sevk
-    sevk_farkli = forms.BooleanField(label="Sevk adresi farklı", required=False)
-    sevk_ulke = forms.ModelChoiceField(label="Sevk Ülke", queryset=Ulke.objects.none(),
-                                       required=False, empty_label="— ülke seç —")
-    sevk_sehir = forms.ModelChoiceField(label="Sevk Şehir", queryset=Sehir.objects.none(),
-                                        required=False, empty_label="— şehir seç —")
-    sevk_adres = forms.CharField(label="Sevk Adres", required=False,
-                                 widget=forms.Textarea(attrs={"rows": 4, **_K}))
-    sevk_posta_kodu = forms.CharField(label="Sevk Posta Kodu", max_length=15, required=False,
-                                      widget=forms.TextInput(attrs=_K))
     # Ticari
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     kredi_limiti = TRDecimalField(label="Kredi/Risk Limiti", basamak=2,
@@ -471,14 +461,35 @@ class CariForm(forms.Form):
         # Cari yalnız ALT kategoriye bağlanır; üst (ana) kategoriler seçilemez.
         self.fields["kategori"].queryset = aktif_cari_kategoriler().filter(ust__isnull=False)
         self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
-        ulk = aktif_ulkeler()
-        seh = aktif_sehirler()
-        for f in ("ulke", "sevk_ulke"):
-            self.fields[f].queryset = ulk
-        for f in ("sehir", "sevk_sehir"):
-            self.fields[f].queryset = seh
-            self.fields[f].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
-        for f in ("kategori", "ulke", "sehir", "sevk_ulke", "sevk_sehir"):
+        self.fields["ulke"].queryset = aktif_ulkeler()
+        self.fields["sehir"].queryset = aktif_sehirler()
+        self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
+        for f in ("kategori", "ulke", "sehir"):
+            self.fields[f].widget.attrs["class"] = "akilli-sec"
+
+
+class CariSevkAdresiForm(forms.Form):
+    """Cari sevk (teslimat) adresi ekle/düzenle (çoklu). TR büyük harf serviste."""
+
+    ad = forms.CharField(label="Adres Adı", max_length=100,
+                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
+                                  required=False, empty_label="— ülke seç —")
+    sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
+                                   required=False, empty_label="— şehir seç —")
+    adres = forms.CharField(label="Adres", required=False,
+                            widget=forms.Textarea(attrs={"rows": 5, "autocomplete": "off"}))
+    posta_kodu = forms.CharField(label="Posta Kodu", max_length=15, required=False,
+                                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    varsayilan = forms.BooleanField(label="Varsayılan", required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
+        self.fields["ulke"].queryset = aktif_ulkeler()
+        self.fields["sehir"].queryset = aktif_sehirler()
+        self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
+        for f in ("ulke", "sehir"):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
 
 

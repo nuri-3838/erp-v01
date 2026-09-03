@@ -30,12 +30,14 @@
   #sek-bilgi:checked ~ .sek-bar label[for="sek-bilgi"],
   #sek-banka:checked ~ .sek-bar label[for="sek-banka"],
   #sek-yetkili:checked ~ .sek-bar label[for="sek-yetkili"],
+  #sek-sevk:checked ~ .sek-bar label[for="sek-sevk"],
   #sek-aktivite:checked ~ .sek-bar label[for="sek-aktivite"],
   #sek-kayit:checked ~ .sek-bar label[for="sek-kayit"] {
     background:linear-gradient(135deg,var(--turuncu),var(--turuncu-koyu)); color:#fff; border-color:transparent;
     box-shadow:0 6px 14px rgba(213,110,0,.32); }
   #sek-bilgi:checked ~ #panel-bilgi, #sek-banka:checked ~ #panel-banka,
-  #sek-yetkili:checked ~ #panel-yetkili, #sek-aktivite:checked ~ #panel-aktivite,
+  #sek-yetkili:checked ~ #panel-yetkili, #sek-sevk:checked ~ #panel-sevk,
+  #sek-aktivite:checked ~ #panel-aktivite,
   #sek-kayit:checked ~ #panel-kayit { display:block; }
   .kv { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem 1.6rem; }
   @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
@@ -87,12 +89,14 @@
     <input type="radio" name="cari-sekme" id="sek-bilgi" class="sek-radio" checked>
     <input type="radio" name="cari-sekme" id="sek-banka" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-yetkili" class="sek-radio">
+    <input type="radio" name="cari-sekme" id="sek-sevk" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-aktivite" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-kayit" class="sek-radio">
     <div class="sek-bar">
       <label for="sek-bilgi">📋 Bilgiler</label>
       <label for="sek-banka">🏦 Banka Hesapları ({{ bankalar|length }})</label>
       <label for="sek-yetkili">👤 Yetkili Kişiler ({{ yetkililer|length }})</label>
+      <label for="sek-sevk">🚚 Sevk Adresleri ({{ sevk_adresleri|length }})</label>
       <label for="sek-aktivite">🗓️ Aktiviteler ({{ aktiviteler|length }})</label>
       <label for="sek-kayit">🕓 Kayıt Bilgisi</label>
     </div>
@@ -122,16 +126,6 @@
         <div class="satir tam"><span class="et">Adres</span><span class="dg">{{ cari.adres|default:"—" }}</span></div>
         <div class="satir"><span class="et">Posta Kodu</span><span class="dg">{{ cari.posta_kodu|default:"—" }}</span></div>
       </div>
-
-      {% if cari.sevk_farkli %}
-      <h2 class="bolum-baslik grup-ara">Sevk Adresi</h2>
-      <div class="kv">
-        <div class="satir"><span class="et">Sevk Ülke</span><span class="dg">{% if cari.sevk_ulke %}{{ cari.sevk_ulke.ad }}{% else %}—{% endif %}</span></div>
-        <div class="satir"><span class="et">Sevk Şehir</span><span class="dg">{% if cari.sevk_sehir %}{{ cari.sevk_sehir.ad }}{% else %}—{% endif %}</span></div>
-        <div class="satir tam"><span class="et">Sevk Adres</span><span class="dg">{{ cari.sevk_adres|default:"—" }}</span></div>
-        <div class="satir"><span class="et">Sevk Posta Kodu</span><span class="dg">{{ cari.sevk_posta_kodu|default:"—" }}</span></div>
-      </div>
-      {% endif %}
 
       <h2 class="bolum-baslik grup-ara">Ticari</h2>
       <div class="kv">
@@ -199,6 +193,35 @@
             </tr>
           {% empty %}
             <tr><td colspan="5" class="yardim">Yetkili kişi yok. “+ Yetkili Ekle” ile ekleyin.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="sek-panel" id="panel-sevk">
+      <div class="sayfa-ust">
+        <h2 class="bolum-baslik"><span class="emoji">🚚</span>Sevk Adresleri</h2>
+        <a class="dugme" href="{% url 'core:sevk_adresi_ekle' cari.pk %}">+ Sevk Adresi Ekle</a>
+      </div>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Ad</th><th>Şehir / Ülke</th><th>Adres</th><th>Varsayılan</th><th>İşlem</th></tr></thead>
+        <tbody>
+          {% for s in sevk_adresleri %}
+            <tr>
+              <td>{{ s.ad }}</td>
+              <td>{% if s.sehir %}{{ s.sehir.ad }}{% endif %}{% if s.ulke %} <span class="mono yardim">({{ s.ulke.kod }})</span>{% endif %}{% if not s.sehir and not s.ulke %}<span class="pasif">—</span>{% endif %}</td>
+              <td>{{ s.adres|default:"—" }}{% if s.posta_kodu %} <span class="mono yardim">{{ s.posta_kodu }}</span>{% endif %}</td>
+              <td>{% if s.varsayilan %}<span class="rozet rozet-aktif">Varsayılan</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+              <td><span class="islem-bag">
+                <a href="{% url 'core:sevk_adresi_duzenle' s.pk %}">Düzenle</a>
+                <form method="post" action="{% url 'core:sevk_adresi_sil' s.pk %}" onsubmit="return confirm('{{ s.ad }} silinsin mi?');">
+                  {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+              </span></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="yardim">Sevk adresi yok. “+ Sevk Adresi Ekle” ile ekleyin.</td></tr>
           {% endfor %}
         </tbody>
       </table>

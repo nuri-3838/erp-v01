@@ -53,7 +53,7 @@ class Command(BaseCommand):
                 atlanan += 1
                 continue
             kat = kat_map.get((r.get("kategori") or "").strip()) if r.get("kategori") else None
-            C.cari_olustur(
+            cari = C.cari_olustur(
                 kod=kod, unvan=r["unvan"], kategori_id=(kat.pk if kat else None),
                 kisa_ad=r.get("kisa_ad", ""), vergi_dairesi=r.get("vergi_dairesi", ""),
                 vkn_tckn=r.get("vkn_tckn", ""), tax_id=r.get("tax_id", ""),
@@ -62,13 +62,16 @@ class Command(BaseCommand):
                 kep_adresi=r.get("kep_adresi", ""),
                 ulke_id=ulke_id(r.get("ulke")), sehir_id=sehir_id(r.get("ulke"), r.get("sehir")),
                 adres=r.get("adres", ""), posta_kodu=r.get("posta_kodu", ""),
-                sevk_farkli=bool(r.get("sevk_farkli")),
-                sevk_ulke_id=ulke_id(r.get("sevk_ulke")),
-                sevk_sehir_id=sehir_id(r.get("sevk_ulke"), r.get("sevk_sehir")),
-                sevk_adres=r.get("sevk_adres", ""), sevk_posta_kodu=r.get("sevk_posta_kodu", ""),
                 para_birimi=r.get("para_birimi", "TRY"),
                 kredi_limiti=r.get("kredi_limiti", 0),
                 iskonto_yuzdesi=r.get("iskonto_yuzdesi", 0), notlar=r.get("notlar", ""))
+            if r.get("sevk_farkli"):
+                C.sevk_adresi_ekle(
+                    cari, ad="Sevk Adresi",
+                    ulke_id=ulke_id(r.get("sevk_ulke")),
+                    sehir_id=sehir_id(r.get("sevk_ulke"), r.get("sevk_sehir")),
+                    adres=r.get("sevk_adres", ""), posta_kodu=r.get("sevk_posta_kodu", ""),
+                    varsayilan=True)
             eklenen += 1
 
         toplam = Cari.objects.filter(silindi=False).count()

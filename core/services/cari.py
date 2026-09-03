@@ -2,9 +2,10 @@
 
 - Kod: kategori varsa ``kod_yolu-NNNN`` (örn. 320-10-0001), yoksa ``CAR-NNNN``. Taşımada
   eski kod korunur (kod parametresi verilir).
-- UPPER alanlar (unvan/kısa ad/vergi dairesi/adres/sevk adres) TR büyük harfe çevrilir.
+- UPPER alanlar (unvan/kısa ad/vergi dairesi/adres) TR büyük harfe çevrilir.
 - VKN/TCKN ve Tax ID dolu ise silinmemişler arası benzersiz.
-- ``sevk_farkli`` değilse sevk alanları temizlenir.
+- Sevk (teslimat) adresleri artık ayrı ``CariSevkAdresi`` tablosunda (çoklu, banka
+  hesapları/yetkili kişilerle aynı desen).
 - Silme: soft-delete.
 """
 from __future__ import annotations
@@ -17,7 +18,8 @@ from django.utils import timezone
 from core import gorsel
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariYetkili, HesapPlani, Sehir,
+    Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi, CariYetkili,
+    HesapPlani, Sehir,
     Ulke,
 )
 from core.sayi import SayiHatasi, parse_tr
@@ -93,19 +95,11 @@ def _para_dogrula(deger, etiket):
 
 
 def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
-            eposta, web, kep_adresi, adres, posta_kodu, sevk_farkli, sevk_ulke_id,
-            sevk_sehir_id, sevk_adres, sevk_posta_kodu, para_birimi, kredi_limiti,
+            eposta, web, kep_adresi, adres, posta_kodu, para_birimi, kredi_limiti,
             iskonto_yuzdesi, notlar, ulke, sehir):
     """Ortak alan hazırlığı (create/update paylaşır). dict döner."""
     if para_birimi not in dict(Cari.PARA_CHOICES):
         raise CariHatasi("Geçersiz para birimi.")
-    if not sevk_farkli:
-        sevk_ulke = sevk_sehir = None
-        sevk_adres = ""
-        sevk_posta_kodu = ""
-    else:
-        sevk_ulke = _ulke(sevk_ulke_id)
-        sevk_sehir = _sehir(sevk_sehir_id)
     return dict(
         kisa_ad=buyuk_harf_tr((kisa_ad or "").strip()),
         vergi_dairesi=buyuk_harf_tr((vergi_dairesi or "").strip()),
@@ -115,9 +109,6 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         kep_adresi=(kep_adresi or "").strip(),
         ulke=ulke, sehir=sehir, adres=buyuk_harf_tr((adres or "").strip()),
         posta_kodu=(posta_kodu or "").strip(),
-        sevk_farkli=bool(sevk_farkli), sevk_ulke=sevk_ulke, sevk_sehir=sevk_sehir,
-        sevk_adres=buyuk_harf_tr((sevk_adres or "").strip()),
-        sevk_posta_kodu=(sevk_posta_kodu or "").strip(),
         para_birimi=para_birimi,
         kredi_limiti=_para_dogrula(kredi_limiti, "Kredi limiti"),
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
@@ -141,8 +132,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_2", "eposta", "web", "kep_adresi", "adres",
-                        "posta_kodu", "sevk_farkli", "sevk_ulke_id", "sevk_sehir_id",
-                        "sevk_adres", "sevk_posta_kodu", "para_birimi", "kredi_limiti",
+                        "posta_kodu", "para_birimi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
@@ -204,8 +194,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_2", "eposta", "web", "kep_adresi", "adres",
-                        "posta_kodu", "sevk_farkli", "sevk_ulke_id", "sevk_sehir_id",
-                        "sevk_adres", "sevk_posta_kodu", "para_birimi", "kredi_limiti",
+                        "posta_kodu", "para_birimi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     cari.unvan = unvan
     cari.kategori = kategori
@@ -324,6 +313,81 @@ def banka_sil(banka: CariBanka, kullanici=None) -> CariBanka:
             kalan.varsayilan = True
             kalan.save(update_fields=["varsayilan", "updated_at"])
     return banka
+
+
+# --- Sevk (teslimat) adresleri -----------------------------------------------
+def aktif_sevk_adresleri(cari):
+    return cari.sevk_adresleri.filter(silindi=False).order_by("-varsayilan", "ad")
+
+
+def _diger_sevk_varsayilanlari_kapat(cari, haric):
+    cari.sevk_adresleri.filter(silindi=False, varsayilan=True).exclude(
+        pk=haric.pk).update(varsayilan=False)
+
+
+def sevk_adresi_ekle(cari, *, ad, ulke_id=None, sehir_id=None, adres="", posta_kodu="",
+                     varsayilan=False, kullanici=None) -> CariSevkAdresi:
+    ad = buyuk_harf_tr((ad or "").strip())
+    if not ad:
+        raise CariHatasi("Adres adı boş olamaz.")
+    ilk = not cari.sevk_adresleri.filter(silindi=False).exists()
+    s = CariSevkAdresi.objects.create(
+        cari=cari, ad=ad, ulke=_ulke(ulke_id), sehir=_sehir(sehir_id),
+        adres=buyuk_harf_tr((adres or "").strip()), posta_kodu=(posta_kodu or "").strip(),
+        varsayilan=bool(varsayilan) or ilk,
+        created_by=kullanici, updated_by=kullanici)
+    if s.varsayilan:
+        _diger_sevk_varsayilanlari_kapat(cari, s)
+    return s
+
+
+def sevk_adresi_guncelle(sevk: CariSevkAdresi, *, ad, ulke_id=None, sehir_id=None, adres="",
+                         posta_kodu="", varsayilan=False, kullanici=None) -> CariSevkAdresi:
+    if sevk.silindi:
+        raise CariHatasi("Silinmiş sevk adresi düzenlenemez.")
+    ad = buyuk_harf_tr((ad or "").strip())
+    if not ad:
+        raise CariHatasi("Adres adı boş olamaz.")
+    idi_varsayilan = sevk.varsayilan
+    sevk.ad = ad
+    sevk.ulke = _ulke(ulke_id)
+    sevk.sehir = _sehir(sehir_id)
+    sevk.adres = buyuk_harf_tr((adres or "").strip())
+    sevk.posta_kodu = (posta_kodu or "").strip()
+    sevk.varsayilan = bool(varsayilan)
+    sevk.updated_by = kullanici
+    sevk.save()
+    if sevk.varsayilan:
+        _diger_sevk_varsayilanlari_kapat(sevk.cari, sevk)
+    elif idi_varsayilan and not sevk.cari.sevk_adresleri.filter(
+            silindi=False, varsayilan=True).exists():
+        # Tek/son varsayılan adresin işareti kaldırıldı -> kalan ilk adresi varsayılan yap
+        # (banka_guncelle/banka_sil'deki "her zaman bir varsayılan olsun" invaryantıyla aynı desen).
+        kalan = sevk.cari.sevk_adresleri.filter(silindi=False).exclude(
+            pk=sevk.pk).order_by("ad").first()
+        if kalan is not None:
+            kalan.varsayilan = True
+            kalan.save(update_fields=["varsayilan", "updated_at"])
+    return sevk
+
+
+def sevk_adresi_sil(sevk: CariSevkAdresi, kullanici=None) -> CariSevkAdresi:
+    if sevk.silindi:
+        return sevk
+    cari = sevk.cari
+    idi_varsayilan = sevk.varsayilan
+    sevk.silindi = True
+    sevk.silindi_at = timezone.now()
+    sevk.varsayilan = False
+    sevk.updated_by = kullanici
+    sevk.save(update_fields=["silindi", "silindi_at", "varsayilan",
+                             "updated_by", "updated_at"])
+    if idi_varsayilan:   # kalan ilk adresi varsayılan yap
+        kalan = cari.sevk_adresleri.filter(silindi=False).order_by("ad").first()
+        if kalan is not None:
+            kalan.varsayilan = True
+            kalan.save(update_fields=["varsayilan", "updated_at"])
+    return sevk
 
 
 # --- Yetkili kişiler ---------------------------------------------------------

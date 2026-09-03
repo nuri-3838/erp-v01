@@ -1,5 +1,6 @@
 """Cari (CARİLER Faz 3a) testleri: otomatik kod (kategori kod yolu / CAR-),
-TR büyük harf, VKN benzersizlik, sevk temizliği, kod koruma, view + yetki, taşıma."""
+TR büyük harf, VKN benzersizlik, kod koruma, view + yetki, taşıma.
+Sevk adresi testleri artık test_cari_sevk_adresi.py'de (çoklu adres, ayrı tablo)."""
 import json
 import tempfile
 from decimal import Decimal
@@ -49,20 +50,6 @@ class CariServisTest(TestCase):
         _olustur(unvan="a", vkn_tckn="1234567890")
         with self.assertRaises(CariHatasi):
             _olustur(unvan="b", vkn_tckn="1234567890")
-
-    def test_sevk_temizlenir(self):
-        _, alt, tr, kayseri = _veri()
-        c = _olustur(unvan="a", kategori_id=alt.pk, sevk_farkli=False,
-                     sevk_ulke_id=tr.pk, sevk_adres="bir yer")
-        self.assertIsNone(c.sevk_ulke_id)
-        self.assertEqual(c.sevk_adres, "")
-
-    def test_sevk_farkli_korunur(self):
-        _, alt, tr, kayseri = _veri()
-        c = _olustur(unvan="a", kategori_id=alt.pk, sevk_farkli=True,
-                     sevk_ulke_id=tr.pk, sevk_sehir_id=kayseri.pk, sevk_adres="depo adres")
-        self.assertEqual(c.sevk_ulke_id, tr.pk)
-        self.assertEqual(c.sevk_adres, "DEPO ADRES")
 
     def test_kod_korunur_tasima(self):
         _, alt, *_ = _veri()

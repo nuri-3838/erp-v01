@@ -1,0 +1,76 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cari_detay' cari.pk %}">← {{ cari.unvan }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🚚</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Sevk Adresi</h2>
+      <div class="izgara">
+        <div class="alan tam"><label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>{{ form.ad }}{% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
+        <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
+        <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}</div>
+        <div class="alan"><label for="{{ form.posta_kodu.id_for_label }}">{{ form.posta_kodu.label }}</label>{{ form.posta_kodu }}</div>
+        <div class="alan onay-alan">{{ form.varsayilan }} <label for="{{ form.varsayilan.id_for_label }}" style="display:inline">{{ form.varsayilan.label }}</label></div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cari_detay' cari.pk %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+  document.body.appendChild(gListe);
+  var aktifInp = null;
+  function konumla(inp){ var r = inp.getBoundingClientRect();
+    gListe.style.left = r.left+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = r.width+'px'; }
+  function metin(sel, v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
+    return o && o.value ? o.textContent.trim() : ''; }
+  function ac(sel, inp, filt){
+    aktifInp = inp; konumla(inp);
+    filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
+    var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
+    Array.prototype.forEach.call(sel.options, function(o){
+      var t = o.value ? o.textContent.trim() : bos;
+      if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(n++ > 80) return;
+      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
+      d.addEventListener('mousedown', function(ev){ ev.preventDefault();
+        sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
+        sel.dispatchEvent(new Event('change', {bubbles:true})); });
+      gListe.appendChild(d);
+    });
+    gListe.style.display = gListe.children.length ? 'block' : 'none';
+  }
+  document.querySelectorAll('select.akilli-sec').forEach(function(sel){
+    var inp = document.createElement('input'); inp.type='text'; inp.className='akilli-girdi';
+    inp.placeholder='ara / seç…'; inp.autocomplete='off';
+    sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
+    if(sel.value) inp.value = metin(sel, sel.value);
+    inp.addEventListener('focus', function(){ ac(sel, inp, sel.value?'':inp.value); });
+    inp.addEventListener('input', function(){ sel.value=''; ac(sel, inp, inp.value); });
+    inp.addEventListener('blur', function(){ setTimeout(function(){
+      gListe.style.display='none'; inp.value=metin(sel, sel.value); }, 150); });
+  });
+  window.addEventListener('scroll', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); }, true);
+  window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
+})();
+</script>
+{% endblock %}
