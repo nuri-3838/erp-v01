@@ -4,7 +4,7 @@ Beklenen JSON kaydı (her cari):
   {"kod","unvan","kisa_ad","kategori"(kod_yolu|null),"vergi_dairesi","vkn_tckn","tax_id",
    "telefon","telefon_2","eposta","web","kep_adresi","ulke"(kod|null),"sehir"(ad|null),
    "adres","posta_kodu","sevk_farkli","sevk_ulke"(kod|null),"sevk_sehir"(ad|null),
-   "sevk_adres","sevk_posta_kodu","para_birimi","kredi_limiti","iskonto_yuzdesi","notlar"}
+   "sevk_adres","para_birimi","kredi_limiti","iskonto_yuzdesi","notlar"}
 Kategori kod yoluna, ülke koduna, şehir (ülke+ad) eşleştirilir. Var olan kod atlanır.
 """
 import json
@@ -70,8 +70,7 @@ class Command(BaseCommand):
                     cari, ad="Sevk Adresi",
                     ulke_id=ulke_id(r.get("sevk_ulke")),
                     sehir_id=sehir_id(r.get("sevk_ulke"), r.get("sevk_sehir")),
-                    adres=r.get("sevk_adres", ""), posta_kodu=r.get("sevk_posta_kodu", ""),
-                    varsayilan=True)
+                    adres=r.get("sevk_adres", ""), varsayilan=True)
             eklenen += 1
 
         toplam = Cari.objects.filter(silindi=False).count()

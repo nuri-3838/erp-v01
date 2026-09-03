@@ -2948,7 +2948,7 @@ def banka_sil(request, pk):
 def _sevk_form_kw(cd):
     g = lambda x: x.pk if x else None
     return dict(ad=cd["ad"], ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]),
-                adres=cd["adres"], posta_kodu=cd["posta_kodu"], varsayilan=cd["varsayilan"])
+                adres=cd["adres"], varsayilan=cd["varsayilan"])
 
 
 @ekran_gerekli("cariler")
@@ -2986,7 +2986,7 @@ def sevk_adresi_duzenle(request, pk):
     else:
         form = CariSevkAdresiForm(initial={
             "ad": sevk.ad, "ulke": sevk.ulke_id, "sehir": sevk.sehir_id,
-            "adres": sevk.adres, "posta_kodu": sevk.posta_kodu, "varsayilan": sevk.varsayilan})
+            "adres": sevk.adres, "varsayilan": sevk.varsayilan})
     return render(request, "core/cari_sevk_adresi_form.html",
                   {"form": form, "baslik": "Sevk Adresi Düzenle", "cari": sevk.cari})
 

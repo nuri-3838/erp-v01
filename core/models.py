@@ -708,7 +708,6 @@ class CariSevkAdresi(TemelModel):
         Sehir, verbose_name="şehir", null=True, blank=True,
         on_delete=models.PROTECT, related_name="sevk_adresleri")
     adres = models.TextField("adres", blank=True)
-    posta_kodu = models.CharField("posta kodu", max_length=15, blank=True)
     varsayilan = models.BooleanField("varsayılan", default=False)
 
     class Meta:

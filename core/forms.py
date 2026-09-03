@@ -479,8 +479,6 @@ class CariSevkAdresiForm(forms.Form):
                                    required=False, empty_label="— şehir seç —")
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 5, "autocomplete": "off"}))
-    posta_kodu = forms.CharField(label="Posta Kodu", max_length=15, required=False,
-                                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
     varsayilan = forms.BooleanField(label="Varsayılan", required=False)
 
     def __init__(self, *args, **kwargs):

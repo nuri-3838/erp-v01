@@ -325,7 +325,7 @@ def _diger_sevk_varsayilanlari_kapat(cari, haric):
         pk=haric.pk).update(varsayilan=False)
 
 
-def sevk_adresi_ekle(cari, *, ad, ulke_id=None, sehir_id=None, adres="", posta_kodu="",
+def sevk_adresi_ekle(cari, *, ad, ulke_id=None, sehir_id=None, adres="",
                      varsayilan=False, kullanici=None) -> CariSevkAdresi:
     ad = buyuk_harf_tr((ad or "").strip())
     if not ad:
@@ -333,7 +333,7 @@ def sevk_adresi_ekle(cari, *, ad, ulke_id=None, sehir_id=None, adres="", posta_k
     ilk = not cari.sevk_adresleri.filter(silindi=False).exists()
     s = CariSevkAdresi.objects.create(
         cari=cari, ad=ad, ulke=_ulke(ulke_id), sehir=_sehir(sehir_id),
-        adres=buyuk_harf_tr((adres or "").strip()), posta_kodu=(posta_kodu or "").strip(),
+        adres=buyuk_harf_tr((adres or "").strip()),
         varsayilan=bool(varsayilan) or ilk,
         created_by=kullanici, updated_by=kullanici)
     if s.varsayilan:
@@ -342,7 +342,7 @@ def sevk_adresi_ekle(cari, *, ad, ulke_id=None, sehir_id=None, adres="", posta_k
 
 
 def sevk_adresi_guncelle(sevk: CariSevkAdresi, *, ad, ulke_id=None, sehir_id=None, adres="",
-                         posta_kodu="", varsayilan=False, kullanici=None) -> CariSevkAdresi:
+                         varsayilan=False, kullanici=None) -> CariSevkAdresi:
     if sevk.silindi:
         raise CariHatasi("Silinmiş sevk adresi düzenlenemez.")
     ad = buyuk_harf_tr((ad or "").strip())
@@ -353,7 +353,6 @@ def sevk_adresi_guncelle(sevk: CariSevkAdresi, *, ad, ulke_id=None, sehir_id=Non
     sevk.ulke = _ulke(ulke_id)
     sevk.sehir = _sehir(sehir_id)
     sevk.adres = buyuk_harf_tr((adres or "").strip())
-    sevk.posta_kodu = (posta_kodu or "").strip()
     sevk.varsayilan = bool(varsayilan)
     sevk.updated_by = kullanici
     sevk.save()

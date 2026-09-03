@@ -212,7 +212,7 @@
             <tr>
               <td>{{ s.ad }}</td>
               <td>{% if s.sehir %}{{ s.sehir.ad }}{% endif %}{% if s.ulke %} <span class="mono yardim">({{ s.ulke.kod }})</span>{% endif %}{% if not s.sehir and not s.ulke %}<span class="pasif">—</span>{% endif %}</td>
-              <td>{{ s.adres|default:"—" }}{% if s.posta_kodu %} <span class="mono yardim">{{ s.posta_kodu }}</span>{% endif %}</td>
+              <td>{{ s.adres|default:"—" }}</td>
               <td>{% if s.varsayilan %}<span class="rozet rozet-aktif">Varsayılan</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
               <td><span class="islem-bag">
                 <a href="{% url 'core:sevk_adresi_duzenle' s.pk %}">Düzenle</a>

@@ -80,7 +80,7 @@ class CariTasimaTest(TestCase):
             "telefon": "", "telefon_2": "", "eposta": "", "web": "", "kep_adresi": "",
             "ulke": "TR", "sehir": "KAYSERİ", "adres": "", "posta_kodu": "",
             "sevk_farkli": False, "sevk_ulke": None, "sevk_sehir": None,
-            "sevk_adres": "", "sevk_posta_kodu": "", "para_birimi": "USD",
+            "sevk_adres": "", "para_birimi": "USD",
             "kredi_limiti": "0", "iskonto_yuzdesi": "0", "notlar": ""}]}
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
                                          encoding="utf-8") as f:
