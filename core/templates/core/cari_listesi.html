@@ -5,7 +5,7 @@
 {% block content %}
 <style>
   .crl-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
-  .crl-arama-cubuk { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .crl-arama-cubuk { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:.6rem; }
   .crl-arama-kutu { position:relative; flex:1 1 20rem; }
   .crl-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
     border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
@@ -16,6 +16,12 @@
     font-size:1rem; opacity:.55; pointer-events:none; }
   .crl-arama-temizle { display:none; }
   .crl-arama-temizle.gorunur { display:inline-flex; }
+
+  .crl-filtre-satir { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .crl-filtre-satir select { min-height:40px; padding:.4rem 2rem .4rem .85rem; border-radius:12px;
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.86rem;
+    color:var(--metin); max-width:16rem; }
+  .crl-filtre-satir select:focus { outline:none; border-color:var(--turuncu); }
 
   .crl-hucre { display:flex; align-items:center; gap:.65rem; }
   .crl-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
@@ -30,14 +36,6 @@
   .crl-bos-js { display:none; }
   .crl-bos-js.gorunur { display:table-row; }
 
-  #crl-tablo { table-layout:fixed; }
-  #crl-tablo th:nth-child(1), #crl-tablo td:nth-child(1) { width:27%; }
-  #crl-tablo th:nth-child(2), #crl-tablo td:nth-child(2) { width:23%; }
-  #crl-tablo th:nth-child(3), #crl-tablo td:nth-child(3) { width:12%; }
-  #crl-tablo th:nth-child(4), #crl-tablo td:nth-child(4) { width:7%; }
-  #crl-tablo th:nth-child(5), #crl-tablo td:nth-child(5) { width:14%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #crl-tablo th:nth-child(6), #crl-tablo td:nth-child(6) { width:17%; }
-  #crl-tablo td { overflow-wrap:break-word; }
   #crl-tablo td:nth-child(2) .rozet { white-space:normal; text-align:left; line-height:1.3; }
 </style>
 
@@ -46,15 +44,37 @@
   <a class="dugme" href="{% url 'core:cari_ekle' %}">+ Yeni Cari</a>
 </div>
 
-<form method="get" class="crl-arama-cubuk" id="crl-arama-form">
-  <div class="crl-arama-kutu">
-    <span class="crl-arama-ikon">🔍</span>
-    <input type="text" id="crl-arama" name="ara" value="{{ ara }}"
-           placeholder="Unvan, kod veya VKN/TCKN ara…" autocomplete="off">
+<form method="get" id="crl-arama-form">
+  <div class="crl-arama-cubuk">
+    <div class="crl-arama-kutu">
+      <span class="crl-arama-ikon">🔍</span>
+      <input type="text" id="crl-arama" name="ara" value="{{ ara }}"
+             placeholder="Unvan, kod veya VKN/TCKN ara…" autocomplete="off">
+    </div>
+    <button type="submit" class="birincil">Ara</button>
+    <a class="iptal-bag crl-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke %} gorunur{% endif %}"
+       id="crl-arama-temizle" href="{% url 'core:cariler' %}">Temizle</a>
   </div>
-  <button type="submit" class="birincil">Ara</button>
-  <a class="iptal-bag crl-arama-temizle{% if ara %} gorunur{% endif %}" id="crl-arama-temizle"
-     href="{% url 'core:cariler' %}">Temizle</a>
+  <div class="crl-filtre-satir">
+    <select name="kategori" onchange="this.form.submit()">
+      <option value="">Tüm Kategoriler</option>
+      {% for k in kategoriler %}
+        <option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ad }}</option>
+      {% endfor %}
+    </select>
+    <select name="sehir" onchange="this.form.submit()">
+      <option value="">Tüm Şehirler</option>
+      {% for s in sehirler %}
+        <option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>
+      {% endfor %}
+    </select>
+    <select name="ulke" onchange="this.form.submit()">
+      <option value="">Tüm Ülkeler</option>
+      {% for u in ulkeler %}
+        <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
+      {% endfor %}
+    </select>
+  </div>
 </form>
 
 <p class="sayfa-alt"><span id="crl-sayac-sayi">{{ cariler|length }}</span> cari kayıtlı.</p>
@@ -62,7 +82,7 @@
 <div class="tablo-kapsayici genis">
 <table id="crl-tablo">
   <thead>
-    <tr><th>Cari</th><th>Kategori</th><th>Şehir / Ülke</th><th>PB</th><th>Telefon</th><th>İşlem</th></tr>
+    <tr><th>Cari</th><th>Kategori</th><th>Şehir / Ülke</th></tr>
   </thead>
   <tbody>
     {% for c in cariler %}
@@ -78,24 +98,13 @@
         </td>
         <td>{% if c.kategori %}<span class="rozet rozet-notr">{{ c.kategori.ad }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td>{% if c.sehir %}{{ c.sehir.ad }}{% endif %}{% if c.ulke %} <span class="mono yardim">({{ c.ulke.kod }})</span>{% endif %}{% if not c.sehir and not c.ulke %}<span class="pasif">—</span>{% endif %}</td>
-        <td class="mono">{{ c.para_birimi }}</td>
-        <td>{{ c.telefon|default:"—" }}</td>
-        <td>
-          <span class="islem-bag">
-            <a href="{% url 'core:cari_duzenle' c.pk %}">Düzenle</a>
-            <form method="post" action="{% url 'core:cari_sil' c.pk %}"
-                  onsubmit="return confirm('{{ c.unvan }} silinsin mi?');">
-              {% csrf_token %}<button type="submit" class="sil">Sil</button>
-            </form>
-          </span>
-        </td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara %}🔍 “{{ ara }}” ile eşleşen cari yok.
+      <tr><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara or secili_kategori or secili_sehir or secili_ulke %}🔍 Eşleşen cari yok.
         {% else %}🧑‍💼 Henüz cari yok. “+ Yeni Cari” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
-    <tr class="crl-bos-js"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+    <tr class="crl-bos-js"><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">
       🔍 Eşleşen cari yok.</td></tr>
   </tbody>
 </table>
@@ -127,7 +136,7 @@
     });
     if(bosSatir) bosSatir.classList.toggle('gorunur', n === 0 && !!q);
     if(sayacSayi) sayacSayi.textContent = n;
-    if(temizle) temizle.classList.toggle('gorunur', !!q);
+    if(temizle) temizle.classList.toggle('gorunur', !!q || temizle.classList.contains('gorunur'));
   }
   girdi.addEventListener('input', filtrele);
   if(girdi.value) filtrele();

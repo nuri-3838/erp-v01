@@ -1269,12 +1269,39 @@ def _cari_form_kw(cd):
 @ekran_gerekli("cariler")
 def cariler(request):
     ara = (request.GET.get("ara") or "").strip()
+    kategori_id = request.GET.get("kategori") or ""
+    sehir_id = request.GET.get("sehir") or ""
+    ulke_id = request.GET.get("ulke") or ""
     qs = cari_servis.aktif_cariler()
     if ara:
         qs = qs.filter(
             Q(unvan__contains=buyuk_harf_tr(ara)) | Q(kod__contains=ara)
             | Q(vkn_tckn__contains=ara) | Q(tax_id__contains=ara))
-    return render(request, "core/cari_listesi.html", {"cariler": qs, "ara": ara})
+    if kategori_id:
+        qs = qs.filter(kategori_id=kategori_id)
+    if sehir_id:
+        qs = qs.filter(sehir_id=sehir_id)
+    if ulke_id:
+        qs = qs.filter(ulke_id=ulke_id)
+
+    # Filtre seçenekleri yalnız en az bir cari'de fiilen kullanılanlardan oluşur
+    # (tüm hesap planı/lokasyon master verisini değil, sayfadaki gerçek veriyi yansıtır).
+    tumu = cari_servis.aktif_cariler()
+    kategoriler = CariKategori.objects.filter(
+        silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
+    ).order_by("kod")
+    sehirler = Sehir.objects.filter(
+        silindi=False, pk__in=tumu.exclude(sehir=None).values("sehir_id")
+    ).order_by("ad")
+    ulkeler = Ulke.objects.filter(
+        silindi=False, pk__in=tumu.exclude(ulke=None).values("ulke_id")
+    ).order_by("ad")
+
+    return render(request, "core/cari_listesi.html", {
+        "cariler": qs, "ara": ara,
+        "kategoriler": kategoriler, "sehirler": sehirler, "ulkeler": ulkeler,
+        "secili_kategori": kategori_id, "secili_sehir": sehir_id, "secili_ulke": ulke_id,
+    })
 
 
 @ekran_gerekli("cariler")
