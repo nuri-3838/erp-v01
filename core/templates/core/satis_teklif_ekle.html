@@ -44,37 +44,33 @@
       <p class="yardim">Tüm satış ürünleri hazır geldi. Göndermek istemediğiniz ürünün
         "Dahil" işaretini kaldırın; fiyat/iskonto satır bazında düzenlenebilir. Miktar
         yok — teklif her zaman ürünün birim (1 adet) fiyatını iletir.</p>
-      <div class="fk-izgara">
+      <div class="fk-liste">
         {% for s, f in satirlar %}
-          <div class="fk-kart" data-stok="{{ s.pk }}">
-            <label class="fk-dahil">
+          <div class="fk-satir" data-stok="{{ s.pk }}">
+            <label class="fk-dahil" title="Dahil">
               <input type="checkbox" class="fk-dahil-kutu" name="{{ f.dahil.html_name }}"
                 id="{{ f.dahil.id_for_label }}" {% if f.dahil.value %}checked{% endif %}>
-              <span>Dahil</span>
             </label>
             {{ f.stok }}
             {% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}
-            <div class="fk-gorsel">{% if s.gorsel %}<img src="{{ s.gorsel.url }}" alt="">{% else %}📦{% endif %}</div>
-            <div class="fk-govde">
+            <div class="fk-urun">
               <div class="fk-ad">{% if s.model_kodu %}<span class="fk-model">{{ s.model_kodu }}</span>{% endif %}{{ s.ad }}</div>
-              <div class="fk-alanlar">
-                <div class="fk-alan">
-                  <label for="{{ f.birim_fiyat.id_for_label }}">Liste Fiyatı</label>
-                  {{ f.birim_fiyat }}
-                  {% for e in f.birim_fiyat.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-                </div>
-                <div class="fk-alan">
-                  <label for="{{ f.iskonto_yuzdesi.id_for_label }}">İskonto %</label>
-                  {{ f.iskonto_yuzdesi }}
-                  {% for e in f.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-                </div>
-                <div class="fk-alan fk-net">
-                  <span class="et">Net Fiyat</span>
-                  <span class="net-deger mono">—</span>
-                </div>
-              </div>
-              {% if s.kdv %}<div class="fk-kdv">KDV %{{ s.kdv.oran|floatformat:0 }}</div>{% endif %}
+              {% if s.kdv %}<span class="fk-kdv">KDV %{{ s.kdv.oran|floatformat:0 }}</span>{% endif %}
               <div class="fk-uyari" hidden>⚠ Bu para biriminde fiyat listesi tanımlı değil</div>
+            </div>
+            <div class="fk-alan">
+              <label for="{{ f.birim_fiyat.id_for_label }}">Liste Fiyatı</label>
+              {{ f.birim_fiyat }}
+              {% for e in f.birim_fiyat.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="fk-alan">
+              <label for="{{ f.iskonto_yuzdesi.id_for_label }}">İskonto %</label>
+              {{ f.iskonto_yuzdesi }}
+              {% for e in f.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="fk-alan fk-net">
+              <span class="et">Net Fiyat</span>
+              <span class="net-deger mono">—</span>
             </div>
           </div>
         {% empty %}
@@ -93,31 +89,30 @@
 </div>
 
 <style>
-  .fk-izgara { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr)); gap:1rem; }
-  .fk-kart { position:relative; display:flex; gap:.9rem; border:1px solid var(--cizgi); border-radius:16px;
-    padding:1rem; background:rgba(255,255,255,.6); transition:opacity .15s; }
-  .fk-kart.fk-disi { opacity:.45; }
-  .fk-dahil { position:absolute; top:.7rem; right:.7rem; display:flex; align-items:center; gap:.3rem;
-    font-size:.78rem; font-weight:600; color:var(--metin-soluk); cursor:pointer; user-select:none; }
+  .fk-liste { display:flex; flex-direction:column; gap:.55rem; }
+  .fk-satir { display:flex; align-items:center; gap:1.1rem; flex-wrap:wrap;
+    border:1px solid var(--cizgi); border-radius:14px; padding:.75rem 1.1rem;
+    background:rgba(255,255,255,.6); transition:opacity .15s; }
+  .fk-satir.fk-disi { opacity:.45; }
+  .fk-dahil { display:flex; align-items:center; flex:0 0 auto; cursor:pointer; }
   .fk-dahil input { margin:0; }
-  .fk-gorsel { width:60px; height:60px; border-radius:12px; background:#f4f6fa; display:grid; place-items:center;
-    font-size:1.6rem; flex:0 0 auto; overflow:hidden; }
-  .fk-gorsel img { max-width:100%; max-height:100%; object-fit:contain; }
-  .fk-govde { flex:1; min-width:0; padding-right:1.6rem; }
-  .fk-ad { font-weight:700; color:var(--lacivert); margin-bottom:.6rem; font-size:.96rem; }
+  .fk-urun { flex:1 1 220px; min-width:0; }
+  .fk-ad { font-weight:700; color:var(--lacivert); font-size:.94rem; }
   .fk-model { display:inline-block; background:var(--turuncu); color:#fff; font-size:.72rem; font-weight:800;
     padding:.1rem .5rem; border-radius:6px; margin-right:.4rem; }
-  .fk-alanlar { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; }
-  .fk-alan { display:flex; flex-direction:column; gap:.2rem; }
+  .fk-kdv { display:inline-block; margin-top:.15rem; font-size:.72rem; color:var(--metin-soluk); }
+  .fk-alan { display:flex; flex-direction:column; gap:.2rem; flex:0 0 auto; }
   .fk-alan label { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--metin-soluk); }
   .fk-alan input { width:6.2rem; }
-  .fk-net { min-width:5.2rem; }
+  .fk-net { min-width:5.5rem; }
   .fk-net .et { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--metin-soluk); }
   .fk-net .net-deger { display:block; font-weight:800; color:var(--lacivert); font-size:1rem; }
-  .fk-kdv { margin-top:.5rem; display:inline-block; font-size:.72rem; color:var(--metin-soluk); }
-  .fk-uyari { margin-top:.5rem; font-size:.76rem; color:#b35400; background:rgba(240,124,0,.1);
-    padding:.3rem .55rem; border-radius:8px; }
+  .fk-uyari { margin-top:.3rem; display:inline-block; font-size:.74rem; color:#b35400;
+    background:rgba(240,124,0,.1); padding:.2rem .5rem; border-radius:8px; }
+  .fk-uyari[hidden] { display:none; }
   .fk-ozet { margin-top:.9rem; font-weight:600; color:var(--lacivert); }
+  @media (max-width:680px){ .fk-satir { flex-direction:column; align-items:stretch; }
+    .fk-alan input { width:100%; } }
 </style>
 
 <script>
@@ -155,7 +150,7 @@
 
   function ozetGuncelle(){
     var toplam = 0, dahil = 0;
-    document.querySelectorAll('.fk-kart').forEach(function(card){
+    document.querySelectorAll('.fk-satir').forEach(function(card){
       toplam++;
       var kutu = card.querySelector('.fk-dahil-kutu');
       var acik = kutu && kutu.checked;
@@ -173,7 +168,7 @@
   if(cariSec) cariSec.addEventListener('change', function(){
     var meta = CARI_META[cariSec.value];
     if(!meta) return;
-    document.querySelectorAll('.fk-kart').forEach(function(card){
+    document.querySelectorAll('.fk-satir').forEach(function(card){
       var iskInp = el(card, '-iskonto_yuzdesi');
       if(iskInp) iskInp.value = fmt(meta.iskonto, 2);
     });
@@ -181,24 +176,24 @@
       pbSec.value = meta.pb;
       pbSec.dispatchEvent(new Event('change', {bubbles: true}));
     } else {
-      document.querySelectorAll('.fk-kart').forEach(netHesapla);
+      document.querySelectorAll('.fk-satir').forEach(netHesapla);
     }
   });
 
   if(pbSec) pbSec.addEventListener('change', function(){
-    document.querySelectorAll('.fk-kart').forEach(function(card){ fiyatiUygula(card, pbSec.value); });
+    document.querySelectorAll('.fk-satir').forEach(function(card){ fiyatiUygula(card, pbSec.value); });
   });
 
   var form = document.getElementById('st-form');
   form.addEventListener('input', function(e){
-    var card = e.target.closest('.fk-kart');
+    var card = e.target.closest('.fk-satir');
     if(card) netHesapla(card);
   });
   form.addEventListener('change', function(e){
     if(e.target.classList.contains('fk-dahil-kutu')) ozetGuncelle();
   });
 
-  document.querySelectorAll('.fk-kart').forEach(netHesapla);
+  document.querySelectorAll('.fk-satir').forEach(netHesapla);
   ozetGuncelle();
 })();
 </script>
