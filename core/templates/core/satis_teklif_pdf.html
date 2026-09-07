@@ -192,7 +192,6 @@
 
     <div class="uk-fiyat">
       <div class="fp-satir"><span>{{ E.liste }}</span><span class="dg mono">{{ k.birim_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
-      {% if k.iskonto_yuzdesi %}<div class="fp-satir"><span>{{ E.iskonto }}</span><span class="dg mono">%{{ k.iskonto_yuzdesi|tr_kur:2 }}</span></div>{% endif %}
       <div class="fp-net"><span class="et">{{ E.net }}</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
       {% if navlun_var %}
         {% if k.nakliye_dahil_fiyat is not None %}
