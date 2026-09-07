@@ -535,6 +535,11 @@ class Stok(TemelModel):
         "40' HQ yükleme adedi", null=True, blank=True)
     yukleme_tir = models.PositiveIntegerField(
         "TIR yükleme adedi", null=True, blank=True)
+    # Yalnız satis_urunu=True kartlarda anlamlı; kucult_webp ile küçültülüp WebP'ye
+    # çevrilmiş halde saklanır (bkz. core/gorsel.py — banka logosuyla aynı desen,
+    # burada max_kenar=1600 ile çağrılır).
+    gorsel = models.ImageField(
+        "ürün görseli", upload_to="stok_gorsel/", blank=True, null=True)
 
     class Meta:
         db_table = "stok"

@@ -1,11 +1,12 @@
 """Stok kartı (STOKLAR Faz A — master) testleri: otomatik kod (ÜST-ALT-sıra),
 TR büyük harf, ALT-kategori zorunlu, birim/çevirici doğrulama, KDV/tevkifat FK,
 DB kısıtları, view + yetki. (Miktar/hareket bu fazda YOK.)"""
+import tempfile
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.models import Birim, EkranYetki, KdvOrani, Stok, TevkifatOrani
@@ -316,6 +317,66 @@ class StokGrupTeknikAlanTest(TestCase):
         self.assertEqual(kopya.basamak_sayisi, 5)
 
 
+def _png(boyut=(800, 600), renk=(200, 30, 30, 128)):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGBA", boyut, renk).save(buf, "PNG")
+    buf.seek(0)
+    return buf
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class StokGorselTest(TestCase):
+    """Ürün görseli (yalnız satis_urunu=True kartlarda) — banka logosuyla aynı
+    desen (core/gorsel.py::kucult_webp), 1600px/%80 ile çağrılır."""
+
+    def _kur(self, alt, adet, kg, **kw):
+        kw.setdefault("kdv_id", _kdv("20").pk)
+        return stok_olustur(ad=kw.pop("ad", "x"), kategori_id=alt.pk,
+                            uretim_birimi_id=adet.pk, fatura_birimi_id=kg.pk,
+                            cevirici=Decimal("1"), **kw)
+
+    def test_gorsel_satis_ile_yuklenir(self):
+        from core.gorsel import kucult_webp
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True,
+                      gorsel=kucult_webp(_png(), max_kenar=1600, kalite=80, ad="stok"))
+        self.assertTrue(s.gorsel)
+        self.assertTrue(s.gorsel.name.endswith(".webp"))
+
+    def test_gorsel_satis_degilse_kaydedilmez(self):
+        from core.gorsel import kucult_webp
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satinalma_urunu=True, satis_urunu=False,
+                      gorsel=kucult_webp(_png(), ad="stok"))
+        self.assertFalse(s.gorsel)
+
+    def test_guncellemede_satis_kapatilinca_gorsel_silinir(self):
+        from core.gorsel import kucult_webp
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True,
+                      gorsel=kucult_webp(_png(), ad="stok"))
+        self.assertTrue(s.gorsel)
+        stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
+                     fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
+                     kdv_id=s.kdv_id, satinalma_urunu=True, satis_urunu=False)
+        s.refresh_from_db()
+        self.assertFalse(s.gorsel)
+
+    def test_guncellemede_yeni_dosya_yoksa_mevcut_gorsel_korunur(self):
+        from core.gorsel import kucult_webp
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True,
+                      gorsel=kucult_webp(_png(), ad="stok"))
+        eski_ad = s.gorsel.name
+        stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
+                     fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
+                     kdv_id=s.kdv_id, satis_urunu=True)     # gorsel=None (yeni dosya yok)
+        s.refresh_from_db()
+        self.assertEqual(s.gorsel.name, eski_ad)
+
+
 class KullanimdaSilmeKorumaTest(TestCase):
     """#9: Stok kullandığı KDV/tevkifat/cari soft-delete edilemez."""
 
@@ -577,3 +638,20 @@ class StokViewTest(TestCase):
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
         self.assertNotContains(r, "Teklif / Teknik Özellikler")
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_ekle_post_gorsel_yukler_ve_detayda_gorunur(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        dosya = SimpleUploadedFile("urun.png", _png().read(), content_type="image/png")
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:stok_ekle"), {
+            "ad": "gorselli urun", "kategori": str(self.alt.pk),
+            "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
+            "cevirici": "1", "kdv": str(_kdv("20").pk), "satis_urunu": "on",
+            "gorsel": dosya})
+        self.assertEqual(r.status_code, 302)
+        s = Stok.objects.get(ad="GORSELLİ URUN")
+        self.assertTrue(s.gorsel)
+        self.assertTrue(s.gorsel.name.endswith(".webp"))
+        d = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(d, s.gorsel.url)

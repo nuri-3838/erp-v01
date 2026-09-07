@@ -192,7 +192,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
                  taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                  cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
-                 kullanici=None) -> Stok:
+                 gorsel=None, kullanici=None) -> Stok:
     ad = _ad_dogrula(ad)
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
@@ -218,6 +218,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         alis_fiyati_pb=_pb_dogrula(alis_fiyati_pb),
         satinalma_urunu=bool(satinalma_urunu), uretim_urunu=bool(uretim_urunu),
         satis_urunu=bool(satis_urunu),
+        gorsel=(gorsel if satis_urunu else None),
         created_by=kullanici, updated_by=kullanici,
         **satis_alanlari,
     )
@@ -227,8 +228,8 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
     """Var olan bir stok kartının birebir kopyasını oluşturur. ``kod`` farklıdır
     (aynı kategoride sıradaki numarayı otomatik alır); ``ad`` sonuna " KOPYA"
     eklenir (hangisinin kopya olduğu ayırt edilsin diye) — kategori, birimler,
-    çevirici, KDV/tevkifat, kritik stok, tedarikçi, alış fiyatı, ürün grubu ve
-    satış/teklif alanları aynen kopyalanır.
+    çevirici, KDV/tevkifat, kritik stok, tedarikçi, alış fiyatı, ürün grubu,
+    satış/teklif alanları ve görsel aynen kopyalanır.
     """
     return stok_olustur(
         ad=f"{stok.ad} KOPYA", kategori_id=stok.kategori_id,
@@ -242,7 +243,7 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
         taban_genisligi=stok.taban_genisligi, kapali_boy=stok.kapali_boy,
         agirlik=stok.agirlik, azami_yuk=stok.azami_yuk, cbm=stok.cbm,
         yukleme_20dc=stok.yukleme_20dc, yukleme_40hq=stok.yukleme_40hq,
-        yukleme_tir=stok.yukleme_tir,
+        yukleme_tir=stok.yukleme_tir, gorsel=(stok.gorsel if stok.gorsel else None),
         kullanici=kullanici)
 
 
@@ -254,9 +255,11 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
                   taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                   cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
-                  kullanici=None) -> Stok:
-    """Ad, birimler, çevirici, vergi/stok/grup/teklif alanları güncellenir.
-    KOD ve KATEGORİ DEĞİŞMEZ."""
+                  gorsel=None, kullanici=None) -> Stok:
+    """Ad, birimler, çevirici, vergi/stok/grup/teklif/görsel alanları güncellenir.
+    KOD ve KATEGORİ DEĞİŞMEZ. ``gorsel=None`` + Satış işaretliyse mevcut görsel
+    korunur (yeni dosya yüklenmedi demektir); Satış işareti kaldırılırsa görsel
+    de temizlenir (bkz. diğer satış/teklif alanları)."""
     if stok.silindi:
         raise StokHatasi("Silinmiş stok düzenlenemez.")
     _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
@@ -280,12 +283,17 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.satis_urunu = bool(satis_urunu)
     for alan, deger in satis_alanlari.items():
         setattr(stok, alan, deger)
+    if satis_urunu:
+        if gorsel is not None:             # yalnız yeni dosya yüklendiyse değiştir
+            stok.gorsel = gorsel
+    else:
+        stok.gorsel = None
     stok.updated_by = kullanici
     stok.save(update_fields=[
         "ad", "uretim_birimi", "fatura_birimi", "cevirici", "kdv", "tevkifat",
         "kritik_stok", "tedarikci", "alis_fiyati", "alis_fiyati_pb",
         "satinalma_urunu", "uretim_urunu", "satis_urunu", *_SATIS_ALAN_ADLARI,
-        "updated_by", "updated_at"])
+        "gorsel", "updated_by", "updated_at"])
     return stok
 
 

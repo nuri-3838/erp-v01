@@ -14,7 +14,7 @@
     <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
   {% endif %}
 
-  <form method="post" autocomplete="off" style="display:contents">
+  <form method="post" enctype="multipart/form-data" autocomplete="off" style="display:contents">
     {% csrf_token %}
 
     <section class="icerik-kart">
@@ -50,22 +50,6 @@
     </section>
 
     <section class="icerik-kart">
-      <h2 class="bolum-baslik"><span class="emoji">🏷️</span>Ürün Grubu <span class="zorunlu">*</span></h2>
-      <div class="grup-secim">
-        <label class="grup-secenek"><input type="checkbox" name="{{ form.satinalma_urunu.html_name }}"
-          id="{{ form.satinalma_urunu.id_for_label }}" {% if form.satinalma_urunu.value %}checked{% endif %}>
-          <span>🛒 Satınalma</span></label>
-        <label class="grup-secenek"><input type="checkbox" name="{{ form.uretim_urunu.html_name }}"
-          id="{{ form.uretim_urunu.id_for_label }}" {% if form.uretim_urunu.value %}checked{% endif %}>
-          <span>🏭 Üretim</span></label>
-        <label class="grup-secenek"><input type="checkbox" name="{{ form.satis_urunu.html_name }}"
-          id="{{ form.satis_urunu.id_for_label }}" {% if form.satis_urunu.value %}checked{% endif %}>
-          <span>📤 Satış</span></label>
-      </div>
-      <p class="yardim">Birden fazlası seçilebilir. Seçime göre aşağıdaki bölümler görünür/gizlenir.</p>
-    </section>
-
-    <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">📏</span>Birim</h2>
       <div class="izgara-3">
         <div class="alan">
@@ -87,7 +71,7 @@
     </section>
 
     <section class="icerik-kart">
-      <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi &amp; Stok Seviyesi</h2>
+      <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi</h2>
       <div class="izgara">
         <div class="alan">
           <label for="{{ form.kdv.id_for_label }}">KDV Oranı <span class="zorunlu">*</span></label>
@@ -99,34 +83,51 @@
           {{ form.tevkifat }}
           {% for e in form.tevkifat.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="alan">
-          <label for="{{ form.kritik_stok.id_for_label }}">Kritik Stok Seviyesi</label>
-          {{ form.kritik_stok }}
-          {% for e in form.kritik_stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <p class="yardim">Üretim biriminde eşik (Faz B'de uyarı için).</p>
-        </div>
+      </div>
+      <p class="yardim">Üretim/Birim ve Vergi bilgileri tüm ürün gruplarında ortaktır.</p>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🏷️</span>Ürün Grubu <span class="zorunlu">*</span></h2>
+      <div class="grup-secim">
+        <label class="grup-secenek"><input type="checkbox" name="{{ form.satinalma_urunu.html_name }}"
+          id="{{ form.satinalma_urunu.id_for_label }}" {% if form.satinalma_urunu.value %}checked{% endif %}>
+          <span>🛒 Satınalma</span></label>
+        <label class="grup-secenek"><input type="checkbox" name="{{ form.uretim_urunu.html_name }}"
+          id="{{ form.uretim_urunu.id_for_label }}" {% if form.uretim_urunu.value %}checked{% endif %}>
+          <span>🏭 Üretim</span></label>
+        <label class="grup-secenek"><input type="checkbox" name="{{ form.satis_urunu.html_name }}"
+          id="{{ form.satis_urunu.id_for_label }}" {% if form.satis_urunu.value %}checked{% endif %}>
+          <span>📤 Satış</span></label>
+      </div>
+      <p class="yardim">Birden fazlası seçilebilir. Seçime göre aşağıdaki bölümler görünür/gizlenir.</p>
+    </section>
+
+    <section class="icerik-kart grup-blok" data-grup="satinalma_urunu">
+      <h2 class="bolum-baslik"><span class="emoji">🛒</span>Satınalma</h2>
+      <div class="izgara">
         <div class="alan">
           <label for="{{ form.tedarikci.id_for_label }}">Tedarikçi (Cari)</label>
           {{ form.tedarikci }}
           {% for e in form.tedarikci.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-      </div>
-    </section>
-
-    <section class="icerik-kart grup-blok" data-grup="satinalma_urunu">
-      <h2 class="bolum-baslik"><span class="emoji">💰</span>Alış Fiyatı</h2>
-      <div class="izgara">
         <div class="alan">
-          <label for="{{ form.alis_fiyati_pb.id_for_label }}">Para Birimi</label>
+          <label for="{{ form.kritik_stok.id_for_label }}">Kritik Stok Seviyesi</label>
+          {{ form.kritik_stok }}
+          {% for e in form.kritik_stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Üretim biriminde eşik (Faz B'de uyarı için) — altına düşünce yeniden sipariş gerekir.</p>
+        </div>
+        <div class="alan">
+          <label for="{{ form.alis_fiyati_pb.id_for_label }}">Alış Fiyatı Para Birimi</label>
           {{ form.alis_fiyati_pb }}
         </div>
         <div class="alan">
-          <label for="{{ form.alis_fiyati.id_for_label }}">Tutar</label>
+          <label for="{{ form.alis_fiyati.id_for_label }}">Alış Fiyatı</label>
           {{ form.alis_fiyati }}
           {% for e in form.alis_fiyati.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
       </div>
-      <p class="yardim">Opsiyonel, yalnız bilgi amaçlı — fatura/teklif fiyatını etkilemez.</p>
+      <p class="yardim">Alış fiyatı opsiyonel, yalnız bilgi amaçlı — fatura/teklif fiyatını etkilemez.</p>
     </section>
 
     <section class="icerik-kart grup-blok" data-grup="satis_urunu">
@@ -193,6 +194,21 @@
       </div>
       <p class="yardim">Yalnız Satış işaretliyken doldurun — müşteri tekliflerinde ve
         konteyner/TIR yükleme hesaplarında kullanılır.</p>
+
+      <h3 class="bolum-baslik" style="font-size:.95rem;margin-top:1.3rem"><span class="emoji">🖼️</span>Ürün Görseli</h3>
+      <div class="gorsel-alan">
+        <div class="gorsel-onizleme">
+          {% if duzenlenen and duzenlenen.gorsel %}<img src="{{ duzenlenen.gorsel.url }}" alt="ürün görseli">
+          {% else %}<span class="bos">📦</span>{% endif %}
+        </div>
+        <div style="flex:1 1 16rem">
+          <label for="{{ form.gorsel.id_for_label }}">{{ form.gorsel.label }}</label>
+          {{ form.gorsel }}
+          {% for e in form.gorsel.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.4rem 0 0">Otomatik küçültülüp WebP'ye çevrilir; teklif dökümünde kullanılır.
+            {% if duzenlenen and duzenlenen.gorsel %} Yeni dosya seçmezsen mevcut görsel korunur.{% endif %}</p>
+        </div>
+      </div>
     </section>
 
     <div class="form-altbar">
@@ -208,6 +224,11 @@
     user-select:none; padding:.6rem 1rem; border-radius:12px; font-weight:600;
     background:rgba(255,255,255,.55); border:1px solid var(--cizgi); }
   .grup-secenek input[type=checkbox] { margin:0; }
+  .gorsel-alan { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-top:.6rem; }
+  .gorsel-onizleme { width:72px; height:72px; border-radius:14px; border:1px solid var(--cizgi);
+    background:#fff; display:grid; place-items:center; overflow:hidden; flex:0 0 auto; }
+  .gorsel-onizleme img { max-width:100%; max-height:100%; object-fit:contain; }
+  .gorsel-onizleme .bos { font-size:1.6rem; opacity:.5; }
 </style>
 
 <script>

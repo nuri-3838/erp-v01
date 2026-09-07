@@ -666,10 +666,12 @@ def stoklar(request):
 @ekran_gerekli("stoklar")
 def stok_ekle(request):
     if request.method == "POST":
-        form = StokForm(request.POST)
+        form = StokForm(request.POST, request.FILES)
         if form.is_valid():
             try:
                 cd = form.cleaned_data
+                gorsel_dosya = (gorsel.kucult_webp(cd["gorsel"], max_kenar=1600, kalite=80,
+                                                   ad="stok") if cd.get("gorsel") else None)
                 s = stok_servis.stok_olustur(
                     ad=cd["ad"], kategori_id=cd["kategori"].pk,
                     uretim_birimi_id=cd["uretim_birimi"].pk,
@@ -692,6 +694,7 @@ def stok_ekle(request):
                     yukleme_20dc=cd.get("yukleme_20dc"),
                     yukleme_40hq=cd.get("yukleme_40hq"),
                     yukleme_tir=cd.get("yukleme_tir"),
+                    gorsel=gorsel_dosya,
                     kullanici=request.user)
                 messages.success(request, f"Stok eklendi: {s.kod} — {s.ad}")
                 return redirect("core:stoklar")
@@ -707,10 +710,12 @@ def stok_duzenle(request, pk):
     stok = get_object_or_404(
         Stok.objects.select_related("kategori", "kategori__ust"), pk=pk, silindi=False)
     if request.method == "POST":
-        form = StokForm(request.POST, duzenle=True)
+        form = StokForm(request.POST, request.FILES, duzenle=True)
         if form.is_valid():
             try:
                 cd = form.cleaned_data
+                gorsel_dosya = (gorsel.kucult_webp(cd["gorsel"], max_kenar=1600, kalite=80,
+                                                   ad="stok") if cd.get("gorsel") else None)
                 stok_servis.stok_guncelle(
                     stok, ad=cd["ad"],
                     uretim_birimi_id=cd["uretim_birimi"].pk,
@@ -733,6 +738,7 @@ def stok_duzenle(request, pk):
                     yukleme_20dc=cd.get("yukleme_20dc"),
                     yukleme_40hq=cd.get("yukleme_40hq"),
                     yukleme_tir=cd.get("yukleme_tir"),
+                    gorsel=gorsel_dosya,
                     kullanici=request.user)
                 messages.success(request, "Stok güncellendi.")
                 return redirect("core:stoklar")
