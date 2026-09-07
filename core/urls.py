@@ -180,6 +180,7 @@ urlpatterns = [
     path("cariler/sehir/<int:pk>/sil/", views.sehir_sil, name="sehir_sil"),
     # DİĞER modülü
     path("diger/yemek-takibi/", views.yemek_takibi, name="yemek_takibi"),
+    path("diger/yemek-takibi/pdf/", views.yemek_takibi_pdf, name="yemek_takibi_pdf"),
     path("diger/yemek-takibi/ekle/", views.yemek_sayimi_ekle, name="yemek_sayimi_ekle"),
     path("diger/yemek-takibi/<int:pk>/duzenle/", views.yemek_sayimi_duzenle,
          name="yemek_sayimi_duzenle"),

@@ -3445,8 +3445,9 @@ def _yemek_takibi_liste_url(cari_id=None):
     return f"{url}?cari={cari_id}" if cari_id else url
 
 
-@ekran_gerekli("yemek_takibi")
-def yemek_takibi(request):
+def _yemek_takibi_filtrele(request):
+    """GET parametrelerinden (cari, tarih aralığı) çözer + aktif kayıtları/özeti getirir.
+    Liste ekranı ve PDF dökümü aynı filtre mantığını kullanır."""
     form = YemekTakibiFiltreForm(request.GET or None)
     if form.is_valid():
         cari = form.cleaned_data["cari"]
@@ -3463,12 +3464,42 @@ def yemek_takibi(request):
     kayitlar = list(yemek_takibi_servis.aktif_kayitlar(
         cari=cari, baslangic=baslangic, bitis=bitis))
     gun, kisi, tutar = yemek_takibi_servis.aylik_ozet(kayitlar)
+    return form, cari, baslangic, bitis, kayitlar, gun, kisi, tutar
+
+
+@ekran_gerekli("yemek_takibi")
+def yemek_takibi(request):
+    form, cari, baslangic, bitis, kayitlar, gun, kisi, tutar = _yemek_takibi_filtrele(request)
     return render(request, "core/yemek_takibi_listesi.html", {
         "form": form, "kayitlar": kayitlar, "cari": cari,
         "baslangic": baslangic, "bitis": bitis,
         "gun": gun, "kisi": kisi, "tutar": tutar,
         "ekle_url": f"{reverse('core:yemek_sayimi_ekle')}{'?cari=' + str(cari.pk) if cari else ''}",
+        "pdf_url": f"{reverse('core:yemek_takibi_pdf')}?{request.GET.urlencode()}",
     })
+
+
+@ekran_gerekli("yemek_takibi")
+def yemek_takibi_pdf(request):
+    """Filtrelenen dökümün PDF'i (WeasyPrint, A4) — çek bordrosu PDF'iyle aynı desen."""
+    import base64
+
+    from django.contrib.staticfiles import finders
+    from weasyprint import HTML
+
+    _form, cari, baslangic, bitis, kayitlar, gun, kisi, tutar = _yemek_takibi_filtrele(request)
+    ctx = {"cari": cari, "baslangic": baslangic, "bitis": bitis,
+           "kayitlar": kayitlar, "gun": gun, "kisi": kisi, "tutar": tutar}
+    logo_yol = finders.find("core/img/semta-logo.png")
+    if logo_yol:
+        with open(logo_yol, "rb") as f:
+            ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
+    html = render_to_string("core/yemek_takibi_pdf.html", ctx)
+    pdf = HTML(string=html).write_pdf()
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    dosya_adi = f"yemek-takibi-{baslangic:%Y-%m-%d}-{bitis:%Y-%m-%d}.pdf"
+    resp["Content-Disposition"] = f'inline; filename="{dosya_adi}"'
+    return resp
 
 
 @ekran_gerekli("yemek_takibi")

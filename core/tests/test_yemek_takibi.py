@@ -196,3 +196,34 @@ class YemekTakibiViewTest(TestCase):
         r = self.client.get(reverse("core:yemek_takibi"))
         self.assertContains(r, "Diğer")
         self.assertContains(r, "Yemek Takibi")
+
+    def test_pdf_gercek_pdf_uretir(self):
+        kayit_ekle(cari=self.cari, tarih=datetime.date(2026, 9, 1), kisi_sayisi=45,
+                  birim_fiyat="120,50")
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:yemek_takibi_pdf"), {
+            "cari": self.cari.pk, "baslangic": "2026-09-01", "bitis": "2026-09-30"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertEqual(r.content[:5], b"%PDF-")
+
+    def test_pdf_filtresiz_de_calisir_ve_carisiz_kolon_gosterir(self):
+        c2 = _cari("baska firma")
+        kayit_ekle(cari=self.cari, tarih=datetime.date(2026, 9, 1), kisi_sayisi=10,
+                  birim_fiyat=100)
+        kayit_ekle(cari=c2, tarih=datetime.date(2026, 9, 2), kisi_sayisi=20, birim_fiyat=100)
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:yemek_takibi_pdf"), {
+            "baslangic": "2026-09-01", "bitis": "2026-09-30"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+
+    def test_pdf_yetkisiz_403(self):
+        self.client.force_login(self.bos)
+        self.assertEqual(self.client.get(reverse("core:yemek_takibi_pdf")).status_code, 403)
+
+    def test_liste_pdf_linki_filtreyi_tasir(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:yemek_takibi"), {
+            "cari": self.cari.pk, "baslangic": "2026-09-01", "bitis": "2026-09-30"})
+        self.assertContains(r, f"/diger/yemek-takibi/pdf/?cari={self.cari.pk}")

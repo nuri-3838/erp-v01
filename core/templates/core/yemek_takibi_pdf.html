@@ -1,0 +1,116 @@
+{% load core_extras %}<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4; margin: 15mm 14mm 18mm;
+    @bottom-left  { content: "SEMTA ERP · Yemek Takibi"; font-size: 8px; color: #9ca3af; }
+    @bottom-right { content: "Sayfa " counter(page) " / " counter(pages); font-size: 8px; color: #9ca3af; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; color: #1c2533; font-size: 11px;
+    line-height: 1.45; margin: 0; }
+  .header { display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 10px; border-bottom: 3px solid #15294d; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand img { height: 44px; }
+  .brand .ad { font-size: 19px; font-weight: 800; color: #15294d; letter-spacing: .5px; }
+  .brand .ad small { display: block; font-size: 9px; font-weight: 500; color: #6b7280; letter-spacing: 0; }
+  .doc { text-align: right; }
+  .doc h1 { margin: 0; font-size: 15px; color: #15294d; text-transform: uppercase; letter-spacing: .6px; }
+  .doc .meta { margin-top: 5px; font-size: 10.5px; color: #374151; }
+  .doc .meta b { color: #15294d; }
+  .accent { height: 4px; background: #f07c00; border-radius: 2px; margin: 0 0 16px; }
+  .bilgi { display: flex; gap: 12px; margin-bottom: 14px; }
+  .bilgi .kutu { background: #f4f6fa; border: 1px solid #e3e8f0; border-radius: 8px;
+    padding: 8px 14px; }
+  .bilgi .et { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; }
+  .bilgi .dg { font-weight: 700; color: #15294d; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #15294d; color: #fff; padding: 8px 10px; text-align: left;
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #e6eaf1; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
+  .sag { text-align: right; }
+  .mono { font-variant-numeric: tabular-nums; }
+  tfoot td { padding: 9px 10px; font-weight: 800; color: #15294d; border-top: 2px solid #15294d;
+    background: #eef2f8; }
+  .ozet { display: flex; gap: 12px; margin-top: 16px; }
+  .ozet .kart { padding: 12px 16px; border-radius: 10px; flex: 1; }
+  .ozet .toplam { background: #15294d; color: #fff; }
+  .ozet .diger { background: #fff7ed; border: 1px solid #fed7aa; color: #7c2d12; }
+  .ozet .et { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; opacity: .9; margin-bottom: 2px; }
+  .ozet .buyuk { font-size: 18px; font-weight: 800; }
+  .imza { display: flex; gap: 60px; margin-top: 54px; }
+  .imza .kol { flex: 1; text-align: center; }
+  .imza .cizgi { border-top: 1px solid #15294d; margin: 0 6px 7px; }
+  .imza .rol { font-weight: 700; color: #15294d; font-size: 11px; }
+  .imza .as { font-size: 9px; color: #9ca3af; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="SEMTA">{% endif %}
+      <div class="ad">SEMTA<small>Alüminyum Merdiven İmalatı</small></div>
+    </div>
+    <div class="doc">
+      <h1>Yemek Takibi Dökümü</h1>
+      <div class="meta">Tarih Aralığı: <b>{{ baslangic|date:"d.m.Y" }} – {{ bitis|date:"d.m.Y" }}</b></div>
+    </div>
+  </div>
+  <div class="accent"></div>
+
+  <div class="bilgi">
+    {% if cari %}<div class="kutu"><div class="et">Cari</div>
+      <div class="dg">{{ cari.unvan }}</div></div>{% endif %}
+    <div class="kutu"><div class="et">Gün Sayısı</div><div class="dg">{{ gun }}</div></div>
+    <div class="kutu"><div class="et">Toplam Kişi</div><div class="dg">{{ kisi }}</div></div>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th style="width:70px">Tarih</th>{% if not cari %}<th>Cari</th>{% endif %}
+      <th class="sag" style="width:80px">Kişi Sayısı</th>
+      <th class="sag" style="width:90px">Birim Fiyat</th>
+      <th class="sag" style="width:100px">Tutar</th><th>Not</th>
+    </tr></thead>
+    <tbody>
+      {% for k in kayitlar %}
+        <tr>
+          <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
+          {% if not cari %}<td>{{ k.cari.unvan }}</td>{% endif %}
+          <td class="sag mono">{{ k.kisi_sayisi }}</td>
+          <td class="sag mono">{{ k.birim_fiyat|tr_para }}</td>
+          <td class="sag mono">{{ k.tutar|tr_para }}</td>
+          <td>{{ k.notlar|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="{% if cari %}5{% else %}6{% endif %}" style="text-align:center;color:#777;padding:14px">Bu aralıkta kayıt yok.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><td colspan="{% if cari %}1{% else %}2{% endif %}" class="sag">TOPLAM</td>
+        <td class="sag mono">{{ kisi }}</td><td></td>
+        <td class="sag mono">{{ tutar|tr_para }}</td><td></td></tr>
+    </tfoot>
+  </table>
+
+  <div class="ozet">
+    <div class="kart toplam">
+      <div class="et">Toplam Tutar</div>
+      <div class="buyuk">{{ tutar|tr_para }}</div>
+    </div>
+    <div class="kart diger">
+      <div class="et">Toplam Gün / Kişi</div>
+      <div class="buyuk">{{ gun }} gün · {{ kisi }} kişi</div>
+    </div>
+  </div>
+
+  <div class="imza">
+    <div class="kol"><div class="cizgi"></div><div class="rol">Hazırlayan</div><div class="as">Ad Soyad · İmza</div></div>
+    <div class="kol"><div class="cizgi"></div><div class="rol">Kontrol Eden</div><div class="as">Ad Soyad · İmza</div></div>
+  </div>
+</body>
+</html>

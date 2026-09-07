@@ -13,11 +13,15 @@
     border-radius:16px; padding:.9rem 1.1rem; }
   .yt-ozet-deger { font-size:1.5rem; font-weight:800; color:var(--turuncu-koyu); font-family:"Cascadia Mono",Consolas,monospace; }
   .yt-ozet-etiket { font-size:.78rem; color:var(--metin-soluk); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  .yt-aksiyonlar { display:flex; gap:.6rem; }
 </style>
 
 <div class="yt-ust">
   <h1 class="ust-baslik"><span class="emoji">🍽️</span>Yemek Takibi</h1>
-  <a class="dugme" href="{{ ekle_url }}">+ Yeni Kayıt</a>
+  <span class="yt-aksiyonlar">
+    <a class="dugme" href="{{ pdf_url }}" target="_blank">📄 PDF</a>
+    <a class="dugme" href="{{ ekle_url }}">+ Yeni Kayıt</a>
+  </span>
 </div>
 
 <form method="get" class="yt-filtre">
