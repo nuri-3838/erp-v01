@@ -50,6 +50,9 @@
   .liste-baslik .lb { font-size: 8px; font-weight: 800; color: #15294d; text-transform: uppercase;
     letter-spacing: 1px; }
   .liste-baslik .ls { font-size: 7.3px; color: #8b97ab; }
+  .liste-baslik .navlun-notu { flex: 1; text-align: center; font-size: 7.6px; color: #d56e00;
+    font-weight: 700; }
+  .liste-baslik .navlun-notu b { font-weight: 800; }
 
   .urun-kart { display: flex; align-items: stretch; gap: 11px; border: 1px solid #e6eaf1;
     border-left: 3px solid #15294d; border-radius: 9px; padding: 8px 10px; margin-bottom: 6px;
@@ -82,22 +85,15 @@
   .loj-grid .et { display: block; font-size: 6.2px; color: #9aa3b2; text-transform: uppercase; }
   .loj-grid .dg { display: block; font-size: 7.6px; font-weight: 800; color: #15294d; margin-top: 1px; }
 
-  .uk-fiyat { flex: 0 0 138px; display: flex; flex-direction: column; justify-content: center;
-    gap: 1.5px; padding-left: 4px; }
-  .fp-satir { display: flex; justify-content: space-between; font-size: 7.6px; color: #9aa3b2; }
-  .fp-satir .dg { font-weight: 700; color: #6b7280; }
-  .fp-net { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px;
-    padding-top: 3px; border-top: 1px solid #eef1f6; }
-  .fp-net .et { font-size: 7.3px; font-weight: 700; color: #15294d; text-transform: uppercase; letter-spacing: .3px; }
-  .fp-net .dg { font-weight: 800; color: #15294d; font-size: 12px; }
-  .fp-nakliye { margin-top: 4px; background: #fff4e8; border: 1px solid #ffdcb3; border-radius: 6px;
-    padding: 3px 8px 4px; text-align: right; }
-  .fp-nakliye .et { display: block; font-size: 6.6px; font-weight: 800; color: #d56e00;
-    text-transform: uppercase; letter-spacing: .4px; }
-  .fp-nakliye .dg { display: block; font-weight: 800; color: #d56e00; font-size: 12.5px;
-    white-space: nowrap; margin-top: .5px; }
-  .fp-nakliye.tanimsiz { background: #f4f6fa; border-color: #e6eaf1; }
-  .fp-nakliye.tanimsiz .et, .fp-nakliye.tanimsiz .dg { color: #9aa3b2; font-size: 7.2px; font-weight: 600; }
+  .uk-fiyat { flex: 0 0 122px; display: flex; flex-direction: column; justify-content: center;
+    align-items: flex-end; padding-left: 4px; }
+  .fp-tek { background: #fff4e8; border: 1px solid #ffdcb3; border-radius: 7px;
+    padding: 5px 10px 6px; text-align: right; width: 100%; }
+  .fp-tek .et { display: block; font-size: 6.8px; font-weight: 800; color: #d56e00;
+    text-transform: uppercase; letter-spacing: .5px; }
+  .fp-tek .dg { display: block; font-weight: 800; color: #d56e00; font-size: 15px;
+    white-space: nowrap; margin-top: 1px; }
+  .fp-not { margin-top: 3px; font-size: 6.8px; color: #9aa3b2; font-weight: 600; }
   .mono { font-variant-numeric: tabular-nums; }
 
   /* ===== NOTLAR + İMZA ===== */
@@ -157,6 +153,7 @@
 
   <div class="liste-baslik">
     <span class="lb">{{ E.urun }}</span>
+    {% if navlun_var %}<span class="navlun-notu">{{ E.navlun_on }} <b>{{ yukleme_tipi_ad }}</b>{{ E.navlun_son }}</span>{% endif %}
     <span class="ls">{{ kalemler|length }} {% if dil == "en" %}item(s){% else %}kalem{% endif %}</span>
   </div>
 
@@ -191,14 +188,11 @@
     </div>
 
     <div class="uk-fiyat">
-      <div class="fp-satir"><span>{{ E.liste }}</span><span class="dg mono">{{ k.birim_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
-      <div class="fp-net"><span class="et">{{ E.net }}</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
-      {% if navlun_var %}
-        {% if k.nakliye_dahil_fiyat is not None %}
-        <div class="fp-nakliye"><span class="et">{{ E.nakliye }}</span><span class="dg mono">{{ k.nakliye_dahil_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
-        {% else %}
-        <div class="fp-nakliye tanimsiz"><span class="et">{{ E.nakliye }}</span><span class="dg">—</span></div>
-        {% endif %}
+      {% if navlun_var and k.nakliye_dahil_fiyat is not None %}
+      <div class="fp-tek"><span class="et">{{ E.fiyat }}</span><span class="dg mono">{{ k.nakliye_dahil_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+      {% else %}
+      <div class="fp-tek"><span class="et">{{ E.fiyat }}</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+      {% if navlun_var %}<div class="fp-not">{{ E.navlun_haric }}</div>{% endif %}
       {% endif %}
     </div>
   </div>

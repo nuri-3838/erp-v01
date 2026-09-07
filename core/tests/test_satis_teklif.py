@@ -297,8 +297,10 @@ class SatisTeklifTest(TestCase):
         ts = self._son_teklif()
         # Şablonun kendisini iki dilde HTML olarak render edip metni doğrula
         # (PDF ikilisinden metin okumak yerine).
-        for dil, beklenen in (("tr", ["SATIŞ TEKLİFİ", "FOB İZMİR", "Liste Fiyatı", "40&#x27; HQ KONTEYNER"]),
-                              ("en", ["QUOTATION", "FOB Izmir", "List Price", "40&#x27; HQ Container"])):
+        for dil, beklenen in (("tr", ["SATIŞ TEKLİFİ", "FOB İZMİR", "Fiyatlara", "40&#x27; HQ KONTEYNER",
+                                      "navlunu dahildir"]),
+                              ("en", ["QUOTATION", "FOB Izmir", "Prices include freight for",
+                                     "40&#x27; HQ Container"])):
             html = render_to_string("core/satis_teklif_pdf.html", {
                 "ts": ts, "kalemler": list(ts.kalemler.filter(silindi=False).select_related("stok")),
                 "dil": dil, "E": _PDF_ETIKET[dil], "navlun_var": True, "hazirlayan": "Test",
