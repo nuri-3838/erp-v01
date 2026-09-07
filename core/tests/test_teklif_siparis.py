@@ -1,10 +1,11 @@
 """Teklif & Sipariş — model + servis + view: liste/yeni/düzenle/iptal/görüntüle +
 teklif→sipariş/sipariş→fatura dönüşümü + durum akışı (Taslak→Onaylı) + otomatik
 (müteselsil) belge no + PDF."""
+import tempfile
 from decimal import Decimal
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.models import Birim, Cari, HesapPlani, KdvOrani, Kategori, Stok
@@ -477,6 +478,35 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         r = self.client.get(reverse("core:teklif_siparis_pdf", args=[t.pk]))
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertEqual(r.content[:5], b"%PDF-")
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_pdf_satis_urunu_teknik_ozellikleri_ve_gorseli_iceriyor(self):
+        import io
+
+        import datetime
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        from core.services.teklif_siparis import teklif_siparis_olustur
+
+        buf = io.BytesIO()
+        Image.new("RGB", (40, 40), (200, 30, 30)).save(buf, "PNG")
+        gorselli = Stok.objects.create(
+            kod="S6", ad="MERDİVEN X", kategori=self.kat, uretim_birimi=self.birim,
+            fatura_birimi=self.birim, satis_urunu=True, model_kodu="A21",
+            basamak_sayisi=3, yukseklik=Decimal("120.5"), agirlik=Decimal("8.20"),
+            gorsel=SimpleUploadedFile("x.png", buf.getvalue(), content_type="image/png"),
+            created_by=self.yon, updated_by=self.yon)
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 7, 19),
+            satirlar=[{"stok_id": gorselli.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
+        self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content[:5], b"%PDF-")
 
     def test_pdf_yetkisiz_403(self):

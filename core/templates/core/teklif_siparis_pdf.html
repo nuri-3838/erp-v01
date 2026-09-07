@@ -46,6 +46,22 @@
   .imza .cizgi { border-top: 1px solid #15294d; margin: 0 6px 7px; }
   .imza .rol { font-weight: 700; color: #15294d; font-size: 11px; }
   .imza .as { font-size: 9px; color: #9ca3af; }
+  .teknik-baslik { font-size: 13px; font-weight: 800; color: #15294d; text-transform: uppercase;
+    letter-spacing: .5px; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #e6eaf1; }
+  .teknik-kart { display: flex; gap: 14px; border: 1px solid #e3e8f0; border-radius: 10px;
+    padding: 12px; margin-bottom: 10px; page-break-inside: avoid; }
+  .teknik-gorsel { width: 96px; height: 96px; border-radius: 8px; background: #f4f6fa;
+    display: flex; align-items: center; justify-content: center; flex: 0 0 auto; overflow: hidden; }
+  .teknik-gorsel img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .teknik-yer { font-size: 28px; color: #c3cbd8; }
+  .teknik-govde { flex: 1; }
+  .teknik-ad { font-weight: 700; color: #15294d; font-size: 12px; margin-bottom: 8px; }
+  .teknik-model { display: inline-block; background: #f07c00; color: #fff; font-size: 9.5px;
+    font-weight: 800; padding: 1px 7px; border-radius: 5px; margin-right: 7px; font-variant-numeric: tabular-nums; }
+  .teknik-grid { display: flex; flex-wrap: wrap; }
+  .teknik-grid .ts { width: 33%; margin-bottom: 6px; }
+  .teknik-grid .et { display: block; font-size: 8px; text-transform: uppercase; letter-spacing: .4px; color: #9ca3af; }
+  .teknik-grid .dg { display: block; font-weight: 700; color: #1c2533; font-size: 10.5px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -112,6 +128,35 @@
         <td colspan="3" class="sag mono">{{ ts.odenecek|tr_para }} {{ ts.para_birimi }}</td></tr>
     </tfoot>
   </table>
+
+  {% if teknik_kalemler %}
+  <div class="teknik-baslik">Ürün Detayları</div>
+  {% for k in teknik_kalemler %}
+    <div class="teknik-kart">
+      <div class="teknik-gorsel">
+        {% if k.gorsel_b64 %}<img src="data:image/webp;base64,{{ k.gorsel_b64 }}" alt="">{% else %}<div class="teknik-yer">📦</div>{% endif %}
+      </div>
+      <div class="teknik-govde">
+        <div class="teknik-ad">
+          {% if k.stok.model_kodu %}<span class="teknik-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}
+        </div>
+        <div class="teknik-grid">
+          {% if k.stok.basamak_sayisi is not None %}<div class="ts"><span class="et">Basamak Sayısı</span><span class="dg">{{ k.stok.basamak_sayisi }}</span></div>{% endif %}
+          {% if k.stok.yukseklik is not None %}<div class="ts"><span class="et">Yükseklik</span><span class="dg">{{ k.stok.yukseklik|tr_kur:1 }} cm</span></div>{% endif %}
+          {% if k.stok.acik_derinlik is not None %}<div class="ts"><span class="et">Açık Derinlik</span><span class="dg">{{ k.stok.acik_derinlik|tr_kur:1 }} cm</span></div>{% endif %}
+          {% if k.stok.taban_genisligi is not None %}<div class="ts"><span class="et">Taban Genişliği</span><span class="dg">{{ k.stok.taban_genisligi|tr_kur:1 }} cm</span></div>{% endif %}
+          {% if k.stok.kapali_boy is not None %}<div class="ts"><span class="et">Kapalı Boy</span><span class="dg">{{ k.stok.kapali_boy|tr_kur:1 }} cm</span></div>{% endif %}
+          {% if k.stok.agirlik is not None %}<div class="ts"><span class="et">Ağırlık</span><span class="dg">{{ k.stok.agirlik|tr_kur:2 }} kg</span></div>{% endif %}
+          {% if k.stok.azami_yuk is not None %}<div class="ts"><span class="et">Azami Yük</span><span class="dg">{{ k.stok.azami_yuk|tr_kur:2 }} kg</span></div>{% endif %}
+          {% if k.stok.cbm is not None %}<div class="ts"><span class="et">CBM</span><span class="dg">{{ k.stok.cbm|tr_kur:3 }} m³</span></div>{% endif %}
+          {% if k.stok.yukleme_20dc is not None %}<div class="ts"><span class="et">20' DC</span><span class="dg">{{ k.stok.yukleme_20dc }} adet</span></div>{% endif %}
+          {% if k.stok.yukleme_40hq is not None %}<div class="ts"><span class="et">40' HQ</span><span class="dg">{{ k.stok.yukleme_40hq }} adet</span></div>{% endif %}
+          {% if k.stok.yukleme_tir is not None %}<div class="ts"><span class="et">TIR</span><span class="dg">{{ k.stok.yukleme_tir }} adet</span></div>{% endif %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+  {% endif %}
 
   <div class="ozet">
     <div class="kart toplam">

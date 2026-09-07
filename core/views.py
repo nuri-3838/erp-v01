@@ -2167,8 +2167,17 @@ def teklif_siparis_pdf(request, pk):
     from weasyprint import HTML
 
     ts = get_object_or_404(TeklifSiparis.objects.select_related("cari"), pk=pk)
-    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat")
-    ctx = {"ts": ts, "kalemler": kalemler}
+    kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat"))
+    for k in kalemler:
+        k.gorsel_b64 = None
+        if k.stok.satis_urunu and k.stok.gorsel:
+            try:
+                with k.stok.gorsel.open("rb") as f:
+                    k.gorsel_b64 = base64.b64encode(f.read()).decode("ascii")
+            except (OSError, ValueError):
+                pass
+    teknik_kalemler = [k for k in kalemler if k.stok.satis_urunu]
+    ctx = {"ts": ts, "kalemler": kalemler, "teknik_kalemler": teknik_kalemler}
     logo_yol = finders.find("core/img/semta-logo.png")
     if logo_yol:
         with open(logo_yol, "rb") as f:
