@@ -200,6 +200,33 @@
       <p class="yardim">Yalnız Satış işaretliyken doldurun — müşteri tekliflerinde ve
         konteyner/TIR yükleme hesaplarında kullanılır.</p>
 
+      <h3 class="bolum-baslik" style="font-size:.95rem;margin-top:1.3rem"><span class="emoji">💰</span>Satış Fiyat Listesi</h3>
+      <div class="izgara-3">
+        <div class="alan">
+          <label for="{{ form.fiyat_try.id_for_label }}">Satış Fiyatı (TRY)</label>
+          {{ form.fiyat_try }}
+          {% for e in form.fiyat_try.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.fiyat_usd.id_for_label }}">Satış Fiyatı (USD)</label>
+          {{ form.fiyat_usd }}
+          {% for e in form.fiyat_usd.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.fiyat_eur.id_for_label }}">Satış Fiyatı (EUR)</label>
+          {{ form.fiyat_eur }}
+          {% for e in form.fiyat_eur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.fiyat_gbp.id_for_label }}">Satış Fiyatı (GBP)</label>
+          {{ form.fiyat_gbp }}
+          {% for e in form.fiyat_gbp.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <p class="yardim">Boş bırakılan para birimi için Satış Teklifi ekranında fiyat
+        tanımsız görünür (elle girilebilir). Teklif hangi para biriminde açılırsa buradaki
+        aynı para biriminin fiyatı otomatik gelir.</p>
+
       <h3 class="bolum-baslik" style="font-size:.95rem;margin-top:1.3rem"><span class="emoji">🖼️</span>Ürün Görseli</h3>
       <div class="gorsel-alan">
         <div class="gorsel-onizleme">

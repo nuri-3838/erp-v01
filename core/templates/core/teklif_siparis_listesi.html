@@ -74,11 +74,21 @@
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>
           {% if k.donustu %}<span class="rozet rozet-notr">{{ donustu_etiket }}</span>{% endif %}
           {% if k.fatura_id %}<span class="rozet rozet-notr">🧾 Faturaya Dönüştü</span>{% endif %}</td>
+        {% if k.belge_tur == "TEKLIF" and k.yon == "SATIS" %}
+        <td class="sag mono">{{ k.kalem_sayisi }} ürün</td>
+        {% else %}
         <td class="sag mono">{{ k.odenecek|tr_kur:2 }} {{ k.para_birimi }}</td>
+        {% endif %}
         <td><span class="islem-bag">
           <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>
           <a href="{% url 'core:teklif_siparis_pdf' k.pk %}" target="_blank">PDF</a>
-          {% if k.durum == "TASLAK" %}<a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>{% endif %}
+          {% if k.durum == "TASLAK" %}
+            {% if k.belge_tur == "TEKLIF" and k.yon == "SATIS" %}
+            <a href="{% url 'core:satis_teklif_duzenle' k.pk %}">Düzenle</a>
+            {% else %}
+            <a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>
+            {% endif %}
+          {% endif %}
           <form method="post" action="{% url 'core:teklif_siparis_iptal' k.pk %}" onsubmit="return confirm('{{ k.get_belge_tur_display }} iptal edilsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
         </span></td>

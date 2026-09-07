@@ -163,6 +163,16 @@
         <div class="satir"><span class="et">TIR Yükleme</span>
           <span class="dg">{% if stok.yukleme_tir is not None %}<span class="mono">{{ stok.yukleme_tir }}</span> adet{% else %}—{% endif %}</span></div>
       </div>
+
+      <h3 class="bolum-baslik" style="font-size:.95rem;margin-top:1.1rem"><span class="emoji">💰</span>Satış Fiyat Listesi</h3>
+      <div class="kv">
+        {% for f in fiyatlar %}
+        <div class="satir"><span class="et">{{ f.para_birimi }}</span>
+          <span class="dg"><span class="mono">{{ f.fiyat|tr_kur:4 }}</span> {{ f.para_birimi }}</span></div>
+        {% empty %}
+        <div class="satir"><span class="et">Fiyat</span><span class="dg pasif">Henüz tanımlı değil</span></div>
+        {% endfor %}
+      </div>
       {% endif %}
 
       <h2 class="bolum-baslik" style="margin-top:1.6rem"><span class="emoji">🧾</span>Muhasebe Hesabı Haritası

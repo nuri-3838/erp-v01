@@ -29,6 +29,19 @@
   .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
   .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
   .kv .dg { font-weight:600; font-size:.98rem; }
+  .fk-izgara { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:.9rem; }
+  .fk-kart { display:flex; gap:.9rem; border:1px solid var(--cizgi); border-radius:16px; padding:.9rem; background:rgba(255,255,255,.55); }
+  .fk-gorsel { width:56px; height:56px; border-radius:12px; background:#f4f6fa; display:grid; place-items:center;
+    font-size:1.5rem; flex:0 0 auto; overflow:hidden; }
+  .fk-gorsel img { max-width:100%; max-height:100%; object-fit:contain; }
+  .fk-govde { flex:1; min-width:0; }
+  .fk-ad { font-weight:700; color:var(--lacivert); margin-bottom:.5rem; }
+  .fk-model { display:inline-block; background:var(--turuncu); color:#fff; font-size:.72rem; font-weight:800;
+    padding:.1rem .5rem; border-radius:6px; margin-right:.4rem; }
+  .fk-fiyat { display:flex; flex-direction:column; gap:.25rem; }
+  .fk-satir { display:flex; justify-content:space-between; gap:.6rem; font-size:.86rem; }
+  .fk-satir .et { color:var(--metin-soluk); }
+  .fk-satir.fk-net .dg { font-weight:800; color:var(--lacivert); }
 </style>
 
 <div class="detay-kapsa">
@@ -72,7 +85,11 @@
         <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
         {% endif %}
         {% if ts.durum == "TASLAK" %}
-        <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">✏️ Düzenle</a>
+          {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
+          <a class="dugme" href="{% url 'core:satis_teklif_duzenle' ts.pk %}">✏️ Düzenle</a>
+          {% else %}
+          <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">✏️ Düzenle</a>
+          {% endif %}
         {% endif %}
         <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');" style="margin:0">
           {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
@@ -96,6 +113,12 @@
         <span class="dg">{% if ts.depo %}<span class="mono">{{ ts.depo.kod }}</span> {{ ts.depo.ad }}{% else %}—{% endif %}</span></div>
       <div class="satir"><span class="et">İrsaliye No</span>
         <span class="dg">{% if ts.irsaliye_no %}{{ ts.irsaliye_no }}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
+      {% endif %}
+      {% if ts.teslim_sekli %}
+      <div class="satir"><span class="et">Teslim / Nakliye / Yükleme Şekli</span><span class="dg">{{ ts.teslim_sekli }}</span></div>
+      {% endif %}
+      {% if ts.odeme_kosulu %}
+      <div class="satir"><span class="et">Ödeme Koşulu</span><span class="dg">{{ ts.odeme_kosulu }}</span></div>
       {% endif %}
       {% if ts.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ ts.aciklama }}</span></div>{% endif %}
       {% if ts.kaynak_teklif %}
@@ -121,6 +144,29 @@
     </div>
   </section>
 
+  {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📤</span>Ürün Fiyat Listesi</h2>
+    <div class="fk-izgara">
+      {% for k in kalemler %}
+      <div class="fk-kart">
+        <div class="fk-gorsel">{% if k.stok.gorsel %}<img src="{{ k.stok.gorsel.url }}" alt="">{% else %}📦{% endif %}</div>
+        <div class="fk-govde">
+          <div class="fk-ad">{% if k.stok.model_kodu %}<span class="fk-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}</div>
+          <div class="fk-fiyat">
+            <div class="fk-satir"><span class="et">Liste Fiyatı</span><span class="dg mono">{{ k.birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+            {% if k.iskonto_yuzdesi %}<div class="fk-satir"><span class="et">İskonto</span><span class="dg mono">%{{ k.iskonto_yuzdesi|tr_kur:2 }}</span></div>{% endif %}
+            <div class="fk-satir fk-net"><span class="et">Net Fiyat</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+            {% if k.kdv %}<div class="fk-satir"><span class="et">KDV</span><span class="dg mono">%{{ k.kdv.oran|tr_kur:0 }}</span></div>{% endif %}
+          </div>
+        </div>
+      </div>
+      {% empty %}
+      <p class="yardim">Bu teklife dahil ürün yok.</p>
+      {% endfor %}
+    </div>
+  </section>
+  {% else %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📦</span>Kalemler</h2>
     {% if ts.miktar_toplam %}
@@ -152,5 +198,6 @@
     </table>
     </div>
   </section>
+  {% endif %}
 </div>
 {% endblock %}

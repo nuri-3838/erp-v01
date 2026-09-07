@@ -442,7 +442,8 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
         self.assertContains(d0, reverse("core:teklif_siparis_onayla", args=[t.pk]))
         self.assertContains(d0, "Taslak")
-        self.assertContains(d0, reverse("core:teklif_siparis_duzenle", args=[t.pk]))
+        # t belge_tur=TEKLIF/yon=SATIS -> Düzenle artık bağımsız satis_teklif_duzenle ekranına gider.
+        self.assertContains(d0, reverse("core:satis_teklif_duzenle", args=[t.pk]))
         r = self.client.post(reverse("core:teklif_siparis_onayla", args=[t.pk]))
         self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[t.pk]))
         t.refresh_from_db()
@@ -450,7 +451,7 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
         self.assertContains(d1, reverse("core:teklif_siparis_onayi_geri_al", args=[t.pk]))
         self.assertContains(d1, "Onaylı")
-        self.assertNotContains(d1, reverse("core:teklif_siparis_duzenle", args=[t.pk]))
+        self.assertNotContains(d1, reverse("core:satis_teklif_duzenle", args=[t.pk]))
         r2 = self.client.post(reverse("core:teklif_siparis_onayi_geri_al", args=[t.pk]))
         self.assertRedirects(r2, reverse("core:teklif_siparis_detay", args=[t.pk]))
         t.refresh_from_db()
@@ -461,11 +462,18 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         t = self._teklif()
         teklif_siparis_onayla(t, kullanici=self.yon)
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:teklif_siparis_duzenle", args=[t.pk]), {
+        # t belge_tur=TEKLIF/yon=SATIS -> düzenleme artık bağımsız satis_teklif_duzenle
+        # ekranından yapılır; formun stok alanı yalnız satis_urunu=True kabul eder.
+        satis_stok = Stok.objects.create(
+            kod="S5S", ad="ÜRÜN D SATIŞ", kategori=self.kat, uretim_birimi=self.birim,
+            fatura_birimi=self.birim, satis_urunu=True,
+            created_by=self.yon, updated_by=self.yon)
+        r = self.client.post(reverse("core:satis_teklif_duzenle", args=[t.pk]), {
             "cari": self.cari.pk, "tarih": "2026-07-19", "para_birimi": "TRY",
-            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1",
-            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
-            "form-0-stok": self.stok.pk, "form-0-miktar": "9", "form-0-birim_fiyat": "9",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": satis_stok.pk, "form-0-dahil": "on",
+            "form-0-iskonto_yuzdesi": "0", "form-0-birim_fiyat": "9",
         })
         self.assertEqual(r.status_code, 200)                       # redirect değil; form hatalı geri döner
         self.assertContains(r, "Onaylı belge düzenlenemez")
@@ -559,7 +567,7 @@ class TeklifSiparisViewTest(TestCase):
                                        uretim_birimi=self.birim, fatura_birimi=self.birim,
                                        created_by=self.yon, updated_by=self.yon)
         ts = teklif_siparis_olustur(
-            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": stok_tev.pk, "miktar": "2", "birim_fiyat": "100"}],
             kullanici=self.yon)
@@ -626,10 +634,11 @@ class TeklifSiparisViewTest(TestCase):
     def test_her_4_ekranda_olustur_ve_detay(self):
         from core.models import TeklifSiparis
         self.client.force_login(self.yon)
+        # satis_teklifleri (TEKLIF/SATIS) burada YOK — artık bağımsız bir ekranı var
+        # (satis_teklif_ekle, miktar sormaz), bkz. test_satis_teklif.py.
         kombinasyonlar = [
             ("satinalma_teklifleri", "TEKLIF", "ALIS"),
             ("satinalma_siparisleri", "SIPARIS", "ALIS"),
-            ("satis_teklifleri", "TEKLIF", "SATIS"),
             ("satis_siparisleri", "SIPARIS", "SATIS"),
         ]
         for ekran, belge_tur, yon in kombinasyonlar:
@@ -675,10 +684,11 @@ class TeklifSiparisViewTest(TestCase):
         r = self.client.post(reverse("core:satis_teklif_ekle"), {
             "cari": self.cari.pk, "tarih": "2026-06-28", "para_birimi": "TRY",
             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
-            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
-            "form-0-stok": "", "form-0-miktar": "", "form-0-birim_fiyat": "",
+            "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": "", "form-0-birim_fiyat": "",
         })
-        self.assertEqual(r.status_code, 200)                     # formset min_num -> hata, kalır
+        self.assertEqual(r.status_code, 200)                     # hiçbir ürün dahil değil -> hata, kalır
+        self.assertContains(r, "En az bir ürün teklife dahil edilmelidir")
 
     def test_menude_gorunur(self):
         self.client.force_login(self.yon)
@@ -692,7 +702,7 @@ class TeklifSiparisViewTest(TestCase):
         from core.models import TeklifSiparis
         from core.services.teklif_siparis import teklif_siparis_olustur
         ts = teklif_siparis_olustur(
-            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.cari.pk,
             tarih=__import__("datetime").date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)

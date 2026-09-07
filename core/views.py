@@ -23,7 +23,7 @@ from core.forms import (
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
-    TeklifSiparisForm, TeklifSiparisKalemForm,
+    TeklifSiparisForm, TeklifSiparisKalemForm, SatisTeklifBaslikForm, SatisTeklifKalemForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
@@ -696,6 +696,8 @@ def stok_ekle(request):
                     yukleme_40hq=cd.get("yukleme_40hq"),
                     yukleme_tir=cd.get("yukleme_tir"),
                     gorsel=gorsel_dosya,
+                    fiyat_try=cd.get("fiyat_try"), fiyat_usd=cd.get("fiyat_usd"),
+                    fiyat_eur=cd.get("fiyat_eur"), fiyat_gbp=cd.get("fiyat_gbp"),
                     kullanici=request.user)
                 messages.success(request, f"Stok eklendi: {s.kod} — {s.ad}")
                 return redirect("core:stoklar")
@@ -741,12 +743,15 @@ def stok_duzenle(request, pk):
                     yukleme_40hq=cd.get("yukleme_40hq"),
                     yukleme_tir=cd.get("yukleme_tir"),
                     gorsel=gorsel_dosya,
+                    fiyat_try=cd.get("fiyat_try"), fiyat_usd=cd.get("fiyat_usd"),
+                    fiyat_eur=cd.get("fiyat_eur"), fiyat_gbp=cd.get("fiyat_gbp"),
                     kullanici=request.user)
                 messages.success(request, "Stok güncellendi.")
                 return redirect("core:stoklar")
             except stok_servis.StokHatasi as e:
                 form.add_error(None, str(e))
     else:
+        fiyatlar = {f.para_birimi: f.fiyat for f in stok.fiyatlar.filter(silindi=False)}
         form = StokForm(duzenle=True, initial={
             "ad": stok.ad, "uretim_birimi": stok.uretim_birimi_id,
             "fatura_birimi": stok.fatura_birimi_id, "cevirici": stok.cevirici,
@@ -760,7 +765,9 @@ def stok_duzenle(request, pk):
             "taban_genisligi": stok.taban_genisligi, "kapali_boy": stok.kapali_boy,
             "agirlik": stok.agirlik, "azami_yuk": stok.azami_yuk, "cbm": stok.cbm,
             "yukleme_20dc": stok.yukleme_20dc, "yukleme_40hq": stok.yukleme_40hq,
-            "yukleme_tir": stok.yukleme_tir})
+            "yukleme_tir": stok.yukleme_tir,
+            "fiyat_try": fiyatlar.get("TRY"), "fiyat_usd": fiyatlar.get("USD"),
+            "fiyat_eur": fiyatlar.get("EUR"), "fiyat_gbp": fiyatlar.get("GBP")})
     return render(request, "core/stok_form.html",
                   {"form": form, "baslik": "Stok Düzenle", "duzenlenen": stok})
 
@@ -814,6 +821,7 @@ def stok_detay(request, pk):
         "eldeki": hareket_servis.eldeki_miktar(stok),
         "depo_bakiye": hareket_servis.depo_bazinda_eldeki(stok),
         "hareketler": hareket_servis.stok_hareketleri(stok)[:100],
+        "fiyatlar": stok.fiyatlar.filter(silindi=False).order_by("para_birimi"),
     })
 
 
@@ -1824,6 +1832,10 @@ _TS_EMOJI = {
 }
 TeklifSiparisKalemFormSet = formset_factory(
     TeklifSiparisKalemForm, extra=0, min_num=1, validate_min=True)
+# Satış Teklifi: satır sayısı GET'te satış ürünü kataloğunun boyutuna sabitlenir (bkz.
+# satis_teklif_ekle) — min_num burada 0 (formset başlangıçta zaten dolu; "hiç ürün yok"
+# durumu ayrıca view'de kontrol edilir).
+SatisTeklifKalemFormSet = formset_factory(SatisTeklifKalemForm, extra=0)
 
 
 def _ts_liste(request, belge_tur, yon, baslik, emoji):
@@ -1842,6 +1854,7 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         donusen_var = TeklifSiparis.objects.filter(pk=-1)   # her zaman boş — geçerli pk asla negatif değil
     kayitlar = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
                 .annotate(donustu=Exists(donusen_var))
+                .annotate(kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)))
                 .prefetch_related("kalemler__kdv", "kalemler__tevkifat"))
     if ara:
         buyuk = buyuk_harf_tr(ara)
@@ -1901,6 +1914,31 @@ def _stok_meta():
       .select_related("kdv", "tevkifat", "uretim_birimi", "fatura_birimi")}
 
 
+def _satis_teklif_stok_meta():
+    """Satış Teklifi ekranı için: satis_urunu=True her stoğun görsel/model kodu/KDV oranı
+    + PB başına aktif satış fiyatı (yoksa None -> JS'te 'fiyat tanımlı değil' uyarısı).
+    (ürünler, meta) döner — ürünler formset'in başlangıç satırlarını, meta JS'in fiyat/
+    görsel verisini besler."""
+    urunler = list(stok_servis.satis_urunleri_fiyatlariyla())
+    meta = {}
+    for s in urunler:
+        fiyatlar = {f.para_birimi: float(f.fiyat) for f in s.fiyatlar.all()}
+        meta[str(s.pk)] = {
+            "kod": s.kod, "ad": s.ad, "modelKodu": s.model_kodu,
+            "gorselUrl": s.gorsel.url if s.gorsel else None,
+            "kdv": float(s.kdv.oran) if s.kdv_id else 0,
+            "fiyatlar": {pb: fiyatlar.get(pb) for pb in ("TRY", "USD", "EUR", "GBP")},
+        }
+    return urunler, meta
+
+
+def _cari_meta():
+    """Cari başına para birimi + varsayılan iskonto — cari seçilince JS otomatik uygular
+    (elle değiştirilebilir), bkz. satis_teklif_ekle.html."""
+    return {str(c.pk): {"pb": c.para_birimi, "iskonto": float(c.iskonto_yuzdesi)}
+            for c in Cari.objects.filter(silindi=False)}
+
+
 def _ts_ekle(request, belge_tur, yon, baslik, emoji):
     ekran = _TS_EKRAN[(belge_tur, yon)]
     if request.method == "POST":
@@ -1955,8 +1993,107 @@ def satinalma_irsaliye_ekle(request):
 
 @ekran_gerekli("satis_teklifleri")
 def satis_teklif_ekle(request):
-    return _ts_ekle(request, TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS,
-                    "Yeni Satış Teklifi", "📤")
+    """Satış Teklifi — bağımsız ekran (paylaşımlı ``_ts_ekle``'yi ÇAĞIRMAZ). Sayfa açılırken
+    TÜM satış ürünleri (satis_urunu=True) formsete önceden dolu gelir; miktar YOK (her
+    zaman 1 birim fiyatı iletilir); cari seçilince PB/iskonto JS ile otomatik uygulanır
+    (bkz. satis_teklif_ekle.html)."""
+    urunler, stok_meta = _satis_teklif_stok_meta()
+    if request.method == "POST":
+        bform = SatisTeklifBaslikForm(request.POST)
+        formset = SatisTeklifKalemFormSet(request.POST)
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk, "miktar": Decimal("1"),
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                for f in formset if f.dahil_mi()
+            ]
+            if not satirlar:
+                bform.add_error(None, "En az bir ürün teklife dahil edilmelidir.")
+            else:
+                try:
+                    ts = teklif_siparis_servis.teklif_siparis_olustur(
+                        belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
+                        cari_id=bform.cleaned_data["cari"].pk, tarih=bform.cleaned_data["tarih"],
+                        gecerlilik_teslim_tarihi=bform.cleaned_data.get(
+                            "gecerlilik_teslim_tarihi"),
+                        para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
+                        aciklama=bform.cleaned_data.get("aciklama", ""),
+                        teslim_sekli=bform.cleaned_data.get("teslim_sekli", ""),
+                        odeme_kosulu=bform.cleaned_data.get("odeme_kosulu", ""),
+                        satirlar=satirlar, kullanici=request.user)
+                    messages.success(request, f"Satış Teklifi kaydedildi: {ts.belge_no}")
+                    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+                except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                    bform.add_error(None, str(e))
+    else:
+        bform = SatisTeklifBaslikForm()
+        formset = SatisTeklifKalemFormSet(initial=[
+            {"stok": s.pk, "dahil": True, "iskonto_yuzdesi": Decimal("0"),
+             "birim_fiyat": next(
+                 (f.fiyat for f in s.fiyatlar.all() if f.para_birimi == "TRY"), None)}
+            for s in urunler])
+    return render(request, "core/satis_teklif_ekle.html", {
+        "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(),
+        "iptal_url": reverse("core:satis_teklifleri")})
+
+
+@ekran_gerekli("satis_teklifleri")
+def satis_teklif_duzenle(request, pk):
+    """Satış Teklifi düzenle — ``satis_teklif_ekle`` ile simetrik (paylaşımlı
+    ``teklif_siparis_duzenle``'a hiç dokunmaz). Yalnız SATIŞ+TEKLİF belgeleri kabul eder
+    (başka bir kombinasyonun pk'sı 404 verir — URL'den doğrudan erişim de güvenli)."""
+    ts = get_object_or_404(
+        TeklifSiparis, pk=pk, silindi=False,
+        belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS)
+    urunler, stok_meta = _satis_teklif_stok_meta()
+    if request.method == "POST":
+        bform = SatisTeklifBaslikForm(request.POST)
+        formset = SatisTeklifKalemFormSet(request.POST)
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk, "miktar": Decimal("1"),
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                for f in formset if f.dahil_mi()
+            ]
+            if not satirlar:
+                bform.add_error(None, "En az bir ürün teklife dahil edilmelidir.")
+            else:
+                try:
+                    teklif_siparis_servis.teklif_siparis_guncelle(
+                        ts, cari_id=bform.cleaned_data["cari"].pk,
+                        tarih=bform.cleaned_data["tarih"],
+                        gecerlilik_teslim_tarihi=bform.cleaned_data.get(
+                            "gecerlilik_teslim_tarihi"),
+                        para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
+                        aciklama=bform.cleaned_data.get("aciklama", ""),
+                        teslim_sekli=bform.cleaned_data.get("teslim_sekli", ""),
+                        odeme_kosulu=bform.cleaned_data.get("odeme_kosulu", ""),
+                        satirlar=satirlar, kullanici=request.user)
+                    messages.success(request, "Satış Teklifi güncellendi.")
+                    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+                except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                    bform.add_error(None, str(e))
+    else:
+        bform = SatisTeklifBaslikForm(initial={
+            "cari": ts.cari_id, "tarih": ts.tarih,
+            "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
+            "para_birimi": ts.para_birimi, "aciklama": ts.aciklama,
+            "teslim_sekli": ts.teslim_sekli, "odeme_kosulu": ts.odeme_kosulu})
+        mevcut = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
+        formset = SatisTeklifKalemFormSet(initial=[
+            {"stok": s.pk, "dahil": s.pk in mevcut,
+             "iskonto_yuzdesi": (mevcut[s.pk].iskonto_yuzdesi if s.pk in mevcut
+                                 else Decimal("0")),
+             "birim_fiyat": (mevcut[s.pk].birim_fiyat if s.pk in mevcut else next(
+                 (f.fiyat for f in s.fiyatlar.all() if f.para_birimi == ts.para_birimi), None))}
+            for s in urunler])
+    return render(request, "core/satis_teklif_ekle.html", {
+        "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "duzenleme": True,
+        "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
 
 @ekran_gerekli("satis_siparisleri")
@@ -2076,6 +2213,12 @@ def siparis_faturaya_cevir(request, pk):
                         "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
 def teklif_siparis_duzenle(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    # Satış Teklifi artık bağımsız bir ekranla düzenlenir (iskonto/teslim şekli/ödeme
+    # koşulu gibi bu eski paylaşımlı formun bilmediği alanları var — buradan geçilirse
+    # sessizce sıfırlanırlardı). Eski URL'e doğrudan gelen istek de güvenle yönlendirilir.
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+            and ts.yon == TeklifSiparis.Yon.SATIS):
+        return redirect("core:satis_teklif_duzenle", pk=ts.pk)
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = _TS_EMOJI[ekran]
     if request.method == "POST":
@@ -2177,7 +2320,10 @@ def teklif_siparis_pdf(request, pk):
             except (OSError, ValueError):
                 pass
     teknik_kalemler = [k for k in kalemler if k.stok.satis_urunu]
-    ctx = {"ts": ts, "kalemler": kalemler, "teknik_kalemler": teknik_kalemler}
+    sat_teklif = (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+                 and ts.yon == TeklifSiparis.Yon.SATIS)
+    ctx = {"ts": ts, "kalemler": kalemler, "teknik_kalemler": teknik_kalemler,
+           "sat_teklif": sat_teklif}
     logo_yol = finders.find("core/img/semta-logo.png")
     if logo_yol:
         with open(logo_yol, "rb") as f:

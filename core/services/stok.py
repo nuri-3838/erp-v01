@@ -18,10 +18,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Birim, Cari, Kategori, KdvOrani, Stok, TevkifatOrani
+from core.models import Birim, Cari, Kategori, KdvOrani, Stok, StokFiyat, TevkifatOrani
 from core.sayi import SayiHatasi, parse_tr
 
 
@@ -187,6 +189,50 @@ def _satis_alanlarini_coz(satis_urunu, *, model_kodu="", basamak_sayisi=None,
     }
 
 
+def _fiyat_listesini_coz(satis_urunu, *, fiyat_try=None, fiyat_usd=None,
+                         fiyat_eur=None, fiyat_gbp=None):
+    if not satis_urunu:
+        return {"TRY": None, "USD": None, "EUR": None, "GBP": None}
+    return {
+        "TRY": _tutar_opsiyonel(fiyat_try, "TRY satış fiyatı"),
+        "USD": _tutar_opsiyonel(fiyat_usd, "USD satış fiyatı"),
+        "EUR": _tutar_opsiyonel(fiyat_eur, "EUR satış fiyatı"),
+        "GBP": _tutar_opsiyonel(fiyat_gbp, "GBP satış fiyatı"),
+    }
+
+
+def _fiyat_listesini_yaz(stok, fiyatlar, kullanici=None):
+    """``fiyatlar``: {"TRY": Decimal|None, ...}. None -> aktif satır varsa soft-delete;
+    sayı -> upsert (fiziksel silme yok, diğer satış alanlarıyla aynı invariant)."""
+    mevcutlar = {f.para_birimi: f for f in stok.fiyatlar.filter(silindi=False)}
+    for pb, deger in fiyatlar.items():
+        mevcut = mevcutlar.get(pb)
+        if deger is None:
+            if mevcut is not None:
+                mevcut.silindi = True
+                mevcut.silindi_at = timezone.now()
+                mevcut.updated_by = kullanici
+                mevcut.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+        elif mevcut is not None:
+            if mevcut.fiyat != deger:
+                mevcut.fiyat = deger
+                mevcut.updated_by = kullanici
+                mevcut.save(update_fields=["fiyat", "updated_by", "updated_at"])
+        else:
+            StokFiyat.objects.create(stok=stok, para_birimi=pb, fiyat=deger,
+                                     created_by=kullanici, updated_by=kullanici)
+
+
+def satis_urunleri_fiyatlariyla():
+    """satis_urunu=True stoklar + aktif fiyat listesi (prefetch) — Satış Teklifi ekranı
+    için: her stok, ``.fiyatlar.all()`` üzerinden PB başına en fazla bir aktif satır taşır."""
+    return (Stok.objects.filter(silindi=False, satis_urunu=True)
+            .select_related("kdv")
+            .prefetch_related(Prefetch("fiyatlar", queryset=StokFiyat.objects.filter(silindi=False)))
+            .order_by("kod"))
+
+
+@transaction.atomic
 def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  cevirici=Decimal("1"), kdv_id=None, tevkifat_id=None,
                  kritik_stok=Decimal("0"), tedarikci_id=None,
@@ -195,7 +241,8 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  model_kodu="", basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
                  taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                  cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
-                 gorsel=None, kullanici=None) -> Stok:
+                 gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
+                 kullanici=None) -> Stok:
     ad = _ad_dogrula(ad)
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
@@ -210,7 +257,10 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         yukseklik=yukseklik, acik_derinlik=acik_derinlik, taban_genisligi=taban_genisligi,
         kapali_boy=kapali_boy, agirlik=agirlik, azami_yuk=azami_yuk, cbm=cbm,
         yukleme_20dc=yukleme_20dc, yukleme_40hq=yukleme_40hq, yukleme_tir=yukleme_tir)
-    return Stok.objects.create(
+    fiyat_listesi = _fiyat_listesini_coz(
+        satis_urunu, fiyat_try=fiyat_try, fiyat_usd=fiyat_usd,
+        fiyat_eur=fiyat_eur, fiyat_gbp=fiyat_gbp)
+    stok = Stok.objects.create(
         kod=sonraki_stok_kodu(kategori), ad=ad, kategori=kategori,
         uretim_birimi=uretim, fatura_birimi=fatura,
         cevirici=_cevirici_dogrula(cevirici),
@@ -225,6 +275,8 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         created_by=kullanici, updated_by=kullanici,
         **satis_alanlari,
     )
+    _fiyat_listesini_yaz(stok, fiyat_listesi, kullanici)
+    return stok
 
 
 def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
@@ -232,8 +284,9 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
     (aynı kategoride sıradaki numarayı otomatik alır); ``ad`` sonuna " KOPYA"
     eklenir (hangisinin kopya olduğu ayırt edilsin diye) — kategori, birimler,
     çevirici, KDV/tevkifat, kritik stok, tedarikçi, alış fiyatı, ürün grubu,
-    satış/teklif alanları ve görsel aynen kopyalanır.
+    satış/teklif alanları, fiyat listesi ve görsel aynen kopyalanır.
     """
+    fiyatlar = {f.para_birimi: f.fiyat for f in stok.fiyatlar.filter(silindi=False)}
     return stok_olustur(
         ad=f"{stok.ad} KOPYA", kategori_id=stok.kategori_id,
         uretim_birimi_id=stok.uretim_birimi_id, fatura_birimi_id=stok.fatura_birimi_id,
@@ -248,9 +301,12 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
         agirlik=stok.agirlik, azami_yuk=stok.azami_yuk, cbm=stok.cbm,
         yukleme_20dc=stok.yukleme_20dc, yukleme_40hq=stok.yukleme_40hq,
         yukleme_tir=stok.yukleme_tir, gorsel=(stok.gorsel if stok.gorsel else None),
+        fiyat_try=fiyatlar.get("TRY"), fiyat_usd=fiyatlar.get("USD"),
+        fiyat_eur=fiyatlar.get("EUR"), fiyat_gbp=fiyatlar.get("GBP"),
         kullanici=kullanici)
 
 
+@transaction.atomic
 def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   cevirici, kdv_id=None, tevkifat_id=None,
                   kritik_stok=Decimal("0"), tedarikci_id=None,
@@ -259,10 +315,11 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   model_kodu="", basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
                   taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                   cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
-                  gorsel=None, kullanici=None) -> Stok:
-    """Ad, birimler, çevirici, vergi/stok/grup/teklif/görsel alanları güncellenir.
-    KOD ve KATEGORİ DEĞİŞMEZ. ``gorsel=None`` + Satış işaretliyse mevcut görsel
-    korunur (yeni dosya yüklenmedi demektir); Satış işareti kaldırılırsa görsel
+                  gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
+                  kullanici=None) -> Stok:
+    """Ad, birimler, çevirici, vergi/stok/grup/teklif/görsel/fiyat listesi alanları
+    güncellenir. KOD ve KATEGORİ DEĞİŞMEZ. ``gorsel=None`` + Satış işaretliyse mevcut
+    görsel korunur (yeni dosya yüklenmedi demektir); Satış işareti kaldırılırsa görsel
     de temizlenir (bkz. diğer satış/teklif alanları)."""
     if stok.silindi:
         raise StokHatasi("Silinmiş stok düzenlenemez.")
@@ -272,6 +329,9 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
         yukseklik=yukseklik, acik_derinlik=acik_derinlik, taban_genisligi=taban_genisligi,
         kapali_boy=kapali_boy, agirlik=agirlik, azami_yuk=azami_yuk, cbm=cbm,
         yukleme_20dc=yukleme_20dc, yukleme_40hq=yukleme_40hq, yukleme_tir=yukleme_tir)
+    fiyat_listesi = _fiyat_listesini_coz(
+        satis_urunu, fiyat_try=fiyat_try, fiyat_usd=fiyat_usd,
+        fiyat_eur=fiyat_eur, fiyat_gbp=fiyat_gbp)
     stok.ad = _ad_dogrula(ad)
     stok.uretim_birimi = _birim_coz(uretim_birimi_id, "Üretim birimi")
     stok.fatura_birimi = _birim_coz(fatura_birimi_id, "Fatura birimi")
@@ -299,6 +359,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
         "satinalma_urunu", "uretim_urunu", "satis_urunu",
         *_SATIS_ALAN_ADLARI, *_SATIS_METIN_ALAN_ADLARI,
         "gorsel", "updated_by", "updated_at"])
+    _fiyat_listesini_yaz(stok, fiyat_listesi, kullanici)
     return stok
 
 

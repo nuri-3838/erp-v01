@@ -591,6 +591,37 @@ class Stok(TemelModel):
         return f"{self.kod} {self.ad}"
 
 
+class StokFiyat(TemelModel):
+    """Stok satış fiyat listesi — bir stok için para birimi başına EN FAZLA bir aktif
+    satır (TRY/USD/EUR/GBP). Yalnız satis_urunu=True kartlarda anlamlı; satis_urunu
+    kapatılınca serviste tüm satırlar soft-delete edilir (diğer satış/teklif alanlarıyla
+    aynı invariant, bkz. core/services/stok.py). UI'da satır ekle/sil YOK — Stok formunda
+    4 sabit para birimi input'u, servis katmanı upsert/soft-delete eder.
+    """
+
+    stok = models.ForeignKey(Stok, verbose_name="stok", related_name="fiyatlar",
+                             on_delete=models.CASCADE)
+    para_birimi = models.CharField("para birimi", max_length=3,
+                                   choices=YevmiyeSatir.IslemPB.choices)
+    fiyat = models.DecimalField("satış fiyatı", max_digits=18, decimal_places=6)
+
+    class Meta:
+        db_table = "stok_fiyat"
+        verbose_name = "stok fiyatı"
+        verbose_name_plural = "stok fiyatları"
+        ordering = ["stok", "para_birimi"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["stok", "para_birimi"], condition=models.Q(silindi=False),
+                name="uq_stok_fiyat_stok_pb_aktif"),
+            models.CheckConstraint(condition=models.Q(fiyat__gte=0),
+                                   name="ck_stok_fiyat_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.stok_id}:{self.para_birimi}={self.fiyat}"
+
+
 # === CARİLER modülü — Ülke / Şehir (lokasyon master data) ===
 class Ulke(TemelModel):
     """ISO 3166-1 ülke. ``kod`` 2 harf (TR, DE…), silinmemişler arası benzersiz."""
@@ -1091,6 +1122,11 @@ class TeklifSiparis(TemelModel):
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
+    # Yalnız SATIŞ+TEKLİF ekranında doldurulur (serbest metin — yurt içi "Nakliye Dahil/Hariç"
+    # veya ihracat "FOB İzmir" gibi teslim/yükleme şekli bilgisi). Diğer belge türlerinde boş.
+    teslim_sekli = models.CharField("teslim / nakliye / yükleme şekli", max_length=300,
+                                    blank=True, default="")
+    odeme_kosulu = models.CharField("ödeme koşulu", max_length=300, blank=True, default="")
     # SIPARIS ise: hangi TEKLIF'ten dönüştürüldüğü (self-FK). Tek seferlik dönüşüm —
     # servis katmanı zaten dönüştürülmüş teklifi tekrar çevirmeyi engeller.
     kaynak_teklif = models.ForeignKey(
@@ -1176,6 +1212,9 @@ class TeklifSiparisKalem(TemelModel):
         on_delete=models.PROTECT)
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
     birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
+    # Yalnız SATIŞ+TEKLİF ekranında kullanılır (cariden otomatik gelir, satır bazlı elle
+    # değiştirilebilir). Default 0 -> diğer belge türlerinde tutar hesabı DEĞİŞMEZ.
+    iskonto_yuzdesi = models.DecimalField("iskonto %", max_digits=5, decimal_places=2, default=0)
     kdv = models.ForeignKey(
         KdvOrani, verbose_name="KDV oranı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="teklif_siparis_kalemleri")
@@ -1194,15 +1233,29 @@ class TeklifSiparisKalem(TemelModel):
                                    name="ck_ts_kalem_miktar_gt0"),
             models.CheckConstraint(condition=models.Q(birim_fiyat__gte=0),
                                    name="ck_ts_kalem_fiyat_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(iskonto_yuzdesi__gte=0) & models.Q(iskonto_yuzdesi__lte=100),
+                name="ck_ts_kalem_iskonto_0_100"),
         ]
 
     def __str__(self):
         return f"{self.stok_id} x {self.miktar}"
 
     @property
-    def tutar(self):
+    def net_birim_fiyat(self):
+        """İskonto uygulanmış birim fiyat (görüntüleme için — birim_fiyat her zaman liste
+        fiyatı olarak kalır)."""
+        from decimal import Decimal
         from core.sayi import yuvarla
-        return yuvarla(self.miktar * self.birim_fiyat, 2)
+        carpan = (Decimal("100") - self.iskonto_yuzdesi) / Decimal("100")
+        return yuvarla(self.birim_fiyat * carpan, 4)
+
+    @property
+    def tutar(self):
+        from decimal import Decimal
+        from core.sayi import yuvarla
+        carpan = (Decimal("100") - self.iskonto_yuzdesi) / Decimal("100")
+        return yuvarla(self.miktar * self.birim_fiyat * carpan, 2)
 
     @property
     def kdv_tutari(self):

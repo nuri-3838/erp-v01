@@ -367,6 +367,13 @@ class StokForm(forms.Form):
         label="TIR Yükleme Adedi", required=False, min_value=0)
     gorsel = forms.ImageField(label="Ürün Görseli", required=False)
 
+    # Satış fiyat listesi — PB başına sabit 4 alan (StokFiyat, Satış Teklifi ekranının
+    # birim fiyatları buradan otomatik gelir). Boş bırakılan PB'nin fiyatı tanımsız kalır.
+    fiyat_try = TRDecimalField(label="Satış Fiyatı (TRY)", basamak=4, required=False)
+    fiyat_usd = TRDecimalField(label="Satış Fiyatı (USD)", basamak=4, required=False)
+    fiyat_eur = TRDecimalField(label="Satış Fiyatı (EUR)", basamak=4, required=False)
+    fiyat_gbp = TRDecimalField(label="Satış Fiyatı (GBP)", basamak=4, required=False)
+
     def clean(self):
         cd = super().clean()
         if not (cd.get("satinalma_urunu") or cd.get("uretim_urunu")
@@ -1257,6 +1264,75 @@ class TeklifSiparisKalemForm(forms.Form):
 
     def dolu_mu(self) -> bool:
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+class SatisTeklifBaslikForm(forms.Form):
+    """Satış Teklifi başlığı: cari + tarih + geçerlilik tarihi + PB + teslim şekli +
+    ödeme koşulu + açıklama. Cari seçilince PB/varsayılan iskonto JS ile otomatik
+    doldurulur (elle değiştirilebilir) — bkz. satis_teklif_ekle.html."""
+
+    cari = forms.ModelChoiceField(
+        label="Cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
+    tarih = forms.DateField(
+        label="Belge tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    gecerlilik_teslim_tarihi = forms.DateField(
+        label="Geçerlilik Tarihi", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    para_birimi = forms.ChoiceField(
+        label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    teslim_sekli = forms.CharField(
+        label="Teslim / Nakliye / Yükleme Şekli", max_length=300, required=False,
+        widget=forms.TextInput(attrs={
+            "autocomplete": "off", "placeholder": "örn. Nakliye Dahil, FOB İzmir"}))
+    odeme_kosulu = forms.CharField(
+        label="Ödeme Koşulu", max_length=300, required=False,
+        widget=forms.TextInput(attrs={
+            "autocomplete": "off", "placeholder": "örn. %50 peşin + %50 sevkiyatta"}))
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=500, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+
+
+class SatisTeklifKalemForm(forms.Form):
+    """Satış Teklifi kalemi: stok GİZLİ alan (sayfa açılırken tüm satış ürünleriyle
+    önceden dolu gelir, bkz. views.py::satis_teklif_ekle) — kullanıcı yalnız "Dahil" /
+    İskonto % / Birim Fiyat'ı düzenler. MİKTAR YOK — teklifte her zaman 1 birim
+    fiyatı iletilir (view sabit ``miktar=1`` gönderir)."""
+
+    stok = forms.ModelChoiceField(
+        label="Stok", queryset=Stok.objects.filter(silindi=False, satis_urunu=True),
+        required=False, widget=forms.HiddenInput())
+    dahil = forms.BooleanField(label="Dahil", required=False, initial=True)
+    iskonto_yuzdesi = TRDecimalField(label="İskonto %", basamak=2, required=False)
+    birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
+
+    def clean(self):
+        cd = super().clean()
+        if not cd.get("dahil"):
+            return cd
+        if not cd.get("stok"):
+            raise forms.ValidationError("Stok bulunamadı.")
+        fiyat = cd.get("birim_fiyat")
+        if fiyat is None or fiyat < 0:
+            self.add_error("birim_fiyat", "Birim fiyat girin.")
+        iskonto = cd.get("iskonto_yuzdesi")
+        if iskonto is None:
+            cd["iskonto_yuzdesi"] = Decimal("0")
+        elif iskonto < 0 or iskonto > 100:
+            self.add_error("iskonto_yuzdesi", "İskonto 0 ile 100 arasında olmalı.")
+        return cd
+
+    def dahil_mi(self) -> bool:
+        cd = getattr(self, "cleaned_data", {})
+        return bool(cd.get("dahil")) and bool(cd.get("stok"))
 
 
 # ---------------------------------------------------------------------------

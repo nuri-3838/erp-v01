@@ -9,7 +9,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from core.models import Birim, EkranYetki, KdvOrani, Stok, TevkifatOrani
+from core.models import Birim, EkranYetki, KdvOrani, Stok, StokFiyat, TevkifatOrani
 from core.services.birim import birim_olustur
 from core.services.cari import CariHatasi, cari_sil
 from core.services.kategori import kategori_olustur
@@ -319,6 +319,94 @@ class StokGrupTeknikAlanTest(TestCase):
         self.assertEqual(kopya.model_kodu, "A21")
         self.assertEqual(kopya.agirlik, Decimal("4.30"))
         self.assertEqual(kopya.basamak_sayisi, 5)
+
+
+class StokFiyatTest(TestCase):
+    """Satış fiyat listesi (StokFiyat, PB başına en fazla bir aktif satır) — yalnız
+    satis_urunu=True kartlarda anlamlı, Satış Teklifi ekranının birim fiyatları buradan
+    gelir."""
+
+    def _kur(self, alt, adet, kg, **kw):
+        kw.setdefault("kdv_id", _kdv("20").pk)
+        return stok_olustur(ad=kw.pop("ad", "x"), kategori_id=alt.pk,
+                            uretim_birimi_id=adet.pk, fatura_birimi_id=kg.pk,
+                            cevirici=Decimal("1"), **kw)
+
+    def test_fiyat_listesi_kaydedilir(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, fiyat_try="12.000", fiyat_usd="350",
+                      fiyat_eur="320", fiyat_gbp="280")
+        fiyatlar = {f.para_birimi: f.fiyat for f in s.fiyatlar.filter(silindi=False)}
+        self.assertEqual(fiyatlar, {
+            "TRY": Decimal("12000"), "USD": Decimal("350"),
+            "EUR": Decimal("320"), "GBP": Decimal("280")})
+
+    def test_fiyat_listesi_kismi_pb_girilebilir(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, fiyat_try="12000")
+        fiyatlar = {f.para_birimi: f.fiyat for f in s.fiyatlar.filter(silindi=False)}
+        self.assertEqual(fiyatlar, {"TRY": Decimal("12000")})
+
+    def test_fiyat_listesi_negatif_red(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(StokHatasi):
+            self._kur(alt, adet, kg, satis_urunu=True, fiyat_usd="-1")
+
+    def test_satis_urunu_degilse_fiyat_listesi_temizlenir(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, fiyat_try="12000", fiyat_usd="350")
+        self.assertEqual(s.fiyatlar.filter(silindi=False).count(), 2)
+        stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
+                     fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
+                     kdv_id=s.kdv_id, satinalma_urunu=True, satis_urunu=False)
+        self.assertEqual(s.fiyatlar.filter(silindi=False).count(), 0)
+
+    def test_guncellemede_fiyat_degistirilir_ve_temizlenir(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, fiyat_try="12000", fiyat_usd="350")
+        stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
+                     fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
+                     kdv_id=s.kdv_id, satinalma_urunu=False, uretim_urunu=True,
+                     satis_urunu=True, fiyat_try="13000")   # USD boş -> silinir
+        fiyatlar = {f.para_birimi: f.fiyat for f in s.fiyatlar.filter(silindi=False)}
+        self.assertEqual(fiyatlar, {"TRY": Decimal("13000")})
+
+    def test_stok_kopyala_fiyat_listesini_kopyalar(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, fiyat_try="12000", fiyat_usd="350")
+        kopya = stok_kopyala(s)
+        fiyatlar = {f.para_birimi: f.fiyat for f in kopya.fiyatlar.filter(silindi=False)}
+        self.assertEqual(fiyatlar, {"TRY": Decimal("12000"), "USD": Decimal("350")})
+
+    def test_db_stok_fiyat_unique_pb_kisit(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, fiyat_try="12000")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            StokFiyat.objects.create(stok=s, para_birimi="TRY", fiyat=Decimal("1"))
+
+    def test_db_stok_fiyat_negatif_kisit(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            StokFiyat.objects.create(stok=s, para_birimi="USD", fiyat=Decimal("-1"))
+
+    def test_ekle_post_fiyat_listesi_kaydedilir_ve_detayda_gorunur(self):
+        _, alt, _, adet, kg = _veri()
+        kdv = _kdv("20")
+        self.client.force_login(User.objects.create_superuser("stfyon", password="x"))
+        r = self.client.post(reverse("core:stok_ekle"), {
+            "ad": "fiyatli urun", "kategori": alt.pk, "uretim_birimi": adet.pk,
+            "fatura_birimi": kg.pk, "cevirici": "1", "kdv": kdv.pk,
+            "uretim_urunu": "on", "satis_urunu": "on",
+            "fiyat_try": "12.000,50", "fiyat_usd": "350",
+        })
+        self.assertEqual(r.status_code, 302)
+        s = Stok.objects.get(ad="FİYATLİ URUN")
+        fiyatlar = {f.para_birimi: f.fiyat for f in s.fiyatlar.filter(silindi=False)}
+        self.assertEqual(fiyatlar, {"TRY": Decimal("12000.50"), "USD": Decimal("350")})
+        d = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(d, "Satış Fiyat Listesi")
+        self.assertContains(d, "12.000,5000")
 
 
 def _png(boyut=(800, 600), renk=(200, 30, 30, 128)):
