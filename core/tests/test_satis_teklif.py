@@ -1,20 +1,27 @@
 """Satış Teklifi — bağımsız ekran (core/views.py::satis_teklif_ekle/satis_teklif_duzenle):
 tüm satış ürünleri otomatik önceden dolu gelir, miktar YOK (hep 1), cari seçilince PB/
-iskonto otomatik context'e gelir, teslim şekli/ödeme koşulu kaydedilir, eski paylaşımlı
-teklif_siparis_duzenle URL'i buraya yönlendirir (veri kaybı koruması)."""
+iskonto otomatik context'e gelir, yükleme şekli / ödeme koşulu / yükleme tipi Tanım
+Listeleri'nden seçilir, navlun seçilen yükleme tipine sığan adede bölünerek ürün başına
+dağıtılır, eski paylaşımlı teklif_siparis_duzenle URL'i buraya yönlendirir."""
+import datetime
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
-from core.models import Cari, HesapPlani, KdvOrani, Kategori, Stok, TeklifSiparis
+from core.models import Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis
 from core.services.stok import stok_olustur
 
 
 def _hesap(kod, ad):
     return HesapPlani.objects.create(hesap_kodu=kod, hesap_adi=ad,
                                      rapor_grubu="BILANCO", rapor_kalemi="DV", parasal=True)
+
+
+def _secenek(kategori, **f):
+    return TanimSecenegi.objects.filter(silindi=False, kategori=kategori, **f).first()
 
 
 class SatisTeklifTest(TestCase):
@@ -38,13 +45,25 @@ class SatisTeklifTest(TestCase):
         cls.a21 = stok_olustur(
             ad="a tipi merdiven", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
             fatura_birimi_id=cls.birim.pk, kdv_id=cls.kdv.pk,
-            satis_urunu=True, model_kodu="a21",
+            satis_urunu=True, model_kodu="a21", yukleme_40hq=1000, yukleme_20dc=400,
             fiyat_try="12000", fiyat_usd="350", kullanici=cls.yon)
         cls.c22 = stok_olustur(
             ad="cift cikisli merdiven", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
             fatura_birimi_id=cls.birim.pk, kdv_id=cls.kdv.pk,
             satis_urunu=True, model_kodu="c22",
-            fiyat_try="15000", kullanici=cls.yon)   # USD fiyatı YOK -> eksik uyarısı
+            fiyat_try="15000", kullanici=cls.yon)   # USD fiyatı ve yükleme adedi YOK
+        # Seed migration'dan gelen Tanım Listesi seçenekleri
+        cls.sekil = _secenek("YUKLEME_SEKLI", ad="FOB İZMİR")
+        cls.kosul = _secenek("ODEME_KOSULU", ad="PEŞİN")
+        cls.tip_40hq = _secenek("YUKLEME_TIPI", kod="40HQ")
+        cls.tip_tir = _secenek("YUKLEME_TIPI", kod="TIR")
+
+    def test_seed_secenekleri_geldi(self):
+        self.assertIsNotNone(self.sekil)
+        self.assertIsNotNone(self.kosul)
+        self.assertEqual(
+            set(TanimSecenegi.objects.filter(kategori="YUKLEME_TIPI").values_list("kod", flat=True)),
+            {"20DC", "40HQ", "TIR"})
 
     def test_get_tum_satis_urunleri_hazir_gelir(self):
         self.client.force_login(self.yon)
@@ -57,6 +76,19 @@ class SatisTeklifTest(TestCase):
         for f in formset.forms:
             self.assertTrue(f.initial["dahil"])
 
+    def test_get_aciklama_yok_gecerlilik_15_gun(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklif_ekle"))
+        bform = r.context["bform"]
+        self.assertNotIn("aciklama", bform.fields)
+        self.assertEqual(bform["gecerlilik_teslim_tarihi"].value(),
+                         timezone.localdate() + datetime.timedelta(days=15))
+        self.assertNotContains(r, "elle değiştirebilirsiniz")
+        for alan in ("yukleme_sekli", "odeme_kosulu", "yukleme_tipi", "navlun_tutari"):
+            self.assertIn(alan, bform.fields)
+        self.assertContains(r, "FOB İZMİR")
+        self.assertContains(r, "40&#x27; HQ KONTEYNER")
+
     def test_stok_meta_pb_basina_dogru_ve_eksikse_none(self):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:satis_teklif_ekle"))
@@ -64,8 +96,10 @@ class SatisTeklifTest(TestCase):
         self.assertEqual(meta["modelKodu"], "A21")
         self.assertEqual(meta["fiyatlar"]["TRY"], 12000.0)
         self.assertEqual(meta["fiyatlar"]["USD"], 350.0)
+        self.assertEqual(meta["yukleme"], {"20DC": 400, "40HQ": 1000, "TIR": None})
         meta_c22 = r.context["stok_meta"][str(self.c22.pk)]
         self.assertIsNone(meta_c22["fiyatlar"]["USD"])            # tanımsız PB -> None
+        self.assertEqual(r.context["tip_kodlari"][str(self.tip_40hq.pk)], "40HQ")
 
     def test_cari_meta_pb_ve_iskonto_dogru(self):
         self.client.force_login(self.yon)
@@ -77,7 +111,8 @@ class SatisTeklifTest(TestCase):
     def _post_govde(self, **over):
         govde = {
             "cari": self.cari.pk, "tarih": "2026-09-07", "para_birimi": "TRY",
-            "teslim_sekli": "Nakliye Dahil", "odeme_kosulu": "%50 peşin + %50 sevkiyatta",
+            "yukleme_sekli": self.sekil.pk, "odeme_kosulu": self.kosul.pk,
+            "yukleme_tipi": self.tip_40hq.pk, "navlun_tutari": "3.000",
             "form-TOTAL_FORMS": "2", "form-INITIAL_FORMS": "0",
             "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.a21.pk, "form-0-dahil": "on",
@@ -88,14 +123,19 @@ class SatisTeklifTest(TestCase):
         govde.update(over)
         return govde
 
-    def test_post_miktar_hep_1_ve_iskonto_tutara_yansir(self):
+    def _son_teklif(self):
+        return TeklifSiparis.objects.filter(
+            belge_tur="TEKLIF", yon="SATIS", cari=self.cari).latest("id")
+
+    def test_post_miktar_hep_1_iskonto_ve_secenekler_kaydedilir(self):
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
-        ts = TeklifSiparis.objects.filter(
-            belge_tur="TEKLIF", yon="SATIS", cari=self.cari).latest("id")
+        ts = self._son_teklif()
         self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[ts.pk]))
-        self.assertEqual(ts.teslim_sekli, "Nakliye Dahil")         # aciklama gibi TR büyük harfe çevrilmez
-        self.assertEqual(ts.odeme_kosulu, "%50 peşin + %50 sevkiyatta")
+        self.assertEqual(ts.yukleme_sekli, self.sekil)
+        self.assertEqual(ts.odeme_kosulu, self.kosul)
+        self.assertEqual(ts.yukleme_tipi, self.tip_40hq)
+        self.assertEqual(ts.navlun_tutari, Decimal("3000.00"))
         kalemler = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
         self.assertEqual(len(kalemler), 2)
         a21_kalem = kalemler[self.a21.pk]
@@ -103,13 +143,58 @@ class SatisTeklifTest(TestCase):
         self.assertEqual(a21_kalem.iskonto_yuzdesi, Decimal("10"))
         self.assertEqual(a21_kalem.tutar, Decimal("10800.00"))   # 12000 * 0,90
 
+    def test_navlun_yukleme_tipine_gore_dagitilir(self):
+        """40HQ navlunu 3000, a21'e 40HQ'ya 1000 adet sığıyor -> birim navlun payı 3;
+        nakliye dahil = net (10800) + 3. c22'nin 40HQ adedi yok -> None."""
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        kalemler = {k.stok_id: k for k in self._son_teklif().kalemler.filter(silindi=False)}
+        self.assertEqual(kalemler[self.a21.pk].navlun_payi, Decimal("3.0000"))
+        self.assertEqual(kalemler[self.a21.pk].nakliye_dahil_fiyat, Decimal("10803.0000"))
+        self.assertIsNone(kalemler[self.c22.pk].navlun_payi)
+        self.assertIsNone(kalemler[self.c22.pk].nakliye_dahil_fiyat)
+
+    def test_navlun_yoksa_veya_tip_yoksa_dagitim_yok(self):
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"),
+                         self._post_govde(navlun_tutari="", yukleme_tipi=""))
+        ts = self._son_teklif()
+        self.assertIsNone(ts.navlun_tutari)
+        self.assertIsNone(ts.yukleme_tipi)
+        for k in ts.kalemler.filter(silindi=False):
+            self.assertIsNone(k.navlun_payi)
+
+    def test_yanlis_kategoriden_secenek_reddedilir(self):
+        """Ödeme koşulu alanına Yükleme Şekli listesinden bir pk gönderilemez
+        (form queryset'i kategoriye göre kısıtlı -> alan hatası, kayıt yok)."""
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:satis_teklif_ekle"),
+                             self._post_govde(odeme_kosulu=self.sekil.pk))
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(TeklifSiparis.objects.filter(belge_tur="TEKLIF", yon="SATIS").exists())
+
+    def test_servis_yanlis_kategori_reddeder(self):
+        from core.services.teklif_siparis import TeklifSiparisHatasi, teklif_siparis_olustur
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_olustur(
+                belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+                tarih=datetime.date(2026, 9, 7),
+                satirlar=[{"stok_id": self.a21.pk, "miktar": "1", "birim_fiyat": "10"}],
+                yukleme_tipi_id=self.sekil.pk, kullanici=self.yon)
+
+    def test_negatif_navlun_reddedilir(self):
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:satis_teklif_ekle"),
+                             self._post_govde(navlun_tutari="-5"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Navlun tutarı negatif olamaz")
+
     def test_dahil_isaretsiz_satir_kaydedilmez(self):
         self.client.force_login(self.yon)
         govde = self._post_govde()
         del govde["form-1-dahil"]                                # c22 dahil değil
         r = self.client.post(reverse("core:satis_teklif_ekle"), govde)
-        ts = TeklifSiparis.objects.filter(
-            belge_tur="TEKLIF", yon="SATIS", cari=self.cari).latest("id")
+        ts = self._son_teklif()
         self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[ts.pk]))
         kalemler = list(ts.kalemler.filter(silindi=False))
         self.assertEqual(len(kalemler), 1)
@@ -136,14 +221,17 @@ class SatisTeklifTest(TestCase):
         govde = self._post_govde()
         del govde["form-1-dahil"]                                 # c22 ilk kayıtta dahil değil
         self.client.post(reverse("core:satis_teklif_ekle"), govde)
-        ts = TeklifSiparis.objects.filter(
-            belge_tur="TEKLIF", yon="SATIS", cari=self.cari).latest("id")
+        ts = self._son_teklif()
         r = self.client.get(reverse("core:satis_teklif_duzenle", args=[ts.pk]))
         self.assertEqual(r.status_code, 200)
+        bform = r.context["bform"]
+        self.assertEqual(bform["yukleme_tipi"].value(), self.tip_40hq.pk)
+        self.assertEqual(bform["odeme_kosulu"].value(), self.kosul.pk)
+        self.assertEqual(bform["navlun_tutari"].value(), "3.000,00")
         formset = r.context["formset"]
         durum = {f.initial["stok"]: f.initial["dahil"] for f in formset.forms}
         self.assertTrue(durum[self.a21.pk])
-        self.assertFalse(durum[self.c22.pk])                      # ilk kayıtta dahil değildi
+        self.assertFalse(durum[self.c22.pk])
         iskonto = {f.initial["stok"]: f.initial["iskonto_yuzdesi"] for f in formset.forms}
         self.assertEqual(iskonto[self.a21.pk], Decimal("10"))
 
@@ -152,35 +240,38 @@ class SatisTeklifTest(TestCase):
         govde = self._post_govde()
         del govde["form-1-dahil"]
         self.client.post(reverse("core:satis_teklif_ekle"), govde)
-        ts = TeklifSiparis.objects.filter(
-            belge_tur="TEKLIF", yon="SATIS", cari=self.cari).latest("id")
+        ts = self._son_teklif()
         self.assertEqual(ts.kalemler.filter(silindi=False).count(), 1)
         r = self.client.post(reverse("core:satis_teklif_duzenle", args=[ts.pk]),
-                             self._post_govde())                  # şimdi ikisi de dahil
+                             self._post_govde(yukleme_tipi=self.tip_tir.pk, navlun_tutari="900"))
         self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[ts.pk]))
         ts.refresh_from_db()
         self.assertEqual(ts.kalemler.filter(silindi=False).count(), 2)
+        self.assertEqual(ts.yukleme_tipi, self.tip_tir)
+        self.assertEqual(ts.navlun_tutari, Decimal("900.00"))
 
     def test_teklif_siparis_duzenle_eski_url_satis_teklifini_yonlendirir(self):
         """Veri kaybı koruması: eski paylaşımlı teklif_siparis_duzenle URL'ine doğrudan
-        gidilirse, bu ekranın bilmediği iskonto/teslim/ödeme alanları sessizce
+        gidilirse, bu ekranın bilmediği iskonto/liste/navlun alanları sessizce
         sıfırlanmasın diye satis_teklif_duzenle'a yönlendirilir."""
         self.client.force_login(self.yon)
         self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
-        ts = TeklifSiparis.objects.filter(
-            belge_tur="TEKLIF", yon="SATIS", cari=self.cari).latest("id")
+        ts = self._son_teklif()
         r = self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk]))
         self.assertRedirects(r, reverse("core:satis_teklif_duzenle", args=[ts.pk]))
 
-    def test_detay_ve_pdf_fiyat_karti_gorunur_toplam_gizlenir(self):
+    def test_detay_ve_pdf_fiyat_karti_navlun_gorunur_toplam_gizlenir(self):
         self.client.force_login(self.yon)
         self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
-        ts = TeklifSiparis.objects.filter(
-            belge_tur="TEKLIF", yon="SATIS", cari=self.cari).latest("id")
+        ts = self._son_teklif()
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
         self.assertContains(d, "Ürün Fiyat Listesi")
-        self.assertContains(d, "Net Fiyat")
-        self.assertContains(d, "Nakliye Dahil")
+        self.assertContains(d, "FOB İZMİR")
+        self.assertContains(d, "PEŞİN")
+        self.assertContains(d, "40&#x27; HQ KONTEYNER")
+        self.assertContains(d, "Navlun Payı")
+        self.assertContains(d, "10.803,0000")                      # a21 nakliye dahil
+        self.assertContains(d, "yükleme adedi tanımsız")            # c22
         self.assertNotContains(d, "Ödenecek")
         pdf = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
         self.assertEqual(pdf.status_code, 200)

@@ -67,6 +67,7 @@
   .tf-satir .et { font-size: 8px; text-transform: uppercase; letter-spacing: .4px; color: #9ca3af; }
   .tf-satir .dg { font-weight: 700; color: #1c2533; font-size: 11px; font-variant-numeric: tabular-nums; }
   .tf-satir.tf-net .dg { color: #15294d; font-size: 13px; font-weight: 800; }
+  .tf-satir.tf-nakliye .dg { color: #d56e00; }
 </style>
 </head>
 <body>
@@ -97,11 +98,17 @@
     <div class="kutu"><div class="et">Toplam Miktar</div>
       <div class="dg">{% for birim, m in ts.miktar_toplam.items %}{{ m|tr_kur:3 }} {{ birim }}{% if not forloop.last %} · {% endif %}{% endfor %}</div></div>
     {% endif %}
-    {% if ts.teslim_sekli %}
-    <div class="kutu"><div class="et">Teslim / Nakliye / Yükleme</div><div class="dg">{{ ts.teslim_sekli }}</div></div>
+    {% if ts.yukleme_sekli %}
+    <div class="kutu"><div class="et">Yükleme Şekli</div><div class="dg">{{ ts.yukleme_sekli.ad }}</div></div>
     {% endif %}
     {% if ts.odeme_kosulu %}
-    <div class="kutu"><div class="et">Ödeme Koşulu</div><div class="dg">{{ ts.odeme_kosulu }}</div></div>
+    <div class="kutu"><div class="et">Ödeme Koşulu</div><div class="dg">{{ ts.odeme_kosulu.ad }}</div></div>
+    {% endif %}
+    {% if ts.yukleme_tipi %}
+    <div class="kutu"><div class="et">Yükleme Tipi</div><div class="dg">{{ ts.yukleme_tipi.ad }}</div></div>
+    {% endif %}
+    {% if ts.navlun_tutari is not None %}
+    <div class="kutu"><div class="et">Navlun</div><div class="dg mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</div></div>
     {% endif %}
   </div>
 
@@ -171,6 +178,10 @@
           <div class="tf-satir"><span class="et">Liste Fiyatı</span><span class="dg">{{ k.birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
           {% if k.iskonto_yuzdesi %}<div class="tf-satir"><span class="et">İskonto</span><span class="dg">%{{ k.iskonto_yuzdesi|tr_kur:2 }}</span></div>{% endif %}
           <div class="tf-satir tf-net"><span class="et">Net Fiyat</span><span class="dg">{{ k.net_birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+          {% if k.navlun_payi is not None %}
+          <div class="tf-satir"><span class="et">Navlun Payı</span><span class="dg">{{ k.navlun_payi|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+          <div class="tf-satir tf-net tf-nakliye"><span class="et">Nakliye Dahil</span><span class="dg">{{ k.nakliye_dahil_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+          {% endif %}
         </div>
         {% endif %}
       </div>

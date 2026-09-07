@@ -924,6 +924,44 @@ class KdvOrani(TemelModel):
         return f"%{self.oran} {self.aciklama}"
 
 
+class TanimSecenegi(TemelModel):
+    """AYARLAR > Tanım Listeleri'ndeki basit seçenek listeleri (kod + ad + sıra) — tek
+    modelde, ``kategori`` ile ayrılır: Yükleme Şekli, Ödeme Koşulu, Yükleme Tipi. Satış
+    Teklifi bu listelerden seçer. Yükleme Tipi'nde ``kod`` zorunlu ve Stok'un konteyner/TIR
+    adet alanına eşlenir (bkz. YUKLEME_ALANI) — navlun dağıtımı bu eşlemeyi kullanır."""
+
+    class Kategori(models.TextChoices):
+        YUKLEME_SEKLI = "YUKLEME_SEKLI", "Yükleme Şekli"
+        ODEME_KOSULU = "ODEME_KOSULU", "Ödeme Koşulu"
+        YUKLEME_TIPI = "YUKLEME_TIPI", "Yükleme Tipi"
+
+    # Yükleme Tipi kodu -> Stok'taki "bu tipe kaç adet sığar" alanı.
+    YUKLEME_ALANI = {"20DC": "yukleme_20dc", "40HQ": "yukleme_40hq", "TIR": "yukleme_tir"}
+
+    kategori = models.CharField("kategori", max_length=15, choices=Kategori.choices)
+    kod = models.CharField("kod", max_length=30, blank=True, default="")
+    ad = models.CharField("ad", max_length=200)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "tanim_secenegi"
+        verbose_name = "tanım seçeneği"
+        verbose_name_plural = "tanım seçenekleri"
+        ordering = ["kategori", "sira", "ad"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kategori", "ad"], condition=models.Q(silindi=False),
+                name="uq_tanim_secenegi_kategori_ad_aktif"),
+            models.UniqueConstraint(
+                fields=["kategori", "kod"],
+                condition=models.Q(silindi=False) & ~models.Q(kod=""),
+                name="uq_tanim_secenegi_kategori_kod_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.kod} {self.ad}".strip() if self.kod else self.ad
+
+
 class TevkifatOrani(TemelModel):
     """Tevkifat oranı tanımı (pay/payda, örn. 5/10) — otomatik yevmiyede tevkifat hesabını besler."""
 
@@ -1122,11 +1160,21 @@ class TeklifSiparis(TemelModel):
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
-    # Yalnız SATIŞ+TEKLİF ekranında doldurulur (serbest metin — yurt içi "Nakliye Dahil/Hariç"
-    # veya ihracat "FOB İzmir" gibi teslim/yükleme şekli bilgisi). Diğer belge türlerinde boş.
-    teslim_sekli = models.CharField("teslim / nakliye / yükleme şekli", max_length=300,
-                                    blank=True, default="")
-    odeme_kosulu = models.CharField("ödeme koşulu", max_length=300, blank=True, default="")
+    # Yalnız SATIŞ+TEKLİF ekranında doldurulur — AYARLAR > Tanım Listeleri'nden seçilir
+    # (TanimSecenegi, kategoriye göre). Diğer belge türlerinde hep boş.
+    yukleme_sekli = models.ForeignKey(
+        TanimSecenegi, verbose_name="yükleme şekli", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    odeme_kosulu = models.ForeignKey(
+        TanimSecenegi, verbose_name="ödeme koşulu", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    yukleme_tipi = models.ForeignKey(
+        TanimSecenegi, verbose_name="yükleme tipi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    # Belge düzeyinde tek navlun; kalem başına dağıtımı hesaplanır, saklanmaz
+    # (TeklifSiparisKalem.navlun_payi — seçilen yükleme tipine sığan adede bölünür).
+    navlun_tutari = models.DecimalField(
+        "navlun tutarı", max_digits=18, decimal_places=2, null=True, blank=True)
     # SIPARIS ise: hangi TEKLIF'ten dönüştürüldüğü (self-FK). Tek seferlik dönüşüm —
     # servis katmanı zaten dönüştürülmüş teklifi tekrar çevirmeyi engeller.
     kaynak_teklif = models.ForeignKey(
@@ -1159,6 +1207,9 @@ class TeklifSiparis(TemelModel):
                 fields=["belge_tur", "yon", "yil", "sira"],
                 condition=models.Q(sira__isnull=False),
                 name="uq_teklif_siparis_tur_yon_yil_sira"),
+            models.CheckConstraint(
+                condition=models.Q(navlun_tutari__isnull=True) | models.Q(navlun_tutari__gte=0),
+                name="ck_teklif_siparis_navlun_gte0"),
         ]
 
     def __str__(self):
@@ -1256,6 +1307,29 @@ class TeklifSiparisKalem(TemelModel):
         from core.sayi import yuvarla
         carpan = (Decimal("100") - self.iskonto_yuzdesi) / Decimal("100")
         return yuvarla(self.miktar * self.birim_fiyat * carpan, 2)
+
+    @property
+    def navlun_payi(self):
+        """Birim başına navlun payı = belge navlunu / stoğun seçilen yükleme tipine sığan
+        adedi ("bu ürünle dolu bir konteyner/TIR" varsayımı). Navlun ya da yükleme tipi yoksa
+        veya stokta o tip için adet tanımsızsa None (UI'da uyarı)."""
+        from core.sayi import yuvarla
+        ts = self.teklif_siparis
+        if ts.navlun_tutari is None or not ts.yukleme_tipi_id:
+            return None
+        alan = TanimSecenegi.YUKLEME_ALANI.get(ts.yukleme_tipi.kod)
+        adet = getattr(self.stok, alan, None) if alan else None
+        if not adet:
+            return None
+        return yuvarla(ts.navlun_tutari / adet, 4)
+
+    @property
+    def nakliye_dahil_fiyat(self):
+        from core.sayi import yuvarla
+        payi = self.navlun_payi
+        if payi is None:
+            return None
+        return yuvarla(self.net_birim_fiyat + payi, 4)
 
     @property
     def kdv_tutari(self):

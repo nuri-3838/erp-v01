@@ -5,8 +5,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import HesapPlani, KdvOrani, TevkifatOrani
+from core.models import HesapPlani, KdvOrani, TanimSecenegi, TevkifatOrani
 from core.services.tanim import (TanimHatasi, kdv_orani_olustur, kdv_orani_guncelle,
+                                  secenek_guncelle, secenek_olustur, secenek_sil,
                                   tevkifat_orani_olustur, tevkifat_orani_guncelle)
 
 
@@ -126,3 +127,109 @@ class TanimViewTest(TestCase):
         self.assertEqual(self.client.get(reverse("core:tanim_listeleri")).status_code, 403)
         self.assertEqual(self.client.get(reverse("core:kdv_oranlari")).status_code, 403)
         self.assertEqual(self.client.get(reverse("core:tevkifat_oranlari")).status_code, 403)
+
+
+class TanimSecenegiTest(TestCase):
+    """Yükleme Şekli / Ödeme Koşulu / Yükleme Tipi — tek model, kategoriye göre; seed
+    migration ile örnek değerler gelir; Satış Teklifi'nde kullanılan seçenek silinemez."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.yon = User.objects.create_superuser("tsyon", password="x")
+        cls.bos = User.objects.create_user("tsbos", password="x")
+
+    def test_seed_uc_kategoriye_gelir(self):
+        say = {k: TanimSecenegi.objects.filter(silindi=False, kategori=k).count()
+               for k in ("YUKLEME_SEKLI", "ODEME_KOSULU", "YUKLEME_TIPI")}
+        self.assertEqual(say, {"YUKLEME_SEKLI": 7, "ODEME_KOSULU": 7, "YUKLEME_TIPI": 3})
+        self.assertEqual(
+            set(TanimSecenegi.objects.filter(kategori="YUKLEME_TIPI").values_list("kod", flat=True)),
+            {"20DC", "40HQ", "TIR"})
+
+    def test_olustur_tr_buyuk_harf_ve_benzersiz(self):
+        s = secenek_olustur("ODEME_KOSULU", ad="90 gün vade", sira=5)
+        self.assertEqual((s.ad, s.kod, s.sira), ("90 GÜN VADE", "", 5))
+        with self.assertRaises(TanimHatasi):
+            secenek_olustur("ODEME_KOSULU", ad="90 GÜN VADE")        # aynı kategoride ad tekrar
+        secenek_olustur("YUKLEME_SEKLI", ad="90 GÜN VADE")            # başka kategoride serbest
+
+    def test_yukleme_tipinde_kod_zorunlu_ve_benzersiz(self):
+        with self.assertRaises(TanimHatasi):
+            secenek_olustur("YUKLEME_TIPI", ad="45 HQ")
+        with self.assertRaises(TanimHatasi):
+            secenek_olustur("YUKLEME_TIPI", ad="ikinci kırk", kod="40hq")   # seed'deki 40HQ
+        s = secenek_olustur("YUKLEME_TIPI", ad="45' HQ", kod="45hq")
+        self.assertEqual(s.kod, "45HQ")
+
+    def test_ad_bos_ve_gecersiz_kategori_red(self):
+        with self.assertRaises(TanimHatasi):
+            secenek_olustur("ODEME_KOSULU", ad="  ")
+        with self.assertRaises(TanimHatasi):
+            secenek_olustur("YOK_BOYLE", ad="x")
+
+    def test_guncelle(self):
+        s = secenek_olustur("YUKLEME_SEKLI", ad="deneme")
+        secenek_guncelle(s, ad="deneme 2", sira=3)
+        s.refresh_from_db()
+        self.assertEqual((s.ad, s.sira), ("DENEME 2", 3))
+
+    def test_teklifte_kullanilan_secenek_silinemez(self):
+        import datetime
+        from core.models import Birim, Cari, Kategori, Stok
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        _hesap("120.09", "MÜŞTERİ")
+        cari = Cari.objects.create(kod="C9", unvan="MÜŞTERİ", muhasebe_kodu="120.09")
+        kat = Kategori.objects.create(kod="K9", ad="GENEL")
+        birim = Birim.objects.create(ad="ADET", kisa_ad="AD", ondalik=0)
+        stok = Stok.objects.create(kod="S9", ad="X", kategori=kat, uretim_birimi=birim,
+                                   fatura_birimi=birim)
+        kosul = TanimSecenegi.objects.get(kategori="ODEME_KOSULU", ad="PEŞİN")
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=cari.pk, tarih=datetime.date(2026, 9, 7),
+            satirlar=[{"stok_id": stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            odeme_kosulu_id=kosul.pk)
+        with self.assertRaises(TanimHatasi):
+            secenek_sil(kosul)
+        from core.services.teklif_siparis import teklif_siparis_iptal
+        teklif_siparis_iptal(ts)
+        secenek_sil(kosul)                                            # iptal edilince serbest
+        self.assertTrue(TanimSecenegi.objects.get(pk=kosul.pk).silindi)
+
+    def test_view_liste_ekle_duzenle_sil(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:tanim_listeleri"))
+        for ad in ("Yükleme Şekli", "Ödeme Koşulları", "Yükleme Tipi"):
+            self.assertContains(r, ad)
+        for slug in ("yukleme-sekli", "odeme-kosulu", "yukleme-tipi"):
+            self.assertEqual(
+                self.client.get(reverse("core:secenek_listesi", args=[slug])).status_code, 200)
+        self.assertEqual(
+            self.client.get(reverse("core:secenek_listesi", args=["yok-boyle"])).status_code, 404)
+        r = self.client.post(reverse("core:secenek_ekle", args=["odeme-kosulu"]),
+                             {"sira": "1", "ad": "120 gün vade"})
+        self.assertEqual(r.status_code, 302)
+        s = TanimSecenegi.objects.get(kategori="ODEME_KOSULU", ad="120 GÜN VADE")
+        r = self.client.post(reverse("core:secenek_duzenle", args=["odeme-kosulu", s.pk]),
+                             {"sira": "2", "ad": "150 gün vade"})
+        self.assertEqual(r.status_code, 302)
+        s.refresh_from_db()
+        self.assertEqual(s.ad, "150 GÜN VADE")
+        r = self.client.post(reverse("core:secenek_sil", args=["odeme-kosulu", s.pk]))
+        self.assertEqual(r.status_code, 302)
+        s.refresh_from_db()
+        self.assertTrue(s.silindi)
+        # Yükleme tipinde kod alanı var ve zorunlu
+        r = self.client.post(reverse("core:secenek_ekle", args=["yukleme-tipi"]),
+                             {"sira": "9", "ad": "45' HQ", "kod": ""})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "kod zorunlu")
+        # Yanlış kategorinin pk'sı başka slug'dan düzenlenemez (404)
+        sekil = TanimSecenegi.objects.filter(kategori="YUKLEME_SEKLI").first()
+        self.assertEqual(
+            self.client.get(reverse("core:secenek_duzenle", args=["odeme-kosulu", sekil.pk])).status_code,
+            404)
+
+    def test_yonetici_olmayan_403(self):
+        self.client.force_login(self.bos)
+        self.assertEqual(
+            self.client.get(reverse("core:secenek_listesi", args=["yukleme-tipi"])).status_code, 403)

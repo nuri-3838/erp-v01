@@ -6,6 +6,7 @@
 {% block content %}
 {{ stok_meta|json_script:"stok-meta" }}
 {{ cari_meta|json_script:"cari-meta" }}
+{{ tip_kodlari|json_script:"tip-kodlari" }}
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{{ iptal_url }}">← Geri</a>
@@ -29,9 +30,6 @@
           </div>
         {% endfor %}
       </div>
-      <p class="yardim">Para birimi ve iskonto, cari seçilince otomatik doldurulur —
-        elle değiştirebilirsiniz. Teslim/nakliye/ödeme koşulu yalnız bilgi amaçlıdır,
-        teklif PDF'inde gösterilir.</p>
     </section>
 
     {{ formset.management_form }}
@@ -43,7 +41,8 @@
       <h2 class="bolum-baslik"><span class="emoji">📐</span>Ürün Fiyat Listesi</h2>
       <p class="yardim">Tüm satış ürünleri hazır geldi. Göndermek istemediğiniz ürünün
         "Dahil" işaretini kaldırın; fiyat/iskonto satır bazında düzenlenebilir. Miktar
-        yok — teklif her zaman ürünün birim (1 adet) fiyatını iletir.</p>
+        yok — teklif her zaman ürünün birim (1 adet) fiyatını iletir. Navlun girilirse,
+        seçilen yükleme tipine sığan adede bölünerek ürün başına dağıtılır.</p>
       <div class="fk-liste">
         {% for s, f in satirlar %}
           <div class="fk-satir" data-stok="{{ s.pk }}">
@@ -57,6 +56,7 @@
               <div class="fk-ad">{% if s.model_kodu %}<span class="fk-model">{{ s.model_kodu }}</span>{% endif %}{{ s.ad }}</div>
               {% if s.kdv %}<span class="fk-kdv">KDV %{{ s.kdv.oran|floatformat:0 }}</span>{% endif %}
               <div class="fk-uyari" hidden>⚠ Bu para biriminde fiyat listesi tanımlı değil</div>
+              <div class="fk-uyari fk-uyari-navlun" hidden>⚠ Bu yükleme tipi için stok kartında adet tanımlı değil</div>
             </div>
             <div class="fk-alan">
               <label for="{{ f.birim_fiyat.id_for_label }}">Liste Fiyatı</label>
@@ -71,6 +71,10 @@
             <div class="fk-alan fk-net">
               <span class="et">Net Fiyat</span>
               <span class="net-deger mono">—</span>
+            </div>
+            <div class="fk-alan fk-net fk-nakliye" hidden>
+              <span class="et">Nakliye Dahil</span>
+              <span class="nakliye-deger mono">—</span>
             </div>
           </div>
         {% empty %}
@@ -110,6 +114,8 @@
   .fk-uyari { margin-top:.3rem; display:inline-block; font-size:.74rem; color:#b35400;
     background:rgba(240,124,0,.1); padding:.2rem .5rem; border-radius:8px; }
   .fk-uyari[hidden] { display:none; }
+  .fk-nakliye .nakliye-deger { color:var(--turuncu-koyu); }
+  .fk-nakliye[hidden] { display:none; }
   .fk-ozet { margin-top:.9rem; font-weight:600; color:var(--lacivert); }
   @media (max-width:680px){ .fk-satir { flex-direction:column; align-items:stretch; }
     .fk-alan input { width:100%; } }
@@ -119,6 +125,7 @@
 (function(){
   var STOK_META = JSON.parse(document.getElementById('stok-meta').textContent);
   var CARI_META = JSON.parse(document.getElementById('cari-meta').textContent);
+  var TIP_KODLARI = JSON.parse(document.getElementById('tip-kodlari').textContent);
 
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
@@ -128,13 +135,43 @@
     {minimumFractionDigits:basamak, maximumFractionDigits:basamak}); }
   function el(card, suf){ return card.querySelector('[name$="'+suf+'"]'); }
 
-  function netHesapla(card){
+  function netTutar(card){
     var fiyatInp = el(card, '-birim_fiyat'), iskInp = el(card, '-iskonto_yuzdesi');
     var fiyat = parseTR(fiyatInp ? fiyatInp.value : '');
     var iskonto = parseTR(iskInp ? iskInp.value : '');
-    var net = fiyat * (1 - iskonto / 100);
+    return fiyat * (1 - iskonto / 100);
+  }
+
+  // Navlun dağıtımı: belge navlunu / bu ürünün seçilen yükleme tipine sığan adedi.
+  function navlunHesapla(card, net){
+    var tipSec = document.getElementById('id_yukleme_tipi');
+    var navInp = document.getElementById('id_navlun_tutari');
+    var kutu = card.querySelector('.fk-nakliye'), deger = card.querySelector('.nakliye-deger');
+    var uyari = card.querySelector('.fk-uyari-navlun');
+    var kod = tipSec && tipSec.value ? TIP_KODLARI[tipSec.value] : null;
+    var navlun = parseTR(navInp ? navInp.value : '');
+    if(!kod || !(navlun > 0)){
+      if(kutu) kutu.hidden = true;
+      if(uyari) uyari.hidden = true;
+      return;
+    }
+    var meta = STOK_META[card.dataset.stok];
+    var adet = meta && meta.yukleme ? meta.yukleme[kod] : null;
+    if(!adet){
+      if(kutu) kutu.hidden = true;
+      if(uyari) uyari.hidden = false;
+      return;
+    }
+    if(uyari) uyari.hidden = true;
+    if(kutu) kutu.hidden = false;
+    if(deger) deger.textContent = fmt(net + navlun / adet, 4);
+  }
+
+  function netHesapla(card){
+    var net = netTutar(card);
     var netEl = card.querySelector('.net-deger');
     if(netEl) netEl.textContent = fmt(net, 4);
+    navlunHesapla(card, net);
   }
 
   function fiyatiUygula(card, pb){
@@ -185,12 +222,15 @@
   });
 
   var form = document.getElementById('st-form');
+  function hepsiniHesapla(){ document.querySelectorAll('.fk-satir').forEach(netHesapla); }
   form.addEventListener('input', function(e){
     var card = e.target.closest('.fk-satir');
     if(card) netHesapla(card);
+    else if(e.target.id === 'id_navlun_tutari') hepsiniHesapla();
   });
   form.addEventListener('change', function(e){
     if(e.target.classList.contains('fk-dahil-kutu')) ozetGuncelle();
+    else if(e.target.id === 'id_yukleme_tipi') hepsiniHesapla();
   });
 
   document.querySelectorAll('.fk-satir').forEach(netHesapla);

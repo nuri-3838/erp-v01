@@ -8,7 +8,7 @@ from __future__ import annotations
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import HesapPlani, KdvOrani, TevkifatOrani
+from core.models import HesapPlani, KdvOrani, TanimSecenegi, TeklifSiparis, TevkifatOrani
 from core.sayi import SayiHatasi, parse_tr
 
 
@@ -152,3 +152,65 @@ def tevkifat_orani_sil(t: TevkifatOrani, kullanici=None) -> TevkifatOrani:
     t.updated_by = kullanici
     t.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return t
+
+
+# --- Tanım seçenekleri (Yükleme Şekli / Ödeme Koşulu / Yükleme Tipi) ---------------
+def _kategori_dogrula(kategori):
+    if kategori not in TanimSecenegi.Kategori.values:
+        raise TanimHatasi("Geçersiz tanım kategorisi.")
+    return kategori
+
+
+def aktif_secenekler(kategori):
+    return (TanimSecenegi.objects.filter(silindi=False, kategori=_kategori_dogrula(kategori))
+            .order_by("sira", "ad"))
+
+
+def _secenek_dogrula(kategori, ad, kod, *, haric_pk=None):
+    ad = buyuk_harf_tr((ad or "").strip())
+    kod = buyuk_harf_tr((kod or "").strip())
+    if not ad:
+        raise TanimHatasi("Ad boş olamaz.")
+    if kategori == TanimSecenegi.Kategori.YUKLEME_TIPI and not kod:
+        raise TanimHatasi("Yükleme tipinde kod zorunlu (örn. 20DC, 40HQ, TIR).")
+    aktif = TanimSecenegi.objects.filter(silindi=False, kategori=kategori)
+    if haric_pk is not None:
+        aktif = aktif.exclude(pk=haric_pk)
+    if aktif.filter(ad=ad).exists():
+        raise TanimHatasi(f"Bu ad zaten kayıtlı: {ad}")
+    if kod and aktif.filter(kod=kod).exists():
+        raise TanimHatasi(f"Bu kod zaten kayıtlı: {kod}")
+    return ad, kod
+
+
+def secenek_olustur(kategori, *, ad, kod="", sira=0, kullanici=None) -> TanimSecenegi:
+    kategori = _kategori_dogrula(kategori)
+    ad, kod = _secenek_dogrula(kategori, ad, kod)
+    return TanimSecenegi.objects.create(
+        kategori=kategori, ad=ad, kod=kod, sira=int(sira or 0),
+        created_by=kullanici, updated_by=kullanici)
+
+
+def secenek_guncelle(s: TanimSecenegi, *, ad, kod="", sira=0, kullanici=None) -> TanimSecenegi:
+    if s.silindi:
+        raise TanimHatasi("Silinmiş kayıt düzenlenemez.")
+    s.ad, s.kod = _secenek_dogrula(s.kategori, ad, kod, haric_pk=s.pk)
+    s.sira = int(sira or 0)
+    s.updated_by = kullanici
+    s.save(update_fields=["ad", "kod", "sira", "updated_by", "updated_at"])
+    return s
+
+
+def secenek_sil(s: TanimSecenegi, kullanici=None) -> TanimSecenegi:
+    if s.silindi:
+        return s
+    from django.db.models import Q
+    kullanimda = TeklifSiparis.objects.filter(silindi=False).filter(
+        Q(yukleme_sekli=s) | Q(odeme_kosulu=s) | Q(yukleme_tipi=s)).exists()
+    if kullanimda:
+        raise TanimHatasi("Bu seçenek tekliflerde kullanılıyor; silinemez.")
+    s.silindi = True
+    s.silindi_at = timezone.now()
+    s.updated_by = kullanici
+    s.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return s

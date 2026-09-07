@@ -24,6 +24,7 @@ from core.forms import (
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
     TeklifSiparisForm, TeklifSiparisKalemForm, SatisTeklifBaslikForm, SatisTeklifKalemForm,
+    TanimSecenegiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
@@ -32,7 +33,7 @@ from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, Sehir, Stok, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
+    KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -1928,8 +1929,26 @@ def _satis_teklif_stok_meta():
             "gorselUrl": s.gorsel.url if s.gorsel else None,
             "kdv": float(s.kdv.oran) if s.kdv_id else 0,
             "fiyatlar": {pb: fiyatlar.get(pb) for pb in ("TRY", "USD", "EUR", "GBP")},
+            # Yükleme tipi kodu -> bu ürünün o tipe sığan adedi (navlun dağıtımı için).
+            "yukleme": {kod: getattr(s, alan) or None
+                        for kod, alan in TanimSecenegi.YUKLEME_ALANI.items()},
         }
     return urunler, meta
+
+
+def _tip_kodlari():
+    """Yükleme Tipi seçeneği pk -> kod (JS, seçilen tipin Stok adet alanını bulmak için)."""
+    return {str(s.pk): s.kod for s in TanimSecenegi.objects.filter(
+        silindi=False, kategori=TanimSecenegi.Kategori.YUKLEME_TIPI)}
+
+
+def _secenek_kwargs(cd):
+    return {
+        "yukleme_sekli_id": cd["yukleme_sekli"].pk if cd.get("yukleme_sekli") else None,
+        "odeme_kosulu_id": cd["odeme_kosulu"].pk if cd.get("odeme_kosulu") else None,
+        "yukleme_tipi_id": cd["yukleme_tipi"].pk if cd.get("yukleme_tipi") else None,
+        "navlun_tutari": cd.get("navlun_tutari"),
+    }
 
 
 def _cari_meta():
@@ -2018,9 +2037,7 @@ def satis_teklif_ekle(request):
                         gecerlilik_teslim_tarihi=bform.cleaned_data.get(
                             "gecerlilik_teslim_tarihi"),
                         para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
-                        aciklama=bform.cleaned_data.get("aciklama", ""),
-                        teslim_sekli=bform.cleaned_data.get("teslim_sekli", ""),
-                        odeme_kosulu=bform.cleaned_data.get("odeme_kosulu", ""),
+                        **_secenek_kwargs(bform.cleaned_data),
                         satirlar=satirlar, kullanici=request.user)
                     messages.success(request, f"Satış Teklifi kaydedildi: {ts.belge_no}")
                     return redirect("core:teklif_siparis_detay", pk=ts.pk)
@@ -2035,7 +2052,7 @@ def satis_teklif_ekle(request):
             for s in urunler])
     return render(request, "core/satis_teklif_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(),
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "tip_kodlari": _tip_kodlari(),
         "iptal_url": reverse("core:satis_teklifleri")})
 
 
@@ -2068,9 +2085,8 @@ def satis_teklif_duzenle(request, pk):
                         gecerlilik_teslim_tarihi=bform.cleaned_data.get(
                             "gecerlilik_teslim_tarihi"),
                         para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
-                        aciklama=bform.cleaned_data.get("aciklama", ""),
-                        teslim_sekli=bform.cleaned_data.get("teslim_sekli", ""),
-                        odeme_kosulu=bform.cleaned_data.get("odeme_kosulu", ""),
+                        aciklama=ts.aciklama,
+                        **_secenek_kwargs(bform.cleaned_data),
                         satirlar=satirlar, kullanici=request.user)
                     messages.success(request, "Satış Teklifi güncellendi.")
                     return redirect("core:teklif_siparis_detay", pk=ts.pk)
@@ -2080,8 +2096,9 @@ def satis_teklif_duzenle(request, pk):
         bform = SatisTeklifBaslikForm(initial={
             "cari": ts.cari_id, "tarih": ts.tarih,
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
-            "para_birimi": ts.para_birimi, "aciklama": ts.aciklama,
-            "teslim_sekli": ts.teslim_sekli, "odeme_kosulu": ts.odeme_kosulu})
+            "para_birimi": ts.para_birimi,
+            "yukleme_sekli": ts.yukleme_sekli_id, "odeme_kosulu": ts.odeme_kosulu_id,
+            "yukleme_tipi": ts.yukleme_tipi_id, "navlun_tutari": ts.navlun_tutari})
         mevcut = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
         formset = SatisTeklifKalemFormSet(initial=[
             {"stok": s.pk, "dahil": s.pk in mevcut,
@@ -2092,7 +2109,8 @@ def satis_teklif_duzenle(request, pk):
             for s in urunler])
     return render(request, "core/satis_teklif_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "duzenleme": True,
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "tip_kodlari": _tip_kodlari(),
+        "duzenleme": True,
         "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
 
@@ -3377,6 +3395,91 @@ def kdv_orani_sil(request, pk):
         except tanim_servis.TanimHatasi as e:
             messages.error(request, str(e))
     return redirect("core:kdv_oranlari")
+
+
+# Tanım seçenekleri (Yükleme Şekli / Ödeme Koşulu / Yükleme Tipi) — tek model, kategoriye göre
+# parametreli ortak view'lar (kdv_orani_* kalıbı). slug -> (kategori, başlık, emoji).
+_SECENEK_KATEGORI = {
+    "yukleme-sekli": (TanimSecenegi.Kategori.YUKLEME_SEKLI, "Yükleme Şekli", "🚢"),
+    "odeme-kosulu": (TanimSecenegi.Kategori.ODEME_KOSULU, "Ödeme Koşulları", "💳"),
+    "yukleme-tipi": (TanimSecenegi.Kategori.YUKLEME_TIPI, "Yükleme Tipi", "🚚"),
+}
+
+
+def _secenek_kategori(slug):
+    if slug not in _SECENEK_KATEGORI:
+        raise Http404
+    return _SECENEK_KATEGORI[slug]
+
+
+def _secenek_ctx(slug, **ek):
+    kategori, baslik, emoji = _secenek_kategori(slug)
+    return {"slug": slug, "kategori": kategori, "baslik": baslik, "emoji": emoji,
+            "kod_var": kategori == TanimSecenegi.Kategori.YUKLEME_TIPI, **ek}
+
+
+@yonetici_gerekli
+def secenek_listesi(request, slug):
+    kategori, _, _ = _secenek_kategori(slug)
+    return render(request, "core/tanim_secenek_listesi.html",
+                  _secenek_ctx(slug, secenekler=tanim_servis.aktif_secenekler(kategori)))
+
+
+@yonetici_gerekli
+def secenek_ekle(request, slug):
+    kategori, baslik, _ = _secenek_kategori(slug)
+    if request.method == "POST":
+        form = TanimSecenegiForm(request.POST, kategori=kategori)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                tanim_servis.secenek_olustur(
+                    kategori, ad=cd["ad"], kod=cd.get("kod", ""), sira=cd["sira"],
+                    kullanici=request.user)
+                messages.success(request, f"{baslik} eklendi.")
+                return redirect("core:secenek_listesi", slug=slug)
+            except tanim_servis.TanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = TanimSecenegiForm(kategori=kategori)
+    return render(request, "core/tanim_secenek_form.html",
+                  _secenek_ctx(slug, form=form, form_baslik=f"Yeni {baslik}"))
+
+
+@yonetici_gerekli
+def secenek_duzenle(request, slug, pk):
+    kategori, baslik, _ = _secenek_kategori(slug)
+    s = get_object_or_404(TanimSecenegi, pk=pk, silindi=False, kategori=kategori)
+    if request.method == "POST":
+        form = TanimSecenegiForm(request.POST, kategori=kategori)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                tanim_servis.secenek_guncelle(
+                    s, ad=cd["ad"], kod=cd.get("kod", ""), sira=cd["sira"],
+                    kullanici=request.user)
+                messages.success(request, f"{baslik} güncellendi.")
+                return redirect("core:secenek_listesi", slug=slug)
+            except tanim_servis.TanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = TanimSecenegiForm(kategori=kategori,
+                                 initial={"ad": s.ad, "kod": s.kod, "sira": s.sira})
+    return render(request, "core/tanim_secenek_form.html",
+                  _secenek_ctx(slug, form=form, form_baslik=f"{baslik} Düzenle", duzenlenen=s))
+
+
+@yonetici_gerekli
+def secenek_sil(request, slug, pk):
+    kategori, baslik, _ = _secenek_kategori(slug)
+    s = get_object_or_404(TanimSecenegi, pk=pk, silindi=False, kategori=kategori)
+    if request.method == "POST":
+        try:
+            tanim_servis.secenek_sil(s, kullanici=request.user)
+            messages.success(request, f"{baslik} silindi.")
+        except tanim_servis.TanimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:secenek_listesi", slug=slug)
 
 
 @yonetici_gerekli

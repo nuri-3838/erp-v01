@@ -5,6 +5,7 @@ Sayı alanları İSTİSNASIZ tek parser/formatter'dan geçer (core.sayi).
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 from django import forms
@@ -17,7 +18,7 @@ from core.metin import buyuk_harf_tr
 from core.models import (
     Banka, BankaHesap, Birim, Cari, CariAktivite, CariKategori, CekSenet, Depo, FaturaTipi,
     HesapPlani, Kasa, Kategori, KdvOrani,
-    Profil, Sehir, Stok, StokHareket, TevkifatOrani, Ulke, YevmiyeSatir,
+    Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
 
@@ -621,6 +622,24 @@ class TevkifatOraniForm(forms.Form):
         from core.services.hesap_plani import yaprak_hesaplar
         self.fields["hesap"].queryset = yaprak_hesaplar()
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+
+
+class TanimSecenegiForm(forms.Form):
+    """Tanım seçeneği ekle/düzenle (AYARLAR > Tanım Listeleri: Yükleme Şekli / Ödeme Koşulu /
+    Yükleme Tipi). ``kod`` yalnız Yükleme Tipi'nde gösterilir ve zorunludur (serviste)."""
+
+    sira = forms.IntegerField(label="Sıra", min_value=0, initial=0,
+                              widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+    kod = forms.CharField(label="Kod", max_length=30, required=False,
+                          widget=forms.TextInput(attrs={"autocomplete": "off",
+                                                        "placeholder": "örn. 20DC, 40HQ, TIR"}))
+    ad = forms.CharField(label="Ad", max_length=200,
+                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, kategori=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if kategori != TanimSecenegi.Kategori.YUKLEME_TIPI:
+            self.fields.pop("kod")
 
 
 class KasaForm(forms.Form):
@@ -1266,10 +1285,15 @@ class TeklifSiparisKalemForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+def _gecerlilik_varsayilan():
+    return timezone.localdate() + timedelta(days=15)
+
+
 class SatisTeklifBaslikForm(forms.Form):
-    """Satış Teklifi başlığı: cari + tarih + geçerlilik tarihi + PB + teslim şekli +
-    ödeme koşulu + açıklama. Cari seçilince PB/varsayılan iskonto JS ile otomatik
-    doldurulur (elle değiştirilebilir) — bkz. satis_teklif_ekle.html."""
+    """Satış Teklifi başlığı: cari + tarih + geçerlilik (varsayılan +15 gün) + PB +
+    Tanım Listeleri'nden seçilen yükleme şekli / ödeme koşulu / yükleme tipi + navlun.
+    Cari seçilince PB/varsayılan iskonto JS ile otomatik doldurulur — bkz.
+    satis_teklif_ekle.html."""
 
     cari = forms.ModelChoiceField(
         label="Cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
@@ -1278,27 +1302,38 @@ class SatisTeklifBaslikForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
     gecerlilik_teslim_tarihi = forms.DateField(
-        label="Geçerlilik Tarihi", required=False,
+        label="Geçerlilik Tarihi", required=False, initial=_gecerlilik_varsayilan,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     para_birimi = forms.ChoiceField(
         label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
-    teslim_sekli = forms.CharField(
-        label="Teslim / Nakliye / Yükleme Şekli", max_length=300, required=False,
-        widget=forms.TextInput(attrs={
-            "autocomplete": "off", "placeholder": "örn. Nakliye Dahil, FOB İzmir"}))
-    odeme_kosulu = forms.CharField(
-        label="Ödeme Koşulu", max_length=300, required=False,
-        widget=forms.TextInput(attrs={
-            "autocomplete": "off", "placeholder": "örn. %50 peşin + %50 sevkiyatta"}))
-    aciklama = forms.CharField(
-        label="Açıklama", max_length=500, required=False,
-        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    yukleme_sekli = forms.ModelChoiceField(
+        label="Yükleme Şekli", queryset=TanimSecenegi.objects.none(), required=False,
+        empty_label="— seçiniz —")
+    odeme_kosulu = forms.ModelChoiceField(
+        label="Ödeme Koşulu", queryset=TanimSecenegi.objects.none(), required=False,
+        empty_label="— seçiniz —")
+    yukleme_tipi = forms.ModelChoiceField(
+        label="Yükleme Tipi", queryset=TanimSecenegi.objects.none(), required=False,
+        empty_label="— seçiniz —")
+    navlun_tutari = TRDecimalField(
+        label="Navlun Tutarı", basamak=2, required=False,
+        widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off",
+                                      "placeholder": "0,00"}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        K = TanimSecenegi.Kategori
+        for alan, kategori in (("yukleme_sekli", K.YUKLEME_SEKLI),
+                               ("odeme_kosulu", K.ODEME_KOSULU),
+                               ("yukleme_tipi", K.YUKLEME_TIPI)):
+            self.fields[alan].queryset = (
+                TanimSecenegi.objects.filter(silindi=False, kategori=kategori)
+                .order_by("sira", "ad"))
+            self.fields[alan].label_from_instance = lambda o: o.ad
+            self.fields[alan].widget.attrs["class"] = "akilli-sec"
 
 
 class SatisTeklifKalemForm(forms.Form):

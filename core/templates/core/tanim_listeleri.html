@@ -30,5 +30,17 @@
     <span class="ik">🧮</span>
     <span><strong>Tevkifat Oranları</strong><span>Pay/Payda + tevkifat hesabı</span></span>
   </a>
+  <a class="icerik-kart tanim-kart" href="{% url 'core:secenek_listesi' 'yukleme-sekli' %}">
+    <span class="ik">🚢</span>
+    <span><strong>Yükleme Şekli</strong><span>Teklifte seçilen teslim/yükleme şekli (EXW, FOB…)</span></span>
+  </a>
+  <a class="icerik-kart tanim-kart" href="{% url 'core:secenek_listesi' 'odeme-kosulu' %}">
+    <span class="ik">💳</span>
+    <span><strong>Ödeme Koşulları</strong><span>Teklifte seçilen ödeme koşulu</span></span>
+  </a>
+  <a class="icerik-kart tanim-kart" href="{% url 'core:secenek_listesi' 'yukleme-tipi' %}">
+    <span class="ik">🚚</span>
+    <span><strong>Yükleme Tipi</strong><span>20DC / 40HQ / TIR — navlun dağıtımı bu tipe göre</span></span>
+  </a>
 </div>
 {% endblock %}

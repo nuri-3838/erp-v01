@@ -16,7 +16,8 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
-from core.models import Cari, Depo, KdvOrani, Stok, StokHareket, TeklifSiparis, TeklifSiparisKalem
+from core.models import (Cari, Depo, KdvOrani, Stok, StokHareket, TanimSecenegi, TeklifSiparis,
+                         TeklifSiparisKalem)
 from core.sayi import SayiHatasi, parse_tr
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
 
@@ -92,6 +93,34 @@ def _pb_dogrula(para_birimi):
     return pb
 
 
+def _secenek_coz(pk, kategori):
+    """Satış Teklifi'nin Tanım Listesi FK'ları: boşsa None; doluysa aktif + doğru kategoride
+    bir TanimSecenegi olmalı (yanlış listeden pk gönderilemez)."""
+    if not pk:
+        return None
+    s = TanimSecenegi.objects.filter(pk=pk, silindi=False, kategori=kategori).first()
+    if s is None:
+        raise TeklifSiparisHatasi(
+            f"{TanimSecenegi.Kategori(kategori).label} seçeneği bulunamadı.")
+    return s
+
+
+def _navlun_coz(navlun_tutari):
+    if navlun_tutari in (None, ""):
+        return None
+    return _sayi(navlun_tutari, "Navlun tutarı")
+
+
+def _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id, navlun_tutari):
+    K = TanimSecenegi.Kategori
+    return {
+        "yukleme_sekli": _secenek_coz(yukleme_sekli_id, K.YUKLEME_SEKLI),
+        "odeme_kosulu": _secenek_coz(odeme_kosulu_id, K.ODEME_KOSULU),
+        "yukleme_tipi": _secenek_coz(yukleme_tipi_id, K.YUKLEME_TIPI),
+        "navlun_tutari": _navlun_coz(navlun_tutari),
+    }
+
+
 def _depo_coz_irsaliye(belge_tur, depo_id):
     """İRSALİYE'de depo ZORUNLU (gerçek stok hareketi için); diğer belge türlerinde hep None."""
     if belge_tur != TeklifSiparis.BelgeTur.IRSALIYE:
@@ -119,8 +148,8 @@ def _sonraki_sira(belge_tur, yon, yil):
 
 def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, para_birimi,
                    aciklama, kaynak_teklif=None, kaynak_siparis=None, depo=None,
-                   irsaliye_no="", teslim_sekli="", odeme_kosulu="",
-                   kullanici=None) -> TeklifSiparis:
+                   irsaliye_no="", yukleme_sekli=None, odeme_kosulu=None, yukleme_tipi=None,
+                   navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Numaralı başlık oluşturur: belge_no = ÖNEK-yıl-sıra (müteselsil/boşluksuz — fiş no ile
     aynı invariant, kullanıcı giremez/değiştiremez). Numara çakışırsa (eşzamanlı oluşturma)
     savepoint geri alınır, bir sonraki sırayla yeniden denenir (fis_olustur ile aynı desen)."""
@@ -137,8 +166,8 @@ def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, par
                     para_birimi=para_birimi, aciklama=(aciklama or "").strip(),
                     kaynak_teklif=kaynak_teklif, kaynak_siparis=kaynak_siparis, depo=depo,
                     irsaliye_no=(irsaliye_no or "").strip(),
-                    teslim_sekli=(teslim_sekli or "").strip(),
-                    odeme_kosulu=(odeme_kosulu or "").strip(),
+                    yukleme_sekli=yukleme_sekli, odeme_kosulu=odeme_kosulu,
+                    yukleme_tipi=yukleme_tipi, navlun_tutari=navlun_tutari,
                     created_by=kullanici, updated_by=kullanici)
         except IntegrityError as e:
             if "uq_teklif_siparis_tur_yon_yil_sira" not in str(e):
@@ -151,8 +180,8 @@ def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, par
 def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
                            gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                            aciklama="", depo_id=None, irsaliye_no="",
-                           teslim_sekli="", odeme_kosulu="",
-                           kullanici=None) -> TeklifSiparis:
+                           yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
+                           navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini oluşturur. Yevmiye ÜRETMEZ; İRSALİYE
     stok hareketi de ÜRETMEZ (o yalnız onaylanınca — bkz. teklif_siparis_onayla). Durum
     TASLAK başlar; belge_no otomatik (müteselsil) üretilir."""
@@ -163,10 +192,11 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
     cari, hazir = _hazirla(cari_id=cari_id, satirlar=satirlar)
     pb = _pb_dogrula(para_birimi)
     depo = _depo_coz_irsaliye(belge_tur, depo_id)
+    secenekler = _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
+                                     navlun_tutari)
     ts = _belge_olustur(belge_tur=belge_tur, yon=yon, cari=cari, tarih=tarih,
                         gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
-                        irsaliye_no=irsaliye_no, teslim_sekli=teslim_sekli,
-                        odeme_kosulu=odeme_kosulu,
+                        irsaliye_no=irsaliye_no, **secenekler,
                         para_birimi=pb, aciklama=aciklama, depo=depo, kullanici=kullanici)
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
@@ -176,8 +206,8 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
 def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
                             gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                             aciklama="", depo_id=None, irsaliye_no="",
-                            teslim_sekli="", odeme_kosulu="",
-                            kullanici=None) -> TeklifSiparis:
+                            yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
+                            navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini günceller (belge_tur/yon/belge_no SABİT —
     hangi ekrana ait olduğunu ve numarasını belirler, değişmez). Onaylı belge düzenlenemez
     (önce onayı geri alın). Eski kalemler soft-delete edilir, yenileri yazılır."""
@@ -197,12 +227,13 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
     ts.aciklama = (aciklama or "").strip()
     ts.depo = depo
     ts.irsaliye_no = (irsaliye_no or "").strip()
-    ts.teslim_sekli = (teslim_sekli or "").strip()
-    ts.odeme_kosulu = (odeme_kosulu or "").strip()
+    for alan, deger in _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
+                                           navlun_tutari).items():
+        setattr(ts, alan, deger)
     ts.updated_by = kullanici
     ts.save(update_fields=["cari", "tarih", "gecerlilik_teslim_tarihi", "para_birimi",
-                           "aciklama", "depo", "irsaliye_no", "teslim_sekli", "odeme_kosulu",
-                           "updated_by", "updated_at"])
+                           "aciklama", "depo", "irsaliye_no", "yukleme_sekli", "odeme_kosulu",
+                           "yukleme_tipi", "navlun_tutari", "updated_by", "updated_at"])
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
 
@@ -286,7 +317,8 @@ def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> T
     siparis = _belge_olustur(belge_tur=TeklifSiparis.BelgeTur.SIPARIS, yon=teklif.yon,
                              cari=teklif.cari, tarih=tarih, gecerlilik_teslim_tarihi=None,
                              para_birimi=teklif.para_birimi, aciklama=teklif.aciklama,
-                             teslim_sekli=teklif.teslim_sekli, odeme_kosulu=teklif.odeme_kosulu,
+                             yukleme_sekli=teklif.yukleme_sekli, odeme_kosulu=teklif.odeme_kosulu,
+                             yukleme_tipi=teklif.yukleme_tipi, navlun_tutari=teklif.navlun_tutari,
                              kaynak_teklif=teklif, kullanici=kullanici)
     for k in kalemler:
         TeklifSiparisKalem.objects.create(
@@ -320,7 +352,8 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
     irsaliye = _belge_olustur(belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, yon=siparis.yon,
                               cari=siparis.cari, tarih=tarih, gecerlilik_teslim_tarihi=None,
                               para_birimi=siparis.para_birimi, aciklama=siparis.aciklama,
-                              teslim_sekli=siparis.teslim_sekli, odeme_kosulu=siparis.odeme_kosulu,
+                              yukleme_sekli=siparis.yukleme_sekli, odeme_kosulu=siparis.odeme_kosulu,
+                              yukleme_tipi=siparis.yukleme_tipi, navlun_tutari=siparis.navlun_tutari,
                               kaynak_siparis=siparis, depo=depo, kullanici=kullanici)
     for k in kalemler:
         TeklifSiparisKalem.objects.create(

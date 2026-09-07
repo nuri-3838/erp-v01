@@ -42,6 +42,7 @@
   .fk-satir { display:flex; justify-content:space-between; gap:.6rem; font-size:.86rem; }
   .fk-satir .et { color:var(--metin-soluk); }
   .fk-satir.fk-net .dg { font-weight:800; color:var(--lacivert); }
+  .fk-satir.fk-nakliye .dg { color:var(--turuncu-koyu); }
 </style>
 
 <div class="detay-kapsa">
@@ -114,11 +115,17 @@
       <div class="satir"><span class="et">İrsaliye No</span>
         <span class="dg">{% if ts.irsaliye_no %}{{ ts.irsaliye_no }}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
       {% endif %}
-      {% if ts.teslim_sekli %}
-      <div class="satir"><span class="et">Teslim / Nakliye / Yükleme Şekli</span><span class="dg">{{ ts.teslim_sekli }}</span></div>
+      {% if ts.yukleme_sekli %}
+      <div class="satir"><span class="et">Yükleme Şekli</span><span class="dg">{{ ts.yukleme_sekli.ad }}</span></div>
       {% endif %}
       {% if ts.odeme_kosulu %}
-      <div class="satir"><span class="et">Ödeme Koşulu</span><span class="dg">{{ ts.odeme_kosulu }}</span></div>
+      <div class="satir"><span class="et">Ödeme Koşulu</span><span class="dg">{{ ts.odeme_kosulu.ad }}</span></div>
+      {% endif %}
+      {% if ts.yukleme_tipi %}
+      <div class="satir"><span class="et">Yükleme Tipi</span><span class="dg">{{ ts.yukleme_tipi.ad }}</span></div>
+      {% endif %}
+      {% if ts.navlun_tutari is not None %}
+      <div class="satir"><span class="et">Navlun Tutarı</span><span class="dg mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
       {% endif %}
       {% if ts.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ ts.aciklama }}</span></div>{% endif %}
       {% if ts.kaynak_teklif %}
@@ -157,6 +164,12 @@
             <div class="fk-satir"><span class="et">Liste Fiyatı</span><span class="dg mono">{{ k.birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
             {% if k.iskonto_yuzdesi %}<div class="fk-satir"><span class="et">İskonto</span><span class="dg mono">%{{ k.iskonto_yuzdesi|tr_kur:2 }}</span></div>{% endif %}
             <div class="fk-satir fk-net"><span class="et">Net Fiyat</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+            {% if k.navlun_payi is not None %}
+            <div class="fk-satir"><span class="et">Navlun Payı</span><span class="dg mono">{{ k.navlun_payi|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+            <div class="fk-satir fk-net fk-nakliye"><span class="et">Nakliye Dahil</span><span class="dg mono">{{ k.nakliye_dahil_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
+            {% elif ts.navlun_tutari is not None and ts.yukleme_tipi %}
+            <div class="fk-satir"><span class="et">Nakliye Dahil</span><span class="dg pasif">yükleme adedi tanımsız</span></div>
+            {% endif %}
             {% if k.kdv %}<div class="fk-satir"><span class="et">KDV</span><span class="dg mono">%{{ k.kdv.oran|tr_kur:0 }}</span></div>{% endif %}
           </div>
         </div>
