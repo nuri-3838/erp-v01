@@ -344,7 +344,11 @@ class StokForm(forms.Form):
     satis_urunu = forms.BooleanField(label="Satış", required=False)
 
     # Satış/teklif alanları — yalnız Satış işaretliyken formda görünür/anlamlıdır;
-    # işaretli değilse serviste None'a sabitlenir (bkz. core/services/stok.py).
+    # işaretli değilse serviste None'a (model_kodu için "") sabitlenir
+    # (bkz. core/services/stok.py).
+    model_kodu = forms.CharField(
+        label="Model Kodu", max_length=30, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "örn. A21"}))
     basamak_sayisi = forms.IntegerField(
         label="Basamak Sayısı", required=False, min_value=0)
     yukseklik = TRDecimalField(label="Yükseklik (cm)", basamak=1, required=False)

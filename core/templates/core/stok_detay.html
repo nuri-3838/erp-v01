@@ -138,6 +138,8 @@
       {% if stok.satis_urunu %}
       <h2 class="bolum-baslik" style="margin-top:1.6rem"><span class="emoji">📐</span>Teklif / Teknik Özellikler</h2>
       <div class="kv">
+        <div class="satir"><span class="et">Model Kodu</span>
+          <span class="dg">{% if stok.model_kodu %}<span class="mono">{{ stok.model_kodu }}</span>{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Basamak Sayısı</span>
           <span class="dg">{% if stok.basamak_sayisi is not None %}<span class="mono">{{ stok.basamak_sayisi }}</span>{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Yükseklik</span>

@@ -513,6 +513,9 @@ class Stok(TemelModel):
     # Satış/teklif alanları — yalnız satis_urunu=True kartlarda anlamlı (serviste
     # satis_urunu=False ise bu alanlar temizlenir). SEMTA ürün kataloğu teknik ölçü
     # tablosuyla birebir; ileride teklif (quotation) PDF'i bunlardan beslenecek.
+    # Üreticinin kendi model kodu (örn. "A21") — stok kartının otomatik ``kod``'undan
+    # (ÜST-ALT-sıra) AYRI: ad içine gömülmez, Teklif/Teknik bölümünde ayrı gösterilir.
+    model_kodu = models.CharField("model kodu", max_length=30, blank=True, default="")
     basamak_sayisi = models.PositiveIntegerField(
         "basamak sayısı", null=True, blank=True)
     yukseklik = models.DecimalField(

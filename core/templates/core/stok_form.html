@@ -134,6 +134,11 @@
       <h2 class="bolum-baslik"><span class="emoji">📐</span>Teklif / Teknik Özellikler</h2>
       <div class="izgara-3">
         <div class="alan">
+          <label for="{{ form.model_kodu.id_for_label }}">Model Kodu</label>
+          {{ form.model_kodu }}
+          {% for e in form.model_kodu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
           <label for="{{ form.basamak_sayisi.id_for_label }}">Basamak Sayısı</label>
           {{ form.basamak_sayisi }}
           {% for e in form.basamak_sayisi.errors %}<div class="hata">{{ e }}</div>{% endfor %}

@@ -273,10 +273,11 @@ class StokGrupTeknikAlanTest(TestCase):
 
     def test_satis_urunu_teknik_alanlari_kaydeder(self):
         _, alt, _, adet, kg = _veri()
-        s = self._kur(alt, adet, kg, satis_urunu=True, basamak_sayisi=5,
+        s = self._kur(alt, adet, kg, satis_urunu=True, model_kodu="a21", basamak_sayisi=5,
                       yukseklik="100", acik_derinlik="90", taban_genisligi="43",
                       kapali_boy="171", agirlik="4,30", azami_yuk="150", cbm="0,075",
                       yukleme_20dc=440, yukleme_40hq=1010, yukleme_tir=1220)
+        self.assertEqual(s.model_kodu, "A21")          # TR büyük harf uygulanır
         self.assertEqual(s.basamak_sayisi, 5)
         self.assertEqual(s.yukseklik, Decimal("100.0"))
         self.assertEqual(s.agirlik, Decimal("4.30"))
@@ -287,18 +288,20 @@ class StokGrupTeknikAlanTest(TestCase):
         formda ne gösterilirse gösterilsin, veri tutarlılığı serviste zorlanır."""
         _, alt, _, adet, kg = _veri()
         s = self._kur(alt, adet, kg, satinalma_urunu=True, satis_urunu=False,
-                      agirlik="4,30", basamak_sayisi=5)
+                      model_kodu="A21", agirlik="4,30", basamak_sayisi=5)
+        self.assertEqual(s.model_kodu, "")
         self.assertIsNone(s.agirlik)
         self.assertIsNone(s.basamak_sayisi)
 
     def test_guncellemede_satis_kapatilinca_teknik_alanlar_silinir(self):
         _, alt, _, adet, kg = _veri()
-        s = self._kur(alt, adet, kg, satis_urunu=True, agirlik="4,30")
+        s = self._kur(alt, adet, kg, satis_urunu=True, model_kodu="A21", agirlik="4,30")
         self.assertEqual(s.agirlik, Decimal("4.30"))
         stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
                      fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
                      kdv_id=s.kdv_id, satinalma_urunu=True, satis_urunu=False)
         s.refresh_from_db()
+        self.assertEqual(s.model_kodu, "")
         self.assertIsNone(s.agirlik)
         self.assertFalse(s.satis_urunu)
 
@@ -310,9 +313,10 @@ class StokGrupTeknikAlanTest(TestCase):
     def test_kopyala_grup_ve_teknik_alanlari_kopyalar(self):
         _, alt, _, adet, kg = _veri()
         s = self._kur(alt, adet, kg, satis_urunu=True, uretim_urunu=True,
-                      agirlik="4,30", basamak_sayisi=5)
+                      model_kodu="A21", agirlik="4,30", basamak_sayisi=5)
         kopya = stok_kopyala(s)
         self.assertTrue(kopya.satis_urunu)
+        self.assertEqual(kopya.model_kodu, "A21")
         self.assertEqual(kopya.agirlik, Decimal("4.30"))
         self.assertEqual(kopya.basamak_sayisi, 5)
 
@@ -620,16 +624,18 @@ class StokViewTest(TestCase):
             "ad": "a tipi merdiven", "kategori": str(self.alt.pk),
             "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
             "cevirici": "1", "kdv": str(_kdv("20").pk), "satis_urunu": "on",
-            "basamak_sayisi": "5", "yukseklik": "100", "acik_derinlik": "90",
-            "taban_genisligi": "43", "kapali_boy": "171", "agirlik": "4,30",
-            "azami_yuk": "150", "cbm": "0,075", "yukleme_20dc": "440",
+            "model_kodu": "a21", "basamak_sayisi": "5", "yukseklik": "100",
+            "acik_derinlik": "90", "taban_genisligi": "43", "kapali_boy": "171",
+            "agirlik": "4,30", "azami_yuk": "150", "cbm": "0,075", "yukleme_20dc": "440",
             "yukleme_40hq": "1010", "yukleme_tir": "1220"})
         self.assertEqual(r.status_code, 302)
         s = Stok.objects.get(ad="A TİPİ MERDİVEN")
+        self.assertEqual(s.model_kodu, "A21")
         self.assertEqual(s.basamak_sayisi, 5)
         self.assertEqual(s.agirlik, Decimal("4.30"))
         d = self.client.get(reverse("core:stok_detay", args=[s.pk]))
         self.assertContains(d, "Teklif / Teknik Özellikler")
+        self.assertContains(d, "A21")
         self.assertContains(d, "4,30")
         self.assertContains(d, "1010")
 
