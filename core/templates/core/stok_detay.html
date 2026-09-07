@@ -72,6 +72,9 @@
       <div class="detay-rozetler">
         <span class="d-rozet kod">{{ stok.kod }}</span>
         <span class="d-rozet aktif">● Aktif</span>
+        {% if stok.satinalma_urunu %}<span class="d-rozet tip">🛒 Satınalma</span>{% endif %}
+        {% if stok.uretim_urunu %}<span class="d-rozet tip">🏭 Üretim</span>{% endif %}
+        {% if stok.satis_urunu %}<span class="d-rozet tip">📤 Satış</span>{% endif %}
       </div>
       <div class="detay-ad">{{ stok.ad }}</div>
       <div class="detay-alt">{{ stok.kategori.ust.ad }} → {{ stok.kategori.ad }}</div>
@@ -129,6 +132,34 @@
         <div class="satir"><span class="et">Alış Fiyatı</span>
           <span class="dg">{% if stok.alis_fiyati %}<span class="mono">{{ stok.alis_fiyati|tr_kur:2 }}</span> {{ stok.alis_fiyati_pb }}{% else %}—{% endif %}</span></div>
       </div>
+
+      {% if stok.satis_urunu %}
+      <h2 class="bolum-baslik" style="margin-top:1.6rem"><span class="emoji">📐</span>Teklif / Teknik Özellikler</h2>
+      <div class="kv">
+        <div class="satir"><span class="et">Basamak Sayısı</span>
+          <span class="dg">{% if stok.basamak_sayisi is not None %}<span class="mono">{{ stok.basamak_sayisi }}</span>{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Yükseklik</span>
+          <span class="dg">{% if stok.yukseklik is not None %}<span class="mono">{{ stok.yukseklik|tr_kur:1 }}</span> cm{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Açık Derinlik</span>
+          <span class="dg">{% if stok.acik_derinlik is not None %}<span class="mono">{{ stok.acik_derinlik|tr_kur:1 }}</span> cm{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Taban Genişliği</span>
+          <span class="dg">{% if stok.taban_genisligi is not None %}<span class="mono">{{ stok.taban_genisligi|tr_kur:1 }}</span> cm{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Kapalı Boy</span>
+          <span class="dg">{% if stok.kapali_boy is not None %}<span class="mono">{{ stok.kapali_boy|tr_kur:1 }}</span> cm{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Ağırlık</span>
+          <span class="dg">{% if stok.agirlik is not None %}<span class="mono">{{ stok.agirlik|tr_kur:2 }}</span> kg{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Azami Yük</span>
+          <span class="dg">{% if stok.azami_yuk is not None %}<span class="mono">{{ stok.azami_yuk|tr_kur:2 }}</span> kg{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">CBM</span>
+          <span class="dg">{% if stok.cbm is not None %}<span class="mono">{{ stok.cbm|tr_kur:3 }}</span> m³/adet{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">20' DC Yükleme</span>
+          <span class="dg">{% if stok.yukleme_20dc is not None %}<span class="mono">{{ stok.yukleme_20dc }}</span> adet{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">40' HQ Yükleme</span>
+          <span class="dg">{% if stok.yukleme_40hq is not None %}<span class="mono">{{ stok.yukleme_40hq }}</span> adet{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">TIR Yükleme</span>
+          <span class="dg">{% if stok.yukleme_tir is not None %}<span class="mono">{{ stok.yukleme_tir }}</span> adet{% else %}—{% endif %}</span></div>
+      </div>
+      {% endif %}
 
       <h2 class="bolum-baslik" style="margin-top:1.6rem"><span class="emoji">🧾</span>Muhasebe Hesabı Haritası
         <span class="yardim" style="text-transform:none;letter-spacing:0;font-weight:500">— kategoriden gelir</span></h2>

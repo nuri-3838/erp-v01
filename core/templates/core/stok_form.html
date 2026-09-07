@@ -50,6 +50,22 @@
     </section>
 
     <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🏷️</span>Ürün Grubu <span class="zorunlu">*</span></h2>
+      <div class="grup-secim">
+        <label class="grup-secenek"><input type="checkbox" name="{{ form.satinalma_urunu.html_name }}"
+          id="{{ form.satinalma_urunu.id_for_label }}" {% if form.satinalma_urunu.value %}checked{% endif %}>
+          <span>🛒 Satınalma</span></label>
+        <label class="grup-secenek"><input type="checkbox" name="{{ form.uretim_urunu.html_name }}"
+          id="{{ form.uretim_urunu.id_for_label }}" {% if form.uretim_urunu.value %}checked{% endif %}>
+          <span>🏭 Üretim</span></label>
+        <label class="grup-secenek"><input type="checkbox" name="{{ form.satis_urunu.html_name }}"
+          id="{{ form.satis_urunu.id_for_label }}" {% if form.satis_urunu.value %}checked{% endif %}>
+          <span>📤 Satış</span></label>
+      </div>
+      <p class="yardim">Birden fazlası seçilebilir. Seçime göre aşağıdaki bölümler görünür/gizlenir.</p>
+    </section>
+
+    <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">📏</span>Birim</h2>
       <div class="izgara-3">
         <div class="alan">
@@ -97,7 +113,7 @@
       </div>
     </section>
 
-    <section class="icerik-kart">
+    <section class="icerik-kart grup-blok" data-grup="satinalma_urunu">
       <h2 class="bolum-baslik"><span class="emoji">💰</span>Alış Fiyatı</h2>
       <div class="izgara">
         <div class="alan">
@@ -113,12 +129,103 @@
       <p class="yardim">Opsiyonel, yalnız bilgi amaçlı — fatura/teklif fiyatını etkilemez.</p>
     </section>
 
+    <section class="icerik-kart grup-blok" data-grup="satis_urunu">
+      <h2 class="bolum-baslik"><span class="emoji">📐</span>Teklif / Teknik Özellikler</h2>
+      <div class="izgara-3">
+        <div class="alan">
+          <label for="{{ form.basamak_sayisi.id_for_label }}">Basamak Sayısı</label>
+          {{ form.basamak_sayisi }}
+          {% for e in form.basamak_sayisi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.yukseklik.id_for_label }}">Yükseklik (cm)</label>
+          {{ form.yukseklik }}
+          {% for e in form.yukseklik.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.acik_derinlik.id_for_label }}">Açık Derinlik (cm)</label>
+          {{ form.acik_derinlik }}
+          {% for e in form.acik_derinlik.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.taban_genisligi.id_for_label }}">Taban Genişliği (cm)</label>
+          {{ form.taban_genisligi }}
+          {% for e in form.taban_genisligi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.kapali_boy.id_for_label }}">Kapalı Boy (cm)</label>
+          {{ form.kapali_boy }}
+          {% for e in form.kapali_boy.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.agirlik.id_for_label }}">Ağırlık (kg)</label>
+          {{ form.agirlik }}
+          {% for e in form.agirlik.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.azami_yuk.id_for_label }}">Azami Yük (kg)</label>
+          {{ form.azami_yuk }}
+          {% for e in form.azami_yuk.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.cbm.id_for_label }}">CBM (m³ / adet)</label>
+          {{ form.cbm }}
+          {% for e in form.cbm.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <h3 class="bolum-baslik" style="font-size:.95rem;margin-top:1.1rem">Yükleme Adetleri</h3>
+      <div class="izgara-3">
+        <div class="alan">
+          <label for="{{ form.yukleme_20dc.id_for_label }}">20' DC (adet)</label>
+          {{ form.yukleme_20dc }}
+          {% for e in form.yukleme_20dc.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.yukleme_40hq.id_for_label }}">40' HQ (adet)</label>
+          {{ form.yukleme_40hq }}
+          {% for e in form.yukleme_40hq.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.yukleme_tir.id_for_label }}">TIR (adet)</label>
+          {{ form.yukleme_tir }}
+          {% for e in form.yukleme_tir.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <p class="yardim">Yalnız Satış işaretliyken doldurun — müşteri tekliflerinde ve
+        konteyner/TIR yükleme hesaplarında kullanılır.</p>
+    </section>
+
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:stoklar' %}">İptal</a>
       <button type="submit" class="birincil">Kaydet</button>
     </div>
   </form>
 </div>
+
+<style>
+  .grup-secim { display:flex; gap:.7rem; flex-wrap:wrap; }
+  .grup-secenek { display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;
+    user-select:none; padding:.6rem 1rem; border-radius:12px; font-weight:600;
+    background:rgba(255,255,255,.55); border:1px solid var(--cizgi); }
+  .grup-secenek input[type=checkbox] { margin:0; }
+</style>
+
+<script>
+(function(){
+  var kutular = ['satinalma_urunu', 'uretim_urunu', 'satis_urunu'];
+  function sirala(){
+    document.querySelectorAll('.grup-blok').forEach(function(blok){
+      var kutu = document.getElementById('id_' + blok.dataset.grup);
+      blok.style.display = (kutu && kutu.checked) ? '' : 'none';
+    });
+  }
+  kutular.forEach(function(ad){
+    var kutu = document.getElementById('id_' + ad);
+    if(kutu) kutu.addEventListener('change', sirala);
+  });
+  sirala();
+})();
+</script>
 
 <script>
 (function(){

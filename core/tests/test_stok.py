@@ -238,6 +238,83 @@ class StokServisTest(TestCase):
             Stok.objects.create(kod="150-10-5000", ad="B", kategori=alt,
                                 uretim_birimi=adet, fatura_birimi=kg)
 
+    def test_db_agirlik_kisit(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Stok.objects.create(kod="150-10-9003", ad="Z", kategori=alt,
+                                uretim_birimi=adet, fatura_birimi=kg,
+                                satis_urunu=True, agirlik=Decimal("-1"))
+
+    def test_db_en_az_bir_grup_kisit(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Stok.objects.create(kod="150-10-9004", ad="W", kategori=alt,
+                                uretim_birimi=adet, fatura_birimi=kg,
+                                satinalma_urunu=False, uretim_urunu=False,
+                                satis_urunu=False)
+
+
+class StokGrupTeknikAlanTest(TestCase):
+    """Ürün grubu (Satınalma/Üretim/Satış — çoklu seçim, en az biri zorunlu) +
+    yalnız Satış işaretliyken anlamlı olan teklif/teknik ölçü alanları."""
+
+    def _kur(self, alt, adet, kg, **kw):
+        kw.setdefault("kdv_id", _kdv("20").pk)
+        return stok_olustur(ad=kw.pop("ad", "x"), kategori_id=alt.pk,
+                            uretim_birimi_id=adet.pk, fatura_birimi_id=kg.pk,
+                            cevirici=Decimal("1"), **kw)
+
+    def test_hicbir_grup_secilmezse_reddedilir(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(StokHatasi):
+            self._kur(alt, adet, kg, satinalma_urunu=False, uretim_urunu=False,
+                      satis_urunu=False)
+
+    def test_satis_urunu_teknik_alanlari_kaydeder(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, basamak_sayisi=5,
+                      yukseklik="100", acik_derinlik="90", taban_genisligi="43",
+                      kapali_boy="171", agirlik="4,30", azami_yuk="150", cbm="0,075",
+                      yukleme_20dc=440, yukleme_40hq=1010, yukleme_tir=1220)
+        self.assertEqual(s.basamak_sayisi, 5)
+        self.assertEqual(s.yukseklik, Decimal("100.0"))
+        self.assertEqual(s.agirlik, Decimal("4.30"))
+        self.assertEqual(s.yukleme_40hq, 1010)
+
+    def test_satis_urunu_degilse_teknik_alanlar_temizlenir(self):
+        """Satış işaretli değilken teknik alan değeri gönderilse bile kayıtta kalmaz —
+        formda ne gösterilirse gösterilsin, veri tutarlılığı serviste zorlanır."""
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satinalma_urunu=True, satis_urunu=False,
+                      agirlik="4,30", basamak_sayisi=5)
+        self.assertIsNone(s.agirlik)
+        self.assertIsNone(s.basamak_sayisi)
+
+    def test_guncellemede_satis_kapatilinca_teknik_alanlar_silinir(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, agirlik="4,30")
+        self.assertEqual(s.agirlik, Decimal("4.30"))
+        stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
+                     fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
+                     kdv_id=s.kdv_id, satinalma_urunu=True, satis_urunu=False)
+        s.refresh_from_db()
+        self.assertIsNone(s.agirlik)
+        self.assertFalse(s.satis_urunu)
+
+    def test_negatif_agirlik_reddedilir(self):
+        _, alt, _, adet, kg = _veri()
+        with self.assertRaises(StokHatasi):
+            self._kur(alt, adet, kg, satis_urunu=True, agirlik="-1")
+
+    def test_kopyala_grup_ve_teknik_alanlari_kopyalar(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, uretim_urunu=True,
+                      agirlik="4,30", basamak_sayisi=5)
+        kopya = stok_kopyala(s)
+        self.assertTrue(kopya.satis_urunu)
+        self.assertEqual(kopya.agirlik, Decimal("4.30"))
+        self.assertEqual(kopya.basamak_sayisi, 5)
+
 
 class KullanimdaSilmeKorumaTest(TestCase):
     """#9: Stok kullandığı KDV/tevkifat/cari soft-delete edilemez."""
@@ -329,7 +406,7 @@ class StokViewTest(TestCase):
         r = self.client.post(reverse("core:stok_ekle"), {
             "ad": "alüminyum levha", "kategori": str(self.alt.pk),
             "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
-            "cevirici": "3", "kdv": str(k.pk)})
+            "cevirici": "3", "kdv": str(k.pk), "uretim_urunu": "on"})
         self.assertEqual(r.status_code, 302)
         s = Stok.objects.get(ad="ALÜMİNYUM LEVHA")
         self.assertEqual((s.kod, s.kategori_id, s.kdv_id),
@@ -341,7 +418,7 @@ class StokViewTest(TestCase):
         r = self.client.post(reverse("core:stok_ekle"), {
             "ad": "profil", "kategori": str(self.alt.pk),
             "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
-            "cevirici": "3", "kdv": str(k.pk),
+            "cevirici": "3", "kdv": str(k.pk), "uretim_urunu": "on",
             "alis_fiyati": "45,75", "alis_fiyati_pb": "USD"})
         self.assertEqual(r.status_code, 302)
         s = Stok.objects.get(ad="PROFİL")
@@ -367,7 +444,8 @@ class StokViewTest(TestCase):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:stok_duzenle", args=[s.pk]), {
             "ad": "levha yeni", "uretim_birimi": str(self.kg.pk),
-            "fatura_birimi": str(self.adet.pk), "cevirici": "2,5", "kdv": str(k10.pk)})
+            "fatura_birimi": str(self.adet.pk), "cevirici": "2,5", "kdv": str(k10.pk),
+            "uretim_urunu": "on"})
         self.assertEqual(r.status_code, 302)
         s.refresh_from_db()
         self.assertEqual((s.ad, s.kod, s.cevirici, s.kdv_id),
@@ -463,3 +541,39 @@ class StokViewTest(TestCase):
             "cevirici": "1"})
         self.assertEqual(r.status_code, 200)
         self.assertFalse(Stok.objects.filter(ad="KDVSIZ").exists())
+
+    def test_ekle_grupsuz_reddedilir(self):
+        """Hiçbir grup (Satınalma/Üretim/Satış) işaretlenmeden kart kaydedilemez."""
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:stok_ekle"), {
+            "ad": "grupsuz", "kategori": str(self.alt.pk),
+            "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
+            "cevirici": "1", "kdv": str(_kdv("20").pk)})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "En az bir grup")
+        self.assertFalse(Stok.objects.filter(ad="GRUPSUZ").exists())
+
+    def test_ekle_satis_teknik_alanlari_kaydeder_ve_detayda_gorunur(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:stok_ekle"), {
+            "ad": "a tipi merdiven", "kategori": str(self.alt.pk),
+            "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
+            "cevirici": "1", "kdv": str(_kdv("20").pk), "satis_urunu": "on",
+            "basamak_sayisi": "5", "yukseklik": "100", "acik_derinlik": "90",
+            "taban_genisligi": "43", "kapali_boy": "171", "agirlik": "4,30",
+            "azami_yuk": "150", "cbm": "0,075", "yukleme_20dc": "440",
+            "yukleme_40hq": "1010", "yukleme_tir": "1220"})
+        self.assertEqual(r.status_code, 302)
+        s = Stok.objects.get(ad="A TİPİ MERDİVEN")
+        self.assertEqual(s.basamak_sayisi, 5)
+        self.assertEqual(s.agirlik, Decimal("4.30"))
+        d = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(d, "Teklif / Teknik Özellikler")
+        self.assertContains(d, "4,30")
+        self.assertContains(d, "1010")
+
+    def test_detay_satis_degilse_teknik_bolum_gorunmez(self):
+        s = self._ornek_stok()          # yalnız uretim_urunu=True (varsayılan)
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertNotContains(r, "Teklif / Teknik Özellikler")

@@ -681,6 +681,17 @@ def stok_ekle(request):
                     tedarikci_id=cd["tedarikci"].pk if cd.get("tedarikci") else None,
                     alis_fiyati=cd.get("alis_fiyati"),
                     alis_fiyati_pb=cd.get("alis_fiyati_pb"),
+                    satinalma_urunu=cd.get("satinalma_urunu"),
+                    uretim_urunu=cd.get("uretim_urunu"),
+                    satis_urunu=cd.get("satis_urunu"),
+                    basamak_sayisi=cd.get("basamak_sayisi"),
+                    yukseklik=cd.get("yukseklik"), acik_derinlik=cd.get("acik_derinlik"),
+                    taban_genisligi=cd.get("taban_genisligi"),
+                    kapali_boy=cd.get("kapali_boy"), agirlik=cd.get("agirlik"),
+                    azami_yuk=cd.get("azami_yuk"), cbm=cd.get("cbm"),
+                    yukleme_20dc=cd.get("yukleme_20dc"),
+                    yukleme_40hq=cd.get("yukleme_40hq"),
+                    yukleme_tir=cd.get("yukleme_tir"),
                     kullanici=request.user)
                 messages.success(request, f"Stok eklendi: {s.kod} — {s.ad}")
                 return redirect("core:stoklar")
@@ -711,6 +722,17 @@ def stok_duzenle(request, pk):
                     tedarikci_id=cd["tedarikci"].pk if cd.get("tedarikci") else None,
                     alis_fiyati=cd.get("alis_fiyati"),
                     alis_fiyati_pb=cd.get("alis_fiyati_pb"),
+                    satinalma_urunu=cd.get("satinalma_urunu"),
+                    uretim_urunu=cd.get("uretim_urunu"),
+                    satis_urunu=cd.get("satis_urunu"),
+                    basamak_sayisi=cd.get("basamak_sayisi"),
+                    yukseklik=cd.get("yukseklik"), acik_derinlik=cd.get("acik_derinlik"),
+                    taban_genisligi=cd.get("taban_genisligi"),
+                    kapali_boy=cd.get("kapali_boy"), agirlik=cd.get("agirlik"),
+                    azami_yuk=cd.get("azami_yuk"), cbm=cd.get("cbm"),
+                    yukleme_20dc=cd.get("yukleme_20dc"),
+                    yukleme_40hq=cd.get("yukleme_40hq"),
+                    yukleme_tir=cd.get("yukleme_tir"),
                     kullanici=request.user)
                 messages.success(request, "Stok güncellendi.")
                 return redirect("core:stoklar")
@@ -722,7 +744,14 @@ def stok_duzenle(request, pk):
             "fatura_birimi": stok.fatura_birimi_id, "cevirici": stok.cevirici,
             "kdv": stok.kdv_id, "tevkifat": stok.tevkifat_id,
             "kritik_stok": stok.kritik_stok, "tedarikci": stok.tedarikci_id,
-            "alis_fiyati": stok.alis_fiyati, "alis_fiyati_pb": stok.alis_fiyati_pb})
+            "alis_fiyati": stok.alis_fiyati, "alis_fiyati_pb": stok.alis_fiyati_pb,
+            "satinalma_urunu": stok.satinalma_urunu, "uretim_urunu": stok.uretim_urunu,
+            "satis_urunu": stok.satis_urunu, "basamak_sayisi": stok.basamak_sayisi,
+            "yukseklik": stok.yukseklik, "acik_derinlik": stok.acik_derinlik,
+            "taban_genisligi": stok.taban_genisligi, "kapali_boy": stok.kapali_boy,
+            "agirlik": stok.agirlik, "azami_yuk": stok.azami_yuk, "cbm": stok.cbm,
+            "yukleme_20dc": stok.yukleme_20dc, "yukleme_40hq": stok.yukleme_40hq,
+            "yukleme_tir": stok.yukleme_tir})
     return render(request, "core/stok_form.html",
                   {"form": form, "baslik": "Stok Düzenle", "duzenlenen": stok})
 

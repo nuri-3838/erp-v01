@@ -337,6 +337,39 @@ class StokForm(forms.Form):
         label="Alış Fiyatı", basamak=6, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "— girilmedi —"}))
 
+    # Ürün grubu — birden çok seçilebilir, en az biri zorunlu (clean() + serviste).
+    # Gruba göre formda hangi bölümlerin görüneceği JS ile ayarlanır (stok_form.html).
+    satinalma_urunu = forms.BooleanField(label="Satınalma", required=False)
+    uretim_urunu = forms.BooleanField(label="Üretim", required=False, initial=True)
+    satis_urunu = forms.BooleanField(label="Satış", required=False)
+
+    # Satış/teklif alanları — yalnız Satış işaretliyken formda görünür/anlamlıdır;
+    # işaretli değilse serviste None'a sabitlenir (bkz. core/services/stok.py).
+    basamak_sayisi = forms.IntegerField(
+        label="Basamak Sayısı", required=False, min_value=0)
+    yukseklik = TRDecimalField(label="Yükseklik (cm)", basamak=1, required=False)
+    acik_derinlik = TRDecimalField(label="Açık Derinlik (cm)", basamak=1, required=False)
+    taban_genisligi = TRDecimalField(
+        label="Taban Genişliği (cm)", basamak=1, required=False)
+    kapali_boy = TRDecimalField(label="Kapalı Boy (cm)", basamak=1, required=False)
+    agirlik = TRDecimalField(label="Ağırlık (kg)", basamak=2, required=False)
+    azami_yuk = TRDecimalField(label="Azami Yük (kg)", basamak=2, required=False)
+    cbm = TRDecimalField(label="CBM (m³ / adet)", basamak=3, required=False)
+    yukleme_20dc = forms.IntegerField(
+        label="20' DC Yükleme Adedi", required=False, min_value=0)
+    yukleme_40hq = forms.IntegerField(
+        label="40' HQ Yükleme Adedi", required=False, min_value=0)
+    yukleme_tir = forms.IntegerField(
+        label="TIR Yükleme Adedi", required=False, min_value=0)
+
+    def clean(self):
+        cd = super().clean()
+        if not (cd.get("satinalma_urunu") or cd.get("uretim_urunu")
+               or cd.get("satis_urunu")):
+            raise forms.ValidationError(
+                "En az bir grup (Satınalma/Üretim/Satış) seçilmelidir.")
+        return cd
+
     def __init__(self, *args, duzenle: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.birim import aktif_birimler

@@ -499,6 +499,43 @@ class Stok(TemelModel):
         "alış fiyatı para birimi", max_length=3,
         choices=YevmiyeSatir.IslemPB.choices, default="TRY")
 
+    # Ürün grubu (birden çok seçilebilir): kart hangi iş akışlarında kullanılıyor.
+    # En az biri seçili olmalı (Meta.constraints + serviste zorlanır) — grup, formda
+    # hangi alanların sorulacağını belirler (örn. yalnız Satınalma işaretliyse aşağıdaki
+    # teklif/katalog alanları hiç sorulmaz, kayıtta hep boş kalır).
+    satinalma_urunu = models.BooleanField("satınalma ürünü", default=False)
+    # Varsayılan True: bu alan eklenmeden önce oluşturulmuş/oluşturulacak kartların
+    # (fatura/teklif/stok testleri gibi grup umursamayan tüm çağıranlar dahil) en az
+    # bir grubu her zaman olur — kısıt (ck_stok_en_az_bir_grup) sessizce ihlal edilmez.
+    uretim_urunu = models.BooleanField("üretim ürünü", default=True)
+    satis_urunu = models.BooleanField("satış ürünü", default=False)
+
+    # Satış/teklif alanları — yalnız satis_urunu=True kartlarda anlamlı (serviste
+    # satis_urunu=False ise bu alanlar temizlenir). SEMTA ürün kataloğu teknik ölçü
+    # tablosuyla birebir; ileride teklif (quotation) PDF'i bunlardan beslenecek.
+    basamak_sayisi = models.PositiveIntegerField(
+        "basamak sayısı", null=True, blank=True)
+    yukseklik = models.DecimalField(
+        "yükseklik (cm)", max_digits=8, decimal_places=1, null=True, blank=True)
+    acik_derinlik = models.DecimalField(
+        "açık derinlik (cm)", max_digits=8, decimal_places=1, null=True, blank=True)
+    taban_genisligi = models.DecimalField(
+        "taban genişliği (cm)", max_digits=8, decimal_places=1, null=True, blank=True)
+    kapali_boy = models.DecimalField(
+        "kapalı boy (cm)", max_digits=8, decimal_places=1, null=True, blank=True)
+    agirlik = models.DecimalField(
+        "ağırlık (kg)", max_digits=8, decimal_places=2, null=True, blank=True)
+    azami_yuk = models.DecimalField(
+        "azami yük (kg)", max_digits=8, decimal_places=2, null=True, blank=True)
+    cbm = models.DecimalField(
+        "CBM (m³/adet)", max_digits=8, decimal_places=3, null=True, blank=True)
+    yukleme_20dc = models.PositiveIntegerField(
+        "20' DC yükleme adedi", null=True, blank=True)
+    yukleme_40hq = models.PositiveIntegerField(
+        "40' HQ yükleme adedi", null=True, blank=True)
+    yukleme_tir = models.PositiveIntegerField(
+        "TIR yükleme adedi", null=True, blank=True)
+
     class Meta:
         db_table = "stok"
         verbose_name = "stok"
@@ -514,6 +551,32 @@ class Stok(TemelModel):
             models.CheckConstraint(
                 condition=models.Q(alis_fiyati__isnull=True) | models.Q(alis_fiyati__gte=0),
                 name="ck_stok_alis_fiyati_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(yukseklik__isnull=True) | models.Q(yukseklik__gte=0),
+                name="ck_stok_yukseklik_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(acik_derinlik__isnull=True) | models.Q(acik_derinlik__gte=0),
+                name="ck_stok_acik_derinlik_gte0"),
+            models.CheckConstraint(
+                condition=(models.Q(taban_genisligi__isnull=True)
+                          | models.Q(taban_genisligi__gte=0)),
+                name="ck_stok_taban_genisligi_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(kapali_boy__isnull=True) | models.Q(kapali_boy__gte=0),
+                name="ck_stok_kapali_boy_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(agirlik__isnull=True) | models.Q(agirlik__gte=0),
+                name="ck_stok_agirlik_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(azami_yuk__isnull=True) | models.Q(azami_yuk__gte=0),
+                name="ck_stok_azami_yuk_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(cbm__isnull=True) | models.Q(cbm__gte=0),
+                name="ck_stok_cbm_gte0"),
+            models.CheckConstraint(
+                condition=(models.Q(satinalma_urunu=True) | models.Q(uretim_urunu=True)
+                          | models.Q(satis_urunu=True)),
+                name="ck_stok_en_az_bir_grup"),
         ]
 
     def __str__(self):

@@ -9,6 +9,9 @@
   birimi eder (> 0). KDV oranı ZORUNLU (tevkifat opsiyonel kalır).
 - Alış fiyatı (tutar + para birimi) tamamen opsiyonel, yalnız BİLGİ amaçlı — fatura/
   teklif-sipariş fiyatını ETKİLEMEZ, muhasebeye yansımaz.
+- Ürün grubu (satınalma/üretim/satış) birden çok seçilebilir, en az biri ZORUNLU.
+  Satış işaretli değilse teklif/katalog teknik alanları (ölçü/ağırlık/yükleme adedi)
+  serviste None'a sabitlenir — formda ne gönderilirse gönderilsin kayıtta kalmaz.
 - Silme: soft-delete (iz kalır).
 """
 from __future__ import annotations
@@ -133,10 +136,63 @@ def _pb_dogrula(para_birimi):
     return pb
 
 
+def _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu):
+    if not (satinalma_urunu or uretim_urunu or satis_urunu):
+        raise StokHatasi("En az bir grup (Satınalma/Üretim/Satış) seçilmelidir.")
+
+
+def _tam_sayi_opsiyonel(deger, etiket):
+    """≥ 0 tam sayı veya None — boş girilirse alan hiç doldurulmamış demektir."""
+    if deger in (None, ""):
+        return None
+    try:
+        d = int(deger)
+    except (TypeError, ValueError):
+        raise StokHatasi(f"{etiket} geçerli bir tam sayı olmalı.")
+    if d < 0:
+        raise StokHatasi(f"{etiket} negatif olamaz.")
+    return d
+
+
+# SEMTA ürün kataloğu teknik ölçü tablosuyla birebir; yalnız satis_urunu=True
+# kartlarda anlamlı — kart bu grupla işaretli değilse bu alanların HEPSİ None'a
+# sabitlenir (Satınalma-yalnız bir kartta eski/yanlış teklif verisi kalmasın).
+_SATIS_ALAN_ADLARI = (
+    "basamak_sayisi", "yukseklik", "acik_derinlik", "taban_genisligi", "kapali_boy",
+    "agirlik", "azami_yuk", "cbm", "yukleme_20dc", "yukleme_40hq", "yukleme_tir",
+)
+
+
+def _satis_alanlarini_coz(satis_urunu, *, basamak_sayisi=None, yukseklik=None,
+                          acik_derinlik=None, taban_genisligi=None, kapali_boy=None,
+                          agirlik=None, azami_yuk=None, cbm=None, yukleme_20dc=None,
+                          yukleme_40hq=None, yukleme_tir=None):
+    if not satis_urunu:
+        return dict.fromkeys(_SATIS_ALAN_ADLARI, None)
+    return {
+        "basamak_sayisi": _tam_sayi_opsiyonel(basamak_sayisi, "Basamak sayısı"),
+        "yukseklik": _tutar_opsiyonel(yukseklik, "Yükseklik"),
+        "acik_derinlik": _tutar_opsiyonel(acik_derinlik, "Açık derinlik"),
+        "taban_genisligi": _tutar_opsiyonel(taban_genisligi, "Taban genişliği"),
+        "kapali_boy": _tutar_opsiyonel(kapali_boy, "Kapalı boy"),
+        "agirlik": _tutar_opsiyonel(agirlik, "Ağırlık"),
+        "azami_yuk": _tutar_opsiyonel(azami_yuk, "Azami yük"),
+        "cbm": _tutar_opsiyonel(cbm, "CBM"),
+        "yukleme_20dc": _tam_sayi_opsiyonel(yukleme_20dc, "20' DC yükleme adedi"),
+        "yukleme_40hq": _tam_sayi_opsiyonel(yukleme_40hq, "40' HQ yükleme adedi"),
+        "yukleme_tir": _tam_sayi_opsiyonel(yukleme_tir, "TIR yükleme adedi"),
+    }
+
+
 def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  cevirici=Decimal("1"), kdv_id=None, tevkifat_id=None,
                  kritik_stok=Decimal("0"), tedarikci_id=None,
-                 alis_fiyati=None, alis_fiyati_pb="TRY", kullanici=None) -> Stok:
+                 alis_fiyati=None, alis_fiyati_pb="TRY",
+                 satinalma_urunu=False, uretim_urunu=True, satis_urunu=False,
+                 basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
+                 taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
+                 cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
+                 kullanici=None) -> Stok:
     ad = _ad_dogrula(ad)
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
@@ -145,6 +201,12 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         raise StokHatasi("Stok yalnız ALT kategoriye açılabilir (üst kategori değil).")
     uretim = _birim_coz(uretim_birimi_id, "Üretim birimi")
     fatura = _birim_coz(fatura_birimi_id, "Fatura birimi")
+    _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
+    satis_alanlari = _satis_alanlarini_coz(
+        satis_urunu, basamak_sayisi=basamak_sayisi, yukseklik=yukseklik,
+        acik_derinlik=acik_derinlik, taban_genisligi=taban_genisligi,
+        kapali_boy=kapali_boy, agirlik=agirlik, azami_yuk=azami_yuk, cbm=cbm,
+        yukleme_20dc=yukleme_20dc, yukleme_40hq=yukleme_40hq, yukleme_tir=yukleme_tir)
     return Stok.objects.create(
         kod=sonraki_stok_kodu(kategori), ad=ad, kategori=kategori,
         uretim_birimi=uretim, fatura_birimi=fatura,
@@ -154,7 +216,10 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         tedarikci=_tedarikci_coz(tedarikci_id),
         alis_fiyati=_tutar_opsiyonel(alis_fiyati, "Alış fiyatı"),
         alis_fiyati_pb=_pb_dogrula(alis_fiyati_pb),
+        satinalma_urunu=bool(satinalma_urunu), uretim_urunu=bool(uretim_urunu),
+        satis_urunu=bool(satis_urunu),
         created_by=kullanici, updated_by=kullanici,
+        **satis_alanlari,
     )
 
 
@@ -162,7 +227,8 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
     """Var olan bir stok kartının birebir kopyasını oluşturur. ``kod`` farklıdır
     (aynı kategoride sıradaki numarayı otomatik alır); ``ad`` sonuna " KOPYA"
     eklenir (hangisinin kopya olduğu ayırt edilsin diye) — kategori, birimler,
-    çevirici, KDV/tevkifat, kritik stok, tedarikçi ve alış fiyatı aynen kopyalanır.
+    çevirici, KDV/tevkifat, kritik stok, tedarikçi, alış fiyatı, ürün grubu ve
+    satış/teklif alanları aynen kopyalanır.
     """
     return stok_olustur(
         ad=f"{stok.ad} KOPYA", kategori_id=stok.kategori_id,
@@ -170,16 +236,35 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
         cevirici=stok.cevirici, kdv_id=stok.kdv_id, tevkifat_id=stok.tevkifat_id,
         kritik_stok=stok.kritik_stok, tedarikci_id=stok.tedarikci_id,
         alis_fiyati=stok.alis_fiyati, alis_fiyati_pb=stok.alis_fiyati_pb,
+        satinalma_urunu=stok.satinalma_urunu, uretim_urunu=stok.uretim_urunu,
+        satis_urunu=stok.satis_urunu, basamak_sayisi=stok.basamak_sayisi,
+        yukseklik=stok.yukseklik, acik_derinlik=stok.acik_derinlik,
+        taban_genisligi=stok.taban_genisligi, kapali_boy=stok.kapali_boy,
+        agirlik=stok.agirlik, azami_yuk=stok.azami_yuk, cbm=stok.cbm,
+        yukleme_20dc=stok.yukleme_20dc, yukleme_40hq=stok.yukleme_40hq,
+        yukleme_tir=stok.yukleme_tir,
         kullanici=kullanici)
 
 
 def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   cevirici, kdv_id=None, tevkifat_id=None,
                   kritik_stok=Decimal("0"), tedarikci_id=None,
-                  alis_fiyati=None, alis_fiyati_pb="TRY", kullanici=None) -> Stok:
-    """Ad, birimler, çevirici, vergi/stok alanları güncellenir. KOD ve KATEGORİ DEĞİŞMEZ."""
+                  alis_fiyati=None, alis_fiyati_pb="TRY",
+                  satinalma_urunu=False, uretim_urunu=True, satis_urunu=False,
+                  basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
+                  taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
+                  cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
+                  kullanici=None) -> Stok:
+    """Ad, birimler, çevirici, vergi/stok/grup/teklif alanları güncellenir.
+    KOD ve KATEGORİ DEĞİŞMEZ."""
     if stok.silindi:
         raise StokHatasi("Silinmiş stok düzenlenemez.")
+    _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
+    satis_alanlari = _satis_alanlarini_coz(
+        satis_urunu, basamak_sayisi=basamak_sayisi, yukseklik=yukseklik,
+        acik_derinlik=acik_derinlik, taban_genisligi=taban_genisligi,
+        kapali_boy=kapali_boy, agirlik=agirlik, azami_yuk=azami_yuk, cbm=cbm,
+        yukleme_20dc=yukleme_20dc, yukleme_40hq=yukleme_40hq, yukleme_tir=yukleme_tir)
     stok.ad = _ad_dogrula(ad)
     stok.uretim_birimi = _birim_coz(uretim_birimi_id, "Üretim birimi")
     stok.fatura_birimi = _birim_coz(fatura_birimi_id, "Fatura birimi")
@@ -190,10 +275,17 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.tedarikci = _tedarikci_coz(tedarikci_id)
     stok.alis_fiyati = _tutar_opsiyonel(alis_fiyati, "Alış fiyatı")
     stok.alis_fiyati_pb = _pb_dogrula(alis_fiyati_pb)
+    stok.satinalma_urunu = bool(satinalma_urunu)
+    stok.uretim_urunu = bool(uretim_urunu)
+    stok.satis_urunu = bool(satis_urunu)
+    for alan, deger in satis_alanlari.items():
+        setattr(stok, alan, deger)
     stok.updated_by = kullanici
-    stok.save(update_fields=["ad", "uretim_birimi", "fatura_birimi", "cevirici",
-                             "kdv", "tevkifat", "kritik_stok", "tedarikci",
-                             "alis_fiyati", "alis_fiyati_pb", "updated_by", "updated_at"])
+    stok.save(update_fields=[
+        "ad", "uretim_birimi", "fatura_birimi", "cevirici", "kdv", "tevkifat",
+        "kritik_stok", "tedarikci", "alis_fiyati", "alis_fiyati_pb",
+        "satinalma_urunu", "uretim_urunu", "satis_urunu", *_SATIS_ALAN_ADLARI,
+        "updated_by", "updated_at"])
     return stok
 
 
