@@ -183,21 +183,23 @@ def _secenek_dogrula(kategori, ad, kod, *, haric_pk=None):
     return ad, kod
 
 
-def secenek_olustur(kategori, *, ad, kod="", sira=0, kullanici=None) -> TanimSecenegi:
+def secenek_olustur(kategori, *, ad, kod="", ad_en="", sira=0, kullanici=None) -> TanimSecenegi:
     kategori = _kategori_dogrula(kategori)
     ad, kod = _secenek_dogrula(kategori, ad, kod)
     return TanimSecenegi.objects.create(
-        kategori=kategori, ad=ad, kod=kod, sira=int(sira or 0),
+        kategori=kategori, ad=ad, kod=kod, ad_en=(ad_en or "").strip(), sira=int(sira or 0),
         created_by=kullanici, updated_by=kullanici)
 
 
-def secenek_guncelle(s: TanimSecenegi, *, ad, kod="", sira=0, kullanici=None) -> TanimSecenegi:
+def secenek_guncelle(s: TanimSecenegi, *, ad, kod="", ad_en="", sira=0,
+                     kullanici=None) -> TanimSecenegi:
     if s.silindi:
         raise TanimHatasi("Silinmiş kayıt düzenlenemez.")
     s.ad, s.kod = _secenek_dogrula(s.kategori, ad, kod, haric_pk=s.pk)
+    s.ad_en = (ad_en or "").strip()          # İngilizce: TR büyük harfe ÇEVRİLMEZ
     s.sira = int(sira or 0)
     s.updated_by = kullanici
-    s.save(update_fields=["ad", "kod", "sira", "updated_by", "updated_at"])
+    s.save(update_fields=["ad", "kod", "ad_en", "sira", "updated_by", "updated_at"])
     return s
 
 

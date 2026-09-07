@@ -19,13 +19,14 @@
 
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th class="sag">Sıra</th>{% if kod_var %}<th>Kod</th>{% endif %}<th>Ad</th><th>İşlem</th></tr></thead>
+  <thead><tr><th class="sag">Sıra</th>{% if kod_var %}<th>Kod</th>{% endif %}<th>Ad</th><th>Ad (İngilizce)</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for s in secenekler %}
       <tr>
         <td class="sag mono">{{ s.sira }}</td>
         {% if kod_var %}<td class="mono">{{ s.kod }}</td>{% endif %}
         <td>{{ s.ad }}</td>
+        <td>{% if s.ad_en %}{{ s.ad_en }}{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:secenek_duzenle' slug s.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:secenek_sil' slug s.pk %}" onsubmit="return confirm('Silinsin mi?');">
@@ -33,7 +34,7 @@
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="{% if kod_var %}4{% else %}3{% endif %}" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="{% if kod_var %}5{% else %}4{% endif %}" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

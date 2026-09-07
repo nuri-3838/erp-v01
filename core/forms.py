@@ -635,6 +635,10 @@ class TanimSecenegiForm(forms.Form):
                                                         "placeholder": "örn. 20DC, 40HQ, TIR"}))
     ad = forms.CharField(label="Ad", max_length=200,
                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ad_en = forms.CharField(label="Ad (İngilizce — EN teklif PDF'i)", max_length=200,
+                            required=False,
+                            widget=forms.TextInput(attrs={"autocomplete": "off",
+                                                          "placeholder": "boşsa Türkçe ad kullanılır"}))
 
     def __init__(self, *args, kategori=None, **kwargs):
         super().__init__(*args, **kwargs)

@@ -2346,11 +2346,78 @@ def teklif_siparis_pdf(request, pk):
     if logo_yol:
         with open(logo_yol, "rb") as f:
             ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
-    html = render_to_string("core/teklif_siparis_pdf.html", ctx)
+    sablon, dosya_adi = "core/teklif_siparis_pdf.html", f"{ts.belge_no or ts.pk}.pdf"
+    if sat_teklif:
+        # Satış Teklifi: müşteriye giden quotation — ayrı, iki dilli (?dil=tr|en) şablon.
+        dil = "en" if request.GET.get("dil") == "en" else "tr"
+        ctx.update({
+            "dil": dil, "E": _PDF_ETIKET[dil],
+            "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",
+            "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
+            "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
+            "navlun_var": ts.navlun_tutari is not None and bool(ts.yukleme_tipi_id),
+            "hazirlayan": request.user.get_full_name() or request.user.get_username(),
+        })
+        sablon = "core/satis_teklif_pdf.html"
+        dosya_adi = f"{ts.belge_no or ts.pk}-{dil.upper()}.pdf"
+    html = render_to_string(sablon, ctx)
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")
-    resp["Content-Disposition"] = f'inline; filename="{ts.belge_no or ts.pk}.pdf"'
+    resp["Content-Disposition"] = f'inline; filename="{dosya_adi}"'
     return resp
+
+
+# Satış Teklifi PDF'i etiketleri — kullanıcı çıktıyı TR ya da EN seçer (?dil=).
+_PDF_ETIKET = {
+    "tr": {
+        "baslik": "SATIŞ TEKLİFİ", "alt_baslik": "Fiyat Teklifi / Quotation",
+        "alici": "Alıcı", "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon",
+        "eposta": "E-posta", "hazirlayan": "Hazırlayan",
+        "teklif_no": "Teklif No", "tarih": "Tarih", "gecerlilik": "Geçerlilik",
+        "para_birimi": "Para Birimi", "yukleme_sekli": "Teslim / Yükleme Şekli",
+        "odeme_kosulu": "Ödeme Koşulu", "yukleme_tipi": "Yükleme Tipi", "navlun": "Navlun",
+        "gorsel": "Görsel", "urun": "Ürün", "ozellik": "Teknik Özellikler",
+        "liste": "Liste Fiyatı", "iskonto": "İskonto", "net": "Net Fiyat",
+        "nakliye": "Nakliye Dahil", "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)",
+        "yukleme_adedi": "Yükleme Adedi (adet)", "tir": "TIR",
+        "basamak": "Basamak", "yukseklik": "Yükseklik", "acik_derinlik": "Açık derinlik",
+        "taban": "Taban genişliği", "kapali": "Kapalı boy", "azami_yuk": "Azami yük",
+        "adet": "adet", "notlar": "Notlar",
+        "not_listesi": [
+            "Fiyatlar birim (1 adet) fiyatıdır; miktar ve toplam tutar proforma faturada belirtilir.",
+            "Fiyatlara KDV dahil değildir.",
+            "Navlun, seçilen yükleme tipine sığan adede bölünerek ürün başına dağıtılmıştır.",
+            "Ürün ve ambalaj ağırlıklarında ±%5 tolerans olabilir.",
+            "Teklif, geçerlilik tarihine kadar bağlayıcıdır.",
+        ],
+        "hazirlayan_imza": "Hazırlayan", "onaylayan": "Onaylayan", "ad_imza": "Ad Soyad · İmza",
+        "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Satış Teklifi",
+    },
+    "en": {
+        "baslik": "QUOTATION", "alt_baslik": "Sales Quotation",
+        "alici": "To", "ulke": "Country", "adres": "Address", "telefon": "Phone",
+        "eposta": "E-mail", "hazirlayan": "From",
+        "teklif_no": "Quotation No", "tarih": "Date", "gecerlilik": "Validity",
+        "para_birimi": "Currency", "yukleme_sekli": "Delivery Term",
+        "odeme_kosulu": "Payment Term", "yukleme_tipi": "Loading Type", "navlun": "Freight",
+        "gorsel": "Picture", "urun": "Item", "ozellik": "Specifications",
+        "liste": "List Price", "iskonto": "Discount", "net": "Net Price",
+        "nakliye": "Incl. Freight", "agirlik": "Weight (kg)", "cbm": "CBM (m³)",
+        "yukleme_adedi": "Loading Qty (pcs)", "tir": "Truck",
+        "basamak": "Steps", "yukseklik": "Height", "acik_derinlik": "Open depth",
+        "taban": "Base width", "kapali": "Folded length", "azami_yuk": "Max load",
+        "adet": "pcs", "notlar": "Notes",
+        "not_listesi": [
+            "Prices are per unit (1 pc); quantities and total amount are stated on the proforma invoice.",
+            "Prices exclude VAT.",
+            "Freight is allocated per unit by dividing it by the quantity that fits the selected loading type.",
+            "Product and package weights may vary by ±5%.",
+            "This quotation is binding until the validity date.",
+        ],
+        "hazirlayan_imza": "Prepared by", "onaylayan": "Approved by", "ad_imza": "Name · Signature",
+        "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Quotation",
+    },
+}
 
 
 # === FİNANS — Kredi Kartı ===
@@ -3434,8 +3501,8 @@ def secenek_ekle(request, slug):
             try:
                 cd = form.cleaned_data
                 tanim_servis.secenek_olustur(
-                    kategori, ad=cd["ad"], kod=cd.get("kod", ""), sira=cd["sira"],
-                    kullanici=request.user)
+                    kategori, ad=cd["ad"], kod=cd.get("kod", ""), ad_en=cd.get("ad_en", ""),
+                    sira=cd["sira"], kullanici=request.user)
                 messages.success(request, f"{baslik} eklendi.")
                 return redirect("core:secenek_listesi", slug=slug)
             except tanim_servis.TanimHatasi as e:
@@ -3456,15 +3523,15 @@ def secenek_duzenle(request, slug, pk):
             try:
                 cd = form.cleaned_data
                 tanim_servis.secenek_guncelle(
-                    s, ad=cd["ad"], kod=cd.get("kod", ""), sira=cd["sira"],
-                    kullanici=request.user)
+                    s, ad=cd["ad"], kod=cd.get("kod", ""), ad_en=cd.get("ad_en", ""),
+                    sira=cd["sira"], kullanici=request.user)
                 messages.success(request, f"{baslik} güncellendi.")
                 return redirect("core:secenek_listesi", slug=slug)
             except tanim_servis.TanimHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = TanimSecenegiForm(kategori=kategori,
-                                 initial={"ad": s.ad, "kod": s.kod, "sira": s.sira})
+        form = TanimSecenegiForm(kategori=kategori, initial={
+            "ad": s.ad, "kod": s.kod, "ad_en": s.ad_en, "sira": s.sira})
     return render(request, "core/tanim_secenek_form.html",
                   _secenek_ctx(slug, form=form, form_baslik=f"{baslik} Düzenle", duzenlenen=s))
 

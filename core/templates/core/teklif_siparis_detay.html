@@ -29,20 +29,10 @@
   .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
   .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
   .kv .dg { font-weight:600; font-size:.98rem; }
-  .fk-izgara { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:.9rem; }
-  .fk-kart { display:flex; gap:.9rem; border:1px solid var(--cizgi); border-radius:16px; padding:.9rem; background:rgba(255,255,255,.55); }
-  .fk-gorsel { width:56px; height:56px; border-radius:12px; background:#f4f6fa; display:grid; place-items:center;
-    font-size:1.5rem; flex:0 0 auto; overflow:hidden; }
-  .fk-gorsel img { max-width:100%; max-height:100%; object-fit:contain; }
-  .fk-govde { flex:1; min-width:0; }
-  .fk-ad { font-weight:700; color:var(--lacivert); margin-bottom:.5rem; }
   .fk-model { display:inline-block; background:var(--turuncu); color:#fff; font-size:.72rem; font-weight:800;
     padding:.1rem .5rem; border-radius:6px; margin-right:.4rem; }
-  .fk-fiyat { display:flex; flex-direction:column; gap:.25rem; }
-  .fk-satir { display:flex; justify-content:space-between; gap:.6rem; font-size:.86rem; }
-  .fk-satir .et { color:var(--metin-soluk); }
-  .fk-satir.fk-net .dg { font-weight:800; color:var(--lacivert); }
-  .fk-satir.fk-nakliye .dg { color:var(--turuncu-koyu); }
+  .fk-net-hucre { font-weight:800; color:var(--lacivert); }
+  .fk-nakliye-hucre { font-weight:800; color:var(--turuncu-koyu); }
 </style>
 
 <div class="detay-kapsa">
@@ -69,7 +59,12 @@
       <div class="detay-alt"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }} · {{ ts.tarih|date:"d.m.Y" }}</div>
     </div>
     <div class="detay-aksiyon">
+      {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
+      <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}?dil=tr" target="_blank">📄 PDF (TR)</a>
+      <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}?dil=en" target="_blank">📄 PDF (EN)</a>
+      {% else %}
       <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}" target="_blank">📄 PDF</a>
+      {% endif %}
       {% if not ts.silindi %}
         {% if ts.durum == "TASLAK" %}
         <form method="post" action="{% url 'core:teklif_siparis_onayla' ts.pk %}" style="margin:0">
@@ -154,29 +149,35 @@
   {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📤</span>Ürün Fiyat Listesi</h2>
-    <div class="fk-izgara">
-      {% for k in kalemler %}
-      <div class="fk-kart">
-        <div class="fk-gorsel">{% if k.stok.gorsel %}<img src="{{ k.stok.gorsel.url }}" alt="">{% else %}📦{% endif %}</div>
-        <div class="fk-govde">
-          <div class="fk-ad">{% if k.stok.model_kodu %}<span class="fk-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}</div>
-          <div class="fk-fiyat">
-            <div class="fk-satir"><span class="et">Liste Fiyatı</span><span class="dg mono">{{ k.birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
-            {% if k.iskonto_yuzdesi %}<div class="fk-satir"><span class="et">İskonto</span><span class="dg mono">%{{ k.iskonto_yuzdesi|tr_kur:2 }}</span></div>{% endif %}
-            <div class="fk-satir fk-net"><span class="et">Net Fiyat</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
-            {% if k.navlun_payi is not None %}
-            <div class="fk-satir"><span class="et">Navlun Payı</span><span class="dg mono">{{ k.navlun_payi|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
-            <div class="fk-satir fk-net fk-nakliye"><span class="et">Nakliye Dahil</span><span class="dg mono">{{ k.nakliye_dahil_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</span></div>
-            {% elif ts.navlun_tutari is not None and ts.yukleme_tipi %}
-            <div class="fk-satir"><span class="et">Nakliye Dahil</span><span class="dg pasif">yükleme adedi tanımsız</span></div>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Ürün</th><th class="sag">Liste Fiyatı</th><th class="sag">İskonto</th>
+        <th class="sag">Net Fiyat</th>
+        {% if ts.navlun_tutari is not None and ts.yukleme_tipi %}<th class="sag">Navlun Payı</th><th class="sag">Nakliye Dahil</th>{% endif %}
+        <th class="sag">KDV</th></tr></thead>
+      <tbody>
+        {% for k in kalemler %}
+          <tr>
+            <td>{% if k.stok.model_kodu %}<span class="fk-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}</td>
+            <td class="sag mono">{{ k.birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</td>
+            <td class="sag mono">{% if k.iskonto_yuzdesi %}%{{ k.iskonto_yuzdesi|tr_kur:2 }}{% else %}—{% endif %}</td>
+            <td class="sag mono fk-net-hucre">{{ k.net_birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</td>
+            {% if ts.navlun_tutari is not None and ts.yukleme_tipi %}
+              {% if k.navlun_payi is not None %}
+              <td class="sag mono">{{ k.navlun_payi|tr_kur:4 }} {{ ts.para_birimi }}</td>
+              <td class="sag mono fk-nakliye-hucre">{{ k.nakliye_dahil_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</td>
+              {% else %}
+              <td class="sag pasif">—</td>
+              <td class="sag pasif">yükleme adedi tanımsız</td>
+              {% endif %}
             {% endif %}
-            {% if k.kdv %}<div class="fk-satir"><span class="et">KDV</span><span class="dg mono">%{{ k.kdv.oran|tr_kur:0 }}</span></div>{% endif %}
-          </div>
-        </div>
-      </div>
-      {% empty %}
-      <p class="yardim">Bu teklife dahil ürün yok.</p>
-      {% endfor %}
+            <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }}{% else %}—{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.2rem 0">Bu teklife dahil ürün yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
     </div>
   </section>
   {% else %}

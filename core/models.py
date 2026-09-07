@@ -941,6 +941,8 @@ class TanimSecenegi(TemelModel):
     kategori = models.CharField("kategori", max_length=15, choices=Kategori.choices)
     kod = models.CharField("kod", max_length=30, blank=True, default="")
     ad = models.CharField("ad", max_length=200)
+    # İngilizce teklif PDF'inde gösterilen karşılık; boşsa ``ad`` kullanılır.
+    ad_en = models.CharField("ad (İngilizce)", max_length=200, blank=True, default="")
     sira = models.PositiveSmallIntegerField("sıra", default=0)
 
     class Meta:
@@ -960,6 +962,10 @@ class TanimSecenegi(TemelModel):
 
     def __str__(self):
         return f"{self.kod} {self.ad}".strip() if self.kod else self.ad
+
+    def ad_dil(self, dil):
+        """Teklif PDF'i için dile göre ad ('en' -> ad_en, boşsa ad)."""
+        return (self.ad_en or self.ad) if dil == "en" else self.ad
 
 
 class TevkifatOrani(TemelModel):

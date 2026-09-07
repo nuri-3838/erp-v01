@@ -273,6 +273,37 @@ class SatisTeklifTest(TestCase):
         self.assertContains(d, "10.803,0000")                      # a21 nakliye dahil
         self.assertContains(d, "yükleme adedi tanımsız")            # c22
         self.assertNotContains(d, "Ödenecek")
+        self.assertNotContains(d, "fk-gorsel")                      # detayda ürün görseli yok
+        self.assertContains(d, "PDF (TR)")
+        self.assertContains(d, "PDF (EN)")
         pdf = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
+        self.assertIn("-TR.pdf", pdf["Content-Disposition"])
+        pdf_en = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]) + "?dil=en")
+        self.assertEqual(pdf_en.status_code, 200)
+        self.assertIn("-EN.pdf", pdf_en["Content-Disposition"])
+
+    def test_pdf_ingilizce_sablon_etiketleri_ve_ad_en(self):
+        """EN PDF: şablona 'en' etiket sözlüğü + seçeneklerin ad_en karşılığı gider
+        (seed: TIR -> Truck, FOB İZMİR -> FOB Izmir); TR'de Türkçe kalır."""
+        from django.template.loader import render_to_string
+        from core.views import _PDF_ETIKET
+        self.assertEqual(self.tip_tir.ad_en, "Truck")
+        self.assertEqual(self.tip_tir.ad_dil("en"), "Truck")
+        self.assertEqual(self.tip_tir.ad_dil("tr"), "TIR")
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        # Şablonun kendisini iki dilde HTML olarak render edip metni doğrula
+        # (PDF ikilisinden metin okumak yerine).
+        for dil, beklenen in (("tr", ["SATIŞ TEKLİFİ", "FOB İZMİR", "Liste Fiyatı", "40&#x27; HQ KONTEYNER"]),
+                              ("en", ["QUOTATION", "FOB Izmir", "List Price", "40&#x27; HQ Container"])):
+            html = render_to_string("core/satis_teklif_pdf.html", {
+                "ts": ts, "kalemler": list(ts.kalemler.filter(silindi=False).select_related("stok")),
+                "dil": dil, "E": _PDF_ETIKET[dil], "navlun_var": True, "hazirlayan": "Test",
+                "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil),
+                "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil),
+                "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil)})
+            for m in beklenen:
+                self.assertIn(m, html, f"{dil}: {m} yok")
