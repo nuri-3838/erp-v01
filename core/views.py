@@ -26,13 +26,13 @@ from core.forms import (
     TeklifSiparisForm, TeklifSiparisKalemForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
-    UlkeForm,
+    UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
 )
 from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, Sehir, Stok, TeklifSiparis, TevkifatOrani, Ulke,
+    KrediTaksit, Kur, Sehir, Stok, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir,
 )
 from core.moduller import MODULLER
@@ -68,6 +68,7 @@ from core.services import banka_hareket as banka_hareket_servis
 from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
 from core.services import kredi_hareket as kredi_hareket_servis
 from core.services import cek as cek_servis
+from core.services import yemek_takibi as yemek_takibi_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
     yonetici_mi,
@@ -3431,3 +3432,102 @@ def fatura_onayla(request, pk):
         except fatura_servis.FaturaHatasi as e:
             messages.error(request, str(e))
     return redirect("core:fatura_detay", pk=fatura.pk)
+
+
+# === DİĞER > Yemek Takibi ====================================================
+def _yemek_takibi_bu_ay():
+    bugun = timezone.localdate()
+    return bugun.replace(day=1), bugun
+
+
+def _yemek_takibi_liste_url(cari_id=None):
+    url = reverse("core:yemek_takibi")
+    return f"{url}?cari={cari_id}" if cari_id else url
+
+
+@ekran_gerekli("yemek_takibi")
+def yemek_takibi(request):
+    form = YemekTakibiFiltreForm(request.GET or None)
+    if form.is_valid():
+        cari = form.cleaned_data["cari"]
+        baslangic, bitis = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
+    else:
+        # Tarih aralığı eksik/geçersizse (örn. kayıt eklendikten sonra yalnız ?cari= ile
+        # dönülünce) varsayılan bu-ay aralığına düş, ama GET'te bir cari geldiyse onu
+        # yok SAYMA — form'u tutarlı biçimde (cari + hesaplanan aralık) yeniden kur.
+        baslangic, bitis = _yemek_takibi_bu_ay()
+        cari_id = request.GET.get("cari")
+        cari = Cari.objects.filter(pk=cari_id, silindi=False).first() if cari_id else None
+        form = YemekTakibiFiltreForm(initial={
+            "cari": cari.pk if cari else None, "baslangic": baslangic, "bitis": bitis})
+    kayitlar = list(yemek_takibi_servis.aktif_kayitlar(
+        cari=cari, baslangic=baslangic, bitis=bitis))
+    gun, kisi, tutar = yemek_takibi_servis.aylik_ozet(kayitlar)
+    return render(request, "core/yemek_takibi_listesi.html", {
+        "form": form, "kayitlar": kayitlar, "cari": cari,
+        "baslangic": baslangic, "bitis": bitis,
+        "gun": gun, "kisi": kisi, "tutar": tutar,
+        "ekle_url": f"{reverse('core:yemek_sayimi_ekle')}{'?cari=' + str(cari.pk) if cari else ''}",
+    })
+
+
+@ekran_gerekli("yemek_takibi")
+def yemek_sayimi_ekle(request):
+    if request.method == "POST":
+        form = YemekSayimForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                yemek_takibi_servis.kayit_ekle(
+                    cari=cd["cari"], tarih=cd["tarih"], kisi_sayisi=cd["kisi_sayisi"],
+                    birim_fiyat=cd["birim_fiyat"], notlar=cd["notlar"], kullanici=request.user)
+                messages.success(request, "Kayıt eklendi.")
+                return redirect(_yemek_takibi_liste_url(cd["cari"].pk))
+            except yemek_takibi_servis.YemekTakibiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        initial = {}
+        cari_id = request.GET.get("cari")
+        if cari_id:
+            cari_obj = Cari.objects.filter(pk=cari_id, silindi=False).first()
+            if cari_obj:
+                initial["cari"] = cari_obj.pk
+                son_fiyat = yemek_takibi_servis.son_birim_fiyat(cari_obj)
+                if son_fiyat is not None:
+                    initial["birim_fiyat"] = son_fiyat
+        form = YemekSayimForm(initial=initial)
+    return render(request, "core/yemek_sayimi_form.html",
+                  {"form": form, "baslik": "Yeni Kayıt"})
+
+
+@ekran_gerekli("yemek_takibi")
+def yemek_sayimi_duzenle(request, pk):
+    kayit = get_object_or_404(YemekSayimi, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = YemekSayimForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                yemek_takibi_servis.kayit_guncelle(
+                    kayit, tarih=cd["tarih"], kisi_sayisi=cd["kisi_sayisi"],
+                    birim_fiyat=cd["birim_fiyat"], notlar=cd["notlar"], kullanici=request.user)
+                messages.success(request, "Kayıt güncellendi.")
+                return redirect(_yemek_takibi_liste_url(kayit.cari_id))
+            except yemek_takibi_servis.YemekTakibiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = YemekSayimForm(initial={
+            "cari": kayit.cari_id, "tarih": kayit.tarih, "kisi_sayisi": kayit.kisi_sayisi,
+            "birim_fiyat": kayit.birim_fiyat, "notlar": kayit.notlar})
+    return render(request, "core/yemek_sayimi_form.html",
+                  {"form": form, "baslik": "Kayıt Düzenle", "duzenlenen": kayit})
+
+
+@ekran_gerekli("yemek_takibi")
+def yemek_sayimi_sil(request, pk):
+    kayit = get_object_or_404(YemekSayimi, pk=pk, silindi=False)
+    cari_id = kayit.cari_id
+    if request.method == "POST":
+        yemek_takibi_servis.kayit_sil(kayit, kullanici=request.user)
+        messages.success(request, "Kayıt silindi.")
+    return redirect(_yemek_takibi_liste_url(cari_id))

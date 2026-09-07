@@ -178,4 +178,10 @@ urlpatterns = [
     path("cariler/sehir/ekle/", views.sehir_ekle, name="sehir_ekle"),
     path("cariler/sehir/<int:pk>/duzenle/", views.sehir_duzenle, name="sehir_duzenle"),
     path("cariler/sehir/<int:pk>/sil/", views.sehir_sil, name="sehir_sil"),
+    # DİĞER modülü
+    path("diger/yemek-takibi/", views.yemek_takibi, name="yemek_takibi"),
+    path("diger/yemek-takibi/ekle/", views.yemek_sayimi_ekle, name="yemek_sayimi_ekle"),
+    path("diger/yemek-takibi/<int:pk>/duzenle/", views.yemek_sayimi_duzenle,
+         name="yemek_sayimi_duzenle"),
+    path("diger/yemek-takibi/<int:pk>/sil/", views.yemek_sayimi_sil, name="yemek_sayimi_sil"),
 ]

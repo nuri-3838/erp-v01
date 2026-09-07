@@ -1614,3 +1614,39 @@ class CekBordroSatir(TemelModel):
 
     def __str__(self):
         return f"Bordro #{self.bordro_id} · {self.cek_senet_id}"
+
+
+class YemekSayimi(TemelModel):
+    """DİĞER > Yemek Takibi — günlük personel yemek/kişi sayımı (yemek firmasına bildirilen
+    sayı). Ay sonunda toplanıp firmanın kestiği faturayla karşılaştırmak içindir; fatura
+    üretmez, yevmiyeye girmez — yalnız kontrol amaçlı kayıt. Aynı cari+tarih için tek kayıt
+    (silinmemişler arası benzersiz)."""
+
+    cari = models.ForeignKey(
+        Cari, verbose_name="cari (yemek firması)", on_delete=models.PROTECT,
+        related_name="yemek_sayimlari")
+    tarih = models.DateField("tarih")
+    kisi_sayisi = models.PositiveIntegerField("kişi sayısı")
+    birim_fiyat = models.DecimalField("kişi başı ücret", max_digits=14, decimal_places=2,
+                                      default=0)
+    notlar = models.CharField("notlar", max_length=200, blank=True)
+
+    class Meta:
+        db_table = "yemek_sayimi"
+        verbose_name = "yemek sayımı"
+        verbose_name_plural = "yemek sayımları"
+        ordering = ["-tarih"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cari", "tarih"], condition=models.Q(silindi=False),
+                name="uq_yemek_sayimi_cari_tarih_aktif"),
+            models.CheckConstraint(condition=models.Q(birim_fiyat__gte=0),
+                                   name="ck_yemek_sayimi_birim_fiyat_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.cari.unvan} — {self.tarih} ({self.kisi_sayisi} kişi)"
+
+    @property
+    def tutar(self):
+        return self.kisi_sayisi * self.birim_fiyat

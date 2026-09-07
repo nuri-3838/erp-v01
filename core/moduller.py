@@ -65,6 +65,9 @@ MODULLER = (
         Ekran("kredi", "Kredi", "core:krediler"),
         Ekran("cek_senet", "Çek-Senet", "core:cek_senetler"),
     )),
+    Modul("DIGER", "Diğer", (
+        Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
+    )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),

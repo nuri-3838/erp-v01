@@ -1,0 +1,118 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Yemek Takibi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yemek Takibi{% endblock %}
+
+{% block content %}
+<style>
+  .yt-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .yt-filtre { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .yt-filtre .alan { margin:0; min-width:11rem; }
+  .yt-ozet { display:flex; gap:.9rem; flex-wrap:wrap; margin-bottom:1.2rem; }
+  .yt-ozet-kart { flex:1 1 10rem; background:rgba(255,255,255,.75); border:1px solid var(--cizgi);
+    border-radius:16px; padding:.9rem 1.1rem; }
+  .yt-ozet-deger { font-size:1.5rem; font-weight:800; color:var(--turuncu-koyu); font-family:"Cascadia Mono",Consolas,monospace; }
+  .yt-ozet-etiket { font-size:.78rem; color:var(--metin-soluk); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+</style>
+
+<div class="yt-ust">
+  <h1 class="ust-baslik"><span class="emoji">🍽️</span>Yemek Takibi</h1>
+  <a class="dugme" href="{{ ekle_url }}">+ Yeni Kayıt</a>
+</div>
+
+<form method="get" class="yt-filtre">
+  <div class="alan">
+    <label for="{{ form.cari.id_for_label }}">{{ form.cari.label }}</label>
+    <div class="akilli">{{ form.cari }}</div>
+  </div>
+  <div class="alan">
+    <label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }}</label>
+    {{ form.baslangic }}
+  </div>
+  <div class="alan">
+    <label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }}</label>
+    {{ form.bitis }}
+  </div>
+  <button type="submit" class="birincil">Göster</button>
+  <a class="iptal-bag" href="{% url 'core:yemek_takibi' %}">Bu Ay</a>
+</form>
+{% if form.non_field_errors %}
+  <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+{% endif %}
+
+<p class="sayfa-alt">{{ baslangic|date:"d.m.Y" }} – {{ bitis|date:"d.m.Y" }}{% if cari %} · <strong>{{ cari.unvan }}</strong>{% else %} · tüm cariler{% endif %} — firmanın kestiği faturayla karşılaştırmak için kullanın.</p>
+
+<div class="yt-ozet">
+  <div class="yt-ozet-kart"><div class="yt-ozet-deger">{{ gun }}</div><div class="yt-ozet-etiket">Gün</div></div>
+  <div class="yt-ozet-kart"><div class="yt-ozet-deger">{{ kisi }}</div><div class="yt-ozet-etiket">Toplam Kişi</div></div>
+  <div class="yt-ozet-kart"><div class="yt-ozet-deger">{{ tutar|tr_para }}</div><div class="yt-ozet-etiket">Toplam Tutar</div></div>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr><th>Tarih</th>{% if not cari %}<th>Cari</th>{% endif %}<th class="sag">Kişi Sayısı</th><th class="sag">Birim Fiyat</th><th class="sag">Tutar</th><th>Not</th><th>İşlem</th></tr>
+  </thead>
+  <tbody>
+    {% for k in kayitlar %}
+      <tr>
+        <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
+        {% if not cari %}<td>{{ k.cari.unvan }}</td>{% endif %}
+        <td class="sag mono">{{ k.kisi_sayisi }}</td>
+        <td class="sag mono">{{ k.birim_fiyat|tr_para }}</td>
+        <td class="sag mono">{{ k.tutar|tr_para }}</td>
+        <td>{{ k.notlar|default:"—" }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:yemek_sayimi_duzenle' k.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:yemek_sayimi_sil' k.pk %}" onsubmit="return confirm('Bu kayıt silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="{% if cari %}6{% else %}7{% endif %}" class="yardim" style="text-align:center;padding:1.6rem 0">
+        🔍 Bu aralıkta kayıt yok. "+ Yeni Kayıt" ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<script>
+(function(){
+  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+  document.body.appendChild(gListe);
+  var aktifInp = null;
+  function konumla(inp){ var r = inp.getBoundingClientRect();
+    gListe.style.left = r.left+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = r.width+'px'; }
+  function metin(sel, v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
+    return o && o.value ? o.textContent.trim() : ''; }
+  function ac(sel, inp, filt){
+    aktifInp = inp; konumla(inp);
+    filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
+    var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
+    Array.prototype.forEach.call(sel.options, function(o){
+      var t = o.value ? o.textContent.trim() : bos;
+      if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(n++ > 80) return;
+      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
+      d.addEventListener('mousedown', function(ev){ ev.preventDefault();
+        sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
+        sel.dispatchEvent(new Event('change', {bubbles:true})); });
+      gListe.appendChild(d);
+    });
+    gListe.style.display = gListe.children.length ? 'block' : 'none';
+  }
+  document.querySelectorAll('select.akilli-sec').forEach(function(sel){
+    var inp = document.createElement('input'); inp.type='text'; inp.className='akilli-girdi';
+    inp.placeholder='ara / seç…'; inp.autocomplete='off';
+    sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
+    if(sel.value) inp.value = metin(sel, sel.value);
+    inp.addEventListener('focus', function(){ ac(sel, inp, sel.value?'':inp.value); });
+    inp.addEventListener('input', function(){ sel.value=''; ac(sel, inp, inp.value); });
+    inp.addEventListener('blur', function(){ setTimeout(function(){
+      gListe.style.display='none'; inp.value=metin(sel, sel.value); }, 150); });
+  });
+  window.addEventListener('scroll', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); }, true);
+  window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
+})();
+</script>
+{% endblock %}

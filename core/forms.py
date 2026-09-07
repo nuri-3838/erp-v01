@@ -1248,3 +1248,49 @@ class StokHareketForm(forms.Form):
         from core.services.depo import aktif_depolar
         self.fields["depo"].queryset = aktif_depolar()
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+
+
+class YemekTakibiFiltreForm(forms.Form):
+    """Yemek Takibi liste ekranı üst filtresi: cari (opsiyonel) + tarih aralığı."""
+
+    cari = forms.ModelChoiceField(label="Cari", queryset=Cari.objects.none(),
+                                  required=False, empty_label="— tüm cariler —")
+    baslangic = forms.DateField(
+        label="Başlangıç", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    bitis = forms.DateField(
+        label="Bitiş", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cari import aktif_cariler
+        self.fields["cari"].queryset = aktif_cariler()
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        b, s = cd.get("baslangic"), cd.get("bitis")
+        if b and s and b > s:
+            raise forms.ValidationError("Başlangıç, bitişten sonra olamaz.")
+        return cd
+
+
+class YemekSayimForm(forms.Form):
+    """Yemek Takibi günlük kayıt ekle/düzenle. TR büyük harf gerekmiyor (sayısal kayıt)."""
+
+    cari = forms.ModelChoiceField(label="Cari (Yemek Firması)", queryset=Cari.objects.none(),
+                                  empty_label="— cari seç —")
+    tarih = forms.DateField(
+        label="Tarih", initial=timezone.localdate,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    kisi_sayisi = forms.IntegerField(
+        label="Kişi Sayısı", min_value=0,
+        widget=forms.NumberInput(attrs={"autocomplete": "off", "inputmode": "numeric"}))
+    birim_fiyat = TRDecimalField(label="Kişi Başı Ücret", basamak=2)
+    notlar = forms.CharField(label="Notlar", max_length=200, required=False,
+                             widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cari import aktif_cariler
+        self.fields["cari"].queryset = aktif_cariler()
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
