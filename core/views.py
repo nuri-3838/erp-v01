@@ -2318,6 +2318,34 @@ def teklif_siparis_onayi_geri_al(request, pk):
     return redirect("core:teklif_siparis_detay", pk=ts.pk)
 
 
+def _pdf_gorsel_b64(gorsel, arkaplan=(255, 255, 255)):
+    """Ürün görselini PDF'e gömülecek şekilde hazırlar: WeasyPrint'in şeffaf WebP'yi
+    SİYAH dolgu ile çizdiği görüldü (alfa kanalı doğru compositelenmiyor) — bu yüzden
+    burada Pillow ile düz bir zemin üzerine biz composite edip PNG (alfasız) olarak
+    gömüyoruz; renderer'ın WebP/alfa davranışına hiç bağımlı kalınmıyor."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    try:
+        with gorsel.open("rb") as f:
+            img = Image.open(f)
+            img.load()
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                img = img.convert("RGBA")
+                duz = Image.new("RGB", img.size, arkaplan)
+                duz.paste(img, mask=img.split()[-1])
+                img = duz
+            else:
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG", optimize=True)
+            return base64.b64encode(buf.getvalue()).decode("ascii")
+    except (OSError, ValueError):
+        return None
+
+
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
                         "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
 def teklif_siparis_pdf(request, pk):
@@ -2332,11 +2360,7 @@ def teklif_siparis_pdf(request, pk):
     for k in kalemler:
         k.gorsel_b64 = None
         if k.stok.satis_urunu and k.stok.gorsel:
-            try:
-                with k.stok.gorsel.open("rb") as f:
-                    k.gorsel_b64 = base64.b64encode(f.read()).decode("ascii")
-            except (OSError, ValueError):
-                pass
+            k.gorsel_b64 = _pdf_gorsel_b64(k.stok.gorsel)
     teknik_kalemler = [k for k in kalemler if k.stok.satis_urunu]
     sat_teklif = (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
                  and ts.yon == TeklifSiparis.Yon.SATIS)

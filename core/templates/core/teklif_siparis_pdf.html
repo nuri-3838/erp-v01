@@ -154,7 +154,7 @@
   {% for k in teknik_kalemler %}
     <div class="teknik-kart">
       <div class="teknik-gorsel">
-        {% if k.gorsel_b64 %}<img src="data:image/webp;base64,{{ k.gorsel_b64 }}" alt="">{% else %}<div class="teknik-yer">📦</div>{% endif %}
+        {% if k.gorsel_b64 %}<img src="data:image/png;base64,{{ k.gorsel_b64 }}" alt="">{% else %}<div class="teknik-yer">📦</div>{% endif %}
       </div>
       <div class="teknik-govde">
         <div class="teknik-ad">
