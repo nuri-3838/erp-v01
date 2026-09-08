@@ -194,7 +194,8 @@ class FasonViewTest(TestCase):
         gövde.update(self._formset_govde([{"urun": self.a21.pk, "miktar": "10"}]))
         r = self.client.post(reverse("core:fason_hesapla"), gövde)
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "151-TEST-ON")
+        self.assertContains(r, self.parca_on.ad)
+        self.assertNotContains(r, "151-TEST-ON")
         self.assertContains(r, "10")
 
     def test_hesapla_post_pdf_indirir(self):

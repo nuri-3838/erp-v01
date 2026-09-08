@@ -63,8 +63,8 @@
             <tbody>
               {% for o in sonuc.ozet %}
                 <tr>
-                  <td>{% if o.profil %}<span class="mono">{{ o.profil.kod }}</span> {{ o.profil.ad }}{% else %}<span class="pasif">— tanımsız —</span>{% endif %}</td>
-                  <td><span class="mono">{{ o.kesilmis_parca.kod }}</span> {{ o.kesilmis_parca.ad }}</td>
+                  <td>{% if o.profil %}{{ o.profil.ad }}{% else %}<span class="pasif">— tanımsız —</span>{% endif %}</td>
+                  <td>{{ o.kesilmis_parca.ad }}</td>
                   <td class="sag mono">{{ o.toplam_adet }}</td>
                 </tr>
               {% endfor %}

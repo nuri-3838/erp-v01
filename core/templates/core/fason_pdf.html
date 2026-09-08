@@ -56,7 +56,7 @@
     <thead><tr><th>Ürün</th><th class="sag">Miktar</th></tr></thead>
     <tbody>
       {% for urun, miktar in kalemler %}
-        <tr><td><span class="mono">{{ urun.kod }}</span> {{ urun.ad }}</td>
+        <tr><td>{{ urun.ad }}</td>
           <td class="sag mono">{{ miktar }}</td></tr>
       {% endfor %}
     </tbody>
@@ -68,7 +68,7 @@
     <tbody>
       {% for o in sonuc.ozet %}
         <tr>
-          <td>{% if o.profil %}<span class="mono">{{ o.profil.kod }}</span> {{ o.profil.ad }}{% else %}—{% endif %}</td>
+          <td>{% if o.profil %}{{ o.profil.ad }}{% else %}—{% endif %}</td>
           <td class="parca">{{ o.kesilmis_parca.ad }}</td>
           <td class="sag mono adet">{{ o.toplam_adet }}</td>
         </tr>
