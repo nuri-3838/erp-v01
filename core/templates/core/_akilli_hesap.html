@@ -32,7 +32,13 @@ eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) ça
   function kur(sel){
     if(!sel || sel.classList.contains('akilli-gizli')) return;   // zaten bağlı — tekrar sarmalama
     var inp = document.createElement('input'); inp.type='text'; inp.className='akilli-girdi';
-    inp.placeholder='ara / seç…'; inp.autocomplete='off';
+    inp.placeholder='ara / seç…';
+    // "off" bazı Chrome sürümlerinde ödeme/adres/yük gibi kelimeler içeren etiketli
+    // alanlarda yok sayılıyor — tarayıcı kendi öneri kutusunu açıp bizim listemizi
+    // hemen kapatıyor ("açılıp hemen kapanıyor" hatası). "new-password" Chrome'un
+    // gerçekten saygı gösterdiği tek değer.
+    inp.autocomplete='new-password'; inp.setAttribute('data-lpignore', 'true');
+    inp.setAttribute('data-1p-ignore', 'true');
     sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
     if(sel.value) inp.value = metin(sel, sel.value);
     inp.addEventListener('focus', function(){ ac(sel, inp, sel.value?'':inp.value); });
