@@ -1906,3 +1906,32 @@ class FirmaBanka(TemelModel):
 
     def __str__(self):
         return f"{self.banka_adi} ({self.para_birimi})"
+
+
+class FasonKesim(TemelModel):
+    """FASON > Kesim Tanımları — bir hammadde profilinden (Stok, satinalma_urunu=True),
+    1 adet bitmiş ürün (Stok, satis_urunu=True) üretmek için kaç parça kesilmesi
+    gerektiğini tanımlar. Kalıp no/boy (mm) AYRICA saklanmaz — zaten `profil.ad`'de var
+    (tek doğruluk kaynağı, ör. "7378-6063-ÖN AYAK 20X40 (2+1)-5480MM-T5-YARI ELOKSAL").
+    Fasoncuya gönderilecek kesim listesi/PDF'i bu tablodan hesaplanır."""
+
+    profil = models.ForeignKey(Stok, verbose_name="profil (hammadde)",
+                               on_delete=models.PROTECT, related_name="fason_kesimleri")
+    parca_adi = models.CharField("parça adı", max_length=50)
+    adet = models.PositiveSmallIntegerField("adet (1 ürün için)", default=1)
+    urunler = models.ManyToManyField(Stok, verbose_name="uygulandığı ürünler", blank=True,
+                                     related_name="fason_kesim_gereksinimleri")
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_fason_kesim"
+        verbose_name = "fason kesim satırı"
+        verbose_name_plural = "fason kesim satırları"
+        ordering = ["sira", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(adet__gte=1),
+                                   name="ck_fason_kesim_adet_gte1"),
+        ]
+
+    def __str__(self):
+        return f"{self.profil.kod} — {self.parca_adi} × {self.adet}"

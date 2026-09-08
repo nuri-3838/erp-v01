@@ -60,6 +60,13 @@ urlpatterns = [
     path("ayarlar/yedek/", views.yedek_yonetim, name="yedek"),
     path("ayarlar/yedek/indir/<str:ad>/", views.yedek_indir, name="yedek_indir"),
     path("ayarlar/firma-bilgileri/", views.firma_bilgileri, name="firma_bilgileri"),
+    # FASON
+    path("fason/hesapla/", views.fason_hesapla, name="fason_hesapla"),
+    path("fason/kesim-tanimlari/", views.fason_kesim_tanimlari, name="fason_kesim_tanimlari"),
+    path("fason/kesim-tanimlari/ekle/", views.fason_kesim_ekle, name="fason_kesim_ekle"),
+    path("fason/kesim-tanimlari/<int:pk>/duzenle/", views.fason_kesim_duzenle,
+         name="fason_kesim_duzenle"),
+    path("fason/kesim-tanimlari/<int:pk>/sil/", views.fason_kesim_sil, name="fason_kesim_sil"),
     # AYARLAR > Tanım Listeleri
     path("ayarlar/tanimlar/", views.tanim_listeleri, name="tanim_listeleri"),
     path("ayarlar/tanimlar/kdv/", views.kdv_oranlari, name="kdv_oranlari"),

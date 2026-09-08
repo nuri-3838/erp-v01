@@ -68,6 +68,10 @@ MODULLER = (
     Modul("DIGER", "Diğer", (
         Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
     )),
+    Modul("FASON", "Fason", (
+        Ekran("fason_hesapla", "Kesim Listesi Hesapla", "core:fason_hesapla"),
+        Ekran("fason_kesim_tanimlari", "Kesim Tanımları", "core:fason_kesim_tanimlari"),
+    )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),

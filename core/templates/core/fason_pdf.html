@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4 portrait; margin: 14mm 13mm 15mm;
+    @bottom-left  { content: "SEMTA Alüminyum Merdiven İmalatı · Fason Kesim Listesi";
+      font-size: 7.3px; color: #9ca3af; }
+    @bottom-right { content: "Sayfa " counter(page) " / " counter(pages);
+      font-size: 7.3px; color: #9ca3af; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; color: #1c2533; font-size: 9px;
+    line-height: 1.4; margin: 0; -webkit-font-smoothing: antialiased; }
+
+  .header { display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 11px; }
+  .brand img { height: 40px; }
+  .doc { text-align: right; }
+  .doc h1 { margin: 0; font-size: 15px; font-weight: 800; color: #15294d; letter-spacing: .5px;
+    text-transform: uppercase; }
+  .doc .alt { font-size: 8.5px; color: #8b97ab; margin-top: 3px; }
+  .banner { height: 4px; border-radius: 2px; margin: 0 0 14px;
+    background: linear-gradient(90deg, #15294d 0%, #21385f 45%, #f07c00 100%); }
+
+  .bolum-baslik { font-size: 9px; font-weight: 800; color: #15294d; text-transform: uppercase;
+    letter-spacing: 1px; margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid #15294d; }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th { text-align: left; font-size: 7.6px; text-transform: uppercase; letter-spacing: .5px;
+    color: #8b97ab; font-weight: 800; padding: 4px 8px; border-bottom: 1.5px solid #15294d; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e6eaf1; }
+  tr:nth-child(even) td { background: #fbfcfe; }
+  .sag { text-align: right; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .ozet td { font-weight: 700; }
+  .ozet .parca { color: #d56e00; font-weight: 800; }
+  .ozet .adet { color: #15294d; font-weight: 800; font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="SEMTA">{% endif %}
+    </div>
+    <div class="doc">
+      <h1>Fason Kesim Listesi</h1>
+      <div class="alt">{{ tarih|date:"d.m.Y" }} · Hazırlayan: {{ hazirlayan }}</div>
+    </div>
+  </div>
+  <div class="banner"></div>
+
+  <div class="bolum-baslik">İstenen Ürünler</div>
+  <table>
+    <thead><tr><th>Ürün</th><th class="sag">Miktar</th></tr></thead>
+    <tbody>
+      {% for urun, miktar in kalemler %}
+        <tr><td><span class="mono">{{ urun.kod }}</span> {{ urun.ad }}</td>
+          <td class="sag mono">{{ miktar }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="bolum-baslik">Kesim Listesi (Fasoncuya)</div>
+  <table class="ozet">
+    <thead><tr><th>Profil</th><th>Parça</th><th class="sag">Toplam Adet</th></tr></thead>
+    <tbody>
+      {% for o in sonuc.ozet %}
+        <tr>
+          <td><span class="mono">{{ o.profil.kod }}</span> {{ o.profil.ad }}</td>
+          <td class="parca">{{ o.parca_adi }}</td>
+          <td class="sag mono adet">{{ o.toplam_adet }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3">Girilen ürünler için tanımlı bir kesim bulunamadı.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

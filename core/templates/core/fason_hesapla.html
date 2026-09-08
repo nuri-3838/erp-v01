@@ -1,0 +1,112 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fason Kesim Listesi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kesim Listesi Hesapla{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <h1 class="ust-baslik"><span class="emoji">✂️</span>Fason Kesim Listesi Hesapla</h1>
+    {% if yonetici %}<a class="ust-link" href="{% url 'core:fason_kesim_tanimlari' %}">Kesim Tanımları →</a>{% endif %}
+  </div>
+  <p class="yardim" style="margin-top:-.4rem">İstediğin ürün ve miktarları gir, hangi
+    profilden kaç parça kesilmesi gerektiğini hesapla; fasoncuna göndermek için PDF indir.</p>
+
+  {% if formset.non_form_errors %}
+    <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Ürün / Miktar</h2>
+      <div class="tablo-kapsayici">
+        <table class="fh-tablo">
+          <thead><tr><th>Ürün</th><th>Miktar</th><th></th></tr></thead>
+          <tbody id="satir-govde">
+            {% for f in formset %}
+              <tr class="fh-satir">
+                <td>{{ f.urun }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.miktar }}</td>
+                <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="satir-alt">
+        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Ürün Ekle</button>
+      </div>
+    </section>
+
+    <template id="bos-satir">
+      <td>{{ formset.empty_form.urun }}</td>
+      <td>{{ formset.empty_form.miktar }}</td>
+      <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+    </template>
+
+    <div class="form-altbar">
+      <button type="submit" name="eylem" value="hesapla" class="dugme-ikincil">Hesapla</button>
+      <button type="submit" name="eylem" value="pdf" class="birincil">PDF İndir</button>
+    </div>
+  </form>
+
+  {% if sonuc %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📋</span>Kesim Listesi (Fasoncuya)</h2>
+      {% if sonuc.ozet %}
+        <div class="tablo-kapsayici">
+          <table>
+            <thead><tr><th>Profil</th><th>Parça</th><th class="sag">Toplam Adet</th></tr></thead>
+            <tbody>
+              {% for o in sonuc.ozet %}
+                <tr>
+                  <td><span class="mono">{{ o.profil.kod }}</span> {{ o.profil.ad }}</td>
+                  <td>{{ o.parca_adi }}</td>
+                  <td class="sag mono">{{ o.toplam_adet }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="yardim">Girilen ürünler için tanımlı bir kesim bulunamadı — Kesim
+          Tanımları'nı kontrol edin.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>
+
+<style>
+  .fh-tablo { width:100%; border-collapse:collapse; }
+  .fh-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--metin-soluk); padding:0 .5rem .3rem; }
+  .fh-tablo td { padding:.25rem .5rem; }
+  .fh-tablo input, .fh-tablo select { min-width:12rem; }
+  .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
+    font-size:.95rem; padding:.2rem .5rem; }
+  .fh-sil:hover { color:var(--hata); }
+  .satir-alt { margin-top:.7rem; }
+</style>
+
+<script>
+(function(){
+  function satirEkle(){
+    var tf = document.getElementById('id_satir-TOTAL_FORMS');
+    var i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr'); tr.className = 'fh-satir';
+    tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    document.getElementById('satir-govde').appendChild(tr);
+    tf.value = i + 1;
+    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+  }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('fh-sil')) e.target.closest('tr').remove();
+  });
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

@@ -823,6 +823,64 @@ class FirmaBankaForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+class FasonKesimForm(forms.Form):
+    """FASON > Kesim Tanımları ekle/düzenle: hangi profilden, hangi parça adıyla, kaç
+    adet, hangi bitmiş ürünler için. TR büyük harf serviste."""
+    profil = forms.ModelChoiceField(
+        label="Profil (Hammadde)", queryset=Stok.objects.none(), empty_label="— profil seç —")
+    parca_adi = forms.CharField(label="Parça Adı", max_length=50,
+                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    adet = forms.IntegerField(label="Adet (1 ürün için)", min_value=1, initial=1,
+                              widget=forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}))
+    sira = forms.IntegerField(label="Sıra", min_value=0, initial=0,
+                              widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+    urunler = forms.ModelMultipleChoiceField(
+        label="Uygulandığı Ürünler", queryset=Stok.objects.none(),
+        widget=forms.CheckboxSelectMultiple)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["profil"].queryset = (
+            Stok.objects.filter(silindi=False, satinalma_urunu=True).order_by("kod"))
+        self.fields["profil"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["profil"].widget.attrs["class"] = "akilli-sec"
+        self.fields["urunler"].queryset = (
+            Stok.objects.filter(silindi=False, satis_urunu=True).order_by("kod"))
+        self.fields["urunler"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+
+
+class FasonSatirForm(forms.Form):
+    """FASON > Kesim Listesi Hesapla: bir satır (ürün + miktar). Teklif/Sipariş
+    kalemleriyle aynı 'boş satır atlanır' deseni (TeklifSiparisKalemForm)."""
+    urun = forms.ModelChoiceField(
+        label="Ürün", queryset=Stok.objects.none(), required=False, empty_label="— ürün seç —")
+    miktar = forms.IntegerField(label="Miktar", min_value=1, required=False,
+                                widget=forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["urun"].queryset = (
+            Stok.objects.filter(silindi=False, satis_urunu=True).order_by("kod"))
+        self.fields["urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["urun"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        urun = cd.get("urun")
+        miktar = cd.get("miktar")
+        if not urun and miktar is None:
+            return cd                              # boş satır — atlanır
+        if not urun:
+            raise forms.ValidationError("Ürün seçin.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
 class BordroBaslikForm(forms.Form):
     """Çek/senet bordrosu başlığı: cari + işlem tarihi + para birimi (giriş ve çıkış ortak)."""
     cari = forms.ModelChoiceField(label="Cari", queryset=Cari.objects.none(),

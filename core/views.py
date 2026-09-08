@@ -19,7 +19,7 @@ from django.utils import timezone
 from core.forms import (
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -31,7 +31,7 @@ from core.forms import (
 )
 from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
-    CariYetkili, Depo, EkranYetki, Fatura,
+    CariYetkili, Depo, EkranYetki, Fatura, FasonKesim,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir,
@@ -70,6 +70,7 @@ from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
 from core.services import kredi_hareket as kredi_hareket_servis
 from core.services import cek as cek_servis
 from core.services import firma as firma_servis
+from core.services import fason as fason_servis
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
@@ -3678,6 +3679,106 @@ def firma_bilgileri(request):
         formset = FirmaBankaFormSet(initial=ilk, prefix="banka")
     return render(request, "core/firma_bilgileri.html",
                   {"form": form, "formset": formset, "firma": firma})
+
+
+# === FASON — Kesim Tanımları (yönetici) + Kesim Listesi Hesapla (+ PDF) ===
+@yonetici_gerekli
+def fason_kesim_tanimlari(request):
+    return render(request, "core/fason_kesim_listesi.html",
+                  {"kesimler": fason_servis.aktif_kesimler()})
+
+
+@yonetici_gerekli
+def fason_kesim_ekle(request):
+    if request.method == "POST":
+        form = FasonKesimForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                fason_servis.kesim_olustur(
+                    profil_id=cd["profil"].pk, parca_adi=cd["parca_adi"], adet=cd["adet"],
+                    urun_idler=[u.pk for u in cd["urunler"]], sira=cd["sira"],
+                    kullanici=request.user)
+                messages.success(request, "Kesim tanımı eklendi.")
+                return redirect("core:fason_kesim_tanimlari")
+            except fason_servis.FasonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = FasonKesimForm()
+    return render(request, "core/fason_kesim_form.html",
+                  {"form": form, "baslik": "Yeni Kesim Tanımı"})
+
+
+@yonetici_gerekli
+def fason_kesim_duzenle(request, pk):
+    k = get_object_or_404(FasonKesim, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = FasonKesimForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                fason_servis.kesim_guncelle(
+                    k, profil_id=cd["profil"].pk, parca_adi=cd["parca_adi"], adet=cd["adet"],
+                    urun_idler=[u.pk for u in cd["urunler"]], sira=cd["sira"],
+                    kullanici=request.user)
+                messages.success(request, "Kesim tanımı güncellendi.")
+                return redirect("core:fason_kesim_tanimlari")
+            except fason_servis.FasonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = FasonKesimForm(initial={
+            "profil": k.profil_id, "parca_adi": k.parca_adi, "adet": k.adet, "sira": k.sira,
+            "urunler": list(k.urunler.filter(silindi=False).values_list("pk", flat=True))})
+    return render(request, "core/fason_kesim_form.html",
+                  {"form": form, "baslik": "Kesim Tanımı Düzenle", "duzenlenen": k})
+
+
+@yonetici_gerekli
+def fason_kesim_sil(request, pk):
+    k = get_object_or_404(FasonKesim, pk=pk, silindi=False)
+    if request.method == "POST":
+        fason_servis.kesim_sil(k, kullanici=request.user)
+        messages.success(request, "Kesim tanımı silindi.")
+    return redirect("core:fason_kesim_tanimlari")
+
+
+FasonSatirFormSet = formset_factory(FasonSatirForm, extra=0)
+
+
+@ekran_gerekli("fason_hesapla")
+def fason_hesapla(request):
+    sonuc = None
+    if request.method == "POST":
+        formset = FasonSatirFormSet(request.POST, prefix="satir")
+        if formset.is_valid():
+            kalemler = [(f.cleaned_data["urun"], f.cleaned_data["miktar"])
+                       for f in formset if f.dolu_mu()]
+            if not kalemler:
+                messages.error(request, "En az bir ürün satırı girin.")
+            else:
+                sonuc = fason_servis.fason_listesi_hesapla(kalemler)
+                if request.POST.get("eylem") == "pdf":
+                    import base64
+
+                    from django.contrib.staticfiles import finders
+                    from weasyprint import HTML
+                    logo_b64 = None
+                    logo_yol = finders.find("core/img/semta-logo.png")
+                    if logo_yol:
+                        with open(logo_yol, "rb") as f:
+                            logo_b64 = base64.b64encode(f.read()).decode("ascii")
+                    html = render_to_string("core/fason_pdf.html", {
+                        "kalemler": kalemler, "sonuc": sonuc, "logo_b64": logo_b64,
+                        "hazirlayan": request.user.get_full_name() or request.user.username,
+                        "tarih": timezone.localdate()})
+                    pdf = HTML(string=html).write_pdf()
+                    resp = HttpResponse(pdf, content_type="application/pdf")
+                    resp["Content-Disposition"] = 'inline; filename="fason-kesim-listesi.pdf"'
+                    return resp
+    else:
+        formset = FasonSatirFormSet(prefix="satir")
+    return render(request, "core/fason_hesapla.html",
+                  {"formset": formset, "sonuc": sonuc, "yonetici": yonetici_mi(request.user)})
 
 
 # === FATURALAR — Alış/Satış faturası (otomatik yevmiye) ===
