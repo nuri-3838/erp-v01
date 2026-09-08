@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <style>
   @page {
-    size: A4 landscape; margin: 12mm 11mm 15mm;
+    size: A4 portrait; margin: 14mm 13mm 15mm;
     @bottom-left  { content: "{{ E.altbilgi }}"; font-size: 7.3px; color: #9ca3af; }
     @bottom-center { content: "{{ ts.belge_no|default:ts.pk }}"; font-size: 7.3px; color: #9ca3af; letter-spacing: .3px; }
     @bottom-right { content: "{{ E.sayfa }} " counter(page) " / " counter(pages); font-size: 7.3px; color: #9ca3af; }
@@ -14,86 +14,83 @@
     line-height: 1.4; margin: 0; -webkit-font-smoothing: antialiased; }
 
   /* ===== ÜST BAŞLIK ===== */
-  .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; }
-  .brand { display: flex; align-items: center; gap: 11px; }
-  .brand img { height: 34px; }
-  .brand .ad { font-size: 16px; font-weight: 800; color: #15294d; letter-spacing: .5px; }
+  .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 11px; }
+  .brand { display: flex; align-items: center; }
+  .brand img { height: 46px; }
   .doc { text-align: right; }
-  .doc .kicker { font-size: 7px; font-weight: 800; color: #f07c00; letter-spacing: 1.6px;
-    text-transform: uppercase; margin-bottom: 2px; }
-  .doc h1 { margin: 0; font-size: 20px; color: #15294d; letter-spacing: .5px; font-weight: 800; }
-  .doc .no { display: inline-block; margin-top: 4px; background: #15294d; color: #fff;
+  .doc .kicker { margin: 0; font-size: 15px; font-weight: 800; color: #15294d; letter-spacing: .8px;
+    text-transform: uppercase; }
+  .doc .no { display: inline-block; margin-top: 5px; background: #15294d; color: #fff;
     font-weight: 700; font-size: 9px; letter-spacing: .4px; padding: 2.5px 9px; border-radius: 20px; }
   .banner { height: 4px; border-radius: 2px; margin: 0 0 13px;
     background: linear-gradient(90deg, #15294d 0%, #21385f 45%, #f07c00 100%); }
 
   /* ===== BİLGİ ŞERİDİ ===== */
-  .bilgi { display: flex; gap: 11px; margin-bottom: 13px; }
-  .kutu { flex: 1; background: #fbfcfe; border: 1px solid #e6eaf1; border-radius: 9px;
+  .bilgi { display: flex; flex-direction: column; gap: 9px; margin-bottom: 13px; }
+  .kutu { background: #fbfcfe; border: 1px solid #e6eaf1; border-radius: 9px;
     padding: 8px 12px 9px; border-top: 3px solid #15294d; }
   .kutu.teklif-kutu { border-top-color: #f07c00; }
   .kutu .kb { font-size: 7px; text-transform: uppercase; letter-spacing: 1px; color: #8b97ab;
     font-weight: 800; margin-bottom: 5px; }
   .kv { display: flex; gap: 8px; padding: 2.5px 0; border-bottom: 1px solid #eef1f6; align-items: baseline; }
   .kv:last-child { border-bottom: 0; }
-  .kv .et { width: 78px; flex: 0 0 78px; color: #8b97ab; font-size: 7.3px; text-transform: uppercase;
+  .kv .et { width: 100px; flex: 0 0 100px; color: #8b97ab; font-size: 7.3px; text-transform: uppercase;
     letter-spacing: .3px; }
   .kv .dg { font-weight: 700; color: #1c2533; }
   .kv .dg.buyuk { font-size: 11px; color: #15294d; }
   .kv .dg.vurgu { color: #d56e00; }
 
   /* ===== ÜRÜN LİSTESİ BAŞLIĞI ===== */
-  .liste-baslik { display: flex; justify-content: space-between; align-items: baseline;
-    margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1.5px solid #15294d; }
+  .liste-baslik { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap;
+    gap: 3px 10px; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1.5px solid #15294d; }
   .liste-baslik .lb { font-size: 8px; font-weight: 800; color: #15294d; text-transform: uppercase;
     letter-spacing: 1px; }
   .liste-baslik .ls { font-size: 7.3px; color: #8b97ab; }
-  .liste-baslik .navlun-notu { flex: 1; text-align: center; font-size: 7.6px; color: #d56e00;
-    font-weight: 700; }
+  .liste-baslik .navlun-notu { flex: 1 1 100%; order: 3; text-align: center; font-size: 7.6px;
+    color: #d56e00; font-weight: 700; }
   .liste-baslik .navlun-notu b { font-weight: 800; }
 
-  /* ===== ÜRÜN TABLOSU (kart yerine — WeasyPrint'te iç içe flex bozuk render ediyordu,
-     table-layout her satırın kendi içinde bağımsız/sağlam render edilmesini sağlıyor) ===== */
-  .urun-tablo { width: 100%; border-collapse: collapse; }
-  .urun-satir { page-break-inside: avoid; }
-  .urun-satir:nth-child(even) td { background: #fbfcfe; }
-  .urun-satir td { padding: 8px 8px; border-bottom: 1px solid #e6eaf1; vertical-align: middle; }
-  .urun-satir td.td-gorsel { border-left: 3px solid #15294d; padding-left: 6px; vertical-align: middle; }
+  /* ===== ÜRÜN KARTLARI (dik/portre yerleşim — görsel solda büyük, bilgiler sağda alt alta) ===== */
+  .urun-kart { display: flex; gap: 12px; border: 1px solid #e6eaf1; border-left: 3px solid #15294d;
+    border-radius: 10px; padding: 9px 11px 10px; margin-bottom: 8px; background: #ffffff;
+    page-break-inside: avoid; }
+  .urun-kart.alt { background: #fbfcfe; }
 
-  .uk-gorsel { display: inline-block; width: 54px; height: 54px; line-height: 52px; text-align: center;
-    background: #f4f6fa; border: 1px solid #eef1f6; border-radius: 7px; overflow: hidden; }
-  .uk-gorsel img { max-width: 96%; max-height: 96%; vertical-align: middle; }
-  .uk-gorsel .bos { display: inline-block; width: 18px; height: 18px; vertical-align: middle;
+  .uk-gorsel { flex: 0 0 auto; display: inline-block; width: 86px; height: 86px; line-height: 84px;
+    text-align: center; background: #ffffff; border: 1px solid #e6eaf1; border-radius: 8px; overflow: hidden; }
+  .uk-gorsel img { max-width: 94%; max-height: 94%; vertical-align: middle; }
+  .uk-gorsel .bos { display: inline-block; width: 22px; height: 22px; vertical-align: middle;
     border: 1.5px solid #d4d8e0; border-radius: 4px; }
 
-  .td-govde { vertical-align: top; }
-  .uk-baslik { margin-bottom: 4px; }
+  .uk-govde { flex: 1 1 auto; min-width: 0; }
+  .uk-baslik { margin-bottom: 5px; }
   .model { display: inline-block; background: #f07c00; color: #fff; font-size: 7.6px; font-weight: 800;
     padding: 1.5px 6px; border-radius: 4px; font-variant-numeric: tabular-nums; letter-spacing: .2px; }
-  .urun-ad { font-weight: 800; color: #15294d; font-size: 9.6px; line-height: 1.2; }
-  .oz { display: inline-block; width: 31%; vertical-align: top; margin: 1px 0; }
+  .urun-ad { font-weight: 800; color: #15294d; font-size: 10px; line-height: 1.2; }
+
+  .oz-satir { margin-bottom: 5px; }
+  .oz { display: inline-block; width: 32%; vertical-align: top; margin: 1.5px 0; }
   .oz .et { display: block; font-size: 6.6px; text-transform: uppercase; letter-spacing: .4px; color: #9aa3b2; }
   .oz .dg { display: block; font-weight: 700; color: #374151; font-size: 8.4px; margin-top: .5px; }
 
-  .td-lojistik { vertical-align: top; width: 118px; }
-  .loj { margin: 1px 0; }
-  .loj .et { display: block; font-size: 6.8px; text-transform: uppercase; letter-spacing: .3px; color: #9aa3b2; }
-  .loj .dg { display: block; font-weight: 700; font-size: 8.2px; color: #374151; margin-top: .5px; }
-  .loj-baslik { font-size: 6.6px; text-transform: uppercase; letter-spacing: .4px; color: #9aa3b2;
-    margin: 4px 0 2px; border-top: 1px dashed #e6eaf1; padding-top: 3px; }
-  .loj-tip { display: inline-block; width: 31%; text-align: center; background: #f4f6fa;
-    border-radius: 5px; padding: 2px 1px; margin: 0; vertical-align: top; }
+  .alt-satir { display: flex; gap: 10px; align-items: flex-end; border-top: 1px dashed #e6eaf1;
+    padding-top: 5px; margin-top: 2px; }
+  .loj-info { flex: 1 1 auto; min-width: 0; }
+  .loj-mini { display: inline-block; margin: 1.5px 8px 1.5px 0; vertical-align: top; }
+  .loj-mini .et { display: block; font-size: 6.2px; text-transform: uppercase; letter-spacing: .3px; color: #9aa3b2; }
+  .loj-mini .dg { display: block; font-weight: 700; font-size: 8px; color: #374151; margin-top: 1px; }
+  .loj-tip { display: inline-block; text-align: center; background: #f4f6fa; border-radius: 5px;
+    padding: 2px 6px; margin: 1.5px 4px 1.5px 0; vertical-align: top; }
   .loj-tip .et { display: block; font-size: 6.2px; color: #9aa3b2; text-transform: uppercase; }
   .loj-tip .dg { display: block; font-size: 7.6px; font-weight: 800; color: #15294d; margin-top: 1px; }
 
-  .td-fiyat { vertical-align: middle; width: 128px; text-align: right; }
-  .fp-tek { display: inline-block; background: #fff4e8; border: 1px solid #ffdcb3; border-radius: 7px;
-    padding: 5px 10px 6px; text-align: right; }
+  .fp-tek { flex: 0 0 auto; display: inline-block; background: #fff4e8; border: 1px solid #ffdcb3;
+    border-radius: 7px; padding: 5px 10px 6px; text-align: right; }
   .fp-tek .et { display: block; font-size: 6.8px; font-weight: 800; color: #d56e00;
     text-transform: uppercase; letter-spacing: .5px; }
   .fp-tek .dg { display: block; font-weight: 800; color: #d56e00; font-size: 15px;
     white-space: nowrap; margin-top: 1px; }
-  .fp-not { margin-top: 3px; font-size: 6.8px; color: #9aa3b2; font-weight: 600; }
+  .fp-not { margin-top: 3px; font-size: 6.8px; color: #9aa3b2; font-weight: 600; text-align: right; }
   .mono { font-variant-numeric: tabular-nums; }
 
   /* ===== NOTLAR ===== */
@@ -112,11 +109,9 @@
   <div class="header">
     <div class="brand">
       {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="SEMTA">{% endif %}
-      <div class="ad">SEMTA</div>
     </div>
     <div class="doc">
       <div class="kicker">{{ E.alt_baslik }}</div>
-      <h1>{{ E.baslik }}</h1>
       <div><span class="no">{{ ts.belge_no|default:"—" }}</span></div>
     </div>
   </div>
@@ -147,38 +142,34 @@
 
   <div class="liste-baslik">
     <span class="lb">{{ E.urun }}</span>
-    {% if navlun_var %}<span class="navlun-notu">{{ E.navlun_on }} <b>{{ yukleme_tipi_ad }}</b>{{ E.navlun_son }}</span>{% endif %}
     <span class="ls">{{ kalemler|length }} {% if dil == "en" %}item(s){% else %}kalem{% endif %}</span>
+    {% if navlun_var %}<span class="navlun-notu">{{ E.navlun_on }} <b>{{ yukleme_tipi_ad }}</b>{{ E.navlun_son }}</span>{% endif %}
   </div>
 
-  <table class="urun-tablo">
-    <colgroup><col style="width:66px"><col><col style="width:118px"><col style="width:128px"></colgroup>
-    <tbody>
-    {% for k in kalemler %}
-      <tr class="urun-satir">
-        <td class="td-gorsel"><span class="uk-gorsel">{% if k.gorsel_b64 %}<img src="data:image/png;base64,{{ k.gorsel_b64 }}" alt="">{% else %}<span class="bos"></span>{% endif %}</span></td>
-        <td class="td-govde">
-          <div class="uk-baslik">{% if k.stok.model_kodu %}<span class="model">{{ k.stok.model_kodu }}</span>{% endif %} <span class="urun-ad">{{ k.stok.ad }}</span></div>
-          <div>{% if k.stok.basamak_sayisi is not None %}<span class="oz"><span class="et">{{ E.basamak }}</span><span class="dg">{{ k.stok.basamak_sayisi }}</span></span>{% endif %}{% if k.stok.yukseklik is not None %}<span class="oz"><span class="et">{{ E.yukseklik }}</span><span class="dg">{{ k.stok.yukseklik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.acik_derinlik is not None %}<span class="oz"><span class="et">{{ E.acik_derinlik }}</span><span class="dg">{{ k.stok.acik_derinlik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.taban_genisligi is not None %}<span class="oz"><span class="et">{{ E.taban }}</span><span class="dg">{{ k.stok.taban_genisligi|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.kapali_boy is not None %}<span class="oz"><span class="et">{{ E.kapali }}</span><span class="dg">{{ k.stok.kapali_boy|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.azami_yuk is not None %}<span class="oz"><span class="et">{{ E.azami_yuk }}</span><span class="dg">{{ k.stok.azami_yuk|tr_kur:0 }} kg</span></span>{% endif %}</div>
-        </td>
-        <td class="td-lojistik">
-          <div class="loj"><span class="et">{{ E.agirlik }}</span> <span class="dg mono">{% if k.stok.agirlik is not None %}{{ k.stok.agirlik|tr_kur:2 }}{% else %}—{% endif %}</span></div>
-          <div class="loj"><span class="et">{{ E.cbm }}</span> <span class="dg mono">{% if k.stok.cbm is not None %}{{ k.stok.cbm|tr_kur:3 }}{% else %}—{% endif %}</span></div>
-          <div class="loj-baslik">{{ E.yukleme_adedi }}</div>
-          <div>{% if k.stok.yukleme_20dc is not None %}<span class="loj-tip"><span class="et">20'DC</span><span class="dg mono">{{ k.stok.yukleme_20dc }}</span></span>{% else %}<span class="loj-tip"><span class="et">20'DC</span><span class="dg mono">—</span></span>{% endif %}{% if k.stok.yukleme_40hq is not None %}<span class="loj-tip"><span class="et">40'HQ</span><span class="dg mono">{{ k.stok.yukleme_40hq }}</span></span>{% else %}<span class="loj-tip"><span class="et">40'HQ</span><span class="dg mono">—</span></span>{% endif %}{% if k.stok.yukleme_tir is not None %}<span class="loj-tip"><span class="et">{{ E.tir }}</span><span class="dg mono">{{ k.stok.yukleme_tir }}</span></span>{% else %}<span class="loj-tip"><span class="et">{{ E.tir }}</span><span class="dg mono">—</span></span>{% endif %}</div>
-        </td>
-        <td class="td-fiyat">
+  {% for k in kalemler %}
+    <div class="urun-kart{% if forloop.counter|divisibleby:2 %} alt{% endif %}">
+      <span class="uk-gorsel">{% if k.gorsel_b64 %}<img src="data:image/png;base64,{{ k.gorsel_b64 }}" alt="">{% else %}<span class="bos"></span>{% endif %}</span>
+      <div class="uk-govde">
+        <div class="uk-baslik">{% if k.stok.model_kodu %}<span class="model">{{ k.stok.model_kodu }}</span>{% endif %} <span class="urun-ad">{{ k.stok.ad }}</span></div>
+        <div class="oz-satir">{% if k.stok.basamak_sayisi is not None %}<span class="oz"><span class="et">{{ E.basamak }}</span><span class="dg">{{ k.stok.basamak_sayisi }}</span></span>{% endif %}{% if k.stok.yukseklik is not None %}<span class="oz"><span class="et">{{ E.yukseklik }}</span><span class="dg">{{ k.stok.yukseklik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.acik_derinlik is not None %}<span class="oz"><span class="et">{{ E.acik_derinlik }}</span><span class="dg">{{ k.stok.acik_derinlik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.taban_genisligi is not None %}<span class="oz"><span class="et">{{ E.taban }}</span><span class="dg">{{ k.stok.taban_genisligi|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.kapali_boy is not None %}<span class="oz"><span class="et">{{ E.kapali }}</span><span class="dg">{{ k.stok.kapali_boy|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.azami_yuk is not None %}<span class="oz"><span class="et">{{ E.azami_yuk }}</span><span class="dg">{{ k.stok.azami_yuk|tr_kur:0 }} kg</span></span>{% endif %}</div>
+        <div class="alt-satir">
+          <div class="loj-info">
+            <span class="loj-mini"><span class="et">{{ E.agirlik }}</span><span class="dg mono">{% if k.stok.agirlik is not None %}{{ k.stok.agirlik|tr_kur:2 }}{% else %}—{% endif %}</span></span>
+            <span class="loj-mini"><span class="et">{{ E.cbm }}</span><span class="dg mono">{% if k.stok.cbm is not None %}{{ k.stok.cbm|tr_kur:3 }}{% else %}—{% endif %}</span></span>
+            {% if k.stok.yukleme_20dc is not None %}<span class="loj-tip"><span class="et">20'DC</span><span class="dg mono">{{ k.stok.yukleme_20dc }}</span></span>{% endif %}{% if k.stok.yukleme_40hq is not None %}<span class="loj-tip"><span class="et">40'HQ</span><span class="dg mono">{{ k.stok.yukleme_40hq }}</span></span>{% endif %}{% if k.stok.yukleme_tir is not None %}<span class="loj-tip"><span class="et">{{ E.tir }}</span><span class="dg mono">{{ k.stok.yukleme_tir }}</span></span>{% endif %}
+          </div>
           {% if navlun_var and k.nakliye_dahil_fiyat is not None %}
           <div class="fp-tek"><span class="et">{{ E.fiyat }}</span><span class="dg mono">{{ k.nakliye_dahil_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
           {% else %}
-          <div class="fp-tek"><span class="et">{{ E.fiyat }}</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
-          {% if navlun_var %}<div class="fp-not">{{ E.navlun_haric }}</div>{% endif %}
+          <div>
+            <div class="fp-tek"><span class="et">{{ E.fiyat }}</span><span class="dg mono">{{ k.net_birim_fiyat|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+            {% if navlun_var %}<div class="fp-not">{{ E.navlun_haric }}</div>{% endif %}
+          </div>
           {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
 
   <div class="altkisim">
     <div class="notlar">
