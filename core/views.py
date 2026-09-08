@@ -19,7 +19,7 @@ from django.utils import timezone
 from core.forms import (
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -69,6 +69,7 @@ from core.services import banka_hareket as banka_hareket_servis
 from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
 from core.services import kredi_hareket as kredi_hareket_servis
 from core.services import cek as cek_servis
+from core.services import firma as firma_servis
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
@@ -3633,6 +3634,50 @@ def tevkifat_orani_sil(request, pk):
         except tanim_servis.TanimHatasi as e:
             messages.error(request, str(e))
     return redirect("core:tevkifat_oranlari")
+
+
+# === AYARLAR — Firma Bilgileri (tekil kayıt + serbest sayıda banka hesabı) ===
+FirmaBankaFormSet = formset_factory(FirmaBankaForm, extra=0)
+
+
+@yonetici_gerekli
+def firma_bilgileri(request):
+    firma = firma_servis.firma_bilgisi_getir()
+    if request.method == "POST":
+        form = FirmaBilgisiForm(request.POST, request.FILES)
+        formset = FirmaBankaFormSet(request.POST, prefix="banka")
+        if form.is_valid() and formset.is_valid():
+            cd = form.cleaned_data
+            logo_dosya = (gorsel.kucult_webp(cd["logo"], max_kenar=800, kalite=85, ad="firma")
+                         if cd.get("logo") else None)
+            bankalar = [
+                {"banka_adi": f.cleaned_data.get("banka_adi", ""),
+                 "sube": f.cleaned_data.get("sube", ""),
+                 "hesap_sahibi": f.cleaned_data.get("hesap_sahibi", ""),
+                 "iban": f.cleaned_data.get("iban", ""),
+                 "para_birimi": f.cleaned_data.get("para_birimi") or "TRY"}
+                for f in formset if f.dolu_mu()
+            ]
+            try:
+                firma_servis.firma_bilgisi_kaydet(
+                    unvan=cd["unvan"], vergi_dairesi=cd["vergi_dairesi"], vergi_no=cd["vergi_no"],
+                    adres=cd["adres"], telefon=cd["telefon"], eposta=cd["eposta"], web=cd["web"],
+                    logo=logo_dosya, bankalar=bankalar, kullanici=request.user)
+                messages.success(request, "Firma bilgileri kaydedildi.")
+                return redirect("core:firma_bilgileri")
+            except firma_servis.FirmaHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = FirmaBilgisiForm(initial={
+            "unvan": firma.unvan, "vergi_dairesi": firma.vergi_dairesi, "vergi_no": firma.vergi_no,
+            "adres": firma.adres, "telefon": firma.telefon, "eposta": firma.eposta,
+            "web": firma.web})
+        ilk = [{"banka_adi": b.banka_adi, "sube": b.sube, "hesap_sahibi": b.hesap_sahibi,
+                "iban": b.iban, "para_birimi": b.para_birimi}
+               for b in firma.bankalar.filter(silindi=False)]
+        formset = FirmaBankaFormSet(initial=ilk, prefix="banka")
+    return render(request, "core/firma_bilgileri.html",
+                  {"form": form, "formset": formset, "firma": firma})
 
 
 # === FATURALAR — Alış/Satış faturası (otomatik yevmiye) ===

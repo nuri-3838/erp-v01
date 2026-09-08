@@ -777,6 +777,52 @@ class CekHesapAyariForm(forms.Form):
             f.widget.attrs["class"] = "akilli-sec"
 
 
+class FirmaBilgisiForm(forms.Form):
+    """AYARLAR > Firma Bilgileri — TR büyük harf serviste (e-posta/web hariç, bkz. core/metin.py)."""
+    unvan = forms.CharField(label="Unvan", max_length=200, required=False,
+                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    vergi_dairesi = forms.CharField(label="Vergi Dairesi", max_length=100, required=False,
+                                    widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    vergi_no = forms.CharField(label="Vergi No", max_length=20, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    telefon = forms.CharField(label="Telefon", max_length=30, required=False,
+                              widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    eposta = forms.EmailField(label="E-posta", required=False)
+    web = forms.CharField(label="Web Sitesi", max_length=200, required=False,
+                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    adres = forms.CharField(label="Adres", required=False,
+                            widget=forms.Textarea(attrs={"rows": 2}))
+    logo = forms.ImageField(label="Logo", required=False)
+
+
+class FirmaBankaForm(forms.Form):
+    """Firma banka hesabı satırı — Firma Bilgileri ekranında satır ekle/çıkar (formset)."""
+    banka_adi = forms.CharField(label="Banka", max_length=100, required=False,
+                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    sube = forms.CharField(label="Şube", max_length=100, required=False,
+                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    hesap_sahibi = forms.CharField(label="Hesap Sahibi", max_length=200, required=False,
+                                   widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    iban = forms.CharField(label="IBAN", max_length=34, required=False,
+                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES,
+                                    required=False, initial="TRY")
+
+    def clean(self):
+        cd = super().clean()
+        dolu_mu = any((cd.get(a) or "").strip() for a in
+                      ("banka_adi", "sube", "hesap_sahibi", "iban"))
+        if not dolu_mu:
+            return cd                          # tamamen boş satır — atlanır
+        if not (cd.get("banka_adi") or "").strip():
+            raise forms.ValidationError("Banka adı girin.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
 class BordroBaslikForm(forms.Form):
     """Çek/senet bordrosu başlığı: cari + işlem tarihi + para birimi (giriş ve çıkış ortak)."""
     cari = forms.ModelChoiceField(label="Cari", queryset=Cari.objects.none(),

@@ -71,6 +71,7 @@ MODULLER = (
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),
+        Ekran("firma_bilgileri", "Firma Bilgileri", "core:firma_bilgileri"),
         Ekran("tanim_listeleri", "Tanım Listeleri", "core:tanim_listeleri"),
         Ekran("yedek", "Yedek", "core:yedek"),
     ), yonetici_modulu=True),

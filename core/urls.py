@@ -59,6 +59,7 @@ urlpatterns = [
     path("ayarlar/kullanici-yetkileri/", views.kullanici_yetkileri, name="kullanici_yetkileri"),
     path("ayarlar/yedek/", views.yedek_yonetim, name="yedek"),
     path("ayarlar/yedek/indir/<str:ad>/", views.yedek_indir, name="yedek_indir"),
+    path("ayarlar/firma-bilgileri/", views.firma_bilgileri, name="firma_bilgileri"),
     # AYARLAR > Tanım Listeleri
     path("ayarlar/tanimlar/", views.tanim_listeleri, name="tanim_listeleri"),
     path("ayarlar/tanimlar/kdv/", views.kdv_oranlari, name="kdv_oranlari"),

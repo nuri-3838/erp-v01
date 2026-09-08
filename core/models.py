@@ -1854,3 +1854,55 @@ class YemekSayimi(TemelModel):
     @property
     def tutar(self):
         return self.kisi_sayisi * self.birim_fiyat
+
+
+class FirmaBilgisi(TemelModel):
+    """AYARLAR > Firma Bilgileri — TEKİL kayıt (pk=1, bkz. CekHesapAyari ile aynı desen).
+    Teklif/fatura gibi çıktı belgelerinde kullanılacak marka/iletişim/vergi bilgileri + logo."""
+
+    unvan = models.CharField("unvan", max_length=200, blank=True)
+    vergi_dairesi = models.CharField("vergi dairesi", max_length=100, blank=True)
+    vergi_no = models.CharField("vergi no", max_length=20, blank=True)
+    adres = models.TextField("adres", blank=True)
+    telefon = models.CharField("telefon", max_length=30, blank=True)
+    eposta = models.EmailField("e-posta", blank=True)
+    web = models.CharField("web sitesi", max_length=200, blank=True)
+    logo = models.ImageField("logo", upload_to="firma_logo/", blank=True, null=True)
+
+    class Meta:
+        db_table = "core_firma_bilgisi"
+        verbose_name = "firma bilgisi"
+        verbose_name_plural = "firma bilgisi"
+
+    def __str__(self):
+        return self.unvan or "Firma Bilgisi"
+
+    @classmethod
+    def get(cls):
+        """Tekil ayar kaydı (yoksa oluşturur)."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class FirmaBanka(TemelModel):
+    """Firmaya ait banka hesabı (çoklu) — Firma Bilgileri ekranında serbestçe eklenip
+    çıkarılabilir, CariBanka ile aynı alan şekli (+ şube)."""
+
+    firma = models.ForeignKey(FirmaBilgisi, verbose_name="firma", related_name="bankalar",
+                              on_delete=models.CASCADE)
+    banka_adi = models.CharField("banka", max_length=100)
+    sube = models.CharField("şube", max_length=100, blank=True)
+    hesap_sahibi = models.CharField("hesap sahibi", max_length=200, blank=True)
+    iban = models.CharField("IBAN", max_length=34, blank=True)
+    para_birimi = models.CharField("para birimi", max_length=3,
+                                   choices=YevmiyeSatir.IslemPB.choices, default="TRY")
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_firma_banka"
+        verbose_name = "firma banka hesabı"
+        verbose_name_plural = "firma banka hesapları"
+        ordering = ["sira", "pk"]
+
+    def __str__(self):
+        return f"{self.banka_adi} ({self.para_birimi})"
