@@ -8,7 +8,11 @@
 
 Fasoncuya gönderilecek liste iki katman birlikte hesaplanarak üretilir: bitmiş ürün →
 kesilmiş parça (katman 2) → o parçanın ham profili (katman 1) → profil bazında toplam."""
-from core.models import FasonKesim, Stok
+from django.db import IntegrityError, transaction
+from django.db.models import Max
+from django.utils import timezone
+
+from core.models import FasonKesim, FasonKesimKaydi, FasonKesimKaydiKalemi, Stok
 
 
 class FasonHatasi(Exception):
@@ -125,3 +129,47 @@ def fason_listesi_hesapla(kalemler):
     ozet = [ozet_map[key] for key in
            sorted(ozet_map, key=lambda key: (ozet_sira[key], key))]
     return {"detay": detay, "ozet": ozet}
+
+
+def _sonraki_sira(yil):
+    m = FasonKesimKaydi.objects.filter(yil=yil).aggregate(m=Max("sira"))["m"]
+    return (m or 0) + 1
+
+
+@transaction.atomic
+def fason_kaydi_olustur(*, kalemler, kullanici=None) -> FasonKesimKaydi:
+    """kalemler: [(Stok, miktar), ...] — dolu satırlar (fason_hesapla view'ında formset'ten
+    zaten filtrelenmiş halde gelir). Kaydın kendisi yalnızca ürün+miktar girdisini saklar;
+    kesim sonucu SAKLANMAZ — bkz. kayit_sonucu()."""
+    if not kalemler:
+        raise FasonHatasi("En az bir ürün satırı gerekli.")
+    yil = timezone.localdate().year
+    kayit = None
+    for _ in range(10):
+        try:
+            with transaction.atomic():
+                sira = _sonraki_sira(yil)
+                kayit = FasonKesimKaydi.objects.create(
+                    yil=yil, sira=sira, no=f"FKL-{yil}-{sira:04d}",
+                    created_by=kullanici, updated_by=kullanici)
+            break
+        except IntegrityError:
+            continue
+    if kayit is None:
+        raise FasonHatasi("Kayıt numarası üretilemedi; tekrar deneyin.")
+    for i, (urun, miktar) in enumerate(kalemler, start=1):
+        FasonKesimKaydiKalemi.objects.create(
+            kayit=kayit, urun=urun, miktar=miktar, sira=i * 10,
+            created_by=kullanici, updated_by=kullanici)
+    return kayit
+
+
+def kayit_kalemleri(kayit):
+    return [(k.urun, k.miktar) for k in
+            kayit.kalemler.filter(silindi=False).select_related("urun").order_by("sira", "pk")]
+
+
+def kayit_sonucu(kayit):
+    """Kayıttaki ürün/miktarları GÜNCEL Kesim Tanımları'na göre yeniden hesaplar (bkz.
+    fason_listesi_hesapla) — kayıt oluşturulduğu andaki değil, ŞU ANKİ tanımlara göre."""
+    return fason_listesi_hesapla(kayit_kalemleri(kayit))

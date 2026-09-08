@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ kayit.no }} · Fason Kesim Kaydı · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kesim Kaydı{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_kayitlari' %}">← Kesim Kayıtları</a>
+    <h1 class="ust-baslik"><span class="emoji">📋</span>{{ kayit.no }}</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:fason_kaydi_pdf' kayit.pk %}">PDF İndir</a>
+</div>
+
+<p class="yardim">{{ kayit.created_at|date:"d.m.Y H:i" }} · Hazırlayan:
+  {{ kayit.created_by.get_full_name|default:kayit.created_by.username|default:"—" }}</p>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">İstenen Ürünler</h2>
+  <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Ürün</th><th class="sag">Miktar</th></tr></thead>
+      <tbody>
+        {% for urun, miktar in kalemler %}
+          <tr><td>{{ urun.ad }}</td><td class="sag mono">{{ miktar }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik"><span class="emoji">✂️</span>Kesim Listesi (Fasoncuya)</h2>
+  {% if sonuc.ozet %}
+    <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Ham Profil</th><th>Kesilmiş Parça</th><th class="sag">Toplam Adet</th></tr></thead>
+        <tbody>
+          {% for o in sonuc.ozet %}
+            <tr>
+              <td>{% if o.profil %}{{ o.profil.ad }}{% else %}<span class="pasif">— tanımsız —</span>{% endif %}</td>
+              <td>{{ o.kesilmis_parca.ad }}</td>
+              <td class="sag mono">{{ o.toplam_adet }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="yardim">Bu ürünler için tanımlı bir kesim bulunamadı — Kesim Tanımları
+      değişmiş olabilir.</p>
+  {% endif %}
+</section>
+{% endblock %}

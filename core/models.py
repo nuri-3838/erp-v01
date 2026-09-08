@@ -1946,3 +1946,43 @@ class FasonKesim(TemelModel):
 
     def __str__(self):
         return f"{self.urun.kod} ← {self.kesilmis_parca.kod} × {self.adet}"
+
+
+class FasonKesimKaydi(TemelModel):
+    """Kaydedilmiş bir Kesim Listesi Hesapla isteği — kullanıcının girdiği ürün/miktar
+    satırları (bkz. FasonKesimKaydiKalemi). Sonuç (hangi profilden kaç parça) burada
+    SAKLANMAZ, her açılışta güncel Kesim Tanımları'ndan (FasonKesim) yeniden hesaplanır —
+    böylece bir tanım sonradan düzeltilirse geçmiş kayıtların PDF'i de güncel/doğru kalır."""
+
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("kayıt no", max_length=20, editable=False)
+
+    class Meta:
+        db_table = "core_fason_kesim_kaydi"
+        verbose_name = "fason kesim kaydı"
+        verbose_name_plural = "fason kesim kayıtları"
+        ordering = ["-yil", "-sira"]
+        constraints = [models.UniqueConstraint(
+            fields=["yil", "sira"], name="uq_fason_kesim_kaydi_yil_sira")]
+
+    def __str__(self):
+        return self.no
+
+
+class FasonKesimKaydiKalemi(TemelModel):
+    kayit = models.ForeignKey(FasonKesimKaydi, on_delete=models.CASCADE, related_name="kalemler")
+    urun = models.ForeignKey(Stok, verbose_name="ürün (bitmiş)", on_delete=models.PROTECT)
+    miktar = models.PositiveIntegerField("miktar")
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_fason_kesim_kaydi_kalemi"
+        verbose_name = "fason kesim kaydı satırı"
+        verbose_name_plural = "fason kesim kaydı satırları"
+        ordering = ["sira", "pk"]
+        constraints = [models.CheckConstraint(condition=models.Q(miktar__gte=1),
+                                              name="ck_fason_kesim_kaydi_kalemi_miktar_gte1")]
+
+    def __str__(self):
+        return f"{self.kayit.no} — {self.urun.kod} × {self.miktar}"

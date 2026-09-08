@@ -31,7 +31,7 @@ from core.forms import (
 )
 from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
-    CariYetkili, Depo, EkranYetki, Fatura, FasonKesim,
+    CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir,
@@ -3743,6 +3743,27 @@ def fason_kesim_sil(request, pk):
 FasonSatirFormSet = formset_factory(FasonSatirForm, extra=0)
 
 
+def _fason_pdf_yanit(*, kalemler, sonuc, kullanici, no=None):
+    import base64
+
+    from django.contrib.staticfiles import finders
+    from weasyprint import HTML
+    logo_b64 = None
+    logo_yol = finders.find("core/img/semta-logo.png")
+    if logo_yol:
+        with open(logo_yol, "rb") as f:
+            logo_b64 = base64.b64encode(f.read()).decode("ascii")
+    html = render_to_string("core/fason_pdf.html", {
+        "kalemler": kalemler, "sonuc": sonuc, "logo_b64": logo_b64, "no": no,
+        "hazirlayan": kullanici.get_full_name() or kullanici.username,
+        "tarih": timezone.localdate()})
+    pdf = HTML(string=html).write_pdf()
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    dosya_adi = f"fason-kesim-listesi-{no}.pdf" if no else "fason-kesim-listesi.pdf"
+    resp["Content-Disposition"] = f'inline; filename="{dosya_adi}"'
+    return resp
+
+
 @ekran_gerekli("fason_hesapla")
 def fason_hesapla(request):
     sonuc = None
@@ -3756,27 +3777,41 @@ def fason_hesapla(request):
             else:
                 sonuc = fason_servis.fason_listesi_hesapla(kalemler)
                 if request.POST.get("eylem") == "pdf":
-                    import base64
-
-                    from django.contrib.staticfiles import finders
-                    from weasyprint import HTML
-                    logo_b64 = None
-                    logo_yol = finders.find("core/img/semta-logo.png")
-                    if logo_yol:
-                        with open(logo_yol, "rb") as f:
-                            logo_b64 = base64.b64encode(f.read()).decode("ascii")
-                    html = render_to_string("core/fason_pdf.html", {
-                        "kalemler": kalemler, "sonuc": sonuc, "logo_b64": logo_b64,
-                        "hazirlayan": request.user.get_full_name() or request.user.username,
-                        "tarih": timezone.localdate()})
-                    pdf = HTML(string=html).write_pdf()
-                    resp = HttpResponse(pdf, content_type="application/pdf")
-                    resp["Content-Disposition"] = 'inline; filename="fason-kesim-listesi.pdf"'
-                    return resp
+                    kayit = fason_servis.fason_kaydi_olustur(
+                        kalemler=kalemler, kullanici=request.user)
+                    return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc,
+                                            kullanici=request.user, no=kayit.no)
     else:
         formset = FasonSatirFormSet(prefix="satir")
-    return render(request, "core/fason_hesapla.html",
-                  {"formset": formset, "sonuc": sonuc, "yonetici": yonetici_mi(request.user)})
+    return render(request, "core/fason_hesapla.html", {
+        "formset": formset, "sonuc": sonuc, "yonetici": yonetici_mi(request.user),
+        "kayitlar_yetkili": ekran_gorebilir(request.user, "fason_kayitlari")})
+
+
+@ekran_gerekli("fason_kayitlari")
+def fason_kayitlari(request):
+    kayitlar = (FasonKesimKaydi.objects.filter(silindi=False)
+                .select_related("created_by").order_by("-yil", "-sira"))
+    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
+    return render(request, "core/fason_kayitlari.html", {"kayitlar": sayfa})
+
+
+@ekran_gerekli("fason_kayitlari")
+def fason_kaydi_detay(request, pk):
+    kayit = get_object_or_404(FasonKesimKaydi, pk=pk, silindi=False)
+    kalemler = fason_servis.kayit_kalemleri(kayit)
+    sonuc = fason_servis.kayit_sonucu(kayit)
+    return render(request, "core/fason_kaydi_detay.html",
+                  {"kayit": kayit, "kalemler": kalemler, "sonuc": sonuc})
+
+
+@ekran_gerekli("fason_kayitlari")
+def fason_kaydi_pdf(request, pk):
+    kayit = get_object_or_404(FasonKesimKaydi, pk=pk, silindi=False)
+    kalemler = fason_servis.kayit_kalemleri(kayit)
+    sonuc = fason_servis.kayit_sonucu(kayit)
+    return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc,
+                            kullanici=kayit.created_by or request.user, no=kayit.no)
 
 
 # === FATURALAR — Alış/Satış faturası (otomatik yevmiye) ===

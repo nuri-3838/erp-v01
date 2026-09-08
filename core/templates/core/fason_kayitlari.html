@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Kesim Kayıtları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kesim Kayıtları{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_hesapla' %}">← Fason</a>
+    <h1 class="ust-baslik"><span class="emoji">📋</span>Kesim Kayıtları</h1>
+  </div>
+</div>
+
+<p class="yardim">Kesim Listesi Hesapla'da "PDF İndir" ile oluşturulan her kesim listesi
+  burada kalıcı olarak saklanır — tekrar açıp PDF'ini indirebilirsin.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>No</th><th>Tarih</th><th>Hazırlayan</th><th class="sag">Ürün Çeşidi</th><th></th></tr></thead>
+  <tbody>
+    {% for k in kayitlar %}
+      <tr>
+        <td class="mono">{{ k.no }}</td>
+        <td>{{ k.created_at|date:"d.m.Y H:i" }}</td>
+        <td>{{ k.created_by.get_full_name|default:k.created_by.username|default:"—" }}</td>
+        <td class="sag mono">{{ k.kalemler.count }}</td>
+        <td><a href="{% url 'core:fason_kaydi_detay' k.pk %}">Detay →</a></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim">Henüz bir kesim kaydı yok — Kesim Listesi
+        Hesapla'dan PDF indirdiğinde burada görünecek.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if kayitlar.paginator.num_pages > 1 %}
+<nav class="sayfalama">
+  {% if kayitlar.has_previous %}
+    <a href="?sayfa={{ kayitlar.previous_page_number }}">‹ Önceki</a>
+  {% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  <span class="sayfalama-bilgi">Sayfa {{ kayitlar.number }} / {{ kayitlar.paginator.num_pages }}
+    · {{ kayitlar.paginator.count }} kayıt</span>
+  {% if kayitlar.has_next %}
+    <a href="?sayfa={{ kayitlar.next_page_number }}">Sonraki ›</a>
+  {% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

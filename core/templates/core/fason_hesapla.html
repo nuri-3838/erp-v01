@@ -8,10 +8,12 @@
 <div class="form-kapsa">
   <div class="form-ust">
     <h1 class="ust-baslik"><span class="emoji">✂️</span>Fason Kesim Listesi Hesapla</h1>
+    {% if kayitlar_yetkili %}<a class="ust-link" href="{% url 'core:fason_kayitlari' %}">Kesim Kayıtları →</a>{% endif %}
     {% if yonetici %}<a class="ust-link" href="{% url 'core:fason_kesim_tanimlari' %}">Kesim Tanımları →</a>{% endif %}
   </div>
   <p class="yardim" style="margin-top:-.4rem">İstediğin ürün ve miktarları gir, hangi
-    profilden kaç parça kesilmesi gerektiğini hesapla; fasoncuna göndermek için PDF indir.</p>
+    profilden kaç parça kesilmesi gerektiğini hesapla; fasoncuna göndermek için PDF indir —
+    indirilen her PDF bir kayıt olarak saklanır, sonradan Kesim Kayıtları'ndan tekrar açabilirsin.</p>
 
   {% if formset.non_form_errors %}
     <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>

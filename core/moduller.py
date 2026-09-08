@@ -70,6 +70,7 @@ MODULLER = (
     )),
     Modul("FASON", "Fason", (
         Ekran("fason_hesapla", "Kesim Listesi Hesapla", "core:fason_hesapla"),
+        Ekran("fason_kayitlari", "Kesim Kayıtları", "core:fason_kayitlari"),
         Ekran("fason_kesim_tanimlari", "Kesim Tanımları", "core:fason_kesim_tanimlari"),
     )),
     Modul("AYARLAR", "Ayarlar", (

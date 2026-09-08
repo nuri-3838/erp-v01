@@ -4,10 +4,10 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import Birim, EkranYetki, FasonKesim, Kategori, Stok
+from core.models import Birim, EkranYetki, FasonKesim, FasonKesimKaydi, Kategori, Stok
 from core.services.fason import (
-    FasonHatasi, aktif_kesimler, fason_listesi_hesapla, kesim_guncelle, kesim_olustur,
-    kesim_sil,
+    FasonHatasi, aktif_kesimler, fason_kaydi_olustur, fason_listesi_hesapla, kayit_kalemleri,
+    kayit_sonucu, kesim_guncelle, kesim_olustur, kesim_sil,
 )
 
 
@@ -110,6 +110,52 @@ class FasonServisTest(TestCase):
         self.assertEqual(sonuc["detay"], [])
 
 
+class FasonKesimKaydiServisTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.birim = _birim()
+        cls.kat = _kategori()
+        cls.ham_on = _stok(cls.kat, cls.birim, satinalma=True,
+                           kod="150-TEST-ON", ad="7378-ön ayak 20x40 (2+1)-5480mm")
+        cls.parca_on = _stok(cls.kat, cls.birim,
+                             kod="151-TEST-ON", ad="kesilmiş a tipi ön ayak 2+1",
+                             kesildigi_profil=cls.ham_on)
+        cls.a21 = _stok(cls.kat, cls.birim, satis=True, kod="A21", ad="a tipi 2+1")
+        cls.a51 = _stok(cls.kat, cls.birim, satis=True, kod="A51", ad="a tipi 5+1")
+
+    def test_bos_kalemler_reddedilir(self):
+        with self.assertRaises(FasonHatasi):
+            fason_kaydi_olustur(kalemler=[])
+
+    def test_no_formati_ve_ardisik_sira(self):
+        yil = fason_kaydi_olustur(kalemler=[(self.a21, 1)]).yil
+        k1 = fason_kaydi_olustur(kalemler=[(self.a21, 1)])
+        k2 = fason_kaydi_olustur(kalemler=[(self.a21, 2)])
+        self.assertTrue(k1.no.startswith(f"FKL-{yil}-"))
+        self.assertEqual(k2.sira, k1.sira + 1)
+        self.assertEqual(k2.no, f"FKL-{yil}-{k2.sira:04d}")
+
+    def test_kalemler_dogru_baglanir_ve_siralanir(self):
+        kayit = fason_kaydi_olustur(kalemler=[(self.a21, 3), (self.a51, 7)])
+        kalemler = kayit_kalemleri(kayit)
+        self.assertEqual([(u.pk, m) for u, m in kalemler],
+                         [(self.a21.pk, 3), (self.a51.pk, 7)])
+
+    def test_kayit_sonucu_fason_listesi_hesapla_ile_ayni(self):
+        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        kayit = fason_kaydi_olustur(kalemler=[(self.a21, 5)])
+        self.assertEqual(kayit_sonucu(kayit), fason_listesi_hesapla([(self.a21, 5)]))
+
+    def test_kayit_sonucu_canli_hesaplanir_saklanmaz(self):
+        """Bir kesim tanımı, kayıt oluşturulduktan SONRA değişirse, kayit_sonucu() eski
+        (kayıt anındaki) değil GÜNCEL sonucu döndürmeli — 'saklanmaz, hesaplanır' felsefesi."""
+        k = kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        kayit = fason_kaydi_olustur(kalemler=[(self.a21, 5)])
+        self.assertEqual(kayit_sonucu(kayit)["ozet"][0]["toplam_adet"], 5)
+        kesim_guncelle(k, urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=3)
+        self.assertEqual(kayit_sonucu(kayit)["ozet"][0]["toplam_adet"], 15)
+
+
 class FasonViewTest(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -117,6 +163,8 @@ class FasonViewTest(TestCase):
         cls.bos = User.objects.create_user("fasbos", password="x")
         cls.yetkili = User.objects.create_user("fasyetkili", password="x")
         EkranYetki.objects.create(kullanici=cls.yetkili, ekran_kod="fason_hesapla")
+        cls.kayit_yetkili = User.objects.create_user("faskayityetkili", password="x")
+        EkranYetki.objects.create(kullanici=cls.kayit_yetkili, ekran_kod="fason_kayitlari")
 
         cls.birim = _birim()
         cls.kat = _kategori()
@@ -179,6 +227,14 @@ class FasonViewTest(TestCase):
         self.client.force_login(self.yetkili)
         self.assertEqual(self.client.get(reverse("core:fason_hesapla")).status_code, 200)
 
+    def test_hesapla_kayitlar_linki_yalniz_yetkiliye_gorunur(self):
+        self.client.force_login(self.yetkili)      # yalnız fason_hesapla yetkisi var
+        r = self.client.get(reverse("core:fason_hesapla"))
+        self.assertNotContains(r, reverse("core:fason_kayitlari"))
+        self.client.force_login(self.yon)          # yönetici — her ekranı görür
+        r = self.client.get(reverse("core:fason_hesapla"))
+        self.assertContains(r, reverse("core:fason_kayitlari"))
+
     def _formset_govde(self, satirlar):
         veri = {"satir-TOTAL_FORMS": str(len(satirlar)), "satir-INITIAL_FORMS": "0",
                 "satir-MIN_NUM_FORMS": "0", "satir-MAX_NUM_FORMS": "1000"}
@@ -198,7 +254,15 @@ class FasonViewTest(TestCase):
         self.assertNotContains(r, "151-TEST-ON")
         self.assertContains(r, "10")
 
-    def test_hesapla_post_pdf_indirir(self):
+    def test_hesapla_post_hesapla_kayit_olusturmaz(self):
+        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        self.client.force_login(self.yon)
+        gövde = {"eylem": "hesapla"}
+        gövde.update(self._formset_govde([{"urun": self.a21.pk, "miktar": "10"}]))
+        self.client.post(reverse("core:fason_hesapla"), gövde)
+        self.assertEqual(FasonKesimKaydi.objects.count(), 0)
+
+    def test_hesapla_post_pdf_indirir_ve_kayit_olusturur(self):
         kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
         self.client.force_login(self.yon)
         gövde = {"eylem": "pdf"}
@@ -207,9 +271,46 @@ class FasonViewTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "application/pdf")
         self.assertGreater(len(r.content), 500)
+        self.assertEqual(FasonKesimKaydi.objects.count(), 1)
+        kayit = FasonKesimKaydi.objects.get()
+        self.assertEqual(kayit.created_by, self.yon)
+        self.assertIn(kayit.no, r["Content-Disposition"])
 
     def test_menude_fason_gorunur(self):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:kullanici_listesi"))
         self.assertContains(r, "Fason")
         self.assertContains(r, "Kesim Listesi Hesapla")
+
+    # --- Kesim Kayıtları: ekran_gerekli("fason_kayitlari") ---
+    def test_kayitlar_anonim_login_yonlenir(self):
+        r = self.client.get(reverse("core:fason_kayitlari"))
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login/", r.url)
+
+    def test_kayitlar_yetkisiz_403(self):
+        self.client.force_login(self.bos)
+        self.assertEqual(self.client.get(reverse("core:fason_kayitlari")).status_code, 403)
+
+    def test_hesapla_yetkisi_kayitlar_icin_yetmez(self):
+        self.client.force_login(self.yetkili)
+        self.assertEqual(self.client.get(reverse("core:fason_kayitlari")).status_code, 403)
+
+    def test_kayitlar_listesi_ve_detay_pdf(self):
+        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        kayit = fason_kaydi_olustur(kalemler=[(self.a21, 10)], kullanici=self.yon)
+
+        self.client.force_login(self.kayit_yetkili)
+        r = self.client.get(reverse("core:fason_kayitlari"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, kayit.no)
+
+        r = self.client.get(reverse("core:fason_kaydi_detay", args=[kayit.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, kayit.no)
+        self.assertContains(r, self.parca_on.ad)
+
+        r = self.client.get(reverse("core:fason_kaydi_pdf", args=[kayit.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertGreater(len(r.content), 500)

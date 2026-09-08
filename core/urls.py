@@ -62,6 +62,9 @@ urlpatterns = [
     path("ayarlar/firma-bilgileri/", views.firma_bilgileri, name="firma_bilgileri"),
     # FASON
     path("fason/hesapla/", views.fason_hesapla, name="fason_hesapla"),
+    path("fason/kayitlar/", views.fason_kayitlari, name="fason_kayitlari"),
+    path("fason/kayitlar/<int:pk>/", views.fason_kaydi_detay, name="fason_kaydi_detay"),
+    path("fason/kayitlar/<int:pk>/pdf/", views.fason_kaydi_pdf, name="fason_kaydi_pdf"),
     path("fason/kesim-tanimlari/", views.fason_kesim_tanimlari, name="fason_kesim_tanimlari"),
     path("fason/kesim-tanimlari/ekle/", views.fason_kesim_ekle, name="fason_kesim_ekle"),
     path("fason/kesim-tanimlari/<int:pk>/duzenle/", views.fason_kesim_duzenle,

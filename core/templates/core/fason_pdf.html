@@ -46,7 +46,7 @@
     </div>
     <div class="doc">
       <h1>Fason Kesim Listesi</h1>
-      <div class="alt">{{ tarih|date:"d.m.Y" }} · Hazırlayan: {{ hazirlayan }}</div>
+      <div class="alt">{% if no %}{{ no }} · {% endif %}{{ tarih|date:"d.m.Y" }} · Hazırlayan: {{ hazirlayan }}</div>
     </div>
   </div>
   <div class="banner"></div>
