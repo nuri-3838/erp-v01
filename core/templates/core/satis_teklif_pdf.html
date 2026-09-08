@@ -18,8 +18,6 @@
   .brand { display: flex; align-items: center; gap: 11px; }
   .brand img { height: 34px; }
   .brand .ad { font-size: 16px; font-weight: 800; color: #15294d; letter-spacing: .5px; }
-  .brand .ad small { display: block; font-size: 7.3px; font-weight: 600; color: #8b97ab;
-    letter-spacing: .6px; text-transform: uppercase; margin-top: 1px; }
   .doc { text-align: right; }
   .doc .kicker { font-size: 7px; font-weight: 800; color: #f07c00; letter-spacing: 1.6px;
     text-transform: uppercase; margin-bottom: 2px; }
@@ -98,9 +96,9 @@
   .fp-not { margin-top: 3px; font-size: 6.8px; color: #9aa3b2; font-weight: 600; }
   .mono { font-variant-numeric: tabular-nums; }
 
-  /* ===== NOTLAR + İMZA ===== */
-  .altkisim { display: flex; gap: 14px; margin-top: 12px; page-break-inside: avoid; }
-  .notlar { flex: 1 1 62%; border: 1px solid #e6eaf1; border-left: 3px solid #f07c00; border-radius: 8px;
+  /* ===== NOTLAR ===== */
+  .altkisim { margin-top: 12px; page-break-inside: avoid; }
+  .notlar { border: 1px solid #e6eaf1; border-left: 3px solid #f07c00; border-radius: 8px;
     padding: 7px 11px; background: #fbfcfe; }
   .notlar .kb { font-size: 7px; text-transform: uppercase; letter-spacing: 1px; color: #f07c00;
     font-weight: 800; margin-bottom: 3px; }
@@ -108,19 +106,13 @@
   .notlar li { position: relative; padding-left: 11px; margin: 1.5px 0; font-size: 7.8px; }
   .notlar li::before { content: ""; position: absolute; left: 0; top: 4.5px; width: 4px; height: 4px;
     border-radius: 50%; background: #f07c00; }
-
-  .imza { flex: 0 0 32%; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px; }
-  .imza .kol { text-align: center; }
-  .imza .cizgi { border-top: 1px solid #cdd5e0; margin: 0 0 4px; }
-  .imza .rol { font-weight: 700; color: #15294d; font-size: 8.4px; }
-  .imza .as { font-size: 7.2px; color: #9ca3af; }
 </style>
 </head>
 <body>
   <div class="header">
     <div class="brand">
       {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="SEMTA">{% endif %}
-      <div class="ad">SEMTA<small>{% if dil == "en" %}Aluminium Ladder Manufacturing{% else %}Alüminyum Merdiven İmalatı{% endif %}</small></div>
+      <div class="ad">SEMTA</div>
     </div>
     <div class="doc">
       <div class="kicker">{{ E.alt_baslik }}</div>
@@ -194,10 +186,6 @@
       <ul>
         {% for n in E.not_listesi %}{% if forloop.counter != 3 or navlun_var %}<li>{{ n }}</li>{% endif %}{% endfor %}
       </ul>
-    </div>
-    <div class="imza">
-      <div class="kol"><div class="cizgi"></div><div class="rol">{{ E.hazirlayan_imza }}</div><div class="as">{{ hazirlayan }}</div></div>
-      <div class="kol"><div class="cizgi"></div><div class="rol">{{ E.onaylayan }}</div><div class="as">{{ E.ad_imza }}</div></div>
     </div>
   </div>
 </body>

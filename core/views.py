@@ -2415,7 +2415,6 @@ _PDF_ETIKET = {
             "Ürün ve ambalaj ağırlıklarında ±%5 tolerans olabilir.",
             "Teklif, geçerlilik tarihine kadar bağlayıcıdır.",
         ],
-        "hazirlayan_imza": "Hazırlayan", "onaylayan": "Onaylayan", "ad_imza": "Ad Soyad · İmza",
         "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Satış Teklifi",
     },
     "en": {
@@ -2440,7 +2439,6 @@ _PDF_ETIKET = {
             "Product and package weights may vary by ±5%.",
             "This quotation is binding until the validity date.",
         ],
-        "hazirlayan_imza": "Prepared by", "onaylayan": "Approved by", "ad_imza": "Name · Signature",
         "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Quotation",
     },
 }
