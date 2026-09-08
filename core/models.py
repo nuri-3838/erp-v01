@@ -489,6 +489,13 @@ class Stok(TemelModel):
     tedarikci = models.ForeignKey(
         "Cari", verbose_name="tedarikçi (cari)", null=True, blank=True,
         on_delete=models.PROTECT, related_name="tedarik_stoklari")
+    # FASON: bu kart bir "kesilmiş parça" (fasoncunun bir ham profilden kestiği ara ürün)
+    # ise, hangi ham profilden (Stok, kendi kendine FK) kesildiği — 1:1, o parçanın kendi
+    # tanımının sabit bir özelliği (bkz. FasonKesim, üst katman: bitmiş ürün → kesilmiş
+    # parça). Diğer tüm kartlarda boş kalır.
+    kesildigi_profil = models.ForeignKey(
+        "self", verbose_name="kesildiği ham profil", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kesilen_parcalar")
     # Alış fiyatı — bilgi amaçlı (muhasebe/fatura fiyatını ETKİLEMEZ, yalnız referans).
     # Opsiyonel. Para birimi: YevmiyeSatir.IslemPB.choices ile aynı kaynak (Cari.PARA_CHOICES
     # bunu aliaslar, ama Cari bu dosyada Stok'tan SONRA tanımlı — ileri referans olmasın diye
@@ -1909,18 +1916,19 @@ class FirmaBanka(TemelModel):
 
 
 class FasonKesim(TemelModel):
-    """FASON > Kesim Tanımları — bir hammadde profilinden (Stok, satinalma_urunu=True),
-    1 adet bitmiş ürün (Stok, satis_urunu=True) üretmek için kaç parça kesilmesi
-    gerektiğini tanımlar. Kalıp no/boy (mm) AYRICA saklanmaz — zaten `profil.ad`'de var
-    (tek doğruluk kaynağı, ör. "7378-6063-ÖN AYAK 20X40 (2+1)-5480MM-T5-YARI ELOKSAL").
-    Fasoncuya gönderilecek kesim listesi/PDF'i bu tablodan hesaplanır."""
+    """FASON > Kesim Tanımları — 1 adet bitmiş ürün (`urun`, Stok satis_urunu=True) için
+    hangi KESİLMİŞ PARÇA'dan (`kesilmis_parca`, Stok uretim_urunu=True — fasoncunun
+    kestiği ara ürün, ör. "KESİLMİŞ A TİPİ ÖN AYAK 2+1") kaç adet gerektiğini tanımlar
+    (2 seviyeli BOM'un üst katmanı: bitmiş ürün → kesilmiş parça). Kesilmiş parçanın HANGİ
+    HAM PROFİLDEN kesildiği ayrı bir alan DEĞİL — `Stok.kesildigi_profil`'de (alt katman:
+    kesilmiş parça → ham profil, 1:1, o parçanın kendi tanımının bir özelliği). Fasoncuya
+    gönderilecek kesim listesi/PDF'i bu iki katman birlikte hesaplanarak üretilir."""
 
-    profil = models.ForeignKey(Stok, verbose_name="profil (hammadde)",
-                               on_delete=models.PROTECT, related_name="fason_kesimleri")
-    parca_adi = models.CharField("parça adı", max_length=50)
+    urun = models.ForeignKey(Stok, verbose_name="ürün (bitmiş)", null=True,
+                             on_delete=models.PROTECT, related_name="fason_kesimleri")
+    kesilmis_parca = models.ForeignKey(Stok, verbose_name="kesilmiş parça", null=True,
+                                       on_delete=models.PROTECT, related_name="fason_kullanimlari")
     adet = models.PositiveSmallIntegerField("adet (1 ürün için)", default=1)
-    urunler = models.ManyToManyField(Stok, verbose_name="uygulandığı ürünler", blank=True,
-                                     related_name="fason_kesim_gereksinimleri")
     sira = models.PositiveSmallIntegerField("sıra", default=0)
 
     class Meta:
@@ -1931,7 +1939,10 @@ class FasonKesim(TemelModel):
         constraints = [
             models.CheckConstraint(condition=models.Q(adet__gte=1),
                                    name="ck_fason_kesim_adet_gte1"),
+            models.UniqueConstraint(fields=["urun", "kesilmis_parca"],
+                                    condition=models.Q(silindi=False),
+                                    name="uq_fason_kesim_urun_parca_aktif"),
         ]
 
     def __str__(self):
-        return f"{self.profil.kod} — {self.parca_adi} × {self.adet}"
+        return f"{self.urun.kod} ← {self.kesilmis_parca.kod} × {self.adet}"

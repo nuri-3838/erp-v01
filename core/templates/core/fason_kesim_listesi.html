@@ -12,22 +12,22 @@
   <a class="dugme" href="{% url 'core:fason_kesim_ekle' %}">+ Yeni</a>
 </div>
 
-<p class="yardim">Her satır: bir hammadde profilinden 1 adet bitmiş ürün için kaç parça
-  ("parça adı" ile) kesilmesi gerektiğini tanımlar. Aynı satır birden fazla ürüne
-  uygulanabilir (ör. aynı ayak uzunluğu iki farklı modelde kullanılıyorsa).</p>
+<p class="yardim">Her satır: 1 adet bitmiş ürün için hangi kesilmiş parçadan kaç adet
+  gerektiğini tanımlar. Kesilmiş parçanın hangi ham profilden kesildiği kendi stok
+  kartında ("kesildiği ham profil") tanımlıdır — burada salt-okunur gösterilir.</p>
 
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th class="sag">Sıra</th><th>Profil</th><th>Parça</th><th class="sag">Adet</th>
-    <th>Uygulandığı Ürünler</th><th>İşlem</th></tr></thead>
+  <thead><tr><th class="sag">Sıra</th><th>Ürün</th><th>Kesilmiş Parça</th>
+    <th class="sag">Adet</th><th>Ham Profil</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for k in kesimler %}
       <tr>
         <td class="sag mono">{{ k.sira }}</td>
-        <td><span class="mono">{{ k.profil.kod }}</span> {{ k.profil.ad }}</td>
-        <td>{{ k.parca_adi }}</td>
+        <td><span class="mono">{{ k.urun.kod }}</span> {{ k.urun.model_kodu|default:k.urun.ad }}</td>
+        <td><span class="mono">{{ k.kesilmis_parca.kod }}</span> {{ k.kesilmis_parca.ad }}</td>
         <td class="sag mono">{{ k.adet }}</td>
-        <td>{% for u in k.urunler.all %}<span class="mono">{{ u.model_kodu|default:u.kod }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td>{% if k.kesilmis_parca.kesildigi_profil %}<span class="mono">{{ k.kesilmis_parca.kesildigi_profil.kod }}</span> {{ k.kesilmis_parca.kesildigi_profil.ad }}{% else %}<span class="pasif">— tanımsız —</span>{% endif %}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:fason_kesim_duzenle' k.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:fason_kesim_sil' k.pk %}" onsubmit="return confirm('Silinsin mi?');">

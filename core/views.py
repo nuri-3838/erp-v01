@@ -3696,9 +3696,8 @@ def fason_kesim_ekle(request):
             try:
                 cd = form.cleaned_data
                 fason_servis.kesim_olustur(
-                    profil_id=cd["profil"].pk, parca_adi=cd["parca_adi"], adet=cd["adet"],
-                    urun_idler=[u.pk for u in cd["urunler"]], sira=cd["sira"],
-                    kullanici=request.user)
+                    urun_id=cd["urun"].pk, kesilmis_parca_id=cd["kesilmis_parca"].pk,
+                    adet=cd["adet"], sira=cd["sira"], kullanici=request.user)
                 messages.success(request, "Kesim tanımı eklendi.")
                 return redirect("core:fason_kesim_tanimlari")
             except fason_servis.FasonHatasi as e:
@@ -3718,17 +3717,16 @@ def fason_kesim_duzenle(request, pk):
             try:
                 cd = form.cleaned_data
                 fason_servis.kesim_guncelle(
-                    k, profil_id=cd["profil"].pk, parca_adi=cd["parca_adi"], adet=cd["adet"],
-                    urun_idler=[u.pk for u in cd["urunler"]], sira=cd["sira"],
-                    kullanici=request.user)
+                    k, urun_id=cd["urun"].pk, kesilmis_parca_id=cd["kesilmis_parca"].pk,
+                    adet=cd["adet"], sira=cd["sira"], kullanici=request.user)
                 messages.success(request, "Kesim tanımı güncellendi.")
                 return redirect("core:fason_kesim_tanimlari")
             except fason_servis.FasonHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = FasonKesimForm(initial={
-            "profil": k.profil_id, "parca_adi": k.parca_adi, "adet": k.adet, "sira": k.sira,
-            "urunler": list(k.urunler.filter(silindi=False).values_list("pk", flat=True))})
+            "urun": k.urun_id, "kesilmis_parca": k.kesilmis_parca_id,
+            "adet": k.adet, "sira": k.sira})
     return render(request, "core/fason_kesim_form.html",
                   {"form": form, "baslik": "Kesim Tanımı Düzenle", "duzenlenen": k})
 

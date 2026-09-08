@@ -20,14 +20,16 @@
       <h2 class="bolum-baslik">Kesim Tanımı</h2>
       <div class="izgara">
         <div class="alan tam">
-          <label for="{{ form.profil.id_for_label }}">{{ form.profil.label }}</label>
-          <div class="akilli">{{ form.profil }}</div>
-          {% for e in form.profil.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <label for="{{ form.urun.id_for_label }}">{{ form.urun.label }}</label>
+          <div class="akilli">{{ form.urun }}</div>
+          {% for e in form.urun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="alan">
-          <label for="{{ form.parca_adi.id_for_label }}">{{ form.parca_adi.label }}</label>
-          {{ form.parca_adi }}
-          {% for e in form.parca_adi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        <div class="alan tam">
+          <label for="{{ form.kesilmis_parca.id_for_label }}">{{ form.kesilmis_parca.label }}</label>
+          <div class="akilli">{{ form.kesilmis_parca }}</div>
+          {% for e in form.kesilmis_parca.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">Yalnız "kesildiği ham profil" tanımlı
+            olan stok kartları listelenir.</p>
         </div>
         <div class="alan">
           <label for="{{ form.adet.id_for_label }}">{{ form.adet.label }}</label>
@@ -40,15 +42,6 @@
           {% for e in form.sira.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
       </div>
-      <div class="alan" style="margin-top:.9rem">
-        <label>{{ form.urunler.label }}</label>
-        <div class="onay-izgara">
-          {% for kutu in form.urunler %}
-            <div class="onay-alan"><label>{{ kutu.tag }} {{ kutu.choice_label }}</label></div>
-          {% endfor %}
-        </div>
-        {% for e in form.urunler.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-      </div>
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:fason_kesim_tanimlari' %}">İptal</a>
@@ -56,13 +49,6 @@
     </div>
   </form>
 </div>
-
-<style>
-  .onay-izgara { display:grid; grid-template-columns:repeat(auto-fill, minmax(11rem, 1fr));
-    gap:.4rem .8rem; margin-top:.4rem; }
-  .onay-izgara .onay-alan label { display:flex; align-items:center; gap:.4rem; }
-  .onay-izgara input { margin:0; }
-</style>
 
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}

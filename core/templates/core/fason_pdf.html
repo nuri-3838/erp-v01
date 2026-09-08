@@ -64,12 +64,12 @@
 
   <div class="bolum-baslik">Kesim Listesi (Fasoncuya)</div>
   <table class="ozet">
-    <thead><tr><th>Profil</th><th>Parça</th><th class="sag">Toplam Adet</th></tr></thead>
+    <thead><tr><th>Ham Profil</th><th>Kesilmiş Parça</th><th class="sag">Toplam Adet</th></tr></thead>
     <tbody>
       {% for o in sonuc.ozet %}
         <tr>
-          <td><span class="mono">{{ o.profil.kod }}</span> {{ o.profil.ad }}</td>
-          <td class="parca">{{ o.parca_adi }}</td>
+          <td>{% if o.profil %}<span class="mono">{{ o.profil.kod }}</span> {{ o.profil.ad }}{% else %}—{% endif %}</td>
+          <td class="parca">{{ o.kesilmis_parca.ad }}</td>
           <td class="sag mono adet">{{ o.toplam_adet }}</td>
         </tr>
       {% empty %}

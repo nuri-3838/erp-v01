@@ -1,8 +1,13 @@
-"""FASON > Kesim Tanımları + Kesim Listesi hesaplayıcı. Bir hammadde profilinden
-(Stok, satinalma_urunu=True) 1 adet bitmiş ürün (Stok, satis_urunu=True) için kaç parça
-kesilmesi gerektiğini tanımlar (KdvOrani ile aynı basit CRUD deseni), ve verilen bir
-ürün×miktar listesinden fasoncuya gönderilecek toplam kesim listesini hesaplar."""
-from core.metin import buyuk_harf_tr
+"""FASON > Kesim Tanımları + Kesim Listesi hesaplayıcı — 2 katmanlı BOM:
+
+  1) Stok.kesildigi_profil (1:1): bir "kesilmiş parça" (fasoncunun bir ham profilden
+     kestiği ara ürün, ör. "KESİLMİŞ A TİPİ ÖN AYAK 2+1") hangi ham profilden (satinalma
+     ürünü) kesiliyor — o parçanın kendi tanımının sabit bir özelliği.
+  2) FasonKesim (bu dosya): bir bitmiş ürün (satis_urunu=True) 1 adet üretmek için hangi
+     kesilmiş parça(lar)dan kaç adet gerektiği.
+
+Fasoncuya gönderilecek liste iki katman birlikte hesaplanarak üretilir: bitmiş ürün →
+kesilmiş parça (katman 2) → o parçanın ham profili (katman 1) → profil bazında toplam."""
 from core.models import FasonKesim, Stok
 
 
@@ -12,61 +17,66 @@ class FasonHatasi(Exception):
 
 def aktif_kesimler():
     return (FasonKesim.objects.filter(silindi=False)
-            .select_related("profil").prefetch_related("urunler")
+            .select_related("urun", "kesilmis_parca", "kesilmis_parca__kesildigi_profil")
             .order_by("sira", "pk"))
 
 
-def _profil_coz(profil_id):
-    profil = Stok.objects.filter(
-        pk=profil_id, silindi=False, satinalma_urunu=True).first()
-    if not profil:
-        raise FasonHatasi("Profil bulunamadı.")
-    return profil
+def kesilmis_parca_secenekleri():
+    """Kesim Tanımları formunda seçilebilecek 'kesilmiş parça' adayları — kendi ham
+    profiline (kesildigi_profil) bağlı Stok kartları (bu, bir kartın 'kesilmiş parça'
+    olduğunun tanımıdır — ayrı bir bayrak yok)."""
+    return (Stok.objects.filter(silindi=False, kesildigi_profil__isnull=False)
+            .select_related("kesildigi_profil").order_by("kod"))
 
 
-def _urunleri_coz(urun_idler):
-    urunler = list(Stok.objects.filter(
-        pk__in=(urun_idler or []), silindi=False, satis_urunu=True))
-    if not urunler:
-        raise FasonHatasi("En az bir ürün seçilmelidir.")
-    return urunler
+def _urun_coz(urun_id):
+    urun = Stok.objects.filter(pk=urun_id, silindi=False, satis_urunu=True).first()
+    if not urun:
+        raise FasonHatasi("Ürün bulunamadı.")
+    return urun
 
 
-def kesim_olustur(*, profil_id, parca_adi, adet, urun_idler, sira=0, kullanici=None) -> FasonKesim:
-    profil = _profil_coz(profil_id)
-    parca_adi = buyuk_harf_tr((parca_adi or "").strip())
-    if not parca_adi:
-        raise FasonHatasi("Parça adı boş olamaz.")
+def _kesilmis_parca_coz(kesilmis_parca_id):
+    parca = Stok.objects.filter(
+        pk=kesilmis_parca_id, silindi=False, kesildigi_profil__isnull=False).first()
+    if not parca:
+        raise FasonHatasi(
+            "Kesilmiş parça bulunamadı (önce ilgili stok kartına 'kesildiği ham profil' "
+            "tanımlanmalı).")
+    return parca
+
+
+def kesim_olustur(*, urun_id, kesilmis_parca_id, adet, sira=0, kullanici=None) -> FasonKesim:
+    urun = _urun_coz(urun_id)
+    parca = _kesilmis_parca_coz(kesilmis_parca_id)
     adet = int(adet or 0)
     if adet < 1:
         raise FasonHatasi("Adet en az 1 olmalı.")
-    urunler = _urunleri_coz(urun_idler)
-    k = FasonKesim.objects.create(
-        profil=profil, parca_adi=parca_adi, adet=adet, sira=int(sira or 0),
+    if FasonKesim.objects.filter(silindi=False, urun=urun, kesilmis_parca=parca).exists():
+        raise FasonHatasi("Bu ürün + kesilmiş parça kombinasyonu zaten tanımlı.")
+    return FasonKesim.objects.create(
+        urun=urun, kesilmis_parca=parca, adet=adet, sira=int(sira or 0),
         created_by=kullanici, updated_by=kullanici)
-    k.urunler.set(urunler)
-    return k
 
 
-def kesim_guncelle(k: FasonKesim, *, profil_id, parca_adi, adet, urun_idler, sira=0,
+def kesim_guncelle(k: FasonKesim, *, urun_id, kesilmis_parca_id, adet, sira=0,
                    kullanici=None) -> FasonKesim:
     if k.silindi:
         raise FasonHatasi("Silinmiş kayıt düzenlenemez.")
-    profil = _profil_coz(profil_id)
-    parca_adi = buyuk_harf_tr((parca_adi or "").strip())
-    if not parca_adi:
-        raise FasonHatasi("Parça adı boş olamaz.")
+    urun = _urun_coz(urun_id)
+    parca = _kesilmis_parca_coz(kesilmis_parca_id)
     adet = int(adet or 0)
     if adet < 1:
         raise FasonHatasi("Adet en az 1 olmalı.")
-    urunler = _urunleri_coz(urun_idler)
-    k.profil = profil
-    k.parca_adi = parca_adi
+    if (FasonKesim.objects.filter(silindi=False, urun=urun, kesilmis_parca=parca)
+            .exclude(pk=k.pk).exists()):
+        raise FasonHatasi("Bu ürün + kesilmiş parça kombinasyonu zaten tanımlı.")
+    k.urun = urun
+    k.kesilmis_parca = parca
     k.adet = adet
     k.sira = int(sira or 0)
     k.updated_by = kullanici
-    k.save(update_fields=["profil", "parca_adi", "adet", "sira", "updated_by", "updated_at"])
-    k.urunler.set(urunler)
+    k.save(update_fields=["urun", "kesilmis_parca", "adet", "sira", "updated_by", "updated_at"])
     return k
 
 
@@ -82,31 +92,35 @@ def kesim_sil(k: FasonKesim, kullanici=None) -> FasonKesim:
 
 
 def fason_listesi_hesapla(kalemler):
-    """``kalemler``: [(stok, miktar), ...] (satış ürünü + istenen adet).
+    """``kalemler``: [(urun, miktar), ...] (bitmiş ürün + istenen adet).
 
     Döner: {"detay": [{"urun","miktar","kesim","toplam_adet"}, ...],
-            "ozet":  [{"profil","parca_adi","toplam_adet"}, ...]}  — ``ozet`` profil+parça
-    adına göre gruplu, fasoncuya gönderilecek asıl liste (birden fazla ürün aynı profili
-    kullanıyorsa toplamları birleşir, ör. A21+A51 aynı arka-ayak satırını paylaşıyorsa)."""
+            "ozet":  [{"profil","parca_kod_ad","toplam_adet"}, ...]}
+
+    ``ozet`` ham profil + kesilmiş parça adına göre gruplu — fasoncuya gönderilecek asıl
+    liste (birden fazla ürün aynı kesilmiş parçayı/profili paylaşıyorsa toplamları
+    birleşir, örn. Çift Çıkışlı modellerin hepsi aynı ön-ayak ham profilini kullanıyor)."""
     detay = []
-    for stok, miktar in kalemler:
+    for urun, miktar in kalemler:
         miktar = int(miktar or 0)
         if miktar <= 0:
             continue
-        kesimler = (FasonKesim.objects.filter(silindi=False, urunler=stok)
-                   .select_related("profil").order_by("sira", "pk"))
+        kesimler = (FasonKesim.objects.filter(silindi=False, urun=urun)
+                   .select_related("kesilmis_parca", "kesilmis_parca__kesildigi_profil")
+                   .order_by("sira", "pk"))
         for k in kesimler:
-            detay.append({"urun": stok, "miktar": miktar, "kesim": k,
+            detay.append({"urun": urun, "miktar": miktar, "kesim": k,
                           "toplam_adet": k.adet * miktar})
 
     ozet_map = {}
     ozet_sira = {}
     for d in detay:
-        k = d["kesim"]
-        key = (k.profil_id, k.parca_adi)
+        parca = d["kesim"].kesilmis_parca
+        profil = parca.kesildigi_profil
+        key = (profil.pk if profil else None, parca.pk)
         if key not in ozet_map:
-            ozet_map[key] = {"profil": k.profil, "parca_adi": k.parca_adi, "toplam_adet": 0}
-            ozet_sira[key] = k.sira
+            ozet_map[key] = {"profil": profil, "kesilmis_parca": parca, "toplam_adet": 0}
+            ozet_sira[key] = d["kesim"].sira
         ozet_map[key]["toplam_adet"] += d["toplam_adet"]
     ozet = [ozet_map[key] for key in
            sorted(ozet_map, key=lambda key: (ozet_sira[key], key))]
