@@ -21,14 +21,55 @@
     {% csrf_token %}
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Belge Bilgileri</h2>
-      <div class="izgara">
-        {% for field in bform %}
-          <div class="alan">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+      <div class="bb-blok">
+        <div class="bb-satir">
+          <div class="bb-alan bb-vurgu">
+            <label for="{{ bform.cari.id_for_label }}">{{ bform.cari.label }}</label>
+            {{ bform.cari }}
+            {% for e in bform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
-        {% endfor %}
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.para_birimi.id_for_label }}">{{ bform.para_birimi.label }}</label>
+            {{ bform.para_birimi }}
+            {% for e in bform.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.tarih.id_for_label }}">{{ bform.tarih.label }}</label>
+            {{ bform.tarih }}
+            {% for e in bform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.gecerlilik_teslim_tarihi.id_for_label }}">{{ bform.gecerlilik_teslim_tarihi.label }}</label>
+            {{ bform.gecerlilik_teslim_tarihi }}
+            {% for e in bform.gecerlilik_teslim_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.yukleme_sekli.id_for_label }}">{{ bform.yukleme_sekli.label }}</label>
+            {{ bform.yukleme_sekli }}
+            {% for e in bform.yukleme_sekli.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.odeme_kosulu.id_for_label }}">{{ bform.odeme_kosulu.label }}</label>
+            {{ bform.odeme_kosulu }}
+            {% for e in bform.odeme_kosulu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.yukleme_tipi.id_for_label }}">{{ bform.yukleme_tipi.label }}</label>
+            {{ bform.yukleme_tipi }}
+            {% for e in bform.yukleme_tipi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.navlun_tutari.id_for_label }}">{{ bform.navlun_tutari.label }}</label>
+            {{ bform.navlun_tutari }}
+            {% for e in bform.navlun_tutari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
       </div>
     </section>
 
@@ -39,10 +80,6 @@
 
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">📐</span>Ürün Fiyat Listesi</h2>
-      <p class="yardim">Tüm satış ürünleri hazır geldi. Göndermek istemediğiniz ürünün
-        "Dahil" işaretini kaldırın; fiyat/iskonto satır bazında düzenlenebilir. Miktar
-        yok — teklif her zaman ürünün birim (1 adet) fiyatını iletir. Navlun girilirse,
-        seçilen yükleme tipine sığan adede bölünerek ürün başına dağıtılır.</p>
       <div class="fk-liste">
         {% for s, f in satirlar %}
           <div class="fk-satir" data-stok="{{ s.pk }}">
@@ -93,6 +130,17 @@
 </div>
 
 <style>
+  .bb-blok { display:flex; flex-direction:column; gap:.85rem; }
+  .bb-satir { display:flex; gap:.9rem; flex-wrap:wrap; }
+  .bb-alan { flex:1 1 0; min-width:190px; background:rgba(255,255,255,.6);
+    border:1px solid var(--cizgi); border-top:3px solid var(--lacivert); border-radius:14px;
+    padding:.7rem .95rem .85rem; }
+  .bb-alan.bb-vurgu { border-top-color:var(--turuncu); }
+  .bb-alan label { display:block; font-size:.7rem; margin-bottom:.35rem; color:var(--metin-soluk);
+    font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+  .bb-alan input, .bb-alan select { background:#fff; }
+  @media (max-width:680px){ .bb-alan { min-width:100%; } }
+
   .fk-liste { display:flex; flex-direction:column; gap:.55rem; }
   .fk-satir { display:flex; align-items:center; gap:1.1rem; flex-wrap:wrap;
     border:1px solid var(--cizgi); border-radius:14px; padding:.75rem 1.1rem;
