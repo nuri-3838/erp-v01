@@ -278,13 +278,18 @@ class SatisTeklifTest(TestCase):
         self.assertNotContains(d, "fk-gorsel")                      # detayda ürün görseli yok
         self.assertContains(d, "PDF (TR)")
         self.assertContains(d, "PDF (EN)")
+        from urllib.parse import quote
+        beklenen_ad = f"{ts.belge_no}-{self.cari.unvan}.pdf"
+        beklenen_parca = f"filename*=UTF-8''{quote(beklenen_ad)}"
         pdf = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
-        self.assertIn("-TR.pdf", pdf["Content-Disposition"])
+        self.assertIn(beklenen_parca, pdf["Content-Disposition"])
+        self.assertNotIn("-TR.pdf", pdf["Content-Disposition"])
         pdf_en = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]) + "?dil=en")
         self.assertEqual(pdf_en.status_code, 200)
-        self.assertIn("-EN.pdf", pdf_en["Content-Disposition"])
+        self.assertIn(beklenen_parca, pdf_en["Content-Disposition"])
+        self.assertNotIn("-EN.pdf", pdf_en["Content-Disposition"])
 
     def test_pdf_ingilizce_sablon_etiketleri_ve_ad_en(self):
         """EN PDF: şablona 'en' etiket sözlüğü + seçeneklerin ad_en karşılığı gider

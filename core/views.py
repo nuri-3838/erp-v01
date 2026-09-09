@@ -2348,6 +2348,24 @@ def _pdf_gorsel_b64(gorsel, arkaplan=(255, 255, 255)):
         return None
 
 
+_DOSYA_GECERSIZ = str.maketrans("", "", '\\/:*?"<>|')
+
+
+def _pdf_dosya_adi(*parcalar) -> str:
+    """PDF indirme dosya adı: parçaları '-' ile birleştirir, dosya sisteminde geçersiz
+    karakterleri temizler (ör. cari unvanı '/' veya ':' içerebilir)."""
+    temiz = [str(p).translate(_DOSYA_GECERSIZ).strip() for p in parcalar if p]
+    return "-".join(temiz) + ".pdf"
+
+
+def _pdf_content_disposition(dosya_adi: str, ek="inline") -> str:
+    """Content-Disposition değeri: ASCII yedek + RFC 6266 UTF-8 (Türkçe karakterli
+    dosya adı — ör. cari unvanındaki İ/Ş/Ğ — ham haliyle latin-1 header'a sığmaz)."""
+    from urllib.parse import quote
+    ascii_ad = dosya_adi.encode("ascii", "ignore").decode("ascii").strip(" -") or "belge.pdf"
+    return f'{ek}; filename="{ascii_ad}"; filename*=UTF-8\'\'{quote(dosya_adi)}'
+
+
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
                         "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
 def teklif_siparis_pdf(request, pk):
@@ -2372,7 +2390,8 @@ def teklif_siparis_pdf(request, pk):
     if logo_yol:
         with open(logo_yol, "rb") as f:
             ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
-    sablon, dosya_adi = "core/teklif_siparis_pdf.html", f"{ts.belge_no or ts.pk}.pdf"
+    sablon = "core/teklif_siparis_pdf.html"
+    dosya_adi = _pdf_dosya_adi(ts.belge_no or ts.pk, ts.cari.unvan)
     if sat_teklif:
         # Satış Teklifi: müşteriye giden quotation — ayrı, iki dilli (?dil=tr|en) şablon.
         dil = "en" if request.GET.get("dil") == "en" else "tr"
@@ -2391,11 +2410,10 @@ def teklif_siparis_pdf(request, pk):
             "yurt_ici": not ts.cari.ulke_id or ts.cari.ulke.kod == "TR",
         })
         sablon = "core/satis_teklif_pdf.html"
-        dosya_adi = f"{ts.belge_no or ts.pk}-{dil.upper()}.pdf"
     html = render_to_string(sablon, ctx)
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")
-    resp["Content-Disposition"] = f'inline; filename="{dosya_adi}"'
+    resp["Content-Disposition"] = _pdf_content_disposition(dosya_adi)
     return resp
 
 
