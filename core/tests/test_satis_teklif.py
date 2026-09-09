@@ -47,18 +47,24 @@ class SatisTeklifTest(TestCase):
         cls.a21 = stok_olustur(
             ad="a tipi merdiven", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
             fatura_birimi_id=cls.birim.pk, kdv_id=cls.kdv.pk,
-            satis_urunu=True, model_kodu="a21", yukleme_40hq=1000, yukleme_20dc=400,
+            satis_urunu=True, model_kodu="a21", basamak_sayisi=3, yukseklik="58",
+            yukleme_40hq=1000, yukleme_20dc=400,
             fiyat_try="12000", fiyat_usd="350", kullanici=cls.yon)
+        cls.a21.ad_en = "Aluminium Platform Stepladder 2+1"
+        cls.a21.save(update_fields=["ad_en"])
         cls.c22 = stok_olustur(
             ad="cift cikisli merdiven", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
             fatura_birimi_id=cls.birim.pk, kdv_id=cls.kdv.pk,
-            satis_urunu=True, model_kodu="c22",
+            satis_urunu=True, model_kodu="c22", basamak_sayisi=4,
             fiyat_try="15000", kullanici=cls.yon)   # USD fiyatı ve yükleme adedi YOK
+        cls.c22.ad_en = "Double-Sided Aluminium Stepladder 2+2"
+        cls.c22.save(update_fields=["ad_en"])
         # Seed migration'dan gelen Tanım Listesi seçenekleri
         cls.sekil = _secenek("YUKLEME_SEKLI", ad="FOB İZMİR")
         cls.kosul = _secenek("ODEME_KOSULU", ad="PEŞİN")
         cls.tip_40hq = _secenek("YUKLEME_TIPI", kod="40HQ")
         cls.tip_tir = _secenek("YUKLEME_TIPI", kod="TIR")
+        cls.teslim = _secenek("TESLIM_SURESI", ad="SİPARİŞ ONAYI SONRASI 15 İŞ GÜNÜ")
 
     def test_seed_secenekleri_geldi(self):
         self.assertIsNotNone(self.sekil)
@@ -86,7 +92,8 @@ class SatisTeklifTest(TestCase):
         self.assertEqual(bform["gecerlilik_teslim_tarihi"].value(),
                          timezone.localdate() + datetime.timedelta(days=15))
         self.assertNotContains(r, "elle değiştirebilirsiniz")
-        for alan in ("yukleme_sekli", "odeme_kosulu", "yukleme_tipi", "navlun_tutari"):
+        for alan in ("yukleme_sekli", "odeme_kosulu", "yukleme_tipi", "teslim_suresi",
+                    "navlun_tutari"):
             self.assertIn(alan, bform.fields)
         self.assertContains(r, "FOB İZMİR")
         self.assertContains(r, "40&#x27; HQ KONTEYNER")
@@ -114,7 +121,8 @@ class SatisTeklifTest(TestCase):
         govde = {
             "cari": self.cari.pk, "tarih": "2026-09-07", "para_birimi": "TRY",
             "yukleme_sekli": self.sekil.pk, "odeme_kosulu": self.kosul.pk,
-            "yukleme_tipi": self.tip_40hq.pk, "navlun_tutari": "3.000",
+            "yukleme_tipi": self.tip_40hq.pk, "teslim_suresi": self.teslim.pk,
+            "navlun_tutari": "3.000",
             "form-TOTAL_FORMS": "2", "form-INITIAL_FORMS": "0",
             "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.a21.pk, "form-0-dahil": "on",
@@ -137,6 +145,7 @@ class SatisTeklifTest(TestCase):
         self.assertEqual(ts.yukleme_sekli, self.sekil)
         self.assertEqual(ts.odeme_kosulu, self.kosul)
         self.assertEqual(ts.yukleme_tipi, self.tip_40hq)
+        self.assertEqual(ts.teslim_suresi, self.teslim)
         self.assertEqual(ts.navlun_tutari, Decimal("3000.00"))
         kalemler = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
         self.assertEqual(len(kalemler), 2)
@@ -292,72 +301,128 @@ class SatisTeklifTest(TestCase):
         self.assertNotIn("-EN.pdf", pdf_en["Content-Disposition"])
 
     def test_pdf_ingilizce_sablon_etiketleri_ve_ad_en(self):
-        """EN PDF: şablona 'en' etiket sözlüğü + seçeneklerin ad_en karşılığı gider
-        (seed: TIR -> Truck, FOB İZMİR -> FOB Izmir); TR'de Türkçe kalır."""
+        """EN PDF: şablona 'en' etiket sözlüğü + seçeneklerin/ürünlerin ad_en karşılığı
+        gider (seed: TIR -> Truck, FOB İZMİR -> FOB Izmir); TR'de Türkçe kalır. Basamak
+        gösterimi ("2+2") dile bağlı değil, ikisinde de aynı."""
         from django.template.loader import render_to_string
-        from core.views import _PDF_ETIKET
+        from core.views import satis_teklif_pdf_baglam
         self.assertEqual(self.tip_tir.ad_en, "Truck")
         self.assertEqual(self.tip_tir.ad_dil("en"), "Truck")
         self.assertEqual(self.tip_tir.ad_dil("tr"), "TIR")
         self.client.force_login(self.yon)
         self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
         ts = self._son_teklif()
-        # Şablonun kendisini iki dilde HTML olarak render edip metni doğrula
-        # (PDF ikilisinden metin okumak yerine).
-        for dil, beklenen in (("tr", ["SATIŞ TEKLİFİ", "FOB İZMİR", "Fiyatlara", "40&#x27; HQ KONTEYNER",
-                                      "navlunu dahildir"]),
-                              ("en", ["QUOTATION", "FOB Izmir", "Prices include freight for",
-                                     "40&#x27; HQ Container"])):
-            html = render_to_string("core/satis_teklif_pdf.html", {
-                "ts": ts, "kalemler": list(ts.kalemler.filter(silindi=False).select_related("stok")),
-                "dil": dil, "E": _PDF_ETIKET[dil], "navlun_var": True, "hazirlayan": "Test",
-                "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil),
-                "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil),
-                "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil)})
+        for dil, beklenen in (
+            ("tr", ["SATIŞ TEKLİFİ", "FOB İZMİR", "Fiyatlara", "40&#x27; HQ KONTEYNER",
+                   "navlunu dahildir", "2+2"]),
+            ("en", ["QUOTATION", "FOB Izmir", "Prices include freight for",
+                   "40&#x27; HQ Container", "Aluminium Platform Stepladder 2+1",
+                   "Double-Sided Aluminium Stepladder 2+2", "Platform Height", "2+2"]),
+        ):
+            kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+            ctx = {"ts": ts, "kalemler": kalemler, "sat_teklif": True,
+                  **satis_teklif_pdf_baglam(ts, kalemler, dil, self.yon)}
+            html = render_to_string("core/satis_teklif_pdf.html", ctx)
             for m in beklenen:
                 self.assertIn(m, html, f"{dil}: {m} yok")
 
     def test_pdf_alici_satici_ayri_kutular(self):
         """Alıcı ve Satıcı ayrı kutularda gösterilir; eski hata (Alıcı kutusunun ilk
-        satırının da 'Alıcı' etiketli olması, kb+et aynı metin) artık yok."""
+        satırının da 'Alıcı' etiketli olması, kb+et aynı metin) artık yok. Satıcı kutusunda
+        firma adresi + web sitesi de görünür."""
         from django.template.loader import render_to_string
-        from core.views import _PDF_ETIKET
+        from core.views import satis_teklif_pdf_baglam
         self.client.force_login(self.yon)
         self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
         ts = self._son_teklif()
         firma = FirmaBilgisi.get()
         firma.unvan = "SEMTA ALÜMİNYUM MERDİVEN SAN. TİC. A.Ş."
+        firma.adres = "MİMARSİNAN OSB 19. CADDE NO:52 KAYSERİ"
+        firma.web = "www.semtahome.com"
         firma.save()
-        html = render_to_string("core/satis_teklif_pdf.html", {
-            "ts": ts, "kalemler": list(ts.kalemler.filter(silindi=False).select_related("stok")),
-            "dil": "tr", "E": _PDF_ETIKET["tr"], "navlun_var": True, "hazirlayan": "Nuri Özer",
-            "hazirlayan_eposta": "nuri@semtahome.com", "hazirlayan_telefon": "0555 123 45 67",
-            "firma": firma, "yurt_ici": True,
-            "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil("tr"),
-            "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil("tr"),
-            "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil("tr")})
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        ctx = {"ts": ts, "kalemler": kalemler, "sat_teklif": True,
+              **satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)}
+        html = render_to_string("core/satis_teklif_pdf.html", ctx)
         self.assertIn("Satıcı", html)
         self.assertIn("SEMTA ALÜMİNYUM MERDİVEN SAN. TİC. A.Ş.", html)
-        self.assertIn("nuri@semtahome.com", html)
-        self.assertIn("0555 123 45 67", html)
+        self.assertIn("MİMARSİNAN OSB 19. CADDE NO:52 KAYSERİ", html)
+        self.assertIn("www.semtahome.com", html)
         self.assertNotIn('<span class="et">Alıcı</span>', html)
         self.assertIn('<span class="et">Unvan</span>', html)
 
     def test_pdf_kdv_notu_yurt_ici_gorunur_yurtdisi_gizlenir(self):
-        from django.template.loader import render_to_string
-        from core.views import _PDF_ETIKET
+        from core.views import satis_teklif_pdf_baglam
         self.client.force_login(self.yon)
         self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
         ts = self._son_teklif()
-        ctx = {
-            "ts": ts, "kalemler": list(ts.kalemler.filter(silindi=False).select_related("stok")),
-            "dil": "tr", "E": _PDF_ETIKET["tr"], "navlun_var": False, "hazirlayan": "Test",
-            "firma": None, "hazirlayan_eposta": "", "hazirlayan_telefon": "",
-            "yukleme_sekli_ad": "", "odeme_kosulu_ad": "", "yukleme_tipi_ad": ""}
-        html_yurtici = render_to_string("core/satis_teklif_pdf.html", {**ctx, "yurt_ici": True})
-        self.assertIn("Fiyatlara KDV dahil değildir.", html_yurtici)
-        html_yurtdisi = render_to_string("core/satis_teklif_pdf.html", {**ctx, "yurt_ici": False})
-        self.assertNotIn("Fiyatlara KDV dahil değildir.", html_yurtdisi)
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam_ici = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIn("Fiyatlara KDV dahil değildir.", baglam_ici["notlar"])
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN", ad_en="Bulgaria")
+        ts.cari.ulke = bg
+        ts.cari.save(update_fields=["ulke"])
+        baglam_disi = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertNotIn("Fiyatlara KDV dahil değildir.", baglam_disi["notlar"])
+
+    def test_pdf_ulke_ingilizce_ceviri(self):
+        from core.views import satis_teklif_pdf_baglam
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN", ad_en="Bulgaria")
+        self.cari.ulke = bg
+        self.cari.save(update_fields=["ulke"])
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        self.assertEqual(
+            satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)["ulke_ad"], "BULGARİSTAN")
+        self.assertEqual(
+            satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)["ulke_ad"], "Bulgaria")
+
+    def test_pdf_teslim_suresi_notlar_ve_gecerlilik_tarihli(self):
+        """Teslim Süresi seçiliyse notlar/etiket dict'inde adı görünür; geçerlilik notu
+        tarih varsa dinamik ('Prices are valid until ...'), yoksa varsayılan statik cümle."""
+        from core.views import satis_teklif_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"),
+                         self._post_govde(gecerlilik_teslim_tarihi="2026-09-24"))
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam = satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)
+        self.assertEqual(baglam["teslim_suresi_ad"], self.teslim.ad_dil("en"))
+        self.assertIn("Prices are valid until 24.09.2026.", baglam["notlar"])
+        self.assertNotIn("This quotation is binding until the validity date.", baglam["notlar"])
+        ts.gecerlilik_teslim_tarihi = None
+        baglam2 = satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)
+        self.assertIn("This quotation is binding until the validity date.", baglam2["notlar"])
+
+    def test_pdf_platform_notu_a_tipi_varsa_gorunur_yoksa_gizlenir(self):
+        from core.models import TeklifSiparisKalem
+        from core.views import satis_teklif_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        not_metni = "A Tipi ürünlerde basamak sayısına üst platform dahildir."
+        baglam_a_var = satis_teklif_pdf_baglam(
+            ts, [TeklifSiparisKalem(stok=self.a21), TeklifSiparisKalem(stok=self.c22)],
+            "tr", self.yon)
+        self.assertIn(not_metni, baglam_a_var["notlar"])
+        baglam_a_yok = satis_teklif_pdf_baglam(
+            ts, [TeklifSiparisKalem(stok=self.c22)], "tr", self.yon)
+        self.assertNotIn(not_metni, baglam_a_yok["notlar"])
+
+    def test_basamak_goster(self):
+        from types import SimpleNamespace
+        from core.views import _basamak_goster
+        self.assertIsNone(_basamak_goster(SimpleNamespace(basamak_sayisi=None, model_kodu="C22")))
+        self.assertEqual(
+            _basamak_goster(SimpleNamespace(basamak_sayisi=4, model_kodu="C22")), "2+2")
+        self.assertEqual(
+            _basamak_goster(SimpleNamespace(basamak_sayisi=12, model_kodu="C66")), "6+6")
+        self.assertEqual(
+            _basamak_goster(SimpleNamespace(basamak_sayisi=3, model_kodu="A21")), "3")
+        self.assertEqual(
+            _basamak_goster(SimpleNamespace(basamak_sayisi=5, model_kodu="")), "5")
 
     def test_pdf_yurtdisi_cari_view_ucdan_uca_calisir(self):
         """Gerçek view (select_related dahil): yabancı ülkeli cari için PDF 200 dönüyor

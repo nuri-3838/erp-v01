@@ -58,6 +58,23 @@ class LokasyonServisTest(TestCase):
         u.refresh_from_db()
         self.assertEqual(u.ad, "TÜRKİYE CUMHURİYETİ")
 
+    def test_ulke_ad_dil(self):
+        # Doğrudan ORM: ulke_olustur() servisi ad_en'e de buyuk_harf_tr uyguluyor (İ/I
+        # dönüşümü) — ad_dil()'in salt-getter davranışını bundan bağımsız test et.
+        u = Ulke.objects.create(kod="BG", ad="BULGARİSTAN", ad_en="Bulgaria")
+        self.assertEqual(u.ad_dil("en"), "Bulgaria")
+        self.assertEqual(u.ad_dil("tr"), "BULGARİSTAN")
+
+    def test_ulke_ad_dil_ad_en_bossa_ad_doner(self):
+        u = ulke_olustur(kod="TR", ad="türkiye")
+        self.assertEqual(u.ad_dil("en"), "TÜRKİYE")
+
+    def test_sehir_ad_dil(self):
+        u = ulke_olustur(kod="BG", ad="bulgaristan")
+        s = Sehir.objects.create(ulke=u, ad="SOFYA", ad_en="Sofia")
+        self.assertEqual(s.ad_dil("en"), "Sofia")
+        self.assertEqual(s.ad_dil("tr"), "SOFYA")
+
 
 class LokasyonTasimaTest(TestCase):
     def test_tasima_idempotent(self):

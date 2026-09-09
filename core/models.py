@@ -457,6 +457,8 @@ class Stok(TemelModel):
 
     kod = models.CharField("kod", max_length=40)
     ad = models.CharField("ad", max_length=200)
+    # Satış Teklifi PDF'i (?dil=en) için — bkz. ad_dil(). Boşsa TR ad kullanılır.
+    ad_en = models.CharField("ad (İngilizce)", max_length=200, blank=True, default="")
     kategori = models.ForeignKey(
         Kategori, verbose_name="alt kategori", related_name="stoklar",
         on_delete=models.PROTECT,
@@ -597,6 +599,10 @@ class Stok(TemelModel):
     def __str__(self):
         return f"{self.kod} {self.ad}"
 
+    def ad_dil(self, dil):
+        """Teklif PDF'i için dile göre ad ('en' -> ad_en, boşsa ad)."""
+        return (self.ad_en or self.ad) if dil == "en" else self.ad
+
 
 class StokFiyat(TemelModel):
     """Stok satış fiyat listesi — bir stok için para birimi başına EN FAZLA bir aktif
@@ -650,6 +656,10 @@ class Ulke(TemelModel):
     def __str__(self):
         return self.ad
 
+    def ad_dil(self, dil):
+        """Teklif PDF'i için dile göre ad ('en' -> ad_en, boşsa ad)."""
+        return (self.ad_en or self.ad) if dil == "en" else self.ad
+
 
 class Sehir(TemelModel):
     """Şehir — ülkeye bağlı. ``kod`` plaka/kod (opsiyonel). Ad, ülke içinde benzersiz."""
@@ -672,6 +682,10 @@ class Sehir(TemelModel):
 
     def __str__(self):
         return f"{self.ad} ({self.ulke.kod})"
+
+    def ad_dil(self, dil):
+        """Teklif PDF'i için dile göre ad ('en' -> ad_en, boşsa ad)."""
+        return (self.ad_en or self.ad) if dil == "en" else self.ad
 
 
 class CariKategori(TemelModel):
@@ -941,6 +955,7 @@ class TanimSecenegi(TemelModel):
         YUKLEME_SEKLI = "YUKLEME_SEKLI", "Yükleme Şekli"
         ODEME_KOSULU = "ODEME_KOSULU", "Ödeme Koşulu"
         YUKLEME_TIPI = "YUKLEME_TIPI", "Yükleme Tipi"
+        TESLIM_SURESI = "TESLIM_SURESI", "Teslim Süresi"
 
     # Yükleme Tipi kodu -> Stok'taki "bu tipe kaç adet sığar" alanı.
     YUKLEME_ALANI = {"20DC": "yukleme_20dc", "40HQ": "yukleme_40hq", "TIR": "yukleme_tir"}
@@ -1183,6 +1198,10 @@ class TeklifSiparis(TemelModel):
         on_delete=models.PROTECT, related_name="+")
     yukleme_tipi = models.ForeignKey(
         TanimSecenegi, verbose_name="yükleme tipi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    # Yalnız Satış Teklifi'nde kullanılır (SatisTeklifBaslikForm) — üretim/hazırlık süresi.
+    teslim_suresi = models.ForeignKey(
+        TanimSecenegi, verbose_name="teslim süresi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="+")
     # Belge düzeyinde tek navlun; kalem başına dağıtımı hesaplanır, saklanmaz
     # (TeklifSiparisKalem.navlun_payi — seçilen yükleme tipine sığan adede bölünür).

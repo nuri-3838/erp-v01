@@ -1949,6 +1949,7 @@ def _secenek_kwargs(cd):
         "yukleme_sekli_id": cd["yukleme_sekli"].pk if cd.get("yukleme_sekli") else None,
         "odeme_kosulu_id": cd["odeme_kosulu"].pk if cd.get("odeme_kosulu") else None,
         "yukleme_tipi_id": cd["yukleme_tipi"].pk if cd.get("yukleme_tipi") else None,
+        "teslim_suresi_id": cd["teslim_suresi"].pk if cd.get("teslim_suresi") else None,
         "navlun_tutari": cd.get("navlun_tutari"),
     }
 
@@ -2100,7 +2101,8 @@ def satis_teklif_duzenle(request, pk):
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
             "para_birimi": ts.para_birimi,
             "yukleme_sekli": ts.yukleme_sekli_id, "odeme_kosulu": ts.odeme_kosulu_id,
-            "yukleme_tipi": ts.yukleme_tipi_id, "navlun_tutari": ts.navlun_tutari})
+            "yukleme_tipi": ts.yukleme_tipi_id, "teslim_suresi": ts.teslim_suresi_id,
+            "navlun_tutari": ts.navlun_tutari})
         mevcut = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
         formset = SatisTeklifKalemFormSet(initial=[
             {"stok": s.pk, "dahil": s.pk in mevcut,
@@ -2348,6 +2350,65 @@ def _pdf_gorsel_b64(gorsel, arkaplan=(255, 255, 255)):
         return None
 
 
+def _basamak_goster(stok):
+    """Basamak sayısı gösterimi: Çift Çıkışlı (model_kodu 'C' + iki eş rakam, ör. 'C66')
+    ürünlerde toplam yerine 'X+X' (ör. '6+6') — model_kodu daha güvenilir kaynak, ayrı taraf
+    sayısını basamak_sayisi'nden (12) türetmeye çalışmak yerine doğrudan koddan okunur."""
+    if stok.basamak_sayisi is None:
+        return None
+    kod = (stok.model_kodu or "").upper()
+    if (len(kod) == 3 and kod[0] == "C" and kod[1].isdigit() and kod[2].isdigit()
+            and kod[1] == kod[2]):
+        return f"{kod[1]}+{kod[2]}"
+    return str(stok.basamak_sayisi)
+
+
+def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
+    """Satış Teklifi PDF şablonuna (satis_teklif_pdf.html) eklenecek bağlam — hem
+    teklif_siparis_pdf view'ından hem testlerden çağrılır (context inşası tek yerde, iki
+    kopya sürüklenmesin)."""
+    E = _PDF_ETIKET[dil]
+    for k in kalemler:
+        k.urun_ad = k.stok.ad_dil(dil)
+        k.basamak_goster = _basamak_goster(k.stok)
+    a_tipi_var = any((k.stok.model_kodu or "").upper().startswith("A") for k in kalemler)
+    # Yurt içi/dışı: KDV notu yalnız yurt içi alıcıya anlamlı (ihracatta KDV istisnası var —
+    # "fiyatlara KDV dahil değildir" ifadesi yurtdışı alıcıyı yanıltır).
+    yurt_ici = not ts.cari.ulke_id or ts.cari.ulke.kod == "TR"
+    navlun_var = ts.navlun_tutari is not None and bool(ts.yukleme_tipi_id)
+    notlar = [E["not_birim_fiyat"]]
+    if yurt_ici:
+        notlar.append(E["not_kdv"])
+    if navlun_var:
+        notlar.append(E["not_navlun"])
+    notlar.append(E["not_agirlik_tolerans"])
+    notlar.append(E["not_yukleme_tahmini"])
+    notlar.append(E["not_cbm"])
+    if a_tipi_var:
+        notlar.append(E["not_platform"])
+    if ts.gecerlilik_teslim_tarihi:
+        notlar.append(E["not_gecerlilik_tarihli"].format(
+            tarih=ts.gecerlilik_teslim_tarihi.strftime("%d.%m.%Y")))
+    else:
+        notlar.append(E["not_gecerlilik_varsayilan"])
+    return {
+        "dil": dil, "E": E,
+        "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",
+        "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
+        "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
+        "teslim_suresi_ad": ts.teslim_suresi.ad_dil(dil) if ts.teslim_suresi_id else "",
+        "ulke_ad": ts.cari.ulke.ad_dil(dil) if ts.cari.ulke_id else "",
+        "sehir_ad": ts.cari.sehir.ad_dil(dil) if ts.cari.sehir_id else "",
+        "navlun_var": navlun_var,
+        "notlar": notlar,
+        "firma": firma_servis.firma_bilgisi_getir(),
+        "hazirlayan": kullanici.get_full_name() or kullanici.get_username(),
+        "hazirlayan_eposta": kullanici.email,
+        "hazirlayan_telefon": kullanici_telefon(kullanici),
+        "yurt_ici": yurt_ici,
+    }
+
+
 _DOSYA_GECERSIZ = str.maketrans("", "", '\\/:*?"<>|')
 
 
@@ -2375,7 +2436,8 @@ def teklif_siparis_pdf(request, pk):
     from django.contrib.staticfiles import finders
     from weasyprint import HTML
 
-    ts = get_object_or_404(TeklifSiparis.objects.select_related("cari", "cari__ulke"), pk=pk)
+    ts = get_object_or_404(
+        TeklifSiparis.objects.select_related("cari", "cari__ulke", "cari__sehir"), pk=pk)
     kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat"))
     for k in kalemler:
         k.gorsel_b64 = None
@@ -2393,22 +2455,8 @@ def teklif_siparis_pdf(request, pk):
     sablon = "core/teklif_siparis_pdf.html"
     dosya_adi = _pdf_dosya_adi(ts.belge_no or ts.pk, ts.cari.unvan)
     if sat_teklif:
-        # Satış Teklifi: müşteriye giden quotation — ayrı, iki dilli (?dil=tr|en) şablon.
         dil = "en" if request.GET.get("dil") == "en" else "tr"
-        ctx.update({
-            "dil": dil, "E": _PDF_ETIKET[dil],
-            "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",
-            "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
-            "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
-            "navlun_var": ts.navlun_tutari is not None and bool(ts.yukleme_tipi_id),
-            "firma": firma_servis.firma_bilgisi_getir(),
-            "hazirlayan": request.user.get_full_name() or request.user.get_username(),
-            "hazirlayan_eposta": request.user.email,
-            "hazirlayan_telefon": kullanici_telefon(request.user),
-            # Yurt içi/dışı: KDV notu yalnız yurt içi alıcıya anlamlı (ihracatta KDV istisnası
-            # var — "fiyatlara KDV dahil değildir" ifadesi yurtdışı alıcıyı yanıltır).
-            "yurt_ici": not ts.cari.ulke_id or ts.cari.ulke.kod == "TR",
-        })
+        ctx.update(satis_teklif_pdf_baglam(ts, kalemler, dil, request.user))
         sablon = "core/satis_teklif_pdf.html"
     html = render_to_string(sablon, ctx)
     pdf = HTML(string=html).write_pdf()
@@ -2422,51 +2470,66 @@ _PDF_ETIKET = {
     "tr": {
         "baslik": "SATIŞ TEKLİFİ", "alt_baslik": "Fiyat Teklifi / Quotation",
         "alici": "Alıcı", "satici": "Satıcı", "unvan": "Unvan",
-        "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon",
+        "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon", "web": "Web Sitesi",
         "eposta": "E-posta", "hazirlayan": "Hazırlayan",
         "teklif_no": "Teklif No", "tarih": "Tarih", "gecerlilik": "Geçerlilik",
         "para_birimi": "Para Birimi", "yukleme_sekli": "Teslim / Yükleme Şekli",
-        "odeme_kosulu": "Ödeme Koşulu", "yukleme_tipi": "Yükleme Tipi", "navlun": "Navlun",
+        "odeme_kosulu": "Ödeme Koşulu", "yukleme_tipi": "Yükleme Tipi",
+        "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
         "gorsel": "Görsel", "urun": "Ürün", "ozellik": "Teknik Özellikler",
         "fiyat": "Fiyat", "navlun_haric": "(navlun hariç)",
         "navlun_on": "Fiyatlara", "navlun_son": " navlunu dahildir.",
         "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)",
         "yukleme_adedi": "Yükleme Adedi (adet)", "tir": "TIR",
-        "basamak": "Basamak", "yukseklik": "Yükseklik", "acik_derinlik": "Açık derinlik",
+        "basamak": "Basamak", "yukseklik": "Platform Yüksekliği", "acik_derinlik": "Açık derinlik",
         "taban": "Taban genişliği", "kapali": "Kapalı boy", "azami_yuk": "Azami yük",
         "adet": "adet", "notlar": "Notlar",
-        "not_listesi": [
-            "Fiyatlar birim (1 adet) fiyatıdır; miktar ve toplam tutar proforma faturada belirtilir.",
-            "Fiyatlara KDV dahil değildir.",
-            "Navlun, seçilen yükleme tipine sığan adede bölünerek ürün başına dağıtılmıştır.",
-            "Ürün ve ambalaj ağırlıklarında ±%5 tolerans olabilir.",
-            "Teklif, geçerlilik tarihine kadar bağlayıcıdır.",
-        ],
+        "not_birim_fiyat": ("Fiyatlar birim (1 adet) fiyatıdır; miktar ve toplam tutar "
+                            "proforma faturada belirtilir."),
+        "not_kdv": "Fiyatlara KDV dahil değildir.",
+        "not_navlun": ("Navlun, seçilen yükleme tipine sığan adede bölünerek ürün başına "
+                       "dağıtılmıştır."),
+        "not_agirlik_tolerans": "Ürün ve ambalaj ağırlıklarında ±%5 tolerans olabilir.",
+        "not_yukleme_tahmini": ("20'DC/40'HQ/TIR yükleme adetleri tahminidir; ambalaj ve "
+                                "istifleme düzenine göre değişebilir (TIR: standart tenteli "
+                                "römork)."),
+        "not_cbm": "CBM, ambalajlı ürün başına hacmi ifade eder.",
+        "not_platform": "A Tipi ürünlerde basamak sayısına üst platform dahildir.",
+        "not_gecerlilik_varsayilan": "Teklif, geçerlilik tarihine kadar bağlayıcıdır.",
+        "not_gecerlilik_tarihli": "Fiyatlar {tarih} tarihine kadar geçerlidir.",
         "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Satış Teklifi",
     },
     "en": {
         "baslik": "QUOTATION", "alt_baslik": "Sales Quotation",
         "alici": "To", "satici": "From", "unvan": "Company",
-        "ulke": "Country", "adres": "Address", "telefon": "Phone",
+        "ulke": "Country", "adres": "Address", "telefon": "Phone", "web": "Website",
         "eposta": "E-mail", "hazirlayan": "Prepared by",
-        "teklif_no": "Quotation No", "tarih": "Date", "gecerlilik": "Validity",
+        "teklif_no": "Quotation No", "tarih": "Date", "gecerlilik": "Valid Until",
         "para_birimi": "Currency", "yukleme_sekli": "Delivery Term",
-        "odeme_kosulu": "Payment Term", "yukleme_tipi": "Loading Type", "navlun": "Freight",
+        "odeme_kosulu": "Payment Term", "yukleme_tipi": "Transport Mode",
+        "teslim_suresi": "Lead Time", "navlun": "Freight",
         "gorsel": "Picture", "urun": "Item", "ozellik": "Specifications",
-        "fiyat": "Price", "navlun_haric": "(excl. freight)",
+        "fiyat": "Unit Price", "navlun_haric": "(excl. freight)",
         "navlun_on": "Prices include freight for", "navlun_son": ".",
         "agirlik": "Weight (kg)", "cbm": "CBM (m³)",
         "yukleme_adedi": "Loading Qty (pcs)", "tir": "Truck",
-        "basamak": "Steps", "yukseklik": "Height", "acik_derinlik": "Open depth",
+        "basamak": "Steps", "yukseklik": "Platform Height", "acik_derinlik": "Open depth",
         "taban": "Base width", "kapali": "Folded length", "azami_yuk": "Max load",
         "adet": "pcs", "notlar": "Notes",
-        "not_listesi": [
-            "Prices are per unit (1 pc); quantities and total amount are stated on the proforma invoice.",
-            "Prices exclude VAT.",
-            "Freight is allocated per unit by dividing it by the quantity that fits the selected loading type.",
-            "Product and package weights may vary by ±5%.",
-            "This quotation is binding until the validity date.",
-        ],
+        "not_birim_fiyat": ("Prices are per unit (1 pc); quantities and total amount are "
+                            "stated on the proforma invoice."),
+        "not_kdv": "Prices exclude VAT.",
+        "not_navlun": ("Freight is allocated per unit by dividing it by the quantity that "
+                       "fits the selected loading type."),
+        "not_agirlik_tolerans": "Product and package weights may vary by ±5%.",
+        "not_yukleme_tahmini": ("20'DC/40'HQ/Truck loading quantities are estimated and may "
+                                "vary depending on packaging and stacking (Truck: standard "
+                                "tautliner)."),
+        "not_cbm": "CBM refers to the volume per packaged unit.",
+        "not_platform": ("For Platform Stepladders (A-series), the step count includes the "
+                         "top platform."),
+        "not_gecerlilik_varsayilan": "This quotation is binding until the validity date.",
+        "not_gecerlilik_tarihli": "Prices are valid until {tarih}.",
         "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Quotation",
     },
 }

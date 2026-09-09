@@ -72,18 +72,20 @@
 
   .oz-satir { margin-bottom: 5px; }
   .oz { display: inline-block; width: 32%; vertical-align: top; margin: 1.5px 0; }
-  .oz .et { display: block; font-size: 6.6px; text-transform: uppercase; letter-spacing: .4px; color: #9aa3b2; }
+  .oz .et { display: block; font-size: 6.6px; text-transform: uppercase; letter-spacing: .4px;
+    color: #6b7280; font-weight: 700; }
   .oz .dg { display: block; font-weight: 700; color: #374151; font-size: 8.4px; margin-top: .5px; }
 
   .alt-satir { display: flex; gap: 10px; align-items: flex-end; border-top: 1px dashed #e6eaf1;
     padding-top: 5px; margin-top: 2px; }
   .loj-info { flex: 1 1 auto; min-width: 0; }
   .loj-mini { display: inline-block; margin: 1.5px 8px 1.5px 0; vertical-align: top; }
-  .loj-mini .et { display: block; font-size: 6.2px; text-transform: uppercase; letter-spacing: .3px; color: #9aa3b2; }
+  .loj-mini .et { display: block; font-size: 6.2px; text-transform: uppercase; letter-spacing: .3px;
+    color: #6b7280; font-weight: 700; }
   .loj-mini .dg { display: block; font-weight: 700; font-size: 8px; color: #374151; margin-top: 1px; }
   .loj-tip { display: inline-block; text-align: center; background: #f4f6fa; border-radius: 5px;
     padding: 2px 6px; margin: 1.5px 4px 1.5px 0; vertical-align: top; }
-  .loj-tip .et { display: block; font-size: 6.2px; color: #9aa3b2; text-transform: uppercase; }
+  .loj-tip .et { display: block; font-size: 6.2px; color: #6b7280; font-weight: 700; text-transform: uppercase; }
   .loj-tip .dg { display: block; font-size: 7.6px; font-weight: 800; color: #15294d; margin-top: 1px; }
 
   .fp-tek { flex: 0 0 auto; display: inline-block; background: #fff4e8; border: 1px solid #ffdcb3;
@@ -124,7 +126,7 @@
       <div class="kutu taraf">
         <div class="kb">{{ E.alici }}</div>
         <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ ts.cari.unvan }}</span></div>
-        {% if ts.cari.ulke %}<div class="kv"><span class="et">{{ E.ulke }}</span><span class="dg">{{ ts.cari.ulke.ad }}{% if ts.cari.sehir %} / {{ ts.cari.sehir.ad }}{% endif %}</span></div>{% endif %}
+        {% if ulke_ad %}<div class="kv"><span class="et">{{ E.ulke }}</span><span class="dg">{{ ulke_ad }}{% if sehir_ad %} / {{ sehir_ad }}{% endif %}</span></div>{% endif %}
         {% if ts.cari.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ ts.cari.adres }}</span></div>{% endif %}
         {% if ts.cari.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ ts.cari.telefon }}</span></div>{% endif %}
         {% if ts.cari.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ ts.cari.eposta }}</span></div>{% endif %}
@@ -132,9 +134,11 @@
       <div class="kutu taraf">
         <div class="kb">{{ E.satici }}</div>
         <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ firma.unvan }}</span></div>
+        {% if firma.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ firma.adres }}</span></div>{% endif %}
         <div class="kv"><span class="et">{{ E.hazirlayan }}</span><span class="dg">{{ hazirlayan }}</span></div>
         {% if hazirlayan_eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ hazirlayan_eposta }}</span></div>{% endif %}
         {% if hazirlayan_telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ hazirlayan_telefon }}</span></div>{% endif %}
+        {% if firma.web %}<div class="kv"><span class="et">{{ E.web }}</span><span class="dg">{{ firma.web }}</span></div>{% endif %}
       </div>
     </div>
     <div class="kutu teklif-kutu">
@@ -146,6 +150,7 @@
       {% if yukleme_sekli_ad %}<div class="kv"><span class="et">{{ E.yukleme_sekli }}</span><span class="dg">{{ yukleme_sekli_ad }}</span></div>{% endif %}
       {% if odeme_kosulu_ad %}<div class="kv"><span class="et">{{ E.odeme_kosulu }}</span><span class="dg">{{ odeme_kosulu_ad }}</span></div>{% endif %}
       {% if yukleme_tipi_ad %}<div class="kv"><span class="et">{{ E.yukleme_tipi }}</span><span class="dg">{{ yukleme_tipi_ad }}</span></div>{% endif %}
+      {% if teslim_suresi_ad %}<div class="kv"><span class="et">{{ E.teslim_suresi }}</span><span class="dg">{{ teslim_suresi_ad }}</span></div>{% endif %}
       {% if ts.navlun_tutari is not None %}<div class="kv"><span class="et">{{ E.navlun }}</span><span class="dg vurgu mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
     </div>
   </div>
@@ -157,11 +162,11 @@
   </div>
 
   {% for k in kalemler %}
-    <div class="urun-kart{% if forloop.counter|divisibleby:2 %} alt{% endif %}">
+    <div class="urun-kart{% if forloop.counter|divisibleby:2 %} alt{% endif %}"{% if forloop.counter == 4 or forloop.counter == 8 %} style="page-break-before:always"{% endif %}>
       <span class="uk-gorsel">{% if k.gorsel_b64 %}<img src="data:image/png;base64,{{ k.gorsel_b64 }}" alt="">{% else %}<span class="bos"></span>{% endif %}</span>
       <div class="uk-govde">
-        <div class="uk-baslik">{% if k.stok.model_kodu %}<span class="model">{{ k.stok.model_kodu }}</span>{% endif %} <span class="urun-ad">{{ k.stok.ad }}</span></div>
-        <div class="oz-satir">{% if k.stok.basamak_sayisi is not None %}<span class="oz"><span class="et">{{ E.basamak }}</span><span class="dg">{{ k.stok.basamak_sayisi }}</span></span>{% endif %}{% if k.stok.yukseklik is not None %}<span class="oz"><span class="et">{{ E.yukseklik }}</span><span class="dg">{{ k.stok.yukseklik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.acik_derinlik is not None %}<span class="oz"><span class="et">{{ E.acik_derinlik }}</span><span class="dg">{{ k.stok.acik_derinlik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.taban_genisligi is not None %}<span class="oz"><span class="et">{{ E.taban }}</span><span class="dg">{{ k.stok.taban_genisligi|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.kapali_boy is not None %}<span class="oz"><span class="et">{{ E.kapali }}</span><span class="dg">{{ k.stok.kapali_boy|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.azami_yuk is not None %}<span class="oz"><span class="et">{{ E.azami_yuk }}</span><span class="dg">{{ k.stok.azami_yuk|tr_kur:0 }} kg</span></span>{% endif %}</div>
+        <div class="uk-baslik">{% if k.stok.model_kodu %}<span class="model">{{ k.stok.model_kodu }}</span>{% endif %} <span class="urun-ad">{{ k.urun_ad }}</span></div>
+        <div class="oz-satir">{% if k.basamak_goster %}<span class="oz"><span class="et">{{ E.basamak }}</span><span class="dg">{{ k.basamak_goster }}</span></span>{% endif %}{% if k.stok.yukseklik is not None %}<span class="oz"><span class="et">{{ E.yukseklik }}</span><span class="dg">{{ k.stok.yukseklik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.acik_derinlik is not None %}<span class="oz"><span class="et">{{ E.acik_derinlik }}</span><span class="dg">{{ k.stok.acik_derinlik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.taban_genisligi is not None %}<span class="oz"><span class="et">{{ E.taban }}</span><span class="dg">{{ k.stok.taban_genisligi|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.kapali_boy is not None %}<span class="oz"><span class="et">{{ E.kapali }}</span><span class="dg">{{ k.stok.kapali_boy|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.azami_yuk is not None %}<span class="oz"><span class="et">{{ E.azami_yuk }}</span><span class="dg">{{ k.stok.azami_yuk|tr_kur:0 }} kg</span></span>{% endif %}</div>
         <div class="alt-satir">
           <div class="loj-info">
             <span class="loj-mini"><span class="et">{{ E.agirlik }}</span><span class="dg mono">{% if k.stok.agirlik is not None %}{{ k.stok.agirlik|tr_kur:2 }}{% else %}—{% endif %}</span></span>
@@ -185,11 +190,7 @@
     <div class="notlar">
       <div class="kb">{{ E.notlar }}</div>
       <ul>
-        {% for n in E.not_listesi %}
-          {% if forloop.counter == 2 and not yurt_ici %}{# KDV notu: yalnız yurt içi alıcı #}
-          {% elif forloop.counter == 3 and not navlun_var %}
-          {% else %}<li>{{ n }}</li>{% endif %}
-        {% endfor %}
+        {% for n in notlar %}<li>{{ n }}</li>{% endfor %}
       </ul>
     </div>
   </div>

@@ -271,6 +271,19 @@ class StokGrupTeknikAlanTest(TestCase):
             self._kur(alt, adet, kg, satinalma_urunu=False, uretim_urunu=False,
                       satis_urunu=False)
 
+    def test_ad_dil(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, ad="a tipi merdiven")
+        s.ad_en = "Aluminium Platform Stepladder 2+1"
+        s.save(update_fields=["ad_en"])
+        self.assertEqual(s.ad_dil("en"), "Aluminium Platform Stepladder 2+1")
+        self.assertEqual(s.ad_dil("tr"), s.ad)
+
+    def test_ad_dil_ad_en_bossa_ad_doner(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, ad="a tipi merdiven")
+        self.assertEqual(s.ad_dil("en"), s.ad)
+
     def test_satis_urunu_teknik_alanlari_kaydeder(self):
         _, alt, _, adet, kg = _veri()
         s = self._kur(alt, adet, kg, satis_urunu=True, model_kodu="a21", basamak_sayisi=5,

@@ -1423,6 +1423,9 @@ class SatisTeklifBaslikForm(forms.Form):
     yukleme_tipi = forms.ModelChoiceField(
         label="Yükleme Tipi", queryset=TanimSecenegi.objects.none(), required=False,
         empty_label="— seçiniz —")
+    teslim_suresi = forms.ModelChoiceField(
+        label="Teslim Süresi", queryset=TanimSecenegi.objects.none(), required=False,
+        empty_label="— seçiniz —")
     navlun_tutari = TRDecimalField(
         label="Navlun Tutarı", basamak=2, required=False,
         widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off",
@@ -1436,7 +1439,8 @@ class SatisTeklifBaslikForm(forms.Form):
         K = TanimSecenegi.Kategori
         for alan, kategori in (("yukleme_sekli", K.YUKLEME_SEKLI),
                                ("odeme_kosulu", K.ODEME_KOSULU),
-                               ("yukleme_tipi", K.YUKLEME_TIPI)):
+                               ("yukleme_tipi", K.YUKLEME_TIPI),
+                               ("teslim_suresi", K.TESLIM_SURESI)):
             self.fields[alan].queryset = (
                 TanimSecenegi.objects.filter(silindi=False, kategori=kategori)
                 .order_by("sira", "ad"))

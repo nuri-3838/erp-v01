@@ -52,7 +52,7 @@
             {{ bform.yukleme_sekli }}
             {% for e in bform.yukleme_sekli.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
-          <div class="bb-alan">
+          <div class="bb-alan bb-vurgu">
             <label for="{{ bform.odeme_kosulu.id_for_label }}">{{ bform.odeme_kosulu.label }}</label>
             {{ bform.odeme_kosulu }}
             {% for e in bform.odeme_kosulu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
@@ -68,6 +68,13 @@
             <label for="{{ bform.navlun_tutari.id_for_label }}">{{ bform.navlun_tutari.label }}</label>
             {{ bform.navlun_tutari }}
             {% for e in bform.navlun_tutari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.teslim_suresi.id_for_label }}">{{ bform.teslim_suresi.label }}</label>
+            {{ bform.teslim_suresi }}
+            {% for e in bform.teslim_suresi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         </div>
       </div>

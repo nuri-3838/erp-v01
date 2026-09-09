@@ -111,12 +111,14 @@ def _navlun_coz(navlun_tutari):
     return _sayi(navlun_tutari, "Navlun tutarı")
 
 
-def _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id, navlun_tutari):
+def _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id, navlun_tutari,
+                        teslim_suresi_id=None):
     K = TanimSecenegi.Kategori
     return {
         "yukleme_sekli": _secenek_coz(yukleme_sekli_id, K.YUKLEME_SEKLI),
         "odeme_kosulu": _secenek_coz(odeme_kosulu_id, K.ODEME_KOSULU),
         "yukleme_tipi": _secenek_coz(yukleme_tipi_id, K.YUKLEME_TIPI),
+        "teslim_suresi": _secenek_coz(teslim_suresi_id, K.TESLIM_SURESI),
         "navlun_tutari": _navlun_coz(navlun_tutari),
     }
 
@@ -149,7 +151,7 @@ def _sonraki_sira(belge_tur, yon, yil):
 def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, para_birimi,
                    aciklama, kaynak_teklif=None, kaynak_siparis=None, depo=None,
                    irsaliye_no="", yukleme_sekli=None, odeme_kosulu=None, yukleme_tipi=None,
-                   navlun_tutari=None, kullanici=None) -> TeklifSiparis:
+                   teslim_suresi=None, navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Numaralı başlık oluşturur: belge_no = ÖNEK-yıl-sıra (müteselsil/boşluksuz — fiş no ile
     aynı invariant, kullanıcı giremez/değiştiremez). Numara çakışırsa (eşzamanlı oluşturma)
     savepoint geri alınır, bir sonraki sırayla yeniden denenir (fis_olustur ile aynı desen)."""
@@ -167,7 +169,8 @@ def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, par
                     kaynak_teklif=kaynak_teklif, kaynak_siparis=kaynak_siparis, depo=depo,
                     irsaliye_no=(irsaliye_no or "").strip(),
                     yukleme_sekli=yukleme_sekli, odeme_kosulu=odeme_kosulu,
-                    yukleme_tipi=yukleme_tipi, navlun_tutari=navlun_tutari,
+                    yukleme_tipi=yukleme_tipi, teslim_suresi=teslim_suresi,
+                    navlun_tutari=navlun_tutari,
                     created_by=kullanici, updated_by=kullanici)
         except IntegrityError as e:
             if "uq_teklif_siparis_tur_yon_yil_sira" not in str(e):
@@ -181,6 +184,7 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
                            gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                            aciklama="", depo_id=None, irsaliye_no="",
                            yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
+                           teslim_suresi_id=None,
                            navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini oluşturur. Yevmiye ÜRETMEZ; İRSALİYE
     stok hareketi de ÜRETMEZ (o yalnız onaylanınca — bkz. teklif_siparis_onayla). Durum
@@ -193,7 +197,7 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
     pb = _pb_dogrula(para_birimi)
     depo = _depo_coz_irsaliye(belge_tur, depo_id)
     secenekler = _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
-                                     navlun_tutari)
+                                     navlun_tutari, teslim_suresi_id)
     ts = _belge_olustur(belge_tur=belge_tur, yon=yon, cari=cari, tarih=tarih,
                         gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
                         irsaliye_no=irsaliye_no, **secenekler,
@@ -207,6 +211,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
                             gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                             aciklama="", depo_id=None, irsaliye_no="",
                             yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
+                            teslim_suresi_id=None,
                             navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini günceller (belge_tur/yon/belge_no SABİT —
     hangi ekrana ait olduğunu ve numarasını belirler, değişmez). Onaylı belge düzenlenemez
@@ -228,12 +233,13 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
     ts.depo = depo
     ts.irsaliye_no = (irsaliye_no or "").strip()
     for alan, deger in _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
-                                           navlun_tutari).items():
+                                           navlun_tutari, teslim_suresi_id).items():
         setattr(ts, alan, deger)
     ts.updated_by = kullanici
     ts.save(update_fields=["cari", "tarih", "gecerlilik_teslim_tarihi", "para_birimi",
                            "aciklama", "depo", "irsaliye_no", "yukleme_sekli", "odeme_kosulu",
-                           "yukleme_tipi", "navlun_tutari", "updated_by", "updated_at"])
+                           "yukleme_tipi", "teslim_suresi", "navlun_tutari",
+                           "updated_by", "updated_at"])
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
 
