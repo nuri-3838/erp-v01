@@ -20,6 +20,14 @@ def yonetici_mi(user) -> bool:
         return False
 
 
+def kullanici_telefon(user) -> str:
+    """Kullanıcının profil.telefon'u (Profil satırı yoksa boş döner)."""
+    try:
+        return user.profil.telefon
+    except ObjectDoesNotExist:
+        return ""
+
+
 def _izinli_kodlar(user):
     """Kullanıcının açık ekran kodları (yönetici => None = hepsi)."""
     from core.models import EkranYetki  # geç import (model yüklensin)

@@ -73,7 +73,7 @@ from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.yetki import (
-    ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, yonetici_gerekli,
+    ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
     yonetici_mi,
 )
 
@@ -2357,7 +2357,7 @@ def teklif_siparis_pdf(request, pk):
     from django.contrib.staticfiles import finders
     from weasyprint import HTML
 
-    ts = get_object_or_404(TeklifSiparis.objects.select_related("cari"), pk=pk)
+    ts = get_object_or_404(TeklifSiparis.objects.select_related("cari", "cari__ulke"), pk=pk)
     kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat"))
     for k in kalemler:
         k.gorsel_b64 = None
@@ -2382,7 +2382,13 @@ def teklif_siparis_pdf(request, pk):
             "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
             "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
             "navlun_var": ts.navlun_tutari is not None and bool(ts.yukleme_tipi_id),
+            "firma": firma_servis.firma_bilgisi_getir(),
             "hazirlayan": request.user.get_full_name() or request.user.get_username(),
+            "hazirlayan_eposta": request.user.email,
+            "hazirlayan_telefon": kullanici_telefon(request.user),
+            # Yurt içi/dışı: KDV notu yalnız yurt içi alıcıya anlamlı (ihracatta KDV istisnası
+            # var — "fiyatlara KDV dahil değildir" ifadesi yurtdışı alıcıyı yanıltır).
+            "yurt_ici": not ts.cari.ulke_id or ts.cari.ulke.kod == "TR",
         })
         sablon = "core/satis_teklif_pdf.html"
         dosya_adi = f"{ts.belge_no or ts.pk}-{dil.upper()}.pdf"
@@ -2397,7 +2403,8 @@ def teklif_siparis_pdf(request, pk):
 _PDF_ETIKET = {
     "tr": {
         "baslik": "SATIŞ TEKLİFİ", "alt_baslik": "Fiyat Teklifi / Quotation",
-        "alici": "Alıcı", "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon",
+        "alici": "Alıcı", "satici": "Satıcı", "unvan": "Unvan",
+        "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon",
         "eposta": "E-posta", "hazirlayan": "Hazırlayan",
         "teklif_no": "Teklif No", "tarih": "Tarih", "gecerlilik": "Geçerlilik",
         "para_birimi": "Para Birimi", "yukleme_sekli": "Teslim / Yükleme Şekli",
@@ -2421,8 +2428,9 @@ _PDF_ETIKET = {
     },
     "en": {
         "baslik": "QUOTATION", "alt_baslik": "Sales Quotation",
-        "alici": "To", "ulke": "Country", "adres": "Address", "telefon": "Phone",
-        "eposta": "E-mail", "hazirlayan": "From",
+        "alici": "To", "satici": "From", "unvan": "Company",
+        "ulke": "Country", "adres": "Address", "telefon": "Phone",
+        "eposta": "E-mail", "hazirlayan": "Prepared by",
         "teklif_no": "Quotation No", "tarih": "Date", "gecerlilik": "Validity",
         "para_birimi": "Currency", "yukleme_sekli": "Delivery Term",
         "odeme_kosulu": "Payment Term", "yukleme_tipi": "Loading Type", "navlun": "Freight",

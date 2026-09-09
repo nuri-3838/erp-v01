@@ -11,7 +11,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis
+from core.models import (
+    Cari, FirmaBilgisi, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis, Ulke,
+)
 from core.services.stok import stok_olustur
 
 
@@ -309,3 +311,58 @@ class SatisTeklifTest(TestCase):
                 "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil)})
             for m in beklenen:
                 self.assertIn(m, html, f"{dil}: {m} yok")
+
+    def test_pdf_alici_satici_ayri_kutular(self):
+        """Alıcı ve Satıcı ayrı kutularda gösterilir; eski hata (Alıcı kutusunun ilk
+        satırının da 'Alıcı' etiketli olması, kb+et aynı metin) artık yok."""
+        from django.template.loader import render_to_string
+        from core.views import _PDF_ETIKET
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        firma = FirmaBilgisi.get()
+        firma.unvan = "SEMTA ALÜMİNYUM MERDİVEN SAN. TİC. A.Ş."
+        firma.save()
+        html = render_to_string("core/satis_teklif_pdf.html", {
+            "ts": ts, "kalemler": list(ts.kalemler.filter(silindi=False).select_related("stok")),
+            "dil": "tr", "E": _PDF_ETIKET["tr"], "navlun_var": True, "hazirlayan": "Nuri Özer",
+            "hazirlayan_eposta": "nuri@semtahome.com", "hazirlayan_telefon": "0555 123 45 67",
+            "firma": firma, "yurt_ici": True,
+            "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil("tr"),
+            "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil("tr"),
+            "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil("tr")})
+        self.assertIn("Satıcı", html)
+        self.assertIn("SEMTA ALÜMİNYUM MERDİVEN SAN. TİC. A.Ş.", html)
+        self.assertIn("nuri@semtahome.com", html)
+        self.assertIn("0555 123 45 67", html)
+        self.assertNotIn('<span class="et">Alıcı</span>', html)
+        self.assertIn('<span class="et">Unvan</span>', html)
+
+    def test_pdf_kdv_notu_yurt_ici_gorunur_yurtdisi_gizlenir(self):
+        from django.template.loader import render_to_string
+        from core.views import _PDF_ETIKET
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        ctx = {
+            "ts": ts, "kalemler": list(ts.kalemler.filter(silindi=False).select_related("stok")),
+            "dil": "tr", "E": _PDF_ETIKET["tr"], "navlun_var": False, "hazirlayan": "Test",
+            "firma": None, "hazirlayan_eposta": "", "hazirlayan_telefon": "",
+            "yukleme_sekli_ad": "", "odeme_kosulu_ad": "", "yukleme_tipi_ad": ""}
+        html_yurtici = render_to_string("core/satis_teklif_pdf.html", {**ctx, "yurt_ici": True})
+        self.assertIn("Fiyatlara KDV dahil değildir.", html_yurtici)
+        html_yurtdisi = render_to_string("core/satis_teklif_pdf.html", {**ctx, "yurt_ici": False})
+        self.assertNotIn("Fiyatlara KDV dahil değildir.", html_yurtdisi)
+
+    def test_pdf_yurtdisi_cari_view_ucdan_uca_calisir(self):
+        """Gerçek view (select_related dahil): yabancı ülkeli cari için PDF 200 dönüyor
+        (cari.ulke.kod erişiminde ekstra sorgu/hata yok)."""
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN")
+        self.cari.ulke = bg
+        self.cari.save(update_fields=["ulke"])
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        r = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")

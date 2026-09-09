@@ -27,8 +27,10 @@
 
   /* ===== BİLGİ ŞERİDİ ===== */
   .bilgi { display: flex; flex-direction: column; gap: 9px; margin-bottom: 13px; }
+  .taraf-satir { display: flex; gap: 9px; }
   .kutu { background: #fbfcfe; border: 1px solid #e6eaf1; border-radius: 9px;
     padding: 8px 12px 9px; border-top: 3px solid #15294d; }
+  .kutu.taraf { flex: 1 1 0; min-width: 0; }
   .kutu.teklif-kutu { border-top-color: #f07c00; }
   .kutu .kb { font-size: 7px; text-transform: uppercase; letter-spacing: 1px; color: #8b97ab;
     font-weight: 800; margin-bottom: 5px; }
@@ -118,14 +120,22 @@
   <div class="banner"></div>
 
   <div class="bilgi">
-    <div class="kutu">
-      <div class="kb">{{ E.alici }}</div>
-      <div class="kv"><span class="et">{{ E.alici }}</span><span class="dg buyuk">{{ ts.cari.unvan }}</span></div>
-      {% if ts.cari.ulke %}<div class="kv"><span class="et">{{ E.ulke }}</span><span class="dg">{{ ts.cari.ulke.ad }}{% if ts.cari.sehir %} / {{ ts.cari.sehir.ad }}{% endif %}</span></div>{% endif %}
-      {% if ts.cari.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ ts.cari.adres }}</span></div>{% endif %}
-      {% if ts.cari.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ ts.cari.telefon }}</span></div>{% endif %}
-      {% if ts.cari.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ ts.cari.eposta }}</span></div>{% endif %}
-      <div class="kv"><span class="et">{{ E.hazirlayan }}</span><span class="dg">{{ hazirlayan }}</span></div>
+    <div class="taraf-satir">
+      <div class="kutu taraf">
+        <div class="kb">{{ E.alici }}</div>
+        <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ ts.cari.unvan }}</span></div>
+        {% if ts.cari.ulke %}<div class="kv"><span class="et">{{ E.ulke }}</span><span class="dg">{{ ts.cari.ulke.ad }}{% if ts.cari.sehir %} / {{ ts.cari.sehir.ad }}{% endif %}</span></div>{% endif %}
+        {% if ts.cari.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ ts.cari.adres }}</span></div>{% endif %}
+        {% if ts.cari.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ ts.cari.telefon }}</span></div>{% endif %}
+        {% if ts.cari.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ ts.cari.eposta }}</span></div>{% endif %}
+      </div>
+      <div class="kutu taraf">
+        <div class="kb">{{ E.satici }}</div>
+        <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ firma.unvan }}</span></div>
+        <div class="kv"><span class="et">{{ E.hazirlayan }}</span><span class="dg">{{ hazirlayan }}</span></div>
+        {% if hazirlayan_eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ hazirlayan_eposta }}</span></div>{% endif %}
+        {% if hazirlayan_telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ hazirlayan_telefon }}</span></div>{% endif %}
+      </div>
     </div>
     <div class="kutu teklif-kutu">
       <div class="kb">{{ E.baslik }}</div>
@@ -175,7 +185,11 @@
     <div class="notlar">
       <div class="kb">{{ E.notlar }}</div>
       <ul>
-        {% for n in E.not_listesi %}{% if forloop.counter != 3 or navlun_var %}<li>{{ n }}</li>{% endif %}{% endfor %}
+        {% for n in E.not_listesi %}
+          {% if forloop.counter == 2 and not yurt_ici %}{# KDV notu: yalnız yurt içi alıcı #}
+          {% elif forloop.counter == 3 and not navlun_var %}
+          {% else %}<li>{{ n }}</li>{% endif %}
+        {% endfor %}
       </ul>
     </div>
   </div>
