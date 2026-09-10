@@ -525,6 +525,11 @@ class Stok(TemelModel):
     # Üreticinin kendi model kodu (örn. "A21") — stok kartının otomatik ``kod``'undan
     # (ÜST-ALT-sıra) AYRI: ad içine gömülmez, Teklif/Teknik bölümünde ayrı gösterilir.
     model_kodu = models.CharField("model kodu", max_length=30, blank=True, default="")
+    # H/S (Harmonize Sistem/GTİP) kodu — gümrük/ihracat evrakında kullanılır, salt kod.
+    hs_kodu = models.CharField("H/S kodu", max_length=20, blank=True, default="")
+    materyal = models.CharField("materyal", max_length=100, blank=True, default="")
+    materyal_en = models.CharField(
+        "materyal (İngilizce)", max_length=100, blank=True, default="")
     basamak_sayisi = models.PositiveIntegerField(
         "basamak sayısı", null=True, blank=True)
     yukseklik = models.DecimalField(
@@ -602,6 +607,10 @@ class Stok(TemelModel):
     def ad_dil(self, dil):
         """Teklif PDF'i için dile göre ad ('en' -> ad_en, boşsa ad)."""
         return (self.ad_en or self.ad) if dil == "en" else self.ad
+
+    def materyal_dil(self, dil):
+        """Teklif PDF'i için dile göre materyal ('en' -> materyal_en, boşsa materyal)."""
+        return (self.materyal_en or self.materyal) if dil == "en" else self.materyal
 
 
 class StokFiyat(TemelModel):

@@ -689,7 +689,9 @@ def stok_ekle(request):
                     satinalma_urunu=cd.get("satinalma_urunu"),
                     uretim_urunu=cd.get("uretim_urunu"),
                     satis_urunu=cd.get("satis_urunu"),
-                    model_kodu=cd.get("model_kodu"),
+                    model_kodu=cd.get("model_kodu"), ad_en=cd.get("ad_en"),
+                    hs_kodu=cd.get("hs_kodu"), materyal=cd.get("materyal"),
+                    materyal_en=cd.get("materyal_en"),
                     basamak_sayisi=cd.get("basamak_sayisi"),
                     yukseklik=cd.get("yukseklik"), acik_derinlik=cd.get("acik_derinlik"),
                     taban_genisligi=cd.get("taban_genisligi"),
@@ -736,7 +738,9 @@ def stok_duzenle(request, pk):
                     satinalma_urunu=cd.get("satinalma_urunu"),
                     uretim_urunu=cd.get("uretim_urunu"),
                     satis_urunu=cd.get("satis_urunu"),
-                    model_kodu=cd.get("model_kodu"),
+                    model_kodu=cd.get("model_kodu"), ad_en=cd.get("ad_en"),
+                    hs_kodu=cd.get("hs_kodu"), materyal=cd.get("materyal"),
+                    materyal_en=cd.get("materyal_en"),
                     basamak_sayisi=cd.get("basamak_sayisi"),
                     yukseklik=cd.get("yukseklik"), acik_derinlik=cd.get("acik_derinlik"),
                     taban_genisligi=cd.get("taban_genisligi"),
@@ -763,6 +767,8 @@ def stok_duzenle(request, pk):
             "alis_fiyati": stok.alis_fiyati, "alis_fiyati_pb": stok.alis_fiyati_pb,
             "satinalma_urunu": stok.satinalma_urunu, "uretim_urunu": stok.uretim_urunu,
             "satis_urunu": stok.satis_urunu, "model_kodu": stok.model_kodu,
+            "ad_en": stok.ad_en, "hs_kodu": stok.hs_kodu,
+            "materyal": stok.materyal, "materyal_en": stok.materyal_en,
             "basamak_sayisi": stok.basamak_sayisi,
             "yukseklik": stok.yukseklik, "acik_derinlik": stok.acik_derinlik,
             "taban_genisligi": stok.taban_genisligi, "kapali_boy": stok.kapali_boy,
@@ -2371,6 +2377,7 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
     for k in kalemler:
         k.urun_ad = k.stok.ad_dil(dil)
         k.basamak_goster = _basamak_goster(k.stok)
+        k.materyal_goster = k.stok.materyal_dil(dil)
     a_tipi_var = any((k.stok.model_kodu or "").upper().startswith("A") for k in kalemler)
     # Yurt içi/dışı: KDV notu yalnız yurt içi alıcıya anlamlı (ihracatta KDV istisnası var —
     # "fiyatlara KDV dahil değildir" ifadesi yurtdışı alıcıyı yanıltır).
@@ -2483,6 +2490,7 @@ _PDF_ETIKET = {
         "yukleme_adedi": "Yükleme Adedi (adet)", "tir": "TIR",
         "basamak": "Basamak", "yukseklik": "Platform Yüksekliği", "acik_derinlik": "Açık derinlik",
         "taban": "Taban genişliği", "kapali": "Kapalı boy", "azami_yuk": "Azami yük",
+        "materyal": "Materyal", "hs_kodu": "H/S Kodu",
         "adet": "adet", "notlar": "Notlar",
         "not_birim_fiyat": ("Fiyatlar birim (1 adet) fiyatıdır; miktar ve toplam tutar "
                             "proforma faturada belirtilir."),
@@ -2515,6 +2523,7 @@ _PDF_ETIKET = {
         "yukleme_adedi": "Loading Qty (pcs)", "tir": "Truck",
         "basamak": "Steps", "yukseklik": "Platform Height", "acik_derinlik": "Open depth",
         "taban": "Base width", "kapali": "Folded length", "azami_yuk": "Max load",
+        "materyal": "Material", "hs_kodu": "HS Code",
         "adet": "pcs", "notlar": "Notes",
         "not_birim_fiyat": ("Prices are per unit (1 pc); quantities and total amount are "
                             "stated on the proforma invoice."),

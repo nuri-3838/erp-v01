@@ -350,6 +350,19 @@ class StokForm(forms.Form):
     model_kodu = forms.CharField(
         label="Model Kodu", max_length=30, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "örn. A21"}))
+    ad_en = forms.CharField(
+        label="Ürün Adı (İngilizce)", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "örn. Aluminium Platform Stepladder 2+1"}))
+    hs_kodu = forms.CharField(
+        label="H/S Kodu", max_length=20, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "örn. 7615.10"}))
+    materyal = forms.CharField(
+        label="Materyal (Türkçe)", max_length=100, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "örn. Alüminyum"}))
+    materyal_en = forms.CharField(
+        label="Materyal (İngilizce)", max_length=100, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "örn. Aluminium"}))
     basamak_sayisi = forms.IntegerField(
         label="Basamak Sayısı", required=False, min_value=0)
     yukseklik = TRDecimalField(label="Yükseklik (cm)", basamak=1, required=False)

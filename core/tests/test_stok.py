@@ -289,26 +289,42 @@ class StokGrupTeknikAlanTest(TestCase):
         s = self._kur(alt, adet, kg, satis_urunu=True, model_kodu="a21", basamak_sayisi=5,
                       yukseklik="100", acik_derinlik="90", taban_genisligi="43",
                       kapali_boy="171", agirlik="4,30", azami_yuk="150", cbm="0,075",
-                      yukleme_20dc=440, yukleme_40hq=1010, yukleme_tir=1220)
+                      yukleme_20dc=440, yukleme_40hq=1010, yukleme_tir=1220,
+                      ad_en="Aluminium Platform Stepladder 2+1", hs_kodu="7615.10",
+                      materyal="alüminyum", materyal_en="Aluminium")
         self.assertEqual(s.model_kodu, "A21")          # TR büyük harf uygulanır
         self.assertEqual(s.basamak_sayisi, 5)
         self.assertEqual(s.yukseklik, Decimal("100.0"))
         self.assertEqual(s.agirlik, Decimal("4.30"))
         self.assertEqual(s.yukleme_40hq, 1010)
+        self.assertEqual(s.hs_kodu, "7615.10")
+        self.assertEqual(s.materyal, "ALÜMİNYUM")       # TR alan: büyük harf uygulanır
+        # İngilizce alanlar (ad_en/materyal_en) buyuk_harf_tr'den GEÇMEZ — "i" -> Türkçe
+        # "İ"ye çevrilirse İngilizce metin bozulur (bkz. Ulke/Sehir'de aynı hatanın tekrar
+        # edilmemesi için 2026-09-09'da eklenen ad_dil() notu).
+        self.assertEqual(s.ad_en, "Aluminium Platform Stepladder 2+1")
+        self.assertEqual(s.materyal_en, "Aluminium")
 
     def test_satis_urunu_degilse_teknik_alanlar_temizlenir(self):
         """Satış işaretli değilken teknik alan değeri gönderilse bile kayıtta kalmaz —
         formda ne gösterilirse gösterilsin, veri tutarlılığı serviste zorlanır."""
         _, alt, _, adet, kg = _veri()
         s = self._kur(alt, adet, kg, satinalma_urunu=True, satis_urunu=False,
-                      model_kodu="A21", agirlik="4,30", basamak_sayisi=5)
+                      model_kodu="A21", agirlik="4,30", basamak_sayisi=5,
+                      ad_en="X", hs_kodu="7615.10", materyal="Alüminyum",
+                      materyal_en="Aluminium")
         self.assertEqual(s.model_kodu, "")
         self.assertIsNone(s.agirlik)
         self.assertIsNone(s.basamak_sayisi)
+        self.assertEqual(s.ad_en, "")
+        self.assertEqual(s.hs_kodu, "")
+        self.assertEqual(s.materyal, "")
+        self.assertEqual(s.materyal_en, "")
 
     def test_guncellemede_satis_kapatilinca_teknik_alanlar_silinir(self):
         _, alt, _, adet, kg = _veri()
-        s = self._kur(alt, adet, kg, satis_urunu=True, model_kodu="A21", agirlik="4,30")
+        s = self._kur(alt, adet, kg, satis_urunu=True, model_kodu="A21", agirlik="4,30",
+                      hs_kodu="7615.10", materyal="Alüminyum")
         self.assertEqual(s.agirlik, Decimal("4.30"))
         stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
                      fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
@@ -317,6 +333,20 @@ class StokGrupTeknikAlanTest(TestCase):
         self.assertEqual(s.model_kodu, "")
         self.assertIsNone(s.agirlik)
         self.assertFalse(s.satis_urunu)
+        self.assertEqual(s.hs_kodu, "")
+        self.assertEqual(s.materyal, "")
+
+    def test_materyal_dil(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, materyal="alüminyum",
+                      materyal_en="Aluminium")
+        self.assertEqual(s.materyal_dil("en"), "Aluminium")
+        self.assertEqual(s.materyal_dil("tr"), "ALÜMİNYUM")
+
+    def test_materyal_dil_materyal_en_bossa_materyal_doner(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, satis_urunu=True, materyal="alüminyum")
+        self.assertEqual(s.materyal_dil("en"), s.materyal)
 
     def test_negatif_agirlik_reddedilir(self):
         _, alt, _, adet, kg = _veri()

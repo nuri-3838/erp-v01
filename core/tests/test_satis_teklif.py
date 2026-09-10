@@ -326,6 +326,41 @@ class SatisTeklifTest(TestCase):
             for m in beklenen:
                 self.assertIn(m, html, f"{dil}: {m} yok")
 
+    def test_pdf_materyal_ve_hs_kodu_gorunur(self):
+        """Materyal (TR/EN, dile göre) ve H/S Kodu (dilden bağımsız, salt kod) teknik
+        özellikler bölümünde görünür; tanımlı değilse satır hiç basılmaz."""
+        from django.template.loader import render_to_string
+        from core.views import satis_teklif_pdf_baglam
+        self.a21.materyal = "ALÜMİNYUM"   # ORM'e doğrudan yazılıyor, buyuk_harf_tr servis
+        self.a21.materyal_en = "Aluminium"  # katmanında uygulanır (bkz. test_stok.py) — burada
+                                            # yalnız PDF'te dogru gösterildiği test ediliyor
+        self.a21.hs_kodu = "7615.10"
+        self.a21.save(update_fields=["materyal", "materyal_en", "hs_kodu"])
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        html_tr = render_to_string("core/satis_teklif_pdf.html", {
+            "ts": ts, "kalemler": kalemler, "sat_teklif": True,
+            **satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)})
+        self.assertIn("Materyal", html_tr)
+        self.assertIn("ALÜMİNYUM", html_tr)
+        self.assertIn("H/S Kodu", html_tr)
+        self.assertIn("7615.10", html_tr)
+        kalemler_en = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        html_en = render_to_string("core/satis_teklif_pdf.html", {
+            "ts": ts, "kalemler": kalemler_en, "sat_teklif": True,
+            **satis_teklif_pdf_baglam(ts, kalemler_en, "en", self.yon)})
+        self.assertIn("Material", html_en)
+        self.assertIn(">Aluminium<", html_en)
+        self.assertIn("HS Code", html_en)
+        self.assertIn("7615.10", html_en)
+        # c22'de materyal/hs_kodu tanımlı değil (fixture'da set edilmedi) — o kartın
+        # kendi stok nesnesinde materyal_goster/hs_kodu boş kalmalı (satır basılmaz).
+        c22_kalem = next(k for k in kalemler_en if k.stok_id == self.c22.pk)
+        self.assertEqual(c22_kalem.materyal_goster, "")
+        self.assertEqual(c22_kalem.stok.hs_kodu, "")
+
     def test_pdf_alici_satici_ayri_kutular(self):
         """Alıcı ve Satıcı ayrı kutularda gösterilir; eski hata (Alıcı kutusunun ilk
         satırının da 'Alıcı' etiketli olması, kb+et aynı metin) artık yok. Satıcı kutusunda

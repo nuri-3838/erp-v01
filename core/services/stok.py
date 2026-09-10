@@ -164,17 +164,26 @@ _SATIS_ALAN_ADLARI = (
     "agirlik", "azami_yuk", "cbm", "yukleme_20dc", "yukleme_40hq", "yukleme_tir",
 )
 # model_kodu ayrı tutulur: CharField (null=True DEĞİL), temizlenince None değil "" olur.
-_SATIS_METIN_ALAN_ADLARI = ("model_kodu",)
+_SATIS_METIN_ALAN_ADLARI = ("model_kodu", "ad_en", "hs_kodu", "materyal", "materyal_en")
 
 
-def _satis_alanlarini_coz(satis_urunu, *, model_kodu="", basamak_sayisi=None,
+def _satis_alanlarini_coz(satis_urunu, *, model_kodu="", ad_en="", hs_kodu="", materyal="",
+                          materyal_en="", basamak_sayisi=None,
                           yukseklik=None, acik_derinlik=None, taban_genisligi=None,
                           kapali_boy=None, agirlik=None, azami_yuk=None, cbm=None,
                           yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None):
     if not satis_urunu:
-        return {**dict.fromkeys(_SATIS_ALAN_ADLARI, None), "model_kodu": ""}
+        return {**dict.fromkeys(_SATIS_ALAN_ADLARI, None),
+               **dict.fromkeys(_SATIS_METIN_ALAN_ADLARI, "")}
     return {
         "model_kodu": buyuk_harf_tr((model_kodu or "").strip()),
+        # ad_en/materyal_en İngilizce SERBEST metin — buyuk_harf_tr UYGULANMAZ (TR
+        # formatter "i"yi Türkçe "İ"ye çevirir, İngilizce metni bozar — bkz. Ulke/Sehir
+        # ad_en'inde aynı hatanın 2026-09-09'da farkına varıldığı oturum notu).
+        "ad_en": (ad_en or "").strip(),
+        "hs_kodu": buyuk_harf_tr((hs_kodu or "").strip()),
+        "materyal": buyuk_harf_tr((materyal or "").strip()),
+        "materyal_en": (materyal_en or "").strip(),
         "basamak_sayisi": _tam_sayi_opsiyonel(basamak_sayisi, "Basamak sayısı"),
         "yukseklik": _tutar_opsiyonel(yukseklik, "Yükseklik"),
         "acik_derinlik": _tutar_opsiyonel(acik_derinlik, "Açık derinlik"),
@@ -238,7 +247,8 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  kritik_stok=Decimal("0"), tedarikci_id=None,
                  alis_fiyati=None, alis_fiyati_pb="TRY",
                  satinalma_urunu=False, uretim_urunu=True, satis_urunu=False,
-                 model_kodu="", basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
+                 model_kodu="", ad_en="", hs_kodu="", materyal="", materyal_en="",
+                 basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
                  taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                  cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
                  gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
@@ -253,7 +263,8 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
     fatura = _birim_coz(fatura_birimi_id, "Fatura birimi")
     _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
     satis_alanlari = _satis_alanlarini_coz(
-        satis_urunu, model_kodu=model_kodu, basamak_sayisi=basamak_sayisi,
+        satis_urunu, model_kodu=model_kodu, ad_en=ad_en, hs_kodu=hs_kodu,
+        materyal=materyal, materyal_en=materyal_en, basamak_sayisi=basamak_sayisi,
         yukseklik=yukseklik, acik_derinlik=acik_derinlik, taban_genisligi=taban_genisligi,
         kapali_boy=kapali_boy, agirlik=agirlik, azami_yuk=azami_yuk, cbm=cbm,
         yukleme_20dc=yukleme_20dc, yukleme_40hq=yukleme_40hq, yukleme_tir=yukleme_tir)
@@ -294,7 +305,8 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
         kritik_stok=stok.kritik_stok, tedarikci_id=stok.tedarikci_id,
         alis_fiyati=stok.alis_fiyati, alis_fiyati_pb=stok.alis_fiyati_pb,
         satinalma_urunu=stok.satinalma_urunu, uretim_urunu=stok.uretim_urunu,
-        satis_urunu=stok.satis_urunu, model_kodu=stok.model_kodu,
+        satis_urunu=stok.satis_urunu, model_kodu=stok.model_kodu, ad_en=stok.ad_en,
+        hs_kodu=stok.hs_kodu, materyal=stok.materyal, materyal_en=stok.materyal_en,
         basamak_sayisi=stok.basamak_sayisi,
         yukseklik=stok.yukseklik, acik_derinlik=stok.acik_derinlik,
         taban_genisligi=stok.taban_genisligi, kapali_boy=stok.kapali_boy,
@@ -312,7 +324,8 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   kritik_stok=Decimal("0"), tedarikci_id=None,
                   alis_fiyati=None, alis_fiyati_pb="TRY",
                   satinalma_urunu=False, uretim_urunu=True, satis_urunu=False,
-                  model_kodu="", basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
+                  model_kodu="", ad_en="", hs_kodu="", materyal="", materyal_en="",
+                  basamak_sayisi=None, yukseklik=None, acik_derinlik=None,
                   taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                   cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
                   gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
@@ -325,7 +338,8 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
         raise StokHatasi("Silinmiş stok düzenlenemez.")
     _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
     satis_alanlari = _satis_alanlarini_coz(
-        satis_urunu, model_kodu=model_kodu, basamak_sayisi=basamak_sayisi,
+        satis_urunu, model_kodu=model_kodu, ad_en=ad_en, hs_kodu=hs_kodu,
+        materyal=materyal, materyal_en=materyal_en, basamak_sayisi=basamak_sayisi,
         yukseklik=yukseklik, acik_derinlik=acik_derinlik, taban_genisligi=taban_genisligi,
         kapali_boy=kapali_boy, agirlik=agirlik, azami_yuk=azami_yuk, cbm=cbm,
         yukleme_20dc=yukleme_20dc, yukleme_40hq=yukleme_40hq, yukleme_tir=yukleme_tir)

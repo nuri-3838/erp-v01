@@ -139,6 +139,26 @@
           {% for e in form.model_kodu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan">
+          <label for="{{ form.ad_en.id_for_label }}">Ürün Adı (İngilizce)</label>
+          {{ form.ad_en }}
+          {% for e in form.ad_en.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.hs_kodu.id_for_label }}">H/S Kodu</label>
+          {{ form.hs_kodu }}
+          {% for e in form.hs_kodu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.materyal.id_for_label }}">Materyal (Türkçe)</label>
+          {{ form.materyal }}
+          {% for e in form.materyal.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.materyal_en.id_for_label }}">Materyal (İngilizce)</label>
+          {{ form.materyal_en }}
+          {% for e in form.materyal_en.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
           <label for="{{ form.basamak_sayisi.id_for_label }}">Basamak Sayısı</label>
           {{ form.basamak_sayisi }}
           {% for e in form.basamak_sayisi.errors %}<div class="hata">{{ e }}</div>{% endfor %}

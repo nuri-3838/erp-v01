@@ -140,6 +140,14 @@
       <div class="kv">
         <div class="satir"><span class="et">Model Kodu</span>
           <span class="dg">{% if stok.model_kodu %}<span class="mono">{{ stok.model_kodu }}</span>{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Ürün Adı (İngilizce)</span>
+          <span class="dg">{{ stok.ad_en|default:"—" }}</span></div>
+        <div class="satir"><span class="et">H/S Kodu</span>
+          <span class="dg">{% if stok.hs_kodu %}<span class="mono">{{ stok.hs_kodu }}</span>{% else %}—{% endif %}</span></div>
+        <div class="satir"><span class="et">Materyal (Türkçe)</span>
+          <span class="dg">{{ stok.materyal|default:"—" }}</span></div>
+        <div class="satir"><span class="et">Materyal (İngilizce)</span>
+          <span class="dg">{{ stok.materyal_en|default:"—" }}</span></div>
         <div class="satir"><span class="et">Basamak Sayısı</span>
           <span class="dg">{% if stok.basamak_sayisi is not None %}<span class="mono">{{ stok.basamak_sayisi }}</span>{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Yükseklik</span>
