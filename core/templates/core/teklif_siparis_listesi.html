@@ -5,18 +5,42 @@
 
 {% block content %}
 <style>
-  .ts-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
-  .ts-arama-cubuk { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
-  .ts-arama-kutu { position:relative; flex:1 1 20rem; }
+  .ts-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+
+  .ts-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);
+    border-radius:18px; padding:1rem 1.1rem 1.1rem; margin-bottom:1.2rem; }
+
+  .ts-sekmeler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.9rem; }
+  .ts-sekme { display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .95rem;
+    border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8);
+    color:var(--metin-soluk); font-size:.85rem; font-weight:650; text-decoration:none;
+    transition:background .12s, color .12s, border-color .12s; }
+  .ts-sekme:hover { border-color:var(--turuncu); color:var(--metin); }
+  .ts-sekme.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; }
+  .ts-sekme .n { font-variant-numeric:tabular-nums; opacity:.8; }
+
+  .ts-arama-cubuk { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
+  .ts-alan-grup { display:flex; flex-direction:column; gap:.3rem; }
+  .ts-alan-grup label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--metin-soluk); }
+  .ts-arama-kutu { position:relative; flex:1 1 16rem; }
   .ts-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
     border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
-    font-size:.95rem; transition:border-color .15s, box-shadow .15s; }
+    font-size:.95rem; transition:border-color .15s, box-shadow .15s; box-sizing:border-box; }
   .ts-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
     box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
-  .ts-arama-ikon { position:absolute; left:.85rem; top:50%; transform:translateY(-50%);
-    font-size:1rem; opacity:.55; pointer-events:none; }
+  .ts-arama-ikon { position:absolute; left:.85rem; bottom:.72rem; font-size:1rem; opacity:.55;
+    pointer-events:none; }
   .ts-arama-temizle { display:none; }
   .ts-arama-temizle.gorunur { display:inline-flex; }
+  .ts-tarih-kutu input { min-height:46px; width:9.5rem; box-sizing:border-box; }
+  .ts-btn-cubuk { display:flex; gap:.6rem; margin-left:auto; }
+
+  .ts-alt-cubuk { display:flex; align-items:center; justify-content:space-between; gap:1rem;
+    flex-wrap:wrap; margin:.9rem 0 .7rem; }
+  .ts-boyut-secici { display:flex; align-items:center; gap:.5rem; font-size:.85rem;
+    color:var(--metin-soluk); }
+  .ts-boyut-secici select { min-height:38px; width:auto; padding:.3rem .6rem; border-radius:10px; }
 
   .ts-hucre { display:flex; align-items:center; gap:.65rem; }
   .ts-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
@@ -28,6 +52,19 @@
   .ts-hucre .alt { font-size:.78rem; color:var(--metin-soluk); }
   .ts-belge-no { font-family:"Cascadia Mono",Consolas,monospace; font-size:.85rem; }
 
+  #ts-tablo tbody tr:hover td { background:rgba(240,124,0,.05); }
+
+  .ts-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
+    margin-top:1rem; flex-wrap:wrap; }
+  .ts-sayfalama a, .ts-sayfalama span.simdiki { display:inline-flex; align-items:center;
+    justify-content:center; min-width:2.3rem; height:2.3rem; padding:0 .5rem; border-radius:10px;
+    text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .ts-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .ts-sayfalama a:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+  .ts-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
+  .ts-sayfalama span.uc { color:var(--metin-soluk); padding:0 .2rem; }
+  .ts-sayfalama a.uc-uc { border:none; background:none; font-weight:700; }
+
   .ts-satir[hidden] { display:none; }
   .ts-bos-js { display:none; }
   .ts-bos-js.gorunur { display:table-row; }
@@ -38,18 +75,51 @@
   <a class="dugme" href="{% url ekle_url %}">+ Yeni</a>
 </div>
 
-<form method="get" class="ts-arama-cubuk" id="ts-arama-form">
-  <div class="ts-arama-kutu">
-    <span class="ts-arama-ikon">🔍</span>
-    <input type="text" id="ts-arama" name="ara" value="{{ ara }}"
-           placeholder="Cari veya belge no ara…" autocomplete="off">
+<div class="ts-panel">
+  <div class="ts-sekmeler">
+    <a class="ts-sekme{% if not durum %} aktif{% endif %}" href="?{{ sekme_qs }}">Tümü <span class="n">{{ toplam }}</span></a>
+    {% for s in durum_sekmeleri %}
+      <a class="ts-sekme{% if durum == s.kod %} aktif{% endif %}" href="?durum={{ s.kod }}&{{ sekme_qs }}">{{ s.ad }} <span class="n">{{ s.n }}</span></a>
+    {% endfor %}
   </div>
-  <button type="submit" class="birincil">Ara</button>
-  <a class="iptal-bag ts-arama-temizle{% if ara %} gorunur{% endif %}" id="ts-arama-temizle"
-     href="?">Temizle</a>
-</form>
 
-<p class="sayfa-alt">{{ kayitlar.paginator.count }} kayıt{% if kayitlar.paginator.num_pages > 1 %} · sayfa {{ kayitlar.number }}/{{ kayitlar.paginator.num_pages }}{% endif %}.</p>
+  <form method="get" class="ts-arama-cubuk" id="ts-arama-form">
+    {% if durum %}<input type="hidden" name="durum" value="{{ durum }}">{% endif %}
+    <div class="ts-alan-grup ts-arama-kutu">
+      <label for="ts-arama">Ara</label>
+      <span class="ts-arama-ikon">🔍</span>
+      <input type="text" id="ts-arama" name="ara" value="{{ ara }}"
+             placeholder="Cari veya belge no…" autocomplete="off">
+    </div>
+    <div class="ts-alan-grup ts-tarih-kutu">
+      <label for="ts-bas">Başlangıç</label>
+      <input type="date" id="ts-bas" name="bas" value="{{ bas }}">
+    </div>
+    <div class="ts-alan-grup ts-tarih-kutu">
+      <label for="ts-bit">Bitiş</label>
+      <input type="date" id="ts-bit" name="bit" value="{{ bit }}">
+    </div>
+    <div class="ts-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      <a class="iptal-bag ts-arama-temizle{% if ara or bas or bit or durum %} gorunur{% endif %}"
+         id="ts-arama-temizle" href="?">Temizle</a>
+    </div>
+  </form>
+</div>
+
+<div class="ts-alt-cubuk">
+  <p class="sayfa-alt" style="margin:0">{{ kayitlar.paginator.count }} kayıt{% if kayitlar.paginator.num_pages > 1 %} · sayfa {{ kayitlar.number }}/{{ kayitlar.paginator.num_pages }}{% endif %}.</p>
+  <form method="get" class="ts-boyut-secici">
+    {% if durum %}<input type="hidden" name="durum" value="{{ durum }}">{% endif %}
+    {% if ara %}<input type="hidden" name="ara" value="{{ ara }}">{% endif %}
+    {% if bas %}<input type="hidden" name="bas" value="{{ bas }}">{% endif %}
+    {% if bit %}<input type="hidden" name="bit" value="{{ bit }}">{% endif %}
+    <label for="ts-boyut">Sayfa başına</label>
+    <select id="ts-boyut" name="boyut" onchange="this.form.submit()">
+      {% for b in sayfa_boyutlari %}<option value="{{ b }}" {% if b == boyut %}selected{% endif %}>{{ b }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
 
 <div class="tablo-kapsayici">
 <table id="ts-tablo">
@@ -95,7 +165,7 @@
       </tr>
     {% empty %}
       <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara %}🔍 “{{ ara }}” ile eşleşen kayıt yok.
+        {% if ara or bas or bit or durum %}🔍 Bu süzgeçle eşleşen kayıt yok.
         {% else %}{{ emoji }} Henüz kayıt yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
     <tr class="ts-bos-js"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
@@ -104,10 +174,22 @@
 </table>
 </div>
 {% if kayitlar.paginator.num_pages > 1 %}
-<div class="sayfalama">
-  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}{% if ara %}&ara={{ ara|urlencode }}{% endif %}">‹ Önceki</a>{% endif %}
-  <span>{{ kayitlar.number }} / {{ kayitlar.paginator.num_pages }}</span>
-  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}{% if ara %}&ara={{ ara|urlencode }}{% endif %}">Sonraki ›</a>{% endif %}
+<div class="ts-sayfalama">
+  {% if kayitlar.number > 1 %}<a class="uc-uc" href="?sayfa=1&{{ sabit_qs }}">« İlk</a>{% endif %}
+  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}&{{ sabit_qs }}">‹</a>{% endif %}
+  {% for n in kayitlar.paginator.page_range %}
+    {% if n == kayitlar.number %}
+      <span class="simdiki">{{ n }}</span>
+    {% elif n >= kayitlar.number|add:"-2" and n <= kayitlar.number|add:"2" %}
+      <a href="?sayfa={{ n }}&{{ sabit_qs }}">{{ n }}</a>
+    {% elif n == 1 or n == kayitlar.paginator.num_pages %}
+      <a href="?sayfa={{ n }}&{{ sabit_qs }}">{{ n }}</a>
+    {% elif n == kayitlar.number|add:"-3" or n == kayitlar.number|add:"3" %}
+      <span class="uc">…</span>
+    {% endif %}
+  {% endfor %}
+  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}&{{ sabit_qs }}">›</a>{% endif %}
+  {% if kayitlar.number < kayitlar.paginator.num_pages %}<a class="uc-uc" href="?sayfa={{ kayitlar.paginator.num_pages }}&{{ sabit_qs }}">Son »</a>{% endif %}
 </div>
 {% endif %}
 
@@ -121,7 +203,7 @@
 
   // Aranabilir metin satırın kendi görünen içeriğinden türetilir (TR-uyumlu küçük harf).
   // Not: bu yalnız BU SAYFADAKİ (sayfalanmış) satırları anında filtreler; tüm kayıtlar
-  // arasında aramak için "Ara" butonu/Enter sunucu tarafı aramayı tetikler.
+  // arasında aramak için "Filtrele" butonu/Enter sunucu tarafı aramayı tetikler.
   satirlar.forEach(function(tr){
     tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
   });

@@ -1848,8 +1848,29 @@ TeklifSiparisKalemFormSet = formset_factory(
 SatisTeklifKalemFormSet = formset_factory(SatisTeklifKalemForm, extra=0)
 
 
+_TS_SAYFA_BOYUTLARI = (25, 50, 100, 200)
+
+
+def _ts_tarih_coz(deger):
+    try:
+        return datetime.date.fromisoformat((deger or "").strip())
+    except ValueError:
+        return None
+
+
 def _ts_liste(request, belge_tur, yon, baslik, emoji):
     ara = (request.GET.get("ara") or "").strip()
+    durum = request.GET.get("durum") or ""
+    if durum not in dict(TeklifSiparis.Durum.choices):
+        durum = ""
+    tarih_bas = _ts_tarih_coz(request.GET.get("bas"))
+    tarih_bit = _ts_tarih_coz(request.GET.get("bit"))
+    try:
+        boyut = int(request.GET.get("boyut", 50))
+    except ValueError:
+        boyut = 50
+    if boyut not in _TS_SAYFA_BOYUTLARI:
+        boyut = 50
     # "donustu" rozeti yalnız TEKLİF/SİPARİŞ için anlamlı (bir sonraki belgeye kaynak_teklif/
     # kaynak_siparis self-FK'sıyla dönüşür). İRSALİYE→Fatura dönüşümü zaten şablonda ayrı
     # (k.fatura_id — "🧾 Faturaya Dönüştü") gösteriliyor, burada tekrar hesaplanmaz.
@@ -1862,20 +1883,43 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         donustu_etiket = "🔁 Siparişe Dönüştü"
     else:
         donusen_var = TeklifSiparis.objects.filter(pk=-1)   # her zaman boş — geçerli pk asla negatif değil
-    kayitlar = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
-                .annotate(donustu=Exists(donusen_var))
-                .annotate(kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)))
-                .prefetch_related("kalemler__kdv", "kalemler__tevkifat"))
+    temel = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
+             .annotate(donustu=Exists(donusen_var))
+             .annotate(kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)))
+             .prefetch_related("kalemler__kdv", "kalemler__tevkifat"))
     if ara:
         buyuk = buyuk_harf_tr(ara)
-        kayitlar = kayitlar.filter(
+        temel = temel.filter(
             Q(cari__unvan__contains=buyuk) | Q(cari__kod__icontains=ara)
             | Q(belge_no__icontains=ara))
-    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
-    return render(request, "core/teklif_siparis_listesi.html",
-                  {"kayitlar": sayfa, "baslik": baslik, "emoji": emoji, "ara": ara,
-                   "donustu_etiket": donustu_etiket,
-                   "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
+    if tarih_bas:
+        temel = temel.filter(tarih__gte=tarih_bas)
+    if tarih_bit:
+        temel = temel.filter(tarih__lte=tarih_bit)
+    # Durum sayaçları (rozet/sekme) arama+tarih süzgecine göre, durum filtresinden ÖNCE —
+    # her sekmenin kaç kayıt getireceğini kullanıcı durumu değiştirmeden görsün.
+    sayimlar = {d: 0 for d, _ in TeklifSiparis.Durum.choices}
+    for satir in temel.values("durum").annotate(n=Count("pk")):
+        sayimlar[satir["durum"]] = satir["n"]
+    durum_sekmeleri = [{"kod": kod, "ad": ad, "n": sayimlar.get(kod, 0)}
+                       for kod, ad in TeklifSiparis.Durum.choices]
+    kayitlar = temel.filter(durum=durum) if durum else temel
+    sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
+    # sayfa linkleri: sayfa DIŞINDAKİ her şeyi (durum dahil) korur — yalnız sayfa değişir.
+    sabit_qs = request.GET.copy()
+    sabit_qs.pop("sayfa", None)
+    # sekme linkleri: durum'u KENDİ href'i belirler (?durum=KOD) — sabit_qs'te de durum
+    # olursa aynı isim iki kez eklenip son değer (eski durum) kazanır; bu yüzden ayrı.
+    sekme_qs = sabit_qs.copy()
+    sekme_qs.pop("durum", None)
+    return render(request, "core/teklif_siparis_listesi.html", {
+        "kayitlar": sayfa, "baslik": baslik, "emoji": emoji, "ara": ara,
+        "durum": durum, "bas": request.GET.get("bas", ""), "bit": request.GET.get("bit", ""),
+        "boyut": boyut, "sayfa_boyutlari": _TS_SAYFA_BOYUTLARI,
+        "toplam": sum(sayimlar.values()), "durum_sekmeleri": durum_sekmeleri,
+        "sabit_qs": sabit_qs.urlencode(), "sekme_qs": sekme_qs.urlencode(),
+        "donustu_etiket": donustu_etiket,
+        "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
 
 
 @ekran_gerekli("satinalma_teklifleri")
