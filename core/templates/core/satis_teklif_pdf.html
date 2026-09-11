@@ -128,6 +128,7 @@
         <div class="kutu taraf">
           <div class="kb">{{ E.alici }}</div>
           <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ ts.cari.unvan }}</span></div>
+          {% if ts.cari.ilgili_kisi %}<div class="kv"><span class="et">{{ E.ilgili_kisi }}</span><span class="dg">{{ ts.cari.ilgili_kisi }}</span></div>{% endif %}
           {% if ulke_ad %}<div class="kv"><span class="et">{{ E.ulke }}</span><span class="dg">{{ ulke_ad }}{% if sehir_ad %} / {{ sehir_ad }}{% endif %}</span></div>{% endif %}
           {% if ts.cari.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ ts.cari.adres }}</span></div>{% endif %}
           {% if ts.cari.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ ts.cari.telefon }}</span></div>{% endif %}
@@ -144,7 +145,6 @@
         <div class="kb">{{ E.baslik }}</div>
         <div class="kv"><span class="et">{{ E.teklif_no }}</span><span class="dg buyuk">{{ ts.belge_no|default:"—" }}</span></div>
         <div class="kv"><span class="et">{{ E.tarih }}</span><span class="dg">{{ ts.tarih|date:"d.m.Y" }}</span></div>
-        {% if ts.gecerlilik_teslim_tarihi %}<div class="kv"><span class="et">{{ E.gecerlilik }}</span><span class="dg">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</span></div>{% endif %}
         <div class="kv"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ ts.para_birimi }}</span></div>
         {% if yukleme_sekli_ad %}<div class="kv"><span class="et">{{ E.yukleme_sekli }}</span><span class="dg">{{ yukleme_sekli_ad }}</span></div>{% endif %}
         {% if odeme_kosulu_ad %}<div class="kv"><span class="et">{{ E.odeme_kosulu }}</span><span class="dg">{{ odeme_kosulu_ad }}</span></div>{% endif %}

@@ -70,6 +70,13 @@ class CariServisTest(TestCase):
         c.refresh_from_db()
         self.assertTrue(c.silindi)
 
+    def test_ilgili_kisi_buyuk_harf_kaydedilir(self):
+        c = _olustur(unvan="x", ilgili_kisi="ayşe yılmaz")
+        self.assertEqual(c.ilgili_kisi, "AYŞE YILMAZ")
+        cari_guncelle(c, unvan="x", ilgili_kisi="mehmet can", para_birimi="TRY")
+        c.refresh_from_db()
+        self.assertEqual(c.ilgili_kisi, "MEHMET CAN")
+
 
 class CariTasimaTest(TestCase):
     def test_tasima(self):

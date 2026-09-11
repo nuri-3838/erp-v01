@@ -763,6 +763,7 @@ class Cari(TemelModel):
     telefon_2 = models.CharField("telefon 2", max_length=20, blank=True)
     eposta = models.EmailField("e-posta", blank=True)
     web = models.URLField("web", blank=True)
+    ilgili_kisi = models.CharField("adı soyadı", max_length=120, blank=True, default="")
     kep_adresi = models.CharField("KEP", max_length=100, blank=True)
     # Ana adres
     ulke = models.ForeignKey(

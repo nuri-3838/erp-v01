@@ -96,7 +96,7 @@ def _para_dogrula(deger, etiket):
 
 
 def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
-            eposta, web, kep_adresi, adres, para_birimi, kredi_limiti,
+            eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kredi_limiti,
             iskonto_yuzdesi, notlar, ulke, sehir):
     """Ortak alan hazırlığı (create/update paylaşır). dict döner."""
     if para_birimi not in dict(Cari.PARA_CHOICES):
@@ -107,6 +107,7 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         vkn_tckn=(vkn_tckn or "").strip(), tax_id=(tax_id or "").strip(),
         telefon=(telefon or "").strip(), telefon_2=(telefon_2 or "").strip(),
         eposta=(eposta or "").strip().lower(), web=(web or "").strip(),
+        ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
         kep_adresi=(kep_adresi or "").strip(),
         ulke=ulke, sehir=sehir, adres=buyuk_harf_tr((adres or "").strip()),
         para_birimi=para_birimi,
@@ -131,7 +132,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
     veri = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
-                        "telefon_2", "eposta", "web", "kep_adresi", "adres",
+                        "telefon_2", "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
@@ -198,7 +199,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
     veri = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
-                        "telefon_2", "eposta", "web", "kep_adresi", "adres",
+                        "telefon_2", "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     cari.unvan = unvan

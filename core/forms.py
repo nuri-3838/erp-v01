@@ -493,6 +493,8 @@ class CariForm(forms.Form):
                               widget=forms.EmailInput(attrs=_K))
     web = forms.URLField(label="Web", required=False, assume_scheme="https",
                          widget=forms.URLInput(attrs=_K))
+    ilgili_kisi = forms.CharField(label="Adı Soyadı", max_length=120, required=False,
+                                  widget=forms.TextInput(attrs=_K))
     kep_adresi = forms.CharField(label="KEP", max_length=100, required=False,
                                  widget=forms.TextInput(attrs=_K))
     # Ana adres

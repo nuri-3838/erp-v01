@@ -1315,7 +1315,7 @@ def _cari_form_kw(cd):
         unvan=cd["unvan"], kategori_id=g(cd["kategori"]), kisa_ad=cd["kisa_ad"],
         vergi_dairesi=cd["vergi_dairesi"], vkn_tckn=cd["vkn_tckn"], tax_id=cd["tax_id"],
         telefon=cd["telefon"], telefon_2=cd["telefon_2"], eposta=cd["eposta"],
-        web=cd["web"], kep_adresi=cd["kep_adresi"],
+        web=cd["web"], ilgili_kisi=cd["ilgili_kisi"], kep_adresi=cd["kep_adresi"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
         para_birimi=cd["para_birimi"], kredi_limiti=cd["kredi_limiti"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"], notlar=cd["notlar"])
@@ -1395,7 +1395,8 @@ def cari_duzenle(request, pk):
             "unvan": cari.unvan, "kisa_ad": cari.kisa_ad, "kategori": cari.kategori_id,
             "vergi_dairesi": cari.vergi_dairesi, "vkn_tckn": cari.vkn_tckn,
             "tax_id": cari.tax_id, "telefon": cari.telefon, "telefon_2": cari.telefon_2,
-            "eposta": cari.eposta, "web": cari.web, "kep_adresi": cari.kep_adresi,
+            "eposta": cari.eposta, "web": cari.web, "ilgili_kisi": cari.ilgili_kisi,
+            "kep_adresi": cari.kep_adresi,
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
             "para_birimi": cari.para_birimi, "kredi_limiti": cari.kredi_limiti,
             "iskonto_yuzdesi": cari.iskonto_yuzdesi, "notlar": cari.notlar})
@@ -2473,10 +2474,10 @@ def teklif_siparis_pdf(request, pk):
 _PDF_ETIKET = {
     "tr": {
         "baslik": "Teklif Detayı", "alt_baslik": "Fiyat Teklifi / QUOTATION",
-        "alici": "Alıcı", "satici": "Satıcı", "unvan": "Unvan",
+        "alici": "Alıcı", "satici": "Satıcı", "unvan": "Unvan", "ilgili_kisi": "Adı Soyadı",
         "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon", "web": "Web Sitesi",
         "eposta": "E-posta", "hazirlayan": "Hazırlayan",
-        "teklif_no": "Teklif No", "tarih": "Tarih", "gecerlilik": "Geçerlilik",
+        "teklif_no": "Teklif No", "tarih": "Tarih",
         "para_birimi": "Para Birimi", "yukleme_sekli": "Teslim / Yükleme Şekli",
         "odeme_kosulu": "Ödeme Koşulu", "yukleme_tipi": "Yükleme Tipi",
         "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
@@ -2505,10 +2506,10 @@ _PDF_ETIKET = {
     },
     "en": {
         "baslik": "Quotation Details", "alt_baslik": "Sales Quotation",
-        "alici": "To", "satici": "From", "unvan": "Company",
+        "alici": "To", "satici": "From", "unvan": "Company", "ilgili_kisi": "Contact Person",
         "ulke": "Country", "adres": "Address", "telefon": "Phone", "web": "Website",
         "eposta": "E-mail", "hazirlayan": "Prepared by",
-        "teklif_no": "Quotation No", "tarih": "Date", "gecerlilik": "Valid Until",
+        "teklif_no": "Quotation No", "tarih": "Date",
         "para_birimi": "Currency", "yukleme_sekli": "Delivery Term",
         "odeme_kosulu": "Payment Term", "yukleme_tipi": "Transport Mode",
         "teslim_suresi": "Lead Time", "navlun": "Freight",

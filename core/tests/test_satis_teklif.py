@@ -433,6 +433,27 @@ class SatisTeklifTest(TestCase):
         baglam2 = satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)
         self.assertIn("This quotation is binding until the validity date.", baglam2["notlar"])
 
+    def test_pdf_alici_ilgili_kisi_varsa_gorunur_yoksa_gizlenir(self):
+        from django.template.loader import render_to_string
+        from core.views import satis_teklif_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        ctx = {"ts": ts, "kalemler": kalemler, "sat_teklif": True,
+              **satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)}
+        html = render_to_string("core/satis_teklif_pdf.html", ctx)
+        self.assertNotIn("Adı Soyadı", html)
+        self.cari.ilgili_kisi = "AYŞE YILMAZ"
+        self.cari.save(update_fields=["ilgili_kisi"])
+        ts2 = self._son_teklif()
+        kalemler2 = list(ts2.kalemler.filter(silindi=False).select_related("stok"))
+        ctx2 = {"ts": ts2, "kalemler": kalemler2, "sat_teklif": True,
+               **satis_teklif_pdf_baglam(ts2, kalemler2, "tr", self.yon)}
+        html2 = render_to_string("core/satis_teklif_pdf.html", ctx2)
+        self.assertIn("Adı Soyadı", html2)
+        self.assertIn("AYŞE YILMAZ", html2)
+
     def test_basamak_goster(self):
         from types import SimpleNamespace
         from core.views import _basamak_goster
