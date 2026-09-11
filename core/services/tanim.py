@@ -5,6 +5,7 @@ oran/pay/payda doğrulanır; muhasebe hesabı opsiyonel (sonra da bağlanabilir)
 """
 from __future__ import annotations
 
+from django.db import transaction
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
@@ -183,23 +184,63 @@ def _secenek_dogrula(kategori, ad, kod, *, haric_pk=None):
     return ad, kod
 
 
-def secenek_olustur(kategori, *, ad, kod="", ad_en="", sira=0, kullanici=None) -> TanimSecenegi:
+def _diger_varsayilanlari_kapat(kategori, haric_pk=None, kullanici=None):
+    """Aynı kategoride, ``haric_pk`` dışındaki tüm aktif satırların varsayılan işaretini
+    kaldırır — kategori başına en fazla 1 varsayılan invariant'ını korur (bkz. model
+    constraint'i). ÖNEMLİ: bu, yeni varsayılanı KAYDETMEDEN ÖNCE çağrılmalı — partial unique
+    index her UPDATE/INSERT'te hemen kontrol edilir (ertelenmez), sıra ters olursa DB hatası
+    çıkar."""
+    kapat = TanimSecenegi.objects.filter(kategori=kategori, silindi=False, varsayilan=True)
+    if haric_pk is not None:
+        kapat = kapat.exclude(pk=haric_pk)
+    kapat.update(varsayilan=False, updated_by=kullanici)
+
+
+@transaction.atomic
+def secenek_olustur(kategori, *, ad, kod="", ad_en="", sira=0, varsayilan=False,
+                    kullanici=None) -> TanimSecenegi:
     kategori = _kategori_dogrula(kategori)
     ad, kod = _secenek_dogrula(kategori, ad, kod)
+    varsayilan = bool(varsayilan)
+    if varsayilan:
+        _diger_varsayilanlari_kapat(kategori, kullanici=kullanici)   # yeni satır kaydedilmeden ÖNCE
     return TanimSecenegi.objects.create(
         kategori=kategori, ad=ad, kod=kod, ad_en=(ad_en or "").strip(), sira=int(sira or 0),
-        created_by=kullanici, updated_by=kullanici)
+        varsayilan=varsayilan, created_by=kullanici, updated_by=kullanici)
 
 
-def secenek_guncelle(s: TanimSecenegi, *, ad, kod="", ad_en="", sira=0,
+@transaction.atomic
+def secenek_guncelle(s: TanimSecenegi, *, ad, kod="", ad_en="", sira=0, varsayilan=False,
                      kullanici=None) -> TanimSecenegi:
     if s.silindi:
         raise TanimHatasi("Silinmiş kayıt düzenlenemez.")
     s.ad, s.kod = _secenek_dogrula(s.kategori, ad, kod, haric_pk=s.pk)
     s.ad_en = (ad_en or "").strip()          # İngilizce: TR büyük harfe ÇEVRİLMEZ
     s.sira = int(sira or 0)
+    varsayilan = bool(varsayilan)
+    if varsayilan:
+        _diger_varsayilanlari_kapat(s.kategori, haric_pk=s.pk, kullanici=kullanici)
+    s.varsayilan = varsayilan
     s.updated_by = kullanici
-    s.save(update_fields=["ad", "kod", "ad_en", "sira", "updated_by", "updated_at"])
+    s.save(update_fields=["ad", "kod", "ad_en", "sira", "varsayilan", "updated_by",
+                          "updated_at"])
+    return s
+
+
+@transaction.atomic
+def secenek_varsayilan_ayarla(s: TanimSecenegi, varsayilan: bool,
+                              kullanici=None) -> TanimSecenegi:
+    """Tanım listesi ekranındaki hızlı işaretleme (checkbox) — tek alanı değiştirir.
+    True'ya çekilirse aynı kategorideki diğer satırların işareti kaldırılır; False'a
+    çekilirse başka bir satır otomatik varsayılan YAPILMAZ (kategori boş kalabilir)."""
+    if s.silindi:
+        raise TanimHatasi("Silinmiş kayıt düzenlenemez.")
+    varsayilan = bool(varsayilan)
+    if varsayilan:
+        _diger_varsayilanlari_kapat(s.kategori, haric_pk=s.pk, kullanici=kullanici)
+    s.varsayilan = varsayilan
+    s.updated_by = kullanici
+    s.save(update_fields=["varsayilan", "updated_by", "updated_at"])
     return s
 
 
@@ -208,7 +249,8 @@ def secenek_sil(s: TanimSecenegi, kullanici=None) -> TanimSecenegi:
         return s
     from django.db.models import Q
     kullanimda = TeklifSiparis.objects.filter(silindi=False).filter(
-        Q(yukleme_sekli=s) | Q(odeme_kosulu=s) | Q(yukleme_tipi=s)).exists()
+        Q(yukleme_sekli=s) | Q(odeme_kosulu=s) | Q(yukleme_tipi=s) | Q(teslim_suresi=s)
+    ).exists()
     if kullanimda:
         raise TanimHatasi("Bu seçenek tekliflerde kullanılıyor; silinemez.")
     s.silindi = True

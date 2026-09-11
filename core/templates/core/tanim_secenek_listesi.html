@@ -19,7 +19,7 @@
 
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th class="sag">Sıra</th>{% if kod_var %}<th>Kod</th>{% endif %}<th>Ad</th><th>Ad (İngilizce)</th><th>İşlem</th></tr></thead>
+  <thead><tr><th class="sag">Sıra</th>{% if kod_var %}<th>Kod</th>{% endif %}<th>Ad</th><th>Ad (İngilizce)</th><th style="text-align:center">Varsayılan</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for s in secenekler %}
       <tr>
@@ -27,6 +27,13 @@
         {% if kod_var %}<td class="mono">{{ s.kod }}</td>{% endif %}
         <td>{{ s.ad }}</td>
         <td>{% if s.ad_en %}{{ s.ad_en }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td style="text-align:center">
+          <form method="post" action="{% url 'core:secenek_varsayilan_ayarla' slug s.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="varsayilan" value="{% if s.varsayilan %}0{% else %}1{% endif %}">
+            <input type="checkbox" style="width:auto;min-height:0" {% if s.varsayilan %}checked{% endif %} onchange="this.form.varsayilan.value=this.checked?'1':'0';this.form.submit();" title="Yeni teklifte önceden seçili gelsin">
+          </form>
+        </td>
         <td><span class="islem-bag">
           <a href="{% url 'core:secenek_duzenle' slug s.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:secenek_sil' slug s.pk %}" onsubmit="return confirm('Silinsin mi?');">
@@ -34,7 +41,7 @@
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="{% if kod_var %}5{% else %}4{% endif %}" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="{% if kod_var %}6{% else %}5{% endif %}" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

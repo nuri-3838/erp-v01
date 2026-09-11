@@ -3620,7 +3620,7 @@ def secenek_ekle(request, slug):
                 cd = form.cleaned_data
                 tanim_servis.secenek_olustur(
                     kategori, ad=cd["ad"], kod=cd.get("kod", ""), ad_en=cd.get("ad_en", ""),
-                    sira=cd["sira"], kullanici=request.user)
+                    sira=cd["sira"], varsayilan=cd["varsayilan"], kullanici=request.user)
                 messages.success(request, f"{baslik} eklendi.")
                 return redirect("core:secenek_listesi", slug=slug)
             except tanim_servis.TanimHatasi as e:
@@ -3642,16 +3642,35 @@ def secenek_duzenle(request, slug, pk):
                 cd = form.cleaned_data
                 tanim_servis.secenek_guncelle(
                     s, ad=cd["ad"], kod=cd.get("kod", ""), ad_en=cd.get("ad_en", ""),
-                    sira=cd["sira"], kullanici=request.user)
+                    sira=cd["sira"], varsayilan=cd["varsayilan"], kullanici=request.user)
                 messages.success(request, f"{baslik} güncellendi.")
                 return redirect("core:secenek_listesi", slug=slug)
             except tanim_servis.TanimHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = TanimSecenegiForm(kategori=kategori, initial={
-            "ad": s.ad, "kod": s.kod, "ad_en": s.ad_en, "sira": s.sira})
+            "ad": s.ad, "kod": s.kod, "ad_en": s.ad_en, "sira": s.sira,
+            "varsayilan": s.varsayilan})
     return render(request, "core/tanim_secenek_form.html",
                   _secenek_ctx(slug, form=form, form_baslik=f"{baslik} Düzenle", duzenlenen=s))
+
+
+@yonetici_gerekli
+def secenek_varsayilan_ayarla(request, slug, pk):
+    """Tanım listesi ekranındaki satır içi 'Varsayılan' checkbox'ı — tam form açmadan tek
+    alanı değiştirir (kural 2). POST'ta checkbox işaretliyse True, yoksa False gelir."""
+    kategori, baslik, _ = _secenek_kategori(slug)
+    s = get_object_or_404(TanimSecenegi, pk=pk, silindi=False, kategori=kategori)
+    if request.method == "POST":
+        varsayilan = request.POST.get("varsayilan") == "1"
+        try:
+            tanim_servis.secenek_varsayilan_ayarla(s, varsayilan, kullanici=request.user)
+            messages.success(
+                request,
+                f"{s.ad} varsayılan yapıldı." if varsayilan else f"{s.ad} varsayılan olmaktan çıkarıldı.")
+        except tanim_servis.TanimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:secenek_listesi", slug=slug)
 
 
 @yonetici_gerekli

@@ -80,6 +80,8 @@ urlpatterns = [
     path("ayarlar/tanimlar/secenek/<slug:slug>/ekle/", views.secenek_ekle, name="secenek_ekle"),
     path("ayarlar/tanimlar/secenek/<slug:slug>/<int:pk>/duzenle/", views.secenek_duzenle,
          name="secenek_duzenle"),
+    path("ayarlar/tanimlar/secenek/<slug:slug>/<int:pk>/varsayilan/",
+         views.secenek_varsayilan_ayarla, name="secenek_varsayilan_ayarla"),
     path("ayarlar/tanimlar/secenek/<slug:slug>/<int:pk>/sil/", views.secenek_sil,
          name="secenek_sil"),
     path("ayarlar/tanimlar/tevkifat/", views.tevkifat_oranlari, name="tevkifat_oranlari"),

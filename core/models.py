@@ -976,6 +976,9 @@ class TanimSecenegi(TemelModel):
     # İngilizce teklif PDF'inde gösterilen karşılık; boşsa ``ad`` kullanılır.
     ad_en = models.CharField("ad (İngilizce)", max_length=200, blank=True, default="")
     sira = models.PositiveSmallIntegerField("sıra", default=0)
+    # Kategori başına EN FAZLA bir aktif satır True olabilir (bkz. constraint) — yeni Satış
+    # Teklifi formu açılırken ilgili alan bu satırla önceden seçili gelir.
+    varsayilan = models.BooleanField("varsayılan", default=False)
 
     class Meta:
         db_table = "tanim_secenegi"
@@ -990,6 +993,9 @@ class TanimSecenegi(TemelModel):
                 fields=["kategori", "kod"],
                 condition=models.Q(silindi=False) & ~models.Q(kod=""),
                 name="uq_tanim_secenegi_kategori_kod_aktif"),
+            models.UniqueConstraint(
+                fields=["kategori"], condition=models.Q(varsayilan=True, silindi=False),
+                name="uq_tanim_secenegi_varsayilan_kategori"),
         ]
 
     def __str__(self):

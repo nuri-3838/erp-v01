@@ -654,6 +654,8 @@ class TanimSecenegiForm(forms.Form):
                             required=False,
                             widget=forms.TextInput(attrs={"autocomplete": "off",
                                                           "placeholder": "boşsa Türkçe ad kullanılır"}))
+    varsayilan = forms.BooleanField(
+        label="Varsayılan (yeni teklifte önceden seçili gelsin)", required=False)
 
     def __init__(self, *args, kategori=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1412,12 +1414,14 @@ def _gecerlilik_varsayilan():
     return timezone.localdate() + timedelta(days=15)
 
 
-def _secenek_varsayilan(kategori, ad):
-    """Belirtilen kategori+ad ile eşleşen Tanım Listesi seçeneğinin pk'sını döner —
-    yeni Satış Teklifi açılırken önceden seçili gelsin diye. Eşleşme yoksa (yerel/farklı
-    seed ortamı) None döner, seçim boş kalır (zararsız)."""
+def _secenek_varsayilan(kategori):
+    """İlgili kategoride ``varsayilan=True`` işaretli seçeneğin pk'sını döner — yeni Satış
+    Teklifi açılırken ilgili alan önceden seçili gelsin diye (bkz. AYARLAR > Tanım
+    Listeleri'ndeki "Varsayılan" işaretleme). İşaretli satır yoksa None döner, seçim boş
+    kalır (zararsız — kural 4)."""
     def _al():
-        s = TanimSecenegi.objects.filter(kategori=kategori, ad=ad, silindi=False).first()
+        s = TanimSecenegi.objects.filter(
+            kategori=kategori, varsayilan=True, silindi=False).first()
         return s.pk if s else None
     return _al
 
@@ -1442,22 +1446,19 @@ class SatisTeklifBaslikForm(forms.Form):
     yukleme_sekli = forms.ModelChoiceField(
         label="Yükleme Şekli", queryset=TanimSecenegi.objects.none(), required=False,
         empty_label="— seçiniz —",
-        initial=_secenek_varsayilan(TanimSecenegi.Kategori.YUKLEME_SEKLI,
-                                    "EXW – KAYSERİ, TÜRKİYE"))
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.YUKLEME_SEKLI))
     odeme_kosulu = forms.ModelChoiceField(
         label="Ödeme Koşulu", queryset=TanimSecenegi.objects.none(), required=False,
         empty_label="— seçiniz —",
-        initial=_secenek_varsayilan(TanimSecenegi.Kategori.ODEME_KOSULU,
-                                    "%50 PEŞİN + %50 SEVKİYAT ÖNCESİ"))
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.ODEME_KOSULU))
     yukleme_tipi = forms.ModelChoiceField(
         label="Yükleme Tipi", queryset=TanimSecenegi.objects.none(), required=False,
         empty_label="— seçiniz —",
-        initial=_secenek_varsayilan(TanimSecenegi.Kategori.YUKLEME_TIPI, "TIR"))
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.YUKLEME_TIPI))
     teslim_suresi = forms.ModelChoiceField(
         label="Teslim Süresi", queryset=TanimSecenegi.objects.none(), required=False,
         empty_label="— seçiniz —",
-        initial=_secenek_varsayilan(TanimSecenegi.Kategori.TESLIM_SURESI,
-                                    "SİPARİŞ ONAYI SONRASI 20 İŞ GÜNÜ"))
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.TESLIM_SURESI))
     navlun_tutari = TRDecimalField(
         label="Navlun Tutarı", basamak=2, required=False,
         widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off",

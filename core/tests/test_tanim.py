@@ -8,7 +8,8 @@ from django.urls import reverse
 from core.models import HesapPlani, KdvOrani, TanimSecenegi, TevkifatOrani
 from core.services.tanim import (TanimHatasi, kdv_orani_olustur, kdv_orani_guncelle,
                                   secenek_guncelle, secenek_olustur, secenek_sil,
-                                  tevkifat_orani_olustur, tevkifat_orani_guncelle)
+                                  secenek_varsayilan_ayarla, tevkifat_orani_olustur,
+                                  tevkifat_orani_guncelle)
 
 
 def _hesap(kod="191", ad="İNDİRİLECEK KDV"):
@@ -173,6 +174,62 @@ class TanimSecenegiTest(TestCase):
         s.refresh_from_db()
         self.assertEqual((s.ad, s.sira), ("DENEME 2", 3))
 
+    def test_varsayilan_olusturunca_digerlerini_kapatir(self):
+        a = secenek_olustur("YUKLEME_SEKLI", ad="deneme a", varsayilan=True)
+        b = secenek_olustur("YUKLEME_SEKLI", ad="deneme b", varsayilan=True)
+        a.refresh_from_db()
+        self.assertFalse(a.varsayilan)
+        self.assertTrue(b.varsayilan)
+        # başka kategoride serbest — birbirini etkilemez
+        c = secenek_olustur("ODEME_KOSULU", ad="deneme c", varsayilan=True)
+        b.refresh_from_db()
+        self.assertTrue(b.varsayilan)
+        self.assertTrue(c.varsayilan)
+
+    def test_varsayilan_guncellemede_digerlerini_kapatir(self):
+        a = secenek_olustur("YUKLEME_SEKLI", ad="deneme a", varsayilan=True)
+        b = secenek_olustur("YUKLEME_SEKLI", ad="deneme b")
+        secenek_guncelle(b, ad="deneme b", varsayilan=True)
+        a.refresh_from_db()
+        self.assertFalse(a.varsayilan)
+        b.refresh_from_db()
+        self.assertTrue(b.varsayilan)
+
+    def test_varsayilan_ayarla_hizli_isaretleme(self):
+        a = secenek_olustur("YUKLEME_SEKLI", ad="deneme a", varsayilan=True)
+        b = secenek_olustur("YUKLEME_SEKLI", ad="deneme b")
+        secenek_varsayilan_ayarla(b, True)
+        a.refresh_from_db()
+        self.assertFalse(a.varsayilan)
+        b.refresh_from_db()
+        self.assertTrue(b.varsayilan)
+        # kaldırınca BAŞKA bir satır otomatik varsayılan yapılmaz (kural 4)
+        secenek_varsayilan_ayarla(b, False)
+        b.refresh_from_db()
+        self.assertFalse(b.varsayilan)
+        self.assertFalse(TanimSecenegi.objects.filter(
+            kategori="YUKLEME_SEKLI", varsayilan=True).exists())
+
+    def test_teslim_suresi_de_kullanimdaysa_silinemez(self):
+        import datetime
+        from core.models import Birim, Cari, Kategori, Stok
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        _hesap("120.08", "MÜŞTERİ8")
+        cari = Cari.objects.create(kod="C8", unvan="MÜŞTERİ8", muhasebe_kodu="120.08")
+        kat = Kategori.objects.create(kod="K8", ad="GENEL8")
+        birim = Birim.objects.create(ad="ADET8", kisa_ad="AD8", ondalik=0)
+        stok = Stok.objects.create(kod="S8", ad="Y", kategori=kat, uretim_birimi=birim,
+                                   fatura_birimi=birim)
+        teslim = TanimSecenegi.objects.filter(kategori="TESLIM_SURESI").first()
+        if teslim is None:
+            teslim = secenek_olustur("TESLIM_SURESI", ad="15 GÜN")
+        teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=cari.pk, tarih=datetime.date(2026, 9, 7),
+            satirlar=[{"stok_id": stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            teslim_suresi_id=teslim.pk)
+        with self.assertRaises(TanimHatasi):
+            secenek_sil(teslim)
+
     def test_teklifte_kullanilan_secenek_silinemez(self):
         import datetime
         from core.models import Birim, Cari, Kategori, Stok
@@ -229,7 +286,41 @@ class TanimSecenegiTest(TestCase):
             self.client.get(reverse("core:secenek_duzenle", args=["odeme-kosulu", sekil.pk])).status_code,
             404)
 
+    def test_view_varsayilan_isaretleme_listede_checkbox(self):
+        self.client.force_login(self.yon)
+        a = TanimSecenegi.objects.filter(kategori="YUKLEME_SEKLI")[0]
+        b = TanimSecenegi.objects.filter(kategori="YUKLEME_SEKLI")[1]
+        r = self.client.get(reverse("core:secenek_listesi", args=["yukleme-sekli"]))
+        self.assertContains(r, 'type="checkbox"')
+        r = self.client.post(
+            reverse("core:secenek_varsayilan_ayarla", args=["yukleme-sekli", a.pk]),
+            {"varsayilan": "1"})
+        self.assertEqual(r.status_code, 302)
+        a.refresh_from_db()
+        self.assertTrue(a.varsayilan)
+        r = self.client.post(
+            reverse("core:secenek_varsayilan_ayarla", args=["yukleme-sekli", b.pk]),
+            {"varsayilan": "1"})
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertFalse(a.varsayilan)                    # otomatik kapandı
+        self.assertTrue(b.varsayilan)
+        r = self.client.post(
+            reverse("core:secenek_varsayilan_ayarla", args=["yukleme-sekli", b.pk]),
+            {"varsayilan": "0"})
+        b.refresh_from_db()
+        self.assertFalse(b.varsayilan)                     # kapatınca kimse otomatik açılmaz
+        # başka kategorinin pk'sıyla çağrılırsa 404
+        odeme = TanimSecenegi.objects.filter(kategori="ODEME_KOSULU").first()
+        self.assertEqual(self.client.post(
+            reverse("core:secenek_varsayilan_ayarla", args=["yukleme-sekli", odeme.pk]),
+            {"varsayilan": "1"}).status_code, 404)
+
     def test_yonetici_olmayan_403(self):
         self.client.force_login(self.bos)
         self.assertEqual(
             self.client.get(reverse("core:secenek_listesi", args=["yukleme-tipi"])).status_code, 403)
+        a = TanimSecenegi.objects.filter(kategori="YUKLEME_SEKLI").first()
+        self.assertEqual(self.client.post(
+            reverse("core:secenek_varsayilan_ayarla", args=["yukleme-sekli", a.pk]),
+            {"varsayilan": "1"}).status_code, 403)
