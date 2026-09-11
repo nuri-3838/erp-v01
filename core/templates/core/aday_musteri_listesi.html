@@ -1,0 +1,162 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Aday Müşteriler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Aday Müşteriler{% endblock %}
+
+{% block content %}
+<style>
+  .ad-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+
+  .ad-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);
+    border-radius:18px; padding:1rem 1.1rem 1.1rem; margin-bottom:1.2rem; }
+
+  .ad-sekmeler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.9rem; }
+  .ad-sekme { display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .95rem;
+    border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8);
+    color:var(--metin-soluk); font-size:.85rem; font-weight:650; text-decoration:none;
+    transition:background .12s, color .12s, border-color .12s; }
+  .ad-sekme:hover { border-color:var(--turuncu); color:var(--metin); }
+  .ad-sekme.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; }
+  .ad-sekme .n { font-variant-numeric:tabular-nums; opacity:.8; }
+
+  .ad-arama-cubuk { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
+  .ad-alan-grup { display:flex; flex-direction:column; gap:.3rem; }
+  .ad-alan-grup label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--metin-soluk); }
+  .ad-arama-kutu { position:relative; flex:1 1 16rem; }
+  .ad-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
+    border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
+    font-size:.95rem; transition:border-color .15s, box-shadow .15s; box-sizing:border-box; }
+  .ad-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
+    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
+  .ad-arama-ikon { position:absolute; left:.85rem; bottom:.72rem; font-size:1rem; opacity:.55;
+    pointer-events:none; }
+  .ad-arama-temizle { display:none; }
+  .ad-arama-temizle.gorunur { display:inline-flex; }
+  .ad-btn-cubuk { display:flex; gap:.6rem; margin-left:auto; }
+
+  .ad-alt-cubuk { display:flex; align-items:center; justify-content:space-between; gap:1rem;
+    flex-wrap:wrap; margin:.9rem 0 .7rem; }
+  .ad-boyut-secici { display:flex; align-items:center; gap:.5rem; font-size:.85rem;
+    color:var(--metin-soluk); }
+  .ad-boyut-secici select { min-height:38px; width:auto; padding:.3rem .6rem; border-radius:10px; }
+
+  .ad-hucre { display:flex; align-items:center; gap:.65rem; }
+  .ad-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
+    font-size:1.05rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
+    border:1px solid rgba(33,56,95,.08); }
+  .ad-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
+  .ad-hucre .ad a { color:inherit; text-decoration:none; }
+  .ad-hucre .ad a:hover { color:var(--turuncu-koyu); }
+  .ad-hucre .alt { font-size:.78rem; color:var(--metin-soluk); }
+
+  #ad-tablo tbody tr:hover td { background:rgba(240,124,0,.05); }
+
+  .ad-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
+    margin-top:1rem; flex-wrap:wrap; }
+  .ad-sayfalama a, .ad-sayfalama span.simdiki { display:inline-flex; align-items:center;
+    justify-content:center; min-width:2.3rem; height:2.3rem; padding:0 .5rem; border-radius:10px;
+    text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .ad-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .ad-sayfalama a:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+  .ad-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
+  .ad-sayfalama span.uc { color:var(--metin-soluk); padding:0 .2rem; }
+  .ad-sayfalama a.uc-uc { border:none; background:none; font-weight:700; }
+</style>
+
+<div class="ad-ust">
+  <h1 class="ust-baslik"><span class="emoji">🧲</span>Aday Müşteriler</h1>
+  <a class="dugme" href="{% url 'core:aday_musteri_ekle' %}">+ Yeni</a>
+</div>
+
+<div class="ad-panel">
+  <div class="ad-sekmeler">
+    <a class="ad-sekme{% if not asama %} aktif{% endif %}" href="?{{ sekme_qs }}">Tümü <span class="n">{{ toplam }}</span></a>
+    {% for s in asama_sekmeleri %}
+      <a class="ad-sekme{% if asama == s.kod %} aktif{% endif %}" href="?asama={{ s.kod }}&{{ sekme_qs }}">{{ s.ad }} <span class="n">{{ s.n }}</span></a>
+    {% endfor %}
+  </div>
+
+  <form method="get" class="ad-arama-cubuk" id="ad-arama-form">
+    {% if asama %}<input type="hidden" name="asama" value="{{ asama }}">{% endif %}
+    <div class="ad-alan-grup ad-arama-kutu">
+      <label for="ad-arama">Ara</label>
+      <span class="ad-arama-ikon">🔍</span>
+      <input type="text" id="ad-arama" name="ara" value="{{ ara }}"
+             placeholder="Unvan, ilgili kişi, telefon, e-posta…" autocomplete="off">
+    </div>
+    <div class="ad-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      <a class="iptal-bag ad-arama-temizle{% if ara or asama %} gorunur{% endif %}" href="?">Temizle</a>
+    </div>
+  </form>
+</div>
+
+<div class="ad-alt-cubuk">
+  <p class="sayfa-alt" style="margin:0">{{ kayitlar.paginator.count }} kayıt{% if kayitlar.paginator.num_pages > 1 %} · sayfa {{ kayitlar.number }}/{{ kayitlar.paginator.num_pages }}{% endif %}.</p>
+  <form method="get" class="ad-boyut-secici">
+    {% if asama %}<input type="hidden" name="asama" value="{{ asama }}">{% endif %}
+    {% if ara %}<input type="hidden" name="ara" value="{{ ara }}">{% endif %}
+    <label for="ad-boyut">Sayfa başına</label>
+    <select id="ad-boyut" name="boyut" onchange="this.form.submit()">
+      {% for b in sayfa_boyutlari %}<option value="{{ b }}" {% if b == boyut %}selected{% endif %}>{{ b }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="tablo-kapsayici">
+<table id="ad-tablo">
+  <thead><tr>
+    <th>Unvan</th><th>İletişim</th><th>Aşama</th><th>Sorumlu</th><th>Sonraki Takip</th><th>İşlem</th>
+  </tr></thead>
+  <tbody>
+    {% for a in kayitlar %}
+      <tr>
+        <td>
+          <div class="ad-hucre">
+            <span class="ad-ikon">🧲</span>
+            <div>
+              <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a></div>
+              {% if a.ilgili_kisi %}<div class="alt">{{ a.ilgili_kisi }}</div>{% endif %}
+            </div>
+          </div>
+        </td>
+        <td>{% if a.telefon %}{{ a.telefon }}{% endif %}{% if a.telefon and a.eposta %}<br>{% endif %}{% if a.eposta %}<span class="alt">{{ a.eposta }}</span>{% endif %}{% if not a.telefon and not a.eposta %}<span class="pasif">—</span>{% endif %}</td>
+        <td><span class="rozet {% if a.asama == 'KAZANILDI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ a.get_asama_display }}</span></td>
+        <td>{% if a.sorumlu %}{{ a.sorumlu.get_full_name|default:a.sorumlu.username }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="mono">{{ a.sonraki_takip_tarihi|date:"d.m.Y"|default:"—" }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:aday_musteri_detay' a.pk %}">Detay</a>
+          <a href="{% url 'core:aday_musteri_duzenle' a.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:aday_musteri_sil' a.pk %}" onsubmit="return confirm('{{ a.unvan }} silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara or asama %}🔍 Bu süzgeçle eşleşen kayıt yok.
+        {% else %}🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if kayitlar.paginator.num_pages > 1 %}
+<div class="ad-sayfalama">
+  {% if kayitlar.number > 1 %}<a class="uc-uc" href="?sayfa=1&{{ sabit_qs }}">« İlk</a>{% endif %}
+  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}&{{ sabit_qs }}">‹</a>{% endif %}
+  {% for n in kayitlar.paginator.page_range %}
+    {% if n == kayitlar.number %}
+      <span class="simdiki">{{ n }}</span>
+    {% elif n >= kayitlar.number|add:"-2" and n <= kayitlar.number|add:"2" %}
+      <a href="?sayfa={{ n }}&{{ sabit_qs }}">{{ n }}</a>
+    {% elif n == 1 or n == kayitlar.paginator.num_pages %}
+      <a href="?sayfa={{ n }}&{{ sabit_qs }}">{{ n }}</a>
+    {% elif n == kayitlar.number|add:"-3" or n == kayitlar.number|add:"3" %}
+      <span class="uc">…</span>
+    {% endif %}
+  {% endfor %}
+  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}&{{ sabit_qs }}">›</a>{% endif %}
+  {% if kayitlar.number < kayitlar.paginator.num_pages %}<a class="uc-uc" href="?sayfa={{ kayitlar.paginator.num_pages }}&{{ sabit_qs }}">Son »</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

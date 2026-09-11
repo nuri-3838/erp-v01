@@ -53,6 +53,9 @@ MODULLER = (
         Ekran("birimler", "Birimler", "core:birimler"),
         Ekran("depolar", "Depolar", "core:depolar"),
     )),
+    Modul("CRM", "CRM", (
+        Ekran("aday_musteriler", "Aday Müşteriler", "core:aday_musteriler"),
+    )),
     Modul("CARILER", "Cariler", (
         Ekran("cariler", "Cariler", "core:cariler"),
         Ekran("cari_kategoriler", "Cari Kategorileri", "core:cari_kategoriler"),

@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
+    AdayAktiviteForm, AdayCariyeDonusturForm, AdayMusteriForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
@@ -30,6 +31,7 @@ from core.forms import (
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
 )
 from core.models import (
+    AdayAktivite, AdayMusteri,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
@@ -72,6 +74,7 @@ from core.services import cek as cek_servis
 from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import yemek_takibi as yemek_takibi_servis
+from core.services import aday as aday_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
     yonetici_mi,
@@ -3552,6 +3555,194 @@ def aktivite_ek_sil(request, pk):
     return redirect("core:aktivite_duzenle", pk=ek.aktivite_id)
 
 
+# --- CRM: Aday Müşteriler ----------------------------------------------------
+_ADAY_SAYFA_BOYUTLARI = (25, 50, 100, 200)
+
+
+def _aday_form_kw(cd):
+    """AdayMusteriForm cleaned_data -> aday servis kwargs (FK'ler -> *_id)."""
+    g = lambda x: x.pk if x else None
+    return dict(
+        unvan=cd["unvan"], ilgili_kisi=cd["ilgili_kisi"], telefon=cd["telefon"],
+        eposta=cd["eposta"], ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]),
+        kaynak_id=g(cd["kaynak"]), asama=cd["asama"], tahmini_deger=cd["tahmini_deger"],
+        para_birimi=cd["para_birimi"], sorumlu_id=g(cd["sorumlu"]),
+        sonraki_takip_tarihi=cd["sonraki_takip_tarihi"],
+        kaybedilme_nedeni=cd["kaybedilme_nedeni"], notlar=cd["notlar"])
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_musteriler(request):
+    ara = (request.GET.get("ara") or "").strip()
+    asama = request.GET.get("asama") or ""
+    if asama not in dict(AdayMusteri.Asama.choices):
+        asama = ""
+    try:
+        boyut = int(request.GET.get("boyut", 50))
+    except ValueError:
+        boyut = 50
+    if boyut not in _ADAY_SAYFA_BOYUTLARI:
+        boyut = 50
+    temel = aday_servis.aktif_aday_musteriler()
+    if ara:
+        buyuk = buyuk_harf_tr(ara)
+        temel = temel.filter(
+            Q(unvan__contains=buyuk) | Q(ilgili_kisi__contains=buyuk)
+            | Q(telefon__icontains=ara) | Q(eposta__icontains=ara))
+    # Aşama sayaçları — durum filtresinden ÖNCE, ham `temel` üzerinden (bkz. _ts_liste'deki
+    # kalem-JOIN sayaç şişme hatası — burada öyle bir JOIN yok ama aynı ihtiyat ilkesi geçerli).
+    sayimlar = {a: 0 for a, _ in AdayMusteri.Asama.choices}
+    for satir in temel.values("asama").annotate(n=Count("pk")):
+        sayimlar[satir["asama"]] = satir["n"]
+    asama_sekmeleri = [{"kod": kod, "ad": ad, "n": sayimlar.get(kod, 0)}
+                       for kod, ad in AdayMusteri.Asama.choices]
+    kayitlar = (temel.filter(asama=asama) if asama else temel).order_by("-created_at")
+    sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
+    sabit_qs = request.GET.copy()
+    sabit_qs.pop("sayfa", None)
+    sekme_qs = sabit_qs.copy()
+    sekme_qs.pop("asama", None)
+    return render(request, "core/aday_musteri_listesi.html", {
+        "kayitlar": sayfa, "ara": ara, "asama": asama, "boyut": boyut,
+        "sayfa_boyutlari": _ADAY_SAYFA_BOYUTLARI, "toplam": sum(sayimlar.values()),
+        "asama_sekmeleri": asama_sekmeleri,
+        "sabit_qs": sabit_qs.urlencode(), "sekme_qs": sekme_qs.urlencode()})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_musteri_ekle(request):
+    if request.method == "POST":
+        form = AdayMusteriForm(request.POST)
+        if form.is_valid():
+            try:
+                aday = aday_servis.aday_musteri_olustur(
+                    **_aday_form_kw(form.cleaned_data), kullanici=request.user)
+                messages.success(request, f"Aday müşteri eklendi: {aday.unvan}")
+                return redirect("core:aday_musteri_detay", pk=aday.pk)
+            except aday_servis.AdayHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayMusteriForm(initial={"para_birimi": "TRY"})
+    return render(request, "core/aday_musteri_form.html",
+                  {"form": form, "baslik": "Yeni Aday Müşteri"})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_musteri_duzenle(request, pk):
+    aday = get_object_or_404(AdayMusteri, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = AdayMusteriForm(request.POST)
+        if form.is_valid():
+            try:
+                aday_servis.aday_musteri_guncelle(
+                    aday, **_aday_form_kw(form.cleaned_data), kullanici=request.user)
+                messages.success(request, "Aday müşteri güncellendi.")
+                return redirect("core:aday_musteri_detay", pk=aday.pk)
+            except aday_servis.AdayHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayMusteriForm(initial={
+            "unvan": aday.unvan, "ilgili_kisi": aday.ilgili_kisi, "telefon": aday.telefon,
+            "eposta": aday.eposta, "ulke": aday.ulke_id, "sehir": aday.sehir_id,
+            "kaynak": aday.kaynak_id, "asama": aday.asama, "tahmini_deger": aday.tahmini_deger,
+            "para_birimi": aday.para_birimi, "sorumlu": aday.sorumlu_id,
+            "sonraki_takip_tarihi": aday.sonraki_takip_tarihi,
+            "kaybedilme_nedeni": aday.kaybedilme_nedeni, "notlar": aday.notlar})
+    return render(request, "core/aday_musteri_form.html",
+                  {"form": form, "baslik": "Aday Müşteri Düzenle", "duzenlenen": aday})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_musteri_detay(request, pk):
+    aday = get_object_or_404(
+        AdayMusteri.objects.select_related("ulke", "sehir", "kaynak", "sorumlu",
+                                           "donusen_cari"),
+        pk=pk, silindi=False)
+    return render(request, "core/aday_musteri_detay.html", {
+        "aday": aday, "aktiviteler": aday_servis.aktif_aday_aktiviteleri(aday)})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_musteri_sil(request, pk):
+    aday = get_object_or_404(AdayMusteri, pk=pk, silindi=False)
+    if request.method == "POST":
+        aday_servis.aday_musteri_sil(aday, kullanici=request.user)
+        messages.success(request, f"Aday müşteri silindi: {aday.unvan}")
+    return redirect("core:aday_musteriler")
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_cariye_donustur(request, pk):
+    aday = get_object_or_404(AdayMusteri, pk=pk, silindi=False)
+    if aday.donusen_cari_id:
+        messages.info(request, "Bu aday zaten bir cariye dönüştürülmüş.")
+        return redirect("core:cari_detay", pk=aday.donusen_cari_id)
+    if request.method == "POST":
+        form = AdayCariyeDonusturForm(request.POST)
+        if form.is_valid():
+            try:
+                kategori = form.cleaned_data["kategori"]
+                cari = aday_servis.aday_cariye_donustur(
+                    aday, kategori_id=kategori.pk if kategori else None,
+                    kullanici=request.user)
+                messages.success(request, f"Cariye dönüştürüldü: {cari.kod} — {cari.unvan}")
+                return redirect("core:cari_detay", pk=cari.pk)
+            except aday_servis.AdayHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayCariyeDonusturForm()
+    return render(request, "core/aday_cariye_donustur.html", {"form": form, "aday": aday})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_aktivite_ekle(request, aday_pk):
+    aday = get_object_or_404(AdayMusteri, pk=aday_pk, silindi=False)
+    if request.method == "POST":
+        form = AdayAktiviteForm(request.POST)
+        if form.is_valid():
+            try:
+                aday_servis.aday_aktivite_ekle(
+                    aday, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Aktivite eklendi.")
+                return redirect("core:aday_musteri_detay", pk=aday.pk)
+            except aday_servis.AdayHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayAktiviteForm()
+    return render(request, "core/aday_aktivite_form.html",
+                  {"form": form, "baslik": "Yeni Aktivite", "aday": aday})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_aktivite_duzenle(request, pk):
+    aktivite = get_object_or_404(AdayAktivite, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = AdayAktiviteForm(request.POST)
+        if form.is_valid():
+            try:
+                aday_servis.aday_aktivite_guncelle(
+                    aktivite, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Aktivite güncellendi.")
+                return redirect("core:aday_musteri_detay", pk=aktivite.aday_id)
+            except aday_servis.AdayHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayAktiviteForm(initial={
+            "tarih": aktivite.tarih, "tur": aktivite.tur, "aciklama": aktivite.aciklama})
+    return render(request, "core/aday_aktivite_form.html", {
+        "form": form, "baslik": "Aktivite Düzenle", "aday": aktivite.aday,
+        "aktivite": aktivite})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_aktivite_sil(request, pk):
+    aktivite = get_object_or_404(AdayAktivite, pk=pk, silindi=False)
+    if request.method == "POST":
+        aday_servis.aday_aktivite_sil(aktivite, kullanici=request.user)
+        messages.success(request, "Aktivite silindi.")
+    return redirect("core:aday_musteri_detay", pk=aktivite.aday_id)
+
+
 # --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------
 def _hesap_kodu(cd, alan="hesap"):
     h = cd.get(alan)
@@ -3635,6 +3826,7 @@ _SECENEK_KATEGORI = {
     "odeme-kosulu": (TanimSecenegi.Kategori.ODEME_KOSULU, "Ödeme Koşulları", "💳"),
     "yukleme-tipi": (TanimSecenegi.Kategori.YUKLEME_TIPI, "Yükleme Tipi", "🚚"),
     "teslim-suresi": (TanimSecenegi.Kategori.TESLIM_SURESI, "Teslim Süresi", "🕒"),
+    "aday-kaynagi": (TanimSecenegi.Kategori.ADAY_KAYNAGI, "Aday Kaynağı", "🧲"),
 }
 
 

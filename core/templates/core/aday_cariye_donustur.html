@@ -1,0 +1,36 @@
+{% extends "core/base.html" %}
+{% block baslik %}Cariye Dönüştür · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Cariye Dönüştür{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:aday_musteri_detay' aday.pk %}">← {{ aday.unvan }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🎉</span>Cariye Dönüştür</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <section class="icerik-kart">
+    <p>
+      <strong>{{ aday.unvan }}</strong> gerçek bir Cari kaydına dönüştürülecek — bu noktada
+      hesap planında otomatik muhasebe hesabı açılır. Aday kaydı silinmez, geçmişe dönük
+      referans olarak kalır.
+    </p>
+    <form method="post" autocomplete="off" style="display:contents">
+      {% csrf_token %}
+      <div class="izgara" style="margin-top:1rem">
+        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div>
+          <p class="yardim">Boş bırakılırsa otomatik CAR-NNNN kodu verilir.</p></div>
+      </div>
+      <div class="form-altbar">
+        <a class="iptal-bag" href="{% url 'core:aday_musteri_detay' aday.pk %}">İptal</a>
+        <button type="submit" class="birincil">Cariye Dönüştür</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -16,7 +16,8 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Banka, BankaHesap, Birim, Cari, CariAktivite, CariKategori, CekSenet, Depo, FaturaTipi,
+    AdayAktivite, AdayMusteri, Banka, BankaHesap, Birim, Cari, CariAktivite, CariKategori,
+    CekSenet, Depo, FaturaTipi,
     HesapPlani, Kasa, Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
 )
@@ -525,6 +526,76 @@ class CariForm(forms.Form):
         self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
         for f in ("kategori", "ulke", "sehir"):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
+
+
+class AdayMusteriForm(forms.Form):
+    """Aday müşteri (CRM) ekle/düzenle. TR büyük harf serviste."""
+
+    _K = {"autocomplete": "off"}
+    unvan = forms.CharField(label="Unvan / Ad Soyad", max_length=200,
+                            widget=forms.TextInput(attrs=_K))
+    ilgili_kisi = forms.CharField(label="İlgili Kişi", max_length=120, required=False,
+                                  widget=forms.TextInput(attrs=_K))
+    telefon = forms.CharField(label="Telefon", max_length=20, required=False,
+                              widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    eposta = forms.EmailField(label="E-posta", required=False,
+                              widget=forms.EmailInput(attrs=_K))
+    ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
+                                  required=False, empty_label="— ülke seç —")
+    sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
+                                   required=False, empty_label="— şehir seç —")
+    kaynak = forms.ModelChoiceField(label="Kaynak", queryset=TanimSecenegi.objects.none(),
+                                    required=False, empty_label="— seçiniz —")
+    asama = forms.ChoiceField(label="Aşama", choices=AdayMusteri.Asama.choices)
+    tahmini_deger = TRDecimalField(label="Tahmini Değer", basamak=2, required=False)
+    para_birimi = forms.ChoiceField(label="Para Birimi", choices=AdayMusteri.PARA_CHOICES,
+                                    initial="TRY")
+    sorumlu = forms.ModelChoiceField(
+        label="Sorumlu", queryset=User.objects.filter(is_active=True).order_by("username"),
+        required=False, empty_label="— seçiniz —")
+    sonraki_takip_tarihi = forms.DateField(
+        label="Sonraki Takip Tarihi", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    kaybedilme_nedeni = forms.CharField(label="Kaybedilme Nedeni", max_length=200,
+                                        required=False, widget=forms.TextInput(attrs=_K))
+    notlar = forms.CharField(label="Notlar", required=False,
+                             widget=forms.Textarea(attrs={"rows": 4, **_K}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
+        self.fields["ulke"].queryset = aktif_ulkeler()
+        self.fields["sehir"].queryset = aktif_sehirler()
+        self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
+        self.fields["kaynak"].queryset = TanimSecenegi.objects.filter(
+            silindi=False, kategori=TanimSecenegi.Kategori.ADAY_KAYNAGI).order_by("sira", "ad")
+        for f in ("ulke", "sehir", "kaynak", "sorumlu"):
+            self.fields[f].widget.attrs["class"] = "akilli-sec"
+
+
+class AdayAktiviteForm(forms.Form):
+    """Aday aktivite (görüşme/temas) ekle/düzenle."""
+
+    tarih = forms.DateField(
+        label="Tarih", initial=timezone.localdate,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    tur = forms.ChoiceField(label="Tür", choices=AdayAktivite.Tur.choices)
+    aciklama = forms.CharField(label="Açıklama", widget=forms.Textarea(attrs={"rows": 4}))
+
+
+class AdayCariyeDonusturForm(forms.Form):
+    """Aday müşteriyi gerçek Cari'ye dönüştürürken kategori seçimi (muhasebe hesap kodu
+    kategoriden türer — bkz. cari_servis.muhasebe_hesabi_ac)."""
+
+    kategori = forms.ModelChoiceField(label="Kategori", queryset=CariKategori.objects.none(),
+                                      required=False, empty_label="— kategori seç —")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cari_kategori import aktif_cari_kategoriler
+        self.fields["kategori"].queryset = aktif_cari_kategoriler().filter(ust__isnull=False)
+        self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
+        self.fields["kategori"].widget.attrs["class"] = "akilli-sec"
 
 
 class CariSevkAdresiForm(forms.Form):

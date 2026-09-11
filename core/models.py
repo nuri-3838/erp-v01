@@ -922,6 +922,91 @@ class CariAktiviteEk(TemelModel):
         return self.dosya.name.lower().endswith(".webp")
 
 
+class AdayMusteri(TemelModel):
+    """CRM: henüz Cari olmamış potansiyel müşteri. Kasıtlı olarak Cari'den ayrı ve HAFİF —
+    Cari.kaydı açılınca otomatik muhasebe hesabı açılır (bkz. cari_servis.muhasebe_hesabi_ac),
+    bu adaylar için yanlış olur. Aşama "Kazanıldı" olunca ``cariye_donustur`` servisi gerçek
+    bir Cari açar ve ``donusen_cari``'yi set eder — kayıt silinmez, iz kalır (TeklifSiparis'in
+    kaynak_teklif/kaynak_siparis self-FK desenindeki gibi)."""
+
+    class Asama(models.TextChoices):
+        YENI = "YENI", "Yeni"
+        ILETISIMDE = "ILETISIMDE", "İletişimde"
+        TEKLIF_VERILDI = "TEKLIF_VERILDI", "Teklif Verildi"
+        MUZAKERE = "MUZAKERE", "Müzakere"
+        KAZANILDI = "KAZANILDI", "Kazanıldı"
+        KAYBEDILDI = "KAYBEDILDI", "Kaybedildi"
+
+    PARA_CHOICES = YevmiyeSatir.IslemPB.choices
+
+    unvan = models.CharField("unvan / ad soyad", max_length=200)
+    ilgili_kisi = models.CharField("ilgili kişi", max_length=120, blank=True, default="")
+    telefon = models.CharField("telefon", max_length=20, blank=True, default="")
+    eposta = models.EmailField("e-posta", blank=True, default="")
+    ulke = models.ForeignKey(
+        "Ulke", verbose_name="ülke", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="aday_musteriler")
+    sehir = models.ForeignKey(
+        "Sehir", verbose_name="şehir", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="aday_musteriler")
+    kaynak = models.ForeignKey(
+        "TanimSecenegi", verbose_name="kaynak", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    asama = models.CharField("aşama", max_length=15, choices=Asama.choices,
+                             default=Asama.YENI)
+    tahmini_deger = models.DecimalField(
+        "tahmini değer", max_digits=18, decimal_places=2, null=True, blank=True)
+    para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES,
+                                   default="TRY")
+    sorumlu = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="sorumlu", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="sorumlu_adaylar")
+    sonraki_takip_tarihi = models.DateField("sonraki takip tarihi", null=True, blank=True)
+    kaybedilme_nedeni = models.CharField("kaybedilme nedeni", max_length=200, blank=True,
+                                         default="")
+    notlar = models.TextField("notlar", blank=True, default="")
+    # Kazanıldığında açılan gerçek Cari — dönüşüm tek seferlik, servis tekrar dönüştürmeyi
+    # engeller (TeklifSiparis.kaynak_teklif ile aynı invariant).
+    donusen_cari = models.ForeignKey(
+        Cari, verbose_name="dönüşen cari", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="aday_kaynagi")
+
+    class Meta:
+        db_table = "aday_musteri"
+        verbose_name = "aday müşteri"
+        verbose_name_plural = "aday müşteriler"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.unvan
+
+
+class AdayAktivite(TemelModel):
+    """Adayla yapılan görüşme/temas kaydı (çoklu) — CariAktivite ile aynı desen."""
+
+    class Tur(models.TextChoices):
+        GORUSME = "GORUSME", "Görüşme"
+        TELEFON = "TELEFON", "Telefon"
+        TOPLANTI = "TOPLANTI", "Toplantı"
+        EPOSTA = "EPOSTA", "E-posta"
+        NOT = "NOT", "Not"
+
+    aday = models.ForeignKey(AdayMusteri, verbose_name="aday", related_name="aktiviteler",
+                             on_delete=models.CASCADE)
+    tarih = models.DateField("tarih")
+    tur = models.CharField("tür", max_length=10, choices=Tur.choices, default=Tur.NOT)
+    aciklama = models.TextField("açıklama")
+
+    class Meta:
+        db_table = "aday_aktivite"
+        verbose_name = "aday aktivite"
+        verbose_name_plural = "aday aktiviteler"
+        ordering = ["-tarih", "-id"]
+
+    def __str__(self):
+        return f"{self.aday.unvan} — {self.get_tur_display()} ({self.tarih})"
+
+
 # === AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) ===
 class KdvOrani(TemelModel):
     """KDV oranı tanımı — otomatik yevmiyede indirilecek/hesaplanan KDV hesabını besler."""
@@ -966,6 +1051,7 @@ class TanimSecenegi(TemelModel):
         ODEME_KOSULU = "ODEME_KOSULU", "Ödeme Koşulu"
         YUKLEME_TIPI = "YUKLEME_TIPI", "Yükleme Tipi"
         TESLIM_SURESI = "TESLIM_SURESI", "Teslim Süresi"
+        ADAY_KAYNAGI = "ADAY_KAYNAGI", "Aday Kaynağı"
 
     # Yükleme Tipi kodu -> Stok'taki "bu tipe kaç adet sığar" alanı.
     YUKLEME_ALANI = {"20DC": "yukleme_20dc", "40HQ": "yukleme_40hq", "TIR": "yukleme_tir"}

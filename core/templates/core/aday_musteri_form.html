@@ -1,0 +1,53 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:aday_musteriler' %}">← Aday Müşteriler</a>
+    <h1 class="ust-baslik"><span class="emoji">🧲</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kimlik / İletişim</h2>
+      <div class="izgara">
+        <div class="alan tam"><label for="{{ form.unvan.id_for_label }}">{{ form.unvan.label }} <span class="zorunlu">*</span></label>{{ form.unvan }}{% for e in form.unvan.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.ilgili_kisi.id_for_label }}">{{ form.ilgili_kisi.label }}</label>{{ form.ilgili_kisi }}</div>
+        <div class="alan"><label for="{{ form.telefon.id_for_label }}">{{ form.telefon.label }}</label>{{ form.telefon }}</div>
+        <div class="alan"><label for="{{ form.eposta.id_for_label }}">{{ form.eposta.label }}</label>{{ form.eposta }}{% for e in form.eposta.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
+        <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📊</span>Satış Süreci</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.kaynak.id_for_label }}">{{ form.kaynak.label }}</label><div class="akilli">{{ form.kaynak }}</div></div>
+        <div class="alan"><label for="{{ form.asama.id_for_label }}">{{ form.asama.label }}</label>{{ form.asama }}</div>
+        <div class="alan"><label for="{{ form.sorumlu.id_for_label }}">{{ form.sorumlu.label }}</label><div class="akilli">{{ form.sorumlu }}</div></div>
+        <div class="alan"><label for="{{ form.sonraki_takip_tarihi.id_for_label }}">{{ form.sonraki_takip_tarihi.label }}</label>{{ form.sonraki_takip_tarihi }}</div>
+        <div class="alan"><label for="{{ form.tahmini_deger.id_for_label }}">{{ form.tahmini_deger.label }}</label>{{ form.tahmini_deger }}{% for e in form.tahmini_deger.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}</div>
+        <div class="alan tam"><label for="{{ form.kaybedilme_nedeni.id_for_label }}">{{ form.kaybedilme_nedeni.label }}</label>{{ form.kaybedilme_nedeni }}
+          <p class="yardim">Yalnız aşama “Kaybedildi” olduğunda anlamlıdır.</p></div>
+        <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:aday_musteriler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
