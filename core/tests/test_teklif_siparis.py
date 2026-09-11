@@ -549,6 +549,28 @@ class TeklifSiparisViewTest(TestCase):
         for ad in EKRANLAR:
             self.assertEqual(self.client.get(reverse("core:" + ad)).status_code, 200)
 
+    def test_liste_durum_sekme_sayaci_kalem_sayisindan_etkilenmez(self):
+        """Regresyon: durum sekmelerindeki sayaç (Tümü/Taslak/Onaylı), teklifin kaç kalemi
+        olduğuna bakmaksızın gerçek BELGE sayısını göstermeli — kalem_sayisi/donustu JOIN'i
+        eklendikten SONRA sayılırsa her teklif kendi kalem sayısı kadar tekrar sayılır (ör.
+        1 teklif × 3 kalem -> yanlışlıkla '3' görünür)."""
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        stoklar = [Stok.objects.create(
+            kod=f"SREG{i}", ad=f"ÇOK KALEM ÜRÜN {i}", kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.birim, fatura_birimi=self.birim,
+            created_by=self.yon, updated_by=self.yon) for i in range(3)]
+        teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": s.pk, "miktar": "1", "birim_fiyat": "10"} for s in stoklar],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertContains(r, "Tümü <span class=\"n\">1</span>")
+        self.assertContains(r, "Taslak <span class=\"n\">1</span>")
+        self.assertContains(r, "1 kayıt.")
+
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)
         for ad in EKRANLAR:

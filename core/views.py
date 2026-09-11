@@ -1883,10 +1883,7 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         donustu_etiket = "🔁 Siparişe Dönüştü"
     else:
         donusen_var = TeklifSiparis.objects.filter(pk=-1)   # her zaman boş — geçerli pk asla negatif değil
-    temel = (teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
-             .annotate(donustu=Exists(donusen_var))
-             .annotate(kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)))
-             .prefetch_related("kalemler__kdv", "kalemler__tevkifat"))
+    temel = teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
     if ara:
         buyuk = buyuk_harf_tr(ara)
         temel = temel.filter(
@@ -1897,13 +1894,19 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     if tarih_bit:
         temel = temel.filter(tarih__lte=tarih_bit)
     # Durum sayaçları (rozet/sekme) arama+tarih süzgecine göre, durum filtresinden ÖNCE —
-    # her sekmenin kaç kayıt getireceğini kullanıcı durumu değiştirmeden görsün.
+    # her sekmenin kaç kayıt getireceğini kullanıcı durumu değiştirmeden görsün. ÖNEMLİ:
+    # bu, kalem_sayisi/donustu JOIN'leri EKLENMEDEN ÖNСЕ, ham `temel` üzerinden hesaplanır —
+    # aksi halde Count("pk") her teklifi kendi kalem satırı sayısı kadar tekrar sayar
+    # (ör. 4 teklif × ~11-14 kalem ≈ 55 gibi yanlış, şişirilmiş bir sayı çıkar).
     sayimlar = {d: 0 for d, _ in TeklifSiparis.Durum.choices}
     for satir in temel.values("durum").annotate(n=Count("pk")):
         sayimlar[satir["durum"]] = satir["n"]
     durum_sekmeleri = [{"kod": kod, "ad": ad, "n": sayimlar.get(kod, 0)}
                        for kod, ad in TeklifSiparis.Durum.choices]
-    kayitlar = temel.filter(durum=durum) if durum else temel
+    kayitlar = (temel.filter(durum=durum) if durum else temel).annotate(
+        donustu=Exists(donusen_var),
+        kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)),
+    ).prefetch_related("kalemler__kdv", "kalemler__tevkifat")
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
     # sayfa linkleri: sayfa DIŞINDAKİ her şeyi (durum dahil) korur — yalnız sayfa değişir.
     sabit_qs = request.GET.copy()
