@@ -198,9 +198,9 @@ class TanimSecenegiTest(TestCase):
     def test_view_liste_ekle_duzenle_sil(self):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:tanim_listeleri"))
-        for ad in ("Yükleme Şekli", "Ödeme Koşulları", "Yükleme Tipi"):
+        for ad in ("Yükleme Şekli", "Ödeme Koşulları", "Yükleme Tipi", "Teslim Süresi"):
             self.assertContains(r, ad)
-        for slug in ("yukleme-sekli", "odeme-kosulu", "yukleme-tipi"):
+        for slug in ("yukleme-sekli", "odeme-kosulu", "yukleme-tipi", "teslim-suresi"):
             self.assertEqual(
                 self.client.get(reverse("core:secenek_listesi", args=[slug])).status_code, 200)
         self.assertEqual(

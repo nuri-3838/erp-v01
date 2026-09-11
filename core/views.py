@@ -3589,6 +3589,7 @@ _SECENEK_KATEGORI = {
     "yukleme-sekli": (TanimSecenegi.Kategori.YUKLEME_SEKLI, "Yükleme Şekli", "🚢"),
     "odeme-kosulu": (TanimSecenegi.Kategori.ODEME_KOSULU, "Ödeme Koşulları", "💳"),
     "yukleme-tipi": (TanimSecenegi.Kategori.YUKLEME_TIPI, "Yükleme Tipi", "🚚"),
+    "teslim-suresi": (TanimSecenegi.Kategori.TESLIM_SURESI, "Teslim Süresi", "🕒"),
 }
 
 
