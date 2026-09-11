@@ -2474,7 +2474,7 @@ def teklif_siparis_pdf(request, pk):
 _PDF_ETIKET = {
     "tr": {
         "baslik": "Teklif Detayı", "alt_baslik": "Fiyat Teklifi / QUOTATION",
-        "alici": "Alıcı", "satici": "Satıcı", "unvan": "Unvan", "ilgili_kisi": "Adı Soyadı",
+        "alici": "Alıcı", "satici": "Satıcı", "unvan": "Unvan", "ilgili_kisi": "İlgili Kişi",
         "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon", "web": "Web Sitesi",
         "eposta": "E-posta", "hazirlayan": "Hazırlayan",
         "teklif_no": "Teklif No", "tarih": "Tarih",
@@ -2497,8 +2497,7 @@ _PDF_ETIKET = {
                        "dağıtılmıştır."),
         "not_agirlik_tolerans": "Ürün ve ambalaj ağırlıklarında ±%5 tolerans olabilir.",
         "not_yukleme_tahmini": ("20'DC/40'HQ/TIR yükleme adetleri tahminidir; ambalaj ve "
-                                "istifleme düzenine göre değişebilir (TIR: standart tenteli "
-                                "römork)."),
+                                "istifleme düzenine göre değişebilir."),
         "not_cbm": "CBM, ambalajlı ürün başına hacmi ifade eder.",
         "not_gecerlilik_varsayilan": "Teklif, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Fiyatlar {tarih} tarihine kadar geçerlidir.",
@@ -2529,8 +2528,7 @@ _PDF_ETIKET = {
                        "fits the selected loading type."),
         "not_agirlik_tolerans": "Product and package weights may vary by ±5%.",
         "not_yukleme_tahmini": ("20'DC/40'HQ/Truck loading quantities are estimated and may "
-                                "vary depending on packaging and stacking (Truck: standard "
-                                "tautliner)."),
+                                "vary depending on packaging and stacking."),
         "not_cbm": "CBM refers to the volume per packaged unit.",
         "not_gecerlilik_varsayilan": "This quotation is binding until the validity date.",
         "not_gecerlilik_tarihli": "Prices are valid until {tarih}.",

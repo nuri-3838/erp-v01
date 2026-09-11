@@ -461,7 +461,7 @@ class SatisTeklifTest(TestCase):
         ctx = {"ts": ts, "kalemler": kalemler, "sat_teklif": True,
               **satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)}
         html = render_to_string("core/satis_teklif_pdf.html", ctx)
-        self.assertNotIn("Adı Soyadı", html)
+        self.assertNotIn("İlgili Kişi", html)
         self.cari.ilgili_kisi = "AYŞE YILMAZ"
         self.cari.save(update_fields=["ilgili_kisi"])
         ts2 = self._son_teklif()
@@ -469,7 +469,7 @@ class SatisTeklifTest(TestCase):
         ctx2 = {"ts": ts2, "kalemler": kalemler2, "sat_teklif": True,
                **satis_teklif_pdf_baglam(ts2, kalemler2, "tr", self.yon)}
         html2 = render_to_string("core/satis_teklif_pdf.html", ctx2)
-        self.assertIn("Adı Soyadı", html2)
+        self.assertIn("İlgili Kişi", html2)
         self.assertIn("AYŞE YILMAZ", html2)
 
     def test_basamak_goster(self):
