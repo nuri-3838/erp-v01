@@ -313,9 +313,9 @@ class SatisTeklifTest(TestCase):
         self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
         ts = self._son_teklif()
         for dil, beklenen in (
-            ("tr", ["SATIŞ TEKLİFİ", "FOB İZMİR", "Fiyatlara", "40&#x27; HQ KONTEYNER",
+            ("tr", ["Teklif Detayı", "FOB İZMİR", "Fiyatlara", "40&#x27; HQ KONTEYNER",
                    "navlunu dahildir", "2+2"]),
-            ("en", ["QUOTATION", "FOB Izmir", "Prices include freight for",
+            ("en", ["Quotation Details", "FOB Izmir", "Prices include freight for",
                    "40&#x27; HQ Container", "Aluminium Platform Stepladder 2+1",
                    "Double-Sided Aluminium Stepladder 2+2", "Platform Height", "2+2"]),
         ):

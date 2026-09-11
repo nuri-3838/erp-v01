@@ -2475,7 +2475,7 @@ def teklif_siparis_pdf(request, pk):
 # Satış Teklifi PDF'i etiketleri — kullanıcı çıktıyı TR ya da EN seçer (?dil=).
 _PDF_ETIKET = {
     "tr": {
-        "baslik": "SATIŞ TEKLİFİ", "alt_baslik": "Fiyat Teklifi / Quotation",
+        "baslik": "Teklif Detayı", "alt_baslik": "Fiyat Teklifi / QUOTATION",
         "alici": "Alıcı", "satici": "Satıcı", "unvan": "Unvan",
         "ulke": "Ülke", "adres": "Adres", "telefon": "Telefon", "web": "Web Sitesi",
         "eposta": "E-posta", "hazirlayan": "Hazırlayan",
@@ -2508,7 +2508,7 @@ _PDF_ETIKET = {
         "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Satış Teklifi",
     },
     "en": {
-        "baslik": "QUOTATION", "alt_baslik": "Sales Quotation",
+        "baslik": "Quotation Details", "alt_baslik": "Sales Quotation",
         "alici": "To", "satici": "From", "unvan": "Company",
         "ulke": "Country", "adres": "Address", "telefon": "Phone", "web": "Website",
         "eposta": "E-mail", "hazirlayan": "Prepared by",
