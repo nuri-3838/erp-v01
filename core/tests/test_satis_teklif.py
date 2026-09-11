@@ -98,6 +98,24 @@ class SatisTeklifTest(TestCase):
         self.assertContains(r, "FOB İZMİR")
         self.assertContains(r, "40&#x27; HQ KONTEYNER")
 
+    def test_get_varsayilan_yukleme_odeme_teslim_onceden_secili(self):
+        """Yeni Satış Teklifi açılırken Yükleme Şekli/Ödeme Koşulu/Yükleme Tipi/Teslim
+        Süresi, ilgili kategoride tam metinle eşleşen bir seçenek varsa önceden seçili
+        gelir (kullanıcının en sık kullandığı kombinasyon — bkz. _secenek_varsayilan)."""
+        exw = TanimSecenegi.objects.create(
+            kategori="YUKLEME_SEKLI", ad="EXW – KAYSERİ, TÜRKİYE", sira=99)
+        yuzde50 = _secenek("ODEME_KOSULU", ad="%50 PEŞİN + %50 SEVKİYAT ÖNCESİ")
+        teslim20 = _secenek("TESLIM_SURESI", ad="SİPARİŞ ONAYI SONRASI 20 İŞ GÜNÜ")
+        self.assertIsNotNone(yuzde50)
+        self.assertIsNotNone(teslim20)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklif_ekle"))
+        bform = r.context["bform"]
+        self.assertEqual(bform["yukleme_sekli"].value(), exw.pk)
+        self.assertEqual(bform["odeme_kosulu"].value(), yuzde50.pk)
+        self.assertEqual(bform["yukleme_tipi"].value(), self.tip_tir.pk)
+        self.assertEqual(bform["teslim_suresi"].value(), teslim20.pk)
+
     def test_stok_meta_pb_basina_dogru_ve_eksikse_none(self):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:satis_teklif_ekle"))

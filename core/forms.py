@@ -1412,6 +1412,16 @@ def _gecerlilik_varsayilan():
     return timezone.localdate() + timedelta(days=15)
 
 
+def _secenek_varsayilan(kategori, ad):
+    """Belirtilen kategori+ad ile eşleşen Tanım Listesi seçeneğinin pk'sını döner —
+    yeni Satış Teklifi açılırken önceden seçili gelsin diye. Eşleşme yoksa (yerel/farklı
+    seed ortamı) None döner, seçim boş kalır (zararsız)."""
+    def _al():
+        s = TanimSecenegi.objects.filter(kategori=kategori, ad=ad, silindi=False).first()
+        return s.pk if s else None
+    return _al
+
+
 class SatisTeklifBaslikForm(forms.Form):
     """Satış Teklifi başlığı: cari + tarih + geçerlilik (varsayılan +15 gün) + PB +
     Tanım Listeleri'nden seçilen yükleme şekli / ödeme koşulu / yükleme tipi + navlun.
@@ -1431,16 +1441,23 @@ class SatisTeklifBaslikForm(forms.Form):
         label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     yukleme_sekli = forms.ModelChoiceField(
         label="Yükleme Şekli", queryset=TanimSecenegi.objects.none(), required=False,
-        empty_label="— seçiniz —")
+        empty_label="— seçiniz —",
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.YUKLEME_SEKLI,
+                                    "EXW – KAYSERİ, TÜRKİYE"))
     odeme_kosulu = forms.ModelChoiceField(
         label="Ödeme Koşulu", queryset=TanimSecenegi.objects.none(), required=False,
-        empty_label="— seçiniz —")
+        empty_label="— seçiniz —",
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.ODEME_KOSULU,
+                                    "%50 PEŞİN + %50 SEVKİYAT ÖNCESİ"))
     yukleme_tipi = forms.ModelChoiceField(
         label="Yükleme Tipi", queryset=TanimSecenegi.objects.none(), required=False,
-        empty_label="— seçiniz —")
+        empty_label="— seçiniz —",
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.YUKLEME_TIPI, "TIR"))
     teslim_suresi = forms.ModelChoiceField(
         label="Teslim Süresi", queryset=TanimSecenegi.objects.none(), required=False,
-        empty_label="— seçiniz —")
+        empty_label="— seçiniz —",
+        initial=_secenek_varsayilan(TanimSecenegi.Kategori.TESLIM_SURESI,
+                                    "SİPARİŞ ONAYI SONRASI 20 İŞ GÜNÜ"))
     navlun_tutari = TRDecimalField(
         label="Navlun Tutarı", basamak=2, required=False,
         widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off",
