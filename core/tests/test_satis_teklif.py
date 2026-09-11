@@ -363,8 +363,9 @@ class SatisTeklifTest(TestCase):
 
     def test_pdf_alici_satici_ayri_kutular(self):
         """Alıcı ve Satıcı ayrı kutularda gösterilir; eski hata (Alıcı kutusunun ilk
-        satırının da 'Alıcı' etiketli olması, kb+et aynı metin) artık yok. Satıcı kutusunda
-        firma adresi + web sitesi de görünür."""
+        satırının da 'Alıcı' etiketli olması, kb+et aynı metin) artık yok. Satıcı kutusu
+        yalnız Hazırlayan/E-posta/Telefon gösterir — Ünvan/Adres/Web sitesi kullanıcı
+        isteğiyle kaldırıldı (firma kimliği zaten üst kısımdaki logo ve alt bilgide var)."""
         from django.template.loader import render_to_string
         from core.views import satis_teklif_pdf_baglam
         self.client.force_login(self.yon)
@@ -380,9 +381,10 @@ class SatisTeklifTest(TestCase):
               **satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)}
         html = render_to_string("core/satis_teklif_pdf.html", ctx)
         self.assertIn("Satıcı", html)
-        self.assertIn("SEMTA ALÜMİNYUM MERDİVEN SAN. TİC. A.Ş.", html)
-        self.assertIn("MİMARSİNAN OSB 19. CADDE NO:52 KAYSERİ", html)
-        self.assertIn("www.semtahome.com", html)
+        self.assertIn("Hazırlayan", html)
+        self.assertNotIn("SEMTA ALÜMİNYUM MERDİVEN SAN. TİC. A.Ş.", html)
+        self.assertNotIn("MİMARSİNAN OSB 19. CADDE NO:52 KAYSERİ", html)
+        self.assertNotIn("www.semtahome.com", html)
         self.assertNotIn('<span class="et">Alıcı</span>', html)
         self.assertIn('<span class="et">Unvan</span>', html)
 
