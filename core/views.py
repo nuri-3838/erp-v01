@@ -2378,7 +2378,6 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
         k.urun_ad = k.stok.ad_dil(dil)
         k.basamak_goster = _basamak_goster(k.stok)
         k.materyal_goster = k.stok.materyal_dil(dil)
-    a_tipi_var = any((k.stok.model_kodu or "").upper().startswith("A") for k in kalemler)
     # Yurt içi/dışı: KDV notu yalnız yurt içi alıcıya anlamlı (ihracatta KDV istisnası var —
     # "fiyatlara KDV dahil değildir" ifadesi yurtdışı alıcıyı yanıltır).
     yurt_ici = not ts.cari.ulke_id or ts.cari.ulke.kod == "TR"
@@ -2391,8 +2390,6 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
     notlar.append(E["not_agirlik_tolerans"])
     notlar.append(E["not_yukleme_tahmini"])
     notlar.append(E["not_cbm"])
-    if a_tipi_var:
-        notlar.append(E["not_platform"])
     if ts.gecerlilik_teslim_tarihi:
         notlar.append(E["not_gecerlilik_tarihli"].format(
             tarih=ts.gecerlilik_teslim_tarihi.strftime("%d.%m.%Y")))
@@ -2502,7 +2499,6 @@ _PDF_ETIKET = {
                                 "istifleme düzenine göre değişebilir (TIR: standart tenteli "
                                 "römork)."),
         "not_cbm": "CBM, ambalajlı ürün başına hacmi ifade eder.",
-        "not_platform": "A Tipi ürünlerde basamak sayısına üst platform dahildir.",
         "not_gecerlilik_varsayilan": "Teklif, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Fiyatlar {tarih} tarihine kadar geçerlidir.",
         "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Satış Teklifi",
@@ -2535,8 +2531,6 @@ _PDF_ETIKET = {
                                 "vary depending on packaging and stacking (Truck: standard "
                                 "tautliner)."),
         "not_cbm": "CBM refers to the volume per packaged unit.",
-        "not_platform": ("For Platform Stepladders (A-series), the step count includes the "
-                         "top platform."),
         "not_gecerlilik_varsayilan": "This quotation is binding until the validity date.",
         "not_gecerlilik_tarihli": "Prices are valid until {tarih}.",
         "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Quotation",

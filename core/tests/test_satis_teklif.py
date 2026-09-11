@@ -433,21 +433,6 @@ class SatisTeklifTest(TestCase):
         baglam2 = satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)
         self.assertIn("This quotation is binding until the validity date.", baglam2["notlar"])
 
-    def test_pdf_platform_notu_a_tipi_varsa_gorunur_yoksa_gizlenir(self):
-        from core.models import TeklifSiparisKalem
-        from core.views import satis_teklif_pdf_baglam
-        self.client.force_login(self.yon)
-        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
-        ts = self._son_teklif()
-        not_metni = "A Tipi ürünlerde basamak sayısına üst platform dahildir."
-        baglam_a_var = satis_teklif_pdf_baglam(
-            ts, [TeklifSiparisKalem(stok=self.a21), TeklifSiparisKalem(stok=self.c22)],
-            "tr", self.yon)
-        self.assertIn(not_metni, baglam_a_var["notlar"])
-        baglam_a_yok = satis_teklif_pdf_baglam(
-            ts, [TeklifSiparisKalem(stok=self.c22)], "tr", self.yon)
-        self.assertNotIn(not_metni, baglam_a_yok["notlar"])
-
     def test_basamak_goster(self):
         from types import SimpleNamespace
         from core.views import _basamak_goster
