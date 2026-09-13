@@ -1319,8 +1319,15 @@ class TeklifSiparis(TemelModel):
     yon = models.CharField("yön", max_length=5, choices=Yon.choices)
     durum = models.CharField("durum", max_length=6, choices=Durum.choices,
                              default=Durum.TASLAK)
+    # cari / aday_musteri karşılıklı dışlayıcı (bkz. ck_teklif_siparis_cari_xor_aday_musteri) —
+    # yalnız SATIŞ+TEKLİF'te aday müşteriye (CRM lead, henüz Cari değil) teklif verilebilir;
+    # diğer tüm belge türlerinde her zaman cari doludur.
     cari = models.ForeignKey(
-        Cari, verbose_name="cari", related_name="teklif_siparisler", on_delete=models.PROTECT)
+        Cari, verbose_name="cari", related_name="teklif_siparisler", null=True, blank=True,
+        on_delete=models.PROTECT)
+    aday_musteri = models.ForeignKey(
+        "AdayMusteri", verbose_name="aday müşteri", related_name="teklif_siparisler",
+        null=True, blank=True, on_delete=models.PROTECT)
     tarih = models.DateField("belge tarihi")
     # Teklifte geçerlilik, siparişte teslim tarihi — tek alan, etiket ekranda değişir.
     gecerlilik_teslim_tarihi = models.DateField(
@@ -1387,10 +1394,22 @@ class TeklifSiparis(TemelModel):
             models.CheckConstraint(
                 condition=models.Q(navlun_tutari__isnull=True) | models.Q(navlun_tutari__gte=0),
                 name="ck_teklif_siparis_navlun_gte0"),
+            models.CheckConstraint(
+                condition=(models.Q(cari__isnull=False, aday_musteri__isnull=True)
+                          | models.Q(cari__isnull=True, aday_musteri__isnull=False)),
+                name="ck_teklif_siparis_cari_xor_aday_musteri"),
         ]
 
     def __str__(self):
-        return f"{self.get_belge_tur_display()} {self.belge_no} ({self.cari_id})"
+        return f"{self.get_belge_tur_display()} {self.belge_no} ({self.cari_id or self.aday_musteri_id})"
+
+    @property
+    def taraf(self):
+        """Belgenin karşı tarafı: SATIŞ TEKLİFİ'nde bir Cari veya bir AdayMusteri (CRM lead)
+        olabilir (cari/aday_musteri karşılıklı dışlayıcı); diğer tüm belge türlerinde her
+        zaman bir Cari'dir. Cari ile AdayMusteri ortak alan adları (unvan/ilgili_kisi/telefon/
+        eposta/ulke/sehir) paylaştığı için şablonlar/PDF context'i tek bu alandan okuyabilir."""
+        return self.cari or self.aday_musteri
 
     # --- Görüntüleme toplamları (belge para biriminde; saklanmaz, kalemden) ---
     @property

@@ -56,7 +56,10 @@
         {% if donusen_fatura %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% endif %}
       </div>
       <div class="detay-ad">{{ ts.get_belge_tur_display }}</div>
-      <div class="detay-alt"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }} · {{ ts.tarih|date:"d.m.Y" }}</div>
+      <div class="detay-alt">
+        {% if ts.cari %}<span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }}
+        {% else %}🧲 {{ ts.aday_musteri.unvan }} (Aday Müşteri){% endif %}
+        · {{ ts.tarih|date:"d.m.Y" }}</div>
     </div>
     <div class="detay-aksiyon">
       {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
@@ -96,8 +99,9 @@
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📋</span>Belge Bilgileri</h2>
     <div class="kv">
-      <div class="satir"><span class="et">Cari</span>
-        <span class="dg"><span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }}</span></div>
+      <div class="satir"><span class="et">{% if ts.aday_musteri %}Aday Müşteri{% else %}Cari{% endif %}</span>
+        <span class="dg">{% if ts.cari %}<span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }}
+          {% else %}🧲 {{ ts.aday_musteri.unvan }}{% endif %}</span></div>
       <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ ts.tarih|date:"d.m.Y" }}</span></div>
       {% if ts.gecerlilik_teslim_tarihi %}
       <div class="satir"><span class="et">{% if ts.belge_tur == "SIPARIS" %}Teslim Tarihi{% else %}Geçerlilik Tarihi{% endif %}</span>

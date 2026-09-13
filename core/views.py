@@ -1892,7 +1892,7 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         buyuk = buyuk_harf_tr(ara)
         temel = temel.filter(
             Q(cari__unvan__contains=buyuk) | Q(cari__kod__icontains=ara)
-            | Q(belge_no__icontains=ara))
+            | Q(aday_musteri__unvan__contains=buyuk) | Q(belge_no__icontains=ara))
     if tarih_bas:
         temel = temel.filter(tarih__gte=tarih_bas)
     if tarih_bit:
@@ -2019,6 +2019,14 @@ def _cari_meta():
             for c in Cari.objects.filter(silindi=False)}
 
 
+def _aday_meta():
+    """Aday müşteri başına para birimi + varsayılan iskonto — _cari_meta ile aynı desen,
+    aday seçilince JS otomatik uygular. Cariye zaten dönüşmüş adaylar dahil değil (bkz.
+    SatisTeklifBaslikForm.aday_musteri queryset'i)."""
+    return {str(a.pk): {"pb": a.para_birimi, "iskonto": float(a.iskonto_yuzdesi)}
+            for a in AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)}
+
+
 def _ts_ekle(request, belge_tur, yon, baslik, emoji):
     ekran = _TS_EKRAN[(belge_tur, yon)]
     if request.method == "POST":
@@ -2075,8 +2083,8 @@ def satinalma_irsaliye_ekle(request):
 def satis_teklif_ekle(request):
     """Satış Teklifi — bağımsız ekran (paylaşımlı ``_ts_ekle``'yi ÇAĞIRMAZ). Sayfa açılırken
     TÜM satış ürünleri (satis_urunu=True) formsete önceden dolu gelir; miktar YOK (her
-    zaman 1 birim fiyatı iletilir); cari seçilince PB/iskonto JS ile otomatik uygulanır
-    (bkz. satis_teklif_ekle.html)."""
+    zaman 1 birim fiyatı iletilir); karşı taraf (Cari VEYA Aday Müşteri) seçilince PB/iskonto
+    JS ile otomatik uygulanır (bkz. satis_teklif_ekle.html)."""
     urunler, stok_meta = _satis_teklif_stok_meta()
     if request.method == "POST":
         bform = SatisTeklifBaslikForm(request.POST)
@@ -2091,14 +2099,16 @@ def satis_teklif_ekle(request):
             if not satirlar:
                 bform.add_error(None, "En az bir ürün teklife dahil edilmelidir.")
             else:
+                cd = bform.cleaned_data
                 try:
                     ts = teklif_siparis_servis.teklif_siparis_olustur(
                         belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
-                        cari_id=bform.cleaned_data["cari"].pk, tarih=bform.cleaned_data["tarih"],
-                        gecerlilik_teslim_tarihi=bform.cleaned_data.get(
-                            "gecerlilik_teslim_tarihi"),
-                        para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
-                        **_secenek_kwargs(bform.cleaned_data),
+                        cari_id=(cd["cari"].pk if cd.get("cari") else None),
+                        aday_musteri_id=(cd["aday_musteri"].pk if cd.get("aday_musteri") else None),
+                        tarih=cd["tarih"],
+                        gecerlilik_teslim_tarihi=cd.get("gecerlilik_teslim_tarihi"),
+                        para_birimi=cd.get("para_birimi", "TRY"),
+                        **_secenek_kwargs(cd),
                         satirlar=satirlar, kullanici=request.user)
                     messages.success(request, f"Satış Teklifi kaydedildi: {ts.belge_no}")
                     return redirect("core:teklif_siparis_detay", pk=ts.pk)
@@ -2113,8 +2123,8 @@ def satis_teklif_ekle(request):
             for s in urunler])
     return render(request, "core/satis_teklif_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "tip_kodlari": _tip_kodlari(),
-        "iptal_url": reverse("core:satis_teklifleri")})
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "tip_kodlari": _tip_kodlari(), "iptal_url": reverse("core:satis_teklifleri")})
 
 
 @ekran_gerekli("satis_teklifleri")
@@ -2139,15 +2149,16 @@ def satis_teklif_duzenle(request, pk):
             if not satirlar:
                 bform.add_error(None, "En az bir ürün teklife dahil edilmelidir.")
             else:
+                cd = bform.cleaned_data
                 try:
                     teklif_siparis_servis.teklif_siparis_guncelle(
-                        ts, cari_id=bform.cleaned_data["cari"].pk,
-                        tarih=bform.cleaned_data["tarih"],
-                        gecerlilik_teslim_tarihi=bform.cleaned_data.get(
-                            "gecerlilik_teslim_tarihi"),
-                        para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
+                        ts, cari_id=(cd["cari"].pk if cd.get("cari") else None),
+                        aday_musteri_id=(cd["aday_musteri"].pk if cd.get("aday_musteri") else None),
+                        tarih=cd["tarih"],
+                        gecerlilik_teslim_tarihi=cd.get("gecerlilik_teslim_tarihi"),
+                        para_birimi=cd.get("para_birimi", "TRY"),
                         aciklama=ts.aciklama,
-                        **_secenek_kwargs(bform.cleaned_data),
+                        **_secenek_kwargs(cd),
                         satirlar=satirlar, kullanici=request.user)
                     messages.success(request, "Satış Teklifi güncellendi.")
                     return redirect("core:teklif_siparis_detay", pk=ts.pk)
@@ -2155,7 +2166,8 @@ def satis_teklif_duzenle(request, pk):
                     bform.add_error(None, str(e))
     else:
         bform = SatisTeklifBaslikForm(initial={
-            "cari": ts.cari_id, "tarih": ts.tarih,
+            "karsi_taraf_tip": "aday" if ts.aday_musteri_id else "cari",
+            "cari": ts.cari_id, "aday_musteri": ts.aday_musteri_id, "tarih": ts.tarih,
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
             "para_birimi": ts.para_birimi,
             "yukleme_sekli": ts.yukleme_sekli_id, "odeme_kosulu": ts.odeme_kosulu_id,
@@ -2171,7 +2183,8 @@ def satis_teklif_duzenle(request, pk):
             for s in urunler])
     return render(request, "core/satis_teklif_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "tip_kodlari": _tip_kodlari(),
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "tip_kodlari": _tip_kodlari(),
         "duzenleme": True,
         "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
@@ -2187,7 +2200,8 @@ def satis_siparis_ekle(request):
 def teklif_siparis_detay(request, pk):
     # silindi filtrelenmez: iptal edilmiş belge de görüntülenebilir (uyarı banner'ıyla).
     ts = get_object_or_404(
-        TeklifSiparis.objects.select_related("cari", "kaynak_teklif", "kaynak_siparis", "depo"),
+        TeklifSiparis.objects.select_related(
+            "cari", "aday_musteri", "kaynak_teklif", "kaynak_siparis", "depo"),
         pk=pk)
     kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat")
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
@@ -2431,8 +2445,10 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
         k.basamak_goster = _basamak_goster(k.stok)
         k.materyal_goster = k.stok.materyal_dil(dil)
     # Yurt içi/dışı: KDV notu yalnız yurt içi alıcıya anlamlı (ihracatta KDV istisnası var —
-    # "fiyatlara KDV dahil değildir" ifadesi yurtdışı alıcıyı yanıltır).
-    yurt_ici = not ts.cari.ulke_id or ts.cari.ulke.kod == "TR"
+    # "fiyatlara KDV dahil değildir" ifadesi yurtdışı alıcıyı yanıltır). ts.taraf: Cari VEYA
+    # Aday Müşteri (CRM lead) — ortak alan adları (ulke/sehir/unvan) sayesinde tek erişimle
+    # ikisini de kapsar (bkz. TeklifSiparis.taraf).
+    yurt_ici = not ts.taraf.ulke_id or ts.taraf.ulke.kod == "TR"
     navlun_var = ts.navlun_tutari is not None and bool(ts.yukleme_tipi_id)
     notlar = [E["not_birim_fiyat"]]
     if yurt_ici:
@@ -2453,8 +2469,8 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
         "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
         "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
         "teslim_suresi_ad": ts.teslim_suresi.ad_dil(dil) if ts.teslim_suresi_id else "",
-        "ulke_ad": ts.cari.ulke.ad_dil(dil) if ts.cari.ulke_id else "",
-        "sehir_ad": ts.cari.sehir.ad_dil(dil) if ts.cari.sehir_id else "",
+        "ulke_ad": ts.taraf.ulke.ad_dil(dil) if ts.taraf.ulke_id else "",
+        "sehir_ad": ts.taraf.sehir.ad_dil(dil) if ts.taraf.sehir_id else "",
         "navlun_var": navlun_var,
         "notlar": notlar,
         "firma": firma_servis.firma_bilgisi_getir(),
@@ -2493,7 +2509,9 @@ def teklif_siparis_pdf(request, pk):
     from weasyprint import HTML
 
     ts = get_object_or_404(
-        TeklifSiparis.objects.select_related("cari", "cari__ulke", "cari__sehir"), pk=pk)
+        TeklifSiparis.objects.select_related(
+            "cari", "cari__ulke", "cari__sehir",
+            "aday_musteri", "aday_musteri__ulke", "aday_musteri__sehir"), pk=pk)
     kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat"))
     for k in kalemler:
         k.gorsel_b64 = None
@@ -2509,7 +2527,7 @@ def teklif_siparis_pdf(request, pk):
         with open(logo_yol, "rb") as f:
             ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
     sablon = "core/teklif_siparis_pdf.html"
-    dosya_adi = _pdf_dosya_adi(ts.belge_no or ts.pk, ts.cari.unvan)
+    dosya_adi = _pdf_dosya_adi(ts.belge_no or ts.pk, ts.taraf.unvan)
     if sat_teklif:
         dil = "en" if request.GET.get("dil") == "en" else "tr"
         ctx.update(satis_teklif_pdf_baglam(ts, kalemler, dil, request.user))

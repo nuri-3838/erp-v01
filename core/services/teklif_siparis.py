@@ -16,8 +16,8 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
-from core.models import (Cari, Depo, KdvOrani, Stok, StokHareket, TanimSecenegi, TeklifSiparis,
-                         TeklifSiparisKalem)
+from core.models import (AdayMusteri, Cari, Depo, KdvOrani, Stok, StokHareket, TanimSecenegi,
+                         TeklifSiparis, TeklifSiparisKalem)
 from core.sayi import SayiHatasi, parse_tr
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
 
@@ -51,7 +51,7 @@ def _sayi(deger, etiket, *, pozitif=False):
 
 def aktif_teklif_siparisler(belge_tur, yon):
     return (TeklifSiparis.objects.filter(silindi=False, belge_tur=belge_tur, yon=yon)
-            .select_related("cari"))
+            .select_related("cari", "aday_musteri"))
 
 
 def _yuzde(deger, etiket):
@@ -65,12 +65,23 @@ def _yuzde(deger, etiket):
     return d
 
 
-def _hazirla(*, cari_id, satirlar):
-    """Ortak hazırlık (oluştur): cari + satırları doğrula. (cari, hazir) döner —
-    hazir = [(stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat), ...]."""
-    cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
-    if cari is None:
-        raise TeklifSiparisHatasi("Cari bulunamadı.")
+def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar):
+    """Ortak hazırlık (oluştur/güncelle): cari VEYA aday müşteri (karşılıklı dışlayıcı —
+    ikisi birden ya da hiçbiri verilemez) + satırları doğrular. (cari, aday_musteri, hazir)
+    döner — hazir = [(stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat), ...]."""
+    if cari_id and aday_musteri_id:
+        raise TeklifSiparisHatasi("Cari ve aday müşteri aynı anda seçilemez.")
+    cari = aday = None
+    if aday_musteri_id:
+        aday = AdayMusteri.objects.filter(pk=aday_musteri_id, silindi=False).first()
+        if aday is None:
+            raise TeklifSiparisHatasi("Aday müşteri bulunamadı.")
+    elif cari_id:
+        cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
+        if cari is None:
+            raise TeklifSiparisHatasi("Cari bulunamadı.")
+    else:
+        raise TeklifSiparisHatasi("Cari veya aday müşteri seçilmeli.")
     if not satirlar:
         raise TeklifSiparisHatasi("En az bir kalem olmalı.")
     hazir = []
@@ -83,7 +94,7 @@ def _hazirla(*, cari_id, satirlar):
         birim_fiyat = _sayi(s.get("birim_fiyat"), "Birim fiyat")
         iskonto_yuzdesi = _yuzde(s.get("iskonto_yuzdesi"), "İskonto %")
         hazir.append((stok, miktar, birim_fiyat, iskonto_yuzdesi, stok.kdv, stok.tevkifat))
-    return cari, hazir
+    return cari, aday, hazir
 
 
 def _pb_dogrula(para_birimi):
@@ -148,7 +159,8 @@ def _sonraki_sira(belge_tur, yon, yil):
     return (m or 0) + 1
 
 
-def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, para_birimi,
+def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
+                   gecerlilik_teslim_tarihi, para_birimi,
                    aciklama, kaynak_teklif=None, kaynak_siparis=None, depo=None,
                    irsaliye_no="", yukleme_sekli=None, odeme_kosulu=None, yukleme_tipi=None,
                    teslim_suresi=None, navlun_tutari=None, kullanici=None) -> TeklifSiparis:
@@ -162,7 +174,8 @@ def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, par
             with transaction.atomic():
                 sira = _sonraki_sira(belge_tur, yon, yil)
                 return TeklifSiparis.objects.create(
-                    belge_tur=belge_tur, yon=yon, cari=cari, tarih=tarih,
+                    belge_tur=belge_tur, yon=yon, cari=cari, aday_musteri=aday_musteri,
+                    tarih=tarih,
                     gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
                     belge_no=f"{onek}-{yil}-{sira:04d}", yil=yil, sira=sira,
                     para_birimi=para_birimi, aciklama=(aciklama or "").strip(),
@@ -179,9 +192,18 @@ def _belge_olustur(*, belge_tur, yon, cari, tarih, gecerlilik_teslim_tarihi, par
     raise TeklifSiparisHatasi("Belge numarası üretilemedi; tekrar deneyin.")
 
 
+def _aday_musteri_izin_kontrol(belge_tur, yon, aday_musteri_id):
+    """Aday müşteriye yalnız SATIŞ+TEKLİF ekranından teklif verilebilir — CRM lead henüz
+    gerçek Cari değil, Satınalma/Sipariş/İrsaliye zincirlerinin hiçbiri (muhasebe hesabı,
+    stok hareketi, fatura) onunla çalışamaz."""
+    if aday_musteri_id and not (belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+                                and yon == TeklifSiparis.Yon.SATIS):
+        raise TeklifSiparisHatasi("Aday müşteriye yalnızca satış teklifi oluşturulabilir.")
+
+
 @transaction.atomic
-def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
-                           gecerlilik_teslim_tarihi=None, para_birimi="TRY",
+def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None, tarih,
+                           satirlar, gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                            aciklama="", depo_id=None, irsaliye_no="",
                            yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
                            teslim_suresi_id=None,
@@ -193,12 +215,14 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
         raise TeklifSiparisHatasi("Geçersiz belge türü.")
     if yon not in TeklifSiparis.Yon.values:
         raise TeklifSiparisHatasi("Geçersiz yön.")
-    cari, hazir = _hazirla(cari_id=cari_id, satirlar=satirlar)
+    _aday_musteri_izin_kontrol(belge_tur, yon, aday_musteri_id)
+    cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
+                                 satirlar=satirlar)
     pb = _pb_dogrula(para_birimi)
     depo = _depo_coz_irsaliye(belge_tur, depo_id)
     secenekler = _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
                                      navlun_tutari, teslim_suresi_id)
-    ts = _belge_olustur(belge_tur=belge_tur, yon=yon, cari=cari, tarih=tarih,
+    ts = _belge_olustur(belge_tur=belge_tur, yon=yon, cari=cari, aday_musteri=aday, tarih=tarih,
                         gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
                         irsaliye_no=irsaliye_no, **secenekler,
                         para_birimi=pb, aciklama=aciklama, depo=depo, kullanici=kullanici)
@@ -207,8 +231,8 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id, tarih, satirlar,
 
 
 @transaction.atomic
-def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
-                            gecerlilik_teslim_tarihi=None, para_birimi="TRY",
+def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=None, tarih,
+                            satirlar, gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                             aciklama="", depo_id=None, irsaliye_no="",
                             yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
                             teslim_suresi_id=None,
@@ -221,12 +245,14 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
         raise TeklifSiparisHatasi("İptal edilmiş belge düzenlenemez.")
     if ts.durum == TeklifSiparis.Durum.ONAYLI:
         raise TeklifSiparisHatasi("Onaylı belge düzenlenemez; önce onayı geri alın.")
-    cari, hazir = _hazirla(cari_id=cari_id, satirlar=satirlar)
+    _aday_musteri_izin_kontrol(ts.belge_tur, ts.yon, aday_musteri_id)
+    cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
+                                 satirlar=satirlar)
     pb = _pb_dogrula(para_birimi)
     depo = _depo_coz_irsaliye(ts.belge_tur, depo_id)
     ts.kalemler.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    ts.cari, ts.tarih = cari, tarih
+    ts.cari, ts.aday_musteri, ts.tarih = cari, aday, tarih
     ts.gecerlilik_teslim_tarihi = gecerlilik_teslim_tarihi
     ts.para_birimi = pb
     ts.aciklama = (aciklama or "").strip()
@@ -236,9 +262,9 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id, tarih, satirlar,
                                            navlun_tutari, teslim_suresi_id).items():
         setattr(ts, alan, deger)
     ts.updated_by = kullanici
-    ts.save(update_fields=["cari", "tarih", "gecerlilik_teslim_tarihi", "para_birimi",
-                           "aciklama", "depo", "irsaliye_no", "yukleme_sekli", "odeme_kosulu",
-                           "yukleme_tipi", "teslim_suresi", "navlun_tutari",
+    ts.save(update_fields=["cari", "aday_musteri", "tarih", "gecerlilik_teslim_tarihi",
+                           "para_birimi", "aciklama", "depo", "irsaliye_no", "yukleme_sekli",
+                           "odeme_kosulu", "yukleme_tipi", "teslim_suresi", "navlun_tutari",
                            "updated_by", "updated_at"])
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
@@ -317,6 +343,10 @@ def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> T
         raise TeklifSiparisHatasi("Yalnız onaylı teklif siparişe çevrilebilir.")
     if teklif.donusen_siparisler.filter(silindi=False).exists():
         raise TeklifSiparisHatasi("Bu teklif zaten bir siparişe dönüştürülmüş.")
+    if teklif.cari_id is None:
+        raise TeklifSiparisHatasi(
+            "Bu teklif bir aday müşteriye ait; siparişe çevirmeden önce aday müşteriyi "
+            "cariye dönüştürün.")
     kalemler = list(teklif.kalemler.filter(silindi=False))
     if not kalemler:
         raise TeklifSiparisHatasi("Teklifte kalem yok; sipariş oluşturulamaz.")

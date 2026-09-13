@@ -127,12 +127,12 @@
       <div class="taraf-kolon">
         <div class="kutu taraf">
           <div class="kb">{{ E.alici }}</div>
-          <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ ts.cari.unvan }}</span></div>
-          {% if ts.cari.ilgili_kisi %}<div class="kv"><span class="et">{{ E.ilgili_kisi }}</span><span class="dg">{{ ts.cari.ilgili_kisi }}</span></div>{% endif %}
+          <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ ts.taraf.unvan }}</span></div>
+          {% if ts.taraf.ilgili_kisi %}<div class="kv"><span class="et">{{ E.ilgili_kisi }}</span><span class="dg">{{ ts.taraf.ilgili_kisi }}</span></div>{% endif %}
           {% if ulke_ad %}<div class="kv"><span class="et">{{ E.ulke }}</span><span class="dg">{{ ulke_ad }}{% if sehir_ad %} / {{ sehir_ad }}{% endif %}</span></div>{% endif %}
-          {% if ts.cari.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ ts.cari.adres }}</span></div>{% endif %}
-          {% if ts.cari.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ ts.cari.telefon }}</span></div>{% endif %}
-          {% if ts.cari.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ ts.cari.eposta }}</span></div>{% endif %}
+          {% if ts.taraf.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ ts.taraf.adres }}</span></div>{% endif %}
+          {% if ts.taraf.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ ts.taraf.telefon }}</span></div>{% endif %}
+          {% if ts.taraf.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ ts.taraf.eposta }}</span></div>{% endif %}
         </div>
         <div class="kutu taraf">
           <div class="kb">{{ E.satici }}</div>

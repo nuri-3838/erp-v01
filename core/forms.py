@@ -1502,13 +1502,21 @@ def _secenek_varsayilan(kategori):
 
 
 class SatisTeklifBaslikForm(forms.Form):
-    """Satış Teklifi başlığı: cari + tarih + geçerlilik (varsayılan +15 gün) + PB +
-    Tanım Listeleri'nden seçilen yükleme şekli / ödeme koşulu / yükleme tipi + navlun.
-    Cari seçilince PB/varsayılan iskonto JS ile otomatik doldurulur — bkz.
-    satis_teklif_ekle.html."""
+    """Satış Teklifi başlığı: karşı taraf (Cari VEYA Aday Müşteri — CRM lead, karşılıklı
+    dışlayıcı) + tarih + geçerlilik (varsayılan +15 gün) + PB + Tanım Listeleri'nden seçilen
+    yükleme şekli / ödeme koşulu / yükleme tipi + navlun. Karşı taraf seçilince PB/varsayılan
+    iskonto JS ile otomatik doldurulur — bkz. satis_teklif_ekle.html."""
 
+    KARSI_TARAF_CHOICES = [("cari", "Cari"), ("aday", "Aday Müşteri")]
+
+    karsi_taraf_tip = forms.ChoiceField(
+        label="Kime", choices=KARSI_TARAF_CHOICES, initial="cari", required=False,
+        widget=forms.RadioSelect)
     cari = forms.ModelChoiceField(
-        label="Cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
+        label="Cari", queryset=Cari.objects.none(), required=False, empty_label="— cari seç —")
+    aday_musteri = forms.ModelChoiceField(
+        label="Aday Müşteri", queryset=AdayMusteri.objects.none(), required=False,
+        empty_label="— aday müşteri seç —")
     tarih = forms.DateField(
         label="Belge tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
@@ -1544,6 +1552,13 @@ class SatisTeklifBaslikForm(forms.Form):
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        # Cariye zaten dönüşmüş adaylar artık normal Cari akışıyla teklif alır — listeden
+        # düşer (bkz. AdayMusteri.donusen_cari, aday_cariye_donustur).
+        self.fields["aday_musteri"].queryset = (
+            AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)
+            .order_by("unvan"))
+        self.fields["aday_musteri"].label_from_instance = lambda o: o.unvan
+        self.fields["aday_musteri"].widget.attrs["class"] = "akilli-sec"
         K = TanimSecenegi.Kategori
         for alan, kategori in (("yukleme_sekli", K.YUKLEME_SEKLI),
                                ("odeme_kosulu", K.ODEME_KOSULU),
@@ -1554,6 +1569,18 @@ class SatisTeklifBaslikForm(forms.Form):
                 .order_by("sira", "ad"))
             self.fields[alan].label_from_instance = lambda o: o.ad
             self.fields[alan].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        if cd.get("karsi_taraf_tip") == "aday":
+            if not cd.get("aday_musteri"):
+                self.add_error("aday_musteri", "Aday müşteri seçin.")
+            cd["cari"] = None
+        else:
+            if not cd.get("cari"):
+                self.add_error("cari", "Cari seçin.")
+            cd["aday_musteri"] = None
+        return cd
 
 
 class SatisTeklifKalemForm(forms.Form):

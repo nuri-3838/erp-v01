@@ -131,10 +131,10 @@
       <tr class="ts-satir">
         <td>
           <div class="ts-hucre">
-            <span class="ts-ikon">🧑‍💼</span>
+            <span class="ts-ikon">{% if k.aday_musteri %}🧲{% else %}🧑‍💼{% endif %}</span>
             <div>
-              <div class="ad"><a href="{% url 'core:teklif_siparis_detay' k.pk %}">{{ k.cari.unvan }}</a></div>
-              <div class="alt">{{ k.cari.kod }}</div>
+              <div class="ad"><a href="{% url 'core:teklif_siparis_detay' k.pk %}">{{ k.taraf.unvan }}</a></div>
+              <div class="alt">{% if k.cari %}{{ k.cari.kod }}{% else %}Aday Müşteri{% endif %}</div>
             </div>
           </div>
         </td>

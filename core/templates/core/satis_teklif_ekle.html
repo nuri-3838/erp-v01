@@ -6,6 +6,7 @@
 {% block content %}
 {{ stok_meta|json_script:"stok-meta" }}
 {{ cari_meta|json_script:"cari-meta" }}
+{{ aday_meta|json_script:"aday-meta" }}
 {{ tip_kodlari|json_script:"tip-kodlari" }}
 <div class="form-kapsa">
   <div class="form-ust">
@@ -24,9 +25,18 @@
       <div class="bb-blok">
         <div class="bb-satir">
           <div class="bb-alan bb-vurgu">
-            <label for="{{ bform.cari.id_for_label }}">{{ bform.cari.label }}</label>
-            {{ bform.cari }}
-            {% for e in bform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            <label>{{ bform.karsi_taraf_tip.label }}</label>
+            <div class="kt-tip">{{ bform.karsi_taraf_tip }}</div>
+            <div id="kt-cari-blok" class="kt-blok">
+              <label for="{{ bform.cari.id_for_label }}">{{ bform.cari.label }}</label>
+              {{ bform.cari }}
+              {% for e in bform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+            <div id="kt-aday-blok" class="kt-blok" hidden>
+              <label for="{{ bform.aday_musteri.id_for_label }}">{{ bform.aday_musteri.label }}</label>
+              {{ bform.aday_musteri }}
+              {% for e in bform.aday_musteri.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
           </div>
         </div>
         <div class="bb-satir">
@@ -147,6 +157,10 @@
     font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
   .bb-alan input, .bb-alan select { background:#fff; }
   @media (max-width:680px){ .bb-alan { min-width:100%; } }
+  .kt-tip > div { display:flex; gap:1.1rem; margin:0 0 .6rem; }
+  .kt-tip label { font-weight:600; font-size:.9rem; text-transform:none; cursor:pointer;
+    display:flex; align-items:center; gap:.35rem; }
+  .kt-blok[hidden] { display:none; }
 
   .fk-liste { display:flex; flex-direction:column; gap:.55rem; }
   .fk-satir { display:flex; align-items:center; gap:1.1rem; flex-wrap:wrap;
@@ -180,6 +194,7 @@
 (function(){
   var STOK_META = JSON.parse(document.getElementById('stok-meta').textContent);
   var CARI_META = JSON.parse(document.getElementById('cari-meta').textContent);
+  var ADAY_META = JSON.parse(document.getElementById('aday-meta').textContent);
   var TIP_KODLARI = JSON.parse(document.getElementById('tip-kodlari').textContent);
 
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
@@ -255,10 +270,22 @@
   }
 
   var cariSec = document.getElementById('id_cari');
+  var adaySec = document.getElementById('id_aday_musteri');
   var pbSec = document.getElementById('id_para_birimi');
+  var ktRadyolar = document.querySelectorAll('input[name="karsi_taraf_tip"]');
+  var ktCariBlok = document.getElementById('kt-cari-blok');
+  var ktAdayBlok = document.getElementById('kt-aday-blok');
 
-  if(cariSec) cariSec.addEventListener('change', function(){
-    var meta = CARI_META[cariSec.value];
+  function karsiTarafGuncelle(){
+    var secili = document.querySelector('input[name="karsi_taraf_tip"]:checked');
+    var tip = secili ? secili.value : 'cari';
+    if(ktCariBlok) ktCariBlok.hidden = (tip === 'aday');
+    if(ktAdayBlok) ktAdayBlok.hidden = (tip !== 'aday');
+  }
+  ktRadyolar.forEach(function(r){ r.addEventListener('change', karsiTarafGuncelle); });
+  karsiTarafGuncelle();
+
+  function karsiTarafMetaUygula(meta){
     if(!meta) return;
     document.querySelectorAll('.fk-satir').forEach(function(card){
       var iskInp = el(card, '-iskonto_yuzdesi');
@@ -270,6 +297,13 @@
     } else {
       document.querySelectorAll('.fk-satir').forEach(netHesapla);
     }
+  }
+
+  if(cariSec) cariSec.addEventListener('change', function(){
+    karsiTarafMetaUygula(CARI_META[cariSec.value]);
+  });
+  if(adaySec) adaySec.addEventListener('change', function(){
+    karsiTarafMetaUygula(ADAY_META[adaySec.value]);
   });
 
   if(pbSec) pbSec.addEventListener('change', function(){
