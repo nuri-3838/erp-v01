@@ -9,13 +9,22 @@ UPPER alanlar (unvan/ilgili kişi) TR büyük harfe çevrilir. Silme: soft-delet
 """
 from __future__ import annotations
 
+import os
+
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
+from core import gorsel
 from core.metin import buyuk_harf_tr
-from core.models import AdayAktivite, AdayMusteri, AdayMusteriKategori, Cari, Sehir, Ulke
+from core.models import (
+    AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori, Cari, Sehir, Ulke,
+)
 from core.sayi import SayiHatasi, parse_tr
 from core.services import cari as cari_servis
+
+AKTIVITE_IZINLI_UZANTI = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"}
+AKTIVITE_MAKS_BOYUT = 10 * 1024 * 1024   # 10 MB
 
 
 class AdayHatasi(ValueError):
@@ -132,7 +141,10 @@ def aday_cariye_donustur(aday: AdayMusteri, *, kategori_id=None, kullanici=None)
 # --- Aktiviteler (görüşme/temas kayıtları) -----------------------------------
 def aktif_aday_aktiviteleri(aday):
     return (aday.aktiviteler.filter(silindi=False)
-            .select_related("created_by").order_by("-tarih", "-id"))
+            .select_related("created_by")
+            .prefetch_related(Prefetch(
+                "ekler", queryset=AdayAktiviteEk.objects.filter(silindi=False)))
+            .order_by("-tarih", "-id"))
 
 
 def aday_aktivite_ekle(aday, *, tarih, tur, aciklama, kullanici=None) -> AdayAktivite:
@@ -171,3 +183,37 @@ def aday_aktivite_sil(aktivite: AdayAktivite, kullanici=None) -> AdayAktivite:
     aktivite.updated_by = kullanici
     aktivite.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return aktivite
+
+
+def aday_aktivite_ek_ekle(aktivite: AdayAktivite, *, dosya, kullanici=None) -> AdayAktiviteEk:
+    """Aktiviteye tek dosya ekler (çoklu yükleme view katmanında döngüyle bu fonksiyonu
+    çağırır). Resim ise WebP'ye küçültülür (spec görsel invariant'ı: en uzun kenar ~1600px,
+    ~%80 kalite); PDF olduğu gibi saklanır. CariAktiviteEk ile birebir aynı desen."""
+    if aktivite.silindi:
+        raise AdayHatasi("Silinmiş aktiviteye dosya eklenemez.")
+    ad = dosya.name or "dosya"
+    uzanti = os.path.splitext(ad)[1].lower()
+    if uzanti not in AKTIVITE_IZINLI_UZANTI:
+        raise AdayHatasi(f"Desteklenmeyen dosya türü: {ad} (yalnız resim veya PDF).")
+    if dosya.size > AKTIVITE_MAKS_BOYUT:
+        raise AdayHatasi(f"Dosya çok büyük (10 MB üzeri): {ad}")
+    if uzanti == ".pdf":
+        saklanan = dosya
+    else:
+        try:
+            saklanan = gorsel.kucult_webp(dosya, max_kenar=1600, kalite=80, ad="aday_aktivite")
+        except Exception:
+            raise AdayHatasi(f"Geçersiz resim dosyası: {ad}")
+    return AdayAktiviteEk.objects.create(
+        aktivite=aktivite, dosya=saklanan, orijinal_ad=ad,
+        created_by=kullanici, updated_by=kullanici)
+
+
+def aday_aktivite_ek_sil(ek: AdayAktiviteEk, kullanici=None) -> AdayAktiviteEk:
+    if ek.silindi:
+        return ek
+    ek.silindi = True
+    ek.silindi_at = timezone.now()
+    ek.updated_by = kullanici
+    ek.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return ek

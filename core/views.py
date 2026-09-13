@@ -31,7 +31,7 @@ from core.forms import (
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
 )
 from core.models import (
-    AdayAktivite, AdayMusteri, AdayMusteriKategori,
+    AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
@@ -3768,6 +3768,14 @@ def aday_cariye_donustur(request, pk):
     return render(request, "core/aday_cariye_donustur.html", {"form": form, "aday": aday})
 
 
+def _aday_aktivite_ekleri_kaydet(request, aktivite, dosyalar):
+    for f in dosyalar:
+        try:
+            aday_servis.aday_aktivite_ek_ekle(aktivite, dosya=f, kullanici=request.user)
+        except aday_servis.AdayHatasi as e:
+            messages.warning(request, str(e))
+
+
 @ekran_gerekli("aday_musteriler")
 def aday_aktivite_ekle(request, aday_pk):
     aday = get_object_or_404(AdayMusteri, pk=aday_pk, silindi=False)
@@ -3775,8 +3783,9 @@ def aday_aktivite_ekle(request, aday_pk):
         form = AdayAktiviteForm(request.POST)
         if form.is_valid():
             try:
-                aday_servis.aday_aktivite_ekle(
+                aktivite = aday_servis.aday_aktivite_ekle(
                     aday, **form.cleaned_data, kullanici=request.user)
+                _aday_aktivite_ekleri_kaydet(request, aktivite, request.FILES.getlist("dosyalar"))
                 messages.success(request, "Aktivite eklendi.")
                 return redirect("core:aday_musteri_detay", pk=aday.pk)
             except aday_servis.AdayHatasi as e:
@@ -3796,6 +3805,7 @@ def aday_aktivite_duzenle(request, pk):
             try:
                 aday_servis.aday_aktivite_guncelle(
                     aktivite, **form.cleaned_data, kullanici=request.user)
+                _aday_aktivite_ekleri_kaydet(request, aktivite, request.FILES.getlist("dosyalar"))
                 messages.success(request, "Aktivite güncellendi.")
                 return redirect("core:aday_musteri_detay", pk=aktivite.aday_id)
             except aday_servis.AdayHatasi as e:
@@ -3805,7 +3815,7 @@ def aday_aktivite_duzenle(request, pk):
             "tarih": aktivite.tarih, "tur": aktivite.tur, "aciklama": aktivite.aciklama})
     return render(request, "core/aday_aktivite_form.html", {
         "form": form, "baslik": "Aktivite Düzenle", "aday": aktivite.aday,
-        "aktivite": aktivite})
+        "aktivite": aktivite, "ekler": aktivite.ekler.filter(silindi=False)})
 
 
 @ekran_gerekli("aday_musteriler")
@@ -3815,6 +3825,15 @@ def aday_aktivite_sil(request, pk):
         aday_servis.aday_aktivite_sil(aktivite, kullanici=request.user)
         messages.success(request, "Aktivite silindi.")
     return redirect("core:aday_musteri_detay", pk=aktivite.aday_id)
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_aktivite_ek_sil(request, pk):
+    ek = get_object_or_404(AdayAktiviteEk, pk=pk, silindi=False)
+    if request.method == "POST":
+        aday_servis.aday_aktivite_ek_sil(ek, kullanici=request.user)
+        messages.success(request, "Dosya silindi.")
+    return redirect("core:aday_aktivite_duzenle", pk=ek.aktivite_id)
 
 
 # --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------

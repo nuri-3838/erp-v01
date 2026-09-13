@@ -1028,6 +1028,29 @@ class AdayAktivite(TemelModel):
         return f"{self.aday.unvan} — {self.get_tur_display()} ({self.tarih})"
 
 
+class AdayAktiviteEk(TemelModel):
+    """Aday aktivitesine eklenen dosya (çoklu) — CariAktiviteEk ile aynı desen: resim
+    yüklemede WebP'ye küçültülür (spec invariant'ı), PDF olduğu gibi saklanır."""
+
+    aktivite = models.ForeignKey(AdayAktivite, verbose_name="aktivite", related_name="ekler",
+                                 on_delete=models.CASCADE)
+    dosya = models.FileField("dosya", upload_to="aday_aktivite/")
+    orijinal_ad = models.CharField("orijinal dosya adı", max_length=255, blank=True)
+
+    class Meta:
+        db_table = "aday_aktivite_ek"
+        verbose_name = "aktivite eki"
+        verbose_name_plural = "aktivite ekleri"
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.orijinal_ad or self.dosya.name
+
+    @property
+    def resim_mi(self):
+        return self.dosya.name.lower().endswith(".webp")
+
+
 # === AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) ===
 class KdvOrani(TemelModel):
     """KDV oranı tanımı — otomatik yevmiyede indirilecek/hesaplanan KDV hesabını besler."""

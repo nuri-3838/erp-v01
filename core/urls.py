@@ -205,6 +205,7 @@ urlpatterns = [
     path("crm/aktivite/<int:pk>/duzenle/", views.aday_aktivite_duzenle,
          name="aday_aktivite_duzenle"),
     path("crm/aktivite/<int:pk>/sil/", views.aday_aktivite_sil, name="aday_aktivite_sil"),
+    path("crm/aktivite/ek/<int:pk>/sil/", views.aday_aktivite_ek_sil, name="aday_aktivite_ek_sil"),
     path("cariler/kategoriler/", views.cari_kategoriler, name="cari_kategoriler"),
     path("cariler/kategoriler/ekle/", views.cari_kategori_ekle, name="cari_kategori_ekle"),
     path("cariler/kategoriler/<int:pk>/duzenle/", views.cari_kategori_duzenle, name="cari_kategori_duzenle"),

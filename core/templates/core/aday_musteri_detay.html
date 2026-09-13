@@ -32,6 +32,11 @@
   .akt-tarih { font-weight:700; font-family:"Cascadia Mono",Consolas,monospace; font-size:.88rem; }
   .akt-aciklama { margin:.55rem 0 0; white-space:pre-line; }
   .akt-alt { margin-top:.5rem; font-size:.76rem; color:var(--metin-soluk); }
+  .akt-ek-galeri { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.6rem; }
+  .akt-ek-onizleme { width:64px; height:64px; border-radius:10px; border:1px solid var(--cizgi);
+    background:#fff; display:grid; place-items:center; overflow:hidden; }
+  .akt-ek-onizleme img { width:100%; height:100%; object-fit:cover; }
+  .akt-ek-onizleme .pdf-ikon { font-size:1.4rem; }
 </style>
 
 <div class="detay-kapsa">
@@ -93,6 +98,16 @@
           </span>
         </div>
         <p class="akt-aciklama">{{ a.aciklama }}</p>
+        {% if a.ekler.all %}
+          <div class="akt-ek-galeri">
+            {% for ek in a.ekler.all %}
+              <a href="{{ ek.dosya.url }}" target="_blank" class="akt-ek-onizleme" title="{{ ek.orijinal_ad }}">
+                {% if ek.resim_mi %}<img src="{{ ek.dosya.url }}" alt="">
+                {% else %}<span class="pdf-ikon">📄</span>{% endif %}
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
         <div class="akt-alt">{% if a.created_by %}{{ a.created_by.get_full_name|default:a.created_by.username }} ·{% endif %} {{ a.created_at|date:"d.m.Y H:i" }}</div>
       </div>
     {% empty %}
