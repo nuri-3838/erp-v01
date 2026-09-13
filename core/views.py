@@ -1919,13 +1919,18 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     # olursa aynı isim iki kez eklenip son değer (eski durum) kazanır; bu yüzden ayrı.
     sekme_qs = sabit_qs.copy()
     sekme_qs.pop("durum", None)
+    # Satış Teklifi'nde "ödenecek tutar" kavramı yok (henüz fatura/sipariş değil) — liste
+    # ekranı bu türde tarih aralığı filtresi + Ödenecek/İşlem sütunları yerine sade,
+    # tıklanabilir satır + Detay'a giden chevron kullanır (bkz. şablon, sat_teklif bayrağı).
+    sat_teklif = (belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+                 and yon == TeklifSiparis.Yon.SATIS)
     return render(request, "core/teklif_siparis_listesi.html", {
         "kayitlar": sayfa, "baslik": baslik, "emoji": emoji, "ara": ara,
         "durum": durum, "bas": request.GET.get("bas", ""), "bit": request.GET.get("bit", ""),
         "boyut": boyut, "sayfa_boyutlari": _TS_SAYFA_BOYUTLARI,
         "toplam": sum(sayimlar.values()), "durum_sekmeleri": durum_sekmeleri,
         "sabit_qs": sabit_qs.urlencode(), "sekme_qs": sekme_qs.urlencode(),
-        "donustu_etiket": donustu_etiket,
+        "donustu_etiket": donustu_etiket, "sat_teklif": sat_teklif,
         "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
 
 

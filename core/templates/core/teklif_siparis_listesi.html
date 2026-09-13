@@ -53,6 +53,11 @@
   .ts-belge-no { font-family:"Cascadia Mono",Consolas,monospace; font-size:.85rem; }
 
   #ts-tablo tbody tr:hover td { background:rgba(240,124,0,.05); }
+  #ts-tablo.ts-sade td { padding-top:.85rem; padding-bottom:.85rem; }
+  .ts-tiklanabilir { cursor:pointer; }
+  .ts-tiklanabilir:active td { background:rgba(240,124,0,.1); }
+  .ts-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
+  .ts-tiklanabilir:hover .ts-ok { color:var(--turuncu-koyu); opacity:1; }
 
   .ts-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
     margin-top:1rem; flex-wrap:wrap; }
@@ -91,6 +96,7 @@
       <input type="text" id="ts-arama" name="ara" value="{{ ara }}"
              placeholder="Cari veya belge no…" autocomplete="off">
     </div>
+    {% if not sat_teklif %}
     <div class="ts-alan-grup ts-tarih-kutu">
       <label for="ts-bas">Başlangıç</label>
       <input type="date" id="ts-bas" name="bas" value="{{ bas }}">
@@ -99,6 +105,7 @@
       <label for="ts-bit">Bitiş</label>
       <input type="date" id="ts-bit" name="bit" value="{{ bit }}">
     </div>
+    {% endif %}
     <div class="ts-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
       <a class="iptal-bag ts-arama-temizle{% if ara or bas or bit or durum %} gorunur{% endif %}"
@@ -122,13 +129,15 @@
 </div>
 
 <div class="tablo-kapsayici">
-<table id="ts-tablo">
+<table id="ts-tablo"{% if sat_teklif %} class="ts-sade"{% endif %}>
   <thead><tr>
-    <th>Cari</th><th>Tarih</th><th>Belge No</th><th>Durum</th><th class="sag">Ödenecek</th><th>İşlem</th>
+    <th>Cari</th><th>Tarih</th><th>Belge No</th><th>Durum</th>
+    {% if sat_teklif %}<th></th>{% else %}<th class="sag">Ödenecek</th><th>İşlem</th>{% endif %}
   </tr></thead>
   <tbody>
     {% for k in kayitlar %}
-      <tr class="ts-satir">
+      <tr class="ts-satir{% if sat_teklif %} ts-tiklanabilir{% endif %}"
+          {% if sat_teklif %}onclick="window.location='{% url 'core:teklif_siparis_detay' k.pk %}'"{% endif %}>
         <td>
           <div class="ts-hucre">
             <span class="ts-ikon">{% if k.aday_musteri %}🧲{% else %}🧑‍💼{% endif %}</span>
@@ -144,31 +153,28 @@
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>
           {% if k.donustu %}<span class="rozet rozet-notr">{{ donustu_etiket }}</span>{% endif %}
           {% if k.fatura_id %}<span class="rozet rozet-notr">🧾 Faturaya Dönüştü</span>{% endif %}</td>
-        {% if k.belge_tur == "TEKLIF" and k.yon == "SATIS" %}
-        <td class="sag mono">{{ k.kalem_sayisi }} ürün</td>
+        {% if sat_teklif %}
+        <td class="ts-ok">›</td>
         {% else %}
         <td class="sag mono">{{ k.odenecek|tr_kur:2 }} {{ k.para_birimi }}</td>
-        {% endif %}
         <td><span class="islem-bag">
           <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>
           <a href="{% url 'core:teklif_siparis_pdf' k.pk %}" target="_blank">PDF</a>
           {% if k.durum == "TASLAK" %}
-            {% if k.belge_tur == "TEKLIF" and k.yon == "SATIS" %}
-            <a href="{% url 'core:satis_teklif_duzenle' k.pk %}">Düzenle</a>
-            {% else %}
             <a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>
-            {% endif %}
           {% endif %}
           <form method="post" action="{% url 'core:teklif_siparis_iptal' k.pk %}" onsubmit="return confirm('{{ k.get_belge_tur_display }} iptal edilsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
         </span></td>
+        {% endif %}
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr{% if sat_teklif %} style="cursor:default"{% endif %}>
+        <td colspan="{% if sat_teklif %}5{% else %}6{% endif %}" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if ara or bas or bit or durum %}🔍 Bu süzgeçle eşleşen kayıt yok.
         {% else %}{{ emoji }} Henüz kayıt yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
-    <tr class="ts-bos-js"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+    <tr class="ts-bos-js"><td colspan="{% if sat_teklif %}5{% else %}6{% endif %}" class="yardim" style="text-align:center;padding:1.6rem 0">
       🔍 Eşleşen kayıt yok.</td></tr>
   </tbody>
 </table>
