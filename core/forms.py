@@ -1556,8 +1556,11 @@ class SatisTeklifBaslikForm(forms.Form):
         # düşer (bkz. AdayMusteri.donusen_cari, aday_cariye_donustur).
         self.fields["aday_musteri"].queryset = (
             AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)
-            .order_by("unvan"))
-        self.fields["aday_musteri"].label_from_instance = lambda o: o.unvan
+            .select_related("ulke").order_by("unvan"))
+        # Aynı unvanlı/benzer adaylar farklı ülkelerden olabilir — akıllı-seç'te ayırt
+        # edilsin diye ülke adı öne eklenir (ör. "DUBAİ AL BAWADI METALS").
+        self.fields["aday_musteri"].label_from_instance = (
+            lambda o: f"{o.ulke.ad} {o.unvan}" if o.ulke_id else o.unvan)
         self.fields["aday_musteri"].widget.attrs["class"] = "akilli-sec"
         K = TanimSecenegi.Kategori
         for alan, kategori in (("yukleme_sekli", K.YUKLEME_SEKLI),
