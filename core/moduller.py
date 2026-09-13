@@ -55,6 +55,7 @@ MODULLER = (
     )),
     Modul("CRM", "CRM", (
         Ekran("aday_musteriler", "Aday Müşteriler", "core:aday_musteriler"),
+        Ekran("aday_kategoriler", "Aday Kategorileri", "core:aday_kategoriler"),
     )),
     Modul("CARILER", "Cariler", (
         Ekran("cariler", "Cariler", "core:cariler"),

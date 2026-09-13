@@ -10,16 +10,11 @@
   .ad-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);
     border-radius:18px; padding:1rem 1.1rem 1.1rem; margin-bottom:1.2rem; }
 
-  .ad-sekmeler { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:.9rem; }
-  .ad-sekme { display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .95rem;
-    border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8);
-    color:var(--metin-soluk); font-size:.85rem; font-weight:650; text-decoration:none;
-    transition:background .12s, color .12s, border-color .12s; }
-  .ad-sekme:hover { border-color:var(--turuncu); color:var(--metin); }
-  .ad-sekme.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; }
-  .ad-sekme .n { font-variant-numeric:tabular-nums; opacity:.8; }
-
   .ad-arama-cubuk { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
+  .ad-alan-grup select { min-height:46px; padding:.4rem .85rem; border-radius:14px;
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.9rem;
+    color:var(--metin); max-width:16rem; }
+  .ad-alan-grup select:focus { outline:none; border-color:var(--turuncu); }
   .ad-alan-grup { display:flex; flex-direction:column; gap:.3rem; }
   .ad-alan-grup label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
     text-transform:uppercase; color:var(--metin-soluk); }
@@ -66,28 +61,32 @@
 
 <div class="ad-ust">
   <h1 class="ust-baslik"><span class="emoji">🧲</span>Aday Müşteriler</h1>
-  <a class="dugme" href="{% url 'core:aday_musteri_ekle' %}">+ Yeni</a>
+  <div class="ad-btn-cubuk" style="margin-left:0">
+    <a class="iptal-bag" href="{% url 'core:aday_kategoriler' %}">🗂️ Kategoriler</a>
+    <a class="dugme" href="{% url 'core:aday_musteri_ekle' %}">+ Yeni</a>
+  </div>
 </div>
 
 <div class="ad-panel">
-  <div class="ad-sekmeler">
-    <a class="ad-sekme{% if not asama %} aktif{% endif %}" href="?{{ sekme_qs }}">Tümü <span class="n">{{ toplam }}</span></a>
-    {% for s in asama_sekmeleri %}
-      <a class="ad-sekme{% if asama == s.kod %} aktif{% endif %}" href="?asama={{ s.kod }}&{{ sekme_qs }}">{{ s.ad }} <span class="n">{{ s.n }}</span></a>
-    {% endfor %}
-  </div>
-
   <form method="get" class="ad-arama-cubuk" id="ad-arama-form">
-    {% if asama %}<input type="hidden" name="asama" value="{{ asama }}">{% endif %}
     <div class="ad-alan-grup ad-arama-kutu">
       <label for="ad-arama">Ara</label>
       <span class="ad-arama-ikon">🔍</span>
       <input type="text" id="ad-arama" name="ara" value="{{ ara }}"
              placeholder="Unvan, ilgili kişi, telefon, e-posta…" autocomplete="off">
     </div>
+    <div class="ad-alan-grup">
+      <label for="ad-kategori">Kategori</label>
+      <select id="ad-kategori" name="kategori" onchange="this.form.submit()">
+        <option value="">Tüm Kategoriler</option>
+        {% for k in kategoriler %}
+          <option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="ad-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
-      <a class="iptal-bag ad-arama-temizle{% if ara or asama %} gorunur{% endif %}" href="?">Temizle</a>
+      <a class="iptal-bag ad-arama-temizle{% if ara or secili_kategori %} gorunur{% endif %}" href="?">Temizle</a>
     </div>
   </form>
 </div>
@@ -95,7 +94,7 @@
 <div class="ad-alt-cubuk">
   <p class="sayfa-alt" style="margin:0">{{ kayitlar.paginator.count }} kayıt{% if kayitlar.paginator.num_pages > 1 %} · sayfa {{ kayitlar.number }}/{{ kayitlar.paginator.num_pages }}{% endif %}.</p>
   <form method="get" class="ad-boyut-secici">
-    {% if asama %}<input type="hidden" name="asama" value="{{ asama }}">{% endif %}
+    {% if secili_kategori %}<input type="hidden" name="kategori" value="{{ secili_kategori }}">{% endif %}
     {% if ara %}<input type="hidden" name="ara" value="{{ ara }}">{% endif %}
     <label for="ad-boyut">Sayfa başına</label>
     <select id="ad-boyut" name="boyut" onchange="this.form.submit()">
@@ -107,7 +106,7 @@
 <div class="tablo-kapsayici">
 <table id="ad-tablo">
   <thead><tr>
-    <th>Unvan</th><th>İletişim</th><th>Aşama</th><th>Sorumlu</th><th>Sonraki Takip</th><th>İşlem</th>
+    <th>Unvan</th><th>İletişim</th><th>Kategori</th><th>Şehir / Ülke</th><th>İşlem</th>
   </tr></thead>
   <tbody>
     {% for a in kayitlar %}
@@ -122,9 +121,8 @@
           </div>
         </td>
         <td>{% if a.telefon %}{{ a.telefon }}{% endif %}{% if a.telefon and a.eposta %}<br>{% endif %}{% if a.eposta %}<span class="alt">{{ a.eposta }}</span>{% endif %}{% if not a.telefon and not a.eposta %}<span class="pasif">—</span>{% endif %}</td>
-        <td><span class="rozet {% if a.asama == 'KAZANILDI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ a.get_asama_display }}</span></td>
-        <td>{% if a.sorumlu %}{{ a.sorumlu.get_full_name|default:a.sorumlu.username }}{% else %}<span class="pasif">—</span>{% endif %}</td>
-        <td class="mono">{{ a.sonraki_takip_tarihi|date:"d.m.Y"|default:"—" }}</td>
+        <td>{% if a.kategori %}<span class="rozet rozet-notr">{{ a.kategori.ad }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if a.sehir %}{{ a.sehir.ad }}{% endif %}{% if a.ulke %} <span class="mono yardim">({{ a.ulke.kod }})</span>{% endif %}{% if not a.sehir and not a.ulke %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:aday_musteri_detay' a.pk %}">Detay</a>
           <a href="{% url 'core:aday_musteri_duzenle' a.pk %}">Düzenle</a>
@@ -133,8 +131,8 @@
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or asama %}🔍 Bu süzgeçle eşleşen kayıt yok.
+      <tr><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara or secili_kategori %}🔍 Bu süzgeçle eşleşen kayıt yok.
         {% else %}🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
   </tbody>

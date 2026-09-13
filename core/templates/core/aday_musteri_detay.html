@@ -55,12 +55,12 @@
     <span class="detay-ikon">🧲</span>
     <div>
       <div class="detay-rozetler">
-        <span class="d-rozet kod">{{ aday.get_asama_display }}</span>
-        {% if aday.kaynak %}<span class="d-rozet pb">{{ aday.kaynak.ad }}</span>{% endif %}
-        {% if aday.tahmini_deger is not None %}<span class="d-rozet pb">{{ aday.tahmini_deger|tr_kur:2 }} {{ aday.para_birimi }}</span>{% endif %}
+        {% if aday.kategori %}<span class="d-rozet kod">{{ aday.kategori.ad }}</span>{% endif %}
+        <span class="d-rozet pb">{{ aday.para_birimi }}</span>
+        {% if aday.iskonto_yuzdesi %}<span class="d-rozet pb">%{{ aday.iskonto_yuzdesi|tr_kur:2 }} iskonto</span>{% endif %}
       </div>
       <div class="detay-ad">{{ aday.unvan }}</div>
-      <div class="detay-alt">{% if aday.sorumlu %}Sorumlu: {{ aday.sorumlu.get_full_name|default:aday.sorumlu.username }}{% else %}Sorumlu atanmadı{% endif %}</div>
+      <div class="detay-alt">{% if aday.ulke %}{{ aday.ulke.ad }}{% if aday.sehir %} / {{ aday.sehir.ad }}{% endif %}{% else %}Konum girilmedi{% endif %}</div>
     </div>
   </div>
 
@@ -71,11 +71,8 @@
       <div class="satir"><span class="et">Telefon</span><span class="dg">{{ aday.telefon|default:"—" }}</span></div>
       <div class="satir"><span class="et">E-posta</span><span class="dg">{{ aday.eposta|default:"—" }}</span></div>
       <div class="satir"><span class="et">Ülke / Şehir</span><span class="dg">{% if aday.ulke %}{{ aday.ulke.ad }}{% if aday.sehir %} / {{ aday.sehir.ad }}{% endif %}{% else %}—{% endif %}</span></div>
-      <div class="satir"><span class="et">Sonraki Takip Tarihi</span><span class="dg">{{ aday.sonraki_takip_tarihi|date:"d.m.Y"|default:"—" }}</span></div>
-      {% if aday.asama == "KAYBEDILDI" %}
-      <div class="satir"><span class="et">Kaybedilme Nedeni</span><span class="dg">{{ aday.kaybedilme_nedeni|default:"—" }}</span></div>
-      {% endif %}
-      {% if aday.notlar %}<div class="satir tam"><span class="et">Notlar</span><span class="dg">{{ aday.notlar }}</span></div>{% endif %}
+      <div class="satir"><span class="et">Kategori</span><span class="dg">{{ aday.kategori.ad|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg">%{{ aday.iskonto_yuzdesi|tr_kur:2 }}</span></div>
     </div>
   </section>
 

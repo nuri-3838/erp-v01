@@ -925,17 +925,10 @@ class CariAktiviteEk(TemelModel):
 class AdayMusteri(TemelModel):
     """CRM: henüz Cari olmamış potansiyel müşteri. Kasıtlı olarak Cari'den ayrı ve HAFİF —
     Cari.kaydı açılınca otomatik muhasebe hesabı açılır (bkz. cari_servis.muhasebe_hesabi_ac),
-    bu adaylar için yanlış olur. Aşama "Kazanıldı" olunca ``cariye_donustur`` servisi gerçek
-    bir Cari açar ve ``donusen_cari``'yi set eder — kayıt silinmez, iz kalır (TeklifSiparis'in
-    kaynak_teklif/kaynak_siparis self-FK desenindeki gibi)."""
-
-    class Asama(models.TextChoices):
-        YENI = "YENI", "Yeni"
-        ILETISIMDE = "ILETISIMDE", "İletişimde"
-        TEKLIF_VERILDI = "TEKLIF_VERILDI", "Teklif Verildi"
-        MUZAKERE = "MUZAKERE", "Müzakere"
-        KAZANILDI = "KAZANILDI", "Kazanıldı"
-        KAYBEDILDI = "KAYBEDILDI", "Kaybedildi"
+    bu adaylar için yanlış olur. Yapısı bilinçli olarak Cari'ye çok yakın (kimlik/iletişim +
+    kategori + para birimi + iskonto) — "Cariye Dönüştür" servisi gerçek bir Cari açar ve
+    ``donusen_cari``'yi set eder; kayıt silinmez, iz kalır (TeklifSiparis'in kaynak_teklif/
+    kaynak_siparis self-FK desenindeki gibi)."""
 
     PARA_CHOICES = YevmiyeSatir.IslemPB.choices
 
@@ -949,24 +942,15 @@ class AdayMusteri(TemelModel):
     sehir = models.ForeignKey(
         "Sehir", verbose_name="şehir", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
-    kaynak = models.ForeignKey(
-        "TanimSecenegi", verbose_name="kaynak", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="+")
-    asama = models.CharField("aşama", max_length=15, choices=Asama.choices,
-                             default=Asama.YENI)
-    tahmini_deger = models.DecimalField(
-        "tahmini değer", max_digits=18, decimal_places=2, null=True, blank=True)
+    kategori = models.ForeignKey(
+        "AdayMusteriKategori", verbose_name="kategori", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="aday_musteriler")
     para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES,
                                    default="TRY")
-    sorumlu = models.ForeignKey(
-        settings.AUTH_USER_MODEL, verbose_name="sorumlu", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="sorumlu_adaylar")
-    sonraki_takip_tarihi = models.DateField("sonraki takip tarihi", null=True, blank=True)
-    kaybedilme_nedeni = models.CharField("kaybedilme nedeni", max_length=200, blank=True,
-                                         default="")
-    notlar = models.TextField("notlar", blank=True, default="")
-    # Kazanıldığında açılan gerçek Cari — dönüşüm tek seferlik, servis tekrar dönüştürmeyi
-    # engeller (TeklifSiparis.kaynak_teklif ile aynı invariant).
+    iskonto_yuzdesi = models.DecimalField(
+        "varsayılan iskonto %", max_digits=5, decimal_places=2, default=0)
+    # Cariye dönüştürülünce açılan gerçek Cari — dönüşüm tek seferlik, servis tekrar
+    # dönüştürmeyi engeller (TeklifSiparis.kaynak_teklif ile aynı invariant).
     donusen_cari = models.ForeignKey(
         Cari, verbose_name="dönüşen cari", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_kaynagi")
@@ -979,6 +963,43 @@ class AdayMusteri(TemelModel):
 
     def __str__(self):
         return self.unvan
+
+
+class AdayMusteriKategori(TemelModel):
+    """Aday müşteri kategorisi (CRM) — CariKategori ile aynı desen (2 seviye: ÜST → ALT),
+    ama Cari'nin muhasebe/kod-numaralama ihtiyacından bağımsız, CRM'e özel ayrı bir ağaç."""
+
+    ad = models.CharField("ad", max_length=100)
+    kod = models.CharField("kod", max_length=10)
+    ust = models.ForeignKey(
+        "self", verbose_name="üst kategori", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="alt_kategoriler")
+
+    class Meta:
+        db_table = "aday_musteri_kategori"
+        verbose_name = "aday müşteri kategorisi"
+        verbose_name_plural = "aday müşteri kategorileri"
+        ordering = ["kod"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["ust", "kod"], condition=models.Q(silindi=False),
+                nulls_distinct=False, name="uq_adaykat_ust_kod_aktif"),
+            models.UniqueConstraint(
+                fields=["ust", "ad"], condition=models.Q(silindi=False),
+                nulls_distinct=False, name="uq_adaykat_ust_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return self.ad
+
+    @property
+    def kod_yolu(self):
+        parcalar, k = [], self
+        while k is not None:
+            if k.kod:
+                parcalar.insert(0, k.kod)
+            k = k.ust
+        return "-".join(parcalar)
 
 
 class AdayAktivite(TemelModel):
@@ -1051,7 +1072,6 @@ class TanimSecenegi(TemelModel):
         ODEME_KOSULU = "ODEME_KOSULU", "Ödeme Koşulu"
         YUKLEME_TIPI = "YUKLEME_TIPI", "Yükleme Tipi"
         TESLIM_SURESI = "TESLIM_SURESI", "Teslim Süresi"
-        ADAY_KAYNAGI = "ADAY_KAYNAGI", "Aday Kaynağı"
 
     # Yükleme Tipi kodu -> Stok'taki "bu tipe kaç adet sığar" alanı.
     YUKLEME_ALANI = {"20DC": "yukleme_20dc", "40HQ": "yukleme_40hq", "TIR": "yukleme_tir"}

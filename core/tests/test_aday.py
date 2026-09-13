@@ -1,22 +1,72 @@
-"""Aday Müşteri (CRM) testleri: servis CRUD + aktivite + Cariye dönüştürme + view/yetki."""
+"""Aday Müşteri (CRM) testleri: servis CRUD + kategori + aktivite + Cariye dönüştürme +
+view/yetki."""
 import datetime
-from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import AdayMusteri, Cari, CariKategori, EkranYetki, HesapPlani, TanimSecenegi
+from core.models import (
+    AdayMusteri, AdayMusteriKategori, Cari, CariKategori, EkranYetki, TanimSecenegi,
+)
 from core.services.aday import (
     AdayHatasi, aday_aktivite_ekle, aday_aktivite_guncelle, aday_aktivite_sil,
     aday_cariye_donustur, aday_musteri_guncelle, aday_musteri_olustur, aday_musteri_sil,
     aktif_aday_aktiviteleri, aktif_aday_musteriler,
 )
+from core.services.aday_kategori import (
+    AdayKategoriHatasi, aday_kategori_guncelle, aday_kategori_olustur, aday_kategori_sil,
+)
 
 
-def _kaynak(ad="REFERANS"):
-    return TanimSecenegi.objects.filter(
-        kategori="ADAY_KAYNAGI", ad=ad, silindi=False).first()
+class AdayMusteriKategoriServisTest(TestCase):
+    def test_olustur_tr_buyuk_harf_ve_benzersiz(self):
+        k = aday_kategori_olustur(ad="sıcak aday", kod="scr")
+        self.assertEqual((k.ad, k.kod, k.ust_id), ("SICAK ADAY", "SCR", None))
+        with self.assertRaises(AdayKategoriHatasi):
+            aday_kategori_olustur(ad="SICAK ADAY", kod="baska")
+        with self.assertRaises(AdayKategoriHatasi):
+            aday_kategori_olustur(ad="başka", kod="SCR")
+
+    def test_ad_bos_red(self):
+        with self.assertRaises(AdayKategoriHatasi):
+            aday_kategori_olustur(ad="  ", kod="x")
+
+    def test_alt_kategori_ve_kod_yolu(self):
+        ust = aday_kategori_olustur(ad="kurumsal", kod="KRM")
+        alt = aday_kategori_olustur(ad="inşaat", kod="INS", ust_id=ust.pk)
+        self.assertEqual(alt.kod_yolu, "KRM-INS")
+        self.assertEqual(ust.kod_yolu, "KRM")
+
+    def test_ust_ustune_acilamaz(self):
+        ust = aday_kategori_olustur(ad="kurumsal", kod="KRM")
+        alt = aday_kategori_olustur(ad="inşaat", kod="INS", ust_id=ust.pk)
+        with self.assertRaises(AdayKategoriHatasi):
+            aday_kategori_olustur(ad="daha alt", kod="X", ust_id=alt.pk)
+
+    def test_guncelle(self):
+        k = aday_kategori_olustur(ad="eski", kod="ESK")
+        aday_kategori_guncelle(k, ad="yeni", kod="YEN")
+        k.refresh_from_db()
+        self.assertEqual((k.ad, k.kod), ("YENİ", "YEN"))
+
+    def test_alt_kategorisi_olan_silinemez(self):
+        ust = aday_kategori_olustur(ad="kurumsal", kod="KRM")
+        aday_kategori_olustur(ad="inşaat", kod="INS", ust_id=ust.pk)
+        with self.assertRaises(AdayKategoriHatasi):
+            aday_kategori_sil(ust)
+
+    def test_bagli_aday_varsa_silinemez(self):
+        k = aday_kategori_olustur(ad="kurumsal", kod="KRM")
+        aday_musteri_olustur(unvan="x", kategori_id=k.pk)
+        with self.assertRaises(AdayKategoriHatasi):
+            aday_kategori_sil(k)
+
+    def test_sil_soft_delete(self):
+        k = aday_kategori_olustur(ad="silinecek", kod="SLN")
+        aday_kategori_sil(k)
+        k.refresh_from_db()
+        self.assertTrue(k.silindi)
 
 
 class AdayMusteriServisTest(TestCase):
@@ -24,46 +74,36 @@ class AdayMusteriServisTest(TestCase):
         a = aday_musteri_olustur(unvan="acme ltd", ilgili_kisi="ayşe yılmaz")
         self.assertEqual(a.unvan, "ACME LTD")
         self.assertEqual(a.ilgili_kisi, "AYŞE YILMAZ")
-        self.assertEqual(a.asama, AdayMusteri.Asama.YENI)
         self.assertEqual(a.para_birimi, "TRY")
+        self.assertEqual(a.iskonto_yuzdesi, 0)
 
     def test_unvan_zorunlu(self):
         with self.assertRaises(AdayHatasi):
             aday_musteri_olustur(unvan="   ")
 
-    def test_gecersiz_asama_red(self):
-        with self.assertRaises(AdayHatasi):
-            aday_musteri_olustur(unvan="x", asama="YOK_BOYLE")
-
     def test_gecersiz_para_birimi_red(self):
         with self.assertRaises(AdayHatasi):
             aday_musteri_olustur(unvan="x", para_birimi="XYZ")
 
-    def test_kaynak_baska_kategoriden_olamaz(self):
-        # Teslim Süresi kategorisinden bir pk, Aday Kaynağı için geçersiz olmalı.
-        yanlis = TanimSecenegi.objects.filter(kategori="TESLIM_SURESI", silindi=False).first()
+    def test_kategori_gecersizse_red(self):
         with self.assertRaises(AdayHatasi):
-            aday_musteri_olustur(unvan="x", kaynak_id=yanlis.pk if yanlis else 999999)
+            aday_musteri_olustur(unvan="x", kategori_id=999999)
 
-    def test_kaynak_dogru_kategoriden_kabul(self):
-        kaynak = _kaynak()
-        a = aday_musteri_olustur(unvan="x", kaynak_id=kaynak.pk)
-        self.assertEqual(a.kaynak_id, kaynak.pk)
+    def test_kategori_ile_olusturur(self):
+        k = aday_kategori_olustur(ad="sıcak", kod="SIC")
+        a = aday_musteri_olustur(unvan="x", kategori_id=k.pk)
+        self.assertEqual(a.kategori_id, k.pk)
 
-    def test_tahmini_deger_negatif_red(self):
+    def test_iskonto_negatif_red(self):
         with self.assertRaises(AdayHatasi):
-            aday_musteri_olustur(unvan="x", tahmini_deger="-5")
-
-    def test_tahmini_deger_bos_none_kalir(self):
-        a = aday_musteri_olustur(unvan="x")
-        self.assertIsNone(a.tahmini_deger)
+            aday_musteri_olustur(unvan="x", iskonto_yuzdesi="-5")
 
     def test_guncelle(self):
         a = aday_musteri_olustur(unvan="x")
-        aday_musteri_guncelle(a, unvan="y", asama=AdayMusteri.Asama.ILETISIMDE)
+        aday_musteri_guncelle(a, unvan="y", iskonto_yuzdesi="10")
         a.refresh_from_db()
         self.assertEqual(a.unvan, "Y")
-        self.assertEqual(a.asama, AdayMusteri.Asama.ILETISIMDE)
+        self.assertEqual(a.iskonto_yuzdesi, 10)
 
     def test_silinmis_guncellenemez(self):
         a = aday_musteri_olustur(unvan="x")
@@ -83,17 +123,19 @@ class AdayCariyeDonusturTest(TestCase):
     def test_donusturur_ve_iz_birakir(self):
         a = aday_musteri_olustur(
             unvan="beta gmbh", ilgili_kisi="hans", telefon="+491234", eposta="hans@beta.de",
-            para_birimi="EUR", notlar="ilk temas iyi geçti")
+            para_birimi="EUR", iskonto_yuzdesi="5")
         cari = aday_cariye_donustur(a)
         self.assertEqual(cari.unvan, "BETA GMBH")
         self.assertEqual(cari.telefon, "+491234")
         self.assertEqual(cari.para_birimi, "EUR")
+        self.assertEqual(cari.iskonto_yuzdesi, 5)
         a.refresh_from_db()
         self.assertEqual(a.donusen_cari_id, cari.pk)
-        self.assertEqual(a.asama, AdayMusteri.Asama.KAZANILDI)
         self.assertFalse(a.silindi)   # aday kaydı silinmez, iz kalır
 
     def test_kategori_ile_donusturur(self):
+        """kategori_id burada Cari'nin KENDİ kategorisi (CariKategori) - AdayMusteriKategori
+        ile karışmaz, ayrı ağaçlardır."""
         ust = CariKategori.objects.create(ad="MÜŞTERİLER", kod="120")
         alt = CariKategori.objects.create(ad="YURTİÇİ", kod="10", ust=ust)
         a = aday_musteri_olustur(unvan="gamma")
@@ -159,7 +201,7 @@ class AdayMusteriViewTest(TestCase):
 
     def test_liste_ve_ara(self):
         aday_musteri_olustur(unvan="acme ltd")
-        aday_musteri_olustur(unvan="boyçelik", asama=AdayMusteri.Asama.ILETISIMDE)
+        aday_musteri_olustur(unvan="boyçelik")
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:aday_musteriler"))
         self.assertContains(r, "ACME LTD")
@@ -168,39 +210,38 @@ class AdayMusteriViewTest(TestCase):
         self.assertContains(r2, "ACME LTD")
         self.assertNotContains(r2, "BOYÇELİK")
 
-    def test_asama_sekme_sayaci_dogru(self):
-        """Regresyon: _ts_liste'deki JOIN-şişme hatasının bir benzeri burada da oluşmasın —
-        sekme sayaçları gerçek kayıt sayısını göstermeli."""
-        aday_musteri_olustur(unvan="a1")
-        aday_musteri_olustur(unvan="a2")
-        aday_musteri_olustur(unvan="a3", asama=AdayMusteri.Asama.ILETISIMDE)
+    def test_liste_kategori_filtresi(self):
+        k1 = aday_kategori_olustur(ad="sıcak", kod="SIC")
+        k2 = aday_kategori_olustur(ad="soğuk", kod="SOG")
+        aday_musteri_olustur(unvan="sıcak aday", kategori_id=k1.pk)
+        aday_musteri_olustur(unvan="soğuk aday", kategori_id=k2.pk)
         self.client.force_login(self.yon)
-        r = self.client.get(reverse("core:aday_musteriler"))
-        self.assertContains(r, "Tümü <span class=\"n\">3</span>")
-        self.assertContains(r, "Yeni <span class=\"n\">2</span>")
-        self.assertContains(r, "İletişimde <span class=\"n\">1</span>")
+        r = self.client.get(reverse("core:aday_musteriler"), {"kategori": k1.pk})
+        self.assertContains(r, "SICAK ADAY")
+        self.assertNotContains(r, "SOĞUK ADAY")
 
     def test_ekle_post(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:aday_musteri_ekle"), {
-            "unvan": "yeni aday", "asama": "YENI", "para_birimi": "TRY"})
+            "unvan": "yeni aday", "para_birimi": "TRY", "iskonto_yuzdesi": "0"})
         self.assertEqual(r.status_code, 302)
         self.assertTrue(AdayMusteri.objects.filter(unvan="YENİ ADAY").exists())
 
     def test_unvansiz_ekle_hata_doner(self):
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:aday_musteri_ekle"),
-                             {"asama": "YENI", "para_birimi": "TRY"})
+                             {"para_birimi": "TRY", "iskonto_yuzdesi": "0"})
         self.assertEqual(r.status_code, 200)
 
     def test_duzenle_post(self):
         a = aday_musteri_olustur(unvan="eski ad")
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:aday_musteri_duzenle", args=[a.pk]), {
-            "unvan": "yeni ad", "asama": "MUZAKERE", "para_birimi": "USD"})
+            "unvan": "yeni ad", "para_birimi": "USD", "iskonto_yuzdesi": "7,5"})
         self.assertEqual(r.status_code, 302)
         a.refresh_from_db()
-        self.assertEqual((a.unvan, a.asama, a.para_birimi), ("YENİ AD", "MUZAKERE", "USD"))
+        self.assertEqual((a.unvan, a.para_birimi, a.iskonto_yuzdesi),
+                         ("YENİ AD", "USD", 7.5))
 
     def test_detay_ve_sil(self):
         a = aday_musteri_olustur(unvan="silinecek")
@@ -247,12 +288,50 @@ class AdayMusteriViewTest(TestCase):
         akt.refresh_from_db()
         self.assertTrue(akt.silindi)
 
-    def test_tanim_listeleri_aday_kaynagi_karti(self):
-        """Aday Kaynağı, Tanım Listeleri yönetim ekranında da erişilebilir olmalı (bkz.
-        Teslim Süresi'nin unutulup sonra düzeltildiği hata — aynı yanlış tekrarlanmasın)."""
+
+class AdayMusteriKategoriViewTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.yon = User.objects.create_superuser("advkyon", password="x")
+        cls.bos = User.objects.create_user("advkbos", password="x")
+
+    def test_yetkisiz_403(self):
+        self.client.force_login(self.bos)
+        self.assertEqual(self.client.get(reverse("core:aday_kategoriler")).status_code, 403)
+
+    def test_liste_ekle_duzenle_sil(self):
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:aday_kategori_ekle"),
+                             {"ad": "kurumsal", "kod": "krm"})
+        self.assertEqual(r.status_code, 302)
+        k = AdayMusteriKategori.objects.get(kod="KRM")
+        r2 = self.client.get(reverse("core:aday_kategoriler"))
+        self.assertContains(r2, "KURUMSAL")
+        # alt kategori ekle (ust, +Alt formundaki gizli alandan POST edilir - GET query
+        # string'i yalnız GET isteğinde okunur, bkz. aday_kategori_ekle view'ı)
+        r3 = self.client.post(
+            reverse("core:aday_kategori_ekle"),
+            {"ad": "inşaat", "kod": "nsa", "ust": k.pk})
+        self.assertEqual(r3.status_code, 302)
+        alt = AdayMusteriKategori.objects.get(kod="NSA")
+        self.assertEqual(alt.ust_id, k.pk)
+        r4 = self.client.post(reverse("core:aday_kategori_duzenle", args=[k.pk]),
+                              {"ad": "kurumsal 2", "kod": "krm"})
+        self.assertEqual(r4.status_code, 302)
+        k.refresh_from_db()
+        self.assertEqual(k.ad, "KURUMSAL 2")
+        r5 = self.client.post(reverse("core:aday_kategori_sil", args=[alt.pk]))
+        self.assertEqual(r5.status_code, 302)
+        alt.refresh_from_db()
+        self.assertTrue(alt.silindi)
+
+    def test_tanim_listeleri_aday_kaynagi_karti_kaldirildi(self):
+        """Aday Kaynağı kavramı (Tanım Listesi) kullanıcı isteğiyle kaldırıldı; artık ne
+        kartı ne de kategorisi kalmalı."""
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:tanim_listeleri"))
-        self.assertContains(r, "Aday Kaynağı")
+        self.assertNotContains(r, "Aday Kaynağı")
         self.assertEqual(
             self.client.get(reverse("core:secenek_listesi", args=["aday-kaynagi"])).status_code,
-            200)
+            404)
+        self.assertNotIn("ADAY_KAYNAGI", dict(TanimSecenegi.Kategori.choices))

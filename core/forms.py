@@ -16,7 +16,8 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    AdayAktivite, AdayMusteri, Banka, BankaHesap, Birim, Cari, CariAktivite, CariKategori,
+    AdayAktivite, AdayMusteri, AdayMusteriKategori, Banka, BankaHesap, Birim, Cari,
+    CariAktivite, CariKategori,
     CekSenet, Depo, FaturaTipi,
     HesapPlani, Kasa, Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
@@ -528,8 +529,19 @@ class CariForm(forms.Form):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
 
 
+class AdayMusteriKategoriForm(forms.Form):
+    """Aday müşteri kategorisi ekle/düzenle (CRM). Ad+Kod TR büyük harf + benzersizlik
+    serviste. Üst kategori formda değil — ekleme giriş noktasıyla belirlenir (kök / +Alt)."""
+
+    ad = forms.CharField(
+        label="Ad", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kod = forms.CharField(
+        label="Kod", max_length=10, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
 class AdayMusteriForm(forms.Form):
-    """Aday müşteri (CRM) ekle/düzenle. TR büyük harf serviste."""
+    """Aday müşteri (CRM) ekle/düzenle. TR büyük harf serviste. Kasıtlı olarak Cari'nin
+    Kimlik/İletişim + Kategori + Para Birimi + İskonto yapısını yansıtır."""
 
     _K = {"autocomplete": "off"}
     unvan = forms.CharField(label="Unvan / Ad Soyad", max_length=200,
@@ -544,32 +556,24 @@ class AdayMusteriForm(forms.Form):
                                   required=False, empty_label="— ülke seç —")
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
                                    required=False, empty_label="— şehir seç —")
-    kaynak = forms.ModelChoiceField(label="Kaynak", queryset=TanimSecenegi.objects.none(),
-                                    required=False, empty_label="— seçiniz —")
-    asama = forms.ChoiceField(label="Aşama", choices=AdayMusteri.Asama.choices)
-    tahmini_deger = TRDecimalField(label="Tahmini Değer", basamak=2, required=False)
+    kategori = forms.ModelChoiceField(
+        label="Kategori", queryset=AdayMusteriKategori.objects.none(),
+        required=False, empty_label="— kategori seç —")
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=AdayMusteri.PARA_CHOICES,
                                     initial="TRY")
-    sorumlu = forms.ModelChoiceField(
-        label="Sorumlu", queryset=User.objects.filter(is_active=True).order_by("username"),
-        required=False, empty_label="— seçiniz —")
-    sonraki_takip_tarihi = forms.DateField(
-        label="Sonraki Takip Tarihi", required=False,
-        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
-    kaybedilme_nedeni = forms.CharField(label="Kaybedilme Nedeni", max_length=200,
-                                        required=False, widget=forms.TextInput(attrs=_K))
-    notlar = forms.CharField(label="Notlar", required=False,
-                             widget=forms.Textarea(attrs={"rows": 4, **_K}))
+    iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
+                                     initial=Decimal("0"), required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from core.services.aday_kategori import aktif_aday_kategoriler
         from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
         self.fields["ulke"].queryset = aktif_ulkeler()
         self.fields["sehir"].queryset = aktif_sehirler()
         self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
-        self.fields["kaynak"].queryset = TanimSecenegi.objects.filter(
-            silindi=False, kategori=TanimSecenegi.Kategori.ADAY_KAYNAGI).order_by("sira", "ad")
-        for f in ("ulke", "sehir", "kaynak", "sorumlu"):
+        self.fields["kategori"].queryset = aktif_aday_kategoriler()
+        self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
+        for f in ("ulke", "sehir", "kategori"):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
 
 

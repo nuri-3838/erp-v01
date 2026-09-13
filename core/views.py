@@ -17,7 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.forms import (
-    AdayAktiviteForm, AdayCariyeDonusturForm, AdayMusteriForm,
+    AdayAktiviteForm, AdayCariyeDonusturForm, AdayMusteriForm, AdayMusteriKategoriForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
@@ -31,7 +31,7 @@ from core.forms import (
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
 )
 from core.models import (
-    AdayAktivite, AdayMusteri,
+    AdayAktivite, AdayMusteri, AdayMusteriKategori,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
@@ -75,6 +75,7 @@ from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
+from core.services import aday_kategori as aday_kategori_servis
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
     yonetici_mi,
@@ -3555,6 +3556,73 @@ def aktivite_ek_sil(request, pk):
     return redirect("core:aktivite_duzenle", pk=ek.aktivite_id)
 
 
+# --- CRM: Aday Kategorileri ---------------------------------------------------
+@ekran_gerekli("aday_kategoriler")
+def aday_kategoriler(request):
+    alt_qs = AdayMusteriKategori.objects.filter(silindi=False).select_related("ust").order_by("kod")
+    koklar = (AdayMusteriKategori.objects.filter(silindi=False, ust__isnull=True)
+              .order_by("kod")
+              .prefetch_related(Prefetch("alt_kategoriler", queryset=alt_qs)))
+    return render(request, "core/aday_kategori_listesi.html", {"koklar": koklar})
+
+
+@ekran_gerekli("aday_kategoriler")
+def aday_kategori_ekle(request):
+    ham_ust = (request.POST.get("ust") if request.method == "POST"
+               else request.GET.get("ust"))
+    ust = (AdayMusteriKategori.objects.filter(pk=ham_ust, silindi=False, ust__isnull=True).first()
+           if ham_ust else None)
+    if request.method == "POST":
+        form = AdayMusteriKategoriForm(request.POST)
+        if form.is_valid():
+            try:
+                k = aday_kategori_servis.aday_kategori_olustur(
+                    ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
+                    ust_id=ust.pk if ust else None, kullanici=request.user)
+                messages.success(request, f"Aday kategori eklendi: {k.ad}")
+                return redirect("core:aday_kategoriler")
+            except aday_kategori_servis.AdayKategoriHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayMusteriKategoriForm()
+    baslik = (f"{ust.ad} → Yeni Alt Kategori" if ust else "Yeni Üst Kategori")
+    return render(request, "core/aday_kategori_form.html",
+                  {"form": form, "baslik": baslik, "ekle": True, "ust": ust})
+
+
+@ekran_gerekli("aday_kategoriler")
+def aday_kategori_duzenle(request, pk):
+    kat = get_object_or_404(AdayMusteriKategori, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = AdayMusteriKategoriForm(request.POST)
+        if form.is_valid():
+            try:
+                aday_kategori_servis.aday_kategori_guncelle(
+                    kat, ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
+                    kullanici=request.user)
+                messages.success(request, "Aday kategori güncellendi.")
+                return redirect("core:aday_kategoriler")
+            except aday_kategori_servis.AdayKategoriHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayMusteriKategoriForm(initial={"ad": kat.ad, "kod": kat.kod})
+    return render(request, "core/aday_kategori_form.html",
+                  {"form": form, "baslik": "Aday Kategori Düzenle", "ekle": False,
+                   "ust": kat.ust, "duzenlenen": kat})
+
+
+@ekran_gerekli("aday_kategoriler")
+def aday_kategori_sil(request, pk):
+    kat = get_object_or_404(AdayMusteriKategori, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            aday_kategori_servis.aday_kategori_sil(kat, kullanici=request.user)
+            messages.success(request, f"Aday kategori silindi: {kat.ad}")
+        except aday_kategori_servis.AdayKategoriHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:aday_kategoriler")
+
+
 # --- CRM: Aday Müşteriler ----------------------------------------------------
 _ADAY_SAYFA_BOYUTLARI = (25, 50, 100, 200)
 
@@ -3565,48 +3633,42 @@ def _aday_form_kw(cd):
     return dict(
         unvan=cd["unvan"], ilgili_kisi=cd["ilgili_kisi"], telefon=cd["telefon"],
         eposta=cd["eposta"], ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]),
-        kaynak_id=g(cd["kaynak"]), asama=cd["asama"], tahmini_deger=cd["tahmini_deger"],
-        para_birimi=cd["para_birimi"], sorumlu_id=g(cd["sorumlu"]),
-        sonraki_takip_tarihi=cd["sonraki_takip_tarihi"],
-        kaybedilme_nedeni=cd["kaybedilme_nedeni"], notlar=cd["notlar"])
+        kategori_id=g(cd["kategori"]), para_birimi=cd["para_birimi"],
+        iskonto_yuzdesi=cd["iskonto_yuzdesi"])
 
 
 @ekran_gerekli("aday_musteriler")
 def aday_musteriler(request):
     ara = (request.GET.get("ara") or "").strip()
-    asama = request.GET.get("asama") or ""
-    if asama not in dict(AdayMusteri.Asama.choices):
-        asama = ""
+    kategori_id = request.GET.get("kategori") or ""
     try:
         boyut = int(request.GET.get("boyut", 50))
     except ValueError:
         boyut = 50
     if boyut not in _ADAY_SAYFA_BOYUTLARI:
         boyut = 50
-    temel = aday_servis.aktif_aday_musteriler()
+    kayitlar = aday_servis.aktif_aday_musteriler()
     if ara:
         buyuk = buyuk_harf_tr(ara)
-        temel = temel.filter(
+        kayitlar = kayitlar.filter(
             Q(unvan__contains=buyuk) | Q(ilgili_kisi__contains=buyuk)
             | Q(telefon__icontains=ara) | Q(eposta__icontains=ara))
-    # Aşama sayaçları — durum filtresinden ÖNCE, ham `temel` üzerinden (bkz. _ts_liste'deki
-    # kalem-JOIN sayaç şişme hatası — burada öyle bir JOIN yok ama aynı ihtiyat ilkesi geçerli).
-    sayimlar = {a: 0 for a, _ in AdayMusteri.Asama.choices}
-    for satir in temel.values("asama").annotate(n=Count("pk")):
-        sayimlar[satir["asama"]] = satir["n"]
-    asama_sekmeleri = [{"kod": kod, "ad": ad, "n": sayimlar.get(kod, 0)}
-                       for kod, ad in AdayMusteri.Asama.choices]
-    kayitlar = (temel.filter(asama=asama) if asama else temel).order_by("-created_at")
+    if kategori_id:
+        kayitlar = kayitlar.filter(kategori_id=kategori_id)
+    kayitlar = kayitlar.order_by("-created_at")
+    # Filtre seçenekleri yalnız en az bir adayda fiilen kullanılan kategorilerden oluşur
+    # (bkz. cariler view'ındaki aynı desen).
+    tumu = aday_servis.aktif_aday_musteriler()
+    kategoriler = AdayMusteriKategori.objects.filter(
+        silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
+    ).order_by("kod")
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
     sabit_qs = request.GET.copy()
     sabit_qs.pop("sayfa", None)
-    sekme_qs = sabit_qs.copy()
-    sekme_qs.pop("asama", None)
     return render(request, "core/aday_musteri_listesi.html", {
-        "kayitlar": sayfa, "ara": ara, "asama": asama, "boyut": boyut,
-        "sayfa_boyutlari": _ADAY_SAYFA_BOYUTLARI, "toplam": sum(sayimlar.values()),
-        "asama_sekmeleri": asama_sekmeleri,
-        "sabit_qs": sabit_qs.urlencode(), "sekme_qs": sekme_qs.urlencode()})
+        "kayitlar": sayfa, "ara": ara, "secili_kategori": kategori_id, "boyut": boyut,
+        "sayfa_boyutlari": _ADAY_SAYFA_BOYUTLARI, "kategoriler": kategoriler,
+        "sabit_qs": sabit_qs.urlencode()})
 
 
 @ekran_gerekli("aday_musteriler")
@@ -3644,10 +3706,8 @@ def aday_musteri_duzenle(request, pk):
         form = AdayMusteriForm(initial={
             "unvan": aday.unvan, "ilgili_kisi": aday.ilgili_kisi, "telefon": aday.telefon,
             "eposta": aday.eposta, "ulke": aday.ulke_id, "sehir": aday.sehir_id,
-            "kaynak": aday.kaynak_id, "asama": aday.asama, "tahmini_deger": aday.tahmini_deger,
-            "para_birimi": aday.para_birimi, "sorumlu": aday.sorumlu_id,
-            "sonraki_takip_tarihi": aday.sonraki_takip_tarihi,
-            "kaybedilme_nedeni": aday.kaybedilme_nedeni, "notlar": aday.notlar})
+            "kategori": aday.kategori_id, "para_birimi": aday.para_birimi,
+            "iskonto_yuzdesi": aday.iskonto_yuzdesi})
     return render(request, "core/aday_musteri_form.html",
                   {"form": form, "baslik": "Aday Müşteri Düzenle", "duzenlenen": aday})
 
@@ -3655,8 +3715,7 @@ def aday_musteri_duzenle(request, pk):
 @ekran_gerekli("aday_musteriler")
 def aday_musteri_detay(request, pk):
     aday = get_object_or_404(
-        AdayMusteri.objects.select_related("ulke", "sehir", "kaynak", "sorumlu",
-                                           "donusen_cari"),
+        AdayMusteri.objects.select_related("ulke", "sehir", "kategori", "donusen_cari"),
         pk=pk, silindi=False)
     return render(request, "core/aday_musteri_detay.html", {
         "aday": aday, "aktiviteler": aday_servis.aktif_aday_aktiviteleri(aday)})
@@ -3826,7 +3885,6 @@ _SECENEK_KATEGORI = {
     "odeme-kosulu": (TanimSecenegi.Kategori.ODEME_KOSULU, "Ödeme Koşulları", "💳"),
     "yukleme-tipi": (TanimSecenegi.Kategori.YUKLEME_TIPI, "Yükleme Tipi", "🚚"),
     "teslim-suresi": (TanimSecenegi.Kategori.TESLIM_SURESI, "Teslim Süresi", "🕒"),
-    "aday-kaynagi": (TanimSecenegi.Kategori.ADAY_KAYNAGI, "Aday Kaynağı", "🧲"),
 }
 
 
