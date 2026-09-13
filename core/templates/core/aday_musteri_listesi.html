@@ -36,16 +36,20 @@
     color:var(--metin-soluk); }
   .ad-boyut-secici select { min-height:38px; width:auto; padding:.3rem .6rem; border-radius:10px; }
 
-  .ad-hucre { display:flex; align-items:center; gap:.65rem; }
-  .ad-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
-    font-size:1.05rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
+  .ad-hucre { display:flex; align-items:center; gap:.85rem; }
+  .ad-ikon { width:44px; height:44px; border-radius:13px; flex:0 0 auto; display:grid; place-items:center;
+    font-size:1.2rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
     border:1px solid rgba(33,56,95,.08); }
-  .ad-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
+  .ad-hucre .ad { font-weight:700; line-height:1.3; color:var(--metin); font-size:.98rem; }
   .ad-hucre .ad a { color:inherit; text-decoration:none; }
-  .ad-hucre .ad a:hover { color:var(--turuncu-koyu); }
-  .ad-hucre .alt { font-size:.78rem; color:var(--metin-soluk); }
+  .ad-hucre .alt { font-size:.8rem; color:var(--metin-soluk); margin-top:.1rem; }
 
-  #ad-tablo tbody tr:hover td { background:rgba(240,124,0,.05); }
+  #ad-tablo td { padding-top:.85rem; padding-bottom:.85rem; }
+  #ad-tablo tbody tr { cursor:pointer; }
+  #ad-tablo tbody tr:hover td { background:rgba(240,124,0,.06); }
+  #ad-tablo tbody tr:active td { background:rgba(240,124,0,.1); }
+  .ad-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
+  #ad-tablo tbody tr:hover .ad-ok { color:var(--turuncu-koyu); opacity:1; }
 
   .ad-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
     margin-top:1rem; flex-wrap:wrap; }
@@ -84,9 +88,27 @@
         {% endfor %}
       </select>
     </div>
+    <div class="ad-alan-grup">
+      <label for="ad-sehir">Şehir</label>
+      <select id="ad-sehir" name="sehir" onchange="this.form.submit()">
+        <option value="">Tüm Şehirler</option>
+        {% for s in sehirler %}
+          <option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ad-alan-grup">
+      <label for="ad-ulke">Ülke</label>
+      <select id="ad-ulke" name="ulke" onchange="this.form.submit()">
+        <option value="">Tüm Ülkeler</option>
+        {% for u in ulkeler %}
+          <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="ad-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
-      <a class="iptal-bag ad-arama-temizle{% if ara or secili_kategori %} gorunur{% endif %}" href="?">Temizle</a>
+      <a class="iptal-bag ad-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke %} gorunur{% endif %}" href="?">Temizle</a>
     </div>
   </form>
 </div>
@@ -95,6 +117,8 @@
   <p class="sayfa-alt" style="margin:0">{{ kayitlar.paginator.count }} kayıt{% if kayitlar.paginator.num_pages > 1 %} · sayfa {{ kayitlar.number }}/{{ kayitlar.paginator.num_pages }}{% endif %}.</p>
   <form method="get" class="ad-boyut-secici">
     {% if secili_kategori %}<input type="hidden" name="kategori" value="{{ secili_kategori }}">{% endif %}
+    {% if secili_sehir %}<input type="hidden" name="sehir" value="{{ secili_sehir }}">{% endif %}
+    {% if secili_ulke %}<input type="hidden" name="ulke" value="{{ secili_ulke }}">{% endif %}
     {% if ara %}<input type="hidden" name="ara" value="{{ ara }}">{% endif %}
     <label for="ad-boyut">Sayfa başına</label>
     <select id="ad-boyut" name="boyut" onchange="this.form.submit()">
@@ -106,11 +130,11 @@
 <div class="tablo-kapsayici">
 <table id="ad-tablo">
   <thead><tr>
-    <th>Unvan</th><th>İletişim</th><th>Kategori</th><th>Şehir / Ülke</th><th>İşlem</th>
+    <th>Unvan</th><th>Kategori</th><th>Şehir / Ülke</th><th></th>
   </tr></thead>
   <tbody>
     {% for a in kayitlar %}
-      <tr>
+      <tr onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
         <td>
           <div class="ad-hucre">
             <span class="ad-ikon">🧲</span>
@@ -120,19 +144,13 @@
             </div>
           </div>
         </td>
-        <td>{% if a.telefon %}{{ a.telefon }}{% endif %}{% if a.telefon and a.eposta %}<br>{% endif %}{% if a.eposta %}<span class="alt">{{ a.eposta }}</span>{% endif %}{% if not a.telefon and not a.eposta %}<span class="pasif">—</span>{% endif %}</td>
         <td>{% if a.kategori %}<span class="rozet rozet-notr">{{ a.kategori.ad }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td>{% if a.sehir %}{{ a.sehir.ad }}{% endif %}{% if a.ulke %} <span class="mono yardim">({{ a.ulke.kod }})</span>{% endif %}{% if not a.sehir and not a.ulke %}<span class="pasif">—</span>{% endif %}</td>
-        <td><span class="islem-bag">
-          <a href="{% url 'core:aday_musteri_detay' a.pk %}">Detay</a>
-          <a href="{% url 'core:aday_musteri_duzenle' a.pk %}">Düzenle</a>
-          <form method="post" action="{% url 'core:aday_musteri_sil' a.pk %}" onsubmit="return confirm('{{ a.unvan }} silinsin mi?');">
-            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-        </span></td>
+        <td class="ad-ok">›</td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or secili_kategori %}🔍 Bu süzgeçle eşleşen kayıt yok.
+      <tr style="cursor:default"><td colspan="4" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara or secili_kategori or secili_sehir or secili_ulke %}🔍 Bu süzgeçle eşleşen kayıt yok.
         {% else %}🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
   </tbody>

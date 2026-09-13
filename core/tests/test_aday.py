@@ -7,7 +7,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import (
-    AdayMusteri, AdayMusteriKategori, Cari, CariKategori, EkranYetki, TanimSecenegi,
+    AdayMusteri, AdayMusteriKategori, Cari, CariKategori, EkranYetki, Sehir, TanimSecenegi,
+    Ulke,
 )
 from core.services.aday import (
     AdayHatasi, aday_aktivite_ekle, aday_aktivite_guncelle, aday_aktivite_sil,
@@ -219,6 +220,36 @@ class AdayMusteriViewTest(TestCase):
         r = self.client.get(reverse("core:aday_musteriler"), {"kategori": k1.pk})
         self.assertContains(r, "SICAK ADAY")
         self.assertNotContains(r, "SOĞUK ADAY")
+
+    def test_liste_sehir_ve_ulke_filtresi(self):
+        tr = Ulke.objects.create(kod="TR", ad="TÜRKİYE")
+        de = Ulke.objects.create(kod="DE", ad="ALMANYA")
+        kayseri = Sehir.objects.create(ulke=tr, ad="KAYSERİ", kod="38")
+        aday_musteri_olustur(unvan="yerli aday", ulke_id=tr.pk, sehir_id=kayseri.pk)
+        aday_musteri_olustur(unvan="yabanci aday", ulke_id=de.pk)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:aday_musteriler"), {"ulke": tr.pk})
+        self.assertContains(r, "YERLİ ADAY")
+        self.assertNotContains(r, "YABANCI ADAY")
+        r2 = self.client.get(reverse("core:aday_musteriler"), {"sehir": kayseri.pk})
+        self.assertContains(r2, "YERLİ ADAY")
+        self.assertNotContains(r2, "YABANCI ADAY")
+        # filtre seçenekleri yalnız fiilen kullanılan ülke/şehirlerden oluşmalı
+        self.assertContains(r, "TÜRKİYE")
+        self.assertContains(r, "ALMANYA")
+
+    def test_liste_iletisim_ve_islem_kolonlari_kaldirildi(self):
+        """Kullanıcı isteği: liste ekranından İletişim ve İşlem (Düzenle/Sil) kolonları
+        kaldırıldı - detay sayfası üzerinden erişilir."""
+        a = aday_musteri_olustur(unvan="test aday", telefon="05551112233",
+                                 eposta="test@example.com")
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:aday_musteriler"))
+        self.assertNotContains(r, "05551112233")
+        self.assertNotContains(r, "test@example.com")
+        self.assertNotContains(r, reverse("core:aday_musteri_duzenle", args=[a.pk]))
+        self.assertNotContains(r, reverse("core:aday_musteri_sil", args=[a.pk]))
+        self.assertContains(r, reverse("core:aday_musteri_detay", args=[a.pk]))
 
     def test_ekle_post(self):
         self.client.force_login(self.yetkili)

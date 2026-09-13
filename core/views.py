@@ -3641,6 +3641,8 @@ def _aday_form_kw(cd):
 def aday_musteriler(request):
     ara = (request.GET.get("ara") or "").strip()
     kategori_id = request.GET.get("kategori") or ""
+    sehir_id = request.GET.get("sehir") or ""
+    ulke_id = request.GET.get("ulke") or ""
     try:
         boyut = int(request.GET.get("boyut", 50))
     except ValueError:
@@ -3655,19 +3657,32 @@ def aday_musteriler(request):
             | Q(telefon__icontains=ara) | Q(eposta__icontains=ara))
     if kategori_id:
         kayitlar = kayitlar.filter(kategori_id=kategori_id)
+    if sehir_id:
+        kayitlar = kayitlar.filter(sehir_id=sehir_id)
+    if ulke_id:
+        kayitlar = kayitlar.filter(ulke_id=ulke_id)
     kayitlar = kayitlar.order_by("-created_at")
-    # Filtre seçenekleri yalnız en az bir adayda fiilen kullanılan kategorilerden oluşur
-    # (bkz. cariler view'ındaki aynı desen).
+    # Filtre seçenekleri yalnız en az bir adayda fiilen kullanılanlardan oluşur (bkz.
+    # cariler view'ındaki aynı desen — tüm kategori/lokasyon master verisini değil,
+    # sayfadaki gerçek veriyi yansıtır).
     tumu = aday_servis.aktif_aday_musteriler()
     kategoriler = AdayMusteriKategori.objects.filter(
         silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
     ).order_by("kod")
+    sehirler = Sehir.objects.filter(
+        silindi=False, pk__in=tumu.exclude(sehir=None).values("sehir_id")
+    ).order_by("ad")
+    ulkeler = Ulke.objects.filter(
+        silindi=False, pk__in=tumu.exclude(ulke=None).values("ulke_id")
+    ).order_by("ad")
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
     sabit_qs = request.GET.copy()
     sabit_qs.pop("sayfa", None)
     return render(request, "core/aday_musteri_listesi.html", {
-        "kayitlar": sayfa, "ara": ara, "secili_kategori": kategori_id, "boyut": boyut,
+        "kayitlar": sayfa, "ara": ara, "secili_kategori": kategori_id,
+        "secili_sehir": sehir_id, "secili_ulke": ulke_id, "boyut": boyut,
         "sayfa_boyutlari": _ADAY_SAYFA_BOYUTLARI, "kategoriler": kategoriler,
+        "sehirler": sehirler, "ulkeler": ulkeler,
         "sabit_qs": sabit_qs.urlencode()})
 
 
