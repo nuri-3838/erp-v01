@@ -2660,14 +2660,11 @@ _PDF_ETIKET_PROFORMA = {
         "gecerlilik": "Geçerlilik Tarihi", "para_birimi": "Para Birimi",
         "yukleme_sekli": "Teslim / Yükleme Şekli", "odeme_kosulu": "Ödeme Koşulu",
         "yukleme_tipi": "Yükleme Tipi", "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
-        "urun": "Ürün", "miktar": "Miktar", "birim_fiyat": "Birim Fiyat",
-        "iskonto": "İskonto", "net_fiyat": "Net Fiyat", "tutar": "Tutar", "kdv": "KDV",
-        "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)",
+        "urun": "Ürün", "miktar": "Miktar", "fiyat": "Fiyat", "tutar": "Tutar", "kdv": "KDV",
+        "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)", "toplam": "TOPLAM",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
         "genel_toplam": "GENEL TOPLAM", "banka_bilgileri": "Banka Bilgileri",
         "banka": "Banka", "sube": "Şube", "hesap_sahibi": "Hesap Sahibi",
-        "lojistik": "Lojistik Bilgileri", "toplam_agirlik": "Toplam Ağırlık",
-        "toplam_cbm": "Toplam CBM",
         "hazirlayan": "Hazırlayan", "notlar": "Notlar",
         "not_gecerlilik_varsayilan": "Bu proforma, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Bu proforma {tarih} tarihine kadar geçerlidir.",
@@ -2683,13 +2680,11 @@ _PDF_ETIKET_PROFORMA = {
         "tarih": "Date", "gecerlilik": "Valid Until", "para_birimi": "Currency",
         "yukleme_sekli": "Delivery Term", "odeme_kosulu": "Payment Term",
         "yukleme_tipi": "Transport Mode", "teslim_suresi": "Lead Time", "navlun": "Freight",
-        "urun": "Item", "miktar": "Qty", "birim_fiyat": "Unit Price",
-        "iskonto": "Discount", "net_fiyat": "Net Price", "tutar": "Amount", "kdv": "VAT",
-        "agirlik": "Weight (kg)", "cbm": "CBM (m³)",
+        "urun": "Item", "miktar": "Qty", "fiyat": "Price", "tutar": "Amount", "kdv": "VAT",
+        "agirlik": "Weight (kg)", "cbm": "CBM (m³)", "toplam": "TOTAL",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
         "genel_toplam": "GRAND TOTAL", "banka_bilgileri": "Bank Details",
         "banka": "Bank", "sube": "Branch", "hesap_sahibi": "Account Holder",
-        "lojistik": "Logistics", "toplam_agirlik": "Total Weight", "toplam_cbm": "Total CBM",
         "hazirlayan": "Prepared by", "notlar": "Notes",
         "not_gecerlilik_varsayilan": "This proforma invoice is binding until the validity date.",
         "not_gecerlilik_tarihli": "This proforma invoice is valid until {tarih}.",
@@ -2714,12 +2709,14 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
 
     E = _PDF_ETIKET_PROFORMA[dil]
     yurt_ici = not ts.taraf.ulke_id or ts.taraf.ulke.kod == "TR"
+    toplam_miktar = Decimal("0")
     toplam_agirlik = Decimal("0")
     toplam_cbm = Decimal("0")
     for k in kalemler:
         k.urun_ad = k.stok.ad_dil(dil)
         k.agirlik_toplam = k.miktar * k.stok.agirlik if k.stok.agirlik is not None else None
         k.cbm_toplam = k.miktar * k.stok.cbm if k.stok.cbm is not None else None
+        toplam_miktar += k.miktar
         if k.agirlik_toplam is not None:
             toplam_agirlik += k.agirlik_toplam
         if k.cbm_toplam is not None:
@@ -2749,6 +2746,7 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
         "yurt_ici": yurt_ici,
         "kdv_toplam": kdv_toplam,
         "genel_toplam": genel_toplam,
+        "toplam_miktar": toplam_miktar,
         "toplam_agirlik": toplam_agirlik if toplam_agirlik else None,
         "toplam_cbm": toplam_cbm if toplam_cbm else None,
         "notlar": notlar,

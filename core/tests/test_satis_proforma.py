@@ -219,6 +219,27 @@ class SatisProformaTest(TestCase):
         self.assertIn("CBM (m³)", html)
         self.assertIn("İhracat teslimleri KDV", html)
 
+    def test_pdf_html_sade_kolonlar_ve_toplam_satiri(self):
+        """Kullanıcı isteği: Birim Fiyat/İskonto sütunları kalksın, Net Fiyat yerine sade
+        'Fiyat' etiketi kullanılsın; tablonun altında TOPLAM satırında miktar/tutar/ağırlık/
+        CBM toplamları görünsün."""
+        from django.template.loader import render_to_string
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertEqual(baglam["toplam_miktar"], Decimal("50"))
+        ctx = {"ts": ts, "kalemler": kalemler, **baglam}
+        html = render_to_string("core/satis_proforma_pdf.html", ctx)
+        self.assertNotIn("Birim Fiyat", html)
+        self.assertNotIn("İskonto", html)
+        self.assertNotIn("Net Fiyat", html)
+        self.assertIn(">Fiyat<", html)
+        self.assertIn(">TOPLAM<", html)
+        self.assertIn("<tfoot>", html)
+
     def test_liste_odenecek_sutunu_gosterir_teklif_gibi_sadelestirilmez(self):
         """Proforma'da gerçek miktar var -> gerçek 'ödenecek' tutar anlamlı; Satış Teklifi'nin
         aksine liste sadeleştirilmez (bkz. teklif_siparis_listesi.html sat_teklif bayrağı)."""
