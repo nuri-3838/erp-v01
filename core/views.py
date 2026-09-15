@@ -2689,13 +2689,11 @@ _PDF_ETIKET_PROFORMA = {
         "navlun_dahil_toplam": "TOPLAM (Navlun Dahil)",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
         "genel_toplam": "GENEL TOPLAM", "banka_bilgileri": "Banka Bilgileri",
-        "banka": "Banka", "sube": "Banka Şubesi", "hesap_adi": "Hesap",
+        "banka": "Banka", "sube": "Banka Şubesi",
         "hesap_sahibi": "Hesap Sahibi", "swift_kod": "Swift Kodu",
         "hazirlayan": "Hazırlayan", "notlar": "Notlar",
         "not_gecerlilik_varsayilan": "Bu proforma, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Bu proforma {tarih} tarihine kadar geçerlidir.",
-        "not_odeme": "Ödeme, yukarıdaki banka hesabına yapılabilir.",
-        "not_kdv_istisna": "İhracat teslimleri KDV'den istisnadır.",
         "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Proforma Fatura",
     },
     "en": {
@@ -2711,13 +2709,11 @@ _PDF_ETIKET_PROFORMA = {
         "navlun_dahil_toplam": "TOTAL (incl. Freight)",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
         "genel_toplam": "GRAND TOTAL", "banka_bilgileri": "Bank Details",
-        "banka": "Bank", "sube": "Bank Branch", "hesap_adi": "Account",
+        "banka": "Bank", "sube": "Bank Branch",
         "hesap_sahibi": "Account Holder", "swift_kod": "SWIFT Code",
         "hazirlayan": "Prepared by", "notlar": "Notes",
         "not_gecerlilik_varsayilan": "This proforma invoice is binding until the validity date.",
         "not_gecerlilik_tarihli": "This proforma invoice is valid until {tarih}.",
-        "not_odeme": "Payment can be made to the bank account above.",
-        "not_kdv_istisna": "Export deliveries are exempt from VAT.",
         "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Proforma Invoice",
     },
 }
@@ -2764,10 +2760,6 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
             tarih=ts.gecerlilik_teslim_tarihi.strftime("%d.%m.%Y")))
     else:
         notlar.append(E["not_gecerlilik_varsayilan"])
-    if not yurt_ici:
-        notlar.append(E["not_kdv_istisna"])
-    if bankalar:
-        notlar.append(E["not_odeme"])
     return {
         "dil": dil, "E": E,
         "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",

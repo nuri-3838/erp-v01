@@ -39,7 +39,6 @@
     letter-spacing: .3px; }
   .kv .dg { font-weight: 700; color: #1c2533; }
   .kv .dg.buyuk { font-size: 11px; color: #15294d; }
-  .kv .dg.vurgu { color: #d56e00; }
 
   table.kalemler { width: 100%; border-collapse: collapse; margin-bottom: 11px; }
   table.kalemler th { text-align: left; font-size: 7.2px; text-transform: uppercase;
@@ -125,7 +124,6 @@
           {% if odeme_kosulu_ad %}<div class="kv"><span class="et">{{ E.odeme_kosulu }}</span><span class="dg">{{ odeme_kosulu_ad }}</span></div>{% endif %}
           {% if yukleme_tipi_ad %}<div class="kv"><span class="et">{{ E.yukleme_tipi }}</span><span class="dg">{{ yukleme_tipi_ad }}</span></div>{% endif %}
           {% if teslim_suresi_ad %}<div class="kv"><span class="et">{{ E.teslim_suresi }}</span><span class="dg">{{ teslim_suresi_ad }}</span></div>{% endif %}
-          {% if ts.navlun_tutari is not None %}<div class="kv"><span class="et">{{ E.navlun }}</span><span class="dg vurgu mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
         </div>
         {% if bankalar %}
         <div class="kutu banka-kutu">
@@ -134,7 +132,6 @@
             <div class="banka-hesap">
               <div class="banka-satir"><span class="et">{{ E.banka }}</span><span class="dg">{{ b.banka_adi }}</span></div>
               {% if b.sube %}<div class="banka-satir"><span class="et">{{ E.sube }}</span><span class="dg">{{ b.sube }}</span></div>{% endif %}
-              {% if b.hesap_adi %}<div class="banka-satir"><span class="et">{{ E.hesap_adi }}</span><span class="dg">{{ b.hesap_adi }}</span></div>{% endif %}
               {% if b.hesap_sahibi %}<div class="banka-satir"><span class="et">{{ E.hesap_sahibi }}</span><span class="dg">{{ b.hesap_sahibi }}</span></div>{% endif %}
               {% if b.iban %}<div class="banka-satir"><span class="et">IBAN</span><span class="dg mono">{{ b.iban }}</span></div>{% endif %}
               <div class="banka-satir"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ b.para_birimi }}</span></div>

@@ -199,7 +199,9 @@ class SatisProformaTest(TestCase):
         self.assertFalse(baglam_disi["yurt_ici"])
         self.assertEqual(baglam_disi["kdv_toplam"], Decimal("0"))
         self.assertEqual(baglam_disi["genel_toplam"], ts.ara_toplam)   # KDV eklenmez
-        self.assertIn("İhracat teslimleri KDV'den istisnadır.", baglam_disi["notlar"])
+        # Kullanıcı isteği: "İhracat teslimleri KDV'den istisnadır." notu kaldırıldı —
+        # hesaplama mantığı (KDV'nin 0'lanması) yukarıdaki assertion'larla zaten doğrulanıyor.
+        self.assertNotIn("İhracat teslimleri KDV'den istisnadır.", baglam_disi["notlar"])
 
     def test_pdf_html_ihracatta_kdv_sutunu_gizlenir(self):
         from django.template.loader import render_to_string
@@ -217,7 +219,8 @@ class SatisProformaTest(TestCase):
         self.assertNotIn(">KDV<", html)
         self.assertIn("Ağırlık (kg)", html)
         self.assertIn("CBM (m³)", html)
-        self.assertIn("İhracat teslimleri KDV", html)
+        # Kullanıcı isteği: KDV istisnası notu Notlar'dan kaldırıldı.
+        self.assertNotIn("İhracat teslimleri KDV", html)
 
     def test_pdf_html_sade_kolonlar_ve_toplam_satiri(self):
         """Kullanıcı isteği: Birim Fiyat/İskonto sütunları kalksın, Net Fiyat yerine sade
@@ -265,6 +268,11 @@ class SatisProformaTest(TestCase):
         # kalem fiyatlarına dağıtım YOK — Satış Teklifi'ne özgü kolonlar burada olmamalı
         self.assertNotIn("Navlun Payı", html)
         self.assertNotIn("Nakliye Dahil", html)
+        # Kullanıcı isteği: navlun üst "Belge" kutusunda (Proforma No/Tarih/PB/...) artık
+        # yazılmıyor — yalnız aşağıda (TOPLAM satırının altında) gösteriliyor. Bu satır
+        # yalnız "dg vurgu mono" class'ıyla render ediliyordu (belge-kutu'ya özgü, artık
+        # şablonda hiç kullanılmıyor).
+        self.assertNotIn("vurgu", html)
 
     def test_pdf_html_navlunsuz_ek_satirlar_gorunmez(self):
         from django.template.loader import render_to_string
@@ -487,6 +495,11 @@ class SatisProformaBankaHesabiTest(TestCase):
         self.assertIn("banka-kutu", taraf_satir)
         altbolum = html.split('<div class="altbolum">')[1]
         self.assertNotIn("banka-kutu", altbolum)
+        # Kullanıcı isteği: "Hesap Adı" satırı (ör. "USD HESABI") kaldırıldı — banka + IBAN
+        # zaten hesabı tek anlamlı şekilde tanımlıyor, ayrı bir "hesap adı" satırı gereksiz.
+        self.assertNotIn("USD HESABI", html)
+        # Kullanıcı isteği: "Ödeme, yukarıdaki banka hesabına yapılabilir." notu kaldırıldı.
+        self.assertNotIn("Ödeme, yukarıdaki banka hesabına yapılabilir.", html)
 
     def test_pdf_baglam_banka_secilmemisse_bankalar_bos(self):
         from core.views import satis_proforma_pdf_baglam
