@@ -113,16 +113,34 @@
           {% if ts.taraf.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ ts.taraf.eposta }}</span></div>{% endif %}
         </div>
       </div>
-      <div class="kutu belge-kutu">
-        <div class="kv"><span class="et">{{ E.proforma_no }}</span><span class="dg buyuk">{{ ts.belge_no|default:"—" }}</span></div>
-        <div class="kv"><span class="et">{{ E.tarih }}</span><span class="dg">{{ ts.tarih|date:"d.m.Y" }}</span></div>
-        {% if ts.gecerlilik_teslim_tarihi %}<div class="kv"><span class="et">{{ E.gecerlilik }}</span><span class="dg">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</span></div>{% endif %}
-        <div class="kv"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ ts.para_birimi }}</span></div>
-        {% if yukleme_sekli_ad %}<div class="kv"><span class="et">{{ E.yukleme_sekli }}</span><span class="dg">{{ yukleme_sekli_ad }}</span></div>{% endif %}
-        {% if odeme_kosulu_ad %}<div class="kv"><span class="et">{{ E.odeme_kosulu }}</span><span class="dg">{{ odeme_kosulu_ad }}</span></div>{% endif %}
-        {% if yukleme_tipi_ad %}<div class="kv"><span class="et">{{ E.yukleme_tipi }}</span><span class="dg">{{ yukleme_tipi_ad }}</span></div>{% endif %}
-        {% if teslim_suresi_ad %}<div class="kv"><span class="et">{{ E.teslim_suresi }}</span><span class="dg">{{ teslim_suresi_ad }}</span></div>{% endif %}
-        {% if ts.navlun_tutari is not None %}<div class="kv"><span class="et">{{ E.navlun }}</span><span class="dg vurgu mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
+      <div class="taraf-kolon">
+        <div class="kutu belge-kutu">
+          <div class="kv"><span class="et">{{ E.proforma_no }}</span><span class="dg buyuk">{{ ts.belge_no|default:"—" }}</span></div>
+          <div class="kv"><span class="et">{{ E.tarih }}</span><span class="dg">{{ ts.tarih|date:"d.m.Y" }}</span></div>
+          {% if ts.gecerlilik_teslim_tarihi %}<div class="kv"><span class="et">{{ E.gecerlilik }}</span><span class="dg">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</span></div>{% endif %}
+          <div class="kv"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ ts.para_birimi }}</span></div>
+          {% if yukleme_sekli_ad %}<div class="kv"><span class="et">{{ E.yukleme_sekli }}</span><span class="dg">{{ yukleme_sekli_ad }}</span></div>{% endif %}
+          {% if odeme_kosulu_ad %}<div class="kv"><span class="et">{{ E.odeme_kosulu }}</span><span class="dg">{{ odeme_kosulu_ad }}</span></div>{% endif %}
+          {% if yukleme_tipi_ad %}<div class="kv"><span class="et">{{ E.yukleme_tipi }}</span><span class="dg">{{ yukleme_tipi_ad }}</span></div>{% endif %}
+          {% if teslim_suresi_ad %}<div class="kv"><span class="et">{{ E.teslim_suresi }}</span><span class="dg">{{ teslim_suresi_ad }}</span></div>{% endif %}
+          {% if ts.navlun_tutari is not None %}<div class="kv"><span class="et">{{ E.navlun }}</span><span class="dg vurgu mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
+        </div>
+        {% if bankalar %}
+        <div class="kutu banka-kutu">
+          <div class="kb">{{ E.banka_bilgileri }}</div>
+          {% for b in bankalar %}
+            <div class="banka-hesap">
+              <div class="banka-satir"><span class="et">{{ E.banka }}</span><span class="dg">{{ b.banka_adi }}</span></div>
+              {% if b.sube %}<div class="banka-satir"><span class="et">{{ E.sube }}</span><span class="dg">{{ b.sube }}</span></div>{% endif %}
+              {% if b.hesap_adi %}<div class="banka-satir"><span class="et">{{ E.hesap_adi }}</span><span class="dg">{{ b.hesap_adi }}</span></div>{% endif %}
+              {% if b.hesap_sahibi %}<div class="banka-satir"><span class="et">{{ E.hesap_sahibi }}</span><span class="dg">{{ b.hesap_sahibi }}</span></div>{% endif %}
+              {% if b.iban %}<div class="banka-satir"><span class="et">IBAN</span><span class="dg mono">{{ b.iban }}</span></div>{% endif %}
+              <div class="banka-satir"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ b.para_birimi }}</span></div>
+              {% if b.swift_kod %}<div class="banka-satir"><span class="et">{{ E.swift_kod }}</span><span class="dg mono">{{ b.swift_kod }}</span></div>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -165,20 +183,6 @@
 
   <div class="altbolum">
     <div class="sol">
-      {% if bankalar %}
-      <div class="kutu banka-kutu">
-        <div class="kb">{{ E.banka_bilgileri }}</div>
-        {% for b in bankalar %}
-          <div class="banka-hesap">
-            <div class="banka-satir"><span class="et">{{ E.banka }}</span><span class="dg">{{ b.banka_adi }}{% if b.sube %} · {{ b.sube }}{% endif %}</span></div>
-            {% if b.hesap_adi %}<div class="banka-satir"><span class="et">{{ E.hesap_adi }}</span><span class="dg">{{ b.hesap_adi }}</span></div>{% endif %}
-            {% if b.hesap_sahibi %}<div class="banka-satir"><span class="et">{{ E.hesap_sahibi }}</span><span class="dg">{{ b.hesap_sahibi }}</span></div>{% endif %}
-            {% if b.iban %}<div class="banka-satir"><span class="et">IBAN</span><span class="dg mono">{{ b.iban }}</span></div>{% endif %}
-            <div class="banka-satir"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ b.para_birimi }}</span></div>
-          </div>
-        {% endfor %}
-      </div>
-      {% endif %}
       <div class="notlar">
         <div class="kb">{{ E.notlar }}</div>
         <ul>{% for n in notlar %}<li>{{ n }}</li>{% endfor %}</ul>

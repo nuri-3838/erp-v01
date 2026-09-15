@@ -2063,6 +2063,7 @@ def _banka_hesap_pdf_goster(banka_hesap, firma):
         "banka_adi": banka_hesap.banka.ad, "sube": banka_hesap.banka.sube,
         "hesap_adi": banka_hesap.ad, "hesap_sahibi": firma.unvan if firma else "",
         "iban": banka_hesap.iban, "para_birimi": banka_hesap.para_birimi,
+        "swift_kod": banka_hesap.banka.swift_kod,
     }
 
 
@@ -2687,7 +2688,8 @@ _PDF_ETIKET_PROFORMA = {
         "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)", "toplam": "TOPLAM",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
         "genel_toplam": "GENEL TOPLAM", "banka_bilgileri": "Banka Bilgileri",
-        "banka": "Banka", "sube": "Şube", "hesap_adi": "Hesap", "hesap_sahibi": "Hesap Sahibi",
+        "banka": "Banka", "sube": "Banka Şubesi", "hesap_adi": "Hesap",
+        "hesap_sahibi": "Hesap Sahibi", "swift_kod": "Swift Kodu",
         "hazirlayan": "Hazırlayan", "notlar": "Notlar",
         "not_gecerlilik_varsayilan": "Bu proforma, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Bu proforma {tarih} tarihine kadar geçerlidir.",
@@ -2707,7 +2709,8 @@ _PDF_ETIKET_PROFORMA = {
         "agirlik": "Weight (kg)", "cbm": "CBM (m³)", "toplam": "TOTAL",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
         "genel_toplam": "GRAND TOTAL", "banka_bilgileri": "Bank Details",
-        "banka": "Bank", "sube": "Branch", "hesap_adi": "Account", "hesap_sahibi": "Account Holder",
+        "banka": "Bank", "sube": "Bank Branch", "hesap_adi": "Account",
+        "hesap_sahibi": "Account Holder", "swift_kod": "SWIFT Code",
         "hazirlayan": "Prepared by", "notlar": "Notes",
         "not_gecerlilik_varsayilan": "This proforma invoice is binding until the validity date.",
         "not_gecerlilik_tarihli": "This proforma invoice is valid until {tarih}.",

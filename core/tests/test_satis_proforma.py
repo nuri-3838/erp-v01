@@ -325,7 +325,8 @@ class SatisProformaBankaHesabiTest(TestCase):
             fiyat_try="12000", fiyat_usd="350", kullanici=cls.yon)
         _hesap("102.94", "GARANTI BBVA USD")
         _hesap("102.95", "IS BANKASI TL")
-        banka1 = banka_olustur(ad="garanti bbva", sube="kayseri", kullanici=cls.yon)
+        banka1 = banka_olustur(ad="garanti bbva", sube="kayseri", swift_kod="garaabbva",
+                              kullanici=cls.yon)
         banka2 = banka_olustur(ad="iş bankası", sube="kayseri", kullanici=cls.yon)
         cls.banka_usd = banka_hesap_olustur(
             banka=banka1, ad="usd hesabı", iban="TR000000000000000000000001",
@@ -421,6 +422,30 @@ class SatisProformaBankaHesabiTest(TestCase):
         self.assertEqual(b["hesap_adi"], "USD HESABI")
         self.assertEqual(b["iban"], "TR000000000000000000000001")
         self.assertEqual(b["para_birimi"], "USD")
+        self.assertEqual(b["swift_kod"], "GARAABBVA")
+
+    def test_pdf_html_banka_kutusu_belge_sutununda_ayri_satirlarla(self):
+        """Kullanıcı isteği: Banka/Banka Şubesi ayrı satırlarda gösterilsin, en altta Swift
+        Kodu olsun, ve banka kutusu Belge kutusunun altına (Alıcı'nın sağındaki boşluğa)
+        taşınsın — artık altbolum'da değil, üst taraf-kolon içinde."""
+        from django.template.loader import render_to_string
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"),
+                         self._post_govde(**{"banka_hesabi": self.banka_usd.pk}))
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        html = render_to_string("core/satis_proforma_pdf.html",
+                                {"ts": ts, "kalemler": kalemler, **baglam})
+        self.assertIn("Banka Şubesi", html)
+        self.assertIn("Swift Kodu", html)
+        self.assertIn("GARAABBVA", html)
+        # banka kutusu artık belge-kutu ile aynı taraf-kolon içinde, altbolum'da DEĞİL
+        taraf_satir = html.split('<div class="taraf-satir">')[1].split('<table class="kalemler">')[0]
+        self.assertIn("banka-kutu", taraf_satir)
+        altbolum = html.split('<div class="altbolum">')[1]
+        self.assertNotIn("banka-kutu", altbolum)
 
     def test_pdf_baglam_banka_secilmemisse_bankalar_bos(self):
         from core.views import satis_proforma_pdf_baglam
