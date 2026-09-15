@@ -1,0 +1,42 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Operasyon Tanımları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Operasyon Tanımları{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:is_istasyonlari' %}">İş İstasyonları →</a>
+    <h1 class="ust-baslik"><span class="emoji">🌳</span>Operasyon Tanımları</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:operasyon_ekle' %}">+ Yeni</a>
+</div>
+
+<p class="yardim">Her tanım: bir iş istasyonunda, hangi girdilerden (hammadde/ara ürün) ne
+  miktarda hangi çıktının üretildiğini gösterir — kesimde "1 boydan 2 adet" gibi oranlı
+  dönüşümler de tanımlanabilir. İhtiyaç Hesapla ve Üretim Emri buradan zinciri hesaplar.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Çıktı Miktarı</th>
+    <th class="sag">Girdi Sayısı</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for o in operasyonlar %}
+      <tr>
+        <td><span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
+        <td><span class="mono">{{ o.cikti.kod }}</span> {{ o.ad|default:o.cikti.ad }}</td>
+        <td class="sag mono">{{ o.cikti_miktar|tr_kur:3 }}</td>
+        <td class="sag mono">{{ o.girdi_sayisi }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:operasyon_duzenle' o.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:operasyon_sil' o.pk %}" onsubmit="return confirm('Silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim">Henüz operasyon tanımı yok. "+ Yeni" ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

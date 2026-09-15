@@ -18,18 +18,21 @@
     {% csrf_token %}
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Üretim Emri</h2>
+      <p class="yardim" style="margin-top:0">Zincirdeki HER iş istasyonu için ayrı bir taslak
+        operasyon kaydı otomatik açılır — bu ekran hiçbir stok hareketi üretmez, yalnız
+        kayıtları açar. Onaylama her istasyonun kendi işidir.</p>
       <div class="izgara">
         <div class="alan tam">
-          <label for="{{ form.mamul.id_for_label }}">{{ form.mamul.label }}</label>
-          <div class="akilli">{{ form.mamul }}</div>
-          {% for e in form.mamul.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <p class="yardim" style="margin:.3rem 0 0">Yalnız tanımlı bir ürün ağacı olan
-            mamuller listelenir — bkz. Ürün Ağacı Tanımları.</p>
+          <label for="{{ form.hedef_urun.id_for_label }}">{{ form.hedef_urun.label }}</label>
+          <div class="akilli">{{ form.hedef_urun }}</div>
+          {% for e in form.hedef_urun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">Yalnız tanımlı bir operasyonu olan
+            ürünler listelenir — bkz. Operasyon Tanımları.</p>
         </div>
         <div class="alan">
-          <label for="{{ form.planlanan_miktar.id_for_label }}">{{ form.planlanan_miktar.label }}</label>
-          {{ form.planlanan_miktar }}
-          {% for e in form.planlanan_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <label for="{{ form.hedef_miktar.id_for_label }}">{{ form.hedef_miktar.label }}</label>
+          {{ form.hedef_miktar }}
+          {% for e in form.hedef_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan">
           <label for="{{ form.depo.id_for_label }}">{{ form.depo.label }}</label>
@@ -49,7 +52,7 @@
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:uretim_emirleri' %}">İptal</a>
-      <button type="submit" class="birincil">Kaydet</button>
+      <button type="submit" class="birincil">Emri Aç</button>
     </div>
   </form>
 </div>

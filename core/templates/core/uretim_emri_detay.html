@@ -8,71 +8,43 @@
   <div>
     <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Emirleri</a>
     <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ emir.no }}
-      <span class="rozet {% if emir.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ emir.get_durum_display }}</span></h1>
+      <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
+        {{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon onaylandı</span></h1>
   </div>
-  {% if not emir.silindi %}
-  <span class="islem-bag">
-    {% if emir.durum == "TASLAK" %}
-    <form method="post" action="{% url 'core:uretim_emri_onayla' emir.pk %}" style="margin:0">
-      {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
-    <form method="post" action="{% url 'core:uretim_emri_sil' emir.pk %}" onsubmit="return confirm('Emir iptal edilsin mi?');">
-      {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
-    {% endif %}
-  </span>
-  {% endif %}
 </div>
 
-{% if emir.durum == "ONAYLI" %}
-  <div class="uyari"><div>✅ Bu emir onaylanmış; bileşen çıkış + mamul giriş stok hareketleri
-    oluşturuldu. Bir daha değiştirilemez.</div></div>
-{% endif %}
-
 <section class="icerik-kart">
-  <div class="satir"><span class="et">Mamul</span>
-    <span class="dg"><span class="mono">{{ emir.mamul.kod }}</span> {{ emir.mamul.ad }}</span></div>
+  <div class="satir"><span class="et">Hedef Ürün</span>
+    <span class="dg"><span class="mono">{{ emir.hedef_urun.kod }}</span> {{ emir.hedef_urun.ad }}</span></div>
+  <div class="satir"><span class="et">Hedef Miktar</span><span class="dg mono">{{ emir.hedef_miktar|tr_kur:3 }}</span></div>
   <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ emir.tarih|date:"d.m.Y" }}</span></div>
-  <div class="satir"><span class="et">Planlanan Miktar</span><span class="dg mono">{{ emir.planlanan_miktar|tr_kur:3 }}</span></div>
   <div class="satir"><span class="et">Depo</span>
     <span class="dg"><span class="mono">{{ emir.depo.kod }}</span> {{ emir.depo.ad }}</span></div>
   {% if emir.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ emir.aciklama }}</span></div>{% endif %}
 </section>
 
 <section class="icerik-kart">
-  <h2 class="bolum-baslik">Bileşenler</h2>
-  {% if emir.durum == "TASLAK" %}
-    <p class="yardim">Gerçekleşen miktar planlanandan sapıyorsa (fire, fazla sarfiyat vb.)
-      burada düzeltip "Miktarları Kaydet" ile saklayın — Onayla'da stok çıkışı bu değerle
-      yazılır.</p>
-  {% endif %}
-  <form method="post" autocomplete="off">
-    {% csrf_token %}
-    {{ formset.management_form }}
-    <div class="tablo-kapsayici">
-    <table>
-      <thead><tr><th>Bileşen</th><th class="sag">Planlanan</th><th class="sag">Gerçekleşen</th></tr></thead>
-      <tbody>
-        {% for satir, f in satirlar %}
-          <tr>
-            <td><span class="mono">{{ satir.bilesen.kod }}</span> {{ satir.bilesen.ad }}</td>
-            <td class="sag mono">{{ satir.planlanan_miktar|tr_kur:3 }}</td>
-            <td class="sag">
-              {% if emir.durum == "TASLAK" %}
-                {{ f.satir_id }}{{ f.gerceklesen_miktar }}
-                {% for e in f.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-              {% else %}
-                <span class="mono">{{ satir.gerceklesen_miktar|tr_kur:3 }}</span>
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% if emir.durum == "TASLAK" %}
-      <div class="form-altbar">
-        <button type="submit" class="dugme-ikincil">Miktarları Kaydet</button>
-      </div>
-    {% endif %}
-  </form>
+  <h2 class="bolum-baslik">Zincirdeki Operasyon Kayıtları</h2>
+  <p class="yardim">Her satır ayrı bir iş istasyonunun kendi taslak kaydıdır — her istasyon
+    kendi kaydını kendi zamanında açıp onaylar; buradaki liste yalnızca izleme amaçlıdır.</p>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>No</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Hedef Miktar</th>
+      <th>Durum</th></tr></thead>
+    <tbody>
+      {% for k in kayitlar %}
+        <tr>
+          <td><a class="mono" href="{% url 'core:operasyon_kaydi_detay' k.pk %}">{{ k.no }}</a></td>
+          <td><span class="mono">{{ k.operasyon.istasyon.kod }}</span> {{ k.operasyon.istasyon.ad }}</td>
+          <td><span class="mono">{{ k.operasyon.cikti.kod }}</span> {{ k.operasyon.cikti.ad }}</td>
+          <td class="sag mono">{{ k.hedef_cikti_miktari|tr_kur:3 }}</td>
+          <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="yardim">Bu emre bağlı operasyon kaydı yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </section>
 {% endblock %}

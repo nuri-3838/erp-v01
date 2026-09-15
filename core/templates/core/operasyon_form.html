@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
 {% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
@@ -6,7 +7,7 @@
 {% block content %}
 <div class="form-kapsa">
   <div class="form-ust">
-    <a class="ust-link" href="{% url 'core:uretim_urun_agaclari' %}">← Ürün Ağacı Tanımları</a>
+    <a class="ust-link" href="{% url 'core:operasyon_tanimlari' %}">← Operasyon Tanımları</a>
     <h1 class="ust-baslik"><span class="emoji">🌳</span>{{ baslik }}</h1>
   </div>
 
@@ -21,23 +22,56 @@
     {% csrf_token %}
     {{ formset.management_form }}
     <section class="icerik-kart">
-      <h2 class="bolum-baslik">Mamul</h2>
-      {% if agac %}
-        <div class="satir"><span class="et">Mamul</span>
-          <span class="dg"><span class="mono">{{ agac.mamul.kod }}</span> {{ agac.mamul.ad }}</span></div>
+      <h2 class="bolum-baslik">Operasyon</h2>
+      {% if operasyon %}
+        <div class="satir"><span class="et">Çıktı</span>
+          <span class="dg"><span class="mono">{{ operasyon.cikti.kod }}</span> {{ operasyon.cikti.ad }}</span></div>
         <div class="izgara">
+          <div class="alan tam">
+            <label for="id_istasyon">İş İstasyonu</label>
+            <div class="akilli">
+              <select name="istasyon" id="id_istasyon" class="akilli-sec">
+                {% for i in istasyonlar %}
+                  <option value="{{ i.pk }}" {% if i.pk == operasyon.istasyon_id %}selected{% endif %}>{{ i.kod }}  {{ i.ad }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="alan">
+            <label for="id_cikti_miktar">Çıktı Miktarı (1 çalıştırma için)</label>
+            <input type="text" name="cikti_miktar" id="id_cikti_miktar" inputmode="decimal"
+                   value="{{ operasyon.cikti_miktar|tr_kur:3 }}">
+          </div>
+          <div class="alan">
+            <label for="id_ad">Ad</label>
+            <input type="text" name="ad" id="id_ad" maxlength="150" value="{{ operasyon.ad }}" autocomplete="off">
+          </div>
           <div class="alan tam">
             <label for="id_aciklama">Açıklama</label>
             <input type="text" name="aciklama" id="id_aciklama" maxlength="300"
-                   value="{{ agac.aciklama }}" autocomplete="off">
+                   value="{{ operasyon.aciklama }}" autocomplete="off">
           </div>
         </div>
       {% else %}
         <div class="izgara">
           <div class="alan tam">
-            <label for="{{ bform.mamul.id_for_label }}">{{ bform.mamul.label }}</label>
-            <div class="akilli">{{ bform.mamul }}</div>
-            {% for e in bform.mamul.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            <label for="{{ bform.istasyon.id_for_label }}">{{ bform.istasyon.label }}</label>
+            <div class="akilli">{{ bform.istasyon }}</div>
+            {% for e in bform.istasyon.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan tam">
+            <label for="{{ bform.cikti.id_for_label }}">{{ bform.cikti.label }}</label>
+            <div class="akilli">{{ bform.cikti }}</div>
+            {% for e in bform.cikti.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan">
+            <label for="{{ bform.cikti_miktar.id_for_label }}">{{ bform.cikti_miktar.label }}</label>
+            {{ bform.cikti_miktar }}
+            {% for e in bform.cikti_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan">
+            <label for="{{ bform.ad.id_for_label }}">{{ bform.ad.label }}</label>
+            {{ bform.ad }}
           </div>
           <div class="alan tam">
             <label for="{{ bform.aciklama.id_for_label }}">{{ bform.aciklama.label }}</label>
@@ -48,14 +82,14 @@
     </section>
 
     <section class="icerik-kart">
-      <h2 class="bolum-baslik">Bileşenler</h2>
+      <h2 class="bolum-baslik">Girdiler</h2>
       <div class="tablo-kapsayici">
         <table class="ua-tablo">
-          <thead><tr><th>Bileşen</th><th>Miktar (1 mamul için)</th><th></th></tr></thead>
+          <thead><tr><th>Girdi</th><th>Miktar (1 çalıştırma için)</th><th></th></tr></thead>
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="ua-satir">
-                <td>{{ f.bilesen }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.girdi }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                 <td>{{ f.miktar }}</td>
                 <td><button type="button" class="ua-sil" title="Satırı kaldır">✕</button></td>
               </tr>
@@ -64,18 +98,18 @@
         </table>
       </div>
       <div class="satir-alt">
-        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Bileşen Ekle</button>
+        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Girdi Ekle</button>
       </div>
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.bilesen }}</td>
+      <td>{{ formset.empty_form.girdi }}</td>
       <td>{{ formset.empty_form.miktar }}</td>
       <td><button type="button" class="ua-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
     <div class="form-altbar">
-      <a class="iptal-bag" href="{% url 'core:uretim_urun_agaclari' %}">İptal</a>
+      <a class="iptal-bag" href="{% url 'core:operasyon_tanimlari' %}">İptal</a>
       <button type="submit" class="birincil">Kaydet</button>
     </div>
   </form>

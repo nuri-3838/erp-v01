@@ -1,7 +1,10 @@
-"""ÜRETİM modülü — Ürün Ağacı (BOM) tanımları + Üretim Emirleri. FASON'daki kesilmiş-parça/
-kesildigi_profil kavramıyla hiçbir ilişkisi yok — bağımsız, sıfırdan kurulan bir Stok↔Stok
-reçetesi. Üretim Emri onayı yalnızca StokHareket (miktar) üretir; hiçbir YevmiyeFisi'ne
-dokunmaz — bu dosyadaki testler bu ayrımı da doğrular."""
+"""ÜRETİM modülü — İş İstasyonu + Operasyon (rota) modeli. FASON'daki kesilmiş-parça/
+kesildigi_profil kavramıyla hiçbir ilişkisi yok. Bir Operasyon, bir iş istasyonunda,
+bir/daha fazla GİRDİ stoktan TEK bir ÇIKTI stok üretir (oranlı dönüşüm). Bir Üretim Emri
+("N adet [hedef ürün] istiyorum"), İhtiyaç Hesapla ile aynı özyinelemeli algoritmayla
+zinciri hesaplayıp zincirdeki HER operasyon için ayrı bir TASLAK Operasyon Kaydı açar; her
+istasyon kendi kaydını kendi zamanında onaylar (StokHareket, Kaynak=URETIM) — muhasebeye
+hiç dokunmaz."""
 from datetime import date
 from decimal import Decimal
 
@@ -10,14 +13,16 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import (
-    Birim, Depo, EkranYetki, Kategori, Stok, StokHareket, UretimEmri, UrunAgaci,
-    YevmiyeFisi,
+    Birim, Depo, EkranYetki, IsIstasyonu, Kategori, Operasyon, OperasyonKaydi, Stok,
+    StokHareket, UretimEmri, YevmiyeFisi,
 )
 from core.services.hareket import eldeki_miktar, hareket_ekle
 from core.services.uretim import (
-    UretimHatasi, aktif_urun_agaclari, emri_satirlari, uretim_emri_olustur,
-    uretim_emri_onayla, uretim_emri_satir_guncelle, uretim_emri_sil,
-    urun_agaci_guncelle, urun_agaci_olustur, urun_agaci_satirlari, urun_agaci_sil,
+    UretimHatasi, aktif_istasyonlar, aktif_operasyonlar, ihtiyac_hesapla,
+    istasyon_guncelle, istasyon_olustur, istasyon_sil,
+    kaydi_girdi_satirlari, operasyon_girdileri, operasyon_guncelle, operasyon_kaydi_girdi_guncelle,
+    operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_kaydi_sil, operasyon_olustur,
+    operasyon_sil, uretim_emri_ilerleme, uretim_emri_olustur,
 )
 
 
@@ -39,212 +44,431 @@ def _depo(kod="MRK"):
     return Depo.objects.create(kod=kod, ad="MERKEZ DEPO")
 
 
-class UretimServisTest(TestCase):
+def _istasyon(kod="LAZER"):
+    return IsIstasyonu.objects.create(kod=kod, ad=f"{kod} İSTASYONU")
+
+
+class IsIstasyonuServisTest(TestCase):
+    def test_olustur_ve_tr_buyuk_harf(self):
+        i = istasyon_olustur(kod="lazer", ad="lazer kesim")
+        self.assertEqual((i.kod, i.ad), ("LAZER", "LAZER KESİM"))
+
+    def test_ayni_kod_iki_kez_reddedilir(self):
+        istasyon_olustur(kod="LAZER", ad="LAZER KESİM")
+        with self.assertRaises(UretimHatasi):
+            istasyon_olustur(kod="LAZER", ad="BAŞKA AD")
+
+    def test_ayni_ad_iki_kez_reddedilir(self):
+        istasyon_olustur(kod="LAZER", ad="KESİM")
+        with self.assertRaises(UretimHatasi):
+            istasyon_olustur(kod="BUKUM", ad="KESİM")
+
+    def test_guncelle(self):
+        i = istasyon_olustur(kod="LAZER", ad="LAZER KESİM")
+        istasyon_guncelle(i, kod="LAZER2", ad="LAZER KESİM 2")
+        i.refresh_from_db()
+        self.assertEqual((i.kod, i.ad), ("LAZER2", "LAZER KESİM 2"))
+
+    def test_sil(self):
+        i = istasyon_olustur(kod="LAZER", ad="LAZER KESİM")
+        istasyon_sil(i)
+        self.assertTrue(IsIstasyonu.objects.get(pk=i.pk).silindi)
+        self.assertNotIn(i, aktif_istasyonlar())
+
+    def test_sil_bagli_operasyon_varsa_reddedilir(self):
+        i = istasyon_olustur(kod="LAZER", ad="LAZER KESİM")
+        birim, kat = _birim(), _kategori()
+        cikti = _stok(kat, birim, kod="UT-CIKTI", ad="çıktı", satis=True)
+        girdi = _stok(kat, birim, kod="UT-GIRDI", ad="girdi", satinalma=True)
+        operasyon_olustur(istasyon_id=i.pk, cikti_id=cikti.pk, cikti_miktar=Decimal("1"),
+                          satirlar=[(girdi, Decimal("1"))])
+        with self.assertRaises(UretimHatasi):
+            istasyon_sil(i)
+
+
+class OperasyonServisTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.birim = _birim()
         cls.kat = _kategori()
-        cls.mamul = _stok(cls.kat, cls.birim, kod="UT-MAMUL", ad="test merdiveni", satis=True)
-        cls.civata = _stok(cls.kat, cls.birim, kod="UT-CIVATA", ad="civata", satinalma=True)
-        cls.ayak = _stok(cls.kat, cls.birim, kod="UT-AYAK", ad="plastik ayak", satinalma=True)
-        cls.depo = _depo()
+        cls.istasyon = _istasyon("LAZER")
+        cls.cikti = _stok(cls.kat, cls.birim, kod="UT-CIKTI", ad="kesilmiş parça")
+        cls.girdi = _stok(cls.kat, cls.birim, kod="UT-GIRDI", ad="ham profil", satinalma=True)
 
-    def test_urun_agaci_olustur_ve_satirlar(self):
-        agac = urun_agaci_olustur(
-            mamul_id=self.mamul.pk,
-            satirlar=[(self.civata, Decimal("24")), (self.ayak, Decimal("2"))])
-        satirlar = list(urun_agaci_satirlari(agac))
-        self.assertEqual(len(satirlar), 2)
-        self.assertEqual({s.bilesen_id for s in satirlar}, {self.civata.pk, self.ayak.pk})
+    def test_olustur(self):
+        op = operasyon_olustur(
+            istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk, cikti_miktar=Decimal("2"),
+            satirlar=[(self.girdi, Decimal("1"))], ad="Kesim")
+        self.assertEqual(op.cikti_miktar, Decimal("2.000"))
+        self.assertEqual(list(operasyon_girdileri(op))[0].girdi_id, self.girdi.pk)
 
-    def test_urun_agaci_ayni_mamul_iki_kez_reddedilir(self):
-        urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.civata, Decimal("1"))])
+    def test_ayni_cikti_icin_ikinci_operasyon_reddedilir(self):
+        operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(self.girdi, Decimal("1"))])
         with self.assertRaises(UretimHatasi):
-            urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.ayak, Decimal("1"))])
+            operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                              cikti_miktar=Decimal("1"), satirlar=[(self.girdi, Decimal("1"))])
 
-    def test_urun_agaci_bos_satir_reddedilir(self):
+    def test_bos_girdi_reddedilir(self):
         with self.assertRaises(UretimHatasi):
-            urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[])
+            operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                              cikti_miktar=Decimal("1"), satirlar=[])
 
-    def test_urun_agaci_mamul_kendi_bileseni_olamaz(self):
+    def test_cikti_kendi_girdisi_olamaz(self):
         with self.assertRaises(UretimHatasi):
-            urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.mamul, Decimal("1"))])
+            operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                              cikti_miktar=Decimal("1"), satirlar=[(self.cikti, Decimal("1"))])
 
-    def test_urun_agaci_tekrar_eden_bilesen_reddedilir(self):
+    def test_tekrar_eden_girdi_reddedilir(self):
         with self.assertRaises(UretimHatasi):
-            urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[
-                (self.civata, Decimal("1")), (self.civata, Decimal("2"))])
+            operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                              cikti_miktar=Decimal("1"), satirlar=[
+                                  (self.girdi, Decimal("1")), (self.girdi, Decimal("2"))])
 
-    def test_urun_agaci_sifir_miktar_reddedilir(self):
+    def test_cikti_miktar_sifir_reddedilir(self):
         with self.assertRaises(UretimHatasi):
-            urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.civata, Decimal("0"))])
+            operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                              cikti_miktar=Decimal("0"), satirlar=[(self.girdi, Decimal("1"))])
 
-    def test_urun_agaci_guncelle_eski_satirlari_degistirir(self):
-        agac = urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.civata, Decimal("24"))])
-        urun_agaci_guncelle(agac, satirlar=[(self.ayak, Decimal("4"))])
-        satirlar = list(urun_agaci_satirlari(agac))
+    def test_guncelle_girdileri_degistirir_cikti_sabit_kalir(self):
+        op = operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                               cikti_miktar=Decimal("2"), satirlar=[(self.girdi, Decimal("1"))])
+        girdi2 = _stok(self.kat, self.birim, kod="UT-GIRDI2", ad="vida", satinalma=True)
+        istasyon2 = _istasyon("BUKUM")
+        operasyon_guncelle(op, istasyon_id=istasyon2.pk, cikti_miktar=Decimal("3"),
+                           satirlar=[(girdi2, Decimal("4"))])
+        op.refresh_from_db()
+        self.assertEqual(op.istasyon_id, istasyon2.pk)
+        self.assertEqual(op.cikti_id, self.cikti.pk)          # değişmez
+        self.assertEqual(op.cikti_miktar, Decimal("3.000"))
+        satirlar = list(operasyon_girdileri(op))
         self.assertEqual(len(satirlar), 1)
-        self.assertEqual(satirlar[0].bilesen_id, self.ayak.pk)
-        self.assertEqual(satirlar[0].miktar, Decimal("4.000"))
+        self.assertEqual(satirlar[0].girdi_id, girdi2.pk)
 
-    def test_urun_agaci_sil(self):
-        agac = urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.civata, Decimal("1"))])
-        urun_agaci_sil(agac)
-        self.assertTrue(UrunAgaci.objects.get(pk=agac.pk).silindi)
-        self.assertNotIn(agac, aktif_urun_agaclari())
+    def test_sil(self):
+        op = operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                               cikti_miktar=Decimal("1"), satirlar=[(self.girdi, Decimal("1"))])
+        operasyon_sil(op)
+        self.assertTrue(Operasyon.objects.get(pk=op.pk).silindi)
+        self.assertNotIn(op, aktif_operasyonlar())
 
-    def test_urun_agaci_sil_bagli_emir_varsa_reddedilir(self):
-        agac = urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.civata, Decimal("1"))])
-        uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("1"),
-                            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+    def test_sil_bagli_kayit_varsa_reddedilir(self):
+        op = operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk,
+                               cikti_miktar=Decimal("1"), satirlar=[(self.girdi, Decimal("1"))])
+        depo = _depo()
+        hareket_ekle(stok_id=self.girdi.pk, depo_id=depo.pk, tarih=date(2026, 1, 1),
+                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("100"))
+        operasyon_kaydi_olustur(operasyon_id=op.pk, depo_id=depo.pk, tarih=date(2026, 1, 5),
+                                hedef_cikti_miktari=Decimal("1"))
         with self.assertRaises(UretimHatasi):
-            urun_agaci_sil(agac)
+            operasyon_sil(op)
 
-    # --- Üretim Emirleri ---
-    def _agac_kur(self):
-        return urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[
-            (self.civata, Decimal("24")), (self.ayak, Decimal("2"))])
 
-    def test_uretim_emri_olustur_urun_agaci_yoksa_reddedilir(self):
+class OperasyonKaydiServisTest(TestCase):
+    """Kesim (1 profil -> 2 kesilmiş parça, cikti_miktar=2) -> Büküm (1 kesilmiş parça ->
+    1 bükülmüş parça, cikti_miktar=1) iki basamaklı bir zincir üzerinden."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.birim = _birim()
+        cls.kat = _kategori()
+        cls.depo = _depo()
+        cls.lazer = _istasyon("LAZER")
+        cls.bukum = _istasyon("BUKUM")
+        cls.profil = _stok(cls.kat, cls.birim, kod="UT-PROFIL", ad="ham profil", satinalma=True)
+        cls.kesilmis = _stok(cls.kat, cls.birim, kod="UT-KESILMIS", ad="kesilmiş parça")
+        cls.bukulmus = _stok(cls.kat, cls.birim, kod="UT-BUKULMUS", ad="bükülmüş parça")
+        cls.kesim_op = operasyon_olustur(
+            istasyon_id=cls.lazer.pk, cikti_id=cls.kesilmis.pk, cikti_miktar=Decimal("2"),
+            satirlar=[(cls.profil, Decimal("1"))], ad="Kesim")
+        cls.bukum_op = operasyon_olustur(
+            istasyon_id=cls.bukum.pk, cikti_id=cls.bukulmus.pk, cikti_miktar=Decimal("1"),
+            satirlar=[(cls.kesilmis, Decimal("1"))], ad="Büküm")
+
+    def test_olustur_oran_matematigi(self):
+        """10 adet kesilmiş parça hedefi, cikti_miktar=2 olan kesim operasyonunda
+        5 adet profil girdisi gerektirmeli (10 * 1 / 2 = 5)."""
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        satir = kaydi_girdi_satirlari(kayit).get(girdi=self.profil)
+        self.assertEqual(satir.planlanan_miktar, Decimal("5.000"))
+        self.assertEqual(satir.gerceklesen_miktar, Decimal("5.000"))
+        self.assertEqual(kayit.durum, OperasyonKaydi.Durum.TASLAK)
+
+    def test_numaralama_atomik_artan(self):
+        k1 = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                     tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("2"))
+        k2 = operasyon_kaydi_olustur(operasyon_id=self.bukum_op.pk, depo_id=self.depo.pk,
+                                     tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("1"))
+        self.assertEqual(k1.no, "OP-2026-0001")
+        self.assertEqual(k2.no, "OP-2026-0002")
+
+    def test_girdi_guncelle_taslakta_calisir(self):
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        satir = kaydi_girdi_satirlari(kayit).get(girdi=self.profil)
+        operasyon_kaydi_girdi_guncelle(satir, gerceklesen_miktar=Decimal("5.5"))
+        satir.refresh_from_db()
+        self.assertEqual(satir.gerceklesen_miktar, Decimal("5.500"))
+
+    def _stok_gir(self, stok, miktar):
+        hareket_ekle(stok_id=stok.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
+                    tur=StokHareket.Tur.GIRIS, miktar=Decimal(miktar))
+
+    def test_onayla_stok_hareketleri_dogru(self):
+        self._stok_gir(self.profil, "1000")
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kayit)
+        kayit.refresh_from_db()
+        self.assertEqual(kayit.durum, OperasyonKaydi.Durum.ONAYLI)
+        self.assertEqual(eldeki_miktar(self.profil, self.depo), Decimal("1000") - Decimal("5"))
+        self.assertEqual(eldeki_miktar(self.kesilmis, self.depo), Decimal("10"))
+        cikis = StokHareket.objects.get(stok=self.profil, kaynak=StokHareket.Kaynak.URETIM,
+                                        tur=StokHareket.Tur.CIKIS)
+        self.assertEqual(cikis.operasyon_kaydi_girdi.kayit_id, kayit.pk)
+        giris = StokHareket.objects.get(stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM,
+                                        tur=StokHareket.Tur.GIRIS)
+        self.assertEqual(giris.miktar, Decimal("10.000"))
+
+    def test_onayla_gerceklesen_sifir_satir_hatasiz_atlanir(self):
+        self._stok_gir(self.profil, "1000")
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        satir = kaydi_girdi_satirlari(kayit).get(girdi=self.profil)
+        operasyon_kaydi_girdi_guncelle(satir, gerceklesen_miktar=Decimal("0"))
+        operasyon_kaydi_onayla(kayit)                          # hata fırlatmamalı
+        self.assertFalse(StokHareket.objects.filter(
+            stok=self.profil, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.CIKIS).exists())
+        self.assertTrue(StokHareket.objects.filter(
+            stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS).exists())
+
+    def test_onayla_yetersiz_stok_atomik_geri_alir(self):
+        self._stok_gir(self.profil, "2")                       # 5 gerekiyor, 2 var
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
         with self.assertRaises(UretimHatasi):
-            uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("1"),
+            operasyon_kaydi_onayla(kayit)
+        kayit.refresh_from_db()
+        self.assertEqual(kayit.durum, OperasyonKaydi.Durum.TASLAK)
+        self.assertEqual(StokHareket.objects.filter(kaynak=StokHareket.Kaynak.URETIM).count(), 0)
+
+    def test_onayla_idempotent(self):
+        self._stok_gir(self.profil, "1000")
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kayit)
+        onceki = StokHareket.objects.filter(kaynak=StokHareket.Kaynak.URETIM).count()
+        operasyon_kaydi_onayla(kayit)
+        self.assertEqual(StokHareket.objects.filter(kaynak=StokHareket.Kaynak.URETIM).count(), onceki)
+
+    def test_girdi_guncelle_onaylida_reddedilir(self):
+        self._stok_gir(self.profil, "1000")
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kayit)
+        satir = kaydi_girdi_satirlari(kayit).first()
+        with self.assertRaises(UretimHatasi):
+            operasyon_kaydi_girdi_guncelle(satir, gerceklesen_miktar=Decimal("1"))
+
+    def test_onayli_iptal_edilemez(self):
+        self._stok_gir(self.profil, "1000")
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("2"))
+        operasyon_kaydi_onayla(kayit)
+        with self.assertRaises(UretimHatasi):
+            operasyon_kaydi_sil(kayit)
+
+    def test_taslak_iptal_soft_delete(self):
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("2"))
+        operasyon_kaydi_sil(kayit)
+        self.assertTrue(OperasyonKaydi.objects.get(pk=kayit.pk).silindi)
+
+    def test_onayla_muhasebeye_dokunmuyor(self):
+        self._stok_gir(self.profil, "1000")
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        onceki = YevmiyeFisi.objects.count()
+        operasyon_kaydi_onayla(kayit)
+        self.assertEqual(YevmiyeFisi.objects.count(), onceki)
+
+    def test_bagimsiz_serbest_kayit_uretim_emrisiz_calisir(self):
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("2"))
+        self.assertIsNone(kayit.uretim_emri)
+
+
+class IhtiyacHesaplaTest(TestCase):
+    """Kesim (1 profil -> 2 kesilmiş parça) -> Büküm (1 kesilmiş -> 1 bükülmüş) ->
+    Montaj (1 bükülmüş + 2 civata -> 1 mamul) üç basamaklı zincir."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.birim = _birim()
+        cls.kat = _kategori()
+        cls.lazer = _istasyon("LAZER")
+        cls.bukum = _istasyon("BUKUM")
+        cls.montaj = _istasyon("MONTAJ")
+        cls.profil = _stok(cls.kat, cls.birim, kod="UT-PROFIL", ad="ham profil", satinalma=True)
+        cls.civata = _stok(cls.kat, cls.birim, kod="UT-CIVATA", ad="civata", satinalma=True)
+        cls.kesilmis = _stok(cls.kat, cls.birim, kod="UT-KESILMIS", ad="kesilmiş parça")
+        cls.bukulmus = _stok(cls.kat, cls.birim, kod="UT-BUKULMUS", ad="bükülmüş parça")
+        cls.mamul = _stok(cls.kat, cls.birim, kod="UT-MAMUL", ad="test merdiveni", satis=True)
+        operasyon_olustur(istasyon_id=cls.lazer.pk, cikti_id=cls.kesilmis.pk,
+                          cikti_miktar=Decimal("2"), satirlar=[(cls.profil, Decimal("1"))])
+        operasyon_olustur(istasyon_id=cls.bukum.pk, cikti_id=cls.bukulmus.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(cls.kesilmis, Decimal("1"))])
+        operasyon_olustur(istasyon_id=cls.montaj.pk, cikti_id=cls.mamul.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[
+                              (cls.bukulmus, Decimal("1")), (cls.civata, Decimal("2"))])
+
+    def test_uc_seviyeli_zincir_oran_dogrulugu(self):
+        sonuc = ihtiyac_hesapla([(self.mamul, Decimal("10"))])
+        ozet = {o["stok"].pk: o for o in sonuc["ozet"]}
+        self.assertEqual(ozet[self.bukulmus.pk]["toplam_miktar"], Decimal("10"))
+        self.assertEqual(ozet[self.kesilmis.pk]["toplam_miktar"], Decimal("10"))
+        self.assertEqual(ozet[self.profil.pk]["toplam_miktar"], Decimal("5"))     # 10/2
+        self.assertEqual(ozet[self.civata.pk]["toplam_miktar"], Decimal("20"))    # 10*2
+        self.assertNotIn(self.mamul.pk, ozet)                  # kök hariç tutulur
+
+    def test_yaprak_dugumler_dogru_isaretli(self):
+        sonuc = ihtiyac_hesapla([(self.mamul, Decimal("1"))])
+        ozet = {o["stok"].pk: o for o in sonuc["ozet"]}
+        self.assertTrue(ozet[self.profil.pk]["yaprak"])
+        self.assertTrue(ozet[self.civata.pk]["yaprak"])
+        self.assertFalse(ozet[self.kesilmis.pk]["yaprak"])
+        self.assertIsNone(ozet[self.profil.pk]["istasyon"])
+        self.assertEqual(ozet[self.kesilmis.pk]["istasyon"], self.lazer)
+
+    def test_hedef_operasyonsuz_ise_kendisi_yaprak_olarak_doner(self):
+        sonuc = ihtiyac_hesapla([(self.profil, Decimal("3"))])
+        self.assertEqual(len(sonuc["agac"]), 1)
+        self.assertTrue(sonuc["agac"][0]["yaprak"])
+        self.assertEqual(sonuc["ozet"], [])                    # kök hariç, yaprağın altı yok
+
+    def test_paylasilan_dal_ozette_birlesir(self):
+        """İki bağımsız hedef aynı yaprağı (civata) paylaşıyorsa özet TEK satırda toplanır."""
+        baska_mamul = _stok(self.kat, self.birim, kod="UT-MAMUL2", ad="başka merdiven", satis=True)
+        operasyon_olustur(istasyon_id=self.montaj.pk, cikti_id=baska_mamul.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(self.civata, Decimal("3"))])
+        sonuc = ihtiyac_hesapla([(self.mamul, Decimal("1")), (baska_mamul, Decimal("1"))])
+        ozet = {o["stok"].pk: o for o in sonuc["ozet"]}
+        self.assertEqual(ozet[self.civata.pk]["toplam_miktar"], Decimal("5"))     # 2 + 3
+
+    def test_dongu_tespit_edilir(self):
+        a = _stok(self.kat, self.birim, kod="UT-DONGU-A", ad="a")
+        b = _stok(self.kat, self.birim, kod="UT-DONGU-B", ad="b")
+        istasyon = _istasyon("DONGU")
+        op_a = operasyon_olustur(istasyon_id=istasyon.pk, cikti_id=a.pk,
+                                 cikti_miktar=Decimal("1"), satirlar=[(b, Decimal("1"))])
+        operasyon_olustur(istasyon_id=istasyon.pk, cikti_id=b.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(a, Decimal("1"))])
+        with self.assertRaises(UretimHatasi):
+            ihtiyac_hesapla([(a, Decimal("1"))])
+
+    def test_coklu_hedef_satiri_girisi(self):
+        sonuc = ihtiyac_hesapla([(self.mamul, Decimal("2")), (self.kesilmis, Decimal("5"))])
+        self.assertEqual(len(sonuc["agac"]), 2)
+
+    def test_sifir_ve_negatif_miktar_atlanir(self):
+        sonuc = ihtiyac_hesapla([(self.mamul, Decimal("0")), (self.mamul, Decimal("-1"))])
+        self.assertEqual(sonuc["agac"], [])
+        self.assertEqual(sonuc["ozet"], [])
+
+    def test_hicbir_kayit_veya_hareket_uretmez(self):
+        onceki_emir = UretimEmri.objects.count()
+        onceki_kayit = OperasyonKaydi.objects.count()
+        onceki_hareket = StokHareket.objects.count()
+        ihtiyac_hesapla([(self.mamul, Decimal("10"))])
+        self.assertEqual(UretimEmri.objects.count(), onceki_emir)
+        self.assertEqual(OperasyonKaydi.objects.count(), onceki_kayit)
+        self.assertEqual(StokHareket.objects.count(), onceki_hareket)
+
+
+class UretimEmriServisTest(TestCase):
+    """Üst-düzey tetikleyici: zincirdeki HER operasyon için ayrı TASLAK Operasyon Kaydı."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.birim = _birim()
+        cls.kat = _kategori()
+        cls.depo = _depo()
+        cls.lazer = _istasyon("LAZER")
+        cls.bukum = _istasyon("BUKUM")
+        cls.profil = _stok(cls.kat, cls.birim, kod="UT-PROFIL", ad="ham profil", satinalma=True)
+        cls.kesilmis = _stok(cls.kat, cls.birim, kod="UT-KESILMIS", ad="kesilmiş parça")
+        cls.bukulmus = _stok(cls.kat, cls.birim, kod="UT-BUKULMUS", ad="bükülmüş parça", satis=True)
+        cls.kesim_op = operasyon_olustur(istasyon_id=cls.lazer.pk, cikti_id=cls.kesilmis.pk,
+                                         cikti_miktar=Decimal("2"), satirlar=[(cls.profil, Decimal("1"))])
+        cls.bukum_op = operasyon_olustur(istasyon_id=cls.bukum.pk, cikti_id=cls.bukulmus.pk,
+                                         cikti_miktar=Decimal("1"), satirlar=[(cls.kesilmis, Decimal("1"))])
+
+    def test_hedef_operasyonsuz_reddedilir(self):
+        cıplak = _stok(self.kat, self.birim, kod="UT-CIPLAK", ad="operasyonsuz", satis=True)
+        with self.assertRaises(UretimHatasi):
+            uretim_emri_olustur(hedef_urun_id=cıplak.pk, hedef_miktar=Decimal("1"),
                                 depo_id=self.depo.pk, tarih=date(2026, 1, 10))
 
-    def test_uretim_emri_olustur_satirlari_bom_carpimi_ile_doldurur(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("10"),
+    def test_zincirdeki_her_operasyon_icin_taslak_kayit_acilir(self):
+        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
                                    depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        satirlar = {s.bilesen_id: s for s in emri_satirlari(emir)}
-        self.assertEqual(satirlar[self.civata.pk].planlanan_miktar, Decimal("240.000"))
-        self.assertEqual(satirlar[self.civata.pk].gerceklesen_miktar, Decimal("240.000"))
-        self.assertEqual(satirlar[self.ayak.pk].planlanan_miktar, Decimal("20.000"))
-        self.assertEqual(emir.durum, UretimEmri.Durum.TASLAK)
+        self.assertEqual(emir.no, "UE-2026-0001")
+        kayitlar = {k.operasyon_id: k for k in OperasyonKaydi.objects.filter(uretim_emri=emir)}
+        self.assertEqual(len(kayitlar), 2)
+        # bukum_op'un kaydı bukulmus'un kendisini üretir (hedef 10); kesim_op'un kaydı ise
+        # o 10 bukulmus için gereken 10 KESİLMİŞ PARÇAYI üretir (hedef 10, cikti_miktar=2
+        # olduğu için o kaydın KENDİ girdi satırında 5 profil gerektiği ortaya çıkar).
+        self.assertEqual(kayitlar[self.bukum_op.pk].hedef_cikti_miktari, Decimal("10.000"))
+        self.assertEqual(kayitlar[self.kesim_op.pk].hedef_cikti_miktari, Decimal("10.000"))
+        kesim_girdi = kaydi_girdi_satirlari(kayitlar[self.kesim_op.pk]).get(girdi=self.profil)
+        self.assertEqual(kesim_girdi.planlanan_miktar, Decimal("5.000"))
+        self.assertTrue(all(k.durum == OperasyonKaydi.Durum.TASLAK for k in kayitlar.values()))
+        self.assertTrue(all(k.depo_id == self.depo.pk for k in kayitlar.values()))
 
-    def test_uretim_emri_no_atomik_artan(self):
-        self._agac_kur()
-        e1 = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("1"),
-                                 depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        e2 = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("1"),
-                                 depo_id=self.depo.pk, tarih=date(2026, 1, 11))
-        self.assertEqual(e1.no, "UE-2026-0001")
-        self.assertEqual(e2.no, "UE-2026-0002")
+    def test_yaprak_dugumler_icin_kayit_acilmaz(self):
+        uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("1"),
+                            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        self.assertFalse(OperasyonKaydi.objects.filter(operasyon__cikti=self.profil).exists())
 
-    def test_uretim_emri_satir_guncelle_taslakta_calisir(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        satir = emri_satirlari(emir).get(bilesen=self.civata)
-        uretim_emri_satir_guncelle(satir, gerceklesen_miktar=Decimal("245"))
-        satir.refresh_from_db()
-        self.assertEqual(satir.gerceklesen_miktar, Decimal("245.000"))
-
-    def test_uretim_emri_satir_guncelle_onaylida_reddedilir(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("1"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("100"))
-        hareket_ekle(stok_id=self.ayak.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("100"))
-        uretim_emri_onayla(emir)
-        satir = emri_satirlari(emir).first()
+    def test_dongu_hatasinda_hicbir_seyi_kaydetmez(self):
+        a = _stok(self.kat, self.birim, kod="UT-DA", ad="a", satis=True)
+        b = _stok(self.kat, self.birim, kod="UT-DB", ad="b")
+        istasyon = _istasyon("DONGU")
+        operasyon_olustur(istasyon_id=istasyon.pk, cikti_id=a.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(b, Decimal("1"))])
+        operasyon_olustur(istasyon_id=istasyon.pk, cikti_id=b.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(a, Decimal("1"))])
+        onceki_emir = UretimEmri.objects.count()
+        onceki_kayit = OperasyonKaydi.objects.count()
         with self.assertRaises(UretimHatasi):
-            uretim_emri_satir_guncelle(satir, gerceklesen_miktar=Decimal("5"))
+            uretim_emri_olustur(hedef_urun_id=a.pk, hedef_miktar=Decimal("1"),
+                                depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        self.assertEqual(UretimEmri.objects.count(), onceki_emir)
+        self.assertEqual(OperasyonKaydi.objects.count(), onceki_kayit)
 
-    def test_uretim_emri_onayla_stok_hareketleri_dogru(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("10"),
+    def test_kayitlar_birbirinden_bagimsiz_onaylanir(self):
+        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
                                    depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
+        kesim_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.kesim_op)
+        bukum_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.bukum_op)
+        hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        hareket_ekle(stok_id=self.ayak.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        uretim_emri_onayla(emir)
-        emir.refresh_from_db()
-        self.assertEqual(emir.durum, UretimEmri.Durum.ONAYLI)
-        self.assertEqual(eldeki_miktar(self.civata, self.depo), Decimal("1000") - Decimal("240"))
-        self.assertEqual(eldeki_miktar(self.ayak, self.depo), Decimal("1000") - Decimal("20"))
-        self.assertEqual(eldeki_miktar(self.mamul, self.depo), Decimal("10"))
-        mamul_hareket = StokHareket.objects.get(
-            stok=self.mamul, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
-        self.assertEqual(mamul_hareket.miktar, Decimal("10.000"))
+        operasyon_kaydi_onayla(kesim_kaydi)                    # yalnız kesim onaylanır
+        kesim_kaydi.refresh_from_db()
+        bukum_kaydi.refresh_from_db()
+        self.assertEqual(kesim_kaydi.durum, OperasyonKaydi.Durum.ONAYLI)
+        self.assertEqual(bukum_kaydi.durum, OperasyonKaydi.Durum.TASLAK)   # etkilenmedi
 
-    def test_uretim_emri_onayla_gerceklesen_miktar_kullanilir(self):
-        """Onaydan önce satır bazında düzeltilen gerçekleşen miktar (fire/sapma) —
-        planlanan DEĞİL, gerçekleşen — stok çıkışında kullanılır."""
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("10"),
+    def test_ilerleme(self):
+        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
                                    depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
+        self.assertEqual(uretim_emri_ilerleme(emir), {"toplam": 2, "onayli": 0})
+        hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        hareket_ekle(stok_id=self.ayak.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        satir = emri_satirlari(emir).get(bilesen=self.civata)
-        uretim_emri_satir_guncelle(satir, gerceklesen_miktar=Decimal("250"))   # 10 fire
-        uretim_emri_onayla(emir)
-        self.assertEqual(eldeki_miktar(self.civata, self.depo), Decimal("1000") - Decimal("250"))
-
-    def test_uretim_emri_onayla_yetersiz_stok_atomik_geri_alir(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("5"))   # 240 gerekiyor, 5 var
-        hareket_ekle(stok_id=self.ayak.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        with self.assertRaises(UretimHatasi):
-            uretim_emri_onayla(emir)
-        emir.refresh_from_db()
-        self.assertEqual(emir.durum, UretimEmri.Durum.TASLAK)
-        self.assertEqual(
-            StokHareket.objects.filter(kaynak=StokHareket.Kaynak.URETIM).count(), 0)
-
-    def test_uretim_emri_onayla_idempotent(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        hareket_ekle(stok_id=self.ayak.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        uretim_emri_onayla(emir)
-        onceki = StokHareket.objects.filter(kaynak=StokHareket.Kaynak.URETIM).count()
-        uretim_emri_onayla(emir)                                       # ikinci çağrı sessiz
-        self.assertEqual(
-            StokHareket.objects.filter(kaynak=StokHareket.Kaynak.URETIM).count(), onceki)
-
-    def test_uretim_emri_onayli_iptal_edilemez(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("1"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("100"))
-        hareket_ekle(stok_id=self.ayak.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("100"))
-        uretim_emri_onayla(emir)
-        with self.assertRaises(UretimHatasi):
-            uretim_emri_sil(emir)
-
-    def test_uretim_emri_taslak_iptal_soft_delete(self):
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("1"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        uretim_emri_sil(emir)
-        self.assertTrue(UretimEmri.objects.get(pk=emir.pk).silindi)
-
-    def test_uretim_emri_onayla_muhasebeye_dokunmuyor(self):
-        """v0.4 kapsam kararı: Üretim Emri onayı hiçbir YevmiyeFisi üretmez — maliyetin
-        muhasebeye yansıtılması ay sonu mali müşavirin elle yapacağı ayrı bir iştir."""
-        self._agac_kur()
-        emir = uretim_emri_olustur(mamul_id=self.mamul.pk, planlanan_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        hareket_ekle(stok_id=self.ayak.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
-                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
-        onceki = YevmiyeFisi.objects.count()
-        uretim_emri_onayla(emir)
-        self.assertEqual(YevmiyeFisi.objects.count(), onceki)
+        kesim_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.kesim_op)
+        operasyon_kaydi_onayla(kesim_kaydi)
+        self.assertEqual(uretim_emri_ilerleme(emir), {"toplam": 2, "onayli": 1})
 
 
 class UretimViewTest(TestCase):
@@ -252,106 +476,121 @@ class UretimViewTest(TestCase):
     def setUpTestData(cls):
         cls.yon = User.objects.create_superuser("uretyon", password="x")
         cls.bos = User.objects.create_user("uretbos", password="x")
-        cls.agac_yetkili = User.objects.create_user("uretagacyetkili", password="x")
-        EkranYetki.objects.create(kullanici=cls.agac_yetkili, ekran_kod="uretim_urun_agaci")
+        cls.istasyon_yetkili = User.objects.create_user("uretistyetkili", password="x")
+        EkranYetki.objects.create(kullanici=cls.istasyon_yetkili, ekran_kod="is_istasyonlari")
+        cls.operasyon_yetkili = User.objects.create_user("uretopyetkili", password="x")
+        EkranYetki.objects.create(kullanici=cls.operasyon_yetkili, ekran_kod="operasyon_tanimlari")
+        cls.hesapla_yetkili = User.objects.create_user("uretihyetkili", password="x")
+        EkranYetki.objects.create(kullanici=cls.hesapla_yetkili, ekran_kod="ihtiyac_hesapla")
         cls.emir_yetkili = User.objects.create_user("uretemiryetkili", password="x")
         EkranYetki.objects.create(kullanici=cls.emir_yetkili, ekran_kod="uretim_emirleri")
+        cls.kayit_yetkili = User.objects.create_user("uretkayityetkili", password="x")
+        EkranYetki.objects.create(kullanici=cls.kayit_yetkili, ekran_kod="operasyon_kayitlari")
 
         cls.birim = _birim()
         cls.kat = _kategori()
-        cls.mamul = _stok(cls.kat, cls.birim, kod="UTV-MAMUL", ad="test merdiveni", satis=True)
-        cls.civata = _stok(cls.kat, cls.birim, kod="UTV-CIVATA", ad="civata", satinalma=True)
         cls.depo = _depo("UTVDEPO")
+        cls.istasyon = _istasyon("LAZER")
+        cls.profil = _stok(cls.kat, cls.birim, kod="UTV-PROFIL", ad="ham profil", satinalma=True)
+        cls.mamul = _stok(cls.kat, cls.birim, kod="UTV-MAMUL", ad="test merdiveni", satis=True)
+        cls.operasyon = operasyon_olustur(istasyon_id=cls.istasyon.pk, cikti_id=cls.mamul.pk,
+                                          cikti_miktar=Decimal("1"), satirlar=[(cls.profil, Decimal("1"))])
 
-    # --- Ürün Ağacı Tanımları: ekran_gerekli("uretim_urun_agaci") ---
-    def test_urun_agaci_anonim_login_yonlenir(self):
-        r = self.client.get(reverse("core:uretim_urun_agaclari"))
+    # --- İzin ayrımı: her ekran kendi yetki kodunu ister ---
+    def _ekran_izin_testleri(self, url_adi, dogru_yetkili):
+        r = self.client.get(reverse(url_adi))
         self.assertEqual(r.status_code, 302)
         self.assertIn("/login/", r.url)
-
-    def test_urun_agaci_yetkisiz_403(self):
         self.client.force_login(self.bos)
-        self.assertEqual(self.client.get(reverse("core:uretim_urun_agaclari")).status_code, 403)
+        self.assertEqual(self.client.get(reverse(url_adi)).status_code, 403)
+        self.client.force_login(dogru_yetkili)
+        self.assertEqual(self.client.get(reverse(url_adi)).status_code, 200)
 
-    def test_urun_agaci_yetkili_girebilir(self):
-        self.client.force_login(self.agac_yetkili)
-        self.assertEqual(self.client.get(reverse("core:uretim_urun_agaclari")).status_code, 200)
+    def test_is_istasyonlari_izinleri(self):
+        self._ekran_izin_testleri("core:is_istasyonlari", self.istasyon_yetkili)
 
-    def _satir_formset_govde(self, satirlar):
-        veri = {"satir-TOTAL_FORMS": str(len(satirlar)), "satir-INITIAL_FORMS": "0",
-                "satir-MIN_NUM_FORMS": "0", "satir-MAX_NUM_FORMS": "1000"}
-        for i, s in enumerate(satirlar):
-            veri[f"satir-{i}-bilesen"] = s.get("bilesen", "")
-            veri[f"satir-{i}-miktar"] = s.get("miktar", "")
-        return veri
+    def test_operasyon_tanimlari_izinleri(self):
+        self._ekran_izin_testleri("core:operasyon_tanimlari", self.operasyon_yetkili)
 
-    def test_urun_agaci_ekle_post(self):
+    def test_ihtiyac_hesapla_izinleri(self):
+        self._ekran_izin_testleri("core:ihtiyac_hesapla", self.hesapla_yetkili)
+
+    def test_uretim_emirleri_izinleri(self):
+        self._ekran_izin_testleri("core:uretim_emirleri", self.emir_yetkili)
+
+    def test_operasyon_kayitlari_izinleri(self):
+        self._ekran_izin_testleri("core:operasyon_kayitlari", self.kayit_yetkili)
+
+    def test_ekranlar_arasi_izin_karismaz(self):
+        self.client.force_login(self.istasyon_yetkili)
+        self.assertEqual(self.client.get(reverse("core:operasyon_tanimlari")).status_code, 403)
+
+    # --- Akışlar ---
+    def test_operasyon_ekle_post(self):
         self.client.force_login(self.yon)
-        gövde = {"mamul": self.mamul.pk, "aciklama": "test"}
-        gövde.update(self._satir_formset_govde([{"bilesen": self.civata.pk, "miktar": "24"}]))
-        r = self.client.post(reverse("core:uretim_urun_agaci_ekle"), gövde)
+        girdi = _stok(self.kat, self.birim, kod="UTV-GIRDI2", ad="ek girdi", satinalma=True)
+        cikti2 = _stok(self.kat, self.birim, kod="UTV-CIKTI2", ad="ikinci çıktı")
+        gövde = {"istasyon": self.istasyon.pk, "cikti": cikti2.pk, "cikti_miktar": "1", "ad": "", "aciklama": ""}
+        gövde.update({"satir-TOTAL_FORMS": "1", "satir-INITIAL_FORMS": "0",
+                      "satir-MIN_NUM_FORMS": "0", "satir-MAX_NUM_FORMS": "1000",
+                      "satir-0-girdi": girdi.pk, "satir-0-miktar": "3"})
+        r = self.client.post(reverse("core:operasyon_ekle"), gövde)
         self.assertEqual(r.status_code, 302)
-        agac = UrunAgaci.objects.get(mamul=self.mamul)
-        self.assertEqual(agac.satirlar.filter(silindi=False).count(), 1)
+        self.assertTrue(Operasyon.objects.filter(cikti=cikti2).exists())
 
-    def test_urun_agaci_duzenle_ve_sil_post(self):
-        agac = urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.civata, Decimal("1"))])
+    def test_ihtiyac_hesapla_post_sonuc_gosterir(self):
         self.client.force_login(self.yon)
-        gövde = {"aciklama": "güncellendi"}
-        gövde.update(self._satir_formset_govde([{"bilesen": self.civata.pk, "miktar": "30"}]))
-        r = self.client.post(reverse("core:uretim_urun_agaci_duzenle", args=[agac.pk]), gövde)
-        self.assertEqual(r.status_code, 302)
-        satir = agac.satirlar.filter(silindi=False).get()
-        self.assertEqual(satir.miktar, Decimal("30.000"))
+        gövde = {"satir-TOTAL_FORMS": "1", "satir-INITIAL_FORMS": "0",
+                 "satir-MIN_NUM_FORMS": "0", "satir-MAX_NUM_FORMS": "1000",
+                 "satir-0-hedef": self.mamul.pk, "satir-0-miktar": "10"}
+        r = self.client.post(reverse("core:ihtiyac_hesapla"), gövde)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, self.profil.kod)
+        self.assertContains(r, self.istasyon.kod)
 
-        r = self.client.post(reverse("core:uretim_urun_agaci_sil", args=[agac.pk]))
-        self.assertEqual(r.status_code, 302)
-        self.assertTrue(UrunAgaci.objects.get(pk=agac.pk).silindi)
-
-    # --- Üretim Emirleri: ekran_gerekli("uretim_emirleri") ---
-    def test_emirleri_anonim_login_yonlenir(self):
-        r = self.client.get(reverse("core:uretim_emirleri"))
-        self.assertEqual(r.status_code, 302)
-        self.assertIn("/login/", r.url)
-
-    def test_emirleri_yetkisiz_403(self):
-        self.client.force_login(self.bos)
-        self.assertEqual(self.client.get(reverse("core:uretim_emirleri")).status_code, 403)
-
-    def test_agac_yetkisi_emirler_icin_yetmez(self):
-        self.client.force_login(self.agac_yetkili)
-        self.assertEqual(self.client.get(reverse("core:uretim_emirleri")).status_code, 403)
-
-    def test_emri_ekle_view_ve_detay_onayla(self):
-        urun_agaci_olustur(mamul_id=self.mamul.pk, satirlar=[(self.civata, Decimal("24"))])
-        hareket_ekle(stok_id=self.civata.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
+    def test_uretim_emri_ekle_detay_ve_bagli_kayit_onayla_akisi(self):
+        hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:uretim_emri_ekle"), {
-            "mamul": self.mamul.pk, "planlanan_miktar": "10", "depo": self.depo.pk,
+            "hedef_urun": self.mamul.pk, "hedef_miktar": "10", "depo": self.depo.pk,
             "tarih": "2026-01-10", "aciklama": ""})
         self.assertEqual(r.status_code, 302)
-        emir = UretimEmri.objects.get(mamul=self.mamul)
+        emir = UretimEmri.objects.get(hedef_urun=self.mamul)
         self.assertEqual(emir.no, "UE-2026-0001")
 
         r = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, emir.no)
 
-        r = self.client.post(reverse("core:uretim_emri_onayla", args=[emir.pk]))
+        kayit = OperasyonKaydi.objects.get(uretim_emri=emir)
+        r = self.client.post(reverse("core:operasyon_kaydi_onayla", args=[kayit.pk]))
         self.assertEqual(r.status_code, 302)
-        emir.refresh_from_db()
-        self.assertEqual(emir.durum, UretimEmri.Durum.ONAYLI)
+        kayit.refresh_from_db()
+        self.assertEqual(kayit.durum, OperasyonKaydi.Durum.ONAYLI)
         self.assertEqual(eldeki_miktar(self.mamul, self.depo), Decimal("10"))
 
-    def test_emri_ekle_urun_agaci_olmayan_mamul_secenek_olarak_gelmez(self):
+    def test_uretim_emri_ekle_operasyonsuz_urun_secenek_olarak_gelmez(self):
         self.client.force_login(self.yon)
+        cıplak = _stok(self.kat, self.birim, kod="UTV-CIPLAK", ad="operasyonsuz", satis=True)
         r = self.client.get(reverse("core:uretim_emri_ekle"))
-        self.assertNotContains(r, "UTV-MAMUL")
+        self.assertNotContains(r, "UTV-CIPLAK")
 
-    def test_menude_uretim_gorunur(self):
+    def test_operasyon_kaydi_ekle_bagimsiz(self):
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:operasyon_kaydi_ekle"), {
+            "operasyon": self.operasyon.pk, "hedef_cikti_miktari": "1", "depo": self.depo.pk,
+            "tarih": "2026-01-10", "aciklama": ""})
+        self.assertEqual(r.status_code, 302)
+        kayit = OperasyonKaydi.objects.get(operasyon=self.operasyon)
+        self.assertIsNone(kayit.uretim_emri)
+
+    def test_menude_uretim_ekranlari_gorunur(self):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:kullanici_listesi"))
         self.assertContains(r, "Üretim")
-        self.assertContains(r, "Ürün Ağacı Tanımları")
+        self.assertContains(r, "İş İstasyonları")
+        self.assertContains(r, "Operasyon Tanımları")
+        self.assertContains(r, "İhtiyaç Hesapla")
         self.assertContains(r, "Üretim Emirleri")
+        self.assertContains(r, "Operasyon Kayıtları")

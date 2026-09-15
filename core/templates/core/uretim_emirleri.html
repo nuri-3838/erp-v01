@@ -6,30 +6,31 @@
 {% block content %}
 <div class="sayfa-ust">
   <div>
-    <a class="ust-link" href="{% url 'core:uretim_urun_agaclari' %}">← Ürün Ağacı Tanımları</a>
+    <a class="ust-link" href="{% url 'core:ihtiyac_hesapla' %}">İhtiyaç Hesapla →</a>
     <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emirleri</h1>
   </div>
   <a class="dugme" href="{% url 'core:uretim_emri_ekle' %}">+ Yeni</a>
 </div>
 
+<p class="yardim">Bir emir açıldığında, zincirdeki HER iş istasyonu için ayrı bir taslak
+  operasyon kaydı otomatik oluşur — her istasyon kendi kaydını kendi zamanında onaylar.</p>
+
 <div class="tablo-kapsayici">
 <table>
   <thead><tr>
-    <th>No</th><th>Tarih</th><th>Mamul</th><th class="sag">Planlanan</th>
-    <th>Depo</th><th>Durum</th>
+    <th>No</th><th>Tarih</th><th>Hedef Ürün</th><th class="sag">Hedef Miktar</th><th>Depo</th>
   </tr></thead>
   <tbody>
     {% for e in emirler %}
       <tr>
         <td><a class="mono" href="{% url 'core:uretim_emri_detay' e.pk %}">{{ e.no }}</a></td>
         <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
-        <td><span class="mono">{{ e.mamul.kod }}</span> {{ e.mamul.ad }}</td>
-        <td class="sag mono">{{ e.planlanan_miktar|tr_kur:3 }}</td>
+        <td><span class="mono">{{ e.hedef_urun.kod }}</span> {{ e.hedef_urun.ad }}</td>
+        <td class="sag mono">{{ e.hedef_miktar|tr_kur:3 }}</td>
         <td><span class="mono">{{ e.depo.kod }}</span> {{ e.depo.ad }}</td>
-        <td><span class="rozet {% if e.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ e.get_durum_display }}</span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">Henüz üretim emri yok. "+ Yeni" ile ekleyin.</td></tr>
+      <tr><td colspan="5" class="yardim">Henüz üretim emri yok. "+ Yeni" ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

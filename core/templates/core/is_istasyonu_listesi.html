@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% block baslik %}İş İstasyonları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}İş İstasyonları{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:operasyon_tanimlari' %}">← Operasyon Tanımları</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>İş İstasyonları</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:is_istasyonu_ekle' %}">+ Yeni</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Kod</th><th>Ad</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for i in istasyonlar %}
+      <tr>
+        <td class="mono">{{ i.kod }}</td>
+        <td>{{ i.ad }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:is_istasyonu_duzenle' i.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:is_istasyonu_sil' i.pk %}"
+                onsubmit="return confirm('{{ i.ad }} istasyonu silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="yardim">Henüz iş istasyonu yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

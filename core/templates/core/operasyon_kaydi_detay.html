@@ -1,0 +1,82 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ kayit.no }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Operasyon Kaydı{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:operasyon_kayitlari' %}">← Operasyon Kayıtları</a>
+    <h1 class="ust-baslik"><span class="emoji">📋</span>{{ kayit.no }}
+      <span class="rozet {% if kayit.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ kayit.get_durum_display }}</span></h1>
+  </div>
+  {% if not kayit.silindi %}
+  <span class="islem-bag">
+    {% if kayit.durum == "TASLAK" %}
+    <form method="post" action="{% url 'core:operasyon_kaydi_onayla' kayit.pk %}" style="margin:0">
+      {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
+    <form method="post" action="{% url 'core:operasyon_kaydi_sil' kayit.pk %}" onsubmit="return confirm('Kayıt iptal edilsin mi?');">
+      {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+    {% endif %}
+  </span>
+  {% endif %}
+</div>
+
+{% if kayit.durum == "ONAYLI" %}
+  <div class="uyari"><div>✅ Bu kayıt onaylanmış; girdi çıkış + çıktı giriş stok hareketleri
+    oluşturuldu. Bir daha değiştirilemez.</div></div>
+{% endif %}
+
+<section class="icerik-kart">
+  <div class="satir"><span class="et">İş İstasyonu</span>
+    <span class="dg"><span class="mono">{{ kayit.operasyon.istasyon.kod }}</span> {{ kayit.operasyon.istasyon.ad }}</span></div>
+  <div class="satir"><span class="et">Operasyon / Çıktı</span>
+    <span class="dg"><span class="mono">{{ kayit.operasyon.cikti.kod }}</span> {{ kayit.operasyon.ad|default:kayit.operasyon.cikti.ad }}</span></div>
+  <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ kayit.tarih|date:"d.m.Y" }}</span></div>
+  <div class="satir"><span class="et">Hedef Çıktı Miktarı</span><span class="dg mono">{{ kayit.hedef_cikti_miktari|tr_kur:3 }}</span></div>
+  <div class="satir"><span class="et">Depo</span>
+    <span class="dg"><span class="mono">{{ kayit.depo.kod }}</span> {{ kayit.depo.ad }}</span></div>
+  <div class="satir"><span class="et">Üretim Emri</span>
+    <span class="dg">{% if kayit.uretim_emri %}<a href="{% url 'core:uretim_emri_detay' kayit.uretim_emri.pk %}">{{ kayit.uretim_emri.no }}</a>{% else %}<span class="pasif">— bağımsız/serbest kayıt —</span>{% endif %}</span></div>
+  {% if kayit.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ kayit.aciklama }}</span></div>{% endif %}
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Girdiler</h2>
+  {% if kayit.durum == "TASLAK" %}
+    <p class="yardim">Gerçekleşen miktar planlanandan sapıyorsa (fire, fazla sarfiyat vb.)
+      burada düzeltip "Miktarları Kaydet" ile saklayın — Onayla'da stok çıkışı bu değerle
+      yazılır. 0 girilen bir satır için hiç stok hareketi yazılmaz.</p>
+  {% endif %}
+  <form method="post" autocomplete="off">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Girdi</th><th class="sag">Planlanan</th><th class="sag">Gerçekleşen</th></tr></thead>
+      <tbody>
+        {% for satir, f in satirlar %}
+          <tr>
+            <td><span class="mono">{{ satir.girdi.kod }}</span> {{ satir.girdi.ad }}</td>
+            <td class="sag mono">{{ satir.planlanan_miktar|tr_kur:3 }}</td>
+            <td class="sag">
+              {% if kayit.durum == "TASLAK" %}
+                {{ f.satir_id }}{{ f.gerceklesen_miktar }}
+                {% for e in f.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+              {% else %}
+                <span class="mono">{{ satir.gerceklesen_miktar|tr_kur:3 }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if kayit.durum == "TASLAK" %}
+      <div class="form-altbar">
+        <button type="submit" class="dugme-ikincil">Miktarları Kaydet</button>
+      </div>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}

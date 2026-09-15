@@ -1,0 +1,121 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}İhtiyaç Hesapla · ERP v0.1{% endblock %}
+{% block sayfa_adi %}İhtiyaç Hesapla{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">Üretim Emirleri →</a>
+    <h1 class="ust-baslik"><span class="emoji">🧮</span>İhtiyaç Hesapla</h1>
+  </div>
+  <p class="yardim" style="margin-top:-.4rem">Hedef ürün ve miktarı gir, bitmiş üründen
+    geriye doğru TÜM operasyon zincirini (kaç istasyon olursa olsun) hesapla — salt
+    önizlemedir, hiçbir kayıt açmaz. Gerçekten üretim başlatmak için Üretim Emirleri'ni kullan.</p>
+
+  {% if formset.non_form_errors %}
+    <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Hedef Ürün / Miktar</h2>
+      <div class="tablo-kapsayici">
+        <table class="fh-tablo">
+          <thead><tr><th>Hedef Ürün</th><th>Miktar</th><th></th></tr></thead>
+          <tbody id="satir-govde">
+            {% for f in formset %}
+              <tr class="fh-satir">
+                <td>{{ f.hedef }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.miktar }}</td>
+                <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="satir-alt">
+        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Ürün Ekle</button>
+      </div>
+    </section>
+
+    <template id="bos-satir">
+      <td>{{ formset.empty_form.hedef }}</td>
+      <td>{{ formset.empty_form.miktar }}</td>
+      <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+    </template>
+
+    <div class="form-altbar">
+      <button type="submit" class="birincil">Hesapla</button>
+    </div>
+  </form>
+
+  {% if sonuc %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🌳</span>Zincir</h2>
+      {% for dugum in sonuc.agac %}
+        {% include "core/_ihtiyac_dugum.html" with dugum=dugum derinlik=0 %}
+      {% endfor %}
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📋</span>Özet (istasyon bazında, toplanmış)</h2>
+      <div class="tablo-kapsayici">
+        <table>
+          <thead><tr><th>Stok</th><th>İş İstasyonu</th><th class="sag">Toplam Miktar</th>
+            <th class="sag">Çalıştırma Sayısı</th></tr></thead>
+          <tbody>
+            {% for o in sonuc.ozet %}
+              <tr>
+                <td><span class="mono">{{ o.stok.kod }}</span> {{ o.stok.ad }}</td>
+                <td>{% if o.istasyon %}<span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}
+                  {% else %}<span class="pasif">— hazır stok —</span>{% endif %}</td>
+                <td class="sag mono">{{ o.toplam_miktar|tr_kur:3 }}</td>
+                <td class="sag mono">{% if o.calistirma_sayisi is not None %}{{ o.calistirma_sayisi|tr_kur:3 }}{% else %}—{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="yardim">Girilen ürünler için tanımlı bir operasyon bulunamadı.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+</div>
+
+<style>
+  .fh-tablo { width:100%; border-collapse:collapse; }
+  .fh-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--metin-soluk); padding:0 .5rem .3rem; }
+  .fh-tablo td { padding:.25rem .5rem; }
+  .fh-tablo input, .fh-tablo select { min-width:12rem; }
+  .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
+    font-size:.95rem; padding:.2rem .5rem; }
+  .fh-sil:hover { color:var(--hata); }
+  .satir-alt { margin-top:.7rem; }
+  .ih-dugum { padding:.15rem 0; }
+  .ih-dugum-baslik { display:flex; gap:.4rem; align-items:baseline; flex-wrap:wrap; }
+</style>
+
+<script>
+(function(){
+  function satirEkle(){
+    var tf = document.getElementById('id_satir-TOTAL_FORMS');
+    var i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr'); tr.className = 'fh-satir';
+    tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    document.getElementById('satir-govde').appendChild(tr);
+    tf.value = i + 1;
+    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+  }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('fh-sil')) e.target.closest('tr').remove();
+  });
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

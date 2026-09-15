@@ -1,0 +1,13 @@
+{% load core_extras %}
+<div class="ih-dugum" style="margin-left: {{ derinlik|default:0 }}rem; padding-left: .6rem;{% if derinlik %} border-left:1px solid var(--cizgi);{% endif %}">
+  <div class="ih-dugum-baslik">
+    <span class="mono">{{ dugum.stok.kod }}</span>
+    <span>{{ dugum.stok.ad }}</span>
+    <span class="mono">× {{ dugum.miktar|tr_kur:3 }}</span>
+    {% if dugum.istasyon %}<span class="rozet rozet-notr">{{ dugum.istasyon.kod }}</span>
+    {% else %}<span class="pasif">yaprak (hazır stok)</span>{% endif %}
+  </div>
+  {% for cocuk in dugum.cocuklar %}
+    {% include "core/_ihtiyac_dugum.html" with dugum=cocuk derinlik=derinlik|add:1 %}
+  {% endfor %}
+</div>

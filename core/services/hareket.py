@@ -53,7 +53,7 @@ def stok_hareketleri(stok):
 @transaction.atomic
 def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                  kaynak=StokHareket.Kaynak.MANUEL, fatura_satir=None,
-                 teklif_siparis_kalem=None, uretim_emri_satir=None, kullanici=None) -> StokHareket:
+                 teklif_siparis_kalem=None, operasyon_kaydi_girdi=None, kullanici=None) -> StokHareket:
     stok = Stok.objects.filter(pk=stok_id, silindi=False).first()
     if stok is None:
         raise HareketHatasi("Stok bulunamadı.")
@@ -78,7 +78,7 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
         stok=stok, depo=depo, tarih=tarih, tur=tur, miktar=m,
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=kaynak,
         fatura_satir=fatura_satir, teklif_siparis_kalem=teklif_siparis_kalem,
-        uretim_emri_satir=uretim_emri_satir,
+        operasyon_kaydi_girdi=operasyon_kaydi_girdi,
         created_by=kullanici, updated_by=kullanici)
 
 
