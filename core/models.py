@@ -1300,10 +1300,17 @@ class FaturaSatir(TemelModel):
 class TeklifSiparis(TemelModel):
     """Satınalma/Satış Teklifi veya Siparişi — TİCARİ belge, yevmiye ÜRETMEZ ve stok
     hareketi YARATMAZ (muhasebe ve stok her zaman faturayla girer). belge_tur × yon
-    (2×2) dört ekranı tek modelden besler. Tutarlar kalemlerden (saklanmaz)."""
+    ekranları tek modelden besler. Tutarlar kalemlerden (saklanmaz).
+
+    PROFORMA yalnız SATIŞ yönünde var: zincir Teklif → Proforma → Sipariş (→ Fatura) —
+    Teklif katalog fiyat listesi (miktar anlamsız), Proforma müşterinin istediği GERÇEK
+    miktarlarla hazırlanır. Proforma→Sipariş dönüşümü aday müşteride ENGELLENİR (bkz.
+    proformayi_siparise_cevir) — sipariş gerçek muhasebe/stok zincirine girdiği için önce
+    aday Cariye dönüştürülmüş olmalı."""
 
     class BelgeTur(models.TextChoices):
         TEKLIF = "TEKLIF", "Teklif"
+        PROFORMA = "PROFORMA", "Proforma"
         SIPARIS = "SIPARIS", "Sipariş"
         IRSALIYE = "IRSALIYE", "İrsaliye"
 
@@ -1320,8 +1327,8 @@ class TeklifSiparis(TemelModel):
     durum = models.CharField("durum", max_length=6, choices=Durum.choices,
                              default=Durum.TASLAK)
     # cari / aday_musteri karşılıklı dışlayıcı (bkz. ck_teklif_siparis_cari_xor_aday_musteri) —
-    # yalnız SATIŞ+TEKLİF'te aday müşteriye (CRM lead, henüz Cari değil) teklif verilebilir;
-    # diğer tüm belge türlerinde her zaman cari doludur.
+    # yalnız SATIŞ+TEKLİF/PROFORMA'da aday müşteriye (CRM lead, henüz Cari değil) belge
+    # açılabilir; SATIŞ+SIPARIS dahil diğer tüm belge türlerinde her zaman cari doludur.
     cari = models.ForeignKey(
         Cari, verbose_name="cari", related_name="teklif_siparisler", null=True, blank=True,
         on_delete=models.PROTECT)
@@ -1340,8 +1347,8 @@ class TeklifSiparis(TemelModel):
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
-    # Yalnız SATIŞ+TEKLİF ekranında doldurulur — AYARLAR > Tanım Listeleri'nden seçilir
-    # (TanimSecenegi, kategoriye göre). Diğer belge türlerinde hep boş.
+    # Yalnız SATIŞ+TEKLİF/PROFORMA ekranlarında doldurulur — AYARLAR > Tanım Listeleri'nden
+    # seçilir (TanimSecenegi, kategoriye göre). Diğer belge türlerinde hep boş.
     yukleme_sekli = models.ForeignKey(
         TanimSecenegi, verbose_name="yükleme şekli", null=True, blank=True,
         on_delete=models.PROTECT, related_name="+")
@@ -1351,7 +1358,8 @@ class TeklifSiparis(TemelModel):
     yukleme_tipi = models.ForeignKey(
         TanimSecenegi, verbose_name="yükleme tipi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="+")
-    # Yalnız Satış Teklifi'nde kullanılır (SatisTeklifBaslikForm) — üretim/hazırlık süresi.
+    # Yalnız Satış Teklifi/Proforması'nda kullanılır (SatisBelgeBaslikForm) — üretim/
+    # hazırlık süresi.
     teslim_suresi = models.ForeignKey(
         TanimSecenegi, verbose_name="teslim süresi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="+")
@@ -1359,12 +1367,21 @@ class TeklifSiparis(TemelModel):
     # (TeklifSiparisKalem.navlun_payi — seçilen yükleme tipine sığan adede bölünür).
     navlun_tutari = models.DecimalField(
         "navlun tutarı", max_digits=18, decimal_places=2, null=True, blank=True)
-    # SIPARIS ise: hangi TEKLIF'ten dönüştürüldüğü (self-FK). Tek seferlik dönüşüm —
-    # servis katmanı zaten dönüştürülmüş teklifi tekrar çevirmeyi engeller.
+    # Hangi TEKLIF'ten dönüştürüldüğü (self-FK). ALIŞ'ta hedef SIPARIS (otomatik), SATIŞ'ta
+    # hedef PROFORMA (elle) — related_name bu yüzden yöne göre Sipariş VEYA Proforma
+    # taşıyabilen genel bir isim ("donusen_belgeler"). Tek seferlik dönüşüm — servis
+    # katmanı zaten dönüştürülmüş teklifi tekrar çevirmeyi engeller.
     kaynak_teklif = models.ForeignKey(
         "self", verbose_name="kaynak teklif", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="donusen_belgeler")
+    # SATIŞ+SIPARIS ise: hangi PROFORMA'dan dönüştürüldüğü (self-FK). related_name
+    # "donusen_siparisler" — PROFORMA'nın kendisi için burası her zaman gerçek bir Sipariş'i
+    # taşır (aday müşteride bu dönüşüm zaten engellenir, bkz. proformayi_siparise_cevir).
+    kaynak_proforma = models.ForeignKey(
+        "self", verbose_name="kaynak proforma", null=True, blank=True,
         on_delete=models.PROTECT, related_name="donusen_siparisler")
-    # IRSALIYE ise: hangi SIPARIS'ten dönüştürüldüğü (self-FK, bir kademe aşağısı).
+    # IRSALIYE ise: hangi SIPARIS'ten dönüştürüldüğü (self-FK, bir kademe aşağısı — yalnız
+    # ALIŞ zincirinde kullanılır).
     kaynak_siparis = models.ForeignKey(
         "self", verbose_name="kaynak sipariş", null=True, blank=True,
         on_delete=models.PROTECT, related_name="donusen_irsaliyeler")
@@ -1459,8 +1476,9 @@ class TeklifSiparisKalem(TemelModel):
         on_delete=models.PROTECT)
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
     birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
-    # Yalnız SATIŞ+TEKLİF ekranında kullanılır (cariden otomatik gelir, satır bazlı elle
-    # değiştirilebilir). Default 0 -> diğer belge türlerinde tutar hesabı DEĞİŞMEZ.
+    # Yalnız SATIŞ+TEKLİF/PROFORMA ekranlarında kullanılır (cariden/aday müşteriden otomatik
+    # gelir, satır bazlı elle değiştirilebilir). Default 0 -> diğer belge türlerinde tutar
+    # hesabı DEĞİŞMEZ.
     iskonto_yuzdesi = models.DecimalField("iskonto %", max_digits=5, decimal_places=2, default=0)
     kdv = models.ForeignKey(
         KdvOrani, verbose_name="KDV oranı", null=True, blank=True,

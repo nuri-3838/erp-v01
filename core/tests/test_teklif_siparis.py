@@ -143,7 +143,7 @@ class TeklifSiparisModelServisTest(TestCase):
     def test_teklifi_siparise_cevir_tevkifat_kopyalanir(self):
         """ALIŞ yönünde onay artık OTOMATİK siparişe çevirir (zincir) — bu yüzden burada
         teklifi_siparise_cevir'i AYRICA elle çağırmıyoruz (zaten dönüştürülmüş olur, hata
-        verir); otomatik oluşan siparişi donusen_siparisler'den okuyoruz."""
+        verir); otomatik oluşan siparişi donusen_belgeler'den okuyoruz."""
         import datetime
         from core.models import TevkifatOrani
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
@@ -159,7 +159,7 @@ class TeklifSiparisModelServisTest(TestCase):
             satirlar=[{"stok_id": stok4.pk, "miktar": "1", "birim_fiyat": "100"}],
             kullanici=self.yon)
         teklif_siparis_onayla(teklif, kullanici=self.yon)
-        siparis = teklif.donusen_siparisler.get()
+        siparis = teklif.donusen_belgeler.get()
         self.assertEqual(siparis.kalemler.get().tevkifat_id, tevkifat.pk)
 
     def test_miktar_toplam_birim_bazinda_gruplar(self):
@@ -256,33 +256,35 @@ class TeklifSiparisModelServisTest(TestCase):
         ts.refresh_from_db()
         self.assertTrue(ts.silindi)
 
-    def test_teklifi_siparise_cevir_kalemler_kopyalanir(self):
+    def test_teklifi_proformaya_cevir_kalemler_kopyalanir(self):
+        """SATIŞ yönünde artık doğrudan Sipariş'e değil Proforma'ya çevrilir (bkz.
+        teklifi_siparise_cevir'in ALIŞ-only guard'ı) — zincir Teklif → Proforma → Sipariş."""
         import datetime
         from core.services.teklif_siparis import (teklif_siparis_olustur, teklif_siparis_onayla,
-                                                   teklifi_siparise_cevir)
+                                                   teklifi_proformaya_cevir)
         t = teklif_siparis_olustur(
             belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "4", "birim_fiyat": "10"}],
             kullanici=self.yon)
         teklif_siparis_onayla(t, kullanici=self.yon)
-        siparis = teklifi_siparise_cevir(t, tarih=datetime.date(2026, 7, 1), kullanici=self.yon)
-        self.assertEqual(siparis.belge_tur, "SIPARIS")
-        self.assertEqual(siparis.yon, "SATIS")
-        self.assertEqual(siparis.durum, "TASLAK")                  # yeni belge kendi onayından geçer
-        self.assertEqual(siparis.cari_id, self.cari.pk)
-        self.assertEqual(siparis.para_birimi, t.para_birimi)
-        self.assertEqual(siparis.kaynak_teklif_id, t.pk)
-        self.assertEqual(siparis.tarih, datetime.date(2026, 7, 1))
-        self.assertEqual(siparis.genel_toplam, t.genel_toplam)
-        self.assertEqual(siparis.kalemler.count(), 1)
-        k = siparis.kalemler.get()
+        proforma = teklifi_proformaya_cevir(t, tarih=datetime.date(2026, 7, 1), kullanici=self.yon)
+        self.assertEqual(proforma.belge_tur, "PROFORMA")
+        self.assertEqual(proforma.yon, "SATIS")
+        self.assertEqual(proforma.durum, "TASLAK")                 # yeni belge kendi onayından geçer
+        self.assertEqual(proforma.cari_id, self.cari.pk)
+        self.assertEqual(proforma.para_birimi, t.para_birimi)
+        self.assertEqual(proforma.kaynak_teklif_id, t.pk)
+        self.assertEqual(proforma.tarih, datetime.date(2026, 7, 1))
+        self.assertEqual(proforma.genel_toplam, t.genel_toplam)
+        self.assertEqual(proforma.kalemler.count(), 1)
+        k = proforma.kalemler.get()
         self.assertEqual(k.stok_id, self.stok.pk)
         self.assertEqual(k.miktar, Decimal("4"))
         self.assertEqual(k.birim_fiyat, Decimal("10"))
         # belge_no otomatik üretilir, teklifinkinden bağımsız kendi numarası olur
-        self.assertNotEqual(siparis.belge_no, t.belge_no)
-        self.assertTrue(siparis.belge_no.startswith("SSS-2026-"))
+        self.assertNotEqual(proforma.belge_no, t.belge_no)
+        self.assertTrue(proforma.belge_no.startswith("SSP-2026-"))
 
     def test_taslak_teklif_siparise_cevrilemez(self):
         import datetime
@@ -307,7 +309,7 @@ class TeklifSiparisModelServisTest(TestCase):
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
         teklif_siparis_onayla(t, kullanici=self.yon)
-        self.assertEqual(t.donusen_siparisler.filter(silindi=False).count(), 1)
+        self.assertEqual(t.donusen_belgeler.filter(silindi=False).count(), 1)
         with self.assertRaises(TeklifSiparisHatasi):
             teklifi_siparise_cevir(t, tarih=datetime.date(2026, 6, 28), kullanici=self.yon)
 
@@ -417,10 +419,10 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
     def test_onayi_geri_al_donusturulmus_engellenir(self):
         import datetime
         from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_siparis_onayi_geri_al,
-                                                   teklif_siparis_onayla, teklifi_siparise_cevir)
+                                                   teklif_siparis_onayla, teklifi_proformaya_cevir)
         t = self._teklif()
         teklif_siparis_onayla(t, kullanici=self.yon)
-        teklifi_siparise_cevir(t, tarih=datetime.date(2026, 7, 19), kullanici=self.yon)
+        teklifi_proformaya_cevir(t, tarih=datetime.date(2026, 7, 19), kullanici=self.yon)
         with self.assertRaises(TeklifSiparisHatasi):
             teklif_siparis_onayi_geri_al(t, kullanici=self.yon)
 
@@ -786,7 +788,9 @@ class TeklifSiparisViewTest(TestCase):
         self.assertEqual(
             self.client.post(reverse("core:teklif_siparis_iptal", args=[ts.pk])).status_code, 403)
 
-    def test_view_teklif_siparise_cevir(self):
+    def test_view_teklif_proformaya_cevir(self):
+        """SATIŞ yönünde manuel dönüşüm artık Teklif→Proforma (Teklif→Sipariş direkt yolu
+        kaldırıldı — bkz. teklifi_siparise_cevir'in ALIŞ-only guard'ı)."""
         import datetime
         from core.models import TeklifSiparis
         from core.services.teklif_siparis import teklif_siparis_olustur
@@ -798,27 +802,50 @@ class TeklifSiparisViewTest(TestCase):
         self.client.force_login(self.yon)
         self.client.post(reverse("core:teklif_siparis_onayla", args=[t.pk]))
         d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
-        self.assertContains(d0, reverse("core:teklif_siparise_cevir", args=[t.pk]))
-        r = self.client.post(reverse("core:teklif_siparise_cevir", args=[t.pk]))
-        siparis = TeklifSiparis.objects.get(kaynak_teklif=t)
-        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[siparis.pk]))
-        self.assertEqual(siparis.belge_tur, "SIPARIS")
-        self.assertEqual(siparis.kalemler.count(), 1)
-        # teklif detayında artık "Siparişe Çevir" değil, dönüştüğü siparişe link var
+        self.assertContains(d0, reverse("core:teklif_proformaya_cevir", args=[t.pk]))
+        r = self.client.post(reverse("core:teklif_proformaya_cevir", args=[t.pk]))
+        proforma = TeklifSiparis.objects.get(kaynak_teklif=t)
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[proforma.pk]))
+        self.assertEqual(proforma.belge_tur, "PROFORMA")
+        self.assertEqual(proforma.kalemler.count(), 1)
+        # teklif detayında artık "Proformaya Çevir" değil, dönüştüğü proformaya link var
         d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
-        self.assertNotContains(d1, reverse("core:teklif_siparise_cevir", args=[t.pk]))
-        self.assertContains(d1, "Siparişe Dönüştü")            # hero rozeti
+        self.assertNotContains(d1, reverse("core:teklif_proformaya_cevir", args=[t.pk]))
+        self.assertContains(d1, "Proformaya Dönüştü")            # hero rozeti
         # liste sayfasında da aynı belge için rozet görünmeli
         rl = self.client.get(reverse("core:satis_teklifleri"))
-        self.assertContains(rl, "Siparişe Dönüştü")
-        self.assertContains(d1, reverse("core:teklif_siparis_detay", args=[siparis.pk]))
-        # sipariş detayında kaynak teklife link var
-        d2 = self.client.get(reverse("core:teklif_siparis_detay", args=[siparis.pk]))
+        self.assertContains(rl, "Proformaya Dönüştü")
+        self.assertContains(d1, reverse("core:teklif_siparis_detay", args=[proforma.pk]))
+        # proforma detayında kaynak teklife link var
+        d2 = self.client.get(reverse("core:teklif_siparis_detay", args=[proforma.pk]))
         self.assertContains(d2, "Kaynak Teklif")
         self.assertContains(d2, reverse("core:teklif_siparis_detay", args=[t.pk]))
         # tekrar dönüştürme denemesi hata mesajıyla teklife geri döner
-        r2 = self.client.post(reverse("core:teklif_siparise_cevir", args=[t.pk]))
+        r2 = self.client.post(reverse("core:teklif_proformaya_cevir", args=[t.pk]))
         self.assertRedirects(r2, reverse("core:teklif_siparis_detay", args=[t.pk]))
+
+    def test_view_proforma_siparise_cevir(self):
+        """Proforma → Sipariş (ikinci aşama, gerçek cari'de sorunsuz çalışır)."""
+        import datetime
+        from core.models import TeklifSiparis
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        p = teklif_siparis_olustur(
+            belge_tur="PROFORMA", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "2", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(p, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[p.pk]))
+        self.assertContains(d0, reverse("core:proforma_siparise_cevir", args=[p.pk]))
+        r = self.client.post(reverse("core:proforma_siparise_cevir", args=[p.pk]))
+        siparis = TeklifSiparis.objects.get(kaynak_proforma=p)
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[siparis.pk]))
+        self.assertEqual(siparis.belge_tur, "SIPARIS")
+        d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[p.pk]))
+        self.assertContains(d1, "Siparişe Dönüştü")
+        d2 = self.client.get(reverse("core:teklif_siparis_detay", args=[siparis.pk]))
+        self.assertContains(d2, "Kaynak Proforma")
 
     def test_donusmemis_onayli_teklifte_rozet_yok(self):
         import datetime
@@ -843,7 +870,7 @@ class TeklifSiparisViewTest(TestCase):
             kullanici=self.yon)
         self.client.force_login(self.yon)
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
-        self.assertNotContains(d, reverse("core:teklif_siparise_cevir", args=[t.pk]))
+        self.assertNotContains(d, reverse("core:teklif_proformaya_cevir", args=[t.pk]))
 
     def test_siparis_donusturme_butonu_yok(self):
         import datetime
@@ -855,19 +882,20 @@ class TeklifSiparisViewTest(TestCase):
             kullanici=self.yon)
         self.client.force_login(self.yon)
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[sip.pk]))
-        self.assertNotContains(d, reverse("core:teklif_siparise_cevir", args=[sip.pk]))
+        self.assertNotContains(d, reverse("core:teklif_proformaya_cevir", args=[sip.pk]))
+        self.assertNotContains(d, reverse("core:proforma_siparise_cevir", args=[sip.pk]))
 
     def test_donusum_yetkisiz_403(self):
         import datetime
         from core.services.teklif_siparis import teklif_siparis_olustur
         t = teklif_siparis_olustur(
-            belge_tur="TEKLIF", yon="ALIS", cari_id=self.cari.pk,
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
         self.client.force_login(self.bos)
         self.assertEqual(
-            self.client.post(reverse("core:teklif_siparise_cevir", args=[t.pk])).status_code, 403)
+            self.client.post(reverse("core:teklif_proformaya_cevir", args=[t.pk])).status_code, 403)
 
 
 class TeklifSiparisFaturayaCevirTest(TestCase):
@@ -1090,7 +1118,7 @@ class SatinalmaZinciriTest(TestCase):
 
         teklif = self._teklif()
         teklif_siparis_onayla(teklif, kullanici=self.yon)
-        siparis = teklif.donusen_siparisler.get()
+        siparis = teklif.donusen_belgeler.get()
         self.assertEqual(siparis.durum, "TASLAK")
         self.assertEqual(siparis.belge_tur, "SIPARIS")
         self.assertEqual(siparis.kalemler.get().miktar, Decimal("10"))
@@ -1136,7 +1164,7 @@ class SatinalmaZinciriTest(TestCase):
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
         teklif_siparis_onayla(t, kullanici=self.yon)
-        self.assertEqual(t.donusen_siparisler.count(), 0)
+        self.assertEqual(t.donusen_belgeler.count(), 0)
         self.assertEqual(TeklifSiparis.objects.filter(belge_tur="SIPARIS").count(), 0)
         self.assertEqual(StokHareket.objects.count(), 0)
         self.assertEqual(Fatura.objects.count(), 0)
@@ -1147,7 +1175,7 @@ class SatinalmaZinciriTest(TestCase):
         Depo.objects.filter(pk=self.depo.pk).update(silindi=True)
         teklif = self._teklif()
         teklif_siparis_onayla(teklif, kullanici=self.yon)     # teklif -> sipariş kısmı sorunsuz
-        siparis = teklif.donusen_siparisler.get()
+        siparis = teklif.donusen_belgeler.get()
         with self.assertRaises(TeklifSiparisHatasi):
             teklif_siparis_onayla(siparis, kullanici=self.yon)
         siparis.refresh_from_db()
@@ -1160,7 +1188,7 @@ class SatinalmaZinciriTest(TestCase):
                                                    teklif_siparis_onayla)
         teklif = self._teklif()
         teklif_siparis_onayla(teklif, kullanici=self.yon)
-        siparis = teklif.donusen_siparisler.get()
+        siparis = teklif.donusen_belgeler.get()
         teklif_siparis_onayla(siparis, kullanici=self.yon)      # -> irsaliyeye dönüşür
         with self.assertRaises(TeklifSiparisHatasi):
             teklif_siparis_onayi_geri_al(siparis, kullanici=self.yon)

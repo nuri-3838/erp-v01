@@ -1,7 +1,9 @@
-"""Satış Teklifi — Aday Müşteriye (CRM lead) teklif verme: normal Cari akışıyla birebir
-aynı ekrandan (satis_teklif_ekle/duzenle), cari/aday_musteri karşılıklı dışlayıcı
-(ck_teklif_siparis_cari_xor_aday_musteri). Kapsam kasıtlı dar: yalnız SATIŞ+TEKLİF ekranı —
-Sipariş/İrsaliye/Fatura zincirleri gerçek Cari ister (bkz. teklifi_siparise_cevir guard'ı)."""
+"""Satış Teklifi/Proforması — Aday Müşteriye (CRM lead) belge verme: normal Cari akışıyla
+birebir aynı ekranlardan, cari/aday_musteri karşılıklı dışlayıcı
+(ck_teklif_siparis_cari_xor_aday_musteri). Aday müşteri yalnız Teklif ve Proforma
+aşamalarında geçerli — Sipariş (dolayısıyla İrsaliye/Fatura) zinciri gerçek Cari ister
+(bkz. proformayi_siparise_cevir guard'ı); aday bu arada Cariye dönüştürülürse (bkz.
+core.services.aday.aday_cariye_donustur) engel kalkar."""
 import datetime
 from decimal import Decimal
 
@@ -13,7 +15,7 @@ from django.urls import reverse
 from core.models import (
     Birim, Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis,
 )
-from core.services.aday import aday_musteri_olustur
+from core.services.aday import aday_cariye_donustur, aday_musteri_olustur
 from core.services.stok import stok_olustur
 
 
@@ -126,10 +128,12 @@ class SatisTeklifAdayMusteriTest(TestCase):
         self.assertIsNone(ts.cari_id)
         self.assertEqual(ts.aday_musteri_id, self.aday.pk)
 
-    def test_servis_teklifi_siparise_cevir_aday_icin_engellenir(self):
+    def test_servis_teklifi_proformaya_cevir_aday_icin_calisir(self):
+        """Teklif → Proforma aşaması aday müşteride de çalışır — henüz muhasebe/stok'a
+        dokunmuyor (bkz. _ADAY_MUSTERI_IZINLI). Cariye dönüşüm zorunluluğu bir sonraki
+        adımda, Proforma → Sipariş'te devreye girer."""
         from core.services.teklif_siparis import (
-            TeklifSiparisHatasi, teklif_siparis_olustur, teklif_siparis_onayla,
-            teklifi_siparise_cevir,
+            teklif_siparis_olustur, teklif_siparis_onayla, teklifi_proformaya_cevir,
         )
         ts = teklif_siparis_olustur(
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
@@ -137,10 +141,47 @@ class SatisTeklifAdayMusteriTest(TestCase):
             satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
             kullanici=self.yon)
         teklif_siparis_onayla(ts, kullanici=self.yon)
+        proforma = teklifi_proformaya_cevir(ts, tarih=datetime.date(2026, 9, 13), kullanici=self.yon)
+        self.assertIsNone(proforma.cari_id)
+        self.assertEqual(proforma.aday_musteri_id, self.aday.pk)
+
+    def test_servis_proformayi_siparise_cevir_aday_icin_engellenir(self):
+        from core.services.teklif_siparis import (
+            TeklifSiparisHatasi, teklif_siparis_olustur, teklif_siparis_onayla,
+            proformayi_siparise_cevir,
+        )
+        proforma = teklif_siparis_olustur(
+            belge_tur=TeklifSiparis.BelgeTur.PROFORMA, yon=TeklifSiparis.Yon.SATIS,
+            aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
+            satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(proforma, kullanici=self.yon)
         with self.assertRaisesMessage(
                 TeklifSiparisHatasi, "aday müşteriye ait; siparişe çevirmeden önce"):
-            teklifi_siparise_cevir(ts, tarih=datetime.date(2026, 9, 13), kullanici=self.yon)
-        self.assertFalse(ts.donusen_siparisler.filter(silindi=False).exists())
+            proformayi_siparise_cevir(proforma, tarih=datetime.date(2026, 9, 13), kullanici=self.yon)
+        self.assertFalse(proforma.donusen_siparisler.filter(silindi=False).exists())
+
+    def test_servis_proformayi_siparise_cevir_aday_sonradan_cariye_donusunce_calisir(self):
+        """Proforma açıldığında aday hâlâ adaydı; ARADAN aday Cariye dönüştürülürse (proforma
+        kaydının KENDİ cari alanı geriye dönük güncellenmez) sipariş dönüşümü artık engel
+        olmadan çalışmalı — aday_musteri.donusen_cari'ye taze bakılır."""
+        from core.services.teklif_siparis import (
+            teklif_siparis_olustur, teklif_siparis_onayla, proformayi_siparise_cevir,
+        )
+        proforma = teklif_siparis_olustur(
+            belge_tur=TeklifSiparis.BelgeTur.PROFORMA, yon=TeklifSiparis.Yon.SATIS,
+            aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
+            satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(proforma, kullanici=self.yon)
+        yeni_cari = aday_cariye_donustur(self.aday, kullanici=self.yon)
+        siparis = proformayi_siparise_cevir(
+            proforma, tarih=datetime.date(2026, 9, 13), kullanici=self.yon)
+        self.assertEqual(siparis.cari_id, yeni_cari.pk)
+        self.assertIsNone(siparis.aday_musteri_id)
+        proforma.refresh_from_db()
+        self.assertIsNone(proforma.cari_id)          # proformanın kendisi hâlâ aday'a bağlı
+        self.assertEqual(proforma.aday_musteri_id, self.aday.pk)
 
     def test_model_constraint_ikisi_de_bos_reddedilir(self):
         with self.assertRaises(IntegrityError):
@@ -267,7 +308,7 @@ class SatisTeklifAdayMusteriTest(TestCase):
             self.assertEqual(r.status_code, 200, dil)
             self.assertEqual(r["Content-Type"], "application/pdf")
 
-    def test_siparise_cevir_view_aday_teklifinde_hata_mesaji_gosterir(self):
+    def test_proformaya_cevir_view_aday_teklifinde_calisir(self):
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
         ts = teklif_siparis_olustur(
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
@@ -276,9 +317,23 @@ class SatisTeklifAdayMusteriTest(TestCase):
             kullanici=self.yon)
         teklif_siparis_onayla(ts, kullanici=self.yon)
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:teklif_siparise_cevir", args=[ts.pk]), follow=True)
+        r = self.client.post(reverse("core:teklif_proformaya_cevir", args=[ts.pk]), follow=True)
+        proforma = TeklifSiparis.objects.get(kaynak_teklif=ts)
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[proforma.pk]))
+        self.assertEqual(proforma.aday_musteri_id, self.aday.pk)
+
+    def test_siparise_cevir_view_aday_proformasinda_hata_mesaji_gosterir(self):
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        proforma = teklif_siparis_olustur(
+            belge_tur=TeklifSiparis.BelgeTur.PROFORMA, yon=TeklifSiparis.Yon.SATIS,
+            aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
+            satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(proforma, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:proforma_siparise_cevir", args=[proforma.pk]), follow=True)
         self.assertContains(r, "aday müşteriye ait; siparişe çevirmeden önce")
-        self.assertFalse(ts.donusen_siparisler.filter(silindi=False).exists())
+        self.assertFalse(proforma.donusen_siparisler.filter(silindi=False).exists())
 
     def test_liste_arama_aday_unvaniyla_bulur(self):
         from core.services.teklif_siparis import teklif_siparis_olustur

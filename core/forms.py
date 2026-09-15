@@ -1501,11 +1501,12 @@ def _secenek_varsayilan(kategori):
     return _al
 
 
-class SatisTeklifBaslikForm(forms.Form):
-    """Satış Teklifi başlığı: karşı taraf (Cari VEYA Aday Müşteri — CRM lead, karşılıklı
-    dışlayıcı) + tarih + geçerlilik (varsayılan +15 gün) + PB + Tanım Listeleri'nden seçilen
-    yükleme şekli / ödeme koşulu / yükleme tipi + navlun. Karşı taraf seçilince PB/varsayılan
-    iskonto JS ile otomatik doldurulur — bkz. satis_teklif_ekle.html."""
+class SatisBelgeBaslikForm(forms.Form):
+    """Satış Teklifi VEYA Satış Proforması başlığı (ikisi de bu formu kullanır — alanlar
+    birebir aynı): karşı taraf (Cari VEYA Aday Müşteri — CRM lead, karşılıklı dışlayıcı) +
+    tarih + geçerlilik (varsayılan +15 gün) + PB + Tanım Listeleri'nden seçilen yükleme
+    şekli / ödeme koşulu / yükleme tipi + navlun. Karşı taraf seçilince PB/varsayılan
+    iskonto JS ile otomatik doldurulur — bkz. satis_teklif_ekle.html / satis_proforma_ekle.html."""
 
     KARSI_TARAF_CHOICES = [("cari", "Cari"), ("aday", "Aday Müşteri")]
 
@@ -1605,6 +1606,43 @@ class SatisTeklifKalemForm(forms.Form):
             return cd
         if not cd.get("stok"):
             raise forms.ValidationError("Stok bulunamadı.")
+        fiyat = cd.get("birim_fiyat")
+        if fiyat is None or fiyat < 0:
+            self.add_error("birim_fiyat", "Birim fiyat girin.")
+        iskonto = cd.get("iskonto_yuzdesi")
+        if iskonto is None:
+            cd["iskonto_yuzdesi"] = Decimal("0")
+        elif iskonto < 0 or iskonto > 100:
+            self.add_error("iskonto_yuzdesi", "İskonto 0 ile 100 arasında olmalı.")
+        return cd
+
+    def dahil_mi(self) -> bool:
+        cd = getattr(self, "cleaned_data", {})
+        return bool(cd.get("dahil")) and bool(cd.get("stok"))
+
+
+class SatisProformaKalemForm(forms.Form):
+    """Satış Proforması kalemi: SatisTeklifKalemForm ile aynı desen (stok GİZLİ, sayfa
+    açılırken tüm satış ürünleriyle önceden dolu gelir) — TEK FARK: burada MİKTAR gerçek
+    ve elle girilir (Teklif'in aksine "hep 1" değil — müşterinin istediği gerçek adet)."""
+
+    stok = forms.ModelChoiceField(
+        label="Stok", queryset=Stok.objects.filter(silindi=False, satis_urunu=True),
+        required=False, widget=forms.HiddenInput())
+    dahil = forms.BooleanField(label="Dahil", required=False, initial=False)
+    miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
+    iskonto_yuzdesi = TRDecimalField(label="İskonto %", basamak=2, required=False)
+    birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
+
+    def clean(self):
+        cd = super().clean()
+        if not cd.get("dahil"):
+            return cd
+        if not cd.get("stok"):
+            raise forms.ValidationError("Stok bulunamadı.")
+        miktar = cd.get("miktar")
+        if miktar is None or miktar <= 0:
+            self.add_error("miktar", "Miktar sıfırdan büyük olmalı.")
         fiyat = cd.get("birim_fiyat")
         if fiyat is None or fiyat < 0:
             self.add_error("birim_fiyat", "Birim fiyat girin.")

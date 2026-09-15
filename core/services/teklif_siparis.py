@@ -1,14 +1,15 @@
-"""TEKLİF & SİPARİŞ & İRSALİYE servis katmanı — Satınalma/Satış teklifi, siparişi ve
-(yalnız Satınalma/Alış) irsaliyesi.
+"""TEKLİF & PROFORMA & SİPARİŞ & İRSALİYE servis katmanı — Satınalma/Satış teklifi,
+(yalnız Satış) proforması, siparişi ve (yalnız Satınalma/Alış) irsaliyesi.
 
-TEKLİF/SİPARİŞ TİCARİ belge: yevmiye fişi ÜRETMEZ, stok hareketi YARATMAZ. İRSALİYE ise
-BİLİNÇLİ istisna — onaylanınca GERÇEK stok girişi yazar (mal fatura beklenmeden depoya
-girmiş sayılır). belge_tur (Teklif/Sipariş/İrsaliye) × yon (Alış/Satış) — ekranları tek
-modelden besler. ALIŞ yönünde onay, otomasyon zincirini de tetikler: Teklif onaylanınca
-Taslak Sipariş, Sipariş onaylanınca Taslak İrsaliye + stok girişi, İrsaliye onaylanınca
-Taslak Alış Faturası — hepsi arka planda sessizce (bkz. teklif_siparis_onayla). SATIŞ
-yönünde hiçbir otomasyon yok, dönüşümler hâlâ manuel (teklifi_siparise_cevir /
-core.services.fatura üzerinden Faturaya Çevir ekranı)."""
+TEKLİF/PROFORMA/SİPARİŞ TİCARİ belge: yevmiye fişi ÜRETMEZ, stok hareketi YARATMAZ.
+İRSALİYE ise BİLİNÇLİ istisna — onaylanınca GERÇEK stok girişi yazar (mal fatura
+beklenmeden depoya girmiş sayılır). belge_tur × yon — ekranları tek modelden besler.
+ALIŞ yönünde onay, otomasyon zincirini de tetikler: Teklif onaylanınca Taslak Sipariş,
+Sipariş onaylanınca Taslak İrsaliye + stok girişi, İrsaliye onaylanınca Taslak Alış
+Faturası — hepsi arka planda sessizce (bkz. teklif_siparis_onayla). SATIŞ yönünde
+otomasyon yok, dönüşümler manuel ve üç aşamalı: Teklif → Proforma (teklifi_proformaya_
+cevir) → Sipariş (proformayi_siparise_cevir, aday müşteride ENGELLENİR) →
+core.services.fatura üzerinden Faturaya Çevir ekranı."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -28,12 +29,22 @@ class TeklifSiparisHatasi(ValueError):
 
 # Belge no öneki, belge_tur × yon'a göre (SAT-2026-0001 gibi). (IRSALIYE, SATIS) bilinçli
 # olarak YOK — otomasyon zinciri yalnız ALIŞ yönünde çalışır, bu kombinasyon hiç üretilmez.
+# PROFORMA da yalnız SATIŞ'ta var (bkz. TeklifSiparis docstring'i, Teklif→Proforma→Sipariş).
 _BELGE_ONEK = {
     (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.ALIS): "SAT",
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS): "SAS",
     (TeklifSiparis.BelgeTur.IRSALIYE, TeklifSiparis.Yon.ALIS): "SAI",
     (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS): "SST",
+    (TeklifSiparis.BelgeTur.PROFORMA, TeklifSiparis.Yon.SATIS): "SSP",
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS): "SSS",
+}
+
+# Aday müşteriye (CRM lead, henüz Cari değil) yalnız bu iki ekrandan belge açılabilir —
+# ikisi de SATIŞ zincirinin henüz muhasebe/stok'a dokunmayan ilk iki aşaması. SIPARIS'e
+# (ne satış ne alış) aday müşteri hiçbir zaman giremez (bkz. proformayi_siparise_cevir).
+_ADAY_MUSTERI_IZINLI = {
+    (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS),
+    (TeklifSiparis.BelgeTur.PROFORMA, TeklifSiparis.Yon.SATIS),
 }
 
 
@@ -161,7 +172,8 @@ def _sonraki_sira(belge_tur, yon, yil):
 
 def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
                    gecerlilik_teslim_tarihi, para_birimi,
-                   aciklama, kaynak_teklif=None, kaynak_siparis=None, depo=None,
+                   aciklama, kaynak_teklif=None, kaynak_proforma=None, kaynak_siparis=None,
+                   depo=None,
                    irsaliye_no="", yukleme_sekli=None, odeme_kosulu=None, yukleme_tipi=None,
                    teslim_suresi=None, navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Numaralı başlık oluşturur: belge_no = ÖNEK-yıl-sıra (müteselsil/boşluksuz — fiş no ile
@@ -179,7 +191,8 @@ def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
                     gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
                     belge_no=f"{onek}-{yil}-{sira:04d}", yil=yil, sira=sira,
                     para_birimi=para_birimi, aciklama=(aciklama or "").strip(),
-                    kaynak_teklif=kaynak_teklif, kaynak_siparis=kaynak_siparis, depo=depo,
+                    kaynak_teklif=kaynak_teklif, kaynak_proforma=kaynak_proforma,
+                    kaynak_siparis=kaynak_siparis, depo=depo,
                     irsaliye_no=(irsaliye_no or "").strip(),
                     yukleme_sekli=yukleme_sekli, odeme_kosulu=odeme_kosulu,
                     yukleme_tipi=yukleme_tipi, teslim_suresi=teslim_suresi,
@@ -193,12 +206,12 @@ def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
 
 
 def _aday_musteri_izin_kontrol(belge_tur, yon, aday_musteri_id):
-    """Aday müşteriye yalnız SATIŞ+TEKLİF ekranından teklif verilebilir — CRM lead henüz
-    gerçek Cari değil, Satınalma/Sipariş/İrsaliye zincirlerinin hiçbiri (muhasebe hesabı,
-    stok hareketi, fatura) onunla çalışamaz."""
-    if aday_musteri_id and not (belge_tur == TeklifSiparis.BelgeTur.TEKLIF
-                                and yon == TeklifSiparis.Yon.SATIS):
-        raise TeklifSiparisHatasi("Aday müşteriye yalnızca satış teklifi oluşturulabilir.")
+    """Aday müşteriye yalnız SATIŞ+TEKLİF/PROFORMA ekranlarından belge açılabilir — CRM lead
+    henüz gerçek Cari değil, Satınalma zincirlerinin ve Sipariş'in hiçbiri (muhasebe hesabı,
+    stok hareketi, fatura) onunla çalışamaz (bkz. _ADAY_MUSTERI_IZINLI)."""
+    if aday_musteri_id and (belge_tur, yon) not in _ADAY_MUSTERI_IZINLI:
+        raise TeklifSiparisHatasi(
+            "Aday müşteriye yalnızca satış teklifi veya proforması oluşturulabilir.")
 
 
 @transaction.atomic
@@ -289,7 +302,7 @@ def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
 
     if ts.yon == TeklifSiparis.Yon.ALIS:
         if ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF:
-            if not ts.donusen_siparisler.filter(silindi=False).exists():
+            if not ts.donusen_belgeler.filter(silindi=False).exists():
                 teklifi_siparise_cevir(ts, tarih=ts.tarih, kullanici=kullanici)
         elif ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS:
             if not ts.donusen_irsaliyeler.filter(silindi=False).exists():
@@ -317,8 +330,12 @@ def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSip
     if ts.durum == TeklifSiparis.Durum.TASLAK:
         return ts
     if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+            and ts.donusen_belgeler.filter(silindi=False).exists()):
+        hedef = "siparişe" if ts.yon == TeklifSiparis.Yon.ALIS else "proformaya"
+        raise TeklifSiparisHatasi(f"Bu teklif {hedef} dönüştürülmüş; onayı geri alınamaz.")
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
             and ts.donusen_siparisler.filter(silindi=False).exists()):
-        raise TeklifSiparisHatasi("Bu teklif siparişe dönüştürülmüş; onayı geri alınamaz.")
+        raise TeklifSiparisHatasi("Bu proforma siparişe dönüştürülmüş; onayı geri alınamaz.")
     if (ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS
             and ts.donusen_irsaliyeler.filter(silindi=False).exists()):
         raise TeklifSiparisHatasi("Bu sipariş irsaliyeye dönüştürülmüş; onayı geri alınamaz.")
@@ -332,21 +349,23 @@ def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSip
 
 @transaction.atomic
 def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> TeklifSiparis:
-    """Teklifi siparişe çevirir: aynı cari/yön/para birimi, kalemler (stok/miktar/fiyat/KDV
-    snapshot) kopyalanır. Yalnız aktif + ONAYLI TEKLİF + henüz dönüştürülmemiş teklif
-    çevrilebilir (tek seferlik — servis katmanında zorlanır, DB kısıtı değil)."""
+    """Teklifi siparişe DOĞRUDAN çevirir — yalnız ALIŞ zincirinde kullanılır (Satınalma
+    Teklifi onaylanınca otomatik, bkz. teklif_siparis_onayla). SATIŞ yönünde artık bu
+    doğrudan yol YOK — zincir Teklif → Proforma → Sipariş (bkz. teklifi_proformaya_cevir /
+    proformayi_siparise_cevir); satış için buraya gelinmesi kapsam hatasıdır. Aynı cari/
+    yön/para birimi, kalemler (stok/miktar/fiyat/KDV snapshot) kopyalanır. Yalnız aktif +
+    ONAYLI TEKLİF + henüz dönüştürülmemiş teklif çevrilebilir (tek seferlik)."""
     if teklif.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş teklif siparişe çevrilemez.")
     if teklif.belge_tur != TeklifSiparis.BelgeTur.TEKLIF:
         raise TeklifSiparisHatasi("Yalnız teklif siparişe çevrilebilir.")
+    if teklif.yon != TeklifSiparis.Yon.ALIS:
+        raise TeklifSiparisHatasi(
+            "Satış teklifi doğrudan siparişe çevrilemez; önce proformaya çevrilmeli.")
     if teklif.durum != TeklifSiparis.Durum.ONAYLI:
         raise TeklifSiparisHatasi("Yalnız onaylı teklif siparişe çevrilebilir.")
-    if teklif.donusen_siparisler.filter(silindi=False).exists():
+    if teklif.donusen_belgeler.filter(silindi=False).exists():
         raise TeklifSiparisHatasi("Bu teklif zaten bir siparişe dönüştürülmüş.")
-    if teklif.cari_id is None:
-        raise TeklifSiparisHatasi(
-            "Bu teklif bir aday müşteriye ait; siparişe çevirmeden önce aday müşteriyi "
-            "cariye dönüştürün.")
     kalemler = list(teklif.kalemler.filter(silindi=False))
     if not kalemler:
         raise TeklifSiparisHatasi("Teklifte kalem yok; sipariş oluşturulamaz.")
@@ -356,6 +375,87 @@ def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> T
                              yukleme_sekli=teklif.yukleme_sekli, odeme_kosulu=teklif.odeme_kosulu,
                              yukleme_tipi=teklif.yukleme_tipi, navlun_tutari=teklif.navlun_tutari,
                              kaynak_teklif=teklif, kullanici=kullanici)
+    for k in kalemler:
+        TeklifSiparisKalem.objects.create(
+            teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
+            created_by=kullanici, updated_by=kullanici)
+    return siparis
+
+
+@transaction.atomic
+def teklifi_proformaya_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> TeklifSiparis:
+    """Satış teklifini proformaya çevirir: aynı cari/aday müşteri/para birimi, kalemler
+    (stok/miktar/fiyat/iskonto/KDV snapshot) kopyalanır — miktarlar burada teklifteki gibi
+    kalır, müşterinin istediği GERÇEK adede Düzenle ekranından güncellenir. Yalnız aktif +
+    ONAYLI + SATIŞ yönünde TEKLİF + henüz dönüştürülmemiş teklif çevrilebilir (tek seferlik).
+    Aday müşteride de çalışır — proforma aşaması henüz muhasebe/stok'a dokunmaz (bkz.
+    _ADAY_MUSTERI_IZINLI); Cariye dönüşüm zorunluluğu bir sonraki adımda, Siparişe
+    çevrilirken devreye girer (bkz. proformayi_siparise_cevir)."""
+    if teklif.silindi:
+        raise TeklifSiparisHatasi("İptal edilmiş teklif proformaya çevrilemez.")
+    if teklif.belge_tur != TeklifSiparis.BelgeTur.TEKLIF or teklif.yon != TeklifSiparis.Yon.SATIS:
+        raise TeklifSiparisHatasi("Yalnız satış teklifi proformaya çevrilebilir.")
+    if teklif.durum != TeklifSiparis.Durum.ONAYLI:
+        raise TeklifSiparisHatasi("Yalnız onaylı teklif proformaya çevrilebilir.")
+    if teklif.donusen_belgeler.filter(silindi=False).exists():
+        raise TeklifSiparisHatasi("Bu teklif zaten bir proformaya dönüştürülmüş.")
+    kalemler = list(teklif.kalemler.filter(silindi=False))
+    if not kalemler:
+        raise TeklifSiparisHatasi("Teklifte kalem yok; proforma oluşturulamaz.")
+    proforma = _belge_olustur(belge_tur=TeklifSiparis.BelgeTur.PROFORMA, yon=teklif.yon,
+                              cari=teklif.cari, aday_musteri=teklif.aday_musteri, tarih=tarih,
+                              gecerlilik_teslim_tarihi=None, para_birimi=teklif.para_birimi,
+                              aciklama=teklif.aciklama,
+                              yukleme_sekli=teklif.yukleme_sekli, odeme_kosulu=teklif.odeme_kosulu,
+                              yukleme_tipi=teklif.yukleme_tipi, navlun_tutari=teklif.navlun_tutari,
+                              kaynak_teklif=teklif, kullanici=kullanici)
+    for k in kalemler:
+        TeklifSiparisKalem.objects.create(
+            teklif_siparis=proforma, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
+            created_by=kullanici, updated_by=kullanici)
+    return proforma
+
+
+@transaction.atomic
+def proformayi_siparise_cevir(proforma: TeklifSiparis, *, tarih, kullanici=None) -> TeklifSiparis:
+    """Proformayı siparişe çevirir: kalemler (gerçek miktarlarıyla) kopyalanır. Aday
+    müşteriye ait proforma, aday HENÜZ Cariye dönüştürülmediyse ÇEVRİLEMEZ — sipariş artık
+    gerçek zincire (fatura/muhasebe) giden bir belge. Aday bu arada Cariye dönüştürülmüşse
+    (bkz. core.services.aday.aday_cariye_donustur) proformanın KENDİ cari alanı geriye
+    dönük güncellenmez — bu yüzden burada aday_musteri.donusen_cari'ye her seferinde taze
+    bakılır, dönüşüm o anda tamamlanmışsa sipariş o gerçek cariyle açılır. Yalnız aktif +
+    ONAYLI PROFORMA + henüz dönüştürülmemiş proforma çevrilebilir (tek seferlik)."""
+    if proforma.silindi:
+        raise TeklifSiparisHatasi("İptal edilmiş proforma siparişe çevrilemez.")
+    if proforma.belge_tur != TeklifSiparis.BelgeTur.PROFORMA:
+        raise TeklifSiparisHatasi("Yalnız proforma siparişe çevrilebilir.")
+    if proforma.durum != TeklifSiparis.Durum.ONAYLI:
+        raise TeklifSiparisHatasi("Yalnız onaylı proforma siparişe çevrilebilir.")
+    if proforma.donusen_siparisler.filter(silindi=False).exists():
+        raise TeklifSiparisHatasi("Bu proforma zaten bir siparişe dönüştürülmüş.")
+    cari = proforma.cari
+    if cari is None and proforma.aday_musteri_id:
+        # proforma.aday_musteri Django'nun ilişki önbelleğinde oluşturulduğu andaki (henüz
+        # dönüştürülmemiş) haliyle takılı kalabilir — taze bir sorguyla okunur.
+        cari = (AdayMusteri.objects.filter(pk=proforma.aday_musteri_id)
+                .select_related("donusen_cari").first().donusen_cari)
+    if cari is None:
+        raise TeklifSiparisHatasi(
+            "Bu proforma bir aday müşteriye ait; siparişe çevirmeden önce aday müşteriyi "
+            "cariye dönüştürün.")
+    kalemler = list(proforma.kalemler.filter(silindi=False))
+    if not kalemler:
+        raise TeklifSiparisHatasi("Proformada kalem yok; sipariş oluşturulamaz.")
+    siparis = _belge_olustur(belge_tur=TeklifSiparis.BelgeTur.SIPARIS, yon=proforma.yon,
+                             cari=cari, tarih=tarih, gecerlilik_teslim_tarihi=None,
+                             para_birimi=proforma.para_birimi, aciklama=proforma.aciklama,
+                             yukleme_sekli=proforma.yukleme_sekli,
+                             odeme_kosulu=proforma.odeme_kosulu,
+                             yukleme_tipi=proforma.yukleme_tipi,
+                             navlun_tutari=proforma.navlun_tutari,
+                             kaynak_proforma=proforma, kullanici=kullanici)
     for k in kalemler:
         TeklifSiparisKalem.objects.create(
             teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,

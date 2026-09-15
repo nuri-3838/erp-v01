@@ -24,7 +24,8 @@ from core.forms import (
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
-    TeklifSiparisForm, TeklifSiparisKalemForm, SatisTeklifBaslikForm, SatisTeklifKalemForm,
+    TeklifSiparisForm, TeklifSiparisKalemForm, SatisBelgeBaslikForm, SatisTeklifKalemForm,
+    SatisProformaKalemForm,
     TanimSecenegiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
@@ -1831,6 +1832,7 @@ _TS_EKRAN = {
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS): "satinalma_siparisleri",
     (TeklifSiparis.BelgeTur.IRSALIYE, TeklifSiparis.Yon.ALIS): "satinalma_irsaliyeleri",
     (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS): "satis_teklifleri",
+    (TeklifSiparis.BelgeTur.PROFORMA, TeklifSiparis.Yon.SATIS): "satis_proformalari",
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS): "satis_siparisleri",
 }
 _TS_EKLE = {
@@ -1838,11 +1840,13 @@ _TS_EKLE = {
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS): "satinalma_siparis_ekle",
     (TeklifSiparis.BelgeTur.IRSALIYE, TeklifSiparis.Yon.ALIS): "satinalma_irsaliye_ekle",
     (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS): "satis_teklif_ekle",
+    (TeklifSiparis.BelgeTur.PROFORMA, TeklifSiparis.Yon.SATIS): "satis_proforma_ekle",
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS): "satis_siparis_ekle",
 }
 _TS_EMOJI = {
     "satinalma_teklifleri": "📥", "satinalma_siparisleri": "🛒",
-    "satinalma_irsaliyeleri": "🚚", "satis_teklifleri": "📤", "satis_siparisleri": "📦",
+    "satinalma_irsaliyeleri": "🚚", "satis_teklifleri": "📤", "satis_proformalari": "🧾",
+    "satis_siparisleri": "📦",
 }
 TeklifSiparisKalemFormSet = formset_factory(
     TeklifSiparisKalemForm, extra=0, min_num=1, validate_min=True)
@@ -1850,6 +1854,9 @@ TeklifSiparisKalemFormSet = formset_factory(
 # satis_teklif_ekle) — min_num burada 0 (formset başlangıçta zaten dolu; "hiç ürün yok"
 # durumu ayrıca view'de kontrol edilir).
 SatisTeklifKalemFormSet = formset_factory(SatisTeklifKalemForm, extra=0)
+# Satış Proforması: aynı desen (bkz. satis_proforma_ekle) — TEK FARK, kalem formunda
+# gerçek Miktar alanı var (SatisProformaKalemForm).
+SatisProformaKalemFormSet = formset_factory(SatisProformaKalemForm, extra=0)
 
 
 _TS_SAYFA_BOYUTLARI = (25, 50, 100, 200)
@@ -1875,13 +1882,21 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         boyut = 50
     if boyut not in _TS_SAYFA_BOYUTLARI:
         boyut = 50
-    # "donustu" rozeti yalnız TEKLİF/SİPARİŞ için anlamlı (bir sonraki belgeye kaynak_teklif/
-    # kaynak_siparis self-FK'sıyla dönüşür). İRSALİYE→Fatura dönüşümü zaten şablonda ayrı
-    # (k.fatura_id — "🧾 Faturaya Dönüştü") gösteriliyor, burada tekrar hesaplanmaz.
+    # "donustu" rozeti yalnız TEKLİF/PROFORMA/SİPARİŞ için anlamlı (bir sonraki belgeye
+    # kaynak_teklif/kaynak_proforma/kaynak_siparis self-FK'sıyla dönüşür). ALIŞ+TEKLİF hedefi
+    # Sipariş, SATIŞ+TEKLİF hedefi Proforma (bkz. TeklifSiparis docstring'i). İRSALİYE→Fatura
+    # dönüşümü zaten şablonda ayrı (k.fatura_id — "🧾 Faturaya Dönüştü") gösteriliyor, burada
+    # tekrar hesaplanmaz.
     donustu_etiket = None
     if belge_tur == TeklifSiparis.BelgeTur.SIPARIS:
         donusen_var = TeklifSiparis.objects.filter(kaynak_siparis=OuterRef("pk"), silindi=False)
         donustu_etiket = "🔁 İrsaliyeye Dönüştü"
+    elif belge_tur == TeklifSiparis.BelgeTur.PROFORMA:
+        donusen_var = TeklifSiparis.objects.filter(kaynak_proforma=OuterRef("pk"), silindi=False)
+        donustu_etiket = "🔁 Siparişe Dönüştü"
+    elif belge_tur == TeklifSiparis.BelgeTur.TEKLIF and yon == TeklifSiparis.Yon.SATIS:
+        donusen_var = TeklifSiparis.objects.filter(kaynak_teklif=OuterRef("pk"), silindi=False)
+        donustu_etiket = "🔁 Proformaya Dönüştü"
     elif belge_tur == TeklifSiparis.BelgeTur.TEKLIF:
         donusen_var = TeklifSiparis.objects.filter(kaynak_teklif=OuterRef("pk"), silindi=False)
         donustu_etiket = "🔁 Siparişe Dönüştü"
@@ -2027,7 +2042,7 @@ def _cari_meta():
 def _aday_meta():
     """Aday müşteri başına para birimi + varsayılan iskonto — _cari_meta ile aynı desen,
     aday seçilince JS otomatik uygular. Cariye zaten dönüşmüş adaylar dahil değil (bkz.
-    SatisTeklifBaslikForm.aday_musteri queryset'i)."""
+    SatisBelgeBaslikForm.aday_musteri queryset'i)."""
     return {str(a.pk): {"pb": a.para_birimi, "iskonto": float(a.iskonto_yuzdesi)}
             for a in AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)}
 
@@ -2092,7 +2107,7 @@ def satis_teklif_ekle(request):
     JS ile otomatik uygulanır (bkz. satis_teklif_ekle.html)."""
     urunler, stok_meta = _satis_teklif_stok_meta()
     if request.method == "POST":
-        bform = SatisTeklifBaslikForm(request.POST)
+        bform = SatisBelgeBaslikForm(request.POST)
         formset = SatisTeklifKalemFormSet(request.POST)
         if bform.is_valid() and formset.is_valid():
             satirlar = [
@@ -2120,7 +2135,7 @@ def satis_teklif_ekle(request):
                 except teklif_siparis_servis.TeklifSiparisHatasi as e:
                     bform.add_error(None, str(e))
     else:
-        bform = SatisTeklifBaslikForm()
+        bform = SatisBelgeBaslikForm()
         formset = SatisTeklifKalemFormSet(initial=[
             {"stok": s.pk, "dahil": True, "iskonto_yuzdesi": Decimal("0"),
              "birim_fiyat": next(
@@ -2142,7 +2157,7 @@ def satis_teklif_duzenle(request, pk):
         belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS)
     urunler, stok_meta = _satis_teklif_stok_meta()
     if request.method == "POST":
-        bform = SatisTeklifBaslikForm(request.POST)
+        bform = SatisBelgeBaslikForm(request.POST)
         formset = SatisTeklifKalemFormSet(request.POST)
         if bform.is_valid() and formset.is_valid():
             satirlar = [
@@ -2170,7 +2185,7 @@ def satis_teklif_duzenle(request, pk):
                 except teklif_siparis_servis.TeklifSiparisHatasi as e:
                     bform.add_error(None, str(e))
     else:
-        bform = SatisTeklifBaslikForm(initial={
+        bform = SatisBelgeBaslikForm(initial={
             "karsi_taraf_tip": "aday" if ts.aday_musteri_id else "cari",
             "cari": ts.cari_id, "aday_musteri": ts.aday_musteri_id, "tarih": ts.tarih,
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
@@ -2194,6 +2209,122 @@ def satis_teklif_duzenle(request, pk):
         "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
 
+@ekran_gerekli("satis_proformalari")
+def satis_proformalari(request):
+    return _ts_liste(request, TeklifSiparis.BelgeTur.PROFORMA, TeklifSiparis.Yon.SATIS,
+                     "Satış Proformaları", "🧾")
+
+
+@ekran_gerekli("satis_proformalari")
+def satis_proforma_ekle(request):
+    """Satış Proforması — bağımsız ekran (paylaşımlı ``_ts_ekle``'yi ÇAĞIRMAZ, ``satis_teklif_
+    ekle`` ile aynı iskelet). Sayfa açılırken TÜM satış ürünleri önceden gelir ama HİÇBİRİ
+    dahil değildir (Teklif'in aksine — müşteri hangi üründen kaç adet istediğini belirtmiştir,
+    kullanıcı yalnız o satırları işaretleyip gerçek miktarı girer). Genellikle bir Teklif'ten
+    "Proformaya Çevir" ile açılır ama bağımsız da oluşturulabilir."""
+    urunler, stok_meta = _satis_teklif_stok_meta()
+    if request.method == "POST":
+        bform = SatisBelgeBaslikForm(request.POST)
+        formset = SatisProformaKalemFormSet(request.POST)
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                for f in formset if f.dahil_mi()
+            ]
+            if not satirlar:
+                bform.add_error(None, "En az bir ürün proformaya dahil edilmelidir.")
+            else:
+                cd = bform.cleaned_data
+                try:
+                    ts = teklif_siparis_servis.teklif_siparis_olustur(
+                        belge_tur=TeklifSiparis.BelgeTur.PROFORMA, yon=TeklifSiparis.Yon.SATIS,
+                        cari_id=(cd["cari"].pk if cd.get("cari") else None),
+                        aday_musteri_id=(cd["aday_musteri"].pk if cd.get("aday_musteri") else None),
+                        tarih=cd["tarih"],
+                        gecerlilik_teslim_tarihi=cd.get("gecerlilik_teslim_tarihi"),
+                        para_birimi=cd.get("para_birimi", "TRY"),
+                        **_secenek_kwargs(cd),
+                        satirlar=satirlar, kullanici=request.user)
+                    messages.success(request, f"Satış Proforması kaydedildi: {ts.belge_no}")
+                    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+                except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                    bform.add_error(None, str(e))
+    else:
+        bform = SatisBelgeBaslikForm()
+        formset = SatisProformaKalemFormSet(initial=[
+            {"stok": s.pk, "dahil": False, "iskonto_yuzdesi": Decimal("0"),
+             "birim_fiyat": next(
+                 (f.fiyat for f in s.fiyatlar.all() if f.para_birimi == "TRY"), None)}
+            for s in urunler])
+    return render(request, "core/satis_proforma_ekle.html", {
+        "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "iptal_url": reverse("core:satis_proformalari")})
+
+
+@ekran_gerekli("satis_proformalari")
+def satis_proforma_duzenle(request, pk):
+    """Satış Proforması düzenle — ``satis_proforma_ekle`` ile simetrik (paylaşımlı
+    ``teklif_siparis_duzenle``'a hiç dokunmaz)."""
+    ts = get_object_or_404(
+        TeklifSiparis, pk=pk, silindi=False,
+        belge_tur=TeklifSiparis.BelgeTur.PROFORMA, yon=TeklifSiparis.Yon.SATIS)
+    urunler, stok_meta = _satis_teklif_stok_meta()
+    if request.method == "POST":
+        bform = SatisBelgeBaslikForm(request.POST)
+        formset = SatisProformaKalemFormSet(request.POST)
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [
+                {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                for f in formset if f.dahil_mi()
+            ]
+            if not satirlar:
+                bform.add_error(None, "En az bir ürün proformaya dahil edilmelidir.")
+            else:
+                cd = bform.cleaned_data
+                try:
+                    teklif_siparis_servis.teklif_siparis_guncelle(
+                        ts, cari_id=(cd["cari"].pk if cd.get("cari") else None),
+                        aday_musteri_id=(cd["aday_musteri"].pk if cd.get("aday_musteri") else None),
+                        tarih=cd["tarih"],
+                        gecerlilik_teslim_tarihi=cd.get("gecerlilik_teslim_tarihi"),
+                        para_birimi=cd.get("para_birimi", "TRY"),
+                        aciklama=ts.aciklama,
+                        **_secenek_kwargs(cd),
+                        satirlar=satirlar, kullanici=request.user)
+                    messages.success(request, "Satış Proforması güncellendi.")
+                    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+                except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                    bform.add_error(None, str(e))
+    else:
+        bform = SatisBelgeBaslikForm(initial={
+            "karsi_taraf_tip": "aday" if ts.aday_musteri_id else "cari",
+            "cari": ts.cari_id, "aday_musteri": ts.aday_musteri_id, "tarih": ts.tarih,
+            "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
+            "para_birimi": ts.para_birimi,
+            "yukleme_sekli": ts.yukleme_sekli_id, "odeme_kosulu": ts.odeme_kosulu_id,
+            "yukleme_tipi": ts.yukleme_tipi_id, "teslim_suresi": ts.teslim_suresi_id,
+            "navlun_tutari": ts.navlun_tutari})
+        mevcut = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
+        formset = SatisProformaKalemFormSet(initial=[
+            {"stok": s.pk, "dahil": s.pk in mevcut,
+             "miktar": mevcut[s.pk].miktar if s.pk in mevcut else None,
+             "iskonto_yuzdesi": (mevcut[s.pk].iskonto_yuzdesi if s.pk in mevcut
+                                 else Decimal("0")),
+             "birim_fiyat": (mevcut[s.pk].birim_fiyat if s.pk in mevcut else next(
+                 (f.fiyat for f in s.fiyatlar.all() if f.para_birimi == ts.para_birimi), None))}
+            for s in urunler])
+    return render(request, "core/satis_proforma_ekle.html", {
+        "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
+        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "duzenleme": True,
+        "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
+
+
 @ekran_gerekli("satis_siparisleri")
 def satis_siparis_ekle(request):
     return _ts_ekle(request, TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS,
@@ -2201,45 +2332,71 @@ def satis_siparis_ekle(request):
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
-                        "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
+                        "satinalma_irsaliyeleri", "satis_teklifleri",
+                        "satis_proformalari", "satis_siparisleri")
 def teklif_siparis_detay(request, pk):
     # silindi filtrelenmez: iptal edilmiş belge de görüntülenebilir (uyarı banner'ıyla).
     ts = get_object_or_404(
         TeklifSiparis.objects.select_related(
-            "cari", "aday_musteri", "kaynak_teklif", "kaynak_siparis", "depo"),
+            "cari", "aday_musteri", "kaynak_teklif", "kaynak_proforma", "kaynak_siparis",
+            "depo"),
         pk=pk)
     kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat")
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = _TS_EMOJI[ekran]
-    donusen_siparis = (ts.donusen_siparisler.filter(silindi=False).first()
-                       if ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF else None)
+    # kaynak_teklif'in "donustugu belge" ALIŞ'ta Sipariş, SATIŞ'ta Proforma'dır (bkz.
+    # TeklifSiparis.kaynak_teklif docstring'i) — iki ayrı context değişkenine ayrılır.
+    donusen_siparis = None
+    donusen_proforma = None
+    if ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.ALIS:
+        donusen_siparis = ts.donusen_belgeler.filter(silindi=False).first()
+    elif ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS:
+        donusen_proforma = ts.donusen_belgeler.filter(silindi=False).first()
+    elif ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA:
+        donusen_siparis = ts.donusen_siparisler.filter(silindi=False).first()
     donusen_irsaliye = (ts.donusen_irsaliyeler.filter(silindi=False).first()
                        if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS else None)
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
                    "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis,
+                   "donusen_proforma": donusen_proforma,
                    "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura})
 
 
-@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
-                        "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
-def teklif_siparise_cevir(request, pk):
+@ekran_gerekli("satis_teklifleri")
+def teklif_proformaya_cevir(request, pk):
+    """Satış Teklifi → Proforma (elle, tek tık). Alış teklifleri buraya hiç gelmez (onaylanınca
+    otomatik siparişe dönüşürler, bkz. teklif_siparis_onayla) — URL'e doğrudan erişimde de
+    servis katmanı zaten reddeder."""
     teklif = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
-    if teklif.yon == TeklifSiparis.Yon.ALIS:
-        messages.error(
-            request, "Alış teklifleri artık onaylanınca otomatik siparişe dönüşür; "
-                     "elle çevrilemez.")
-        return redirect("core:teklif_siparis_detay", pk=teklif.pk)
     if request.method == "POST":
         try:
-            siparis = teklif_siparis_servis.teklifi_siparise_cevir(
+            proforma = teklif_siparis_servis.teklifi_proformaya_cevir(
                 teklif, tarih=timezone.localdate(), kullanici=request.user)
             messages.success(
-                request, f"{siparis.get_belge_tur_display()} oluşturuldu (teklif {teklif.pk} kaynaklı).")
-            return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+                request, f"Proforma oluşturuldu (teklif {teklif.pk} kaynaklı).")
+            return redirect("core:teklif_siparis_detay", pk=proforma.pk)
         except teklif_siparis_servis.TeklifSiparisHatasi as e:
             messages.error(request, str(e))
     return redirect("core:teklif_siparis_detay", pk=teklif.pk)
+
+
+@ekran_gerekli("satis_proformalari")
+def proforma_siparise_cevir(request, pk):
+    """Proforma → Sipariş (elle, tek tık). Aday müşteriye ait proformada servis katmanı
+    açık bir hata mesajıyla reddeder (önce Cariye Dönüştür gerekir, bkz.
+    proformayi_siparise_cevir)."""
+    proforma = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            siparis = teklif_siparis_servis.proformayi_siparise_cevir(
+                proforma, tarih=timezone.localdate(), kullanici=request.user)
+            messages.success(
+                request, f"Sipariş oluşturuldu (proforma {proforma.pk} kaynaklı).")
+            return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=proforma.pk)
 
 
 @ekran_gerekli_herhangi("satinalma_siparisleri", "satis_siparisleri")
@@ -2309,15 +2466,18 @@ def siparis_faturaya_cevir(request, pk):
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
-                        "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
+                        "satinalma_irsaliyeleri", "satis_teklifleri",
+                        "satis_proformalari", "satis_siparisleri")
 def teklif_siparis_duzenle(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
-    # Satış Teklifi artık bağımsız bir ekranla düzenlenir (iskonto/teslim şekli/ödeme
-    # koşulu gibi bu eski paylaşımlı formun bilmediği alanları var — buradan geçilirse
-    # sessizce sıfırlanırlardı). Eski URL'e doğrudan gelen istek de güvenle yönlendirilir.
-    if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
-            and ts.yon == TeklifSiparis.Yon.SATIS):
+    # Satış Teklifi/Proforması artık bağımsız ekranlarla düzenlenir (iskonto/teslim şekli/
+    # ödeme koşulu/aday müşteri gibi bu eski paylaşımlı formun bilmediği alanları var —
+    # buradan geçilirse sessizce sıfırlanırlardı). Eski URL'e doğrudan gelen istek de
+    # güvenle yönlendirilir.
+    if ts.yon == TeklifSiparis.Yon.SATIS and ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF:
         return redirect("core:satis_teklif_duzenle", pk=ts.pk)
+    if ts.yon == TeklifSiparis.Yon.SATIS and ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA:
+        return redirect("core:satis_proforma_duzenle", pk=ts.pk)
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = _TS_EMOJI[ekran]
     if request.method == "POST":
@@ -2361,7 +2521,8 @@ def teklif_siparis_duzenle(request, pk):
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
-                        "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
+                        "satinalma_irsaliyeleri", "satis_teklifleri",
+                        "satis_proformalari", "satis_siparisleri")
 def teklif_siparis_iptal_gorunum(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
     if request.method == "POST":
@@ -2374,7 +2535,8 @@ def teklif_siparis_iptal_gorunum(request, pk):
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
-                        "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
+                        "satinalma_irsaliyeleri", "satis_teklifleri",
+                        "satis_proformalari", "satis_siparisleri")
 def teklif_siparis_onayla(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
     if request.method == "POST":
@@ -2387,7 +2549,8 @@ def teklif_siparis_onayla(request, pk):
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
-                        "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
+                        "satinalma_irsaliyeleri", "satis_teklifleri",
+                        "satis_proformalari", "satis_siparisleri")
 def teklif_siparis_onayi_geri_al(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
     if request.method == "POST":
@@ -2486,6 +2649,84 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
     }
 
 
+# Satış Proforması PDF'i etiketleri — Teklif'in fiyat listesi/katalog PDF'inden farklı,
+# tablo + toplam ağırlıklı bir "proforma fatura" tasarımı (bkz. satis_proforma_pdf.html).
+_PDF_ETIKET_PROFORMA = {
+    "tr": {
+        "baslik": "PROFORMA FATURA", "alici": "Alıcı", "satici": "Satıcı",
+        "unvan": "Unvan", "ilgili_kisi": "İlgili Kişi", "ulke": "Ülke", "adres": "Adres",
+        "telefon": "Telefon", "eposta": "E-posta", "vergi_dairesi": "Vergi Dairesi",
+        "vergi_no": "Vergi No", "proforma_no": "Proforma No", "tarih": "Tarih",
+        "gecerlilik": "Geçerlilik Tarihi", "para_birimi": "Para Birimi",
+        "yukleme_sekli": "Teslim / Yükleme Şekli", "odeme_kosulu": "Ödeme Koşulu",
+        "yukleme_tipi": "Yükleme Tipi", "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
+        "urun": "Ürün", "miktar": "Miktar", "birim_fiyat": "Birim Fiyat",
+        "iskonto": "İskonto", "net_fiyat": "Net Fiyat", "tutar": "Tutar", "kdv": "KDV",
+        "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
+        "genel_toplam": "GENEL TOPLAM", "banka_bilgileri": "Banka Bilgileri",
+        "banka": "Banka", "sube": "Şube", "hesap_sahibi": "Hesap Sahibi",
+        "hazirlayan": "Hazırlayan", "notlar": "Notlar",
+        "not_gecerlilik_varsayilan": "Bu proforma, geçerlilik tarihine kadar bağlayıcıdır.",
+        "not_gecerlilik_tarihli": "Bu proforma {tarih} tarihine kadar geçerlidir.",
+        "not_odeme": "Ödeme, yukarıdaki banka hesabına yapılabilir.",
+        "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Proforma Fatura",
+    },
+    "en": {
+        "baslik": "PROFORMA INVOICE", "alici": "To", "satici": "From",
+        "unvan": "Company", "ilgili_kisi": "Contact Person", "ulke": "Country",
+        "adres": "Address", "telefon": "Phone", "eposta": "E-mail",
+        "vergi_dairesi": "Tax Office", "vergi_no": "Tax No", "proforma_no": "Proforma No",
+        "tarih": "Date", "gecerlilik": "Valid Until", "para_birimi": "Currency",
+        "yukleme_sekli": "Delivery Term", "odeme_kosulu": "Payment Term",
+        "yukleme_tipi": "Transport Mode", "teslim_suresi": "Lead Time", "navlun": "Freight",
+        "urun": "Item", "miktar": "Qty", "birim_fiyat": "Unit Price",
+        "iskonto": "Discount", "net_fiyat": "Net Price", "tutar": "Amount", "kdv": "VAT",
+        "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
+        "genel_toplam": "GRAND TOTAL", "banka_bilgileri": "Bank Details",
+        "banka": "Bank", "sube": "Branch", "hesap_sahibi": "Account Holder",
+        "hazirlayan": "Prepared by", "notlar": "Notes",
+        "not_gecerlilik_varsayilan": "This proforma invoice is binding until the validity date.",
+        "not_gecerlilik_tarihli": "This proforma invoice is valid until {tarih}.",
+        "not_odeme": "Payment can be made to the bank account above.",
+        "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Proforma Invoice",
+    },
+}
+
+
+def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
+    """Satış Proforması PDF şablonuna (satis_proforma_pdf.html) eklenecek bağlam — hem
+    teklif_siparis_pdf view'ından hem testlerden çağrılır (satis_teklif_pdf_baglam ile aynı
+    desen)."""
+    E = _PDF_ETIKET_PROFORMA[dil]
+    for k in kalemler:
+        k.urun_ad = k.stok.ad_dil(dil)
+    firma = firma_servis.firma_bilgisi_getir()
+    notlar = []
+    if ts.gecerlilik_teslim_tarihi:
+        notlar.append(E["not_gecerlilik_tarihli"].format(
+            tarih=ts.gecerlilik_teslim_tarihi.strftime("%d.%m.%Y")))
+    else:
+        notlar.append(E["not_gecerlilik_varsayilan"])
+    bankalar = list(firma.bankalar.filter(silindi=False)) if firma else []
+    if bankalar:
+        notlar.append(E["not_odeme"])
+    return {
+        "dil": dil, "E": E,
+        "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",
+        "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
+        "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
+        "teslim_suresi_ad": ts.teslim_suresi.ad_dil(dil) if ts.teslim_suresi_id else "",
+        "ulke_ad": ts.taraf.ulke.ad_dil(dil) if ts.taraf.ulke_id else "",
+        "sehir_ad": ts.taraf.sehir.ad_dil(dil) if ts.taraf.sehir_id else "",
+        "notlar": notlar,
+        "firma": firma,
+        "bankalar": bankalar,
+        "hazirlayan": kullanici.get_full_name() or kullanici.get_username(),
+        "hazirlayan_eposta": kullanici.email,
+        "hazirlayan_telefon": kullanici_telefon(kullanici),
+    }
+
+
 _DOSYA_GECERSIZ = str.maketrans("", "", '\\/:*?"<>|')
 
 
@@ -2505,7 +2746,8 @@ def _pdf_content_disposition(dosya_adi: str, ek="inline") -> str:
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
-                        "satinalma_irsaliyeleri", "satis_teklifleri", "satis_siparisleri")
+                        "satinalma_irsaliyeleri", "satis_teklifleri",
+                        "satis_proformalari", "satis_siparisleri")
 def teklif_siparis_pdf(request, pk):
     """Belgenin PDF'i (WeasyPrint, A4) — çek bordrosu PDF'iyle aynı desen."""
     import base64
@@ -2525,6 +2767,7 @@ def teklif_siparis_pdf(request, pk):
     teknik_kalemler = [k for k in kalemler if k.stok.satis_urunu]
     sat_teklif = (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
                  and ts.yon == TeklifSiparis.Yon.SATIS)
+    sat_proforma = ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
     ctx = {"ts": ts, "kalemler": kalemler, "teknik_kalemler": teknik_kalemler,
            "sat_teklif": sat_teklif}
     logo_yol = finders.find("core/img/semta-logo.png")
@@ -2537,6 +2780,10 @@ def teklif_siparis_pdf(request, pk):
         dil = "en" if request.GET.get("dil") == "en" else "tr"
         ctx.update(satis_teklif_pdf_baglam(ts, kalemler, dil, request.user))
         sablon = "core/satis_teklif_pdf.html"
+    elif sat_proforma:
+        dil = "en" if request.GET.get("dil") == "en" else "tr"
+        ctx.update(satis_proforma_pdf_baglam(ts, kalemler, dil, request.user))
+        sablon = "core/satis_proforma_pdf.html"
     html = render_to_string(sablon, ctx)
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")

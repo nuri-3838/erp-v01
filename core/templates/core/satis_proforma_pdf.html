@@ -1,0 +1,179 @@
+{% load core_extras %}<!DOCTYPE html>
+<html lang="{{ dil }}">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4 portrait; margin: 14mm 13mm 15mm;
+    @bottom-left  { content: "{{ E.altbilgi }}"; font-size: 7.3px; color: #9ca3af; }
+    @bottom-center { content: "{{ ts.belge_no|default:ts.pk }}"; font-size: 7.3px; color: #9ca3af; letter-spacing: .3px; }
+    @bottom-right { content: "{{ E.sayfa }} " counter(page) " / " counter(pages); font-size: 7.3px; color: #9ca3af; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; color: #1c2533; font-size: 8.8px;
+    line-height: 1.4; margin: 0; -webkit-font-smoothing: antialiased; }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 11px; }
+  .brand img { height: 46px; }
+  .doc { text-align: right; }
+  .doc .kicker { margin: 0; font-size: 15px; font-weight: 800; color: #15294d; letter-spacing: .8px;
+    text-transform: uppercase; }
+  .doc .no { display: inline-block; margin-top: 5px; background: #15294d; color: #fff;
+    font-weight: 700; font-size: 9px; letter-spacing: .4px; padding: 2.5px 9px; border-radius: 20px; }
+  .banner { height: 4px; border-radius: 2px; margin: 0 0 13px;
+    background: linear-gradient(90deg, #15294d 0%, #21385f 45%, #f07c00 100%); }
+
+  .bilgi { display: flex; flex-direction: column; gap: 9px; margin-bottom: 13px; }
+  .taraf-satir { display: flex; gap: 9px; }
+  .taraf-kolon { display: flex; flex-direction: column; gap: 9px; flex: 1 1 0; min-width: 0; }
+  .kutu { background: #fbfcfe; border: 1px solid #e6eaf1; border-radius: 9px;
+    padding: 8px 12px 9px; border-top: 3px solid #15294d; }
+  .kutu.taraf { flex: 1 1 0; min-width: 0; }
+  .kutu.belge-kutu { border-top-color: #f07c00; flex: 1 1 0; min-width: 0; }
+  .kutu .kb { font-size: 7px; text-transform: uppercase; letter-spacing: 1px; color: #8b97ab;
+    font-weight: 800; margin-bottom: 5px; }
+  .kv { display: flex; gap: 8px; padding: 2.5px 0; border-bottom: 1px solid #eef1f6; align-items: baseline; }
+  .kv:last-child { border-bottom: 0; }
+  .kv .et { width: 100px; flex: 0 0 100px; color: #8b97ab; font-size: 7.3px; text-transform: uppercase;
+    letter-spacing: .3px; }
+  .kv .dg { font-weight: 700; color: #1c2533; }
+  .kv .dg.buyuk { font-size: 11px; color: #15294d; }
+  .kv .dg.vurgu { color: #d56e00; }
+
+  table.kalemler { width: 100%; border-collapse: collapse; margin-bottom: 11px; }
+  table.kalemler th { text-align: left; font-size: 7.2px; text-transform: uppercase;
+    letter-spacing: .4px; color: #fff; background: #15294d; padding: 6px 7px; font-weight: 800; }
+  table.kalemler th.sag, table.kalemler td.sag { text-align: right; }
+  table.kalemler td { padding: 6px 7px; border-bottom: 1px solid #eef1f6; font-size: 8.4px; }
+  table.kalemler tbody tr:nth-child(even) td { background: #fbfcfe; }
+  table.kalemler .urun-model { display: inline-block; background: #f07c00; color: #fff; font-size: 7px;
+    font-weight: 800; padding: 1px 5px; border-radius: 4px; margin-right: 4px; }
+
+  .altbolum { display: flex; gap: 11px; margin-top: 2px; }
+  .altbolum .sol { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+  .toplam-kutu { flex: 0 0 220px; background: #fbfcfe; border: 1px solid #e6eaf1; border-radius: 9px;
+    padding: 9px 12px; align-self: flex-start; }
+  .toplam-satir { display: flex; justify-content: space-between; padding: 3px 0; font-size: 8.6px; }
+  .toplam-satir.genel { border-top: 1.5px solid #15294d; margin-top: 4px; padding-top: 6px;
+    font-size: 11px; font-weight: 800; color: #15294d; }
+  .toplam-satir .et { color: #6b7280; }
+
+  .banka-kutu .kb { color: #d56e00; }
+  .banka-kutu { border-top-color: #f07c00; }
+  .banka-satir { display: flex; gap: 8px; padding: 2px 0; }
+  .banka-satir .et { width: 78px; flex: 0 0 78px; color: #8b97ab; font-size: 7.2px;
+    text-transform: uppercase; }
+  .banka-satir .dg { font-weight: 700; }
+  .banka-hesap + .banka-hesap { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e6eaf1; }
+
+  .notlar { border: 1px solid #e6eaf1; border-left: 3px solid #f07c00; border-radius: 8px;
+    padding: 7px 11px; background: #fbfcfe; margin-top: 11px; }
+  .notlar .kb { font-size: 7px; text-transform: uppercase; letter-spacing: 1px; color: #f07c00;
+    font-weight: 800; margin-bottom: 3px; }
+  .notlar ul { margin: 0; padding: 0; list-style: none; color: #4b5563; }
+  .notlar li { position: relative; padding-left: 11px; margin: 1.5px 0; font-size: 7.8px; }
+  .notlar li::before { content: ""; position: absolute; left: 0; top: 4.5px; width: 4px; height: 4px;
+    border-radius: 50%; background: #f07c00; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="SEMTA">{% endif %}
+    </div>
+    <div class="doc">
+      <div class="kicker">{{ E.baslik }}</div>
+      <div><span class="no">{{ ts.belge_no|default:"—" }}</span></div>
+    </div>
+  </div>
+  <div class="banner"></div>
+
+  <div class="bilgi">
+    <div class="taraf-satir">
+      <div class="taraf-kolon">
+        <div class="kutu taraf">
+          <div class="kb">{{ E.satici }}</div>
+          <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ firma.unvan }}</span></div>
+          {% if firma.vergi_dairesi or firma.vergi_no %}<div class="kv"><span class="et">{{ E.vergi_dairesi }}</span><span class="dg">{{ firma.vergi_dairesi }}{% if firma.vergi_no %} · {{ firma.vergi_no }}{% endif %}</span></div>{% endif %}
+          {% if firma.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ firma.adres }}</span></div>{% endif %}
+          {% if firma.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ firma.telefon }}</span></div>{% endif %}
+          {% if firma.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ firma.eposta }}</span></div>{% endif %}
+          <div class="kv"><span class="et">{{ E.hazirlayan }}</span><span class="dg">{{ hazirlayan }}</span></div>
+        </div>
+        <div class="kutu taraf">
+          <div class="kb">{{ E.alici }}</div>
+          <div class="kv"><span class="et">{{ E.unvan }}</span><span class="dg buyuk">{{ ts.taraf.unvan }}</span></div>
+          {% if ts.taraf.ilgili_kisi %}<div class="kv"><span class="et">{{ E.ilgili_kisi }}</span><span class="dg">{{ ts.taraf.ilgili_kisi }}</span></div>{% endif %}
+          {% if ulke_ad %}<div class="kv"><span class="et">{{ E.ulke }}</span><span class="dg">{{ ulke_ad }}{% if sehir_ad %} / {{ sehir_ad }}{% endif %}</span></div>{% endif %}
+          {% if ts.taraf.adres %}<div class="kv"><span class="et">{{ E.adres }}</span><span class="dg">{{ ts.taraf.adres }}</span></div>{% endif %}
+          {% if ts.taraf.telefon %}<div class="kv"><span class="et">{{ E.telefon }}</span><span class="dg">{{ ts.taraf.telefon }}</span></div>{% endif %}
+          {% if ts.taraf.eposta %}<div class="kv"><span class="et">{{ E.eposta }}</span><span class="dg">{{ ts.taraf.eposta }}</span></div>{% endif %}
+        </div>
+      </div>
+      <div class="kutu belge-kutu">
+        <div class="kv"><span class="et">{{ E.proforma_no }}</span><span class="dg buyuk">{{ ts.belge_no|default:"—" }}</span></div>
+        <div class="kv"><span class="et">{{ E.tarih }}</span><span class="dg">{{ ts.tarih|date:"d.m.Y" }}</span></div>
+        {% if ts.gecerlilik_teslim_tarihi %}<div class="kv"><span class="et">{{ E.gecerlilik }}</span><span class="dg">{{ ts.gecerlilik_teslim_tarihi|date:"d.m.Y" }}</span></div>{% endif %}
+        <div class="kv"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ ts.para_birimi }}</span></div>
+        {% if yukleme_sekli_ad %}<div class="kv"><span class="et">{{ E.yukleme_sekli }}</span><span class="dg">{{ yukleme_sekli_ad }}</span></div>{% endif %}
+        {% if odeme_kosulu_ad %}<div class="kv"><span class="et">{{ E.odeme_kosulu }}</span><span class="dg">{{ odeme_kosulu_ad }}</span></div>{% endif %}
+        {% if yukleme_tipi_ad %}<div class="kv"><span class="et">{{ E.yukleme_tipi }}</span><span class="dg">{{ yukleme_tipi_ad }}</span></div>{% endif %}
+        {% if teslim_suresi_ad %}<div class="kv"><span class="et">{{ E.teslim_suresi }}</span><span class="dg">{{ teslim_suresi_ad }}</span></div>{% endif %}
+        {% if ts.navlun_tutari is not None %}<div class="kv"><span class="et">{{ E.navlun }}</span><span class="dg vurgu mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <table class="kalemler">
+    <thead><tr>
+      <th>{{ E.urun }}</th><th class="sag">{{ E.miktar }}</th><th class="sag">{{ E.birim_fiyat }}</th>
+      <th class="sag">{{ E.iskonto }}</th><th class="sag">{{ E.net_fiyat }}</th>
+      <th class="sag">{{ E.tutar }}</th><th class="sag">{{ E.kdv }}</th>
+    </tr></thead>
+    <tbody>
+      {% for k in kalemler %}
+        <tr>
+          <td>{% if k.stok.model_kodu %}<span class="urun-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.urun_ad }}</td>
+          <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
+          <td class="sag mono">{{ k.birim_fiyat|tr_kur:4 }}</td>
+          <td class="sag mono">{% if k.iskonto_yuzdesi %}%{{ k.iskonto_yuzdesi|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{{ k.net_birim_fiyat|tr_kur:4 }}</td>
+          <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>
+          <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }}{% else %}—{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" style="text-align:center;padding:10px 0;color:#8b97ab">—</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="altbolum">
+    <div class="sol">
+      {% if bankalar %}
+      <div class="kutu banka-kutu">
+        <div class="kb">{{ E.banka_bilgileri }}</div>
+        {% for b in bankalar %}
+          <div class="banka-hesap">
+            <div class="banka-satir"><span class="et">{{ E.banka }}</span><span class="dg">{{ b.banka_adi }}{% if b.sube %} · {{ b.sube }}{% endif %}</span></div>
+            {% if b.hesap_sahibi %}<div class="banka-satir"><span class="et">{{ E.hesap_sahibi }}</span><span class="dg">{{ b.hesap_sahibi }}</span></div>{% endif %}
+            {% if b.iban %}<div class="banka-satir"><span class="et">IBAN</span><span class="dg mono">{{ b.iban }}</span></div>{% endif %}
+            <div class="banka-satir"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ b.para_birimi }}</span></div>
+          </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="notlar">
+        <div class="kb">{{ E.notlar }}</div>
+        <ul>{% for n in notlar %}<li>{{ n }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+    <div class="toplam-kutu">
+      <div class="toplam-satir"><span class="et">{{ E.ara_toplam }}</span><span class="mono">{{ ts.ara_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+      <div class="toplam-satir"><span class="et">{{ E.kdv_toplam }}</span><span class="mono">{{ ts.kdv_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+      {% if ts.navlun_tutari is not None %}<div class="toplam-satir"><span class="et">{{ E.navlun }}</span><span class="mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
+      <div class="toplam-satir genel"><span class="et">{{ E.genel_toplam }}</span><span class="mono">{{ ts.genel_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+    </div>
+  </div>
+</body>
+</html>

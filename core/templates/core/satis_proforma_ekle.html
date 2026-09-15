@@ -1,0 +1,308 @@
+{% extends "core/base.html" %}
+{% block baslik %}{% if duzenleme %}Satış Proforması Düzenle{% else %}Yeni Satış Proforması{% endif %} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{% if duzenleme %}Satış Proforması Düzenle{% else %}Yeni Satış Proforması{% endif %}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+{{ stok_meta|json_script:"stok-meta" }}
+{{ cari_meta|json_script:"cari-meta" }}
+{{ aday_meta|json_script:"aday-meta" }}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{{ iptal_url }}">← Geri</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>{% if duzenleme %}Satış Proforması Düzenle{% else %}Yeni Satış Proforması{% endif %}</h1>
+  </div>
+
+  {% if bform.non_field_errors %}
+    <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" id="sp-form" autocomplete="off">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Belge Bilgileri</h2>
+      <div class="bb-blok">
+        <div class="bb-satir">
+          <div class="bb-alan bb-vurgu">
+            <label>{{ bform.karsi_taraf_tip.label }}</label>
+            <div class="kt-tip">{{ bform.karsi_taraf_tip }}</div>
+            <div id="kt-cari-blok" class="kt-blok">
+              <label for="{{ bform.cari.id_for_label }}">{{ bform.cari.label }}</label>
+              {{ bform.cari }}
+              {% for e in bform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+            <div id="kt-aday-blok" class="kt-blok" hidden>
+              <label for="{{ bform.aday_musteri.id_for_label }}">{{ bform.aday_musteri.label }}</label>
+              {{ bform.aday_musteri }}
+              {% for e in bform.aday_musteri.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.para_birimi.id_for_label }}">{{ bform.para_birimi.label }}</label>
+            {{ bform.para_birimi }}
+            {% for e in bform.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.tarih.id_for_label }}">{{ bform.tarih.label }}</label>
+            {{ bform.tarih }}
+            {% for e in bform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.gecerlilik_teslim_tarihi.id_for_label }}">{{ bform.gecerlilik_teslim_tarihi.label }}</label>
+            {{ bform.gecerlilik_teslim_tarihi }}
+            {% for e in bform.gecerlilik_teslim_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.yukleme_sekli.id_for_label }}">{{ bform.yukleme_sekli.label }}</label>
+            {{ bform.yukleme_sekli }}
+            {% for e in bform.yukleme_sekli.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan bb-vurgu">
+            <label for="{{ bform.odeme_kosulu.id_for_label }}">{{ bform.odeme_kosulu.label }}</label>
+            {{ bform.odeme_kosulu }}
+            {% for e in bform.odeme_kosulu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.yukleme_tipi.id_for_label }}">{{ bform.yukleme_tipi.label }}</label>
+            {{ bform.yukleme_tipi }}
+            {% for e in bform.yukleme_tipi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.navlun_tutari.id_for_label }}">{{ bform.navlun_tutari.label }}</label>
+            {{ bform.navlun_tutari }}
+            {% for e in bform.navlun_tutari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ bform.teslim_suresi.id_for_label }}">{{ bform.teslim_suresi.label }}</label>
+            {{ bform.teslim_suresi }}
+            {% for e in bform.teslim_suresi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+      <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+    {% endif %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📦</span>Ürünler</h2>
+      <p class="yardim" style="margin:0 0 .7rem">Müşterinin istediği ürünleri işaretleyip gerçek miktarı girin.</p>
+      <div class="fk-liste">
+        {% for s, f in satirlar %}
+          <div class="fk-satir" data-stok="{{ s.pk }}">
+            <label class="fk-dahil" title="Dahil">
+              <input type="checkbox" class="fk-dahil-kutu" name="{{ f.dahil.html_name }}"
+                id="{{ f.dahil.id_for_label }}" {% if f.dahil.value %}checked{% endif %}>
+            </label>
+            {{ f.stok }}
+            {% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            <div class="fk-urun">
+              <div class="fk-ad">{% if s.model_kodu %}<span class="fk-model">{{ s.model_kodu }}</span>{% endif %}{{ s.ad }}</div>
+              {% if s.kdv %}<span class="fk-kdv">KDV %{{ s.kdv.oran|floatformat:0 }}</span>{% endif %}
+              <div class="fk-uyari" hidden>⚠ Bu para biriminde fiyat listesi tanımlı değil</div>
+            </div>
+            <div class="fk-alan">
+              <label for="{{ f.miktar.id_for_label }}">Miktar</label>
+              {{ f.miktar }}
+              {% for e in f.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="fk-alan">
+              <label for="{{ f.birim_fiyat.id_for_label }}">Birim Fiyat</label>
+              {{ f.birim_fiyat }}
+              {% for e in f.birim_fiyat.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="fk-alan">
+              <label for="{{ f.iskonto_yuzdesi.id_for_label }}">İskonto %</label>
+              {{ f.iskonto_yuzdesi }}
+              {% for e in f.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="fk-alan fk-net">
+              <span class="et">Satır Tutarı</span>
+              <span class="net-deger mono">—</span>
+            </div>
+          </div>
+        {% empty %}
+          <p class="yardim">Henüz satış ürünü yok. Önce Stoklar'dan bir kartı "Satış"
+            grubuna ekleyin.</p>
+        {% endfor %}
+      </div>
+      <p class="fk-ozet"><span id="dahil-sayisi">0</span> / <span id="toplam-sayisi">0</span> ürün proformaya dahil
+        · Toplam: <span id="genel-toplam" class="mono">0,00</span> <span id="genel-toplam-pb"></span></p>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{{ iptal_url }}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<style>
+  .bb-blok { display:flex; flex-direction:column; gap:.85rem; }
+  .bb-satir { display:flex; gap:.9rem; flex-wrap:wrap; }
+  .bb-alan { flex:1 1 0; min-width:190px; background:rgba(255,255,255,.6);
+    border:1px solid var(--cizgi); border-top:3px solid var(--lacivert); border-radius:14px;
+    padding:.7rem .95rem .85rem; }
+  .bb-alan.bb-vurgu { border-top-color:var(--turuncu); }
+  .bb-alan label { display:block; font-size:.7rem; margin-bottom:.35rem; color:var(--metin-soluk);
+    font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+  .bb-alan input, .bb-alan select { background:#fff; }
+  @media (max-width:680px){ .bb-alan { min-width:100%; } }
+  .kt-tip > div { display:flex; gap:1.1rem; margin:0 0 .6rem; }
+  .kt-tip label { font-weight:600; font-size:.9rem; text-transform:none; cursor:pointer;
+    display:flex; align-items:center; gap:.35rem; }
+  .kt-tip input[type="radio"] { width:1.1rem; height:1.1rem; min-height:0; flex:0 0 auto; }
+  .kt-blok[hidden] { display:none; }
+
+  .fk-liste { display:flex; flex-direction:column; gap:.55rem; }
+  .fk-satir { display:flex; align-items:center; gap:1.1rem; flex-wrap:wrap;
+    border:1px solid var(--cizgi); border-radius:14px; padding:.75rem 1.1rem;
+    background:rgba(255,255,255,.6); transition:opacity .15s; }
+  .fk-satir.fk-disi { opacity:.45; }
+  .fk-dahil { display:flex; align-items:center; flex:0 0 auto; cursor:pointer; }
+  .fk-dahil input { margin:0; }
+  .fk-urun { flex:1 1 220px; min-width:0; }
+  .fk-ad { font-weight:700; color:var(--lacivert); font-size:.94rem; }
+  .fk-model { display:inline-block; background:var(--turuncu); color:#fff; font-size:.72rem; font-weight:800;
+    padding:.1rem .5rem; border-radius:6px; margin-right:.4rem; }
+  .fk-kdv { display:inline-block; margin-top:.15rem; font-size:.72rem; color:var(--metin-soluk); }
+  .fk-alan { display:flex; flex-direction:column; gap:.2rem; flex:0 0 auto; }
+  .fk-alan label { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--metin-soluk); }
+  .fk-alan input { width:6.2rem; }
+  .fk-net { min-width:6.5rem; }
+  .fk-net .et { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--metin-soluk); }
+  .fk-net .net-deger { display:block; font-weight:800; color:var(--lacivert); font-size:1rem; }
+  .fk-uyari { margin-top:.3rem; display:inline-block; font-size:.74rem; color:#b35400;
+    background:rgba(240,124,0,.1); padding:.2rem .5rem; border-radius:8px; }
+  .fk-uyari[hidden] { display:none; }
+  .fk-ozet { margin-top:.9rem; font-weight:600; color:var(--lacivert); }
+  .fk-ozet .mono { font-weight:800; }
+  @media (max-width:680px){ .fk-satir { flex-direction:column; align-items:stretch; }
+    .fk-alan input { width:100%; } }
+</style>
+
+<script>
+(function(){
+  var STOK_META = JSON.parse(document.getElementById('stok-meta').textContent);
+  var CARI_META = JSON.parse(document.getElementById('cari-meta').textContent);
+  var ADAY_META = JSON.parse(document.getElementById('aday-meta').textContent);
+
+  function parseTR(s){ if(!s) return 0; s=String(s).trim();
+    if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
+    else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
+    var n=parseFloat(s); return isNaN(n)?0:n; }
+  function fmt(n, basamak){ return n.toLocaleString('tr-TR',
+    {minimumFractionDigits:basamak, maximumFractionDigits:basamak}); }
+  function el(card, suf){ return card.querySelector('[name$="'+suf+'"]'); }
+
+  function satirTutari(card){
+    var fiyatInp = el(card, '-birim_fiyat'), iskInp = el(card, '-iskonto_yuzdesi');
+    var miktarInp = el(card, '-miktar');
+    var fiyat = parseTR(fiyatInp ? fiyatInp.value : '');
+    var iskonto = parseTR(iskInp ? iskInp.value : '');
+    var miktar = parseTR(miktarInp ? miktarInp.value : '');
+    return miktar * fiyat * (1 - iskonto / 100);
+  }
+
+  function netHesapla(card){
+    var netEl = card.querySelector('.net-deger');
+    if(netEl) netEl.textContent = fmt(satirTutari(card), 2);
+  }
+
+  function fiyatiUygula(card, pb){
+    var meta = STOK_META[card.dataset.stok];
+    var fiyatInp = el(card, '-birim_fiyat');
+    var uyari = card.querySelector('.fk-uyari');
+    if(!meta || !fiyatInp) return;
+    var deger = meta.fiyatlar[pb];
+    fiyatInp.value = (deger == null) ? '' : fmt(deger, 4);
+    if(uyari) uyari.hidden = (deger != null);
+    netHesapla(card);
+  }
+
+  function ozetGuncelle(){
+    var toplam = 0, dahil = 0, genelToplam = 0;
+    document.querySelectorAll('.fk-satir').forEach(function(card){
+      toplam++;
+      var kutu = card.querySelector('.fk-dahil-kutu');
+      var acik = kutu && kutu.checked;
+      card.classList.toggle('fk-disi', !acik);
+      if(acik){ dahil++; genelToplam += satirTutari(card); }
+    });
+    var d = document.getElementById('dahil-sayisi'), t = document.getElementById('toplam-sayisi');
+    if(d) d.textContent = dahil;
+    if(t) t.textContent = toplam;
+    var gt = document.getElementById('genel-toplam');
+    if(gt) gt.textContent = fmt(genelToplam, 2);
+    var pbEl = document.getElementById('genel-toplam-pb'), pbSec = document.getElementById('id_para_birimi');
+    if(pbEl && pbSec) pbEl.textContent = pbSec.value;
+  }
+
+  var cariSec = document.getElementById('id_cari');
+  var adaySec = document.getElementById('id_aday_musteri');
+  var pbSec = document.getElementById('id_para_birimi');
+  var ktRadyolar = document.querySelectorAll('input[name="karsi_taraf_tip"]');
+  var ktCariBlok = document.getElementById('kt-cari-blok');
+  var ktAdayBlok = document.getElementById('kt-aday-blok');
+
+  function karsiTarafGuncelle(){
+    var secili = document.querySelector('input[name="karsi_taraf_tip"]:checked');
+    var tip = secili ? secili.value : 'cari';
+    if(ktCariBlok) ktCariBlok.hidden = (tip === 'aday');
+    if(ktAdayBlok) ktAdayBlok.hidden = (tip !== 'aday');
+  }
+  ktRadyolar.forEach(function(r){ r.addEventListener('change', karsiTarafGuncelle); });
+  karsiTarafGuncelle();
+
+  function karsiTarafMetaUygula(meta){
+    if(!meta) return;
+    document.querySelectorAll('.fk-satir').forEach(function(card){
+      var iskInp = el(card, '-iskonto_yuzdesi');
+      if(iskInp) iskInp.value = fmt(meta.iskonto, 2);
+    });
+    if(pbSec && pbSec.value !== meta.pb){
+      pbSec.value = meta.pb;
+      pbSec.dispatchEvent(new Event('change', {bubbles: true}));
+    } else {
+      document.querySelectorAll('.fk-satir').forEach(netHesapla);
+      ozetGuncelle();
+    }
+  }
+
+  if(cariSec) cariSec.addEventListener('change', function(){
+    karsiTarafMetaUygula(CARI_META[cariSec.value]);
+  });
+  if(adaySec) adaySec.addEventListener('change', function(){
+    karsiTarafMetaUygula(ADAY_META[adaySec.value]);
+  });
+
+  if(pbSec) pbSec.addEventListener('change', function(){
+    document.querySelectorAll('.fk-satir').forEach(function(card){ fiyatiUygula(card, pbSec.value); });
+    ozetGuncelle();
+  });
+
+  var form = document.getElementById('sp-form');
+  form.addEventListener('input', function(e){
+    var card = e.target.closest('.fk-satir');
+    if(card){ netHesapla(card); ozetGuncelle(); }
+  });
+  form.addEventListener('change', function(e){
+    if(e.target.classList.contains('fk-dahil-kutu')) ozetGuncelle();
+  });
+
+  document.querySelectorAll('.fk-satir').forEach(netHesapla);
+  ozetGuncelle();
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}
