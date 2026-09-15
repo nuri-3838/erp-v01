@@ -1,9 +1,11 @@
 """Aday Müşteri (CRM) testleri: servis CRUD + kategori + aktivite + Cariye dönüştürme +
 view/yetki."""
 import datetime
+import tempfile
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.models import (
@@ -11,9 +13,9 @@ from core.models import (
     Ulke,
 )
 from core.services.aday import (
-    AdayHatasi, aday_aktivite_ekle, aday_aktivite_guncelle, aday_aktivite_sil,
-    aday_cariye_donustur, aday_musteri_guncelle, aday_musteri_olustur, aday_musteri_sil,
-    aktif_aday_aktiviteleri, aktif_aday_musteriler,
+    AdayHatasi, aday_aktivite_ek_ekle, aday_aktivite_ekle, aday_aktivite_guncelle,
+    aday_aktivite_sil, aday_cariye_donustur, aday_musteri_guncelle, aday_musteri_olustur,
+    aday_musteri_sil, aktif_aday_aktiviteleri, aktif_aday_musteriler,
 )
 from core.services.aday_kategori import (
     AdayKategoriHatasi, aday_kategori_guncelle, aday_kategori_olustur, aday_kategori_sil,
@@ -155,6 +157,45 @@ class AdayCariyeDonusturTest(TestCase):
         aday_musteri_sil(a)
         with self.assertRaises(AdayHatasi):
             aday_cariye_donustur(a)
+
+    def test_donusturulen_aday_aktif_listede_gorunmez(self):
+        """Kullanıcı isteği: cariye dönüştürülen aday Aday Müşteriler listesinden çıkmalı —
+        kaydın kendisi silinmez (bkz. test_donusturur_ve_iz_birakir), yalnız aktif liste
+        queryset'inden (aktif_aday_musteriler) hariç tutulur."""
+        a = aday_musteri_olustur(unvan="zeta gmbh")
+        self.assertIn(a, aktif_aday_musteriler())
+        aday_cariye_donustur(a)
+        self.assertNotIn(a, aktif_aday_musteriler())
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_donusturur_aktiviteleri_cariye_kopyalar(self):
+        """Kullanıcı isteği: 'Aktiviteleri gelmedi, onun gelmesi lazım' — adayın aktiviteleri
+        (+ ekli dosyaları) yeni Cari'ye kopyalanmalı; aday tarafındaki aktiviteler de
+        SİLİNMEZ (iz kalır)."""
+        a = aday_musteri_olustur(unvan="eta gmbh")
+        akt1 = aday_aktivite_ekle(a, tarih=datetime.date(2026, 9, 1), tur="TELEFON",
+                                  aciklama="ilk arama")
+        aday_aktivite_ekle(a, tarih=datetime.date(2026, 9, 5), tur="TOPLANTI",
+                           aciklama="fabrikada görüştük")
+        pdf = SimpleUploadedFile("sozlesme.pdf", b"%PDF-1.4 sahte icerik",
+                                 content_type="application/pdf")
+        aday_aktivite_ek_ekle(akt1, dosya=pdf)
+
+        cari = aday_cariye_donustur(a)
+
+        cari_aktiviteler = list(cari.aktiviteler.filter(silindi=False).order_by("tarih"))
+        self.assertEqual(len(cari_aktiviteler), 2)
+        self.assertEqual(
+            [(k.tarih, k.tur, k.aciklama) for k in cari_aktiviteler],
+            [(datetime.date(2026, 9, 1), "TELEFON", "ilk arama"),
+             (datetime.date(2026, 9, 5), "TOPLANTI", "fabrikada görüştük")])
+        telefon = cari_aktiviteler[0]
+        ekler = list(telefon.ekler.filter(silindi=False))
+        self.assertEqual(len(ekler), 1)
+        self.assertEqual(ekler[0].orijinal_ad, "sozlesme.pdf")
+        self.assertTrue(ekler[0].dosya.name.endswith(".pdf"))
+        # aday tarafındaki aktiviteler SİLİNMEZ — iz kalır
+        self.assertEqual(aktif_aday_aktiviteleri(a).count(), 2)
 
 
 class AdayAktiviteServisTest(TestCase):

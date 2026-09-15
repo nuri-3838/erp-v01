@@ -18,7 +18,8 @@ from django.utils import timezone
 from core import gorsel
 from core.metin import buyuk_harf_tr
 from core.models import (
-    AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori, Cari, Sehir, Ulke,
+    AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori, Cari, CariAktivite,
+    CariAktiviteEk, Sehir, Ulke,
 )
 from core.sayi import SayiHatasi, parse_tr
 from core.services import cari as cari_servis
@@ -32,8 +33,11 @@ class AdayHatasi(ValueError):
 
 
 def aktif_aday_musteriler():
-    return (AdayMusteri.objects.filter(silindi=False)
-            .select_related("ulke", "sehir", "kategori", "donusen_cari"))
+    """Henüz Cariye dönüştürülmemiş adaylar — dönüştürülmüş bir aday artık 'aktif aday'
+    sayılmaz (bkz. aday_cariye_donustur), listeden çıkar; kaydın kendisi silinmez, yalnız
+    buradaki (liste ekranı) queryset'ten hariç tutulur — doğrudan pk ile erişim etkilenmez."""
+    return (AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)
+            .select_related("ulke", "sehir", "kategori"))
 
 
 def _ulke(ulke_id):
@@ -117,12 +121,33 @@ def aday_musteri_sil(aday: AdayMusteri, kullanici=None) -> AdayMusteri:
     return aday
 
 
+def _aktiviteleri_cariye_kopyala(aday, cari, kullanici=None):
+    """Adayın aktivitelerini (+ ekli dosyalarını) yeni Cari'ye KOPYALAR — CariAktivite ile
+    AdayAktivite birebir aynı alan şekline sahip (tarih/tür/açıklama). Aday tarafındaki
+    kayıtlar SİLİNMEZ/taşınmaz (iz kalır); Cari'de de aynı geçmiş görünsün diye kopyalanır."""
+    from django.core.files.base import ContentFile
+
+    aktiviteler = aday.aktiviteler.filter(silindi=False).prefetch_related(
+        Prefetch("ekler", queryset=AdayAktiviteEk.objects.filter(silindi=False)))
+    for aktivite in aktiviteler:
+        yeni = CariAktivite.objects.create(
+            cari=cari, tarih=aktivite.tarih, tur=aktivite.tur, aciklama=aktivite.aciklama,
+            created_by=kullanici, updated_by=kullanici)
+        for ek in aktivite.ekler.all():
+            with ek.dosya.open("rb") as f:
+                icerik = ContentFile(f.read(), name=ek.dosya.name.rsplit("/", 1)[-1])
+            CariAktiviteEk.objects.create(
+                aktivite=yeni, dosya=icerik, orijinal_ad=ek.orijinal_ad,
+                created_by=kullanici, updated_by=kullanici)
+
+
 @transaction.atomic
 def aday_cariye_donustur(aday: AdayMusteri, *, kategori_id=None, kullanici=None) -> Cari:
     """Adayı gerçek bir Cari'ye dönüştürür (muhasebe hesabı bu noktada açılır) — tek
     seferlik, zaten dönüştürülmüş bir aday tekrar dönüştürülemez. ``kategori_id`` burada
     Cari'nin KENDİ kategorisidir (CariKategori) — adayın kendi AdayMusteriKategori'siyle
-    karışmaz, ayrı ağaçlardır."""
+    karışmaz, ayrı ağaçlardır. Aday üzerindeki aktiviteler (+ ekleri) yeni Cari'ye kopyalanır
+    (bkz. _aktiviteleri_cariye_kopyala) — dönüşümle birlikte geçmiş görüşme kaydı kaybolmasın."""
     if aday.silindi:
         raise AdayHatasi("Silinmiş aday dönüştürülemez.")
     if aday.donusen_cari_id:
@@ -135,6 +160,7 @@ def aday_cariye_donustur(aday: AdayMusteri, *, kategori_id=None, kullanici=None)
     aday.donusen_cari = cari
     aday.updated_by = kullanici
     aday.save(update_fields=["donusen_cari", "updated_by", "updated_at"])
+    _aktiviteleri_cariye_kopyala(aday, cari, kullanici=kullanici)
     return cari
 
 
