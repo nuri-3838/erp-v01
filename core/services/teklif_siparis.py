@@ -17,8 +17,8 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
-from core.models import (AdayMusteri, Cari, Depo, KdvOrani, Stok, StokHareket, TanimSecenegi,
-                         TeklifSiparis, TeklifSiparisKalem)
+from core.models import (AdayMusteri, Cari, Depo, FirmaBanka, KdvOrani, Stok, StokHareket,
+                         TanimSecenegi, TeklifSiparis, TeklifSiparisKalem)
 from core.sayi import SayiHatasi, parse_tr
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
 
@@ -145,6 +145,22 @@ def _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id, navl
     }
 
 
+def _banka_coz(banka_hesabi_id, pb):
+    """Yalnız SATIŞ+PROFORMA'da anlamlı (PDF + detay sayfasında gösterilir) — boşsa None.
+    Seçilen banka hesabının para birimi proformanın KENDİ para birimiyle uyuşmalı (form/JS
+    zaten yalnız eşleşenleri listeler — bkz. satis_proforma_ekle.html; burası sunucu tarafı
+    güvence, JS atlanırsa/devre dışı kalırsa)."""
+    if not banka_hesabi_id:
+        return None
+    banka = FirmaBanka.objects.filter(pk=banka_hesabi_id, silindi=False).first()
+    if banka is None:
+        raise TeklifSiparisHatasi("Banka hesabı bulunamadı.")
+    if banka.para_birimi != pb:
+        raise TeklifSiparisHatasi(
+            "Seçilen banka hesabının para birimi, proformanın para birimiyle uyuşmuyor.")
+    return banka
+
+
 def _depo_coz_irsaliye(belge_tur, depo_id):
     """İRSALİYE'de depo ZORUNLU (gerçek stok hareketi için); diğer belge türlerinde hep None."""
     if belge_tur != TeklifSiparis.BelgeTur.IRSALIYE:
@@ -173,7 +189,7 @@ def _sonraki_sira(belge_tur, yon, yil):
 def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
                    gecerlilik_teslim_tarihi, para_birimi,
                    aciklama, kaynak_teklif=None, kaynak_proforma=None, kaynak_siparis=None,
-                   depo=None,
+                   depo=None, banka_hesabi=None,
                    irsaliye_no="", yukleme_sekli=None, odeme_kosulu=None, yukleme_tipi=None,
                    teslim_suresi=None, navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Numaralı başlık oluşturur: belge_no = ÖNEK-yıl-sıra (müteselsil/boşluksuz — fiş no ile
@@ -192,7 +208,7 @@ def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
                     belge_no=f"{onek}-{yil}-{sira:04d}", yil=yil, sira=sira,
                     para_birimi=para_birimi, aciklama=(aciklama or "").strip(),
                     kaynak_teklif=kaynak_teklif, kaynak_proforma=kaynak_proforma,
-                    kaynak_siparis=kaynak_siparis, depo=depo,
+                    kaynak_siparis=kaynak_siparis, depo=depo, banka_hesabi=banka_hesabi,
                     irsaliye_no=(irsaliye_no or "").strip(),
                     yukleme_sekli=yukleme_sekli, odeme_kosulu=odeme_kosulu,
                     yukleme_tipi=yukleme_tipi, teslim_suresi=teslim_suresi,
@@ -219,7 +235,7 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
                            satirlar, gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                            aciklama="", depo_id=None, irsaliye_no="",
                            yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
-                           teslim_suresi_id=None,
+                           teslim_suresi_id=None, banka_hesabi_id=None,
                            navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini oluşturur. Yevmiye ÜRETMEZ; İRSALİYE
     stok hareketi de ÜRETMEZ (o yalnız onaylanınca — bkz. teklif_siparis_onayla). Durum
@@ -232,13 +248,15 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
     cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
                                  satirlar=satirlar)
     pb = _pb_dogrula(para_birimi)
+    banka = _banka_coz(banka_hesabi_id, pb)
     depo = _depo_coz_irsaliye(belge_tur, depo_id)
     secenekler = _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
                                      navlun_tutari, teslim_suresi_id)
     ts = _belge_olustur(belge_tur=belge_tur, yon=yon, cari=cari, aday_musteri=aday, tarih=tarih,
                         gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
                         irsaliye_no=irsaliye_no, **secenekler,
-                        para_birimi=pb, aciklama=aciklama, depo=depo, kullanici=kullanici)
+                        para_birimi=pb, aciklama=aciklama, depo=depo, banka_hesabi=banka,
+                        kullanici=kullanici)
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
 
@@ -248,7 +266,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
                             satirlar, gecerlilik_teslim_tarihi=None, para_birimi="TRY",
                             aciklama="", depo_id=None, irsaliye_no="",
                             yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
-                            teslim_suresi_id=None,
+                            teslim_suresi_id=None, banka_hesabi_id=None,
                             navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini günceller (belge_tur/yon/belge_no SABİT —
     hangi ekrana ait olduğunu ve numarasını belirler, değişmez). Onaylı belge düzenlenemez
@@ -262,6 +280,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
     cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
                                  satirlar=satirlar)
     pb = _pb_dogrula(para_birimi)
+    banka = _banka_coz(banka_hesabi_id, pb)
     depo = _depo_coz_irsaliye(ts.belge_tur, depo_id)
     ts.kalemler.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
@@ -270,15 +289,16 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
     ts.para_birimi = pb
     ts.aciklama = (aciklama or "").strip()
     ts.depo = depo
+    ts.banka_hesabi = banka
     ts.irsaliye_no = (irsaliye_no or "").strip()
     for alan, deger in _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
                                            navlun_tutari, teslim_suresi_id).items():
         setattr(ts, alan, deger)
     ts.updated_by = kullanici
     ts.save(update_fields=["cari", "aday_musteri", "tarih", "gecerlilik_teslim_tarihi",
-                           "para_birimi", "aciklama", "depo", "irsaliye_no", "yukleme_sekli",
-                           "odeme_kosulu", "yukleme_tipi", "teslim_suresi", "navlun_tutari",
-                           "updated_by", "updated_at"])
+                           "para_birimi", "aciklama", "depo", "banka_hesabi", "irsaliye_no",
+                           "yukleme_sekli", "odeme_kosulu", "yukleme_tipi", "teslim_suresi",
+                           "navlun_tutari", "updated_by", "updated_at"])
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
 

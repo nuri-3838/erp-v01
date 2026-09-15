@@ -25,7 +25,7 @@ from core.forms import (
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
     TeklifSiparisForm, TeklifSiparisKalemForm, SatisBelgeBaslikForm, SatisTeklifKalemForm,
-    SatisProformaKalemForm,
+    SatisProformaBaslikForm, SatisProformaKalemForm,
     TanimSecenegiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
@@ -35,7 +35,7 @@ from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
-    Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
+    Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir,
 )
@@ -2047,6 +2047,13 @@ def _aday_meta():
             for a in AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)}
 
 
+def _banka_meta():
+    """Firma banka hesabı başına para birimi — Satış Proforması'nda para birimi seçilince
+    JS ile o PB'deki hesaplar filtrelenir (bkz. satis_proforma_ekle.html, SatisProformaBaslikForm)."""
+    return {str(b.pk): {"pb": b.para_birimi}
+            for b in FirmaBanka.objects.filter(silindi=False)}
+
+
 def _ts_ekle(request, belge_tur, yon, baslik, emoji):
     ekran = _TS_EKRAN[(belge_tur, yon)]
     if request.method == "POST":
@@ -2224,7 +2231,7 @@ def satis_proforma_ekle(request):
     "Proformaya Çevir" ile açılır ama bağımsız da oluşturulabilir."""
     urunler, stok_meta = _satis_teklif_stok_meta()
     if request.method == "POST":
-        bform = SatisBelgeBaslikForm(request.POST)
+        bform = SatisProformaBaslikForm(request.POST)
         formset = SatisProformaKalemFormSet(request.POST)
         if bform.is_valid() and formset.is_valid():
             satirlar = [
@@ -2245,6 +2252,7 @@ def satis_proforma_ekle(request):
                         tarih=cd["tarih"],
                         gecerlilik_teslim_tarihi=cd.get("gecerlilik_teslim_tarihi"),
                         para_birimi=cd.get("para_birimi", "TRY"),
+                        banka_hesabi_id=(cd["banka_hesabi"].pk if cd.get("banka_hesabi") else None),
                         **_secenek_kwargs(cd),
                         satirlar=satirlar, kullanici=request.user)
                     messages.success(request, f"Satış Proforması kaydedildi: {ts.belge_no}")
@@ -2252,7 +2260,7 @@ def satis_proforma_ekle(request):
                 except teklif_siparis_servis.TeklifSiparisHatasi as e:
                     bform.add_error(None, str(e))
     else:
-        bform = SatisBelgeBaslikForm()
+        bform = SatisProformaBaslikForm()
         formset = SatisProformaKalemFormSet(initial=[
             {"stok": s.pk, "dahil": False, "iskonto_yuzdesi": Decimal("0"),
              "birim_fiyat": next(
@@ -2261,6 +2269,7 @@ def satis_proforma_ekle(request):
     return render(request, "core/satis_proforma_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
         "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "banka_meta": _banka_meta(),
         "iptal_url": reverse("core:satis_proformalari")})
 
 
@@ -2273,7 +2282,7 @@ def satis_proforma_duzenle(request, pk):
         belge_tur=TeklifSiparis.BelgeTur.PROFORMA, yon=TeklifSiparis.Yon.SATIS)
     urunler, stok_meta = _satis_teklif_stok_meta()
     if request.method == "POST":
-        bform = SatisBelgeBaslikForm(request.POST)
+        bform = SatisProformaBaslikForm(request.POST)
         formset = SatisProformaKalemFormSet(request.POST)
         if bform.is_valid() and formset.is_valid():
             satirlar = [
@@ -2294,6 +2303,7 @@ def satis_proforma_duzenle(request, pk):
                         gecerlilik_teslim_tarihi=cd.get("gecerlilik_teslim_tarihi"),
                         para_birimi=cd.get("para_birimi", "TRY"),
                         aciklama=ts.aciklama,
+                        banka_hesabi_id=(cd["banka_hesabi"].pk if cd.get("banka_hesabi") else None),
                         **_secenek_kwargs(cd),
                         satirlar=satirlar, kullanici=request.user)
                     messages.success(request, "Satış Proforması güncellendi.")
@@ -2301,14 +2311,14 @@ def satis_proforma_duzenle(request, pk):
                 except teklif_siparis_servis.TeklifSiparisHatasi as e:
                     bform.add_error(None, str(e))
     else:
-        bform = SatisBelgeBaslikForm(initial={
+        bform = SatisProformaBaslikForm(initial={
             "karsi_taraf_tip": "aday" if ts.aday_musteri_id else "cari",
             "cari": ts.cari_id, "aday_musteri": ts.aday_musteri_id, "tarih": ts.tarih,
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
             "para_birimi": ts.para_birimi,
             "yukleme_sekli": ts.yukleme_sekli_id, "odeme_kosulu": ts.odeme_kosulu_id,
             "yukleme_tipi": ts.yukleme_tipi_id, "teslim_suresi": ts.teslim_suresi_id,
-            "navlun_tutari": ts.navlun_tutari})
+            "navlun_tutari": ts.navlun_tutari, "banka_hesabi": ts.banka_hesabi_id})
         mevcut = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
         formset = SatisProformaKalemFormSet(initial=[
             {"stok": s.pk, "dahil": s.pk in mevcut,
@@ -2321,6 +2331,7 @@ def satis_proforma_duzenle(request, pk):
     return render(request, "core/satis_proforma_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
         "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "banka_meta": _banka_meta(),
         "duzenleme": True,
         "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
@@ -2724,6 +2735,7 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
     kdv_toplam = ts.kdv_toplam if yurt_ici else Decimal("0")
     genel_toplam = ts.ara_toplam + kdv_toplam
     firma = firma_servis.firma_bilgisi_getir()
+    bankalar = [ts.banka_hesabi] if ts.banka_hesabi_id else []
     notlar = []
     if ts.gecerlilik_teslim_tarihi:
         notlar.append(E["not_gecerlilik_tarihli"].format(
@@ -2732,7 +2744,6 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
         notlar.append(E["not_gecerlilik_varsayilan"])
     if not yurt_ici:
         notlar.append(E["not_kdv_istisna"])
-    bankalar = list(firma.bankalar.filter(silindi=False)) if firma else []
     if bankalar:
         notlar.append(E["not_odeme"])
     return {

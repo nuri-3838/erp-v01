@@ -291,3 +291,149 @@ class SatisProformaTest(TestCase):
             self.client.get(reverse("core:satis_proforma_ekle")).status_code, 403)
         self.assertEqual(
             self.client.get(reverse("core:satis_proformalari")).status_code, 403)
+
+
+class SatisProformaBankaHesabiTest(TestCase):
+    """Kullanıcı isteği: Proforma içinde banka seçilebilsin; yalnız proformanın PARA BİRİMİYLE
+    eşleşen hesaplar listelensin (JS ile filtrelenir, sunucu tarafında _banka_coz ile
+    doğrulanır); seçilen bankanın detayları hem PDF'te (satis_proforma_pdf_baglam) hem de
+    detay sayfasında (teklif_siparis_detay.html) gösterilsin."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.services.firma import firma_bilgisi_getir
+        from core.models import Birim, FirmaBanka
+
+        cls.yon = User.objects.create_superuser("spbyon", password="x")
+        _hesap("120.04", "MÜŞTERİ SATIŞ PROFORMA BANKA")
+        cls.cari = Cari.objects.create(
+            kod="C4", unvan="MÜŞTERİ SATIŞ PROFORMA BANKA", muhasebe_kodu="120.04",
+            para_birimi="USD", created_by=cls.yon, updated_by=cls.yon)
+        ust = Kategori.objects.create(kod="151", ad="MAMUL2", created_by=cls.yon,
+                                      updated_by=cls.yon)
+        kat = Kategori.objects.create(kod="11", ad="MERDİVEN2", ust=ust,
+                                      created_by=cls.yon, updated_by=cls.yon)
+        birim = Birim.objects.create(ad="ADET2", kisa_ad="AD2", ondalik=0)
+        kdv = KdvOrani.objects.create(oran=Decimal("20"), aciklama="Genel2",
+                                      created_by=cls.yon, updated_by=cls.yon)
+        cls.urun = stok_olustur(
+            ad="banka test merdiveni", kategori_id=kat.pk, uretim_birimi_id=birim.pk,
+            fatura_birimi_id=birim.pk, kdv_id=kdv.pk,
+            satis_urunu=True, model_kodu="bt1", basamak_sayisi=3,
+            fiyat_try="12000", fiyat_usd="350", kullanici=cls.yon)
+        firma = firma_bilgisi_getir()
+        cls.banka_usd = FirmaBanka.objects.create(
+            firma=firma, banka_adi="Garanti BBVA", sube="Kayseri",
+            hesap_sahibi="SEMTA A.Ş.", iban="TR000000000000000000000001",
+            para_birimi="USD")
+        cls.banka_try = FirmaBanka.objects.create(
+            firma=firma, banka_adi="İş Bankası", sube="Kayseri",
+            hesap_sahibi="SEMTA A.Ş.", iban="TR000000000000000000000002",
+            para_birimi="TRY")
+
+    def _post_govde(self, **over):
+        govde = {
+            "karsi_taraf_tip": "cari", "cari": self.cari.pk,
+            "tarih": "2026-09-15", "para_birimi": "USD",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.urun.pk, "form-0-dahil": "on",
+            "form-0-miktar": "10", "form-0-iskonto_yuzdesi": "0",
+            "form-0-birim_fiyat": "350",
+        }
+        govde.update(over)
+        return govde
+
+    def _son_proforma(self):
+        return TeklifSiparis.objects.filter(
+            belge_tur="PROFORMA", yon="SATIS", cari=self.cari).latest("id")
+
+    def test_form_queryset_tum_aktif_bankalari_icerir(self):
+        """Sunucu tarafı queryset filtrelenmez — PB'ye göre daraltma JS ile yapılır."""
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_proforma_ekle"))
+        secenekler = list(r.context["bform"].fields["banka_hesabi"].queryset)
+        self.assertIn(self.banka_usd, secenekler)
+        self.assertIn(self.banka_try, secenekler)
+
+    def test_banka_meta_context_pb_bilgisi_dogru(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_proforma_ekle"))
+        self.assertEqual(r.context["banka_meta"][str(self.banka_usd.pk)], {"pb": "USD"})
+        self.assertEqual(r.context["banka_meta"][str(self.banka_try.pk)], {"pb": "TRY"})
+
+    def test_post_eslesen_banka_ile_proforma_olusturulur(self):
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:satis_proforma_ekle"),
+                             self._post_govde(**{"banka_hesabi": self.banka_usd.pk}))
+        ts = self._son_proforma()
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertEqual(ts.banka_hesabi_id, self.banka_usd.pk)
+
+    def test_post_banka_secilmezse_banka_hesabi_bos_kalir(self):
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        self.assertIsNone(ts.banka_hesabi_id)
+
+    def test_post_uyusmayan_pb_bankasi_reddedilir(self):
+        """_banka_coz: seçilen bankanın para birimi proformanın kendi para birimiyle
+        uyuşmuyorsa hata — JS zaten yalnız eşleşenleri listeler ama sunucu tarafı da
+        güvence altına alır."""
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:satis_proforma_ekle"),
+                             self._post_govde(**{"banka_hesabi": self.banka_try.pk}))
+        self.assertContains(r, "para birimiyle uyuşmuyor")
+        self.assertFalse(TeklifSiparis.objects.filter(
+            belge_tur="PROFORMA", yon="SATIS", cari=self.cari).exists())
+
+    def test_duzenle_initial_banka_hesabi_ve_guncelleme(self):
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"),
+                         self._post_govde(**{"banka_hesabi": self.banka_usd.pk}))
+        ts = self._son_proforma()
+        rg = self.client.get(reverse("core:satis_proforma_duzenle", args=[ts.pk]))
+        self.assertEqual(rg.context["bform"].initial["banka_hesabi"], self.banka_usd.pk)
+        # banka hesabı kaldırılır (boş bırakılır)
+        rp = self.client.post(reverse("core:satis_proforma_duzenle", args=[ts.pk]),
+                              self._post_govde(**{"banka_hesabi": ""}))
+        self.assertRedirects(rp, reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        ts.refresh_from_db()
+        self.assertIsNone(ts.banka_hesabi_id)
+
+    def test_pdf_baglam_bankalar_yalniz_secili_hesabi_icerir(self):
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"),
+                         self._post_govde(**{"banka_hesabi": self.banka_usd.pk}))
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertEqual(baglam["bankalar"], [self.banka_usd])
+
+    def test_pdf_baglam_banka_secilmemisse_bankalar_bos(self):
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertEqual(baglam["bankalar"], [])
+
+    def test_detay_sayfasi_secili_banka_detaylarini_gosterir(self):
+        """Kullanıcı isteği: 'Ben onu seçtiğimde Proforma detayının altında banka
+        detaylarımız yazsın.'"""
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"),
+                         self._post_govde(**{"banka_hesabi": self.banka_usd.pk}))
+        ts = self._son_proforma()
+        r = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertContains(r, "Garanti BBVA")
+        self.assertContains(r, "TR000000000000000000000001")
+
+    def test_detay_sayfasi_banka_secilmemisse_bolum_gosterilmez(self):
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        r = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertNotContains(r, "Banka Bilgileri")

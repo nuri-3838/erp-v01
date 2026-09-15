@@ -7,6 +7,7 @@
 {{ stok_meta|json_script:"stok-meta" }}
 {{ cari_meta|json_script:"cari-meta" }}
 {{ aday_meta|json_script:"aday-meta" }}
+{{ banka_meta|json_script:"banka-meta" }}
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{{ iptal_url }}">← Geri</a>
@@ -53,6 +54,11 @@
             <label for="{{ bform.gecerlilik_teslim_tarihi.id_for_label }}">{{ bform.gecerlilik_teslim_tarihi.label }}</label>
             {{ bform.gecerlilik_teslim_tarihi }}
             {% for e in bform.gecerlilik_teslim_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.banka_hesabi.id_for_label }}">{{ bform.banka_hesabi.label }}</label>
+            {{ bform.banka_hesabi }}
+            {% for e in bform.banka_hesabi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         </div>
         <div class="bb-satir">
@@ -196,6 +202,7 @@
   var STOK_META = JSON.parse(document.getElementById('stok-meta').textContent);
   var CARI_META = JSON.parse(document.getElementById('cari-meta').textContent);
   var ADAY_META = JSON.parse(document.getElementById('aday-meta').textContent);
+  var BANKA_META = JSON.parse(document.getElementById('banka-meta').textContent);
 
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
@@ -251,6 +258,28 @@
   var cariSec = document.getElementById('id_cari');
   var adaySec = document.getElementById('id_aday_musteri');
   var pbSec = document.getElementById('id_para_birimi');
+  var bankaSec = document.getElementById('id_banka_hesabi');
+  var BANKA_SECENEKLERI = bankaSec ? Array.prototype.map.call(bankaSec.options, function(o){
+    return {value: o.value, text: o.textContent}; }) : [];
+
+  function bankaFiltreUygula(pb){
+    if(!bankaSec) return;
+    var oncekiDeger = bankaSec.value;
+    bankaSec.innerHTML = '';
+    BANKA_SECENEKLERI.forEach(function(o){
+      if(o.value && BANKA_META[o.value] && BANKA_META[o.value].pb !== pb) return;
+      var opt = document.createElement('option'); opt.value = o.value; opt.textContent = o.text;
+      bankaSec.appendChild(opt);
+    });
+    var gecerliMi = Array.prototype.some.call(bankaSec.options, function(o){ return o.value === oncekiDeger; });
+    bankaSec.value = gecerliMi ? oncekiDeger : '';
+    var girdi = bankaSec.previousElementSibling;
+    if(girdi && girdi.classList.contains('akilli-girdi')){
+      var secili = bankaSec.options[bankaSec.selectedIndex];
+      girdi.value = (secili && secili.value) ? secili.textContent.trim() : '';
+    }
+  }
+
   var ktRadyolar = document.querySelectorAll('input[name="karsi_taraf_tip"]');
   var ktCariBlok = document.getElementById('kt-cari-blok');
   var ktAdayBlok = document.getElementById('kt-aday-blok');
@@ -288,6 +317,7 @@
 
   if(pbSec) pbSec.addEventListener('change', function(){
     document.querySelectorAll('.fk-satir').forEach(function(card){ fiyatiUygula(card, pbSec.value); });
+    bankaFiltreUygula(pbSec.value);
     ozetGuncelle();
   });
 
@@ -300,6 +330,7 @@
     if(e.target.classList.contains('fk-dahil-kutu')) ozetGuncelle();
   });
 
+  if(pbSec) bankaFiltreUygula(pbSec.value);
   document.querySelectorAll('.fk-satir').forEach(netHesapla);
   ozetGuncelle();
 })();

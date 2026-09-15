@@ -18,7 +18,7 @@ from core.metin import buyuk_harf_tr
 from core.models import (
     AdayAktivite, AdayMusteri, AdayMusteriKategori, Banka, BankaHesap, Birim, Cari,
     CariAktivite, CariKategori,
-    CekSenet, Depo, FaturaTipi,
+    CekSenet, Depo, FaturaTipi, FirmaBanka,
     HesapPlani, Kasa, Kategori, KdvOrani,
     Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
 )
@@ -1585,6 +1585,25 @@ class SatisBelgeBaslikForm(forms.Form):
                 self.add_error("cari", "Cari seçin.")
             cd["aday_musteri"] = None
         return cd
+
+
+class SatisProformaBaslikForm(SatisBelgeBaslikForm):
+    """Satış Proforması başlığı — SatisBelgeBaslikForm'un tüm alanlarına ek olarak banka
+    hesabı seçimi (yalnız Proforma'da anlamlı; PDF ve detay sayfasında gösterilir). Queryset
+    TÜM aktif hesapları taşır — para birimine göre filtreleme JS ile yapılır (bkz.
+    satis_proforma_ekle.html); sunucu tarafı eşleşme kontrolü servis katmanında (_banka_coz)."""
+
+    banka_hesabi = forms.ModelChoiceField(
+        label="Banka Hesabı", queryset=FirmaBanka.objects.none(), required=False,
+        empty_label="— banka seçilmedi —")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["banka_hesabi"].queryset = (
+            FirmaBanka.objects.filter(silindi=False).order_by("sira", "pk"))
+        self.fields["banka_hesabi"].label_from_instance = (
+            lambda o: f"{o.banka_adi}{' · ' + o.sube if o.sube else ''} ({o.para_birimi})")
+        self.fields["banka_hesabi"].widget.attrs["class"] = "akilli-sec"
 
 
 class SatisTeklifKalemForm(forms.Form):

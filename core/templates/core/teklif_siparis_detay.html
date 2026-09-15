@@ -231,6 +231,18 @@
     </table>
     </div>
   </section>
+  {% if ts.banka_hesabi %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🏦</span>Banka Bilgileri</h2>
+    <div class="kv">
+      <div class="satir"><span class="et">Banka</span><span class="dg">{{ ts.banka_hesabi.banka_adi }}</span></div>
+      {% if ts.banka_hesabi.sube %}<div class="satir"><span class="et">Şube</span><span class="dg">{{ ts.banka_hesabi.sube }}</span></div>{% endif %}
+      <div class="satir"><span class="et">Hesap Sahibi</span><span class="dg">{{ ts.banka_hesabi.hesap_sahibi }}</span></div>
+      <div class="satir"><span class="et">IBAN</span><span class="dg mono">{{ ts.banka_hesabi.iban }}</span></div>
+      <div class="satir"><span class="et">Para Birimi</span><span class="dg">{{ ts.banka_hesabi.para_birimi }}</span></div>
+    </div>
+  </section>
+  {% endif %}
   {% else %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📦</span>Kalemler</h2>

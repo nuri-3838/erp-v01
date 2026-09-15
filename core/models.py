@@ -1385,6 +1385,11 @@ class TeklifSiparis(TemelModel):
     kaynak_siparis = models.ForeignKey(
         "self", verbose_name="kaynak sipariş", null=True, blank=True,
         on_delete=models.PROTECT, related_name="donusen_irsaliyeler")
+    # Yalnız SATIŞ+PROFORMA'da kullanılır — proformanın para birimine uygun firma banka
+    # hesabı (PDF + detay sayfasında gösterilir). Boşsa banka bilgisi hiç gösterilmez.
+    banka_hesabi = models.ForeignKey(
+        "FirmaBanka", verbose_name="banka hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="teklif_siparisler")
     # IRSALIYE ise: malın girdiği depo (gerçek stok hareketi için gerekli — serviste zorunlu).
     depo = models.ForeignKey(
         "Depo", verbose_name="depo", null=True, blank=True,
