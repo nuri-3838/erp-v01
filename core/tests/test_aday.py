@@ -108,6 +108,13 @@ class AdayMusteriServisTest(TestCase):
         self.assertEqual(a.unvan, "Y")
         self.assertEqual(a.iskonto_yuzdesi, 10)
 
+    def test_ikinci_telefon_ve_eposta(self):
+        a = aday_musteri_olustur(
+            unvan="x", telefon="0212", telefon_2="0533", eposta="A@X.com",
+            eposta_2="B@X.com")
+        self.assertEqual(a.telefon_2, "0533")
+        self.assertEqual(a.eposta_2, "b@x.com")
+
     def test_silinmis_guncellenemez(self):
         a = aday_musteri_olustur(unvan="x")
         aday_musteri_sil(a)
@@ -125,11 +132,12 @@ class AdayMusteriServisTest(TestCase):
 class AdayCariyeDonusturTest(TestCase):
     def test_donusturur_ve_iz_birakir(self):
         a = aday_musteri_olustur(
-            unvan="beta gmbh", ilgili_kisi="hans", telefon="+491234", eposta="hans@beta.de",
-            para_birimi="EUR", iskonto_yuzdesi="5")
+            unvan="beta gmbh", ilgili_kisi="hans", telefon="+491234", telefon_2="+495678",
+            eposta="hans@beta.de", para_birimi="EUR", iskonto_yuzdesi="5")
         cari = aday_cariye_donustur(a)
         self.assertEqual(cari.unvan, "BETA GMBH")
         self.assertEqual(cari.telefon, "+491234")
+        self.assertEqual(cari.telefon_2, "+495678")
         self.assertEqual(cari.para_birimi, "EUR")
         self.assertEqual(cari.iskonto_yuzdesi, 5)
         a.refresh_from_db()
@@ -295,9 +303,13 @@ class AdayMusteriViewTest(TestCase):
     def test_ekle_post(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:aday_musteri_ekle"), {
-            "unvan": "yeni aday", "para_birimi": "TRY", "iskonto_yuzdesi": "0"})
+            "unvan": "yeni aday", "telefon": "0212 111 11 11", "telefon_2": "0533 222 22 22",
+            "eposta": "a@x.com", "eposta_2": "b@x.com",
+            "para_birimi": "TRY", "iskonto_yuzdesi": "0"})
         self.assertEqual(r.status_code, 302)
-        self.assertTrue(AdayMusteri.objects.filter(unvan="YENİ ADAY").exists())
+        a = AdayMusteri.objects.get(unvan="YENİ ADAY")
+        self.assertEqual(a.telefon_2, "0533 222 22 22")
+        self.assertEqual(a.eposta_2, "b@x.com")
 
     def test_unvansiz_ekle_hata_doner(self):
         self.client.force_login(self.yon)

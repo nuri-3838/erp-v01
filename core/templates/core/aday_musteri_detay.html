@@ -74,7 +74,9 @@
     <div class="kv">
       <div class="satir"><span class="et">İlgili Kişi</span><span class="dg">{{ aday.ilgili_kisi|default:"—" }}</span></div>
       <div class="satir"><span class="et">Telefon</span><span class="dg">{{ aday.telefon|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Telefon 2</span><span class="dg">{{ aday.telefon_2|default:"—" }}</span></div>
       <div class="satir"><span class="et">E-posta</span><span class="dg">{{ aday.eposta|default:"—" }}</span></div>
+      <div class="satir"><span class="et">E-posta 2</span><span class="dg">{{ aday.eposta_2|default:"—" }}</span></div>
       <div class="satir"><span class="et">Ülke / Şehir</span><span class="dg">{% if aday.ulke %}{{ aday.ulke.ad }}{% if aday.sehir %} / {{ aday.sehir.ad }}{% endif %}{% else %}—{% endif %}</span></div>
       <div class="satir"><span class="et">Kategori</span><span class="dg">{{ aday.kategori.ad|default:"—" }}</span></div>
       <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg">%{{ aday.iskonto_yuzdesi|tr_kur:2 }}</span></div>

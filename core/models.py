@@ -491,6 +491,10 @@ class Stok(TemelModel):
     tedarikci = models.ForeignKey(
         "Cari", verbose_name="tedarikçi (cari)", null=True, blank=True,
         on_delete=models.PROTECT, related_name="tedarik_stoklari")
+    # Tedarikçinin bu ürüne verdiği isim ("tedarikçinin dilinde" satınalma için) — imalat/dahili
+    # ad'dan (ad) BAĞIMSIZ; satınalma ekranlarında/PDF'lerinde ad yerine kullanılır. Boşsa
+    # ad_satinalma() dahili ad'a düşer (ad_dil() ile aynı desen, satış yerine satınalma yönü).
+    tedarikci_adi = models.CharField("tedarikçi ürün adı", max_length=200, blank=True, default="")
     # FASON: bu kart bir "kesilmiş parça" (fasoncunun bir ham profilden kestiği ara ürün)
     # ise, hangi ham profilden (Stok, kendi kendine FK) kesildiği — 1:1, o parçanın kendi
     # tanımının sabit bir özelliği (bkz. FasonKesim, üst katman: bitmiş ürün → kesilmiş
@@ -611,6 +615,10 @@ class Stok(TemelModel):
     def materyal_dil(self, dil):
         """Teklif PDF'i için dile göre materyal ('en' -> materyal_en, boşsa materyal)."""
         return (self.materyal_en or self.materyal) if dil == "en" else self.materyal
+
+    def ad_satinalma(self):
+        """Satınalma ekranı/PDF'i için ad — boşsa ad döner (bkz. ad_dil() ile aynı desen)."""
+        return self.tedarikci_adi or self.ad
 
 
 class StokFiyat(TemelModel):
@@ -935,7 +943,9 @@ class AdayMusteri(TemelModel):
     unvan = models.CharField("unvan / ad soyad", max_length=200)
     ilgili_kisi = models.CharField("ilgili kişi", max_length=120, blank=True, default="")
     telefon = models.CharField("telefon", max_length=20, blank=True, default="")
+    telefon_2 = models.CharField("telefon 2", max_length=20, blank=True, default="")
     eposta = models.EmailField("e-posta", blank=True, default="")
+    eposta_2 = models.EmailField("e-posta 2", blank=True, default="")
     ulke = models.ForeignKey(
         "Ulke", verbose_name="ülke", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
@@ -1627,11 +1637,11 @@ class StokHareket(TemelModel):
     teklif_siparis_kalem = models.ForeignKey(
         "TeklifSiparisKalem", verbose_name="kaynak irsaliye kalemi", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="stok_hareketleri")
-    # Üretim Emri onayından otomatik üretilen BİLEŞEN ÇIKIŞ hareketleri bu kaleme bağlanır
-    # (mamul GİRİŞ hareketinin böyle bir satır karşılığı yok — emrin kendisi aciklama'da anılır).
-    uretim_emri_satir = models.ForeignKey(
-        "UretimEmriSatir", verbose_name="kaynak üretim emri satırı", null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="stok_hareketleri")
+    # Operasyon Kaydı onayından otomatik üretilen GİRDİ ÇIKIŞ hareketleri bu kaleme bağlanır
+    # (çıktı GİRİŞ hareketinin böyle bir satır karşılığı yok — kaydın kendisi aciklama'da anılır).
+    operasyon_kaydi_girdi = models.ForeignKey(
+        "OperasyonKaydiGirdi", verbose_name="kaynak operasyon kaydı girdisi", null=True,
+        blank=True, on_delete=models.SET_NULL, related_name="stok_hareketleri")
     kaynak = models.CharField("kaynak", max_length=20, choices=Kaynak.choices,
                               default=Kaynak.MANUEL)
 
@@ -2200,84 +2210,114 @@ class FasonKesimKaydiKalemi(TemelModel):
         return f"{self.kayit.no} — {self.urun.kod} × {self.miktar}"
 
 
-# === ÜRETİM modülü — Ürün Ağacı (BOM) + Üretim Emirleri ===
-# Bağımsız, sıfırdan kurulan bir Stok↔Stok reçetesi — FASON'daki kesilmiş-parça/
-# kesildigi_profil kavramıyla hiçbir ilişkisi yoktur. Üretim Emri onayı yalnızca
-# StokHareket (miktar) üretir; hiçbir YevmiyeFisi/YevmiyeSatir'e dokunmaz — maliyetin
-# muhasebeye yansıtılması ay sonu mali müşavirin elle yapacağı ayrı bir iştir
-# (bkz. docs/ERP_v0.1_kapsam.md v0.4).
-class UrunAgaci(TemelModel):
-    """ÜRETİM > Ürün Ağacı Tanımları — bir mamulün (Stok) 1 biriminin hangi bileşenlerden
-    (yine birer Stok kartı) ne miktarda oluştuğunu tanımlar. Mamul başına en fazla 1 aktif
-    tanım olur; bileşen satırları UrunAgaciSatir'da."""
+# === ÜRETİM modülü — İş İstasyonu + Operasyon (rota) + Üretim Emri + Operasyon Kaydı ===
+# Bağımsız, sıfırdan kurulan bir Stok↔Stok rota modeli — FASON'daki kesilmiş-parça/
+# kesildigi_profil kavramıyla hiçbir ilişkisi yoktur. Bitmiş bir ürün, farklı İŞ
+# İSTASYONLARINDA (Lazer Kesim, Büküm, ...) art arda yapılan OPERASYONLARLA adım adım
+# ortaya çıkar: her Operasyon, bir istasyonda, bir/daha fazla GİRDİ stoktan TEK bir ÇIKTI
+# stok üretir (oranlı dönüşüm — örn. 1 boy profil → 2 adet kesilmiş parça). Bir Üretim
+# Emri (\"1 adet merdiven istiyorum\") bu zinciri özyinelemeli olarak hesaplayıp zincirdeki
+# HER operasyon için ayrı bir TASLAK Operasyon Kaydı açar; her istasyon KENDİ kaydını kendi
+# zamanında onaylar — onay anında stok ÇIKIŞ/GİRİŞ hareketleri (Kaynak=URETIM) yazılır.
+# Hiçbir adım YevmiyeFisi/YevmiyeSatir'e dokunmaz — maliyetin muhasebeye yansıtılması ay
+# sonu mali müşavirin elle yapacağı ayrı bir iştir (bkz. docs/ERP_v0.1_kapsam.md v0.4).
+class IsIstasyonu(TemelModel):
+    """ÜRETİM > İş İstasyonları — fiziksel/mantıksal üretim istasyonu (örn. Lazer Kesim,
+    Büküm, Kaynak, Montaj). Depo modeliyle birebir aynı desen."""
 
-    mamul = models.ForeignKey(
-        Stok, verbose_name="mamul", on_delete=models.PROTECT, related_name="urun_agaclari")
+    kod = models.CharField("kod", max_length=20)
+    ad = models.CharField("ad", max_length=100)
+
+    class Meta:
+        db_table = "core_is_istasyonu"
+        verbose_name = "iş istasyonu"
+        verbose_name_plural = "iş istasyonları"
+        ordering = ["kod"]
+        constraints = [
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
+                                    name="uq_is_istasyonu_kod_aktif"),
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_is_istasyonu_ad_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.kod} {self.ad}"
+
+
+class Operasyon(TemelModel):
+    """ÜRETİM > Operasyon Tanımları — bir iş istasyonunda, bir/daha fazla GİRDİ stoktan TEK
+    bir ÇIKTI stok üretilme tanımı (rota adımı). cikti_miktar: 1 ÇALIŞTIRMADA üretilen çıktı
+    adedi (kesimde 2 olabilir — 1 boydan 2 parça). Çıktı başına en fazla 1 aktif operasyon
+    olur; çıktı, oluşturulduktan sonra değişmez. Girdi satırları OperasyonGirdi'de."""
+
+    istasyon = models.ForeignKey(
+        IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT,
+        related_name="operasyonlar")
+    cikti = models.ForeignKey(
+        Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="operasyonlar")
+    cikti_miktar = models.DecimalField(
+        "çıktı miktarı (1 çalıştırma için)", max_digits=18, decimal_places=3, default=1)
+    ad = models.CharField("ad", max_length=150, blank=True, default="")
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
 
     class Meta:
-        db_table = "core_urun_agaci"
-        verbose_name = "ürün ağacı"
-        verbose_name_plural = "ürün ağaçları"
-        ordering = ["mamul__kod"]
+        db_table = "core_operasyon"
+        verbose_name = "operasyon"
+        verbose_name_plural = "operasyonlar"
+        ordering = ["istasyon__kod", "cikti__kod"]
         constraints = [
-            models.UniqueConstraint(fields=["mamul"], condition=models.Q(silindi=False),
-                                    name="uq_urun_agaci_mamul_aktif"),
+            models.UniqueConstraint(fields=["cikti"], condition=models.Q(silindi=False),
+                                    name="uq_operasyon_cikti_aktif"),
+            models.CheckConstraint(condition=models.Q(cikti_miktar__gt=0),
+                                   name="ck_operasyon_cikti_miktar_gt0"),
         ]
 
     def __str__(self):
-        return f"{self.mamul.kod} ürün ağacı"
+        return self.ad or f"{self.cikti.kod} operasyonu"
 
 
-class UrunAgaciSatir(TemelModel):
-    urun_agaci = models.ForeignKey(
-        UrunAgaci, on_delete=models.CASCADE, related_name="satirlar")
-    bilesen = models.ForeignKey(
-        Stok, verbose_name="bileşen", on_delete=models.PROTECT,
-        related_name="urun_agaci_kullanimlari")
-    miktar = models.DecimalField("miktar (1 mamul için)", max_digits=18, decimal_places=3)
+class OperasyonGirdi(TemelModel):
+    operasyon = models.ForeignKey(
+        Operasyon, on_delete=models.CASCADE, related_name="girdiler")
+    girdi = models.ForeignKey(
+        Stok, verbose_name="girdi", on_delete=models.PROTECT,
+        related_name="operasyon_girdi_kullanimlari")
+    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=3)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
 
     class Meta:
-        db_table = "core_urun_agaci_satir"
-        verbose_name = "ürün ağacı satırı"
-        verbose_name_plural = "ürün ağacı satırları"
+        db_table = "core_operasyon_girdi"
+        verbose_name = "operasyon girdisi"
+        verbose_name_plural = "operasyon girdileri"
         ordering = ["sira", "pk"]
         constraints = [
             models.CheckConstraint(condition=models.Q(miktar__gt=0),
-                                   name="ck_urun_agaci_satir_miktar_gt0"),
-            models.UniqueConstraint(fields=["urun_agaci", "bilesen"],
+                                   name="ck_operasyon_girdi_miktar_gt0"),
+            models.UniqueConstraint(fields=["operasyon", "girdi"],
                                     condition=models.Q(silindi=False),
-                                    name="uq_urun_agaci_satir_bilesen_aktif"),
+                                    name="uq_operasyon_girdi_aktif"),
         ]
 
     def __str__(self):
-        return f"{self.urun_agaci.mamul.kod} ← {self.bilesen.kod} × {self.miktar}"
+        return f"{self.operasyon} ← {self.girdi.kod} × {self.miktar}"
 
 
 class UretimEmri(TemelModel):
-    """ÜRETİM > Üretim Emirleri — bir mamulden ne kadar üretileceğini/üretildiğini kaydeden
-    numaralı, durum kontrollü belge. TASLAK'ta serbestçe düzenlenir/silinir; Onayla'da tek
-    atomik işlemde bileşenler için stok ÇIKIŞ + mamul için stok GİRİŞ hareketleri (Kaynak=
-    URETIM) otomatik yazılır ve emir kilitlenir — bir daha değişmez/silinmez."""
-
-    class Durum(models.TextChoices):
-        TASLAK = "TASLAK", "Taslak"
-        ONAYLI = "ONAYLI", "Onaylı"
+    """ÜRETİM > Üretim Emirleri — üst-düzey tetikleyici (\"N adet [hedef ürün] istiyorum\").
+    Kendi başına stok hareketi ÜRETMEZ: yalnızca zincirdeki her operasyon için ayrı bir
+    TASLAK OperasyonKaydi açar (tek atomik işlemde, hepsi aynı depoyu kullanır). Her
+    OperasyonKaydi'nın onayı bu emirden BAĞIMSIZ, ilgili istasyon kendi zamanında yapar —
+    emir açılışı hiçbir durumu etkilemez, hepsi TASLAK açılır."""
 
     yil = models.PositiveSmallIntegerField("yıl", editable=False)
     sira = models.PositiveIntegerField("sıra", editable=False)
     no = models.CharField("emir no", max_length=20, editable=False)
-    mamul = models.ForeignKey(
-        Stok, verbose_name="mamul", on_delete=models.PROTECT, related_name="uretim_emirleri")
-    urun_agaci = models.ForeignKey(
-        UrunAgaci, verbose_name="ürün ağacı", on_delete=models.PROTECT,
-        related_name="uretim_emirleri")
+    hedef_urun = models.ForeignKey(
+        Stok, verbose_name="hedef ürün", on_delete=models.PROTECT, related_name="uretim_emirleri")
+    hedef_miktar = models.DecimalField("hedef miktar", max_digits=18, decimal_places=3)
     depo = models.ForeignKey(
         Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="uretim_emirleri")
     tarih = models.DateField("tarih")
-    planlanan_miktar = models.DecimalField("planlanan miktar", max_digits=18, decimal_places=3)
-    durum = models.CharField("durum", max_length=6, choices=Durum.choices, default=Durum.TASLAK)
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
 
     class Meta:
@@ -2287,38 +2327,83 @@ class UretimEmri(TemelModel):
         ordering = ["-yil", "-sira"]
         constraints = [
             models.UniqueConstraint(fields=["yil", "sira"], name="uq_uretim_emri_yil_sira"),
-            models.CheckConstraint(condition=models.Q(planlanan_miktar__gt=0),
-                                   name="ck_uretim_emri_planlanan_miktar_gt0"),
+            models.CheckConstraint(condition=models.Q(hedef_miktar__gt=0),
+                                   name="ck_uretim_emri_hedef_miktar_gt0"),
         ]
 
     def __str__(self):
         return self.no
 
 
-class UretimEmriSatir(TemelModel):
-    emir = models.ForeignKey(UretimEmri, on_delete=models.CASCADE, related_name="satirlar")
-    bilesen = models.ForeignKey(
-        Stok, verbose_name="bileşen", on_delete=models.PROTECT,
-        related_name="uretim_emri_kullanimlari")
-    # Ürün ağacından SNAPSHOT (emir açıldığı andaki tanıma göre) — tanım sonradan değişse
-    # bu emir etkilenmez. gerceklesen_miktar TASLAK'ta elle düzeltilebilir (gerçek sarfiyat/
-    # fire planlanandan sapabilir); Onayla'da STOK ÇIKIŞI bu değerle yazılır.
+class OperasyonKaydi(TemelModel):
+    """ÜRETİM > Operasyon Kayıtları — bir Operasyon'un fiilen çalıştırılma kaydı, bir
+    istasyonda, bir tarihte. TASLAK'ta serbestçe düzenlenir/silinir; Onayla'da tek atomik
+    işlemde girdiler için stok ÇIKIŞ + çıktı için stok GİRİŞ hareketleri (Kaynak=URETIM)
+    yazılır, kayıt kilitlenir. uretim_emri doluysa bir üst Üretim Emri'nden otomatik
+    açılmıştır; boşsa istasyonun kendi inisiyatifiyle açtığı bağımsız/serbest kayıttır."""
+
+    class Durum(models.TextChoices):
+        TASLAK = "TASLAK", "Taslak"
+        ONAYLI = "ONAYLI", "Onaylı"
+
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("kayıt no", max_length=20, editable=False)
+    operasyon = models.ForeignKey(
+        Operasyon, verbose_name="operasyon", on_delete=models.PROTECT, related_name="kayitlar")
+    uretim_emri = models.ForeignKey(
+        UretimEmri, verbose_name="üretim emri", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="operasyon_kayitlari")
+    depo = models.ForeignKey(
+        Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="operasyon_kayitlari")
+    tarih = models.DateField("tarih")
+    hedef_cikti_miktari = models.DecimalField(
+        "hedef çıktı miktarı", max_digits=18, decimal_places=3)
+    durum = models.CharField("durum", max_length=6, choices=Durum.choices, default=Durum.TASLAK)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+
+    class Meta:
+        db_table = "core_operasyon_kaydi"
+        verbose_name = "operasyon kaydı"
+        verbose_name_plural = "operasyon kayıtları"
+        ordering = ["-yil", "-sira"]
+        constraints = [
+            models.UniqueConstraint(fields=["yil", "sira"], name="uq_operasyon_kaydi_yil_sira"),
+            models.CheckConstraint(condition=models.Q(hedef_cikti_miktari__gt=0),
+                                   name="ck_operasyon_kaydi_hedef_gt0"),
+        ]
+
+    def __str__(self):
+        return self.no
+
+
+class OperasyonKaydiGirdi(TemelModel):
+    kayit = models.ForeignKey(
+        OperasyonKaydi, on_delete=models.CASCADE, related_name="girdi_satirlari")
+    girdi = models.ForeignKey(
+        Stok, verbose_name="girdi", on_delete=models.PROTECT,
+        related_name="operasyon_kaydi_kullanimlari")
+    # OperasyonGirdi'den SNAPSHOT (kayıt açıldığı andaki tanıma göre) — tanım sonradan
+    # değişse bu kayıt etkilenmez. gerceklesen_miktar TASLAK'ta elle düzeltilebilir (gerçek
+    # sarfiyat/fire planlanandan sapabilir); Onayla'da STOK ÇIKIŞI bu değerle yazılır —
+    # gerceklesen_miktar == 0 ise o satır için hiç hareket yazılmaz (bu girdiye bu seferlik
+    # gerek kalmadı anlamına gelir, hata sayılmaz).
     planlanan_miktar = models.DecimalField("planlanan miktar", max_digits=18, decimal_places=3)
     gerceklesen_miktar = models.DecimalField(
         "gerçekleşen miktar", max_digits=18, decimal_places=3)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
 
     class Meta:
-        db_table = "core_uretim_emri_satir"
-        verbose_name = "üretim emri satırı"
-        verbose_name_plural = "üretim emri satırları"
+        db_table = "core_operasyon_kaydi_girdi"
+        verbose_name = "operasyon kaydı girdisi"
+        verbose_name_plural = "operasyon kaydı girdileri"
         ordering = ["sira", "pk"]
         constraints = [
             models.CheckConstraint(condition=models.Q(planlanan_miktar__gt=0),
-                                   name="ck_uretim_emri_satir_planlanan_miktar_gt0"),
+                                   name="ck_operasyon_kaydi_girdi_planlanan_gt0"),
             models.CheckConstraint(condition=models.Q(gerceklesen_miktar__gte=0),
-                                   name="ck_uretim_emri_satir_gerceklesen_miktar_gte0"),
+                                   name="ck_operasyon_kaydi_girdi_gerceklesen_gte0"),
         ]
 
     def __str__(self):
-        return f"{self.emir.no} — {self.bilesen.kod}"
+        return f"{self.kayit.no} — {self.girdi.kod} × {self.gerceklesen_miktar}"

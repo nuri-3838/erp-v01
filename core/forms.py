@@ -19,7 +19,7 @@ from core.models import (
     AdayAktivite, AdayMusteri, AdayMusteriKategori, Banka, BankaHesap, Birim, Cari,
     CariAktivite, CariKategori,
     CekSenet, Depo, FaturaTipi, FirmaBanka,
-    HesapPlani, Kasa, Kategori, KdvOrani,
+    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon,
     Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
@@ -333,6 +333,10 @@ class StokForm(forms.Form):
     tedarikci = forms.ModelChoiceField(
         label="Tedarikçi (Cari)", queryset=Cari.objects.none(), required=False,
         empty_label="— tedarikçi seç —")
+    tedarikci_adi = forms.CharField(
+        label="Tedarikçi Ürün Adı", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "tedarikçinin kullandığı isim — boşsa dahili ad kullanılır"}))
     alis_fiyati_pb = forms.ChoiceField(
         label="Alış Fiyatı Para Birimi", choices=Cari.PARA_CHOICES, required=False,
         initial="TRY")
@@ -550,8 +554,12 @@ class AdayMusteriForm(forms.Form):
                                   widget=forms.TextInput(attrs=_K))
     telefon = forms.CharField(label="Telefon", max_length=20, required=False,
                               widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    telefon_2 = forms.CharField(label="Telefon 2", max_length=20, required=False,
+                                widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
     eposta = forms.EmailField(label="E-posta", required=False,
                               widget=forms.EmailInput(attrs=_K))
+    eposta_2 = forms.EmailField(label="E-posta 2", required=False,
+                                widget=forms.EmailInput(attrs=_K))
     ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
                                   required=False, empty_label="— ülke seç —")
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
@@ -973,48 +981,99 @@ class FasonSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
-# === ÜRETİM modülü — Ürün Ağacı Tanımları + Üretim Emirleri ===
-class UrunAgaciBaslikForm(forms.Form):
-    """ÜRETİM > Ürün Ağacı Tanımları başlığı: mamul (yalnız oluştururken seçilir — mevcut
-    bir ürün ağacının mamulü sonradan değiştirilemez, bkz. urun_agaci_guncelle) + açıklama.
-    Mamul adayları satis_urunu=True kartlarla sınırlı (FASON > Kesim Tanımları'ndaki
-    "ürün (bitmiş)" ile aynı desen) — yalnız uretim_urunu=True (neredeyse her kartın
-    varsayılanı, ham profiller dahil) çok geniş olurdu."""
-    mamul = forms.ModelChoiceField(
-        label="Mamul", queryset=Stok.objects.none(), empty_label="— mamul seç —")
+# === ÜRETİM modülü — İş İstasyonları + Operasyon Tanımları + İhtiyaç Hesapla
+#     + Üretim Emirleri + Operasyon Kayıtları ===
+class IsIstasyonuForm(forms.Form):
+    """ÜRETİM > İş İstasyonları — DepoForm ile birebir aynı desen."""
+    kod = forms.CharField(label="Kod", max_length=20,
+                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ad = forms.CharField(label="Ad", max_length=100,
+                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+class OperasyonBaslikForm(forms.Form):
+    """ÜRETİM > Operasyon Tanımları başlığı: istasyon + çıktı (yalnız oluştururken seçilir —
+    mevcut bir operasyonun çıktısı sonradan değiştirilemez, bkz. operasyon_guncelle) +
+    çıktı miktarı (1 çalıştırmada üretilen adet) + açıklama. Çıktı adayları uretim_urunu=True
+    kartlarla sınırlı — ara parçalar da (satis_urunu=False olsalar bile) geçerli çıktıdır."""
+    istasyon = forms.ModelChoiceField(
+        label="İş İstasyonu", queryset=IsIstasyonu.objects.none(), empty_label="— istasyon seç —")
+    cikti = forms.ModelChoiceField(
+        label="Çıktı", queryset=Stok.objects.none(), empty_label="— çıktı seç —")
+    cikti_miktar = TRDecimalField(label="Çıktı Miktarı (1 çalıştırma için)", basamak=3,
+                                  initial=Decimal("1"))
+    ad = forms.CharField(label="Ad", max_length=150, required=False,
+                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["mamul"].queryset = (
-            Stok.objects.filter(silindi=False, satis_urunu=True).order_by("kod"))
-        self.fields["mamul"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
-        self.fields["mamul"].widget.attrs["class"] = "akilli-sec"
+        from core.services.uretim import aktif_istasyonlar
+        self.fields["istasyon"].queryset = aktif_istasyonlar()
+        self.fields["istasyon"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["istasyon"].widget.attrs["class"] = "akilli-sec"
+        self.fields["cikti"].queryset = (
+            Stok.objects.filter(silindi=False, uretim_urunu=True).order_by("kod"))
+        self.fields["cikti"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["cikti"].widget.attrs["class"] = "akilli-sec"
 
 
-class UrunAgaciSatirForm(forms.Form):
-    """ÜRETİM > Ürün Ağacı Tanımları satırı: bileşen + miktar (formset satırı, FASON'daki
-    Kesim Listesi Hesapla ile aynı 'boş satır atlanır' deseni)."""
-    bilesen = forms.ModelChoiceField(
-        label="Bileşen", queryset=Stok.objects.none(), required=False,
-        empty_label="— bileşen seç —")
+class OperasyonGirdiSatirForm(forms.Form):
+    """ÜRETİM > Operasyon Tanımları satırı: girdi + miktar (formset satırı, FASON'daki Kesim
+    Listesi Hesapla ile aynı 'boş satır atlanır' deseni)."""
+    girdi = forms.ModelChoiceField(
+        label="Girdi", queryset=Stok.objects.none(), required=False, empty_label="— girdi seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["bilesen"].queryset = Stok.objects.filter(silindi=False).order_by("kod")
-        self.fields["bilesen"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
-        self.fields["bilesen"].widget.attrs["class"] = "akilli-sec"
+        self.fields["girdi"].queryset = Stok.objects.filter(silindi=False).order_by("kod")
+        self.fields["girdi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["girdi"].widget.attrs["class"] = "akilli-sec"
 
     def clean(self):
         cd = super().clean()
-        bilesen = cd.get("bilesen")
+        girdi = cd.get("girdi")
         miktar = cd.get("miktar")
-        if not bilesen and miktar is None:
+        if not girdi and miktar is None:
             return cd                              # boş satır — atlanır
-        if not bilesen:
-            raise forms.ValidationError("Bileşen seçin.")
+        if not girdi:
+            raise forms.ValidationError("Girdi seçin.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+class IhtiyacHesaplaSatirForm(forms.Form):
+    """ÜRETİM > İhtiyaç Hesapla satırı: hedef ürün + miktar (formset satırı, aynı 'boş satır
+    atlanır' deseni). Hedef adayları en az bir aktif Operasyon'u olan kartlarla sınırlı —
+    aksi hâlde hesaplanacak hiçbir zincir yoktur."""
+    hedef = forms.ModelChoiceField(
+        label="Hedef Ürün", queryset=Stok.objects.none(), required=False,
+        empty_label="— ürün seç —")
+    miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.uretim import operasyonlu_stok_idler
+        self.fields["hedef"].queryset = (
+            Stok.objects.filter(silindi=False, pk__in=operasyonlu_stok_idler()).order_by("kod"))
+        self.fields["hedef"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["hedef"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        hedef = cd.get("hedef")
+        miktar = cd.get("miktar")
+        if not hedef and miktar is None:
+            return cd                              # boş satır — atlanır
+        if not hedef:
+            raise forms.ValidationError("Hedef ürün seçin.")
         if miktar is None or miktar <= 0:
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
         cd["dolu"] = True
@@ -1025,11 +1084,12 @@ class UrunAgaciSatirForm(forms.Form):
 
 
 class UretimEmriForm(forms.Form):
-    """ÜRETİM > Üretim Emirleri: mamul (yalnız aktif ürün ağacı tanımlı kartlar) + planlanan
-    miktar + depo + tarih."""
-    mamul = forms.ModelChoiceField(
-        label="Mamul", queryset=Stok.objects.none(), empty_label="— mamul seç —")
-    planlanan_miktar = TRDecimalField(label="Planlanan Miktar", basamak=3)
+    """ÜRETİM > Üretim Emirleri: hedef ürün (yalnız aktif operasyonu tanımlı kartlar) +
+    hedef miktar + TEK depo (zincirdeki tüm otomatik açılan operasyon kayıtlarına uygulanır)
+    + tarih."""
+    hedef_urun = forms.ModelChoiceField(
+        label="Hedef Ürün", queryset=Stok.objects.none(), empty_label="— ürün seç —")
+    hedef_miktar = TRDecimalField(label="Hedef Miktar", basamak=3)
     depo = forms.ModelChoiceField(
         label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
     tarih = forms.DateField(
@@ -1040,20 +1100,47 @@ class UretimEmriForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.uretim import urun_agaci_olan_mamul_idler
-        self.fields["mamul"].queryset = (
-            Stok.objects.filter(silindi=False, pk__in=urun_agaci_olan_mamul_idler())
-            .order_by("kod"))
-        self.fields["mamul"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
-        self.fields["mamul"].widget.attrs["class"] = "akilli-sec"
+        from core.services.uretim import operasyonlu_stok_idler
+        self.fields["hedef_urun"].queryset = (
+            Stok.objects.filter(silindi=False, pk__in=operasyonlu_stok_idler()).order_by("kod"))
+        self.fields["hedef_urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["hedef_urun"].widget.attrs["class"] = "akilli-sec"
         from core.services.depo import aktif_depolar
         self.fields["depo"].queryset = aktif_depolar()
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["depo"].widget.attrs["class"] = "akilli-sec"
 
 
-class UretimEmriSatirDuzeltForm(forms.Form):
-    """ÜRETİM > Üretim Emri detayı: TASLAK'ta satır bazında gerçekleşen miktarı düzeltme
+class OperasyonKaydiForm(forms.Form):
+    """ÜRETİM > Operasyon Kayıtları: bağımsız/serbest kayıt açma formu (bir istasyonun kendi
+    inisiyatifiyle, herhangi bir Üretim Emri'ne bağlı olmadan açtığı kayıt) — operasyon +
+    hedef çıktı miktarı + depo + tarih."""
+    operasyon = forms.ModelChoiceField(
+        label="Operasyon", queryset=Operasyon.objects.none(), empty_label="— operasyon seç —")
+    hedef_cikti_miktari = TRDecimalField(label="Hedef Çıktı Miktarı", basamak=3)
+    depo = forms.ModelChoiceField(
+        label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.uretim import aktif_operasyonlar
+        self.fields["operasyon"].queryset = aktif_operasyonlar()
+        self.fields["operasyon"].label_from_instance = (
+            lambda o: f"{o.istasyon.kod} — {o.cikti.kod} {o.cikti.ad}")
+        self.fields["operasyon"].widget.attrs["class"] = "akilli-sec"
+        from core.services.depo import aktif_depolar
+        self.fields["depo"].queryset = aktif_depolar()
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+
+
+class OperasyonKaydiGirdiDuzeltForm(forms.Form):
+    """ÜRETİM > Operasyon Kaydı detayı: TASLAK'ta satır bazında gerçekleşen miktarı düzeltme
     formseti (gizli satir_id + tek TR ondalık alan)."""
     satir_id = forms.IntegerField(widget=forms.HiddenInput)
     gerceklesen_miktar = TRDecimalField(label="Gerçekleşen", basamak=3)
@@ -1234,11 +1321,14 @@ class FaturaSatirForm(forms.Form):
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["stok"].queryset = (
             Stok.objects.filter(silindi=False).select_related("kategori", "kdv").order_by("kod"))
-        self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        if yon == "ALIS":
+            self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad_satinalma()}"
+        else:
+            self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
 
     def clean(self):
@@ -1544,11 +1634,14 @@ class TeklifSiparisKalemForm(forms.Form):
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["stok"].queryset = (
             Stok.objects.filter(silindi=False).select_related("kategori", "kdv").order_by("kod"))
-        self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        if yon == "ALIS":
+            self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad_satinalma()}"
+        else:
+            self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
 
     def clean(self):

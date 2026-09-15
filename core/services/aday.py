@@ -77,8 +77,9 @@ def _para_dogrula(deger, etiket):
     return d
 
 
-def _alanlar(*, unvan, ilgili_kisi="", telefon="", eposta="", ulke_id=None, sehir_id=None,
-            kategori_id=None, para_birimi="TRY", iskonto_yuzdesi=0):
+def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", eposta_2="",
+            ulke_id=None, sehir_id=None, kategori_id=None, para_birimi="TRY",
+            iskonto_yuzdesi=0):
     unvan = buyuk_harf_tr((unvan or "").strip())
     if not unvan:
         raise AdayHatasi("Unvan boş olamaz.")
@@ -87,7 +88,8 @@ def _alanlar(*, unvan, ilgili_kisi="", telefon="", eposta="", ulke_id=None, sehi
     return dict(
         unvan=unvan,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
-        telefon=(telefon or "").strip(), eposta=(eposta or "").strip().lower(),
+        telefon=(telefon or "").strip(), telefon_2=(telefon_2 or "").strip(),
+        eposta=(eposta or "").strip().lower(), eposta_2=(eposta_2 or "").strip().lower(),
         ulke=_ulke(ulke_id), sehir=_sehir(sehir_id), kategori=_kategori(kategori_id),
         para_birimi=para_birimi,
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
@@ -154,7 +156,8 @@ def aday_cariye_donustur(aday: AdayMusteri, *, kategori_id=None, kullanici=None)
         raise AdayHatasi("Bu aday zaten bir cariye dönüştürülmüş.")
     cari = cari_servis.cari_olustur(
         unvan=aday.unvan, kategori_id=kategori_id, kullanici=kullanici,
-        ilgili_kisi=aday.ilgili_kisi, telefon=aday.telefon, eposta=aday.eposta,
+        ilgili_kisi=aday.ilgili_kisi, telefon=aday.telefon, telefon_2=aday.telefon_2,
+        eposta=aday.eposta,
         ulke_id=aday.ulke_id, sehir_id=aday.sehir_id, para_birimi=aday.para_birimi,
         iskonto_yuzdesi=aday.iskonto_yuzdesi)
     aday.donusen_cari = cari
