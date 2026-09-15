@@ -81,6 +81,21 @@ class StokServisTest(TestCase):
         self.assertEqual(s.kritik_stok, Decimal("100.000"))
         self.assertEqual(s.tedarikci_id, c.pk)           # Cari FK
 
+    def test_tedarikci_adi_kaydedilir_ve_buyuk_harf_uygulanmaz(self):
+        _, alt, _, adet, kg = _veri()
+        s = stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk, tedarikci_adi="Işıklı Item xyz")
+        # Serbest metin: TR büyük harf UYGULANMAZ (ad_en/materyal_en ile aynı sebep).
+        self.assertEqual(s.tedarikci_adi, "Işıklı Item xyz")
+
+    def test_tedarikci_adi_bossa_bos_kalir(self):
+        _, alt, _, adet, kg = _veri()
+        s = stok_olustur(ad="x", kategori_id=alt.pk, uretim_birimi_id=adet.pk,
+                         fatura_birimi_id=kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk)
+        self.assertEqual(s.tedarikci_adi, "")
+
     def test_tedarikci_gecersiz_id_red(self):
         _, alt, _, adet, kg = _veri()
         with self.assertRaises(StokHatasi):
@@ -185,6 +200,16 @@ class StokServisTest(TestCase):
         self.assertEqual((s.ad, s.uretim_birimi_id, s.kdv.oran),
                          ("YENİ AD", kg.pk, Decimal("10.00")))
 
+    def test_guncellemede_tedarikci_adi_kaydedilir(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._stok(alt, adet, kg)
+        stok_guncelle(s, ad=s.ad, uretim_birimi_id=s.uretim_birimi_id,
+                      fatura_birimi_id=s.fatura_birimi_id, cevirici=s.cevirici,
+                      kdv_id=_kdv("20").pk, tedarikci_adi="Supplier Part Name")
+        s.refresh_from_db()
+        self.assertEqual(s.tedarikci_adi, "Supplier Part Name")
+        self.assertEqual(s.ad_satinalma(), "Supplier Part Name")
+
     def test_kopyala_ayni_bilgiler_yeni_kod(self):
         _, alt, _, adet, kg = _veri()
         c = _cari()
@@ -192,6 +217,7 @@ class StokServisTest(TestCase):
                          fatura_birimi_id=kg.pk, cevirici=Decimal("2.5"),
                          kdv_id=_kdv("20").pk, tevkifat_id=_tevkifat().pk,
                          kritik_stok=Decimal("50"), tedarikci_id=c.pk,
+                         tedarikci_adi="Supplier Original Name",
                          alis_fiyati="99,90", alis_fiyati_pb="eur")
         kopya = stok_kopyala(s, kullanici=None)
         self.assertNotEqual(kopya.pk, s.pk)
@@ -200,10 +226,10 @@ class StokServisTest(TestCase):
         self.assertEqual(
             (kopya.kategori_id, kopya.uretim_birimi_id, kopya.fatura_birimi_id,
              kopya.cevirici, kopya.kdv_id, kopya.tevkifat_id, kopya.kritik_stok,
-             kopya.tedarikci_id, kopya.alis_fiyati, kopya.alis_fiyati_pb),
+             kopya.tedarikci_id, kopya.tedarikci_adi, kopya.alis_fiyati, kopya.alis_fiyati_pb),
             (s.kategori_id, s.uretim_birimi_id, s.fatura_birimi_id,
              s.cevirici, s.kdv_id, s.tevkifat_id, s.kritik_stok, s.tedarikci_id,
-             s.alis_fiyati, s.alis_fiyati_pb))
+             s.tedarikci_adi, s.alis_fiyati, s.alis_fiyati_pb))
         s.refresh_from_db()
         self.assertEqual((s.kod, s.ad), ("150-10-0001", "ORİJİNAL"))   # orijinal değişmedi
 
@@ -283,6 +309,18 @@ class StokGrupTeknikAlanTest(TestCase):
         _, alt, _, adet, kg = _veri()
         s = self._kur(alt, adet, kg, ad="a tipi merdiven")
         self.assertEqual(s.ad_dil("en"), s.ad)
+
+    def test_ad_satinalma(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, ad="a tipi merdiven")
+        s.tedarikci_adi = "SUPPLIER PART XYZ"
+        s.save(update_fields=["tedarikci_adi"])
+        self.assertEqual(s.ad_satinalma(), "SUPPLIER PART XYZ")
+
+    def test_ad_satinalma_bossa_ad_doner(self):
+        _, alt, _, adet, kg = _veri()
+        s = self._kur(alt, adet, kg, ad="a tipi merdiven")
+        self.assertEqual(s.ad_satinalma(), s.ad)
 
     def test_satis_urunu_teknik_alanlari_kaydeder(self):
         _, alt, _, adet, kg = _veri()
@@ -622,6 +660,27 @@ class StokViewTest(TestCase):
         d = self.client.get(reverse("core:stok_detay", args=[s.pk]))
         self.assertContains(d, "45,75")
         self.assertContains(d, "USD")
+
+    def test_ekle_post_tedarikci_adi_kaydedilir(self):
+        k = _kdv("20")
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:stok_ekle"), {
+            "ad": "profil", "kategori": str(self.alt.pk),
+            "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
+            "cevirici": "3", "kdv": str(k.pk), "satinalma_urunu": "on",
+            "tedarikci_adi": "Supplier Part Name"})
+        self.assertEqual(r.status_code, 302)
+        s = Stok.objects.get(ad="PROFİL")
+        self.assertEqual(s.tedarikci_adi, "Supplier Part Name")
+
+    def test_duzenle_post_tedarikci_adi_gorunur_formda(self):
+        s = stok_olustur(ad="levha", kategori_id=self.alt.pk,
+                         uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
+                         cevirici=Decimal("1"), kdv_id=_kdv("20").pk,
+                         tedarikci_adi="Eski Tedarikci Adi")
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_duzenle", args=[s.pk]))
+        self.assertContains(r, "Eski Tedarikci Adi")
 
     def test_ekle_ust_kategori_secilemez(self):
         self.client.force_login(self.yetkili)

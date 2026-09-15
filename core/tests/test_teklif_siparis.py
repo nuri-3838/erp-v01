@@ -606,6 +606,50 @@ class TeklifSiparisViewTest(TestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
 
+    def test_alis_yonunde_dropdown_detay_ve_pdf_tedarikci_adini_gosterir(self):
+        """Satınalma (ALIŞ) belgelerinde stok, tedarikçinin bildiği isimle görünmeli —
+        dahili ad'dan bağımsız (bkz. Stok.ad_satinalma)."""
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        stok_ted = Stok.objects.create(
+            kod="S8", ad="DAHİLİ İMALAT ADI", tedarikci_adi="Supplier Catalog Name",
+            kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.birim, fatura_birimi=self.birim,
+            created_by=self.yon, updated_by=self.yon)
+        ts = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="ALIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": stok_ted.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        e = self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk]))
+        self.assertContains(e, "Supplier Catalog Name")
+        self.assertNotContains(e, "DAHİLİ İMALAT ADI")
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertContains(d, "Supplier Catalog Name")
+        self.assertNotContains(d, "DAHİLİ İMALAT ADI")
+        pdf = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
+        self.assertEqual(pdf.status_code, 200)
+
+    def test_satis_yonunde_dahili_ad_gosterilir_tedarikci_adi_degil(self):
+        """Regresyon: satış tarafı bu özellikten hiç etkilenmemeli."""
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        stok_ted = Stok.objects.create(
+            kod="S9", ad="DAHİLİ İMALAT ADI 2", tedarikci_adi="Supplier Catalog Name 2",
+            kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.birim, fatura_birimi=self.birim,
+            created_by=self.yon, updated_by=self.yon)
+        ts = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": stok_ted.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
+        self.assertContains(d, "DAHİLİ İMALAT ADI 2")
+        self.assertNotContains(d, "Supplier Catalog Name 2")
+
     def test_birim_fiyat_4_basamak_yazilir_ve_gosterilir(self):
         """Birim fiyat 4 ondalık basamağa kadar hem forma yazılabilmeli hem de detay/PDF
         görünümünde tam olarak gösterilmeli (2 basamağa yuvarlanıp kaybolmamalı)."""

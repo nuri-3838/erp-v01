@@ -112,6 +112,12 @@
           {% for e in form.tedarikci.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan">
+          <label for="{{ form.tedarikci_adi.id_for_label }}">Tedarikçi Ürün Adı</label>
+          {{ form.tedarikci_adi }}
+          {% for e in form.tedarikci_adi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Tedarikçinin bu ürüne verdiği isim — boşsa satınalma ekranlarında dahili ad (Ad) kullanılır.</p>
+        </div>
+        <div class="alan">
           <label for="{{ form.kritik_stok.id_for_label }}">Kritik Stok Seviyesi</label>
           {{ form.kritik_stok }}
           {% for e in form.kritik_stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}

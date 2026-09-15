@@ -51,7 +51,7 @@
     <tbody>
       {% for s in satirlar %}
         <tr>
-          <td><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td>
+          <td><span class="mono">{{ s.stok.kod }}</span> {% if fatura.yon == "ALIS" %}{{ s.stok.ad_satinalma }}{% else %}{{ s.stok.ad }}{% endif %}</td>
           <td class="sag mono">{{ s.miktar|tr_kur:3 }}</td>
           <td class="sag mono">{{ s.birim_fiyat|tr_kur:4 }}</td>
           <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>

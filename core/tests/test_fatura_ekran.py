@@ -133,6 +133,46 @@ class FaturaEkranTest(TestCase):
         self.assertEqual(f.satirlar.filter(silindi=False).get().birim_fiyat,
                          Decimal("45.6789"))
 
+    def test_alis_faturasi_dropdown_ve_detay_tedarikci_adini_gosterir(self):
+        """Alış faturasında stok, tedarikçinin bildiği isimle görünmeli — dahili ad'dan
+        bağımsız (bkz. Stok.ad_satinalma, FaturaSatirForm yon='ALIS')."""
+        stok_ted = Stok.objects.create(
+            kod="153-10-0002", ad="DAHİLİ İMALAT ADI", tedarikci_adi="Supplier Catalog Name",
+            kategori=self.stok.kategori, uretim_birimi=self.stok.uretim_birimi,
+            fatura_birimi=self.stok.fatura_birimi, kdv=self.kdv)
+        self.client.force_login(self.yon)
+        e = self.client.get(reverse("core:alis_fatura_ekle"))
+        self.assertContains(e, "Supplier Catalog Name")
+        self.assertNotContains(e, "DAHİLİ İMALAT ADI")
+        post = self._post_data()
+        post["form-0-stok"] = str(stok_ted.pk)
+        self.client.post(reverse("core:alis_fatura_ekle"), post)
+        f = Fatura.objects.get(fatura_no="A-1")
+        d = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
+        self.assertContains(d, "Supplier Catalog Name")
+        self.assertNotContains(d, "DAHİLİ İMALAT ADI")
+
+    def test_satis_faturasinda_dahili_ad_gosterilir_tedarikci_adi_degil(self):
+        """Regresyon: satış tarafı bu özellikten hiç etkilenmemeli."""
+        satis = FaturaTipi.objects.create(ad="SATIŞ FATURASI EK", yon=FaturaTipi.Yon.SATIS)
+        KategoriHesap.objects.create(kategori=self.stok.kategori, fatura_tipi=satis,
+                                     hesap=HesapPlani.objects.get(hesap_kodu="153.10"))
+        stok_ted = Stok.objects.create(
+            kod="153-10-0003", ad="DAHİLİ İMALAT ADI 2", tedarikci_adi="Supplier Catalog Name 2",
+            kategori=self.stok.kategori, uretim_birimi=self.stok.uretim_birimi,
+            fatura_birimi=self.stok.fatura_birimi, kdv=self.kdv)
+        musteri = Cari.objects.create(kod="120-10-0001", unvan="MÜŞTERİ A", para_birimi="TRY",
+                                      muhasebe_kodu="320.10.0001")
+        self.client.force_login(self.yon)
+        post = self._post_data()
+        post.update({"tip": str(satis.pk), "cari": str(musteri.pk),
+                    "form-0-stok": str(stok_ted.pk)})
+        self.client.post(reverse("core:satis_fatura_ekle"), post)
+        f = Fatura.objects.get(fatura_no="A-1")
+        d = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
+        self.assertContains(d, "DAHİLİ İMALAT ADI 2")
+        self.assertNotContains(d, "Supplier Catalog Name 2")
+
     def test_fatura_fisi_dogrudan_duzenlenemez(self):
         self.client.force_login(self.yon)
         self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())

@@ -244,7 +244,7 @@ def satis_urunleri_fiyatlariyla():
 @transaction.atomic
 def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  cevirici=Decimal("1"), kdv_id=None, tevkifat_id=None,
-                 kritik_stok=Decimal("0"), tedarikci_id=None,
+                 kritik_stok=Decimal("0"), tedarikci_id=None, tedarikci_adi="",
                  alis_fiyati=None, alis_fiyati_pb="TRY",
                  satinalma_urunu=False, uretim_urunu=True, satis_urunu=False,
                  model_kodu="", ad_en="", hs_kodu="", materyal="", materyal_en="",
@@ -278,6 +278,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         kdv=_kdv_coz(kdv_id), tevkifat=_tevkifat_coz(tevkifat_id),
         kritik_stok=_negatif_olmaz(kritik_stok, "Kritik stok seviyesi"),
         tedarikci=_tedarikci_coz(tedarikci_id),
+        tedarikci_adi=(tedarikci_adi or "").strip(),
         alis_fiyati=_tutar_opsiyonel(alis_fiyati, "Alış fiyatı"),
         alis_fiyati_pb=_pb_dogrula(alis_fiyati_pb),
         satinalma_urunu=bool(satinalma_urunu), uretim_urunu=bool(uretim_urunu),
@@ -303,6 +304,7 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
         uretim_birimi_id=stok.uretim_birimi_id, fatura_birimi_id=stok.fatura_birimi_id,
         cevirici=stok.cevirici, kdv_id=stok.kdv_id, tevkifat_id=stok.tevkifat_id,
         kritik_stok=stok.kritik_stok, tedarikci_id=stok.tedarikci_id,
+        tedarikci_adi=stok.tedarikci_adi,
         alis_fiyati=stok.alis_fiyati, alis_fiyati_pb=stok.alis_fiyati_pb,
         satinalma_urunu=stok.satinalma_urunu, uretim_urunu=stok.uretim_urunu,
         satis_urunu=stok.satis_urunu, model_kodu=stok.model_kodu, ad_en=stok.ad_en,
@@ -321,7 +323,7 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
 @transaction.atomic
 def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   cevirici, kdv_id=None, tevkifat_id=None,
-                  kritik_stok=Decimal("0"), tedarikci_id=None,
+                  kritik_stok=Decimal("0"), tedarikci_id=None, tedarikci_adi="",
                   alis_fiyati=None, alis_fiyati_pb="TRY",
                   satinalma_urunu=False, uretim_urunu=True, satis_urunu=False,
                   model_kodu="", ad_en="", hs_kodu="", materyal="", materyal_en="",
@@ -354,6 +356,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.tevkifat = _tevkifat_coz(tevkifat_id)
     stok.kritik_stok = _negatif_olmaz(kritik_stok, "Kritik stok seviyesi")
     stok.tedarikci = _tedarikci_coz(tedarikci_id)
+    stok.tedarikci_adi = (tedarikci_adi or "").strip()
     stok.alis_fiyati = _tutar_opsiyonel(alis_fiyati, "Alış fiyatı")
     stok.alis_fiyati_pb = _pb_dogrula(alis_fiyati_pb)
     stok.satinalma_urunu = bool(satinalma_urunu)
@@ -369,7 +372,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.updated_by = kullanici
     stok.save(update_fields=[
         "ad", "uretim_birimi", "fatura_birimi", "cevirici", "kdv", "tevkifat",
-        "kritik_stok", "tedarikci", "alis_fiyati", "alis_fiyati_pb",
+        "kritik_stok", "tedarikci", "tedarikci_adi", "alis_fiyati", "alis_fiyati_pb",
         "satinalma_urunu", "uretim_urunu", "satis_urunu",
         *_SATIS_ALAN_ADLARI, *_SATIS_METIN_ALAN_ADLARI,
         "gorsel", "updated_by", "updated_at"])
