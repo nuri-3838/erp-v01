@@ -63,6 +63,11 @@
         · {{ ts.tarih|date:"d.m.Y" }}</div>
     </div>
     <div class="detay-aksiyon">
+      {% if ts.belge_tur == "PROFORMA" and ts.kaynak_teklif %}
+      <a class="dugme" href="{% url 'core:teklif_siparis_detay' ts.kaynak_teklif.pk %}">← Teklife Dön</a>
+      {% elif ts.belge_tur == "SIPARIS" and ts.kaynak_proforma %}
+      <a class="dugme" href="{% url 'core:teklif_siparis_detay' ts.kaynak_proforma.pk %}">← Proformaya Dön</a>
+      {% endif %}
       {% if ts.belge_tur == "PROFORMA" or ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
       <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}?dil=tr" target="_blank">📄 PDF (TR)</a>
       <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}?dil=en" target="_blank">📄 PDF (EN)</a>
@@ -97,8 +102,10 @@
           <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">✏️ Düzenle</a>
           {% endif %}
         {% endif %}
+        {% if not donusum_kilitli %}
         <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');" style="margin:0">
           {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+        {% endif %}
       {% endif %}
     </div>
   </div>

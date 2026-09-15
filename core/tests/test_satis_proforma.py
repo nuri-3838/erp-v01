@@ -334,6 +334,83 @@ class SatisProformaTest(TestCase):
         self.assertEqual(siparis.cari_id, self.cari.pk)
         self.assertEqual(siparis.kalemler.get().miktar, Decimal("20"))
 
+    def _zincir_kur(self):
+        """Teklif → Proforma → Sipariş zincirini uçtan uca kurar, üç belgeyi de döner."""
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        teklif = teklif_siparis_olustur(
+            belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 15),
+            satirlar=[{"stok_id": self.a21.pk, "miktar": "1", "birim_fiyat": "350",
+                      "iskonto_yuzdesi": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:teklif_proformaya_cevir", args=[teklif.pk]))
+        proforma = TeklifSiparis.objects.get(kaynak_teklif=teklif)
+        self.client.post(reverse("core:teklif_siparis_onayla", args=[proforma.pk]))
+        self.client.post(reverse("core:proforma_siparise_cevir", args=[proforma.pk]))
+        siparis = TeklifSiparis.objects.get(kaynak_proforma=proforma)
+        return teklif, proforma, siparis
+
+    def test_donusturulen_teklif_duzenlenemez_ve_iptal_edilemez(self):
+        """Kullanıcı isteği: 'Teklifden proformaya döndüğünde teklifde bir değişiklik
+        yapılamasın.' — hem düzenleme hem iptal servis katmanında engellenir (durum/onay
+        durumundan bağımsız, bkz. _donusum_hedefi)."""
+        from core.services.teklif_siparis import (
+            TeklifSiparisHatasi, teklif_siparis_guncelle, teklif_siparis_iptal)
+        teklif, proforma, siparis = self._zincir_kur()
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_guncelle(
+                teklif, cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 16),
+                satirlar=[{"stok_id": self.a21.pk, "miktar": "2", "birim_fiyat": "350",
+                          "iskonto_yuzdesi": "10"}], kullanici=self.yon)
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_iptal(teklif, kullanici=self.yon)
+        teklif.refresh_from_db()
+        self.assertFalse(teklif.silindi)
+
+    def test_donusturulen_proforma_duzenlenemez_ve_iptal_edilemez(self):
+        """Kullanıcı isteği: 'Proformadan siparişe dönüş yapıldığında proforma da bir
+        değişiklik yapılamasın.'"""
+        from core.services.teklif_siparis import (
+            TeklifSiparisHatasi, teklif_siparis_guncelle, teklif_siparis_iptal)
+        teklif, proforma, siparis = self._zincir_kur()
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_guncelle(
+                proforma, cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 16),
+                satirlar=[{"stok_id": self.a21.pk, "miktar": "2", "birim_fiyat": "350",
+                          "iskonto_yuzdesi": "10"}], kullanici=self.yon)
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_iptal(proforma, kullanici=self.yon)
+        proforma.refresh_from_db()
+        self.assertFalse(proforma.silindi)
+
+    def test_detay_sayfasi_donus_tuslari_ve_kilitli_aksiyonlar(self):
+        """Kullanıcı isteği: '...siparişten proformaya proformadan teklife dönüş tuşları
+        olsun.' — dönüştürülmüş belgelerde Düzenle/İptal Et gizlenir, dönüştürülmemiş
+        (terminal) Sipariş'te İptal Et hâlâ görünür."""
+        teklif, proforma, siparis = self._zincir_kur()
+
+        r_teklif = self.client.get(reverse("core:teklif_siparis_detay", args=[teklif.pk]))
+        self.assertNotContains(r_teklif, reverse("core:satis_teklif_duzenle", args=[teklif.pk]))
+        self.assertNotContains(r_teklif, reverse("core:teklif_siparis_iptal", args=[teklif.pk]))
+
+        r_proforma = self.client.get(reverse("core:teklif_siparis_detay", args=[proforma.pk]))
+        self.assertContains(
+            r_proforma, reverse("core:teklif_siparis_detay", args=[teklif.pk]))
+        self.assertContains(r_proforma, "Teklife Dön")
+        self.assertNotContains(
+            r_proforma, reverse("core:satis_proforma_duzenle", args=[proforma.pk]))
+        self.assertNotContains(
+            r_proforma, reverse("core:teklif_siparis_iptal", args=[proforma.pk]))
+
+        r_siparis = self.client.get(reverse("core:teklif_siparis_detay", args=[siparis.pk]))
+        self.assertContains(
+            r_siparis, reverse("core:teklif_siparis_detay", args=[proforma.pk]))
+        self.assertContains(r_siparis, "Proformaya Dön")
+        # sipariş henüz hiçbir şeye dönüşmedi (terminal) -> İptal Et hâlâ görünür
+        self.assertContains(r_siparis, reverse("core:teklif_siparis_iptal", args=[siparis.pk]))
+
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)
         self.assertEqual(

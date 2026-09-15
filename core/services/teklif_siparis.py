@@ -263,6 +263,42 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
     return ts
 
 
+def _donusum_hedefi(ts):
+    """Belge zaten bir sonraki aşamaya dönüştürülmüş mü? (Teklif->Proforma/Sipariş,
+    Proforma->Sipariş, Sipariş->İrsaliye, ya da Faturaya) — dönüşmüşse zincirin bütünlüğünü
+    bozacak işlemler (düzenleme/iptal/onay geri alma) engellenir; hedefin Türkçe adı döner,
+    dönüşmemişse None."""
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+            and ts.donusen_belgeler.filter(silindi=False).exists()):
+        return "siparişe" if ts.yon == TeklifSiparis.Yon.ALIS else "proformaya"
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
+            and ts.donusen_siparisler.filter(silindi=False).exists()):
+        return "siparişe"
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS
+            and ts.donusen_irsaliyeler.filter(silindi=False).exists()):
+        return "irsaliyeye"
+    if ts.fatura_id:
+        return "faturaya"
+    return None
+
+
+def _donusum_hedefi_manuel(ts):
+    """_donusum_hedefi'nin İPTAL için kullanılan DAR sürümü — yalnız SATIŞ tarafındaki
+    MANUEL (kullanıcının kendi seçtiği "Proformaya Çevir"/"Siparişe Çevir" tuşuyla yaptığı)
+    dönüşümleri kapsar: Teklif(SATIŞ)->Proforma, Proforma->Sipariş. ALIŞ tarafındaki OTOMATİK
+    zincir (onaylanınca anında sonraki taslağın açılması — Teklif->Sipariş->İrsaliye->Fatura)
+    KASITLI olarak kapsam dışı: o otomasyon her onaydan hemen sonra tetiklendiği için aynı
+    kısıtı iptale de uygulamak ALIŞ belgelerini onaydan sonra hiç iptal edilemez hale
+    getirirdi — kullanıcı isteği yalnız SATIŞ'taki manuel zinciri kapsıyor."""
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS
+            and ts.donusen_belgeler.filter(silindi=False).exists()):
+        return "proformaya"
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
+            and ts.donusen_siparisler.filter(silindi=False).exists()):
+        return "siparişe"
+    return None
+
+
 @transaction.atomic
 def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=None, tarih,
                             satirlar, gecerlilik_teslim_tarihi=None, para_birimi="TRY",
@@ -272,12 +308,17 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
                             navlun_tutari=None, kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini günceller (belge_tur/yon/belge_no SABİT —
     hangi ekrana ait olduğunu ve numarasını belirler, değişmez). Onaylı belge düzenlenemez
-    (önce onayı geri alın). Eski kalemler soft-delete edilir, yenileri yazılır."""
+    (önce onayı geri alın); bir sonraki aşamaya dönüştürülmüş belge de düzenlenemez (bkz.
+    _donusum_hedefi — durum/onay bağımsız, kaynak belge dönüşümden sonra hiç değişmemeli).
+    Eski kalemler soft-delete edilir, yenileri yazılır."""
     from django.utils import timezone
     if ts.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş belge düzenlenemez.")
     if ts.durum == TeklifSiparis.Durum.ONAYLI:
         raise TeklifSiparisHatasi("Onaylı belge düzenlenemez; önce onayı geri alın.")
+    hedef = _donusum_hedefi(ts)
+    if hedef:
+        raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; düzenlenemez.")
     _aday_musteri_izin_kontrol(ts.belge_tur, ts.yon, aday_musteri_id)
     cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
                                  satirlar=satirlar)
@@ -351,18 +392,9 @@ def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSip
         raise TeklifSiparisHatasi("İptal edilmiş belge için onay geri alınamaz.")
     if ts.durum == TeklifSiparis.Durum.TASLAK:
         return ts
-    if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
-            and ts.donusen_belgeler.filter(silindi=False).exists()):
-        hedef = "siparişe" if ts.yon == TeklifSiparis.Yon.ALIS else "proformaya"
-        raise TeklifSiparisHatasi(f"Bu teklif {hedef} dönüştürülmüş; onayı geri alınamaz.")
-    if (ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
-            and ts.donusen_siparisler.filter(silindi=False).exists()):
-        raise TeklifSiparisHatasi("Bu proforma siparişe dönüştürülmüş; onayı geri alınamaz.")
-    if (ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS
-            and ts.donusen_irsaliyeler.filter(silindi=False).exists()):
-        raise TeklifSiparisHatasi("Bu sipariş irsaliyeye dönüştürülmüş; onayı geri alınamaz.")
-    if ts.fatura_id:
-        raise TeklifSiparisHatasi("Bu belge faturaya dönüştürülmüş; onayı geri alınamaz.")
+    hedef = _donusum_hedefi(ts)
+    if hedef:
+        raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; onayı geri alınamaz.")
     ts.durum = TeklifSiparis.Durum.TASLAK
     ts.updated_by = kullanici
     ts.save(update_fields=["durum", "updated_by", "updated_at"])
@@ -588,12 +620,18 @@ def _irsaliye_hareketleri_iptal(irsaliye: TeklifSiparis, kullanici):
 
 @transaction.atomic
 def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
-    """Belgeyi soft-delete eder (kalemler kalır; geçmiş görüntüleme için). İRSALİYE ise,
-    onaylanınca yazdığı GERÇEK stok girişi de geri alınır (bir stok+depoda eldeki miktarı
-    negatife düşürüyorsa iptal engellenir — bkz. _irsaliye_hareketleri_iptal)."""
+    """Belgeyi soft-delete eder (kalemler kalır; geçmiş görüntüleme için). SATIŞ'taki manuel
+    dönüşüm zincirinde (Teklif->Proforma->Sipariş) bir sonraki aşamaya dönüştürülmüş belge
+    iptal edilemez (bkz. _donusum_hedefi_manuel — zincirin bütünlüğü bozulur; ALIŞ'taki
+    otomatik zincir kasıtlı olarak kapsam dışı). İRSALİYE ise, onaylanınca yazdığı GERÇEK
+    stok girişi de geri alınır (bir stok+depoda eldeki miktarı negatife düşürüyorsa iptal
+    engellenir — bkz. _irsaliye_hareketleri_iptal)."""
     from django.utils import timezone
     if ts.silindi:
         return ts
+    hedef = _donusum_hedefi_manuel(ts)
+    if hedef:
+        raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; iptal edilemez.")
     if ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
         _irsaliye_hareketleri_iptal(ts, kullanici)
     ts.silindi = True

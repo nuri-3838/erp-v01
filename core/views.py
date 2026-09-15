@@ -2380,11 +2380,18 @@ def teklif_siparis_detay(request, pk):
         donusen_siparis = ts.donusen_siparisler.filter(silindi=False).first()
     donusen_irsaliye = (ts.donusen_irsaliyeler.filter(silindi=False).first()
                        if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS else None)
+    # SATIŞ'taki manuel dönüşüm zincirinde (Teklif->Proforma->Sipariş) kaynak belge artık
+    # düzenlenemez/iptal edilemez (bkz. core.services.teklif_siparis._donusum_hedefi_manuel).
+    # ALIŞ'taki otomatik zincir kasıtlı olarak kapsam dışı (o yüzden donusen_siparis burada
+    # tek başına yeterli değil — yalnız PROFORMA'dan doğan sipariş sayılır).
+    donusum_kilitli = bool(
+        donusen_proforma or (ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA and donusen_siparis))
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
                    "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis,
                    "donusen_proforma": donusen_proforma,
-                   "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura})
+                   "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura,
+                   "donusum_kilitli": donusum_kilitli})
 
 
 @ekran_gerekli("satis_teklifleri")
