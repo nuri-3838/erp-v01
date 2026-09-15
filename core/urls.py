@@ -77,6 +77,18 @@ urlpatterns = [
     path("fason/kesim-tanimlari/<int:pk>/duzenle/", views.fason_kesim_duzenle,
          name="fason_kesim_duzenle"),
     path("fason/kesim-tanimlari/<int:pk>/sil/", views.fason_kesim_sil, name="fason_kesim_sil"),
+    # ÜRETİM (FASON'dan bağımsız — Ürün Ağacı Tanımları + Üretim Emirleri)
+    path("uretim/urun-agaci/", views.uretim_urun_agaclari, name="uretim_urun_agaclari"),
+    path("uretim/urun-agaci/ekle/", views.uretim_urun_agaci_ekle, name="uretim_urun_agaci_ekle"),
+    path("uretim/urun-agaci/<int:pk>/duzenle/", views.uretim_urun_agaci_duzenle,
+         name="uretim_urun_agaci_duzenle"),
+    path("uretim/urun-agaci/<int:pk>/sil/", views.uretim_urun_agaci_sil,
+         name="uretim_urun_agaci_sil"),
+    path("uretim/emirler/", views.uretim_emirleri, name="uretim_emirleri"),
+    path("uretim/emirler/ekle/", views.uretim_emri_ekle, name="uretim_emri_ekle"),
+    path("uretim/emirler/<int:pk>/", views.uretim_emri_detay, name="uretim_emri_detay"),
+    path("uretim/emirler/<int:pk>/onayla/", views.uretim_emri_onayla, name="uretim_emri_onayla"),
+    path("uretim/emirler/<int:pk>/sil/", views.uretim_emri_sil, name="uretim_emri_sil"),
     # AYARLAR > Tanım Listeleri
     path("ayarlar/tanimlar/", views.tanim_listeleri, name="tanim_listeleri"),
     path("ayarlar/tanimlar/kdv/", views.kdv_oranlari, name="kdv_oranlari"),

@@ -1,0 +1,39 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Ürün Ağacı Tanımları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Ürün Ağacı Tanımları{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">Üretim Emirleri →</a>
+    <h1 class="ust-baslik"><span class="emoji">🌳</span>Ürün Ağacı Tanımları</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:uretim_urun_agaci_ekle' %}">+ Yeni</a>
+</div>
+
+<p class="yardim">Her tanım: 1 mamulün (üretim ürünü) hangi bileşenlerden ne miktarda
+  oluştuğunu gösterir. Üretim Emri açılırken bileşen ihtiyacı buradan otomatik hesaplanır.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Mamul</th><th class="sag">Bileşen Sayısı</th><th>Açıklama</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for a in agaclar %}
+      <tr>
+        <td><span class="mono">{{ a.mamul.kod }}</span> {{ a.mamul.ad }}</td>
+        <td class="sag mono">{{ a.satir_sayisi }}</td>
+        <td>{{ a.aciklama|default:"—" }}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:uretim_urun_agaci_duzenle' a.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:uretim_urun_agaci_sil' a.pk %}" onsubmit="return confirm('Silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4" class="yardim">Henüz ürün ağacı tanımı yok. "+ Yeni" ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

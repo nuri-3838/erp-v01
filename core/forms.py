@@ -973,6 +973,92 @@ class FasonSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+# === ÜRETİM modülü — Ürün Ağacı Tanımları + Üretim Emirleri ===
+class UrunAgaciBaslikForm(forms.Form):
+    """ÜRETİM > Ürün Ağacı Tanımları başlığı: mamul (yalnız oluştururken seçilir — mevcut
+    bir ürün ağacının mamulü sonradan değiştirilemez, bkz. urun_agaci_guncelle) + açıklama.
+    Mamul adayları satis_urunu=True kartlarla sınırlı (FASON > Kesim Tanımları'ndaki
+    "ürün (bitmiş)" ile aynı desen) — yalnız uretim_urunu=True (neredeyse her kartın
+    varsayılanı, ham profiller dahil) çok geniş olurdu."""
+    mamul = forms.ModelChoiceField(
+        label="Mamul", queryset=Stok.objects.none(), empty_label="— mamul seç —")
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["mamul"].queryset = (
+            Stok.objects.filter(silindi=False, satis_urunu=True).order_by("kod"))
+        self.fields["mamul"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["mamul"].widget.attrs["class"] = "akilli-sec"
+
+
+class UrunAgaciSatirForm(forms.Form):
+    """ÜRETİM > Ürün Ağacı Tanımları satırı: bileşen + miktar (formset satırı, FASON'daki
+    Kesim Listesi Hesapla ile aynı 'boş satır atlanır' deseni)."""
+    bilesen = forms.ModelChoiceField(
+        label="Bileşen", queryset=Stok.objects.none(), required=False,
+        empty_label="— bileşen seç —")
+    miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["bilesen"].queryset = Stok.objects.filter(silindi=False).order_by("kod")
+        self.fields["bilesen"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["bilesen"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        bilesen = cd.get("bilesen")
+        miktar = cd.get("miktar")
+        if not bilesen and miktar is None:
+            return cd                              # boş satır — atlanır
+        if not bilesen:
+            raise forms.ValidationError("Bileşen seçin.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+class UretimEmriForm(forms.Form):
+    """ÜRETİM > Üretim Emirleri: mamul (yalnız aktif ürün ağacı tanımlı kartlar) + planlanan
+    miktar + depo + tarih."""
+    mamul = forms.ModelChoiceField(
+        label="Mamul", queryset=Stok.objects.none(), empty_label="— mamul seç —")
+    planlanan_miktar = TRDecimalField(label="Planlanan Miktar", basamak=3)
+    depo = forms.ModelChoiceField(
+        label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.uretim import urun_agaci_olan_mamul_idler
+        self.fields["mamul"].queryset = (
+            Stok.objects.filter(silindi=False, pk__in=urun_agaci_olan_mamul_idler())
+            .order_by("kod"))
+        self.fields["mamul"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["mamul"].widget.attrs["class"] = "akilli-sec"
+        from core.services.depo import aktif_depolar
+        self.fields["depo"].queryset = aktif_depolar()
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+
+
+class UretimEmriSatirDuzeltForm(forms.Form):
+    """ÜRETİM > Üretim Emri detayı: TASLAK'ta satır bazında gerçekleşen miktarı düzeltme
+    formseti (gizli satir_id + tek TR ondalık alan)."""
+    satir_id = forms.IntegerField(widget=forms.HiddenInput)
+    gerceklesen_miktar = TRDecimalField(label="Gerçekleşen", basamak=3)
+
+
 class BordroBaslikForm(forms.Form):
     """Çek/senet bordrosu başlığı: cari + işlem tarihi + para birimi (giriş ve çıkış ortak)."""
     cari = forms.ModelChoiceField(label="Cari", queryset=Cari.objects.none(),

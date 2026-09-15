@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Üretim Emirleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Üretim Emirleri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:uretim_urun_agaclari' %}">← Ürün Ağacı Tanımları</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emirleri</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:uretim_emri_ekle' %}">+ Yeni</a>
+</div>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr>
+    <th>No</th><th>Tarih</th><th>Mamul</th><th class="sag">Planlanan</th>
+    <th>Depo</th><th>Durum</th>
+  </tr></thead>
+  <tbody>
+    {% for e in emirler %}
+      <tr>
+        <td><a class="mono" href="{% url 'core:uretim_emri_detay' e.pk %}">{{ e.no }}</a></td>
+        <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
+        <td><span class="mono">{{ e.mamul.kod }}</span> {{ e.mamul.ad }}</td>
+        <td class="sag mono">{{ e.planlanan_miktar|tr_kur:3 }}</td>
+        <td><span class="mono">{{ e.depo.kod }}</span> {{ e.depo.ad }}</td>
+        <td><span class="rozet {% if e.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ e.get_durum_display }}</span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim">Henüz üretim emri yok. "+ Yeni" ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if emirler.paginator.num_pages > 1 %}
+<nav class="sayfalama">
+  {% if emirler.has_previous %}
+    <a href="?sayfa={{ emirler.previous_page_number }}">‹ Önceki</a>
+  {% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  <span class="sayfalama-bilgi">Sayfa {{ emirler.number }} / {{ emirler.paginator.num_pages }}
+    · {{ emirler.paginator.count }} kayıt</span>
+  {% if emirler.has_next %}
+    <a href="?sayfa={{ emirler.next_page_number }}">Sonraki ›</a>
+  {% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

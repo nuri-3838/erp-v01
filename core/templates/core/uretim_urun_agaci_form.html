@@ -1,0 +1,114 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:uretim_urun_agaclari' %}">← Ürün Ağacı Tanımları</a>
+    <h1 class="ust-baslik"><span class="emoji">🌳</span>{{ baslik }}</h1>
+  </div>
+
+  {% if bform.non_field_errors %}
+    <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  {% if formset.non_form_errors %}
+    <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Mamul</h2>
+      {% if agac %}
+        <div class="satir"><span class="et">Mamul</span>
+          <span class="dg"><span class="mono">{{ agac.mamul.kod }}</span> {{ agac.mamul.ad }}</span></div>
+        <div class="izgara">
+          <div class="alan tam">
+            <label for="id_aciklama">Açıklama</label>
+            <input type="text" name="aciklama" id="id_aciklama" maxlength="300"
+                   value="{{ agac.aciklama }}" autocomplete="off">
+          </div>
+        </div>
+      {% else %}
+        <div class="izgara">
+          <div class="alan tam">
+            <label for="{{ bform.mamul.id_for_label }}">{{ bform.mamul.label }}</label>
+            <div class="akilli">{{ bform.mamul }}</div>
+            {% for e in bform.mamul.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan tam">
+            <label for="{{ bform.aciklama.id_for_label }}">{{ bform.aciklama.label }}</label>
+            {{ bform.aciklama }}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Bileşenler</h2>
+      <div class="tablo-kapsayici">
+        <table class="ua-tablo">
+          <thead><tr><th>Bileşen</th><th>Miktar (1 mamul için)</th><th></th></tr></thead>
+          <tbody id="satir-govde">
+            {% for f in formset %}
+              <tr class="ua-satir">
+                <td>{{ f.bilesen }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.miktar }}</td>
+                <td><button type="button" class="ua-sil" title="Satırı kaldır">✕</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="satir-alt">
+        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Bileşen Ekle</button>
+      </div>
+    </section>
+
+    <template id="bos-satir">
+      <td>{{ formset.empty_form.bilesen }}</td>
+      <td>{{ formset.empty_form.miktar }}</td>
+      <td><button type="button" class="ua-sil" title="Satırı kaldır">✕</button></td>
+    </template>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:uretim_urun_agaclari' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<style>
+  .ua-tablo { width:100%; border-collapse:collapse; }
+  .ua-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--metin-soluk); padding:0 .5rem .3rem; }
+  .ua-tablo td { padding:.25rem .5rem; }
+  .ua-tablo input, .ua-tablo select { min-width:12rem; }
+  .ua-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
+    font-size:.95rem; padding:.2rem .5rem; }
+  .ua-sil:hover { color:var(--hata); }
+  .satir-alt { margin-top:.7rem; }
+</style>
+
+<script>
+(function(){
+  function satirEkle(){
+    var tf = document.getElementById('id_satir-TOTAL_FORMS');
+    var i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr'); tr.className = 'ua-satir';
+    tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    document.getElementById('satir-govde').appendChild(tr);
+    tf.value = i + 1;
+    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+  }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('ua-sil')) e.target.closest('tr').remove();
+  });
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

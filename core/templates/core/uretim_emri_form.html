@@ -1,0 +1,58 @@
+{% extends "core/base.html" %}
+{% block baslik %}Yeni Üretim Emri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yeni Üretim Emri{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Emirleri</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>Yeni Üretim Emri</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Üretim Emri</h2>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.mamul.id_for_label }}">{{ form.mamul.label }}</label>
+          <div class="akilli">{{ form.mamul }}</div>
+          {% for e in form.mamul.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">Yalnız tanımlı bir ürün ağacı olan
+            mamuller listelenir — bkz. Ürün Ağacı Tanımları.</p>
+        </div>
+        <div class="alan">
+          <label for="{{ form.planlanan_miktar.id_for_label }}">{{ form.planlanan_miktar.label }}</label>
+          {{ form.planlanan_miktar }}
+          {% for e in form.planlanan_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.depo.id_for_label }}">{{ form.depo.label }}</label>
+          <div class="akilli">{{ form.depo }}</div>
+          {% for e in form.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
+          {{ form.tarih }}
+          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
+          {{ form.aciklama }}
+        </div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:uretim_emirleri' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

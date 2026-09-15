@@ -1609,6 +1609,7 @@ class StokHareket(TemelModel):
         MANUEL = "MANUEL", "Manuel"
         FATURA = "FATURA", "Fatura"
         IRSALIYE = "IRSALIYE", "İrsaliye"
+        URETIM = "URETIM", "Üretim"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -1625,6 +1626,11 @@ class StokHareket(TemelModel):
     # İrsaliyeden otomatik üretilen hareketler bu kaleme bağlanır (fatura_satir'in İrsaliye karşılığı).
     teklif_siparis_kalem = models.ForeignKey(
         "TeklifSiparisKalem", verbose_name="kaynak irsaliye kalemi", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="stok_hareketleri")
+    # Üretim Emri onayından otomatik üretilen BİLEŞEN ÇIKIŞ hareketleri bu kaleme bağlanır
+    # (mamul GİRİŞ hareketinin böyle bir satır karşılığı yok — emrin kendisi aciklama'da anılır).
+    uretim_emri_satir = models.ForeignKey(
+        "UretimEmriSatir", verbose_name="kaynak üretim emri satırı", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="stok_hareketleri")
     kaynak = models.CharField("kaynak", max_length=20, choices=Kaynak.choices,
                               default=Kaynak.MANUEL)
@@ -2192,3 +2198,127 @@ class FasonKesimKaydiKalemi(TemelModel):
 
     def __str__(self):
         return f"{self.kayit.no} — {self.urun.kod} × {self.miktar}"
+
+
+# === ÜRETİM modülü — Ürün Ağacı (BOM) + Üretim Emirleri ===
+# Bağımsız, sıfırdan kurulan bir Stok↔Stok reçetesi — FASON'daki kesilmiş-parça/
+# kesildigi_profil kavramıyla hiçbir ilişkisi yoktur. Üretim Emri onayı yalnızca
+# StokHareket (miktar) üretir; hiçbir YevmiyeFisi/YevmiyeSatir'e dokunmaz — maliyetin
+# muhasebeye yansıtılması ay sonu mali müşavirin elle yapacağı ayrı bir iştir
+# (bkz. docs/ERP_v0.1_kapsam.md v0.4).
+class UrunAgaci(TemelModel):
+    """ÜRETİM > Ürün Ağacı Tanımları — bir mamulün (Stok) 1 biriminin hangi bileşenlerden
+    (yine birer Stok kartı) ne miktarda oluştuğunu tanımlar. Mamul başına en fazla 1 aktif
+    tanım olur; bileşen satırları UrunAgaciSatir'da."""
+
+    mamul = models.ForeignKey(
+        Stok, verbose_name="mamul", on_delete=models.PROTECT, related_name="urun_agaclari")
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+
+    class Meta:
+        db_table = "core_urun_agaci"
+        verbose_name = "ürün ağacı"
+        verbose_name_plural = "ürün ağaçları"
+        ordering = ["mamul__kod"]
+        constraints = [
+            models.UniqueConstraint(fields=["mamul"], condition=models.Q(silindi=False),
+                                    name="uq_urun_agaci_mamul_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.mamul.kod} ürün ağacı"
+
+
+class UrunAgaciSatir(TemelModel):
+    urun_agaci = models.ForeignKey(
+        UrunAgaci, on_delete=models.CASCADE, related_name="satirlar")
+    bilesen = models.ForeignKey(
+        Stok, verbose_name="bileşen", on_delete=models.PROTECT,
+        related_name="urun_agaci_kullanimlari")
+    miktar = models.DecimalField("miktar (1 mamul için)", max_digits=18, decimal_places=3)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_urun_agaci_satir"
+        verbose_name = "ürün ağacı satırı"
+        verbose_name_plural = "ürün ağacı satırları"
+        ordering = ["sira", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0),
+                                   name="ck_urun_agaci_satir_miktar_gt0"),
+            models.UniqueConstraint(fields=["urun_agaci", "bilesen"],
+                                    condition=models.Q(silindi=False),
+                                    name="uq_urun_agaci_satir_bilesen_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.urun_agaci.mamul.kod} ← {self.bilesen.kod} × {self.miktar}"
+
+
+class UretimEmri(TemelModel):
+    """ÜRETİM > Üretim Emirleri — bir mamulden ne kadar üretileceğini/üretildiğini kaydeden
+    numaralı, durum kontrollü belge. TASLAK'ta serbestçe düzenlenir/silinir; Onayla'da tek
+    atomik işlemde bileşenler için stok ÇIKIŞ + mamul için stok GİRİŞ hareketleri (Kaynak=
+    URETIM) otomatik yazılır ve emir kilitlenir — bir daha değişmez/silinmez."""
+
+    class Durum(models.TextChoices):
+        TASLAK = "TASLAK", "Taslak"
+        ONAYLI = "ONAYLI", "Onaylı"
+
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("emir no", max_length=20, editable=False)
+    mamul = models.ForeignKey(
+        Stok, verbose_name="mamul", on_delete=models.PROTECT, related_name="uretim_emirleri")
+    urun_agaci = models.ForeignKey(
+        UrunAgaci, verbose_name="ürün ağacı", on_delete=models.PROTECT,
+        related_name="uretim_emirleri")
+    depo = models.ForeignKey(
+        Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="uretim_emirleri")
+    tarih = models.DateField("tarih")
+    planlanan_miktar = models.DecimalField("planlanan miktar", max_digits=18, decimal_places=3)
+    durum = models.CharField("durum", max_length=6, choices=Durum.choices, default=Durum.TASLAK)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+
+    class Meta:
+        db_table = "core_uretim_emri"
+        verbose_name = "üretim emri"
+        verbose_name_plural = "üretim emirleri"
+        ordering = ["-yil", "-sira"]
+        constraints = [
+            models.UniqueConstraint(fields=["yil", "sira"], name="uq_uretim_emri_yil_sira"),
+            models.CheckConstraint(condition=models.Q(planlanan_miktar__gt=0),
+                                   name="ck_uretim_emri_planlanan_miktar_gt0"),
+        ]
+
+    def __str__(self):
+        return self.no
+
+
+class UretimEmriSatir(TemelModel):
+    emir = models.ForeignKey(UretimEmri, on_delete=models.CASCADE, related_name="satirlar")
+    bilesen = models.ForeignKey(
+        Stok, verbose_name="bileşen", on_delete=models.PROTECT,
+        related_name="uretim_emri_kullanimlari")
+    # Ürün ağacından SNAPSHOT (emir açıldığı andaki tanıma göre) — tanım sonradan değişse
+    # bu emir etkilenmez. gerceklesen_miktar TASLAK'ta elle düzeltilebilir (gerçek sarfiyat/
+    # fire planlanandan sapabilir); Onayla'da STOK ÇIKIŞI bu değerle yazılır.
+    planlanan_miktar = models.DecimalField("planlanan miktar", max_digits=18, decimal_places=3)
+    gerceklesen_miktar = models.DecimalField(
+        "gerçekleşen miktar", max_digits=18, decimal_places=3)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_uretim_emri_satir"
+        verbose_name = "üretim emri satırı"
+        verbose_name_plural = "üretim emri satırları"
+        ordering = ["sira", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(planlanan_miktar__gt=0),
+                                   name="ck_uretim_emri_satir_planlanan_miktar_gt0"),
+            models.CheckConstraint(condition=models.Q(gerceklesen_miktar__gte=0),
+                                   name="ck_uretim_emri_satir_gerceklesen_miktar_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.emir.no} — {self.bilesen.kod}"

@@ -78,6 +78,10 @@ MODULLER = (
         Ekran("fason_kayitlari", "Kesim Kayıtları", "core:fason_kayitlari"),
         Ekran("fason_kesim_tanimlari", "Kesim Tanımları", "core:fason_kesim_tanimlari"),
     )),
+    Modul("URETIM", "Üretim", (
+        Ekran("uretim_urun_agaci", "Ürün Ağacı Tanımları", "core:uretim_urun_agaclari"),
+        Ekran("uretim_emirleri", "Üretim Emirleri", "core:uretim_emirleri"),
+    )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),

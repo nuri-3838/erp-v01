@@ -30,6 +30,7 @@ from core.forms import (
     KullaniciDuzenleForm, KullaniciEkleForm,
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
+    UrunAgaciBaslikForm, UrunAgaciSatirForm, UretimEmriForm, UretimEmriSatirDuzeltForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori,
@@ -37,7 +38,7 @@ from core.models import (
     CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
-    YevmiyeFisi, YevmiyeSatir,
+    YevmiyeFisi, YevmiyeSatir, UrunAgaci, UretimEmri,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -74,6 +75,7 @@ from core.services import kredi_hareket as kredi_hareket_servis
 from core.services import cek as cek_servis
 from core.services import firma as firma_servis
 from core.services import fason as fason_servis
+from core.services import uretim as uretim_servis
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
 from core.services import aday_kategori as aday_kategori_servis
@@ -4699,6 +4701,162 @@ def fason_kaydi_pdf(request, pk):
     sonuc = fason_servis.kayit_sonucu(kayit)
     return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc,
                             kullanici=kayit.created_by or request.user, no=kayit.no)
+
+
+# === ÜRETİM — Ürün Ağacı Tanımları + Üretim Emirleri (FASON'dan bağımsız) ===
+UrunAgaciSatirFormSet = formset_factory(UrunAgaciSatirForm, extra=0)
+UretimEmriSatirDuzeltFormSet = formset_factory(UretimEmriSatirDuzeltForm, extra=0)
+
+
+@ekran_gerekli("uretim_urun_agaci")
+def uretim_urun_agaclari(request):
+    return render(request, "core/uretim_urun_agaclari.html",
+                  {"agaclar": uretim_servis.aktif_urun_agaclari()})
+
+
+@ekran_gerekli("uretim_urun_agaci")
+def uretim_urun_agaci_ekle(request):
+    if request.method == "POST":
+        bform = UrunAgaciBaslikForm(request.POST)
+        formset = UrunAgaciSatirFormSet(request.POST, prefix="satir")
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [(f.cleaned_data["bilesen"], f.cleaned_data["miktar"])
+                       for f in formset if f.dolu_mu()]
+            cd = bform.cleaned_data
+            try:
+                uretim_servis.urun_agaci_olustur(
+                    mamul_id=cd["mamul"].pk, satirlar=satirlar,
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, "Ürün ağacı kaydedildi.")
+                return redirect("core:uretim_urun_agaclari")
+            except uretim_servis.UretimHatasi as e:
+                bform.add_error(None, str(e))
+    else:
+        bform = UrunAgaciBaslikForm()
+        formset = UrunAgaciSatirFormSet(prefix="satir")
+    return render(request, "core/uretim_urun_agaci_form.html",
+                  {"bform": bform, "formset": formset, "baslik": "Yeni Ürün Ağacı"})
+
+
+@ekran_gerekli("uretim_urun_agaci")
+def uretim_urun_agaci_duzenle(request, pk):
+    agac = get_object_or_404(UrunAgaci, pk=pk, silindi=False)
+    if request.method == "POST":
+        formset = UrunAgaciSatirFormSet(request.POST, prefix="satir")
+        aciklama = request.POST.get("aciklama", "")
+        if formset.is_valid():
+            satirlar = [(f.cleaned_data["bilesen"], f.cleaned_data["miktar"])
+                       for f in formset if f.dolu_mu()]
+            try:
+                uretim_servis.urun_agaci_guncelle(
+                    agac, satirlar=satirlar, aciklama=aciklama, kullanici=request.user)
+                messages.success(request, "Ürün ağacı güncellendi.")
+                return redirect("core:uretim_urun_agaclari")
+            except uretim_servis.UretimHatasi as e:
+                messages.error(request, str(e))
+    else:
+        formset = UrunAgaciSatirFormSet(initial=[
+            {"bilesen": s.bilesen_id, "miktar": s.miktar}
+            for s in uretim_servis.urun_agaci_satirlari(agac)], prefix="satir")
+    return render(request, "core/uretim_urun_agaci_form.html",
+                  {"formset": formset, "agac": agac, "baslik": "Ürün Ağacı Düzenle"})
+
+
+@ekran_gerekli("uretim_urun_agaci")
+def uretim_urun_agaci_sil(request, pk):
+    agac = get_object_or_404(UrunAgaci, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            uretim_servis.urun_agaci_sil(agac, kullanici=request.user)
+            messages.success(request, "Ürün ağacı silindi.")
+        except uretim_servis.UretimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:uretim_urun_agaclari")
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emirleri(request):
+    emirler = (UretimEmri.objects.filter(silindi=False)
+              .select_related("mamul", "depo").order_by("-yil", "-sira"))
+    sayfa = Paginator(emirler, 50).get_page(request.GET.get("sayfa"))
+    return render(request, "core/uretim_emirleri.html", {"emirler": sayfa})
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_ekle(request):
+    if request.method == "POST":
+        form = UretimEmriForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                emir = uretim_servis.uretim_emri_olustur(
+                    mamul_id=cd["mamul"].pk, planlanan_miktar=cd["planlanan_miktar"],
+                    depo_id=cd["depo"].pk, tarih=cd["tarih"],
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, f"Üretim emri oluşturuldu: {emir.no}")
+                return redirect("core:uretim_emri_detay", pk=emir.pk)
+            except uretim_servis.UretimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = UretimEmriForm()
+    return render(request, "core/uretim_emri_form.html", {"form": form})
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_detay(request, pk):
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    satirlar = list(uretim_servis.emri_satirlari(emir))
+    if request.method == "POST" and emir.durum == UretimEmri.Durum.TASLAK:
+        formset = UretimEmriSatirDuzeltFormSet(request.POST, prefix="gs")
+        if formset.is_valid():
+            satir_map = {s.pk: s for s in satirlar}
+            hata = None
+            for f in formset:
+                satir = satir_map.get(f.cleaned_data["satir_id"])
+                if satir is None:
+                    continue
+                try:
+                    uretim_servis.uretim_emri_satir_guncelle(
+                        satir, gerceklesen_miktar=f.cleaned_data["gerceklesen_miktar"],
+                        kullanici=request.user)
+                except uretim_servis.UretimHatasi as e:
+                    hata = str(e)
+                    break
+            if hata:
+                messages.error(request, hata)
+            else:
+                messages.success(request, "Miktarlar güncellendi.")
+                return redirect("core:uretim_emri_detay", pk=emir.pk)
+    else:
+        formset = UretimEmriSatirDuzeltFormSet(initial=[
+            {"satir_id": s.pk, "gerceklesen_miktar": s.gerceklesen_miktar}
+            for s in satirlar], prefix="gs")
+    return render(request, "core/uretim_emri_detay.html",
+                  {"emir": emir, "satirlar": list(zip(satirlar, formset)), "formset": formset})
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_onayla(request, pk):
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            uretim_servis.uretim_emri_onayla(emir, kullanici=request.user)
+            messages.success(request, f"{emir.no} onaylandı; stok hareketleri oluşturuldu.")
+        except uretim_servis.UretimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:uretim_emri_detay", pk=emir.pk)
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_sil(request, pk):
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            uretim_servis.uretim_emri_sil(emir, kullanici=request.user)
+            messages.success(request, "Üretim emri iptal edildi.")
+        except uretim_servis.UretimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:uretim_emirleri")
 
 
 # === FATURALAR — Alış/Satış faturası (otomatik yevmiye) ===
