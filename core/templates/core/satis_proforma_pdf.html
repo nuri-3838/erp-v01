@@ -171,6 +171,7 @@
         {% for b in bankalar %}
           <div class="banka-hesap">
             <div class="banka-satir"><span class="et">{{ E.banka }}</span><span class="dg">{{ b.banka_adi }}{% if b.sube %} · {{ b.sube }}{% endif %}</span></div>
+            {% if b.hesap_adi %}<div class="banka-satir"><span class="et">{{ E.hesap_adi }}</span><span class="dg">{{ b.hesap_adi }}</span></div>{% endif %}
             {% if b.hesap_sahibi %}<div class="banka-satir"><span class="et">{{ E.hesap_sahibi }}</span><span class="dg">{{ b.hesap_sahibi }}</span></div>{% endif %}
             {% if b.iban %}<div class="banka-satir"><span class="et">IBAN</span><span class="dg mono">{{ b.iban }}</span></div>{% endif %}
             <div class="banka-satir"><span class="et">{{ E.para_birimi }}</span><span class="dg">{{ b.para_birimi }}</span></div>

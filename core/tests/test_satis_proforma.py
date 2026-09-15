@@ -297,12 +297,14 @@ class SatisProformaBankaHesabiTest(TestCase):
     """Kullanıcı isteği: Proforma içinde banka seçilebilsin; yalnız proformanın PARA BİRİMİYLE
     eşleşen hesaplar listelensin (JS ile filtrelenir, sunucu tarafında _banka_coz ile
     doğrulanır); seçilen bankanın detayları hem PDF'te (satis_proforma_pdf_baglam) hem de
-    detay sayfasında (teklif_siparis_detay.html) gösterilsin."""
+    detay sayfasında (teklif_siparis_detay.html) gösterilsin. Kaynak: FİNANS > Banka'daki AÇIK
+    (silindi=False) gerçek hesaplar (core.models.BankaHesap) — AYARLAR > Firma Bilgileri'ndeki
+    statik FirmaBanka DEĞİL (o boş kalabilir, üretimde hiç kullanılmıyor)."""
 
     @classmethod
     def setUpTestData(cls):
-        from core.services.firma import firma_bilgisi_getir
-        from core.models import Birim, FirmaBanka
+        from core.services.finans import banka_hesap_olustur, banka_olustur
+        from core.models import Birim
 
         cls.yon = User.objects.create_superuser("spbyon", password="x")
         _hesap("120.04", "MÜŞTERİ SATIŞ PROFORMA BANKA")
@@ -321,15 +323,16 @@ class SatisProformaBankaHesabiTest(TestCase):
             fatura_birimi_id=birim.pk, kdv_id=kdv.pk,
             satis_urunu=True, model_kodu="bt1", basamak_sayisi=3,
             fiyat_try="12000", fiyat_usd="350", kullanici=cls.yon)
-        firma = firma_bilgisi_getir()
-        cls.banka_usd = FirmaBanka.objects.create(
-            firma=firma, banka_adi="Garanti BBVA", sube="Kayseri",
-            hesap_sahibi="SEMTA A.Ş.", iban="TR000000000000000000000001",
-            para_birimi="USD")
-        cls.banka_try = FirmaBanka.objects.create(
-            firma=firma, banka_adi="İş Bankası", sube="Kayseri",
-            hesap_sahibi="SEMTA A.Ş.", iban="TR000000000000000000000002",
-            para_birimi="TRY")
+        _hesap("102.94", "GARANTI BBVA USD")
+        _hesap("102.95", "IS BANKASI TL")
+        banka1 = banka_olustur(ad="garanti bbva", sube="kayseri", kullanici=cls.yon)
+        banka2 = banka_olustur(ad="iş bankası", sube="kayseri", kullanici=cls.yon)
+        cls.banka_usd = banka_hesap_olustur(
+            banka=banka1, ad="usd hesabı", iban="TR000000000000000000000001",
+            para_birimi="USD", muhasebe_kodu="102.94", kullanici=cls.yon)
+        cls.banka_try = banka_hesap_olustur(
+            banka=banka2, ad="tl hesabı", iban="TR000000000000000000000002",
+            para_birimi="TRY", muhasebe_kodu="102.95", kullanici=cls.yon)
 
     def _post_govde(self, **over):
         govde = {
@@ -402,6 +405,8 @@ class SatisProformaBankaHesabiTest(TestCase):
         self.assertIsNone(ts.banka_hesabi_id)
 
     def test_pdf_baglam_bankalar_yalniz_secili_hesabi_icerir(self):
+        """bankalar: BankaHesap+Banka'dan PDF şablonunun beklediği düz alanlara çevrilir
+        (bkz. _banka_hesap_pdf_goster) — banka_adi/sube üst kurumdan, hesap_adi kendisinden."""
         from core.views import satis_proforma_pdf_baglam
         self.client.force_login(self.yon)
         self.client.post(reverse("core:satis_proforma_ekle"),
@@ -409,7 +414,13 @@ class SatisProformaBankaHesabiTest(TestCase):
         ts = self._son_proforma()
         kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv"))
         baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
-        self.assertEqual(baglam["bankalar"], [self.banka_usd])
+        self.assertEqual(len(baglam["bankalar"]), 1)
+        b = baglam["bankalar"][0]
+        self.assertEqual(b["banka_adi"], "GARANTİ BBVA")
+        self.assertEqual(b["sube"], "KAYSERİ")
+        self.assertEqual(b["hesap_adi"], "USD HESABI")
+        self.assertEqual(b["iban"], "TR000000000000000000000001")
+        self.assertEqual(b["para_birimi"], "USD")
 
     def test_pdf_baglam_banka_secilmemisse_bankalar_bos(self):
         from core.views import satis_proforma_pdf_baglam
@@ -428,7 +439,8 @@ class SatisProformaBankaHesabiTest(TestCase):
                          self._post_govde(**{"banka_hesabi": self.banka_usd.pk}))
         ts = self._son_proforma()
         r = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
-        self.assertContains(r, "Garanti BBVA")
+        self.assertContains(r, "GARANTİ BBVA")
+        self.assertContains(r, "USD HESABI")
         self.assertContains(r, "TR000000000000000000000001")
 
     def test_detay_sayfasi_banka_secilmemisse_bolum_gosterilmez(self):

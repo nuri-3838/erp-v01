@@ -55,11 +55,6 @@
             {{ bform.gecerlilik_teslim_tarihi }}
             {% for e in bform.gecerlilik_teslim_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
-          <div class="bb-alan">
-            <label for="{{ bform.banka_hesabi.id_for_label }}">{{ bform.banka_hesabi.label }}</label>
-            {{ bform.banka_hesabi }}
-            {% for e in bform.banka_hesabi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
         </div>
         <div class="bb-satir">
           <div class="bb-alan">
@@ -90,6 +85,11 @@
             <label for="{{ bform.teslim_suresi.id_for_label }}">{{ bform.teslim_suresi.label }}</label>
             {{ bform.teslim_suresi }}
             {% for e in bform.teslim_suresi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ bform.banka_hesabi.id_for_label }}">{{ bform.banka_hesabi.label }}</label>
+            {{ bform.banka_hesabi }}
+            {% for e in bform.banka_hesabi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         </div>
       </div>

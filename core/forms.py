@@ -1589,20 +1589,23 @@ class SatisBelgeBaslikForm(forms.Form):
 
 class SatisProformaBaslikForm(SatisBelgeBaslikForm):
     """Satış Proforması başlığı — SatisBelgeBaslikForm'un tüm alanlarına ek olarak banka
-    hesabı seçimi (yalnız Proforma'da anlamlı; PDF ve detay sayfasında gösterilir). Queryset
-    TÜM aktif hesapları taşır — para birimine göre filtreleme JS ile yapılır (bkz.
-    satis_proforma_ekle.html); sunucu tarafı eşleşme kontrolü servis katmanında (_banka_coz)."""
+    hesabı seçimi (yalnız Proforma'da anlamlı; PDF ve detay sayfasında gösterilir). FİNANS >
+    Banka altındaki AÇIK (silindi=False) gerçek hesaplardan seçilir (core.models.BankaHesap) —
+    AYARLAR > Firma Bilgileri'ndeki statik FirmaBanka DEĞİL. Queryset TÜM açık hesapları taşır —
+    para birimine göre filtreleme JS ile yapılır (bkz. satis_proforma_ekle.html); sunucu tarafı
+    eşleşme kontrolü servis katmanında (_banka_coz)."""
 
     banka_hesabi = forms.ModelChoiceField(
-        label="Banka Hesabı", queryset=FirmaBanka.objects.none(), required=False,
+        label="Banka Hesabı", queryset=BankaHesap.objects.none(), required=False,
         empty_label="— banka seçilmedi —")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["banka_hesabi"].queryset = (
-            FirmaBanka.objects.filter(silindi=False).order_by("sira", "pk"))
+            BankaHesap.objects.filter(silindi=False, banka__silindi=False)
+            .select_related("banka").order_by("banka__ad", "ad"))
         self.fields["banka_hesabi"].label_from_instance = (
-            lambda o: f"{o.banka_adi}{' · ' + o.sube if o.sube else ''} ({o.para_birimi})")
+            lambda o: f"{o.banka.kisa_ad or o.banka.ad} · {o.ad} ({o.para_birimi})")
         self.fields["banka_hesabi"].widget.attrs["class"] = "akilli-sec"
 
 

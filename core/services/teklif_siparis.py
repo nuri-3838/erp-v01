@@ -17,7 +17,7 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
-from core.models import (AdayMusteri, Cari, Depo, FirmaBanka, KdvOrani, Stok, StokHareket,
+from core.models import (AdayMusteri, BankaHesap, Cari, Depo, KdvOrani, Stok, StokHareket,
                          TanimSecenegi, TeklifSiparis, TeklifSiparisKalem)
 from core.sayi import SayiHatasi, parse_tr
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
@@ -147,12 +147,14 @@ def _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id, navl
 
 def _banka_coz(banka_hesabi_id, pb):
     """Yalnız SATIŞ+PROFORMA'da anlamlı (PDF + detay sayfasında gösterilir) — boşsa None.
-    Seçilen banka hesabının para birimi proformanın KENDİ para birimiyle uyuşmalı (form/JS
-    zaten yalnız eşleşenleri listeler — bkz. satis_proforma_ekle.html; burası sunucu tarafı
-    güvence, JS atlanırsa/devre dışı kalırsa)."""
+    FİNANS > Banka altındaki (açık) gerçek banka hesaplarından seçilir (core.models.BankaHesap) —
+    AYARLAR > Firma Bilgileri'ndeki statik FirmaBanka DEĞİL. Seçilen hesabın para birimi
+    proformanın KENDİ para birimiyle uyuşmalı (form/JS zaten yalnız eşleşenleri listeler — bkz.
+    satis_proforma_ekle.html; burası sunucu tarafı güvence, JS atlanırsa/devre dışı kalırsa)."""
     if not banka_hesabi_id:
         return None
-    banka = FirmaBanka.objects.filter(pk=banka_hesabi_id, silindi=False).first()
+    banka = BankaHesap.objects.filter(
+        pk=banka_hesabi_id, silindi=False, banka__silindi=False).select_related("banka").first()
     if banka is None:
         raise TeklifSiparisHatasi("Banka hesabı bulunamadı.")
     if banka.para_birimi != pb:

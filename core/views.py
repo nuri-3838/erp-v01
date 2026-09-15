@@ -2048,10 +2048,22 @@ def _aday_meta():
 
 
 def _banka_meta():
-    """Firma banka hesabı başına para birimi — Satış Proforması'nda para birimi seçilince
-    JS ile o PB'deki hesaplar filtrelenir (bkz. satis_proforma_ekle.html, SatisProformaBaslikForm)."""
+    """FİNANS > Banka'daki açık hesap başına para birimi — Satış Proforması'nda para birimi
+    seçilince JS ile o PB'deki hesaplar filtrelenir (bkz. satis_proforma_ekle.html,
+    SatisProformaBaslikForm)."""
     return {str(b.pk): {"pb": b.para_birimi}
-            for b in FirmaBanka.objects.filter(silindi=False)}
+            for b in BankaHesap.objects.filter(silindi=False, banka__silindi=False)}
+
+
+def _banka_hesap_pdf_goster(banka_hesap, firma):
+    """BankaHesap (FİNANS > Banka altındaki gerçek hesap) kaydını Proforma PDF/detay
+    şablonunun beklediği düz alanlara çevirir — banka_adi/sube üst kurumdan (Banka) gelir;
+    BankaHesap'ta ayrı bir 'hesap sahibi' alanı yok, bu yüzden firma unvanı kullanılır."""
+    return {
+        "banka_adi": banka_hesap.banka.ad, "sube": banka_hesap.banka.sube,
+        "hesap_adi": banka_hesap.ad, "hesap_sahibi": firma.unvan if firma else "",
+        "iban": banka_hesap.iban, "para_birimi": banka_hesap.para_birimi,
+    }
 
 
 def _ts_ekle(request, belge_tur, yon, baslik, emoji):
@@ -2350,7 +2362,7 @@ def teklif_siparis_detay(request, pk):
     ts = get_object_or_404(
         TeklifSiparis.objects.select_related(
             "cari", "aday_musteri", "kaynak_teklif", "kaynak_proforma", "kaynak_siparis",
-            "depo"),
+            "depo", "banka_hesabi", "banka_hesabi__banka"),
         pk=pk)
     kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat")
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
@@ -2675,7 +2687,7 @@ _PDF_ETIKET_PROFORMA = {
         "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)", "toplam": "TOPLAM",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
         "genel_toplam": "GENEL TOPLAM", "banka_bilgileri": "Banka Bilgileri",
-        "banka": "Banka", "sube": "Şube", "hesap_sahibi": "Hesap Sahibi",
+        "banka": "Banka", "sube": "Şube", "hesap_adi": "Hesap", "hesap_sahibi": "Hesap Sahibi",
         "hazirlayan": "Hazırlayan", "notlar": "Notlar",
         "not_gecerlilik_varsayilan": "Bu proforma, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Bu proforma {tarih} tarihine kadar geçerlidir.",
@@ -2695,7 +2707,7 @@ _PDF_ETIKET_PROFORMA = {
         "agirlik": "Weight (kg)", "cbm": "CBM (m³)", "toplam": "TOTAL",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
         "genel_toplam": "GRAND TOTAL", "banka_bilgileri": "Bank Details",
-        "banka": "Bank", "sube": "Branch", "hesap_sahibi": "Account Holder",
+        "banka": "Bank", "sube": "Branch", "hesap_adi": "Account", "hesap_sahibi": "Account Holder",
         "hazirlayan": "Prepared by", "notlar": "Notes",
         "not_gecerlilik_varsayilan": "This proforma invoice is binding until the validity date.",
         "not_gecerlilik_tarihli": "This proforma invoice is valid until {tarih}.",
@@ -2735,7 +2747,7 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
     kdv_toplam = ts.kdv_toplam if yurt_ici else Decimal("0")
     genel_toplam = ts.ara_toplam + kdv_toplam
     firma = firma_servis.firma_bilgisi_getir()
-    bankalar = [ts.banka_hesabi] if ts.banka_hesabi_id else []
+    bankalar = ([_banka_hesap_pdf_goster(ts.banka_hesabi, firma)] if ts.banka_hesabi_id else [])
     notlar = []
     if ts.gecerlilik_teslim_tarihi:
         notlar.append(E["not_gecerlilik_tarihli"].format(
@@ -2800,7 +2812,8 @@ def teklif_siparis_pdf(request, pk):
     ts = get_object_or_404(
         TeklifSiparis.objects.select_related(
             "cari", "cari__ulke", "cari__sehir",
-            "aday_musteri", "aday_musteri__ulke", "aday_musteri__sehir"), pk=pk)
+            "aday_musteri", "aday_musteri__ulke", "aday_musteri__sehir",
+            "banka_hesabi", "banka_hesabi__banka"), pk=pk)
     kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat"))
     for k in kalemler:
         k.gorsel_b64 = None
