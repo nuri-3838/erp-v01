@@ -240,6 +240,47 @@ class SatisProformaTest(TestCase):
         self.assertIn(">TOPLAM<", html)
         self.assertIn("<tfoot>", html)
 
+    def test_pdf_html_navlun_satirlar_toplam_altinda_duz_gorunur(self):
+        """Kullanıcı isteği: TOPLAM satırının (çizginin) altında ayrı bir satırda navlun
+        tutarı girilebilsin, altında da ürün tutarı + navlun = yeni bir toplam satırı
+        gösterilsin. Satış Teklifi'ndeki navlun_payi/nakliye_dahil_fiyat DAĞITIMI (yükleme
+        tipine göre kalem başına bölünen navlun) burada KASITLI olarak kullanılmaz — navlun
+        kalem fiyatlarına dağıtılmadan düz bir toplam satırı olarak eklenir."""
+        from django.template.loader import render_to_string
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"),
+                         self._post_govde(**{"navlun_tutari": "500"}))
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertEqual(ts.ara_toplam, Decimal("15750.00"))
+        self.assertEqual(baglam["toplam_navlun_dahil"], Decimal("16250.00"))
+        ctx = {"ts": ts, "kalemler": kalemler, **baglam}
+        html = render_to_string("core/satis_proforma_pdf.html", ctx)
+        self.assertIn('<tr class="navlun-satiri">', html)
+        self.assertIn('<tr class="navlun-toplam-satiri">', html)
+        self.assertIn("TOPLAM (Navlun Dahil)", html)
+        self.assertIn("16.250,00", html)
+        # kalem fiyatlarına dağıtım YOK — Satış Teklifi'ne özgü kolonlar burada olmamalı
+        self.assertNotIn("Navlun Payı", html)
+        self.assertNotIn("Nakliye Dahil", html)
+
+    def test_pdf_html_navlunsuz_ek_satirlar_gorunmez(self):
+        from django.template.loader import render_to_string
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIsNone(baglam["toplam_navlun_dahil"])
+        ctx = {"ts": ts, "kalemler": kalemler, **baglam}
+        html = render_to_string("core/satis_proforma_pdf.html", ctx)
+        self.assertNotIn('<tr class="navlun-satiri">', html)
+        self.assertNotIn('<tr class="navlun-toplam-satiri">', html)
+        self.assertNotIn("TOPLAM (Navlun Dahil)", html)
+
     def test_liste_odenecek_sutunu_gosterir_teklif_gibi_sadelestirilmez(self):
         """Proforma'da gerçek miktar var -> gerçek 'ödenecek' tutar anlamlı; Satış Teklifi'nin
         aksine liste sadeleştirilmez (bkz. teklif_siparis_listesi.html sat_teklif bayrağı)."""

@@ -2686,6 +2686,7 @@ _PDF_ETIKET_PROFORMA = {
         "yukleme_tipi": "Yükleme Tipi", "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
         "urun": "Ürün", "miktar": "Miktar", "fiyat": "Fiyat", "tutar": "Tutar", "kdv": "KDV",
         "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)", "toplam": "TOPLAM",
+        "navlun_dahil_toplam": "TOPLAM (Navlun Dahil)",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
         "genel_toplam": "GENEL TOPLAM", "banka_bilgileri": "Banka Bilgileri",
         "banka": "Banka", "sube": "Banka Şubesi", "hesap_adi": "Hesap",
@@ -2707,6 +2708,7 @@ _PDF_ETIKET_PROFORMA = {
         "yukleme_tipi": "Transport Mode", "teslim_suresi": "Lead Time", "navlun": "Freight",
         "urun": "Item", "miktar": "Qty", "fiyat": "Price", "tutar": "Amount", "kdv": "VAT",
         "agirlik": "Weight (kg)", "cbm": "CBM (m³)", "toplam": "TOTAL",
+        "navlun_dahil_toplam": "TOTAL (incl. Freight)",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
         "genel_toplam": "GRAND TOTAL", "banka_bilgileri": "Bank Details",
         "banka": "Bank", "sube": "Bank Branch", "hesap_adi": "Account",
@@ -2749,6 +2751,11 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
             toplam_cbm += k.cbm_toplam
     kdv_toplam = ts.kdv_toplam if yurt_ici else Decimal("0")
     genel_toplam = ts.ara_toplam + kdv_toplam
+    # Navlun kalem fiyatlarına DAĞITILMAZ (bkz. Satış Teklifi'ndeki navlun_payi/nakliye_dahil_
+    # fiyat — proformada BİLİNÇLİ olarak kullanılmaz); yalnız kalemler tablosunun TOPLAM
+    # satırının hemen altında düz bir ek satır olarak gösterilir.
+    toplam_navlun_dahil = (
+        ts.ara_toplam + ts.navlun_tutari if ts.navlun_tutari is not None else None)
     firma = firma_servis.firma_bilgisi_getir()
     bankalar = ([_banka_hesap_pdf_goster(ts.banka_hesabi, firma)] if ts.banka_hesabi_id else [])
     notlar = []
@@ -2775,6 +2782,7 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
         "toplam_miktar": toplam_miktar,
         "toplam_agirlik": toplam_agirlik if toplam_agirlik else None,
         "toplam_cbm": toplam_cbm if toplam_cbm else None,
+        "toplam_navlun_dahil": toplam_navlun_dahil,
         "notlar": notlar,
         "firma": firma,
         "bankalar": bankalar,

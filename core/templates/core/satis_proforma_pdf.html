@@ -49,8 +49,10 @@
   table.kalemler tbody tr:nth-child(even) td { background: #fbfcfe; }
   table.kalemler .urun-model { display: inline-block; background: #f07c00; color: #fff; font-size: 7px;
     font-weight: 800; padding: 1px 5px; border-radius: 4px; margin-right: 4px; }
-  table.kalemler tfoot td { border-top: 2px solid #15294d; border-bottom: 0; font-weight: 800;
-    padding-top: 8px; color: #15294d; background: #fff; }
+  table.kalemler tfoot td { border-bottom: 0; font-weight: 800; color: #15294d; background: #fff; }
+  table.kalemler tfoot tr:first-child td { border-top: 2px solid #15294d; padding-top: 8px; }
+  table.kalemler tfoot tr.navlun-satiri td { font-weight: 600; color: #1c2533; padding-top: 4px; }
+  table.kalemler tfoot tr.navlun-toplam-satiri td { border-top: 1.5px solid #15294d; padding-top: 6px; }
 
   .altbolum { display: flex; gap: 11px; margin-top: 2px; }
   .altbolum .sol { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
@@ -177,6 +179,26 @@
         <td class="sag mono">{% if toplam_cbm %}{{ toplam_cbm|tr_kur:3 }}{% else %}—{% endif %}</td>
         {% if yurt_ici %}<td></td>{% endif %}
       </tr>
+      {% if ts.navlun_tutari is not None %}
+      <tr class="navlun-satiri">
+        <td>{{ E.navlun }}</td>
+        <td></td>
+        <td></td>
+        <td class="sag mono">{{ ts.navlun_tutari|tr_kur:2 }}</td>
+        <td></td>
+        <td></td>
+        {% if yurt_ici %}<td></td>{% endif %}
+      </tr>
+      <tr class="navlun-toplam-satiri">
+        <td>{{ E.navlun_dahil_toplam }}</td>
+        <td></td>
+        <td></td>
+        <td class="sag mono">{{ toplam_navlun_dahil|tr_kur:2 }}</td>
+        <td></td>
+        <td></td>
+        {% if yurt_ici %}<td></td>{% endif %}
+      </tr>
+      {% endif %}
     </tfoot>
     {% endif %}
   </table>
