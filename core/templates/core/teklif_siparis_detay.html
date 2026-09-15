@@ -68,7 +68,7 @@
       {% elif ts.belge_tur == "SIPARIS" and ts.kaynak_proforma %}
       <a class="dugme" href="{% url 'core:teklif_siparis_detay' ts.kaynak_proforma.pk %}">← Proformaya Dön</a>
       {% endif %}
-      {% if ts.belge_tur == "PROFORMA" or ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
+      {% if ts.belge_tur == "PROFORMA" or ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" or ts.belge_tur == "SIPARIS" and ts.yon == "SATIS" %}
       <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}?dil=tr" target="_blank">📄 PDF (TR)</a>
       <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}?dil=en" target="_blank">📄 PDF (EN)</a>
       {% else %}

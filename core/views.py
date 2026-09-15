@@ -2791,6 +2791,110 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
     }
 
 
+# Satış Siparişi PDF'i etiketleri — Satış Proforması ile aynı desen; başlık "SİPARİŞ ONAYI",
+# geçerlilik yerine teslim tarihi, genel toplam yerine (tevkifat düşülmüş) ödenecek gösterir.
+_PDF_ETIKET_SIPARIS = {
+    "tr": {
+        "baslik": "SİPARİŞ ONAYI", "alici": "Alıcı", "satici": "Satıcı",
+        "unvan": "Unvan", "ilgili_kisi": "İlgili Kişi", "ulke": "Ülke", "adres": "Adres",
+        "telefon": "Telefon", "eposta": "E-posta", "vergi_dairesi": "Vergi Dairesi",
+        "vergi_no": "Vergi No", "siparis_no": "Sipariş No", "tarih": "Tarih",
+        "teslim_tarihi": "Teslim Tarihi", "para_birimi": "Para Birimi",
+        "yukleme_sekli": "Teslim / Yükleme Şekli", "odeme_kosulu": "Ödeme Koşulu",
+        "yukleme_tipi": "Yükleme Tipi", "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
+        "urun": "Ürün", "miktar": "Miktar", "fiyat": "Fiyat", "tutar": "Tutar", "kdv": "KDV",
+        "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)", "toplam": "TOPLAM",
+        "navlun_dahil_toplam": "TOPLAM (Navlun Dahil)",
+        "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam", "tevkifat_toplam": "Tevkifat (−)",
+        "odenecek": "ÖDENECEK", "banka_bilgileri": "Banka Bilgileri",
+        "banka": "Banka", "sube": "Banka Şubesi",
+        "hesap_sahibi": "Hesap Sahibi", "swift_kod": "Swift Kodu",
+        "hazirlayan": "Hazırlayan", "notlar": "Notlar",
+        "not_teslim_tarihli": "Tahmini teslim tarihi: {tarih}.",
+        "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Sipariş Onayı",
+    },
+    "en": {
+        "baslik": "ORDER CONFIRMATION", "alici": "To", "satici": "From",
+        "unvan": "Company", "ilgili_kisi": "Contact Person", "ulke": "Country",
+        "adres": "Address", "telefon": "Phone", "eposta": "E-mail",
+        "vergi_dairesi": "Tax Office", "vergi_no": "Tax No", "siparis_no": "Order No",
+        "tarih": "Date", "teslim_tarihi": "Delivery Date", "para_birimi": "Currency",
+        "yukleme_sekli": "Delivery Term", "odeme_kosulu": "Payment Term",
+        "yukleme_tipi": "Transport Mode", "teslim_suresi": "Lead Time", "navlun": "Freight",
+        "urun": "Item", "miktar": "Qty", "fiyat": "Price", "tutar": "Amount", "kdv": "VAT",
+        "agirlik": "Weight (kg)", "cbm": "CBM (m³)", "toplam": "TOTAL",
+        "navlun_dahil_toplam": "TOTAL (incl. Freight)",
+        "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total", "tevkifat_toplam": "Withholding (−)",
+        "odenecek": "TOTAL DUE", "banka_bilgileri": "Bank Details",
+        "banka": "Bank", "sube": "Bank Branch",
+        "hesap_sahibi": "Account Holder", "swift_kod": "SWIFT Code",
+        "hazirlayan": "Prepared by", "notlar": "Notes",
+        "not_teslim_tarihli": "Estimated delivery date: {tarih}.",
+        "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Order Confirmation",
+    },
+}
+
+
+def satis_siparis_pdf_baglam(ts, kalemler, dil, kullanici):
+    """Satış Siparişi PDF şablonuna (satis_siparis_pdf.html) eklenecek bağlam — Satış
+    Proforması ile aynı desen (satis_proforma_pdf_baglam), iki farkla: (1) sipariş GERÇEK bir
+    ticari taahhüt olduğu için nihai tutar tevkifatı da düşen 'Ödenecek'tir (Proforma'daki
+    'Genel Toplam' KDV dahil ama tevkifatsızdır); (2) banka hesabı Sipariş'in KENDİSİNDE
+    seçilmez (yalnız Proforma ekranında bir alan var) — kaynak proformadan varsa devralınır."""
+    from decimal import Decimal
+
+    E = _PDF_ETIKET_SIPARIS[dil]
+    yurt_ici = not ts.taraf.ulke_id or ts.taraf.ulke.kod == "TR"
+    toplam_miktar = Decimal("0")
+    toplam_agirlik = Decimal("0")
+    toplam_cbm = Decimal("0")
+    for k in kalemler:
+        k.urun_ad = k.stok.ad_dil(dil)
+        k.agirlik_toplam = k.miktar * k.stok.agirlik if k.stok.agirlik is not None else None
+        k.cbm_toplam = k.miktar * k.stok.cbm if k.stok.cbm is not None else None
+        toplam_miktar += k.miktar
+        if k.agirlik_toplam is not None:
+            toplam_agirlik += k.agirlik_toplam
+        if k.cbm_toplam is not None:
+            toplam_cbm += k.cbm_toplam
+    kdv_toplam = ts.kdv_toplam if yurt_ici else Decimal("0")
+    tevkifat_toplam = ts.tevkifat_toplam
+    odenecek = ts.ara_toplam + kdv_toplam - tevkifat_toplam
+    toplam_navlun_dahil = (
+        ts.ara_toplam + ts.navlun_tutari if ts.navlun_tutari is not None else None)
+    firma = firma_servis.firma_bilgisi_getir()
+    banka_hesabi = ts.banka_hesabi or (ts.kaynak_proforma.banka_hesabi if ts.kaynak_proforma_id
+                                       else None)
+    bankalar = [_banka_hesap_pdf_goster(banka_hesabi, firma)] if banka_hesabi else []
+    notlar = []
+    if ts.gecerlilik_teslim_tarihi:
+        notlar.append(E["not_teslim_tarihli"].format(
+            tarih=ts.gecerlilik_teslim_tarihi.strftime("%d.%m.%Y")))
+    return {
+        "dil": dil, "E": E,
+        "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",
+        "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
+        "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
+        "teslim_suresi_ad": ts.teslim_suresi.ad_dil(dil) if ts.teslim_suresi_id else "",
+        "ulke_ad": ts.taraf.ulke.ad_dil(dil) if ts.taraf.ulke_id else "",
+        "sehir_ad": ts.taraf.sehir.ad_dil(dil) if ts.taraf.sehir_id else "",
+        "yurt_ici": yurt_ici,
+        "kdv_toplam": kdv_toplam,
+        "tevkifat_toplam": tevkifat_toplam,
+        "odenecek": odenecek,
+        "toplam_miktar": toplam_miktar,
+        "toplam_agirlik": toplam_agirlik if toplam_agirlik else None,
+        "toplam_cbm": toplam_cbm if toplam_cbm else None,
+        "toplam_navlun_dahil": toplam_navlun_dahil,
+        "notlar": notlar,
+        "firma": firma,
+        "bankalar": bankalar,
+        "hazirlayan": kullanici.get_full_name() or kullanici.get_username(),
+        "hazirlayan_eposta": kullanici.email,
+        "hazirlayan_telefon": kullanici_telefon(kullanici),
+    }
+
+
 _DOSYA_GECERSIZ = str.maketrans("", "", '\\/:*?"<>|')
 
 
@@ -2833,6 +2937,8 @@ def teklif_siparis_pdf(request, pk):
     sat_teklif = (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF
                  and ts.yon == TeklifSiparis.Yon.SATIS)
     sat_proforma = ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
+    sat_siparis = (ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS
+                  and ts.yon == TeklifSiparis.Yon.SATIS)
     ctx = {"ts": ts, "kalemler": kalemler, "teknik_kalemler": teknik_kalemler,
            "sat_teklif": sat_teklif}
     logo_yol = finders.find("core/img/semta-logo.png")
@@ -2849,6 +2955,10 @@ def teklif_siparis_pdf(request, pk):
         dil = "en" if request.GET.get("dil") == "en" else "tr"
         ctx.update(satis_proforma_pdf_baglam(ts, kalemler, dil, request.user))
         sablon = "core/satis_proforma_pdf.html"
+    elif sat_siparis:
+        dil = "en" if request.GET.get("dil") == "en" else "tr"
+        ctx.update(satis_siparis_pdf_baglam(ts, kalemler, dil, request.user))
+        sablon = "core/satis_siparis_pdf.html"
     html = render_to_string(sablon, ctx)
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")

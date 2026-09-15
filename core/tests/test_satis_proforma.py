@@ -334,15 +334,20 @@ class SatisProformaTest(TestCase):
         self.assertEqual(siparis.cari_id, self.cari.pk)
         self.assertEqual(siparis.kalemler.get().miktar, Decimal("20"))
 
-    def _zincir_kur(self):
-        """Teklif → Proforma → Sipariş zincirini uçtan uca kurar, üç belgeyi de döner."""
+    def _zincir_kur(self, **teklif_over):
+        """Teklif → Proforma → Sipariş zincirini uçtan uca kurar, üç belgeyi de döner.
+        teklif_over ile navlun_tutari gibi ek alanlar geçirilebilir — teklif_siparis_
+        olustur/teklifi_proformaya_cevir/proformayi_siparise_cevir zincir boyunca navlun_
+        tutari'yi otomatik taşır (bkz. core.services.teklif_siparis)."""
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
-        teklif = teklif_siparis_olustur(
+        govde = dict(
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
             cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 15),
             satirlar=[{"stok_id": self.a21.pk, "miktar": "1", "birim_fiyat": "350",
                       "iskonto_yuzdesi": "10"}],
             kullanici=self.yon)
+        govde.update(teklif_over)
+        teklif = teklif_siparis_olustur(**govde)
         teklif_siparis_onayla(teklif, kullanici=self.yon)
         self.client.force_login(self.yon)
         self.client.post(reverse("core:teklif_proformaya_cevir", args=[teklif.pk]))
@@ -410,6 +415,53 @@ class SatisProformaTest(TestCase):
         self.assertContains(r_siparis, "Proformaya Dön")
         # sipariş henüz hiçbir şeye dönüşmedi (terminal) -> İptal Et hâlâ görünür
         self.assertContains(r_siparis, reverse("core:teklif_siparis_iptal", args=[siparis.pk]))
+
+    def test_siparis_pdf_ikisi_de_calisir_tr_ve_en(self):
+        """Kullanıcı isteği: 'Sipariş çıktısı çok kötü' — Satış Siparişi artık kendi özel
+        şablonuyla (satis_siparis_pdf.html, Proforma ile aynı görsel dil) üretiliyor."""
+        _, _, siparis = self._zincir_kur()
+        for dil in ("tr", "en"):
+            r = self.client.get(reverse("core:teklif_siparis_pdf", args=[siparis.pk]) + f"?dil={dil}")
+            self.assertEqual(r.status_code, 200, dil)
+            self.assertEqual(r["Content-Type"], "application/pdf")
+
+    def test_siparis_pdf_baglam_odenecek_kdv_dahil_tevkifatsiz(self):
+        from core.views import satis_siparis_pdf_baglam
+        _, _, siparis = self._zincir_kur()
+        kalemler = list(siparis.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_siparis_pdf_baglam(siparis, kalemler, "tr", self.yon)
+        # 1 x 350 x 0.9 = 315 ara toplam; KDV %20 = 63; tevkifat yok -> ödenecek = 378
+        self.assertEqual(siparis.ara_toplam, Decimal("315.00"))
+        self.assertEqual(baglam["kdv_toplam"], Decimal("63.00"))
+        self.assertEqual(baglam["tevkifat_toplam"], Decimal("0.00"))
+        self.assertEqual(baglam["odenecek"], Decimal("378.00"))
+
+    def test_siparis_pdf_baglam_ihracatta_kdv_sifirlanir(self):
+        from core.views import satis_siparis_pdf_baglam
+        _, _, siparis = self._zincir_kur()
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN", ad_en="Bulgaria")
+        siparis.cari.ulke = bg
+        siparis.cari.save(update_fields=["ulke"])
+        kalemler = list(siparis.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_siparis_pdf_baglam(siparis, kalemler, "tr", self.yon)
+        self.assertFalse(baglam["yurt_ici"])
+        self.assertEqual(baglam["kdv_toplam"], Decimal("0"))
+        self.assertEqual(baglam["odenecek"], siparis.ara_toplam)
+
+    def test_siparis_pdf_html_navlun_satirlari_ve_odenecek_kutusu(self):
+        from django.template.loader import render_to_string
+        from core.views import satis_siparis_pdf_baglam
+        _, _, siparis = self._zincir_kur(navlun_tutari="50")
+        self.assertEqual(siparis.navlun_tutari, Decimal("50.00"))
+        kalemler = list(siparis.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_siparis_pdf_baglam(siparis, kalemler, "tr", self.yon)
+        html = render_to_string("core/satis_siparis_pdf.html",
+                                {"ts": siparis, "kalemler": kalemler, **baglam})
+        self.assertIn('<tr class="navlun-satiri">', html)
+        self.assertIn('<tr class="navlun-toplam-satiri">', html)
+        self.assertIn("ÖDENECEK", html)
+        self.assertNotIn("GENEL TOPLAM", html)
+        self.assertIn("SİPARİŞ ONAYI", html)
 
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)
@@ -605,3 +657,28 @@ class SatisProformaBankaHesabiTest(TestCase):
         ts = self._son_proforma()
         r = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
         self.assertNotContains(r, "Banka Bilgileri")
+
+    def test_siparis_pdf_baglam_banka_kaynak_proformadan_devralinir(self):
+        """Sipariş'in KENDİ ekranında banka_hesabi alanı yok (yalnız Proforma'da) — ama
+        Sipariş PDF'inde banka boş kalmasın diye kaynak proformanın seçtiği hesap devralınır
+        (bkz. satis_siparis_pdf_baglam)."""
+        from core.services.teklif_siparis import (
+            teklif_siparis_olustur, teklif_siparis_onayla, proformayi_siparise_cevir)
+        from core.views import satis_siparis_pdf_baglam
+
+        proforma = teklif_siparis_olustur(
+            belge_tur="PROFORMA", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 9, 15), para_birimi="USD",
+            banka_hesabi_id=self.banka_usd.pk,
+            satirlar=[{"stok_id": self.urun.pk, "miktar": "5", "birim_fiyat": "350",
+                      "iskonto_yuzdesi": "0"}], kullanici=self.yon)
+        teklif_siparis_onayla(proforma, kullanici=self.yon)
+        siparis = proformayi_siparise_cevir(proforma, tarih=datetime.date(2026, 9, 16),
+                                            kullanici=self.yon)
+        self.assertIsNone(siparis.banka_hesabi_id)   # sipariş'in kendisinde set edilmedi
+
+        kalemler = list(siparis.kalemler.filter(silindi=False).select_related("stok", "kdv"))
+        baglam = satis_siparis_pdf_baglam(siparis, kalemler, "tr", self.yon)
+        self.assertEqual(len(baglam["bankalar"]), 1)
+        self.assertEqual(baglam["bankalar"][0]["banka_adi"], "GARANTİ BBVA")
+        self.assertEqual(baglam["bankalar"][0]["iban"], "TR000000000000000000000001")
