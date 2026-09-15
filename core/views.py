@@ -2662,13 +2662,17 @@ _PDF_ETIKET_PROFORMA = {
         "yukleme_tipi": "Yükleme Tipi", "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
         "urun": "Ürün", "miktar": "Miktar", "birim_fiyat": "Birim Fiyat",
         "iskonto": "İskonto", "net_fiyat": "Net Fiyat", "tutar": "Tutar", "kdv": "KDV",
+        "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
         "genel_toplam": "GENEL TOPLAM", "banka_bilgileri": "Banka Bilgileri",
         "banka": "Banka", "sube": "Şube", "hesap_sahibi": "Hesap Sahibi",
+        "lojistik": "Lojistik Bilgileri", "toplam_agirlik": "Toplam Ağırlık",
+        "toplam_cbm": "Toplam CBM",
         "hazirlayan": "Hazırlayan", "notlar": "Notlar",
         "not_gecerlilik_varsayilan": "Bu proforma, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Bu proforma {tarih} tarihine kadar geçerlidir.",
         "not_odeme": "Ödeme, yukarıdaki banka hesabına yapılabilir.",
+        "not_kdv_istisna": "İhracat teslimleri KDV'den istisnadır.",
         "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Proforma Fatura",
     },
     "en": {
@@ -2681,13 +2685,16 @@ _PDF_ETIKET_PROFORMA = {
         "yukleme_tipi": "Transport Mode", "teslim_suresi": "Lead Time", "navlun": "Freight",
         "urun": "Item", "miktar": "Qty", "birim_fiyat": "Unit Price",
         "iskonto": "Discount", "net_fiyat": "Net Price", "tutar": "Amount", "kdv": "VAT",
+        "agirlik": "Weight (kg)", "cbm": "CBM (m³)",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
         "genel_toplam": "GRAND TOTAL", "banka_bilgileri": "Bank Details",
         "banka": "Bank", "sube": "Branch", "hesap_sahibi": "Account Holder",
+        "lojistik": "Logistics", "toplam_agirlik": "Total Weight", "toplam_cbm": "Total CBM",
         "hazirlayan": "Prepared by", "notlar": "Notes",
         "not_gecerlilik_varsayilan": "This proforma invoice is binding until the validity date.",
         "not_gecerlilik_tarihli": "This proforma invoice is valid until {tarih}.",
         "not_odeme": "Payment can be made to the bank account above.",
+        "not_kdv_istisna": "Export deliveries are exempt from VAT.",
         "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Proforma Invoice",
     },
 }
@@ -2696,10 +2703,29 @@ _PDF_ETIKET_PROFORMA = {
 def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
     """Satış Proforması PDF şablonuna (satis_proforma_pdf.html) eklenecek bağlam — hem
     teklif_siparis_pdf view'ından hem testlerden çağrılır (satis_teklif_pdf_baglam ile aynı
-    desen)."""
+    desen).
+
+    Yurt içi/dışı: KDV yalnız yurt içi alıcıya anlamlı (ihracat KDV'den istisnadır) —
+    ts.kdv_toplam/ts.genel_toplam MODEL property'leri kalemin kendi kdv FK'sına göre
+    (stoğun kendi KDV oranı, alıcının ülkesinden BAĞIMSIZ) hesaplanır; ihracat proformasında
+    bu yüzden buradaki kdv_toplam/genel_toplam context değişkenleri ayrıca hesaplanır ve
+    yurt dışı alıcıda KDV'yi SIFIRLAR (şablon da ts.kdv_toplam değil BUNLARI kullanır)."""
+    from decimal import Decimal
+
     E = _PDF_ETIKET_PROFORMA[dil]
+    yurt_ici = not ts.taraf.ulke_id or ts.taraf.ulke.kod == "TR"
+    toplam_agirlik = Decimal("0")
+    toplam_cbm = Decimal("0")
     for k in kalemler:
         k.urun_ad = k.stok.ad_dil(dil)
+        k.agirlik_toplam = k.miktar * k.stok.agirlik if k.stok.agirlik is not None else None
+        k.cbm_toplam = k.miktar * k.stok.cbm if k.stok.cbm is not None else None
+        if k.agirlik_toplam is not None:
+            toplam_agirlik += k.agirlik_toplam
+        if k.cbm_toplam is not None:
+            toplam_cbm += k.cbm_toplam
+    kdv_toplam = ts.kdv_toplam if yurt_ici else Decimal("0")
+    genel_toplam = ts.ara_toplam + kdv_toplam
     firma = firma_servis.firma_bilgisi_getir()
     notlar = []
     if ts.gecerlilik_teslim_tarihi:
@@ -2707,6 +2733,8 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
             tarih=ts.gecerlilik_teslim_tarihi.strftime("%d.%m.%Y")))
     else:
         notlar.append(E["not_gecerlilik_varsayilan"])
+    if not yurt_ici:
+        notlar.append(E["not_kdv_istisna"])
     bankalar = list(firma.bankalar.filter(silindi=False)) if firma else []
     if bankalar:
         notlar.append(E["not_odeme"])
@@ -2718,6 +2746,11 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
         "teslim_suresi_ad": ts.teslim_suresi.ad_dil(dil) if ts.teslim_suresi_id else "",
         "ulke_ad": ts.taraf.ulke.ad_dil(dil) if ts.taraf.ulke_id else "",
         "sehir_ad": ts.taraf.sehir.ad_dil(dil) if ts.taraf.sehir_id else "",
+        "yurt_ici": yurt_ici,
+        "kdv_toplam": kdv_toplam,
+        "genel_toplam": genel_toplam,
+        "toplam_agirlik": toplam_agirlik if toplam_agirlik else None,
+        "toplam_cbm": toplam_cbm if toplam_cbm else None,
         "notlar": notlar,
         "firma": firma,
         "bankalar": bankalar,

@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis
+from core.models import Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis, Ulke
 from core.services.stok import stok_olustur
 
 
@@ -44,6 +44,7 @@ class SatisProformaTest(TestCase):
             ad="a tipi merdiven", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
             fatura_birimi_id=cls.birim.pk, kdv_id=cls.kdv.pk,
             satis_urunu=True, model_kodu="a21", basamak_sayisi=3,
+            agirlik="12,5", cbm="0,850",     # TR sayı biçimi: virgül=ondalık (bkz. core.sayi)
             fiyat_try="12000", fiyat_usd="350", kullanici=cls.yon)
         cls.c22 = stok_olustur(
             ad="cift cikisli merdiven", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
@@ -158,6 +159,65 @@ class SatisProformaTest(TestCase):
             r = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]) + f"?dil={dil}")
             self.assertEqual(r.status_code, 200, dil)
             self.assertEqual(r["Content-Type"], "application/pdf")
+
+    def test_pdf_baglam_agirlik_ve_cbm_toplam_hesaplar(self):
+        """Kullanıcı isteği: proformada adet/net fiyat yanında ağırlık ve CBM bilgisi de
+        olsun — kalem başına MİKTAR × stoğun birim ağırlığı/CBM'si (toplam sevkiyat
+        değeri, birim değeri değil)."""
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        k = kalemler[0]
+        self.assertEqual(k.agirlik_toplam, Decimal("50") * Decimal("12.5"))     # 625.0
+        self.assertEqual(k.cbm_toplam, Decimal("50") * Decimal("0.850"))        # 42.500
+        self.assertEqual(baglam["toplam_agirlik"], k.agirlik_toplam)
+        self.assertEqual(baglam["toplam_cbm"], k.cbm_toplam)
+
+    def test_pdf_kdv_yurt_ici_gorunur_ihracatta_sifirlanir(self):
+        """Kullanıcı isteği: ihracat proformasında KDV olmamalı — kdv_toplam/genel_toplam
+        MODEL property'leri kalemin kendi (alıcı ülkesinden bağımsız) kdv FK'sına göre
+        hesaplandığı için, PDF context'i bunları yurt dışı alıcıda sıfırlayarak ayrıca
+        hesaplar (bkz. satis_proforma_pdf_baglam)."""
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam_ici = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertTrue(baglam_ici["yurt_ici"])
+        self.assertEqual(baglam_ici["kdv_toplam"], ts.kdv_toplam)
+        self.assertEqual(baglam_ici["genel_toplam"], ts.genel_toplam)
+        self.assertNotIn("İhracat teslimleri KDV'den istisnadır.", baglam_ici["notlar"])
+
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN", ad_en="Bulgaria")
+        ts.cari.ulke = bg
+        ts.cari.save(update_fields=["ulke"])
+        baglam_disi = satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertFalse(baglam_disi["yurt_ici"])
+        self.assertEqual(baglam_disi["kdv_toplam"], Decimal("0"))
+        self.assertEqual(baglam_disi["genel_toplam"], ts.ara_toplam)   # KDV eklenmez
+        self.assertIn("İhracat teslimleri KDV'den istisnadır.", baglam_disi["notlar"])
+
+    def test_pdf_html_ihracatta_kdv_sutunu_gizlenir(self):
+        from django.template.loader import render_to_string
+        from core.views import satis_proforma_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_proforma_ekle"), self._post_govde())
+        ts = self._son_proforma()
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN", ad_en="Bulgaria")
+        ts.cari.ulke = bg
+        ts.cari.save(update_fields=["ulke"])
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        ctx = {"ts": ts, "kalemler": kalemler,
+              **satis_proforma_pdf_baglam(ts, kalemler, "tr", self.yon)}
+        html = render_to_string("core/satis_proforma_pdf.html", ctx)
+        self.assertNotIn(">KDV<", html)
+        self.assertIn("Ağırlık (kg)", html)
+        self.assertIn("CBM (m³)", html)
+        self.assertIn("İhracat teslimleri KDV", html)
 
     def test_liste_odenecek_sutunu_gosterir_teklif_gibi_sadelestirilmez(self):
         """Proforma'da gerçek miktar var -> gerçek 'ödenecek' tutar anlamlı; Satış Teklifi'nin

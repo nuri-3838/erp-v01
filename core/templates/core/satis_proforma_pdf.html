@@ -129,7 +129,8 @@
     <thead><tr>
       <th>{{ E.urun }}</th><th class="sag">{{ E.miktar }}</th><th class="sag">{{ E.birim_fiyat }}</th>
       <th class="sag">{{ E.iskonto }}</th><th class="sag">{{ E.net_fiyat }}</th>
-      <th class="sag">{{ E.tutar }}</th><th class="sag">{{ E.kdv }}</th>
+      <th class="sag">{{ E.tutar }}</th><th class="sag">{{ E.agirlik }}</th><th class="sag">{{ E.cbm }}</th>
+      {% if yurt_ici %}<th class="sag">{{ E.kdv }}</th>{% endif %}
     </tr></thead>
     <tbody>
       {% for k in kalemler %}
@@ -140,16 +141,25 @@
           <td class="sag mono">{% if k.iskonto_yuzdesi %}%{{ k.iskonto_yuzdesi|tr_kur:2 }}{% else %}—{% endif %}</td>
           <td class="sag mono">{{ k.net_birim_fiyat|tr_kur:4 }}</td>
           <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>
-          <td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{% if k.agirlik_toplam is not None %}{{ k.agirlik_toplam|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{% if k.cbm_toplam is not None %}{{ k.cbm_toplam|tr_kur:3 }}{% else %}—{% endif %}</td>
+          {% if yurt_ici %}<td class="sag mono">{% if k.kdv %}%{{ k.kdv.oran|tr_kur:0 }}{% else %}—{% endif %}</td>{% endif %}
         </tr>
       {% empty %}
-        <tr><td colspan="7" style="text-align:center;padding:10px 0;color:#8b97ab">—</td></tr>
+        <tr><td colspan="9" style="text-align:center;padding:10px 0;color:#8b97ab">—</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
   <div class="altbolum">
     <div class="sol">
+      {% if toplam_agirlik or toplam_cbm %}
+      <div class="kutu banka-kutu">
+        <div class="kb">{{ E.lojistik }}</div>
+        {% if toplam_agirlik %}<div class="banka-satir"><span class="et">{{ E.toplam_agirlik }}</span><span class="dg mono">{{ toplam_agirlik|tr_kur:2 }} kg</span></div>{% endif %}
+        {% if toplam_cbm %}<div class="banka-satir"><span class="et">{{ E.toplam_cbm }}</span><span class="dg mono">{{ toplam_cbm|tr_kur:3 }} m³</span></div>{% endif %}
+      </div>
+      {% endif %}
       {% if bankalar %}
       <div class="kutu banka-kutu">
         <div class="kb">{{ E.banka_bilgileri }}</div>
@@ -170,9 +180,9 @@
     </div>
     <div class="toplam-kutu">
       <div class="toplam-satir"><span class="et">{{ E.ara_toplam }}</span><span class="mono">{{ ts.ara_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
-      <div class="toplam-satir"><span class="et">{{ E.kdv_toplam }}</span><span class="mono">{{ ts.kdv_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+      {% if yurt_ici %}<div class="toplam-satir"><span class="et">{{ E.kdv_toplam }}</span><span class="mono">{{ kdv_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
       {% if ts.navlun_tutari is not None %}<div class="toplam-satir"><span class="et">{{ E.navlun }}</span><span class="mono">{{ ts.navlun_tutari|tr_kur:2 }} {{ ts.para_birimi }}</span></div>{% endif %}
-      <div class="toplam-satir genel"><span class="et">{{ E.genel_toplam }}</span><span class="mono">{{ ts.genel_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
+      <div class="toplam-satir genel"><span class="et">{{ E.genel_toplam }}</span><span class="mono">{{ genel_toplam|tr_kur:2 }} {{ ts.para_birimi }}</span></div>
     </div>
   </div>
 </body>
