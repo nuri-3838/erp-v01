@@ -8,6 +8,9 @@
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
   .uretim-miktar-yardimci { background:rgba(240,124,0,.06); border-style:dashed; }
+  .satir-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
+    font-size:.95rem; padding:.2rem .5rem; }
+  .satir-sil:hover { color:var(--hata); }
 </style>
 <div class="form-kapsa">
   <div class="form-ust">
@@ -43,11 +46,11 @@
       <h2 class="bolum-baslik">Kalemler</h2>
       <div class="tablo-kapsayici genis">
       <table class="satir-tablo">
-        <colgroup><col style="width:32%"><col style="width:15%"><col style="width:14%"><col style="width:16%">
-          <col style="width:12%"><col style="width:11%"></colgroup>
+        <colgroup><col style="width:30%"><col style="width:14%"><col style="width:13%"><col style="width:15%">
+          <col style="width:11%"><col style="width:10%"><col style="width:4%"></colgroup>
         <thead><tr>
           <th>Stok</th><th class="sag">Üretim Miktarı</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
-          <th class="sag">Tutar</th><th class="sag">KDV</th>
+          <th class="sag">Tutar</th><th class="sag">KDV</th><th></th>
         </tr></thead>
         <tbody id="satir-govde">
           {% for f in formset %}
@@ -61,14 +64,15 @@
               <td class="sag">{{ f.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
               <td class="sag tutar mono">—</td>
               <td class="sag kdv mono">—</td>
+              <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
             </tr>
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr><th colspan="4" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th></tr>
-          <tr><th colspan="4" class="sag">KDV</th><th></th><th class="sag deger" id="tKdv">0,00</th></tr>
-          <tr id="satirTevkifat" hidden><th colspan="4" class="sag">Tevkifat (−)</th><th></th><th class="sag deger" id="tTev">0,00</th></tr>
-          <tr><th colspan="4" class="sag">Ödenecek</th><th colspan="2" class="sag deger" id="tGenel">0,00</th></tr>
+          <tr><th colspan="4" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th><th></th></tr>
+          <tr><th colspan="4" class="sag">KDV</th><th></th><th class="sag deger" id="tKdv">0,00</th><th></th></tr>
+          <tr id="satirTevkifat" hidden><th colspan="4" class="sag">Tevkifat (−)</th><th></th><th class="sag deger" id="tTev">0,00</th><th></th></tr>
+          <tr><th colspan="4" class="sag">Ödenecek</th><th colspan="2" class="sag deger" id="tGenel">0,00</th><th></th></tr>
         </tfoot>
       </table>
       </div>
@@ -88,6 +92,7 @@
       <td class="sag">{{ formset.empty_form.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
       <td class="sag tutar mono">—</td>
       <td class="sag kdv mono">—</td>
+      <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
     <div class="form-altbar">
@@ -174,6 +179,9 @@
     if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('satir-sil')){ e.target.closest('tr').remove(); hesapla(); }
+  });
   var form=document.getElementById('ts-form');
   form.addEventListener('input', function(e){
     var row=e.target.closest('.satir-form');
