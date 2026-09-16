@@ -665,13 +665,24 @@ def yedek_indir(request, ad):
 @ekran_gerekli("stoklar")
 def stoklar(request):
     ara = (request.GET.get("ara") or "").strip()
+    kategori_id = request.GET.get("kategori") or ""
     qs = stok_servis.aktif_stoklar()
     if ara:
         buyuk = buyuk_harf_tr(ara)
         qs = qs.filter(
             Q(kod__icontains=ara) | Q(ad__contains=buyuk)
             | Q(kategori__ad__contains=buyuk) | Q(kategori__ust__ad__contains=buyuk))
-    return render(request, "core/stok_listesi.html", {"stoklar": qs, "ara": ara})
+    if kategori_id:
+        qs = qs.filter(kategori_id=kategori_id)
+    # Filtre seçenekleri yalnız en az bir stokta fiilen kullanılan ALT kategorilerden
+    # oluşur (bkz. aday müşteri listesindeki aynı desen) — tüm kategori master verisini
+    # değil, ekrandaki gerçek veriyi yansıtır.
+    kategoriler = Kategori.objects.filter(
+        silindi=False, pk__in=stok_servis.aktif_stoklar().exclude(kategori=None).values("kategori_id")
+    ).select_related("ust").order_by("ust__ad", "ad")
+    return render(request, "core/stok_listesi.html", {
+        "stoklar": qs, "ara": ara, "secili_kategori": kategori_id, "kategoriler": kategoriler,
+    })
 
 
 @ekran_gerekli("stoklar")
