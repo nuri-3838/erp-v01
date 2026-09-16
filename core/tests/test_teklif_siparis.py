@@ -606,9 +606,12 @@ class TeklifSiparisViewTest(TestCase):
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
 
-    def test_alis_yonunde_dropdown_ikisini_birden_detay_ve_pdf_tedarikci_adini_gosterir(self):
-        """Satınalma (ALIŞ) stok seçim formunda (akıllı-seç) hem dahili ad hem tedarikçi
-        ürün adı görünmeli (bkz. forms._stok_alis_etiketi) — kaydedilen belgenin detay/PDF
+    def test_alis_yonunde_dropdown_sadece_ad_meta_tedarikci_adi_detay_pdf_tedarikci_adi(self):
+        """Satınalma (ALIŞ) stok seçim formunda (akıllı-seç) görünen etiket YALNIZ dahili
+        ad olmalı — kod ve tedarikçi ürün adı satırda görünmez (bkz. forms.py'deki ALIŞ
+        dalı: ``lambda o: o.ad``); tedarikçi ürün adı bunun yerine stok_meta JSON'ında
+        taşınır ve seçim sonrası alan altında JS ile gösterilir (bkz. views._stok_meta,
+        teklif_siparis_ekle.html tedarikciGuncelle). Kaydedilen belgenin detay/PDF
         görünümünde ise yine yalnız tedarikçinin bildiği isim (bkz. Stok.ad_satinalma)."""
         import datetime
         from core.services.teklif_siparis import teklif_siparis_olustur
@@ -624,8 +627,9 @@ class TeklifSiparisViewTest(TestCase):
             kullanici=self.yon)
         self.client.force_login(self.yon)
         e = self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk]))
-        self.assertContains(e, "Supplier Catalog Name")
         self.assertContains(e, "DAHİLİ İMALAT ADI")
+        self.assertNotContains(e, "S8  DAHİLİ İMALAT ADI")   # kod artık etikette yok
+        self.assertContains(e, '"tedarikciAdi": "Supplier Catalog Name"')  # stok_meta JSON'ında var
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
         self.assertContains(d, "Supplier Catalog Name")
         self.assertNotContains(d, "DAHİLİ İMALAT ADI")
@@ -633,7 +637,9 @@ class TeklifSiparisViewTest(TestCase):
         self.assertEqual(pdf.status_code, 200)
 
     def test_satis_yonunde_dahili_ad_gosterilir_tedarikci_adi_degil(self):
-        """Regresyon: satış tarafı bu özellikten hiç etkilenmemeli."""
+        """Regresyon: satış tarafı (Satış Siparişi de aynı paylaşımlı ekranı/meta'yı
+        kullanıyor) bu özellikten hiç etkilenmemeli — ne dropdown etikette ne stok_meta
+        JSON'ında tedarikçi ürün adı geçmemeli."""
         import datetime
         from core.services.teklif_siparis import teklif_siparis_olustur
         stok_ted = Stok.objects.create(
@@ -647,6 +653,9 @@ class TeklifSiparisViewTest(TestCase):
             satirlar=[{"stok_id": stok_ted.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
         self.client.force_login(self.yon)
+        e = self.client.get(reverse("core:teklif_siparis_duzenle", args=[ts.pk]))
+        self.assertContains(e, "S9  DAHİLİ İMALAT ADI 2")   # satış tarafında kod hâlâ görünür
+        self.assertNotContains(e, "Supplier Catalog Name 2")
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
         self.assertContains(d, "DAHİLİ İMALAT ADI 2")
         self.assertNotContains(d, "Supplier Catalog Name 2")

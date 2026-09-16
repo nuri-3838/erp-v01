@@ -6,6 +6,10 @@
 {% block content %}
 {{ stok_kdv|json_script:"stok-kdv" }}
 {{ stok_tevkifat|json_script:"stok-tevkifat" }}
+{{ stok_tedarikci|json_script:"stok-tedarikci" }}
+<style>
+  .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
+</style>
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{{ iptal_url|default:'/faturalar/' }}">← Geri</a>
@@ -49,7 +53,7 @@
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td>{{ f.stok }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td>{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">{{ f.miktar }}</td>
               <td class="sag">{{ f.birim_fiyat }}</td>
               <td class="sag tutar mono">—</td>
@@ -71,7 +75,7 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.stok }}</td>
+      <td>{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></td>
       <td class="sag">{{ formset.empty_form.miktar }}</td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
       <td class="sag tutar mono">—</td>
@@ -89,6 +93,7 @@
 (function(){
   var KDV = JSON.parse(document.getElementById('stok-kdv').textContent);
   var TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);
+  var TED = JSON.parse(document.getElementById('stok-tedarikci').textContent);
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
     else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
@@ -115,6 +120,12 @@
     document.getElementById('tTev').textContent=fmt(tev);
     document.getElementById('tGenel').textContent=fmt(mal+kdv-tev);
   }
+  function tedarikciGuncelle(row){
+    var sel=el(row,'-stok'); var etiket=row.querySelector('.tedarikci-etiket');
+    if(!etiket) return;
+    var ad=(sel&&sel.value)?TED[sel.value]:null;
+    etiket.textContent = ad ? 'Tedarikçi ürün adı: '+ad : '';
+  }
   function satirEkle(){
     var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);
     var tr=document.createElement('tr'); tr.className='satir-form';
@@ -124,7 +135,13 @@
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
   var form=document.getElementById('fatura-form');
-  form.addEventListener('input', hesapla); form.addEventListener('change', hesapla);
+  form.addEventListener('input', hesapla);
+  form.addEventListener('change', function(e){
+    var row=e.target.closest('.satir-form');
+    if(row && e.target.name && e.target.name.indexOf('-stok')>-1) tedarikciGuncelle(row);
+    hesapla();
+  });
+  document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
   hesapla();
 })();
 </script>

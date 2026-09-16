@@ -133,19 +133,22 @@ class FaturaEkranTest(TestCase):
         self.assertEqual(f.satirlar.filter(silindi=False).get().birim_fiyat,
                          Decimal("45.6789"))
 
-    def test_alis_faturasi_dropdown_ikisini_birden_detay_yalniz_tedarikci_adini_gosterir(self):
-        """Alış faturası stok seçim formunda (akıllı-seç) hem dahili ad hem tedarikçi
-        ürün adı görünmeli (bkz. forms._stok_alis_etiketi) — kaydedilen belgenin
-        detayında ise yine yalnız tedarikçinin bildiği isim (bkz. Stok.ad_satinalma,
-        FaturaSatirForm yon='ALIS')."""
+    def test_alis_faturasi_dropdown_sadece_ad_meta_tedarikci_adi_detay_tedarikci_adi(self):
+        """Alış faturası stok seçim formunda (akıllı-seç) görünen etiket YALNIZ dahili ad
+        olmalı — kod ve tedarikçi ürün adı satırda görünmez (bkz. forms.py ALIŞ dalı);
+        tedarikçi ürün adı stok_tedarikci JSON'ında taşınır ve seçim sonrası alan altında
+        JS ile gösterilir (bkz. views._stok_kdv_tevkifat, fatura_ekle.html
+        tedarikciGuncelle). Kaydedilen belgenin detayında ise yine yalnız tedarikçinin
+        bildiği isim (bkz. Stok.ad_satinalma, FaturaSatirForm yon='ALIS')."""
         stok_ted = Stok.objects.create(
             kod="153-10-0002", ad="DAHİLİ İMALAT ADI", tedarikci_adi="Supplier Catalog Name",
             kategori=self.stok.kategori, uretim_birimi=self.stok.uretim_birimi,
             fatura_birimi=self.stok.fatura_birimi, kdv=self.kdv)
         self.client.force_login(self.yon)
         e = self.client.get(reverse("core:alis_fatura_ekle"))
-        self.assertContains(e, "Supplier Catalog Name")
         self.assertContains(e, "DAHİLİ İMALAT ADI")
+        self.assertNotContains(e, "153-10-0002  DAHİLİ İMALAT ADI")  # kod artık etikette yok
+        self.assertContains(e, '"' + str(stok_ted.pk) + '": "Supplier Catalog Name"')
         post = self._post_data()
         post["form-0-stok"] = str(stok_ted.pk)
         self.client.post(reverse("core:alis_fatura_ekle"), post)
@@ -166,6 +169,9 @@ class FaturaEkranTest(TestCase):
         musteri = Cari.objects.create(kod="120-10-0001", unvan="MÜŞTERİ A", para_birimi="TRY",
                                       muhasebe_kodu="320.10.0001")
         self.client.force_login(self.yon)
+        e = self.client.get(reverse("core:satis_fatura_ekle"))
+        self.assertContains(e, "153-10-0003  DAHİLİ İMALAT ADI 2")  # satışta kod hâlâ görünür
+        self.assertNotContains(e, "Supplier Catalog Name 2")
         post = self._post_data()
         post.update({"tip": str(satis.pk), "cari": str(musteri.pk),
                     "form-0-stok": str(stok_ted.pk)})

@@ -52,7 +52,7 @@
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td>{{ f.stok }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td>{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">
                 <input type="text" class="uretim-miktar-yardimci" inputmode="decimal" placeholder="0" autocomplete="off">
                 <span class="birim-etiket birim-uretim"></span>
@@ -79,7 +79,7 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.stok }}</td>
+      <td>{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></td>
       <td class="sag">
         <input type="text" class="uretim-miktar-yardimci" inputmode="decimal" placeholder="0" autocomplete="off">
         <span class="birim-etiket birim-uretim"></span>
@@ -154,6 +154,11 @@
         +(farkli?' ⚠ belge '+belgePb:'');
     }
   }
+  function tedarikciGuncelle(row){
+    var meta=stokMeta(row); var etiket=row.querySelector('.tedarikci-etiket');
+    if(!etiket) return;
+    etiket.textContent = (meta && meta.tedarikciAdi) ? 'Tedarikçi ürün adı: '+meta.tedarikciAdi : '';
+  }
   function uretimdenMiktarHesapla(row){
     var meta=stokMeta(row); var um=row.querySelector('.uretim-miktar-yardimci'); var mi=el(row,'-miktar');
     if(!meta || !um || !mi || !um.value) return;
@@ -179,11 +184,11 @@
     var row=e.target.closest('.satir-form');
     if(row){
       birimGuncelle(row);
-      if(e.target.name && e.target.name.indexOf('-stok')>-1) alisFiyatiOner(row);
+      if(e.target.name && e.target.name.indexOf('-stok')>-1){ alisFiyatiOner(row); tedarikciGuncelle(row); }
     }
     hesapla();
   });
-  document.querySelectorAll('.satir-form').forEach(function(r){ birimGuncelle(r); alisFiyatiOner(r); });
+  document.querySelectorAll('.satir-form').forEach(function(r){ birimGuncelle(r); alisFiyatiOner(r); tedarikciGuncelle(r); });
   var pbSec=document.getElementById('id_para_birimi');
   if(pbSec) pbSec.addEventListener('change', function(){
     document.querySelectorAll('.satir-form').forEach(alisFiyatiOner);

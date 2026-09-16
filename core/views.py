@@ -1996,9 +1996,11 @@ def satis_siparisleri(request):
                      "Satış Siparişleri", "📦")
 
 
-def _stok_meta():
+def _stok_meta(yon=None):
     """Kalem satırı JS'i için stok başına KDV oranı + tevkifat oranı + üretim/fatura
-    birim çevirisi + alış fiyatı (varsa Birim Fiyat'a otomatik öneri için)."""
+    birim çevirisi + alış fiyatı (varsa Birim Fiyat'a otomatik öneri için) + (yalnız ALIŞ
+    yönünde) Tedarikçi Ürün Adı — stok seçilince alan altında ayrıca gösterilir (satış
+    tarafında hiç dönmez, bkz. forms.py'deki akıllı-seç etiketiyle aynı ayrım)."""
     return {str(s.pk): {
         "kdv": float(s.kdv.oran) if s.kdv_id else 0,
         "tevkifat": (float(s.tevkifat.pay) / float(s.tevkifat.payda))
@@ -2008,6 +2010,7 @@ def _stok_meta():
         "fatura": s.fatura_birimi.kisa_ad,
         "alisFiyati": float(s.alis_fiyati) if s.alis_fiyati is not None else None,
         "alisFiyatiPb": s.alis_fiyati_pb,
+        "tedarikciAdi": (s.tedarikci_adi or None) if yon == "ALIS" else None,
     } for s in Stok.objects.filter(silindi=False)
       .select_related("kdv", "tevkifat", "uretim_birimi", "fatura_birimi")}
 
@@ -2115,7 +2118,7 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
         formset = TeklifSiparisKalemFormSet(form_kwargs={"yon": yon})
     return render(request, "core/teklif_siparis_ekle.html",
                   {"bform": bform, "formset": formset, "baslik": baslik, "emoji": emoji,
-                   "stok_meta": _stok_meta(), "iptal_url": reverse("core:" + ekran)})
+                   "stok_meta": _stok_meta(yon), "iptal_url": reverse("core:" + ekran)})
 
 
 @ekran_gerekli("satinalma_teklifleri")
@@ -2505,10 +2508,10 @@ def siparis_faturaya_cevir(request, pk):
         ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
                for k in siparis.kalemler.filter(silindi=False).select_related("stok")]
         formset = FaturaSatirFormSet(initial=ilk)
-    stok_kdv, stok_tevkifat = _stok_kdv_tevkifat()
+    stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
-                   "stok_tevkifat": stok_tevkifat,
+                   "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
                    "baslik": f"Fatura Oluştur (Sipariş {siparis.pk} kaynaklı)",
                    "iptal_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
@@ -2564,7 +2567,7 @@ def teklif_siparis_duzenle(request, pk):
     return render(request, "core/teklif_siparis_ekle.html",
                   {"bform": bform, "formset": formset,
                    "baslik": f"{ts.get_belge_tur_display()} Düzenle", "emoji": emoji,
-                   "stok_meta": _stok_meta(),
+                   "stok_meta": _stok_meta(ts.yon),
                    "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
 
@@ -5024,12 +5027,16 @@ def _fatura_ekle_url(yon):
             else "core:satis_fatura_ekle")
 
 
-def _stok_kdv_tevkifat():
+def _stok_kdv_tevkifat(yon=None):
     _stoklar = list(Stok.objects.filter(silindi=False).select_related("kdv", "tevkifat"))
     stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0 for s in _stoklar}
     stok_tevkifat = {str(s.pk): (float(s.tevkifat.pay) / float(s.tevkifat.payda))
                      if (s.tevkifat_id and s.tevkifat.payda) else 0 for s in _stoklar}
-    return stok_kdv, stok_tevkifat
+    # Yalnız ALIŞ yönünde: stok seçilince alan altında gösterilecek Tedarikçi Ürün Adı
+    # (bkz. _stok_meta'daki aynı ayrım, fatura_ekle.html'nin tedarikci-etiket JS'i).
+    stok_tedarikci = ({str(s.pk): s.tedarikci_adi for s in _stoklar if s.tedarikci_adi}
+                       if yon == "ALIS" else {})
+    return stok_kdv, stok_tevkifat, stok_tedarikci
 
 
 def _fatura_listesi(request, yon, baslik):
@@ -5088,11 +5095,11 @@ def _fatura_ekle(request, yon, baslik):
     else:
         fform = FaturaForm(yon=yon)
         formset = FaturaSatirFormSet(form_kwargs={"yon": yon})
-    stok_kdv, stok_tevkifat = _stok_kdv_tevkifat()
+    stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
-                   "stok_tevkifat": stok_tevkifat, "baslik": baslik,
-                   "iptal_url": reverse(_fatura_liste_url(yon))})
+                   "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
+                   "baslik": baslik, "iptal_url": reverse(_fatura_liste_url(yon))})
 
 
 @ekran_gerekli("alis_faturalari")
@@ -5152,10 +5159,10 @@ def fatura_duzenle(request, pk):
         ilk = [{"stok": s.stok_id, "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False).select_related("stok")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon})
-    stok_kdv, stok_tevkifat = _stok_kdv_tevkifat()
+    stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
-                   "stok_tevkifat": stok_tevkifat,
+                   "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
                    "baslik": "Fatura Düzenle",
                    "iptal_url": reverse("core:fatura_detay", args=[fatura.pk])})
 
