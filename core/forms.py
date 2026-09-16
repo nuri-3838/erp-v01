@@ -1309,6 +1309,16 @@ class FaturaForm(forms.Form):
                 self.fields["depo"].initial = vd.pk
 
 
+def _stok_alis_etiketi(o):
+    """Satınalma tarafı (ALIŞ) stok seçim etiketi: dahili ad HER ZAMAN görünür; tedarikçi
+    ürün adı biliniyorsa yanına eklenir (ikisi birden — bkz. Stok.tedarikci_adi,
+    Stok.ad_satinalma). Akıllı-seç arama kutusu bu metnin tamamında filtreler, yani
+    tedarikçi adıyla da aranabilir olur."""
+    if o.tedarikci_adi:
+        return f"{o.kod}  {o.ad}  ·  Tedarikçi: {o.tedarikci_adi}"
+    return f"{o.kod}  {o.ad}"
+
+
 class FaturaSatirForm(forms.Form):
     """Fatura kalemi — Teklif/Sipariş kalem formuyla aynı şekil, aynı sebeple birim fiyat
     4 ondalık basamak (bkz. TeklifSiparisKalemForm): fatura kalemleri artık Satınalma
@@ -1326,7 +1336,7 @@ class FaturaSatirForm(forms.Form):
         self.fields["stok"].queryset = (
             Stok.objects.filter(silindi=False).select_related("kategori", "kdv").order_by("kod"))
         if yon == "ALIS":
-            self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad_satinalma()}"
+            self.fields["stok"].label_from_instance = _stok_alis_etiketi
         else:
             self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
@@ -1639,7 +1649,7 @@ class TeklifSiparisKalemForm(forms.Form):
         self.fields["stok"].queryset = (
             Stok.objects.filter(silindi=False).select_related("kategori", "kdv").order_by("kod"))
         if yon == "ALIS":
-            self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad_satinalma()}"
+            self.fields["stok"].label_from_instance = _stok_alis_etiketi
         else:
             self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"

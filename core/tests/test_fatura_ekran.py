@@ -133,9 +133,11 @@ class FaturaEkranTest(TestCase):
         self.assertEqual(f.satirlar.filter(silindi=False).get().birim_fiyat,
                          Decimal("45.6789"))
 
-    def test_alis_faturasi_dropdown_ve_detay_tedarikci_adini_gosterir(self):
-        """Alış faturasında stok, tedarikçinin bildiği isimle görünmeli — dahili ad'dan
-        bağımsız (bkz. Stok.ad_satinalma, FaturaSatirForm yon='ALIS')."""
+    def test_alis_faturasi_dropdown_ikisini_birden_detay_yalniz_tedarikci_adini_gosterir(self):
+        """Alış faturası stok seçim formunda (akıllı-seç) hem dahili ad hem tedarikçi
+        ürün adı görünmeli (bkz. forms._stok_alis_etiketi) — kaydedilen belgenin
+        detayında ise yine yalnız tedarikçinin bildiği isim (bkz. Stok.ad_satinalma,
+        FaturaSatirForm yon='ALIS')."""
         stok_ted = Stok.objects.create(
             kod="153-10-0002", ad="DAHİLİ İMALAT ADI", tedarikci_adi="Supplier Catalog Name",
             kategori=self.stok.kategori, uretim_birimi=self.stok.uretim_birimi,
@@ -143,7 +145,7 @@ class FaturaEkranTest(TestCase):
         self.client.force_login(self.yon)
         e = self.client.get(reverse("core:alis_fatura_ekle"))
         self.assertContains(e, "Supplier Catalog Name")
-        self.assertNotContains(e, "DAHİLİ İMALAT ADI")
+        self.assertContains(e, "DAHİLİ İMALAT ADI")
         post = self._post_data()
         post["form-0-stok"] = str(stok_ted.pk)
         self.client.post(reverse("core:alis_fatura_ekle"), post)
