@@ -136,6 +136,30 @@ class CariGirisBordroTest(TestCase):
         self.assertEqual(s["121.01"], (Decimal("500.00"), Decimal("0.00")))    # senet toplam borç
         self.assertEqual(s["120.01"], (Decimal("0.00"), Decimal("3500.00")))   # cari alacak
 
+    def test_carinin_kur_tipine_gore_ve_override(self):
+        import datetime
+        from decimal import Decimal
+        from core.models import Kur
+        from core.services.cek import cari_giris_bordrosu_olustur
+        Kur.objects.filter(tarih=datetime.date(2026, 6, 28)).update(usd_satis=Decimal("41"))
+        self.cari.kur_tipi = Cari.KurTipi.MB_SATIS
+        self.cari.save(update_fields=["kur_tipi"])
+        b = cari_giris_bordrosu_olustur(
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 28), para_birimi="USD",
+            satirlar=[{"tip": "CEK", "tutar": "100", "vade": datetime.date(2026, 9, 1)}],
+            kullanici=self.yon)
+        fis = b.fisler.get()
+        kurlar = {x.islem_kuru for x in fis.satirlar.all()}
+        self.assertEqual(kurlar, {Decimal("41")})
+
+        b2 = cari_giris_bordrosu_olustur(
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 28), para_birimi="USD",
+            satirlar=[{"tip": "CEK", "tutar": "100", "vade": datetime.date(2026, 9, 1)}],
+            kullanici=self.yon, kur_override=Decimal("77"))
+        fis2 = b2.fisler.get()
+        kurlar2 = {x.islem_kuru for x in fis2.satirlar.all()}
+        self.assertEqual(kurlar2, {Decimal("77")})
+
     def test_config_eksik_reddedilir(self):
         import datetime
         from core.models import CekHesapAyari

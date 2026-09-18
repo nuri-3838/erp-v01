@@ -120,6 +120,16 @@ class Kur(TemelModel):
     def __str__(self):
         return f"{self.tarih} USD={self.usd_alis}"
 
+    _KUR_TIPI_SUFFIX = {"MB_ALIS": "alis", "MB_SATIS": "satis",
+                        "EFEKTIF_ALIS": "efektif_alis", "EFEKTIF_SATIS": "efektif_satis"}
+
+    def deger(self, pb, kur_tipi):
+        """pb ('USD'/'EUR'/'GBP') + kur_tipi'ne (bkz. Cari.KurTipi) karşılık gelen saklı
+        kur alanını döner (yoksa None) — carinin tercih ettiği kur tipini okumanın TEK
+        doğruluk kaynağı; proje genelindeki `_kur_coz` kopyaları bunu kullanır."""
+        suf = self._KUR_TIPI_SUFFIX.get(kur_tipi, "alis")
+        return getattr(self, f"{pb.lower()}_{suf}", None)
+
 
 class YevmiyeFisi(TemelModel):
     """Yevmiye fişi başlığı (spec bölüm 2 — Tablo: YEVMIYE_FISI).
@@ -752,6 +762,12 @@ class Cari(TemelModel):
 
     PARA_CHOICES = YevmiyeSatir.IslemPB.choices   # TRY/USD/EUR/GBP
 
+    class KurTipi(models.TextChoices):
+        MB_ALIS = "MB_ALIS", "MB Alış"
+        MB_SATIS = "MB_SATIS", "MB Satış"
+        EFEKTIF_ALIS = "EFEKTIF_ALIS", "Efektif Alış"
+        EFEKTIF_SATIS = "EFEKTIF_SATIS", "Efektif Satış"
+
     # Kimlik
     kod = models.CharField("cari kodu", max_length=30)
     # Hesap planındaki muhasebe hesap kodu (kod'un noktalı hâli, örn. 320.10.0003).
@@ -783,6 +799,11 @@ class Cari(TemelModel):
     adres = models.TextField("adres", blank=True)
     # Ticari
     para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES, default="TRY")
+    # Yalnız para_birimi != TRY iken anlamlı — döviz belgelerinde (İrsaliye/Fatura/Kasa/
+    # Banka/Kredi Kartı/Çek) kur önizlemesi/hesabı hangi TCMB kur tipini (bkz. Kur.deger)
+    # kullanacağını belirler. Varsayılan MB_ALIS -> mevcut carilerin davranışı DEĞİŞMEZ.
+    kur_tipi = models.CharField("kur tipi", max_length=15, choices=KurTipi.choices,
+                                default=KurTipi.MB_ALIS)
     kredi_limiti = models.DecimalField("kredi/risk limiti", max_digits=14, decimal_places=2, default=0)
     iskonto_yuzdesi = models.DecimalField("varsayılan iskonto %", max_digits=5, decimal_places=2, default=0)
     notlar = models.TextField("notlar", blank=True)
@@ -1356,6 +1377,14 @@ class TeklifSiparis(TemelModel):
     sira = models.PositiveIntegerField("sıra", null=True, blank=True, editable=False)
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
+    # Fatura.kur ile aynı şekil, ama NULL olabilir (Fatura'nın aksine TASLAK'ta bir "1"
+    # yer tutucusu yok — kur hiç kaydedilmemiş bile olabilir). Doluysa (kullanıcı elle
+    # girdi/değiştirdi ya da JS otomatik doldurdu) İrsaliye onayında bunun YERİNE
+    # kullanılır — bkz. core.services.teklif_siparis._irsaliye_stok_hareketi_yaz. Yalnız
+    # İRSALİYE'de gerçek bir etkisi var; Teklif/Proforma/Sipariş'te salt önizleme/
+    # dönüşüm-zincirinde taşınan bir değer olarak saklanır.
+    kur = models.DecimalField("kur (TL)", max_digits=18, decimal_places=6,
+                              null=True, blank=True)
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
     # Yalnız SATIŞ+TEKLİF/PROFORMA ekranlarında doldurulur — AYARLAR > Tanım Listeleri'nden
     # seçilir (TanimSecenegi, kategoriye göre). Diğer belge türlerinde hep boş.
@@ -1430,6 +1459,9 @@ class TeklifSiparis(TemelModel):
                 condition=(models.Q(cari__isnull=False, aday_musteri__isnull=True)
                           | models.Q(cari__isnull=True, aday_musteri__isnull=False)),
                 name="ck_teklif_siparis_cari_xor_aday_musteri"),
+            models.CheckConstraint(
+                condition=models.Q(kur__isnull=True) | models.Q(kur__gt=0),
+                name="ck_teklif_siparis_kur_gt0"),
         ]
 
     def __str__(self):

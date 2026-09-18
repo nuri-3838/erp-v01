@@ -512,6 +512,10 @@ class CariForm(forms.Form):
                             widget=forms.Textarea(attrs={"rows": 7, **_K}))
     # Ticari
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    # Yalnız para_birimi != TRY iken gösterilir (JS) — bkz. Cari.kur_tipi. required=False:
+    # TRY carilerde/eski POST'larda hiç gönderilmeyebilir, servis katmanı boşsa MB_ALIS'e düşer.
+    kur_tipi = forms.ChoiceField(label="Kur Tipi", choices=Cari.KurTipi.choices,
+                                 initial=Cari.KurTipi.MB_ALIS, required=False)
     kredi_limiti = TRDecimalField(label="Kredi/Risk Limiti", basamak=2,
                                   initial=Decimal("0"), required=False)
     iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
@@ -1155,6 +1159,9 @@ class BordroBaslikForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    # TRY'de anlamsız (JS ile gizlenir). Doluysa carinin kur_tipi tercihine göre otomatik
+    # hesaplanan kur YERİNE bu kullanılır.
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
 
     def __init__(self, *args, cari_label="Cari", **kwargs):
         super().__init__(*args, **kwargs)
@@ -1162,6 +1169,7 @@ class BordroBaslikForm(forms.Form):
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
 
 
 class CariCiroForm(forms.Form):
@@ -1173,12 +1181,16 @@ class CariCiroForm(forms.Form):
         label="İşlem Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
+    # Seçilen evrakın PB'si TRY değilse gösterilir (JS); ciro edilen carinin kur_tipi
+    # tercihine göre otomatik doldurulur. Doluysa otomatik hesaplama YERİNE kullanılır.
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
 
 
 class BankaIslemForm(forms.Form):
@@ -1286,6 +1298,9 @@ class FaturaForm(forms.Form):
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
     para_birimi = forms.ChoiceField(
         label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    # TRY'de anlamsız (JS ile gizlenir). Doluysa carinin kur_tipi tercihine göre otomatik
+    # hesaplanan kur YERİNE bu kullanılır — bkz. core.services.fatura._hazirla/fatura_onayla.
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
     depo = forms.ModelChoiceField(
         label="Depo", queryset=Depo.objects.none(), required=False,
         empty_label="— depo seç —")
@@ -1299,6 +1314,7 @@ class FaturaForm(forms.Form):
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
         depolar = Depo.objects.filter(silindi=False).order_by("kod")
         self.fields["depo"].queryset = depolar
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
@@ -1364,6 +1380,10 @@ class KasaHareketForm(forms.Form):
         label="Tarih",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
+    # Kasa döviz ise gösterilir (JS); karşı taraf Cari'yse onun kur_tipi tercihine göre
+    # otomatik doldurulur (bkz. core.services.kasa_hareket.hareket_olustur). Doluysa
+    # otomatik hesaplama YERİNE doğrudan kullanılır.
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off",
@@ -1373,6 +1393,7 @@ class KasaHareketForm(forms.Form):
         super().__init__(*args, **kwargs)
         from core.services.kasa_hareket import HAREKET
         tur = HAREKET.get(tip, {}).get("karsi", "cari")
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
         f = self.fields["karsi"]
         if tur == "banka":
             f.queryset = (BankaHesap.objects.filter(silindi=False)
@@ -1403,6 +1424,9 @@ class BankaHareketForm(forms.Form):
         label="Tarih",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
+    # Banka hesabı döviz ise gösterilir (JS); karşı taraf Cari'yse onun kur_tipi tercihine
+    # göre otomatik doldurulur. Doluysa otomatik hesaplama YERİNE doğrudan kullanılır.
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off",
@@ -1412,6 +1436,7 @@ class BankaHareketForm(forms.Form):
         super().__init__(*args, **kwargs)
         from core.services.banka_hareket import HAREKET
         tur = HAREKET.get(tip, {}).get("karsi", "cari")
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
         f = self.fields["karsi"]
         if tur == "banka":
             qs = BankaHesap.objects.filter(silindi=False).select_related("banka")
@@ -1440,6 +1465,9 @@ class KrediKartiHareketForm(forms.Form):
         label="Tarih",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
+    # Kart döviz ise gösterilir (JS); karşı taraf Cari'yse onun kur_tipi tercihine göre
+    # otomatik doldurulur. Doluysa otomatik hesaplama YERİNE doğrudan kullanılır.
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off",
@@ -1449,6 +1477,7 @@ class KrediKartiHareketForm(forms.Form):
         super().__init__(*args, **kwargs)
         from core.services.hesap_plani import yaprak_hesaplar
         from core.services.kredi_karti_hareket import HAREKET
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
         turler = HAREKET.get(tip, {}).get("karsi", ())
         if "cari" in turler:
             self.fields["cari"] = forms.ModelChoiceField(
@@ -1602,6 +1631,11 @@ class TeklifSiparisForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     para_birimi = forms.ChoiceField(
         label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    # TRY'de anlamsız (JS ile gizlenir). Doluysa carinin kur_tipi tercihine göre otomatik
+    # hesaplanan kur YERİNE bu kullanılır — bkz. core.services.teklif_siparis.
+    # _irsaliye_stok_hareketi_yaz. Yalnız İRSALİYE'de gerçek bir etkisi var (FIFO maliyeti);
+    # diğer belge türlerinde salt önizleme/dönüşüm zincirinde taşınan bir değer.
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
     aciklama = forms.CharField(
         label="Açıklama", max_length=500, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
@@ -1611,6 +1645,7 @@ class TeklifSiparisForm(forms.Form):
         self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
         from core.models import TeklifSiparis
         if belge_tur == TeklifSiparis.BelgeTur.SIPARIS:
             self.fields["gecerlilik_teslim_tarihi"].label = "Teslim Tarihi"
@@ -1631,7 +1666,8 @@ class TeklifSiparisForm(forms.Form):
             self.fields["irsaliye_no"] = forms.CharField(
                 label="İrsaliye No", max_length=50, required=False,
                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
-            self.order_fields(["cari", "tarih", "irsaliye_no", "depo", "para_birimi", "aciklama"])
+            self.order_fields(["cari", "tarih", "irsaliye_no", "depo", "para_birimi", "kur",
+                               "aciklama"])
 
 
 class TeklifSiparisKalemForm(forms.Form):

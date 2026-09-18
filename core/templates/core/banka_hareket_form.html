@@ -38,6 +38,14 @@
           {{ form.tarih }}
           {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if hesap.para_birimi != "TRY" %}
+        <div class="alan">
+          <label for="{{ form.kur.id_for_label }}">{{ form.kur.label }}</label>
+          {{ form.kur }}
+          <span class="kur-etiket" id="kur-etiket"></span>
+          {% for e in form.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% endif %}
         <div class="alan tam">
           <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
           {{ form.aciklama }}
@@ -52,5 +60,49 @@
   </form>
 </div>
 
+<style>
+  .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
+  .kur-etiket.hata { color:var(--hata); }
+</style>
+{% if hesap.para_birimi != "TRY" %}
+<script>
+(function(){
+  var KUR_API = '{% url "core:kur_usd_api" %}';
+  var PB = '{{ hesap.para_birimi }}';
+  var KARSI_CARI = '{{ tan.karsi }}' === 'cari';
+  var kurElleDegisti = false;
+  function fmtKur(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
+  function kurCek(){
+    var tarihInp=document.querySelector('[name="tarih"]');
+    var karsiSec=document.getElementById('id_karsi');
+    var kurInp=document.getElementById('id_kur');
+    var etiket=document.getElementById('kur-etiket');
+    if(!tarihInp||!tarihInp.value){ if(etiket) etiket.textContent=''; return; }
+    var url=KUR_API+'?tarih='+encodeURIComponent(tarihInp.value)+'&pb='+encodeURIComponent(PB);
+    if(KARSI_CARI && karsiSec && karsiSec.value) url += '&cari_id='+encodeURIComponent(karsiSec.value);
+    fetch(url).then(function(r){ return r.json(); }).then(function(j){
+      var kurDeger = j.kur ? parseFloat(j.kur) : null;
+      if(kurInp && !kurElleDegisti) kurInp.value = kurDeger ? fmtKur(kurDeger) : '';
+      if(etiket){
+        if(kurDeger){
+          etiket.textContent = '1 '+PB+' = '+fmtKur(kurDeger)+' TL'+(KARSI_CARI?' (carinin kur tipine göre)':'');
+          etiket.classList.remove('hata');
+        } else {
+          etiket.textContent = '⚠ '+tarihInp.value.split('-').reverse().join('.')+' için '+PB+' kuru bulunamadı — Kurlar ekranından çekin.';
+          etiket.classList.add('hata');
+        }
+      }
+    }).catch(function(){ if(etiket) etiket.textContent=''; });
+  }
+  var tarihInp=document.querySelector('[name="tarih"]');
+  if(tarihInp) tarihInp.addEventListener('change', kurCek);
+  var karsiSec=document.getElementById('id_karsi');
+  if(KARSI_CARI && karsiSec) karsiSec.addEventListener('change', kurCek);
+  var kurInp=document.getElementById('id_kur');
+  if(kurInp) kurInp.addEventListener('input', function(){ kurElleDegisti=true; });
+  kurCek();
+})();
+</script>
+{% endif %}
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}

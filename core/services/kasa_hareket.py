@@ -22,7 +22,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from core.metin import buyuk_harf_tr
-from core.models import HesapPlani, Kur, YevmiyeFisi
+from core.models import Cari, HesapPlani, Kur, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
                                    fis_olustur)
@@ -53,14 +53,15 @@ HAREKET = {
 }
 
 
-def _kur_coz(pb, tarih):
-    """Kasanın para biriminin fiş tarihindeki TCMB alış kuru. TRY -> 1.
-    Döviz için o tarihin KUR kaydı ve ilgili PB alanı dolu olmalı (carry-forward yok)."""
+def _kur_coz(pb, tarih, cari=None):
+    """Kasanın para biriminin fiş tarihindeki TCMB kuru — karşı taraf bir Cari'yse onun
+    kur_tipi tercihine göre (bkz. Kur.deger), değilse MB Alış. TRY -> 1. Döviz için o
+    tarihin KUR kaydı ve ilgili PB/kur tipi alanı dolu olmalı (carry-forward yok)."""
     if pb == "TRY":
         return Decimal("1")
     k = Kur.objects.filter(tarih=tarih, silindi=False).first()
-    alan = {"USD": "usd_alis", "EUR": "eur_alis", "GBP": "gbp_alis"}.get(pb)
-    deger = getattr(k, alan) if (k and alan) else None
+    kur_tipi = cari.kur_tipi if cari else Cari.KurTipi.MB_ALIS
+    deger = k.deger(pb, kur_tipi) if k else None
     if not deger:
         raise KasaHareketHatasi(
             f"{tarih:%d.%m.%Y} için {pb} kuru yok; Kurlar ekranından bu tarihi "
@@ -111,10 +112,13 @@ def _karsi_coz(tip, kasa, karsi):
 
 
 @transaction.atomic
-def hareket_olustur(*, kasa, tip, karsi, tutar, tarih, aciklama="", kullanici=None) -> YevmiyeFisi:
+def hareket_olustur(*, kasa, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
+                    kur_override=None) -> YevmiyeFisi:
     """Bir kasa hareketinden otomatik DENGELİ yevmiye fişi üretir (kaynak=KASA,
     kaynak kasa=`kasa`). `karsi` tipe göre Cari / BankaHesap / (hedef) Kasa.
-    Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır)."""
+    Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır). ``kur_override``
+    doluysa (kullanıcı formda elle girdi/değiştirdi) carinin kur_tipi'ne göre otomatik
+    hesaplama YERİNE doğrudan kullanılır."""
     if tip not in HAREKET:
         raise KasaHareketHatasi("Geçersiz hareket tipi.")
     if kasa.muhasebe_id is None:
@@ -123,7 +127,11 @@ def hareket_olustur(*, kasa, tip, karsi, tutar, tarih, aciklama="", kullanici=No
     karsi_kod, karsi_ad = _karsi_coz(tip, kasa, karsi)
     tut = _tutar(tutar)
     pb = kasa.para_birimi
-    kur = _kur_coz(pb, tarih)
+    if pb == "TRY":
+        kur = Decimal("1")
+    else:
+        cari_karsi = karsi if tan["karsi"] == "cari" else None
+        kur = kur_override or _kur_coz(pb, tarih, cari=cari_karsi)
     kasa_taraf = tan["kasa"]
     karsi_taraf = "A" if kasa_taraf == "B" else "B"
     ack = (buyuk_harf_tr((aciklama or "").strip())

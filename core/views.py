@@ -321,12 +321,16 @@ def _tarih_araligi(request):
 
 @login_required
 def kur_usd_api(request):
-    """Fiş/Fatura/İrsaliye ekranı önizleme için: tarihe (+ opsiyonel ?pb=) göre TCMB alış
-    kuru. ?pb verilmezse eski davranış (USD, kur_usd_birebir) korunur — mevcut çağıran
-    (fiş formu) hiç değişmeden çalışır. TRY için hep '1' döner; carry-forward YOK (tam o
-    tarih için kayıt yoksa kur=null — bkz. core.services.fatura._kur_coz ile aynı kural)."""
+    """Fiş/Fatura/İrsaliye/Kasa/Banka/Kredi Kartı/Çek ekranı önizleme için: tarihe
+    (+ opsiyonel ?pb=) göre TCMB kuru. ?cari_id verilirse o carinin kur_tipi tercihine
+    göre (bkz. Kur.deger) doğru alan okunur; verilmezse ?pb'siz eski davranış (USD,
+    kur_usd_birebir) VEYA ?pb'li MB Alış korunur — mevcut çağıranlar (manuel Yevmiye
+    Fişi ekranı dahil) hiç değişmeden çalışır. TRY için hep '1' döner; carry-forward YOK
+    (tam o tarih için kayıt yoksa kur=null — bkz. core.services.fatura._kur_coz ile aynı
+    kural)."""
     ham = request.GET.get("tarih")
     pb = (request.GET.get("pb") or "USD").upper()
+    cari_id = request.GET.get("cari_id")
     kur = None
     if ham:
         try:
@@ -336,6 +340,13 @@ def kur_usd_api(request):
         if t is not None:
             if pb == "TRY":
                 kur = "1"
+            elif cari_id:
+                kur_tipi = (Cari.objects.filter(pk=cari_id, silindi=False)
+                           .values_list("kur_tipi", flat=True).first()) or Cari.KurTipi.MB_ALIS
+                kayit = Kur.objects.filter(tarih=t, silindi=False).first()
+                deger = kayit.deger(pb, kur_tipi) if kayit else None
+                if deger:
+                    kur = str(deger)
             elif pb == "USD":
                 k = kur_usd_birebir(t)
                 if k is not None:
@@ -1353,7 +1364,7 @@ def _cari_form_kw(cd):
         telefon=cd["telefon"], telefon_2=cd["telefon_2"], eposta=cd["eposta"],
         web=cd["web"], ilgili_kisi=cd["ilgili_kisi"], kep_adresi=cd["kep_adresi"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
-        para_birimi=cd["para_birimi"], kredi_limiti=cd["kredi_limiti"],
+        para_birimi=cd["para_birimi"], kur_tipi=cd["kur_tipi"], kredi_limiti=cd["kredi_limiti"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"], notlar=cd["notlar"])
 
 
@@ -1434,7 +1445,8 @@ def cari_duzenle(request, pk):
             "eposta": cari.eposta, "web": cari.web, "ilgili_kisi": cari.ilgili_kisi,
             "kep_adresi": cari.kep_adresi,
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
-            "para_birimi": cari.para_birimi, "kredi_limiti": cari.kredi_limiti,
+            "para_birimi": cari.para_birimi, "kur_tipi": cari.kur_tipi,
+            "kredi_limiti": cari.kredi_limiti,
             "iskonto_yuzdesi": cari.iskonto_yuzdesi, "notlar": cari.notlar})
     return render(request, "core/cari_form.html",
                   {"form": form, "baslik": "Cari Düzenle", "duzenlenen": cari})
@@ -1593,7 +1605,8 @@ def _kasa_hareket_form(request, kasa, tip):
                 fis = kasa_hareket_servis.hareket_olustur(
                     kasa=kasa, tip=tip, karsi=form.cleaned_data["karsi"],
                     tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
-                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
+                    kur_override=form.cleaned_data.get("kur"))
                 messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kasa_detay", pk=kasa.pk)
             except kasa_hareket_servis.KasaHareketHatasi as e:
@@ -1683,7 +1696,8 @@ def _banka_hareket_form(request, hesap, tip):
                 fis = banka_hareket_servis.hareket_olustur(
                     banka_hesap=hesap, tip=tip, karsi=form.cleaned_data["karsi"],
                     tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
-                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
+                    kur_override=form.cleaned_data.get("kur"))
                 messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:banka_hesap_detay", pk=hesap.pk)
             except banka_hareket_servis.BankaHareketHatasi as e:
@@ -2119,6 +2133,7 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
                     tarih=bform.cleaned_data["tarih"],
                     gecerlilik_teslim_tarihi=bform.cleaned_data.get("gecerlilik_teslim_tarihi"),
                     para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
+                    kur=bform.cleaned_data.get("kur"),
                     aciklama=bform.cleaned_data.get("aciklama", ""),
                     depo_id=(bform.cleaned_data["depo"].pk
                              if bform.cleaned_data.get("depo") else None),
@@ -2562,6 +2577,7 @@ def teklif_siparis_duzenle(request, pk):
                     tarih=bform.cleaned_data["tarih"],
                     gecerlilik_teslim_tarihi=bform.cleaned_data.get("gecerlilik_teslim_tarihi"),
                     para_birimi=bform.cleaned_data.get("para_birimi", "TRY"),
+                    kur=bform.cleaned_data.get("kur"),
                     aciklama=bform.cleaned_data.get("aciklama", ""),
                     depo_id=(bform.cleaned_data["depo"].pk
                              if bform.cleaned_data.get("depo") else None),
@@ -2575,8 +2591,8 @@ def teklif_siparis_duzenle(request, pk):
         bform = TeklifSiparisForm(belge_tur=ts.belge_tur, initial={
             "cari": ts.cari_id, "tarih": ts.tarih,
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
-            "para_birimi": ts.para_birimi, "aciklama": ts.aciklama, "depo": ts.depo_id,
-            "irsaliye_no": ts.irsaliye_no})
+            "para_birimi": ts.para_birimi, "kur": ts.kur, "aciklama": ts.aciklama,
+            "depo": ts.depo_id, "irsaliye_no": ts.irsaliye_no})
         ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat,
                "uretim_miktar": k.uretim_miktar}
                for k in ts.kalemler.filter(silindi=False).select_related("stok")]
@@ -3141,12 +3157,14 @@ def _kredi_karti_hareket_form(request, kart, tip):
                         tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                         taksit_adedi=form.cleaned_data.get("taksit_adedi") or 1,
                         ilk_vade=form.cleaned_data.get("ilk_vade"),
-                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
+                        kur_override=form.cleaned_data.get("kur"))
                 else:
                     fis = kredi_karti_hareket_servis.hareket_olustur(
                         kart=kart, tip=tip, karsi=form.cleaned_data["karsi"],
                         tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
-                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user)
+                        aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
+                        kur_override=form.cleaned_data.get("kur"))
                 messages.success(request, tan["ad"] + f" kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_karti_detay", pk=kart.pk)
             except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
@@ -3494,6 +3512,7 @@ def _bordro_giris_view(request, *, servis_fn, cari_label, baslik, emoji, yardim,
                     cari_id=bform.cleaned_data["cari"].pk,
                     tarih=bform.cleaned_data["tarih"],
                     para_birimi=bform.cleaned_data["para_birimi"],
+                    kur_override=bform.cleaned_data.get("kur"),
                     satirlar=satirlar, kullanici=request.user)
                 messages.success(request, f"Bordro kaydedildi; {bordro.cek_senetler.count()} "
                                           f"evrak {basari_ek}, fiş oluşturuldu.")
@@ -3543,6 +3562,8 @@ def _islem_secim_view(request, *, form_cls, hedef_alani, servis_fn, baslik, emoj
                          "kullanici": request.user}
                 if hedef_alani:
                     kwargs["hedef_id"] = form.cleaned_data[hedef_alani].pk
+                if "kur" in form.fields:
+                    kwargs["kur_override"] = form.cleaned_data.get("kur")
                 bordro = servis_fn(**kwargs)
                 messages.success(request, f"Bordro kaydedildi; {len(cek_ids)} evrak {basari}, "
                                           f"fiş oluşturuldu.")
@@ -5114,6 +5135,7 @@ def _fatura_ekle(request, yon, baslik):
                     tarih=fform.cleaned_data["tarih"],
                     fatura_no=fform.cleaned_data.get("fatura_no", ""),
                     para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
+                    kur=fform.cleaned_data.get("kur"),
                     depo_id=(fform.cleaned_data["depo"].pk
                              if fform.cleaned_data.get("depo") else None),
                     satirlar=satirlar,
@@ -5171,6 +5193,7 @@ def fatura_duzenle(request, pk):
                     tarih=fform.cleaned_data["tarih"],
                     fatura_no=fform.cleaned_data.get("fatura_no", ""),
                     para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
+                    kur=fform.cleaned_data.get("kur"),
                     depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
                     satirlar=satirlar,
                     kullanici=request.user,
@@ -5189,6 +5212,9 @@ def fatura_duzenle(request, pk):
         fform = FaturaForm(yon=yon, initial={
             "tip": fatura.tip_id, "cari": fatura.cari_id, "tarih": fatura.tarih,
             "fatura_no": fatura.fatura_no, "para_birimi": fatura.para_birimi,
+            # TASLAK'ta fatura.kur hep "1" yer tutucusudur (henüz gerçek hesaplanmadı) —
+            # forma taşınırsa yanıltıcı olur; JS zaten taze bir önizleme dolduracak.
+            "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
             "depo": fatura.depo_id})
         ilk = [{"stok": s.stok_id, "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False).select_related("stok")]

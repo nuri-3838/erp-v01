@@ -9,6 +9,8 @@
     font-weight:600; color:var(--metin-soluk); margin-bottom:.25rem; white-space:nowrap; }
   .gorsel-hucre label span { width:2.6rem; flex:0 0 auto; }
   .gorsel-hucre input[type=file] { font-size:.72rem; max-width:170px; padding:.25rem; }
+  .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
+  .kur-etiket.hata { color:var(--hata); }
 </style>
 <div class="form-kapsa">
   <div class="form-ust">
@@ -29,6 +31,7 @@
           <div class="alan {% if field.name == 'cari' %}tam{% endif %}">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {% if field.name == 'cari' %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
+            {% if field.name == 'kur' %}<span class="kur-etiket" id="kur-etiket"></span>{% endif %}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         {% endfor %}
@@ -137,6 +140,51 @@
   var form=document.getElementById('bordro-form');
   form.addEventListener('input', hesapla); form.addEventListener('change', hesapla);
   hesapla();
+
+  var kurInpEl=document.getElementById('id_kur');
+  if(kurInpEl){
+    var KUR_API = '{% url "core:kur_usd_api" %}';
+    var kurElleDegisti = false;
+    function fmtKur(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
+    function kurCek(){
+      var pbSec=document.getElementById('id_para_birimi');
+      var tarihInp=document.querySelector('[name="tarih"]');
+      var cariSec=document.getElementById('id_cari');
+      var pb=pbSec?pbSec.value:'TRY';
+      var etiket=document.getElementById('kur-etiket');
+      var alan=kurInpEl.closest('.alan');
+      if(alan) alan.style.display = (pb==='TRY') ? 'none' : '';
+      if(pb==='TRY'){
+        if(!kurElleDegisti) kurInpEl.value='';
+        if(etiket){ etiket.textContent=''; etiket.classList.remove('hata'); }
+        return;
+      }
+      if(!tarihInp||!tarihInp.value){ if(etiket) etiket.textContent=''; return; }
+      var url=KUR_API+'?tarih='+encodeURIComponent(tarihInp.value)+'&pb='+encodeURIComponent(pb);
+      if(cariSec && cariSec.value) url += '&cari_id='+encodeURIComponent(cariSec.value);
+      fetch(url).then(function(r){ return r.json(); }).then(function(j){
+        var kurDeger = j.kur ? parseFloat(j.kur) : null;
+        if(!kurElleDegisti) kurInpEl.value = kurDeger ? fmtKur(kurDeger) : '';
+        if(etiket){
+          if(kurDeger){
+            etiket.textContent = '1 '+pb+' = '+fmtKur(kurDeger)+' TL (carinin kur tipine göre)';
+            etiket.classList.remove('hata');
+          } else {
+            etiket.textContent = '⚠ '+tarihInp.value.split('-').reverse().join('.')+' için '+pb+' kuru bulunamadı — Kurlar ekranından çekin.';
+            etiket.classList.add('hata');
+          }
+        }
+      }).catch(function(){ if(etiket) etiket.textContent=''; });
+    }
+    var pbSec=document.getElementById('id_para_birimi');
+    if(pbSec) pbSec.addEventListener('change', kurCek);
+    var tarihInp=document.querySelector('[name="tarih"]');
+    if(tarihInp) tarihInp.addEventListener('change', kurCek);
+    var cariSec=document.getElementById('id_cari');
+    if(cariSec) cariSec.addEventListener('change', kurCek);
+    kurInpEl.addEventListener('input', function(){ kurElleDegisti=true; });
+    kurCek();
+  }
 })();
 </script>
 {% include "core/_akilli_hesap.html" %}

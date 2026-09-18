@@ -68,6 +68,7 @@
       <h2 class="bolum-baslik"><span class="emoji">💱</span>Ticari</h2>
       <div class="izgara">
         <div class="alan"><label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}</div>
+        <div class="alan" id="kur-tipi-alan"><label for="{{ form.kur_tipi.id_for_label }}">{{ form.kur_tipi.label }}</label>{{ form.kur_tipi }}</div>
         <div class="alan"><label for="{{ form.kredi_limiti.id_for_label }}">{{ form.kredi_limiti.label }}</label>{{ form.kredi_limiti }}{% for e in form.kredi_limiti.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.iskonto_yuzdesi.id_for_label }}">{{ form.iskonto_yuzdesi.label }}</label>{{ form.iskonto_yuzdesi }}{% for e in form.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
       </div>
@@ -85,6 +86,17 @@
   </form>
 </div>
 
+<script>
+(function(){
+  var pbSec = document.getElementById('{{ form.para_birimi.id_for_label }}');
+  var kurTipiAlan = document.getElementById('kur-tipi-alan');
+  function guncelle(){
+    if(kurTipiAlan) kurTipiAlan.style.display = (pbSec && pbSec.value === 'TRY') ? 'none' : '';
+  }
+  if(pbSec) pbSec.addEventListener('change', guncelle);
+  guncelle();
+})();
+</script>
 <script>
 (function(){
   var gListe = document.createElement('div'); gListe.className = 'akilli-liste';

@@ -38,12 +38,14 @@ HAREKET = {
 }
 
 
-def _kur_coz(pb, tarih):
+def _kur_coz(pb, tarih, cari=None):
+    """Kartın para biriminin fiş tarihindeki TCMB kuru — karşı taraf bir Cari'yse onun
+    kur_tipi tercihine göre (bkz. Kur.deger), değilse MB Alış. TRY -> 1."""
     if pb == "TRY":
         return Decimal("1")
     k = Kur.objects.filter(tarih=tarih, silindi=False).first()
-    alan = {"USD": "usd_alis", "EUR": "eur_alis", "GBP": "gbp_alis"}.get(pb)
-    deger = getattr(k, alan) if (k and alan) else None
+    kur_tipi = cari.kur_tipi if cari else Cari.KurTipi.MB_ALIS
+    deger = k.deger(pb, kur_tipi) if k else None
     if not deger:
         raise KrediKartiHareketHatasi(
             f"{tarih:%d.%m.%Y} için {pb} kuru yok; Kurlar ekranından çekmeden döviz kartı "
@@ -112,10 +114,13 @@ def _karsi_coz(tip, kart, karsi):
 
 
 @transaction.atomic
-def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=None) -> YevmiyeFisi:
+def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
+                    kur_override=None) -> YevmiyeFisi:
     """Bir kredi kartı hareketinden otomatik DENGELİ yevmiye fişi üretir (kaynak=KREDI_KARTI,
     fiş→kart FK). Kart satırı tan['kk'] tarafına, karşı ters tarafa; ikisi de kartın PB'sinde.
-    Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır)."""
+    Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır). ``kur_override`` doluysa
+    (kullanıcı formda elle girdi/değiştirdi) carinin kur_tipi'ne göre otomatik hesaplama
+    YERİNE doğrudan kullanılır."""
     if tip not in HAREKET:
         raise KrediKartiHareketHatasi("Geçersiz hareket tipi.")
     if kart.muhasebe_id is None:
@@ -124,7 +129,11 @@ def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=No
     karsi_kod, karsi_ad = _karsi_coz(tip, kart, karsi)
     tut = _tutar(tutar)
     pb = kart.para_birimi
-    kur = _kur_coz(pb, tarih)
+    if pb == "TRY":
+        kur = Decimal("1")
+    else:
+        cari_karsi = karsi if isinstance(karsi, Cari) else None
+        kur = kur_override or _kur_coz(pb, tarih, cari=cari_karsi)
     kk_taraf = tan["kk"]
     karsi_taraf = "A" if kk_taraf == "B" else "B"
     ack = (buyuk_harf_tr((aciklama or "").strip())
@@ -171,11 +180,11 @@ def _ay_ekle(tarih, n):
 
 @transaction.atomic
 def harcama_olustur(*, kart, karsi, tutar, tarih, taksit_adedi=1, ilk_vade=None,
-                    aciklama="", kullanici=None) -> YevmiyeFisi:
+                    aciklama="", kullanici=None, kur_override=None) -> YevmiyeFisi:
     """Harcama (peşin ya da taksitli). Muhasebe HER ZAMAN tam tutar tek fiş (borç anında gerçek);
     taksit_adedi>1 ise ayrıca BİLGİ amaçlı KrediKartiTaksit planı oluşur (ledger'ı etkilemez)."""
     fis = hareket_olustur(kart=kart, tip="harcama", karsi=karsi, tutar=tutar, tarih=tarih,
-                          aciklama=aciklama, kullanici=kullanici)
+                          aciklama=aciklama, kullanici=kullanici, kur_override=kur_override)
     adet = int(taksit_adedi or 1)
     if adet > 1:
         if not ilk_vade:

@@ -96,11 +96,16 @@ def _para_dogrula(deger, etiket):
 
 
 def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
-            eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kredi_limiti,
-            iskonto_yuzdesi, notlar, ulke, sehir):
-    """Ortak alan hazırlığı (create/update paylaşır). dict döner."""
+            eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kur_tipi=None,
+            kredi_limiti, iskonto_yuzdesi, notlar, ulke, sehir):
+    """Ortak alan hazırlığı (create/update paylaşır). dict döner. ``kur_tipi`` opsiyonel —
+    verilmezse (mevcut çağıranlar: aday->cari dönüşümü, veri taşıma scriptleri, testler)
+    varsayılan MB_ALIS kullanılır."""
     if para_birimi not in dict(Cari.PARA_CHOICES):
         raise CariHatasi("Geçersiz para birimi.")
+    kur_tipi = kur_tipi or Cari.KurTipi.MB_ALIS
+    if kur_tipi not in Cari.KurTipi.values:
+        raise CariHatasi("Geçersiz kur tipi.")
     return dict(
         kisa_ad=buyuk_harf_tr((kisa_ad or "").strip()),
         vergi_dairesi=buyuk_harf_tr((vergi_dairesi or "").strip()),
@@ -110,7 +115,7 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
         kep_adresi=(kep_adresi or "").strip(),
         ulke=ulke, sehir=sehir, adres=buyuk_harf_tr((adres or "").strip()),
-        para_birimi=para_birimi,
+        para_birimi=para_birimi, kur_tipi=kur_tipi,
         kredi_limiti=_para_dogrula(kredi_limiti, "Kredi limiti"),
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
         notlar=(notlar or "").strip(),
@@ -133,7 +138,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_2", "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
-                        "para_birimi", "kredi_limiti",
+                        "para_birimi", "kur_tipi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
@@ -200,7 +205,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_2", "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
-                        "para_birimi", "kredi_limiti",
+                        "para_birimi", "kur_tipi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     cari.unvan = unvan
     cari.kategori = kategori

@@ -268,3 +268,51 @@ class FaturaOnaylaTest(FaturaTestTemel):
         f.refresh_from_db()
         self.assertEqual(f.fis_id, fis_id)
         self.assertEqual(f.durum, "ONAYLI")
+
+
+class KurTipiFaturaTest(FaturaTestTemel):
+    """Carinin kur_tipi tercihi + elle kur override (bu oturumda eklenen özellik)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Kur.objects.filter(tarih=D(2026, 3, 10)).update(
+            usd_satis=Decimal("30.5"), usd_efektif_alis=Decimal("29.8"),
+            usd_efektif_satis=Decimal("30.7"))
+        cls.tedarikci.para_birimi = "USD"
+        cls.tedarikci.save(update_fields=["para_birimi"])
+
+    def test_varsayilan_mb_alis(self):
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="USD", satirlar=self._satir())
+        self.assertEqual(f.kur, Decimal("30"))
+
+    def test_carinin_mb_satis_tercihi_kullanilir(self):
+        self.tedarikci.kur_tipi = Cari.KurTipi.MB_SATIS
+        self.tedarikci.save(update_fields=["kur_tipi"])
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="USD", satirlar=self._satir())
+        self.assertEqual(f.kur, Decimal("30.5"))
+
+    def test_carinin_efektif_alis_tercihi_kullanilir(self):
+        self.tedarikci.kur_tipi = Cari.KurTipi.EFEKTIF_ALIS
+        self.tedarikci.save(update_fields=["kur_tipi"])
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="USD", satirlar=self._satir())
+        self.assertEqual(f.kur, Decimal("29.8"))
+
+    def test_elle_girilen_kur_carinin_tercihini_ezer(self):
+        self.tedarikci.kur_tipi = Cari.KurTipi.EFEKTIF_SATIS
+        self.tedarikci.save(update_fields=["kur_tipi"])
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="USD", satirlar=self._satir(),
+                           kur=Decimal("99.5"))
+        self.assertEqual(f.kur, Decimal("99.5"))
+
+    def test_try_faturada_kur_hep_bir(self):
+        # Kalıntı bir kur değeri gönderilse bile (JS'in TRY'de temizlemesi gerekiyor ama
+        # sunucu tarafında da savunma hattı var) TL faturada kur her zaman 1 kalmalı.
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.musteri.pk,
+                           tarih=D(2026, 3, 10), para_birimi="TRY", satirlar=self._satir(),
+                           kur=Decimal("32"))
+        self.assertEqual(f.kur, Decimal("1"))

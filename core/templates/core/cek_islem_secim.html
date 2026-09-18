@@ -9,6 +9,8 @@
   .pf-cb { width:18px; height:18px; cursor:pointer; }
   .pf-tablo tr.secili td { background:rgba(240,124,0,.08); }
   #pf-ozet { font-weight:650; color:var(--lacivert); }
+  .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
+  .kur-etiket.hata { color:var(--hata); }
 </style>
 
 <div class="form-kapsa">
@@ -37,6 +39,7 @@
           <div class="alan">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
+            {% if field.name == 'kur' %}<span class="kur-etiket" id="kur-etiket"></span>{% endif %}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
           {% endif %}
@@ -95,6 +98,40 @@
   var ozet = document.getElementById('pf-ozet');
   if(!cbs.length) return;
   function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  var kurInp=document.getElementById('id_kur');
+  var KUR_API = '{% url "core:kur_usd_api" %}';
+  var kurElleDegisti = false;
+  function fmtKur(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
+  function kurCek(pb){
+    var tarihInp=document.querySelector('[name="tarih"]');
+    var cariSec=document.getElementById('id_cari');
+    var etiket=document.getElementById('kur-etiket');
+    var alan=kurInp?kurInp.closest('.alan'):null;
+    if(!kurInp) return;
+    if(!pb || pb==='TRY'){
+      if(alan) alan.style.display='none';
+      if(!kurElleDegisti) kurInp.value='';
+      if(etiket){ etiket.textContent=''; etiket.classList.remove('hata'); }
+      return;
+    }
+    if(alan) alan.style.display='';
+    if(!tarihInp||!tarihInp.value){ if(etiket) etiket.textContent=''; return; }
+    var url=KUR_API+'?tarih='+encodeURIComponent(tarihInp.value)+'&pb='+encodeURIComponent(pb);
+    if(cariSec && cariSec.value) url += '&cari_id='+encodeURIComponent(cariSec.value);
+    fetch(url).then(function(r){ return r.json(); }).then(function(j){
+      var kurDeger = j.kur ? parseFloat(j.kur) : null;
+      if(!kurElleDegisti) kurInp.value = kurDeger ? fmtKur(kurDeger) : '';
+      if(etiket){
+        if(kurDeger){
+          etiket.textContent = '1 '+pb+' = '+fmtKur(kurDeger)+' TL (carinin kur tipine göre)';
+          etiket.classList.remove('hata');
+        } else {
+          etiket.textContent = '⚠ '+tarihInp.value.split('-').reverse().join('.')+' için '+pb+' kuru bulunamadı — Kurlar ekranından çekin.';
+          etiket.classList.add('hata');
+        }
+      }
+    }).catch(function(){ if(etiket) etiket.textContent=''; });
+  }
   function guncelle(){
     var sec = cbs.filter(function(c){ return c.checked; });
     var pb = sec.length ? sec[0].dataset.pb : null;
@@ -106,8 +143,22 @@
     ozet.textContent = sec.length
       ? ('Seçili: ' + sec.length + ' evrak · Toplam: ' + fmt(top) + ' ' + pb)
       : 'Seçili: 0 evrak';
+    if(kurInp) kurCek(pb);
   }
   cbs.forEach(function(c){ c.addEventListener('change', guncelle); });
+  if(kurInp){
+    kurInp.addEventListener('input', function(){ kurElleDegisti=true; });
+    var tarihInp=document.querySelector('[name="tarih"]');
+    if(tarihInp) tarihInp.addEventListener('change', function(){
+      var sec=cbs.filter(function(c){ return c.checked; });
+      kurCek(sec.length?sec[0].dataset.pb:null);
+    });
+    var cariSec=document.getElementById('id_cari');
+    if(cariSec) cariSec.addEventListener('change', function(){
+      var sec=cbs.filter(function(c){ return c.checked; });
+      kurCek(sec.length?sec[0].dataset.pb:null);
+    });
+  }
   guncelle();
 })();
 </script>

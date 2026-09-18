@@ -23,7 +23,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from core.metin import buyuk_harf_tr
-from core.models import HesapPlani, Kur, YevmiyeFisi
+from core.models import Cari, HesapPlani, Kur, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
                                    fis_olustur)
@@ -54,13 +54,14 @@ HAREKET = {
 }
 
 
-def _kur_coz(pb, tarih):
-    """Banka hesabının para biriminin fiş tarihindeki TCMB alış kuru. TRY -> 1."""
+def _kur_coz(pb, tarih, cari=None):
+    """Banka hesabının para biriminin fiş tarihindeki TCMB kuru — karşı taraf bir
+    Cari'yse onun kur_tipi tercihine göre (bkz. Kur.deger), değilse MB Alış. TRY -> 1."""
     if pb == "TRY":
         return Decimal("1")
     k = Kur.objects.filter(tarih=tarih, silindi=False).first()
-    alan = {"USD": "usd_alis", "EUR": "eur_alis", "GBP": "gbp_alis"}.get(pb)
-    deger = getattr(k, alan) if (k and alan) else None
+    kur_tipi = cari.kur_tipi if cari else Cari.KurTipi.MB_ALIS
+    deger = k.deger(pb, kur_tipi) if k else None
     if not deger:
         raise BankaHareketHatasi(
             f"{tarih:%d.%m.%Y} için {pb} kuru yok; Kurlar ekranından bu tarihi "
@@ -112,10 +113,13 @@ def _karsi_coz(tip, banka_hesap, karsi):
 
 
 @transaction.atomic
-def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kullanici=None) -> YevmiyeFisi:
+def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
+                    kur_override=None) -> YevmiyeFisi:
     """Bir banka hesabı hareketinden otomatik DENGELİ yevmiye fişi üretir
     (kaynak=BANKA, kaynak banka hesabı=`banka_hesap`). `karsi` tipe göre
-    Cari / (hedef) BankaHesap / Kasa. İhlalde hiçbir şey kaydedilmez."""
+    Cari / (hedef) BankaHesap / Kasa. İhlalde hiçbir şey kaydedilmez. ``kur_override``
+    doluysa (kullanıcı formda elle girdi/değiştirdi) carinin kur_tipi'ne göre otomatik
+    hesaplama YERİNE doğrudan kullanılır."""
     if tip not in HAREKET:
         raise BankaHareketHatasi("Geçersiz hareket tipi.")
     if banka_hesap.muhasebe_id is None:
@@ -124,7 +128,11 @@ def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kulla
     karsi_kod, karsi_ad = _karsi_coz(tip, banka_hesap, karsi)
     tut = _tutar(tutar)
     pb = banka_hesap.para_birimi
-    kur = _kur_coz(pb, tarih)
+    if pb == "TRY":
+        kur = Decimal("1")
+    else:
+        cari_karsi = karsi if tan["karsi"] == "cari" else None
+        kur = kur_override or _kur_coz(pb, tarih, cari=cari_karsi)
     banka_taraf = tan["banka"]
     karsi_taraf = "A" if banka_taraf == "B" else "B"
     ack = (buyuk_harf_tr((aciklama or "").strip())

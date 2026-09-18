@@ -64,6 +64,24 @@ class CariServisTest(TestCase):
         c.refresh_from_db()
         self.assertEqual((c.kod, c.unvan, c.para_birimi), (eski, "Y", "USD"))
 
+    def test_kur_tipi_varsayilan_mb_alis(self):
+        c = _olustur(unvan="x")
+        self.assertEqual(c.kur_tipi, Cari.KurTipi.MB_ALIS)
+
+    def test_kur_tipi_elle_secilebilir(self):
+        c = _olustur(unvan="x", para_birimi="USD", kur_tipi=Cari.KurTipi.EFEKTIF_SATIS)
+        self.assertEqual(c.kur_tipi, Cari.KurTipi.EFEKTIF_SATIS)
+
+    def test_kur_tipi_guncellenebilir(self):
+        c = _olustur(unvan="x", para_birimi="USD")
+        cari_guncelle(c, unvan="x", para_birimi="USD", kur_tipi=Cari.KurTipi.MB_SATIS)
+        c.refresh_from_db()
+        self.assertEqual(c.kur_tipi, Cari.KurTipi.MB_SATIS)
+
+    def test_kur_tipi_gecersiz_reddedilir(self):
+        with self.assertRaises(CariHatasi):
+            _olustur(unvan="x", kur_tipi="GECERSIZ")
+
     def test_sil_soft_delete(self):
         c = _olustur(unvan="x")
         cari_sil(c)

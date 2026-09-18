@@ -37,7 +37,7 @@
           <div class="alan">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
-            {% if field.name == 'para_birimi' %}<span class="kur-etiket" id="kur-etiket"></span>{% endif %}
+            {% if field.name == 'kur' %}<span class="kur-etiket" id="kur-etiket"></span>{% endif %}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         {% endfor %}
@@ -105,7 +105,7 @@
   var TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);
   var TED = JSON.parse(document.getElementById('stok-tedarikci').textContent);
   var KUR_API = '{% url "core:kur_usd_api" %}';
-  var kurDeger = null;
+  var kurElleDegisti = false;
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
     else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
@@ -134,23 +134,37 @@
     document.getElementById('tGenelDeger').textContent=fmt(genel);
     var pbSec=document.getElementById('id_para_birimi');
     var pb=pbSec?pbSec.value:'TRY';
+    var kurInp=document.getElementById('id_kur');
+    var kd=kurInp?parseTR(kurInp.value):0;
     var tl=document.getElementById('tGenelTl');
-    if(tl) tl.textContent = (pb!=='TRY'&&kurDeger) ? ('≈ '+fmt(genel*kurDeger)+' TL') : '';
+    if(tl) tl.textContent = (pb!=='TRY'&&kd) ? ('≈ '+fmt(genel*kd)+' TL') : '';
   }
+  function fmtKur(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
   function kurCek(){
     var pbSec=document.getElementById('id_para_birimi');
     var tarihInp=document.querySelector('[name="tarih"]');
+    var cariSec=document.getElementById('id_cari');
+    var kurInp=document.getElementById('id_kur');
     var pb=pbSec?pbSec.value:'TRY';
     var etiket=document.getElementById('kur-etiket');
-    if(pb==='TRY'){ kurDeger=1; if(etiket){ etiket.textContent=''; etiket.classList.remove('hata'); } hesapla(); return; }
-    if(!tarihInp||!tarihInp.value){ kurDeger=null; if(etiket) etiket.textContent=''; hesapla(); return; }
-    fetch(KUR_API+'?tarih='+encodeURIComponent(tarihInp.value)+'&pb='+encodeURIComponent(pb))
+    var alan=kurInp?kurInp.closest('.alan'):null;
+    if(alan) alan.style.display = (pb==='TRY') ? 'none' : '';
+    if(pb==='TRY'){
+      if(kurInp && !kurElleDegisti) kurInp.value='';
+      if(etiket){ etiket.textContent=''; etiket.classList.remove('hata'); }
+      hesapla(); return;
+    }
+    if(!tarihInp||!tarihInp.value){ if(etiket) etiket.textContent=''; hesapla(); return; }
+    var url=KUR_API+'?tarih='+encodeURIComponent(tarihInp.value)+'&pb='+encodeURIComponent(pb);
+    if(cariSec && cariSec.value) url += '&cari_id='+encodeURIComponent(cariSec.value);
+    fetch(url)
       .then(function(r){ return r.json(); })
       .then(function(j){
-        kurDeger = j.kur ? parseFloat(j.kur) : null;
+        var kurDeger = j.kur ? parseFloat(j.kur) : null;
+        if(kurInp && !kurElleDegisti) kurInp.value = kurDeger ? fmtKur(kurDeger) : '';
         if(etiket){
           if(kurDeger){
-            etiket.textContent = 'Kur: 1 '+pb+' = '+kurDeger.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:4})+' TL';
+            etiket.textContent = '1 '+pb+' = '+fmtKur(kurDeger)+' TL (carinin kur tipine göre)';
             etiket.classList.remove('hata');
           } else {
             etiket.textContent = '⚠ '+tarihInp.value.split('-').reverse().join('.')+' için '+pb+' kuru bulunamadı — Kurlar ekranından çekin.';
@@ -159,7 +173,7 @@
         }
         hesapla();
       })
-      .catch(function(){ kurDeger=null; if(etiket) etiket.textContent=''; hesapla(); });
+      .catch(function(){ if(etiket) etiket.textContent=''; hesapla(); });
   }
   function tedarikciGuncelle(row){
     var sel=el(row,'-stok'); var etiket=row.querySelector('.tedarikci-etiket');
@@ -189,6 +203,10 @@
   var tarihInp=document.querySelector('[name="tarih"]');
   if(pbSec) pbSec.addEventListener('change', kurCek);
   if(tarihInp) tarihInp.addEventListener('change', kurCek);
+  var cariSec=document.getElementById('id_cari');
+  if(cariSec) cariSec.addEventListener('change', kurCek);
+  var kurInp=document.getElementById('id_kur');
+  if(kurInp) kurInp.addEventListener('input', function(){ kurElleDegisti=true; });
   document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
   kurCek();
 })();

@@ -327,6 +327,52 @@ class KasaHareketTest(TestCase):
             self.assertEqual(r.status_code, 200, tip)
             self.assertContains(r, etiket)
 
+    def test_cari_tahsilat_carinin_kur_tipine_gore_hesaplanir(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Cari, Kur
+        from core.services.kasa_hareket import hareket_olustur
+        Kur.objects.filter(tarih=timezone.localdate()).update(usd_satis=Decimal("41.5"))
+        k = kasa_olustur(ad="DÖVİZ KASA", para_birimi="USD", muhasebe_kodu="100.01")
+        c = Cari.objects.create(kod="CAR-USD", unvan="MÜŞTERİ USD", muhasebe_kodu="120.01",
+                                kur_tipi=Cari.KurTipi.MB_SATIS,
+                                created_by=self.yon, updated_by=self.yon)
+        fis = hareket_olustur(kasa=k, tip="cari_tahsilat", karsi=c, tutar=Decimal("100"),
+                              tarih=timezone.localdate(), kullanici=self.yon)
+        s = {x.hesap_id: x.islem_kuru for x in fis.satirlar.filter(silindi=False)}
+        self.assertEqual(s["100.01"], Decimal("41.5"))
+
+    def test_kur_override_carinin_tercihini_ezer(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Cari
+        from core.services.kasa_hareket import hareket_olustur
+        k = kasa_olustur(ad="DÖVİZ KASA", para_birimi="USD", muhasebe_kodu="100.01")
+        c = Cari.objects.create(kod="CAR-USD2", unvan="MÜŞTERİ USD 2", muhasebe_kodu="120.01",
+                                created_by=self.yon, updated_by=self.yon)
+        fis = hareket_olustur(kasa=k, tip="cari_tahsilat", karsi=c, tutar=Decimal("100"),
+                              tarih=timezone.localdate(), kullanici=self.yon,
+                              kur_override=Decimal("55"))
+        s = {x.hesap_id: x.islem_kuru for x in fis.satirlar.filter(silindi=False)}
+        self.assertEqual(s["100.01"], Decimal("55"))
+
+    def test_karsi_cari_degilse_varsayilan_mb_alis(self):
+        """banka_yatan'da karşı taraf Kasa değil (kasa_hareket.py'de banka/kasa karşı
+        taraflarında cari kavramı yok) — carinin kur_tipi'ni ARAMAK anlamsız, MB Alış
+        kullanılmaya devam eder (bu testte kasanın kendisi TRY, PB uyuşmazlığı zaten
+        ayrı bir kural — burada yalnız hesabın kur_tipi'siz MB Alış'a düştüğünü
+        cari_tahsilat ile dolaylı doğruladık; doğrudan banka/kasa senaryosu için PB eşleşmesi
+        gerektiğinden ayrı kur testi gerekmez)."""
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.services.kasa_hareket import hareket_olustur
+        k = kasa_olustur(ad="DÖVİZ KASA", para_birimi="USD", muhasebe_kodu="100.01")
+        k2 = kasa_olustur(ad="DÖVİZ KASA 2", para_birimi="USD", muhasebe_kodu="100.02")
+        fis = hareket_olustur(kasa=k, tip="kasa_virman", karsi=k2, tutar=Decimal("10"),
+                              tarih=timezone.localdate(), kullanici=self.yon)
+        s = {x.hesap_id: x.islem_kuru for x in fis.satirlar.filter(silindi=False)}
+        self.assertEqual(s["100.01"], Decimal("40"))   # usd_alis (MB Alış varsayılanı)
+
 
 class FinansDigerServisTest(TestCase):
     @classmethod
@@ -553,6 +599,27 @@ class BankaHareketTest(TestCase):
             hareket_olustur(banka_hesap=bh1, tip="banka_virman", karsi=bh2,
                             tutar=Decimal("1"), tarih=timezone.localdate(), kullanici=self.yon)
 
+    def test_cari_tahsilat_carinin_kur_tipine_gore_ve_override(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from core.models import Cari, Kur
+        from core.services.banka_hareket import hareket_olustur
+        Kur.objects.filter(tarih=timezone.localdate()).update(usd_efektif_alis=Decimal("39.2"))
+        bh1, _, _ = self._kur(pb1="USD")
+        cari = Cari.objects.create(kod="CAR-USD", unvan="MÜŞTERİ USD", muhasebe_kodu="120.01",
+                                   kur_tipi=Cari.KurTipi.EFEKTIF_ALIS,
+                                   created_by=self.yon, updated_by=self.yon)
+        fis = hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
+                              tutar=Decimal("10"), tarih=timezone.localdate(),
+                              kullanici=self.yon)
+        s = {x.hesap_id: x.islem_kuru for x in fis.satirlar.filter(silindi=False)}
+        self.assertEqual(s["102.01"], Decimal("39.2"))
+        fis2 = hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
+                               tutar=Decimal("10"), tarih=timezone.localdate(),
+                               kullanici=self.yon, kur_override=Decimal("50"))
+        s2 = {x.hesap_id: x.islem_kuru for x in fis2.satirlar.filter(silindi=False)}
+        self.assertEqual(s2["102.01"], Decimal("50"))
+
     def test_detay_formlar_ve_kilit(self):
         from decimal import Decimal
         from django.utils import timezone
@@ -706,6 +773,28 @@ class KrediKartiHareketTest(TestCase):
         s = self._s(f)
         self.assertEqual(s["309.01"], (Decimal("250.00"), Decimal("0.00")))    # kart borç (azalır)
         self.assertEqual(s["120.01"], (Decimal("0.00"), Decimal("250.00")))    # cari alacak
+
+    def test_harcama_carinin_kur_tipine_gore_ve_override(self):
+        from decimal import Decimal
+        from core.models import Cari, Kur
+        from core.services.finans import kredi_karti_olustur
+        from core.services.kredi_karti_hareket import hareket_olustur
+        Kur.objects.filter(tarih=self.t).update(usd_satis=Decimal("42.1"))
+        _hesap("309.04", "USD KART 2")
+        kart_usd = kredi_karti_olustur(ad="usd kart", para_birimi="USD",
+                                       muhasebe_kodu="309.04", kullanici=self.yon)
+        cari = Cari.objects.create(kod="C-USD", unvan="MÜŞTERİ USD", muhasebe_kodu="120.01",
+                                   kur_tipi=Cari.KurTipi.MB_SATIS,
+                                   created_by=self.yon, updated_by=self.yon)
+        f = hareket_olustur(kart=kart_usd, tip="harcama", karsi=cari,
+                            tutar=Decimal("10"), tarih=self.t, kullanici=self.yon)
+        s = {x.hesap_id: x.islem_kuru for x in f.satirlar.filter(silindi=False)}
+        self.assertEqual(s["309.04"], Decimal("42.1"))
+        f2 = hareket_olustur(kart=kart_usd, tip="harcama", karsi=cari,
+                             tutar=Decimal("10"), tarih=self.t, kullanici=self.yon,
+                             kur_override=Decimal("60"))
+        s2 = {x.hesap_id: x.islem_kuru for x in f2.satirlar.filter(silindi=False)}
+        self.assertEqual(s2["309.04"], Decimal("60"))
 
     def test_iptal_ve_yanlis_kart_reddedilir(self):
         from decimal import Decimal

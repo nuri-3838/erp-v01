@@ -192,3 +192,32 @@ class KurlarEkranYetkiTest(TestCase):
         r = self.client.get(reverse("core:kurlar"))
         self.assertContains(r, (bugun - datetime.timedelta(days=7)).isoformat())
         self.assertContains(r, bugun.isoformat())
+
+
+class KurDegerTest(TestCase):
+    """Cari.kur_tipi -> Kur.deger() eşlemesi (7 _kur_coz kopyasının TEK dayandığı yer)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.k = Kur.objects.create(
+            tarih=D(2024, 1, 2), usd_alis=Decimal("30.1234"), usd_satis=Decimal("30.2500"),
+            usd_efektif_alis=Decimal("30.1000"), usd_efektif_satis=Decimal("30.3000"),
+            eur_alis=Decimal("33.3300"), eur_satis=Decimal("33.5000"),
+            eur_efektif_alis=Decimal("33.3000"), eur_efektif_satis=Decimal("33.6000"),
+            gbp_alis=Decimal("38.8800"), gbp_satis=Decimal("39.0000"),
+            gbp_efektif_alis=Decimal("38.8000"), gbp_efektif_satis=Decimal("39.1000"))
+
+    def test_mb_alis(self):
+        self.assertEqual(self.k.deger("USD", "MB_ALIS"), Decimal("30.1234"))
+
+    def test_mb_satis(self):
+        self.assertEqual(self.k.deger("USD", "MB_SATIS"), Decimal("30.2500"))
+
+    def test_efektif_alis(self):
+        self.assertEqual(self.k.deger("EUR", "EFEKTIF_ALIS"), Decimal("33.3000"))
+
+    def test_efektif_satis(self):
+        self.assertEqual(self.k.deger("GBP", "EFEKTIF_SATIS"), Decimal("39.1000"))
+
+    def test_bilinmeyen_kur_tipi_alisa_duser(self):
+        self.assertEqual(self.k.deger("USD", "GECERSIZ"), Decimal("30.1234"))

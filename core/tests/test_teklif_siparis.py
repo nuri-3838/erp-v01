@@ -1322,6 +1322,78 @@ class SatinalmaZinciriTest(TestCase):
         hareket = StokHareket.objects.get(stok=stok_ted)
         self.assertEqual(hareket.miktar, Decimal("10.000"))   # 20/2
 
+    def test_irsaliye_kur_override_carinin_tercihini_ezer(self):
+        """Kullanıcı İrsaliye formunda kuru elle girdiyse/değiştirdiyse (kur alanı, bu
+        oturumda eklendi), carinin kur_tipi tercihine göre otomatik hesaplama YERİNE o
+        kullanılır — FIFO maliyet katmanına da yansır."""
+        from core.models import Kur
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        Kur.objects.filter(tarih=self.tarih).update(usd_satis=Decimal("30.5"))
+        self.cari.para_birimi = "USD"
+        self.cari.kur_tipi = Cari.KurTipi.MB_SATIS
+        self.cari.save(update_fields=["para_birimi", "kur_tipi"])
+        irsaliye = teklif_siparis_olustur(
+            belge_tur="IRSALIYE", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            depo_id=self.depo.pk, para_birimi="USD", kur=Decimal("99"),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "1"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        from core.models import StokHareket
+        hareket = StokHareket.objects.get(stok=self.stok)
+        katman = hareket.maliyet_katmani
+        # override=99 kullanılmalı, carinin MB_SATIS tercihi (30.5) DEĞİL.
+        self.assertEqual(katman.birim_maliyet_try, Decimal("99.000000"))
+
+    def test_irsaliye_kur_bossa_carinin_kur_tipi_tercihine_gore_hesaplanir(self):
+        from core.models import Kur, StokHareket
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        Kur.objects.filter(tarih=self.tarih).update(usd_efektif_satis=Decimal("31.25"))
+        self.cari.para_birimi = "USD"
+        self.cari.kur_tipi = Cari.KurTipi.EFEKTIF_SATIS
+        self.cari.save(update_fields=["para_birimi", "kur_tipi"])
+        irsaliye = teklif_siparis_olustur(
+            belge_tur="IRSALIYE", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            depo_id=self.depo.pk, para_birimi="USD",
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "1"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        hareket = StokHareket.objects.get(stok=self.stok)
+        katman = hareket.maliyet_katmani
+        self.assertEqual(katman.birim_maliyet_try, Decimal("31.250000"))
+
+    def test_try_irsaliyede_kur_hep_bir(self):
+        """Kalıntı bir kur değeri gönderilse bile (JS'in TRY'de temizlemesi gerekiyor ama
+        sunucu tarafında da savunma hattı var) TL irsaliyesinde kur her zaman 1 kalmalı."""
+        from core.models import StokHareket
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        irsaliye = teklif_siparis_olustur(
+            belge_tur="IRSALIYE", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            depo_id=self.depo.pk, para_birimi="TRY", kur=Decimal("32"),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+        self.assertIsNone(irsaliye.kur)   # pb=TRY -> kur zorla None'a normalize edilir
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        hareket = StokHareket.objects.get(stok=self.stok)
+        katman = hareket.maliyet_katmani
+        self.assertEqual(katman.birim_maliyet_try, Decimal("100.000000"))   # kur=1
+
+    def test_donusum_zincirinde_kur_tasinir(self):
+        """Teklif'te elle girilen kur, Sipariş'e ve İrsaliye'ye otomatik dönüşümde taşınır."""
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        self.cari.para_birimi = "USD"
+        self.cari.save(update_fields=["para_birimi"])
+        teklif = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            para_birimi="USD", kur=Decimal("31"),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        siparis = teklif.donusen_belgeler.get()
+        self.assertEqual(siparis.kur, Decimal("31"))
+        teklif_siparis_onayla(siparis, kullanici=self.yon)
+        irsaliye = siparis.donusen_irsaliyeler.get()
+        self.assertEqual(irsaliye.kur, Decimal("31"))
+
     def test_satis_yonunde_onay_zincir_tetiklemez(self):
         from core.models import Fatura, StokHareket, TeklifSiparis
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla

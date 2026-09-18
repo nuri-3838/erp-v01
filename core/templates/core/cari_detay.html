@@ -130,6 +130,9 @@
       <h2 class="bolum-baslik grup-ara">Ticari</h2>
       <div class="kv">
         <div class="satir"><span class="et">Para Birimi</span><span class="dg mono">{{ cari.para_birimi }}</span></div>
+        {% if cari.para_birimi != "TRY" %}
+        <div class="satir"><span class="et">Kur Tipi</span><span class="dg mono">{{ cari.get_kur_tipi_display }}</span></div>
+        {% endif %}
         <div class="satir"><span class="et">Kredi/Risk Limiti</span><span class="dg mono">{{ cari.kredi_limiti|tr_kur:2 }}</span></div>
         <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg mono">%{{ cari.iskonto_yuzdesi|tr_kur:2 }}</span></div>
       </div>

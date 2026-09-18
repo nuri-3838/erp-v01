@@ -48,14 +48,15 @@ def aktif_faturalar():
             .select_related("tip", "cari", "fis").order_by("-tarih", "-id"))
 
 
-def _kur_coz(pb, tarih):
-    """Fatura para biriminin fiş tarihindeki TCMB alış kuru. TRY -> 1.
-    Döviz için o tarihin KUR kaydı ve ilgili PB alanı dolu olmalı (carry-forward yok)."""
+def _kur_coz(pb, tarih, cari=None):
+    """Fatura para biriminin fiş tarihindeki TCMB kuru — carinin kur_tipi tercihine göre
+    (bkz. Kur.deger); cari verilmezse MB Alış. TRY -> 1. Döviz için o tarihin KUR kaydı ve
+    ilgili PB/kur tipi alanı dolu olmalı (carry-forward yok)."""
     if pb == "TRY":
         return Decimal("1")
     k = Kur.objects.filter(tarih=tarih, silindi=False).first()
-    alan = {"USD": "usd_alis", "EUR": "eur_alis", "GBP": "gbp_alis"}.get(pb)
-    deger = getattr(k, alan) if (k and alan) else None
+    kur_tipi = cari.kur_tipi if cari else Cari.KurTipi.MB_ALIS
+    deger = k.deger(pb, kur_tipi) if k else None
     if not deger:
         raise FaturaHatasi(
             f"{tarih:%d.%m.%Y} için {pb} kuru yok; Kurlar ekranından bu tarihi çekmeden "
@@ -63,9 +64,11 @@ def _kur_coz(pb, tarih):
     return deger
 
 
-def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
+def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None):
     """Ortak hazırlık (oluştur+güncelle): doğrula, kur çöz, yevmiye satırlarını ve
-    FaturaSatir verisini kur. (tip, cari, pb, kur, yevmiye_satirlari, hazir) döner."""
+    FaturaSatir verisini kur. (tip, cari, pb, kur, yevmiye_satirlari, hazir) döner.
+    ``kur_override`` doluysa (kullanıcı elle girdi/değiştirdi) carinin kur_tipi'ne göre
+    otomatik hesaplama YERİNE doğrudan kullanılır."""
     tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first()
     if tip is None:
         raise FaturaHatasi("Fatura tipi bulunamadı.")
@@ -86,7 +89,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi):
     pb = (para_birimi or "TRY").strip().upper()
     if pb not in dict(Cari.PARA_CHOICES):
         raise FaturaHatasi("Geçersiz para birimi.")
-    kur = _kur_coz(pb, tarih)
+    kur = Decimal("1") if pb == "TRY" else (kur_override or _kur_coz(pb, tarih, cari=cari))
 
     yevmiye_satirlari = []
     kdv_hesap_toplam = {}          # hesap_kodu -> KDV tutarı (PB) [alışta tam, satışta net]
@@ -424,11 +427,12 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
 
 
 @transaction.atomic
-def fatura_onayla(fatura: Fatura, kullanici=None) -> Fatura:
+def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
     """TASLAK → ONAYLI: muhasebe haritasını (tip artık zorunlu) çözer, dengeli yevmiye
     fişini üretir ve — bu fatura bir İRSALİYE'den doğmadıysa (o zaten stokladı, çifte
     sayım olmasın) — depo verilmişse stok hareketlerini yazar. İdempotent (zaten onaylıysa
-    sessiz)."""
+    sessiz). ``kur_override`` doluysa (kullanıcı Fatura formunda elle girdi/değiştirdi)
+    carinin kur_tipi'ne göre otomatik hesaplama YERİNE doğrudan kullanılır."""
     if fatura.silindi:
         raise FaturaHatasi("İptal edilmiş fatura onaylanamaz.")
     if fatura.durum == Fatura.Durum.ONAYLI:
@@ -438,7 +442,8 @@ def fatura_onayla(fatura: Fatura, kullanici=None) -> Fatura:
     if fatura.tip.yon != fatura.yon:
         raise FaturaHatasi("Fatura tipi, faturanın yönüyle uyuşmuyor.")
     tip, cari = fatura.tip, fatura.cari
-    kur = _kur_coz(fatura.para_birimi, fatura.tarih)
+    kur = (Decimal("1") if fatura.para_birimi == "TRY"
+          else (kur_override or _kur_coz(fatura.para_birimi, fatura.tarih, cari=cari)))
     yevmiye_satirlari = _muhasebe_satirlari(fatura, tip, cari, fatura.para_birimi, kur)
     try:
         fis = fis_olustur(tarih=fatura.tarih, satirlar=yevmiye_satirlari,
@@ -458,20 +463,23 @@ def fatura_onayla(fatura: Fatura, kullanici=None) -> Fatura:
 
 @transaction.atomic
 def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
-                   para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
+                   para_birimi="TRY", depo_id=None, kullanici=None, kur=None) -> Fatura:
     """Kolaylık sarmalayıcısı: taslak oluşturur ve tip zaten bilindiği için HEMEN onaylar —
     tek atomik blok, onaylama başarısız olursa (eksik harita/kur/vb.) taslak da geri alınır
     (eskisi gibi tam atomik: ya hepsi ya hiçbiri). Tip'in önceden bilinmediği tek durum —
-    İrsaliye'den otomatik açılan taslak — bunun yerine doğrudan fatura_taslak_olustur kullanır."""
+    İrsaliye'den otomatik açılan taslak — bunun yerine doğrudan fatura_taslak_olustur kullanır.
+    ``kur`` doluysa (Fatura formunda elle girildi/değiştirildi) otomatik hesaplama YERİNE
+    doğrudan kullanılır."""
     fatura = fatura_taslak_olustur(
         cari_id=cari_id, tarih=tarih, satirlar=satirlar, tip_id=tip_id,
         fatura_no=fatura_no, para_birimi=para_birimi, depo_id=depo_id, kullanici=kullanici)
-    return fatura_onayla(fatura, kullanici=kullanici)
+    return fatura_onayla(fatura, kullanici=kullanici, kur_override=kur)
 
 
 @transaction.atomic
 def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
-                    fatura_no="", para_birimi="TRY", depo_id=None, kullanici=None) -> Fatura:
+                    fatura_no="", para_birimi="TRY", depo_id=None, kullanici=None,
+                    kur=None) -> Fatura:
     """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
     serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
     hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir."""
@@ -501,7 +509,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         raise FaturaHatasi("Faturanın aktif yevmiye fişi yok; düzenlenemez.")
     tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
-        para_birimi=para_birimi)
+        para_birimi=para_birimi, kur_override=kur)
     depo = _depo_coz(depo_id)
     fatura_no = (fatura_no or "").strip()
     try:

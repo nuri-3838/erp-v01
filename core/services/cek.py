@@ -93,12 +93,13 @@ def _pb_coz(pb):
     return pb
 
 
-def _kur_coz(pb, tarih):
+def _kur_coz(pb, tarih, cari=None):
+    """cari verilirse onun kur_tipi tercihine göre (bkz. Kur.deger), yoksa MB Alış."""
     if pb == "TRY":
         return Decimal("1")
     k = Kur.objects.filter(tarih=tarih, silindi=False).first()
-    alan = {"USD": "usd_alis", "EUR": "eur_alis", "GBP": "gbp_alis"}.get(pb)
-    deger = getattr(k, alan) if (k and alan) else None
+    kur_tipi = cari.kur_tipi if cari else Cari.KurTipi.MB_ALIS
+    deger = k.deger(pb, kur_tipi) if k else None
     if not deger:
         raise CekHatasi(f"{tarih:%d.%m.%Y} için {pb} kuru yok; Kurlar ekranından çekin.")
     return deger
@@ -151,12 +152,14 @@ _GIRIS_DURUM = {t["tur"]: t["durum"] for t in GIRIS_TANIM.values()}
 
 @transaction.atomic
 def _bordro_olustur(tan, *, cari_id, tarih, para_birimi="TRY", satirlar,
-                    aciklama="", kullanici=None) -> CekBordrosu:
+                    aciklama="", kullanici=None, kur_override=None) -> CekBordrosu:
     """Giriş/çıkış bordrosu ortak motoru: N adet CekSenet + TEK birleşik fiş.
-    tan = GIRIS_TANIM['giris'|'cikis']. Hesaplar config matrisinden (evrak tipine göre)."""
+    tan = GIRIS_TANIM['giris'|'cikis']. Hesaplar config matrisinden (evrak tipine göre).
+    ``kur_override`` doluysa (kullanıcı formda elle girdi/değiştirdi) carinin kur_tipi'ne
+    göre otomatik hesaplama YERİNE doğrudan kullanılır."""
     cari, cari_hesap = _cari_coz(cari_id)
     pb = _pb_coz(para_birimi)
-    kur = _kur_coz(pb, tarih)
+    kur = Decimal("1") if pb == "TRY" else (kur_override or _kur_coz(pb, tarih, cari=cari))
     ayar = CekHesapAyari.get()
     temiz = _kalemleri_dogrula(satirlar)
     cek_top = sum((s["tutar"] for s in temiz if s["tip"] == CekSenet.Tip.CEK), Decimal("0"))
@@ -323,7 +326,9 @@ def _cari_terminal_bordrosu(tan, *, tarih, cek_ids, aciklama="", kullanici=None)
     cari tarafı; kambiyo farkı v0.1 kapsam dışı)."""
     cekler = _secim_coz(cek_ids, yon=tan["yon"], durum=tuple(tan["onek"]))
     pb = cekler[0].para_birimi
-    kur = _kur_coz(pb, tarih)
+    # Farklı carilere ait çekler aynı bordroda olabilir (tek kur_tipi seçmek gerekir) —
+    # kullanıcı kararı: ilk çekin carisinin kur_tipi tercihi baz alınır.
+    kur = _kur_coz(pb, tarih, cari=cekler[0].cari)
     ayar = CekHesapAyari.get()
     cari_taraf = tan["cari_taraf"]
     cek_taraf = "A" if cari_taraf == "B" else "B"
@@ -398,14 +403,16 @@ def firma_karsiliksiz_bordrosu_olustur(**kwargs) -> CekBordrosu:
 
 
 @transaction.atomic
-def cari_ciro_bordrosu_olustur(*, hedef_id, tarih, cek_ids, aciklama="", kullanici=None) -> CekBordrosu:
+def cari_ciro_bordrosu_olustur(*, hedef_id, tarih, cek_ids, aciklama="", kullanici=None,
+                               kur_override=None) -> CekBordrosu:
     """Portföydeki alınan çek/senetleri bir cariye CİRO: ciro carisi BORÇ / Portföydeki
     çek-senet ALACAK. Seçilen evrak PORTFÖYDE+ALINAN+aynı PB; durumları CIRO'ya geçer.
-    hedef_id = ciro edilen cari pk."""
+    hedef_id = ciro edilen cari pk. ``kur_override`` doluysa (kullanıcı formda elle girdi/
+    değiştirdi) carinin kur_tipi'ne göre otomatik hesaplama YERİNE doğrudan kullanılır."""
     cari, cari_hesap = _cari_coz(hedef_id)
     cekler = _secim_coz(cek_ids)
     pb = cekler[0].para_birimi
-    kur = _kur_coz(pb, tarih)
+    kur = Decimal("1") if pb == "TRY" else (kur_override or _kur_coz(pb, tarih, cari=cari))
     ayar = CekHesapAyari.get()
     cek_top = sum((c.tutar for c in cekler if c.tip == CekSenet.Tip.CEK), Decimal("0"))
     senet_top = sum((c.tutar for c in cekler if c.tip == CekSenet.Tip.SENET), Decimal("0"))
@@ -558,7 +565,9 @@ def _nakit_bordrosu(tan, *, tarih, cek_ids, banka_hesap_id=None, kasa_id=None,
     if hedef_pb != pb:
         raise CekHatasi(f"{hedef_ad} hesabının para birimi ({hedef_pb}) evrak para "
                         f"birimiyle ({pb}) aynı olmalı; çapraz kurlu işlem desteklenmiyor.")
-    kur = _kur_coz(pb, tarih)
+    # Farklı carilere ait çekler aynı bordroda olabilir — ilk çekin carisinin kur_tipi
+    # tercihi baz alınır (bkz. _cari_terminal_bordrosu'ndaki aynı karar).
+    kur = _kur_coz(pb, tarih, cari=cekler[0].cari)
     ayar = CekHesapAyari.get()
     # Karşı satırlar: (durum öneki, tip) grubuna göre topla → config hesabı.
     grup = {}
