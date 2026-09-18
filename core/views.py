@@ -321,8 +321,12 @@ def _tarih_araligi(request):
 
 @login_required
 def kur_usd_api(request):
-    """Fiş ekranı USD önizleme için: fiş tarihine göre USD kuru (TCMB MB Alış)."""
+    """Fiş/Fatura/İrsaliye ekranı önizleme için: tarihe (+ opsiyonel ?pb=) göre TCMB alış
+    kuru. ?pb verilmezse eski davranış (USD, kur_usd_birebir) korunur — mevcut çağıran
+    (fiş formu) hiç değişmeden çalışır. TRY için hep '1' döner; carry-forward YOK (tam o
+    tarih için kayıt yoksa kur=null — bkz. core.services.fatura._kur_coz ile aynı kural)."""
     ham = request.GET.get("tarih")
+    pb = (request.GET.get("pb") or "USD").upper()
     kur = None
     if ham:
         try:
@@ -330,9 +334,18 @@ def kur_usd_api(request):
         except ValueError:
             t = None
         if t is not None:
-            k = kur_usd_birebir(t)
-            if k is not None:
-                kur = str(k)
+            if pb == "TRY":
+                kur = "1"
+            elif pb == "USD":
+                k = kur_usd_birebir(t)
+                if k is not None:
+                    kur = str(k)
+            elif pb in ("EUR", "GBP"):
+                alan = {"EUR": "eur_alis", "GBP": "gbp_alis"}[pb]
+                kayit = Kur.objects.filter(tarih=t, silindi=False).first()
+                deger = getattr(kayit, alan, None) if kayit else None
+                if deger:
+                    kur = str(deger)
     return JsonResponse({"kur": kur})
 
 
