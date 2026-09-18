@@ -88,16 +88,15 @@ class FaturaEkranTest(TestCase):
         self.assertContains(r2, "ALÜMİNYUM LEVHA")
         self.assertContains(r2, reverse("core:fis_detay", args=[f.fis.pk]))
 
-    def test_iptal(self):
+    def test_sil(self):
         self.client.force_login(self.yon)
         self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
         f = Fatura.objects.get(fatura_no="A-1")
-        fis_id = f.fis_id
-        r = self.client.post(reverse("core:fatura_iptal", args=[f.pk]))
+        fatura_id, fis_id = f.pk, f.fis_id
+        r = self.client.post(reverse("core:fatura_sil", args=[f.pk]))
         self.assertEqual(r.status_code, 302)
-        f.refresh_from_db()
-        self.assertTrue(f.silindi)
-        self.assertTrue(YevmiyeFisi.objects.get(pk=fis_id).silindi)
+        self.assertFalse(Fatura.objects.filter(pk=fatura_id).exists())
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=fis_id).exists())
 
     def test_duzenle_post(self):
         self.client.force_login(self.yon)

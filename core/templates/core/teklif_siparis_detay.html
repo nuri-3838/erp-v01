@@ -103,8 +103,8 @@
           {% endif %}
         {% endif %}
         {% if not donusum_kilitli %}
-        <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{{ ts.get_belge_tur_display }} iptal edilsin mi?');" style="margin:0">
-          {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+        <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{% if ts.belge_tur == "IRSALIYE" %}Bu irsaliye ve yazdığı stok girişi KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.{% else %}{{ ts.get_belge_tur_display }} iptal edilsin mi?{% endif %}');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="sil">{% if ts.belge_tur == "IRSALIYE" %}🗑️ Sil{% else %}İptal Et{% endif %}</button></form>
         {% endif %}
       {% endif %}
     </div>

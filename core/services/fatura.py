@@ -18,7 +18,8 @@ from django.db import transaction
 
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
-                         KategoriHesap, Kur, Stok, StokHareket, TeklifSiparis, YevmiyeFisi)
+                         KategoriHesap, Kur, Stok, StokHareket, StokMaliyetKatmani,
+                         StokMaliyetTuketimi, TeklifSiparis, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
@@ -536,20 +537,30 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
 
 
 @transaction.atomic
-def fatura_iptal(fatura: Fatura, kullanici=None) -> Fatura:
-    """Faturayı soft-delete eder; bağlı yevmiye fişini ve stok hareketlerini de iptal eder.
-    Alış faturasıyla gelen mal başka bir hareketle tüketildiyse (eldeki negatife düşerse)
-    iptal engellenir — fatura_guncelle'nin ONAYLI dalıyla aynı backstop."""
-    from django.utils import timezone
-    if fatura.silindi:
-        return fatura
+def fatura_sil(fatura: Fatura, kullanici=None) -> None:
+    """Faturayı KALICI olarak siler — bağlı yevmiye fişi ve stok hareketleri (+ varsa FIFO
+    maliyet katmanları) dahil hiçbir iz kalmaz (CLAUDE.md'nin bu ekrana özel BİLİNÇLİ
+    istisnası — kullanıcı isteği, bkz. proje belleği). Girdiği stok başka bir hareketle
+    (satış/üretim) zaten tüketilmişse reddedilir (hareket_sil'in mevcut güvenlik kontrolü).
+    Bu fatura bir İrsaliye'den doğduysa (irsaliye.fatura), o bağlantı temizlenir —
+    İrsaliye SİLİNMEZ, "Faturaya Dönüştü" rozetini kaybedip yeniden düzenlenebilir hale
+    gelir (bkz. teklif_siparis.teklif_siparis_onayi_geri_al)."""
+    hareketler = list(StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False))
+    for h in hareketler:
+        try:
+            hareket_sil(h, kullanici=kullanici)
+        except HareketHatasi as e:
+            raise FaturaHatasi(str(e))
     if fatura.fis_id and not fatura.fis.silindi:
         fis_iptal(fatura.fis, kullanici=kullanici)
-    etkilenen = _fatura_hareket_ciftleri(fatura)
-    _hareketleri_iptal(fatura, kullanici=kullanici)
-    _negatif_eldeki_dogrula(etkilenen)
-    fatura.silindi = True
-    fatura.silindi_at = timezone.now()
-    fatura.updated_by = kullanici
-    fatura.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
-    return fatura
+    TeklifSiparis.objects.filter(fatura=fatura).update(fatura=None)
+    katman_ids = list(StokMaliyetKatmani.objects.filter(
+        stok_hareket__in=hareketler).values_list("id", flat=True))
+    StokMaliyetTuketimi.objects.filter(katman_id__in=katman_ids).delete()
+    StokMaliyetKatmani.objects.filter(id__in=katman_ids).delete()
+    StokHareket.objects.filter(id__in=[h.pk for h in hareketler]).delete()
+    fis_id = fatura.fis_id
+    fatura.delete()                                    # FaturaSatir CASCADE
+    if fis_id:
+        YevmiyeFisi.objects.filter(pk=fis_id).delete()  # YevmiyeSatir CASCADE (fis PROTECT
+                                                         # olduğu için fatura'dan SONRA silinir)

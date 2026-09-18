@@ -2610,6 +2610,17 @@ def teklif_siparis_duzenle(request, pk):
 def teklif_siparis_iptal_gorunum(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
     if request.method == "POST":
+        if ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
+            # İrsaliye artık soft-iptal DEĞİL, kalıcı silme (bkz. teklif_siparis_servis.
+            # irsaliye_sil) — başarılıysa belge yok olur, detay sayfasına dönülemez.
+            ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
+            try:
+                teklif_siparis_servis.irsaliye_sil(ts, kullanici=request.user)
+            except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                messages.error(request, str(e))
+                return redirect("core:teklif_siparis_detay", pk=ts.pk)
+            messages.success(request, "İrsaliye kalıcı olarak silindi.")
+            return redirect("core:" + ekran)
         try:
             teklif_siparis_servis.teklif_siparis_iptal(ts, kullanici=request.user)
             messages.success(request, f"{ts.get_belge_tur_display()} iptal edildi.")
@@ -5238,12 +5249,16 @@ def fatura_detay(request, pk):
 
 
 @ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
-def fatura_iptal_gorunum(request, pk):
+def fatura_sil_gorunum(request, pk):
     fatura = get_object_or_404(Fatura, pk=pk, silindi=False)
     yon = fatura.yon
     if request.method == "POST":
-        fatura_servis.fatura_iptal(fatura, kullanici=request.user)
-        messages.success(request, "Fatura ve bağlı fiş iptal edildi.")
+        try:
+            fatura_servis.fatura_sil(fatura, kullanici=request.user)
+        except fatura_servis.FaturaHatasi as e:
+            messages.error(request, str(e))
+            return redirect("core:fatura_detay", pk=fatura.pk)
+        messages.success(request, "Fatura ve bağlı yevmiye kaydı kalıcı olarak silindi.")
     return redirect(_fatura_liste_url(yon))
 
 

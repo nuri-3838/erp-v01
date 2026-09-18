@@ -18,7 +18,8 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max
 
 from core.models import (AdayMusteri, BankaHesap, Cari, Depo, KdvOrani, Kur, Stok, StokHareket,
-                         TanimSecenegi, TeklifSiparis, TeklifSiparisKalem)
+                         StokMaliyetKatmani, StokMaliyetTuketimi, TanimSecenegi, TeklifSiparis,
+                         TeklifSiparisKalem)
 from core.sayi import SayiHatasi, parse_tr
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
 
@@ -394,9 +395,13 @@ def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     return ts
 
 
+@transaction.atomic
 def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     """ONAYLI → TASLAK. Zaten siparişe/irsaliyeye/faturaya dönüştürülmüş belgenin onayı geri
-    alınamaz (zincirin bütünlüğü bozulur). İptal edilmişse hata; zaten taslaksa sessiz (idempotent)."""
+    alınamaz (zincirin bütünlüğü bozulur). İptal edilmişse hata; zaten taslaksa sessiz
+    (idempotent). İRSALİYE ise, onaylanınca yazdığı GERÇEK stok girişi de geri alınır
+    (bir stok+depoda eldeki miktarı negatife düşürüyorsa geri alma engellenir — aynı
+    teklif_siparis_iptal'daki _irsaliye_hareketleri_iptal deseni)."""
     if ts.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş belge için onay geri alınamaz.")
     if ts.durum == TeklifSiparis.Durum.TASLAK:
@@ -404,6 +409,8 @@ def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSip
     hedef = _donusum_hedefi(ts)
     if hedef:
         raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; onayı geri alınamaz.")
+    if ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
+        _irsaliye_hareketleri_iptal(ts, kullanici)
     ts.durum = TeklifSiparis.Durum.TASLAK
     ts.updated_by = kullanici
     ts.save(update_fields=["durum", "updated_by", "updated_at"])
@@ -690,3 +697,32 @@ def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     ts.updated_by = kullanici
     ts.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return ts
+
+
+@transaction.atomic
+def irsaliye_sil(irsaliye: TeklifSiparis, kullanici=None) -> None:
+    """İrsaliyeyi KALICI olarak siler — yazdığı gerçek stok girişi (+ varsa FIFO maliyet
+    katmanı) dahil hiçbir iz kalmaz (CLAUDE.md'nin bu ekrana özel BİLİNÇLİ istisnası —
+    kullanıcı isteği, bkz. proje belleği). Zaten bir Faturaya dönüşmüşse (hâlâ mevcutsa)
+    reddedilir — önce o Fatura silinmeli (bkz. fatura.fatura_sil). Getirdiği stok başka bir
+    hareketle (satış/üretim) zaten tüketilmişse de reddedilir (hareket_sil güvenlik
+    kontrolü)."""
+    if irsaliye.belge_tur != TeklifSiparis.BelgeTur.IRSALIYE:
+        raise TeklifSiparisHatasi("Yalnız İrsaliye kalıcı olarak silinebilir.")
+    if irsaliye.fatura_id and not irsaliye.fatura.silindi:
+        raise TeklifSiparisHatasi(
+            "Bu irsaliye bir faturaya dönüştürülmüş; önce o faturayı silin.")
+    hareketler = list(StokHareket.objects.filter(
+        teklif_siparis_kalem__teklif_siparis=irsaliye, silindi=False))
+    for h in hareketler:
+        try:
+            hareket_sil(h, kullanici=kullanici)
+        except HareketHatasi as e:
+            raise TeklifSiparisHatasi(str(e))
+    katman_ids = list(StokMaliyetKatmani.objects.filter(
+        stok_hareket__in=hareketler).values_list("id", flat=True))
+    StokMaliyetTuketimi.objects.filter(katman_id__in=katman_ids).delete()
+    StokMaliyetKatmani.objects.filter(id__in=katman_ids).delete()
+    StokHareket.objects.filter(id__in=[h.pk for h in hareketler]).delete()
+    irsaliye.kalemler.all().delete()
+    irsaliye.delete()

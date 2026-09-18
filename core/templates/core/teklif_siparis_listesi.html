@@ -163,8 +163,8 @@
           {% if k.durum == "TASLAK" %}
             <a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>
           {% endif %}
-          <form method="post" action="{% url 'core:teklif_siparis_iptal' k.pk %}" onsubmit="return confirm('{{ k.get_belge_tur_display }} iptal edilsin mi?');">
-            {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
+          <form method="post" action="{% url 'core:teklif_siparis_iptal' k.pk %}" onsubmit="return confirm('{% if k.belge_tur == "IRSALIYE" %}Bu irsaliye ve yazdığı stok girişi KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.{% else %}{{ k.get_belge_tur_display }} iptal edilsin mi?{% endif %}');">
+            {% csrf_token %}<button type="submit" class="sil">{% if k.belge_tur == "IRSALIYE" %}🗑️ Sil{% else %}İptal{% endif %}</button></form>
         </span></td>
         {% endif %}
       </tr>

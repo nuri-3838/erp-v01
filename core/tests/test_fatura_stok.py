@@ -4,8 +4,8 @@ import datetime
 from decimal import Decimal
 
 from core.models import Birim, Depo, Fatura, Stok, StokHareket
-from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_iptal,
-                                  fatura_olustur)
+from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_olustur,
+                                  fatura_sil)
 from core.services.hareket import eldeki_miktar, hareket_ekle
 from core.tests.test_fatura import FaturaTestTemel
 
@@ -58,14 +58,15 @@ class FaturaStokTest(FaturaTestTemel):
                        depo_id=self.depo.pk)
         self.assertEqual(eldeki_miktar(st, self.depo), Decimal("5.000"))
 
-    def test_iptal_hareketi_geri_alir(self):
+    def test_sil_hareketi_kalici_siler(self):
         f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
                            depo_id=self.depo.pk)
-        fatura_iptal(f)
+        fatura_id = f.pk
+        fatura_sil(f)
         self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("0.000"))
-        self.assertFalse(StokHareket.objects.filter(
-            fatura_satir__fatura=f, silindi=False).exists())
+        self.assertFalse(StokHareket.objects.filter(fatura_satir__fatura_id=fatura_id).exists())
+        self.assertFalse(Fatura.objects.filter(pk=fatura_id).exists())
 
     def test_guncelle_hareketi_yeniler(self):
         f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,

@@ -8,8 +8,8 @@ from django.test import TestCase
 from core.models import (Birim, Cari, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          Kategori, KategoriHesap, KdvOrani, Kur, Stok, TevkifatOrani,
                          YevmiyeFisi)
-from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_iptal,
-                                  fatura_olustur, fatura_onayla, fatura_taslak_olustur)
+from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_olustur,
+                                  fatura_onayla, fatura_sil, fatura_taslak_olustur)
 
 D = datetime.date
 
@@ -215,27 +215,49 @@ class FaturaGuncelleTest(FaturaTestTemel):
         self.assertEqual(tb, ta)
 
 
-class FaturaIptalTest(FaturaTestTemel):
-    def test_iptal_fisi_de_iptal_eder(self):
+class FaturaSilTest(FaturaTestTemel):
+    """fatura_sil: KALICI silme (soft değil) — bağlı fiş/satır/hareket hiç iz bırakmaz."""
+
+    def test_sil_fisi_de_kalici_siler(self):
         f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
                            tarih=D(2026, 3, 10), satirlar=self._satir())
-        fis_id = f.fis_id
-        fatura_iptal(f)
-        f.refresh_from_db()
-        self.assertTrue(f.silindi)
-        fis = YevmiyeFisi.objects.get(pk=fis_id)
-        self.assertTrue(fis.silindi)
-        self.assertTrue(all(s.silindi for s in fis.satirlar.all()))
+        fis_id, fatura_id = f.fis_id, f.pk
+        satir_ids = list(f.fis.satirlar.values_list("pk", flat=True))
+        fatura_sil(f)
+        self.assertFalse(Fatura.objects.filter(pk=fatura_id).exists())
+        self.assertFalse(FaturaSatir.objects.filter(fatura_id=fatura_id).exists())
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=fis_id).exists())
+        from core.models import YevmiyeSatir
+        self.assertFalse(YevmiyeSatir.objects.filter(pk__in=satir_ids).exists())
 
-    def test_taslak_fatura_da_sorunsuz_iptal_edilir(self):
-        # tip=None taslak — hiç fiş/stok hareketi yok; iptal bunu sorunsuz kabul etmeli.
+    def test_taslak_fatura_da_sorunsuz_silinir(self):
+        # tip=None taslak — hiç fiş/stok hareketi yok; silme bunu sorunsuz kabul etmeli.
         f = fatura_taslak_olustur(cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
                                   satirlar=self._satir(), yon="ALIS")
         self.assertIsNone(f.tip_id)
         self.assertIsNone(f.fis_id)
-        fatura_iptal(f)
-        f.refresh_from_db()
-        self.assertTrue(f.silindi)
+        fatura_id = f.pk
+        fatura_sil(f)
+        self.assertFalse(Fatura.objects.filter(pk=fatura_id).exists())
+
+    def test_uretimde_tuketilmis_stok_silmeyi_engeller(self):
+        """Alış faturasının girdiği stok başka bir çıkış hareketiyle zaten tüketilmişse
+        (örn. satış) fatura_sil reddeder — hareket_sil'in mevcut FIFO/negatif-eldeki
+        güvenlik kontrolü aynen yeniden kullanılıyor."""
+        from core.services.hareket import hareket_ekle
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
+                           depo_id=self._depo().pk)
+        hareket_ekle(stok_id=self.stok.pk, depo_id=self._depo().pk, tarih=D(2026, 3, 11),
+                    tur="CIKIS", miktar="4", kaynak="MANUEL")
+        with self.assertRaises(FaturaHatasi):
+            fatura_sil(f)
+        self.assertTrue(Fatura.objects.filter(pk=f.pk).exists())
+
+    def _depo(self):
+        from core.models import Depo
+        d, _ = Depo.objects.get_or_create(kod="D1", defaults={"ad": "ANA DEPO"})
+        return d
 
 
 class FaturaOnaylaTest(FaturaTestTemel):

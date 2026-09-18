@@ -1394,6 +1394,96 @@ class SatinalmaZinciriTest(TestCase):
         irsaliye = siparis.donusen_irsaliyeler.get()
         self.assertEqual(irsaliye.kur, Decimal("31"))
 
+    def _onayli_irsaliye(self):
+        """Onaylı bir İrsaliye kurar (onaylanınca otomatik bir taslak Fatura da açılır —
+        bkz. teklif_siparis_onayla)."""
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        irsaliye = teklif_siparis_olustur(
+            belge_tur="IRSALIYE", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            depo_id=self.depo.pk,
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        irsaliye.refresh_from_db()
+        return irsaliye
+
+    def test_irsaliye_sil_faturaya_donusmusken_engellenir(self):
+        """İrsaliye onaylanınca otomatik bir taslak Fatura açılır — o hâlâ mevcutken
+        irsaliye_sil reddetmeli (kullanıcı kararı: önce Fatura silinmeli)."""
+        from core.models import TeklifSiparis
+        from core.services.teklif_siparis import TeklifSiparisHatasi, irsaliye_sil
+        irsaliye = self._onayli_irsaliye()
+        self.assertIsNotNone(irsaliye.fatura_id)
+        with self.assertRaises(TeklifSiparisHatasi):
+            irsaliye_sil(irsaliye, kullanici=self.yon)
+        self.assertTrue(TeklifSiparis.objects.filter(pk=irsaliye.pk).exists())
+
+    def test_fatura_sil_sonrasi_irsaliye_sil_calisir(self):
+        """Bağlı Fatura kalıcı silinince İrsaliye artık düzenlenebilir/silinebilir hale
+        gelir: fatura_id temizlenir, 'Faturaya Dönüştü' rozeti gider, irsaliye_sil işler."""
+        from core.models import StokHareket, TeklifSiparis
+        from core.services.fatura import fatura_sil
+        from core.services.teklif_siparis import irsaliye_sil
+        irsaliye = self._onayli_irsaliye()
+        fatura = irsaliye.fatura
+        fatura_sil(fatura)
+        irsaliye.refresh_from_db()
+        self.assertIsNone(irsaliye.fatura_id)
+        irsaliye_id = irsaliye.pk
+        irsaliye_sil(irsaliye, kullanici=self.yon)
+        self.assertFalse(TeklifSiparis.objects.filter(pk=irsaliye_id).exists())
+        self.assertFalse(StokHareket.objects.filter(
+            teklif_siparis_kalem__teklif_siparis_id=irsaliye_id).exists())
+
+    def test_irsaliye_sil_tuketilmis_stok_engellenir(self):
+        from core.models import TeklifSiparis
+        from core.services.fatura import fatura_sil
+        from core.services.hareket import hareket_ekle
+        from core.services.teklif_siparis import TeklifSiparisHatasi, irsaliye_sil
+        irsaliye = self._onayli_irsaliye()
+        fatura_sil(irsaliye.fatura)
+        hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=self.tarih,
+                    tur="CIKIS", miktar="3", kaynak="MANUEL")
+        irsaliye.refresh_from_db()
+        with self.assertRaises(TeklifSiparisHatasi):
+            irsaliye_sil(irsaliye, kullanici=self.yon)
+        self.assertTrue(TeklifSiparis.objects.filter(pk=irsaliye.pk).exists())
+
+    def test_onayi_geri_al_irsaliyede_stok_hareketini_geri_alir(self):
+        """Rejenerasyon: teklif_siparis_onayi_geri_al artık İrsaliye'nin yazdığı GERÇEK
+        stok girişini de geri alıyor (eskiden yalnız durum flip ediyordu — bkz. plan
+        dosyasındaki keşfedilen hata)."""
+        from core.models import StokHareket
+        from core.services.fatura import fatura_sil
+        from core.services.teklif_siparis import teklif_siparis_onayi_geri_al
+        irsaliye = self._onayli_irsaliye()
+        fatura_sil(irsaliye.fatura)
+        irsaliye.refresh_from_db()
+        self.assertEqual(StokHareket.objects.filter(
+            teklif_siparis_kalem__teklif_siparis=irsaliye, silindi=False).count(), 1)
+        teklif_siparis_onayi_geri_al(irsaliye, kullanici=self.yon)
+        irsaliye.refresh_from_db()
+        self.assertEqual(irsaliye.durum, "TASLAK")
+        self.assertEqual(StokHareket.objects.filter(
+            teklif_siparis_kalem__teklif_siparis=irsaliye, silindi=False).count(), 0)
+
+    def test_fatura_sil_sonrasi_irsaliye_tekrar_duzenlenebilir(self):
+        """Uçtan uca: Fatura sil -> Onayı Geri Al -> Düzenle artık çalışır."""
+        from core.services.fatura import fatura_sil
+        from core.services.teklif_siparis import (teklif_siparis_guncelle,
+                                                   teklif_siparis_onayi_geri_al)
+        irsaliye = self._onayli_irsaliye()
+        fatura_sil(irsaliye.fatura)
+        irsaliye.refresh_from_db()
+        teklif_siparis_onayi_geri_al(irsaliye, kullanici=self.yon)
+        irsaliye.refresh_from_db()
+        teklif_siparis_guncelle(
+            irsaliye, cari_id=self.cari.pk, tarih=self.tarih, depo_id=self.depo.pk,
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "20", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        irsaliye.refresh_from_db()
+        self.assertEqual(irsaliye.kalemler.get(silindi=False).miktar, Decimal("20"))
+
     def test_satis_yonunde_onay_zincir_tetiklemez(self):
         from core.models import Fatura, StokHareket, TeklifSiparis
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla

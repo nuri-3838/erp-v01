@@ -28,8 +28,8 @@
         <td><span class="islem-bag">
           <a href="{% url 'core:fatura_detay' f.pk %}">Detay</a>
           <a href="{% url 'core:fatura_duzenle' f.pk %}">Düzenle</a>
-          <form method="post" action="{% url 'core:fatura_iptal' f.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
-            {% csrf_token %}<button type="submit" class="sil">İptal</button></form>
+          <form method="post" action="{% url 'core:fatura_sil' f.pk %}" onsubmit="return confirm('Fatura ve bağlı yevmiye kaydı KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
+            {% csrf_token %}<button type="submit" class="sil">🗑️ Sil</button></form>
         </span></td>
       </tr>
     {% empty %}

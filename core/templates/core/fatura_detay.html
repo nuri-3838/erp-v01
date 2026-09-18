@@ -17,8 +17,8 @@
       {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
     {% endif %}
     <a class="dugme" href="{% url 'core:fatura_duzenle' fatura.pk %}">Düzenle</a>
-    <form method="post" action="{% url 'core:fatura_iptal' fatura.pk %}" onsubmit="return confirm('Fatura ve bağlı fiş iptal edilsin mi?');">
-      {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+    <form method="post" action="{% url 'core:fatura_sil' fatura.pk %}" onsubmit="return confirm('Fatura ve bağlı yevmiye kaydı KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
+      {% csrf_token %}<button type="submit" class="sil">🗑️ Sil</button></form>
   </span>
   {% endif %}
 </div>
