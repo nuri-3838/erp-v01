@@ -4933,10 +4933,21 @@ def ihtiyac_hesapla(request):
 # --- Üretim Emirleri (üst-düzey tetikleyici) ---
 @ekran_gerekli("uretim_emirleri")
 def uretim_emirleri(request):
-    emirler = (UretimEmri.objects.filter(silindi=False)
-              .select_related("hedef_urun", "depo").order_by("-yil", "-sira"))
-    sayfa = Paginator(emirler, 50).get_page(request.GET.get("sayfa"))
-    return render(request, "core/uretim_emirleri.html", {"emirler": sayfa})
+    ara = (request.GET.get("ara") or "").strip()
+    qs = (UretimEmri.objects.filter(silindi=False)
+         .select_related("hedef_urun", "depo")
+         .order_by("-yil", "-sira"))
+    if ara:
+        buyuk = buyuk_harf_tr(ara)
+        qs = qs.filter(
+            Q(no__icontains=ara) | Q(hedef_urun__kod__icontains=ara)
+            | Q(hedef_urun__ad__contains=buyuk) | Q(depo__kod__icontains=ara)
+            | Q(depo__ad__contains=buyuk))
+    emirler = [
+        {"e": e, "ilerleme": uretim_servis.uretim_emri_ilerleme(e)}
+        for e in qs
+    ]
+    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara})
 
 
 @ekran_gerekli("uretim_emirleri")
@@ -4970,6 +4981,20 @@ def uretim_emri_detay(request, pk):
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kayitlar": kayitlar,
         "ilerleme": uretim_servis.uretim_emri_ilerleme(emir)})
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_sil_gorunum(request, pk):
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            uretim_servis.uretim_emri_sil(emir, kullanici=request.user)
+        except uretim_servis.UretimHatasi as e:
+            messages.error(request, str(e))
+            return redirect("core:uretim_emri_detay", pk=emir.pk)
+        messages.success(request, "Üretim emri ve bağlı taslak operasyon kayıtları kalıcı olarak silindi.")
+        return redirect("core:uretim_emirleri")
+    return redirect("core:uretim_emri_detay", pk=emir.pk)
 
 
 # --- Operasyon Kayıtları ---

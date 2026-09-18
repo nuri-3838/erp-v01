@@ -334,6 +334,23 @@ def uretim_emri_ilerleme(emir: UretimEmri):
     return {"toplam": toplam, "onayli": onayli}
 
 
+@transaction.atomic
+def uretim_emri_sil(emir: UretimEmri, kullanici=None) -> None:
+    """Üretim Emrini KALICI olarak siler — bağlı (henüz onaylanmamış) taslak Operasyon
+    Kayıtları ve onların girdi satırları dahil hiçbir iz kalmaz (CLAUDE.md'nin bu ekrana
+    özel BİLİNÇLİ istisnası — kullanıcı isteği, bkz. proje belleği). Emir kendi başına hiç
+    stok hareketi üretmez (bkz. sınıf docstring'i); yalnızca bağlı kayıtları AÇAR. Bu
+    kayıtlardan biri zaten ONAYLI ise (gerçek stok hareketi/maliyet oluştu) silme
+    reddedilir — onaylı bir kaydı geri almanın/silmenin yolu yok (bkz. operasyon_kaydi_sil),
+    o yüzden emrin tamamı da silinemez."""
+    if emir.operasyon_kayitlari.filter(
+            silindi=False, durum=OperasyonKaydi.Durum.ONAYLI).exists():
+        raise UretimHatasi(
+            "Bu üretim emrine bağlı en az bir operasyon kaydı onaylanmış; emir silinemez.")
+    emir.operasyon_kayitlari.all().delete()   # OperasyonKaydiGirdi CASCADE ile gider
+    emir.delete()
+
+
 # === Operasyon Kayıtları — bir operasyonun fiilen çalıştırılması ===
 
 def _sonraki_kayit_sira(yil):

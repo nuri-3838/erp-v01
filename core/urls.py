@@ -92,6 +92,7 @@ urlpatterns = [
     path("uretim/emirler/", views.uretim_emirleri, name="uretim_emirleri"),
     path("uretim/emirler/ekle/", views.uretim_emri_ekle, name="uretim_emri_ekle"),
     path("uretim/emirler/<int:pk>/", views.uretim_emri_detay, name="uretim_emri_detay"),
+    path("uretim/emirler/<int:pk>/sil/", views.uretim_emri_sil_gorunum, name="uretim_emri_sil"),
     path("uretim/kayitlar/", views.operasyon_kayitlari, name="operasyon_kayitlari"),
     path("uretim/kayitlar/ekle/", views.operasyon_kaydi_ekle, name="operasyon_kaydi_ekle"),
     path("uretim/kayitlar/<int:pk>/", views.operasyon_kaydi_detay, name="operasyon_kaydi_detay"),

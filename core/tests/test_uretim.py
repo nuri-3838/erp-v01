@@ -22,7 +22,7 @@ from core.services.uretim import (
     istasyon_guncelle, istasyon_olustur, istasyon_sil,
     kaydi_girdi_satirlari, operasyon_girdileri, operasyon_guncelle, operasyon_kaydi_girdi_guncelle,
     operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_kaydi_sil, operasyon_olustur,
-    operasyon_sil, uretim_emri_ilerleme, uretim_emri_olustur,
+    operasyon_sil, uretim_emri_ilerleme, uretim_emri_olustur, uretim_emri_sil,
 )
 
 
@@ -558,6 +558,44 @@ class UretimEmriServisTest(TestCase):
         operasyon_kaydi_onayla(kesim_kaydi)
         self.assertEqual(uretim_emri_ilerleme(emir), {"toplam": 2, "onayli": 1})
 
+    def test_sil_kalici_siler(self):
+        """uretim_emri_sil: TASLAK'ta bağlı iki Operasyon Kaydı da hâlâ TASLAK'sa
+        hiçbir iz kalmadan (hard delete) gider — CLAUDE.md'nin bu ekrana özel bilinçli
+        istisnası (kullanıcı isteği)."""
+        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
+                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir_pk = emir.pk
+        kayit_pks = list(OperasyonKaydi.objects.filter(uretim_emri=emir).values_list("pk", flat=True))
+        self.assertEqual(len(kayit_pks), 2)
+        uretim_emri_sil(emir)
+        self.assertFalse(UretimEmri.objects.filter(pk=emir_pk).exists())
+        self.assertFalse(OperasyonKaydi.objects.filter(pk__in=kayit_pks).exists())
+        from core.models import OperasyonKaydiGirdi
+        self.assertFalse(OperasyonKaydiGirdi.objects.filter(kayit_id__in=kayit_pks).exists())
+
+    def test_sil_onayli_kayit_varsa_reddedilir(self):
+        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
+                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
+                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
+        kesim_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.kesim_op)
+        operasyon_kaydi_onayla(kesim_kaydi)
+        with self.assertRaises(UretimHatasi):
+            uretim_emri_sil(emir)
+        self.assertTrue(UretimEmri.objects.filter(pk=emir.pk).exists())
+        self.assertTrue(OperasyonKaydi.objects.filter(pk=kesim_kaydi.pk).exists())
+
+    def test_sil_ayrica_soft_silinmis_taslak_kaydi_da_temizler(self):
+        """Emrin bir kaydı daha önce ayrıca operasyon_kaydi_sil ile soft-iptal edilmiş
+        olsa bile, emrin kendisi kalıcı silinince o da tamamen gider."""
+        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
+                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        kesim_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.kesim_op)
+        operasyon_kaydi_sil(kesim_kaydi)
+        uretim_emri_sil(emir)
+        self.assertFalse(UretimEmri.objects.filter(pk=emir.pk).exists())
+        self.assertFalse(OperasyonKaydi.objects.filter(pk=kesim_kaydi.pk).exists())
+
 
 class UretimViewTest(TestCase):
     @classmethod
@@ -663,6 +701,36 @@ class UretimViewTest(TestCase):
         cıplak = _stok(self.kat, self.birim, kod="UTV-CIPLAK", ad="operasyonsuz", satis=True)
         r = self.client.get(reverse("core:uretim_emri_ekle"))
         self.assertNotContains(r, "UTV-CIPLAK")
+
+    def test_uretim_emri_sil_view_kalici_siler(self):
+        self.client.force_login(self.yon)
+        emir = uretim_emri_olustur(hedef_urun_id=self.mamul.pk, hedef_miktar=Decimal("10"),
+                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        r = self.client.post(reverse("core:uretim_emri_sil", args=[emir.pk]))
+        self.assertRedirects(r, reverse("core:uretim_emirleri"))
+        self.assertFalse(UretimEmri.objects.filter(pk=emir.pk).exists())
+
+    def test_uretim_emri_sil_view_onayliyken_engellenir_hata_gosterir(self):
+        hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
+                    tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
+        self.client.force_login(self.yon)
+        emir = uretim_emri_olustur(hedef_urun_id=self.mamul.pk, hedef_miktar=Decimal("10"),
+                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        kayit = OperasyonKaydi.objects.get(uretim_emri=emir)
+        operasyon_kaydi_onayla(kayit)
+        r = self.client.post(reverse("core:uretim_emri_sil", args=[emir.pk]))
+        self.assertRedirects(r, reverse("core:uretim_emri_detay", args=[emir.pk]))
+        self.assertTrue(UretimEmri.objects.filter(pk=emir.pk).exists())
+
+    def test_uretim_emirleri_listesi_arama_ve_sil_dugmesi(self):
+        self.client.force_login(self.yon)
+        emir = uretim_emri_olustur(hedef_urun_id=self.mamul.pk, hedef_miktar=Decimal("10"),
+                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        r = self.client.get(reverse("core:uretim_emirleri"))
+        self.assertContains(r, emir.no)
+        self.assertContains(r, reverse("core:uretim_emri_sil", args=[emir.pk]))
+        r2 = self.client.get(reverse("core:uretim_emirleri"), {"ara": "yok-boyle-bir-sey"})
+        self.assertNotContains(r2, emir.no)
 
     def test_operasyon_kaydi_ekle_bagimsiz(self):
         self.client.force_login(self.yon)

@@ -4,48 +4,151 @@
 {% block sayfa_adi %}Üretim Emirleri{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
-  <div>
-    <a class="ust-link" href="{% url 'core:ihtiyac_hesapla' %}">İhtiyaç Hesapla →</a>
-    <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emirleri</h1>
-  </div>
-  <a class="dugme" href="{% url 'core:uretim_emri_ekle' %}">+ Yeni</a>
+<style>
+  .ue-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+
+  .ue-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);
+    border-radius:18px; padding:1rem 1.1rem 1.1rem; margin-bottom:1.2rem; }
+
+  .ue-arama-cubuk { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
+  .ue-alan-grup { display:flex; flex-direction:column; gap:.3rem; }
+  .ue-alan-grup label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--metin-soluk); }
+
+  .ue-arama-kutu { position:relative; flex:1 1 18rem; }
+  .ue-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
+    border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
+    font-size:.95rem; transition:border-color .15s, box-shadow .15s; box-sizing:border-box; }
+  .ue-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
+    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
+  .ue-arama-ikon { position:absolute; left:.85rem; bottom:.72rem; font-size:1rem; opacity:.55;
+    pointer-events:none; }
+  .ue-arama-temizle { display:none; }
+  .ue-arama-temizle.gorunur { display:inline-flex; }
+  .ue-btn-cubuk { display:flex; gap:.6rem; margin-left:auto; }
+
+  .ue-hucre { display:flex; align-items:center; gap:.75rem; }
+  .ue-ikon { width:40px; height:40px; border-radius:12px; flex:0 0 auto; display:grid; place-items:center;
+    font-size:1.1rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
+    border:1px solid rgba(33,56,95,.08); }
+  .ue-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
+  .ue-hucre .no { font-size:.78rem; color:var(--metin-soluk); font-family:"Cascadia Mono",Consolas,monospace; margin-top:.1rem; }
+
+  #ue-tablo td { padding-top:.85rem; padding-bottom:.85rem; }
+  #ue-tablo tbody tr { cursor:pointer; }
+  #ue-tablo tbody tr:hover td { background:rgba(240,124,0,.06); }
+  #ue-tablo tbody tr:active td { background:rgba(240,124,0,.1); }
+  .ue-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
+  #ue-tablo tbody tr:hover .ue-ok { color:var(--turuncu-koyu); opacity:1; }
+
+  .ue-satir[hidden] { display:none; }
+  .ue-bos-js { display:none; }
+  .ue-bos-js.gorunur { display:table-row; }
+  .ue-sil-hucre { text-align:right; }
+</style>
+
+<div class="ue-ust">
+  <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emirleri</h1>
+  <span class="islem-bag">
+    <a class="dugme" href="{% url 'core:ihtiyac_hesapla' %}">İhtiyaç Hesapla</a>
+    <a class="dugme" href="{% url 'core:uretim_emri_ekle' %}">+ Yeni</a>
+  </span>
 </div>
 
-<p class="yardim">Bir emir açıldığında, zincirdeki HER iş istasyonu için ayrı bir taslak
-  operasyon kaydı otomatik oluşur — her istasyon kendi kaydını kendi zamanında onaylar.</p>
+<p class="yardim" style="margin-top:-.3rem">Bir emir açıldığında, zincirdeki HER iş istasyonu
+  için ayrı bir taslak operasyon kaydı otomatik oluşur — her istasyon kendi kaydını kendi
+  zamanında onaylar.</p>
 
-<div class="tablo-kapsayici">
-<table>
-  <thead><tr>
-    <th>No</th><th>Tarih</th><th>Hedef Ürün</th><th class="sag">Hedef Miktar</th><th>Depo</th>
-  </tr></thead>
+<div class="ue-panel">
+  <form method="get" class="ue-arama-cubuk" id="ue-arama-form">
+    <div class="ue-alan-grup ue-arama-kutu">
+      <label for="ue-arama">Ara</label>
+      <span class="ue-arama-ikon">🔍</span>
+      <input type="text" id="ue-arama" name="ara" value="{{ ara }}"
+             placeholder="Emir no, hedef ürün veya depo ara…" autocomplete="off">
+    </div>
+    <div class="ue-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      <a class="iptal-bag ue-arama-temizle{% if ara %} gorunur{% endif %}" id="ue-arama-temizle"
+         href="{% url 'core:uretim_emirleri' %}">Temizle</a>
+    </div>
+  </form>
+</div>
+
+<p class="sayfa-alt"><span id="ue-sayac-sayi">{{ emirler|length }}</span> üretim emri.</p>
+
+<div class="tablo-kapsayici genis">
+<table id="ue-tablo">
+  <thead>
+    <tr>
+      <th>Emir</th><th>Tarih</th><th class="sag">Hedef Miktar</th><th>Depo</th><th>İlerleme</th><th></th><th></th>
+    </tr>
+  </thead>
   <tbody>
-    {% for e in emirler %}
-      <tr>
-        <td><a class="mono" href="{% url 'core:uretim_emri_detay' e.pk %}">{{ e.no }}</a></td>
+    {% for satir in emirler %}
+      {% with e=satir.e ilerleme=satir.ilerleme %}
+      <tr class="ue-satir" onclick="window.location='{% url 'core:uretim_emri_detay' e.pk %}'">
+        <td>
+          <div class="ue-hucre">
+            <span class="ue-ikon">🏭</span>
+            <div>
+              <div class="ad">{{ e.hedef_urun.ad }}</div>
+              <div class="no">{{ e.no }}</div>
+            </div>
+          </div>
+        </td>
         <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
-        <td><span class="mono">{{ e.hedef_urun.kod }}</span> {{ e.hedef_urun.ad }}</td>
         <td class="sag mono">{{ e.hedef_miktar|tr_kur:3 }}</td>
         <td><span class="mono">{{ e.depo.kod }}</span> {{ e.depo.ad }}</td>
+        <td>
+          <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
+            {{ ilerleme.onayli }}/{{ ilerleme.toplam }} onaylı</span>
+        </td>
+        <td class="ue-ok">›</td>
+        <td class="ue-sil-hucre" onclick="event.stopPropagation()">
+          <form method="post" action="{% url 'core:uretim_emri_sil' e.pk %}" onsubmit="return confirm('Bu üretim emri ve bağlı taslak operasyon kayıtları KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');" style="margin:0">
+            {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form>
+        </td>
       </tr>
+      {% endwith %}
     {% empty %}
-      <tr><td colspan="5" class="yardim">Henüz üretim emri yok. "+ Yeni" ile ekleyin.</td></tr>
+      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara %}🔍 Bu süzgeçle eşleşen üretim emri yok.
+        {% else %}🏭 Henüz üretim emri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
+    <tr class="ue-bos-js" style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+      🔍 Bu süzgeçle eşleşen üretim emri yok.</td></tr>
   </tbody>
 </table>
 </div>
 
-{% if emirler.paginator.num_pages > 1 %}
-<nav class="sayfalama">
-  {% if emirler.has_previous %}
-    <a href="?sayfa={{ emirler.previous_page_number }}">‹ Önceki</a>
-  {% else %}<span class="pasif">‹ Önceki</span>{% endif %}
-  <span class="sayfalama-bilgi">Sayfa {{ emirler.number }} / {{ emirler.paginator.num_pages }}
-    · {{ emirler.paginator.count }} kayıt</span>
-  {% if emirler.has_next %}
-    <a href="?sayfa={{ emirler.next_page_number }}">Sonraki ›</a>
-  {% else %}<span class="pasif">Sonraki ›</span>{% endif %}
-</nav>
-{% endif %}
+<script>
+(function(){
+  var girdi = document.getElementById('ue-arama');
+  var satirlar = Array.prototype.slice.call(document.querySelectorAll('.ue-satir'));
+  var bosSatir = document.querySelector('.ue-bos-js');
+  var sayacSayi = document.getElementById('ue-sayac-sayi');
+  var temizle = document.getElementById('ue-arama-temizle');
+  if(!satirlar.length) return;
+
+  satirlar.forEach(function(tr){
+    tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
+  });
+
+  function filtrele(){
+    var q = (girdi ? girdi.value : '').trim().toLocaleLowerCase('tr');
+    var n = 0;
+    satirlar.forEach(function(tr){
+      var gorunsun = !q || tr.dataset.arama.indexOf(q) > -1;
+      tr.hidden = !gorunsun;
+      if(gorunsun) n++;
+    });
+    if(bosSatir) bosSatir.classList.toggle('gorunur', n === 0 && !!q);
+    if(sayacSayi) sayacSayi.textContent = n;
+    if(temizle) temizle.classList.toggle('gorunur', !!q);
+  }
+  if(girdi) girdi.addEventListener('input', filtrele);
+  if(girdi && girdi.value) filtrele();
+})();
+</script>
 {% endblock %}

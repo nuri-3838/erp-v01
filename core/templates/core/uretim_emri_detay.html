@@ -11,6 +11,10 @@
       <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
         {{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon onaylandı</span></h1>
   </div>
+  <span class="islem-bag">
+    <form method="post" action="{% url 'core:uretim_emri_sil' emir.pk %}" onsubmit="return confirm('Bu üretim emri ve bağlı taslak operasyon kayıtları KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
+      {% csrf_token %}<button type="submit" class="sil">🗑️ Sil</button></form>
+  </span>
 </div>
 
 <section class="icerik-kart">
