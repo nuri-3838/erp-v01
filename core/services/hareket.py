@@ -13,6 +13,7 @@ from django.db.models import Sum
 from core.metin import buyuk_harf_tr
 from core.models import Depo, Stok, StokHareket
 from core.sayi import SayiHatasi, parse_tr
+from core.services import stok_maliyet
 
 SIFIR = Decimal("0.000")
 
@@ -53,7 +54,14 @@ def stok_hareketleri(stok):
 @transaction.atomic
 def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                  kaynak=StokHareket.Kaynak.MANUEL, fatura_satir=None,
-                 teklif_siparis_kalem=None, operasyon_kaydi_girdi=None, kullanici=None) -> StokHareket:
+                 teklif_siparis_kalem=None, operasyon_kaydi_girdi=None, kullanici=None,
+                 birim_maliyet_try=None, kaynak_pb="", kaynak_birim_fiyat=None,
+                 kaynak_kur=None, tahmini=False) -> StokHareket:
+    """Miktar hareketi yazar. ``birim_maliyet_try`` yalnız GİRİŞ'te ve biliniyorsa
+    (ALIŞ irsaliyesi/faturası) bir FIFO maliyet katmanı açar — bkz. core.services.
+    stok_maliyet. ÇIKIŞ'ta katman tüketimi HER ZAMAN otomatik çalışır (parametre
+    gerekmez); dönüş tipi değişmez, maliyeti öğrenmek isteyen dönen nesnenin
+    ``.maliyet_katmani`` / ``.maliyet_tuketimleri`` ilişkisini okur."""
     stok = Stok.objects.filter(pk=stok_id, silindi=False).first()
     if stok is None:
         raise HareketHatasi("Stok bulunamadı.")
@@ -74,16 +82,27 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
             raise HareketHatasi(
                 f"Yetersiz stok: {depo.kod} deposunda {stok.kod} için eldeki {mevcut}, "
                 f"çıkış {m} olamaz.")
-    return StokHareket.objects.create(
+    hareket = StokHareket.objects.create(
         stok=stok, depo=depo, tarih=tarih, tur=tur, miktar=m,
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=kaynak,
         fatura_satir=fatura_satir, teklif_siparis_kalem=teklif_siparis_kalem,
         operasyon_kaydi_girdi=operasyon_kaydi_girdi,
         created_by=kullanici, updated_by=kullanici)
+    if tur == StokHareket.Tur.GIRIS:
+        if birim_maliyet_try is not None:
+            stok_maliyet.katman_olustur(
+                hareket, birim_maliyet_try, kaynak_pb=kaynak_pb,
+                kaynak_birim_fiyat=kaynak_birim_fiyat, kaynak_kur=kaynak_kur, tahmini=tahmini)
+    else:
+        stok_maliyet.fifo_tuket(hareket)
+    return hareket
 
 
+@transaction.atomic
 def hareket_sil(hareket: StokHareket, kullanici=None) -> StokHareket:
-    """Soft-delete. Giriş silinince eldeki azalır; negatife düşürmemeli."""
+    """Soft-delete. Giriş silinince eldeki azalır; negatife düşürmemeli. Girişin
+    maliyeti başka hareketlere (FIFO ile) aktarılmışsa silinemez. Çıkış silinince
+    tükettiği maliyet katman(lar)ı geri yüklenir."""
     from django.utils import timezone
     if hareket.silindi:
         return hareket
@@ -92,8 +111,20 @@ def hareket_sil(hareket: StokHareket, kullanici=None) -> StokHareket:
         if eldeki_miktar(hareket.stok, hareket.depo) - hareket.miktar < 0:
             raise HareketHatasi(
                 "Bu giriş silinemez: depodaki eldeki miktar negatife düşer (önce çıkışları düzeltin).")
+        katman = getattr(hareket, "maliyet_katmani", None)
+        if katman is not None and not katman.silindi and katman.kalan_miktar != katman.giris_miktar:
+            raise HareketHatasi(
+                "Bu girişin maliyeti başka hareketlere (üretim/satış) aktarılmış; silinemez.")
+    else:
+        stok_maliyet.tuketimi_geri_al(hareket)
     hareket.silindi = True
     hareket.silindi_at = timezone.now()
     hareket.updated_by = kullanici
     hareket.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    if hareket.tur == StokHareket.Tur.GIRIS:
+        katman = getattr(hareket, "maliyet_katmani", None)
+        if katman is not None and not katman.silindi:
+            katman.silindi = True
+            katman.silindi_at = timezone.now()
+            katman.save(update_fields=["silindi", "silindi_at", "updated_at"])
     return hareket

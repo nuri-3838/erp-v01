@@ -1660,6 +1660,83 @@ class StokHareket(TemelModel):
         return f"{self.stok_id} {self.tur} {self.miktar}"
 
 
+class StokMaliyetKatmani(TemelModel):
+    """FIFO maliyet katmanı — bir GİRİŞ StokHareket'inin taşıdığı, parça parça tüketilen
+    birim maliyet kaydı. Miktar defterinden (StokHareket) AYRI, yalnız TL tarafını izler.
+    stok/depo/tarih, stok_hareket'ten TÜRETİLİR (servis katmanında tek noktada atanır,
+    asla ayrıca parametre olarak verilmez) — iki kopyanın birbirinden sapması engellenir."""
+
+    stok_hareket = models.OneToOneField(
+        StokHareket, verbose_name="kaynak stok hareketi", on_delete=models.PROTECT,
+        related_name="maliyet_katmani")
+    stok = models.ForeignKey(Stok, verbose_name="stok", on_delete=models.PROTECT,
+                             related_name="maliyet_katmanlari")
+    depo = models.ForeignKey(Depo, verbose_name="depo", on_delete=models.PROTECT,
+                             related_name="maliyet_katmanlari")
+    tarih = models.DateField("tarih")
+    giris_miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=3)
+    kalan_miktar = models.DecimalField("kalan miktar", max_digits=18, decimal_places=3)
+    birim_maliyet_try = models.DecimalField("birim maliyet (TL)", max_digits=18, decimal_places=6)
+    kaynak_pb = models.CharField("kaynak para birimi", max_length=3, blank=True, default="")
+    kaynak_birim_fiyat = models.DecimalField(
+        "kaynak birim fiyat", max_digits=18, decimal_places=6, null=True, blank=True)
+    kaynak_kur = models.DecimalField("kaynak kur", max_digits=18, decimal_places=6,
+                                     null=True, blank=True)
+    # Bu katmanın maliyeti eksik/kısmi veriden (örn. üretim girdilerinden biri tam
+    # karşılanamadı) türediyse True — ekranda "tahmini" uyarısıyla gösterilir.
+    tahmini = models.BooleanField("tahmini/eksik veri", default=False)
+
+    class Meta:
+        db_table = "stok_maliyet_katmani"
+        verbose_name = "stok maliyet katmanı"
+        verbose_name_plural = "stok maliyet katmanları"
+        constraints = [
+            models.CheckConstraint(condition=models.Q(giris_miktar__gt=0),
+                                   name="ck_katman_giris_gt0"),
+            models.CheckConstraint(condition=models.Q(kalan_miktar__gte=0),
+                                   name="ck_katman_kalan_gte0"),
+            models.CheckConstraint(condition=models.Q(birim_maliyet_try__gte=0),
+                                   name="ck_katman_maliyet_gte0"),
+        ]
+        indexes = [
+            models.Index(fields=["stok", "depo", "tarih", "id"],
+                        condition=models.Q(kalan_miktar__gt=0, silindi=False),
+                        name="idx_maliyet_katman_fifo"),
+        ]
+
+    def __str__(self):
+        return f"{self.stok_id} {self.tarih} kalan={self.kalan_miktar}"
+
+
+class StokMaliyetTuketimi(TemelModel):
+    """Bir ÇIKIŞ StokHareket'inin hangi maliyet katman(lar)ından ne kadar düştüğü —
+    FIFO tüketiminin denetim izi. tutar_try = miktar × birim_maliyet_try (sorgu kolaylığı
+    için saklanır; kaynağı miktar/birim_maliyet_try olduğundan "hesaplanır, saklanmaz"
+    ilkesini ihlal etmez — ikisi de bu satırda zaten var, sadece çarpımı önden alınıyor)."""
+
+    katman = models.ForeignKey(StokMaliyetKatmani, verbose_name="katman",
+                               on_delete=models.PROTECT, related_name="tuketimler")
+    tuketen_hareket = models.ForeignKey(
+        StokHareket, verbose_name="tüketen hareket", on_delete=models.PROTECT,
+        related_name="maliyet_tuketimleri")
+    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
+    birim_maliyet_try = models.DecimalField("birim maliyet (TL, snapshot)",
+                                            max_digits=18, decimal_places=6)
+    tutar_try = models.DecimalField("tutar (TL)", max_digits=18, decimal_places=2)
+
+    class Meta:
+        db_table = "stok_maliyet_tuketimi"
+        verbose_name = "stok maliyet tüketimi"
+        verbose_name_plural = "stok maliyet tüketimleri"
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0),
+                                   name="ck_tuketim_miktar_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.tuketen_hareket_id} <- {self.katman_id} ({self.miktar})"
+
+
 # === FİNANS modülü — tanımlar (Kasa/Banka/Kredi/Kredi Kartı) ===
 # Her finans hesabı bir YAPRAK muhasebe hesabına bağlanır; bakiye SAKLANMAZ,
 # o hesabın yevmiyesinden hesaplanır (cari/ekstre mantığı). İşlem motoru yok.

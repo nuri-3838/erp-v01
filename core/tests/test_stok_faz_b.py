@@ -7,7 +7,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import Birim, Depo, Kategori, Stok, StokHareket
+from core.models import (Birim, Depo, Kategori, Stok, StokHareket, StokMaliyetKatmani,
+                         StokMaliyetTuketimi)
+from core.services import stok_maliyet
 from core.services.depo import DepoHatasi, depo_olustur, depo_sil
 from core.services.hareket import (HareketHatasi, depo_bazinda_eldeki, eldeki_miktar,
                                    hareket_ekle, hareket_sil)
@@ -86,6 +88,104 @@ class HareketServisTest(TestCase):
                      tur="CIKIS", miktar="80")
         with self.assertRaises(HareketHatasi):   # girişi silersek eldeki -? negatif
             hareket_sil(g)
+
+
+class StokMaliyetTest(TestCase):
+    """FIFO maliyet katmanı motoru: core.services.hareket'in birim_maliyet_try/tahmini
+    parametreleri ve otomatik ÇIKIŞ tüketimi (bkz. core/services/stok_maliyet.py)."""
+
+    def setUp(self):
+        self.s = _stok()
+        self.d1 = depo_olustur(kod="01", ad="ANA")
+
+    def test_giris_birim_maliyet_ile_katman_yaratir(self):
+        # birim_maliyet_try dahili/hesaplanmış bir Decimal'dir (parse_tr'den geçmez —
+        # gerçek çağıranlar hep yuvarla(...) sonucu Decimal geçirir, ham kullanıcı
+        # girdisi değil), test de aynı şekilde gerçek bir Decimal geçirir.
+        g = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                         tur="GIRIS", miktar="10", birim_maliyet_try=Decimal("12.500000"))
+        katman = g.maliyet_katmani
+        self.assertEqual(katman.giris_miktar, Decimal("10.000"))
+        self.assertEqual(katman.kalan_miktar, Decimal("10.000"))
+        self.assertEqual(katman.birim_maliyet_try, Decimal("12.500000"))
+        self.assertFalse(katman.tahmini)
+
+    def test_giris_maliyetsiz_katman_yaratmaz(self):
+        g = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                         tur="GIRIS", miktar="10")
+        self.assertFalse(hasattr(g, "maliyet_katmani"))
+        self.assertFalse(StokMaliyetKatmani.objects.filter(stok_hareket=g).exists())
+
+    def test_tek_katmandan_tam_tuketim(self):
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="10", birim_maliyet_try="20")
+        c = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 2),
+                         tur="CIKIS", miktar="10")
+        tuketimler = list(c.maliyet_tuketimleri.all())
+        self.assertEqual(len(tuketimler), 1)
+        self.assertEqual(tuketimler[0].miktar, Decimal("10.000"))
+        self.assertEqual(tuketimler[0].tutar_try, Decimal("200.00"))
+
+    def test_iki_katmandan_karisik_fifo_tuketim(self):
+        """Kullanıcının senaryosunun temeli: eski/ucuz katman önce tüketilir."""
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="3", birim_maliyet_try="10")
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 2),
+                     tur="GIRIS", miktar="10", birim_maliyet_try="20")
+        c = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 3),
+                         tur="CIKIS", miktar="5")
+        tuketimler = list(c.maliyet_tuketimleri.order_by("id"))
+        self.assertEqual(len(tuketimler), 2)
+        self.assertEqual((tuketimler[0].miktar, tuketimler[0].birim_maliyet_try),
+                         (Decimal("3.000"), Decimal("10.000000")))
+        self.assertEqual((tuketimler[1].miktar, tuketimler[1].birim_maliyet_try),
+                         (Decimal("2.000"), Decimal("20.000000")))
+        toplam = sum((t.tutar_try for t in tuketimler), Decimal("0"))
+        self.assertEqual(toplam, Decimal("70.00"))   # 3x10 + 2x20
+
+    def test_katman_yetersizken_kismi_tuketim(self):
+        # 5 adet maliyetli giriş + (ayrı, maliyetsiz bir senaryo simülasyonu için)
+        # eldeki miktarın katmandan fazla olduğu durum: MANUEL girişle üstüne 5 daha ekle.
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="5", birim_maliyet_try="10")
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 2),
+                     tur="GIRIS", miktar="5")   # maliyetsiz (katmansız)
+        c = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 3),
+                         tur="CIKIS", miktar="8")
+        tuketimler = list(c.maliyet_tuketimleri.all())
+        self.assertEqual(len(tuketimler), 1)
+        self.assertEqual(tuketimler[0].miktar, Decimal("5.000"))   # yalnız katmanlı kısım
+        durum = stok_maliyet.hareket_maliyet_durumu(c)
+        self.assertEqual(durum["karsilanan_miktar"], Decimal("5.000"))
+        self.assertFalse(durum["tam_mi"])
+        self.assertTrue(durum["tahmini"])
+
+    def test_giris_silme_kismen_tuketilmis_katman_engellenir(self):
+        g = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                         tur="GIRIS", miktar="10", birim_maliyet_try="10")
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 2),
+                     tur="CIKIS", miktar="4")
+        with self.assertRaises(HareketHatasi):
+            hareket_sil(g)
+
+    def test_cikis_silme_katmani_geri_yukler(self):
+        g = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                         tur="GIRIS", miktar="10", birim_maliyet_try="10")
+        c = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 2),
+                         tur="CIKIS", miktar="4")
+        hareket_sil(c)
+        g.maliyet_katmani.refresh_from_db()
+        self.assertEqual(g.maliyet_katmani.kalan_miktar, Decimal("10.000"))
+        self.assertEqual(
+            StokMaliyetTuketimi.objects.filter(tuketen_hareket=c, silindi=False).count(), 0)
+        hareket_sil(g)   # artık tamamen tüketilmemiş, silinebilmeli
+        g.maliyet_katmani.refresh_from_db()
+        self.assertTrue(g.maliyet_katmani.silindi)
+
+    def test_giris_tahmini_bayragi_katmana_yazilir(self):
+        g = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                         tur="GIRIS", miktar="10", birim_maliyet_try="10", tahmini=True)
+        self.assertTrue(g.maliyet_katmani.tahmini)
 
 
 class FazBViewTest(TestCase):

@@ -17,7 +17,7 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
-from core.models import (AdayMusteri, BankaHesap, Cari, Depo, KdvOrani, Stok, StokHareket,
+from core.models import (AdayMusteri, BankaHesap, Cari, Depo, KdvOrani, Kur, Stok, StokHareket,
                          TanimSecenegi, TeklifSiparis, TeklifSiparisKalem)
 from core.sayi import SayiHatasi, parse_tr
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
@@ -553,11 +553,31 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
     return irsaliye
 
 
+def _kur_coz(pb, tarih):
+    """İrsaliye para biriminin tarihindeki TCMB alış kuru. TRY -> 1. (fatura.py'deki
+    _kur_coz ile aynı desen — proje genelinde her modül kendi hata sınıfıyla kendi
+    kopyasını tutuyor, bkz. core/services/fatura.py, kasa_hareket.py, banka_hareket.py.)"""
+    if pb == "TRY":
+        return Decimal("1")
+    k = Kur.objects.filter(tarih=tarih, silindi=False).first()
+    alan = {"USD": "usd_alis", "EUR": "eur_alis", "GBP": "gbp_alis"}.get(pb)
+    deger = getattr(k, alan) if (k and alan) else None
+    if not deger:
+        raise TeklifSiparisHatasi(
+            f"{tarih:%d.%m.%Y} için {pb} kuru yok; Kurlar ekranından bu tarihi çekmeden "
+            f"döviz irsaliyesi onaylanamaz.")
+    return deger
+
+
 def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
     """İrsaliye onaylanınca: kalemleri için GERÇEK giriş stok hareketi (mal depoya girmiş
     sayılır — fatura beklenmez, bkz. CLAUDE.md'nin bu zincire özel bilinçli istisnası).
-    Miktar üretim birimine çevrilir (fatura._hareketleri_yaz ile aynı desen)."""
+    Miktar üretim birimine çevrilir (fatura._hareketleri_yaz ile aynı desen). ALIŞ yönünde
+    ayrıca bir FIFO maliyet katmanı açılır (bkz. o dosyadaki aynı formül: net_birim_fiyat
+    × kur × cevirici)."""
     from core.sayi import yuvarla
+    alis = (irsaliye.yon == TeklifSiparis.Yon.ALIS)
+    kur = _kur_coz(irsaliye.para_birimi, irsaliye.tarih) if alis else None
     for k in irsaliye.kalemler.filter(silindi=False).select_related("stok"):
         cevirici = k.stok.cevirici or Decimal("1")
         uretim_miktar = yuvarla(k.miktar / cevirici, 3)
@@ -565,12 +585,16 @@ def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
             raise TeklifSiparisHatasi(
                 f"{k.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar sıfır oluyor; "
                 f"miktarı veya çeviriciyi düzeltin.")
+        birim_maliyet_try = yuvarla(k.net_birim_fiyat * kur * cevirici, 6) if alis else None
         try:
             hareket_ekle(
                 stok_id=k.stok_id, depo_id=irsaliye.depo_id, tarih=irsaliye.tarih,
                 tur=StokHareket.Tur.GIRIS, miktar=uretim_miktar,
                 aciklama=f"{irsaliye.belge_no} irsaliyesi — {irsaliye.cari.unvan}",
-                kaynak=StokHareket.Kaynak.IRSALIYE, teklif_siparis_kalem=k, kullanici=kullanici)
+                kaynak=StokHareket.Kaynak.IRSALIYE, teklif_siparis_kalem=k, kullanici=kullanici,
+                birim_maliyet_try=birim_maliyet_try, kaynak_pb=irsaliye.para_birimi if alis else "",
+                kaynak_birim_fiyat=k.net_birim_fiyat if alis else None,
+                kaynak_kur=kur if alis else None)
         except HareketHatasi as e:
             raise TeklifSiparisHatasi(str(e))
 

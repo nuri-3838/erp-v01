@@ -39,6 +39,18 @@
   <div class="satir"><span class="et">Üretim Emri</span>
     <span class="dg">{% if kayit.uretim_emri %}<a href="{% url 'core:uretim_emri_detay' kayit.uretim_emri.pk %}">{{ kayit.uretim_emri.no }}</a>{% else %}<span class="pasif">— bağımsız/serbest kayıt —</span>{% endif %}</span></div>
   {% if kayit.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ kayit.aciklama }}</span></div>{% endif %}
+  {% if kayit.durum == "ONAYLI" %}
+    <div class="satir"><span class="et">Çıktı Birim Maliyeti (TL)</span>
+      <span class="dg">
+        {% if cikti_katmani %}
+          <span class="mono">{{ cikti_katmani.birim_maliyet_try|tr_kur:6 }}</span>
+          {% if cikti_katmani.tahmini %}<span class="rozet rozet-pasif" title="Girdilerden biri kısmen/tamamen bilinmeyen maliyetten hesaplandı">⚠ tahmini</span>{% endif %}
+        {% else %}
+          <span class="pasif">— bilinmiyor (girdilerin FIFO maliyet katmanı yok) —</span>
+        {% endif %}
+      </span>
+    </div>
+  {% endif %}
 </section>
 
 <section class="icerik-kart">
@@ -53,9 +65,11 @@
     {{ formset.management_form }}
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Girdi</th><th class="sag">Planlanan</th><th class="sag">Gerçekleşen</th></tr></thead>
+      <thead><tr><th>Girdi</th><th class="sag">Planlanan</th><th class="sag">Gerçekleşen</th>
+        {% if kayit.durum == "ONAYLI" %}<th class="sag">Tüketilen Maliyet (TL)</th>{% endif %}
+      </tr></thead>
       <tbody>
-        {% for satir, f in satirlar %}
+        {% for satir, f, maliyet in satirlar %}
           <tr>
             <td><span class="mono">{{ satir.girdi.kod }}</span> {{ satir.girdi.ad }}</td>
             <td class="sag mono">{{ satir.planlanan_miktar|tr_kur:3 }}</td>
@@ -67,6 +81,16 @@
                 <span class="mono">{{ satir.gerceklesen_miktar|tr_kur:3 }}</span>
               {% endif %}
             </td>
+            {% if kayit.durum == "ONAYLI" %}
+              <td class="sag">
+                {% if maliyet.tutar_try != None %}
+                  <span class="mono">{{ maliyet.tutar_try|tr_kur:2 }}</span>
+                  {% if maliyet.tahmini %}<span class="rozet rozet-pasif" title="Karşılanamayan kısım için maliyet bilinmiyor">⚠</span>{% endif %}
+                {% else %}
+                  <span class="pasif">—</span>
+                {% endif %}
+              </td>
+            {% endif %}
           </tr>
         {% endfor %}
       </tbody>

@@ -410,27 +410,43 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     hatasız ATLANIR — 'bu girdiye bu seferlik gerek kalmadı' meşru bir durumdur) + çıktı
     için depo GİRİŞ StokHareket'i (Kaynak=URETIM) yazar; hiçbir YevmiyeFisi/YevmiyeSatir
     üretmez. İdempotent (zaten onaylıysa sessiz döner). Yetersiz stok varsa tüm işlem geri
-    alınır (atomic)."""
+    alınır (atomic).
+
+    Girdilerin ÇIKIŞ'ta tükettiği FIFO maliyet katmanlarının toplamı, çıktının GİRİŞ'ine
+    (hedef_cikti_miktari'ne bölünerek) yeni bir katman olarak yazılır — bkz. core.services.
+    stok_maliyet, core.services.hareket.hareket_ekle. Bir girdi kısmen/hiç karşılanamazsa
+    (katman yetersiz) çıktı 'tahmini' işaretlenir; hiçbir girdi katmanı yoksa çıktı hiç
+    katmansız kalır (0 TL YAZILMAZ — bilinmiyor, tahmin edilmiyor)."""
     if kayit.silindi:
         raise UretimHatasi("İptal edilmiş kayıt onaylanamaz.")
     if kayit.durum == OperasyonKaydi.Durum.ONAYLI:
         return kayit
     satirlar = list(kaydi_girdi_satirlari(kayit))
+    toplam_girdi_maliyeti = Decimal("0")
+    herhangi_biri_tahmini = False
     for satir in satirlar:
         if satir.gerceklesen_miktar == 0:
             continue
         try:
-            hareket_ekle(
+            girdi_hareketi = hareket_ekle(
                 stok_id=satir.girdi_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
                 tur=StokHareket.Tur.CIKIS, miktar=satir.gerceklesen_miktar,
                 aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
                 operasyon_kaydi_girdi=satir, kullanici=kullanici)
         except HareketHatasi as e:
             raise UretimHatasi(str(e))
+        tuketimler = list(girdi_hareketi.maliyet_tuketimleri.select_related("katman"))
+        karsilanan_miktar = sum((t.miktar for t in tuketimler), Decimal("0"))
+        toplam_girdi_maliyeti += sum((t.tutar_try for t in tuketimler), Decimal("0"))
+        if karsilanan_miktar < satir.gerceklesen_miktar or any(t.katman.tahmini for t in tuketimler):
+            herhangi_biri_tahmini = True
+    cikti_birim_maliyet = (yuvarla(toplam_girdi_maliyeti / kayit.hedef_cikti_miktari, 6)
+                           if toplam_girdi_maliyeti > 0 else None)
     hareket_ekle(
         stok_id=kayit.operasyon.cikti_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
         tur=StokHareket.Tur.GIRIS, miktar=kayit.hedef_cikti_miktari,
         aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
+        birim_maliyet_try=cikti_birim_maliyet, tahmini=herhangi_biri_tahmini,
         kullanici=kullanici)
     kayit.durum = OperasyonKaydi.Durum.ONAYLI
     kayit.updated_by = kullanici

@@ -6,7 +6,7 @@ from decimal import Decimal
 from core.models import Birim, Depo, Fatura, Stok, StokHareket
 from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_iptal,
                                   fatura_olustur)
-from core.services.hareket import eldeki_miktar
+from core.services.hareket import eldeki_miktar, hareket_ekle
 from core.tests.test_fatura import FaturaTestTemel
 
 D = datetime.date
@@ -108,6 +108,48 @@ class FaturaStokTest(FaturaTestTemel):
                         tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"), depo_id=d2.pk)
         self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("0.000"))
         self.assertEqual(eldeki_miktar(self.stok, d2), Decimal("10.000"))
+
+    def test_alis_fifo_katman_kur_ve_cevirici_ile_dogru(self):
+        # cevirici=2 (1 uretim birimi = 2 fatura birimi), doviz USD, kur=30 (setUpTestData).
+        # birim_maliyet_try = birim_fiyat(100) x kur(30) x cevirici(2) = 6000.
+        adet2 = Birim.objects.create(ad="ADET3", kisa_ad="AD3", ondalik=0)
+        st = Stok.objects.create(kod="153-10-0003", ad="MALIYETLI", kategori=self.alt,
+                                 uretim_birimi=adet2, fatura_birimi=adet2,
+                                 cevirici=Decimal("2"), kdv=self.kdv)
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), para_birimi="USD",
+                           satirlar=[{"stok_id": st.pk, "miktar": "10", "birim_fiyat": "100"}],
+                           depo_id=self.depo.pk)
+        h = StokHareket.objects.get(fatura_satir__fatura=f, silindi=False)
+        katman = h.maliyet_katmani
+        self.assertEqual(katman.birim_maliyet_try, Decimal("6000.000000"))
+        self.assertEqual(katman.kaynak_pb, "USD")
+        self.assertEqual(katman.kaynak_kur, Decimal("30"))
+
+    def test_satis_katmandan_fifo_tuketir(self):
+        fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                       tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
+                       depo_id=self.depo.pk)
+        fs = fatura_olustur(tip_id=self.satis.pk, cari_id=self.musteri.pk,
+                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="4"),
+                            depo_id=self.depo.pk)
+        h = StokHareket.objects.get(fatura_satir__fatura=fs, silindi=False)
+        tuketimler = list(h.maliyet_tuketimleri.all())
+        self.assertEqual(len(tuketimler), 1)
+        self.assertEqual(tuketimler[0].miktar, Decimal("4.000"))
+        self.assertEqual(tuketimler[0].tutar_try, Decimal("400.00"))   # 4 x 100 TL
+
+    def test_guncelleme_uretimde_tuketilmis_katmani_engeller(self):
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
+                           depo_id=self.depo.pk)
+        # Üretim gibi başka bir hareketin bu girişin maliyetini tüketmesini simüle et.
+        hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=D(2026, 3, 11),
+                    tur=StokHareket.Tur.CIKIS, miktar="3", kaynak=StokHareket.Kaynak.URETIM)
+        with self.assertRaises(FaturaHatasi):
+            fatura_guncelle(f, tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
+                            depo_id=self.depo.pk)
 
     def test_cevirici_sifira_yuvarlarsa_hata(self):
         adet = Birim.objects.create(ad="ADET9", kisa_ad="AD9", ondalik=0)

@@ -77,6 +77,7 @@ from core.services import cek as cek_servis
 from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import uretim as uretim_servis
+from core.services import stok_maliyet
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
 from core.services import aday_kategori as aday_kategori_servis
@@ -4982,8 +4983,25 @@ def operasyon_kaydi_detay(request, pk):
         formset = OperasyonKaydiGirdiDuzeltFormSet(initial=[
             {"satir_id": s.pk, "gerceklesen_miktar": s.gerceklesen_miktar}
             for s in satirlar], prefix="gs")
+    maliyetler = [None] * len(satirlar)
+    cikti_katmani = None
+    if kayit.durum == OperasyonKaydi.Durum.ONAYLI:
+        from core.models import StokHareket
+        for i, satir in enumerate(satirlar):
+            hareket = satir.stok_hareketleri.filter(
+                silindi=False, kaynak=StokHareket.Kaynak.URETIM,
+                tur=StokHareket.Tur.CIKIS).first()
+            if hareket is not None:
+                maliyetler[i] = stok_maliyet.hareket_maliyet_durumu(hareket)
+        cikti_hareketi = StokHareket.objects.filter(
+            kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS,
+            stok_id=kayit.operasyon.cikti_id, aciklama__icontains=kayit.no,
+            silindi=False).select_related("maliyet_katmani").first()
+        if cikti_hareketi is not None:
+            cikti_katmani = getattr(cikti_hareketi, "maliyet_katmani", None)
     return render(request, "core/operasyon_kaydi_detay.html",
-                  {"kayit": kayit, "satirlar": list(zip(satirlar, formset)), "formset": formset})
+                  {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
+                   "formset": formset, "cikti_katmani": cikti_katmani})
 
 
 @ekran_gerekli("operasyon_kayitlari")

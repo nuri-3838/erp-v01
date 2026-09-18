@@ -215,6 +215,11 @@ class OperasyonKaydiServisTest(TestCase):
         hareket_ekle(stok_id=stok.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal(miktar))
 
+    def _stok_gir_maliyetli(self, stok, miktar, birim_maliyet_try, tarih=date(2026, 1, 1)):
+        return hareket_ekle(stok_id=stok.pk, depo_id=self.depo.pk, tarih=tarih,
+                            tur=StokHareket.Tur.GIRIS, miktar=Decimal(miktar),
+                            birim_maliyet_try=Decimal(birim_maliyet_try))
+
     def test_onayla_stok_hareketleri_dogru(self):
         self._stok_gir(self.profil, "1000")
         kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
@@ -297,6 +302,89 @@ class OperasyonKaydiServisTest(TestCase):
         kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
                                         tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("2"))
         self.assertIsNone(kayit.uretim_emri)
+
+    def test_onayla_cikti_maliyeti_hesaplanir(self):
+        """Kullanıcının senaryosu: 1 boy profilin FIFO maliyeti / cikti_miktar = kesilmiş
+        parçanın birim maliyeti. 5 profil @ 10 TL = 50 TL; 10 kesilmiş parça -> 5 TL/adet."""
+        self._stok_gir_maliyetli(self.profil, "1000", "10")
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kayit)
+        cikti_hareketi = StokHareket.objects.get(
+            stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
+        katman = cikti_hareketi.maliyet_katmani
+        self.assertEqual(katman.birim_maliyet_try, Decimal("5.000000"))
+        self.assertEqual(katman.giris_miktar, Decimal("10.000"))
+        self.assertFalse(katman.tahmini)
+
+    def test_onayla_iki_katmandan_karisik_fifo_ile_cikti_maliyeti(self):
+        """3 profil @10 TL + 10 profil @20 TL katmanı; 10 kesilmiş parça hedefi 5 profil
+        gerektirir (3x10 + 2x20 = 70 TL) -> çıktı birim maliyeti 70/10 = 7 TL."""
+        self._stok_gir_maliyetli(self.profil, "3", "10", tarih=date(2026, 1, 1))
+        self._stok_gir_maliyetli(self.profil, "10", "20", tarih=date(2026, 1, 2))
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kayit)
+        cikti_hareketi = StokHareket.objects.get(
+            stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
+        self.assertEqual(cikti_hareketi.maliyet_katmani.birim_maliyet_try, Decimal("7.000000"))
+
+    def test_onayla_zincirde_maliyet_bir_sonraki_operasyona_tasinir(self):
+        """Kesim çıktısının katmanı, Büküm'ün girdisi olarak FIFO'ya OTOMATİK girer —
+        ek özyineleme kodu gerekmeden (bkz. plan: 'katman zaten normal bir katman')."""
+        self._stok_gir_maliyetli(self.profil, "1000", "10")
+        kesim = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kesim)          # kesilmiş parça: 10 adet @ 5 TL katmanı açılır
+
+        bukum = operasyon_kaydi_olustur(operasyon_id=self.bukum_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 11), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(bukum)
+        cikti_hareketi = StokHareket.objects.get(
+            stok=self.bukulmus, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
+        # bukum_op cikti_miktar=1, girdi oranı 1:1 -> maliyet aynen taşınır (5 TL).
+        self.assertEqual(cikti_hareketi.maliyet_katmani.birim_maliyet_try, Decimal("5.000000"))
+        self.assertFalse(cikti_hareketi.maliyet_katmani.tahmini)
+
+    def test_onayla_girdi_katmani_yoksa_cikti_katmansiz_kalir(self):
+        """Girdi hiç maliyetli değilse çıktı için 0 TL YAZILMAZ — katman hiç açılmaz."""
+        self._stok_gir(self.profil, "1000")     # maliyetsiz
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kayit)
+        cikti_hareketi = StokHareket.objects.get(
+            stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
+        self.assertFalse(hasattr(cikti_hareketi, "maliyet_katmani"))
+
+    def test_onayla_kismi_karsilamada_tahmini_isaretlenir(self):
+        """5 profil gerekiyor: 2 adet @10 TL katmanlı + 3 adet maliyetsiz. Çıktı maliyeti
+        yine de (kısmi veriyle) hesaplanır ama tahmini=True işaretlenir."""
+        self._stok_gir_maliyetli(self.profil, "2", "10")
+        self._stok_gir(self.profil, "3")        # maliyetsiz, ama fiziksel stok yeterli olsun
+        kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kayit)
+        cikti_hareketi = StokHareket.objects.get(
+            stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
+        katman = cikti_hareketi.maliyet_katmani
+        self.assertEqual(katman.birim_maliyet_try, Decimal("2.000000"))   # 2x10 / 10
+        self.assertTrue(katman.tahmini)
+
+    def test_onayla_tahmini_bayragi_ikinci_seviyeye_miras_alinir(self):
+        """Kesim çıktısı (kısmi veriden) tahmini=True ise, Büküm bu katmanı MİKTAR olarak
+        TAM tüketse bile kendi çıktısını da tahmini işaretlemeli (bayrak zincirde kaybolmaz)."""
+        self._stok_gir_maliyetli(self.profil, "2", "10")
+        self._stok_gir(self.profil, "3")
+        kesim = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 10), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(kesim)
+
+        bukum = operasyon_kaydi_olustur(operasyon_id=self.bukum_op.pk, depo_id=self.depo.pk,
+                                        tarih=date(2026, 1, 11), hedef_cikti_miktari=Decimal("10"))
+        operasyon_kaydi_onayla(bukum)
+        cikti_hareketi = StokHareket.objects.get(
+            stok=self.bukulmus, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
+        self.assertTrue(cikti_hareketi.maliyet_katmani.tahmini)
 
 
 class IhtiyacHesaplaTest(TestCase):

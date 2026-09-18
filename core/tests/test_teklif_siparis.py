@@ -1210,6 +1210,27 @@ class SatinalmaZinciriTest(TestCase):
         self.assertIsNotNone(fatura.fis_id)
         self.assertEqual(StokHareket.objects.count(), 1)          # ÇİFTE SAYIM YOK
 
+    def test_irsaliye_onayinda_fifo_katman_olusur(self):
+        """İrsaliye onayı, fatura beklemeden gerçek stok girişi yazıyor (bkz.
+        _irsaliye_stok_hareketi_yaz) — bu, FIFO maliyet katmanının da OLUŞTUĞU tek
+        gerçek yol (canlıda tüm hareketler bu yoldan geliyor, doğrudan fatura değil)."""
+        from core.models import StokHareket
+        from core.services.teklif_siparis import teklif_siparis_onayla
+
+        teklif = self._teklif()
+        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        siparis = teklif.donusen_belgeler.get()
+        teklif_siparis_onayla(siparis, kullanici=self.yon)
+        irsaliye = siparis.donusen_irsaliyeler.get()
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+
+        hareket = StokHareket.objects.get()
+        katman = hareket.maliyet_katmani
+        self.assertEqual(katman.birim_maliyet_try, Decimal("100.000000"))   # TRY, kur=1
+        self.assertEqual(katman.giris_miktar, Decimal("10.000"))
+        self.assertEqual(katman.kalan_miktar, Decimal("10.000"))
+        self.assertFalse(katman.tahmini)
+
     def test_satis_yonunde_onay_zincir_tetiklemez(self):
         from core.models import Fatura, StokHareket, TeklifSiparis
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla

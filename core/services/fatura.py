@@ -20,7 +20,7 @@ from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          KategoriHesap, Kur, Stok, StokHareket, TeklifSiparis, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle
+from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
                                    fis_iptal, fis_olustur)
 
@@ -340,9 +340,12 @@ def _depo_coz(depo_id):
     return depo
 
 
-def _hareketleri_yaz(fatura, depo, *, kullanici):
+def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
     """Fatura kalemleri için stok hareketi: ALIŞ→giriş, SATIŞ→çıkış. Miktar fatura
-    biriminden üretim birimine çevrilir (çevirici). Çıkışta eldeki yetmezse engellenir."""
+    biriminden üretim birimine çevrilir (çevirici). Çıkışta eldeki yetmezse engellenir.
+    ALIŞ yönünde ayrıca bir FIFO maliyet katmanı açılır: birim_maliyet_try = birim_fiyat
+    (fatura para biriminde) × kur (TL karşılığı) × cevirici (1 üretim birimi kaç fatura
+    birimi ediyorsa, üretim birimi o kadar daha pahalıdır — bkz. Stok.cevirici)."""
     alis = (fatura.tip.yon == FaturaTipi.Yon.ALIS)
     tur = StokHareket.Tur.GIRIS if alis else StokHareket.Tur.CIKIS
     for satir in fatura.satirlar.filter(silindi=False).select_related("stok"):
@@ -352,21 +355,30 @@ def _hareketleri_yaz(fatura, depo, *, kullanici):
             raise FaturaHatasi(
                 f"{satir.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar "
                 f"sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
+        birim_maliyet_try = yuvarla(satir.birim_fiyat * kur * cevirici, 6) if alis else None
         try:
             hareket_ekle(
                 stok_id=satir.stok_id, depo_id=depo.pk, tarih=fatura.tarih, tur=tur,
                 miktar=uretim_miktar,
                 aciklama=_aciklama(fatura.tip, fatura.cari, fatura.fatura_no),
-                kaynak=StokHareket.Kaynak.FATURA, fatura_satir=satir, kullanici=kullanici)
+                kaynak=StokHareket.Kaynak.FATURA, fatura_satir=satir, kullanici=kullanici,
+                birim_maliyet_try=birim_maliyet_try, kaynak_pb=fatura.para_birimi,
+                kaynak_birim_fiyat=satir.birim_fiyat if alis else None,
+                kaynak_kur=kur if alis else None)
         except HareketHatasi as e:
             raise FaturaHatasi(str(e))
 
 
 def _hareketleri_iptal(fatura, *, kullanici):
-    """Faturaya bağlı silinmemiş stok hareketlerini soft-delete eder."""
-    from django.utils import timezone
-    StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False).update(
-        silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    """Faturaya bağlı silinmemiş stok hareketlerini tek tek geri alır (hareket_sil
+    üzerinden — ham toplu .update() DEĞİL, çünkü bir girişin maliyeti üretimde/satışta
+    zaten tüketilmişse hareket_sil bunu tespit edip engelliyor; bkz. İrsaliye iptalindeki
+    aynı desen, core/services/teklif_siparis.py)."""
+    for hareket in StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False):
+        try:
+            hareket_sil(hareket, kullanici=kullanici)
+        except HareketHatasi as e:
+            raise FaturaHatasi(str(e))
 
 
 def _fatura_hareket_ciftleri(fatura):
@@ -440,7 +452,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None) -> Fatura:
     zaten_stoklandi = fatura.kaynak_siparisler.filter(
         belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).exists()
     if fatura.depo_id and not zaten_stoklandi:
-        _hareketleri_yaz(fatura, fatura.depo, kullanici=kullanici)
+        _hareketleri_yaz(fatura, fatura.depo, kur=kur, kullanici=kullanici)
     return fatura
 
 
@@ -510,7 +522,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                                "kur", "depo", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
     if depo is not None:
-        _hareketleri_yaz(fatura, depo, kullanici=kullanici)
+        _hareketleri_yaz(fatura, depo, kur=kur, kullanici=kullanici)
     _negatif_eldeki_dogrula(etkilenen | _fatura_hareket_ciftleri(fatura))
     return fatura
 
