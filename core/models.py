@@ -2427,18 +2427,23 @@ class UretimEmri(TemelModel):
     Kendi başına stok hareketi ÜRETMEZ: yalnızca zincirdeki her operasyon için ayrı bir
     TASLAK OperasyonKaydi açar (tek atomik işlemde, hepsi aynı depoyu kullanır). Her
     OperasyonKaydi'nın onayı bu emirden BAĞIMSIZ, ilgili istasyon kendi zamanında yapar —
-    emir açılışı hiçbir durumu etkilemez, hepsi TASLAK açılır."""
+    emir açılışı hiçbir durumu etkilemez, hepsi TASLAK açılır.
+
+    Bir emir BİRDEN ÇOK kalem taşıyabilir ("tek emir, çoklu kalem" — bkz. UretimEmriKalemi);
+    hedef ürün/miktar burada değil, ayrı kalem satırlarındadır. kaynak_siparis doluysa bu
+    emir bir SATIŞ Siparişi onaylandıktan sonra 'Üretim Emri Aç' ile açılmıştır
+    (izlenebilirlik için); manuel (Üretim Emirleri > + Yeni) emirlerde boştur."""
 
     yil = models.PositiveSmallIntegerField("yıl", editable=False)
     sira = models.PositiveIntegerField("sıra", editable=False)
     no = models.CharField("emir no", max_length=20, editable=False)
-    hedef_urun = models.ForeignKey(
-        Stok, verbose_name="hedef ürün", on_delete=models.PROTECT, related_name="uretim_emirleri")
-    hedef_miktar = models.DecimalField("hedef miktar", max_digits=18, decimal_places=3)
     depo = models.ForeignKey(
         Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="uretim_emirleri")
     tarih = models.DateField("tarih")
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+    kaynak_siparis = models.ForeignKey(
+        "TeklifSiparis", verbose_name="kaynak sipariş", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="uretim_emirleri")
 
     class Meta:
         db_table = "core_uretim_emri"
@@ -2447,12 +2452,40 @@ class UretimEmri(TemelModel):
         ordering = ["-yil", "-sira"]
         constraints = [
             models.UniqueConstraint(fields=["yil", "sira"], name="uq_uretim_emri_yil_sira"),
-            models.CheckConstraint(condition=models.Q(hedef_miktar__gt=0),
-                                   name="ck_uretim_emri_hedef_miktar_gt0"),
         ]
 
     def __str__(self):
         return self.no
+
+
+class UretimEmriKalemi(TemelModel):
+    """Üretim Emri kalemi: emrin ürettiği HER hedef ürün + miktar satırı ("tek emir, çoklu
+    kalem"). Kendi başına hiçbir kayıt/hareket üretmez — yalnızca UretimEmri.olustur()
+    servisi tarafından, o emrin zincirinde kök olarak işlenen ürünleri kaydeder
+    (izlenebilirlik + detay ekranı için); OperasyonKaydi zincirini AÇAN hep servis
+    katmanıdır, bu model değil."""
+
+    uretim_emri = models.ForeignKey(
+        UretimEmri, verbose_name="üretim emri", related_name="kalemler",
+        on_delete=models.CASCADE)
+    hedef_urun = models.ForeignKey(
+        Stok, verbose_name="hedef ürün", on_delete=models.PROTECT,
+        related_name="uretim_emri_kalemleri")
+    hedef_miktar = models.DecimalField("hedef miktar", max_digits=18, decimal_places=3)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_uretim_emri_kalemi"
+        verbose_name = "üretim emri kalemi"
+        verbose_name_plural = "üretim emri kalemleri"
+        ordering = ["sira", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(hedef_miktar__gt=0),
+                                   name="ck_uretim_emri_kalemi_hedef_miktar_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.uretim_emri.no} — {self.hedef_urun.kod} × {self.hedef_miktar}"
 
 
 class OperasyonKaydi(TemelModel):

@@ -81,24 +81,23 @@
 <table id="ue-tablo">
   <thead>
     <tr>
-      <th>Emir</th><th>Tarih</th><th class="sag">Hedef Miktar</th><th>Depo</th><th>İlerleme</th><th></th><th></th>
+      <th>Emir</th><th>Tarih</th><th>Depo</th><th>İlerleme</th><th></th><th></th>
     </tr>
   </thead>
   <tbody>
     {% for satir in emirler %}
-      {% with e=satir.e ilerleme=satir.ilerleme %}
+      {% with e=satir.e ilerleme=satir.ilerleme kalem_ozet=satir.kalem_ozet %}
       <tr class="ue-satir" onclick="window.location='{% url 'core:uretim_emri_detay' e.pk %}'">
         <td>
           <div class="ue-hucre">
             <span class="ue-ikon">🏭</span>
             <div>
-              <div class="ad">{{ e.hedef_urun.ad }}</div>
+              <div class="ad">{{ kalem_ozet }}</div>
               <div class="no">{{ e.no }}</div>
             </div>
           </div>
         </td>
         <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
-        <td class="sag mono">{{ e.hedef_miktar|tr_kur:3 }}</td>
         <td><span class="mono">{{ e.depo.kod }}</span> {{ e.depo.ad }}</td>
         <td>
           <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
@@ -112,11 +111,11 @@
       </tr>
       {% endwith %}
     {% empty %}
-      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if ara %}🔍 Bu süzgeçle eşleşen üretim emri yok.
         {% else %}🏭 Henüz üretim emri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
-    <tr class="ue-bos-js" style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+    <tr class="ue-bos-js" style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
       🔍 Bu süzgeçle eşleşen üretim emri yok.</td></tr>
   </tbody>
 </table>

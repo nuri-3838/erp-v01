@@ -18,13 +18,33 @@
 </div>
 
 <section class="icerik-kart">
-  <div class="satir"><span class="et">Hedef Ürün</span>
-    <span class="dg"><span class="mono">{{ emir.hedef_urun.kod }}</span> {{ emir.hedef_urun.ad }}</span></div>
-  <div class="satir"><span class="et">Hedef Miktar</span><span class="dg mono">{{ emir.hedef_miktar|tr_kur:3 }}</span></div>
   <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ emir.tarih|date:"d.m.Y" }}</span></div>
   <div class="satir"><span class="et">Depo</span>
     <span class="dg"><span class="mono">{{ emir.depo.kod }}</span> {{ emir.depo.ad }}</span></div>
+  {% if emir.kaynak_siparis %}
+  <div class="satir"><span class="et">Kaynak Sipariş</span>
+    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' emir.kaynak_siparis.pk %}">{{ emir.kaynak_siparis.get_belge_tur_display }}{% if emir.kaynak_siparis.belge_no %} · {{ emir.kaynak_siparis.belge_no }}{% endif %}</a></span></div>
+  {% endif %}
   {% if emir.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ emir.aciklama }}</span></div>{% endif %}
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Kalemler</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Ürün</th><th class="sag">Hedef Miktar</th></tr></thead>
+    <tbody>
+      {% for k in kalemler %}
+        <tr>
+          <td><span class="mono">{{ k.hedef_urun.kod }}</span> {{ k.hedef_urun.ad }}</td>
+          <td class="sag mono">{{ k.hedef_miktar|tr_kur:3 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="2" class="yardim">Bu emrin hiç kalemi yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </section>
 
 <section class="icerik-kart">

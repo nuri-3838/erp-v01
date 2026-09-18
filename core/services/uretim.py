@@ -28,7 +28,7 @@ from django.utils import timezone
 from core.metin import buyuk_harf_tr
 from core.models import (
     Depo, IsIstasyonu, Operasyon, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiGirdi,
-    Stok, StokHareket, UretimEmri,
+    Stok, StokHareket, TeklifSiparis, UretimEmri, UretimEmriKalemi,
 )
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.hareket import HareketHatasi, hareket_ekle
@@ -279,19 +279,31 @@ def _sonraki_emir_sira(yil):
 
 
 @transaction.atomic
-def uretim_emri_olustur(*, hedef_urun_id, hedef_miktar, depo_id, tarih, aciklama="",
+def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis=None,
                         kullanici=None) -> UretimEmri:
-    hedef_urun = _cikti_coz(hedef_urun_id)
-    if not Operasyon.objects.filter(silindi=False, cikti=hedef_urun).exists():
-        raise UretimHatasi("Bu ürün için tanımlı bir operasyon yok; önce Operasyon Tanımları'ndan ekleyin.")
+    """kalemler: [{"hedef_urun_id": int, "hedef_miktar": Decimal|str}, ...] — en az 1 satır.
+    depo/tarih EMRİN TÜMÜNE uygulanır (tüm kalemler + türeyen tüm operasyon kayıtları aynı
+    depo+tarihte açılır)."""
+    if not kalemler:
+        raise UretimHatasi("En az bir hedef ürün satırı gerekli.")
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if not depo:
         raise UretimHatasi("Depo bulunamadı.")
-    miktar = _sayi_coz(hedef_miktar, "Hedef miktar geçerli bir sayı olmalı.")
-    if miktar <= 0:
-        raise UretimHatasi("Hedef miktar sıfırdan büyük olmalı.")
 
-    sonuc = ihtiyac_hesapla([(hedef_urun, miktar)])
+    coz = []                                       # [(Stok, Decimal), ...] — kökler
+    gorulen = set()
+    for satir in kalemler:
+        urun = _cikti_coz(satir["hedef_urun_id"])
+        if urun.pk in gorulen:
+            raise UretimHatasi(f"{urun.kod} birden fazla satırda tekrarlanamaz.")
+        gorulen.add(urun.pk)
+        if not Operasyon.objects.filter(silindi=False, cikti=urun).exists():
+            raise UretimHatasi(
+                f"{urun.kod} için tanımlı bir operasyon yok; önce Operasyon Tanımları'ndan ekleyin.")
+        miktar = _sayi_coz(satir["hedef_miktar"], "Hedef miktar geçerli bir sayı olmalı.")
+        if miktar <= 0:
+            raise UretimHatasi("Hedef miktar sıfırdan büyük olmalı.")
+        coz.append((urun, miktar))
 
     yil = tarih.year
     emir = None
@@ -300,9 +312,8 @@ def uretim_emri_olustur(*, hedef_urun_id, hedef_miktar, depo_id, tarih, aciklama
             with transaction.atomic():
                 sira = _sonraki_emir_sira(yil)
                 emir = UretimEmri.objects.create(
-                    yil=yil, sira=sira, no=f"UE-{yil}-{sira:04d}",
-                    hedef_urun=hedef_urun, hedef_miktar=miktar, depo=depo, tarih=tarih,
-                    aciklama=(aciklama or "").strip(),
+                    yil=yil, sira=sira, no=f"UE-{yil}-{sira:04d}", depo=depo, tarih=tarih,
+                    aciklama=(aciklama or "").strip(), kaynak_siparis=kaynak_siparis,
                     created_by=kullanici, updated_by=kullanici)
             break
         except IntegrityError:
@@ -310,21 +321,105 @@ def uretim_emri_olustur(*, hedef_urun_id, hedef_miktar, depo_id, tarih, aciklama
     if emir is None:
         raise UretimHatasi("Emir numarası üretilemedi; tekrar deneyin.")
 
-    # İhtiyaç Hesapla'nın "ozet"i KÖKÜ (hedef_urun'ün kendi operasyonu) hariç tutar — bu
-    # rapor ekranı için doğru davranış, ama burada hedef_urun'ün KENDİ operasyonu için de
-    # bir kayıt açılmalı: agac[0]["operasyon"] kökün operasyonudur (yukarıda varlığı zaten
-    # doğrulandı), sonuc["ozet"] ise onun ALTINDAKİ tüm operasyonları verir.
-    kok_operasyon = sonuc["agac"][0]["operasyon"]
-    operasyon_kaydi_olustur(
-        operasyon_id=kok_operasyon.pk, depo_id=depo.pk, tarih=tarih,
-        hedef_cikti_miktari=miktar, uretim_emri=emir, kullanici=kullanici)
+    for i, (urun, miktar) in enumerate(coz, start=1):
+        UretimEmriKalemi.objects.create(
+            uretim_emri=emir, hedef_urun=urun, hedef_miktar=miktar, sira=i * 10,
+            created_by=kullanici, updated_by=kullanici)
+
+    _emir_operasyon_kayitlarini_ac(emir=emir, kokler=coz, depo=depo, tarih=tarih,
+                                   kullanici=kullanici)
+    return emir
+
+
+def _emir_operasyon_kayitlarini_ac(*, emir, kokler, depo, tarih, kullanici):
+    """kokler: [(Stok, Decimal), ...] — zaten Operasyonu doğrulanmış kök ürünler (emrin
+    kalemleri). ihtiyac_hesapla TEK bir çağrıda tüm kökleri birlikte işler:
+      - agac[i] her KÖKÜN kendi düğümüdür; agac[i]["operasyon"] o kökün KENDİ operasyonudur
+        (ozet KÖKLERİ hariç tutar — bkz. ihtiyac_hesapla docstring'i — bu yüzden kökler için
+        ayrıca "kok_talep" biriktirilir, tıpkı eski tek-köklü kodun agac[0] için yaptığı gibi).
+      - ozet, KÖKLER HARİÇ zincirde geçilen HER düğümü zaten TEK satırda TOPLAR (iki farklı
+        kalem aynı ara parçayı paylaşıyorsa miktarları otomatik toplanır).
+    Bu fonksiyonun tek EK işi: bir KÖKÜN kendisi aynı zamanda BAŞKA bir kökün ağacında ARA
+    bileşen olarak da geçebilir (örn. sipariş hem X'i hem de X'i içeren Y'yi istiyor) — bu
+    durumda X için ayrı/çakışan iki OperasyonKaydi açmak yerine TEK toplam kayıtta
+    birleştirilir."""
+    sonuc = ihtiyac_hesapla(kokler)
+
+    kok_talep = {}                                 # stok.pk -> {"operasyon", "toplam_miktar"}
+    for (urun, miktar), dugum in zip(kokler, sonuc["agac"]):
+        kayit = kok_talep.setdefault(
+            urun.pk, {"operasyon": dugum["operasyon"], "toplam_miktar": Decimal("0")})
+        kayit["toplam_miktar"] += miktar
+
+    ara_talep = {}
     for dugum in sonuc["ozet"]:
         if dugum["yaprak"]:
             continue                                # hammadde/satınalma — zaten stokta varsayılır
+        stok_pk = dugum["stok"].pk
+        if stok_pk in kok_talep:
+            kok_talep[stok_pk]["toplam_miktar"] += dugum["toplam_miktar"]   # PAYLAŞILAN kök
+        else:
+            ara_talep[stok_pk] = dugum
+
+    for kayit in kok_talep.values():
+        operasyon_kaydi_olustur(
+            operasyon_id=kayit["operasyon"].pk, depo_id=depo.pk, tarih=tarih,
+            hedef_cikti_miktari=kayit["toplam_miktar"], uretim_emri=emir, kullanici=kullanici)
+    for dugum in ara_talep.values():
         operasyon_kaydi_olustur(
             operasyon_id=dugum["operasyon"].pk, depo_id=depo.pk, tarih=tarih,
             hedef_cikti_miktari=dugum["toplam_miktar"], uretim_emri=emir, kullanici=kullanici)
-    return emir
+
+
+def siparis_uretilebilir_kalemleri(siparis):
+    """(uygun, uygun_degil) döner — uygun_degil: [(TeklifSiparisKalem, sebep_metni), ...].
+    Üretime uygun = stok.uretim_urunu=True VE o stok için aktif bir Operasyon tanımlı."""
+    uygun, uygun_degil = [], []
+    for k in siparis.kalemler.filter(silindi=False).select_related("stok"):
+        if not k.stok.uretim_urunu:
+            uygun_degil.append((k, "üretim ürünü işaretli değil"))
+        elif not Operasyon.objects.filter(silindi=False, cikti=k.stok).exists():
+            uygun_degil.append((k, "tanımlı operasyonu yok"))
+        else:
+            uygun.append(k)
+    return uygun, uygun_degil
+
+
+@transaction.atomic
+def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, aciklama="",
+                                   kullanici=None) -> UretimEmri:
+    """SATIŞ+SIPARIS+ONAYLI bir belgeden TEK, çok kalemli bir Üretim Emri açar ('tek emir,
+    çoklu kalem'). kalem_secimleri ZORUNLU: [{"kalem_id": int, "hedef_miktar": Decimal|str}, ...]
+    — görüntüleme ekranından (kullanıcı satır çıkarmış/miktar düzeltmiş olabilir) gelir; boş
+    liste de dahil olmak üzere HER ZAMAN görüntüleme ekranındaki formdan üretilir — servis
+    kendiliğinden 'seçilmemişse hepsini al' varsayımı YAPMAZ (bilerek tüm satırları
+    kaldırmış olma ihtimaliyle 'hiç seçim yapılmadı' durumunu karıştırmamak için)."""
+    if siparis.belge_tur != TeklifSiparis.BelgeTur.SIPARIS or siparis.yon != TeklifSiparis.Yon.SATIS:
+        raise UretimHatasi("Yalnız SATIŞ siparişinden üretim emri açılabilir.")
+    if siparis.durum != TeklifSiparis.Durum.ONAYLI:
+        raise UretimHatasi("Yalnız onaylı sipariş için üretim emri açılabilir.")
+    if siparis.uretim_emirleri.filter(silindi=False).exists():
+        raise UretimHatasi("Bu siparişten zaten bir üretim emri açılmış.")
+
+    uygun, _ = siparis_uretilebilir_kalemleri(siparis)
+    uygun_map = {k.pk: k for k in uygun}
+
+    if not kalem_secimleri:
+        raise UretimHatasi(
+            "Bu siparişte üretime uygun (üretim ürünü + tanımlı operasyonu olan) hiçbir "
+            "kalem seçilmedi.")
+    secim = []
+    for satir in kalem_secimleri:
+        kalem = uygun_map.get(satir["kalem_id"])
+        if kalem is None:
+            raise UretimHatasi("Geçersiz veya üretime uygun olmayan bir sipariş kalemi seçildi.")
+        secim.append((kalem, satir["hedef_miktar"]))
+
+    kalemler = [{"hedef_urun_id": kalem.stok_id, "hedef_miktar": miktar}
+               for kalem, miktar in secim]
+    return uretim_emri_olustur(
+        kalemler=kalemler, depo_id=depo_id, tarih=tarih, aciklama=aciklama,
+        kaynak_siparis=siparis, kullanici=kullanici)
 
 
 def uretim_emri_ilerleme(emir: UretimEmri):

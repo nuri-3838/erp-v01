@@ -1,0 +1,98 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Üretim Emri Aç · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Üretim Emri Aç{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{{ iptal_url }}">← Geri</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emri Aç</h1>
+  </div>
+  <p class="yardim" style="margin-top:-.4rem">Sipariş {{ siparis.pk }}{% if siparis.belge_no %}
+    · {{ siparis.belge_no }}{% endif %} için, üretime uygun kalemlerden TEK bir Üretim Emri
+    açılır. Zincirdeki her iş istasyonu için ayrı bir taslak operasyon kaydı otomatik açılır —
+    bu ekran hiçbir stok hareketi üretmez.</p>
+
+  {% if bform.non_field_errors %}
+    <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  {% if uygun_degil %}
+    <div class="uyari">
+      <div>Bu kalemler üretime uygun değil, emre dahil edilmeyecek:</div>
+      <ul style="margin:.3rem 0 0 1.1rem">
+        {% for k, sebep in uygun_degil %}
+          <li><span class="mono">{{ k.stok.kod }}</span> {{ k.stok.ad }} — {{ sebep }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form method="post" autocomplete="off">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Üretim Emri</h2>
+      <div class="izgara">
+        {% for field in bform %}
+          <div class="alan">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+      <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+    {% endif %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kalemler</h2>
+      <div class="tablo-kapsayici">
+        <table class="fh-tablo">
+          <thead><tr><th>Ürün</th><th>Hedef Miktar</th><th></th></tr></thead>
+          <tbody id="satir-govde">
+            {% for kalem, f in satirlar %}
+              <tr class="fh-satir">
+                <td><span class="mono">{{ kalem.stok.kod }}</span> {{ kalem.stok.ad }}
+                  {{ f.kalem_id }}
+                  {% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.hedef_miktar }}</td>
+                <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{{ iptal_url }}">İptal</a>
+      <button type="submit" class="birincil">Üretim Emri Aç</button>
+    </div>
+  </form>
+</div>
+
+<style>
+  .fh-tablo { width:100%; border-collapse:collapse; }
+  .fh-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--metin-soluk); padding:0 .5rem .3rem; }
+  .fh-tablo td { padding:.25rem .5rem; }
+  .fh-tablo input { min-width:10rem; }
+  .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
+    font-size:.95rem; padding:.2rem .5rem; }
+  .fh-sil:hover { color:var(--hata); }
+</style>
+
+<script>
+(function(){
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('fh-sil')) e.target.closest('tr').remove();
+  });
+})();
+</script>
+{% endblock %}

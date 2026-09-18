@@ -1087,13 +1087,9 @@ class IhtiyacHesaplaSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
-class UretimEmriForm(forms.Form):
-    """ÜRETİM > Üretim Emirleri: hedef ürün (yalnız aktif operasyonu tanımlı kartlar) +
-    hedef miktar + TEK depo (zincirdeki tüm otomatik açılan operasyon kayıtlarına uygulanır)
-    + tarih."""
-    hedef_urun = forms.ModelChoiceField(
-        label="Hedef Ürün", queryset=Stok.objects.none(), empty_label="— ürün seç —")
-    hedef_miktar = TRDecimalField(label="Hedef Miktar", basamak=3)
+class UretimEmriBaslikForm(forms.Form):
+    """ÜRETİM > Üretim Emirleri başlık alanları — hem manuel (+ Yeni) hem sipariş-kaynaklı
+    oluşturma ekranında ortak (depo/tarih emrin TÜMÜNE, tüm kalemlere uygulanır)."""
     depo = forms.ModelChoiceField(
         label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
     tarih = forms.DateField(
@@ -1104,15 +1100,74 @@ class UretimEmriForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from core.services.depo import aktif_depolar
+        depolar = aktif_depolar()
+        self.fields["depo"].queryset = depolar
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+        # FaturaForm ile aynı desen: yeni emirde ANA DEPO ön-seçili.
+        if not self.is_bound and "depo" not in self.initial:
+            vd = depolar.filter(ad="ANA DEPO").first() or depolar.first()
+            if vd:
+                self.fields["depo"].initial = vd.pk
+
+
+class UretimEmriKalemSatirForm(forms.Form):
+    """Manuel (+ Yeni) Üretim Emri ekranı satırı — serbest ürün seçimi, diğer formset
+    satırlarıyla birebir aynı 'boş satır atlanır' deseni."""
+    hedef_urun = forms.ModelChoiceField(
+        label="Hedef Ürün", queryset=Stok.objects.none(), required=False,
+        empty_label="— ürün seç —")
+    hedef_miktar = TRDecimalField(label="Hedef Miktar", basamak=3, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         from core.services.uretim import operasyonlu_stok_idler
         self.fields["hedef_urun"].queryset = (
             Stok.objects.filter(silindi=False, pk__in=operasyonlu_stok_idler()).order_by("kod"))
         self.fields["hedef_urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["hedef_urun"].widget.attrs["class"] = "akilli-sec"
-        from core.services.depo import aktif_depolar
-        self.fields["depo"].queryset = aktif_depolar()
-        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
-        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        urun = cd.get("hedef_urun")
+        miktar = cd.get("hedef_miktar")
+        if not urun and miktar is None:
+            return cd                              # boş satır — atlanır
+        if not urun:
+            raise forms.ValidationError("Hedef ürün seçin.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Hedef miktar sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+class SiparisUretimEmriSatirForm(forms.Form):
+    """Sipariş → Üretim Emri Aç onay ekranı satırı: sipariş kalemi SABİT (hidden kalem_id),
+    yalnız hedef miktar düzenlenebilir — '✕' ile kaldırılan satır aynı 'boş satır atlanır'
+    deseniyle (clean()) sessizce dışlanır, ürün burada SEÇİLEMEZ (yalnız siparişin kendi
+    kalemleri arasından, view tarafında belirlenir)."""
+    kalem_id = forms.IntegerField(widget=forms.HiddenInput, required=False)
+    hedef_miktar = TRDecimalField(label="Hedef Miktar", basamak=3, required=False)
+
+    def clean(self):
+        cd = super().clean()
+        kalem_id = cd.get("kalem_id")
+        miktar = cd.get("hedef_miktar")
+        if not kalem_id and miktar is None:
+            return cd                              # boş/kaldırılmış satır — atlanır
+        if not kalem_id:
+            raise forms.ValidationError("Sipariş kalemi eksik.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Hedef miktar sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
 class OperasyonKaydiForm(forms.Form):

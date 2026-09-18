@@ -14,7 +14,7 @@ from django.urls import reverse
 
 from core.models import (
     Birim, Depo, EkranYetki, IsIstasyonu, Kategori, Operasyon, OperasyonKaydi, Stok,
-    StokHareket, UretimEmri, YevmiyeFisi,
+    StokHareket, UretimEmri, UretimEmriKalemi, YevmiyeFisi,
 )
 from core.services.hareket import eldeki_miktar, hareket_ekle
 from core.services.uretim import (
@@ -495,12 +495,13 @@ class UretimEmriServisTest(TestCase):
     def test_hedef_operasyonsuz_reddedilir(self):
         cıplak = _stok(self.kat, self.birim, kod="UT-CIPLAK", ad="operasyonsuz", satis=True)
         with self.assertRaises(UretimHatasi):
-            uretim_emri_olustur(hedef_urun_id=cıplak.pk, hedef_miktar=Decimal("1"),
+            uretim_emri_olustur(kalemler=[{"hedef_urun_id": cıplak.pk, "hedef_miktar": Decimal("1")}],
                                 depo_id=self.depo.pk, tarih=date(2026, 1, 10))
 
     def test_zincirdeki_her_operasyon_icin_taslak_kayit_acilir(self):
-        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         self.assertEqual(emir.no, "UE-2026-0001")
         kayitlar = {k.operasyon_id: k for k in OperasyonKaydi.objects.filter(uretim_emri=emir)}
         self.assertEqual(len(kayitlar), 2)
@@ -515,8 +516,9 @@ class UretimEmriServisTest(TestCase):
         self.assertTrue(all(k.depo_id == self.depo.pk for k in kayitlar.values()))
 
     def test_yaprak_dugumler_icin_kayit_acilmaz(self):
-        uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("1"),
-                            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("1")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         self.assertFalse(OperasyonKaydi.objects.filter(operasyon__cikti=self.profil).exists())
 
     def test_dongu_hatasinda_hicbir_seyi_kaydetmez(self):
@@ -530,14 +532,15 @@ class UretimEmriServisTest(TestCase):
         onceki_emir = UretimEmri.objects.count()
         onceki_kayit = OperasyonKaydi.objects.count()
         with self.assertRaises(UretimHatasi):
-            uretim_emri_olustur(hedef_urun_id=a.pk, hedef_miktar=Decimal("1"),
+            uretim_emri_olustur(kalemler=[{"hedef_urun_id": a.pk, "hedef_miktar": Decimal("1")}],
                                 depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         self.assertEqual(UretimEmri.objects.count(), onceki_emir)
         self.assertEqual(OperasyonKaydi.objects.count(), onceki_kayit)
 
     def test_kayitlar_birbirinden_bagimsiz_onaylanir(self):
-        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         kesim_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.kesim_op)
         bukum_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.bukum_op)
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
@@ -549,8 +552,9 @@ class UretimEmriServisTest(TestCase):
         self.assertEqual(bukum_kaydi.durum, OperasyonKaydi.Durum.TASLAK)   # etkilenmedi
 
     def test_ilerleme(self):
-        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         self.assertEqual(uretim_emri_ilerleme(emir), {"toplam": 2, "onayli": 0})
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
@@ -562,8 +566,9 @@ class UretimEmriServisTest(TestCase):
         """uretim_emri_sil: TASLAK'ta bağlı iki Operasyon Kaydı da hâlâ TASLAK'sa
         hiçbir iz kalmadan (hard delete) gider — CLAUDE.md'nin bu ekrana özel bilinçli
         istisnası (kullanıcı isteği)."""
-        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         emir_pk = emir.pk
         kayit_pks = list(OperasyonKaydi.objects.filter(uretim_emri=emir).values_list("pk", flat=True))
         self.assertEqual(len(kayit_pks), 2)
@@ -574,8 +579,9 @@ class UretimEmriServisTest(TestCase):
         self.assertFalse(OperasyonKaydiGirdi.objects.filter(kayit_id__in=kayit_pks).exists())
 
     def test_sil_onayli_kayit_varsa_reddedilir(self):
-        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
         kesim_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.kesim_op)
@@ -588,13 +594,122 @@ class UretimEmriServisTest(TestCase):
     def test_sil_ayrica_soft_silinmis_taslak_kaydi_da_temizler(self):
         """Emrin bir kaydı daha önce ayrıca operasyon_kaydi_sil ile soft-iptal edilmiş
         olsa bile, emrin kendisi kalıcı silinince o da tamamen gider."""
-        emir = uretim_emri_olustur(hedef_urun_id=self.bukulmus.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         kesim_kaydi = OperasyonKaydi.objects.get(uretim_emri=emir, operasyon=self.kesim_op)
         operasyon_kaydi_sil(kesim_kaydi)
         uretim_emri_sil(emir)
         self.assertFalse(UretimEmri.objects.filter(pk=emir.pk).exists())
         self.assertFalse(OperasyonKaydi.objects.filter(pk=kesim_kaydi.pk).exists())
+
+
+class UretimEmriCokluKalemServisTest(TestCase):
+    """'Tek emir, çoklu kalem': UretimEmri artık birden çok hedef ürün/miktar satırı
+    (UretimEmriKalemi) taşıyabilir. IhtiyacHesaplaTest ile aynı üç basamaklı zincir
+    (Kesim 1->2, Büküm 1->1, Montaj 1 bükülmüş + 2 civata -> 1 mamul)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.birim = _birim()
+        cls.kat = _kategori()
+        cls.depo = _depo()
+        cls.lazer = _istasyon("LAZER")
+        cls.bukum = _istasyon("BUKUM")
+        cls.montaj = _istasyon("MONTAJ")
+        cls.profil = _stok(cls.kat, cls.birim, kod="UTC-PROFIL", ad="ham profil", satinalma=True)
+        cls.civata = _stok(cls.kat, cls.birim, kod="UTC-CIVATA", ad="civata", satinalma=True)
+        cls.kesilmis = _stok(cls.kat, cls.birim, kod="UTC-KESILMIS", ad="kesilmiş parça")
+        cls.bukulmus = _stok(cls.kat, cls.birim, kod="UTC-BUKULMUS", ad="bükülmüş parça", satis=True)
+        cls.mamul = _stok(cls.kat, cls.birim, kod="UTC-MAMUL", ad="test merdiveni", satis=True)
+        cls.lazer_op = operasyon_olustur(istasyon_id=cls.lazer.pk, cikti_id=cls.kesilmis.pk,
+                                         cikti_miktar=Decimal("2"), satirlar=[(cls.profil, Decimal("1"))])
+        cls.bukum_op = operasyon_olustur(istasyon_id=cls.bukum.pk, cikti_id=cls.bukulmus.pk,
+                                         cikti_miktar=Decimal("1"), satirlar=[(cls.kesilmis, Decimal("1"))])
+        cls.montaj_op = operasyon_olustur(istasyon_id=cls.montaj.pk, cikti_id=cls.mamul.pk,
+                                          cikti_miktar=Decimal("1"), satirlar=[
+                                              (cls.bukulmus, Decimal("1")), (cls.civata, Decimal("2"))])
+
+    def test_iki_bagimsiz_kok_ayri_kayit_acar(self):
+        montaj2 = _istasyon("MONTAJ2")
+        civata2 = _stok(self.kat, self.birim, kod="UTC-CIVATA2", ad="ikinci civata", satinalma=True)
+        baska_mamul = _stok(self.kat, self.birim, kod="UTC-MAMUL2", ad="başka merdiven", satis=True)
+        montaj2_op = operasyon_olustur(istasyon_id=montaj2.pk, cikti_id=baska_mamul.pk,
+                                       cikti_miktar=Decimal("1"), satirlar=[(civata2, Decimal("1"))])
+        emir = uretim_emri_olustur(kalemler=[
+            {"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("2")},
+            {"hedef_urun_id": baska_mamul.pk, "hedef_miktar": Decimal("3")},
+        ], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        kayitlar = {k.operasyon_id: k for k in OperasyonKaydi.objects.filter(uretim_emri=emir)}
+        self.assertEqual(len(kayitlar), 4)                         # MONTAJ, MONTAJ2, BUKUM, LAZER
+        self.assertEqual(kayitlar[self.montaj_op.pk].hedef_cikti_miktari, Decimal("2.000"))
+        self.assertEqual(kayitlar[montaj2_op.pk].hedef_cikti_miktari, Decimal("3.000"))
+        self.assertEqual(kayitlar[self.bukum_op.pk].hedef_cikti_miktari, Decimal("2.000"))
+        self.assertEqual(kayitlar[self.lazer_op.pk].hedef_cikti_miktari, Decimal("2.000"))
+
+    def test_paylasilan_ara_bilesen_tek_kayitta_toplanir(self):
+        """İki farklı kalem (mamul + ikinci_mamul) aynı ara bileşeni (kesilmiş parça)
+        paylaşıyorsa, o bileşen için TEK OperasyonKaydi açılır (toplam miktarla)."""
+        ikinci_mamul = _stok(self.kat, self.birim, kod="UTC-MAMUL3", ad="direkt kesilmiş kullanan",
+                             satis=True)
+        operasyon_olustur(istasyon_id=self.montaj.pk, cikti_id=ikinci_mamul.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(self.kesilmis, Decimal("2"))])
+        emir = uretim_emri_olustur(kalemler=[
+            {"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("2")},
+            {"hedef_urun_id": ikinci_mamul.pk, "hedef_miktar": Decimal("3")},
+        ], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        lazer_kayitlari = OperasyonKaydi.objects.filter(uretim_emri=emir, operasyon=self.lazer_op)
+        self.assertEqual(lazer_kayitlari.count(), 1)                # tek, birleşik kayıt
+        # mamul->bukulmus->kesilmis: 2; ikinci_mamul->kesilmis (direkt): 3*2=6 => toplam 8
+        self.assertEqual(lazer_kayitlari.first().hedef_cikti_miktari, Decimal("8.000"))
+
+    def test_kok_urun_baska_kokun_ara_bileseni_de_ise_tek_kayitta_toplanir(self):
+        """En kritik senaryo: bukulmus hem KENDİ kalemi olarak doğrudan sipariş edilmiş,
+        hem de mamul'ün ara bileşeni — BUKUM operasyonu için ÇAKIŞAN iki ayrı kayıt değil,
+        toplam miktarlı TEK kayıt açılmalı."""
+        emir = uretim_emri_olustur(kalemler=[
+            {"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("4")},
+            {"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("6")},
+        ], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        kayitlar = OperasyonKaydi.objects.filter(uretim_emri=emir)
+        self.assertEqual(kayitlar.count(), 3)                       # BUKUM, MONTAJ, LAZER — çakışma yok
+        bukum_kayit = kayitlar.get(operasyon=self.bukum_op)
+        self.assertEqual(bukum_kayit.hedef_cikti_miktari, Decimal("10.000"))     # 4 + 6
+        self.assertEqual(kayitlar.get(operasyon=self.montaj_op).hedef_cikti_miktari, Decimal("6.000"))
+        self.assertEqual(kayitlar.get(operasyon=self.lazer_op).hedef_cikti_miktari, Decimal("10.000"))
+
+    def test_ayni_urun_iki_kalemde_tekrar_reddedilir(self):
+        with self.assertRaises(UretimHatasi):
+            uretim_emri_olustur(kalemler=[
+                {"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("1")},
+                {"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("2")},
+            ], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+
+    def test_bir_kalem_operasyonsuzsa_tum_emir_reddedilir_atomik(self):
+        cıplak = _stok(self.kat, self.birim, kod="UTC-CIPLAK", ad="operasyonsuz", satis=True)
+        onceki_emir = UretimEmri.objects.count()
+        onceki_kayit = OperasyonKaydi.objects.count()
+        with self.assertRaises(UretimHatasi):
+            uretim_emri_olustur(kalemler=[
+                {"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("1")},
+                {"hedef_urun_id": cıplak.pk, "hedef_miktar": Decimal("1")},
+            ], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        self.assertEqual(UretimEmri.objects.count(), onceki_emir)
+        self.assertEqual(OperasyonKaydi.objects.count(), onceki_kayit)
+
+    def test_kalem_sayisi_kadar_uretimemrikalemi_olusur(self):
+        emir = uretim_emri_olustur(kalemler=[
+            {"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("2")},
+            {"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("1")},
+        ], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        kalemler = list(UretimEmriKalemi.objects.filter(uretim_emri=emir).order_by("sira"))
+        self.assertEqual(len(kalemler), 2)
+        self.assertEqual([k.hedef_urun_id for k in kalemler], [self.mamul.pk, self.bukulmus.pk])
+        self.assertEqual([k.sira for k in kalemler], [10, 20])
+
+    def test_bos_kalem_listesi_reddedilir(self):
+        with self.assertRaises(UretimHatasi):
+            uretim_emri_olustur(kalemler=[], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
 
 
 class UretimViewTest(TestCase):
@@ -679,10 +794,12 @@ class UretimViewTest(TestCase):
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:uretim_emri_ekle"), {
-            "hedef_urun": self.mamul.pk, "hedef_miktar": "10", "depo": self.depo.pk,
-            "tarih": "2026-01-10", "aciklama": ""})
+            "depo": self.depo.pk, "tarih": "2026-01-10", "aciklama": "",
+            "satir-TOTAL_FORMS": "1", "satir-INITIAL_FORMS": "0",
+            "satir-MIN_NUM_FORMS": "1", "satir-MAX_NUM_FORMS": "1000",
+            "satir-0-hedef_urun": self.mamul.pk, "satir-0-hedef_miktar": "10"})
         self.assertEqual(r.status_code, 302)
-        emir = UretimEmri.objects.get(hedef_urun=self.mamul)
+        emir = UretimEmri.objects.get(kalemler__hedef_urun=self.mamul)
         self.assertEqual(emir.no, "UE-2026-0001")
 
         r = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
@@ -702,10 +819,27 @@ class UretimViewTest(TestCase):
         r = self.client.get(reverse("core:uretim_emri_ekle"))
         self.assertNotContains(r, "UTV-CIPLAK")
 
+    def test_uretim_emri_ekle_coklu_kalem_ile_tek_emir_acar(self):
+        self.client.force_login(self.yon)
+        ikinci = _stok(self.kat, self.birim, kod="UTV-MAMUL2", ad="ikinci mamul", satis=True)
+        operasyon_olustur(istasyon_id=self.istasyon.pk, cikti_id=ikinci.pk,
+                          cikti_miktar=Decimal("1"), satirlar=[(self.profil, Decimal("1"))])
+        r = self.client.post(reverse("core:uretim_emri_ekle"), {
+            "depo": self.depo.pk, "tarih": "2026-01-10", "aciklama": "",
+            "satir-TOTAL_FORMS": "2", "satir-INITIAL_FORMS": "0",
+            "satir-MIN_NUM_FORMS": "1", "satir-MAX_NUM_FORMS": "1000",
+            "satir-0-hedef_urun": self.mamul.pk, "satir-0-hedef_miktar": "2",
+            "satir-1-hedef_urun": ikinci.pk, "satir-1-hedef_miktar": "3"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(UretimEmri.objects.count(), 1)
+        emir = UretimEmri.objects.first()
+        self.assertEqual(emir.kalemler.count(), 2)
+
     def test_uretim_emri_sil_view_kalici_siler(self):
         self.client.force_login(self.yon)
-        emir = uretim_emri_olustur(hedef_urun_id=self.mamul.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         r = self.client.post(reverse("core:uretim_emri_sil", args=[emir.pk]))
         self.assertRedirects(r, reverse("core:uretim_emirleri"))
         self.assertFalse(UretimEmri.objects.filter(pk=emir.pk).exists())
@@ -714,8 +848,9 @@ class UretimViewTest(TestCase):
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1),
                     tur=StokHareket.Tur.GIRIS, miktar=Decimal("1000"))
         self.client.force_login(self.yon)
-        emir = uretim_emri_olustur(hedef_urun_id=self.mamul.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         kayit = OperasyonKaydi.objects.get(uretim_emri=emir)
         operasyon_kaydi_onayla(kayit)
         r = self.client.post(reverse("core:uretim_emri_sil", args=[emir.pk]))
@@ -724,8 +859,9 @@ class UretimViewTest(TestCase):
 
     def test_uretim_emirleri_listesi_arama_ve_sil_dugmesi(self):
         self.client.force_login(self.yon)
-        emir = uretim_emri_olustur(hedef_urun_id=self.mamul.pk, hedef_miktar=Decimal("10"),
-                                   depo_id=self.depo.pk, tarih=date(2026, 1, 10))
+        emir = uretim_emri_olustur(
+            kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": Decimal("10")}],
+            depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         r = self.client.get(reverse("core:uretim_emirleri"))
         self.assertContains(r, emir.no)
         self.assertContains(r, reverse("core:uretim_emri_sil", args=[emir.pk]))

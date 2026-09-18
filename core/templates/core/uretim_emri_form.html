@@ -4,52 +4,69 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="form-kapsa form-dar">
+<div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Emirleri</a>
     <h1 class="ust-baslik"><span class="emoji">🏭</span>Yeni Üretim Emri</h1>
   </div>
 
-  {% if form.non_field_errors %}
-    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% if bform.non_field_errors %}
+    <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
   {% endif %}
 
-  <form method="post" autocomplete="off" style="display:contents">
+  <form method="post" autocomplete="off">
     {% csrf_token %}
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Üretim Emri</h2>
       <p class="yardim" style="margin-top:0">Zincirdeki HER iş istasyonu için ayrı bir taslak
         operasyon kaydı otomatik açılır — bu ekran hiçbir stok hareketi üretmez, yalnız
-        kayıtları açar. Onaylama her istasyonun kendi işidir.</p>
+        kayıtları açar. Onaylama her istasyonun kendi işidir. Depo ve tarih, emrin TÜM
+        kalemlerine ve türeyen tüm operasyon kayıtlarına uygulanır.</p>
       <div class="izgara">
-        <div class="alan tam">
-          <label for="{{ form.hedef_urun.id_for_label }}">{{ form.hedef_urun.label }}</label>
-          <div class="akilli">{{ form.hedef_urun }}</div>
-          {% for e in form.hedef_urun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <p class="yardim" style="margin:.3rem 0 0">Yalnız tanımlı bir operasyonu olan
-            ürünler listelenir — bkz. Operasyon Tanımları.</p>
-        </div>
-        <div class="alan">
-          <label for="{{ form.hedef_miktar.id_for_label }}">{{ form.hedef_miktar.label }}</label>
-          {{ form.hedef_miktar }}
-          {% for e in form.hedef_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
-        <div class="alan">
-          <label for="{{ form.depo.id_for_label }}">{{ form.depo.label }}</label>
-          <div class="akilli">{{ form.depo }}</div>
-          {% for e in form.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
-        <div class="alan">
-          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
-          {{ form.tarih }}
-          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
-        <div class="alan tam">
-          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
-          {{ form.aciklama }}
-        </div>
+        {% for field in bform %}
+          <div class="alan">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
       </div>
     </section>
+
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+      <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+    {% endif %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kalemler</h2>
+      <p class="yardim" style="margin-top:0">Yalnız tanımlı bir operasyonu olan ürünler
+        listelenir — bkz. Operasyon Tanımları.</p>
+      <div class="tablo-kapsayici">
+        <table class="fh-tablo">
+          <thead><tr><th>Hedef Ürün</th><th>Hedef Miktar</th><th></th></tr></thead>
+          <tbody id="satir-govde">
+            {% for f in formset %}
+              <tr class="fh-satir">
+                <td>{{ f.hedef_urun }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.hedef_miktar }}</td>
+                <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="satir-alt">
+        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Ürün Ekle</button>
+      </div>
+    </section>
+
+    <template id="bos-satir">
+      <td>{{ formset.empty_form.hedef_urun }}</td>
+      <td>{{ formset.empty_form.hedef_miktar }}</td>
+      <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+    </template>
+
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:uretim_emirleri' %}">İptal</a>
       <button type="submit" class="birincil">Emri Aç</button>
@@ -57,5 +74,34 @@
   </form>
 </div>
 
+<style>
+  .fh-tablo { width:100%; border-collapse:collapse; }
+  .fh-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--metin-soluk); padding:0 .5rem .3rem; }
+  .fh-tablo td { padding:.25rem .5rem; }
+  .fh-tablo input, .fh-tablo select { min-width:12rem; }
+  .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
+    font-size:.95rem; padding:.2rem .5rem; }
+  .fh-sil:hover { color:var(--hata); }
+  .satir-alt { margin-top:.7rem; }
+</style>
+
+<script>
+(function(){
+  function satirEkle(){
+    var tf = document.getElementById('id_satir-TOTAL_FORMS');
+    var i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr'); tr.className = 'fh-satir';
+    tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    document.getElementById('satir-govde').appendChild(tr);
+    tf.value = i + 1;
+    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+  }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('fh-sil')) e.target.closest('tr').remove();
+  });
+})();
+</script>
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}

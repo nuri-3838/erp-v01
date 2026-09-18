@@ -1164,6 +1164,200 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
             self.client.get(reverse("core:siparis_faturaya_cevir", args=[sip.pk])).status_code, 403)
 
 
+class TeklifSiparisUretimEmrineCevirTest(TestCase):
+    """Sipariş→Üretim Emri dönüşümü: 'tek emir, çoklu kalem' — Faturaya Çevir ile aynı UX
+    ağırlığı (önce ön-doldurulmuş onay ekranı, sonra tek tık onay), fakat üretime uygun
+    olmayan kalemler (üretim ürünü değil / tanımlı operasyonu yok) sessizce dışlanır."""
+    @classmethod
+    def setUpTestData(cls):
+        import datetime
+        from core.models import Depo, IsIstasyonu
+        from core.services.uretim import operasyon_olustur
+        cls.yon = User.objects.create_superuser("tsuyon", password="x")
+        cls.bos = User.objects.create_user("tsubos", password="x")
+        _hesap("153.20", "ALÜMİNYUM MAL U")
+        _hesap("191.20", "İNDİRİLECEK KDV U")
+        _hesap("391.20", "HESAPLANAN KDV U", kalem="KVYK")
+        _hesap("120.30.0001", "MÜŞTERİ U")
+        cls.kdv = KdvOrani.objects.create(
+            aciklama="GENELU", oran=Decimal("20"),
+            hesap_borc=HesapPlani.objects.get(hesap_kodu="191.20"),
+            hesap_alacak=HesapPlani.objects.get(hesap_kodu="391.20"))
+        ust = Kategori.objects.create(ad="HAMMADDEU", kod="153u")
+        alt = Kategori.objects.create(ad="ALÜMİNYUMU", kod="10u", ust=ust)
+        birim = Birim.objects.create(ad="ADETU", kisa_ad="ADU", ondalik=0)
+        cls.musteri = Cari.objects.create(kod="C-U1", unvan="MÜŞTERİ U",
+                                          muhasebe_kodu="120.30.0001",
+                                          created_by=cls.yon, updated_by=cls.yon)
+        cls.depo = Depo.objects.create(kod="DU1", ad="ÜRETİM DEPO",
+                                       created_by=cls.yon, updated_by=cls.yon)
+        cls.hammadde = Stok.objects.create(
+            kod="Su-HAM", ad="HAMMADDE U", kategori=alt, kdv=cls.kdv,
+            uretim_birimi=birim, fatura_birimi=birim, satinalma_urunu=True,
+            created_by=cls.yon, updated_by=cls.yon)
+        cls.uretilebilir = Stok.objects.create(
+            kod="Su1", ad="ÜRETİLEBİLİR ÜRÜN", kategori=alt, kdv=cls.kdv,
+            uretim_birimi=birim, fatura_birimi=birim, satis_urunu=True,
+            created_by=cls.yon, updated_by=cls.yon)
+        cls.uretilemez = Stok.objects.create(
+            kod="Su2", ad="TİCARİ ÜRÜN", kategori=alt, kdv=cls.kdv,
+            uretim_birimi=birim, fatura_birimi=birim, satis_urunu=True, uretim_urunu=False,
+            created_by=cls.yon, updated_by=cls.yon)
+        istasyon = IsIstasyonu.objects.create(kod="ISTU", ad="ÜRETİM İSTASYONU")
+        cls.operasyon = operasyon_olustur(
+            istasyon_id=istasyon.pk, cikti_id=cls.uretilebilir.pk, cikti_miktar=Decimal("1"),
+            satirlar=[(cls.hammadde, Decimal("1"))], kullanici=cls.yon)
+
+    def _siparis(self, *, iki_kalemli=True):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        satirlar = [{"stok_id": self.uretilebilir.pk, "miktar": "5", "birim_fiyat": "100"}]
+        if iki_kalemli:
+            satirlar.append({"stok_id": self.uretilemez.pk, "miktar": "2", "birim_fiyat": "30"})
+        sip = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.musteri.pk,
+            tarih=datetime.date(2026, 6, 28), satirlar=satirlar, kullanici=self.yon)
+        return teklif_siparis_onayla(sip, kullanici=self.yon)
+
+    def _form_govde(self, sip, *, miktar="5"):
+        return {
+            "depo": self.depo.pk, "tarih": "2026-06-28", "aciklama": "",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "0", "form-MAX_NUM_FORMS": "1000",
+            "form-0-kalem_id": sip.kalemler.get(stok=self.uretilebilir).pk,
+            "form-0-hedef_miktar": miktar,
+        }
+
+    def test_get_form_on_doldurulmus(self):
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ÜRETİLEBİLİR ÜRÜN")
+        self.assertContains(r, "TİCARİ ÜRÜN")                 # uygun_degil listesinde görünür
+        self.assertContains(r, "üretim ürünü işaretli değil")
+
+    def test_post_uretim_emri_olusturur_ve_baglar(self):
+        from core.models import UretimEmri
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]),
+                             self._form_govde(sip))
+        emir = UretimEmri.objects.get(kaynak_siparis=sip)
+        self.assertRedirects(r, reverse("core:uretim_emri_detay", args=[emir.pk]))
+        self.assertEqual(emir.kalemler.count(), 1)
+        self.assertEqual(emir.kalemler.first().hedef_urun_id, self.uretilebilir.pk)
+
+    def test_uygun_olmayan_kalem_haric_tutulur(self):
+        from core.models import UretimEmri
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]),
+                         self._form_govde(sip))
+        emir = UretimEmri.objects.get(kaynak_siparis=sip)
+        self.assertFalse(emir.kalemler.filter(hedef_urun=self.uretilemez).exists())
+
+    def test_tum_kalemler_uygun_degilse_hata(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        sip = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.musteri.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.uretilemez.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        sip = teklif_siparis_onayla(sip, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[sip.pk]))
+
+    def test_taslak_siparis_uretim_emrine_cevrilemez(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        sip = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.musteri.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.uretilebilir.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)                                       # ONAYLANMADI
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[sip.pk]))
+
+    def test_ikinci_kez_cevrilemez_mevcut_emre_yonlenir(self):
+        from core.models import UretimEmri
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]),
+                         self._form_govde(sip))
+        emir = UretimEmri.objects.get(kaynak_siparis=sip)
+        r2 = self.client.get(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
+        self.assertRedirects(r2, reverse("core:uretim_emri_detay", args=[emir.pk]))
+
+    def test_teklif_dogrudan_uretim_emrine_cevrilemez(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        teklif = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.musteri.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.uretilebilir.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        self.assertEqual(
+            self.client.get(
+                reverse("core:siparis_uretim_emrine_cevir", args=[teklif.pk])).status_code, 404)
+
+    def test_buton_gorunurluk_uygun_kalem_yoksa_gizli(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        sip = teklif_siparis_olustur(
+            belge_tur="SIPARIS", yon="SATIS", cari_id=self.musteri.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.uretilemez.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        sip = teklif_siparis_onayla(sip, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[sip.pk]))
+        self.assertNotContains(d, reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
+
+    def test_uretim_emri_baglandiktan_sonra_onayi_geri_al_ve_iptal_kilitlenir(self):
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[sip.pk]))
+        self.assertContains(d0, reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
+        self.assertContains(d0, reverse("core:teklif_siparis_onayi_geri_al", args=[sip.pk]))
+        self.client.post(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]),
+                         self._form_govde(sip))
+        d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[sip.pk]))
+        self.assertNotContains(d1, reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
+        self.assertNotContains(d1, reverse("core:teklif_siparis_onayi_geri_al", args=[sip.pk]))
+        self.assertNotContains(d1, reverse("core:teklif_siparis_iptal", args=[sip.pk]))
+        self.assertContains(d1, "Üretim Emrine Dönüştü")
+
+    def test_uretim_emri_detay_kaynak_linki(self):
+        from core.models import UretimEmri
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]),
+                         self._form_govde(sip))
+        emir = UretimEmri.objects.get(kaynak_siparis=sip)
+        d = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
+        self.assertContains(d, "Kaynak Sipariş")
+        self.assertContains(d, reverse("core:teklif_siparis_detay", args=[sip.pk]))
+
+    def test_yetkisiz_403(self):
+        sip = self._siparis()
+        self.client.force_login(self.bos)
+        self.assertEqual(
+            self.client.get(
+                reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk])).status_code, 403)
+
+    def test_satis_yonunde_onaylama_hala_hicbir_seyi_tetiklemez(self):
+        """Regresyon: sipariş onaylandığında (bu özellik eklendikten SONRA bile) hâlâ
+        otomatik bir Üretim Emri açılmıyor — tetikleme yalnız bu ekrandaki manuel düğmeyle."""
+        from core.models import UretimEmri
+        sip = self._siparis()
+        self.assertEqual(UretimEmri.objects.filter(kaynak_siparis=sip).count(), 0)
+
+
 class SatinalmaZinciriTest(TestCase):
     """Teklif→Sipariş→İrsaliye→Fatura otomasyon zinciri (yalnız ALIŞ) uçtan uca."""
     @classmethod

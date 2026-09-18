@@ -55,6 +55,7 @@
         {% if donusen_proforma %}<span class="d-rozet aktif">🔁 Proformaya Dönüştü</span>{% endif %}
         {% if donusen_irsaliye %}<span class="d-rozet aktif">🔁 İrsaliyeye Dönüştü</span>{% endif %}
         {% if donusen_fatura %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% endif %}
+        {% if uretim_emri %}<span class="d-rozet aktif">🏭 Üretim Emrine Dönüştü</span>{% endif %}
       </div>
       <div class="detay-ad">{{ ts.get_belge_tur_display }}</div>
       <div class="detay-alt">
@@ -78,7 +79,7 @@
         {% if ts.durum == "TASLAK" %}
         <form method="post" action="{% url 'core:teklif_siparis_onayla' ts.pk %}" style="margin:0">
           {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
-        {% elif not donusen_siparis and not donusen_proforma and not donusen_irsaliye and not donusen_fatura %}
+        {% elif not donusen_siparis and not donusen_proforma and not donusen_irsaliye and not donusen_fatura and not uretim_emri %}
         <form method="post" action="{% url 'core:teklif_siparis_onayi_geri_al' ts.pk %}" onsubmit="return confirm('Onay geri alınsın mı? Belge tekrar taslağa döner.');" style="margin:0">
           {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">↩️ Onayı Geri Al</button></form>
         {% endif %}
@@ -92,6 +93,9 @@
         {% endif %}
         {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and not donusen_fatura and ts.yon == "SATIS" %}
         <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
+        {% endif %}
+        {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and not uretim_emri and ts.yon == "SATIS" and uretim_emri_acilabilir %}
+        <a class="dugme" href="{% url 'core:siparis_uretim_emrine_cevir' ts.pk %}">🏭 Üretim Emri Aç</a>
         {% endif %}
         {% if ts.durum == "TASLAK" %}
           {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
@@ -168,6 +172,10 @@
       {% if donusen_fatura %}
       <div class="satir"><span class="et">Fatura</span>
         <span class="dg"><a href="{% url 'core:fatura_detay' donusen_fatura.pk %}">{% if donusen_fatura.tip %}{{ donusen_fatura.tip.ad }}{% else %}Taslak Fatura{% endif %}{% if donusen_fatura.fatura_no %} · {{ donusen_fatura.fatura_no }}{% endif %}</a></span></div>
+      {% endif %}
+      {% if uretim_emri %}
+      <div class="satir"><span class="et">Üretim Emri</span>
+        <span class="dg"><a href="{% url 'core:uretim_emri_detay' uretim_emri.pk %}">{{ uretim_emri.no }}</a></span></div>
       {% endif %}
     </div>
   </section>
