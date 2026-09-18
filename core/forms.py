@@ -1616,8 +1616,12 @@ class TeklifSiparisForm(forms.Form):
             self.fields["gecerlilik_teslim_tarihi"].label = "Teslim Tarihi"
         else:
             self.fields["gecerlilik_teslim_tarihi"].label = "Geçerlilik Tarihi"
-        # İrsaliye gerçek stok hareketi yazar — hangi depoya girdiği zorunlu.
+        # İrsaliye gerçek stok hareketi yazar — hangi depoya girdiği zorunlu. Geçerlilik/
+        # teslim tarihi kavramı İrsaliye'de anlamsız (mal zaten teslim edilmiş sayılır) —
+        # alan hiç yok. İrsaliye No, kendi (kağıt) numarası olduğu için Tarih'e yakın
+        # gösterilsin diye alan sırası da düzeltiliyor (bkz. order_fields altta).
         if belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
+            del self.fields["gecerlilik_teslim_tarihi"]
             self.fields["depo"] = forms.ModelChoiceField(
                 label="Depo", queryset=Depo.objects.filter(silindi=False).order_by("kod"),
                 empty_label="— depo seç —")
@@ -1627,6 +1631,7 @@ class TeklifSiparisForm(forms.Form):
             self.fields["irsaliye_no"] = forms.CharField(
                 label="İrsaliye No", max_length=50, required=False,
                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
+            self.order_fields(["cari", "tarih", "irsaliye_no", "depo", "para_birimi", "aciklama"])
 
 
 class TeklifSiparisKalemForm(forms.Form):

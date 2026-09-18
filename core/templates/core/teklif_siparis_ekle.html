@@ -26,9 +26,9 @@
     {% csrf_token %}
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Belge Bilgileri</h2>
-      <div class="izgara">
+      <div class="izgara-3">
         {% for field in bform %}
-          <div class="alan">
+          <div class="alan{% if field.name == 'aciklama' %} tam{% endif %}">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
