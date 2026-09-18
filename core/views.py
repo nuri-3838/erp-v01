@@ -2109,7 +2109,8 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
         if bform.is_valid() and formset.is_valid():
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
-                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "uretim_miktar": f.cleaned_data.get("uretim_miktar")}
                 for f in formset if f.dolu_mu()
             ]
             try:
@@ -2551,7 +2552,8 @@ def teklif_siparis_duzenle(request, pk):
         if bform.is_valid() and formset.is_valid():
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
-                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "uretim_miktar": f.cleaned_data.get("uretim_miktar")}
                 for f in formset if f.dolu_mu()
             ]
             try:
@@ -2575,7 +2577,8 @@ def teklif_siparis_duzenle(request, pk):
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
             "para_birimi": ts.para_birimi, "aciklama": ts.aciklama, "depo": ts.depo_id,
             "irsaliye_no": ts.irsaliye_no})
-        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
+        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat,
+               "uretim_miktar": k.uretim_miktar}
                for k in ts.kalemler.filter(silindi=False).select_related("stok")]
         formset = TeklifSiparisKalemFormSet(initial=ilk, form_kwargs={"yon": ts.yon})
     return render(request, "core/teklif_siparis_ekle.html",

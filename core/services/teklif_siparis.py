@@ -79,7 +79,8 @@ def _yuzde(deger, etiket):
 def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar):
     """Ortak hazırlık (oluştur/güncelle): cari VEYA aday müşteri (karşılıklı dışlayıcı —
     ikisi birden ya da hiçbiri verilemez) + satırları doğrular. (cari, aday_musteri, hazir)
-    döner — hazir = [(stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat), ...]."""
+    döner — hazir = [(stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat,
+    uretim_miktar), ...]."""
     if cari_id and aday_musteri_id:
         raise TeklifSiparisHatasi("Cari ve aday müşteri aynı anda seçilemez.")
     cari = aday = None
@@ -104,7 +105,10 @@ def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar):
         miktar = _sayi(s.get("miktar"), "Miktar", pozitif=True)
         birim_fiyat = _sayi(s.get("birim_fiyat"), "Birim fiyat")
         iskonto_yuzdesi = _yuzde(s.get("iskonto_yuzdesi"), "İskonto %")
-        hazir.append((stok, miktar, birim_fiyat, iskonto_yuzdesi, stok.kdv, stok.tevkifat))
+        uretim_miktar = (_sayi(s["uretim_miktar"], "Üretim miktarı", pozitif=True)
+                         if s.get("uretim_miktar") not in (None, "") else None)
+        hazir.append((stok, miktar, birim_fiyat, iskonto_yuzdesi, stok.kdv, stok.tevkifat,
+                     uretim_miktar))
     return cari, aday, hazir
 
 
@@ -174,11 +178,11 @@ def _depo_coz_irsaliye(belge_tur, depo_id):
 
 
 def _kalemleri_yaz(ts, hazir, kullanici):
-    for stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat in hazir:
+    for stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat, uretim_miktar in hazir:
         TeklifSiparisKalem.objects.create(
             teklif_siparis=ts, stok=stok, miktar=miktar, birim_fiyat=birim_fiyat,
-            iskonto_yuzdesi=iskonto_yuzdesi, kdv=kdv,
-            tevkifat=tevkifat, created_by=kullanici, updated_by=kullanici)
+            iskonto_yuzdesi=iskonto_yuzdesi, kdv=kdv, tevkifat=tevkifat,
+            uretim_miktar=uretim_miktar, created_by=kullanici, updated_by=kullanici)
 
 
 def _sonraki_sira(belge_tur, yon, yil):
@@ -433,7 +437,7 @@ def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> T
         TeklifSiparisKalem.objects.create(
             teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
-            created_by=kullanici, updated_by=kullanici)
+            uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return siparis
 
 
@@ -468,7 +472,7 @@ def teklifi_proformaya_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) ->
         TeklifSiparisKalem.objects.create(
             teklif_siparis=proforma, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
-            created_by=kullanici, updated_by=kullanici)
+            uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return proforma
 
 
@@ -514,7 +518,7 @@ def proformayi_siparise_cevir(proforma: TeklifSiparis, *, tarih, kullanici=None)
         TeklifSiparisKalem.objects.create(
             teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
-            created_by=kullanici, updated_by=kullanici)
+            uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return siparis
 
 
@@ -549,7 +553,7 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
         TeklifSiparisKalem.objects.create(
             teklif_siparis=irsaliye, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
-            created_by=kullanici, updated_by=kullanici)
+            uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return irsaliye
 
 
@@ -572,20 +576,28 @@ def _kur_coz(pb, tarih):
 def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
     """İrsaliye onaylanınca: kalemleri için GERÇEK giriş stok hareketi (mal depoya girmiş
     sayılır — fatura beklenmez, bkz. CLAUDE.md'nin bu zincire özel bilinçli istisnası).
-    Miktar üretim birimine çevrilir (fatura._hareketleri_yaz ile aynı desen). ALIŞ yönünde
-    ayrıca bir FIFO maliyet katmanı açılır (bkz. o dosyadaki aynı formül: net_birim_fiyat
-    × kur × cevirici)."""
+    Miktar üretim birimine çevrilir (fatura._hareketleri_yaz ile aynı desen) — kalemde
+    kullanıcının onayladığı/düzelttiği ``uretim_miktar`` VARSA (gerçek dünya tolerans farkı,
+    örn. profil ağırlığı teorikten sapabilir) miktar/cevirici YERİNE o kullanılır. ALIŞ
+    yönünde ayrıca bir FIFO maliyet katmanı açılır: birim maliyet = TOPLAM maliyet (fatura
+    biriminden, KG üzerinden — gerçek fatura tutarı bu şekilde her zaman korunur) ÷ gerçek
+    üretim miktarı — bu, override YOKSA eski formülle (net_birim_fiyat × kur × cevirici)
+    matematiksel olarak birebir aynı sonucu verir."""
     from core.sayi import yuvarla
     alis = (irsaliye.yon == TeklifSiparis.Yon.ALIS)
     kur = _kur_coz(irsaliye.para_birimi, irsaliye.tarih) if alis else None
     for k in irsaliye.kalemler.filter(silindi=False).select_related("stok"):
         cevirici = k.stok.cevirici or Decimal("1")
-        uretim_miktar = yuvarla(k.miktar / cevirici, 3)
+        uretim_miktar = (k.uretim_miktar if k.uretim_miktar is not None
+                        else yuvarla(k.miktar / cevirici, 3))
         if uretim_miktar <= 0:
             raise TeklifSiparisHatasi(
                 f"{k.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar sıfır oluyor; "
                 f"miktarı veya çeviriciyi düzeltin.")
-        birim_maliyet_try = yuvarla(k.net_birim_fiyat * kur * cevirici, 6) if alis else None
+        birim_maliyet_try = None
+        if alis:
+            toplam_tl = k.net_birim_fiyat * kur * k.miktar
+            birim_maliyet_try = yuvarla(toplam_tl / uretim_miktar, 6)
         try:
             hareket_ekle(
                 stok_id=k.stok_id, depo_id=irsaliye.depo_id, tarih=irsaliye.tarih,

@@ -63,7 +63,7 @@
             <tr class="satir-form">
               <td>{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">
-                <input type="text" class="uretim-miktar-yardimci" inputmode="decimal" placeholder="0" autocomplete="off">
+                {{ f.uretim_miktar }}
                 <span class="birim-etiket birim-uretim"></span>
               </td>
               <td class="sag">{{ f.miktar }}<span class="birim-etiket birim-fatura"></span></td>
@@ -91,7 +91,7 @@
     <template id="bos-satir">
       <td>{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></td>
       <td class="sag">
-        <input type="text" class="uretim-miktar-yardimci" inputmode="decimal" placeholder="0" autocomplete="off">
+        {{ formset.empty_form.uretim_miktar }}
         <span class="birim-etiket birim-uretim"></span>
       </td>
       <td class="sag">{{ formset.empty_form.miktar }}<span class="birim-etiket birim-fatura"></span></td>

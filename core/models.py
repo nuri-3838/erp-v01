@@ -1491,6 +1491,14 @@ class TeklifSiparisKalem(TemelModel):
         on_delete=models.PROTECT)
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
     birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
+    # Fatura biriminden (miktar / stok.cevirici) hesaplanan üretim miktarı yalnız TEORİK
+    # bir yaklaşıklık — gerçek dünyada (örn. profil ağırlığı) tolerans farkı olabilir.
+    # Kullanıcı gerçek üretim miktarını (örn. fiilen sayılan BOY adedi) burada elle
+    # onaylar/düzeltirse İrsaliye stok girişi (miktar/cevirici YERİNE) bunu kullanır —
+    # bkz. core.services.teklif_siparis._irsaliye_stok_hareketi_yaz. Boşsa eski davranış
+    # (miktar/cevirici) aynen çalışır; sadece Satınalma (ALIŞ) ekranlarında girilir.
+    uretim_miktar = models.DecimalField(
+        "üretim miktarı", max_digits=18, decimal_places=3, null=True, blank=True)
     # Yalnız SATIŞ+TEKLİF/PROFORMA ekranlarında kullanılır (cariden/aday müşteriden otomatik
     # gelir, satır bazlı elle değiştirilebilir). Default 0 -> diğer belge türlerinde tutar
     # hesabı DEĞİŞMEZ.
@@ -1516,6 +1524,9 @@ class TeklifSiparisKalem(TemelModel):
             models.CheckConstraint(
                 condition=models.Q(iskonto_yuzdesi__gte=0) & models.Q(iskonto_yuzdesi__lte=100),
                 name="ck_ts_kalem_iskonto_0_100"),
+            models.CheckConstraint(
+                condition=models.Q(uretim_miktar__isnull=True) | models.Q(uretim_miktar__gt=0),
+                name="ck_ts_kalem_uretim_miktar_gt0"),
         ]
 
     def __str__(self):

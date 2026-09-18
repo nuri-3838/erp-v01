@@ -1641,6 +1641,10 @@ class TeklifSiparisKalemForm(forms.Form):
         label="Stok", queryset=Stok.objects.none(), required=False, empty_label="— stok seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
+    # Fatura biriminden (miktar/cevirici) hesaplanan değer yalnız TEORİK bir yaklaşıklık —
+    # gerçek dünyada tolerans farkı olabilir (bkz. TeklifSiparisKalem.uretim_miktar model
+    # alanı). Girildiyse İrsaliye stok girişinde bunun YERİNE kullanılır.
+    uretim_miktar = TRDecimalField(label="Üretim Miktarı", basamak=3, required=False)
 
     def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1654,13 +1658,17 @@ class TeklifSiparisKalemForm(forms.Form):
         else:
             self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
+        self.fields["uretim_miktar"].widget.attrs.update(
+            {"class": "uretim-miktar-yardimci", "inputmode": "decimal",
+             "placeholder": "0", "autocomplete": "off"})
 
     def clean(self):
         cd = super().clean()
         stok = cd.get("stok")
         miktar = cd.get("miktar")
         fiyat = cd.get("birim_fiyat")
-        if not stok and miktar is None and fiyat is None:
+        uretim_miktar = cd.get("uretim_miktar")
+        if not stok and miktar is None and fiyat is None and uretim_miktar is None:
             return cd                              # boş satır — atlanır
         if not stok:
             raise forms.ValidationError("Stok seçin.")
@@ -1668,6 +1676,8 @@ class TeklifSiparisKalemForm(forms.Form):
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
         if fiyat is None or fiyat < 0:
             raise forms.ValidationError("Birim fiyat girin.")
+        if uretim_miktar is not None and uretim_miktar <= 0:
+            raise forms.ValidationError("Üretim miktarı girildiyse sıfırdan büyük olmalı.")
         cd["dolu"] = True
         return cd
 

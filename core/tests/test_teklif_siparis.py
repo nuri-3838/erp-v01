@@ -738,6 +738,47 @@ class TeklifSiparisViewTest(TestCase):
             rl = self.client.get(reverse("core:" + ekran))
             self.assertContains(rl, reverse("core:teklif_siparis_detay", args=[ts.pk]))
 
+    def test_irsaliye_ekle_formunda_uretim_miktar_kaydedilir_ve_kullanilir(self):
+        """Formdan gönderilen Üretim Miktarı (gerçek BOY adedi), İrsaliye onayında
+        miktar/cevirici yerine kullanılmalı (bkz. SatinalmaZinciriTest'teki servis testi —
+        burada tüm HTTP+form+servis zincirinin uçtan uca çalıştığı doğrulanıyor)."""
+        from core.models import StokHareket, TeklifSiparis
+        from core.services.teklif_siparis import teklif_siparis_onayla
+        cevirici_stok = Stok.objects.create(
+            kod="S9U", ad="ÇEVİRİCİLİ VIEW ÜRÜN", kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.birim, fatura_birimi=self.birim, cevirici=Decimal("3.8520"),
+            created_by=self.yon, updated_by=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:satinalma_irsaliye_ekle"), {
+            "cari": self.cari.pk, "tarih": "2026-06-28", "para_birimi": "TRY",
+            "depo": self.depo.pk, "irsaliye_no": "",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": cevirici_stok.pk, "form-0-miktar": "3974.200",
+            "form-0-birim_fiyat": "5.15", "form-0-uretim_miktar": "1078",
+        })
+        irsaliye = TeklifSiparis.objects.get(belge_tur="IRSALIYE", cari=self.cari,
+                                             kalemler__stok=cevirici_stok)
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[irsaliye.pk]))
+        kalem = irsaliye.kalemler.get(silindi=False)
+        self.assertEqual(kalem.uretim_miktar, Decimal("1078"))
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        hareket = StokHareket.objects.get(stok=cevirici_stok)
+        self.assertEqual(hareket.miktar, Decimal("1078.000"))
+
+    def test_irsaliye_ekle_formunda_negatif_uretim_miktar_reddedilir(self):
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:satinalma_irsaliye_ekle"), {
+            "cari": self.cari.pk, "tarih": "2026-06-28", "para_birimi": "TRY",
+            "depo": self.depo.pk, "irsaliye_no": "",
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+            "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "10",
+            "form-0-birim_fiyat": "5", "form-0-uretim_miktar": "-3",
+        })
+        self.assertEqual(r.status_code, 200)   # forma geri döner, kaydetmez
+        self.assertContains(r, "Üretim miktarı girildiyse sıfırdan büyük olmalı")
+
     def test_liste_arama_cari_ve_belge_no(self):
         import datetime
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
@@ -1230,6 +1271,56 @@ class SatinalmaZinciriTest(TestCase):
         self.assertEqual(katman.giris_miktar, Decimal("10.000"))
         self.assertEqual(katman.kalan_miktar, Decimal("10.000"))
         self.assertFalse(katman.tahmini)
+
+    def test_irsaliye_uretim_miktar_override_gercek_boy_adedini_korur(self):
+        """Gerçek olay: 1 BOY teorik 3,852 KG gelir; kullanıcı 1078 BOY girip Miktar'ı
+        gerçek tartılan 3974,200 KG'ye elle düzeltir. Eskiden StokHareket miktar/cevirici
+        (3974,200/3,852=1031,724) ile YANLIŞ hesaplanıyordu — artık kullanıcının onayladığı
+        uretim_miktar (1078) DOĞRUDAN kullanılıyor. FIFO maliyet katmanı da TOPLAM maliyeti
+        (birim_fiyat × kur × KG) korur, override'dan etkilenmez — sadece birime bölünen adet
+        değişir (aynı toplam harcama, daha çok parça = daha düşük parça başı maliyet)."""
+        from core.models import StokHareket
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        from core.sayi import yuvarla
+        stok_ted = Stok.objects.create(
+            kod="SZ-CEVIRICI", ad="7376-BASAMAK-6000MM BENZERI", kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.birim, fatura_birimi=self.birim, cevirici=Decimal("3.8520"),
+            created_by=self.yon, updated_by=self.yon)
+        irsaliye = teklif_siparis_olustur(
+            belge_tur="IRSALIYE", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            depo_id=self.depo.pk,
+            satirlar=[{"stok_id": stok_ted.pk, "miktar": "3974.200", "birim_fiyat": "5.15",
+                      "uretim_miktar": "1078"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+
+        hareket = StokHareket.objects.get(stok=stok_ted)
+        self.assertEqual(hareket.miktar, Decimal("1078.000"))   # 1031.724 DEĞİL
+        katman = hareket.maliyet_katmani
+        self.assertEqual(katman.giris_miktar, Decimal("1078.000"))
+        toplam_tl = Decimal("5.15") * Decimal("1") * Decimal("3974.200")   # TRY, kur=1
+        beklenen_birim = yuvarla(toplam_tl / Decimal("1078"), 6)
+        self.assertEqual(katman.birim_maliyet_try, beklenen_birim)
+        # Toplam maliyet korunmalı (override'sız hesaplansaydı da AYNI toplam çıkardı).
+        self.assertEqual(yuvarla(katman.birim_maliyet_try * katman.giris_miktar, 2),
+                         yuvarla(toplam_tl, 2))
+
+    def test_irsaliye_uretim_miktar_bossa_eski_davranis_calisir(self):
+        """Regresyon: uretim_miktar hiç girilmezse eski miktar/cevirici hesabı aynen çalışır."""
+        from core.models import StokHareket
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        stok_ted = Stok.objects.create(
+            kod="SZ-CEVIRICI2", ad="CEVIRICILI URUN 2", kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.birim, fatura_birimi=self.birim, cevirici=Decimal("2"),
+            created_by=self.yon, updated_by=self.yon)
+        irsaliye = teklif_siparis_olustur(
+            belge_tur="IRSALIYE", yon="ALIS", cari_id=self.cari.pk, tarih=self.tarih,
+            depo_id=self.depo.pk,
+            satirlar=[{"stok_id": stok_ted.pk, "miktar": "20", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        hareket = StokHareket.objects.get(stok=stok_ted)
+        self.assertEqual(hareket.miktar, Decimal("10.000"))   # 20/2
 
     def test_satis_yonunde_onay_zincir_tetiklemez(self):
         from core.models import Fatura, StokHareket, TeklifSiparis
