@@ -1,0 +1,71 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% if duzenlenen %}{% url 'core:personel_detay' duzenlenen.pk %}{% else %}{% url 'core:personeller' %}{% endif %}">← {% if duzenlenen %}{{ duzenlenen.ad_soyad }}{% else %}Personel Kartları{% endif %}</a>
+    <h1 class="ust-baslik"><span class="emoji">👥</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🪪</span>Kimlik</h2>
+      <p class="yardim" style="margin-top:0">Ad, soyad, adres, departman ve görev otomatik BÜYÜK harfe çevrilir.</p>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>{{ form.ad }}{% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.soyad.id_for_label }}">{{ form.soyad.label }} <span class="zorunlu">*</span></label>{{ form.soyad }}{% for e in form.soyad.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.tc_kimlik_no.id_for_label }}">{{ form.tc_kimlik_no.label }}</label>{{ form.tc_kimlik_no }}{% for e in form.tc_kimlik_no.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.dogum_tarihi.id_for_label }}">{{ form.dogum_tarihi.label }}</label>{{ form.dogum_tarihi }}{% for e in form.dogum_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.kan_grubu.id_for_label }}">{{ form.kan_grubu.label }}</label>{{ form.kan_grubu }}{% for e in form.kan_grubu.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📞</span>İletişim</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.telefon.id_for_label }}">{{ form.telefon.label }}</label>{{ form.telefon }}{% for e in form.telefon.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.eposta.id_for_label }}">{{ form.eposta.label }}</label>{{ form.eposta }}{% for e in form.eposta.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}{% for e in form.adres.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🚨</span>Acil Durum</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.acil_durum_kisi.id_for_label }}">{{ form.acil_durum_kisi.label }}</label>{{ form.acil_durum_kisi }}{% for e in form.acil_durum_kisi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.acil_durum_telefon.id_for_label }}">{{ form.acil_durum_telefon.label }}</label>{{ form.acil_durum_telefon }}{% for e in form.acil_durum_telefon.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🏭</span>İş Bilgileri</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.departman.id_for_label }}">{{ form.departman.label }}</label>{{ form.departman }}{% for e in form.departman.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.gorev.id_for_label }}">{{ form.gorev.label }}</label>{{ form.gorev }}{% for e in form.gorev.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.ise_giris_tarihi.id_for_label }}">{{ form.ise_giris_tarihi.label }} <span class="zorunlu">*</span></label>{{ form.ise_giris_tarihi }}{% for e in form.ise_giris_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.isten_cikis_tarihi.id_for_label }}">{{ form.isten_cikis_tarihi.label }}</label>{{ form.isten_cikis_tarihi }}{% for e in form.isten_cikis_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">İşten ayrılan personel için doldurun; boş bırakırsanız çalışıyor sayılır.</p></div>
+        <div class="alan"><label for="{{ form.cikis_nedeni.id_for_label }}">{{ form.cikis_nedeni.label }}</label>{{ form.cikis_nedeni }}{% for e in form.cikis_nedeni.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}{% for e in form.notlar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    <datalist id="dl-departman">{% for d in departmanlar %}<option value="{{ d }}">{% endfor %}</datalist>
+    <datalist id="dl-gorev">{% for g in gorevler %}<option value="{{ g }}">{% endfor %}</datalist>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% if duzenlenen %}{% url 'core:personel_detay' duzenlenen.pk %}{% else %}{% url 'core:personeller' %}{% endif %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

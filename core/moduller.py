@@ -70,7 +70,8 @@ MODULLER = (
         Ekran("kredi", "Kredi", "core:krediler"),
         Ekran("cek_senet", "Çek-Senet", "core:cek_senetler"),
     )),
-    Modul("DIGER", "Diğer", (
+    Modul("IK", "İnsan Kaynakları", (
+        Ekran("personel", "Personel Kartları", "core:personeller"),
         Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
     )),
     Modul("FASON", "Fason", (

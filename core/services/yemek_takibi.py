@@ -1,4 +1,4 @@
-"""DİĞER > Yemek Takibi servis katmanı — günlük kişi sayımı CRUD + aylık özet.
+"""İNSAN KAYNAKLARI > Yemek Takibi servis katmanı — günlük kişi sayımı CRUD + aylık özet.
 
 - Aynı cari+tarih için tek aktif kayıt (DB kısıtı + servis kontrolü); ikinci kez eklenmez,
   düzenlenir.

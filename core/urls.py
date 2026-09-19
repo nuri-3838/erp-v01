@@ -248,7 +248,13 @@ urlpatterns = [
     path("cariler/sehir/ekle/", views.sehir_ekle, name="sehir_ekle"),
     path("cariler/sehir/<int:pk>/duzenle/", views.sehir_duzenle, name="sehir_duzenle"),
     path("cariler/sehir/<int:pk>/sil/", views.sehir_sil, name="sehir_sil"),
-    # DİĞER modülü
+    # İNSAN KAYNAKLARI modülü
+    path("ik/personel/", views.personeller, name="personeller"),
+    path("ik/personel/ekle/", views.personel_ekle, name="personel_ekle"),
+    path("ik/personel/<int:pk>/", views.personel_detay, name="personel_detay"),
+    path("ik/personel/<int:pk>/duzenle/", views.personel_duzenle, name="personel_duzenle"),
+    path("ik/personel/<int:pk>/sil/", views.personel_sil, name="personel_sil"),
+    # Yemek Takibi artık İK menüsünde; URL öneki tarihsel olarak "diger/" kaldı (yer imleri/PDF)
     path("diger/yemek-takibi/", views.yemek_takibi, name="yemek_takibi"),
     path("diger/yemek-takibi/pdf/", views.yemek_takibi_pdf, name="yemek_takibi_pdf"),
     path("diger/yemek-takibi/ekle/", views.yemek_sayimi_ekle, name="yemek_sayimi_ekle"),

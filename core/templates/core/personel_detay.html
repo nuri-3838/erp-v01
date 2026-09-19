@@ -1,0 +1,102 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ p.ad_soyad }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Personel Kartı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+
+<div class="detay-kapsa">
+  <div class="detay-ustbar">
+    <a class="ust-link" href="{% url 'core:personeller' %}">← Personel Kartları</a>
+    <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:personel_duzenle' p.pk %}">✏️ Düzenle</a>
+      <form method="post" action="{% url 'core:personel_sil' p.pk %}" style="margin:0"
+            onsubmit="return confirm('{{ p.ad_soyad|escapejs }} personel kartı silinsin mi?');">
+        {% csrf_token %}<button type="submit" class="sil">Sil</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="detay-baslik-kart">
+    <span class="detay-ikon">{{ p.ad|first }}{{ p.soyad|first }}</span>
+    <div>
+      <div class="detay-rozetler">
+        {% if calisiyor %}<span class="d-rozet aktif">● Çalışıyor</span>
+        {% else %}<span class="d-rozet pasif">Ayrıldı · {{ p.isten_cikis_tarihi|date:"d.m.Y" }}</span>{% endif %}
+        {% if p.departman %}<span class="d-rozet tip">{{ p.departman }}</span>{% endif %}
+        {% if p.kan_grubu %}<span class="d-rozet tip">🩸 {{ p.kan_grubu }}</span>{% endif %}
+      </div>
+      <div class="detay-ad">{{ p.ad_soyad }}</div>
+      <div class="detay-alt">{{ p.gorev|default:"Görev girilmemiş" }}</div>
+    </div>
+  </div>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🪪</span>Kimlik</h2>
+    <div class="kv">
+      <div class="satir"><span class="et">TC Kimlik No</span>
+        <span class="dg mono">{{ p.tc_kimlik_no|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Doğum Tarihi</span>
+        <span class="dg mono">{% if p.dogum_tarihi %}{{ p.dogum_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</span></div>
+      <div class="satir"><span class="et">Kan Grubu</span>
+        <span class="dg">{{ p.kan_grubu|default:"—" }}</span></div>
+    </div>
+  </section>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📞</span>İletişim</h2>
+    <div class="kv">
+      <div class="satir"><span class="et">Telefon</span>
+        <span class="dg mono">{{ p.telefon|default:"—" }}</span></div>
+      <div class="satir"><span class="et">E-posta</span>
+        <span class="dg">{{ p.eposta|default:"—" }}</span></div>
+      <div class="satir tam"><span class="et">Adres</span>
+        <span class="dg uzun">{{ p.adres|default:"—" }}</span></div>
+    </div>
+  </section>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🚨</span>Acil Durum</h2>
+    <div class="kv">
+      <div class="satir"><span class="et">Aranacak Kişi</span>
+        <span class="dg">{{ p.acil_durum_kisi|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Telefon</span>
+        <span class="dg mono">{{ p.acil_durum_telefon|default:"—" }}</span></div>
+    </div>
+  </section>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🏭</span>İş Bilgileri</h2>
+    <div class="kv">
+      <div class="satir"><span class="et">Departman</span>
+        <span class="dg">{{ p.departman|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Görev</span>
+        <span class="dg">{{ p.gorev|default:"—" }}</span></div>
+      <div class="satir"><span class="et">İşe Giriş</span>
+        <span class="dg mono">{{ p.ise_giris_tarihi|date:"d.m.Y" }}</span></div>
+      {% if p.isten_cikis_tarihi %}
+      <div class="satir"><span class="et">İşten Çıkış</span>
+        <span class="dg mono">{{ p.isten_cikis_tarihi|date:"d.m.Y" }}</span></div>
+      <div class="satir"><span class="et">Çıkış Nedeni</span>
+        <span class="dg">{{ p.cikis_nedeni|default:"—" }}</span></div>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if p.notlar %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
+    <div class="kv"><div class="satir tam"><span class="dg uzun">{{ p.notlar }}</span></div></div>
+  </section>
+  {% endif %}
+
+  <div class="kayit-bilgisi"><strong>Kayıt Bilgisi</strong> ·
+    Oluşturan: {% if p.created_by %}{{ p.created_by.get_full_name|default:p.created_by.username }}{% else %}—{% endif %}
+    · <span class="mono">{{ p.created_at|date:"d.m.Y" }}</span>
+    &nbsp;|&nbsp; Son güncelleyen: {% if p.updated_by %}{{ p.updated_by.get_full_name|default:p.updated_by.username }}{% else %}—{% endif %}
+    · <span class="mono">{{ p.updated_at|date:"d.m.Y" }}</span>
+  </div>
+</div>
+{% endblock %}

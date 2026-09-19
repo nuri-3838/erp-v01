@@ -1,0 +1,86 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Personel Kartları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Personel Kartları{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">👥</span>Personel Kartları</h1>
+  <a class="dugme" href="{% url 'core:personel_ekle' %}">+ Yeni Personel</a>
+</div>
+
+<div class="ik-panel">
+  <form method="get" class="ik-arama-cubuk">
+    <div class="ik-alan-grup ik-arama-kutu">
+      <label for="ik-ara">Ara</label>
+      <span class="ik-arama-ikon">🔍</span>
+      <input type="text" id="ik-ara" name="ara" value="{{ ara }}"
+             placeholder="Ad, soyad, görev, departman veya telefon…" autocomplete="off">
+    </div>
+    <div class="ik-alan-grup">
+      <label for="ik-durum">Durum</label>
+      <select id="ik-durum" name="durum">
+        <option value="aktif" {% if durum == "aktif" %}selected{% endif %}>Çalışanlar</option>
+        <option value="ayrildi" {% if durum == "ayrildi" %}selected{% endif %}>Ayrılanlar</option>
+        <option value="hepsi" {% if durum == "hepsi" %}selected{% endif %}>Tümü</option>
+      </select>
+    </div>
+    <div class="ik-alan-grup">
+      <label for="ik-departman">Departman</label>
+      <select id="ik-departman" name="departman">
+        <option value="">Tüm Departmanlar</option>
+        {% for d in departmanlar %}
+          <option value="{{ d }}" {% if secili_departman == d %}selected{% endif %}>{{ d }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      {% if ara or secili_departman or durum != "aktif" %}
+        <a class="iptal-bag" href="{% url 'core:personeller' %}">Temizle</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<p class="sayfa-alt">{{ personeller|length }} personel kartı.</p>
+
+<div class="tablo-kapsayici genis">
+<table class="ik-tablo">
+  <thead>
+    <tr><th>Personel</th><th>Telefon</th><th>İşe Giriş</th><th>Durum</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for p in personeller %}
+      <tr onclick="window.location='{% url 'core:personel_detay' p.pk %}'">
+        <td>
+          <div class="ik-hucre">
+            <span class="ik-avatar">{{ p.ad|first }}{{ p.soyad|first }}</span>
+            <div>
+              <div class="ad"><a href="{% url 'core:personel_detay' p.pk %}">{{ p.ad_soyad }}</a></div>
+              <div class="alt">{{ p.gorev|default:"Görev girilmemiş" }}{% if p.departman %} · {{ p.departman }}{% endif %}</div>
+            </div>
+          </div>
+        </td>
+        <td class="mono">{{ p.telefon|default:"—" }}</td>
+        <td class="mono">{{ p.ise_giris_tarihi|date:"d.m.Y" }}</td>
+        <td>
+          {% if p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun %}
+            <span class="rozet rozet-pasif">Ayrıldı · {{ p.isten_cikis_tarihi|date:"d.m.Y" }}</span>
+          {% else %}
+            <span class="rozet rozet-aktif">Çalışıyor</span>
+          {% endif %}
+        </td>
+        <td class="ik-ok">›</td>
+      </tr>
+    {% empty %}
+      <tr style="cursor:default"><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara or secili_departman or durum != "aktif" %}🔍 Bu süzgeçle eşleşen personel yok.
+        {% else %}👥 Henüz personel kartı yok. “+ Yeni Personel” ile ekleyin.{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

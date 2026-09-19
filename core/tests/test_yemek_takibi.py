@@ -1,4 +1,4 @@
-"""DİĞER > Yemek Takibi testleri: servis (benzersizlik/doğrulama/aylık özet), view
+"""İNSAN KAYNAKLARI > Yemek Takibi testleri: servis (benzersizlik/doğrulama/aylık özet), view
 (cari filtresi + CRUD), yetki."""
 import datetime
 from decimal import Decimal
@@ -194,7 +194,8 @@ class YemekTakibiViewTest(TestCase):
     def test_menude_gorunur(self):
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:yemek_takibi"))
-        self.assertContains(r, "Diğer")
+        self.assertContains(r, '<span class="ad">İnsan Kaynakları</span>')
+        self.assertNotContains(r, '<span class="ad">Diğer</span>')     # eski modül kalktı
         self.assertContains(r, "Yemek Takibi")
 
     def test_pdf_gercek_pdf_uretir(self):

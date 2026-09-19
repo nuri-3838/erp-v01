@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 
 from core.forms import (
     AdayAktiviteForm, AdayCariyeDonusturForm, AdayMusteriForm, AdayMusteriKategoriForm,
@@ -32,7 +33,7 @@ from core.forms import (
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
-    OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm,
+    OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori,
@@ -41,6 +42,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
+    Personel,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -82,6 +84,8 @@ from core.services import stok_maliyet
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
 from core.services import aday_kategori as aday_kategori_servis
+from core.services import personel as personel_servis
+from core.tarih import tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
     yonetici_mi,
@@ -5397,7 +5401,7 @@ def fatura_onayla(request, pk):
     return redirect("core:fatura_detay", pk=fatura.pk)
 
 
-# === DİĞER > Yemek Takibi ====================================================
+# === İNSAN KAYNAKLARI > Yemek Takibi ====================================================
 def _yemek_takibi_bu_ay():
     bugun = timezone.localdate()
     return bugun.replace(day=1), bugun
@@ -5525,3 +5529,95 @@ def yemek_sayimi_sil(request, pk):
         yemek_takibi_servis.kayit_sil(kayit, kullanici=request.user)
         messages.success(request, "Kayıt silindi.")
     return redirect(_yemek_takibi_liste_url(cari_id))
+
+
+# === İNSAN KAYNAKLARI ===
+_PERSONEL_ALANLARI = (
+    "ad", "soyad", "tc_kimlik_no", "dogum_tarihi", "kan_grubu", "telefon", "eposta", "adres",
+    "acil_durum_kisi", "acil_durum_telefon", "departman", "gorev", "ise_giris_tarihi",
+    "isten_cikis_tarihi", "cikis_nedeni", "notlar")
+
+
+def _personel_form_kw(cd):
+    return {k: cd.get(k) for k in _PERSONEL_ALANLARI}
+
+
+def _personel_form_context(form, baslik, **ek):
+    return {"form": form, "baslik": baslik, "departmanlar": personel_servis.departmanlar(),
+            "gorevler": personel_servis.gorevler(), **ek}
+
+
+@ekran_gerekli("personel")
+def personeller(request):
+    ara = (request.GET.get("ara") or "").strip()
+    durum = request.GET.get("durum") or "aktif"
+    if durum not in personel_servis.DURUMLAR:
+        durum = "aktif"
+    departman = (request.GET.get("departman") or "").strip()
+    bugun = tr_bugun()
+    liste = list(personel_servis.personel_listele(
+        ara=ara, durum=durum, departman=departman, bugun=bugun))
+    return render(request, "core/personel_listesi.html", {
+        "personeller": liste, "ara": ara, "durum": durum, "secili_departman": departman,
+        "departmanlar": personel_servis.departmanlar(), "bugun": bugun})
+
+
+@never_cache
+@ekran_gerekli("personel")
+def personel_ekle(request):
+    if request.method == "POST":
+        form = PersonelForm(request.POST)
+        if form.is_valid():
+            try:
+                p = personel_servis.personel_olustur(
+                    **_personel_form_kw(form.cleaned_data), kullanici=request.user)
+                messages.success(request, f"Personel kartı eklendi: {p.ad_soyad}")
+                return redirect("core:personel_detay", pk=p.pk)
+            except personel_servis.PersonelHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = PersonelForm()
+    return render(request, "core/personel_form.html",
+                  _personel_form_context(form, "Yeni Personel"))
+
+
+@never_cache
+@ekran_gerekli("personel")
+def personel_duzenle(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = PersonelForm(request.POST)
+        if form.is_valid():
+            try:
+                personel_servis.personel_guncelle(
+                    p, **_personel_form_kw(form.cleaned_data), kullanici=request.user)
+                messages.success(request, "Personel kartı güncellendi.")
+                return redirect("core:personel_detay", pk=p.pk)
+            except personel_servis.PersonelHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = PersonelForm(initial={k: getattr(p, k) for k in _PERSONEL_ALANLARI})
+    return render(request, "core/personel_form.html",
+                  _personel_form_context(form, "Personel Düzenle", duzenlenen=p))
+
+
+@never_cache
+@ekran_gerekli("personel")
+def personel_detay(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    return render(request, "core/personel_detay.html", {
+        "p": p, "calisiyor": personel_servis.aktif_mi(p)})
+
+
+@ekran_gerekli("personel")
+def personel_sil(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            personel_servis.personel_sil(p, kullanici=request.user)
+        except personel_servis.PersonelHatasi as e:
+            messages.error(request, str(e))
+            return redirect("core:personel_detay", pk=p.pk)
+        messages.success(request, f"Personel kartı silindi: {p.ad_soyad}")
+        return redirect("core:personeller")
+    return redirect("core:personel_detay", pk=p.pk)

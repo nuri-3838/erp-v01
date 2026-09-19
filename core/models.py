@@ -2170,7 +2170,7 @@ class CekBordroSatir(TemelModel):
 
 
 class YemekSayimi(TemelModel):
-    """DİĞER > Yemek Takibi — günlük personel yemek/kişi sayımı (yemek firmasına bildirilen
+    """İNSAN KAYNAKLARI > Yemek Takibi — günlük personel yemek/kişi sayımı (yemek firmasına bildirilen
     sayı). Ay sonunda toplanıp firmanın kestiği faturayla karşılaştırmak içindir; fatura
     üretmez, yevmiyeye girmez — yalnız kontrol amaçlı kayıt. Aynı cari+tarih için tek kayıt
     (silinmemişler arası benzersiz)."""
@@ -2560,3 +2560,52 @@ class OperasyonKaydiGirdi(TemelModel):
 
     def __str__(self):
         return f"{self.kayit.no} — {self.girdi.kod} × {self.gerceklesen_miktar}"
+
+
+class Personel(TemelModel):
+    """İNSAN KAYNAKLARI > Personel Kartları — çalışan kaydı (yalnız KAYIT: bordro, maaş,
+    SGK/vergi/prim ve muhasebe fişi bu modülde YOKTUR; Yemek Takibi gibi kontrol amaçlı).
+    'Aktif/ayrıldı' saklanmaz, isten_cikis_tarihi'nden türetilir (çıkış tarihi boş ya da
+    bugün/gelecekteyse aktif). TC kimlik no doluysa silinmemişler arası benzersiz."""
+
+    KAN_GRUPLARI = [(k, k) for k in ("0+", "0-", "A+", "A-", "B+", "B-", "AB+", "AB-")]
+
+    ad = models.CharField("ad", max_length=100)
+    soyad = models.CharField("soyad", max_length=100)
+    tc_kimlik_no = models.CharField("TC kimlik no", max_length=11, blank=True)
+    dogum_tarihi = models.DateField("doğum tarihi", null=True, blank=True)
+    kan_grubu = models.CharField("kan grubu", max_length=3, blank=True, choices=KAN_GRUPLARI)
+    telefon = models.CharField("telefon", max_length=20, blank=True)
+    eposta = models.EmailField("e-posta", blank=True)
+    adres = models.TextField("adres", blank=True)
+    acil_durum_kisi = models.CharField("acil durumda aranacak kişi", max_length=120, blank=True)
+    acil_durum_telefon = models.CharField("acil durum telefonu", max_length=20, blank=True)
+    departman = models.CharField("departman", max_length=80, blank=True)
+    gorev = models.CharField("görev", max_length=80, blank=True)
+    ise_giris_tarihi = models.DateField("işe giriş tarihi")
+    isten_cikis_tarihi = models.DateField("işten çıkış tarihi", null=True, blank=True)
+    cikis_nedeni = models.CharField("çıkış nedeni", max_length=200, blank=True)
+    notlar = models.TextField("notlar", blank=True)
+
+    class Meta:
+        db_table = "core_personel"
+        verbose_name = "personel"
+        verbose_name_plural = "personel"
+        ordering = ["ad", "soyad"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tc_kimlik_no"],
+                condition=models.Q(silindi=False) & ~models.Q(tc_kimlik_no=""),
+                name="uq_personel_tc_dolu"),
+            models.CheckConstraint(
+                condition=(models.Q(isten_cikis_tarihi__isnull=True)
+                           | models.Q(isten_cikis_tarihi__gte=models.F("ise_giris_tarihi"))),
+                name="ck_personel_cikis_gte_giris"),
+        ]
+
+    def __str__(self):
+        return self.ad_soyad
+
+    @property
+    def ad_soyad(self):
+        return f"{self.ad} {self.soyad}".strip()

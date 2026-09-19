@@ -19,10 +19,11 @@ from core.models import (
     AdayAktivite, AdayMusteri, AdayMusteriKategori, Banka, BankaHesap, Birim, Cari,
     CariAktivite, CariKategori,
     CekSenet, Depo, FaturaTipi, FirmaBanka,
-    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon,
+    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel,
     Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
+from core.tarih import tr_bugun
 
 
 class TRDecimalField(forms.CharField):
@@ -2044,3 +2045,54 @@ class YemekSayimForm(forms.Form):
         from core.services.cari import aktif_cariler
         self.fields["cari"].queryset = aktif_cariler()
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+
+
+class PersonelForm(forms.Form):
+    """İNSAN KAYNAKLARI > Personel Kartı ekle/düzenle. Büyük harf, telefon kanonikleştirme ve
+    TC benzersizliği serviste (core.services.personel) zorlanır; burada yalnız kibar hata için
+    TC algoritması + alan uzunlukları var."""
+
+    ad = forms.CharField(label="Ad", max_length=100,
+                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    soyad = forms.CharField(label="Soyad", max_length=100,
+                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    tc_kimlik_no = forms.CharField(
+        label="TC Kimlik No", max_length=11, required=False, validators=[tc_dogrula],
+        widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "numeric"}))
+    dogum_tarihi = forms.DateField(
+        label="Doğum Tarihi", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    kan_grubu = forms.ChoiceField(
+        label="Kan Grubu", required=False,
+        choices=[("", "— seçin —")] + list(Personel.KAN_GRUPLARI))
+    telefon = forms.CharField(
+        label="Telefon", max_length=20, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
+    eposta = forms.EmailField(
+        label="E-posta", required=False,
+        widget=forms.EmailInput(attrs={"autocomplete": "off"}))
+    adres = forms.CharField(label="Adres", required=False,
+                            widget=forms.Textarea(attrs={"rows": 3}))
+    acil_durum_kisi = forms.CharField(
+        label="Acil Durumda Aranacak Kişi", max_length=120, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    acil_durum_telefon = forms.CharField(
+        label="Acil Durum Telefonu", max_length=20, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
+    departman = forms.CharField(
+        label="Departman", max_length=80, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "list": "dl-departman"}))
+    gorev = forms.CharField(
+        label="Görev", max_length=80, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "list": "dl-gorev"}))
+    ise_giris_tarihi = forms.DateField(
+        label="İşe Giriş Tarihi", initial=tr_bugun,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    isten_cikis_tarihi = forms.DateField(
+        label="İşten Çıkış Tarihi", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    cikis_nedeni = forms.CharField(
+        label="Çıkış Nedeni", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    notlar = forms.CharField(label="Notlar", required=False,
+                             widget=forms.Textarea(attrs={"rows": 3}))
