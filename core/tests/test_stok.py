@@ -2,6 +2,7 @@
 TR büyük harf, ALT-kategori zorunlu, birim/çevirici doğrulama, KDV/tevkifat FK,
 DB kısıtları, view + yetki. (Miktar/hareket bu fazda YOK.)"""
 import tempfile
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -750,6 +751,92 @@ class StokViewTest(TestCase):
         return stok_olustur(ad="alüminyum levha", kategori_id=self.alt.pk,
                             uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
                             cevirici=Decimal("3"), kdv_id=_kdv("20").pk)
+
+    def test_detay_muhasebe_hesap_haritasi_gorunmez(self):
+        """Kullanıcı isteği: stok detayında Muhasebe Hesabı Haritası yok."""
+        s = self._ornek_stok()
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertNotContains(r, "Muhasebe Hesabı")
+        self.assertNotContains(r, "Fatura Tipi")
+
+    def test_detay_kritik_seviye_uyarisi(self):
+        from core.models import Depo
+        from core.services.hareket import hareket_ekle
+        s = stok_olustur(ad="kritikli", kategori_id=self.alt.pk, uretim_birimi_id=self.adet.pk,
+                         fatura_birimi_id=self.kg.pk, cevirici=Decimal("1"),
+                         kdv_id=_kdv("20").pk, kritik_stok=Decimal("100"))
+        d = Depo.objects.create(kod="D1", ad="DEPO BİR")
+        hareket_ekle(stok_id=s.pk, depo_id=d.pk, tarih=date(2026, 6, 1), tur="GIRIS", miktar="40")
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(r, "Kritik seviyenin altında")
+        self.assertContains(r, "Kritik seviye:")
+        hareket_ekle(stok_id=s.pk, depo_id=d.pk, tarih=date(2026, 6, 2), tur="GIRIS", miktar="80")
+        r2 = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertNotContains(r2, "Kritik seviyenin altında")   # 120 >= 100
+        self.assertContains(r2, "Kritik seviye:")
+
+    def test_detay_kritik_seviye_tanimsizsa_uyari_ve_satir_yok(self):
+        s = self._ornek_stok()                          # kritik_stok = 0
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertNotContains(r, "Kritik seviye")
+
+    def test_detay_depo_dagilimi_yalniz_stoklu_depolar(self):
+        from core.models import Depo
+        from core.services.hareket import hareket_ekle
+        s = self._ornek_stok()
+        dolu = Depo.objects.create(kod="DOLU", ad="DOLU DEPO")
+        bos = Depo.objects.create(kod="BOSD", ad="BOŞALMIŞ DEPO")
+        hareket_ekle(stok_id=s.pk, depo_id=dolu.pk, tarih=date(2026, 6, 1), tur="GIRIS", miktar="25")
+        hareket_ekle(stok_id=s.pk, depo_id=bos.pk, tarih=date(2026, 6, 1), tur="GIRIS", miktar="10")
+        hareket_ekle(stok_id=s.pk, depo_id=bos.pk, tarih=date(2026, 6, 2), tur="CIKIS", miktar="10")
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(r, "Depolara Göre")
+        self.assertContains(r, "DOLU DEPO")
+        self.assertNotContains(r, "BOŞALMIŞ DEPO")     # net 0 — dağılımda yok
+        self.assertContains(r, "Tüm depoların toplamı")
+
+    def test_detay_hareket_defteri_isaret_ve_kaynak(self):
+        from core.models import Depo
+        from core.services.hareket import hareket_ekle
+        s = self._ornek_stok()
+        d = Depo.objects.create(kod="D1", ad="DEPO BİR")
+        hareket_ekle(stok_id=s.pk, depo_id=d.pk, tarih=date(2026, 6, 1), tur="GIRIS", miktar="50",
+                     aciklama="açılış sayımı")
+        hareket_ekle(stok_id=s.pk, depo_id=d.pk, tarih=date(2026, 6, 2), tur="CIKIS", miktar="12")
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(r, "+50,000")
+        self.assertContains(r, "−12,000")
+        self.assertContains(r, "Kaynak")
+        self.assertContains(r, "Manuel")
+        self.assertContains(r, "AÇILIŞ SAYIMI")            # açıklama TR büyük harfe çevrilir
+
+    def test_detay_teknik_alanlarda_bos_olanlar_gizlenir(self):
+        s = stok_olustur(ad="kismi merdiven", kategori_id=self.alt.pk,
+                         uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
+                         cevirici=Decimal("1"), kdv_id=_kdv("20").pk, uretim_urunu=False,
+                         satis_urunu=True, model_kodu="b7", yukseklik=Decimal("120"))
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(r, "Teklif / Teknik Özellikler")
+        self.assertContains(r, "B7")
+        self.assertContains(r, "Yükseklik")
+        self.assertNotContains(r, "Basamak Sayısı")            # girilmemiş — satır yok
+        self.assertNotContains(r, "Yükleme / Lojistik")        # tüm grup boş — başlık yok
+        self.assertNotContains(r, "Teknik özellik girilmemiş")
+
+    def test_detay_satis_urunu_teknik_alan_hic_yoksa_ipucu_gosterir(self):
+        s = stok_olustur(ad="bos merdiven", kategori_id=self.alt.pk,
+                         uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
+                         cevirici=Decimal("1"), kdv_id=_kdv("20").pk, uretim_urunu=False,
+                         satis_urunu=True)
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
+        self.assertContains(r, "Teknik özellik girilmemiş")
 
     def test_detay_render(self):
         s = self._ornek_stok()

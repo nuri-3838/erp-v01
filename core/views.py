@@ -868,21 +868,23 @@ def stok_kod_api(request):
 
 @ekran_gerekli("stoklar")
 def stok_detay(request, pk):
-    """Stok kartı detay sayfası (master-detail, read-only). Temel bilgiler + kategoriden
-    gelen muhasebe hesabı haritası + audit. Stok hareketleri/bakiye Faz B'de gelecek."""
+    """Stok kartı detay sayfası (read-only): mevcut miktar (toplam + depo dağılımı + kritik
+    seviye uyarısı) ve fiyatlar üstte, sonra stok hareketleri, temel bilgiler ve (satış
+    ürünüyse) teklif/teknik özellikler, en altta kayıt bilgisi."""
     stok = get_object_or_404(
         Stok.objects.select_related(
-            "kategori", "kategori__ust", "uretim_birimi", "fatura_birimi",
-            "created_by", "updated_by"),
+            "kategori", "kategori__ust", "uretim_birimi", "fatura_birimi", "kdv", "tevkifat",
+            "tedarikci", "created_by", "updated_by"),
         pk=pk, silindi=False)
-    harita = kategori_servis.kategori_hesaplari(stok.kategori)
-    baglar = sorted(harita.values(),
-                    key=lambda kh: (kh.fatura_tipi.sira, kh.fatura_tipi.ad))
+    eldeki = hareket_servis.eldeki_miktar(stok)
+    hareketler = hareket_servis.stok_hareketleri(stok)
     return render(request, "core/stok_detay.html", {
-        "stok": stok, "baglar": baglar,
-        "eldeki": hareket_servis.eldeki_miktar(stok),
-        "depo_bakiye": hareket_servis.depo_bazinda_eldeki(stok),
-        "hareketler": hareket_servis.stok_hareketleri(stok)[:100],
+        "stok": stok, "eldeki": eldeki,
+        "kritik_alti": stok.kritik_stok > 0 and eldeki < stok.kritik_stok,
+        # Yalnız stoğu OLAN depolar — net 0'a inmiş depo "stok nerede" sorusunda gürültüdür
+        # (geçmişi hareket defterinde zaten görünür).
+        "depo_bakiye": [(d, m) for d, m in hareket_servis.depo_bazinda_eldeki(stok) if m != 0],
+        "hareketler": hareketler[:100], "hareket_sayisi": hareketler.count(),
         "fiyatlar": stok.fiyatlar.filter(silindi=False).order_by("para_birimi"),
     })
 
