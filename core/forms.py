@@ -1088,6 +1088,31 @@ class IhtiyacHesaplaSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+class UrunAgaciForm(forms.Form):
+    """ÜRETİM > Ürün Ağacı (salt-okunur, GET): ağacı gösterilecek ürün + isteğe bağlı miktar
+    (boş = 1, yani "bir adet için ağaç"). Ürün adayları en az bir aktif Operasyon'u olan
+    kartlarla sınırlı — İhtiyaç Hesapla ile aynı kural; aksi hâlde gösterilecek zincir yoktur."""
+    urun = forms.ModelChoiceField(
+        label="Ürün", queryset=Stok.objects.none(), empty_label="— ürün seç —")
+    miktar = TRDecimalField(label="Miktar", basamak=3, required=False, initial=Decimal("1"))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.uretim import operasyonlu_stok_idler
+        self.fields["urun"].queryset = (
+            Stok.objects.filter(silindi=False, pk__in=operasyonlu_stok_idler()).order_by("kod"))
+        self.fields["urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["urun"].widget.attrs["class"] = "akilli-sec"
+
+    def clean_miktar(self):
+        miktar = self.cleaned_data.get("miktar")
+        if miktar is None:
+            return Decimal("1")
+        if miktar <= 0:
+            raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        return miktar
+
+
 class UretimEmriBaslikForm(forms.Form):
     """ÜRETİM > Üretim Emirleri başlık alanları — hem manuel (+ Yeni) hem sipariş-kaynaklı
     oluşturma ekranında ortak (depo/tarih emrin TÜMÜNE, tüm kalemlere uygulanır)."""

@@ -114,6 +114,17 @@ def operasyonlu_stok_idler():
     return aktif_operasyonlar().values_list("cikti_id", flat=True)
 
 
+def kok_operasyonlar():
+    """Zincirin EN ÜSTÜ: çıktısı başka hiçbir aktif operasyonun girdisi olmayan aktif
+    operasyonlar (bitmiş ürünler). ÜRETİM > Ürün Ağacı ekranının açılış listesi —
+    salt-okunur, hiçbir kayıt üretmez."""
+    girdi_idler = (OperasyonGirdi.objects
+                   .filter(silindi=False, operasyon__silindi=False)
+                   .values_list("girdi_id", flat=True))
+    return (aktif_operasyonlar().filter(cikti__silindi=False)
+            .exclude(cikti_id__in=girdi_idler))
+
+
 def _cikti_coz(cikti_id) -> Stok:
     cikti = Stok.objects.filter(pk=cikti_id, silindi=False, uretim_urunu=True).first()
     if not cikti:

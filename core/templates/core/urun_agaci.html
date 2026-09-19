@@ -1,0 +1,92 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Ürün Ağacı · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Ürün Ağacı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:operasyon_tanimlari' %}">Operasyon Tanımları →</a>
+    <h1 class="ust-baslik"><span class="emoji">🌳</span>Ürün Ağacı</h1>
+  </div>
+  <p class="yardim" style="margin-top:-.4rem">Bir ürünün, tanımlı operasyon zincirinden türetilen
+    ağacı: hangi iş istasyonunda, hangi girdilerden, ne kadar. Salt okunurdur, hiçbir kayıt
+    açmaz — değiştirmek için Operasyon Tanımları'nı kullan. Birden çok ürünün toplanmış ihtiyacı
+    için İhtiyaç Hesapla'ya bak.</p>
+
+  <form method="get" autocomplete="off" style="display:contents">
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Ürün Seç</h2>
+      <div class="ua-secim">
+        <div class="ua-alan ua-alan-genis">
+          <label for="{{ form.urun.id_for_label }}">Ürün</label>
+          {{ form.urun }}
+          {% for e in form.urun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="ua-alan">
+          <label for="{{ form.miktar.id_for_label }}">Miktar</label>
+          {{ form.miktar }}
+          {% for e in form.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <button type="submit" class="birincil">Ağacı Göster</button>
+      </div>
+    </section>
+  </form>
+
+  {% if agac %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🌳</span>Ağaç</h2>
+      <div class="ua-agac">
+        {% include "core/_urun_agaci_dugum.html" with dugum=agac %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if kokler is not None %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">📦</span>Bitmiş Ürünler</h2>
+      <p class="yardim" style="margin-top:-.3rem">Çıktısı başka bir operasyonun girdisi olmayan
+        ürünler — zincirin en üstü.</p>
+      <div class="tablo-kapsayici">
+        <table>
+          <thead><tr><th>Ürün (ağacı için tıkla)</th><th>Son İstasyon</th><th class="sag">Girdi</th></tr></thead>
+          <tbody>
+            {% for op in kokler %}
+              <tr>
+                <td><a href="?urun={{ op.cikti_id }}"><span class="mono">{{ op.cikti.kod }}</span> {{ op.cikti.ad }}</a></td>
+                <td><span class="mono">{{ op.istasyon.kod }}</span> {{ op.istasyon.ad }}</td>
+                <td class="sag mono">{{ op.girdi_sayisi }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="3" class="yardim">Henüz tanımlı operasyon yok.
+                <a href="{% url 'core:operasyon_tanimlari' %}">Operasyon Tanımları</a>'ndan ekleyin.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+</div>
+
+<style>
+  .ua-secim { display:flex; gap:.8rem; align-items:flex-end; flex-wrap:wrap; }
+  .ua-alan { display:flex; flex-direction:column; gap:.3rem; min-width:8rem; }
+  .ua-alan-genis { flex:1 1 18rem; }
+  .ua-alan label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
+    text-transform:uppercase; color:var(--metin-soluk); }
+  .ua-alan input, .ua-alan select { width:100%; box-sizing:border-box; }
+  .ua-dugum { margin-left:.9rem; padding-left:.7rem; border-left:1px solid var(--cizgi); }
+  .ua-agac > .ua-dugum { margin-left:0; padding-left:0; border-left:none; }
+  .ua-agac > .ua-dugum > summary, .ua-agac > .ua-dugum > .ua-baslik { font-weight:650; }
+  .ua-dugum > summary, .ua-yaprak { display:flex; gap:.35rem; align-items:baseline;
+    padding-top:.15rem; padding-bottom:.15rem; }
+  .ua-dugum > summary { cursor:pointer; list-style:none; }
+  .ua-dugum > summary::-webkit-details-marker { display:none; }
+  .ua-dugum > summary::before, .ua-yaprak::before { content:""; flex:0 0 .9rem; color:var(--metin-soluk); }
+  details.ua-dugum[open] > summary::before { content:"▾"; }
+  details.ua-dugum:not([open]) > summary::before { content:"▸"; }
+  .ua-baslik { display:flex; gap:.4rem; align-items:baseline; flex-wrap:wrap; flex:1 1 0; min-width:0; }
+</style>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

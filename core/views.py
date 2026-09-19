@@ -34,6 +34,7 @@ from core.forms import (
     MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
+    UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
     PersonelBelgeForm, PersonelFotoForm,
@@ -5015,6 +5016,26 @@ def ihtiyac_hesapla(request):
     else:
         formset = IhtiyacHesaplaSatirFormSet(prefix="satir")
     return render(request, "core/ihtiyac_hesapla.html", {"formset": formset, "sonuc": sonuc})
+
+
+# --- Ürün Ağacı (salt-okunur GET görünümü; ağaç ihtiyac_hesapla'dan gelir, kayıt açmaz) ---
+@ekran_gerekli("urun_agaci")
+def urun_agaci(request):
+    agac = None
+    if request.GET.get("urun"):
+        form = UrunAgaciForm(request.GET)
+        if form.is_valid():
+            try:
+                sonuc = uretim_servis.ihtiyac_hesapla(
+                    [(form.cleaned_data["urun"], form.cleaned_data["miktar"])])
+                agac = sonuc["agac"][0]
+            except uretim_servis.UretimHatasi as e:
+                messages.error(request, str(e))
+    else:
+        form = UrunAgaciForm()
+    return render(request, "core/urun_agaci.html", {
+        "form": form, "agac": agac,
+        "kokler": None if agac else uretim_servis.kok_operasyonlar()})
 
 
 # --- Üretim Emirleri (üst-düzey tetikleyici) ---

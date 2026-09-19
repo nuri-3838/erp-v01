@@ -1,0 +1,24 @@
+{% load core_extras %}
+{% if dugum.cocuklar %}
+<details class="ua-dugum" open>
+  <summary><span class="ua-baslik">
+    <span class="mono">{{ dugum.stok.kod }}</span>
+    <span>{{ dugum.stok.ad }}</span>
+    <span class="mono">× {{ dugum.miktar|tr_kur:3 }}</span>
+    <span class="rozet rozet-notr">{{ dugum.istasyon.kod }}</span>
+  </span></summary>
+  {% for cocuk in dugum.cocuklar %}
+    {% include "core/_urun_agaci_dugum.html" with dugum=cocuk %}
+  {% endfor %}
+</details>
+{% else %}
+<div class="ua-dugum ua-yaprak">
+  <span class="ua-baslik">
+    <span class="mono">{{ dugum.stok.kod }}</span>
+    <span>{{ dugum.stok.ad }}</span>
+    <span class="mono">× {{ dugum.miktar|tr_kur:3 }}</span>
+    {% if dugum.istasyon %}<span class="rozet rozet-notr">{{ dugum.istasyon.kod }}</span>
+    {% else %}<span class="pasif">yaprak (hazır stok)</span>{% endif %}
+  </span>
+</div>
+{% endif %}
