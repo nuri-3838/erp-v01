@@ -2698,3 +2698,36 @@ class PersonelBelge(TemelModel):
 
     def __str__(self):
         return f"{self.personel.ad_soyad} — {self.get_tur_display()}"
+
+
+class PersonelDevam(TemelModel):
+    """İNSAN KAYNAKLARI > Devam / Yoklama — personelin o günkü durumu (yalnız KAYIT: saat, mesai,
+    ücret alanı YOK). İzinli/Raporlu SAKLANMAZ: gün, PersonelIzin kaydıyla örtüşüyorsa durum izinden
+    TÜRETİLİR (bkz. core.services.personel_devam.turet_durum); yalnız Geldi / Gelmedi / Yarım Gün
+    girilir. Girilmemiş gün = satır yok. Bir kişi için bir günde tek aktif kayıt."""
+
+    class Durum(models.TextChoices):
+        GELDI = "GELDI", "Geldi"
+        GELMEDI = "GELMEDI", "Gelmedi"
+        YARIM_GUN = "YARIM_GUN", "Yarım Gün"
+
+    personel = models.ForeignKey(
+        Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="devam_kayitlari")
+    tarih = models.DateField("tarih")
+    durum = models.CharField("durum", max_length=10, choices=Durum.choices)
+    notlar = models.CharField("not", max_length=200, blank=True)
+
+    class Meta:
+        db_table = "core_personel_devam"
+        verbose_name = "personel devam kaydı"
+        verbose_name_plural = "personel devam kayıtları"
+        ordering = ["-tarih", "-id"]
+        indexes = [models.Index(fields=["tarih"], name="ix_personel_devam_tarih")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["personel", "tarih"], condition=models.Q(silindi=False),
+                name="uq_personel_devam_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.personel.ad_soyad} — {self.tarih} {self.get_durum_display()}"

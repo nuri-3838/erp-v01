@@ -1,0 +1,95 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Aylık Devam Özeti · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Aylık Devam Özeti{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<style>
+  .yk-tarihbar { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin:.2rem 0 .9rem; }
+  .yk-tarihbar form { margin:0; }
+  .yk-tarihbar input[type=month] { min-height:46px; padding:.4rem .8rem; border-radius:14px;
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.95rem; }
+  .yk-nav { display:inline-flex; align-items:center; justify-content:center; min-width:46px; min-height:46px;
+    padding:0 .9rem; border-radius:14px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.85);
+    color:var(--metin); text-decoration:none; font-weight:700; }
+  .yk-nav:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+  .yk-gun-adi { font-size:1.05rem; font-weight:700; color:var(--lacivert); margin:0 0 .6rem; }
+  .yk-say-geldi { color:#0b6b3f; font-weight:700; }
+  .yk-say-yarim { color:#b45f00; font-weight:700; }
+  .yk-say-gelmedi { color:#b1122c; font-weight:700; }
+  .yk-sifir { color:var(--metin-soluk); opacity:.55; }
+  tfoot td { font-weight:800; border-top:2px solid var(--cizgi-koyu); background:rgba(33,56,95,.05); }
+  @media (max-width:640px) {
+    .yk-aylik { overflow:visible; }
+    .yk-aylik th:first-child, .yk-aylik td:first-child { position:sticky; left:0; z-index:1; background:#fff; }
+    .yk-aylik tfoot td:first-child { background:#eef1f7; }
+    .yk-aylik .ik-avatar { display:none; }
+  }
+</style>
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">📅</span>Aylık Devam Özeti</h1>
+</div>
+
+<nav class="tablar">
+  <a href="{% url 'core:yoklama' %}">Günlük Yoklama</a>
+  <a href="{% url 'core:yoklama_aylik' %}" class="aktif">Aylık Özet</a>
+</nav>
+
+<div class="yk-tarihbar">
+  <a class="yk-nav" href="?ay={{ onceki_ay }}" aria-label="Önceki ay">←</a>
+  <form method="get">
+    <input type="month" name="ay" value="{{ ay_param }}" max="{{ bugun|date:'Y-m' }}"
+           onchange="this.form.submit()" aria-label="Ay">
+  </form>
+  {% if sonraki_ay %}<a class="yk-nav" href="?ay={{ sonraki_ay }}" aria-label="Sonraki ay">→</a>{% endif %}
+  {% if ay_param != bugun|date:"Y-m" %}<a class="yk-nav" href="{% url 'core:yoklama_aylik' %}">Bu ay</a>{% endif %}
+</div>
+
+<div class="yk-gun-adi">{{ ay|date:"F Y" }}</div>
+
+<p class="yardim" style="margin:0 0 .8rem">Günler, personelin işe giriş/çıkış aralığında ve bugüne kadar sayılır.
+  İzinli / Raporlu günler <strong>İzinler</strong> ekranındaki kayıtlardan gelir. Pazar günleri (yoklama girilmedikçe) ve
+  izinli Pazarlar sayılmaz; resmî tatil takvimi olmadığından tatil günleri "girilmemiş" görünebilir.</p>
+
+<div class="tablo-kapsayici genis">
+<table class="yk-aylik">
+  <thead>
+    <tr><th>Personel</th><th class="sag">Geldi</th><th class="sag">Yarım Gün</th><th class="sag">Gelmedi</th>
+        <th class="sag">İzinli</th><th class="sag">Raporlu</th><th class="sag">Girilmemiş</th></tr>
+  </thead>
+  <tbody>
+    {% for s in satirlar %}
+      <tr>
+        <td>
+          <div class="ik-hucre">
+            <span class="ik-avatar">{{ s.personel.ad|first }}{{ s.personel.soyad|first }}</span>
+            <div>
+              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' s.personel.pk %}">{{ s.personel.ad_soyad }}</a>{% else %}{{ s.personel.ad_soyad }}{% endif %}</div>
+              <div class="alt">{{ s.personel.gorev|default:"" }}</div>
+            </div>
+          </div>
+        </td>
+        <td class="sag mono {% if s.geldi %}yk-say-geldi{% else %}yk-sifir{% endif %}">{{ s.geldi }}</td>
+        <td class="sag mono {% if s.yarim %}yk-say-yarim{% else %}yk-sifir{% endif %}">{{ s.yarim }}</td>
+        <td class="sag mono {% if s.gelmedi %}yk-say-gelmedi{% else %}yk-sifir{% endif %}">{{ s.gelmedi }}</td>
+        <td class="sag mono {% if not s.izinli %}yk-sifir{% endif %}">{{ s.izinli }}</td>
+        <td class="sag mono {% if not s.raporlu %}yk-sifir{% endif %}">{{ s.raporlu }}</td>
+        <td class="sag mono {% if not s.girilmemis %}yk-sifir{% endif %}">{{ s.girilmemis }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">Bu ay için devam bilgisi gösterilecek personel yok.</td></tr>
+    {% endfor %}
+  </tbody>
+  {% if satirlar %}
+  <tfoot>
+    <tr><td>Toplam ({{ satirlar|length }} kişi)</td>
+      <td class="sag mono">{{ toplam.geldi }}</td><td class="sag mono">{{ toplam.yarim }}</td>
+      <td class="sag mono">{{ toplam.gelmedi }}</td><td class="sag mono">{{ toplam.izinli }}</td>
+      <td class="sag mono">{{ toplam.raporlu }}</td><td class="sag mono">{{ toplam.girilmemis }}</td></tr>
+  </tfoot>
+  {% endif %}
+</table>
+</div>
+{% endblock %}

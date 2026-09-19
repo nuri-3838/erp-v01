@@ -3,6 +3,7 @@ tarihini verir; TR saatiyle 00:00-03:00 arası bir önceki gün görünür) + y�
 hesapları (python-dateutil kurulu DEĞİL; saf Python)."""
 from __future__ import annotations
 
+import calendar
 from datetime import date
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,11 @@ _TR = ZoneInfo("Europe/Istanbul")
 def tr_bugun():
     """Türkiye saatine göre bugünün tarihi. Form `initial` olarak callable de kullanılır."""
     return timezone.now().astimezone(_TR).date()
+
+
+def ay_araligi(yil: int, ay: int) -> tuple:
+    """(ayın ilk günü, ayın son günü) — ikisi de dahil."""
+    return date(yil, ay, 1), date(yil, ay, calendar.monthrange(yil, ay)[1])
 
 
 def yil_donumu(d: date, n: int) -> date:

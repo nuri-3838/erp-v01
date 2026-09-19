@@ -5,7 +5,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from core.tarih import kidem_metni, tamamlanan_yil, tr_bugun, yil_donumu
+from core.tarih import ay_araligi, kidem_metni, tamamlanan_yil, tr_bugun, yil_donumu
 
 UTC = dt_timezone.utc
 
@@ -72,3 +72,13 @@ class KidemMetniTest(SimpleTestCase):
 
     def test_gelecek_giris(self):
         self.assertEqual(kidem_metni(date(2027, 1, 1), date(2026, 9, 19)), "Henüz başlamadı")
+
+
+class AyAraligiTest(SimpleTestCase):
+    def test_ay_basi_ve_sonu(self):
+        self.assertEqual(ay_araligi(2026, 9), (date(2026, 9, 1), date(2026, 9, 30)))
+        self.assertEqual(ay_araligi(2026, 12), (date(2026, 12, 1), date(2026, 12, 31)))
+
+    def test_subat_artik_yil(self):
+        self.assertEqual(ay_araligi(2026, 2)[1], date(2026, 2, 28))
+        self.assertEqual(ay_araligi(2028, 2)[1], date(2028, 2, 29))

@@ -90,7 +90,8 @@ from core.services import aday_kategori as aday_kategori_servis
 from core.services import personel as personel_servis
 from core.services import personel_izin as izin_servis
 from core.services import personel_belge as belge_servis
-from core.tarih import kidem_metni, tr_bugun
+from core.services import personel_devam as devam_servis
+from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
     yonetici_mi,
@@ -5634,6 +5635,12 @@ def personel_detay(request, pk):
     if ekran_gorebilir(request.user, "personel_belgeleri"):
         ctx["belge_gorebilir"] = True
         ctx["belgeler"] = belge_servis.belge_durumlari(p, bugun=bugun)
+    if ekran_gorebilir(request.user, "personel_devam"):
+        ctx["devam_gorebilir"] = True
+        ozet = devam_servis.aylik_ozet(bugun.year, bugun.month, bugun=bugun, personel_ids=[p.pk])
+        ctx["devam_ozet"] = ozet[0] if ozet else None
+        ctx["devam_ay"] = bugun.replace(day=1)
+        ctx["devam_ay_param"] = f"{bugun.year:04d}-{bugun.month:02d}"
     return render(request, "core/personel_detay.html", ctx)
 
 
@@ -5938,3 +5945,79 @@ def personel_foto_kaldir(request, pk):
         belge_servis.foto_kaldir(p, kullanici=request.user)
         messages.success(request, "Fotoğraf kaldırıldı.")
     return redirect("core:personel_detay", pk=p.pk)
+
+
+# --- Devam / Yoklama ---
+def _yoklama_tarihi(veri, varsayilan):
+    """`tarih=YYYY-MM-DD` (GET ya da POST); geçersiz / makul aralık dışı → varsayılan."""
+    try:
+        t = datetime.datetime.strptime((veri.get("tarih") or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return varsayilan
+    return t if 2000 <= t.year <= 2100 else varsayilan
+
+
+def _yoklama_ay(veri, varsayilan):
+    """`ay=YYYY-MM` → (yıl, ay); geçersiz → varsayılan tarihin yılı/ayı."""
+    try:
+        d = datetime.datetime.strptime((veri.get("ay") or "").strip(), "%Y-%m").date()
+    except ValueError:
+        return varsayilan.year, varsayilan.month
+    if not 2000 <= d.year <= 2100:
+        return varsayilan.year, varsayilan.month
+    return d.year, d.month
+
+
+@ekran_gerekli("personel_devam")
+def yoklama(request):
+    bugun = tr_bugun()
+    if request.method == "POST":
+        tarih = _yoklama_tarihi(request.POST, bugun)
+        girdi = {}
+        # Yalnız formda GÖSTERİLEN (kilitsiz) satırlar işlenir; alan adları personel pk'sına bağlıdır
+        # (sıra kayması yok). Gönderilmeyen personele dokunulmaz.
+        for s in devam_servis.gun_satirlari(tarih):
+            pid = s.personel.pk
+            if not s.kilitli and f"durum_{pid}" in request.POST:
+                girdi[pid] = (request.POST.get(f"durum_{pid}", ""), request.POST.get(f"not_{pid}", ""))
+        try:
+            kaydedilen, temizlenen, _ = devam_servis.gunluk_kaydet(
+                tarih, girdi, kullanici=request.user)
+        except devam_servis.PersonelDevamHatasi as e:
+            messages.error(request, str(e))
+        else:
+            if kaydedilen or temizlenen:
+                messages.success(
+                    request, f"{tarih:%d.%m.%Y} yoklaması kaydedildi "
+                             f"({kaydedilen} kayıt eklendi/güncellendi, {temizlenen} temizlendi).")
+            else:
+                messages.success(request, "Değişiklik yok; yoklama zaten güncel.")
+        return redirect(f"{reverse('core:yoklama')}?tarih={tarih.isoformat()}")
+
+    tarih = _yoklama_tarihi(request.GET, bugun)
+    satirlar = devam_servis.gun_satirlari(tarih)
+    return render(request, "core/yoklama.html", {
+        "tarih": tarih, "bugun": bugun, "satirlar": satirlar,
+        "ozet": devam_servis.gun_ozeti(satirlar),
+        "onceki": tarih - datetime.timedelta(days=1),
+        "sonraki": tarih + datetime.timedelta(days=1) if tarih < bugun else None,
+        "gelecek": tarih > bugun, "pazar": tarih.weekday() == 6,
+        "durumlar": [("GELDI", "Geldi", "Geldi"), ("YARIM_GUN", "Yarım", "Yarım Gün"),
+                     ("GELMEDI", "Gelmedi", "Gelmedi")],
+        "personel_link": ekran_gorebilir(request.user, "personel")})
+
+
+@ekran_gerekli("personel_devam")
+def yoklama_aylik(request):
+    bugun = tr_bugun()
+    yil, ay = _yoklama_ay(request.GET, bugun)
+    ilk, son = ay_araligi(yil, ay)
+    satirlar = devam_servis.aylik_ozet(yil, ay, bugun=bugun)
+    onceki = ilk - datetime.timedelta(days=1)
+    sonraki = son + datetime.timedelta(days=1)
+    return render(request, "core/yoklama_aylik.html", {
+        "ay": ilk, "ay_param": f"{yil:04d}-{ay:02d}",
+        "onceki_ay": f"{onceki.year:04d}-{onceki.month:02d}",
+        "sonraki_ay": f"{sonraki.year:04d}-{sonraki.month:02d}" if ilk < bugun.replace(day=1) else None,
+        "satirlar": satirlar, "toplam": devam_servis.aylik_toplam(satirlar), "bugun": bugun,
+        "personel_link": ekran_gorebilir(request.user, "personel")})

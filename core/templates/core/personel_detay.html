@@ -188,6 +188,27 @@
   </section>
   {% endif %}
 
+  {% if devam_gorebilir %}
+  <section class="icerik-kart">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">📋</span>Devam · {{ devam_ay|date:"F Y" }}</h2>
+      <a class="dugme-ikincil" href="{% url 'core:yoklama_aylik' %}?ay={{ devam_ay_param }}">Aylık Özet</a>
+    </div>
+    {% if devam_ozet %}
+    <div class="kv">
+      <div class="satir"><span class="et">Geldi</span><span class="dg mono">{{ devam_ozet.geldi }} gün</span></div>
+      <div class="satir"><span class="et">Yarım Gün</span><span class="dg mono">{{ devam_ozet.yarim }} gün</span></div>
+      <div class="satir"><span class="et">Gelmedi</span><span class="dg mono">{{ devam_ozet.gelmedi }} gün</span></div>
+      <div class="satir"><span class="et">İzinli</span><span class="dg mono">{{ devam_ozet.izinli }} gün</span></div>
+      <div class="satir"><span class="et">Raporlu</span><span class="dg mono">{{ devam_ozet.raporlu }} gün</span></div>
+      <div class="satir"><span class="et">Girilmemiş</span><span class="dg mono">{{ devam_ozet.girilmemis }} gün</span></div>
+    </div>
+    {% else %}
+    <p class="yardim" style="margin:.2rem 0 0">Bu ay için devam bilgisi yok (işe giriş henüz olmadı ya da ay başında ayrılmış).</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   {% if p.notlar %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
