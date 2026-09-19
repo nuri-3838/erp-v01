@@ -1,0 +1,120 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}İzinler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}İzinler{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<style>
+  .ik-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
+    margin-top:1rem; flex-wrap:wrap; }
+  .ik-sayfalama a, .ik-sayfalama span.simdiki { display:inline-flex; align-items:center;
+    justify-content:center; min-width:2.3rem; height:2.3rem; padding:0 .5rem; border-radius:10px;
+    text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .ik-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .ik-sayfalama a:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+  .ik-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
+  .ik-onay { display:flex; align-items:center; gap:.4rem; min-height:46px; font-size:.9rem; }
+  .ik-tarih-alan input { min-height:46px; border-radius:14px; }
+</style>
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">🌴</span>İzinler</h1>
+  <a class="dugme" href="{% url 'core:izin_ekle' %}">+ Yeni İzin</a>
+</div>
+
+<nav class="tablar">
+  <a href="{% url 'core:izinler' %}" class="aktif">İzin Kayıtları</a>
+  <a href="{% url 'core:izin_bakiyeleri' %}">Bakiyeler</a>
+</nav>
+
+<div class="ik-panel">
+  <form method="get" class="ik-arama-cubuk">
+    <div class="ik-alan-grup">
+      <label for="iz-personel">Personel</label>
+      <select id="iz-personel" name="personel">
+        <option value="">Tüm Personel</option>
+        {% for p in personeller %}
+          <option value="{{ p.pk }}" {% if secili_personel == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.ad_soyad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-alan-grup">
+      <label for="iz-tur">Tür</label>
+      <select id="iz-tur" name="tur">
+        <option value="">Tüm Türler</option>
+        {% for kod, ad in turler %}
+          <option value="{{ kod }}" {% if secili_tur == kod %}selected{% endif %}>{{ ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-alan-grup ik-tarih-alan">
+      <label for="iz-bas">Bu tarihten</label>
+      <input type="date" id="iz-bas" name="bas" value="{{ bas|date:'Y-m-d' }}">
+    </div>
+    <div class="ik-alan-grup ik-tarih-alan">
+      <label for="iz-bit">Bu tarihe kadar</label>
+      <input type="date" id="iz-bit" name="bit" value="{{ bit|date:'Y-m-d' }}">
+    </div>
+    <label class="ik-onay"><input type="checkbox" name="izinde" value="1" {% if izinde %}checked{% endif %}> Şu an izinde olanlar</label>
+    <div class="ik-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      {% if secili_personel or secili_tur or bas or bit or izinde %}
+        <a class="iptal-bag" href="{% url 'core:izinler' %}">Temizle</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<p class="sayfa-alt">{{ kayitlar.paginator.count }} izin kaydı.
+  Gün sayısı Pazar günleri hariç takvim günü olarak önerilir; resmî tatiller düşülmez, gerekirse elle düzeltilir.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr><th>Personel</th><th>Tür</th><th>Başlangıç</th><th>Bitiş</th><th class="sag">Gün</th><th>Açıklama</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for i in kayitlar %}
+      <tr>
+        <td>
+          <div class="ik-hucre">
+            <span class="ik-avatar">{{ i.personel.ad|first }}{{ i.personel.soyad|first }}</span>
+            <div>
+              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' i.personel_id %}">{{ i.personel.ad_soyad }}</a>{% else %}{{ i.personel.ad_soyad }}{% endif %}</div>
+              <div class="alt">{{ i.personel.gorev|default:"" }}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="rozet {% if i.tur == 'YILLIK' %}rozet-aktif{% elif i.tur == 'RAPOR' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ i.get_tur_display }}</span></td>
+        <td class="mono">{{ i.baslangic|date:"d.m.Y" }}</td>
+        <td class="mono">{{ i.bitis|date:"d.m.Y" }}</td>
+        <td class="sag mono">{{ i.gun|tr_kur:1 }}</td>
+        <td>{{ i.aciklama|default:"—" }}</td>
+        <td class="islem-bag">
+          <a class="dugme-ikincil" href="{% url 'core:izin_duzenle' i.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:izin_sil' i.pk %}" style="margin:0"
+                onsubmit="return confirm('{{ i.personel.ad_soyad|escapejs }} — {{ i.baslangic|date:"d.m.Y" }} izni silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if secili_personel or secili_tur or bas or bit or izinde %}🔍 Bu süzgeçle eşleşen izin yok.
+        {% else %}🌴 Henüz izin kaydı yok. “+ Yeni İzin” ile ekleyin.{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if kayitlar.paginator.num_pages > 1 %}
+<div class="ik-sayfalama">
+  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}&{{ sabit_qs }}">‹</a>{% endif %}
+  {% for n in kayitlar.paginator.page_range %}
+    {% if n == kayitlar.number %}<span class="simdiki">{{ n }}</span>
+    {% else %}<a href="?sayfa={{ n }}&{{ sabit_qs }}">{{ n }}</a>{% endif %}
+  {% endfor %}
+  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}&{{ sabit_qs }}">›</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

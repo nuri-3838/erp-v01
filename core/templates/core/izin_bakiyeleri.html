@@ -1,0 +1,66 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}İzin Bakiyeleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}İzin Bakiyeleri{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<style>
+  .ik-eksi { color:var(--hata); font-weight:800; }
+  .ik-onay { display:flex; align-items:center; gap:.4rem; font-size:.9rem; }
+</style>
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">🌴</span>İzin Bakiyeleri</h1>
+  <a class="dugme" href="{% url 'core:izin_ekle' %}">+ Yeni İzin</a>
+</div>
+
+<nav class="tablar">
+  <a href="{% url 'core:izinler' %}">İzin Kayıtları</a>
+  <a href="{% url 'core:izin_bakiyeleri' %}" class="aktif">Bakiyeler</a>
+</nav>
+
+<form method="get" style="margin:0 0 .8rem">
+  <label class="ik-onay"><input type="checkbox" name="ayrilan" value="1" {% if ayrilan_dahil %}checked{% endif %}
+    onchange="this.form.submit()"> Ayrılan personeli de göster</label>
+</form>
+
+<p class="yardim" style="margin:0 0 .8rem">Yıllık izin hakkı İş Kanunu m.53'e göre kıdemden hesaplanır
+  (1-5. yıl 14, 6-14. yıl 20, 15+ yıl 26 gün; 18 yaş ve altı ile 50 yaş ve üzeri için en az 20 gün).
+  Kalan = hak edilen − (sisteme geçmeden önce kullanılan + burada girilmiş yıllık izinler). Rapor,
+  mazeret ve ücretsiz izinler bakiyeden düşmez. Bakiye eksiye düşebilir; engellenmez.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr><th>Personel</th><th>İşe Giriş</th><th class="sag">Hak Edilen</th><th class="sag">Önceden Kullanılan</th>
+      <th class="sag">Sistemde Kullanılan</th><th class="sag">Kalan</th><th class="sag">Planlanan</th><th>Sonraki Hak</th></tr>
+  </thead>
+  <tbody>
+    {% for s in satirlar %}
+      <tr>
+        <td>
+          <div class="ik-hucre">
+            <span class="ik-avatar">{{ s.p.ad|first }}{{ s.p.soyad|first }}</span>
+            <div>
+              <div class="ad">{{ s.p.ad_soyad }}{% if s.ayrildi %} <span class="rozet rozet-pasif">Ayrıldı</span>{% endif %}</div>
+              <div class="alt">{{ s.p.gorev|default:"" }}</div>
+            </div>
+          </div>
+        </td>
+        <td class="mono">{{ s.p.ise_giris_tarihi|date:"d.m.Y" }}</td>
+        <td class="sag mono">{{ s.b.hak_edilen|tr_kur:1 }}</td>
+        <td class="sag mono">{{ s.b.onceki|tr_kur:1 }}</td>
+        <td class="sag mono">{{ s.b.kullanilan|tr_kur:1 }}</td>
+        <td class="sag mono {% if s.b.eksi_mi %}ik-eksi{% endif %}">{{ s.b.kalan|tr_kur:1 }}</td>
+        <td class="sag mono">{% if s.b.planlanan %}{{ s.b.planlanan|tr_kur:1 }}{% else %}—{% endif %}</td>
+        <td class="mono">{% if s.b.sonraki_hak_tarihi %}{{ s.b.sonraki_hak_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" class="yardim" style="text-align:center;padding:1.6rem 0">
+        🌴 Gösterilecek personel yok. Önce Personel Kartları'ndan personel ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

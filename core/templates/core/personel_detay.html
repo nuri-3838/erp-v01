@@ -76,6 +76,8 @@
         <span class="dg">{{ p.gorev|default:"—" }}</span></div>
       <div class="satir"><span class="et">İşe Giriş</span>
         <span class="dg mono">{{ p.ise_giris_tarihi|date:"d.m.Y" }}</span></div>
+      <div class="satir"><span class="et">Kıdem</span>
+        <span class="dg">{{ kidem }}</span></div>
       {% if p.isten_cikis_tarihi %}
       <div class="satir"><span class="et">İşten Çıkış</span>
         <span class="dg mono">{{ p.isten_cikis_tarihi|date:"d.m.Y" }}</span></div>
@@ -84,6 +86,59 @@
       {% endif %}
     </div>
   </section>
+
+  {% if izin_gorebilir %}
+  <section class="icerik-kart">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">🌴</span>Yıllık İzin</h2>
+      <a class="dugme" href="{% url 'core:izin_ekle' %}?personel={{ p.pk }}&amp;sonraki=personel">+ İzin Ekle</a>
+    </div>
+    <div class="kv">
+      <div class="satir"><span class="et">Kalan</span>
+        <span class="ik-buyuk-say mono {% if bakiye.eksi_mi %}ik-eksi{% endif %}">{{ bakiye.kalan|tr_kur:1 }} gün</span></div>
+      <div class="satir"><span class="et">Hak Edilen</span>
+        <span class="dg mono">{{ bakiye.hak_edilen|tr_kur:1 }} gün</span></div>
+      <div class="satir"><span class="et">Kullanılan</span>
+        <span class="dg mono">{{ bakiye.onceki|tr_kur:1 }} (önceden) + {{ bakiye.kullanilan|tr_kur:1 }} (sistemde) gün</span></div>
+      {% if bakiye.planlanan %}
+      <div class="satir"><span class="et">Planlanan (ileri tarihli)</span>
+        <span class="dg mono">{{ bakiye.planlanan|tr_kur:1 }} gün</span></div>
+      {% endif %}
+      {% if bakiye.sonraki_hak_tarihi %}
+      <div class="satir"><span class="et">Sonraki Hak Tarihi</span>
+        <span class="dg mono">{{ bakiye.sonraki_hak_tarihi|date:"d.m.Y" }}</span></div>
+      {% endif %}
+    </div>
+    {% if son_izinler %}
+    <div class="tablo-kapsayici" style="margin-top:1rem">
+    <table>
+      <thead><tr><th>Tür</th><th>Başlangıç</th><th>Bitiş</th><th class="sag">Gün</th><th>Açıklama</th><th></th></tr></thead>
+      <tbody>
+        {% for i in son_izinler %}
+          <tr>
+            <td><span class="rozet {% if i.tur == 'YILLIK' %}rozet-aktif{% elif i.tur == 'RAPOR' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ i.get_tur_display }}</span></td>
+            <td class="mono">{{ i.baslangic|date:"d.m.Y" }}</td>
+            <td class="mono">{{ i.bitis|date:"d.m.Y" }}</td>
+            <td class="sag mono">{{ i.gun|tr_kur:1 }}</td>
+            <td>{{ i.aciklama|default:"—" }}</td>
+            <td class="islem-bag">
+              <a class="dugme-ikincil" href="{% url 'core:izin_duzenle' i.pk %}?sonraki=personel">Düzenle</a>
+              <form method="post" action="{% url 'core:izin_sil' i.pk %}" style="margin:0"
+                    onsubmit="return confirm('{{ i.baslangic|date:"d.m.Y"|escapejs }} tarihli izin silinsin mi?');">
+                {% csrf_token %}<input type="hidden" name="sonraki" value="personel">
+                <button type="submit" class="sil" title="Sil">🗑️</button></form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="yardim" style="margin:.6rem 0 0">Son izinler gösteriliyor (en fazla 10); tümü için <a href="{% url 'core:izinler' %}?personel={{ p.pk }}">İzinler</a> ekranına bakın.</p>
+    {% else %}
+    <p class="yardim" style="margin:.8rem 0 0">Bu personel için henüz izin kaydı yok.</p>
+    {% endif %}
+  </section>
+  {% endif %}
 
   {% if p.notlar %}
   <section class="icerik-kart">

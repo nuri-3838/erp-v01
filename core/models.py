@@ -2586,6 +2586,11 @@ class Personel(TemelModel):
     isten_cikis_tarihi = models.DateField("işten çıkış tarihi", null=True, blank=True)
     cikis_nedeni = models.CharField("çıkış nedeni", max_length=200, blank=True)
     notlar = models.TextField("notlar", blank=True)
+    # Sisteme geçmeden ÖNCE kullanılmış yıllık izin (gün) — mevcut personelin bakiyesi doğru
+    # başlasın diye; sistemde ayrıca girilen izinler buraya EKLENMEZ (çifte sayım olur).
+    izin_onceki_kullanilan = models.DecimalField(
+        "sisteme geçmeden önce kullanılan yıllık izin (gün)", max_digits=5, decimal_places=1,
+        default=0)
 
     class Meta:
         db_table = "core_personel"
@@ -2601,6 +2606,9 @@ class Personel(TemelModel):
                 condition=(models.Q(isten_cikis_tarihi__isnull=True)
                            | models.Q(isten_cikis_tarihi__gte=models.F("ise_giris_tarihi"))),
                 name="ck_personel_cikis_gte_giris"),
+            models.CheckConstraint(
+                condition=models.Q(izin_onceki_kullanilan__gte=0),
+                name="ck_personel_izin_onceki_gte0"),
         ]
 
     def __str__(self):
@@ -2609,3 +2617,41 @@ class Personel(TemelModel):
     @property
     def ad_soyad(self):
         return f"{self.ad} {self.soyad}".strip()
+
+
+class PersonelIzin(TemelModel):
+    """İNSAN KAYNAKLARI > İzinler — personelin izin kaydı (onay akışı YOK, direkt kayıt).
+    Yalnız tur=YILLIK yıllık izin bakiyesini düşürür; rapor/mazeret/ücretsiz/diğer yalnız
+    kayıttır. `gun` Pazar günleri hariç takvim günü olarak ÖNERİLİR (resmî tatil bilinçli
+    düşülmez), kullanıcı yarım gün adımlarıyla elle düzeltebilir."""
+
+    class Tur(models.TextChoices):
+        YILLIK = "YILLIK", "Yıllık İzin"
+        RAPOR = "RAPOR", "Rapor"
+        MAZERET = "MAZERET", "Mazeret İzni"
+        UCRETSIZ = "UCRETSIZ", "Ücretsiz İzin"
+        DIGER = "DIGER", "Diğer"
+
+    personel = models.ForeignKey(
+        Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="izinler")
+    tur = models.CharField("tür", max_length=10, choices=Tur.choices, default=Tur.YILLIK)
+    baslangic = models.DateField("başlangıç")
+    bitis = models.DateField("bitiş")
+    gun = models.DecimalField("gün", max_digits=5, decimal_places=1)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True)
+
+    class Meta:
+        db_table = "core_personel_izin"
+        verbose_name = "personel izni"
+        verbose_name_plural = "personel izinleri"
+        ordering = ["-baslangic", "-id"]
+        indexes = [models.Index(fields=["personel", "baslangic"], name="ix_personel_izin_kisi_bas")]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(bitis__gte=models.F("baslangic")),
+                                   name="ck_personel_izin_bitis_gte_baslangic"),
+            models.CheckConstraint(condition=models.Q(gun__gt=0),
+                                   name="ck_personel_izin_gun_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.personel.ad_soyad} — {self.get_tur_display()} {self.baslangic}–{self.bitis}"

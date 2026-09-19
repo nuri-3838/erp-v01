@@ -33,7 +33,7 @@ from core.forms import (
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
-    OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm,
+    OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori,
@@ -42,7 +42,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
-    Personel,
+    Personel, PersonelIzin,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -85,7 +85,8 @@ from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
 from core.services import aday_kategori as aday_kategori_servis
 from core.services import personel as personel_servis
-from core.tarih import tr_bugun
+from core.services import personel_izin as izin_servis
+from core.tarih import kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
     yonetici_mi,
@@ -5539,7 +5540,11 @@ _PERSONEL_ALANLARI = (
 
 
 def _personel_form_kw(cd):
-    return {k: cd.get(k) for k in _PERSONEL_ALANLARI}
+    kw = {k: cd.get(k) for k in _PERSONEL_ALANLARI}
+    # Yalnız İzinler yetkisi olan formda bulunur; boş bırakılırsa mevcut değer korunur.
+    if cd.get("izin_onceki_kullanilan") is not None:
+        kw["izin_onceki_kullanilan"] = cd["izin_onceki_kullanilan"]
+    return kw
 
 
 def _personel_form_context(form, baslik, **ek):
@@ -5565,8 +5570,9 @@ def personeller(request):
 @never_cache
 @ekran_gerekli("personel")
 def personel_ekle(request):
+    izin_alani = ekran_gorebilir(request.user, "personel_izinleri")
     if request.method == "POST":
-        form = PersonelForm(request.POST)
+        form = PersonelForm(request.POST, izin_alani=izin_alani)
         if form.is_valid():
             try:
                 p = personel_servis.personel_olustur(
@@ -5576,17 +5582,18 @@ def personel_ekle(request):
             except personel_servis.PersonelHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = PersonelForm()
+        form = PersonelForm(izin_alani=izin_alani)
     return render(request, "core/personel_form.html",
-                  _personel_form_context(form, "Yeni Personel"))
+                  _personel_form_context(form, "Yeni Personel", izin_alani=izin_alani))
 
 
 @never_cache
 @ekran_gerekli("personel")
 def personel_duzenle(request, pk):
     p = get_object_or_404(Personel, pk=pk, silindi=False)
+    izin_alani = ekran_gorebilir(request.user, "personel_izinleri")
     if request.method == "POST":
-        form = PersonelForm(request.POST)
+        form = PersonelForm(request.POST, izin_alani=izin_alani)
         if form.is_valid():
             try:
                 personel_servis.personel_guncelle(
@@ -5596,17 +5603,31 @@ def personel_duzenle(request, pk):
             except personel_servis.PersonelHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = PersonelForm(initial={k: getattr(p, k) for k in _PERSONEL_ALANLARI})
+        baslangic = {k: getattr(p, k) for k in _PERSONEL_ALANLARI}
+        baslangic["izin_onceki_kullanilan"] = p.izin_onceki_kullanilan
+        form = PersonelForm(initial=baslangic, izin_alani=izin_alani)
+    ek = {"duzenlenen": p, "izin_alani": izin_alani}
+    if izin_alani:
+        ek["hak_edilen_bugun"] = izin_servis.bakiye(p).hak_edilen
     return render(request, "core/personel_form.html",
-                  _personel_form_context(form, "Personel Düzenle", duzenlenen=p))
+                  _personel_form_context(form, "Personel Düzenle", **ek))
 
 
 @never_cache
 @ekran_gerekli("personel")
 def personel_detay(request, pk):
     p = get_object_or_404(Personel, pk=pk, silindi=False)
-    return render(request, "core/personel_detay.html", {
-        "p": p, "calisiyor": personel_servis.aktif_mi(p)})
+    bugun = tr_bugun()
+    bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun
+    ctx = {"p": p, "calisiyor": personel_servis.aktif_mi(p, bugun),
+           "kidem": kidem_metni(p.ise_giris_tarihi, bitis)}
+    if ekran_gorebilir(request.user, "personel_izinleri"):
+        ctx["izin_gorebilir"] = True
+        ctx["bakiye"] = izin_servis.bakiye(p, bugun=bugun)
+        ctx["son_izinler"] = list(
+            PersonelIzin.objects.filter(personel=p, silindi=False)
+            .order_by("-baslangic", "-id")[:10])
+    return render(request, "core/personel_detay.html", ctx)
 
 
 @ekran_gerekli("personel")
@@ -5621,3 +5642,122 @@ def personel_sil(request, pk):
         messages.success(request, f"Personel kartı silindi: {p.ad_soyad}")
         return redirect("core:personeller")
     return redirect("core:personel_detay", pk=p.pk)
+
+
+# --- İzinler ---
+def _tarih_param(request, ad):
+    ham = (request.GET.get(ad) or "").strip()
+    try:
+        return datetime.date.fromisoformat(ham) if ham else None
+    except ValueError:
+        return None
+
+
+@ekran_gerekli("personel_izinleri")
+def izinler(request):
+    bugun = tr_bugun()
+    personel_id = request.GET.get("personel") or ""
+    tur = request.GET.get("tur") or ""
+    if tur not in PersonelIzin.Tur.values:
+        tur = ""
+    bas, bit = _tarih_param(request, "bas"), _tarih_param(request, "bit")
+    izinde = request.GET.get("izinde") == "1"
+    kayitlar = izin_servis.izin_listele(
+        personel_id=personel_id if personel_id.isdigit() else None, tur=tur,
+        baslangic=bas, bitis=bit, izinde_bugun=bugun if izinde else None)
+    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
+    sabit_qs = request.GET.copy()
+    sabit_qs.pop("sayfa", None)
+    return render(request, "core/izin_listesi.html", {
+        "kayitlar": sayfa, "personeller": personel_servis.aktif_personeller(),
+        "turler": PersonelIzin.Tur.choices, "secili_personel": personel_id, "secili_tur": tur,
+        "bas": bas, "bit": bit, "izinde": izinde, "bugun": bugun,
+        "personel_link": ekran_gorebilir(request.user, "personel"),
+        "sabit_qs": sabit_qs.urlencode()})
+
+
+@ekran_gerekli("personel_izinleri")
+def izin_bakiyeleri(request):
+    bugun = tr_bugun()
+    ayrilan_dahil = request.GET.get("ayrilan") == "1"
+    personeller = (personel_servis.aktif_personeller() if ayrilan_dahil
+                   else personel_servis.calisan_personeller(bugun))
+    personeller = list(personeller)
+    bakiyeler = izin_servis.bakiyeler(personeller, bugun=bugun)
+    satirlar = [{"p": p, "b": bakiyeler[p.pk],
+                 "ayrildi": bool(p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun)}
+                for p in personeller]
+    return render(request, "core/izin_bakiyeleri.html", {
+        "satirlar": satirlar, "ayrilan_dahil": ayrilan_dahil, "bugun": bugun})
+
+
+@ekran_gerekli("personel_izinleri")
+def izin_ekle(request):
+    if request.method == "POST":
+        form = PersonelIzinForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                izin = izin_servis.izin_ekle(
+                    cd["personel"], tur=cd["tur"], baslangic=cd["baslangic"], bitis=cd["bitis"],
+                    gun=cd.get("gun"), aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(
+                    request, f"İzin kaydedildi: {izin.personel.ad_soyad} — {izin.gun} gün.")
+                return redirect(_izin_donus_url(request, izin.personel_id))
+            except izin_servis.PersonelIzinHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        baslangic = {}
+        pid = request.GET.get("personel")
+        if pid and pid.isdigit():
+            baslangic["personel"] = int(pid)
+        form = PersonelIzinForm(initial=baslangic)
+    return render(request, "core/izin_form.html", {
+        "form": form, "baslik": "Yeni İzin", "sonraki": request.GET.get("sonraki", "")})
+
+
+@ekran_gerekli("personel_izinleri")
+def izin_duzenle(request, pk):
+    izin = get_object_or_404(
+        PersonelIzin.objects.select_related("personel"), pk=pk, silindi=False,
+        personel__silindi=False)
+    if request.method == "POST":
+        form = PersonelIzinForm(request.POST, personel_sabit=True)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                izin_servis.izin_guncelle(
+                    izin, tur=cd["tur"], baslangic=cd["baslangic"], bitis=cd["bitis"],
+                    gun=cd.get("gun"), aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, "İzin güncellendi.")
+                return redirect(_izin_donus_url(request, izin.personel_id))
+            except izin_servis.PersonelIzinHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = PersonelIzinForm(personel_sabit=True, initial={
+            "tur": izin.tur, "baslangic": izin.baslangic, "bitis": izin.bitis,
+            "gun": izin.gun, "aciklama": izin.aciklama})
+    return render(request, "core/izin_form.html", {
+        "form": form, "baslik": "İzin Düzenle", "duzenlenen": izin,
+        "sonraki": request.GET.get("sonraki", "")})
+
+
+@ekran_gerekli("personel_izinleri")
+def izin_sil(request, pk):
+    izin = get_object_or_404(
+        PersonelIzin.objects.select_related("personel"), pk=pk, silindi=False,
+        personel__silindi=False)
+    if request.method == "POST":
+        izin_servis.izin_sil(izin, kullanici=request.user)
+        messages.success(request, f"İzin silindi: {izin.personel.ad_soyad}")
+        return redirect(_izin_donus_url(request, izin.personel_id))
+    return redirect("core:izinler")
+
+
+def _izin_donus_url(request, personel_id):
+    """İzin ekle/düzenle/sil sonrası dönüş: personel kartından gelindiyse (sonraki=personel) ve
+    kullanıcı personel ekranını görebiliyorsa karta, aksi halde izin listesine."""
+    if (request.POST.get("sonraki") or request.GET.get("sonraki")) == "personel" \
+            and ekran_gorebilir(request.user, "personel"):
+        return reverse("core:personel_detay", args=[personel_id])
+    return reverse("core:izinler")

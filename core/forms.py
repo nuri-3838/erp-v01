@@ -19,7 +19,7 @@ from core.models import (
     AdayAktivite, AdayMusteri, AdayMusteriKategori, Banka, BankaHesap, Birim, Cari,
     CariAktivite, CariKategori,
     CekSenet, Depo, FaturaTipi, FirmaBanka,
-    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel,
+    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelIzin,
     Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
@@ -2096,3 +2096,43 @@ class PersonelForm(forms.Form):
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
     notlar = forms.CharField(label="Notlar", required=False,
                              widget=forms.Textarea(attrs={"rows": 3}))
+    # Yalnız İzinler ekranına yetkisi olan kullanıcıya gösterilir (izin_alani=True).
+    izin_onceki_kullanilan = TRDecimalField(
+        label="Sisteme geçmeden önce kullanılan yıllık izin (gün)", basamak=1, required=False)
+
+    def __init__(self, *args, izin_alani=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not izin_alani:
+            del self.fields["izin_onceki_kullanilan"]
+
+
+class PersonelIzinForm(forms.Form):
+    """İNSAN KAYNAKLARI > İzin ekle/düzenle. Gün boş bırakılırsa sunucu Pazar günleri hariç
+    takvim gününü hesaplar (resmî tatil düşülmez). Düzenlemede personel değiştirilemez."""
+
+    personel = forms.ModelChoiceField(
+        label="Personel", queryset=Personel.objects.none(), empty_label="— personel seç —")
+    tur = forms.ChoiceField(label="İzin Türü", choices=PersonelIzin.Tur.choices,
+                            initial=PersonelIzin.Tur.YILLIK)
+    baslangic = forms.DateField(
+        label="Başlangıç", initial=tr_bugun,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    bitis = forms.DateField(
+        label="Bitiş", initial=tr_bugun,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    gun = TRDecimalField(label="Gün Sayısı", basamak=1, required=False)
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, personel_sabit=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if personel_sabit:
+            del self.fields["personel"]
+        else:
+            from core.services.personel import aktif_personeller
+            bugun = tr_bugun()
+            self.fields["personel"].queryset = aktif_personeller()
+            self.fields["personel"].label_from_instance = lambda p: (
+                p.ad_soyad + (" (ayrıldı)" if p.isten_cikis_tarihi
+                              and p.isten_cikis_tarihi < bugun else ""))
+            self.fields["personel"].widget.attrs["class"] = "akilli-sec"

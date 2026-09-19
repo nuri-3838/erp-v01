@@ -1,0 +1,62 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:izinler' %}">← İzinler</a>
+    <h1 class="ust-baslik"><span class="emoji">🌴</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <input type="hidden" name="sonraki" value="{{ sonraki }}">
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{% if duzenlenen %}{{ duzenlenen.personel.ad_soyad }}{% else %}İzin Bilgileri{% endif %}</h2>
+      <div class="izgara">
+        {% if not duzenlenen %}
+        <div class="alan tam"><label for="{{ form.personel.id_for_label }}">{{ form.personel.label }} <span class="zorunlu">*</span></label>
+          <div class="akilli">{{ form.personel }}</div>{% for e in form.personel.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        {% endif %}
+        <div class="alan"><label for="{{ form.tur.id_for_label }}">{{ form.tur.label }}</label>{{ form.tur }}{% for e in form.tur.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.gun.id_for_label }}">{{ form.gun.label }}</label>{{ form.gun }}{% for e in form.gun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" id="gun-oneri" style="margin:.3rem 0 0">Boş bırakırsanız Pazar günleri hariç takvim günü sayılır; resmî tatiller düşülmez, gerekirse elle düzeltin (yarım gün: 0,5).</p></div>
+        <div class="alan"><label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }} <span class="zorunlu">*</span></label>{{ form.baslangic }}{% for e in form.baslangic.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }} <span class="zorunlu">*</span></label>{{ form.bitis }}{% for e in form.bitis.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}{% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:izinler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  var bas = document.getElementById('id_baslangic'), bit = document.getElementById('id_bitis');
+  var gun = document.getElementById('id_gun'), ipucu = document.getElementById('gun-oneri');
+  if(!bas || !bit || !gun || !ipucu) return;
+  var varsayilan = ipucu.textContent;
+  function oneri(){
+    if(!bas.value || !bit.value){ ipucu.textContent = varsayilan; return; }
+    var d = new Date(bas.value + 'T00:00:00Z'), son = new Date(bit.value + 'T00:00:00Z'), n = 0;
+    if(son < d){ ipucu.textContent = varsayilan; return; }
+    while(d <= son){ if(d.getUTCDay() !== 0) n++; d.setUTCDate(d.getUTCDate() + 1); }
+    if(n === 0){ ipucu.textContent = 'Seçilen aralıkta yalnız Pazar var; gün sayısını elle girin.'; gun.placeholder = ''; return; }
+    ipucu.textContent = 'Önerilen: ' + n + ' gün (Pazarlar hariç). Boş bırakırsanız bu sayı kullanılır; resmî tatil varsa elle düzeltin.';
+    gun.placeholder = String(n).replace('.', ',');
+  }
+  bas.addEventListener('change', oneri); bit.addEventListener('change', oneri);
+  oneri();
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

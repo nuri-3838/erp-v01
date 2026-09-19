@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
 {% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
@@ -58,6 +59,19 @@
         <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}{% for e in form.notlar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
       </div>
     </section>
+
+    {% if izin_alani %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🌴</span>Yıllık İzin Başlangıç Bakiyesi</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.izin_onceki_kullanilan.id_for_label }}">{{ form.izin_onceki_kullanilan.label }}</label>{{ form.izin_onceki_kullanilan }}{% for e in form.izin_onceki_kullanilan.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">Sistemi kullanmaya başlamadan önce bu personelin kullandığı yıllık izin günü.
+            {% if hak_edilen_bugun is not None %}Sistem bugün itibarıyla <strong>{{ hak_edilen_bugun|tr_kur:1 }} gün</strong> hak ediş gösteriyor:
+            elinizdeki kalan izin günü Y ise buraya <strong>{{ hak_edilen_bugun|tr_kur:1 }} − Y</strong> yazın.{% endif %}
+            Sisteme ayrıca girdiğiniz izinleri buraya eklemeyin (çifte sayılır).</p></div>
+      </div>
+    </section>
+    {% endif %}
 
     <datalist id="dl-departman">{% for d in departmanlar %}<option value="{{ d }}">{% endfor %}</datalist>
     <datalist id="dl-gorev">{% for g in gorevler %}<option value="{{ g }}">{% endfor %}</datalist>

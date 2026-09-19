@@ -13,13 +13,14 @@ Takibi gibi kontrol amaçlı). Kural ve dönüşümler:
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
 from django.db.models import Q
 from django.utils import timezone
 
 from core.dogrulama import tc_gecerli, telefon_kanonik
 from core.metin import buyuk_harf_tr
-from core.models import Personel
+from core.models import Personel, PersonelIzin
 from core.tarih import tr_bugun
 
 DURUMLAR = ("aktif", "ayrildi", "hepsi")
@@ -108,7 +109,7 @@ def _tc_benzersiz(tc, *, haric_pk=None):
 def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", telefon="",
              eposta="", adres="", acil_durum_kisi="", acil_durum_telefon="", departman="",
              gorev="", ise_giris_tarihi=None, isten_cikis_tarihi=None, cikis_nedeni="",
-             notlar="", haric_pk=None) -> dict:
+             notlar="", izin_onceki_kullanilan=None, haric_pk=None) -> dict:
     ad, soyad = _buyuk(ad), _buyuk(soyad)
     if not ad:
         raise PersonelHatasi("Ad boş olamaz.")
@@ -137,7 +138,17 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
     if isten_cikis_tarihi is not None and isten_cikis_tarihi < ise_giris_tarihi:
         raise PersonelHatasi("İşten çıkış tarihi, işe giriş tarihinden önce olamaz.")
 
-    return {
+    onceki = None
+    if izin_onceki_kullanilan is not None:
+        onceki = Decimal(izin_onceki_kullanilan)
+        if onceki < 0:
+            raise PersonelHatasi("Sisteme geçmeden önce kullanılan izin negatif olamaz.")
+        if (onceki * 2) % 1 != 0:
+            raise PersonelHatasi(
+                "Sisteme geçmeden önce kullanılan izin yarım gün adımlarıyla girilmeli "
+                "(örn. 7 veya 7,5).")
+
+    veri = {
         "ad": ad, "soyad": soyad, "tc_kimlik_no": tc, "dogum_tarihi": dogum_tarihi,
         "kan_grubu": kan_grubu, "telefon": _telefon(telefon),
         "eposta": (eposta or "").strip().lower(),
@@ -148,6 +159,9 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
         "ise_giris_tarihi": ise_giris_tarihi, "isten_cikis_tarihi": isten_cikis_tarihi,
         "cikis_nedeni": (cikis_nedeni or "").strip(), "notlar": (notlar or "").strip(),
     }
+    if onceki is not None:                       # verilmediyse mevcut değer KORUNUR (yetkisiz form)
+        veri["izin_onceki_kullanilan"] = onceki
+    return veri
 
 
 # === CRUD ===
@@ -171,6 +185,10 @@ def personel_guncelle(personel: Personel, *, kullanici=None, **kw) -> Personel:
 def personel_sil(personel: Personel, kullanici=None) -> Personel:
     if personel.silindi:
         return personel
+    if PersonelIzin.objects.filter(personel=personel, silindi=False).exists():
+        raise PersonelHatasi(
+            "Bu personele ait izin kaydı var; kartı silmek yerine işten çıkış tarihini "
+            "girerek 'ayrıldı' olarak işaretleyin (ya da önce izin kayıtlarını silin).")
     personel.silindi = True
     personel.silindi_at = timezone.now()
     personel.updated_by = kullanici
