@@ -5,14 +5,15 @@
 
 {% block content %}
 <div class="sayfa-ust">
-  <h1 class="ust-baslik"><span class="emoji">💾</span>Veritabanı Yedekleri</h1>
+  <h1 class="ust-baslik"><span class="emoji">💾</span>Yedekler</h1>
   <form method="post" action="{% url 'core:yedek' %}">
     {% csrf_token %}
     <button type="submit" class="dugme">Şimdi Yedek Al</button>
   </form>
 </div>
 
-<p class="yardim">Her gece otomatik yedek alınır (03:00). Yedekler sunucuda saklanır
+<p class="yardim">Her gece otomatik yedek alınır (03:00): <strong>veritabanı</strong> dökümü ve —
+  personel evrakı yüklendiyse— <strong>özlük evrakları</strong> arşivi. Yedekler sunucuda saklanır
   (son 15 gün); eskiler otomatik silinir. Bu ekran yalnızca yöneticilere açıktır.
   Güvenlik gereği <strong>geri yükleme bu ekranda yer almaz</strong>.
   {% if son_yedek %}· <strong>Son yedek:</strong>
@@ -23,19 +24,20 @@
 <table>
   <thead>
     <tr>
-      <th>Tarih / Saat</th><th class="sag">Boyut</th><th>Dosya</th><th class="sag">İndir</th>
+      <th>Tarih / Saat</th><th>Tür</th><th class="sag">Boyut</th><th>Dosya</th><th class="sag">İndir</th>
     </tr>
   </thead>
   <tbody>
     {% for y in yedekler %}
       <tr>
         <td>{{ y.tarih|date:"d.m.Y H:i:s" }}</td>
+        <td>{{ y.tur_ad }}</td>
         <td class="sag">{{ y.boyut_h }}</td>
         <td><code>{{ y.ad }}</code></td>
         <td class="sag"><a href="{% url 'core:yedek_indir' y.ad %}">İndir ↓</a></td>
       </tr>
     {% empty %}
-      <tr><td colspan="4" class="yardim">Henüz yedek yok. “Şimdi Yedek Al” ile ilk
+      <tr><td colspan="5" class="yardim">Henüz yedek yok. “Şimdi Yedek Al” ile ilk
         yedeği oluşturabilirsiniz.</td></tr>
     {% endfor %}
   </tbody>
@@ -44,5 +46,5 @@
 
 <p class="yardim">İpucu: Yedekleri düzenli olarak indirip <strong>sunucu dışında</strong>
   (kendi bilgisayarınız/bulut) saklayın — offsite kopya, sunucu kaybına karşı en
-  güvenli korumadır.</p>
+  güvenli korumadır. Özlük evrakları arşivi kişisel veri içerir; güvenli bir yerde saklayın.</p>
 {% endblock %}

@@ -16,6 +16,12 @@ load_dotenv(BASE_DIR / ".env")
 BACKUP_DIR = BASE_DIR / "backups"
 BACKUP_SCRIPT = BASE_DIR / "scripts" / "db_backup.sh"
 
+# İNSAN KAYNAKLARI özlük evrakları + personel fotoğrafları (kimlik, sağlık raporu vb. — KVKK
+# hassas veri): MEDIA_ROOT DIŞINDA tutulur çünkü prod nginx /media/'yı KİMLİK DOĞRULAMASIZ
+# sunar. Bu dizin nginx'te hiçbir yere bağlı değildir; dosyalar yalnız yetkili Django
+# görünümüyle (core.views.belge_indir / personel_foto) indirilir. Git'e girmez, yedeğe girer.
+IK_OZEL_DIR = BASE_DIR / "ozel_dosyalar"
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 

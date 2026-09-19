@@ -51,3 +51,24 @@ find "$BACKUP_DIR" -maxdepth 1 -name 'erp_v01_*.sql.gz' -mtime +${RETENTION_DAYS
 SIZE="$(du -h "${BACKUP_DIR}/${SQL_FILE}" | cut -f1)"
 COUNT="$(find "$BACKUP_DIR" -maxdepth 1 -name 'erp_v01_*.sql.gz' | wc -l)"
 log "OK: ${SQL_FILE} (${SIZE}) — saklanan toplam yedek: ${COUNT}."
+
+# 4) Özlük evrakları (İK; MEDIA_ROOT dışı özel dizin) arşivi — dizin yoksa/boşsa atlanır.
+#    Aynı TIMESTAMP ile erp_v01_ozel_*.tar.gz; kısmi dosya .part adıyla yazılır, doğrulanınca
+#    yeniden adlandırılır (Yedek ekranı yarım arşivi listelemesin). Ayrı retention (yukarıdaki
+#    sql.gz retention'ı tar'lara dokunmaz). Geri yükleme (elle):
+#    tar -xzf erp_v01_ozel_<zaman>.tar.gz -C /home/nuri/erp_v01
+OZEL_DIR="${REPO}/ozel_dosyalar"
+if [ -d "$OZEL_DIR" ] && [ -n "$(ls -A "$OZEL_DIR" 2>/dev/null)" ]; then
+    OZEL_FILE="erp_v01_ozel_${TIMESTAMP}.tar.gz"
+    OZEL_PART="${BACKUP_DIR}/${OZEL_FILE}.part"
+    if (umask 077; tar -czf "$OZEL_PART" -C "$REPO" ozel_dosyalar 2>>"$LOG") \
+       && tar -tzf "$OZEL_PART" >/dev/null 2>&1 \
+       && mv "$OZEL_PART" "${BACKUP_DIR}/${OZEL_FILE}"; then
+        find "$BACKUP_DIR" -maxdepth 1 -name 'erp_v01_ozel_*.tar.gz' -mtime +${RETENTION_DAYS} -delete
+        log "OK: ${OZEL_FILE} ($(du -h "${BACKUP_DIR}/${OZEL_FILE}" | cut -f1))."
+    else
+        log "HATA: ${OZEL_FILE} alınamadı/bozuk — kısmi dosya siliniyor."
+        rm -f "$OZEL_PART" "${BACKUP_DIR}/${OZEL_FILE}"
+        exit 1
+    fi
+fi

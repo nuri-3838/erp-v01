@@ -20,7 +20,7 @@
   </div>
 
   <div class="detay-baslik-kart">
-    <span class="detay-ikon">{{ p.ad|first }}{{ p.soyad|first }}</span>
+    <span class="detay-ikon">{% if p.foto %}<img src="{% url 'core:personel_foto' p.pk %}" alt="">{% else %}{{ p.ad|first }}{{ p.soyad|first }}{% endif %}</span>
     <div>
       <div class="detay-rozetler">
         {% if calisiyor %}<span class="d-rozet aktif">● Çalışıyor</span>
@@ -30,6 +30,18 @@
       </div>
       <div class="detay-ad">{{ p.ad_soyad }}</div>
       <div class="detay-alt">{{ p.gorev|default:"Görev girilmemiş" }}</div>
+      <div class="ik-foto-aksiyon">
+        <form method="post" action="{% url 'core:personel_foto_yukle' p.pk %}" enctype="multipart/form-data">
+          {% csrf_token %}<input type="file" name="dosya" accept="image/*" required>
+          <button type="submit" class="dugme-ikincil">📷 {% if p.foto %}Fotoğrafı Değiştir{% else %}Fotoğraf Yükle{% endif %}</button>
+        </form>
+        {% if p.foto %}
+        <form method="post" action="{% url 'core:personel_foto_kaldir' p.pk %}"
+              onsubmit="return confirm('Fotoğraf kaldırılsın mı?');">
+          {% csrf_token %}<button type="submit" class="dugme-ikincil">Kaldır</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
   </div>
 
@@ -136,6 +148,42 @@
     <p class="yardim" style="margin:.6rem 0 0">Son izinler gösteriliyor (en fazla 10); tümü için <a href="{% url 'core:izinler' %}?personel={{ p.pk }}">İzinler</a> ekranına bakın.</p>
     {% else %}
     <p class="yardim" style="margin:.8rem 0 0">Bu personel için henüz izin kaydı yok.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if belge_gorebilir %}
+  <section class="icerik-kart">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">🗂️</span>Özlük Belgeleri</h2>
+      <a class="dugme" href="{% url 'core:belge_ekle' %}?personel={{ p.pk }}&amp;sonraki=personel">+ Belge Ekle</a>
+    </div>
+    {% if belgeler %}
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Belge</th><th>Bitiş</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for b, durum, kalan in belgeler %}
+          <tr>
+            <td><strong>{{ b.get_tur_display }}</strong>
+              <div class="yardim">{% if b.aciklama %}{{ b.aciklama }} · {% endif %}{{ b.orijinal_ad }}</div></td>
+            <td class="mono">{% if b.bitis_tarihi %}{{ b.bitis_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</td>
+            <td>{% include "core/_belge_durum_rozeti.html" with durum=durum kalan=kalan %}</td>
+            <td class="islem-bag">
+              <a class="dugme-ikincil" href="{% url 'core:belge_indir' b.pk %}" target="_blank" rel="noopener">Aç</a>
+              <a class="dugme-ikincil" href="{% url 'core:belge_duzenle' b.pk %}?sonraki=personel">Düzenle</a>
+              <form method="post" action="{% url 'core:belge_sil' b.pk %}" style="margin:0"
+                    onsubmit="return confirm('{{ b.orijinal_ad|escapejs }} belgesi silinsin mi?');">
+                {% csrf_token %}<input type="hidden" name="sonraki" value="personel">
+                <button type="submit" class="sil" title="Sil">🗑️</button></form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="yardim" style="margin:.2rem 0 0">Bu personel için henüz belge yüklenmemiş (kimlik, sağlık raporu, sözleşme, İSG eğitimi…).</p>
     {% endif %}
   </section>
   {% endif %}

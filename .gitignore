@@ -20,3 +20,6 @@ db.sqlite3
 
 # Yedekler (DB dump dosyalari) - repoya girmez
 /backups/
+
+# Ozel (KVKK hassas) IK evrak/fotograf dosyalari - repoya girmez, MEDIA disinda
+/ozel_dosyalar/

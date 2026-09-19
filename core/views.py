@@ -1,12 +1,14 @@
 """Fiş giriş/liste/düzenleme/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
 import calendar
 import datetime
+import os
 from decimal import Decimal
 from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import SuspiciousFileOperation
 from django.core.paginator import Paginator
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
 from django.forms import formset_factory
@@ -34,6 +36,7 @@ from core.forms import (
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
+    PersonelBelgeForm, PersonelFotoForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori,
@@ -42,7 +45,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
-    Personel, PersonelIzin,
+    Personel, PersonelBelge, PersonelIzin,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -86,6 +89,7 @@ from core.services import aday as aday_servis
 from core.services import aday_kategori as aday_kategori_servis
 from core.services import personel as personel_servis
 from core.services import personel_izin as izin_servis
+from core.services import personel_belge as belge_servis
 from core.tarih import kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
@@ -679,7 +683,7 @@ def yedek_yonetim(request):
     yedekler = yedek_servis.yedekleri_listele()
     return render(request, "core/yedek.html", {
         "yedekler": yedekler,
-        "son_yedek": yedekler[0] if yedekler else None,
+        "son_yedek": yedek_servis.son_yedek(),      # yalnız VERİTABANI yedeği (evrak arşivi değil)
     })
 
 
@@ -5627,6 +5631,9 @@ def personel_detay(request, pk):
         ctx["son_izinler"] = list(
             PersonelIzin.objects.filter(personel=p, silindi=False)
             .order_by("-baslangic", "-id")[:10])
+    if ekran_gorebilir(request.user, "personel_belgeleri"):
+        ctx["belge_gorebilir"] = True
+        ctx["belgeler"] = belge_servis.belge_durumlari(p, bugun=bugun)
     return render(request, "core/personel_detay.html", ctx)
 
 
@@ -5761,3 +5768,173 @@ def _izin_donus_url(request, personel_id):
             and ekran_gorebilir(request.user, "personel"):
         return reverse("core:personel_detay", args=[personel_id])
     return reverse("core:izinler")
+
+
+# --- Özlük Belgeleri + fotoğraf (dosyalar ÖZEL depoda; yalnız bu görünümlerle sunulur) ---
+_ICERIK_TURU = {".pdf": "application/pdf", ".webp": "image/webp"}
+
+
+def _ozel_dosya_yanit(alan, indirme_adi):
+    """Özel depodaki dosyayı yetkili görünümden akıtır: içerik türü DEPOLANAN uzantıdan
+    (beyaz liste; istemci değeri değil), PDF/resim tarayıcıda açılır, önbelleğe alınmaz."""
+    uz = os.path.splitext(alan.name or "")[1].lower()
+    tur = _ICERIK_TURU.get(uz)
+    if not tur:
+        raise Http404
+    try:
+        dosya = alan.open("rb")
+    except (OSError, SuspiciousFileOperation, ValueError):
+        raise Http404
+    ad = os.path.splitext(os.path.basename(indirme_adi or "dosya"))[0] or "dosya"
+    yanit = FileResponse(dosya, content_type=tur, filename=ad + uz)
+    yanit["Cache-Control"] = "private, no-store"
+    yanit["X-Content-Type-Options"] = "nosniff"
+    return yanit
+
+
+@ekran_gerekli("personel_belgeleri")
+def belgeler(request):
+    bugun = tr_bugun()
+    personel_id = request.GET.get("personel") or ""
+    tur = request.GET.get("tur") or ""
+    if tur not in PersonelBelge.Tur.values:
+        tur = ""
+    kayitlar = belge_servis.belge_listele(
+        personel_id=personel_id if personel_id.isdigit() else None, tur=tur)
+    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
+    durumlar = belge_servis.durum_haritasi(list(belge_servis.aktif_belgeler()), bugun=bugun)
+    satirlar = [{"b": b, "durum": durumlar.get(b.pk, ("SURESIZ", None))} for b in sayfa]
+    sabit_qs = request.GET.copy()
+    sabit_qs.pop("sayfa", None)
+    return render(request, "core/belge_listesi.html", {
+        "kayitlar": sayfa, "satirlar": satirlar, "personeller": personel_servis.aktif_personeller(),
+        "turler": PersonelBelge.Tur.choices, "secili_personel": personel_id, "secili_tur": tur,
+        "personel_link": ekran_gorebilir(request.user, "personel"),
+        "sabit_qs": sabit_qs.urlencode()})
+
+
+@ekran_gerekli("personel_belgeleri")
+def belge_uyarilari(request):
+    try:
+        gun = int(request.GET.get("gun", 30))
+    except ValueError:
+        gun = 30
+    if gun not in (15, 30, 60, 90):
+        gun = 30
+    return render(request, "core/belge_uyarilari.html", {
+        "uyarilar": belge_servis.suresi_dolacaklar(gun=gun), "gun": gun,
+        "gunler": (15, 30, 60, 90),
+        "personel_link": ekran_gorebilir(request.user, "personel")})
+
+
+def _belge_donus_url(request, personel_id):
+    if (request.POST.get("sonraki") or request.GET.get("sonraki")) == "personel" \
+            and ekran_gorebilir(request.user, "personel"):
+        return reverse("core:personel_detay", args=[personel_id])
+    return reverse("core:belgeler")
+
+
+@ekran_gerekli("personel_belgeleri")
+def belge_ekle(request):
+    if request.method == "POST":
+        form = PersonelBelgeForm(request.POST, request.FILES)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                belge = belge_servis.belge_ekle(
+                    cd["personel"], tur=cd["tur"], dosya=cd["dosya"],
+                    aciklama=cd.get("aciklama", ""), bitis_tarihi=cd.get("bitis_tarihi"),
+                    kullanici=request.user)
+                messages.success(
+                    request, f"Belge kaydedildi: {belge.personel.ad_soyad} — {belge.get_tur_display()}")
+                return redirect(_belge_donus_url(request, belge.personel_id))
+            except belge_servis.PersonelBelgeHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        baslangic = {}
+        pid = request.GET.get("personel")
+        if pid and pid.isdigit():
+            baslangic["personel"] = int(pid)
+        form = PersonelBelgeForm(initial=baslangic)
+    return render(request, "core/belge_form.html", {
+        "form": form, "baslik": "Yeni Belge", "sonraki": request.GET.get("sonraki", "")})
+
+
+@ekran_gerekli("personel_belgeleri")
+def belge_duzenle(request, pk):
+    belge = get_object_or_404(
+        PersonelBelge.objects.select_related("personel"), pk=pk, silindi=False,
+        personel__silindi=False)
+    if request.method == "POST":
+        form = PersonelBelgeForm(request.POST, personel_sabit=True, dosya_alani=False)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                belge_servis.belge_guncelle(
+                    belge, tur=cd["tur"], aciklama=cd.get("aciklama", ""),
+                    bitis_tarihi=cd.get("bitis_tarihi"), kullanici=request.user)
+                messages.success(request, "Belge güncellendi.")
+                return redirect(_belge_donus_url(request, belge.personel_id))
+            except belge_servis.PersonelBelgeHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = PersonelBelgeForm(personel_sabit=True, dosya_alani=False, initial={
+            "tur": belge.tur, "aciklama": belge.aciklama, "bitis_tarihi": belge.bitis_tarihi})
+    return render(request, "core/belge_form.html", {
+        "form": form, "baslik": "Belge Düzenle", "duzenlenen": belge,
+        "sonraki": request.GET.get("sonraki", "")})
+
+
+@ekran_gerekli("personel_belgeleri")
+def belge_sil(request, pk):
+    belge = get_object_or_404(
+        PersonelBelge.objects.select_related("personel"), pk=pk, silindi=False,
+        personel__silindi=False)
+    if request.method == "POST":
+        belge_servis.belge_sil(belge, kullanici=request.user)
+        messages.success(request, "Belge silindi.")
+        return redirect(_belge_donus_url(request, belge.personel_id))
+    return redirect("core:belgeler")
+
+
+@never_cache
+@ekran_gerekli("personel_belgeleri")
+def belge_indir(request, pk):
+    belge = get_object_or_404(
+        PersonelBelge.objects.select_related("personel"), pk=pk, silindi=False,
+        personel__silindi=False)
+    return _ozel_dosya_yanit(belge.dosya, belge.orijinal_ad)
+
+
+@never_cache
+@ekran_gerekli("personel")
+def personel_foto(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if not p.foto:
+        raise Http404
+    return _ozel_dosya_yanit(p.foto, "foto")
+
+
+@ekran_gerekli("personel")
+def personel_foto_yukle(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = PersonelFotoForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                belge_servis.foto_ayarla(p, form.cleaned_data["dosya"], kullanici=request.user)
+                messages.success(request, "Fotoğraf güncellendi.")
+            except belge_servis.PersonelBelgeHatasi as e:
+                messages.error(request, str(e))
+        else:
+            messages.error(request, "Fotoğraf seçilmedi.")
+    return redirect("core:personel_detay", pk=p.pk)
+
+
+@ekran_gerekli("personel")
+def personel_foto_kaldir(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        belge_servis.foto_kaldir(p, kullanici=request.user)
+        messages.success(request, "Fotoğraf kaldırıldı.")
+    return redirect("core:personel_detay", pk=p.pk)

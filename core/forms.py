@@ -19,8 +19,8 @@ from core.models import (
     AdayAktivite, AdayMusteri, AdayMusteriKategori, Banka, BankaHesap, Birim, Cari,
     CariAktivite, CariKategori,
     CekSenet, Depo, FaturaTipi, FirmaBanka,
-    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelIzin,
-    Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
+    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
+    PersonelIzin, Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
 from core.tarih import tr_bugun
@@ -2136,3 +2136,41 @@ class PersonelIzinForm(forms.Form):
                 p.ad_soyad + (" (ayrıldı)" if p.isten_cikis_tarihi
                               and p.isten_cikis_tarihi < bugun else ""))
             self.fields["personel"].widget.attrs["class"] = "akilli-sec"
+
+
+class PersonelBelgeForm(forms.Form):
+    """İNSAN KAYNAKLARI > Özlük Belgesi ekle/düzenle. Dosya yalnız EKLEMEDE seçilir (belge
+    düzenlemede dosya değişmez; yenileme = aynı türden yeni kayıt). Dosya içerik doğrulaması
+    serviste (core.services.personel_belge)."""
+
+    personel = forms.ModelChoiceField(
+        label="Personel", queryset=Personel.objects.none(), empty_label="— personel seç —")
+    tur = forms.ChoiceField(label="Belge Türü", choices=PersonelBelge.Tur.choices)
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    bitis_tarihi = forms.DateField(
+        label="Geçerlilik Bitiş Tarihi", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    dosya = forms.FileField(
+        label="Dosya (PDF veya resim, en fazla 10 MB)",
+        widget=forms.ClearableFileInput(attrs={"accept": "image/*,application/pdf"}))
+
+    def __init__(self, *args, personel_sabit=False, dosya_alani=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not dosya_alani:
+            del self.fields["dosya"]
+        if personel_sabit:
+            del self.fields["personel"]
+        else:
+            from core.services.personel import aktif_personeller
+            bugun = tr_bugun()
+            self.fields["personel"].queryset = aktif_personeller()
+            self.fields["personel"].label_from_instance = lambda p: (
+                p.ad_soyad + (" (ayrıldı)" if p.isten_cikis_tarihi
+                              and p.isten_cikis_tarihi < bugun else ""))
+            self.fields["personel"].widget.attrs["class"] = "akilli-sec"
+
+
+class PersonelFotoForm(forms.Form):
+    dosya = forms.FileField(
+        label="Fotoğraf", widget=forms.ClearableFileInput(attrs={"accept": "image/*"}))

@@ -1,0 +1,112 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Özlük Belgeleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Özlük Belgeleri{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<style>
+  .ik-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
+    margin-top:1rem; flex-wrap:wrap; }
+  .ik-sayfalama a, .ik-sayfalama span.simdiki { display:inline-flex; align-items:center;
+    justify-content:center; min-width:2.3rem; height:2.3rem; padding:0 .5rem; border-radius:10px;
+    text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .ik-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .ik-sayfalama a:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+  .ik-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
+</style>
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">🗂️</span>Özlük Belgeleri</h1>
+  <a class="dugme" href="{% url 'core:belge_ekle' %}">+ Yeni Belge</a>
+</div>
+
+<nav class="tablar">
+  <a href="{% url 'core:belgeler' %}" class="aktif">Belgeler</a>
+  <a href="{% url 'core:belge_uyarilari' %}">Süresi Dolacaklar</a>
+</nav>
+
+<div class="ik-panel">
+  <form method="get" class="ik-arama-cubuk">
+    <div class="ik-alan-grup">
+      <label for="bg-personel">Personel</label>
+      <select id="bg-personel" name="personel">
+        <option value="">Tüm Personel</option>
+        {% for p in personeller %}
+          <option value="{{ p.pk }}" {% if secili_personel == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.ad_soyad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-alan-grup">
+      <label for="bg-tur">Tür</label>
+      <select id="bg-tur" name="tur">
+        <option value="">Tüm Türler</option>
+        {% for kod, ad in turler %}
+          <option value="{{ kod }}" {% if secili_tur == kod %}selected{% endif %}>{{ ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      {% if secili_personel or secili_tur %}<a class="iptal-bag" href="{% url 'core:belgeler' %}">Temizle</a>{% endif %}
+    </div>
+  </form>
+</div>
+
+<p class="sayfa-alt">{{ kayitlar.paginator.count }} belge. Dosyalar güvenli özel alanda saklanır; yalnızca bu ekrandaki
+  bağlantılarla, giriş yapmış yetkili kullanıcılara açılır.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr><th>Personel</th><th>Belge</th><th>Bitiş</th><th>Durum</th><th>Yüklenme</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for s in satirlar %}
+      {% with b=s.b %}
+      <tr>
+        <td>
+          <div class="ik-hucre">
+            <span class="ik-avatar">{{ b.personel.ad|first }}{{ b.personel.soyad|first }}</span>
+            <div>
+              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' b.personel_id %}">{{ b.personel.ad_soyad }}</a>{% else %}{{ b.personel.ad_soyad }}{% endif %}</div>
+              <div class="alt">{{ b.personel.gorev|default:"" }}</div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div><strong>{{ b.get_tur_display }}</strong></div>
+          <div class="yardim">{% if b.aciklama %}{{ b.aciklama }} · {% endif %}{{ b.orijinal_ad }}</div>
+        </td>
+        <td class="mono">{% if b.bitis_tarihi %}{{ b.bitis_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</td>
+        <td>{% include "core/_belge_durum_rozeti.html" with durum=s.durum.0 kalan=s.durum.1 %}</td>
+        <td class="mono">{{ b.created_at|date:"d.m.Y" }}</td>
+        <td class="islem-bag">
+          <a class="dugme-ikincil" href="{% url 'core:belge_indir' b.pk %}" target="_blank" rel="noopener">Aç</a>
+          <a class="dugme-ikincil" href="{% url 'core:belge_duzenle' b.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:belge_sil' b.pk %}" style="margin:0"
+                onsubmit="return confirm('{{ b.orijinal_ad|escapejs }} belgesi silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form>
+        </td>
+      </tr>
+      {% endwith %}
+    {% empty %}
+      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if secili_personel or secili_tur %}🔍 Bu süzgeçle eşleşen belge yok.
+        {% else %}🗂️ Henüz belge yok. “+ Yeni Belge” ile kimlik, sağlık raporu, sözleşme vb. yükleyin.{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if kayitlar.paginator.num_pages > 1 %}
+<div class="ik-sayfalama">
+  {% if kayitlar.has_previous %}<a href="?sayfa={{ kayitlar.previous_page_number }}&{{ sabit_qs }}">‹</a>{% endif %}
+  {% for n in kayitlar.paginator.page_range %}
+    {% if n == kayitlar.number %}<span class="simdiki">{{ n }}</span>
+    {% else %}<a href="?sayfa={{ n }}&{{ sabit_qs }}">{{ n }}</a>{% endif %}
+  {% endfor %}
+  {% if kayitlar.has_next %}<a href="?sayfa={{ kayitlar.next_page_number }}&{{ sabit_qs }}">›</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

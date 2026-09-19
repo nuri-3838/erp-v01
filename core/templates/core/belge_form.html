@@ -1,0 +1,44 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:belgeler' %}">← Özlük Belgeleri</a>
+    <h1 class="ust-baslik"><span class="emoji">🗂️</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <input type="hidden" name="sonraki" value="{{ sonraki }}">
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{% if duzenlenen %}{{ duzenlenen.personel.ad_soyad }} · {{ duzenlenen.orijinal_ad }}{% else %}Belge Bilgileri{% endif %}</h2>
+      <div class="izgara">
+        {% if not duzenlenen %}
+        <div class="alan tam"><label for="{{ form.personel.id_for_label }}">{{ form.personel.label }} <span class="zorunlu">*</span></label>
+          <div class="akilli">{{ form.personel }}</div>{% for e in form.personel.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        {% endif %}
+        <div class="alan"><label for="{{ form.tur.id_for_label }}">{{ form.tur.label }} <span class="zorunlu">*</span></label>{{ form.tur }}{% for e in form.tur.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.bitis_tarihi.id_for_label }}">{{ form.bitis_tarihi.label }}</label>{{ form.bitis_tarihi }}{% for e in form.bitis_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">Süresi olan belgelerde (sağlık raporu, İSG eğitimi, ehliyet…) girin; "Süresi Dolacaklar" listesinde uyarı çıkar. Süresizse boş bırakın.</p></div>
+        <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}{% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        {% if not duzenlenen %}
+        <div class="alan tam"><label for="{{ form.dosya.id_for_label }}">{{ form.dosya.label }} <span class="zorunlu">*</span></label>{{ form.dosya }}{% for e in form.dosya.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">Resimler otomatik küçültülür. Belge yenilenince eskisini düzenlemeyin: aynı türden YENİ belge yükleyin, eskisi geçmişte kalır.</p></div>
+        {% endif %}
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:belgeler' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from core.dogrulama import tc_gecerli, telefon_kanonik
 from core.metin import buyuk_harf_tr
-from core.models import Personel, PersonelIzin
+from core.models import Personel, PersonelBelge, PersonelIzin
 from core.tarih import tr_bugun
 
 DURUMLAR = ("aktif", "ayrildi", "hepsi")
@@ -189,6 +189,10 @@ def personel_sil(personel: Personel, kullanici=None) -> Personel:
         raise PersonelHatasi(
             "Bu personele ait izin kaydı var; kartı silmek yerine işten çıkış tarihini "
             "girerek 'ayrıldı' olarak işaretleyin (ya da önce izin kayıtlarını silin).")
+    if PersonelBelge.objects.filter(personel=personel, silindi=False).exists():
+        raise PersonelHatasi(
+            "Bu personele ait özlük belgesi var; kartı silmek yerine işten çıkış tarihini "
+            "girerek 'ayrıldı' olarak işaretleyin (ya da önce belgeleri silin).")
     personel.silindi = True
     personel.silindi_at = timezone.now()
     personel.updated_by = kullanici

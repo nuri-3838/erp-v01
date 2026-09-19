@@ -7,6 +7,8 @@ from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
+from core.storage import ik_ozel_depo, personel_belge_yolu, personel_foto_yolu
+
 
 class TemelModel(models.Model):
     """Tüm tablolar için ortak invariant'lar (spec 0b-g).
@@ -2591,6 +2593,9 @@ class Personel(TemelModel):
     izin_onceki_kullanilan = models.DecimalField(
         "sisteme geçmeden önce kullanılan yıllık izin (gün)", max_digits=5, decimal_places=1,
         default=0)
+    # Fotoğraf da ÖZEL depoda (MEDIA_ROOT dışı) — yalnız yetkili görünümle sunulur (bkz. storage).
+    foto = models.FileField("fotoğraf", storage=ik_ozel_depo, upload_to=personel_foto_yolu,
+                            blank=True, max_length=100)
 
     class Meta:
         db_table = "core_personel"
@@ -2655,3 +2660,41 @@ class PersonelIzin(TemelModel):
 
     def __str__(self):
         return f"{self.personel.ad_soyad} — {self.get_tur_display()} {self.baslangic}–{self.bitis}"
+
+
+class PersonelBelge(TemelModel):
+    """İNSAN KAYNAKLARI > Özlük Belgeleri — personele bağlı evrak (kimlik, sağlık raporu,
+    sözleşme, İSG eğitimi, operatör belgesi...). Bir kayıt = bir dosya; yenileme, aynı türden
+    YENİ kayıt açmaktır (eskisi geçmiş olarak kalır; "süresi dolacaklar" hesabı yalnız her
+    (personel, tür) grubunun en geç bitişli kaydına bakar). Dosya ÖZEL depoda (MEDIA_ROOT dışı,
+    UUID adlı) tutulur, özgün ad yalnız `orijinal_ad`'da — bkz. core.storage."""
+
+    class Tur(models.TextChoices):
+        KIMLIK = "KIMLIK", "Kimlik"
+        SAGLIK_RAPORU = "SAGLIK_RAPORU", "Sağlık Raporu"
+        SOZLESME = "SOZLESME", "İş Sözleşmesi"
+        SGK_GIRIS = "SGK_GIRIS", "SGK İşe Giriş Belgesi"
+        ISG_EGITIMI = "ISG_EGITIMI", "İSG Eğitim Belgesi"
+        OPERATOR_BELGESI = "OPERATOR_BELGESI", "Operatör / Yeterlilik Belgesi"
+        EHLIYET = "EHLIYET", "Ehliyet"
+        DIPLOMA = "DIPLOMA", "Diploma / Sertifika"
+        DIGER = "DIGER", "Diğer"
+
+    personel = models.ForeignKey(
+        Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="belgeler")
+    tur = models.CharField("tür", max_length=20, choices=Tur.choices)
+    aciklama = models.CharField("açıklama", max_length=200, blank=True)
+    dosya = models.FileField("dosya", storage=ik_ozel_depo, upload_to=personel_belge_yolu,
+                             max_length=100)
+    orijinal_ad = models.CharField("özgün dosya adı", max_length=255)
+    bitis_tarihi = models.DateField("geçerlilik bitiş tarihi", null=True, blank=True)
+
+    class Meta:
+        db_table = "core_personel_belge"
+        verbose_name = "personel belgesi"
+        verbose_name_plural = "personel belgeleri"
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["personel", "tur"], name="ix_personel_belge_kisi_tur")]
+
+    def __str__(self):
+        return f"{self.personel.ad_soyad} — {self.get_tur_display()}"

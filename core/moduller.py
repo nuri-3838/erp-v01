@@ -73,6 +73,7 @@ MODULLER = (
     Modul("IK", "İnsan Kaynakları", (
         Ekran("personel", "Personel Kartları", "core:personeller"),
         Ekran("personel_izinleri", "İzinler", "core:izinler"),
+        Ekran("personel_belgeleri", "Özlük Belgeleri", "core:belgeler"),
         Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
     )),
     Modul("FASON", "Fason", (

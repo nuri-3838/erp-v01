@@ -10,13 +10,19 @@ from __future__ import annotations
 import io
 
 from django.core.files.base import ContentFile
-from PIL import Image
+from PIL import Image, ImageOps
 
 
-def kucult_webp(dosya, *, max_kenar=512, kalite=82, ad="logo") -> ContentFile:
+def kucult_webp(dosya, *, max_kenar=512, kalite=82, ad="logo", duzelt_yon=False) -> ContentFile:
     """`dosya` (yüklenen dosya / yol / file nesnesi) → en uzun kenarı `max_kenar`'a
-    küçültülmüş, WebP (şeffaflık korunur) ``ContentFile`` döner; adı ``<ad>.webp``."""
+    küçültülmüş, WebP (şeffaflık korunur) ``ContentFile`` döner; adı ``<ad>.webp``.
+
+    `duzelt_yon=True`: EXIF yönüne göre döndürür (telefon fotoğrafları yan yatmasın). EXIF
+    metadata'sı her durumda ATILIR (WebP'ye yazılmaz); varsayılan False → mevcut çağrılar
+    davranışça aynı."""
     img = Image.open(dosya)
+    if duzelt_yon:
+        img = ImageOps.exif_transpose(img)
     if img.mode in ("P", "LA"):
         img = img.convert("RGBA")          # palet/gri+alfa → şeffaflığı koru
     elif img.mode not in ("RGB", "RGBA"):

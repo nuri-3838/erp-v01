@@ -1,0 +1,62 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Süresi Dolacak Belgeler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Süresi Dolacak Belgeler{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<style>
+  .ik-gun-secim { display:flex; gap:.4rem; flex-wrap:wrap; margin:.2rem 0 1rem; }
+  .ik-gun-secim a { padding:.4rem .9rem; border-radius:999px; text-decoration:none; font-size:.85rem;
+    font-weight:650; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); color:var(--metin); }
+  .ik-gun-secim a.aktif { background:var(--lacivert); color:#fff; border-color:var(--lacivert); }
+</style>
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">⏰</span>Süresi Dolacak Belgeler</h1>
+  <a class="dugme" href="{% url 'core:belge_ekle' %}">+ Yeni Belge</a>
+</div>
+
+<nav class="tablar">
+  <a href="{% url 'core:belgeler' %}">Belgeler</a>
+  <a href="{% url 'core:belge_uyarilari' %}" class="aktif">Süresi Dolacaklar</a>
+</nav>
+
+<div class="ik-gun-secim">
+  {% for g in gunler %}<a href="?gun={{ g }}" class="{% if g == gun %}aktif{% endif %}">{{ g }} gün içinde</a>{% endfor %}
+</div>
+
+<p class="yardim" style="margin:0 0 .8rem">Süresi dolmuş belgeler her zaman listelenir; ayrıca seçtiğiniz süre içinde dolacaklar gösterilir.
+  Aynı türde daha yeni bir belge yüklendiyse (yenilenmişse) eski belge bu listede görünmez; ayrılan personel de görünmez.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr><th>Personel</th><th>Belge</th><th>Bitiş</th><th>Durum</th><th></th></tr></thead>
+  <tbody>
+    {% for u in uyarilar %}
+      <tr>
+        <td>
+          <div class="ik-hucre">
+            <span class="ik-avatar">{{ u.belge.personel.ad|first }}{{ u.belge.personel.soyad|first }}</span>
+            <div>
+              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' u.belge.personel_id %}">{{ u.belge.personel.ad_soyad }}</a>{% else %}{{ u.belge.personel.ad_soyad }}{% endif %}</div>
+              <div class="alt">{{ u.belge.personel.gorev|default:"" }}</div>
+            </div>
+          </div>
+        </td>
+        <td><strong>{{ u.belge.get_tur_display }}</strong>{% if u.belge.aciklama %}<div class="yardim">{{ u.belge.aciklama }}</div>{% endif %}</td>
+        <td class="mono">{{ u.belge.bitis_tarihi|date:"d.m.Y" }}</td>
+        <td>{% if u.doldu %}{% include "core/_belge_durum_rozeti.html" with durum="SURESI_DOLDU" kalan=u.kalan_gun %}{% else %}{% include "core/_belge_durum_rozeti.html" with durum="YAKLASIYOR" kalan=u.kalan_gun %}{% endif %}</td>
+        <td class="islem-bag">
+          <a class="dugme-ikincil" href="{% url 'core:belge_indir' u.belge.pk %}" target="_blank" rel="noopener">Aç</a>
+          <a class="dugme-ikincil" href="{% url 'core:belge_ekle' %}?personel={{ u.belge.personel_id }}">Yenisini Yükle</a>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
+        ✅ {{ gun }} gün içinde süresi dolacak ya da dolmuş belge yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
