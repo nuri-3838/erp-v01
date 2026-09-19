@@ -12,7 +12,7 @@ from core.models import (Birim, Depo, Kategori, Stok, StokHareket, StokMaliyetKa
 from core.services import stok_maliyet
 from core.services.depo import DepoHatasi, depo_olustur, depo_sil
 from core.services.hareket import (HareketHatasi, depo_bazinda_eldeki, eldeki_miktar,
-                                   hareket_ekle, hareket_sil)
+                                   hareket_ekle, hareket_sil, toplu_eldeki)
 
 D = datetime.date
 
@@ -80,6 +80,33 @@ class HareketServisTest(TestCase):
         self.assertEqual(bazinda[self.d1.pk], Decimal("100.000"))
         self.assertEqual(bazinda[self.d2.pk], Decimal("40.000"))
         self.assertEqual(eldeki_miktar(self.s), Decimal("140.000"))
+
+    def test_toplu_eldeki_tum_depolarin_toplami(self):
+        """Tek gruplu sorgu, eldeki_miktar(stok) ile birebir aynı sonucu verir; hareketsiz
+        stok sözlükte yoktur; silinmiş (soft) hareket sayılmaz."""
+        ikinci = Stok.objects.create(kod="150-10-0002", ad="İKİNCİ", kategori=self.s.kategori,
+                                     uretim_birimi=self.s.uretim_birimi,
+                                     fatura_birimi=self.s.fatura_birimi)
+        hareketsiz = Stok.objects.create(kod="150-10-0003", ad="HAREKETSİZ",
+                                         kategori=self.s.kategori,
+                                         uretim_birimi=self.s.uretim_birimi,
+                                         fatura_birimi=self.s.fatura_birimi)
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="100")
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d2.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="40")
+        hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 2),
+                     tur="CIKIS", miktar="30")
+        hareket_ekle(stok_id=ikinci.pk, depo_id=self.d2.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="7")
+        silinecek = hareket_ekle(stok_id=ikinci.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
+                                 tur="GIRIS", miktar="500")
+        hareket_sil(silinecek)
+        sonuc = toplu_eldeki([self.s.pk, ikinci.pk, hareketsiz.pk])
+        self.assertEqual(sonuc[self.s.pk], Decimal("110.000"))       # 100 + 40 - 30
+        self.assertEqual(sonuc[ikinci.pk], Decimal("7.000"))
+        self.assertNotIn(hareketsiz.pk, sonuc)
+        self.assertEqual(sonuc[self.s.pk], eldeki_miktar(self.s))
 
     def test_giris_silme_negatife_dusuremez(self):
         g = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
@@ -211,6 +238,21 @@ class FazBViewTest(TestCase):
         self.assertEqual(eldeki_miktar(self.s), Decimal("250.000"))
         det = self.client.get(reverse("core:stok_detay", args=[self.s.pk]))
         self.assertContains(det, "250,000")
+
+    def test_stok_listesi_grup_yerine_tum_depolarin_mevcut_miktarini_gosterir(self):
+        d1 = depo_olustur(kod="01", ad="ANA")
+        d2 = depo_olustur(kod="02", ad="ÜRETİM")
+        hareket_ekle(stok_id=self.s.pk, depo_id=d1.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="250")
+        hareket_ekle(stok_id=self.s.pk, depo_id=d2.pk, tarih=D(2026, 6, 1),
+                     tur="GIRIS", miktar="40")
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:stoklar"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Mevcut Miktar")
+        self.assertContains(r, "290,000")                    # 250 + 40, tüm depolar
+        self.assertNotContains(r, ">Grup<")
+        self.assertNotContains(r, "stk-grup-ikon")
 
     def test_yetkisiz_403(self):
         self.client.force_login(self.bos)

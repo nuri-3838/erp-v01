@@ -47,7 +47,6 @@
   #stk-tablo tbody tr:active td { background:rgba(240,124,0,.1); }
   .stk-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
   #stk-tablo tbody tr:hover .stk-ok { color:var(--turuncu-koyu); opacity:1; }
-  .stk-grup-ikon { font-size:1rem; letter-spacing:.1rem; }
 
   .stk-satir[hidden] { display:none; }
   .stk-bos-js { display:none; }
@@ -85,13 +84,14 @@
 </div>
 
 <p class="sayfa-alt"><span id="stk-sayac-sayi">{{ stoklar|length }}</span> stok kartı · kod otomatik (ÜST-ALT-sıra).
-  Muhasebe hesapları bağlı kategorinin fatura-tipi haritasından gelir.</p>
+  Muhasebe hesapları bağlı kategorinin fatura-tipi haritasından gelir.
+  Mevcut miktar tüm depoların toplamıdır (üretim birimi cinsinden).</p>
 
 <div class="tablo-kapsayici genis">
 <table id="stk-tablo">
   <thead>
     <tr>
-      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th><th>Grup</th><th></th>
+      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th><th class="sag">Mevcut Miktar</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -108,7 +108,7 @@
         </td>
         <td><span class="rozet rozet-notr">{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</span></td>
         <td>{{ s.uretim_birimi.kisa_ad }}</td>
-        <td class="stk-grup-ikon">{% if s.satinalma_urunu %}🛒{% endif %}{% if s.uretim_urunu %}🏭{% endif %}{% if s.satis_urunu %}📤{% endif %}</td>
+        <td class="sag mono" data-arama-disi>{{ s.eldeki|tr_kur:3 }}</td>
         <td class="stk-ok">›</td>
       </tr>
     {% empty %}
@@ -136,8 +136,13 @@
   // Aranabilir metin satırın kendi görünen içeriğinden türetilir (TR-uyumlu küçük harf,
   // sunucudan gelen |lower filtresine güvenilmez -- Python .lower() İ/I harflerini
   // yanlış çevirir, arama sorgusundaki toLocaleLowerCase('tr') ile eşleşmeyebilir).
+  // data-arama-disi hücreler (mevcut miktar) hariç: rakam yazan kod aramasına miktar
+  // metni karışmasın.
   satirlar.forEach(function(tr){
-    tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
+    tr.dataset.arama = Array.prototype.slice.call(tr.cells)
+      .filter(function(td){ return !td.hasAttribute('data-arama-disi'); })
+      .map(function(td){ return td.textContent; })
+      .join(' ').toLocaleLowerCase('tr');
   });
 
   function filtrele(){

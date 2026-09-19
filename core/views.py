@@ -706,8 +706,13 @@ def stoklar(request):
     kategoriler = Kategori.objects.filter(
         silindi=False, pk__in=stok_servis.aktif_stoklar().exclude(kategori=None).values("kategori_id")
     ).select_related("ust").order_by("ust__ad", "ad")
+    stok_listesi = list(qs)
+    eldeki = hareket_servis.toplu_eldeki(s.pk for s in stok_listesi)
+    for s in stok_listesi:
+        s.eldeki = eldeki.get(s.pk, hareket_servis.SIFIR)
     return render(request, "core/stok_listesi.html", {
-        "stoklar": qs, "ara": ara, "secili_kategori": kategori_id, "kategoriler": kategoriler,
+        "stoklar": stok_listesi, "ara": ara, "secili_kategori": kategori_id,
+        "kategoriler": kategoriler,
     })
 
 

@@ -32,6 +32,19 @@ def eldeki_miktar(stok, depo=None) -> Decimal:
     return g - c
 
 
+def toplu_eldeki(stok_idler) -> dict:
+    """{stok_id: eldeki} — verilen stokların TÜM depolardaki toplam eldeki miktarı
+    (``eldeki_miktar(stok)`` ile aynı anlam), stok başına ayrı sorgu yerine TEK gruplu
+    sorgu. Hareketi olmayan stok sözlükte yoktur (çağıran SIFIR varsayar)."""
+    gruplu = (StokHareket.objects.filter(stok_id__in=list(stok_idler), silindi=False)
+              .values("stok_id", "tur").annotate(t=Sum("miktar")))
+    eldeki = {}
+    for g in gruplu:
+        fark = g["t"] if g["tur"] == StokHareket.Tur.GIRIS else -g["t"]
+        eldeki[g["stok_id"]] = eldeki.get(g["stok_id"], SIFIR) + fark
+    return eldeki
+
+
 def depo_bazinda_eldeki(stok):
     """[(depo, miktar)] — stoğun hareket gördüğü depolar bazında eldeki (≠0 dahil hepsi).
     Depo başına ayrı sorgu yerine TEK gruplu sorgu (depo × tür toplamı), giriş-çıkış farkı
