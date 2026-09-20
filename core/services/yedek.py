@@ -1,12 +1,15 @@
-"""Yedek (DB + özlük evrakları) dosya işlemleri — Aşama 1 motorunu (scripts/db_backup.sh) sarar.
+"""Yedek (DB + özlük evrakları + yüklenen görseller) dosya işlemleri — Aşama 1 motorunu
+(scripts/db_backup.sh) sarar.
 
 Ekran katmanı yalnızca: listeleme, elle tetikleme (yedek_al) ve indirme için yol çözümü.
 GERİ YÜKLEME burada KASITLI olarak YOKTUR (tehlikeli; yanlış basılır).
 
-İki tür yedek dosyası vardır (aynı script, aynı zaman damgası):
+Üç tür yedek dosyası vardır (aynı script, aynı zaman damgası):
 - ``erp_v01_YYYYMMDD_HHMMSS.sql.gz``       — PostgreSQL dökümü (tur="DB")
 - ``erp_v01_ozel_YYYYMMDD_HHMMSS.tar.gz``  — İK özlük evrakları + fotoğraflar (tur="EVRAK";
   IK_OZEL_DIR'in arşivi; dizin boşsa üretilmez)
+- ``erp_v01_medya_YYYYMMDD_HHMMSS.tar.gz`` — yüklenen görseller (tur="MEDYA"; MEDIA_ROOT'un
+  arşivi: stok görselleri, banka/firma logoları; dizin boşsa üretilmez)
 """
 from __future__ import annotations
 
@@ -22,7 +25,10 @@ from django.conf import settings
 _AD_DESEN = re.compile(r"^erp_v01_(\d{8})_(\d{6})\.sql\.gz$")
 # erp_v01_ozel_YYYYMMDD_HHMMSS.tar.gz — İK özel dosya arşivi (Dilim 3).
 _OZEL_DESEN = re.compile(r"^erp_v01_ozel_(\d{8})_(\d{6})\.tar\.gz$")
-_DESENLER = (("DB", _AD_DESEN), ("EVRAK", _OZEL_DESEN))
+# erp_v01_medya_YYYYMMDD_HHMMSS.tar.gz — yüklenen görseller (MEDIA_ROOT) arşivi.
+_MEDYA_DESEN = re.compile(r"^erp_v01_medya_(\d{8})_(\d{6})\.tar\.gz$")
+_DESENLER = (("DB", _AD_DESEN), ("EVRAK", _OZEL_DESEN), ("MEDYA", _MEDYA_DESEN))
+_TUR_AD = {"DB": "Veritabanı", "EVRAK": "Özlük evrakları", "MEDYA": "Yüklenen görseller"}
 
 
 def yedek_dizini() -> Path:
@@ -39,11 +45,11 @@ class YedekDosya:
     ad: str
     boyut: int       # bayt
     tarih: datetime  # dosya adındaki zaman damgası (yoksa dosya mtime)
-    tur: str = "DB"  # "DB" | "EVRAK"
+    tur: str = "DB"  # "DB" | "EVRAK" | "MEDYA"
 
     @property
     def tur_ad(self) -> str:
-        return "Özlük evrakları" if self.tur == "EVRAK" else "Veritabanı"
+        return _TUR_AD.get(self.tur, "Veritabanı")
 
     @property
     def boyut_h(self) -> str:
@@ -76,12 +82,12 @@ def _ad_tarihi(ad: str, yol: Path) -> datetime:
 
 
 def yedekleri_listele() -> list:
-    """Mevcut yedek dosyaları (YedekDosya; DB + evrak), en yeni önce."""
+    """Mevcut yedek dosyaları (YedekDosya; DB + evrak + medya), en yeni önce."""
     d = yedek_dizini()
     if not d.is_dir():
         return []
     out = []
-    for kalip in ("erp_v01_*.sql.gz", "erp_v01_ozel_*.tar.gz"):
+    for kalip in ("erp_v01_*.sql.gz", "erp_v01_ozel_*.tar.gz", "erp_v01_medya_*.tar.gz"):
         for yol in d.glob(kalip):
             tur, _ = _tur_ve_eslesme(yol.name)
             if yol.is_file() and tur:
@@ -92,8 +98,8 @@ def yedekleri_listele() -> list:
 
 
 def son_yedek():
-    """Son VERİTABANI yedeği (evrak arşivi aynı zaman damgasını taşır; 'son yedek' kartı DB'yi
-    göstermeli)."""
+    """Son VERİTABANI yedeği (evrak/medya arşivleri aynı zaman damgasını taşır; 'son yedek' kartı
+    DB'yi göstermeli)."""
     for y in yedekleri_listele():
         if y.tur == "DB":
             return y
@@ -103,7 +109,7 @@ def son_yedek():
 def yedek_yolu(ad: str):
     """İndirme için güvenli yol çözümü. Geçersiz ad / dizin dışı / yok => None.
 
-    Hem ad deseni (DB dökümü ya da evrak arşivi) hem de gerçek üst-dizin kontrolü ile
+    Hem ad deseni (DB dökümü, evrak ya da medya arşivi) hem de gerçek üst-dizin kontrolü ile
     path-traversal engellenir.
     """
     tur, _ = _tur_ve_eslesme(ad)

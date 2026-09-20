@@ -243,3 +243,85 @@ class YedekEvrakEkranTest(YedekTestTemel):
         for kotu in (EVRAK_AD + ".part", "erp_v01_ozel_20260609_030000.tar.gz"):
             self.assertEqual(self.client.get(reverse("core:yedek_indir", args=[kotu])).status_code,
                              404, kotu)
+
+
+MEDYA_AD = "erp_v01_medya_20260601_030000.tar.gz"
+
+
+class YedekMedyaServisTest(YedekTestTemel):
+    """Yüklenen görseller arşivi (erp_v01_medya_*.tar.gz) — DB/evrak yedeğiyle aynı ekranda."""
+
+    def test_uc_tur_listelenir_tur_bilgisiyle(self):
+        _yedek_yaz(self.tmp, DB_AD)
+        _yedek_yaz(self.tmp, EVRAK_AD)
+        _yedek_yaz(self.tmp, MEDYA_AD)
+        tur = {y.ad: y.tur for y in yedek_servis.yedekleri_listele()}
+        self.assertEqual(tur, {DB_AD: "DB", EVRAK_AD: "EVRAK", MEDYA_AD: "MEDYA"})
+        adlar = {y.ad: y.tur_ad for y in yedek_servis.yedekleri_listele()}
+        self.assertEqual(adlar[MEDYA_AD], "Yüklenen görseller")
+
+    def test_zaman_damgasina_gore_yeni_once(self):
+        _yedek_yaz(self.tmp, "erp_v01_medya_20260602_030000.tar.gz")
+        _yedek_yaz(self.tmp, "erp_v01_20260601_030000.sql.gz")
+        _yedek_yaz(self.tmp, "erp_v01_medya_20260603_030000.tar.gz")
+        self.assertEqual([y.ad for y in yedek_servis.yedekleri_listele()], [
+            "erp_v01_medya_20260603_030000.tar.gz", "erp_v01_medya_20260602_030000.tar.gz",
+            "erp_v01_20260601_030000.sql.gz"])
+
+    def test_son_yedek_yalniz_db(self):
+        _yedek_yaz(self.tmp, DB_AD)
+        _yedek_yaz(self.tmp, "erp_v01_medya_20260701_030000.tar.gz")        # daha yeni, ama medya
+        self.assertEqual(yedek_servis.son_yedek().ad, DB_AD)
+
+    def test_yalniz_medya_varsa_son_yedek_yok(self):
+        _yedek_yaz(self.tmp, MEDYA_AD)
+        self.assertIsNone(yedek_servis.son_yedek())
+
+    def test_yarim_ve_yabanci_dosyalar_haric(self):
+        _yedek_yaz(self.tmp, MEDYA_AD + ".part")                 # script yarım arşivi
+        _yedek_yaz(self.tmp, "erp_v01_medya_x.tar.gz")
+        _yedek_yaz(self.tmp, "erp_v01_medya_20260601_030000.zip")
+        _yedek_yaz(self.tmp, "erp_v01_medya_20260601_030000.sql.gz")
+        _yedek_yaz(self.tmp, "semta_erp_medya_20260601_030000.tar.gz")
+        self.assertEqual(yedek_servis.yedekleri_listele(), [])
+
+    def test_yol_guvenligi_medya_adi(self):
+        _yedek_yaz(self.tmp, MEDYA_AD)
+        _yedek_yaz(self.tmp, MEDYA_AD + ".part")
+        self.assertIsNotNone(yedek_servis.yedek_yolu(MEDYA_AD))
+        for kotu in (MEDYA_AD + ".part", "../" + MEDYA_AD, "erp_v01_medya_x.tar.gz",
+                     "erp_v01_medya_20260601_030000.tar.gz/../x",
+                     "erp_v01_medya_20260602_030000.tar.gz"):   # sonuncusu diskte yok
+            self.assertIsNone(yedek_servis.yedek_yolu(kotu), kotu)
+
+
+class YedekMedyaEkranTest(YedekTestTemel):
+    def test_ekranda_medya_arsivi_gorunur_ve_son_yedek_db(self):
+        _yedek_yaz(self.tmp, DB_AD, b"x" * 2048)
+        _yedek_yaz(self.tmp, MEDYA_AD, b"y" * 4096)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:yedek"))
+        self.assertContains(r, MEDYA_AD)
+        self.assertContains(r, "Yüklenen görseller")
+        self.assertContains(r, "4.0 KB")
+        self.assertContains(r, reverse("core:yedek_indir", args=[MEDYA_AD]))
+        self.assertEqual(r.context["son_yedek"].ad, DB_AD)
+        self.assertEqual(len(r.context["yedekler"]), 2)
+
+    def test_medya_arsivi_indirilir_attachment(self):
+        _yedek_yaz(self.tmp, MEDYA_AD, b"TAR-ICERIK")
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:yedek_indir", args=[MEDYA_AD]))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("attachment", r["Content-Disposition"])
+        self.assertIn(MEDYA_AD, r["Content-Disposition"])
+        self.assertEqual(b"".join(r.streaming_content), b"TAR-ICERIK")
+
+    def test_medya_arsivi_yetkisiz_403_gecersiz_404(self):
+        _yedek_yaz(self.tmp, MEDYA_AD)
+        self.client.force_login(self.normal)
+        self.assertEqual(self.client.get(reverse("core:yedek_indir", args=[MEDYA_AD])).status_code, 403)
+        self.client.force_login(self.yon)
+        for kotu in (MEDYA_AD + ".part", "erp_v01_medya_20260609_030000.tar.gz"):
+            self.assertEqual(self.client.get(reverse("core:yedek_indir", args=[kotu])).status_code,
+                             404, kotu)

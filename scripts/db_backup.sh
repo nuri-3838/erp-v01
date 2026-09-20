@@ -4,7 +4,8 @@
 # Şifre dahil DB ayarları repodaki .env'den okunur (Django ile aynı kaynak; repoda sır yok).
 set -euo pipefail
 
-REPO="/home/nuri/erp_v01"
+# ERP_REPO yalnız testler içindir (geçici dizinde çalıştırmak için); canlıda tanımsızdır.
+REPO="${ERP_REPO:-/home/nuri/erp_v01}"
 BACKUP_DIR="${REPO}/backups"
 LOG="${REPO}/logs/backup.log"
 RETENTION_DAYS=15
@@ -69,6 +70,26 @@ if [ -d "$OZEL_DIR" ] && [ -n "$(ls -A "$OZEL_DIR" 2>/dev/null)" ]; then
     else
         log "HATA: ${OZEL_FILE} alınamadı/bozuk — kısmi dosya siliniyor."
         rm -f "$OZEL_PART" "${BACKUP_DIR}/${OZEL_FILE}"
+        exit 1
+    fi
+fi
+
+# 5) Yüklenen görseller (MEDIA_ROOT = media/: stok görselleri, banka/firma logoları) arşivi —
+#    dizin yoksa/boşsa atlanır. Adım 4 ile aynı desen: erp_v01_medya_*.tar.gz, .part → tar -tzf
+#    doğrulaması → yeniden adlandırma, ayrı retention, hata → exit 1. Geri yükleme (elle):
+#    tar -xzf erp_v01_medya_<zaman>.tar.gz -C /home/nuri/erp_v01
+MEDYA_DIR="${REPO}/media"
+if [ -d "$MEDYA_DIR" ] && [ -n "$(ls -A "$MEDYA_DIR" 2>/dev/null)" ]; then
+    MEDYA_FILE="erp_v01_medya_${TIMESTAMP}.tar.gz"
+    MEDYA_PART="${BACKUP_DIR}/${MEDYA_FILE}.part"
+    if (umask 077; tar -czf "$MEDYA_PART" -C "$REPO" media 2>>"$LOG") \
+       && tar -tzf "$MEDYA_PART" >/dev/null 2>&1 \
+       && mv "$MEDYA_PART" "${BACKUP_DIR}/${MEDYA_FILE}"; then
+        find "$BACKUP_DIR" -maxdepth 1 -name 'erp_v01_medya_*.tar.gz' -mtime +${RETENTION_DAYS} -delete
+        log "OK: ${MEDYA_FILE} ($(du -h "${BACKUP_DIR}/${MEDYA_FILE}" | cut -f1))."
+    else
+        log "HATA: ${MEDYA_FILE} alınamadı/bozuk — kısmi dosya siliniyor."
+        rm -f "$MEDYA_PART" "${BACKUP_DIR}/${MEDYA_FILE}"
         exit 1
     fi
 fi
