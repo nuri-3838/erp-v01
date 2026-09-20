@@ -4,7 +4,7 @@ ve hiçbir yazma yoktur. Zincir: Kesim (1 profil -> 2 kesilmiş parça) -> Bük�
 from decimal import Decimal
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.models import (
@@ -12,6 +12,7 @@ from core.models import (
     StokHareket, UretimEmri,
 )
 from core.services.uretim import kok_operasyonlar, operasyon_olustur, operasyon_sil
+from core.templatetags.core_extras import tr_kur, tr_miktar_sade
 from core.yetki import kullanici_menusu
 
 
@@ -125,11 +126,11 @@ class UrunAgaciViewTest(ZincirTaban):
     def test_html_ic_ice_dugumleri_ve_tr_bicimi_gosterir(self):
         r = self._al(urun=self.mamul.pk, miktar="10")
         self.assertContains(r, "<details")
-        self.assertContains(r, "yaprak (hazır stok)")
+        self.assertContains(r, "hazır stok")
         for kod in ("LAZER", "BUKUM", "MONTAJ", "UA-PROFIL", "UA-CIVATA"):
             self.assertContains(r, kod)
-        self.assertContains(r, "× 20,000")
-        self.assertContains(r, "× 5,000")
+        self.assertContains(r, ">× 20</span>")                      # tam sayı: ondalıksız
+        self.assertContains(r, ">× 5</span>")
         self.assertIsNone(r.context["kokler"])                      # ağaç varken liste gizli
 
     def test_miktar_bos_ise_bir_adet_icin_agac(self):
@@ -152,6 +153,55 @@ class UrunAgaciViewTest(ZincirTaban):
         self.assertEqual(agac["stok"], self.bukulmus)
         self.assertEqual(self._cocuk(self._cocuk(agac, self.kesilmis), self.profil)["miktar"],
                          Decimal("2"))
+
+    # --- Sunum: sade miktar, istasyon adı, hizalı kolonlar, açılım, yaprak rozeti ---
+    def _agac_html(self, **params):
+        """Yalnız ağaç bölümü (sonrasındaki base.html JS/CSS sayıları karışmasın)."""
+        html = self._al(**params).content.decode()
+        return html.split('class="ua-agac"')[1].split("</section>")[0]
+
+    def test_tam_sayi_miktar_ondaliksiz_kesirli_uc_ondalik(self):
+        agac = self._agac_html(urun=self.mamul.pk, miktar="1")
+        self.assertIn(">× 1</span>", agac)                          # kök
+        self.assertIn(">× 2</span>", agac)                          # civata: tam sayı
+        self.assertIn(">× 0,500</span>", agac)                      # profil: kesirli -> 3 ondalık
+        self.assertNotIn(",000", agac)
+        agac = self._agac_html(urun=self.mamul.pk, miktar="10")
+        self.assertIn(">× 5</span>", agac)                          # profil 5: tam sayı
+        self.assertIn(">× 20</span>", agac)
+        self.assertNotIn(",000", agac)
+
+    def test_istasyon_rozeti_kod_ve_ad_gosterir(self):
+        agac = self._agac_html(urun=self.mamul.pk)
+        for rozet in ("LAZER · LAZER İSTASYONU", "BUKUM · BÜKÜM İSTASYONU",
+                      "MONTAJ · MONTAJ İSTASYONU"):
+            self.assertIn(rozet, agac)
+
+    def test_her_satirda_ayni_uc_kolon(self):
+        """5 düğüm (mamul, bükülmüş, kesilmiş, profil, civata): hepsinde metin + miktar + rozet."""
+        agac = self._agac_html(urun=self.mamul.pk)
+        self.assertEqual(agac.count('class="ua-ad"'), 5)
+        self.assertEqual(agac.count('class="ua-sag"'), 5)           # miktar+rozet tek sağ grup
+        self.assertEqual(agac.count('class="ua-miktar mono"'), 5)
+        self.assertEqual(agac.count('class="ua-ist"'), 5)
+
+    def test_varsayilan_acilim_kok_ve_bir_alt_seviye(self):
+        """mamul(0) > bükülmüş(1) > kesilmiş(2) > profil; civata yaprak. Derinlik 0 ve 1 açık,
+        2 ve sonrası kapalı başlar."""
+        agac = self._agac_html(urun=self.mamul.pk)
+        self.assertEqual(agac.count('<details class="ua-dugum" open>'), 2)
+        self.assertEqual(agac.count('<details class="ua-dugum">'), 1)
+
+    def test_hepsini_ac_kapat_yalniz_agac_varken(self):
+        html = self._al(urun=self.mamul.pk).content.decode()
+        for parca in ('data-ua="ac"', 'data-ua="kapat"', "Hepsini Aç", "Hepsini Kapat"):
+            self.assertIn(parca, html)
+        self.assertNotIn('data-ua="ac"', self._al().content.decode())
+
+    def test_yaprak_rozeti_ayri_ve_kisa(self):
+        agac = self._agac_html(urun=self.mamul.pk)
+        self.assertEqual(agac.count('class="ua-hazir"'), 2)         # profil + civata
+        self.assertNotIn("yaprak (hazır stok)", agac)
 
     # --- Hatalı girdi: 500 yok, ağaç yok, alan hatası var ---
     def test_gecersiz_miktar_hata_verir(self):
@@ -207,3 +257,32 @@ class UrunAgaciViewTest(ZincirTaban):
         self.assertEqual(uretim_kodlari(self.yetkili), ["urun_agaci"])
         self.assertEqual(uretim_kodlari(self.hesapla_yetkili), ["ihtiyac_hesapla"])
         self.assertEqual(uretim_kodlari(self.bos), [])
+
+
+class TrMiktarSadeFiltreTest(SimpleTestCase):
+    def test_tam_sayi_ondaliksiz(self):
+        self.assertEqual(tr_miktar_sade(Decimal("1.000")), "1")
+        self.assertEqual(tr_miktar_sade(Decimal("1")), "1")
+        self.assertEqual(tr_miktar_sade(Decimal("1000")), "1.000")   # nokta = binlik
+        self.assertEqual(tr_miktar_sade(3), "3")
+
+    def test_kesirli_uc_ondalik_kalir(self):
+        self.assertEqual(tr_miktar_sade(Decimal("0.056")), "0,056")
+        self.assertEqual(tr_miktar_sade(Decimal("12.5")), "12,500")
+        self.assertEqual(tr_miktar_sade(Decimal("1234.5")), "1.234,500")
+        self.assertEqual(tr_miktar_sade("2.50"), "2,500")
+
+    def test_yuvarlanmis_deger_tam_sayiysa_ondaliksiz(self):
+        """Zincir bölmesi 10/3*3 = 9,999…: ekranda '10,000' değil '10' görünmeli."""
+        self.assertEqual(tr_miktar_sade(Decimal(10) / Decimal(3) * Decimal(3)), "10")
+        self.assertEqual(tr_miktar_sade(Decimal("10.0004")), "10")
+        self.assertEqual(tr_miktar_sade(Decimal("10.0005")), "10,001")   # ROUND_HALF_UP
+
+    def test_bos_degerler(self):
+        self.assertEqual(tr_miktar_sade(None), "")
+        self.assertEqual(tr_miktar_sade(""), "")
+
+    def test_tr_kur_degismedi(self):
+        """tr_kur 30 şablonda kur/tutar için kullanılıyor — tam sayıda ondalık ATMAMALI."""
+        self.assertEqual(tr_kur(Decimal("30"), 6), "30,000000")
+        self.assertEqual(tr_kur(Decimal("1"), 3), "1,000")

@@ -1,0 +1,6 @@
+{% load core_extras %}
+<span class="ua-ad"><span class="mono">{{ dugum.stok.kod }}</span> {{ dugum.stok.ad }}</span>
+<span class="ua-sag">
+  <span class="ua-miktar mono">× {{ dugum.miktar|tr_miktar_sade }}</span>
+  <span class="ua-ist">{% if dugum.istasyon %}<span class="rozet rozet-notr" title="{{ dugum.istasyon.kod }} · {{ dugum.istasyon.ad }}">{{ dugum.istasyon.kod }} · {{ dugum.istasyon.ad }}</span>{% else %}<span class="ua-hazir" title="Yaprak: operasyonu olmayan hazır stok">hazır stok</span>{% endif %}</span>
+</span>

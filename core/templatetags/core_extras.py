@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django import template
 
-from core.sayi import format_tr
+from core.sayi import format_tr, yuvarla
 
 register = template.Library()
 
@@ -22,6 +22,19 @@ def tr_kur(value, basamak=6):
     if value is None or value == "":
         return ""
     return format_tr(value if isinstance(value, Decimal) else Decimal(str(value)), basamak)
+
+
+@register.filter
+def tr_miktar_sade(value, basamak=3):
+    """Miktar gösterimi (ÜRETİM > Ürün Ağacı): tam sayı ondalıksız ("1", "1.250"), kesirli
+    ``basamak`` ondalıkla (0,056). Tam sayı kontrolü YUVARLAMADAN SONRA yapılır: zincir
+    bölmeleri 9,999999… gibi değerler üretebilir, ekranda "10,000" değil "10" görünmeli.
+    ``tr_kur`` değiştirilmez — 30 şablonda kur/tutar için kullanılıyor."""
+    if value is None or value == "":
+        return ""
+    d = value if isinstance(value, Decimal) else Decimal(str(value))
+    q = yuvarla(d, basamak)
+    return format_tr(q, 0 if q == q.to_integral_value() else basamak)
 
 
 @register.filter

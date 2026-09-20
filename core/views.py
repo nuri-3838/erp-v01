@@ -5053,6 +5053,9 @@ def ihtiyac_hesapla(request):
 
 
 # --- Ürün Ağacı (salt-okunur GET görünümü; ağaç ihtiyac_hesapla'dan gelir, kayıt açmaz) ---
+URUN_AGACI_ACIK_SEVIYE = 2      # kök + bir alt seviye açık başlar; derindekiler kapalı
+
+
 @ekran_gerekli("urun_agaci")
 def urun_agaci(request):
     agac = None
@@ -5068,7 +5071,7 @@ def urun_agaci(request):
     else:
         form = UrunAgaciForm()
     return render(request, "core/urun_agaci.html", {
-        "form": form, "agac": agac,
+        "form": form, "agac": agac, "acik_seviye": URUN_AGACI_ACIK_SEVIYE,
         "kokler": None if agac else uretim_servis.kok_operasyonlar()})
 
 

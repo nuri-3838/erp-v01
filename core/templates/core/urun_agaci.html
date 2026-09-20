@@ -36,9 +36,16 @@
 
   {% if agac %}
     <section class="icerik-kart">
-      <h2 class="bolum-baslik"><span class="emoji">🌳</span>Ağaç</h2>
+      <div class="ua-baslik-satiri">
+        <h2 class="bolum-baslik"><span class="emoji">🌳</span>Ağaç</h2>
+        <span class="ua-arac">
+          <button type="button" class="ua-baglanti" data-ua="ac">Hepsini Aç</button>
+          <span aria-hidden="true">/</span>
+          <button type="button" class="ua-baglanti" data-ua="kapat">Hepsini Kapat</button>
+        </span>
+      </div>
       <div class="ua-agac">
-        {% include "core/_urun_agaci_dugum.html" with dugum=agac %}
+        {% include "core/_urun_agaci_dugum.html" with dugum=agac derinlik=0 %}
       </div>
     </section>
   {% endif %}
@@ -76,9 +83,18 @@
   .ua-alan label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
     text-transform:uppercase; color:var(--metin-soluk); }
   .ua-alan input, .ua-alan select { width:100%; box-sizing:border-box; }
+  .ua-baslik-satiri { display:flex; align-items:baseline; justify-content:space-between;
+    gap:.6rem; flex-wrap:wrap; }
+  .ua-arac { display:inline-flex; align-items:baseline; gap:.4rem; font-size:.8rem;
+    color:var(--metin-soluk); }
+  .ua-baglanti { background:none; border:0; box-shadow:none; min-height:0; padding:0; font:inherit;
+    font-weight:600; color:var(--lacivert-acik); cursor:pointer; }
+  .ua-baglanti:hover { color:var(--turuncu-koyu); text-decoration:underline; }
+
+  .ua-agac { container-type:inline-size; }
   .ua-dugum { margin-left:.9rem; padding-left:.7rem; border-left:1px solid var(--cizgi); }
   .ua-agac > .ua-dugum { margin-left:0; padding-left:0; border-left:none; }
-  .ua-agac > .ua-dugum > summary, .ua-agac > .ua-dugum > .ua-baslik { font-weight:650; }
+  .ua-agac > details > summary, .ua-agac > .ua-yaprak { font-weight:650; }
   .ua-dugum > summary, .ua-yaprak { display:flex; gap:.35rem; align-items:baseline;
     padding-top:.15rem; padding-bottom:.15rem; }
   .ua-dugum > summary { cursor:pointer; list-style:none; }
@@ -86,7 +102,37 @@
   .ua-dugum > summary::before, .ua-yaprak::before { content:""; flex:0 0 .9rem; color:var(--metin-soluk); }
   details.ua-dugum[open] > summary::before { content:"▾"; }
   details.ua-dugum:not([open]) > summary::before { content:"▸"; }
-  .ua-baslik { display:flex; gap:.4rem; align-items:baseline; flex-wrap:wrap; flex:1 1 0; min-width:0; }
+
+  .ua-ad { flex:1 1 0; min-width:0; overflow-wrap:anywhere; }
+  .ua-sag { flex:0 0 auto; display:flex; align-items:baseline; gap:.35rem; }
+  .ua-miktar { flex:0 0 7rem; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .ua-ist { flex:0 0 10rem; min-width:0; display:flex; justify-content:flex-end; }
+  .ua-ist .rozet { display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .ua-hazir { display:inline-flex; align-items:center; gap:.35rem; font-size:.72rem; font-weight:500;
+    color:var(--metin-soluk); white-space:nowrap; }
+  .ua-hazir::before { content:""; width:.42rem; height:.42rem; border-radius:50%; background:#c4cad6; }
+
+  @container (max-width: 34rem) {
+    .ua-dugum > summary, .ua-yaprak { flex-wrap:wrap; }
+    .ua-ad { flex-basis:calc(100% - 1.25rem); }
+    .ua-sag { margin-left:auto; min-width:0; max-width:100%; }
+    .ua-miktar { flex-basis:4.5rem; order:2; }   /* sayı en sağda sabit: her satırda aynı hiza */
+    .ua-ist { flex:0 1 8.5rem; order:1; }        /* rozet solunda; yer daralırsa o kırpılır */
+  }
 </style>
+{% if agac %}
+<script>
+(function(){
+  var kok = document.querySelector('.ua-agac');
+  if(!kok) return;
+  document.querySelectorAll('.ua-arac [data-ua]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var ac = b.getAttribute('data-ua') === 'ac';
+      kok.querySelectorAll('details').forEach(function(d){ d.open = ac; });
+    });
+  });
+})();
+</script>
+{% endif %}
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}
