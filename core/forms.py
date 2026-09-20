@@ -302,6 +302,9 @@ class FaturaTipiForm(forms.Form):
     sira = forms.IntegerField(
         label="Sıra", min_value=0, initial=0,
         widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+    gider = forms.BooleanField(
+        label="Gider faturası (kalemler stok yerine gider hesabına yazılır; depo/stok hareketi yok — "
+              "yalnız Alış)", required=False)
 
 
 class StokForm(forms.Form):
@@ -1415,6 +1418,14 @@ class FaturaSatirForm(forms.Form):
     kaybına yol açardı (`prepare_value` initial'ı basamak sayısına göre biçimlendirir)."""
     stok = forms.ModelChoiceField(
         label="Stok", queryset=Stok.objects.none(), required=False, empty_label="— stok seç —")
+    # GİDER faturasında (FaturaTipi.gider) stok yerine kullanılır: yaprak gider hesabı
+    # (önce 730.x/770.x) + satırda seçilen KDV oranı. Şablon JS'i fatura tipine göre
+    # stok ↔ hesap alanlarını değiştirir; kesin doğrulama serviste (tip × kalem türü).
+    hesap = forms.ModelChoiceField(
+        label="Gider Hesabı", queryset=HesapPlani.objects.none(), required=False,
+        empty_label="— gider hesabı seç —")
+    kdv = forms.ModelChoiceField(
+        label="KDV", queryset=KdvOrani.objects.none(), required=False, empty_label=None)
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
@@ -1431,19 +1442,36 @@ class FaturaSatirForm(forms.Form):
             self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
 
+        from core.services.hesap_plani import gider_hesaplari
+        self.fields["hesap"].queryset = gider_hesaplari()
+        self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+        kdvler = KdvOrani.objects.filter(silindi=False).order_by("oran")
+        self.fields["kdv"].queryset = kdvler
+        self.fields["kdv"].label_from_instance = (
+            lambda o: "KDV %" + str(int(o.oran) if o.oran == int(o.oran) else o.oran))
+        varsayilan = kdvler.filter(oran=20).first() or kdvler.last()
+        if varsayilan is not None:
+            self.fields["kdv"].initial = varsayilan.pk       # gider kaleminde en sık: %20
+
     def clean(self):
         cd = super().clean()
         stok = cd.get("stok")
+        hesap = cd.get("hesap")
         miktar = cd.get("miktar")
         fiyat = cd.get("birim_fiyat")
-        if not stok and miktar is None and fiyat is None:
+        if not stok and not hesap and miktar is None and fiyat is None:
             return cd                              # boş satır — atlanır
-        if not stok:
-            raise forms.ValidationError("Stok seçin.")
+        if stok and hesap:
+            raise forms.ValidationError("Ya stok ya da gider hesabı seçin; ikisi birden olmaz.")
+        if not stok and not hesap:
+            raise forms.ValidationError("Stok seçin (gider faturasında gider hesabı seçin).")
         if miktar is None or miktar <= 0:
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
         if fiyat is None or fiyat < 0:
             raise forms.ValidationError("Birim fiyat girin.")
+        if stok:
+            cd["kdv"] = None                       # stok kaleminde KDV stoktan gelir
         cd["dolu"] = True
         return cd
 

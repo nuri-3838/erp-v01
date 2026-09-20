@@ -408,6 +408,10 @@ class FaturaTipi(TemelModel):
     ad = models.CharField("ad", max_length=100)
     yon = models.CharField("yön", max_length=5, choices=Yon.choices)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
+    # Gider faturası: kalemler STOK yerine doğrudan bir GİDER HESABINA (yaprak 7xx/63x...)
+    # yazılır; depo/stok hareketi yoktur, muhasebe haritası (KategoriHesap) kullanılmaz.
+    # Yalnız ALIŞ yönünde anlamlıdır (servis fatura anında zorlar).
+    gider = models.BooleanField("gider faturası", default=False)
 
     class Meta:
         db_table = "fatura_tipi"
@@ -1281,12 +1285,20 @@ class Fatura(TemelModel):
 
 
 class FaturaSatir(TemelModel):
-    """Fatura kalemi: stok × miktar × birim fiyat (+ KDV oranı snapshot)."""
+    """Fatura kalemi: stok × miktar × birim fiyat (+ KDV oranı snapshot).
+
+    GİDER faturasında (FaturaTipi.gider) kalem STOK değil doğrudan bir GİDER HESABIDIR
+    (`hesap`, yaprak) ve KDV oranı satırda seçilir; her satırda stok VE hesaptan TAM biri
+    dolu olur (DB kısıtı)."""
 
     fatura = models.ForeignKey(
         Fatura, verbose_name="fatura", related_name="satirlar", on_delete=models.CASCADE)
     stok = models.ForeignKey(
-        Stok, verbose_name="stok", related_name="fatura_satirlari", on_delete=models.PROTECT)
+        Stok, verbose_name="stok", related_name="fatura_satirlari", on_delete=models.PROTECT,
+        null=True, blank=True)
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="gider hesabı", related_name="fatura_satirlari",
+        on_delete=models.PROTECT, null=True, blank=True)
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
     birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
     # KDV oranı snapshot (fatura anındaki); stok sonradan değişse fatura korunur.
@@ -1307,10 +1319,15 @@ class FaturaSatir(TemelModel):
         constraints = [
             models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_fatura_satir_miktar_gt0"),
             models.CheckConstraint(condition=models.Q(birim_fiyat__gte=0), name="ck_fatura_satir_fiyat_gte0"),
+            # Bir kalem ya stok ya gider hesabıdır (ikisi birden / hiçbiri olamaz).
+            models.CheckConstraint(
+                condition=(models.Q(stok__isnull=False, hesap__isnull=True)
+                           | models.Q(stok__isnull=True, hesap__isnull=False)),
+                name="ck_fatura_satir_stok_veya_hesap"),
         ]
 
     def __str__(self):
-        return f"{self.stok_id} x {self.miktar}"
+        return f"{self.stok_id or self.hesap_id} x {self.miktar}"
 
     @property
     def tutar(self):

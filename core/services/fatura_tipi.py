@@ -12,7 +12,7 @@ from __future__ import annotations
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import FaturaTipi, KategoriHesap
+from core.models import Fatura, FaturaTipi, KategoriHesap
 
 
 class FaturaTipiHatasi(ValueError):
@@ -42,23 +42,39 @@ def _ad_dogrula(ad, *, haric_pk=None):
     return ad
 
 
-def fatura_tipi_olustur(*, ad, yon, sira=0, kullanici=None) -> FaturaTipi:
+def _gider_dogrula(gider, yon):
+    """Gider faturası (kalem = gider hesabı, stok/depo yok) yalnız ALIŞ yönünde anlamlıdır."""
+    gider = bool(gider)
+    if gider and yon != FaturaTipi.Yon.ALIS:
+        raise FaturaTipiHatasi("Gider faturası yalnız Alış yönünde olabilir.")
+    return gider
+
+
+def fatura_tipi_olustur(*, ad, yon, sira=0, gider=False, kullanici=None) -> FaturaTipi:
     yon = _yon_dogrula(yon)
     ad = _ad_dogrula(ad)
+    gider = _gider_dogrula(gider, yon)
     return FaturaTipi.objects.create(
-        ad=ad, yon=yon, sira=int(sira or 0),
+        ad=ad, yon=yon, sira=int(sira or 0), gider=gider,
         created_by=kullanici, updated_by=kullanici,
     )
 
 
-def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, kullanici=None) -> FaturaTipi:
+def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, gider=False,
+                         kullanici=None) -> FaturaTipi:
     if tip.silindi:
         raise FaturaTipiHatasi("Silinmiş fatura tipi düzenlenemez.")
-    tip.yon = _yon_dogrula(yon)
-    tip.ad = _ad_dogrula(ad, haric_pk=tip.pk)
+    yon = _yon_dogrula(yon)
+    ad = _ad_dogrula(ad, haric_pk=tip.pk)
+    gider = _gider_dogrula(gider, yon)
+    if gider != tip.gider and Fatura.objects.filter(tip=tip, silindi=False).exists():
+        raise FaturaTipiHatasi(
+            "Bu tipte fatura kesilmiş; 'gider faturası' işareti değiştirilemez "
+            "(mevcut faturaların kalemleri stok/gider hesabı olarak sabittir).")
+    tip.yon, tip.ad, tip.gider = yon, ad, gider
     tip.sira = int(sira or 0)
     tip.updated_by = kullanici
-    tip.save(update_fields=["ad", "yon", "sira", "updated_by", "updated_at"])
+    tip.save(update_fields=["ad", "yon", "sira", "gider", "updated_by", "updated_at"])
     return tip
 
 

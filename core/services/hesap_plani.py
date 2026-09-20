@@ -99,6 +99,35 @@ def yaprak_hesaplar():
     )
 
 
+# Alış-Gider faturasında seçilebilen hesap kümesi: 7xx (7/A maliyet-gider hesapları) +
+# 65x/66x/68x (doğrudan işlenen gelir tablosu gider hesapları: komisyon/kambiyo, faiz,
+# olağandışı). 62x/63x DIŞARIDA — 7/A'da bunlara ay sonu YANSITMA ile aktarım yapılır, doğrudan
+# fatura kesilmez; gelir hesapları da dışarıda. "YANSITMA" hesapları hariç.
+GIDER_KOD_DESENI = r"^(7\d\d|65\d|66\d|68\d)(\.|$)"
+# Sıralamada öne alınan gider alt hesapları (bkz. migration 0124).
+GIDER_ONCELIKLI_ONEKLER = ("730.", "770.")
+
+
+def gider_hesaplari():
+    """Alış-Gider faturasında kalem olarak seçilebilen hesaplar: aktif YAPRAK gider hesapları.
+    Sıra: önce 730.x / 770.x alt hesapları, sonra diğer 7xx, sonra 65x/66x/68x (her grup kod
+    sırasıyla)."""
+    from django.db.models import Case, IntegerField, Q, Value, When
+    oncelikli = Q()
+    for onek in GIDER_ONCELIKLI_ONEKLER:
+        oncelikli |= Q(hesap_kodu__startswith=onek)
+    return (
+        yaprak_hesaplar()
+        .filter(hesap_kodu__regex=GIDER_KOD_DESENI)
+        .exclude(hesap_adi__icontains="YANSITMA")
+        .annotate(_oncelik=Case(
+            When(oncelikli, then=Value(0)),
+            When(hesap_kodu__startswith="7", then=Value(1)),
+            default=Value(2), output_field=IntegerField()))
+        .order_by("_oncelik", "hesap_kodu")
+    )
+
+
 def alt_kod_oner(ust: HesapPlani) -> str:
     """Üst hesabın altına makul bir sonraki kod önerir (elle değiştirilebilir).
 

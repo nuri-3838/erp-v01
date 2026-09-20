@@ -1182,7 +1182,7 @@ def fatura_tipi_duzenle(request, pk):
                 form.add_error(None, str(e))
     else:
         form = FaturaTipiForm(initial={
-            "ad": tip.ad, "yon": tip.yon, "sira": tip.sira})
+            "ad": tip.ad, "yon": tip.yon, "sira": tip.sira, "gider": tip.gider})
     return render(request, "core/fatura_tipi_form.html",
                   {"form": form, "baslik": "Fatura Tipi Düzenle", "duzenlenen": tip})
 
@@ -2536,12 +2536,7 @@ def siparis_faturaya_cevir(request, pk):
         fform = FaturaForm(request.POST, yon=yon)
         formset = FaturaSatirFormSet(request.POST, form_kwargs={"yon": yon})
         if fform.is_valid() and formset.is_valid():
-            satirlar = [
-                {"stok_id": f.cleaned_data["stok"].pk,
-                 "miktar": f.cleaned_data["miktar"],
-                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
-                for f in formset if f.dolu_mu()
-            ]
+            satirlar = _fatura_satir_girdileri(formset)
             try:
                 fatura = fatura_servis.fatura_olustur(
                     tip_id=fform.cleaned_data["tip"].pk,
@@ -2572,6 +2567,7 @@ def siparis_faturaya_cevir(request, pk):
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
+                   **_fatura_gider_baglami(fform),
                    "baslik": f"Fatura Oluştur (Sipariş {siparis.pk} kaynaklı)",
                    "iptal_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
@@ -5295,6 +5291,30 @@ def _stok_kdv_tevkifat(yon=None):
     return stok_kdv, stok_tevkifat, stok_tedarikci
 
 
+def _fatura_satir_girdileri(formset):
+    """Fatura kalem formlarından servis girdisi: stok kalemi ya da (gider faturasında) gider
+    hesabı + satırda seçilen KDV oranı. Tip × kalem türü tutarlılığı serviste doğrulanır."""
+    girdiler = []
+    for f in formset:
+        if not f.dolu_mu():
+            continue
+        cd = f.cleaned_data
+        girdiler.append({
+            "stok_id": cd["stok"].pk if cd.get("stok") else None,
+            "hesap_id": cd["hesap"].pk if cd.get("hesap") else None,
+            "kdv_id": cd["kdv"].pk if cd.get("kdv") else None,
+            "miktar": cd["miktar"], "birim_fiyat": cd["birim_fiyat"]})
+    return girdiler
+
+
+def _fatura_gider_baglami(fform):
+    """fatura_ekle.html JS'i için: hangi fatura tipleri GİDER faturası (depo gizlenir, kalem
+    = gider hesabı) + KDV oran haritası (gider kaleminin KDV önizlemesi)."""
+    return {"tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
+            "kdv_oran": {str(k.pk): float(k.oran)
+                         for k in KdvOrani.objects.filter(silindi=False)}}
+
+
 def _fatura_listesi(request, yon, baslik):
     # tip__yon DEĞİL — İrsaliye'den otomatik açılan taslağın tipi henüz boş olabilir
     # (INNER JOIN tip=None satırları dışlar); Fatura'nın kendi yon alanı bunun için var.
@@ -5321,12 +5341,7 @@ def _fatura_ekle(request, yon, baslik):
         fform = FaturaForm(request.POST, yon=yon)
         formset = FaturaSatirFormSet(request.POST)
         if fform.is_valid() and formset.is_valid():
-            satirlar = [
-                {"stok_id": f.cleaned_data["stok"].pk,
-                 "miktar": f.cleaned_data["miktar"],
-                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
-                for f in formset if f.dolu_mu()
-            ]
+            satirlar = _fatura_satir_girdileri(formset)
             try:
                 # fatura_olustur = taslak + hemen onay (tip formda zaten seçili) — günlük
                 # fatura girişi tek tıkla kalır, tam atomik (eskisi gibi ya hepsi ya hiçbiri).
@@ -5343,7 +5358,7 @@ def _fatura_ekle(request, yon, baslik):
                     kullanici=request.user,
                 )
                 mesaj = f"Fatura kaydedildi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu."
-                if fform.cleaned_data.get("depo") is None:
+                if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider:
                     mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
                 messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
@@ -5356,6 +5371,7 @@ def _fatura_ekle(request, yon, baslik):
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
+                   **_fatura_gider_baglami(fform),
                    "baslik": baslik, "iptal_url": reverse(_fatura_liste_url(yon))})
 
 
@@ -5380,12 +5396,7 @@ def fatura_duzenle(request, pk):
         fform = FaturaForm(request.POST, yon=yon)
         formset = FaturaSatirDuzenleFormSet(request.POST, form_kwargs={"yon": yon})
         if fform.is_valid() and formset.is_valid():
-            satirlar = [
-                {"stok_id": f.cleaned_data["stok"].pk,
-                 "miktar": f.cleaned_data["miktar"],
-                 "birim_fiyat": f.cleaned_data["birim_fiyat"]}
-                for f in formset if f.dolu_mu()
-            ]
+            satirlar = _fatura_satir_girdileri(formset)
             try:
                 fatura_servis.fatura_guncelle(
                     fatura,
@@ -5403,7 +5414,7 @@ def fatura_duzenle(request, pk):
                     mesaj = "Taslak fatura güncellendi."
                 else:
                     mesaj = f"Fatura güncellendi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} yenilendi."
-                    if fform.cleaned_data.get("depo") is None:
+                    if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider:
                         mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
                 messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
@@ -5417,13 +5428,15 @@ def fatura_duzenle(request, pk):
             # forma taşınırsa yanıltıcı olur; JS zaten taze bir önizleme dolduracak.
             "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
             "depo": fatura.depo_id})
-        ilk = [{"stok": s.stok_id, "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
-               for s in fatura.satirlar.filter(silindi=False).select_related("stok")]
+        ilk = [{"stok": s.stok_id, "hesap": s.hesap_id, "kdv": s.kdv_id, "miktar": s.miktar,
+                "birim_fiyat": s.birim_fiyat}
+               for s in fatura.satirlar.filter(silindi=False).select_related("stok", "hesap")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon})
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
+                   **_fatura_gider_baglami(fform),
                    "baslik": "Fatura Düzenle",
                    "iptal_url": reverse("core:fatura_detay", args=[fatura.pk])})
 
@@ -5432,7 +5445,7 @@ def fatura_duzenle(request, pk):
 def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
-    satirlar = fatura.satirlar.filter(silindi=False).select_related("stok", "kdv")
+    satirlar = fatura.satirlar.filter(silindi=False).select_related("stok", "hesap", "kdv")
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
                    "liste_url": _fatura_liste_url(fatura.yon)})

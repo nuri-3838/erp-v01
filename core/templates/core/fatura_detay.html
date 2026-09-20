@@ -31,7 +31,7 @@
     <span class="dg"><span class="mono">{{ fatura.cari.kod }}</span> {{ fatura.cari.unvan }}</span></div>
   <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ fatura.tarih|date:"d.m.Y" }}</span></div>
   <div class="satir"><span class="et">Para Birimi</span><span class="dg">{{ fatura.para_birimi }}{% if fatura.para_birimi != "TRY" %} (kur {{ fatura.kur|tr_kur:4 }}){% endif %}</span></div>
-  <div class="satir"><span class="et">Depo</span><span class="dg">{% if fatura.depo %}<span class="mono">{{ fatura.depo.kod }}</span> {{ fatura.depo.ad }}{% else %}<span class="pasif">— (stok hareketi yok)</span>{% endif %}</span></div>
+  <div class="satir"><span class="et">Depo</span><span class="dg">{% if fatura.depo %}<span class="mono">{{ fatura.depo.kod }}</span> {{ fatura.depo.ad }}{% elif fatura.tip and fatura.tip.gider %}<span class="pasif">— (gider faturası; stok hareketi yok)</span>{% else %}<span class="pasif">— (stok hareketi yok)</span>{% endif %}</span></div>
   <div class="satir"><span class="et">Yevmiye Fişi</span>
     <span class="dg">{% if fatura.fis %}<a class="mono" href="{% url 'core:fis_detay' fatura.fis.pk %}">{{ fatura.fis.yil }}/{{ fatura.fis.fis_no }}</a>{% else %}—{% endif %}</span></div>
   {% with kaynak_siparis=fatura.kaynak_siparisler.first %}
@@ -46,12 +46,12 @@
   <h2 class="bolum-baslik">Kalemler</h2>
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
+    <thead><tr><th>{% if fatura.tip and fatura.tip.gider %}Gider Hesabı{% else %}Stok{% endif %}</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
       <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
     <tbody>
       {% for s in satirlar %}
         <tr>
-          <td><span class="mono">{{ s.stok.kod }}</span> {% if fatura.yon == "ALIS" %}{{ s.stok.ad_satinalma }}{% else %}{{ s.stok.ad }}{% endif %}</td>
+          <td>{% if s.hesap %}<span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}{% else %}<span class="mono">{{ s.stok.kod }}</span> {% if fatura.yon == "ALIS" %}{{ s.stok.ad_satinalma }}{% else %}{{ s.stok.ad }}{% endif %}{% endif %}</td>
           <td class="sag mono">{{ s.miktar|tr_kur:3 }}</td>
           <td class="sag mono">{{ s.birim_fiyat|tr_kur:4 }}</td>
           <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>

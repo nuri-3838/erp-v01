@@ -7,6 +7,10 @@ from django.core.management.base import BaseCommand
 from core.metin import buyuk_harf_tr
 from core.models import FaturaTipi
 
+# Gider faturası tipleri (kalem = gider hesabı; bkz. FaturaTipi.gider). Yalnız bunlar İŞARETLENİR;
+# diğer tiplerin gider alanına dokunulmaz.
+GIDER_TIPLERI = {"ALIŞ FATURASI-GİDER"}
+
 # (ad, yön, sıra)
 TIPLER = [
     ("SATIŞ FATURASI", "SATIS", 10),
@@ -26,13 +30,14 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         eklenen = guncellenen = 0
         for ad, yon, sira in TIPLER:
+            varsayilan = {
+                "yon": yon, "sira": sira,
+                "silindi": False, "silindi_at": None,
+            }
+            if ad in GIDER_TIPLERI:
+                varsayilan["gider"] = True
             _, olusturuldu = FaturaTipi.objects.update_or_create(
-                ad=buyuk_harf_tr(ad),
-                defaults={
-                    "yon": yon, "sira": sira,
-                    "silindi": False, "silindi_at": None,
-                },
-            )
+                ad=buyuk_harf_tr(ad), defaults=varsayilan)
             eklenen += int(olusturuldu)
             guncellenen += int(not olusturuldu)
         toplam = FaturaTipi.objects.filter(silindi=False).count()

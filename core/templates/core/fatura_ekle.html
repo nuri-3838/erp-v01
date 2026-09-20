@@ -7,6 +7,8 @@
 {{ stok_kdv|json_script:"stok-kdv" }}
 {{ stok_tevkifat|json_script:"stok-tevkifat" }}
 {{ stok_tedarikci|json_script:"stok-tedarikci" }}
+{{ tip_gider|json_script:"tip-gider" }}
+{{ kdv_oran|json_script:"kdv-oran" }}
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
   .satir-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
@@ -17,6 +19,16 @@
   .tl-etiket { display:block; font-size:.72rem; font-weight:400; color:var(--metin-soluk);
     text-transform:none; letter-spacing:0; margin-top:.15rem; }
   .tablo-kapsayici.genis > table#fatura-satir-tablo { min-width:700px; }
+  /* GİDER faturası modu (fatura tipi "gider" işaretliyse JS tabloya .gider-modu ekler):
+     Stok kutusu yerine gider hesabı kutusu + satırda KDV seçimi görünür. Görünürlük CLASS ile
+     yönetilir ([hidden] özniteliği display'i olan sınıflarca ezilebildiği için). */
+  #fatura-satir-tablo .hesap-alani, #fatura-satir-tablo .kdv-secim,
+  #fatura-satir-tablo .th-hesap { display:none; }
+  #fatura-satir-tablo.gider-modu .stok-alani, #fatura-satir-tablo.gider-modu .th-stok { display:none; }
+  #fatura-satir-tablo.gider-modu .hesap-alani, #fatura-satir-tablo.gider-modu .kdv-secim { display:block; }
+  #fatura-satir-tablo.gider-modu .th-hesap { display:inline; }
+  .kdv-secim { margin-bottom:.3rem; }
+  .kdv-secim select { width:100%; font-size:.82rem; }
 </style>
 <div class="form-kapsa">
   <div class="form-ust">
@@ -56,16 +68,17 @@
         <colgroup><col style="width:41%"><col style="width:15%"><col style="width:18%">
           <col style="width:19%"><col style="width:7%"></colgroup>
         <thead><tr>
-          <th>Stok</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
+          <th><span class="th-stok">Stok</span><span class="th-hesap">Gider Hesabı</span></th>
+          <th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
           <th class="sag">Tutar</th><th></th>
         </tr></thead>
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td>{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">{{ f.miktar }}</td>
               <td class="sag">{{ f.birim_fiyat }}</td>
-              <td class="sag"><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
+              <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
               <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
             </tr>
           {% endfor %}
@@ -85,10 +98,10 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></td>
+      <td><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div></td>
       <td class="sag">{{ formset.empty_form.miktar }}</td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
-      <td class="sag"><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
+      <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
       <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
@@ -104,21 +117,52 @@
   var KDV = JSON.parse(document.getElementById('stok-kdv').textContent);
   var TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);
   var TED = JSON.parse(document.getElementById('stok-tedarikci').textContent);
+  var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
+  var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
   var KUR_API = '{% url "core:kur_usd_api" %}';
   var kurElleDegisti = false;
+  var tablo = document.getElementById('fatura-satir-tablo');
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
     else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
     var n=parseFloat(s); return isNaN(n)?0:n; }
   function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
+  function giderMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_GIDER[t.value]); }
+  function alanTemizle(kap){ if(!kap) return;
+    var s=kap.querySelector('select'); if(s) s.value='';
+    var i=kap.querySelector('.akilli-girdi'); if(i) i.value=''; }
+  // Fatura tipi GİDER ise: depo alanı gizlenir/boşaltılır, kalem = gider hesabı + KDV seçimi.
+  // Mod değişince karşı taraftaki (artık görünmeyen) değerler temizlenir (yanlış alan gönderilmesin).
+  function modUygula(){
+    var g=giderMi(); var onceki=tablo.classList.contains('gider-modu');
+    tablo.classList.toggle('gider-modu', g);
+    var depo=document.getElementById('id_depo'); var depoAlan=depo?depo.closest('.alan'):null;
+    if(depoAlan) depoAlan.style.display = g ? 'none' : '';
+    if(g && depo) depo.value='';
+    if(g!==onceki){
+      document.querySelectorAll('.satir-form').forEach(function(r){
+        alanTemizle(r.querySelector(g ? '.stok-alani' : '.hesap-alani'));
+      });
+    }
+    hesapla();
+  }
   function hesapla(){
     var mal=0, kdv=0, tev=0;
+    var gider=giderMi();
     document.querySelectorAll('.satir-form').forEach(function(r){
-      var sel=el(r,'-stok'); var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
+      var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
       var f=parseTR(el(r,'-birim_fiyat')?el(r,'-birim_fiyat').value:'');
-      var oran=(sel&&sel.value&&KDV[sel.value]!=null)?KDV[sel.value]:0;
-      var ratio=(sel&&sel.value&&TEV[sel.value]!=null)?TEV[sel.value]:0;
+      var oran, ratio;
+      if(gider){
+        var ks=el(r,'-kdv');
+        oran=(ks&&ks.value&&KDVORAN[ks.value]!=null)?KDVORAN[ks.value]:0;
+        ratio=0;                              // gider kaleminde tevkifat yok
+      } else {
+        var sel=el(r,'-stok');
+        oran=(sel&&sel.value&&KDV[sel.value]!=null)?KDV[sel.value]:0;
+        ratio=(sel&&sel.value&&TEV[sel.value]!=null)?TEV[sel.value]:0;
+      }
       var tutar=Math.round(m*f*100)/100;
       var skdv=Math.round(tutar*oran)/100;
       var stev=Math.round(skdv*ratio*100)/100;
@@ -186,7 +230,7 @@
     var tr=document.createElement('tr'); tr.className='satir-form';
     tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g,i);
     document.getElementById('satir-govde').appendChild(tr); tf.value=i+1; hesapla();
-    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+    if(window.akilliSecKur) tr.querySelectorAll('select.akilli-sec').forEach(window.akilliSecKur);
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
   document.getElementById('satir-govde').addEventListener('click', function(e){
@@ -199,6 +243,8 @@
     if(row && e.target.name && e.target.name.indexOf('-stok')>-1) tedarikciGuncelle(row);
     hesapla();
   });
+  var tipSec=document.getElementById('id_tip');
+  if(tipSec) tipSec.addEventListener('change', modUygula);
   var pbSec=document.getElementById('id_para_birimi');
   var tarihInp=document.querySelector('[name="tarih"]');
   if(pbSec) pbSec.addEventListener('change', kurCek);
@@ -208,6 +254,7 @@
   var kurInp=document.getElementById('id_kur');
   if(kurInp) kurInp.addEventListener('input', function(){ kurElleDegisti=true; });
   document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
+  modUygula();
   kurCek();
 })();
 </script>

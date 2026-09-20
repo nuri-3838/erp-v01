@@ -41,7 +41,7 @@
     {% for t in alis %}
       <tr>
         <td class="sag mono">{{ t.sira }}</td>
-        <td>{{ t.ad }}</td>
+        <td>{{ t.ad }}{% if t.gider %} <span class="rozet rozet-notr" title="Kalemler stok yerine gider hesabına yazılır">Gider</span>{% endif %}</td>
         <td>
           <span class="islem-bag">
             <a href="{% url 'core:fatura_tipi_duzenle' t.pk %}">Düzenle</a>
