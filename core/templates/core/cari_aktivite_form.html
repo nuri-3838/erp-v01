@@ -35,8 +35,8 @@
       <div class="akt-ek-galeri">
         {% for ek in ekler %}
           <div class="akt-ek-kart">
-            <a href="{{ ek.dosya.url }}" target="_blank" class="akt-ek-onizleme">
-              {% if ek.resim_mi %}<img src="{{ ek.dosya.url }}" alt="">
+            <a href="{% url 'core:cari_ek_indir' ek.pk %}" target="_blank" class="akt-ek-onizleme">
+              {% if ek.resim_mi %}<img src="{% url 'core:cari_ek_indir' ek.pk %}" alt="">
               {% else %}<span class="pdf-ikon">📄</span>{% endif %}
             </a>
             <span class="akt-ek-ad" title="{{ ek.orijinal_ad }}">{{ ek.orijinal_ad }}</span>

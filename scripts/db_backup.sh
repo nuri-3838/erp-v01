@@ -53,7 +53,8 @@ SIZE="$(du -h "${BACKUP_DIR}/${SQL_FILE}" | cut -f1)"
 COUNT="$(find "$BACKUP_DIR" -maxdepth 1 -name 'erp_v01_*.sql.gz' | wc -l)"
 log "OK: ${SQL_FILE} (${SIZE}) — saklanan toplam yedek: ${COUNT}."
 
-# 4) Özlük evrakları (İK; MEDIA_ROOT dışı özel dizin) arşivi — dizin yoksa/boşsa atlanır.
+# 4) Özel dosyalar (MEDIA_ROOT dışı özel dizin: İK özlük evrakları/fotoğrafları, cari/aday ekleri,
+#    çek/senet görselleri) arşivi — dizin yoksa/boşsa atlanır.
 #    Aynı TIMESTAMP ile erp_v01_ozel_*.tar.gz; kısmi dosya .part adıyla yazılır, doğrulanınca
 #    yeniden adlandırılır (Yedek ekranı yarım arşivi listelemesin). Ayrı retention (yukarıdaki
 #    sql.gz retention'ı tar'lara dokunmaz). Geri yükleme (elle):

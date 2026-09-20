@@ -3860,6 +3860,20 @@ def cek_bordro_detay(request, pk):
     return render(request, "core/cek_bordro_detay.html", _bordro_baglam(bordro))
 
 
+@never_cache
+@ekran_gerekli("cek_senet")
+def cek_gorsel(request, pk, yuz):
+    """Çek/senet ön ya da arka yüz görseli (özel depoda) — yalnız bu yetkili görünümle sunulur,
+    /media/ üzerinden DEĞİL."""
+    if yuz not in ("on", "arka"):
+        raise Http404
+    cek = get_object_or_404(CekSenet, pk=pk, silindi=False)
+    alan = cek.on_yuz if yuz == "on" else cek.arka_yuz
+    if not alan:
+        raise Http404
+    return _ozel_dosya_yanit(alan, f"cek-{cek.pk}-{yuz}")
+
+
 @ekran_gerekli("cek_senet")
 def cek_bordro_pdf(request, pk):
     """Bordronun PDF'i (WeasyPrint, A4) — tarayıcıda açılır, oradan yazdırılır/kaydedilir."""
@@ -4155,6 +4169,16 @@ def aktivite_ek_sil(request, pk):
     return redirect("core:aktivite_duzenle", pk=ek.aktivite_id)
 
 
+@never_cache
+@ekran_gerekli("cariler")
+def cari_ek_indir(request, pk):
+    """Cari aktivite ekini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""
+    ek = get_object_or_404(
+        CariAktiviteEk, pk=pk, silindi=False, aktivite__silindi=False,
+        aktivite__cari__silindi=False)
+    return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
+
+
 # --- CRM: Aday Kategorileri ---------------------------------------------------
 @ekran_gerekli("aday_kategoriler")
 def aday_kategoriler(request):
@@ -4436,6 +4460,16 @@ def aday_aktivite_ek_sil(request, pk):
         aday_servis.aday_aktivite_ek_sil(ek, kullanici=request.user)
         messages.success(request, "Dosya silindi.")
     return redirect("core:aday_aktivite_duzenle", pk=ek.aktivite_id)
+
+
+@never_cache
+@ekran_gerekli("aday_musteriler")
+def aday_ek_indir(request, pk):
+    """Aday aktivite ekini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""
+    ek = get_object_or_404(
+        AdayAktiviteEk, pk=pk, silindi=False, aktivite__silindi=False,
+        aktivite__aday__silindi=False)
+    return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
 
 
 # --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------

@@ -78,8 +78,8 @@
             <td>
               {% if c.on_yuz or c.arka_yuz %}
                 <span class="cek-foto">
-                  {% if c.on_yuz %}<a href="{{ c.on_yuz.url }}" target="_blank" title="Ön yüz"><img src="{{ c.on_yuz.url }}" alt="ön"></a>{% endif %}
-                  {% if c.arka_yuz %}<a href="{{ c.arka_yuz.url }}" target="_blank" title="Arka yüz"><img src="{{ c.arka_yuz.url }}" alt="arka"></a>{% endif %}
+                  {% if c.on_yuz %}<a href="{% url 'core:cek_gorsel' c.pk 'on' %}" target="_blank" title="Ön yüz"><img src="{% url 'core:cek_gorsel' c.pk 'on' %}" alt="ön"></a>{% endif %}
+                  {% if c.arka_yuz %}<a href="{% url 'core:cek_gorsel' c.pk 'arka' %}" target="_blank" title="Arka yüz"><img src="{% url 'core:cek_gorsel' c.pk 'arka' %}" alt="arka"></a>{% endif %}
                 </span>
               {% else %}<span class="yardim">—</span>{% endif %}
             </td>

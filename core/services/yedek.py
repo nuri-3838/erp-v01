@@ -6,8 +6,9 @@ GERİ YÜKLEME burada KASITLI olarak YOKTUR (tehlikeli; yanlış basılır).
 
 Üç tür yedek dosyası vardır (aynı script, aynı zaman damgası):
 - ``erp_v01_YYYYMMDD_HHMMSS.sql.gz``       — PostgreSQL dökümü (tur="DB")
-- ``erp_v01_ozel_YYYYMMDD_HHMMSS.tar.gz``  — İK özlük evrakları + fotoğraflar (tur="EVRAK";
-  IK_OZEL_DIR'in arşivi; dizin boşsa üretilmez)
+- ``erp_v01_ozel_YYYYMMDD_HHMMSS.tar.gz``  — özel dosyalar: İK özlük evrakları + fotoğraflar,
+  cari/aday ekleri, çek/senet görselleri (tur="EVRAK"; IK_OZEL_DIR'in arşivi; dizin boşsa
+  üretilmez)
 - ``erp_v01_medya_YYYYMMDD_HHMMSS.tar.gz`` — yüklenen görseller (tur="MEDYA"; MEDIA_ROOT'un
   arşivi: stok görselleri, banka/firma logoları; dizin boşsa üretilmez)
 """
@@ -28,7 +29,7 @@ _OZEL_DESEN = re.compile(r"^erp_v01_ozel_(\d{8})_(\d{6})\.tar\.gz$")
 # erp_v01_medya_YYYYMMDD_HHMMSS.tar.gz — yüklenen görseller (MEDIA_ROOT) arşivi.
 _MEDYA_DESEN = re.compile(r"^erp_v01_medya_(\d{8})_(\d{6})\.tar\.gz$")
 _DESENLER = (("DB", _AD_DESEN), ("EVRAK", _OZEL_DESEN), ("MEDYA", _MEDYA_DESEN))
-_TUR_AD = {"DB": "Veritabanı", "EVRAK": "Özlük evrakları", "MEDYA": "Yüklenen görseller"}
+_TUR_AD = {"DB": "Veritabanı", "EVRAK": "Özel dosyalar", "MEDYA": "Yüklenen görseller"}
 
 
 def yedek_dizini() -> Path:

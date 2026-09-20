@@ -169,7 +169,7 @@ class YedekEvrakServisTest(YedekTestTemel):
         self.assertEqual(tur, {DB_AD: "DB", EVRAK_AD: "EVRAK"})
         adlar = {y.ad: y.tur_ad for y in yedek_servis.yedekleri_listele()}
         self.assertEqual(adlar[DB_AD], "Veritabanı")
-        self.assertEqual(adlar[EVRAK_AD], "Özlük evrakları")
+        self.assertEqual(adlar[EVRAK_AD], "Özel dosyalar")
 
     def test_zaman_damgasi_ada_gore_yeni_once(self):
         _yedek_yaz(self.tmp, "erp_v01_20260601_030000.sql.gz")
@@ -220,7 +220,7 @@ class YedekEvrakEkranTest(YedekTestTemel):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:yedek"))
         self.assertContains(r, EVRAK_AD)
-        self.assertContains(r, "Özlük evrakları")
+        self.assertContains(r, "Özel dosyalar")
         self.assertContains(r, "4.0 KB")
         self.assertContains(r, reverse("core:yedek_indir", args=[EVRAK_AD]))
         self.assertEqual(r.context["son_yedek"].ad, DB_AD)

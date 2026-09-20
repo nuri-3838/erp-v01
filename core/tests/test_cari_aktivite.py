@@ -81,7 +81,7 @@ class CariAktiviteServisTest(TestCase):
         self.assertEqual(liste[0].pk, yeni.pk)              # en yeni tarih önce
 
 
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
 class CariAktiviteEkServisTest(TestCase):
     def test_resim_webpye_kuculur(self):
         c = _cari()
@@ -147,7 +147,7 @@ class CariAktiviteViewTest(TestCase):
         self.assertTrue(CariAktivite.objects.filter(
             cari=self.cari, aciklama="fabrikada görüştük").exists())
 
-    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
     def test_aktivite_ekle_coklu_dosyayla(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:aktivite_ekle", args=[self.cari.pk]), {
@@ -175,7 +175,7 @@ class CariAktiviteViewTest(TestCase):
         a.refresh_from_db()
         self.assertTrue(a.silindi)
 
-    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
     def test_aktivite_ek_sil_post(self):
         a = aktivite_ekle(self.cari, tarih="2026-09-01", tur=CariAktivite.Tur.NOT, aciklama="x")
         ek = aktivite_ek_ekle(a, dosya=_pdf_dosya())

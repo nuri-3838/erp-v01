@@ -13,8 +13,9 @@
 </div>
 
 <p class="yardim">Her gece otomatik yedek alınır (03:00): <strong>veritabanı</strong> dökümü ve —
-  yüklenmişse— <strong>özlük evrakları</strong> ile <strong>yüklenen görseller</strong> (stok
-  görselleri, logolar) arşivleri. Yedekler sunucuda saklanır
+  yüklenmişse— <strong>özel dosyalar</strong> (özlük evrakları, cari/aday ekleri, çek/senet
+  görselleri) ile <strong>yüklenen görseller</strong> (stok görselleri, logolar) arşivleri.
+  Yedekler sunucuda saklanır
   (son 15 gün); eskiler otomatik silinir. Bu ekran yalnızca yöneticilere açıktır.
   Güvenlik gereği <strong>geri yükleme bu ekranda yer almaz</strong>.
   {% if son_yedek %}· <strong>Son yedek:</strong>
@@ -47,5 +48,5 @@
 
 <p class="yardim">İpucu: Yedekleri düzenli olarak indirip <strong>sunucu dışında</strong>
   (kendi bilgisayarınız/bulut) saklayın — offsite kopya, sunucu kaybına karşı en
-  güvenli korumadır. Özlük evrakları arşivi kişisel veri içerir; güvenli bir yerde saklayın.</p>
+  güvenli korumadır. Özel dosyalar arşivi kişisel/ticari veri içerir; güvenli bir yerde saklayın.</p>
 {% endblock %}

@@ -175,7 +175,7 @@ class AdayCariyeDonusturTest(TestCase):
         aday_cariye_donustur(a)
         self.assertNotIn(a, aktif_aday_musteriler())
 
-    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
     def test_donusturur_aktiviteleri_cariye_kopyalar(self):
         """Kullanıcı isteği: 'Aktiviteleri gelmedi, onun gelmesi lazım' — adayın aktiviteleri
         (+ ekli dosyaları) yeni Cari'ye kopyalanmalı; aday tarafındaki aktiviteler de

@@ -84,7 +84,7 @@ class AdayAktiviteServisTest(TestCase):
         self.assertEqual(liste[0].pk, yeni.pk)              # en yeni tarih önce
 
 
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
 class AdayAktiviteEkServisTest(TestCase):
     def test_resim_webpye_kuculur(self):
         a = _aday()
@@ -150,7 +150,7 @@ class AdayAktiviteViewTest(TestCase):
         self.assertTrue(AdayAktivite.objects.filter(
             aday=self.aday, aciklama="fabrikada görüştük").exists())
 
-    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
     def test_aktivite_ekle_coklu_dosyayla(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:aday_aktivite_ekle", args=[self.aday.pk]), {
@@ -180,7 +180,7 @@ class AdayAktiviteViewTest(TestCase):
         akt.refresh_from_db()
         self.assertTrue(akt.silindi)
 
-    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
     def test_aktivite_ek_sil_post(self):
         akt = aday_aktivite_ekle(self.aday, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT,
                                  aciklama="x")

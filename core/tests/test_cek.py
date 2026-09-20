@@ -220,7 +220,7 @@ class CariGirisBordroTest(TestCase):
             "form-0-belge_no": "B9", "form-0-kesideci": "",
             "form-0-on_yuz": on,
         }
-        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp()):
             r = self.client.post(reverse("core:cek_cari_giris"), data)
             self.assertEqual(r.status_code, 302)
             c = CekSenet.objects.filter(silindi=False, belge_no="B9").get()

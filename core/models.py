@@ -7,7 +7,10 @@ from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
-from core.storage import ik_ozel_depo, personel_belge_yolu, personel_foto_yolu
+from core.storage import (
+    aday_ek_yolu, cari_ek_yolu, cek_gorsel_yolu, ik_ozel_depo, ozel_depo, personel_belge_yolu,
+    personel_foto_yolu,
+)
 
 
 class TemelModel(models.Model):
@@ -936,7 +939,8 @@ class CariAktiviteEk(TemelModel):
 
     aktivite = models.ForeignKey(CariAktivite, verbose_name="aktivite", related_name="ekler",
                                  on_delete=models.CASCADE)
-    dosya = models.FileField("dosya", upload_to="cari_aktivite/")
+    # Gizli: özel depoda (MEDIA_ROOT dışı), yalnız yetkili görünümle sunulur (bkz. core.storage).
+    dosya = models.FileField("dosya", storage=ozel_depo, upload_to=cari_ek_yolu)
     orijinal_ad = models.CharField("orijinal dosya adı", max_length=255, blank=True)
 
     class Meta:
@@ -1067,7 +1071,8 @@ class AdayAktiviteEk(TemelModel):
 
     aktivite = models.ForeignKey(AdayAktivite, verbose_name="aktivite", related_name="ekler",
                                  on_delete=models.CASCADE)
-    dosya = models.FileField("dosya", upload_to="aday_aktivite/")
+    # Gizli: özel depoda (MEDIA_ROOT dışı), yalnız yetkili görünümle sunulur (bkz. core.storage).
+    dosya = models.FileField("dosya", storage=ozel_depo, upload_to=aday_ek_yolu)
     orijinal_ad = models.CharField("orijinal dosya adı", max_length=255, blank=True)
 
     class Meta:
@@ -2133,8 +2138,11 @@ class CekSenet(TemelModel):
     giris_bordrosu = models.ForeignKey(
         CekBordrosu, verbose_name="giriş bordrosu", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cek_senetler")
-    on_yuz = models.ImageField("ön yüz görseli", upload_to="cek_senet/", null=True, blank=True)
-    arka_yuz = models.ImageField("arka yüz görseli", upload_to="cek_senet/", null=True, blank=True)
+    # Gizli: özel depoda (MEDIA_ROOT dışı), yalnız yetkili görünümle sunulur (bkz. core.storage).
+    on_yuz = models.ImageField("ön yüz görseli", storage=ozel_depo, upload_to=cek_gorsel_yolu,
+                               null=True, blank=True)
+    arka_yuz = models.ImageField("arka yüz görseli", storage=ozel_depo, upload_to=cek_gorsel_yolu,
+                                 null=True, blank=True)
 
     class Meta:
         db_table = "finans_cek_senet"
