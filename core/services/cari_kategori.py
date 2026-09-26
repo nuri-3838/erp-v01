@@ -18,8 +18,11 @@ class CariKategoriHatasi(ValueError):
 
 
 def aktif_cari_kategoriler():
+    # "kod" tek başına yalnız ALT kategorinin kendi kodudur (örn. "10"); üst grubu
+    # (120/320/500...) hesaba katmadan sıralarsa farklı üst gruplardaki kategoriler
+    # karışır. Önce üst grubun kodu, sonra kendi kodu — hiyerarşik/doğal sıra.
     return (CariKategori.objects.filter(silindi=False)
-            .select_related("ust").order_by("kod"))
+            .select_related("ust").order_by("ust__kod", "kod"))
 
 
 def _ad_dogrula(ad, ust_id, *, haric_pk=None):

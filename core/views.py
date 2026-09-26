@@ -1410,7 +1410,7 @@ def cariler(request):
     tumu = cari_servis.aktif_cariler()
     kategoriler = CariKategori.objects.filter(
         silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
-    ).order_by("kod")
+    ).select_related("ust").order_by("ust__kod", "kod")
     sehirler = Sehir.objects.filter(
         silindi=False, pk__in=tumu.exclude(sehir=None).values("sehir_id")
     ).order_by("ad")
