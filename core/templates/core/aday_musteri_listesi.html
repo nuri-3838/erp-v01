@@ -89,20 +89,21 @@
       </select>
     </div>
     <div class="ad-alan-grup">
-      <label for="ad-sehir">Şehir</label>
-      <select id="ad-sehir" name="sehir" onchange="this.form.submit()">
-        <option value="">Tüm Şehirler</option>
-        {% for s in sehirler %}
-          <option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>
+      <label for="ad-ulke">Ülke</label>
+      <select id="ad-ulke" name="ulke"
+              onchange="document.getElementById('ad-sehir').value=''; this.form.submit()">
+        <option value="">Tüm Ülkeler</option>
+        {% for u in ulkeler %}
+          <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="ad-alan-grup">
-      <label for="ad-ulke">Ülke</label>
-      <select id="ad-ulke" name="ulke" onchange="this.form.submit()">
-        <option value="">Tüm Ülkeler</option>
-        {% for u in ulkeler %}
-          <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
+      <label for="ad-sehir">Şehir</label>
+      <select id="ad-sehir" name="sehir" onchange="this.form.submit()" {% if not secili_ulke %}disabled title="Önce ülke seçin"{% endif %}>
+        <option value="">{% if secili_ulke %}Tüm Şehirler{% else %}Önce ülke seçin{% endif %}</option>
+        {% for s in sehirler %}
+          <option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>
         {% endfor %}
       </select>
     </div>

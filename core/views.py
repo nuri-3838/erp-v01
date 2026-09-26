@@ -4290,9 +4290,12 @@ def aday_musteriler(request):
     kategoriler = AdayMusteriKategori.objects.filter(
         silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
     ).order_by("kod")
+    # Şehir seçenekleri Ülke seçilmeden anlamsız (hangi ülkeninkiler gösterilecek?) — Ülke
+    # seçilene kadar boş/kilitli, seçilince yalnız o ülkenin (fiilen kullanılan) şehirleri.
     sehirler = Sehir.objects.filter(
-        silindi=False, pk__in=tumu.exclude(sehir=None).values("sehir_id")
-    ).order_by("ad")
+        silindi=False, ulke_id=ulke_id,
+        pk__in=tumu.exclude(sehir=None).values("sehir_id")
+    ).order_by("ad") if ulke_id else Sehir.objects.none()
     ulkeler = Ulke.objects.filter(
         silindi=False, pk__in=tumu.exclude(ulke=None).values("ulke_id")
     ).order_by("ad")
