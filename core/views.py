@@ -10,7 +10,9 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.paginator import Paginator
-from django.db.models import Count, Exists, OuterRef, Prefetch, Q, Sum
+from django.db.models import (
+    Case, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value, When,
+)
 from django.forms import formset_factory
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -4245,6 +4247,91 @@ def aday_kategori_sil(request, pk):
 
 # --- CRM: Aday Müşteriler ----------------------------------------------------
 _ADAY_SAYFA_BOYUTLARI = (25, 50, 100, 200)
+_ADAY_GORUNUMLER = ("takip", "sicak", "temas_yok", "kapali", "tumu")
+_ADAY_TAKIP_ETIKET = {"gecmis": "Gecikmiş", "bugun": "Bugün", "hafta": "Bu hafta (7 gün)",
+                      "planli": "Tarihi planlı (hepsi)", "yok": "Tarihi yok"}
+_ADAY_EPOSTA_ETIKET = {"gecerli": "Geçerli adresi var", "gecersiz": "Hepsi geçersiz",
+                       "yok": "Adresi yok"}
+_ADAY_SON_AKT_ETIKET = {"30": "Son 30 gün", "90": "31-90 gün", "eski": "90 günden eski",
+                        "yok": "Hiç aktivite yok"}
+_ADAY_TIP_ETIKET = dict(AdayTip.choices)
+_ADAY_POTANSIYEL_ETIKET = dict(AdayPotansiyel.choices)
+_ADAY_ASAMA_ETIKET = dict(AdayAsama.choices)
+_ADAY_SIRALAMA_SECENEKLERI = (
+    ("unvan", "Unvan (A→Z)"), ("-unvan", "Unvan (Z→A)"),
+    ("sonraki", "Sonraki adım (yakın→uzak)"), ("-sonraki", "Sonraki adım (uzak→yakın)"),
+    ("son_akt", "Son aktivite (eski→yeni)"), ("-son_akt", "Son aktivite (yeni→eski)"),
+    ("potansiyel", "Potansiyel (yüksek→düşük)"),
+)
+# Case/When yalnız birer ifade (queryset DEĞİL) — modül importunda hesaba/DB'ye dokunmaz,
+# SatirForm hatasındaki "eager queryset" deseniyle karıştırılmasın (bkz. core/forms.py dersi).
+_ADAY_POTANSIYEL_SIRA = Case(
+    When(potansiyel=AdayPotansiyel.YUKSEK, then=Value(0)),
+    When(potansiyel=AdayPotansiyel.ORTA, then=Value(1)),
+    When(potansiyel=AdayPotansiyel.DUSUK, then=Value(2)),
+    default=Value(3), output_field=IntegerField())
+_ADAY_SIRALAMA_HARITASI = {
+    "unvan": (F("unvan").asc(),),
+    "-unvan": (F("unvan").desc(),),
+    "sonraki": (F("sonraki_adim_tarihi").asc(nulls_last=True),),
+    "-sonraki": (F("sonraki_adim_tarihi").desc(nulls_last=True),),
+    "son_akt": (F("son_aktivite_tarihi").asc(nulls_last=True),),
+    "-son_akt": (F("son_aktivite_tarihi").desc(nulls_last=True),),
+    "potansiyel": (_ADAY_POTANSIYEL_SIRA, F("unvan").asc()),
+}
+
+
+def _aday_tab_q(gorunum, bugun):
+    """Sekme kuralı — hem sekme sayaçlarında (Count filter=) hem asıl listede (filter())
+    AYNI Q nesnesinden kullanılır (tek kaynak, iki temsil arasında sürüklenme riski yok)."""
+    if gorunum == "takip":
+        return (Q(sonraki_adim_tarihi__isnull=False)
+                & Q(sonraki_adim_tarihi__lte=bugun + datetime.timedelta(days=7))
+                & ~Q(asama=AdayAsama.KAPALI))
+    if gorunum == "sicak":
+        return Q(potansiyel=AdayPotansiyel.YUKSEK) & ~Q(asama=AdayAsama.KAPALI)
+    if gorunum == "temas_yok":
+        return Q(asama=AdayAsama.YENI)
+    if gorunum == "kapali":
+        return Q(asama=AdayAsama.KAPALI)
+    return Q()  # tumu
+
+
+def _aday_tab_sira(gorunum, takip_secim):
+    if gorunum == "takip":
+        return (F("sonraki_adim_tarihi").asc(nulls_last=True),)
+    if gorunum == "sicak":
+        return (F("son_aktivite_tarihi").desc(nulls_last=True),)
+    if gorunum in {"temas_yok", "kapali"}:
+        return (F("unvan").asc(),)
+    # tumu: mevcut (eski) davranış — Takip filtresi seçiliyken sonraki adıma göre.
+    if takip_secim in {"gecmis", "bugun", "hafta", "planli", "yok"}:
+        return (F("sonraki_adim_tarihi").asc(nulls_last=True), "-created_at")
+    return ("-created_at",)
+
+
+def _aday_qs_with(request, **degisiklikler):
+    """Mevcut querystring'i korur; her kwarg None ise o parametreyi kaldırır, değilse
+    değerini değiştirir. sayfa her zaman kaldırılır (parametre değişince 1. sayfaya dön)."""
+    qs = request.GET.copy()
+    qs.pop("sayfa", None)
+    for anahtar, deger in degisiklikler.items():
+        if deger is None:
+            qs.pop(anahtar, None)
+        else:
+            qs[anahtar] = deger
+    kodlu = qs.urlencode()
+    return "?" + kodlu if kodlu else "?"
+
+
+def _aday_siralama_baglantisi(request, sirala_simdi, anahtar, tersi_var=True):
+    if sirala_simdi == anahtar:
+        sonraki, ok = (f"-{anahtar}" if tersi_var else anahtar), "▲"
+    elif tersi_var and sirala_simdi == f"-{anahtar}":
+        sonraki, ok = anahtar, "▼"
+    else:
+        sonraki, ok = anahtar, ""
+    return {"url": _aday_qs_with(request, sirala=sonraki), "ok": ok}
 
 
 def _aday_form_kw(cd):
@@ -4273,12 +4360,15 @@ def aday_musteriler(request):
     asama_secim = request.GET.get("asama") or ""
     takip_secim = request.GET.get("takip") or ""
     eposta_secim = request.GET.get("eposta") or ""
+    son_akt_secim = request.GET.get("son_akt") or ""
+    sirala = request.GET.get("sirala") or ""
     try:
         boyut = int(request.GET.get("boyut", 50))
     except ValueError:
         boyut = 50
     if boyut not in _ADAY_SAYFA_BOYUTLARI:
         boyut = 50
+    bugun = tr_bugun()
     kayitlar = aday_servis.aktif_aday_musteriler()
     if ara:
         buyuk = buyuk_harf_tr(ara)
@@ -4300,7 +4390,6 @@ def aday_musteriler(request):
         kayitlar = kayitlar.filter(potansiyel=potansiyel_secim)
     if asama_secim in AdayAsama.values:
         kayitlar = kayitlar.filter(asama=asama_secim)
-    bugun = tr_bugun()
     if takip_secim == "gecmis":
         kayitlar = kayitlar.filter(sonraki_adim_tarihi__lt=bugun)
     elif takip_secim == "bugun":
@@ -4322,31 +4411,108 @@ def aday_musteriler(request):
                     .exclude(_eposta_gecerli_1 | _eposta_gecerli_2))
     elif eposta_secim == "yok":
         kayitlar = kayitlar.filter(eposta="", eposta_2="")
-    # Kapalı aşamadaki kayıtlar da varsayılan listede görünür, yalnız Aşama filtresiyle
-    # ayrılabilir (bilinçli — gizleme yok). Takip filtresi seçiliyken sonraki adıma göre
-    # (en yakın tarih önce) sıralanır; aksi halde varsayılan sıralama değişmez.
-    if takip_secim in {"gecmis", "bugun", "hafta", "planli", "yok"}:
-        kayitlar = kayitlar.order_by("sonraki_adim_tarihi", "-created_at")
-    else:
-        kayitlar = kayitlar.order_by("-created_at")
+
+    # Son aktivite (tarih + tür) — korele Subquery (OuterRef), JOIN+GROUP BY YOK: filtre/
+    # sıralama/sayım sıradan bir alan gibi çalışır (bkz. ix_aday_aktivite_aday_tarih index'i).
+    _son_aktivite_sq = AdayAktivite.objects.filter(
+        aday=OuterRef("pk"), silindi=False).order_by("-tarih", "-id")
+    kayitlar = kayitlar.annotate(
+        son_aktivite_tarihi=Subquery(_son_aktivite_sq.values("tarih")[:1]),
+        son_aktivite_turu=Subquery(_son_aktivite_sq.values("tur")[:1]))
+    _son_akt_30_sinir = bugun - datetime.timedelta(days=29)
+    _son_akt_90_sinir = bugun - datetime.timedelta(days=89)
+    if son_akt_secim == "30":
+        kayitlar = kayitlar.filter(son_aktivite_tarihi__gte=_son_akt_30_sinir)
+    elif son_akt_secim == "90":
+        kayitlar = kayitlar.filter(son_aktivite_tarihi__gte=_son_akt_90_sinir,
+                                   son_aktivite_tarihi__lt=_son_akt_30_sinir)
+    elif son_akt_secim == "eski":
+        kayitlar = kayitlar.filter(son_aktivite_tarihi__lt=_son_akt_90_sinir)
+    elif son_akt_secim == "yok":
+        kayitlar = kayitlar.filter(son_aktivite_tarihi__isnull=True)
+
+    # Sekme sayıları: arama + yukarıdaki TÜM filtreler uygulanmış, yalnız sekme kuralı hariç
+    # (tek sorgu — Count(filter=) ile 5 koşullu sayım aynı anda).
+    filtreli = kayitlar
+    sekme_sayilari = filtreli.aggregate(**{
+        g: Count("pk", filter=_aday_tab_q(g, bugun)) for g in _ADAY_GORUNUMLER})
+    gorunum = request.GET.get("gorunum") or ""
+    if gorunum not in _ADAY_GORUNUMLER:
+        gorunum = "takip" if sekme_sayilari["takip"] > 0 else "tumu"
+    kayitlar = filtreli.filter(_aday_tab_q(gorunum, bugun))
+    siralama_ifadeleri = (_ADAY_SIRALAMA_HARITASI[sirala] if sirala in _ADAY_SIRALAMA_HARITASI
+                          else _aday_tab_sira(gorunum, takip_secim))
+    kayitlar = kayitlar.order_by(*siralama_ifadeleri, "pk")
+
     gecikmis_sayisi = aday_servis.aktif_aday_musteriler().filter(
         sonraki_adim_tarihi__lt=bugun).count()
     # Filtre seçenekleri yalnız en az bir adayda fiilen kullanılanlardan oluşur (bkz.
     # cariler view'ındaki aynı desen — tüm kategori/lokasyon master verisini değil,
     # sayfadaki gerçek veriyi yansıtır).
     tumu = aday_servis.aktif_aday_musteriler()
-    kategoriler = AdayMusteriKategori.objects.filter(
+    kategoriler = list(AdayMusteriKategori.objects.filter(
         silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
-    ).order_by("kod")
+    ).order_by("kod"))
     # Şehir seçenekleri Ülke seçilmeden anlamsız (hangi ülkeninkiler gösterilecek?) — Ülke
     # seçilene kadar boş/kilitli, seçilince yalnız o ülkenin (fiilen kullanılan) şehirleri.
-    sehirler = Sehir.objects.filter(
+    sehirler = list(Sehir.objects.filter(
         silindi=False, ulke_id=ulke_id,
         pk__in=tumu.exclude(sehir=None).values("sehir_id")
-    ).order_by("ad") if ulke_id else Sehir.objects.none()
-    ulkeler = Ulke.objects.filter(
+    ).order_by("ad")) if ulke_id else []
+    ulkeler = list(Ulke.objects.filter(
         silindi=False, pk__in=tumu.exclude(ulke=None).values("ulke_id")
-    ).order_by("ad")
+    ).order_by("ad"))
+
+    # --- Aktif filtre çipleri (arama kutusunun altında; ✕ yalnız o parametreyi kaldırır) ---
+    cipler = []
+    if ara:
+        cipler.append({"etiket": f'Arama: "{ara}"', "url": _aday_qs_with(request, ara=None)})
+    if kategori_id:
+        kat = next((k for k in kategoriler if str(k.pk) == kategori_id), None)
+        cipler.append({"etiket": f"Kategori: {kat.ad if kat else kategori_id}",
+                       "url": _aday_qs_with(request, kategori=None)})
+    if ulke_id:
+        u = next((x for x in ulkeler if str(x.pk) == ulke_id), None)
+        cipler.append({"etiket": f"Ülke: {u.ad if u else ulke_id}",
+                       "url": _aday_qs_with(request, ulke=None)})
+    if sehir_id:
+        s = next((x for x in sehirler if str(x.pk) == sehir_id), None)
+        cipler.append({"etiket": f"Şehir: {s.ad if s else sehir_id}",
+                       "url": _aday_qs_with(request, sehir=None)})
+    if tip_secim in AdayTip.values:
+        cipler.append({"etiket": f"Tip: {_ADAY_TIP_ETIKET.get(tip_secim, tip_secim)}",
+                       "url": _aday_qs_with(request, tip=None)})
+    if potansiyel_secim == "BOS":
+        cipler.append({"etiket": "Potansiyel: Belirlenmedi",
+                       "url": _aday_qs_with(request, potansiyel=None)})
+    elif potansiyel_secim in AdayPotansiyel.values:
+        cipler.append({"etiket": f"Potansiyel: {_ADAY_POTANSIYEL_ETIKET.get(potansiyel_secim)}",
+                       "url": _aday_qs_with(request, potansiyel=None)})
+    if asama_secim in AdayAsama.values:
+        cipler.append({"etiket": f"Aşama: {_ADAY_ASAMA_ETIKET.get(asama_secim)}",
+                       "url": _aday_qs_with(request, asama=None)})
+    if takip_secim in _ADAY_TAKIP_ETIKET:
+        cipler.append({"etiket": f"Takip: {_ADAY_TAKIP_ETIKET[takip_secim]}",
+                       "url": _aday_qs_with(request, takip=None)})
+    if eposta_secim in _ADAY_EPOSTA_ETIKET:
+        cipler.append({"etiket": f"E-posta: {_ADAY_EPOSTA_ETIKET[eposta_secim]}",
+                       "url": _aday_qs_with(request, eposta=None)})
+    if son_akt_secim in _ADAY_SON_AKT_ETIKET:
+        cipler.append({"etiket": f"Son aktivite: {_ADAY_SON_AKT_ETIKET[son_akt_secim]}",
+                       "url": _aday_qs_with(request, son_akt=None)})
+    aktif_filtre_sayisi = sum(1 for x in (
+        kategori_id, ulke_id, sehir_id, tip_secim, potansiyel_secim, asama_secim,
+        takip_secim, eposta_secim, son_akt_secim) if x)
+
+    sekmeler = [{"kod": g, "sayi": sekme_sayilari[g], "url": _aday_qs_with(request, gorunum=g),
+                "aktif": g == gorunum} for g in _ADAY_GORUNUMLER]
+    siralama_baglar = {
+        "unvan": _aday_siralama_baglantisi(request, sirala, "unvan"),
+        "sonraki": _aday_siralama_baglantisi(request, sirala, "sonraki"),
+        "son_akt": _aday_siralama_baglantisi(request, sirala, "son_akt"),
+        "potansiyel": _aday_siralama_baglantisi(request, sirala, "potansiyel", tersi_var=False),
+    }
+
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
     sabit_qs = request.GET.copy()
     sabit_qs.pop("sayfa", None)
@@ -4359,7 +4525,13 @@ def aday_musteriler(request):
         "potansiyel_secenekleri": AdayPotansiyel.choices, "secili_potansiyel": potansiyel_secim,
         "asama_secenekleri": AdayAsama.choices, "secili_asama": asama_secim,
         "secili_takip": takip_secim, "secili_eposta": eposta_secim,
+        "secili_son_akt": son_akt_secim, "secili_sirala": sirala,
+        "siralama_secenekleri": _ADAY_SIRALAMA_SECENEKLERI, "siralama_baglar": siralama_baglar,
         "gecikmis_sayisi": gecikmis_sayisi,
+        "gecikmis_url": _aday_qs_with(request, gorunum="takip", takip="gecmis"),
+        "sekmeler": sekmeler, "gorunum": gorunum,
+        "tumu_url": _aday_qs_with(request, gorunum="tumu"),
+        "cipler": cipler, "aktif_filtre_sayisi": aktif_filtre_sayisi,
         "sabit_qs": sabit_qs.urlencode()})
 
 

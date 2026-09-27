@@ -1068,6 +1068,34 @@ class AdayMusteri(TemelModel):
             return "bugun"
         return "ileri"
 
+    @property
+    def son_aktivite_gun_once(self):
+        """Liste ekranının ``son_aktivite_tarihi`` annotate'ine kaç gün önce olduğu (int)
+        veya hiç aktivite yoksa None — 90+ gün gri gösterim kuralı TEK kaynak (bkz.
+        aday_musteriler view'ı, yalnız annotate edilmiş sorgularda dolu)."""
+        tarih = getattr(self, "son_aktivite_tarihi", None)
+        if not tarih:
+            return None
+        from core.tarih import tr_bugun
+        return (tr_bugun() - tarih).days
+
+    @property
+    def son_aktivite_turu_etiket(self):
+        """``son_aktivite_turu`` annotate'i (ham AdayAktivite.Tur değeri) -> görünen etiket.
+        Annotate edilmiş bir alan gerçek model alanı olmadığından Django'nun otomatik
+        ``get_FOO_display()``'i burada YOK — TEK kaynak bu property."""
+        tur = getattr(self, "son_aktivite_turu", None)
+        return AdayAktivite.Tur(tur).label if tur else ""
+
+    @property
+    def eposta_kanal_durum(self):
+        """'gecerli' / 'gecersiz' / "" — liste ekranının ✉ kanal simgesi için TEK kaynak."""
+        if (self.eposta and not self.eposta_gecersiz) or (self.eposta_2 and not self.eposta_2_gecersiz):
+            return "gecerli"
+        if self.eposta or self.eposta_2:
+            return "gecersiz"
+        return ""
+
 
 class AdayMusteriKategori(TemelModel):
     """Aday müşteri kategorisi (CRM) — CariKategori ile aynı desen (2 seviye: ÜST → ALT),
@@ -1127,6 +1155,7 @@ class AdayAktivite(TemelModel):
         verbose_name = "aday aktivite"
         verbose_name_plural = "aday aktiviteler"
         ordering = ["-tarih", "-id"]
+        indexes = [models.Index(fields=["aday", "-tarih"], name="ix_aday_aktivite_aday_tarih")]
 
     def __str__(self):
         return f"{self.aday.unvan} — {self.get_tur_display()} ({self.tarih})"

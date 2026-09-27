@@ -176,13 +176,16 @@ class AdayMusteriTakipListeViewTest(TestCase):
         self.assertNotContains(r, "PLANLİ FİRMA 2")
 
     def test_takip_secimi_siralamayi_degistirir(self):
+        # gorunum=tumu: "siralama uzak" (+20 gün) Takibim sekmesinin (<=+7 gün) kuralı
+        # dışında kalır — ikisini birden görebilmek için Tümü sekmesi seçilir (bkz.
+        # core/tests/test_aday_musteri_sekme_filtre.py sekme kurallarının kendi testleri).
         bugun = tr_bugun()
         aday_musteri_olustur(unvan="siralama uzak", sonraki_adim="x",
                              sonraki_adim_tarihi=bugun + timedelta(days=20))
         aday_musteri_olustur(unvan="siralama yakin", sonraki_adim="x",
                              sonraki_adim_tarihi=bugun + timedelta(days=1))
         self.client.force_login(self.yon)
-        r = self.client.get(reverse("core:aday_musteriler"), {"takip": "planli"})
+        r = self.client.get(reverse("core:aday_musteriler"), {"takip": "planli", "gorunum": "tumu"})
         icerik = r.content.decode("utf-8")
         self.assertLess(icerik.index("SİRALAMA YAKİN"), icerik.index("SİRALAMA UZAK"))
 
@@ -226,7 +229,10 @@ class AdayMusteriTakipListeViewTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:aday_musteriler"))
         self.assertContains(r, "gecikmiş takip")
-        self.assertContains(r, 'href="?takip=gecmis"')
+        # Sekmeler revizyonu: link artık hem Takibim sekmesine geçer hem Gecikmiş filtresini
+        # uygular (bkz. core/tests/test_aday_musteri_sekme_filtre.py::test_gecikmis_link_gorunum_ve_takip_tasir).
+        self.assertContains(r, "gorunum=takip")
+        self.assertContains(r, "takip=gecmis")
 
     def test_gecikmis_sayac_sifirsa_gorunmez(self):
         aday_musteri_olustur(unvan="gecikmesiz firma")

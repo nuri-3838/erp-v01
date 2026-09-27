@@ -10,8 +10,20 @@
   .ad-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);
     border-radius:18px; padding:1rem 1.1rem 1.1rem; margin-bottom:1.2rem; }
 
+  /* --- Sekmeler --- */
+  .ad-sekmeler { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .ad-sekme { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1rem;
+    border-radius:14px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.7);
+    text-decoration:none; color:var(--metin); font-weight:650; font-size:.9rem; }
+  .ad-sekme:hover { border-color:var(--turuncu); }
+  .ad-sekme.aktif { background:var(--lacivert); color:#fff; border-color:var(--lacivert); }
+  .ad-sekme .sayi { display:inline-flex; align-items:center; justify-content:center;
+    min-width:1.4rem; height:1.4rem; padding:0 .3rem; border-radius:999px; font-size:.75rem;
+    background:rgba(33,56,95,.12); color:var(--metin); }
+  .ad-sekme.aktif .sayi { background:rgba(255,255,255,.25); color:#fff; }
+
   .ad-arama-cubuk { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
-  .ad-alan-grup select { min-height:46px; padding:.4rem .85rem; border-radius:14px;
+  .ad-alan-grup select, .ad-alan-grup input[type=date] { min-height:46px; padding:.4rem .85rem; border-radius:14px;
     border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.9rem;
     color:var(--metin); max-width:16rem; }
   .ad-alan-grup select:focus { outline:none; border-color:var(--turuncu); }
@@ -26,9 +38,28 @@
     box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
   .ad-arama-ikon { position:absolute; left:.85rem; bottom:.72rem; font-size:1rem; opacity:.55;
     pointer-events:none; }
-  .ad-arama-temizle { display:none; }
-  .ad-arama-temizle.gorunur { display:inline-flex; }
   .ad-btn-cubuk { display:flex; gap:.6rem; margin-left:auto; }
+
+  /* --- Katlanan filtreler --- */
+  .ad-filtre-detay { margin-top:.9rem; }
+  .ad-filtre-detay summary { cursor:pointer; font-weight:700; font-size:.85rem;
+    color:var(--metin-soluk); list-style:none; display:inline-flex; align-items:center; gap:.4rem; }
+  .ad-filtre-detay summary::-webkit-details-marker { display:none; }
+  .ad-filtre-detay summary::before { content:"▸"; font-size:.75rem; }
+  .ad-filtre-detay[open] summary::before { content:"▾"; }
+  .ad-filtre-detay .rozet-sayi { background:var(--turuncu); color:#fff; border-radius:999px;
+    padding:.05rem .5rem; font-size:.72rem; }
+  .ad-filtre-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:.7rem;
+    margin-top:.8rem; }
+  @media (max-width:899px) { .ad-filtre-grid { grid-template-columns:1fr; } }
+
+  /* --- Aktif filtre çipleri --- */
+  .ad-cip-satir { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.8rem; }
+  .ad-cip { display:inline-flex; align-items:center; gap:.35rem; padding:.3rem .7rem;
+    border-radius:999px; background:rgba(33,56,95,.09); color:var(--metin); font-size:.8rem;
+    text-decoration:none; font-weight:600; }
+  .ad-cip:hover { background:rgba(33,56,95,.16); }
+  .ad-cip-hepsi { background:none; color:var(--turuncu-koyu); text-decoration:underline; font-weight:700; }
 
   .ad-alt-cubuk { display:flex; align-items:center; justify-content:space-between; gap:1rem;
     flex-wrap:wrap; margin:.9rem 0 .7rem; }
@@ -50,6 +81,8 @@
   #ad-tablo tbody tr:active td { background:rgba(240,124,0,.1); }
   .ad-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
   #ad-tablo tbody tr:hover .ad-ok { color:var(--turuncu-koyu); opacity:1; }
+  .ad-th-sirala a { color:inherit; text-decoration:none; }
+  .ad-th-sirala a:hover { color:var(--turuncu-koyu); }
 
   .ad-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
     margin-top:1rem; flex-wrap:wrap; }
@@ -70,12 +103,30 @@
   .ad-takip-gecmis { color:#c62828; }
   .ad-takip-bugun { color:var(--turuncu-koyu); }
   .ad-takip-ileri { color:var(--metin); }
+  .ad-son-akt { font-size:.85rem; white-space:nowrap; }
+  .ad-son-akt-eski { color:var(--metin-soluk); }
+  .ad-kanal { display:inline-flex; gap:.35rem; font-size:.95rem; }
+  .ad-kanal .gecersiz { text-decoration:line-through; color:var(--metin-soluk); opacity:.6; }
+
+  /* --- Geniş ekran tablo / dar ekran kart --- */
+  .ad-kart-listesi { display:none; }
+  @media (max-width:899px) {
+    .ad-tablo-sarmal { display:none; }
+    .ad-kart-listesi { display:flex; flex-direction:column; gap:.7rem; }
+  }
+  .ad-kart { border:1px solid var(--cizgi-koyu); border-radius:16px; padding:.9rem 1rem;
+    background:rgba(255,255,255,.8); cursor:pointer; }
+  .ad-kart:active { background:rgba(240,124,0,.08); }
+  .ad-kart .ust { display:flex; justify-content:space-between; gap:.6rem; align-items:flex-start; }
+  .ad-kart .satir { margin-top:.5rem; font-size:.85rem; color:var(--metin-soluk); display:flex;
+    justify-content:space-between; gap:.6rem; flex-wrap:wrap; }
+  .ad-kart .rozetler { margin-top:.5rem; display:flex; gap:.35rem; flex-wrap:wrap; }
 </style>
 
 <div class="ad-ust">
   <h1 class="ust-baslik"><span class="emoji">🧲</span>Aday Müşteriler
     {% if gecikmis_sayisi > 0 %}
-      <a class="ad-gecikmis-rozet" href="?takip=gecmis">⏰ {{ gecikmis_sayisi }} gecikmiş takip</a>
+      <a class="ad-gecikmis-rozet" href="{{ gecikmis_url }}">⏰ {{ gecikmis_sayisi }} gecikmiş takip</a>
     {% endif %}
   </h1>
   <div class="ad-btn-cubuk" style="margin-left:0">
@@ -84,100 +135,146 @@
   </div>
 </div>
 
+<div class="ad-sekmeler">
+  {% for s in sekmeler %}
+    <a class="ad-sekme{% if s.aktif %} aktif{% endif %}" href="{{ s.url }}">
+      {% if s.kod == "takip" %}⏰ Takibim
+      {% elif s.kod == "sicak" %}🔥 Sıcak
+      {% elif s.kod == "temas_yok" %}🆕 Temas yok
+      {% elif s.kod == "kapali" %}🔒 Kapalı
+      {% else %}Tümü{% endif %}
+      <span class="sayi">{{ s.sayi }}</span>
+    </a>
+  {% endfor %}
+</div>
+
 <div class="ad-panel">
   <form method="get" class="ad-arama-cubuk" id="ad-arama-form">
+    {% if gorunum %}<input type="hidden" name="gorunum" value="{{ gorunum }}">{% endif %}
     <div class="ad-alan-grup ad-arama-kutu">
       <label for="ad-arama">Ara</label>
       <span class="ad-arama-ikon">🔍</span>
       <input type="text" id="ad-arama" name="ara" value="{{ ara }}"
              placeholder="Unvan, ilgili kişi, telefon, e-posta…" autocomplete="off">
     </div>
-    <div class="ad-alan-grup">
-      <label for="ad-kategori">Kategori</label>
-      <select id="ad-kategori" name="kategori" onchange="this.form.submit()">
-        <option value="">Tüm Kategoriler</option>
-        {% for k in kategoriler %}
-          <option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ad }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="ad-alan-grup">
-      <label for="ad-ulke">Ülke</label>
-      <select id="ad-ulke" name="ulke"
-              onchange="document.getElementById('ad-sehir').value=''; this.form.submit()">
-        <option value="">Tüm Ülkeler</option>
-        {% for u in ulkeler %}
-          <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="ad-alan-grup">
-      <label for="ad-sehir">Şehir</label>
-      <select id="ad-sehir" name="sehir" onchange="this.form.submit()" {% if not secili_ulke %}disabled title="Önce ülke seçin"{% endif %}>
-        <option value="">{% if secili_ulke %}Tüm Şehirler{% else %}Önce ülke seçin{% endif %}</option>
-        {% for s in sehirler %}
-          <option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="ad-alan-grup">
-      <label for="ad-tip">Tip</label>
-      <select id="ad-tip" name="tip" onchange="this.form.submit()">
-        <option value="">Tüm Tipler</option>
-        {% for deger, etiket in tip_secenekleri %}
-          <option value="{{ deger }}" {% if secili_tip == deger %}selected{% endif %}>{{ etiket }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="ad-alan-grup">
-      <label for="ad-potansiyel">Potansiyel</label>
-      <select id="ad-potansiyel" name="potansiyel" onchange="this.form.submit()">
-        <option value="">Tüm Potansiyeller</option>
-        <option value="BOS" {% if secili_potansiyel == "BOS" %}selected{% endif %}>Belirlenmedi</option>
-        {% for deger, etiket in potansiyel_secenekleri %}
-          <option value="{{ deger }}" {% if secili_potansiyel == deger %}selected{% endif %}>{{ etiket }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="ad-alan-grup">
-      <label for="ad-asama">Aşama</label>
-      <select id="ad-asama" name="asama" onchange="this.form.submit()">
-        <option value="">Tüm Aşamalar</option>
-        {% for deger, etiket in asama_secenekleri %}
-          <option value="{{ deger }}" {% if secili_asama == deger %}selected{% endif %}>{{ etiket }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="ad-alan-grup">
-      <label for="ad-takip">Takip</label>
-      <select id="ad-takip" name="takip" onchange="this.form.submit()">
-        <option value="">Tüm Kayıtlar</option>
-        <option value="gecmis" {% if secili_takip == "gecmis" %}selected{% endif %}>Gecikmiş</option>
-        <option value="bugun" {% if secili_takip == "bugun" %}selected{% endif %}>Bugün</option>
-        <option value="hafta" {% if secili_takip == "hafta" %}selected{% endif %}>Bu hafta (7 gün)</option>
-        <option value="planli" {% if secili_takip == "planli" %}selected{% endif %}>Tarihi planlı (hepsi)</option>
-        <option value="yok" {% if secili_takip == "yok" %}selected{% endif %}>Tarihi yok</option>
-      </select>
-    </div>
-    <div class="ad-alan-grup">
-      <label for="ad-eposta">E-posta</label>
-      <select id="ad-eposta" name="eposta" onchange="this.form.submit()">
-        <option value="">Tümü</option>
-        <option value="gecerli" {% if secili_eposta == "gecerli" %}selected{% endif %}>Geçerli adresi var</option>
-        <option value="gecersiz" {% if secili_eposta == "gecersiz" %}selected{% endif %}>Hepsi geçersiz</option>
-        <option value="yok" {% if secili_eposta == "yok" %}selected{% endif %}>Adresi yok</option>
-      </select>
-    </div>
     <div class="ad-btn-cubuk">
-      <button type="submit" class="birincil">Filtrele</button>
-      <a class="iptal-bag ad-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta %} gorunur{% endif %}" href="?">Temizle</a>
+      <button type="submit" class="birincil">Ara</button>
     </div>
+
+    <details class="ad-filtre-detay">
+      <summary>Filtreler{% if aktif_filtre_sayisi %} <span class="rozet-sayi">{{ aktif_filtre_sayisi }}</span>{% endif %}</summary>
+      <div class="ad-filtre-grid">
+        <div class="ad-alan-grup">
+          <label for="ad-kategori">Kategori</label>
+          <select id="ad-kategori" name="kategori" onchange="this.form.submit()">
+            <option value="">Tüm Kategoriler</option>
+            {% for k in kategoriler %}
+              <option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-ulke">Ülke</label>
+          <select id="ad-ulke" name="ulke"
+                  onchange="document.getElementById('ad-sehir').value=''; this.form.submit()">
+            <option value="">Tüm Ülkeler</option>
+            {% for u in ulkeler %}
+              <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-sehir">Şehir</label>
+          <select id="ad-sehir" name="sehir" onchange="this.form.submit()" {% if not secili_ulke %}disabled title="Önce ülke seçin"{% endif %}>
+            <option value="">{% if secili_ulke %}Tüm Şehirler{% else %}Önce ülke seçin{% endif %}</option>
+            {% for s in sehirler %}
+              <option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-tip">Tip</label>
+          <select id="ad-tip" name="tip" onchange="this.form.submit()">
+            <option value="">Tüm Tipler</option>
+            {% for deger, etiket in tip_secenekleri %}
+              <option value="{{ deger }}" {% if secili_tip == deger %}selected{% endif %}>{{ etiket }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-potansiyel">Potansiyel</label>
+          <select id="ad-potansiyel" name="potansiyel" onchange="this.form.submit()">
+            <option value="">Tüm Potansiyeller</option>
+            <option value="BOS" {% if secili_potansiyel == "BOS" %}selected{% endif %}>Belirlenmedi</option>
+            {% for deger, etiket in potansiyel_secenekleri %}
+              <option value="{{ deger }}" {% if secili_potansiyel == deger %}selected{% endif %}>{{ etiket }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-asama">Aşama</label>
+          <select id="ad-asama" name="asama" onchange="this.form.submit()">
+            <option value="">Tüm Aşamalar</option>
+            {% for deger, etiket in asama_secenekleri %}
+              <option value="{{ deger }}" {% if secili_asama == deger %}selected{% endif %}>{{ etiket }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-takip">Takip</label>
+          <select id="ad-takip" name="takip" onchange="this.form.submit()">
+            <option value="">Tüm Kayıtlar</option>
+            <option value="gecmis" {% if secili_takip == "gecmis" %}selected{% endif %}>Gecikmiş</option>
+            <option value="bugun" {% if secili_takip == "bugun" %}selected{% endif %}>Bugün</option>
+            <option value="hafta" {% if secili_takip == "hafta" %}selected{% endif %}>Bu hafta (7 gün)</option>
+            <option value="planli" {% if secili_takip == "planli" %}selected{% endif %}>Tarihi planlı (hepsi)</option>
+            <option value="yok" {% if secili_takip == "yok" %}selected{% endif %}>Tarihi yok</option>
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-eposta">E-posta</label>
+          <select id="ad-eposta" name="eposta" onchange="this.form.submit()">
+            <option value="">Tümü</option>
+            <option value="gecerli" {% if secili_eposta == "gecerli" %}selected{% endif %}>Geçerli adresi var</option>
+            <option value="gecersiz" {% if secili_eposta == "gecersiz" %}selected{% endif %}>Hepsi geçersiz</option>
+            <option value="yok" {% if secili_eposta == "yok" %}selected{% endif %}>Adresi yok</option>
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-son-akt">Son aktivite</label>
+          <select id="ad-son-akt" name="son_akt" onchange="this.form.submit()">
+            <option value="">Tümü</option>
+            <option value="30" {% if secili_son_akt == "30" %}selected{% endif %}>Son 30 gün</option>
+            <option value="90" {% if secili_son_akt == "90" %}selected{% endif %}>31-90 gün</option>
+            <option value="eski" {% if secili_son_akt == "eski" %}selected{% endif %}>90 günden eski</option>
+            <option value="yok" {% if secili_son_akt == "yok" %}selected{% endif %}>Hiç aktivite yok</option>
+          </select>
+        </div>
+        <div class="ad-alan-grup">
+          <label for="ad-sirala">Sırala</label>
+          <select id="ad-sirala" name="sirala" onchange="this.form.submit()">
+            <option value="">Varsayılan (sekmeye göre)</option>
+            {% for deger, etiket in siralama_secenekleri %}
+              <option value="{{ deger }}" {% if secili_sirala == deger %}selected{% endif %}>{{ etiket }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </details>
+
+    {% if cipler %}
+      <div class="ad-cip-satir">
+        {% for c in cipler %}<a class="ad-cip" href="{{ c.url }}">{{ c.etiket }} ✕</a>{% endfor %}
+        <a class="ad-cip ad-cip-hepsi" href="?">Tümünü temizle</a>
+      </div>
+    {% endif %}
   </form>
 </div>
 
 <div class="ad-alt-cubuk">
   <p class="sayfa-alt" style="margin:0">{{ kayitlar.paginator.count }} kayıt{% if kayitlar.paginator.num_pages > 1 %} · sayfa {{ kayitlar.number }}/{{ kayitlar.paginator.num_pages }}{% endif %}.</p>
   <form method="get" class="ad-boyut-secici">
+    {% if gorunum %}<input type="hidden" name="gorunum" value="{{ gorunum }}">{% endif %}
     {% if secili_kategori %}<input type="hidden" name="kategori" value="{{ secili_kategori }}">{% endif %}
     {% if secili_sehir %}<input type="hidden" name="sehir" value="{{ secili_sehir }}">{% endif %}
     {% if secili_ulke %}<input type="hidden" name="ulke" value="{{ secili_ulke }}">{% endif %}
@@ -186,6 +283,8 @@
     {% if secili_asama %}<input type="hidden" name="asama" value="{{ secili_asama }}">{% endif %}
     {% if secili_takip %}<input type="hidden" name="takip" value="{{ secili_takip }}">{% endif %}
     {% if secili_eposta %}<input type="hidden" name="eposta" value="{{ secili_eposta }}">{% endif %}
+    {% if secili_son_akt %}<input type="hidden" name="son_akt" value="{{ secili_son_akt }}">{% endif %}
+    {% if secili_sirala %}<input type="hidden" name="sirala" value="{{ secili_sirala }}">{% endif %}
     {% if ara %}<input type="hidden" name="ara" value="{{ ara }}">{% endif %}
     <label for="ad-boyut">Sayfa başına</label>
     <select id="ad-boyut" name="boyut" onchange="this.form.submit()">
@@ -194,10 +293,15 @@
   </form>
 </div>
 
-<div class="tablo-kapsayici">
+<div class="ad-tablo-sarmal tablo-kapsayici">
 <table id="ad-tablo">
   <thead><tr>
-    <th>Unvan</th><th>Kategori</th><th>Şehir / Ülke</th><th>Takip</th><th></th>
+    <th class="ad-th-sirala"><a href="{{ siralama_baglar.unvan.url }}">Unvan {{ siralama_baglar.unvan.ok }}</a></th>
+    <th>Ülke / Şehir</th>
+    <th class="ad-th-sirala"><a href="{{ siralama_baglar.potansiyel.url }}">Tip · Aşama · Potansiyel {{ siralama_baglar.potansiyel.ok }}</a></th>
+    <th class="ad-th-sirala"><a href="{{ siralama_baglar.sonraki.url }}">Sonraki adım {{ siralama_baglar.sonraki.ok }}</a></th>
+    <th class="ad-th-sirala"><a href="{{ siralama_baglar.son_akt.url }}">Son aktivite {{ siralama_baglar.son_akt.ok }}</a></th>
+    <th>Kanal</th><th></th>
   </tr></thead>
   <tbody>
     {% for a in kayitlar %}
@@ -208,26 +312,76 @@
             <div>
               <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a></div>
               {% if a.ilgili_kisi %}<div class="alt">{{ a.ilgili_kisi }}</div>{% endif %}
-              <div class="alt">
-                <span class="rozet rozet-notr">{{ a.get_tip_display }}</span>
-                <span class="rozet rozet-notr">{{ a.get_asama_display }}</span>
-              </div>
             </div>
           </div>
         </td>
-        <td>{% if a.kategori %}<span class="rozet rozet-notr">{{ a.kategori.ad }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td>{% if a.sehir %}{{ a.sehir.ad }}{% endif %}{% if a.ulke %} <span class="mono yardim">({{ a.ulke.kod }})</span>{% endif %}{% if not a.sehir and not a.ulke %}<span class="pasif">—</span>{% endif %}</td>
-        <td>{% if a.sonraki_adim_tarihi %}<span class="ad-takip-tarih ad-takip-{{ a.takip_durum }}">{{ a.sonraki_adim_tarihi|date:"d.m.Y" }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>
+          <span class="rozet rozet-notr">{{ a.get_tip_display }}</span>
+          <span class="rozet rozet-notr">{{ a.get_asama_display }}</span>
+          {% if a.potansiyel %}<span class="rozet rozet-notr">{{ a.get_potansiyel_display }}</span>{% endif %}
+        </td>
+        <td>{% if a.sonraki_adim_tarihi %}<span class="ad-takip-tarih ad-takip-{{ a.takip_durum }}" title="{{ a.sonraki_adim|default:'' }}">{{ a.sonraki_adim_tarihi|date:"d.m.Y" }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if a.son_aktivite_tarihi %}<span class="ad-son-akt{% if a.son_aktivite_gun_once > 90 %} ad-son-akt-eski{% endif %}">{{ a.son_aktivite_tarihi|date:"d.m.Y" }}{% if a.son_aktivite_turu_etiket %} · {{ a.son_aktivite_turu_etiket }}{% endif %}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>
+          <span class="ad-kanal">
+            {% if a.eposta_kanal_durum == "gecerli" %}✉{% elif a.eposta_kanal_durum == "gecersiz" %}<span class="gecersiz">✉</span>{% endif %}
+            {% if a.telefon or a.telefon_2 %}📞{% endif %}
+          </span>
+        </td>
         <td class="ad-ok">›</td>
       </tr>
     {% empty %}
-      <tr style="cursor:default"><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta %}🔍 Bu süzgeçle eşleşen kayıt yok.
-        {% else %}🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
+      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if gorunum != "tumu" %}
+          Bu sekmede kayıt yok. <a href="{{ tumu_url }}">Tümünü göster</a>
+        {% elif ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta or secili_son_akt %}
+          🔍 Bu süzgeçle eşleşen kayıt yok.
+        {% else %}
+          🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.
+        {% endif %}
+      </td></tr>
     {% endfor %}
   </tbody>
 </table>
 </div>
+
+<div class="ad-kart-listesi">
+  {% for a in kayitlar %}
+    <div class="ad-kart" onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
+      <div class="ust">
+        <div>
+          <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a></div>
+          {% if a.ilgili_kisi %}<div class="alt">{{ a.ilgili_kisi }}</div>{% endif %}
+        </div>
+        <span class="ad-kanal">
+          {% if a.eposta_kanal_durum == "gecerli" %}✉{% elif a.eposta_kanal_durum == "gecersiz" %}<span class="gecersiz">✉</span>{% endif %}
+          {% if a.telefon or a.telefon_2 %}📞{% endif %}
+        </span>
+      </div>
+      <div class="rozetler">
+        {% if a.kategori %}<span class="rozet rozet-notr">{{ a.kategori.ad }}</span>{% endif %}
+        <span class="rozet rozet-notr">{{ a.get_tip_display }}</span>
+        <span class="rozet rozet-notr">{{ a.get_asama_display }}</span>
+        {% if a.potansiyel %}<span class="rozet rozet-notr">{{ a.get_potansiyel_display }}</span>{% endif %}
+      </div>
+      <div class="satir">
+        <span>{% if a.sehir %}{{ a.sehir.ad }}{% endif %}{% if a.ulke %} ({{ a.ulke.kod }}){% endif %}{% if not a.sehir and not a.ulke %}—{% endif %}</span>
+        <span>{% if a.sonraki_adim_tarihi %}<span class="ad-takip-tarih ad-takip-{{ a.takip_durum }}">{{ a.sonraki_adim_tarihi|date:"d.m.Y" }}</span>{% else %}—{% endif %}</span>
+      </div>
+      <div class="satir">
+        <span>Son aktivite: {% if a.son_aktivite_tarihi %}<span class="{% if a.son_aktivite_gun_once > 90 %}ad-son-akt-eski{% endif %}">{{ a.son_aktivite_tarihi|date:"d.m.Y" }}{% if a.son_aktivite_turu_etiket %} · {{ a.son_aktivite_turu_etiket }}{% endif %}</span>{% else %}—{% endif %}</span>
+      </div>
+    </div>
+  {% empty %}
+    <p class="yardim" style="text-align:center;padding:1.6rem 0">
+      {% if gorunum != "tumu" %}Bu sekmede kayıt yok. <a href="{{ tumu_url }}">Tümünü göster</a>
+      {% elif ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta or secili_son_akt %}🔍 Bu süzgeçle eşleşen kayıt yok.
+      {% else %}🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.{% endif %}
+    </p>
+  {% endfor %}
+</div>
+
 {% if kayitlar.paginator.num_pages > 1 %}
 <div class="ad-sayfalama">
   {% if kayitlar.number > 1 %}<a class="uc-uc" href="?sayfa=1&{{ sabit_qs }}">« İlk</a>{% endif %}
