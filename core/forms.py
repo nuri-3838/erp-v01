@@ -667,19 +667,41 @@ class AdayAktiviteForm(forms.Form):
         return cleaned
 
 
-class AdayCariyeDonusturForm(forms.Form):
-    """Aday müşteriyi gerçek Cari'ye dönüştürürken kategori seçimi (muhasebe hesap kodu
-    kategoriden türer — bkz. cari_servis.muhasebe_hesabi_ac)."""
+class AdayCariyeYeniCariForm(CariForm):
+    """(A) Yeni cari aç — CariForm'un TÜMÜNÜ yeniden kullanır (spec: 'aynı form sınıfı/
+    validasyon yeniden kullanılsın'); CariForm'un KENDİSİ değiştirilmez (dokunulmayacaklar
+    listesi), yalnız bu ekrana özel EK kural miras alınarak eklenir: ülke Türkiye ise
+    VKN/TCKN (10 veya 11 hane) + vergi dairesi zorunlu; yurtdışında (veya ülke boşsa) hiçbiri
+    aranmaz — mevcut Cari'de format/checksum doğrulaması yok, yalnız hane sayısı kontrol
+    edilir (spec: 'mevcut cari validasyonu varsa o' — yoktu)."""
 
-    kategori = forms.ModelChoiceField(label="Kategori", queryset=CariKategori.objects.none(),
-                                      required=False, empty_label="— kategori seç —")
+    def clean(self):
+        cleaned = super().clean()
+        ulke = cleaned.get("ulke")
+        turkiye_mi = bool(ulke) and ulke.kod == "TR"
+        if turkiye_mi:
+            vkn = (cleaned.get("vkn_tckn") or "").strip()
+            if not vkn:
+                self.add_error("vkn_tckn", "Türkiye'deki carilerde VKN/TCKN zorunlu.")
+            elif not (vkn.isdigit() and len(vkn) in (10, 11)):
+                self.add_error("vkn_tckn", "VKN/TCKN 10 (VKN) veya 11 (TCKN) haneli olmalı.")
+            if not (cleaned.get("vergi_dairesi") or "").strip():
+                self.add_error("vergi_dairesi", "Türkiye'deki carilerde vergi dairesi zorunlu.")
+        return cleaned
+
+
+class AdayCariyeMevcutCariForm(forms.Form):
+    """(B) Mevcut cariye bağla — cari seçimi (unvan/kod ile akıllı-seç arama, mevcut deseni)."""
+
+    cari = forms.ModelChoiceField(label="Cari", queryset=Cari.objects.none(),
+                                  empty_label="— cari seç —")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.cari_kategori import aktif_cari_kategoriler
-        self.fields["kategori"].queryset = aktif_cari_kategoriler().filter(ust__isnull=False)
-        self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
-        self.fields["kategori"].widget.attrs["class"] = "akilli-sec"
+        from core.services.cari import aktif_cariler
+        self.fields["cari"].queryset = aktif_cariler()
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
 
 class CariSevkAdresiForm(forms.Form):
@@ -1981,9 +2003,9 @@ class SatisBelgeBaslikForm(forms.Form):
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         # Cariye zaten dönüşmüş adaylar artık normal Cari akışıyla teklif alır — listeden
-        # düşer (bkz. AdayMusteri.donusen_cari, aday_cariye_donustur).
+        # düşer (bkz. AdayMusteri.cari, core.services.aday_donustur).
         self.fields["aday_musteri"].queryset = (
-            AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)
+            AdayMusteri.objects.filter(silindi=False, cari__isnull=True)
             .select_related("ulke").order_by("unvan"))
         # Aynı unvanlı/benzer adaylar farklı ülkelerden olabilir — akıllı-seç'te ayırt
         # edilsin diye ülke adı öne eklenir (ör. "DUBAİ AL BAWADI METALS").

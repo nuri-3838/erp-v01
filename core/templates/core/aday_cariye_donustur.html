@@ -4,33 +4,225 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="form-kapsa form-dar">
+<style>
+  .ad-inline-checkbox { display:inline-flex; align-items:center; gap:.35rem; font-size:.8rem;
+    font-weight:600; color:var(--metin-soluk); margin-top:.4rem; cursor:pointer; }
+  .ad-inline-checkbox input { width:auto; }
+  .ad-mod-radio { position:absolute; opacity:0; pointer-events:none; }
+  .ad-mod-bar { display:flex; gap:.6rem; flex-wrap:wrap; margin:1rem 0; }
+  .ad-mod-bar label { display:inline-flex; align-items:center; gap:.5rem; cursor:pointer; user-select:none;
+    padding:.75rem 1.2rem; border-radius:14px; font-weight:700; font-size:.95rem; color:var(--metin-soluk);
+    background:rgba(255,255,255,.6); border:1px solid var(--cizgi); }
+  #ad-mod-a:checked ~ .ad-mod-bar label[for="ad-mod-a"],
+  #ad-mod-b:checked ~ .ad-mod-bar label[for="ad-mod-b"] {
+    background:linear-gradient(135deg,var(--turuncu),var(--turuncu-koyu)); color:#fff; border-color:transparent;
+    box-shadow:0 6px 14px rgba(213,110,0,.32); }
+  .ad-mod-panel { display:none; }
+  #ad-mod-a:checked ~ #ad-panel-a, #ad-mod-b:checked ~ #ad-panel-b { display:block; }
+  .ad-eslesme-satir { display:flex; align-items:center; justify-content:space-between; gap:1rem;
+    flex-wrap:wrap; padding:.7rem 1rem; border:1px solid var(--cizgi); border-radius:12px; margin-bottom:.6rem; }
+  .ad-eslesme-bilgi .ad { font-weight:700; }
+  .ad-eslesme-bilgi .alt { font-size:.8rem; color:var(--metin-soluk); margin-top:.15rem; }
+  .ad-onizleme { background:rgba(240,124,0,.08); border:1px solid rgba(240,124,0,.28); border-radius:12px;
+    padding:.7rem 1rem; margin-top:.8rem; font-size:.88rem; }
+  .ad-onizleme strong { display:block; margin-bottom:.2rem; }
+</style>
+
+<div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:aday_musteri_detay' aday.pk %}">← {{ aday.unvan }}</a>
     <h1 class="ust-baslik"><span class="emoji">🎉</span>Cariye Dönüştür</h1>
   </div>
 
-  {% if form.non_field_errors %}
-    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% if engel %}
+    <div class="uyari">⚠️ {{ engel }}</div>
+  {% else %}
+
+  {% if eslesmeler %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">🔍 Olası Eşleşmeler</h2>
+      <p class="yardim" style="margin:0 0 .7rem">Bu firma zaten cari olarak kayıtlı olabilir — aşağıdaki carilerden biri doğruysa "Bu cariye bağla" ile (B) seçeneğine geçin.</p>
+      {% for e in eslesmeler %}
+        <div class="ad-eslesme-satir">
+          <div class="ad-eslesme-bilgi">
+            <div class="ad">{{ e.cari.kod }} — {{ e.cari.unvan }}</div>
+            <div class="alt">{% if e.cari.kategori %}{{ e.cari.kategori.ad }} · {% endif %}Eşleşme nedeni: {{ e.sebep }}</div>
+          </div>
+          <a class="dugme" href="?mevcut_cari={{ e.cari.pk }}">Bu cariye bağla</a>
+        </div>
+      {% endfor %}
+    </section>
   {% endif %}
 
-  <section class="icerik-kart">
-    <p>
-      <strong>{{ aday.unvan }}</strong> gerçek bir Cari kaydına dönüştürülecek — bu noktada
-      hesap planında otomatik muhasebe hesabı açılır. Aday kaydı silinmez, geçmişe dönük
-      referans olarak kalır.
-    </p>
-    <form method="post" autocomplete="off" style="display:contents">
-      {% csrf_token %}
-      <div class="izgara" style="margin-top:1rem">
-        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div>
-          <p class="yardim">Boş bırakılırsa otomatik CAR-NNNN kodu verilir.</p></div>
-      </div>
-      <div class="form-altbar">
-        <a class="iptal-bag" href="{% url 'core:aday_musteri_detay' aday.pk %}">İptal</a>
-        <button type="submit" class="birincil">Cariye Dönüştür</button>
-      </div>
-    </form>
-  </section>
+  {% if form_a.non_field_errors or form_b.non_field_errors %}
+    <div class="uyari">
+      {% for e in form_a.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}
+      {% for e in form_b.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  {% comment %}
+  novalidate: A/B panelleri karşılıklı dışlayıcı zorunlu alanlar içeriyor (form_a.unvan,
+  form_b.cari) — tarayıcı yalnız GÖRÜNEN panele bakmadan İKİSİNİ de doğrulamaya çalışıp gizli
+  moddaki alanı "eksik" sayabiliyor; asıl doğrulama zaten serviste/Django formunda.
+  {% endcomment %}
+  <form method="post" autocomplete="off" novalidate style="display:contents">
+    {% csrf_token %}
+    <input type="radio" name="mod" value="A" id="ad-mod-a" class="ad-mod-radio" {% if mod == "A" %}checked{% endif %}>
+    <input type="radio" name="mod" value="B" id="ad-mod-b" class="ad-mod-radio" {% if mod == "B" %}checked{% endif %}>
+    <div class="ad-mod-bar">
+      <label for="ad-mod-a">🆕 Yeni Cari Aç</label>
+      <label for="ad-mod-b">🔗 Mevcut Cariye Bağla</label>
+    </div>
+
+    <div class="ad-mod-panel" id="ad-panel-a">
+      <section class="icerik-kart">
+        <h2 class="bolum-baslik">Kimlik</h2>
+        <div class="izgara">
+          <div class="alan tam"><label for="{{ form_a.unvan.id_for_label }}">{{ form_a.unvan.label }} <span class="zorunlu">*</span></label>{{ form_a.unvan }}{% for e in form_a.unvan.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+          <div class="alan"><label for="{{ form_a.kategori.id_for_label }}">{{ form_a.kategori.label }}</label><div class="akilli">{{ form_a.kategori }}</div>
+            <p class="yardim">Aday tipine göre önerildi; değiştirebilirsiniz.</p></div>
+          <div class="alan"><label for="{{ form_a.kisa_ad.id_for_label }}">{{ form_a.kisa_ad.label }}</label>{{ form_a.kisa_ad }}</div>
+        </div>
+      </section>
+
+      <section class="icerik-kart">
+        <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi</h2>
+        <p class="yardim" style="margin:0 0 .6rem">Ülke Türkiye ise VKN/TCKN ve vergi dairesi zorunlu; yurtdışında aranmaz.</p>
+        <div class="izgara">
+          <div class="alan tam"><label for="{{ form_a.vergi_dairesi.id_for_label }}">{{ form_a.vergi_dairesi.label }}</label>{{ form_a.vergi_dairesi }}{% for e in form_a.vergi_dairesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+          <div class="alan"><label for="{{ form_a.vkn_tckn.id_for_label }}">{{ form_a.vkn_tckn.label }}</label>{{ form_a.vkn_tckn }}{% for e in form_a.vkn_tckn.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+          <div class="alan"><label for="{{ form_a.tax_id.id_for_label }}">{{ form_a.tax_id.label }}</label>{{ form_a.tax_id }}</div>
+        </div>
+      </section>
+
+      <section class="icerik-kart">
+        <h2 class="bolum-baslik"><span class="emoji">📞</span>İletişim</h2>
+        <div class="izgara">
+          <div class="alan"><label for="{{ form_a.telefon.id_for_label }}">{{ form_a.telefon.label }}</label>{{ form_a.telefon }}
+            <label class="ad-inline-checkbox" for="{{ form_a.telefon_whatsapp.id_for_label }}">{{ form_a.telefon_whatsapp }} {{ form_a.telefon_whatsapp.label }}</label>
+          </div>
+          <div class="alan"><label for="{{ form_a.telefon_2.id_for_label }}">{{ form_a.telefon_2.label }}</label>{{ form_a.telefon_2 }}
+            <label class="ad-inline-checkbox" for="{{ form_a.telefon_2_whatsapp.id_for_label }}">{{ form_a.telefon_2_whatsapp }} {{ form_a.telefon_2_whatsapp.label }}</label>
+          </div>
+          <div class="alan"><label for="{{ form_a.eposta.id_for_label }}">{{ form_a.eposta.label }}</label>{{ form_a.eposta }}{% for e in form_a.eposta.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+          <div class="alan"><label for="{{ form_a.web.id_for_label }}">{{ form_a.web.label }}</label>{{ form_a.web }}{% for e in form_a.web.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+          <div class="alan"><label for="{{ form_a.ilgili_kisi.id_for_label }}">{{ form_a.ilgili_kisi.label }}</label>{{ form_a.ilgili_kisi }}</div>
+          <div class="alan"><label for="{{ form_a.kep_adresi.id_for_label }}">{{ form_a.kep_adresi.label }}</label>{{ form_a.kep_adresi }}</div>
+        </div>
+      </section>
+
+      <section class="icerik-kart">
+        <h2 class="bolum-baslik"><span class="emoji">📍</span>Adres</h2>
+        <div class="izgara">
+          <div class="alan"><label for="{{ form_a.ulke.id_for_label }}">{{ form_a.ulke.label }}</label><div class="akilli">{{ form_a.ulke }}</div></div>
+          <div class="alan"><label for="{{ form_a.sehir.id_for_label }}">{{ form_a.sehir.label }}</label><div class="akilli">{{ form_a.sehir }}</div></div>
+          <div class="alan tam"><label for="{{ form_a.adres.id_for_label }}">{{ form_a.adres.label }}</label>{{ form_a.adres }}
+            <p class="yardim">Doluysa otomatik "Merkez Adres" sevk adresi açılır.</p></div>
+        </div>
+      </section>
+
+      <section class="icerik-kart">
+        <h2 class="bolum-baslik"><span class="emoji">💱</span>Ticari</h2>
+        <div class="izgara">
+          <div class="alan"><label for="{{ form_a.para_birimi.id_for_label }}">{{ form_a.para_birimi.label }}</label>{{ form_a.para_birimi }}</div>
+          <div class="alan" id="ad-kur-tipi-alan"><label for="{{ form_a.kur_tipi.id_for_label }}">{{ form_a.kur_tipi.label }}</label>{{ form_a.kur_tipi }}</div>
+          <div class="alan"><label for="{{ form_a.kredi_limiti.id_for_label }}">{{ form_a.kredi_limiti.label }}</label>{{ form_a.kredi_limiti }}</div>
+          <div class="alan"><label for="{{ form_a.iskonto_yuzdesi.id_for_label }}">{{ form_a.iskonto_yuzdesi.label }}</label>{{ form_a.iskonto_yuzdesi }}</div>
+        </div>
+      </section>
+
+      <section class="icerik-kart">
+        <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
+        <div class="alan">{{ form_a.notlar }}</div>
+      </section>
+    </div>
+
+    <div class="ad-mod-panel" id="ad-panel-b">
+      <section class="icerik-kart">
+        <h2 class="bolum-baslik">Cari Seç</h2>
+        <div class="izgara">
+          <div class="alan tam"><label for="{{ form_b.cari.id_for_label }}">{{ form_b.cari.label }}</label><div class="akilli">{{ form_b.cari }}</div>{% for e in form_b.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        </div>
+        {% if onizleme %}
+          <div class="ad-onizleme">
+            <strong>{{ onizleme.cari.kod }} — {{ onizleme.cari.unvan }}</strong>
+            {% if onizleme.etiketler %}
+              Şu alanlar doldurulacak: {{ onizleme.etiketler|join:", " }}.
+            {% else %}
+              Carinin dolu olmayan bir alanı yok; yalnız yetkili/aktivite kopyalanacak.
+            {% endif %}
+          </div>
+        {% endif %}
+        <p class="yardim" style="margin-top:.8rem">Carinin DOLU alanlarının üzerine yazılmaz — yalnız boş alanlar adaydan doldurulur. Muhasebe hesabı açılmaz, kategori değişmez.</p>
+      </section>
+    </div>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:aday_musteri_detay' aday.pk %}">İptal</a>
+      <button type="submit" class="birincil">Cariye Dönüştür</button>
+    </div>
+  </form>
+  {% endif %}
 </div>
+
+<script>
+(function(){
+  var pbSec = document.getElementById('{{ form_a.para_birimi.id_for_label }}');
+  var kurTipiAlan = document.getElementById('ad-kur-tipi-alan');
+  function guncelle(){
+    if(kurTipiAlan) kurTipiAlan.style.display = (pbSec && pbSec.value === 'TRY') ? 'none' : '';
+  }
+  if(pbSec){ pbSec.addEventListener('change', guncelle); guncelle(); }
+})();
+</script>
+<script>
+(function(){
+  var cariSec = document.getElementById('{{ form_b.cari.id_for_label }}');
+  if(cariSec){
+    cariSec.addEventListener('change', function(){
+      if(this.value) window.location = '?mevcut_cari=' + encodeURIComponent(this.value);
+    });
+  }
+})();
+</script>
+<script>
+(function(){
+  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+  document.body.appendChild(gListe);
+  var aktifInp = null;
+  function konumla(inp){ var r = inp.getBoundingClientRect();
+    gListe.style.left = r.left+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = r.width+'px'; }
+  function metin(sel, v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
+    return o && o.value ? o.textContent.trim() : ''; }
+  function ac(sel, inp, filt){
+    aktifInp = inp; konumla(inp);
+    filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
+    var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
+    Array.prototype.forEach.call(sel.options, function(o){
+      var t = o.value ? o.textContent.trim() : bos;
+      if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(n++ > 80) return;
+      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
+      d.addEventListener('mousedown', function(ev){ ev.preventDefault();
+        sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
+        sel.dispatchEvent(new Event('change', {bubbles:true})); });
+      gListe.appendChild(d);
+    });
+    gListe.style.display = gListe.children.length ? 'block' : 'none';
+  }
+  document.querySelectorAll('select.akilli-sec').forEach(function(sel){
+    var inp = document.createElement('input'); inp.type='text'; inp.className='akilli-girdi';
+    inp.placeholder='ara / seç…'; inp.autocomplete='off';
+    sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
+    if(sel.value) inp.value = metin(sel, sel.value);
+    inp.addEventListener('focus', function(){ ac(sel, inp, sel.value?'':inp.value); });
+    inp.addEventListener('input', function(){ sel.value=''; ac(sel, inp, inp.value); });
+    inp.addEventListener('blur', function(){ setTimeout(function(){
+      gListe.style.display='none'; inp.value=metin(sel, sel.value); }, 150); });
+  });
+  window.addEventListener('scroll', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); }, true);
+  window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
+})();
+</script>
 {% endblock %}

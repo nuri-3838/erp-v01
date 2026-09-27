@@ -2,8 +2,9 @@
 açılırken muhasebe hesabı AÇILMAZ (bkz. cari_servis.muhasebe_hesabi_ac — bu, gerçek
 müşteri/tedarikçi için doğru ama henüz hiçbir şey satmadığımız bir adayda hesap planını
 kirletir). Yapısı bilinçli olarak Cari'ye çok yakın (kimlik/iletişim + kategori + para
-birimi + iskonto). ``aday_cariye_donustur`` gerçek bir Cari açar; aday kaydı silinmez,
-``donusen_cari`` ile iz kalır (TeklifSiparis.kaynak_teklif ile aynı invariant).
+birimi + iskonto). "Cariye Dönüştür" akışı (eşleşme bulma + yeni cari açma/mevcut cariye
+bağlama) core.services.aday_donustur'da — aday kaydı silinmez, ``cari`` +
+``cariye_donusum_tarihi`` ile iz kalır (TeklifSiparis.kaynak_teklif ile aynı invariant).
 
 UPPER alanlar (unvan/ilgili kişi) TR büyük harfe çevrilir. Silme: soft-delete.
 """
@@ -20,10 +21,9 @@ from core.dogrulama import web_normalize
 from core.metin import buyuk_harf_tr
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel,
-    AdayTip, AdayYetkili, Cari, CariAktivite, CariAktiviteEk, KapanisNedeni, Sehir, Ulke,
+    AdayTip, AdayYetkili, KapanisNedeni, Sehir, Ulke,
 )
 from core.sayi import SayiHatasi, parse_tr
-from core.services import cari as cari_servis
 
 AKTIVITE_IZINLI_UZANTI = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"}
 AKTIVITE_MAKS_BOYUT = 10 * 1024 * 1024   # 10 MB
@@ -34,11 +34,12 @@ class AdayHatasi(ValueError):
 
 
 def aktif_aday_musteriler():
-    """Henüz Cariye dönüştürülmemiş adaylar — dönüştürülmüş bir aday artık 'aktif aday'
-    sayılmaz (bkz. aday_cariye_donustur), listeden çıkar; kaydın kendisi silinmez, yalnız
-    buradaki (liste ekranı) queryset'ten hariç tutulur — doğrudan pk ile erişim etkilenmez."""
-    return (AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)
-            .select_related("ulke", "sehir", "kategori"))
+    """Silinmemiş TÜM adaylar (Cariye dönüşmüş olsa da dahil — liste ekranının Tümü sekmesi
+    dönüşmüşleri de gösterir, bkz. core/views.py::aday_musteriler). Cariye dönüşmüşleri
+    Takibim/Sıcak/Temas yok sekmelerinden düşürmek görüntüleme view'ının kendi sekme
+    kuralının işi (_aday_tab_q); "aktif aday" burada yalnız 'silinmemiş' anlamına gelir."""
+    return (AdayMusteri.objects.filter(silindi=False)
+            .select_related("ulke", "sehir", "kategori", "cari"))
 
 
 def _ulke(ulke_id):
@@ -161,50 +162,6 @@ def aday_musteri_sil(aday: AdayMusteri, kullanici=None) -> AdayMusteri:
     aday.updated_by = kullanici
     aday.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return aday
-
-
-def _aktiviteleri_cariye_kopyala(aday, cari, kullanici=None):
-    """Adayın aktivitelerini (+ ekli dosyalarını) yeni Cari'ye KOPYALAR — CariAktivite ile
-    AdayAktivite birebir aynı alan şekline sahip (tarih/tür/açıklama). Aday tarafındaki
-    kayıtlar SİLİNMEZ/taşınmaz (iz kalır); Cari'de de aynı geçmiş görünsün diye kopyalanır."""
-    from django.core.files.base import ContentFile
-
-    aktiviteler = aday.aktiviteler.filter(silindi=False).prefetch_related(
-        Prefetch("ekler", queryset=AdayAktiviteEk.objects.filter(silindi=False)))
-    for aktivite in aktiviteler:
-        yeni = CariAktivite.objects.create(
-            cari=cari, tarih=aktivite.tarih, tur=aktivite.tur, aciklama=aktivite.aciklama,
-            created_by=kullanici, updated_by=kullanici)
-        for ek in aktivite.ekler.all():
-            with ek.dosya.open("rb") as f:
-                icerik = ContentFile(f.read(), name=ek.dosya.name.rsplit("/", 1)[-1])
-            CariAktiviteEk.objects.create(
-                aktivite=yeni, dosya=icerik, orijinal_ad=ek.orijinal_ad,
-                created_by=kullanici, updated_by=kullanici)
-
-
-@transaction.atomic
-def aday_cariye_donustur(aday: AdayMusteri, *, kategori_id=None, kullanici=None) -> Cari:
-    """Adayı gerçek bir Cari'ye dönüştürür (muhasebe hesabı bu noktada açılır) — tek
-    seferlik, zaten dönüştürülmüş bir aday tekrar dönüştürülemez. ``kategori_id`` burada
-    Cari'nin KENDİ kategorisidir (CariKategori) — adayın kendi AdayMusteriKategori'siyle
-    karışmaz, ayrı ağaçlardır. Aday üzerindeki aktiviteler (+ ekleri) yeni Cari'ye kopyalanır
-    (bkz. _aktiviteleri_cariye_kopyala) — dönüşümle birlikte geçmiş görüşme kaydı kaybolmasın."""
-    if aday.silindi:
-        raise AdayHatasi("Silinmiş aday dönüştürülemez.")
-    if aday.donusen_cari_id:
-        raise AdayHatasi("Bu aday zaten bir cariye dönüştürülmüş.")
-    cari = cari_servis.cari_olustur(
-        unvan=aday.unvan, kategori_id=kategori_id, kullanici=kullanici,
-        ilgili_kisi=aday.ilgili_kisi, telefon=aday.telefon, telefon_2=aday.telefon_2,
-        eposta=aday.eposta,
-        ulke_id=aday.ulke_id, sehir_id=aday.sehir_id, para_birimi=aday.para_birimi,
-        iskonto_yuzdesi=aday.iskonto_yuzdesi)
-    aday.donusen_cari = cari
-    aday.updated_by = kullanici
-    aday.save(update_fields=["donusen_cari", "updated_by", "updated_at"])
-    _aktiviteleri_cariye_kopyala(aday, cari, kullanici=kullanici)
-    return cari
 
 
 # --- Yetkili kişiler (CariYetkili ile birebir aynı desen) --------------------

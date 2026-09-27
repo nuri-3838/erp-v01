@@ -266,6 +266,14 @@
           </select>
         </div>
         <div class="ad-alan-grup">
+          <label for="ad-cari">Cari durumu</label>
+          <select id="ad-cari" name="cari" onchange="this.form.submit()">
+            <option value="">Tümü</option>
+            <option value="var" {% if secili_cari == "var" %}selected{% endif %}>Cari oldu</option>
+            <option value="yok" {% if secili_cari == "yok" %}selected{% endif %}>Aday (cari değil)</option>
+          </select>
+        </div>
+        <div class="ad-alan-grup">
           <label for="ad-sirala">Sırala</label>
           <select id="ad-sirala" name="sirala" onchange="this.form.submit()">
             <option value="">Varsayılan (sekmeye göre)</option>
@@ -299,6 +307,7 @@
     {% if secili_takip %}<input type="hidden" name="takip" value="{{ secili_takip }}">{% endif %}
     {% if secili_eposta %}<input type="hidden" name="eposta" value="{{ secili_eposta }}">{% endif %}
     {% if secili_son_akt %}<input type="hidden" name="son_akt" value="{{ secili_son_akt }}">{% endif %}
+    {% if secili_cari %}<input type="hidden" name="cari" value="{{ secili_cari }}">{% endif %}
     {% if secili_sirala %}<input type="hidden" name="sirala" value="{{ secili_sirala }}">{% endif %}
     {% if ara %}<input type="hidden" name="ara" value="{{ ara }}">{% endif %}
     <label for="ad-boyut">Sayfa başına</label>
@@ -325,7 +334,7 @@
           <div class="ad-hucre">
             <span class="ad-ikon">🧲</span>
             <div>
-              <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a></div>
+              <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a>{% if a.cari_id %} <span class="rozet rozet-aktif">Cari</span>{% endif %}</div>
               {% if a.ilgili_kisi %}<div class="alt">{{ a.ilgili_kisi }}</div>{% endif %}
             </div>
           </div>
@@ -350,7 +359,7 @@
       <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if gorunum != "tumu" %}
           Bu sekmede kayıt yok. <a href="{{ tumu_url }}">Tümünü göster</a>
-        {% elif ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta or secili_son_akt %}
+        {% elif ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta or secili_son_akt or secili_cari %}
           🔍 Bu süzgeçle eşleşen kayıt yok.
         {% else %}
           🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.
@@ -366,7 +375,7 @@
     <div class="ad-kart" onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
       <div class="ust">
         <div>
-          <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a></div>
+          <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a>{% if a.cari_id %} <span class="rozet rozet-aktif">Cari</span>{% endif %}</div>
           {% if a.ilgili_kisi %}<div class="alt">{{ a.ilgili_kisi }}</div>{% endif %}
         </div>
         <span class="ad-kanal">
@@ -391,7 +400,7 @@
   {% empty %}
     <p class="yardim" style="text-align:center;padding:1.6rem 0">
       {% if gorunum != "tumu" %}Bu sekmede kayıt yok. <a href="{{ tumu_url }}">Tümünü göster</a>
-      {% elif ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta or secili_son_akt %}🔍 Bu süzgeçle eşleşen kayıt yok.
+      {% elif ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta or secili_son_akt or secili_cari %}🔍 Bu süzgeçle eşleşen kayıt yok.
       {% else %}🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.{% endif %}
     </p>
   {% endfor %}

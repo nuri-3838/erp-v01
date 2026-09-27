@@ -18,9 +18,8 @@ from django.urls import reverse
 from PIL import Image
 
 from core.models import Cari, CariAktiviteEk, CekSenet, EkranYetki, HesapPlani, Kur
-from core.services.aday import (
-    aday_aktivite_ek_ekle, aday_aktivite_ekle, aday_cariye_donustur, aday_musteri_olustur,
-)
+from core.services.aday import aday_aktivite_ek_ekle, aday_aktivite_ekle, aday_musteri_olustur
+from core.services.aday_donustur import yeni_cari_ac
 from core.services.cari import aktivite_ek_ekle, aktivite_ekle, cari_olustur
 from core.services.cek import cari_giris_bordrosu_olustur, hesap_ayari_kaydet
 from core.storage import GENEL_MEDYA_ONEKLERI, OZELE_TASINAN_ONEKLER, OzelDepo
@@ -241,7 +240,7 @@ class SayfaEntegrasyonTest(OzelEkTemel):
                 self.assertNotIn(ad, html, url)                      # UUID ad sızmaz
 
     def test_adaydan_cariye_donusum_ekler_ozel_depoda_indirilebilir(self):
-        cari = aday_cariye_donustur(self.aday)
+        cari = yeni_cari_ac(self.aday, unvan=self.aday.unvan, para_birimi=self.aday.para_birimi)
         (yeni_ek,) = CariAktiviteEk.objects.filter(aktivite__cari=cari, silindi=False)
         self.assertRegex(yeni_ek.dosya.name, UUID_YOL.format(onek="cari_aktivite", uzanti="pdf"))
         self.assertNotEqual(yeni_ek.dosya.name, self.aday_pdf.dosya.name)   # ayrı kopya

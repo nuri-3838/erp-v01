@@ -1004,8 +1004,9 @@ class AdayMusteri(TemelModel):
     """CRM: henüz Cari olmamış potansiyel müşteri. Kasıtlı olarak Cari'den ayrı ve HAFİF —
     Cari.kaydı açılınca otomatik muhasebe hesabı açılır (bkz. cari_servis.muhasebe_hesabi_ac),
     bu adaylar için yanlış olur. Yapısı bilinçli olarak Cari'ye çok yakın (kimlik/iletişim +
-    kategori + para birimi + iskonto) — "Cariye Dönüştür" servisi gerçek bir Cari açar ve
-    ``donusen_cari``'yi set eder; kayıt silinmez, iz kalır (TeklifSiparis'in kaynak_teklif/
+    kategori + para birimi + iskonto) — "Cariye Dönüştür" servisi (bkz.
+    core.services.aday_donustur) gerçek bir Cari açar/bağlar ve ``cari`` + ``cariye_donusum_
+    tarihi``'ni set eder; kayıt silinmez, iz kalır (TeklifSiparis'in kaynak_teklif/
     kaynak_siparis self-FK desenindeki gibi)."""
 
     PARA_CHOICES = YevmiyeSatir.IslemPB.choices
@@ -1047,11 +1048,12 @@ class AdayMusteri(TemelModel):
                                    default="TRY")
     iskonto_yuzdesi = models.DecimalField(
         "varsayılan iskonto %", max_digits=5, decimal_places=2, default=0)
-    # Cariye dönüştürülünce açılan gerçek Cari — dönüşüm tek seferlik, servis tekrar
-    # dönüştürmeyi engeller (TeklifSiparis.kaynak_teklif ile aynı invariant).
-    donusen_cari = models.ForeignKey(
-        Cari, verbose_name="dönüşen cari", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="aday_kaynagi")
+    # Cariye dönüştürülünce açılan/bağlanan gerçek Cari — dönüşüm tek seferlik, servis
+    # tekrar dönüştürmeyi engeller (TeklifSiparis.kaynak_teklif ile aynı invariant).
+    cari = models.ForeignKey(
+        Cari, verbose_name="cari", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kaynak_adaylar")
+    cariye_donusum_tarihi = models.DateTimeField("cariye dönüşüm tarihi", null=True, blank=True)
 
     class Meta:
         db_table = "aday_musteri"

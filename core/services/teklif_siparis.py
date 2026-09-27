@@ -494,10 +494,10 @@ def proformayi_siparise_cevir(proforma: TeklifSiparis, *, tarih, kullanici=None)
     """Proformayı siparişe çevirir: kalemler (gerçek miktarlarıyla) kopyalanır. Aday
     müşteriye ait proforma, aday HENÜZ Cariye dönüştürülmediyse ÇEVRİLEMEZ — sipariş artık
     gerçek zincire (fatura/muhasebe) giden bir belge. Aday bu arada Cariye dönüştürülmüşse
-    (bkz. core.services.aday.aday_cariye_donustur) proformanın KENDİ cari alanı geriye
-    dönük güncellenmez — bu yüzden burada aday_musteri.donusen_cari'ye her seferinde taze
-    bakılır, dönüşüm o anda tamamlanmışsa sipariş o gerçek cariyle açılır. Yalnız aktif +
-    ONAYLI PROFORMA + henüz dönüştürülmemiş proforma çevrilebilir (tek seferlik)."""
+    (bkz. core.services.aday_donustur) proformanın KENDİ cari alanı geriye dönük
+    güncellenmez — bu yüzden burada aday_musteri.cari'ye her seferinde taze bakılır, dönüşüm
+    o anda tamamlanmışsa sipariş o gerçek cariyle açılır. Yalnız aktif + ONAYLI PROFORMA +
+    henüz dönüştürülmemiş proforma çevrilebilir (tek seferlik)."""
     if proforma.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş proforma siparişe çevrilemez.")
     if proforma.belge_tur != TeklifSiparis.BelgeTur.PROFORMA:
@@ -511,7 +511,7 @@ def proformayi_siparise_cevir(proforma: TeklifSiparis, *, tarih, kullanici=None)
         # proforma.aday_musteri Django'nun ilişki önbelleğinde oluşturulduğu andaki (henüz
         # dönüştürülmemiş) haliyle takılı kalabilir — taze bir sorguyla okunur.
         cari = (AdayMusteri.objects.filter(pk=proforma.aday_musteri_id)
-                .select_related("donusen_cari").first().donusen_cari)
+                .select_related("cari").first().cari)
     if cari is None:
         raise TeklifSiparisHatasi(
             "Bu proforma bir aday müşteriye ait; siparişe çevirmeden önce aday müşteriyi "

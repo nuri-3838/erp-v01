@@ -3,15 +3,16 @@
 Paylaşılan Yetkili Kişiler tablosu — Cari (cari_detay.html) ve Aday (aday_musteri_detay.html)
 AYNI alan şekli olduğu için TEK partial'ı paylaşır (bkz. AdayYetkili/CariYetkili birebir aynı
 desen). Beklenen context: nesne (cari veya aday), yetkililer, ekle_url/duzenle_url/sil_url
-(url adı, string).
+(url adı, string), salt_okunur (opsiyonel — True/truthy ise + Ekle/Düzenle/Sil gizlenir;
+aday cariye dönüşünce salt okunur olur, spec).
 {% endcomment %}
 <div class="sayfa-ust">
   <h2 class="bolum-baslik"><span class="emoji">👤</span>Yetkili Kişiler</h2>
-  <a class="dugme" href="{% url ekle_url nesne.pk %}">+ Yetkili Ekle</a>
+  {% if not salt_okunur %}<a class="dugme" href="{% url ekle_url nesne.pk %}">+ Yetkili Ekle</a>{% endif %}
 </div>
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th>Ad Soyad</th><th>Görev</th><th>Telefon</th><th>E-posta</th><th>WhatsApp</th><th>İşlem</th></tr></thead>
+  <thead><tr><th>Ad Soyad</th><th>Görev</th><th>Telefon</th><th>E-posta</th><th>WhatsApp</th>{% if not salt_okunur %}<th>İşlem</th>{% endif %}</tr></thead>
   <tbody>
     {% for y in yetkililer %}
       <tr>
@@ -27,14 +28,16 @@ desen). Beklenen context: nesne (cari veya aday), yetkililer, ekle_url/duzenle_u
             {% endwith %}
           {% else %}<span class="pasif">—</span>{% endif %}
         </td>
-        <td><span class="islem-bag">
-          <a href="{% url duzenle_url y.pk %}">Düzenle</a>
-          <form method="post" action="{% url sil_url y.pk %}" onsubmit="return confirm('{{ y.ad_soyad|escapejs }} silinsin mi?');">
-            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-        </span></td>
+        {% if not salt_okunur %}
+          <td><span class="islem-bag">
+            <a href="{% url duzenle_url y.pk %}">Düzenle</a>
+            <form method="post" action="{% url sil_url y.pk %}" onsubmit="return confirm('{{ y.ad_soyad|escapejs }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+          </span></td>
+        {% endif %}
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">Yetkili kişi yok. “+ Yetkili Ekle” ile ekleyin.</td></tr>
+      <tr><td colspan="{% if salt_okunur %}5{% else %}6{% endif %}" class="yardim">Yetkili kişi yok.{% if not salt_okunur %} “+ Yetkili Ekle” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>

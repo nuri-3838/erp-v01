@@ -42,22 +42,31 @@
   .ad-takip-ileri { color:var(--metin); }
   .ad-eposta-gecersiz { text-decoration:line-through; color:var(--metin-soluk); }
   .d-rozet.takip { background:#c62828; color:#fff; }
+  .ad-cari-bandi { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; padding:.85rem 1.1rem;
+    border-radius:16px; background:rgba(10,125,40,.1); border:1px solid rgba(10,125,40,.25);
+    color:var(--ok); font-weight:700; }
+  .ad-cari-bandi a { color:var(--ok); }
 </style>
 
 <div class="detay-kapsa">
+  {% if aday.cari_id %}
+    <div class="ad-cari-bandi">
+      ✅ Cari oldu → <a href="{% url 'core:cari_detay' aday.cari_id %}">{{ aday.cari.kod }} {{ aday.cari.unvan }}</a>
+    </div>
+  {% endif %}
   <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:aday_musteriler' %}">← Aday Müşteriler</a>
     <div class="detay-aksiyon">
-      {% if aday.donusen_cari_id %}
-        <a class="dugme" href="{% url 'core:cari_detay' aday.donusen_cari_id %}">🧑‍💼 Cari: {{ aday.donusen_cari.unvan }}</a>
+      {% if aday.cari_id %}
+        <a class="dugme" href="{% url 'core:cari_detay' aday.cari_id %}">🧑‍💼 Cari: {{ aday.cari.unvan }}</a>
       {% else %}
         <a class="dugme" href="{% url 'core:aday_cariye_donustur' aday.pk %}">🎉 Cariye Dönüştür</a>
+        <a class="dugme" href="{% url 'core:aday_musteri_duzenle' aday.pk %}">✏️ Düzenle</a>
+        <form method="post" action="{% url 'core:aday_musteri_sil' aday.pk %}" style="margin:0"
+              onsubmit="return confirm('{{ aday.unvan|escapejs }} silinsin mi?');">
+          {% csrf_token %}<button type="submit" class="sil">Sil</button>
+        </form>
       {% endif %}
-      <a class="dugme" href="{% url 'core:aday_musteri_duzenle' aday.pk %}">✏️ Düzenle</a>
-      <form method="post" action="{% url 'core:aday_musteri_sil' aday.pk %}" style="margin:0"
-            onsubmit="return confirm('{{ aday.unvan }} silinsin mi?');">
-        {% csrf_token %}<button type="submit" class="sil">Sil</button>
-      </form>
     </div>
   </div>
 
@@ -111,24 +120,26 @@
   </section>
 
   <section class="icerik-kart">
-    {% include "core/_yetkililer_bolumu.html" with nesne=aday yetkililer=yetkililer ekle_url="core:aday_yetkili_ekle" duzenle_url="core:aday_yetkili_duzenle" sil_url="core:aday_yetkili_sil" %}
+    {% include "core/_yetkililer_bolumu.html" with nesne=aday yetkililer=yetkililer ekle_url="core:aday_yetkili_ekle" duzenle_url="core:aday_yetkili_duzenle" sil_url="core:aday_yetkili_sil" salt_okunur=aday.cari_id %}
   </section>
 
   <section class="icerik-kart">
     <div class="sayfa-ust">
       <h2 class="bolum-baslik"><span class="emoji">🗓️</span>Aktiviteler</h2>
-      <a class="dugme" href="{% url 'core:aday_aktivite_ekle' aday.pk %}">+ Aktivite Ekle</a>
+      {% if not aday.cari_id %}<a class="dugme" href="{% url 'core:aday_aktivite_ekle' aday.pk %}">+ Aktivite Ekle</a>{% endif %}
     </div>
     {% for a in aktiviteler %}
       <div class="akt-satir">
         <div class="akt-ust">
           <span class="akt-tarih">{{ a.tarih|date:"d.m.Y" }}</span>
           <span class="rozet rozet-notr">{% if a.tur == "WHATSAPP" %}🟢 {% endif %}{{ a.get_tur_display }}</span>
-          <span class="islem-bag" style="margin-left:auto">
-            <a href="{% url 'core:aday_aktivite_duzenle' a.pk %}">Düzenle</a>
-            <form method="post" action="{% url 'core:aday_aktivite_sil' a.pk %}" onsubmit="return confirm('Aktivite silinsin mi?');">
-              {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-          </span>
+          {% if not aday.cari_id %}
+            <span class="islem-bag" style="margin-left:auto">
+              <a href="{% url 'core:aday_aktivite_duzenle' a.pk %}">Düzenle</a>
+              <form method="post" action="{% url 'core:aday_aktivite_sil' a.pk %}" onsubmit="return confirm('Aktivite silinsin mi?');">
+                {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+            </span>
+          {% endif %}
         </div>
         <p class="akt-aciklama">{{ a.aciklama }}</p>
         {% if a.ekler.all %}

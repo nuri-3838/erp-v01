@@ -3,7 +3,7 @@ birebir aynı ekranlardan, cari/aday_musteri karşılıklı dışlayıcı
 (ck_teklif_siparis_cari_xor_aday_musteri). Aday müşteri yalnız Teklif ve Proforma
 aşamalarında geçerli — Sipariş (dolayısıyla İrsaliye/Fatura) zinciri gerçek Cari ister
 (bkz. proformayi_siparise_cevir guard'ı); aday bu arada Cariye dönüştürülürse (bkz.
-core.services.aday.aday_cariye_donustur) engel kalkar."""
+core.services.aday_donustur.yeni_cari_ac) engel kalkar."""
 import datetime
 from decimal import Decimal
 
@@ -15,7 +15,8 @@ from django.urls import reverse
 from core.models import (
     Birim, Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis,
 )
-from core.services.aday import aday_cariye_donustur, aday_musteri_olustur
+from core.services.aday import aday_musteri_olustur
+from core.services.aday_donustur import yeni_cari_ac
 from core.services.stok import stok_olustur
 
 
@@ -44,8 +45,8 @@ class SatisTeklifAdayMusteriTest(TestCase):
         # Zaten cariye dönüşmüş bir aday — dropdown'da/aday_meta'da görünmemeli.
         cls.donusmus_aday = aday_musteri_olustur(
             unvan="donusmus aday", para_birimi="TRY", kullanici=cls.yon)
-        cls.donusmus_aday.donusen_cari = cls.cari
-        cls.donusmus_aday.save(update_fields=["donusen_cari"])
+        cls.donusmus_aday.cari = cls.cari
+        cls.donusmus_aday.save(update_fields=["cari"])
 
         ust = Kategori.objects.create(kod="150", ad="MAMUL", created_by=cls.yon,
                                       updated_by=cls.yon)
@@ -164,7 +165,7 @@ class SatisTeklifAdayMusteriTest(TestCase):
     def test_servis_proformayi_siparise_cevir_aday_sonradan_cariye_donusunce_calisir(self):
         """Proforma açıldığında aday hâlâ adaydı; ARADAN aday Cariye dönüştürülürse (proforma
         kaydının KENDİ cari alanı geriye dönük güncellenmez) sipariş dönüşümü artık engel
-        olmadan çalışmalı — aday_musteri.donusen_cari'ye taze bakılır."""
+        olmadan çalışmalı — aday_musteri.cari'ye taze bakılır."""
         from core.services.teklif_siparis import (
             teklif_siparis_olustur, teklif_siparis_onayla, proformayi_siparise_cevir,
         )
@@ -174,7 +175,8 @@ class SatisTeklifAdayMusteriTest(TestCase):
             satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
             kullanici=self.yon)
         teklif_siparis_onayla(proforma, kullanici=self.yon)
-        yeni_cari = aday_cariye_donustur(self.aday, kullanici=self.yon)
+        yeni_cari = yeni_cari_ac(self.aday, kullanici=self.yon, unvan=self.aday.unvan,
+                                para_birimi=self.aday.para_birimi)
         siparis = proformayi_siparise_cevir(
             proforma, tarih=datetime.date(2026, 9, 13), kullanici=self.yon)
         self.assertEqual(siparis.cari_id, yeni_cari.pk)

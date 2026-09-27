@@ -8,13 +8,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from core.models import (
-    AdayMusteri, AdayMusteriKategori, Cari, CariKategori, EkranYetki, Sehir, TanimSecenegi,
-    Ulke,
-)
+from core.models import AdayMusteri, AdayMusteriKategori, EkranYetki, Sehir, TanimSecenegi, Ulke
 from core.services.aday import (
     AdayHatasi, aday_aktivite_ek_ekle, aday_aktivite_ekle, aday_aktivite_guncelle,
-    aday_aktivite_sil, aday_cariye_donustur, aday_musteri_guncelle, aday_musteri_olustur,
+    aday_aktivite_sil, aday_musteri_guncelle, aday_musteri_olustur,
     aday_musteri_sil, aktif_aday_aktiviteleri, aktif_aday_musteriler,
 )
 from core.services.aday_kategori import (
@@ -129,81 +126,8 @@ class AdayMusteriServisTest(TestCase):
         self.assertNotIn(a, aktif_aday_musteriler())
 
 
-class AdayCariyeDonusturTest(TestCase):
-    def test_donusturur_ve_iz_birakir(self):
-        a = aday_musteri_olustur(
-            unvan="beta gmbh", ilgili_kisi="hans", telefon="+491234", telefon_2="+495678",
-            eposta="hans@beta.de", para_birimi="EUR", iskonto_yuzdesi="5")
-        cari = aday_cariye_donustur(a)
-        self.assertEqual(cari.unvan, "BETA GMBH")
-        self.assertEqual(cari.telefon, "+491234")
-        self.assertEqual(cari.telefon_2, "+495678")
-        self.assertEqual(cari.para_birimi, "EUR")
-        self.assertEqual(cari.iskonto_yuzdesi, 5)
-        a.refresh_from_db()
-        self.assertEqual(a.donusen_cari_id, cari.pk)
-        self.assertFalse(a.silindi)   # aday kaydı silinmez, iz kalır
-
-    def test_kategori_ile_donusturur(self):
-        """kategori_id burada Cari'nin KENDİ kategorisi (CariKategori) - AdayMusteriKategori
-        ile karışmaz, ayrı ağaçlardır."""
-        ust = CariKategori.objects.create(ad="MÜŞTERİLER", kod="120")
-        alt = CariKategori.objects.create(ad="YURTİÇİ", kod="10", ust=ust)
-        a = aday_musteri_olustur(unvan="gamma")
-        cari = aday_cariye_donustur(a, kategori_id=alt.pk)
-        self.assertEqual(cari.kategori_id, alt.pk)
-        self.assertTrue(cari.kod.startswith("120-10-"))
-
-    def test_iki_kez_donusturulemez(self):
-        a = aday_musteri_olustur(unvan="delta")
-        aday_cariye_donustur(a)
-        with self.assertRaises(AdayHatasi):
-            aday_cariye_donustur(a)
-
-    def test_silinmis_aday_donusturulemez(self):
-        a = aday_musteri_olustur(unvan="epsilon")
-        aday_musteri_sil(a)
-        with self.assertRaises(AdayHatasi):
-            aday_cariye_donustur(a)
-
-    def test_donusturulen_aday_aktif_listede_gorunmez(self):
-        """Kullanıcı isteği: cariye dönüştürülen aday Aday Müşteriler listesinden çıkmalı —
-        kaydın kendisi silinmez (bkz. test_donusturur_ve_iz_birakir), yalnız aktif liste
-        queryset'inden (aktif_aday_musteriler) hariç tutulur."""
-        a = aday_musteri_olustur(unvan="zeta gmbh")
-        self.assertIn(a, aktif_aday_musteriler())
-        aday_cariye_donustur(a)
-        self.assertNotIn(a, aktif_aday_musteriler())
-
-    @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
-    def test_donusturur_aktiviteleri_cariye_kopyalar(self):
-        """Kullanıcı isteği: 'Aktiviteleri gelmedi, onun gelmesi lazım' — adayın aktiviteleri
-        (+ ekli dosyaları) yeni Cari'ye kopyalanmalı; aday tarafındaki aktiviteler de
-        SİLİNMEZ (iz kalır)."""
-        a = aday_musteri_olustur(unvan="eta gmbh")
-        akt1 = aday_aktivite_ekle(a, tarih=datetime.date(2026, 9, 1), tur="TELEFON",
-                                  aciklama="ilk arama")
-        aday_aktivite_ekle(a, tarih=datetime.date(2026, 9, 5), tur="TOPLANTI",
-                           aciklama="fabrikada görüştük")
-        pdf = SimpleUploadedFile("sozlesme.pdf", b"%PDF-1.4 sahte icerik",
-                                 content_type="application/pdf")
-        aday_aktivite_ek_ekle(akt1, dosya=pdf)
-
-        cari = aday_cariye_donustur(a)
-
-        cari_aktiviteler = list(cari.aktiviteler.filter(silindi=False).order_by("tarih"))
-        self.assertEqual(len(cari_aktiviteler), 2)
-        self.assertEqual(
-            [(k.tarih, k.tur, k.aciklama) for k in cari_aktiviteler],
-            [(datetime.date(2026, 9, 1), "TELEFON", "ilk arama"),
-             (datetime.date(2026, 9, 5), "TOPLANTI", "fabrikada görüştük")])
-        telefon = cari_aktiviteler[0]
-        ekler = list(telefon.ekler.filter(silindi=False))
-        self.assertEqual(len(ekler), 1)
-        self.assertEqual(ekler[0].orijinal_ad, "sozlesme.pdf")
-        self.assertTrue(ekler[0].dosya.name.endswith(".pdf"))
-        # aday tarafındaki aktiviteler SİLİNMEZ — iz kalır
-        self.assertEqual(aktif_aday_aktiviteleri(a).count(), 2)
+# Cariye Dönüştür (A: yeni cari aç / B: mevcut cariye bağla + eşleşme bulma) testleri
+# core/tests/test_aday_cariye_donustur.py'de — core.services.aday_donustur.
 
 
 class AdayAktiviteServisTest(TestCase):
@@ -340,22 +264,13 @@ class AdayMusteriViewTest(TestCase):
         a.refresh_from_db()
         self.assertTrue(a.silindi)
 
-    def test_cariye_donustur_view(self):
+    def test_cariye_donustur_sayfasi_acilir(self):
+        """Yeni (A/B) Cariye Dönüştür akışının ayrıntılı testleri
+        test_aday_cariye_donustur.py'de — burada yalnız sayfanın 200 döndüğü kontrol edilir."""
         a = aday_musteri_olustur(unvan="donusecek")
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:aday_cariye_donustur", args=[a.pk]))
         self.assertEqual(r.status_code, 200)
-        r2 = self.client.post(reverse("core:aday_cariye_donustur", args=[a.pk]), {})
-        self.assertEqual(r2.status_code, 302)
-        a.refresh_from_db()
-        self.assertTrue(a.donusen_cari_id)
-        cari = Cari.objects.get(pk=a.donusen_cari_id)
-        self.assertEqual(cari.unvan, "DONUSECEK")
-        # ikinci kez dönüştürme denemesi -> mevcut cariye yönlendirir, yeni Cari açmaz
-        onceki_sayisi = Cari.objects.count()
-        r3 = self.client.get(reverse("core:aday_cariye_donustur", args=[a.pk]))
-        self.assertRedirects(r3, reverse("core:cari_detay", args=[cari.pk]))
-        self.assertEqual(Cari.objects.count(), onceki_sayisi)
 
     def test_aktivite_ekle_duzenle_sil_view(self):
         a = aday_musteri_olustur(unvan="aktiviteli")

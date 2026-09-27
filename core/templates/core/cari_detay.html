@@ -254,6 +254,11 @@
         <div class="satir"><span class="et">Oluşturma</span><span class="dg mono">{{ cari.created_at|date:"d.m.Y H:i" }}</span></div>
         <div class="satir"><span class="et">Son Güncelleyen</span><span class="dg">{% if cari.updated_by %}{{ cari.updated_by.get_full_name|default:cari.updated_by.username }}{% else %}—{% endif %}</span></div>
         <div class="satir"><span class="et">Son Güncelleme</span><span class="dg mono">{{ cari.updated_at|date:"d.m.Y H:i" }}</span></div>
+        {% if kaynak_adaylar %}
+          <div class="satir tam"><span class="et">Kaynak Aday</span><span class="dg">
+            {% for a in kaynak_adaylar %}<a href="{% url 'core:aday_musteri_detay' a.pk %}">#{{ a.pk }} {{ a.unvan }}</a>{% if not forloop.last %}<br>{% endif %}{% endfor %}
+          </span></div>
+        {% endif %}
       </div>
       <p class="yardim" style="margin-top:1rem">📦 Cari hesap hareketleri/ekstre Faz 4'te (finans) bu sayfaya eklenecek.</p>
     </div>

@@ -22,8 +22,8 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 
 from core.forms import (
-    AdayAktiviteForm, AdayCariyeDonusturForm, AdayMusteriForm, AdayMusteriKategoriForm,
-    AdayYetkiliForm,
+    AdayAktiviteForm, AdayCariyeMevcutCariForm, AdayCariyeYeniCariForm, AdayMusteriForm,
+    AdayMusteriKategoriForm, AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
@@ -91,6 +91,7 @@ from core.services import uretim as uretim_servis
 from core.services import stok_maliyet
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
+from core.services import aday_donustur as aday_donustur_servis
 from core.services import aday_kategori as aday_kategori_servis
 from core.services import personel as personel_servis
 from core.services import personel_izin as izin_servis
@@ -1490,7 +1491,10 @@ def cari_detay(request, pk):
         "bankalar": cari_servis.aktif_bankalar(cari),
         "yetkililer": cari_servis.aktif_yetkililer(cari),
         "sevk_adresleri": cari_servis.aktif_sevk_adresleri(cari),
-        "aktiviteler": cari_servis.aktif_aktiviteler(cari)})
+        "aktiviteler": cari_servis.aktif_aktiviteler(cari),
+        # Cariye Dönüştür — bu carinin kaynağı olan aday(lar) (spec madde 4: birden çok
+        # aday bağlıysa hepsi listelenir; (B) mevcut cariye bağlama birden fazlasına izin verir).
+        "kaynak_adaylar": cari.kaynak_adaylar.filter(silindi=False).order_by("unvan")})
 
 
 @ekran_gerekli("cariler")
@@ -2119,7 +2123,7 @@ def _aday_meta():
     aday seçilince JS otomatik uygular. Cariye zaten dönüşmüş adaylar dahil değil (bkz.
     SatisBelgeBaslikForm.aday_musteri queryset'i)."""
     return {str(a.pk): {"pb": a.para_birimi, "iskonto": float(a.iskonto_yuzdesi)}
-            for a in AdayMusteri.objects.filter(silindi=False, donusen_cari__isnull=True)}
+            for a in AdayMusteri.objects.filter(silindi=False, cari__isnull=True)}
 
 
 def _banka_meta():
@@ -4259,6 +4263,7 @@ _ADAY_EPOSTA_ETIKET = {"gecerli": "Geçerli adresi var", "gecersiz": "Hepsi geç
                        "yok": "Adresi yok"}
 _ADAY_SON_AKT_ETIKET = {"30": "Son 30 gün", "90": "31-90 gün", "eski": "90 günden eski",
                         "yok": "Hiç aktivite yok"}
+_ADAY_CARI_ETIKET = {"var": "Cari oldu", "yok": "Aday (cari değil)"}
 _ADAY_TIP_ETIKET = dict(AdayTip.choices)
 _ADAY_POTANSIYEL_ETIKET = dict(AdayPotansiyel.choices)
 _ADAY_ASAMA_ETIKET = dict(AdayAsama.choices)
@@ -4288,15 +4293,19 @@ _ADAY_SIRALAMA_HARITASI = {
 
 def _aday_tab_q(gorunum, bugun):
     """Sekme kuralı — hem sekme sayaçlarında (Count filter=) hem asıl listede (filter())
-    AYNI Q nesnesinden kullanılır (tek kaynak, iki temsil arasında sürüklenme riski yok)."""
+    AYNI Q nesnesinden kullanılır (tek kaynak, iki temsil arasında sürüklenme riski yok).
+    Cariye dönüşmüş adaylar Takibim/Sıcak/Temas yok'tan düşer (artık aktif bir "lead"
+    değiller); Kapalı ve Tümü'nde görünmeye devam ederler (spec: Cariye Dönüştür yeniden
+    yazılması, madde 4)."""
     if gorunum == "takip":
         return (Q(sonraki_adim_tarihi__isnull=False)
                 & Q(sonraki_adim_tarihi__lte=bugun + datetime.timedelta(days=7))
-                & ~Q(asama=AdayAsama.KAPALI))
+                & ~Q(asama=AdayAsama.KAPALI) & Q(cari__isnull=True))
     if gorunum == "sicak":
-        return Q(potansiyel=AdayPotansiyel.YUKSEK) & ~Q(asama=AdayAsama.KAPALI)
+        return (Q(potansiyel=AdayPotansiyel.YUKSEK) & ~Q(asama=AdayAsama.KAPALI)
+                & Q(cari__isnull=True))
     if gorunum == "temas_yok":
-        return Q(asama=AdayAsama.YENI)
+        return Q(asama=AdayAsama.YENI) & Q(cari__isnull=True)
     if gorunum == "kapali":
         return Q(asama=AdayAsama.KAPALI)
     return Q()  # tumu
@@ -4357,6 +4366,16 @@ def _aday_form_kw(cd):
         sonraki_adim=cd["sonraki_adim"], sonraki_adim_tarihi=cd["sonraki_adim_tarihi"])
 
 
+def _aday_duzenlenebilir_kontrol(request, aday):
+    """Cariye dönüşmüş aday salt okunur — düzenle/sil/yetkili/aktivite işlemleri view
+    seviyesinde engellenir (spec: butonlar zaten gizli, bu son çare/doğrudan URL koruması).
+    Engelliyse redirect döner (view onu döndürüp çıkar), aksi halde None."""
+    if aday.cari_id:
+        messages.error(request, "Bu aday cariye dönüştürülmüş; kaydı salt okunur.")
+        return redirect("core:aday_musteri_detay", pk=aday.pk)
+    return None
+
+
 @ekran_gerekli("aday_musteriler")
 def aday_musteriler(request):
     ara = (request.GET.get("ara") or "").strip()
@@ -4369,6 +4388,7 @@ def aday_musteriler(request):
     takip_secim = request.GET.get("takip") or ""
     eposta_secim = request.GET.get("eposta") or ""
     son_akt_secim = request.GET.get("son_akt") or ""
+    cari_secim = request.GET.get("cari") or ""
     sirala = request.GET.get("sirala") or ""
     try:
         boyut = int(request.GET.get("boyut", 50))
@@ -4434,6 +4454,10 @@ def aday_musteriler(request):
                     .exclude(_eposta_gecerli_1 | _eposta_gecerli_2))
     elif eposta_secim == "yok":
         kayitlar = kayitlar.filter(eposta="", eposta_2="")
+    if cari_secim == "var":
+        kayitlar = kayitlar.filter(cari__isnull=False)
+    elif cari_secim == "yok":
+        kayitlar = kayitlar.filter(cari__isnull=True)
 
     # Son aktivite (tarih + tür) — korele Subquery (OuterRef), JOIN+GROUP BY YOK: filtre/
     # sıralama/sayım sıradan bir alan gibi çalışır (bkz. ix_aday_aktivite_aday_tarih index'i).
@@ -4473,7 +4497,7 @@ def aday_musteriler(request):
     kayitlar = kayitlar.order_by(*siralama_ifadeleri, "pk")
 
     gecikmis_sayisi = aday_servis.aktif_aday_musteriler().filter(
-        sonraki_adim_tarihi__lt=bugun).count()
+        sonraki_adim_tarihi__lt=bugun, cari__isnull=True).count()
     # Filtre seçenekleri yalnız en az bir adayda fiilen kullanılanlardan oluşur (bkz.
     # cariler view'ındaki aynı desen — tüm kategori/lokasyon master verisini değil,
     # sayfadaki gerçek veriyi yansıtır).
@@ -4528,9 +4552,12 @@ def aday_musteriler(request):
     if son_akt_secim in _ADAY_SON_AKT_ETIKET:
         cipler.append({"etiket": f"Son aktivite: {_ADAY_SON_AKT_ETIKET[son_akt_secim]}",
                        "url": _aday_qs_with(request, son_akt=None)})
+    if cari_secim in _ADAY_CARI_ETIKET:
+        cipler.append({"etiket": f"Cari durumu: {_ADAY_CARI_ETIKET[cari_secim]}",
+                       "url": _aday_qs_with(request, cari=None)})
     aktif_filtre_sayisi = sum(1 for x in (
         kategori_id, ulke_id, sehir_id, tip_secim, potansiyel_secim, asama_secim,
-        takip_secim, eposta_secim, son_akt_secim) if x)
+        takip_secim, eposta_secim, son_akt_secim, cari_secim) if x)
 
     # sirala TAŞINMAZ: sekmeye geçince o sekmenin kendi varsayılan sıralaması uygulanır
     # (kullanıcı önceki sekmede elle bir sıralama seçmiş olsa bile).
@@ -4556,7 +4583,7 @@ def aday_musteriler(request):
         "potansiyel_secenekleri": AdayPotansiyel.choices, "secili_potansiyel": potansiyel_secim,
         "asama_secenekleri": AdayAsama.choices, "secili_asama": asama_secim,
         "secili_takip": takip_secim, "secili_eposta": eposta_secim,
-        "secili_son_akt": son_akt_secim, "secili_sirala": sirala,
+        "secili_son_akt": son_akt_secim, "secili_cari": cari_secim, "secili_sirala": sirala,
         "siralama_secenekleri": _ADAY_SIRALAMA_SECENEKLERI, "siralama_baglar": siralama_baglar,
         "gecikmis_sayisi": gecikmis_sayisi,
         "gecikmis_url": _aday_qs_with(request, gorunum="takip", takip="gecmis", sirala=None),
@@ -4587,6 +4614,9 @@ def aday_musteri_ekle(request):
 @ekran_gerekli("aday_musteriler")
 def aday_musteri_duzenle(request, pk):
     aday = get_object_or_404(AdayMusteri, pk=pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, aday)
+    if engel:
+        return engel
     if request.method == "POST":
         form = AdayMusteriForm(request.POST)
         if form.is_valid():
@@ -4618,7 +4648,7 @@ def aday_musteri_duzenle(request, pk):
 @ekran_gerekli("aday_musteriler")
 def aday_musteri_detay(request, pk):
     aday = get_object_or_404(
-        AdayMusteri.objects.select_related("ulke", "sehir", "kategori", "donusen_cari"),
+        AdayMusteri.objects.select_related("ulke", "sehir", "kategori", "cari"),
         pk=pk, silindi=False)
     return render(request, "core/aday_musteri_detay.html", {
         "aday": aday, "aktiviteler": aday_servis.aktif_aday_aktiviteleri(aday),
@@ -4628,6 +4658,9 @@ def aday_musteri_detay(request, pk):
 @ekran_gerekli("aday_musteriler")
 def aday_musteri_sil(request, pk):
     aday = get_object_or_404(AdayMusteri, pk=pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, aday)
+    if engel:
+        return engel
     if request.method == "POST":
         aday_servis.aday_musteri_sil(aday, kullanici=request.user)
         messages.success(request, f"Aday müşteri silindi: {aday.unvan}")
@@ -4637,30 +4670,71 @@ def aday_musteri_sil(request, pk):
 @ekran_gerekli("aday_musteriler")
 def aday_cariye_donustur(request, pk):
     aday = get_object_or_404(AdayMusteri, pk=pk, silindi=False)
-    if aday.donusen_cari_id:
+    if aday.cari_id:
         messages.info(request, "Bu aday zaten bir cariye dönüştürülmüş.")
-        return redirect("core:cari_detay", pk=aday.donusen_cari_id)
-    if request.method == "POST":
-        form = AdayCariyeDonusturForm(request.POST)
-        if form.is_valid():
+        return redirect("core:cari_detay", pk=aday.cari_id)
+
+    engel = aday_donustur_servis.donusturme_engeli_var_mi(aday)
+    if engel:
+        messages.error(request, engel)
+        return render(request, "core/aday_cariye_donustur.html",
+                      {"aday": aday, "engel": engel})
+
+    mod = request.POST.get("mod") or request.GET.get("mod") or "A"
+    if request.method == "POST" and mod == "A":
+        form_a = AdayCariyeYeniCariForm(request.POST)
+        form_b = AdayCariyeMevcutCariForm()
+        if form_a.is_valid():
             try:
-                kategori = form.cleaned_data["kategori"]
-                cari = aday_servis.aday_cariye_donustur(
-                    aday, kategori_id=kategori.pk if kategori else None,
-                    kullanici=request.user)
+                cari = aday_donustur_servis.yeni_cari_ac(
+                    aday, kullanici=request.user, **_cari_form_kw(form_a.cleaned_data))
                 messages.success(request, f"Cariye dönüştürüldü: {cari.kod} — {cari.unvan}")
                 return redirect("core:cari_detay", pk=cari.pk)
-            except aday_servis.AdayHatasi as e:
-                form.add_error(None, str(e))
+            except (aday_donustur_servis.AdayDonusturHatasi, cari_servis.CariHatasi) as e:
+                form_a.add_error(None, str(e))
+    elif request.method == "POST" and mod == "B":
+        form_a = AdayCariyeYeniCariForm(initial=aday_donustur_servis.yeni_cari_baslangic_degerleri(aday))
+        form_b = AdayCariyeMevcutCariForm(request.POST)
+        if form_b.is_valid():
+            try:
+                cari = aday_donustur_servis.mevcut_cariye_bagla(
+                    aday, form_b.cleaned_data["cari"], kullanici=request.user)
+                messages.success(request, f"Cariye bağlandı: {cari.kod} — {cari.unvan}")
+                return redirect("core:cari_detay", pk=cari.pk)
+            except aday_donustur_servis.AdayDonusturHatasi as e:
+                form_b.add_error(None, str(e))
     else:
-        form = AdayCariyeDonusturForm()
-    return render(request, "core/aday_cariye_donustur.html", {"form": form, "aday": aday})
+        form_a = AdayCariyeYeniCariForm(
+            initial=aday_donustur_servis.yeni_cari_baslangic_degerleri(aday))
+        form_b = AdayCariyeMevcutCariForm()
+
+    onizleme = None
+    onizleme_cari_id = request.GET.get("mevcut_cari") or ""
+    if onizleme_cari_id:
+        secili_cari = Cari.objects.filter(pk=onizleme_cari_id, silindi=False).first()
+        if secili_cari:
+            alanlar = aday_donustur_servis.doldurulacak_alanlar(aday, secili_cari)
+            etiketler = [v for k, v in {
+                "telefon": "Telefon", "telefon_2": "Telefon 2", "eposta": "E-posta",
+                "web": "Web", "adres": "Adres", "ilgili_kisi": "İlgili Kişi"}.items()
+                if k in alanlar]
+            onizleme = {"cari": secili_cari, "etiketler": etiketler}
+            mod = "B"
+            form_b.fields["cari"].initial = secili_cari.pk
+
+    eslesmeler = aday_donustur_servis.eslesen_cariler(aday)
+    return render(request, "core/aday_cariye_donustur.html", {
+        "aday": aday, "form_a": form_a, "form_b": form_b, "mod": mod,
+        "eslesmeler": eslesmeler, "onizleme": onizleme})
 
 
 # --- Aday yetkilileri (CariYetkili ile birebir aynı desen) --------------------
 @ekran_gerekli("aday_musteriler")
 def aday_yetkili_ekle(request, aday_pk):
     aday = get_object_or_404(AdayMusteri, pk=aday_pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, aday)
+    if engel:
+        return engel
     if request.method == "POST":
         form = AdayYetkiliForm(request.POST)
         if form.is_valid():
@@ -4675,7 +4749,10 @@ def aday_yetkili_ekle(request, aday_pk):
 
 @ekran_gerekli("aday_musteriler")
 def aday_yetkili_duzenle(request, pk):
-    yetkili = get_object_or_404(AdayYetkili, pk=pk, silindi=False)
+    yetkili = get_object_or_404(AdayYetkili.objects.select_related("aday"), pk=pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, yetkili.aday)
+    if engel:
+        return engel
     if request.method == "POST":
         form = AdayYetkiliForm(request.POST)
         if form.is_valid():
@@ -4692,7 +4769,10 @@ def aday_yetkili_duzenle(request, pk):
 
 @ekran_gerekli("aday_musteriler")
 def aday_yetkili_sil(request, pk):
-    yetkili = get_object_or_404(AdayYetkili, pk=pk, silindi=False)
+    yetkili = get_object_or_404(AdayYetkili.objects.select_related("aday"), pk=pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, yetkili.aday)
+    if engel:
+        return engel
     if request.method == "POST":
         aday_servis.aday_yetkili_sil(yetkili, kullanici=request.user)
         messages.success(request, "Yetkili kişi silindi.")
@@ -4710,6 +4790,9 @@ def _aday_aktivite_ekleri_kaydet(request, aktivite, dosyalar):
 @ekran_gerekli("aday_musteriler")
 def aday_aktivite_ekle(request, aday_pk):
     aday = get_object_or_404(AdayMusteri, pk=aday_pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, aday)
+    if engel:
+        return engel
     if request.method == "POST":
         form = AdayAktiviteForm(request.POST)
         if form.is_valid():
@@ -4732,7 +4815,10 @@ def aday_aktivite_ekle(request, aday_pk):
 
 @ekran_gerekli("aday_musteriler")
 def aday_aktivite_duzenle(request, pk):
-    aktivite = get_object_or_404(AdayAktivite, pk=pk, silindi=False)
+    aktivite = get_object_or_404(AdayAktivite.objects.select_related("aday"), pk=pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, aktivite.aday)
+    if engel:
+        return engel
     if request.method == "POST":
         form = AdayAktiviteForm(request.POST)
         if form.is_valid():
@@ -4757,7 +4843,10 @@ def aday_aktivite_duzenle(request, pk):
 
 @ekran_gerekli("aday_musteriler")
 def aday_aktivite_sil(request, pk):
-    aktivite = get_object_or_404(AdayAktivite, pk=pk, silindi=False)
+    aktivite = get_object_or_404(AdayAktivite.objects.select_related("aday"), pk=pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, aktivite.aday)
+    if engel:
+        return engel
     if request.method == "POST":
         aday_servis.aday_aktivite_sil(aktivite, kullanici=request.user)
         messages.success(request, "Aktivite silindi.")
@@ -4766,7 +4855,11 @@ def aday_aktivite_sil(request, pk):
 
 @ekran_gerekli("aday_musteriler")
 def aday_aktivite_ek_sil(request, pk):
-    ek = get_object_or_404(AdayAktiviteEk, pk=pk, silindi=False)
+    ek = get_object_or_404(
+        AdayAktiviteEk.objects.select_related("aktivite__aday"), pk=pk, silindi=False)
+    engel = _aday_duzenlenebilir_kontrol(request, ek.aktivite.aday)
+    if engel:
+        return engel
     if request.method == "POST":
         aday_servis.aday_aktivite_ek_sil(ek, kullanici=request.user)
         messages.success(request, "Dosya silindi.")
