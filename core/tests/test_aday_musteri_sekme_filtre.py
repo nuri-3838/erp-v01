@@ -378,11 +378,14 @@ class SorguSayisiTest(_Taban):
             self._get(gorunum="tumu")
 
     def test_arama_web_ve_yetkiliyle_sorgu_sayisi_ayni_kalir(self):
-        """Arama kutusu web + yetkili (ad_soyad/telefon/eposta) alanlarını da kapsar (spec:
-        Web/Adres/Yetkililer/WhatsApp/aktiviteyle sonraki adım, madde 6) — Exists ile
-        (JOIN + distinct değil), sorgu sayısı artmaz."""
-        hedef = aday_musteri_olustur(unvan="bulunacak firma", web="akc.ae")
+        """Arama kutusu web + adres + yetkili (ad_soyad/telefon/eposta) + aktivite aciklama
+        alanlarını da kapsar (spec: Web/Adres/Yetkililer/WhatsApp/aktiviteyle sonraki adım,
+        madde 6) — hepsi Exists ile (JOIN + distinct değil), sorgu sayısı artmaz."""
+        hedef = aday_musteri_olustur(unvan="bulunacak firma", web="akc.ae",
+                                     adres="bulunacak adres bilgisi")
         aday_yetkili_ekle(hedef, ad_soyad="bulunacak yetkili")
+        aday_aktivite_ekle(hedef, tarih=tr_bugun(), tur=AdayAktivite.Tur.NOT,
+                           aciklama="bulunacak aktivite aciklamasi")
         for i in range(5):
             aday_musteri_olustur(unvan=f"dolgu firma {i}")
         with self.assertNumQueries(8):

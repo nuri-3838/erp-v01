@@ -1187,7 +1187,13 @@ class AdayAktivite(TemelModel):
         verbose_name = "aday aktivite"
         verbose_name_plural = "aday aktiviteler"
         ordering = ["-tarih", "-id"]
-        indexes = [models.Index(fields=["aday", "-tarih"], name="ix_aday_aktivite_aday_tarih")]
+        indexes = [
+            models.Index(fields=["aday", "-tarih"], name="ix_aday_aktivite_aday_tarih"),
+            # Liste ekranının arama kutusu aciklama'yı icontains ile tarar (bkz.
+            # YevmiyeFisi.aciklama'daki aynı desen, migration 0010) — trigram GIN olmadan
+            # her arama tüm tabloyu satır satır tarar.
+            GinIndex(fields=["aciklama"], name="gin_aday_akt_aciklama", opclasses=["gin_trgm_ops"]),
+        ]
 
     def __str__(self):
         return f"{self.aday.unvan} — {self.get_tur_display()} ({self.tarih})"

@@ -9,10 +9,11 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.dogrulama import web_normalize
-from core.models import AdayYetkili, EkranYetki
+from core.models import AdayAktivite, AdayYetkili, EkranYetki
 from core.services.aday import (
-    AdayHatasi, aday_musteri_guncelle, aday_musteri_olustur, aday_yetkili_ekle,
-    aday_yetkili_guncelle, aday_yetkili_sil, aktif_aday_yetkilileri,
+    AdayHatasi, aday_aktivite_ekle, aday_aktivite_sil, aday_musteri_guncelle,
+    aday_musteri_olustur, aday_yetkili_ekle, aday_yetkili_guncelle, aday_yetkili_sil,
+    aktif_aday_yetkilileri,
 )
 from core.services.cari import CariHatasi, cari_guncelle, cari_olustur
 from core.templatetags.core_extras import wa_link
@@ -264,5 +265,58 @@ class AdayAramaWebYetkiliTest(TestCase):
         aday_yetkili_ekle(hedef, ad_soyad="ahmet yildiz")
         r = self.client.get(reverse("core:aday_musteriler"),
                             {"ara": "ahmet", "gorunum": "tumu"})
+        self.assertEqual(r.context["kayitlar"].paginator.count, 1)
+
+    def test_adres_alaniyla_bulunur(self):
+        _aday("iota firma", adres="istanbul kagithane sanayi")
+        _aday("kappa firma")
+        r = self.client.get(reverse("core:aday_musteriler"),
+                            {"ara": "kagithane", "gorunum": "tumu"})
+        self.assertContains(r, "İOTA FİRMA")
+        self.assertNotContains(r, "KAPPA FİRMA")
+
+    def test_aktivite_aciklamasiyla_bulunur(self):
+        hedef = _aday("lambda firma")
+        aday_aktivite_ekle(hedef, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT,
+                           aciklama="Hedef pazar: Irak ve komsu ulkeler.")
+        _aday("mu firma")
+        r = self.client.get(reverse("core:aday_musteriler"),
+                            {"ara": "Hedef pazar", "gorunum": "tumu"})
+        self.assertContains(r, "LAMBDA FİRMA")
+        self.assertNotContains(r, "MU FİRMA")
+
+    def test_aktivite_aramasi_buyuk_kucuk_harf_duyarsiz(self):
+        hedef = _aday("nu firma")
+        aday_aktivite_ekle(hedef, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT,
+                           aciklama="CANTON fuarinda gorustuk.")
+        r = self.client.get(reverse("core:aday_musteriler"),
+                            {"ara": "canton", "gorunum": "tumu"})
+        self.assertContains(r, "NU FİRMA")
+
+    def test_aktivite_aramasi_turkce_karakter_duyarsiz(self):
+        hedef = _aday("xi firma")
+        aday_aktivite_ekle(hedef, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT,
+                           aciklama="Gümüşhane bölgesinde görüşme yapıldı.")
+        r = self.client.get(reverse("core:aday_musteriler"),
+                            {"ara": "gümüşhane", "gorunum": "tumu"})
+        self.assertContains(r, "Xİ FİRMA")
+
+    def test_silinmis_aktivite_aramada_gorunmez(self):
+        hedef = _aday("omicron firma")
+        akt = aday_aktivite_ekle(hedef, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT,
+                                 aciklama="ozel anahtar kelime XYZABC")
+        aday_aktivite_sil(akt)
+        r = self.client.get(reverse("core:aday_musteriler"),
+                            {"ara": "XYZABC", "gorunum": "tumu"})
+        self.assertEqual(r.context["kayitlar"].paginator.count, 0)
+
+    def test_coklu_aktivite_eslesmesi_satiri_coklamaz(self):
+        hedef = _aday("pi firma")
+        aday_aktivite_ekle(hedef, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT,
+                           aciklama="ozel terim ABCXYZ birinci")
+        aday_aktivite_ekle(hedef, tarih="2026-09-02", tur=AdayAktivite.Tur.NOT,
+                           aciklama="ozel terim ABCXYZ ikinci")
+        r = self.client.get(reverse("core:aday_musteriler"),
+                            {"ara": "ABCXYZ", "gorunum": "tumu"})
         self.assertEqual(r.context["kayitlar"].paginator.count, 1)
 

@@ -4380,17 +4380,25 @@ def aday_musteriler(request):
     kayitlar = aday_servis.aktif_aday_musteriler()
     if ara:
         buyuk = buyuk_harf_tr(ara)
-        # Yetkili eşleşmesi Exists ile — JOIN + distinct YOK (satır çoğalmaz, sorgu sayısı
-        # artmaz: aynı SQL ifadesine gömülü korele alt sorgu, bkz. assertNumQueries testi).
+        # Yetkili/aktivite eşleşmesi Exists ile — JOIN + distinct YOK (satır çoğalmaz, sorgu
+        # sayısı artmaz: aynı SQL ifadesine gömülü korele alt sorgu, bkz. assertNumQueries
+        # testi). aciklama TR büyük harfe ÇEVRİLMEDEN saklanır (serbest metin — unvan/adres
+        # gibi kimlik alanı değil), o yüzden icontains (mevcut telefon/eposta/web deseniyle
+        # aynı) — DB Türkçe collation'a güvenir (bkz. CLAUDE.md); contains+buyuk_harf_tr
+        # yalnız YAZARKEN zaten büyük harfe çevrilen alanlarda (unvan/ilgili_kisi/adres) işe
+        # yarar.
         yetkili_eslesme = AdayYetkili.objects.filter(
             aday_id=OuterRef("pk"), silindi=False
         ).filter(
             Q(ad_soyad__contains=buyuk) | Q(telefon__icontains=ara) | Q(eposta__icontains=ara))
+        aktivite_eslesme = AdayAktivite.objects.filter(
+            aday_id=OuterRef("pk"), silindi=False, aciklama__icontains=ara)
         kayitlar = kayitlar.filter(
             Q(unvan__contains=buyuk) | Q(ilgili_kisi__contains=buyuk)
             | Q(telefon__icontains=ara) | Q(telefon_2__icontains=ara)
             | Q(eposta__icontains=ara) | Q(eposta_2__icontains=ara)
-            | Q(web__icontains=ara) | Q(Exists(yetkili_eslesme)))
+            | Q(web__icontains=ara) | Q(adres__contains=buyuk)
+            | Q(Exists(yetkili_eslesme)) | Q(Exists(aktivite_eslesme)))
     if kategori_id:
         kayitlar = kayitlar.filter(kategori_id=kategori_id)
     if sehir_id:
