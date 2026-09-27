@@ -99,6 +99,48 @@
     </div>
   </section>
 
+  {% if ucret_gorebilir %}
+  <section class="icerik-kart">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">💰</span>Ücret</h2>
+      <a class="dugme" href="{% url 'core:ucret_ekle' %}?personel={{ p.pk }}">+ Ücret Ekle</a>
+    </div>
+    {% if guncel_ucret %}
+    <div class="kv">
+      <div class="satir"><span class="et">Güncel Ücret</span>
+        <span class="ik-buyuk-say mono">{% if guncel_ucret.tip == "ASGARI" %}Asgari Ücret{% else %}{{ guncel_ucret.net_tutar|tr_para }} TL net{% endif %}</span></div>
+      <div class="satir"><span class="et">Geçerlilik Başlangıcı</span>
+        <span class="dg mono">{{ guncel_ucret.gecerlilik_baslangic|date:"d.m.Y" }}</span></div>
+    </div>
+    {% else %}
+    <p class="yardim" style="margin:.2rem 0 0">Bu personel için henüz ücret kaydı yok.</p>
+    {% endif %}
+    {% if ucret_gecmisi %}
+    <div class="tablo-kapsayici" style="margin-top:1rem">
+    <table>
+      <thead><tr><th>Başlangıç</th><th>Tip</th><th class="sag">Tutar</th><th>Açıklama</th><th></th></tr></thead>
+      <tbody>
+        {% for u in ucret_gecmisi %}
+          <tr>
+            <td class="mono">{{ u.gecerlilik_baslangic|date:"d.m.Y" }}</td>
+            <td><span class="rozet {% if u.tip == 'ASGARI' %}rozet-notr{% else %}rozet-aktif{% endif %}">{{ u.get_tip_display }}</span></td>
+            <td class="sag mono">{% if u.net_tutar %}{{ u.net_tutar|tr_para }} TL{% else %}—{% endif %}</td>
+            <td>{{ u.aciklama|default:"—" }}</td>
+            <td class="islem-bag">
+              <a class="dugme-ikincil" href="{% url 'core:ucret_duzenle' u.pk %}">Düzenle</a>
+              <form method="post" action="{% url 'core:ucret_sil' u.pk %}" style="margin:0"
+                    onsubmit="return confirm('{{ u.gecerlilik_baslangic|date:"d.m.Y"|escapejs }} başlangıçlı ücret kaydı silinsin mi?');">
+                {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
   {% if izin_gorebilir %}
   <section class="icerik-kart">
     <div class="bolum-ust">

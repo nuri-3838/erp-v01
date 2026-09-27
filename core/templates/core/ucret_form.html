@@ -1,0 +1,75 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .uc-tip { display:flex; gap:1.1rem; margin:.3rem 0 .6rem; }
+  .uc-tip label { font-weight:600; font-size:.9rem; cursor:pointer;
+    display:flex; align-items:center; gap:.35rem; }
+  .uc-tip input[type="radio"] { width:1.1rem; height:1.1rem; min-height:0; flex:0 0 auto; }
+</style>
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    {% if duzenlenen %}
+      <a class="ust-link" href="{% url 'core:personel_detay' duzenlenen.personel_id %}">← {{ duzenlenen.personel.ad_soyad }}</a>
+    {% elif donus_pk %}
+      <a class="ust-link" href="{% url 'core:personel_detay' donus_pk %}">← Personel Kartı</a>
+    {% else %}
+      <a class="ust-link" href="{% url 'core:personeller' %}">← Personel Kartları</a>
+    {% endif %}
+    <h1 class="ust-baslik"><span class="emoji">💰</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{% if duzenlenen %}{{ duzenlenen.personel.ad_soyad }}{% else %}Ücret Bilgileri{% endif %}</h2>
+      <div class="izgara">
+        {% if not duzenlenen %}
+        <div class="alan tam"><label for="{{ form.personel.id_for_label }}">{{ form.personel.label }} <span class="zorunlu">*</span></label>
+          <div class="akilli">{{ form.personel }}</div>{% for e in form.personel.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        {% endif %}
+        <div class="alan"><label for="{{ form.gecerlilik_baslangic.id_for_label }}">{{ form.gecerlilik_baslangic.label }} <span class="zorunlu">*</span></label>{{ form.gecerlilik_baslangic }}{% for e in form.gecerlilik_baslangic.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label>{{ form.tip.label }}</label>
+          <div class="uc-tip">{{ form.tip }}</div>{% for e in form.tip.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan" id="uc-tutar-blok"><label for="{{ form.net_tutar.id_for_label }}">{{ form.net_tutar.label }} <span class="zorunlu">*</span></label>{{ form.net_tutar }}{% for e in form.net_tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}{% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      {% if duzenlenen %}
+        <a class="iptal-bag" href="{% url 'core:personel_detay' duzenlenen.personel_id %}">İptal</a>
+      {% elif donus_pk %}
+        <a class="iptal-bag" href="{% url 'core:personel_detay' donus_pk %}">İptal</a>
+      {% else %}
+        <a class="iptal-bag" href="{% url 'core:personeller' %}">İptal</a>
+      {% endif %}
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  var radyolar = document.querySelectorAll('input[name="tip"]');
+  var tutarBlok = document.getElementById('uc-tutar-blok');
+  var tutarAlan = document.getElementById('id_net_tutar');
+  if(!radyolar.length || !tutarBlok) return;
+  function guncelle(){
+    var secili = document.querySelector('input[name="tip"]:checked');
+    var net = !!secili && secili.value === 'NET';
+    tutarBlok.hidden = !net;
+    if(tutarAlan) tutarAlan.required = net;
+  }
+  radyolar.forEach(function(r){ r.addEventListener('change', guncelle); });
+  guncelle();
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

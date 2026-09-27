@@ -50,7 +50,7 @@
 <div class="tablo-kapsayici genis">
 <table class="ik-tablo">
   <thead>
-    <tr><th>Personel</th><th>Telefon</th><th>İşe Giriş</th><th>Durum</th><th></th></tr>
+    <tr><th>Personel</th><th>Telefon</th><th>İşe Giriş</th><th>Durum</th>{% if ucret_gorebilir %}<th>Ücret</th>{% endif %}<th></th></tr>
   </thead>
   <tbody>
     {% for p in personeller %}
@@ -73,10 +73,15 @@
             <span class="rozet rozet-aktif">Çalışıyor</span>
           {% endif %}
         </td>
+        {% if ucret_gorebilir %}
+        <td class="mono">
+          {% if p.guncel_ucret %}{% if p.guncel_ucret.tip == "ASGARI" %}Asgari Ücret{% else %}{{ p.guncel_ucret.net_tutar|tr_para }} TL{% endif %}{% else %}—{% endif %}
+        </td>
+        {% endif %}
         <td class="ik-ok">›</td>
       </tr>
     {% empty %}
-      <tr style="cursor:default"><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr style="cursor:default"><td colspan="{% if ucret_gorebilir %}6{% else %}5{% endif %}" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if ara or secili_departman or durum != "aktif" %}🔍 Bu süzgeçle eşleşen personel yok.
         {% else %}👥 Henüz personel kartı yok. “+ Yeni Personel” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}

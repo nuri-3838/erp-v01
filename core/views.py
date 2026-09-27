@@ -43,7 +43,7 @@ from core.forms import (
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
-    PersonelBelgeForm, PersonelFotoForm,
+    PersonelBelgeForm, PersonelFotoForm, PersonelUcretForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
@@ -53,7 +53,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
-    Personel, PersonelBelge, PersonelIzin,
+    Personel, PersonelBelge, PersonelIzin, PersonelUcret,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -102,6 +102,7 @@ from core.services import personel as personel_servis
 from core.services import personel_izin as izin_servis
 from core.services import personel_belge as belge_servis
 from core.services import personel_devam as devam_servis
+from core.services import personel_ucret as ucret_servis
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
@@ -6444,9 +6445,15 @@ def personeller(request):
     bugun = tr_bugun()
     liste = list(personel_servis.personel_listele(
         ara=ara, durum=durum, departman=departman, bugun=bugun))
+    ucret_gorebilir = ekran_gorebilir(request.user, "personel_ucret")
+    if ucret_gorebilir:
+        ucretler_map = ucret_servis.gecerli_ucretler(liste, tarih=bugun)
+        for p in liste:
+            p.guncel_ucret = ucretler_map.get(p.pk)
     return render(request, "core/personel_listesi.html", {
         "personeller": liste, "ara": ara, "durum": durum, "secili_departman": departman,
-        "departmanlar": personel_servis.departmanlar(), "bugun": bugun})
+        "departmanlar": personel_servis.departmanlar(), "bugun": bugun,
+        "ucret_gorebilir": ucret_gorebilir})
 
 
 @never_cache
@@ -6503,6 +6510,10 @@ def personel_detay(request, pk):
     bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun
     ctx = {"p": p, "calisiyor": personel_servis.aktif_mi(p, bugun),
            "kidem": kidem_metni(p.ise_giris_tarihi, bitis)}
+    if ekran_gorebilir(request.user, "personel_ucret"):
+        ctx["ucret_gorebilir"] = True
+        ctx["guncel_ucret"] = ucret_servis.gecerli_ucret(p, bugun)
+        ctx["ucret_gecmisi"] = list(ucret_servis.ucretler(p))
     if ekran_gorebilir(request.user, "personel_izinleri"):
         ctx["izin_gorebilir"] = True
         ctx["bakiye"] = izin_servis.bakiye(p, bugun=bugun)
@@ -6533,6 +6544,67 @@ def personel_sil(request, pk):
         messages.success(request, f"Personel kartı silindi: {p.ad_soyad}")
         return redirect("core:personeller")
     return redirect("core:personel_detay", pk=p.pk)
+
+
+# --- Ücretler --- (yalnız KAYIT; bordro/brüt/SGK/vergi hesabı yok — dönüş her zaman personel kartı)
+@ekran_gerekli("personel_ucret")
+def ucret_ekle(request):
+    pid = request.GET.get("personel")
+    donus_pk = int(pid) if pid and pid.isdigit() else None
+    if request.method == "POST":
+        form = PersonelUcretForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                u = ucret_servis.ucret_ekle(
+                    cd["personel"], gecerlilik_baslangic=cd["gecerlilik_baslangic"],
+                    tip=cd["tip"], net_tutar=cd.get("net_tutar"),
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, f"Ücret kaydedildi: {u.personel.ad_soyad}.")
+                return redirect("core:personel_detay", pk=u.personel_id)
+            except ucret_servis.PersonelUcretHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = PersonelUcretForm(initial={"personel": donus_pk} if donus_pk else None)
+    return render(request, "core/ucret_form.html", {
+        "form": form, "baslik": "Yeni Ücret Kaydı", "donus_pk": donus_pk})
+
+
+@ekran_gerekli("personel_ucret")
+def ucret_duzenle(request, pk):
+    ucret = get_object_or_404(
+        PersonelUcret.objects.select_related("personel"), pk=pk, silindi=False,
+        personel__silindi=False)
+    if request.method == "POST":
+        form = PersonelUcretForm(request.POST, personel_sabit=True)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                ucret_servis.ucret_guncelle(
+                    ucret, gecerlilik_baslangic=cd["gecerlilik_baslangic"], tip=cd["tip"],
+                    net_tutar=cd.get("net_tutar"), aciklama=cd.get("aciklama", ""),
+                    kullanici=request.user)
+                messages.success(request, "Ücret kaydı güncellendi.")
+                return redirect("core:personel_detay", pk=ucret.personel_id)
+            except ucret_servis.PersonelUcretHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = PersonelUcretForm(personel_sabit=True, initial={
+            "gecerlilik_baslangic": ucret.gecerlilik_baslangic, "tip": ucret.tip,
+            "net_tutar": ucret.net_tutar, "aciklama": ucret.aciklama})
+    return render(request, "core/ucret_form.html", {
+        "form": form, "baslik": "Ücret Kaydı Düzenle", "duzenlenen": ucret})
+
+
+@ekran_gerekli("personel_ucret")
+def ucret_sil(request, pk):
+    ucret = get_object_or_404(
+        PersonelUcret.objects.select_related("personel"), pk=pk, silindi=False,
+        personel__silindi=False)
+    if request.method == "POST":
+        ucret_servis.ucret_sil(ucret, kullanici=request.user)
+        messages.success(request, f"Ücret kaydı silindi: {ucret.personel.ad_soyad}")
+    return redirect("core:personel_detay", pk=ucret.personel_id)
 
 
 # --- İzinler ---

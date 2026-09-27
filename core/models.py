@@ -2987,3 +2987,48 @@ class PersonelDevam(TemelModel):
 
     def __str__(self):
         return f"{self.personel.ad_soyad} — {self.tarih} {self.get_durum_display()}"
+
+
+class PersonelUcret(TemelModel):
+    """İNSAN KAYNAKLARI > Personel Ücretleri — YALNIZ KAYIT (bordro/brüt/SGK/vergi hesabı YOK).
+    Bir kayıt, gecerlilik_baslangic tarihinden İTİBAREN (bir sonraki kayda kadar) geçerli
+    ücreti temsil eder; zam/değişiklik yeni bir kayıt eklemekle yapılır, eski kayıt SİLİNMEZ
+    (geçmiş olarak kalır) — bkz. core.services.personel_ucret.gecerli_ucret. Ücret bilgisi
+    yalnız ayrı 'personel_ucret' ekran yetkisi (veya yönetici) olan kullanıcıya görünür;
+    'personel' yetkisi tek başına GÖSTERMEZ (server tarafında core.yetki ile zorlanır)."""
+
+    class Tip(models.TextChoices):
+        ASGARI = "ASGARI", "Asgari Ücret"
+        NET = "NET", "Net Ücret"
+
+    personel = models.ForeignKey(
+        Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="ucretler")
+    gecerlilik_baslangic = models.DateField("geçerlilik başlangıcı")
+    tip = models.CharField("tip", max_length=10, choices=Tip.choices)
+    net_tutar = models.DecimalField(
+        "net tutar (TL)", max_digits=12, decimal_places=2, null=True, blank=True)
+    aciklama = models.CharField("açıklama", max_length=200, blank=True)
+
+    class Meta:
+        db_table = "core_personel_ucret"
+        verbose_name = "personel ücreti"
+        verbose_name_plural = "personel ücretleri"
+        ordering = ["-gecerlilik_baslangic", "-id"]
+        indexes = [
+            models.Index(fields=["personel", "gecerlilik_baslangic"],
+                        name="ix_personel_ucret_kisi_bas"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["personel", "gecerlilik_baslangic"], condition=models.Q(silindi=False),
+                name="uq_personel_ucret_kisi_bas_aktif"),
+            # tip=ASGARI ise tutar NULL; tip=NET ise tutar dolu ve > 0 olmalı.
+            models.CheckConstraint(
+                condition=(models.Q(tip="ASGARI", net_tutar__isnull=True)
+                          | models.Q(tip="NET", net_tutar__isnull=False, net_tutar__gt=0)),
+                name="ck_personel_ucret_tip_tutar"),
+        ]
+
+    def __str__(self):
+        tutar = "Asgari Ücret" if self.tip == self.Tip.ASGARI else f"{self.net_tutar} TL net"
+        return f"{self.personel.ad_soyad} — {tutar} ({self.gecerlilik_baslangic:%d.%m.%Y})"

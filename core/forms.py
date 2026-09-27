@@ -22,8 +22,8 @@ from core.models import (
     CariAktivite, CariKategori, KapanisNedeni,
     CekSenet, Depo, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
-    PersonelIzin, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi, TevkifatOrani,
-    Ulke, YevmiyeSatir,
+    PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
+    TevkifatOrani, Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
 from core.tarih import tr_bugun
@@ -2430,3 +2430,39 @@ class PersonelBelgeForm(forms.Form):
 class PersonelFotoForm(forms.Form):
     dosya = forms.FileField(
         label="Fotoğraf", widget=forms.ClearableFileInput(attrs={"accept": "image/*"}))
+
+
+class PersonelUcretForm(forms.Form):
+    """İNSAN KAYNAKLARI > Personel Ücreti ekle/düzenle. tip=Asgari Ücret iken tutar alanı JS ile
+    gizlenir; tip=Net Ücret iken zorunlu (serviste de zorlanır). Düzenlemede personel değişmez."""
+
+    personel = forms.ModelChoiceField(
+        label="Personel", queryset=Personel.objects.none(), empty_label="— personel seç —")
+    gecerlilik_baslangic = forms.DateField(
+        label="Geçerlilik Başlangıcı", initial=tr_bugun,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    tip = forms.ChoiceField(label="Tip", choices=PersonelUcret.Tip.choices,
+                            initial=PersonelUcret.Tip.ASGARI, widget=forms.RadioSelect)
+    net_tutar = TRDecimalField(label="Net Tutar (TL)", basamak=2, required=False)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "ör. 2027 zammı"}))
+
+    def __init__(self, *args, personel_sabit=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if personel_sabit:
+            del self.fields["personel"]
+        else:
+            from core.services.personel import aktif_personeller
+            bugun = tr_bugun()
+            self.fields["personel"].queryset = aktif_personeller()
+            self.fields["personel"].label_from_instance = lambda p: (
+                p.ad_soyad + (" (ayrıldı)" if p.isten_cikis_tarihi
+                              and p.isten_cikis_tarihi < bugun else ""))
+            self.fields["personel"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        if cd.get("tip") == PersonelUcret.Tip.NET and cd.get("net_tutar") is None:
+            self.add_error("net_tutar", "Net ücret tipinde tutar zorunlu.")
+        return cd
