@@ -30,6 +30,14 @@
 
 <div class="ik-ust">
   <h1 class="ust-baslik"><span class="emoji">📅</span>Aylık Devam Özeti</h1>
+  {% if dokum_gorebilir %}
+  <div>
+    <a class="dugme" href="{% url 'core:yoklama_aylik_dokum' %}?ay={{ ay_param }}">📊 Muhasebe Dökümü (Excel)</a>
+    {% if toplam.girilmemis %}
+      <div class="yardim" style="margin:.35rem 0 0;color:var(--turuncu-koyu)">⚠️ {{ toplam.girilmemis }} gün yoklama girilmemiş.</div>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 <nav class="tablar">

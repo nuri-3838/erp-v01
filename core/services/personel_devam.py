@@ -170,10 +170,27 @@ class AylikSatir:
     izinli: int = 0
     raporlu: int = 0
     girilmemis: int = 0
+    # İzin TÜRÜ bazlı ayrıntı — izinli = yillik+ucretsiz+mazeret+diger, raporlu = rapor (AYNEN korunur).
+    yillik: int = 0
+    ucretsiz: int = 0
+    mazeret: int = 0
+    rapor: int = 0
+    diger: int = 0
+    # Pazar günü Geldi/Yarım Gün kaydı olan gün sayısı — geldi/yarim'e AYRICA dahildir, bu yalnız
+    # ek bir bilgi sayacıdır (puantaj dökümünde ayrı sütun için).
+    pazar_calisma: int = 0
 
 
-_SAYAC_ALANLARI = ("geldi", "yarim", "gelmedi", "izinli", "raporlu", "girilmemis")
+_SAYAC_ALANLARI = ("geldi", "yarim", "gelmedi", "izinli", "raporlu", "girilmemis",
+                   "yillik", "ucretsiz", "mazeret", "rapor", "diger", "pazar_calisma")
 _DURUM_SAYAC = {"GELDI": "geldi", "YARIM_GUN": "yarim", "GELMEDI": "gelmedi"}
+_IZIN_TUR_SAYAC = {
+    PersonelIzin.Tur.YILLIK.value: "yillik",
+    PersonelIzin.Tur.UCRETSIZ.value: "ucretsiz",
+    PersonelIzin.Tur.MAZERET.value: "mazeret",
+    PersonelIzin.Tur.RAPOR.value: "rapor",
+    PersonelIzin.Tur.DIGER.value: "diger",
+}
 
 
 def aylik_ozet(yil, ay, *, bugun=None, personel_ids=None) -> list:
@@ -211,8 +228,12 @@ def aylik_ozet(yil, ay, *, bugun=None, personel_ids=None) -> list:
             if izin_turu:
                 if not pazar:
                     sayac["raporlu" if turet_durum("", izin_turu) == RAPORLU else "izinli"] += 1
+                    sayac[_IZIN_TUR_SAYAC[izin_turu]] += 1
             elif (p.pk, gun) in kayitlar:
-                sayac[_DURUM_SAYAC[kayitlar[(p.pk, gun)]]] += 1
+                durum = kayitlar[(p.pk, gun)]
+                sayac[_DURUM_SAYAC[durum]] += 1
+                if pazar and durum in ("GELDI", "YARIM_GUN"):
+                    sayac["pazar_calisma"] += 1
             elif not pazar:
                 sayac["girilmemis"] += 1
             gun += timedelta(days=1)

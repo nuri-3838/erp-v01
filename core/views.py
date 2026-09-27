@@ -103,10 +103,11 @@ from core.services import personel_izin as izin_servis
 from core.services import personel_belge as belge_servis
 from core.services import personel_devam as devam_servis
 from core.services import personel_ucret as ucret_servis
+from core.services import personel_dokum as dokum_servis
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
-    ekran_gerekli, ekran_gerekli_herhangi, ekran_gorebilir, kullanici_telefon, yonetici_gerekli,
-    yonetici_mi,
+    ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir,
+    kullanici_telefon, yonetici_gerekli, yonetici_mi,
 )
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
@@ -6969,4 +6970,17 @@ def yoklama_aylik(request):
         "onceki_ay": f"{onceki.year:04d}-{onceki.month:02d}",
         "sonraki_ay": f"{sonraki.year:04d}-{sonraki.month:02d}" if ilk < bugun.replace(day=1) else None,
         "satirlar": satirlar, "toplam": devam_servis.aylik_toplam(satirlar), "bugun": bugun,
-        "personel_link": ekran_gorebilir(request.user, "personel")})
+        "personel_link": ekran_gorebilir(request.user, "personel"),
+        "dokum_gorebilir": ekran_gorebilir(request.user, "personel_ucret")})
+
+
+@ekran_gerekli_hepsi("personel_devam", "personel_ucret")
+def yoklama_aylik_dokum(request):
+    bugun = tr_bugun()
+    yil, ay = _yoklama_ay(request.GET, bugun)
+    xlsx = dokum_servis.dokum_xlsx(yil, ay, bugun=bugun, kullanici=request.user)
+    resp = HttpResponse(
+        xlsx, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp["Content-Disposition"] = f'attachment; filename="puantaj_{yil:04d}-{ay:02d}.xlsx"'
+    resp["Cache-Control"] = "private, no-store"
+    return resp

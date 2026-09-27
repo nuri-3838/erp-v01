@@ -308,6 +308,7 @@ urlpatterns = [
     path("ik/personel/<int:pk>/foto/kaldir/", views.personel_foto_kaldir, name="personel_foto_kaldir"),
     path("ik/devam/", views.yoklama, name="yoklama"),
     path("ik/devam/aylik/", views.yoklama_aylik, name="yoklama_aylik"),
+    path("ik/devam/aylik/dokum/", views.yoklama_aylik_dokum, name="yoklama_aylik_dokum"),
     path("ik/ucretler/ekle/", views.ucret_ekle, name="ucret_ekle"),
     path("ik/ucretler/<int:pk>/duzenle/", views.ucret_duzenle, name="ucret_duzenle"),
     path("ik/ucretler/<int:pk>/sil/", views.ucret_sil, name="ucret_sil"),

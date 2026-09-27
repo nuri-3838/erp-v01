@@ -109,3 +109,20 @@ def ekran_gerekli_herhangi(*ekran_kodlar):
             return view(request, *args, **kwargs)
         return sarmal
     return dekorator
+
+
+def ekran_gerekli_hepsi(*ekran_kodlar):
+    """Görünümü, verilen ekranların HEPSİNE birden yetkili kullanıcılara açar (403).
+
+    Aylık muhasebe dökümü gibi, birden çok ekranın bilgisini (devam + ücret) tek dosyada
+    birleştiren görünümler için. Yönetici hep girer.
+    """
+    def dekorator(view):
+        @wraps(view)
+        @login_required
+        def sarmal(request, *args, **kwargs):
+            if not all(ekran_gorebilir(request.user, k) for k in ekran_kodlar):
+                raise PermissionDenied("Bu ekran için yetkiniz yok.")
+            return view(request, *args, **kwargs)
+        return sarmal
+    return dekorator
