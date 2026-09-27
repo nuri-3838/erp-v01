@@ -1,0 +1,38 @@
+{% comment %}Aday listesi hızlı işlemler (+ Aktivite, WhatsApp) — tablo VE kart görünümünde
+ORTAK, iki yerde ayrı ayrı yazılmayıp drift riski önlenir. Bağlam: a (AdayMusteri,
+whatsapp_secenekleri dahil — bkz. core/views.py::aday_musteriler), liste_url.{% endcomment %}
+{% if not a.cari_id %}
+<span class="ad-hizli-cubuk" onclick="event.stopPropagation()">
+  <button type="button" class="ad-hizli-buton" data-aday-pk="{{ a.pk }}"
+          data-aktivite-url="{% url 'core:aday_aktivite_ekle' a.pk %}"
+          data-next="{{ liste_url }}#aday-{{ a.pk }}" data-tur="" data-unvan="{{ a.unvan }}"
+          data-sonraki-adim="{{ a.sonraki_adim|default:'' }}"
+          data-sonraki-adim-tarihi="{{ a.sonraki_adim_tarihi|date:'Y-m-d' }}"
+          onclick="adHizliAktiviteAc(this)">+ Aktivite</button>
+  {% if a.whatsapp_secenekleri|length == 1 %}
+    {% with sec=a.whatsapp_secenekleri.0 %}
+    <a class="ad-hizli-buton ad-wa-buton" href="{{ sec.url }}" target="_blank" rel="noopener"
+       title="{{ sec.etiket }}"
+       data-aday-pk="{{ a.pk }}" data-aktivite-url="{% url 'core:aday_aktivite_ekle' a.pk %}"
+       data-next="{{ liste_url }}#aday-{{ a.pk }}" data-tur="WHATSAPP" data-unvan="{{ a.unvan }}"
+       data-sonraki-adim="{{ a.sonraki_adim|default:'' }}"
+       data-sonraki-adim-tarihi="{{ a.sonraki_adim_tarihi|date:'Y-m-d' }}"
+       onclick="adWhatsappTikla(event, this)">🟢 WhatsApp</a>
+    {% endwith %}
+  {% elif a.whatsapp_secenekleri %}
+    <span class="ad-wa-cok">
+      <button type="button" class="ad-hizli-buton ad-wa-buton" onclick="adWhatsappMenuAc(event, this)">🟢 WhatsApp</button>
+      <span class="ad-wa-menu" hidden>
+        {% for sec in a.whatsapp_secenekleri %}
+          <a href="{{ sec.url }}" target="_blank" rel="noopener"
+             data-aday-pk="{{ a.pk }}" data-aktivite-url="{% url 'core:aday_aktivite_ekle' a.pk %}"
+             data-next="{{ liste_url }}#aday-{{ a.pk }}" data-tur="WHATSAPP" data-unvan="{{ a.unvan }}"
+             data-sonraki-adim="{{ a.sonraki_adim|default:'' }}"
+             data-sonraki-adim-tarihi="{{ a.sonraki_adim_tarihi|date:'Y-m-d' }}"
+             onclick="adWhatsappTikla(event, this)">{{ sec.etiket }}</a>
+        {% endfor %}
+      </span>
+    </span>
+  {% endif %}
+</span>
+{% endif %}

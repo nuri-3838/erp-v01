@@ -135,6 +135,43 @@
   .rozet-renk-turuncu { background:rgba(240,124,0,.14); color:var(--turuncu-koyu); }
   .rozet-renk-kirmizi { background:#fdecef; color:#b3253f; }
   .rozet-renk-mor     { background:#f3ebfb; color:#7b2fb5; }
+
+  /* --- Liste satırı hızlı işlemler (aktivite ekle / WhatsApp) --- */
+  .ad-hizli-cubuk { display:inline-flex; gap:.4rem; flex-wrap:wrap; position:relative; }
+  .ad-hizli-buton { display:inline-flex; align-items:center; justify-content:center;
+    min-height:40px; padding:.35rem .8rem; border-radius:10px; border:1px solid var(--cizgi-koyu);
+    background:rgba(255,255,255,.9); color:var(--metin); font-size:.82rem; font-weight:650;
+    text-decoration:none; cursor:pointer; white-space:nowrap; }
+  .ad-hizli-buton:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+  .ad-wa-buton { border-color:rgba(10,125,40,.35); color:#0a7d28; }
+  .ad-wa-buton:hover { border-color:#0a7d28; }
+  .ad-wa-cok { position:relative; display:inline-flex; }
+  .ad-wa-menu { position:absolute; top:calc(100% + .3rem); right:0; z-index:20; display:flex;
+    flex-direction:column; gap:.2rem; padding:.4rem; border-radius:12px; min-width:11rem;
+    background:#fff; border:1px solid var(--cizgi-koyu); box-shadow:0 8px 24px rgba(0,0,0,.12); }
+  .ad-wa-menu[hidden] { display:none; }
+  .ad-wa-menu a { padding:.5rem .6rem; border-radius:8px; text-decoration:none; color:var(--metin);
+    font-size:.85rem; min-height:40px; display:flex; align-items:center; }
+  .ad-wa-menu a:hover { background:rgba(10,125,40,.08); }
+  .ad-islem-hucre { white-space:nowrap; }
+  .ad-kart-islemler { margin-top:.7rem; padding-top:.6rem; border-top:1px solid var(--cizgi-koyu); }
+
+  /* --- Hızlı aktivite penceresi --- */
+  .ad-aktivite-dialog { border:none; border-radius:18px; padding:1.2rem 1.3rem; width:min(30rem, 92vw);
+    box-shadow:0 20px 60px rgba(0,0,0,.25); }
+  .ad-aktivite-dialog::backdrop { background:rgba(20,28,42,.45); }
+  .ad-akt-grid { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+  @media (max-width:520px) { .ad-akt-grid { grid-template-columns:1fr; } }
+  .ad-akt-alan { display:flex; flex-direction:column; gap:.3rem; font-size:.78rem; font-weight:700;
+    letter-spacing:.02em; color:var(--metin-soluk); }
+  .ad-aktivite-dialog select, .ad-aktivite-dialog input[type=date], .ad-aktivite-dialog input[type=text],
+  .ad-aktivite-dialog textarea {
+    width:100%; box-sizing:border-box; min-height:42px; padding:.4rem .7rem; border-radius:10px;
+    border:1px solid var(--cizgi-koyu); font-size:.9rem; font-weight:400; color:var(--metin);
+    font-family:inherit; }
+  .ad-akt-alt { display:flex; align-items:center; justify-content:space-between; gap:.8rem;
+    flex-wrap:wrap; margin-top:1rem; }
+  .ad-akt-alt a { font-size:.82rem; }
 </style>
 
 <div class="ad-ust">
@@ -332,11 +369,11 @@
     <th class="ad-th-sirala"><a href="{{ siralama_baglar.potansiyel.url }}">Tip · Aşama · Potansiyel {{ siralama_baglar.potansiyel.ok }}</a></th>
     <th class="ad-th-sirala"><a href="{{ siralama_baglar.sonraki.url }}">Sonraki adım {{ siralama_baglar.sonraki.ok }}</a></th>
     <th class="ad-th-sirala"><a href="{{ siralama_baglar.son_akt.url }}">Son aktivite {{ siralama_baglar.son_akt.ok }}</a></th>
-    <th>Kanal</th><th></th>
+    <th>Kanal</th><th>İşlemler</th><th></th>
   </tr></thead>
   <tbody>
     {% for a in kayitlar %}
-      <tr onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
+      <tr id="aday-{{ a.pk }}" onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
         <td>
           <div class="ad-hucre">
             <span class="ad-ikon">🧲</span>
@@ -357,13 +394,14 @@
         <td>
           <span class="ad-kanal">
             {% if a.eposta_kanal_durum == "gecerli" %}✉{% elif a.eposta_kanal_durum == "gecersiz" %}<span class="gecersiz">✉</span>{% endif %}
-            {% if a.telefon_whatsapp or a.telefon_2_whatsapp or a.yetkili_whatsapp_var %}🟢{% elif a.telefon or a.telefon_2 %}📞{% endif %}
+            {% if a.telefon_whatsapp or a.telefon_2_whatsapp or a.whatsapp_yetkilileri %}🟢{% elif a.telefon or a.telefon_2 %}📞{% endif %}
           </span>
         </td>
+        <td class="ad-islem-hucre">{% include "core/_aday_hizli_islemler.html" %}</td>
         <td class="ad-ok">›</td>
       </tr>
     {% empty %}
-      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr style="cursor:default"><td colspan="8" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if gorunum != "tumu" %}
           Bu sekmede kayıt yok. <a href="{{ tumu_url }}">Tümünü göster</a>
         {% elif ara or secili_kaynak or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama or secili_takip or secili_eposta or secili_son_akt or secili_cari %}
@@ -379,7 +417,7 @@
 
 <div class="ad-kart-listesi">
   {% for a in kayitlar %}
-    <div class="ad-kart" onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
+    <div class="ad-kart" id="aday-{{ a.pk }}" onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
       <div class="ust">
         <div>
           <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a>{% if a.cari_id %} <span class="rozet rozet-aktif">Cari</span>{% endif %}</div>
@@ -387,7 +425,7 @@
         </div>
         <span class="ad-kanal">
           {% if a.eposta_kanal_durum == "gecerli" %}✉{% elif a.eposta_kanal_durum == "gecersiz" %}<span class="gecersiz">✉</span>{% endif %}
-          {% if a.telefon_whatsapp or a.telefon_2_whatsapp or a.yetkili_whatsapp_var %}🟢{% elif a.telefon or a.telefon_2 %}📞{% endif %}
+          {% if a.telefon_whatsapp or a.telefon_2_whatsapp or a.whatsapp_yetkilileri %}🟢{% elif a.telefon or a.telefon_2 %}📞{% endif %}
         </span>
       </div>
       <div class="rozetler">
@@ -403,6 +441,9 @@
       <div class="satir">
         <span>Son aktivite: {% if a.son_aktivite_tarihi %}<span class="{% if a.son_aktivite_gun_once > 90 %}ad-son-akt-eski{% endif %}">{{ a.son_aktivite_tarihi|date:"d.m.Y" }}{% if a.son_aktivite_turu_etiket %} · {{ a.son_aktivite_turu_etiket }}{% endif %}</span>{% else %}—{% endif %}</span>
       </div>
+      {% if not a.cari_id %}
+        <div class="ad-kart-islemler">{% include "core/_aday_hizli_islemler.html" %}</div>
+      {% endif %}
     </div>
   {% empty %}
     <p class="yardim" style="text-align:center;padding:1.6rem 0">
@@ -432,4 +473,92 @@
   {% if kayitlar.number < kayitlar.paginator.num_pages %}<a class="uc-uc" href="?sayfa={{ kayitlar.paginator.num_pages }}&{{ sabit_qs }}">Son »</a>{% endif %}
 </div>
 {% endif %}
+
+<dialog id="ad-aktivite-dialog" class="ad-aktivite-dialog">
+  <form method="post" id="ad-aktivite-form">
+    {% csrf_token %}
+    <input type="hidden" name="next" id="ad-akt-next">
+    <h3 style="margin:0 0 .8rem">Yeni Aktivite — <span id="ad-aktivite-unvan"></span></h3>
+    <div class="ad-akt-grid">
+      <label class="ad-akt-alan">Tarih
+        <input type="date" name="tarih" id="ad-akt-tarih" required>
+      </label>
+      <label class="ad-akt-alan">Tür
+        <select name="tur" id="ad-akt-tur">
+          {% for deger, etiket in aktivite_tur_secenekleri %}
+            <option value="{{ deger }}">{{ etiket }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <label class="ad-akt-alan" style="margin-top:.7rem">Açıklama
+      <textarea name="aciklama" id="ad-akt-aciklama" rows="3" required></textarea>
+    </label>
+    <div class="ad-akt-grid" style="margin-top:.7rem">
+      <label class="ad-akt-alan">Sonraki Adım
+        <input type="text" name="sonraki_adim" id="ad-akt-sonraki-adim" autocomplete="off">
+      </label>
+      <label class="ad-akt-alan">Sonraki Adım Tarihi
+        <input type="date" name="sonraki_adim_tarihi" id="ad-akt-sonraki-tarih">
+      </label>
+    </div>
+    <div class="ad-akt-alt">
+      <a id="ad-akt-detayli-link" href="#">Detaylı ekle (dosya ile) →</a>
+      <span style="display:flex;gap:.5rem">
+        <button type="button" class="ad-hizli-buton" onclick="document.getElementById('ad-aktivite-dialog').close()">Vazgeç</button>
+        <button type="submit" class="birincil" style="min-height:40px">Kaydet</button>
+      </span>
+    </div>
+  </form>
+</dialog>
+<script>
+  (function () {
+    var BUGUN = "{{ bugun_iso }}";
+    var dialog = document.getElementById("ad-aktivite-dialog");
+    var form = document.getElementById("ad-aktivite-form");
+    var elUnvan = document.getElementById("ad-aktivite-unvan");
+    var elNext = document.getElementById("ad-akt-next");
+    var elTarih = document.getElementById("ad-akt-tarih");
+    var elTur = document.getElementById("ad-akt-tur");
+    var elAciklama = document.getElementById("ad-akt-aciklama");
+    var elSonrakiAdim = document.getElementById("ad-akt-sonraki-adim");
+    var elSonrakiTarih = document.getElementById("ad-akt-sonraki-tarih");
+    var elDetayli = document.getElementById("ad-akt-detayli-link");
+
+    window.adHizliAktiviteAc = function (el) {
+      form.action = el.dataset.aktiviteUrl;
+      elNext.value = el.dataset.next || "";
+      elUnvan.textContent = el.dataset.unvan || "";
+      elTarih.value = BUGUN;
+      elTur.value = el.dataset.tur || "GORUSME";
+      elAciklama.value = "";
+      elSonrakiAdim.value = el.dataset.sonrakiAdim || "";
+      elSonrakiTarih.value = el.dataset.sonrakiAdimTarihi || "";
+      elDetayli.href = el.dataset.aktiviteUrl;
+      dialog.showModal();
+      elAciklama.focus();
+    };
+
+    window.adWhatsappTikla = function (ev, el) {
+      ev.stopPropagation();
+      var menu = el.closest(".ad-wa-menu");
+      if (menu) menu.hidden = true;
+      window.adHizliAktiviteAc(el);
+    };
+
+    window.adWhatsappMenuAc = function (ev, btn) {
+      ev.stopPropagation();
+      var menu = btn.nextElementSibling;
+      var kapaliMi = menu.hidden;
+      document.querySelectorAll(".ad-wa-menu").forEach(function (m) { m.hidden = true; });
+      menu.hidden = !kapaliMi;
+    };
+
+    document.addEventListener("click", function (ev) {
+      if (!ev.target.closest(".ad-wa-cok")) {
+        document.querySelectorAll(".ad-wa-menu").forEach(function (m) { m.hidden = true; });
+      }
+    });
+  })();
+</script>
 {% endblock %}

@@ -398,12 +398,14 @@ class SorguSayisiTest(_Taban):
                                         sonraki_adim_tarihi=bugun + timedelta(days=i))
             aday_aktivite_ekle(aday, tarih=bugun - timedelta(days=i), tur=AdayAktivite.Tur.NOT,
                               aciklama="x")
-        # 11 sorgu: session+user (2) + sekme sayaçları (1, tek Count(filter=) sorgusu) +
+        # 12 sorgu: session+user (2) + sekme sayaçları (1, tek Count(filter=) sorgusu) +
         # gecikmiş sayaç (1) + kaynaklar/ülkeler (2, şehirler ülke seçilmeden hiç
         # sorgulanmaz) + tip/potansiyel/aşama filtre seçenekleri (3, her biri TEK sorgu —
         # aday sayısından bağımsız, satır arttıkça artmaz) + sayfalama count (1) + sayfa
-        # satırları (1, son aktivite tarih/tür korele Subquery ile AYNI sorguda — N+1 yok).
-        with self.assertNumQueries(11):
+        # satırları (1, son aktivite tarih/tür korele Subquery ile AYNI sorguda — N+1 yok)
+        # + WhatsApp yetkilileri Prefetch (1, hızlı işlemler butonu için — sayfa başına TEK
+        # ek sorgu, satır sayısından bağımsız).
+        with self.assertNumQueries(12):
             self._get(gorunum="tumu")
 
     def test_arama_web_ve_yetkiliyle_sorgu_sayisi_ayni_kalir(self):
@@ -417,5 +419,5 @@ class SorguSayisiTest(_Taban):
                            aciklama="bulunacak aktivite aciklamasi")
         for i in range(5):
             aday_musteri_olustur(unvan=f"dolgu firma {i}")
-        with self.assertNumQueries(11):
+        with self.assertNumQueries(12):
             self._get(ara="bulunacak", gorunum="tumu")

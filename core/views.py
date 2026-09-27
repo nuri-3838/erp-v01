@@ -20,6 +20,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 
 from core.forms import (
@@ -56,6 +57,7 @@ from core.models import (
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
+from core.templatetags.core_extras import wa_link
 from core import gorsel
 from core.sayi import SayiHatasi, parse_tr
 from core.services.raporlar import (
@@ -4643,6 +4645,28 @@ def _aday_siralama_baglantisi(request, sirala_simdi, anahtar, tersi_var=True):
     return {"url": _aday_qs_with(request, sirala=sonraki), "ok": ok}
 
 
+def _whatsapp_secenekleri(aday):
+    """Liste satırındaki 🟢 WhatsApp hızlı butonu için tıklanabilir seçenek listesi —
+    yalnız WhatsApp işaretli VE '+' ile başlayan numaralar (mevcut wa_link filtresi
+    yeniden kullanılır, spec). Kartın telefon/telefon_2'si + whatsapp_yetkilileri
+    (bkz. aday_musteriler'deki Prefetch) taranır; boşsa buton hiç gösterilmez."""
+    secenekler = []
+    if aday.telefon_whatsapp:
+        link = wa_link(aday.telefon)
+        if link:
+            secenekler.append({"etiket": f"Kart: {aday.telefon}", "url": link})
+    if aday.telefon_2_whatsapp:
+        link = wa_link(aday.telefon_2)
+        if link:
+            etiket = "Kart (2)" if secenekler else "Kart"
+            secenekler.append({"etiket": f"{etiket}: {aday.telefon_2}", "url": link})
+    for y in getattr(aday, "whatsapp_yetkilileri", []):
+        link = wa_link(y.telefon)
+        if link:
+            secenekler.append({"etiket": f"{y.ad_soyad}: {y.telefon}", "url": link})
+    return secenekler
+
+
 def _aday_form_kw(cd):
     """AdayMusteriForm cleaned_data -> aday servis kwargs (FK'ler -> *_id)."""
     g = lambda x: x.pk if x else None
@@ -4779,12 +4803,15 @@ def aday_musteriler(request):
         aday=OuterRef("pk"), silindi=False).order_by("-tarih", "-id")
     kayitlar = kayitlar.annotate(
         son_aktivite_tarihi=Subquery(_son_aktivite_sq.values("tarih")[:1]),
-        son_aktivite_turu=Subquery(_son_aktivite_sq.values("tur")[:1]),
-        # Liste satırındaki 📞 -> 🟢 dönüşümü: kartın kendi alanları (telefon_whatsapp/
-        # telefon_2_whatsapp) YETERLİ değilse yetkililerde de WhatsApp işaretli numara var mı
-        # bakılır (spec). Exists -> N+1/JOIN çoğalması yok.
-        yetkili_whatsapp_var=Exists(AdayYetkili.objects.filter(
-            aday_id=OuterRef("pk"), silindi=False, whatsapp=True)))
+        son_aktivite_turu=Subquery(_son_aktivite_sq.values("tur")[:1]))
+    # Liste satırındaki 🟢 WhatsApp hızlı butonu + kanal ikonu: kartın kendi alanları
+    # (telefon_whatsapp/telefon_2_whatsapp) YETERLİ değilse yetkililerin WhatsApp işaretli
+    # +'lı numaraları da gerekir (buton etiketi için ad_soyad+telefon) — Prefetch ile TEK
+    # ek sorgu (satır sayısı kadar çoğalmaz), bkz. assertNumQueries testi.
+    kayitlar = kayitlar.prefetch_related(Prefetch(
+        "yetkililer",
+        queryset=AdayYetkili.objects.filter(silindi=False, whatsapp=True, telefon__startswith="+"),
+        to_attr="whatsapp_yetkilileri"))
     _son_akt_30_sinir = bugun - datetime.timedelta(days=29)
     _son_akt_90_sinir = bugun - datetime.timedelta(days=89)
     if son_akt_secim == "30":
@@ -4898,6 +4925,8 @@ def aday_musteriler(request):
     }
 
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
+    for a in sayfa:
+        a.whatsapp_secenekleri = _whatsapp_secenekleri(a)
     sabit_qs = request.GET.copy()
     sabit_qs.pop("sayfa", None)
     return render(request, "core/aday_musteri_listesi.html", {
@@ -4920,7 +4949,10 @@ def aday_musteriler(request):
         "sekmeler": sekmeler, "gorunum": gorunum,
         "tumu_url": _aday_qs_with(request, gorunum="tumu", sirala=None),
         "cipler": cipler, "aktif_filtre_sayisi": aktif_filtre_sayisi,
-        "sabit_qs": sabit_qs.urlencode()})
+        "sabit_qs": sabit_qs.urlencode(),
+        "liste_url": request.get_full_path(),
+        "bugun_iso": bugun.isoformat(),
+        "aktivite_tur_secenekleri": AdayAktivite.Tur.choices})
 
 
 def _aday_form_varsayilanlar():
@@ -5159,7 +5191,14 @@ def aday_aktivite_ekle(request, aday_pk):
                 aktivite = aday_servis.aday_aktivite_ekle(
                     aday, **form.cleaned_data, sonraki_adim_guncelle=True, kullanici=request.user)
                 _aday_aktivite_ekleri_kaydet(request, aktivite, request.FILES.getlist("dosyalar"))
-                messages.success(request, "Aktivite eklendi.")
+                messages.success(request, f"Aktivite eklendi — {aday.unvan}.")
+                # Liste satırındaki hızlı "+ Aktivite" penceresi buraya ?next=<liste url>#aday-
+                # <id> ile POST eder — geçerliyse (açık yönlendirme koruması) oraya dönülür,
+                # aksi halde (tam sayfa formu) her zamanki gibi aday detayına.
+                sonraki = request.POST.get("next") or request.GET.get("next")
+                if sonraki and url_has_allowed_host_and_scheme(
+                        sonraki, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+                    return redirect(sonraki)
                 return redirect("core:aday_musteri_detay", pk=aday.pk)
             except aday_servis.AdayHatasi as e:
                 form.add_error(None, str(e))
