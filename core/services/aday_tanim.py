@@ -121,20 +121,26 @@ def potansiyel_guncelle(tanim, *, ad, sira, aktif, renk, sicak, kullanici=None):
 # --- Aşama (BASLANGIC/KAPALI invariant'ı dahil) -----------------------------------------
 def _asama_gecerlilik_kontrol(*, haric_pk, rol, aktif):
     """Bu rol/aktif ile kaydedilirse (veya haric_pk pasif yapılır/silinirse) spec kuralı hâlâ
-    sağlanıyor mu: tam olarak 1 aktif BASLANGIC, en az 1 aktif KAPALI."""
+    sağlanıyor mu: tam olarak 1 aktif BASLANGIC, en az 1 aktif KAPALI, en fazla 1 aktif CARI
+    (CARI hiç yoksa sorun değil — o zaman cariye dönüşümünde aşama değişmez)."""
     digerleri = AdayAsamaTanim.objects.filter(silindi=False, aktif=True)
     if haric_pk is not None:
         digerleri = digerleri.exclude(pk=haric_pk)
     baslangic = digerleri.filter(rol=AdayAsamaTanim.Rol.BASLANGIC).count()
     kapali = digerleri.filter(rol=AdayAsamaTanim.Rol.KAPALI).count()
+    cari = digerleri.filter(rol=AdayAsamaTanim.Rol.CARI).count()
     if aktif and rol == AdayAsamaTanim.Rol.BASLANGIC:
         baslangic += 1
     if aktif and rol == AdayAsamaTanim.Rol.KAPALI:
         kapali += 1
+    if aktif and rol == AdayAsamaTanim.Rol.CARI:
+        cari += 1
     if baslangic != 1:
         raise AdayTanimHatasi("Tam olarak bir aktif 'Başlangıç' rolündeki aşama olmalı.")
     if kapali < 1:
         raise AdayTanimHatasi("En az bir aktif 'Kapalı' rolündeki aşama olmalı.")
+    if cari > 1:
+        raise AdayTanimHatasi("En fazla bir aktif 'Cari olunca' rolündeki aşama olabilir.")
 
 
 def asama_olustur(*, ad, sira=0, aktif=True, renk="GRI", rol=AdayAsamaTanim.Rol.ARA,

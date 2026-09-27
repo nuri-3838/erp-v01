@@ -1077,6 +1077,7 @@ class AdayAsamaTanim(_AdayTanimTaban):
         BASLANGIC = "BASLANGIC", "Başlangıç"
         ARA = "ARA", "Ara"
         KAPALI = "KAPALI", "Kapalı"
+        CARI = "CARI", "Cari olunca"
 
     rol = models.CharField("rol", max_length=10, choices=Rol.choices, default=Rol.ARA)
 

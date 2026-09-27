@@ -16,7 +16,8 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import AdayAktiviteEk, AdayMusteri, CariAktivite, CariAktiviteEk, CariYetkili
+from core.models import (
+    AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, CariAktivite, CariAktiviteEk, CariYetkili)
 from core.services import cari as cari_servis
 from core.tarih import tr_bugun
 
@@ -274,11 +275,29 @@ def _donustur_on_kontrol(aday):
         raise AdayDonusturHatasi(engel)
 
 
-def _aday_cariye_isaretle(aday, cari, kullanici):
+def _cari_rollu_asama():
+    """Aktif tek CARI rollü aşama, yoksa None — spec kararı: hiç yoksa cariye dönüşümünde
+    aday.asama değişmez (bkz. core.services.aday_tanim._asama_gecerlilik_kontrol, en fazla
+    bir aktif CARI rolü zaten orada zorlanıyor)."""
+    return AdayAsamaTanim.objects.filter(
+        silindi=False, aktif=True, rol=AdayAsamaTanim.Rol.CARI).first()
+
+
+def _asama_degisim_satiri(aday, yeni_asama):
+    if yeni_asama is None or yeni_asama.pk == aday.asama_id:
+        return []
+    return [f"Aşama: {aday.asama.ad} → {yeni_asama.ad}."]
+
+
+def _aday_cariye_isaretle(aday, cari, kullanici, *, yeni_asama=None):
     aday.cari = cari
     aday.cariye_donusum_tarihi = timezone.now()
     aday.updated_by = kullanici
-    aday.save(update_fields=["cari", "cariye_donusum_tarihi", "updated_by", "updated_at"])
+    alanlar = ["cari", "cariye_donusum_tarihi", "updated_by", "updated_at"]
+    if yeni_asama is not None and yeni_asama.pk != aday.asama_id:
+        aday.asama = yeni_asama
+        alanlar.append("asama")
+    aday.save(update_fields=alanlar)
 
 
 @transaction.atomic
@@ -292,8 +311,10 @@ def yeni_cari_ac(aday, *, kullanici=None, **cari_alanlar):
     cari = cari_servis.cari_olustur(kullanici=kullanici, **cari_alanlar)
     _yetkilileri_aktar(aday, cari, atlama_kontrolu=False, kullanici=kullanici)
     _aktiviteleri_kopyala(aday, cari, kullanici=kullanici)
-    _not_aktivitesi_ekle(cari, aday, kullanici=kullanici)
-    _aday_cariye_isaretle(aday, cari, kullanici)
+    yeni_asama = _cari_rollu_asama()
+    _not_aktivitesi_ekle(cari, aday, kullanici=kullanici,
+                         ek_satirlar=_asama_degisim_satiri(aday, yeni_asama))
+    _aday_cariye_isaretle(aday, cari, kullanici, yeni_asama=yeni_asama)
     return cari
 
 
@@ -324,6 +345,8 @@ def mevcut_cariye_bagla(aday, cari, *, kullanici=None):
             _ALAN_ETIKET[a] for a in doldurulan if a in _ALAN_ETIKET)
         if etiketler:
             ek_satirlar.append(f"Doldurulan alanlar: {etiketler}.")
+    yeni_asama = _cari_rollu_asama()
+    ek_satirlar += _asama_degisim_satiri(aday, yeni_asama)
     _not_aktivitesi_ekle(cari, aday, kullanici=kullanici, ek_satirlar=ek_satirlar)
-    _aday_cariye_isaretle(aday, cari, kullanici)
+    _aday_cariye_isaretle(aday, cari, kullanici, yeni_asama=yeni_asama)
     return cari

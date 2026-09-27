@@ -20,6 +20,7 @@ from core.models import (
     AdayYetkili, Cari, CariKategori, CariYetkili, EkranYetki, HesapPlani, Sehir, Ulke,
 )
 from core.services import aday_donustur
+from core.services import aday_tanim as tanim_servis
 from core.services.aday import (
     aday_aktivite_ek_ekle, aday_aktivite_ekle, aday_musteri_olustur, aday_yetkili_ekle,
 )
@@ -68,6 +69,10 @@ def _tr():
 
 def _bae():
     return Ulke.objects.get_or_create(kod="AE", defaults={"ad": "BAE"})[0]
+
+
+def _asama(kod):
+    return AdayAsamaTanim.objects.get(sistem_kodu=kod)
 
 
 _TANIM_MODEL = {"tip": AdayTipTanim, "potansiyel": AdayPotansiyelTanim, "asama": AdayAsamaTanim}
@@ -442,6 +447,62 @@ class MevcutCariyeBaglaServisTest(TestCase):
         a.refresh_from_db()
         self.assertEqual(cari.telefon, "")   # geri alındı
         self.assertIsNone(a.cari_id)
+
+
+# --- Cariye dönüşünce otomatik aşama (spec: AdayAsamaTanim.Rol.CARI) --------------------
+class CariyeDonusunceOtomatikAsamaTest(TestCase):
+    """Migration 0138 tohumu 'Sipariş' aşamasını (sistem_kodu=SIPARIS) zaten aktif CARI
+    rolüne aldığı için test DB'sinde varsayılan olarak bir CARI rollü aşama HAZIR bulunur —
+    ayrıca bir tane oluşturmaya gerek yok."""
+
+    def setUp(self):
+        self.yon = User.objects.create_superuser("asamayon", password="x")
+
+    def test_yeni_cari_acinca_asama_cari_rollu_asamaya_gecer(self):
+        cari_asama = _asama("SIPARIS")
+        a = _aday(unvan="omikron ltd", asama="YENI")
+        aday_donustur.yeni_cari_ac(a, unvan=a.unvan, para_birimi="TRY")
+        a.refresh_from_db()
+        self.assertEqual(a.asama_id, cari_asama.pk)
+
+    def test_mevcut_cariye_baglaninca_asama_cari_rollu_asamaya_gecer(self):
+        cari_asama = _asama("SIPARIS")
+        cari = Cari.objects.create(kod="CX1", unvan="OTOMATİK AŞAMA CARİ", para_birimi="TRY")
+        a = _aday(unvan="pi ltd", asama="TEMAS")
+        aday_donustur.mevcut_cariye_bagla(a, cari, kullanici=self.yon)
+        a.refresh_from_db()
+        self.assertEqual(a.asama_id, cari_asama.pk)
+
+    def test_cari_rollu_asama_yoksa_asama_degismez(self):
+        tanim_servis.asama_pasif_yap(_asama("SIPARIS"), aktif=False)
+        a = _aday(unvan="ksi ltd", asama="TEMAS")
+        eski_asama_id = a.asama_id
+        aday_donustur.yeni_cari_ac(a, unvan=a.unvan, para_birimi="TRY")
+        a.refresh_from_db()
+        self.assertEqual(a.asama_id, eski_asama_id)
+
+    def test_asama_zaten_cari_rollu_ise_notta_degisim_satiri_olmaz(self):
+        a = _aday(unvan="omega ltd", asama="SIPARIS")
+        cari = aday_donustur.yeni_cari_ac(a, kullanici=self.yon, unvan=a.unvan, para_birimi="TRY")
+        not_akt = cari.aktiviteler.get(tur="NOT")
+        self.assertNotIn("Aşama:", not_akt.aciklama)
+
+    def test_asama_degisim_not_aktivitesine_yazilir_yeni_cari(self):
+        cari_asama = _asama("SIPARIS")
+        a = _aday(unvan="sigma ltd", asama="TEMAS")
+        eski_ad = a.asama.ad
+        cari = aday_donustur.yeni_cari_ac(a, kullanici=self.yon, unvan=a.unvan, para_birimi="TRY")
+        not_akt = cari.aktiviteler.get(tur="NOT")
+        self.assertIn(f"Aşama: {eski_ad} → {cari_asama.ad}.", not_akt.aciklama)
+
+    def test_asama_degisim_not_aktivitesine_yazilir_mevcut_cariye_bagla(self):
+        cari_asama = _asama("SIPARIS")
+        cari = Cari.objects.create(kod="CX2", unvan="NOT AŞAMA CARİ", para_birimi="TRY")
+        a = _aday(unvan="tau ltd", asama="TEMAS")
+        eski_ad = a.asama.ad
+        aday_donustur.mevcut_cariye_bagla(a, cari, kullanici=self.yon)
+        not_akt = cari.aktiviteler.get(tur="NOT")
+        self.assertIn(f"Aşama: {eski_ad} → {cari_asama.ad}.", not_akt.aciklama)
 
 
 # --- Dönüşmüş adayın davranışı: salt okunur + liste ------------------------------------

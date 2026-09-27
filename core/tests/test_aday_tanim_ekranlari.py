@@ -5,6 +5,13 @@ yeni tanım ekranları + eski /crm/kategoriler/ 301 yönlendirmesi + hiyerarşik
 migration 0132'nin tohum verisi + CharField->FK veri taşıması. Cariye Dönüştür'ün kategori
 önerisi/engeli testleri core/tests/test_aday_cariye_donustur.py'de zaten var (tabloya taşındı,
 burada tekrar edilmez) — burada yalnız "değer TABLODAN geliyor, sabit değil" kanıtı var."""
+import importlib
+import json
+import tempfile
+from pathlib import Path
+from unittest import mock
+
+from django.apps import apps as canli_apps
 from django.contrib.auth.models import User
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -168,6 +175,82 @@ class TanimServisTest(TestCase):
         with self.assertRaises(tanim_servis.AdayTanimHatasi):
             tanim_servis.asama_pasif_yap(_asama("YENI"), aktif=False)
 
+    def test_asama_en_fazla_bir_aktif_cari_olabilir(self):
+        # Migration 0138 tohumu 'Sipariş'i (sistem_kodu=SIPARIS) zaten aktif CARI rolüne
+        # aldığı için, ikinci bir aktif CARI rollü aşama eklemek hemen reddedilmeli.
+        self.assertEqual(_asama("SIPARIS").rol, AdayAsamaTanim.Rol.CARI)
+        with self.assertRaises(tanim_servis.AdayTanimHatasi):
+            tanim_servis.asama_olustur(ad="ikinci cari rolu", rol=AdayAsamaTanim.Rol.CARI)
+
+    def test_cari_rolu_hic_yoksa_serbest(self):
+        # Tek aktif CARI rollü aşama pasif yapılırsa (sıfıra düşerse) yenisi eklenebilir —
+        # spec: 'hiç yoksa dönüşümde aşama değişmez', ALT sınırı yok, yalnız ÜST sınır (1) var.
+        tanim_servis.asama_pasif_yap(_asama("SIPARIS"), aktif=False)
+        yeni = tanim_servis.asama_olustur(ad="yeni cari rolu", rol=AdayAsamaTanim.Rol.CARI)
+        self.assertEqual(yeni.rol, AdayAsamaTanim.Rol.CARI)
+
+
+# --- Migration 0138: Cariye dönüşünce otomatik aşama tohumu (saf DML, bkz. 0137 yalnız
+#     şema) — 0136 ile aynı desen (bkz. test_telefon_normalize.py::Migrasyon0136Test):
+#     _ileri/_geri_al doğrudan canlı apps registry ile çağrılır, gerçek migrate/rollback
+#     gerekmez. Canlıdaki #64/#239 yerine burada oluşturulan iki adayın pk'sı
+#     _TASINACAK_ADAY_PK'ya patch'lenir — üretim pk'larına bağımlı olmayan tekrarlanabilir test.
+class Migrasyon0138Test(TestCase):
+    def _migrasyon(self):
+        return importlib.import_module("core.migrations.0138_cari_donusum_asama_seed")
+
+    def test_seed_ve_aday_tasima_ve_geri_alma(self):
+        migrasyon = self._migrasyon()
+        siparis = _asama("SIPARIS")
+        siparis.rol = "ARA"   # migration ÖNCESİ hali simüle edilir (tohum 0132: SIPARIS/ARA)
+        siparis.save(update_fields=["rol"])
+        eski_asama = _asama("YENI")
+        a1 = _aday(unvan="donusmus aday bir", asama_id=eski_asama.pk)
+        a2 = _aday(unvan="donusmus aday iki", asama_id=eski_asama.pk)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            yedek_yolu = Path(tmp) / "yedek.json"
+            with mock.patch.object(migrasyon, "_YEDEK_YOLU", yedek_yolu), \
+                 mock.patch.object(migrasyon, "_TASINACAK_ADAY_PK", (a1.pk, a2.pk)):
+                migrasyon._ileri(canli_apps, None)
+
+                siparis.refresh_from_db()
+                a1.refresh_from_db()
+                a2.refresh_from_db()
+                self.assertEqual(siparis.rol, "CARI")
+                self.assertEqual(a1.asama_id, siparis.pk)
+                self.assertEqual(a2.asama_id, siparis.pk)
+
+                self.assertTrue(yedek_yolu.exists())
+                yedek = json.loads(yedek_yolu.read_text(encoding="utf-8"))
+                self.assertEqual(yedek["eski_rol"], "ARA")
+                self.assertEqual(yedek["aday_eski_asama"][str(a1.pk)], eski_asama.pk)
+                self.assertEqual(yedek["aday_eski_asama"][str(a2.pk)], eski_asama.pk)
+
+                migrasyon._geri_al(canli_apps, None)
+                siparis.refresh_from_db()
+                a1.refresh_from_db()
+                a2.refresh_from_db()
+                self.assertEqual(siparis.rol, "ARA")
+                self.assertEqual(a1.asama_id, eski_asama.pk)
+                self.assertEqual(a2.asama_id, eski_asama.pk)
+
+    def test_yedek_dosyasi_yoksa_geri_alma_sessizce_atlar(self):
+        migrasyon = self._migrasyon()
+        with tempfile.TemporaryDirectory() as tmp:
+            yedek_yolu = Path(tmp) / "hic-olusmayan.json"
+            with mock.patch.object(migrasyon, "_YEDEK_YOLU", yedek_yolu):
+                migrasyon._geri_al(canli_apps, None)   # hata fırlatmamalı
+
+    def test_siparis_bulunamazsa_sessizce_atlar(self):
+        migrasyon = self._migrasyon()
+        AdayAsamaTanim.objects.filter(sistem_kodu="SIPARIS").update(silindi=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            yedek_yolu = Path(tmp) / "yedek.json"
+            with mock.patch.object(migrasyon, "_YEDEK_YOLU", yedek_yolu):
+                migrasyon._ileri(canli_apps, None)   # hata fırlatmamalı
+                self.assertFalse(yedek_yolu.exists())
+
 
 # --- Kategori önerisi TABLODAN gelir (sabit kod değil) ------------------------------------
 class KategoriOnerisiTablodanGelirTest(TestCase):
@@ -268,6 +351,16 @@ class TanimEkranYetkiTest(TestCase):
         r = self.client.post(reverse("core:aday_asamasi_sil", args=[_asama("YENI").pk]))
         self.assertRedirects(r, reverse("core:aday_asamalari"))
         self.assertTrue(AdayAsamaTanim.objects.filter(pk=_asama("YENI").pk, silindi=False).exists())
+
+    def test_asamalar_listesinde_cari_rolu_etiketi_gorunur(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:aday_asamalari"))
+        self.assertContains(r, "Cari olunca")
+
+    def test_asama_form_secenekleri_cari_rolunu_icerir(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:aday_asamasi_ekle"))
+        self.assertContains(r, '<option value="CARI">Cari olunca</option>', html=True)
 
 
 # --- Eski /crm/kategoriler/ -> /crm/kaynaklar/ 301 + eski GET parametreleri ---------------

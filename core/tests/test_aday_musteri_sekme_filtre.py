@@ -109,6 +109,20 @@ class SekmeKurallariTest(_Taban):
         self.assertContains(r, "HERHANGİ FİRMA")
         self.assertEqual(_sekme(r, "tumu")["sayi"], 1)
 
+    def test_cari_rollu_asamaya_elle_alinan_donusmemis_aday_takip_sicak_temasyoktan_duser(self):
+        # Migration 0138 tohumu 'Sipariş'i CARI rolüne aldı — elle bu aşamaya alınmış ama
+        # HENÜZ cariye dönüşmemiş (cari_id boş) bir aday da Takibim/Sıcak/Temas yok'tan
+        # düşmeli (KAPALI gibi), ama Kapalı sekmesine de girmemeli; Tümü'nde görünmeye
+        # devam etmeli (spec: hızlı işlemler/otomatik aşama, CARI rolü KAPALI gibi davranmaz).
+        a = aday_musteri_olustur(unvan="cari rolu ama donusmedi", asama=AdayAsama.SIPARIS,
+                                 sonraki_adim="x", sonraki_adim_tarihi=tr_bugun(),
+                                 potansiyel=AdayPotansiyel.YUKSEK)
+        for gorunum in ("takip", "sicak", "temas_yok", "kapali"):
+            r = self._get(gorunum=gorunum)
+            self.assertNotContains(r, a.unvan)
+        r_tumu = self._get(gorunum="tumu")
+        self.assertContains(r_tumu, a.unvan)
+
 
 # --- 2. Sekme sayıları filtre uygulanmış halde hesaplanır -----------------------------
 class SekmeSayilariFiltreliTest(_Taban):

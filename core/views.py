@@ -4587,13 +4587,17 @@ def _aday_tab_q(gorunum, bugun):
     değiller); Kapalı ve Tümü'nde görünmeye devam ederler (spec: Cariye Dönüştür yeniden
     yazılması, madde 4). Sıcak/Temas yok/Kapalı artık AdayPotansiyelTanim.sicak ve
     AdayAsamaTanim.rol'den okunur (bkz. CRM > Tipler/Potansiyeller/Aşamalar — spec: 'Kategori'
-    → 'Kaynak' + tanım ekranları)."""
+    → 'Kaynak' + tanım ekranları). CARI rollü aşama KAPALI gibi davranmaz (Kapalı sekmesine
+    girmez) ama Takibim/Sıcak/Temas yok'a da girmez — elle bu aşamaya alınmış, henüz
+    dönüşmemiş bir aday da (cari__isnull=True) düşsün (spec: hızlı işlemler/otomatik aşama)."""
     if gorunum == "takip":
         return (Q(sonraki_adim_tarihi__isnull=False)
                 & Q(sonraki_adim_tarihi__lte=bugun + datetime.timedelta(days=7))
-                & ~Q(asama__rol=AdayAsamaTanim.Rol.KAPALI) & Q(cari__isnull=True))
+                & ~Q(asama__rol__in=(AdayAsamaTanim.Rol.KAPALI, AdayAsamaTanim.Rol.CARI))
+                & Q(cari__isnull=True))
     if gorunum == "sicak":
-        return (Q(potansiyel__sicak=True) & ~Q(asama__rol=AdayAsamaTanim.Rol.KAPALI)
+        return (Q(potansiyel__sicak=True)
+                & ~Q(asama__rol__in=(AdayAsamaTanim.Rol.KAPALI, AdayAsamaTanim.Rol.CARI))
                 & Q(cari__isnull=True))
     if gorunum == "temas_yok":
         return Q(asama__rol=AdayAsamaTanim.Rol.BASLANGIC) & Q(cari__isnull=True)
