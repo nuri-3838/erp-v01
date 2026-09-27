@@ -68,9 +68,15 @@ class Migrasyon0132Test(TransactionTestCase):
         eski_b = AdayMusteriEski.objects.create(
             unvan="ESKİ BOŞ POTANSİYEL", tip="ADAY", asama="KAPALI", potansiyel="",
             kapanis_nedeni="DIGER", para_birimi="TRY")
+        # Canlıda ~500 satırla "pending trigger events" hatası veren senaryoyu (bkz. 0132/0133
+        # dosya başı notları) gerçekten tetikleyip düzeltmeyi doğrulamak için TOPLU satır.
+        AdayMusteriEski.objects.bulk_create([
+            AdayMusteriEski(unvan=f"YIGIN FİRMA {i}", tip="ADAY", asama="YENI",
+                            potansiyel="", para_birimi="TRY")
+            for i in range(150)])
 
         executor = MigrationExecutor(connection)
-        executor.migrate([("core", "0132_aday_tip_potansiyel_asama_tanim")])
+        executor.migrate([("core", "0133_aday_tip_potansiyel_asama_finalize")])
         executor.loader.build_graph()
 
         # Tohum verisi: sayı + sistem_kodu + sira + rol/sicak (spec tablosu)
