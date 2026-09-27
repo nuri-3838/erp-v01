@@ -61,6 +61,9 @@
     <div>
       <div class="detay-rozetler">
         {% if aday.kategori %}<span class="d-rozet kod">{{ aday.kategori.ad }}</span>{% endif %}
+        <span class="d-rozet pb">{{ aday.get_tip_display }}</span>
+        <span class="d-rozet pb">{{ aday.get_asama_display }}{% if aday.asama == "KAPALI" %} — {{ aday.get_kapanis_nedeni_display }}{% endif %}</span>
+        {% if aday.potansiyel %}<span class="d-rozet pb">Potansiyel: {{ aday.get_potansiyel_display }}</span>{% endif %}
         <span class="d-rozet pb">{{ aday.para_birimi }}</span>
         {% if aday.iskonto_yuzdesi %}<span class="d-rozet pb">%{{ aday.iskonto_yuzdesi|tr_kur:2 }} iskonto</span>{% endif %}
       </div>
@@ -79,6 +82,9 @@
       <div class="satir"><span class="et">E-posta 2</span><span class="dg">{{ aday.eposta_2|default:"—" }}</span></div>
       <div class="satir"><span class="et">Ülke / Şehir</span><span class="dg">{% if aday.ulke %}{{ aday.ulke.ad }}{% if aday.sehir %} / {{ aday.sehir.ad }}{% endif %}{% else %}—{% endif %}</span></div>
       <div class="satir"><span class="et">Kategori</span><span class="dg">{{ aday.kategori.ad|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Tip</span><span class="dg">{{ aday.get_tip_display }}</span></div>
+      <div class="satir"><span class="et">Potansiyel</span><span class="dg">{{ aday.get_potansiyel_display|default:"Belirlenmedi" }}</span></div>
+      <div class="satir"><span class="et">Aşama</span><span class="dg">{{ aday.get_asama_display }}</span></div>
       <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg">%{{ aday.iskonto_yuzdesi|tr_kur:2 }}</span></div>
     </div>
   </section>

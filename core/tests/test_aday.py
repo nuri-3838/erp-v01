@@ -305,6 +305,7 @@ class AdayMusteriViewTest(TestCase):
         r = self.client.post(reverse("core:aday_musteri_ekle"), {
             "unvan": "yeni aday", "telefon": "0212 111 11 11", "telefon_2": "0533 222 22 22",
             "eposta": "a@x.com", "eposta_2": "b@x.com",
+            "tip": "ADAY", "asama": "YENI",
             "para_birimi": "TRY", "iskonto_yuzdesi": "0"})
         self.assertEqual(r.status_code, 302)
         a = AdayMusteri.objects.get(unvan="YENİ ADAY")
@@ -321,7 +322,8 @@ class AdayMusteriViewTest(TestCase):
         a = aday_musteri_olustur(unvan="eski ad")
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:aday_musteri_duzenle", args=[a.pk]), {
-            "unvan": "yeni ad", "para_birimi": "USD", "iskonto_yuzdesi": "7,5"})
+            "unvan": "yeni ad", "tip": "ADAY", "asama": "YENI",
+            "para_birimi": "USD", "iskonto_yuzdesi": "7,5"})
         self.assertEqual(r.status_code, 302)
         a.refresh_from_db()
         self.assertEqual((a.unvan, a.para_birimi, a.iskonto_yuzdesi),

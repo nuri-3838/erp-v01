@@ -16,8 +16,9 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    AdayAktivite, AdayMusteri, AdayMusteriKategori, Banka, BankaHesap, Birim, Cari,
-    CariAktivite, CariKategori,
+    AdayAktivite, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel, AdayTip, Banka,
+    BankaHesap, Birim, Cari,
+    CariAktivite, CariKategori, KapanisNedeni,
     CekSenet, Depo, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
     PersonelIzin, Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
@@ -575,6 +576,14 @@ class AdayMusteriForm(forms.Form):
     kategori = forms.ModelChoiceField(
         label="Kategori", queryset=AdayMusteriKategori.objects.none(),
         required=False, empty_label="— kategori seç —")
+    tip = forms.ChoiceField(label="Tip", choices=AdayTip.choices, initial=AdayTip.ADAY)
+    potansiyel = forms.ChoiceField(
+        label="Potansiyel",
+        choices=[("", "— belirlenmedi —")] + list(AdayPotansiyel.choices), required=False)
+    asama = forms.ChoiceField(label="Aşama", choices=AdayAsama.choices, initial=AdayAsama.YENI)
+    kapanis_nedeni = forms.ChoiceField(
+        label="Kapanış Nedeni",
+        choices=[("", "— seçin —")] + list(KapanisNedeni.choices), required=False)
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=AdayMusteri.PARA_CHOICES,
                                     initial="TRY")
     iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
@@ -591,6 +600,15 @@ class AdayMusteriForm(forms.Form):
         self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
         for f in ("ulke", "sehir", "kategori"):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("asama") == AdayAsama.KAPALI:
+            if not cleaned.get("kapanis_nedeni"):
+                self.add_error("kapanis_nedeni", "Aşama Kapalı iken kapanış nedeni zorunlu.")
+        else:
+            cleaned["kapanis_nedeni"] = ""
+        return cleaned
 
 
 class AdayAktiviteForm(forms.Form):

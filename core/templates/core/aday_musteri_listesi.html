@@ -107,9 +107,37 @@
         {% endfor %}
       </select>
     </div>
+    <div class="ad-alan-grup">
+      <label for="ad-tip">Tip</label>
+      <select id="ad-tip" name="tip" onchange="this.form.submit()">
+        <option value="">Tüm Tipler</option>
+        {% for deger, etiket in tip_secenekleri %}
+          <option value="{{ deger }}" {% if secili_tip == deger %}selected{% endif %}>{{ etiket }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ad-alan-grup">
+      <label for="ad-potansiyel">Potansiyel</label>
+      <select id="ad-potansiyel" name="potansiyel" onchange="this.form.submit()">
+        <option value="">Tüm Potansiyeller</option>
+        <option value="BOS" {% if secili_potansiyel == "BOS" %}selected{% endif %}>Belirlenmedi</option>
+        {% for deger, etiket in potansiyel_secenekleri %}
+          <option value="{{ deger }}" {% if secili_potansiyel == deger %}selected{% endif %}>{{ etiket }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ad-alan-grup">
+      <label for="ad-asama">Aşama</label>
+      <select id="ad-asama" name="asama" onchange="this.form.submit()">
+        <option value="">Tüm Aşamalar</option>
+        {% for deger, etiket in asama_secenekleri %}
+          <option value="{{ deger }}" {% if secili_asama == deger %}selected{% endif %}>{{ etiket }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="ad-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
-      <a class="iptal-bag ad-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke %} gorunur{% endif %}" href="?">Temizle</a>
+      <a class="iptal-bag ad-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama %} gorunur{% endif %}" href="?">Temizle</a>
     </div>
   </form>
 </div>
@@ -120,6 +148,9 @@
     {% if secili_kategori %}<input type="hidden" name="kategori" value="{{ secili_kategori }}">{% endif %}
     {% if secili_sehir %}<input type="hidden" name="sehir" value="{{ secili_sehir }}">{% endif %}
     {% if secili_ulke %}<input type="hidden" name="ulke" value="{{ secili_ulke }}">{% endif %}
+    {% if secili_tip %}<input type="hidden" name="tip" value="{{ secili_tip }}">{% endif %}
+    {% if secili_potansiyel %}<input type="hidden" name="potansiyel" value="{{ secili_potansiyel }}">{% endif %}
+    {% if secili_asama %}<input type="hidden" name="asama" value="{{ secili_asama }}">{% endif %}
     {% if ara %}<input type="hidden" name="ara" value="{{ ara }}">{% endif %}
     <label for="ad-boyut">Sayfa başına</label>
     <select id="ad-boyut" name="boyut" onchange="this.form.submit()">
@@ -142,6 +173,10 @@
             <div>
               <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a></div>
               {% if a.ilgili_kisi %}<div class="alt">{{ a.ilgili_kisi }}</div>{% endif %}
+              <div class="alt">
+                <span class="rozet rozet-notr">{{ a.get_tip_display }}</span>
+                <span class="rozet rozet-notr">{{ a.get_asama_display }}</span>
+              </div>
             </div>
           </div>
         </td>
@@ -151,7 +186,7 @@
       </tr>
     {% empty %}
       <tr style="cursor:default"><td colspan="4" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or secili_kategori or secili_sehir or secili_ulke %}🔍 Bu süzgeçle eşleşen kayıt yok.
+        {% if ara or secili_kategori or secili_sehir or secili_ulke or secili_tip or secili_potansiyel or secili_asama %}🔍 Bu süzgeçle eşleşen kayıt yok.
         {% else %}🧲 Henüz aday müşteri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
   </tbody>

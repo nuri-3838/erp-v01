@@ -29,6 +29,10 @@
         <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
         <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
         <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div></div>
+        <div class="alan"><label for="{{ form.tip.id_for_label }}">{{ form.tip.label }}</label>{{ form.tip }}</div>
+        <div class="alan"><label for="{{ form.potansiyel.id_for_label }}">{{ form.potansiyel.label }}</label>{{ form.potansiyel }}</div>
+        <div class="alan"><label for="{{ form.asama.id_for_label }}">{{ form.asama.label }}</label>{{ form.asama }}</div>
+        <div class="alan" id="ad-kapanis-nedeni-alan"><label for="{{ form.kapanis_nedeni.id_for_label }}">{{ form.kapanis_nedeni.label }}</label>{{ form.kapanis_nedeni }}{% for e in form.kapanis_nedeni.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
       </div>
     </section>
 
@@ -46,4 +50,18 @@
     </div>
   </form>
 </div>
+<style>
+  #ad-kapanis-nedeni-alan.gizli { display:none; }
+</style>
+<script>
+  (function () {
+    var asamaSecim = document.getElementById('{{ form.asama.id_for_label }}');
+    var kapanisAlan = document.getElementById('ad-kapanis-nedeni-alan');
+    function uygula() {
+      kapanisAlan.classList.toggle('gizli', asamaSecim.value !== 'KAPALI');
+    }
+    asamaSecim.addEventListener('change', uygula);
+    uygula();
+  })();
+</script>
 {% endblock %}

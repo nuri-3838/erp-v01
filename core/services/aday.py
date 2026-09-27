@@ -18,8 +18,8 @@ from django.utils import timezone
 from core import gorsel
 from core.metin import buyuk_harf_tr
 from core.models import (
-    AdayAktivite, AdayAktiviteEk, AdayMusteri, AdayMusteriKategori, Cari, CariAktivite,
-    CariAktiviteEk, Sehir, Ulke,
+    AdayAktivite, AdayAktiviteEk, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel,
+    AdayTip, Cari, CariAktivite, CariAktiviteEk, KapanisNedeni, Sehir, Ulke,
 )
 from core.sayi import SayiHatasi, parse_tr
 from core.services import cari as cari_servis
@@ -79,12 +79,24 @@ def _para_dogrula(deger, etiket):
 
 def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", eposta_2="",
             ulke_id=None, sehir_id=None, kategori_id=None, para_birimi="TRY",
-            iskonto_yuzdesi=0):
+            iskonto_yuzdesi=0, tip=AdayTip.ADAY, potansiyel="", asama=AdayAsama.YENI,
+            kapanis_nedeni=""):
     unvan = buyuk_harf_tr((unvan or "").strip())
     if not unvan:
         raise AdayHatasi("Unvan boş olamaz.")
     if para_birimi not in dict(AdayMusteri.PARA_CHOICES):
         raise AdayHatasi("Geçersiz para birimi.")
+    if tip not in AdayTip.values:
+        raise AdayHatasi("Geçersiz tip.")
+    if potansiyel and potansiyel not in AdayPotansiyel.values:
+        raise AdayHatasi("Geçersiz potansiyel.")
+    if asama not in AdayAsama.values:
+        raise AdayHatasi("Geçersiz aşama.")
+    if asama == AdayAsama.KAPALI:
+        if not kapanis_nedeni or kapanis_nedeni not in KapanisNedeni.values:
+            raise AdayHatasi("Aşama Kapalı iken kapanış nedeni zorunlu.")
+    else:
+        kapanis_nedeni = ""
     return dict(
         unvan=unvan,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
@@ -93,6 +105,7 @@ def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", epos
         ulke=_ulke(ulke_id), sehir=_sehir(sehir_id), kategori=_kategori(kategori_id),
         para_birimi=para_birimi,
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
+        tip=tip, potansiyel=potansiyel, asama=asama, kapanis_nedeni=kapanis_nedeni,
     )
 
 

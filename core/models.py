@@ -961,6 +961,41 @@ class CariAktiviteEk(TemelModel):
         return self.dosya.name.lower().endswith(".webp")
 
 
+class AdayTip(models.TextChoices):
+    ESKI_MUSTERI = "ESKI_MUSTERI", "Eski müşteri (Çakmak)"
+    ADAY = "ADAY", "Aday"
+    ARACI = "ARACI", "Aracı / Komisyoncu"
+    LOJISTIK = "LOJISTIK", "Lojistik / Nakliye"
+    GUMRUK = "GUMRUK", "Gümrük müşaviri"
+    TEDARIKCI = "TEDARIKCI", "Tedarikçi"
+    RAKIP = "RAKIP", "Rakip"
+    PAZAR_BILGISI = "PAZAR_BILGISI", "Pazar bilgisi (firma değil)"
+
+
+class AdayPotansiyel(models.TextChoices):
+    DUSUK = "DUSUK", "Düşük"
+    ORTA = "ORTA", "Orta"
+    YUKSEK = "YUKSEK", "Yüksek"
+
+
+class AdayAsama(models.TextChoices):
+    YENI = "YENI", "Yeni"
+    TEMAS = "TEMAS", "Temas kuruldu"
+    ILGILI = "ILGILI", "İlgileniyor"
+    TEKLIF = "TEKLIF", "Teklif verildi"
+    NUMUNE = "NUMUNE", "Numune"
+    SIPARIS = "SIPARIS", "Sipariş"
+    KAPALI = "KAPALI", "Kapalı"
+
+
+class KapanisNedeni(models.TextChoices):
+    ULASILAMIYOR = "ULASILAMIYOR", "Ulaşılamıyor"
+    ILGISIZ = "ILGISIZ", "İlgilenmiyor"
+    RAKIP = "RAKIP", "Rakiple çalışıyor"
+    KAPANMIS = "KAPANMIS", "Firma kapanmış"
+    DIGER = "DIGER", "Diğer"
+
+
 class AdayMusteri(TemelModel):
     """CRM: henüz Cari olmamış potansiyel müşteri. Kasıtlı olarak Cari'den ayrı ve HAFİF —
     Cari.kaydı açılınca otomatik muhasebe hesabı açılır (bkz. cari_servis.muhasebe_hesabi_ac),
@@ -986,6 +1021,14 @@ class AdayMusteri(TemelModel):
     kategori = models.ForeignKey(
         "AdayMusteriKategori", verbose_name="kategori", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
+    tip = models.CharField("tip", max_length=20, choices=AdayTip.choices,
+                           default=AdayTip.ADAY, db_index=True)
+    potansiyel = models.CharField("potansiyel", max_length=10, choices=AdayPotansiyel.choices,
+                                  blank=True, default="", db_index=True)
+    asama = models.CharField("aşama", max_length=10, choices=AdayAsama.choices,
+                             default=AdayAsama.YENI, db_index=True)
+    kapanis_nedeni = models.CharField("kapanış nedeni", max_length=20,
+                                      choices=KapanisNedeni.choices, blank=True, default="")
     para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES,
                                    default="TRY")
     iskonto_yuzdesi = models.DecimalField(
