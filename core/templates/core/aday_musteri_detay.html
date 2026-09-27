@@ -21,13 +21,52 @@
   .d-rozet.pb { background:rgba(255,255,255,.16); color:#dbe6ff; }
   .detay-ad { font-size:1.5rem; font-weight:750; margin:.05rem 0; letter-spacing:-.01em; line-height:1.2; }
   .detay-alt { color:rgba(255,255,255,.82); font-size:.92rem; }
+  .d-rozet.takip { background:#c62828; color:#fff; }
+
+  /* --- Sonraki adım banner: aciliyete göre renk --- */
+  .sonraki-bandi { display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; padding:.85rem 1.1rem;
+    border-radius:16px; font-size:.92rem; }
+  .sonraki-bandi .etiket { font-weight:700; }
+  .sonraki-bandi .tarih { font-family:"Cascadia Mono",Consolas,monospace; font-weight:800; }
+  .sonraki-bandi.gecmis { background:rgba(211,47,47,.1); border:1px solid rgba(211,47,47,.28); color:#c62828; }
+  .sonraki-bandi.bugun { background:rgba(240,124,0,.1); border:1px solid rgba(240,124,0,.28); color:var(--turuncu-koyu); }
+  .sonraki-bandi.ileri { background:rgba(33,56,95,.06); border:1px solid rgba(33,56,95,.16); color:var(--metin); }
+  .ad-cari-bandi { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; padding:.85rem 1.1rem;
+    border-radius:16px; background:rgba(10,125,40,.1); border:1px solid rgba(10,125,40,.25);
+    color:var(--ok); font-weight:700; }
+  .ad-cari-bandi a { color:var(--ok); }
+
+  /* --- Bilgi kartı (İletişim) --- */
   .kv { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem 1.6rem; }
   @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
-  .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
+  .kv .satir { display:flex; flex-direction:column; gap:.2rem; }
   .kv .satir.tam { grid-column:1 / -1; }
   .kv .et { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
   .kv .dg { font-weight:600; font-size:.98rem; white-space:pre-line; }
-  .akt-satir { border:1px solid var(--cizgi); border-radius:14px; padding:.85rem 1rem; margin-bottom:.8rem; }
+  .kv .dg.soluk { font-weight:500; color:var(--metin-soluk); }
+  .wa-cip { display:inline-flex; align-items:center; gap:.3rem; margin-left:.4rem; padding:.1rem .55rem;
+    border-radius:999px; background:rgba(10,125,40,.1); color:#0a7d28; font-size:.76rem; font-weight:700;
+    text-decoration:none; vertical-align:middle; }
+  .wa-cip:hover { background:rgba(10,125,40,.18); }
+  .wa-eksik { display:inline-flex; align-items:center; gap:.3rem; margin-left:.4rem; padding:.1rem .55rem;
+    border-radius:999px; background:rgba(91,102,120,.1); color:var(--metin-soluk); font-size:.76rem; font-weight:600; }
+  .ad-eposta-gecersiz { text-decoration:line-through; color:var(--metin-soluk); }
+
+  /* --- Aktiviteler: zaman çizgisi --- */
+  .akt-liste { position:relative; padding-left:1.9rem; }
+  .akt-liste::before { content:""; position:absolute; left:.46rem; top:.3rem; bottom:.3rem; width:2px;
+    background:var(--cizgi); }
+  .akt-oge { position:relative; margin-bottom:.9rem; }
+  .akt-oge:last-child { margin-bottom:0; }
+  .akt-nokta { position:absolute; left:-1.9rem; top:.3rem; width:.85rem; height:.85rem; border-radius:50%;
+    background:var(--metin-soluk); box-shadow:0 0 0 3px #fff; }
+  .akt-nokta-GORUSME { background:#1d5fa8; }
+  .akt-nokta-TELEFON { background:#0a7d28; }
+  .akt-nokta-TOPLANTI { background:#7b2fb5; }
+  .akt-nokta-EPOSTA { background:var(--turuncu); }
+  .akt-nokta-WHATSAPP { background:#25d366; }
+  .akt-nokta-NOT { background:#5b6678; }
+  .akt-kart { border:1px solid var(--cizgi); border-radius:14px; padding:.85rem 1rem; }
   .akt-ust { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
   .akt-tarih { font-weight:700; font-family:"Cascadia Mono",Consolas,monospace; font-size:.88rem; }
   .akt-aciklama { margin:.55rem 0 0; white-space:pre-line; }
@@ -40,12 +79,6 @@
   .ad-takip-gecmis { color:#c62828; }
   .ad-takip-bugun { color:var(--turuncu-koyu); }
   .ad-takip-ileri { color:var(--metin); }
-  .ad-eposta-gecersiz { text-decoration:line-through; color:var(--metin-soluk); }
-  .d-rozet.takip { background:#c62828; color:#fff; }
-  .ad-cari-bandi { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; padding:.85rem 1.1rem;
-    border-radius:16px; background:rgba(10,125,40,.1); border:1px solid rgba(10,125,40,.25);
-    color:var(--ok); font-weight:700; }
-  .ad-cari-bandi a { color:var(--ok); }
 </style>
 
 <div class="detay-kapsa">
@@ -87,18 +120,27 @@
     </div>
   </div>
 
+  {% if aday.sonraki_adim_tarihi or aday.sonraki_adim %}
+    <div class="sonraki-bandi {{ aday.takip_durum }}">
+      <span>📅</span>
+      <span class="etiket">Sonraki adım:</span>
+      {% if aday.sonraki_adim_tarihi %}<span class="tarih">{{ aday.sonraki_adim_tarihi|date:"d.m.Y" }}</span>{% endif %}
+      {% if aday.sonraki_adim %}<span>{% if aday.sonraki_adim_tarihi %}—{% endif %} {{ aday.sonraki_adim }}</span>{% endif %}
+    </div>
+  {% endif %}
+
   <section class="icerik-kart">
-    <h2 class="bolum-baslik">Bilgiler</h2>
+    <h2 class="bolum-baslik"><span class="emoji">📇</span>İletişim Bilgileri</h2>
     <div class="kv">
       <div class="satir"><span class="et">İlgili Kişi</span><span class="dg">{{ aday.ilgili_kisi|default:"—" }}</span></div>
       <div class="satir"><span class="et">Telefon</span><span class="dg">{{ aday.telefon|default:"—" }}
         {% if aday.telefon_whatsapp %}{% with link=aday.telefon|wa_link %}
-          {% if link %}<a href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="yardim">🟢 Ülke kodu eksik</span>{% endif %}
+          {% if link %}<a class="wa-cip" href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="wa-eksik">🟢 Ülke kodu eksik</span>{% endif %}
         {% endwith %}{% endif %}
       </span></div>
       <div class="satir"><span class="et">Telefon 2</span><span class="dg">{{ aday.telefon_2|default:"—" }}
         {% if aday.telefon_2_whatsapp %}{% with link=aday.telefon_2|wa_link %}
-          {% if link %}<a href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="yardim">🟢 Ülke kodu eksik</span>{% endif %}
+          {% if link %}<a class="wa-cip" href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="wa-eksik">🟢 Ülke kodu eksik</span>{% endif %}
         {% endwith %}{% endif %}
       </span></div>
       <div class="satir"><span class="et">E-posta</span><span class="dg">
@@ -109,13 +151,8 @@
       </span></div>
       <div class="satir"><span class="et">Web</span><span class="dg">{% if aday.web %}<a href="{{ aday.web }}" target="_blank">{{ aday.web }}</a>{% else %}—{% endif %}</span></div>
       <div class="satir"><span class="et">Ülke / Şehir</span><span class="dg">{% if aday.ulke %}{{ aday.ulke.ad }}{% if aday.sehir %} / {{ aday.sehir.ad }}{% endif %}{% else %}—{% endif %}</span></div>
+      <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg{% if not aday.iskonto_yuzdesi %} soluk{% endif %}">%{{ aday.iskonto_yuzdesi|tr_kur:2 }}</span></div>
       <div class="satir tam"><span class="et">Adres</span><span class="dg">{{ aday.adres|default:"—" }}</span></div>
-      <div class="satir"><span class="et">Kaynak</span><span class="dg">{{ aday.kategori.ad|default:"—" }}</span></div>
-      <div class="satir"><span class="et">Tip</span><span class="dg">{{ aday.tip.ad }}</span></div>
-      <div class="satir"><span class="et">Potansiyel</span><span class="dg">{{ aday.potansiyel.ad|default:"Belirlenmedi" }}</span></div>
-      <div class="satir"><span class="et">Aşama</span><span class="dg">{{ aday.asama.ad }}</span></div>
-      <div class="satir tam"><span class="et">Sonraki Adım</span><span class="dg">{% if aday.sonraki_adim_tarihi %}<span class="ad-takip-{{ aday.takip_durum }}">{{ aday.sonraki_adim_tarihi|date:"d.m.Y" }}</span> — {% endif %}{{ aday.sonraki_adim|default:"—" }}</span></div>
-      <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg">%{{ aday.iskonto_yuzdesi|tr_kur:2 }}</span></div>
     </div>
   </section>
 
@@ -128,35 +165,42 @@
       <h2 class="bolum-baslik"><span class="emoji">🗓️</span>Aktiviteler</h2>
       {% if not aday.cari_id %}<a class="dugme" href="{% url 'core:aday_aktivite_ekle' aday.pk %}">+ Aktivite Ekle</a>{% endif %}
     </div>
-    {% for a in aktiviteler %}
-      <div class="akt-satir">
-        <div class="akt-ust">
-          <span class="akt-tarih">{{ a.tarih|date:"d.m.Y" }}</span>
-          <span class="rozet rozet-notr">{% if a.tur == "WHATSAPP" %}🟢 {% endif %}{{ a.get_tur_display }}</span>
-          {% if not aday.cari_id %}
-            <span class="islem-bag" style="margin-left:auto">
-              <a href="{% url 'core:aday_aktivite_duzenle' a.pk %}">Düzenle</a>
-              <form method="post" action="{% url 'core:aday_aktivite_sil' a.pk %}" onsubmit="return confirm('Aktivite silinsin mi?');">
-                {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-            </span>
-          {% endif %}
-        </div>
-        <p class="akt-aciklama">{{ a.aciklama }}</p>
-        {% if a.ekler.all %}
-          <div class="akt-ek-galeri">
-            {% for ek in a.ekler.all %}
-              <a href="{% url 'core:aday_ek_indir' ek.pk %}" target="_blank" class="akt-ek-onizleme" title="{{ ek.orijinal_ad }}">
-                {% if ek.resim_mi %}<img src="{% url 'core:aday_ek_indir' ek.pk %}" alt="">
-                {% else %}<span class="pdf-ikon">📄</span>{% endif %}
-              </a>
-            {% endfor %}
+    {% if aktiviteler %}
+      <div class="akt-liste">
+        {% for a in aktiviteler %}
+          <div class="akt-oge">
+            <span class="akt-nokta akt-nokta-{{ a.tur }}"></span>
+            <div class="akt-kart">
+              <div class="akt-ust">
+                <span class="akt-tarih">{{ a.tarih|date:"d.m.Y" }}</span>
+                <span class="rozet rozet-notr">{% if a.tur == "WHATSAPP" %}🟢 {% endif %}{{ a.get_tur_display }}</span>
+                {% if not aday.cari_id %}
+                  <span class="islem-bag" style="margin-left:auto">
+                    <a href="{% url 'core:aday_aktivite_duzenle' a.pk %}">Düzenle</a>
+                    <form method="post" action="{% url 'core:aday_aktivite_sil' a.pk %}" onsubmit="return confirm('Aktivite silinsin mi?');">
+                      {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+                  </span>
+                {% endif %}
+              </div>
+              <p class="akt-aciklama">{{ a.aciklama }}</p>
+              {% if a.ekler.all %}
+                <div class="akt-ek-galeri">
+                  {% for ek in a.ekler.all %}
+                    <a href="{% url 'core:aday_ek_indir' ek.pk %}" target="_blank" class="akt-ek-onizleme" title="{{ ek.orijinal_ad }}">
+                      {% if ek.resim_mi %}<img src="{% url 'core:aday_ek_indir' ek.pk %}" alt="">
+                      {% else %}<span class="pdf-ikon">📄</span>{% endif %}
+                    </a>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              <div class="akt-alt">{% if a.created_by %}{{ a.created_by.get_full_name|default:a.created_by.username }} ·{% endif %} {{ a.created_at|date:"d.m.Y H:i" }}</div>
+            </div>
           </div>
-        {% endif %}
-        <div class="akt-alt">{% if a.created_by %}{{ a.created_by.get_full_name|default:a.created_by.username }} ·{% endif %} {{ a.created_at|date:"d.m.Y H:i" }}</div>
+        {% endfor %}
       </div>
-    {% empty %}
+    {% else %}
       <p class="yardim">Henüz aktivite yok. “+ Aktivite Ekle” ile ilk görüşme/temas kaydını girin.</p>
-    {% endfor %}
+    {% endif %}
   </section>
 </div>
 {% endblock %}
