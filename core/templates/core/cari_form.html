@@ -4,6 +4,11 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
+<style>
+  .ad-inline-checkbox { display:inline-flex; align-items:center; gap:.35rem; font-size:.8rem;
+    font-weight:600; color:var(--metin-soluk); margin-top:.4rem; cursor:pointer; }
+  .ad-inline-checkbox input { width:auto; }
+</style>
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:cariler' %}">← Cariler</a>
@@ -46,8 +51,12 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">📞</span>İletişim</h2>
       <div class="izgara">
-        <div class="alan"><label for="{{ form.telefon.id_for_label }}">{{ form.telefon.label }}</label>{{ form.telefon }}</div>
-        <div class="alan"><label for="{{ form.telefon_2.id_for_label }}">{{ form.telefon_2.label }}</label>{{ form.telefon_2 }}</div>
+        <div class="alan"><label for="{{ form.telefon.id_for_label }}">{{ form.telefon.label }}</label>{{ form.telefon }}
+          <label class="ad-inline-checkbox" for="{{ form.telefon_whatsapp.id_for_label }}">{{ form.telefon_whatsapp }} {{ form.telefon_whatsapp.label }}</label>
+        </div>
+        <div class="alan"><label for="{{ form.telefon_2.id_for_label }}">{{ form.telefon_2.label }}</label>{{ form.telefon_2 }}
+          <label class="ad-inline-checkbox" for="{{ form.telefon_2_whatsapp.id_for_label }}">{{ form.telefon_2_whatsapp }} {{ form.telefon_2_whatsapp.label }}</label>
+        </div>
         <div class="alan"><label for="{{ form.eposta.id_for_label }}">{{ form.eposta.label }}</label>{{ form.eposta }}{% for e in form.eposta.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.web.id_for_label }}">{{ form.web.label }}</label>{{ form.web }}{% for e in form.web.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.ilgili_kisi.id_for_label }}">{{ form.ilgili_kisi.label }}</label>{{ form.ilgili_kisi }}</div>

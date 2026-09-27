@@ -23,6 +23,7 @@ from django.views.decorators.cache import never_cache
 
 from core.forms import (
     AdayAktiviteForm, AdayCariyeDonusturForm, AdayMusteriForm, AdayMusteriKategoriForm,
+    AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
@@ -43,7 +44,7 @@ from core.forms import (
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel,
-    AdayTip,
+    AdayTip, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
@@ -1383,7 +1384,9 @@ def _cari_form_kw(cd):
     return dict(
         unvan=cd["unvan"], kategori_id=g(cd["kategori"]), kisa_ad=cd["kisa_ad"],
         vergi_dairesi=cd["vergi_dairesi"], vkn_tckn=cd["vkn_tckn"], tax_id=cd["tax_id"],
-        telefon=cd["telefon"], telefon_2=cd["telefon_2"], eposta=cd["eposta"],
+        telefon=cd["telefon"], telefon_whatsapp=cd["telefon_whatsapp"],
+        telefon_2=cd["telefon_2"], telefon_2_whatsapp=cd["telefon_2_whatsapp"],
+        eposta=cd["eposta"],
         web=cd["web"], ilgili_kisi=cd["ilgili_kisi"], kep_adresi=cd["kep_adresi"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
         para_birimi=cd["para_birimi"], kur_tipi=cd["kur_tipi"], kredi_limiti=cd["kredi_limiti"],
@@ -1463,7 +1466,9 @@ def cari_duzenle(request, pk):
         form = CariForm(initial={
             "unvan": cari.unvan, "kisa_ad": cari.kisa_ad, "kategori": cari.kategori_id,
             "vergi_dairesi": cari.vergi_dairesi, "vkn_tckn": cari.vkn_tckn,
-            "tax_id": cari.tax_id, "telefon": cari.telefon, "telefon_2": cari.telefon_2,
+            "tax_id": cari.tax_id, "telefon": cari.telefon,
+            "telefon_whatsapp": cari.telefon_whatsapp,
+            "telefon_2": cari.telefon_2, "telefon_2_whatsapp": cari.telefon_2_whatsapp,
             "eposta": cari.eposta, "web": cari.web, "ilgili_kisi": cari.ilgili_kisi,
             "kep_adresi": cari.kep_adresi,
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
@@ -4339,9 +4344,12 @@ def _aday_form_kw(cd):
     g = lambda x: x.pk if x else None
     return dict(
         unvan=cd["unvan"], ilgili_kisi=cd["ilgili_kisi"], telefon=cd["telefon"],
-        telefon_2=cd["telefon_2"], eposta=cd["eposta"], eposta_2=cd["eposta_2"],
+        telefon_whatsapp=cd["telefon_whatsapp"],
+        telefon_2=cd["telefon_2"], telefon_2_whatsapp=cd["telefon_2_whatsapp"],
+        eposta=cd["eposta"], eposta_2=cd["eposta_2"],
         eposta_gecersiz=cd["eposta_gecersiz"], eposta_2_gecersiz=cd["eposta_2_gecersiz"],
-        ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]),
+        web=cd["web"],
+        ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
         kategori_id=g(cd["kategori"]), para_birimi=cd["para_birimi"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"],
         tip=cd["tip"], potansiyel=cd["potansiyel"], asama=cd["asama"],
@@ -4372,10 +4380,17 @@ def aday_musteriler(request):
     kayitlar = aday_servis.aktif_aday_musteriler()
     if ara:
         buyuk = buyuk_harf_tr(ara)
+        # Yetkili eşleşmesi Exists ile — JOIN + distinct YOK (satır çoğalmaz, sorgu sayısı
+        # artmaz: aynı SQL ifadesine gömülü korele alt sorgu, bkz. assertNumQueries testi).
+        yetkili_eslesme = AdayYetkili.objects.filter(
+            aday_id=OuterRef("pk"), silindi=False
+        ).filter(
+            Q(ad_soyad__contains=buyuk) | Q(telefon__icontains=ara) | Q(eposta__icontains=ara))
         kayitlar = kayitlar.filter(
             Q(unvan__contains=buyuk) | Q(ilgili_kisi__contains=buyuk)
             | Q(telefon__icontains=ara) | Q(telefon_2__icontains=ara)
-            | Q(eposta__icontains=ara) | Q(eposta_2__icontains=ara))
+            | Q(eposta__icontains=ara) | Q(eposta_2__icontains=ara)
+            | Q(web__icontains=ara) | Q(Exists(yetkili_eslesme)))
     if kategori_id:
         kayitlar = kayitlar.filter(kategori_id=kategori_id)
     if sehir_id:
@@ -4418,7 +4433,12 @@ def aday_musteriler(request):
         aday=OuterRef("pk"), silindi=False).order_by("-tarih", "-id")
     kayitlar = kayitlar.annotate(
         son_aktivite_tarihi=Subquery(_son_aktivite_sq.values("tarih")[:1]),
-        son_aktivite_turu=Subquery(_son_aktivite_sq.values("tur")[:1]))
+        son_aktivite_turu=Subquery(_son_aktivite_sq.values("tur")[:1]),
+        # Liste satırındaki 📞 -> 🟢 dönüşümü: kartın kendi alanları (telefon_whatsapp/
+        # telefon_2_whatsapp) YETERLİ değilse yetkililerde de WhatsApp işaretli numara var mı
+        # bakılır (spec). Exists -> N+1/JOIN çoğalması yok.
+        yetkili_whatsapp_var=Exists(AdayYetkili.objects.filter(
+            aday_id=OuterRef("pk"), silindi=False, whatsapp=True)))
     _son_akt_30_sinir = bugun - datetime.timedelta(days=29)
     _son_akt_90_sinir = bugun - datetime.timedelta(days=89)
     if son_akt_secim == "30":
@@ -4572,9 +4592,12 @@ def aday_musteri_duzenle(request, pk):
     else:
         form = AdayMusteriForm(initial={
             "unvan": aday.unvan, "ilgili_kisi": aday.ilgili_kisi, "telefon": aday.telefon,
-            "telefon_2": aday.telefon_2, "eposta": aday.eposta, "eposta_2": aday.eposta_2,
+            "telefon_whatsapp": aday.telefon_whatsapp,
+            "telefon_2": aday.telefon_2, "telefon_2_whatsapp": aday.telefon_2_whatsapp,
+            "eposta": aday.eposta, "eposta_2": aday.eposta_2,
             "eposta_gecersiz": aday.eposta_gecersiz, "eposta_2_gecersiz": aday.eposta_2_gecersiz,
-            "ulke": aday.ulke_id, "sehir": aday.sehir_id,
+            "web": aday.web,
+            "ulke": aday.ulke_id, "sehir": aday.sehir_id, "adres": aday.adres,
             "kategori": aday.kategori_id, "para_birimi": aday.para_birimi,
             "iskonto_yuzdesi": aday.iskonto_yuzdesi,
             "tip": aday.tip, "potansiyel": aday.potansiyel, "asama": aday.asama,
@@ -4590,7 +4613,8 @@ def aday_musteri_detay(request, pk):
         AdayMusteri.objects.select_related("ulke", "sehir", "kategori", "donusen_cari"),
         pk=pk, silindi=False)
     return render(request, "core/aday_musteri_detay.html", {
-        "aday": aday, "aktiviteler": aday_servis.aktif_aday_aktiviteleri(aday)})
+        "aday": aday, "aktiviteler": aday_servis.aktif_aday_aktiviteleri(aday),
+        "yetkililer": aday_servis.aktif_aday_yetkilileri(aday)})
 
 
 @ekran_gerekli("aday_musteriler")
@@ -4625,6 +4649,48 @@ def aday_cariye_donustur(request, pk):
     return render(request, "core/aday_cariye_donustur.html", {"form": form, "aday": aday})
 
 
+# --- Aday yetkilileri (CariYetkili ile birebir aynı desen) --------------------
+@ekran_gerekli("aday_musteriler")
+def aday_yetkili_ekle(request, aday_pk):
+    aday = get_object_or_404(AdayMusteri, pk=aday_pk, silindi=False)
+    if request.method == "POST":
+        form = AdayYetkiliForm(request.POST)
+        if form.is_valid():
+            aday_servis.aday_yetkili_ekle(aday, **form.cleaned_data, kullanici=request.user)
+            messages.success(request, "Yetkili kişi eklendi.")
+            return redirect("core:aday_musteri_detay", pk=aday.pk)
+    else:
+        form = AdayYetkiliForm()
+    return render(request, "core/aday_yetkili_form.html",
+                  {"form": form, "baslik": "Yeni Yetkili Kişi", "aday": aday})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_yetkili_duzenle(request, pk):
+    yetkili = get_object_or_404(AdayYetkili, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = AdayYetkiliForm(request.POST)
+        if form.is_valid():
+            aday_servis.aday_yetkili_guncelle(yetkili, **form.cleaned_data, kullanici=request.user)
+            messages.success(request, "Yetkili kişi güncellendi.")
+            return redirect("core:aday_musteri_detay", pk=yetkili.aday_id)
+    else:
+        form = AdayYetkiliForm(initial={
+            "ad_soyad": yetkili.ad_soyad, "unvan": yetkili.unvan, "telefon": yetkili.telefon,
+            "whatsapp": yetkili.whatsapp, "eposta": yetkili.eposta, "notlar": yetkili.notlar})
+    return render(request, "core/aday_yetkili_form.html",
+                  {"form": form, "baslik": "Yetkili Kişi Düzenle", "aday": yetkili.aday})
+
+
+@ekran_gerekli("aday_musteriler")
+def aday_yetkili_sil(request, pk):
+    yetkili = get_object_or_404(AdayYetkili, pk=pk, silindi=False)
+    if request.method == "POST":
+        aday_servis.aday_yetkili_sil(yetkili, kullanici=request.user)
+        messages.success(request, "Yetkili kişi silindi.")
+    return redirect("core:aday_musteri_detay", pk=yetkili.aday_id)
+
+
 def _aday_aktivite_ekleri_kaydet(request, aktivite, dosyalar):
     for f in dosyalar:
         try:
@@ -4641,14 +4707,17 @@ def aday_aktivite_ekle(request, aday_pk):
         if form.is_valid():
             try:
                 aktivite = aday_servis.aday_aktivite_ekle(
-                    aday, **form.cleaned_data, kullanici=request.user)
+                    aday, **form.cleaned_data, sonraki_adim_guncelle=True, kullanici=request.user)
                 _aday_aktivite_ekleri_kaydet(request, aktivite, request.FILES.getlist("dosyalar"))
                 messages.success(request, "Aktivite eklendi.")
                 return redirect("core:aday_musteri_detay", pk=aday.pk)
             except aday_servis.AdayHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = AdayAktiviteForm()
+        # Form adayın MEVCUT sonraki adımıyla dolu açılır (spec) — aktivitenin kendisi
+        # yeni olduğu için tarih/tür/açıklama boş kalır.
+        form = AdayAktiviteForm(initial={
+            "sonraki_adim": aday.sonraki_adim, "sonraki_adim_tarihi": aday.sonraki_adim_tarihi})
     return render(request, "core/aday_aktivite_form.html",
                   {"form": form, "baslik": "Yeni Aktivite", "aday": aday})
 
@@ -4661,7 +4730,8 @@ def aday_aktivite_duzenle(request, pk):
         if form.is_valid():
             try:
                 aday_servis.aday_aktivite_guncelle(
-                    aktivite, **form.cleaned_data, kullanici=request.user)
+                    aktivite, **form.cleaned_data, sonraki_adim_guncelle=True,
+                    kullanici=request.user)
                 _aday_aktivite_ekleri_kaydet(request, aktivite, request.FILES.getlist("dosyalar"))
                 messages.success(request, "Aktivite güncellendi.")
                 return redirect("core:aday_musteri_detay", pk=aktivite.aday_id)
@@ -4669,7 +4739,9 @@ def aday_aktivite_duzenle(request, pk):
                 form.add_error(None, str(e))
     else:
         form = AdayAktiviteForm(initial={
-            "tarih": aktivite.tarih, "tur": aktivite.tur, "aciklama": aktivite.aciklama})
+            "tarih": aktivite.tarih, "tur": aktivite.tur, "aciklama": aktivite.aciklama,
+            "sonraki_adim": aktivite.aday.sonraki_adim,
+            "sonraki_adim_tarihi": aktivite.aday.sonraki_adim_tarihi})
     return render(request, "core/aday_aktivite_form.html", {
         "form": form, "baslik": "Aktivite Düzenle", "aday": aktivite.aday,
         "aktivite": aktivite, "ekler": aktivite.ekler.filter(silindi=False)})

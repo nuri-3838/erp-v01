@@ -13,7 +13,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import AdayAktivite, AdayAsama, AdayPotansiyel
-from core.services.aday import aday_aktivite_ekle, aday_aktivite_sil, aday_musteri_olustur
+from core.services.aday import (
+    aday_aktivite_ekle, aday_aktivite_sil, aday_musteri_olustur, aday_yetkili_ekle,
+)
 from core.tarih import tr_bugun
 from core.views import _ADAY_GORUNUMLER
 
@@ -374,3 +376,14 @@ class SorguSayisiTest(_Taban):
         # korele Subquery ile AYNI sorguda — N+1 yok).
         with self.assertNumQueries(8):
             self._get(gorunum="tumu")
+
+    def test_arama_web_ve_yetkiliyle_sorgu_sayisi_ayni_kalir(self):
+        """Arama kutusu web + yetkili (ad_soyad/telefon/eposta) alanlarını da kapsar (spec:
+        Web/Adres/Yetkililer/WhatsApp/aktiviteyle sonraki adım, madde 6) — Exists ile
+        (JOIN + distinct değil), sorgu sayısı artmaz."""
+        hedef = aday_musteri_olustur(unvan="bulunacak firma", web="akc.ae")
+        aday_yetkili_ekle(hedef, ad_soyad="bulunacak yetkili")
+        for i in range(5):
+            aday_musteri_olustur(unvan=f"dolgu firma {i}")
+        with self.assertNumQueries(8):
+            self._get(ara="bulunacak", gorunum="tumu")

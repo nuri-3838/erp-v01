@@ -1,9 +1,10 @@
-"""Doğrulayıcılar — TC Kimlik No, telefon, şifre karmaşıklığı (Türkçe mesajlı)."""
+"""Doğrulayıcılar — TC Kimlik No, telefon, web adresi, şifre karmaşıklığı (Türkçe mesajlı)."""
 from __future__ import annotations
 
 import re
 
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 
 
 # --- TC Kimlik No ---------------------------------------------------------
@@ -60,6 +61,26 @@ def telefon_dogrula(deger):
             "Geçersiz telefon. Örnek geçerli biçimler: +905327024005, "
             "05327024005 veya 5327024005 (boşluk/parantez/tire serbest)."
         )
+
+
+# --- Web adresi -------------------------------------------------------------
+_SEMALI = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def web_normalize(deger):
+    """Boşsa "" döner. Şemasız adrese (``www.akc.ae``, ``akc.ae``) ``https://`` eklenir;
+    baştaki/sondaki boşluk kırpılır. Geçersiz URL'de None döner (çağıran taraf Türkçe
+    hata üretir) — Cari ve Aday servisleri ile formları TEK bu fonksiyonu kullanır."""
+    deger = (deger or "").strip()
+    if not deger:
+        return ""
+    if not _SEMALI.match(deger):
+        deger = "https://" + deger
+    try:
+        URLValidator()(deger)
+    except ValidationError:
+        return None
+    return deger
 
 
 # --- Şifre karmaşıklığı (Django password validator) -----------------------

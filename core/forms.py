@@ -508,12 +508,17 @@ class CariForm(forms.Form):
     # İletişim
     telefon = forms.CharField(label="Telefon", max_length=20, required=False,
                               widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    telefon_whatsapp = forms.BooleanField(label="Bu numara WhatsApp kullanıyor", required=False)
     telefon_2 = forms.CharField(label="Telefon 2", max_length=20, required=False,
                                 widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    telefon_2_whatsapp = forms.BooleanField(label="Bu numara WhatsApp kullanıyor", required=False)
     eposta = forms.EmailField(label="E-posta", required=False,
                               widget=forms.EmailInput(attrs=_K))
-    web = forms.URLField(label="Web", required=False, assume_scheme="https",
-                         widget=forms.URLInput(attrs=_K))
+    # Doğrulama/normalizasyon serviste (core.dogrulama.web_normalize) — UI'a güvenilmez
+    # (spec invariant'ı); form yalnız ham metni alır, "www.x.com" gibi şemasız girişi
+    # reddetmez (Django URLField burada reddedebilirdi).
+    web = forms.CharField(label="Web", max_length=200, required=False,
+                          widget=forms.TextInput(attrs=_K))
     ilgili_kisi = forms.CharField(label="Adı Soyadı", max_length=120, required=False,
                                   widget=forms.TextInput(attrs=_K))
     kep_adresi = forms.CharField(label="KEP", max_length=100, required=False,
@@ -573,18 +578,25 @@ class AdayMusteriForm(forms.Form):
                                   widget=forms.TextInput(attrs=_K))
     telefon = forms.CharField(label="Telefon", max_length=20, required=False,
                               widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    telefon_whatsapp = forms.BooleanField(label="Bu numara WhatsApp kullanıyor", required=False)
     telefon_2 = forms.CharField(label="Telefon 2", max_length=20, required=False,
                                 widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
+    telefon_2_whatsapp = forms.BooleanField(label="Bu numara WhatsApp kullanıyor", required=False)
     eposta = forms.EmailField(label="E-posta", required=False,
                               widget=forms.EmailInput(attrs=_K))
     eposta_gecersiz = forms.BooleanField(label="Geçersiz (bounce)", required=False)
     eposta_2 = forms.EmailField(label="E-posta 2", required=False,
                                 widget=forms.EmailInput(attrs=_K))
     eposta_2_gecersiz = forms.BooleanField(label="Geçersiz (bounce)", required=False)
+    # Doğrulama/normalizasyon serviste (core.dogrulama.web_normalize) — bkz. CariForm.web.
+    web = forms.CharField(label="Web", max_length=200, required=False,
+                          widget=forms.TextInput(attrs=_K))
     ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
                                   required=False, empty_label="— ülke seç —")
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
                                    required=False, empty_label="— şehir seç —")
+    adres = forms.CharField(label="Adres", required=False,
+                            widget=forms.Textarea(attrs={"rows": 5, **_K}))
     kategori = forms.ModelChoiceField(
         label="Kategori", queryset=AdayMusteriKategori.objects.none(),
         required=False, empty_label="— kategori seç —")
@@ -632,13 +644,27 @@ class AdayMusteriForm(forms.Form):
 
 
 class AdayAktiviteForm(forms.Form):
-    """Aday aktivite (görüşme/temas) ekle/düzenle."""
+    """Aday aktivite (görüşme/temas) ekle/düzenle. Sonraki adım metni/tarihi de burada —
+    kaydedilince adaya yazılır (bkz. core.services.aday.aday_aktivite_ekle/guncelle);
+    Cari aktivite formunda bu alanlar YOK (spec kararı, dokunulmayacaklar listesi)."""
 
     tarih = forms.DateField(
         label="Tarih", initial=timezone.localdate,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     tur = forms.ChoiceField(label="Tür", choices=AdayAktivite.Tur.choices)
     aciklama = forms.CharField(label="Açıklama", widget=forms.Textarea(attrs={"rows": 4}))
+    sonraki_adim = forms.CharField(label="Sonraki Adım", max_length=200, required=False,
+                                   widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    sonraki_adim_tarihi = forms.DateField(
+        label="Sonraki Adım Tarihi", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("sonraki_adim_tarihi") and not cleaned.get("sonraki_adim"):
+            self.add_error("sonraki_adim",
+                           "Sonraki adım tarihi girildiyse ne yapılacağı da yazılmalı.")
+        return cleaned
 
 
 class AdayCariyeDonusturForm(forms.Form):
@@ -705,6 +731,24 @@ class CariYetkiliForm(forms.Form):
                             widget=forms.TextInput(attrs={"autocomplete": "off"}))
     telefon = forms.CharField(label="Telefon", max_length=20, required=False,
                               widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
+    whatsapp = forms.BooleanField(label="Bu numara WhatsApp kullanıyor", required=False)
+    eposta = forms.EmailField(label="E-posta", required=False,
+                              widget=forms.EmailInput(attrs={"autocomplete": "off"}))
+    notlar = forms.CharField(label="Notlar", max_length=200, required=False,
+                             widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+class AdayYetkiliForm(forms.Form):
+    """Aday yetkili kişi ekle/düzenle — CariYetkiliForm ile birebir aynı (bkz. dosya başı
+    ilke: Cariye Dönüştür'ün alanları ileride birebir aktarabilmesi için)."""
+
+    ad_soyad = forms.CharField(label="Ad Soyad", max_length=120,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    unvan = forms.CharField(label="Görev / Unvan", max_length=80, required=False,
+                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    telefon = forms.CharField(label="Telefon", max_length=20, required=False,
+                              widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
+    whatsapp = forms.BooleanField(label="Bu numara WhatsApp kullanıyor", required=False)
     eposta = forms.EmailField(label="E-posta", required=False,
                               widget=forms.EmailInput(attrs={"autocomplete": "off"}))
     notlar = forms.CharField(label="Notlar", max_length=200, required=False,

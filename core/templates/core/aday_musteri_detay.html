@@ -82,15 +82,25 @@
     <h2 class="bolum-baslik">Bilgiler</h2>
     <div class="kv">
       <div class="satir"><span class="et">İlgili Kişi</span><span class="dg">{{ aday.ilgili_kisi|default:"—" }}</span></div>
-      <div class="satir"><span class="et">Telefon</span><span class="dg">{{ aday.telefon|default:"—" }}</span></div>
-      <div class="satir"><span class="et">Telefon 2</span><span class="dg">{{ aday.telefon_2|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Telefon</span><span class="dg">{{ aday.telefon|default:"—" }}
+        {% if aday.telefon_whatsapp %}{% with link=aday.telefon|wa_link %}
+          {% if link %}<a href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="yardim">🟢 Ülke kodu eksik</span>{% endif %}
+        {% endwith %}{% endif %}
+      </span></div>
+      <div class="satir"><span class="et">Telefon 2</span><span class="dg">{{ aday.telefon_2|default:"—" }}
+        {% if aday.telefon_2_whatsapp %}{% with link=aday.telefon_2|wa_link %}
+          {% if link %}<a href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="yardim">🟢 Ülke kodu eksik</span>{% endif %}
+        {% endwith %}{% endif %}
+      </span></div>
       <div class="satir"><span class="et">E-posta</span><span class="dg">
         {% if aday.eposta %}{% if aday.eposta_gecersiz %}<span class="ad-eposta-gecersiz">{{ aday.eposta }}</span> <span class="rozet rozet-notr">geçersiz</span>{% else %}<a href="mailto:{{ aday.eposta }}">{{ aday.eposta }}</a>{% endif %}{% else %}—{% endif %}
       </span></div>
       <div class="satir"><span class="et">E-posta 2</span><span class="dg">
         {% if aday.eposta_2 %}{% if aday.eposta_2_gecersiz %}<span class="ad-eposta-gecersiz">{{ aday.eposta_2 }}</span> <span class="rozet rozet-notr">geçersiz</span>{% else %}<a href="mailto:{{ aday.eposta_2 }}">{{ aday.eposta_2 }}</a>{% endif %}{% else %}—{% endif %}
       </span></div>
+      <div class="satir"><span class="et">Web</span><span class="dg">{% if aday.web %}<a href="{{ aday.web }}" target="_blank">{{ aday.web }}</a>{% else %}—{% endif %}</span></div>
       <div class="satir"><span class="et">Ülke / Şehir</span><span class="dg">{% if aday.ulke %}{{ aday.ulke.ad }}{% if aday.sehir %} / {{ aday.sehir.ad }}{% endif %}{% else %}—{% endif %}</span></div>
+      <div class="satir tam"><span class="et">Adres</span><span class="dg">{{ aday.adres|default:"—" }}</span></div>
       <div class="satir"><span class="et">Kategori</span><span class="dg">{{ aday.kategori.ad|default:"—" }}</span></div>
       <div class="satir"><span class="et">Tip</span><span class="dg">{{ aday.get_tip_display }}</span></div>
       <div class="satir"><span class="et">Potansiyel</span><span class="dg">{{ aday.get_potansiyel_display|default:"Belirlenmedi" }}</span></div>
@@ -98,6 +108,10 @@
       <div class="satir tam"><span class="et">Sonraki Adım</span><span class="dg">{% if aday.sonraki_adim_tarihi %}<span class="ad-takip-{{ aday.takip_durum }}">{{ aday.sonraki_adim_tarihi|date:"d.m.Y" }}</span> — {% endif %}{{ aday.sonraki_adim|default:"—" }}</span></div>
       <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg">%{{ aday.iskonto_yuzdesi|tr_kur:2 }}</span></div>
     </div>
+  </section>
+
+  <section class="icerik-kart">
+    {% include "core/_yetkililer_bolumu.html" with nesne=aday yetkililer=yetkililer ekle_url="core:aday_yetkili_ekle" duzenle_url="core:aday_yetkili_duzenle" sil_url="core:aday_yetkili_sil" %}
   </section>
 
   <section class="icerik-kart">
@@ -109,7 +123,7 @@
       <div class="akt-satir">
         <div class="akt-ust">
           <span class="akt-tarih">{{ a.tarih|date:"d.m.Y" }}</span>
-          <span class="rozet rozet-notr">{{ a.get_tur_display }}</span>
+          <span class="rozet rozet-notr">{% if a.tur == "WHATSAPP" %}🟢 {% endif %}{{ a.get_tur_display }}</span>
           <span class="islem-bag" style="margin-left:auto">
             <a href="{% url 'core:aday_aktivite_duzenle' a.pk %}">Düzenle</a>
             <form method="post" action="{% url 'core:aday_aktivite_sil' a.pk %}" onsubmit="return confirm('Aktivite silinsin mi?');">

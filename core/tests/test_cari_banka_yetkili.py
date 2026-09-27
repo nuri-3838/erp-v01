@@ -10,7 +10,8 @@ from django.urls import reverse
 
 from core.models import Cari, CariBanka, CariYetkili, EkranYetki
 from core.services.cari import (CariHatasi, aktif_bankalar, banka_ekle, banka_guncelle,
-                                banka_sil, cari_olustur, yetkili_ekle, yetkili_sil)
+                                banka_sil, cari_olustur, yetkili_ekle, yetkili_guncelle,
+                                yetkili_sil)
 
 
 def _cari(unvan="test cari"):
@@ -60,6 +61,18 @@ class CariBankaServisTest(TestCase):
         yetkili_sil(y)
         y.refresh_from_db()
         self.assertTrue(y.silindi)
+
+    def test_yetkili_whatsapp_alani(self):
+        c = _cari()
+        y = yetkili_ekle(c, ad_soyad="veli", telefon="+905327024005", whatsapp=True)
+        self.assertTrue(y.whatsapp)
+        y2 = yetkili_guncelle(y, ad_soyad="veli", telefon="+905327024005", whatsapp=False)
+        self.assertFalse(y2.whatsapp)
+
+    def test_yetkili_whatsapp_varsayilan_false(self):
+        c = _cari()
+        y = yetkili_ekle(c, ad_soyad="deniz")
+        self.assertFalse(y.whatsapp)
 
 
 class CariBankaYetkiliTasimaTest(TestCase):

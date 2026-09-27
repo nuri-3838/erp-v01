@@ -1,4 +1,5 @@
 """Gösterim filtreleri — sayıyı İSTİSNASIZ tek formatter'dan (core.sayi) geçirir."""
+import re
 from decimal import Decimal
 
 from django import template
@@ -6,6 +7,18 @@ from django import template
 from core.sayi import format_tr, yuvarla
 
 register = template.Library()
+
+
+@register.filter
+def wa_link(telefon):
+    """WhatsApp linki (``https://wa.me/<rakamlar>``) — YALNIZ ``+`` ile başlayan numaradan
+    üretilir (ülke kodu belli olsun); aksi halde None döner, şablon kendi 'ülke kodu eksik'
+    uyarısını gösterir (spec kararı — telefon formatı düzeltmesi ayrı adım)."""
+    t = (telefon or "").strip()
+    if not t.startswith("+"):
+        return None
+    rakamlar = re.sub(r"\D", "", t)
+    return f"https://wa.me/{rakamlar}" if rakamlar else None
 
 
 @register.filter

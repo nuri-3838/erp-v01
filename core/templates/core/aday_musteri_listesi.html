@@ -341,7 +341,7 @@
         <td>
           <span class="ad-kanal">
             {% if a.eposta_kanal_durum == "gecerli" %}✉{% elif a.eposta_kanal_durum == "gecersiz" %}<span class="gecersiz">✉</span>{% endif %}
-            {% if a.telefon or a.telefon_2 %}📞{% endif %}
+            {% if a.telefon_whatsapp or a.telefon_2_whatsapp or a.yetkili_whatsapp_var %}🟢{% elif a.telefon or a.telefon_2 %}📞{% endif %}
           </span>
         </td>
         <td class="ad-ok">›</td>
@@ -371,7 +371,7 @@
         </div>
         <span class="ad-kanal">
           {% if a.eposta_kanal_durum == "gecerli" %}✉{% elif a.eposta_kanal_durum == "gecersiz" %}<span class="gecersiz">✉</span>{% endif %}
-          {% if a.telefon or a.telefon_2 %}📞{% endif %}
+          {% if a.telefon_whatsapp or a.telefon_2_whatsapp or a.yetkili_whatsapp_var %}🟢{% elif a.telefon or a.telefon_2 %}📞{% endif %}
         </span>
       </div>
       <div class="rozetler">

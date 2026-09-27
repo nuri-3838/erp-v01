@@ -80,6 +80,13 @@ class CariAktiviteServisTest(TestCase):
         self.assertEqual(len(liste), 2)
         self.assertEqual(liste[0].pk, yeni.pk)              # en yeni tarih önce
 
+    def test_whatsapp_turu_var(self):
+        c = _cari()
+        a = aktivite_ekle(c, tarih="2026-09-01", tur=CariAktivite.Tur.WHATSAPP,
+                          aciklama="whatsapptan yazdi")
+        self.assertEqual(a.tur, "WHATSAPP")
+        self.assertEqual(a.get_tur_display(), "WhatsApp")
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
 class CariAktiviteEkServisTest(TestCase):

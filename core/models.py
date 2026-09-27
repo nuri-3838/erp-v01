@@ -793,7 +793,9 @@ class Cari(TemelModel):
     tax_id = models.CharField("Tax ID (yurtdışı)", max_length=30, blank=True, db_index=True)
     # İletişim
     telefon = models.CharField("telefon", max_length=20, blank=True)
+    telefon_whatsapp = models.BooleanField("bu numara WhatsApp kullanıyor", default=False)
     telefon_2 = models.CharField("telefon 2", max_length=20, blank=True)
+    telefon_2_whatsapp = models.BooleanField("bu numara WhatsApp kullanıyor", default=False)
     eposta = models.EmailField("e-posta", blank=True)
     web = models.URLField("web", blank=True)
     ilgili_kisi = models.CharField("adı soyadı", max_length=120, blank=True, default="")
@@ -900,6 +902,7 @@ class CariYetkili(TemelModel):
     telefon = models.CharField("telefon", max_length=20, blank=True)
     eposta = models.EmailField("e-posta", blank=True)
     notlar = models.CharField("notlar", max_length=200, blank=True)
+    whatsapp = models.BooleanField("bu numara WhatsApp kullanıyor", default=False)
 
     class Meta:
         db_table = "cari_yetkili"
@@ -919,6 +922,7 @@ class CariAktivite(TemelModel):
         TELEFON = "TELEFON", "Telefon"
         TOPLANTI = "TOPLANTI", "Toplantı"
         EPOSTA = "EPOSTA", "E-posta"
+        WHATSAPP = "WHATSAPP", "WhatsApp"
         NOT = "NOT", "Not"
 
     cari = models.ForeignKey(Cari, verbose_name="cari", related_name="aktiviteler",
@@ -1009,17 +1013,21 @@ class AdayMusteri(TemelModel):
     unvan = models.CharField("unvan / ad soyad", max_length=200)
     ilgili_kisi = models.CharField("ilgili kişi", max_length=120, blank=True, default="")
     telefon = models.CharField("telefon", max_length=20, blank=True, default="")
+    telefon_whatsapp = models.BooleanField("bu numara WhatsApp kullanıyor", default=False)
     telefon_2 = models.CharField("telefon 2", max_length=20, blank=True, default="")
+    telefon_2_whatsapp = models.BooleanField("bu numara WhatsApp kullanıyor", default=False)
     eposta = models.EmailField("e-posta", blank=True, default="")
     eposta_gecersiz = models.BooleanField("e-posta geçersiz (bounce)", default=False)
     eposta_2 = models.EmailField("e-posta 2", blank=True, default="")
     eposta_2_gecersiz = models.BooleanField("e-posta 2 geçersiz (bounce)", default=False)
+    web = models.URLField("web", blank=True, default="")
     ulke = models.ForeignKey(
         "Ulke", verbose_name="ülke", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
     sehir = models.ForeignKey(
         "Sehir", verbose_name="şehir", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
+    adres = models.TextField("adres", blank=True, default="")
     kategori = models.ForeignKey(
         "AdayMusteriKategori", verbose_name="kategori", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
@@ -1134,6 +1142,29 @@ class AdayMusteriKategori(TemelModel):
         return "-".join(parcalar)
 
 
+class AdayYetkili(TemelModel):
+    """Adaya ait yetkili kişi (çoklu) — CariYetkili ile BİREBİR aynı alan şekli (bkz.
+    dosya başı ilke: Cariye Dönüştür'ün ileride bu alanları birebir aktarabilmesi için)."""
+
+    aday = models.ForeignKey(AdayMusteri, verbose_name="aday", related_name="yetkililer",
+                             on_delete=models.CASCADE)
+    ad_soyad = models.CharField("ad soyad", max_length=120)
+    unvan = models.CharField("görev/unvan", max_length=80, blank=True)
+    telefon = models.CharField("telefon", max_length=20, blank=True)
+    eposta = models.EmailField("e-posta", blank=True)
+    notlar = models.CharField("notlar", max_length=200, blank=True)
+    whatsapp = models.BooleanField("bu numara WhatsApp kullanıyor", default=False)
+
+    class Meta:
+        db_table = "aday_yetkili"
+        verbose_name = "yetkili kişi"
+        verbose_name_plural = "yetkili kişiler"
+        ordering = ["ad_soyad"]
+
+    def __str__(self):
+        return self.ad_soyad
+
+
 class AdayAktivite(TemelModel):
     """Adayla yapılan görüşme/temas kaydı (çoklu) — CariAktivite ile aynı desen."""
 
@@ -1142,6 +1173,7 @@ class AdayAktivite(TemelModel):
         TELEFON = "TELEFON", "Telefon"
         TOPLANTI = "TOPLANTI", "Toplantı"
         EPOSTA = "EPOSTA", "E-posta"
+        WHATSAPP = "WHATSAPP", "WhatsApp"
         NOT = "NOT", "Not"
 
     aday = models.ForeignKey(AdayMusteri, verbose_name="aday", related_name="aktiviteler",

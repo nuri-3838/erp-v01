@@ -112,8 +112,16 @@
 
       <h2 class="bolum-baslik grup-ara">İletişim</h2>
       <div class="kv">
-        <div class="satir"><span class="et">Telefon</span><span class="dg">{{ cari.telefon|default:"—" }}</span></div>
-        <div class="satir"><span class="et">Telefon 2</span><span class="dg">{{ cari.telefon_2|default:"—" }}</span></div>
+        <div class="satir"><span class="et">Telefon</span><span class="dg">{{ cari.telefon|default:"—" }}
+          {% if cari.telefon_whatsapp %}{% with link=cari.telefon|wa_link %}
+            {% if link %}<a href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="yardim">🟢 Ülke kodu eksik</span>{% endif %}
+          {% endwith %}{% endif %}
+        </span></div>
+        <div class="satir"><span class="et">Telefon 2</span><span class="dg">{{ cari.telefon_2|default:"—" }}
+          {% if cari.telefon_2_whatsapp %}{% with link=cari.telefon_2|wa_link %}
+            {% if link %}<a href="{{ link }}" target="_blank">🟢 WhatsApp</a>{% else %}<span class="yardim">🟢 Ülke kodu eksik</span>{% endif %}
+          {% endwith %}{% endif %}
+        </span></div>
         <div class="satir"><span class="et">E-posta</span><span class="dg">{{ cari.eposta|default:"—" }}</span></div>
         <div class="satir"><span class="et">Web</span><span class="dg">{{ cari.web|default:"—" }}</span></div>
         <div class="satir"><span class="et">Adı Soyadı</span><span class="dg">{{ cari.ilgili_kisi|default:"—" }}</span></div>
@@ -174,32 +182,7 @@
     </div>
 
     <div class="sek-panel" id="panel-yetkili">
-      <div class="sayfa-ust">
-        <h2 class="bolum-baslik"><span class="emoji">👤</span>Yetkili Kişiler</h2>
-        <a class="dugme" href="{% url 'core:yetkili_ekle' cari.pk %}">+ Yetkili Ekle</a>
-      </div>
-      <div class="tablo-kapsayici">
-      <table>
-        <thead><tr><th>Ad Soyad</th><th>Görev</th><th>Telefon</th><th>E-posta</th><th>İşlem</th></tr></thead>
-        <tbody>
-          {% for y in yetkililer %}
-            <tr>
-              <td>{{ y.ad_soyad }}</td>
-              <td>{{ y.unvan|default:"—" }}</td>
-              <td>{{ y.telefon|default:"—" }}</td>
-              <td>{{ y.eposta|default:"—" }}</td>
-              <td><span class="islem-bag">
-                <a href="{% url 'core:yetkili_duzenle' y.pk %}">Düzenle</a>
-                <form method="post" action="{% url 'core:yetkili_sil' y.pk %}" onsubmit="return confirm('Yetkili silinsin mi?');">
-                  {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-              </span></td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="5" class="yardim">Yetkili kişi yok. “+ Yetkili Ekle” ile ekleyin.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
+      {% include "core/_yetkililer_bolumu.html" with nesne=cari yetkililer=yetkililer ekle_url="core:yetkili_ekle" duzenle_url="core:yetkili_duzenle" sil_url="core:yetkili_sil" %}
     </div>
 
     <div class="sek-panel" id="panel-sevk">
@@ -240,7 +223,7 @@
         <div class="akt-satir">
           <div class="akt-ust">
             <span class="akt-tarih">{{ a.tarih|date:"d.m.Y" }}</span>
-            <span class="rozet rozet-notr">{{ a.get_tur_display }}</span>
+            <span class="rozet rozet-notr">{% if a.tur == "WHATSAPP" %}🟢 {% endif %}{{ a.get_tur_display }}</span>
             <span class="islem-bag" style="margin-left:auto">
               <a href="{% url 'core:aktivite_duzenle' a.pk %}">Düzenle</a>
               <form method="post" action="{% url 'core:aktivite_sil' a.pk %}" onsubmit="return confirm('Aktivite silinsin mi?');">

@@ -17,6 +17,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from core import gorsel
+from core.dogrulama import web_normalize
 from core.metin import buyuk_harf_tr
 from core.models import (
     Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi, CariYetkili,
@@ -96,6 +97,7 @@ def _para_dogrula(deger, etiket):
 
 
 def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
+            telefon_whatsapp=False, telefon_2_whatsapp=False,
             eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kur_tipi=None,
             kredi_limiti, iskonto_yuzdesi, notlar, ulke, sehir):
     """Ortak alan hazırlığı (create/update paylaşır). dict döner. ``kur_tipi`` opsiyonel —
@@ -106,12 +108,16 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
     kur_tipi = kur_tipi or Cari.KurTipi.MB_ALIS
     if kur_tipi not in Cari.KurTipi.values:
         raise CariHatasi("Geçersiz kur tipi.")
+    web_norm = web_normalize(web)
+    if web_norm is None:
+        raise CariHatasi(f"Geçersiz web adresi: {(web or '').strip()}")
     return dict(
         kisa_ad=buyuk_harf_tr((kisa_ad or "").strip()),
         vergi_dairesi=buyuk_harf_tr((vergi_dairesi or "").strip()),
         vkn_tckn=(vkn_tckn or "").strip(), tax_id=(tax_id or "").strip(),
-        telefon=(telefon or "").strip(), telefon_2=(telefon_2 or "").strip(),
-        eposta=(eposta or "").strip().lower(), web=(web or "").strip(),
+        telefon=(telefon or "").strip(), telefon_whatsapp=bool(telefon_whatsapp),
+        telefon_2=(telefon_2 or "").strip(), telefon_2_whatsapp=bool(telefon_2_whatsapp),
+        eposta=(eposta or "").strip().lower(), web=web_norm,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
         kep_adresi=(kep_adresi or "").strip(),
         ulke=ulke, sehir=sehir, adres=buyuk_harf_tr((adres or "").strip()),
@@ -137,7 +143,8 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
     veri = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
-                        "telefon_2", "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
+                        "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
+                        "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
@@ -204,7 +211,8 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
     veri = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
-                        "telefon_2", "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
+                        "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
+                        "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kredi_limiti",
                         "iskonto_yuzdesi", "notlar")})
     cari.unvan = unvan
@@ -406,18 +414,19 @@ def aktif_yetkililer(cari):
 
 
 def yetkili_ekle(cari, *, ad_soyad, unvan="", telefon="", eposta="", notlar="",
-                 kullanici=None) -> CariYetkili:
+                 whatsapp=False, kullanici=None) -> CariYetkili:
     ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
     if not ad_soyad:
         raise CariHatasi("Ad soyad boş olamaz.")
     return CariYetkili.objects.create(
         cari=cari, ad_soyad=ad_soyad, unvan=buyuk_harf_tr((unvan or "").strip()),
         telefon=(telefon or "").strip(), eposta=(eposta or "").strip().lower(),
-        notlar=(notlar or "").strip(), created_by=kullanici, updated_by=kullanici)
+        notlar=(notlar or "").strip(), whatsapp=bool(whatsapp),
+        created_by=kullanici, updated_by=kullanici)
 
 
 def yetkili_guncelle(yetkili: CariYetkili, *, ad_soyad, unvan="", telefon="",
-                     eposta="", notlar="", kullanici=None) -> CariYetkili:
+                     eposta="", notlar="", whatsapp=False, kullanici=None) -> CariYetkili:
     if yetkili.silindi:
         raise CariHatasi("Silinmiş yetkili düzenlenemez.")
     ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
@@ -428,8 +437,9 @@ def yetkili_guncelle(yetkili: CariYetkili, *, ad_soyad, unvan="", telefon="",
     yetkili.telefon = (telefon or "").strip()
     yetkili.eposta = (eposta or "").strip().lower()
     yetkili.notlar = (notlar or "").strip()
+    yetkili.whatsapp = bool(whatsapp)
     yetkili.updated_by = kullanici
-    yetkili.save(update_fields=["ad_soyad", "unvan", "telefon", "eposta", "notlar",
+    yetkili.save(update_fields=["ad_soyad", "unvan", "telefon", "eposta", "notlar", "whatsapp",
                                 "updated_by", "updated_at"])
     return yetkili
 

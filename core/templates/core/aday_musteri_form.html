@@ -22,16 +22,22 @@
       <div class="izgara">
         <div class="alan tam"><label for="{{ form.unvan.id_for_label }}">{{ form.unvan.label }} <span class="zorunlu">*</span></label>{{ form.unvan }}{% for e in form.unvan.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.ilgili_kisi.id_for_label }}">{{ form.ilgili_kisi.label }}</label>{{ form.ilgili_kisi }}</div>
-        <div class="alan"><label for="{{ form.telefon.id_for_label }}">{{ form.telefon.label }}</label>{{ form.telefon }}</div>
-        <div class="alan"><label for="{{ form.telefon_2.id_for_label }}">{{ form.telefon_2.label }}</label>{{ form.telefon_2 }}</div>
+        <div class="alan"><label for="{{ form.telefon.id_for_label }}">{{ form.telefon.label }}</label>{{ form.telefon }}
+          <label class="ad-inline-checkbox" for="{{ form.telefon_whatsapp.id_for_label }}">{{ form.telefon_whatsapp }} {{ form.telefon_whatsapp.label }}</label>
+        </div>
+        <div class="alan"><label for="{{ form.telefon_2.id_for_label }}">{{ form.telefon_2.label }}</label>{{ form.telefon_2 }}
+          <label class="ad-inline-checkbox" for="{{ form.telefon_2_whatsapp.id_for_label }}">{{ form.telefon_2_whatsapp }} {{ form.telefon_2_whatsapp.label }}</label>
+        </div>
         <div class="alan"><label for="{{ form.eposta.id_for_label }}">{{ form.eposta.label }}</label>{{ form.eposta }}{% for e in form.eposta.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <label class="ad-eposta-checkbox" for="{{ form.eposta_gecersiz.id_for_label }}">{{ form.eposta_gecersiz }} {{ form.eposta_gecersiz.label }}</label>
+          <label class="ad-inline-checkbox" for="{{ form.eposta_gecersiz.id_for_label }}">{{ form.eposta_gecersiz }} {{ form.eposta_gecersiz.label }}</label>
         </div>
         <div class="alan"><label for="{{ form.eposta_2.id_for_label }}">{{ form.eposta_2.label }}</label>{{ form.eposta_2 }}{% for e in form.eposta_2.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <label class="ad-eposta-checkbox" for="{{ form.eposta_2_gecersiz.id_for_label }}">{{ form.eposta_2_gecersiz }} {{ form.eposta_2_gecersiz.label }}</label>
+          <label class="ad-inline-checkbox" for="{{ form.eposta_2_gecersiz.id_for_label }}">{{ form.eposta_2_gecersiz }} {{ form.eposta_2_gecersiz.label }}</label>
         </div>
+        <div class="alan"><label for="{{ form.web.id_for_label }}">{{ form.web.label }}</label>{{ form.web }}{% for e in form.web.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
         <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
+        <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}</div>
         <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div></div>
         <div class="alan"><label for="{{ form.tip.id_for_label }}">{{ form.tip.label }}</label>{{ form.tip }}</div>
         <div class="alan"><label for="{{ form.potansiyel.id_for_label }}">{{ form.potansiyel.label }}</label>{{ form.potansiyel }}</div>
@@ -58,9 +64,9 @@
 </div>
 <style>
   #ad-kapanis-nedeni-alan.gizli { display:none; }
-  .ad-eposta-checkbox { display:inline-flex; align-items:center; gap:.35rem; font-size:.8rem;
+  .ad-inline-checkbox { display:inline-flex; align-items:center; gap:.35rem; font-size:.8rem;
     font-weight:600; color:var(--metin-soluk); margin-top:.4rem; cursor:pointer; }
-  .ad-eposta-checkbox input { width:auto; }
+  .ad-inline-checkbox input { width:auto; }
 </style>
 <script>
   (function () {

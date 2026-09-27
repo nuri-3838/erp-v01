@@ -57,12 +57,31 @@
       <h2 class="bolum-baslik">Aktivite</h2>
       <div class="izgara">
         {% for field in form %}
-          <div class="alan{% if field.name == 'aciklama' %} tam{% endif %}">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
+          {% if field.name != "sonraki_adim" and field.name != "sonraki_adim_tarihi" %}
+            <div class="alan{% if field.name == 'aciklama' %} tam{% endif %}">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            </div>
+          {% endif %}
         {% endfor %}
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">⏰</span>Sonraki Adım</h2>
+      <p class="yardim" style="margin:0 0 .6rem">Kaydedince adayın “sonraki adım” bilgisi burada girdiğiniz değerle güncellenir (boş bırakırsanız adayda da boşalır).</p>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.sonraki_adim.id_for_label }}">{{ form.sonraki_adim.label }}</label>
+          {{ form.sonraki_adim }}
+          {% for e in form.sonraki_adim.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.sonraki_adim_tarihi.id_for_label }}">{{ form.sonraki_adim_tarihi.label }}</label>
+          {{ form.sonraki_adim_tarihi }}
+          {% for e in form.sonraki_adim_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
       </div>
     </section>
 

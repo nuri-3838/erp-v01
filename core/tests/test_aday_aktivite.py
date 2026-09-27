@@ -83,6 +83,94 @@ class AdayAktiviteServisTest(TestCase):
         self.assertEqual(len(liste), 2)
         self.assertEqual(liste[0].pk, yeni.pk)              # en yeni tarih önce
 
+    def test_whatsapp_turu_var(self):
+        a = _aday()
+        akt = aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.WHATSAPP,
+                                 aciklama="whatsapptan yazdi")
+        self.assertEqual(akt.tur, "WHATSAPP")
+        self.assertEqual(akt.get_tur_display(), "WhatsApp")
+
+
+class AdayAktiviteSonrakiAdimTest(TestCase):
+    """Aktivite ekle/güncelle formunun 'sonraki adım' alanları — kaydedilince ADAYA yazılır
+    (spec ADIM: Web/Adres/Yetkililer/WhatsApp/aktiviteyle sonraki adım, madde 5)."""
+
+    def test_ekleme_ile_adaya_yazilir(self):
+        a = _aday()
+        aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT, aciklama="x",
+                           sonraki_adim_guncelle=True, sonraki_adim="teklif gonder",
+                           sonraki_adim_tarihi="2026-09-10")
+        a.refresh_from_db()
+        self.assertEqual(a.sonraki_adim, "teklif gonder")
+        self.assertEqual(a.sonraki_adim_tarihi.isoformat(), "2026-09-10")
+
+    def test_bos_birakinca_adayda_da_bosalir(self):
+        a = _aday()
+        a.sonraki_adim, a.sonraki_adim_tarihi = "eski adim", "2026-09-05"
+        a.save()
+        aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT, aciklama="x",
+                           sonraki_adim_guncelle=True, sonraki_adim="", sonraki_adim_tarihi=None)
+        a.refresh_from_db()
+        self.assertEqual(a.sonraki_adim, "")
+        self.assertIsNone(a.sonraki_adim_tarihi)
+
+    def test_guncelle_ile_de_adaya_yazilir(self):
+        a = _aday()
+        akt = aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT, aciklama="ilk")
+        aday_aktivite_guncelle(akt, tarih="2026-09-02", tur=AdayAktivite.Tur.TELEFON,
+                               aciklama="ikinci", sonraki_adim_guncelle=True,
+                               sonraki_adim="ara", sonraki_adim_tarihi="2026-09-20")
+        a.refresh_from_db()
+        self.assertEqual(a.sonraki_adim, "ara")
+        self.assertEqual(a.sonraki_adim_tarihi.isoformat(), "2026-09-20")
+
+    def test_guncelle_false_ise_adaya_dokunmaz(self):
+        """sonraki_adim_guncelle=False (varsayılan) -> geriye dönük uyum: aday DEĞİŞMEZ."""
+        a = _aday()
+        a.sonraki_adim, a.sonraki_adim_tarihi = "dokunulmasin", "2026-09-05"
+        a.save()
+        akt = aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT, aciklama="ilk")
+        aday_aktivite_guncelle(akt, tarih="2026-09-02", tur=AdayAktivite.Tur.NOT, aciklama="y")
+        a.refresh_from_db()
+        self.assertEqual(a.sonraki_adim, "dokunulmasin")
+        self.assertEqual(a.sonraki_adim_tarihi.isoformat(), "2026-09-05")
+
+    def test_tarih_var_metin_yok_reddedilir_ekleme(self):
+        a = _aday()
+        with self.assertRaises(AdayHatasi):
+            aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT, aciklama="x",
+                               sonraki_adim_guncelle=True, sonraki_adim="",
+                               sonraki_adim_tarihi="2026-09-10")
+
+    def test_transaction_sonraki_adim_hatasinda_aktivite_de_aday_da_degismez(self):
+        """Tek transaction: sonraki adım kuralı ihlal edilirse aktivite HİÇ oluşmaz, aday da
+        değişmez — açıklama/tür geçerli olsa bile (bkz. servis: with transaction.atomic())."""
+        a = _aday()
+        a.sonraki_adim, a.sonraki_adim_tarihi = "onceki", "2026-09-01"
+        a.save()
+        onceki_sayi = AdayAktivite.objects.count()
+        with self.assertRaises(AdayHatasi):
+            aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.GORUSME,
+                               aciklama="gecerli aciklama", sonraki_adim_guncelle=True,
+                               sonraki_adim="", sonraki_adim_tarihi="2026-09-15")
+        a.refresh_from_db()
+        self.assertEqual(a.sonraki_adim, "onceki")
+        self.assertEqual(a.sonraki_adim_tarihi.isoformat(), "2026-09-01")
+        self.assertEqual(AdayAktivite.objects.count(), onceki_sayi)
+
+    def test_transaction_aciklama_hatasinda_aday_degismez(self):
+        """Aktivitenin KENDİ hatası (boş açıklama) da adayı değiştirmemeli."""
+        a = _aday()
+        a.sonraki_adim, a.sonraki_adim_tarihi = "onceki2", "2026-09-01"
+        a.save()
+        with self.assertRaises(AdayHatasi):
+            aday_aktivite_ekle(a, tarih="2026-09-01", tur=AdayAktivite.Tur.NOT, aciklama="  ",
+                               sonraki_adim_guncelle=True, sonraki_adim="yeni",
+                               sonraki_adim_tarihi="2026-09-15")
+        a.refresh_from_db()
+        self.assertEqual(a.sonraki_adim, "onceki2")
+        self.assertEqual(a.sonraki_adim_tarihi.isoformat(), "2026-09-01")
+
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
 class AdayAktiviteEkServisTest(TestCase):
@@ -149,6 +237,34 @@ class AdayAktiviteViewTest(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertTrue(AdayAktivite.objects.filter(
             aday=self.aday, aciklama="fabrikada görüştük").exists())
+
+    def test_ekle_formu_adayin_mevcut_sonraki_adimiyla_dolu_acilir(self):
+        aday = _aday("sonraki dolu aday")
+        aday.sonraki_adim, aday.sonraki_adim_tarihi = "mevcut sonraki adim", "2026-10-05"
+        aday.save()
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:aday_aktivite_ekle", args=[aday.pk]))
+        self.assertContains(r, "mevcut sonraki adim")
+        self.assertContains(r, "2026-10-05")
+
+    def test_aktivite_ekle_post_sonraki_adimi_adaya_yazar(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:aday_aktivite_ekle", args=[self.aday.pk]), {
+            "tarih": "2026-09-01", "tur": "GORUSME", "aciklama": "x",
+            "sonraki_adim": "teklif takip et", "sonraki_adim_tarihi": "2026-09-15"})
+        self.assertEqual(r.status_code, 302)
+        self.aday.refresh_from_db()
+        self.assertEqual(self.aday.sonraki_adim, "teklif takip et")
+        self.assertEqual(self.aday.sonraki_adim_tarihi.isoformat(), "2026-09-15")
+
+    def test_aktivite_ekle_post_tarih_var_metin_yok_form_hatasi(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:aday_aktivite_ekle", args=[self.aday.pk]), {
+            "tarih": "2026-09-01", "tur": "GORUSME", "aciklama": "x",
+            "sonraki_adim": "", "sonraki_adim_tarihi": "2026-09-15"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Sonraki adım tarihi girildiyse ne yapılacağı da yazılmalı.")
+        self.assertFalse(AdayAktivite.objects.filter(aday=self.aday, aciklama="x").exists())
 
     @override_settings(MEDIA_ROOT=tempfile.mkdtemp(), IK_OZEL_DIR=tempfile.mkdtemp())
     def test_aktivite_ekle_coklu_dosyayla(self):

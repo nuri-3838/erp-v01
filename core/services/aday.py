@@ -16,10 +16,11 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from core import gorsel
+from core.dogrulama import web_normalize
 from core.metin import buyuk_harf_tr
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel,
-    AdayTip, Cari, CariAktivite, CariAktiviteEk, KapanisNedeni, Sehir, Ulke,
+    AdayTip, AdayYetkili, Cari, CariAktivite, CariAktiviteEk, KapanisNedeni, Sehir, Ulke,
 )
 from core.sayi import SayiHatasi, parse_tr
 from core.services import cari as cari_servis
@@ -78,6 +79,7 @@ def _para_dogrula(deger, etiket):
 
 
 def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", eposta_2="",
+            telefon_whatsapp=False, telefon_2_whatsapp=False, web="", adres="",
             ulke_id=None, sehir_id=None, kategori_id=None, para_birimi="TRY",
             iskonto_yuzdesi=0, tip=AdayTip.ADAY, potansiyel="", asama=AdayAsama.YENI,
             kapanis_nedeni="", sonraki_adim="", sonraki_adim_tarihi=None,
@@ -107,13 +109,19 @@ def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", epos
         eposta_gecersiz = False
     if not eposta_2:
         eposta_2_gecersiz = False
+    web_norm = web_normalize(web)
+    if web_norm is None:
+        raise AdayHatasi(f"Geçersiz web adresi: {(web or '').strip()}")
     return dict(
         unvan=unvan,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
-        telefon=(telefon or "").strip(), telefon_2=(telefon_2 or "").strip(),
+        telefon=(telefon or "").strip(), telefon_whatsapp=bool(telefon_whatsapp),
+        telefon_2=(telefon_2 or "").strip(), telefon_2_whatsapp=bool(telefon_2_whatsapp),
         eposta=eposta, eposta_2=eposta_2,
         eposta_gecersiz=bool(eposta_gecersiz), eposta_2_gecersiz=bool(eposta_2_gecersiz),
+        web=web_norm,
         ulke=_ulke(ulke_id), sehir=_sehir(sehir_id), kategori=_kategori(kategori_id),
+        adres=buyuk_harf_tr((adres or "").strip()),
         para_birimi=para_birimi,
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
         tip=tip, potansiyel=potansiyel, asama=asama, kapanis_nedeni=kapanis_nedeni,
@@ -199,6 +207,52 @@ def aday_cariye_donustur(aday: AdayMusteri, *, kategori_id=None, kullanici=None)
     return cari
 
 
+# --- Yetkili kişiler (CariYetkili ile birebir aynı desen) --------------------
+def aktif_aday_yetkilileri(aday):
+    return aday.yetkililer.filter(silindi=False).order_by("ad_soyad")
+
+
+def aday_yetkili_ekle(aday, *, ad_soyad, unvan="", telefon="", eposta="", notlar="",
+                      whatsapp=False, kullanici=None) -> AdayYetkili:
+    ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
+    if not ad_soyad:
+        raise AdayHatasi("Ad soyad boş olamaz.")
+    return AdayYetkili.objects.create(
+        aday=aday, ad_soyad=ad_soyad, unvan=buyuk_harf_tr((unvan or "").strip()),
+        telefon=(telefon or "").strip(), eposta=(eposta or "").strip().lower(),
+        notlar=(notlar or "").strip(), whatsapp=bool(whatsapp),
+        created_by=kullanici, updated_by=kullanici)
+
+
+def aday_yetkili_guncelle(yetkili: AdayYetkili, *, ad_soyad, unvan="", telefon="",
+                          eposta="", notlar="", whatsapp=False, kullanici=None) -> AdayYetkili:
+    if yetkili.silindi:
+        raise AdayHatasi("Silinmiş yetkili düzenlenemez.")
+    ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
+    if not ad_soyad:
+        raise AdayHatasi("Ad soyad boş olamaz.")
+    yetkili.ad_soyad = ad_soyad
+    yetkili.unvan = buyuk_harf_tr((unvan or "").strip())
+    yetkili.telefon = (telefon or "").strip()
+    yetkili.eposta = (eposta or "").strip().lower()
+    yetkili.notlar = (notlar or "").strip()
+    yetkili.whatsapp = bool(whatsapp)
+    yetkili.updated_by = kullanici
+    yetkili.save(update_fields=["ad_soyad", "unvan", "telefon", "eposta", "notlar", "whatsapp",
+                                "updated_by", "updated_at"])
+    return yetkili
+
+
+def aday_yetkili_sil(yetkili: AdayYetkili, kullanici=None) -> AdayYetkili:
+    if yetkili.silindi:
+        return yetkili
+    yetkili.silindi = True
+    yetkili.silindi_at = timezone.now()
+    yetkili.updated_by = kullanici
+    yetkili.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return yetkili
+
+
 # --- Aktiviteler (görüşme/temas kayıtları) -----------------------------------
 def aktif_aday_aktiviteleri(aday):
     return (aday.aktiviteler.filter(silindi=False)
@@ -208,19 +262,41 @@ def aktif_aday_aktiviteleri(aday):
             .order_by("-tarih", "-id"))
 
 
-def aday_aktivite_ekle(aday, *, tarih, tur, aciklama, kullanici=None) -> AdayAktivite:
+def _sonraki_adim_dogrula(sonraki_adim, sonraki_adim_tarihi):
+    sonraki_adim = (sonraki_adim or "").strip()
+    if sonraki_adim_tarihi and not sonraki_adim:
+        raise AdayHatasi("Sonraki adım tarihi girildiyse ne yapılacağı da yazılmalı.")
+    return sonraki_adim
+
+
+def aday_aktivite_ekle(aday, *, tarih, tur, aciklama, kullanici=None,
+                       sonraki_adim_guncelle=False, sonraki_adim="",
+                       sonraki_adim_tarihi=None) -> AdayAktivite:
+    """``sonraki_adim_guncelle=True`` iken (form akışı) aktivite + adayın sonraki_adim/
+    sonraki_adim_tarihi'si TEK transaction'da yazılır — biri hata verirse ikisi de
+    kaydedilmez. Boş bırakılırsa (kullanıcı temizlemişse) adayda da boşalır."""
     aciklama = (aciklama or "").strip()
     if not aciklama:
         raise AdayHatasi("Açıklama boş olamaz.")
     if tur not in AdayAktivite.Tur.values:
         raise AdayHatasi("Geçersiz aktivite türü.")
-    return AdayAktivite.objects.create(
-        aday=aday, tarih=tarih, tur=tur, aciklama=aciklama,
-        created_by=kullanici, updated_by=kullanici)
+    sonraki_adim = _sonraki_adim_dogrula(sonraki_adim, sonraki_adim_tarihi)
+    with transaction.atomic():
+        aktivite = AdayAktivite.objects.create(
+            aday=aday, tarih=tarih, tur=tur, aciklama=aciklama,
+            created_by=kullanici, updated_by=kullanici)
+        if sonraki_adim_guncelle:
+            aday.sonraki_adim = sonraki_adim
+            aday.sonraki_adim_tarihi = sonraki_adim_tarihi
+            aday.updated_by = kullanici
+            aday.save(update_fields=["sonraki_adim", "sonraki_adim_tarihi",
+                                     "updated_by", "updated_at"])
+    return aktivite
 
 
-def aday_aktivite_guncelle(aktivite: AdayAktivite, *, tarih, tur, aciklama,
-                           kullanici=None) -> AdayAktivite:
+def aday_aktivite_guncelle(aktivite: AdayAktivite, *, tarih, tur, aciklama, kullanici=None,
+                           sonraki_adim_guncelle=False, sonraki_adim="",
+                           sonraki_adim_tarihi=None) -> AdayAktivite:
     if aktivite.silindi:
         raise AdayHatasi("Silinmiş aktivite düzenlenemez.")
     aciklama = (aciklama or "").strip()
@@ -228,11 +304,20 @@ def aday_aktivite_guncelle(aktivite: AdayAktivite, *, tarih, tur, aciklama,
         raise AdayHatasi("Açıklama boş olamaz.")
     if tur not in AdayAktivite.Tur.values:
         raise AdayHatasi("Geçersiz aktivite türü.")
-    aktivite.tarih = tarih
-    aktivite.tur = tur
-    aktivite.aciklama = aciklama
-    aktivite.updated_by = kullanici
-    aktivite.save(update_fields=["tarih", "tur", "aciklama", "updated_by", "updated_at"])
+    sonraki_adim = _sonraki_adim_dogrula(sonraki_adim, sonraki_adim_tarihi)
+    with transaction.atomic():
+        aktivite.tarih = tarih
+        aktivite.tur = tur
+        aktivite.aciklama = aciklama
+        aktivite.updated_by = kullanici
+        aktivite.save(update_fields=["tarih", "tur", "aciklama", "updated_by", "updated_at"])
+        if sonraki_adim_guncelle:
+            aday = aktivite.aday
+            aday.sonraki_adim = sonraki_adim
+            aday.sonraki_adim_tarihi = sonraki_adim_tarihi
+            aday.updated_by = kullanici
+            aday.save(update_fields=["sonraki_adim", "sonraki_adim_tarihi",
+                                     "updated_by", "updated_at"])
     return aktivite
 
 
