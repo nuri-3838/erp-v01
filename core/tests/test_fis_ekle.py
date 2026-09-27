@@ -6,7 +6,9 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
+from core.forms import SatirForm
 from core.models import YevmiyeFisi, YevmiyeSatir
+from core.services.hesap_plani import hesap_olustur
 
 
 def _payload(**degis):
@@ -91,3 +93,29 @@ class FisEkleViewTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Geçersiz sayı")
         self.assertEqual(YevmiyeFisi.objects.count(), 0)
+
+
+class SatirFormHesapDinamikTest(TestCase):
+    """Regresyon: SatirForm.hesap queryset'i modül import edildikten SONRA da her form
+    örneğinde taze hesaplanmalı (bkz. core/forms.py SatirForm.__init__) — eskiden class
+    gövdesindeki `queryset=_aktif_hesaplar()` yalnız modül ilk import edilirken BİR KEZ
+    çalışıyordu; o andan sonra hangi hesapların üst/ara olduğu donuyordu. Bu test tam o
+    senaryoyu tekrar açar: SatirForm zaten import edilmiş durumdayken bir hesaba alt hesap
+    açılır, üst hesabın Hesap listesinden HEMEN çıkması beklenir."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_hesap_plani")
+        cls.u = User.objects.create_superuser("dinamik", password="x")
+
+    def test_alt_hesap_acilinca_ust_hesap_listeden_cikar(self):
+        onceki = SatirForm().fields["hesap"].queryset
+        self.assertTrue(onceki.filter(hesap_kodu="100").exists(),
+                        "100 başlangıçta yaprak olmalı (henüz alt hesabı yok)")
+        hesap_olustur(kod="100.99", ad="regresyon test alt hesabı", ust_kodu="100",
+                     kullanici=self.u)
+        sonraki = SatirForm().fields["hesap"].queryset
+        self.assertFalse(sonraki.filter(hesap_kodu="100").exists(),
+                         "100 artık üst hesap, Hesap listesinden çıkmış olmalı")
+        self.assertTrue(sonraki.filter(hesap_kodu="100.99").exists(),
+                        "yeni açılan alt hesap kendisi yaprak olarak listede olmalı")

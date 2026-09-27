@@ -79,8 +79,14 @@ def _aktif_hesaplar():
 class SatirForm(forms.Form):
     """Klasik yevmiye satırı: tutar BORÇ veya ALACAK sütununa yazılır."""
 
+    # queryset burada DEĞİL __init__ içinde atanır — class gövdesindeki bir default
+    # değer yalnız modül ilk import edildiğinde BİR KEZ hesaplanır (_aktif_hesaplar ->
+    # yaprak_hesaplar -> _ust_kod_kumesi, hesap kodlarını set() ile hemen materyalize
+    # eder); o andan sonra hangi hesaplar "üst/ara" olduğu donar ve bir daha
+    # güncellenmez. __init__'te atamak her form örneğinde (istek başına) taze sorgu
+    # garanti eder — bkz. KrediKartiHareketForm'daki "gider" alanı, aynı desen.
     hesap = forms.ModelChoiceField(
-        label="Hesap", queryset=_aktif_hesaplar(), to_field_name="hesap_kodu",
+        label="Hesap", queryset=HesapPlani.objects.none(), to_field_name="hesap_kodu",
         empty_label="— hesap seç —", required=False,
     )
     islem_pb = forms.ChoiceField(
@@ -93,6 +99,10 @@ class SatirForm(forms.Form):
         label="İşlem kuru", basamak=6, initial=Decimal("1"), required=False,
     )
     aciklama = forms.CharField(label="Satır açıklaması", required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["hesap"].queryset = _aktif_hesaplar()
 
     def clean(self):
         cd = super().clean()
