@@ -10,10 +10,30 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.forms import AdayMusteriForm
-from core.services.aday import AdayHatasi, aday_musteri_guncelle, aday_musteri_olustur
+from core.models import AdayAsamaTanim, AdayPotansiyelTanim, AdayTipTanim
+from core.services.aday import (
+    AdayHatasi, aday_musteri_guncelle as _aday_musteri_guncelle_ham,
+    aday_musteri_olustur as _aday_musteri_olustur_ham,
+)
 from core.tarih import tr_bugun
 
 UTC = dt_timezone.utc
+
+
+def aday_musteri_olustur(*, tip=None, asama=None, **kw):
+    """tip/potansiyel/asama artık FK — bu dosyada hâlâ sistem_kodu STRİNGİ ile çağrılabilsin
+    diye ince bir çeviri katmanı (verilmezse eski CharField varsayılanları ADAY/YENİ)."""
+    kw["tip_id"] = AdayTipTanim.objects.get(sistem_kodu=tip or "ADAY").pk
+    kw["asama_id"] = AdayAsamaTanim.objects.get(sistem_kodu=asama or "YENI").pk
+    return _aday_musteri_olustur_ham(**kw)
+
+
+def aday_musteri_guncelle(aday, *, tip=None, asama=None, **kw):
+    """Aynı çeviri — verilmezse adayın MEVCUT tip/aşaması korunur (gerçek form akışıyla
+    aynı: form her zaman tüm alanları taşır, burada testin belirtmediği alan değişmez)."""
+    kw["tip_id"] = (AdayTipTanim.objects.get(sistem_kodu=tip).pk if tip else aday.tip_id)
+    kw["asama_id"] = (AdayAsamaTanim.objects.get(sistem_kodu=asama).pk if asama else aday.asama_id)
+    return _aday_musteri_guncelle_ham(aday, **kw)
 
 
 def _form_temel_veri(**ek):
@@ -24,6 +44,10 @@ def _form_temel_veri(**ek):
         kapanis_nedeni="", sonraki_adim="", sonraki_adim_tarihi="",
         para_birimi="TRY", iskonto_yuzdesi="0")
     veri.update(ek)
+    veri["tip"] = AdayTipTanim.objects.get(sistem_kodu=veri["tip"]).pk if veri["tip"] else ""
+    veri["asama"] = AdayAsamaTanim.objects.get(sistem_kodu=veri["asama"]).pk if veri["asama"] else ""
+    if veri["potansiyel"]:
+        veri["potansiyel"] = AdayPotansiyelTanim.objects.get(sistem_kodu=veri["potansiyel"]).pk
     return veri
 
 

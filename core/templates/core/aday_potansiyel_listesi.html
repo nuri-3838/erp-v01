@@ -1,0 +1,47 @@
+{% extends "core/base.html" %}
+{% block baslik %}Aday Potansiyelleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Aday Potansiyelleri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">🔥</span>Aday Potansiyelleri</h1>
+  <a class="dugme" href="{% url 'core:aday_potansiyeli_ekle' %}">+ Yeni Potansiyel</a>
+</div>
+<p class="sayfa-alt">"Sıcak" işaretli potansiyel, aday listesinin Sıcak sekmesine girer.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr><th>Sıra</th><th>Ad</th><th>Sıcak</th><th>Aktif</th><th>Kullanım</th><th>İşlem</th></tr>
+  </thead>
+  <tbody>
+    {% for t in kayitlar %}
+      <tr>
+        <td class="mono">{{ t.sira }}</td>
+        <td><span class="rozet rozet-renk-{{ t.renk|lower }}">{{ t.ad }}</span>
+          {% if t.sistem_kodu %}<span class="rozet rozet-notr" title="Sistem kaydı">⚙️</span>{% endif %}</td>
+        <td>{% if t.sicak %}🔥{% else %}—{% endif %}</td>
+        <td>{% if t.aktif %}<span class="rozet rozet-aktif">Aktif</span>{% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
+        <td class="mono">{{ t.kullanim_sayisi }}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:aday_potansiyeli_duzenle' t.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:aday_potansiyeli_pasif_yap' t.pk %}" style="display:inline">
+              {% csrf_token %}<button type="submit" class="bagli">{% if t.aktif %}Pasif yap{% else %}Aktif yap{% endif %}</button>
+            </form>
+            {% if not t.sistem_kodu %}
+            <form method="post" action="{% url 'core:aday_potansiyeli_sil' t.pk %}" style="display:inline"
+                  onsubmit="return confirm('{{ t.ad|escapejs }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+            {% endif %}
+          </span>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="yardim">Henüz potansiyel yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

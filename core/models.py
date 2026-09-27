@@ -1000,6 +1000,98 @@ class KapanisNedeni(models.TextChoices):
     DIGER = "DIGER", "Diğer"
 
 
+class TanimRenk(models.TextChoices):
+    """Aday Tip/Potansiyel/Aşama tanım rozetlerinin rengi — birkaç hazır seçenek."""
+    GRI = "GRI", "Gri"
+    MAVI = "MAVI", "Mavi"
+    YESIL = "YESIL", "Yeşil"
+    TURUNCU = "TURUNCU", "Turuncu"
+    KIRMIZI = "KIRMIZI", "Kırmızı"
+    MOR = "MOR", "Mor"
+
+
+class _AdayTanimTaban(TemelModel):
+    """Aday Tip/Potansiyel/Aşama tanım tablolarının ortak taban modeli (soyut) — kullanıcı
+    tarafından düzenlenebilir tanım listeleri (bkz. core.services.aday_tanim). ``sistem_kodu``
+    dolu kayıtlar tohum veridir: silinemez ve kodu değişmez (serviste zorlanır), ama adı/
+    sırası/rengi/aktifliği değişebilir. ``aktif=False`` kayıt formlarda seçilemez ama mevcut
+    adaylarda görünmeye devam eder (soft-delete ``silindi`` alanından AYRI bir kavram)."""
+
+    ad = models.CharField("ad", max_length=100)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+    aktif = models.BooleanField("aktif", default=True)
+    renk = models.CharField("renk", max_length=10, choices=TanimRenk.choices,
+                            default=TanimRenk.GRI)
+    # Tohum veri (migration 0132) işareti — null: kullanıcının sonradan eklediği serbest kayıt.
+    sistem_kodu = models.CharField("sistem kodu", max_length=20, null=True, blank=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["sira", "ad"]
+
+    def __str__(self):
+        return self.ad
+
+
+class AdayTipTanim(_AdayTanimTaban):
+    """CRM > Tipler — Cariye Dönüştür'ün kategori önerisi/engeli artık BURADAN okunur
+    (bkz. core.services.aday_donustur.kategori_onerisi/donusturme_engeli_var_mi)."""
+
+    cari_kategori_yurtici = models.ForeignKey(
+        "CariKategori", verbose_name="yurtiçi cari kategorisi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    cari_kategori_yurtdisi = models.ForeignKey(
+        "CariKategori", verbose_name="yurtdışı cari kategorisi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    cariye_donusturulebilir = models.BooleanField("cariye dönüştürülebilir", default=True)
+
+    class Meta(_AdayTanimTaban.Meta):
+        db_table = "aday_tip_tanim"
+        verbose_name = "aday tipi"
+        verbose_name_plural = "aday tipleri"
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_adaytiptanim_ad_aktif"),
+            models.UniqueConstraint(fields=["sistem_kodu"], condition=models.Q(silindi=False),
+                                    name="uq_adaytiptanim_kod_aktif"),
+        ]
+
+
+class AdayPotansiyelTanim(_AdayTanimTaban):
+    sicak = models.BooleanField("Sıcak sekmesine girer", default=False)
+
+    class Meta(_AdayTanimTaban.Meta):
+        db_table = "aday_potansiyel_tanim"
+        verbose_name = "aday potansiyeli"
+        verbose_name_plural = "aday potansiyelleri"
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_adaypottanim_ad_aktif"),
+            models.UniqueConstraint(fields=["sistem_kodu"], condition=models.Q(silindi=False),
+                                    name="uq_adaypottanim_kod_aktif"),
+        ]
+
+
+class AdayAsamaTanim(_AdayTanimTaban):
+    class Rol(models.TextChoices):
+        BASLANGIC = "BASLANGIC", "Başlangıç"
+        ARA = "ARA", "Ara"
+        KAPALI = "KAPALI", "Kapalı"
+
+    rol = models.CharField("rol", max_length=10, choices=Rol.choices, default=Rol.ARA)
+
+    class Meta(_AdayTanimTaban.Meta):
+        db_table = "aday_asama_tanim"
+        verbose_name = "aday aşaması"
+        verbose_name_plural = "aday aşamaları"
+        constraints = [
+            models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),
+                                    name="uq_adayasamatanim_ad_aktif"),
+            models.UniqueConstraint(fields=["sistem_kodu"], condition=models.Q(silindi=False),
+                                    name="uq_adayasamatanim_kod_aktif"),
+        ]
+
+
 class AdayMusteri(TemelModel):
     """CRM: henüz Cari olmamış potansiyel müşteri. Kasıtlı olarak Cari'den ayrı ve HAFİF —
     Cari.kaydı açılınca otomatik muhasebe hesabı açılır (bkz. cari_servis.muhasebe_hesabi_ac),
@@ -1030,14 +1122,17 @@ class AdayMusteri(TemelModel):
         on_delete=models.PROTECT, related_name="aday_musteriler")
     adres = models.TextField("adres", blank=True, default="")
     kategori = models.ForeignKey(
-        "AdayMusteriKategori", verbose_name="kategori", null=True, blank=True,
+        "AdayMusteriKategori", verbose_name="kaynak", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
-    tip = models.CharField("tip", max_length=20, choices=AdayTip.choices,
-                           default=AdayTip.ADAY, db_index=True)
-    potansiyel = models.CharField("potansiyel", max_length=10, choices=AdayPotansiyel.choices,
-                                  blank=True, default="", db_index=True)
-    asama = models.CharField("aşama", max_length=10, choices=AdayAsama.choices,
-                             default=AdayAsama.YENI, db_index=True)
+    tip = models.ForeignKey(
+        AdayTipTanim, verbose_name="tip", on_delete=models.PROTECT,
+        related_name="aday_musteriler")
+    potansiyel = models.ForeignKey(
+        AdayPotansiyelTanim, verbose_name="potansiyel", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="aday_musteriler")
+    asama = models.ForeignKey(
+        AdayAsamaTanim, verbose_name="aşama", on_delete=models.PROTECT,
+        related_name="aday_musteriler")
     kapanis_nedeni = models.CharField("kapanış nedeni", max_length=20,
                                       choices=KapanisNedeni.choices, blank=True, default="")
     # Sonraki adım tarihi doluyken metin boş olamaz (form/servis kuralı) — tersi serbest.
@@ -1108,19 +1203,22 @@ class AdayMusteri(TemelModel):
 
 
 class AdayMusteriKategori(TemelModel):
-    """Aday müşteri kategorisi (CRM) — CariKategori ile aynı desen (2 seviye: ÜST → ALT),
+    """Aday KAYNAĞI (CRM) — "adayın nereden geldiği" (eski firma verisi, fuar, tavsiye,
+    ziyaret…). Model/tablo/alan adı tarihsel nedenlerle "Kategori" kalır (migration riski),
+    yalnız KULLANICIYA GÖRÜNEN metin "Kaynak"tır (bkz. verbose_name, core/urls.py
+    crm/kaynaklar/, core/moduller.py). CariKategori ile aynı desen (2 seviye: ÜST → ALT),
     ama Cari'nin muhasebe/kod-numaralama ihtiyacından bağımsız, CRM'e özel ayrı bir ağaç."""
 
     ad = models.CharField("ad", max_length=100)
     kod = models.CharField("kod", max_length=10)
     ust = models.ForeignKey(
-        "self", verbose_name="üst kategori", null=True, blank=True,
+        "self", verbose_name="üst kaynak", null=True, blank=True,
         on_delete=models.PROTECT, related_name="alt_kategoriler")
 
     class Meta:
         db_table = "aday_musteri_kategori"
-        verbose_name = "aday müşteri kategorisi"
-        verbose_name_plural = "aday müşteri kategorileri"
+        verbose_name = "aday kaynağı"
+        verbose_name_plural = "aday kaynakları"
         ordering = ["kod"]
         constraints = [
             models.UniqueConstraint(

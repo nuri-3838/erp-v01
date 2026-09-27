@@ -13,9 +13,16 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import (
-    Birim, Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi, TeklifSiparis,
+    AdayAsamaTanim, AdayTipTanim, Birim, Cari, HesapPlani, KdvOrani, Kategori, TanimSecenegi,
+    TeklifSiparis,
 )
-from core.services.aday import aday_musteri_olustur
+from core.services.aday import aday_musteri_olustur as _aday_musteri_olustur_ham
+
+
+def aday_musteri_olustur(**kw):
+    kw.setdefault("tip_id", AdayTipTanim.objects.get(sistem_kodu="ADAY").pk)
+    kw.setdefault("asama_id", AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
+    return _aday_musteri_olustur_ham(**kw)
 from core.services.aday_donustur import yeni_cari_ac
 from core.services.stok import stok_olustur
 

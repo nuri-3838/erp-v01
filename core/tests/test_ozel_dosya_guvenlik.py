@@ -17,7 +17,9 @@ from django.test import SimpleTestCase
 from django.urls import reverse
 from PIL import Image
 
-from core.models import Cari, CariAktiviteEk, CekSenet, EkranYetki, HesapPlani, Kur
+from core.models import (
+    AdayAsamaTanim, AdayTipTanim, Cari, CariAktiviteEk, CekSenet, EkranYetki, HesapPlani, Kur,
+)
 from core.services.aday import aday_aktivite_ek_ekle, aday_aktivite_ekle, aday_musteri_olustur
 from core.services.aday_donustur import yeni_cari_ac
 from core.services.cari import aktivite_ek_ekle, aktivite_ekle, cari_olustur
@@ -52,7 +54,10 @@ class OzelEkTemel(OzelDizinTestTemel):
         self.cari_pdf = aktivite_ek_ekle(self.cari_akt, dosya=yuklenen("Sozlesme.pdf", PDF_BAYT))
         self.cari_png = aktivite_ek_ekle(self.cari_akt, dosya=yuklenen("foto.png", png_bayt()))
         # --- aday + aktivite + ek ---
-        self.aday = aday_musteri_olustur(unvan="gizli aday", para_birimi="TRY")
+        self.aday = aday_musteri_olustur(
+            unvan="gizli aday", para_birimi="TRY",
+            tip_id=AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
+            asama_id=AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
         self.aday_akt = aday_aktivite_ekle(self.aday, tarih=bugun, tur="NOT", aciklama="teklif")
         self.aday_pdf = aday_aktivite_ek_ekle(
             self.aday_akt, dosya=yuklenen("Teklif.pdf", PDF_BAYT))

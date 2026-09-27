@@ -1,19 +1,20 @@
 {% extends "core/base.html" %}
-{% block baslik %}Aday Kategorileri · ERP v0.1{% endblock %}
-{% block sayfa_adi %}Aday Kategorileri{% endblock %}
+{% block baslik %}Aday Kaynakları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Aday Kaynakları{% endblock %}
 
 {% block content %}
 <div class="sayfa-ust">
-  <h1 class="ust-baslik"><span class="emoji">🗂️</span>Aday Kategorileri</h1>
+  <h1 class="ust-baslik"><span class="emoji">🗂️</span>Aday Kaynakları</h1>
   <a class="dugme" href="{% url 'core:aday_kategori_ekle' %}">+ Yeni Üst</a>
 </div>
-<p class="sayfa-alt">İki seviyeli: <strong>üst</strong> → <strong>alt</strong>. Aday müşteriler
-  bu kategorilerden birine bağlanabilir.</p>
+<p class="sayfa-alt">Adayın nereden geldiği (eski firma verisi, fuar, tavsiye, ziyaret…). İki
+  seviyeli: <strong>üst</strong> → <strong>alt</strong>. Aday müşteriler bu kaynaklardan
+  birine bağlanabilir.</p>
 
 <div class="tablo-kapsayici">
 <table>
   <thead>
-    <tr><th>Kategori</th><th>Kod</th><th>Kod Yolu</th><th>İşlem</th></tr>
+    <tr><th>Kaynak</th><th>Kod</th><th>Kod Yolu</th><th>İşlem</th></tr>
   </thead>
   <tbody>
     {% for kok in koklar %}
@@ -49,7 +50,7 @@
         </tr>
       {% endfor %}
     {% empty %}
-      <tr><td colspan="4" class="yardim">Henüz aday kategorisi yok. “+ Yeni Üst” ile başlayın.</td></tr>
+      <tr><td colspan="4" class="yardim">Henüz aday kaynağı yok. “+ Yeni Üst” ile başlayın.</td></tr>
     {% endfor %}
   </tbody>
 </table>

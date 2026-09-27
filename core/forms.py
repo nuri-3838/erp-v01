@@ -16,12 +16,14 @@ from django.utils import timezone
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
-    AdayAktivite, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel, AdayTip, Banka,
+    AdayAktivite, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori, AdayPotansiyelTanim,
+    AdayTipTanim, Banka,
     BankaHesap, Birim, Cari,
     CariAktivite, CariKategori, KapanisNedeni,
     CekSenet, Depo, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
-    PersonelIzin, Profil, Sehir, Stok, StokHareket, TanimSecenegi, TevkifatOrani, Ulke, YevmiyeSatir,
+    PersonelIzin, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi, TevkifatOrani,
+    Ulke, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
 from core.tarih import tr_bugun
@@ -567,6 +569,46 @@ class AdayMusteriKategoriForm(forms.Form):
         label="Kod", max_length=10, widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
 
+class _AdayTanimFormTaban(forms.Form):
+    """Tip/Potansiyel/Aşama tanım formlarının ortak alanları — sistem_kodu formda YOK
+    (sistem kaydının kodu hiç değişmez, bkz. core.services.aday_tanim); ad/sıra/renk/aktif
+    her zaman düzenlenebilir."""
+
+    ad = forms.CharField(
+        label="Ad", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    sira = forms.IntegerField(label="Sıra", initial=0, min_value=0)
+    aktif = forms.BooleanField(label="Aktif", required=False, initial=True)
+    renk = forms.ChoiceField(label="Renk", choices=TanimRenk.choices, initial=TanimRenk.GRI)
+
+
+class AdayTipTanimForm(_AdayTanimFormTaban):
+    cari_kategori_yurtici = forms.ModelChoiceField(
+        label="Yurtiçi Cari Kategorisi", queryset=CariKategori.objects.none(),
+        required=False, empty_label="— seçin —")
+    cari_kategori_yurtdisi = forms.ModelChoiceField(
+        label="Yurtdışı Cari Kategorisi", queryset=CariKategori.objects.none(),
+        required=False, empty_label="— seçin —")
+    cariye_donusturulebilir = forms.BooleanField(
+        label="Cariye dönüştürülebilir", required=False, initial=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cari_kategori import aktif_cari_kategoriler
+        qs = aktif_cari_kategoriler()
+        for f in ("cari_kategori_yurtici", "cari_kategori_yurtdisi"):
+            self.fields[f].queryset = qs
+            self.fields[f].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
+            self.fields[f].widget.attrs["class"] = "akilli-sec"
+
+
+class AdayPotansiyelTanimForm(_AdayTanimFormTaban):
+    sicak = forms.BooleanField(label="Sıcak sekmesine girer", required=False)
+
+
+class AdayAsamaTanimForm(_AdayTanimFormTaban):
+    rol = forms.ChoiceField(label="Rol", choices=AdayAsamaTanim.Rol.choices)
+
+
 class AdayMusteriForm(forms.Form):
     """Aday müşteri (CRM) ekle/düzenle. TR büyük harf serviste. Kasıtlı olarak Cari'nin
     Kimlik/İletişim + Kategori + Para Birimi + İskonto yapısını yansıtır."""
@@ -598,13 +640,13 @@ class AdayMusteriForm(forms.Form):
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 5, **_K}))
     kategori = forms.ModelChoiceField(
-        label="Kategori", queryset=AdayMusteriKategori.objects.none(),
-        required=False, empty_label="— kategori seç —")
-    tip = forms.ChoiceField(label="Tip", choices=AdayTip.choices, initial=AdayTip.ADAY)
-    potansiyel = forms.ChoiceField(
-        label="Potansiyel",
-        choices=[("", "— belirlenmedi —")] + list(AdayPotansiyel.choices), required=False)
-    asama = forms.ChoiceField(label="Aşama", choices=AdayAsama.choices, initial=AdayAsama.YENI)
+        label="Kaynak", queryset=AdayMusteriKategori.objects.none(),
+        required=False, empty_label="— kaynak seç —")
+    tip = forms.ModelChoiceField(label="Tip", queryset=AdayTipTanim.objects.none())
+    potansiyel = forms.ModelChoiceField(
+        label="Potansiyel", queryset=AdayPotansiyelTanim.objects.none(),
+        required=False, empty_label="— belirlenmedi —")
+    asama = forms.ModelChoiceField(label="Aşama", queryset=AdayAsamaTanim.objects.none())
     kapanis_nedeni = forms.ChoiceField(
         label="Kapanış Nedeni",
         choices=[("", "— seçin —")] + list(KapanisNedeni.choices), required=False)
@@ -618,7 +660,7 @@ class AdayMusteriForm(forms.Form):
     iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
                                      initial=Decimal("0"), required=False)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, duzenlenen_aday=None, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.aday_kategori import aktif_aday_kategoriler
         from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
@@ -627,12 +669,34 @@ class AdayMusteriForm(forms.Form):
         self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
         self.fields["kategori"].queryset = aktif_aday_kategoriler()
         self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
+        # aktif=False tanımlar formda seçilemez — AMA düzenlenen adayın MEVCUT değeri
+        # (artık pasif olsa bile) seçenek listesinden düşmesin (spec: "mevcut kayıtlarda
+        # görünmeye devam eder").
+        self.fields["tip"].queryset = self._tanim_secenekleri(
+            AdayTipTanim, duzenlenen_aday and duzenlenen_aday.tip_id)
+        self.fields["potansiyel"].queryset = self._tanim_secenekleri(
+            AdayPotansiyelTanim, duzenlenen_aday and duzenlenen_aday.potansiyel_id)
+        self.fields["asama"].queryset = self._tanim_secenekleri(
+            AdayAsamaTanim, duzenlenen_aday and duzenlenen_aday.asama_id)
+        # Kapanış Nedeni'nin JS'te gösterilip gizlenmesi asama <select> değerinin (pk)
+        # KAPALI rolüne mi denk geldiğine bakar — template bu pk kümesini JS'e gömer.
+        self.kapali_asama_pkleri = list(
+            AdayAsamaTanim.objects.filter(silindi=False, rol=AdayAsamaTanim.Rol.KAPALI)
+            .values_list("pk", flat=True))
         for f in ("ulke", "sehir", "kategori"):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
 
+    @staticmethod
+    def _tanim_secenekleri(Model, mevcut_pk):
+        qs = Model.objects.filter(silindi=False, aktif=True)
+        if mevcut_pk:
+            qs = Model.objects.filter(silindi=False, pk=mevcut_pk) | qs
+        return qs.order_by("sira", "ad")
+
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("asama") == AdayAsama.KAPALI:
+        asama = cleaned.get("asama")
+        if asama and asama.rol == AdayAsamaTanim.Rol.KAPALI:
             if not cleaned.get("kapanis_nedeni"):
                 self.add_error("kapanis_nedeni", "Aşama Kapalı iken kapanış nedeni zorunlu.")
         else:

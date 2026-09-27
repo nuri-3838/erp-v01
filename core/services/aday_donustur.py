@@ -16,9 +16,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import (
-    AdayAktiviteEk, AdayTip, CariAktivite, CariAktiviteEk, CariKategori, CariYetkili,
-)
+from core.models import AdayAktiviteEk, CariAktivite, CariAktiviteEk, CariYetkili
 from core.services import cari as cari_servis
 from core.tarih import tr_bugun
 
@@ -26,19 +24,6 @@ from core.tarih import tr_bugun
 class AdayDonusturHatasi(ValueError):
     """Cariye dönüştürme kural ihlali (Türkçe mesaj)."""
 
-
-DONUSTURME_ENGELLI_TIPLER = {AdayTip.RAKIP, AdayTip.PAZAR_BILGISI}
-
-# (tip, yurtdışı mı) -> önerilen CariKategori kod_yolu ("üst_kod-alt_kod"). Kod ile aranır,
-# id sabitlenmez (spec kararı — kategoriler silinip yeniden açılabilir).
-_KATEGORI_ONERI_KOD_YOLU = {
-    (AdayTip.ESKI_MUSTERI, False): "120-10", (AdayTip.ESKI_MUSTERI, True): "120-20",
-    (AdayTip.ADAY, False): "120-10", (AdayTip.ADAY, True): "120-20",
-    (AdayTip.ARACI, False): "120-10", (AdayTip.ARACI, True): "120-20",
-    (AdayTip.LOJISTIK, False): "320-40", (AdayTip.LOJISTIK, True): "320-40",
-    (AdayTip.GUMRUK, False): "320-30", (AdayTip.GUMRUK, True): "320-30",
-    (AdayTip.TEDARIKCI, False): "320-10", (AdayTip.TEDARIKCI, True): "320-10",
-}
 
 _ALAN_ETIKET = {
     "telefon": "Telefon", "telefon_2": "Telefon 2", "eposta": "E-posta", "web": "Web",
@@ -117,27 +102,22 @@ def eslesen_cariler(aday):
     return sonuclar
 
 
-def _kategori_kod_yolu_bul(kod_yolu):
-    ust_kod, alt_kod = kod_yolu.split("-")
-    return CariKategori.objects.filter(
-        silindi=False, ust__silindi=False, ust__kod=ust_kod, kod=alt_kod).first()
-
-
 def donusturme_engeli_var_mi(aday):
-    """Dönüştürmeyi tamamen engelleyen bir durum varsa açıklayıcı Türkçe mesaj, yoksa None."""
-    if aday.tip in DONUSTURME_ENGELLI_TIPLER:
-        return (f"'{aday.get_tip_display()}' tipindeki adaylar cariye dönüştürülemez "
+    """Dönüştürmeyi tamamen engelleyen bir durum varsa açıklayıcı Türkçe mesaj, yoksa None.
+    Engel artık aday.tip.cariye_donusturulebilir'den okunur (bkz. CRM > Tipler ekranı,
+    core.models.AdayTipTanim) — sabit kod listesi YOK, düzenlenebilir tanım tablosu."""
+    if not aday.tip.cariye_donusturulebilir:
+        return (f"'{aday.tip.ad}' tipindeki adaylar cariye dönüştürülemez "
                 f"(gerçek müşteri/tedarikçi adayı değil).")
     return None
 
 
 def kategori_onerisi(aday):
-    """(tip, yurtdışı mı) -> CariKategori önerisi; bulunamazsa None (kullanıcı elle seçer).
-    'Yurtdışı' = ülke seçili VE kodu TR değil; ülke boşsa güvenli taraf seçilir (yurtdışı,
-    VKN zorunlu kılınmaz)."""
+    """aday.tip.cari_kategori_yurtici/yurtdisi'den CariKategori önerisi; tanımlı değilse None
+    (kullanıcı elle seçer). 'Yurtdışı' = ülke seçili VE kodu TR değil; ülke boşsa güvenli
+    taraf seçilir (yurtdışı, VKN zorunlu kılınmaz)."""
     turkiye_mi = bool(aday.ulke_id) and aday.ulke.kod == "TR"
-    kod_yolu = _KATEGORI_ONERI_KOD_YOLU.get((aday.tip, not turkiye_mi))
-    return _kategori_kod_yolu_bul(kod_yolu) if kod_yolu else None
+    return aday.tip.cari_kategori_yurtici if turkiye_mi else aday.tip.cari_kategori_yurtdisi
 
 
 def yeni_cari_baslangic_degerleri(aday):

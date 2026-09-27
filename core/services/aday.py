@@ -20,8 +20,8 @@ from core import gorsel
 from core.dogrulama import web_normalize
 from core.metin import buyuk_harf_tr
 from core.models import (
-    AdayAktivite, AdayAktiviteEk, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel,
-    AdayTip, AdayYetkili, KapanisNedeni, Sehir, Ulke,
+    AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
+    AdayPotansiyelTanim, AdayTipTanim, AdayYetkili, KapanisNedeni, Sehir, Ulke,
 )
 from core.sayi import SayiHatasi, parse_tr
 
@@ -39,7 +39,7 @@ def aktif_aday_musteriler():
     Takibim/Sıcak/Temas yok sekmelerinden düşürmek görüntüleme view'ının kendi sekme
     kuralının işi (_aday_tab_q); "aktif aday" burada yalnız 'silinmemiş' anlamına gelir."""
     return (AdayMusteri.objects.filter(silindi=False)
-            .select_related("ulke", "sehir", "kategori", "cari"))
+            .select_related("ulke", "sehir", "kategori", "cari", "tip", "potansiyel", "asama"))
 
 
 def _ulke(ulke_id):
@@ -65,8 +65,31 @@ def _kategori(kategori_id):
         return None
     k = AdayMusteriKategori.objects.filter(pk=kategori_id, silindi=False).first()
     if k is None:
-        raise AdayHatasi("Kategori bulunamadı.")
+        raise AdayHatasi("Kaynak bulunamadı.")
     return k
+
+
+def _tip(tip_id):
+    t = AdayTipTanim.objects.filter(pk=tip_id, silindi=False).first()
+    if t is None:
+        raise AdayHatasi("Tip bulunamadı.")
+    return t
+
+
+def _potansiyel(potansiyel_id):
+    if not potansiyel_id:
+        return None
+    p = AdayPotansiyelTanim.objects.filter(pk=potansiyel_id, silindi=False).first()
+    if p is None:
+        raise AdayHatasi("Potansiyel bulunamadı.")
+    return p
+
+
+def _asama(asama_id):
+    a = AdayAsamaTanim.objects.filter(pk=asama_id, silindi=False).first()
+    if a is None:
+        raise AdayHatasi("Aşama bulunamadı.")
+    return a
 
 
 def _para_dogrula(deger, etiket):
@@ -82,7 +105,7 @@ def _para_dogrula(deger, etiket):
 def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", eposta_2="",
             telefon_whatsapp=False, telefon_2_whatsapp=False, web="", adres="",
             ulke_id=None, sehir_id=None, kategori_id=None, para_birimi="TRY",
-            iskonto_yuzdesi=0, tip=AdayTip.ADAY, potansiyel="", asama=AdayAsama.YENI,
+            iskonto_yuzdesi=0, tip_id=None, potansiyel_id=None, asama_id=None,
             kapanis_nedeni="", sonraki_adim="", sonraki_adim_tarihi=None,
             eposta_gecersiz=False, eposta_2_gecersiz=False):
     unvan = buyuk_harf_tr((unvan or "").strip())
@@ -90,13 +113,10 @@ def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", epos
         raise AdayHatasi("Unvan boş olamaz.")
     if para_birimi not in dict(AdayMusteri.PARA_CHOICES):
         raise AdayHatasi("Geçersiz para birimi.")
-    if tip not in AdayTip.values:
-        raise AdayHatasi("Geçersiz tip.")
-    if potansiyel and potansiyel not in AdayPotansiyel.values:
-        raise AdayHatasi("Geçersiz potansiyel.")
-    if asama not in AdayAsama.values:
-        raise AdayHatasi("Geçersiz aşama.")
-    if asama == AdayAsama.KAPALI:
+    tip = _tip(tip_id)
+    potansiyel = _potansiyel(potansiyel_id)
+    asama = _asama(asama_id)
+    if asama.rol == AdayAsamaTanim.Rol.KAPALI:
         if not kapanis_nedeni or kapanis_nedeni not in KapanisNedeni.values:
             raise AdayHatasi("Aşama Kapalı iken kapanış nedeni zorunlu.")
     else:

@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.dogrulama import web_normalize
-from core.models import AdayAktivite, AdayYetkili, EkranYetki
+from core.models import AdayAktivite, AdayAsamaTanim, AdayTipTanim, AdayYetkili, EkranYetki
 from core.services.aday import (
     AdayHatasi, aday_aktivite_ekle, aday_aktivite_sil, aday_musteri_guncelle,
     aday_musteri_olustur, aday_yetkili_ekle, aday_yetkili_guncelle, aday_yetkili_sil,
@@ -20,6 +20,8 @@ from core.templatetags.core_extras import wa_link
 
 
 def _aday(unvan="test aday", **kw):
+    kw.setdefault("tip_id", AdayTipTanim.objects.get(sistem_kodu="ADAY").pk)
+    kw.setdefault("asama_id", AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
     return aday_musteri_olustur(unvan=unvan, para_birimi="TRY", **kw)
 
 
@@ -77,7 +79,8 @@ class WebServisEntegrasyonTest(TestCase):
 
     def test_aday_guncelle_web_normalize(self):
         a = _aday(web="")
-        aday_musteri_guncelle(a, unvan=a.unvan, web="akc.ae")
+        aday_musteri_guncelle(a, unvan=a.unvan, web="akc.ae",
+                              tip_id=a.tip_id, asama_id=a.asama_id)
         a.refresh_from_db()
         self.assertEqual(a.web, "https://akc.ae")
 

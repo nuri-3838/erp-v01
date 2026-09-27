@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% block baslik %}Aday Tipleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Aday Tipleri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">🏷️</span>Aday Tipleri</h1>
+  <a class="dugme" href="{% url 'core:aday_tipi_ekle' %}">+ Yeni Tip</a>
+</div>
+<p class="sayfa-alt">Cariye Dönüştür'ün kategori önerisi/engeli buradaki eşlemeden gelir.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead>
+    <tr><th>Sıra</th><th>Ad</th><th>Yurtiçi Kategori</th><th>Yurtdışı Kategori</th>
+        <th>Dönüşebilir</th><th>Aktif</th><th>Kullanım</th><th>İşlem</th></tr>
+  </thead>
+  <tbody>
+    {% for t in kayitlar %}
+      <tr>
+        <td class="mono">{{ t.sira }}</td>
+        <td><span class="rozet rozet-renk-{{ t.renk|lower }}">{{ t.ad }}</span>
+          {% if t.sistem_kodu %}<span class="rozet rozet-notr" title="Sistem kaydı">⚙️</span>{% endif %}</td>
+        <td>{{ t.cari_kategori_yurtici.ad|default:"—" }}</td>
+        <td>{{ t.cari_kategori_yurtdisi.ad|default:"—" }}</td>
+        <td>{% if t.cariye_donusturulebilir %}✅{% else %}—{% endif %}</td>
+        <td>{% if t.aktif %}<span class="rozet rozet-aktif">Aktif</span>{% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
+        <td class="mono">{{ t.kullanim_sayisi }}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:aday_tipi_duzenle' t.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:aday_tipi_pasif_yap' t.pk %}" style="display:inline">
+              {% csrf_token %}<button type="submit" class="bagli">{% if t.aktif %}Pasif yap{% else %}Aktif yap{% endif %}</button>
+            </form>
+            {% if not t.sistem_kodu %}
+            <form method="post" action="{% url 'core:aday_tipi_sil' t.pk %}" style="display:inline"
+                  onsubmit="return confirm('{{ t.ad|escapejs }} silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+            {% endif %}
+          </span>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" class="yardim">Henüz tip yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

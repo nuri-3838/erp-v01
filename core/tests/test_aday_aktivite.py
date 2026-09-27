@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 
-from core.models import AdayAktivite, AdayAktiviteEk, EkranYetki
+from core.models import AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayTipTanim, EkranYetki
 from core.services.aday import (
     AdayHatasi, aday_aktivite_ek_ekle, aday_aktivite_ek_sil, aday_aktivite_ekle,
     aday_aktivite_guncelle, aday_aktivite_sil, aday_musteri_olustur, aktif_aday_aktiviteleri,
@@ -18,7 +18,10 @@ from core.services.aday import (
 
 
 def _aday(unvan="test aday"):
-    return aday_musteri_olustur(unvan=unvan, para_birimi="TRY")
+    return aday_musteri_olustur(
+        unvan=unvan, para_birimi="TRY",
+        tip_id=AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
+        asama_id=AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
 
 
 def _png_dosya(ad="foto.png", boyut=(2400, 1200)):

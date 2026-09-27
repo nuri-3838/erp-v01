@@ -12,14 +12,26 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import AdayAktivite, AdayAsama, AdayPotansiyel
+from core.models import AdayAktivite, AdayAsama, AdayAsamaTanim, AdayPotansiyel, AdayPotansiyelTanim, AdayTipTanim
 from core.services.aday import (
-    aday_aktivite_ekle, aday_aktivite_sil, aday_musteri_olustur, aday_yetkili_ekle,
+    aday_aktivite_ekle, aday_aktivite_sil, aday_yetkili_ekle,
+    aday_musteri_olustur as _aday_musteri_olustur_ham,
 )
 from core.tarih import tr_bugun
 from core.views import _ADAY_GORUNUMLER
 
 UTC = dt_timezone.utc
+
+
+def aday_musteri_olustur(*, tip=None, potansiyel=None, asama=None, **kw):
+    """tip/potansiyel/asama artık FK — bu dosyada hâlâ sistem_kodu STRİNGİ (AdayTip.XXX vb.)
+    ile çağrılabilsin diye ince bir çeviri katmanı (verilmezse eski CharField varsayılanları
+    ADAY/YENİ)."""
+    kw["tip_id"] = AdayTipTanim.objects.get(sistem_kodu=tip or "ADAY").pk
+    kw["potansiyel_id"] = (AdayPotansiyelTanim.objects.get(sistem_kodu=potansiyel).pk
+                           if potansiyel else None)
+    kw["asama_id"] = AdayAsamaTanim.objects.get(sistem_kodu=asama or "YENI").pk
+    return _aday_musteri_olustur_ham(**kw)
 
 
 def _sekme(r, kod):
@@ -370,11 +382,12 @@ class SorguSayisiTest(_Taban):
                                         sonraki_adim_tarihi=bugun + timedelta(days=i))
             aday_aktivite_ekle(aday, tarih=bugun - timedelta(days=i), tur=AdayAktivite.Tur.NOT,
                               aciklama="x")
-        # 8 sorgu: session+user (2) + sekme sayaçları (1, tek Count(filter=) sorgusu) +
-        # gecikmiş sayaç (1) + kategoriler/ülkeler (2, şehirler ülke seçilmeden hiç
-        # sorgulanmaz) + sayfalama count (1) + sayfa satırları (1, son aktivite tarih/tür
-        # korele Subquery ile AYNI sorguda — N+1 yok).
-        with self.assertNumQueries(8):
+        # 11 sorgu: session+user (2) + sekme sayaçları (1, tek Count(filter=) sorgusu) +
+        # gecikmiş sayaç (1) + kaynaklar/ülkeler (2, şehirler ülke seçilmeden hiç
+        # sorgulanmaz) + tip/potansiyel/aşama filtre seçenekleri (3, her biri TEK sorgu —
+        # aday sayısından bağımsız, satır arttıkça artmaz) + sayfalama count (1) + sayfa
+        # satırları (1, son aktivite tarih/tür korele Subquery ile AYNI sorguda — N+1 yok).
+        with self.assertNumQueries(11):
             self._get(gorunum="tumu")
 
     def test_arama_web_ve_yetkiliyle_sorgu_sayisi_ayni_kalir(self):
@@ -388,5 +401,5 @@ class SorguSayisiTest(_Taban):
                            aciklama="bulunacak aktivite aciklamasi")
         for i in range(5):
             aday_musteri_olustur(unvan=f"dolgu firma {i}")
-        with self.assertNumQueries(8):
+        with self.assertNumQueries(11):
             self._get(ara="bulunacak", gorunum="tumu")

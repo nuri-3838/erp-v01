@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:aday_asamalari' %}">← Aday Aşamaları</a>
+    <h1 class="ust-baslik"><span class="emoji">🚦</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Aşama Bilgileri</h2>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>
+          {{ form.ad }}
+          {% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.sira.id_for_label }}">{{ form.sira.label }}</label>
+          {{ form.sira }}
+        </div>
+        <div class="alan">
+          <label for="{{ form.renk.id_for_label }}">{{ form.renk.label }}</label>
+          {{ form.renk }}
+        </div>
+        <div class="alan">
+          <label for="{{ form.rol.id_for_label }}">{{ form.rol.label }}</label>
+          {{ form.rol }}
+          {% for e in form.rol.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label class="ad-inline-checkbox" for="{{ form.aktif.id_for_label }}">{{ form.aktif }} {{ form.aktif.label }}</label>
+        </div>
+      </div>
+      <p class="yardim">Ad otomatik BÜYÜK harfe çevrilir ve benzersizdir. Rol: <strong>Başlangıç</strong>
+        (yeni aday varsayılanı — tam olarak bir aktif kayıt olmalı), <strong>Ara</strong> (normal
+        aşama), <strong>Kapalı</strong> (kapanış nedeni zorunlu — en az bir aktif kayıt olmalı).
+        {% if duzenlenen.sistem_kodu %}Bu bir sistem kaydıdır: silinemez, ama adı/sırası/rengi/
+        aktifliği/rolü değiştirilebilir.{% endif %}</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:aday_asamalari' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

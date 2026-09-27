@@ -8,15 +8,31 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from core.models import AdayMusteri, AdayMusteriKategori, EkranYetki, Sehir, TanimSecenegi, Ulke
+from core.models import (
+    AdayAsamaTanim, AdayMusteri, AdayMusteriKategori, AdayTipTanim, EkranYetki, Sehir,
+    TanimSecenegi, Ulke,
+)
 from core.services.aday import (
     AdayHatasi, aday_aktivite_ek_ekle, aday_aktivite_ekle, aday_aktivite_guncelle,
-    aday_aktivite_sil, aday_musteri_guncelle, aday_musteri_olustur,
+    aday_aktivite_sil, aday_musteri_guncelle as _aday_musteri_guncelle_ham,
+    aday_musteri_olustur as _aday_musteri_olustur_ham,
     aday_musteri_sil, aktif_aday_aktiviteleri, aktif_aday_musteriler,
 )
 from core.services.aday_kategori import (
     AdayKategoriHatasi, aday_kategori_guncelle, aday_kategori_olustur, aday_kategori_sil,
 )
+
+
+def aday_musteri_olustur(**kw):
+    kw.setdefault("tip_id", AdayTipTanim.objects.get(sistem_kodu="ADAY").pk)
+    kw.setdefault("asama_id", AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
+    return _aday_musteri_olustur_ham(**kw)
+
+
+def aday_musteri_guncelle(aday, **kw):
+    kw.setdefault("tip_id", aday.tip_id)
+    kw.setdefault("asama_id", aday.asama_id)
+    return _aday_musteri_guncelle_ham(aday, **kw)
 
 
 class AdayMusteriKategoriServisTest(TestCase):
@@ -229,7 +245,8 @@ class AdayMusteriViewTest(TestCase):
         r = self.client.post(reverse("core:aday_musteri_ekle"), {
             "unvan": "yeni aday", "telefon": "0212 111 11 11", "telefon_2": "0533 222 22 22",
             "eposta": "a@x.com", "eposta_2": "b@x.com",
-            "tip": "ADAY", "asama": "YENI",
+            "tip": AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
+            "asama": AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk,
             "para_birimi": "TRY", "iskonto_yuzdesi": "0"})
         self.assertEqual(r.status_code, 302)
         a = AdayMusteri.objects.get(unvan="YENİ ADAY")
@@ -246,7 +263,9 @@ class AdayMusteriViewTest(TestCase):
         a = aday_musteri_olustur(unvan="eski ad")
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:aday_musteri_duzenle", args=[a.pk]), {
-            "unvan": "yeni ad", "tip": "ADAY", "asama": "YENI",
+            "unvan": "yeni ad",
+            "tip": AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
+            "asama": AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk,
             "para_birimi": "USD", "iskonto_yuzdesi": "7,5"})
         self.assertEqual(r.status_code, 302)
         a.refresh_from_db()

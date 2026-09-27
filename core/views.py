@@ -10,11 +10,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.paginator import Paginator
-from django.db.models import (
-    Case, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Subquery, Sum, Value, When,
-)
+from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum
 from django.forms import formset_factory
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import (
+    FileResponse, Http404, HttpResponse, HttpResponsePermanentRedirect, JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -22,8 +22,9 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 
 from core.forms import (
-    AdayAktiviteForm, AdayCariyeMevcutCariForm, AdayCariyeYeniCariForm, AdayMusteriForm,
-    AdayMusteriKategoriForm, AdayYetkiliForm,
+    AdayAktiviteForm, AdayAsamaTanimForm, AdayCariyeMevcutCariForm, AdayCariyeYeniCariForm,
+    AdayMusteriForm, AdayMusteriKategoriForm, AdayPotansiyelTanimForm, AdayTipTanimForm,
+    AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
     BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
@@ -43,8 +44,8 @@ from core.forms import (
     PersonelBelgeForm, PersonelFotoForm,
 )
 from core.models import (
-    AdayAktivite, AdayAktiviteEk, AdayAsama, AdayMusteri, AdayMusteriKategori, AdayPotansiyel,
-    AdayTip, AdayYetkili,
+    AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
+    AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
@@ -93,6 +94,7 @@ from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
 from core.services import aday_donustur as aday_donustur_servis
 from core.services import aday_kategori as aday_kategori_servis
+from core.services import aday_tanim as aday_tanim_servis
 from core.services import personel as personel_servis
 from core.services import personel_izin as izin_servis
 from core.services import personel_belge as belge_servis
@@ -4187,7 +4189,8 @@ def cari_ek_indir(request, pk):
     return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
 
 
-# --- CRM: Aday Kategorileri ---------------------------------------------------
+# --- CRM: Aday Kaynakları (model/servis adı tarihsel nedenle "kategori" kalır — kullanıcıya
+# görünen HER YER "Kaynak"tır, bkz. core/models.py::AdayMusteriKategori docstring'i) --------
 @ekran_gerekli("aday_kategoriler")
 def aday_kategoriler(request):
     alt_qs = AdayMusteriKategori.objects.filter(silindi=False).select_related("ust").order_by("kod")
@@ -4210,13 +4213,13 @@ def aday_kategori_ekle(request):
                 k = aday_kategori_servis.aday_kategori_olustur(
                     ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
                     ust_id=ust.pk if ust else None, kullanici=request.user)
-                messages.success(request, f"Aday kategori eklendi: {k.ad}")
+                messages.success(request, f"Kaynak eklendi: {k.ad}")
                 return redirect("core:aday_kategoriler")
             except aday_kategori_servis.AdayKategoriHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = AdayMusteriKategoriForm()
-    baslik = (f"{ust.ad} → Yeni Alt Kategori" if ust else "Yeni Üst Kategori")
+    baslik = (f"{ust.ad} → Yeni Alt Kaynak" if ust else "Yeni Üst Kaynak")
     return render(request, "core/aday_kategori_form.html",
                   {"form": form, "baslik": baslik, "ekle": True, "ust": ust})
 
@@ -4231,14 +4234,14 @@ def aday_kategori_duzenle(request, pk):
                 aday_kategori_servis.aday_kategori_guncelle(
                     kat, ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
                     kullanici=request.user)
-                messages.success(request, "Aday kategori güncellendi.")
+                messages.success(request, "Kaynak güncellendi.")
                 return redirect("core:aday_kategoriler")
             except aday_kategori_servis.AdayKategoriHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = AdayMusteriKategoriForm(initial={"ad": kat.ad, "kod": kat.kod})
     return render(request, "core/aday_kategori_form.html",
-                  {"form": form, "baslik": "Aday Kategori Düzenle", "ekle": False,
+                  {"form": form, "baslik": "Kaynak Düzenle", "ekle": False,
                    "ust": kat.ust, "duzenlenen": kat})
 
 
@@ -4248,10 +4251,280 @@ def aday_kategori_sil(request, pk):
     if request.method == "POST":
         try:
             aday_kategori_servis.aday_kategori_sil(kat, kullanici=request.user)
-            messages.success(request, f"Aday kategori silindi: {kat.ad}")
+            messages.success(request, f"Kaynak silindi: {kat.ad}")
         except aday_kategori_servis.AdayKategoriHatasi as e:
             messages.error(request, str(e))
     return redirect("core:aday_kategoriler")
+
+
+def aday_kategoriler_eski_url(request):
+    """Eski /crm/kategoriler/... adresleri — kalıcı yönlendirme (301), querystring korunur."""
+    hedef = "/crm/kaynaklar/"
+    if request.GET:
+        hedef += "?" + request.GET.urlencode()
+    return HttpResponsePermanentRedirect(hedef)
+
+
+def aday_kategori_ekle_eski_url(request):
+    hedef = "/crm/kaynaklar/ekle/"
+    if request.GET:
+        hedef += "?" + request.GET.urlencode()
+    return HttpResponsePermanentRedirect(hedef)
+
+
+def aday_kategori_duzenle_eski_url(request, pk):
+    return HttpResponsePermanentRedirect(f"/crm/kaynaklar/{pk}/duzenle/")
+
+
+def aday_kategori_sil_eski_url(request, pk):
+    return HttpResponsePermanentRedirect(f"/crm/kaynaklar/{pk}/sil/")
+
+
+# --- CRM: Tipler / Potansiyeller / Aşamalar (tanım tabloları) -------------------------
+def _tanim_kullanim_sayilari(Model):
+    """{pk: kullanım sayısı} — silinmemiş aday müşteri sayısı (liste ekranının 'kullanım
+    sayısı' sütunu + sil/pasif-yap düğmelerinin görünürlüğü için)."""
+    from django.db.models import Count, Q as _Q
+    return dict(Model.objects.filter(silindi=False).annotate(
+        n=Count("aday_musteriler", filter=_Q(aday_musteriler__silindi=False))
+    ).values_list("pk", "n"))
+
+
+def _kullanim_sayisi_isle(kayitlar, Model):
+    """Her tanım nesnesine ``.kullanim_sayisi`` ekler (template'te ayrı bir dict-lookup
+    filtresi gerekmesin diye)."""
+    kullanim = _tanim_kullanim_sayilari(Model)
+    for k in kayitlar:
+        k.kullanim_sayisi = kullanim.get(k.pk, 0)
+    return kayitlar
+
+
+@ekran_gerekli("aday_tipleri")
+def aday_tipleri(request):
+    kayitlar = _kullanim_sayisi_isle(list(aday_tanim_servis.tum_tanimlar(AdayTipTanim)
+                                          .select_related("cari_kategori_yurtici",
+                                                          "cari_kategori_yurtdisi")),
+                                     AdayTipTanim)
+    return render(request, "core/aday_tip_listesi.html", {"kayitlar": kayitlar})
+
+
+@ekran_gerekli("aday_tipleri")
+def aday_tipi_ekle(request):
+    if request.method == "POST":
+        form = AdayTipTanimForm(request.POST)
+        if form.is_valid():
+            try:
+                t = aday_tanim_servis.tip_olustur(
+                    ad=form.cleaned_data["ad"], sira=form.cleaned_data["sira"],
+                    aktif=form.cleaned_data["aktif"], renk=form.cleaned_data["renk"],
+                    cari_kategori_yurtici=form.cleaned_data["cari_kategori_yurtici"],
+                    cari_kategori_yurtdisi=form.cleaned_data["cari_kategori_yurtdisi"],
+                    cariye_donusturulebilir=form.cleaned_data["cariye_donusturulebilir"],
+                    kullanici=request.user)
+                messages.success(request, f"Tip eklendi: {t.ad}")
+                return redirect("core:aday_tipleri")
+            except aday_tanim_servis.AdayTanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayTipTanimForm(initial={"aktif": True, "cariye_donusturulebilir": True})
+    return render(request, "core/aday_tip_form.html",
+                  {"form": form, "baslik": "Yeni Tip", "ekle": True})
+
+
+@ekran_gerekli("aday_tipleri")
+def aday_tipi_duzenle(request, pk):
+    tanim = get_object_or_404(AdayTipTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = AdayTipTanimForm(request.POST)
+        if form.is_valid():
+            try:
+                aday_tanim_servis.tip_guncelle(
+                    tanim, ad=form.cleaned_data["ad"], sira=form.cleaned_data["sira"],
+                    aktif=form.cleaned_data["aktif"], renk=form.cleaned_data["renk"],
+                    cari_kategori_yurtici=form.cleaned_data["cari_kategori_yurtici"],
+                    cari_kategori_yurtdisi=form.cleaned_data["cari_kategori_yurtdisi"],
+                    cariye_donusturulebilir=form.cleaned_data["cariye_donusturulebilir"],
+                    kullanici=request.user)
+                messages.success(request, "Tip güncellendi.")
+                return redirect("core:aday_tipleri")
+            except aday_tanim_servis.AdayTanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayTipTanimForm(initial={
+            "ad": tanim.ad, "sira": tanim.sira, "aktif": tanim.aktif, "renk": tanim.renk,
+            "cari_kategori_yurtici": tanim.cari_kategori_yurtici_id,
+            "cari_kategori_yurtdisi": tanim.cari_kategori_yurtdisi_id,
+            "cariye_donusturulebilir": tanim.cariye_donusturulebilir})
+    return render(request, "core/aday_tip_form.html",
+                  {"form": form, "baslik": "Tip Düzenle", "ekle": False, "duzenlenen": tanim})
+
+
+@ekran_gerekli("aday_tipleri")
+def aday_tipi_sil(request, pk):
+    tanim = get_object_or_404(AdayTipTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            aday_tanim_servis.tanim_sil(tanim, kullanici=request.user)
+            messages.success(request, f"Tip silindi: {tanim.ad}")
+        except aday_tanim_servis.AdayTanimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:aday_tipleri")
+
+
+@ekran_gerekli("aday_tipleri")
+def aday_tipi_pasif_yap(request, pk):
+    tanim = get_object_or_404(AdayTipTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        aday_tanim_servis.tanim_pasif_yap(tanim, aktif=not tanim.aktif, kullanici=request.user)
+        messages.success(request, f"{'Aktif' if tanim.aktif else 'Pasif'} yapıldı: {tanim.ad}")
+    return redirect("core:aday_tipleri")
+
+
+@ekran_gerekli("aday_potansiyelleri")
+def aday_potansiyelleri(request):
+    kayitlar = _kullanim_sayisi_isle(
+        list(aday_tanim_servis.tum_tanimlar(AdayPotansiyelTanim)), AdayPotansiyelTanim)
+    return render(request, "core/aday_potansiyel_listesi.html", {"kayitlar": kayitlar})
+
+
+@ekran_gerekli("aday_potansiyelleri")
+def aday_potansiyeli_ekle(request):
+    if request.method == "POST":
+        form = AdayPotansiyelTanimForm(request.POST)
+        if form.is_valid():
+            try:
+                t = aday_tanim_servis.potansiyel_olustur(
+                    ad=form.cleaned_data["ad"], sira=form.cleaned_data["sira"],
+                    aktif=form.cleaned_data["aktif"], renk=form.cleaned_data["renk"],
+                    sicak=form.cleaned_data["sicak"], kullanici=request.user)
+                messages.success(request, f"Potansiyel eklendi: {t.ad}")
+                return redirect("core:aday_potansiyelleri")
+            except aday_tanim_servis.AdayTanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayPotansiyelTanimForm(initial={"aktif": True})
+    return render(request, "core/aday_potansiyel_form.html",
+                  {"form": form, "baslik": "Yeni Potansiyel", "ekle": True})
+
+
+@ekran_gerekli("aday_potansiyelleri")
+def aday_potansiyeli_duzenle(request, pk):
+    tanim = get_object_or_404(AdayPotansiyelTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = AdayPotansiyelTanimForm(request.POST)
+        if form.is_valid():
+            try:
+                aday_tanim_servis.potansiyel_guncelle(
+                    tanim, ad=form.cleaned_data["ad"], sira=form.cleaned_data["sira"],
+                    aktif=form.cleaned_data["aktif"], renk=form.cleaned_data["renk"],
+                    sicak=form.cleaned_data["sicak"], kullanici=request.user)
+                messages.success(request, "Potansiyel güncellendi.")
+                return redirect("core:aday_potansiyelleri")
+            except aday_tanim_servis.AdayTanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayPotansiyelTanimForm(initial={
+            "ad": tanim.ad, "sira": tanim.sira, "aktif": tanim.aktif, "renk": tanim.renk,
+            "sicak": tanim.sicak})
+    return render(request, "core/aday_potansiyel_form.html",
+                  {"form": form, "baslik": "Potansiyel Düzenle", "ekle": False,
+                   "duzenlenen": tanim})
+
+
+@ekran_gerekli("aday_potansiyelleri")
+def aday_potansiyeli_sil(request, pk):
+    tanim = get_object_or_404(AdayPotansiyelTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            aday_tanim_servis.tanim_sil(tanim, kullanici=request.user)
+            messages.success(request, f"Potansiyel silindi: {tanim.ad}")
+        except aday_tanim_servis.AdayTanimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:aday_potansiyelleri")
+
+
+@ekran_gerekli("aday_potansiyelleri")
+def aday_potansiyeli_pasif_yap(request, pk):
+    tanim = get_object_or_404(AdayPotansiyelTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        aday_tanim_servis.tanim_pasif_yap(tanim, aktif=not tanim.aktif, kullanici=request.user)
+        messages.success(request, f"{'Aktif' if tanim.aktif else 'Pasif'} yapıldı: {tanim.ad}")
+    return redirect("core:aday_potansiyelleri")
+
+
+@ekran_gerekli("aday_asamalari")
+def aday_asamalari(request):
+    kayitlar = _kullanim_sayisi_isle(
+        list(aday_tanim_servis.tum_tanimlar(AdayAsamaTanim)), AdayAsamaTanim)
+    return render(request, "core/aday_asama_listesi.html", {"kayitlar": kayitlar})
+
+
+@ekran_gerekli("aday_asamalari")
+def aday_asamasi_ekle(request):
+    if request.method == "POST":
+        form = AdayAsamaTanimForm(request.POST)
+        if form.is_valid():
+            try:
+                t = aday_tanim_servis.asama_olustur(
+                    ad=form.cleaned_data["ad"], sira=form.cleaned_data["sira"],
+                    aktif=form.cleaned_data["aktif"], renk=form.cleaned_data["renk"],
+                    rol=form.cleaned_data["rol"], kullanici=request.user)
+                messages.success(request, f"Aşama eklendi: {t.ad}")
+                return redirect("core:aday_asamalari")
+            except aday_tanim_servis.AdayTanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayAsamaTanimForm(initial={"aktif": True, "rol": AdayAsamaTanim.Rol.ARA})
+    return render(request, "core/aday_asama_form.html",
+                  {"form": form, "baslik": "Yeni Aşama", "ekle": True})
+
+
+@ekran_gerekli("aday_asamalari")
+def aday_asamasi_duzenle(request, pk):
+    tanim = get_object_or_404(AdayAsamaTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = AdayAsamaTanimForm(request.POST)
+        if form.is_valid():
+            try:
+                aday_tanim_servis.asama_guncelle(
+                    tanim, ad=form.cleaned_data["ad"], sira=form.cleaned_data["sira"],
+                    aktif=form.cleaned_data["aktif"], renk=form.cleaned_data["renk"],
+                    rol=form.cleaned_data["rol"], kullanici=request.user)
+                messages.success(request, "Aşama güncellendi.")
+                return redirect("core:aday_asamalari")
+            except aday_tanim_servis.AdayTanimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = AdayAsamaTanimForm(initial={
+            "ad": tanim.ad, "sira": tanim.sira, "aktif": tanim.aktif, "renk": tanim.renk,
+            "rol": tanim.rol})
+    return render(request, "core/aday_asama_form.html",
+                  {"form": form, "baslik": "Aşama Düzenle", "ekle": False, "duzenlenen": tanim})
+
+
+@ekran_gerekli("aday_asamalari")
+def aday_asamasi_sil(request, pk):
+    tanim = get_object_or_404(AdayAsamaTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            aday_tanim_servis.asama_sil(tanim, kullanici=request.user)
+            messages.success(request, f"Aşama silindi: {tanim.ad}")
+        except aday_tanim_servis.AdayTanimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:aday_asamalari")
+
+
+@ekran_gerekli("aday_asamalari")
+def aday_asamasi_pasif_yap(request, pk):
+    tanim = get_object_or_404(AdayAsamaTanim, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            aday_tanim_servis.asama_pasif_yap(
+                tanim, aktif=not tanim.aktif, kullanici=request.user)
+            messages.success(request, f"{'Aktif' if tanim.aktif else 'Pasif'} yapıldı: {tanim.ad}")
+        except aday_tanim_servis.AdayTanimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:aday_asamalari")
 
 
 # --- CRM: Aday Müşteriler ----------------------------------------------------
@@ -4264,22 +4537,12 @@ _ADAY_EPOSTA_ETIKET = {"gecerli": "Geçerli adresi var", "gecersiz": "Hepsi geç
 _ADAY_SON_AKT_ETIKET = {"30": "Son 30 gün", "90": "31-90 gün", "eski": "90 günden eski",
                         "yok": "Hiç aktivite yok"}
 _ADAY_CARI_ETIKET = {"var": "Cari oldu", "yok": "Aday (cari değil)"}
-_ADAY_TIP_ETIKET = dict(AdayTip.choices)
-_ADAY_POTANSIYEL_ETIKET = dict(AdayPotansiyel.choices)
-_ADAY_ASAMA_ETIKET = dict(AdayAsama.choices)
 _ADAY_SIRALAMA_SECENEKLERI = (
     ("unvan", "Unvan (A→Z)"), ("-unvan", "Unvan (Z→A)"),
     ("sonraki", "Sonraki adım (yakın→uzak)"), ("-sonraki", "Sonraki adım (uzak→yakın)"),
     ("son_akt", "Son aktivite (eski→yeni)"), ("-son_akt", "Son aktivite (yeni→eski)"),
     ("potansiyel", "Potansiyel (yüksek→düşük)"),
 )
-# Case/When yalnız birer ifade (queryset DEĞİL) — modül importunda hesaba/DB'ye dokunmaz,
-# SatirForm hatasındaki "eager queryset" deseniyle karıştırılmasın (bkz. core/forms.py dersi).
-_ADAY_POTANSIYEL_SIRA = Case(
-    When(potansiyel=AdayPotansiyel.YUKSEK, then=Value(0)),
-    When(potansiyel=AdayPotansiyel.ORTA, then=Value(1)),
-    When(potansiyel=AdayPotansiyel.DUSUK, then=Value(2)),
-    default=Value(3), output_field=IntegerField())
 _ADAY_SIRALAMA_HARITASI = {
     "unvan": (F("unvan").asc(),),
     "-unvan": (F("unvan").desc(),),
@@ -4287,8 +4550,25 @@ _ADAY_SIRALAMA_HARITASI = {
     "-sonraki": (F("sonraki_adim_tarihi").desc(nulls_last=True),),
     "son_akt": (F("son_aktivite_tarihi").asc(nulls_last=True),),
     "-son_akt": (F("son_aktivite_tarihi").desc(nulls_last=True),),
-    "potansiyel": (_ADAY_POTANSIYEL_SIRA, F("unvan").asc()),
+    # Potansiyel'in kendi sira alanı (tanım tablosu) TEK kaynak — Yüksek=1/Orta=2/Düşük=3
+    # tohum verisiyle "yüksek→düşük" ile aynı yönde (bkz. migration 0132).
+    "potansiyel": (F("potansiyel__sira").asc(nulls_last=True), F("unvan").asc()),
 }
+
+
+def _tanim_coz(Model, deger):
+    """GET parametresindeki tip/potansiyel/asama değerini tanım kaydına çözer — yeni linkler
+    tanım pk'sı, eski linkler sistem_kodu (metin, ör. ?tip=ARACI) gönderir; ikisi de kabul
+    edilir (spec: eski filtre parametreleri kırılmasın). Pasif tanımlar da bulunur (filtreleme
+    var-olan veriyi süzer, yeni değer seçmez)."""
+    if not deger:
+        return None
+    qs = Model.objects.filter(silindi=False)
+    if deger.isdigit():
+        bulunan = qs.filter(pk=deger).first()
+        if bulunan:
+            return bulunan
+    return qs.filter(sistem_kodu=deger).first()
 
 
 def _aday_tab_q(gorunum, bugun):
@@ -4296,18 +4576,20 @@ def _aday_tab_q(gorunum, bugun):
     AYNI Q nesnesinden kullanılır (tek kaynak, iki temsil arasında sürüklenme riski yok).
     Cariye dönüşmüş adaylar Takibim/Sıcak/Temas yok'tan düşer (artık aktif bir "lead"
     değiller); Kapalı ve Tümü'nde görünmeye devam ederler (spec: Cariye Dönüştür yeniden
-    yazılması, madde 4)."""
+    yazılması, madde 4). Sıcak/Temas yok/Kapalı artık AdayPotansiyelTanim.sicak ve
+    AdayAsamaTanim.rol'den okunur (bkz. CRM > Tipler/Potansiyeller/Aşamalar — spec: 'Kategori'
+    → 'Kaynak' + tanım ekranları)."""
     if gorunum == "takip":
         return (Q(sonraki_adim_tarihi__isnull=False)
                 & Q(sonraki_adim_tarihi__lte=bugun + datetime.timedelta(days=7))
-                & ~Q(asama=AdayAsama.KAPALI) & Q(cari__isnull=True))
+                & ~Q(asama__rol=AdayAsamaTanim.Rol.KAPALI) & Q(cari__isnull=True))
     if gorunum == "sicak":
-        return (Q(potansiyel=AdayPotansiyel.YUKSEK) & ~Q(asama=AdayAsama.KAPALI)
+        return (Q(potansiyel__sicak=True) & ~Q(asama__rol=AdayAsamaTanim.Rol.KAPALI)
                 & Q(cari__isnull=True))
     if gorunum == "temas_yok":
-        return Q(asama=AdayAsama.YENI) & Q(cari__isnull=True)
+        return Q(asama__rol=AdayAsamaTanim.Rol.BASLANGIC) & Q(cari__isnull=True)
     if gorunum == "kapali":
-        return Q(asama=AdayAsama.KAPALI)
+        return Q(asama__rol=AdayAsamaTanim.Rol.KAPALI)
     return Q()  # tumu
 
 
@@ -4361,7 +4643,7 @@ def _aday_form_kw(cd):
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
         kategori_id=g(cd["kategori"]), para_birimi=cd["para_birimi"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"],
-        tip=cd["tip"], potansiyel=cd["potansiyel"], asama=cd["asama"],
+        tip_id=g(cd["tip"]), potansiyel_id=g(cd["potansiyel"]), asama_id=g(cd["asama"]),
         kapanis_nedeni=cd["kapanis_nedeni"],
         sonraki_adim=cd["sonraki_adim"], sonraki_adim_tarihi=cd["sonraki_adim_tarihi"])
 
@@ -4379,7 +4661,8 @@ def _aday_duzenlenebilir_kontrol(request, aday):
 @ekran_gerekli("aday_musteriler")
 def aday_musteriler(request):
     ara = (request.GET.get("ara") or "").strip()
-    kategori_id = request.GET.get("kategori") or ""
+    # "kaynak" yeni kanonik parametre; eski "kategori" linkleri de çalışır (spec).
+    kaynak_id = request.GET.get("kaynak") or request.GET.get("kategori") or ""
     sehir_id = request.GET.get("sehir") or ""
     ulke_id = request.GET.get("ulke") or ""
     tip_secim = request.GET.get("tip") or ""
@@ -4419,20 +4702,28 @@ def aday_musteriler(request):
             | Q(eposta__icontains=ara) | Q(eposta_2__icontains=ara)
             | Q(web__icontains=ara) | Q(adres__contains=buyuk)
             | Q(Exists(yetkili_eslesme)) | Q(Exists(aktivite_eslesme)))
-    if kategori_id:
-        kayitlar = kayitlar.filter(kategori_id=kategori_id)
+    if kaynak_id:
+        # Hiyerarşik filtre: üst kaynak seçilince alt kaynaklardaki adaylar da gelir
+        # (2 seviye sınırı sayesinde tek OR yeterli — bkz. AdayMusteriKategori).
+        kayitlar = kayitlar.filter(
+            Q(kategori_id=kaynak_id) | Q(kategori__ust_id=kaynak_id))
     if sehir_id:
         kayitlar = kayitlar.filter(sehir_id=sehir_id)
     if ulke_id:
         kayitlar = kayitlar.filter(ulke_id=ulke_id)
-    if tip_secim in AdayTip.values:
-        kayitlar = kayitlar.filter(tip=tip_secim)
+    tip_tanim = _tanim_coz(AdayTipTanim, tip_secim)
+    if tip_tanim:
+        kayitlar = kayitlar.filter(tip_id=tip_tanim.pk)
+    potansiyel_tanim = None
     if potansiyel_secim == "BOS":
-        kayitlar = kayitlar.filter(potansiyel="")
-    elif potansiyel_secim in AdayPotansiyel.values:
-        kayitlar = kayitlar.filter(potansiyel=potansiyel_secim)
-    if asama_secim in AdayAsama.values:
-        kayitlar = kayitlar.filter(asama=asama_secim)
+        kayitlar = kayitlar.filter(potansiyel__isnull=True)
+    else:
+        potansiyel_tanim = _tanim_coz(AdayPotansiyelTanim, potansiyel_secim)
+        if potansiyel_tanim:
+            kayitlar = kayitlar.filter(potansiyel_id=potansiyel_tanim.pk)
+    asama_tanim = _tanim_coz(AdayAsamaTanim, asama_secim)
+    if asama_tanim:
+        kayitlar = kayitlar.filter(asama_id=asama_tanim.pk)
     if takip_secim == "gecmis":
         kayitlar = kayitlar.filter(sonraki_adim_tarihi__lt=bugun)
     elif takip_secim == "bugun":
@@ -4502,9 +4793,18 @@ def aday_musteriler(request):
     # cariler view'ındaki aynı desen — tüm kategori/lokasyon master verisini değil,
     # sayfadaki gerçek veriyi yansıtır).
     tumu = aday_servis.aktif_aday_musteriler()
-    kategoriler = list(AdayMusteriKategori.objects.filter(
+    kaynaklar = list(AdayMusteriKategori.objects.filter(
         silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
     ).order_by("kod"))
+    # Tip/Potansiyel/Aşama: kullanılan/kullanılmayan ayrımı yok — sabit tanım tablosu, tümü
+    # (aktif de pasif de) filtre seçeneği olarak gösterilir (mevcut veri süzülüyor olabilir).
+    tip_secenekleri = [(str(t.pk), t.ad) for t in
+                       AdayTipTanim.objects.filter(silindi=False).order_by("sira", "ad")]
+    potansiyel_secenekleri = [(str(t.pk), t.ad) for t in
+                              AdayPotansiyelTanim.objects.filter(silindi=False)
+                              .order_by("sira", "ad")]
+    asama_secenekleri = [(str(t.pk), t.ad) for t in
+                         AdayAsamaTanim.objects.filter(silindi=False).order_by("sira", "ad")]
     # Şehir seçenekleri Ülke seçilmeden anlamsız (hangi ülkeninkiler gösterilecek?) — Ülke
     # seçilene kadar boş/kilitli, seçilince yalnız o ülkenin (fiilen kullanılan) şehirleri.
     sehirler = list(Sehir.objects.filter(
@@ -4519,10 +4819,13 @@ def aday_musteriler(request):
     cipler = []
     if ara:
         cipler.append({"etiket": f'Arama: "{ara}"', "url": _aday_qs_with(request, ara=None)})
-    if kategori_id:
-        kat = next((k for k in kategoriler if str(k.pk) == kategori_id), None)
-        cipler.append({"etiket": f"Kategori: {kat.ad if kat else kategori_id}",
-                       "url": _aday_qs_with(request, kategori=None)})
+    if kaynak_id:
+        # Kaynaklar listesi yalnız FİİLEN kullanılan kayıtlardan oluşur — hiyerarşik filtre
+        # yüzünden bir ÜST kaynak yalnızca alt kaynaklar üzerinden "kullanımda" olabilir,
+        # bu yüzden çip etiketi ayrı (kullanım şartsız) bir sorguyla çözülür.
+        kat = AdayMusteriKategori.objects.filter(pk=kaynak_id, silindi=False).first()
+        cipler.append({"etiket": f"Kaynak: {kat.ad if kat else kaynak_id}",
+                       "url": _aday_qs_with(request, kaynak=None, kategori=None)})
     if ulke_id:
         u = next((x for x in ulkeler if str(x.pk) == ulke_id), None)
         cipler.append({"etiket": f"Ülke: {u.ad if u else ulke_id}",
@@ -4531,17 +4834,17 @@ def aday_musteriler(request):
         s = next((x for x in sehirler if str(x.pk) == sehir_id), None)
         cipler.append({"etiket": f"Şehir: {s.ad if s else sehir_id}",
                        "url": _aday_qs_with(request, sehir=None)})
-    if tip_secim in AdayTip.values:
-        cipler.append({"etiket": f"Tip: {_ADAY_TIP_ETIKET.get(tip_secim, tip_secim)}",
+    if tip_tanim:
+        cipler.append({"etiket": f"Tip: {tip_tanim.ad}",
                        "url": _aday_qs_with(request, tip=None)})
     if potansiyel_secim == "BOS":
         cipler.append({"etiket": "Potansiyel: Belirlenmedi",
                        "url": _aday_qs_with(request, potansiyel=None)})
-    elif potansiyel_secim in AdayPotansiyel.values:
-        cipler.append({"etiket": f"Potansiyel: {_ADAY_POTANSIYEL_ETIKET.get(potansiyel_secim)}",
+    elif potansiyel_tanim:
+        cipler.append({"etiket": f"Potansiyel: {potansiyel_tanim.ad}",
                        "url": _aday_qs_with(request, potansiyel=None)})
-    if asama_secim in AdayAsama.values:
-        cipler.append({"etiket": f"Aşama: {_ADAY_ASAMA_ETIKET.get(asama_secim)}",
+    if asama_tanim:
+        cipler.append({"etiket": f"Aşama: {asama_tanim.ad}",
                        "url": _aday_qs_with(request, asama=None)})
     if takip_secim in _ADAY_TAKIP_ETIKET:
         cipler.append({"etiket": f"Takip: {_ADAY_TAKIP_ETIKET[takip_secim]}",
@@ -4556,7 +4859,7 @@ def aday_musteriler(request):
         cipler.append({"etiket": f"Cari durumu: {_ADAY_CARI_ETIKET[cari_secim]}",
                        "url": _aday_qs_with(request, cari=None)})
     aktif_filtre_sayisi = sum(1 for x in (
-        kategori_id, ulke_id, sehir_id, tip_secim, potansiyel_secim, asama_secim,
+        kaynak_id, ulke_id, sehir_id, tip_secim, potansiyel_secim, asama_secim,
         takip_secim, eposta_secim, son_akt_secim, cari_secim) if x)
 
     # sirala TAŞINMAZ: sekmeye geçince o sekmenin kendi varsayılan sıralaması uygulanır
@@ -4575,13 +4878,17 @@ def aday_musteriler(request):
     sabit_qs = request.GET.copy()
     sabit_qs.pop("sayfa", None)
     return render(request, "core/aday_musteri_listesi.html", {
-        "kayitlar": sayfa, "ara": ara, "secili_kategori": kategori_id,
+        "kayitlar": sayfa, "ara": ara, "secili_kaynak": kaynak_id,
         "secili_sehir": sehir_id, "secili_ulke": ulke_id, "boyut": boyut,
-        "sayfa_boyutlari": _ADAY_SAYFA_BOYUTLARI, "kategoriler": kategoriler,
+        "sayfa_boyutlari": _ADAY_SAYFA_BOYUTLARI, "kaynaklar": kaynaklar,
         "sehirler": sehirler, "ulkeler": ulkeler,
-        "tip_secenekleri": AdayTip.choices, "secili_tip": tip_secim,
-        "potansiyel_secenekleri": AdayPotansiyel.choices, "secili_potansiyel": potansiyel_secim,
-        "asama_secenekleri": AdayAsama.choices, "secili_asama": asama_secim,
+        "tip_secenekleri": tip_secenekleri,
+        "secili_tip": str(tip_tanim.pk) if tip_tanim else "",
+        "potansiyel_secenekleri": potansiyel_secenekleri,
+        "secili_potansiyel": ("BOS" if potansiyel_secim == "BOS"
+                              else (str(potansiyel_tanim.pk) if potansiyel_tanim else "")),
+        "asama_secenekleri": asama_secenekleri,
+        "secili_asama": str(asama_tanim.pk) if asama_tanim else "",
         "secili_takip": takip_secim, "secili_eposta": eposta_secim,
         "secili_son_akt": son_akt_secim, "secili_cari": cari_secim, "secili_sirala": sirala,
         "siralama_secenekleri": _ADAY_SIRALAMA_SECENEKLERI, "siralama_baglar": siralama_baglar,
@@ -4591,6 +4898,16 @@ def aday_musteriler(request):
         "tumu_url": _aday_qs_with(request, gorunum="tumu", sirala=None),
         "cipler": cipler, "aktif_filtre_sayisi": aktif_filtre_sayisi,
         "sabit_qs": sabit_qs.urlencode()})
+
+
+def _aday_form_varsayilanlar():
+    """Yeni aday formunun tip/aşama varsayılanı — eski sabit AdayTip.ADAY/AdayAsama.YENI
+    yerine tanım tablosundaki sistem_kodu ile bulunur (bulunamazsa aktif ilk kayıt)."""
+    tip0 = (AdayTipTanim.objects.filter(silindi=False, aktif=True, sistem_kodu="ADAY").first()
+            or AdayTipTanim.objects.filter(silindi=False, aktif=True).order_by("sira").first())
+    asama0 = (AdayAsamaTanim.objects.filter(
+                silindi=False, aktif=True, rol=AdayAsamaTanim.Rol.BASLANGIC).first())
+    return {"para_birimi": "TRY", "tip": tip0, "asama": asama0}
 
 
 @ekran_gerekli("aday_musteriler")
@@ -4606,7 +4923,7 @@ def aday_musteri_ekle(request):
             except aday_servis.AdayHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = AdayMusteriForm(initial={"para_birimi": "TRY"})
+        form = AdayMusteriForm(initial=_aday_form_varsayilanlar())
     return render(request, "core/aday_musteri_form.html",
                   {"form": form, "baslik": "Yeni Aday Müşteri"})
 
@@ -4618,7 +4935,7 @@ def aday_musteri_duzenle(request, pk):
     if engel:
         return engel
     if request.method == "POST":
-        form = AdayMusteriForm(request.POST)
+        form = AdayMusteriForm(request.POST, duzenlenen_aday=aday)
         if form.is_valid():
             try:
                 aday_servis.aday_musteri_guncelle(
@@ -4628,7 +4945,7 @@ def aday_musteri_duzenle(request, pk):
             except aday_servis.AdayHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = AdayMusteriForm(initial={
+        form = AdayMusteriForm(duzenlenen_aday=aday, initial={
             "unvan": aday.unvan, "ilgili_kisi": aday.ilgili_kisi, "telefon": aday.telefon,
             "telefon_whatsapp": aday.telefon_whatsapp,
             "telefon_2": aday.telefon_2, "telefon_2_whatsapp": aday.telefon_2_whatsapp,
@@ -4638,7 +4955,7 @@ def aday_musteri_duzenle(request, pk):
             "ulke": aday.ulke_id, "sehir": aday.sehir_id, "adres": aday.adres,
             "kategori": aday.kategori_id, "para_birimi": aday.para_birimi,
             "iskonto_yuzdesi": aday.iskonto_yuzdesi,
-            "tip": aday.tip, "potansiyel": aday.potansiyel, "asama": aday.asama,
+            "tip": aday.tip_id, "potansiyel": aday.potansiyel_id, "asama": aday.asama_id,
             "kapanis_nedeni": aday.kapanis_nedeni,
             "sonraki_adim": aday.sonraki_adim, "sonraki_adim_tarihi": aday.sonraki_adim_tarihi})
     return render(request, "core/aday_musteri_form.html",
@@ -4648,7 +4965,8 @@ def aday_musteri_duzenle(request, pk):
 @ekran_gerekli("aday_musteriler")
 def aday_musteri_detay(request, pk):
     aday = get_object_or_404(
-        AdayMusteri.objects.select_related("ulke", "sehir", "kategori", "cari"),
+        AdayMusteri.objects.select_related(
+            "ulke", "sehir", "kategori", "cari", "tip", "potansiyel", "asama"),
         pk=pk, silindi=False)
     return render(request, "core/aday_musteri_detay.html", {
         "aday": aday, "aktiviteler": aday_servis.aktif_aday_aktiviteleri(aday),

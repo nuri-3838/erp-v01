@@ -1,25 +1,22 @@
 """Migration 0126 (Aday Müşteri unvan -> tip taşıma) testleri: saf ayrıştırma fonksiyonları
-gerçek prod verisinden alınan örneklerle + uçtan uca RunPython (ileri/geri) davranışı."""
+gerçek prod verisinden alınan örneklerle.
+
+Not: bu dosya eskiden 0126'nın RunPython'larını (tipleri_ata/tipleri_geri_al) LİVE
+AdayMusteri modeli üzerinden uçtan uca da çalıştırıyordu ("alanlar hiç değişmedi, historical
+model'e gerek yok" varsayımıyla) — migration 0132 (Kategori→Kaynak + Tip/Potansiyel/Aşama
+tanım tabloları) tam olarak bu alanları (tip/potansiyel/asama) CharField'dan FK'ye çevirip
+sütunları yeniden adlandırdığı için o varsayım artık GEÇERSİZ: 0126'nın kodu hâlâ
+``a.tip = "ESKI_MUSTERI"`` yazıp ``update_fields=["tip",...]`` ile kaydetmeye çalışıyor, ama
+canlı şemada böyle bir sütun/atama biçimi yok. 0126 kendisi donmuş/tarihsel bir migration
+(canlıda çoktan uygulandı, bir daha çalışmayacak) — saf ayrıştırma fonksiyonları (aşağıda)
+hâlâ test ediliyor, yalnızca artık çalıştırılamaz olan uçtan-uca RunPython testi kaldırıldı."""
 import importlib
 
 from django.test import TestCase
 
-from core.models import AdayMusteri
-from core.services.aday import aday_musteri_olustur
-
 _mod = importlib.import_module("core.migrations.0126_aday_musteri_tip_veri_tasima")
 _tip_belirle = _mod._tip_belirle
 _etiket_temizle = _mod._etiket_temizle
-tipleri_ata = _mod.tipleri_ata
-tipleri_geri_al = _mod.tipleri_geri_al
-
-
-class _SahteApps:
-    """RunPython fonksiyonları apps.get_model() kullanır — testte gerçek modeli döndürür
-    (alanlar/anlamları bu migration'dan sonra hiç değişmedi, historical model'e gerek yok)."""
-
-    def get_model(self, app_label, model_adi):
-        return AdayMusteri
 
 
 class TipBelirleTest(TestCase):
@@ -69,55 +66,4 @@ class EtiketTemizleTest(TestCase):
         self.assertEqual(_etiket_temizle("ERTEKPA BANYO AKSESUARLARI"),
                          "ERTEKPA BANYO AKSESUARLARI")
 
-
-class RunPythonUctanUcaTest(TestCase):
-    def _olustur(self, unvan):
-        return aday_musteri_olustur(unvan=unvan)
-
-    def test_ileri_musteri(self):
-        a = self._olustur("KADDAH BLDG [MÜŞTERİ]")
-        tipleri_ata(_SahteApps(), None)
-        a.refresh_from_db()
-        self.assertEqual(a.tip, "ESKI_MUSTERI")
-        self.assertEqual(a.unvan, "KADDAH BLDG")
-        self.assertEqual(a.asama, "YENI")
-        self.assertEqual(a.potansiyel, "")
-        self.assertEqual(a.kapanis_nedeni, "")
-
-    def test_ileri_araci_gumruk(self):
-        a = self._olustur("DAR ÇAÇAK (GÜMRÜK MÜŞAVİRLİĞİ) [ARACI]")
-        tipleri_ata(_SahteApps(), None)
-        a.refresh_from_db()
-        self.assertEqual(a.tip, "GUMRUK")
-        self.assertEqual(a.unvan, "DAR ÇAÇAK (GÜMRÜK MÜŞAVİRLİĞİ)")
-
-    def test_ileri_etiketsiz_varsayilan(self):
-        a = self._olustur("SIRADAN FIRMA")
-        tipleri_ata(_SahteApps(), None)
-        a.refresh_from_db()
-        self.assertEqual(a.tip, "ADAY")
-        self.assertEqual(a.unvan, "SIRADAN FIRMA")
-
-    def test_geri_alma_etiketi_sona_ekler(self):
-        a = self._olustur("KADDAH BLDG")
-        a.tip = "ESKI_MUSTERI"
-        a.save(update_fields=["tip"])
-        tipleri_geri_al(_SahteApps(), None)
-        a.refresh_from_db()
-        self.assertEqual(a.unvan, "KADDAH BLDG [MÜŞTERİ]")
-
-    def test_geri_alma_gumruk_araciya_doner(self):
-        a = self._olustur("DAR ÇAÇAK (GÜMRÜK MÜŞAVİRLİĞİ)")
-        a.tip = "GUMRUK"
-        a.save(update_fields=["tip"])
-        tipleri_geri_al(_SahteApps(), None)
-        a.refresh_from_db()
-        self.assertEqual(a.unvan, "DAR ÇAÇAK (GÜMRÜK MÜŞAVİRLİĞİ) [ARACI]")
-
-    def test_geri_alma_zaten_etiketliyse_tekrar_eklemez(self):
-        a = self._olustur("KADDAH BLDG [MÜŞTERİ]")
-        a.tip = "ESKI_MUSTERI"
-        a.save(update_fields=["tip"])
-        tipleri_geri_al(_SahteApps(), None)
-        a.refresh_from_db()
-        self.assertEqual(a.unvan, "KADDAH BLDG [MÜŞTERİ]")
+# Uçtan uca RunPython (ileri/geri) testi kaldırıldı — bkz. dosya başı not.

@@ -39,6 +39,7 @@
         <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
         <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}</div>
         <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div></div>
+        {% comment %}form.kategori.label zaten "Kaynak" (bkz. AdayMusteriForm) — alan adı model/servis tarihsel nedenle "kategori" kalır.{% endcomment %}
         <div class="alan"><label for="{{ form.tip.id_for_label }}">{{ form.tip.label }}</label>{{ form.tip }}</div>
         <div class="alan"><label for="{{ form.potansiyel.id_for_label }}">{{ form.potansiyel.label }}</label>{{ form.potansiyel }}</div>
         <div class="alan"><label for="{{ form.asama.id_for_label }}">{{ form.asama.label }}</label>{{ form.asama }}</div>
@@ -68,12 +69,18 @@
     font-weight:600; color:var(--metin-soluk); margin-top:.4rem; cursor:pointer; }
   .ad-inline-checkbox input { width:auto; }
 </style>
+{% comment %}
+  Aşama artık bir tanım tablosuna FK (select value = tanım pk'sı, sabit 'KAPALI' metni
+  DEĞİL) — kapanış nedeni alanının gizlenip gösterilmesi seçilen pk'nın rol='KAPALI'
+  kümesinde olup olmadığına bakar; küme formdan (form.kapali_asama_pkleri) gelir.
+{% endcomment %}
 <script>
   (function () {
     var asamaSecim = document.getElementById('{{ form.asama.id_for_label }}');
     var kapanisAlan = document.getElementById('ad-kapanis-nedeni-alan');
+    var kapaliPkler = new Set([{% for pk in form.kapali_asama_pkleri %}{{ pk }}{% if not forloop.last %},{% endif %}{% endfor %}]);
     function uygula() {
-      kapanisAlan.classList.toggle('gizli', asamaSecim.value !== 'KAPALI');
+      kapanisAlan.classList.toggle('gizli', !kapaliPkler.has(parseInt(asamaSecim.value, 10)));
     }
     asamaSecim.addEventListener('change', uygula);
     uygula();

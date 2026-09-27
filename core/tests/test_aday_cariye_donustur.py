@@ -16,8 +16,8 @@ from django.urls import reverse
 from PIL import Image
 
 from core.models import (
-    AdayAktivite, AdayMusteri, AdayTip, AdayYetkili, Cari, CariKategori, CariYetkili,
-    EkranYetki, HesapPlani, Sehir, Ulke,
+    AdayAktivite, AdayAsamaTanim, AdayMusteri, AdayPotansiyelTanim, AdayTip, AdayTipTanim,
+    AdayYetkili, Cari, CariKategori, CariYetkili, EkranYetki, HesapPlani, Sehir, Ulke,
 )
 from core.services import aday_donustur
 from core.services.aday import (
@@ -35,6 +35,7 @@ def _kategori_hesap_agaci():
         HesapPlani.objects.get_or_create(
             hesap_kodu=kok, defaults=dict(hesap_adi=kok_ad, rapor_grubu="BILANCO",
                                           rapor_kalemi="DV", parasal=True))
+    kod_yolu_pk = {}
     for ust_kod, ust_ad, alt_kod, alt_ad in (
         ("120", "MÜŞTERİLER", "10", "YURTİÇİ"),
         ("120", "MÜŞTERİLER", "20", "YURTDIŞI"),
@@ -43,7 +44,21 @@ def _kategori_hesap_agaci():
         ("320", "TEDARİKÇİLER", "40", "LOJİSTİK"),
     ):
         ust, _ = CariKategori.objects.get_or_create(kod=ust_kod, ust=None, defaults={"ad": ust_ad})
-        CariKategori.objects.get_or_create(kod=alt_kod, ust=ust, defaults={"ad": ust_ad if False else alt_ad})
+        alt, _ = CariKategori.objects.get_or_create(kod=alt_kod, ust=ust, defaults={"ad": alt_ad})
+        kod_yolu_pk[f"{ust_kod}-{alt_kod}"] = alt.pk
+    # Migration 0132'nin tohum verisi (AdayTipTanim.cari_kategori_yurtici/yurtdisi) test DB'si
+    # OLUŞTURULURKEN yazılmıştı — o an bu CariKategori fixture'ları henüz yoktu, dolayısıyla
+    # hepsi NULL kaldı. Testler kategori önerisini doğrulayabilsin diye burada eşleme YENİDEN
+    # kurulur (spec: kod ile bulunur, id sabitlenmez — üretimde migration zaten gerçek
+    # kategorilerle çalışır, bkz. canlı doğrulama).
+    for kod, yurtici, yurtdisi in (
+        ("ESKI_MUSTERI", "120-10", "120-20"), ("ADAY", "120-10", "120-20"),
+        ("ARACI", "120-10", "120-20"), ("LOJISTIK", "320-40", "320-40"),
+        ("GUMRUK", "320-30", "320-30"), ("TEDARIKCI", "320-10", "320-10"),
+    ):
+        AdayTipTanim.objects.filter(sistem_kodu=kod).update(
+            cari_kategori_yurtici_id=kod_yolu_pk[yurtici],
+            cari_kategori_yurtdisi_id=kod_yolu_pk[yurtdisi])
 
 
 def _tr():
@@ -54,7 +69,17 @@ def _bae():
     return Ulke.objects.get_or_create(kod="AE", defaults={"ad": "BAE"})[0]
 
 
+_TANIM_MODEL = {"tip": AdayTipTanim, "potansiyel": AdayPotansiyelTanim, "asama": AdayAsamaTanim}
+_TANIM_VARSAYILAN = {"tip": "ADAY", "potansiyel": None, "asama": "YENI"}
+
+
 def _aday(unvan="test aday", **kw):
+    """tip/potansiyel/asama hâlâ sistem_kodu STRİNGİ olarak verilebilir (ör. AdayTip.ARACI) —
+    burada ilgili tanım tablosundaki pk'ya çözülür (bkz. core.models.AdayTipTanim vb.);
+    verilmezse eski CharField varsayılanlarıyla (ADAY/YENI) aynı tanım kullanılır."""
+    for alan, Model in _TANIM_MODEL.items():
+        deger = kw.pop(alan, _TANIM_VARSAYILAN[alan])
+        kw[f"{alan}_id"] = Model.objects.get(sistem_kodu=deger).pk if deger else None
     return aday_musteri_olustur(unvan=unvan, para_birimi="TRY", **kw)
 
 
@@ -101,8 +126,11 @@ class KategoriOnerisiTest(TestCase):
 
     def test_kategori_yoksa_none(self):
         a = _aday(tip=AdayTip.ESKI_MUSTERI, ulke_id=_tr().pk)
-        CariKategori.objects.filter(ust__isnull=False).delete()   # yaprak önce (PROTECT)
-        CariKategori.objects.filter(ust__isnull=True).delete()
+        # AdayTipTanim.cari_kategori_yurtici/yurtdisi PROTECT'li — CariKategori SİLİNEMEZ,
+        # eşlemenin kendisini boşaltarak "kategori tanımlı değil" durumu simüle edilir.
+        AdayTipTanim.objects.filter(sistem_kodu="ESKI_MUSTERI").update(
+            cari_kategori_yurtici=None, cari_kategori_yurtdisi=None)
+        a.refresh_from_db()
         self.assertIsNone(aday_donustur.kategori_onerisi(a))
 
     def test_gercek_prod_ornegi_aday10_kaddah(self):
