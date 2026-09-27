@@ -153,6 +153,15 @@
     </a>
   {% endfor %}
 </div>
+<script>
+  // Dar ekranda sekme çubuğu yatay kaydırılabilir (bkz. .ad-sekmeler <900px) — sayfa
+  // açılınca seçili sekme görünmüyor olabilir, görünür alana kaydır.
+  (function () {
+    if (!window.matchMedia || !window.matchMedia("(max-width:899px)").matches) return;
+    var aktif = document.querySelector(".ad-sekme.aktif");
+    if (aktif) aktif.scrollIntoView({inline: "center", block: "nearest"});
+  })();
+</script>
 
 <div class="ad-panel">
   <form method="get" class="ad-arama-cubuk" id="ad-arama-form">
