@@ -76,7 +76,7 @@ class Migrasyon0132Test(TransactionTestCase):
             for i in range(150)])
 
         executor = MigrationExecutor(connection)
-        executor.migrate([("core", "0133_aday_tip_potansiyel_asama_finalize")])
+        executor.migrate([("core", "0135_aday_kaynak_64_239_duzeltme")])
         executor.loader.build_graph()
 
         # Tohum verisi: sayı + sistem_kodu + sira + rol/sicak (spec tablosu)

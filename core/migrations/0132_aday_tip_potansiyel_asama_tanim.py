@@ -73,35 +73,6 @@ def _tohum_geri_al(apps, schema_editor):
         sistem_kodu__in=_ASAMA_KODLARI).delete()
 
 
-def _veri_tasi(apps, schema_editor):
-    AdayMusteri = apps.get_model("core", "AdayMusteri")
-    AdayTipTanim = apps.get_model("core", "AdayTipTanim")
-    AdayPotansiyelTanim = apps.get_model("core", "AdayPotansiyelTanim")
-    AdayAsamaTanim = apps.get_model("core", "AdayAsamaTanim")
-
-    for t in AdayTipTanim.objects.all():
-        AdayMusteri.objects.filter(tip=t.sistem_kodu).update(tip_fk_id=t.pk)
-    for p in AdayPotansiyelTanim.objects.all():
-        AdayMusteri.objects.filter(potansiyel=p.sistem_kodu).update(potansiyel_fk_id=p.pk)
-    for a in AdayAsamaTanim.objects.all():
-        AdayMusteri.objects.filter(asama=a.sistem_kodu).update(asama_fk_id=a.pk)
-
-
-def _veri_geri_al(apps, schema_editor):
-    AdayMusteri = apps.get_model("core", "AdayMusteri")
-    AdayTipTanim = apps.get_model("core", "AdayTipTanim")
-    AdayPotansiyelTanim = apps.get_model("core", "AdayPotansiyelTanim")
-    AdayAsamaTanim = apps.get_model("core", "AdayAsamaTanim")
-
-    for t in AdayTipTanim.objects.all():
-        AdayMusteri.objects.filter(tip_fk_id=t.pk).update(tip=t.sistem_kodu)
-    for p in AdayPotansiyelTanim.objects.all():
-        AdayMusteri.objects.filter(potansiyel_fk_id=p.pk).update(potansiyel=p.sistem_kodu)
-    AdayMusteri.objects.filter(potansiyel_fk_id__isnull=True).update(potansiyel="")
-    for a in AdayAsamaTanim.objects.all():
-        AdayMusteri.objects.filter(asama_fk_id=a.pk).update(asama=a.sistem_kodu)
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -241,12 +212,14 @@ class Migration(migrations.Migration):
                 related_name='aday_musteriler', to='core.adayasamatanim',
                 verbose_name='aşama'),
         ),
-        migrations.RunPython(_veri_tasi, _veri_geri_al),
     ]
-    # NOT: eski CharField sütunlarını kaldırma/yeniden adlandırma bilinçli olarak AYRI bir
-    # migration'a (0133) bırakıldı — Postgres, bu RunPython'un toplu .update()'inden HEMEN
-    # sonra AYNI transaction içinde aynı tabloda RemoveField (ALTER TABLE) çalıştırılınca
-    # "cannot ALTER TABLE ... because it has pending trigger events" hatası veriyor (canlıda
-    # gerçek veriyle doğrulandı — bu satırın kendisi o olayın kaydıdır). DML'in bu migration'ın
-    # kendi transaction'ında COMMIT olması, ardından 0133'ün YENİ bir transaction'da DDL'e
-    # başlaması sorunu çözer.
+    # NOT: veri taşıma (RunPython _veri_tasi) VE şema temizliği (eski CharField sütunlarını
+    # kaldırma/yeniden adlandırma) bilinçli olarak AYRI migration'lara (0133, 0134) bırakıldı.
+    # Django, AddField ile eklenen FK sütunlarının indexini bu migration'ın schema_editor
+    # bloğu KAPANIRKEN (deferred SQL) oluşturur — canlıda ~500 satırlık gerçek veriyle
+    # doğrulandı: bu deferred CREATE INDEX, AYNI transaction içinde önce RunPython'un toplu
+    # .update()'i çalışmış olsa bile Postgres'in "cannot CREATE/ALTER TABLE ... because it
+    # has pending trigger events" hatasını tetikliyor. Üç ayrı migration = üç ayrı
+    # transaction: (1) burada yalnız şema (AddField + kendi deferred index'i, DML YOK),
+    # (2) 0133'te yalnız DML (RunPython, şema değişikliği YOK), (3) 0134'te şema temizliği
+    # (önceki DML çoktan COMMIT olmuş, aynı problem tekrar oluşmaz).
