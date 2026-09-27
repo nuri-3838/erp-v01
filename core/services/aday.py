@@ -80,7 +80,8 @@ def _para_dogrula(deger, etiket):
 def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", eposta_2="",
             ulke_id=None, sehir_id=None, kategori_id=None, para_birimi="TRY",
             iskonto_yuzdesi=0, tip=AdayTip.ADAY, potansiyel="", asama=AdayAsama.YENI,
-            kapanis_nedeni=""):
+            kapanis_nedeni="", sonraki_adim="", sonraki_adim_tarihi=None,
+            eposta_gecersiz=False, eposta_2_gecersiz=False):
     unvan = buyuk_harf_tr((unvan or "").strip())
     if not unvan:
         raise AdayHatasi("Unvan boş olamaz.")
@@ -97,15 +98,26 @@ def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", epos
             raise AdayHatasi("Aşama Kapalı iken kapanış nedeni zorunlu.")
     else:
         kapanis_nedeni = ""
+    sonraki_adim = (sonraki_adim or "").strip()
+    if sonraki_adim_tarihi and not sonraki_adim:
+        raise AdayHatasi("Sonraki adım tarihi girildiyse ne yapılacağı da yazılmalı.")
+    eposta = (eposta or "").strip().lower()
+    eposta_2 = (eposta_2 or "").strip().lower()
+    if not eposta:
+        eposta_gecersiz = False
+    if not eposta_2:
+        eposta_2_gecersiz = False
     return dict(
         unvan=unvan,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
         telefon=(telefon or "").strip(), telefon_2=(telefon_2 or "").strip(),
-        eposta=(eposta or "").strip().lower(), eposta_2=(eposta_2 or "").strip().lower(),
+        eposta=eposta, eposta_2=eposta_2,
+        eposta_gecersiz=bool(eposta_gecersiz), eposta_2_gecersiz=bool(eposta_2_gecersiz),
         ulke=_ulke(ulke_id), sehir=_sehir(sehir_id), kategori=_kategori(kategori_id),
         para_birimi=para_birimi,
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
         tip=tip, potansiyel=potansiyel, asama=asama, kapanis_nedeni=kapanis_nedeni,
+        sonraki_adim=sonraki_adim, sonraki_adim_tarihi=sonraki_adim_tarihi,
     )
 
 
@@ -118,7 +130,14 @@ def aday_musteri_olustur(*, kullanici=None, **kw) -> AdayMusteri:
 def aday_musteri_guncelle(aday: AdayMusteri, *, kullanici=None, **kw) -> AdayMusteri:
     if aday.silindi:
         raise AdayHatasi("Silinmiş aday düzenlenemez.")
+    eski_eposta, eski_eposta_2 = aday.eposta, aday.eposta_2
     veri = _alanlar(**kw)
+    # E-posta adresi fiilen değiştiyse eski "geçersiz" işareti yeni adrese taşınmaz —
+    # kullanıcı aynı anda hem adresi değiştirip hem işaretlese bile (spec'in kuralı budur).
+    if veri["eposta"] != eski_eposta:
+        veri["eposta_gecersiz"] = False
+    if veri["eposta_2"] != eski_eposta_2:
+        veri["eposta_2_gecersiz"] = False
     for alan, deger in veri.items():
         setattr(aday, alan, deger)
     aday.updated_by = kullanici

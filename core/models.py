@@ -1011,7 +1011,9 @@ class AdayMusteri(TemelModel):
     telefon = models.CharField("telefon", max_length=20, blank=True, default="")
     telefon_2 = models.CharField("telefon 2", max_length=20, blank=True, default="")
     eposta = models.EmailField("e-posta", blank=True, default="")
+    eposta_gecersiz = models.BooleanField("e-posta geçersiz (bounce)", default=False)
     eposta_2 = models.EmailField("e-posta 2", blank=True, default="")
+    eposta_2_gecersiz = models.BooleanField("e-posta 2 geçersiz (bounce)", default=False)
     ulke = models.ForeignKey(
         "Ulke", verbose_name="ülke", null=True, blank=True,
         on_delete=models.PROTECT, related_name="aday_musteriler")
@@ -1029,6 +1031,10 @@ class AdayMusteri(TemelModel):
                              default=AdayAsama.YENI, db_index=True)
     kapanis_nedeni = models.CharField("kapanış nedeni", max_length=20,
                                       choices=KapanisNedeni.choices, blank=True, default="")
+    # Sonraki adım tarihi doluyken metin boş olamaz (form/servis kuralı) — tersi serbest.
+    sonraki_adim = models.CharField("sonraki adım", max_length=200, blank=True, default="")
+    sonraki_adim_tarihi = models.DateField("sonraki adım tarihi", null=True, blank=True,
+                                           db_index=True)
     para_birimi = models.CharField("para birimi", max_length=3, choices=PARA_CHOICES,
                                    default="TRY")
     iskonto_yuzdesi = models.DecimalField(
@@ -1047,6 +1053,20 @@ class AdayMusteri(TemelModel):
 
     def __str__(self):
         return self.unvan
+
+    @property
+    def takip_durum(self):
+        """'gecmis' / 'bugun' / 'ileri' / "" — sonraki_adim_tarihi'nin TR bugününe göre
+        konumu (liste/detay renk kuralı + '⏰ Takip' rozeti TEK kaynak)."""
+        if not self.sonraki_adim_tarihi:
+            return ""
+        from core.tarih import tr_bugun
+        bugun = tr_bugun()
+        if self.sonraki_adim_tarihi < bugun:
+            return "gecmis"
+        if self.sonraki_adim_tarihi == bugun:
+            return "bugun"
+        return "ileri"
 
 
 class AdayMusteriKategori(TemelModel):

@@ -4253,11 +4253,13 @@ def _aday_form_kw(cd):
     return dict(
         unvan=cd["unvan"], ilgili_kisi=cd["ilgili_kisi"], telefon=cd["telefon"],
         telefon_2=cd["telefon_2"], eposta=cd["eposta"], eposta_2=cd["eposta_2"],
+        eposta_gecersiz=cd["eposta_gecersiz"], eposta_2_gecersiz=cd["eposta_2_gecersiz"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]),
         kategori_id=g(cd["kategori"]), para_birimi=cd["para_birimi"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"],
         tip=cd["tip"], potansiyel=cd["potansiyel"], asama=cd["asama"],
-        kapanis_nedeni=cd["kapanis_nedeni"])
+        kapanis_nedeni=cd["kapanis_nedeni"],
+        sonraki_adim=cd["sonraki_adim"], sonraki_adim_tarihi=cd["sonraki_adim_tarihi"])
 
 
 @ekran_gerekli("aday_musteriler")
@@ -4269,6 +4271,8 @@ def aday_musteriler(request):
     tip_secim = request.GET.get("tip") or ""
     potansiyel_secim = request.GET.get("potansiyel") or ""
     asama_secim = request.GET.get("asama") or ""
+    takip_secim = request.GET.get("takip") or ""
+    eposta_secim = request.GET.get("eposta") or ""
     try:
         boyut = int(request.GET.get("boyut", 50))
     except ValueError:
@@ -4296,9 +4300,37 @@ def aday_musteriler(request):
         kayitlar = kayitlar.filter(potansiyel=potansiyel_secim)
     if asama_secim in AdayAsama.values:
         kayitlar = kayitlar.filter(asama=asama_secim)
+    bugun = tr_bugun()
+    if takip_secim == "gecmis":
+        kayitlar = kayitlar.filter(sonraki_adim_tarihi__lt=bugun)
+    elif takip_secim == "bugun":
+        kayitlar = kayitlar.filter(sonraki_adim_tarihi=bugun)
+    elif takip_secim == "hafta":
+        kayitlar = kayitlar.filter(sonraki_adim_tarihi__gte=bugun,
+                                   sonraki_adim_tarihi__lte=bugun + datetime.timedelta(days=7))
+    elif takip_secim == "planli":
+        kayitlar = kayitlar.filter(sonraki_adim_tarihi__isnull=False)
+    elif takip_secim == "yok":
+        kayitlar = kayitlar.filter(sonraki_adim_tarihi__isnull=True)
+    _eposta_dolu_1, _eposta_dolu_2 = ~Q(eposta=""), ~Q(eposta_2="")
+    _eposta_gecerli_1 = _eposta_dolu_1 & Q(eposta_gecersiz=False)
+    _eposta_gecerli_2 = _eposta_dolu_2 & Q(eposta_2_gecersiz=False)
+    if eposta_secim == "gecerli":
+        kayitlar = kayitlar.filter(_eposta_gecerli_1 | _eposta_gecerli_2)
+    elif eposta_secim == "gecersiz":
+        kayitlar = (kayitlar.filter(_eposta_dolu_1 | _eposta_dolu_2)
+                    .exclude(_eposta_gecerli_1 | _eposta_gecerli_2))
+    elif eposta_secim == "yok":
+        kayitlar = kayitlar.filter(eposta="", eposta_2="")
     # Kapalı aşamadaki kayıtlar da varsayılan listede görünür, yalnız Aşama filtresiyle
-    # ayrılabilir (bilinçli — gizleme yok).
-    kayitlar = kayitlar.order_by("-created_at")
+    # ayrılabilir (bilinçli — gizleme yok). Takip filtresi seçiliyken sonraki adıma göre
+    # (en yakın tarih önce) sıralanır; aksi halde varsayılan sıralama değişmez.
+    if takip_secim in {"gecmis", "bugun", "hafta", "planli", "yok"}:
+        kayitlar = kayitlar.order_by("sonraki_adim_tarihi", "-created_at")
+    else:
+        kayitlar = kayitlar.order_by("-created_at")
+    gecikmis_sayisi = aday_servis.aktif_aday_musteriler().filter(
+        sonraki_adim_tarihi__lt=bugun).count()
     # Filtre seçenekleri yalnız en az bir adayda fiilen kullanılanlardan oluşur (bkz.
     # cariler view'ındaki aynı desen — tüm kategori/lokasyon master verisini değil,
     # sayfadaki gerçek veriyi yansıtır).
@@ -4326,6 +4358,8 @@ def aday_musteriler(request):
         "tip_secenekleri": AdayTip.choices, "secili_tip": tip_secim,
         "potansiyel_secenekleri": AdayPotansiyel.choices, "secili_potansiyel": potansiyel_secim,
         "asama_secenekleri": AdayAsama.choices, "secili_asama": asama_secim,
+        "secili_takip": takip_secim, "secili_eposta": eposta_secim,
+        "gecikmis_sayisi": gecikmis_sayisi,
         "sabit_qs": sabit_qs.urlencode()})
 
 
@@ -4364,11 +4398,13 @@ def aday_musteri_duzenle(request, pk):
         form = AdayMusteriForm(initial={
             "unvan": aday.unvan, "ilgili_kisi": aday.ilgili_kisi, "telefon": aday.telefon,
             "telefon_2": aday.telefon_2, "eposta": aday.eposta, "eposta_2": aday.eposta_2,
+            "eposta_gecersiz": aday.eposta_gecersiz, "eposta_2_gecersiz": aday.eposta_2_gecersiz,
             "ulke": aday.ulke_id, "sehir": aday.sehir_id,
             "kategori": aday.kategori_id, "para_birimi": aday.para_birimi,
             "iskonto_yuzdesi": aday.iskonto_yuzdesi,
             "tip": aday.tip, "potansiyel": aday.potansiyel, "asama": aday.asama,
-            "kapanis_nedeni": aday.kapanis_nedeni})
+            "kapanis_nedeni": aday.kapanis_nedeni,
+            "sonraki_adim": aday.sonraki_adim, "sonraki_adim_tarihi": aday.sonraki_adim_tarihi})
     return render(request, "core/aday_musteri_form.html",
                   {"form": form, "baslik": "Aday Müşteri Düzenle", "duzenlenen": aday})
 

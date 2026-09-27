@@ -567,8 +567,10 @@ class AdayMusteriForm(forms.Form):
                                 widget=forms.TextInput(attrs={**_K, "inputmode": "tel"}))
     eposta = forms.EmailField(label="E-posta", required=False,
                               widget=forms.EmailInput(attrs=_K))
+    eposta_gecersiz = forms.BooleanField(label="Geçersiz (bounce)", required=False)
     eposta_2 = forms.EmailField(label="E-posta 2", required=False,
                                 widget=forms.EmailInput(attrs=_K))
+    eposta_2_gecersiz = forms.BooleanField(label="Geçersiz (bounce)", required=False)
     ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
                                   required=False, empty_label="— ülke seç —")
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
@@ -584,6 +586,11 @@ class AdayMusteriForm(forms.Form):
     kapanis_nedeni = forms.ChoiceField(
         label="Kapanış Nedeni",
         choices=[("", "— seçin —")] + list(KapanisNedeni.choices), required=False)
+    sonraki_adim = forms.CharField(label="Sonraki Adım", max_length=200, required=False,
+                                   widget=forms.TextInput(attrs=_K))
+    sonraki_adim_tarihi = forms.DateField(
+        label="Tarih", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=AdayMusteri.PARA_CHOICES,
                                     initial="TRY")
     iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
@@ -608,6 +615,9 @@ class AdayMusteriForm(forms.Form):
                 self.add_error("kapanis_nedeni", "Aşama Kapalı iken kapanış nedeni zorunlu.")
         else:
             cleaned["kapanis_nedeni"] = ""
+        if cleaned.get("sonraki_adim_tarihi") and not cleaned.get("sonraki_adim"):
+            self.add_error("sonraki_adim",
+                           "Sonraki adım tarihi girildiyse ne yapılacağı da yazılmalı.")
         return cleaned
 
 

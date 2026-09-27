@@ -37,6 +37,11 @@
     background:#fff; display:grid; place-items:center; overflow:hidden; }
   .akt-ek-onizleme img { width:100%; height:100%; object-fit:cover; }
   .akt-ek-onizleme .pdf-ikon { font-size:1.4rem; }
+  .ad-takip-gecmis { color:#c62828; }
+  .ad-takip-bugun { color:var(--turuncu-koyu); }
+  .ad-takip-ileri { color:var(--metin); }
+  .ad-eposta-gecersiz { text-decoration:line-through; color:var(--metin-soluk); }
+  .d-rozet.takip { background:#c62828; color:#fff; }
 </style>
 
 <div class="detay-kapsa">
@@ -64,6 +69,7 @@
         <span class="d-rozet pb">{{ aday.get_tip_display }}</span>
         <span class="d-rozet pb">{{ aday.get_asama_display }}{% if aday.asama == "KAPALI" %} — {{ aday.get_kapanis_nedeni_display }}{% endif %}</span>
         {% if aday.potansiyel %}<span class="d-rozet pb">Potansiyel: {{ aday.get_potansiyel_display }}</span>{% endif %}
+        {% if aday.takip_durum == "gecmis" or aday.takip_durum == "bugun" %}<span class="d-rozet takip">⏰ Takip</span>{% endif %}
         <span class="d-rozet pb">{{ aday.para_birimi }}</span>
         {% if aday.iskonto_yuzdesi %}<span class="d-rozet pb">%{{ aday.iskonto_yuzdesi|tr_kur:2 }} iskonto</span>{% endif %}
       </div>
@@ -78,13 +84,18 @@
       <div class="satir"><span class="et">İlgili Kişi</span><span class="dg">{{ aday.ilgili_kisi|default:"—" }}</span></div>
       <div class="satir"><span class="et">Telefon</span><span class="dg">{{ aday.telefon|default:"—" }}</span></div>
       <div class="satir"><span class="et">Telefon 2</span><span class="dg">{{ aday.telefon_2|default:"—" }}</span></div>
-      <div class="satir"><span class="et">E-posta</span><span class="dg">{{ aday.eposta|default:"—" }}</span></div>
-      <div class="satir"><span class="et">E-posta 2</span><span class="dg">{{ aday.eposta_2|default:"—" }}</span></div>
+      <div class="satir"><span class="et">E-posta</span><span class="dg">
+        {% if aday.eposta %}{% if aday.eposta_gecersiz %}<span class="ad-eposta-gecersiz">{{ aday.eposta }}</span> <span class="rozet rozet-notr">geçersiz</span>{% else %}<a href="mailto:{{ aday.eposta }}">{{ aday.eposta }}</a>{% endif %}{% else %}—{% endif %}
+      </span></div>
+      <div class="satir"><span class="et">E-posta 2</span><span class="dg">
+        {% if aday.eposta_2 %}{% if aday.eposta_2_gecersiz %}<span class="ad-eposta-gecersiz">{{ aday.eposta_2 }}</span> <span class="rozet rozet-notr">geçersiz</span>{% else %}<a href="mailto:{{ aday.eposta_2 }}">{{ aday.eposta_2 }}</a>{% endif %}{% else %}—{% endif %}
+      </span></div>
       <div class="satir"><span class="et">Ülke / Şehir</span><span class="dg">{% if aday.ulke %}{{ aday.ulke.ad }}{% if aday.sehir %} / {{ aday.sehir.ad }}{% endif %}{% else %}—{% endif %}</span></div>
       <div class="satir"><span class="et">Kategori</span><span class="dg">{{ aday.kategori.ad|default:"—" }}</span></div>
       <div class="satir"><span class="et">Tip</span><span class="dg">{{ aday.get_tip_display }}</span></div>
       <div class="satir"><span class="et">Potansiyel</span><span class="dg">{{ aday.get_potansiyel_display|default:"Belirlenmedi" }}</span></div>
       <div class="satir"><span class="et">Aşama</span><span class="dg">{{ aday.get_asama_display }}</span></div>
+      <div class="satir tam"><span class="et">Sonraki Adım</span><span class="dg">{% if aday.sonraki_adim_tarihi %}<span class="ad-takip-{{ aday.takip_durum }}">{{ aday.sonraki_adim_tarihi|date:"d.m.Y" }}</span> — {% endif %}{{ aday.sonraki_adim|default:"—" }}</span></div>
       <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg">%{{ aday.iskonto_yuzdesi|tr_kur:2 }}</span></div>
     </div>
   </section>
