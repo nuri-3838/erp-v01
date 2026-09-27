@@ -15,13 +15,15 @@ from core.services.aday import (
     AdayHatasi, aday_aktivite_ek_ekle, aday_aktivite_ek_sil, aday_aktivite_ekle,
     aday_aktivite_guncelle, aday_aktivite_sil, aday_musteri_olustur, aktif_aday_aktiviteleri,
 )
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 
 
 def _aday(unvan="test aday"):
     return aday_musteri_olustur(
         unvan=unvan, para_birimi="TRY",
         tip_id=AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
-        asama_id=AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
+        asama_id=AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk,
+        kategori_id=varsayilan_kaynak_id())
 
 
 def _png_dosya(ad="foto.png", boyut=(2400, 1200)):

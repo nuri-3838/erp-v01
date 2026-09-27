@@ -17,7 +17,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from core import gorsel
-from core.dogrulama import web_normalize
+from core.dogrulama import telefon_normalize, web_normalize
 from core.metin import buyuk_harf_tr
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
@@ -62,11 +62,20 @@ def _sehir(sehir_id):
 
 def _kategori(kategori_id):
     if not kategori_id:
-        return None
+        raise AdayHatasi("Kaynak seçimi zorunlu.")
     k = AdayMusteriKategori.objects.filter(pk=kategori_id, silindi=False).first()
     if k is None:
         raise AdayHatasi("Kaynak bulunamadı.")
+    if k.alt_kategoriler.filter(silindi=False).exists():
+        raise AdayHatasi("Lütfen alt kaynak seçin.")
     return k
+
+
+def _telefon_isle(deger, iso2, etiket, uyarilar):
+    sonuc, tamam = telefon_normalize(deger, iso2)
+    if not tamam and sonuc:
+        uyarilar.append(f"{etiket} numarası doğrulanamadı; ülke kodu ile (+..) girin: {sonuc}")
+    return sonuc
 
 
 def _tip(tip_id):
@@ -133,44 +142,76 @@ def _alanlar(*, unvan, ilgili_kisi="", telefon="", telefon_2="", eposta="", epos
     web_norm = web_normalize(web)
     if web_norm is None:
         raise AdayHatasi(f"Geçersiz web adresi: {(web or '').strip()}")
-    return dict(
+    ulke = _ulke(ulke_id)
+    iso2 = (ulke.kod if ulke else "") or "TR"
+    uyarilar = []
+    telefon_deger = _telefon_isle(telefon, iso2, "Telefon", uyarilar)
+    telefon_2_deger = _telefon_isle(telefon_2, iso2, "Telefon 2", uyarilar)
+    veri = dict(
         unvan=unvan,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
-        telefon=(telefon or "").strip(), telefon_whatsapp=bool(telefon_whatsapp),
-        telefon_2=(telefon_2 or "").strip(), telefon_2_whatsapp=bool(telefon_2_whatsapp),
+        telefon=telefon_deger, telefon_whatsapp=bool(telefon_whatsapp),
+        telefon_2=telefon_2_deger, telefon_2_whatsapp=bool(telefon_2_whatsapp),
         eposta=eposta, eposta_2=eposta_2,
         eposta_gecersiz=bool(eposta_gecersiz), eposta_2_gecersiz=bool(eposta_2_gecersiz),
         web=web_norm,
-        ulke=_ulke(ulke_id), sehir=_sehir(sehir_id), kategori=_kategori(kategori_id),
+        ulke=ulke, sehir=_sehir(sehir_id), kategori=_kategori(kategori_id),
         adres=buyuk_harf_tr((adres or "").strip()),
         para_birimi=para_birimi,
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
         tip=tip, potansiyel=potansiyel, asama=asama, kapanis_nedeni=kapanis_nedeni,
         sonraki_adim=sonraki_adim, sonraki_adim_tarihi=sonraki_adim_tarihi,
     )
+    return veri, uyarilar
 
 
-def aday_musteri_olustur(*, kullanici=None, **kw) -> AdayMusteri:
-    veri = _alanlar(**kw)
-    return AdayMusteri.objects.create(
+class MukerrerKayitBulunduHatasi(AdayHatasi):
+    """Aday henüz kaydedilmedi — unvan/telefon/e-posta/web ile eşleşen diğer aday(lar) ya da
+    cari(ler) bulundu ve kullanıcı ``farkli_firma_onay`` ile onaylamadı. ``self.eslesmeler``
+    (bkz. core.services.aday_donustur.eslesen_kayitlar) view'a formu tekrar göstermek için
+    taşınır — kaydı KALICI engellemez, yalnız onaysız kaydetmeyi engeller (spec kararı)."""
+
+    def __init__(self, eslesmeler):
+        self.eslesmeler = eslesmeler
+        super().__init__("Bu bilgilerle eşleşen kayıt(lar) var; onaylamadan kaydedilmedi.")
+
+
+def _mukerrer_kontrol(taslak, farkli_firma_onay):
+    if farkli_firma_onay:
+        return
+    from core.services import aday_donustur as aday_donustur_servis
+    eslesmeler = aday_donustur_servis.eslesen_kayitlar(taslak)
+    if eslesmeler:
+        raise MukerrerKayitBulunduHatasi(eslesmeler)
+
+
+def aday_musteri_olustur(*, kullanici=None, farkli_firma_onay=False, **kw) -> AdayMusteri:
+    veri, uyarilar = _alanlar(**kw)
+    _mukerrer_kontrol(AdayMusteri(**veri), farkli_firma_onay)
+    aday = AdayMusteri.objects.create(
         created_by=kullanici, updated_by=kullanici, **veri)
+    aday.telefon_uyarilari = uyarilar
+    return aday
 
 
-def aday_musteri_guncelle(aday: AdayMusteri, *, kullanici=None, **kw) -> AdayMusteri:
+def aday_musteri_guncelle(aday: AdayMusteri, *, kullanici=None, farkli_firma_onay=False,
+                          **kw) -> AdayMusteri:
     if aday.silindi:
         raise AdayHatasi("Silinmiş aday düzenlenemez.")
     eski_eposta, eski_eposta_2 = aday.eposta, aday.eposta_2
-    veri = _alanlar(**kw)
+    veri, uyarilar = _alanlar(**kw)
     # E-posta adresi fiilen değiştiyse eski "geçersiz" işareti yeni adrese taşınmaz —
     # kullanıcı aynı anda hem adresi değiştirip hem işaretlese bile (spec'in kuralı budur).
     if veri["eposta"] != eski_eposta:
         veri["eposta_gecersiz"] = False
     if veri["eposta_2"] != eski_eposta_2:
         veri["eposta_2_gecersiz"] = False
+    _mukerrer_kontrol(AdayMusteri(pk=aday.pk, cari_id=aday.cari_id, **veri), farkli_firma_onay)
     for alan, deger in veri.items():
         setattr(aday, alan, deger)
     aday.updated_by = kullanici
     aday.save()
+    aday.telefon_uyarilari = uyarilar
     return aday
 
 
@@ -194,11 +235,16 @@ def aday_yetkili_ekle(aday, *, ad_soyad, unvan="", telefon="", eposta="", notlar
     ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
     if not ad_soyad:
         raise AdayHatasi("Ad soyad boş olamaz.")
-    return AdayYetkili.objects.create(
+    iso2 = (aday.ulke.kod if aday.ulke_id else "") or "TR"
+    uyarilar = []
+    telefon_deger = _telefon_isle(telefon, iso2, "Telefon", uyarilar)
+    yetkili = AdayYetkili.objects.create(
         aday=aday, ad_soyad=ad_soyad, unvan=buyuk_harf_tr((unvan or "").strip()),
-        telefon=(telefon or "").strip(), eposta=(eposta or "").strip().lower(),
+        telefon=telefon_deger, eposta=(eposta or "").strip().lower(),
         notlar=(notlar or "").strip(), whatsapp=bool(whatsapp),
         created_by=kullanici, updated_by=kullanici)
+    yetkili.telefon_uyarilari = uyarilar
+    return yetkili
 
 
 def aday_yetkili_guncelle(yetkili: AdayYetkili, *, ad_soyad, unvan="", telefon="",
@@ -208,15 +254,19 @@ def aday_yetkili_guncelle(yetkili: AdayYetkili, *, ad_soyad, unvan="", telefon="
     ad_soyad = buyuk_harf_tr((ad_soyad or "").strip())
     if not ad_soyad:
         raise AdayHatasi("Ad soyad boş olamaz.")
+    iso2 = (yetkili.aday.ulke.kod if yetkili.aday.ulke_id else "") or "TR"
+    uyarilar = []
+    telefon_deger = _telefon_isle(telefon, iso2, "Telefon", uyarilar)
     yetkili.ad_soyad = ad_soyad
     yetkili.unvan = buyuk_harf_tr((unvan or "").strip())
-    yetkili.telefon = (telefon or "").strip()
+    yetkili.telefon = telefon_deger
     yetkili.eposta = (eposta or "").strip().lower()
     yetkili.notlar = (notlar or "").strip()
     yetkili.whatsapp = bool(whatsapp)
     yetkili.updated_by = kullanici
     yetkili.save(update_fields=["ad_soyad", "unvan", "telefon", "eposta", "notlar", "whatsapp",
                                 "updated_by", "updated_at"])
+    yetkili.telefon_uyarilari = uyarilar
     return yetkili
 
 

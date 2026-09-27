@@ -16,6 +16,7 @@ from core.services.aday import (
     aday_musteri_olustur as _aday_musteri_olustur_ham,
 )
 from core.tarih import tr_bugun
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 
 UTC = dt_timezone.utc
 
@@ -25,6 +26,7 @@ def aday_musteri_olustur(*, tip=None, asama=None, **kw):
     diye ince bir çeviri katmanı (verilmezse eski CharField varsayılanları ADAY/YENİ)."""
     kw["tip_id"] = AdayTipTanim.objects.get(sistem_kodu=tip or "ADAY").pk
     kw["asama_id"] = AdayAsamaTanim.objects.get(sistem_kodu=asama or "YENI").pk
+    kw.setdefault("kategori_id", varsayilan_kaynak_id())
     return _aday_musteri_olustur_ham(**kw)
 
 
@@ -33,6 +35,7 @@ def aday_musteri_guncelle(aday, *, tip=None, asama=None, **kw):
     aynı: form her zaman tüm alanları taşır, burada testin belirtmediği alan değişmez)."""
     kw["tip_id"] = (AdayTipTanim.objects.get(sistem_kodu=tip).pk if tip else aday.tip_id)
     kw["asama_id"] = (AdayAsamaTanim.objects.get(sistem_kodu=asama).pk if asama else aday.asama_id)
+    kw.setdefault("kategori_id", aday.kategori_id)
     return _aday_musteri_guncelle_ham(aday, **kw)
 
 
@@ -40,8 +43,8 @@ def _form_temel_veri(**ek):
     veri = dict(
         unvan="test firma", ilgili_kisi="", telefon="", telefon_2="",
         eposta="", eposta_gecersiz="", eposta_2="", eposta_2_gecersiz="",
-        ulke="", sehir="", kategori="", tip="ADAY", potansiyel="", asama="YENI",
-        kapanis_nedeni="", sonraki_adim="", sonraki_adim_tarihi="",
+        ulke="", sehir="", kategori=varsayilan_kaynak_id(), tip="ADAY", potansiyel="",
+        asama="YENI", kapanis_nedeni="", sonraki_adim="", sonraki_adim_tarihi="",
         para_birimi="TRY", iskonto_yuzdesi="0")
     veri.update(ek)
     veri["tip"] = AdayTipTanim.objects.get(sistem_kodu=veri["tip"]).pk if veri["tip"] else ""

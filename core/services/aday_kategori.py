@@ -4,6 +4,10 @@ CRM ağacı için.
 - Ad ve Kod TR büyük harfe çevrilir; ikisi de bağlı olduğu ÜST grup içinde benzersiz
   (kök kategoriler kendi arasında). Boş olamaz.
 - En fazla 2 SEVİYE: ÜST (ust=None) → ALT. Alt'ın altına açılamaz.
+- Yalnız YAPRAK (alt kategorisi olmayan) kategoriler adaya atanabilir — bkz.
+  core.services.aday._kategori. Bir ÜST'ün altına İLK kez alt kategori açılırken o ÜST'e
+  doğrudan atanmış aktif aday varsa engellenir (aksi halde o adaylar artık seçilemeyen bir
+  grup başlığında kalır) — kullanıcı önce adayları taşımalı.
 - Silme: soft-delete; aktif alt kategorisi olan ÜST silinemez.
 """
 from __future__ import annotations
@@ -58,6 +62,10 @@ def aday_kategori_olustur(*, ad, kod, ust_id=None, kullanici=None) -> AdayMuster
         if ust.ust_id is not None:
             raise AdayKategoriHatasi(
                 "En fazla 2 seviye: bir alt kategorinin altına kategori açılamaz.")
+        n = ust.aday_musteriler.filter(silindi=False).count()
+        if n:
+            raise AdayKategoriHatasi(
+                f"Bu kaynakta {n} aday var; önce adayları bir alt kaynağa taşıyın.")
     ad = _ad_dogrula(ad, ust.pk if ust else None)
     kod = _kod_dogrula(kod, ust.pk if ust else None)
     return AdayMusteriKategori.objects.create(

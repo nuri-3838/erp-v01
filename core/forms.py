@@ -639,9 +639,13 @@ class AdayMusteriForm(forms.Form):
                                    required=False, empty_label="— şehir seç —")
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 5, **_K}))
-    kategori = forms.ModelChoiceField(
-        label="Kaynak", queryset=AdayMusteriKategori.objects.none(),
-        required=False, empty_label="— kaynak seç —")
+    # required=True (varsayılan) — seçenekler (optgroup'lu, yalnız yaprak kaynaklar
+    # seçilebilir) __init__'te kurulur, bkz. _kaynak_secenekleri. queryset TÜM aktif
+    # kaynakları (üst+alt) kapsar çünkü ModelChoiceField.clean() seçimi widget'ın
+    # choices'ına değil queryset'e göre doğrular — yaprak kontrolü ayrıca clean()'de.
+    kategori = forms.ModelChoiceField(label="Kaynak", queryset=AdayMusteriKategori.objects.none())
+    farkli_firma_onay = forms.BooleanField(
+        label="Farklı firma, yine de kaydet", required=False)
     tip = forms.ModelChoiceField(label="Tip", queryset=AdayTipTanim.objects.none())
     potansiyel = forms.ModelChoiceField(
         label="Potansiyel", queryset=AdayPotansiyelTanim.objects.none(),
@@ -667,8 +671,11 @@ class AdayMusteriForm(forms.Form):
         self.fields["ulke"].queryset = aktif_ulkeler()
         self.fields["sehir"].queryset = aktif_sehirler()
         self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
-        self.fields["kategori"].queryset = aktif_aday_kategoriler()
+        kaynaklar = list(aktif_aday_kategoriler())
+        self.fields["kategori"].queryset = AdayMusteriKategori.objects.filter(
+            pk__in=[k.pk for k in kaynaklar])
         self.fields["kategori"].label_from_instance = lambda o: f"{o.kod_yolu}  {o.ad}"
+        self.fields["kategori"].choices = self._kaynak_secenekleri(kaynaklar)
         # aktif=False tanımlar formda seçilemez — AMA düzenlenen adayın MEVCUT değeri
         # (artık pasif olsa bile) seçenek listesinden düşmesin (spec: "mevcut kayıtlarda
         # görünmeye devam eder").
@@ -693,8 +700,36 @@ class AdayMusteriForm(forms.Form):
             qs = Model.objects.filter(silindi=False, pk=mevcut_pk) | qs
         return qs.order_by("sira", "ad")
 
+    @staticmethod
+    def _kaynak_secenekleri(kaynaklar):
+        """Hiyerarşik <select>: alt kaynağı olan üst başlıklar <optgroup> ETİKETİ olarak
+        görünür (native HTML optgroup zaten seçilemez) — bkz. spec "Kaynak zorunlu, yalnız
+        yaprak seçilebilir". Alt kaynağı OLMAYAN üstler (bugün 02 FUARLAR/03 TAVSİYE/
+        04 ZİYARET gibi) kendileri birer yaprak olduğu için doğrudan seçilebilir <option>.
+        En fazla 2 seviye olduğu için (bkz. aday_kategori_olustur) tek seviye gruplama yeter."""
+        altlar = {}
+        for k in kaynaklar:
+            if k.ust_id:
+                altlar.setdefault(k.ust_id, []).append(k)
+        for grup in altlar.values():
+            grup.sort(key=lambda k: k.kod)
+        secenekler = [("", "— kaynak seç —")]
+        for k in kaynaklar:
+            if k.ust_id is not None:
+                continue
+            cocuklar = altlar.get(k.pk)
+            if cocuklar:
+                secenekler.append((f"{k.kod_yolu}  {k.ad}",
+                                   [(c.pk, f"{c.kod_yolu}  {c.ad}") for c in cocuklar]))
+            else:
+                secenekler.append((k.pk, f"{k.kod_yolu}  {k.ad}"))
+        return secenekler
+
     def clean(self):
         cleaned = super().clean()
+        kategori = cleaned.get("kategori")
+        if kategori is not None and kategori.alt_kategoriler.filter(silindi=False).exists():
+            self.add_error("kategori", "Lütfen alt kaynak seçin.")
         asama = cleaned.get("asama")
         if asama and asama.rol == AdayAsamaTanim.Rol.KAPALI:
             if not cleaned.get("kapanis_nedeni"):

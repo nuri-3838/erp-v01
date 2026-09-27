@@ -18,6 +18,7 @@ from core.models import (
 from core.services import aday_donustur
 from core.services import aday_tanim as tanim_servis
 from core.services.aday import aday_musteri_olustur
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 
 
 def _tip(kod):
@@ -35,6 +36,8 @@ def _asama(kod):
 def _aday(unvan="test aday", **kw):
     kw.setdefault("tip_id", _tip("ADAY").pk)
     kw.setdefault("asama_id", _asama("YENI").pk)
+    kw.setdefault("kategori_id", varsayilan_kaynak_id())
+    kw.setdefault("farkli_firma_onay", True)
     return aday_musteri_olustur(unvan=unvan, para_birimi="TRY", **kw)
 
 
@@ -308,16 +311,20 @@ class HiyerarsikKaynakFiltresiTest(TestCase):
         self.client.force_login(self.yon)
 
     def test_ust_secilince_alt_kaynaktaki_adaylar_da_gelir(self):
+        # Kaynak artık zorunlu + yalnız YAPRAK seçilebilir (bkz. spec "Kaynak zorunlu ve
+        # yalnız yaprak seçilebilir") — bir aday artık asla doğrudan ÜST'e atanamaz, o yüzden
+        # hiyerarşi iki AYRI alt (yaprak) ile kurulur; üst filtresi ikisini de kapsamalı.
         from core.services.aday_kategori import aday_kategori_olustur
         ust = aday_kategori_olustur(ad="DATA", kod="01")
-        alt = aday_kategori_olustur(ad="ESKİ FİRMA", kod="01", ust_id=ust.pk)
-        _aday(unvan="ust duzeyde aday", kategori_id=ust.pk)
-        _aday(unvan="alt duzeyde aday", kategori_id=alt.pk)
+        alt1 = aday_kategori_olustur(ad="ESKİ FİRMA", kod="01", ust_id=ust.pk)
+        alt2 = aday_kategori_olustur(ad="YENİ FİRMA", kod="02", ust_id=ust.pk)
+        _aday(unvan="alt1 duzeyde aday", kategori_id=alt1.pk)
+        _aday(unvan="alt2 duzeyde aday", kategori_id=alt2.pk)
         _aday(unvan="ilgisiz aday")
         r = self.client.get(reverse("core:aday_musteriler"), {"kaynak": ust.pk, "gorunum": "tumu"})
-        self.assertContains(r, "UST DUZEYDE ADAY")
-        self.assertContains(r, "ALT DUZEYDE ADAY")
+        self.assertContains(r, "ALT1 DUZEYDE ADAY")
+        self.assertContains(r, "ALT2 DUZEYDE ADAY")
         self.assertNotContains(r, "İLGİSİZ ADAY")
-        r2 = self.client.get(reverse("core:aday_musteriler"), {"kaynak": alt.pk, "gorunum": "tumu"})
-        self.assertContains(r2, "ALT DUZEYDE ADAY")
-        self.assertNotContains(r2, "UST DUZEYDE ADAY")
+        r2 = self.client.get(reverse("core:aday_musteriler"), {"kaynak": alt1.pk, "gorunum": "tumu"})
+        self.assertContains(r2, "ALT1 DUZEYDE ADAY")
+        self.assertNotContains(r2, "ALT2 DUZEYDE ADAY")

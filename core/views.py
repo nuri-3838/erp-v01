@@ -10,7 +10,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.paginator import Paginator
-from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
+from django.db.models.functions import Replace
 from django.forms import formset_factory
 from django.http import (
     FileResponse, Http404, HttpResponse, HttpResponsePermanentRedirect, JsonResponse,
@@ -1442,6 +1443,8 @@ def cari_ekle(request):
             try:
                 c = cari_servis.cari_olustur(**_cari_form_kw(form.cleaned_data),
                                              kullanici=request.user)
+                for uyari in getattr(c, "telefon_uyarilari", []):
+                    messages.error(request, uyari)
                 messages.success(request, f"Cari eklendi: {c.kod} — {c.unvan}")
                 return redirect("core:cari_detay", pk=c.pk)
             except cari_servis.CariHatasi as e:
@@ -1459,8 +1462,10 @@ def cari_duzenle(request, pk):
         form = CariForm(request.POST)
         if form.is_valid():
             try:
-                cari_servis.cari_guncelle(cari, **_cari_form_kw(form.cleaned_data),
-                                          kullanici=request.user)
+                guncellenen = cari_servis.cari_guncelle(
+                    cari, **_cari_form_kw(form.cleaned_data), kullanici=request.user)
+                for uyari in getattr(guncellenen, "telefon_uyarilari", []):
+                    messages.error(request, uyari)
                 messages.success(request, "Cari güncellendi.")
                 return redirect("core:cari_detay", pk=cari.pk)
             except cari_servis.CariHatasi as e:
@@ -4075,7 +4080,9 @@ def yetkili_ekle(request, cari_pk):
     if request.method == "POST":
         form = CariYetkiliForm(request.POST)
         if form.is_valid():
-            cari_servis.yetkili_ekle(cari, **form.cleaned_data, kullanici=request.user)
+            y = cari_servis.yetkili_ekle(cari, **form.cleaned_data, kullanici=request.user)
+            for uyari in getattr(y, "telefon_uyarilari", []):
+                messages.error(request, uyari)
             messages.success(request, "Yetkili kişi eklendi.")
             return redirect("core:cari_detay", pk=cari.pk)
     else:
@@ -4090,7 +4097,9 @@ def yetkili_duzenle(request, pk):
     if request.method == "POST":
         form = CariYetkiliForm(request.POST)
         if form.is_valid():
-            cari_servis.yetkili_guncelle(yetkili, **form.cleaned_data, kullanici=request.user)
+            g = cari_servis.yetkili_guncelle(yetkili, **form.cleaned_data, kullanici=request.user)
+            for uyari in getattr(g, "telefon_uyarilari", []):
+                messages.error(request, uyari)
             messages.success(request, "Yetkili kişi güncellendi.")
             return redirect("core:cari_detay", pk=yetkili.cari_id)
     else:
@@ -4645,7 +4654,8 @@ def _aday_form_kw(cd):
         iskonto_yuzdesi=cd["iskonto_yuzdesi"],
         tip_id=g(cd["tip"]), potansiyel_id=g(cd["potansiyel"]), asama_id=g(cd["asama"]),
         kapanis_nedeni=cd["kapanis_nedeni"],
-        sonraki_adim=cd["sonraki_adim"], sonraki_adim_tarihi=cd["sonraki_adim_tarihi"])
+        sonraki_adim=cd["sonraki_adim"], sonraki_adim_tarihi=cd["sonraki_adim_tarihi"],
+        farkli_firma_onay=cd["farkli_firma_onay"])
 
 
 def _aday_duzenlenebilir_kontrol(request, aday):
@@ -4683,6 +4693,11 @@ def aday_musteriler(request):
     kayitlar = aday_servis.aktif_aday_musteriler()
     if ara:
         buyuk = buyuk_harf_tr(ara)
+        # Telefon artık uluslararası INTERNATIONAL biçiminde boşluklu saklanabilir (bkz.
+        # core.dogrulama.telefon_normalize) — kullanıcı genelde boşluksuz arar, o yüzden hem
+        # arama terimi hem alan boşluksuzlaştırılıp öyle karşılaştırılır (Replace() ek sorgu
+        # eklemez, aynı SELECT'e sütun ekler — assertNumQueries etkilenmez).
+        ara_duz = ara.replace(" ", "")
         # Yetkili/aktivite eşleşmesi Exists ile — JOIN + distinct YOK (satır çoğalmaz, sorgu
         # sayısı artmaz: aynı SQL ifadesine gömülü korele alt sorgu, bkz. assertNumQueries
         # testi). aciklama TR büyük harfe ÇEVRİLMEDEN saklanır (serbest metin — unvan/adres
@@ -4692,13 +4707,17 @@ def aday_musteriler(request):
         # yarar.
         yetkili_eslesme = AdayYetkili.objects.filter(
             aday_id=OuterRef("pk"), silindi=False
-        ).filter(
-            Q(ad_soyad__contains=buyuk) | Q(telefon__icontains=ara) | Q(eposta__icontains=ara))
+        ).annotate(_telefon_duz=Replace("telefon", Value(" "), Value(""))).filter(
+            Q(ad_soyad__contains=buyuk) | Q(_telefon_duz__icontains=ara_duz)
+            | Q(eposta__icontains=ara))
         aktivite_eslesme = AdayAktivite.objects.filter(
             aday_id=OuterRef("pk"), silindi=False, aciklama__icontains=ara)
-        kayitlar = kayitlar.filter(
+        kayitlar = kayitlar.annotate(
+            _telefon_duz=Replace("telefon", Value(" "), Value("")),
+            _telefon_2_duz=Replace("telefon_2", Value(" "), Value(""))
+        ).filter(
             Q(unvan__contains=buyuk) | Q(ilgili_kisi__contains=buyuk)
-            | Q(telefon__icontains=ara) | Q(telefon_2__icontains=ara)
+            | Q(_telefon_duz__icontains=ara_duz) | Q(_telefon_2_duz__icontains=ara_duz)
             | Q(eposta__icontains=ara) | Q(eposta_2__icontains=ara)
             | Q(web__icontains=ara) | Q(adres__contains=buyuk)
             | Q(Exists(yetkili_eslesme)) | Q(Exists(aktivite_eslesme)))
@@ -4912,20 +4931,26 @@ def _aday_form_varsayilanlar():
 
 @ekran_gerekli("aday_musteriler")
 def aday_musteri_ekle(request):
+    eslesmeler = None
     if request.method == "POST":
         form = AdayMusteriForm(request.POST)
         if form.is_valid():
             try:
                 aday = aday_servis.aday_musteri_olustur(
                     **_aday_form_kw(form.cleaned_data), kullanici=request.user)
-                messages.success(request, f"Aday müşteri eklendi: {aday.unvan}")
-                return redirect("core:aday_musteri_detay", pk=aday.pk)
+            except aday_servis.MukerrerKayitBulunduHatasi as e:
+                eslesmeler = e.eslesmeler
             except aday_servis.AdayHatasi as e:
                 form.add_error(None, str(e))
+            else:
+                for uyari in getattr(aday, "telefon_uyarilari", []):
+                    messages.error(request, uyari)
+                messages.success(request, f"Aday müşteri eklendi: {aday.unvan}")
+                return redirect("core:aday_musteri_detay", pk=aday.pk)
     else:
         form = AdayMusteriForm(initial=_aday_form_varsayilanlar())
     return render(request, "core/aday_musteri_form.html",
-                  {"form": form, "baslik": "Yeni Aday Müşteri"})
+                  {"form": form, "baslik": "Yeni Aday Müşteri", "eslesmeler": eslesmeler})
 
 
 @ekran_gerekli("aday_musteriler")
@@ -4934,16 +4959,22 @@ def aday_musteri_duzenle(request, pk):
     engel = _aday_duzenlenebilir_kontrol(request, aday)
     if engel:
         return engel
+    eslesmeler = None
     if request.method == "POST":
         form = AdayMusteriForm(request.POST, duzenlenen_aday=aday)
         if form.is_valid():
             try:
-                aday_servis.aday_musteri_guncelle(
+                guncellenen = aday_servis.aday_musteri_guncelle(
                     aday, **_aday_form_kw(form.cleaned_data), kullanici=request.user)
-                messages.success(request, "Aday müşteri güncellendi.")
-                return redirect("core:aday_musteri_detay", pk=aday.pk)
+            except aday_servis.MukerrerKayitBulunduHatasi as e:
+                eslesmeler = e.eslesmeler
             except aday_servis.AdayHatasi as e:
                 form.add_error(None, str(e))
+            else:
+                for uyari in getattr(guncellenen, "telefon_uyarilari", []):
+                    messages.error(request, uyari)
+                messages.success(request, "Aday müşteri güncellendi.")
+                return redirect("core:aday_musteri_detay", pk=aday.pk)
     else:
         form = AdayMusteriForm(duzenlenen_aday=aday, initial={
             "unvan": aday.unvan, "ilgili_kisi": aday.ilgili_kisi, "telefon": aday.telefon,
@@ -4958,8 +4989,9 @@ def aday_musteri_duzenle(request, pk):
             "tip": aday.tip_id, "potansiyel": aday.potansiyel_id, "asama": aday.asama_id,
             "kapanis_nedeni": aday.kapanis_nedeni,
             "sonraki_adim": aday.sonraki_adim, "sonraki_adim_tarihi": aday.sonraki_adim_tarihi})
-    return render(request, "core/aday_musteri_form.html",
-                  {"form": form, "baslik": "Aday Müşteri Düzenle", "duzenlenen": aday})
+    return render(request, "core/aday_musteri_form.html", {
+        "form": form, "baslik": "Aday Müşteri Düzenle", "duzenlenen": aday,
+        "eslesmeler": eslesmeler})
 
 
 @ekran_gerekli("aday_musteriler")
@@ -5056,7 +5088,9 @@ def aday_yetkili_ekle(request, aday_pk):
     if request.method == "POST":
         form = AdayYetkiliForm(request.POST)
         if form.is_valid():
-            aday_servis.aday_yetkili_ekle(aday, **form.cleaned_data, kullanici=request.user)
+            y = aday_servis.aday_yetkili_ekle(aday, **form.cleaned_data, kullanici=request.user)
+            for uyari in getattr(y, "telefon_uyarilari", []):
+                messages.error(request, uyari)
             messages.success(request, "Yetkili kişi eklendi.")
             return redirect("core:aday_musteri_detay", pk=aday.pk)
     else:
@@ -5074,7 +5108,10 @@ def aday_yetkili_duzenle(request, pk):
     if request.method == "POST":
         form = AdayYetkiliForm(request.POST)
         if form.is_valid():
-            aday_servis.aday_yetkili_guncelle(yetkili, **form.cleaned_data, kullanici=request.user)
+            g = aday_servis.aday_yetkili_guncelle(
+                yetkili, **form.cleaned_data, kullanici=request.user)
+            for uyari in getattr(g, "telefon_uyarilari", []):
+                messages.error(request, uyari)
             messages.success(request, "Yetkili kişi güncellendi.")
             return redirect("core:aday_musteri_detay", pk=yetkili.aday_id)
     else:

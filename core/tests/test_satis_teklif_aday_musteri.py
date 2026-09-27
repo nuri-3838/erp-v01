@@ -17,11 +17,13 @@ from core.models import (
     TeklifSiparis,
 )
 from core.services.aday import aday_musteri_olustur as _aday_musteri_olustur_ham
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 
 
 def aday_musteri_olustur(**kw):
     kw.setdefault("tip_id", AdayTipTanim.objects.get(sistem_kodu="ADAY").pk)
     kw.setdefault("asama_id", AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
+    kw.setdefault("kategori_id", varsayilan_kaynak_id())
     return _aday_musteri_olustur_ham(**kw)
 from core.services.aday_donustur import yeni_cari_ac
 from core.services.stok import stok_olustur

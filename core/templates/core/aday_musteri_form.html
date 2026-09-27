@@ -17,6 +17,24 @@
   <form method="post" autocomplete="off" style="display:contents">
     {% csrf_token %}
 
+    {% if eslesmeler %}
+      <div class="uyari">
+        <div>⚠️ Bu bilgilerle eşleşen kayıt(lar) bulundu — devam etmeden önce kontrol edin:</div>
+        <ul style="margin:.4rem 0 0 1.2rem">
+          {% for e in eslesmeler %}
+            <li><strong>{{ e.tur }}:</strong>
+              {% if e.tur == "Cari" %}
+                <a href="{% url 'core:cari_detay' e.nesne.pk %}" target="_blank" rel="noopener">{{ e.nesne.unvan }}</a>
+              {% else %}
+                <a href="{% url 'core:aday_musteri_detay' e.nesne.pk %}" target="_blank" rel="noopener">{{ e.nesne.unvan }}</a>
+              {% endif %}
+              — {{ e.sebep }}</li>
+          {% endfor %}
+        </ul>
+        <label class="ad-inline-checkbox" style="margin-top:.6rem" for="{{ form.farkli_firma_onay.id_for_label }}">{{ form.farkli_firma_onay }} {{ form.farkli_firma_onay.label }}</label>
+      </div>
+    {% endif %}
+
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Kimlik / İletişim</h2>
       <div class="izgara">
@@ -38,7 +56,7 @@
         <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
         <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
         <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}</div>
-        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div></div>
+        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }} <span class="zorunlu">*</span></label><div class="akilli">{{ form.kategori }}</div>{% for e in form.kategori.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         {% comment %}form.kategori.label zaten "Kaynak" (bkz. AdayMusteriForm) — alan adı model/servis tarihsel nedenle "kategori" kalır.{% endcomment %}
         <div class="alan"><label for="{{ form.tip.id_for_label }}">{{ form.tip.label }}</label>{{ form.tip }}</div>
         <div class="alan"><label for="{{ form.potansiyel.id_for_label }}">{{ form.potansiyel.label }}</label>{{ form.potansiyel }}</div>

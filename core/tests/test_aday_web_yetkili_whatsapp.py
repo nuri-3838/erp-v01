@@ -17,11 +17,13 @@ from core.services.aday import (
 )
 from core.services.cari import CariHatasi, cari_guncelle, cari_olustur
 from core.templatetags.core_extras import wa_link
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 
 
 def _aday(unvan="test aday", **kw):
     kw.setdefault("tip_id", AdayTipTanim.objects.get(sistem_kodu="ADAY").pk)
     kw.setdefault("asama_id", AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
+    kw.setdefault("kategori_id", varsayilan_kaynak_id())
     return aday_musteri_olustur(unvan=unvan, para_birimi="TRY", **kw)
 
 
@@ -80,7 +82,7 @@ class WebServisEntegrasyonTest(TestCase):
     def test_aday_guncelle_web_normalize(self):
         a = _aday(web="")
         aday_musteri_guncelle(a, unvan=a.unvan, web="akc.ae",
-                              tip_id=a.tip_id, asama_id=a.asama_id)
+                              tip_id=a.tip_id, asama_id=a.asama_id, kategori_id=a.kategori_id)
         a.refresh_from_db()
         self.assertEqual(a.web, "https://akc.ae")
 
@@ -213,8 +215,12 @@ class AdayYetkiliViewTest(TestCase):
         r = self.client.get(reverse("core:aday_musteri_detay", args=[self.aday.pk]))
         self.assertContains(r, "https://wa.me/905327024005")
 
-    def test_arti_olmayan_numarada_ulke_kodu_eksik_uyarisi(self):
-        aday_yetkili_ekle(self.aday, ad_soyad="veli", telefon="05327024005", whatsapp=True)
+    def test_dogrulanamayan_numarada_ulke_kodu_eksik_uyarisi(self):
+        # "123" telefon_normalize ile doğrulanamaz (bkz. core.dogrulama.telefon_normalize)
+        # — "+" olmadan AYNEN kalır, wa_link None döner, şablon bu uyarıyı gösterir. Geçerli
+        # yerel numaralar (ör. "05327024005") artık kayıttan önce "+90 ..." biçimine
+        # normalize edildiği için bu yolu artık tetiklemez (bkz. test_telefon_normalize.py).
+        aday_yetkili_ekle(self.aday, ad_soyad="veli", telefon="123", whatsapp=True)
         self.client.force_login(self.yetkili_kul)
         r = self.client.get(reverse("core:aday_musteri_detay", args=[self.aday.pk]))
         self.assertContains(r, "Ülke kodu eksik")

@@ -18,6 +18,7 @@ from core.services.aday import (
     aday_musteri_olustur as _aday_musteri_olustur_ham,
 )
 from core.tarih import tr_bugun
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 from core.views import _ADAY_GORUNUMLER
 
 UTC = dt_timezone.utc
@@ -31,6 +32,7 @@ def aday_musteri_olustur(*, tip=None, potansiyel=None, asama=None, **kw):
     kw["potansiyel_id"] = (AdayPotansiyelTanim.objects.get(sistem_kodu=potansiyel).pk
                            if potansiyel else None)
     kw["asama_id"] = AdayAsamaTanim.objects.get(sistem_kodu=asama or "YENI").pk
+    kw.setdefault("kategori_id", varsayilan_kaynak_id())
     return _aday_musteri_olustur_ham(**kw)
 
 

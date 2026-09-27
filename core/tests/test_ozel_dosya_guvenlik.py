@@ -25,6 +25,7 @@ from core.services.aday_donustur import yeni_cari_ac
 from core.services.cari import aktivite_ek_ekle, aktivite_ekle, cari_olustur
 from core.services.cek import cari_giris_bordrosu_olustur, hesap_ayari_kaydet
 from core.storage import GENEL_MEDYA_ONEKLERI, OZELE_TASINAN_ONEKLER, OzelDepo
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 from core.tests.ik_yardimci import PDF_BAYT, OzelDizinTestTemel, png_bayt, yuklenen
 
 UUID_YOL = r"^{onek}/[0-9a-f]{{32}}\.{uzanti}$"
@@ -57,7 +58,8 @@ class OzelEkTemel(OzelDizinTestTemel):
         self.aday = aday_musteri_olustur(
             unvan="gizli aday", para_birimi="TRY",
             tip_id=AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
-            asama_id=AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
+            asama_id=AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk,
+            kategori_id=varsayilan_kaynak_id())
         self.aday_akt = aday_aktivite_ekle(self.aday, tarih=bugun, tur="NOT", aciklama="teklif")
         self.aday_pdf = aday_aktivite_ek_ekle(
             self.aday_akt, dosya=yuklenen("Teklif.pdf", PDF_BAYT))

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import re
+from collections import namedtuple
 
+import phonenumbers
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
@@ -34,7 +36,7 @@ def tc_dogrula(deger):
 
 
 # --- Telefon --------------------------------------------------------------
-def telefon_normalize(deger) -> str:
+def _sadece_rakam(deger) -> str:
     """Yalnızca rakamları bırakır (boşluk/parantez/tire/+ temizlenir)."""
     return re.sub(r"\D", "", str(deger or ""))
 
@@ -44,8 +46,11 @@ def telefon_kanonik(deger):
 
     Kabul: +905327024005 / 905327024005 / 05327024005 / 5327024005
     (boşluk, parantez, tire önce temizlenir). Geçersizse None döner.
-    """
-    r = telefon_normalize(deger)
+
+    Yalnız Personel/Kullanıcı (Profil) telefon alanları için — CRM (AdayMusteri/Cari/
+    AdayYetkili/CariYetkili) telefon alanları ``telefon_normalize`` (aşağıda, uluslararası
+    ``phonenumbers`` tabanlı) kullanır."""
+    r = _sadece_rakam(deger)
     if len(r) == 12 and r.startswith("90"):   # +90... / 90... (uluslararası)
         r = r[2:]
     elif len(r) == 11 and r.startswith("0"):  # 0...
@@ -53,6 +58,40 @@ def telefon_kanonik(deger):
     if len(r) == 10:                          # çekirdek 10 hane
         return "+90" + r
     return None
+
+
+TelefonSonuc = namedtuple("TelefonSonuc", "deger gecerli")
+
+_TELEFON_AYIKLA = re.compile(r"[\s.\-()]")
+
+
+def telefon_normalize(numara, ulke_iso2=None) -> TelefonSonuc:
+    """Uluslararası telefon normalizasyonu (``phonenumbers``) — CRM (AdayMusteri/Cari/
+    AdayYetkili/CariYetkili) telefon alanları için TEK yardımcı.
+
+    Boşluk/nokta/tire/parantez temizlenir; baştaki ``00`` -> ``+``. ``+`` ile başlıyorsa
+    uluslararası olarak, değilse ``ulke_iso2`` (boşsa "TR") ile parse edilir. Geçerliyse
+    ``INTERNATIONAL`` biçiminde (ör. "+90 532 207 07 09"); 20 karakteri aşarsa boşluksuz
+    E.164 biçiminde döner. Parse edilemiyor/geçersizse değer AYNEN (yalnız baştaki/sondaki
+    boşluk kırpılmış) döner — veri kaybı yok, çağıran taraf ``gecerli=False`` iken kullanıcıya
+    uyarı gösterir ama kaydı ENGELLEMEZ (spec kararı)."""
+    ham = (numara or "").strip()
+    if not ham:
+        return TelefonSonuc("", True)
+    temiz = _TELEFON_AYIKLA.sub("", ham)
+    if temiz.startswith("00"):
+        temiz = "+" + temiz[2:]
+    bolge = None if temiz.startswith("+") else (ulke_iso2 or "TR")
+    try:
+        ayristirilmis = phonenumbers.parse(temiz, bolge)
+    except phonenumbers.NumberParseException:
+        return TelefonSonuc(ham, False)
+    if not phonenumbers.is_valid_number(ayristirilmis):
+        return TelefonSonuc(ham, False)
+    sonuc = phonenumbers.format_number(ayristirilmis, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
+    if len(sonuc) > 20:
+        sonuc = phonenumbers.format_number(ayristirilmis, phonenumbers.PhoneNumberFormat.E164)
+    return TelefonSonuc(sonuc, True)
 
 
 def telefon_dogrula(deger):

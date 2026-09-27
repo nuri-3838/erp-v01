@@ -21,17 +21,20 @@ from core.services.aday import (
 from core.services.aday_kategori import (
     AdayKategoriHatasi, aday_kategori_guncelle, aday_kategori_olustur, aday_kategori_sil,
 )
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 
 
 def aday_musteri_olustur(**kw):
     kw.setdefault("tip_id", AdayTipTanim.objects.get(sistem_kodu="ADAY").pk)
     kw.setdefault("asama_id", AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk)
+    kw.setdefault("kategori_id", varsayilan_kaynak_id())
     return _aday_musteri_olustur_ham(**kw)
 
 
 def aday_musteri_guncelle(aday, **kw):
     kw.setdefault("tip_id", aday.tip_id)
     kw.setdefault("asama_id", aday.asama_id)
+    kw.setdefault("kategori_id", aday.kategori_id)
     return _aday_musteri_guncelle_ham(aday, **kw)
 
 
@@ -245,12 +248,14 @@ class AdayMusteriViewTest(TestCase):
         r = self.client.post(reverse("core:aday_musteri_ekle"), {
             "unvan": "yeni aday", "telefon": "0212 111 11 11", "telefon_2": "0533 222 22 22",
             "eposta": "a@x.com", "eposta_2": "b@x.com",
+            "kategori": varsayilan_kaynak_id(),
             "tip": AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
             "asama": AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk,
             "para_birimi": "TRY", "iskonto_yuzdesi": "0"})
         self.assertEqual(r.status_code, 302)
         a = AdayMusteri.objects.get(unvan="YENİ ADAY")
-        self.assertEqual(a.telefon_2, "0533 222 22 22")
+        # Telefon artık uluslararası biçimde normalize edilir (bkz. core.dogrulama.telefon_normalize).
+        self.assertEqual(a.telefon_2, "+90 533 222 22 22")
         self.assertEqual(a.eposta_2, "b@x.com")
 
     def test_unvansiz_ekle_hata_doner(self):
@@ -263,7 +268,7 @@ class AdayMusteriViewTest(TestCase):
         a = aday_musteri_olustur(unvan="eski ad")
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:aday_musteri_duzenle", args=[a.pk]), {
-            "unvan": "yeni ad",
+            "unvan": "yeni ad", "kategori": a.kategori_id,
             "tip": AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
             "asama": AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk,
             "para_birimi": "USD", "iskonto_yuzdesi": "7,5"})

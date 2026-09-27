@@ -16,7 +16,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import AdayAktiviteEk, CariAktivite, CariAktiviteEk, CariYetkili
+from core.models import AdayAktiviteEk, AdayMusteri, CariAktivite, CariAktiviteEk, CariYetkili
 from core.services import cari as cari_servis
 from core.tarih import tr_bugun
 
@@ -100,6 +100,54 @@ def eslesen_cariler(aday):
         if sebepler:
             sonuclar.append({"cari": cari, "sebep": ", ".join(sebepler)})
     return sonuclar
+
+
+def eslesen_adaylar(aday):
+    """eslesen_cariler ile AYNI eşleşme mantığı (unvan/telefon/e-posta/web), hedef DİĞER
+    aktif ADAYLAR — mükerrer aday kaydı uyarısı için (core/views.py aday_musteri_ekle/
+    duzenle, core.services.aday.eslesen_kayitlar). Kendisi (pk) hariç tutulur — yeni
+    (kaydedilmemiş) bir aday taslağında ``aday.pk`` None olduğu için ``exclude(pk=None)``
+    hiçbir satırı elemez, doğru davranış."""
+    aday_anahtar = _unvan_anahtar(aday.unvan)
+    aday_tel = {t for t in (_telefon_son9(aday.telefon), _telefon_son9(aday.telefon_2)) if t}
+    aday_e1, aday_e2 = _aday_gecerli_epostalar(aday)
+    aday_epostalar = {e for e in (aday_e1, aday_e2) if e}
+    aday_web = _web_alan_adi(aday.web)
+
+    sonuclar = []
+    for diger in AdayMusteri.objects.filter(silindi=False).exclude(pk=aday.pk):
+        sebepler = []
+        if aday_anahtar and _unvan_anahtar(diger.unvan) == aday_anahtar:
+            sebepler.append("Unvan benzer")
+        diger_tel = {t for t in (_telefon_son9(diger.telefon), _telefon_son9(diger.telefon_2)) if t}
+        if aday_tel & diger_tel:
+            sebepler.append("Telefon eşleşiyor")
+        diger_e1, diger_e2 = _aday_gecerli_epostalar(diger)
+        diger_epostalar = {e for e in (diger_e1, diger_e2) if e}
+        if aday_epostalar & diger_epostalar:
+            sebepler.append("E-posta eşleşiyor")
+        if aday_web and _web_alan_adi(diger.web) == aday_web:
+            sebepler.append("Web adresi eşleşiyor")
+        if sebepler:
+            sonuclar.append({"aday": diger, "sebep": ", ".join(sebepler)})
+    return sonuclar
+
+
+def eslesen_kayitlar(aday):
+    """eslesen_cariler + eslesen_adaylar birleşik sonucu — bir aday KAYDEDİLMEDEN ÖNCE
+    mükerrer kayıt uyarısı için TEK giriş noktası (core.services.aday.aday_musteri_olustur/
+    guncelle çağırır). Cariye zaten dönüştüğü cari varsa (aday.cari_id) sonuçtan çıkarılır
+    (kendi dönüşümüyle eşleşmiş gibi görünmesin). [{"tur": "Aday"|"Cari", "nesne":,
+    "sebep": "..."}] döner, unvana göre sıralı."""
+    cari_sonuclar = [
+        {"tur": "Cari", "nesne": e["cari"], "sebep": e["sebep"]}
+        for e in eslesen_cariler(aday) if e["cari"].pk != aday.cari_id
+    ]
+    aday_sonuclar = [
+        {"tur": "Aday", "nesne": e["aday"], "sebep": e["sebep"]}
+        for e in eslesen_adaylar(aday)
+    ]
+    return sorted(cari_sonuclar + aday_sonuclar, key=lambda x: x["nesne"].unvan)
 
 
 def donusturme_engeli_var_mi(aday):

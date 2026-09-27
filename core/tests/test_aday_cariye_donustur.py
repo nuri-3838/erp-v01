@@ -25,6 +25,7 @@ from core.services.aday import (
 )
 from core.services.aday_donustur import AdayDonusturHatasi
 from core.services.cari import CariHatasi
+from core.tests.aday_yardimci import varsayilan_kaynak_id
 
 
 def _kategori_hesap_agaci():
@@ -76,10 +77,16 @@ _TANIM_VARSAYILAN = {"tip": "ADAY", "potansiyel": None, "asama": "YENI"}
 def _aday(unvan="test aday", **kw):
     """tip/potansiyel/asama hâlâ sistem_kodu STRİNGİ olarak verilebilir (ör. AdayTip.ARACI) —
     burada ilgili tanım tablosundaki pk'ya çözülür (bkz. core.models.AdayTipTanim vb.);
-    verilmezse eski CharField varsayılanlarıyla (ADAY/YENI) aynı tanım kullanılır."""
+    verilmezse eski CharField varsayılanlarıyla (ADAY/YENI) aynı tanım kullanılır.
+    farkli_firma_onay=True varsayılanı: bu dosyadaki birçok test BİLEREK mevcut bir cariyle
+    eşleşen aday kurar (eşleşme ÖNİZLEMESİNİ test etmek için) — mükerrer kayıt uyarısı yalnız
+    aday_musteri_ekle/duzenle VIEW akışında devreye girer, bu servis-seviyesi fixture'da
+    değil."""
     for alan, Model in _TANIM_MODEL.items():
         deger = kw.pop(alan, _TANIM_VARSAYILAN[alan])
         kw[f"{alan}_id"] = Model.objects.get(sistem_kodu=deger).pk if deger else None
+    kw.setdefault("kategori_id", varsayilan_kaynak_id())
+    kw.setdefault("farkli_firma_onay", True)
     return aday_musteri_olustur(unvan=unvan, para_birimi="TRY", **kw)
 
 
