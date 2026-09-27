@@ -4504,7 +4504,10 @@ def aday_musteriler(request):
         kategori_id, ulke_id, sehir_id, tip_secim, potansiyel_secim, asama_secim,
         takip_secim, eposta_secim, son_akt_secim) if x)
 
-    sekmeler = [{"kod": g, "sayi": sekme_sayilari[g], "url": _aday_qs_with(request, gorunum=g),
+    # sirala TAŞINMAZ: sekmeye geçince o sekmenin kendi varsayılan sıralaması uygulanır
+    # (kullanıcı önceki sekmede elle bir sıralama seçmiş olsa bile).
+    sekmeler = [{"kod": g, "sayi": sekme_sayilari[g],
+                "url": _aday_qs_with(request, gorunum=g, sirala=None),
                 "aktif": g == gorunum} for g in _ADAY_GORUNUMLER]
     siralama_baglar = {
         "unvan": _aday_siralama_baglantisi(request, sirala, "unvan"),
@@ -4528,9 +4531,9 @@ def aday_musteriler(request):
         "secili_son_akt": son_akt_secim, "secili_sirala": sirala,
         "siralama_secenekleri": _ADAY_SIRALAMA_SECENEKLERI, "siralama_baglar": siralama_baglar,
         "gecikmis_sayisi": gecikmis_sayisi,
-        "gecikmis_url": _aday_qs_with(request, gorunum="takip", takip="gecmis"),
+        "gecikmis_url": _aday_qs_with(request, gorunum="takip", takip="gecmis", sirala=None),
         "sekmeler": sekmeler, "gorunum": gorunum,
-        "tumu_url": _aday_qs_with(request, gorunum="tumu"),
+        "tumu_url": _aday_qs_with(request, gorunum="tumu", sirala=None),
         "cipler": cipler, "aktif_filtre_sayisi": aktif_filtre_sayisi,
         "sabit_qs": sabit_qs.urlencode()})
 

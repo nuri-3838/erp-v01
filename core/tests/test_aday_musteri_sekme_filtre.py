@@ -15,6 +15,7 @@ from django.urls import reverse
 from core.models import AdayAktivite, AdayAsama, AdayPotansiyel
 from core.services.aday import aday_aktivite_ekle, aday_aktivite_sil, aday_musteri_olustur
 from core.tarih import tr_bugun
+from core.views import _ADAY_GORUNUMLER
 
 UTC = dt_timezone.utc
 
@@ -146,6 +147,40 @@ class SekmeGecisKorumaTest(_Taban):
         r = self._get(sayfa="3", gorunum="tumu")
         sicak_url = _sekme(r, "sicak")["url"]
         self.assertNotIn("sayfa=", sicak_url)
+
+    def test_sekme_linki_siralamayi_tasimaz_diger_filtreler_korunur(self):
+        r = self._get(gorunum="tumu", sirala="-son_akt", tip="ARACI", ara="deneme")
+        for kod in _ADAY_GORUNUMLER:
+            url = _sekme(r, kod)["url"]
+            self.assertNotIn("sirala=", url, f"{kod} sekmesi sirala tasimamali")
+            self.assertIn("tip=ARACI", url)
+            self.assertIn("ara=deneme", url)
+
+    def test_gecikmis_ve_tumunu_goster_linkleri_de_siralamayi_tasimaz(self):
+        aday_musteri_olustur(unvan="gecikmis firma", sonraki_adim="x",
+                             sonraki_adim_tarihi=tr_bugun() - timedelta(days=1))
+        r = self._get(gorunum="kapali", sirala="unvan")
+        self.assertNotIn("sirala=", r.context["gecikmis_url"])
+        self.assertNotIn("sirala=", r.context["tumu_url"])
+
+    def test_sekmeye_gecince_kendi_varsayilan_siralamasi_uygulanir(self):
+        # Onceki istekte sirala=unvan secilmis olsa BILE, Sicak sekmesine gecince kendi
+        # varsayilani (son aktivite azalan) uygulanmali — sekme linki sirala tasimadigi icin.
+        bugun = tr_bugun()
+        eski = aday_musteri_olustur(unvan="sicak eski aktivite", potansiyel=AdayPotansiyel.YUKSEK)
+        aday_aktivite_ekle(eski, tarih=bugun - timedelta(days=10), tur=AdayAktivite.Tur.NOT,
+                          aciklama="x")
+        yeni = aday_musteri_olustur(unvan="sicak yeni aktivite", potansiyel=AdayPotansiyel.YUKSEK)
+        aday_aktivite_ekle(yeni, tarih=bugun, tur=AdayAktivite.Tur.NOT, aciklama="x")
+
+        onceki = self._get(gorunum="tumu", sirala="unvan")
+        sicak_url = _sekme(onceki, "sicak")["url"]
+        self.assertNotIn("sirala=", sicak_url)
+
+        r = self.client.get(reverse("core:aday_musteriler") + sicak_url)
+        icerik = r.content.decode("utf-8")
+        # sicak varsayilani: son aktivite azalan -> yeni once
+        self.assertLess(icerik.index("SİCAK YENİ AKTİVİTE"), icerik.index("SİCAK ESKİ AKTİVİTE"))
 
 
 # --- 5. Boş sekme -> "Tümünü göster" ---------------------------------------------------
