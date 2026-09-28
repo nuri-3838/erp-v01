@@ -2894,7 +2894,6 @@ _PDF_ETIKET_PROFORMA = {
         "banka": "Banka", "sube": "Banka Şubesi",
         "hesap_sahibi": "Hesap Sahibi", "swift_kod": "Swift Kodu",
         "hazirlayan": "Hazırlayan", "notlar": "Notlar",
-        "not_gecerlilik_varsayilan": "Bu proforma, geçerlilik tarihine kadar bağlayıcıdır.",
         "not_gecerlilik_tarihli": "Bu proforma {tarih} tarihine kadar geçerlidir.",
         "sayfa": "Sayfa", "altbilgi": "SEMTA Alüminyum Merdiven İmalatı · Proforma Fatura",
     },
@@ -2914,7 +2913,6 @@ _PDF_ETIKET_PROFORMA = {
         "banka": "Bank", "sube": "Bank Branch",
         "hesap_sahibi": "Account Holder", "swift_kod": "SWIFT Code",
         "hazirlayan": "Prepared by", "notlar": "Notes",
-        "not_gecerlilik_varsayilan": "This proforma invoice is binding until the validity date.",
         "not_gecerlilik_tarihli": "This proforma invoice is valid until {tarih}.",
         "sayfa": "Page", "altbilgi": "SEMTA Aluminium Ladder Manufacturing · Proforma Invoice",
     },
@@ -2960,8 +2958,6 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
     if ts.gecerlilik_teslim_tarihi:
         notlar.append(E["not_gecerlilik_tarihli"].format(
             tarih=ts.gecerlilik_teslim_tarihi.strftime("%d.%m.%Y")))
-    else:
-        notlar.append(E["not_gecerlilik_varsayilan"])
     return {
         "dil": dil, "E": E,
         "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",
