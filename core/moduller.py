@@ -79,6 +79,7 @@ MODULLER = (
         Ekran("personel_belgeleri", "Özlük Belgeleri", "core:belgeler"),
         Ekran("personel_devam", "Devam / Yoklama", "core:yoklama"),
         Ekran("resmi_tatil", "Resmî Tatiller", "core:resmi_tatiller"),
+        Ekran("mesai_kayitlari", "Mesai Kayıtları", "core:mesai_kayitlari"),
         Ekran("personel_ucret", "Personel Ücretleri", "core:personeller"),
         Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
     )),
@@ -101,6 +102,7 @@ MODULLER = (
         Ekran("firma_bilgileri", "Firma Bilgileri", "core:firma_bilgileri"),
         Ekran("tanim_listeleri", "Tanım Listeleri", "core:tanim_listeleri"),
         Ekran("yedek", "Yedek", "core:yedek"),
+        Ekran("mesai_ayarlari", "Mesai Ayarları", "core:mesai_ayarlari"),
     ), yonetici_modulu=True),
 )
 

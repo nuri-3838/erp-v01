@@ -1,0 +1,67 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Mesaim · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Mesaim{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .ms-kapsa { max-width:480px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
+  .ms-kisi { text-align:center; }
+  .ms-ad { font-size:1.2rem; font-weight:750; color:var(--lacivert); }
+  .ms-buton { display:block; width:100%; min-height:6rem; border-radius:24px; border:none;
+    font-size:1.35rem; font-weight:800; color:#fff; cursor:pointer; box-shadow:var(--golge-lg); }
+  .ms-buton.baslat { background:linear-gradient(135deg, #1fbf75, #0b6b3f); }
+  .ms-buton.bitir { background:linear-gradient(135deg, #ff6b6b, #b1122c); }
+  .ms-buton:disabled { opacity:.5; cursor:not-allowed; }
+  .ms-durum { text-align:center; font-size:.92rem; color:var(--metin-soluk); }
+  .ms-liste { display:flex; flex-direction:column; gap:.5rem; }
+  .ms-satir { display:flex; justify-content:space-between; align-items:center; gap:.7rem;
+    background:rgba(255,255,255,.78); border:1px solid var(--cizgi-koyu); border-radius:14px;
+    padding:.6rem .9rem; font-size:.9rem; }
+  .ms-satir .tarih { font-weight:700; color:var(--lacivert); }
+  .ms-satir .saat { font-family:var(--mono, monospace); }
+  .ms-acik { color:#0b6b3f; font-weight:700; }
+</style>
+
+<div class="ms-kapsa">
+  <div class="ms-kisi">
+    <div class="ms-ad">{{ p.ad_soyad }}</div>
+    <div class="yardim">{{ p.gorev|default:"" }}</div>
+  </div>
+
+  {% if not calisiyor %}
+    <div class="uyari">Artık çalışmıyorsunuz; mesai başlatamazsınız.</div>
+  {% else %}
+    <form method="post">
+      {% csrf_token %}
+      {% if acik_kayit %}
+        <input type="hidden" name="eylem" value="bitir">
+        <button type="submit" class="ms-buton bitir">⏹ MESAİYİ BİTİR</button>
+        <p class="ms-durum">Başlama: <span class="saat">{{ acik_kayit.giris_zamani|tr_zaman:"H:i" }}</span></p>
+      {% else %}
+        <input type="hidden" name="eylem" value="baslat">
+        <button type="submit" class="ms-buton baslat">▶ MESAİYİ BAŞLAT</button>
+        <p class="ms-durum">Yalnızca fabrika Wi-Fi'ına bağlıyken başlatılabilir.</p>
+      {% endif %}
+    </form>
+  {% endif %}
+
+  <div>
+    <h2 class="bolum-baslik" style="font-size:1rem">Son 7 Gün</h2>
+    <div class="ms-liste">
+      {% for k in kayitlar %}
+        <div class="ms-satir">
+          <span class="tarih">{{ k.is_tarihi|date:"d.m.Y" }}</span>
+          <span class="saat">
+            {{ k.giris_zamani|tr_zaman:"H:i" }} –
+            {% if k.cikis_zamani %}{{ k.cikis_zamani|tr_zaman:"H:i" }}{% else %}<span class="ms-acik">açık</span>{% endif %}
+          </span>
+        </div>
+      {% empty %}
+        <p class="yardim">Henüz mesai kaydınız yok.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

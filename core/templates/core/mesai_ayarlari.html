@@ -1,0 +1,53 @@
+{% extends "core/base.html" %}
+{% block baslik %}Mesai Ayarları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Mesai Ayarları{% endblock %}
+
+{% block content %}
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">📶</span>Mesai Ayarları</h1>
+</div>
+<p class="sayfa-alt">Personelin kendi telefonundan mesai başlatabileceği fabrika ağı (IP/CIDR)
+  listesi. <strong>Liste boşsa özellik kapalı sayılır</strong> — hiç kimse başlatamaz.</p>
+
+{% if not aglar %}
+  <div class="uyari">⚠️ Hiç izinli ağ tanımlı değil; mesai başlat/bitir özelliği şu anda herkes için kapalı.</div>
+{% endif %}
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">İzinli Ağ Ekle</h2>
+  <form method="post" action="{% url 'core:mesai_ag_ekle' %}" style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end">
+    {% csrf_token %}
+    <div class="alan" style="margin:0">
+      <label for="mag-cidr">IP / CIDR</label>
+      <input type="text" id="mag-cidr" name="cidr" placeholder="ör. 10.0.0.0/24" autocomplete="off" required>
+    </div>
+    <div class="alan" style="margin:0">
+      <label for="mag-aciklama">Açıklama</label>
+      <input type="text" id="mag-aciklama" name="aciklama" placeholder="ör. Fabrika Wi-Fi" autocomplete="off">
+    </div>
+    <button type="submit" class="birincil">Ekle</button>
+  </form>
+</section>
+
+<div class="tablo-kapsayici" style="margin-top:1rem">
+<table>
+  <thead><tr><th>IP / CIDR</th><th>Açıklama</th><th></th></tr></thead>
+  <tbody>
+    {% for ag in aglar %}
+      <tr>
+        <td class="mono">{{ ag.cidr }}</td>
+        <td>{{ ag.aciklama|default:"—" }}</td>
+        <td>
+          <form method="post" action="{% url 'core:mesai_ag_sil' ag.pk %}" style="margin:0"
+                onsubmit="return confirm('{{ ag.cidr|escapejs }} silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button>
+          </form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="yardim">Hiç izinli ağ tanımlı değil.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

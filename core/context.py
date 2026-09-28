@@ -1,5 +1,5 @@
 """Şablon context processor'ları."""
-from core.yetki import kullanici_menusu, yonetici_mi
+from core.yetki import kullanici_menusu, mesai_kullanicisi_mi, yonetici_mi
 
 
 def yetki(request):
@@ -21,4 +21,7 @@ def yetki(request):
         "menu_moduller": moduller,
         "aktif_view": aktif_view,
         "aktif_modul_kod": aktif_modul_kod,
+        # Mesai kullanıcısı (self-servis, EkranYetki'siz) menüde ek olarak "Mesaim" görür —
+        # kullanici_menusu boş dönse bile (normal durum) bu satır ayrıca eklenir.
+        "mesai_hesabi_var": mesai_kullanicisi_mi(user),
     }

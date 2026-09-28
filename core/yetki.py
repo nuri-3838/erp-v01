@@ -20,6 +20,16 @@ def yonetici_mi(user) -> bool:
         return False
 
 
+def mesai_kullanicisi_mi(user) -> bool:
+    """Yalnız kendi mesaisini başlatıp bitirebilen hesap mı? (core.models.Personel.kullanici
+    ile bağlı, EkranYetki'si olmayan self-servis hesap — bkz. core.services.mesai_hesap).
+    Yönetici asla mesai kullanıcısı sayılmaz (menü/erişim kısıtlanmaz)."""
+    if not getattr(user, "is_authenticated", False) or yonetici_mi(user):
+        return False
+    from core.models import Personel  # geç import (model yüklensin)
+    return Personel.objects.filter(kullanici=user, silindi=False).exists()
+
+
 def kullanici_telefon(user) -> str:
     """Kullanıcının profil.telefon'u (Profil satırı yoksa boş döner)."""
     try:

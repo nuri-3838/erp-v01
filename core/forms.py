@@ -8,8 +8,11 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
+from zoneinfo import ZoneInfo
+
 from django import forms
 from django.contrib.auth import password_validation
+from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.utils import timezone
 
@@ -2477,3 +2480,85 @@ class ResmiTatilForm(forms.Form):
     ad = forms.CharField(
         label="Ad", max_length=100,
         widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "ör. Cumhuriyet Bayramı"}))
+
+
+class GirisForm(AuthenticationForm):
+    """Standart giriş formu + "Beni hatırla" (bkz. core.views.GirisView). İşaretlenmezse
+    davranış hiç değişmez — yalnız işaretlenince oturum 30 gün sürer."""
+
+    beni_hatirla = forms.BooleanField(label="Beni hatırla (30 gün)", required=False)
+
+
+_TR = ZoneInfo("Europe/Istanbul")
+
+
+class TRDateTimeField(forms.DateTimeField):
+    """Girilen (naive görünümlü) saat HER ZAMAN TR yerel saati olarak yorumlanır. Django'nun
+    kendi to_python'ı USE_TZ=True iken zaten (yanlış biçimde) UTC tzinfo iliştirdiği için
+    is_naive() burada hep False döner — bu yüzden koşulsuz replace(tzinfo=_TR) yapılır."""
+
+    widget = forms.DateTimeInput(attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M")
+
+    def to_python(self, value):
+        dt = super().to_python(value)
+        if dt is not None:
+            dt = dt.replace(tzinfo=_TR)
+        return dt
+
+
+class MesaiHesapOlusturForm(forms.Form):
+    """İNSAN KAYNAKLARI > Personel kartından mesai hesabı oluştur. Şifre gücü serviste
+    (core.services.mesai_hesap) doğrulanır."""
+
+    kullanici_adi = forms.CharField(
+        label="Kullanıcı Adı", max_length=150,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    sifre = forms.CharField(
+        label="Şifre", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+
+
+class MesaiSifreForm(forms.Form):
+    """İNSAN KAYNAKLARI > Mesai hesabının şifresini sıfırla."""
+
+    sifre = forms.CharField(
+        label="Yeni Şifre", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+
+
+class MesaiIzinliAgForm(forms.Form):
+    """AYARLAR > Mesai Ayarları — izinli IP/CIDR ekle. Geçerlilik/benzersizlik serviste
+    (core.services.mesai_ag) doğrulanır."""
+
+    cidr = forms.CharField(
+        label="IP / CIDR", max_length=43, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=100, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+class MesaiDuzeltForm(forms.Form):
+    """İNSAN KAYNAKLARI > Mesai kaydı ekle/düzenle (yönetici). Zamanlar TR yerel saatiyle
+    girilir (bkz. TRDateTimeField). Düzeltme notu zorunlu — kaynak "Yönetici" işaretlenir."""
+
+    personel = forms.ModelChoiceField(
+        label="Personel", queryset=Personel.objects.none(), empty_label="— personel seç —")
+    giris_zamani = TRDateTimeField(label="Giriş Zamanı")
+    cikis_zamani = TRDateTimeField(label="Çıkış Zamanı", required=False)
+    duzeltme_notu = forms.CharField(
+        label="Düzeltme Notu", max_length=300,
+        widget=forms.Textarea(attrs={"rows": 2, "autocomplete": "off"}))
+
+    def __init__(self, *args, personel_sabit=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if personel_sabit:
+            del self.fields["personel"]
+        else:
+            from core.services.personel import aktif_personeller
+            self.fields["personel"].queryset = aktif_personeller()
+            self.fields["personel"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        giris, cikis = cd.get("giris_zamani"), cd.get("cikis_zamani")
+        if giris and cikis and cikis < giris:
+            self.add_error("cikis_zamani", "Çıkış zamanı girişten önce olamaz.")
+        return cd

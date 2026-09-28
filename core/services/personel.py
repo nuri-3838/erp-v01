@@ -20,7 +20,9 @@ from django.utils import timezone
 
 from core.dogrulama import tc_gecerli, telefon_kanonik
 from core.metin import buyuk_harf_tr
-from core.models import Personel, PersonelBelge, PersonelDevam, PersonelIzin, PersonelUcret
+from core.models import (
+    MesaiKaydi, Personel, PersonelBelge, PersonelDevam, PersonelIzin, PersonelUcret,
+)
 from core.tarih import tr_bugun
 
 DURUMLAR = ("aktif", "ayrildi", "hepsi")
@@ -179,6 +181,12 @@ def personel_guncelle(personel: Personel, *, kullanici=None, **kw) -> Personel:
         setattr(personel, alan, deger)
     personel.updated_by = kullanici
     personel.save(update_fields=[*veri.keys(), "updated_by", "updated_at"])
+    # İşten çıkış tarihi kaydedilince bağlı mesai hesabı OTOMATİK kapatılır (eski çalışan
+    # kendi telefonundan mesai başlatamasın) — bkz. core.services.mesai_hesap.
+    if personel.isten_cikis_tarihi is not None and personel.kullanici_id \
+            and personel.kullanici.is_active:
+        personel.kullanici.is_active = False
+        personel.kullanici.save(update_fields=["is_active"])
     return personel
 
 
@@ -201,6 +209,13 @@ def personel_sil(personel: Personel, kullanici=None) -> Personel:
         raise PersonelHatasi(
             "Bu personele ait ücret kaydı var; kartı silmek yerine işten çıkış tarihini "
             "girerek 'ayrıldı' olarak işaretleyin (ya da önce ücret kayıtlarını silin).")
+    if MesaiKaydi.objects.filter(personel=personel, silindi=False).exists():
+        raise PersonelHatasi(
+            "Bu personele ait mesai kaydı var; kartı silmek yerine işten çıkış tarihini "
+            "girerek 'ayrıldı' olarak işaretleyin.")
+    if personel.kullanici_id and personel.kullanici.is_active:
+        raise PersonelHatasi(
+            "Bu personelin aktif bir mesai hesabı var; kartı silmeden önce hesabı kapatın.")
     personel.silindi = True
     personel.silindi_at = timezone.now()
     personel.updated_by = kullanici

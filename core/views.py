@@ -5,11 +5,13 @@ import json
 import os
 from decimal import Decimal
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from django.contrib import messages
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.core.exceptions import SuspiciousFileOperation
+from django.core.exceptions import PermissionDenied, SuspiciousFileOperation
 from django.core.paginator import Paginator
 from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Replace
@@ -45,6 +47,7 @@ from core.forms import (
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
     PersonelBelgeForm, PersonelFotoForm, PersonelUcretForm, ResmiTatilForm,
+    GirisForm, MesaiHesapOlusturForm, MesaiSifreForm, MesaiIzinliAgForm, MesaiDuzeltForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
@@ -55,6 +58,7 @@ from core.models import (
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
+    MesaiKaydi, MesaiIzinliAg,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -106,19 +110,40 @@ from core.services import personel_devam as devam_servis
 from core.services import personel_ucret as ucret_servis
 from core.services import personel_dokum as dokum_servis
 from core.services import resmi_tatil as tatil_servis
+from core.services import mesai as mesai_servis
+from core.services import mesai_ag as mesai_ag_servis
+from core.services import mesai_hesap as mesai_hesap_servis
+from core.ip import istemci_ip
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir,
-    kullanici_telefon, yonetici_gerekli, yonetici_mi,
+    kullanici_telefon, mesai_kullanicisi_mi, yonetici_gerekli, yonetici_mi,
 )
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
 
 
+class GirisView(auth_views.LoginView):
+    """Standart Django LoginView + "Beni hatırla" (bkz. core.forms.GirisForm). İşaretlenirse
+    oturum 30 gün sürer; işaretlenmezse mevcut varsayılan (SESSION_COOKIE_AGE) hiç DEĞİŞMEZ —
+    yalnız opt-in bir uzatma, başka hiçbir kullanıcı için davranış değişmez."""
+
+    form_class = GirisForm
+
+    def form_valid(self, form):
+        yanit = super().form_valid(form)
+        if form.cleaned_data.get("beni_hatirla"):
+            self.request.session.set_expiry(60 * 60 * 24 * 30)
+        return yanit
+
+
 @login_required
 def pano(request):
     """Giriş sonrası açılan PANO (dashboard). Şimdilik karşılama;
-    ileride özet/grafik eklenecek (yol haritası)."""
+    ileride özet/grafik eklenecek (yol haritası). Mesai kullanıcısı (self-servis, EkranYetki'siz)
+    doğrudan kendi /mesai/ sayfasına yönlendirilir — LOGIN_REDIRECT_URL hep buraya düştüğü için."""
+    if mesai_kullanicisi_mi(request.user):
+        return redirect("core:mesaim")
     return render(request, "core/pano.html")
 
 
@@ -6532,6 +6557,8 @@ def personel_detay(request, pk):
         ctx["devam_ozet"] = ozet[0] if ozet else None
         ctx["devam_ay"] = bugun.replace(day=1)
         ctx["devam_ay_param"] = f"{bugun.year:04d}-{bugun.month:02d}"
+    if yonetici_mi(request.user):
+        ctx["mesai_hesap_gorebilir"] = True
     return render(request, "core/personel_detay.html", ctx)
 
 
@@ -6956,6 +6983,11 @@ def yoklama(request):
 
     tarih = _yoklama_tarihi(request.GET, bugun)
     satirlar = devam_servis.gun_satirlari(tarih)
+    mesai_bilgisi = {}
+    for m in MesaiKaydi.objects.filter(
+            is_tarihi=tarih, silindi=False, personel_id__in=[s.personel.pk for s in satirlar]
+    ).order_by("giris_zamani"):
+        mesai_bilgisi.setdefault(m.personel_id, []).append(m)
     return render(request, "core/yoklama.html", {
         "tarih": tarih, "bugun": bugun, "satirlar": satirlar,
         "ozet": devam_servis.gun_ozeti(satirlar),
@@ -6963,6 +6995,7 @@ def yoklama(request):
         "sonraki": tarih + datetime.timedelta(days=1) if tarih < bugun else None,
         "gelecek": tarih > bugun, "pazar": tarih.weekday() == 6,
         "tatil": tatil_servis.gunun_tatili(tarih),
+        "mesai_bilgisi": mesai_bilgisi,
         "durumlar": [("GELDI", "Geldi", "Geldi"), ("YARIM_GUN", "Yarım", "Yarım Gün"),
                      ("GELMEDI", "Gelmedi", "Gelmedi")],
         "personel_link": ekran_gorebilir(request.user, "personel")})
@@ -7060,3 +7093,212 @@ def resmi_tatil_sil(request, pk):
         messages.success(request, f"Tatil silindi: {tatil.ad}")
         return redirect(f"{reverse('core:resmi_tatiller')}?yil={yil}")
     return redirect("core:resmi_tatiller")
+
+
+# === Mesai (personelin kendi telefonundan başlat/bitir) ====================================
+_MESAI_TR = ZoneInfo("Europe/Istanbul")
+
+
+# --- Mesai Hesabı (Personel kartından, yalnız yönetici) ---
+@yonetici_gerekli
+def mesai_hesap_olustur(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = MesaiHesapOlusturForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                mesai_hesap_servis.hesap_olustur(
+                    p, kullanici_adi=cd["kullanici_adi"], sifre=cd["sifre"], yapan=request.user)
+                messages.success(request, f"Mesai hesabı oluşturuldu: {cd['kullanici_adi']}")
+                return redirect("core:personel_detay", pk=p.pk)
+            except mesai_hesap_servis.MesaiHesapHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = MesaiHesapOlusturForm()
+    return render(request, "core/mesai_hesap_form.html", {
+        "form": form, "baslik": "Mesai Hesabı Oluştur", "personel": p})
+
+
+@yonetici_gerekli
+def mesai_sifre_sifirla(request, pk):
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = MesaiSifreForm(request.POST)
+        if form.is_valid():
+            try:
+                mesai_hesap_servis.sifre_sifirla(
+                    p, sifre=form.cleaned_data["sifre"], yapan=request.user)
+                messages.success(request, "Mesai hesabının şifresi sıfırlandı.")
+                return redirect("core:personel_detay", pk=p.pk)
+            except mesai_hesap_servis.MesaiHesapHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = MesaiSifreForm()
+    return render(request, "core/mesai_hesap_form.html", {
+        "form": form, "baslik": "Mesai Hesabı Şifresini Sıfırla", "personel": p})
+
+
+@yonetici_gerekli
+def mesai_hesap_durum(request, pk):
+    """Hesabı kapatır/açar — mevcut duruma göre toggle, POST only."""
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            if p.kullanici_id and p.kullanici.is_active:
+                mesai_hesap_servis.hesap_kapat(p, yapan=request.user)
+                messages.success(request, "Mesai hesabı kapatıldı.")
+            else:
+                mesai_hesap_servis.hesap_ac(p, yapan=request.user)
+                messages.success(request, "Mesai hesabı yeniden açıldı.")
+        except mesai_hesap_servis.MesaiHesapHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:personel_detay", pk=p.pk)
+
+
+# --- Mesaim (personelin kendisi, mobil öncelikli) ---
+@login_required
+@never_cache
+def mesaim(request):
+    p = Personel.objects.filter(kullanici=request.user, silindi=False).first()
+    if p is None:
+        raise PermissionDenied("Bu hesaba bağlı bir personel kartı yok.")
+    calisiyor = personel_servis.aktif_mi(p)
+    if request.method == "POST":
+        if not calisiyor:
+            messages.error(request, "Artık çalışmıyorsunuz; mesai başlatılamaz.")
+        else:
+            ip = istemci_ip(request)
+            try:
+                if request.POST.get("eylem") == "baslat":
+                    mesai_servis.baslat(p, ip=ip, kullanici=request.user)
+                    messages.success(request, "Mesai başlatıldı.")
+                elif request.POST.get("eylem") == "bitir":
+                    mesai_servis.bitir(p, ip=ip, kullanici=request.user)
+                    messages.success(request, "Mesai bitirildi.")
+            except mesai_servis.MesaiHatasi as e:
+                messages.error(request, str(e))
+        return redirect("core:mesaim")
+    return render(request, "core/mesaim.html", {
+        "p": p, "calisiyor": calisiyor, "acik_kayit": mesai_servis.acik_kayit(p),
+        "kayitlar": list(mesai_servis.son_kayitlar(p, gun=7))})
+
+
+# --- Mesai Kayıtları (yönetici ekranı) ---
+def _mesai_tarih_araligi(request):
+    bugun = tr_bugun()
+    try:
+        bas = datetime.date.fromisoformat(request.GET.get("bas") or "")
+    except ValueError:
+        bas = bugun - datetime.timedelta(days=30)
+    try:
+        bit = datetime.date.fromisoformat(request.GET.get("bit") or "")
+    except ValueError:
+        bit = bugun
+    return bas, bit
+
+
+@ekran_gerekli("mesai_kayitlari")
+def mesai_kayitlari(request):
+    bas, bit = _mesai_tarih_araligi(request)
+    personel_id = (request.GET.get("personel") or "").strip()
+    kayitlar = mesai_servis.kayitlari_listele(
+        baslangic=bas, bitis=bit, personel_id=personel_id if personel_id.isdigit() else None)
+    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
+    sabit_qs = request.GET.copy()
+    sabit_qs.pop("sayfa", None)
+    return render(request, "core/mesai_kayitlari.html", {
+        "sayfa": sayfa, "bas": bas, "bit": bit, "secili_personel": personel_id,
+        "personeller": personel_servis.aktif_personeller(),
+        "cikisi_eksik": list(mesai_servis.cikisi_eksik_kayitlar()),
+        "yoklama_uyusmazlik": list(
+            mesai_servis.yoklama_uyusmazliklari(baslangic=bas, bitis=bit)),
+        "izinli_giris": list(
+            mesai_servis.izinli_gunde_giris_uyarilari(baslangic=bas, bitis=bit)),
+        "sabit_qs": sabit_qs.urlencode()})
+
+
+@ekran_gerekli("mesai_kayitlari")
+def mesai_kaydi_ekle(request):
+    if request.method == "POST":
+        form = MesaiDuzeltForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                mesai_servis.manuel_ekle(
+                    cd["personel"], giris_zamani=cd["giris_zamani"],
+                    cikis_zamani=cd.get("cikis_zamani"), duzeltme_notu=cd["duzeltme_notu"],
+                    kullanici=request.user)
+                messages.success(request, "Mesai kaydı eklendi.")
+                return redirect("core:mesai_kayitlari")
+            except mesai_servis.MesaiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = MesaiDuzeltForm()
+    return render(request, "core/mesai_kaydi_form.html", {
+        "form": form, "baslik": "Mesai Kaydı Ekle"})
+
+
+@ekran_gerekli("mesai_kayitlari")
+def mesai_kaydi_duzenle(request, pk):
+    kayit = get_object_or_404(
+        MesaiKaydi.objects.select_related("personel"), pk=pk, silindi=False)
+    if request.method == "POST":
+        form = MesaiDuzeltForm(request.POST, personel_sabit=True)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                mesai_servis.duzelt(
+                    kayit, giris_zamani=cd["giris_zamani"], cikis_zamani=cd.get("cikis_zamani"),
+                    duzeltme_notu=cd["duzeltme_notu"], kullanici=request.user)
+                messages.success(request, "Mesai kaydı güncellendi.")
+                return redirect("core:mesai_kayitlari")
+            except mesai_servis.MesaiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = MesaiDuzeltForm(personel_sabit=True, initial={
+            "giris_zamani": kayit.giris_zamani.astimezone(_MESAI_TR),
+            "cikis_zamani": kayit.cikis_zamani.astimezone(_MESAI_TR) if kayit.cikis_zamani else None,
+            "duzeltme_notu": kayit.duzeltme_notu})
+    return render(request, "core/mesai_kaydi_form.html", {
+        "form": form, "baslik": "Mesai Kaydı Düzenle", "duzenlenen": kayit})
+
+
+@ekran_gerekli("mesai_kayitlari")
+def mesai_kaydi_sil(request, pk):
+    kayit = get_object_or_404(MesaiKaydi, pk=pk, silindi=False)
+    if request.method == "POST":
+        mesai_servis.sil(kayit, kullanici=request.user)
+        messages.success(request, "Mesai kaydı silindi.")
+    return redirect("core:mesai_kayitlari")
+
+
+# --- Mesai Ayarları (Ayarlar > yalnız yönetici) ---
+@yonetici_gerekli
+def mesai_ayarlari(request):
+    return render(request, "core/mesai_ayarlari.html", {
+        "aglar": list(mesai_ag_servis.aktif_aglar())})
+
+
+@yonetici_gerekli
+def mesai_ag_ekle(request):
+    if request.method == "POST":
+        form = MesaiIzinliAgForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                mesai_ag_servis.ag_ekle(
+                    cidr=cd["cidr"], aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, f"İzinli ağ eklendi: {cd['cidr']}")
+            except mesai_ag_servis.MesaiAgHatasi as e:
+                messages.error(request, str(e))
+    return redirect("core:mesai_ayarlari")
+
+
+@yonetici_gerekli
+def mesai_ag_sil(request, pk):
+    ag = get_object_or_404(MesaiIzinliAg, pk=pk, silindi=False)
+    if request.method == "POST":
+        mesai_ag_servis.ag_sil(ag, kullanici=request.user)
+        messages.success(request, f"İzinli ağ silindi: {ag.cidr}")
+    return redirect("core:mesai_ayarlari")

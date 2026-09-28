@@ -2852,6 +2852,11 @@ class Personel(TemelModel):
     # Fotoğraf da ÖZEL depoda (MEDIA_ROOT dışı) — yalnız yetkili görünümle sunulur (bkz. storage).
     foto = models.FileField("fotoğraf", storage=ik_ozel_depo, upload_to=personel_foto_yolu,
                             blank=True, max_length=100)
+    # Personelin KENDİ mesai (giriş/çıkış) hesabı — bkz. core.services.mesai_hesap. Bu hesaba
+    # HİÇBİR EkranYetki verilmez (yalnız /mesai/'ye erişir); yönetici oluşturur/kapatır.
+    kullanici = models.OneToOneField(
+        settings.AUTH_USER_MODEL, verbose_name="mesai hesabı", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="personel_karti")
 
     class Meta:
         db_table = "core_personel"
@@ -3057,3 +3062,80 @@ class ResmiTatil(TemelModel):
 
     def __str__(self):
         return f"{self.tarih:%d.%m.%Y} — {self.ad}"
+
+
+class MesaiIzinliAg(TemelModel):
+    """İNSAN KAYNAKLARI > Mesai Ayarları — personelin kendi telefonundan mesai başlatıp
+    bitirebileceği IP/CIDR aralıkları (fabrika Wi-Fi'ı). Yalnız yönetici düzenler (bkz.
+    core.services.mesai_ag). Liste BOŞSA özellik KAPALI sayılır — herkes reddedilir."""
+
+    cidr = models.CharField("IP / CIDR", max_length=43)   # ör. "5.6.7.8" veya "10.0.0.0/24"
+    aciklama = models.CharField("açıklama", max_length=100, blank=True)
+
+    class Meta:
+        db_table = "core_mesai_izinli_ag"
+        verbose_name = "mesai izinli ağı"
+        verbose_name_plural = "mesai izinli ağları"
+        ordering = ["cidr"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cidr"], condition=models.Q(silindi=False),
+                name="uq_mesai_izinli_ag_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.cidr}" + (f" — {self.aciklama}" if self.aciklama else "")
+
+
+class MesaiKaydi(TemelModel):
+    """İNSAN KAYNAKLARI > Mesai Kayıtları — personelin kendi telefonundan (fabrika ağındayken)
+    başlattığı/bitirdiği mesai. YALNIZ KAYIT: saatten ücret/fazla mesai HESABI YOK. Zaman HER
+    ZAMAN sunucu saatidir (istemciden asla alınmaz) — bkz. core.services.mesai. Başlangıçta
+    girilmemiş günlük yoklamayı otomatik "Geldi" yapar (bkz. core.services.personel_devam)."""
+
+    class Kaynak(models.TextChoices):
+        PERSONEL = "PERSONEL", "Personel"
+        YONETICI = "YONETICI", "Yönetici"
+
+    personel = models.ForeignKey(
+        Personel, verbose_name="personel", on_delete=models.PROTECT,
+        related_name="mesai_kayitlari")
+    is_tarihi = models.DateField("iş tarihi")           # girişin TR tarihi
+    giris_zamani = models.DateTimeField("giriş zamanı")
+    cikis_zamani = models.DateTimeField("çıkış zamanı", null=True, blank=True)
+    giris_ip = models.GenericIPAddressField("giriş IP", null=True, blank=True)
+    cikis_ip = models.GenericIPAddressField("çıkış IP", null=True, blank=True)
+    kaynak = models.CharField("kaynak", max_length=10, choices=Kaynak.choices,
+                              default=Kaynak.PERSONEL)
+    duzeltme_notu = models.CharField("düzeltme notu", max_length=300, blank=True)
+
+    class Meta:
+        db_table = "core_mesai_kaydi"
+        verbose_name = "mesai kaydı"
+        verbose_name_plural = "mesai kayıtları"
+        ordering = ["-giris_zamani", "-id"]
+        indexes = [
+            models.Index(fields=["personel", "is_tarihi"], name="ix_mesai_kaydi_kisi_gun"),
+        ]
+        constraints = [
+            # Aynı (personel, iş tarihi) için silinmemiş TEK açık (çıkışsız) kayıt olabilir —
+            # birden çok KAPALI (tamamlanmış) kayıt aynı güne serbesttir (öğle molası vb.).
+            models.UniqueConstraint(
+                fields=["personel", "is_tarihi"],
+                condition=models.Q(silindi=False, cikis_zamani__isnull=True),
+                name="uq_mesai_acik_kayit"),
+            models.CheckConstraint(
+                condition=(models.Q(cikis_zamani__isnull=True)
+                           | models.Q(cikis_zamani__gte=models.F("giris_zamani"))),
+                name="ck_mesai_cikis_gte_giris"),
+        ]
+
+    def __str__(self):
+        return f"{self.personel.ad_soyad} — {self.is_tarihi:%d.%m.%Y}"
+
+    @property
+    def sure_dakika(self):
+        """Tamamlanmış kayıtta geçen süre (dakika); açık kayıtta None."""
+        if self.cikis_zamani is None:
+            return None
+        return int((self.cikis_zamani - self.giris_zamani).total_seconds() // 60)

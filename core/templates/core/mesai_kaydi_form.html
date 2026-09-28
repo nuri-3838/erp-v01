@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:mesai_kayitlari' %}">← Mesai Kayıtları</a>
+    <h1 class="ust-baslik"><span class="emoji">⏱️</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{% if duzenlenen %}{{ duzenlenen.personel.ad_soyad }}{% else %}Mesai Bilgileri{% endif %}</h2>
+      <div class="izgara">
+        {% if not duzenlenen %}
+        <div class="alan tam"><label for="{{ form.personel.id_for_label }}">{{ form.personel.label }} <span class="zorunlu">*</span></label>
+          <div class="akilli">{{ form.personel }}</div>{% for e in form.personel.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        {% endif %}
+        <div class="alan"><label for="{{ form.giris_zamani.id_for_label }}">{{ form.giris_zamani.label }} <span class="zorunlu">*</span></label>{{ form.giris_zamani }}{% for e in form.giris_zamani.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.cikis_zamani.id_for_label }}">{{ form.cikis_zamani.label }}</label>{{ form.cikis_zamani }}{% for e in form.cikis_zamani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.3rem 0 0">Boş bırakılırsa kayıt AÇIK sayılır (henüz çıkış yapılmamış).</p></div>
+        <div class="alan tam"><label for="{{ form.duzeltme_notu.id_for_label }}">{{ form.duzeltme_notu.label }} <span class="zorunlu">*</span></label>{{ form.duzeltme_notu }}{% for e in form.duzeltme_notu.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+      <p class="yardim">Zamanlar Türkiye yerel saatiyle girilir. Yönetici düzeltmeleri kaynağı "Yönetici" olarak işaretlenir.</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:mesai_kayitlari' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

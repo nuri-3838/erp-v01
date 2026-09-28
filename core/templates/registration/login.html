@@ -19,6 +19,10 @@
     <label for="{{ form.password.id_for_label }}">Şifre</label>
     {{ form.password }}
   </div>
+  <div class="alan onay-alan">
+    {{ form.beni_hatirla }}
+    <label for="{{ form.beni_hatirla.id_for_label }}">{{ form.beni_hatirla.label }}</label>
+  </div>
   <input type="hidden" name="next" value="{{ next }}">
   <button type="submit" class="birincil">Giriş yap</button>
 </form>

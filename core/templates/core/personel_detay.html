@@ -251,6 +251,30 @@
   </section>
   {% endif %}
 
+  {% if mesai_hesap_gorebilir %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📱</span>Mesai Hesabı</h2>
+    {% if p.kullanici_id %}
+      <div class="kv">
+        <div class="satir"><span class="et">Kullanıcı Adı</span><span class="dg mono">{{ p.kullanici.username }}</span></div>
+        <div class="satir"><span class="et">Durum</span><span class="dg">
+          {% if p.kullanici.is_active %}<span class="rozet rozet-aktif">Aktif</span>{% else %}<span class="rozet rozet-pasif">Kapalı</span>{% endif %}
+        </span></div>
+      </div>
+      <div class="detay-aksiyon" style="margin-top:.8rem">
+        <a class="dugme-ikincil" href="{% url 'core:mesai_sifre_sifirla' p.pk %}">Şifre Sıfırla</a>
+        <form method="post" action="{% url 'core:mesai_hesap_durum' p.pk %}" style="margin:0"
+              onsubmit="return confirm('{% if p.kullanici.is_active %}Mesai hesabı kapatılsın mı? Personel kendi telefonundan mesai başlatamayacak.{% else %}Mesai hesabı yeniden açılsın mı?{% endif %}');">
+          {% csrf_token %}<button type="submit" class="{% if p.kullanici.is_active %}sil{% else %}dugme-ikincil{% endif %}">{% if p.kullanici.is_active %}Hesabı Kapat{% else %}Hesabı Aç{% endif %}</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="yardim" style="margin:.2rem 0 .8rem">Bu personelin mesai hesabı yok — kendi telefonundan mesai başlatıp bitiremez.</p>
+      <a class="dugme" href="{% url 'core:mesai_hesap_olustur' p.pk %}">+ Mesai Hesabı Oluştur</a>
+    {% endif %}
+  </section>
+  {% endif %}
+
   {% if p.notlar %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>

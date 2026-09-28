@@ -1,12 +1,44 @@
 """Gösterim filtreleri — sayıyı İSTİSNASIZ tek formatter'dan (core.sayi) geçirir."""
 import re
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from django import template
+from django.utils import dateformat
 
 from core.sayi import format_tr, yuvarla
 
 register = template.Library()
+_TR = ZoneInfo("Europe/Istanbul")
+
+
+@register.filter
+def tr_zaman(value, fmt="d.m.Y H:i"):
+    """UTC saklanan datetime'ı TR yerel saatine çevirip biçimlendirir. Django şablonunun kendi
+    ``date`` filtresi bunu YAPMAZ: TIME_ZONE=UTC ve saat dilimi aktivasyon ara katmanı
+    olmadığı için (bkz. core.tarih) ``|date:"H:i"`` ham UTC saatini gösterirdi — saat
+    içeren her gösterim (mesai giriş/çıkış vb.) bu filtreyi kullanmalı."""
+    if value is None:
+        return ""
+    return dateformat.format(value.astimezone(_TR), fmt)
+
+
+@register.filter
+def sure_metni(dakika):
+    """Dakika sayısını "8s 12dk" biçiminde gösterir; None ise boş."""
+    if dakika is None:
+        return ""
+    dakika = int(dakika)
+    saat, kalan = divmod(dakika, 60)
+    return f"{saat}s {kalan}dk" if saat else f"{kalan}dk"
+
+
+@register.filter
+def get_item(d, anahtar):
+    """Şablonda ``dict[degisken_anahtar]`` yapılamadığı için — bkz. yoklama.html mesai_bilgisi."""
+    if not d:
+        return None
+    return d.get(anahtar)
 
 
 @register.filter

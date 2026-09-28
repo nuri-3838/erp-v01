@@ -1,0 +1,120 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Mesai Kayıtları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Mesai Kayıtları{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<style>
+  .ik-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem;
+    margin-top:1rem; flex-wrap:wrap; }
+  .ik-sayfalama a, .ik-sayfalama span.simdiki { display:inline-flex; align-items:center;
+    justify-content:center; min-width:2.3rem; height:2.3rem; padding:0 .5rem; border-radius:10px;
+    text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .ik-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .ik-sayfalama a:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+  .ik-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
+  .ik-tarih-alan input { min-height:46px; border-radius:14px; }
+  .mk-uyari-blok { background:#fff8e6; border:1px solid #f3dfa8; color:#7a5a00; border-radius:14px;
+    padding:.7rem 1rem; margin-bottom:.7rem; font-size:.88rem; }
+  .mk-uyari-blok strong { color:#7a5a00; }
+  .mk-acik { color:#0b6b3f; font-weight:700; }
+</style>
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">⏱️</span>Mesai Kayıtları</h1>
+  <a class="dugme" href="{% url 'core:mesai_kaydi_ekle' %}">+ Kayıt Ekle</a>
+</div>
+
+{% if cikisi_eksik %}
+<div class="mk-uyari-blok">
+  <strong>⚠️ Çıkışı eksik ({{ cikisi_eksik|length }}):</strong>
+  {% for k in cikisi_eksik %}{{ k.personel.ad_soyad }} ({{ k.is_tarihi|date:"d.m.Y" }}){% if not forloop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
+{% if yoklama_uyusmazlik %}
+<div class="mk-uyari-blok">
+  <strong>⚠️ Yoklama uyuşmazlığı ({{ yoklama_uyusmazlik|length }}):</strong> mesai kaydı var ama yoklamada "Gelmedi" işaretli —
+  {% for k in yoklama_uyusmazlik %}{{ k.personel.ad_soyad }} ({{ k.is_tarihi|date:"d.m.Y" }}){% if not forloop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
+{% if izinli_giris %}
+<div class="mk-uyari-blok">
+  <strong>⚠️ İzinli günde giriş ({{ izinli_giris|length }}):</strong>
+  {% for k in izinli_giris %}{{ k.personel.ad_soyad }} ({{ k.is_tarihi|date:"d.m.Y" }}){% if not forloop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+<div class="ik-panel">
+  <form method="get" class="ik-arama-cubuk">
+    <div class="ik-alan-grup">
+      <label for="mk-personel">Personel</label>
+      <select id="mk-personel" name="personel">
+        <option value="">Tüm Personel</option>
+        {% for p in personeller %}
+          <option value="{{ p.pk }}" {% if secili_personel == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.ad_soyad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-alan-grup ik-tarih-alan">
+      <label for="mk-bas">Bu tarihten</label>
+      <input type="date" id="mk-bas" name="bas" value="{{ bas|date:'Y-m-d' }}">
+    </div>
+    <div class="ik-alan-grup ik-tarih-alan">
+      <label for="mk-bit">Bu tarihe kadar</label>
+      <input type="date" id="mk-bit" name="bit" value="{{ bit|date:'Y-m-d' }}">
+    </div>
+    <div class="ik-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      {% if secili_personel %}<a class="iptal-bag" href="{% url 'core:mesai_kayitlari' %}">Temizle</a>{% endif %}
+    </div>
+  </form>
+</div>
+
+<p class="sayfa-alt">{{ sayfa.paginator.count }} mesai kaydı.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr><th>Personel</th><th>Tarih</th><th>Giriş</th><th>Çıkış</th><th>Süre</th><th>IP</th><th>Kaynak</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for k in sayfa %}
+      <tr>
+        <td>
+          <div class="ik-hucre">
+            <span class="ik-avatar">{{ k.personel.ad|first }}{{ k.personel.soyad|first }}</span>
+            <div><div class="ad"><a href="{% url 'core:personel_detay' k.personel_id %}">{{ k.personel.ad_soyad }}</a></div></div>
+          </div>
+        </td>
+        <td class="mono">{{ k.is_tarihi|date:"d.m.Y" }}</td>
+        <td class="mono">{{ k.giris_zamani|tr_zaman:"H:i" }}</td>
+        <td class="mono">{% if k.cikis_zamani %}{{ k.cikis_zamani|tr_zaman:"H:i" }}{% else %}<span class="mk-acik">açık</span>{% endif %}</td>
+        <td class="mono">{{ k.sure_dakika|sure_metni }}</td>
+        <td class="mono">{{ k.giris_ip|default:"—" }}</td>
+        <td><span class="rozet {% if k.kaynak == 'YONETICI' %}rozet-notr{% else %}rozet-aktif{% endif %}">{{ k.get_kaynak_display }}</span></td>
+        <td class="islem-bag">
+          <a class="dugme-ikincil" href="{% url 'core:mesai_kaydi_duzenle' k.pk %}">Düzelt</a>
+          <form method="post" action="{% url 'core:mesai_kaydi_sil' k.pk %}" style="margin:0"
+                onsubmit="return confirm('{{ k.personel.ad_soyad|escapejs }} — {{ k.is_tarihi|date:"d.m.Y" }} mesai kaydı silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" class="yardim" style="text-align:center;padding:1.6rem 0">Bu süzgeçle eşleşen mesai kaydı yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if sayfa.paginator.num_pages > 1 %}
+<div class="ik-sayfalama">
+  {% if sayfa.has_previous %}<a href="?sayfa={{ sayfa.previous_page_number }}&{{ sabit_qs }}">‹</a>{% endif %}
+  {% for n in sayfa.paginator.page_range %}
+    {% if n == sayfa.number %}<span class="simdiki">{{ n }}</span>
+    {% else %}<a href="?sayfa={{ n }}&{{ sabit_qs }}">{{ n }}</a>{% endif %}
+  {% endfor %}
+  {% if sayfa.has_next %}<a href="?sayfa={{ sayfa.next_page_number }}&{{ sabit_qs }}">›</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

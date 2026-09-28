@@ -96,7 +96,13 @@
           <span class="ik-avatar">{{ s.personel.ad|first }}{{ s.personel.soyad|first }}</span>
           <div>
             <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' s.personel.pk %}">{{ s.personel.ad_soyad }}</a>{% else %}{{ s.personel.ad_soyad }}{% endif %}</div>
-            <div class="alt">{{ s.personel.gorev|default:"" }}</div>
+            <div class="alt">{{ s.personel.gorev|default:"" }}
+              {% if mesai_bilgisi|get_item:s.personel.pk %}
+                <span class="yardim">· ⏱
+                  {% for m in mesai_bilgisi|get_item:s.personel.pk %}{{ m.giris_zamani|tr_zaman:"H:i" }}–{% if m.cikis_zamani %}{{ m.cikis_zamani|tr_zaman:"H:i" }}{% else %}açık{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}
+                </span>
+              {% endif %}
+            </div>
           </div>
         </div>
         {% if s.kilitli %}
