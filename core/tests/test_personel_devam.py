@@ -355,7 +355,7 @@ class AylikOzetTest(TestCase):
         for ad in ("ali", "berk", "can", "deniz"):
             p = personel_kur(ad=ad, ise_giris_tarihi=date(2020, 1, 1))
             _kayit(p, date(2026, 9, 1))
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(4):        # + resmî tatil sorgusu (core.services.resmi_tatil)
             self._ozet()
 
 

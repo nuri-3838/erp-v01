@@ -2883,8 +2883,8 @@ class Personel(TemelModel):
 class PersonelIzin(TemelModel):
     """İNSAN KAYNAKLARI > İzinler — personelin izin kaydı (onay akışı YOK, direkt kayıt).
     Yalnız tur=YILLIK yıllık izin bakiyesini düşürür; rapor/mazeret/ücretsiz/diğer yalnız
-    kayıttır. `gun` Pazar günleri hariç takvim günü olarak ÖNERİLİR (resmî tatil bilinçli
-    düşülmez), kullanıcı yarım gün adımlarıyla elle düzeltebilir."""
+    kayıttır. `gun` Pazar günleri VE resmî tatiller (bkz. ResmiTatil) hariç takvim günü
+    olarak ÖNERİLİR, kullanıcı yarım gün adımlarıyla elle düzeltebilir."""
 
     class Tur(models.TextChoices):
         YILLIK = "YILLIK", "Yıllık İzin"
@@ -3032,3 +3032,28 @@ class PersonelUcret(TemelModel):
     def __str__(self):
         tutar = "Asgari Ücret" if self.tip == self.Tip.ASGARI else f"{self.net_tutar} TL net"
         return f"{self.personel.ad_soyad} — {tutar} ({self.gecerlilik_baslangic:%d.%m.%Y})"
+
+
+class ResmiTatil(TemelModel):
+    """İNSAN KAYNAKLARI > Resmî Tatiller — tam gün resmî/dinî tatil takvimi. Yoklama
+    (girilmemiş sayılmaz + 'tatil çalışması' sayacı), izin gün önerisi (bkz.
+    core.services.personel_izin.pazarsiz_gun) ve aylık puantaj dökümünde kullanılır. Arife
+    TANIMLANMAZ (normal iş günü sayılır); yarım gün/ücret etkisi bu modülün kapsamı
+    DIŞINDADIR — bkz. core.services.resmi_tatil."""
+
+    tarih = models.DateField("tarih")
+    ad = models.CharField("ad", max_length=100)
+
+    class Meta:
+        db_table = "core_resmi_tatil"
+        verbose_name = "resmî tatil"
+        verbose_name_plural = "resmî tatiller"
+        ordering = ["tarih"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tarih"], condition=models.Q(silindi=False),
+                name="uq_resmi_tatil_tarih_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.tarih:%d.%m.%Y} — {self.ad}"

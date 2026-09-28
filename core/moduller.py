@@ -78,6 +78,7 @@ MODULLER = (
         Ekran("personel_izinleri", "İzinler", "core:izinler"),
         Ekran("personel_belgeleri", "Özlük Belgeleri", "core:belgeler"),
         Ekran("personel_devam", "Devam / Yoklama", "core:yoklama"),
+        Ekran("resmi_tatil", "Resmî Tatiller", "core:resmi_tatiller"),
         Ekran("personel_ucret", "Personel Ücretleri", "core:personeller"),
         Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
     )),

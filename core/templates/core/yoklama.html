@@ -83,6 +83,7 @@
   </div>
 
   {% if pazar %}<div class="yk-bilgi">Pazar günü hafta tatili sayılır; isterseniz yine de yoklama girebilirsiniz.</div>{% endif %}
+  {% if tatil %}<div class="yk-bilgi">📅 {{ tatil.tarih|date:"d F Y" }} — {{ tatil.ad }}. Resmî tatil günü de yoklama girilebilir.</div>{% endif %}
 
   {% if satirlar %}
   <form method="post" autocomplete="off">

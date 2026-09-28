@@ -59,12 +59,14 @@
 
 <p class="yardim" style="margin:0 0 .8rem">Günler, personelin işe giriş/çıkış aralığında ve bugüne kadar sayılır.
   İzinli / Raporlu günler <strong>İzinler</strong> ekranındaki kayıtlardan gelir. Pazar günleri (yoklama girilmedikçe) ve
-  izinli Pazarlar sayılmaz; resmî tatil takvimi olmadığından tatil günleri "girilmemiş" görünebilir.</p>
+  izinli Pazarlar sayılmaz. Resmî tatiller (<strong>Resmî Tatiller</strong> ekranındaki takvimden) "girilmemiş"
+  sayılmaz; tatilde Geldi/Yarım Gün kaydı "Tatil Çalışması" sütununda ayrıca görünür.</p>
 
 <div class="tablo-kapsayici genis">
 <table class="yk-aylik">
   <thead>
     <tr><th>Personel</th><th class="sag">Geldi</th><th class="sag">Yarım Gün</th><th class="sag">Gelmedi</th>
+        <th class="sag">Resmî Tatil</th><th class="sag">Tatil Çalışması</th>
         <th class="sag">İzinli</th><th class="sag">Raporlu</th><th class="sag">Girilmemiş</th></tr>
   </thead>
   <tbody>
@@ -82,19 +84,23 @@
         <td class="sag mono {% if s.geldi %}yk-say-geldi{% else %}yk-sifir{% endif %}">{{ s.geldi }}</td>
         <td class="sag mono {% if s.yarim %}yk-say-yarim{% else %}yk-sifir{% endif %}">{{ s.yarim }}</td>
         <td class="sag mono {% if s.gelmedi %}yk-say-gelmedi{% else %}yk-sifir{% endif %}">{{ s.gelmedi }}</td>
+        <td class="sag mono {% if not s.resmi_tatil %}yk-sifir{% endif %}">{{ s.resmi_tatil }}</td>
+        <td class="sag mono {% if not s.tatil_calisma %}yk-sifir{% endif %}">{{ s.tatil_calisma }}</td>
         <td class="sag mono {% if not s.izinli %}yk-sifir{% endif %}">{{ s.izinli }}</td>
         <td class="sag mono {% if not s.raporlu %}yk-sifir{% endif %}">{{ s.raporlu }}</td>
         <td class="sag mono {% if not s.girilmemis %}yk-sifir{% endif %}">{{ s.girilmemis }}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">Bu ay için devam bilgisi gösterilecek personel yok.</td></tr>
+      <tr><td colspan="9" class="yardim" style="text-align:center;padding:1.6rem 0">Bu ay için devam bilgisi gösterilecek personel yok.</td></tr>
     {% endfor %}
   </tbody>
   {% if satirlar %}
   <tfoot>
     <tr><td>Toplam ({{ satirlar|length }} kişi)</td>
       <td class="sag mono">{{ toplam.geldi }}</td><td class="sag mono">{{ toplam.yarim }}</td>
-      <td class="sag mono">{{ toplam.gelmedi }}</td><td class="sag mono">{{ toplam.izinli }}</td>
+      <td class="sag mono">{{ toplam.gelmedi }}</td>
+      <td class="sag mono">{{ toplam.resmi_tatil }}</td><td class="sag mono">{{ toplam.tatil_calisma }}</td>
+      <td class="sag mono">{{ toplam.izinli }}</td>
       <td class="sag mono">{{ toplam.raporlu }}</td><td class="sag mono">{{ toplam.girilmemis }}</td></tr>
   </tfoot>
   {% endif %}

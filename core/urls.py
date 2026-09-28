@@ -312,6 +312,10 @@ urlpatterns = [
     path("ik/ucretler/ekle/", views.ucret_ekle, name="ucret_ekle"),
     path("ik/ucretler/<int:pk>/duzenle/", views.ucret_duzenle, name="ucret_duzenle"),
     path("ik/ucretler/<int:pk>/sil/", views.ucret_sil, name="ucret_sil"),
+    path("ik/resmi-tatiller/", views.resmi_tatiller, name="resmi_tatiller"),
+    path("ik/resmi-tatiller/ekle/", views.resmi_tatil_ekle, name="resmi_tatil_ekle"),
+    path("ik/resmi-tatiller/<int:pk>/duzenle/", views.resmi_tatil_duzenle, name="resmi_tatil_duzenle"),
+    path("ik/resmi-tatiller/<int:pk>/sil/", views.resmi_tatil_sil, name="resmi_tatil_sil"),
     # Yemek Takibi artık İK menüsünde; URL öneki tarihsel olarak "diger/" kaldı (yer imleri/PDF)
     path("diger/yemek-takibi/", views.yemek_takibi, name="yemek_takibi"),
     path("diger/yemek-takibi/pdf/", views.yemek_takibi_pdf, name="yemek_takibi_pdf"),

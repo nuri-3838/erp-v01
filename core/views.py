@@ -1,6 +1,7 @@
 """Fiş giriş/liste/düzenleme/görüntüleme, rapor, kullanıcı yönetimi ve ekran yetkisi görünümleri."""
 import calendar
 import datetime
+import json
 import os
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -43,7 +44,7 @@ from core.forms import (
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
-    PersonelBelgeForm, PersonelFotoForm, PersonelUcretForm,
+    PersonelBelgeForm, PersonelFotoForm, PersonelUcretForm, ResmiTatilForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
@@ -53,7 +54,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
-    Personel, PersonelBelge, PersonelIzin, PersonelUcret,
+    Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
 )
 from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
@@ -104,6 +105,7 @@ from core.services import personel_belge as belge_servis
 from core.services import personel_devam as devam_servis
 from core.services import personel_ucret as ucret_servis
 from core.services import personel_dokum as dokum_servis
+from core.services import resmi_tatil as tatil_servis
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir,
@@ -6655,6 +6657,13 @@ def izin_bakiyeleri(request):
         "satirlar": satirlar, "ayrilan_dahil": ayrilan_dahil, "bugun": bugun})
 
 
+def _tatil_tarihleri_json():
+    """İzin formundaki JS gün-önerisinin resmî tatilleri de düşebilmesi için (bkz.
+    personel_izin.pazarsiz_gun aynı listeyi sunucu tarafında kullanır)."""
+    return json.dumps([t.isoformat() for t in tatil_servis.aktif_tatiller()
+                       .values_list("tarih", flat=True)])
+
+
 @ekran_gerekli("personel_izinleri")
 def izin_ekle(request):
     if request.method == "POST":
@@ -6677,7 +6686,8 @@ def izin_ekle(request):
             baslangic["personel"] = int(pid)
         form = PersonelIzinForm(initial=baslangic)
     return render(request, "core/izin_form.html", {
-        "form": form, "baslik": "Yeni İzin", "sonraki": request.GET.get("sonraki", "")})
+        "form": form, "baslik": "Yeni İzin", "sonraki": request.GET.get("sonraki", ""),
+        "tatil_tarihleri_json": _tatil_tarihleri_json()})
 
 
 @ekran_gerekli("personel_izinleri")
@@ -6703,7 +6713,7 @@ def izin_duzenle(request, pk):
             "gun": izin.gun, "aciklama": izin.aciklama})
     return render(request, "core/izin_form.html", {
         "form": form, "baslik": "İzin Düzenle", "duzenlenen": izin,
-        "sonraki": request.GET.get("sonraki", "")})
+        "sonraki": request.GET.get("sonraki", ""), "tatil_tarihleri_json": _tatil_tarihleri_json()})
 
 
 @ekran_gerekli("personel_izinleri")
@@ -6952,6 +6962,7 @@ def yoklama(request):
         "onceki": tarih - datetime.timedelta(days=1),
         "sonraki": tarih + datetime.timedelta(days=1) if tarih < bugun else None,
         "gelecek": tarih > bugun, "pazar": tarih.weekday() == 6,
+        "tatil": tatil_servis.gunun_tatili(tarih),
         "durumlar": [("GELDI", "Geldi", "Geldi"), ("YARIM_GUN", "Yarım", "Yarım Gün"),
                      ("GELMEDI", "Gelmedi", "Gelmedi")],
         "personel_link": ekran_gorebilir(request.user, "personel")})
@@ -6984,3 +6995,68 @@ def yoklama_aylik_dokum(request):
     resp["Content-Disposition"] = f'attachment; filename="puantaj_{yil:04d}-{ay:02d}.xlsx"'
     resp["Cache-Control"] = "private, no-store"
     return resp
+
+
+# --- Resmî Tatiller ---
+@ekran_gerekli("resmi_tatil")
+def resmi_tatiller(request):
+    bugun = tr_bugun()
+    try:
+        yil = int(request.GET.get("yil") or bugun.year)
+    except ValueError:
+        yil = bugun.year
+    if not 2000 <= yil <= 2100:
+        yil = bugun.year
+    return render(request, "core/resmi_tatil_listesi.html", {
+        "tatiller": list(tatil_servis.yil_tatilleri(yil)), "yil": yil,
+        "onceki_yil": yil - 1, "sonraki_yil": yil + 1,
+        "dini_bayram_eksik": not tatil_servis.dini_bayram_var_mi(yil)})
+
+
+@ekran_gerekli("resmi_tatil")
+def resmi_tatil_ekle(request):
+    if request.method == "POST":
+        form = ResmiTatilForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                t = tatil_servis.tatil_ekle(
+                    tarih=cd["tarih"], ad=cd["ad"], kullanici=request.user)
+                messages.success(request, f"Tatil eklendi: {t.ad} ({t.tarih:%d.%m.%Y}).")
+                return redirect(f"{reverse('core:resmi_tatiller')}?yil={t.tarih.year}")
+            except tatil_servis.ResmiTatilHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = ResmiTatilForm()
+    return render(request, "core/resmi_tatil_form.html", {"form": form, "baslik": "Yeni Tatil"})
+
+
+@ekran_gerekli("resmi_tatil")
+def resmi_tatil_duzenle(request, pk):
+    tatil = get_object_or_404(ResmiTatil, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = ResmiTatilForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                tatil_servis.tatil_guncelle(
+                    tatil, tarih=cd["tarih"], ad=cd["ad"], kullanici=request.user)
+                messages.success(request, "Tatil güncellendi.")
+                return redirect(f"{reverse('core:resmi_tatiller')}?yil={cd['tarih'].year}")
+            except tatil_servis.ResmiTatilHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = ResmiTatilForm(initial={"tarih": tatil.tarih, "ad": tatil.ad})
+    return render(request, "core/resmi_tatil_form.html", {
+        "form": form, "baslik": "Tatil Düzenle", "duzenlenen": tatil})
+
+
+@ekran_gerekli("resmi_tatil")
+def resmi_tatil_sil(request, pk):
+    tatil = get_object_or_404(ResmiTatil, pk=pk, silindi=False)
+    if request.method == "POST":
+        yil = tatil.tarih.year
+        tatil_servis.tatil_sil(tatil, kullanici=request.user)
+        messages.success(request, f"Tatil silindi: {tatil.ad}")
+        return redirect(f"{reverse('core:resmi_tatiller')}?yil={yil}")
+    return redirect("core:resmi_tatiller")

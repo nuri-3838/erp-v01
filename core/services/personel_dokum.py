@@ -1,10 +1,10 @@
 """İNSAN KAYNAKLARI > Aylık Muhasebe Dökümü (Excel) — YALNIZ SAYIM + ÜCRET BİLGİSİ.
 
-Bordro/brüt/SGK günü/vergi/prim hesabı, resmî tatil takvimi, mesai giriş/çıkış YOKTUR. Ayın
-personel bazlı devam sayımını (core.services.personel_devam.aylik_ozet) o ayın sonu — ya da ay
-içinde işten çıkıldıysa çıkış günü — itibarıyla geçerli ücret bilgisiyle (core.services.
-personel_ucret) bir araya getirir. Hiçbir değer hesaplanıp saklanmaz; her indirmede canlı
-üretilir.
+Bordro/brüt/SGK günü/vergi/prim hesabı, mesai giriş/çıkış YOKTUR. Ayın personel bazlı devam
+sayımını (core.services.personel_devam.aylik_ozet — resmî tatil/tatil çalışması dahil) o
+ayın sonu — ya da ay içinde işten çıkıldıysa çıkış günü — itibarıyla geçerli ücret bilgisiyle
+(core.services.personel_ucret) bir araya getirir. Hiçbir değer hesaplanıp saklanmaz; her
+indirmede canlı üretilir.
 """
 from __future__ import annotations
 
@@ -33,9 +33,10 @@ _FIRMA_VARSAYILAN = "SEMTA EV GEREÇLERİ SAN. VE TİC. LTD. ŞTİ."
 _SUTUNLAR = (
     ("Sıra", 6), ("Ad Soyad", 24), ("TC Kimlik No", 14), ("İşe Giriş", 12),
     ("İşten Çıkış", 12), ("Ücret (Net TL)", 16), ("Çalıştığı Gün", 12), ("Yarım Gün", 10),
-    ("Pazar Çalışması", 14), ("Gelmedi (Devamsız)", 16), ("Yıllık İzin", 11),
-    ("Mazeret İzni", 12), ("Ücretsiz İzin", 12), ("Rapor", 8), ("Diğer İzin", 10),
-    ("Girilmemiş Gün", 13), ("Açıklama", 40),
+    ("Pazar Çalışması", 14), ("Resmî Tatil", 12), ("Tatil Çalışması", 14),
+    ("Gelmedi (Devamsız)", 16), ("Yıllık İzin", 11), ("Mazeret İzni", 12),
+    ("Ücretsiz İzin", 12), ("Rapor", 8), ("Diğer İzin", 10), ("Girilmemiş Gün", 13),
+    ("Açıklama", 40),
 )
 _SARI = PatternFill("solid", fgColor="FFF9C4")
 _KIRMIZI = PatternFill("solid", fgColor="FFCDD2")
@@ -163,8 +164,9 @@ def dokum_xlsx(yil: int, ay: int, *, bugun=None, kullanici=None) -> bytes:
         o = s.ozet
         degerler = [
             s.sira, s.personel.ad_soyad, s.personel.tc_kimlik_no, s.ise_giris, s.isten_cikis,
-            s.ucret_metni, o.geldi, o.yarim, o.pazar_calisma, o.gelmedi, o.yillik, o.mazeret,
-            o.ucretsiz, o.rapor, o.diger, o.girilmemis, s.aciklama,
+            s.ucret_metni, o.geldi, o.yarim, o.pazar_calisma, o.resmi_tatil, o.tatil_calisma,
+            o.gelmedi, o.yillik, o.mazeret, o.ucretsiz, o.rapor, o.diger, o.girilmemis,
+            s.aciklama,
         ]
         for col, deger in enumerate(degerler, start=1):
             hucre = ws.cell(row=satir_no, column=col, value=deger)
@@ -186,9 +188,10 @@ def dokum_xlsx(yil: int, ay: int, *, bugun=None, kullanici=None) -> bytes:
     ws.cell(row=satir_no, column=1, value="TOPLAM")
     ws.cell(row=satir_no, column=2, value=f"{len(satirlar)} kişi")
     for col, deger in (
-        (7, toplam.geldi), (8, toplam.yarim), (9, toplam.pazar_calisma), (10, toplam.gelmedi),
-        (11, toplam.yillik), (12, toplam.mazeret), (13, toplam.ucretsiz), (14, toplam.rapor),
-        (15, toplam.diger), (16, toplam.girilmemis),
+        (7, toplam.geldi), (8, toplam.yarim), (9, toplam.pazar_calisma),
+        (10, toplam.resmi_tatil), (11, toplam.tatil_calisma), (12, toplam.gelmedi),
+        (13, toplam.yillik), (14, toplam.mazeret), (15, toplam.ucretsiz), (16, toplam.rapor),
+        (17, toplam.diger), (18, toplam.girilmemis),
     ):
         ws.cell(row=satir_no, column=col, value=deger)
     for col in range(1, toplam_sutun + 1):

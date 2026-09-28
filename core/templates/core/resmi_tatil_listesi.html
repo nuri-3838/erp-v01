@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% block baslik %}Resmî Tatiller · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Resmî Tatiller{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<style>
+  .rt-yilbar { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin:.2rem 0 .9rem; }
+  .rt-yilbar form { margin:0; display:flex; align-items:center; gap:.5rem; }
+  .rt-yilbar input[type=number] { min-height:46px; padding:.4rem .8rem; border-radius:14px;
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.95rem; width:7rem; }
+  .rt-nav { display:inline-flex; align-items:center; justify-content:center; min-width:46px; min-height:46px;
+    padding:0 .9rem; border-radius:14px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.85);
+    color:var(--metin); text-decoration:none; font-weight:700; }
+  .rt-nav:hover { border-color:var(--turuncu); color:var(--turuncu-koyu); }
+</style>
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">📅</span>Resmî Tatiller</h1>
+  <a class="dugme" href="{% url 'core:resmi_tatil_ekle' %}">+ Yeni Tatil</a>
+</div>
+
+<div class="rt-yilbar">
+  <a class="rt-nav" href="?yil={{ onceki_yil }}" aria-label="Önceki yıl">←</a>
+  <form method="get">
+    <input type="number" name="yil" value="{{ yil }}" min="2000" max="2100" aria-label="Yıl">
+    <button type="submit" class="dugme-ikincil">Git</button>
+  </form>
+  <a class="rt-nav" href="?yil={{ sonraki_yil }}" aria-label="Sonraki yıl">→</a>
+</div>
+
+{% if dini_bayram_eksik %}
+  <div class="uyari">⚠️ {{ yil }} için Ramazan/Kurban Bayramı tanımlı değil.</div>
+{% endif %}
+
+<p class="sayfa-alt">{{ tatiller|length }} tatil — {{ yil }}. Arife tanımlanmaz (normal iş günü sayılır).</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Tarih</th><th>Ad</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for t in tatiller %}
+      <tr>
+        <td class="mono">{{ t.tarih|date:"d.m.Y" }} <span class="yardim">({{ t.tarih|date:"l" }})</span></td>
+        <td>{{ t.ad }}</td>
+        <td>
+          <span class="islem-bag">
+            <a href="{% url 'core:resmi_tatil_duzenle' t.pk %}">Düzenle</a>
+            <form method="post" action="{% url 'core:resmi_tatil_sil' t.pk %}" style="margin:0"
+                  onsubmit="return confirm('{{ t.ad|escapejs }} ({{ t.tarih|date:"d.m.Y" }}) silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button>
+            </form>
+          </span>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="yardim">{{ yil }} için tatil tanımlı değil.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

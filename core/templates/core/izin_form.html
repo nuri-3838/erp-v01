@@ -26,7 +26,7 @@
         {% endif %}
         <div class="alan"><label for="{{ form.tur.id_for_label }}">{{ form.tur.label }}</label>{{ form.tur }}{% for e in form.tur.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.gun.id_for_label }}">{{ form.gun.label }}</label>{{ form.gun }}{% for e in form.gun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <p class="yardim" id="gun-oneri" style="margin:.3rem 0 0">Boş bırakırsanız Pazar günleri hariç takvim günü sayılır; resmî tatiller düşülmez, gerekirse elle düzeltin (yarım gün: 0,5).</p></div>
+          <p class="yardim" id="gun-oneri" style="margin:.3rem 0 0">Boş bırakırsanız Pazar günleri ve resmî tatiller hariç takvim günü sayılır; gerekirse elle düzeltin (yarım gün: 0,5).</p></div>
         <div class="alan"><label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }} <span class="zorunlu">*</span></label>{{ form.baslangic }}{% for e in form.baslangic.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }} <span class="zorunlu">*</span></label>{{ form.bitis }}{% for e in form.bitis.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}{% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
@@ -45,13 +45,19 @@
   var gun = document.getElementById('id_gun'), ipucu = document.getElementById('gun-oneri');
   if(!bas || !bit || !gun || !ipucu) return;
   var varsayilan = ipucu.textContent;
+  var tatiller = {{ tatil_tarihleri_json|default:"[]"|safe }};
+  var tatilSet = {};
+  tatiller.forEach(function(t){ tatilSet[t] = true; });
+  function gunStr(d){
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+  }
   function oneri(){
     if(!bas.value || !bit.value){ ipucu.textContent = varsayilan; return; }
     var d = new Date(bas.value + 'T00:00:00Z'), son = new Date(bit.value + 'T00:00:00Z'), n = 0;
     if(son < d){ ipucu.textContent = varsayilan; return; }
-    while(d <= son){ if(d.getUTCDay() !== 0) n++; d.setUTCDate(d.getUTCDate() + 1); }
-    if(n === 0){ ipucu.textContent = 'Seçilen aralıkta yalnız Pazar var; gün sayısını elle girin.'; gun.placeholder = ''; return; }
-    ipucu.textContent = 'Önerilen: ' + n + ' gün (Pazarlar hariç). Boş bırakırsanız bu sayı kullanılır; resmî tatil varsa elle düzeltin.';
+    while(d <= son){ if(d.getUTCDay() !== 0 && !tatilSet[gunStr(d)]) n++; d.setUTCDate(d.getUTCDate() + 1); }
+    if(n === 0){ ipucu.textContent = 'Seçilen aralıkta sayılacak gün yok (yalnız Pazar/resmî tatil); gün sayısını elle girin.'; gun.placeholder = ''; return; }
+    ipucu.textContent = 'Önerilen: ' + n + ' gün (Pazarlar ve resmî tatiller hariç). Boş bırakırsanız bu sayı kullanılır.';
     gun.placeholder = String(n).replace('.', ',');
   }
   bas.addEventListener('change', oneri); bit.addEventListener('change', oneri);

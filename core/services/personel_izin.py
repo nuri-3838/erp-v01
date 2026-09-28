@@ -7,8 +7,10 @@ hak edilen − (sisteme geçmeden önce kullanılan + sistemde girilmiş YILLIK 
 negatif olabilir (engellenmez, kırmızı gösterilir). Rapor/mazeret/ücretsiz/diğer izinler
 yalnız kayıttır, bakiyeyi düşürmez.
 
-Gün sayısı Pazar günleri hariç takvim günü olarak ÖNERİLİR; resmî tatil takvimi bilinçli
-YOKTUR (kullanıcı gün sayısını yarım gün adımlarıyla elle düzeltebilir).
+Gün sayısı Pazar günleri VE resmî tatiller (core.services.resmi_tatil) hariç takvim günü
+olarak ÖNERİLİR (4857 s. İş Kanunu md.56); kullanıcı gün sayısını yarım gün adımlarıyla elle
+düzeltebilir. Bu yalnız ÖNERİYİ etkiler — mevcut PersonelIzin kayıtlarının `gun` değeri
+sonradan tatil takvimi değişse bile YENİDEN hesaplanmaz.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from core.models import Personel, PersonelIzin
+from core.services.resmi_tatil import tatil_gunleri_seti
 from core.tarih import tamamlanan_yil, tr_bugun, yil_donumu
 
 SIFIR = Decimal("0.0")
@@ -118,11 +121,12 @@ def bakiyeler(personeller, *, bugun=None) -> dict:
 # === İzin kayıtları ===
 
 def pazarsiz_gun(baslangic: date, bitis: date) -> Decimal:
-    """baslangic..bitis (dahil) arası takvim günü eksi Pazar günleri. Resmî tatil DÜŞÜLMEZ."""
+    """baslangic..bitis (dahil) arası takvim günü eksi Pazar günleri VE resmî tatiller."""
+    tatiller = tatil_gunleri_seti(baslangic, bitis)
     n = 0
     d = baslangic
     while d <= bitis:
-        if d.weekday() != 6:
+        if d.weekday() != 6 and d not in tatiller:
             n += 1
         d += timedelta(days=1)
     return Decimal(n)
@@ -174,7 +178,8 @@ def _dogrula(personel, *, tur, baslangic, bitis, gun, aciklama) -> dict:
         gun = pazarsiz_gun(baslangic, bitis)
         if gun <= 0:
             raise PersonelIzinHatasi(
-                "Seçilen aralıkta sayılacak gün yok (yalnız Pazar). Gün sayısını elle girin.")
+                "Seçilen aralıkta sayılacak gün yok (yalnız Pazar/resmî tatil). "
+                "Gün sayısını elle girin.")
     else:
         gun = Decimal(gun)
         if gun <= 0:

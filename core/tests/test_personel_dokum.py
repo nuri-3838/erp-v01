@@ -153,8 +153,9 @@ class DokumXlsxTest(TestCase):
 
         beklenen_baslik = ["Sıra", "Ad Soyad", "TC Kimlik No", "İşe Giriş", "İşten Çıkış",
                            "Ücret (Net TL)", "Çalıştığı Gün", "Yarım Gün", "Pazar Çalışması",
-                           "Gelmedi (Devamsız)", "Yıllık İzin", "Mazeret İzni", "Ücretsiz İzin",
-                           "Rapor", "Diğer İzin", "Girilmemiş Gün", "Açıklama"]
+                           "Resmî Tatil", "Tatil Çalışması", "Gelmedi (Devamsız)", "Yıllık İzin",
+                           "Mazeret İzni", "Ücretsiz İzin", "Rapor", "Diğer İzin",
+                           "Girilmemiş Gün", "Açıklama"]
         baslik_satiri = 5
         gercek = [ws.cell(row=baslik_satiri, column=i + 1).value for i in range(len(beklenen_baslik))]
         self.assertEqual(gercek, beklenen_baslik)
@@ -166,12 +167,12 @@ class DokumXlsxTest(TestCase):
         self.assertEqual(tc_hucre.number_format, "@")
         self.assertEqual(ws.cell(row=veri_satiri, column=6).value, "45.000,00")
         self.assertEqual(ws.cell(row=veri_satiri, column=7).value, 1)      # Çalıştığı Gün
-        self.assertEqual(ws.cell(row=veri_satiri, column=10).value, 1)     # Gelmedi
+        self.assertEqual(ws.cell(row=veri_satiri, column=12).value, 1)     # Gelmedi
 
         toplam_satiri = veri_satiri + 1
         self.assertEqual(ws.cell(row=toplam_satiri, column=1).value, "TOPLAM")
         self.assertEqual(ws.cell(row=toplam_satiri, column=7).value, 1)
-        self.assertEqual(ws.cell(row=toplam_satiri, column=10).value, 1)
+        self.assertEqual(ws.cell(row=toplam_satiri, column=12).value, 1)
 
     def test_ay_tamamlanmadiysa_baslikta_belirtilir(self):
         personel_kur(ise_giris_tarihi=date(2020, 1, 1))

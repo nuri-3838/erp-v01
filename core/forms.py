@@ -2363,8 +2363,8 @@ class PersonelForm(forms.Form):
 
 
 class PersonelIzinForm(forms.Form):
-    """İNSAN KAYNAKLARI > İzin ekle/düzenle. Gün boş bırakılırsa sunucu Pazar günleri hariç
-    takvim gününü hesaplar (resmî tatil düşülmez). Düzenlemede personel değiştirilemez."""
+    """İNSAN KAYNAKLARI > İzin ekle/düzenle. Gün boş bırakılırsa sunucu Pazar günleri VE
+    resmî tatiller hariç takvim gününü hesaplar. Düzenlemede personel değiştirilemez."""
 
     personel = forms.ModelChoiceField(
         label="Personel", queryset=Personel.objects.none(), empty_label="— personel seç —")
@@ -2466,3 +2466,14 @@ class PersonelUcretForm(forms.Form):
         if cd.get("tip") == PersonelUcret.Tip.NET and cd.get("net_tutar") is None:
             self.add_error("net_tutar", "Net ücret tipinde tutar zorunlu.")
         return cd
+
+
+class ResmiTatilForm(forms.Form):
+    """İNSAN KAYNAKLARI > Resmî Tatil ekle/düzenle. Ad TR büyük harf + tarih benzersizliği
+    serviste (core.services.resmi_tatil) zorlanır."""
+
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    ad = forms.CharField(
+        label="Ad", max_length=100,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "ör. Cumhuriyet Bayramı"}))

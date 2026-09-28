@@ -11,8 +11,14 @@ daha önce girilmiş yoklamayı gölgeler, izin silinince yoklama geri görünü
 
 Aylık özet, gün sayımında: Pazar günü kayıt yoksa (ve izin de yoksa) günü saymaz — hafta tatili;
 Pazar günü kayıt varsa sayar. İzinli/Raporlu günlerde Pazar da sayılmaz (izin günü Pazar hariç
-hesaplanır — bkz. personel_izin.pazarsiz_gun). Resmî tatil takvimi bilinçli YOKTUR: tatil günleri
-"girilmemiş" görünebilir. Personelin işe giriş/çıkış aralığı ve bugünden sonrası sayılmaz.
+hesaplanır — bkz. personel_izin.pazarsiz_gun). Personelin işe giriş/çıkış aralığı ve bugünden
+sonrası sayılmaz.
+
+Resmî tatil (core.services.resmi_tatil) GÜN önceliğinde en üsttedir: tatil günü kayıt/izin
+yoksa "girilmemiş" SAYILMAZ (resmi_tatil sayacı); tatilde Geldi/Yarım Gün kaydı varsa
+tatil_calisma sayılır (hem Pazar hem tatilse yalnız tatil_calisma, pazar_calisma değil);
+tatil izin aralığındaysa izin SAYILMAZ, resmi_tatil sayılır. Tatil olmayan günlerde
+davranış yukarıdaki gibi AYNEN kalır.
 """
 from __future__ import annotations
 
@@ -26,6 +32,7 @@ from django.utils import timezone
 
 from core.models import Personel, PersonelDevam, PersonelIzin
 from core.services.personel import aktif_personeller
+from core.services.resmi_tatil import tatil_gunleri_seti
 from core.tarih import ay_araligi, tr_bugun
 
 DURUMLAR = tuple(PersonelDevam.Durum.values)
@@ -179,10 +186,16 @@ class AylikSatir:
     # Pazar günü Geldi/Yarım Gün kaydı olan gün sayısı — geldi/yarim'e AYRICA dahildir, bu yalnız
     # ek bir bilgi sayacıdır (puantaj dökümünde ayrı sütun için).
     pazar_calisma: int = 0
+    # Resmî tatil (bkz. core.services.resmi_tatil): kayıt/izin yoksa "girilmemiş" yerine bu sayılır.
+    resmi_tatil: int = 0
+    # Tatil günü Geldi/Yarım Gün kaydı — geldi/yarim'e AYRICA dahildir (pazar_calisma ile aynı
+    # desen); hem Pazar hem tatilse yalnız burası artar, pazar_calisma ARTMAZ.
+    tatil_calisma: int = 0
 
 
 _SAYAC_ALANLARI = ("geldi", "yarim", "gelmedi", "izinli", "raporlu", "girilmemis",
-                   "yillik", "ucretsiz", "mazeret", "rapor", "diger", "pazar_calisma")
+                   "yillik", "ucretsiz", "mazeret", "rapor", "diger", "pazar_calisma",
+                   "resmi_tatil", "tatil_calisma")
 _DURUM_SAYAC = {"GELDI": "geldi", "YARIM_GUN": "yarim", "GELMEDI": "gelmedi"}
 _IZIN_TUR_SAYAC = {
     PersonelIzin.Tur.YILLIK.value: "yillik",
@@ -212,6 +225,7 @@ def aylik_ozet(yil, ay, *, bugun=None, personel_ids=None) -> list:
             silindi=False, personel_id__in=ids, baslangic__lte=son, bitis__gte=ilk
     ).values_list("personel_id", "baslangic", "bitis", "tur"):
         izinler.setdefault(pid, []).append((b, e, tur))
+    tatiller = tatil_gunleri_seti(ilk, son)
 
     satirlar = []
     for p in personeller:
@@ -224,8 +238,22 @@ def aylik_ozet(yil, ay, *, bugun=None, personel_ids=None) -> list:
         gun = bas
         while gun <= bit:
             pazar = gun.weekday() == 6
+            tatil = gun in tatiller
             izin_turu = _izin_turu_sec(t for b, e, t in kisi_izinleri if b <= gun <= e)
-            if izin_turu:
+            if tatil:
+                # Tatil günü diğer her şeyden önceliklidir: izin varsa SAYILMAZ (resmi_tatil
+                # sayılır); gerçek bir Geldi/Yarım Gün kaydı varsa tatil_calisma; Gelmedi
+                # kaydı olduğu gibi sayılır; hiçbiri yoksa "girilmemiş" DEĞİL, resmi_tatil.
+                if izin_turu:
+                    sayac["resmi_tatil"] += 1
+                elif (p.pk, gun) in kayitlar:
+                    durum = kayitlar[(p.pk, gun)]
+                    sayac[_DURUM_SAYAC[durum]] += 1
+                    if durum in ("GELDI", "YARIM_GUN"):
+                        sayac["tatil_calisma"] += 1
+                else:
+                    sayac["resmi_tatil"] += 1
+            elif izin_turu:
                 if not pazar:
                     sayac["raporlu" if turet_durum("", izin_turu) == RAPORLU else "izinli"] += 1
                     sayac[_IZIN_TUR_SAYAC[izin_turu]] += 1
