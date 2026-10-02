@@ -2095,7 +2095,7 @@ class SatisBelgeBaslikForm(forms.Form):
         empty_label="— seçiniz —",
         initial=_secenek_varsayilan(TanimSecenegi.Kategori.TESLIM_SURESI))
     navlun_tutari = TRDecimalField(
-        label="Navlun Tutarı", basamak=2, required=False,
+        label="Navlun / FOB Masrafları", basamak=2, required=False,
         widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off",
                                       "placeholder": "0,00"}))
 

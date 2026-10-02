@@ -156,7 +156,7 @@
 
   <div class="liste-baslik">
     <span class="lb">{{ E.urun }}</span>
-    {% if navlun_var %}<span class="navlun-notu">{{ E.navlun_on }} <b>{{ yukleme_tipi_ad }}</b>{{ E.navlun_son }}</span>{% endif %}
+    {% if teslim_notu %}<span class="navlun-notu">{{ teslim_notu }}</span>{% endif %}
   </div>
 
   {% for k in kalemler %}

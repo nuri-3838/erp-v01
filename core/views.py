@@ -2829,6 +2829,57 @@ def _basamak_goster(stok):
     return str(stok.basamak_sayisi)
 
 
+def _teslim_sekli_notu(ts, dil, yukleme_sekli_ad, yukleme_tipi_ad, sehir_ad, ulke_ad, E):
+    """Teklif PDF'indeki ürün listesi üstü turuncu teslim şekli notu — Incoterm'e
+    (ts.yukleme_sekli.kod) göre dinamik. FOB/EXW'de SATICI'nın (bizim) yükleme limanı —
+    bkz. TanimSecenegi.ad, ör. "FOB İZMİR" — kullanılır, sonuna sabit ülke eklenir (bu
+    firma yalnız Türkiye'den sevkiyat yapıyor). CFR/CIF/DAP'ta navlun/sigorta ALICI'ya
+    kadar dahildir; varış konumu olarak ts.taraf (Cari/Aday Müşteri) şehir/ülkesi kullanılır
+    (bkz. satis_teklif_pdf_baglam). Tanınmayan/boş kod (admin yeni bir satır eklemiş ama
+    henüz kod atamamışsa) güvenli varsayılana düşer: eski statik "navlun dahil" cümlesi."""
+    if not ts.yukleme_sekli_id:
+        return ""
+    kod = ts.yukleme_sekli.kod
+    en = dil == "en"
+    if kod in ("FOB", "EXW"):
+        ulke = "Turkey" if en else "Türkiye"
+        if yukleme_tipi_ad:
+            if en:
+                return f"Prices are {yukleme_sekli_ad}, {ulke}, based on a full {yukleme_tipi_ad}."
+            return f"Fiyatlar {yukleme_sekli_ad}, {ulke}, {yukleme_tipi_ad} tam konteyner bazındadır."
+        if en:
+            return f"Prices are {yukleme_sekli_ad}, {ulke}."
+        return f"Fiyatlar {yukleme_sekli_ad}, {ulke} bazındadır."
+    if kod in ("CFR", "CIF"):
+        varis = f"{sehir_ad}, {ulke_ad}" if sehir_ad and ulke_ad else (sehir_ad or ulke_ad)
+        if not varis:
+            return ""
+        if en:
+            cumle = f"Sea freight to {varis} is included."
+            if kod == "CIF":
+                cumle += " Insurance is included."
+        else:
+            cumle = f"Fiyatlara {varis} varış limanına kadar deniz navlunu dahildir."
+            if kod == "CIF":
+                cumle += " Sigorta dahildir."
+        return cumle
+    if kod == "DAP":
+        varis = f"{sehir_ad}, {ulke_ad}" if sehir_ad and ulke_ad else (sehir_ad or ulke_ad)
+        if not varis:
+            return ""
+        if en:
+            return f"Freight to {varis} is included."
+        return f"Fiyatlara {varis} adresine kadar nakliye dahildir."
+    if kod == "NAKLIYE_DAHIL":
+        return "Domestic freight is included." if en else "Fiyatlara yurt içi nakliye dahildir."
+    if kod == "NAKLIYE_HARIC":
+        return ""
+    # Tanınmayan/boş kod — güvenli varsayılan: eski statik cümle (yükleme tipi varsa).
+    if yukleme_tipi_ad:
+        return f"{E['navlun_on']} {yukleme_tipi_ad}{E['navlun_son']}"
+    return ""
+
+
 def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
     """Satış Teklifi PDF şablonuna (satis_teklif_pdf.html) eklenecek bağlam — hem
     teklif_siparis_pdf view'ından hem testlerden çağrılır (context inşası tek yerde, iki
@@ -2843,7 +2894,14 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
     # Aday Müşteri (CRM lead) — ortak alan adları (ulke/sehir/unvan) sayesinde tek erişimle
     # ikisini de kapsar (bkz. TeklifSiparis.taraf).
     yurt_ici = not ts.taraf.ulke_id or ts.taraf.ulke.kod == "TR"
+    # navlun_var: yalnız KALEM FİYATI gösterimini kontrol eder (nakliye_dahil_fiyat mı,
+    # net_birim_fiyat + "(navlun hariç)" mi) — bu, teslim şekli notundan (aşağıda,
+    # yukleme_sekli'ye göre) bağımsız bir hesaplama yöntemi bayrağıdır, DEĞİŞMEDİ.
     navlun_var = ts.navlun_tutari is not None and bool(ts.yukleme_tipi_id)
+    yukleme_sekli_ad = ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else ""
+    yukleme_tipi_ad = ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else ""
+    ulke_ad = ts.taraf.ulke.ad_dil(dil) if ts.taraf.ulke_id else ""
+    sehir_ad = ts.taraf.sehir.ad_dil(dil) if ts.taraf.sehir_id else ""
     notlar = [E["not_birim_fiyat"]]
     if yurt_ici:
         notlar.append(E["not_kdv"])
@@ -2859,13 +2917,15 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
         notlar.append(E["not_gecerlilik_varsayilan"])
     return {
         "dil": dil, "E": E,
-        "yukleme_sekli_ad": ts.yukleme_sekli.ad_dil(dil) if ts.yukleme_sekli_id else "",
+        "yukleme_sekli_ad": yukleme_sekli_ad,
         "odeme_kosulu_ad": ts.odeme_kosulu.ad_dil(dil) if ts.odeme_kosulu_id else "",
-        "yukleme_tipi_ad": ts.yukleme_tipi.ad_dil(dil) if ts.yukleme_tipi_id else "",
+        "yukleme_tipi_ad": yukleme_tipi_ad,
         "teslim_suresi_ad": ts.teslim_suresi.ad_dil(dil) if ts.teslim_suresi_id else "",
-        "ulke_ad": ts.taraf.ulke.ad_dil(dil) if ts.taraf.ulke_id else "",
-        "sehir_ad": ts.taraf.sehir.ad_dil(dil) if ts.taraf.sehir_id else "",
+        "ulke_ad": ulke_ad,
+        "sehir_ad": sehir_ad,
         "navlun_var": navlun_var,
+        "teslim_notu": _teslim_sekli_notu(
+            ts, dil, yukleme_sekli_ad, yukleme_tipi_ad, sehir_ad, ulke_ad, E),
         "notlar": notlar,
         "firma": firma_servis.firma_bilgisi_getir(),
         "hazirlayan": kullanici.get_full_name() or kullanici.get_username(),

@@ -77,6 +77,8 @@
           <div class="bb-alan">
             <label for="{{ bform.navlun_tutari.id_for_label }}">{{ bform.navlun_tutari.label }}</label>
             {{ bform.navlun_tutari }}
+            <p class="yardim" style="margin:.2rem 0 0">Seçilen yükleme tipine göre ürün
+              birim fiyatlarına dağıtılır; PDF'te ayrı satır olarak görünmez.</p>
             {% for e in bform.navlun_tutari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         </div>

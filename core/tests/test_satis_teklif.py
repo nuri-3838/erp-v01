@@ -345,8 +345,8 @@ class SatisTeklifTest(TestCase):
         ts = self._son_teklif()
         for dil, beklenen in (
             ("tr", ["Teklif Detayı", "FOB İZMİR", "Fiyatlara", "40&#x27; HQ KONTEYNER",
-                   "navlunu dahildir", "2+2"]),
-            ("en", ["Quotation Details", "FOB Izmir", "Prices include freight for",
+                   "tam konteyner bazındadır", "2+2"]),
+            ("en", ["Quotation Details", "FOB Izmir", "based on a full",
                    "40&#x27; HQ Container", "Aluminium Platform Stepladder 2+1",
                    "Double-Sided Aluminium Stepladder 2+2", "Platform Height", "2+2"]),
         ):
@@ -356,6 +356,114 @@ class SatisTeklifTest(TestCase):
             html = render_to_string("core/satis_teklif_pdf.html", ctx)
             for m in beklenen:
                 self.assertIn(m, html, f"{dil}: {m} yok")
+
+    def test_teslim_sekli_notu_fob_exw_firma_konumu_ve_konteyner(self):
+        """FOB/EXW: nokta satıcının (bizim) yükleme limanı + sabit ülke — alıcının ülkesinden
+        bağımsız (bkz. migration 0143, Yükleme Şekli kod ataması)."""
+        from core.views import satis_teklif_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"), self._post_govde())
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam_tr = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIn(
+            "Fiyatlar FOB İZMİR, Türkiye, 40' HQ KONTEYNER tam konteyner bazındadır.",
+            baglam_tr["teslim_notu"])
+        baglam_en = satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)
+        self.assertIn(
+            "Prices are FOB Izmir, Turkey, based on a full 40' HQ Container.",
+            baglam_en["teslim_notu"])
+
+        exw = TanimSecenegi.objects.get(kategori="YUKLEME_SEKLI", ad="EXW İZMİR (FABRİKA TESLİM)")
+        ts.yukleme_sekli = exw
+        ts.save(update_fields=["yukleme_sekli"])
+        baglam_exw = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIn("Fiyatlar EXW İZMİR (FABRİKA TESLİM), Türkiye,", baglam_exw["teslim_notu"])
+
+    def test_teslim_sekli_notu_cfr_cif_alicinin_varis_limani(self):
+        """CFR/CIF: navlun (CIF'te + sigorta) ALICI'nın ülke/şehrine kadar dahil."""
+        from core.views import satis_teklif_pdf_baglam
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN", ad_en="Bulgaria")
+        from core.models import Sehir
+        sofya = Sehir.objects.create(ulke=bg, ad="SOFYA", ad_en="Sofia")
+        self.cari.ulke, self.cari.sehir = bg, sofya
+        self.cari.save(update_fields=["ulke", "sehir"])
+        cfr = TanimSecenegi.objects.get(kategori="YUKLEME_SEKLI", ad="CFR VARIŞ LİMANI")
+        cif = TanimSecenegi.objects.get(kategori="YUKLEME_SEKLI", ad="CIF VARIŞ LİMANI")
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"),
+                         self._post_govde(yukleme_sekli=cfr.pk))
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam_tr = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIn("Fiyatlara SOFYA, BULGARİSTAN varış limanına kadar deniz navlunu dahildir.",
+                      baglam_tr["teslim_notu"])
+        self.assertNotIn("Sigorta dahildir.", baglam_tr["teslim_notu"])
+        baglam_en = satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)
+        self.assertIn("Sea freight to Sofia, Bulgaria is included.", baglam_en["teslim_notu"])
+
+        ts.yukleme_sekli = cif
+        ts.save(update_fields=["yukleme_sekli"])
+        baglam_cif = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIn("Sigorta dahildir.", baglam_cif["teslim_notu"])
+        baglam_cif_en = satis_teklif_pdf_baglam(ts, kalemler, "en", self.yon)
+        self.assertIn("Insurance is included.", baglam_cif_en["teslim_notu"])
+
+    def test_teslim_sekli_notu_dap_ve_yurt_ici(self):
+        from core.views import satis_teklif_pdf_baglam
+        bg = Ulke.objects.create(kod="BG", ad="BULGARİSTAN")
+        from core.models import Sehir
+        sofya = Sehir.objects.create(ulke=bg, ad="SOFYA")
+        self.cari.ulke, self.cari.sehir = bg, sofya
+        self.cari.save(update_fields=["ulke", "sehir"])
+        dap = TanimSecenegi.objects.get(kategori="YUKLEME_SEKLI", ad="DAP ALICI ADRESİ")
+        nak_dahil = TanimSecenegi.objects.get(
+            kategori="YUKLEME_SEKLI", ad="NAKLİYE DAHİL (YURT İÇİ)")
+        nak_haric = TanimSecenegi.objects.get(
+            kategori="YUKLEME_SEKLI", ad="NAKLİYE HARİÇ (YURT İÇİ)")
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"),
+                         self._post_govde(yukleme_sekli=dap.pk))
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIn("Fiyatlara SOFYA, BULGARİSTAN adresine kadar nakliye dahildir.",
+                      baglam["teslim_notu"])
+
+        ts.yukleme_sekli = nak_dahil
+        ts.save(update_fields=["yukleme_sekli"])
+        self.assertEqual(
+            satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)["teslim_notu"],
+            "Fiyatlara yurt içi nakliye dahildir.")
+
+        ts.yukleme_sekli = nak_haric
+        ts.save(update_fields=["yukleme_sekli"])
+        self.assertEqual(
+            satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)["teslim_notu"], "")
+
+    def test_teslim_sekli_notu_tanimsiz_kod_guvenli_varsayilana_duser(self):
+        """Admin yeni bir Yükleme Şekli satırı eklerse (kod boş) — eski statik cümleye
+        düşer, yoksa teklif PDF'i sessizce yanıltıcı/boş kalmaz."""
+        from core.views import satis_teklif_pdf_baglam
+        yeni = TanimSecenegi.objects.create(kategori="YUKLEME_SEKLI", ad="DDP ALICI DEPOSU")
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"),
+                         self._post_govde(yukleme_sekli=yeni.pk))
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertIn("40' HQ KONTEYNER", baglam["teslim_notu"])
+        self.assertIn("dahildir", baglam["teslim_notu"])
+
+    def test_teslim_sekli_notu_yukleme_sekli_yoksa_bos(self):
+        from core.views import satis_teklif_pdf_baglam
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:satis_teklif_ekle"),
+                         self._post_govde(yukleme_sekli=""))
+        ts = self._son_teklif()
+        kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok"))
+        baglam = satis_teklif_pdf_baglam(ts, kalemler, "tr", self.yon)
+        self.assertEqual(baglam["teslim_notu"], "")
 
     def test_pdf_materyal_ve_hs_kodu_gorunur(self):
         """Materyal (TR/EN, dile göre) ve H/S Kodu (dilden bağımsız, salt kod) teknik
