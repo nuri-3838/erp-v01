@@ -4,17 +4,62 @@
 {% block sayfa_adi %}Hesap Planı{% endblock %}
 
 {% block content %}
+{% include "core/_ik_stil.html" %}
 <style>
-  /* Hesap planı ağacı — seviyeye göre koyuluk (üst koyu/kalın → alt daha açık) */
-  tr.hp-sev-0 > td { font-weight:700; color:var(--lacivert); background:rgba(21,41,77,.055); }
+  /* Hesap planı ağacı — seviyeye göre koyuluk + gerçek girinti (üst koyu/kalın → alt daha açık) */
+  tr.hp-sev-0 > td { font-weight:700; color:var(--lacivert); background:rgba(21,41,77,.045); }
   tr.hp-sev-1 > td { font-weight:600; color:var(--lacivert-acik); }
   tr.hp-sev-2 > td { font-weight:400; color:var(--metin-soluk); }
+  tr.hp-sev-0:hover > td { background:rgba(21,41,77,.08); }
+  tr.hp-sev-1:hover > td, tr.hp-sev-2:hover > td { background:rgba(240,124,0,.05); }
   /* İşlem hücresindeki bağlar/butonlar kendi renklerini korusun */
   tr.hp-sev-0 > td.hesap-islem, tr.hp-sev-1 > td.hesap-islem,
   tr.hp-sev-2 > td.hesap-islem { color:var(--metin); }
+  .hp-tablo td.hp-kod { white-space:nowrap; }
+  .hp-tablo tr.hp-sev-1 td.hp-kod { padding-left:2.2rem; }
+  .hp-tablo tr.hp-sev-2 td.hp-kod { padding-left:3.5rem; }
+  .hp-tablo tr.hp-sev-1 td.hp-kod::before { content:"↳ "; opacity:.5; }
+  .hp-tablo tr.hp-sev-2 td.hp-kod::before { content:"↳ "; opacity:.5; }
+  .rozet-bilanco { background:rgba(21,41,77,.1); color:var(--lacivert); }
+  .rozet-gelir { background:rgba(10,125,40,.1); color:var(--ok); }
+  .rozet-maliyet { background:rgba(240,124,0,.12); color:var(--turuncu-koyu); }
 </style>
-<div class="sayfa-ust">
+<div class="ik-ust">
   <h1 class="ust-baslik"><span class="emoji">📚</span>Hesap Planı</h1>
+</div>
+
+<div class="ik-panel">
+  <form method="get" class="ik-arama-cubuk">
+    <div class="ik-alan-grup ik-arama-kutu">
+      <label for="hp-ara">Ara</label>
+      <span class="ik-arama-ikon">🔍</span>
+      <input type="text" id="hp-ara" name="ara" value="{{ ara }}"
+             placeholder="Hesap kodu veya adı…" autocomplete="off">
+    </div>
+    <div class="ik-alan-grup">
+      <label for="hp-grup">Rapor Grubu</label>
+      <select id="hp-grup" name="grup">
+        <option value="">Tümü</option>
+        {% for v, ad in rapor_gruplari %}
+          <option value="{{ v }}" {% if grup == v %}selected{% endif %}>{{ ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-alan-grup">
+      <label for="hp-durum">Durum</label>
+      <select id="hp-durum" name="durum">
+        <option value="hepsi" {% if durum == "hepsi" %}selected{% endif %}>Tümü</option>
+        <option value="aktif" {% if durum == "aktif" %}selected{% endif %}>Aktif</option>
+        <option value="pasif" {% if durum == "pasif" %}selected{% endif %}>Pasif</option>
+      </select>
+    </div>
+    <div class="ik-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      {% if filtre_aktif %}
+        <a class="iptal-bag" href="{% url 'core:hesap_plani' %}">Temizle</a>
+      {% endif %}
+    </div>
+  </form>
 </div>
 
 <details class="kart-form" {% if ust %}open{% endif %}>
@@ -78,15 +123,22 @@
 </form>
 {% endif %}
 
+<p class="sayfa-alt">{{ agac|length }} hesap.</p>
+
 <div class="tablo-kapsayici genis">
-<table>
-  <thead><tr><th>Kod</th><th>Hesap Adı</th><th>Tür</th><th>İşlem</th></tr></thead>
+<table class="hp-tablo">
+  <thead><tr><th>Kod</th><th>Hesap Adı</th><th>Grup</th><th>Tür</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for h in agac %}
       <tr class="hp-sev-{{ h.seviye }}">
-        <td class="sev-{{ h.seviye }} mono">{{ h.kod }}</td>
-        <td>{{ h.ad }}</td>
-        <td>{% if h.yaprak %}<span class="yardim">yaprak</span>{% else %}<strong>üst</strong>{% endif %}</td>
+        <td class="hp-kod mono">{{ h.kod }}</td>
+        <td>{{ h.ad }}{% if not h.aktif %} <span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
+        <td>
+          {% if h.grup == "BILANCO" %}<span class="rozet rozet-bilanco">{{ h.grup_ad }}</span>
+          {% elif h.grup == "GELIR_TABLOSU" %}<span class="rozet rozet-gelir">{{ h.grup_ad }}</span>
+          {% else %}<span class="rozet rozet-maliyet">{{ h.grup_ad }}</span>{% endif %}
+        </td>
+        <td>{% if h.yaprak %}<span class="yardim">yaprak</span>{% else %}<span class="rozet rozet-notr">üst</span>{% endif %}</td>
         <td class="hesap-islem">
           {% if h.seviye < 2 %}<a href="?ust={{ h.kod }}">+ Alt</a>{% endif %}
           <a href="?duzenle={{ h.kod }}">Ad</a>
@@ -99,7 +151,8 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="4" class="yardim">Hesap yok.</td></tr>
+      <tr><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if filtre_aktif %}🔍 Bu süzgeçle eşleşen hesap yok.{% else %}Hesap yok.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>

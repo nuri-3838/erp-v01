@@ -250,6 +250,34 @@ class HesapPlaniEkranTest(TestCase):
         self.client.post(reverse("core:hesap_sil", args=["100"]))
         self.assertFalse(HesapPlani.objects.get(hesap_kodu="100").silindi)
 
+    def test_ara_filtresi_kod_veya_adla_eslesir(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:hesap_plani"), {"ara": "kasa"})
+        kodlar = [h["kod"] for h in r.context["agac"]]
+        self.assertIn("100", kodlar)                 # "Kasa"
+        self.assertNotIn("320", kodlar)               # "Satıcılar" eşleşmiyor
+
+    def test_grup_filtresi_calisir(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:hesap_plani"), {"grup": "MALIYET"})
+        kodlar = [h["kod"] for h in r.context["agac"]]
+        self.assertTrue(kodlar)
+        for h in r.context["agac"]:
+            self.assertEqual(h["grup"], "MALIYET")
+
+    def test_durum_pasif_filtresi_calisir(self):
+        self.client.force_login(self.yetkili)
+        HesapPlani.objects.filter(hesap_kodu="320").update(aktif=False)
+        r = self.client.get(reverse("core:hesap_plani"), {"durum": "pasif"})
+        kodlar = [h["kod"] for h in r.context["agac"]]
+        self.assertEqual(kodlar, ["320"])
+
+    def test_filtre_yokken_tum_hesaplar_gorunur(self):
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:hesap_plani"))
+        self.assertFalse(r.context["filtre_aktif"])
+        self.assertEqual(len(r.context["agac"]), HesapPlani.objects.filter(silindi=False).count())
+
 
 class HiyerarsiKoddanTest(TestCase):
     """ust_hesap FK kaldırıldı; hiyerarşi tek kaynaktan (kod). Türetme doğru mu?"""

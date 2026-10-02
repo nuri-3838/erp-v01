@@ -483,7 +483,9 @@ RAPOR_KALEMLERI = [
 
 @ekran_gerekli("hesap_plani")
 def hesap_plani(request):
-    # Üst (ara/ana) hesap kodları KODDAN türetilir (ayrı ust_hesap FK yok).
+    # Üst (ara/ana) hesap kodları KODDAN türetilir (ayrı ust_hesap FK yok). Bu küme TÜM
+    # kayıtlardan (filtre UYGULANMADAN) çıkarılır — filtrelenmiş görünümde bile "üst/yaprak"
+    # ve "silinebilir" durumu gerçek veriyle tutarlı kalsın diye.
     ust_kodlari = set()
     for k in (HesapPlani.objects.filter(silindi=False)
               .values_list("hesap_kodu", flat=True)):
@@ -499,7 +501,24 @@ def hesap_plani(request):
             "seviye": h.hesap_kodu.count("."),
             "yaprak": not ust,
             "silinebilir": (not ust) and (h.hesap_kodu not in yevmiyeli),
+            "grup": h.rapor_grubu, "grup_ad": h.get_rapor_grubu_display(),
+            "aktif": h.aktif,
         })
+
+    ara = (request.GET.get("ara") or "").strip()
+    grup = (request.GET.get("grup") or "").strip()
+    durum = request.GET.get("durum") or "hepsi"
+    if ara:
+        ara_lower = ara.lower()
+        agac = [h for h in agac
+                if ara_lower in h["kod"].lower() or ara_lower in h["ad"].lower()]
+    if grup in HesapPlani.RaporGrubu.values:
+        agac = [h for h in agac if h["grup"] == grup]
+    if durum == "aktif":
+        agac = [h for h in agac if h["aktif"]]
+    elif durum == "pasif":
+        agac = [h for h in agac if not h["aktif"]]
+
     ust_kodu = request.GET.get("ust")
     ust_hesap = (HesapPlani.objects.filter(hesap_kodu=ust_kodu, silindi=False).first()
                  if ust_kodu else None)
@@ -512,6 +531,8 @@ def hesap_plani(request):
         "duzenlenecek": duzenlenecek,
         "rapor_gruplari": HesapPlani.RaporGrubu.choices,
         "rapor_kalemleri": RAPOR_KALEMLERI,
+        "ara": ara, "grup": grup, "durum": durum,
+        "filtre_aktif": bool(ara or grup or durum != "hepsi"),
     })
 
 
