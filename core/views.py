@@ -2002,6 +2002,7 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     durum = request.GET.get("durum") or ""
     if durum not in durum_secenekleri:
         durum = ""
+    ulke_id = (request.GET.get("ulke") or "").strip() if sat_teklif else ""
     tarih_bas = _ts_tarih_coz(request.GET.get("bas"))
     tarih_bit = _ts_tarih_coz(request.GET.get("bit"))
     try:
@@ -2036,6 +2037,20 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         temel = temel.filter(
             Q(cari__unvan__contains=buyuk) | Q(cari__kod__icontains=ara)
             | Q(aday_musteri__unvan__contains=buyuk) | Q(belge_no__icontains=ara))
+    # Ülke filtre seçenekleri yalnız bu listede fiilen kullanılan ülkelerden oluşur (bkz.
+    # core.views.cariler'deki aynı desen) — yalnız Satış Teklifi'nde anlamlı.
+    ulkeler = None
+    if sat_teklif:
+        ulkeler = Ulke.objects.filter(
+            Q(pk__in=temel.exclude(cari__ulke=None).values_list("cari__ulke_id", flat=True))
+            | Q(pk__in=temel.exclude(aday_musteri__ulke=None)
+                .values_list("aday_musteri__ulke_id", flat=True))
+        ).order_by("ad")
+        if ulke_id.isdigit():
+            temel = temel.filter(
+                Q(cari__ulke_id=ulke_id) | Q(aday_musteri__ulke_id=ulke_id))
+        else:
+            ulke_id = ""
     if tarih_bas:
         temel = temel.filter(tarih__gte=tarih_bas)
     if tarih_bit:
@@ -2076,6 +2091,7 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         "toplam": sum(sayimlar.values()), "durum_sekmeleri": durum_sekmeleri,
         "sabit_qs": sabit_qs.urlencode(), "sekme_qs": sekme_qs.urlencode(),
         "donustu_etiket": donustu_etiket, "sat_teklif": sat_teklif,
+        "ulkeler": ulkeler, "ulke_id": ulke_id,
         "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
 
 

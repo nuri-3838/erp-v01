@@ -942,6 +942,70 @@ class TeklifSiparisViewTest(TestCase):
         self.assertContains(r, "Ülke")
         self.assertContains(r, "ALMANYA")
 
+    def test_liste_sutun_sirasi_belge_no_tarih_cari_ulke_durum(self):
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklifleri"))
+        html = r.content.decode("utf-8")
+        baslik_sirasi = [html.index(">Belge No<"), html.index(">Tarih<"),
+                         html.index(">Cari<"), html.index(">Ülke<"), html.index(">Durum<")]
+        self.assertEqual(baslik_sirasi, sorted(baslik_sirasi))
+
+    def test_liste_aday_musteri_satirinda_alt_etiket_yok(self):
+        """Kullanıcı isteği: Cari isminin altında 'Aday Müşteri' alt yazısı görünmesin."""
+        from core.models import AdayMusteri, AdayAsamaTanim, AdayTipTanim
+        from core.tests.aday_yardimci import varsayilan_kaynak_id
+        from core.services.aday import aday_musteri_olustur
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        aday = aday_musteri_olustur(
+            unvan="LISTE ADAY TEST", para_birimi="TRY",
+            tip_id=AdayTipTanim.objects.get(sistem_kodu="ADAY").pk,
+            asama_id=AdayAsamaTanim.objects.get(sistem_kodu="YENI").pk,
+            kategori_id=varsayilan_kaynak_id(), kullanici=self.yon)
+        teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", aday_musteri_id=aday.pk,
+            tarih=__import__("datetime").date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertContains(r, "LISTE ADAY TEST")
+        # "Aday Müşteri" tek başına sidebar menüsündeki "Aday Müşteriler" linkinin İÇİNDE de
+        # geçtiği için alt dize kontrolü yanlış pozitif verir — eski alt-etiket div'inin
+        # artık hiç üretilmediğini doğrudan kontrol ediyoruz.
+        self.assertNotContains(r, '<div class="alt">Aday Müşteri</div>')
+
+    def test_liste_ulke_filtresi_calisir(self):
+        import datetime
+        from core.models import Ulke
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        de = Ulke.objects.create(kod="DE", ad="ALMANYA")
+        fr = Ulke.objects.create(kod="FR", ad="FRANSA")
+        _hesap("120.09", "FRANSIZ MÜŞTERİ HESABI")
+        cari2 = Cari.objects.create(kod="C-ULKE2", unvan="FRANSIZ MÜŞTERİ",
+                                    muhasebe_kodu="120.09", ulke=fr,
+                                    created_by=self.yon, updated_by=self.yon)
+        self.cari.ulke = de
+        self.cari.save(update_fields=["ulke"])
+        t_de = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk, tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        t_fr = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=cari2.pk, tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklifleri"), {"ulke": de.pk})
+        self.assertContains(r, t_de.belge_no)
+        self.assertNotContains(r, t_fr.belge_no)
+
     def test_bos_kalemle_kaydedilmez(self):
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:satis_teklif_ekle"), {
