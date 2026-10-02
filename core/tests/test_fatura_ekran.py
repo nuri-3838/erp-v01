@@ -235,3 +235,30 @@ class FaturaEkranTest(TestCase):
         r = self.client.post(reverse("core:alis_fatura_ekle"), self._post_data(miktar="7"))
         self.assertEqual(r.status_code, 302)
         self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("0.000"))
+
+    def test_aciklama_kaydedilir_ve_detayda_gosterilir(self):
+        self.client.force_login(self.yon)
+        data = self._post_data()
+        data["aciklama"] = "Nakliye bedeli ayrıca faturalanacak"
+        self.client.post(reverse("core:alis_fatura_ekle"), data)
+        f = Fatura.objects.get(fatura_no="A-1")
+        self.assertEqual(f.aciklama, "Nakliye bedeli ayrıca faturalanacak")
+        d = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
+        self.assertContains(d, "Nakliye bedeli ayrıca faturalanacak")
+
+    def test_aciklama_bos_birakilabilir(self):
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
+        self.assertEqual(r.status_code, 302)
+        f = Fatura.objects.get(fatura_no="A-1")
+        self.assertEqual(f.aciklama, "")
+
+    def test_duzenlemede_aciklama_guncellenir(self):
+        self.client.force_login(self.yon)
+        self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
+        f = Fatura.objects.get(fatura_no="A-1")
+        data = self._post_data(miktar="20")
+        data["aciklama"] = "Güncellendi"
+        self.client.post(reverse("core:fatura_duzenle", args=[f.pk]), data)
+        f.refresh_from_db()
+        self.assertEqual(f.aciklama, "Güncellendi")

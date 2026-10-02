@@ -12,8 +12,8 @@
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
   .satir-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
-    font-size:.95rem; padding:.2rem .5rem; }
-  .satir-sil:hover { color:var(--hata); }
+    font-size:.95rem; padding:.2rem .5rem; border-radius:8px; transition:background .12s,color .12s; }
+  .satir-sil:hover { color:var(--hata); background:rgba(200,40,60,.08); }
   .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
   .kur-etiket.hata { color:var(--hata); }
   .tl-etiket { display:block; font-size:.72rem; font-weight:400; color:var(--metin-soluk);
@@ -29,6 +29,26 @@
   #fatura-satir-tablo.gider-modu .th-hesap { display:inline; }
   .kdv-secim { margin-bottom:.3rem; }
   .kdv-secim select { width:100%; font-size:.82rem; }
+
+  /* Fatura Bilgileri — kart tabanlı düzen (bkz. satis_teklif_ekle.html .bb-* deseni) */
+  .bb-blok { display:flex; flex-direction:column; gap:.85rem; }
+  .bb-satir { display:flex; gap:.9rem; flex-wrap:wrap; }
+  .bb-alan { flex:1 1 0; min-width:190px; background:rgba(255,255,255,.6);
+    border:1px solid var(--cizgi); border-top:3px solid var(--lacivert); border-radius:14px;
+    padding:.7rem .95rem .85rem; }
+  .bb-alan.bb-vurgu { border-top-color:var(--turuncu); }
+  .bb-alan.bb-tam { flex:1 1 100%; }
+  .bb-alan label { display:block; font-size:.7rem; margin-bottom:.35rem; color:var(--metin-soluk);
+    font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+  .bb-alan input, .bb-alan select, .bb-alan textarea { background:#fff; }
+  .bb-alan textarea { resize:vertical; min-height:2.3rem; }
+  @media (max-width:680px){ .bb-alan { min-width:100%; } }
+
+  /* Kalemler tablosu — hover + okunabilirlik */
+  #fatura-satir-tablo tbody tr:hover { background:rgba(10,40,70,.035); }
+  #fatura-satir-tablo tfoot th.deger { font-weight:800; color:var(--lacivert); }
+  #fatura-satir-tablo tfoot tr:last-child th { font-size:1.02rem; color:var(--turuncu-koyu); }
+  .satir-alt { margin-top:.7rem; }
 </style>
 <div class="form-kapsa">
   <div class="form-ust">
@@ -44,15 +64,56 @@
     {% csrf_token %}
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Fatura Bilgileri</h2>
-      <div class="izgara">
-        {% for field in fform %}
-          <div class="alan">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% if field.name == 'kur' %}<span class="kur-etiket" id="kur-etiket"></span>{% endif %}
-            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+      <div class="bb-blok">
+        <div class="bb-satir">
+          <div class="bb-alan bb-vurgu">
+            <label for="{{ fform.tip.id_for_label }}">{{ fform.tip.label }}</label>
+            {{ fform.tip }}
+            {% for e in fform.tip.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
-        {% endfor %}
+          <div class="bb-alan bb-vurgu">
+            <label for="{{ fform.cari.id_for_label }}">{{ fform.cari.label }}</label>
+            {{ fform.cari }}
+            {% for e in fform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ fform.tarih.id_for_label }}">{{ fform.tarih.label }}</label>
+            {{ fform.tarih }}
+            {% for e in fform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan">
+            <label for="{{ fform.fatura_no.id_for_label }}">{{ fform.fatura_no.label }}</label>
+            {{ fform.fatura_no }}
+            {% for e in fform.fatura_no.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan alan">
+            <label for="{{ fform.depo.id_for_label }}">{{ fform.depo.label }}</label>
+            {{ fform.depo }}
+            {% for e in fform.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan">
+            <label for="{{ fform.para_birimi.id_for_label }}">{{ fform.para_birimi.label }}</label>
+            {{ fform.para_birimi }}
+            {% for e in fform.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan alan">
+            <label for="{{ fform.kur.id_for_label }}">{{ fform.kur.label }}</label>
+            {{ fform.kur }}
+            <span class="kur-etiket" id="kur-etiket"></span>
+            {% for e in fform.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="bb-satir">
+          <div class="bb-alan bb-tam">
+            <label for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
+            {{ fform.aciklama }}
+            {% for e in fform.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
       </div>
     </section>
 

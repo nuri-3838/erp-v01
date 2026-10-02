@@ -6379,6 +6379,7 @@ def _fatura_ekle(request, yon, baslik):
                     kur=fform.cleaned_data.get("kur"),
                     depo_id=(fform.cleaned_data["depo"].pk
                              if fform.cleaned_data.get("depo") else None),
+                    aciklama=fform.cleaned_data.get("aciklama", ""),
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
@@ -6432,6 +6433,7 @@ def fatura_duzenle(request, pk):
                     para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
                     kur=fform.cleaned_data.get("kur"),
                     depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
+                    aciklama=fform.cleaned_data.get("aciklama", ""),
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
@@ -6452,7 +6454,7 @@ def fatura_duzenle(request, pk):
             # TASLAK'ta fatura.kur hep "1" yer tutucusudur (henüz gerçek hesaplanmadı) —
             # forma taşınırsa yanıltıcı olur; JS zaten taze bir önizleme dolduracak.
             "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
-            "depo": fatura.depo_id})
+            "depo": fatura.depo_id, "aciklama": fatura.aciklama})
         ilk = [{"stok": s.stok_id, "hesap": s.hesap_id, "kdv": s.kdv_id, "miktar": s.miktar,
                 "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False).select_related("stok", "hesap")]

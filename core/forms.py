@@ -1594,6 +1594,9 @@ class FaturaForm(forms.Form):
     depo = forms.ModelChoiceField(
         label="Depo", queryset=Depo.objects.none(), required=False,
         empty_label="— depo seç —")
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=300, required=False,
+        widget=forms.Textarea(attrs={"rows": 2}))
 
     def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1477,6 +1477,7 @@ class Fatura(TemelModel):
     depo = models.ForeignKey(
         "Depo", verbose_name="depo", null=True, blank=True,
         on_delete=models.PROTECT, related_name="faturalar")
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
 
     class Meta:
         db_table = "fatura"
