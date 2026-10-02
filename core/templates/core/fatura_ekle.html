@@ -95,13 +95,12 @@
           </div>
         </div>
         <div class="bb-satir">
-          {% if yon == "ALIS" %}
           <div class="bb-alan">
             <label for="{{ fform.vade_tarihi.id_for_label }}">{{ fform.vade_tarihi.label }}</label>
             {{ fform.vade_tarihi }}
+            <span class="yardim" id="vade-oto-etiket"></span>
             {% for e in fform.vade_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
-          {% endif %}
           <div class="bb-alan">
             <label for="{{ fform.para_birimi.id_for_label }}">{{ fform.para_birimi.label }}</label>
             {{ fform.para_birimi }}
@@ -188,7 +187,9 @@
   var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
   var KUR_API = '{% url "core:kur_usd_api" %}';
+  var VADE_API_TMPL = '{% url "core:cari_vade_api" 999999 %}';   // 999999 -> gerçek cari id
   var kurElleDegisti = false;
+  var vadeElleDegisti = false;
   var tablo = document.getElementById('fatura-satir-tablo');
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
@@ -287,6 +288,32 @@
       })
       .catch(function(){ if(etiket) etiket.textContent=''; hesapla(); });
   }
+  // Cari ya da fatura tarihi değişince vade tarihini carinin ödeme koşuluna göre doldurur.
+  // Kullanıcı vadeyi elle değiştirdiyse (vadeElleDegisti) bir daha ÜZERİNE YAZMAZ — bu bayrak
+  // sayfa açılışında vade zaten DOLU geldiyse (düzenleme ekranı) de baştan true olur, böylece
+  // mevcut faturalardaki vade hiç dokunulmadan korunur.
+  function vadeDoldur(){
+    var vadeInp=document.getElementById('id_vade_tarihi');
+    if(!vadeInp || vadeElleDegisti) return;
+    var cariSec=document.getElementById('id_cari');
+    var tarihInp=document.querySelector('[name="tarih"]');
+    var etiket=document.getElementById('vade-oto-etiket');
+    if(!cariSec || !cariSec.value || !tarihInp || !tarihInp.value){
+      if(etiket) etiket.textContent=''; return;
+    }
+    var url=VADE_API_TMPL.replace('999999', encodeURIComponent(cariSec.value))
+      + '?tarih=' + encodeURIComponent(tarihInp.value);
+    fetch(url)
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(vadeElleDegisti) return;      // fetch dönene kadar kullanıcı elle yazmış olabilir
+        if(j.vade_tarihi){
+          vadeInp.value = j.vade_tarihi;
+          if(etiket) etiket.textContent = 'Carinin ödeme koşulundan otomatik dolduruldu.';
+        } else if(etiket) etiket.textContent = '';
+      })
+      .catch(function(){});
+  }
   function tedarikciGuncelle(row){
     var sel=el(row,'-stok'); var etiket=row.querySelector('.tedarikci-etiket');
     if(!etiket) return;
@@ -321,6 +348,13 @@
   if(cariSec) cariSec.addEventListener('change', kurCek);
   var kurInp=document.getElementById('id_kur');
   if(kurInp) kurInp.addEventListener('input', function(){ kurElleDegisti=true; });
+  var vadeInp=document.getElementById('id_vade_tarihi');
+  if(vadeInp){
+    if(vadeInp.value) vadeElleDegisti = true;   // düzenlemede vade zaten doluysa dokunma
+    vadeInp.addEventListener('input', function(){ vadeElleDegisti=true; });
+  }
+  if(cariSec) cariSec.addEventListener('change', vadeDoldur);
+  if(tarihInp) tarihInp.addEventListener('change', vadeDoldur);
   document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
   modUygula();
   kurCek();

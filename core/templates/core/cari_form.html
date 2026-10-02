@@ -80,6 +80,9 @@
         <div class="alan" id="kur-tipi-alan"><label for="{{ form.kur_tipi.id_for_label }}">{{ form.kur_tipi.label }}</label>{{ form.kur_tipi }}</div>
         <div class="alan"><label for="{{ form.kredi_limiti.id_for_label }}">{{ form.kredi_limiti.label }}</label>{{ form.kredi_limiti }}{% for e in form.kredi_limiti.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.iskonto_yuzdesi.id_for_label }}">{{ form.iskonto_yuzdesi.label }}</label>{{ form.iskonto_yuzdesi }}{% for e in form.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.odeme_kosulu.id_for_label }}">{{ form.odeme_kosulu.label }}</label>{{ form.odeme_kosulu }}
+          <p class="yardim">Doluysa alış/satış faturası girerken vade tarihi fatura tarihine göre otomatik önerilir.</p></div>
+        <div class="alan" id="odeme-gunu-alan"><label for="{{ form.odeme_gunu.id_for_label }}">{{ form.odeme_gunu.label }}</label>{{ form.odeme_gunu }}{% for e in form.odeme_gunu.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
       </div>
     </section>
 
@@ -103,6 +106,17 @@
     if(kurTipiAlan) kurTipiAlan.style.display = (pbSec && pbSec.value === 'TRY') ? 'none' : '';
   }
   if(pbSec) pbSec.addEventListener('change', guncelle);
+  guncelle();
+})();
+(function(){
+  // Gün alanı yalnız GÜN_SONRA/SONRAKİ_AY_GÜNÜ seçiliyken anlamlı (PEŞİN'de/boşken gizli).
+  var kosulSec = document.getElementById('{{ form.odeme_kosulu.id_for_label }}');
+  var gunAlan = document.getElementById('odeme-gunu-alan');
+  function guncelle(){
+    var gerekli = kosulSec && (kosulSec.value === 'GUN_SONRA' || kosulSec.value === 'SONRAKI_AY_GUNU');
+    if(gunAlan) gunAlan.style.display = gerekli ? '' : 'none';
+  }
+  if(kosulSec) kosulSec.addEventListener('change', guncelle);
   guncelle();
 })();
 </script>

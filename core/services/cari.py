@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+import calendar
+import datetime
 import os
 
 from django.db.models import Prefetch
@@ -103,10 +105,55 @@ def _telefon_isle(deger, iso2, etiket, uyarilar):
     return sonuc
 
 
+def _odeme_kosulu_dogrula(odeme_kosulu, odeme_gunu):
+    """(odeme_kosulu, odeme_gunu) normalize edilmiş çiftini döner. Boş koşul -> (None, None).
+    PEŞİN -> gün anlamsız, sessizce temizlenir. GÜN_SONRA/SONRAKİ_AY_GÜNÜ -> gün zorunlu +
+    aralık kontrolü (bkz. Cari.clean() ile aynı kural, servis katmanında ayrıca zorlanır)."""
+    odeme_kosulu = (odeme_kosulu or "").strip() or None
+    if odeme_kosulu is None:
+        return None, None
+    if odeme_kosulu not in Cari.OdemeKosulu.values:
+        raise CariHatasi("Geçersiz ödeme koşulu.")
+    if odeme_kosulu == Cari.OdemeKosulu.PESIN:
+        return odeme_kosulu, None
+    if odeme_gunu in (None, ""):
+        raise CariHatasi("Bu ödeme koşulu için gün sayısı zorunludur.")
+    try:
+        gun = int(odeme_gunu)
+    except (TypeError, ValueError):
+        raise CariHatasi("Ödeme günü geçerli bir sayı olmalı.")
+    if odeme_kosulu == Cari.OdemeKosulu.SONRAKI_AY_GUNU and not (1 <= gun <= 31):
+        raise CariHatasi("Sonraki ayın günü 1-31 arasında olmalı.")
+    if odeme_kosulu == Cari.OdemeKosulu.GUN_SONRA and not (0 <= gun <= 365):
+        raise CariHatasi("Gün sayısı 0-365 arasında olmalı.")
+    return odeme_kosulu, gun
+
+
+def vade_hesapla(cari, fatura_tarihi):
+    """Carinin ödeme koşulu tanımlıysa fatura tarihine göre vade tarihini hesaplar;
+    koşul tanımlı değilse ``None`` döner (vade elle girilir). ``SONRAKI_AY_GUNU``'nde
+    gün o ayda yoksa ayın son gününe kırpılır (ör. 31 -> 30 Kasım); Aralık'ta kesilen
+    fatura bir sonraki yılın Ocak'ına düşer."""
+    kosul = cari.odeme_kosulu
+    if not kosul:
+        return None
+    if kosul == Cari.OdemeKosulu.PESIN:
+        return fatura_tarihi
+    if kosul == Cari.OdemeKosulu.GUN_SONRA:
+        return fatura_tarihi + datetime.timedelta(days=cari.odeme_gunu)
+    if kosul == Cari.OdemeKosulu.SONRAKI_AY_GUNU:
+        yil = fatura_tarihi.year + (1 if fatura_tarihi.month == 12 else 0)
+        ay = 1 if fatura_tarihi.month == 12 else fatura_tarihi.month + 1
+        son_gun = calendar.monthrange(yil, ay)[1]
+        return datetime.date(yil, ay, min(cari.odeme_gunu, son_gun))
+    return None
+
+
 def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
             telefon_whatsapp=False, telefon_2_whatsapp=False,
             eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kur_tipi=None,
-            kredi_limiti, iskonto_yuzdesi, notlar, ulke, sehir):
+            kredi_limiti, iskonto_yuzdesi, odeme_kosulu=None, odeme_gunu=None,
+            notlar, ulke, sehir):
     """Ortak alan hazırlığı (create/update paylaşır). (dict, uyarılar) döner. ``kur_tipi``
     opsiyonel — verilmezse (mevcut çağıranlar: aday->cari dönüşümü, veri taşıma scriptleri,
     testler) varsayılan MB_ALIS kullanılır."""
@@ -118,6 +165,7 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
     web_norm = web_normalize(web)
     if web_norm is None:
         raise CariHatasi(f"Geçersiz web adresi: {(web or '').strip()}")
+    odeme_kosulu, odeme_gunu = _odeme_kosulu_dogrula(odeme_kosulu, odeme_gunu)
     iso2 = (ulke.kod if ulke else "") or "TR"
     uyarilar = []
     telefon_deger = _telefon_isle(telefon, iso2, "Telefon", uyarilar)
@@ -135,6 +183,7 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         para_birimi=para_birimi, kur_tipi=kur_tipi,
         kredi_limiti=_para_dogrula(kredi_limiti, "Kredi limiti"),
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
+        odeme_kosulu=odeme_kosulu, odeme_gunu=odeme_gunu,
         notlar=(notlar or "").strip(),
     )
     return veri, uyarilar
@@ -158,7 +207,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kredi_limiti",
-                        "iskonto_yuzdesi", "notlar")})
+                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
         raise CariHatasi(f"Cari kodu zaten kayıtlı: {kod}")
@@ -227,7 +276,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kredi_limiti",
-                        "iskonto_yuzdesi", "notlar")})
+                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar")})
     cari.unvan = unvan
     cari.kategori = kategori
     for alan, deger in veri.items():

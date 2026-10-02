@@ -143,6 +143,7 @@
         {% endif %}
         <div class="satir"><span class="et">Kredi/Risk Limiti</span><span class="dg mono">{{ cari.kredi_limiti|tr_kur:2 }}</span></div>
         <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg mono">%{{ cari.iskonto_yuzdesi|tr_kur:2 }}</span></div>
+        <div class="satir"><span class="et">Ödeme Koşulu</span><span class="dg">{{ cari.odeme_kosulu_metni|default:"— (vade elle girilir)" }}</span></div>
       </div>
 
       {% if cari.notlar %}

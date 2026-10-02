@@ -1,6 +1,7 @@
 """Cari (CARİLER Faz 3a) testleri: otomatik kod (kategori kod yolu / CAR-),
 TR büyük harf, VKN benzersizlik, kod koruma, view + yetki, taşıma.
 Sevk adresi testleri artık test_cari_sevk_adresi.py'de (çoklu adres, ayrı tablo)."""
+import datetime
 import json
 import tempfile
 from decimal import Decimal
@@ -12,7 +13,9 @@ from django.urls import reverse
 
 from core.models import Cari, CariKategori, EkranYetki, HesapPlani, Sehir, Ulke
 from core.services.cari import (CariHatasi, cari_guncelle, cari_olustur, cari_sil,
-                                muhasebe_hesabi_ac)
+                                muhasebe_hesabi_ac, vade_hesapla)
+
+D = datetime.date
 
 
 def _veri():
@@ -252,3 +255,72 @@ class CariMuhasebeTest(TestCase):
         self.assertTrue(yaprak.silindi)
         # ara hesap (320.10) korunur — başka cariler paylaşabilir
         self.assertFalse(HesapPlani.objects.get(hesap_kodu="320.10").silindi)
+
+
+class OdemeKosuluVadeTest(TestCase):
+    """Cari ödeme koşulu + otomatik vade hesaplama (2026-10-03 isteği)."""
+
+    def _cari(self, **kw):
+        return cari_olustur(unvan="vade testi", para_birimi="TRY", **kw)
+
+    def test_sonraki_ay_gunu_normal(self):
+        c = self._cari(odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=25)
+        self.assertEqual(vade_hesapla(c, D(2026, 9, 17)), D(2026, 10, 25))
+
+    def test_sonraki_ay_gunu_aralik_yil_donumu(self):
+        c = self._cari(odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=25)
+        self.assertEqual(vade_hesapla(c, D(2026, 12, 21)), D(2027, 1, 25))
+
+    def test_sonraki_ay_gunu_kisa_aya_kirpilir(self):
+        c = self._cari(odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=31)
+        self.assertEqual(vade_hesapla(c, D(2026, 1, 15)), D(2026, 2, 28))   # 2026 artık yıl değil
+
+    def test_gun_sonra(self):
+        c = self._cari(odeme_kosulu=Cari.OdemeKosulu.GUN_SONRA, odeme_gunu=30)
+        self.assertEqual(vade_hesapla(c, D(2026, 3, 10)), D(2026, 4, 9))
+
+    def test_pesin(self):
+        c = self._cari(odeme_kosulu=Cari.OdemeKosulu.PESIN)
+        self.assertEqual(vade_hesapla(c, D(2026, 3, 10)), D(2026, 3, 10))
+
+    def test_kosul_yok_none_doner(self):
+        c = self._cari()
+        self.assertIsNone(c.odeme_kosulu)
+        self.assertIsNone(vade_hesapla(c, D(2026, 3, 10)))
+
+    def test_gun_sonra_gun_zorunlu(self):
+        with self.assertRaises(CariHatasi):
+            self._cari(odeme_kosulu=Cari.OdemeKosulu.GUN_SONRA)
+
+    def test_sonraki_ay_gunu_araligi_disinda_reddedilir(self):
+        with self.assertRaises(CariHatasi):
+            self._cari(odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=32)
+        with self.assertRaises(CariHatasi):
+            self._cari(odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=0)
+
+    def test_gun_sonra_araligi_disinda_reddedilir(self):
+        with self.assertRaises(CariHatasi):
+            self._cari(odeme_kosulu=Cari.OdemeKosulu.GUN_SONRA, odeme_gunu=366)
+
+    def test_pesin_gun_gerektirmez(self):
+        c = self._cari(odeme_kosulu=Cari.OdemeKosulu.PESIN)
+        self.assertIsNone(c.odeme_gunu)
+
+    def test_mevcut_cariler_null_kalir(self):
+        c = self._cari()
+        self.assertIsNone(c.odeme_kosulu)
+        self.assertIsNone(c.odeme_gunu)
+
+    def test_guncellemede_koşul_degisir(self):
+        c = self._cari()
+        cari_guncelle(c, unvan=c.unvan, para_birimi="TRY",
+                      odeme_kosulu=Cari.OdemeKosulu.GUN_SONRA, odeme_gunu=15)
+        c.refresh_from_db()
+        self.assertEqual(c.odeme_kosulu, Cari.OdemeKosulu.GUN_SONRA)
+        self.assertEqual(c.odeme_gunu, 15)
+
+    def test_guncellemede_koşul_kaldirilir(self):
+        c = self._cari(odeme_kosulu=Cari.OdemeKosulu.PESIN)
+        cari_guncelle(c, unvan=c.unvan, para_birimi="TRY", odeme_kosulu=None)
+        c.refresh_from_db()
+        self.assertIsNone(c.odeme_kosulu)

@@ -276,11 +276,73 @@ class FaturaEkranTest(TestCase):
         self.assertContains(d, "Vade Tarihi")
         self.assertContains(d, "10.04.2026")
 
-    def test_vade_tarihi_satista_formda_yok(self):
-        """Regresyon: vade tarihi alanı yalnız ALIŞ ekranında; SATIŞ'a sızmamalı."""
+    def test_vade_tarihi_satis_formunda_da_gorunur(self):
+        """Cari ödeme koşulu/otomatik vade (2026-10-03 isteği) kapsamında alan artık
+        SATIŞ ekranında da gösteriliyor — iki yön de aynı otomatik doldurma JS'ini paylaşır."""
         satis = FaturaTipi.objects.create(ad="SATIŞ FATURASI VADE", yon=FaturaTipi.Yon.SATIS)
         KategoriHesap.objects.create(kategori=self.stok.kategori, fatura_tipi=satis,
                                      hesap=HesapPlani.objects.get(hesap_kodu="153.10"))
         self.client.force_login(self.yon)
         e = self.client.get(reverse("core:satis_fatura_ekle"))
-        self.assertNotContains(e, "Vade Tarihi")
+        self.assertContains(e, "Vade Tarihi")
+
+    def test_vade_tarihi_bos_birakilinca_cari_odeme_kosulundan_hesaplanir(self):
+        """Sunucu tarafı yedek: form vade_tarihi boş gönderirse ve carinin ödeme koşulu
+        tanımlıysa, kayıt sırasında otomatik hesaplanıp yazılır."""
+        Cari.objects.filter(pk=self.cari.pk).update(
+            odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=25)
+        self.client.force_login(self.yon)
+        data = self._post_data()
+        self.assertNotIn("vade_tarihi", data)
+        self.client.post(reverse("core:alis_fatura_ekle"), data)
+        f = Fatura.objects.get(fatura_no="A-1")
+        self.assertEqual(f.vade_tarihi, D(2026, 4, 25))   # fatura tarihi 2026-03-10
+
+    def test_vade_tarihi_elle_girilince_cari_koşulunu_ezmez(self):
+        Cari.objects.filter(pk=self.cari.pk).update(
+            odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=25)
+        self.client.force_login(self.yon)
+        data = self._post_data()
+        data["vade_tarihi"] = "2026-05-15"
+        self.client.post(reverse("core:alis_fatura_ekle"), data)
+        f = Fatura.objects.get(fatura_no="A-1")
+        self.assertEqual(f.vade_tarihi, D(2026, 5, 15))
+
+    def test_duzenlemede_vade_tarihi_otomatik_hesaplanmaz(self):
+        """Sunucu tarafı yedek yalnız OLUŞTURMADA çalışır (fatura_taslak_olustur) —
+        fatura_guncelle'de YOK, böylece mevcut bir faturayı (vadesi hiç set edilmemiş)
+        ilgisiz bir sebeple düzenlerken vade beklenmedik şekilde dolmaz."""
+        self.client.force_login(self.yon)
+        # Cari'nin henüz koşulu yokken oluştur -> vade boş kalır.
+        self.client.post(reverse("core:alis_fatura_ekle"), self._post_data())
+        f = Fatura.objects.get(fatura_no="A-1")
+        self.assertIsNone(f.vade_tarihi)
+        # Koşul SONRADAN tanımlanmış olsun (ör. admin az önce ayarladı).
+        Cari.objects.filter(pk=self.cari.pk).update(
+            odeme_kosulu=Cari.OdemeKosulu.SONRAKI_AY_GUNU, odeme_gunu=25)
+        # Faturayı vade alanına hiç dokunmadan (boş) tekrar kaydet.
+        self.client.post(reverse("core:fatura_duzenle", args=[f.pk]),
+                         self._post_data(miktar="20"))
+        f.refresh_from_db()
+        self.assertIsNone(f.vade_tarihi)   # ezilmedi/doldurulmadı
+
+    def test_cari_vade_api_hesaplar(self):
+        Cari.objects.filter(pk=self.cari.pk).update(
+            odeme_kosulu=Cari.OdemeKosulu.GUN_SONRA, odeme_gunu=30)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:cari_vade_api", args=[self.cari.pk]),
+                            {"tarih": "2026-03-10"})
+        self.assertEqual(r.json(), {"vade_tarihi": "2026-04-09"})
+
+    def test_cari_vade_api_kosul_yoksa_null(self):
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:cari_vade_api", args=[self.cari.pk]),
+                            {"tarih": "2026-03-10"})
+        self.assertEqual(r.json(), {"vade_tarihi": None})
+
+    def test_cari_vade_api_anonim_login_yonlenir(self):
+        # @login_required — oturum açılmadan erişilemez (bkz. kur_usd_api ile aynı desen).
+        r = self.client.get(reverse("core:cari_vade_api", args=[self.cari.pk]),
+                            {"tarih": "2026-03-10"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login/", r.url)

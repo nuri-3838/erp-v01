@@ -412,6 +412,24 @@ def kur_usd_api(request):
     return JsonResponse({"kur": kur})
 
 
+@login_required
+def cari_vade_api(request, pk):
+    """Fatura ekranı önizleme: carinin ödeme koşulu tanımlıysa ?tarih=YYYY-MM-DD'ye göre
+    hesaplanan vade tarihini döner (bkz. core.services.cari.vade_hesapla). Koşul yoksa veya
+    tarih geçersizse ``vade_tarihi: null`` döner — kullanıcı vadeyi elle girer."""
+    cari = Cari.objects.filter(pk=pk, silindi=False).first()
+    vade = None
+    ham = request.GET.get("tarih")
+    if cari is not None and ham:
+        try:
+            t = datetime.date.fromisoformat(ham)
+        except ValueError:
+            t = None
+        if t is not None:
+            vade = cari_servis.vade_hesapla(cari, t)
+    return JsonResponse({"vade_tarihi": vade.isoformat() if vade else None})
+
+
 @ekran_gerekli("kurlar")
 def kurlar(request):
     pb = (request.GET.get("pb") or "USD").upper()
@@ -1447,7 +1465,9 @@ def _cari_form_kw(cd):
         web=cd["web"], ilgili_kisi=cd["ilgili_kisi"], kep_adresi=cd["kep_adresi"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
         para_birimi=cd["para_birimi"], kur_tipi=cd["kur_tipi"], kredi_limiti=cd["kredi_limiti"],
-        iskonto_yuzdesi=cd["iskonto_yuzdesi"], notlar=cd["notlar"])
+        iskonto_yuzdesi=cd["iskonto_yuzdesi"],
+        odeme_kosulu=cd["odeme_kosulu"] or None, odeme_gunu=cd["odeme_gunu"],
+        notlar=cd["notlar"])
 
 
 @ekran_gerekli("cariler")
@@ -1535,7 +1555,9 @@ def cari_duzenle(request, pk):
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
             "para_birimi": cari.para_birimi, "kur_tipi": cari.kur_tipi,
             "kredi_limiti": cari.kredi_limiti,
-            "iskonto_yuzdesi": cari.iskonto_yuzdesi, "notlar": cari.notlar})
+            "iskonto_yuzdesi": cari.iskonto_yuzdesi,
+            "odeme_kosulu": cari.odeme_kosulu or "", "odeme_gunu": cari.odeme_gunu,
+            "notlar": cari.notlar})
     return render(request, "core/cari_form.html",
                   {"form": form, "baslik": "Cari Düzenle", "duzenlenen": cari})
 

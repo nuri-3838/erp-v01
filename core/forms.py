@@ -492,7 +492,7 @@ class CariKategoriForm(forms.Form):
 
 
 class CariForm(forms.Form):
-    """Cari kartı ekle/düzenle (CARİLER). Kod OTOMATİK (formda yok). Ödeme şekli/vade YOK.
+    """Cari kartı ekle/düzenle (CARİLER). Kod OTOMATİK (formda yok).
     Büyük harf/benzersizlik/sevk temizliği serviste."""
 
     _K = {"autocomplete": "off"}
@@ -545,6 +545,13 @@ class CariForm(forms.Form):
                                   initial=Decimal("0"), required=False)
     iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
                                      initial=Decimal("0"), required=False)
+    # Boş: koşul yok, fatura vade tarihi elle girilir (varsayılan). odeme_gunu alanı
+    # yalnız GÜN_SONRA/SONRAKİ_AY_GÜNÜ seçiliyken gösterilir (JS) — bkz. cari_form.html.
+    odeme_kosulu = forms.ChoiceField(
+        label="Ödeme Koşulu", required=False,
+        choices=[("", "— koşul yok (vade elle girilir) —")] + list(Cari.OdemeKosulu.choices))
+    odeme_gunu = forms.IntegerField(label="Gün", required=False, min_value=0, max_value=365,
+                                    widget=forms.NumberInput(attrs=_K))
     notlar = forms.CharField(label="Notlar", required=False,
                              widget=forms.Textarea(attrs={"rows": 3, **_K}))
 

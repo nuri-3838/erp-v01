@@ -24,6 +24,7 @@ from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani
                          KategoriHesap, KdvOrani, Kur, Stok, StokHareket, StokMaliyetKatmani,
                          StokMaliyetTuketimi, TeklifSiparis, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
+from core.services.cari import vade_hesapla
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
 from core.services.hesap_plani import gider_hesaplari
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
@@ -468,6 +469,10 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
     depo = None if gider else _depo_coz(depo_id)        # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
+    # Sunucu tarafı yedek: vade boş + carinin ödeme koşulu tanımlıysa otomatik hesapla
+    # (ön yüz JS'i zaten doldurur; bu yalnız JS çalışmadıysa/atlandıysa devreye girer).
+    if vade_tarihi is None:
+        vade_tarihi = vade_hesapla(cari, tarih)
     fatura = Fatura.objects.create(
         tip=tip, yon=cozulen_yon, durum=Fatura.Durum.TASLAK, cari=cari, tarih=tarih,
         fatura_no=fatura_no, para_birimi=pb, kur=1, fis=None, depo=depo,
@@ -535,7 +540,9 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                     vade_tarihi=None, kullanici=None, kur=None) -> Fatura:
     """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
     serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
-    hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir."""
+    hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir.
+    ``vade_tarihi`` burada OTOMATİK HESAPLANMAZ (bkz. fatura_taslak_olustur) — boş gelirse
+    boş kalır; mevcut faturalar düzenlenirken beklenmedik bir vade yazılmasın diye kasıtlı."""
     from django.utils import timezone
     if fatura.silindi:
         raise FaturaHatasi("Silinmiş fatura düzenlenemez.")

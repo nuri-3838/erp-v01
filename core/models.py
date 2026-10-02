@@ -5,6 +5,7 @@ spec 0b-g) ile v0.1 veri modelinin ilk tablosu HESAP_PLANI (spec bölüm 2) var.
 """
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.storage import (
@@ -765,7 +766,7 @@ class CariKategori(TemelModel):
 
 class Cari(TemelModel):
     """Cari kartı (CARİLER) — müşteri/tedarikçi. ``kod`` kategori kod yolundan otomatik
-    (örn. 320-10-0001), kategorisizse CAR-NNNN. Ödeme şekli/vade tipi v0.1'de YOK.
+    (örn. 320-10-0001), kategorisizse CAR-NNNN.
     Cari hesap hareketi/ekstre Faz 4 (finans gerektirir).
     """
 
@@ -776,6 +777,11 @@ class Cari(TemelModel):
         MB_SATIS = "MB_SATIS", "MB Satış"
         EFEKTIF_ALIS = "EFEKTIF_ALIS", "Efektif Alış"
         EFEKTIF_SATIS = "EFEKTIF_SATIS", "Efektif Satış"
+
+    class OdemeKosulu(models.TextChoices):
+        PESIN = "PESIN", "Peşin (fatura tarihi)"
+        GUN_SONRA = "GUN_SONRA", "Fatura tarihinden X gün sonra"
+        SONRAKI_AY_GUNU = "SONRAKI_AY_GUNU", "Sonraki ayın N. günü"
 
     # Kimlik
     kod = models.CharField("cari kodu", max_length=30)
@@ -817,6 +823,12 @@ class Cari(TemelModel):
                                 default=KurTipi.MB_ALIS)
     kredi_limiti = models.DecimalField("kredi/risk limiti", max_digits=14, decimal_places=2, default=0)
     iskonto_yuzdesi = models.DecimalField("varsayılan iskonto %", max_digits=5, decimal_places=2, default=0)
+    # Boş (null): koşul yok, fatura vade tarihi elle girilir — mevcut carilerin hepsi
+    # böyle kalır (migration veri göçü yok). Dolu olduğunda fatura ekranı vadeyi otomatik
+    # önerir (bkz. core.services.cari.vade_hesapla).
+    odeme_kosulu = models.CharField(
+        "ödeme koşulu", max_length=20, choices=OdemeKosulu.choices, null=True, blank=True)
+    odeme_gunu = models.PositiveSmallIntegerField("ödeme günü", null=True, blank=True)
     notlar = models.TextField("notlar", blank=True)
 
     class Meta:
@@ -840,6 +852,33 @@ class Cari(TemelModel):
 
     def __str__(self):
         return f"{self.kod} — {self.unvan}" if self.kod else self.unvan
+
+    def clean(self):
+        super().clean()
+        if self.odeme_kosulu in (self.OdemeKosulu.GUN_SONRA, self.OdemeKosulu.SONRAKI_AY_GUNU):
+            if self.odeme_gunu is None:
+                raise ValidationError(
+                    {"odeme_gunu": "Bu ödeme koşulu için gün sayısı zorunludur."})
+            if (self.odeme_kosulu == self.OdemeKosulu.SONRAKI_AY_GUNU
+                    and not (1 <= self.odeme_gunu <= 31)):
+                raise ValidationError(
+                    {"odeme_gunu": "Sonraki ayın günü 1-31 arasında olmalı."})
+            if (self.odeme_kosulu == self.OdemeKosulu.GUN_SONRA
+                    and not (0 <= self.odeme_gunu <= 365)):
+                raise ValidationError({"odeme_gunu": "Gün sayısı 0-365 arasında olmalı."})
+
+    @property
+    def odeme_kosulu_metni(self):
+        """Cari detayında okunur metin (örn. 'Sonraki ayın 25. günü')."""
+        if not self.odeme_kosulu:
+            return ""
+        if self.odeme_kosulu == self.OdemeKosulu.PESIN:
+            return "Peşin (fatura tarihi)"
+        if self.odeme_kosulu == self.OdemeKosulu.GUN_SONRA:
+            return f"Fatura tarihinden {self.odeme_gunu} gün sonra"
+        if self.odeme_kosulu == self.OdemeKosulu.SONRAKI_AY_GUNU:
+            return f"Sonraki ayın {self.odeme_gunu}. günü"
+        return self.get_odeme_kosulu_display()
 
 
 class CariBanka(TemelModel):
