@@ -53,7 +53,9 @@ class TeklifSiparisModelServisTest(TestCase):
             kullanici=self.yon)
         self.assertEqual(ts.belge_tur, "TEKLIF")
         self.assertEqual(ts.yon, "SATIS")
-        self.assertEqual(ts.durum, "TASLAK")
+        # Satış Teklifi varsayılan olarak doğrudan GONDERILDI başlar (bkz. Gönderildi/Kabul/
+        # Red/Süresi Doldu/İptal akışı) — TASLAK yalnız taslak_olarak_kaydet=True ile.
+        self.assertEqual(ts.durum, "GONDERILDI")
         self.assertEqual(ts.kalemler.count(), 1)
         self.assertEqual(ts.ara_toplam, Decimal("255.00"))
         self.assertEqual(ts.kdv_toplam, Decimal("51.00"))
@@ -205,7 +207,7 @@ class TeklifSiparisModelServisTest(TestCase):
             belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
-            kullanici=self.yon)
+            taslak_olarak_kaydet=True, kullanici=self.yon)
         eski_belge_no = ts.belge_no
         eski_kalem_pk = ts.kalemler.get().pk
         teklif_siparis_guncelle(
@@ -260,14 +262,14 @@ class TeklifSiparisModelServisTest(TestCase):
         """SATIŞ yönünde artık doğrudan Sipariş'e değil Proforma'ya çevrilir (bkz.
         teklifi_siparise_cevir'in ALIŞ-only guard'ı) — zincir Teklif → Proforma → Sipariş."""
         import datetime
-        from core.services.teklif_siparis import (teklif_siparis_olustur, teklif_siparis_onayla,
+        from core.services.teklif_siparis import (teklif_siparis_olustur, teklif_kabul_et,
                                                    teklifi_proformaya_cevir)
         t = teklif_siparis_olustur(
             belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "4", "birim_fiyat": "10"}],
             kullanici=self.yon)
-        teklif_siparis_onayla(t, kullanici=self.yon)
+        teklif_kabul_et(t, kullanici=self.yon)
         proforma = teklifi_proformaya_cevir(t, tarih=datetime.date(2026, 7, 1), kullanici=self.yon)
         self.assertEqual(proforma.belge_tur, "PROFORMA")
         self.assertEqual(proforma.yon, "SATIS")
@@ -388,8 +390,11 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         self.assertTrue(s.belge_no.startswith("SAS-"))
 
     def test_onayla_servis_idempotent(self):
+        # Satış Teklifi artık bu generic onayla/geri_al mekanizmasını KULLANMAZ (bkz.
+        # teklif_gonder/teklif_kabul_et); burada hâlâ TASLAK/ONAYLI akışını kullanan bir
+        # belge türüyle (Satış Siparişi) generic mekanizma test ediliyor.
         from core.services.teklif_siparis import teklif_siparis_onayla
-        t = self._teklif()
+        t = self._teklif(belge_tur="SIPARIS", yon="SATIS")
         teklif_siparis_onayla(t, kullanici=self.yon)
         t.refresh_from_db()
         self.assertEqual(t.durum, "ONAYLI")
@@ -397,17 +402,25 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         t.refresh_from_db()
         self.assertEqual(t.durum, "ONAYLI")
 
+    def test_onayla_satis_teklifinde_reddedilir(self):
+        """Satış Teklifi (TEKLIF+SATIS) artık ONAYLI durumunu hiç kullanmaz — generic
+        onayla çağrılırsa (ör. eski entegrasyon/URL) net bir hatayla reddedilir."""
+        from core.services.teklif_siparis import TeklifSiparisHatasi, teklif_siparis_onayla
+        t = self._teklif()
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_onayla(t, kullanici=self.yon)
+
     def test_onayla_iptal_edilmis_hata(self):
         from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_siparis_iptal,
                                                    teklif_siparis_onayla)
-        t = self._teklif()
+        t = self._teklif(belge_tur="SIPARIS", yon="SATIS")
         teklif_siparis_iptal(t, kullanici=self.yon)
         with self.assertRaises(TeklifSiparisHatasi):
             teklif_siparis_onayla(t, kullanici=self.yon)
 
     def test_onayi_geri_al_servis_idempotent(self):
         from core.services.teklif_siparis import teklif_siparis_onayi_geri_al, teklif_siparis_onayla
-        t = self._teklif()
+        t = self._teklif(belge_tur="SIPARIS", yon="SATIS")
         teklif_siparis_onayla(t, kullanici=self.yon)
         teklif_siparis_onayi_geri_al(t, kullanici=self.yon)
         t.refresh_from_db()
@@ -417,20 +430,35 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         self.assertEqual(t.durum, "TASLAK")
 
     def test_onayi_geri_al_donusturulmus_engellenir(self):
+        """Proforma → Sipariş'e dönüştükten sonra proformanın onayı geri alınamaz (generic
+        mekanizma — Satış Teklifi'nin kendi zincirinde aynı korumayı teklif_iptal_et sağlar,
+        bkz. test_teklif_iptal_donusturulmus_engellenir)."""
         import datetime
         from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_siparis_onayi_geri_al,
-                                                   teklif_siparis_onayla, teklifi_proformaya_cevir)
+                                                   teklif_siparis_onayla, proformayi_siparise_cevir)
+        p = self._teklif(belge_tur="PROFORMA", yon="SATIS")
+        teklif_siparis_onayla(p, kullanici=self.yon)
+        proformayi_siparise_cevir(p, tarih=datetime.date(2026, 7, 19), kullanici=self.yon)
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_siparis_onayi_geri_al(p, kullanici=self.yon)
+
+    def test_teklif_iptal_donusturulmus_engellenir(self):
+        """Satış Teklifi'nin kendi zinciri: Kabul edilip Proformaya çevrilen teklif artık
+        iptal edilemez (bkz. _donusum_hedefi_manuel, teklif_iptal_et)."""
+        import datetime
+        from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_iptal_et,
+                                                   teklif_kabul_et, teklifi_proformaya_cevir)
         t = self._teklif()
-        teklif_siparis_onayla(t, kullanici=self.yon)
+        teklif_kabul_et(t, kullanici=self.yon)
         teklifi_proformaya_cevir(t, tarih=datetime.date(2026, 7, 19), kullanici=self.yon)
         with self.assertRaises(TeklifSiparisHatasi):
-            teklif_siparis_onayi_geri_al(t, kullanici=self.yon)
+            teklif_iptal_et(t, kullanici=self.yon)
 
     def test_onayli_belge_duzenlenemez(self):
         import datetime
         from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_siparis_guncelle,
                                                    teklif_siparis_onayla)
-        t = self._teklif()
+        t = self._teklif(belge_tur="SIPARIS", yon="SATIS")
         teklif_siparis_onayla(t, kullanici=self.yon)
         with self.assertRaises(TeklifSiparisHatasi):
             teklif_siparis_guncelle(
@@ -439,13 +467,16 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
                 kullanici=self.yon)
 
     def test_view_onayla_ve_geri_al_buton_gorunurlugu(self):
+        """Generic onayla/geri_al buton görünürlüğü — hâlâ TASLAK/ONAYLI kullanan bir belge
+        türüyle (Satış Siparişi). Satış Teklifi'nin kendi Gönder/Kabul/Red/İptal buton
+        görünürlüğü ayrı test ediliyor (bkz. test_view_teklif_gonder_kabul_red_iptal_
+        buton_gorunurlugu)."""
         self.client.force_login(self.yon)
-        t = self._teklif()
+        t = self._teklif(belge_tur="SIPARIS", yon="SATIS")
         d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
         self.assertContains(d0, reverse("core:teklif_siparis_onayla", args=[t.pk]))
         self.assertContains(d0, "Taslak")
-        # t belge_tur=TEKLIF/yon=SATIS -> Düzenle artık bağımsız satis_teklif_duzenle ekranına gider.
-        self.assertContains(d0, reverse("core:satis_teklif_duzenle", args=[t.pk]))
+        self.assertContains(d0, reverse("core:teklif_siparis_duzenle", args=[t.pk]))
         r = self.client.post(reverse("core:teklif_siparis_onayla", args=[t.pk]))
         self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[t.pk]))
         t.refresh_from_db()
@@ -453,16 +484,63 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
         self.assertContains(d1, reverse("core:teklif_siparis_onayi_geri_al", args=[t.pk]))
         self.assertContains(d1, "Onaylı")
-        self.assertNotContains(d1, reverse("core:satis_teklif_duzenle", args=[t.pk]))
+        self.assertNotContains(d1, reverse("core:teklif_siparis_duzenle", args=[t.pk]))
         r2 = self.client.post(reverse("core:teklif_siparis_onayi_geri_al", args=[t.pk]))
         self.assertRedirects(r2, reverse("core:teklif_siparis_detay", args=[t.pk]))
         t.refresh_from_db()
         self.assertEqual(t.durum, "TASLAK")
 
+    def test_view_teklif_gonder_kabul_red_iptal_buton_gorunurlugu(self):
+        """Satış Teklifi'nin kendi durum akışı: Taslak->Gönder->Gönderildi->Kabul/Red/İptal."""
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        self.client.force_login(self.yon)
+        t = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 7, 19),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            taslak_olarak_kaydet=True, kullanici=self.yon)
+        d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
+        self.assertContains(d0, "Taslak")
+        self.assertContains(d0, reverse("core:teklif_gonder", args=[t.pk]))
+        self.assertContains(d0, reverse("core:satis_teklif_duzenle", args=[t.pk]))
+        r = self.client.post(reverse("core:teklif_gonder", args=[t.pk]))
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[t.pk]))
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "GONDERILDI")
+        d1 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
+        self.assertContains(d1, "Gönderildi")
+        self.assertContains(d1, reverse("core:teklif_kabul", args=[t.pk]))
+        self.assertContains(d1, reverse("core:teklif_red", args=[t.pk]))
+        self.assertNotContains(d1, reverse("core:satis_teklif_duzenle", args=[t.pk]))
+        r2 = self.client.post(reverse("core:teklif_kabul", args=[t.pk]))
+        self.assertRedirects(r2, reverse("core:teklif_siparis_detay", args=[t.pk]))
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "KABUL")
+        d2 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
+        self.assertContains(d2, "Kabul Edildi")
+        self.assertContains(d2, reverse("core:teklif_proformaya_cevir", args=[t.pk]))
+
+    def test_view_teklif_red_nedeni_kaydedilir(self):
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        self.client.force_login(self.yon)
+        t = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 7, 19),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        r = self.client.post(reverse("core:teklif_red", args=[t.pk]),
+                             {"red_nedeni": "Fiyat çok yüksek bulundu."})
+        self.assertRedirects(r, reverse("core:teklif_siparis_detay", args=[t.pk]))
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "RED")
+        self.assertEqual(t.red_nedeni, "Fiyat çok yüksek bulundu.")
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
+        self.assertContains(d, "Fiyat çok yüksek bulundu.")
+
     def test_view_onayli_duzenleme_post_reddedilir(self):
-        from core.services.teklif_siparis import teklif_siparis_onayla
+        # t zaten varsayılan olarak GONDERILDI başlar (onayla çağrısına gerek yok) —
+        # Satış Teklifi yalnız TASLAK iken düzenlenebilir.
         t = self._teklif()
-        teklif_siparis_onayla(t, kullanici=self.yon)
         self.client.force_login(self.yon)
         # t belge_tur=TEKLIF/yon=SATIS -> düzenleme artık bağımsız satis_teklif_duzenle
         # ekranından yapılır; formun stok alanı yalnız satis_urunu=True kabul eder.
@@ -478,7 +556,7 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
             "form-0-iskonto_yuzdesi": "0", "form-0-birim_fiyat": "9",
         })
         self.assertEqual(r.status_code, 200)                       # redirect değil; form hatalı geri döner
-        self.assertContains(r, "Onaylı belge düzenlenemez")
+        self.assertContains(r, "Yalnız taslak durumundaki teklif düzenlenebilir")
         t.refresh_from_db()
         self.assertEqual(t.kalemler.filter(silindi=False).first().miktar, Decimal("1"))  # değişmedi
 
@@ -570,7 +648,7 @@ class TeklifSiparisViewTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:satis_teklifleri"))
         self.assertContains(r, "Tümü <span class=\"n\">1</span>")
-        self.assertContains(r, "Taslak <span class=\"n\">1</span>")
+        self.assertContains(r, "Gönderildi <span class=\"n\">1</span>")
         self.assertContains(r, "1 kayıt.")
 
     def test_yetkisiz_403(self):
@@ -781,14 +859,12 @@ class TeklifSiparisViewTest(TestCase):
 
     def test_liste_arama_cari_ve_belge_no(self):
         import datetime
-        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        from core.services.teklif_siparis import teklif_siparis_olustur
         ts = teklif_siparis_olustur(
             belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
-            kullanici=self.yon)
-        teklif_siparis_onayla(ts, kullanici=self.yon)   # belge_no yalnız onaylıda üretilir
-        ts.refresh_from_db()
+            kullanici=self.yon)   # belge_no oluşturulurken hemen üretilir (durumdan bağımsız)
         self.client.force_login(self.yon)
         r_cari = self.client.get(reverse("core:satis_teklifleri"), {"ara": "müşteri b"})
         self.assertContains(r_cari, ts.belge_no)
@@ -895,7 +971,9 @@ class TeklifSiparisViewTest(TestCase):
             satirlar=[{"stok_id": self.stok.pk, "miktar": "2", "birim_fiyat": "100"}],
             kullanici=self.yon)
         self.client.force_login(self.yon)
-        self.client.post(reverse("core:teklif_siparis_onayla", args=[t.pk]))
+        # t zaten GONDERILDI başlar (varsayılan) — Kabul Edildi'ye geçmeden Proformaya
+        # Çevir butonu görünmez.
+        self.client.post(reverse("core:teklif_kabul", args=[t.pk]))
         d0 = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
         self.assertContains(d0, reverse("core:teklif_proformaya_cevir", args=[t.pk]))
         r = self.client.post(reverse("core:teklif_proformaya_cevir", args=[t.pk]))
@@ -944,13 +1022,13 @@ class TeklifSiparisViewTest(TestCase):
 
     def test_donusmemis_onayli_teklifte_rozet_yok(self):
         import datetime
-        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_kabul_et
         t = teklif_siparis_olustur(
             belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
-        teklif_siparis_onayla(t, kullanici=self.yon)
+        teklif_kabul_et(t, kullanici=self.yon)
         self.client.force_login(self.yon)
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
         self.assertNotContains(d, "Siparişe Dönüştü")
@@ -1679,10 +1757,13 @@ class SatinalmaZinciriTest(TestCase):
         self.assertEqual(irsaliye.kalemler.get(silindi=False).miktar, Decimal("20"))
 
     def test_satis_yonunde_onay_zincir_tetiklemez(self):
+        # PROFORMA+SATIS kullanılıyor (Satış Teklifi artık generic onayla'yı kullanmıyor —
+        # bkz. teklif_siparis_onayla'daki SATIŞ Teklifi guard'ı); test amacı aynı: SATIŞ
+        # yönünde onaylama hiçbir otomatik dönüşüm zinciri tetiklemez.
         from core.models import Fatura, StokHareket, TeklifSiparis
         from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
         t = teklif_siparis_olustur(
-            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk, tarih=self.tarih,
+            belge_tur="PROFORMA", yon="SATIS", cari_id=self.cari.pk, tarih=self.tarih,
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
         teklif_siparis_onayla(t, kullanici=self.yon)

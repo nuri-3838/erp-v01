@@ -247,8 +247,8 @@ class TanimSecenegiTest(TestCase):
             odeme_kosulu_id=kosul.pk)
         with self.assertRaises(TanimHatasi):
             secenek_sil(kosul)
-        from core.services.teklif_siparis import teklif_siparis_iptal
-        teklif_siparis_iptal(ts)
+        from core.services.teklif_siparis import teklif_iptal_et
+        teklif_iptal_et(ts)
         secenek_sil(kosul)                                            # iptal edilince serbest
         self.assertTrue(TanimSecenegi.objects.get(pk=kosul.pk).silindi)
 

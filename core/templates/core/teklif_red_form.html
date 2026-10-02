@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% block baslik %}Teklifi Reddet · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Teklifi Reddet{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:teklif_siparis_detay' ts.pk %}">← {{ ts.belge_no }}</a>
+    <h1 class="ust-baslik"><span class="emoji">❌</span>Teklifi Reddet</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{{ ts.belge_no }} — {{ ts.taraf.unvan }}</h2>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.red_nedeni.id_for_label }}">{{ form.red_nedeni.label }}</label>
+          {{ form.red_nedeni }}
+          {% for e in form.red_nedeni.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:teklif_siparis_detay' ts.pk %}">Vazgeç</a>
+      <button type="submit" class="sil">Reddedildi Olarak İşaretle</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

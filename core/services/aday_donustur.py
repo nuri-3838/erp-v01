@@ -17,7 +17,8 @@ from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import (
-    AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, CariAktivite, CariAktiviteEk, CariYetkili)
+    AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, CariAktivite, CariAktiviteEk,
+    CariYetkili)
 from core.services import cari as cari_servis
 from core.tarih import tr_bugun
 
@@ -281,6 +282,38 @@ def _cari_rollu_asama():
     bir aktif CARI rolü zaten orada zorlanıyor)."""
     return AdayAsamaTanim.objects.filter(
         silindi=False, aktif=True, rol=AdayAsamaTanim.Rol.CARI).first()
+
+
+def _teklif_rollu_asama():
+    """Aktif tek TEKLIF rollü aşama, yoksa None — bkz. _cari_rollu_asama (aynı desen).
+    core.services.teklif_siparis.teklif_gonder bunu çağırır (Satış Teklifi gönderilince)."""
+    return AdayAsamaTanim.objects.filter(
+        silindi=False, aktif=True, rol=AdayAsamaTanim.Rol.TEKLIF).first()
+
+
+def _siparis_rollu_asama():
+    """Aktif tek SIPARIS rollü aşama, yoksa None — bkz. _cari_rollu_asama (aynı desen).
+    core.services.teklif_siparis.teklif_kabul_et bunu çağırır (Satış Teklifi kabul edilince)."""
+    return AdayAsamaTanim.objects.filter(
+        silindi=False, aktif=True, rol=AdayAsamaTanim.Rol.SIPARIS).first()
+
+
+def aday_asama_ilerlet(aday, yeni_asama, *, kullanici=None, bugun=None):
+    """Aday'ın aşamasını (rol bazlı otomasyon — CARI/TEKLIF/SIPARIS) ilerletir + AdayAktivite
+    notu düşer. yeni_asama None'sa (rol atanmamış) veya aday zaten o aşamadaysa sessizce
+    hiçbir şey yapmaz. Not: cariye dönüşüm akışındaki _aday_cariye_isaretle/
+    _asama_degisim_satiri'den farklı — bu, cari dönüşümü DIŞINDAKİ (teklif gönder/kabul)
+    olaylarda bağımsız çağrılan genel amaçlı sürüm."""
+    if yeni_asama is None or yeni_asama.pk == aday.asama_id:
+        return
+    eski_ad = aday.asama.ad
+    aday.asama = yeni_asama
+    aday.updated_by = kullanici
+    aday.save(update_fields=["asama", "updated_by", "updated_at"])
+    AdayAktivite.objects.create(
+        aday=aday, tarih=bugun or tr_bugun(), tur=AdayAktivite.Tur.NOT,
+        aciklama=f"Aşama: {eski_ad} → {yeni_asama.ad}.",
+        created_by=kullanici, updated_by=kullanici)
 
 
 def _asama_degisim_satiri(aday, yeni_asama):

@@ -279,7 +279,9 @@ class SatisTeklifTest(TestCase):
 
     def test_duzenle_post_gunceller(self):
         self.client.force_login(self.yon)
-        govde = self._post_govde()
+        # taslak_olarak_kaydet="on" -> TASLAK kalır, düzenlenebilir (Gönderildi/Kabul/Red/
+        # Süresi Doldu/İptal durumlarında satis_teklif_duzenle artık reddeder).
+        govde = self._post_govde(taslak_olarak_kaydet="on")
         del govde["form-1-dahil"]
         self.client.post(reverse("core:satis_teklif_ekle"), govde)
         ts = self._son_teklif()

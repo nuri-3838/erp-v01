@@ -2098,6 +2098,11 @@ class SatisBelgeBaslikForm(forms.Form):
         label="Navlun / FOB Masrafları", basamak=2, required=False,
         widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off",
                                       "placeholder": "0,00"}))
+    # Yalnız Satış Teklifi ekle ekranında render edilir — işaretlenmezse teklif doğrudan
+    # "Gönderildi" durumunda kaydedilir (bkz. core.services.teklif_siparis.teklif_siparis_
+    # olustur, taslak_olarak_kaydet kwarg'ı).
+    taslak_olarak_kaydet = forms.BooleanField(
+        label="Taslak olarak kaydet", required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2158,6 +2163,15 @@ class SatisProformaBaslikForm(SatisBelgeBaslikForm):
         self.fields["banka_hesabi"].label_from_instance = (
             lambda o: f"{o.banka.kisa_ad or o.banka.ad} · {o.ad} ({o.para_birimi})")
         self.fields["banka_hesabi"].widget.attrs["class"] = "akilli-sec"
+
+
+class TeklifRedForm(forms.Form):
+    """Satış Teklifi reddedilirken isteğe bağlı kısa açıklama — bkz. core.views.teklif_red_
+    gorunum / core.services.teklif_siparis.teklif_reddet."""
+
+    red_nedeni = forms.CharField(
+        label="Red Nedeni (isteğe bağlı)", max_length=300, required=False,
+        widget=forms.Textarea(attrs={"rows": 3, "autocomplete": "off"}))
 
 
 class SatisTeklifKalemForm(forms.Form):

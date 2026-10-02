@@ -41,6 +41,10 @@
   </div>
 
   {% if ts.silindi %}<div class="uyari"><div>⚠️ Bu belge iptal edilmiş.</div></div>{% endif %}
+  {% if ts.durum == "IPTAL" %}<div class="uyari"><div>⚠️ Bu teklif iptal edilmiş.</div></div>{% endif %}
+  {% if ts.durum == "RED" %}
+    <div class="uyari"><div>❌ Bu teklif reddedildi.{% if ts.red_nedeni %} Neden: {{ ts.red_nedeni }}{% endif %}</div></div>
+  {% endif %}
 
   <div class="detay-baslik-kart">
     <span class="detay-ikon">{{ emoji }}</span>
@@ -48,6 +52,14 @@
       <div class="detay-rozetler">
         {% if ts.belge_no %}<span class="d-rozet kod">{{ ts.belge_no }}</span>{% endif %}
         {% if ts.silindi %}<span class="d-rozet hata">İptal Edildi</span>
+        {% elif ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
+          {% if ts.durum == "TASLAK" %}<span class="d-rozet notr">Taslak</span>
+          {% elif ts.durum == "GONDERILDI" %}<span class="d-rozet aktif">📤 Gönderildi</span>
+          {% elif ts.durum == "KABUL" %}<span class="d-rozet aktif">✅ Kabul Edildi</span>
+          {% elif ts.durum == "RED" %}<span class="d-rozet hata">❌ Reddedildi</span>
+          {% elif ts.durum == "SURESI_DOLDU" %}<span class="d-rozet notr">⏰ Süresi Doldu</span>
+          {% elif ts.durum == "IPTAL" %}<span class="d-rozet hata">İptal Edildi</span>
+          {% endif %}
         {% elif ts.durum == 'ONAYLI' %}<span class="d-rozet aktif">● Onaylı</span>
         {% else %}<span class="d-rozet notr">Taslak</span>{% endif %}
         <span class="d-rozet tip">{{ ts.get_yon_display }}</span>
@@ -75,17 +87,30 @@
       {% else %}
       <a class="dugme" href="{% url 'core:teklif_siparis_pdf' ts.pk %}" target="_blank">📄 PDF</a>
       {% endif %}
-      {% if not ts.silindi %}
+      {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" and not ts.silindi %}
+        {% if ts.durum == "TASLAK" %}
+        <form method="post" action="{% url 'core:teklif_gonder' ts.pk %}" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">📤 Gönder</button></form>
+        <a class="dugme" href="{% url 'core:satis_teklif_duzenle' ts.pk %}">✏️ Düzenle</a>
+        <form method="post" action="{% url 'core:teklif_iptal' ts.pk %}" onsubmit="return confirm('Teklif iptal edilsin mi?');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+        {% elif ts.durum == "GONDERILDI" or ts.durum == "SURESI_DOLDU" %}
+        <form method="post" action="{% url 'core:teklif_kabul' ts.pk %}" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Kabul Edildi</button></form>
+        <a class="dugme" href="{% url 'core:teklif_red' ts.pk %}">❌ Reddedildi</a>
+        <form method="post" action="{% url 'core:teklif_iptal' ts.pk %}" onsubmit="return confirm('Teklif iptal edilsin mi?');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+        {% elif ts.durum == "KABUL" and not donusen_proforma %}
+        <form method="post" action="{% url 'core:teklif_proformaya_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif proformaya çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Proformaya Çevir</button></form>
+        {% endif %}
+      {% elif not ts.silindi %}
         {% if ts.durum == "TASLAK" %}
         <form method="post" action="{% url 'core:teklif_siparis_onayla' ts.pk %}" style="margin:0">
           {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
         {% elif not donusen_siparis and not donusen_proforma and not donusen_irsaliye and not donusen_fatura and not uretim_emri %}
         <form method="post" action="{% url 'core:teklif_siparis_onayi_geri_al' ts.pk %}" onsubmit="return confirm('Onay geri alınsın mı? Belge tekrar taslağa döner.');" style="margin:0">
           {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">↩️ Onayı Geri Al</button></form>
-        {% endif %}
-        {% if ts.belge_tur == "TEKLIF" and ts.durum == "ONAYLI" and not donusen_proforma and ts.yon == "SATIS" %}
-        <form method="post" action="{% url 'core:teklif_proformaya_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif proformaya çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
-          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Proformaya Çevir</button></form>
         {% endif %}
         {% if ts.belge_tur == "PROFORMA" and ts.durum == "ONAYLI" and not donusen_siparis %}
         <form method="post" action="{% url 'core:proforma_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu proforma siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
@@ -98,9 +123,7 @@
         <a class="dugme" href="{% url 'core:siparis_uretim_emrine_cevir' ts.pk %}">🏭 Üretim Emri Aç</a>
         {% endif %}
         {% if ts.durum == "TASLAK" %}
-          {% if ts.belge_tur == "TEKLIF" and ts.yon == "SATIS" %}
-          <a class="dugme" href="{% url 'core:satis_teklif_duzenle' ts.pk %}">✏️ Düzenle</a>
-          {% elif ts.belge_tur == "PROFORMA" %}
+          {% if ts.belge_tur == "PROFORMA" %}
           <a class="dugme" href="{% url 'core:satis_proforma_duzenle' ts.pk %}">✏️ Düzenle</a>
           {% else %}
           <a class="dugme" href="{% url 'core:teklif_siparis_duzenle' ts.pk %}">✏️ Düzenle</a>

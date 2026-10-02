@@ -1078,6 +1078,8 @@ class AdayAsamaTanim(_AdayTanimTaban):
         ARA = "ARA", "Ara"
         KAPALI = "KAPALI", "Kapalı"
         CARI = "CARI", "Cari olunca"
+        TEKLIF = "TEKLIF", "Teklif verilince"
+        SIPARIS = "SIPARIS", "Sipariş olunca"
 
     rol = models.CharField("rol", max_length=10, choices=Rol.choices, default=Rol.ARA)
 
@@ -1607,11 +1609,22 @@ class TeklifSiparis(TemelModel):
     class Durum(models.TextChoices):
         TASLAK = "TASLAK", "Taslak"
         ONAYLI = "ONAYLI", "Onaylı"
+        # Aşağıdaki 5 durum YALNIZ belge_tur=TEKLIF, yon=SATIS için kullanılır (bkz.
+        # core.services.teklif_siparis.teklif_gonder/kabul_et/reddet/iptal_et) — diğer 6
+        # belge_tur/yon kombinasyonu (Satınalma Teklif/Sipariş/İrsaliye, Satış Proforma/
+        # Sipariş) hep TASLAK/ONAYLI kullanmaya devam eder, bu değerleri hiç görmez.
+        GONDERILDI = "GONDERILDI", "Gönderildi"
+        KABUL = "KABUL", "Kabul Edildi"
+        RED = "RED", "Reddedildi"
+        SURESI_DOLDU = "SURESI_DOLDU", "Süresi Doldu"
+        IPTAL = "IPTAL", "İptal Edildi"
 
     belge_tur = models.CharField("belge türü", max_length=8, choices=BelgeTur.choices)
     yon = models.CharField("yön", max_length=5, choices=Yon.choices)
-    durum = models.CharField("durum", max_length=6, choices=Durum.choices,
+    durum = models.CharField("durum", max_length=12, choices=Durum.choices,
                              default=Durum.TASLAK)
+    # Yalnız durum=RED iken anlamlı (Satış Teklifi) — isteğe bağlı kısa açıklama.
+    red_nedeni = models.CharField("red nedeni", max_length=300, blank=True, default="")
     # cari / aday_musteri karşılıklı dışlayıcı (bkz. ck_teklif_siparis_cari_xor_aday_musteri) —
     # yalnız SATIŞ+TEKLİF/PROFORMA'da aday müşteriye (CRM lead, henüz Cari değil) belge
     # açılabilir; SATIŞ+SIPARIS dahil diğer tüm belge türlerinde her zaman cari doludur.

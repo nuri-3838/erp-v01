@@ -300,14 +300,14 @@ class SatisProformaTest(TestCase):
 
     def test_tam_zincir_teklif_proformaya_siparise(self):
         """Uçtan uca: Satış Teklifi → Proformaya Çevir → Siparişe Çevir."""
-        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_kabul_et
         teklif = teklif_siparis_olustur(
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
             cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 15),
             satirlar=[{"stok_id": self.a21.pk, "miktar": "1", "birim_fiyat": "350",
                       "iskonto_yuzdesi": "10"}],
             kullanici=self.yon)
-        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        teklif_kabul_et(teklif, kullanici=self.yon)
         self.client.force_login(self.yon)
         r1 = self.client.post(reverse("core:teklif_proformaya_cevir", args=[teklif.pk]))
         proforma = TeklifSiparis.objects.get(kaynak_teklif=teklif)
@@ -339,7 +339,8 @@ class SatisProformaTest(TestCase):
         teklif_over ile navlun_tutari gibi ek alanlar geçirilebilir — teklif_siparis_
         olustur/teklifi_proformaya_cevir/proformayi_siparise_cevir zincir boyunca navlun_
         tutari'yi otomatik taşır (bkz. core.services.teklif_siparis)."""
-        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        from core.services.teklif_siparis import (teklif_siparis_olustur, teklif_kabul_et,
+                                                   teklif_siparis_onayla)
         govde = dict(
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
             cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 15),
@@ -348,7 +349,7 @@ class SatisProformaTest(TestCase):
             kullanici=self.yon)
         govde.update(teklif_over)
         teklif = teklif_siparis_olustur(**govde)
-        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        teklif_kabul_et(teklif, kullanici=self.yon)
         self.client.force_login(self.yon)
         self.client.post(reverse("core:teklif_proformaya_cevir", args=[teklif.pk]))
         proforma = TeklifSiparis.objects.get(kaynak_teklif=teklif)

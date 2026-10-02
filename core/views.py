@@ -37,6 +37,7 @@ from core.forms import (
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
     TeklifSiparisForm, TeklifSiparisKalemForm, SatisBelgeBaslikForm, SatisTeklifKalemForm,
+    TeklifRedForm,
     SatisProformaBaslikForm, SatisProformaKalemForm,
     TanimSecenegiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
@@ -1975,6 +1976,15 @@ SatisProformaKalemFormSet = formset_factory(SatisProformaKalemForm, extra=0)
 
 _TS_SAYFA_BOYUTLARI = (25, 50, 100, 200)
 
+# Durum sekmeleri/filtresi — Satış Teklifi'nin Gönderildi/Kabul/Red/Süresi Doldu/İptal
+# akışı yalnız kendi listesinde görünür; diğer 6 belge_tur/yön kombinasyonu hâlâ yalnız
+# Taslak/Onaylı gösterir (bkz. TeklifSiparis.Durum docstring'i — _ts_liste'nin sat_teklif
+# bayrağına göre ikisinden birini seçer).
+_TS_DURUM_STANDART = (TeklifSiparis.Durum.TASLAK, TeklifSiparis.Durum.ONAYLI)
+_TS_DURUM_SATIS_TEKLIFI = (
+    TeklifSiparis.Durum.TASLAK, TeklifSiparis.Durum.GONDERILDI, TeklifSiparis.Durum.KABUL,
+    TeklifSiparis.Durum.RED, TeklifSiparis.Durum.SURESI_DOLDU, TeklifSiparis.Durum.IPTAL)
+
 
 def _ts_tarih_coz(deger):
     try:
@@ -1984,9 +1994,13 @@ def _ts_tarih_coz(deger):
 
 
 def _ts_liste(request, belge_tur, yon, baslik, emoji):
+    sat_teklif = (belge_tur == TeklifSiparis.BelgeTur.TEKLIF
+                 and yon == TeklifSiparis.Yon.SATIS)
+    durum_secenekleri = _TS_DURUM_SATIS_TEKLIFI if sat_teklif else _TS_DURUM_STANDART
+    durum_etiketleri = dict(TeklifSiparis.Durum.choices)
     ara = (request.GET.get("ara") or "").strip()
     durum = request.GET.get("durum") or ""
-    if durum not in dict(TeklifSiparis.Durum.choices):
+    if durum not in durum_secenekleri:
         durum = ""
     tarih_bas = _ts_tarih_coz(request.GET.get("bas"))
     tarih_bit = _ts_tarih_coz(request.GET.get("bit"))
@@ -2031,11 +2045,12 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     # bu, kalem_sayisi/donustu JOIN'leri EKLENMEDEN ÖNСЕ, ham `temel` üzerinden hesaplanır —
     # aksi halde Count("pk") her teklifi kendi kalem satırı sayısı kadar tekrar sayar
     # (ör. 4 teklif × ~11-14 kalem ≈ 55 gibi yanlış, şişirilmiş bir sayı çıkar).
-    sayimlar = {d: 0 for d, _ in TeklifSiparis.Durum.choices}
+    sayimlar = {d: 0 for d in durum_secenekleri}
     for satir in temel.values("durum").annotate(n=Count("pk")):
-        sayimlar[satir["durum"]] = satir["n"]
-    durum_sekmeleri = [{"kod": kod, "ad": ad, "n": sayimlar.get(kod, 0)}
-                       for kod, ad in TeklifSiparis.Durum.choices]
+        if satir["durum"] in sayimlar:
+            sayimlar[satir["durum"]] = satir["n"]
+    durum_sekmeleri = [{"kod": kod, "ad": durum_etiketleri[kod], "n": sayimlar.get(kod, 0)}
+                       for kod in durum_secenekleri]
     kayitlar = (temel.filter(durum=durum) if durum else temel).annotate(
         donustu=Exists(donusen_var),
         kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)),
@@ -2050,9 +2065,8 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     sekme_qs.pop("durum", None)
     # Satış Teklifi'nde "ödenecek tutar" kavramı yok (henüz fatura/sipariş değil) — liste
     # ekranı bu türde tarih aralığı filtresi + Ödenecek/İşlem sütunları yerine sade,
-    # tıklanabilir satır + Detay'a giden chevron kullanır (bkz. şablon, sat_teklif bayrağı).
-    sat_teklif = (belge_tur == TeklifSiparis.BelgeTur.TEKLIF
-                 and yon == TeklifSiparis.Yon.SATIS)
+    # tıklanabilir satır + Detay'a giden chevron kullanır (bkz. şablon, sat_teklif bayrağı,
+    # tanımı fonksiyon başında).
     return render(request, "core/teklif_siparis_listesi.html", {
         "kayitlar": sayfa, "baslik": baslik, "emoji": emoji, "ara": ara,
         "durum": durum, "bas": request.GET.get("bas", ""), "bit": request.GET.get("bit", ""),
@@ -2268,8 +2282,12 @@ def satis_teklif_ekle(request):
                         gecerlilik_teslim_tarihi=cd.get("gecerlilik_teslim_tarihi"),
                         para_birimi=cd.get("para_birimi", "TRY"),
                         **_secenek_kwargs(cd),
+                        taslak_olarak_kaydet=cd.get("taslak_olarak_kaydet", False),
                         satirlar=satirlar, kullanici=request.user)
-                    messages.success(request, f"Satış Teklifi kaydedildi: {ts.belge_no}")
+                    durum_mesaji = ("taslak olarak" if cd.get("taslak_olarak_kaydet")
+                                   else "gönderildi olarak")
+                    messages.success(
+                        request, f"Satış Teklifi {durum_mesaji} kaydedildi: {ts.belge_no}")
                     return redirect("core:teklif_siparis_detay", pk=ts.pk)
                 except teklif_siparis_servis.TeklifSiparisHatasi as e:
                     bform.add_error(None, str(e))
@@ -2783,6 +2801,62 @@ def teklif_siparis_onayi_geri_al(request, pk):
         try:
             teklif_siparis_servis.teklif_siparis_onayi_geri_al(ts, kullanici=request.user)
             messages.success(request, f"{ts.get_belge_tur_display()} onayı geri alındı.")
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+
+
+# --- Satış Teklifi: Gönderildi/Kabul/Red/İptal (bkz. core.services.teklif_siparis, yalnız
+# belge_tur=TEKLIF, yon=SATIS) ---
+@ekran_gerekli("satis_teklifleri")
+def teklif_gonder_gorunum(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            teklif_siparis_servis.teklif_gonder(ts, kullanici=request.user)
+            messages.success(request, "Teklif gönderildi.")
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+
+
+@ekran_gerekli("satis_teklifleri")
+def teklif_kabul_gorunum(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            teklif_siparis_servis.teklif_kabul_et(ts, kullanici=request.user)
+            messages.success(request, "Teklif kabul edildi olarak işaretlendi.")
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+
+
+@ekran_gerekli("satis_teklifleri")
+def teklif_red_gorunum(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = TeklifRedForm(request.POST)
+        if form.is_valid():
+            try:
+                teklif_siparis_servis.teklif_reddet(
+                    ts, red_nedeni=form.cleaned_data["red_nedeni"], kullanici=request.user)
+                messages.success(request, "Teklif reddedildi olarak işaretlendi.")
+                return redirect("core:teklif_siparis_detay", pk=ts.pk)
+            except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = TeklifRedForm()
+    return render(request, "core/teklif_red_form.html", {"form": form, "ts": ts})
+
+
+@ekran_gerekli("satis_teklifleri")
+def teklif_iptal_gorunum(request, pk):
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            teklif_siparis_servis.teklif_iptal_et(ts, kullanici=request.user)
+            messages.success(request, "Teklif iptal edildi.")
         except teklif_siparis_servis.TeklifSiparisHatasi as e:
             messages.error(request, str(e))
     return redirect("core:teklif_siparis_detay", pk=ts.pk)

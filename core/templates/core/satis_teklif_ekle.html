@@ -143,8 +143,17 @@
 
     <div class="form-altbar">
       <a class="iptal-bag" href="{{ iptal_url }}">İptal</a>
+      {% if not duzenleme %}
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.88rem;margin-right:auto">
+        {{ bform.taslak_olarak_kaydet }} {{ bform.taslak_olarak_kaydet.label }}
+      </label>
+      {% endif %}
       <button type="submit" class="birincil">Kaydet</button>
     </div>
+    {% if not duzenleme %}
+    <p class="yardim" style="margin-top:.3rem">İşaretlemezseniz teklif doğrudan
+      "Gönderildi" durumunda kaydedilir.</p>
+    {% endif %}
   </form>
 </div>
 

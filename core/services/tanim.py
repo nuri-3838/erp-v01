@@ -248,7 +248,12 @@ def secenek_sil(s: TanimSecenegi, kullanici=None) -> TanimSecenegi:
     if s.silindi:
         return s
     from django.db.models import Q
-    kullanimda = TeklifSiparis.objects.filter(silindi=False).filter(
+    # durum=IPTAL yalnız Satış Teklifi'nde var (bkz. TeklifSiparis.Durum) ve soft-delete
+    # DEĞİL (silindi=False kalır, liste/filtrede görünür kalsın diye) — "kullanımda" sayılmaz,
+    # aksi halde iptal edilmiş bir teklifteki seçenek asla silinemezdi.
+    kullanimda = TeklifSiparis.objects.filter(silindi=False).exclude(
+        durum=TeklifSiparis.Durum.IPTAL
+    ).filter(
         Q(yukleme_sekli=s) | Q(odeme_kosulu=s) | Q(yukleme_tipi=s) | Q(teslim_suresi=s)
     ).exists()
     if kullanimda:

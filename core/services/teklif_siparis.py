@@ -21,7 +21,9 @@ from core.models import (AdayMusteri, BankaHesap, Cari, Depo, KdvOrani, Kur, Sto
                          StokMaliyetKatmani, StokMaliyetTuketimi, TanimSecenegi, TeklifSiparis,
                          TeklifSiparisKalem)
 from core.sayi import SayiHatasi, parse_tr
+from core.services import aday_donustur
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
+from core.tarih import tr_bugun
 
 
 class TeklifSiparisHatasi(ValueError):
@@ -243,10 +245,16 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
                            aciklama="", depo_id=None, irsaliye_no="",
                            yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
                            teslim_suresi_id=None, banka_hesabi_id=None, kur=None,
-                           navlun_tutari=None, kullanici=None) -> TeklifSiparis:
+                           navlun_tutari=None, taslak_olarak_kaydet=False,
+                           kullanici=None) -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini oluşturur. Yevmiye ÜRETMEZ; İRSALİYE
     stok hareketi de ÜRETMEZ (o yalnız onaylanınca — bkz. teklif_siparis_onayla). Durum
-    TASLAK başlar; belge_no otomatik (müteselsil) üretilir."""
+    TASLAK başlar; belge_no otomatik (müteselsil) üretilir.
+
+    İSTİSNA — Satış Teklifi (belge_tur=TEKLIF, yon=SATIS): kullanıcı teklifi hazırlar
+    hazırlamaz göndermeyi varsayar; ``taslak_olarak_kaydet=True`` verilmediği sürece durum
+    doğrudan GONDERILDI başlar (TASLAK → Onayla ekstra adımı atlanır). ``taslak_olarak_
+    kaydet`` diğer 6 belge_tur/yon kombinasyonunda hiçbir etkisi yoktur (hep TASLAK)."""
     if belge_tur not in TeklifSiparis.BelgeTur.values:
         raise TeklifSiparisHatasi("Geçersiz belge türü.")
     if yon not in TeklifSiparis.Yon.values:
@@ -267,6 +275,14 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
                         para_birimi=pb, kur=kur, aciklama=aciklama, depo=depo,
                         banka_hesabi=banka, kullanici=kullanici)
     _kalemleri_yaz(ts, hazir, kullanici)
+    satis_teklifi_mi = belge_tur == TeklifSiparis.BelgeTur.TEKLIF and yon == TeklifSiparis.Yon.SATIS
+    if satis_teklifi_mi and not taslak_olarak_kaydet:
+        ts.durum = TeklifSiparis.Durum.GONDERILDI
+        ts.updated_by = kullanici
+        ts.save(update_fields=["durum", "updated_by", "updated_at"])
+        if ts.aday_musteri_id:
+            aday_donustur.aday_asama_ilerlet(
+                ts.aday_musteri, aday_donustur._teklif_rollu_asama(), kullanici=kullanici)
     return ts
 
 
@@ -317,12 +333,17 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
     hangi ekrana ait olduğunu ve numarasını belirler, değişmez). Onaylı belge düzenlenemez
     (önce onayı geri alın); bir sonraki aşamaya dönüştürülmüş belge de düzenlenemez (bkz.
     _donusum_hedefi — durum/onay bağımsız, kaynak belge dönüşümden sonra hiç değişmemeli).
-    Eski kalemler soft-delete edilir, yenileri yazılır."""
+    Satış Teklifi'nde (Gönderildi/Kabul/Red/Süresi Doldu/İptal akışı) yalnız TASLAK
+    düzenlenebilir — gönderildikten sonra düzenleme kilitlenir. Eski kalemler soft-delete
+    edilir, yenileri yazılır."""
     from django.utils import timezone
     if ts.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş belge düzenlenemez.")
     if ts.durum == TeklifSiparis.Durum.ONAYLI:
         raise TeklifSiparisHatasi("Onaylı belge düzenlenemez; önce onayı geri alın.")
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS
+            and ts.durum != TeklifSiparis.Durum.TASLAK):
+        raise TeklifSiparisHatasi("Yalnız taslak durumundaki teklif düzenlenebilir.")
     hedef = _donusum_hedefi(ts)
     if hedef:
         raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; düzenlenemez.")
@@ -364,7 +385,14 @@ def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     Taslak Sipariş, Sipariş onaylanınca Taslak İrsaliye + gerçek stok girişi, İrsaliye
     onaylanınca Taslak Alış Faturası — hepsi ARKA PLANDA SESSİZCE, yönlendirme yok). SATIŞ
     yönünde hiçbir yan etkisi yok (yalnız durum flip). Tek atomik blok: zincirde bir yerde
-    hata olursa (örn. aktif depo yok) durum flip'i de geri alınır, belge TASLAK kalır."""
+    hata olursa (örn. aktif depo yok) durum flip'i de geri alınır, belge TASLAK kalır.
+
+    Satış Teklifi (belge_tur=TEKLIF, yon=SATIS) BU FONKSİYONU KULLANMAZ — Gönderildi/Kabul/
+    Red/Süresi Doldu/İptal akışı var (bkz. teklif_gonder/teklif_kabul_et), burada reddedilir;
+    aksi halde ONAYLI durumu o belge türünde hiç kullanılmayan, tanımsız bir duruma düşerdi."""
+    if ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS:
+        raise TeklifSiparisHatasi(
+            "Satış Teklifi bu akışı kullanmaz; Gönder/Kabul Edildi/Reddedildi kullanın.")
     if ts.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş belge onaylanamaz.")
     if ts.durum == TeklifSiparis.Durum.ONAYLI:
@@ -401,7 +429,12 @@ def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSip
     alınamaz (zincirin bütünlüğü bozulur). İptal edilmişse hata; zaten taslaksa sessiz
     (idempotent). İRSALİYE ise, onaylanınca yazdığı GERÇEK stok girişi de geri alınır
     (bir stok+depoda eldeki miktarı negatife düşürüyorsa geri alma engellenir — aynı
-    teklif_siparis_iptal'daki _irsaliye_hareketleri_iptal deseni)."""
+    teklif_siparis_iptal'daki _irsaliye_hareketleri_iptal deseni).
+
+    Satış Teklifi BU FONKSİYONU KULLANMAZ — bkz. teklif_siparis_onayla'daki aynı not."""
+    if ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS:
+        raise TeklifSiparisHatasi(
+            "Satış Teklifi bu akışı kullanmaz; Gönder/Kabul Edildi/Reddedildi kullanın.")
     if ts.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş belge için onay geri alınamaz.")
     if ts.durum == TeklifSiparis.Durum.TASLAK:
@@ -415,6 +448,101 @@ def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSip
     ts.updated_by = kullanici
     ts.save(update_fields=["durum", "updated_by", "updated_at"])
     return ts
+
+
+# === Satış Teklifi: Gönderildi/Kabul/Red/Süresi Doldu/İptal akışı ==========================
+# Bu durumlar YALNIZ belge_tur=TEKLIF, yon=SATIS için kullanılır (bkz. TeklifSiparis.Durum
+# docstring'i) — aşağıdaki fonksiyonların hiçbiri diğer 6 belge_tur/yon kombinasyonunda
+# çağrılmaz; teklif_siparis_onayla/_geri_al (TASLAK/ONAYLI akışı) onlar için AYNEN kalır.
+def _satis_teklif_dogrula(ts: TeklifSiparis):
+    if ts.belge_tur != TeklifSiparis.BelgeTur.TEKLIF or ts.yon != TeklifSiparis.Yon.SATIS:
+        raise TeklifSiparisHatasi("Bu işlem yalnız Satış Teklifi için geçerlidir.")
+    if ts.silindi:
+        raise TeklifSiparisHatasi("İptal edilmiş belge üzerinde işlem yapılamaz.")
+
+
+@transaction.atomic
+def teklif_gonder(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
+    """TASLAK → GONDERILDI. Aday müşteriye bağlıysa (henüz Cari değilse) CRM aşamasını
+    TEKLIF rollü aşamaya ilerletir (rol atanmamışsa sessizce atlanır — bkz.
+    core.services.aday_donustur._teklif_rollu_asama)."""
+    _satis_teklif_dogrula(ts)
+    if ts.durum != TeklifSiparis.Durum.TASLAK:
+        return ts
+    ts.durum = TeklifSiparis.Durum.GONDERILDI
+    ts.updated_by = kullanici
+    ts.save(update_fields=["durum", "updated_by", "updated_at"])
+    if ts.aday_musteri_id:
+        aday_donustur.aday_asama_ilerlet(
+            ts.aday_musteri, aday_donustur._teklif_rollu_asama(), kullanici=kullanici)
+    return ts
+
+
+@transaction.atomic
+def teklif_kabul_et(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
+    """{GONDERILDI, SURESI_DOLDU} → KABUL (geç gelen müşteri cevabı için süresi dolmuş
+    teklif de kabul edilebilir — bkz. teklif_suresi_dolanlari_isaretle). Aday müşteriye
+    bağlıysa CRM aşamasını SIPARIS rollü aşamaya ilerletir (bkz. teklif_gonder deseni)."""
+    _satis_teklif_dogrula(ts)
+    if ts.durum == TeklifSiparis.Durum.KABUL:
+        return ts
+    if ts.durum not in (TeklifSiparis.Durum.GONDERILDI, TeklifSiparis.Durum.SURESI_DOLDU):
+        raise TeklifSiparisHatasi("Yalnız gönderilmiş bir teklif kabul edilebilir.")
+    ts.durum = TeklifSiparis.Durum.KABUL
+    ts.updated_by = kullanici
+    ts.save(update_fields=["durum", "updated_by", "updated_at"])
+    if ts.aday_musteri_id:
+        aday_donustur.aday_asama_ilerlet(
+            ts.aday_musteri, aday_donustur._siparis_rollu_asama(), kullanici=kullanici)
+    return ts
+
+
+@transaction.atomic
+def teklif_reddet(ts: TeklifSiparis, *, red_nedeni="", kullanici=None) -> TeklifSiparis:
+    """{GONDERILDI, SURESI_DOLDU} → RED. red_nedeni isteğe bağlı kısa açıklama."""
+    _satis_teklif_dogrula(ts)
+    if ts.durum == TeklifSiparis.Durum.RED:
+        return ts
+    if ts.durum not in (TeklifSiparis.Durum.GONDERILDI, TeklifSiparis.Durum.SURESI_DOLDU):
+        raise TeklifSiparisHatasi("Yalnız gönderilmiş bir teklif reddedilebilir.")
+    ts.durum = TeklifSiparis.Durum.RED
+    ts.red_nedeni = (red_nedeni or "").strip()
+    ts.updated_by = kullanici
+    ts.save(update_fields=["durum", "red_nedeni", "updated_by", "updated_at"])
+    return ts
+
+
+@transaction.atomic
+def teklif_iptal_et(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
+    """{TASLAK, GONDERILDI, SURESI_DOLDU} → IPTAL. Kabul edilmiş/reddedilmiş/zaten
+    dönüştürülmüş teklif iptal edilemez. NOT: bu, teklif_siparis_iptal (soft-delete) ile
+    AYNI DEĞİL — Satış Teklifi'nde iptal artık silindi=True yerine durum=IPTAL olarak
+    kaydedilir, böylece liste/filtrede görünür ve geri izlenebilir kalır."""
+    _satis_teklif_dogrula(ts)
+    if ts.durum == TeklifSiparis.Durum.IPTAL:
+        return ts
+    if ts.durum not in (TeklifSiparis.Durum.TASLAK, TeklifSiparis.Durum.GONDERILDI,
+                        TeklifSiparis.Durum.SURESI_DOLDU):
+        raise TeklifSiparisHatasi("Bu durumdaki teklif iptal edilemez.")
+    hedef = _donusum_hedefi_manuel(ts)
+    if hedef:
+        raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; iptal edilemez.")
+    ts.durum = TeklifSiparis.Durum.IPTAL
+    ts.updated_by = kullanici
+    ts.save(update_fields=["durum", "updated_by", "updated_at"])
+    return ts
+
+
+def teklif_suresi_dolanlari_isaretle(bugun=None) -> int:
+    """GONDERILDI durumunda ve geçerlilik tarihi geçmiş Satış Tekliflerini SURESI_DOLDU'ya
+    çeker — bkz. core.management.commands.teklif_suresi_kontrol (günlük cron). "Yumuşak" bir
+    durak: SURESI_DOLDU'dan da Kabul/Red edilebilir (geç gelen müşteri cevabı), bkz.
+    teklif_kabul_et/teklif_reddet. Kaç kayıt güncellendiğini döner."""
+    bugun = bugun or tr_bugun()
+    return TeklifSiparis.objects.filter(
+        belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS, silindi=False,
+        durum=TeklifSiparis.Durum.GONDERILDI,
+        gecerlilik_teslim_tarihi__lt=bugun).update(durum=TeklifSiparis.Durum.SURESI_DOLDU)
 
 
 @transaction.atomic
@@ -459,7 +587,8 @@ def teklifi_proformaya_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) ->
     """Satış teklifini proformaya çevirir: aynı cari/aday müşteri/para birimi, kalemler
     (stok/miktar/fiyat/iskonto/KDV snapshot) kopyalanır — miktarlar burada teklifteki gibi
     kalır, müşterinin istediği GERÇEK adede Düzenle ekranından güncellenir. Yalnız aktif +
-    ONAYLI + SATIŞ yönünde TEKLİF + henüz dönüştürülmemiş teklif çevrilebilir (tek seferlik).
+    KABUL edilmiş + SATIŞ yönünde TEKLİF + henüz dönüştürülmemiş teklif çevrilebilir (tek
+    seferlik) — "Kabul Edildi" butonundan sonra görünen "Proformaya Çevir" aksiyonu budur.
     Aday müşteride de çalışır — proforma aşaması henüz muhasebe/stok'a dokunmaz (bkz.
     _ADAY_MUSTERI_IZINLI); Cariye dönüşüm zorunluluğu bir sonraki adımda, Siparişe
     çevrilirken devreye girer (bkz. proformayi_siparise_cevir)."""
@@ -467,8 +596,8 @@ def teklifi_proformaya_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) ->
         raise TeklifSiparisHatasi("İptal edilmiş teklif proformaya çevrilemez.")
     if teklif.belge_tur != TeklifSiparis.BelgeTur.TEKLIF or teklif.yon != TeklifSiparis.Yon.SATIS:
         raise TeklifSiparisHatasi("Yalnız satış teklifi proformaya çevrilebilir.")
-    if teklif.durum != TeklifSiparis.Durum.ONAYLI:
-        raise TeklifSiparisHatasi("Yalnız onaylı teklif proformaya çevrilebilir.")
+    if teklif.durum != TeklifSiparis.Durum.KABUL:
+        raise TeklifSiparisHatasi("Yalnız kabul edilmiş teklif proformaya çevrilebilir.")
     if teklif.donusen_belgeler.filter(silindi=False).exists():
         raise TeklifSiparisHatasi("Bu teklif zaten bir proformaya dönüştürülmüş.")
     kalemler = list(teklif.kalemler.filter(silindi=False))
@@ -683,8 +812,13 @@ def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     iptal edilemez (bkz. _donusum_hedefi_manuel — zincirin bütünlüğü bozulur; ALIŞ'taki
     otomatik zincir kasıtlı olarak kapsam dışı). İRSALİYE ise, onaylanınca yazdığı GERÇEK
     stok girişi de geri alınır (bir stok+depoda eldeki miktarı negatife düşürüyorsa iptal
-    engellenir — bkz. _irsaliye_hareketleri_iptal)."""
+    engellenir — bkz. _irsaliye_hareketleri_iptal).
+
+    Satış Teklifi BU FONKSİYONU KULLANMAZ — iptali durum=IPTAL ile kaydeder (soft-delete
+    DEĞİL), böylece liste/filtrede görünür kalır; bkz. teklif_iptal_et."""
     from django.utils import timezone
+    if ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS:
+        raise TeklifSiparisHatasi("Satış Teklifi bu akışı kullanmaz; İptal Et kullanın.")
     if ts.silindi:
         return ts
     hedef = _donusum_hedefi_manuel(ts)

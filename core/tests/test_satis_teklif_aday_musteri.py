@@ -129,7 +129,7 @@ class SatisTeklifAdayMusteriTest(TestCase):
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
             cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 13),
             satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
-            kullanici=self.yon)
+            taslak_olarak_kaydet=True, kullanici=self.yon)
         teklif_siparis_guncelle(
             ts, aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
             satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
@@ -143,14 +143,14 @@ class SatisTeklifAdayMusteriTest(TestCase):
         dokunmuyor (bkz. _ADAY_MUSTERI_IZINLI). Cariye dönüşüm zorunluluğu bir sonraki
         adımda, Proforma → Sipariş'te devreye girer."""
         from core.services.teklif_siparis import (
-            teklif_siparis_olustur, teklif_siparis_onayla, teklifi_proformaya_cevir,
+            teklif_siparis_olustur, teklif_kabul_et, teklifi_proformaya_cevir,
         )
         ts = teklif_siparis_olustur(
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
             aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
             satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
             kullanici=self.yon)
-        teklif_siparis_onayla(ts, kullanici=self.yon)
+        teklif_kabul_et(ts, kullanici=self.yon)
         proforma = teklifi_proformaya_cevir(ts, tarih=datetime.date(2026, 9, 13), kullanici=self.yon)
         self.assertIsNone(proforma.cari_id)
         self.assertEqual(proforma.aday_musteri_id, self.aday.pk)
@@ -280,7 +280,7 @@ class SatisTeklifAdayMusteriTest(TestCase):
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
             aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
             satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
-            kullanici=self.yon)
+            taslak_olarak_kaydet=True, kullanici=self.yon)
         self.client.force_login(self.yon)
         govde = self._post_govde(karsi_taraf_tip="cari", aday_musteri="", cari=self.cari.pk,
                                  para_birimi="TRY")
@@ -320,13 +320,13 @@ class SatisTeklifAdayMusteriTest(TestCase):
             self.assertEqual(r["Content-Type"], "application/pdf")
 
     def test_proformaya_cevir_view_aday_teklifinde_calisir(self):
-        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+        from core.services.teklif_siparis import teklif_siparis_olustur, teklif_kabul_et
         ts = teklif_siparis_olustur(
             belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
             aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
             satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "350"}],
             kullanici=self.yon)
-        teklif_siparis_onayla(ts, kullanici=self.yon)
+        teklif_kabul_et(ts, kullanici=self.yon)
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:teklif_proformaya_cevir", args=[ts.pk]), follow=True)
         proforma = TeklifSiparis.objects.get(kaynak_teklif=ts)
@@ -356,3 +356,165 @@ class SatisTeklifAdayMusteriTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:satis_teklifleri"), {"ara": "POTANSİYEL"})
         self.assertContains(r, "POTANSİYEL MUSTERİ LTD")
+
+
+class TeklifCrmAsamaOtomasyonuTest(TestCase):
+    """Satış Teklifi Gönderildi/Kabul olunca aday müşterinin CRM aşaması otomatik ilerler —
+    yalnız TEKLIF/SIPARIS rollü bir aşama ATANMIŞSA (bkz. core.services.aday_donustur.
+    aday_asama_ilerlet, _cari_rollu_asama ile aynı 'rol yoksa no-op' deseni)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.yon = User.objects.create_superuser("tcaoyon", password="x")
+        cls.aday = aday_musteri_olustur(
+            unvan="asama test aday", para_birimi="TRY", kullanici=cls.yon)
+        ust = Kategori.objects.create(kod="151", ad="MAMUL2", created_by=cls.yon,
+                                      updated_by=cls.yon)
+        cls.kat = Kategori.objects.create(kod="11", ad="MERDİVEN2", ust=ust,
+                                          created_by=cls.yon, updated_by=cls.yon)
+        cls.birim = Birim.objects.create(ad="ADET2", kisa_ad="AD2", ondalik=0)
+        cls.kdv = KdvOrani.objects.create(oran=Decimal("20"), aciklama="Genel2",
+                                          created_by=cls.yon, updated_by=cls.yon)
+        cls.urun = stok_olustur(
+            ad="asama test urun", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
+            fatura_birimi_id=cls.birim.pk, kdv_id=cls.kdv.pk,
+            satis_urunu=True, fiyat_try="1000", kullanici=cls.yon)
+
+    def _teklif(self, **over):
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        govde = dict(
+            belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
+            aday_musteri_id=self.aday.pk, tarih=datetime.date(2026, 9, 13),
+            satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "1000"}],
+            kullanici=self.yon)
+        govde.update(over)
+        return teklif_siparis_olustur(**govde)
+
+    def test_rol_atanmamissa_asama_degismez(self):
+        onceki_asama_id = self.aday.asama_id
+        self._teklif()
+        self.aday.refresh_from_db()
+        self.assertEqual(self.aday.asama_id, onceki_asama_id)
+
+    def test_gonderilince_teklif_rollu_asamaya_gecer(self):
+        from core.services.aday_tanim import asama_olustur
+        teklif_asamasi = asama_olustur(
+            ad="TEKLİF VERİLDİ", rol=AdayAsamaTanim.Rol.TEKLIF, kullanici=self.yon)
+        self._teklif()                                   # varsayılan: doğrudan GONDERILDI
+        self.aday.refresh_from_db()
+        self.assertEqual(self.aday.asama_id, teklif_asamasi.pk)
+        self.assertTrue(
+            self.aday.aktiviteler.filter(aciklama__contains="Aşama:").exists())
+
+    def test_taslak_olarak_kaydedilince_asama_degismez_gonderilince_degisir(self):
+        from core.services.aday_tanim import asama_olustur
+        from core.services.teklif_siparis import teklif_gonder
+        teklif_asamasi = asama_olustur(
+            ad="TEKLİF VERİLDİ 2", rol=AdayAsamaTanim.Rol.TEKLIF, kullanici=self.yon)
+        onceki_asama_id = self.aday.asama_id
+        t = self._teklif(taslak_olarak_kaydet=True)
+        self.aday.refresh_from_db()
+        self.assertEqual(self.aday.asama_id, onceki_asama_id)   # taslakken değişmez
+        teklif_gonder(t, kullanici=self.yon)
+        self.aday.refresh_from_db()
+        self.assertEqual(self.aday.asama_id, teklif_asamasi.pk)
+
+    def test_kabul_edilince_siparis_rollu_asamaya_gecer(self):
+        from core.services.aday_tanim import asama_olustur
+        from core.services.teklif_siparis import teklif_kabul_et
+        siparis_asamasi = asama_olustur(
+            ad="SİPARİŞ BEKLENİYOR", rol=AdayAsamaTanim.Rol.SIPARIS, kullanici=self.yon)
+        t = self._teklif()
+        teklif_kabul_et(t, kullanici=self.yon)
+        self.aday.refresh_from_db()
+        self.assertEqual(self.aday.asama_id, siparis_asamasi.pk)
+
+    def test_cariye_bagli_teklifte_otomasyon_calismaz(self):
+        """taraf bir Cari ise (aday_musteri yok) CRM aşama otomasyonu hiç tetiklenmez."""
+        from core.services.aday_tanim import asama_olustur
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        asama_olustur(ad="TEKLİF VERİLDİ 3", rol=AdayAsamaTanim.Rol.TEKLIF, kullanici=self.yon)
+        _hesap("120.09", "ASAMA CARI")
+        cari = Cari.objects.create(kod="C9", unvan="ASAMA CARI", muhasebe_kodu="120.09",
+                                   created_by=self.yon, updated_by=self.yon)
+        onceki_asama_id = self.aday.asama_id
+        teklif_siparis_olustur(
+            belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
+            cari_id=cari.pk, tarih=datetime.date(2026, 9, 13),
+            satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "1000"}],
+            kullanici=self.yon)
+        self.aday.refresh_from_db()
+        self.assertEqual(self.aday.asama_id, onceki_asama_id)
+
+
+class TeklifSuresiDolanlariIsaretleTest(TestCase):
+    """core.services.teklif_siparis.teklif_suresi_dolanlari_isaretle — bkz.
+    core/management/commands/teklif_suresi_kontrol.py (günlük cron)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.yon = User.objects.create_superuser("tsdiyon", password="x")
+        _hesap("120.08", "SÜRESİ DOLAN MÜŞTERİ")
+        cls.cari = Cari.objects.create(kod="C8", unvan="SÜRESİ DOLAN MÜŞTERİ",
+                                       muhasebe_kodu="120.08",
+                                       created_by=cls.yon, updated_by=cls.yon)
+        ust = Kategori.objects.create(kod="152", ad="MAMUL3", created_by=cls.yon,
+                                      updated_by=cls.yon)
+        cls.kat = Kategori.objects.create(kod="12", ad="MERDİVEN3", ust=ust,
+                                          created_by=cls.yon, updated_by=cls.yon)
+        cls.birim = Birim.objects.create(ad="ADET3", kisa_ad="AD3", ondalik=0)
+        cls.kdv = KdvOrani.objects.create(oran=Decimal("20"), aciklama="Genel3",
+                                          created_by=cls.yon, updated_by=cls.yon)
+        cls.urun = stok_olustur(
+            ad="süresi dolan urun", kategori_id=cls.kat.pk, uretim_birimi_id=cls.birim.pk,
+            fatura_birimi_id=cls.birim.pk, kdv_id=cls.kdv.pk,
+            satis_urunu=True, fiyat_try="1000", kullanici=cls.yon)
+
+    def _teklif(self, gecerlilik):
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        return teklif_siparis_olustur(
+            belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.SATIS,
+            cari_id=self.cari.pk, tarih=datetime.date(2026, 9, 1),
+            gecerlilik_teslim_tarihi=gecerlilik,
+            satirlar=[{"stok_id": self.urun.pk, "miktar": "1", "birim_fiyat": "1000"}],
+            kullanici=self.yon)
+
+    def test_gecmis_tarihli_gonderilmis_teklif_isaretlenir(self):
+        from core.services.teklif_siparis import teklif_suresi_dolanlari_isaretle
+        t = self._teklif(datetime.date(2026, 9, 10))
+        sayisi = teklif_suresi_dolanlari_isaretle(bugun=datetime.date(2026, 9, 20))
+        self.assertEqual(sayisi, 1)
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "SURESI_DOLDU")
+
+    def test_gelecek_tarihli_teklif_isaretlenmez(self):
+        from core.services.teklif_siparis import teklif_suresi_dolanlari_isaretle
+        t = self._teklif(datetime.date(2026, 9, 30))
+        teklif_suresi_dolanlari_isaretle(bugun=datetime.date(2026, 9, 20))
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "GONDERILDI")
+
+    def test_taslak_teklif_isaretlenmez(self):
+        from core.services.teklif_siparis import teklif_suresi_dolanlari_isaretle
+        t = self._teklif(datetime.date(2026, 9, 10))
+        t.durum = "TASLAK"
+        t.save(update_fields=["durum"])
+        teklif_suresi_dolanlari_isaretle(bugun=datetime.date(2026, 9, 20))
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "TASLAK")
+
+    def test_suresi_dolmus_teklif_hala_kabul_edilebilir(self):
+        from core.services.teklif_siparis import teklif_kabul_et, teklif_suresi_dolanlari_isaretle
+        t = self._teklif(datetime.date(2026, 9, 10))
+        teklif_suresi_dolanlari_isaretle(bugun=datetime.date(2026, 9, 20))
+        t.refresh_from_db()
+        teklif_kabul_et(t, kullanici=self.yon)
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "KABUL")
+
+    def test_gecerlilik_tarihi_yoksa_isaretlenmez(self):
+        from core.services.teklif_siparis import teklif_suresi_dolanlari_isaretle
+        t = self._teklif(None)
+        teklif_suresi_dolanlari_isaretle(bugun=datetime.date(2026, 9, 20))
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "GONDERILDI")
