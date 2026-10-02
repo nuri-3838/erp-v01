@@ -95,6 +95,13 @@
           </div>
         </div>
         <div class="bb-satir">
+          {% if yon == "ALIS" %}
+          <div class="bb-alan">
+            <label for="{{ fform.vade_tarihi.id_for_label }}">{{ fform.vade_tarihi.label }}</label>
+            {{ fform.vade_tarihi }}
+            {% for e in fform.vade_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          {% endif %}
           <div class="bb-alan">
             <label for="{{ fform.para_birimi.id_for_label }}">{{ fform.para_birimi.label }}</label>
             {{ fform.para_birimi }}

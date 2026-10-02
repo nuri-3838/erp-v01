@@ -1466,6 +1466,9 @@ class Fatura(TemelModel):
     cari = models.ForeignKey(
         Cari, verbose_name="cari", related_name="faturalar", on_delete=models.PROTECT)
     tarih = models.DateField("fatura tarihi")
+    # Yalnız ALIŞ ekleme/düzenleme ekranında gösterilir (bkz. fatura_ekle.html); hiçbir
+    # otomasyonu (hatırlatma/rapor) yok, salt bilgi amaçlı serbest tarih alanı.
+    vade_tarihi = models.DateField("vade tarihi", null=True, blank=True)
     fatura_no = models.CharField("fatura no", max_length=50, blank=True)
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")

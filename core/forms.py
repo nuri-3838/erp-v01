@@ -1586,6 +1586,10 @@ class FaturaForm(forms.Form):
     fatura_no = forms.CharField(
         label="Fatura No", max_length=50, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    # Yalnız ALIŞ ekranında gösterilir (bkz. fatura_ekle.html); SATIŞ'ta hiç render edilmez.
+    vade_tarihi = forms.DateField(
+        label="Vade Tarihi", required=False,
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     para_birimi = forms.ChoiceField(
         label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     # TRY'de anlamsız (JS ile gizlenir). Doluysa carinin kur_tipi tercihine göre otomatik

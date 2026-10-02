@@ -262,3 +262,25 @@ class FaturaEkranTest(TestCase):
         self.client.post(reverse("core:fatura_duzenle", args=[f.pk]), data)
         f.refresh_from_db()
         self.assertEqual(f.aciklama, "Güncellendi")
+
+    def test_vade_tarihi_alis_formunda_gorunur_kaydedilir_ve_detayda_gosterilir(self):
+        self.client.force_login(self.yon)
+        e = self.client.get(reverse("core:alis_fatura_ekle"))
+        self.assertContains(e, "Vade Tarihi")
+        data = self._post_data()
+        data["vade_tarihi"] = "2026-04-10"
+        self.client.post(reverse("core:alis_fatura_ekle"), data)
+        f = Fatura.objects.get(fatura_no="A-1")
+        self.assertEqual(f.vade_tarihi, D(2026, 4, 10))
+        d = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
+        self.assertContains(d, "Vade Tarihi")
+        self.assertContains(d, "10.04.2026")
+
+    def test_vade_tarihi_satista_formda_yok(self):
+        """Regresyon: vade tarihi alanı yalnız ALIŞ ekranında; SATIŞ'a sızmamalı."""
+        satis = FaturaTipi.objects.create(ad="SATIŞ FATURASI VADE", yon=FaturaTipi.Yon.SATIS)
+        KategoriHesap.objects.create(kategori=self.stok.kategori, fatura_tipi=satis,
+                                     hesap=HesapPlani.objects.get(hesap_kodu="153.10"))
+        self.client.force_login(self.yon)
+        e = self.client.get(reverse("core:satis_fatura_ekle"))
+        self.assertNotContains(e, "Vade Tarihi")

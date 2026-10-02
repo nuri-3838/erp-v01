@@ -6380,6 +6380,7 @@ def _fatura_ekle(request, yon, baslik):
                     depo_id=(fform.cleaned_data["depo"].pk
                              if fform.cleaned_data.get("depo") else None),
                     aciklama=fform.cleaned_data.get("aciklama", ""),
+                    vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
@@ -6398,7 +6399,7 @@ def _fatura_ekle(request, yon, baslik):
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
                    **_fatura_gider_baglami(fform),
-                   "baslik": baslik, "iptal_url": reverse(_fatura_liste_url(yon))})
+                   "baslik": baslik, "yon": yon, "iptal_url": reverse(_fatura_liste_url(yon))})
 
 
 @ekran_gerekli("alis_faturalari")
@@ -6434,6 +6435,7 @@ def fatura_duzenle(request, pk):
                     kur=fform.cleaned_data.get("kur"),
                     depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
                     aciklama=fform.cleaned_data.get("aciklama", ""),
+                    vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
@@ -6454,7 +6456,8 @@ def fatura_duzenle(request, pk):
             # TASLAK'ta fatura.kur hep "1" yer tutucusudur (henüz gerçek hesaplanmadı) —
             # forma taşınırsa yanıltıcı olur; JS zaten taze bir önizleme dolduracak.
             "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
-            "depo": fatura.depo_id, "aciklama": fatura.aciklama})
+            "depo": fatura.depo_id, "aciklama": fatura.aciklama,
+            "vade_tarihi": fatura.vade_tarihi})
         ilk = [{"stok": s.stok_id, "hesap": s.hesap_id, "kdv": s.kdv_id, "miktar": s.miktar,
                 "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False).select_related("stok", "hesap")]
@@ -6464,7 +6467,7 @@ def fatura_duzenle(request, pk):
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
                    **_fatura_gider_baglami(fform),
-                   "baslik": "Fatura Düzenle",
+                   "baslik": "Fatura Düzenle", "yon": yon,
                    "iptal_url": reverse("core:fatura_detay", args=[fatura.pk])})
 
 

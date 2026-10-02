@@ -449,7 +449,8 @@ def _negatif_eldeki_dogrula(ciftler):
 
 @transaction.atomic
 def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fatura_no="",
-                          para_birimi="TRY", depo_id=None, aciklama="", kullanici=None) -> Fatura:
+                          para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
+                          kullanici=None) -> Fatura:
     """Faturayı TASLAK olarak oluşturur — fiş/stok hareketi ÜRETMEZ (bkz. fatura_onayla).
     tip_id verilirse yön ondan türetilir; verilmezse `yon` zorunludur (İrsaliye'den otomatik
     açılan, tipi henüz bilinmeyen taslaklar için)."""
@@ -470,7 +471,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
     fatura = Fatura.objects.create(
         tip=tip, yon=cozulen_yon, durum=Fatura.Durum.TASLAK, cari=cari, tarih=tarih,
         fatura_no=fatura_no, para_birimi=pb, kur=1, fis=None, depo=depo,
-        aciklama=(aciklama or "").strip(),
+        aciklama=(aciklama or "").strip(), vade_tarihi=vade_tarihi,
         created_by=kullanici, updated_by=kullanici)
     _satirlari_yaz(fatura, hazir, kullanici)
     return fatura
@@ -513,7 +514,8 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
 
 @transaction.atomic
 def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
-                   para_birimi="TRY", depo_id=None, aciklama="", kullanici=None, kur=None) -> Fatura:
+                   para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
+                   kullanici=None, kur=None) -> Fatura:
     """Kolaylık sarmalayıcısı: taslak oluşturur ve tip zaten bilindiği için HEMEN onaylar —
     tek atomik blok, onaylama başarısız olursa (eksik harita/kur/vb.) taslak da geri alınır
     (eskisi gibi tam atomik: ya hepsi ya hiçbiri). Tip'in önceden bilinmediği tek durum —
@@ -523,14 +525,14 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
     fatura = fatura_taslak_olustur(
         cari_id=cari_id, tarih=tarih, satirlar=satirlar, tip_id=tip_id,
         fatura_no=fatura_no, para_birimi=para_birimi, depo_id=depo_id,
-        aciklama=aciklama, kullanici=kullanici)
+        aciklama=aciklama, vade_tarihi=vade_tarihi, kullanici=kullanici)
     return fatura_onayla(fatura, kullanici=kullanici, kur_override=kur)
 
 
 @transaction.atomic
 def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
-                    fatura_no="", para_birimi="TRY", depo_id=None, aciklama="", kullanici=None,
-                    kur=None) -> Fatura:
+                    fatura_no="", para_birimi="TRY", depo_id=None, aciklama="",
+                    vade_tarihi=None, kullanici=None, kur=None) -> Fatura:
     """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
     serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
     hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir."""
@@ -553,9 +555,10 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         fatura.tip, fatura.yon, fatura.cari, fatura.tarih = tip, cozulen_yon, cari, tarih
         fatura.fatura_no, fatura.para_birimi, fatura.depo = fatura_no, pb, depo
         fatura.aciklama = (aciklama or "").strip()
+        fatura.vade_tarihi = vade_tarihi
         fatura.updated_by = kullanici
-        fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no",
-                                   "para_birimi", "depo", "aciklama", "updated_by", "updated_at"])
+        fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
+                                   "depo", "aciklama", "vade_tarihi", "updated_by", "updated_at"])
         _satirlari_yaz(fatura, hazir, kullanici)
         return fatura
 
@@ -581,9 +584,10 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     fatura.tip, fatura.yon, fatura.cari, fatura.tarih = tip, tip.yon, cari, tarih
     fatura.fatura_no, fatura.para_birimi, fatura.kur, fatura.depo = fatura_no, pb, kur, depo
     fatura.aciklama = (aciklama or "").strip()
+    fatura.vade_tarihi = vade_tarihi
     fatura.updated_by = kullanici
     fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
-                               "kur", "depo", "aciklama", "updated_by", "updated_at"])
+                               "kur", "depo", "aciklama", "vade_tarihi", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
     if depo is not None:
         _hareketleri_yaz(fatura, depo, kur=kur, kullanici=kullanici)
