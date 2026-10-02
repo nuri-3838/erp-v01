@@ -895,43 +895,52 @@ class TeklifSiparisViewTest(TestCase):
         self.assertLess(r.content.index(yeni.belge_no.encode()),
                         r.content.index(eski.belge_no.encode()))
 
-    def test_liste_tutar_sutunu_kdv_haric_gosterir(self):
-        """Sat_teklif listesinde 'Tutar' KDV hariç (ara_toplam) gösterilir — teklifin
-        kendi PDF notuyla tutarlı ('Fiyatlara KDV dahil değildir.')."""
+    def test_liste_tutar_sutunu_yok(self):
+        """Kullanıcı isteği: tutar listede gösterilmesin (yalnız detay/PDF'te)."""
         import datetime
         from core.services.teklif_siparis import teklif_siparis_olustur
-        ts = teklif_siparis_olustur(
+        teklif_siparis_olustur(
             belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
             tarih=datetime.date(2026, 6, 28),
             satirlar=[{"stok_id": self.stok.pk, "miktar": "2", "birim_fiyat": "100"}],
             kullanici=self.yon)
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:satis_teklifleri"))
-        self.assertContains(r, "200,00")   # ara_toplam = 2x100, KDV hariç
-        self.assertNotContains(r, "240,00")  # genel_toplam (KDV dahil) DEĞİL
+        self.assertNotContains(r, "Tutar")
+        self.assertNotContains(r, "200,00")
 
-    def test_liste_gecerlilik_yaklasan_ve_gecikmis_uyarisi(self):
+    def test_liste_tarihte_gecerlilik_uyarisi_yok_sade_gorunur(self):
+        """Kullanıcı isteği: tarih altında 'X gün kaldı' gibi ek bilgi olmasın, yalnız
+        teklifin verildiği tarih görünsün."""
         import datetime
-        from unittest import mock
         from core.services.teklif_siparis import teklif_siparis_olustur
-        bugun = datetime.date(2026, 6, 28)
-        yaklasan = teklif_siparis_olustur(
-            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk, tarih=bugun,
-            gecerlilik_teslim_tarihi=bugun + datetime.timedelta(days=2),
-            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
-            kullanici=self.yon)
-        gecikmis = teklif_siparis_olustur(
-            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk, tarih=bugun,
-            gecerlilik_teslim_tarihi=bugun - datetime.timedelta(days=1),
+        teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            gecerlilik_teslim_tarihi=datetime.date(2026, 6, 20),  # geçmiş -> eskiden "süresi doldu" yazardı
             satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
             kullanici=self.yon)
         self.client.force_login(self.yon)
-        with mock.patch("core.views.tr_bugun", return_value=bugun):
-            r = self.client.get(reverse("core:satis_teklifleri"))
-        self.assertContains(r, "2 gün kaldı")
-        self.assertContains(r, "süresi doldu")
-        self.assertIsNotNone(yaklasan.pk)
-        self.assertIsNotNone(gecikmis.pk)
+        r = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertContains(r, "28.06.2026")
+        self.assertNotContains(r, "süresi doldu")
+        self.assertNotContains(r, "gün kaldı")
+
+    def test_liste_ulke_sutunu_gosterir(self):
+        from core.models import Ulke
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ulke = Ulke.objects.create(kod="DE", ad="ALMANYA")
+        self.cari.ulke = ulke
+        self.cari.save(update_fields=["ulke"])
+        teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=__import__("datetime").date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertContains(r, "Ülke")
+        self.assertContains(r, "ALMANYA")
 
     def test_bos_kalemle_kaydedilmez(self):
         self.client.force_login(self.yon)

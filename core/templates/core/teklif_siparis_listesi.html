@@ -51,8 +51,6 @@
   .ts-hucre .ad a:hover { color:var(--turuncu-koyu); }
   .ts-hucre .alt { font-size:.78rem; color:var(--metin-soluk); }
   .ts-belge-no { font-family:"Cascadia Mono",Consolas,monospace; font-size:.85rem; }
-  .ts-gecikmis { color:var(--hata); font-weight:650; }
-  .ts-yaklasan { color:var(--turuncu-koyu); font-weight:650; }
 
   #ts-tablo tbody tr:hover td { background:rgba(240,124,0,.05); }
   #ts-tablo.ts-sade td { padding-top:.85rem; padding-bottom:.85rem; }
@@ -134,7 +132,7 @@
 <table id="ts-tablo"{% if sat_teklif %} class="ts-sade"{% endif %}>
   <thead><tr>
     <th>Cari</th><th>Tarih</th><th>Belge No</th><th>Durum</th>
-    {% if sat_teklif %}<th class="sag">Tutar</th><th></th>{% else %}<th class="sag">Ödenecek</th><th>İşlem</th>{% endif %}
+    {% if sat_teklif %}<th>Ülke</th><th></th>{% else %}<th class="sag">Ödenecek</th><th>İşlem</th>{% endif %}
   </tr></thead>
   <tbody>
     {% for k in kayitlar %}
@@ -149,21 +147,14 @@
             </div>
           </div>
         </td>
-        <td class="mono">{{ k.tarih|date:"d.m.Y" }}
-          {% if sat_teklif and k.gecerlilik_gun_farki != None and k.durum == "GONDERILDI" %}
-            <div class="alt {% if k.gecerlilik_gun_farki < 0 %}ts-gecikmis{% elif k.gecerlilik_gun_farki <= 3 %}ts-yaklasan{% endif %}">
-              {% if k.gecerlilik_gun_farki < 0 %}⏰ süresi doldu
-              {% elif k.gecerlilik_gun_farki == 0 %}⏰ bugün son gün
-              {% else %}⏳ {{ k.gecerlilik_gun_farki }} gün kaldı{% endif %}
-            </div>
-          {% endif %}</td>
+        <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
         <td>{% if k.belge_no %}<span class="ts-belge-no">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}
           {% if k.irsaliye_no %}<br><span class="pasif ts-belge-no">{{ k.irsaliye_no }}</span>{% endif %}</td>
         <td><span class="rozet {% if k.durum == 'ONAYLI' or k.durum == 'GONDERILDI' or k.durum == 'KABUL' %}rozet-aktif{% elif k.durum == 'RED' or k.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>
           {% if k.donustu %}<span class="rozet rozet-notr">{{ donustu_etiket }}</span>{% endif %}
           {% if k.fatura_id %}<span class="rozet rozet-notr">🧾 Faturaya Dönüştü</span>{% endif %}</td>
         {% if sat_teklif %}
-        <td class="sag mono">{{ k.ara_toplam|tr_kur:2 }} {{ k.para_birimi }}</td>
+        <td>{% if k.taraf.ulke_id %}{{ k.taraf.ulke.ad }}{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td class="ts-ok">›</td>
         {% else %}
         <td class="sag mono">{{ k.odenecek|tr_kur:2 }} {{ k.para_birimi }}</td>

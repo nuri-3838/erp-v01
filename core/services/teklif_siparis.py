@@ -64,8 +64,11 @@ def _sayi(deger, etiket, *, pozitif=False):
 
 
 def aktif_teklif_siparisler(belge_tur, yon):
+    # cari__ulke/aday_musteri__ulke: Satış Teklifi listesindeki "Ülke" sütunu için (bkz.
+    # core/templates/core/teklif_siparis_listesi.html) — diğer ekranlarda kullanılmasa da
+    # ek JOIN maliyeti düşük, N+1 sorgudan kaçınmak için burada tutuluyor.
     return (TeklifSiparis.objects.filter(silindi=False, belge_tur=belge_tur, yon=yon)
-            .select_related("cari", "aday_musteri"))
+            .select_related("cari__ulke", "aday_musteri__ulke"))
 
 
 def _yuzde(deger, etiket):

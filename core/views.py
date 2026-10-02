@@ -2067,16 +2067,8 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     sekme_qs = sabit_qs.copy()
     sekme_qs.pop("durum", None)
     # Satış Teklifi'nde henüz fatura/sipariş olmadığı için "ödenecek" (tevkifat düşülmüş)
-    # kavramı yok — bunun yerine net Tutar (KDV hariç, teklifin kendi fiyatlandırma
-    # ilkesiyle tutarlı — bkz. PDF notu "Fiyatlara KDV dahil değildir.") gösterilir; ayrıca
-    # gönderilmiş ama henüz süresi dolmamış tekliflerde geçerlilik tarihine kaç gün
-    # kaldığı Python tarafında (sayfa boyutu küçük, DB'ye özgü tarih farkı gerekmiyor).
-    if sat_teklif:
-        bugun = tr_bugun()
-        for k in sayfa.object_list:
-            k.gecerlilik_gun_farki = (
-                (k.gecerlilik_teslim_tarihi - bugun).days
-                if k.gecerlilik_teslim_tarihi else None)
+    # kavramı yok — liste bu ekranda sade tutuluyor (Cari/Tarih/Belge No/Durum/Ülke +
+    # tıklanabilir satır); tutar yalnız detay sayfasında/PDF'te gösterilir.
     return render(request, "core/teklif_siparis_listesi.html", {
         "kayitlar": sayfa, "baslik": baslik, "emoji": emoji, "ara": ara,
         "durum": durum, "bas": request.GET.get("bas", ""), "bit": request.GET.get("bit", ""),
