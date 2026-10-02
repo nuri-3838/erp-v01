@@ -874,6 +874,65 @@ class TeklifSiparisViewTest(TestCase):
         self.assertNotContains(r_yok, ts.belge_no)
         self.assertContains(r_yok, "eşleşen kayıt yok")
 
+    def test_liste_en_yeni_tarih_en_ustte(self):
+        """Regresyon: annotate(Count(...)) model Meta.ordering'i (-tarih,-id) sessizce
+        sıfırlıyordu — liste eski->yeni (fiilen sırasız) görünüyordu. _ts_liste artık
+        açıkça order_by('-tarih','-id') uyguluyor."""
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        eski = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 1),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        yeni = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertLess(r.content.index(yeni.belge_no.encode()),
+                        r.content.index(eski.belge_no.encode()))
+
+    def test_liste_tutar_sutunu_kdv_haric_gosterir(self):
+        """Sat_teklif listesinde 'Tutar' KDV hariç (ara_toplam) gösterilir — teklifin
+        kendi PDF notuyla tutarlı ('Fiyatlara KDV dahil değildir.')."""
+        import datetime
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        ts = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk,
+            tarih=datetime.date(2026, 6, 28),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "2", "birim_fiyat": "100"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertContains(r, "200,00")   # ara_toplam = 2x100, KDV hariç
+        self.assertNotContains(r, "240,00")  # genel_toplam (KDV dahil) DEĞİL
+
+    def test_liste_gecerlilik_yaklasan_ve_gecikmis_uyarisi(self):
+        import datetime
+        from unittest import mock
+        from core.services.teklif_siparis import teklif_siparis_olustur
+        bugun = datetime.date(2026, 6, 28)
+        yaklasan = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk, tarih=bugun,
+            gecerlilik_teslim_tarihi=bugun + datetime.timedelta(days=2),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        gecikmis = teklif_siparis_olustur(
+            belge_tur="TEKLIF", yon="SATIS", cari_id=self.cari.pk, tarih=bugun,
+            gecerlilik_teslim_tarihi=bugun - datetime.timedelta(days=1),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "1", "birim_fiyat": "10"}],
+            kullanici=self.yon)
+        self.client.force_login(self.yon)
+        with mock.patch("core.views.tr_bugun", return_value=bugun):
+            r = self.client.get(reverse("core:satis_teklifleri"))
+        self.assertContains(r, "2 gün kaldı")
+        self.assertContains(r, "süresi doldu")
+        self.assertIsNotNone(yaklasan.pk)
+        self.assertIsNotNone(gecikmis.pk)
+
     def test_bos_kalemle_kaydedilmez(self):
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:satis_teklif_ekle"), {

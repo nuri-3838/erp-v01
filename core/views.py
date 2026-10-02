@@ -2051,10 +2051,13 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
             sayimlar[satir["durum"]] = satir["n"]
     durum_sekmeleri = [{"kod": kod, "ad": durum_etiketleri[kod], "n": sayimlar.get(kod, 0)}
                        for kod in durum_secenekleri]
+    # annotate(Count(...)) model Meta.ordering'i (-tarih, -id) SESSİZCE sıfırlıyor (Django,
+    # GROUP BY gerektiren bir annotate'ten sonra örtük varsayılan sıralamayı korumuyor) —
+    # bu yüzden en yeni üstte kalsın diye burada AÇIKÇA tekrar belirtiliyor.
     kayitlar = (temel.filter(durum=durum) if durum else temel).annotate(
         donustu=Exists(donusen_var),
         kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)),
-    ).prefetch_related("kalemler__kdv", "kalemler__tevkifat")
+    ).order_by("-tarih", "-id").prefetch_related("kalemler__kdv", "kalemler__tevkifat")
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
     # sayfa linkleri: sayfa DIŞINDAKİ her şeyi (durum dahil) korur — yalnız sayfa değişir.
     sabit_qs = request.GET.copy()
@@ -2063,10 +2066,17 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     # olursa aynı isim iki kez eklenip son değer (eski durum) kazanır; bu yüzden ayrı.
     sekme_qs = sabit_qs.copy()
     sekme_qs.pop("durum", None)
-    # Satış Teklifi'nde "ödenecek tutar" kavramı yok (henüz fatura/sipariş değil) — liste
-    # ekranı bu türde tarih aralığı filtresi + Ödenecek/İşlem sütunları yerine sade,
-    # tıklanabilir satır + Detay'a giden chevron kullanır (bkz. şablon, sat_teklif bayrağı,
-    # tanımı fonksiyon başında).
+    # Satış Teklifi'nde henüz fatura/sipariş olmadığı için "ödenecek" (tevkifat düşülmüş)
+    # kavramı yok — bunun yerine net Tutar (KDV hariç, teklifin kendi fiyatlandırma
+    # ilkesiyle tutarlı — bkz. PDF notu "Fiyatlara KDV dahil değildir.") gösterilir; ayrıca
+    # gönderilmiş ama henüz süresi dolmamış tekliflerde geçerlilik tarihine kaç gün
+    # kaldığı Python tarafında (sayfa boyutu küçük, DB'ye özgü tarih farkı gerekmiyor).
+    if sat_teklif:
+        bugun = tr_bugun()
+        for k in sayfa.object_list:
+            k.gecerlilik_gun_farki = (
+                (k.gecerlilik_teslim_tarihi - bugun).days
+                if k.gecerlilik_teslim_tarihi else None)
     return render(request, "core/teklif_siparis_listesi.html", {
         "kayitlar": sayfa, "baslik": baslik, "emoji": emoji, "ara": ara,
         "durum": durum, "bas": request.GET.get("bas", ""), "bit": request.GET.get("bit", ""),
