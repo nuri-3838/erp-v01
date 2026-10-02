@@ -6149,12 +6149,54 @@ def _fatura_gider_baglami(fform):
 def _fatura_listesi(request, yon, baslik):
     # tip__yon DEĞİL — İrsaliye'den otomatik açılan taslağın tipi henüz boş olabilir
     # (INNER JOIN tip=None satırları dışlar); Fatura'nın kendi yon alanı bunun için var.
+    ara = (request.GET.get("ara") or "").strip()
+    durum = request.GET.get("durum") or "hepsi"
+    tip_id = (request.GET.get("tip") or "").strip()
+    bas = (request.GET.get("bas") or "").strip()
+    bit = (request.GET.get("bit") or "").strip()
+
     faturalar = (fatura_servis.aktif_faturalar().filter(yon=yon)
                  .prefetch_related("satirlar__kdv"))
+    if durum in (Fatura.Durum.TASLAK, Fatura.Durum.ONAYLI):
+        faturalar = faturalar.filter(durum=durum)
+    if tip_id.isdigit():
+        faturalar = faturalar.filter(tip_id=tip_id)
+    if bas:
+        try:
+            faturalar = faturalar.filter(tarih__gte=datetime.date.fromisoformat(bas))
+        except ValueError:
+            bas = ""
+    if bit:
+        try:
+            faturalar = faturalar.filter(tarih__lte=datetime.date.fromisoformat(bit))
+        except ValueError:
+            bit = ""
+    if ara:
+        faturalar = faturalar.filter(
+            Q(cari__unvan__contains=buyuk_harf_tr(ara)) | Q(fatura_no__icontains=ara))
+
     sayfa = Paginator(faturalar, 50).get_page(request.GET.get("sayfa"))
-    return render(request, "core/fatura_listesi.html",
-                  {"faturalar": sayfa, "baslik": baslik,
-                   "ekle_url": _fatura_ekle_url(yon)})
+
+    params = {}
+    if ara:
+        params["ara"] = ara
+    if durum != "hepsi":
+        params["durum"] = durum
+    if tip_id:
+        params["tip"] = tip_id
+    if bas:
+        params["bas"] = bas
+    if bit:
+        params["bit"] = bit
+    sorgu = urlencode(params) + "&" if params else ""
+
+    return render(request, "core/fatura_listesi.html", {
+        "faturalar": sayfa, "baslik": baslik, "ekle_url": _fatura_ekle_url(yon),
+        "liste_url": _fatura_liste_url(yon),
+        "ara": ara, "durum": durum, "secili_tip": tip_id, "bas": bas, "bit": bit,
+        "tipler": FaturaTipi.objects.filter(yon=yon, silindi=False).order_by("sira", "ad"),
+        "sorgu": sorgu,
+        "filtre_aktif": bool(ara or durum != "hepsi" or tip_id or bas or bit)})
 
 
 @ekran_gerekli("alis_faturalari")

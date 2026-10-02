@@ -4,38 +4,95 @@
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
-  <div><h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik }}</h1></div>
+{% include "core/_ik_stil.html" %}
+
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik }}</h1>
   <a class="dugme" href="{% url ekle_url %}">+ Yeni</a>
 </div>
 
-<div class="tablo-kapsayici">
-<table>
+<div class="ik-panel">
+  <form method="get" class="ik-arama-cubuk">
+    <div class="ik-alan-grup ik-arama-kutu">
+      <label for="ft-ara">Ara</label>
+      <span class="ik-arama-ikon">🔍</span>
+      <input type="text" id="ft-ara" name="ara" value="{{ ara }}"
+             placeholder="Cari veya fatura no…" autocomplete="off">
+    </div>
+    <div class="ik-alan-grup">
+      <label for="ft-durum">Durum</label>
+      <select id="ft-durum" name="durum">
+        <option value="hepsi" {% if durum == "hepsi" %}selected{% endif %}>Tümü</option>
+        <option value="ONAYLI" {% if durum == "ONAYLI" %}selected{% endif %}>Onaylı</option>
+        <option value="TASLAK" {% if durum == "TASLAK" %}selected{% endif %}>Taslak</option>
+      </select>
+    </div>
+    {% if tipler %}
+    <div class="ik-alan-grup">
+      <label for="ft-tip">Tip</label>
+      <select id="ft-tip" name="tip">
+        <option value="">Tüm Tipler</option>
+        {% for t in tipler %}
+          <option value="{{ t.pk }}" {% if secili_tip == t.pk|stringformat:"s" %}selected{% endif %}>{{ t.ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="ik-alan-grup">
+      <label for="ft-bas">Başlangıç</label>
+      <input type="date" id="ft-bas" name="bas" value="{{ bas }}">
+    </div>
+    <div class="ik-alan-grup">
+      <label for="ft-bit">Bitiş</label>
+      <input type="date" id="ft-bit" name="bit" value="{{ bit }}">
+    </div>
+    <div class="ik-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      {% if filtre_aktif %}
+        <a class="iptal-bag" href="{% url liste_url %}">Temizle</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<p class="sayfa-alt">{{ faturalar.paginator.count }} fatura.</p>
+
+<div class="tablo-kapsayici genis">
+<table class="ik-tablo">
   <thead><tr>
-    <th>Tarih</th><th>Tip</th><th>Durum</th><th>Cari</th>
-    <th class="sag">Ödenecek</th><th>Fiş</th><th>İşlem</th>
+    <th>Tarih</th><th>Tip</th><th>Durum</th><th>Cari</th><th class="sag">Tutar</th><th></th>
   </tr></thead>
   <tbody>
     {% for f in faturalar %}
-      <tr>
+      <tr onclick="window.location='{% url 'core:fatura_detay' f.pk %}'">
         <td class="mono">{{ f.tarih|date:"d.m.Y" }}</td>
         <td>{% if f.tip %}{{ f.tip.ad }}{% else %}<span class="pasif">— seçilmedi</span>{% endif %}</td>
         <td><span class="rozet {% if f.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ f.get_durum_display }}</span></td>
-        <td><a href="{% url 'core:fatura_detay' f.pk %}">{{ f.cari.unvan }}</a>
-          {% if f.fatura_no %}<span class="pasif"> · {{ f.fatura_no }}</span>{% endif %}</td>
-        <td class="sag mono">{{ f.odenecek|tr_kur:2 }} {{ f.para_birimi }}</td>
-        <td>{% if f.fis %}<a class="mono" href="{% url 'core:fis_detay' f.fis.pk %}">{{ f.fis.yil }}/{{ f.fis.fis_no }}</a>{% else %}<span class="pasif">—</span>{% endif %}</td>
-        <td><span class="islem-bag">
-          <a href="{% url 'core:fatura_detay' f.pk %}">Detay</a>
-          <a href="{% url 'core:fatura_duzenle' f.pk %}">Düzenle</a>
-          <form method="post" action="{% url 'core:fatura_sil' f.pk %}" onsubmit="return confirm('Fatura ve bağlı yevmiye kaydı KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
-            {% csrf_token %}<button type="submit" class="sil">🗑️ Sil</button></form>
-        </span></td>
+        <td>
+          <div class="ad">{{ f.cari.unvan }}</div>
+          {% if f.fatura_no %}<div class="alt">{{ f.fatura_no }}</div>{% endif %}
+        </td>
+        <td class="sag mono">{{ f.genel_toplam|tr_kur:2 }} {{ f.para_birimi }}</td>
+        <td class="ik-ok">›</td>
       </tr>
     {% empty %}
-      <tr><td colspan="7" class="yardim">Henüz fatura yok. “+ Yeni Fatura” ile ekleyin.</td></tr>
+      <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if filtre_aktif %}🔍 Bu süzgeçle eşleşen fatura yok.
+        {% else %}🧾 Henüz fatura yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>
 </div>
+
+{% if faturalar.paginator.num_pages > 1 %}
+<nav class="sayfalama">
+  {% if faturalar.has_previous %}
+    <a href="?{{ sorgu }}sayfa={{ faturalar.previous_page_number }}">‹ Önceki</a>
+  {% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  <span class="sayfalama-bilgi">Sayfa {{ faturalar.number }} / {{ faturalar.paginator.num_pages }}</span>
+  {% if faturalar.has_next %}
+    <a href="?{{ sorgu }}sayfa={{ faturalar.next_page_number }}">Sonraki ›</a>
+  {% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}
