@@ -383,24 +383,33 @@
       .catch(function(){ if(etiket) etiket.textContent=''; hesapla(); });
   }
   // Cari ya da fatura tarihi değişince vade tarihini carinin ödeme koşuluna göre doldurur.
-  // Kullanıcı vadeyi elle değiştirdiyse (vadeElleDegisti) bir daha ÜZERİNE YAZMAZ — bu bayrak
-  // sayfa açılışında vade zaten DOLU geldiyse (düzenleme ekranı) de baştan true olur, böylece
-  // mevcut faturalardaki vade hiç dokunulmadan korunur.
+  // Kullanıcı vadeyi elle değiştirdiyse (vadeElleDegisti) bir daha ÜZERİNE YAZMAZ. Sayfa açılışında
+  // vade zaten DOLU geldiyse (düzenleme/irsaliyeden açılan taslak) özel bir vade olabileceğinden
+  // temkinli olarak "elle" sayılır; yalnız carinin koşulundan hesaplananla AYNIYSA otomatik sayılır
+  // (aşağıdaki başlangıç bölümü).
+  // Vade HER ZAMAN fatura tarihine göre hesaplanır (bugüne göre DEĞİL). Tarih elle yazılırken
+  // (ör. yıl 0002 → 0020 → 0202 → 2026) araya giren geçersiz/eski istekler yok sayılır:
+  // yalnız en son isteğin yanıtı uygulanır.
+  var vadeIstekNo = 0;
+  function vadeUrl(){
+    var cariSec=document.getElementById('id_cari');
+    var tarihInp=document.querySelector('[name="tarih"]');
+    if(!cariSec || !cariSec.value || !tarihInp || !tarihInp.value) return null;
+    if(tarihInp.value < '2000-01-01') return null;     // yazım sırasındaki yarım tarih
+    return VADE_API_TMPL.replace('999999', encodeURIComponent(cariSec.value))
+      + '?tarih=' + encodeURIComponent(tarihInp.value);
+  }
   function vadeDoldur(){
     var vadeInp=document.getElementById('id_vade_tarihi');
     if(!vadeInp || vadeElleDegisti) return;
-    var cariSec=document.getElementById('id_cari');
-    var tarihInp=document.querySelector('[name="tarih"]');
     var etiket=document.getElementById('vade-oto-etiket');
-    if(!cariSec || !cariSec.value || !tarihInp || !tarihInp.value){
-      if(etiket) etiket.textContent=''; return;
-    }
-    var url=VADE_API_TMPL.replace('999999', encodeURIComponent(cariSec.value))
-      + '?tarih=' + encodeURIComponent(tarihInp.value);
+    var url=vadeUrl();
+    if(!url){ if(etiket) etiket.textContent=''; return; }
+    var istek = ++vadeIstekNo;
     fetch(url)
       .then(function(r){ return r.json(); })
       .then(function(j){
-        if(vadeElleDegisti) return;      // fetch dönene kadar kullanıcı elle yazmış olabilir
+        if(vadeElleDegisti || istek !== vadeIstekNo) return;   // elle yazıldı ya da daha yeni istek var
         if(j.vade_tarihi){
           vadeInp.value = j.vade_tarihi;
           if(etiket) etiket.textContent = 'Carinin ödeme koşulundan otomatik dolduruldu.';
@@ -481,8 +490,20 @@
   if(kurInp) kurInp.addEventListener('input', function(){ kurElleDegisti=true; });
   var vadeInp=document.getElementById('id_vade_tarihi');
   if(vadeInp){
-    if(vadeInp.value) vadeElleDegisti = true;   // düzenlemede vade zaten doluysa dokunma
-    vadeInp.addEventListener('input', function(){ vadeElleDegisti=true; });
+    var vadeKullaniciYazdi = false;
+    if(vadeInp.value){
+      // Düzenlemede/irsaliyeden açılan taslakta vade önceden dolu: temkinli olarak ELLE sayılır, AMA
+      // carinin koşulundan o tarihe göre hesaplananla AYNIYSA (kullanıcı özel bir vade vermemiş)
+      // otomatik sayılır ve sonraki cari/tarih değişiminde yeniden hesaplanır.
+      vadeElleDegisti = true;
+      var ilkUrl = vadeUrl();
+      if(ilkUrl){
+        fetch(ilkUrl).then(function(r){ return r.json(); }).then(function(j){
+          if(!vadeKullaniciYazdi && j.vade_tarihi && j.vade_tarihi === vadeInp.value) vadeElleDegisti = false;
+        }).catch(function(){});
+      }
+    }
+    vadeInp.addEventListener('input', function(){ vadeElleDegisti=true; vadeKullaniciYazdi=true; });
   }
   if(cariSec) cariSec.addEventListener('change', vadeDoldur);
   if(tarihInp) tarihInp.addEventListener('change', vadeDoldur);

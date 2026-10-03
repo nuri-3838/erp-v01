@@ -621,6 +621,17 @@ def _satirlari_yaz(fatura, hazir, kullanici):
             created_by=kullanici, updated_by=kullanici)
 
 
+def _taslak_kur_coz(kur, para_birimi):
+    """Taslakta kullanıcının girdiği kur (yalnız döviz faturada anlamlı): saklanır, onayda aynen
+    kullanılır. Boş/TRY -> None (onayda sistem atar)."""
+    if kur in (None, "") or para_birimi == "TRY":
+        return None
+    kur = Decimal(str(kur)) if not isinstance(kur, Decimal) else kur
+    if kur <= 0:
+        raise FaturaHatasi("Kur sıfırdan büyük olmalı.")
+    return kur
+
+
 def _depo_coz(depo_id):
     """depo_id boşsa None (hareket üretilmez); doluysa aktif depoyu çözer."""
     if depo_id in (None, ""):
@@ -735,7 +746,7 @@ def _negatif_eldeki_dogrula(ciftler):
 def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fatura_no="",
                           para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
                           sahsi_alis=False, sahsi_ortak_id=None, gv_stopaj_orani=None,
-                          kullanici=None) -> Fatura:
+                          kullanici=None, kur=None) -> Fatura:
     """Faturayı TASLAK olarak oluşturur — fiş/stok hareketi ÜRETMEZ (bkz. fatura_onayla).
     tip_id verilirse yön ondan türetilir; verilmezse `yon` zorunludur (İrsaliye'den otomatik
     açılan, tipi henüz bilinmeyen taslaklar için). ``sahsi_alis``/``sahsi_ortak_id``: Ortak
@@ -774,6 +785,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         aciklama=(aciklama or "").strip(), vade_tarihi=vade_tarihi,
         sahsi_alis=bool(sahsi_ortak), sahsi_ortak=sahsi_ortak,
         gv_stopaj_orani=_stopaj_orani_coz(tip, gv_stopaj_orani),
+        taslak_kur=_taslak_kur_coz(kur, pb),
         created_by=kullanici, updated_by=kullanici)
     _satirlari_yaz(fatura, hazir, kullanici)
     return fatura
@@ -790,6 +802,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
         raise FaturaHatasi("İptal edilmiş fatura onaylanamaz.")
     if fatura.durum == Fatura.Durum.ONAYLI:
         return fatura
+    kur_override = kur_override or fatura.taslak_kur          # taslakta elle girilen kur korunur
     if fatura.tip_id is None:
         raise FaturaHatasi("Fatura tipi seçilmeden onaylanamaz.")
     if fatura.tip.yon != fatura.yon:
@@ -875,10 +888,11 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         fatura.vade_tarihi = vade_tarihi
         fatura.sahsi_alis, fatura.sahsi_ortak = bool(sahsi_ortak), sahsi_ortak
         fatura.gv_stopaj_orani = _stopaj_orani_coz(tip, gv_stopaj_orani)
+        fatura.taslak_kur = _taslak_kur_coz(kur, pb)
         fatura.updated_by = kullanici
         fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
                                    "depo", "aciklama", "vade_tarihi", "sahsi_alis", "sahsi_ortak",
-                                   "gv_stopaj_orani", "updated_by", "updated_at"])
+                                   "gv_stopaj_orani", "taslak_kur", "updated_by", "updated_at"])
         _satirlari_yaz(fatura, hazir, kullanici)
         return fatura
 

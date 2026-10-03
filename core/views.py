@@ -6684,7 +6684,7 @@ def fatura_duzenle(request, pk):
             "fatura_no": fatura.fatura_no, "para_birimi": fatura.para_birimi,
             # TASLAK'ta fatura.kur hep "1" yer tutucusudur (henüz gerçek hesaplanmadı) —
             # forma taşınırsa yanıltıcı olur; JS zaten taze bir önizleme dolduracak.
-            "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
+            "kur": (fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else fatura.taslak_kur),
             "depo": fatura.depo_id, "aciklama": fatura.aciklama,
             "vade_tarihi": fatura.vade_tarihi,
             "sahsi_alis": fatura.sahsi_alis, "sahsi_ortak": fatura.sahsi_ortak_id,

@@ -1552,6 +1552,10 @@ class Fatura(TemelModel):
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
     kur = models.DecimalField("kur (TL)", max_digits=18, decimal_places=6, default=1)
+    # TASLAK faturada kullanıcının ELLE girdiği kur: onayda aynen kullanılır (boşsa sistem, carinin
+    # kur tipine göre atar). ``kur`` TASLAK'ta yer tutucu (1) olduğundan ayrı alan gerekir.
+    taslak_kur = models.DecimalField("taslakta girilen kur", max_digits=18, decimal_places=6,
+                                     null=True, blank=True)
     fis = models.ForeignKey(
         YevmiyeFisi, verbose_name="yevmiye fişi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="faturalar")
@@ -2060,6 +2064,15 @@ class TeklifSiparisKalem(TemelModel):
 
     def __str__(self):
         return f"{self.stok_id} x {self.miktar}"
+
+    @property
+    def net_birim_fiyat_tam(self):
+        """İskonto uygulanmış birim fiyat, alanın TAM hassasiyetinde (6 hane) — irsaliye/sipariş →
+        fatura aktarımında kullanılır (4 haneye yuvarlama toplamı kaydırır)."""
+        from decimal import Decimal
+        from core.sayi import yuvarla
+        carpan = (Decimal("100") - self.iskonto_yuzdesi) / Decimal("100")
+        return yuvarla(self.birim_fiyat * carpan, 6)
 
     @property
     def net_birim_fiyat(self):
