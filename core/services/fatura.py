@@ -79,6 +79,32 @@ def _gider_ve_duran_varlik_hesaplari():
     return gider_hesaplari() | duran_varlik_hesaplari()
 
 
+# Ortak adına (şahsi) alış: KDV'nin (191'e borçlanan TAM tutar) karşılığı bu hesaba
+# alacak yazılır — şirket KDV'yi normal indirir ama ortak faturanın KDV DAHİL tamamını
+# öder, aradaki KDV "FAZLA" (şirket için fazladan gelir) olarak burada izlenir.
+FAZLA_KDV_HESAP_KODU = "602.01"
+
+
+def _fazla_kdv_hesabi():
+    hesap = HesapPlani.objects.filter(hesap_kodu=FAZLA_KDV_HESAP_KODU, silindi=False).first()
+    if hesap is None:
+        raise FaturaHatasi(
+            f"{FAZLA_KDV_HESAP_KODU} (FAZLA KDV) hesabı tanımlı değil; önce hesap "
+            f"planında açılmalı.")
+    return hesap
+
+
+def _ortak_hesabi_coz(sahsi_ortak_id):
+    """'Ortak adına (şahsi) alış' için seçilen hesabı çözer — bkz.
+    core.services.hesap_plani.ortak_hesaplari (131 ailesi, yaprak)."""
+    from core.services.hesap_plani import ortak_hesaplari
+    hesap = ortak_hesaplari().filter(pk=sahsi_ortak_id).first() if sahsi_ortak_id else None
+    if hesap is None:
+        raise FaturaHatasi(
+            "Ortak adına şahsi alış için geçerli bir ortak hesabı seçin (131 ailesi).")
+    return hesap
+
+
 def _tevkifat_coz(g, i, *, stok_varsayilani=None):
     """``g["tevkifat_yok"]`` True ise (kullanıcı seçicide "Yok"u AÇIKÇA seçti) stok
     kartında tanımlı olsa bile None döner. ``g["tevkifat_id"]`` doluysa o oran kullanılır.
@@ -95,7 +121,7 @@ def _tevkifat_coz(g, i, *, stok_varsayilani=None):
     return tevkifat
 
 
-def _satir_coz(g, i, gider):
+def _satir_coz(g, i, gider, *, sahsi_ortak=None):
     """Girdi satırını çözer -> (stok, hesap, kdv, tevkifat, proje). Gider tipinde satır bir
     GİDER HESABI veya DURAN VARLIK HESABI (+ satırda seçilen KDV oranı + opsiyonel elle
     seçilen tevkifat) taşır, diğer tiplerde STOK (KDV stoktan; tevkifat da varsayılan
@@ -103,11 +129,21 @@ def _satir_coz(g, i, gider):
     bile tevkifat uygulanmaz, `tevkifat_id` doluysa o oran esas alınır; bkz. _tevkifat_coz).
     Karışıklık reddedilir (UI'a güvenilmez). Duran varlık hesabı seçilirse
     `yatirim_projesi_id` çözülür — 258 ailesinde ZORUNLU, 253/254/255/260'ta opsiyonel;
-    aktifleşmiş projeye yeni kalem eklenemez (bkz. YatirimProjesi.Durum)."""
+    aktifleşmiş projeye yeni kalem eklenemez (bkz. YatirimProjesi.Durum). ``sahsi_ortak``
+    doluysa (Ortak adına şahsi alış) satırın hesabı SUBMIT EDİLEN DEĞERDEN BAĞIMSIZ olarak
+    doğrudan bu hesaba sabitlenir (131 ailesi) — duran varlık/proje mantığı uygulanmaz."""
     if gider:
         if g.get("stok_id"):
             raise FaturaHatasi(
                 f"Satır {i}: gider faturasında stok kullanılamaz; gider hesabı seçin.")
+        if sahsi_ortak is not None:
+            kdv = None
+            if g.get("kdv_id"):
+                kdv = KdvOrani.objects.filter(pk=g["kdv_id"], silindi=False).first()
+                if kdv is None:
+                    raise FaturaHatasi(f"Satır {i}: KDV oranı bulunamadı.")
+            tevkifat = _tevkifat_coz(g, i)
+            return None, sahsi_ortak, kdv, tevkifat, None
         hesap = (_gider_ve_duran_varlik_hesaplari().filter(pk=g.get("hesap_id")).first()
                  if g.get("hesap_id") else None)
         if hesap is None:
@@ -146,11 +182,15 @@ def _satir_coz(g, i, gider):
     return stok, None, stok.kdv, tevkifat, None
 
 
-def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None):
+def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None,
+             sahsi_ortak_id=None):
     """Ortak hazırlık (oluştur+güncelle): doğrula, kur çöz, yevmiye satırlarını ve
     FaturaSatir verisini kur. (tip, cari, pb, kur, yevmiye_satirlari, hazir) döner.
     ``kur_override`` doluysa (kullanıcı elle girdi/değiştirdi) carinin kur_tipi'ne göre
-    otomatik hesaplama YERİNE doğrudan kullanılır."""
+    otomatik hesaplama YERİNE doğrudan kullanılır. ``sahsi_ortak_id`` doluysa (Ortak adına
+    şahsi alış) her satırın hesabı ortak hesabına sabitlenir; mal satırı KDV DAHİL (gross)
+    tutarla o hesaba borçlanır ve KDV'nin aynı tutarı FAZLA_KDV_HESAP_KODU'na alacak
+    yazılır (bkz. core.services.fatura modül docstring'i ve _satir_coz)."""
     tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first()
     if tip is None:
         raise FaturaHatasi("Fatura tipi bulunamadı.")
@@ -173,9 +213,15 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         raise FaturaHatasi("Geçersiz para birimi.")
     kur = Decimal("1") if pb == "TRY" else (kur_override or _kur_coz(pb, tarih, cari=cari))
 
+    if sahsi_ortak_id and not (tip.gider and alis):
+        raise FaturaHatasi("Ortak adına şahsi alış yalnız alış-gider faturasında kullanılabilir.")
+    sahsi_ortak = _ortak_hesabi_coz(sahsi_ortak_id) if sahsi_ortak_id else None
+    sahsi = sahsi_ortak is not None
+
     yevmiye_satirlari = []
     kdv_hesap_toplam = {}          # hesap_kodu -> KDV tutarı (PB) [alışta tam, satışta net]
     tevkifat_hesap_toplam = {}     # hesap_kodu -> tevkifat tutarı (PB) [yalnız ALIŞ -> 360]
+    fazla_kdv_toplam = SIFIR       # yalnız şahsi alış: 602.01'e alacak
     borc_tl = SIFIR               # cari HARİÇ borç satırlarının TL toplamı
     alacak_tl = SIFIR             # cari HARİÇ alacak satırlarının TL toplamı
     cari_pb = SIFIR               # carinin PB tutarı = mal + (KDV − tevkifat)
@@ -193,7 +239,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
 
     for i, g in enumerate(satirlar, start=1):
-        stok, hesap, kdv, tevkifat, proje = _satir_coz(g, i, tip.gider)
+        stok, hesap, kdv, tevkifat, proje = _satir_coz(g, i, tip.gider, sahsi_ortak=sahsi_ortak)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
 
@@ -220,12 +266,14 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
             tev = yuvarla(satir_kdv * Decimal(tevkifat.pay) / Decimal(tevkifat.payda), 2)
         kdv_net = satir_kdv - tev      # cariye yansıyan KDV
 
-        # Mal/gider/gelir satırı (alış: Borç, satış: Alacak)
+        # Mal/gider/gelir satırı (alış: Borç, satış: Alacak). Şahsi alışta KDV DAHİL
+        # (gross) tutarla ortak hesabına borçlanır — ortak faturanın tamamını öder.
         mal_taraf = "B" if alis else "A"
-        _ekle(mal_taraf, satir_tutar)
+        mal_tutar = (satir_tutar + satir_kdv) if sahsi else satir_tutar
+        _ekle(mal_taraf, mal_tutar)
         yevmiye_satirlari.append(SatirGirdi(
             hesap_kodu=mal_kodu, taraf=mal_taraf,
-            islem_tutari=satir_tutar, islem_pb=pb, islem_kuru=kur, aciklama=mal_ad))
+            islem_tutari=mal_tutar, islem_pb=pb, islem_kuru=kur, aciklama=mal_ad))
 
         # KDV hesabı — ALIŞ: 191 TAM KDV (borç); SATIŞ: 391 NET KDV (alacak)
         kdv_post = satir_kdv if alis else kdv_net
@@ -240,6 +288,8 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
                     f"(AYARLAR > KDV Oranları).")
             kdv_hesap_toplam[kdv_hesap.hesap_kodu] = (
                 kdv_hesap_toplam.get(kdv_hesap.hesap_kodu, SIFIR) + kdv_post)
+            if sahsi:
+                fazla_kdv_toplam += kdv_post
 
         # Tevkifat — yalnız ALIŞ'ta 360'a (Ödenecek) alacak yazılır
         if alis and tev > 0:
@@ -269,6 +319,15 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
             hesap_kodu=hkod, taraf="A",
             islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV TEVKİFATI"))
 
+    # Fazla KDV (yalnız şahsi alış) — 191'e borçlanan KDV kadar 602.01'e alacak.
+    if fazla_kdv_toplam > 0:
+        fazla_kdv_hesap = _fazla_kdv_hesabi()
+        _ekle("A", fazla_kdv_toplam)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=fazla_kdv_hesap.hesap_kodu, taraf="A",
+            islem_tutari=fazla_kdv_toplam, islem_pb=pb, islem_kuru=kur,
+            aciklama="FAZLA KDV (ortak adına şahsi alış)"))
+
     # Karşı taraf (cari): alış -> Alacak, satış -> Borç. TL'si DENGE için diğer
     # satırların TL'sinden türetilir (tl_override) -> döviz kuruş farkı oluşmaz.
     cari_taraf = "A" if alis else "B"
@@ -281,14 +340,15 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
     return tip, cari, pb, kur, yevmiye_satirlari, hazir
 
 
-def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False):
+def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_id=None):
     """Taslak oluştur/güncelle ortak hazırlığı: cari + satırları doğrular — TİP'e ihtiyaç
     DUYMAZ (muhasebe haritası + yevmiye satırları onaylamaya ertelenir, bkz. fatura_onayla).
     KDV stoktan, tevkifat ise satırda elle seçilmemişse stoktan (seçilmişse formdan) bu anda
     (taslak anında) çekilip FaturaSatir'e SNAPSHOT yazılır. Gider faturasında (gider=True)
     kalemler stok değil gider/duran-varlık hesabıdır (+ satırda seçilen KDV + opsiyonel
-    tevkifat, bkz. _satir_coz). (cari, pb, hazir) döner — hazir = [(stok, hesap, miktar,
-    fiyat, kdv, tevkifat, proje), ...]."""
+    tevkifat, bkz. _satir_coz). ``sahsi_ortak_id`` doluysa (Ortak adına şahsi alış) her
+    satırın hesabı o ortak hesabına sabitlenir. (cari, pb, hazir) döner — hazir =
+    [(stok, hesap, miktar, fiyat, kdv, tevkifat, proje), ...]."""
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise FaturaHatasi("Cari bulunamadı.")
@@ -298,9 +358,10 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False):
     if pb not in dict(Cari.PARA_CHOICES):
         raise FaturaHatasi("Geçersiz para birimi.")
 
+    sahsi_ortak = _ortak_hesabi_coz(sahsi_ortak_id) if sahsi_ortak_id else None
     hazir = []
     for i, g in enumerate(satirlar, start=1):
-        stok, hesap, kdv, tevkifat, proje = _satir_coz(g, i, gider)
+        stok, hesap, kdv, tevkifat, proje = _satir_coz(g, i, gider, sahsi_ortak=sahsi_ortak)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje))
@@ -323,9 +384,14 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
     if not satirlar:
         raise FaturaHatasi("Faturada en az bir satır olmalı.")
 
+    sahsi = bool(fatura.sahsi_alis and fatura.sahsi_ortak_id)
+    if sahsi and not (tip.gider and alis):
+        raise FaturaHatasi("Ortak adına şahsi alış yalnız alış-gider faturasında kullanılabilir.")
+
     yevmiye_satirlari = []
     kdv_hesap_toplam = {}
     tevkifat_hesap_toplam = {}
+    fazla_kdv_toplam = SIFIR       # yalnız şahsi alış: 602.01'e alacak
     borc_tl = SIFIR
     alacak_tl = SIFIR
     cari_pb = SIFIR
@@ -366,10 +432,11 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
         kdv_net = satir_kdv - tev
 
         mal_taraf = "B" if alis else "A"
-        _ekle(mal_taraf, satir_tutar)
+        mal_tutar = (satir_tutar + satir_kdv) if sahsi else satir_tutar
+        _ekle(mal_taraf, mal_tutar)
         yevmiye_satirlari.append(SatirGirdi(
             hesap_kodu=mal_kodu, taraf=mal_taraf,
-            islem_tutari=satir_tutar, islem_pb=pb, islem_kuru=kur, aciklama=mal_ad))
+            islem_tutari=mal_tutar, islem_pb=pb, islem_kuru=kur, aciklama=mal_ad))
 
         kdv_post = satir_kdv if alis else kdv_net
         if kdv_post > 0:
@@ -383,6 +450,8 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
                     f"(AYARLAR > KDV Oranları).")
             kdv_hesap_toplam[kdv_hesap.hesap_kodu] = (
                 kdv_hesap_toplam.get(kdv_hesap.hesap_kodu, SIFIR) + kdv_post)
+            if sahsi:
+                fazla_kdv_toplam += kdv_post
 
         if alis and tev > 0:
             tev_hesap = tevkifat.hesap
@@ -401,6 +470,14 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
         yevmiye_satirlari.append(SatirGirdi(
             hesap_kodu=hkod, taraf=kdv_taraf,
             islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV"))
+
+    if fazla_kdv_toplam > 0:
+        fazla_kdv_hesap = _fazla_kdv_hesabi()
+        _ekle("A", fazla_kdv_toplam)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=fazla_kdv_hesap.hesap_kodu, taraf="A",
+            islem_tutari=fazla_kdv_toplam, islem_pb=pb, islem_kuru=kur,
+            aciklama="FAZLA KDV (ortak adına şahsi alış)"))
 
     for hkod, tutar in tevkifat_hesap_toplam.items():
         _ekle("A", tutar)
@@ -501,14 +578,22 @@ def _negatif_eldeki_dogrula(ciftler):
 @transaction.atomic
 def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fatura_no="",
                           para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
-                          kullanici=None) -> Fatura:
+                          sahsi_alis=False, sahsi_ortak_id=None, kullanici=None) -> Fatura:
     """Faturayı TASLAK olarak oluşturur — fiş/stok hareketi ÜRETMEZ (bkz. fatura_onayla).
     tip_id verilirse yön ondan türetilir; verilmezse `yon` zorunludur (İrsaliye'den otomatik
-    açılan, tipi henüz bilinmeyen taslaklar için)."""
+    açılan, tipi henüz bilinmeyen taslaklar için). ``sahsi_alis``/``sahsi_ortak_id``: Ortak
+    adına şahsi alış — yalnız alış-gider faturasında; kalemlerin hesabı ortak hesabına
+    sabitlenir (bkz. _hazirla_taslak/_satir_coz)."""
     tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first() if tip_id else None
     gider = bool(tip and tip.gider)
+    if sahsi_alis and not sahsi_ortak_id:
+        raise FaturaHatasi("Ortak adına şahsi alış için bir ortak hesabı seçin.")
+    if sahsi_alis and not gider:
+        raise FaturaHatasi("Ortak adına şahsi alış yalnız alış-gider faturasında kullanılabilir.")
+    sahsi_ortak = _ortak_hesabi_coz(sahsi_ortak_id) if sahsi_alis else None
     cari, pb, hazir = _hazirla_taslak(
-        cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider)
+        cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider,
+        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None))
     if tip is not None:
         cozulen_yon = tip.yon
     elif yon in FaturaTipi.Yon.values:
@@ -517,6 +602,8 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         raise FaturaHatasi("Fatura yönü belirlenemedi.")
     if gider and cozulen_yon != FaturaTipi.Yon.ALIS:
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
+    if sahsi_ortak is not None and cozulen_yon != FaturaTipi.Yon.ALIS:
+        raise FaturaHatasi("Ortak adına şahsi alış yalnız alış yönünde olabilir.")
     depo = None if gider else _depo_coz(depo_id)        # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
     # Sunucu tarafı yedek: vade boş + carinin ödeme koşulu tanımlıysa otomatik hesapla
@@ -527,6 +614,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         tip=tip, yon=cozulen_yon, durum=Fatura.Durum.TASLAK, cari=cari, tarih=tarih,
         fatura_no=fatura_no, para_birimi=pb, kur=1, fis=None, depo=depo,
         aciklama=(aciklama or "").strip(), vade_tarihi=vade_tarihi,
+        sahsi_alis=bool(sahsi_ortak), sahsi_ortak=sahsi_ortak,
         created_by=kullanici, updated_by=kullanici)
     _satirlari_yaz(fatura, hazir, kullanici)
     return fatura
@@ -570,7 +658,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
 @transaction.atomic
 def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
                    para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
-                   kullanici=None, kur=None) -> Fatura:
+                   sahsi_alis=False, sahsi_ortak_id=None, kullanici=None, kur=None) -> Fatura:
     """Kolaylık sarmalayıcısı: taslak oluşturur ve tip zaten bilindiği için HEMEN onaylar —
     tek atomik blok, onaylama başarısız olursa (eksik harita/kur/vb.) taslak da geri alınır
     (eskisi gibi tam atomik: ya hepsi ya hiçbiri). Tip'in önceden bilinmediği tek durum —
@@ -580,28 +668,38 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
     fatura = fatura_taslak_olustur(
         cari_id=cari_id, tarih=tarih, satirlar=satirlar, tip_id=tip_id,
         fatura_no=fatura_no, para_birimi=para_birimi, depo_id=depo_id,
-        aciklama=aciklama, vade_tarihi=vade_tarihi, kullanici=kullanici)
+        aciklama=aciklama, vade_tarihi=vade_tarihi, sahsi_alis=sahsi_alis,
+        sahsi_ortak_id=sahsi_ortak_id, kullanici=kullanici)
     return fatura_onayla(fatura, kullanici=kullanici, kur_override=kur)
 
 
 @transaction.atomic
 def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                     fatura_no="", para_birimi="TRY", depo_id=None, aciklama="",
-                    vade_tarihi=None, kullanici=None, kur=None) -> Fatura:
+                    vade_tarihi=None, sahsi_alis=False, sahsi_ortak_id=None,
+                    kullanici=None, kur=None) -> Fatura:
     """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
     serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
     hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir.
     ``vade_tarihi`` burada OTOMATİK HESAPLANMAZ (bkz. fatura_taslak_olustur) — boş gelirse
-    boş kalır; mevcut faturalar düzenlenirken beklenmedik bir vade yazılmasın diye kasıtlı."""
+    boş kalır; mevcut faturalar düzenlenirken beklenmedik bir vade yazılmasın diye kasıtlı.
+    ``sahsi_alis``/``sahsi_ortak_id``: Ortak adına şahsi alış — sonradan kaldırılırsa (False/
+    None gelirse) fiş normal alış-gider fişine döner (bkz. _hazirla/_muhasebe_satirlari)."""
     from django.utils import timezone
     if fatura.silindi:
         raise FaturaHatasi("Silinmiş fatura düzenlenemez.")
+    if sahsi_alis and not sahsi_ortak_id:
+        raise FaturaHatasi("Ortak adına şahsi alış için bir ortak hesabı seçin.")
+    sahsi_ortak = _ortak_hesabi_coz(sahsi_ortak_id) if sahsi_alis else None
 
     if fatura.durum == Fatura.Durum.TASLAK:
         tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first() if tip_id else None
         gider = bool(tip and tip.gider)
+        if sahsi_ortak is not None and not gider:
+            raise FaturaHatasi("Ortak adına şahsi alış yalnız alış-gider faturasında kullanılabilir.")
         cari, pb, hazir = _hazirla_taslak(
-            cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider)
+            cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider,
+            sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None))
         cozulen_yon = tip.yon if tip is not None else fatura.yon
         if gider and cozulen_yon != FaturaTipi.Yon.ALIS:
             raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
@@ -613,9 +711,11 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         fatura.fatura_no, fatura.para_birimi, fatura.depo = fatura_no, pb, depo
         fatura.aciklama = (aciklama or "").strip()
         fatura.vade_tarihi = vade_tarihi
+        fatura.sahsi_alis, fatura.sahsi_ortak = bool(sahsi_ortak), sahsi_ortak
         fatura.updated_by = kullanici
         fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
-                                   "depo", "aciklama", "vade_tarihi", "updated_by", "updated_at"])
+                                   "depo", "aciklama", "vade_tarihi", "sahsi_alis", "sahsi_ortak",
+                                   "updated_by", "updated_at"])
         _satirlari_yaz(fatura, hazir, kullanici)
         return fatura
 
@@ -624,7 +724,8 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         raise FaturaHatasi("Faturanın aktif yevmiye fişi yok; düzenlenemez.")
     tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
-        para_birimi=para_birimi, kur_override=kur)
+        para_birimi=para_birimi, kur_override=kur,
+        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None))
     depo = None if tip.gider else _depo_coz(depo_id)    # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
     try:
@@ -642,9 +743,11 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     fatura.fatura_no, fatura.para_birimi, fatura.kur, fatura.depo = fatura_no, pb, kur, depo
     fatura.aciklama = (aciklama or "").strip()
     fatura.vade_tarihi = vade_tarihi
+    fatura.sahsi_alis, fatura.sahsi_ortak = bool(sahsi_ortak), sahsi_ortak
     fatura.updated_by = kullanici
     fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
-                               "kur", "depo", "aciklama", "vade_tarihi", "updated_by", "updated_at"])
+                               "kur", "depo", "aciklama", "vade_tarihi", "sahsi_alis",
+                               "sahsi_ortak", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
     if depo is not None:
         _hareketleri_yaz(fatura, depo, kur=kur, kullanici=kullanici)

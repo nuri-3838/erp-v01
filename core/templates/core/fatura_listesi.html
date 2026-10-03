@@ -66,7 +66,8 @@
     {% for f in faturalar %}
       <tr onclick="window.location='{% url 'core:fatura_detay' f.pk %}'">
         <td class="mono">{{ f.tarih|date:"d.m.Y" }}</td>
-        <td>{% if f.tip %}{{ f.tip.ad }}{% else %}<span class="pasif">— seçilmedi</span>{% endif %}</td>
+        <td>{% if f.tip %}{{ f.tip.ad }}{% else %}<span class="pasif">— seçilmedi</span>{% endif %}
+          {% if f.sahsi_alis %}<span class="rozet rozet-pasif">👤 Şahsi</span>{% endif %}</td>
         <td><span class="rozet {% if f.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ f.get_durum_display }}</span></td>
         <td>
           <div class="ad">{{ f.cari.unvan }}</div>

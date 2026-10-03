@@ -1529,6 +1529,15 @@ class Fatura(TemelModel):
         "Depo", verbose_name="depo", null=True, blank=True,
         on_delete=models.PROTECT, related_name="faturalar")
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+    # Ortak adına (şahsi) alış: şirkete kesilmiş ama ortağın şahsi harcaması olan GİDER
+    # faturası. İşaretliyse kalem(ler)in KDV DAHİL tutarı sahsi_ortak'a (131 ailesi) borçlanır,
+    # KDV normal 191'e borçlanır AMA aynı tutar "FAZLA KDV" (602.01) hesabına alacak yazılır —
+    # bkz. core.services.fatura (_satir_coz/_hazirla/_muhasebe_satirlari). Yalnız ALIŞ+GİDER
+    # faturasında anlamlıdır; servis zorlar.
+    sahsi_alis = models.BooleanField("ortak adına (şahsi) alış", default=False)
+    sahsi_ortak = models.ForeignKey(
+        HesapPlani, verbose_name="ortak hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="sahsi_alis_faturalari")
 
     class Meta:
         db_table = "fatura"

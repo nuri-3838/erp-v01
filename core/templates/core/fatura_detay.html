@@ -8,7 +8,8 @@
   <div>
     <a class="ust-link" href="{% url liste_url %}">← Faturalar</a>
     <h1 class="ust-baslik"><span class="emoji">🧾</span>{% if fatura.tip %}{{ fatura.tip.ad }}{% else %}Taslak Fatura{% endif %}{% if fatura.fatura_no %} · {{ fatura.fatura_no }}{% endif %}
-      <span class="rozet {% if fatura.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ fatura.get_durum_display }}</span></h1>
+      <span class="rozet {% if fatura.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ fatura.get_durum_display }}</span>
+      {% if fatura.sahsi_alis %}<span class="rozet rozet-pasif">👤 Şahsi</span>{% endif %}</h1>
   </div>
   {% if not fatura.silindi %}
   <span class="islem-bag">
@@ -37,6 +38,10 @@
   <div class="satir"><span class="et">Depo</span><span class="dg">{% if fatura.depo %}<span class="mono">{{ fatura.depo.kod }}</span> {{ fatura.depo.ad }}{% elif fatura.tip and fatura.tip.gider %}<span class="pasif">— (gider faturası; stok hareketi yok)</span>{% else %}<span class="pasif">— (stok hareketi yok)</span>{% endif %}</span></div>
   <div class="satir"><span class="et">Yevmiye Fişi</span>
     <span class="dg">{% if fatura.fis %}<a class="mono" href="{% url 'core:fis_detay' fatura.fis.pk %}">{{ fatura.fis.yil }}/{{ fatura.fis.fis_no }}</a>{% else %}—{% endif %}</span></div>
+  {% if fatura.sahsi_alis %}
+  <div class="satir"><span class="et">Ortak Adına Şahsi Alış</span>
+    <span class="dg"><span class="mono">{{ fatura.sahsi_ortak.hesap_kodu }}</span> {{ fatura.sahsi_ortak.hesap_adi }}</span></div>
+  {% endif %}
   {% if fatura.aciklama %}
   <div class="satir"><span class="et">Açıklama</span><span class="dg">{{ fatura.aciklama|linebreaksbr }}</span></div>
   {% endif %}

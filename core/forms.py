@@ -1621,6 +1621,13 @@ class FaturaForm(forms.Form):
     aciklama = forms.CharField(
         label="Açıklama", max_length=300, required=False,
         widget=forms.Textarea(attrs={"rows": 2}))
+    # Yalnız ALIŞ-GİDER faturasında anlamlı (bkz. fatura_ekle.html JS) — şirkete kesilmiş
+    # ama ortağın şahsi harcaması olan fatura: kalem(ler) ortak hesabına (131 ailesi) KDV
+    # DAHİL borçlanır, KDV'nin aynı tutarı "FAZLA KDV" hesabına alacak yazılır.
+    sahsi_alis = forms.BooleanField(label="Ortak adına (şahsi) alış", required=False)
+    sahsi_ortak = forms.ModelChoiceField(
+        label="Ortak Hesabı", queryset=HesapPlani.objects.none(), required=False,
+        empty_label="— ortak seç —")
 
     def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1640,6 +1647,16 @@ class FaturaForm(forms.Form):
             vd = depolar.filter(ad="ANA DEPO").first() or depolar.first()
             if vd:
                 self.fields["depo"].initial = vd.pk
+        from core.services.hesap_plani import ortak_hesaplari
+        self.fields["sahsi_ortak"].queryset = ortak_hesaplari()
+        self.fields["sahsi_ortak"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["sahsi_ortak"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        if cd.get("sahsi_alis") and not cd.get("sahsi_ortak"):
+            self.add_error("sahsi_ortak", "Ortak adına şahsi alış için bir ortak hesabı seçin.")
+        return cd
 
 
 def _gruplu_secenekler_uygula(field, gruplar):
@@ -1709,14 +1726,20 @@ class FaturaSatirForm(forms.Form):
             self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
 
-        from core.services.hesap_plani import duran_varlik_hesaplari, gider_hesaplari
+        from core.services.hesap_plani import (duran_varlik_hesaplari, gider_hesaplari,
+                                               ortak_hesaplari)
         gider_qs = gider_hesaplari()
         duran_qs = duran_varlik_hesaplari()
-        self.fields["hesap"].queryset = (gider_qs | duran_qs).distinct()
+        # ortak_qs: Ortak adına şahsi alışta JS, gizlenen bu alana ortak hesabını otomatik
+        # yazar (bkz. fatura_ekle.html sahsiUygula) — kalemde elle seçilmez, ama form/DB
+        # kısıtının "stok veya hesap dolu olmalı" şartını karşılaması için queryset'te olmalı.
+        ortak_qs = ortak_hesaplari()
+        self.fields["hesap"].queryset = (gider_qs | duran_qs | ortak_qs).distinct()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
         _gruplu_secenekler_uygula(self.fields["hesap"], [
-            ("Gider Hesapları", gider_qs), ("Duran Varlık Hesapları", duran_qs)])
+            ("Gider Hesapları", gider_qs), ("Duran Varlık Hesapları", duran_qs),
+            ("Ortak Hesapları (şahsi alış)", ortak_qs)])
         from core.services.yatirim_projesi import aktif_projeler
         self.fields["yatirim_projesi"].queryset = aktif_projeler()
         self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"

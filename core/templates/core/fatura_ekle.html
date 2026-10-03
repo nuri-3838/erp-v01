@@ -40,6 +40,12 @@
   .proje-alani { display:none; margin-top:.3rem; }
   tr.satir-form.duran-varlik .proje-alani { display:block; }
   .proje-alani select { width:100%; font-size:.82rem; }
+  /* Ortak adına (şahsi) alış: yalnız GİDER modunda görünür (bkz. #sahsi-blok JS toggle).
+     İşaretlenince kalemlerde "Gider Hesabı" sütunu gizlenir, yerine sabit not gösterilir. */
+  #sahsi-blok { display:none; }
+  #fatura-satir-tablo.gider-modu.sahsi-modu .hesap-alani { display:none; }
+  .sahsi-not { display:none; font-size:.78rem; color:var(--metin-soluk); }
+  #fatura-satir-tablo.sahsi-modu .sahsi-not { display:block; }
 
   /* Fatura Bilgileri — kart tabanlı düzen (bkz. satis_teklif_ekle.html .bb-* deseni) */
   .bb-blok { display:flex; flex-direction:column; gap:.85rem; }
@@ -131,6 +137,17 @@
             {% for e in fform.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         </div>
+        <div class="bb-satir" id="sahsi-blok">
+          <div class="bb-alan">
+            <label for="{{ fform.sahsi_alis.id_for_label }}">{{ fform.sahsi_alis }} {{ fform.sahsi_alis.label }}</label>
+            {% for e in fform.sahsi_alis.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="bb-alan" id="sahsi-ortak-alan">
+            <label for="{{ fform.sahsi_ortak.id_for_label }}">{{ fform.sahsi_ortak.label }}</label>
+            {{ fform.sahsi_ortak }}
+            {% for e in fform.sahsi_ortak.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
       </div>
     </section>
 
@@ -153,7 +170,7 @@
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="proje-alani">{{ f.yatirim_projesi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ f.yatirim_projesi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">{{ f.miktar }}</td>
               <td class="sag">{{ f.birim_fiyat }}</td>
               <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tevkifat-secim">{{ f.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -176,7 +193,7 @@
     </section>
 
     <template id="bos-satir">
-      <td><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}</div></td>
+      <td><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}</div></td>
       <td class="sag">{{ formset.empty_form.miktar }}</td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
       <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tevkifat-secim">{{ formset.empty_form.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -211,6 +228,7 @@
   function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
   function giderMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_GIDER[t.value]); }
+  function sahsiMi(){ var s=document.getElementById('id_sahsi_alis'); return !!(s && s.checked); }
   function alanTemizle(kap){ if(!kap) return;
     var s=kap.querySelector('select'); if(s) s.value='';
     var i=kap.querySelector('.akilli-girdi'); if(i) i.value=''; }
@@ -222,6 +240,12 @@
     var depo=document.getElementById('id_depo'); var depoAlan=depo?depo.closest('.alan'):null;
     if(depoAlan) depoAlan.style.display = g ? 'none' : '';
     if(g && depo) depo.value='';
+    var sahsiBlok=document.getElementById('sahsi-blok');
+    if(sahsiBlok) sahsiBlok.style.display = g ? '' : 'none';
+    if(!g){
+      var sahsiKutu=document.getElementById('id_sahsi_alis');
+      if(sahsiKutu && sahsiKutu.checked){ sahsiKutu.checked=false; sahsiUygula(); }
+    }
     if(g!==onceki){
       document.querySelectorAll('.satir-form').forEach(function(r){
         alanTemizle(r.querySelector(g ? '.stok-alani' : '.hesap-alani'));
@@ -229,6 +253,26 @@
       });
     }
     hesapla();
+  }
+  // Ortak adına (şahsi) alış işaretlenince: kalemlerde "Gider Hesabı" sütunu gizlenir
+  // (yerine sabit not), gizli <select> ise seçilen ORTAK hesabına otomatik set edilir
+  // (form/DB kısıtı "stok veya hesap dolu olmalı" şartını sunucu tarafında da karşılasın
+  // — bkz. core.forms.FaturaSatirForm.hesap queryset'ine eklenen ortak_hesaplari()).
+  // Duran varlık/proje alanları anlamsız kalır (sahsi hesap 131 ailesidir) — temizlenir.
+  function sahsiSatirGuncelle(row){
+    var hesapSel=el(row,'-hesap'); var ortakSel=document.getElementById('id_sahsi_ortak');
+    if(!hesapSel || !ortakSel) return;
+    hesapSel.value = ortakSel.value;
+  }
+  function sahsiUygula(){
+    var s=sahsiMi();
+    tablo.classList.toggle('sahsi-modu', s);
+    var ortakAlan=document.getElementById('sahsi-ortak-alan');
+    if(ortakAlan) ortakAlan.style.display = s ? '' : 'none';
+    document.querySelectorAll('.satir-form').forEach(function(r){
+      if(s){ sahsiSatirGuncelle(r); } else { alanTemizle(r.querySelector('.hesap-alani')); }
+      projeAlaniGuncelle(r);
+    });
   }
   function hesapla(){
     var mal=0, kdv=0, tev=0;
@@ -375,7 +419,9 @@
     var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);
     var tr=document.createElement('tr'); tr.className='satir-form';
     tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g,i);
-    document.getElementById('satir-govde').appendChild(tr); tf.value=i+1; hesapla();
+    document.getElementById('satir-govde').appendChild(tr); tf.value=i+1;
+    if(sahsiMi()) sahsiSatirGuncelle(tr);
+    hesapla();
     if(window.akilliSecKur) tr.querySelectorAll('select.akilli-sec').forEach(window.akilliSecKur);
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
@@ -395,6 +441,12 @@
   });
   var tipSec=document.getElementById('id_tip');
   if(tipSec) tipSec.addEventListener('change', modUygula);
+  var sahsiKutu=document.getElementById('id_sahsi_alis');
+  if(sahsiKutu) sahsiKutu.addEventListener('change', sahsiUygula);
+  var sahsiOrtakSec=document.getElementById('id_sahsi_ortak');
+  if(sahsiOrtakSec) sahsiOrtakSec.addEventListener('change', function(){
+    if(sahsiMi()) document.querySelectorAll('.satir-form').forEach(sahsiSatirGuncelle);
+  });
   var pbSec=document.getElementById('id_para_birimi');
   var tarihInp=document.querySelector('[name="tarih"]');
   if(pbSec) pbSec.addEventListener('change', kurCek);
@@ -413,6 +465,7 @@
   document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
   document.querySelectorAll('.satir-form').forEach(projeAlaniGuncelle);
   modUygula();
+  sahsiUygula();
   kurCek();
 })();
 </script>

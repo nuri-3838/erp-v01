@@ -162,6 +162,15 @@ def hesap_kodu_258_mi(hesap_kodu: str) -> bool:
     return hesap_kodu == "258" or hesap_kodu.startswith("258.")
 
 
+def ortak_hesaplari():
+    """Alış faturasında 'Ortak adına (şahsi) alış' işaretlenince seçilebilen hesaplar:
+    131 (Ortaklardan Alacaklar) ailesinin aktif yaprak hesapları."""
+    from django.db.models import Q
+    return (yaprak_hesaplar()
+            .filter(Q(hesap_kodu="131") | Q(hesap_kodu__startswith="131."))
+            .order_by("hesap_kodu"))
+
+
 def sarf_karsi_hesaplari():
     """Stok sarf çıkışında (hesaba/yatırım projesine çıkış) karşı hesap olarak seçilebilen
     hesaplar: aktif yaprak 253/254/255/258/260 (duran varlık/yatırım) + 7xx/65x/66x/68x

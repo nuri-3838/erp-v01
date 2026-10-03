@@ -6539,6 +6539,9 @@ def _fatura_ekle(request, yon, baslik):
                              if fform.cleaned_data.get("depo") else None),
                     aciklama=fform.cleaned_data.get("aciklama", ""),
                     vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
+                    sahsi_alis=fform.cleaned_data.get("sahsi_alis", False),
+                    sahsi_ortak_id=(fform.cleaned_data["sahsi_ortak"].pk
+                                   if fform.cleaned_data.get("sahsi_ortak") else None),
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
@@ -6594,6 +6597,9 @@ def fatura_duzenle(request, pk):
                     depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
                     aciklama=fform.cleaned_data.get("aciklama", ""),
                     vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
+                    sahsi_alis=fform.cleaned_data.get("sahsi_alis", False),
+                    sahsi_ortak_id=(fform.cleaned_data["sahsi_ortak"].pk
+                                   if fform.cleaned_data.get("sahsi_ortak") else None),
                     satirlar=satirlar,
                     kullanici=request.user,
                 )
@@ -6615,7 +6621,8 @@ def fatura_duzenle(request, pk):
             # forma taşınırsa yanıltıcı olur; JS zaten taze bir önizleme dolduracak.
             "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
             "depo": fatura.depo_id, "aciklama": fatura.aciklama,
-            "vade_tarihi": fatura.vade_tarihi})
+            "vade_tarihi": fatura.vade_tarihi,
+            "sahsi_alis": fatura.sahsi_alis, "sahsi_ortak": fatura.sahsi_ortak_id})
         ilk = [{"stok": s.stok_id, "hesap": s.hesap_id, "kdv": s.kdv_id,
                 "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False)
