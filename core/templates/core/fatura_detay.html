@@ -100,9 +100,9 @@
   {% endfor %}
   <form method="post" action="{% url 'core:fatura_ek_ekle' fatura.pk %}" enctype="multipart/form-data" style="margin-top:.75rem">
     {% csrf_token %}
-    <input type="file" name="dosyalar" multiple accept="image/*,application/pdf" required>
+    <input type="file" name="dosyalar" multiple accept="image/*,application/pdf,.xml" required>
     <button type="submit" class="dugme" style="border:0;cursor:pointer">Dosya ekle</button>
-    <div class="yardim">PDF veya resim, dosya başına en fazla 10 MB.</div>
+    <div class="yardim">PDF, resim veya e-fatura XML (UBL), dosya başına en fazla 10 MB.</div>
   </form>
 </section>
 {% endif %}

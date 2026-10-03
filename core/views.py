@@ -7445,7 +7445,9 @@ def _izin_donus_url(request, personel_id):
 
 
 # --- Özlük Belgeleri + fotoğraf (dosyalar ÖZEL depoda; yalnız bu görünümlerle sunulur) ---
-_ICERIK_TURU = {".pdf": "application/pdf", ".webp": "image/webp"}
+_ICERIK_TURU = {".pdf": "application/pdf", ".webp": "image/webp", ".xml": "application/xml"}
+# XML tarayıcıda açılmaz (içindeki XSLT/betik riski): her zaman indirme olarak sunulur.
+_INDIRME_ZORUNLU = {".xml"}
 
 
 def _ozel_dosya_yanit(alan, indirme_adi):
@@ -7460,7 +7462,8 @@ def _ozel_dosya_yanit(alan, indirme_adi):
     except (OSError, SuspiciousFileOperation, ValueError):
         raise Http404
     ad = os.path.splitext(os.path.basename(indirme_adi or "dosya"))[0] or "dosya"
-    yanit = FileResponse(dosya, content_type=tur, filename=ad + uz)
+    yanit = FileResponse(dosya, content_type=tur, filename=ad + uz,
+                         as_attachment=uz in _INDIRME_ZORUNLU)
     yanit["Cache-Control"] = "private, no-store"
     yanit["X-Content-Type-Options"] = "nosniff"
     return yanit
