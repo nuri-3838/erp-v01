@@ -1655,6 +1655,82 @@ class SatinalmaZinciriTest(TestCase):
         self.assertIsNotNone(fatura.fis_id)
         self.assertEqual(StokHareket.objects.count(), 1)          # ÇİFTE SAYIM YOK
 
+    def _onayli_irsaliyeli_fatura(self):
+        from core.services.fatura import fatura_onayla
+        from core.services.teklif_siparis import teklif_siparis_onayla
+        teklif = self._teklif()
+        teklif_siparis_onayla(teklif, kullanici=self.yon)
+        siparis = teklif.donusen_belgeler.get()
+        teklif_siparis_onayla(siparis, kullanici=self.yon)
+        irsaliye = siparis.donusen_irsaliyeler.get()
+        teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        irsaliye.refresh_from_db()
+        fatura = irsaliye.fatura
+        fatura.tip = self.alis_tipi
+        fatura.save(update_fields=["tip"])
+        fatura_onayla(fatura, kullanici=self.yon)
+        fatura.refresh_from_db()
+        return irsaliye, fatura
+
+    def _duzenle(self, fatura, miktar="10"):
+        from core.services.fatura import fatura_guncelle
+        fatura_guncelle(
+            fatura, tip_id=self.alis_tipi.pk, cari_id=self.cari.pk, tarih=self.tarih,
+            satirlar=[{"stok_id": self.stok.pk, "miktar": miktar, "birim_fiyat": "100"}],
+            depo_id=self.depo.pk, kullanici=self.yon)
+
+    def test_onayli_irsaliyeli_fatura_duzenlenince_stok_tekrar_girmez(self):
+        """Canlı bug: irsaliyeli ONAYLI fatura düzenlenince (fatura_guncelle) stok bir kez
+        daha giriyordu. Artık tek giriş (irsaliyeden) kalır, fiş doğru yenilenir."""
+        from core.models import StokHareket
+        from core.services.hareket import eldeki_miktar
+        irsaliye, fatura = self._onayli_irsaliyeli_fatura()
+        self.assertEqual(StokHareket.objects.filter(silindi=False).count(), 1)
+        self._duzenle(fatura)
+        self.assertEqual(StokHareket.objects.filter(silindi=False).count(), 1)
+        self.assertEqual(eldeki_miktar(self.stok), Decimal("10"))
+        fatura.refresh_from_db()
+        sat = {s.hesap_id: s.borc for s in fatura.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["153.20"], Decimal("1000.00"))
+
+    def test_irsaliyesiz_fatura_stok_girisi_yapar(self):
+        from core.models import StokHareket
+        from core.services.fatura import fatura_olustur
+        fatura_olustur(
+            tip_id=self.alis_tipi.pk, cari_id=self.cari.pk, tarih=self.tarih,
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "5", "birim_fiyat": "100"}],
+            depo_id=self.depo.pk, kullanici=self.yon)
+        h = StokHareket.objects.get(silindi=False)
+        self.assertEqual((h.kaynak, h.miktar), ("FATURA", Decimal("5.000")))
+
+    def test_irsaliye_miktar_farki_uyarisi(self):
+        from core.services.fatura import irsaliye_miktar_farklari
+        irsaliye, fatura = self._onayli_irsaliyeli_fatura()
+        self.assertEqual(irsaliye_miktar_farklari(fatura), [])
+        self._duzenle(fatura, miktar="9")
+        fatura.refresh_from_db()
+        (stok, ir, fa), = irsaliye_miktar_farklari(fatura)
+        self.assertEqual((ir, fa), (Decimal("10"), Decimal("9")))
+
+    def test_duzeltme_komutu_dry_run_ve_uygula(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from core.models import StokHareket
+        from core.services.hareket import eldeki_miktar, hareket_ekle
+        irsaliye, fatura = self._onayli_irsaliyeli_fatura()
+        satir = fatura.satirlar.filter(silindi=False).first()
+        hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=self.tarih, tur="GIRIS",
+                     miktar="10", kaynak="FATURA", fatura_satir=satir,
+                     birim_maliyet_try=Decimal("100"), kullanici=self.yon)   # eski bug'ın izi
+        self.assertEqual(eldeki_miktar(self.stok), Decimal("20"))
+        out = StringIO()
+        call_command("irsaliyeli_fatura_stok_duzelt", stdout=out)
+        self.assertIn("DRY-RUN", out.getvalue())
+        self.assertEqual(eldeki_miktar(self.stok), Decimal("20"))        # dry-run yazmaz
+        call_command("irsaliyeli_fatura_stok_duzelt", "--uygula", stdout=StringIO())
+        self.assertEqual(eldeki_miktar(self.stok), Decimal("10"))
+        self.assertEqual(StokHareket.objects.filter(silindi=False, kaynak="IRSALIYE").count(), 1)
+
     def test_irsaliye_onayinda_fifo_katman_olusur(self):
         """İrsaliye onayı, fatura beklemeden gerçek stok girişi yazıyor (bkz.
         _irsaliye_stok_hareketi_yaz) — bu, FIFO maliyet katmanının da OLUŞTUĞU tek

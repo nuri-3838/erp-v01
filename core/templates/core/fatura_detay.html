@@ -25,6 +25,10 @@
 </div>
 
 {% if fatura.silindi %}<div class="uyari"><div>⚠️ Bu fatura iptal edilmiş.</div></div>{% endif %}
+{% if irsaliye_farklari %}
+<div class="uyari"><div>⚠️ Fatura miktarı irsaliyeden farklı. Stok girişi İRSALİYEDEN yapıldığı için fatura miktarı stoğu değiştirmez:
+  {% for stok, ir, fa in irsaliye_farklari %}<br>{{ stok.kod }} — irsaliye {{ ir|tr_kur:3 }}, fatura {{ fa|tr_kur:3 }}{% endfor %}</div></div>
+{% endif %}
 {% if fatura.durum == "TASLAK" and not fatura.tip %}<div class="uyari"><div>⚠️ Bu taslağın fatura tipi henüz seçilmedi — Düzenle'den seçip Onayla'ya basın.</div></div>{% endif %}
 
 <section class="icerik-kart">

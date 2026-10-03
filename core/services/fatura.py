@@ -95,6 +95,34 @@ class MukerrerFaturaHatasi(FaturaHatasi):
             f"{fatura.genel_toplam} {fatura.para_birimi}")
 
 
+def irsaliyeden_mi(fatura) -> bool:
+    """Fatura bir (silinmemiş) İRSALİYE'ye bağlı mı? Öyleyse stok girişini İRSALİYE zaten
+    yazmıştır — fatura yalnız muhasebe fişi üretir, stok hareketi YAZMAZ (çifte giriş olur).
+    Hem ilk onayda hem ONAYLI faturanın düzenlenmesinde geçerlidir."""
+    return fatura.kaynak_siparisler.filter(
+        belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).exists()
+
+
+def irsaliye_miktar_farklari(fatura) -> list:
+    """İrsaliyeye bağlı faturada stok başına irsaliye miktarı ile fatura miktarı farklıysa
+    [(stok, irsaliye_miktar, fatura_miktar)] döner (boşsa fark yok ya da irsaliyeli değil).
+    Stok irsaliyeden girdiği için fatura miktarı stoğu ETKİLEMEZ — yalnız bilgi/uyarıdır."""
+    from collections import defaultdict
+    irsaliye = fatura.kaynak_siparisler.filter(
+        belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).first()
+    if irsaliye is None:
+        return []
+    ir, fa, stoklar = defaultdict(Decimal), defaultdict(Decimal), {}
+    for k in irsaliye.kalemler.filter(silindi=False).select_related("stok"):
+        ir[k.stok_id] += k.miktar
+        stoklar[k.stok_id] = k.stok
+    for s in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok"):
+        fa[s.stok_id] += s.miktar
+        stoklar[s.stok_id] = s.stok
+    return [(stoklar[i], ir[i], fa[i]) for i in stoklar
+            if abs(ir[i] - fa[i]) > Decimal("0.0005")]
+
+
 def _fatura_no_anahtar(fatura_no):
     """Büyük/küçük harf ve boşluk farkını yok sayan karşılaştırma anahtarı."""
     return buyuk_harf_tr("".join((fatura_no or "").split()))
@@ -679,9 +707,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
     fatura.fis, fatura.kur, fatura.durum = fis, kur, Fatura.Durum.ONAYLI
     fatura.updated_by = kullanici
     fatura.save(update_fields=["fis", "kur", "durum", "updated_by", "updated_at"])
-    zaten_stoklandi = fatura.kaynak_siparisler.filter(
-        belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).exists()
-    if fatura.depo_id and not zaten_stoklandi:
+    if fatura.depo_id and not irsaliyeden_mi(fatura):
         _hareketleri_yaz(fatura, fatura.depo, kur=kur, kullanici=kullanici)
     return fatura
 
@@ -783,7 +809,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                                "kur", "depo", "aciklama", "vade_tarihi", "sahsi_alis",
                                "sahsi_ortak", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
-    if depo is not None:
+    if depo is not None and not irsaliyeden_mi(fatura):
         _hareketleri_yaz(fatura, depo, kur=kur, kullanici=kullanici)
     _negatif_eldeki_dogrula(etkilenen | _fatura_hareket_ciftleri(fatura))
     return fatura

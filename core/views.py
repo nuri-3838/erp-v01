@@ -6660,6 +6660,7 @@ def fatura_detay(request, pk):
         hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
+                   "irsaliye_farklari": fatura_servis.irsaliye_miktar_farklari(fatura),
                    "liste_url": _fatura_liste_url(fatura.yon),
                    "kart_acilabilir_hesap": kart_acilabilir_hesap})
 
