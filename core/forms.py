@@ -1766,6 +1766,35 @@ class DuranVarlikForm(forms.Form):
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
 
 
+class AktiflestirmeBaslikForm(forms.Form):
+    """Yatırım projesini aktifleştir (DURAN VARLIK FAZ 3) — tarih başlığı."""
+    tarih = forms.DateField(
+        label="Aktifleştirme Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+
+
+class AktiflestirmeSatirForm(forms.Form):
+    """Aktifleştirme satırı: 258 toplamının bölüneceği hedef hesap + varlık adı + tutar."""
+
+    _K = {"autocomplete": "off"}
+    hesap = forms.ModelChoiceField(label="Hedef Hesap", queryset=HesapPlani.objects.none(),
+                                   empty_label="— hesap seç —")
+    varlik_adi = forms.CharField(label="Varlık Adı", max_length=200,
+                                 widget=forms.TextInput(attrs=_K))
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import duran_varlik_karti_hesaplari
+        self.fields["hesap"].queryset = duran_varlik_karti_hesaplari()
+        self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+
+    def dolu_mu(self) -> bool:
+        cd = getattr(self, "cleaned_data", {}) or {}
+        return bool(cd.get("hesap") or cd.get("varlik_adi") or cd.get("tutar"))
+
+
 class KasaHareketForm(forms.Form):
     """Kasa hareketi: karşı taraf (tipe göre Cari / BankaHesap / hedef Kasa) +
     tutar + tarih + açıklama. Kasa ve tip URL'den gelir; fiş otomatik üretilir."""

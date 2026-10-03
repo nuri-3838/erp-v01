@@ -28,6 +28,7 @@ from django.views.decorators.cache import never_cache
 
 from core.forms import (
     AdayAktiviteForm, AdayAsamaTanimForm, AdayCariyeMevcutCariForm, AdayCariyeYeniCariForm,
+    AktiflestirmeBaslikForm, AktiflestirmeSatirForm,
     AdayMusteriForm, AdayMusteriKategoriForm, AdayPotansiyelTanimForm, AdayTipTanimForm,
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
@@ -326,6 +327,12 @@ def fis_iptal_gorunum(request, pk):
         if fat:
             messages.info(request, "Bu fiş bir faturadan oluştu; iptal için faturayı iptal edin.")
             return redirect("core:fatura_detay", pk=fat.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.YATIRIM and not fis.silindi:
+        proje = fis.yatirim_projesi_aktiflestirmeleri.first()
+        if proje:
+            messages.info(request, "Bu fiş bir yatırım projesi aktifleştirmesinden oluştu; "
+                                   "iptal için proje detayındaki 'Aktifleştirmeyi Geri Al'ı kullanın.")
+            return redirect("core:yatirim_projesi_detay", pk=proje.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.KASA and not fis.silindi and fis.kasa_id:
         messages.info(request, "Bu fiş bir kasa hareketinden oluştu; iptal için kasa detayını kullanın.")
         return redirect("core:kasa_detay", pk=fis.kasa_id)
@@ -6574,8 +6581,59 @@ def yatirim_projesi_detay(request, pk):
     proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
     satirlar = _proje_satir_qs(proje)
     toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
+    duran_varliklar_qs = DuranVarlik.objects.filter(
+        yatirim_projesi=proje, silindi=False).select_related("hesap")
     return render(request, "core/yatirim_projesi_detay.html",
-                  {"proje": proje, "satirlar": satirlar, "toplam": toplam})
+                  {"proje": proje, "satirlar": satirlar, "toplam": toplam,
+                   "yonetici": yonetici_mi(request.user), "duran_varliklar": duran_varliklar_qs})
+
+
+AktiflestirmeSatirFormSet = formset_factory(
+    AktiflestirmeSatirForm, extra=0, min_num=1, validate_min=True)
+
+
+@ekran_gerekli("yatirim_projeleri")
+def yatirim_projesi_aktiflestir(request, pk):
+    proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
+    if proje.durum != YatirimProjesi.Durum.DEVAM:
+        messages.info(request, "Bu proje zaten aktifleştirilmiş.")
+        return redirect("core:yatirim_projesi_detay", pk=proje.pk)
+    toplam = yp_servis.proje_toplami(proje)
+
+    if request.method == "POST":
+        baslik = AktiflestirmeBaslikForm(request.POST)
+        formset = AktiflestirmeSatirFormSet(request.POST)
+        if baslik.is_valid() and formset.is_valid():
+            satirlar = [
+                {"hesap_id": f.cleaned_data["hesap"].pk, "varlik_adi": f.cleaned_data["varlik_adi"],
+                 "tutar": f.cleaned_data["tutar"]}
+                for f in formset if f.cleaned_data and f.dolu_mu()
+            ]
+            try:
+                yp_servis.proje_aktiflestir(
+                    proje, tarih=baslik.cleaned_data["tarih"], satirlar=satirlar,
+                    kullanici=request.user)
+                messages.success(request, f"{proje.kod} aktifleştirildi.")
+                return redirect("core:yatirim_projesi_detay", pk=proje.pk)
+            except yp_servis.YatirimProjesiHatasi as e:
+                baslik.add_error(None, str(e))
+    else:
+        baslik = AktiflestirmeBaslikForm(initial={"tarih": timezone.localdate()})
+        formset = AktiflestirmeSatirFormSet()
+    return render(request, "core/yatirim_projesi_aktiflestir.html", {
+        "proje": proje, "toplam": toplam, "baslik": baslik, "formset": formset})
+
+
+@yonetici_gerekli
+def yatirim_projesi_geri_al(request, pk):
+    proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            yp_servis.proje_geri_al(proje, kullanici=request.user)
+            messages.success(request, f"{proje.kod} aktifleştirmesi geri alındı.")
+        except yp_servis.YatirimProjesiHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:yatirim_projesi_detay", pk=proje.pk)
 
 
 # === DURAN VARLIK — Duran Varlık Kartları (FAZ 2) ===

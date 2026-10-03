@@ -1,0 +1,105 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Aktifleştir — {{ proje.kod }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Projeyi Aktifleştir{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:yatirim_projesi_detay' proje.pk %}">← {{ proje.kod }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🏗️</span>{{ proje.kod }} — {{ proje.ad }} Aktifleştir</h1>
+  </div>
+
+  <div class="icerik-kart">
+    <p class="yardim">Proje toplamı (258, KDV Hariç): <span class="mono" id="proje-toplam" data-toplam="{{ toplam|tr_kur:2 }}">{{ toplam|tr_kur:2 }}</span>
+      — aşağıdaki satırların tutar toplamı bu değere KURUŞUNA kadar eşit olmalıdır.</p>
+  </div>
+
+  {% if baslik.non_field_errors %}
+    <div class="uyari">{% for e in baslik.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  {% if formset.non_form_errors %}
+    <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" id="aktiflestir-form" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <div class="izgara">
+        <div class="alan"><label for="{{ baslik.tarih.id_for_label }}">{{ baslik.tarih.label }} <span class="zorunlu">*</span></label>{{ baslik.tarih }}{% for e in baslik.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Duran Varlık Satırları</h2>
+      <div class="tablo-kapsayici genis">
+      <table class="satir-tablo" id="aktiflestir-satir-tablo">
+        <thead><tr><th>Hedef Hesap</th><th>Varlık Adı</th><th class="sag">Tutar</th><th></th></tr></thead>
+        <tbody id="satir-govde">
+          {% for f in formset %}
+            <tr class="satir-form">
+              <td>{{ f.hesap }}{% for e in f.hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td>{{ f.varlik_adi }}{% for e in f.varlik_adi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td class="sag">{{ f.tutar }}{% for e in f.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr><th colspan="2" class="sag">Satır Toplamı</th><th class="sag mono" id="satir-toplam-goster">0,00</th><th></th></tr>
+        </tfoot>
+      </table>
+      </div>
+      <div class="satir-alt">
+        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Satır ekle</button>
+      </div>
+    </section>
+
+    <template id="bos-satir">
+      <td>{{ formset.empty_form.hesap }}</td>
+      <td>{{ formset.empty_form.varlik_adi }}</td>
+      <td class="sag">{{ formset.empty_form.tutar }}</td>
+      <td><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
+    </template>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:yatirim_projesi_detay' proje.pk %}">İptal</a>
+      <button type="submit" class="birincil">Aktifleştir</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  function tutarAyristir(s){
+    s = (s||'').trim(); if(!s) return 0;
+    s = s.replace(/\./g,'').replace(',', '.');
+    var n = parseFloat(s); return isNaN(n) ? 0 : n;
+  }
+  function hesapla(){
+    var toplam = 0;
+    document.querySelectorAll('#satir-govde .satir-form').forEach(function(tr){
+      var inp = tr.querySelector('[name$="-tutar"]');
+      if(inp) toplam += tutarAyristir(inp.value);
+    });
+    document.getElementById('satir-toplam-goster').textContent = toplam.toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function satirEkle(){
+    var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);
+    var tr=document.createElement('tr'); tr.className='satir-form';
+    tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g,i);
+    document.getElementById('satir-govde').appendChild(tr); tf.value=i+1; hesapla();
+    if(window.akilliSecKur) tr.querySelectorAll('select.akilli-sec').forEach(window.akilliSecKur);
+  }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('satir-sil')){ e.target.closest('tr').remove(); hesapla(); }
+  });
+  document.getElementById('aktiflestir-form').addEventListener('input', hesapla);
+  hesapla();
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

@@ -10,12 +10,49 @@
     <h1 class="ust-baslik"><span class="emoji">🏗️</span>{{ proje.kod }} — {{ proje.ad }}
       <span class="rozet {% if proje.durum == 'AKTIFLESTI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ proje.get_durum_display }}</span></h1>
   </div>
+  <span class="islem-bag">
+    {% if proje.durum == "DEVAM" %}
+      <a class="dugme birincil" href="{% url 'core:yatirim_projesi_aktiflestir' proje.pk %}">Aktifleştir</a>
+    {% elif proje.durum == "AKTIFLESTI" and yonetici %}
+      <form method="post" action="{% url 'core:yatirim_projesi_geri_al' proje.pk %}" style="margin:0"
+            onsubmit="return confirm('Aktifleştirme geri alınsın mı? Fiş iptal edilecek ve üretilen duran varlık kartları silinecek.');">
+        {% csrf_token %}<button type="submit" class="sil">Aktifleştirmeyi Geri Al</button></form>
+    {% endif %}
+  </span>
 </div>
+
+{% if proje.durum == "AKTIFLESTI" and proje.aktiflestirme_fisi %}
+<div class="uyari" style="background:rgba(10,125,40,.08);border-color:var(--ok)">
+  <div>✅ Aktifleştirildi — Yevmiye Fişi:
+    <a href="{% url 'core:fis_detay' proje.aktiflestirme_fisi.pk %}">{{ proje.aktiflestirme_fisi.yil }}/{{ proje.aktiflestirme_fisi.fis_no }}</a></div>
+</div>
+{% endif %}
 
 {% if proje.aciklama %}
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Açıklama</h2>
   <p>{{ proje.aciklama|linebreaksbr }}</p>
+</section>
+{% endif %}
+
+{% if duran_varliklar %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Oluşturulan Duran Varlık Kartları</h2>
+  <div class="tablo-kapsayici genis">
+  <table>
+    <thead><tr><th>Demirbaş Kodu</th><th>Ad</th><th>Hesap</th><th class="sag">Maliyet</th></tr></thead>
+    <tbody>
+      {% for v in duran_varliklar %}
+        <tr onclick="window.location='{% url 'core:duran_varlik_detay' v.pk %}'" style="cursor:pointer">
+          <td class="mono">{{ v.demirbas_kodu }}</td>
+          <td>{{ v.ad }}</td>
+          <td><span class="mono">{{ v.hesap.hesap_kodu }}</span> {{ v.hesap.hesap_adi }}</td>
+          <td class="sag mono">{{ v.maliyet|tr_kur:2 }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </section>
 {% endif %}
 

@@ -153,6 +153,7 @@ class YevmiyeFisi(TemelModel):
         CEK_SENET = "CEK_SENET", "Çek/Senet Bordrosu (otomatik)"
         KREDI_KARTI = "KREDI_KARTI", "Kredi Kartı Hareketi (otomatik)"
         KREDI = "KREDI", "Kredi Hareketi (otomatik)"
+        YATIRIM = "YATIRIM", "Yatırım Projesi Aktifleştirme (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -1576,6 +1577,9 @@ class YatirimProjesi(TemelModel):
     ad = models.CharField("ad", max_length=200)
     aciklama = models.TextField("açıklama", blank=True)
     durum = models.CharField("durum", max_length=12, choices=Durum.choices, default=Durum.DEVAM)
+    aktiflestirme_fisi = models.ForeignKey(
+        YevmiyeFisi, verbose_name="aktifleştirme fişi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="yatirim_projesi_aktiflestirmeleri")
 
     class Meta:
         db_table = "yatirim_projesi"
