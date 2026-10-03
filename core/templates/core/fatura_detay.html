@@ -57,7 +57,7 @@
     <tbody>
       {% for s in satirlar %}
         <tr>
-          <td>{% if s.hesap %}<span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}{% if s.yatirim_projesi %}<div class="yardim">Proje: <a href="{% url 'core:yatirim_projesi_detay' s.yatirim_projesi.pk %}">{{ s.yatirim_projesi.kod }} — {{ s.yatirim_projesi.ad }}</a></div>{% endif %}{% else %}<span class="mono">{{ s.stok.kod }}</span> {% if fatura.yon == "ALIS" %}{{ s.stok.ad_satinalma }}{% else %}{{ s.stok.ad }}{% endif %}{% endif %}</td>
+          <td>{% if s.hesap %}<span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}{% if s.yatirim_projesi %}<div class="yardim">Proje: <a href="{% url 'core:yatirim_projesi_detay' s.yatirim_projesi.pk %}">{{ s.yatirim_projesi.kod }} — {{ s.yatirim_projesi.ad }}</a></div>{% endif %}{% with dv=s.duran_varliklar.all|first %}{% if dv %}<div class="yardim">Duran varlık: <a href="{% url 'core:duran_varlik_detay' dv.pk %}">{{ dv.demirbas_kodu }} — {{ dv.ad }}</a></div>{% elif s.hesap_id in kart_acilabilir_hesap %}<div class="yardim"><a href="{% url 'core:duran_varlik_ekle' %}?satir={{ s.pk }}">+ Duran varlık kartı oluştur</a></div>{% endif %}{% endwith %}{% else %}<span class="mono">{{ s.stok.kod }}</span> {% if fatura.yon == "ALIS" %}{{ s.stok.ad_satinalma }}{% else %}{{ s.stok.ad }}{% endif %}{% endif %}</td>
           <td class="sag mono">{{ s.miktar|tr_kur:3 }}</td>
           <td class="sag mono">{{ s.birim_fiyat|tr_kur:4 }}</td>
           <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>

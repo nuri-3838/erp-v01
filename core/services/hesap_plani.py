@@ -149,6 +149,13 @@ def hesap_kodu_duran_varlik_mi(hesap_kodu: str) -> bool:
     return any(hesap_kodu == k or hesap_kodu.startswith(k + ".") for k in DURAN_VARLIK_KODLARI)
 
 
+def duran_varlik_karti_hesaplari():
+    """Duran Varlık kartı (FAZ 2) hesap FK kısıtı: 253/254/255/260 yaprakları — 258 HARİÇ
+    (258 yalnız yatırım projesi biriktirme hesabıdır; kart doğrudan ona açılmaz, bkz.
+    core.services.duran_varlik)."""
+    return duran_varlik_hesaplari().exclude(hesap_kodu="258").exclude(hesap_kodu__startswith="258.")
+
+
 def hesap_kodu_258_mi(hesap_kodu: str) -> bool:
     """258 (Yapılmakta Olan Yatırımlar) ailesi — bu hesaba işlenen kalemde yatırım
     projesi seçimi ZORUNLUDUR (diğer duran varlık hesaplarında opsiyoneldir)."""

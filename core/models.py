@@ -1665,6 +1665,57 @@ class FaturaSatir(TemelModel):
                        / Decimal(self.tevkifat.payda), 2)
 
 
+class DuranVarlik(TemelModel):
+    """Duran varlık kartı (DURAN VARLIK FAZ 2) — 253/254/255/260 hesaplarından birine
+    bağlı somut bir sabit kıymetin basit kaydı (bkz. core.services.duran_varlik).
+    Amortisman/257/268/264 bu modülün HİÇBİR fazında YOK (CLAUDE.md görev kapsamı —
+    bilinçli olarak dışarıda). ``kaynak=PROJE`` yalnız FAZ 3'teki yatırım projesi
+    aktifleştirme akışıyla üretilecek — bu fazda UI'dan seçilemez."""
+
+    class Durum(models.TextChoices):
+        AKTIF = "AKTIF", "Aktif"
+        PASIF = "PASIF", "Pasif"
+
+    class Kaynak(models.TextChoices):
+        FATURA = "FATURA", "Fatura"
+        PROJE = "PROJE", "Yatırım Projesi"
+        ACILIS = "ACILIS", "Açılış"
+
+    demirbas_kodu = models.CharField("demirbaş kodu", max_length=20)
+    ad = models.CharField("ad", max_length=200)
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", on_delete=models.PROTECT,
+        related_name="duran_varliklar")
+    aktiflestirme_tarihi = models.DateField("aktifleştirme tarihi")
+    maliyet = models.DecimalField("maliyet (KDV hariç, TRY)", max_digits=18, decimal_places=2)
+    marka_model = models.CharField("marka / model", max_length=200, blank=True)
+    seri_no = models.CharField("seri no", max_length=100, blank=True)
+    durum = models.CharField("durum", max_length=10, choices=Durum.choices, default=Durum.AKTIF)
+    notlar = models.TextField("notlar", blank=True)
+    kaynak = models.CharField("kaynak", max_length=10, choices=Kaynak.choices)
+    yatirim_projesi = models.ForeignKey(
+        YatirimProjesi, verbose_name="yatırım projesi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="duran_varliklar")
+    fatura_satirlari = models.ManyToManyField(
+        FaturaSatir, verbose_name="fatura kalemleri", blank=True,
+        related_name="duran_varliklar")
+
+    class Meta:
+        db_table = "duran_varlik"
+        verbose_name = "duran varlık"
+        verbose_name_plural = "duran varlıklar"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["demirbas_kodu"], condition=models.Q(silindi=False),
+                                    name="uq_duran_varlik_kod_aktif"),
+            models.CheckConstraint(condition=models.Q(maliyet__gte=0),
+                                   name="ck_duran_varlik_maliyet_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.demirbas_kodu} — {self.ad}"
+
+
 class TeklifSiparis(TemelModel):
     """Satınalma/Satış Teklifi veya Siparişi — TİCARİ belge, yevmiye ÜRETMEZ ve stok
     hareketi YARATMAZ (muhasebe ve stok her zaman faturayla girer). belge_tur × yon

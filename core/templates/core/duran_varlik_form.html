@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Yeni Duran Varlık · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yeni Duran Varlık{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:duran_varliklar' %}">← Duran Varlıklar</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>Yeni Duran Varlık Kartı</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  {% if satir %}
+  <div class="icerik-kart">
+    <p class="yardim">Fatura kaleminden ön-dolduruldu:
+      <a href="{% url 'core:fatura_detay' satir.fatura.pk %}">{{ satir.fatura.fatura_no|default:"taslak fatura" }}</a>
+      — <span class="mono">{{ satir.hesap.hesap_kodu }}</span> {{ satir.hesap.hesap_adi }}.</p>
+  </div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    {{ form.fatura_satir_id }}
+    <section class="icerik-kart">
+      <div class="izgara">
+        <div class="alan tam"><label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>{{ form.ad }}{% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="dv-kod-onizleme">Demirbaş Kodu</label>
+          <input type="text" id="dv-kod-onizleme" class="mono kod-salt" placeholder="(otomatik atanacak)" readonly></div>
+        <div class="alan"><label for="{{ form.hesap.id_for_label }}">{{ form.hesap.label }} <span class="zorunlu">*</span></label><div class="akilli">{{ form.hesap }}</div>{% for e in form.hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.aktiflestirme_tarihi.id_for_label }}">{{ form.aktiflestirme_tarihi.label }} <span class="zorunlu">*</span></label>{{ form.aktiflestirme_tarihi }}{% for e in form.aktiflestirme_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }} <span class="zorunlu">*</span></label>{{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.marka_model.id_for_label }}">{{ form.marka_model.label }}</label>{{ form.marka_model }}</div>
+        <div class="alan"><label for="{{ form.seri_no.id_for_label }}">{{ form.seri_no.label }}</label>{{ form.seri_no }}</div>
+        <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:duran_varliklar' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

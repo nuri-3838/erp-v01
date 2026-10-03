@@ -1738,6 +1738,34 @@ class FaturaSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+class DuranVarlikForm(forms.Form):
+    """Duran varlık kartı ekle (DURAN VARLIK FAZ 2). Demirbaş kodu OTOMATİK; kaynak/
+    durum serviste belirlenir (forma hiç konmaz — bkz. core.services.duran_varlik)."""
+
+    _K = {"autocomplete": "off"}
+    ad = forms.CharField(label="Ad", max_length=200, widget=forms.TextInput(attrs=_K))
+    hesap = forms.ModelChoiceField(label="Muhasebe Hesabı", queryset=HesapPlani.objects.none(),
+                                   empty_label="— hesap seç —")
+    aktiflestirme_tarihi = forms.DateField(
+        label="Aktifleştirme Tarihi",
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    maliyet = TRDecimalField(label="Maliyet (KDV Hariç, TRY)", basamak=2)
+    marka_model = forms.CharField(label="Marka / Model", max_length=200, required=False,
+                                  widget=forms.TextInput(attrs=_K))
+    seri_no = forms.CharField(label="Seri No", max_length=100, required=False,
+                              widget=forms.TextInput(attrs=_K))
+    notlar = forms.CharField(label="Notlar", required=False,
+                             widget=forms.Textarea(attrs={"rows": 3, **_K}))
+    fatura_satir_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import duran_varlik_karti_hesaplari
+        self.fields["hesap"].queryset = duran_varlik_karti_hesaplari()
+        self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+
+
 class KasaHareketForm(forms.Form):
     """Kasa hareketi: karşı taraf (tipe göre Cari / BankaHesap / hedef Kasa) +
     tutar + tarih + açıklama. Kasa ve tip URL'den gelir; fiş otomatik üretilir."""

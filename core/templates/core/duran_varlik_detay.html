@@ -1,0 +1,63 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ varlik.demirbas_kodu }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Duran Varlık{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:duran_varliklar' %}">← Duran Varlıklar</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ varlik.demirbas_kodu }} — {{ varlik.ad }}
+      <span class="rozet {% if varlik.durum == 'AKTIF' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ varlik.get_durum_display }}</span></h1>
+  </div>
+  <span class="islem-bag">
+    <form method="post" action="{% url 'core:duran_varlik_durum_degistir' varlik.pk %}" style="margin:0">
+      {% csrf_token %}
+      <button type="submit" class="dugme" style="border:0;cursor:pointer">
+        {% if varlik.durum == "AKTIF" %}Pasife Al{% else %}Aktife Al{% endif %}</button>
+    </form>
+  </span>
+</div>
+
+<section class="icerik-kart">
+  <div class="satir"><span class="et">Muhasebe Hesabı</span>
+    <span class="dg"><span class="mono">{{ varlik.hesap.hesap_kodu }}</span> {{ varlik.hesap.hesap_adi }}</span></div>
+  <div class="satir"><span class="et">Aktifleştirme Tarihi</span><span class="dg mono">{{ varlik.aktiflestirme_tarihi|date:"d.m.Y" }}</span></div>
+  <div class="satir"><span class="et">Maliyet (KDV Hariç)</span><span class="dg mono">{{ varlik.maliyet|tr_kur:2 }} TRY</span></div>
+  <div class="satir"><span class="et">Kaynak</span><span class="dg">{{ varlik.get_kaynak_display }}</span></div>
+  {% if varlik.yatirim_projesi %}
+  <div class="satir"><span class="et">Yatırım Projesi</span>
+    <span class="dg"><a href="{% url 'core:yatirim_projesi_detay' varlik.yatirim_projesi.pk %}">{{ varlik.yatirim_projesi.kod }} — {{ varlik.yatirim_projesi.ad }}</a></span></div>
+  {% endif %}
+  {% if varlik.marka_model %}
+  <div class="satir"><span class="et">Marka / Model</span><span class="dg">{{ varlik.marka_model }}</span></div>
+  {% endif %}
+  {% if varlik.seri_no %}
+  <div class="satir"><span class="et">Seri No</span><span class="dg mono">{{ varlik.seri_no }}</span></div>
+  {% endif %}
+  {% if varlik.notlar %}
+  <div class="satir"><span class="et">Notlar</span><span class="dg">{{ varlik.notlar|linebreaksbr }}</span></div>
+  {% endif %}
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Bağlı Faturalar</h2>
+  <div class="tablo-kapsayici genis">
+  <table>
+    <thead><tr><th>Tarih</th><th>Cari</th><th>Fatura No</th><th class="sag">Tutar</th></tr></thead>
+    <tbody>
+      {% for s in satirlar %}
+        <tr onclick="window.location='{% url 'core:fatura_detay' s.fatura.pk %}'" style="cursor:pointer">
+          <td class="mono">{{ s.fatura.tarih|date:"d.m.Y" }}</td>
+          <td>{{ s.fatura.cari.unvan }}</td>
+          <td class="mono">{{ s.fatura.fatura_no|default:"—" }}</td>
+          <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="yardim">Bağlı fatura kalemi yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

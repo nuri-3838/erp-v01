@@ -1,0 +1,108 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Duran Varlıklar · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Duran Varlıklar{% endblock %}
+
+{% block content %}
+{% include "core/_ik_stil.html" %}
+<div class="ik-ust">
+  <h1 class="ust-baslik"><span class="emoji">🏭</span>Duran Varlıklar</h1>
+  <a class="dugme birincil" href="{% url 'core:duran_varlik_ekle' %}">+ Yeni Kart</a>
+</div>
+
+<div class="ik-panel">
+  <form method="get" class="ik-arama-cubuk">
+    <div class="ik-alan-grup">
+      <label for="dv-hesap">Hesap</label>
+      <select id="dv-hesap" name="hesap">
+        <option value="">Tümü</option>
+        {% for h in hesaplar %}
+          <option value="{{ h.pk }}" {% if hesap_id == h.pk|stringformat:"s" %}selected{% endif %}>{{ h.hesap_kodu }} {{ h.hesap_adi }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-alan-grup">
+      <label for="dv-durum">Durum</label>
+      <select id="dv-durum" name="durum">
+        <option value="">Tümü</option>
+        {% for v, ad in durum_secenekleri %}
+          <option value="{{ v }}" {% if durum == v %}selected{% endif %}>{{ ad }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="ik-btn-cubuk">
+      <button type="submit" class="birincil">Filtrele</button>
+      {% if hesap_id or durum %}
+        <a class="iptal-bag" href="{% url 'core:duran_varliklar' %}">Temizle</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{% if hesap_ozet %}
+<div class="tablo-kapsayici" style="margin-bottom:1rem">
+<table>
+  <thead><tr><th>Hesap</th><th class="sag">Adet</th><th class="sag">Toplam Maliyet</th></tr></thead>
+  <tbody>
+    {% for g in hesap_ozet %}
+      <tr>
+        <td><span class="mono">{{ g.hesap.hesap_kodu }}</span> {{ g.hesap.hesap_adi }}</td>
+        <td class="sag mono">{{ g.adet }}</td>
+        <td class="sag mono">{{ g.toplam|tr_kur:2 }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<p class="sayfa-alt">{{ varliklar|length }} kayıt.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr>
+    <th>Demirbaş Kodu</th><th>Ad</th><th>Hesap</th><th>Aktifleştirme Tarihi</th>
+    <th class="sag">Maliyet</th><th>Durum</th><th>Kaynak</th>
+  </tr></thead>
+  <tbody>
+    {% for v in varliklar %}
+      <tr onclick="window.location='{% url 'core:duran_varlik_detay' v.pk %}'" style="cursor:pointer">
+        <td class="mono">{{ v.demirbas_kodu }}</td>
+        <td>{{ v.ad }}</td>
+        <td><span class="mono">{{ v.hesap.hesap_kodu }}</span> {{ v.hesap.hesap_adi }}</td>
+        <td class="mono">{{ v.aktiflestirme_tarihi|date:"d.m.Y" }}</td>
+        <td class="sag mono">{{ v.maliyet|tr_kur:2 }}</td>
+        <td><span class="rozet {% if v.durum == 'AKTIF' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ v.get_durum_display }}</span></td>
+        <td>{{ v.get_kaynak_display }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim">Henüz duran varlık kartı yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<details class="kart-form" style="margin-top:1.5rem">
+  <summary>Kontrol Raporu — kart toplamı vs mizan bakiyesi (salt okunur)</summary>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Hesap</th><th class="sag">Kart Toplamı</th><th class="sag">Mizan Bakiyesi</th><th class="sag">Fark</th></tr></thead>
+    <tbody>
+      {% for r in kontrol_raporu %}
+        <tr>
+          <td><span class="mono">{{ r.hesap.hesap_kodu }}</span> {{ r.hesap.hesap_adi }}</td>
+          <td class="sag mono">{{ r.kart_toplami|tr_kur:2 }}</td>
+          <td class="sag mono">{{ r.mizan_bakiye|tr_kur:2 }}</td>
+          <td class="sag mono" {% if r.fark %}style="color:var(--kirmizi,#b00)"{% endif %}>{{ r.fark|tr_kur:2 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="yardim">Hesap bulunamadı.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="yardim">Fark sıfır değilse muhasebe (yevmiye) ile kart kayıtları arasında
+    tutarsızlık var demektir — örn. kart girilmeden fatura kesilmiş veya kart silinmeden
+    fiş iptal edilmiş olabilir.</p>
+</details>
+{% endblock %}

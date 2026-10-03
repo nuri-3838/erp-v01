@@ -32,7 +32,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -55,7 +55,7 @@ from core.models import (
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonKesim, FasonKesimKaydi,
-    Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
+    Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
@@ -116,6 +116,7 @@ from core.services import mesai as mesai_servis
 from core.services import mesai_ag as mesai_ag_servis
 from core.services import mesai_hesap as mesai_hesap_servis
 from core.services import yatirim_projesi as yp_servis
+from core.services import duran_varlik as dv_servis
 from core.ip import istemci_ip
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
@@ -6524,10 +6525,13 @@ def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
     satirlar = fatura.satirlar.filter(silindi=False).select_related(
-        "stok", "hesap", "kdv", "yatirim_projesi")
+        "stok", "hesap", "kdv", "yatirim_projesi").prefetch_related("duran_varliklar")
+    kart_acilabilir_hesap = set(
+        hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
-                   "liste_url": _fatura_liste_url(fatura.yon)})
+                   "liste_url": _fatura_liste_url(fatura.yon),
+                   "kart_acilabilir_hesap": kart_acilabilir_hesap})
 
 
 # === DURAN VARLIK — Yatırım Projeleri (FAZ 1) ===
@@ -6572,6 +6576,70 @@ def yatirim_projesi_detay(request, pk):
     toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
     return render(request, "core/yatirim_projesi_detay.html",
                   {"proje": proje, "satirlar": satirlar, "toplam": toplam})
+
+
+# === DURAN VARLIK — Duran Varlık Kartları (FAZ 2) ===
+@ekran_gerekli("duran_varliklar")
+def duran_varliklar(request):
+    hesap_id = request.GET.get("hesap") or None
+    durum = request.GET.get("durum") or None
+    qs = dv_servis.varliklar(hesap_id=hesap_id, durum=durum)
+    return render(request, "core/duran_varliklar.html", {
+        "varliklar": qs,
+        "hesap_ozet": dv_servis.hesap_bazli_toplam(qs),
+        "hesaplar": hp.duran_varlik_karti_hesaplari(),
+        "durum_secenekleri": DuranVarlik.Durum.choices,
+        "hesap_id": hesap_id, "durum": durum,
+        "kontrol_raporu": dv_servis.kontrol_raporu(),
+    })
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_ekle(request):
+    satir_id = request.GET.get("satir") or request.POST.get("fatura_satir_id")
+    satir = (FaturaSatir.objects.filter(pk=satir_id, silindi=False, fatura__silindi=False)
+             .select_related("fatura", "hesap").first()) if satir_id else None
+
+    if request.method == "POST":
+        form = DuranVarlikForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                dv = dv_servis.duran_varlik_olustur(
+                    ad=cd["ad"], hesap_id=cd["hesap"].pk,
+                    aktiflestirme_tarihi=cd["aktiflestirme_tarihi"], maliyet=cd["maliyet"],
+                    marka_model=cd["marka_model"], seri_no=cd["seri_no"], notlar=cd["notlar"],
+                    fatura_satir_id=cd.get("fatura_satir_id"), kullanici=request.user)
+                messages.success(request, f"Duran varlık kartı eklendi: {dv.demirbas_kodu} — {dv.ad}")
+                return redirect("core:duran_varlik_detay", pk=dv.pk)
+            except dv_servis.DuranVarlikHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        initial = {}
+        if satir:
+            initial = {"hesap": satir.hesap_id, "maliyet": satir.tutar,
+                       "aktiflestirme_tarihi": satir.fatura.tarih, "fatura_satir_id": satir.pk}
+        form = DuranVarlikForm(initial=initial)
+    return render(request, "core/duran_varlik_form.html", {"form": form, "satir": satir})
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_detay(request, pk):
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    satirlar = (varlik.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
+                .select_related("fatura", "fatura__cari").order_by("fatura__tarih", "fatura_id"))
+    return render(request, "core/duran_varlik_detay.html", {"varlik": varlik, "satirlar": satirlar})
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_durum_degistir(request, pk):
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    if request.method == "POST":
+        yeni = (DuranVarlik.Durum.PASIF if varlik.durum == DuranVarlik.Durum.AKTIF
+                else DuranVarlik.Durum.AKTIF)
+        dv_servis.durum_degistir(varlik, durum=yeni, kullanici=request.user)
+        messages.success(request, f"{varlik.demirbas_kodu} {varlik.get_durum_display().lower()} yapıldı.")
+    return redirect("core:duran_varlik_detay", pk=pk)
 
 
 @ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
