@@ -1772,6 +1772,22 @@ class DuranVarlikForm(forms.Form):
             lambda s: f"{s.fatura.fatura_no or 'taslak'} — {s.tutar} TL")
 
 
+class DuranVarlikDuzenleForm(forms.Form):
+    """Duran varlık kartı düzenle — yalnız ad/marka-model/seri no/notlar/maliyet.
+    Hesap ve kaynak SABİTTİR, bu formda hiç yer almaz (bkz. core.services.duran_varlik
+    .duran_varlik_guncelle)."""
+
+    _K = {"autocomplete": "off"}
+    ad = forms.CharField(label="Ad", max_length=200, widget=forms.TextInput(attrs=_K))
+    maliyet = TRDecimalField(label="Maliyet (KDV Hariç, TRY)", basamak=2)
+    marka_model = forms.CharField(label="Marka / Model", max_length=200, required=False,
+                                  widget=forms.TextInput(attrs=_K))
+    seri_no = forms.CharField(label="Seri No", max_length=100, required=False,
+                              widget=forms.TextInput(attrs=_K))
+    notlar = forms.CharField(label="Notlar", required=False,
+                             widget=forms.Textarea(attrs={"rows": 3, **_K}))
+
+
 class AktiflestirmeBaslikForm(forms.Form):
     """Yatırım projesini aktifleştir (DURAN VARLIK FAZ 3) — tarih başlığı."""
     tarih = forms.DateField(

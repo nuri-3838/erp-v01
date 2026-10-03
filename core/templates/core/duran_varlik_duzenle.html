@@ -1,0 +1,42 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ varlik.demirbas_kodu }} Düzenle · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Duran Varlık Düzenle{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:duran_varlik_detay' varlik.pk %}">← {{ varlik.demirbas_kodu }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ varlik.demirbas_kodu }} Düzenle</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <div class="izgara">
+        <div class="alan tam"><label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>{{ form.ad }}{% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="dv-hesap-salt">Muhasebe Hesabı</label>
+          <input type="text" id="dv-hesap-salt" class="mono kod-salt" value="{{ varlik.hesap.hesap_kodu }} {{ varlik.hesap.hesap_adi }}" readonly>
+          <p class="yardim">Değiştirilemez.</p></div>
+        <div class="alan"><label for="dv-kaynak-salt">Kaynak</label>
+          <input type="text" id="dv-kaynak-salt" class="kod-salt" value="{{ varlik.get_kaynak_display }}" readonly>
+          <p class="yardim">Değiştirilemez.</p></div>
+        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }} <span class="zorunlu">*</span></label>{{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.marka_model.id_for_label }}">{{ form.marka_model.label }}</label>{{ form.marka_model }}</div>
+        <div class="alan"><label for="{{ form.seri_no.id_for_label }}">{{ form.seri_no.label }}</label>{{ form.seri_no }}</div>
+        <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:duran_varlik_detay' varlik.pk %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

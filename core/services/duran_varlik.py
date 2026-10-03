@@ -155,13 +155,15 @@ def _hesap_bakiyesi(hesap_kodu: str) -> Decimal:
 
 
 def kontrol_raporu() -> list:
-    """253/254/255/260 yaprak hesaplarının her biri için kart-toplamı (silinmemiş
-    DuranVarlik.maliyet toplamı) vs mizan-bakiyesi (yevmiyeden hesaplanan net borç) —
-    salt okunur karşılaştırma; fark != 0 ise muhasebe ile kart kayıtları arasında
-    tutarsızlık var demektir (örn. kart girilmeden fatura kesilmiş)."""
+    """253/254/255/260 yaprak hesaplarının her biri için kart-toplamı (yalnız AKTİF —
+    PASİF kartlar artık defter değerini temsil etmediği varsayılır, hariç tutulur —
+    silinmemiş DuranVarlik.maliyet toplamı) vs mizan-bakiyesi (yevmiyeden hesaplanan
+    net borç) — salt okunur karşılaştırma; fark != 0 ise muhasebe ile kart kayıtları
+    arasında tutarsızlık var demektir (örn. kart girilmeden fatura kesilmiş)."""
     satirlar = []
     for h in duran_varlik_karti_hesaplari():
-        kart_toplami = (DuranVarlik.objects.filter(hesap_id=h.pk, silindi=False)
+        kart_toplami = (DuranVarlik.objects.filter(
+                hesap_id=h.pk, silindi=False, durum=DuranVarlik.Durum.AKTIF)
                         .aggregate(t=Sum("maliyet"))["t"] or SIFIR)
         mizan_bakiye = _hesap_bakiyesi(h.hesap_kodu)
         satirlar.append({
@@ -169,3 +171,46 @@ def kontrol_raporu() -> list:
             "fark": kart_toplami - mizan_bakiye,
         })
     return satirlar
+
+
+def silinebilir_mi(varlik: DuranVarlik) -> bool:
+    """Kart "Kartı sil" ile silinebilir mi? Yalnız: hiç fatura kalemi bağlı DEĞİL VE
+    kaynağı PROJE DEĞİL (FAZ 3 aktifleştirmesinden üretilen kartlar yalnız projenin
+    "Aktifleştirmeyi Geri Al" akışıyla kaldırılır, bkz. core.services.yatirim_projesi
+    .proje_geri_al)."""
+    return (varlik.kaynak != DuranVarlik.Kaynak.PROJE
+            and not varlik.fatura_satirlari.exists())
+
+
+def varlik_sil(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
+    if varlik.kaynak == DuranVarlik.Kaynak.PROJE:
+        raise DuranVarlikHatasi("Kaynağı Yatırım Projesi olan kart silinemez.")
+    if varlik.fatura_satirlari.exists():
+        raise DuranVarlikHatasi("Bağlı fatura kalemi olan kart silinemez.")
+    from django.utils import timezone
+    varlik.silindi = True
+    varlik.silindi_at = timezone.now()
+    varlik.updated_by = kullanici
+    varlik.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return varlik
+
+
+def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet, marka_model="", seri_no="",
+                          notlar="", kullanici=None) -> DuranVarlik:
+    """Yalnız ad/marka-model/seri no/notlar/maliyet düzenlenebilir — hesap ve kaynak
+    SABİTTİR (hesap kartın temsil ettiği muhasebe hesabını, kaynak kartın nasıl
+    üretildiğini belirler; ikisi de düzenleme ekranından değiştirilemez)."""
+    ad = buyuk_harf_tr((ad or "").strip())
+    if not ad:
+        raise DuranVarlikHatasi("Ad boş olamaz.")
+    if maliyet is None or maliyet < 0:
+        raise DuranVarlikHatasi("Maliyet negatif olamaz.")
+    varlik.ad = ad
+    varlik.maliyet = maliyet
+    varlik.marka_model = (marka_model or "").strip()
+    varlik.seri_no = (seri_no or "").strip()
+    varlik.notlar = (notlar or "").strip()
+    varlik.updated_by = kullanici
+    varlik.save(update_fields=["ad", "maliyet", "marka_model", "seri_no", "notlar",
+                               "updated_by", "updated_at"])
+    return varlik

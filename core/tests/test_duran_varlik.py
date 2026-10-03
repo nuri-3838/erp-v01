@@ -11,9 +11,9 @@ from django.urls import reverse
 
 from core.models import Cari, DuranVarlik, EkranYetki, FaturaTipi, HesapPlani, KdvOrani, Kur
 from core.services.duran_varlik import (
-    DuranVarlikHatasi, baglanabilir_satirlar, baglanti_toplami, duran_varlik_olustur,
-    durum_degistir, hesap_bazli_toplam, kontrol_raporu, satir_bagla, satir_cikar,
-    sonraki_demirbas_kodu, varliklar,
+    DuranVarlikHatasi, baglanabilir_satirlar, baglanti_toplami, duran_varlik_guncelle,
+    duran_varlik_olustur, durum_degistir, hesap_bazli_toplam, kontrol_raporu, satir_bagla,
+    satir_cikar, silinebilir_mi, sonraki_demirbas_kodu, varlik_sil, varliklar,
 )
 from core.services.fatura import fatura_olustur
 
@@ -375,3 +375,272 @@ class KalemBaglamaTest(TestCase):
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:duran_varlik_detay", args=[v.pk]))
         self.assertContains(r, "uyuşmuyor")
+
+
+class KontrolRaporuAktifFiltresiTest(TestCase):
+    def test_pasif_kart_kontrol_raporuna_girmez(self):
+        h = _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        v = duran_varlik_olustur(ad="aktif kart", hesap_id=h.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("1000"))
+        v2 = duran_varlik_olustur(ad="pasif kart", hesap_id=h.pk,
+                                  aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("2000"))
+        durum_degistir(v2, durum=DuranVarlik.Durum.PASIF)
+        rapor = {r["hesap"].hesap_kodu: r for r in kontrol_raporu()}
+        self.assertEqual(rapor["253"]["kart_toplami"], Decimal("1000.00"))   # yalnız aktif
+
+
+class VarlikSilTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("30"))
+        _hesap("191", "İNDİRİLECEK KDV", grup="BILANCO", kalem="DV")
+        _hesap("391", "HESAPLANAN KDV", grup="BILANCO", kalem="KVYK")
+        _hesap("320.10.0001", "TEDARİKÇİ A", grup="BILANCO", kalem="KVYK")
+        _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        cls.kdv20 = KdvOrani.objects.create(
+            aciklama="GENEL", oran=Decimal("20"),
+            hesap_borc=HesapPlani.objects.get(hesap_kodu="191"),
+            hesap_alacak=HesapPlani.objects.get(hesap_kodu="391"))
+        cls.gider = FaturaTipi.objects.create(
+            ad="ALIŞ FATURASI-GİDER", yon=FaturaTipi.Yon.ALIS, gider=True)
+        cls.cari = Cari.objects.create(kod="320-10-0001", unvan="TEDARİKÇİ A", para_birimi="TRY",
+                                       muhasebe_kodu="320.10.0001")
+        cls.h253 = HesapPlani.objects.get(hesap_kodu="253")
+
+    def test_bagli_kalemsiz_ve_kaynak_acilis_silinebilir(self):
+        v = duran_varlik_olustur(ad="acilis karti", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        self.assertTrue(silinebilir_mi(v))
+        varlik_sil(v)
+        v.refresh_from_db()
+        self.assertTrue(v.silindi)
+
+    def test_bagli_kalemi_olan_kart_silinemez(self):
+        f = fatura_olustur(
+            tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10), fatura_no="G-1",
+            satirlar=[{"hesap_id": "253", "miktar": "1", "birim_fiyat": "5000",
+                      "kdv_id": self.kdv20.pk}])
+        satir = f.satirlar.first()
+        v = duran_varlik_olustur(ad="fatura karti", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 3, 10), maliyet=satir.tutar,
+                                 fatura_satirlari=[satir.pk])
+        self.assertFalse(silinebilir_mi(v))
+        with self.assertRaises(DuranVarlikHatasi):
+            varlik_sil(v)
+        v.refresh_from_db()
+        self.assertFalse(v.silindi)
+
+    def test_kaynagi_proje_olan_kart_silinemez(self):
+        from core.services.yatirim_projesi import proje_aktiflestir, proje_olustur
+        proje = proje_olustur(ad="test proje")
+        _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR")
+        fatura_olustur(
+            tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10), fatura_no="G-2",
+            satirlar=[{"hesap_id": "258", "miktar": "1", "birim_fiyat": "1000",
+                      "kdv_id": self.kdv20.pk, "yatirim_projesi_id": proje.pk}])
+        proje_aktiflestir(proje, tarih=D(2026, 3, 10), satirlar=[
+            {"hesap_id": self.h253.pk, "varlik_adi": "proje varligi", "tutar": Decimal("1000")}])
+        v = DuranVarlik.objects.get(yatirim_projesi=proje)
+        self.assertEqual(v.kaynak, DuranVarlik.Kaynak.PROJE)
+        self.assertFalse(silinebilir_mi(v))
+        with self.assertRaises(DuranVarlikHatasi):
+            varlik_sil(v)
+
+
+class SilinmisKartGorunurlukTest(TestCase):
+    """Soft-delete edilmiş bir kart hiçbir yerde (liste, hesap bazlı toplam, kontrol
+    raporu, fatura detayındaki "mevcut kart" bağlantısı) görünmemeli — 2026-10-03:
+    fatura_detay.html'de prefetch_related('duran_varliklar') silindi=False filtrelemediği
+    için eski (silinmiş) kart hâlâ "mevcut kart" olarak gösteriliyor, üstelik "+ kart
+    oluştur" linki de bu yüzden hiç çıkmıyordu (M2M bağı soft-delete ile temizlenmez)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("30"))
+        _hesap("191", "İNDİRİLECEK KDV", grup="BILANCO", kalem="DV")
+        _hesap("391", "HESAPLANAN KDV", grup="BILANCO", kalem="KVYK")
+        _hesap("320.10.0001", "TEDARİKÇİ A", grup="BILANCO", kalem="KVYK")
+        cls.h253 = _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        cls.kdv20 = KdvOrani.objects.create(
+            aciklama="GENEL", oran=Decimal("20"),
+            hesap_borc=HesapPlani.objects.get(hesap_kodu="191"),
+            hesap_alacak=HesapPlani.objects.get(hesap_kodu="391"))
+        cls.gider = FaturaTipi.objects.create(
+            ad="ALIŞ FATURASI-GİDER", yon=FaturaTipi.Yon.ALIS, gider=True)
+        cls.cari = Cari.objects.create(kod="320-10-0001", unvan="TEDARİKÇİ A", para_birimi="TRY",
+                                       muhasebe_kodu="320.10.0001")
+        cls.yetkili = User.objects.create_user("yet", password="x")
+        EkranYetki.objects.create(kullanici=cls.yetkili, ekran_kod="duran_varliklar")
+        EkranYetki.objects.create(kullanici=cls.yetkili, ekran_kod="alis_faturalari")
+
+    def test_silinmis_kart_listede_gorunmez(self):
+        v = duran_varlik_olustur(ad="eski kart", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        varlik_sil(v)
+        self.assertNotIn(v.pk, list(varliklar().values_list("pk", flat=True)))
+
+    def test_silinmis_kart_hesap_bazli_toplamda_sayilmaz(self):
+        v = duran_varlik_olustur(ad="eski kart", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        varlik_sil(v)
+        ozet = hesap_bazli_toplam(varliklar())
+        self.assertEqual(ozet, [])
+
+    def test_silinmis_kart_kontrol_raporunda_sayilmaz(self):
+        v = duran_varlik_olustur(ad="eski kart", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        varlik_sil(v)
+        rapor = {r["hesap"].hesap_kodu: r for r in kontrol_raporu()}
+        self.assertEqual(rapor["253"]["kart_toplami"], Decimal("0.00"))
+
+    def test_silinmis_kart_fatura_detayinda_gorunmez_yeniden_kart_olustur_linki_cikar(self):
+        f = fatura_olustur(
+            tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10), fatura_no="G-1",
+            satirlar=[{"hesap_id": "253", "miktar": "1", "birim_fiyat": "5000",
+                      "kdv_id": self.kdv20.pk}])
+        satir = f.satirlar.first()
+        v = duran_varlik_olustur(ad="eski kart", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 3, 10), maliyet=satir.tutar,
+                                 fatura_satirlari=[satir.pk])
+
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
+        self.assertContains(r, v.demirbas_kodu)
+        self.assertNotContains(r, "Duran varlık kartı oluştur")
+
+        # Bağlı kalemi olan kartlar normal "Kartı Sil" ile silinemez (varlik_sil reddeder) —
+        # ama FAZ 3 "Aktifleştirmeyi Geri Al" akışı tam da böyle (satır bağlı) kartları
+        # soft-delete eder (bkz. core.services.yatirim_projesi.proje_geri_al). O senaryoyu
+        # modelin kendisi üzerinden simüle ediyoruz.
+        from django.utils import timezone
+        v.silindi = True
+        v.silindi_at = timezone.now()
+        v.save(update_fields=["silindi", "silindi_at"])
+
+        r2 = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
+        self.assertNotContains(r2, v.demirbas_kodu)
+        self.assertContains(r2, "Duran varlık kartı oluştur")
+
+
+class DuranVarlikGuncelleTest(TestCase):
+    def test_duzenlenebilir_alanlar_guncellenir(self):
+        h = _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        v = duran_varlik_olustur(ad="eski ad", hesap_id=h.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        guncellenen = duran_varlik_guncelle(
+            v, ad="yeni ad", maliyet=Decimal("250"), marka_model="bosch", seri_no="sn-1",
+            notlar="not")
+        self.assertEqual(guncellenen.ad, "YENİ AD")
+        self.assertEqual(guncellenen.maliyet, Decimal("250"))
+        self.assertEqual(guncellenen.marka_model, "bosch")
+        self.assertEqual(guncellenen.seri_no, "sn-1")
+        self.assertEqual(guncellenen.notlar, "not")
+        self.assertEqual(guncellenen.hesap_id, h.pk)   # değişmedi
+
+    def test_bos_ad_reddedilir(self):
+        h = _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        v = duran_varlik_olustur(ad="a", hesap_id=h.pk, aktiflestirme_tarihi=D(2026, 1, 1),
+                                 maliyet=Decimal("100"))
+        with self.assertRaises(DuranVarlikHatasi):
+            duran_varlik_guncelle(v, ad="  ", maliyet=Decimal("100"))
+
+    def test_negatif_maliyet_reddedilir(self):
+        h = _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        v = duran_varlik_olustur(ad="a", hesap_id=h.pk, aktiflestirme_tarihi=D(2026, 1, 1),
+                                 maliyet=Decimal("100"))
+        with self.assertRaises(DuranVarlikHatasi):
+            duran_varlik_guncelle(v, ad="a", maliyet=Decimal("-5"))
+
+
+class VarlikSilVeDuzenleEkranTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("30"))
+        _hesap("191", "İNDİRİLECEK KDV", grup="BILANCO", kalem="DV")
+        _hesap("391", "HESAPLANAN KDV", grup="BILANCO", kalem="KVYK")
+        _hesap("320.10.0001", "TEDARİKÇİ A", grup="BILANCO", kalem="KVYK")
+        cls.h253 = _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        cls.kdv20 = KdvOrani.objects.create(
+            aciklama="GENEL", oran=Decimal("20"),
+            hesap_borc=HesapPlani.objects.get(hesap_kodu="191"),
+            hesap_alacak=HesapPlani.objects.get(hesap_kodu="391"))
+        cls.gider = FaturaTipi.objects.create(
+            ad="ALIŞ FATURASI-GİDER", yon=FaturaTipi.Yon.ALIS, gider=True)
+        cls.cari = Cari.objects.create(kod="320-10-0001", unvan="TEDARİKÇİ A", para_birimi="TRY",
+                                       muhasebe_kodu="320.10.0001")
+        cls.yetkili = User.objects.create_user("yet", password="x")
+        EkranYetki.objects.create(kullanici=cls.yetkili, ekran_kod="duran_varliklar")
+
+    def test_duzenle_view_get_ve_post(self):
+        v = duran_varlik_olustur(ad="eski ad", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:duran_varlik_duzenle", args=[v.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ESKİ AD")
+        self.assertNotContains(r, 'name="hesap"')   # hesap formda hiç yok
+
+        r2 = self.client.post(reverse("core:duran_varlik_duzenle", args=[v.pk]), {
+            "ad": "yeni ad", "maliyet": "250,00", "marka_model": "", "seri_no": "", "notlar": "",
+        })
+        self.assertEqual(r2.status_code, 302)
+        v.refresh_from_db()
+        self.assertEqual(v.ad, "YENİ AD")
+        self.assertEqual(v.maliyet, Decimal("250.00"))
+
+    def test_detay_silinebilir_kartta_buton_gorunur(self):
+        v = duran_varlik_olustur(ad="acilis", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:duran_varlik_detay", args=[v.pk]))
+        self.assertContains(r, "Kartı Sil")
+
+    def test_detay_bagli_kalemli_kartta_buton_gorunmez(self):
+        f = fatura_olustur(
+            tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10), fatura_no="G-1",
+            satirlar=[{"hesap_id": "253", "miktar": "1", "birim_fiyat": "5000",
+                      "kdv_id": self.kdv20.pk}])
+        satir = f.satirlar.first()
+        v = duran_varlik_olustur(ad="fatura karti", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 3, 10), maliyet=satir.tutar,
+                                 fatura_satirlari=[satir.pk])
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:duran_varlik_detay", args=[v.pk]))
+        self.assertNotContains(r, "Kartı Sil")
+
+    def test_sil_view_basarili(self):
+        v = duran_varlik_olustur(ad="acilis", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:duran_varlik_sil", args=[v.pk]))
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.url, reverse("core:duran_varliklar"))
+        v.refresh_from_db()
+        self.assertTrue(v.silindi)
+
+    def test_sil_view_bagli_kalemliyse_hata_mesajiyla_detaya_doner(self):
+        f = fatura_olustur(
+            tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10), fatura_no="G-1",
+            satirlar=[{"hesap_id": "253", "miktar": "1", "birim_fiyat": "5000",
+                      "kdv_id": self.kdv20.pk}])
+        satir = f.satirlar.first()
+        v = duran_varlik_olustur(ad="fatura karti", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 3, 10), maliyet=satir.tutar,
+                                 fatura_satirlari=[satir.pk])
+        self.client.force_login(self.yetkili)
+        r = self.client.post(reverse("core:duran_varlik_sil", args=[v.pk]))
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.url, reverse("core:duran_varlik_detay", args=[v.pk]))
+        v.refresh_from_db()
+        self.assertFalse(v.silindi)
+
+    def test_yetkisiz_403(self):
+        v = duran_varlik_olustur(ad="acilis", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 1, 1), maliyet=Decimal("100"))
+        kisitli = User.objects.create_user("kis", password="x")
+        EkranYetki.objects.create(kullanici=kisitli, ekran_kod="mizan")
+        self.client.force_login(kisitli)
+        self.assertEqual(
+            self.client.get(reverse("core:duran_varlik_duzenle", args=[v.pk])).status_code, 403)
+        self.assertEqual(
+            self.client.post(reverse("core:duran_varlik_sil", args=[v.pk])).status_code, 403)

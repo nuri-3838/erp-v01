@@ -33,7 +33,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -6543,7 +6543,8 @@ def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
     satirlar = fatura.satirlar.filter(silindi=False).select_related(
-        "stok", "hesap", "kdv", "yatirim_projesi").prefetch_related("duran_varliklar")
+        "stok", "hesap", "kdv", "yatirim_projesi").prefetch_related(
+        Prefetch("duran_varliklar", queryset=DuranVarlik.objects.filter(silindi=False)))
     kart_acilabilir_hesap = set(
         hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))
     return render(request, "core/fatura_detay.html",
@@ -6714,7 +6715,43 @@ def duran_varlik_detay(request, pk):
         "baglanabilir": dv_servis.baglanabilir_satirlar(varlik),
         "baglanti_toplami": baglanti_toplami,
         "toplam_farkli": satirlar.exists() and baglanti_toplami != varlik.maliyet,
+        "silinebilir": dv_servis.silinebilir_mi(varlik),
     })
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_duzenle(request, pk):
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = DuranVarlikDuzenleForm(request.POST)
+        if form.is_valid():
+            try:
+                cd = form.cleaned_data
+                dv_servis.duran_varlik_guncelle(
+                    varlik, ad=cd["ad"], maliyet=cd["maliyet"], marka_model=cd["marka_model"],
+                    seri_no=cd["seri_no"], notlar=cd["notlar"], kullanici=request.user)
+                messages.success(request, f"{varlik.demirbas_kodu} güncellendi.")
+                return redirect("core:duran_varlik_detay", pk=pk)
+            except dv_servis.DuranVarlikHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = DuranVarlikDuzenleForm(initial={
+            "ad": varlik.ad, "maliyet": varlik.maliyet, "marka_model": varlik.marka_model,
+            "seri_no": varlik.seri_no, "notlar": varlik.notlar})
+    return render(request, "core/duran_varlik_duzenle.html", {"form": form, "varlik": varlik})
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_sil(request, pk):
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            dv_servis.varlik_sil(varlik, kullanici=request.user)
+            messages.success(request, f"{varlik.demirbas_kodu} silindi.")
+            return redirect("core:duran_varliklar")
+        except dv_servis.DuranVarlikHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:duran_varlik_detay", pk=pk)
 
 
 @ekran_gerekli("duran_varliklar")

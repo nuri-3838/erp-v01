@@ -11,11 +11,17 @@
       <span class="rozet {% if varlik.durum == 'AKTIF' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ varlik.get_durum_display }}</span></h1>
   </div>
   <span class="islem-bag">
+    <a class="dugme" href="{% url 'core:duran_varlik_duzenle' varlik.pk %}">Düzenle</a>
     <form method="post" action="{% url 'core:duran_varlik_durum_degistir' varlik.pk %}" style="margin:0">
       {% csrf_token %}
       <button type="submit" class="dugme" style="border:0;cursor:pointer">
         {% if varlik.durum == "AKTIF" %}Pasife Al{% else %}Aktife Al{% endif %}</button>
     </form>
+    {% if silinebilir %}
+    <form method="post" action="{% url 'core:duran_varlik_sil' varlik.pk %}" style="margin:0"
+          onsubmit="return confirm('{{ varlik.demirbas_kodu }} kalıcı olarak silinsin mi?');">
+      {% csrf_token %}<button type="submit" class="sil">🗑️ Kartı Sil</button></form>
+    {% endif %}
   </span>
 </div>
 
