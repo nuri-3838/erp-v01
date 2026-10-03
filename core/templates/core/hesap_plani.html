@@ -71,6 +71,9 @@
       <div class="alan">
         <label for="kod">Hesap kodu</label>
         <input type="text" id="kod" name="kod" value="{{ onerilen_kod }}" inputmode="numeric" required>
+        {% if onerilen_silinmis %}
+        <p class="yardim">⚠️ Bu kod silinmiş bir hesaba ait; kaydedilirse o hesap yeniden aktifleşir.</p>
+        {% endif %}
       </div>
       <div class="alan" style="flex:1 1 14rem">
         <label for="ad">Hesap adı</label>

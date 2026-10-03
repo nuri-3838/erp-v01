@@ -1,0 +1,116 @@
+{% extends "core/base.html" %}
+{% block baslik %}Sarf Çıkışı · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Sarf Çıkışı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:stok_detay' stok.pk %}">← {{ stok.kod }} {{ stok.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">📤</span>Sarf Çıkışı (Hesaba Çıkış)</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  {{ kodlar_258|json_script:"kodlar-258" }}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">{{ stok.kod }} — {{ stok.ad }}
+        <span class="pasif">({{ stok.uretim_birimi.kisa_ad }})</span></h2>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.depo.id_for_label }}">{{ form.depo.label }}</label>
+          {{ form.depo }}
+          {% for e in form.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.miktar.id_for_label }}">{{ form.miktar.label }}</label>
+          {{ form.miktar }}
+          {% for e in form.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
+          {{ form.tarih }}
+          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.karsi_hesap.id_for_label }}">{{ form.karsi_hesap.label }}</label>
+          {{ form.karsi_hesap }}
+          {% for e in form.karsi_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan" id="proje-alan" style="display:none">
+          <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label>
+          {{ form.yatirim_projesi }}
+          {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
+          {{ form.aciklama }}
+          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+      <p class="yardim">Miktar üretim biriminde ({{ stok.uretim_birimi.kisa_ad }}). Maliyet, mevcut
+        FIFO katmanlarından otomatik hesaplanır ve karşı hesap BORÇ / {{ stok.kod }}'un muhasebe
+        hesabı ALACAK şeklinde bir fiş oluşturur. Çıkış, o depodaki eldeki miktardan fazla olamaz.</p>
+      <div id="onizleme" class="yardim" style="display:none;font-weight:600"></div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:stok_detay' stok.pk %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const kodlar258 = JSON.parse(document.getElementById("kodlar-258").textContent);
+  const karsiSec = document.getElementById("{{ form.karsi_hesap.id_for_label }}");
+  const projeAlan = document.getElementById("proje-alan");
+  const depoSec = document.getElementById("{{ form.depo.id_for_label }}");
+  const miktarGir = document.getElementById("{{ form.miktar.id_for_label }}");
+  const onizleme = document.getElementById("onizleme");
+
+  function projeGorunurluguGuncelle() {
+    const is258 = !!kodlar258[karsiSec.value];
+    projeAlan.style.display = is258 ? "" : "none";
+  }
+  if (karsiSec) {
+    karsiSec.addEventListener("change", projeGorunurluguGuncelle);
+    projeGorunurluguGuncelle();
+  }
+
+  let zamanlayici = null;
+  function onizlemeGetir() {
+    if (!depoSec.value || !miktarGir.value) {
+      onizleme.style.display = "none";
+      return;
+    }
+    const url = "{% url 'core:stok_sarf_onizleme_api' stok.pk %}?depo=" + encodeURIComponent(depoSec.value)
+      + "&miktar=" + encodeURIComponent(miktarGir.value);
+    fetch(url).then(function (r) { return r.json(); }).then(function (veri) {
+      onizleme.style.display = "";
+      if (veri.hata) {
+        onizleme.textContent = "⚠️ " + veri.hata;
+      } else if (veri.tutar_try === null) {
+        onizleme.textContent = "Bu depoda bu stoğun maliyet katmanı bulunamadı.";
+      } else {
+        onizleme.textContent = "Birim maliyet: " + veri.birim_maliyet_try + " TL — Toplam tutar: "
+          + veri.tutar_try + " TL" + (veri.tam_mi ? "" : " (kısmi/tahmini — katmanlar tam karşılamıyor)");
+      }
+    }).catch(function () { onizleme.style.display = "none"; });
+  }
+  [depoSec, miktarGir].forEach(function (el) {
+    if (!el) return;
+    el.addEventListener("input", function () {
+      clearTimeout(zamanlayici);
+      zamanlayici = setTimeout(onizlemeGetir, 300);
+    });
+    el.addEventListener("change", onizlemeGetir);
+  });
+})();
+</script>
+{% endblock %}

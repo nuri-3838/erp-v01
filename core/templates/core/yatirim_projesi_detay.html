@@ -77,9 +77,44 @@
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr><th colspan="4" class="sag">Toplam (KDV Hariç)</th><th class="sag mono">{{ toplam|tr_kur:2 }}</th></tr>
+      <tr><th colspan="4" class="sag">Fatura Kalemleri Toplamı</th><th class="sag mono">{{ fatura_toplam|tr_kur:2 }}</th></tr>
     </tfoot>
   </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Stok Sarf Çıkışları</h2>
+  <div class="tablo-kapsayici genis">
+  <table>
+    <thead><tr>
+      <th>Tarih</th><th>Stok</th><th>Depo</th><th class="sag">Miktar</th><th class="sag">Tutar</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for s in sarf_hareketleri %}
+        <tr>
+          <td class="mono">{{ s.hareket.tarih|date:"d.m.Y" }}</td>
+          <td><span class="mono">{{ s.hareket.stok.kod }}</span> {{ s.hareket.stok.ad }}</td>
+          <td class="mono">{{ s.hareket.depo.kod }}</td>
+          <td class="sag mono">{{ s.hareket.miktar|tr_kur:3 }}</td>
+          <td class="sag mono">{% if s.tutar_try is not None %}{{ s.tutar_try|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td>{% if s.hareket.fis_id %}<a href="{% url 'core:fis_detay' s.hareket.fis_id %}">Fiş {{ s.hareket.fis.yil }}/{{ s.hareket.fis.fis_no }}</a>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="yardim">Bu projeye bağlı sarf çıkışı yok.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="4" class="sag">Sarf Çıkışları Toplamı</th><th colspan="2" class="sag mono">{{ sarf_toplam|tr_kur:2 }}</th></tr>
+    </tfoot>
+  </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <div class="kv">
+    <div class="satir"><span class="et">Genel Toplam (KDV Hariç)</span>
+      <span class="dg mono" style="font-size:1.1rem;font-weight:600">{{ toplam|tr_kur:2 }}</span></div>
   </div>
 </section>
 {% endblock %}

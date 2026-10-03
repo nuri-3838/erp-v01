@@ -2425,6 +2425,56 @@ class StokHareketForm(forms.Form):
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
 
 
+class SarfCikisForm(forms.Form):
+    """Stoktan hesaba/yatırım projesine SARF çıkışı — bkz. core.services.hareket.
+    sarf_cikis_ekle. 258 karşı hesabında yatırım projesi zorunlu, başka hesapta gizli/
+    boş kalmalı (clean() zorlar)."""
+
+    depo = forms.ModelChoiceField(
+        label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    miktar = TRDecimalField(label="Miktar", basamak=3)
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    karsi_hesap = forms.ModelChoiceField(
+        label="Karşı hesap", queryset=HesapPlani.objects.none(), empty_label="— hesap seç —")
+    yatirim_projesi = forms.ModelChoiceField(
+        label="Yatırım projesi", queryset=YatirimProjesi.objects.none(), required=False,
+        empty_label="— proje seç —")
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.depo import aktif_depolar
+        from core.services.hesap_plani import sarf_karsi_hesaplari
+        from core.services.yatirim_projesi import aktif_projeler
+        self.fields["depo"].queryset = aktif_depolar()
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["karsi_hesap"].queryset = sarf_karsi_hesaplari()
+        self.fields["karsi_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["karsi_hesap"].widget.attrs["class"] = "akilli-sec"
+        self.fields["yatirim_projesi"].queryset = aktif_projeler().filter(
+            durum=YatirimProjesi.Durum.DEVAM)
+        self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["yatirim_projesi"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        karsi = cd.get("karsi_hesap")
+        proje = cd.get("yatirim_projesi")
+        if karsi is not None:
+            from core.services.hesap_plani import hesap_kodu_258_mi
+            is_258 = hesap_kodu_258_mi(karsi.hesap_kodu)
+            if is_258 and not proje:
+                self.add_error("yatirim_projesi",
+                               "258 karşı hesabı için yatırım projesi seçilmelidir.")
+            if not is_258 and proje:
+                self.add_error("yatirim_projesi",
+                               "Yatırım projesi yalnız 258 karşı hesabı seçilince kullanılabilir.")
+        return cd
+
+
 class YemekTakibiFiltreForm(forms.Form):
     """Yemek Takibi liste ekranı üst filtresi: cari (opsiyonel) + tarih aralığı."""
 

@@ -30,6 +30,9 @@
       </div>
       <p class="yardim">Miktar üretim biriminde ({{ stok.uretim_birimi.kisa_ad }}). Çıkış,
         o depodaki eldeki miktardan fazla olamaz.</p>
+      <p class="yardim">⚠️ Bu ekran muhasebe fişi OLUŞTURMAZ — yalnız miktar hareketi yazar.
+        Stoktan hesaba/yatırım projesine fişli çıkış için
+        <a href="{% url 'core:stok_sarf_ekle' stok.pk %}">Sarf (Hesaba Çıkış)</a> ekranını kullanın.</p>
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:stok_detay' stok.pk %}">İptal</a>

@@ -132,6 +132,31 @@ def kategori_hesaplari(kategori: Kategori) -> dict:
             .select_related("hesap", "fatura_tipi")}
 
 
+def stok_muhasebe_hesabi(stok) -> HesapPlani:
+    """Stoğun kendi envanter (varlık) muhasebe hesabı — kartta ayrı bir alan yok, ALIŞ
+    (stoklu, gider olmayan) fatura tiplerindeki KategoriHesap eşlemesinden türetilir.
+    Stok sarf çıkışında stok tarafının alacaklanacağı hesabı bulmak için kullanılır."""
+    hesaplar = set(
+        KategoriHesap.objects.filter(
+            silindi=False, kategori_id=stok.kategori_id,
+            fatura_tipi__silindi=False, fatura_tipi__yon=FaturaTipi.Yon.ALIS,
+            fatura_tipi__gider=False,
+        ).values_list("hesap__hesap_kodu", flat=True).distinct()
+    )
+    if not hesaplar:
+        raise KategoriHatasi(
+            f"{stok.kategori.ad} kategorisi için alış (stoklu) fatura tipinde tanımlı bir "
+            "muhasebe hesabı yok; sarf çıkışı için önce kategori hesap haritasını tanımlayın."
+        )
+    if len(hesaplar) > 1:
+        raise KategoriHatasi(
+            f"{stok.kategori.ad} kategorisi birden fazla farklı hesaba bağlı "
+            f"({', '.join(sorted(hesaplar))}); sarf çıkışı için tek bir hesap gerekir."
+        )
+    kod = hesaplar.pop()
+    return HesapPlani.objects.filter(hesap_kodu=kod, silindi=False).first()
+
+
 def kategori_hesaplari_kaydet(kategori: Kategori, *, eslesmeler: dict, kullanici=None):
     """``eslesmeler`` = {fatura_tipi_id: hesap_kodu_or_empty}. Yalnız ALT kategori.
 

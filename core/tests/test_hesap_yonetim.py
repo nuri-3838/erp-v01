@@ -10,7 +10,7 @@ from django.urls import reverse
 from core.models import EkranYetki, HesapPlani
 from core.services.hesap_plani import (
     HesapHatasi, alt_kod_oner, hesap_adi_guncelle, hesap_olustur, hesap_sil,
-    yaprak_hesaplar,
+    onerilen_kod_silinmis_mi, yaprak_hesaplar,
 )
 from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
 
@@ -143,6 +143,55 @@ class HesapOlusturTest(TestCase):
         self.assertEqual(alt_kod_oner(ana), "320.10")
         hesap_olustur(kod="320.10", ad="a", ust_kodu="320", kullanici=self.u)
         self.assertEqual(alt_kod_oner(ana), "320.20")
+
+    def test_kod_oneri_mevcut_1er_artan_deseni_yakalar(self):
+        # 730 gibi düz listeli hesaplarda (10'ar değil 1'er artan) öneri gerçek
+        # deseni yakalamalı — bu, canlıda 730 altında 730.01..730.13 varken
+        # önerinin yanlışlıkla 730.23 çıkmasının (10'ar artış varsayımı) fiksi.
+        ana = HesapPlani.objects.get(hesap_kodu="730")
+        for i in range(1, 4):
+            hesap_olustur(kod=f"730.{i:02d}", ad=f"gider {i}", ust_kodu="730",
+                          kullanici=self.u)
+        self.assertEqual(alt_kod_oner(ana), "730.04")
+
+    def test_kod_oneri_pasif_alt_hesabi_saymaz(self):
+        ana = HesapPlani.objects.get(hesap_kodu="730")
+        hesap_olustur(kod="730.01", ad="gider 1", ust_kodu="730", kullanici=self.u)
+        pasif = hesap_olustur(kod="730.02", ad="gider 2", ust_kodu="730", kullanici=self.u)
+        pasif.aktif = False
+        pasif.save(update_fields=["aktif"])
+        # Tek aktif alt hesap (730.01) kaldı -> tek-veri varsayılanı (L2: +10) kullanılır,
+        # pasif 730.02 öneriye dahil edilmez.
+        self.assertEqual(alt_kod_oner(ana), "730.11")
+
+    def test_kod_oneri_silinmis_hesaba_denk_gelince_uyari(self):
+        ana = HesapPlani.objects.get(hesap_kodu="730")
+        for i in range(1, 4):
+            hesap_olustur(kod=f"730.{i:02d}", ad=f"gider {i}", ust_kodu="730",
+                          kullanici=self.u)
+        dorduncu = hesap_olustur(kod="730.04", ad="gider 4", ust_kodu="730",
+                                 kullanici=self.u)
+        hesap_sil(kod="730.04", kullanici=self.u)
+        onerilen = alt_kod_oner(ana)
+        self.assertEqual(onerilen, "730.04")           # silinmiş olan tam o kod
+        self.assertTrue(onerilen_kod_silinmis_mi(onerilen))
+
+    def test_kod_oneri_silinmemis_kod_icin_uyari_yok(self):
+        ana = HesapPlani.objects.get(hesap_kodu="730")
+        hesap_olustur(kod="730.01", ad="gider 1", ust_kodu="730", kullanici=self.u)
+        onerilen = alt_kod_oner(ana)
+        self.assertFalse(onerilen_kod_silinmis_mi(onerilen))
+
+    def test_kod_oneri_ekraninda_silinmis_uyarisi_gorunur(self):
+        self.client.force_login(self.u)
+        for i in range(1, 4):
+            hesap_olustur(kod=f"730.{i:02d}", ad=f"gider {i}", ust_kodu="730",
+                          kullanici=self.u)
+        hesap_olustur(kod="730.04", ad="gider 4", ust_kodu="730", kullanici=self.u)
+        hesap_sil(kod="730.04", kullanici=self.u)
+        r = self.client.get(reverse("core:hesap_plani"), {"ust": "730"})
+        self.assertContains(r, 'value="730.04"')
+        self.assertContains(r, "silinmiş bir hesaba ait")
 
     def test_ad_guncelle(self):
         h = hesap_adi_guncelle(kod="320", yeni_ad="satıcılar yeni", kullanici=self.u)

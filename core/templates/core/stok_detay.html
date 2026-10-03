@@ -145,7 +145,10 @@
   <section class="icerik-kart">
     <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">📦</span>Stok Hareketleri</h2>
-      <a class="dugme" href="{% url 'core:stok_hareket_ekle' stok.pk %}">+ Hareket</a>
+      <span class="islem-bag">
+        <a class="dugme" href="{% url 'core:stok_sarf_ekle' stok.pk %}">+ Sarf (Hesaba Çıkış)</a>
+        <a class="dugme" href="{% url 'core:stok_hareket_ekle' stok.pk %}">+ Hareket</a>
+      </span>
     </div>
     {% if hareket_sayisi > 100 %}
       <p class="yardim" style="margin:0 0 .7rem">Son 100 hareket gösteriliyor (toplam {{ hareket_sayisi }}).</p>
@@ -160,7 +163,13 @@
             <td>{% if h.tur == 'GIRIS' %}<span class="rozet rozet-aktif">Giriş ▲</span>{% else %}<span class="rozet rozet-pasif">Çıkış ▼</span>{% endif %}</td>
             <td class="mono">{{ h.depo.kod }}</td>
             <td class="sag mono {% if h.tur == 'GIRIS' %}giris{% else %}cikis{% endif %}">{% if h.tur == 'GIRIS' %}+{% else %}−{% endif %}{{ h.miktar|tr_kur:3 }}</td>
-            <td class="hareket-kaynak">{{ h.get_kaynak_display }}</td>
+            <td class="hareket-kaynak">{{ h.get_kaynak_display }}
+              {% if h.kaynak == 'SARF' %}
+                <br><span class="mono" style="font-size:.78rem">{{ h.karsi_hesap.hesap_kodu }}</span>
+                {% if h.yatirim_projesi %}<span style="font-size:.78rem">({{ h.yatirim_projesi.kod }})</span>{% endif %}
+                {% if h.fis_id %}<br><a href="{% url 'core:fis_detay' h.fis_id %}" style="font-size:.78rem">Fiş {{ h.fis.yil }}/{{ h.fis.fis_no }}</a>{% endif %}
+              {% endif %}
+            </td>
             <td>{{ h.aciklama|default:"—" }}</td>
             <td><form method="post" action="{% url 'core:stok_hareket_sil' h.pk %}" style="margin:0"
                      onsubmit="return confirm('Hareket silinsin mi?');">

@@ -61,7 +61,8 @@ def depo_bazinda_eldeki(stok):
 
 def stok_hareketleri(stok):
     return (StokHareket.objects.filter(stok=stok, silindi=False)
-            .select_related("depo").order_by("-tarih", "-id"))
+            .select_related("depo", "fis", "karsi_hesap", "yatirim_projesi")
+            .order_by("-tarih", "-id"))
 
 
 @transaction.atomic
@@ -112,10 +113,129 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
 
 
 @transaction.atomic
+def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
+                    yatirim_projesi_id=None, aciklama="", kullanici=None) -> StokHareket:
+    """Stoktan hesaba/yatırım projesine SARF çıkışı: miktar hareketi + FIFO maliyet
+    tüketimi + muhasebe fişi (karşı hesap BORÇ, stoğun muhasebe hesabı ALACAK) BİR
+    ARADA oluşturur. Tutar = FIFO ile hesaplanan maliyet (bkz. core.services.stok_maliyet);
+    katmanlar ihtiyacı tam karşılamazsa (maliyet bilinmiyor) hiçbir şey kaydedilmez
+    (atomik) ve HareketHatasi yükselir. 258 karşı hesabı seçilirse yatırım projesi
+    ZORUNLUDUR (bkz. hesap_plani.hesap_kodu_258_mi)."""
+    from core.models import HesapPlani, YatirimProjesi, YevmiyeFisi
+    from core.services import kategori as kategori_servis
+    from core.services.hesap_plani import hesap_kodu_258_mi, yaprak_mi
+    from core.services.kategori import KategoriHatasi
+    from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
+
+    stok = Stok.objects.filter(pk=stok_id, silindi=False).select_related("kategori").first()
+    if stok is None:
+        raise HareketHatasi("Stok bulunamadı.")
+    depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
+    if depo is None:
+        raise HareketHatasi("Depo bulunamadı.")
+    karsi_hesap = HesapPlani.objects.filter(pk=karsi_hesap_id, aktif=True, silindi=False).first()
+    if karsi_hesap is None or not yaprak_mi(karsi_hesap):
+        raise HareketHatasi("Karşı hesap bulunamadı ya da yaprak (fişe kesilebilir) değil.")
+    yatirim_projesi = None
+    if hesap_kodu_258_mi(karsi_hesap.hesap_kodu):
+        if not yatirim_projesi_id:
+            raise HareketHatasi("258 karşı hesabı için yatırım projesi seçilmelidir.")
+        yatirim_projesi = YatirimProjesi.objects.filter(
+            pk=yatirim_projesi_id, silindi=False, durum=YatirimProjesi.Durum.DEVAM).first()
+        if yatirim_projesi is None:
+            raise HareketHatasi("Yatırım projesi bulunamadı ya da 'Devam Ediyor' durumunda değil.")
+    elif yatirim_projesi_id:
+        raise HareketHatasi("Yatırım projesi yalnız 258 karşı hesabı seçilince kullanılabilir.")
+
+    try:
+        m = parse_tr(miktar)
+    except SayiHatasi:
+        raise HareketHatasi("Miktar geçerli bir sayı olmalı.")
+    if m <= 0:
+        raise HareketHatasi("Miktar sıfırdan büyük olmalı.")
+    mevcut = eldeki_miktar(stok, depo)
+    if m > mevcut:
+        raise HareketHatasi(
+            f"Yetersiz stok: {depo.kod} deposunda {stok.kod} için eldeki {mevcut}, "
+            f"çıkış {m} olamaz.")
+
+    try:
+        stok_hesabi = kategori_servis.stok_muhasebe_hesabi(stok)
+    except KategoriHatasi as e:
+        raise HareketHatasi(str(e))
+
+    hareket = StokHareket.objects.create(
+        stok=stok, depo=depo, tarih=tarih, tur=StokHareket.Tur.CIKIS, miktar=m,
+        aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=StokHareket.Kaynak.SARF,
+        karsi_hesap=karsi_hesap, yatirim_projesi=yatirim_projesi,
+        created_by=kullanici, updated_by=kullanici)
+    stok_maliyet.fifo_tuket(hareket)
+    durum = stok_maliyet.hareket_maliyet_durumu(hareket)
+    tutar = durum["tutar_try"] or Decimal("0.00")
+    if tutar <= 0:
+        raise HareketHatasi(
+            "Bu çıkış için maliyet hesaplanamadı (eldeki miktara karşılık gelen maliyet "
+            "katmanı yok); sarf fişi kesilemedi.")
+    aciklama_fis = f"{stok.kod} — {stok.ad} sarf çıkışı"
+    if yatirim_projesi:
+        aciklama_fis += f" ({yatirim_projesi.kod})"
+    try:
+        fis = fis_olustur(
+            tarih=tarih,
+            satirlar=[
+                SatirGirdi(karsi_hesap.hesap_kodu, "B", tutar),
+                SatirGirdi(stok_hesabi.hesap_kodu, "A", tutar),
+            ],
+            aciklama=aciklama_fis, kaynak=YevmiyeFisi.Kaynak.STOK_SARF, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise HareketHatasi(str(e))
+    hareket.fis = fis
+    hareket.save(update_fields=["fis", "updated_at"])
+    return hareket
+
+
+def sarf_onizleme(*, stok_id, depo_id, miktar) -> dict:
+    """Sarf formu için birim maliyet/toplam tutar ÖNİZLEMESİ — hiçbir şey yazmaz.
+    Mevcut FIFO katmanlarına göre hesaplanır (gerçek çıkışta katman sırası/kalan miktar
+    değişmemişse aynı sonucu verir; ekran uyarısı 'tahmini' bayrağıyla bunu belirtir)."""
+    from core.models import StokMaliyetKatmani
+
+    stok = Stok.objects.filter(pk=stok_id, silindi=False).first()
+    if stok is None:
+        raise HareketHatasi("Stok bulunamadı.")
+    depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
+    if depo is None:
+        raise HareketHatasi("Depo bulunamadı.")
+    try:
+        m = parse_tr(miktar)
+    except SayiHatasi:
+        raise HareketHatasi("Miktar geçerli bir sayı olmalı.")
+    if m <= 0:
+        raise HareketHatasi("Miktar sıfırdan büyük olmalı.")
+    kalan_ihtiyac = m
+    tutar = Decimal("0.00")
+    karsilanan = SIFIR
+    for katman in (StokMaliyetKatmani.objects
+                  .filter(stok=stok, depo=depo, kalan_miktar__gt=0, silindi=False)
+                  .order_by("tarih", "id")):
+        if kalan_ihtiyac <= 0:
+            break
+        dusulecek = min(katman.kalan_miktar, kalan_ihtiyac)
+        tutar += dusulecek * katman.birim_maliyet_try
+        karsilanan += dusulecek
+        kalan_ihtiyac -= dusulecek
+    tam_mi = karsilanan >= m
+    birim_maliyet = (tutar / karsilanan) if karsilanan > 0 else None
+    return {"tutar_try": tutar.quantize(Decimal("0.01")) if karsilanan > 0 else None,
+           "birim_maliyet_try": birim_maliyet, "karsilanan_miktar": karsilanan, "tam_mi": tam_mi}
+
+
+@transaction.atomic
 def hareket_sil(hareket: StokHareket, kullanici=None) -> StokHareket:
     """Soft-delete. Giriş silinince eldeki azalır; negatife düşürmemeli. Girişin
     maliyeti başka hareketlere (FIFO ile) aktarılmışsa silinemez. Çıkış silinince
-    tükettiği maliyet katman(lar)ı geri yüklenir."""
+    tükettiği maliyet katman(lar)ı geri yüklenir; sarf çıkışıysa bağlı muhasebe fişi
+    de iptal edilir (bkz. core.services.yevmiye.fis_iptal)."""
     from django.utils import timezone
     if hareket.silindi:
         return hareket
@@ -130,6 +250,9 @@ def hareket_sil(hareket: StokHareket, kullanici=None) -> StokHareket:
                 "Bu girişin maliyeti başka hareketlere (üretim/satış) aktarılmış; silinemez.")
     else:
         stok_maliyet.tuketimi_geri_al(hareket)
+        if hareket.fis_id and not hareket.fis.silindi:
+            from core.services.yevmiye import fis_iptal
+            fis_iptal(hareket.fis, kullanici=kullanici)
     hareket.silindi = True
     hareket.silindi_at = timezone.now()
     hareket.updated_by = kullanici

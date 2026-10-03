@@ -154,6 +154,7 @@ class YevmiyeFisi(TemelModel):
         KREDI_KARTI = "KREDI_KARTI", "Kredi Kartı Hareketi (otomatik)"
         KREDI = "KREDI", "Kredi Hareketi (otomatik)"
         YATIRIM = "YATIRIM", "Yatırım Projesi Aktifleştirme (otomatik)"
+        STOK_SARF = "STOK_SARF", "Stok Sarf Çıkışı (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -2066,6 +2067,7 @@ class StokHareket(TemelModel):
         FATURA = "FATURA", "Fatura"
         IRSALIYE = "IRSALIYE", "İrsaliye"
         URETIM = "URETIM", "Üretim"
+        SARF = "SARF", "Sarf (hesaba çıkış)"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -2090,6 +2092,17 @@ class StokHareket(TemelModel):
         blank=True, on_delete=models.SET_NULL, related_name="stok_hareketleri")
     kaynak = models.CharField("kaynak", max_length=20, choices=Kaynak.choices,
                               default=Kaynak.MANUEL)
+    # Yalnız kaynak=SARF (stoktan hesaba/yatırım projesine çıkış) için: karşı hesap (borç),
+    # varsa yatırım projesi (258 karşı hesabında zorunlu) ve üretilen muhasebe fişi.
+    karsi_hesap = models.ForeignKey(
+        HesapPlani, verbose_name="karşı hesap", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stok_sarf_hareketleri")
+    yatirim_projesi = models.ForeignKey(
+        "YatirimProjesi", verbose_name="yatırım projesi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stok_sarf_hareketleri")
+    fis = models.ForeignKey(
+        "YevmiyeFisi", verbose_name="muhasebe fişi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stok_sarf_hareketleri")
 
     class Meta:
         db_table = "stok_hareket"

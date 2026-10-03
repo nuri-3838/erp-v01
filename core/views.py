@@ -42,7 +42,7 @@ from core.forms import (
     SatisProformaBaslikForm, SatisProformaKalemForm,
     TanimSecenegiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
-    MizanFiltreForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
+    MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
     UrunAgaciForm,
@@ -67,7 +67,7 @@ from core.moduller import MODULLER
 from core.metin import buyuk_harf_tr
 from core.templatetags.core_extras import wa_link
 from core import gorsel
-from core.sayi import SayiHatasi, parse_tr
+from core.sayi import SayiHatasi, format_tr, parse_tr
 from core.services.raporlar import (
     bilanco, bilanco_usd, ekstre as ekstre_servis,
     ekstre_devirli as ekstre_devirli_servis, gelir_tablosu, gelir_tablosu_usd,
@@ -348,6 +348,12 @@ def fis_iptal_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.KREDI and not fis.silindi and fis.kredi_id:
         messages.info(request, "Bu fiş bir kredi hareketinden oluştu; iptal için kredi detayını kullanın.")
         return redirect("core:kredi_detay", pk=fis.kredi_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.STOK_SARF and not fis.silindi:
+        hareket = fis.stok_sarf_hareketleri.filter(silindi=False).first()
+        if hareket:
+            messages.info(request, "Bu fiş bir stok sarf çıkışından oluştu; iptal için "
+                                   "stok detayındaki hareketi silin.")
+            return redirect("core:stok_detay", pk=hareket.stok_id)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -551,11 +557,13 @@ def hesap_plani(request):
     ust_hesap = (HesapPlani.objects.filter(hesap_kodu=ust_kodu, silindi=False).first()
                  if ust_kodu else None)
     onerilen = hp.alt_kod_oner(ust_hesap) if ust_hesap else ""
+    onerilen_silinmis = bool(onerilen) and hp.onerilen_kod_silinmis_mi(onerilen)
     duzenle_kod = request.GET.get("duzenle")
     duzenlenecek = (HesapPlani.objects.filter(hesap_kodu=duzenle_kod, silindi=False).first()
                     if duzenle_kod else None)
     return render(request, "core/hesap_plani.html", {
         "agac": agac, "ust": ust_hesap, "onerilen_kod": onerilen,
+        "onerilen_silinmis": onerilen_silinmis,
         "duzenlenecek": duzenlenecek,
         "rapor_gruplari": HesapPlani.RaporGrubu.choices,
         "rapor_kalemleri": RAPOR_KALEMLERI,
@@ -1076,6 +1084,56 @@ def stok_hareket_sil(request, pk):
         except hareket_servis.HareketHatasi as e:
             messages.error(request, str(e))
     return redirect("core:stok_detay", pk=stok_pk)
+
+
+@ekran_gerekli("stoklar")
+def stok_sarf_ekle(request, pk):
+    """Stoktan hesaba/yatırım projesine SARF çıkışı: miktar + muhasebe fişi bir arada
+    (bkz. core.services.hareket.sarf_cikis_ekle). Bugünkü fişsiz '+ Hareket > Çıkış'
+    seçeneği DEĞİŞMEDİ — bu ayrı, fiş üreten bir ekrandır."""
+    stok = get_object_or_404(Stok.objects.select_related("uretim_birimi", "kategori"),
+                             pk=pk, silindi=False)
+    if request.method == "POST":
+        form = SarfCikisForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                hareket_servis.sarf_cikis_ekle(
+                    stok_id=stok.pk, depo_id=cd["depo"].pk, tarih=cd["tarih"],
+                    miktar=cd["miktar"], karsi_hesap_id=cd["karsi_hesap"].pk,
+                    yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, "Sarf çıkışı ve muhasebe fişi oluşturuldu.")
+                return redirect("core:stok_detay", pk=stok.pk)
+            except hareket_servis.HareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = SarfCikisForm()
+    kodlar_258 = {str(h.pk): hp.hesap_kodu_258_mi(h.hesap_kodu)
+                 for h in form.fields["karsi_hesap"].queryset}
+    return render(request, "core/stok_sarf_form.html",
+                  {"form": form, "stok": stok, "kodlar_258": kodlar_258})
+
+
+@ekran_gerekli("stoklar")
+def stok_sarf_onizleme_api(request, pk):
+    """Sarf ekranı için AJAX önizleme: {depo, miktar} -> birim maliyet + toplam tutar."""
+    stok = get_object_or_404(Stok, pk=pk, silindi=False)
+    depo_id = request.GET.get("depo")
+    miktar = request.GET.get("miktar")
+    if not depo_id or not miktar:
+        return JsonResponse({"hata": None, "tutar_try": None})
+    try:
+        sonuc = hareket_servis.sarf_onizleme(stok_id=stok.pk, depo_id=depo_id, miktar=miktar)
+    except hareket_servis.HareketHatasi as e:
+        return JsonResponse({"hata": str(e), "tutar_try": None})
+    return JsonResponse({
+        "hata": None,
+        "tutar_try": format_tr(sonuc["tutar_try"], 2) if sonuc["tutar_try"] is not None else None,
+        "birim_maliyet_try": (format_tr(sonuc["birim_maliyet_try"], 4)
+                              if sonuc["birim_maliyet_try"] is not None else None),
+        "tam_mi": sonuc["tam_mi"],
+    })
 
 
 @ekran_gerekli("kategoriler")
@@ -6601,9 +6659,9 @@ def yatirim_projeleri(request):
                  .select_related("fatura")))
     for p in qs:
         satirlar = list(p.fatura_satirlari.all())
-        toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
         fatura_sayisi = len({s.fatura_id for s in satirlar})
-        projeler.append({"proje": p, "toplam": toplam, "fatura_sayisi": fatura_sayisi})
+        projeler.append({"proje": p, "toplam": yp_servis.proje_toplami(p),
+                         "fatura_sayisi": fatura_sayisi})
     return render(request, "core/yatirim_projeleri.html", {"projeler": projeler})
 
 
@@ -6622,13 +6680,21 @@ def yatirim_projesi_ekle(request):
 
 @ekran_gerekli("yatirim_projeleri")
 def yatirim_projesi_detay(request, pk):
+    from core.services import stok_maliyet
     proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
     satirlar = _proje_satir_qs(proje)
-    toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
+    fatura_toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
+    sarf_hareketleri = [
+        {"hareket": h, "tutar_try": stok_maliyet.hareket_maliyet_durumu(h)["tutar_try"]}
+        for h in yp_servis.proje_sarf_hareketleri(proje)
+    ]
+    sarf_toplam = sum((s["tutar_try"] or Decimal("0.00") for s in sarf_hareketleri), Decimal("0.00"))
     duran_varliklar_qs = DuranVarlik.objects.filter(
         yatirim_projesi=proje, silindi=False).select_related("hesap")
     return render(request, "core/yatirim_projesi_detay.html",
-                  {"proje": proje, "satirlar": satirlar, "toplam": toplam,
+                  {"proje": proje, "satirlar": satirlar, "fatura_toplam": fatura_toplam,
+                   "sarf_hareketleri": sarf_hareketleri, "sarf_toplam": sarf_toplam,
+                   "toplam": yp_servis.proje_toplami(proje),
                    "yonetici": yonetici_mi(request.user), "duran_varliklar": duran_varliklar_qs})
 
 

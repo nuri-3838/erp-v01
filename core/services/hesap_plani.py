@@ -162,26 +162,60 @@ def hesap_kodu_258_mi(hesap_kodu: str) -> bool:
     return hesap_kodu == "258" or hesap_kodu.startswith("258.")
 
 
+def sarf_karsi_hesaplari():
+    """Stok sarf çıkışında (hesaba/yatırım projesine çıkış) karşı hesap olarak seçilebilen
+    hesaplar: aktif yaprak 253/254/255/258/260 (duran varlık/yatırım) + 7xx/65x/66x/68x
+    (gider) hesapları — 258 burada, duran_varlik_karti_hesaplari()'nin tersine, DAHİLDİR
+    (sarf 258'e doğrudan biriktirebilir; kart açma ayrı bir konu)."""
+    from django.db.models import Q
+    kok = Q(hesap_kodu__regex=GIDER_KOD_DESENI)
+    for kod in DURAN_VARLIK_KODLARI:
+        kok |= Q(hesap_kodu=kod) | Q(hesap_kodu__startswith=kod + ".")
+    return (yaprak_hesaplar().filter(kok)
+            .exclude(hesap_adi__icontains="YANSITMA")
+            .order_by("hesap_kodu"))
+
+
 def alt_kod_oner(ust: HesapPlani) -> str:
     """Üst hesabın altına makul bir sonraki kod önerir (elle değiştirilebilir).
 
-    L2 (ana altı): 2 hane, 10'ar (320.10, 320.20). L3: 4 hane, 1'er (320.10.0001).
+    Öneri = AKTİF alt hesapların en büyük numarasının, mevcut artış desenine göre
+    bir fazlası: 2+ aktif alt hesap varsa aralarındaki gerçek fark kullanılır (örn.
+    730.01..730.14 → 1'er artan, bir sonraki 730.15; 320.10/320.20 → 10'ar artan,
+    bir sonraki 320.30). Tek aktif alt hesap varsa ya da hiç yoksa varsayılan
+    başlangıç/artış kullanılır (L2: 10'dan başlar 10'ar artar, L3: 1'den başlar
+    1'er artar). Pasif/silinmiş alt hesaplar öneriye dahil edilmez.
     """
     seviye = ust.hesap_kodu.count(".") + 1
     if seviye == 1:
-        genislik, artis, ilk = 2, 10, 10
+        genislik, artis_varsayilan, ilk = 2, 10, 10
     else:
-        genislik, artis, ilk = 4, 1, 1
+        genislik, artis_varsayilan, ilk = 4, 1, 1
     cocuk_nokta = ust.hesap_kodu.count(".") + 1
     sonlar = []
-    for k in _alt_hesaplar_qs(ust.hesap_kodu).values_list("hesap_kodu", flat=True):
+    for k in (_alt_hesaplar_qs(ust.hesap_kodu).filter(aktif=True)
+              .values_list("hesap_kodu", flat=True)):
         if k.count(".") != cocuk_nokta:        # yalnız doğrudan çocuklar
             continue
         son = k.split(".")[-1]
         if son.isdigit():
             sonlar.append(int(son))
-    sonraki = (max(sonlar) + artis) if sonlar else ilk
+    if not sonlar:
+        sonraki = ilk
+    elif len(sonlar) == 1:
+        sonraki = sonlar[0] + artis_varsayilan
+    else:
+        sonlar.sort()
+        farklar = [b - a for a, b in zip(sonlar, sonlar[1:]) if b > a]
+        artis = min(farklar) if farklar else artis_varsayilan
+        sonraki = max(sonlar) + artis
     return f"{ust.hesap_kodu}.{str(sonraki).zfill(genislik)}"
+
+
+def onerilen_kod_silinmis_mi(kod: str) -> bool:
+    """Önerilen kod, soft-delete edilmiş bir hesaba denk geliyor mu? Denk geliyorsa
+    kaydedince o hesap (yeni değil) REAKTİVE olur — bkz. hesap_olustur."""
+    return HesapPlani.objects.filter(hesap_kodu=kod, silindi=True).exists()
 
 
 def sonraki_alt_kod(ust_kodu: str, *, genislik=None) -> str:

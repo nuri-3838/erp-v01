@@ -41,11 +41,23 @@ def proje_olustur(*, ad, aciklama="", kullanici=None) -> YatirimProjesi:
 
 
 def proje_toplami(proje: YatirimProjesi) -> Decimal:
-    """Projeye bağlı tüm (silinmemiş faturadaki silinmemiş) kalemlerin KDV HARİÇ toplamı."""
+    """Projeye bağlı tüm (silinmemiş faturadaki silinmemiş) kalemlerin KDV HARİÇ toplamı
+    + projeye bağlı (silinmemiş) stok sarf çıkışlarının FIFO maliyet toplamı."""
+    from core.services import stok_maliyet
     toplam = SIFIR
     for s in proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False):
         toplam += s.tutar
+    for h in proje_sarf_hareketleri(proje):
+        durum = stok_maliyet.hareket_maliyet_durumu(h)
+        toplam += durum["tutar_try"] or SIFIR
     return toplam
+
+
+def proje_sarf_hareketleri(proje: YatirimProjesi):
+    """Projeye (258 karşı hesabıyla) bağlı, silinmemiş stok sarf çıkışları."""
+    from core.models import StokHareket
+    return (StokHareket.objects.filter(yatirim_projesi=proje, silindi=False)
+            .select_related("stok", "depo", "karsi_hesap").order_by("tarih", "id"))
 
 
 def proje_fatura_sayisi(proje: YatirimProjesi) -> int:
