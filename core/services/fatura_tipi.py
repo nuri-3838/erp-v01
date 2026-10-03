@@ -50,17 +50,27 @@ def _gider_dogrula(gider, yon):
     return gider
 
 
-def fatura_tipi_olustur(*, ad, yon, sira=0, gider=False, kullanici=None) -> FaturaTipi:
+def _stopajli_dogrula(stopajli, gider):
+    """GV stopajı yalnız gider (hesaplı kalem) faturasında anlamlıdır."""
+    stopajli = bool(stopajli)
+    if stopajli and not gider:
+        raise FaturaTipiHatasi("GV stopajlı tip aynı zamanda 'gider faturası' olmalı.")
+    return stopajli
+
+
+def fatura_tipi_olustur(*, ad, yon, sira=0, gider=False, stopajli=False,
+                        kullanici=None) -> FaturaTipi:
     yon = _yon_dogrula(yon)
     ad = _ad_dogrula(ad)
     gider = _gider_dogrula(gider, yon)
+    stopajli = _stopajli_dogrula(stopajli, gider)
     return FaturaTipi.objects.create(
-        ad=ad, yon=yon, sira=int(sira or 0), gider=gider,
+        ad=ad, yon=yon, sira=int(sira or 0), gider=gider, stopajli=stopajli,
         created_by=kullanici, updated_by=kullanici,
     )
 
 
-def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, gider=False,
+def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, gider=False, stopajli=False,
                          kullanici=None) -> FaturaTipi:
     if tip.silindi:
         raise FaturaTipiHatasi("Silinmiş fatura tipi düzenlenemez.")
@@ -71,10 +81,14 @@ def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, gider=False,
         raise FaturaTipiHatasi(
             "Bu tipte fatura kesilmiş; 'gider faturası' işareti değiştirilemez "
             "(mevcut faturaların kalemleri stok/gider hesabı olarak sabittir).")
-    tip.yon, tip.ad, tip.gider = yon, ad, gider
+    stopajli = _stopajli_dogrula(stopajli, gider)
+    if stopajli != tip.stopajli and Fatura.objects.filter(tip=tip, silindi=False).exists():
+        raise FaturaTipiHatasi("Bu tipte fatura kesilmiş; 'GV stopajlı' işareti değiştirilemez.")
+    tip.yon, tip.ad, tip.gider, tip.stopajli = yon, ad, gider, stopajli
     tip.sira = int(sira or 0)
     tip.updated_by = kullanici
-    tip.save(update_fields=["ad", "yon", "sira", "gider", "updated_by", "updated_at"])
+    tip.save(update_fields=["ad", "yon", "sira", "gider", "stopajli",
+                            "updated_by", "updated_at"])
     return tip
 
 

@@ -143,6 +143,32 @@ def _mukerrer_alis_kontrol(*, cari, fatura_no, yon, haric_pk=None):
             raise MukerrerFaturaHatasi(f)
 
 
+# Serbest meslek makbuzu gibi GV stopajlı faturada kesilen stopaj bu hesaba alacak yazılır
+# (360 Ödenecek Vergi ve Fonlar altında, bkz. FaturaTipi.stopajli).
+GV_STOPAJ_HESAP_KODU = "360.20"
+
+
+def _gv_stopaj_hesabi():
+    hesap = HesapPlani.objects.filter(hesap_kodu=GV_STOPAJ_HESAP_KODU, silindi=False).first()
+    if hesap is None:
+        raise FaturaHatasi(
+            f"{GV_STOPAJ_HESAP_KODU} (Ödenecek GV Stopajı) hesabı tanımlı değil; önce hesap "
+            f"planında açılmalı.")
+    return hesap
+
+
+def _stopaj_orani_coz(tip, oran):
+    """Stopajlı tipte oran ZORUNLU (0–100); diğer tiplerde yok sayılır (None)."""
+    if tip is None or not getattr(tip, "stopajli", False):
+        return None
+    if oran is None or oran == "":
+        raise FaturaHatasi("GV stopaj oranını girin.")
+    oran = _sayi(oran, "GV stopaj oranı")
+    if oran > 100:
+        raise FaturaHatasi("GV stopaj oranı 100'den büyük olamaz.")
+    return oran
+
+
 def _fazla_kdv_hesabi():
     hesap = HesapPlani.objects.filter(hesap_kodu=FAZLA_KDV_HESAP_KODU, silindi=False).first()
     if hesap is None:
@@ -241,7 +267,7 @@ def _satir_coz(g, i, gider, *, sahsi_ortak=None):
 
 
 def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None,
-             sahsi_ortak_id=None):
+             sahsi_ortak_id=None, gv_stopaj_orani=None):
     """Ortak hazırlık (oluştur+güncelle): doğrula, kur çöz, yevmiye satırlarını ve
     FaturaSatir verisini kur. (tip, cari, pb, kur, yevmiye_satirlari, hazir) döner.
     ``kur_override`` doluysa (kullanıcı elle girdi/değiştirdi) carinin kur_tipi'ne göre
@@ -275,6 +301,8 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         raise FaturaHatasi("Ortak adına şahsi alış yalnız alış-gider faturasında kullanılabilir.")
     sahsi_ortak = _ortak_hesabi_coz(sahsi_ortak_id) if sahsi_ortak_id else None
     sahsi = sahsi_ortak is not None
+    stopaj_orani = _stopaj_orani_coz(tip, gv_stopaj_orani)
+    matrah_toplam = SIFIR
 
     yevmiye_satirlari = []
     kdv_hesap_toplam = {}          # hesap_kodu -> KDV tutarı (PB) [alışta tam, satışta net]
@@ -282,7 +310,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
     fazla_kdv_toplam = SIFIR       # yalnız şahsi alış: 602.01'e alacak
     borc_tl = SIFIR               # cari HARİÇ borç satırlarının TL toplamı
     alacak_tl = SIFIR             # cari HARİÇ alacak satırlarının TL toplamı
-    cari_pb = SIFIR               # carinin PB tutarı = mal + (KDV − tevkifat)
+    cari_pb = SIFIR               # carinin PB tutarı = mal + (KDV − tevkifat) − GV stopajı
     hazir = []                     # FaturaSatir için (stok, hesap, miktar, fiyat, kdv, tevkifat)
 
     def _ekle(taraf, tutar_pb):
@@ -360,6 +388,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
                 tevkifat_hesap_toplam.get(tev_hesap.hesap_kodu, SIFIR) + tev)
 
         cari_pb += satir_tutar + kdv_net
+        matrah_toplam += satir_tutar
         hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje))
 
     # KDV satırları (alış: Borç, satış: Alacak)
@@ -385,6 +414,17 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
             hesap_kodu=fazla_kdv_hesap.hesap_kodu, taraf="A",
             islem_tutari=fazla_kdv_toplam, islem_pb=pb, islem_kuru=kur,
             aciklama="FAZLA KDV (ortak adına şahsi alış)"))
+
+    # GV stopajı (yalnız stopajlı tip — serbest meslek makbuzu): brüt ücret × oran/100,
+    # 360.xx'e alacak; cariden düşülür (vergi dairesine yatar, satıcıya ödenmez).
+    stopaj = yuvarla(matrah_toplam * stopaj_orani / Decimal("100"), 2) if stopaj_orani else SIFIR
+    if stopaj > 0:
+        stopaj_hesap = _gv_stopaj_hesabi()
+        _ekle("A", stopaj)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=stopaj_hesap.hesap_kodu, taraf="A",
+            islem_tutari=stopaj, islem_pb=pb, islem_kuru=kur, aciklama="GV STOPAJI"))
+        cari_pb -= stopaj
 
     # Karşı taraf (cari): alış -> Alacak, satış -> Borç. TL'si DENGE için diğer
     # satırların TL'sinden türetilir (tl_override) -> döviz kuruş farkı oluşmaz.
@@ -443,6 +483,10 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
         raise FaturaHatasi("Faturada en az bir satır olmalı.")
 
     sahsi = bool(fatura.sahsi_alis and fatura.sahsi_ortak_id)
+    stopaj_orani = fatura.gv_stopaj_orani if getattr(tip, "stopajli", False) else None
+    if getattr(tip, "stopajli", False) and not stopaj_orani:
+        raise FaturaHatasi("GV stopaj oranını girin.")
+    matrah_toplam = SIFIR
     if sahsi and not (tip.gider and alis):
         raise FaturaHatasi("Ortak adına şahsi alış yalnız alış-gider faturasında kullanılabilir.")
 
@@ -521,6 +565,7 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
                 tevkifat_hesap_toplam.get(tev_hesap.hesap_kodu, SIFIR) + tev)
 
         cari_pb += satir_tutar + kdv_net
+        matrah_toplam += satir_tutar
 
     for hkod, tutar in kdv_hesap_toplam.items():
         kdv_taraf = "B" if alis else "A"
@@ -542,6 +587,17 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
         yevmiye_satirlari.append(SatirGirdi(
             hesap_kodu=hkod, taraf="A",
             islem_tutari=tutar, islem_pb=pb, islem_kuru=kur, aciklama="KDV TEVKİFATI"))
+
+    # GV stopajı (yalnız stopajlı tip — serbest meslek makbuzu): brüt ücret × oran/100,
+    # 360.xx'e alacak; cariden düşülür (vergi dairesine yatar, satıcıya ödenmez).
+    stopaj = yuvarla(matrah_toplam * stopaj_orani / Decimal("100"), 2) if stopaj_orani else SIFIR
+    if stopaj > 0:
+        stopaj_hesap = _gv_stopaj_hesabi()
+        _ekle("A", stopaj)
+        yevmiye_satirlari.append(SatirGirdi(
+            hesap_kodu=stopaj_hesap.hesap_kodu, taraf="A",
+            islem_tutari=stopaj, islem_pb=pb, islem_kuru=kur, aciklama="GV STOPAJI"))
+        cari_pb -= stopaj
 
     cari_taraf = "A" if alis else "B"
     cari_tl = (borc_tl - alacak_tl) if cari_taraf == "A" else (alacak_tl - borc_tl)
@@ -636,7 +692,8 @@ def _negatif_eldeki_dogrula(ciftler):
 @transaction.atomic
 def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fatura_no="",
                           para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
-                          sahsi_alis=False, sahsi_ortak_id=None, kullanici=None) -> Fatura:
+                          sahsi_alis=False, sahsi_ortak_id=None, gv_stopaj_orani=None,
+                          kullanici=None) -> Fatura:
     """Faturayı TASLAK olarak oluşturur — fiş/stok hareketi ÜRETMEZ (bkz. fatura_onayla).
     tip_id verilirse yön ondan türetilir; verilmezse `yon` zorunludur (İrsaliye'den otomatik
     açılan, tipi henüz bilinmeyen taslaklar için). ``sahsi_alis``/``sahsi_ortak_id``: Ortak
@@ -674,6 +731,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         fatura_no=fatura_no, para_birimi=pb, kur=1, fis=None, depo=depo,
         aciklama=(aciklama or "").strip(), vade_tarihi=vade_tarihi,
         sahsi_alis=bool(sahsi_ortak), sahsi_ortak=sahsi_ortak,
+        gv_stopaj_orani=_stopaj_orani_coz(tip, gv_stopaj_orani),
         created_by=kullanici, updated_by=kullanici)
     _satirlari_yaz(fatura, hazir, kullanici)
     return fatura
@@ -715,7 +773,8 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
 @transaction.atomic
 def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
                    para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
-                   sahsi_alis=False, sahsi_ortak_id=None, kullanici=None, kur=None) -> Fatura:
+                   sahsi_alis=False, sahsi_ortak_id=None, gv_stopaj_orani=None,
+                   kullanici=None, kur=None) -> Fatura:
     """Kolaylık sarmalayıcısı: taslak oluşturur ve tip zaten bilindiği için HEMEN onaylar —
     tek atomik blok, onaylama başarısız olursa (eksik harita/kur/vb.) taslak da geri alınır
     (eskisi gibi tam atomik: ya hepsi ya hiçbiri). Tip'in önceden bilinmediği tek durum —
@@ -726,7 +785,7 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
         cari_id=cari_id, tarih=tarih, satirlar=satirlar, tip_id=tip_id,
         fatura_no=fatura_no, para_birimi=para_birimi, depo_id=depo_id,
         aciklama=aciklama, vade_tarihi=vade_tarihi, sahsi_alis=sahsi_alis,
-        sahsi_ortak_id=sahsi_ortak_id, kullanici=kullanici)
+        sahsi_ortak_id=sahsi_ortak_id, gv_stopaj_orani=gv_stopaj_orani, kullanici=kullanici)
     return fatura_onayla(fatura, kullanici=kullanici, kur_override=kur)
 
 
@@ -734,7 +793,7 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
 def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                     fatura_no="", para_birimi="TRY", depo_id=None, aciklama="",
                     vade_tarihi=None, sahsi_alis=False, sahsi_ortak_id=None,
-                    kullanici=None, kur=None) -> Fatura:
+                    gv_stopaj_orani=None, kullanici=None, kur=None) -> Fatura:
     """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
     serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
     hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir.
@@ -771,10 +830,11 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         fatura.aciklama = (aciklama or "").strip()
         fatura.vade_tarihi = vade_tarihi
         fatura.sahsi_alis, fatura.sahsi_ortak = bool(sahsi_ortak), sahsi_ortak
+        fatura.gv_stopaj_orani = _stopaj_orani_coz(tip, gv_stopaj_orani)
         fatura.updated_by = kullanici
         fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
                                    "depo", "aciklama", "vade_tarihi", "sahsi_alis", "sahsi_ortak",
-                                   "updated_by", "updated_at"])
+                                   "gv_stopaj_orani", "updated_by", "updated_at"])
         _satirlari_yaz(fatura, hazir, kullanici)
         return fatura
 
@@ -784,7 +844,8 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
         para_birimi=para_birimi, kur_override=kur,
-        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None))
+        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None),
+        gv_stopaj_orani=gv_stopaj_orani)
     depo = None if tip.gider else _depo_coz(depo_id)    # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
     _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=tip.yon, haric_pk=fatura.pk)
@@ -804,10 +865,11 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     fatura.aciklama = (aciklama or "").strip()
     fatura.vade_tarihi = vade_tarihi
     fatura.sahsi_alis, fatura.sahsi_ortak = bool(sahsi_ortak), sahsi_ortak
+    fatura.gv_stopaj_orani = _stopaj_orani_coz(tip, gv_stopaj_orani)
     fatura.updated_by = kullanici
     fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "para_birimi",
                                "kur", "depo", "aciklama", "vade_tarihi", "sahsi_alis",
-                               "sahsi_ortak", "updated_by", "updated_at"])
+                               "sahsi_ortak", "gv_stopaj_orani", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
     if depo is not None and not irsaliyeden_mi(fatura):
         _hareketleri_yaz(fatura, depo, kur=kur, kullanici=kullanici)

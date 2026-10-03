@@ -79,6 +79,7 @@
       <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ fatura.ara_toplam|tr_kur:2 }}</th><th></th><th></th></tr>
       <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag mono">{{ fatura.kdv_toplam|tr_kur:2 }}</th><th></th></tr>
       {% if fatura.tevkifat_toplam %}<tr><th colspan="3" class="sag">Tevkifat (−)</th><th></th><th></th><th class="sag mono">{{ fatura.tevkifat_toplam|tr_kur:2 }}</th></tr>{% endif %}
+      {% if fatura.gv_stopaj_orani %}<tr><th colspan="3" class="sag">GV Stopajı (−) %{{ fatura.gv_stopaj_orani|tr_kur:2 }}</th><th></th><th></th><th class="sag mono">{{ fatura.gv_stopaj_tutari|tr_kur:2 }}</th></tr>{% endif %}
       <tr><th colspan="3" class="sag">Ödenecek</th><th colspan="3" class="sag mono">{{ fatura.odenecek|tr_kur:2 }} {{ fatura.para_birimi }}</th></tr>
     </tfoot>
   </table>

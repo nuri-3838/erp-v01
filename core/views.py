@@ -1332,7 +1332,8 @@ def fatura_tipi_duzenle(request, pk):
                 form.add_error(None, str(e))
     else:
         form = FaturaTipiForm(initial={
-            "ad": tip.ad, "yon": tip.yon, "sira": tip.sira, "gider": tip.gider})
+            "ad": tip.ad, "yon": tip.yon, "sira": tip.sira, "gider": tip.gider,
+            "stopajli": tip.stopajli})
     return render(request, "core/fatura_tipi_form.html",
                   {"form": form, "baslik": "Fatura Tipi Düzenle", "duzenlenen": tip})
 
@@ -6450,6 +6451,7 @@ def _fatura_gider_baglami(fform):
     = gider hesabı) + KDV oran haritası (gider kaleminin KDV önizlemesi) + hangi gider hesabı
     seçenekleri DURAN VARLIK hesabı (proje alanı yalnız bunlarda gösterilir)."""
     return {"tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
+            "tip_stopajli": {str(t.pk): bool(t.stopajli) for t in fform.fields["tip"].queryset},
             "duran_varlik_hesap": {str(h.pk): True for h in hp.duran_varlik_hesaplari()},
             "kdv_oran": {str(k.pk): float(k.oran)
                          for k in KdvOrani.objects.filter(silindi=False)},
@@ -6552,6 +6554,7 @@ def _fatura_ekle(request, yon, baslik):
                     aciklama=fform.cleaned_data.get("aciklama", ""),
                     vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
                     sahsi_alis=fform.cleaned_data.get("sahsi_alis", False),
+                    gv_stopaj_orani=fform.cleaned_data.get("gv_stopaj_orani"),
                     sahsi_ortak_id=(fform.cleaned_data["sahsi_ortak"].pk
                                    if fform.cleaned_data.get("sahsi_ortak") else None),
                     satirlar=satirlar,
@@ -6610,6 +6613,7 @@ def fatura_duzenle(request, pk):
                     aciklama=fform.cleaned_data.get("aciklama", ""),
                     vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
                     sahsi_alis=fform.cleaned_data.get("sahsi_alis", False),
+                    gv_stopaj_orani=fform.cleaned_data.get("gv_stopaj_orani"),
                     sahsi_ortak_id=(fform.cleaned_data["sahsi_ortak"].pk
                                    if fform.cleaned_data.get("sahsi_ortak") else None),
                     satirlar=satirlar,
@@ -6634,8 +6638,11 @@ def fatura_duzenle(request, pk):
             "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
             "depo": fatura.depo_id, "aciklama": fatura.aciklama,
             "vade_tarihi": fatura.vade_tarihi,
-            "sahsi_alis": fatura.sahsi_alis, "sahsi_ortak": fatura.sahsi_ortak_id})
+            "sahsi_alis": fatura.sahsi_alis, "sahsi_ortak": fatura.sahsi_ortak_id,
+            "gv_stopaj_orani": fatura.gv_stopaj_orani if fatura.gv_stopaj_orani is not None
+            else Decimal("20")})
         ilk = [{"stok": s.stok_id, "hesap": s.hesap_id, "kdv": s.kdv_id,
+                "yatirim_projesi": s.yatirim_projesi_id,
                 "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False)
                .select_related("stok__tevkifat", "hesap")]

@@ -8,6 +8,7 @@
 {{ stok_tevkifat|json_script:"stok-tevkifat" }}
 {{ stok_tedarikci|json_script:"stok-tedarikci" }}
 {{ tip_gider|json_script:"tip-gider" }}
+{{ tip_stopajli|json_script:"tip-stopajli" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
 {{ tevkifat_oran|json_script:"tevkifat-oran" }}
@@ -137,6 +138,13 @@
             {% for e in fform.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         </div>
+        <div class="bb-satir" id="stopaj-blok" style="display:none">
+          <div class="bb-alan">
+            <label for="{{ fform.gv_stopaj_orani.id_for_label }}">{{ fform.gv_stopaj_orani.label }}</label>
+            {{ fform.gv_stopaj_orani }}
+            {% for e in fform.gv_stopaj_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
         <div class="bb-satir" id="sahsi-blok">
           <div class="bb-alan">
             <label for="{{ fform.sahsi_alis.id_for_label }}">{{ fform.sahsi_alis }} {{ fform.sahsi_alis.label }}</label>
@@ -182,6 +190,7 @@
           <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th></tr>
           <tr><th colspan="3" class="sag">KDV</th><th class="sag deger" id="tKdv">0,00</th><th></th></tr>
           <tr><th colspan="3" class="sag">Tevkifat (−)</th><th class="sag deger" id="tTev">0,00</th><th></th></tr>
+          <tr id="stopaj-satir" style="display:none"><th colspan="3" class="sag">GV Stopajı (−)</th><th class="sag deger" id="tStopaj">0,00</th><th></th></tr>
           <tr><th colspan="3" class="sag">Ödenecek</th>
             <th class="sag deger" id="tGenel"><span id="tGenelDeger">0,00</span><span class="birim-etiket tl-etiket" id="tGenelTl"></span></th><th></th></tr>
         </tfoot>
@@ -213,6 +222,7 @@
   var STOK_TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);   // stok_id -> tevkifat_id
   var TED = JSON.parse(document.getElementById('stok-tedarikci').textContent);
   var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
+  var TIP_STOPAJLI = JSON.parse(document.getElementById('tip-stopajli').textContent) || {};
   var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
   var TEVORAN = JSON.parse(document.getElementById('tevkifat-oran').textContent) || {};   // tevkifat_id -> pay/payda
@@ -228,6 +238,7 @@
   function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
   function giderMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_GIDER[t.value]); }
+  function stopajliMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_STOPAJLI[t.value]); }
   function sahsiMi(){ var s=document.getElementById('id_sahsi_alis'); return !!(s && s.checked); }
   function alanTemizle(kap){ if(!kap) return;
     var s=kap.querySelector('select'); if(s) s.value='';
@@ -242,6 +253,11 @@
     if(g && depo) depo.value='';
     var sahsiBlok=document.getElementById('sahsi-blok');
     if(sahsiBlok) sahsiBlok.style.display = g ? '' : 'none';
+    var sp=stopajliMi();
+    var stopajBlok=document.getElementById('stopaj-blok');
+    if(stopajBlok) stopajBlok.style.display = sp ? '' : 'none';
+    var stopajSatir=document.getElementById('stopaj-satir');
+    if(stopajSatir) stopajSatir.style.display = sp ? '' : 'none';
     if(!g){
       var sahsiKutu=document.getElementById('id_sahsi_alis');
       if(sahsiKutu && sahsiKutu.checked){ sahsiKutu.checked=false; sahsiUygula(); }
@@ -266,11 +282,12 @@
   }
   function sahsiUygula(){
     var s=sahsiMi();
+    var onceki=tablo.classList.contains('sahsi-modu');
     tablo.classList.toggle('sahsi-modu', s);
     var ortakAlan=document.getElementById('sahsi-ortak-alan');
     if(ortakAlan) ortakAlan.style.display = s ? '' : 'none';
     document.querySelectorAll('.satir-form').forEach(function(r){
-      if(s){ sahsiSatirGuncelle(r); } else { alanTemizle(r.querySelector('.hesap-alani')); }
+      if(s){ sahsiSatirGuncelle(r); } else if(onceki){ alanTemizle(r.querySelector('.hesap-alani')); }
       projeAlaniGuncelle(r);
     });
   }
@@ -310,7 +327,14 @@
       if(ck) ck.textContent = skdv>0?('KDV: '+fmt(skdv)):'';
       mal+=tutar; kdv+=skdv; tev+=stev;
     });
-    var genel=mal+kdv-tev;
+    var stopaj=0;
+    if(stopajliMi()){
+      var oranInp=document.getElementById('id_gv_stopaj_orani');
+      stopaj=Math.round(mal*parseTR(oranInp?oranInp.value:'')) / 100;
+      stopaj=Math.round(stopaj*100)/100;
+    }
+    var genel=mal+kdv-tev-stopaj;
+    var tSt=document.getElementById('tStopaj'); if(tSt) tSt.textContent=fmt(stopaj);
     document.getElementById('tMal').textContent=fmt(mal);
     document.getElementById('tKdv').textContent=fmt(kdv);
     document.getElementById('tTev').textContent=fmt(tev);

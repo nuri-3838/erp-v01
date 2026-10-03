@@ -422,6 +422,9 @@ class FaturaTipi(TemelModel):
     # yazılır; depo/stok hareketi yoktur, muhasebe haritası (KategoriHesap) kullanılmaz.
     # Yalnız ALIŞ yönünde anlamlıdır (servis fatura anında zorlar).
     gider = models.BooleanField("gider faturası", default=False)
+    # Serbest meslek makbuzu gibi GV STOPAJI kesilen tip (yalnız gider+alış): faturada stopaj
+    # oranı girilir, stopaj 360.xx'e alacak yazılıp cariden düşülür (bkz. core.services.fatura).
+    stopajli = models.BooleanField("GV stopajlı (serbest meslek makbuzu)", default=False)
 
     class Meta:
         db_table = "fatura_tipi"
@@ -1535,6 +1538,9 @@ class Fatura(TemelModel):
     # bkz. core.services.fatura (_satir_coz/_hazirla/_muhasebe_satirlari). Yalnız ALIŞ+GİDER
     # faturasında anlamlıdır; servis zorlar.
     sahsi_alis = models.BooleanField("ortak adına (şahsi) alış", default=False)
+    # Yalnız tip.stopajli faturada dolu: brüt ücret (ara toplam) × oran/100 = GV stopajı.
+    gv_stopaj_orani = models.DecimalField(
+        "GV stopaj oranı (%)", max_digits=5, decimal_places=2, null=True, blank=True)
     sahsi_ortak = models.ForeignKey(
         HesapPlani, verbose_name="ortak hesabı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="sahsi_alis_faturalari")
@@ -1573,9 +1579,19 @@ class Fatura(TemelModel):
         return self.ara_toplam + self.kdv_toplam
 
     @property
+    def gv_stopaj_tutari(self):
+        """GV stopajı = brüt ücret (ara toplam) × oran/100 (yalnız stopajlı faturada)."""
+        from decimal import Decimal
+        from core.sayi import yuvarla
+        if not self.gv_stopaj_orani:
+            return Decimal("0.00")
+        return yuvarla(self.ara_toplam * self.gv_stopaj_orani / Decimal("100"), 2)
+
+    @property
     def odenecek(self):
-        """Carinin borç/alacağı = mal + KDV − tevkifat (tevkifat karşı tarafa ödenmez)."""
-        return self.genel_toplam - self.tevkifat_toplam
+        """Carinin borç/alacağı = mal + KDV − tevkifat − GV stopajı (ikisi de karşı tarafa
+        ödenmez, vergi dairesine yatar)."""
+        return self.genel_toplam - self.tevkifat_toplam - self.gv_stopaj_tutari
 
 
 class YatirimProjesi(TemelModel):

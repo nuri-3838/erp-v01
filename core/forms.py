@@ -334,6 +334,9 @@ class FaturaTipiForm(forms.Form):
     gider = forms.BooleanField(
         label="Gider faturası (kalemler stok yerine gider hesabına yazılır; depo/stok hareketi yok — "
               "yalnız Alış)", required=False)
+    stopajli = forms.BooleanField(
+        label="GV stopajlı (serbest meslek makbuzu — faturada stopaj oranı girilir; "
+              "yalnız gider faturası)", required=False)
 
 
 class StokForm(forms.Form):
@@ -1625,6 +1628,10 @@ class FaturaForm(forms.Form):
     # ama ortağın şahsi harcaması olan fatura: kalem(ler) ortak hesabına (131 ailesi) KDV
     # DAHİL borçlanır, KDV'nin aynı tutarı "FAZLA KDV" hesabına alacak yazılır.
     sahsi_alis = forms.BooleanField(label="Ortak adına (şahsi) alış", required=False)
+    # Yalnız GV stopajlı tipte (serbest meslek makbuzu) gösterilir/zorunludur — stopaj =
+    # brüt ücret × oran/100 (bkz. core.services.fatura, FaturaTipi.stopajli).
+    gv_stopaj_orani = TRDecimalField(
+        label="GV Stopaj Oranı (%)", basamak=2, required=False, initial=Decimal("20"))
     sahsi_ortak = forms.ModelChoiceField(
         label="Ortak Hesabı", queryset=HesapPlani.objects.none(), required=False,
         empty_label="— ortak seç —")
