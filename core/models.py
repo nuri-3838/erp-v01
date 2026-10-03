@@ -253,6 +253,13 @@ class YevmiyeSatir(TemelModel):
         "işlem kuru", max_digits=18, decimal_places=6
     )
     aciklama = models.CharField("açıklama", max_length=500, blank=True)
+    # Yalnız hesap 258 (Yapılmakta Olan Yatırımlar) ailesindeyse anlamlı — manuel fişle
+    # (fatura dışı, örn. gümrükçü dekontu) projeye eklenen tutarı izler; proje toplamına
+    # dahil edilir (bkz. core.services.yatirim_projesi.proje_toplami). Fatura kaynaklı
+    # 258 kalemleri bunu KULLANMAZ (onlar FaturaSatir.yatirim_projesi'nden gelir).
+    yatirim_projesi = models.ForeignKey(
+        "YatirimProjesi", verbose_name="yatırım projesi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="yevmiye_satirlari")
 
     class Meta:
         db_table = "yevmiye_satir"
@@ -1651,6 +1658,15 @@ class FaturaSatir(TemelModel):
     def tutar(self):
         from core.sayi import yuvarla
         return yuvarla(self.miktar * self.birim_fiyat, 2)
+
+    @property
+    def tutar_tl(self):
+        """TL karşılığı = tutar × fatura kuru (TRY'de fatura.kur=1, değişmez). Proje
+        toplamı/duran varlık kart maliyeti BUNU kullanmalı — ``tutar`` döviz faturada
+        TL değil fatura para birimindedir (bkz. core.services.fatura._muhasebe_satirlari,
+        aynı dönüşümü fiş tarafında zaten doğru yapan referans kod)."""
+        from core.sayi import yuvarla
+        return yuvarla(self.tutar * self.fatura.kur, 2)
 
     @property
     def kdv_tutari(self):

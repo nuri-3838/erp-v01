@@ -26,13 +26,13 @@
 <div class="tablo-kapsayici genis">
 <table class="satir-tablo">
   <colgroup>
-    <col style="width:22%"><col style="width:8%">
-    <col style="width:12%"><col style="width:12%"><col style="width:11%">
-    <col style="width:12%"><col style="width:12%"><col>
+    <col style="width:18%"><col style="width:12%"><col style="width:7%">
+    <col style="width:11%"><col style="width:11%"><col style="width:9%">
+    <col style="width:10%"><col style="width:10%"><col>
   </colgroup>
   <thead>
     <tr>
-      <th>Hesap</th><th>İşlem PB</th>
+      <th>Hesap</th><th>Yatırım Projesi</th><th>İşlem PB</th>
       <th class="sag">Borç</th><th class="sag">Alacak</th>
       <th class="sag">İşlem Kuru</th>
       <th class="sag">TL Borç</th><th class="sag">TL Alacak</th>
@@ -43,6 +43,8 @@
     {% for f in formset %}
       <tr class="satir-form">
         <td class="hesap-hucre">{{ f.hesap }}</td>
+        <td class="proje-hucre" style="display:none">{{ f.yatirim_projesi }}
+          {% for e in f.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
         <td>{{ f.islem_pb }}</td>
         <td class="sag"><span class="para"><span class="pb-simge">₺</span>{{ f.borc }}</span>
           {% for e in f.borc.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
@@ -58,7 +60,7 @@
   </tbody>
   <tfoot>
     <tr>
-      <th colspan="5" class="sag">Toplam (TL)</th>
+      <th colspan="6" class="sag">Toplam (TL)</th>
       <th class="sag deger" id="tBorc">0,00</th>
       <th class="sag deger" id="tAlacak">0,00</th>
       <th></th>
@@ -66,6 +68,8 @@
   </tfoot>
 </table>
 </div>
+<p class="yardim">258 (Yapılmakta Olan Yatırımlar) hesabı seçilen bir satırda "Yatırım
+  Projesi" alanı görünür; proje seçilen satırlar proje toplamına dahil olur.</p>
 
 <div class="satir-alt">
   <button type="button" id="satir-ekle" class="dugme-ikincil">+ Satır ekle</button>
@@ -88,6 +92,7 @@
 
 <template id="bos-satir">
   <td class="hesap-hucre">{{ formset.empty_form.hesap }}</td>
+  <td class="proje-hucre" style="display:none">{{ formset.empty_form.yatirim_projesi }}</td>
   <td>{{ formset.empty_form.islem_pb }}</td>
   <td class="sag"><span class="para"><span class="pb-simge">₺</span>{{ formset.empty_form.borc }}</span></td>
   <td class="sag"><span class="para"><span class="pb-simge">₺</span>{{ formset.empty_form.alacak }}</span></td>
@@ -158,10 +163,18 @@
   function pbSimge(r){ var p = val(r,'islem_pb') || 'TRY'; var s = PB[p] || '';
     r.querySelectorAll('.pb-simge').forEach(function(x){ x.textContent = s; }); }
 
+  function projeGorunurluguGuncelle(r){
+    var sel=el(r,'-hesap'); var hucre=r.querySelector('.proje-hucre'); if(!hucre) return;
+    var is258 = sel && /^258(\.|$)/.test(sel.value);
+    hucre.style.display = is258 ? '' : 'none';
+    if(!is258){ var ps=el(r,'-yatirim_projesi'); if(ps) ps.value=''; }
+  }
+
   function hesapla(){
     var tb=0, ta=0, ikili=false;
     document.querySelectorAll('.satir-form').forEach(function(r){
       pbSimge(r);
+      projeGorunurluguGuncelle(r);
       var b=parseTR(val(r,'-borc')), a=parseTR(val(r,'-alacak'));
       var p=val(r,'islem_pb')||'TRY';
       var kur=(p==='TRY')?1:parseTR(val(r,'islem_kuru'));

@@ -167,6 +167,7 @@ def _satir_girdileri(formset):
                 islem_pb=cd["islem_pb"],
                 islem_kuru=cd.get("islem_kuru") or Decimal("1"),
                 aciklama=cd.get("aciklama", ""),
+                yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
             )
         )
     return satirlar
@@ -313,6 +314,7 @@ def fis_duzenle(request, pk):
                 "borc": s.islem_tutari if borc_taraf else None,
                 "alacak": None if borc_taraf else s.islem_tutari,
                 "islem_kuru": s.islem_kuru, "aciklama": s.aciklama,
+                "yatirim_projesi": s.yatirim_projesi_id,
             })
         formset = SatirFormSet(initial=ilk)
     return render(request, "core/fis_duzenle.html",

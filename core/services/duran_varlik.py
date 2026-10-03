@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.db.models import Sum
 
 from core.metin import buyuk_harf_tr
-from core.models import DuranVarlik, FaturaSatir, YevmiyeSatir
+from core.models import DuranVarlik, FaturaSatir, HesapPlani, YevmiyeSatir
 from core.services.hesap_plani import duran_varlik_karti_hesaplari
 
 SIFIR = Decimal("0.00")
@@ -54,7 +54,7 @@ def duran_varlik_olustur(*, ad, hesap_id, aktiflestirme_tarihi, maliyet, marka_m
 
     satirlar = _dogrula_satirlar(fatura_satirlari, hesap_id)
     if satirlar:
-        maliyet = sum((s.tutar for s in satirlar), SIFIR)
+        maliyet = sum((s.tutar_tl for s in satirlar), SIFIR)
     elif maliyet is None or maliyet < 0:
         raise DuranVarlikHatasi("Maliyet negatif olamaz.")
 
@@ -78,7 +78,7 @@ def _dogrula_satirlar(fatura_satirlari, hesap_id, *, haric_varlik_pk=None):
         return []
     ids = [s.pk if hasattr(s, "pk") else s for s in fatura_satirlari]
     satirlar = list(FaturaSatir.objects.filter(
-        pk__in=ids, silindi=False, fatura__silindi=False))
+        pk__in=ids, silindi=False, fatura__silindi=False).select_related("fatura"))
     if len(satirlar) != len(set(ids)):
         raise DuranVarlikHatasi("Belirtilen fatura kalemlerinden biri bulunamadı.")
     for s in satirlar:
@@ -129,8 +129,9 @@ def satir_cikar(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik
 
 def baglanti_toplami(varlik: DuranVarlik) -> Decimal:
     toplam = SIFIR
-    for s in varlik.fatura_satirlari.filter(silindi=False, fatura__silindi=False):
-        toplam += s.tutar
+    for s in (varlik.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
+             .select_related("fatura")):
+        toplam += s.tutar_tl
     return toplam
 
 
@@ -166,12 +167,41 @@ def _hesap_bakiyesi(hesap_kodu: str) -> Decimal:
     return (agg["b"] or SIFIR) - (agg["a"] or SIFIR)
 
 
+def _yatirim_projeleri_kontrol_satiri() -> dict:
+    """"Yatırım projeleri toplamı = mizan 258 bakiyesi" satırı: DEVAM eden projelerin
+    proje_toplami() toplamı (TL), 258 ailesinin (258 + varsa alt hesapları) net mizan
+    bakiyesiyle karşılaştırılır. AKTİFLEŞTİ projeler 258'den çıktığı (fişle 253/255/...'e
+    aktarıldığı) için hesaba dahil edilmez."""
+    from django.db.models import Q
+
+    from core.models import YatirimProjesi
+    from core.services.yatirim_projesi import proje_toplami
+
+    proje_toplam = sum(
+        (proje_toplami(p) for p in
+         YatirimProjesi.objects.filter(silindi=False, durum=YatirimProjesi.Durum.DEVAM)),
+        SIFIR)
+    mizan_258 = SIFIR
+    for kod in HesapPlani.objects.filter(
+            Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258."),
+            silindi=False).values_list("hesap_kodu", flat=True):
+        mizan_258 += _hesap_bakiyesi(kod)
+    hesap_258 = HesapPlani.objects.filter(hesap_kodu="258", silindi=False).first()
+    if hesap_258 is None:
+        return None
+    return {
+        "hesap": hesap_258, "kart_toplami": proje_toplam, "mizan_bakiye": mizan_258,
+        "fark": proje_toplam - mizan_258,
+    }
+
+
 def kontrol_raporu() -> list:
     """253/254/255/260 yaprak hesaplarının her biri için kart-toplamı (yalnız AKTİF —
     PASİF kartlar artık defter değerini temsil etmediği varsayılır, hariç tutulur —
     silinmemiş DuranVarlik.maliyet toplamı) vs mizan-bakiyesi (yevmiyeden hesaplanan
     net borç) — salt okunur karşılaştırma; fark != 0 ise muhasebe ile kart kayıtları
-    arasında tutarsızlık var demektir (örn. kart girilmeden fatura kesilmiş)."""
+    arasında tutarsızlık var demektir (örn. kart girilmeden fatura kesilmiş). Son satır
+    258 (Yapılmakta Olan Yatırımlar) için DEVAM eden proje toplamı vs mizan bakiyesi."""
     satirlar = []
     for h in duran_varlik_karti_hesaplari():
         kart_toplami = (DuranVarlik.objects.filter(
@@ -182,6 +212,9 @@ def kontrol_raporu() -> list:
             "hesap": h, "kart_toplami": kart_toplami, "mizan_bakiye": mizan_bakiye,
             "fark": kart_toplami - mizan_bakiye,
         })
+    yatirim_satiri = _yatirim_projeleri_kontrol_satiri()
+    if yatirim_satiri is not None:
+        satirlar.append(yatirim_satiri)
     return satirlar
 
 

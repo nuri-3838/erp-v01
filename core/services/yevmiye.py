@@ -50,6 +50,9 @@ class SatirGirdi:
     # DENGE satırında (fatura cari satırı), kuruş yuvarlama farkını gidermek için
     # TL doğrudan verilebilir (sayaç satırlarının TL toplamı). Manuel fişte KULLANILMAZ.
     tl_override: object = None
+    # Yalnız hesap 258 (Yapılmakta Olan Yatırımlar) ailesindeyse kullanılabilir (manuel
+    # fiş ekranı) — bkz. core.models.YevmiyeSatir.yatirim_projesi.
+    yatirim_projesi_id: object = None
 
 
 def _dec(deger, alan: str) -> Decimal:
@@ -121,6 +124,17 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
     tum_kodlar = HesapPlani.objects.filter(silindi=False).values_list("hesap_kodu", flat=True)
     ust_kod_kumesi = {k.rsplit(".", 1)[0] for k in tum_kodlar if "." in k}
 
+    # Yatırım projesi: yalnız 258 ailesinde kullanılabilir; verilmişse DEVAM eden,
+    # silinmemiş bir proje olmalı (bkz. SatirGirdi.yatirim_projesi_id).
+    from core.models import YatirimProjesi
+    from core.services.hesap_plani import hesap_kodu_258_mi
+    istenen_proje_id = {g.yatirim_projesi_id for g in satirlar if g.yatirim_projesi_id}
+    gecerli_proje_id = set(
+        YatirimProjesi.objects.filter(
+            pk__in=istenen_proje_id, silindi=False, durum=YatirimProjesi.Durum.DEVAM
+        ).values_list("pk", flat=True)
+    ) if istenen_proje_id else set()
+
     for i, g in enumerate(satirlar, start=1):
         taraf = (g.taraf or "").strip().upper()
         if taraf not in ("B", "A"):
@@ -156,6 +170,16 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
                 f"Satır {i}: {hesap.hesap_kodu} üst hesaptır; fiş yalnızca yaprak hesaba kesilir."
             )
 
+        yatirim_projesi_id = g.yatirim_projesi_id
+        if yatirim_projesi_id and not hesap_kodu_258_mi(hesap.hesap_kodu):
+            raise YevmiyeHatasi(
+                f"Satır {i}: yatırım projesi yalnız 258 hesabında seçilebilir."
+            )
+        if yatirim_projesi_id and yatirim_projesi_id not in gecerli_proje_id:
+            raise YevmiyeHatasi(
+                f"Satır {i}: yatırım projesi bulunamadı ya da 'Devam Ediyor' durumunda değil."
+            )
+
         if taraf == "B":
             borc, alacak = tl, SIFIR
         else:
@@ -166,7 +190,8 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
         hazir.append(
             dict(hesap=hesap, borc=borc, alacak=alacak, islem_pb=pb,
                  islem_tutari=yuvarla(tutar, 2), islem_kuru=kur,
-                 aciklama=buyuk_harf_tr((g.aciklama or "").strip()))
+                 aciklama=buyuk_harf_tr((g.aciklama or "").strip()),
+                 yatirim_projesi_id=yatirim_projesi_id)
         )
 
     if yuvarla(toplam_borc, 2) != yuvarla(toplam_alacak, 2):

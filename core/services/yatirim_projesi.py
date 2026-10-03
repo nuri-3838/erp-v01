@@ -41,15 +41,24 @@ def proje_olustur(*, ad, aciklama="", kullanici=None) -> YatirimProjesi:
 
 
 def proje_toplami(proje: YatirimProjesi) -> Decimal:
-    """Projeye bağlı tüm (silinmemiş faturadaki silinmemiş) kalemlerin KDV HARİÇ toplamı
-    + projeye bağlı (silinmemiş) stok sarf çıkışlarının FIFO maliyet toplamı."""
+    """Projeye bağlı tüm (silinmemiş faturadaki silinmemiş) kalemlerin KDV HARİÇ TL
+    karşılığı toplamı (``tutar_tl`` = tutar × fatura kuru; döviz faturada ``tutar`` TL
+    DEĞİLDİR, fatura para biriminde kalır — bkz. FaturaSatir.tutar_tl)
+    + projeye bağlı (silinmemiş) stok sarf çıkışlarının FIFO maliyet toplamı (zaten TL)
+    + projeye bağlı manuel fiş satırlarının (258, fatura dışı — örn. gümrükçü dekontu)
+    net borç toplamı (zaten TL, bkz. core.models.YevmiyeSatir.yatirim_projesi)."""
+    from core.models import YevmiyeSatir
     from core.services import stok_maliyet
     toplam = SIFIR
-    for s in proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False):
-        toplam += s.tutar
+    for s in (proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
+             .select_related("fatura")):
+        toplam += s.tutar_tl
     for h in proje_sarf_hareketleri(proje):
         durum = stok_maliyet.hareket_maliyet_durumu(h)
         toplam += durum["tutar_try"] or SIFIR
+    for s in YevmiyeSatir.objects.filter(
+            yatirim_projesi=proje, silindi=False, fis__silindi=False):
+        toplam += s.borc - s.alacak
     return toplam
 
 

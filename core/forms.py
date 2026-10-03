@@ -104,16 +104,25 @@ class SatirForm(forms.Form):
         label="İşlem kuru", basamak=6, initial=Decimal("1"), required=False,
     )
     aciklama = forms.CharField(label="Satır açıklaması", required=False)
+    # Yalnız hesap 258 (Yapılmakta Olan Yatırımlar) ailesi seçilince anlamlı — fatura
+    # dışı (örn. gümrükçü dekontu) tutarları projeye bağlamak için (bkz. clean()).
+    yatirim_projesi = forms.ModelChoiceField(
+        label="Yatırım projesi", queryset=YatirimProjesi.objects.none(), required=False,
+        empty_label="— proje seç —")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["hesap"].queryset = _aktif_hesaplar()
+        self.fields["yatirim_projesi"].queryset = YatirimProjesi.objects.filter(
+            silindi=False, durum=YatirimProjesi.Durum.DEVAM)
+        self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
 
     def clean(self):
         cd = super().clean()
         hesap = cd.get("hesap")
         borc = cd.get("borc")
         alacak = cd.get("alacak")
+        proje = cd.get("yatirim_projesi")
         if not hesap and not borc and not alacak:
             return cd
         if borc and alacak:
@@ -124,6 +133,10 @@ class SatirForm(forms.Form):
             raise forms.ValidationError("Borç veya Alacak tutarı girin.")
         if not hesap:
             raise forms.ValidationError("Hesap seçin.")
+        from core.services.hesap_plani import hesap_kodu_258_mi
+        if proje and not hesap_kodu_258_mi(hesap.hesap_kodu):
+            self.add_error("yatirim_projesi",
+                           "Yatırım projesi yalnız 258 hesabı seçilince kullanılabilir.")
         if borc:
             cd["taraf"], cd["islem_tutari"] = "B", borc
         else:
