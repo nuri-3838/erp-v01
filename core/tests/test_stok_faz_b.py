@@ -174,7 +174,8 @@ class StokMaliyetTest(TestCase):
         # 5 adet maliyetli giriş + (ayrı, maliyetsiz bir senaryo simülasyonu için)
         # eldeki miktarın katmandan fazla olduğu durum: MANUEL girişle üstüne 5 daha ekle.
         hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),
-                     tur="GIRIS", miktar="5", birim_maliyet_try="10")
+                     tur="GIRIS", miktar="5", birim_maliyet_try="10",
+                     giris_tutar_try=Decimal("50.00"))
         hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 2),
                      tur="GIRIS", miktar="5")   # maliyetsiz (katmansız)
         c = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 3),
@@ -182,10 +183,12 @@ class StokMaliyetTest(TestCase):
         tuketimler = list(c.maliyet_tuketimleri.all())
         self.assertEqual(len(tuketimler), 1)
         self.assertEqual(tuketimler[0].miktar, Decimal("5.000"))   # yalnız katmanlı kısım
+        # Ağırlıklı ortalama: fiyatsız 5 adet o anki ortalamayla (10) geçici değerlenir -> 8 x 10.
         durum = stok_maliyet.hareket_maliyet_durumu(c)
-        self.assertEqual(durum["karsilanan_miktar"], Decimal("5.000"))
-        self.assertFalse(durum["tam_mi"])
-        self.assertTrue(durum["tahmini"])
+        self.assertEqual(durum["karsilanan_miktar"], Decimal("8.000"))
+        self.assertEqual(durum["tutar_try"], Decimal("80.00"))
+        self.assertTrue(durum["tam_mi"])
+        self.assertTrue(durum["tahmini"])                   # geçici (fiyatsız giriş var)
 
     def test_giris_silme_kismen_tuketilmis_katman_engellenir(self):
         g = hareket_ekle(stok_id=self.s.pk, depo_id=self.d1.pk, tarih=D(2026, 6, 1),

@@ -1,0 +1,68 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Stok Değerleme · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Stok Değerleme Raporu{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:stoklar' %}">← Stoklar</a>
+    <h1 class="ust-baslik"><span class="emoji">🧮</span>Stok Değerleme Raporu</h1>
+  </div>
+</div>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Kart Bazında (hareketli ağırlıklı ortalama)</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Stok</th><th>Hesap</th><th class="sag">Miktar</th><th class="sag">Ort. Maliyet (TL)</th>
+      <th class="sag">Ort. Maliyet (USD)</th><th class="sag">Değer (TL)</th><th class="sag">Değer (USD)</th><th>Durum</th></tr></thead>
+    <tbody>
+      {% for r in rapor.satirlar %}
+      <tr>
+        <td><a href="{% url 'core:stok_detay' r.stok.pk %}"><span class="mono">{{ r.stok.kod }}</span></a> {{ r.stok.ad }}</td>
+        <td class="mono">{{ r.hesap|default:"—" }}</td>
+        <td class="sag mono">{{ r.miktar|tr_kur:3 }} {{ r.stok.uretim_birimi.kisa_ad }}</td>
+        <td class="sag mono">{% if r.ort_try is not None %}{{ r.ort_try|tr_kur:4 }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if r.ort_usd is not None %}{{ r.ort_usd|tr_kur:4 }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{{ r.deger_try|tr_kur:2 }}</td>
+        <td class="sag mono">{{ r.deger_usd|tr_kur:2 }}</td>
+        <td>{% if r.gecici_try %}<span class="rozet rozet-pasif" title="Fatura gelmemiş giriş var">geçici {{ r.gecici_try|tr_kur:2 }}</span>{% endif %}
+            {% if r.yok_adet %}<span class="rozet rozet-pasif" title="Maliyeti bilinmeyen hareket">maliyetsiz {{ r.yok_adet }}</span>{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="yardim">Stok hareketi yok.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="5" class="sag">Toplam</th><th class="sag mono">{{ rapor.toplam_deger|tr_kur:2 }}</th>
+      <th class="sag mono">{{ rapor.toplam_usd|tr_kur:2 }}</th><th></th></tr></tfoot>
+  </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Mizan Karşılaştırması</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Hesap</th><th class="sag">Stok Değeri (kesin)</th><th class="sag">Mizan Bakiyesi</th><th class="sag">Fark</th><th class="sag">Geçici (hariç)</th></tr></thead>
+    <tbody>
+      {% for k in rapor.karsilastirma %}
+      <tr>
+        <td class="mono">{{ k.kod }}</td>
+        <td class="sag mono">{{ k.stok_degeri|tr_kur:2 }}</td>
+        <td class="sag mono">{{ k.mizan|tr_kur:2 }}</td>
+        <td class="sag mono" {% if k.fark %}style="color:var(--kirmizi,#b00)"{% endif %}>{{ k.fark|tr_kur:2 }}</td>
+        <td class="sag mono">{{ k.gecici|tr_kur:2 }}</td>
+      </tr>
+      {% endfor %}
+      {% if rapor.tanimsiz %}
+      <tr><td>Hesabı tanımsız kartlar</td><td class="sag mono">{{ rapor.tanimsiz.deger|tr_kur:2 }}</td><td class="sag">—</td><td class="sag">—</td><td class="sag mono">{{ rapor.tanimsiz.gecici|tr_kur:2 }}</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  </div>
+  <p class="yardim">Fark sıfır değilse stok hareketleri ile yevmiye arasında tutarsızlık var demektir (ör. fatura
+    gelmemiş irsaliye girişi ya da kategorisi için muhasebe hesabı tanımlanmamış kart). Geçici (fiyatsız) giriş
+    değerleri henüz fişi olmadığı için karşılaştırmadan düşülür.</p>
+</section>
+{% endblock %}

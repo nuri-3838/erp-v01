@@ -1091,6 +1091,14 @@ def stok_hareket_sil(request, pk):
 
 
 @ekran_gerekli("stoklar")
+def stok_degerleme_raporu(request):
+    """Kart bazında miktar/ortalama maliyet/değer + 150-153 mizan karşılaştırması (salt okunur)."""
+    from core.services import stok_ortalama
+    return render(request, "core/stok_degerleme.html",
+                  {"rapor": stok_ortalama.degerleme_raporu()})
+
+
+@ekran_gerekli("stoklar")
 def stok_sarf_ekle(request, pk):
     """Stoktan hesaba/yatırım projesine SARF çıkışı: miktar + muhasebe fişi bir arada
     (bkz. core.services.hareket.sarf_cikis_ekle). Bugünkü fişsiz '+ Hareket > Çıkış'

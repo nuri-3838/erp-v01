@@ -546,6 +546,7 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
         return kayit
     satirlar = list(kaydi_girdi_satirlari(kayit))
     toplam_girdi_maliyeti = Decimal("0")
+    toplam_girdi_usd = Decimal("0")
     herhangi_biri_tahmini = False
     for satir in satirlar:
         if satir.gerceklesen_miktar == 0:
@@ -558,18 +559,25 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
                 operasyon_kaydi_girdi=satir, kullanici=kullanici)
         except HareketHatasi as e:
             raise UretimHatasi(str(e))
-        tuketimler = list(girdi_hareketi.maliyet_tuketimleri.select_related("katman"))
-        karsilanan_miktar = sum((t.miktar for t in tuketimler), Decimal("0"))
-        toplam_girdi_maliyeti += sum((t.tutar_try for t in tuketimler), Decimal("0"))
-        if karsilanan_miktar < satir.gerceklesen_miktar or any(t.katman.tahmini for t in tuketimler):
+        # Girdi, o anki ağırlıklı ortalamayla değerlenir (bkz. core.services.stok_ortalama).
+        if girdi_hareketi.maliyet_durumu == StokHareket.MaliyetDurumu.YOK:
             herhangi_biri_tahmini = True
+        else:
+            toplam_girdi_maliyeti += girdi_hareketi.tutar_try or Decimal("0")
+            toplam_girdi_usd += girdi_hareketi.tutar_usd or Decimal("0")
+            if girdi_hareketi.maliyet_durumu != StokHareket.MaliyetDurumu.KESIN:
+                herhangi_biri_tahmini = True
     cikti_birim_maliyet = (yuvarla(toplam_girdi_maliyeti / kayit.hedef_cikti_miktari, 6)
                            if toplam_girdi_maliyeti > 0 else None)
+    # Çıktı girişinin tutarı onay anında girdi maliyetlerinden DONDURULUR (girdi maliyeti
+    # sonradan değişirse çıktıya zincirleme yayılım Dilim B'de eklenecek).
     hareket_ekle(
         stok_id=kayit.operasyon.cikti_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
         tur=StokHareket.Tur.GIRIS, miktar=kayit.hedef_cikti_miktari,
         aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
         birim_maliyet_try=cikti_birim_maliyet, tahmini=herhangi_biri_tahmini,
+        giris_tutar_try=toplam_girdi_maliyeti if toplam_girdi_maliyeti > 0 else None,
+        giris_tutar_usd=toplam_girdi_usd if toplam_girdi_maliyeti > 0 else None,
         kullanici=kullanici)
     kayit.durum = OperasyonKaydi.Durum.ONAYLI
     kayit.updated_by = kullanici

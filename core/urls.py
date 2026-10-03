@@ -151,6 +151,7 @@ urlpatterns = [
     path("stoklar/", views.stoklar, name="stoklar"),
     path("stoklar/ekle/", views.stok_ekle, name="stok_ekle"),
     path("api/stok-kod/", views.stok_kod_api, name="stok_kod_api"),
+    path("stoklar/degerleme/", views.stok_degerleme_raporu, name="stok_degerleme_raporu"),
     path("stoklar/<int:pk>/", views.stok_detay, name="stok_detay"),
     path("stoklar/<int:pk>/hareket/", views.stok_hareket_ekle, name="stok_hareket_ekle"),
     path("stoklar/hareket/<int:pk>/sil/", views.stok_hareket_sil, name="stok_hareket_sil"),

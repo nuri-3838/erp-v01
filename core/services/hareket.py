@@ -12,8 +12,8 @@ from django.db.models import Sum
 
 from core.metin import buyuk_harf_tr
 from core.models import Depo, Stok, StokHareket
-from core.sayi import SayiHatasi, parse_tr
-from core.services import stok_maliyet
+from core.sayi import SayiHatasi, parse_tr, yuvarla
+from core.services import stok_maliyet, stok_ortalama
 
 SIFIR = Decimal("0.000")
 
@@ -70,8 +70,13 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                  kaynak=StokHareket.Kaynak.MANUEL, fatura_satir=None,
                  teklif_siparis_kalem=None, operasyon_kaydi_girdi=None, kullanici=None,
                  birim_maliyet_try=None, kaynak_pb="", kaynak_birim_fiyat=None,
-                 kaynak_kur=None, tahmini=False) -> StokHareket:
-    """Miktar hareketi yazar. ``birim_maliyet_try`` yalnız GİRİŞ'te ve biliniyorsa
+                 kaynak_kur=None, tahmini=False, giris_tutar_try=None, giris_tutar_usd=None,
+                 maliyet_fatura_satir=None) -> StokHareket:
+    """Miktar hareketi yazar. Hareketli ağırlıklı ortalama maliyet (bkz. core.services.
+    stok_ortalama): ``giris_tutar_try`` (+``giris_tutar_usd``) GİRİŞ'in fatura tutarıdır;
+    verilmezse giriş fiyatsız/GEÇİCİ sayılır. Her yazımdan sonra kart yeniden hesaplanır,
+    dönen hareket güncel ``tutar_try``/``maliyet_durumu`` ile gelir. (Aşağıdaki FIFO
+    katmanı yazımı eski/gölge kayıttır — Dilim B'de kaldırılacak.) ``birim_maliyet_try`` yalnız GİRİŞ'te ve biliniyorsa
     (ALIŞ irsaliyesi/faturası) bir FIFO maliyet katmanı açar — bkz. core.services.
     stok_maliyet. ÇIKIŞ'ta katman tüketimi HER ZAMAN otomatik çalışır (parametre
     gerekmez); dönüş tipi değişmez, maliyeti öğrenmek isteyen dönen nesnenin
@@ -101,6 +106,10 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=kaynak,
         fatura_satir=fatura_satir, teklif_siparis_kalem=teklif_siparis_kalem,
         operasyon_kaydi_girdi=operasyon_kaydi_girdi,
+        giris_tutar_try=giris_tutar_try if tur == StokHareket.Tur.GIRIS else None,
+        giris_tutar_usd=giris_tutar_usd if tur == StokHareket.Tur.GIRIS else None,
+        maliyet_fatura_satir=maliyet_fatura_satir if tur == StokHareket.Tur.GIRIS else None,
+        giris_tahmini=bool(tahmini) and tur == StokHareket.Tur.GIRIS,
         created_by=kullanici, updated_by=kullanici)
     if tur == StokHareket.Tur.GIRIS:
         if birim_maliyet_try is not None:
@@ -109,7 +118,16 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                 kaynak_birim_fiyat=kaynak_birim_fiyat, kaynak_kur=kaynak_kur, tahmini=tahmini)
     else:
         stok_maliyet.fifo_tuket(hareket)
+    _ortalamayi_hesapla(stok)
+    hareket.refresh_from_db()
     return hareket
+
+
+def _ortalamayi_hesapla(stok, **kw):
+    try:
+        return stok_ortalama.yeniden_hesapla(stok, **kw)
+    except stok_ortalama.MaliyetHatasi as e:
+        raise HareketHatasi(str(e))
 
 
 @transaction.atomic
@@ -117,9 +135,9 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
                     yatirim_projesi_id=None, aciklama="", kullanici=None) -> StokHareket:
     """Stoktan hesaba/yatırım projesine SARF çıkışı: miktar hareketi + FIFO maliyet
     tüketimi + muhasebe fişi (karşı hesap BORÇ, stoğun muhasebe hesabı ALACAK) BİR
-    ARADA oluşturur. Tutar = FIFO ile hesaplanan maliyet (bkz. core.services.stok_maliyet);
-    katmanlar ihtiyacı tam karşılamazsa (maliyet bilinmiyor) hiçbir şey kaydedilmez
-    (atomik) ve HareketHatasi yükselir. 258 karşı hesabı seçilirse yatırım projesi
+    ARADA oluşturur. Tutar = o anki hareketli ağırlıklı ortalama maliyet (bkz. core.services.
+    stok_ortalama); maliyet bilinmiyorsa (fiyatlı giriş yok) hiçbir şey kaydedilmez (atomik)
+    ve HareketHatasi yükselir. 258 karşı hesabı seçilirse yatırım projesi
     ZORUNLUDUR (bkz. hesap_plani.hesap_kodu_258_mi)."""
     from core.models import HesapPlani, YatirimProjesi, YevmiyeFisi
     from core.services import kategori as kategori_servis
@@ -170,12 +188,13 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
         karsi_hesap=karsi_hesap, yatirim_projesi=yatirim_projesi,
         created_by=kullanici, updated_by=kullanici)
     stok_maliyet.fifo_tuket(hareket)
-    durum = stok_maliyet.hareket_maliyet_durumu(hareket)
-    tutar = durum["tutar_try"] or Decimal("0.00")
+    _ortalamayi_hesapla(stok)                        # çıkış, o anki ağırlıklı ortalamayla değerlenir
+    hareket.refresh_from_db()
+    tutar = hareket.tutar_try or Decimal("0.00")
     if tutar <= 0:
         raise HareketHatasi(
-            "Bu çıkış için maliyet hesaplanamadı (eldeki miktara karşılık gelen maliyet "
-            "katmanı yok); sarf fişi kesilemedi.")
+            "Bu çıkış için maliyet hesaplanamadı (stokta fatura tutarıyla fiyatlanmış giriş "
+            "yok); sarf fişi kesilemedi.")
     aciklama_fis = f"{stok.kod} — {stok.ad} sarf çıkışı"
     if yatirim_projesi:
         aciklama_fis += f" ({yatirim_projesi.kod})"
@@ -196,10 +215,8 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
 
 def sarf_onizleme(*, stok_id, depo_id, miktar) -> dict:
     """Sarf formu için birim maliyet/toplam tutar ÖNİZLEMESİ — hiçbir şey yazmaz.
-    Mevcut FIFO katmanlarına göre hesaplanır (gerçek çıkışta katman sırası/kalan miktar
-    değişmemişse aynı sonucu verir; ekran uyarısı 'tahmini' bayrağıyla bunu belirtir)."""
-    from core.models import StokMaliyetKatmani
-
+    Kartın güncel hareketli ağırlıklı ortalama maliyetine göre hesaplanır (gerçek çıkışta
+    çıkış tarihindeki ortalama kullanılır; ekran uyarısı 'tahmini' bayrağıyla bunu belirtir)."""
     stok = Stok.objects.filter(pk=stok_id, silindi=False).first()
     if stok is None:
         raise HareketHatasi("Stok bulunamadı.")
@@ -212,22 +229,15 @@ def sarf_onizleme(*, stok_id, depo_id, miktar) -> dict:
         raise HareketHatasi("Miktar geçerli bir sayı olmalı.")
     if m <= 0:
         raise HareketHatasi("Miktar sıfırdan büyük olmalı.")
-    kalan_ihtiyac = m
-    tutar = Decimal("0.00")
-    karsilanan = SIFIR
-    for katman in (StokMaliyetKatmani.objects
-                  .filter(stok=stok, depo=depo, kalan_miktar__gt=0, silindi=False)
-                  .order_by("tarih", "id")):
-        if kalan_ihtiyac <= 0:
-            break
-        dusulecek = min(katman.kalan_miktar, kalan_ihtiyac)
-        tutar += dusulecek * katman.birim_maliyet_try
-        karsilanan += dusulecek
-        kalan_ihtiyac -= dusulecek
-    tam_mi = karsilanan >= m
-    birim_maliyet = (tutar / karsilanan) if karsilanan > 0 else None
-    return {"tutar_try": tutar.quantize(Decimal("0.01")) if karsilanan > 0 else None,
-           "birim_maliyet_try": birim_maliyet, "karsilanan_miktar": karsilanan, "tam_mi": tam_mi}
+    # Ağırlıklı ortalama: kartın GÜNCEL ortalama maliyetiyle (tarih bazlı değil, önizleme).
+    q, v = stok.maliyet_miktar, stok.maliyet_deger_try
+    if q <= 0 or stok.ort_maliyet_try is None:
+        return {"tutar_try": None, "birim_maliyet_try": None, "karsilanan_miktar": SIFIR,
+                "tam_mi": False}
+    karsilanan = min(m, q)
+    tutar = v if m >= q else yuvarla(m * v / q, 2)
+    return {"tutar_try": tutar, "birim_maliyet_try": stok.ort_maliyet_try,
+            "karsilanan_miktar": karsilanan, "tam_mi": karsilanan >= m}
 
 
 @transaction.atomic
@@ -263,4 +273,5 @@ def hareket_sil(hareket: StokHareket, kullanici=None) -> StokHareket:
             katman.silindi = True
             katman.silindi_at = timezone.now()
             katman.save(update_fields=["silindi", "silindi_at", "updated_at"])
+    _ortalamayi_hesapla(hareket.stok)               # silinen hareket ortalamadan çıkar
     return hareket

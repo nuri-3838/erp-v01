@@ -647,6 +647,12 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
                 f"{satir.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar "
                 f"sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
         birim_maliyet_try = yuvarla(satir.birim_fiyat * kur * cevirici, 6) if alis else None
+        # Ağırlıklı ortalama maliyet: giriş tutarı = fatura satır tutarı (TL, KDV/tevkifat hariç)
+        giris_tl = satir.tutar_tl if alis else None
+        giris_usd = None
+        if alis:
+            usd_kuru = fatura.fis.kur_usd if fatura.fis_id else None
+            giris_usd = yuvarla(giris_tl / usd_kuru, 2) if usd_kuru else None
         try:
             hareket_ekle(
                 stok_id=satir.stok_id, depo_id=depo.pk, tarih=fatura.tarih, tur=tur,
@@ -655,8 +661,29 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
                 kaynak=StokHareket.Kaynak.FATURA, fatura_satir=satir, kullanici=kullanici,
                 birim_maliyet_try=birim_maliyet_try, kaynak_pb=fatura.para_birimi,
                 kaynak_birim_fiyat=satir.birim_fiyat if alis else None,
-                kaynak_kur=kur if alis else None)
+                kaynak_kur=kur if alis else None,
+                giris_tutar_try=giris_tl, giris_tutar_usd=giris_usd,
+                maliyet_fatura_satir=satir if alis else None)
         except HareketHatasi as e:
+            raise FaturaHatasi(str(e))
+
+
+def _irsaliye_girislerini_fiyatla(fatura):
+    """İrsaliyeli faturada maliyeti FATURA belirler (bkz. core.services.stok_ortalama)."""
+    from core.services import stok_ortalama
+    try:
+        stok_ortalama.irsaliye_girislerini_fiyatla(fatura)
+    except stok_ortalama.MaliyetHatasi as e:
+        raise FaturaHatasi(str(e))
+
+
+def _irsaliye_girislerini_fiyatsiz_yap(fatura):
+    from core.models import Stok
+    from core.services import stok_ortalama
+    for stok in Stok.objects.filter(pk__in=stok_ortalama.irsaliye_girislerini_sifirla(fatura)):
+        try:
+            stok_ortalama.yeniden_hesapla(stok)
+        except stok_ortalama.MaliyetHatasi as e:
             raise FaturaHatasi(str(e))
 
 
@@ -765,7 +792,9 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
     fatura.fis, fatura.kur, fatura.durum = fis, kur, Fatura.Durum.ONAYLI
     fatura.updated_by = kullanici
     fatura.save(update_fields=["fis", "kur", "durum", "updated_by", "updated_at"])
-    if fatura.depo_id and not irsaliyeden_mi(fatura):
+    if irsaliyeden_mi(fatura):
+        _irsaliye_girislerini_fiyatla(fatura)
+    elif fatura.depo_id:
         _hareketleri_yaz(fatura, fatura.depo, kur=kur, kullanici=kullanici)
     return fatura
 
@@ -871,7 +900,9 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                                "kur", "depo", "aciklama", "vade_tarihi", "sahsi_alis",
                                "sahsi_ortak", "gv_stopaj_orani", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
-    if depo is not None and not irsaliyeden_mi(fatura):
+    if irsaliyeden_mi(fatura):
+        _irsaliye_girislerini_fiyatla(fatura)
+    elif depo is not None:
         _hareketleri_yaz(fatura, depo, kur=kur, kullanici=kullanici)
     _negatif_eldeki_dogrula(etkilenen | _fatura_hareket_ciftleri(fatura))
     return fatura
@@ -894,6 +925,8 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
             raise FaturaHatasi(str(e))
     if fatura.fis_id and not fatura.fis.silindi:
         fis_iptal(fatura.fis, kullanici=kullanici)
+    if irsaliyeden_mi(fatura):
+        _irsaliye_girislerini_fiyatsiz_yap(fatura)    # maliyeti fatura belirlemişti; geri al
     TeklifSiparis.objects.filter(fatura=fatura).update(fatura=None)
     katman_ids = list(StokMaliyetKatmani.objects.filter(
         stok_hareket__in=hareketler).values_list("id", flat=True))

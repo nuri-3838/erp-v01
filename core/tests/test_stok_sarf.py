@@ -47,7 +47,8 @@ class SarfTemel(TestCase):
     def setUp(self):
         # Her testte 100 boy @ 453,20 girişi (kullanıcının örneği).
         hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=D(2026, 6, 1),
-                    tur="GIRIS", miktar="100", birim_maliyet_try=Decimal("453.200000"))
+                    tur="GIRIS", miktar="100", birim_maliyet_try=Decimal("453.200000"),
+                    giris_tutar_try=Decimal("45320.00"))
 
 
 class SarfCikisServisTest(SarfTemel):

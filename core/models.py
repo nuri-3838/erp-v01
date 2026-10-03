@@ -505,6 +505,20 @@ class Stok(TemelModel):
     )
     # 1 üretim birimi = cevirici × fatura birimi.
     cevirici = models.DecimalField("çevirici", max_digits=18, decimal_places=6, default=1)
+    # Hareketli ağırlıklı ortalama maliyet — HESAP SONUCU ÖNBELLEĞİ (üretim biriminde, tüm
+    # depolar için tek ortalama). Kaynak hareketlerdir; core.services.stok_ortalama
+    # yeniden_hesapla her hareket değişiminde günceller, testle sıfırdan hesapla = saklanan
+    # eşitliği denetlenir. Elle DÜZENLENMEZ.
+    maliyet_miktar = models.DecimalField(
+        "maliyet miktarı (önbellek)", max_digits=18, decimal_places=3, default=0)
+    maliyet_deger_try = models.DecimalField(
+        "stok değeri TL (önbellek)", max_digits=18, decimal_places=2, default=0)
+    maliyet_deger_usd = models.DecimalField(
+        "stok değeri USD (önbellek)", max_digits=18, decimal_places=2, default=0)
+    ort_maliyet_try = models.DecimalField(
+        "ortalama maliyet TL (önbellek)", max_digits=18, decimal_places=6, null=True, blank=True)
+    ort_maliyet_usd = models.DecimalField(
+        "ortalama maliyet USD (önbellek)", max_digits=18, decimal_places=6, null=True, blank=True)
     # KDV/tevkifat artık serbest sayı değil; AYARLAR tanım listelerine FK (otomatik
     # yevmiye buradan muhasebe hesabını/oranı okur). KDV formda/serviste ZORUNLU
     # (stok_olustur/stok_guncelle boşsa reddeder); model null=True kalır çünkü
@@ -2168,6 +2182,50 @@ class StokHareket(TemelModel):
     fis = models.ForeignKey(
         "YevmiyeFisi", verbose_name="muhasebe fişi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="stok_sarf_hareketleri")
+
+    # --- Hareketli ağırlıklı ortalama maliyet (bkz. core.services.stok_ortalama) ---------
+    # GİRDİ (yalnız GİRİŞ): giriş tutarı FATURA'dan gelir (KDV/tevkifat hariç, TL). Boşsa giriş
+    # "fiyatsız/GEÇİCİ" sayılır (ör. fatura gelmemiş irsaliye girişi): miktar eklenir ama
+    # ortalamayı DEĞİŞTİRMEZ.
+    giris_tutar_try = models.DecimalField(
+        "giriş tutarı TL (fatura)", max_digits=18, decimal_places=2, null=True, blank=True)
+    giris_tutar_usd = models.DecimalField(
+        "giriş tutarı USD (fatura)", max_digits=18, decimal_places=2, null=True, blank=True)
+    # Giriş tutarını belirleyen fatura satırı (yalnız bilgi — fatura_satir'dan FARKLIDIR:
+    # o alan "bu hareketi fatura yazdı" demektir ve fatura iptalinde hareketi siler).
+    # Giriş tutarı kısmi/eksik veriden türetildiyse (ör. üretim çıktısı) True: durum GEÇİCİ olur ve
+    # bu bayrak o girişten beslenen sonraki çıkış/üretimlere miras kalır.
+    giris_tahmini = models.BooleanField("giriş tutarı tahmini", default=False)
+    maliyet_fatura_satir = models.ForeignKey(
+        "FaturaSatir", verbose_name="maliyeti belirleyen fatura satırı", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="maliyet_hareketleri")
+    # SONUÇ (motor yazar, elle düzenlenmez): bu hareketin değeri ve hareket sonrası durum.
+    class MaliyetDurumu(models.TextChoices):
+        KESIN = "KESIN", "Kesin"
+        GECICI = "GECICI", "Geçici"
+        YOK = "YOK", "Maliyetsiz"
+
+    maliyet_durumu = models.CharField(
+        "maliyet durumu", max_length=6, choices=MaliyetDurumu.choices,
+        default=MaliyetDurumu.YOK)
+    tutar_try = models.DecimalField(
+        "değer TL", max_digits=18, decimal_places=2, null=True, blank=True)
+    tutar_usd = models.DecimalField(
+        "değer USD", max_digits=18, decimal_places=2, null=True, blank=True)
+    birim_maliyet_try = models.DecimalField(
+        "birim maliyet TL", max_digits=18, decimal_places=6, null=True, blank=True)
+    birim_maliyet_usd = models.DecimalField(
+        "birim maliyet USD", max_digits=18, decimal_places=6, null=True, blank=True)
+    sonrasi_miktar = models.DecimalField(
+        "hareket sonrası miktar", max_digits=18, decimal_places=3, null=True, blank=True)
+    sonrasi_deger_try = models.DecimalField(
+        "hareket sonrası değer TL", max_digits=18, decimal_places=2, null=True, blank=True)
+    sonrasi_deger_usd = models.DecimalField(
+        "hareket sonrası değer USD", max_digits=18, decimal_places=2, null=True, blank=True)
+    sonrasi_ort_try = models.DecimalField(
+        "hareket sonrası ortalama TL", max_digits=18, decimal_places=6, null=True, blank=True)
+    sonrasi_ort_usd = models.DecimalField(
+        "hareket sonrası ortalama USD", max_digits=18, decimal_places=6, null=True, blank=True)
 
     class Meta:
         db_table = "stok_hareket"

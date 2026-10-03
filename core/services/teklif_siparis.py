@@ -783,7 +783,9 @@ def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> Teklif
     kalemler = list(irsaliye.kalemler.filter(silindi=False))
     if not kalemler:
         raise TeklifSiparisHatasi("İrsaliyede kalem yok; fatura oluşturulamaz.")
-    satirlar = [{"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
+    # NET (iskontolu) birim fiyat: fatura satırında ayrı iskonto alanı yok; liste fiyatı taşınırsa
+    # iskonto kaybolur ve fatura (= maliyet) tutarı irsaliyeden yüksek çıkar.
+    satirlar = [{"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat}
                 for k in kalemler]
     fatura = fatura_servis.fatura_taslak_olustur(
         cari_id=irsaliye.cari_id, tarih=irsaliye.tarih, satirlar=satirlar,

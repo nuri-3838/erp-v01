@@ -218,7 +218,9 @@ class OperasyonKaydiServisTest(TestCase):
     def _stok_gir_maliyetli(self, stok, miktar, birim_maliyet_try, tarih=date(2026, 1, 1)):
         return hareket_ekle(stok_id=stok.pk, depo_id=self.depo.pk, tarih=tarih,
                             tur=StokHareket.Tur.GIRIS, miktar=Decimal(miktar),
-                            birim_maliyet_try=Decimal(birim_maliyet_try))
+                            birim_maliyet_try=Decimal(birim_maliyet_try),
+                            giris_tutar_try=(Decimal(miktar) * Decimal(birim_maliyet_try)).quantize(
+                                Decimal("0.01")))
 
     def test_onayla_stok_hareketleri_dogru(self):
         self._stok_gir(self.profil, "1000")
@@ -318,8 +320,8 @@ class OperasyonKaydiServisTest(TestCase):
         self.assertFalse(katman.tahmini)
 
     def test_onayla_iki_katmandan_karisik_fifo_ile_cikti_maliyeti(self):
-        """3 profil @10 TL + 10 profil @20 TL katmanı; 10 kesilmiş parça hedefi 5 profil
-        gerektirir (3x10 + 2x20 = 70 TL) -> çıktı birim maliyeti 70/10 = 7 TL."""
+        """3 profil @10 TL + 10 profil @20 TL; ağırlıklı ortalama (30+200)/13; 10 kesilmiş parça
+        hedefi 5 profil gerektirir (5 x 17,692308 = 88,46 TL) -> çıktı birim maliyeti 8,846 TL."""
         self._stok_gir_maliyetli(self.profil, "3", "10", tarih=date(2026, 1, 1))
         self._stok_gir_maliyetli(self.profil, "10", "20", tarih=date(2026, 1, 2))
         kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
@@ -327,7 +329,8 @@ class OperasyonKaydiServisTest(TestCase):
         operasyon_kaydi_onayla(kayit)
         cikti_hareketi = StokHareket.objects.get(
             stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
-        self.assertEqual(cikti_hareketi.maliyet_katmani.birim_maliyet_try, Decimal("7.000000"))
+        self.assertEqual(cikti_hareketi.maliyet_katmani.birim_maliyet_try, Decimal("8.846000"))
+        self.assertEqual(cikti_hareketi.giris_tutar_try, Decimal("88.46"))
 
     def test_onayla_zincirde_maliyet_bir_sonraki_operasyona_tasinir(self):
         """Kesim çıktısının katmanı, Büküm'ün girdisi olarak FIFO'ya OTOMATİK girer —
@@ -357,8 +360,8 @@ class OperasyonKaydiServisTest(TestCase):
         self.assertFalse(hasattr(cikti_hareketi, "maliyet_katmani"))
 
     def test_onayla_kismi_karsilamada_tahmini_isaretlenir(self):
-        """5 profil gerekiyor: 2 adet @10 TL katmanlı + 3 adet maliyetsiz. Çıktı maliyeti
-        yine de (kısmi veriyle) hesaplanır ama tahmini=True işaretlenir."""
+        """5 profil gerekiyor: 2 adet @10 TL faturalı + 3 adet fiyatsız (geçici: ortalamayla
+        değerlenir). Çıktı maliyeti 5x10/10 = 5 TL hesaplanır ama tahmini=True işaretlenir."""
         self._stok_gir_maliyetli(self.profil, "2", "10")
         self._stok_gir(self.profil, "3")        # maliyetsiz, ama fiziksel stok yeterli olsun
         kayit = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk,
@@ -367,8 +370,9 @@ class OperasyonKaydiServisTest(TestCase):
         cikti_hareketi = StokHareket.objects.get(
             stok=self.kesilmis, kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS)
         katman = cikti_hareketi.maliyet_katmani
-        self.assertEqual(katman.birim_maliyet_try, Decimal("2.000000"))   # 2x10 / 10
+        self.assertEqual(katman.birim_maliyet_try, Decimal("5.000000"))   # 5x10 / 10
         self.assertTrue(katman.tahmini)
+        self.assertEqual(cikti_hareketi.maliyet_durumu, StokHareket.MaliyetDurumu.GECICI)
 
     def test_onayla_tahmini_bayragi_ikinci_seviyeye_miras_alinir(self):
         """Kesim çıktısı (kısmi veriden) tahmini=True ise, Büküm bu katmanı MİKTAR olarak

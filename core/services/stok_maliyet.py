@@ -66,13 +66,11 @@ def tuketimi_geri_al(stok_hareket) -> None:
 
 
 def hareket_maliyet_durumu(stok_hareket) -> dict:
-    """ÇIKIŞ hareketi için: {'tutar_try', 'karsilanan_miktar', 'tam_mi', 'tahmini'}.
-    Operasyon Kaydı onayı ve raporlama ekranları bunu kullanır."""
-    tuketimler = list(stok_hareket.maliyet_tuketimleri.filter(silindi=False)
-                      .select_related("katman"))
-    karsilanan_miktar = sum((t.miktar for t in tuketimler), SIFIR)
-    tutar_try = sum((t.tutar_try for t in tuketimler), Decimal("0.00")) if tuketimler else None
-    tam_mi = karsilanan_miktar >= stok_hareket.miktar
-    tahmini = (not tam_mi) or any(t.katman.tahmini for t in tuketimler)
-    return {"tutar_try": tutar_try, "karsilanan_miktar": karsilanan_miktar,
-           "tam_mi": tam_mi, "tahmini": tahmini}
+    """Hareket için: {'tutar_try', 'karsilanan_miktar', 'tam_mi', 'tahmini'}. Değer artık
+    HAREKETLİ AĞIRLIKLI ORTALAMA motorundan (core.services.stok_ortalama) gelir — FIFO
+    katman/tüketim kayıtları yalnız gölge olarak yazılıyor (Dilim B'de kaldırılacak)."""
+    durum = stok_hareket.maliyet_durumu
+    tam_mi = durum != stok_hareket.MaliyetDurumu.YOK
+    return {"tutar_try": stok_hareket.tutar_try if tam_mi else None,
+            "karsilanan_miktar": stok_hareket.miktar if tam_mi else SIFIR,
+            "tam_mi": tam_mi, "tahmini": durum != stok_hareket.MaliyetDurumu.KESIN}
