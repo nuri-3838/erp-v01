@@ -109,8 +109,8 @@ def satis_senkronla(fatura, *, kullanici=None):
     ortalama tutarlarından. Maliyeti hâlâ bilinmeyen satır fişe girmez; sonradan bilinince
     ``yeniden_hesapla`` bu fonksiyonu tekrar çağırır."""
     mod = fatura.tip.maliyet_fisi if fatura.tip_id else ""
-    if not mod:
-        return None
+    if mod not in (FaturaTipi.MaliyetFisi.SATIS, FaturaTipi.MaliyetFisi.SATIS_IADE):
+        return None            # boş ya da ALIS_IADE: maliyet fişi yok
     iade = mod == FaturaTipi.MaliyetFisi.SATIS_IADE
     yon = GIRIS if iade else CIKIS
     hs = list(StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False)

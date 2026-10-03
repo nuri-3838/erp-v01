@@ -75,7 +75,8 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
     """Miktar hareketi yazar. Hareketli ağırlıklı ortalama maliyet (bkz. core.services.
     stok_ortalama): ``giris_tutar_try`` (+``giris_tutar_usd``) GİRİŞ'in fatura tutarıdır;
     verilmezse giriş fiyatsız/GEÇİCİ sayılır (``giris_ortalama=True``: satış iadesi — o anki
-    ortalamayla değerlenir). ``tahmini``: tutar kısmi veriden türedi (GEÇİCİ). ``operasyon_kaydi``
+    ortalamayla değerlenir). Çıkışta ``giris_tutar_try`` yalnız alış iadesi faturasında verilir (çıkış
+    iade faturası tutarıyla değerlenir, ortalamayla değil). ``tahmini``: tutar kısmi veriden türedi (GEÇİCİ). ``operasyon_kaydi``
     üretim girdi çıkışı/çıktı girişi maliyet aktarımı için; ``transfer_grubu`` depo transferi
     bacakları için (maliyeti DEĞİŞTİRMEZ). Her yazımdan sonra kart yeniden hesaplanır, dönen
     hareket güncel ``tutar_try``/``maliyet_durumu`` ile gelir."""
@@ -104,9 +105,8 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=kaynak,
         fatura_satir=fatura_satir, teklif_siparis_kalem=teklif_siparis_kalem,
         operasyon_kaydi_girdi=operasyon_kaydi_girdi,
-        giris_tutar_try=giris_tutar_try if tur == StokHareket.Tur.GIRIS else None,
-        giris_tutar_usd=giris_tutar_usd if tur == StokHareket.Tur.GIRIS else None,
-        maliyet_fatura_satir=maliyet_fatura_satir if tur == StokHareket.Tur.GIRIS else None,
+        giris_tutar_try=giris_tutar_try, giris_tutar_usd=giris_tutar_usd,
+        maliyet_fatura_satir=maliyet_fatura_satir,
         giris_tahmini=bool(tahmini) and tur == StokHareket.Tur.GIRIS,
         giris_ortalama=bool(giris_ortalama) and tur == StokHareket.Tur.GIRIS,
         operasyon_kaydi=operasyon_kaydi, transfer_grubu=transfer_grubu,

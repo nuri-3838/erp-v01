@@ -96,6 +96,13 @@ def hesapla(kalemler) -> list[Sonuc]:
                 else:
                     t, tu, durum = SIFIR, SIFIR, YOK
             q, v, vu = q + m, v + t, vu + tu
+        elif k.giris_tutar_try is not None:
+            # Alış iadesi çıkışı (tedarikçiye iade): iade faturasının tutarıyla değerlenir; stok
+            # değeri o tutar kadar düşer, ortalama kalan miktar/değerden yeniden hesaplanır.
+            t = k.giris_tutar_try
+            tu = k.giris_tutar_usd if k.giris_tutar_usd is not None else SIFIR
+            durum = KESIN
+            q, v, vu = q - m, v - t, vu - tu
         else:
             if q <= 0 or v <= 0:             # eldeki yok / hiç fiyatlı değer yok: maliyet bilinmiyor
                 t, tu, durum = SIFIR, SIFIR, YOK

@@ -432,6 +432,7 @@ class FaturaTipi(TemelModel):
         YOK = "", "Maliyet fişi yok"
         SATIS = "SATIS", "Satış (çıkış maliyeti: 620/621/623 borç, stok alacak)"
         SATIS_IADE = "SATIS_IADE", "Satış iadesi (giriş ortalamadan, ters maliyet fişi)"
+        ALIS_IADE = "ALIS_IADE", "Alış iadesi (çıkış iade faturası tutarıyla, fişsiz)"
 
     # Stoklu faturada çıkış/giriş hareketinin ağırlıklı ortalama maliyeti için otomatik MALİYET
     # FİŞİ üretilsin mi (bkz. core.services.stok_fis). Boş = üretilmez (ör. alış faturası: stok
@@ -2201,10 +2202,12 @@ class StokHareket(TemelModel):
     # GİRDİ (yalnız GİRİŞ): giriş tutarı FATURA'dan gelir (KDV/tevkifat hariç, TL). Boşsa giriş
     # "fiyatsız/GEÇİCİ" sayılır (ör. fatura gelmemiş irsaliye girişi): miktar eklenir ama
     # ortalamayı DEĞİŞTİRMEZ.
+    # Çıkışta yalnız ALIŞ İADESİ (tedarikçiye iade) faturasında dolu olur: çıkış ortalamayla değil
+    # iade faturasının tutarıyla değerlenir (stok değeri o fatura fişiyle birlikte düşer).
     giris_tutar_try = models.DecimalField(
-        "giriş tutarı TL (fatura)", max_digits=18, decimal_places=2, null=True, blank=True)
+        "belirlenen tutar TL (fatura)", max_digits=18, decimal_places=2, null=True, blank=True)
     giris_tutar_usd = models.DecimalField(
-        "giriş tutarı USD (fatura)", max_digits=18, decimal_places=2, null=True, blank=True)
+        "belirlenen tutar USD (fatura)", max_digits=18, decimal_places=2, null=True, blank=True)
     # Giriş tutarını belirleyen fatura satırı (yalnız bilgi — fatura_satir'dan FARKLIDIR:
     # o alan "bu hareketi fatura yazdı" demektir ve fatura iptalinde hareketi siler).
     # Giriş tutarı kısmi/eksik veriden türetildiyse (ör. üretim çıktısı) True: durum GEÇİCİ olur ve

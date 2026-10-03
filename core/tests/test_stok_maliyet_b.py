@@ -323,3 +323,97 @@ class TanimKomutuTest(MaliyetBTemel):
         self.iade.refresh_from_db()
         self.assertEqual((self.satis.maliyet_fisi, self.iade.maliyet_fisi), ("SATIS", "SATIS_IADE"))
         self.assertIn("zaten", self._komut("--uygula"))
+
+
+class AlisIadesiTest(MaliyetBTemel):
+    """Tedarikçiye iade (satış yönlü 'ALIŞ İADE' tipi): stok çıkışı ortalamayla DEĞİL iade faturasının
+    tutarıyla değerlenir, fiş yok; ortalama kalan miktar/değerden yeniden hesaplanır ve stok değeri
+    ile 15x mizanı eşit kalır."""
+
+    def setUp(self):
+        super().setUp()
+        self.alis_iade = FaturaTipi.objects.create(
+            ad="SATIŞ FATURASI-ALIŞ İADE", yon=FaturaTipi.Yon.SATIS,
+            maliyet_fisi=FaturaTipi.MaliyetFisi.ALIS_IADE)
+        KategoriHesap.objects.create(kategori=self.alt, fatura_tipi=self.alis_iade,
+                                     hesap=HesapPlani.objects.get(hesap_kodu="153.10"))
+
+    def test_cikis_iade_faturasi_tutariyla_degerlenir_fis_yok_mizan_esit(self):
+        from core.services import stok_ortalama
+        self.alis_yap(D(2026, 3, 5), "10", "100")
+        self.alis_yap(D(2026, 3, 5), "10", "200")             # ortalama 150
+        f = fatura_olustur(
+            tip_id=self.alis_iade.pk, cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "4", "birim_fiyat": "200"}],
+            depo_id=self.da.pk)
+        h = StokHareket.objects.get(fatura_satir__fatura=f, silindi=False)
+        self.assertEqual((h.tur, h.tutar_try, h.maliyet_durumu), ("CIKIS", Decimal("800.00"), "KESIN"))
+        self.assertIsNone(h.fis_id)                             # maliyet fişi yok
+        self.assertFalse(YevmiyeFisi.objects.filter(kaynak="STOK_SATIS").exists())
+        self.stok.refresh_from_db()
+        self.assertEqual((self.stok.maliyet_miktar, self.stok.maliyet_deger_try,
+                          self.stok.ort_maliyet_try),
+                         (Decimal("16.000"), Decimal("2200.00"), Decimal("137.500000")))
+        k153 = next(x for x in stok_ortalama.degerleme_raporu()["karsilastirma"] if x["kod"] == "153")
+        self.assertEqual((k153["stok_degeri"], k153["mizan"], k153["fark"]),
+                         (Decimal("2200.00"), Decimal("2200.00"), Decimal("0.00")))
+
+    def test_iade_sonrasi_satis_yeni_ortalamayla_degerlenir(self):
+        self.alis_yap(D(2026, 3, 5), "10", "100")
+        self.alis_yap(D(2026, 3, 5), "10", "200")
+        fatura_olustur(
+            tip_id=self.alis_iade.pk, cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "4", "birim_fiyat": "200"}],
+            depo_id=self.da.pk)
+        f = self.satis_yap(D(2026, 3, 12), "2")
+        h = StokHareket.objects.get(fatura_satir__fatura=f, silindi=False)
+        self.assertEqual(h.tutar_try, Decimal("275.00"))        # 2 x 137,5
+
+
+class PlastikVirmanTest(MaliyetBTemel):
+    """PLASTİK PARÇALAR: kategori eşlemesi 150.30 → 151.40 ve bugüne kadarki bakiyenin virmanı."""
+
+    def setUp(self):
+        super().setUp()
+        _hesap("150.30", "PLASTİK İLK MADDE")
+        _hesap("151.40", "PLASTİK PARÇALAR")
+        ust = Kategori.objects.create(ad="YARI MAMULLER", kod="95")
+        self.kat = Kategori.objects.create(ad="PLASTİK PARÇALAR", kod="40", ust=ust)
+        KategoriHesap.objects.create(kategori=self.kat, fatura_tipi=self.alis,
+                                     hesap=HesapPlani.objects.get(hesap_kodu="150.30"))
+        self.plastik = Stok.objects.create(
+            kod="151-40-9001", ad="PLASTİK TAPA", kategori=self.kat, kdv=self.kdv,
+            uretim_birimi=self.stok.uretim_birimi, fatura_birimi=self.stok.uretim_birimi)
+        self.alis_yap(D(2026, 3, 5), "3", "100", stok=self.plastik)         # 300 TL, 150.30'a işlendi
+
+    def _komut(self, *ek):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        call_command("stok_hesap_tanimla", *ek, stdout=out)
+        return out.getvalue()
+
+    def _bakiye(self, kod):
+        from core.services.stok_ortalama import _mizan_bakiyesi
+        return _mizan_bakiyesi(kod)
+
+    def test_dry_run_gosterir_uygula_virman_yapar_tekrarda_yapmaz(self):
+        c = self._komut()
+        self.assertIn("VİRMAN FİŞİ", c)
+        self.assertIn("300,00", c.replace(".", ","))               # tutar raporda
+        self.assertEqual(self._bakiye("150.30"), Decimal("300.00"))   # dry-run geri alındı
+        self.assertEqual(self._bakiye("151.40"), Decimal("0.00"))
+        self._komut("--uygula")
+        self.assertEqual((self._bakiye("150.30"), self._bakiye("151.40")),
+                         (Decimal("0.00"), Decimal("300.00")))
+        self.assertEqual(KategoriHesap.objects.get(kategori=self.kat, fatura_tipi=self.alis,
+                                                   silindi=False).hesap_id, "151.40")
+        fis = YevmiyeFisi.objects.get(aciklama__startswith="PLASTİK PARÇALAR STOK VİRMANI")
+        self.assertEqual(self.fis_satirlari(fis), {"151.40": (Decimal("300.00"), Decimal("0.00")),
+                                                   "150.30": (Decimal("0.00"), Decimal("300.00"))})
+        from core.services import stok_ortalama
+        rapor = {x["kod"]: x for x in stok_ortalama.degerleme_raporu()["karsilastirma"]}
+        self.assertEqual((rapor["150"]["fark"], rapor["151"]["fark"]), (Decimal("0.00"), Decimal("0.00")))
+        self.assertIn("zaten yapılmış", self._komut("--uygula"))
+        self.assertEqual(YevmiyeFisi.objects.filter(
+            aciklama__startswith="PLASTİK PARÇALAR STOK VİRMANI", silindi=False).count(), 1)

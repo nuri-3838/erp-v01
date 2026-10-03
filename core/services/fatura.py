@@ -646,10 +646,12 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
             raise FaturaHatasi(
                 f"{satir.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar "
                 f"sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
-        # Ağırlıklı ortalama maliyet: giriş tutarı = fatura satır tutarı (TL, KDV/tevkifat hariç)
-        giris_tl = satir.tutar_tl if alis else None
+        # Ağırlıklı ortalama maliyet: giriş tutarı = fatura satır tutarı (TL, KDV/tevkifat hariç).
+        # Alış iadesi (tedarikçiye iade) çıkışı da ortalamayla DEĞİL iade faturasının tutarıyla değerlenir.
+        alis_iade = (not alis) and fatura.tip.maliyet_fisi == FaturaTipi.MaliyetFisi.ALIS_IADE
+        giris_tl = satir.tutar_tl if (alis or alis_iade) else None
         giris_usd = None
-        if alis:
+        if giris_tl is not None:
             usd_kuru = fatura.fis.kur_usd if fatura.fis_id else None
             giris_usd = yuvarla(giris_tl / usd_kuru, 2) if usd_kuru else None
         # Satış iadesi tipi: giriş fatura (satış) fiyatıyla DEĞİL o anki ortalama maliyetle değerlenir.
@@ -663,7 +665,7 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
                 aciklama=_aciklama(fatura.tip, fatura.cari, fatura.fatura_no),
                 kaynak=StokHareket.Kaynak.FATURA, fatura_satir=satir, kullanici=kullanici,
                 giris_tutar_try=giris_tl, giris_tutar_usd=giris_usd,
-                maliyet_fatura_satir=satir if (alis and not iade) else None,
+                maliyet_fatura_satir=satir if ((alis and not iade) or alis_iade) else None,
                 giris_ortalama=iade)
         except HareketHatasi as e:
             raise FaturaHatasi(str(e))
