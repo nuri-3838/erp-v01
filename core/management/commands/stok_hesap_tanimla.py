@@ -6,7 +6,8 @@
    hesaplarına bağlar (üretim aktarım fişi, sarf ve satış maliyeti fişi stok hesabını buradan bulur).
    Zaten doğru bağlı olanlara dokunmaz. Farklı bir hesaba bağlı olanı, yalnız ``yeniden_bagla``
    işaretliyse (PLASTİK PARÇALAR: 150.30 → 151.40) değiştirir; aksi halde DEĞİŞTİRMEZ, raporlar.
-3. PLASTİK PARÇALAR için bugüne kadar 150.30'a işlenmiş bakiyeyi VİRMAN fişiyle 151.40'a taşır
+3. (YALNIZ ``--virman`` ile; varsayılan KAPALI) PLASTİK PARÇALAR için bugüne kadar 150.30'a
+   işlenmiş bakiyeyi VİRMAN fişiyle 151.40'a taşır
    (151.40 BORÇ / 150.30 ALACAK). Tutar = bu kategorideki kartların stok değeri toplamı (ağırlıklı
    ortalama maliyet önbelleği). 150.30'da kart değeri dışında bakiye veya başka kategori varsa AYRICA
    listelenir. Fiş tarihi ``--virman-tarih`` (varsayılan: bugüne kadarki son USD kuru tarihi — fişin
@@ -16,7 +17,7 @@
 
 Varsayılan DRY-RUN (transaction geri alınır). ``--uygula`` kalıcı yazar.
 
-    python manage.py stok_hesap_tanimla [--virman-tarih 2026-10-03] [--uygula]
+    python manage.py stok_hesap_tanimla [--virman [--virman-tarih 2026-10-03]] [--uygula]
 """
 import datetime
 from decimal import Decimal
@@ -67,6 +68,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--uygula", action="store_true")
+        parser.add_argument("--virman", action="store_true",
+                            help="Plastik bakiyesini virmanla 151.40'a tasi (varsayilan: kapali)")
         parser.add_argument("--virman-tarih", default=None, help="YYYY-AA-GG (varsayilan: son kur tarihi)")
 
     def handle(self, *args, **opts):
@@ -80,7 +83,8 @@ class Command(BaseCommand):
             self._623(satirlar)
             self._kategoriler(satirlar)
             self._tipler(satirlar)
-            self._virman(satirlar, tarih)
+            if opts["virman"]:
+                self._virman(satirlar, tarih)
             if not uygula:
                 transaction.set_rollback(True)
         w = self.stdout.write

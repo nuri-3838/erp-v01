@@ -398,12 +398,12 @@ class PlastikVirmanTest(MaliyetBTemel):
         return _mizan_bakiyesi(kod)
 
     def test_dry_run_gosterir_uygula_virman_yapar_tekrarda_yapmaz(self):
-        c = self._komut()
+        c = self._komut("--virman")
         self.assertIn("VİRMAN FİŞİ", c)
         self.assertIn("300,00", c.replace(".", ","))               # tutar raporda
         self.assertEqual(self._bakiye("150.30"), Decimal("300.00"))   # dry-run geri alındı
         self.assertEqual(self._bakiye("151.40"), Decimal("0.00"))
-        self._komut("--uygula")
+        self._komut("--uygula", "--virman")
         self.assertEqual((self._bakiye("150.30"), self._bakiye("151.40")),
                          (Decimal("0.00"), Decimal("300.00")))
         self.assertEqual(KategoriHesap.objects.get(kategori=self.kat, fatura_tipi=self.alis,
@@ -414,6 +414,15 @@ class PlastikVirmanTest(MaliyetBTemel):
         from core.services import stok_ortalama
         rapor = {x["kod"]: x for x in stok_ortalama.degerleme_raporu()["karsilastirma"]}
         self.assertEqual((rapor["150"]["fark"], rapor["151"]["fark"]), (Decimal("0.00"), Decimal("0.00")))
-        self.assertIn("zaten yapılmış", self._komut("--uygula"))
+        self.assertIn("zaten yapılmış", self._komut("--uygula", "--virman"))
         self.assertEqual(YevmiyeFisi.objects.filter(
             aciklama__startswith="PLASTİK PARÇALAR STOK VİRMANI", silindi=False).count(), 1)
+
+    def test_virman_varsayilan_kapali_eslemeyi_degistirir_fis_yazmaz(self):
+        c = self._komut("--uygula")
+        self.assertNotIn("VİRMAN", c)
+        self.assertFalse(YevmiyeFisi.objects.filter(
+            aciklama__startswith="PLASTİK PARÇALAR STOK VİRMANI").exists())
+        self.assertEqual(KategoriHesap.objects.get(kategori=self.kat, fatura_tipi=self.alis,
+                                                   silindi=False).hesap_id, "151.40")
+        self.assertEqual(self._bakiye("150.30"), Decimal("300.00"))     # bakiye yerinde (fatura düzeltilecek)
