@@ -85,3 +85,7 @@ def aday_ek_yolu(instance, ad):
 
 def cek_gorsel_yolu(instance, ad):
     return _uuid_yolu("cek_senet", ad)
+
+
+def fatura_ek_yolu(instance, ad):
+    return _uuid_yolu("fatura_ek", ad)

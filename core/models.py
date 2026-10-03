@@ -9,8 +9,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.storage import (
-    aday_ek_yolu, cari_ek_yolu, cek_gorsel_yolu, ik_ozel_depo, ozel_depo, personel_belge_yolu,
-    personel_foto_yolu,
+    aday_ek_yolu, cari_ek_yolu, cek_gorsel_yolu, fatura_ek_yolu, ik_ozel_depo, ozel_depo,
+    personel_belge_yolu, personel_foto_yolu,
 )
 
 
@@ -1626,6 +1626,30 @@ class YatirimProjesi(TemelModel):
 
     def __str__(self):
         return f"{self.kod} — {self.ad}"
+
+
+class FaturaEk(TemelModel):
+    """Faturaya eklenen belge (çoklu): asıl fatura PDF'i/görseli (ör. Luca'dan indirilen).
+    Gizli: özel depoda (MEDIA_ROOT dışı), yalnız yetkili görünümle sunulur (bkz. core.storage).
+    Resim WebP'ye küçültülür, PDF olduğu gibi saklanır; muhasebeyi etkilemez."""
+
+    fatura = models.ForeignKey(Fatura, verbose_name="fatura", related_name="ekler",
+                               on_delete=models.CASCADE)
+    dosya = models.FileField("dosya", storage=ozel_depo, upload_to=fatura_ek_yolu)
+    orijinal_ad = models.CharField("orijinal dosya adı", max_length=255, blank=True)
+
+    class Meta:
+        db_table = "fatura_ek"
+        verbose_name = "fatura eki"
+        verbose_name_plural = "fatura ekleri"
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.orijinal_ad or self.dosya.name
+
+    @property
+    def resim_mi(self):
+        return self.dosya.name.lower().endswith(".webp")
 
 
 class FaturaSatir(TemelModel):

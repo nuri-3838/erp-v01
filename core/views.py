@@ -55,7 +55,7 @@ from core.forms import (
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
-    Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
+    Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
@@ -89,6 +89,7 @@ from core.services import cari as cari_servis
 from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
+from core.services import fatura_ek as fatura_ek_servis
 from core.services import teklif_siparis as teklif_siparis_servis
 from core.services import depo as depo_servis
 from core.services import hareket as hareket_servis
@@ -6669,7 +6670,44 @@ def fatura_detay(request, pk):
                   {"fatura": fatura, "satirlar": satirlar,
                    "irsaliye_farklari": fatura_servis.irsaliye_miktar_farklari(fatura),
                    "liste_url": _fatura_liste_url(fatura.yon),
+                   "ekler": fatura_ek_servis.ek_listele(fatura),
                    "kart_acilabilir_hesap": kart_acilabilir_hesap})
+
+
+@ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
+def fatura_ek_ekle(request, pk):
+    fatura = get_object_or_404(Fatura, pk=pk, silindi=False)
+    if request.method == "POST":
+        dosyalar = request.FILES.getlist("dosyalar")
+        if not dosyalar:
+            messages.error(request, "Dosya seçilmedi.")
+        eklenen = 0
+        for d in dosyalar:
+            try:
+                fatura_ek_servis.ek_ekle(fatura, dosya=d, kullanici=request.user)
+                eklenen += 1
+            except fatura_ek_servis.FaturaEkHatasi as e:
+                messages.error(request, str(e))
+        if eklenen:
+            messages.success(request, f"{eklenen} dosya eklendi.")
+    return redirect("core:fatura_detay", pk=fatura.pk)
+
+
+@ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
+def fatura_ek_sil(request, pk):
+    ek = get_object_or_404(FaturaEk, pk=pk, silindi=False, fatura__silindi=False)
+    if request.method == "POST":
+        fatura_ek_servis.ek_sil(ek, kullanici=request.user)
+        messages.success(request, "Dosya silindi.")
+    return redirect("core:fatura_detay", pk=ek.fatura_id)
+
+
+@never_cache
+@ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
+def fatura_ek_indir(request, pk):
+    """Fatura ekini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""
+    ek = get_object_or_404(FaturaEk, pk=pk, silindi=False, fatura__silindi=False)
+    return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
 
 
 # === DURAN VARLIK — Yatırım Projeleri (FAZ 1) ===

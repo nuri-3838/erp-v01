@@ -85,4 +85,25 @@
   </table>
   </div>
 </section>
+
+{% if not fatura.silindi %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Ekler</h2>
+  {% for ek in ekler %}
+  <div class="satir"><span class="et">📎</span>
+    <span class="dg"><a href="{% url 'core:fatura_ek_indir' ek.pk %}" target="_blank" rel="noopener">{{ ek.orijinal_ad|default:"dosya" }}</a>
+      <span class="yardim">{{ ek.created_at|date:"d.m.Y H:i" }}</span>
+      <form method="post" action="{% url 'core:fatura_ek_sil' ek.pk %}" style="display:inline" onsubmit="return confirm('Bu dosya silinsin mi?');">
+        {% csrf_token %}<button type="submit" class="sil">Sil</button></form></span></div>
+  {% empty %}
+  <div class="yardim">Henüz ek yok.</div>
+  {% endfor %}
+  <form method="post" action="{% url 'core:fatura_ek_ekle' fatura.pk %}" enctype="multipart/form-data" style="margin-top:.75rem">
+    {% csrf_token %}
+    <input type="file" name="dosyalar" multiple accept="image/*,application/pdf" required>
+    <button type="submit" class="dugme" style="border:0;cursor:pointer">Dosya ekle</button>
+    <div class="yardim">PDF veya resim, dosya başına en fazla 10 MB.</div>
+  </form>
+</section>
+{% endif %}
 {% endblock %}
