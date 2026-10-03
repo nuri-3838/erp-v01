@@ -10,7 +10,8 @@ from __future__ import annotations
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import CariKategori
+from core.models import CariKategori, HesapPlani
+from core.services import hesap_plani as hp
 
 
 class CariKategoriHatasi(ValueError):
@@ -62,9 +63,35 @@ def cari_kategori_olustur(*, ad, kod, ust_id=None, kullanici=None) -> CariKatego
                 "En fazla 2 seviye: bir alt kategorinin altına kategori açılamaz.")
     ad = _ad_dogrula(ad, ust.pk if ust else None)
     kod = _kod_dogrula(kod, ust.pk if ust else None)
-    return CariKategori.objects.create(
+    kategori = CariKategori.objects.create(
         ad=ad, kod=kod, ust=ust,
         created_by=kullanici, updated_by=kullanici)
+    if ust is not None:
+        _grup_hesabi_ac(kategori, kullanici=kullanici)
+    return kategori
+
+
+def _grup_hesabi_ac(kategori: CariKategori, kullanici=None):
+    """ALT kategori oluşunca hesap planında karşılık gelen ARA (grup) hesabı yoksa
+    açar — cari bu kategoriye bağlanıp kaydedildiğinde muhasebe alt hesabının
+    açılabilmesi için kök önceden hazır olsun diye (bkz. core.services.cari.
+    muhasebe_hesabi_ac). Üst kategorinin kodu hesap planı kök koduyla (320 vb.)
+    eşleşmiyorsa ya da kök hesap hiç yoksa sessizce atlanır (best-effort — kategori
+    oluşturmayı ASLA engellemez; cari kaydında hesap açılamazsa zaten orada açık bir
+    hata verilir)."""
+    ust_kodu = (kategori.ust.kod or "").strip()
+    kod = (kategori.kod or "").strip()
+    if not ust_kodu.isdigit() or not kod.isdigit():
+        return
+    if not HesapPlani.objects.filter(hesap_kodu=ust_kodu, silindi=False).exists():
+        return
+    hesap_kodu = f"{ust_kodu}.{kod}"
+    if HesapPlani.objects.filter(hesap_kodu=hesap_kodu, silindi=False).exists():
+        return
+    try:
+        hp.hesap_olustur(kod=hesap_kodu, ad=kategori.ad, ust_kodu=ust_kodu, kullanici=kullanici)
+    except hp.HesapHatasi:
+        pass
 
 
 def cari_kategori_guncelle(kategori: CariKategori, *, ad, kod,

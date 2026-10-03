@@ -210,6 +210,52 @@ class HesapSilmeTest(TestCase):
         self.assertIn("320", set(yaprak_hesaplar().values_list("hesap_kodu", flat=True)))
 
 
+class HesapYenidenAcmaTest(TestCase):
+    """hesap_kodu PRIMARY KEY olduğu için soft-delete edilmiş bir kod fiziksel satırı
+    korur — düz INSERT ile yeniden açmak PK çakışmasına çarpar. hesap_olustur bunu
+    (hareketsizse) sessizce reaktive etmeli; hareketliyse açıkça reddetmeli (2026-10-03
+    canlı olayı: Aleyna Hrozan carisi için 320.60 grup hesabı bu yüzden açılamadı ve
+    hata sessizce yutulup cari hesapsız kaydedildi)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_hesap_plani")
+        from core.models import Kur as _Kur
+        from decimal import Decimal as _Dec
+        import datetime as _dtk
+        _b0 = _dtk.date(2024, 1, 1)
+        _Kur.objects.bulk_create([_Kur(tarih=_b0 + _dtk.timedelta(days=_i), usd_alis=_Dec("30"))
+                                  for _i in range((_dtk.date(2027, 12, 31) - _b0).days + 1)])
+        cls.u = User.objects.create_superuser("yon", password="x")
+
+    def test_hareketsiz_silinmis_kod_yeniden_acilir(self):
+        hesap_olustur(kod="320.60", ad="eski ad", ust_kodu="320", kullanici=self.u)
+        hesap_sil(kod="320.60", kullanici=self.u)
+        self.assertTrue(HesapPlani.objects.get(hesap_kodu="320.60").silindi)
+
+        yeni = hesap_olustur(kod="320.60", ad="yeni ad", ust_kodu="320", kullanici=self.u)
+        self.assertEqual(yeni.hesap_kodu, "320.60")
+        self.assertEqual(yeni.hesap_adi, "YENİ AD")
+        self.assertFalse(yeni.silindi)
+        self.assertIsNone(yeni.silindi_at)
+        # aynı fiziksel satır reaktive edildi (ikinci bir kayıt açılmadı)
+        self.assertEqual(HesapPlani.objects.filter(hesap_kodu="320.60").count(), 1)
+
+    def test_hareketli_silinmis_kod_yeniden_acilamaz(self):
+        hesap_olustur(kod="320.60", ad="eski ad", ust_kodu="320", kullanici=self.u)
+        _fis(self.u, hesaplar=("320.60", "600"))
+        from core.services.yevmiye import fis_iptal
+        from core.models import YevmiyeFisi
+        fis_iptal(YevmiyeFisi.objects.filter(satirlar__hesap_id="320.60").first(), kullanici=self.u)
+        hesap_sil(kod="320.60", kullanici=self.u)
+        self.assertTrue(HesapPlani.objects.get(hesap_kodu="320.60").silindi)
+
+        with self.assertRaises(HesapHatasi):
+            hesap_olustur(kod="320.60", ad="yeni ad", ust_kodu="320", kullanici=self.u)
+        # eski kayıt dokunulmadan silinmiş kaldı
+        self.assertTrue(HesapPlani.objects.get(hesap_kodu="320.60").silindi)
+
+
 class HesapPlaniEkranTest(TestCase):
     @classmethod
     def setUpTestData(cls):

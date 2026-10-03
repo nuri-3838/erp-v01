@@ -7,9 +7,10 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import CariKategori, EkranYetki
+from core.models import CariKategori, EkranYetki, HesapPlani
 from core.services.cari_kategori import (CariKategoriHatasi, cari_kategori_guncelle,
                                          cari_kategori_olustur, cari_kategori_sil)
+from core.services.hesap_plani import hesap_sil
 
 
 class CariKategoriServisTest(TestCase):
@@ -59,6 +60,61 @@ class CariKategoriServisTest(TestCase):
         cari_kategori_sil(ust)
         ust.refresh_from_db()
         self.assertTrue(ust.silindi)
+
+
+class CariKategoriGrupHesabiTest(TestCase):
+    """ALT kategori oluşunca hesap planında karşılık gelen ARA (grup) hesabı otomatik
+    açılsın (2026-10-03 canlı olayı: 320.60 grup hesabı yoktu, cari muhasebe hesabı
+    almadan kaydediliyordu — bkz. core.services.cari_kategori._grup_hesabi_ac)."""
+
+    def test_alt_kategori_icin_grup_hesabi_acilir(self):
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        ust = cari_kategori_olustur(ad="tedarikçiler", kod="320")
+        cari_kategori_olustur(ad="pazaryeri satıcıları", kod="60", ust_id=ust.pk)
+        h = HesapPlani.objects.get(hesap_kodu="320.60")
+        self.assertFalse(h.silindi)
+        self.assertEqual(h.hesap_adi, "PAZARYERİ SATICILARI")
+        self.assertEqual(h.rapor_grubu, "BILANCO")          # üstten miras
+        self.assertEqual(h.rapor_kalemi, "KVYK")
+
+    def test_hareketsiz_silinmis_grup_hesabi_reaktive_edilir(self):
+        # Gerçek olay: 320.60 daha önce başka bir amaçla açılmış, silinmiş; aynı kodla
+        # yeni bir kategori açılınca eski (hareketsiz) satır reaktive+yeniden adlandırılır.
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        HesapPlani.objects.create(hesap_kodu="320.60", hesap_adi="ESKİ GRUP",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        hesap_sil(kod="320.60")
+        ust = cari_kategori_olustur(ad="tedarikçiler", kod="320")
+        cari_kategori_olustur(ad="pazaryeri satıcıları", kod="60", ust_id=ust.pk)
+        h = HesapPlani.objects.get(hesap_kodu="320.60")
+        self.assertFalse(h.silindi)
+        self.assertEqual(h.hesap_adi, "PAZARYERİ SATICILARI")
+        self.assertEqual(HesapPlani.objects.filter(hesap_kodu="320.60").count(), 1)
+
+    def test_aktif_grup_hesabi_zaten_varsa_dokunulmaz(self):
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        HesapPlani.objects.create(hesap_kodu="320.60", hesap_adi="ELDE VAR AD",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        ust = cari_kategori_olustur(ad="tedarikçiler", kod="320")
+        cari_kategori_olustur(ad="pazaryeri satıcıları", kod="60", ust_id=ust.pk)
+        h = HesapPlani.objects.get(hesap_kodu="320.60")
+        self.assertEqual(h.hesap_adi, "ELDE VAR AD")   # değişmedi
+
+    def test_kok_hesap_yoksa_kategori_yine_de_olusur(self):
+        ust = cari_kategori_olustur(ad="tedarikçiler", kod="320")
+        alt = cari_kategori_olustur(ad="pazaryeri satıcıları", kod="60", ust_id=ust.pk)
+        self.assertEqual(alt.kod, "60")
+        self.assertFalse(HesapPlani.objects.filter(hesap_kodu="320.60").exists())
+
+    def test_ust_kategori_icin_grup_hesabi_acilmaz(self):
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        cari_kategori_olustur(ad="tedarikçiler", kod="320")   # ust=None
+        # 320 zaten vardı; ikinci bir kayıt/çakışma oluşmadı
+        self.assertEqual(HesapPlani.objects.filter(hesap_kodu="320").count(), 1)
 
 
 class CariKategoriTasimaTest(TestCase):

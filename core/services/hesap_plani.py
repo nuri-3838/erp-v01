@@ -220,7 +220,7 @@ def _kod_dogrula(kod: str, ust):
         raise HesapHatasi("Hesap kodu en fazla 3 seviye olabilir (örn. 320.10.0001).")
     if any(not p.isdigit() for p in parcalar):
         raise HesapHatasi("Hesap kodu yalnızca rakam ve nokta içerebilir.")
-    if HesapPlani.objects.filter(hesap_kodu=kod).exists():
+    if HesapPlani.objects.filter(hesap_kodu=kod, silindi=False).exists():
         raise HesapHatasi(f"{kod} kodu zaten kayıtlı.")
     if ust is None:
         if "." in kod:
@@ -235,7 +235,14 @@ def _kod_dogrula(kod: str, ust):
 
 def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
                   rapor_kalemi="", parasal=None, kullanici=None) -> HesapPlani:
-    """Yeni ana ya da alt hesap oluşturur (kurallar + miras). HesapHatasi yükseltebilir."""
+    """Yeni ana ya da alt hesap oluşturur (kurallar + miras). HesapHatasi yükseltebilir.
+
+    ``hesap_kodu`` PRIMARY KEY olduğu için soft-delete edilmiş bir kod fiziksel
+    satırı KORUR — aynı kodu "yeniden açmak" düz bir INSERT ile PK çakışmasına
+    çarpar. Bu yüzden: kod daha önce silinmiş VE hiç yevmiye hareketi görmemişse
+    aynı satır yeni ad/parametrelerle REAKTİVE edilir (code-reuse, projenin diğer
+    soft-delete modellerindeki "boşluk doldurma" kuralıyla tutarlı); hareketi
+    varsa (geçmişi/anlamı korunmalı) açıkça reddedilir — sessizce yutulmaz."""
     kod = (kod or "").strip()
     ad = buyuk_harf_tr((ad or "").strip())
     if not ad:
@@ -256,6 +263,26 @@ def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
         raise HesapHatasi("Ana hesap için geçerli bir rapor grubu seçin.")
     # Kalem grubuyla uyumlu mu? (ana: kullanıcı girdisi; alt: üstten miras — yine de kontrol)
     _kalem_dogrula(rapor_grubu, rapor_kalemi, kod)
+
+    silinmis = HesapPlani.objects.filter(hesap_kodu=kod, silindi=True).first()
+    if silinmis is not None:
+        if YevmiyeSatir.objects.filter(hesap_id=kod).exists():
+            raise HesapHatasi(
+                f"{kod} kodu daha önce kullanılmış ve yevmiye hareketi var; "
+                "geçmişi korunmalı, farklı bir kod seçin.")
+        silinmis.hesap_adi = ad
+        silinmis.rapor_grubu = rapor_grubu
+        silinmis.rapor_kalemi = (rapor_kalemi or "")
+        silinmis.parasal = parasal
+        silinmis.aktif = True
+        silinmis.silindi = False
+        silinmis.silindi_at = None
+        silinmis.updated_by = kullanici
+        silinmis.save(update_fields=[
+            "hesap_adi", "rapor_grubu", "rapor_kalemi", "parasal", "aktif",
+            "silindi", "silindi_at", "updated_by", "updated_at"])
+        return silinmis
+
     return HesapPlani.objects.create(
         hesap_kodu=kod, hesap_adi=ad,
         rapor_grubu=rapor_grubu, rapor_kalemi=(rapor_kalemi or ""),

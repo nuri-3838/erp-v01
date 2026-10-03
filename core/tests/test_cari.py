@@ -256,6 +256,38 @@ class CariMuhasebeTest(TestCase):
         # ara hesap (320.10) korunur — başka cariler paylaşabilir
         self.assertFalse(HesapPlani.objects.get(hesap_kodu="320.10").silindi)
 
+    def test_hesap_acilamazsa_cari_sessizce_kaydedilmez(self):
+        # 2026-10-03 canlı olayı: 320.60 grup hesabı daha önce silinmiş VE hareketli
+        # (yevmiyesi var) iken aynı yoldan yeni cari açılmaya çalışılınca artık cari
+        # de sessizce hesapsız kaydedilmiyor — açık CariHatasi + hiçbir şey kalıcı olmuyor.
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        HesapPlani.objects.create(hesap_kodu="320.60", hesap_adi="ESKİ GRUP",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        HesapPlani.objects.create(hesap_kodu="100", hesap_adi="KASA",
+                                  rapor_grubu="BILANCO", rapor_kalemi="DV", parasal=True)
+        from core.services.yevmiye import SatirGirdi, fis_olustur
+        from core.models import Kur
+        Kur.objects.create(tarih=D(2026, 1, 1), usd_alis=Decimal("30"))
+        fis_olustur(tarih=D(2026, 1, 1), kullanici=None,
+                   satirlar=[SatirGirdi("320.60", "A", "1.000,00"),
+                            SatirGirdi("100", "B", "1.000,00")])
+        from core.services.hesap_plani import hesap_sil
+        with self.assertRaises(Exception):   # yevmiyeli silinemez (hesap_sil kuralı)
+            hesap_sil(kod="320.60")
+        # yevmiyeyi iptal et, SONRA hesabı silebiliriz (hareketi hâlâ "kullanılmış" sayılır)
+        from core.services.yevmiye import fis_iptal
+        from core.models import YevmiyeFisi
+        fis_iptal(YevmiyeFisi.objects.filter(satirlar__hesap_id="320.60").first())
+        hesap_sil(kod="320.60")
+
+        ust = CariKategori.objects.create(ad="TEDARİKÇİLER", kod="320")
+        alt = CariKategori.objects.create(ad="PAZARYERİ SATICILARI", kod="60", ust=ust)
+        onceki_sayi = Cari.objects.count()
+        with self.assertRaises(CariHatasi):
+            cari_olustur(unvan="aleyna hrozan", kategori_id=alt.pk, para_birimi="TRY")
+        self.assertEqual(Cari.objects.count(), onceki_sayi)   # hiçbir şey kalıcı olmadı
+
 
 class OdemeKosuluVadeTest(TestCase):
     """Cari ödeme koşulu + otomatik vade hesaplama (2026-10-03 isteği)."""

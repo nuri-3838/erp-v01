@@ -15,6 +15,7 @@ import calendar
 import datetime
 import os
 
+from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 
@@ -211,32 +212,45 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
         raise CariHatasi(f"Cari kodu zaten kayıtlı: {kod}")
-    cari = Cari.objects.create(kod=kod, unvan=unvan, kategori=kategori,
-                               created_by=kullanici, updated_by=kullanici, **veri)
-    cari.telefon_uyarilari = uyarilar
-    if cari.ulke_id or cari.sehir_id or cari.adres:
-        # Cari'nin kendi adresi doluysa, ilk sevk adresi olarak "Merkez Adres" adıyla
-        # otomatik + varsayılan eklenir (kullanıcı aynı adresi ikinci kez girmesin).
-        sevk_adresi_ekle(cari, ad="Merkez Adres", ulke_id=cari.ulke_id, sehir_id=cari.sehir_id,
-                         adres=cari.adres, varsayilan=True, kullanici=kullanici)
-    muh = muhasebe_hesabi_ac(cari, kullanici=kullanici)   # hesap planında otomatik aç
-    if muh and cari.muhasebe_kodu != muh:
-        cari.muhasebe_kodu = muh
-        cari.save(update_fields=["muhasebe_kodu"])
+    # Cari kaydı + muhasebe hesabı açma TEK transaction'da: hesap açılamazsa cari de
+    # sessizce hesapsız kalmasın diye tamamı geri alınır (bkz. ALTIN KURAL).
+    with transaction.atomic():
+        cari = Cari.objects.create(kod=kod, unvan=unvan, kategori=kategori,
+                                   created_by=kullanici, updated_by=kullanici, **veri)
+        cari.telefon_uyarilari = uyarilar
+        if cari.ulke_id or cari.sehir_id or cari.adres:
+            # Cari'nin kendi adresi doluysa, ilk sevk adresi olarak "Merkez Adres" adıyla
+            # otomatik + varsayılan eklenir (kullanıcı aynı adresi ikinci kez girmesin).
+            sevk_adresi_ekle(cari, ad="Merkez Adres", ulke_id=cari.ulke_id, sehir_id=cari.sehir_id,
+                             adres=cari.adres, varsayilan=True, kullanici=kullanici)
+        try:
+            muh = muhasebe_hesabi_ac(cari, kullanici=kullanici)   # hesap planında otomatik aç
+        except hp.HesapHatasi as e:
+            raise CariHatasi(f"Muhasebe hesabı açılamadı, cari kaydedilmedi: {e}")
+        if muh and cari.muhasebe_kodu != muh:
+            cari.muhasebe_kodu = muh
+            cari.save(update_fields=["muhasebe_kodu"])
     return cari
 
 
 def muhasebe_hesabi_ac(cari: Cari, kullanici=None) -> str:
     """Cari kodundan muhasebe hesabını (eksik ara hesaplarla birlikte) hesap planında
     açar ve noktalı muhasebe kodunu döndürür. ÜST grup/kalem/parasal üstten miras alınır.
-    Ara hesap adı = cari kategorisi, yaprak hesap adı = cari unvanı. Best-effort: kök yoksa
-    ya da kod rakamsal değilse (CAR-...) boş döner. İdempotent (var olanı yeniden açmaz)."""
+    Ara hesap adı = cari kategorisi, yaprak hesap adı = cari unvanı. İdempotent (var
+    olanı yeniden açmaz).
+
+    Yalnız kod yapısı hesap planına UYGULANAMIYORSA (kategorisiz cari -> ``CAR-0001``
+    gibi rakamsal olmayan kod, ya da kök hesap — 320 vb. — hiç yoksa) boş döner; bu
+    cari türü için otomatik hesap baştan beklenmez, HATA DEĞİLDİR. Kod rakamsal VE kök
+    mevcutken hesap yine de açılamıyorsa (örn. hp.HesapHatasi) artık burada SESSİZCE
+    YUTULMAZ — istisna olduğu gibi çağırana (cari_olustur) yükselir; orada kullanıcıya
+    açık bir hata olarak gösterilmeli (bkz. ALTIN KURAL: cari sessizce hesapsız kalmaz)."""
     kod = (cari.kod or "").strip()
     if not kod:
         return ""
     seg = kod.replace("-", ".").split(".")
     if len(seg) < 2 or not all(s.isdigit() for s in seg):
-        return ""   # ör. CAR-0001 -> hesap planı kod kuralına uymaz
+        return ""   # ör. CAR-0001 -> hesap planı kod kuralına uymaz (kategorisiz cari)
     noktali = ".".join(seg)
     if not HesapPlani.objects.filter(hesap_kodu=seg[0], silindi=False).exists():
         return ""   # kök hesap (320 vb.) yoksa açma
@@ -247,10 +261,7 @@ def muhasebe_hesabi_ac(cari: Cari, kullanici=None) -> str:
             continue
         leaf = (i == len(seg) - 1)
         ad = cari.unvan if leaf else (cari.kategori.ad if cari.kategori_id else prefix)
-        try:
-            hp.hesap_olustur(kod=prefix, ad=ad, ust_kodu=ust, kullanici=kullanici)
-        except hp.HesapHatasi:
-            return ""
+        hp.hesap_olustur(kod=prefix, ad=ad, ust_kodu=ust, kullanici=kullanici)
     return noktali
 
 
