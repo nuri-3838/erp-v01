@@ -43,7 +43,7 @@ from core.forms import (
     SatisProformaBaslikForm, SatisProformaKalemForm,
     TanimSecenegiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
-    MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
+    DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
     UrunAgaciForm,
@@ -259,6 +259,11 @@ def fis_duzenle(request, pk):
         fat = fis.faturalar.filter(silindi=False).first()
         messages.info(request, "Bu fiş bir faturadan oluştu; düzenlemek için faturayı düzenleyin.")
         return redirect("core:fatura_duzenle", pk=fat.pk) if fat else redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak in (YevmiyeFisi.Kaynak.STOK_SARF, YevmiyeFisi.Kaynak.URETIM,
+                      YevmiyeFisi.Kaynak.STOK_SATIS):
+        messages.info(request, "Bu fiş stok maliyetinden otomatik üretilir; elle düzenlenemez "
+                               "(tutar ortalama maliyetten gelir).")
+        return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.KASA:
         messages.info(request, "Bu fiş bir kasa hareketinden oluştu; düzenlenemez. "
                                "Gerekirse hareketi iptal edip yeniden girin.")
@@ -358,6 +363,17 @@ def fis_iptal_gorunum(request, pk):
             messages.info(request, "Bu fiş bir stok sarf çıkışından oluştu; iptal için "
                                    "stok detayındaki hareketi silin.")
             return redirect("core:stok_detay", pk=hareket.stok_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.URETIM and not fis.silindi:
+        messages.info(request, "Bu fiş bir üretim kaydının maliyet aktarımıdır; elle iptal "
+                               "edilemez (üretim kaydı ve stok hareketleriyle birlikte yönetilir).")
+        return redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.STOK_SATIS and not fis.silindi:
+        hareket = fis.stok_sarf_hareketleri.filter(silindi=False).first()
+        fatura = hareket.fatura_satir.fatura if hareket and hareket.fatura_satir_id else None
+        messages.info(request, "Bu fiş bir satış faturasının stok maliyetidir; iptal için "
+                               "faturayı düzenleyin/silin.")
+        return redirect("core:fatura_detay", pk=fatura.pk) if fatura else redirect(
+            "core:fis_detay", pk=fis.pk)
     if request.method == "POST":
         if fis.silindi:
             messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
@@ -1077,12 +1093,40 @@ def stok_hareket_ekle(request, pk):
 
 
 @ekran_gerekli("stoklar")
+def stok_depo_transferi(request, pk):
+    """Aynı stoğu depolar arasında taşır (maliyeti değiştirmez, fiş üretmez)."""
+    from core.services import depo_transfer
+    stok = get_object_or_404(Stok.objects.select_related("uretim_birimi"), pk=pk, silindi=False)
+    if request.method == "POST":
+        form = DepoTransferForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                depo_transfer.depo_transferi_yap(
+                    stok_id=stok.pk, kaynak_depo_id=cd["kaynak_depo"].pk,
+                    hedef_depo_id=cd["hedef_depo"].pk, tarih=cd["tarih"], miktar=cd["miktar"],
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, "Depo transferi yapıldı.")
+                return redirect("core:stok_detay", pk=stok.pk)
+            except hareket_servis.HareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = DepoTransferForm()
+    return render(request, "core/stok_transfer_form.html", {"form": form, "stok": stok})
+
+
+@ekran_gerekli("stoklar")
 def stok_hareket_sil(request, pk):
     from core.models import StokHareket
     hareket = get_object_or_404(StokHareket, pk=pk, silindi=False)
     stok_pk = hareket.stok_id
     if request.method == "POST":
         try:
+            if hareket.kaynak == StokHareket.Kaynak.TRANSFER and hareket.transfer_grubu:
+                from core.services import depo_transfer
+                depo_transfer.depo_transferi_sil(hareket.transfer_grubu, kullanici=request.user)
+                messages.success(request, "Depo transferi silindi (iki hareket).")
+                return redirect("core:stok_detay", pk=stok_pk)
             hareket_servis.hareket_sil(hareket, kullanici=request.user)
             messages.success(request, "Stok hareketi silindi.")
         except hareket_servis.HareketHatasi as e:
@@ -6345,12 +6389,8 @@ def operasyon_kaydi_detay(request, pk):
                 tur=StokHareket.Tur.CIKIS).first()
             if hareket is not None:
                 maliyetler[i] = stok_maliyet.hareket_maliyet_durumu(hareket)
-        cikti_hareketi = StokHareket.objects.filter(
-            kaynak=StokHareket.Kaynak.URETIM, tur=StokHareket.Tur.GIRIS,
-            stok_id=kayit.operasyon.cikti_id, aciklama__icontains=kayit.no,
-            silindi=False).select_related("maliyet_katmani").first()
-        if cikti_hareketi is not None:
-            cikti_katmani = getattr(cikti_hareketi, "maliyet_katmani", None)
+        cikti_katmani = StokHareket.objects.filter(
+            operasyon_kaydi=kayit, tur=StokHareket.Tur.GIRIS, silindi=False).first()
     return render(request, "core/operasyon_kaydi_detay.html",
                   {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
                    "formset": formset, "cikti_katmani": cikti_katmani})

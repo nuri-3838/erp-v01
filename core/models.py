@@ -155,6 +155,8 @@ class YevmiyeFisi(TemelModel):
         KREDI = "KREDI", "Kredi Hareketi (otomatik)"
         YATIRIM = "YATIRIM", "Yatırım Projesi Aktifleştirme (otomatik)"
         STOK_SARF = "STOK_SARF", "Stok Sarf Çıkışı (otomatik)"
+        URETIM = "URETIM", "Üretim Maliyet Aktarımı (otomatik)"
+        STOK_SATIS = "STOK_SATIS", "Satış Maliyeti (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -425,6 +427,17 @@ class FaturaTipi(TemelModel):
     # Serbest meslek makbuzu gibi GV STOPAJI kesilen tip (yalnız gider+alış): faturada stopaj
     # oranı girilir, stopaj 360.xx'e alacak yazılıp cariden düşülür (bkz. core.services.fatura).
     stopajli = models.BooleanField("GV stopajlı (serbest meslek makbuzu)", default=False)
+
+    class MaliyetFisi(models.TextChoices):
+        YOK = "", "Maliyet fişi yok"
+        SATIS = "SATIS", "Satış (çıkış maliyeti: 620/621/623 borç, stok alacak)"
+        SATIS_IADE = "SATIS_IADE", "Satış iadesi (giriş ortalamadan, ters maliyet fişi)"
+
+    # Stoklu faturada çıkış/giriş hareketinin ağırlıklı ortalama maliyeti için otomatik MALİYET
+    # FİŞİ üretilsin mi (bkz. core.services.stok_fis). Boş = üretilmez (ör. alış faturası: stok
+    # girişinin muhasebesini faturanın kendi fişi yapar).
+    maliyet_fisi = models.CharField("stok maliyet fişi", max_length=10, blank=True, default="",
+                                    choices=MaliyetFisi.choices)
 
     class Meta:
         db_table = "fatura_tipi"
@@ -2147,6 +2160,7 @@ class StokHareket(TemelModel):
         IRSALIYE = "IRSALIYE", "İrsaliye"
         URETIM = "URETIM", "Üretim"
         SARF = "SARF", "Sarf (hesaba çıkış)"
+        TRANSFER = "TRANSFER", "Depo transferi"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -2196,6 +2210,14 @@ class StokHareket(TemelModel):
     # Giriş tutarı kısmi/eksik veriden türetildiyse (ör. üretim çıktısı) True: durum GEÇİCİ olur ve
     # bu bayrak o girişten beslenen sonraki çıkış/üretimlere miras kalır.
     giris_tahmini = models.BooleanField("giriş tutarı tahmini", default=False)
+    # Yalnız satış iadesi girişi: tutar fatura değil, o anki ağırlıklı ORTALAMA (çıkışın maliyeti).
+    giris_ortalama = models.BooleanField("giriş ortalamadan değerlenir", default=False)
+    # Üretim kaydının girdi ÇIKIŞ ve çıktı GİRİŞ hareketleri (maliyet aktarımı için).
+    operasyon_kaydi = models.ForeignKey(
+        "OperasyonKaydi", verbose_name="operasyon kaydı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="stok_hareketleri_maliyet")
+    # Depo transferinin iki bacağı (çıkış + giriş) aynı kimliği taşır; maliyeti DEĞİŞTİRMEZ.
+    transfer_grubu = models.UUIDField("transfer grubu", null=True, blank=True, db_index=True)
     maliyet_fatura_satir = models.ForeignKey(
         "FaturaSatir", verbose_name="maliyeti belirleyen fatura satırı", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="maliyet_hareketleri")
@@ -3056,6 +3078,10 @@ class OperasyonKaydi(TemelModel):
         "hedef çıktı miktarı", max_digits=18, decimal_places=3)
     durum = models.CharField("durum", max_length=6, choices=Durum.choices, default=Durum.TASLAK)
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+    # Onayda girdi maliyetinin çıktıya aktarımı için 15x→15x fişi (hesaplar aynıysa fiş yok).
+    fis = models.ForeignKey(
+        "YevmiyeFisi", verbose_name="maliyet aktarım fişi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="operasyon_kayitlari")
 
     class Meta:
         db_table = "core_operasyon_kaydi"

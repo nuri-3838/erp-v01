@@ -134,19 +134,21 @@ def kategori_hesaplari(kategori: Kategori) -> dict:
 
 def stok_muhasebe_hesabi(stok) -> HesapPlani:
     """Stoğun kendi envanter (varlık) muhasebe hesabı — kartta ayrı bir alan yok, ALIŞ
-    (stoklu, gider olmayan) fatura tiplerindeki KategoriHesap eşlemesinden türetilir.
-    Stok sarf çıkışında stok tarafının alacaklanacağı hesabı bulmak için kullanılır."""
+    (stoklu, gider olmayan) fatura tiplerindeki KategoriHesap eşlemesinden türetilir ve YALNIZ
+    15x (150-153: ilk madde, yarı mamul, mamul, ticari mal) hesaplarına bakılır — aynı tipte
+    başka hesaplara giden eşlemeler (ör. satış iadesi tipinin 610.xx hesabı) stok hesabı
+    sayılmaz. Sarf/üretim/satış maliyet fişlerinde stok tarafının hesabını bulmak için kullanılır."""
     hesaplar = set(
         KategoriHesap.objects.filter(
             silindi=False, kategori_id=stok.kategori_id,
             fatura_tipi__silindi=False, fatura_tipi__yon=FaturaTipi.Yon.ALIS,
-            fatura_tipi__gider=False,
+            fatura_tipi__gider=False, hesap__hesap_kodu__regex=r"^15[0-3]",
         ).values_list("hesap__hesap_kodu", flat=True).distinct()
     )
     if not hesaplar:
         raise KategoriHatasi(
-            f"{stok.kategori.ad} kategorisi için alış (stoklu) fatura tipinde tanımlı bir "
-            "muhasebe hesabı yok; sarf çıkışı için önce kategori hesap haritasını tanımlayın."
+            f"{stok.kategori.ad} kategorisi için alış (stoklu) fatura tipinde 150-153 "
+            "aralığında tanımlı bir stok hesabı yok; önce kategori hesap haritasını tanımlayın."
         )
     if len(hesaplar) > 1:
         raise KategoriHatasi(

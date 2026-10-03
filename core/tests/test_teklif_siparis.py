@@ -1721,7 +1721,7 @@ class SatinalmaZinciriTest(TestCase):
         satir = fatura.satirlar.filter(silindi=False).first()
         hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=self.tarih, tur="GIRIS",
                      miktar="10", kaynak="FATURA", fatura_satir=satir,
-                     birim_maliyet_try=Decimal("100"), kullanici=self.yon)   # eski bug'ın izi
+                     giris_tutar_try=Decimal("1000"), kullanici=self.yon)   # eski bug'ın izi
         self.assertEqual(eldeki_miktar(self.stok), Decimal("20"))
         out = StringIO()
         call_command("irsaliyeli_fatura_stok_duzelt", stdout=out)
@@ -1731,10 +1731,10 @@ class SatinalmaZinciriTest(TestCase):
         self.assertEqual(eldeki_miktar(self.stok), Decimal("10"))
         self.assertEqual(StokHareket.objects.filter(silindi=False, kaynak="IRSALIYE").count(), 1)
 
-    def test_irsaliye_onayinda_fifo_katman_olusur(self):
+    def test_irsaliye_onayinda_giris_maliyetsiz_fatura_bekler(self):
         """İrsaliye onayı, fatura beklemeden gerçek stok girişi yazıyor (bkz.
-        _irsaliye_stok_hareketi_yaz) — bu, FIFO maliyet katmanının da OLUŞTUĞU tek
-        gerçek yol (canlıda tüm hareketler bu yoldan geliyor, doğrudan fatura değil)."""
+        _irsaliye_stok_hareketi_yaz) — ama MALİYETİ fatura belirler: giriş önce fiyatsızdır
+        (bkz. core.services.stok_ortalama)."""
         from core.models import StokHareket
         from core.services.teklif_siparis import teklif_siparis_onayla
 
@@ -1746,11 +1746,9 @@ class SatinalmaZinciriTest(TestCase):
         teklif_siparis_onayla(irsaliye, kullanici=self.yon)
 
         hareket = StokHareket.objects.get()
-        katman = hareket.maliyet_katmani
-        self.assertEqual(katman.birim_maliyet_try, Decimal("100.000000"))   # TRY, kur=1
-        self.assertEqual(katman.giris_miktar, Decimal("10.000"))
-        self.assertEqual(katman.kalan_miktar, Decimal("10.000"))
-        self.assertFalse(katman.tahmini)
+        self.assertEqual(hareket.miktar, Decimal("10.000"))
+        self.assertIsNone(hareket.giris_tutar_try)
+        self.assertEqual(hareket.maliyet_durumu, StokHareket.MaliyetDurumu.YOK)
 
     def test_irsaliye_uretim_miktar_override_gercek_boy_adedini_korur(self):
         """Gerçek olay: 1 BOY teorik 3,852 KG gelir; kullanıcı 1078 BOY girip Miktar'ı
@@ -1776,14 +1774,7 @@ class SatinalmaZinciriTest(TestCase):
 
         hareket = StokHareket.objects.get(stok=stok_ted)
         self.assertEqual(hareket.miktar, Decimal("1078.000"))   # 1031.724 DEĞİL
-        katman = hareket.maliyet_katmani
-        self.assertEqual(katman.giris_miktar, Decimal("1078.000"))
-        toplam_tl = Decimal("5.15") * Decimal("1") * Decimal("3974.200")   # TRY, kur=1
-        beklenen_birim = yuvarla(toplam_tl / Decimal("1078"), 6)
-        self.assertEqual(katman.birim_maliyet_try, beklenen_birim)
-        # Toplam maliyet korunmalı (override'sız hesaplansaydı da AYNI toplam çıkardı).
-        self.assertEqual(yuvarla(katman.birim_maliyet_try * katman.giris_miktar, 2),
-                         yuvarla(toplam_tl, 2))
+        self.assertIsNone(hareket.giris_tutar_try)       # maliyeti fatura belirler
 
     def test_irsaliye_uretim_miktar_bossa_eski_davranis_calisir(self):
         """Regresyon: uretim_miktar hiç girilmezse eski miktar/cevirici hesabı aynen çalışır."""
@@ -1820,9 +1811,10 @@ class SatinalmaZinciriTest(TestCase):
         teklif_siparis_onayla(irsaliye, kullanici=self.yon)
         from core.models import StokHareket
         hareket = StokHareket.objects.get(stok=self.stok)
-        katman = hareket.maliyet_katmani
-        # override=99 kullanılmalı, carinin MB_SATIS tercihi (30.5) DEĞİL.
-        self.assertEqual(katman.birim_maliyet_try, Decimal("99.000000"))
+        # Belgedeki elle kur saklanır (maliyet artık faturadan gelir, irsaliye kur çözmez).
+        irsaliye.refresh_from_db()
+        self.assertEqual(irsaliye.kur, Decimal("99.000000"))
+        self.assertEqual(hareket.maliyet_durumu, StokHareket.MaliyetDurumu.YOK)
 
     def test_irsaliye_kur_bossa_carinin_kur_tipi_tercihine_gore_hesaplanir(self):
         from core.models import Kur, StokHareket
@@ -1838,8 +1830,7 @@ class SatinalmaZinciriTest(TestCase):
             kullanici=self.yon)
         teklif_siparis_onayla(irsaliye, kullanici=self.yon)
         hareket = StokHareket.objects.get(stok=self.stok)
-        katman = hareket.maliyet_katmani
-        self.assertEqual(katman.birim_maliyet_try, Decimal("31.250000"))
+        self.assertEqual(hareket.miktar, Decimal("10.000"))   # kur çeşidi girişi engellemez
 
     def test_try_irsaliyede_kur_hep_bir(self):
         """Kalıntı bir kur değeri gönderilse bile (JS'in TRY'de temizlemesi gerekiyor ama
@@ -1854,8 +1845,7 @@ class SatinalmaZinciriTest(TestCase):
         self.assertIsNone(irsaliye.kur)   # pb=TRY -> kur zorla None'a normalize edilir
         teklif_siparis_onayla(irsaliye, kullanici=self.yon)
         hareket = StokHareket.objects.get(stok=self.stok)
-        katman = hareket.maliyet_katmani
-        self.assertEqual(katman.birim_maliyet_try, Decimal("100.000000"))   # kur=1
+        self.assertEqual(hareket.miktar, Decimal("10.000"))
 
     def test_donusum_zincirinde_kur_tasinir(self):
         """Teklif'te elle girilen kur, Sipariş'e ve İrsaliye'ye otomatik dönüşümde taşınır."""

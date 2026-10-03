@@ -556,7 +556,7 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
                 stok_id=satir.girdi_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
                 tur=StokHareket.Tur.CIKIS, miktar=satir.gerceklesen_miktar,
                 aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
-                operasyon_kaydi_girdi=satir, kullanici=kullanici)
+                operasyon_kaydi_girdi=satir, operasyon_kaydi=kayit, kullanici=kullanici)
         except HareketHatasi as e:
             raise UretimHatasi(str(e))
         # Girdi, o anki ağırlıklı ortalamayla değerlenir (bkz. core.services.stok_ortalama).
@@ -567,21 +567,25 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
             toplam_girdi_usd += girdi_hareketi.tutar_usd or Decimal("0")
             if girdi_hareketi.maliyet_durumu != StokHareket.MaliyetDurumu.KESIN:
                 herhangi_biri_tahmini = True
-    cikti_birim_maliyet = (yuvarla(toplam_girdi_maliyeti / kayit.hedef_cikti_miktari, 6)
-                           if toplam_girdi_maliyeti > 0 else None)
-    # Çıktı girişinin tutarı onay anında girdi maliyetlerinden DONDURULUR (girdi maliyeti
-    # sonradan değişirse çıktıya zincirleme yayılım Dilim B'de eklenecek).
+    # Çıktı girişinin tutarı girdi çıkışlarının ağırlıklı ortalama maliyet toplamıdır; girdi
+    # maliyeti sonradan değişirse çıktıya (ve onu kullanan sonraki üretime) zincirleme yayılır
+    # ve maliyet aktarım fişi güncellenir (bkz. core.services.stok_fis.uretim_senkronla).
     hareket_ekle(
         stok_id=kayit.operasyon.cikti_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
         tur=StokHareket.Tur.GIRIS, miktar=kayit.hedef_cikti_miktari,
         aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
-        birim_maliyet_try=cikti_birim_maliyet, tahmini=herhangi_biri_tahmini,
+        tahmini=herhangi_biri_tahmini, operasyon_kaydi=kayit,
         giris_tutar_try=toplam_girdi_maliyeti if toplam_girdi_maliyeti > 0 else None,
         giris_tutar_usd=toplam_girdi_usd if toplam_girdi_maliyeti > 0 else None,
         kullanici=kullanici)
     kayit.durum = OperasyonKaydi.Durum.ONAYLI
     kayit.updated_by = kullanici
     kayit.save(update_fields=["durum", "updated_by", "updated_at"])
+    from core.services import stok_fis
+    try:
+        stok_fis.uretim_senkronla(kayit, kullanici=kullanici)    # 15x→15x maliyet aktarım fişi
+    except stok_fis.MaliyetHatasi as e:
+        raise UretimHatasi(str(e))
     return kayit
 
 

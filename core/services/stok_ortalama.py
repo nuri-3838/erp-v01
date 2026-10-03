@@ -66,7 +66,21 @@ def hesapla(kalemler) -> list[Sonuc]:
     cikti = []
     for k in kalemler:
         m = k.miktar
-        if k.tur == GIRIS:
+        if getattr(k, "kaynak", None) == StokHareket.Kaynak.TRANSFER:
+            # Depo transferi: MALİYETİ DEĞİŞTİRMEZ (tek ortalama, tüm depolar) — bilgi amaçlı
+            # tutar o anki ortalamayla; miktar/değer durumu aynen kalır (çıkış+giriş net sıfır).
+            t = yuvarla(m * v / q, 2) if q > 0 and v > 0 else SIFIR
+            tu = yuvarla(m * vu / q, 2) if q > 0 and v > 0 else SIFIR
+            durum = (KESIN if bekleyen == 0 else GECICI) if t > 0 else YOK
+        elif k.tur == GIRIS and getattr(k, "giris_ortalama", False):
+            # Satış iadesi girişi: o anki ağırlıklı ortalamayla (ortalamayı değiştirmez).
+            if q > 0 and v > 0:
+                t, tu = yuvarla(m * v / q, 2), yuvarla(m * vu / q, 2)
+                durum = KESIN if bekleyen == 0 else GECICI
+            else:
+                t, tu, durum = SIFIR, SIFIR, YOK
+            q, v, vu = q + m, v + t, vu + tu
+        elif k.tur == GIRIS:
             if k.giris_tutar_try is not None:
                 t = k.giris_tutar_try
                 tu = k.giris_tutar_usd if k.giris_tutar_usd is not None else SIFIR
@@ -125,7 +139,7 @@ def _usd_doldur(hareketler):
 
 
 @transaction.atomic
-def yeniden_hesapla(stok, *, fis_guncelle=True) -> list:
+def yeniden_hesapla(stok, *, fis_guncelle=True, _derinlik=0) -> list:
     """Kartın TÜM hareketlerini baştan hesaplar, sonuçları hareketlere ve ``Stok`` önbelleğine
     yazar. Değeri değişen sarf çıkışlarının fişini günceller (``fis_guncelle=False`` ise
     güncellemez, yalnız değişenleri döner). Dönüş: değeri değişen çıkış hareketleri."""
@@ -144,7 +158,9 @@ def yeniden_hesapla(stok, *, fis_guncelle=True) -> list:
             for a, y in yeni.items():
                 setattr(h, a, y)
             guncellenecek.append(h)
-        if h.tur == CIKIS and h.fis_id and eski_tutar is not None and eski_tutar != s.tutar_try:
+        if (eski_tutar is not None and eski_tutar != s.tutar_try
+                and (h.tur == CIKIS or h.giris_ortalama)
+                and h.kaynak != StokHareket.Kaynak.TRANSFER):
             degisen_cikislar.append(h)
     if guncellenecek:
         StokHareket.objects.bulk_update(guncellenecek, _HAREKET_ALANLARI + ["giris_tutar_usd"])
@@ -159,9 +175,31 @@ def yeniden_hesapla(stok, *, fis_guncelle=True) -> list:
         maliyet_deger_usd=stok.maliyet_deger_usd, ort_maliyet_try=stok.ort_maliyet_try,
         ort_maliyet_usd=stok.ort_maliyet_usd)
     if fis_guncelle:
-        for h in degisen_cikislar:
-            _cikis_fisini_guncelle(h)
+        _degisenleri_isle(degisen_cikislar, _derinlik)
     return degisen_cikislar
+
+
+def _degisenleri_isle(degisen, derinlik):
+    """Değeri değişen çıkış/iade hareketlerinin muhasebe fişlerini ve zincirleme etkilerini işler:
+    sarf fişi güncellenir; üretim girdisi ise çıktı maliyeti + aktarım fişi yenilenir ve çıktı kartı
+    (onu kullanan sonraki üretimler dahil) baştan hesaplanır; satış/iade ise maliyet fişi yenilenir."""
+    from core.services import stok_fis
+    if derinlik > 10:
+        raise MaliyetHatasi("Maliyet zinciri çok derin (döngü olabilir); işlem durduruldu.")
+    kayitlar, faturalar = {}, {}
+    for h in degisen:
+        if h.kaynak == StokHareket.Kaynak.SARF and h.fis_id:
+            _cikis_fisini_guncelle(h)
+        elif h.operasyon_kaydi_id:
+            kayitlar[h.operasyon_kaydi_id] = h.operasyon_kaydi
+        elif h.fatura_satir_id:
+            faturalar[h.fatura_satir.fatura_id] = h.fatura_satir.fatura
+    for kayit in kayitlar.values():
+        cikti_stok = stok_fis.uretim_senkronla(kayit)
+        if cikti_stok is not None:
+            yeniden_hesapla(cikti_stok, _derinlik=derinlik + 1)
+    for fatura in faturalar.values():
+        stok_fis.satis_senkronla(fatura)
 
 
 def _cikis_fisini_guncelle(hareket):

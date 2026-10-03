@@ -110,9 +110,9 @@ class FaturaStokTest(FaturaTestTemel):
         self.assertEqual(eldeki_miktar(self.stok, self.depo), Decimal("0.000"))
         self.assertEqual(eldeki_miktar(self.stok, d2), Decimal("10.000"))
 
-    def test_alis_fifo_katman_kur_ve_cevirici_ile_dogru(self):
+    def test_alis_ortalama_maliyet_kur_ve_cevirici_ile_dogru(self):
         # cevirici=2 (1 uretim birimi = 2 fatura birimi), doviz USD, kur=30 (setUpTestData).
-        # birim_maliyet_try = birim_fiyat(100) x kur(30) x cevirici(2) = 6000.
+        # giris tutari = 10 x 100 USD x 30 = 30000 TL; uretim miktari 5 -> birim maliyet 6000.
         adet2 = Birim.objects.create(ad="ADET3", kisa_ad="AD3", ondalik=0)
         st = Stok.objects.create(kod="153-10-0003", ad="MALIYETLI", kategori=self.alt,
                                  uretim_birimi=adet2, fatura_birimi=adet2,
@@ -122,12 +122,11 @@ class FaturaStokTest(FaturaTestTemel):
                            satirlar=[{"stok_id": st.pk, "miktar": "10", "birim_fiyat": "100"}],
                            depo_id=self.depo.pk)
         h = StokHareket.objects.get(fatura_satir__fatura=f, silindi=False)
-        katman = h.maliyet_katmani
-        self.assertEqual(katman.birim_maliyet_try, Decimal("6000.000000"))
-        self.assertEqual(katman.kaynak_pb, "USD")
-        self.assertEqual(katman.kaynak_kur, Decimal("30"))
+        self.assertEqual(h.miktar, Decimal("5.000"))
+        self.assertEqual(h.giris_tutar_try, Decimal("30000.00"))
+        self.assertEqual(h.birim_maliyet_try, Decimal("6000.000000"))
 
-    def test_satis_katmandan_fifo_tuketir(self):
+    def test_satis_agirlikli_ortalamayla_degerlenir(self):
         fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
                        tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
                        depo_id=self.depo.pk)
@@ -135,10 +134,7 @@ class FaturaStokTest(FaturaTestTemel):
                             tarih=D(2026, 3, 10), satirlar=self._satir(miktar="4"),
                             depo_id=self.depo.pk)
         h = StokHareket.objects.get(fatura_satir__fatura=fs, silindi=False)
-        tuketimler = list(h.maliyet_tuketimleri.all())
-        self.assertEqual(len(tuketimler), 1)
-        self.assertEqual(tuketimler[0].miktar, Decimal("4.000"))
-        self.assertEqual(tuketimler[0].tutar_try, Decimal("400.00"))   # 4 x 100 TL
+        self.assertEqual(h.tutar_try, Decimal("400.00"))   # 4 x 100 TL (ortalama)
 
     def test_guncelleme_uretimde_tuketilmis_katmani_engeller(self):
         f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,

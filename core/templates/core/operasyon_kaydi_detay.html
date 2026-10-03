@@ -42,11 +42,12 @@
   {% if kayit.durum == "ONAYLI" %}
     <div class="satir"><span class="et">Çıktı Birim Maliyeti (TL)</span>
       <span class="dg">
-        {% if cikti_katmani %}
+        {% if cikti_katmani and cikti_katmani.birim_maliyet_try is not None and cikti_katmani.maliyet_durumu != "YOK" %}
           <span class="mono">{{ cikti_katmani.birim_maliyet_try|tr_kur:6 }}</span>
-          {% if cikti_katmani.tahmini %}<span class="rozet rozet-pasif" title="Girdilerden biri kısmen/tamamen bilinmeyen maliyetten hesaplandı">⚠ tahmini</span>{% endif %}
+          {% if cikti_katmani.maliyet_durumu == "GECICI" %}<span class="rozet rozet-pasif" title="Girdilerden biri kısmen/tamamen bilinmeyen maliyetten hesaplandı">⚠ tahmini</span>{% endif %}
+          {% if kayit.fis_id %}<a href="{% url 'core:fis_detay' kayit.fis_id %}" style="font-size:.8rem">Aktarım fişi {{ kayit.fis.yil }}/{{ kayit.fis.fis_no }}</a>{% endif %}
         {% else %}
-          <span class="pasif">— bilinmiyor (girdilerin FIFO maliyet katmanı yok) —</span>
+          <span class="pasif">— bilinmiyor (girdilerin ortalama maliyeti yok) —</span>
         {% endif %}
       </span>
     </div>

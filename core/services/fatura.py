@@ -646,26 +646,39 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
             raise FaturaHatasi(
                 f"{satir.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar "
                 f"sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
-        birim_maliyet_try = yuvarla(satir.birim_fiyat * kur * cevirici, 6) if alis else None
         # Ağırlıklı ortalama maliyet: giriş tutarı = fatura satır tutarı (TL, KDV/tevkifat hariç)
         giris_tl = satir.tutar_tl if alis else None
         giris_usd = None
         if alis:
             usd_kuru = fatura.fis.kur_usd if fatura.fis_id else None
             giris_usd = yuvarla(giris_tl / usd_kuru, 2) if usd_kuru else None
+        # Satış iadesi tipi: giriş fatura (satış) fiyatıyla DEĞİL o anki ortalama maliyetle değerlenir.
+        iade = alis and fatura.tip.maliyet_fisi == FaturaTipi.MaliyetFisi.SATIS_IADE
+        if iade:
+            giris_tl = giris_usd = None
         try:
             hareket_ekle(
                 stok_id=satir.stok_id, depo_id=depo.pk, tarih=fatura.tarih, tur=tur,
                 miktar=uretim_miktar,
                 aciklama=_aciklama(fatura.tip, fatura.cari, fatura.fatura_no),
                 kaynak=StokHareket.Kaynak.FATURA, fatura_satir=satir, kullanici=kullanici,
-                birim_maliyet_try=birim_maliyet_try, kaynak_pb=fatura.para_birimi,
-                kaynak_birim_fiyat=satir.birim_fiyat if alis else None,
-                kaynak_kur=kur if alis else None,
                 giris_tutar_try=giris_tl, giris_tutar_usd=giris_usd,
-                maliyet_fatura_satir=satir if alis else None)
+                maliyet_fatura_satir=satir if (alis and not iade) else None,
+                giris_ortalama=iade)
         except HareketHatasi as e:
             raise FaturaHatasi(str(e))
+    _maliyet_fisi_senkronla(fatura, kullanici)
+
+
+def _maliyet_fisi_senkronla(fatura, kullanici=None):
+    """Satış (çıkış) / satış iadesi (giriş) maliyet fişi — tip.maliyet_fisi doluysa."""
+    if not fatura.tip.maliyet_fisi:
+        return
+    from core.services import stok_fis
+    try:
+        stok_fis.satis_senkronla(fatura, kullanici=kullanici)
+    except stok_fis.MaliyetHatasi as e:
+        raise FaturaHatasi(str(e))
 
 
 def _irsaliye_girislerini_fiyatla(fatura):
@@ -918,6 +931,7 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     İrsaliye SİLİNMEZ, "Faturaya Dönüştü" rozetini kaybedip yeniden düzenlenebilir hale
     gelir (bkz. teklif_siparis.teklif_siparis_onayi_geri_al)."""
     hareketler = list(StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False))
+    maliyet_fis_idler = {h.fis_id for h in hareketler if h.fis_id}   # satış maliyet fişi
     for h in hareketler:
         try:
             hareket_sil(h, kullanici=kullanici)
@@ -933,6 +947,8 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     StokMaliyetTuketimi.objects.filter(katman_id__in=katman_ids).delete()
     StokMaliyetKatmani.objects.filter(id__in=katman_ids).delete()
     StokHareket.objects.filter(id__in=[h.pk for h in hareketler]).delete()
+    YevmiyeFisi.objects.filter(pk__in=maliyet_fis_idler,
+                               kaynak=YevmiyeFisi.Kaynak.STOK_SATIS).delete()
     fis_id = fatura.fis_id
     fatura.delete()                                    # FaturaSatir CASCADE
     if fis_id:

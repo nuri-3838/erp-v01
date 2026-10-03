@@ -47,8 +47,7 @@ class SarfTemel(TestCase):
     def setUp(self):
         # Her testte 100 boy @ 453,20 girişi (kullanıcının örneği).
         hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=D(2026, 6, 1),
-                    tur="GIRIS", miktar="100", birim_maliyet_try=Decimal("453.200000"),
-                    giris_tutar_try=Decimal("45320.00"))
+                    tur="GIRIS", miktar="100", giris_tutar_try=Decimal("45320.00"))
 
 
 class SarfCikisServisTest(SarfTemel):
@@ -102,7 +101,7 @@ class SarfCikisServisTest(SarfTemel):
                             miktar="1000", karsi_hesap_id=self.hesap_255.pk, kullanici=self.u)
         self.assertEqual(eldeki_miktar(self.stok), Decimal("100.000"))
 
-    def test_iptal_fisi_geri_alir_ve_katmani_yukler(self):
+    def test_iptal_fisi_geri_alir_ve_stogu_yukler(self):
         h = sarf_cikis_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=D(2026, 6, 1),
                             miktar="10", karsi_hesap_id=self.hesap_255.pk, kullanici=self.u)
         fis = h.fis

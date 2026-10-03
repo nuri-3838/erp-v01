@@ -733,13 +733,6 @@ def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
     değiştirdiği ``irsaliye.kur`` VARSA bu kur, carinin kur_tipi'ne göre otomatik hesaplama
     YERİNE doğrudan kullanılır."""
     from core.sayi import yuvarla
-    alis = (irsaliye.yon == TeklifSiparis.Yon.ALIS)
-    if not alis:
-        kur = None
-    elif irsaliye.para_birimi == "TRY":
-        kur = Decimal("1")
-    else:
-        kur = irsaliye.kur or _kur_coz(irsaliye.para_birimi, irsaliye.tarih, cari=irsaliye.cari)
     for k in irsaliye.kalemler.filter(silindi=False).select_related("stok"):
         cevirici = k.stok.cevirici or Decimal("1")
         uretim_miktar = (k.uretim_miktar if k.uretim_miktar is not None
@@ -748,19 +741,12 @@ def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
             raise TeklifSiparisHatasi(
                 f"{k.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar sıfır oluyor; "
                 f"miktarı veya çeviriciyi düzeltin.")
-        birim_maliyet_try = None
-        if alis:
-            toplam_tl = k.net_birim_fiyat * kur * k.miktar
-            birim_maliyet_try = yuvarla(toplam_tl / uretim_miktar, 6)
         try:
             hareket_ekle(
                 stok_id=k.stok_id, depo_id=irsaliye.depo_id, tarih=irsaliye.tarih,
                 tur=StokHareket.Tur.GIRIS, miktar=uretim_miktar,
                 aciklama=f"{irsaliye.belge_no} irsaliyesi — {irsaliye.cari.unvan}",
-                kaynak=StokHareket.Kaynak.IRSALIYE, teklif_siparis_kalem=k, kullanici=kullanici,
-                birim_maliyet_try=birim_maliyet_try, kaynak_pb=irsaliye.para_birimi if alis else "",
-                kaynak_birim_fiyat=k.net_birim_fiyat if alis else None,
-                kaynak_kur=kur if alis else None)
+                kaynak=StokHareket.Kaynak.IRSALIYE, teklif_siparis_kalem=k, kullanici=kullanici)
         except HareketHatasi as e:
             raise TeklifSiparisHatasi(str(e))
 

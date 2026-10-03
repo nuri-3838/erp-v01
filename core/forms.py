@@ -2468,6 +2468,34 @@ class StokHareketForm(forms.Form):
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
 
 
+class DepoTransferForm(forms.Form):
+    """Aynı stoğun bir depodan diğerine transferi — bkz. core.services.depo_transfer."""
+
+    kaynak_depo = forms.ModelChoiceField(
+        label="Kaynak Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    hedef_depo = forms.ModelChoiceField(
+        label="Hedef Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    miktar = TRDecimalField(label="Miktar", basamak=3)
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(label="Açıklama", max_length=250, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.depo import aktif_depolar
+        for ad in ("kaynak_depo", "hedef_depo"):
+            self.fields[ad].queryset = aktif_depolar()
+            self.fields[ad].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+
+    def clean(self):
+        cd = super().clean()
+        if cd.get("kaynak_depo") and cd.get("kaynak_depo") == cd.get("hedef_depo"):
+            raise forms.ValidationError("Kaynak ve hedef depo aynı olamaz.")
+        return cd
+
+
 class SarfCikisForm(forms.Form):
     """Stoktan hesaba/yatırım projesine SARF çıkışı — bkz. core.services.hareket.
     sarf_cikis_ekle. 258 karşı hesabında yatırım projesi zorunlu, başka hesapta gizli/

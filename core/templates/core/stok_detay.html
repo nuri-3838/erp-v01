@@ -159,6 +159,7 @@
       <h2 class="bolum-baslik"><span class="emoji">📦</span>Stok Hareketleri</h2>
       <span class="islem-bag">
         <a class="dugme" href="{% url 'core:stok_sarf_ekle' stok.pk %}">+ Sarf (Hesaba Çıkış)</a>
+        <a class="dugme" href="{% url 'core:stok_depo_transferi' stok.pk %}">⇄ Depo Transferi</a>
         <a class="dugme" href="{% url 'core:stok_hareket_ekle' stok.pk %}">+ Hareket</a>
       </span>
     </div>

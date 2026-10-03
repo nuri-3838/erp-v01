@@ -13,7 +13,7 @@ from django.db.models import Sum
 from core.metin import buyuk_harf_tr
 from core.models import Depo, Stok, StokHareket
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services import stok_maliyet, stok_ortalama
+from core.services import stok_ortalama
 
 SIFIR = Decimal("0.000")
 
@@ -69,18 +69,16 @@ def stok_hareketleri(stok):
 def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                  kaynak=StokHareket.Kaynak.MANUEL, fatura_satir=None,
                  teklif_siparis_kalem=None, operasyon_kaydi_girdi=None, kullanici=None,
-                 birim_maliyet_try=None, kaynak_pb="", kaynak_birim_fiyat=None,
-                 kaynak_kur=None, tahmini=False, giris_tutar_try=None, giris_tutar_usd=None,
-                 maliyet_fatura_satir=None) -> StokHareket:
+                 tahmini=False, giris_tutar_try=None, giris_tutar_usd=None,
+                 maliyet_fatura_satir=None, operasyon_kaydi=None, giris_ortalama=False,
+                 transfer_grubu=None) -> StokHareket:
     """Miktar hareketi yazar. Hareketli ağırlıklı ortalama maliyet (bkz. core.services.
     stok_ortalama): ``giris_tutar_try`` (+``giris_tutar_usd``) GİRİŞ'in fatura tutarıdır;
-    verilmezse giriş fiyatsız/GEÇİCİ sayılır. Her yazımdan sonra kart yeniden hesaplanır,
-    dönen hareket güncel ``tutar_try``/``maliyet_durumu`` ile gelir. (Aşağıdaki FIFO
-    katmanı yazımı eski/gölge kayıttır — Dilim B'de kaldırılacak.) ``birim_maliyet_try`` yalnız GİRİŞ'te ve biliniyorsa
-    (ALIŞ irsaliyesi/faturası) bir FIFO maliyet katmanı açar — bkz. core.services.
-    stok_maliyet. ÇIKIŞ'ta katman tüketimi HER ZAMAN otomatik çalışır (parametre
-    gerekmez); dönüş tipi değişmez, maliyeti öğrenmek isteyen dönen nesnenin
-    ``.maliyet_katmani`` / ``.maliyet_tuketimleri`` ilişkisini okur."""
+    verilmezse giriş fiyatsız/GEÇİCİ sayılır (``giris_ortalama=True``: satış iadesi — o anki
+    ortalamayla değerlenir). ``tahmini``: tutar kısmi veriden türedi (GEÇİCİ). ``operasyon_kaydi``
+    üretim girdi çıkışı/çıktı girişi maliyet aktarımı için; ``transfer_grubu`` depo transferi
+    bacakları için (maliyeti DEĞİŞTİRMEZ). Her yazımdan sonra kart yeniden hesaplanır, dönen
+    hareket güncel ``tutar_try``/``maliyet_durumu`` ile gelir."""
     stok = Stok.objects.filter(pk=stok_id, silindi=False).first()
     if stok is None:
         raise HareketHatasi("Stok bulunamadı.")
@@ -110,14 +108,9 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
         giris_tutar_usd=giris_tutar_usd if tur == StokHareket.Tur.GIRIS else None,
         maliyet_fatura_satir=maliyet_fatura_satir if tur == StokHareket.Tur.GIRIS else None,
         giris_tahmini=bool(tahmini) and tur == StokHareket.Tur.GIRIS,
+        giris_ortalama=bool(giris_ortalama) and tur == StokHareket.Tur.GIRIS,
+        operasyon_kaydi=operasyon_kaydi, transfer_grubu=transfer_grubu,
         created_by=kullanici, updated_by=kullanici)
-    if tur == StokHareket.Tur.GIRIS:
-        if birim_maliyet_try is not None:
-            stok_maliyet.katman_olustur(
-                hareket, birim_maliyet_try, kaynak_pb=kaynak_pb,
-                kaynak_birim_fiyat=kaynak_birim_fiyat, kaynak_kur=kaynak_kur, tahmini=tahmini)
-    else:
-        stok_maliyet.fifo_tuket(hareket)
     _ortalamayi_hesapla(stok)
     hareket.refresh_from_db()
     return hareket
@@ -187,7 +180,6 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=StokHareket.Kaynak.SARF,
         karsi_hesap=karsi_hesap, yatirim_projesi=yatirim_projesi,
         created_by=kullanici, updated_by=kullanici)
-    stok_maliyet.fifo_tuket(hareket)
     _ortalamayi_hesapla(stok)                        # çıkış, o anki ağırlıklı ortalamayla değerlenir
     hareket.refresh_from_db()
     tutar = hareket.tutar_try or Decimal("0.00")
@@ -241,37 +233,27 @@ def sarf_onizleme(*, stok_id, depo_id, miktar) -> dict:
 
 
 @transaction.atomic
-def hareket_sil(hareket: StokHareket, kullanici=None) -> StokHareket:
-    """Soft-delete. Giriş silinince eldeki azalır; negatife düşürmemeli. Girişin
-    maliyeti başka hareketlere (FIFO ile) aktarılmışsa silinemez. Çıkış silinince
-    tükettiği maliyet katman(lar)ı geri yüklenir; sarf çıkışıysa bağlı muhasebe fişi
-    de iptal edilir (bkz. core.services.yevmiye.fis_iptal)."""
+def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False) -> StokHareket:
+    """Soft-delete. Giriş silinince eldeki azalır; negatife düşürmemeli. Silinen hareketin
+    kartı yeniden hesaplanır (sonraki çıkışların maliyeti ve sarf/üretim/satış fişleri
+    güncellenir); bağlı otomatik muhasebe fişi iptal edilir (bkz. core.services.yevmiye.
+    fis_iptal). Depo transferinin tek bacağı silinemez (bkz. core.services.depo_transfer)."""
     from django.utils import timezone
     if hareket.silindi:
         return hareket
+    if hareket.kaynak == StokHareket.Kaynak.TRANSFER and not _transfer_icinden:
+        raise HareketHatasi("Depo transferinin tek bacağı silinemez; Depo Transferi'ni silin.")
     if hareket.tur == StokHareket.Tur.GIRIS:
         # Bu girişi geri alınca eldeki negatif olur mu?
         if eldeki_miktar(hareket.stok, hareket.depo) - hareket.miktar < 0:
             raise HareketHatasi(
                 "Bu giriş silinemez: depodaki eldeki miktar negatife düşer (önce çıkışları düzeltin).")
-        katman = getattr(hareket, "maliyet_katmani", None)
-        if katman is not None and not katman.silindi and katman.kalan_miktar != katman.giris_miktar:
-            raise HareketHatasi(
-                "Bu girişin maliyeti başka hareketlere (üretim/satış) aktarılmış; silinemez.")
-    else:
-        stok_maliyet.tuketimi_geri_al(hareket)
-        if hareket.fis_id and not hareket.fis.silindi:
-            from core.services.yevmiye import fis_iptal
-            fis_iptal(hareket.fis, kullanici=kullanici)
+    if hareket.fis_id and not hareket.fis.silindi:
+        from core.services.yevmiye import fis_iptal
+        fis_iptal(hareket.fis, kullanici=kullanici)
     hareket.silindi = True
     hareket.silindi_at = timezone.now()
     hareket.updated_by = kullanici
     hareket.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
-    if hareket.tur == StokHareket.Tur.GIRIS:
-        katman = getattr(hareket, "maliyet_katmani", None)
-        if katman is not None and not katman.silindi:
-            katman.silindi = True
-            katman.silindi_at = timezone.now()
-            katman.save(update_fields=["silindi", "silindi_at", "updated_at"])
     _ortalamayi_hesapla(hareket.stok)               # silinen hareket ortalamadan çıkar
     return hareket
