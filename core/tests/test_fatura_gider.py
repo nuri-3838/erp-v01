@@ -80,8 +80,10 @@ class GiderTemel(TestCase):
                 "kdv_id": (kdv or self.kdv20).pk}
 
     def _kes(self, satirlar, **kw):
+        # Her çağrıda benzersiz no: aynı cari+no artık mükerrer sayılır (bkz. test_fatura_mukerrer).
+        self._kes_sayac = getattr(self, "_kes_sayac", 0) + 1
         veri = dict(tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10),
-                    fatura_no="G-1", satirlar=satirlar)
+                    fatura_no=f"G-1-{self._kes_sayac}", satirlar=satirlar)
         veri.update(kw)
         return fatura_olustur(**veri)
 

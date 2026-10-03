@@ -22,6 +22,7 @@ from django.http import (
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.html import format_html
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
@@ -2765,7 +2766,7 @@ def siparis_faturaya_cevir(request, pk):
                              f"fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu.")
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
-                fform.add_error(None, str(e))
+                _fatura_hatasi_ekle(fform, e)
     else:
         fform = FaturaForm(yon=yon, initial={
             "cari": siparis.cari_id, "tarih": timezone.localdate(),
@@ -6519,6 +6520,17 @@ def satis_faturalari(request):
     return _fatura_listesi(request, FaturaTipi.Yon.SATIS, "Satış Faturaları")
 
 
+def _fatura_hatasi_ekle(fform, hata):
+    """Servis hatasını forma ekler; mükerrer faturada mevcut kayda LİNK verir."""
+    if isinstance(hata, fatura_servis.MukerrerFaturaHatasi):
+        f = hata.fatura
+        fform.add_error(None, format_html(
+            '{} — <a href="{}">faturayı aç</a>', str(hata),
+            reverse("core:fatura_detay", args=[f.pk])))
+    else:
+        fform.add_error(None, str(hata))
+
+
 def _fatura_ekle(request, yon, baslik):
     if request.method == "POST":
         fform = FaturaForm(request.POST, yon=yon)
@@ -6551,7 +6563,7 @@ def _fatura_ekle(request, yon, baslik):
                 messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
-                fform.add_error(None, str(e))
+                _fatura_hatasi_ekle(fform, e)
     else:
         fform = FaturaForm(yon=yon)
         formset = FaturaSatirFormSet(form_kwargs={"yon": yon})
@@ -6612,7 +6624,7 @@ def fatura_duzenle(request, pk):
                 messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
-                fform.add_error(None, str(e))
+                _fatura_hatasi_ekle(fform, e)
     else:
         fform = FaturaForm(yon=yon, initial={
             "tip": fatura.tip_id, "cari": fatura.cari_id, "tarih": fatura.tarih,

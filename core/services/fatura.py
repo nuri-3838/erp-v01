@@ -85,6 +85,36 @@ def _gider_ve_duran_varlik_hesaplari():
 FAZLA_KDV_HESAP_KODU = "602.01"
 
 
+class MukerrerFaturaHatasi(FaturaHatasi):
+    """Aynı cari + aynı fatura no zaten kayıtlı; ``fatura`` mevcut kaydı taşır."""
+
+    def __init__(self, fatura):
+        self.fatura = fatura
+        super().__init__(
+            f"Bu fatura zaten kayıtlı: {fatura.tarih:%d.%m.%Y}, "
+            f"{fatura.genel_toplam} {fatura.para_birimi}")
+
+
+def _fatura_no_anahtar(fatura_no):
+    """Büyük/küçük harf ve boşluk farkını yok sayan karşılaştırma anahtarı."""
+    return buyuk_harf_tr("".join((fatura_no or "").split()))
+
+
+def _mukerrer_alis_kontrol(*, cari, fatura_no, yon, haric_pk=None):
+    """ALIŞ faturasında aynı cari + aynı fatura no (normalize) zaten varsa
+    MukerrerFaturaHatasi. Silinmiş faturalar sayılmaz; ``haric_pk`` düzenlenen faturanın
+    kendisini dışarıda tutar. Boş fatura no kontrol edilmez."""
+    anahtar = _fatura_no_anahtar(fatura_no)
+    if yon != FaturaTipi.Yon.ALIS or not anahtar:
+        return
+    adaylar = Fatura.objects.filter(cari=cari, yon=FaturaTipi.Yon.ALIS, silindi=False)
+    if haric_pk:
+        adaylar = adaylar.exclude(pk=haric_pk)
+    for f in adaylar.exclude(fatura_no=""):
+        if _fatura_no_anahtar(f.fatura_no) == anahtar:
+            raise MukerrerFaturaHatasi(f)
+
+
 def _fazla_kdv_hesabi():
     hesap = HesapPlani.objects.filter(hesap_kodu=FAZLA_KDV_HESAP_KODU, silindi=False).first()
     if hesap is None:
@@ -606,6 +636,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         raise FaturaHatasi("Ortak adına şahsi alış yalnız alış yönünde olabilir.")
     depo = None if gider else _depo_coz(depo_id)        # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
+    _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=cozulen_yon)
     # Sunucu tarafı yedek: vade boş + carinin ödeme koşulu tanımlıysa otomatik hesapla
     # (ön yüz JS'i zaten doldurur; bu yalnız JS çalışmadıysa/atlandıysa devreye girer).
     if vade_tarihi is None:
@@ -705,6 +736,8 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
             raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
         depo = None if gider else _depo_coz(depo_id)
         fatura_no = (fatura_no or "").strip()
+        _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=cozulen_yon,
+                               haric_pk=fatura.pk)
         fatura.satirlar.filter(silindi=False).update(
             silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
         fatura.tip, fatura.yon, fatura.cari, fatura.tarih = tip, cozulen_yon, cari, tarih
@@ -728,6 +761,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None))
     depo = None if tip.gider else _depo_coz(depo_id)    # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
+    _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=tip.yon, haric_pk=fatura.pk)
     try:
         fis_guncelle(fatura.fis, tarih=tarih, satirlar=yevmiye_satirlari,
                      aciklama=_aciklama(tip, cari, fatura_no), kullanici=kullanici)
