@@ -116,6 +116,39 @@ class CariKategoriGrupHesabiTest(TestCase):
         # 320 zaten vardı; ikinci bir kayıt/çakışma oluşmadı
         self.assertEqual(HesapPlani.objects.filter(hesap_kodu="320").count(), 1)
 
+    def test_alt_kategori_silinince_grup_hesabi_soft_delete_olur(self):
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        ust = cari_kategori_olustur(ad="tedarikçiler", kod="320")
+        alt = cari_kategori_olustur(ad="pazaryeri satıcıları", kod="60", ust_id=ust.pk)
+        self.assertFalse(HesapPlani.objects.get(hesap_kodu="320.60").silindi)
+
+        cari_kategori_sil(alt)
+        alt.refresh_from_db()
+        self.assertTrue(alt.silindi)
+        self.assertTrue(HesapPlani.objects.get(hesap_kodu="320.60").silindi)
+
+    def test_grup_hesabinda_aktif_alt_hesap_varsa_kategori_silinemez(self):
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        ust = cari_kategori_olustur(ad="tedarikçiler", kod="320")
+        alt = cari_kategori_olustur(ad="pazaryeri satıcıları", kod="60", ust_id=ust.pk)
+        # 320.60 altında (carisi silinmiş/taşınmış ama hesabı kalmış) aktif bir yaprak
+        HesapPlani.objects.create(hesap_kodu="320.60.0001", hesap_adi="ÖKSÜZ HESAP",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        with self.assertRaises(CariKategoriHatasi):
+            cari_kategori_sil(alt)
+        alt.refresh_from_db()
+        self.assertFalse(alt.silindi)
+        self.assertFalse(HesapPlani.objects.get(hesap_kodu="320.60").silindi)
+
+    def test_ust_kategori_silinince_kok_hesaba_dokunulmaz(self):
+        HesapPlani.objects.create(hesap_kodu="320", hesap_adi="SATICILAR",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        ust = cari_kategori_olustur(ad="tedarikçiler", kod="320")
+        cari_kategori_sil(ust)
+        self.assertFalse(HesapPlani.objects.get(hesap_kodu="320").silindi)
+
 
 class CariKategoriTasimaTest(TestCase):
     def test_tasima_idempotent_ust_alt(self):

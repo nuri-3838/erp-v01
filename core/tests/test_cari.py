@@ -12,8 +12,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import Cari, CariKategori, EkranYetki, HesapPlani, Sehir, Ulke
-from core.services.cari import (CariHatasi, cari_guncelle, cari_olustur, cari_sil,
-                                muhasebe_hesabi_ac, vade_hesapla)
+from core.services.cari import (CariHatasi, cari_guncelle, cari_hareketli_mi, cari_olustur,
+                                cari_sil, muhasebe_hesabi_ac, vade_hesapla)
 
 D = datetime.date
 
@@ -287,6 +287,101 @@ class CariMuhasebeTest(TestCase):
         with self.assertRaises(CariHatasi):
             cari_olustur(unvan="aleyna hrozan", kategori_id=alt.pk, para_birimi="TRY")
         self.assertEqual(Cari.objects.count(), onceki_sayi)   # hiçbir şey kalıcı olmadı
+
+    def _ikinci_kategori(self):
+        ust2 = CariKategori.objects.create(ad="TEDARİKÇİLER 2", kod="321")
+        HesapPlani.objects.create(hesap_kodu="321", hesap_adi="SATICILAR 2",
+                                  rapor_grubu="BILANCO", rapor_kalemi="KVYK", parasal=True)
+        return CariKategori.objects.create(ad="PAZARYERİ", kod="60", ust=ust2)
+
+    def test_hareketsiz_caride_kategori_degisince_kod_ve_hesap_yenilenir(self):
+        alt = self._kur()
+        c = cari_olustur(unvan="aleyna hrozan", kategori_id=alt.pk, para_birimi="TRY")
+        eski_kod, eski_muh = c.kod, c.muhasebe_kodu
+        self.assertFalse(cari_hareketli_mi(c))
+
+        yeni_kategori = self._ikinci_kategori()
+        guncellenen = cari_guncelle(c, unvan="aleyna hrozan", kategori_id=yeni_kategori.pk,
+                                    para_birimi="TRY")
+        self.assertEqual(guncellenen.kategori_id, yeni_kategori.pk)
+        self.assertEqual(guncellenen.kod, "321-60-0001")
+        self.assertEqual(guncellenen.muhasebe_kodu, "321.60.0001")
+        self.assertNotEqual(guncellenen.kod, eski_kod)
+        self.assertNotEqual(guncellenen.muhasebe_kodu, eski_muh)
+        # eski yaprak hesap soft-delete edildi
+        self.assertTrue(HesapPlani.objects.get(hesap_kodu=eski_muh).silindi)
+        # yeni yaprak hesap açıldı, adı cari unvanı
+        yeni_yaprak = HesapPlani.objects.get(hesap_kodu="321.60.0001")
+        self.assertFalse(yeni_yaprak.silindi)
+        self.assertEqual(yeni_yaprak.hesap_adi, "ALEYNA HROZAN")
+
+    def test_hareketli_caride_kategori_degistirme_reddedilir(self):
+        alt = self._kur()
+        c = cari_olustur(unvan="aleyna hrozan", kategori_id=alt.pk, para_birimi="TRY")
+        from core.services.yevmiye import SatirGirdi, fis_olustur
+        from core.models import Kur
+        HesapPlani.objects.create(hesap_kodu="100", hesap_adi="KASA",
+                                  rapor_grubu="BILANCO", rapor_kalemi="DV", parasal=True)
+        Kur.objects.create(tarih=D(2026, 1, 1), usd_alis=Decimal("30"))
+        fis_olustur(tarih=D(2026, 1, 1), kullanici=None,
+                   satirlar=[SatirGirdi(c.muhasebe_kodu, "A", "1.000,00"),
+                            SatirGirdi("100", "B", "1.000,00")])
+        self.assertTrue(cari_hareketli_mi(c))
+
+        yeni_kategori = self._ikinci_kategori()
+        eski_kod, eski_muh = c.kod, c.muhasebe_kodu
+        with self.assertRaises(CariHatasi):
+            cari_guncelle(c, unvan="aleyna hrozan", kategori_id=yeni_kategori.pk,
+                         para_birimi="TRY")
+        c.refresh_from_db()
+        self.assertEqual(c.kod, eski_kod)
+        self.assertEqual(c.muhasebe_kodu, eski_muh)
+        self.assertEqual(c.kategori_id, alt.pk)
+
+    def test_hareketli_caride_ayni_kategoriyle_guncelleme_sorunsuz(self):
+        # Kategori GERÇEKTEN değişmiyorsa (aynı kategori tekrar gönderildi) hareketli
+        # olsa bile reddedilmez — yalnız gerçek değişiklik girişimi kilitlenir.
+        alt = self._kur()
+        c = cari_olustur(unvan="aleyna hrozan", kategori_id=alt.pk, para_birimi="TRY")
+        from core.services.yevmiye import SatirGirdi, fis_olustur
+        from core.models import Kur
+        HesapPlani.objects.create(hesap_kodu="100", hesap_adi="KASA",
+                                  rapor_grubu="BILANCO", rapor_kalemi="DV", parasal=True)
+        Kur.objects.create(tarih=D(2026, 1, 1), usd_alis=Decimal("30"))
+        fis_olustur(tarih=D(2026, 1, 1), kullanici=None,
+                   satirlar=[SatirGirdi(c.muhasebe_kodu, "A", "1.000,00"),
+                            SatirGirdi("100", "B", "1.000,00")])
+        guncellenen = cari_guncelle(c, unvan="aleyna hrozan 2", kategori_id=alt.pk,
+                                    para_birimi="TRY")
+        self.assertEqual(guncellenen.kod, c.kod)
+
+    def test_duzenle_view_hareketli_caride_kategori_alani_kilitli_ve_degisiklik_yok_sayilir(self):
+        alt = self._kur()
+        c = cari_olustur(unvan="aleyna hrozan", kategori_id=alt.pk, para_birimi="TRY")
+        from core.services.yevmiye import SatirGirdi, fis_olustur
+        from core.models import Kur
+        HesapPlani.objects.create(hesap_kodu="100", hesap_adi="KASA",
+                                  rapor_grubu="BILANCO", rapor_kalemi="DV", parasal=True)
+        Kur.objects.create(tarih=D(2026, 1, 1), usd_alis=Decimal("30"))
+        fis_olustur(tarih=D(2026, 1, 1), kullanici=None,
+                   satirlar=[SatirGirdi(c.muhasebe_kodu, "A", "1.000,00"),
+                            SatirGirdi("100", "B", "1.000,00")])
+        yeni_kategori = self._ikinci_kategori()
+
+        yon = User.objects.create_superuser("yon2", password="x")
+        client = self.client_class()
+        client.force_login(yon)
+        r = client.get(reverse("core:cari_duzenle", args=[c.pk]))
+        self.assertContains(r, "kategori değiştirilemez")
+        self.assertIn('disabled', r.context["form"]["kategori"].as_widget())
+
+        # Tarayıcı disabled select göndermez — ama biri kategoriyi zorla POST etse bile
+        # servis katmanı değişikliği yok sayar (view kendi kategori_id'sini kullanır).
+        r2 = client.post(reverse("core:cari_duzenle", args=[c.pk]), {
+            "unvan": "aleyna hrozan", "kategori": str(yeni_kategori.pk), "para_birimi": "TRY"})
+        self.assertEqual(r2.status_code, 302)
+        c.refresh_from_db()
+        self.assertEqual(c.kategori_id, alt.pk)
 
 
 class OdemeKosuluVadeTest(TestCase):

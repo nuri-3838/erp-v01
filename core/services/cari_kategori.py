@@ -106,6 +106,12 @@ def cari_kategori_guncelle(kategori: CariKategori, *, ad, kod,
     return kategori
 
 
+def _grup_hesap_kodu(kategori: CariKategori) -> str:
+    """ALT kategorinin hesap planındaki karşılığı (ör. 320.60) — kod_yolu'nun ('-')
+    yerine hesap kodu ('.') biçimiyle."""
+    return kategori.kod_yolu.replace("-", ".")
+
+
 def cari_kategori_sil(kategori: CariKategori, kullanici=None) -> CariKategori:
     if kategori.silindi:
         return kategori
@@ -115,8 +121,18 @@ def cari_kategori_sil(kategori: CariKategori, kullanici=None) -> CariKategori:
     if kategori.cariler.filter(silindi=False).exists():
         raise CariKategoriHatasi(
             "Bu kategoriye bağlı aktif cari var; önce carileri başka kategoriye taşıyın.")
+    grup_kodu = _grup_hesap_kodu(kategori) if kategori.ust_id is not None else None
+    if grup_kodu and HesapPlani.objects.filter(
+            hesap_kodu__startswith=grup_kodu + ".", silindi=False).exists():
+        raise CariKategoriHatasi(
+            f"{grup_kodu} hesabının altında aktif alt hesap var; kategori silinemez.")
     kategori.silindi = True
     kategori.silindi_at = timezone.now()
     kategori.updated_by = kullanici
     kategori.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    if grup_kodu:
+        try:
+            hp.hesap_sil(kod=grup_kodu, kullanici=kullanici)
+        except hp.HesapHatasi:
+            pass   # grup hesabının kendi hareketi olabilir — korunur, kategori yine silinir
     return kategori

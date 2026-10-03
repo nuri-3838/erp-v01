@@ -265,8 +265,23 @@ def muhasebe_hesabi_ac(cari: Cari, kullanici=None) -> str:
     return noktali
 
 
+def cari_hareketli_mi(cari: Cari) -> bool:
+    """Cari'nin (yaprak) muhasebe hesabında aktif yevmiye hareketi var mı? Kategori
+    (dolayısıyla kod+hesap) değişikliğini kilitlemek için kullanılır — hesap_sil'in
+    kendi "yevmiyeli silinemez" kuralıyla birebir aynı ölçüt."""
+    if not cari.muhasebe_kodu:
+        return False
+    from core.models import YevmiyeSatir
+    return YevmiyeSatir.objects.filter(hesap_id=cari.muhasebe_kodu, silindi=False).exists()
+
+
 def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) -> Cari:
-    """Kod DEĞİŞMEZ. Kategori değişebilir (kod yine sabit kalır)."""
+    """Kod SABİTTİR — kategori değişmediği sürece. Kategori değişirse (yalnız cari
+    hareketsizken izinli — bkz. cari_hareketli_mi): yeni kategoriye göre kod + muhasebe
+    hesabı yeniden üretilir, eski yaprak hesap (hareketsiz olduğu için) soft-delete
+    edilir. Hareketli caride kategori değiştirme girişimi açıkça reddedilir (sessizce
+    yok sayılmaz) — 2026-10-03 canlı olayı: kategori değişince kod/hesap eski kategoride
+    kalıp tutarsızlık oluşturuyordu."""
     if cari.silindi:
         raise CariHatasi("Silinmiş cari düzenlenemez.")
     unvan = buyuk_harf_tr((unvan or "").strip())
@@ -280,6 +295,11 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
             raise CariHatasi("Kategori bulunamadı.")
         if kategori.ust_id is None:
             raise CariHatasi("Cari yalnız alt kategoriye bağlanabilir; üst kategori seçilemez.")
+
+    kategori_degisti = (kategori.pk if kategori else None) != cari.kategori_id
+    if kategori_degisti and cari_hareketli_mi(cari):
+        raise CariHatasi("Hareketi olan carinin kategorisi değiştirilemez.")
+
     _vergi_benzersiz(kw.get("vkn_tckn"), kw.get("tax_id"), haric_pk=cari.pk)
     veri, uyarilar = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
@@ -288,20 +308,40 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kredi_limiti",
                         "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar")})
-    cari.unvan = unvan
-    cari.kategori = kategori
-    for alan, deger in veri.items():
-        setattr(cari, alan, deger)
-    cari.updated_by = kullanici
-    cari.save()
-    cari.telefon_uyarilari = uyarilar
-    # Muhasebe hesabının (yaprak) adını cari unvanıyla senkron tut.
-    if cari.muhasebe_kodu and unvan != eski_unvan:
-        try:
-            hp.hesap_adi_guncelle(kod=cari.muhasebe_kodu, yeni_ad=unvan,
-                                  kullanici=kullanici)
-        except hp.HesapHatasi:
-            pass   # hesap silinmiş/bulunamamış olabilir — cari yine güncellenir
+
+    with transaction.atomic():
+        eski_muhasebe_kodu = cari.muhasebe_kodu
+        cari.unvan = unvan
+        cari.kategori = kategori
+        for alan, deger in veri.items():
+            setattr(cari, alan, deger)
+        if kategori_degisti:
+            cari.kod = sonraki_cari_kodu(kategori)
+            cari.muhasebe_kodu = ""
+        cari.updated_by = kullanici
+        cari.save()
+        cari.telefon_uyarilari = uyarilar
+
+        if kategori_degisti:
+            if eski_muhasebe_kodu:
+                try:
+                    hp.hesap_sil(kod=eski_muhasebe_kodu, kullanici=kullanici)
+                except hp.HesapHatasi:
+                    pass   # beklenmez (hareketsizlik yukarıda doğrulandı) — savunmacı
+            try:
+                muh = muhasebe_hesabi_ac(cari, kullanici=kullanici)
+            except hp.HesapHatasi as e:
+                raise CariHatasi(f"Yeni muhasebe hesabı açılamadı: {e}")
+            if muh and cari.muhasebe_kodu != muh:
+                cari.muhasebe_kodu = muh
+                cari.save(update_fields=["muhasebe_kodu"])
+        elif cari.muhasebe_kodu and unvan != eski_unvan:
+            # Muhasebe hesabının (yaprak) adını cari unvanıyla senkron tut.
+            try:
+                hp.hesap_adi_guncelle(kod=cari.muhasebe_kodu, yeni_ad=unvan,
+                                      kullanici=kullanici)
+            except hp.HesapHatasi:
+                pass   # hesap silinmiş/bulunamamış olabilir — cari yine güncellenir
     return cari
 
 

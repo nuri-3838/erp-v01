@@ -1541,12 +1541,20 @@ def cari_ekle(request):
 @ekran_gerekli("cariler")
 def cari_duzenle(request, pk):
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    kategori_kilitli = cari_servis.cari_hareketli_mi(cari)
     if request.method == "POST":
         form = CariForm(request.POST)
+        if kategori_kilitli:
+            form.fields["kategori"].widget.attrs["disabled"] = True
         if form.is_valid():
             try:
+                kw = _cari_form_kw(form.cleaned_data)
+                if kategori_kilitli:
+                    # Kilitli alan: tarayıcı disabled select'i hiç göndermez; servis
+                    # katmanı da aynı kuralı zorluyor ama burada hiç denemiyoruz.
+                    kw["kategori_id"] = cari.kategori_id
                 guncellenen = cari_servis.cari_guncelle(
-                    cari, **_cari_form_kw(form.cleaned_data), kullanici=request.user)
+                    cari, **kw, kullanici=request.user)
                 for uyari in getattr(guncellenen, "telefon_uyarilari", []):
                     messages.error(request, uyari)
                 messages.success(request, "Cari güncellendi.")
@@ -1568,8 +1576,11 @@ def cari_duzenle(request, pk):
             "iskonto_yuzdesi": cari.iskonto_yuzdesi,
             "odeme_kosulu": cari.odeme_kosulu or "", "odeme_gunu": cari.odeme_gunu,
             "notlar": cari.notlar})
+        if kategori_kilitli:
+            form.fields["kategori"].widget.attrs["disabled"] = True
     return render(request, "core/cari_form.html",
-                  {"form": form, "baslik": "Cari Düzenle", "duzenlenen": cari})
+                  {"form": form, "baslik": "Cari Düzenle", "duzenlenen": cari,
+                   "kategori_kilitli": kategori_kilitli})
 
 
 @ekran_gerekli("cariler")

@@ -30,7 +30,8 @@
           {% if duzenlenen %}<input type="text" id="cari-kod-onizleme" class="mono kod-salt" value="{{ duzenlenen.kod }}" readonly>
           {% else %}<input type="text" id="cari-kod-onizleme" class="mono kod-salt" placeholder="(otomatik atanacak)" readonly>{% endif %}
           <p class="yardim">Otomatik; elle değişmez (kategori kod yolundan).</p></div>
-        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div></div>
+        <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }}</label><div class="akilli">{{ form.kategori }}</div>
+          {% if kategori_kilitli %}<p class="yardim">⚠️ Bu carinin yevmiye hareketi var; kategori değiştirilemez.</p>{% endif %}</div>
         <div class="alan"><label for="cari-muhasebe-onizleme">Muhasebe Kodu</label>
           {% if duzenlenen %}<input type="text" id="cari-muhasebe-onizleme" class="mono kod-salt" value="{{ duzenlenen.muhasebe_kodu }}" readonly>
           {% else %}<input type="text" id="cari-muhasebe-onizleme" class="mono kod-salt" placeholder="(otomatik)" readonly>{% endif %}
