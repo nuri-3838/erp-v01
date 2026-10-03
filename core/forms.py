@@ -23,7 +23,7 @@ from core.models import (
     AdayTipTanim, Banka,
     BankaHesap, Birim, Cari,
     CariAktivite, CariKategori, KapanisNedeni,
-    CekSenet, Depo, FaturaTipi, FirmaBanka,
+    CekSenet, Depo, FaturaSatir, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
     PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
     TevkifatOrani, Ulke, YatirimProjesi, YevmiyeSatir,
@@ -1756,14 +1756,20 @@ class DuranVarlikForm(forms.Form):
                               widget=forms.TextInput(attrs=_K))
     notlar = forms.CharField(label="Notlar", required=False,
                              widget=forms.Textarea(attrs={"rows": 3, **_K}))
-    fatura_satir_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
+    fatura_satir_ids = forms.ModelMultipleChoiceField(
+        label="Fatura Kalemleri", queryset=FaturaSatir.objects.none(), required=False,
+        widget=forms.CheckboxSelectMultiple)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, satir_adaylari=None, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.hesap_plani import duran_varlik_karti_hesaplari
         self.fields["hesap"].queryset = duran_varlik_karti_hesaplari()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+        self.fields["fatura_satir_ids"].queryset = (
+            satir_adaylari if satir_adaylari is not None else FaturaSatir.objects.none())
+        self.fields["fatura_satir_ids"].label_from_instance = (
+            lambda s: f"{s.fatura.fatura_no or 'taslak'} — {s.tutar} TL")
 
 
 class AktiflestirmeBaslikForm(forms.Form):

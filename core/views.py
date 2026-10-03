@@ -6654,12 +6654,20 @@ def duran_varliklar(request):
 
 @ekran_gerekli("duran_varliklar")
 def duran_varlik_ekle(request):
-    satir_id = request.GET.get("satir") or request.POST.get("fatura_satir_id")
+    satir_id = request.GET.get("satir") or request.POST.get("satir")
     satir = (FaturaSatir.objects.filter(pk=satir_id, silindi=False, fatura__silindi=False)
              .select_related("fatura", "hesap").first()) if satir_id else None
 
+    adaylar = FaturaSatir.objects.none()
+    if satir:
+        adaylar = (FaturaSatir.objects.filter(
+                fatura_id=satir.fatura_id, hesap_id=satir.hesap_id,
+                silindi=False, fatura__silindi=False)
+            .exclude(duran_varliklar__silindi=False)
+            .select_related("fatura").order_by("id"))
+
     if request.method == "POST":
-        form = DuranVarlikForm(request.POST)
+        form = DuranVarlikForm(request.POST, satir_adaylari=adaylar)
         if form.is_valid():
             try:
                 cd = form.cleaned_data
@@ -6667,7 +6675,7 @@ def duran_varlik_ekle(request):
                     ad=cd["ad"], hesap_id=cd["hesap"].pk,
                     aktiflestirme_tarihi=cd["aktiflestirme_tarihi"], maliyet=cd["maliyet"],
                     marka_model=cd["marka_model"], seri_no=cd["seri_no"], notlar=cd["notlar"],
-                    fatura_satir_id=cd.get("fatura_satir_id"), kullanici=request.user)
+                    fatura_satirlari=list(cd["fatura_satir_ids"]), kullanici=request.user)
                 messages.success(request, f"Duran varlık kartı eklendi: {dv.demirbas_kodu} — {dv.ad}")
                 return redirect("core:duran_varlik_detay", pk=dv.pk)
             except dv_servis.DuranVarlikHatasi as e:
@@ -6675,9 +6683,12 @@ def duran_varlik_ekle(request):
     else:
         initial = {}
         if satir:
-            initial = {"hesap": satir.hesap_id, "maliyet": satir.tutar,
-                       "aktiflestirme_tarihi": satir.fatura.tarih, "fatura_satir_id": satir.pk}
-        form = DuranVarlikForm(initial=initial)
+            secili = list(adaylar) or [satir]
+            toplam = sum((s.tutar for s in secili), Decimal("0.00"))
+            initial = {"hesap": satir.hesap_id, "maliyet": toplam,
+                       "aktiflestirme_tarihi": satir.fatura.tarih,
+                       "fatura_satir_ids": [s.pk for s in secili]}
+        form = DuranVarlikForm(initial=initial, satir_adaylari=adaylar)
     return render(request, "core/duran_varlik_form.html", {"form": form, "satir": satir})
 
 
@@ -6686,7 +6697,13 @@ def duran_varlik_detay(request, pk):
     varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
     satirlar = (varlik.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
                 .select_related("fatura", "fatura__cari").order_by("fatura__tarih", "fatura_id"))
-    return render(request, "core/duran_varlik_detay.html", {"varlik": varlik, "satirlar": satirlar})
+    baglanti_toplami = dv_servis.baglanti_toplami(varlik)
+    return render(request, "core/duran_varlik_detay.html", {
+        "varlik": varlik, "satirlar": satirlar,
+        "baglanabilir": dv_servis.baglanabilir_satirlar(varlik),
+        "baglanti_toplami": baglanti_toplami,
+        "toplam_farkli": satirlar.exists() and baglanti_toplami != varlik.maliyet,
+    })
 
 
 @ekran_gerekli("duran_varliklar")
@@ -6697,6 +6714,30 @@ def duran_varlik_durum_degistir(request, pk):
                 else DuranVarlik.Durum.AKTIF)
         dv_servis.durum_degistir(varlik, durum=yeni, kullanici=request.user)
         messages.success(request, f"{varlik.demirbas_kodu} {varlik.get_durum_display().lower()} yapıldı.")
+    return redirect("core:duran_varlik_detay", pk=pk)
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_kalem_bagla(request, pk):
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            dv_servis.satir_bagla(varlik, request.POST.get("satir_id"), kullanici=request.user)
+            messages.success(request, "Fatura kalemi karta bağlandı.")
+        except dv_servis.DuranVarlikHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:duran_varlik_detay", pk=pk)
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_kalem_cikar(request, pk, satir_id):
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            dv_servis.satir_cikar(varlik, satir_id, kullanici=request.user)
+            messages.success(request, "Fatura kalemi karttan çıkarıldı.")
+        except dv_servis.DuranVarlikHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:duran_varlik_detay", pk=pk)
 
 

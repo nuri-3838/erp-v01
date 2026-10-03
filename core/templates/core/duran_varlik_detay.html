@@ -40,24 +40,63 @@
   {% endif %}
 </section>
 
+{% if toplam_farkli %}
+<div class="uyari">
+  <div>⚠️ Bağlı kalemlerin toplamı ({{ baglanti_toplami|tr_kur:2 }}) kart maliyetiyle
+    ({{ varlik.maliyet|tr_kur:2 }}) uyuşmuyor.</div>
+</div>
+{% endif %}
+
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Bağlı Faturalar</h2>
   <div class="tablo-kapsayici genis">
   <table>
-    <thead><tr><th>Tarih</th><th>Cari</th><th>Fatura No</th><th class="sag">Tutar</th></tr></thead>
+    <thead><tr><th>Tarih</th><th>Cari</th><th>Fatura No</th><th class="sag">Tutar</th><th></th></tr></thead>
     <tbody>
       {% for s in satirlar %}
-        <tr onclick="window.location='{% url 'core:fatura_detay' s.fatura.pk %}'" style="cursor:pointer">
-          <td class="mono">{{ s.fatura.tarih|date:"d.m.Y" }}</td>
+        <tr>
+          <td class="mono"><a href="{% url 'core:fatura_detay' s.fatura.pk %}">{{ s.fatura.tarih|date:"d.m.Y" }}</a></td>
           <td>{{ s.fatura.cari.unvan }}</td>
           <td class="mono">{{ s.fatura.fatura_no|default:"—" }}</td>
           <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
+          <td>
+            <form method="post" action="{% url 'core:duran_varlik_kalem_cikar' varlik.pk s.pk %}" style="margin:0"
+                  onsubmit="return confirm('Bu kalem karttan çıkarılsın mı?');">
+              {% csrf_token %}<button type="submit" class="sil" style="padding:.15rem .5rem;font-size:.78rem">Çıkar</button></form>
+          </td>
         </tr>
       {% empty %}
-        <tr><td colspan="4" class="yardim">Bağlı fatura kalemi yok.</td></tr>
+        <tr><td colspan="5" class="yardim">Bağlı fatura kalemi yok.</td></tr>
       {% endfor %}
     </tbody>
+    {% if satirlar %}
+    <tfoot>
+      <tr><th colspan="3" class="sag">Toplam</th><th class="sag mono">{{ baglanti_toplami|tr_kur:2 }}</th><th></th></tr>
+    </tfoot>
+    {% endif %}
   </table>
   </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Fatura Kalemi Bağla</h2>
+  {% if baglanabilir %}
+  <form method="post" action="{% url 'core:duran_varlik_kalem_bagla' varlik.pk %}" class="kur-cek-alanlar">
+    {% csrf_token %}
+    <div class="alan" style="flex:1 1 20rem">
+      <label for="dv-kalem-sec">Kalem</label>
+      <select id="dv-kalem-sec" name="satir_id" required>
+        <option value="">— kalem seç —</option>
+        {% for s in baglanabilir %}
+          <option value="{{ s.pk }}">{{ s.fatura.tarih|date:"d.m.Y" }} · {{ s.fatura.fatura_no|default:"taslak" }} · {{ s.fatura.cari.unvan }} — {{ s.tutar|tr_kur:2 }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="dugme-ikincil">Bağla</button>
+  </form>
+  {% else %}
+  <p class="yardim">{{ varlik.hesap.hesap_kodu }} hesabına işlenmiş, bağlanabilecek başka
+    (henüz hiçbir karta bağlı olmayan) fatura kalemi yok.</p>
+  {% endif %}
 </section>
 {% endblock %}

@@ -25,7 +25,7 @@
 
   <form method="post" autocomplete="off" style="display:contents">
     {% csrf_token %}
-    {{ form.fatura_satir_id }}
+    {% if satir %}<input type="hidden" name="satir" value="{{ satir.pk }}">{% endif %}
     <section class="icerik-kart">
       <div class="izgara">
         <div class="alan tam"><label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>{{ form.ad }}{% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
@@ -33,12 +33,23 @@
           <input type="text" id="dv-kod-onizleme" class="mono kod-salt" placeholder="(otomatik atanacak)" readonly></div>
         <div class="alan"><label for="{{ form.hesap.id_for_label }}">{{ form.hesap.label }} <span class="zorunlu">*</span></label><div class="akilli">{{ form.hesap }}</div>{% for e in form.hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.aktiflestirme_tarihi.id_for_label }}">{{ form.aktiflestirme_tarihi.label }} <span class="zorunlu">*</span></label>{{ form.aktiflestirme_tarihi }}{% for e in form.aktiflestirme_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }} <span class="zorunlu">*</span></label>{{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }} <span class="zorunlu">*</span></label>{{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          {% if satir %}<p class="yardim">Seçili kalemlerin toplamı olarak ön dolduruldu; kaydettikten sonra otomatik değişmez.</p>{% endif %}</div>
         <div class="alan"><label for="{{ form.marka_model.id_for_label }}">{{ form.marka_model.label }}</label>{{ form.marka_model }}</div>
         <div class="alan"><label for="{{ form.seri_no.id_for_label }}">{{ form.seri_no.label }}</label>{{ form.seri_no }}</div>
         <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>
       </div>
     </section>
+
+    {% if satir %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Bağlanacak Fatura Kalemleri</h2>
+      <p class="yardim">Aynı faturanın {{ satir.hesap.hesap_kodu }} hesabına işlenmiş, henüz
+        hiçbir karta bağlı olmayan kalemleri — varsayılan olarak hepsi seçili.</p>
+      <div class="onay-liste">{{ form.fatura_satir_ids }}</div>
+      {% for e in form.fatura_satir_ids.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+    </section>
+    {% endif %}
 
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:duran_varliklar' %}">İptal</a>

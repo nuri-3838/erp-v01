@@ -38,7 +38,10 @@ def varliklar(*, hesap_id=None, durum=None):
 
 
 def duran_varlik_olustur(*, ad, hesap_id, aktiflestirme_tarihi, maliyet, marka_model="",
-                         seri_no="", notlar="", fatura_satir_id=None, kullanici=None) -> DuranVarlik:
+                         seri_no="", notlar="", fatura_satirlari=None, kullanici=None) -> DuranVarlik:
+    """``fatura_satirlari``: FaturaSatir pk veya instance listesi (opsiyonel, birden fazla
+    olabilir) — hepsi ``hesap_id`` ile aynı hesaba işlenmiş ve henüz başka bir karta bağlı
+    olmamalı (bkz. core.services.duran_varlik._dogrula_satirlar)."""
     ad = buyuk_harf_tr((ad or "").strip())
     if not ad:
         raise DuranVarlikHatasi("Ad boş olamaz.")
@@ -48,23 +51,75 @@ def duran_varlik_olustur(*, ad, hesap_id, aktiflestirme_tarihi, maliyet, marka_m
     if maliyet is None or maliyet < 0:
         raise DuranVarlikHatasi("Maliyet negatif olamaz.")
 
-    satir = None
-    if fatura_satir_id:
-        satir = FaturaSatir.objects.filter(
-            pk=fatura_satir_id, silindi=False, fatura__silindi=False).first()
-        if not satir:
-            raise DuranVarlikHatasi("Belirtilen fatura kalemi bulunamadı.")
+    satirlar = _dogrula_satirlar(fatura_satirlari, hesap_id)
 
     dv = DuranVarlik.objects.create(
         demirbas_kodu=sonraki_demirbas_kodu(), ad=ad, hesap_id=hesap_id,
         aktiflestirme_tarihi=aktiflestirme_tarihi, maliyet=maliyet,
         marka_model=(marka_model or "").strip(), seri_no=(seri_no or "").strip(),
         notlar=(notlar or "").strip(),
-        kaynak=DuranVarlik.Kaynak.FATURA if satir else DuranVarlik.Kaynak.ACILIS,
+        kaynak=DuranVarlik.Kaynak.FATURA if satirlar else DuranVarlik.Kaynak.ACILIS,
         created_by=kullanici, updated_by=kullanici)
-    if satir:
-        dv.fatura_satirlari.add(satir)
+    if satirlar:
+        dv.fatura_satirlari.set(satirlar)
     return dv
+
+
+def _dogrula_satirlar(fatura_satirlari, hesap_id, *, haric_varlik_pk=None):
+    """pk/instance listesini FaturaSatir'lere çözer; hepsinin var olduğunu, ``hesap_id``
+    ile aynı hesaba işlendiğini ve (``haric_varlik_pk`` dışında) başka bir karta bağlı
+    olmadığını doğrular."""
+    if not fatura_satirlari:
+        return []
+    ids = [s.pk if hasattr(s, "pk") else s for s in fatura_satirlari]
+    satirlar = list(FaturaSatir.objects.filter(
+        pk__in=ids, silindi=False, fatura__silindi=False))
+    if len(satirlar) != len(set(ids)):
+        raise DuranVarlikHatasi("Belirtilen fatura kalemlerinden biri bulunamadı.")
+    for s in satirlar:
+        if s.hesap_id != hesap_id:
+            raise DuranVarlikHatasi(
+                f"Satır {s.pk}: kartın hesabıyla aynı hesaba işlenmiş olmalı.")
+        bagli = s.duran_varliklar.filter(silindi=False)
+        if haric_varlik_pk:
+            bagli = bagli.exclude(pk=haric_varlik_pk)
+        if bagli.exists():
+            raise DuranVarlikHatasi(f"Satır {s.pk}: zaten başka bir duran varlık kartına bağlı.")
+    return satirlar
+
+
+def baglanabilir_satirlar(varlik: DuranVarlik):
+    """Kartın hesabıyla aynı hesaba işlenmiş ve henüz HİÇBİR karta bağlı olmayan fatura
+    kalemleri — "Fatura kalemi bağla" seçiminde listelenir."""
+    return (FaturaSatir.objects.filter(hesap_id=varlik.hesap_id, silindi=False,
+                                       fatura__silindi=False)
+            .exclude(duran_varliklar__silindi=False)
+            .select_related("fatura", "fatura__cari").order_by("fatura__tarih", "id"))
+
+
+def satir_bagla(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik:
+    satirlar = _dogrula_satirlar([satir_id], varlik.hesap_id, haric_varlik_pk=varlik.pk)
+    varlik.fatura_satirlari.add(*satirlar)
+    varlik.updated_by = kullanici
+    varlik.save(update_fields=["updated_by", "updated_at"])
+    return varlik
+
+
+def satir_cikar(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik:
+    satir = varlik.fatura_satirlari.filter(pk=satir_id).first()
+    if not satir:
+        raise DuranVarlikHatasi("Bu kalem karta bağlı değil.")
+    varlik.fatura_satirlari.remove(satir)
+    varlik.updated_by = kullanici
+    varlik.save(update_fields=["updated_by", "updated_at"])
+    return varlik
+
+
+def baglanti_toplami(varlik: DuranVarlik) -> Decimal:
+    toplam = SIFIR
+    for s in varlik.fatura_satirlari.filter(silindi=False, fatura__silindi=False):
+        toplam += s.tutar
+    return toplam
 
 
 def durum_degistir(varlik: DuranVarlik, *, durum, kullanici=None) -> DuranVarlik:
