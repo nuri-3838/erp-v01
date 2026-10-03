@@ -22,7 +22,8 @@ from django.db import transaction
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          KategoriHesap, KdvOrani, Kur, Stok, StokHareket, StokMaliyetKatmani,
-                         StokMaliyetTuketimi, TeklifSiparis, YatirimProjesi, YevmiyeFisi)
+                         StokMaliyetTuketimi, TeklifSiparis, TevkifatOrani, YatirimProjesi,
+                         YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
@@ -78,12 +79,31 @@ def _gider_ve_duran_varlik_hesaplari():
     return gider_hesaplari() | duran_varlik_hesaplari()
 
 
+def _tevkifat_coz(g, i, *, stok_varsayilani=None):
+    """``g["tevkifat_yok"]`` True ise (kullanıcı seçicide "Yok"u AÇIKÇA seçti) stok
+    kartında tanımlı olsa bile None döner. ``g["tevkifat_id"]`` doluysa o oran kullanılır.
+    İkisi de yoksa (boş seçim) ``stok_varsayilani`` döner — stoklu kalemde stok kartının
+    GÜNCEL tevkifatı, gider kaleminde zaten None (varsayılan yok)."""
+    if g.get("tevkifat_yok"):
+        return None
+    tevkifat_id = g.get("tevkifat_id")
+    if not tevkifat_id:
+        return stok_varsayilani
+    tevkifat = TevkifatOrani.objects.filter(pk=tevkifat_id, silindi=False).first()
+    if tevkifat is None:
+        raise FaturaHatasi(f"Satır {i}: tevkifat oranı bulunamadı.")
+    return tevkifat
+
+
 def _satir_coz(g, i, gider):
-    """Girdi satırını çözer -> (stok, hesap, kdv, proje). Gider tipinde satır bir GİDER
-    HESABI veya DURAN VARLIK HESABI (+ satırda seçilen KDV oranı) taşır, diğer tiplerde
-    STOK (KDV stoktan); karışıklık reddedilir (UI'a güvenilmez). Duran varlık hesabı
-    seçilirse `yatirim_projesi_id` çözülür — 258 ailesinde ZORUNLU, 253/254/255/260'ta
-    opsiyonel; aktifleşmiş projeye yeni kalem eklenemez (bkz. YatirimProjesi.Durum)."""
+    """Girdi satırını çözer -> (stok, hesap, kdv, tevkifat, proje). Gider tipinde satır bir
+    GİDER HESABI veya DURAN VARLIK HESABI (+ satırda seçilen KDV oranı + opsiyonel elle
+    seçilen tevkifat) taşır, diğer tiplerde STOK (KDV stoktan; tevkifat da varsayılan
+    olarak stoktan gelir — ama `tevkifat_yok` AÇIKÇA seçilmişse stok kartında tanımlı olsa
+    bile tevkifat uygulanmaz, `tevkifat_id` doluysa o oran esas alınır; bkz. _tevkifat_coz).
+    Karışıklık reddedilir (UI'a güvenilmez). Duran varlık hesabı seçilirse
+    `yatirim_projesi_id` çözülür — 258 ailesinde ZORUNLU, 253/254/255/260'ta opsiyonel;
+    aktifleşmiş projeye yeni kalem eklenemez (bkz. YatirimProjesi.Durum)."""
     if gider:
         if g.get("stok_id"):
             raise FaturaHatasi(
@@ -99,6 +119,7 @@ def _satir_coz(g, i, gider):
             kdv = KdvOrani.objects.filter(pk=g["kdv_id"], silindi=False).first()
             if kdv is None:
                 raise FaturaHatasi(f"Satır {i}: KDV oranı bulunamadı.")
+        tevkifat = _tevkifat_coz(g, i)
         proje = None
         if hesap_kodu_duran_varlik_mi(hesap.hesap_kodu):
             proje_id = g.get("yatirim_projesi_id")
@@ -113,7 +134,7 @@ def _satir_coz(g, i, gider):
                 raise FaturaHatasi(
                     f"Satır {i}: {hesap.hesap_kodu} hesabı için yatırım projesi seçimi "
                     f"zorunludur.")
-        return None, hesap, kdv, proje
+        return None, hesap, kdv, tevkifat, proje
     if g.get("hesap_id"):
         raise FaturaHatasi(
             f"Satır {i}: gider hesabı yalnız gider faturası tipinde kullanılabilir.")
@@ -121,7 +142,8 @@ def _satir_coz(g, i, gider):
             .select_related("kategori", "kdv", "tevkifat").first())
     if stok is None:
         raise FaturaHatasi(f"Satır {i}: stok bulunamadı.")
-    return stok, None, stok.kdv, None
+    tevkifat = _tevkifat_coz(g, i, stok_varsayilani=stok.tevkifat)
+    return stok, None, stok.kdv, tevkifat, None
 
 
 def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None):
@@ -171,14 +193,14 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
 
     for i, g in enumerate(satirlar, start=1):
-        stok, hesap, kdv, proje = _satir_coz(g, i, tip.gider)
+        stok, hesap, kdv, tevkifat, proje = _satir_coz(g, i, tip.gider)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
 
         # Mal/gider hesabı: gider faturasında satırın kendi gider hesabı; diğer tiplerde
         # kategori × fatura tipi haritası
         if hesap is not None:
-            mal_kodu, mal_ad, etiket, tevkifat = hesap.hesap_kodu, hesap.hesap_adi, hesap.hesap_kodu, None
+            mal_kodu, mal_ad, etiket = hesap.hesap_kodu, hesap.hesap_adi, hesap.hesap_kodu
         else:
             kh = KategoriHesap.objects.filter(
                 kategori=stok.kategori, fatura_tipi=tip, silindi=False).first()
@@ -186,7 +208,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
                 raise FaturaHatasi(
                     f"Satır {i}: {stok.kod} kategorisinin '{tip.ad}' için muhasebe hesabı "
                     f"tanımlı değil (STOKLAR > Kategoriler'den bağlayın).")
-            mal_kodu, mal_ad, etiket, tevkifat = kh.hesap.hesap_kodu, stok.ad, stok.kod, stok.tevkifat
+            mal_kodu, mal_ad, etiket = kh.hesap.hesap_kodu, stok.ad, stok.kod
 
         satir_tutar = yuvarla(miktar * birim, 2)
         oran = kdv.oran if kdv else SIFIR
@@ -262,9 +284,11 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
 def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False):
     """Taslak oluştur/güncelle ortak hazırlığı: cari + satırları doğrular — TİP'e ihtiyaç
     DUYMAZ (muhasebe haritası + yevmiye satırları onaylamaya ertelenir, bkz. fatura_onayla).
-    KDV/tevkifat stoktan bu anda (taslak anında) çekilip FaturaSatir'e SNAPSHOT yazılır.
-    Gider faturasında (gider=True) kalemler stok değil gider hesabıdır (+ satırda seçilen KDV).
-    (cari, pb, hazir) döner — hazir = [(stok, hesap, miktar, fiyat, kdv, tevkifat), ...]."""
+    KDV stoktan, tevkifat ise satırda elle seçilmemişse stoktan (seçilmişse formdan) bu anda
+    (taslak anında) çekilip FaturaSatir'e SNAPSHOT yazılır. Gider faturasında (gider=True)
+    kalemler stok değil gider/duran-varlık hesabıdır (+ satırda seçilen KDV + opsiyonel
+    tevkifat, bkz. _satir_coz). (cari, pb, hazir) döner — hazir = [(stok, hesap, miktar,
+    fiyat, kdv, tevkifat, proje), ...]."""
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise FaturaHatasi("Cari bulunamadı.")
@@ -276,10 +300,10 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False):
 
     hazir = []
     for i, g in enumerate(satirlar, start=1):
-        stok, hesap, kdv, proje = _satir_coz(g, i, gider)
+        stok, hesap, kdv, tevkifat, proje = _satir_coz(g, i, gider)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
-        hazir.append((stok, hesap, miktar, birim, kdv, stok.tevkifat if stok else None, proje))
+        hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje))
     return cari, pb, hazir
 
 

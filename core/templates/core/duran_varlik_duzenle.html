@@ -26,7 +26,13 @@
         <div class="alan"><label for="dv-kaynak-salt">Kaynak</label>
           <input type="text" id="dv-kaynak-salt" class="kod-salt" value="{{ varlik.get_kaynak_display }}" readonly>
           <p class="yardim">Değiştirilemez.</p></div>
-        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }} <span class="zorunlu">*</span></label>{{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }}{% if not maliyet_otomatik %} <span class="zorunlu">*</span>{% endif %}</label>
+          {% if maliyet_otomatik %}
+            <input type="text" class="mono kod-salt" value="{{ varlik.maliyet|tr_kur:2 }}" readonly>
+            <p class="yardim">Bağlı fatura kalemlerinin toplamından otomatik hesaplanır; elle değiştirilemez.</p>
+          {% else %}
+            {{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          {% endif %}</div>
         <div class="alan"><label for="{{ form.marka_model.id_for_label }}">{{ form.marka_model.label }}</label>{{ form.marka_model }}</div>
         <div class="alan"><label for="{{ form.seri_no.id_for_label }}">{{ form.seri_no.label }}</label>{{ form.seri_no }}</div>
         <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>

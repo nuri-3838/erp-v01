@@ -33,8 +33,13 @@
           <input type="text" id="dv-kod-onizleme" class="mono kod-salt" placeholder="(otomatik atanacak)" readonly></div>
         <div class="alan"><label for="{{ form.hesap.id_for_label }}">{{ form.hesap.label }} <span class="zorunlu">*</span></label><div class="akilli">{{ form.hesap }}</div>{% for e in form.hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.aktiflestirme_tarihi.id_for_label }}">{{ form.aktiflestirme_tarihi.label }} <span class="zorunlu">*</span></label>{{ form.aktiflestirme_tarihi }}{% for e in form.aktiflestirme_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }} <span class="zorunlu">*</span></label>{{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          {% if satir %}<p class="yardim">Seçili kalemlerin toplamı olarak ön dolduruldu; kaydettikten sonra otomatik değişmez.</p>{% endif %}</div>
+        <div class="alan"><label for="{{ form.maliyet.id_for_label }}">{{ form.maliyet.label }}{% if not satir %} <span class="zorunlu">*</span>{% endif %}</label>
+          {% if satir %}
+            <input type="text" class="mono kod-salt" value="{{ otomatik_maliyet|tr_kur:2 }}" readonly>
+            <p class="yardim">Seçili kalemlerin (KDV/tevkifat hariç) matrah toplamı — otomatik hesaplanır, elle girilemez.</p>
+          {% else %}
+            {{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          {% endif %}</div>
         <div class="alan"><label for="{{ form.marka_model.id_for_label }}">{{ form.marka_model.label }}</label>{{ form.marka_model }}</div>
         <div class="alan"><label for="{{ form.seri_no.id_for_label }}">{{ form.seri_no.label }}</label>{{ form.seri_no }}</div>
         <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>

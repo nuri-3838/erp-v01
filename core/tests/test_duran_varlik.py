@@ -118,6 +118,14 @@ class FaturaKaynakliTest(TestCase):
         self.assertEqual(list(v.fatura_satirlari.all()), [satir])
         self.assertEqual(v.maliyet, Decimal("5000.00"))
 
+    def test_satir_verilince_gonderilen_maliyet_yok_sayilir_otomatik_hesaplanir(self):
+        f = self._fatura()
+        satir = f.satirlar.first()
+        v = duran_varlik_olustur(ad="cnc", hesap_id=satir.hesap_id,
+                                 aktiflestirme_tarihi=D(2026, 3, 10), maliyet=Decimal("1"),
+                                 fatura_satirlari=[satir.pk])
+        self.assertEqual(v.maliyet, Decimal("5000.00"))   # 1 değil — satırın matrahı
+
     def test_bulunamayan_satir_reddedilir(self):
         h = HesapPlani.objects.get(hesap_kodu="253")
         with self.assertRaises(DuranVarlikHatasi):
@@ -367,11 +375,27 @@ class KalemBaglamaTest(TestCase):
         self.assertEqual(r2.status_code, 302)
         self.assertEqual(v.fatura_satirlari.count(), 1)
 
-    def test_detay_maliyet_farkli_ise_uyari_gosterir(self):
+    def test_satir_baglayinca_maliyet_otomatik_guncellenir(self):
         v = duran_varlik_olustur(ad="cnc", hesap_id=self.h253.pk,
                                  aktiflestirme_tarihi=D(2026, 3, 10), maliyet=Decimal("3000"),
                                  fatura_satirlari=[self.satir1.pk])
-        satir_bagla(v, self.satir2.pk)   # maliyet hala 3000, bagli toplam 5000 oldu
+        self.assertEqual(v.maliyet, Decimal("3000.00"))
+        satir_bagla(v, self.satir2.pk)
+        v.refresh_from_db()
+        self.assertEqual(v.maliyet, Decimal("5000.00"))   # artık otomatik senkron — fark yok
+
+        self.client.force_login(self.yetkili)
+        r = self.client.get(reverse("core:duran_varlik_detay", args=[v.pk]))
+        self.assertNotContains(r, "uyuşmuyor")
+
+    def test_detay_eski_veriden_kalma_fark_hala_uyari_gosterir(self):
+        # Yeni bağlama/çıkarma işlemleri artık hiç uyuşmazlık bırakmaz; bu test yalnız
+        # UYARI GÖSTERİMİNİN kendisini (geçmişten kalma, elle bozulmuş bir kayıt
+        # senaryosuyla) doğrular — servis fonksiyonları ÜZERİNDEN bu duruma ulaşılamaz.
+        v = duran_varlik_olustur(ad="cnc", hesap_id=self.h253.pk,
+                                 aktiflestirme_tarihi=D(2026, 3, 10), maliyet=Decimal("3000"),
+                                 fatura_satirlari=[self.satir1.pk])
+        DuranVarlik.objects.filter(pk=v.pk).update(maliyet=Decimal("1.00"))
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:duran_varlik_detay", args=[v.pk]))
         self.assertContains(r, "uyuşmuyor")
@@ -550,6 +574,31 @@ class DuranVarlikGuncelleTest(TestCase):
                                  maliyet=Decimal("100"))
         with self.assertRaises(DuranVarlikHatasi):
             duran_varlik_guncelle(v, ad="a", maliyet=Decimal("-5"))
+
+    def test_bagli_kalemli_kartta_gonderilen_maliyet_yok_sayilir(self):
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Decimal("30"))
+        _hesap("191", "İNDİRİLECEK KDV", grup="BILANCO", kalem="DV")
+        _hesap("391", "HESAPLANAN KDV", grup="BILANCO", kalem="KVYK")
+        _hesap("320.10.0001", "TEDARİKÇİ A", grup="BILANCO", kalem="KVYK")
+        h = _hesap("253", "TESİS MAKİNE VE CİHAZLAR")
+        kdv20 = KdvOrani.objects.create(
+            aciklama="GENEL", oran=Decimal("20"),
+            hesap_borc=HesapPlani.objects.get(hesap_kodu="191"),
+            hesap_alacak=HesapPlani.objects.get(hesap_kodu="391"))
+        gider = FaturaTipi.objects.create(ad="ALIŞ-GİDER", yon=FaturaTipi.Yon.ALIS, gider=True)
+        cari = Cari.objects.create(kod="320-10-0001", unvan="TEDARİKÇİ A", para_birimi="TRY",
+                                   muhasebe_kodu="320.10.0001")
+        f = fatura_olustur(
+            tip_id=gider.pk, cari_id=cari.pk, tarih=D(2026, 3, 10), fatura_no="G-1",
+            satirlar=[{"hesap_id": "253", "miktar": "1", "birim_fiyat": "1000",
+                      "kdv_id": kdv20.pk}])
+        satir = f.satirlar.first()
+        v = duran_varlik_olustur(ad="cnc", hesap_id=h.pk, aktiflestirme_tarihi=D(2026, 3, 10),
+                                 maliyet=satir.tutar, fatura_satirlari=[satir.pk])
+        duran_varlik_guncelle(v, ad="cnc 2", maliyet=Decimal("999999"))
+        v.refresh_from_db()
+        self.assertEqual(v.ad, "CNC 2")
+        self.assertEqual(v.maliyet, Decimal("1000.00"))   # 999999 yok sayıldı
 
 
 class VarlikSilVeDuzenleEkranTest(TestCase):

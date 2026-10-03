@@ -12,8 +12,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.forms import FaturaSatirForm
-from core.models import (Birim, Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani, Kategori,
-                         KdvOrani, Kur, Stok, StokHareket, YatirimProjesi, YevmiyeFisi)
+from core.models import (Birim, Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
+                         Kategori, KdvOrani, Kur, Stok, StokHareket, TevkifatOrani,
+                         YatirimProjesi, YevmiyeFisi)
+from core.services.duran_varlik import duran_varlik_olustur
 from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_olustur, fatura_onayla,
                                   fatura_sil, fatura_taslak_olustur)
 from core.services.fatura_tipi import FaturaTipiHatasi, fatura_tipi_guncelle, fatura_tipi_olustur
@@ -233,6 +235,66 @@ class GiderFaturaServisTest(GiderTemel):
                                    uretim_birimi=adet, fatura_birimi=adet, kdv=self.kdv20)
         with self.assertRaises(IntegrityError), transaction.atomic():
             FaturaSatir.objects.create(fatura=f, stok=stok, hesap=hesap, miktar=1, birim_fiyat=1)
+
+
+class GiderTevkifatTest(GiderTemel):
+    """Alış gider/duran varlık kalemlerinde opsiyonel tevkifat (2026-10-03 isteği) —
+    örnek: Kılkış Nakliyat GIB2026000000098, matrah 20.000, KDV %20=4.000, tevkifat
+    2/10=800, ödenecek 23.200. 191 TAM KDV ile borçlanır, 320 cari ÖDENECEK tutarla
+    alacaklanır, tevkifat tutarı 360.10.0210'a alacak yazılır (stoklu akışla BİREBİR
+    aynı 360 mantığı — bkz. core.tests.test_fatura.TevkifatTest)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        _hesap("360", "ÖDENECEK VERGİ VE FONLAR", kalem="KVYK")
+        _hesap("360.10", "KDV TEVKİFATLARI", kalem="KVYK")
+        _hesap("360.10.0210", "2/10 TEVKİFAT ÖDENECEK VERGİ", kalem="KVYK")
+        cls.tev210 = TevkifatOrani.objects.create(
+            kod="2/10-01", pay=2, payda=10,
+            hesap=HesapPlani.objects.get(hesap_kodu="360.10.0210"))
+
+    def test_gider_kalemi_tevkifatli_dogru_fis(self):
+        f = self._kes([{"hesap_id": "730.01", "miktar": "1", "birim_fiyat": "20000",
+                        "kdv_id": self.kdv20.pk, "tevkifat_id": self.tev210.pk}])
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["730.01"], (Decimal("20000.00"), Decimal("0.00")))        # matrah
+        self.assertEqual(sat["191"], (Decimal("4000.00"), Decimal("0.00")))            # TAM KDV
+        self.assertEqual(sat["360.10.0210"], (Decimal("0.00"), Decimal("800.00")))     # tevkifat
+        self.assertEqual(sat["320.10.0001"], (Decimal("0.00"), Decimal("23200.00")))   # ödenecek
+        self.assertEqual(f.tevkifat_toplam, Decimal("800.00"))
+        self.assertEqual(f.odenecek, Decimal("23200.00"))
+        self.assertEqual(sum(s.borc for s in f.fis.satirlar.all()),
+                         sum(s.alacak for s in f.fis.satirlar.all()))
+
+    def test_gider_kalemi_tevkifatsiz_davranis_degismedi(self):
+        # tevkifat_id hiç gönderilmezse (eski form şekli) hâlâ tevkifatsız işlenir.
+        f = self._kes([self._sat("730.01", "1", "1000")])
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertNotIn("360.10.0210", sat)
+        self.assertEqual(f.tevkifat_toplam, Decimal("0.00"))
+
+    def test_duran_varlik_kalemi_tevkifatli_maliyet_matrah_kalir(self):
+        # Madde 4: duran varlık kartına aktarılan maliyet KALEMİN MATRAHI — tevkifat
+        # (ve KDV) maliyeti ETKİLEMEZ.
+        f = self._kes([{"hesap_id": "253", "miktar": "1", "birim_fiyat": "10000",
+                        "kdv_id": self.kdv20.pk, "tevkifat_id": self.tev210.pk}])
+        satir = f.satirlar.first()
+        self.assertEqual(satir.tutar, Decimal("10000.00"))             # matrah, tevkifattan etkilenmez
+        self.assertEqual(satir.tevkifat_tutari, Decimal("400.00"))     # 2000*2/10
+        v = duran_varlik_olustur(ad="cnc", hesap_id=satir.hesap_id,
+                                 aktiflestirme_tarihi=D(2026, 3, 10), maliyet=Decimal("1"),
+                                 fatura_satirlari=[satir.pk])
+        self.assertEqual(v.maliyet, Decimal("10000.00"))   # matrah — tevkifat düşülmedi
+
+    def test_duzenleme_tasla_gider_satirinda_tevkifat_formdan_gelir(self):
+        f = fatura_taslak_olustur(
+            cari_id=self.cari.pk, tarih=D(2026, 3, 10), tip_id=self.gider.pk,
+            satirlar=[{"hesap_id": "730.01", "miktar": "1", "birim_fiyat": "20000",
+                      "kdv_id": self.kdv20.pk, "tevkifat_id": self.tev210.pk}],
+            para_birimi="TRY")
+        satir = f.satirlar.first()
+        self.assertEqual(satir.tevkifat_id, self.tev210.pk)   # taslakta da snapshot doğru
 
 
 class GiderHesapSeciciTest(GiderTemel):
@@ -538,6 +600,25 @@ class GiderFaturaEkranTest(GiderTemel):
         self.assertContains(r3, "yalnız Alış yönünde")
         r4 = self.client.get(reverse("core:fatura_tipi_duzenle", args=[self.gider.pk]))
         self.assertTrue(r4.context["form"].initial["gider"])
+
+    def test_duzenleme_ekraninda_tevkifat_secimi_kalici(self):
+        _hesap("360", "ÖDENECEK VERGİ VE FONLAR", kalem="KVYK")
+        _hesap("360.10", "KDV TEVKİFATLARI", kalem="KVYK")
+        _hesap("360.10.0210", "2/10 TEVKİFAT ÖDENECEK VERGİ", kalem="KVYK")
+        tev = TevkifatOrani.objects.create(
+            kod="2/10-01", pay=2, payda=10,
+            hesap=HesapPlani.objects.get(hesap_kodu="360.10.0210"))
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:alis_fatura_ekle"),
+                             self._veri(**{"birim_fiyat": "20000", "tevkifat": str(tev.pk)}),
+                             follow=True)
+        f = Fatura.objects.get(fatura_no="G-9")
+        self.assertEqual(f.satirlar.first().tevkifat_id, tev.pk)
+
+        r2 = self.client.get(reverse("core:fatura_duzenle", args=[f.pk]))
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.context["formset"][0].initial.get("tevkifat"), str(tev.pk))
+        self.assertContains(r2, "2/10-01")   # seçili tevkifat seçeneği sayfada
 
 
 class SeedGiderTipiTest(TestCase):

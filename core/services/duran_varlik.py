@@ -41,17 +41,22 @@ def duran_varlik_olustur(*, ad, hesap_id, aktiflestirme_tarihi, maliyet, marka_m
                          seri_no="", notlar="", fatura_satirlari=None, kullanici=None) -> DuranVarlik:
     """``fatura_satirlari``: FaturaSatir pk veya instance listesi (opsiyonel, birden fazla
     olabilir) — hepsi ``hesap_id`` ile aynı hesaba işlenmiş ve henüz başka bir karta bağlı
-    olmamalı (bkz. core.services.duran_varlik._dogrula_satirlar)."""
+    olmamalı (bkz. core.services.duran_varlik._dogrula_satirlar). Satır(lar) verilirse
+    ``maliyet`` parametresi YOK SAYILIR — kart maliyeti bağlı kalemlerin (KDV/tevkifat
+    hariç) matrah toplamı olur (bkz. baglanti_toplami); satır verilmezse (ACILIS) elle
+    girilen ``maliyet`` kullanılır."""
     ad = buyuk_harf_tr((ad or "").strip())
     if not ad:
         raise DuranVarlikHatasi("Ad boş olamaz.")
     if not duran_varlik_karti_hesaplari().filter(pk=hesap_id).exists():
         raise DuranVarlikHatasi(
             "Geçerli bir duran varlık hesabı seçin (253/254/255/260, yaprak hesap olmalı).")
-    if maliyet is None or maliyet < 0:
-        raise DuranVarlikHatasi("Maliyet negatif olamaz.")
 
     satirlar = _dogrula_satirlar(fatura_satirlari, hesap_id)
+    if satirlar:
+        maliyet = sum((s.tutar for s in satirlar), SIFIR)
+    elif maliyet is None or maliyet < 0:
+        raise DuranVarlikHatasi("Maliyet negatif olamaz.")
 
     dv = DuranVarlik.objects.create(
         demirbas_kodu=sonraki_demirbas_kodu(), ad=ad, hesap_id=hesap_id,
@@ -98,20 +103,27 @@ def baglanabilir_satirlar(varlik: DuranVarlik):
 
 
 def satir_bagla(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik:
+    """Kalemi karta bağlar VE kart maliyetini bağlı (silinmemiş) kalemlerin matrah
+    toplamına göre otomatik günceller (bkz. baglanti_toplami) — elle girilmiş maliyet
+    bundan sonra korunmaz."""
     satirlar = _dogrula_satirlar([satir_id], varlik.hesap_id, haric_varlik_pk=varlik.pk)
     varlik.fatura_satirlari.add(*satirlar)
+    varlik.maliyet = baglanti_toplami(varlik)
     varlik.updated_by = kullanici
-    varlik.save(update_fields=["updated_by", "updated_at"])
+    varlik.save(update_fields=["maliyet", "updated_by", "updated_at"])
     return varlik
 
 
 def satir_cikar(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik:
+    """Kalemi karttan çıkarır VE kart maliyetini kalan bağlı kalemlerin matrah toplamına
+    göre otomatik günceller (hiç kalem kalmazsa 0,00 olur)."""
     satir = varlik.fatura_satirlari.filter(pk=satir_id).first()
     if not satir:
         raise DuranVarlikHatasi("Bu kalem karta bağlı değil.")
     varlik.fatura_satirlari.remove(satir)
+    varlik.maliyet = baglanti_toplami(varlik)
     varlik.updated_by = kullanici
-    varlik.save(update_fields=["updated_by", "updated_at"])
+    varlik.save(update_fields=["maliyet", "updated_by", "updated_at"])
     return varlik
 
 
@@ -195,22 +207,27 @@ def varlik_sil(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
     return varlik
 
 
-def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet, marka_model="", seri_no="",
+def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet=None, marka_model="", seri_no="",
                           notlar="", kullanici=None) -> DuranVarlik:
     """Yalnız ad/marka-model/seri no/notlar/maliyet düzenlenebilir — hesap ve kaynak
     SABİTTİR (hesap kartın temsil ettiği muhasebe hesabını, kaynak kartın nasıl
-    üretildiğini belirler; ikisi de düzenleme ekranından değiştirilemez)."""
+    üretildiğini belirler; ikisi de düzenleme ekranından değiştirilemez). Kartın bağlı
+    fatura kalemi VARSA maliyet artık otomatik (bkz. satir_bagla/satir_cikar) — bu
+    fonksiyona verilen ``maliyet`` o durumda YOK SAYILIR; yalnız hiç bağlı kalemi
+    olmayan (ACILIS) kartlarda elle değiştirilebilir."""
     ad = buyuk_harf_tr((ad or "").strip())
     if not ad:
         raise DuranVarlikHatasi("Ad boş olamaz.")
-    if maliyet is None or maliyet < 0:
-        raise DuranVarlikHatasi("Maliyet negatif olamaz.")
+    alanlar = ["ad", "marka_model", "seri_no", "notlar", "updated_by", "updated_at"]
     varlik.ad = ad
-    varlik.maliyet = maliyet
     varlik.marka_model = (marka_model or "").strip()
     varlik.seri_no = (seri_no or "").strip()
     varlik.notlar = (notlar or "").strip()
+    if not varlik.fatura_satirlari.exists():
+        if maliyet is None or maliyet < 0:
+            raise DuranVarlikHatasi("Maliyet negatif olamaz.")
+        varlik.maliyet = maliyet
+        alanlar.append("maliyet")
     varlik.updated_by = kullanici
-    varlik.save(update_fields=["ad", "maliyet", "marka_model", "seri_no", "notlar",
-                               "updated_by", "updated_at"])
+    varlik.save(update_fields=alanlar)
     return varlik

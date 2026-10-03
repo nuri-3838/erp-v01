@@ -1643,6 +1643,13 @@ def _gruplu_secenekler_uygula(field, gruplar):
     field.widget.choices = secenekler
 
 
+# Fatura kalemi tevkifat seçicisinde "açıkça tevkifat yok" seçeneğinin değeri — boş
+# seçimden (stoklu kalemde stok kartının GÜNCEL tevkifatını kullan) kasıtlı olarak AYRI
+# (bkz. FaturaSatirForm.tevkifat, core.services.fatura._satir_coz, core.views
+# ._fatura_satir_girdileri).
+TEVKIFAT_YOK = "YOK"
+
+
 class FaturaSatirForm(forms.Form):
     """Fatura kalemi — Teklif/Sipariş kalem formuyla aynı şekil, aynı sebeple birim fiyat
     4 ondalık basamak (bkz. TeklifSiparisKalemForm): fatura kalemleri artık Satınalma
@@ -1666,6 +1673,13 @@ class FaturaSatirForm(forms.Form):
     yatirim_projesi = forms.ModelChoiceField(
         label="Yatırım Projesi", queryset=YatirimProjesi.objects.none(), required=False,
         empty_label="— proje seç —")
+    # Stoklu kalemde stok kartından (JS) otomatik ön-dolar ama DEĞİŞTİRİLEBİLİR; hesap
+    # (gider/duran varlık) kaleminde elle seçilir. ÜÇ AYRI durum (bkz. TEVKIFAT_YOK altında
+    # modül seviyesi sabiti + core.services.fatura._satir_coz): "" (boş) = stoklu kalemde
+    # stok kartındaki GÜNCEL tevkifatı kullan (gider kaleminde anlamsız, tevkifatsız
+    # sayılır); TEVKIFAT_YOK = açıkça "tevkifat uygulanmasın" (stok kartında tanımlı olsa
+    # bile); <pk> = o tevkifatı uygula.
+    tevkifat = forms.ChoiceField(label="Tevkifat", required=False, choices=[])
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
@@ -1701,6 +1715,11 @@ class FaturaSatirForm(forms.Form):
         varsayilan = kdvler.filter(oran=20).first() or kdvler.last()
         if varsayilan is not None:
             self.fields["kdv"].initial = varsayilan.pk       # gider kaleminde en sık: %20
+        tevkifatlar = TevkifatOrani.objects.filter(silindi=False).order_by("pay")
+        self.fields["tevkifat"].choices = (
+            [("", "— stok kartından gelsin —"), (TEVKIFAT_YOK, "— Tevkifat yok —")]
+            + [(str(t.pk), t.kod) for t in tevkifatlar])
+        self.fields["tevkifat"].widget.attrs["class"] = "akilli-sec"
 
     def clean(self):
         from core.services.hesap_plani import hesap_kodu_258_mi, hesap_kodu_duran_varlik_mi

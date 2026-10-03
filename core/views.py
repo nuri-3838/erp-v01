@@ -28,7 +28,7 @@ from django.views.decorators.cache import never_cache
 
 from core.forms import (
     AdayAktiviteForm, AdayAsamaTanimForm, AdayCariyeMevcutCariForm, AdayCariyeYeniCariForm,
-    AktiflestirmeBaslikForm, AktiflestirmeSatirForm,
+    AktiflestirmeBaslikForm, AktiflestirmeSatirForm, TEVKIFAT_YOK,
     AdayMusteriForm, AdayMusteriKategoriForm, AdayPotansiyelTanimForm, AdayTipTanimForm,
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
@@ -6329,8 +6329,10 @@ def _fatura_ekle_url(yon):
 def _stok_kdv_tevkifat(yon=None):
     _stoklar = list(Stok.objects.filter(silindi=False).select_related("kdv", "tevkifat"))
     stok_kdv = {str(s.pk): float(s.kdv.oran) if s.kdv_id else 0 for s in _stoklar}
-    stok_tevkifat = {str(s.pk): (float(s.tevkifat.pay) / float(s.tevkifat.payda))
-                     if (s.tevkifat_id and s.tevkifat.payda) else 0 for s in _stoklar}
+    # stok_id -> tevkifat_id: satır formundaki tevkifat seçicisini stok seçilince ön-doldurmak
+    # için (JS); kullanıcı sonra değiştirebilir — oranın kendisi artık `tevkifat_oran`'dan
+    # (bkz. _fatura_gider_baglami) seçili tevkifat_id'ye göre okunuyor, stok_id'ye göre değil.
+    stok_tevkifat = {str(s.pk): s.tevkifat_id for s in _stoklar if s.tevkifat_id}
     # Yalnız ALIŞ yönünde: stok seçilince alan altında gösterilecek Tedarikçi Ürün Adı
     # (bkz. _stok_meta'daki aynı ayrım, fatura_ekle.html'nin tedarikci-etiket JS'i).
     stok_tedarikci = ({str(s.pk): s.tedarikci_adi for s in _stoklar if s.tedarikci_adi}
@@ -6338,18 +6340,45 @@ def _stok_kdv_tevkifat(yon=None):
     return stok_kdv, stok_tevkifat, stok_tedarikci
 
 
+def _tevkifat_initial(satir):
+    """Düzenleme formunun tevkifat seçicisi için kayıtlı 3 durumdan hangisini
+    göstereceğini çözer. FaturaSatir yalnız `tevkifat_id`'yi (nullable FK) saklar; "boş
+    bırakıldı" (stok varsayılanını kullan) ile "açıkça Yok seçildi" ayrımı KAYDEDİLMEZ
+    ama şuradan türetilebilir: stoklu bir kalemde satır.tevkifat_id boşken stok kartının
+    KENDİ tevkifatı doluysa, bu ancak kullanıcının o anda tevkifatı AÇIKÇA temizlemiş
+    olmasıyla açıklanır (boş bırakılsaydı satır.tevkifat_id de stoktan dolardı) — bkz.
+    core.services.fatura._tevkifat_coz / core.forms.TEVKIFAT_YOK."""
+    if satir.tevkifat_id:
+        return str(satir.tevkifat_id)
+    if satir.stok_id and satir.stok.tevkifat_id:
+        return TEVKIFAT_YOK
+    return ""
+
+
 def _fatura_satir_girdileri(formset):
     """Fatura kalem formlarından servis girdisi: stok kalemi ya da (gider faturasında) gider
-    hesabı + satırda seçilen KDV oranı. Tip × kalem türü tutarlılığı serviste doğrulanır."""
+    hesabı + satırda seçilen KDV oranı. Tip × kalem türü tutarlılığı serviste doğrulanır.
+    Tevkifat seçicisi üç değerli (bkz. core.forms.TEVKIFAT_YOK): "" (boş) -> stoklu kalemde
+    stok kartının güncel tevkifatı kullanılır (`tevkifat_id`/`tevkifat_yok` ikisi de boş/
+    False); TEVKIFAT_YOK -> `tevkifat_yok=True` (stok kartında tanımlı olsa bile
+    uygulanmaz); <pk> -> `tevkifat_id` o orana işaret eder."""
     girdiler = []
     for f in formset:
         if not f.dolu_mu():
             continue
         cd = f.cleaned_data
+        tev_ham = (cd.get("tevkifat") or "").strip()
+        tevkifat_id = None
+        tevkifat_yok = False
+        if tev_ham == TEVKIFAT_YOK:
+            tevkifat_yok = True
+        elif tev_ham:
+            tevkifat_id = int(tev_ham)
         girdiler.append({
             "stok_id": cd["stok"].pk if cd.get("stok") else None,
             "hesap_id": cd["hesap"].pk if cd.get("hesap") else None,
             "kdv_id": cd["kdv"].pk if cd.get("kdv") else None,
+            "tevkifat_id": tevkifat_id, "tevkifat_yok": tevkifat_yok,
             "yatirim_projesi_id": cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
             "miktar": cd["miktar"], "birim_fiyat": cd["birim_fiyat"]})
     return girdiler
@@ -6362,7 +6391,9 @@ def _fatura_gider_baglami(fform):
     return {"tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
             "duran_varlik_hesap": {str(h.pk): True for h in hp.duran_varlik_hesaplari()},
             "kdv_oran": {str(k.pk): float(k.oran)
-                         for k in KdvOrani.objects.filter(silindi=False)}}
+                         for k in KdvOrani.objects.filter(silindi=False)},
+            "tevkifat_oran": {str(t.pk): float(t.pay) / float(t.payda)
+                              for t in TevkifatOrani.objects.filter(silindi=False) if t.payda}}
 
 
 def _fatura_listesi(request, yon, baslik):
@@ -6525,9 +6556,10 @@ def fatura_duzenle(request, pk):
             "kur": fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else None,
             "depo": fatura.depo_id, "aciklama": fatura.aciklama,
             "vade_tarihi": fatura.vade_tarihi})
-        ilk = [{"stok": s.stok_id, "hesap": s.hesap_id, "kdv": s.kdv_id, "miktar": s.miktar,
-                "birim_fiyat": s.birim_fiyat}
-               for s in fatura.satirlar.filter(silindi=False).select_related("stok", "hesap")]
+        ilk = [{"stok": s.stok_id, "hesap": s.hesap_id, "kdv": s.kdv_id,
+                "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
+               for s in fatura.satirlar.filter(silindi=False)
+               .select_related("stok__tevkifat", "hesap")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon})
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     return render(request, "core/fatura_ekle.html",
@@ -6671,21 +6703,26 @@ def duran_varlik_ekle(request):
              .select_related("fatura", "hesap").first()) if satir_id else None
 
     adaylar = FaturaSatir.objects.none()
+    otomatik_maliyet = None
     if satir:
         adaylar = (FaturaSatir.objects.filter(
                 fatura_id=satir.fatura_id, hesap_id=satir.hesap_id,
                 silindi=False, fatura__silindi=False)
             .exclude(duran_varliklar__silindi=False)
             .select_related("fatura").order_by("id"))
+        secili_adaylar = list(adaylar) or [satir]
+        otomatik_maliyet = sum((s.tutar for s in secili_adaylar), Decimal("0.00"))
 
     if request.method == "POST":
         form = DuranVarlikForm(request.POST, satir_adaylari=adaylar)
+        if satir:
+            form.fields["maliyet"].required = False   # satır(lar) varsa maliyet otomatik
         if form.is_valid():
             try:
                 cd = form.cleaned_data
                 dv = dv_servis.duran_varlik_olustur(
                     ad=cd["ad"], hesap_id=cd["hesap"].pk,
-                    aktiflestirme_tarihi=cd["aktiflestirme_tarihi"], maliyet=cd["maliyet"],
+                    aktiflestirme_tarihi=cd["aktiflestirme_tarihi"], maliyet=cd.get("maliyet"),
                     marka_model=cd["marka_model"], seri_no=cd["seri_no"], notlar=cd["notlar"],
                     fatura_satirlari=list(cd["fatura_satir_ids"]), kullanici=request.user)
                 messages.success(request, f"Duran varlık kartı eklendi: {dv.demirbas_kodu} — {dv.ad}")
@@ -6695,13 +6732,14 @@ def duran_varlik_ekle(request):
     else:
         initial = {}
         if satir:
-            secili = list(adaylar) or [satir]
-            toplam = sum((s.tutar for s in secili), Decimal("0.00"))
-            initial = {"hesap": satir.hesap_id, "maliyet": toplam,
+            initial = {"hesap": satir.hesap_id, "maliyet": otomatik_maliyet,
                        "aktiflestirme_tarihi": satir.fatura.tarih,
-                       "fatura_satir_ids": [s.pk for s in secili]}
+                       "fatura_satir_ids": [s.pk for s in (list(adaylar) or [satir])]}
         form = DuranVarlikForm(initial=initial, satir_adaylari=adaylar)
-    return render(request, "core/duran_varlik_form.html", {"form": form, "satir": satir})
+        if satir:
+            form.fields["maliyet"].required = False
+    return render(request, "core/duran_varlik_form.html",
+                  {"form": form, "satir": satir, "otomatik_maliyet": otomatik_maliyet})
 
 
 @ekran_gerekli("duran_varliklar")
@@ -6722,13 +6760,16 @@ def duran_varlik_detay(request, pk):
 @ekran_gerekli("duran_varliklar")
 def duran_varlik_duzenle(request, pk):
     varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    maliyet_otomatik = varlik.fatura_satirlari.exists()
     if request.method == "POST":
         form = DuranVarlikDuzenleForm(request.POST)
+        if maliyet_otomatik:
+            form.fields["maliyet"].required = False
         if form.is_valid():
             try:
                 cd = form.cleaned_data
                 dv_servis.duran_varlik_guncelle(
-                    varlik, ad=cd["ad"], maliyet=cd["maliyet"], marka_model=cd["marka_model"],
+                    varlik, ad=cd["ad"], maliyet=cd.get("maliyet"), marka_model=cd["marka_model"],
                     seri_no=cd["seri_no"], notlar=cd["notlar"], kullanici=request.user)
                 messages.success(request, f"{varlik.demirbas_kodu} güncellendi.")
                 return redirect("core:duran_varlik_detay", pk=pk)
@@ -6738,7 +6779,10 @@ def duran_varlik_duzenle(request, pk):
         form = DuranVarlikDuzenleForm(initial={
             "ad": varlik.ad, "maliyet": varlik.maliyet, "marka_model": varlik.marka_model,
             "seri_no": varlik.seri_no, "notlar": varlik.notlar})
-    return render(request, "core/duran_varlik_duzenle.html", {"form": form, "varlik": varlik})
+        if maliyet_otomatik:
+            form.fields["maliyet"].required = False
+    return render(request, "core/duran_varlik_duzenle.html",
+                  {"form": form, "varlik": varlik, "maliyet_otomatik": maliyet_otomatik})
 
 
 @ekran_gerekli("duran_varliklar")

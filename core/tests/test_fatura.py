@@ -187,6 +187,35 @@ class TevkifatTest(FaturaTestTemel):
         self.assertEqual(tb, ta)                       # döviz + tevkifat dengeli
         self.assertEqual(f.para_birimi, "EUR")
 
+    def test_tevkifat_acikca_yok_secilince_stok_varsayilani_uygulanmaz(self):
+        # 2026-10-03: stok kartında 7/10 tevkifat tanımlı olsa bile, satırda seçicide
+        # AÇIKÇA "Yok" seçilirse (core.forms.TEVKIFAT_YOK) o kalemde tevkifat
+        # uygulanmaz — 360 satırı hiç oluşmaz, ödenecek KDV DAHİL toplam olur.
+        self._tev()   # stok.tevkifat = 5/10, 360.10 hesaplı
+        f = fatura_olustur(
+            tip_id=self.alis.pk, cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
+            satirlar=[{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "100",
+                      "tevkifat_yok": True}])
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["153.10"], (Decimal("1000.00"), Decimal("0.00")))
+        self.assertEqual(sat["191"], (Decimal("200.00"), Decimal("0.00")))
+        self.assertNotIn("360.10", sat)                                  # tevkifat satırı YOK
+        self.assertEqual(sat["320.10.0001"], (Decimal("0.00"), Decimal("1200.00")))  # KDV dahil tam toplam
+        self.assertEqual(f.tevkifat_toplam, Decimal("0.00"))
+        self.assertEqual(f.odenecek, Decimal("1200.00"))
+        self.assertEqual(f.satirlar.first().tevkifat_id, None)
+        tb = sum(s.borc for s in f.fis.satirlar.filter(silindi=False))
+        ta = sum(s.alacak for s in f.fis.satirlar.filter(silindi=False))
+        self.assertEqual(tb, ta)
+
+    def test_tevkifat_bos_birakilinca_stok_varsayilani_uygulanir(self):
+        # Boş (tevkifat_id/tevkifat_yok hiç gönderilmez) -> eskisi gibi stoktan gelir.
+        self._tev()
+        f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
+                           tarih=D(2026, 3, 10), satirlar=self._satir())
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["360.10"], (Decimal("0.00"), Decimal("100.00")))
+
 
 class FaturaGuncelleTest(FaturaTestTemel):
     def test_guncelle_fisi_yeniler(self):

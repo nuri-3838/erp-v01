@@ -10,6 +10,7 @@
 {{ tip_gider|json_script:"tip-gider" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
+{{ tevkifat_oran|json_script:"tevkifat-oran" }}
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
   .satir-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
@@ -30,6 +31,10 @@
   #fatura-satir-tablo.gider-modu .th-hesap { display:inline; }
   .kdv-secim { margin-bottom:.3rem; }
   .kdv-secim select { width:100%; font-size:.82rem; }
+  /* Tevkifat seçici her iki modda da (stoklu + gider) görünür — stokluda stok kartından
+     ön-dolar ama değiştirilebilir; gider/duran varlık kaleminde elle seçilir. */
+  .tevkifat-secim { margin-bottom:.3rem; }
+  .tevkifat-secim select { width:100%; font-size:.82rem; }
   /* Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa görünür (JS: satır
      class'ına .duran-varlik eklenir) — 258'de zorunlu, 253/254/255/260'ta opsiyonel. */
   .proje-alani { display:none; margin-top:.3rem; }
@@ -151,7 +156,7 @@
               <td><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="proje-alani">{{ f.yatirim_projesi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">{{ f.miktar }}</td>
               <td class="sag">{{ f.birim_fiyat }}</td>
-              <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
+              <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tevkifat-secim">{{ f.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
               <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
             </tr>
           {% endfor %}
@@ -174,7 +179,7 @@
       <td><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}</div></td>
       <td class="sag">{{ formset.empty_form.miktar }}</td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
-      <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
+      <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tevkifat-secim">{{ formset.empty_form.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
       <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
@@ -188,11 +193,12 @@
 <script>
 (function(){
   var KDV = JSON.parse(document.getElementById('stok-kdv').textContent);
-  var TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);
+  var STOK_TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);   // stok_id -> tevkifat_id
   var TED = JSON.parse(document.getElementById('stok-tedarikci').textContent);
   var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
   var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
+  var TEVORAN = JSON.parse(document.getElementById('tevkifat-oran').textContent) || {};   // tevkifat_id -> pay/payda
   var KUR_API = '{% url "core:kur_usd_api" %}';
   var VADE_API_TMPL = '{% url "core:cari_vade_api" 999999 %}';   // 999999 -> gerçek cari id
   var kurElleDegisti = false;
@@ -230,15 +236,27 @@
     document.querySelectorAll('.satir-form').forEach(function(r){
       var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
       var f=parseTR(el(r,'-birim_fiyat')?el(r,'-birim_fiyat').value:'');
-      var oran, ratio;
+      var oran;
       if(gider){
         var ks=el(r,'-kdv');
         oran=(ks&&ks.value&&KDVORAN[ks.value]!=null)?KDVORAN[ks.value]:0;
-        ratio=0;                              // gider kaleminde tevkifat yok
       } else {
         var sel=el(r,'-stok');
         oran=(sel&&sel.value&&KDV[sel.value]!=null)?KDV[sel.value]:0;
-        ratio=(sel&&sel.value&&TEV[sel.value]!=null)?TEV[sel.value]:0;
+      }
+      // Tevkifat oranı — satırın KENDİ tevkifat seçiminden. Üç durum: belirli bir oran
+      // seçiliyse o; "YOK" açıkça seçiliyse 0 (stok kartında tanımlı olsa bile); BOŞ
+      // bırakıldıysa (yalnız stoklu modda anlamlı) stok kartının GÜNCEL oranı önizlenir
+      // — sunucudaki "inherit" davranışıyla aynı (bkz. core.services.fatura._tevkifat_coz).
+      var tevSel=el(r,'-tevkifat');
+      var tevVal=tevSel?tevSel.value:'';
+      var ratio=0;
+      if(tevVal && tevVal!=='YOK' && TEVORAN[tevVal]!=null){
+        ratio=TEVORAN[tevVal];
+      } else if(!tevVal && !gider){
+        var stokSel2=el(r,'-stok');
+        var stokTevId=(stokSel2&&stokSel2.value)?STOK_TEV[stokSel2.value]:null;
+        if(stokTevId!=null && TEVORAN[String(stokTevId)]!=null) ratio=TEVORAN[String(stokTevId)];
       }
       var tutar=Math.round(m*f*100)/100;
       var skdv=Math.round(tutar*oran)/100;
@@ -328,6 +346,20 @@
     var ad=(sel&&sel.value)?TED[sel.value]:null;
     etiket.textContent = ad ? 'Tedarikçi ürün adı: '+ad : '';
   }
+  // Stok seçilince tevkifat seçiciyi stok kartındaki varsayılana ön-doldurur (kullanıcı
+  // sonra elle değiştirebilir — bu yalnız bir VARSAYILAN, sunucu her zaman seçicinin o
+  // andaki değerini kullanır).
+  function tevkifatOnDoldur(row){
+    var stokSel=el(row,'-stok'); var tevSel=el(row,'-tevkifat');
+    if(!stokSel || !tevSel) return;
+    var tevId=stokSel.value?STOK_TEV[stokSel.value]:null;
+    tevSel.value = tevId ? String(tevId) : '';
+    var girdi=tevSel.parentNode.querySelector('.akilli-girdi');
+    if(girdi){
+      var secili=tevSel.options[tevSel.selectedIndex];
+      girdi.value = (secili && secili.value) ? secili.textContent.trim() : '';
+    }
+  }
   // Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa gösterilir; hesap
   // değişip artık uygun değilse seçili proje temizlenir (yanlış alan gönderilmesin).
   function projeAlaniGuncelle(row){
@@ -354,7 +386,10 @@
   form.addEventListener('input', hesapla);
   form.addEventListener('change', function(e){
     var row=e.target.closest('.satir-form');
-    if(row && e.target.name && e.target.name.indexOf('-stok')>-1) tedarikciGuncelle(row);
+    if(row && e.target.name && e.target.name.indexOf('-stok')>-1){
+      tedarikciGuncelle(row);
+      tevkifatOnDoldur(row);
+    }
     if(row && e.target.name && e.target.name.indexOf('-hesap')>-1) projeAlaniGuncelle(row);
     hesapla();
   });
