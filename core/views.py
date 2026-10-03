@@ -54,9 +54,10 @@ from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, CariBanka, CariKategori, CariSevkAdresi,
-    CariYetkili, Depo, EkranYetki, Fatura, FasonKesim, FasonKesimKaydi,
+    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YemekSayimi,
+    KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
+    YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
     MesaiKaydi, MesaiIzinliAg,
@@ -114,6 +115,7 @@ from core.services import resmi_tatil as tatil_servis
 from core.services import mesai as mesai_servis
 from core.services import mesai_ag as mesai_ag_servis
 from core.services import mesai_hesap as mesai_hesap_servis
+from core.services import yatirim_projesi as yp_servis
 from core.ip import istemci_ip
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
@@ -6329,14 +6331,17 @@ def _fatura_satir_girdileri(formset):
             "stok_id": cd["stok"].pk if cd.get("stok") else None,
             "hesap_id": cd["hesap"].pk if cd.get("hesap") else None,
             "kdv_id": cd["kdv"].pk if cd.get("kdv") else None,
+            "yatirim_projesi_id": cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
             "miktar": cd["miktar"], "birim_fiyat": cd["birim_fiyat"]})
     return girdiler
 
 
 def _fatura_gider_baglami(fform):
     """fatura_ekle.html JS'i için: hangi fatura tipleri GİDER faturası (depo gizlenir, kalem
-    = gider hesabı) + KDV oran haritası (gider kaleminin KDV önizlemesi)."""
+    = gider hesabı) + KDV oran haritası (gider kaleminin KDV önizlemesi) + hangi gider hesabı
+    seçenekleri DURAN VARLIK hesabı (proje alanı yalnız bunlarda gösterilir)."""
     return {"tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
+            "duran_varlik_hesap": {str(h.pk): True for h in hp.duran_varlik_hesaplari()},
             "kdv_oran": {str(k.pk): float(k.oran)
                          for k in KdvOrani.objects.filter(silindi=False)}}
 
@@ -6518,10 +6523,55 @@ def fatura_duzenle(request, pk):
 def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
-    satirlar = fatura.satirlar.filter(silindi=False).select_related("stok", "hesap", "kdv")
+    satirlar = fatura.satirlar.filter(silindi=False).select_related(
+        "stok", "hesap", "kdv", "yatirim_projesi")
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
                    "liste_url": _fatura_liste_url(fatura.yon)})
+
+
+# === DURAN VARLIK — Yatırım Projeleri (FAZ 1) ===
+def _proje_satir_qs(proje):
+    return (proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
+            .select_related("fatura", "fatura__cari", "hesap")
+            .order_by("fatura__tarih", "fatura_id"))
+
+
+@ekran_gerekli("yatirim_projeleri")
+def yatirim_projeleri(request):
+    projeler = []
+    qs = yp_servis.aktif_projeler().prefetch_related(
+        Prefetch("fatura_satirlari",
+                 queryset=FaturaSatir.objects.filter(silindi=False, fatura__silindi=False)
+                 .select_related("fatura")))
+    for p in qs:
+        satirlar = list(p.fatura_satirlari.all())
+        toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
+        fatura_sayisi = len({s.fatura_id for s in satirlar})
+        projeler.append({"proje": p, "toplam": toplam, "fatura_sayisi": fatura_sayisi})
+    return render(request, "core/yatirim_projeleri.html", {"projeler": projeler})
+
+
+@ekran_gerekli("yatirim_projeleri")
+def yatirim_projesi_ekle(request):
+    if request.method == "POST":
+        try:
+            p = yp_servis.proje_olustur(
+                ad=request.POST.get("ad", ""), aciklama=request.POST.get("aciklama", ""),
+                kullanici=request.user)
+            messages.success(request, f"Proje eklendi: {p.kod} — {p.ad}")
+        except yp_servis.YatirimProjesiHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:yatirim_projeleri")
+
+
+@ekran_gerekli("yatirim_projeleri")
+def yatirim_projesi_detay(request, pk):
+    proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
+    satirlar = _proje_satir_qs(proje)
+    toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
+    return render(request, "core/yatirim_projesi_detay.html",
+                  {"proje": proje, "satirlar": satirlar, "toplam": toplam})
 
 
 @ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")

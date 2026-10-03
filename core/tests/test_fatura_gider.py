@@ -13,11 +13,12 @@ from django.urls import reverse
 
 from core.forms import FaturaSatirForm
 from core.models import (Birim, Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani, Kategori,
-                         KdvOrani, Kur, Stok, StokHareket, YevmiyeFisi)
+                         KdvOrani, Kur, Stok, StokHareket, YatirimProjesi, YevmiyeFisi)
 from core.services.fatura import (FaturaHatasi, fatura_guncelle, fatura_olustur, fatura_onayla,
                                   fatura_sil, fatura_taslak_olustur)
 from core.services.fatura_tipi import FaturaTipiHatasi, fatura_tipi_guncelle, fatura_tipi_olustur
-from core.services.hesap_plani import gider_hesaplari
+from core.services.hesap_plani import duran_varlik_hesaplari, gider_hesaplari
+from core.services.yatirim_projesi import proje_olustur, proje_toplami
 
 D = datetime.date
 
@@ -51,6 +52,13 @@ class GiderTemel(TestCase):
         _maliyet("730.09", "PASİF GİDER", aktif=False)
         _maliyet("770", "GENEL YÖNETİM GİDERLERİ")
         _maliyet("770.03", "BANKA MASRAF GİDERLERİ")
+        # Duran Varlık modülü FAZ 1 — 253/254/255/258/260 seçilebilir, 264 KAPSAM DIŞI.
+        _hesap("253", "TESİS MAKİNE VE CİHAZLAR", grup="BILANCO", kalem="DDV")
+        _hesap("254", "TAŞITLAR", grup="BILANCO", kalem="DDV")
+        _hesap("255", "DEMİRBAŞLAR", grup="BILANCO", kalem="DDV")
+        _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR", grup="BILANCO", kalem="DDV")
+        _hesap("260", "HAKLAR", grup="BILANCO", kalem="DDV")
+        _hesap("264", "ÖZEL MALİYETLER", grup="BILANCO", kalem="DDV")
         cls.kdv0 = KdvOrani.objects.create(aciklama="KDV YOK", oran=Decimal("0"))
         cls.kdv20 = KdvOrani.objects.create(
             aciklama="GENEL", oran=Decimal("20"),
@@ -150,9 +158,10 @@ class GiderFaturaServisTest(GiderTemel):
         for kod, neden in (("153.10", "bilanço"), ("600", "gelir"), ("632", "63x yansıtmalı"),
                            ("731", "yansıtma"), ("730", "üst hesap"), ("770", "üst hesap"),
                            ("730.09", "pasif"), ("YOK", "olmayan")):
-            with self.subTest(neden), self.assertRaisesMessage(FaturaHatasi, "geçerli bir gider hesabı"):
+            with self.subTest(neden), self.assertRaisesMessage(
+                    FaturaHatasi, "geçerli bir gider veya duran varlık hesabı"):
                 self._kes([self._sat(kod)])
-        with self.assertRaisesMessage(FaturaHatasi, "geçerli bir gider hesabı"):
+        with self.assertRaisesMessage(FaturaHatasi, "geçerli bir gider veya duran varlık hesabı"):
             self._kes([{"miktar": "1", "birim_fiyat": "10"}])                    # hesap hiç yok
         self.assertEqual(Fatura.objects.count(), 0)
 
@@ -239,8 +248,11 @@ class GiderHesapSeciciTest(GiderTemel):
 
     def test_kalem_formunda_secici_ve_varsayilan_kdv(self):
         form = FaturaSatirForm(yon="ALIS")
-        self.assertEqual([h.hesap_kodu for h in form.fields["hesap"].queryset][:3],
-                         ["730.01", "730.02", "770.03"])
+        # Görünüm artık optgroup'lu (Gider Hesapları / Duran Varlık Hesapları) — sıralama
+        # önceliği (730.x/770.x önce) WIDGET'ın "Gider Hesapları" grubunda doğrulanır.
+        gruplar = dict(form.fields["hesap"].widget.choices)
+        gider_kodlari = [lbl.split("  ", 1)[0] for _, lbl in gruplar["Gider Hesapları"]]
+        self.assertEqual(gider_kodlari[:3], ["730.01", "730.02", "770.03"])
         self.assertEqual(form.fields["hesap"].label_from_instance(
             HesapPlani.objects.get(hesap_kodu="730.01")), "730.01  ELEKTRİK GİDERİ")
         self.assertEqual(form.fields["kdv"].initial, self.kdv20.pk)         # gider kaleminde %20 öntanımlı
@@ -539,3 +551,67 @@ class SeedGiderTipiTest(TestCase):
         FaturaTipi.objects.filter(ad="ALIŞ FATURASI").update(gider=True)
         call_command("seed_fatura_tipleri", verbosity=0)
         self.assertEqual(FaturaTipi.objects.filter(gider=True).count(), 2)
+
+
+class DuranVarlikGiderFaturaTest(GiderTemel):
+    """Duran Varlık modülü FAZ 1: GİDER faturasında 253/254/255/258/260 hesaplarının seçilebilir
+    olması + yatırım projesi zorunluluğu/opsiyonelliği + 264'ün kesin olarak dışarıda kalması."""
+
+    def test_duran_varlik_hesaplari_secicide_var_264_yok(self):
+        kodlar = set(duran_varlik_hesaplari().values_list("hesap_kodu", flat=True))
+        self.assertEqual(kodlar, {"253", "254", "255", "258", "260"})
+        self.assertNotIn("264", kodlar)
+
+    def test_form_hesap_alani_gruplu_gosterir(self):
+        form = FaturaSatirForm(yon="ALIS")
+        gruplar = dict(form.fields["hesap"].widget.choices)
+        self.assertIn("Gider Hesapları", gruplar)
+        self.assertIn("Duran Varlık Hesapları", gruplar)
+        dv_kodlari = {lbl.split("  ", 1)[0] for _, lbl in gruplar["Duran Varlık Hesapları"]}
+        self.assertEqual(dv_kodlari, {"253", "254", "255", "258", "260"})
+
+    def test_264_hesabi_fatura_formunda_secilemez(self):
+        self.assertFalse(duran_varlik_hesaplari().filter(hesap_kodu="264").exists())
+        with self.assertRaisesMessage(FaturaHatasi, "geçerli bir gider veya duran varlık hesabı"):
+            self._kes([self._sat("264")])
+
+    def test_258_kalemi_projesiz_kaydedilemiyor(self):
+        with self.assertRaisesMessage(FaturaHatasi, "yatırım projesi seçimi zorunludur"):
+            self._kes([self._sat("258")])
+        self.assertEqual(Fatura.objects.count(), 0)
+
+    def test_258_kalemi_dogru_fis_uretiyor(self):
+        proje = proje_olustur(ad="fabrika hava tesisatı")
+        f = self._kes([{"hesap_id": "258", "miktar": "1", "birim_fiyat": "10000",
+                        "kdv_id": self.kdv20.pk, "yatirim_projesi_id": proje.pk}])
+        sat = {s.hesap_id: (s.borc, s.alacak) for s in f.fis.satirlar.filter(silindi=False)}
+        self.assertEqual(sat["258"], (Decimal("10000.00"), Decimal("0.00")))
+        self.assertEqual(sat["191"], (Decimal("2000.00"), Decimal("0.00")))
+        self.assertEqual(sat["320.10.0001"], (Decimal("0.00"), Decimal("12000.00")))
+        self.assertEqual(f.satirlar.get().yatirim_projesi_id, proje.pk)
+
+    def test_253_254_255_260_proje_opsiyonel(self):
+        for kod in ("253", "254", "255", "260"):
+            f = self._kes([self._sat(kod, fiyat="500")])
+            self.assertIsNone(f.satirlar.get().yatirim_projesi_id)
+
+    def test_proje_toplami_kalemlerin_toplamina_esit(self):
+        proje = proje_olustur(ad="proje x")
+        self._kes([{"hesap_id": "258", "miktar": "1", "birim_fiyat": "1000",
+                   "kdv_id": self.kdv20.pk, "yatirim_projesi_id": proje.pk}])
+        self._kes([{"hesap_id": "258", "miktar": "2", "birim_fiyat": "500",
+                   "kdv_id": self.kdv0.pk, "yatirim_projesi_id": proje.pk}])
+        self.assertEqual(proje_toplami(proje), Decimal("2000.00"))   # 1000 + 2×500, KDV hariç
+
+    def test_aktiflesmis_projeye_kalem_eklenemiyor(self):
+        proje = proje_olustur(ad="bitmiş proje")
+        proje.durum = YatirimProjesi.Durum.AKTIFLESTI
+        proje.save(update_fields=["durum"])
+        with self.assertRaisesMessage(FaturaHatasi, "aktifleşmiş"):
+            self._kes([{"hesap_id": "258", "miktar": "1", "birim_fiyat": "100",
+                       "kdv_id": self.kdv20.pk, "yatirim_projesi_id": proje.pk}])
+
+    def test_proje_bulunamazsa_reddedilir(self):
+        with self.assertRaisesMessage(FaturaHatasi, "yatırım projesi bulunamadı"):
+            self._kes([{"hesap_id": "258", "miktar": "1", "birim_fiyat": "100",
+                       "kdv_id": self.kdv20.pk, "yatirim_projesi_id": 999999}])

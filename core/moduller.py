@@ -26,6 +26,7 @@ MODULLER = (
         Ekran("fis_listesi", "Yevmiye Fişleri", "core:fis_listesi"),
         Ekran("kurlar", "Kurlar", "core:kurlar"),
         Ekran("hesap_plani", "Hesap Planı", "core:hesap_plani"),
+        Ekran("yatirim_projeleri", "Yatırım Projeleri", "core:yatirim_projeleri"),
         Ekran("mizan", "Mizan", "core:mizan"),
         Ekran("bilanco", "Bilanço", "core:bilanco"),
         Ekran("gelir_tablosu", "Gelir Tablosu", "core:gelir_tablosu"),

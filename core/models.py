@@ -1560,12 +1560,46 @@ class Fatura(TemelModel):
         return self.genel_toplam - self.tevkifat_toplam
 
 
+class YatirimProjesi(TemelModel):
+    """Duran Varlık modülü FAZ 1 — 258 (Yapılmakta Olan Yatırımlar) hesabında biriken alış
+    gider faturası kalemlerinin gruplandığı proje kartı. FAZ 3'te "Aktifleştir" ile 258
+    bakiyesi tek fişle ilgili duran varlık hesabına (253/254/255/260) aktarılır ve durum
+    AKTIFLESTI'ye geçer; o andan sonra projeye yeni kalem eklenemez (bkz. core.services.
+    yatirim_projesi). Amortisman/257/268/264 bu modülün HİÇBİR fazında YOK (CLAUDE.md
+    görev kapsamı — bilinçli olarak dışarıda)."""
+
+    class Durum(models.TextChoices):
+        DEVAM = "DEVAM", "Devam Ediyor"
+        AKTIFLESTI = "AKTIFLESTI", "Aktifleşti"
+
+    kod = models.CharField("proje kodu", max_length=20)
+    ad = models.CharField("ad", max_length=200)
+    aciklama = models.TextField("açıklama", blank=True)
+    durum = models.CharField("durum", max_length=12, choices=Durum.choices, default=Durum.DEVAM)
+
+    class Meta:
+        db_table = "yatirim_projesi"
+        verbose_name = "yatırım projesi"
+        verbose_name_plural = "yatırım projeleri"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
+                                    name="uq_yatirim_projesi_kod_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.kod} — {self.ad}"
+
+
 class FaturaSatir(TemelModel):
     """Fatura kalemi: stok × miktar × birim fiyat (+ KDV oranı snapshot).
 
     GİDER faturasında (FaturaTipi.gider) kalem STOK değil doğrudan bir GİDER HESABIDIR
-    (`hesap`, yaprak) ve KDV oranı satırda seçilir; her satırda stok VE hesaptan TAM biri
-    dolu olur (DB kısıtı)."""
+    (`hesap`, yaprak — duran varlık hesapları 253/254/255/258/260 DAHİL, bkz. core.services.
+    hesap_plani.duran_varlik_hesaplari) ve KDV oranı satırda seçilir; her satırda stok VE
+    hesaptan TAM biri dolu olur (DB kısıtı). ``yatirim_projesi`` yalnız duran varlık
+    hesaplarında anlamlıdır (258'de ZORUNLU, 253/254/255/260'ta opsiyonel — serviste
+    zorlanır, bkz. core.services.fatura._satir_coz)."""
 
     fatura = models.ForeignKey(
         Fatura, verbose_name="fatura", related_name="satirlar", on_delete=models.CASCADE)
@@ -1585,6 +1619,9 @@ class FaturaSatir(TemelModel):
     # satışta Hesaplanan KDV o kadar azalır.
     tevkifat = models.ForeignKey(
         TevkifatOrani, verbose_name="tevkifat oranı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fatura_satirlari")
+    yatirim_projesi = models.ForeignKey(
+        YatirimProjesi, verbose_name="yatırım projesi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fatura_satirlari")
 
     class Meta:

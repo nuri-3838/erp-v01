@@ -22,11 +22,12 @@ from django.db import transaction
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          KategoriHesap, KdvOrani, Kur, Stok, StokHareket, StokMaliyetKatmani,
-                         StokMaliyetTuketimi, TeklifSiparis, YevmiyeFisi)
+                         StokMaliyetTuketimi, TeklifSiparis, YatirimProjesi, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
-from core.services.hesap_plani import gider_hesaplari
+from core.services.hesap_plani import (duran_varlik_hesaplari, gider_hesaplari,
+                                       hesap_kodu_258_mi, hesap_kodu_duran_varlik_mi)
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
                                    fis_iptal, fis_olustur)
 
@@ -70,25 +71,49 @@ def _kur_coz(pb, tarih, cari=None):
     return deger
 
 
+def _gider_ve_duran_varlik_hesaplari():
+    """GİDER faturası kalem hesabı seçiminde izin verilen TAM küme: gider hesapları
+    (7xx/65x/66x/68x) + duran varlık hesapları (253/254/255/258/260) — bkz.
+    core.services.hesap_plani.gider_hesaplari / duran_varlik_hesaplari."""
+    return gider_hesaplari() | duran_varlik_hesaplari()
+
+
 def _satir_coz(g, i, gider):
-    """Girdi satırını çözer -> (stok, hesap, kdv). Gider tipinde satır bir GİDER HESABI (+ satırda
-    seçilen KDV oranı) taşır, diğer tiplerde STOK (KDV stoktan); karışıklık reddedilir (UI'a
-    güvenilmez)."""
+    """Girdi satırını çözer -> (stok, hesap, kdv, proje). Gider tipinde satır bir GİDER
+    HESABI veya DURAN VARLIK HESABI (+ satırda seçilen KDV oranı) taşır, diğer tiplerde
+    STOK (KDV stoktan); karışıklık reddedilir (UI'a güvenilmez). Duran varlık hesabı
+    seçilirse `yatirim_projesi_id` çözülür — 258 ailesinde ZORUNLU, 253/254/255/260'ta
+    opsiyonel; aktifleşmiş projeye yeni kalem eklenemez (bkz. YatirimProjesi.Durum)."""
     if gider:
         if g.get("stok_id"):
             raise FaturaHatasi(
                 f"Satır {i}: gider faturasında stok kullanılamaz; gider hesabı seçin.")
-        hesap = (gider_hesaplari().filter(pk=g.get("hesap_id")).first()
+        hesap = (_gider_ve_duran_varlik_hesaplari().filter(pk=g.get("hesap_id")).first()
                  if g.get("hesap_id") else None)
         if hesap is None:
             raise FaturaHatasi(
-                f"Satır {i}: geçerli bir gider hesabı seçin (yaprak gider hesabı olmalı).")
+                f"Satır {i}: geçerli bir gider veya duran varlık hesabı seçin "
+                f"(yaprak hesap olmalı).")
         kdv = None
         if g.get("kdv_id"):
             kdv = KdvOrani.objects.filter(pk=g["kdv_id"], silindi=False).first()
             if kdv is None:
                 raise FaturaHatasi(f"Satır {i}: KDV oranı bulunamadı.")
-        return None, hesap, kdv
+        proje = None
+        if hesap_kodu_duran_varlik_mi(hesap.hesap_kodu):
+            proje_id = g.get("yatirim_projesi_id")
+            if proje_id:
+                proje = YatirimProjesi.objects.filter(pk=proje_id, silindi=False).first()
+                if proje is None:
+                    raise FaturaHatasi(f"Satır {i}: yatırım projesi bulunamadı.")
+                if proje.durum == YatirimProjesi.Durum.AKTIFLESTI:
+                    raise FaturaHatasi(
+                        f"Satır {i}: {proje.kod} projesi aktifleşmiş; yeni kalem eklenemez.")
+            elif hesap_kodu_258_mi(hesap.hesap_kodu):
+                raise FaturaHatasi(
+                    f"Satır {i}: {hesap.hesap_kodu} hesabı için yatırım projesi seçimi "
+                    f"zorunludur.")
+        return None, hesap, kdv, proje
     if g.get("hesap_id"):
         raise FaturaHatasi(
             f"Satır {i}: gider hesabı yalnız gider faturası tipinde kullanılabilir.")
@@ -96,7 +121,7 @@ def _satir_coz(g, i, gider):
             .select_related("kategori", "kdv", "tevkifat").first())
     if stok is None:
         raise FaturaHatasi(f"Satır {i}: stok bulunamadı.")
-    return stok, None, stok.kdv
+    return stok, None, stok.kdv, None
 
 
 def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None):
@@ -146,7 +171,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
 
     for i, g in enumerate(satirlar, start=1):
-        stok, hesap, kdv = _satir_coz(g, i, tip.gider)
+        stok, hesap, kdv, proje = _satir_coz(g, i, tip.gider)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
 
@@ -205,7 +230,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
                 tevkifat_hesap_toplam.get(tev_hesap.hesap_kodu, SIFIR) + tev)
 
         cari_pb += satir_tutar + kdv_net
-        hazir.append((stok, hesap, miktar, birim, kdv, tevkifat))
+        hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje))
 
     # KDV satırları (alış: Borç, satış: Alacak)
     for hkod, tutar in kdv_hesap_toplam.items():
@@ -251,10 +276,10 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False):
 
     hazir = []
     for i, g in enumerate(satirlar, start=1):
-        stok, hesap, kdv = _satir_coz(g, i, gider)
+        stok, hesap, kdv, proje = _satir_coz(g, i, gider)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
-        hazir.append((stok, hesap, miktar, birim, kdv, stok.tevkifat if stok else None))
+        hazir.append((stok, hesap, miktar, birim, kdv, stok.tevkifat if stok else None, proje))
     return cari, pb, hazir
 
 
@@ -374,10 +399,11 @@ def _aciklama(tip, cari, fatura_no):
 
 
 def _satirlari_yaz(fatura, hazir, kullanici):
-    for stok, hesap, miktar, birim, kdv, tevkifat in hazir:
+    for stok, hesap, miktar, birim, kdv, tevkifat, proje in hazir:
         FaturaSatir.objects.create(
             fatura=fatura, stok=stok, hesap=hesap, miktar=miktar, birim_fiyat=birim, kdv=kdv,
-            tevkifat=tevkifat, created_by=kullanici, updated_by=kullanici)
+            tevkifat=tevkifat, yatirim_projesi=proje,
+            created_by=kullanici, updated_by=kullanici)
 
 
 def _depo_coz(depo_id):

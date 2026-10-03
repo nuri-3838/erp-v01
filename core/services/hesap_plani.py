@@ -128,6 +128,33 @@ def gider_hesaplari():
     )
 
 
+# Duran Varlık modülü FAZ 1: Alış-Gider faturasında gider hesaplarına EK OLARAK seçilebilen
+# duran varlık hesapları (253 Tesis Makine Cihazlar, 254 Taşıtlar, 255 Demirbaşlar,
+# 258 Yapılmakta Olan Yatırımlar, 260 Haklar) + varsa yaprak alt hesapları. 257 (Birikmiş
+# Amortismanlar) ve 264 (Özel Maliyetler) BİLİNÇLİ OLARAK dışarıda — kapsam dışı (CLAUDE.md
+# görevi: amortisman hiçbir fazda yok, 264 hiçbir fazda kullanılmayacak).
+DURAN_VARLIK_KODLARI = ("253", "254", "255", "258", "260")
+
+
+def duran_varlik_hesaplari():
+    """Alış-Gider faturasında gider hesaplarına ek olarak seçilebilen duran varlık hesapları."""
+    from django.db.models import Q
+    kok = Q()
+    for kod in DURAN_VARLIK_KODLARI:
+        kok |= Q(hesap_kodu=kod) | Q(hesap_kodu__startswith=kod + ".")
+    return yaprak_hesaplar().filter(kok).order_by("hesap_kodu")
+
+
+def hesap_kodu_duran_varlik_mi(hesap_kodu: str) -> bool:
+    return any(hesap_kodu == k or hesap_kodu.startswith(k + ".") for k in DURAN_VARLIK_KODLARI)
+
+
+def hesap_kodu_258_mi(hesap_kodu: str) -> bool:
+    """258 (Yapılmakta Olan Yatırımlar) ailesi — bu hesaba işlenen kalemde yatırım
+    projesi seçimi ZORUNLUDUR (diğer duran varlık hesaplarında opsiyoneldir)."""
+    return hesap_kodu == "258" or hesap_kodu.startswith("258.")
+
+
 def alt_kod_oner(ust: HesapPlani) -> str:
     """Üst hesabın altına makul bir sonraki kod önerir (elle değiştirilebilir).
 

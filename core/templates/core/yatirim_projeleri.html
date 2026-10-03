@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Yatırım Projeleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yatırım Projeleri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">🏗️</span>Yatırım Projeleri</h1>
+</div>
+
+<details class="kart-form">
+  <summary>Yeni proje ekle</summary>
+  <form method="post" action="{% url 'core:yatirim_projesi_ekle' %}">
+    {% csrf_token %}
+    <div class="kur-cek-alanlar">
+      <div class="alan" style="flex:1 1 16rem">
+        <label for="yp-ad">Proje adı</label>
+        <input type="text" id="yp-ad" name="ad" maxlength="200" required
+               placeholder="ör. FABRİKA HAVA TESİSATI">
+      </div>
+    </div>
+    <div class="alan">
+      <label for="yp-aciklama">Açıklama</label>
+      <textarea id="yp-aciklama" name="aciklama" rows="2"></textarea>
+    </div>
+    <button type="submit" class="birincil">Ekle</button>
+  </form>
+</details>
+
+<p class="sayfa-alt">{{ projeler|length }} proje.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr>
+    <th>Kod</th><th>Ad</th><th>Durum</th>
+    <th class="sag">Toplam (KDV Hariç)</th><th class="sag">Fatura Sayısı</th>
+  </tr></thead>
+  <tbody>
+    {% for p in projeler %}
+      <tr onclick="window.location='{% url 'core:yatirim_projesi_detay' p.proje.pk %}'" style="cursor:pointer">
+        <td class="mono">{{ p.proje.kod }}</td>
+        <td>{{ p.proje.ad }}</td>
+        <td><span class="rozet {% if p.proje.durum == 'AKTIFLESTI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ p.proje.get_durum_display }}</span></td>
+        <td class="sag mono">{{ p.toplam|tr_kur:2 }}</td>
+        <td class="sag mono">{{ p.fatura_sayisi }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="yardim">Henüz yatırım projesi yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="yardim">258 (Yapılmakta Olan Yatırımlar) hesabına işlenen alış gider faturası
+  kalemleri burada bir projeye bağlanır; toplam, projeye bağlı kalemlerin KDV hariç
+  tutarlarının toplamıdır.</p>
+{% endblock %}

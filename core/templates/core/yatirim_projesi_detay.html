@@ -1,0 +1,48 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ proje.kod }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yatırım Projesi{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:yatirim_projeleri' %}">← Yatırım Projeleri</a>
+    <h1 class="ust-baslik"><span class="emoji">🏗️</span>{{ proje.kod }} — {{ proje.ad }}
+      <span class="rozet {% if proje.durum == 'AKTIFLESTI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ proje.get_durum_display }}</span></h1>
+  </div>
+</div>
+
+{% if proje.aciklama %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Açıklama</h2>
+  <p>{{ proje.aciklama|linebreaksbr }}</p>
+</section>
+{% endif %}
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Fatura Kalemleri</h2>
+  <div class="tablo-kapsayici genis">
+  <table>
+    <thead><tr>
+      <th>Tarih</th><th>Cari</th><th>Fatura No</th><th>Hesap</th><th class="sag">Tutar</th>
+    </tr></thead>
+    <tbody>
+      {% for s in satirlar %}
+        <tr onclick="window.location='{% url 'core:fatura_detay' s.fatura.pk %}'" style="cursor:pointer">
+          <td class="mono">{{ s.fatura.tarih|date:"d.m.Y" }}</td>
+          <td>{{ s.fatura.cari.unvan }}</td>
+          <td class="mono">{{ s.fatura.fatura_no|default:"—" }}</td>
+          <td><span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}</td>
+          <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="yardim">Bu projeye bağlı fatura kalemi yok.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="4" class="sag">Toplam (KDV Hariç)</th><th class="sag mono">{{ toplam|tr_kur:2 }}</th></tr>
+    </tfoot>
+  </table>
+  </div>
+</section>
+{% endblock %}

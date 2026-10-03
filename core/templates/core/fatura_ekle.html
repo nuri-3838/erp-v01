@@ -8,6 +8,7 @@
 {{ stok_tevkifat|json_script:"stok-tevkifat" }}
 {{ stok_tedarikci|json_script:"stok-tedarikci" }}
 {{ tip_gider|json_script:"tip-gider" }}
+{{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
@@ -29,6 +30,11 @@
   #fatura-satir-tablo.gider-modu .th-hesap { display:inline; }
   .kdv-secim { margin-bottom:.3rem; }
   .kdv-secim select { width:100%; font-size:.82rem; }
+  /* Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa görünür (JS: satır
+     class'ına .duran-varlik eklenir) — 258'de zorunlu, 253/254/255/260'ta opsiyonel. */
+  .proje-alani { display:none; margin-top:.3rem; }
+  tr.satir-form.duran-varlik .proje-alani { display:block; }
+  .proje-alani select { width:100%; font-size:.82rem; }
 
   /* Fatura Bilgileri — kart tabanlı düzen (bkz. satis_teklif_ekle.html .bb-* deseni) */
   .bb-blok { display:flex; flex-direction:column; gap:.85rem; }
@@ -142,7 +148,7 @@
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="proje-alani">{{ f.yatirim_projesi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">{{ f.miktar }}</td>
               <td class="sag">{{ f.birim_fiyat }}</td>
               <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -165,7 +171,7 @@
     </section>
 
     <template id="bos-satir">
-      <td><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div></td>
+      <td><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}</div></td>
       <td class="sag">{{ formset.empty_form.miktar }}</td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
       <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -185,6 +191,7 @@
   var TEV = JSON.parse(document.getElementById('stok-tevkifat').textContent);
   var TED = JSON.parse(document.getElementById('stok-tedarikci').textContent);
   var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
+  var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
   var KUR_API = '{% url "core:kur_usd_api" %}';
   var VADE_API_TMPL = '{% url "core:cari_vade_api" 999999 %}';   // 999999 -> gerçek cari id
@@ -212,6 +219,7 @@
     if(g!==onceki){
       document.querySelectorAll('.satir-form').forEach(function(r){
         alanTemizle(r.querySelector(g ? '.stok-alani' : '.hesap-alani'));
+        projeAlaniGuncelle(r);
       });
     }
     hesapla();
@@ -320,6 +328,17 @@
     var ad=(sel&&sel.value)?TED[sel.value]:null;
     etiket.textContent = ad ? 'Tedarikçi ürün adı: '+ad : '';
   }
+  // Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa gösterilir; hesap
+  // değişip artık uygun değilse seçili proje temizlenir (yanlış alan gönderilmesin).
+  function projeAlaniGuncelle(row){
+    var hesapSec=el(row,'-hesap');
+    var gerekli = !!(hesapSec && hesapSec.value && DURAN_VARLIK[hesapSec.value]);
+    row.classList.toggle('duran-varlik', gerekli);
+    if(!gerekli){
+      var projeKap=row.querySelector('.proje-alani');
+      if(projeKap) projeKap.querySelectorAll('select, .akilli-girdi').forEach(function(el){ el.value=''; });
+    }
+  }
   function satirEkle(){
     var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);
     var tr=document.createElement('tr'); tr.className='satir-form';
@@ -336,6 +355,7 @@
   form.addEventListener('change', function(e){
     var row=e.target.closest('.satir-form');
     if(row && e.target.name && e.target.name.indexOf('-stok')>-1) tedarikciGuncelle(row);
+    if(row && e.target.name && e.target.name.indexOf('-hesap')>-1) projeAlaniGuncelle(row);
     hesapla();
   });
   var tipSec=document.getElementById('id_tip');
@@ -356,6 +376,7 @@
   if(cariSec) cariSec.addEventListener('change', vadeDoldur);
   if(tarihInp) tarihInp.addEventListener('change', vadeDoldur);
   document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
+  document.querySelectorAll('.satir-form').forEach(projeAlaniGuncelle);
   modUygula();
   kurCek();
 })();

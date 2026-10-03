@@ -26,7 +26,7 @@ from core.models import (
     CekSenet, Depo, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
     PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
-    TevkifatOrani, Ulke, YevmiyeSatir,
+    TevkifatOrani, Ulke, YatirimProjesi, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
 from core.tarih import tr_bugun
@@ -1629,6 +1629,20 @@ class FaturaForm(forms.Form):
                 self.fields["depo"].initial = vd.pk
 
 
+def _gruplu_secenekler_uygula(field, gruplar):
+    """Bir ModelChoiceField'ın WIDGET'ına <optgroup> destekli seçenek listesi uygular.
+    ``gruplar``: sıralı [(grup_etiketi, queryset), ...]. field.queryset grupların birleşimi
+    olmalı (doğrulama ondan çalışır — bkz. ModelChoiceField.to_python); bu fonksiyon yalnız
+    GÖRÜNÜMÜ (widget.choices) değiştirir, field.label_from_instance set edildikten SONRA
+    çağrılmalıdır. bkz. FaturaSatirForm.hesap — "Gider Hesapları" / "Duran Varlık Hesapları"."""
+    secenekler = [("", field.empty_label)]
+    for etiket, qs in gruplar:
+        alt = [(o.pk, field.label_from_instance(o)) for o in qs]
+        if alt:
+            secenekler.append((etiket, alt))
+    field.widget.choices = secenekler
+
+
 class FaturaSatirForm(forms.Form):
     """Fatura kalemi — Teklif/Sipariş kalem formuyla aynı şekil, aynı sebeple birim fiyat
     4 ondalık basamak (bkz. TeklifSiparisKalemForm): fatura kalemleri artık Satınalma
@@ -1646,6 +1660,12 @@ class FaturaSatirForm(forms.Form):
         empty_label="— gider hesabı seç —")
     kdv = forms.ModelChoiceField(
         label="KDV", queryset=KdvOrani.objects.none(), required=False, empty_label=None)
+    # Yalnız duran varlık hesabı (253/254/255/258/260) seçiliyken anlamlı — 258'de ZORUNLU,
+    # diğerlerinde opsiyonel (clean() doğrular); gider hesaplarında (7xx/65x/66x/68x) şablon
+    # JS'i alanı gizler, serviste de yok sayılır.
+    yatirim_projesi = forms.ModelChoiceField(
+        label="Yatırım Projesi", queryset=YatirimProjesi.objects.none(), required=False,
+        empty_label="— proje seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
@@ -1662,10 +1682,18 @@ class FaturaSatirForm(forms.Form):
             self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
 
-        from core.services.hesap_plani import gider_hesaplari
-        self.fields["hesap"].queryset = gider_hesaplari()
+        from core.services.hesap_plani import duran_varlik_hesaplari, gider_hesaplari
+        gider_qs = gider_hesaplari()
+        duran_qs = duran_varlik_hesaplari()
+        self.fields["hesap"].queryset = (gider_qs | duran_qs).distinct()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+        _gruplu_secenekler_uygula(self.fields["hesap"], [
+            ("Gider Hesapları", gider_qs), ("Duran Varlık Hesapları", duran_qs)])
+        from core.services.yatirim_projesi import aktif_projeler
+        self.fields["yatirim_projesi"].queryset = aktif_projeler()
+        self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["yatirim_projesi"].widget.attrs["class"] = "akilli-sec"
         kdvler = KdvOrani.objects.filter(silindi=False).order_by("oran")
         self.fields["kdv"].queryset = kdvler
         self.fields["kdv"].label_from_instance = (
@@ -1675,6 +1703,7 @@ class FaturaSatirForm(forms.Form):
             self.fields["kdv"].initial = varsayilan.pk       # gider kaleminde en sık: %20
 
     def clean(self):
+        from core.services.hesap_plani import hesap_kodu_258_mi, hesap_kodu_duran_varlik_mi
         cd = super().clean()
         stok = cd.get("stok")
         hesap = cd.get("hesap")
@@ -1692,6 +1721,16 @@ class FaturaSatirForm(forms.Form):
             raise forms.ValidationError("Birim fiyat girin.")
         if stok:
             cd["kdv"] = None                       # stok kaleminde KDV stoktan gelir
+            cd["yatirim_projesi"] = None
+        elif hesap and hesap_kodu_duran_varlik_mi(hesap.hesap_kodu):
+            if hesap_kodu_258_mi(hesap.hesap_kodu) and not cd.get("yatirim_projesi"):
+                raise forms.ValidationError(
+                    f"{hesap.hesap_kodu} hesabı için yatırım projesi seçimi zorunludur.")
+            if cd.get("yatirim_projesi") and cd["yatirim_projesi"].durum == YatirimProjesi.Durum.AKTIFLESTI:
+                raise forms.ValidationError(
+                    f"{cd['yatirim_projesi'].kod} projesi aktifleşmiş; yeni kalem eklenemez.")
+        else:
+            cd["yatirim_projesi"] = None           # gider hesabında proje anlamsız — temizle
         cd["dolu"] = True
         return cd
 
