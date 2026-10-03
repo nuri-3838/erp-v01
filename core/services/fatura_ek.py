@@ -53,11 +53,11 @@ def ek_ekle(fatura: Fatura, *, dosya, kullanici=None) -> FaturaEk:
         saklanan = dosya
     elif uz == ".xml":
         # UBL e-fatura/e-arşiv: olduğu gibi (imzalı belge, bayt bayt) saklanır.
-        from core.services.ubl_fatura import UblHatasi, ubl_oku
+        from core.services.ubl_fatura import UblHatasi, belge_oku
         icerik = dosya.read()
         dosya.seek(0)
         try:
-            ubl_oku(icerik)
+            belge_oku(icerik)
         except UblHatasi as e:
             raise FaturaEkHatasi(f"Geçersiz XML (UBL fatura değil): {ad} — {e}")
         saklanan = dosya

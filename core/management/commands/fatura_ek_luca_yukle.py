@@ -11,9 +11,15 @@ yalnız FaturaEk eklenir.
 Varsayılan DRY-RUN (hiçbir şey yazmaz). ``--uygula`` ekleri yükler.
 
     python manage.py fatura_ek_luca_yukle --zip A.zip --zip B.zip [--uygula]
+
+İRSALİYE MODU (``--irsaliye-zip``): Luca'dan indirilen gelen e-irsaliye XML/PDF paketlerini ERP alış
+faturalarına ek olarak bağlar (bkz. core.services.luca_irsaliye). ``--zip`` bu modda fatura XML
+paketleridir (irsaliye referanslarını okumak için; fatura dosyası YÜKLENMEZ).
+
+    python manage.py fatura_ek_luca_yukle --zip FATURA_XML.zip --irsaliye-zip IR_XML.zip \
+        --irsaliye-zip IR_PDF.zip [--haric-irsaliye NO ...] [--uygula]
 """
 import re
-import zipfile
 from collections import defaultdict
 from decimal import Decimal
 
@@ -23,52 +29,11 @@ from django.core.management.base import BaseCommand, CommandError
 from core.models import Fatura, FaturaEk, FaturaTipi
 from core.services import fatura_ek as ek_servis
 from core.services.fatura import _fatura_no_anahtar
+from core.services.luca_paket import paketleri_oku as _paketleri_oku
 from core.services.ubl_fatura import UblHatasi, ubl_oku
 
-AD_DESENI = re.compile(r"^(?P<no>[^_]+)_(?P<vkn>\d{10,11})_(?P<unvan>.*)\.(?P<uz>xml|pdf)$",
-                       re.IGNORECASE)
 GERCEK_TARIH = re.compile(r"^GERÇEK TARİH: (\d{2})\.(\d{2})\.(\d{4})\. ")
 TOLERANS = Decimal("0.01")
-
-
-def _zip_adi(bilgi):
-    """UTF-8 bayrağı yoksa zipfile adı cp437 sanır; Luca/Windows zip'lerinde cp1254 olabilir."""
-    ad = bilgi.filename
-    if not (bilgi.flag_bits & 0x800):
-        try:
-            ad = ad.encode("cp437").decode("utf-8")
-        except (UnicodeEncodeError, UnicodeDecodeError):
-            try:
-                ad = ad.encode("cp437").decode("cp1254")
-            except (UnicodeEncodeError, UnicodeDecodeError):
-                pass
-    return ad.replace("\\", "/").rsplit("/", 1)[-1]
-
-
-def _paketleri_oku(yollar):
-    """-> (gruplar{(no_anahtar, vkn): {xml/pdf: (ad, bayt)}}, tanınmayan[], tekrar[])"""
-    gruplar, tanimayan, tekrar = defaultdict(dict), [], []
-    for yol in yollar:
-        try:
-            z = zipfile.ZipFile(yol)
-        except (OSError, zipfile.BadZipFile) as e:
-            raise CommandError(f"Zip açılamadı: {yol} ({e})")
-        with z:
-            for b in z.infolist():
-                if b.is_dir():
-                    continue
-                ad = _zip_adi(b)
-                m = AD_DESENI.match(ad)
-                if not m:
-                    tanimayan.append(ad)
-                    continue
-                anahtar = (_fatura_no_anahtar(m["no"]), m["vkn"])
-                uz = m["uz"].lower()
-                if uz in gruplar[anahtar]:
-                    tekrar.append(ad)
-                    continue
-                gruplar[anahtar][uz] = (ad, z.read(b))
-    return gruplar, tanimayan, tekrar
 
 
 def _erp_tarihi(f):
@@ -86,8 +51,14 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--zip", action="append", required=True, dest="zipler")
         parser.add_argument("--uygula", action="store_true", help="Ekleri yukle.")
+        parser.add_argument("--irsaliye-zip", action="append", dest="irsaliye_zipleri", default=[],
+                            help="Gelen e-irsaliye zip'i (irsaliye modu).")
+        parser.add_argument("--haric-irsaliye", action="append", default=[],
+                            help="Bu irsaliye no'lari yuklenmez (irsaliye modu).")
 
     def handle(self, *args, **opts):
+        if opts["irsaliye_zipleri"]:
+            return self._irsaliye_modu(opts)
         gruplar, tanimayan, tekrar = _paketleri_oku(opts["zipler"])
 
         # ERP alış faturaları: normalize fatura no -> [fatura]
@@ -172,6 +143,62 @@ class Command(BaseCommand):
 
         self._yaz(opts["uygula"], gruplar, tanimayan, tekrar, rapor, eslesmeyen, cok_adayli,
                   okunamadi, ayni_fatura, yuklenecek, atlanacak, hatali)
+
+    def _irsaliye_modu(self, opts):
+        from core.services import luca_irsaliye
+        uygula = opts["uygula"]
+        r = luca_irsaliye.eslestir(opts["zipler"], opts["irsaliye_zipleri"],
+                                   haric=opts["haric_irsaliye"], uygula=uygula)
+        w = self.stdout.write
+        w(f"{'UYGULANDI' if uygula else 'DRY-RUN (hicbir sey yazilmadi)'} — IRSALIYE MODU — "
+          f"{r['grup_sayisi']} irsaliye grubu\n")
+        w("ÖZET")
+        w(f"  Eşleşen                : {len(r['eslesen'])}")
+        w(f"  Eşleşmeyen             : {len(r['eslesmeyen'])}")
+        w(f"  Birden fazla adaylı    : {len(r['cok_adayli'])}")
+        w(f"  Hariç tutulan          : {len(r['haric'])}")
+        w(f"  XML okunamadı          : {len(r['okunamadi'])}")
+        w(f"  {'Yüklenen' if uygula else 'Yüklenecek'} dosya : {r['yuklenen']}"
+          f"   (zaten ekli, atlanan: {r['atlanan']})")
+        w(f"  Fatura XML'inde yazım hatalı irsaliye no: {len(r['yazim_hatalari'])}")
+        w("\nEŞLEŞENLER  irsaliye no → fatura id / no | kaynak | yüklenecek (X=xml P=pdf)")
+        for e, yuk, atl in r["eslesen"]:
+            f = e["fatura"]
+            k = "".join("X" if a.lower().endswith(".xml") else "P" for a in yuk) or "-"
+            w(f"  {e['no']:<18} → {f.pk:<5} {f.fatura_no:<20} | {e['kaynak']:<28} | {k}"
+              f"{'  (zaten ekli: ' + str(len(atl)) + ')' if atl else ''}")
+        if r["yazim_hatalari"]:
+            w("\nFATURA XML'İNDE YAZIM HATALI İRSALİYE NO")
+            for y in r["yazim_hatalari"]:
+                f = y["fatura"]
+                s = y["sonuc"]
+                w(f"  fatura {f.pk} {f.fatura_no}: XML'de '{y['xml_ref']}' — doğrusu '{y['dogru_no']}' | "
+                  + (f"eşleşti → fatura {s['fatura'].pk} ({s['kaynak']})" if s else "irsaliye eşleşmedi"))
+        if r["eslesmeyen"]:
+            w("\nEŞLEŞMEYEN (yüklenmez)  irsaliye no | satıcı | tarih | neden")
+            for no, vkn, xml, neden, oneri in r["eslesmeyen"]:
+                w(f"  {no} | {(xml['unvan'] if xml else '?')[:32]} ({vkn}) | "
+                  f"{xml['tarih']:%d.%m.%Y}" if xml else f"  {no} | ? ({vkn}) | ?")
+                w(f"      neden: {neden}")
+                for ham, f in oneri:
+                    w(f"      öneri (yüklenmez): fatura {f.pk} {f.fatura_no} XML'inde benzer ref '{ham}'")
+        if r["cok_adayli"]:
+            w("\nBİRDEN FAZLA ADAYLI (yüklenmez)")
+            for no, vkn, fl in r["cok_adayli"]:
+                w(f"  {no} ({vkn}) -> " + ", ".join(f"fatura {f.pk} {f.fatura_no}" for f in fl))
+        if r["haric"]:
+            w("\nHARİÇ TUTULAN (yüklenmez)")
+            for no, vkn, xml, ad in r["haric"]:
+                w(f"  {no} | {(xml['unvan'] if xml else ad)[:35]} ({vkn})"
+                  + (f" | {xml['tarih']:%d.%m.%Y}" if xml else ""))
+        if r["okunamadi"]:
+            w("\nXML OKUNAMADI")
+            for ad, e in r["okunamadi"]:
+                w(f"  {ad}: {e}")
+        if r["tanimayan"]:
+            w("\nAD DESENİ TANINMAYAN: " + "; ".join(r["tanimayan"]))
+        if not uygula:
+            w(self.style.WARNING("\nDRY-RUN: yuklemek icin --uygula."))
 
     def _yaz(self, uygula, gruplar, tanimayan, tekrar, rapor, eslesmeyen, cok_adayli, okunamadi,
              ayni_fatura, yuklenecek, atlanacak, hatali):
