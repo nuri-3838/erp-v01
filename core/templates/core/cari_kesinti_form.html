@@ -25,6 +25,11 @@
         {% elif yon == "musteri" %}Fiş: <strong>Gider BORÇ / Cari ALACAK</strong> (müşteri bakiyesinden düşer — ör. güvenli ödeme gideri, kuruş farkı).
         {% else %}Fiş: <strong>Cari BORÇ / Hesap ALACAK</strong> (tedarikçi bakiyesinden düşer; 258'de proje maliyeti, gelir hesabında gelir tutar kadar artar/azalır).{% endif %}
         Yön cari hesabından otomatik belirlenir.</p>
+      {% if havuzlar %}
+      <div class="uyari" style="margin-bottom:.6rem"><div><strong>Açık bakiyeler (para birimi havuzları):</strong>
+        {% for h in havuzlar %}<span class="mono" style="margin-left:.8rem">{{ h.pb }}: {% if h.pb != "TRY" %}{{ h.doviz|tr_kur:2 }} {{ h.pb }} / {% endif %}{{ h.tl|tr_kur:2 }} TL {{ h.taraf|upper }}</span>{% endfor %}
+        <div class="yardim">Hangi havuzun kapanacağını para birimi seçimi belirler (ör. TRY → TL havuzu, USD → USD havuzu).</div></div></div>
+      {% endif %}
       <div class="izgara">
         <div class="alan">
           <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>{{ form.tarih }}
@@ -34,6 +39,18 @@
           <label for="{{ form.tutar.id_for_label }}">{{ form.tutar.label }}</label>{{ form.tutar }}
           {% for e in form.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if form.para_birimi %}
+        <div class="alan">
+          <label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}
+          <p class="yardim">TRY: cari satırı TL yazılır (carinin TL havuzu). Döviz: cari satırı o dövizle, karşı taraf TL karşılığıyla.</p>
+          {% for e in form.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan" id="kur-alani">
+          <label for="{{ form.kur.id_for_label }}">{{ form.kur.label }}</label>{{ form.kur }}
+          <span class="yardim" id="kur-etiket"></span>
+          {% for e in form.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% endif %}
         {% if form.karsi_cari %}<div class="alan tam">
           <label for="{{ form.karsi_cari.id_for_label }}">{{ form.karsi_cari.label }}</label><div class="akilli">{{ form.karsi_cari }}</div>
           <p class="yardim">Başka bir carinin borcunu ortak ödediyse ortağı seçin: fiş <strong>bu cari BORÇ / ortak (500.10) ALACAK</strong>.
@@ -63,4 +80,31 @@
   </form>
 </div>
 {% include "core/_akilli_hesap.html" %}
+{% if form.para_birimi %}
+<script>
+(function(){
+  var API='{% url "core:kur_usd_api" %}', CARI={{ cari.pk }};
+  var pbSec=document.getElementById('id_para_birimi'), kurInp=document.getElementById('id_kur'),
+      tarihInp=document.getElementById('id_tarih'), alan=document.getElementById('kur-alani'), et=document.getElementById('kur-etiket');
+  var elle=false;
+  function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
+  function guncelle(){
+    var pb=pbSec.value;
+    alan.style.display = pb==='TRY' ? 'none' : '';
+    if(pb==='TRY'){ kurInp.value=''; et.textContent=''; return; }
+    if(!tarihInp.value) return;
+    fetch(API+'?tarih='+encodeURIComponent(tarihInp.value)+'&pb='+pb+'&cari_id='+CARI).then(function(r){return r.json();}).then(function(j){
+      var k=j.kur?parseFloat(j.kur):null;
+      if(!elle) kurInp.value = k ? fmt(k) : '';
+      et.textContent = k ? ('1 '+pb+' = '+fmt(k)+' TL (carinin kur tipine göre; elle değiştirebilirsiniz)') : ('⚠ Bu tarih için '+pb+' kuru yok — kuru elle girin.');
+    }).catch(function(){ et.textContent=''; });
+  }
+  kurInp.addEventListener('input', function(){ elle=true; });
+  if(kurInp.value) elle=true;
+  pbSec.addEventListener('change', function(){ elle=false; guncelle(); });
+  tarihInp.addEventListener('change', guncelle);
+  guncelle();
+})();
+</script>
+{% endif %}
 {% endblock %}

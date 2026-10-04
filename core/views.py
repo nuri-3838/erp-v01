@@ -1782,14 +1782,14 @@ def cari_kesinti_ekle(request, pk):
         return redirect("core:cari_detay", pk=cari.pk)
     ortak = not (cari.muhasebe_kodu or "").startswith("500.")
     if request.method == "POST":
-        form = CariKesintiForm(request.POST, ortak_secenegi=ortak)
+        form = CariKesintiForm(request.POST, ortak_secenegi=ortak, doviz_secenegi=cari.para_birimi != "TRY")
         if form.is_valid():
             cd = form.cleaned_data
             try:
                 fis = cari_kesinti_servis.kesinti_olustur(
                     cari=cari, tarih=cd["tarih"], tutar=cd["tutar"],
                     gider_kodu=cd["gider"].hesap_kodu if cd.get("gider") else None,
-                    karsi_cari=cd.get("karsi_cari"),
+                    karsi_cari=cd.get("karsi_cari"), para_birimi=cd.get("para_birimi") or "TRY", kur=cd.get("kur"),
                     aciklama=cd["aciklama"], kullanici=request.user,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
@@ -1797,8 +1797,10 @@ def cari_kesinti_ekle(request, pk):
             except cari_kesinti_servis.CariKesintiHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariKesintiForm(ortak_secenegi=ortak)
-    return render(request, "core/cari_kesinti_form.html", {"cari": cari, "form": form, "yon": yon, "duzenle": False})
+        form = CariKesintiForm(ortak_secenegi=ortak, doviz_secenegi=cari.para_birimi != "TRY")
+    return render(request, "core/cari_kesinti_form.html", {
+        "cari": cari, "form": form, "yon": yon, "duzenle": False,
+        "havuzlar": cari_kesinti_servis.havuz_bakiyeleri(cari) if cari.para_birimi != "TRY" else []})
 
 
 @ekran_gerekli("cariler")
@@ -1812,14 +1814,14 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
         return redirect("core:cari_ekstresi", pk=cari.pk)
     ortak = not (cari.muhasebe_kodu or "").startswith("500.")
     if request.method == "POST":
-        form = CariKesintiForm(request.POST, ortak_secenegi=ortak)
+        form = CariKesintiForm(request.POST, ortak_secenegi=ortak, doviz_secenegi=cari.para_birimi != "TRY")
         if form.is_valid():
             cd = form.cleaned_data
             try:
                 cari_kesinti_servis.kesinti_guncelle(
                     fis=fis, cari=cari, tarih=cd["tarih"], tutar=cd["tutar"],
                     gider_kodu=cd["gider"].hesap_kodu if cd.get("gider") else None,
-                    karsi_cari=cd.get("karsi_cari"),
+                    karsi_cari=cd.get("karsi_cari"), para_birimi=cd.get("para_birimi") or "TRY", kur=cd.get("kur"),
                     aciklama=cd["aciklama"], kullanici=request.user,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf güncellendi: fiş {fis.yil}/{fis.fis_no}.")
@@ -1831,9 +1833,12 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
             "tarih": fis.tarih, "tutar": bilgi["tutar"],
             **({"gider": bilgi["gider"].hesap_kodu} if bilgi["gider"] is not None else {}),
             "karsi_cari": bilgi["karsi_cari"].pk if bilgi["karsi_cari"] else None,
-            "yatirim_projesi": bilgi["yatirim_projesi_id"], "aciklama": fis.aciklama}, ortak_secenegi=ortak)
+            "yatirim_projesi": bilgi["yatirim_projesi_id"], "aciklama": fis.aciklama,
+            "para_birimi": bilgi["para_birimi"], "kur": bilgi["kur"] if bilgi["para_birimi"] != "TRY" else None},
+            ortak_secenegi=ortak, doviz_secenegi=cari.para_birimi != "TRY")
     return render(request, "core/cari_kesinti_form.html", {
-        "cari": cari, "form": form, "yon": bilgi["yon"], "duzenle": True, "fis": fis})
+        "cari": cari, "form": form, "yon": bilgi["yon"], "duzenle": True, "fis": fis,
+        "havuzlar": cari_kesinti_servis.havuz_bakiyeleri(cari) if cari.para_birimi != "TRY" else []})
 
 
 @ekran_gerekli("cariler")

@@ -69,7 +69,7 @@ class CariKesintiTest(TestCase):
 
     def test_gecersiz_girdiler(self):
         with self.assertRaises(ck.CariKesintiHatasi):
-            ck.kesinti_olustur(cari=self.usd, tarih=D(2026, 9, 1), tutar="1")              # döviz cari
+            ck.kesinti_olustur(cari=self.musteri, tarih=D(2026, 9, 1), tutar="1", para_birimi="USD", kur="40")   # TL carisinda döviz
         with self.assertRaises(ck.CariKesintiHatasi):
             ck.kesinti_olustur(cari=self.musteri, tarih=D(2026, 9, 1), tutar="0")
         with self.assertRaises(ck.CariKesintiHatasi):

@@ -3103,7 +3103,11 @@ class CariKesintiForm(forms.Form):
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
-    tutar = TRDecimalField(label="Tutar (TL)", basamak=2)
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+    # Yalnız döviz carilerinde (ekranda): cari satırının para birimi + kur (döviz seçilince; boşsa TCMB).
+    para_birimi = forms.ChoiceField(label="Para birimi", required=False, initial="TRY",
+                                    choices=[("TRY", "TRY (TL)"), ("USD", "USD"), ("EUR", "EUR"), ("GBP", "GBP")])
+    kur = TRDecimalField(label="Kur (TL)", basamak=6, required=False)
     gider = forms.ModelChoiceField(
         label="Hesap (gider · 258 yatırım · gelir 64x/67x)", queryset=HesapPlani.objects.none(),
         to_field_name="hesap_kodu", empty_label=None)
@@ -3117,8 +3121,10 @@ class CariKesintiForm(forms.Form):
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
 
-    def __init__(self, *args, ortak_secenegi=True, **kwargs):
+    def __init__(self, *args, ortak_secenegi=True, doviz_secenegi=False, **kwargs):
         super().__init__(*args, **kwargs)
+        if not doviz_secenegi:
+            del self.fields["para_birimi"], self.fields["kur"]
         from core.services.cari_kesinti import VARSAYILAN_GIDER, kesinti_hesap_kumesi, ortak_cariler
         if ortak_secenegi:
             self.fields["karsi_cari"].queryset = ortak_cariler()
