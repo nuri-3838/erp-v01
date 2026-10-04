@@ -314,3 +314,36 @@ class YatirimCarisiKurFarkiTest(TestCase):
         self.assertContains(r, "Yatırım maliyetine")
         self.assertContains(r, proje.kod)
 
+
+
+class KurFarkiHedefiAyariTest(YatirimCarisiKurFarkiTest):
+    """Cari 'Kur farkı hedefi' ayarı motorda geçerli; geçmiş satırların hedefi değişmez."""
+
+    def test_her_zaman_646_656_motorda_gecerli(self):
+        from core.models import Cari
+        from core.services.yatirim_projesi import proje_olustur
+        proje = proje_olustur(ad="hat", kullanici=self.su)
+        self._fatura(proje)
+        Cari.objects.filter(pk=self.cari.pk).update(kur_farki_hedefi="HESAP_646_656")
+        self.assertIsNone(kf.yatirim_hedefi("320.10.0001"))
+        f = self._odeme()
+        self.assertEqual([h for h, *_ in self._kf(f)], ["656"])
+
+    def test_gecmis_kur_farki_satiri_hedefi_degismez_yeni_satir_guncel_kurali_izler(self):
+        from core.models import Cari
+        from core.services.yatirim_projesi import proje_olustur
+        proje = proje_olustur(ad="hat", kullanici=self.su)
+        self._fatura(proje)
+        f1 = self._odeme(tarih=D(2026, 4, 10), dvz="400", kur="33")        # kur farkı 1.200 → 258 / proje
+        self.assertEqual(self._kf(f1), [("258", Dc("1200.00"), Dc("0.00"), proje.pk)])
+        Cari.objects.filter(pk=self.cari.pk).update(kur_farki_hedefi="HESAP_646_656")
+        f2 = self._odeme(tarih=D(2026, 4, 10), dvz="600", kur="34")        # yeni satır → güncel kural: 656
+        kf.havuz_yeniden_hesapla("320.10.0001", "USD")                      # yeniden hesap eskiye dokunmaz
+        self.assertEqual(self._kf(YevmiyeFisi.objects.get(pk=f1.pk)), [("258", Dc("1200.00"), Dc("0.00"), proje.pk)])
+        self.assertEqual([h for h, *_ in self._kf(YevmiyeFisi.objects.get(pk=f2.pk))], ["656"])
+
+    def test_cari_kartinda_ve_formda_ayar(self):
+        from django.urls import reverse
+        self.client.force_login(self.su)
+        self.assertContains(self.client.get(reverse("core:cari_duzenle", args=[self.cari.pk])), "Her zaman 646-656")
+        self.assertContains(self.client.get(reverse("core:cari_detay", args=[self.cari.pk])), "Kur Farkı Hedefi")

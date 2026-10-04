@@ -836,6 +836,10 @@ class Cari(TemelModel):
         HER_ZAMAN = "HER_ZAMAN", "Her zaman değerle"
         HIC = "HIC", "Hiç değerleme"
 
+    class KurFarkiHedefi(models.TextChoices):
+        OTOMATIK = "OTOMATIK", "Otomatik (yatırım projesi varsa 258)"
+        HESAP_646_656 = "HESAP_646_656", "Her zaman 646-656"
+
     class OdemeKosulu(models.TextChoices):
         PESIN = "PESIN", "Peşin (fatura tarihi)"
         GUN_SONRA = "GUN_SONRA", "Fatura tarihinden X gün sonra"
@@ -884,6 +888,10 @@ class Cari(TemelModel):
     # avans olsa da değerlenir (ör. parasal alacak sayılan depozito); HIC → hiç değerlenmez.
     kur_degerleme = models.CharField("kur değerlemesi", max_length=10, choices=DegerlemeKurali.choices,
                                      default=DegerlemeKurali.OTOMATIK)
+    # Kur farkının (motor + dönem sonu değerleme) yazılacağı hesap: OTOMATIK → carinin en son projeli onaylı
+    # faturasındaki yatırım projesi "Devam Ediyor" ise 258 + o proje, değilse 646/656; HESAP_646_656 → hep 646/656.
+    kur_farki_hedefi = models.CharField("kur farkı hedefi", max_length=14, choices=KurFarkiHedefi.choices,
+                                        default=KurFarkiHedefi.OTOMATIK)
     kredi_limiti = models.DecimalField("kredi/risk limiti", max_digits=14, decimal_places=2, default=0)
     iskonto_yuzdesi = models.DecimalField("varsayılan iskonto %", max_digits=5, decimal_places=2, default=0)
     # Boş (null): koşul yok, fatura vade tarihi elle girilir — mevcut carilerin hepsi

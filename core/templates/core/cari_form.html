@@ -81,6 +81,8 @@
         <div class="alan" id="kur-tipi-alan"><label for="{{ form.kur_tipi.id_for_label }}">{{ form.kur_tipi.label }}</label>{{ form.kur_tipi }}</div>
         <div class="alan"><label for="{{ form.kur_degerleme.id_for_label }}">{{ form.kur_degerleme.label }}</label>{{ form.kur_degerleme }}
           <p class="yardim">Dönem sonu kur değerlemesi: Otomatik'te verilen/alınan avans değerlenmez; parasal alacak/borç sayılan depozito gibi kalemlerde "Her zaman değerle" seçin.</p></div>
+        <div class="alan"><label for="{{ form.kur_farki_hedefi.id_for_label }}">{{ form.kur_farki_hedefi.label }}</label>{{ form.kur_farki_hedefi }}
+          <p class="yardim">Kur farkı (ödeme/tahsilat ve dönem sonu değerleme): Otomatik'te carinin en son yatırım projeli faturasındaki proje devam ediyorsa 258'e ve o projeye, aksi halde 646/656'ya yazılır; "Her zaman 646-656" seçeneği yatırım maliyetine yazmaz.</p></div>
         <div class="alan"><label for="{{ form.kredi_limiti.id_for_label }}">{{ form.kredi_limiti.label }}</label>{{ form.kredi_limiti }}{% for e in form.kredi_limiti.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.iskonto_yuzdesi.id_for_label }}">{{ form.iskonto_yuzdesi.label }}</label>{{ form.iskonto_yuzdesi }}{% for e in form.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.odeme_kosulu.id_for_label }}">{{ form.odeme_kosulu.label }}</label>{{ form.odeme_kosulu }}

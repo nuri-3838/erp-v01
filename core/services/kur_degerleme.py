@@ -99,7 +99,9 @@ def onizle(tarih):
         kur_tarihleri[pb] = kur_tarihi
         yeni = yuvarla(q * kur, 2)
         fark = yeni - v
-        satir.update(kur=kur, kur_tarihi=kur_tarihi, yeni_tl=yeni, fark=fark)
+        proje = kf.yatirim_hedefi(hesap_kodu)          # kur farkı motoruyla AYNI hedef mantığı
+        satir.update(kur=kur, kur_tarihi=kur_tarihi, yeni_tl=yeni, fark=fark, proje=proje,
+                     hedef=f"258 / {proje.kod}" if proje else "646/656")
         satirlar.append(satir)
         if fark > 0:
             kar += fark
@@ -129,12 +131,35 @@ def uygula(tarih, *, kullanici=None) -> KurDegerleme:
             aciklama=f"KUR DEĞERLEME {r['doviz']:f} {r['pb']} @ {r['kur']:f}"))
     if not satirlar:
         raise KurDegerlemeHatasi("Değerlenecek fark yok (açık döviz bakiyesi ya da kur farkı bulunmuyor).")
-    if o["kar"] > 0:
-        satirlar.append(SatirGirdi(hesap_kodu=kf.KAR_HESABI, taraf="A", islem_tutari=o["kar"],
+    # Karşı satırlar: yatırım carilerinin farkı 258 + proje (proje bazında kâr/zarar ayrı), kalanı 646/656.
+    kar646 = zarar656 = SIFIR
+    yatirim = {}
+    for r in o["satirlar"]:
+        if r["fark"] == 0:
+            continue
+        if r["proje"] is not None:
+            k = yatirim.setdefault(r["proje"].pk, {"kod": r["proje"].kod, "kar": SIFIR, "zarar": SIFIR})
+            if r["fark"] > 0:
+                k["kar"] += r["fark"]
+            else:
+                k["zarar"] += -r["fark"]
+        elif r["fark"] > 0:
+            kar646 += r["fark"]
+        else:
+            zarar656 += -r["fark"]
+    if kar646 > 0:
+        satirlar.append(SatirGirdi(hesap_kodu=kf.KAR_HESABI, taraf="A", islem_tutari=kar646,
                                    aciklama="KUR DEĞERLEME KÂRI"))
-    if o["zarar"] > 0:
-        satirlar.append(SatirGirdi(hesap_kodu=kf.ZARAR_HESABI, taraf="B", islem_tutari=o["zarar"],
+    if zarar656 > 0:
+        satirlar.append(SatirGirdi(hesap_kodu=kf.ZARAR_HESABI, taraf="B", islem_tutari=zarar656,
                                    aciklama="KUR DEĞERLEME ZARARI"))
+    for pk, k in sorted(yatirim.items()):
+        if k["kar"] > 0:     # kâr: maliyet azalır → 258 alacak
+            satirlar.append(SatirGirdi(hesap_kodu=kf.YATIRIM_HESABI, taraf="A", islem_tutari=k["kar"],
+                                       aciklama=f"KUR DEĞERLEME KÂRI ({k['kod']})", yatirim_projesi_id=pk))
+        if k["zarar"] > 0:   # zarar: maliyet artar → 258 borç
+            satirlar.append(SatirGirdi(hesap_kodu=kf.YATIRIM_HESABI, taraf="B", islem_tutari=k["zarar"],
+                                       aciklama=f"KUR DEĞERLEME ZARARI ({k['kod']})", yatirim_projesi_id=pk))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=f"DÖNEM SONU KUR DEĞERLEME {tarih:%d.%m.%Y}",
                           kaynak=YevmiyeFisi.Kaynak.KUR_DEGERLEME, kullanici=kullanici,
@@ -162,6 +187,7 @@ def ters_kayit(deg: KurDegerleme, *, tarih=None, kullanici=None) -> KurDegerleme
         satirlar.append(SatirGirdi(
             hesap_kodu=s.hesap_id, taraf="A" if s.borc else "B", islem_tutari=s.islem_tutari,
             islem_pb=s.islem_pb, islem_kuru=s.islem_kuru, tl_override=tl,
+            yatirim_projesi_id=s.yatirim_projesi_id,       # ters kayıt AYNI hesaba (258 + aynı proje)
             aciklama=buyuk_harf_tr("ters kayıt — " + (s.aciklama or ""))[:500]))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar,
@@ -169,7 +195,8 @@ def ters_kayit(deg: KurDegerleme, *, tarih=None, kullanici=None) -> KurDegerleme
                           kaynak=YevmiyeFisi.Kaynak.KUR_DEGERLEME, kullanici=kullanici,
                           kur_usd=_usd_kuru(tarih))
     except YevmiyeHatasi as e:
-        raise KurDegerlemeHatasi(str(e))
+        raise KurDegerlemeHatasi(f"{e} (258'e yazılmış bir değerlemede proje aktifleştirilmişse ters kayıt "
+                                 f"manuel fişle yapılmalıdır.)")
     deg.ters_fis = fis
     deg.updated_by = kullanici
     deg.save(update_fields=["ters_fis", "updated_by", "updated_at"])

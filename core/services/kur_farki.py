@@ -16,7 +16,8 @@ YATIRIM CARİLERİ: bir cari havuzunun kur farkı, carinin EN SON (fatura tarihi
 yatırım projeli (258) kalemindeki projeye — proje "Devam Ediyor" ise — 646/656 yerine 258 YAPILMAKTA OLAN
 YATIRIMLAR'a ve aynı yatırım projesine yazılır (zarar 258 borç = maliyet artar, kâr 258 alacak). Proje
 aktifleşmişse ya da carinin projeli faturası yoksa 646/656. Banka/kasa/çek havuzları hep 646/656.
-(Satır zaten bir aktifleşmiş projenin 258'ine yazılmışsa hedefi değiştirilmez.)
+Cari kartındaki "Kur farkı hedefi" = "Her zaman 646-656" ise hep 646/656. Geçmişte üretilmiş bir kur farkı
+satırının hedefi (258+proje ya da 646/656) bir daha DEĞİŞMEZ; yalnız yeni üretilen satırlar güncel kuralı izler.
 
 Havuzlar tarih → fiş no → satır id sırasıyla HER SEFERİNDE baştan hesaplanır (geriye dönük girilen
 ya da silinen hareket sonraki çıkışların kur farkını da düzeltir). Fiş oluşturma/güncelleme/iptal/
@@ -146,11 +147,12 @@ def _girdi(s):
 
 def yatirim_hedefi(hesap_kodu):
     """Cari havuzu için kur farkının yazılacağı yatırım projesi (``YatirimProjesi``, DEVAM) ya da None.
-    Carinin en son (fatura tarihi, id) onaylı faturasının yatırım projeli kalemindeki projeye bakar."""
+    Carinin en son (fatura tarihi, id) onaylı faturasının yatırım projeli kalemindeki projeye bakar; carinin
+    "Kur farkı hedefi" ayarı "Her zaman 646-656" ise hep None. Hem motor hem dönem sonu değerleme bunu kullanır."""
     if not hesap_kodu or not hesap_kodu.startswith(CARI_ONEKLERI):
         return None
     cari = Cari.objects.filter(muhasebe_kodu=hesap_kodu, silindi=False).first()
-    if cari is None:
+    if cari is None or cari.kur_farki_hedefi == Cari.KurFarkiHedefi.HESAP_646_656:
         return None
     satir = (FaturaSatir.objects
              .filter(fatura__cari=cari, fatura__silindi=False, fatura__durum="ONAYLI", silindi=False,
@@ -216,13 +218,15 @@ def havuz_yeniden_hesapla(hesap_kodu, pb):
         hedef_kod = KAR_HESABI if kar_tarafi else ZARAR_HESABI
         hedef_proje_id = None
         hedef_proje_kod = None
-        if proje is not None:
+        if mevcut:
+            # GEÇMİŞTE üretilmiş kur farkı satırının hedefi DEĞİŞMEZ (yalnız tutar/yön güncellenir): 258'e +
+            # projeye yazılmışsa orada kalır (aktifleştirme fişi bozulmaz), 646/656'daysa orada kalır.
+            if mevcut[0].yatirim_projesi_id:
+                eski = YatirimProjesi.objects.filter(pk=mevcut[0].yatirim_projesi_id).first()
+                hedef_kod, hedef_proje_id = mevcut[0].hesap_id, mevcut[0].yatirim_projesi_id
+                hedef_proje_kod = eski.kod if eski is not None else None
+        elif proje is not None:
             hedef_kod, hedef_proje_id, hedef_proje_kod = YATIRIM_HESABI, proje.pk, proje.kod
-        if mevcut and mevcut[0].yatirim_projesi_id:
-            eski = YatirimProjesi.objects.filter(pk=mevcut[0].yatirim_projesi_id).first()
-            if eski is not None and eski.durum == YatirimProjesi.Durum.AKTIFLESTI:
-                # Aktifleşmiş projenin 258'ine yazılmış satır: hedef değişmez (aktifleştirme fişi bozulmaz).
-                hedef_kod, hedef_proje_id, hedef_proje_kod = mevcut[0].hesap_id, eski.pk, eski.kod
         if hedef_proje_kod:
             yatirim[hedef_proje_kod] = yatirim.get(hedef_proje_kod, SIFIR) + (-tutar if kar_tarafi else tutar)
         alanlar = dict(

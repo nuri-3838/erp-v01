@@ -23,20 +23,21 @@
 <div class="tablo-kapsayici genis">
 <table>
   <thead><tr><th>Hesap</th><th>PB</th><th class="sag">Döviz bakiye</th><th class="sag">TL bakiye</th>
-    <th class="sag">Ort. kur</th><th class="sag">TCMB alış</th><th>Kur tarihi</th><th class="sag">Değerlenmiş TL</th><th class="sag">Fark (TL)</th></tr></thead>
+    <th class="sag">Ort. kur</th><th class="sag">TCMB alış</th><th>Kur tarihi</th><th class="sag">Değerlenmiş TL</th><th class="sag">Fark (TL)</th><th>Gittiği yer</th></tr></thead>
   <tbody>
   {% for r in onizleme.satirlar %}
     <tr><td>{{ r.hesap_kodu }} {{ r.hesap_adi }}</td><td class="mono">{{ r.pb }}</td>
       <td class="sag">{{ r.doviz|tr_para }}</td><td class="sag">{{ r.tl|tr_para }}</td>
       <td class="sag">{% if r.ort_kur %}{{ r.ort_kur|tr_kur:4 }}{% else %}—{% endif %}</td>
       <td class="sag">{{ r.kur|tr_kur:4 }}</td><td class="mono">{{ r.kur_tarihi|date:"d.m.Y" }}</td><td class="sag">{{ r.yeni_tl|tr_para }}</td>
-      <td class="sag {% if r.fark > 0 %}gir{% elif r.fark < 0 %}cik{% endif %}">{{ r.fark|tr_para }}</td></tr>
+      <td class="sag {% if r.fark > 0 %}gir{% elif r.fark < 0 %}cik{% endif %}">{{ r.fark|tr_para }}</td>
+      <td class="mono">{{ r.hedef }}</td></tr>
   {% empty %}
-    <tr><td colspan="9" class="yardim">Değerlenecek açık döviz bakiyesi yok.</td></tr>
+    <tr><td colspan="10" class="yardim">Değerlenecek açık döviz bakiyesi yok.</td></tr>
   {% endfor %}
   </tbody>
-  <tfoot><tr><th colspan="8" class="sag">Kambiyo kârı (646) / zararı (656)</th>
-    <th class="sag">{{ onizleme.kar|tr_para }} / {{ onizleme.zarar|tr_para }}</th></tr></tfoot>
+  <tfoot><tr><th colspan="8" class="sag">Toplam kâr / zarar</th>
+    <th class="sag">{{ onizleme.kar|tr_para }} / {{ onizleme.zarar|tr_para }}</th><th></th></tr></tfoot>
 </table>
 </div>
 

@@ -234,3 +234,86 @@ class AvansKuraliTest(TestCase):
         c.refresh_from_db()
         self.assertEqual(c.kur_degerleme, "HER_ZAMAN")
         self.assertContains(self.client.get(reverse("core:cari_detay", args=[c.pk])), "Her zaman değerle")
+
+
+class YatirimCarisiDegerlemeTest(TestCase):
+    """Değerleme de yatırım carisi kuralını izler: 258 + proje; ters kayıt aynı hesaba; cari ayarı 646/656."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Cari, FaturaTipi, KdvOrani
+        for g, k in ((D(2026, 3, 10), "30"), (D(2026, 4, 10), "33"), (D(2026, 6, 30), "33"), (D(2026, 7, 1), "34")):
+            Kur.objects.create(tarih=g, usd_alis=Dc(k))
+        for kod, ad in (("191", "KDV"), ("391", "KDV2"), ("320.10.0001", "YONGKANG"), ("320.10.0002", "DİĞER"),
+                        ("102.01.0001", "TL BANKA"), ("131.01", "ORTAK")):
+            _hesap(kod, ad)
+        _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR", kalem="DDV")
+        _hesap("646", "KAMBİYO KÂRLARI", kalem="E", grup="GELIR_TABLOSU")
+        _hesap("656", "KAMBİYO ZARARLARI (-)", kalem="F", grup="GELIR_TABLOSU")
+        cls.kdv0 = KdvOrani.objects.create(aciklama="KDV YOK", oran=Dc("0"))
+        cls.gider = FaturaTipi.objects.create(ad="ALIŞ FATURASI-GİDER", yon=FaturaTipi.Yon.ALIS, gider=True)
+        cls.cari = Cari.objects.create(kod="C1", unvan="YONGKANG", para_birimi="USD", muhasebe_kodu="320.10.0001")
+        cls.su = User.objects.create_superuser("yd", password="x")
+
+    def _fatura(self, proje):
+        from core.services.fatura import fatura_olustur
+        return fatura_olustur(
+            tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10), fatura_no="F1", para_birimi="USD",
+            satirlar=[{"hesap_id": "258", "miktar": "1", "birim_fiyat": "1000", "kdv_id": self.kdv0.pk,
+                       "yatirim_projesi_id": proje.pk}])
+
+    def _proje(self):
+        from core.services.yatirim_projesi import proje_olustur
+        return proje_olustur(ad="hat", kullanici=self.su)
+
+    def test_degerleme_farki_258_ve_projeye_ters_kayit_ayni_hesaba(self):
+        from core.services.yatirim_projesi import proje_toplami
+        proje = self._proje()
+        self._fatura(proje)
+        o = kd.onizle(D(2026, 6, 30))
+        r = [x for x in o["satirlar"] if x["hesap_kodu"] == "320.10.0001"][0]
+        self.assertEqual((r["fark"], r["hedef"]), (Dc("-3000.00"), f"258 / {proje.kod}"))
+        d = kd.uygula(D(2026, 6, 30), kullanici=self.su)
+        satirlar = {(s.hesap_id): (s.borc, s.alacak, s.yatirim_projesi_id) for s in d.fis.satirlar.all()}
+        self.assertEqual(satirlar["320.10.0001"][:2], (Dc("0.00"), Dc("3000.00")))
+        self.assertEqual(satirlar["258"], (Dc("3000.00"), Dc("0.00"), proje.pk))     # zarar → 258 borç + proje
+        self.assertNotIn("656", satirlar)
+        self.assertEqual(proje_toplami(proje), Dc("33000.00"))                       # maliyete eklendi
+        self.assertEqual(sum(s.borc for s in d.fis.satirlar.all()), sum(s.alacak for s in d.fis.satirlar.all()))
+        d = kd.ters_kayit(d, tarih=D(2026, 7, 1), kullanici=self.su)
+        ters = {(s.hesap_id): (s.borc, s.alacak, s.yatirim_projesi_id) for s in d.ters_fis.satirlar.all()}
+        self.assertEqual(ters["258"], (Dc("0.00"), Dc("3000.00"), proje.pk))         # aynı hesap + aynı proje
+        self.assertEqual(proje_toplami(proje), Dc("30000.00"))
+        self.assertEqual(kf.havuz_bakiyesi("320.10.0001", "USD"), (Dc("-1000.00"), Dc("-30000.00")))
+
+    def test_cari_her_zaman_646_656_degerlemede_de_gecerli(self):
+        from core.models import Cari
+        proje = self._proje()
+        self._fatura(proje)
+        Cari.objects.filter(pk=self.cari.pk).update(kur_farki_hedefi="HESAP_646_656")
+        o = kd.onizle(D(2026, 6, 30))
+        r = [x for x in o["satirlar"] if x["hesap_kodu"] == "320.10.0001"][0]
+        self.assertEqual(r["hedef"], "646/656")
+        d = kd.uygula(D(2026, 6, 30))
+        satirlar = {s.hesap_id: (s.borc, s.alacak) for s in d.fis.satirlar.all()}
+        self.assertEqual(satirlar["656"], (Dc("3000.00"), Dc("0.00")))
+        self.assertNotIn("258", satirlar)
+
+    def test_proje_aktiflesmisse_ve_projesiz_cari_646_656(self):
+        from core.models import YatirimProjesi
+        proje = self._proje()
+        self._fatura(proje)
+        YatirimProjesi.objects.filter(pk=proje.pk).update(durum="AKTIFLESTI")
+        r = [x for x in kd.onizle(D(2026, 6, 30))["satirlar"] if x["hesap_kodu"] == "320.10.0001"][0]
+        self.assertEqual(r["hedef"], "646/656")
+
+    def test_ekranda_gittigi_yer_sutunu(self):
+        from django.urls import reverse
+        from core.models import EkranYetki
+        proje = self._proje()
+        self._fatura(proje)
+        EkranYetki.objects.create(kullanici=self.su, ekran_kod="kur_degerleme")
+        self.client.force_login(self.su)
+        r = self.client.get(reverse("core:kur_degerleme"), {"tarih": "2026-06-30"})
+        self.assertContains(r, "Gittiği yer")
+        self.assertContains(r, f"258 / {proje.kod}")
