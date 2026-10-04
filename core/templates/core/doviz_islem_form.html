@@ -1,0 +1,120 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Döviz Alış / Satış{% endblock %}
+{% block sayfa_adi %}Döviz Alış / Satış{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:bankalar' %}">← Bankalar</a>
+    <h1 class="ust-baslik"><span class="emoji">💱</span>Döviz Alış / Satış</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🔁</span>Çapraz Kurlu Virman</h2>
+      <p class="yardim" style="margin-top:-.3rem">TL hesaptan döviz hesabına <strong>alış</strong>, döviz hesabından TL
+        hesaba <strong>satış</strong> (yön hesapların para biriminden çıkar). Satışta döviz hesabı hesabın
+        <strong>ortalama kuruyla</strong> alacaklanır; fark aynı fişe 646 Kambiyo Kârı / 656 Kambiyo Zararı olarak yazılır.</p>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.kaynak.id_for_label }}">{{ form.kaynak.label }}</label>{{ form.kaynak }}
+          {% for e in form.kaynak.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.hedef.id_for_label }}">{{ form.hedef.label }}</label>{{ form.hedef }}
+          {% for e in form.hedef.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.doviz_tutari.id_for_label }}">{{ form.doviz_tutari.label }} <span id="dv-pb" class="mono"></span></label>
+          {{ form.doviz_tutari }}
+          {% for e in form.doviz_tutari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.kur.id_for_label }}">{{ form.kur.label }}</label>{{ form.kur }}
+          <span class="kur-etiket" id="kur-etiket"></span>
+          {% for e in form.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>{{ form.tarih }}
+          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}
+        </div>
+      </div>
+      <p class="yardim" id="dv-tl" style="margin-top:.5rem"></p>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kambiyo Vergisi / Masraf (isteğe bağlı)</h2>
+      <p class="yardim" style="margin-top:-.3rem">TL hesaptan ödenen vergi/masraf satırları (alışta TL hesap alacağına eklenir, satışta
+        tahsil edilen TL'den düşer).</p>
+      <div class="izgara">
+        <div class="alan"><label>{{ form.masraf_hesap_1.label }}</label>{{ form.masraf_hesap_1 }}
+          {% for e in form.masraf_hesap_1.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label>{{ form.masraf_tutar_1.label }}</label>{{ form.masraf_tutar_1 }}</div>
+        <div class="alan"><label>{{ form.masraf_hesap_2.label }}</label>{{ form.masraf_hesap_2 }}</div>
+        <div class="alan"><label>{{ form.masraf_tutar_2.label }}</label>{{ form.masraf_tutar_2 }}</div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:bankalar' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+{{ pb_haritasi|json_script:"pb-json" }}
+<style>
+  .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
+  .kur-etiket.hata { color:var(--hata); }
+</style>
+<script>
+(function(){
+  var PB = JSON.parse(document.getElementById('pb-json').textContent);
+  var kaynak = document.getElementById('{{ form.kaynak.id_for_label }}');
+  var hedef = document.getElementById('{{ form.hedef.id_for_label }}');
+  var tarih = document.getElementById('{{ form.tarih.id_for_label }}');
+  var kur = document.getElementById('{{ form.kur.id_for_label }}');
+  var dv = document.getElementById('{{ form.doviz_tutari.id_for_label }}');
+  var etiket = document.getElementById('kur-etiket'), tl = document.getElementById('dv-tl'), pbEl = document.getElementById('dv-pb');
+  var elle = false, istek = 0;
+  function sayi(s){ s=(s||'').toString().trim().replace(/\./g,'').replace(',','.'); var n=parseFloat(s); return isNaN(n)?0:n; }
+  function fmt(n,b){ return n.toLocaleString('tr-TR',{minimumFractionDigits:b,maximumFractionDigits:b}); }
+  function dovizPb(){ var a=PB[kaynak.value]||'', b=PB[hedef.value]||''; return a!=='TRY'&&a ? a : (b!=='TRY'&&b ? b : ''); }
+  function yon(){ var a=PB[kaynak.value], b=PB[hedef.value]; if(a==='TRY'&&b&&b!=='TRY') return 'ALIŞ'; if(b==='TRY'&&a&&a!=='TRY') return 'SATIŞ'; return ''; }
+  function guncelle(){
+    var pb = dovizPb(), y = yon();
+    pbEl.textContent = pb ? '('+pb+(y?' · '+y:'')+')' : '';
+    var k = sayi(kur.value), d = sayi(dv.value);
+    tl.textContent = (k && d) ? 'TL karşılığı: ' + fmt(Math.round(d*k*100)/100,2) + ' TL' : '';
+  }
+  function kurCek(){
+    var pb = dovizPb();
+    if(!pb || !tarih.value){ etiket.textContent=''; return; }
+    var no = ++istek;
+    fetch('{% url "core:kur_usd_api" %}?tarih='+encodeURIComponent(tarih.value)+'&pb='+encodeURIComponent(pb))
+      .then(function(r){return r.json();}).then(function(j){
+        if(no!==istek) return;
+        var v = j.kur ? parseFloat(j.kur) : null;
+        if(v){ etiket.textContent='TCMB '+pb+' alış: '+fmt(v,4); etiket.classList.remove('hata'); if(!elle) kur.value=fmt(v,4); }
+        else { etiket.textContent='⚠ Bu tarih için '+pb+' kuru yok — kuru elle girin.'; etiket.classList.add('hata'); }
+        guncelle();
+      }).catch(function(){ etiket.textContent=''; });
+  }
+  [kaynak,hedef].forEach(function(e){ e.addEventListener('change', function(){ guncelle(); kurCek(); }); });
+  tarih.addEventListener('change', kurCek);
+  kur.addEventListener('input', function(){ elle=true; guncelle(); });
+  dv.addEventListener('input', guncelle);
+  guncelle(); if(!kur.value) kurCek();
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, DovizIslemForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -58,7 +58,7 @@ from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
+    KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
@@ -97,6 +97,8 @@ from core.services import finans as finans_servis
 from core.services import fis_sil as fis_sil_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
+from core.services import doviz_islem as doviz_islem_servis
+from core.services import kur_degerleme as kur_degerleme_servis
 from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
 from core.services import kredi_hareket as kredi_hareket_servis
 from core.services import cek as cek_servis
@@ -315,7 +317,7 @@ def fis_duzenle(request, pk):
         # fişte TL = islem_tutari × kur olduğundan kutuya islem_tutari konur (çift
         # çevrim olmaz). TRY'de islem_tutari == TL zaten.
         ilk = []
-        for s in fis.satirlar.filter(silindi=False).select_related("hesap"):
+        for s in fis.satirlar.filter(silindi=False, ana_satir__isnull=True).select_related("hesap"):
             borc_taraf = bool(s.borc and s.borc > 0)
             ilk.append({
                 "hesap": s.hesap_id, "islem_pb": s.islem_pb,
@@ -2017,6 +2019,66 @@ def banka_hareket_ekle(request, pk, tip):
         messages.error(request, "Geçersiz hareket tipi.")
         return redirect("core:banka_hesap_detay", pk=hesap.pk)
     return _banka_hareket_form(request, hesap, tip)
+
+
+@ekran_gerekli("kur_degerleme")
+def kur_degerleme(request):
+    """Dönem sonu kur değerleme: tarih seç → dry-run önizleme → değerleme fişi; geçmiş değerlemeler
+    için tek tuşla ters kayıt."""
+    ham = request.GET.get("tarih") or request.POST.get("tarih")
+    try:
+        tarih = datetime.date.fromisoformat(ham) if ham else timezone.localdate()
+    except ValueError:
+        tarih = timezone.localdate()
+    if request.method == "POST":
+        eylem = request.POST.get("eylem")
+        try:
+            if eylem == "uygula":
+                d = kur_degerleme_servis.uygula(tarih, kullanici=request.user)
+                messages.success(request, f"Değerleme fişi oluşturuldu: {d.fis.yil}/{d.fis.fis_no}.")
+            elif eylem == "ters":
+                d = get_object_or_404(KurDegerleme, pk=request.POST.get("degerleme"), silindi=False)
+                ters_ham = request.POST.get("ters_tarih")
+                ters_tarih = datetime.date.fromisoformat(ters_ham) if ters_ham else None
+                d = kur_degerleme_servis.ters_kayit(d, tarih=ters_tarih, kullanici=request.user)
+                messages.success(request, f"Ters kayıt oluşturuldu: {d.ters_fis.yil}/{d.ters_fis.fis_no}.")
+        except (kur_degerleme_servis.KurDegerlemeHatasi, ValueError) as e:
+            messages.error(request, str(e))
+        return redirect(f"{reverse('core:kur_degerleme')}?tarih={tarih.isoformat()}")
+    return render(request, "core/kur_degerleme.html", {
+        "tarih": tarih, "onizleme": kur_degerleme_servis.onizle(tarih),
+        "degerlemeler": KurDegerleme.objects.filter(silindi=False).select_related("fis", "ters_fis")})
+
+
+@ekran_gerekli("banka")
+def doviz_islem_ekle(request):
+    """Döviz Alış / Satış (TL ↔ döviz banka/kasa; ortalama kurla maliyet + otomatik kur farkı)."""
+    def coz(deger):
+        tur, _, pk = (deger or "").partition(":")
+        model = BankaHesap if tur == "banka" else Kasa
+        return get_object_or_404(model, pk=int(pk), silindi=False)
+
+    if request.method == "POST":
+        form = DovizIslemForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            masraflar = [{"hesap_kodu": cd[f"masraf_hesap_{i}"].hesap_kodu, "tutar": cd.get(f"masraf_tutar_{i}")}
+                         for i in ("1", "2") if cd.get(f"masraf_hesap_{i}")]
+            try:
+                kaynak, hedef = coz(cd["kaynak"]), coz(cd["hedef"])
+                fis = doviz_islem_servis.doviz_islem_olustur(
+                    kaynak=kaynak, hedef=hedef, doviz_tutari=cd["doviz_tutari"], tarih=cd["tarih"],
+                    kur=cd.get("kur"), aciklama=cd["aciklama"], masraflar=masraflar,
+                    kullanici=request.user)
+                messages.success(request, f"Döviz işlemi kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
+                sahip = fis.banka_hesap_id
+                return redirect("core:banka_hesap_detay", pk=sahip) if sahip else redirect(
+                    "core:kasa_detay", pk=fis.kasa_id)
+            except doviz_islem_servis.DovizIslemHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = DovizIslemForm(initial={k: request.GET.get(k) for k in ("kaynak", "hedef") if request.GET.get(k)})
+    return render(request, "core/doviz_islem_form.html", {"form": form, "pb_haritasi": form.pb})
 
 
 @ekran_gerekli("banka")

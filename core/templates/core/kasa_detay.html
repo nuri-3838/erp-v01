@@ -93,6 +93,8 @@
         <span class="hd-ik">🏧</span><span class="hd-ad">Banka Çekilen</span><span class="hd-yon">GİRİŞ</span></a>
       <a class="hareket-dugme notr" href="{% url 'core:kasa_hareket_ekle' kasa.pk 'kasa_virman' %}">
         <span class="hd-ik">🔁</span><span class="hd-ad">Kasa Virman</span><span class="hd-yon">TRANSFER</span></a>
+      <a class="hareket-dugme notr" href="{% url 'core:doviz_islem_ekle' %}?kaynak=kasa:{{ kasa.pk }}">
+        <span class="hd-ik">💱</span><span class="hd-ad">Döviz Alış / Satış</span><span class="hd-yon">ÇAPRAZ KUR</span></a>
     </div>
   </section>
 

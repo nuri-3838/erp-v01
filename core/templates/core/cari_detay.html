@@ -140,6 +140,7 @@
         <div class="satir"><span class="et">Para Birimi</span><span class="dg mono">{{ cari.para_birimi }}</span></div>
         {% if cari.para_birimi != "TRY" %}
         <div class="satir"><span class="et">Kur Tipi</span><span class="dg mono">{{ cari.get_kur_tipi_display }}</span></div>
+        <div class="satir"><span class="et">Cari Kur Yöntemi</span><span class="dg">Ortalama kur (hareketli ağırlıklı) — ödeme/tahsilat kuru farkı otomatik 646/656'ya yazılır</span></div>
         {% endif %}
         <div class="satir"><span class="et">Kredi/Risk Limiti</span><span class="dg mono">{{ cari.kredi_limiti|tr_kur:2 }}</span></div>
         <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg mono">%{{ cari.iskonto_yuzdesi|tr_kur:2 }}</span></div>

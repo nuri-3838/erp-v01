@@ -157,6 +157,7 @@ class YevmiyeFisi(TemelModel):
         STOK_SARF = "STOK_SARF", "Stok Sarf Çıkışı (otomatik)"
         URETIM = "URETIM", "Üretim Maliyet Aktarımı (otomatik)"
         STOK_SATIS = "STOK_SATIS", "Satış Maliyeti (otomatik)"
+        KUR_DEGERLEME = "KUR_DEGERLEME", "Dönem Sonu Kur Değerleme"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -262,6 +263,18 @@ class YevmiyeSatir(TemelModel):
     yatirim_projesi = models.ForeignKey(
         "YatirimProjesi", verbose_name="yatırım projesi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="yevmiye_satirlari")
+    # --- Ortalama kurla döviz maliyeti (bkz. core.services.kur_farki) -------------------------
+    # Döviz hesabının ÇIKIŞ satırında TL, hesabın hareketli ağırlıklı ortalama kuruyla yazılır;
+    # fark aynı fişe 646/656 satırı olarak eklenir. ham_tl = işlem kuruyla ilk yazılan TL (boşsa
+    # satır değiştirilmemiştir), ort_kur = kullanılan ortalama kur, ana_satir = bu satır bir
+    # kur farkı satırıysa ait olduğu ana satır (motor üretir/siler; elle düzenlenmez).
+    ham_tl = models.DecimalField("ham TL (işlem kuruyla)", max_digits=18, decimal_places=2,
+                                 null=True, blank=True)
+    ort_kur = models.DecimalField("kullanılan ortalama kur", max_digits=18, decimal_places=6,
+                                  null=True, blank=True)
+    ana_satir = models.ForeignKey(
+        "self", verbose_name="kur farkının ana satırı", null=True, blank=True,
+        on_delete=models.CASCADE, related_name="kur_farki_satirlari")
 
     class Meta:
         db_table = "yevmiye_satir"
@@ -3512,3 +3525,29 @@ class FisNoSayaci(models.Model):
 
     def __str__(self):
         return f"{self.yil}: {self.son_no}"
+
+
+class KurDegerleme(TemelModel):
+    """Dönem sonu kur değerleme kaydı — seçilen tarihte açık döviz bakiyelerinin TCMB döviz alış
+    kuruyla değerlenmesi (fark fişi) ve isteğe bağlı ters kaydı (bkz. core.services.kur_degerleme).
+    Fişler ``YevmiyeFisi.Kaynak.KUR_DEGERLEME``; bu kayıt ikisini birbirine bağlar."""
+
+    tarih = models.DateField("değerleme tarihi")
+    fis = models.OneToOneField(
+        YevmiyeFisi, verbose_name="değerleme fişi", on_delete=models.PROTECT,
+        related_name="kur_degerleme")
+    ters_fis = models.OneToOneField(
+        YevmiyeFisi, verbose_name="ters kayıt fişi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kur_degerleme_ters")
+    toplam_kar = models.DecimalField("kambiyo kârı (TL)", max_digits=18, decimal_places=2, default=0)
+    toplam_zarar = models.DecimalField("kambiyo zararı (TL)", max_digits=18, decimal_places=2, default=0)
+    kurlar = models.JSONField("kullanılan kurlar", default=dict)
+
+    class Meta:
+        db_table = "kur_degerleme"
+        verbose_name = "kur değerleme"
+        verbose_name_plural = "kur değerlemeleri"
+        ordering = ["-tarih", "-id"]
+
+    def __str__(self):
+        return f"Kur değerleme {self.tarih:%d.%m.%Y}"

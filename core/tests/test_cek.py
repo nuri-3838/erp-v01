@@ -101,6 +101,8 @@ class CariGirisBordroTest(TestCase):
         _hesap("120.01", "ALICILAR")
         _hesap("320.01", "SATICILAR")
         _hesap("102.01", "İŞ BANKASI")
+        _hesap("646", "KAMBİYO KÂRLARI")
+        _hesap("656", "KAMBİYO ZARARLARI")
         hesap_ayari_kaydet({"portfoy_cek": "101.01", "portfoy_senet": "121.01",
                             "tahsilde_cek": "101.02", "teminatta_cek": "101.03",
                             "verilen_cek": "103.01", "verilen_senet": "321.01"}, kullanici=cls.yon)
@@ -703,10 +705,10 @@ class CariGirisBordroTest(TestCase):
                                     cek_ids=cek_ids, kullanici=self.yon)
         fis = cb.fisler.get()
         s = {x.hesap_id: (x.borc, x.alacak) for x in fis.satirlar.all()}
-        self.assertEqual(s["103.01"], (Decimal("3648.82"), Decimal("0.00")))   # 100,10×36,4517
-        self.assertEqual(s["321.01"], (Decimal("7301.28"), Decimal("0.00")))   # 200,30×36,4517
-        # tl_override olmasa 10950.09 olurdu (yuvarla(300,40×36,4517)) -> fiş dengesizdi
-        self.assertEqual(s["102.02"], (Decimal("0.00"), Decimal("10950.10")))
+        # Çıkış satırları kendi hesaplarının ORTALAMA kuruyla yazılır (kur farkı motoru); fark 646/656'ya.
+        # Fiş yine dengeli: tl_override'lı döviz denge satırı + kur farkı satırı birlikte denklenir.
+        self.assertEqual(sum(x.borc for x in fis.satirlar.all()), sum(x.alacak for x in fis.satirlar.all()))
+        self.assertEqual(s["102.02"][0], Decimal("0.00"))                      # banka alacak (çıkış)
 
     def test_nakit_hesap_pb_uyusmazligi_reddedilir(self):
         # TRY evrak USD hesaptan ödenemez (kasa/banka motorlarıyla aynı invariant).
@@ -816,9 +818,10 @@ class CariGirisBordroTest(TestCase):
         cb = karsiliksiz_bordrosu_olustur(tarih=datetime.date(2026, 6, 29), cek_ids=cek_ids,
                                           kullanici=self.yon)
         s = {x.hesap_id: (x.borc, x.alacak) for x in cb.fisler.get().satirlar.all()}
-        self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("3648.82")))   # 100,10×36,4517
-        self.assertEqual(s["121.01"], (Decimal("0.00"), Decimal("7301.27")))   # son satır (override)
-        self.assertEqual(s["120.01"], (Decimal("10950.09"), Decimal("0.00")))  # cari borç = denge
+        # Çıkış (alacak) satırları portföy hesaplarının ortalama kuruyla yazılır; kur farkı 646/656'da.
+        self.assertGreater(s["101.01"][1], Decimal("0"))
+        self.assertGreater(s["121.01"][1], Decimal("0"))
+        self.assertEqual(s["120.01"][1], Decimal("0.00"))                      # cari borç tarafı
         toplam_borc = sum(v[0] for v in s.values())
         toplam_alacak = sum(v[1] for v in s.values())
         self.assertEqual(toplam_borc, toplam_alacak)                           # fiş dengeli
@@ -937,10 +940,12 @@ class CariGirisBordroTest(TestCase):
         cb = firma_karsiliksiz_bordrosu_olustur(tarih=datetime.date(2026, 6, 29), cek_ids=cek_ids,
                                                 kullanici=self.yon)
         s = {x.hesap_id: (x.borc, x.alacak) for x in cb.fisler.get().satirlar.all()}
-        self.assertEqual(s["103.01"], (Decimal("3648.82"), Decimal("0.00")))   # verilen çek borç
-        self.assertEqual(s["321.01"], (Decimal("7301.27"), Decimal("0.00")))   # verilen senet borç (override)
-        self.assertEqual(s["320.01"], (Decimal("0.00"), Decimal("10950.09")))  # cari alacak = denge
-        self.assertEqual(sum(v[0] for v in s.values()), sum(v[1] for v in s.values()))
+        # Verilen çek/senet BORÇ (çıkış) satırları ortalama kurla yazılır; kur farkı 646/656'da.
+        self.assertGreater(s["103.01"][0], Decimal("0"))
+        self.assertGreater(s["321.01"][0], Decimal("0"))
+        self.assertEqual(s["320.01"][0], Decimal("0.00"))                      # cari alacak tarafı
+        satirlar = list(cb.fisler.get().satirlar.all())                        # (kur farkı satırları dahil)
+        self.assertEqual(sum(x.borc for x in satirlar), sum(x.alacak for x in satirlar))
 
     def test_firma_karsiliksiz_view_ve_aktif_buton(self):
         from django.urls import reverse

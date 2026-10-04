@@ -16,6 +16,7 @@ from django.db.models import ProtectedError, RestrictedError
 from django.db.models.deletion import Collector
 
 from core.models import KrediKartiTaksit, SilmeKaydi, YevmiyeFisi
+from core.services import kur_farki
 from core.services.yevmiye import fis_no_sayacini_koru
 
 # Fişle birlikte silinen kendi parçaları (başka kayıt sayılmaz).
@@ -92,8 +93,10 @@ def fis_kalici_sil(fis):
     (ozet, veri) döner."""
     ozet, veri = _fis_verisi(fis)
     fis_no_sayacini_koru(fis.yil)          # silinen numara bir daha verilmez
+    havuzlar = kur_farki.etkilenen_havuzlar(fis)
     KrediKartiTaksit.objects.filter(fis=fis).delete()
     kalici_sil(fis, FIS_COCUKLARI)
+    kur_farki.havuzlari_yeniden_hesapla(havuzlar)    # silinen hareket sonraki çıkışların kurunu etkiler
     return ozet, veri
 
 

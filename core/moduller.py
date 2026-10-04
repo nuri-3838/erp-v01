@@ -25,6 +25,7 @@ MODULLER = (
     Modul("MUHASEBE", "Muhasebe", (
         Ekran("fis_listesi", "Yevmiye Fişleri", "core:fis_listesi"),
         Ekran("kurlar", "Kurlar", "core:kurlar"),
+        Ekran("kur_degerleme", "Kur Değerleme", "core:kur_degerleme"),
         Ekran("hesap_plani", "Hesap Planı", "core:hesap_plani"),
         Ekran("yatirim_projeleri", "Yatırım Projeleri", "core:yatirim_projeleri"),
         Ekran("duran_varliklar", "Duran Varlıklar", "core:duran_varliklar"),

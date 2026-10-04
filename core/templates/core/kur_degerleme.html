@@ -1,0 +1,81 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Kur Değerleme · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kur Değerleme{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik"><span class="emoji">💱</span>Dönem Sonu Kur Değerleme</h1>
+<p class="sayfa-alt">Seçilen tarihte açık döviz bakiyeleri (döviz banka/kasa, döviz cari, döviz çek-senet) TCMB
+  <strong>döviz alış</strong> kuruyla değerlenir; fark tek fişe yazılır (kâr → 646, zarar → 656). Önce önizleme gösterilir, hiçbir şey
+  yazılmaz. Değerleme sonradan <strong>tek tuşla ters kayıt</strong> ile geri alınır.</p>
+
+<form method="get" class="kur-cek-alanlar">
+  <div class="alan"><label for="tarih">Değerleme tarihi</label>
+    <input type="date" id="tarih" name="tarih" value="{{ tarih|date:'Y-m-d' }}"></div>
+  <button type="submit">Önizle</button>
+</form>
+
+<h2 class="etiket">Önizleme — {{ tarih|date:"d.m.Y" }}</h2>
+{% if not onizleme.kur_kaydi_var %}
+  <div class="uyari"><div>⚠️ {{ tarih|date:"d.m.Y" }} için kur kaydı yok; Kurlar ekranından çekin.</div></div>
+{% endif %}
+{% if onizleme.eksik_kurlar %}
+  <div class="uyari"><div>⚠️ Bu tarihte kuru olmayan para birimleri: {{ onizleme.eksik_kurlar|join:", " }}.</div></div>
+{% endif %}
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr><th>Hesap</th><th>PB</th><th class="sag">Döviz bakiye</th><th class="sag">TL bakiye</th>
+    <th class="sag">Ort. kur</th><th class="sag">TCMB alış</th><th class="sag">Değerlenmiş TL</th><th class="sag">Fark (TL)</th></tr></thead>
+  <tbody>
+  {% for r in onizleme.satirlar %}
+    <tr><td>{{ r.hesap_kodu }} {{ r.hesap_adi }}</td><td class="mono">{{ r.pb }}</td>
+      <td class="sag">{{ r.doviz|tr_para }}</td><td class="sag">{{ r.tl|tr_para }}</td>
+      <td class="sag">{% if r.ort_kur %}{{ r.ort_kur|tr_kur:4 }}{% else %}—{% endif %}</td>
+      <td class="sag">{{ r.kur|tr_kur:4 }}</td><td class="sag">{{ r.yeni_tl|tr_para }}</td>
+      <td class="sag {% if r.fark > 0 %}gir{% elif r.fark < 0 %}cik{% endif %}">{{ r.fark|tr_para }}</td></tr>
+  {% empty %}
+    <tr><td colspan="8" class="yardim">Açık döviz bakiyesi yok.</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th colspan="7" class="sag">Kambiyo kârı (646) / zararı (656)</th>
+    <th class="sag">{{ onizleme.kar|tr_para }} / {{ onizleme.zarar|tr_para }}</th></tr></tfoot>
+</table>
+</div>
+
+{% if onizleme.satirlar and not onizleme.eksik_kurlar %}
+<form method="post" class="alan"
+      onsubmit="return confirm('{{ tarih|date:"d.m.Y" }} tarihli kur değerleme fişi oluşturulsun mu?');">
+  {% csrf_token %}
+  <input type="hidden" name="tarih" value="{{ tarih|date:'Y-m-d' }}">
+  <input type="hidden" name="eylem" value="uygula">
+  <button type="submit" class="birincil">Değerleme fişini oluştur</button>
+</form>
+{% endif %}
+
+<h2 class="etiket">Yapılan değerlemeler</h2>
+<table>
+  <thead><tr><th>Tarih</th><th>Fiş</th><th class="sag">Kâr</th><th class="sag">Zarar</th><th>Ters kayıt</th></tr></thead>
+  <tbody>
+  {% for d in degerlemeler %}
+    <tr><td>{{ d.tarih|date:"d.m.Y" }}</td>
+      <td><a href="{% url 'core:fis_detay' d.fis_id %}">{{ d.fis.yil }}/{{ d.fis.fis_no }}</a></td>
+      <td class="sag">{{ d.toplam_kar|tr_para }}</td><td class="sag">{{ d.toplam_zarar|tr_para }}</td>
+      <td>{% if d.ters_fis_id %}
+            <a href="{% url 'core:fis_detay' d.ters_fis_id %}">{{ d.ters_fis.yil }}/{{ d.ters_fis.fis_no }}</a>
+          {% else %}
+            <form method="post" style="display:inline-flex; gap:.4rem; align-items:center; margin:0"
+                  onsubmit="return confirm('Bu değerlemenin ters kaydı oluşturulsun mu?');">
+              {% csrf_token %}
+              <input type="hidden" name="eylem" value="ters">
+              <input type="hidden" name="degerleme" value="{{ d.pk }}">
+              <input type="hidden" name="tarih" value="{{ tarih|date:'Y-m-d' }}">
+              <input type="date" name="ters_tarih" title="Ters kayıt tarihi (boşsa ertesi gün)">
+              <button type="submit" class="sil">Ters kayıt</button>
+            </form>
+          {% endif %}</td></tr>
+  {% empty %}
+    <tr><td colspan="5" class="yardim">Henüz değerleme yapılmadı.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

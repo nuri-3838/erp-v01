@@ -2903,3 +2903,54 @@ class MesaiDuzeltForm(forms.Form):
         if giris and cikis and cikis < giris:
             self.add_error("cikis_zamani", "Çıkış zamanı girişten önce olamaz.")
         return cd
+
+
+class DovizIslemForm(forms.Form):
+    """Döviz Alış / Satış: TL banka/kasa ↔ döviz banka/kasa (bkz. core.services.doviz_islem).
+    Kaynak/hedef "banka:<id>" / "kasa:<id>" değeriyle seçilir; yön (alış/satış) para birimlerinden çıkar."""
+    kaynak = forms.ChoiceField(label="Kaynak hesap")
+    hedef = forms.ChoiceField(label="Hedef hesap")
+    doviz_tutari = TRDecimalField(label="Döviz tutarı", basamak=2)
+    kur = TRDecimalField(label="Kur (TL)", basamak=6, required=False)
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
+    masraf_hesap_1 = forms.ModelChoiceField(
+        label="Kambiyo vergisi / masraf hesabı", queryset=HesapPlani.objects.none(),
+        to_field_name="hesap_kodu", empty_label="— masraf yok —", required=False)
+    masraf_tutar_1 = TRDecimalField(label="Tutar (TL)", basamak=2, required=False)
+    masraf_hesap_2 = forms.ModelChoiceField(
+        label="2. masraf hesabı", queryset=HesapPlani.objects.none(),
+        to_field_name="hesap_kodu", empty_label="— masraf yok —", required=False)
+    masraf_tutar_2 = TRDecimalField(label="Tutar (TL)", basamak=2, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        secenekler = [("", "— hesap seç —")]
+        self.pb = {}
+        for h in BankaHesap.objects.filter(silindi=False).select_related("banka").order_by("banka__ad", "ad"):
+            secenekler.append((f"banka:{h.pk}", f"Banka · {h.banka.ad} - {h.ad} ({h.para_birimi})"))
+            self.pb[f"banka:{h.pk}"] = h.para_birimi
+        for k in Kasa.objects.filter(silindi=False).order_by("ad"):
+            secenekler.append((f"kasa:{k.pk}", f"Kasa · {k.ad} ({k.para_birimi})"))
+            self.pb[f"kasa:{k.pk}"] = k.para_birimi
+        for ad in ("kaynak", "hedef"):
+            self.fields[ad].choices = secenekler
+        for ad in ("masraf_hesap_1", "masraf_hesap_2"):
+            self.fields[ad].queryset = yaprak_hesaplar()
+            self.fields[ad].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+            self.fields[ad].widget.attrs["class"] = "akilli-sec"
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
+
+    def clean(self):
+        cd = super().clean()
+        if cd.get("kaynak") and cd.get("kaynak") == cd.get("hedef"):
+            self.add_error("hedef", "Kaynak ve hedef aynı hesap olamaz.")
+        for i in ("1", "2"):
+            if cd.get(f"masraf_tutar_{i}") and not cd.get(f"masraf_hesap_{i}"):
+                self.add_error(f"masraf_hesap_{i}", "Masraf tutarı için hesap seçilmelidir.")
+        return cd

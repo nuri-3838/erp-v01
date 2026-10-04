@@ -95,6 +95,8 @@
         <span class="hd-ik">💸</span><span class="hd-ad">Hesaba Ödeme</span><span class="hd-yon">ÇIKIŞ</span></a>
       <a class="hareket-dugme giris" href="{% url 'core:banka_hareket_ekle' hesap.pk 'hesaptan_giris' %}">
         <span class="hd-ik">💰</span><span class="hd-ad">Hesaptan Giriş</span><span class="hd-yon">GİRİŞ</span></a>
+      <a class="hareket-dugme notr" href="{% url 'core:doviz_islem_ekle' %}?kaynak=banka:{{ hesap.pk }}">
+        <span class="hd-ik">💱</span><span class="hd-ad">Döviz Alış / Satış</span><span class="hd-yon">ÇAPRAZ KUR</span></a>
     </div>
   </section>
 

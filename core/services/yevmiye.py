@@ -28,6 +28,7 @@ from django.utils import timezone
 from core.metin import buyuk_harf_tr
 from core.models import FisNoSayaci, HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
 from core.sayi import parse_tr, yuvarla
+from core.services import kur_farki
 
 SIFIR = Decimal("0.00")
 
@@ -255,6 +256,7 @@ def fis_olustur(*, tarih, satirlar, aciklama="", kur_usd=None,
                     YevmiyeSatir.objects.create(
                         fis=fis, created_by=kullanici, updated_by=kullanici, **s
                     )
+            kur_farki.havuzlari_yeniden_hesapla(kur_farki.etkilenen_havuzlar(fis))
             return fis
         except IntegrityError as e:
             son_hata = e   # numara kapılmış olabilir; bir sonrakiyle tekrar dene
@@ -297,12 +299,14 @@ def fis_guncelle(fis: YevmiyeFisi, *, tarih, satirlar, aciklama="",
 
     # Eski satırlar SOFT-DELETE ile gizlenir (iz/denetim korunur), yenileri yazılır.
     # Raporlar/ekstre/detay zaten silindi=False filtreler -> gizli satır toplama girmez.
+    eski_havuzlar = kur_farki.etkilenen_havuzlar(fis)
     fis.satirlar.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     for s in hazir:
         YevmiyeSatir.objects.create(
             fis=fis, created_by=kullanici, updated_by=kullanici, **s
         )
+    kur_farki.havuzlari_yeniden_hesapla(eski_havuzlar | kur_farki.etkilenen_havuzlar(fis))
     return fis
 
 
@@ -311,9 +315,11 @@ def fis_iptal(fis: YevmiyeFisi, kullanici=None) -> YevmiyeFisi:
     """Fişi soft-delete ile iptal eder. Numara korunur (yeniden kullanılmaz)."""
     if fis.silindi:
         return fis
+    havuzlar = kur_farki.etkilenen_havuzlar(fis)
     fis.silindi = True
     fis.silindi_at = timezone.now()
     fis.updated_by = kullanici
     fis.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     fis.satirlar.update(silindi=True, silindi_at=timezone.now())
+    kur_farki.havuzlari_yeniden_hesapla(havuzlar)
     return fis
