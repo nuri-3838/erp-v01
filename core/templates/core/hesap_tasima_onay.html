@@ -1,0 +1,44 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Hareketli hesaba alt hesap · {{ ust.hesap_kodu }}{% endblock %}
+{% block sayfa_adi %}Hesap Planı{% endblock %}
+
+{% block content %}
+<a class="ust-link" href="{% url 'core:hesap_plani' %}">← Hesap Planı</a>
+<h1 class="ust-baslik"><span class="emoji">⚠️</span>{{ ust.hesap_kodu }} hesabında hareket var</h1>
+
+<div class="uyari"><div>⚠️ <strong>{{ ust.hesap_kodu }} {{ ust.hesap_adi }}</strong> hesabında <strong>{{ satir_sayisi }}</strong> yevmiye satırı var.
+  Altına <strong>{{ alt_kod }} {{ alt_ad }}</strong> açılırsa {{ ust.hesap_kodu }} <strong>üst hesap</strong> olur ve üst hesaba fiş kesilemez;
+  mevcut satırlar bir alt hesaba <strong>taşınmalıdır</strong>.</div></div>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Seçenekler</h2>
+  <p class="yardim"><strong>A) Hepsini bu alt hesaba taşı:</strong> {{ alt_kod }} açılır ve {{ ust.hesap_kodu }} hesabındaki <strong>tüm {{ satir_sayisi }} satır</strong>
+    ({% if ust.hesap_kodu %}banka/kasa/kart hareketlerinin karşı hesabı dahil{% endif %}) {{ alt_kod }} hesabına geçer; tutar, tarih ve fiş numaraları değişmez,
+    {{ ust.hesap_kodu }} toplamı aynı kalır.</p>
+  <p class="yardim"><strong>B) Hareketleri farklı alt hesaplara bölmek istiyorsanız</strong> (örn. açıklamadaki kelimeye göre) bu ekranda yapılmaz — vazgeçip önce
+    taşıma komutunu (dry-run → onay) çalıştırtın; komut alt hesapları açar ve satırları kurallara göre dağıtır.</p>
+  <form method="post" action="{% url 'core:hesap_ekle' %}" style="margin-top:.6rem">
+    {% csrf_token %}
+    <input type="hidden" name="kod" value="{{ alanlar.kod }}">
+    <input type="hidden" name="ad" value="{{ alanlar.ad }}">
+    <input type="hidden" name="ust_kodu" value="{{ alanlar.ust_kodu|default:'' }}">
+    <input type="hidden" name="rapor_grubu" value="{{ alanlar.rapor_grubu|default:'' }}">
+    <input type="hidden" name="rapor_kalemi" value="{{ alanlar.rapor_kalemi }}">
+    <input type="hidden" name="tasi" value="1">
+    <button type="submit" class="birincil">Evet: {{ alt_kod }} aç ve {{ satir_sayisi }} satırı taşı</button>
+    <a class="iptal-bag" href="{% url 'core:hesap_plani' %}">Vazgeç</a>
+  </form>
+</section>
+
+<h2 class="etiket">Taşınacak satırlardan örnekler</h2>
+<table>
+  <thead><tr><th>Fiş</th><th>Tarih</th><th>Açıklama</th><th class="sag">Borç</th><th class="sag">Alacak</th></tr></thead>
+  <tbody>
+  {% for s in ilk_satirlar %}
+    <tr><td class="mono"><a href="{% url 'core:fis_detay' s.fis_id %}">{{ s.fis.yil }}/{{ s.fis.fis_no }}</a></td><td>{{ s.fis.tarih|date:"d.m.Y" }}</td>
+      <td>{{ s.fis.aciklama|default:"—" }}</td><td class="sag">{{ s.borc|tr_para }}</td><td class="sag">{{ s.alacak|tr_para }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

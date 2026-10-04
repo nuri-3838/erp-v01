@@ -12,6 +12,7 @@ Aşama 2 (sonra): rapor roll-up (alt -> ana toplama), otomatik kod üretimi (sto
 """
 from __future__ import annotations
 
+from django.db import transaction
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
@@ -20,6 +21,18 @@ from core.models import HesapPlani, YevmiyeSatir
 
 class HesapHatasi(ValueError):
     """Hesap planı kural ihlali (Türkçe mesaj)."""
+
+
+class HareketliUstHesapHatasi(HesapHatasi):
+    """Hareket görmüş bir YAPRAK hesabın altına alt hesap açılmak isteniyor: açılırsa üst hesap olur ve satırları tutarsız
+    kalır; mevcut satırlar alt hesaba taşınmalı (bkz. core.services.hesap_tasima)."""
+
+    def __init__(self, ust, satir_sayisi):
+        self.ust = ust
+        self.satir_sayisi = satir_sayisi
+        super().__init__(
+            f"{ust.hesap_kodu} hesabında {satir_sayisi} yevmiye satırı var; altına alt hesap açılınca üst hesap olur ve "
+            f"mevcut satırların bir alt hesaba taşınması gerekir.")
 
 
 # rapor_grubu -> kabul edilen rapor_kalemi değerleri (mevcut seed/şema ile birebir;
@@ -276,8 +289,10 @@ def _kod_dogrula(kod: str, ust):
             raise HesapHatasi("Alt hesap, üst hesabın tam bir seviye altında olmalı.")
 
 
+@transaction.atomic
 def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
-                  rapor_kalemi="", parasal=None, kullanici=None) -> HesapPlani:
+                  rapor_kalemi="", parasal=None, kullanici=None,
+                  mevcut_hareketleri_tasi=False, hareketli_ust_izin=False) -> HesapPlani:
     """Yeni ana ya da alt hesap oluşturur (kurallar + miras). HesapHatasi yükseltebilir.
 
     ``hesap_kodu`` PRIMARY KEY olduğu için soft-delete edilmiş bir kod fiziksel
@@ -298,6 +313,15 @@ def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
         if ust.hesap_kodu.count(".") >= 2:
             raise HesapHatasi("En fazla 3 seviye; bu hesabın altına alt hesap açılamaz.")
     _kod_dogrula(kod, ust)
+    # Hareket görmüş YAPRAK hesaba alt hesap açma: ya mevcut satırlar bu alt hesaba taşınır (mevcut_hareketleri_tasi) ya da
+    # çağıran taşımayı kendisi yapacak (hareketli_ust_izin — komutlar); ikisi de yoksa REDDEDİLİR.
+    tasinacak_ust = None
+    if ust is not None and not hareketli_ust_izin and yaprak_mi(ust):
+        n_satir = YevmiyeSatir.objects.filter(hesap_id=ust.hesap_kodu).count()
+        if n_satir:
+            if not mevcut_hareketleri_tasi:
+                raise HareketliUstHesapHatasi(ust, n_satir)
+            tasinacak_ust = ust.hesap_kodu
     if ust is not None:                       # MİRAS (tutarlılık)
         rapor_grubu = ust.rapor_grubu
         rapor_kalemi = ust.rapor_kalemi
@@ -324,14 +348,18 @@ def hesap_olustur(*, kod, ad, ust_kodu=None, rapor_grubu=None,
         silinmis.save(update_fields=[
             "hesap_adi", "rapor_grubu", "rapor_kalemi", "parasal", "aktif",
             "silindi", "silindi_at", "updated_by", "updated_at"])
-        return silinmis
-
-    return HesapPlani.objects.create(
-        hesap_kodu=kod, hesap_adi=ad,
-        rapor_grubu=rapor_grubu, rapor_kalemi=(rapor_kalemi or ""),
-        parasal=parasal, aktif=True,
-        created_by=kullanici, updated_by=kullanici,
-    )
+        yeni = silinmis
+    else:
+        yeni = HesapPlani.objects.create(
+            hesap_kodu=kod, hesap_adi=ad,
+            rapor_grubu=rapor_grubu, rapor_kalemi=(rapor_kalemi or ""),
+            parasal=parasal, aktif=True,
+            created_by=kullanici, updated_by=kullanici,
+        )
+    if tasinacak_ust:
+        from core.services import hesap_tasima
+        yeni.tasinan_satir_sayisi = hesap_tasima.tum_satirlari_tasi(tasinacak_ust, yeni.hesap_kodu, kullanici=kullanici)
+    return yeni
 
 
 def hesap_adi_guncelle(*, kod, yeni_ad, kullanici=None) -> HesapPlani:

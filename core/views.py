@@ -630,17 +630,27 @@ def _parasal_coz(deger):
 @ekran_gerekli("hesap_plani")
 def hesap_ekle(request):
     if request.method == "POST":
+        alanlar = dict(
+            kod=request.POST.get("kod", ""),
+            ad=request.POST.get("ad", ""),
+            ust_kodu=(request.POST.get("ust_kodu") or "").strip() or None,
+            rapor_grubu=(request.POST.get("rapor_grubu") or "").strip() or None,
+            rapor_kalemi=(request.POST.get("rapor_kalemi") or "").strip(),
+            parasal=_parasal_coz(request.POST.get("parasal")),
+            kullanici=request.user,
+        )
         try:
-            h = hp.hesap_olustur(
-                kod=request.POST.get("kod", ""),
-                ad=request.POST.get("ad", ""),
-                ust_kodu=(request.POST.get("ust_kodu") or "").strip() or None,
-                rapor_grubu=(request.POST.get("rapor_grubu") or "").strip() or None,
-                rapor_kalemi=(request.POST.get("rapor_kalemi") or "").strip(),
-                parasal=_parasal_coz(request.POST.get("parasal")),
-                kullanici=request.user,
-            )
-            messages.success(request, f"Hesap eklendi: {h.hesap_kodu} — {h.hesap_adi}")
+            h = hp.hesap_olustur(mevcut_hareketleri_tasi=request.POST.get("tasi") == "1", **alanlar)
+            ek = (f" — {h.tasinan_satir_sayisi} satır {h.hesap_kodu} hesabına taşındı"
+                  if getattr(h, "tasinan_satir_sayisi", 0) else "")
+            messages.success(request, f"Hesap eklendi: {h.hesap_kodu} — {h.hesap_adi}{ek}")
+        except hp.HareketliUstHesapHatasi as e:
+            # Hareketli yaprağa alt hesap: uyar ve aynı taşıma işlemini sun (onay sayfası).
+            return render(request, "core/hesap_tasima_onay.html", {
+                "ust": e.ust, "satir_sayisi": e.satir_sayisi, "alanlar": alanlar,
+                "alt_kod": alanlar["kod"], "alt_ad": buyuk_harf_tr((alanlar["ad"] or "").strip()),
+                "ilk_satirlar": YevmiyeSatir.objects.filter(hesap_id=e.ust.hesap_kodu, silindi=False)
+                .select_related("fis").order_by("fis__tarih", "fis__fis_no")[:8]})
         except hp.HesapHatasi as e:
             messages.error(request, str(e))
     return redirect("core:hesap_plani")
