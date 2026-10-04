@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Hareketi Düzenle · {{ kart.ad }}{% endblock %}
+{% block sayfa_adi %}Hareketi Düzenle{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:kredi_karti_detay' kart.pk %}">← {{ kart.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">✏️</span>Kart Hareketini Düzenle</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">💳</span>Fiş {{ fis.yil }}/{{ fis.fis_no }} · {{ fis.tarih|date:"d.m.Y" }}</h2>
+      <p class="yardim" style="margin-top:-.3rem">Tutar <strong>{{ tutar|tr_para }} {{ kart.para_birimi }}</strong> ·
+        Karşı hesap <span class="mono">{{ bilgi.gider_hesap.hesap_kodu }}</span> {{ bilgi.gider_hesap.hesap_adi }}.
+        Tutar, tarih ve kur değişmez; açıklama, gider hesabı ve yatırım projesi düzenlenebilir. Kaydedince fiş otomatik güncellenir
+        (döviz hesaplarda kur farkı yeniden hesaplanır).</p>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
+          {{ form.aciklama }}
+          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% if form.gider %}
+        <div class="alan tam">
+          <label for="{{ form.gider.id_for_label }}">{{ form.gider.label }}</label>
+          {{ form.gider }}
+          {% for e in form.gider.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% endif %}
+        <div class="alan tam">
+          <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label>
+          {{ form.yatirim_projesi }}
+          <p class="yardim">Gider hesabı <strong>258</strong> ise proje zorunludur; 258 değilse boş bırakılır.</p>
+          {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:kredi_karti_detay' kart.pk %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

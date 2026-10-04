@@ -195,7 +195,7 @@
               <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
               <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
             {% endif %}
-            <td class="islem-hucre">{% if s.fis_pk in kk_fis_pks and user.is_superuser %}<a class="sil" style="display:inline-block;text-decoration:none;padding:.3rem .7rem;border-radius:8px" href="{% url 'core:kredi_karti_hareket_sil' kart.pk s.fis_pk %}">Sil</a>{% endif %}</td>
+            <td class="islem-hucre">{% if s.fis_pk in kk_fis_pks %}<a class="dugme-ikincil" style="display:inline-block;text-decoration:none;padding:.3rem .7rem;border-radius:8px;margin-right:.3rem" href="{% url 'core:kredi_karti_hareket_duzenle' kart.pk s.fis_pk %}">Düzenle</a>{% endif %}{% if s.fis_pk in kk_fis_pks and user.is_superuser %}<a class="sil" style="display:inline-block;text-decoration:none;padding:.3rem .7rem;border-radius:8px" href="{% url 'core:kredi_karti_hareket_sil' kart.pk s.fis_pk %}">Sil</a>{% endif %}</td>
           </tr>
         {% empty %}
           <tr><td colspan="{% if kart.para_birimi != 'TRY' %}11{% else %}7{% endif %}" class="yardim"

@@ -2024,6 +2024,52 @@ class BankaHesapSatirForm(forms.Form):
         return cd
 
 
+def _yatirim_projesi_alani():
+    from core.services.yatirim_projesi import aktif_projeler
+    f = forms.ModelChoiceField(
+        label="Yatırım projesi", required=False, empty_label="— proje (yalnız 258 için) —",
+        queryset=aktif_projeler().filter(durum=YatirimProjesi.Durum.DEVAM))
+    f.label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+    f.widget.attrs["class"] = "akilli-sec"
+    return f
+
+
+def _yatirim_projesi_denetle(form, gider, proje):
+    """Gider hesabı 258 ailesindeyse proje zorunlu; değilse proje seçilemez."""
+    from core.services.hesap_plani import hesap_kodu_258_mi
+    if gider is not None and hesap_kodu_258_mi(gider.hesap_kodu):
+        if not proje:
+            form.add_error("yatirim_projesi", "258 hesabı için yatırım projesi seçilmelidir.")
+    elif proje:
+        form.add_error("yatirim_projesi", "Yatırım projesi yalnız 258 hesabında seçilebilir.")
+
+
+class KrediKartiHareketDuzenleForm(forms.Form):
+    """Kredi kartı hareketi düzenleme: açıklama + (karşı taraf gider hesabıysa) gider hesabı + yatırım
+    projesi (258'de zorunlu). Tutar/tarih/kur değişmez."""
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, gider_duzenlenebilir=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        self.gider_duzenlenebilir = gider_duzenlenebilir
+        if gider_duzenlenebilir:
+            self.fields["gider"] = forms.ModelChoiceField(
+                label="Gider Hesabı", required=True, empty_label="— gider hesabı seç —",
+                queryset=yaprak_hesaplar(), widget=forms.Select(attrs={"class": "akilli-sec"}))
+            self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["yatirim_projesi"] = _yatirim_projesi_alani()
+
+    def clean(self):
+        cd = super().clean()
+        if self.gider_duzenlenebilir:
+            _yatirim_projesi_denetle(self, cd.get("gider"), cd.get("yatirim_projesi"))
+        elif cd.get("yatirim_projesi"):
+            self.add_error("yatirim_projesi", "Bu hareketin karşı tarafı gider hesabı değil; proje seçilemez.")
+        return cd
+
+
 class KrediKartiHareketForm(forms.Form):
     """Kredi kartı hareketi: karşı taraf (Harcama/İade → Cari VEYA Gider; Ödeme → Banka VEYA
     Kasa) + tutar + tarih + açıklama. Karşı alanlar tipe göre __init__'te eklenir; tam olarak
@@ -2058,6 +2104,7 @@ class KrediKartiHareketForm(forms.Form):
                 queryset=yaprak_hesaplar(),
                 widget=forms.Select(attrs={"class": "akilli-sec"}))
             self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+            self.fields["yatirim_projesi"] = _yatirim_projesi_alani()
         if "banka" in turler:
             self.fields["banka_hesap"] = forms.ModelChoiceField(
                 label="Banka Hesabı", required=False, empty_label="— banka hesabı seç —",
@@ -2084,6 +2131,8 @@ class KrediKartiHareketForm(forms.Form):
         if len(secili) != 1:
             raise forms.ValidationError("Tam olarak bir karşı taraf seçin.")
         cd["karsi"] = secili[0]
+        if "yatirim_projesi" in self.fields:
+            _yatirim_projesi_denetle(self, cd.get("gider"), cd.get("yatirim_projesi"))
         adet = cd.get("taksit_adedi") or 1
         if int(adet) > 1 and not cd.get("ilk_vade"):
             self.add_error("ilk_vade", "Taksitli harcamada ilk taksit tarihi zorunlu.")

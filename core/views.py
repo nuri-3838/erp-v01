@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, DovizIslemForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -3753,13 +3753,17 @@ def _kredi_karti_hareket_form(request, kart, tip):
                         taksit_adedi=form.cleaned_data.get("taksit_adedi") or 1,
                         ilk_vade=form.cleaned_data.get("ilk_vade"),
                         aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
-                        kur_override=form.cleaned_data.get("kur"))
+                        kur_override=form.cleaned_data.get("kur"),
+                        yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
+                                            if form.cleaned_data.get("yatirim_projesi") else None))
                 else:
                     fis = kredi_karti_hareket_servis.hareket_olustur(
                         kart=kart, tip=tip, karsi=form.cleaned_data["karsi"],
                         tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                         aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
-                        kur_override=form.cleaned_data.get("kur"))
+                        kur_override=form.cleaned_data.get("kur"),
+                        yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
+                                            if form.cleaned_data.get("yatirim_projesi") else None))
                 messages.success(request, tan["ad"] + f" kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_karti_detay", pk=kart.pk)
             except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
@@ -3777,6 +3781,41 @@ def kredi_karti_hareket_ekle(request, pk, tip):
         messages.error(request, "Geçersiz hareket tipi.")
         return redirect("core:kredi_karti_detay", pk=kart.pk)
     return _kredi_karti_hareket_form(request, kart, tip)
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_hareket_duzenle(request, pk, fis_pk):
+    """Kredi kartı hareketini düzenle: açıklama, gider hesabı, yatırım projesi (fiş otomatik güncellenir)."""
+    kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
+    fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    try:
+        bilgi = kredi_karti_hareket_servis.duzenleme_bilgisi(fis, kart)
+    except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
+        messages.error(request, str(e))
+        return redirect("core:kredi_karti_detay", pk=kart.pk)
+    duzenlenebilir = bilgi["gider_duzenlenebilir"]
+    if request.method == "POST":
+        form = KrediKartiHareketDuzenleForm(request.POST, gider_duzenlenebilir=duzenlenebilir)
+        if form.is_valid():
+            try:
+                kredi_karti_hareket_servis.hareket_guncelle(
+                    fis=fis, kart=kart, aciklama=form.cleaned_data["aciklama"],
+                    gider=form.cleaned_data.get("gider") if duzenlenebilir else None,
+                    yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
+                                        if form.cleaned_data.get("yatirim_projesi") else None),
+                    kullanici=request.user)
+                messages.success(request, f"Hareket güncellendi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:kredi_karti_detay", pk=kart.pk)
+            except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        karsi = bilgi["karsi_satiri"]
+        ilk = {"aciklama": fis.aciklama, "yatirim_projesi": karsi.yatirim_projesi_id}
+        if duzenlenebilir:
+            ilk["gider"] = karsi.hesap_id
+        form = KrediKartiHareketDuzenleForm(initial=ilk, gider_duzenlenebilir=duzenlenebilir)
+    return render(request, "core/kredi_karti_hareket_duzenle.html", {
+        "kart": kart, "fis": fis, "form": form, "bilgi": bilgi, "tutar": bilgi["kart_satiri"].islem_tutari})
 
 
 @ekran_gerekli("kredi_karti")

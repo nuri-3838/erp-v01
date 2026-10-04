@@ -36,6 +36,14 @@
             {{ form.gider }}
             {% for e in form.gider.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
+          {% if form.yatirim_projesi %}
+          <div class="alan tam">
+            <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label>
+            {{ form.yatirim_projesi }}
+            <p class="yardim">Gider hesabı <strong>258 Yapılmakta Olan Yatırımlar</strong> ise proje zorunludur (fişin 258 satırına yazılır).</p>
+            {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          {% endif %}
         </div>
       {% endif %}
 

@@ -209,6 +209,7 @@ urlpatterns = [
     path("finans/kredi-karti/<int:pk>/", views.kredi_karti_detay, name="kredi_karti_detay"),
     path("finans/kredi-karti/<int:pk>/hareket/<str:tip>/", views.kredi_karti_hareket_ekle, name="kredi_karti_hareket_ekle"),
     path("finans/kredi-karti/<int:pk>/hareket-sil/<int:fis_pk>/", views.kredi_karti_hareket_sil, name="kredi_karti_hareket_sil"),
+    path("finans/kredi-karti/<int:pk>/hareket-duzenle/<int:fis_pk>/", views.kredi_karti_hareket_duzenle, name="kredi_karti_hareket_duzenle"),
     path("finans/kredi-karti/ekle/", views.kredi_karti_ekle, name="kredi_karti_ekle"),
     path("finans/kredi-karti/<int:pk>/duzenle/", views.kredi_karti_duzenle, name="kredi_karti_duzenle"),
     path("finans/kredi-karti/<int:pk>/sil/", views.kredi_karti_sil, name="kredi_karti_sil"),
