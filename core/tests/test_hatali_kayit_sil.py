@@ -1,5 +1,5 @@
-"""hatali_kayit_sil: dry-run hiçbir şey silmez; --uygula iptal fişleri/boş kartları/boş cariyi siler;
-aktif fiş, bağlı kayıt (fatura satırı / yevmiye satırı) olanlara dokunmaz."""
+"""hatali_kayit_sil: dry-run hiçbir şey silmez; --uygula iptal fişleri ve boş duran varlık kartlarını siler;
+aktif fiş / bağlı kayıt (fatura satırı) olanlara ve cariye dokunmaz."""
 import datetime
 from decimal import Decimal
 from io import StringIO
@@ -7,14 +7,15 @@ from io import StringIO
 from django.core.management import call_command
 from django.test import TestCase
 
-from core.models import BankaHesap, Cari, DuranVarlik, HesapPlani, YevmiyeFisi, YevmiyeSatir
+from core.models import BankaHesap, Cari, DuranVarlik, YevmiyeFisi, YevmiyeSatir
 from core.services.finans import banka_hesap_olustur, banka_olustur
 from core.tests.test_banka_hesap_hareketi import _hesap
 
 D = datetime.date
-_FIS = [(260, 189, "134757.98", D(2026, 1, 5), "İCRA DAİRESİ GELEN BEDEL (TEMİNAT İADESİ)"),
-        (266, 195, "6928.64", D(2026, 1, 19), "İCRA DAİRESİ GELEN BEDEL (TEMİNAT İADESİ)"),
-        (263, 192, "1849.35", D(2026, 1, 6), "VADELİ HESAP FAİZ GELİRİ")]
+_FIS = [(260, 189, "134757.98", D(2026, 1, 5), "İCRA DAİRESİ GELEN BEDEL (TEMİNAT İADESİ)", 4),
+        (266, 195, "6928.64", D(2026, 1, 19), "İCRA DAİRESİ GELEN BEDEL (TEMİNAT İADESİ)", 4),
+        (263, 192, "1849.35", D(2026, 1, 6), "VADELİ HESAP FAİZ GELİRİ", 13),
+        (500, 423, "6871.24", D(2026, 1, 1), "GERÇEK TARİH: 17.12.2025. VADELİ AK003367 NET FAİZ", 12)]
 
 
 def _fis(pk, no, tutar, tarih, ack, banka, silindi=True):
@@ -32,17 +33,16 @@ class HataliKayitSilTest(TestCase):
         _hesap("102.01.0001", "BANKA")
         _hesap("131.01", "KARŞI")
         _hesap("253.01", "DV")
-        _hesap("320.30.0025", "SAKARYA VD")
         b = banka_olustur(ad="vakif")
-        h4 = banka_hesap_olustur(banka=b, ad="tl", para_birimi="TRY", muhasebe_kodu="102.01.0001")
-        h13 = banka_hesap_olustur(banka=b, ad="vadeli", para_birimi="TRY", muhasebe_kodu="102.01.0001")
-        BankaHesap.objects.filter(pk=h13.pk).update(id=13)
-        BankaHesap.objects.filter(pk=h4.pk).update(id=4)
-        cls.banka, cls.vadeli = BankaHesap.objects.get(pk=4), BankaHesap.objects.get(pk=13)
+        cls.h = {}
+        for yeni in (4, 12, 13):
+            x = banka_hesap_olustur(banka=b, ad=f"h{yeni}", para_birimi="TRY", muhasebe_kodu="102.01.0001")
+            BankaHesap.objects.filter(pk=x.pk).update(id=yeni)
+            cls.h[yeni] = BankaHesap.objects.get(pk=yeni)
 
     def setUp(self):
-        for pk, no, tutar, tarih, ack in _FIS:
-            _fis(pk, no, tutar, tarih, ack, self.vadeli if pk == 263 else self.banka)
+        for pk, no, tutar, tarih, ack, bh in _FIS:
+            _fis(pk, no, tutar, tarih, ack, self.h[bh])
         for kod in ("DV-0023", "DV-0024"):
             DuranVarlik.objects.create(demirbas_kodu=kod, ad="X", hesap_id="253.01", durum="PASIF", maliyet=0,
                                        aktiflestirme_tarihi=D(2026, 1, 1), kaynak="ACILIS", silindi=True)
@@ -55,29 +55,23 @@ class HataliKayitSilTest(TestCase):
 
     def _say(self):
         return (YevmiyeFisi.objects.count(), YevmiyeSatir.objects.count(), DuranVarlik.objects.count(),
-                Cari.objects.count(), HesapPlani.objects.filter(hesap_kodu="320.30.0025").count())
+                Cari.objects.count())
 
-    def test_dry_run_hicbir_sey_silmez_uygula_siler(self):
+    def test_dry_run_hicbir_sey_silmez_uygula_siler_cariye_dokunmaz(self):
         once = self._say()
         c = self._komut()
         self.assertIn("DRY-RUN", c)
         self.assertEqual(self._say(), once)
         self.assertIn("DEĞİŞMEDİ", c)
         self._komut("--uygula")
-        self.assertEqual(self._say(), (0, 0, 0, 0, 0))
+        self.assertEqual(self._say(), (0, 0, 0, 1))
 
-    def test_aktif_fis_ve_bagli_kayit_silinmez(self):
-        YevmiyeFisi.objects.filter(pk=260).update(silindi=False)
-        # cari hesabına yevmiye satırı bağlı -> cari + hesap kalır
-        f = YevmiyeFisi.objects.get(pk=266)
-        YevmiyeSatir.objects.create(fis=f, hesap_id="320.30.0025", borc=1, alacak=0, islem_tutari=1, islem_kuru=1)
+    def test_aktif_fis_silinmez(self):
+        YevmiyeFisi.objects.filter(pk=500).update(silindi=False)
         c = self._komut("--uygula")
         self.assertIn("SİLİNMEZ", c)
-        self.assertTrue(YevmiyeFisi.objects.filter(pk=260).exists())          # aktif: dokunulmadı
-        self.assertTrue(Cari.objects.filter(pk=107).exists())
-        self.assertTrue(HesapPlani.objects.filter(hesap_kodu="320.30.0025").exists())
-        self.assertFalse(YevmiyeFisi.objects.filter(pk=263).exists())          # temiz olan silindi
-        self.assertFalse(DuranVarlik.objects.exists())
+        self.assertTrue(YevmiyeFisi.objects.filter(pk=500).exists())
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=263).exists())
 
     def test_bulunamayan_raporlanir(self):
         DuranVarlik.objects.filter(demirbas_kodu="DV-0024").delete()

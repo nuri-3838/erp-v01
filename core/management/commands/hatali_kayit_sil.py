@@ -1,8 +1,8 @@
 """Tek seferlik: hatalı/boş kayıtların FİZİKSEL silinmesi (varsayılan DRY-RUN).
 
-A) İptal (silindi) durumdaki 3 banka hareketi fişi (2026/189, 2026/195, 2026/192) + satırları
+A) İptal (silindi) durumdaki 4 banka hareketi fişi (2026/189, 2026/195, 2026/192, 2026/423) + satırları
 B) Boş duran varlık kartları DV-0023, DV-0024 (pasif)
-C) Boş cari 320-30-0025 (id 107) + muhasebe hesabı 320.30.0025
+C) (kapsam dışı: cari 107 / 320.30.0025 — hesapta 1 yevmiye satırı var, dokunulmaz)
 
 Her hedef için: bulundu mu, durum, bağlı kayıt sayısı (Django silme toplayıcısı: CASCADE satırları,
 PROTECT/SET_NULL bağları). Beklenmeyen bağ varsa o kayıt SİLİNMEZ, raporlanır. Dry-run
@@ -19,17 +19,17 @@ from django.db import router, transaction
 from django.db.models import ProtectedError, RestrictedError
 from django.db.models.deletion import Collector
 
-from core.models import BankaHesap, Cari, DuranVarlik, HesapPlani, YevmiyeFisi, YevmiyeSatir
+from core.models import BankaHesap, DuranVarlik, YevmiyeFisi, YevmiyeSatir
 from core.services import raporlar
 
 FISLER = [  # (pk, yil, fis_no, tutar, tarih, banka_hesap_id, aciklama parçası)
     (260, 2026, 189, "134757.98", datetime.date(2026, 1, 5), 4, "İCRA DAİRESİ GELEN BEDEL"),
     (266, 2026, 195, "6928.64", datetime.date(2026, 1, 19), 4, "İCRA DAİRESİ GELEN BEDEL"),
     (263, 2026, 192, "1849.35", datetime.date(2026, 1, 6), 13, "VADELİ HESAP FAİZ GELİRİ"),
+    (None, 2026, 423, "6871.24", datetime.date(2026, 1, 1), 12, "GERÇEK TARİH: 17.12.2025. VADELİ AK003367 NET FAİZ"),
 ]
 DEMIRBASLAR = ["DV-0023", "DV-0024"]
-CARI_PK, CARI_KOD, CARI_MUH = 107, "320-30-0025", "320.30.0025"
-BANKA_HESAPLARI = (4, 13)
+BANKA_HESAPLARI = (4, 12, 13)
 
 
 def _topla(obj, izinli):
@@ -90,16 +90,16 @@ class Command(BaseCommand):
         with transaction.atomic():
             w("\n== A) İptal fişler ==")
             for pk, yil, no, tutar, tarih, bh, ack in FISLER:
-                f = YevmiyeFisi.objects.filter(pk=pk).first()
+                f = (YevmiyeFisi.objects.filter(pk=pk) if pk else YevmiyeFisi.objects.filter(yil=yil, fis_no=no)).first()
                 if f is None:
-                    w(f"  fis {pk} ({yil}/{no}): BULUNAMADI")
-                    atlanan.append(f"fis {pk} bulunamadı")
+                    w(f"  fis {yil}/{no}: BULUNAMADI")
+                    atlanan.append(f"fis {yil}/{no} bulunamadı")
                     continue
                 satirlar = list(f.satirlar.all())
                 borc = sum(s.borc for s in satirlar)
                 alacak = sum(s.alacak for s in satirlar)
                 durum = "iptal (silindi)" if f.silindi else "AKTİF"
-                w(f"  fis {pk} {f.yil}/{f.fis_no}: bulundu, durum {durum}, {f.tarih}, "
+                w(f"  fis id {f.pk} {f.yil}/{f.fis_no}: bulundu, durum {durum}, {f.tarih}, "
                   f"banka_hesap={f.banka_hesap_id}, kaynak={f.kaynak}, '{f.aciklama}', "
                   f"satır {len(satirlar)} (borç {borc} / alacak {alacak})")
                 sorun = []
@@ -117,7 +117,7 @@ class Command(BaseCommand):
                     sorun.append(engel)
                 if sorun:
                     w(f"    → SİLİNMEZ: {'; '.join(sorun)}")
-                    atlanan.append(f"fis {pk}: {'; '.join(sorun)}")
+                    atlanan.append(f"fis {yil}/{no}: {'; '.join(sorun)}")
                     continue
                 c.delete()
                 silinen.update(sayi)
@@ -153,44 +153,6 @@ class Command(BaseCommand):
                 c.delete()
                 silinen.update(sayi)
                 w("    → silinecek")
-
-            w("\n== C) Boş cari + muhasebe hesabı ==")
-            cari = Cari.objects.filter(pk=CARI_PK).first()
-            if cari is None:
-                w(f"  cari {CARI_PK}: BULUNAMADI")
-                atlanan.append("cari bulunamadı")
-            else:
-                w(f"  cari {cari.pk} {cari.kod} '{cari.unvan}': bulundu, silindi={cari.silindi}, "
-                  f"muhasebe_kodu={cari.muhasebe_kodu}")
-                hs = HesapPlani.objects.filter(hesap_kodu=CARI_MUH).first()
-                hsatir = YevmiyeSatir.objects.filter(hesap_id=CARI_MUH).count() if hs else 0
-                w(f"  hesap {CARI_MUH}: {'bulundu: ' + hs.hesap_adi + f', silindi={hs.silindi}' if hs else 'BULUNAMADI'}; "
-                  f"yevmiye satırı (iptaller dahil) {hsatir}")
-                sorun = []
-                if cari.kod != CARI_KOD or cari.muhasebe_kodu != CARI_MUH:
-                    sorun.append("cari kodu/muhasebe kodu beklenenle uyuşmuyor")
-                if hs is None:
-                    sorun.append("muhasebe hesabı yok")
-                izinli = {"CariSevkAdresi", "CariYetkili"}
-                sayi, engel, c = _topla(cari, izinli)
-                w(f"    cari silinecek (toplayıcı): {sayi or '-'}")
-                if engel:
-                    sorun.append(engel)
-                sayi_h, engel_h, ch = ({}, None, None)
-                if hs is not None:
-                    sayi_h, engel_h, ch = _topla(hs, set())
-                    w(f"    hesap silinecek (toplayıcı): {sayi_h or '-'}")
-                    if engel_h:
-                        sorun.append("hesap: " + engel_h)
-                if sorun:
-                    w(f"    → SİLİNMEZ: {'; '.join(sorun)}")
-                    atlanan.append(f"cari {CARI_PK}: {'; '.join(sorun)}")
-                else:
-                    c.delete()
-                    ch.delete()
-                    silinen.update(sayi)
-                    silinen.update(sayi_h)
-                    w("    → silinecek (önce cari, sonra hesap)")
 
             w(f"\nToplam silinecek satır sayıları: {dict(silinen) or '-'}")
             w(f"Atlanan/engellenen: {atlanan or 'yok'}")
