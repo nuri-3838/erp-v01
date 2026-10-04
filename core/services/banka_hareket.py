@@ -166,7 +166,7 @@ def _hesap_satirlarini_coz(banka_hesap, satirlar, toplam):
 
 @transaction.atomic
 def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
-                    kur_override=None, satirlar=None, sayilan_pb=None) -> YevmiyeFisi:
+                    kur_override=None, satirlar=None, sayilan_pb=None, sayilan_doviz=None) -> YevmiyeFisi:
     """Bir banka hesabı hareketinden otomatik DENGELİ yevmiye fişi üretir
     (kaynak=BANKA, kaynak banka hesabı=`banka_hesap`). `karsi` tipe göre
     Cari / (hedef) BankaHesap / Kasa. İhlalde hiçbir şey kaydedilmez. ``kur_override``
@@ -218,10 +218,12 @@ def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kulla
         # Döviz carisine TL ödeme: cari satırı ödeme günü TCMB alış kuruyla dövize çevrilir (TL aynı; bkz. doviz_cari).
         from core.services import doviz_cari
         try:
-            if doviz_cari.donusum_gerekli_mi(karsi, sayilan_pb):
-                fis_satirlari[1] = doviz_cari.cari_satiri(karsi, tut, tarih, karsi_taraf, sayilan_pb)
+            if doviz_cari.donusum_gerekli_mi(karsi, sayilan_pb) or sayilan_doviz not in (None, ""):
+                fis_satirlari[1] = doviz_cari.cari_satiri(karsi, tut, tarih, karsi_taraf, sayilan_pb, doviz_tutar=sayilan_doviz)
         except doviz_cari.DovizCariHatasi as e:
             raise BankaHareketHatasi(str(e))
+    elif sayilan_doviz not in (None, ""):
+        raise BankaHareketHatasi("Sayılan döviz tutarı yalnız TL banka hesabından cariye yapılan ödemede girilebilir.")
     try:
         fis = fis_olustur(tarih=tarih, satirlar=fis_satirlari, aciklama=ack, kur_usd=None,
                           kaynak=YevmiyeFisi.Kaynak.BANKA, kullanici=kullanici)
@@ -241,3 +243,52 @@ def hareket_sil(*, fis, banka_hesap, kullanici=None):
         return fis_sil(fis, kullanici=kullanici, izinli_kaynaklar={YevmiyeFisi.Kaynak.BANKA})
     except SilmeHatasi as e:
         raise BankaHareketHatasi(str(e))
+
+
+def duzenleme_bilgisi(fis, banka_hesap):
+    """Düzenleme ekranı için: TL banka hesabından CARİYE yapılan ödeme (cari satırı BORÇ) hareketi.
+    {'cari', 'banka_satiri', 'cari_satiri', 'tl'} — başka yapıdaki hareket düzenlenemez."""
+    from core.models import Cari
+    if fis.kaynak != YevmiyeFisi.Kaynak.BANKA or fis.banka_hesap_id != banka_hesap.pk or fis.silindi:
+        raise BankaHareketHatasi("Bu fiş bu banka hesabının düzenlenebilir bir hareketi değil.")
+    if banka_hesap.para_birimi != "TRY":
+        raise BankaHareketHatasi("Yalnız TL banka hesabının hareketi bu ekranda düzenlenir.")
+    ana = list(fis.satirlar.filter(silindi=False, ana_satir__isnull=True).select_related("hesap").order_by("id"))
+    banka_s = [x for x in ana if x.hesap_id == banka_hesap.muhasebe_id]
+    karsi_s = [x for x in ana if x.hesap_id != banka_hesap.muhasebe_id]
+    if len(ana) != 2 or len(banka_s) != 1 or len(karsi_s) != 1:
+        raise BankaHareketHatasi("Hareketin satır yapısı düzenlemeye uygun değil.")
+    cari = Cari.objects.filter(muhasebe_kodu=karsi_s[0].hesap_id, silindi=False).first()
+    if cari is None or not karsi_s[0].borc or not banka_s[0].alacak or banka_s[0].islem_pb != "TRY":
+        raise BankaHareketHatasi("Yalnız cariye yapılan ödeme (cari BORÇ / banka ALACAK) bu ekranda düzenlenir.")
+    return {"cari": cari, "banka_satiri": banka_s[0], "cari_satiri": karsi_s[0], "tl": banka_s[0].alacak}
+
+
+@transaction.atomic
+def hareket_guncelle(*, fis, banka_hesap, aciklama=None, sayilan_pb=None, sayilan_doviz=None, kullanici=None):
+    """Cariye ödeme hareketini DÜZENLER: açıklama + sayılan para birimi / sayılan döviz tutarı. Tutar (TL), tarih ve banka tarafı
+    DEĞİŞMEZ. ``sayilan_doviz`` doluysa kur = TL / döviz tutarı; yalnız ``sayilan_pb`` doluysa ödeme günü TCMB alış kuru;
+    ikisi de boşsa cari satırı olduğu gibi kalır. Fiş ``fis_guncelle`` ile yeniden yazılır (kur farkı motoru yeniden çalışır)."""
+    from core.services import doviz_cari
+    from core.services.yevmiye import fis_guncelle
+    b = duzenleme_bilgisi(fis, banka_hesap)
+    banka_s, cari_s = b["banka_satiri"], b["cari_satiri"]
+    yeni_ack = fis.aciklama if aciklama is None else (buyuk_harf_tr((aciklama or "").strip()) or fis.aciklama)
+
+    def _ayni(ln):
+        return SatirGirdi(hesap_kodu=ln.hesap_id, taraf="B" if ln.borc else "A", islem_tutari=ln.islem_tutari,
+                          islem_pb=ln.islem_pb, islem_kuru=ln.islem_kuru, aciklama=ln.aciklama,
+                          yatirim_projesi_id=ln.yatirim_projesi_id)
+    karsi = _ayni(cari_s)
+    if (sayilan_pb or "").strip() or sayilan_doviz not in (None, ""):
+        try:
+            karsi = doviz_cari.cari_satiri(b["cari"], b["tl"], fis.tarih, "B", sayilan_pb, aciklama=cari_s.aciklama,
+                                           yatirim_projesi_id=cari_s.yatirim_projesi_id, doviz_tutar=sayilan_doviz)
+        except doviz_cari.DovizCariHatasi as e:
+            raise BankaHareketHatasi(str(e))
+    try:
+        fis_guncelle(fis, tarih=fis.tarih, aciklama=yeni_ack, kur_usd=fis.kur_usd, kullanici=kullanici,
+                     satirlar=[_ayni(banka_s), karsi])
+    except YevmiyeHatasi as e:
+        raise BankaHareketHatasi(str(e))
+    return fis

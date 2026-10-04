@@ -2013,6 +2013,14 @@ def _sayilan_pb_alani():
                   "düşer (TL tutar aynı). Boş = carinin ana para birimi.")
 
 
+def _sayilan_doviz_alani():
+    """Karşı tarafın (döviz cari) saydığı döviz tutarı → kur = TL tutar / döviz tutarı (boşsa TCMB alış kuru)."""
+    return TRDecimalField(
+        label="Sayılan döviz tutarı", basamak=2, required=False,
+        help_text="Opsiyonel. Karşı tarafın saydığı döviz tutarı: girilirse kur = TL tutar / döviz tutarı olur; boşsa TCMB alış kuru "
+                  "kullanılır. Para birimi yukarıdaki seçimden (boşsa carinin ana para birimi) alınır.")
+
+
 class KasaHareketForm(forms.Form):
     """Kasa hareketi: karşı taraf (tipe göre Cari / BankaHesap / hedef Kasa) +
     tutar + tarih + açıklama. Kasa ve tip URL'den gelir; fiş otomatik üretilir."""
@@ -2100,6 +2108,7 @@ class BankaHareketForm(forms.Form):
             f.label, f.empty_label = "Cari (karşı taraf)", "— cari seç —"
             if tip == "cari_odeme":
                 self.fields["sayilan_pb"] = _sayilan_pb_alani()
+                self.fields["sayilan_doviz"] = _sayilan_doviz_alani()
         f.widget.attrs["class"] = "akilli-sec"
 
 
@@ -2184,10 +2193,13 @@ class KrediKartiHareketDuzenleForm(forms.Form):
     aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
-    def __init__(self, *args, gider_duzenlenebilir=False, **kwargs):
+    def __init__(self, *args, gider_duzenlenebilir=False, doviz_alanlari=False, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.hesap_plani import yaprak_hesaplar
         self.gider_duzenlenebilir = gider_duzenlenebilir
+        if doviz_alanlari:                                          # karşı taraf cari + TL kart: döviz karşılığı düzenlenir
+            self.fields["sayilan_pb"] = _sayilan_pb_alani()
+            self.fields["sayilan_doviz"] = _sayilan_doviz_alani()
         if gider_duzenlenebilir:
             self.fields["gider"] = forms.ModelChoiceField(
                 label="Gider Hesabı", required=True, empty_label="— gider hesabı seç —",
@@ -2202,6 +2214,18 @@ class KrediKartiHareketDuzenleForm(forms.Form):
         elif cd.get("yatirim_projesi"):
             self.add_error("yatirim_projesi", "Bu hareketin karşı tarafı gider hesabı değil; proje seçilemez.")
         return cd
+
+
+class BankaHareketDuzenleForm(forms.Form):
+    """TL banka hesabından cariye ödeme hareketini düzenleme: açıklama + sayılan para birimi + sayılan döviz tutarı.
+    Tutar (TL), tarih ve banka tarafı değişmez."""
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["sayilan_pb"] = _sayilan_pb_alani()
+        self.fields["sayilan_doviz"] = _sayilan_doviz_alani()
 
 
 class KrediKartiHareketForm(forms.Form):
@@ -2241,6 +2265,7 @@ class KrediKartiHareketForm(forms.Form):
             self.fields["yatirim_projesi"] = _yatirim_projesi_alani()
             if tip == "harcama":
                 self.fields["sayilan_pb"] = _sayilan_pb_alani()
+                self.fields["sayilan_doviz"] = _sayilan_doviz_alani()
         if "banka" in turler:
             self.fields["banka_hesap"] = forms.ModelChoiceField(
                 label="Banka Hesabı", required=False, empty_label="— banka hesabı seç —",

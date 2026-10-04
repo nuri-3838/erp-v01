@@ -1,0 +1,52 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Hareketi Düzenle · {{ hesap.ad }}{% endblock %}
+{% block sayfa_adi %}Hareketi Düzenle{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:banka_hesap_detay' hesap.pk %}">← {{ hesap.banka.ad }} · {{ hesap.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">✏️</span>Banka Hareketini Düzenle</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🏦</span>Fiş {{ fis.yil }}/{{ fis.fis_no }} · {{ fis.tarih|date:"d.m.Y" }}</h2>
+      <p class="yardim" style="margin-top:-.3rem">Tutar <strong>{{ bilgi.tl|tr_para }} TRY</strong> ·
+        Cari <span class="mono">{{ bilgi.cari.kod }}</span> {{ bilgi.cari.unvan }} ({{ bilgi.cari.para_birimi }}).
+        Tutar, tarih ve banka tarafı değişmez; açıklama ve karşı tarafın döviz karşılığı düzenlenebilir. Sayılan döviz tutarı girilirse
+        kur = TL tutar / döviz tutarı; yalnız para birimi seçilirse ödeme günü TCMB alış kuru; ikisi de boşsa cari satırı olduğu gibi kalır.
+        Kaydedince fiş otomatik yeniden yazılır (kur farkı yeniden hesaplanır).</p>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
+          {{ form.aciklama }}
+          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% if form.sayilan_pb %}
+        <div class="alan">
+          <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
+          {% for e in form.sayilan_pb.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.sayilan_doviz.id_for_label }}">{{ form.sayilan_doviz.label }}</label>{{ form.sayilan_doviz }}
+          {% for e in form.sayilan_doviz.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <p class="yardim tam">{{ form.sayilan_doviz.help_text }}</p>
+        {% endif %}
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:banka_hesap_detay' hesap.pk %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

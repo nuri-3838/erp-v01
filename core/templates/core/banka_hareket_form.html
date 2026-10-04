@@ -32,6 +32,11 @@
           <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
           <p class="yardim">{{ form.sayilan_pb.help_text }}</p>
         </div>{% endif %}
+        {% if form.sayilan_doviz %}<div class="alan tam">
+          <label for="{{ form.sayilan_doviz.id_for_label }}">{{ form.sayilan_doviz.label }}</label>{{ form.sayilan_doviz }}
+          <p class="yardim">{{ form.sayilan_doviz.help_text }}</p>
+          {% for e in form.sayilan_doviz.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>{% endif %}
         <div class="alan">
           <label for="{{ form.tutar.id_for_label }}">Tutar ({{ hesap.para_birimi }})</label>
           {{ form.tutar }}

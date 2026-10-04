@@ -52,18 +52,33 @@ def donusum_gerekli_mi(cari, sayilan_pb=None):
     return isinstance(cari, Cari) and hedef_pb(cari, sayilan_pb) != "TRY"
 
 
-def cari_satiri(cari, tl_tutar, tarih, taraf, sayilan_pb=None, aciklama="", yatirim_projesi_id=None):
-    """TL ödemenin cari satırı: döviz carisinde dövize çevrilmiş (TL aynı), aksi halde düz TL satır."""
+def cari_satiri(cari, tl_tutar, tarih, taraf, sayilan_pb=None, aciklama="", yatirim_projesi_id=None, doviz_tutar=None):
+    """TL ödemenin cari satırı: döviz carisinde dövize çevrilmiş (TL aynı), aksi halde düz TL satır.
+
+    ``doviz_tutar`` (karşı tarafın saydığı döviz tutarı) verilirse kur = TL tutar / döviz tutarı (TCMB alış kuru kullanılmaz);
+    döviz tutarı yalnız hedef para birimi döviz iken girilebilir."""
     hesap = HesapPlani.objects.filter(hesap_kodu=cari.muhasebe_kodu, silindi=False).first() if cari.muhasebe_kodu else None
     if hesap is None:
         raise DovizCariHatasi(f"{cari.unvan} carisinin muhasebe hesabı yok; önce hesap planında açılmalı.")
     pb = hedef_pb(cari, sayilan_pb)
     tl = yuvarla(Decimal(tl_tutar), 2)
+    elle_dvz = doviz_tutar not in (None, "")
+    if elle_dvz and pb == "TRY":
+        raise DovizCariHatasi("Sayılan döviz tutarı için sayılan para birimi döviz olmalı (cari TL ise ya da 'TL (çevirme)' "
+                              "seçiliyse döviz tutarı girilemez).")
     if pb == "TRY":
         return SatirGirdi(hesap_kodu=hesap.hesap_kodu, taraf=taraf, islem_tutari=tl, aciklama=aciklama,
                           yatirim_projesi_id=yatirim_projesi_id)
-    kur = alis_kuru(pb, tarih)
-    dvz = yuvarla(tl / kur, 2)
+    if elle_dvz:
+        dvz = yuvarla(Decimal(doviz_tutar), 2)
+        if dvz <= 0 or tl <= 0:
+            raise DovizCariHatasi("Sayılan döviz tutarı sıfırdan büyük olmalı.")
+        kur = yuvarla(tl / dvz, 6)
+        if kur <= 0:
+            raise DovizCariHatasi("Sayılan döviz tutarı TL tutara göre çok büyük; kur hesaplanamadı.")
+    else:
+        kur = alis_kuru(pb, tarih)
+        dvz = yuvarla(tl / kur, 2)
     if dvz <= 0:
         raise DovizCariHatasi("Tutar döviz karşılığına çevrilemeyecek kadar küçük.")
     return SatirGirdi(hesap_kodu=hesap.hesap_kodu, taraf=taraf, islem_tutari=dvz, islem_pb=pb, islem_kuru=kur,

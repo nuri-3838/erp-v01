@@ -29,6 +29,17 @@
           {{ form.aciklama }}
           {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if form.sayilan_pb %}
+        <div class="alan">
+          <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
+          {% for e in form.sayilan_pb.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.sayilan_doviz.id_for_label }}">{{ form.sayilan_doviz.label }}</label>{{ form.sayilan_doviz }}
+          {% for e in form.sayilan_doviz.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <p class="yardim tam">{{ form.sayilan_doviz.help_text }}</p>
+        {% endif %}
         {% if form.gider %}
         <div class="alan tam">
           <label for="{{ form.gider.id_for_label }}">{{ form.gider.label }}</label>

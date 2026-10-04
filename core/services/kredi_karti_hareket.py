@@ -133,7 +133,7 @@ def _proje_coz(karsi_kod, yatirim_projesi_id):
 
 @transaction.atomic
 def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
-                    kur_override=None, yatirim_projesi_id=None, sayilan_pb=None) -> YevmiyeFisi:
+                    kur_override=None, yatirim_projesi_id=None, sayilan_pb=None, sayilan_doviz=None) -> YevmiyeFisi:
     """Bir kredi kartı hareketinden otomatik DENGELİ yevmiye fişi üretir (kaynak=KREDI_KARTI,
     fiş→kart FK). Kart satırı tan['kk'] tarafına, karşı ters tarafa; ikisi de kartın PB'sinde.
     Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır). ``kur_override`` doluysa
@@ -167,10 +167,12 @@ def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=No
         # Döviz carisine kartla TL ödeme: cari satırı ödeme günü TCMB alış kuruyla dövize çevrilir (TL aynı; bkz. doviz_cari).
         from core.services import doviz_cari
         try:
-            if doviz_cari.donusum_gerekli_mi(karsi, sayilan_pb):
-                satirlar[1] = doviz_cari.cari_satiri(karsi, tut, tarih, karsi_taraf, sayilan_pb)
+            if doviz_cari.donusum_gerekli_mi(karsi, sayilan_pb) or sayilan_doviz not in (None, ""):
+                satirlar[1] = doviz_cari.cari_satiri(karsi, tut, tarih, karsi_taraf, sayilan_pb, doviz_tutar=sayilan_doviz)
         except doviz_cari.DovizCariHatasi as e:
             raise KrediKartiHareketHatasi(str(e))
+    elif sayilan_doviz not in (None, ""):
+        raise KrediKartiHareketHatasi("Sayılan döviz tutarı yalnız TL kartla cariye yapılan harcamada girilebilir.")
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack, kur_usd=None,
                           kaynak=YevmiyeFisi.Kaynak.KREDI_KARTI, kullanici=kullanici)
@@ -206,12 +208,12 @@ def _ay_ekle(tarih, n):
 @transaction.atomic
 def harcama_olustur(*, kart, karsi, tutar, tarih, taksit_adedi=1, ilk_vade=None,
                     aciklama="", kullanici=None, kur_override=None, yatirim_projesi_id=None,
-                    sayilan_pb=None) -> YevmiyeFisi:
+                    sayilan_pb=None, sayilan_doviz=None) -> YevmiyeFisi:
     """Harcama (peşin ya da taksitli). Muhasebe HER ZAMAN tam tutar tek fiş (borç anında gerçek);
     taksit_adedi>1 ise ayrıca BİLGİ amaçlı KrediKartiTaksit planı oluşur (ledger'ı etkilemez)."""
     fis = hareket_olustur(kart=kart, tip="harcama", karsi=karsi, tutar=tutar, tarih=tarih,
                           aciklama=aciklama, kullanici=kullanici, kur_override=kur_override,
-                          yatirim_projesi_id=yatirim_projesi_id, sayilan_pb=sayilan_pb)
+                          yatirim_projesi_id=yatirim_projesi_id, sayilan_pb=sayilan_pb, sayilan_doviz=sayilan_doviz)
     adet = int(taksit_adedi or 1)
     if adet > 1:
         if not ilk_vade:
@@ -262,14 +264,19 @@ def duzenleme_bilgisi(fis, kart):
     kod = karsi_s[0].hesap_id
     baska = (Cari.objects.filter(muhasebe_kodu=kod).exists()
              or BankaHesap.objects.filter(muhasebe_id=kod).exists() or Kasa.objects.filter(muhasebe_id=kod).exists())
+    cari = Cari.objects.filter(muhasebe_kodu=kod, silindi=False).first()
+    doviz_duzenlenebilir = bool(cari and kart.para_birimi == "TRY" and karsi_s[0].borc and kart_s[0].alacak)
     return {"gider_duzenlenebilir": not baska, "gider_hesap": karsi_s[0].hesap,
-            "kart_satiri": kart_s[0], "karsi_satiri": karsi_s[0]}
+            "kart_satiri": kart_s[0], "karsi_satiri": karsi_s[0], "cari": cari, "doviz_duzenlenebilir": doviz_duzenlenebilir}
 
 
 @transaction.atomic
-def hareket_guncelle(*, fis, kart, aciklama=None, gider=None, yatirim_projesi_id=None, kullanici=None):
+def hareket_guncelle(*, fis, kart, aciklama=None, gider=None, yatirim_projesi_id=None, kullanici=None,
+                     sayilan_pb=None, sayilan_doviz=None):
     """Kredi kartı hareketini DÜZENLER: açıklama, gider hesabı (karşı taraf gider hesabıysa) ve yatırım
-    projesi (258'de zorunlu). Tutar/tarih/kur değişmez. Fiş ``fis_guncelle`` ile yeniden yazılır; kur farkı
+    projesi (258'de zorunlu); karşı taraf CARİ ise (TL kart harcaması) sayılan para birimi / sayılan döviz tutarı
+    (döviz tutarı doluysa kur = TL / döviz; yalnız para birimi doluysa TCMB alış; ikisi de boşsa satır aynen kalır).
+    Tutar (TL)/tarih/kart tarafı değişmez. Fiş ``fis_guncelle`` ile yeniden yazılır; kur farkı
     motoru yeniden çalışır. Hatada hiçbir şey değişmez."""
     from core.services.yevmiye import fis_guncelle
     bilgi = duzenleme_bilgisi(fis, kart)
@@ -287,9 +294,19 @@ def hareket_guncelle(*, fis, kart, aciklama=None, gider=None, yatirim_projesi_id
     def _satir(ln, hesap_kodu, proje=None):
         return SatirGirdi(hesap_kodu=hesap_kodu, taraf="B" if ln.borc else "A", islem_tutari=ln.islem_tutari,
                           islem_pb=ln.islem_pb, islem_kuru=ln.islem_kuru, yatirim_projesi_id=proje)
+    karsi_girdi = _satir(karsi_s, karsi_kod, proje_id)
+    if (sayilan_pb or "").strip() or sayilan_doviz not in (None, ""):
+        from core.services import doviz_cari
+        if not bilgi["doviz_duzenlenebilir"] or karsi_kod != karsi_s.hesap_id:
+            raise KrediKartiHareketHatasi("Sayılan döviz yalnız TL kartla cariye yapılan harcamada girilebilir.")
+        try:
+            karsi_girdi = doviz_cari.cari_satiri(bilgi["cari"], kart_s.alacak, fis.tarih, "B", sayilan_pb, aciklama=karsi_s.aciklama,
+                                                 yatirim_projesi_id=proje_id, doviz_tutar=sayilan_doviz)
+        except doviz_cari.DovizCariHatasi as e:
+            raise KrediKartiHareketHatasi(str(e))
     try:
         fis_guncelle(fis, tarih=fis.tarih, aciklama=yeni_ack, kur_usd=fis.kur_usd, kullanici=kullanici,
-                     satirlar=[_satir(kart_s, kart_s.hesap_id), _satir(karsi_s, karsi_kod, proje_id)])
+                     satirlar=[_satir(kart_s, kart_s.hesap_id), karsi_girdi])
     except YevmiyeHatasi as e:
         raise KrediKartiHareketHatasi(str(e))
     return fis

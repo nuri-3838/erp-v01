@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -2134,10 +2134,17 @@ def banka_hesap_detay(request, pk):
         banka_hesap=hesap, kaynak=YevmiyeFisi.Kaynak.BANKA, silindi=False
     ).values_list("pk", flat=True))
 
+    banka_duzenle_pks = set()
+    if hesap.para_birimi == "TRY":       # düzenlenebilir: TL hesaptan cariye ödeme (cari satırı BORÇ)
+        banka_duzenle_pks = set(YevmiyeSatir.objects.filter(
+            fis_id__in=banka_fis_pks, silindi=False, ana_satir__isnull=True, borc__gt=0,
+            hesap_id__in=Cari.objects.filter(silindi=False).exclude(muhasebe_kodu="").values("muhasebe_kodu"),
+        ).values_list("fis_id", flat=True))
+
     return render(request, "core/banka_hesap_detay.html",
                   {"hesap": hesap, "form": form, "ekstre": ekstre,
                    "satirlar": satirlar, "aciklama": aciklama,
-                   "banka_fis_pks": banka_fis_pks})
+                   "banka_fis_pks": banka_fis_pks, "banka_duzenle_pks": banka_duzenle_pks})
 
 
 BankaHesapSatirFormSet = formset_factory(BankaHesapSatirForm, extra=0, min_num=1, validate_min=True)
@@ -2194,7 +2201,8 @@ def _banka_hareket_form(request, hesap, tip):
                     banka_hesap=hesap, tip=tip, karsi=form.cleaned_data["karsi"],
                     tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                     aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
-                    kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"))
+                    kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"),
+                    sayilan_doviz=form.cleaned_data.get("sayilan_doviz"))
                 messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:banka_hesap_detay", pk=hesap.pk)
             except banka_hareket_servis.BankaHareketHatasi as e:
@@ -2297,6 +2305,37 @@ def doviz_islem_ekle(request):
     else:
         form = DovizIslemForm(initial={k: request.GET.get(k) for k in ("kaynak", "hedef") if request.GET.get(k)})
     return render(request, "core/doviz_islem_form.html", {"form": form, "pb_haritasi": form.pb})
+
+
+@ekran_gerekli("banka")
+def banka_hareket_duzenle(request, pk, fis_pk):
+    """TL banka hesabından cariye ödeme hareketini düzenle: açıklama + döviz karşılığı (sayılan para birimi / döviz tutarı → kur)."""
+    hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
+    fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    try:
+        bilgi = banka_hareket_servis.duzenleme_bilgisi(fis, hesap)
+    except banka_hareket_servis.BankaHareketHatasi as e:
+        messages.error(request, str(e))
+        return redirect("core:banka_hesap_detay", pk=hesap.pk)
+    if request.method == "POST":
+        form = BankaHareketDuzenleForm(request.POST)
+        if form.is_valid():
+            try:
+                banka_hareket_servis.hareket_guncelle(
+                    fis=fis, banka_hesap=hesap, aciklama=form.cleaned_data["aciklama"],
+                    sayilan_pb=form.cleaned_data.get("sayilan_pb"), sayilan_doviz=form.cleaned_data.get("sayilan_doviz"),
+                    kullanici=request.user)
+                messages.success(request, f"Hareket güncellendi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:banka_hesap_detay", pk=hesap.pk)
+            except banka_hareket_servis.BankaHareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        s = bilgi["cari_satiri"]
+        doviz = s.islem_pb != "TRY"
+        form = BankaHareketDuzenleForm(initial={
+            "aciklama": fis.aciklama, "sayilan_pb": s.islem_pb if doviz else "",
+            "sayilan_doviz": s.islem_tutari if doviz else None})
+    return render(request, "core/banka_hareket_duzenle.html", {"hesap": hesap, "fis": fis, "form": form, "bilgi": bilgi})
 
 
 @ekran_gerekli("banka")
@@ -3957,6 +3996,7 @@ def _kredi_karti_hareket_form(request, kart, tip):
                         ilk_vade=form.cleaned_data.get("ilk_vade"),
                         aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
                         kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"),
+                        sayilan_doviz=form.cleaned_data.get("sayilan_doviz"),
                         yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
                                             if form.cleaned_data.get("yatirim_projesi") else None))
                 else:
@@ -3998,7 +4038,8 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
         return redirect("core:kredi_karti_detay", pk=kart.pk)
     duzenlenebilir = bilgi["gider_duzenlenebilir"]
     if request.method == "POST":
-        form = KrediKartiHareketDuzenleForm(request.POST, gider_duzenlenebilir=duzenlenebilir)
+        form = KrediKartiHareketDuzenleForm(request.POST, gider_duzenlenebilir=duzenlenebilir,
+                                            doviz_alanlari=bilgi["doviz_duzenlenebilir"])
         if form.is_valid():
             try:
                 kredi_karti_hareket_servis.hareket_guncelle(
@@ -4006,6 +4047,7 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
                     gider=form.cleaned_data.get("gider") if duzenlenebilir else None,
                     yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
                                         if form.cleaned_data.get("yatirim_projesi") else None),
+                    sayilan_pb=form.cleaned_data.get("sayilan_pb"), sayilan_doviz=form.cleaned_data.get("sayilan_doviz"),
                     kullanici=request.user)
                 messages.success(request, f"Hareket güncellendi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_karti_detay", pk=kart.pk)
@@ -4016,7 +4058,10 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
         ilk = {"aciklama": fis.aciklama, "yatirim_projesi": karsi.yatirim_projesi_id}
         if duzenlenebilir:
             ilk["gider"] = karsi.hesap_id
-        form = KrediKartiHareketDuzenleForm(initial=ilk, gider_duzenlenebilir=duzenlenebilir)
+        if bilgi["doviz_duzenlenebilir"] and karsi.islem_pb != "TRY":
+            ilk["sayilan_pb"], ilk["sayilan_doviz"] = karsi.islem_pb, karsi.islem_tutari
+        form = KrediKartiHareketDuzenleForm(initial=ilk, gider_duzenlenebilir=duzenlenebilir,
+                                            doviz_alanlari=bilgi["doviz_duzenlenebilir"])
     return render(request, "core/kredi_karti_hareket_duzenle.html", {
         "kart": kart, "fis": fis, "form": form, "bilgi": bilgi, "tutar": bilgi["kart_satiri"].islem_tutari})
 
