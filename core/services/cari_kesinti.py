@@ -48,7 +48,7 @@ def yon_coz(cari):
     kod = cari.muhasebe_kodu or ""
     if kod.startswith(("120", "121", "500.")):        # 500.xx: ortak sermaye carisi (ortak şirket adına ödedi → gider BORÇ / ortak ALACAK)
         return "musteri"
-    if kod.startswith(("320", "321")):
+    if kod.startswith(("320", "321", "335")):        # 335: personel carisi (borç tarafı; tedarikçi yönü)
         return "tedarikci"
     raise CariKesintiHatasi(
         f"{cari.unvan} carisinin muhasebe hesabı ({kod or 'yok'}) 120/320/500 ailesinde değil; yön belirlenemedi.")

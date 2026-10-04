@@ -42,8 +42,8 @@ def _hedef_dogrula(kaynak_kod, hedef_kod):
     h = HesapPlani.objects.filter(hesap_kodu=hedef_kod, silindi=False, aktif=True).first()
     if h is None:
         raise TasimaHatasi(f"Hedef hesap bulunamadı/aktif değil: {hedef_kod}")
-    if ust_kodu(hedef_kod) != kaynak_kod:
-        raise TasimaHatasi(f"{hedef_kod}, {kaynak_kod} hesabının doğrudan alt hesabı değil.")
+    if not hedef_kod.startswith(kaynak_kod + "."):
+        raise TasimaHatasi(f"{hedef_kod}, {kaynak_kod} hesabının alt hesabı değil.")
     if HesapPlani.objects.filter(hesap_kodu__startswith=hedef_kod + ".", silindi=False).exists():
         raise TasimaHatasi(f"{hedef_kod} yaprak hesap değil (alt hesabı var).")
     return h
