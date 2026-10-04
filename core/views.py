@@ -1612,7 +1612,8 @@ def _cari_form_kw(cd):
         eposta=cd["eposta"],
         web=cd["web"], ilgili_kisi=cd["ilgili_kisi"], kep_adresi=cd["kep_adresi"],
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
-        para_birimi=cd["para_birimi"], kur_tipi=cd["kur_tipi"], kredi_limiti=cd["kredi_limiti"],
+        para_birimi=cd["para_birimi"], kur_tipi=cd["kur_tipi"], kur_degerleme=cd.get("kur_degerleme"),
+        kredi_limiti=cd["kredi_limiti"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"],
         odeme_kosulu=cd["odeme_kosulu"] or None, odeme_gunu=cd["odeme_gunu"],
         notlar=cd["notlar"])
@@ -1710,6 +1711,7 @@ def cari_duzenle(request, pk):
             "kep_adresi": cari.kep_adresi,
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
             "para_birimi": cari.para_birimi, "kur_tipi": cari.kur_tipi,
+            "kur_degerleme": cari.kur_degerleme,
             "kredi_limiti": cari.kredi_limiti,
             "iskonto_yuzdesi": cari.iskonto_yuzdesi,
             "odeme_kosulu": cari.odeme_kosulu or "", "odeme_gunu": cari.odeme_gunu,

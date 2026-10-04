@@ -831,6 +831,11 @@ class Cari(TemelModel):
         EFEKTIF_ALIS = "EFEKTIF_ALIS", "Efektif Alış"
         EFEKTIF_SATIS = "EFEKTIF_SATIS", "Efektif Satış"
 
+    class DegerlemeKurali(models.TextChoices):
+        OTOMATIK = "OTOMATIK", "Otomatik (avans değerlenmez)"
+        HER_ZAMAN = "HER_ZAMAN", "Her zaman değerle"
+        HIC = "HIC", "Hiç değerleme"
+
     class OdemeKosulu(models.TextChoices):
         PESIN = "PESIN", "Peşin (fatura tarihi)"
         GUN_SONRA = "GUN_SONRA", "Fatura tarihinden X gün sonra"
@@ -874,6 +879,11 @@ class Cari(TemelModel):
     # kullanacağını belirler. Varsayılan MB_ALIS -> mevcut carilerin davranışı DEĞİŞMEZ.
     kur_tipi = models.CharField("kur tipi", max_length=15, choices=KurTipi.choices,
                                 default=KurTipi.MB_ALIS)
+    # Dönem sonu kur değerlemesi (bkz. core.services.kur_degerleme): OTOMATIK → 320/321 havuzunda döviz
+    # bakiyesi BORÇ (verilen avans) ya da 120/121'de ALACAK (alınan avans) ise değerlenmez; HER_ZAMAN →
+    # avans olsa da değerlenir (ör. parasal alacak sayılan depozito); HIC → hiç değerlenmez.
+    kur_degerleme = models.CharField("kur değerlemesi", max_length=10, choices=DegerlemeKurali.choices,
+                                     default=DegerlemeKurali.OTOMATIK)
     kredi_limiti = models.DecimalField("kredi/risk limiti", max_digits=14, decimal_places=2, default=0)
     iskonto_yuzdesi = models.DecimalField("varsayılan iskonto %", max_digits=5, decimal_places=2, default=0)
     # Boş (null): koşul yok, fatura vade tarihi elle girilir — mevcut carilerin hepsi

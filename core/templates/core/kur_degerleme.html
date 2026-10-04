@@ -16,31 +16,45 @@
 </form>
 
 <h2 class="etiket">Önizleme — {{ tarih|date:"d.m.Y" }}</h2>
-{% if not onizleme.kur_kaydi_var %}
-  <div class="uyari"><div>⚠️ {{ tarih|date:"d.m.Y" }} için kur kaydı yok; Kurlar ekranından çekin.</div></div>
-{% endif %}
 {% if onizleme.eksik_kurlar %}
-  <div class="uyari"><div>⚠️ Bu tarihte kuru olmayan para birimleri: {{ onizleme.eksik_kurlar|join:", " }}.</div></div>
+  <div class="uyari"><div>⚠️ {{ tarih|date:"d.m.Y" }} ve önceki 7 günde kuru olmayan para birimleri: {{ onizleme.eksik_kurlar|join:", " }}. Kurlar ekranından çekin.</div></div>
 {% endif %}
+<p class="yardim">Seçilen tarihte kur yoksa (tatil/hafta sonu) en yakın önceki iş gününün TCMB döviz alış kuru kullanılır; kur tarihi her satırda gösterilir.</p>
 <div class="tablo-kapsayici genis">
 <table>
   <thead><tr><th>Hesap</th><th>PB</th><th class="sag">Döviz bakiye</th><th class="sag">TL bakiye</th>
-    <th class="sag">Ort. kur</th><th class="sag">TCMB alış</th><th class="sag">Değerlenmiş TL</th><th class="sag">Fark (TL)</th></tr></thead>
+    <th class="sag">Ort. kur</th><th class="sag">TCMB alış</th><th>Kur tarihi</th><th class="sag">Değerlenmiş TL</th><th class="sag">Fark (TL)</th></tr></thead>
   <tbody>
   {% for r in onizleme.satirlar %}
     <tr><td>{{ r.hesap_kodu }} {{ r.hesap_adi }}</td><td class="mono">{{ r.pb }}</td>
       <td class="sag">{{ r.doviz|tr_para }}</td><td class="sag">{{ r.tl|tr_para }}</td>
       <td class="sag">{% if r.ort_kur %}{{ r.ort_kur|tr_kur:4 }}{% else %}—{% endif %}</td>
-      <td class="sag">{{ r.kur|tr_kur:4 }}</td><td class="sag">{{ r.yeni_tl|tr_para }}</td>
+      <td class="sag">{{ r.kur|tr_kur:4 }}</td><td class="mono">{{ r.kur_tarihi|date:"d.m.Y" }}</td><td class="sag">{{ r.yeni_tl|tr_para }}</td>
       <td class="sag {% if r.fark > 0 %}gir{% elif r.fark < 0 %}cik{% endif %}">{{ r.fark|tr_para }}</td></tr>
   {% empty %}
-    <tr><td colspan="8" class="yardim">Açık döviz bakiyesi yok.</td></tr>
+    <tr><td colspan="9" class="yardim">Değerlenecek açık döviz bakiyesi yok.</td></tr>
   {% endfor %}
   </tbody>
-  <tfoot><tr><th colspan="7" class="sag">Kambiyo kârı (646) / zararı (656)</th>
+  <tfoot><tr><th colspan="8" class="sag">Kambiyo kârı (646) / zararı (656)</th>
     <th class="sag">{{ onizleme.kar|tr_para }} / {{ onizleme.zarar|tr_para }}</th></tr></tfoot>
 </table>
 </div>
+
+<h2 class="etiket">Değerlenmeyen (avans)</h2>
+<p class="yardim">Verilen avans (320/321'de döviz bakiyesi borç) ve alınan avans (120/121'de alacak) parasal kalem değildir; değerlenmez.
+  Carinin kartındaki "Kur değerlemesi" ayarı bunu değiştirir (Her zaman değerle / Hiç değerleme).</p>
+<table>
+  <thead><tr><th>Hesap</th><th>PB</th><th class="sag">Döviz bakiye</th><th class="sag">TL bakiye</th><th class="sag">Ort. kur</th><th>Neden</th></tr></thead>
+  <tbody>
+  {% for r in onizleme.degerlenmeyen %}
+    <tr><td>{{ r.hesap_kodu }} {{ r.hesap_adi }}{% if r.cari %} · <a href="{% url 'core:cari_detay' r.cari.pk %}">kart</a>{% endif %}</td>
+      <td class="mono">{{ r.pb }}</td><td class="sag">{{ r.doviz|tr_para }}</td><td class="sag">{{ r.tl|tr_para }}</td>
+      <td class="sag">{% if r.ort_kur %}{{ r.ort_kur|tr_kur:4 }}{% else %}—{% endif %}</td><td>{{ r.neden }}</td></tr>
+  {% empty %}
+    <tr><td colspan="6" class="yardim">Değerlenmeyen kalem yok.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
 
 {% if onizleme.satirlar and not onizleme.eksik_kurlar %}
 <form method="post" class="alan"

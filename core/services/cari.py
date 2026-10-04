@@ -153,6 +153,7 @@ def vade_hesapla(cari, fatura_tarihi):
 def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
             telefon_whatsapp=False, telefon_2_whatsapp=False,
             eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kur_tipi=None,
+            kur_degerleme=None,
             kredi_limiti, iskonto_yuzdesi, odeme_kosulu=None, odeme_gunu=None,
             notlar, ulke, sehir):
     """Ortak alan hazırlığı (create/update paylaşır). (dict, uyarılar) döner. ``kur_tipi``
@@ -163,6 +164,9 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
     kur_tipi = kur_tipi or Cari.KurTipi.MB_ALIS
     if kur_tipi not in Cari.KurTipi.values:
         raise CariHatasi("Geçersiz kur tipi.")
+    kur_degerleme = kur_degerleme or Cari.DegerlemeKurali.OTOMATIK
+    if kur_degerleme not in Cari.DegerlemeKurali.values:
+        raise CariHatasi("Geçersiz kur değerleme seçeneği.")
     web_norm = web_normalize(web)
     if web_norm is None:
         raise CariHatasi(f"Geçersiz web adresi: {(web or '').strip()}")
@@ -181,7 +185,7 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         ilgili_kisi=buyuk_harf_tr((ilgili_kisi or "").strip()),
         kep_adresi=(kep_adresi or "").strip(),
         ulke=ulke, sehir=sehir, adres=buyuk_harf_tr((adres or "").strip()),
-        para_birimi=para_birimi, kur_tipi=kur_tipi,
+        para_birimi=para_birimi, kur_tipi=kur_tipi, kur_degerleme=kur_degerleme,
         kredi_limiti=_para_dogrula(kredi_limiti, "Kredi limiti"),
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
         odeme_kosulu=odeme_kosulu, odeme_gunu=odeme_gunu,
@@ -207,7 +211,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
-                        "para_birimi", "kur_tipi", "kredi_limiti",
+                        "para_birimi", "kur_tipi", "kur_degerleme", "kredi_limiti",
                         "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
@@ -306,7 +310,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
-                        "para_birimi", "kur_tipi", "kredi_limiti",
+                        "para_birimi", "kur_tipi", "kur_degerleme", "kredi_limiti",
                         "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar")})
 
     with transaction.atomic():

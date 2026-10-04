@@ -557,6 +557,8 @@ class CariForm(forms.Form):
     # TRY carilerde/eski POST'larda hiç gönderilmeyebilir, servis katmanı boşsa MB_ALIS'e düşer.
     kur_tipi = forms.ChoiceField(label="Kur Tipi", choices=Cari.KurTipi.choices,
                                  initial=Cari.KurTipi.MB_ALIS, required=False)
+    kur_degerleme = forms.ChoiceField(label="Kur Değerlemesi", choices=Cari.DegerlemeKurali.choices,
+                                      initial=Cari.DegerlemeKurali.OTOMATIK, required=False)
     kredi_limiti = TRDecimalField(label="Kredi/Risk Limiti", basamak=2,
                                   initial=Decimal("0"), required=False)
     iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,

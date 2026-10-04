@@ -4,6 +4,11 @@ Seçilen tarihte açık döviz bakiyelerini (kur farkı motorunun havuzları: d�
 cari, döviz çek-senet) TCMB DÖVİZ ALIŞ kuruyla değerler; değer farkını TEK fişe yazar:
   fark = döviz bakiyesi × kur − hesabın TL bakiyesi
   fark > 0 → hesap BORÇ, 646 KAMBİYO KÂRLARI ALACAK;  fark < 0 → hesap ALACAK, 656 KAMBİYO ZARARLARI BORÇ
+KUR: seçilen tarihte TCMB kuru yoksa (tatil/hafta sonu) en yakın ÖNCEKİ iş gününün kuru kullanılır (en
+çok 7 gün geri; kur tarihi önizlemede gösterilir); 7 günde de yoksa uyarı verilir.
+AVANS: 320/321 havuzunda döviz bakiyesi BORÇ (verilen avans) ya da 120/121 havuzunda ALACAK (alınan
+avans) ise değerlenmez (önizlemede "Değerlenmeyen" bölümü); cari kartındaki "Kur değerlemesi" ayarı
+(Otomatik / Her zaman değerle / Hiç değerleme) bu kuralı ezer.
 Değerleme satırları ``islem_tutari = 0`` taşır: motorda yalnız TL değerini (ortalama maliyeti)
 değiştirir, döviz bakiyesini değil. ``onizle`` hiçbir şey yazmaz (dry-run); ``ters_kayit`` değerleme
 fişinin tüm satırlarını ters yöne çevirip (varsayılan ertesi gün) bakiyeyi eski haline getirir.
@@ -28,17 +33,43 @@ class KurDegerlemeHatasi(ValueError):
     """Kur değerleme kural ihlali (Türkçe mesaj)."""
 
 
-def _kurlar(tarih):
-    k = Kur.objects.filter(tarih=tarih, silindi=False).first()
-    return k
+GERI_GUN = 7
+
+
+def kur_bul(pb, tarih):
+    """(kur, kur tarihi): ``tarih``te (yoksa en çok 7 gün önceye kadar en yakın önceki günde) TCMB döviz
+    ALIŞ kuru; bulunamazsa (None, None)."""
+    for k in (Kur.objects.filter(silindi=False, tarih__lte=tarih,
+                                 tarih__gte=tarih - datetime.timedelta(days=GERI_GUN))
+              .order_by("-tarih")):
+        deger = k.deger(pb, Cari.KurTipi.MB_ALIS)
+        if deger:
+            return deger, k.tarih
+    return None, None
+
+
+def _usd_kuru(tarih):
+    """Fişin USD raporlama kuru: tatil/hafta sonunda önceki iş gününün USD alış kuru."""
+    return kur_bul("USD", tarih)[0]
+
+
+def _avans_mi(hesap_kodu, q):
+    """320/321'de borç bakiye (verilen avans) ya da 120/121'de alacak bakiye (alınan avans)."""
+    if hesap_kodu.startswith(("320", "321")):
+        return q > 0
+    if hesap_kodu.startswith(("120", "121")):
+        return q < 0
+    return False
 
 
 def onizle(tarih):
-    """Dry-run: {'satirlar': [...], 'kar', 'zarar', 'eksik_kurlar': [pb...]} — DB'ye yazmaz."""
-    kayit = _kurlar(tarih)
-    satirlar, eksik = [], set()
+    """Dry-run: {'satirlar': [...değerlenecek], 'degerlenmeyen': [...avans/cari ayarı], 'kar', 'zarar',
+    'eksik_kurlar', 'kur_tarihleri': {pb: tarih}} — DB'ye yazmaz."""
+    satirlar, degerlenmeyen, eksik, kur_tarihleri = [], [], set(), {}
     kar = zarar = SIFIR
     adlar = dict(HesapPlani.objects.values_list("hesap_kodu", "hesap_adi"))
+    cariler = {c.muhasebe_kodu: c for c in Cari.objects.filter(silindi=False).exclude(muhasebe_kodu="")}
+    kur_onbellek = {}
     for hesap_kodu, pb in kf.tum_havuzlar():
         sat = list(YevmiyeSatir.objects.filter(
             hesap_id=hesap_kodu, islem_pb=pb, silindi=False, fis__silindi=False,
@@ -47,21 +78,36 @@ def onizle(tarih):
         v = sum((s.borc - s.alacak for s in sat), SIFIR)
         if q == 0 and v == 0:
             continue
-        kur = kayit.deger(pb, Cari.KurTipi.MB_ALIS) if kayit else None
+        cari = cariler.get(hesap_kodu)
+        satir = {"hesap_kodu": hesap_kodu, "hesap_adi": adlar.get(hesap_kodu, ""), "pb": pb, "doviz": q, "tl": v,
+                 "ort_kur": (v / q if q else None), "cari": cari}
+        kural = cari.kur_degerleme if cari else Cari.DegerlemeKurali.OTOMATIK
+        if kural == Cari.DegerlemeKurali.HIC:
+            satir["neden"] = "Cari ayarı: hiç değerleme"
+            degerlenmeyen.append(satir)
+            continue
+        if kural == Cari.DegerlemeKurali.OTOMATIK and _avans_mi(hesap_kodu, q):
+            satir["neden"] = "Verilen avans (döviz bakiyesi borç)" if hesap_kodu.startswith(("320", "321"))                 else "Alınan avans (döviz bakiyesi alacak)"
+            degerlenmeyen.append(satir)
+            continue
+        if pb not in kur_onbellek:
+            kur_onbellek[pb] = kur_bul(pb, tarih)
+        kur, kur_tarihi = kur_onbellek[pb]
         if not kur:
             eksik.add(pb)
             continue
+        kur_tarihleri[pb] = kur_tarihi
         yeni = yuvarla(q * kur, 2)
         fark = yeni - v
-        satirlar.append({"hesap_kodu": hesap_kodu, "hesap_adi": adlar.get(hesap_kodu, ""), "pb": pb,
-                         "doviz": q, "tl": v, "ort_kur": (v / q if q else None), "kur": kur,
-                         "yeni_tl": yeni, "fark": fark})
+        satir.update(kur=kur, kur_tarihi=kur_tarihi, yeni_tl=yeni, fark=fark)
+        satirlar.append(satir)
         if fark > 0:
             kar += fark
         elif fark < 0:
             zarar += -fark
-    return {"tarih": tarih, "satirlar": satirlar, "kar": kar, "zarar": zarar,
-            "eksik_kurlar": sorted(eksik), "kur_kaydi_var": kayit is not None}
+    return {"tarih": tarih, "satirlar": satirlar, "degerlenmeyen": degerlenmeyen, "kar": kar, "zarar": zarar,
+            "eksik_kurlar": sorted(eksik), "kur_tarihleri": kur_tarihleri,
+            "kur_kaydi_var": bool(kur_tarihleri) or not eksik}
 
 
 @transaction.atomic
@@ -71,8 +117,8 @@ def uygula(tarih, *, kullanici=None) -> KurDegerleme:
         raise KurDegerlemeHatasi(f"{tarih:%d.%m.%Y} için ters kaydı alınmamış bir değerleme zaten var.")
     o = onizle(tarih)
     if o["eksik_kurlar"]:
-        raise KurDegerlemeHatasi(f"{tarih:%d.%m.%Y} için {', '.join(o['eksik_kurlar'])} kuru yok; "
-                                 f"Kurlar ekranından çekin.")
+        raise KurDegerlemeHatasi(f"{tarih:%d.%m.%Y} ve önceki {GERI_GUN} günde {', '.join(o['eksik_kurlar'])} "
+                                 f"kuru yok; Kurlar ekranından çekin.")
     satirlar = []
     for r in o["satirlar"]:
         if r["fark"] == 0:
@@ -91,12 +137,13 @@ def uygula(tarih, *, kullanici=None) -> KurDegerleme:
                                    aciklama="KUR DEĞERLEME ZARARI"))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=f"DÖNEM SONU KUR DEĞERLEME {tarih:%d.%m.%Y}",
-                          kaynak=YevmiyeFisi.Kaynak.KUR_DEGERLEME, kullanici=kullanici)
+                          kaynak=YevmiyeFisi.Kaynak.KUR_DEGERLEME, kullanici=kullanici,
+                          kur_usd=_usd_kuru(tarih))
     except YevmiyeHatasi as e:
         raise KurDegerlemeHatasi(str(e))
     return KurDegerleme.objects.create(
         tarih=tarih, fis=fis, toplam_kar=o["kar"], toplam_zarar=o["zarar"],
-        kurlar={f"{r['hesap_kodu']}|{r['pb']}": str(r["kur"]) for r in o["satirlar"]},
+        kurlar={f"{r['hesap_kodu']}|{r['pb']}": f"{r['kur']} ({r['kur_tarihi']:%d.%m.%Y})" for r in o["satirlar"]},
         created_by=kullanici, updated_by=kullanici)
 
 
@@ -119,7 +166,8 @@ def ters_kayit(deg: KurDegerleme, *, tarih=None, kullanici=None) -> KurDegerleme
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar,
                           aciklama=f"KUR DEĞERLEME TERS KAYDI ({deg.tarih:%d.%m.%Y} DEĞERLEMESİ)",
-                          kaynak=YevmiyeFisi.Kaynak.KUR_DEGERLEME, kullanici=kullanici)
+                          kaynak=YevmiyeFisi.Kaynak.KUR_DEGERLEME, kullanici=kullanici,
+                          kur_usd=_usd_kuru(tarih))
     except YevmiyeHatasi as e:
         raise KurDegerlemeHatasi(str(e))
     deg.ters_fis = fis

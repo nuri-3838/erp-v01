@@ -79,6 +79,8 @@
       <div class="izgara">
         <div class="alan"><label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}</div>
         <div class="alan" id="kur-tipi-alan"><label for="{{ form.kur_tipi.id_for_label }}">{{ form.kur_tipi.label }}</label>{{ form.kur_tipi }}</div>
+        <div class="alan"><label for="{{ form.kur_degerleme.id_for_label }}">{{ form.kur_degerleme.label }}</label>{{ form.kur_degerleme }}
+          <p class="yardim">Dönem sonu kur değerlemesi: Otomatik'te verilen/alınan avans değerlenmez; parasal alacak/borç sayılan depozito gibi kalemlerde "Her zaman değerle" seçin.</p></div>
         <div class="alan"><label for="{{ form.kredi_limiti.id_for_label }}">{{ form.kredi_limiti.label }}</label>{{ form.kredi_limiti }}{% for e in form.kredi_limiti.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.iskonto_yuzdesi.id_for_label }}">{{ form.iskonto_yuzdesi.label }}</label>{{ form.iskonto_yuzdesi }}{% for e in form.iskonto_yuzdesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.odeme_kosulu.id_for_label }}">{{ form.odeme_kosulu.label }}</label>{{ form.odeme_kosulu }}
