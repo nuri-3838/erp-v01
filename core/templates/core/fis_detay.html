@@ -58,6 +58,11 @@
     <p class="yardim" style="margin:0 0 .6rem">✂️ Bu fiş bir <strong>cari kesinti/masraf hareketinden</strong> otomatik oluştu;
       düzenleme/silme cari ekstresinden yapılır.</p>
     {% if fis.cari_id %}<a class="dugme" href="{% url 'core:cari_ekstresi' fis.cari_id %}">📄 Cari ekstresine git</a>{% endif %}
+  {% elif fis.kaynak == 'CARI_VIRMAN' %}
+    <p class="yardim" style="margin:0 0 .6rem">🔁 Bu fiş bir <strong>cari virman hareketinden</strong> otomatik oluştu;
+      düzenleme/silme cari ekstresinden yapılır.</p>
+    {% if fis.cari_id %}<a class="dugme" href="{% url 'core:cari_ekstresi' fis.cari_id %}">📄 Cari ekstresine git</a>{% endif %}
+    {% if fis.karsi_cari_id %}<a class="dugme" href="{% url 'core:cari_ekstresi' fis.karsi_cari_id %}">📄 Karşı cari ekstresi</a>{% endif %}
   {% else %}
     <a class="dugme" href="{% url 'core:fis_duzenle' fis.pk %}">Düzenle</a>
     {% if fis.kaynak == 'MANUEL' and user.is_superuser %}<a class="dugme" style="color:var(--hata)" href="{% url 'core:fis_sil' fis.pk %}">🗑️ Sil</a>{% endif %}

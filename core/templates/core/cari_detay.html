@@ -65,6 +65,7 @@
     <div class="detay-aksiyon">
       <a class="dugme" href="{% url 'core:cari_ekstresi' cari.pk %}">📄 Ekstre</a>
       <a class="dugme" href="{% url 'core:cari_kesinti_ekle' cari.pk %}">✂️ Kesinti / Masraf</a>
+      <a class="dugme" href="{% url 'core:cari_virman_ekle' cari.pk %}">🔁 Virman</a>
       <a class="dugme" href="{% url 'core:cari_duzenle' cari.pk %}">✏️ Düzenle</a>
       <form method="post" action="{% url 'core:cari_sil' cari.pk %}" style="margin:0"
             onsubmit="return confirm('{{ cari.unvan }} silinsin mi?');">

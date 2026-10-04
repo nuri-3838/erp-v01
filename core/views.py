@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketForm, CariKesintiForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -88,6 +88,7 @@ from core.services import lokasyon as lokasyon_servis
 from core.services import cari_kategori as cari_kategori_servis
 from core.services import cari as cari_servis
 from core.services import cari_kesinti as cari_kesinti_servis
+from core.services import cari_virman as cari_virman_servis
 from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
@@ -295,6 +296,10 @@ def fis_duzenle(request, pk):
         messages.info(request, "Bu fiş bir cari kesinti/masraf hareketinden oluştu; cari ekstresinden düzenlenir.")
         return (redirect("core:cari_ekstresi", pk=fis.cari_id) if fis.cari_id
                 else redirect("core:fis_detay", pk=fis.pk))
+    if fis.kaynak == YevmiyeFisi.Kaynak.CARI_VIRMAN:
+        messages.info(request, "Bu fiş bir cari virman hareketinden oluştu; cari ekstresinden düzenlenir.")
+        return (redirect("core:cari_ekstresi", pk=fis.cari_id) if fis.cari_id
+                else redirect("core:fis_detay", pk=fis.pk))
     if fis.kaynak == YevmiyeFisi.Kaynak.KREDI:
         messages.info(request, "Bu fiş bir kredi hareketinden oluştu; düzenlenemez. "
                                "Gerekirse hareketi iptal edip yeniden girin.")
@@ -386,6 +391,9 @@ def fis_sil_gorunum(request, pk):
         return redirect("core:kredi_karti_detay", pk=fis.kredi_karti_id)
     if fis.kaynak == YevmiyeFisi.Kaynak.CARI_KESINTI and fis.cari_id:
         messages.info(request, "Bu fiş bir cari kesinti/masraf hareketinden oluştu; silmek için cari ekstresini kullanın.")
+        return redirect("core:cari_ekstresi", pk=fis.cari_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.CARI_VIRMAN and fis.cari_id:
+        messages.info(request, "Bu fiş bir cari virman hareketinden oluştu; silmek için cari ekstresini kullanın.")
         return redirect("core:cari_ekstresi", pk=fis.cari_id)
     if fis.kaynak == YevmiyeFisi.Kaynak.KREDI and fis.kredi_id:
         messages.info(request, "Bu fiş bir kredi hareketinden oluştu; silmek için kredi detayını kullanın.")
@@ -1845,6 +1853,65 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
 
 
 @ekran_gerekli("cariler")
+def cari_virman_ekle(request, pk):
+    """Cariler arası virman (bu cari ↔ karşı cari; manuel mahsup fişi yerine)."""
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = CariVirmanForm(request.POST, cari=cari)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                fis = cari_virman_servis.virman_olustur(
+                    cari=cari, karsi_cari=cd["karsi_cari"], tarih=cd["tarih"], tutar=cd["tutar"], yon=cd["yon"],
+                    aciklama=cd["aciklama"], sayilan_pb=cd.get("sayilan_pb"), kullanici=request.user)
+                messages.success(request, f"Virman kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:cari_ekstresi", pk=cari.pk)
+            except cari_virman_servis.CariVirmanHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariVirmanForm(cari=cari)
+    return render(request, "core/cari_virman_form.html", {"cari": cari, "form": form, "duzenle": False})
+
+
+@ekran_gerekli("cariler")
+def cari_virman_duzenle(request, pk, fis_pk):
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    try:
+        bilgi = cari_virman_servis.duzenleme_bilgisi(fis, cari)
+    except cari_virman_servis.CariVirmanHatasi as e:
+        messages.error(request, str(e))
+        return redirect("core:cari_ekstresi", pk=cari.pk)
+    if request.method == "POST":
+        form = CariVirmanForm(request.POST, cari=cari)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                cari_virman_servis.virman_guncelle(
+                    fis=fis, cari=cari, karsi_cari=cd["karsi_cari"], tarih=cd["tarih"], tutar=cd["tutar"], yon=cd["yon"],
+                    aciklama=cd["aciklama"], sayilan_pb=cd.get("sayilan_pb"), kullanici=request.user)
+                messages.success(request, f"Virman güncellendi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:cari_ekstresi", pk=cari.pk)
+            except cari_virman_servis.CariVirmanHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = CariVirmanForm(cari=cari, initial={
+            "tarih": fis.tarih, "tutar": bilgi["tutar"], "yon": bilgi["yon"], "karsi_cari": bilgi["karsi_cari"].pk,
+            "sayilan_pb": bilgi["sayilan_pb"], "aciklama": fis.aciklama})
+    return render(request, "core/cari_virman_form.html", {"cari": cari, "form": form, "duzenle": True, "fis": fis})
+
+
+@ekran_gerekli("cariler")
+def cari_virman_sil(request, pk, fis_pk):
+    """Virman hareketini KALICI siler (fiş dahil; onay sayfası; yalnız süper kullanıcı)."""
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    return _fis_sil_akisi(
+        request, fis, baslik=f"Cari virman · {cari.unvan}", geri=reverse("core:cari_ekstresi", args=[cari.pk]),
+        sil=lambda: cari_virman_servis.virman_sil(fis=fis, cari=cari, kullanici=request.user))
+
+
+@ekran_gerekli("cariler")
 def cari_kesinti_sil(request, pk, fis_pk):
     """Kesinti / masraf hareketini KALICI siler (onay sayfası; yalnız süper kullanıcı)."""
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
@@ -1862,7 +1929,8 @@ def cari_ekstresi(request, pk):
     kesinti_fis_pks = set(YevmiyeFisi.objects.filter(
         kaynak=YevmiyeFisi.Kaynak.CARI_KESINTI, cari=cari, silindi=False).values_list("pk", flat=True))
     return render(request, "core/cari_ekstresi.html",
-                  {"cari": cari, "form": form, "ekstre": eks, "kesinti_fis_pks": kesinti_fis_pks})
+                  {"cari": cari, "form": form, "ekstre": eks, "kesinti_fis_pks": kesinti_fis_pks,
+                   "virman_fis_pks": cari_virman_servis.cari_virman_fisleri(cari)})
 
 
 # === FİNANS — Kasa ===

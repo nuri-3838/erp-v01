@@ -69,7 +69,7 @@
         <td class="sag">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
         <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
         <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
-        <td class="islem-hucre">{% if s.fis_pk in kesinti_fis_pks %}<a class="dugme-ikincil" style="display:inline-block;text-decoration:none;padding:.25rem .6rem;border-radius:8px" href="{% url 'core:cari_kesinti_duzenle' cari.pk s.fis_pk %}">Düzenle</a>{% if user.is_superuser %} <a class="sil" style="display:inline-block;text-decoration:none;padding:.25rem .6rem;border-radius:8px" href="{% url 'core:cari_kesinti_sil' cari.pk s.fis_pk %}">Sil</a>{% endif %}{% endif %}</td>
+        <td class="islem-hucre">{% if s.fis_pk in kesinti_fis_pks %}<a class="dugme-ikincil" style="display:inline-block;text-decoration:none;padding:.25rem .6rem;border-radius:8px" href="{% url 'core:cari_kesinti_duzenle' cari.pk s.fis_pk %}">Düzenle</a>{% if user.is_superuser %} <a class="sil" style="display:inline-block;text-decoration:none;padding:.25rem .6rem;border-radius:8px" href="{% url 'core:cari_kesinti_sil' cari.pk s.fis_pk %}">Sil</a>{% endif %}{% elif s.fis_pk in virman_fis_pks %}<a class="dugme-ikincil" style="display:inline-block;text-decoration:none;padding:.25rem .6rem;border-radius:8px" href="{% url 'core:cari_virman_duzenle' cari.pk s.fis_pk %}">Düzenle</a>{% if user.is_superuser %} <a class="sil" style="display:inline-block;text-decoration:none;padding:.25rem .6rem;border-radius:8px" href="{% url 'core:cari_virman_sil' cari.pk s.fis_pk %}">Sil</a>{% endif %}{% endif %}</td>
       </tr>
     {% empty %}
       <tr><td colspan="11" class="yardim">Bu aralıkta hareket yok.</td></tr>

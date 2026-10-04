@@ -3145,6 +3145,36 @@ class DovizIslemForm(forms.Form):
         return cd
 
 
+class CariVirmanForm(forms.Form):
+    """Cari virman: tarih, tutar (TL), yön, karşı cari (tüm cariler), (döviz carilerde) hangi dövize sayılacağı, açıklama."""
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+                            initial=timezone.localdate)
+    tutar = TRDecimalField(label="Tutar (TL)", basamak=2)
+    yon = forms.ChoiceField(label="Yön", choices=[], widget=forms.RadioSelect)
+    karsi_cari = forms.ModelChoiceField(label="Karşı cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
+    sayilan_pb = forms.ChoiceField(
+        label="Döviz carilerde hangi dövize sayılsın", required=False, choices=[],
+        help_text="Taraflardan biri döviz carisiyse TL tutar, işlem günü TCMB alış kuruyla seçilen dövize çevrilir (TL aynı). "
+                  "Boş = carinin ana para birimi; 'TL (çevirme)' = TL havuzu.")
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
+
+    def __init__(self, *args, cari=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cari_virman import YONLER
+        from core.services.doviz_cari import SECENEKLER
+        self.fields["yon"].choices = list(YONLER)
+        self.fields["sayilan_pb"].choices = SECENEKLER
+        qs = Cari.objects.filter(silindi=False).exclude(muhasebe_kodu="").order_by("unvan")
+        if cari is not None:
+            qs = qs.exclude(pk=cari.pk)
+        self.fields["karsi_cari"].queryset = qs
+        self.fields["karsi_cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["karsi_cari"].widget.attrs["class"] = "akilli-sec"
+        if not self.is_bound and "yon" not in (self.initial or {}):
+            self.initial["yon"] = "alacak"
+
+
 class CariKesintiForm(forms.Form):
     """Cari kartından Kesinti / Masraf hareketi: tarih, tutar, gider hesabı (varsayılan 770.03), açıklama."""
     tarih = forms.DateField(

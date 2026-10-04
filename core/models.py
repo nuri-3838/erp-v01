@@ -161,6 +161,7 @@ class YevmiyeFisi(TemelModel):
         CARI_KESINTI = "CARI_KESINTI", "Cari Kesinti / Masraf (otomatik)"
         DURAN_VARLIK = "DURAN_VARLIK", "Duran Varlık Kartı Açılışı (otomatik)"
         DONEMSEL = "DONEMSEL", "Dönemsel Dağıtım (otomatik)"
+        CARI_VIRMAN = "CARI_VIRMAN", "Cari Virman (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -194,6 +195,11 @@ class YevmiyeFisi(TemelModel):
     cari = models.ForeignKey(
         "Cari", verbose_name="kaynak cari", null=True, blank=True,
         on_delete=models.PROTECT, related_name="kesinti_fisleri",
+    )
+    # Kaynak=CARI_VIRMAN: virmanın KARŞI tarafı olan cari (``cari`` = virmanın yapıldığı cari); iki carinin ekstresinde de Düzenle/Sil.
+    karsi_cari = models.ForeignKey(
+        "Cari", verbose_name="virman karşı cari", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="virman_karsi_fisleri",
     )
     # Kaynak=KREDI fişin kaynağı olan kredi (hareket motoru); kasa ile aynı amaç.
     kredi = models.ForeignKey(
