@@ -75,7 +75,7 @@ from core.services.raporlar import (
     mali_yil_araligi, mizan, mizan_usd,
 )
 from core.services.yevmiye import (
-    SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_iptal, fis_olustur, kur_usd_birebir,
+    SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_olustur, kur_usd_birebir,
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import hesap_plani as hp
@@ -94,6 +94,7 @@ from core.services import teklif_siparis as teklif_siparis_servis
 from core.services import depo as depo_servis
 from core.services import hareket as hareket_servis
 from core.services import finans as finans_servis
+from core.services import fis_sil as fis_sil_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
 from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
@@ -207,7 +208,7 @@ def fis_listesi(request):
 
     usd = request.GET.get("gorunum") == "usd"
     ara = (request.GET.get("ara") or "").strip()
-    taban = YevmiyeFisi.objects.filter(tarih__gte=b, tarih__lte=s)
+    taban = YevmiyeFisi.objects.filter(tarih__gte=b, tarih__lte=s, silindi=False)
     if ara:
         kosul = (
             Q(aciklama__contains=buyuk_harf_tr(ara))
@@ -224,7 +225,7 @@ def fis_listesi(request):
             kosul |= Q(satirlar__borc=tutar) | Q(satirlar__alacak=tutar)
         # Aramayı ALT SORGU ile uygula: toplam annotate'i join çakışmasından korunur
         eslesen = taban.filter(kosul).values("pk").distinct()
-        taban = YevmiyeFisi.objects.filter(pk__in=eslesen)
+        taban = YevmiyeFisi.objects.filter(pk__in=eslesen, silindi=False)
 
     fisler = (
         taban.annotate(t_borc=Sum("satirlar__borc"), t_alacak=Sum("satirlar__alacak"))
@@ -328,8 +329,27 @@ def fis_duzenle(request, pk):
                   {"fform": fform, "formset": formset, "fis": fis})
 
 
+def _fis_sil_akisi(request, fis, *, sil, geri, baslik):
+    """KALICI silme akışı: GET → onay sayfası (fiş no, tarih, tutar, açıklama + varsa engel nedeni);
+    POST → siler (yalnız süper kullanıcı) ve ``geri`` adresine döner."""
+    ozet = fis_sil_servis.fis_ozeti(fis)
+    if request.method == "POST":
+        try:
+            sil()
+            messages.success(request, f"Silindi: {ozet['no']} · {ozet['tarih']:%d.%m.%Y} · "
+                                      f"{format_tr(ozet['tutar'])} TL.")
+        except ValueError as e:
+            messages.error(request, str(e))
+        return redirect(geri)
+    yetkisiz = not request.user.is_superuser
+    engel = None if yetkisiz else fis_sil_servis.onizle(sil)
+    return render(request, "core/fis_sil_onay.html", {
+        "baslik": baslik, "ozet": ozet, "engel": engel, "yetkisiz": yetkisiz, "geri": geri,
+        "eylem": request.path})
+
+
 @ekran_gerekli("fis_listesi")
-def fis_iptal_gorunum(request, pk):
+def fis_sil_gorunum(request, pk):
     fis = get_object_or_404(YevmiyeFisi, pk=pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.FATURA and not fis.silindi:
         fat = fis.faturalar.filter(silindi=False).first()
@@ -342,17 +362,17 @@ def fis_iptal_gorunum(request, pk):
             messages.info(request, "Bu fiş bir yatırım projesi aktifleştirmesinden oluştu; "
                                    "iptal için proje detayındaki 'Aktifleştirmeyi Geri Al'ı kullanın.")
             return redirect("core:yatirim_projesi_detay", pk=proje.pk)
-    if fis.kaynak == YevmiyeFisi.Kaynak.KASA and not fis.silindi and fis.kasa_id:
-        messages.info(request, "Bu fiş bir kasa hareketinden oluştu; iptal için kasa detayını kullanın.")
+    if fis.kaynak == YevmiyeFisi.Kaynak.KASA and fis.kasa_id:
+        messages.info(request, "Bu fiş bir kasa hareketinden oluştu; silmek için kasa detayını kullanın.")
         return redirect("core:kasa_detay", pk=fis.kasa_id)
-    if fis.kaynak == YevmiyeFisi.Kaynak.BANKA and not fis.silindi and fis.banka_hesap_id:
-        messages.info(request, "Bu fiş bir banka hareketinden oluştu; iptal için banka hesabı detayını kullanın.")
+    if fis.kaynak == YevmiyeFisi.Kaynak.BANKA and fis.banka_hesap_id:
+        messages.info(request, "Bu fiş bir banka hareketinden oluştu; silmek için banka hesabı detayını kullanın.")
         return redirect("core:banka_hesap_detay", pk=fis.banka_hesap_id)
-    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET and not fis.silindi and fis.cek_bordrosu_id:
-        messages.info(request, "Bu fiş bir çek/senet bordrosundan oluştu; iptal için bordro detayını kullanın.")
+    if fis.kaynak == YevmiyeFisi.Kaynak.CEK_SENET and fis.cek_bordrosu_id:
+        messages.info(request, "Bu fiş bir çek/senet bordrosundan oluştu; silmek için bordro detayını kullanın.")
         return redirect("core:cek_bordro_detay", pk=fis.cek_bordrosu_id)
-    if fis.kaynak == YevmiyeFisi.Kaynak.KREDI_KARTI and not fis.silindi and fis.kredi_karti_id:
-        messages.info(request, "Bu fiş bir kredi kartı hareketinden oluştu; iptal için kredi kartı detayını kullanın.")
+    if fis.kaynak == YevmiyeFisi.Kaynak.KREDI_KARTI and fis.kredi_karti_id:
+        messages.info(request, "Bu fiş bir kredi kartı hareketinden oluştu; silmek için kredi kartı detayını kullanın.")
         return redirect("core:kredi_karti_detay", pk=fis.kredi_karti_id)
     if fis.kaynak == YevmiyeFisi.Kaynak.KREDI and not fis.silindi and fis.kredi_id:
         messages.info(request, "Bu fiş bir kredi hareketinden oluştu; iptal için kredi detayını kullanın.")
@@ -364,23 +384,23 @@ def fis_iptal_gorunum(request, pk):
                                    "stok detayındaki hareketi silin.")
             return redirect("core:stok_detay", pk=hareket.stok_id)
     if fis.kaynak == YevmiyeFisi.Kaynak.URETIM and not fis.silindi:
-        messages.info(request, "Bu fiş bir üretim kaydının maliyet aktarımıdır; elle iptal "
-                               "edilemez (üretim kaydı ve stok hareketleriyle birlikte yönetilir).")
+        messages.info(request, "Bu fiş bir üretim kaydının maliyet aktarımıdır; elle silinemez "
+                               "(üretim kaydı ve stok hareketleriyle birlikte yönetilir).")
         return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.STOK_SATIS and not fis.silindi:
         hareket = fis.stok_sarf_hareketleri.filter(silindi=False).first()
         fatura = hareket.fatura_satir.fatura if hareket and hareket.fatura_satir_id else None
-        messages.info(request, "Bu fiş bir satış faturasının stok maliyetidir; iptal için "
+        messages.info(request, "Bu fiş bir satış faturasının stok maliyetidir; silmek için "
                                "faturayı düzenleyin/silin.")
         return redirect("core:fatura_detay", pk=fatura.pk) if fatura else redirect(
             "core:fis_detay", pk=fis.pk)
-    if request.method == "POST":
-        if fis.silindi:
-            messages.success(request, f"Fiş zaten iptal: {fis.yil}/{fis.fis_no}")
-        else:
-            fis_iptal(fis, kullanici=request.user)
-            messages.success(request, f"Fiş iptal edildi: {fis.yil}/{fis.fis_no}")
-    return redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak != YevmiyeFisi.Kaynak.MANUEL:
+        messages.error(request, "Bu fiş buradan silinemez; kaynak ekranından yönetilir.")
+        return redirect("core:fis_detay", pk=fis.pk)
+    return _fis_sil_akisi(
+        request, fis, baslik=f"Fiş {fis.yil}/{fis.fis_no}", geri=reverse("core:fis_listesi"),
+        sil=lambda: fis_sil_servis.fis_sil(fis, kullanici=request.user,
+                                           izinli_kaynaklar={YevmiyeFisi.Kaynak.MANUEL}))
 
 
 @ekran_gerekli("fis_listesi")
@@ -1877,17 +1897,13 @@ def kasa_hareket_ekle(request, pk, tip):
 
 
 @ekran_gerekli("kasa")
-def kasa_hareket_iptal(request, pk, fis_pk):
-    """Kasa hareketi (kaynak=KASA fiş) iptali — kasa detayından (ham fiş ekranı kilitli)."""
+def kasa_hareket_sil(request, pk, fis_pk):
+    """Kasa hareketini (kaynak=KASA fiş) KALICI siler — kasa detayından (ham fiş ekranı kilitli)."""
     kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
     fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
-    if request.method == "POST":
-        try:
-            kasa_hareket_servis.hareket_iptal(fis=fis, kasa=kasa, kullanici=request.user)
-            messages.success(request, f"Hareket iptal edildi: fiş {fis.yil}/{fis.fis_no}.")
-        except kasa_hareket_servis.KasaHareketHatasi as e:
-            messages.error(request, str(e))
-    return redirect("core:kasa_detay", pk=kasa.pk)
+    return _fis_sil_akisi(
+        request, fis, baslik=f"Kasa hareketi · {kasa.ad}", geri=reverse("core:kasa_detay", args=[kasa.pk]),
+        sil=lambda: kasa_hareket_servis.hareket_sil(fis=fis, kasa=kasa, kullanici=request.user))
 
 
 @ekran_gerekli("banka")
@@ -2004,17 +2020,14 @@ def banka_hareket_ekle(request, pk, tip):
 
 
 @ekran_gerekli("banka")
-def banka_hareket_iptal(request, pk, fis_pk):
-    """Banka hareketi (kaynak=BANKA fiş) iptali — hesap detayından (ham fiş ekranı kilitli)."""
+def banka_hareket_sil(request, pk, fis_pk):
+    """Banka hareketini (kaynak=BANKA fiş) KALICI siler — hesap detayından (ham fiş ekranı kilitli)."""
     hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
     fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
-    if request.method == "POST":
-        try:
-            banka_hareket_servis.hareket_iptal(fis=fis, banka_hesap=hesap, kullanici=request.user)
-            messages.success(request, f"Hareket iptal edildi: fiş {fis.yil}/{fis.fis_no}.")
-        except banka_hareket_servis.BankaHareketHatasi as e:
-            messages.error(request, str(e))
-    return redirect("core:banka_hesap_detay", pk=hesap.pk)
+    return _fis_sil_akisi(
+        request, fis, baslik=f"Banka hareketi · {hesap.ad}",
+        geri=reverse("core:banka_hesap_detay", args=[hesap.pk]),
+        sil=lambda: banka_hareket_servis.hareket_sil(fis=fis, banka_hesap=hesap, kullanici=request.user))
 
 
 # === FİNANS — Banka (kurum) + bağlı hesaplar (master-detail) ===
@@ -3690,16 +3703,14 @@ def kredi_karti_hareket_ekle(request, pk, tip):
 
 
 @ekran_gerekli("kredi_karti")
-def kredi_karti_hareket_iptal(request, pk, fis_pk):
+def kredi_karti_hareket_sil(request, pk, fis_pk):
+    """Kredi kartı hareketini (fiş + taksit planı) KALICI siler."""
     kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
     fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
-    if request.method == "POST":
-        try:
-            kredi_karti_hareket_servis.hareket_iptal(fis=fis, kart=kart, kullanici=request.user)
-            messages.success(request, "Kart hareketi iptal edildi.")
-        except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
-            messages.error(request, str(e))
-    return redirect("core:kredi_karti_detay", pk=kart.pk)
+    return _fis_sil_akisi(
+        request, fis, baslik=f"Kredi kartı hareketi · {kart.ad}",
+        geri=reverse("core:kredi_karti_detay", args=[kart.pk]),
+        sil=lambda: kredi_karti_hareket_servis.hareket_sil(fis=fis, kart=kart, kullanici=request.user))
 
 
 @ekran_gerekli("kredi_karti")
@@ -4306,17 +4317,31 @@ def cek_bordro_pdf(request, pk):
 
 @ekran_gerekli("cek_senet")
 def cek_bordro_sil(request, pk):
+    """Bordroyu KALICI siler (fiş + satırlar + bordro; giriş bordrosunda evraklar da). GET onay sayfası."""
     bordro = get_object_or_404(CekBordrosu, pk=pk, silindi=False)
+    geri = reverse("core:cek_bordro_detay", args=[bordro.pk])
+    ctx = _bordro_baglam(bordro)
+    fisler = list(bordro.fisler.order_by("yil", "fis_no"))
+    ozet = {"no": f"{bordro.get_tur_display()} #{bordro.pk}", "tarih": bordro.tarih, "tutar": ctx["toplam"],
+            "aciklama": bordro.aciklama,
+            "fis_nolari": ", ".join(f"{f.yil}/{f.fis_no}" for f in fisler),
+            "evrak_sayisi": len(ctx["cekler"]), "giris_mi": ctx["giris_mi"], "satirlar": []}
+
+    def sil():
+        return cek_servis.bordro_sil(bordro, kullanici=request.user)
     if request.method == "POST":
         try:
-            cek_servis.bordro_sil(bordro, kullanici=request.user)
-            evrak_ek = ("evraklar silindi" if bordro.tur in CekBordrosu.GIRIS_TURLERI
-                        else "evraklar önceki durumuna döndü")
-            messages.success(request, f"Bordro geri alındı (fiş iptal, {evrak_ek}).")
+            sil()
+            messages.success(request, f"Bordro silindi: {ozet['no']} (fiş {ozet['fis_nolari'] or '-'}).")
             return redirect("core:cek_senetler")
         except cek_servis.CekHatasi as e:
             messages.error(request, str(e))
-    return redirect("core:cek_bordro_detay", pk=bordro.pk)
+            return redirect(geri)
+    yetkisiz = not request.user.is_superuser
+    engel = None if yetkisiz else fis_sil_servis.onizle(sil)
+    return render(request, "core/fis_sil_onay.html", {
+        "baslik": f"Bordro · {ozet['no']}", "ozet": ozet, "engel": engel, "yetkisiz": yetkisiz,
+        "geri": geri, "eylem": request.path, "bordro_mu": True})
 
 
 @ekran_gerekli("cek_senet")

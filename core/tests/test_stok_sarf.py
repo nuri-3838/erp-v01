@@ -133,7 +133,7 @@ class SarfCikisViewTest(SarfTemel):
         self.client.force_login(self.u)
         h = sarf_cikis_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=D(2026, 6, 1),
                             miktar="10", karsi_hesap_id=self.hesap_255.pk, kullanici=self.u)
-        r = self.client.post(reverse("core:fis_iptal", args=[h.fis_id]))
+        r = self.client.post(reverse("core:fis_sil", args=[h.fis_id]))
         self.assertEqual(r.status_code, 302)
         h.fis.refresh_from_db()
         self.assertFalse(h.fis.silindi)   # iptal edilmedi, yönlendirildi

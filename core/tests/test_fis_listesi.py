@@ -78,12 +78,12 @@ class FisListesiTest(TestCase):
         self.assertContains(r, "MART FİŞİ")
         self.assertNotContains(r, "AĞUSTOS FİŞİ")
 
-    def test_iptal_fis_listede_damgali(self):
+    def test_silinen_fis_listede_gorunmez(self):
         f = self._fis()
-        self.client.post(reverse("core:fis_iptal", args=[f.pk]))
+        self.client.post(reverse("core:fis_sil", args=[f.pk]))
         r = self.client.get(reverse("core:fis_listesi"))
-        self.assertContains(r, "İPTAL")
-        self.assertContains(r, "1.000,00")  # iptal fişin orijinal toplamı yine görünür
+        self.assertNotContains(r, "İPTAL")
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=f.pk).exists())
 
     # --- Düzenleme -----------------------------------------------------------
     def test_duzenle_formu_dolu_gelir(self):
@@ -130,29 +130,28 @@ class FisListesiTest(TestCase):
         f.refresh_from_db()
         self.assertEqual(f.updated_by_id, editor.pk)
 
-    def test_iptal_fis_duzenlenemez(self):
+    def test_silinen_fis_duzenlenemez(self):
         f = self._fis()
-        self.client.post(reverse("core:fis_iptal", args=[f.pk]))
+        self.client.post(reverse("core:fis_sil", args=[f.pk]))
         r = self.client.get(reverse("core:fis_duzenle", args=[f.pk]))
-        self.assertEqual(r.status_code, 302)  # salt-okunur detaya yönlendirilir
+        self.assertEqual(r.status_code, 404)
 
-    # --- İptal + raporlar ----------------------------------------------------
-    def test_iptal_sonrasi_mizana_girmez(self):
+    # --- Silme + raporlar ----------------------------------------------------
+    def test_silme_sonrasi_mizana_girmez(self):
         f = self._fis(tutar="1.000,00", tarih=D(2026, 3, 10))
         m1 = mizan(D(2026, 1, 1), D(2026, 12, 31))
         self.assertTrue(any(s.hesap_kodu == "100" for s in m1.satirlar))
-        self.client.post(reverse("core:fis_iptal", args=[f.pk]))
+        self.client.post(reverse("core:fis_sil", args=[f.pk]))
         m2 = mizan(D(2026, 1, 1), D(2026, 12, 31))
         self.assertFalse(any(s.hesap_kodu == "100" for s in m2.satirlar))
-        f.refresh_from_db()
-        self.assertTrue(f.silindi)
 
-    def test_iptal_audit(self):
+    def test_silme_denetim_kaydi(self):
+        from core.models import SilmeKaydi
         f = self._fis()
-        self.client.post(reverse("core:fis_iptal", args=[f.pk]))
-        f.refresh_from_db()
-        self.assertEqual(f.updated_by_id, self.yon.pk)
-        self.assertIsNotNone(f.silindi_at)
+        no = f"{f.yil}/{f.fis_no}"
+        self.client.post(reverse("core:fis_sil", args=[f.pk]))
+        k = SilmeKaydi.objects.get(kayit_no=no)
+        self.assertEqual(k.silen_id, self.yon.pk)
 
     # --- Arama + sayfalama -------------------------------------------------
     def test_arama_aciklama(self):

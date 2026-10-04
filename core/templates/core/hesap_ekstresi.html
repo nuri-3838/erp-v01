@@ -18,7 +18,7 @@
 </form>
 
 <p class="yardim">Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
-  · İptal edilen fişler hariç · Bakiyeler yevmiyeden hesaplanır.
+  · Bakiyeler yevmiyeden hesaplanır.
   {% if ekstre.cok_hesap %}· Üst hesap: altındaki tüm alt hesapların hareketleri dahildir.{% endif %}
   · TL'nin yanında işlem para biriminin borç/alacak/bakiyesi de gösterilir (çift bakiye).</p>
 

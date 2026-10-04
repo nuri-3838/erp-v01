@@ -32,7 +32,7 @@ def _varsayilan(baslangic, bitis):
 
 
 def _hareketler(baslangic, bitis: datetime.date) -> list[dict]:
-    """Hesap bazında borç/alacak toplamları (iptal hariç). baslangic None ise alt
+    """Hesap bazında borç/alacak toplamları. baslangic None ise alt
     sınır yok (bilanço: açılıştan o tarihe KÜMÜLATİF)."""
     qs = YevmiyeSatir.objects.filter(
         silindi=False, fis__silindi=False, fis__tarih__lte=bitis)
@@ -53,7 +53,7 @@ def _hareketler(baslangic, bitis: datetime.date) -> list[dict]:
 
 
 def _satirlar(baslangic: datetime.date, bitis: datetime.date):
-    """Ham yevmiye satırları (iptal hariç) — satır bazlı USD çevrimi için."""
+    """Ham yevmiye satırları — satır bazlı USD çevrimi için."""
     return (
         YevmiyeSatir.objects.filter(
             silindi=False, fis__silindi=False,
@@ -258,7 +258,7 @@ class Ekstre:
 def ekstre(hesap_kodu: str, baslangic=None, bitis=None, acilis=None, acilis_dvz=None) -> Ekstre:
     """Belirtilen hesabın tarih aralığındaki hareket ekstresi, yürüyen bakiyeli.
 
-    Yalnızca aktif (iptal edilmemiş) fişlerin satırları; fiş tarih + fis_no + satır id
+    Yalnızca aktif fişlerin satırları; fiş tarih + fis_no + satır id
     sırasında. Toplam borç/alacak/bakiye, mizandaki aynı hesabın değerleriyle birebir tutar.
     """
     baslangic, bitis = _varsayilan(baslangic, bitis)

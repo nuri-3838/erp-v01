@@ -213,6 +213,6 @@ class AktiflestirEkranTest(AktiflestirBase):
              "varlik_adi": "cnc", "tutar": Decimal("10000")}])
         proje.refresh_from_db()
         self.client.force_login(self.yonetici)
-        r = self.client.get(reverse("core:fis_iptal", args=[proje.aktiflestirme_fisi.pk]))
+        r = self.client.get(reverse("core:fis_sil", args=[proje.aktiflestirme_fisi.pk]))
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r.url, reverse("core:yatirim_projesi_detay", args=[proje.pk]))

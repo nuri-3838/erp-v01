@@ -13,10 +13,11 @@ from django.db import transaction
 
 from core.metin import buyuk_harf_tr
 from core.models import (BankaHesap, Cari, CekBordrosu, CekBordroSatir, CekHesapAyari,
-                         CekSenet, HesapPlani, Kasa, Kur, YevmiyeFisi)
+                         CekSenet, HesapPlani, Kasa, Kur, SilmeKaydi, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.finans import FinansHatasi, _soft_sil, _yaprak_hesap_coz
-from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
+from core.services.fis_sil import SilmeHatasi, fis_kalici_sil, kalici_sil, yetki_kontrol
+from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi,
                                    fis_olustur)
 
 
@@ -621,36 +622,58 @@ def odeme_bordrosu_olustur(**kwargs) -> CekBordrosu:
 
 
 @transaction.atomic
-def bordro_sil(bordro: CekBordrosu, kullanici=None) -> CekBordrosu:
-    """Bordroyu geri al: bağlı fiş(ler) iptal + bordro soft-delete.
-    Giriş/çıkış bordrosu: oluşturduğu evrakı soft-delete (evrak işlem görmüşse engellenir).
-    İşlem bordrosu: seçtiği evrakın durumunu ÖNCEKİ haline döndürür (sonradan işlem görmüşse engellenir)."""
-    if bordro.silindi:
-        return bordro
+def bordro_sil(bordro: CekBordrosu, kullanici=None) -> SilmeKaydi:
+    """Bordroyu KALICI siler (yalnız süper kullanıcı; denetim kaydı yazılır): bağlı fiş(ler) + bordro
+    satırları + bordro. Giriş/çıkış bordrosu: oluşturduğu evrakı da siler (evrak işlem görmüşse ya da
+    başka kayda bağlıysa engellenir). İşlem bordrosu: seçtiği evrakın durumunu ÖNCEKİ haline döndürür
+    (sonradan işlem görmüşse engellenir). Engel varsa hiçbir şey silinmez (transaction geri alınır)."""
+    try:
+        yetki_kontrol(kullanici)
+        return _bordro_kalici_sil(bordro, kullanici)
+    except SilmeHatasi as e:
+        raise CekHatasi(str(e))
+
+
+def _bordro_kalici_sil(bordro, kullanici):
+    cekler = list(bordro.evrak_qs().order_by("id"))
+    toplam = sum((c.tutar for c in cekler), Decimal("0.00"))
+    veri = {"bordro_pk": bordro.pk, "tur": bordro.tur, "cari_id": bordro.cari_id,
+            "banka_hesap_id": bordro.banka_hesap_id, "kasa_id": bordro.kasa_id,
+            "evraklar": [{"pk": c.pk, "tip": c.tip, "tutar": str(c.tutar), "vade": str(c.vade),
+                          "durum": c.durum} for c in cekler],
+            "fisler": []}
     if bordro.tur in CekBordrosu.GIRIS_TURLERI:
-        cekler = bordro.cek_senetler.filter(silindi=False)
+        giris = list(bordro.cek_senetler.all())
         beklenen = _GIRIS_DURUM.get(bordro.tur)
-        if beklenen and cekler.exclude(durum=beklenen).exists():
+        if beklenen and any(c.durum != beklenen for c in giris if not c.silindi):
             raise CekHatasi("Bu bordrodaki bazı çek/senetler işlem görmüş; önce o işlemleri geri alın.")
-        for fis in bordro.fisler.filter(silindi=False):
-            fis_iptal(fis, kullanici=kullanici)
-        for cek in cekler:
-            _soft_sil(cek, kullanici)
+        bordro_satirlari = []
     else:
-        satirlar = list(bordro.satirlar.filter(silindi=False).select_related("cek_senet"))
+        giris = []
+        bordro_satirlari = list(bordro.satirlar.select_related("cek_senet"))
         sonuc = _ISLEM_SONUC.get(bordro.tur)
-        if sonuc and any(s.cek_senet.durum != sonuc for s in satirlar):
+        if sonuc and any(s.cek_senet.durum != sonuc for s in bordro_satirlari if not s.silindi):
             raise CekHatasi("Bu bordrodaki bazı çek/senetler sonradan işlem görmüş; "
                             "önce o işlemleri geri alın.")
-        for fis in bordro.fisler.filter(silindi=False):
-            fis_iptal(fis, kullanici=kullanici)
-        for s in satirlar:
+    for fis in list(bordro.fisler.all()):
+        _ozet, fis_veri = fis_kalici_sil(fis)
+        veri["fisler"].append({"no": _ozet["no"], "tarih": str(_ozet["tarih"]),
+                               "tutar": str(_ozet["tutar"]), **fis_veri})
+    for s in bordro_satirlari:
+        if not s.silindi:
             c = s.cek_senet
             c.durum = s.onceki_durum
             c.updated_by = kullanici
             c.save(update_fields=["durum", "updated_by", "updated_at"])
-            _soft_sil(s, kullanici)
-    return _soft_sil(bordro, kullanici)
+        kalici_sil(s)
+    for c in giris:
+        kalici_sil(c)
+    kalici_sil(bordro)
+    aciklama = bordro.aciklama
+    return SilmeKaydi.objects.create(
+        tur=SilmeKaydi.Tur.CEK_BORDRO, kayit_no=f"{bordro.get_tur_display()} #{veri['bordro_pk']}",
+        tarih=bordro.tarih, tutar=toplam, aciklama=(aciklama or "")[:500], kaynak=bordro.tur,
+        silen=kullanici, created_by=kullanici, updated_by=kullanici, veri=veri)
 
 
 def aktif_bordrolar():

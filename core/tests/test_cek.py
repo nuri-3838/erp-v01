@@ -168,16 +168,20 @@ class CariGirisBordroTest(TestCase):
         with self.assertRaises(CekHatasi):
             self._olustur([{"tip": "CEK", "tutar": "100", "vade": datetime.date(2026, 9, 1)}])
 
-    def test_bordro_sil_fisi_iptal_eder(self):
+    def test_bordro_sil_fisi_ve_evraki_kalici_siler(self):
         import datetime
         from core.services.cek import bordro_sil
         b = self._olustur([{"tip": "CEK", "tutar": "100", "vade": datetime.date(2026, 9, 1)}])
         fis = b.fisler.get()
+        cek_ids = list(b.cek_senetler.values_list("pk", flat=True))
         bordro_sil(b, kullanici=self.yon)
-        b.refresh_from_db(); fis.refresh_from_db()
-        self.assertTrue(b.silindi)
-        self.assertTrue(fis.silindi)
-        self.assertEqual(b.cek_senetler.filter(silindi=False).count(), 0)
+        from core.models import CekBordrosu, CekSenet, SilmeKaydi, YevmiyeFisi
+        self.assertFalse(CekBordrosu.objects.filter(pk=b.pk).exists())
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=fis.pk).exists())
+        self.assertFalse(CekSenet.objects.filter(pk__in=cek_ids).exists())
+        k = SilmeKaydi.objects.get(tur="CEK_BORDRO", kaynak=b.tur)
+        self.assertEqual(k.silen_id, self.yon.pk)
+        self.assertEqual(len(k.veri["fisler"]), 1)
 
     def test_view_post_olusturur(self):
         from core.models import CekBordrosu
@@ -276,10 +280,10 @@ class CariGirisBordroTest(TestCase):
             kullanici=self.yon)
         fis = b.fisler.get()
         bordro_sil(b, kullanici=self.yon)   # VERİLDİ evrak da silinebilmeli (giriş durumu)
-        b.refresh_from_db(); fis.refresh_from_db()
-        self.assertTrue(b.silindi)
-        self.assertTrue(fis.silindi)
-        self.assertEqual(b.cek_senetler.filter(silindi=False).count(), 0)
+        from core.models import CekBordrosu, CekSenet, YevmiyeFisi
+        self.assertFalse(CekBordrosu.objects.filter(pk=b.pk).exists())
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=fis.pk).exists())
+        self.assertFalse(CekSenet.objects.exists())
 
     def test_firma_cikis_view_ve_aktif_buton(self):
         self.client.force_login(self.yon)
@@ -306,9 +310,9 @@ class CariGirisBordroTest(TestCase):
         self.assertEqual(s["101.01"], (Decimal("0.00"), Decimal("3000.00")))   # portföy çek alacak
         # geri-al → portföye döner
         bordro_sil(cb, kullanici=self.yon)
-        cb.refresh_from_db(); fis.refresh_from_db()
-        self.assertTrue(cb.silindi)
-        self.assertTrue(fis.silindi)
+        from core.models import YevmiyeFisi
+        self.assertFalse(CekBordrosu.objects.filter(pk=cb.pk).exists())
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=fis.pk).exists())
         self.assertTrue(all(c.durum == "PORTFOYDE" for c in CekSenet.objects.filter(pk__in=cek_ids)))
 
     def test_ciro_portfoyde_olmayan_reddedilir(self):

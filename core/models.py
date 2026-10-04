@@ -3465,3 +3465,33 @@ class MesaiKaydi(TemelModel):
         if self.cikis_zamani is None:
             return None
         return int((self.cikis_zamani - self.giris_zamani).total_seconds() // 60)
+
+
+class SilmeKaydi(TemelModel):
+    """Kalıcı (fiziksel) silme denetim kaydı — her fiş/bordro silmesi için BİR kayıt; silinen
+    kaydın özeti (no, tarih, tutar, açıklama) + satırları JSON olarak burada kalır. Bu kaydın
+    kendisi silinmez/güncellenmez (bkz. core.services.fis_sil)."""
+
+    class Tur(models.TextChoices):
+        FIS = "FIS", "Yevmiye fişi"
+        CEK_BORDRO = "CEK_BORDRO", "Çek/senet bordrosu"
+
+    tur = models.CharField("tür", max_length=12, choices=Tur.choices)
+    kayit_no = models.CharField("kayıt no", max_length=40)   # fiş: "2026/189"; bordro: "#12"
+    tarih = models.DateField("kayıt tarihi", null=True, blank=True)
+    tutar = models.DecimalField("tutar (TL)", max_digits=18, decimal_places=2, null=True, blank=True)
+    aciklama = models.CharField("açıklama", max_length=500, blank=True)
+    kaynak = models.CharField("kaynak", max_length=20, blank=True)
+    silen = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="silen", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="+")
+    veri = models.JSONField("silinen veri", default=dict)
+
+    class Meta:
+        db_table = "silme_kaydi"
+        verbose_name = "silme kaydı"
+        verbose_name_plural = "silme kayıtları"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.get_tur_display()} {self.kayit_no} silindi"

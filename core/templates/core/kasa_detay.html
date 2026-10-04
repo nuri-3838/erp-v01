@@ -159,11 +159,7 @@
               <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
               <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
             {% endif %}
-            <td class="islem-hucre">{% if s.fis_pk in kasa_fis_pks %}
-              <form method="post" action="{% url 'core:kasa_hareket_iptal' kasa.pk s.fis_pk %}"
-                    onsubmit="return confirm('Bu kasa hareketi iptal edilsin mi?');" style="margin:0">
-                {% csrf_token %}<button type="submit" class="sil">İptal</button>
-              </form>{% endif %}</td>
+            <td class="islem-hucre">{% if s.fis_pk in kasa_fis_pks and user.is_superuser %}<a class="sil" style="display:inline-block;text-decoration:none;padding:.3rem .7rem;border-radius:8px" href="{% url 'core:kasa_hareket_sil' kasa.pk s.fis_pk %}">Sil</a>{% endif %}</td>
           </tr>
         {% empty %}
           <tr><td colspan="{% if kasa.para_birimi != 'TRY' %}11{% else %}7{% endif %}" class="yardim"
@@ -193,7 +189,7 @@
       {% endif %}
     </table>
     </div>
-    <p class="yardim">İptal edilen fişler hariç · Bakiye yevmiyeden hesaplanır ·
+    <p class="yardim">Bakiye yevmiyeden hesaplanır ·
       Pozitif = <strong>borç bakiye</strong> (kasada para var), negatif = alacak.</p>
   </section>
   {% endif %}

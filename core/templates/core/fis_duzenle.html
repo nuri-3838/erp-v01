@@ -13,11 +13,7 @@
   <button type="submit" class="birincil">Değişiklikleri kaydet</button>
 </form>
 
-<form method="post" action="{% url 'core:fis_iptal' fis.pk %}" class="alan"
-      onsubmit="return confirm('Fiş {{ fis.yil }}/{{ fis.fis_no }} iptal edilsin mi? Geri alınamaz.');">
-  {% csrf_token %}
-  <button type="submit" style="border-color:var(--hata); color:var(--hata)">Fişi iptal et</button>
-</form>
+{% if fis.kaynak == 'MANUEL' and user.is_superuser %}<p class="alan"><a class="dugme" style="color:var(--hata)" href="{% url 'core:fis_sil' fis.pk %}">🗑️ Fişi sil</a></p>{% endif %}
 
 <p><a href="{% url 'core:fis_listesi' %}">← Fiş listesi</a></p>
 {% endblock %}

@@ -224,7 +224,7 @@ class SatisMaliyetFisiTest(MaliyetBTemel):
         f = self.satis_yap(D(2026, 3, 10), "4")
         h = StokHareket.objects.get(fatura_satir__fatura=f, silindi=False)
         self.assertEqual(self.client.get(reverse("core:fis_duzenle", args=[h.fis_id])).status_code, 302)
-        self.client.post(reverse("core:fis_iptal", args=[h.fis_id]))
+        self.client.post(reverse("core:fis_sil", args=[h.fis_id]))
         h.fis.refresh_from_db()
         self.assertFalse(h.fis.silindi)
 

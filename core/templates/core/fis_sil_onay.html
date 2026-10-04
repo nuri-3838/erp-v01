@@ -1,0 +1,52 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Sil · {{ baslik }}{% endblock %}
+{% block sayfa_adi %}Kalıcı Silme{% endblock %}
+
+{% block content %}
+<a class="ust-link" href="{{ geri }}">← Vazgeç</a>
+<h1 class="ust-baslik"><span class="emoji">🗑️</span>Sil — {{ baslik }}</h1>
+
+<div class="uyari"><div>⚠️ Bu kayıt <strong>kalıcı olarak silinir</strong> ve geri alınamaz.
+  {% if bordro_mu %}Bağlı yevmiye fişi ve bordro satırları{% if ozet.giris_mi %}, bordronun oluşturduğu çek/senetler{% else %}; çek/senetlerin durumu önceki haline döner{% endif %} birlikte işlenir.
+  {% else %}Fiş ve satırları birlikte silinir.{% endif %}
+  Silme, denetim kaydına yazılır.</div></div>
+
+<table>
+  <tr><th>{% if bordro_mu %}Bordro{% else %}Fiş no{% endif %}</th><td><strong>{{ ozet.no }}</strong></td></tr>
+  <tr><th>Tarih</th><td>{{ ozet.tarih|date:"d.m.Y" }}</td></tr>
+  <tr><th>Tutar</th><td class="sag">{{ ozet.tutar|tr_para }} TL</td></tr>
+  <tr><th>Açıklama</th><td>{{ ozet.aciklama|default:"—" }}</td></tr>
+  {% if bordro_mu %}
+  <tr><th>Yevmiye fişi</th><td>{{ ozet.fis_nolari|default:"—" }}</td></tr>
+  <tr><th>Çek/senet</th><td>{{ ozet.evrak_sayisi }} adet</td></tr>
+  {% endif %}
+</table>
+
+{% if ozet.satirlar %}
+<h2 class="etiket">Satırlar</h2>
+<table>
+  <thead><tr><th>Hesap</th><th>Açıklama</th><th class="sag">Borç</th><th class="sag">Alacak</th></tr></thead>
+  <tbody>
+    {% for s in ozet.satirlar %}{% if not s.gizli %}
+    <tr><td>{{ s.hesap }} {{ s.hesap_adi }}</td><td>{{ s.aciklama|default:"—" }}</td>
+      <td class="sag">{{ s.borc }}</td><td class="sag">{{ s.alacak }}</td></tr>
+    {% endif %}{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if yetkisiz %}
+  <div class="uyari"><div>⛔ Silme yalnız süper kullanıcı tarafından yapılabilir.</div></div>
+  <p><a href="{{ geri }}">← Geri dön</a></p>
+{% elif engel %}
+  <div class="uyari"><div>⛔ <strong>Silinemez:</strong> {{ engel }}</div></div>
+  <p><a href="{{ geri }}">← Geri dön</a></p>
+{% else %}
+  <form method="post" action="{{ eylem }}" class="alan">
+    {% csrf_token %}
+    <button type="submit" class="sil">Kalıcı olarak sil</button>
+    <a class="iptal-bag" href="{{ geri }}">Vazgeç</a>
+  </form>
+{% endif %}
+{% endblock %}

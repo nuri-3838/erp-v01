@@ -112,11 +112,12 @@ class BankaHesapHareketiTest(TestCase):
         with self.assertRaises(bh.BankaHareketHatasi):
             self._odeme([])
 
-    def test_iptal_akisi_diger_turlerle_ayni(self):
+    def test_sil_akisi_diger_turlerle_ayni(self):
         fis = self._odeme([{"hesap_kodu": "131.01", "tutar": "1000"}])
-        bh.hareket_iptal(fis=fis, banka_hesap=self.tl, kullanici=self.u)
-        fis.refresh_from_db()
-        self.assertTrue(fis.silindi)
+        pk = fis.pk
+        bh.hareket_sil(fis=fis, banka_hesap=self.tl, kullanici=self.u)
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=pk).exists())
+        self.assertFalse(YevmiyeSatir.objects.filter(fis_id=pk).exists())
 
     def test_ekranlar_ve_ekstre(self):
         EkranYetki.objects.create(kullanici=self.u, ekran_kod="banka")

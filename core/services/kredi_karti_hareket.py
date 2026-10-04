@@ -16,7 +16,8 @@ from core.metin import buyuk_harf_tr
 from core.models import (BankaHesap, Cari, HesapPlani, Kasa, KrediKarti, KrediKartiTaksit,
                          Kur, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_iptal, fis_olustur
+from core.services.fis_sil import SilmeHatasi, fis_sil
+from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
 
 
 class KrediKartiHareketHatasi(ValueError):
@@ -155,18 +156,16 @@ def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=No
 
 
 @transaction.atomic
-def hareket_iptal(*, fis, kart, kullanici=None):
-    """Kredi kartı hareketi (kaynak=KREDI_KARTI) iptali → bağlı fişi + varsa taksit planını
-    soft-delete eder. Fiş bu kartın bir hareketi değilse reddeder."""
+def hareket_sil(*, fis, kart, kullanici=None):
+    """Kredi kartı hareketini (kaynak=KREDI_KARTI) KALICI siler: fiş + satırlar + varsa taksit planı
+    (yalnız süper kullanıcı, denetim kaydı yazılır, bağlı kayıt varsa reddedilir). Fiş bu kartın
+    hareketi değilse reddeder."""
     if fis.kaynak != YevmiyeFisi.Kaynak.KREDI_KARTI or fis.kredi_karti_id != kart.pk:
         raise KrediKartiHareketHatasi("Bu fiş bu kartın hareketi değil.")
-    if fis.silindi:
-        return fis
-    for plan in KrediKartiTaksit.objects.filter(fis=fis, silindi=False):
-        plan.silindi = True
-        plan.updated_by = kullanici
-        plan.save(update_fields=["silindi", "updated_by", "updated_at"])
-    return fis_iptal(fis, kullanici=kullanici)
+    try:
+        return fis_sil(fis, kullanici=kullanici, izinli_kaynaklar={YevmiyeFisi.Kaynak.KREDI_KARTI})
+    except SilmeHatasi as e:
+        raise KrediKartiHareketHatasi(str(e))
 
 
 def _ay_ekle(tarih, n):

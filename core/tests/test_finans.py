@@ -158,14 +158,14 @@ class KasaHareketTest(TestCase):
         from decimal import Decimal
         from django.utils import timezone
         from core.services.finans import FinansHatasi, kasa_sil
-        from core.services.kasa_hareket import cari_tahsilat, hareket_iptal
+        from core.services.kasa_hareket import cari_tahsilat, hareket_sil
         k, c = self._kasa_cari()
         fis = cari_tahsilat(kasa=k, cari=c, tutar=Decimal("100"),
                             tarih=timezone.localdate(), kullanici=self.yon)
         with self.assertRaises(FinansHatasi):
             kasa_sil(k, kullanici=self.yon)               # aktif hareket -> silinemez
-        hareket_iptal(fis=fis, kasa=k, kullanici=self.yon)
-        kasa_sil(k, kullanici=self.yon)                   # hareketler iptal -> silinir
+        hareket_sil(fis=fis, kasa=k, kullanici=self.yon)
+        kasa_sil(k, kullanici=self.yon)                   # hareketler silindi -> kasa silinir
         k.refresh_from_db()
         self.assertTrue(k.silindi)
 
@@ -220,12 +220,12 @@ class KasaHareketTest(TestCase):
         self.client.force_login(self.yon)
         self.assertRedirects(self.client.get(reverse("core:fis_duzenle", args=[fis.pk])),
                              reverse("core:kasa_detay", args=[k.pk]))     # düzenle kilitli
-        self.assertRedirects(self.client.post(reverse("core:fis_iptal", args=[fis.pk])),
-                             reverse("core:kasa_detay", args=[k.pk]))     # ham iptal kilitli
+        self.assertRedirects(self.client.post(reverse("core:fis_sil", args=[fis.pk])),
+                             reverse("core:kasa_detay", args=[k.pk]))     # ham silme kilitli
         fis.refresh_from_db()
         self.assertFalse(fis.silindi)
 
-    def test_hareket_iptal_kasadan(self):
+    def test_hareket_sil_kasadan(self):
         from decimal import Decimal
         from django.utils import timezone
         from core.services.kasa_hareket import cari_tahsilat
@@ -233,10 +233,10 @@ class KasaHareketTest(TestCase):
         fis = cari_tahsilat(kasa=k, cari=c, tutar=Decimal("100"),
                             tarih=timezone.localdate(), kullanici=self.yon)
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:kasa_hareket_iptal", args=[k.pk, fis.pk]))
+        r = self.client.post(reverse("core:kasa_hareket_sil", args=[k.pk, fis.pk]))
         self.assertRedirects(r, reverse("core:kasa_detay", args=[k.pk]))
-        fis.refresh_from_db()
-        self.assertTrue(fis.silindi)
+        self.assertFalse(__import__('core.models', fromlist=['YevmiyeFisi']).YevmiyeFisi.objects.filter(pk=fis.pk).exists())
+
 
     def test_kasa_fisi_listede_detaya_baglanir(self):
         """Fiş listesinde KASA fişi düzenleme'ye değil DETAY'a bağlanır (kasaya bounce etmez);
@@ -648,7 +648,7 @@ class BankaHareketTest(TestCase):
         duz = self.client.get(reverse("core:fis_duzenle", args=[fis.pk]))      # ham düzenleme kilitli
         self.assertRedirects(duz, reverse("core:banka_hesap_detay", args=[bh1.pk]))
 
-    def test_hareket_iptal_view(self):
+    def test_hareket_sil_view(self):
         from decimal import Decimal
         from django.utils import timezone
         from core.services.banka_hareket import hareket_olustur
@@ -656,10 +656,10 @@ class BankaHareketTest(TestCase):
         fis = hareket_olustur(banka_hesap=bh1, tip="cari_tahsilat", karsi=cari,
                               tutar=Decimal("100"), tarih=timezone.localdate(), kullanici=self.yon)
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:banka_hareket_iptal", args=[bh1.pk, fis.pk]))
+        r = self.client.post(reverse("core:banka_hareket_sil", args=[bh1.pk, fis.pk]))
         self.assertRedirects(r, reverse("core:banka_hesap_detay", args=[bh1.pk]))
-        fis.refresh_from_db()
-        self.assertTrue(fis.silindi)
+        self.assertFalse(__import__('core.models', fromlist=['YevmiyeFisi']).YevmiyeFisi.objects.filter(pk=fis.pk).exists())
+
 
     def test_detay_yetkisiz_403(self):
         bh1, _, _ = self._kur()
@@ -700,7 +700,7 @@ class KrediKartiHareketTest(TestCase):
     def test_hareketli_kart_silinemez_ve_hesap_kilidi(self):
         from decimal import Decimal
         from core.services.finans import FinansHatasi, kredi_karti_guncelle, kredi_karti_sil
-        from core.services.kredi_karti_hareket import hareket_iptal, hareket_olustur
+        from core.services.kredi_karti_hareket import hareket_sil, hareket_olustur
         f = hareket_olustur(kart=self.kart, tip="harcama", karsi=self.cari,
                             tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
         with self.assertRaises(FinansHatasi):
@@ -710,8 +710,8 @@ class KrediKartiHareketTest(TestCase):
                                  para_birimi="TRY", kullanici=self.yon)
         kredi_karti_guncelle(self.kart, ad="bonus yeni", muhasebe_kodu="309.01",
                              para_birimi="TRY", kullanici=self.yon)  # ad değişimi serbest
-        hareket_iptal(fis=f, kart=self.kart, kullanici=self.yon)
-        kredi_karti_sil(self.kart, kullanici=self.yon)              # iptal sonrası silinir
+        hareket_sil(fis=f, kart=self.kart, kullanici=self.yon)
+        kredi_karti_sil(self.kart, kullanici=self.yon)              # hareket silindi -> kart silinir
 
     def test_hareketli_kart_silinemez_view_500_vermez(self):
         """View katmanı FinansHatasi'yi yakalamazsa kullanıcı 500 alır — regresyon."""
@@ -796,10 +796,10 @@ class KrediKartiHareketTest(TestCase):
         s2 = {x.hesap_id: x.islem_kuru for x in f2.satirlar.filter(silindi=False)}
         self.assertEqual(s2["309.04"], Decimal("60"))
 
-    def test_iptal_ve_yanlis_kart_reddedilir(self):
+    def test_sil_ve_yanlis_kart_reddedilir(self):
         from decimal import Decimal
         from core.services.finans import kredi_karti_olustur
-        from core.services.kredi_karti_hareket import (KrediKartiHareketHatasi, hareket_iptal,
+        from core.services.kredi_karti_hareket import (KrediKartiHareketHatasi, hareket_sil,
                                                        hareket_olustur)
         f = hareket_olustur(kart=self.kart, tip="harcama", karsi=self.cari,
                             tutar=Decimal("100"), tarih=self.t, kullanici=self.yon)
@@ -807,10 +807,10 @@ class KrediKartiHareketTest(TestCase):
         kart2 = kredi_karti_olustur(ad="ikinci", para_birimi="TRY", muhasebe_kodu="309.03",
                                     kullanici=self.yon)
         with self.assertRaises(KrediKartiHareketHatasi):
-            hareket_iptal(fis=f, kart=kart2, kullanici=self.yon)   # başka kartın hareketi
-        hareket_iptal(fis=f, kart=self.kart, kullanici=self.yon)
-        f.refresh_from_db()
-        self.assertTrue(f.silindi)
+            hareket_sil(fis=f, kart=kart2, kullanici=self.yon)   # başka kartın hareketi
+        hareket_sil(fis=f, kart=self.kart, kullanici=self.yon)
+        self.assertFalse(__import__('core.models', fromlist=['YevmiyeFisi']).YevmiyeFisi.objects.filter(pk=f.pk).exists())
+
 
     def test_karsi_tip_uyumsuz_reddedilir(self):
         from decimal import Decimal
@@ -843,7 +843,7 @@ class KrediKartiHareketTest(TestCase):
         f1 = KrediKartiHareketForm({**ortak, "cari": self.cari.pk}, tip="harcama", kart=self.kart)
         self.assertTrue(f1.is_valid())                         # tam 1 karşı
 
-    def test_view_ekle_ve_iptal(self):
+    def test_view_ekle_ve_sil(self):
         from core.models import YevmiyeFisi
         self.client.force_login(self.yon)
         self.assertEqual(self.client.get(
@@ -853,10 +853,10 @@ class KrediKartiHareketTest(TestCase):
             {"cari": self.cari.pk, "tutar": "300", "tarih": "2026-06-28"})
         self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
         fis = YevmiyeFisi.objects.filter(kredi_karti=self.kart, silindi=False).get()
-        ri = self.client.post(reverse("core:kredi_karti_hareket_iptal", args=[self.kart.pk, fis.pk]))
+        ri = self.client.post(reverse("core:kredi_karti_hareket_sil", args=[self.kart.pk, fis.pk]))
         self.assertRedirects(ri, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
-        fis.refresh_from_db()
-        self.assertTrue(fis.silindi)
+        self.assertFalse(__import__('core.models', fromlist=['YevmiyeFisi']).YevmiyeFisi.objects.filter(pk=fis.pk).exists())
+
 
     def test_ham_fis_duzenleme_kilidi(self):
         from decimal import Decimal
@@ -912,15 +912,16 @@ class KrediKartiHareketTest(TestCase):
                          [datetime.date(2026, 11, 30), datetime.date(2026, 12, 30),
                           datetime.date(2027, 1, 30)])
 
-    def test_taksitli_iptal_plan_geri_alinir(self):
+    def test_taksitli_sil_plan_birlikte_silinir(self):
         from decimal import Decimal
         from core.models import KrediKartiTaksit
-        from core.services.kredi_karti_hareket import harcama_olustur, hareket_iptal
+        from core.services.kredi_karti_hareket import harcama_olustur, hareket_sil
         f = harcama_olustur(kart=self.kart, karsi=self.gider, tutar=Decimal("600"),
                             tarih=self.t, taksit_adedi=2, ilk_vade=self.t, kullanici=self.yon)
-        self.assertTrue(KrediKartiTaksit.objects.filter(fis=f, silindi=False).exists())
-        hareket_iptal(fis=f, kart=self.kart, kullanici=self.yon)
-        self.assertFalse(KrediKartiTaksit.objects.filter(fis=f, silindi=False).exists())
+        fis_pk = f.pk
+        self.assertTrue(KrediKartiTaksit.objects.filter(fis=f).exists())
+        hareket_sil(fis=f, kart=self.kart, kullanici=self.yon)
+        self.assertFalse(KrediKartiTaksit.objects.filter(fis_id=fis_pk).exists())
 
     def test_form_taksit_vade_zorunlu(self):
         from core.forms import KrediKartiHareketForm

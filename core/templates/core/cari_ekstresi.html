@@ -22,7 +22,7 @@
 </form>
 
 <p class="yardim">Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
-  · İptal edilen fişler hariç · Bakiyeler yevmiyeden hesaplanır{% if ekstre.cok_hesap %} · alt hesap hareketleri dahil{% endif %}.
+  · Bakiyeler yevmiyeden hesaplanır{% if ekstre.cok_hesap %} · alt hesap hareketleri dahil{% endif %}.
   <br>Pozitif bakiye = <strong>borç</strong> (cari bize borçlu), negatif = <strong>alacak</strong> (biz cariye borçluyuz).</p>
 
 <div class="toplamlar">

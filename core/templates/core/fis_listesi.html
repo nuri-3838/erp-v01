@@ -37,8 +37,7 @@
      class="{% if usd %}aktif{% endif %}">USD Yevmiye Fişleri</a>
 </nav>
 
-<p class="yardim">İptal edilen fişler de listelenir (İPTAL damgalı) ama mizan/bilanço/gelir
-  tablosuna girmez. Aktif fişe tıklayınca düzenleme açılır.{% if usd %}
+<p class="yardim">Manuel fişe tıklayınca düzenleme açılır.{% if usd %}
   &nbsp;USD tutarlar, fişin TL toplamının o fiş tarihindeki MB Alış kuruna bölünmesiyle gösterilir.{% endif %}{% if ara %}
   &nbsp;Arama: "<strong>{{ ara }}</strong>" — {{ fisler.paginator.count }} sonuç.{% endif %}</p>
 
@@ -52,14 +51,13 @@
       {% else %}
         <th class="sag">Borç</th><th class="sag">Alacak</th>
       {% endif %}
-      <th>Durum</th>
     </tr>
   </thead>
   <tbody>
     {% for f in fisler %}
-      <tr{% if f.silindi %} class="pasif"{% endif %}>
+      <tr>
         <td class="mono">
-          {% if f.silindi or f.kaynak != 'MANUEL' %}
+          {% if f.kaynak != 'MANUEL' %}
             <a href="{% url 'core:fis_detay' f.pk %}">{{ f.yil }}/{{ f.fis_no }}</a>
           {% else %}
             <a href="{% url 'core:fis_duzenle' f.pk %}">{{ f.yil }}/{{ f.fis_no }}</a>
@@ -79,10 +77,9 @@
           <td class="sag">{{ f.t_borc|tr_para }}</td>
           <td class="sag">{{ f.t_alacak|tr_para }}</td>
         {% endif %}
-        <td>{% if f.silindi %}<span class="rozet rozet-pasif">İPTAL</span>{% else %}<span class="rozet rozet-aktif">Aktif</span>{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="{% if usd %}7{% else %}6{% endif %}" class="yardim">{% if ara %}Aramaya uygun fiş yok.{% else %}Bu aralıkta fiş yok.{% endif %}</td></tr>
+      <tr><td colspan="{% if usd %}6{% else %}5{% endif %}" class="yardim">{% if ara %}Aramaya uygun fiş yok.{% else %}Bu aralıkta fiş yok.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
 </table>

@@ -7,7 +7,7 @@
 <h1 class="ust-baslik"><span class="emoji">📊</span>Mizan</h1>
 <p class="sayfa-alt">{{ mizan.satirlar|length }} hesap ·
   {{ mizan.baslangic|date:"d.m.Y" }} – {{ mizan.bitis|date:"d.m.Y" }} ·
-  iptal fişler hariç, bakiyeler yevmiyeden hesaplanır.</p>
+  bakiyeler yevmiyeden hesaplanır.</p>
 
 <form method="get" class="kur-cek-alanlar">
   <input type="hidden" name="gorunum" value="{% if detay %}detay{% else %}ozet{% endif %}">
@@ -35,7 +35,7 @@
 {% endwith %}
 
 <p class="yardim">Dönem: {{ mizan.baslangic|date:"d.m.Y" }} – {{ mizan.bitis|date:"d.m.Y" }}
-  · İptal edilen fişler hariç · Bakiyeler saklanmaz, yevmiyeden hesaplanır.
+  · Bakiyeler saklanmaz, yevmiyeden hesaplanır.
   {% if detay %}· Ana hesap satırı, altındaki hesapların toplamıdır (rolled).
   {% else %}· Özet: alt hesaplar ana hesapta toplanır. Detay için sekmeyi değiştirin.{% endif %}
   · Hesap koduna tıklayınca ekstre açılır.</p>

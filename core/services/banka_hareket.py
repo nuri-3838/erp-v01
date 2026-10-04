@@ -30,7 +30,8 @@ from django.db import transaction
 from core.metin import buyuk_harf_tr
 from core.models import Cari, HesapPlani, Kur, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
+from core.services.fis_sil import SilmeHatasi, fis_sil
+from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi,
                                    fis_olustur)
 
 
@@ -223,11 +224,12 @@ def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kulla
     return fis
 
 
-def hareket_iptal(*, fis, banka_hesap, kullanici=None):
-    """Banka hareketi (kaynak=BANKA) iptali → bağlı fişi soft-delete eder.
-    Fiş bu banka hesabının hareketi değilse reddeder."""
+def hareket_sil(*, fis, banka_hesap, kullanici=None):
+    """Banka hareketini (kaynak=BANKA) KALICI siler: fiş + satırlar (yalnız süper kullanıcı,
+    denetim kaydı yazılır, bağlı kayıt varsa reddedilir). Fiş bu hesabın hareketi değilse reddeder."""
     if fis.kaynak != YevmiyeFisi.Kaynak.BANKA or fis.banka_hesap_id != banka_hesap.pk:
         raise BankaHareketHatasi("Bu fiş bu banka hesabının hareketi değil.")
-    if fis.silindi:
-        return fis
-    return fis_iptal(fis, kullanici=kullanici)
+    try:
+        return fis_sil(fis, kullanici=kullanici, izinli_kaynaklar={YevmiyeFisi.Kaynak.BANKA})
+    except SilmeHatasi as e:
+        raise BankaHareketHatasi(str(e))
