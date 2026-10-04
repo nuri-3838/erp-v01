@@ -1780,13 +1780,16 @@ def cari_kesinti_ekle(request, pk):
     except cari_kesinti_servis.CariKesintiHatasi as e:
         messages.error(request, str(e))
         return redirect("core:cari_detay", pk=cari.pk)
+    ortak = not (cari.muhasebe_kodu or "").startswith("500.")
     if request.method == "POST":
-        form = CariKesintiForm(request.POST)
+        form = CariKesintiForm(request.POST, ortak_secenegi=ortak)
         if form.is_valid():
             cd = form.cleaned_data
             try:
                 fis = cari_kesinti_servis.kesinti_olustur(
-                    cari=cari, tarih=cd["tarih"], tutar=cd["tutar"], gider_kodu=cd["gider"].hesap_kodu,
+                    cari=cari, tarih=cd["tarih"], tutar=cd["tutar"],
+                    gider_kodu=cd["gider"].hesap_kodu if cd.get("gider") else None,
+                    karsi_cari=cd.get("karsi_cari"),
                     aciklama=cd["aciklama"], kullanici=request.user,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
@@ -1794,7 +1797,7 @@ def cari_kesinti_ekle(request, pk):
             except cari_kesinti_servis.CariKesintiHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariKesintiForm()
+        form = CariKesintiForm(ortak_secenegi=ortak)
     return render(request, "core/cari_kesinti_form.html", {"cari": cari, "form": form, "yon": yon, "duzenle": False})
 
 
@@ -1807,13 +1810,16 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
     except cari_kesinti_servis.CariKesintiHatasi as e:
         messages.error(request, str(e))
         return redirect("core:cari_ekstresi", pk=cari.pk)
+    ortak = not (cari.muhasebe_kodu or "").startswith("500.")
     if request.method == "POST":
-        form = CariKesintiForm(request.POST)
+        form = CariKesintiForm(request.POST, ortak_secenegi=ortak)
         if form.is_valid():
             cd = form.cleaned_data
             try:
                 cari_kesinti_servis.kesinti_guncelle(
-                    fis=fis, cari=cari, tarih=cd["tarih"], tutar=cd["tutar"], gider_kodu=cd["gider"].hesap_kodu,
+                    fis=fis, cari=cari, tarih=cd["tarih"], tutar=cd["tutar"],
+                    gider_kodu=cd["gider"].hesap_kodu if cd.get("gider") else None,
+                    karsi_cari=cd.get("karsi_cari"),
                     aciklama=cd["aciklama"], kullanici=request.user,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf güncellendi: fiş {fis.yil}/{fis.fis_no}.")
@@ -1821,8 +1827,11 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
             except cari_kesinti_servis.CariKesintiHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariKesintiForm(initial={"tarih": fis.tarih, "tutar": bilgi["tutar"], "gider": bilgi["gider"].hesap_kodu,
-                                        "yatirim_projesi": bilgi["yatirim_projesi_id"], "aciklama": fis.aciklama})
+        form = CariKesintiForm(initial={
+            "tarih": fis.tarih, "tutar": bilgi["tutar"],
+            **({"gider": bilgi["gider"].hesap_kodu} if bilgi["gider"] is not None else {}),
+            "karsi_cari": bilgi["karsi_cari"].pk if bilgi["karsi_cari"] else None,
+            "yatirim_projesi": bilgi["yatirim_projesi_id"], "aciklama": fis.aciklama}, ortak_secenegi=ortak)
     return render(request, "core/cari_kesinti_form.html", {
         "cari": cari, "form": form, "yon": bilgi["yon"], "duzenle": True, "fis": fis})
 
@@ -7178,6 +7187,7 @@ def duran_varlik_ekle(request):
         form = DuranVarlikForm(request.POST, satir_adaylari=adaylar)
         if satir:
             form.fields["maliyet"].required = False   # satır(lar) varsa maliyet otomatik
+            del form.fields["karsi_hesap"]            # fatura kalemli kartta karşı hesap/fiş yok
         if form.is_valid():
             try:
                 cd = form.cleaned_data
@@ -7186,7 +7196,8 @@ def duran_varlik_ekle(request):
                     grup_kodu=cd["hesap"].pk if duran_hesap_servis.grup_mu(cd["hesap"].pk) else None,
                     aktiflestirme_tarihi=cd["aktiflestirme_tarihi"], maliyet=cd.get("maliyet"),
                     marka_model=cd["marka_model"], seri_no=cd["seri_no"], notlar=cd["notlar"],
-                    fatura_satirlari=list(cd["fatura_satir_ids"]), kullanici=request.user)
+                    fatura_satirlari=list(cd["fatura_satir_ids"]), kullanici=request.user,
+                    karsi_hesap_kodu=cd["karsi_hesap"].hesap_kodu if cd.get("karsi_hesap") else None)
                 messages.success(request, f"Duran varlık kartı eklendi: {dv.demirbas_kodu} — {dv.ad}")
                 return redirect("core:duran_varlik_detay", pk=dv.pk)
             except dv_servis.DuranVarlikHatasi as e:
@@ -7200,6 +7211,7 @@ def duran_varlik_ekle(request):
         form = DuranVarlikForm(initial=initial, satir_adaylari=adaylar)
         if satir:
             form.fields["maliyet"].required = False
+            del form.fields["karsi_hesap"]
     return render(request, "core/duran_varlik_form.html",
                   {"form": form, "satir": satir, "otomatik_maliyet": otomatik_maliyet})
 
@@ -7223,8 +7235,11 @@ def duran_varlik_detay(request, pk):
 def duran_varlik_duzenle(request, pk):
     varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
     maliyet_otomatik = varlik.fatura_satirlari.exists()
+    karsi_uygun = varlik.kaynak == DuranVarlik.Kaynak.ACILIS and not maliyet_otomatik
     if request.method == "POST":
         form = DuranVarlikDuzenleForm(request.POST)
+        if not karsi_uygun:
+            del form.fields["karsi_hesap"]
         if maliyet_otomatik:
             form.fields["maliyet"].required = False
         if form.is_valid():
@@ -7233,7 +7248,9 @@ def duran_varlik_duzenle(request, pk):
                 dv_servis.duran_varlik_guncelle(
                     varlik, ad=cd["ad"], maliyet=cd.get("maliyet"), marka_model=cd["marka_model"],
                     seri_no=cd["seri_no"], notlar=cd["notlar"],
-                    birikmis_amortisman=cd.get("birikmis_amortisman"), kullanici=request.user)
+                    birikmis_amortisman=cd.get("birikmis_amortisman"), kullanici=request.user,
+                    karsi_hesap_guncelle=karsi_uygun,
+                    karsi_hesap_kodu=cd["karsi_hesap"].hesap_kodu if cd.get("karsi_hesap") else None)
                 messages.success(request, f"{varlik.demirbas_kodu} güncellendi.")
                 return redirect("core:duran_varlik_detay", pk=pk)
             except dv_servis.DuranVarlikHatasi as e:
@@ -7241,8 +7258,10 @@ def duran_varlik_duzenle(request, pk):
     else:
         form = DuranVarlikDuzenleForm(initial={
             "ad": varlik.ad, "maliyet": varlik.maliyet, "marka_model": varlik.marka_model,
-            "birikmis_amortisman": varlik.birikmis_amortisman,
+            "birikmis_amortisman": varlik.birikmis_amortisman, "karsi_hesap": varlik.karsi_hesap_id,
             "seri_no": varlik.seri_no, "notlar": varlik.notlar})
+        if not karsi_uygun:
+            del form.fields["karsi_hesap"]
         if maliyet_otomatik:
             form.fields["maliyet"].required = False
     return render(request, "core/duran_varlik_duzenle.html",

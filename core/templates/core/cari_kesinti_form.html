@@ -20,7 +20,9 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik">{{ cari.kod }} · {{ cari.unvan }}</h2>
       <p class="yardim" style="margin-top:-.3rem">Cari hesap <span class="mono">{{ cari.muhasebe_kodu }}</span> ·
-        {% if yon == "musteri" %}Fiş: <strong>Gider BORÇ / Cari ALACAK</strong> (müşteri bakiyesinden düşer — ör. güvenli ödeme gideri, kuruş farkı).
+        {% if yon == "ortak" %}Fiş: <strong>Cari BORÇ / Ortak (500.10) ALACAK</strong> (ortak bu carinin borcunu ödedi).
+        {% elif cari.muhasebe_kodu|slice:":4" == "500." %}Ortak sermaye carisi — Fiş: <strong>Gider BORÇ / Ortak ALACAK</strong> (ortak şirket adına ödeme/masraf yaptı).
+        {% elif yon == "musteri" %}Fiş: <strong>Gider BORÇ / Cari ALACAK</strong> (müşteri bakiyesinden düşer — ör. güvenli ödeme gideri, kuruş farkı).
         {% else %}Fiş: <strong>Cari BORÇ / Hesap ALACAK</strong> (tedarikçi bakiyesinden düşer; 258'de proje maliyeti, gelir hesabında gelir tutar kadar artar/azalır).{% endif %}
         Yön cari hesabından otomatik belirlenir.</p>
       <div class="izgara">
@@ -32,6 +34,12 @@
           <label for="{{ form.tutar.id_for_label }}">{{ form.tutar.label }}</label>{{ form.tutar }}
           {% for e in form.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if form.karsi_cari %}<div class="alan tam">
+          <label for="{{ form.karsi_cari.id_for_label }}">{{ form.karsi_cari.label }}</label><div class="akilli">{{ form.karsi_cari }}</div>
+          <p class="yardim">Başka bir carinin borcunu ortak ödediyse ortağı seçin: fiş <strong>bu cari BORÇ / ortak (500.10) ALACAK</strong>.
+            Seçilirse aşağıdaki hesap/proje kullanılmaz.</p>
+          {% for e in form.karsi_cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>{% endif %}
         <div class="alan tam">
           <label for="{{ form.gider.id_for_label }}">{{ form.gider.label }}</label>{{ form.gider }}
           {% for e in form.gider.errors %}<div class="hata">{{ e }}</div>{% endfor %}

@@ -44,12 +44,44 @@ def _tutar(deger):
 def yon_coz(cari):
     """Cari hesabına göre kesinti yönü: 'musteri' (gider borç / cari alacak) ya da 'tedarikci' (tersi)."""
     kod = cari.muhasebe_kodu or ""
-    if kod.startswith(("120", "121")):
+    if kod.startswith(("120", "121", "500.")):        # 500.xx: ortak sermaye carisi (ortak şirket adına ödedi → gider BORÇ / ortak ALACAK)
         return "musteri"
     if kod.startswith(("320", "321")):
         return "tedarikci"
     raise CariKesintiHatasi(
-        f"{cari.unvan} carisinin muhasebe hesabı ({kod or 'yok'}) 120/320 ailesinde değil; yön belirlenemedi.")
+        f"{cari.unvan} carisinin muhasebe hesabı ({kod or 'yok'}) 120/320/500 ailesinde değil; yön belirlenemedi.")
+
+
+def ortak_cariler():
+    """'Ortak ödedi' seçeneğinde karşı cari olabilen ortak sermaye carileri (muhasebe hesabı 500.xx.xxxx)."""
+    from core.models import Cari
+    return Cari.objects.filter(silindi=False, muhasebe_kodu__startswith="500.").order_by("unvan")
+
+
+def karsi_cari_coz(cari, karsi_cari):
+    """Başka bir carinin borcunu ortak ödediyse: karşı cari 500.xx ortak carisi olmalı (TL); kartın carisi 500 olamaz."""
+    if karsi_cari is None:
+        return None
+    if (cari.muhasebe_kodu or "").startswith("500."):
+        raise CariKesintiHatasi("Ortak carisinin kendi kartında 'ortak ödedi' seçilemez; gider hesabı seçin.")
+    if not (karsi_cari.muhasebe_kodu or "").startswith("500.") or karsi_cari.silindi:
+        raise CariKesintiHatasi("Karşı cari bir ortak sermaye carisi (500.xx hesaplı) olmalı.")
+    if karsi_cari.para_birimi != "TRY":
+        raise CariKesintiHatasi("Karşı cari TL olmalı.")
+    return karsi_cari
+
+
+def _satirlar_karsi_cari(cari, karsi, tutar):
+    """Ortak, carinin borcunu ödedi: cari BORÇ / ortak (500.xx) ALACAK."""
+    if cari.para_birimi != "TRY":
+        raise CariKesintiHatasi("Döviz carilerde kesinti/masraf hareketi girilemez (kur gerekir); manuel fiş kullanın.")
+    cari_hesap = HesapPlani.objects.filter(hesap_kodu=cari.muhasebe_kodu, silindi=False).first()
+    if cari_hesap is None:
+        raise CariKesintiHatasi(f"{cari.unvan} carisinin muhasebe hesabı hesap planında yok.")
+    if not HesapPlani.objects.filter(hesap_kodu=karsi.muhasebe_kodu, silindi=False, aktif=True).exists():
+        raise CariKesintiHatasi(f"{karsi.unvan} carisinin muhasebe hesabı hesap planında yok.")
+    return [SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf="B", islem_tutari=tutar, aciklama=cari.unvan),
+            SatirGirdi(hesap_kodu=karsi.muhasebe_kodu, taraf="A", islem_tutari=tutar, aciklama=karsi.unvan)]
 
 
 def kesinti_hesap_kumesi():
@@ -111,14 +143,19 @@ def _satirlar(cari, gider, tutar, yon, proje_id=None):
 
 @transaction.atomic
 def kesinti_olustur(*, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
-                    kullanici=None) -> YevmiyeFisi:
-    yon = yon_coz(cari)
-    gider = gider_hesabi_coz(gider_kodu)
-    proje_id = proje_coz(gider, yatirim_projesi_id)
+                    kullanici=None, karsi_cari=None) -> YevmiyeFisi:
+    karsi = karsi_cari_coz(cari, karsi_cari)
     tut = _tutar(tutar)
+    if karsi is not None:                       # ortak, carinin borcunu ödedi
+        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut), (
+            buyuk_harf_tr((aciklama or "").strip()) or buyuk_harf_tr(f"ORTAK ÖDEMESİ - {cari.unvan} ({karsi.unvan})"))
+    else:
+        yon = yon_coz(cari)
+        gider = gider_hesabi_coz(gider_kodu)
+        proje_id = proje_coz(gider, yatirim_projesi_id)
+        satirlar, ack = _satirlar(cari, gider, tut, yon, proje_id), _ack(cari, aciklama, yon)
     try:
-        fis = fis_olustur(tarih=tarih, satirlar=_satirlar(cari, gider, tut, yon, proje_id),
-                          aciklama=_ack(cari, aciklama, yon),
+        fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack,
                           kaynak=YevmiyeFisi.Kaynak.CARI_KESINTI, kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise CariKesintiHatasi(str(e))
@@ -131,27 +168,38 @@ def duzenleme_bilgisi(fis, cari):
     """{'gider': HesapPlani, 'tutar': Decimal, 'yon': ...} — fiş bu carinin kesinti hareketi değilse hata."""
     if fis.kaynak != YevmiyeFisi.Kaynak.CARI_KESINTI or fis.cari_id != cari.pk or fis.silindi:
         raise CariKesintiHatasi("Bu fiş bu carinin düzenlenebilir bir kesinti/masraf hareketi değil.")
-    yon = yon_coz(cari)
     satirlar = list(fis.satirlar.filter(silindi=False, ana_satir__isnull=True).select_related("hesap"))
     gider_s = [s for s in satirlar if s.hesap_id != cari.muhasebe_kodu]
     if len(satirlar) != 2 or len(gider_s) != 1:
         raise CariKesintiHatasi("Hareketin satır yapısı düzenlemeye uygun değil.")
-    return {"gider": gider_s[0].hesap, "tutar": gider_s[0].borc or gider_s[0].alacak, "yon": yon,
-            "yatirim_projesi_id": gider_s[0].yatirim_projesi_id}
+    if gider_s[0].hesap_id.startswith("500.") and not (cari.muhasebe_kodu or "").startswith("500."):   # "ortak ödedi"
+        from core.models import Cari
+        karsi = Cari.objects.filter(muhasebe_kodu=gider_s[0].hesap_id, silindi=False).first()
+        if karsi is None:
+            raise CariKesintiHatasi("Hareketin ortak carisi bulunamadı; düzenlemeye uygun değil.")
+        return {"gider": None, "karsi_cari": karsi, "tutar": gider_s[0].alacak, "yon": "ortak",
+                "yatirim_projesi_id": None}
+    return {"gider": gider_s[0].hesap, "karsi_cari": None, "tutar": gider_s[0].borc or gider_s[0].alacak,
+            "yon": yon_coz(cari), "yatirim_projesi_id": gider_s[0].yatirim_projesi_id}
 
 
 @transaction.atomic
 def kesinti_guncelle(*, fis, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
-                     kullanici=None) -> YevmiyeFisi:
+                     kullanici=None, karsi_cari=None) -> YevmiyeFisi:
     """Tarih/tutar/hesap/proje/açıklama düzenlenir; fiş yeniden yazılır (kur farkı motoru da çalışır)."""
     duzenleme_bilgisi(fis, cari)
-    yon = yon_coz(cari)
-    gider = gider_hesabi_coz(gider_kodu)
-    proje_id = proje_coz(gider, yatirim_projesi_id)
+    karsi = karsi_cari_coz(cari, karsi_cari)
     tut = _tutar(tutar)
+    if karsi is not None:
+        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut), (
+            buyuk_harf_tr((aciklama or "").strip()) or buyuk_harf_tr(f"ORTAK ÖDEMESİ - {cari.unvan} ({karsi.unvan})"))
+    else:
+        yon = yon_coz(cari)
+        gider = gider_hesabi_coz(gider_kodu)
+        proje_id = proje_coz(gider, yatirim_projesi_id)
+        satirlar, ack = _satirlar(cari, gider, tut, yon, proje_id), _ack(cari, aciklama, yon)
     try:
-        fis_guncelle(fis, tarih=tarih, satirlar=_satirlar(cari, gider, tut, yon, proje_id),
-                     aciklama=_ack(cari, aciklama, yon), kullanici=kullanici)
+        fis_guncelle(fis, tarih=tarih, satirlar=satirlar, aciklama=ack, kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise CariKesintiHatasi(str(e))
     return fis

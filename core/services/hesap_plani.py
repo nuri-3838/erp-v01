@@ -177,10 +177,11 @@ def hesap_kodu_258_mi(hesap_kodu: str) -> bool:
 
 def ortak_hesaplari():
     """Alış faturasında 'Ortak adına (şahsi) alış' işaretlenince seçilebilen hesaplar:
-    131 (Ortaklardan Alacaklar) ailesinin aktif yaprak hesapları."""
+    131 (Ortaklardan Alacaklar) ailesinin ve ortak sermaye carilerinin (500.10.xxxx) aktif yaprak hesapları. 131.01 ortak
+    hareketleri 500.10.0001'e taşınınca pasifleştirilir → burada ve yeni kayıtlarda görünmez."""
     from django.db.models import Q
     return (yaprak_hesaplar()
-            .filter(Q(hesap_kodu="131") | Q(hesap_kodu__startswith="131."))
+            .filter(Q(hesap_kodu="131") | Q(hesap_kodu__startswith="131.") | Q(hesap_kodu__startswith="500.10."))
             .order_by("hesap_kodu"))
 
 

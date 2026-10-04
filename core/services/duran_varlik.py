@@ -12,7 +12,7 @@ from django.db.models import Sum
 
 from core.metin import buyuk_harf_tr
 from core.models import DuranVarlik, FaturaSatir, HesapPlani, YevmiyeSatir
-from core.services.hesap_plani import duran_varlik_karti_hesaplari
+from core.services.hesap_plani import duran_varlik_karti_hesaplari, yaprak_hesaplar
 
 SIFIR = Decimal("0.00")
 
@@ -39,7 +39,7 @@ def varliklar(*, hesap_id=None, durum=None):
 
 def duran_varlik_olustur(*, ad, hesap_id=None, aktiflestirme_tarihi, maliyet, marka_model="",
                          seri_no="", notlar="", fatura_satirlari=None, kullanici=None,
-                         grup_kodu=None) -> DuranVarlik:
+                         grup_kodu=None, karsi_hesap_kodu=None) -> DuranVarlik:
     """``grup_kodu`` (ör. 253.01) verilirse sistem grubun altında sıradaki 000N hesabını (adı = kart adı) açıp karta bağlar —
     elle (ACILIS, maliyet girilir) kart; fatura kalemli kart bu yolla AÇILMAZ (faturada grup seçilince kart otomatik açılır)."""
     if grup_kodu:
@@ -53,6 +53,20 @@ def duran_varlik_olustur(*, ad, hesap_id=None, aktiflestirme_tarihi, maliyet, ma
                      kullanici=kullanici)
         dv.marka_model, dv.seri_no, dv.notlar = (marka_model or "").strip(), (seri_no or "").strip(), (notlar or "").strip()
         dv.save(update_fields=["marka_model", "seri_no", "notlar", "updated_at"])
+        if karsi_hesap_kodu:
+            dv.karsi_hesap = _karsi_hesap_coz(karsi_hesap_kodu, dv.maliyet)
+            dv.save(update_fields=["karsi_hesap", "updated_at"])
+            acilis_fisini_senkronla(dv, kullanici=kullanici)
+        return dv
+    if karsi_hesap_kodu:
+        if fatura_satirlari:
+            raise DuranVarlikHatasi("Karşı hesap yalnız elle (fatura kalemsiz) açılan kartlarda kullanılır.")
+        dv = _duran_varlik_olustur_hesapli(ad=ad, hesap_id=hesap_id, aktiflestirme_tarihi=aktiflestirme_tarihi, maliyet=maliyet,
+                                           marka_model=marka_model, seri_no=seri_no, notlar=notlar,
+                                           fatura_satirlari=None, kullanici=kullanici)
+        dv.karsi_hesap = _karsi_hesap_coz(karsi_hesap_kodu, dv.maliyet)
+        dv.save(update_fields=["karsi_hesap", "updated_at"])
+        acilis_fisini_senkronla(dv, kullanici=kullanici)
         return dv
     return _duran_varlik_olustur_hesapli(ad=ad, hesap_id=hesap_id, aktiflestirme_tarihi=aktiflestirme_tarihi, maliyet=maliyet,
                                          marka_model=marka_model, seri_no=seri_no, notlar=notlar,
@@ -264,15 +278,21 @@ def varlik_sil(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
     if varlik.fatura_satirlari.exists():
         raise DuranVarlikHatasi("Bağlı fatura kalemi olan kart silinemez.")
     from django.utils import timezone
+    fis = varlik.fis
     varlik.silindi = True
     varlik.silindi_at = timezone.now()
     varlik.updated_by = kullanici
-    varlik.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    varlik.fis = None
+    varlik.save(update_fields=["silindi", "silindi_at", "updated_by", "fis", "updated_at"])
+    if fis is not None:                                       # kartın açılış fişi de silinir
+        from core.services.fis_sil import fis_kalici_sil
+        fis_kalici_sil(fis)
     return varlik
 
 
 def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet=None, marka_model="", seri_no="",
-                          notlar="", birikmis_amortisman=None, kullanici=None) -> DuranVarlik:
+                          notlar="", birikmis_amortisman=None, kullanici=None,
+                          karsi_hesap_guncelle=False, karsi_hesap_kodu=None) -> DuranVarlik:
     """Yalnız ad/marka-model/seri no/notlar/maliyet düzenlenebilir — hesap ve kaynak
     SABİTTİR (hesap kartın temsil ettiği muhasebe hesabını, kaynak kartın nasıl
     üretildiğini belirler; ikisi de düzenleme ekranından değiştirilemez). Kartın bağlı
@@ -299,9 +319,66 @@ def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet=None, marka_model=
             raise DuranVarlikHatasi("Satılmış kartın birikmiş amortismanı değiştirilemez.")
         varlik.birikmis_amortisman = birikmis_amortisman
         alanlar.append("birikmis_amortisman")
+    if karsi_hesap_guncelle and not varlik.fatura_satirlari.exists() and varlik.kaynak == DuranVarlik.Kaynak.ACILIS:
+        varlik.karsi_hesap = _karsi_hesap_coz(karsi_hesap_kodu, varlik.maliyet) if karsi_hesap_kodu else None
+        alanlar.append("karsi_hesap")
     varlik.updated_by = kullanici
     varlik.save(update_fields=alanlar)
+    if varlik.fis_id or varlik.karsi_hesap_id:
+        acilis_fisini_senkronla(varlik, kullanici=kullanici)     # maliyet/karşı hesap değişince fiş güncellenir/silinir
     return varlik
+
+
+# ---------------------------------------------------------------- karşı hesaplı açılış fişi
+KARSI_HESAP_DESENI = r"^(500\.10|100|102)(\.|$)"
+
+
+def karsi_hesaplari():
+    """Kart açılışında karşı hesap olarak seçilebilen yapraklar: ortak sermaye cari hesapları (500.10.xxxx), kasa (100), banka (102)."""
+    return yaprak_hesaplar().filter(hesap_kodu__regex=KARSI_HESAP_DESENI)
+
+
+def _karsi_hesap_coz(kod, maliyet):
+    h = karsi_hesaplari().filter(hesap_kodu=kod).first()
+    if h is None:
+        raise DuranVarlikHatasi("Karşı hesap olarak 500.10 / 100 / 102 ailesinden bir yaprak hesap seçin.")
+    if maliyet is None or maliyet <= 0:
+        raise DuranVarlikHatasi("Karşı hesaplı kart için maliyet sıfırdan büyük olmalı.")
+    from core.models import BankaHesap, Kasa
+    for model in (BankaHesap, Kasa):
+        o = model.objects.filter(muhasebe_id=kod, silindi=False).first()
+        if o is not None and o.para_birimi != "TRY":
+            raise DuranVarlikHatasi(f"{kod} döviz hesabı; karşı hesaplı kart yalnız TL hesapla çalışır.")
+    return h
+
+
+def acilis_fisini_senkronla(dv, *, kullanici=None):
+    """Karşı hesap doluysa fiş: kart hesabı BORÇ / karşı hesap ALACAK (maliyet, tarih = aktifleştirme tarihi) — yoksa oluşturur,
+    varsa günceller; karşı hesap kalktıysa fişi siler."""
+    from core.models import YevmiyeFisi
+    from core.services.fis_sil import fis_kalici_sil
+    from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_olustur
+    if not dv.karsi_hesap_id:
+        if dv.fis_id:
+            fis, dv.fis = dv.fis, None
+            dv.save(update_fields=["fis", "updated_at"])
+            fis_kalici_sil(fis)
+        return None
+    if dv.maliyet is None or dv.maliyet <= 0:
+        raise DuranVarlikHatasi("Karşı hesaplı kart için maliyet sıfırdan büyük olmalı.")
+    satirlar = [SatirGirdi(hesap_kodu=dv.hesap_id, taraf="B", islem_tutari=dv.maliyet, aciklama=dv.ad[:200]),
+                SatirGirdi(hesap_kodu=dv.karsi_hesap_id, taraf="A", islem_tutari=dv.maliyet, aciklama=dv.ad[:200])]
+    ack = f"{dv.demirbas_kodu} — {dv.ad} kart açılışı"[:500]
+    try:
+        if dv.fis_id:
+            fis_guncelle(dv.fis, tarih=dv.aktiflestirme_tarihi, satirlar=satirlar, aciklama=ack, kullanici=kullanici)
+        else:
+            dv.fis = fis_olustur(tarih=dv.aktiflestirme_tarihi, satirlar=satirlar, aciklama=ack,
+                                 kaynak=YevmiyeFisi.Kaynak.DURAN_VARLIK, kullanici=kullanici)
+            dv.save(update_fields=["fis", "updated_at"])
+    except YevmiyeHatasi as e:
+        raise DuranVarlikHatasi(str(e))
+    return dv.fis
 
 
 # ---------------------------------------------------------------- varlık/proje hesabı bazlı kartlar (duran_hesap)

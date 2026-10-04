@@ -159,6 +159,7 @@ class YevmiyeFisi(TemelModel):
         STOK_SATIS = "STOK_SATIS", "Satış Maliyeti (otomatik)"
         KUR_DEGERLEME = "KUR_DEGERLEME", "Dönem Sonu Kur Değerleme"
         CARI_KESINTI = "CARI_KESINTI", "Cari Kesinti / Masraf (otomatik)"
+        DURAN_VARLIK = "DURAN_VARLIK", "Duran Varlık Kartı Açılışı (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -1877,6 +1878,14 @@ class DuranVarlik(TemelModel):
     yatirim_projesi = models.ForeignKey(
         YatirimProjesi, verbose_name="yatırım projesi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="duran_varliklar")
+    # Elle (ACILIS) açılan kartta opsiyonel karşı hesap (500.10.xxxx / 100 / 102): doluysa kart kaydedilince otomatik fiş
+    # (kart hesabı BORÇ / karşı hesap ALACAK, tarih = aktifleştirme tarihi); kart düzenlenince fiş güncellenir, silinince silinir.
+    karsi_hesap = models.ForeignKey(
+        HesapPlani, verbose_name="karşı hesap", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="duran_varlik_karsi_kartlar")
+    fis = models.ForeignKey(
+        YevmiyeFisi, verbose_name="açılış fişi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="duran_varlik_acilislari")
     fatura_satirlari = models.ManyToManyField(
         FaturaSatir, verbose_name="fatura kalemleri", blank=True,
         related_name="duran_varliklar")

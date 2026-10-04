@@ -40,6 +40,8 @@
           {% else %}
             {{ form.maliyet }}{% for e in form.maliyet.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           {% endif %}</div>
+        {% if form.karsi_hesap %}<div class="alan"><label for="{{ form.karsi_hesap.id_for_label }}">{{ form.karsi_hesap.label }}</label><div class="akilli">{{ form.karsi_hesap }}</div>{% for e in form.karsi_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Doluysa kart kaydedilince fiş otomatik: kart hesabı BORÇ / karşı hesap ALACAK (tarih = aktifleştirme tarihi). 500.10 (ortak sermaye cari), 100 veya 102 yaprakları.</p></div>{% endif %}
         <div class="alan"><label for="{{ form.marka_model.id_for_label }}">{{ form.marka_model.label }}</label>{{ form.marka_model }}</div>
         <div class="alan"><label for="{{ form.seri_no.id_for_label }}">{{ form.seri_no.label }}</label>{{ form.seri_no }}</div>
         <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>

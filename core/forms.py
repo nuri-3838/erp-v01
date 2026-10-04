@@ -1897,12 +1897,19 @@ class DuranVarlikForm(forms.Form):
     fatura_satir_ids = forms.ModelMultipleChoiceField(
         label="Fatura Kalemleri", queryset=FaturaSatir.objects.none(), required=False,
         widget=forms.CheckboxSelectMultiple)
+    karsi_hesap = forms.ModelChoiceField(
+        label="Karşı hesap (opsiyonel)", queryset=HesapPlani.objects.none(), required=False, to_field_name="hesap_kodu",
+        empty_label="— yok (fiş oluşmaz) —")
 
     def __init__(self, *args, satir_adaylari=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["hesap"].queryset = _yeni_kart_hedefleri()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+        from core.services.duran_varlik import karsi_hesaplari
+        self.fields["karsi_hesap"].queryset = karsi_hesaplari().order_by("hesap_kodu")
+        self.fields["karsi_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["karsi_hesap"].widget.attrs["class"] = "akilli-sec"
         self.fields["fatura_satir_ids"].queryset = (
             satir_adaylari if satir_adaylari is not None else FaturaSatir.objects.none())
         self.fields["fatura_satir_ids"].label_from_instance = (
@@ -1925,6 +1932,16 @@ class DuranVarlikDuzenleForm(forms.Form):
                               widget=forms.TextInput(attrs=_K))
     notlar = forms.CharField(label="Notlar", required=False,
                              widget=forms.Textarea(attrs={"rows": 3, **_K}))
+    karsi_hesap = forms.ModelChoiceField(
+        label="Karşı hesap (opsiyonel)", queryset=HesapPlani.objects.none(), required=False, to_field_name="hesap_kodu",
+        empty_label="— yok (fiş oluşmaz) —")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.duran_varlik import karsi_hesaplari
+        self.fields["karsi_hesap"].queryset = karsi_hesaplari().order_by("hesap_kodu")
+        self.fields["karsi_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["karsi_hesap"].widget.attrs["class"] = "akilli-sec"
 
 
 class AktiflestirmeBaslikForm(forms.Form):
@@ -3093,13 +3110,22 @@ class CariKesintiForm(forms.Form):
     yatirim_projesi = forms.ModelChoiceField(
         label="Yatırım projesi", queryset=YatirimProjesi.objects.none(), required=False,
         empty_label="— proje (yalnız 258 için) —")
+    karsi_cari = forms.ModelChoiceField(
+        label="Karşı cari — ortak ödediyse (opsiyonel)", queryset=Cari.objects.none(), required=False,
+        empty_label="— yok (hesap seçilir) —")
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, ortak_secenegi=True, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.cari_kesinti import VARSAYILAN_GIDER, kesinti_hesap_kumesi
+        from core.services.cari_kesinti import VARSAYILAN_GIDER, kesinti_hesap_kumesi, ortak_cariler
+        if ortak_secenegi:
+            self.fields["karsi_cari"].queryset = ortak_cariler()
+            self.fields["karsi_cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+            self.fields["karsi_cari"].widget.attrs["class"] = "akilli-sec"
+        else:
+            del self.fields["karsi_cari"]
         from core.services.yatirim_projesi import aktif_projeler
         self.fields["gider"].queryset = kesinti_hesap_kumesi().order_by("hesap_kodu")
         self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
@@ -3114,6 +3140,11 @@ class CariKesintiForm(forms.Form):
         from core.services.hesap_plani import hesap_kodu_258_mi
         cd = super().clean()
         gider, proje = cd.get("gider"), cd.get("yatirim_projesi")
+        if cd.get("karsi_cari") is not None:          # ortak ödedi: gider/proje kullanılmaz
+            cd["gider"], cd["yatirim_projesi"] = None, None
+            self.errors.pop("gider", None)
+            self.errors.pop("yatirim_projesi", None)
+            return cd
         if gider is not None:
             if hesap_kodu_258_mi(gider.hesap_kodu) and not proje:
                 self.add_error("yatirim_projesi", "258 hesabı için yatırım projesi seçilmelidir.")

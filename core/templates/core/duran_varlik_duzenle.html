@@ -36,6 +36,8 @@
         <div class="alan"><label for="{{ form.birikmis_amortisman.id_for_label }}">{{ form.birikmis_amortisman.label }}</label>{{ form.birikmis_amortisman }}
           {% for e in form.birikmis_amortisman.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           <p class="yardim">Amortisman bu sistemde hesaplanmaz; kartın biriken amortismanı elle girilir. Demirbaş satışında 257'ye borç yazılır (defter değeri = maliyet − birikmiş amortisman).</p></div>
+        {% if form.karsi_hesap %}<div class="alan"><label for="{{ form.karsi_hesap.id_for_label }}">{{ form.karsi_hesap.label }}</label><div class="akilli">{{ form.karsi_hesap }}</div>{% for e in form.karsi_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Fiş: kart hesabı BORÇ / karşı hesap ALACAK. Maliyet ya da karşı hesap değişince fiş güncellenir; karşı hesap boşaltılırsa fiş silinir.</p></div>{% endif %}
         <div class="alan"><label for="{{ form.marka_model.id_for_label }}">{{ form.marka_model.label }}</label>{{ form.marka_model }}</div>
         <div class="alan"><label for="{{ form.seri_no.id_for_label }}">{{ form.seri_no.label }}</label>{{ form.seri_no }}</div>
         <div class="alan tam"><label for="{{ form.notlar.id_for_label }}">{{ form.notlar.label }}</label>{{ form.notlar }}</div>
