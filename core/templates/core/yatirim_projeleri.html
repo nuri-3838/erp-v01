@@ -13,6 +13,13 @@
   <form method="post" action="{% url 'core:yatirim_projesi_ekle' %}">
     {% csrf_token %}
     <div class="kur-cek-alanlar">
+      <div class="alan" style="flex:0 1 20rem">
+        <label for="yp-grup">Grup (hesap otomatik açılır)</label>
+        <select id="yp-grup" name="grup" {% if gruplar %}required{% endif %}>
+          <option value="">— grup seç —</option>
+          {% for g in gruplar %}<option value="{{ g.hesap_kodu }}">{{ g.hesap_kodu }}  {{ g.hesap_adi }}</option>{% endfor %}
+        </select>
+      </div>
       <div class="alan" style="flex:1 1 16rem">
         <label for="yp-ad">Proje adı</label>
         <input type="text" id="yp-ad" name="ad" maxlength="200" required
@@ -32,20 +39,21 @@
 <div class="tablo-kapsayici genis">
 <table>
   <thead><tr>
-    <th>Kod</th><th>Ad</th><th>Durum</th>
+    <th>Kod</th><th>Hesap</th><th>Ad</th><th>Durum</th>
     <th class="sag">Toplam (KDV Hariç)</th><th class="sag">Fatura Sayısı</th>
   </tr></thead>
   <tbody>
     {% for p in projeler %}
       <tr onclick="window.location='{% url 'core:yatirim_projesi_detay' p.proje.pk %}'" style="cursor:pointer">
         <td class="mono">{{ p.proje.kod }}</td>
+        <td class="mono">{{ p.proje.hesap_id|default:"—" }}</td>
         <td>{{ p.proje.ad }}</td>
         <td><span class="rozet {% if p.proje.durum == 'AKTIFLESTI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ p.proje.get_durum_display }}</span></td>
         <td class="sag mono">{{ p.toplam|tr_kur:2 }}</td>
         <td class="sag mono">{{ p.fatura_sayisi }}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="yardim">Henüz yatırım projesi yok.</td></tr>
+      <tr><td colspan="6" class="yardim">Henüz yatırım projesi yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>

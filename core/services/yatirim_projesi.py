@@ -12,6 +12,7 @@ from django.db import transaction
 
 from core.metin import buyuk_harf_tr
 from core.models import DuranVarlik, HesapPlani, YatirimProjesi, YevmiyeFisi
+from core.services import hesap_plani as hp
 
 SIFIR = Decimal("0.00")
 
@@ -31,13 +32,24 @@ def sonraki_proje_kodu() -> str:
     return f"YP-{str(n).zfill(4)}"
 
 
-def proje_olustur(*, ad, aciklama="", kullanici=None) -> YatirimProjesi:
+def proje_olustur(*, ad, aciklama="", grup_kodu=None, kullanici=None) -> YatirimProjesi:
+    """Projeyi açar. ``grup_kodu`` (258.01 … 258.04) verilirse sistem o grubun altında sıradaki 258.0X.000N hesabını (adı =
+    proje adı) açıp projeye bağlar; projeye yazılan TÜM 258 satırları bu hesaba gider. (Ekran grubu zorunlu tutar; grup
+    verilmeyen eski çağrılar hesapsız proje açar ve satırlar seçilen 258 hesabına yazılır.)"""
+    from core.services import duran_hesap
     ad = buyuk_harf_tr((ad or "").strip())
     if not ad:
         raise YatirimProjesiHatasi("Proje adı boş olamaz.")
-    return YatirimProjesi.objects.create(
-        kod=sonraki_proje_kodu(), ad=ad, aciklama=(aciklama or "").strip(),
-        created_by=kullanici, updated_by=kullanici)
+    with transaction.atomic():
+        hesap = None
+        if grup_kodu:
+            try:
+                hesap = duran_hesap.proje_hesabi_ac(grup_kodu, ad, kullanici=kullanici)
+            except (duran_hesap.DuranHesapHatasi, hp.HesapHatasi) as e:
+                raise YatirimProjesiHatasi(str(e))
+        return YatirimProjesi.objects.create(
+            kod=sonraki_proje_kodu(), ad=ad, aciklama=(aciklama or "").strip(), hesap=hesap,
+            created_by=kullanici, updated_by=kullanici)
 
 
 def proje_toplami(proje: YatirimProjesi) -> Decimal:
@@ -81,6 +93,7 @@ def proje_aktiflestir(proje: YatirimProjesi, *, tarih, satirlar, kullanici=None)
     kaynak=PROJE bir DuranVarlik kartı (projenin tüm fatura kalemlerine bağlı) üretir,
     proje durumu AKTIFLESTI'ye geçer. ``satirlar``: [{"hesap_id", "varlik_adi", "tutar"}, ...]
     — toplamı proje toplamına kuruşuna eşit olmalı."""
+    from core.services import duran_hesap
     from core.services.duran_varlik import sonraki_demirbas_kodu
     from core.services.hesap_plani import duran_varlik_karti_hesaplari
     from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
@@ -98,16 +111,23 @@ def proje_aktiflestir(proje: YatirimProjesi, *, tarih, satirlar, kullanici=None)
     satir_toplam = SIFIR
     for i, s in enumerate(satirlar, start=1):
         hesap_id = s.get("hesap_id")
+        grup_kodu = s.get("grup_kodu")
         varlik_adi = buyuk_harf_tr((s.get("varlik_adi") or "").strip())
         tutar = s.get("tutar")
-        if hesap_id not in izinli_hesap_pk:
+        if grup_kodu:              # YENİ: grup seçilir, sistem sıradaki 000N hesabını açıp karta bağlar
+            if not HesapPlani.objects.filter(hesap_kodu=grup_kodu, silindi=False, aktif=True).exists() \
+                    or grup_kodu not in {k for gl in duran_hesap.GRUPLAR.values() for k, _ in gl
+                                         if k.split(".")[0] in duran_hesap.KART_AILELERI}:
+                raise YatirimProjesiHatasi(f"Satır {i}: geçerli bir varlık grubu seçin (253.01 … 260.02).")
+            hesap_id = None
+        elif hesap_id not in izinli_hesap_pk:
             raise YatirimProjesiHatasi(
                 f"Satır {i}: geçerli bir duran varlık hesabı seçin (253/254/255/260).")
         if not varlik_adi:
             raise YatirimProjesiHatasi(f"Satır {i}: varlık adı boş olamaz.")
         if tutar is None or tutar <= SIFIR:
             raise YatirimProjesiHatasi(f"Satır {i}: tutar sıfırdan büyük olmalı.")
-        hazir.append({"hesap_id": hesap_id, "varlik_adi": varlik_adi, "tutar": tutar})
+        hazir.append({"hesap_id": hesap_id, "grup_kodu": grup_kodu, "varlik_adi": varlik_adi, "tutar": tutar})
         satir_toplam += tutar
 
     if satir_toplam != toplam:
@@ -118,16 +138,24 @@ def proje_aktiflestir(proje: YatirimProjesi, *, tarih, satirlar, kullanici=None)
     # (proje_toplami'nda zaten eksi), karta maliyet kalemi olarak bağlanmaz.
     proje_satirlari = list(proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
                            .exclude(fatura__yon="SATIS"))
-    kaynak_kodlari = {s.hesap.hesap_kodu for s in proje_satirlari}
-    if len(kaynak_kodlari) != 1:
-        raise YatirimProjesiHatasi(
-            "Proje kalemleri birden fazla 258 alt hesabına dağılmış; aktifleştirme tek hesap bekler.")
-    kaynak_258_kodu = kaynak_kodlari.pop()
-
-    hesap_cache = {h.pk: h for h in HesapPlani.objects.filter(
-        pk__in=[r["hesap_id"] for r in hazir])}
+    if proje.hesap_id:                      # projenin kendi 258.0X.000N hesabı: satırlar zaten oraya yazılır
+        kaynak_258_kodu = proje.hesap_id
+    else:
+        kaynak_kodlari = {s.hesap.hesap_kodu for s in proje_satirlari}
+        if len(kaynak_kodlari) != 1:
+            raise YatirimProjesiHatasi(
+                "Proje kalemleri birden fazla 258 alt hesabına dağılmış; aktifleştirme tek hesap bekler.")
+        kaynak_258_kodu = kaynak_kodlari.pop()
 
     with transaction.atomic():
+        for row in hazir:
+            if row["grup_kodu"]:
+                try:
+                    row["hesap_id"] = duran_hesap.varlik_hesabi_ac(
+                        row["grup_kodu"], row["varlik_adi"], kullanici=kullanici).pk
+                except (duran_hesap.DuranHesapHatasi, hp.HesapHatasi) as e:
+                    raise YatirimProjesiHatasi(str(e))
+        hesap_cache = {h.pk: h for h in HesapPlani.objects.filter(pk__in=[r["hesap_id"] for r in hazir])}
         fis_satirlari = []
         for row in hazir:
             hedef_hesap = hesap_cache[row["hesap_id"]]

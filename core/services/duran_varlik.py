@@ -37,8 +37,30 @@ def varliklar(*, hesap_id=None, durum=None):
     return qs
 
 
-def duran_varlik_olustur(*, ad, hesap_id, aktiflestirme_tarihi, maliyet, marka_model="",
-                         seri_no="", notlar="", fatura_satirlari=None, kullanici=None) -> DuranVarlik:
+def duran_varlik_olustur(*, ad, hesap_id=None, aktiflestirme_tarihi, maliyet, marka_model="",
+                         seri_no="", notlar="", fatura_satirlari=None, kullanici=None,
+                         grup_kodu=None) -> DuranVarlik:
+    """``grup_kodu`` (ör. 253.01) verilirse sistem grubun altında sıradaki 000N hesabını (adı = kart adı) açıp karta bağlar —
+    elle (ACILIS, maliyet girilir) kart; fatura kalemli kart bu yolla AÇILMAZ (faturada grup seçilince kart otomatik açılır)."""
+    if grup_kodu:
+        if fatura_satirlari:
+            raise DuranVarlikHatasi(
+                "Fatura kalemli kart elle açılmaz: faturada kalemin hesabı olarak grup seçilince kart otomatik açılır; "
+                "sonraki ek maliyetler için kalemde kartın hesabını seçin.")
+        if maliyet is None or maliyet < 0:
+            raise DuranVarlikHatasi("Maliyet negatif olamaz.")
+        dv = kart_ac(grup_kodu, ad, tarih=aktiflestirme_tarihi, kaynak=DuranVarlik.Kaynak.ACILIS, maliyet=maliyet,
+                     kullanici=kullanici)
+        dv.marka_model, dv.seri_no, dv.notlar = (marka_model or "").strip(), (seri_no or "").strip(), (notlar or "").strip()
+        dv.save(update_fields=["marka_model", "seri_no", "notlar", "updated_at"])
+        return dv
+    return _duran_varlik_olustur_hesapli(ad=ad, hesap_id=hesap_id, aktiflestirme_tarihi=aktiflestirme_tarihi, maliyet=maliyet,
+                                         marka_model=marka_model, seri_no=seri_no, notlar=notlar,
+                                         fatura_satirlari=fatura_satirlari, kullanici=kullanici)
+
+
+def _duran_varlik_olustur_hesapli(*, ad, hesap_id, aktiflestirme_tarihi, maliyet, marka_model="",
+                                  seri_no="", notlar="", fatura_satirlari=None, kullanici=None) -> DuranVarlik:
     """``fatura_satirlari``: FaturaSatir pk veya instance listesi (opsiyonel, birden fazla
     olabilir) — hepsi ``hesap_id`` ile aynı hesaba işlenmiş ve henüz başka bir karta bağlı
     olmamalı (bkz. core.services.duran_varlik._dogrula_satirlar). Satır(lar) verilirse
@@ -280,3 +302,66 @@ def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet=None, marka_model=
     varlik.updated_by = kullanici
     varlik.save(update_fields=alanlar)
     return varlik
+
+
+# ---------------------------------------------------------------- varlık/proje hesabı bazlı kartlar (duran_hesap)
+def kart_ac(grup_kodu, ad, *, tarih, kaynak=DuranVarlik.Kaynak.FATURA, maliyet=SIFIR, kullanici=None) -> DuranVarlik:
+    """Grup (ör. 253.01) altında sıradaki 000N hesabını (adı = kart adı) açar ve karta bağlar (kalem = kart)."""
+    from core.services import duran_hesap
+    from core.services.hesap_plani import HesapHatasi
+    try:
+        hesap = duran_hesap.varlik_hesabi_ac(grup_kodu, ad, kullanici=kullanici)
+    except (duran_hesap.DuranHesapHatasi, HesapHatasi) as e:
+        raise DuranVarlikHatasi(str(e))
+    return DuranVarlik.objects.create(
+        demirbas_kodu=sonraki_demirbas_kodu(), ad=buyuk_harf_tr(ad.strip())[:200], hesap=hesap,
+        aktiflestirme_tarihi=tarih, maliyet=maliyet, kaynak=kaynak, created_by=kullanici, updated_by=kullanici)
+
+
+def hesaptaki_kart(hesap_kodu):
+    """Varlık hesabının (253.01.0001) silinmemiş kartı (hesap başına tek kart; satılmış kart da döner)."""
+    return DuranVarlik.objects.filter(hesap_id=hesap_kodu, silindi=False).first()
+
+
+def satiri_karta_bagla(satir, *, kullanici=None):
+    """Alış faturası kalemi bir KART hesabına (253.01.0001 …) yazıldıysa kalemi o karta bağlar ("kalem = kart" ya da "mevcut
+    karta ekle"). Kart yoksa/hesap kart hesabı değilse hiçbir şey yapmaz. Bağlanan kartı döner."""
+    from core.services import duran_hesap
+    if (not satir.hesap_id or satir.fatura.yon == "SATIS" or not duran_hesap.varlik_hesabi_mi(satir.hesap_id)
+            or duran_hesap.proje_hesabi_mi(satir.hesap_id)):
+        return None
+    kart = hesaptaki_kart(satir.hesap_id)
+    if kart is None:
+        return None
+    kart.fatura_satirlari.add(satir)
+    return kart
+
+
+def kart_maliyetini_yenile(hesap_kodu, *, kullanici=None):
+    """Kartın maliyetini hesabın GERÇEK bakiyesine (yevmiye) eşitler; henüz fiş yoksa (taslak fatura) bağlı kalemlerin toplamına.
+    Satılmış kart değişmez. Hiçbir kalem/bakiye kalmayan FATURA kaynaklı kart silinir (hesap geçmiş için KALIR)."""
+    from django.utils import timezone
+    kart = hesaptaki_kart(hesap_kodu)
+    if kart is None or kart.durum == DuranVarlik.Durum.SATILDI:
+        return kart
+    var_mi = YevmiyeSatir.objects.filter(hesap_id=hesap_kodu, silindi=False, fis__silindi=False).exists()
+    satir_var = kart.fatura_satirlari.filter(silindi=False, fatura__silindi=False).exists()
+    if var_mi:
+        yeni = _hesap_bakiyesi(hesap_kodu)
+    elif satir_var:
+        yeni = baglanti_toplami(kart)
+    elif kart.kaynak == DuranVarlik.Kaynak.FATURA:
+        kart.silindi, kart.silindi_at, kart.updated_by = True, timezone.now(), kullanici
+        kart.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+        return kart
+    else:
+        return kart
+    if satir_var and kart.kaynak == DuranVarlik.Kaynak.FATURA:
+        ilk = min((s.fatura.tarih for s in kart.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
+                   .select_related("fatura")), default=None)
+        if ilk:
+            kart.aktiflestirme_tarihi = ilk
+    kart.maliyet = max(yeni, SIFIR)
+    kart.updated_by = kullanici
+    kart.save(update_fields=["maliyet", "aktiflestirme_tarihi", "updated_by", "updated_at"])
+    return kart

@@ -117,7 +117,20 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
     # TOPLAM — hesap_plani.py::_ust_kod_kumesi ile aynı desen: kodun son segmenti atılarak
     # üst hesap kodu türetilir; hiyerarşi her seviyenin kendi satırı olmasını gerektirdiği
     # için bu, "başka bir kod bu kodla başlıyor mu" sorgusuyla matematiksel olarak eştir).
-    istenen_kodlar = {(g.hesap_kodu or "").strip() for g in satirlar}
+    # 258 satırı + proje: satır PROJENİN kendi hesabına (258.0X.000N) yazılır; seçilen hesabı ezer (bkz. core.services.duran_hesap).
+    from core.models import YatirimProjesi
+    from core.services.hesap_plani import hesap_kodu_258_mi
+    proje_hesap = dict(YatirimProjesi.objects.filter(
+        pk__in={g.yatirim_projesi_id for g in satirlar if g.yatirim_projesi_id}, hesap__isnull=False,
+    ).values_list("pk", "hesap_id")) if any(g.yatirim_projesi_id for g in satirlar) else {}
+
+    def _kod(g):
+        kod = (g.hesap_kodu or "").strip()
+        if g.yatirim_projesi_id in proje_hesap and hesap_kodu_258_mi(kod):
+            return proje_hesap[g.yatirim_projesi_id]
+        return kod
+
+    istenen_kodlar = {_kod(g) for g in satirlar}
     hesaplar = {
         h.hesap_kodu: h for h in
         HesapPlani.objects.filter(hesap_kodu__in=istenen_kodlar, aktif=True, silindi=False)
@@ -127,8 +140,6 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
 
     # Yatırım projesi: yalnız 258 ailesinde kullanılabilir; verilmişse DEVAM eden,
     # silinmemiş bir proje olmalı (bkz. SatirGirdi.yatirim_projesi_id).
-    from core.models import YatirimProjesi
-    from core.services.hesap_plani import hesap_kodu_258_mi
     istenen_proje_id = {g.yatirim_projesi_id for g in satirlar if g.yatirim_projesi_id}
     gecerli_proje_id = set(
         YatirimProjesi.objects.filter(
@@ -161,7 +172,7 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
         if tl <= 0:
             raise YevmiyeHatasi(f"Satır {i}: TL tutarı 0'dan büyük olmalı.")
 
-        hesap = hesaplar.get((g.hesap_kodu or "").strip())
+        hesap = hesaplar.get(_kod(g))
         if hesap is None:
             raise YevmiyeHatasi(
                 f"Satır {i}: hesap bulunamadı/aktif değil: {g.hesap_kodu!r}"

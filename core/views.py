@@ -78,6 +78,7 @@ from core.services.yevmiye import (
     SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_olustur, kur_usd_birebir,
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
+from core.services import duran_hesap as duran_hesap_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import birim as birim_servis
@@ -6754,6 +6755,7 @@ def _fatura_satir_girdileri(formset):
             "kdv_id": cd["kdv"].pk if cd.get("kdv") else None,
             "tevkifat_id": tevkifat_id, "tevkifat_yok": tevkifat_yok,
             "yatirim_projesi_id": cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
+            "varlik_adi": (cd.get("varlik_adi") or "").strip(),
             "miktar": cd["miktar"], "birim_fiyat": cd["birim_fiyat"]})
     return girdiler
 
@@ -6764,7 +6766,8 @@ def _fatura_gider_baglami(fform):
     seçenekleri DURAN VARLIK hesabı (proje alanı yalnız bunlarda gösterilir)."""
     return {"tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
             "tip_stopajli": {str(t.pk): bool(t.stopajli) for t in fform.fields["tip"].queryset},
-            "duran_varlik_hesap": {str(h.pk): True for h in hp.duran_varlik_hesaplari()},
+            "duran_varlik_hesap": {str(h.pk): True for h in (
+                hp.duran_varlik_hesaplari() | duran_hesap_servis.grup_hesaplari(duran_hesap_servis.KART_AILELERI))},
             "demirbas_bilgi": {str(d.pk): {"maliyet": float(d.maliyet), "amortisman": float(d.birikmis_amortisman)}
                                for d in DuranVarlik.objects.filter(silindi=False)},
             "kdv_oran": {str(k.pk): float(k.oran)
@@ -7043,16 +7046,20 @@ def yatirim_projeleri(request):
         fatura_sayisi = len({s.fatura_id for s in satirlar})
         projeler.append({"proje": p, "toplam": yp_servis.proje_toplami(p),
                          "fatura_sayisi": fatura_sayisi})
-    return render(request, "core/yatirim_projeleri.html", {"projeler": projeler})
+    return render(request, "core/yatirim_projeleri.html", {
+        "projeler": projeler, "gruplar": duran_hesap_servis.grup_hesaplari(("258",))})
 
 
 @ekran_gerekli("yatirim_projeleri")
 def yatirim_projesi_ekle(request):
     if request.method == "POST":
         try:
+            grup = (request.POST.get("grup") or "").strip()
+            if not grup and duran_hesap_servis.grup_hesaplari(("258",)).exists():
+                raise yp_servis.YatirimProjesiHatasi("Proje grubunu seçin (258.01 … 258.04).")
             p = yp_servis.proje_olustur(
                 ad=request.POST.get("ad", ""), aciklama=request.POST.get("aciklama", ""),
-                kullanici=request.user)
+                grup_kodu=grup or None, kullanici=request.user)
             messages.success(request, f"Proje eklendi: {p.kod} — {p.ad}")
         except yp_servis.YatirimProjesiHatasi as e:
             messages.error(request, str(e))
@@ -7096,8 +7103,9 @@ def yatirim_projesi_aktiflestir(request, pk):
         formset = AktiflestirmeSatirFormSet(request.POST)
         if baslik.is_valid() and formset.is_valid():
             satirlar = [
-                {"hesap_id": f.cleaned_data["hesap"].pk, "varlik_adi": f.cleaned_data["varlik_adi"],
-                 "tutar": f.cleaned_data["tutar"]}
+                ({"grup_kodu": f.cleaned_data["hesap"].pk} if duran_hesap_servis.grup_mu(f.cleaned_data["hesap"].pk)
+                 else {"hesap_id": f.cleaned_data["hesap"].pk})
+                | {"varlik_adi": f.cleaned_data["varlik_adi"], "tutar": f.cleaned_data["tutar"]}
                 for f in formset if f.cleaned_data and f.dolu_mu()
             ]
             try:
@@ -7149,6 +7157,12 @@ def duran_varlik_ekle(request):
     satir = (FaturaSatir.objects.filter(pk=satir_id, silindi=False, fatura__silindi=False)
              .select_related("fatura", "hesap").first()) if satir_id else None
 
+    if satir and duran_hesap_servis.varlik_hesabi_mi(satir.hesap_id):
+        # Kalem zaten bir kart hesabında (kalem = kart ya da mevcut karta eklenmiş): yeni kart açılmaz.
+        kart = dv_servis.hesaptaki_kart(satir.hesap_id)
+        messages.info(request, "Bu kalem zaten bir duran varlık kartının hesabında; yeni kart açılmaz.")
+        return redirect("core:duran_varlik_detay", pk=kart.pk) if kart else redirect("core:duran_varliklar")
+
     adaylar = FaturaSatir.objects.none()
     otomatik_maliyet = None
     if satir:
@@ -7169,6 +7183,7 @@ def duran_varlik_ekle(request):
                 cd = form.cleaned_data
                 dv = dv_servis.duran_varlik_olustur(
                     ad=cd["ad"], hesap_id=cd["hesap"].pk,
+                    grup_kodu=cd["hesap"].pk if duran_hesap_servis.grup_mu(cd["hesap"].pk) else None,
                     aktiflestirme_tarihi=cd["aktiflestirme_tarihi"], maliyet=cd.get("maliyet"),
                     marka_model=cd["marka_model"], seri_no=cd["seri_no"], notlar=cd["notlar"],
                     fatura_satirlari=list(cd["fatura_satir_ids"]), kullanici=request.user)

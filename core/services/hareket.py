@@ -155,6 +155,8 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
             pk=yatirim_projesi_id, silindi=False, durum=YatirimProjesi.Durum.DEVAM).first()
         if yatirim_projesi is None:
             raise HareketHatasi("Yatırım projesi bulunamadı ya da 'Devam Ediyor' durumunda değil.")
+        if yatirim_projesi.hesap_id:          # satır projenin kendi 258.0X.000N hesabına yazılır (seçilen hesabı ezer)
+            karsi_hesap = yatirim_projesi.hesap
     elif yatirim_projesi_id:
         raise HareketHatasi("Yatırım projesi yalnız 258 karşı hesabı seçilince kullanılabilir.")
 

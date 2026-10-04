@@ -19,6 +19,7 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, DuranVarlik, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
@@ -28,6 +29,8 @@ from core.models import (Cari, Depo, DuranVarlik, Fatura, FaturaSatir, FaturaTip
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
+from core.services import duran_hesap
+from core.services import duran_varlik as dv_servis
 from core.services.hesap_plani import (duran_varlik_hesaplari, gider_hesaplari,
                                        hesap_kodu_258_mi, hesap_kodu_duran_varlik_mi)
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
@@ -82,7 +85,7 @@ def _gider_ve_duran_varlik_hesaplari():
     """GİDER faturası kalem hesabı seçiminde izin verilen TAM küme: gider hesapları
     (7xx/65x/66x/68x) + duran varlık hesapları (253/254/255/258/260) — bkz.
     core.services.hesap_plani.gider_hesaplari / duran_varlik_hesaplari."""
-    return gider_hesaplari() | duran_varlik_hesaplari()
+    return gider_hesaplari() | duran_varlik_hesaplari() | duran_hesap.grup_hesaplari(duran_hesap.KART_AILELERI)
 
 
 # Ortak adına (şahsi) alış: KDV'nin (191'e borçlanan TAM tutar) karşılığı bu hesaba
@@ -219,9 +222,13 @@ def _satis_hesap_kumesi():
         Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258.")))
 
 
-def _hesap_satiri_coz(g, i, hesap_kumesi):
-    """Gider/duran varlık/satış hesap satırı: (hesap, kdv, tevkifat, proje). 258'de proje ZORUNLU, aktifleşmiş
-    proje seçilemez; 253/254/255/260'ta opsiyonel; gider hesabında proje yok."""
+def _hesap_satiri_coz(g, i, hesap_kumesi, *, kullanici=None, tarih=None):
+    """Gider/duran varlık/satış hesap satırı: (hesap, kdv, tevkifat, proje).
+
+    * 258 ailesi: proje ZORUNLU, aktifleşmiş proje seçilemez; satır PROJENİN kendi hesabına (258.0X.000N) yazılır.
+    * 253/254/255/260: GRUP (ör. 253.01) seçilirse bu kalem için YENİ KART + sıradaki 000N hesabı otomatik açılır (kalem = kart;
+      kart adı ``varlik_adi``, boşsa grup adı); kartın hesabı (253.01.0001) seçilirse kalem O KARTA eklenir (yeni kart açılmaz).
+    * Gider hesabında proje yok."""
     hesap = (hesap_kumesi.filter(pk=g.get("hesap_id")).first() if g.get("hesap_id") else None)
     if hesap is None:
         raise FaturaHatasi(
@@ -247,6 +254,19 @@ def _hesap_satiri_coz(g, i, hesap_kumesi):
             raise FaturaHatasi(
                 f"Satır {i}: {hesap.hesap_kodu} hesabı için yatırım projesi seçimi "
                 f"zorunludur.")
+        if proje is not None and hesap_kodu_258_mi(hesap.hesap_kodu) and proje.hesap_id:
+            hesap = proje.hesap                         # satır projenin hesabına yazılır
+        elif duran_hesap.grup_mu(hesap.hesap_kodu) and not hesap_kodu_258_mi(hesap.hesap_kodu):
+            ad = (g.get("varlik_adi") or "").strip() or hesap.hesap_adi
+            try:
+                hesap = dv_servis.kart_ac(hesap.hesap_kodu, ad, tarih=tarih or timezone.localdate(),
+                                          kullanici=kullanici).hesap
+            except dv_servis.DuranVarlikHatasi as e:
+                raise FaturaHatasi(f"Satır {i}: {e}")
+        elif duran_hesap.varlik_hesabi_mi(hesap.hesap_kodu) and not hesap_kodu_258_mi(hesap.hesap_kodu):
+            kart = dv_servis.hesaptaki_kart(hesap.hesap_kodu)
+            if kart is not None and kart.durum == DuranVarlik.Durum.SATILDI:
+                raise FaturaHatasi(f"Satır {i}: {kart.demirbas_kodu} kartı satılmış; ek maliyet yazılamaz.")
     return hesap, kdv, tevkifat, proje
 
 
@@ -265,7 +285,7 @@ def _demirbas_coz(g, i, *, fatura_pk=None):
     return dv
 
 
-def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None):
+def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None, kullanici=None, tarih=None):
     """Girdi satırını çözer -> (stok, hesap, kdv, tevkifat, proje, demirbas).
 
     Satır türü (``g["tur"]``: STOK / HESAP / DEMIRBAS; verilmezse alanlardan türetilir):
@@ -292,7 +312,8 @@ def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None):
                     raise FaturaHatasi(f"Satır {i}: KDV oranı bulunamadı.")
             tevkifat = _tevkifat_coz(g, i)
             return None, sahsi_ortak, kdv, tevkifat, None, None
-        hesap, kdv, tevkifat, proje = _hesap_satiri_coz(g, i, _gider_ve_duran_varlik_hesaplari())
+        hesap, kdv, tevkifat, proje = _hesap_satiri_coz(g, i, _gider_ve_duran_varlik_hesaplari(),
+                                                        kullanici=kullanici, tarih=tarih)
         return None, hesap, kdv, tevkifat, proje, None
     if tur == "HESAP":
         if not satis:
@@ -301,7 +322,7 @@ def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None):
                 f"satırı olarak) kullanılabilir.")
         if g.get("stok_id") or g.get("demirbas_id"):
             raise FaturaHatasi(f"Satır {i}: hesap satırında stok/demirbaş seçilemez.")
-        hesap, kdv, tevkifat, proje = _hesap_satiri_coz(g, i, _satis_hesap_kumesi())
+        hesap, kdv, tevkifat, proje = _hesap_satiri_coz(g, i, _satis_hesap_kumesi(), kullanici=kullanici, tarih=tarih)
         return None, hesap, kdv, tevkifat, proje, None
     if tur == "DEMIRBAS":
         if not satis:
@@ -372,7 +393,7 @@ def _demirbas_geri_al(fatura, kullanici=None):
 
 
 def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None,
-             sahsi_ortak_id=None, gv_stopaj_orani=None, fatura_pk=None):
+             sahsi_ortak_id=None, gv_stopaj_orani=None, fatura_pk=None, kullanici=None):
     """Ortak hazırlık (oluştur+güncelle): doğrula, kur çöz, yevmiye satırlarını ve
     FaturaSatir verisini kur. (tip, cari, pb, kur, yevmiye_satirlari, hazir) döner.
     ``kur_override`` doluysa (kullanıcı elle girdi/değiştirdi) carinin kur_tipi'ne göre
@@ -432,7 +453,8 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
     demirbas_idler = set()
     for i, g in enumerate(satirlar, start=1):
         stok, hesap, kdv, tevkifat, proje, dv = _satir_coz(
-            g, i, tip.gider, sahsi_ortak=sahsi_ortak, satis=not alis, fatura_pk=fatura_pk)
+            g, i, tip.gider, sahsi_ortak=sahsi_ortak, satis=not alis, fatura_pk=fatura_pk,
+            kullanici=kullanici, tarih=tarih)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         if dv is not None:
@@ -558,7 +580,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
 
 
 def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_id=None, satis=False,
-                    fatura_pk=None):
+                    fatura_pk=None, kullanici=None, tarih=None):
     """Taslak oluştur/güncelle ortak hazırlığı: cari + satırları doğrular — TİP'e ihtiyaç
     DUYMAZ (muhasebe haritası + yevmiye satırları onaylamaya ertelenir, bkz. fatura_onayla).
     KDV stoktan, tevkifat ise satırda elle seçilmemişse stoktan (seçilmişse formdan) bu anda
@@ -581,7 +603,8 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_
     demirbas_idler = set()
     for i, g in enumerate(satirlar, start=1):
         stok, hesap, kdv, tevkifat, proje, dv = _satir_coz(
-            g, i, gider, sahsi_ortak=sahsi_ortak, satis=satis, fatura_pk=fatura_pk)
+            g, i, gider, sahsi_ortak=sahsi_ortak, satis=satis, fatura_pk=fatura_pk,
+            kullanici=kullanici, tarih=tarih)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         if dv is not None:
@@ -753,12 +776,21 @@ def _aciklama(tip, cari, fatura_no):
     return buyuk_harf_tr(f"{tip.ad} - {cari.unvan}" + (f" - {fatura_no}" if fatura_no else ""))
 
 
+def _kartlari_yenile(fatura, kullanici):
+    """Faturanın (silinmiş kalemler dahil) kart hesaplarındaki kart maliyetlerini hesap bakiyesine eşitler."""
+    for kod in set(fatura.satirlar.values_list("hesap_id", flat=True)):
+        if kod and duran_hesap.varlik_hesabi_mi(kod) and not duran_hesap.proje_hesabi_mi(kod):
+            dv_servis.kart_maliyetini_yenile(kod, kullanici=kullanici)
+
+
 def _satirlari_yaz(fatura, hazir, kullanici):
     for stok, hesap, miktar, birim, kdv, tevkifat, proje, demirbas in hazir:
-        FaturaSatir.objects.create(
+        satir = FaturaSatir.objects.create(
             fatura=fatura, stok=stok, hesap=hesap, miktar=miktar, birim_fiyat=birim, kdv=kdv,
             tevkifat=tevkifat, yatirim_projesi=proje, demirbas=demirbas,
             created_by=kullanici, updated_by=kullanici)
+        dv_servis.satiri_karta_bagla(satir, kullanici=kullanici)   # kalem = kart / mevcut karta ekle
+    _kartlari_yenile(fatura, kullanici)
 
 
 def _taslak_kur_coz(kur, para_birimi):
@@ -902,7 +934,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
     satis = bool(tip and tip.yon == FaturaTipi.Yon.SATIS) or (tip is None and yon == FaturaTipi.Yon.SATIS)
     cari, pb, hazir = _hazirla_taslak(
         cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider, satis=satis,
-        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None))
+        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih)
     if tip is not None:
         cozulen_yon = tip.yon
     elif yon in FaturaTipi.Yon.values:
@@ -962,6 +994,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
     fatura.updated_by = kullanici
     fatura.save(update_fields=["fis", "kur", "durum", "updated_by", "updated_at"])
     _demirbas_satildi_yaz(fatura, kullanici)
+    _kartlari_yenile(fatura, kullanici)
     if irsaliyeden_mi(fatura):
         _irsaliye_girislerini_fiyatla(fatura)
     elif fatura.depo_id:
@@ -1016,7 +1049,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         cari, pb, hazir = _hazirla_taslak(
             cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider,
             satis=(cozulen_yon == FaturaTipi.Yon.SATIS), fatura_pk=fatura.pk,
-            sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None))
+            sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih)
         if gider and cozulen_yon != FaturaTipi.Yon.ALIS:
             raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
         depo = None if gider else _depo_coz(depo_id)
@@ -1046,7 +1079,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
         para_birimi=para_birimi, kur_override=kur,
         sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None),
-        gv_stopaj_orani=gv_stopaj_orani, fatura_pk=fatura.pk)
+        gv_stopaj_orani=gv_stopaj_orani, fatura_pk=fatura.pk, kullanici=kullanici)
     depo = None if tip.gider else _depo_coz(depo_id)    # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
     _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=tip.yon, haric_pk=fatura.pk)
@@ -1092,6 +1125,7 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     İrsaliye SİLİNMEZ, "Faturaya Dönüştü" rozetini kaybedip yeniden düzenlenebilir hale
     gelir (bkz. teklif_siparis.teklif_siparis_onayi_geri_al)."""
     _demirbas_geri_al(fatura, kullanici)             # satılan demirbaş kartları eski durumuna döner
+    kart_hesaplari = set(fatura.satirlar.values_list("hesap_id", flat=True))
     hareketler = list(StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False))
     maliyet_fis_idler = {h.fis_id for h in hareketler if h.fis_id}   # satış maliyet fişi
     for h in hareketler:
@@ -1119,3 +1153,6 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
         fis_no_sayacini_koru(fis_yil)                  # silinen fiş numarası bir daha verilmez
         YevmiyeFisi.objects.filter(pk=fis_id).delete()  # YevmiyeSatir CASCADE (fis PROTECT
                                                          # olduğu için fatura'dan SONRA silinir)
+    for kod in kart_hesaplari:                           # kart maliyeti hesaba eşitlenir; boş kalan kart silinir (hesap KALIR)
+        if kod and duran_hesap.varlik_hesabi_mi(kod) and not duran_hesap.proje_hesabi_mi(kod):
+            dv_servis.kart_maliyetini_yenile(kod, kullanici=kullanici)

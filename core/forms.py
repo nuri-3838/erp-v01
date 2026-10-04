@@ -1715,6 +1715,10 @@ class FaturaSatirForm(forms.Form):
     yatirim_projesi = forms.ModelChoiceField(
         label="Yatırım Projesi", queryset=YatirimProjesi.objects.none(), required=False,
         empty_label="— proje seç —")
+    # 253/254/255/260 GRUBU (ör. 253.01) seçilince açılacak YENİ kartın adı (boşsa grup adı); kart hesabı seçilirse yok sayılır.
+    varlik_adi = forms.CharField(
+        label="Yeni kart adı", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"placeholder": "Yeni kart adı (grup seçildiyse)", "autocomplete": "off"}))
     # Stoklu kalemde stok kartından (JS) otomatik ön-dolar ama DEĞİŞTİRİLEBİLİR; hesap
     # (gider/duran varlık) kaleminde elle seçilir. ÜÇ AYRI durum (bkz. TEVKIFAT_YOK altında
     # modül seviyesi sabiti + core.services.fatura._satir_coz): "" (boş) = stoklu kalemde
@@ -1764,7 +1768,9 @@ class FaturaSatirForm(forms.Form):
         # yazar (bkz. fatura_ekle.html sahsiUygula) — kalemde elle seçilmez, ama form/DB
         # kısıtının "stok veya hesap dolu olmalı" şartını karşılaması için queryset'te olmalı.
         ortak_qs = ortak_hesaplari()
-        self.fields["hesap"].queryset = (gider_qs | duran_qs | ortak_qs).distinct()
+        from core.services import duran_hesap
+        duran_grup_qs = duran_hesap.grup_hesaplari(duran_hesap.KART_AILELERI)
+        self.fields["hesap"].queryset = (gider_qs | duran_qs | ortak_qs | duran_grup_qs).distinct()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
         if yon == "SATIS":
@@ -1779,7 +1785,9 @@ class FaturaSatirForm(forms.Form):
                 ("Yatırım (258)", duran_qs.filter(Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258.")))])
         else:
             _gruplu_secenekler_uygula(self.fields["hesap"], [
-                ("Gider Hesapları", gider_qs), ("Duran Varlık Hesapları", duran_qs),
+                ("Gider Hesapları", gider_qs),
+                ("Duran Varlık — YENİ KART AÇ (grup seç)", duran_grup_qs),
+                ("Duran Varlık — MEVCUT KARTA EKLE / Yatırım (258: proje seç)", duran_qs),
                 ("Ortak Hesapları (şahsi alış)", ortak_qs)])
         from core.services.yatirim_projesi import aktif_projeler
         self.fields["yatirim_projesi"].queryset = aktif_projeler()
@@ -1842,6 +1850,7 @@ class FaturaSatirForm(forms.Form):
         elif dv is not None:
             cd["yatirim_projesi"] = None
         elif hesap and hesap_kodu_duran_varlik_mi(hesap.hesap_kodu):
+            cd["varlik_adi"] = (cd.get("varlik_adi") or "").strip()
             if hesap_kodu_258_mi(hesap.hesap_kodu) and not cd.get("yatirim_projesi"):
                 raise forms.ValidationError(
                     f"{hesap.hesap_kodu} hesabı için yatırım projesi seçimi zorunludur.")
@@ -1850,11 +1859,21 @@ class FaturaSatirForm(forms.Form):
                     f"{cd['yatirim_projesi'].kod} projesi aktifleşmiş; yeni kalem eklenemez.")
         else:
             cd["yatirim_projesi"] = None           # gider hesabında proje anlamsız — temizle
+            cd["varlik_adi"] = ""
         cd["dolu"] = True
         return cd
 
     def dolu_mu(self) -> bool:
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+def _yeni_kart_hedefleri():
+    """Yeni duran varlık kartının bağlanacağı hedef: GRUP hesapları (253.01 …; sistem sıradaki 000N hesabını açar) + (grup
+    açılmamış eski planda) kartsız düz yaprak hesaplar. Mevcut kart hesapları (253.01.0001 …) ASLA seçilemez (hesap başına tek kart)."""
+    from core.services import duran_hesap
+    from core.services.hesap_plani import duran_varlik_karti_hesaplari
+    duz = duran_varlik_karti_hesaplari().exclude(hesap_kodu__regex=r"^\d{3}\.\d{2}\.\d{4}$")
+    return (duran_hesap.grup_hesaplari(duran_hesap.KART_AILELERI) | duz).distinct().order_by("hesap_kodu")
 
 
 class DuranVarlikForm(forms.Form):
@@ -1863,8 +1882,8 @@ class DuranVarlikForm(forms.Form):
 
     _K = {"autocomplete": "off"}
     ad = forms.CharField(label="Ad", max_length=200, widget=forms.TextInput(attrs=_K))
-    hesap = forms.ModelChoiceField(label="Muhasebe Hesabı", queryset=HesapPlani.objects.none(),
-                                   empty_label="— hesap seç —")
+    hesap = forms.ModelChoiceField(label="Grup (yeni hesap otomatik açılır)", queryset=HesapPlani.objects.none(),
+                                   empty_label="— grup seç —")
     aktiflestirme_tarihi = forms.DateField(
         label="Aktifleştirme Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
@@ -1881,8 +1900,7 @@ class DuranVarlikForm(forms.Form):
 
     def __init__(self, *args, satir_adaylari=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.hesap_plani import duran_varlik_karti_hesaplari
-        self.fields["hesap"].queryset = duran_varlik_karti_hesaplari()
+        self.fields["hesap"].queryset = _yeni_kart_hedefleri()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
         self.fields["fatura_satir_ids"].queryset = (
@@ -1920,16 +1938,15 @@ class AktiflestirmeSatirForm(forms.Form):
     """Aktifleştirme satırı: 258 toplamının bölüneceği hedef hesap + varlık adı + tutar."""
 
     _K = {"autocomplete": "off"}
-    hesap = forms.ModelChoiceField(label="Hedef Hesap", queryset=HesapPlani.objects.none(),
-                                   empty_label="— hesap seç —")
+    hesap = forms.ModelChoiceField(label="Hedef Grup", queryset=HesapPlani.objects.none(),
+                                   empty_label="— grup seç —")
     varlik_adi = forms.CharField(label="Varlık Adı", max_length=200,
                                  widget=forms.TextInput(attrs=_K))
     tutar = TRDecimalField(label="Tutar", basamak=2)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.hesap_plani import duran_varlik_karti_hesaplari
-        self.fields["hesap"].queryset = duran_varlik_karti_hesaplari()
+        self.fields["hesap"].queryset = _yeni_kart_hedefleri()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
 

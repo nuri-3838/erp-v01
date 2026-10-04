@@ -226,7 +226,7 @@ def havuz_yeniden_hesapla(hesap_kodu, pb):
                 hedef_kod, hedef_proje_id = mevcut[0].hesap_id, mevcut[0].yatirim_projesi_id
                 hedef_proje_kod = eski.kod if eski is not None else None
         elif proje is not None:
-            hedef_kod, hedef_proje_id, hedef_proje_kod = YATIRIM_HESABI, proje.pk, proje.kod
+            hedef_kod, hedef_proje_id, hedef_proje_kod = (proje.hesap_id or YATIRIM_HESABI), proje.pk, proje.kod
         if hedef_proje_kod:
             yatirim[hedef_proje_kod] = yatirim.get(hedef_proje_kod, SIFIR) + (-tutar if kar_tarafi else tutar)
         alanlar = dict(

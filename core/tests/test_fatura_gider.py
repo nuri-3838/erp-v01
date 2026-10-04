@@ -649,8 +649,9 @@ class DuranVarlikGiderFaturaTest(GiderTemel):
         form = FaturaSatirForm(yon="ALIS")
         gruplar = dict(form.fields["hesap"].widget.choices)
         self.assertIn("Gider Hesapları", gruplar)
-        self.assertIn("Duran Varlık Hesapları", gruplar)
-        dv_kodlari = {lbl.split("  ", 1)[0] for _, lbl in gruplar["Duran Varlık Hesapları"]}
+        ad = "Duran Varlık — MEVCUT KARTA EKLE / Yatırım (258: proje seç)"
+        self.assertIn(ad, gruplar)
+        dv_kodlari = {lbl.split("  ", 1)[0] for _, lbl in gruplar[ad]}
         self.assertEqual(dv_kodlari, {"253", "254", "255", "258", "260"})
 
     def test_264_hesabi_fatura_formunda_secilemez(self):

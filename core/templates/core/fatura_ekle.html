@@ -54,6 +54,7 @@
   .proje-alani { display:none; margin-top:.3rem; }
   tr.satir-form.duran-varlik .proje-alani { display:block; }
   .proje-alani select { width:100%; font-size:.82rem; }
+  .proje-alani input[type=text] { width:100%; font-size:.82rem; margin-top:.25rem; }
   /* Ortak adına (şahsi) alış: yalnız GİDER modunda görünür (bkz. #sahsi-blok JS toggle).
      İşaretlenince kalemlerde "Gider Hesabı" sütunu gizlenir, yerine sabit not gösterilir. */
   #sahsi-blok { display:none; }
@@ -191,7 +192,7 @@
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td><div class="tur-alani">{{ f.tur }}</div><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="demirbas-alani">{{ f.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ f.yatirim_projesi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td><div class="tur-alani">{{ f.tur }}</div><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="demirbas-alani">{{ f.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ f.yatirim_projesi }}{{ f.varlik_adi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">{{ f.miktar }}</td>
               <td class="sag">{{ f.birim_fiyat }}</td>
               <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tevkifat-secim">{{ f.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -215,7 +216,7 @@
     </section>
 
     <template id="bos-satir">
-      <td><div class="tur-alani">{{ formset.empty_form.tur }}</div><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="demirbas-alani">{{ formset.empty_form.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}</div></td>
+      <td><div class="tur-alani">{{ formset.empty_form.tur }}</div><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="demirbas-alani">{{ formset.empty_form.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}{{ formset.empty_form.varlik_adi }}</div></td>
       <td class="sag">{{ formset.empty_form.miktar }}</td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
       <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tevkifat-secim">{{ formset.empty_form.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>

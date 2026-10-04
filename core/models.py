@@ -1693,6 +1693,11 @@ class YatirimProjesi(TemelModel):
     aktiflestirme_fisi = models.ForeignKey(
         YevmiyeFisi, verbose_name="aktifleştirme fişi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="yatirim_projesi_aktiflestirmeleri")
+    # Projeye özel 258.0X.000N muhasebe hesabı (grup: 258.01 makine-teçhizat ... 258.04 arsa); projeye yazılan TÜM 258
+    # satırları bu hesaba gider (bkz. core.services.duran_hesap). Proje silinse/aktifleşse de hesap geçmiş için kalır.
+    hesap = models.ForeignKey(
+        HesapPlani, verbose_name="muhasebe hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="yatirim_projeleri")
 
     class Meta:
         db_table = "yatirim_projesi"
