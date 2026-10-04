@@ -114,7 +114,10 @@ def proje_aktiflestir(proje: YatirimProjesi, *, tarih, satirlar, kullanici=None)
         raise YatirimProjesiHatasi(
             f"Satır toplamı ({satir_toplam}) proje toplamına ({toplam}) kuruşuna eşit olmalı.")
 
-    proje_satirlari = list(proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False))
+    # Karta yalnız ALIŞ yönlü satırlar bağlanır; satış faturasındaki 258 hesap satırı (alış iadesi) maliyeti düşürür
+    # (proje_toplami'nda zaten eksi), karta maliyet kalemi olarak bağlanmaz.
+    proje_satirlari = list(proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
+                           .exclude(fatura__yon="SATIS"))
     kaynak_kodlari = {s.hesap.hesap_kodu for s in proje_satirlari}
     if len(kaynak_kodlari) != 1:
         raise YatirimProjesiHatasi(

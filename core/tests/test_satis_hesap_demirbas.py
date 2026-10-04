@@ -266,3 +266,31 @@ class SatisFaturaEkranTest(SatisHesapDemirbasTestBase):
         r = self._post([{"tur": "DEMIRBAS", "miktar": "1", "birim_fiyat": "100"}])
         self.assertContains(r, "satılacak kartı seçin")
         self.assertFalse(Fatura.objects.exists())
+
+
+class AktiflestirmeSonrasiDemirbasTest(SatisHesapDemirbasTestBase):
+    """Projeli alış iadesi olan proje aktifleştirilince: kart toplamı iade düşülmüş tutar, karta yalnız alış kalemi
+    bağlanır; oluşan kart (254) satış faturasında demirbaş satırı olarak seçilebilir."""
+
+    def test_iadeli_proje_aktiflestirme_ve_kartin_satilmasi(self):
+        from core.services.yatirim_projesi import proje_aktiflestir
+        _hesap("254", "TAŞITLAR")
+        proje = proje_olustur(ad="araç", kullanici=self.su)
+        fs.fatura_olustur(tip_id=self.gider.pk, cari_id=self.satici.pk, tarih=D(2026, 3, 10), fatura_no="G1",
+                          satirlar=[{"hesap_id": "258", "miktar": "1", "birim_fiyat": "5000", "kdv_id": self.kdv0.pk,
+                                     "yatirim_projesi_id": proje.pk}])
+        self._fatura([self._hesap_satir("258", "1000", self.kdv0, proje)], tip=self.iade, cari=self.satici)
+        self.assertEqual(proje_toplami(proje), Dc("4000.00"))
+        h254 = HesapPlani.objects.get(hesap_kodu="254")
+        proje_aktiflestir(proje, tarih=D(2026, 4, 10), kullanici=self.su,
+                          satirlar=[{"hesap_id": h254.pk, "varlik_adi": "megane", "tutar": Dc("4000.00")}])
+        kart = DuranVarlik.objects.get(kaynak="PROJE")
+        self.assertEqual((kart.hesap_id, kart.maliyet, kart.durum), ("254", Dc("4000.00"), "AKTIF"))
+        self.assertEqual(kart.fatura_satirlari.count(), 1)                       # yalnız alış kalemi bağlı
+        self.assertEqual(dv_servis.baglanti_toplami(kart), Dc("5000.00"))        # alış kalemi (iade ayrı düşülmüştü)
+        # kart satış faturasında seçilebilir ve satılır
+        f = self._fatura([self._dv_satir(kart, "3000", self.kdv0)], cari=self.cari)
+        kart.refresh_from_db()
+        self.assertEqual(kart.durum, "SATILDI")
+        self.assertEqual(self._fis(f)[("254", "A")][0], Dc("4000.00"))
+        self.assertEqual(self._fis(f)[("770.04", "B")][0], Dc("1000.00"))        # 3.000 − 4.000
