@@ -12,6 +12,7 @@ Rapor: havuz bazında üretilecek kur farkı (kâr/zarar), önce/sonra TL bakiye
 
     python manage.py kur_farki_geriye_donuk [--uygula]
 """
+import argparse
 import datetime
 from decimal import Decimal
 
@@ -47,9 +48,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--uygula", action="store_true")
         parser.add_argument(
-            "--naturel-door-usd", action="store_true",
-            help="Fiş 2026/535'teki Naturel Door TL emanet satırını 10.000 USD @45,7175 olarak yeniden "
-                 "yazar (TL aynı) — böylece 3.316 kur farkını motor üretir ve cari 0 olur.")
+            "--naturel-door-usd", action=argparse.BooleanOptionalAction, default=True,
+            help="(varsayılan AÇIK; kapatmak için --no-naturel-door-usd) Fiş 2026/535'teki Naturel Door TL "
+                 "emanet satırını 10.000 USD @45,7175 olarak yeniden yazar (TL aynı) — böylece 3.316 kur "
+                 "farkını motor üretir ve cari 0 olur.")
 
     def _adlar(self):
         ad = {}
@@ -138,17 +140,27 @@ class Command(BaseCommand):
 
             w("\n== 2) Havuz bazında yeniden hesap (ortalama kur + 646/656 kur farkı) ==")
             toplam_kar = toplam_zarar = 0
+            yatirim_toplam = {}
             for hesap, pb in kf.tum_havuzlar():
                 tl_once = _bakiye(hesap)
                 r = kf.havuz_yeniden_hesapla(hesap, pb)
                 toplam_kar += r["kar"]
                 toplam_zarar += r["zarar"]
+                for kod, tut in r["yatirim"].items():
+                    yatirim_toplam[kod] = yatirim_toplam.get(kod, 0) + tut
                 q, v = kf.havuz_bakiyesi(hesap, pb)
+                hedef = f" → 258 / {r['proje']}" if r["proje"] else " → 646/656"
                 w(f"  {hesap} {pb} [{adlar.get(hesap, '')}]: değişen satır {r['degisen']} | üretilen kur farkı "
-                  f"kâr {format_tr(r['kar'])} / zarar {format_tr(r['zarar'])} | döviz bakiye {format_tr(q)} → "
+                  f"kâr {format_tr(r['kar'])} / zarar {format_tr(r['zarar'])}{hedef} | döviz bakiye {format_tr(q)} → "
                   f"TL havuz bakiyesi {format_tr(v)}" + (f" (ort. kur {format_tr(v / q, 4)})" if q else ""))
                 w(f"      hesap TL bakiyesi (tüm satırlar): önce {format_tr(tl_once)} → sonra {format_tr(_bakiye(hesap))}")
-            w(f"\nToplam üretilen kur farkı: kâr (646) {format_tr(toplam_kar)} / zarar (656) {format_tr(toplam_zarar)}")
+            w(f"\nToplam üretilen kur farkı: kâr {format_tr(toplam_kar)} / zarar {format_tr(toplam_zarar)} "
+              f"(yatırım carilerinin kur farkı 258'e, kalanı 646/656'ya yazılır)")
+            w("Yatırım maliyetine (258) yazılan kur farkı — proje bazında (+ maliyet artışı / − azalış):")
+            for kod, tut in sorted(yatirim_toplam.items()):
+                w(f"  {kod}: {format_tr(tut)} TL")
+            if not yatirim_toplam:
+                w("  yok")
             w(f"Silinen elle kur farkı fişleri: {silinen or '-'} | dokunulmayan: {atlanan or 'yok'}")
 
             w("\n== Kontroller ==")

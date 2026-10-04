@@ -99,6 +99,7 @@ from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
 from core.services import doviz_islem as doviz_islem_servis
 from core.services import kur_degerleme as kur_degerleme_servis
+from core.services import kur_farki as kur_farki_servis
 from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
 from core.services import kredi_hareket as kredi_hareket_servis
 from core.services import cek as cek_servis
@@ -1720,6 +1721,16 @@ def cari_duzenle(request, pk):
                    "kategori_kilitli": kategori_kilitli})
 
 
+def _cari_kur_farki_projesi(cari):
+    """Döviz hareketi olan carinin kur farkı yatırım maliyetine gidiyorsa o proje (bkz.
+    core.services.kur_farki.yatirim_hedefi), değilse None."""
+    if not cari.muhasebe_kodu:
+        return None
+    doviz = cari.para_birimi != "TRY" or YevmiyeSatir.objects.filter(
+        hesap_id=cari.muhasebe_kodu, silindi=False, fis__silindi=False).exclude(islem_pb="TRY").exists()
+    return kur_farki_servis.yatirim_hedefi(cari.muhasebe_kodu) if doviz else None
+
+
 @ekran_gerekli("cariler")
 def cari_detay(request, pk):
     cari = get_object_or_404(
@@ -1728,6 +1739,7 @@ def cari_detay(request, pk):
         pk=pk, silindi=False)
     return render(request, "core/cari_detay.html", {
         "cari": cari,
+        "kur_farki_proje": _cari_kur_farki_projesi(cari),
         "bankalar": cari_servis.aktif_bankalar(cari),
         "yetkililer": cari_servis.aktif_yetkililer(cari),
         "sevk_adresleri": cari_servis.aktif_sevk_adresleri(cari),

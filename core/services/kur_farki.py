@@ -12,6 +12,12 @@ Havuz = (muhasebe hesabı, işlem para birimi). Her havuzda döviz bakiyesi ``q`
   satır olur: kâr → 646 KAMBİYO KÂRLARI (alacak), zarar → 656 KAMBİYO ZARARLARI (borç).
 - Çıkış havuzu aşarsa (bakiye işaret değiştirir) aşan kısım yeni havuzu işlem kuruyla açar.
 
+YATIRIM CARİLERİ: bir cari havuzunun kur farkı, carinin EN SON (fatura tarihi, id) onaylı faturasının
+yatırım projeli (258) kalemindeki projeye — proje "Devam Ediyor" ise — 646/656 yerine 258 YAPILMAKTA OLAN
+YATIRIMLAR'a ve aynı yatırım projesine yazılır (zarar 258 borç = maliyet artar, kâr 258 alacak). Proje
+aktifleşmişse ya da carinin projeli faturası yoksa 646/656. Banka/kasa/çek havuzları hep 646/656.
+(Satır zaten bir aktifleşmiş projenin 258'ine yazılmışsa hedefi değiştirilmez.)
+
 Havuzlar tarih → fiş no → satır id sırasıyla HER SEFERİNDE baştan hesaplanır (geriye dönük girilen
 ya da silinen hareket sonraki çıkışların kur farkını da düzeltir). Fiş oluşturma/güncelleme/iptal/
 silme bu motoru tetikler (bkz. yevmiye.py, fis_sil.py). Dönem sonu kur değerleme fişleri
@@ -28,14 +34,15 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from core.models import (BankaHesap, CekHesapAyari, HesapPlani, Kasa, YevmiyeFisi,
-                         YevmiyeSatir)
+from core.models import (BankaHesap, Cari, CekHesapAyari, FaturaSatir, HesapPlani, Kasa,
+                         YatirimProjesi, YevmiyeFisi, YevmiyeSatir)
 from core.sayi import yuvarla
 
 SIFIR = Decimal("0.00")
 KAR_HESABI = "646"
 ZARAR_HESABI = "656"
 KUR_FARKI_ACIKLAMA = "KUR FARKI"
+YATIRIM_HESABI = "258"
 CARI_ONEKLERI = ("120", "121", "320", "321")
 
 
@@ -137,6 +144,24 @@ def _girdi(s):
     return GirdiSatir(pk=s.pk, yon=yon, dvz=s.islem_tutari, ham=ham, degerleme=degerleme)
 
 
+def yatirim_hedefi(hesap_kodu):
+    """Cari havuzu için kur farkının yazılacağı yatırım projesi (``YatirimProjesi``, DEVAM) ya da None.
+    Carinin en son (fatura tarihi, id) onaylı faturasının yatırım projeli kalemindeki projeye bakar."""
+    if not hesap_kodu or not hesap_kodu.startswith(CARI_ONEKLERI):
+        return None
+    cari = Cari.objects.filter(muhasebe_kodu=hesap_kodu, silindi=False).first()
+    if cari is None:
+        return None
+    satir = (FaturaSatir.objects
+             .filter(fatura__cari=cari, fatura__silindi=False, fatura__durum="ONAYLI", silindi=False,
+                     yatirim_projesi__isnull=False, yatirim_projesi__silindi=False)
+             .select_related("yatirim_projesi", "fatura")
+             .order_by("-fatura__tarih", "-fatura_id", "-id").first())
+    if satir is None or satir.yatirim_projesi.durum != YatirimProjesi.Durum.DEVAM:
+        return None
+    return satir.yatirim_projesi
+
+
 def _hesap(kod):
     h = HesapPlani.objects.filter(hesap_kodu=kod, silindi=False).first()
     if h is None:
@@ -158,6 +183,8 @@ def havuz_yeniden_hesapla(hesap_kodu, pb):
     satirlar, sonuclar, q, v = havuz_plani(hesap_kodu, pb)
     degisen = 0
     kar = zarar = SIFIR
+    proje = yatirim_hedefi(hesap_kodu)
+    yatirim = {}                      # proje kodu -> net maliyet etkisi (zarar +, kâr −)
     for s, r in zip(satirlar, sonuclar):
         girdi = _girdi(s)
         if girdi.degerleme:
@@ -180,18 +207,28 @@ def havuz_yeniden_hesapla(hesap_kodu, pb):
             for m in mevcut:
                 m.delete()
             continue
-        kar_tarafi = (fark > 0) == (yon < 0)          # True → 646 alacak; False → 656 borç
+        kar_tarafi = (fark > 0) == (yon < 0)          # True → alacak (kâr); False → borç (zarar)
         tutar = abs(fark)
         if kar_tarafi:
             kar += tutar
-            kod = KAR_HESABI
         else:
             zarar += tutar
-            kod = ZARAR_HESABI
-        hesap = _hesap(kod)
+        hedef_kod = KAR_HESABI if kar_tarafi else ZARAR_HESABI
+        hedef_proje_id = None
+        hedef_proje_kod = None
+        if proje is not None:
+            hedef_kod, hedef_proje_id, hedef_proje_kod = YATIRIM_HESABI, proje.pk, proje.kod
+        if mevcut and mevcut[0].yatirim_projesi_id:
+            eski = YatirimProjesi.objects.filter(pk=mevcut[0].yatirim_projesi_id).first()
+            if eski is not None and eski.durum == YatirimProjesi.Durum.AKTIFLESTI:
+                # Aktifleşmiş projenin 258'ine yazılmış satır: hedef değişmez (aktifleştirme fişi bozulmaz).
+                hedef_kod, hedef_proje_id, hedef_proje_kod = mevcut[0].hesap_id, eski.pk, eski.kod
+        if hedef_proje_kod:
+            yatirim[hedef_proje_kod] = yatirim.get(hedef_proje_kod, SIFIR) + (-tutar if kar_tarafi else tutar)
         alanlar = dict(
-            hesap=hesap, borc=SIFIR if kar_tarafi else tutar, alacak=tutar if kar_tarafi else SIFIR,
-            islem_pb="TRY", islem_tutari=tutar, islem_kuru=Decimal("1"), aciklama=KUR_FARKI_ACIKLAMA)
+            hesap=_hesap(hedef_kod), borc=SIFIR if kar_tarafi else tutar, alacak=tutar if kar_tarafi else SIFIR,
+            islem_pb="TRY", islem_tutari=tutar, islem_kuru=Decimal("1"), aciklama=KUR_FARKI_ACIKLAMA,
+            yatirim_projesi_id=hedef_proje_id)
         if mevcut:
             m = mevcut[0]
             for fazla in mevcut[1:]:
@@ -202,7 +239,8 @@ def havuz_yeniden_hesapla(hesap_kodu, pb):
                 m.save()
         else:
             YevmiyeSatir.objects.create(fis=s.fis, ana_satir=s, **alanlar)
-    return {"degisen": degisen, "kar": kar, "zarar": zarar, "q": q, "v": v}
+    return {"degisen": degisen, "kar": kar, "zarar": zarar, "q": q, "v": v,
+            "proje": proje.kod if proje else None, "yatirim": yatirim}
 
 
 # ---------------------------------------------------------------- tetikleyiciler

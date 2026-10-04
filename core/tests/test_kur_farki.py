@@ -205,3 +205,112 @@ class CariKartiTest(TestCase):
         self.client.force_login(su)
         self.assertContains(self.client.get(reverse("core:cari_detay", args=[usd.pk])), "Ortalama kur (hareketli ağırlıklı)")
         self.assertNotContains(self.client.get(reverse("core:cari_detay", args=[tl.pk])), "Ortalama kur (hareketli ağırlıklı)")
+
+
+class YatirimCarisiKurFarkiTest(TestCase):
+    """Yatırım carisinde kur farkı 646/656 yerine 258'e ve aynı projeye yazılır."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Cari, FaturaTipi, HesapPlani, KdvOrani
+        Kur.objects.create(tarih=D(2026, 3, 10), usd_alis=Dc("30"))
+        Kur.objects.create(tarih=D(2026, 3, 20), usd_alis=Dc("31"))
+        Kur.objects.create(tarih=D(2026, 4, 10), usd_alis=Dc("33"))
+        _hesap("191", "İNDİRİLECEK KDV")
+        _hesap("391", "HESAPLANAN KDV")
+        _hesap("320.10.0001", "YONGKANG")
+        _hesap("102.01.0001", "TL BANKA")
+        _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR", kalem="DDV")
+        _hesap("646", "KAMBİYO KÂRLARI", kalem="E", grup="GELIR_TABLOSU")
+        _hesap("656", "KAMBİYO ZARARLARI (-)", kalem="F", grup="GELIR_TABLOSU")
+        cls.kdv0 = KdvOrani.objects.create(aciklama="KDV YOK", oran=Dc("0"))
+        cls.gider = FaturaTipi.objects.create(ad="ALIŞ FATURASI-GİDER", yon=FaturaTipi.Yon.ALIS, gider=True)
+        cls.cari = Cari.objects.create(kod="320-10-0001", unvan="YONGKANG", para_birimi="USD",
+                                       muhasebe_kodu="320.10.0001")
+        cls.su = User.objects.create_superuser("yk", password="x")
+
+    def _fatura(self, proje, tarih=D(2026, 3, 10), tutar="1000", no="F-1"):
+        from core.services.fatura import fatura_olustur
+        return fatura_olustur(
+            tip_id=self.gider.pk, cari_id=self.cari.pk, tarih=tarih, fatura_no=no, para_birimi="USD",
+            satirlar=[{"hesap_id": "258", "miktar": "1", "birim_fiyat": tutar, "kdv_id": self.kdv0.pk,
+                       "yatirim_projesi_id": proje.pk}])
+
+    def _odeme(self, tarih=D(2026, 4, 10), dvz="1000", kur="33"):
+        return fis_olustur(tarih=tarih, satirlar=[
+            _g("320.10.0001", "B", dvz, kur), SatirGirdi(hesap_kodu="102.01.0001", taraf="A",
+                                                         islem_tutari=str(Dc(dvz) * Dc(kur)))])
+
+    def _kf(self, fis):
+        return [(s.hesap_id, s.borc, s.alacak, s.yatirim_projesi_id)
+                for s in fis.satirlar.filter(silindi=False, ana_satir__isnull=False)]
+
+    def test_zarar_258_ve_ayni_projeye_yazilir(self):
+        from core.services.yatirim_projesi import proje_olustur, proje_toplami
+        proje = proje_olustur(ad="hat", kullanici=self.su)
+        self._fatura(proje)
+        f = self._odeme()                                       # fatura 30, ödeme 33 → 3.000 zarar
+        self.assertEqual(self._kf(f), [("258", Dc("3000.00"), Dc("0.00"), proje.pk)])
+        self.assertEqual(f.satirlar.get(hesap_id="320.10.0001").borc, Dc("30000.00"))
+        self.assertEqual(sum(s.borc for s in f.satirlar.all()), sum(s.alacak for s in f.satirlar.all()))
+        self.assertFalse(YevmiyeSatir.objects.filter(hesap_id__in=("646", "656")).exists())
+        self.assertEqual(proje_toplami(proje), Dc("33000.00"))  # kur farkı proje maliyetine dahil
+        self.assertEqual(kf.havuz_bakiyesi("320.10.0001", "USD"), (Dc("0.00"), Dc("0.00")))
+
+    def test_kar_258_alacak_maliyeti_dusurur(self):
+        from core.services.yatirim_projesi import proje_olustur, proje_toplami
+        proje = proje_olustur(ad="hat", kullanici=self.su)
+        self._fatura(proje, tarih=D(2026, 3, 20), no="F-2")      # kur 31 → 31.000
+        f = self._odeme(tarih=D(2026, 3, 10), dvz="1000", kur="30")   # geriye dönük ödeme 30 (ilk giriş yok → açılış)
+        # ödeme (borç) önce: havuz açılır; fatura (alacak) sonra kapatır → fatura satırı ortalamayla değişir
+        # (burada yalnız hedefin 258/proje olduğunu doğrularız)
+        hepsi = YevmiyeSatir.objects.filter(ana_satir__isnull=False)
+        self.assertTrue(hepsi.exists())
+        self.assertTrue(all(s.hesap_id == "258" and s.yatirim_projesi_id == proje.pk for s in hepsi))
+
+    def test_en_son_faturanin_projesi_kullanilir(self):
+        from core.services.yatirim_projesi import proje_olustur
+        p1, p2 = proje_olustur(ad="eski", kullanici=self.su), proje_olustur(ad="yeni", kullanici=self.su)
+        self._fatura(p1, tarih=D(2026, 3, 10), no="F-1")
+        self._fatura(p2, tarih=D(2026, 3, 20), tutar="500", no="F-2")      # daha yeni → p2
+        self.assertEqual(kf.yatirim_hedefi("320.10.0001").pk, p2.pk)
+        f = self._odeme(dvz="1500", kur="33")
+        self.assertTrue(all(pid == p2.pk for _h, _b, _a, pid in self._kf(f)))
+
+    def test_proje_aktiflesmisse_646_656(self):
+        from core.models import YatirimProjesi
+        from core.services.yatirim_projesi import proje_olustur
+        proje = proje_olustur(ad="hat", kullanici=self.su)
+        self._fatura(proje)
+        YatirimProjesi.objects.filter(pk=proje.pk).update(durum="AKTIFLESTI")
+        self.assertIsNone(kf.yatirim_hedefi("320.10.0001"))
+        f = self._odeme()
+        self.assertEqual(self._kf(f), [("656", Dc("3000.00"), Dc("0.00"), None)])
+
+    def test_projesiz_cari_ve_banka_646_656(self):
+        # projeli fatura yok → cari de 646/656
+        fis_olustur(tarih=D(2026, 3, 10), satirlar=[_g("258", "B", "1000", "30"), _g("320.10.0001", "A", "1000", "30")])
+        f = self._odeme()
+        self.assertEqual([h for h, *_ in self._kf(f)], ["656"])
+
+    def test_aktiflesmis_projedeki_mevcut_satir_hedefi_degismez(self):
+        from core.models import YatirimProjesi
+        from core.services.yatirim_projesi import proje_olustur
+        proje = proje_olustur(ad="hat", kullanici=self.su)
+        self._fatura(proje)
+        f = self._odeme()
+        YatirimProjesi.objects.filter(pk=proje.pk).update(durum="AKTIFLESTI")
+        kf.havuz_yeniden_hesapla("320.10.0001", "USD")
+        self.assertEqual(self._kf(YevmiyeFisi.objects.get(pk=f.pk)), [("258", Dc("3000.00"), Dc("0.00"), proje.pk)])
+
+    def test_cari_kartinda_kur_farki_yatirim_maliyetine(self):
+        from django.urls import reverse
+        from core.services.yatirim_projesi import proje_olustur
+        proje = proje_olustur(ad="hat", kullanici=self.su)
+        self.client.force_login(self.su)
+        self.assertNotContains(self.client.get(reverse("core:cari_detay", args=[self.cari.pk])), "Yatırım maliyetine")
+        self._fatura(proje)
+        r = self.client.get(reverse("core:cari_detay", args=[self.cari.pk]))
+        self.assertContains(r, "Yatırım maliyetine")
+        self.assertContains(r, proje.kod)
+
