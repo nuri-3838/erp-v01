@@ -144,8 +144,8 @@
       </div>
       <p class="yardim">Ödemek istediğin <strong>bekleyen</strong> taksitleri işaretle → nakit hesabını
         (Banka/Kasa) seç, faiz varsa faiz gider hesabını seç → tek geri ödeme fişi oluşur
-        (Σanapara Kredi borç + Σfaiz Faiz gideri borç / nakit alacak). Ödenen taksit, fişi iptal
-        edilince tekrar Bekliyor olur.</p>
+        (Σanapara Kredi borç + Σfaiz Faiz gideri borç / nakit alacak). Ödenen taksit, fişi silinince
+        tekrar Bekliyor olur.</p>
       <div class="form-altbar"><button type="submit" class="birincil">💸 Seçilenleri Öde</button></div>
       {% endif %}
     </form>
@@ -218,11 +218,7 @@
               <td class="sag">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
               <td class="sag">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
             {% endif %}
-            <td class="islem-hucre">{% if s.fis_pk in kredi_fis_pks %}
-              <form method="post" action="{% url 'core:kredi_hareket_iptal' kredi.pk s.fis_pk %}"
-                    onsubmit="return confirm('Bu kredi hareketi iptal edilsin mi?');" style="margin:0">
-                {% csrf_token %}<button type="submit" class="sil">İptal</button>
-              </form>{% endif %}</td>
+            <td class="islem-hucre">{% if s.fis_pk in kredi_fis_pks and user.is_superuser %}<a class="sil" style="display:inline-block;text-decoration:none;padding:.3rem .7rem;border-radius:8px" href="{% url 'core:kredi_hareket_sil' kredi.pk s.fis_pk %}">Sil</a>{% endif %}</td>
           </tr>
         {% empty %}
           <tr><td colspan="{% if kredi.para_birimi != 'TRY' %}11{% else %}7{% endif %}" class="yardim"

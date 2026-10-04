@@ -16,6 +16,7 @@ from django.db.models import ProtectedError, RestrictedError
 from django.db.models.deletion import Collector
 
 from core.models import KrediKartiTaksit, SilmeKaydi, YevmiyeFisi
+from core.services.yevmiye import fis_no_sayacini_koru
 
 # Fişle birlikte silinen kendi parçaları (başka kayıt sayılmaz).
 FIS_COCUKLARI = {"YevmiyeSatir"}
@@ -90,6 +91,7 @@ def fis_kalici_sil(fis):
     """Yetki/denetim OLMADAN fişi + satırları + (kredi kartı) taksit planını siler (iç kullanım).
     (ozet, veri) döner."""
     ozet, veri = _fis_verisi(fis)
+    fis_no_sayacini_koru(fis.yil)          # silinen numara bir daha verilmez
     KrediKartiTaksit.objects.filter(fis=fis).delete()
     kalici_sil(fis, FIS_COCUKLARI)
     return ozet, veri
@@ -103,7 +105,7 @@ def _denetim(tur, ozet, veri, kullanici, kaynak=""):
 
 
 @transaction.atomic
-def fis_sil(fis, *, kullanici, izinli_kaynaklar=None):
+def fis_sil(fis, *, kullanici, izinli_kaynaklar=None, ek_veri=None):
     """Fişi KALICI siler + denetim kaydı yazar. ``izinli_kaynaklar``: bu çağrının silebileceği
     fiş kaynakları (ör. {KASA}); dışındaki fişler (fatura/stok/yatırım/çek bordrosu...) başka
     ekranlarından yönetilir."""
@@ -111,6 +113,8 @@ def fis_sil(fis, *, kullanici, izinli_kaynaklar=None):
     if izinli_kaynaklar is not None and fis.kaynak not in izinli_kaynaklar:
         raise SilmeHatasi("Bu fiş buradan silinemez; kaynak ekranından yönetilir.")
     ozet, veri = fis_kalici_sil(fis)
+    if ek_veri:
+        veri.update(ek_veri)
     return _denetim(SilmeKaydi.Tur.FIS, ozet, veri, kullanici)
 
 

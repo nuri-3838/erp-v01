@@ -14,7 +14,8 @@ from django.db.models import Max
 from core.metin import buyuk_harf_tr
 from core.models import BankaHesap, Kasa, Kredi, KrediTaksit, Kur, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_iptal, fis_olustur
+from core.services.fis_sil import SilmeHatasi, fis_sil, yetki_kontrol
+from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
 
 
 class KrediHareketHatasi(ValueError):
@@ -164,19 +165,33 @@ def geri_odeme_olustur(*, kredi, karsi, anapara, faiz=0, faiz_hesap=None, tarih,
 
 
 @transaction.atomic
-def hareket_iptal(*, fis, kredi, kullanici=None):
-    """Kredi hareketi (kaynak=KREDI) iptali → bağlı fişi soft-delete eder; fiş bir ödeme fişiyse
-    ödediği taksitler BEKLİYOR'a döner. Fiş bu kredinin bir hareketi değilse reddeder."""
+def hareket_sil(*, fis, kredi, kullanici=None):
+    """Kredi hareketini (kaynak=KREDI) KALICI siler: fiş + satırlar (yalnız süper kullanıcı, denetim
+    kaydı yazılır, bağlı kayıt varsa reddedilir). Fiş bir ödeme fişiyse ödediği taksitler BEKLİYOR'a
+    döner (denetim kaydına yazılır). Fiş bu kredinin hareketi değilse reddeder."""
     if fis.kaynak != YevmiyeFisi.Kaynak.KREDI or fis.kredi_id != kredi.pk:
         raise KrediHareketHatasi("Bu fiş bu kredinin hareketi değil.")
-    if fis.silindi:
-        return fis
-    for t in KrediTaksit.objects.filter(odeme_fisi=fis, silindi=False):
+    yetki_kontrol_kredi(kullanici)
+    geri_alinan = []
+    for t in KrediTaksit.objects.filter(odeme_fisi=fis):
+        geri_alinan.append({"taksit_pk": t.pk, "sira": t.sira, "vade": str(t.vade),
+                            "anapara": str(t.anapara), "faiz": str(t.faiz)})
         t.durum = KrediTaksit.Durum.BEKLIYOR
         t.odeme_fisi = None
         t.updated_by = kullanici
         t.save(update_fields=["durum", "odeme_fisi", "updated_by", "updated_at"])
-    return fis_iptal(fis, kullanici=kullanici)
+    try:
+        return fis_sil(fis, kullanici=kullanici, izinli_kaynaklar={YevmiyeFisi.Kaynak.KREDI},
+                       ek_veri={"beklemeye_donen_taksitler": geri_alinan} if geri_alinan else None)
+    except SilmeHatasi as e:
+        raise KrediHareketHatasi(str(e))
+
+
+def yetki_kontrol_kredi(kullanici):
+    try:
+        yetki_kontrol(kullanici)
+    except SilmeHatasi as e:
+        raise KrediHareketHatasi(str(e))
 
 
 # ===== Elle geri ödeme planı + taksit seçip ödeme =====

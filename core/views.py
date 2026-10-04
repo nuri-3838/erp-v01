@@ -374,8 +374,8 @@ def fis_sil_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.KREDI_KARTI and fis.kredi_karti_id:
         messages.info(request, "Bu fiş bir kredi kartı hareketinden oluştu; silmek için kredi kartı detayını kullanın.")
         return redirect("core:kredi_karti_detay", pk=fis.kredi_karti_id)
-    if fis.kaynak == YevmiyeFisi.Kaynak.KREDI and not fis.silindi and fis.kredi_id:
-        messages.info(request, "Bu fiş bir kredi hareketinden oluştu; iptal için kredi detayını kullanın.")
+    if fis.kaynak == YevmiyeFisi.Kaynak.KREDI and fis.kredi_id:
+        messages.info(request, "Bu fiş bir kredi hareketinden oluştu; silmek için kredi detayını kullanın.")
         return redirect("core:kredi_detay", pk=fis.kredi_id)
     if fis.kaynak == YevmiyeFisi.Kaynak.STOK_SARF and not fis.silindi:
         hareket = fis.stok_sarf_hareketleri.filter(silindi=False).first()
@@ -3907,19 +3907,18 @@ def kredi_hareket_ekle(request, pk, tip):
 
 
 @ekran_gerekli("kredi")
-def kredi_hareket_iptal(request, pk, fis_pk):
+def kredi_hareket_sil(request, pk, fis_pk):
+    """Kredi hareketini KALICI siler (ödeme fişiyse taksitler BEKLİYOR'a döner)."""
     kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
     fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
-    if request.method == "POST":
-        try:
-            kredi_hareket_servis.hareket_iptal(fis=fis, kredi=kredi, kullanici=request.user)
-            messages.success(request, "Kredi hareketi iptal edildi.")
-        except kredi_hareket_servis.KrediHareketHatasi as e:
-            messages.error(request, str(e))
-    return redirect("core:kredi_detay", pk=kredi.pk)
+    return _fis_sil_akisi(
+        request, fis, baslik=f"Kredi hareketi · {kredi.ad}",
+        geri=reverse("core:kredi_detay", args=[kredi.pk]),
+        sil=lambda: kredi_hareket_servis.hareket_sil(fis=fis, kredi=kredi, kullanici=request.user))
 
 
 KrediTaksitFormSet = formset_factory(KrediTaksitForm, extra=0, min_num=1, validate_min=True)
+
 
 
 @ekran_gerekli("kredi")

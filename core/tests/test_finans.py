@@ -978,7 +978,7 @@ class KrediHareketTest(TestCase):
     def test_hareketli_kredi_silinemez_ve_hesap_kilidi(self):
         from decimal import Decimal
         from core.services.finans import FinansHatasi, kredi_guncelle, kredi_sil
-        from core.services.kredi_hareket import hareket_iptal, hareket_olustur
+        from core.services.kredi_hareket import hareket_sil, hareket_olustur
         f = hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.bh,
                             tutar=Decimal("1000"), tarih=self.t, kullanici=self.yon)
         with self.assertRaises(FinansHatasi):
@@ -991,8 +991,8 @@ class KrediHareketTest(TestCase):
                            para_birimi="USD", kullanici=self.yon)
         kredi_guncelle(self.kredi, ad="ticari kredi 2", muhasebe_kodu="300.01",
                        para_birimi="TRY", kullanici=self.yon)        # ad değişimi serbest
-        hareket_iptal(fis=f, kredi=self.kredi, kullanici=self.yon)
-        kredi_sil(self.kredi, kullanici=self.yon)                   # iptal sonrası silinir
+        hareket_sil(fis=f, kredi=self.kredi, kullanici=self.yon)
+        kredi_sil(self.kredi, kullanici=self.yon)                   # hareket silindi -> kredi silinir
 
     def test_hareketli_kredi_silinemez_view_500_vermez(self):
         """View katmanı FinansHatasi'yi yakalamazsa kullanıcı 500 alır — regresyon."""
@@ -1050,20 +1050,21 @@ class KrediHareketTest(TestCase):
         self.assertEqual(s["300.01"], (Decimal("0.00"), Decimal("5000.00")))
         self.assertEqual(s["100.01"], (Decimal("5000.00"), Decimal("0.00")))
 
-    def test_iptal_ve_yanlis_kredi_reddedilir(self):
+    def test_sil_ve_yanlis_kredi_reddedilir(self):
         from decimal import Decimal
         from core.services.finans import kredi_olustur
-        from core.services.kredi_hareket import (KrediHareketHatasi, hareket_iptal, hareket_olustur)
+        from core.services.kredi_hareket import (KrediHareketHatasi, hareket_sil, hareket_olustur)
         f = hareket_olustur(kredi=self.kredi, tip="kullandirim", karsi=self.bh,
                             tutar=Decimal("1000"), tarih=self.t, kullanici=self.yon)
         _hesap("300.03", "İKİNCİ KREDİ")
         kredi2 = kredi_olustur(ad="ikinci", para_birimi="TRY", muhasebe_kodu="300.03",
                                kullanici=self.yon)
         with self.assertRaises(KrediHareketHatasi):
-            hareket_iptal(fis=f, kredi=kredi2, kullanici=self.yon)
-        hareket_iptal(fis=f, kredi=self.kredi, kullanici=self.yon)
-        f.refresh_from_db()
-        self.assertTrue(f.silindi)
+            hareket_sil(fis=f, kredi=kredi2, kullanici=self.yon)
+        from core.models import YevmiyeFisi
+        pk = f.pk
+        hareket_sil(fis=f, kredi=self.kredi, kullanici=self.yon)
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=pk).exists())
 
     def test_pb_uyusmazligi_reddedilir(self):
         from decimal import Decimal
@@ -1103,10 +1104,10 @@ class KrediHareketTest(TestCase):
             {"banka_hesap": self.bh.pk, "tutar": "20000", "tarih": "2026-06-28"})
         self.assertRedirects(r, reverse("core:kredi_detay", args=[self.kredi.pk]))
         fis = YevmiyeFisi.objects.filter(kredi=self.kredi, silindi=False).get()
-        ri = self.client.post(reverse("core:kredi_hareket_iptal", args=[self.kredi.pk, fis.pk]))
+        fis_pk = fis.pk
+        ri = self.client.post(reverse("core:kredi_hareket_sil", args=[self.kredi.pk, fis.pk]))
         self.assertRedirects(ri, reverse("core:kredi_detay", args=[self.kredi.pk]))
-        fis.refresh_from_db()
-        self.assertTrue(fis.silindi)
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=fis_pk).exists())
 
     def test_ham_fis_duzenleme_kilidi(self):
         from decimal import Decimal
@@ -1165,17 +1166,20 @@ class KrediHareketTest(TestCase):
         self.assertEqual(KrediTaksit.objects.get(pk=pl[0].pk).odeme_fisi_id, fis.pk)
         self.assertEqual(KrediTaksit.objects.get(pk=pl[2].pk).durum, "BEKLIYOR")
 
-    def test_odeme_iptal_taksitleri_geri_alir(self):
+    def test_odeme_sil_taksitleri_geri_alir(self):
         from core.models import KrediTaksit
-        from core.services.kredi_hareket import hareket_iptal, taksitleri_ode
+        from core.services.kredi_hareket import hareket_sil, taksitleri_ode
         pl = self._plan3()
         fis = taksitleri_ode(kredi=self.kredi, taksit_ids=[pl[0].pk], karsi=self.bh,
                              faiz_hesap=_hesap("780.06", "FAİZ 6", kalem="GIDER"),
                              tarih=self.t, kullanici=self.yon)
-        hareket_iptal(fis=fis, kredi=self.kredi, kullanici=self.yon)
+        hareket_sil(fis=fis, kredi=self.kredi, kullanici=self.yon)
         t = KrediTaksit.objects.get(pk=pl[0].pk)
         self.assertEqual(t.durum, "BEKLIYOR")
         self.assertIsNone(t.odeme_fisi_id)
+        from core.models import SilmeKaydi
+        k = SilmeKaydi.objects.get()
+        self.assertEqual(k.veri["beklemeye_donen_taksitler"][0]["taksit_pk"], pl[0].pk)
 
     def test_odenmis_taksit_tekrar_secilemez_ve_silinemez(self):
         from core.models import KrediTaksit

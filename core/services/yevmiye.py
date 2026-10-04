@@ -26,7 +26,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
+from core.models import FisNoSayaci, HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
 from core.sayi import parse_tr, yuvarla
 
 SIFIR = Decimal("0.00")
@@ -201,9 +201,26 @@ def _satirlari_dogrula(satirlar) -> list[dict]:
     return hazir
 
 
+def fis_no_sayacini_koru(yil: int) -> FisNoSayaci:
+    """Sayacı (kilitleyerek) o yıldaki en yüksek fiş no'ya kadar çıkarır; hiç düşürmez. Fiş silmeden
+    ÖNCE çağrılır: silinen numara sayaçta kalır ve bir daha verilmez."""
+    mevcut = YevmiyeFisi.objects.filter(yil=yil).aggregate(m=Max("fis_no"))["m"] or 0
+    sayac = FisNoSayaci.objects.select_for_update().filter(yil=yil).first()
+    if sayac is None:
+        return FisNoSayaci.objects.create(yil=yil, son_no=mevcut)
+    if sayac.son_no < mevcut:
+        sayac.son_no = mevcut
+        sayac.save(update_fields=["son_no"])
+    return sayac
+
+
 def _sonraki_fis_no(yil: int) -> int:
-    """Mali yıl içinde sıradaki fiş no (iptaller dahil; numara yeniden kullanılmaz)."""
-    return (YevmiyeFisi.objects.filter(yil=yil).aggregate(m=Max("fis_no"))["m"] or 0) + 1
+    """Mali yıl içinde sıradaki fiş no. Numara yeniden kullanılmaz: sayaç geri dönmez, silinen
+    fişin numarası da (en son fiş dahil) bir daha verilmez."""
+    sayac = fis_no_sayacini_koru(yil)
+    sayac.son_no += 1
+    sayac.save(update_fields=["son_no"])
+    return sayac.son_no
 
 
 @transaction.atomic

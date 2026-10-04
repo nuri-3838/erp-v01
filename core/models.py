@@ -3495,3 +3495,20 @@ class SilmeKaydi(TemelModel):
 
     def __str__(self):
         return f"{self.get_tur_display()} {self.kayit_no} silindi"
+
+
+class FisNoSayaci(models.Model):
+    """Mali yıl başına fiş numarası sayacı — numara GERİ DÖNMEZ: fiş silinse bile (en son fiş dahil)
+    sıradaki yeni fiş silinen numarayı almaz. Değer her zaman ≥ o yıldaki en yüksek fiş no'dur
+    (bkz. core.services.yevmiye._sonraki_fis_no / fis_no_sayacini_koru)."""
+
+    yil = models.IntegerField("mali yıl", unique=True)
+    son_no = models.PositiveIntegerField("son verilen fiş no", default=0)
+
+    class Meta:
+        db_table = "yevmiye_fis_no_sayaci"
+        verbose_name = "fiş no sayacı"
+        verbose_name_plural = "fiş no sayaçları"
+
+    def __str__(self):
+        return f"{self.yil}: {self.son_no}"
