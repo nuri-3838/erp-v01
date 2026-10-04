@@ -114,6 +114,23 @@ class DonemselFaturaTest(DonemselFaturaBase):
         self.assertEqual(eur, Dc("0"))                                                      # EUR de 0
         self.assertEqual(_bak("770.01"), Dc("2862000.00"))                                  # 53.000 × 54
 
+    def test_180_kur_farki_havuzu_ve_kur_degerleme_kapsaminda_degil(self):
+        from core.services import kur_degerleme as kd
+        from core.services import kur_farki as kf
+        HesapPlani.objects.filter(hesap_kodu__startswith="180").update(parasal=False)                  # canlıdaki gibi parasal olmayan hesap
+        f = self._donemsel("53000", cari=self.argema)
+        dg.uret(D(2026, 9, 30))
+        self.assertNotIn("180.01.0001", {h for h, pb in kf.tum_havuzlar()})                           # kur farkı havuzu yok
+        fis = YevmiyeFisi.objects.filter(kaynak="DONEMSEL").first()
+        self.assertEqual(fis.satirlar.count(), 2)                                                      # kur farkı satırı üretilmedi
+        self.assertFalse(YevmiyeSatir.objects.filter(fis__kaynak="DONEMSEL", ana_satir__isnull=False).exists())
+        o = kd.onizle(D(2026, 9, 30))
+        self.assertNotIn("180.01.0001", {r["hesap_kodu"] for r in o["satirlar"] + o["degerlenmeyen"]})   # değerleme kapsamı dışı
+        for kur_degisti in (Dc("60"),):                                                                # kur değişse de 180 dokunulmaz
+            Kur.objects.filter(tarih=D(2026, 9, 30)).update(eur_alis=kur_degisti)
+            self.assertNotIn("180.01.0001", {r["hesap_kodu"] for r in kd.onizle(D(2026, 9, 30))["satirlar"]})
+        self.assertEqual(f.satirlar.get().hesap_id, "180.01.0001")
+
     def test_fatura_silinince_fisler_ve_plan_silinir_hesap_kalir(self):
         f = self._donemsel("12000")
         dg.uret(D(2026, 9, 30))

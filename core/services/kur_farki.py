@@ -76,7 +76,7 @@ def uygun_kume() -> UygunKume:
     ayar = CekHesapAyari.objects.filter(pk=1).first()
     if ayar is not None:
         for f in CekHesapAyari._meta.get_fields():
-            if getattr(f, "related_model", None) is HesapPlani and f.concrete:
+            if getattr(f, "related_model", None) is HesapPlani and f.concrete and f.name != "doviz_cari_ara":   # ara hesap TL, havuz değil
                 kod = getattr(ayar, f.attname, None)
                 if kod:
                     k.cek.add(kod)
