@@ -52,7 +52,8 @@ def proje_toplami(proje: YatirimProjesi) -> Decimal:
     toplam = SIFIR
     for s in (proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
              .select_related("fatura")):
-        toplam += s.tutar_tl
+        # SATIŞ yönlü faturadaki 258 hesap satırı (alış iadesi) proje maliyetini AZALTIR.
+        toplam += s.tutar_tl if s.fatura.yon != "SATIS" else -s.tutar_tl
     for h in proje_sarf_hareketleri(proje):
         durum = stok_maliyet.hareket_maliyet_durumu(h)
         toplam += durum["tutar_try"] or SIFIR

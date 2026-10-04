@@ -82,6 +82,8 @@ def _dogrula_satirlar(fatura_satirlari, hesap_id, *, haric_varlik_pk=None):
     if len(satirlar) != len(set(ids)):
         raise DuranVarlikHatasi("Belirtilen fatura kalemlerinden biri bulunamadı.")
     for s in satirlar:
+        if s.fatura.yon == "SATIS" or s.demirbas_id:
+            raise DuranVarlikHatasi(f"Satır {s.pk}: satış faturası satırı karta maliyet olarak bağlanamaz.")
         if s.hesap_id != hesap_id:
             raise DuranVarlikHatasi(
                 f"Satır {s.pk}: kartın hesabıyla aynı hesaba işlenmiş olmalı.")
@@ -97,7 +99,8 @@ def baglanabilir_satirlar(varlik: DuranVarlik):
     """Kartın hesabıyla aynı hesaba işlenmiş ve henüz HİÇBİR karta bağlı olmayan fatura
     kalemleri — "Fatura kalemi bağla" seçiminde listelenir."""
     return (FaturaSatir.objects.filter(hesap_id=varlik.hesap_id, silindi=False,
-                                       fatura__silindi=False)
+                                       fatura__silindi=False, demirbas__isnull=True)
+            .exclude(fatura__yon="SATIS")          # satış faturasındaki hesap/demirbaş satırı maliyet değildir
             .exclude(duran_varliklar__silindi=False)
             .select_related("fatura", "fatura__cari").order_by("fatura__tarih", "id"))
 
@@ -138,6 +141,9 @@ def baglanti_toplami(varlik: DuranVarlik) -> Decimal:
 def durum_degistir(varlik: DuranVarlik, *, durum, kullanici=None) -> DuranVarlik:
     if durum not in DuranVarlik.Durum.values:
         raise DuranVarlikHatasi("Geçersiz durum.")
+    if durum == DuranVarlik.Durum.SATILDI or varlik.durum == DuranVarlik.Durum.SATILDI:
+        raise DuranVarlikHatasi(
+            "Satıldı durumu yalnız satış faturasıyla değişir (faturayı silince kart Aktif'e döner).")
     varlik.durum = durum
     varlik.updated_by = kullanici
     varlik.save(update_fields=["durum", "updated_by", "updated_at"])
@@ -224,10 +230,13 @@ def silinebilir_mi(varlik: DuranVarlik) -> bool:
     "Aktifleştirmeyi Geri Al" akışıyla kaldırılır, bkz. core.services.yatirim_projesi
     .proje_geri_al)."""
     return (varlik.kaynak != DuranVarlik.Kaynak.PROJE
+            and varlik.durum != DuranVarlik.Durum.SATILDI
             and not varlik.fatura_satirlari.exists())
 
 
 def varlik_sil(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
+    if varlik.durum == DuranVarlik.Durum.SATILDI:
+        raise DuranVarlikHatasi("Satılmış kart silinemez (önce satış faturasını silin).")
     if varlik.kaynak == DuranVarlik.Kaynak.PROJE:
         raise DuranVarlikHatasi("Kaynağı Yatırım Projesi olan kart silinemez.")
     if varlik.fatura_satirlari.exists():
@@ -241,7 +250,7 @@ def varlik_sil(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
 
 
 def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet=None, marka_model="", seri_no="",
-                          notlar="", kullanici=None) -> DuranVarlik:
+                          notlar="", birikmis_amortisman=None, kullanici=None) -> DuranVarlik:
     """Yalnız ad/marka-model/seri no/notlar/maliyet düzenlenebilir — hesap ve kaynak
     SABİTTİR (hesap kartın temsil ettiği muhasebe hesabını, kaynak kartın nasıl
     üretildiğini belirler; ikisi de düzenleme ekranından değiştirilemez). Kartın bağlı
@@ -261,6 +270,13 @@ def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet=None, marka_model=
             raise DuranVarlikHatasi("Maliyet negatif olamaz.")
         varlik.maliyet = maliyet
         alanlar.append("maliyet")
+    if birikmis_amortisman is not None:
+        if birikmis_amortisman < 0 or birikmis_amortisman > varlik.maliyet:
+            raise DuranVarlikHatasi("Birikmiş amortisman 0 ile maliyet arasında olmalı.")
+        if varlik.durum == DuranVarlik.Durum.SATILDI:
+            raise DuranVarlikHatasi("Satılmış kartın birikmiş amortismanı değiştirilemez.")
+        varlik.birikmis_amortisman = birikmis_amortisman
+        alanlar.append("birikmis_amortisman")
     varlik.updated_by = kullanici
     varlik.save(update_fields=alanlar)
     return varlik

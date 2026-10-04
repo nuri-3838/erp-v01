@@ -158,6 +158,7 @@ class YevmiyeFisi(TemelModel):
         URETIM = "URETIM", "Üretim Maliyet Aktarımı (otomatik)"
         STOK_SATIS = "STOK_SATIS", "Satış Maliyeti (otomatik)"
         KUR_DEGERLEME = "KUR_DEGERLEME", "Dönem Sonu Kur Değerleme"
+        CARI_KESINTI = "CARI_KESINTI", "Cari Kesinti / Masraf (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -186,6 +187,11 @@ class YevmiyeFisi(TemelModel):
     kredi_karti = models.ForeignKey(
         "KrediKarti", verbose_name="kaynak kredi kartı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fisler",
+    )
+    # Kaynak=CARI_KESINTI fişin kaynağı olan cari (kesinti/masraf hareketi); kasa ile aynı amaç.
+    cari = models.ForeignKey(
+        "Cari", verbose_name="kaynak cari", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="kesinti_fisleri",
     )
     # Kaynak=KREDI fişin kaynağı olan kredi (hareket motoru); kasa ile aynı amaç.
     kredi = models.ForeignKey(
@@ -1651,6 +1657,17 @@ class Fatura(TemelModel):
         return yuvarla(self.ara_toplam * self.gv_stopaj_orani / Decimal("100"), 2)
 
     @property
+    def satir_tipleri(self):
+        """Faturadaki satır türleri ("Stok · Hesap · Demirbaş") — liste/detayda görünür."""
+        adlar = []
+        for x in self.satirlar.all():
+            if x.silindi:
+                continue
+            if x.satir_tipi_ad not in adlar:
+                adlar.append(x.satir_tipi_ad)
+        return " · ".join(adlar)
+
+    @property
     def odenecek(self):
         """Carinin borç/alacağı = mal + KDV − tevkifat − GV stopajı (ikisi de karşı tarafa
         ödenmez, vergi dairesine yatar)."""
@@ -1747,6 +1764,11 @@ class FaturaSatir(TemelModel):
     yatirim_projesi = models.ForeignKey(
         YatirimProjesi, verbose_name="yatırım projesi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fatura_satirlari")
+    # SATIŞ faturasında DEMİRBAŞ (duran varlık) SATIŞ satırı: satılan kart. Bu satırda ``hesap`` = kartın 25x
+    # hesabı (stok-veya-hesap kısıtı için), miktar 1, birim fiyat = satış bedeli (bkz. core.services.fatura).
+    demirbas = models.ForeignKey(
+        "DuranVarlik", verbose_name="satılan demirbaş", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="satis_satirlari")
 
     class Meta:
         db_table = "fatura_satir"
@@ -1765,6 +1787,17 @@ class FaturaSatir(TemelModel):
 
     def __str__(self):
         return f"{self.stok_id or self.hesap_id} x {self.miktar}"
+
+    @property
+    def satir_tipi(self):
+        """STOK / HESAP (gider·258 hesap satırı) / DEMIRBAS (demirbaş satışı)."""
+        if self.demirbas_id:
+            return "DEMIRBAS"
+        return "HESAP" if self.hesap_id else "STOK"
+
+    @property
+    def satir_tipi_ad(self):
+        return {"STOK": "Stok", "HESAP": "Hesap", "DEMIRBAS": "Demirbaş"}[self.satir_tipi]
 
     @property
     def tutar(self):
@@ -1808,6 +1841,7 @@ class DuranVarlik(TemelModel):
     class Durum(models.TextChoices):
         AKTIF = "AKTIF", "Aktif"
         PASIF = "PASIF", "Pasif"
+        SATILDI = "SATILDI", "Satıldı"
 
     class Kaynak(models.TextChoices):
         FATURA = "FATURA", "Fatura"
@@ -1825,6 +1859,15 @@ class DuranVarlik(TemelModel):
     seri_no = models.CharField("seri no", max_length=100, blank=True)
     durum = models.CharField("durum", max_length=10, choices=Durum.choices, default=Durum.AKTIF)
     notlar = models.TextField("notlar", blank=True)
+    # Birikmiş amortisman (257) — karttan elle girilir (amortisman hesaplaması bu modülde yok); demirbaş satışında
+    # 257'ye BORÇ yazılır, defter değeri = maliyet − birikmiş amortisman.
+    birikmis_amortisman = models.DecimalField("birikmiş amortisman (TRY)", max_digits=18, decimal_places=2,
+                                              default=0)
+    # Satış faturasındaki "Demirbaş satırı" ile satıldığında doldurulur; fatura silinirse kart eski durumuna döner.
+    satis_tarihi = models.DateField("satış tarihi", null=True, blank=True)
+    satis_faturasi = models.ForeignKey(
+        "Fatura", verbose_name="satış faturası", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="satilan_demirbaslar")
     kaynak = models.CharField("kaynak", max_length=10, choices=Kaynak.choices)
     yatirim_projesi = models.ForeignKey(
         YatirimProjesi, verbose_name="yatırım projesi", null=True, blank=True,

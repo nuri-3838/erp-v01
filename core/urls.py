@@ -183,6 +183,9 @@ urlpatterns = [
     path("api/cari-kod/", views.cari_kod_api, name="cari_kod_api"),
     path("cariler/<int:pk>/", views.cari_detay, name="cari_detay"),
     path("cariler/<int:pk>/ekstre/", views.cari_ekstresi, name="cari_ekstresi"),
+    path("cariler/<int:pk>/kesinti/", views.cari_kesinti_ekle, name="cari_kesinti_ekle"),
+    path("cariler/<int:pk>/kesinti/<int:fis_pk>/duzenle/", views.cari_kesinti_duzenle, name="cari_kesinti_duzenle"),
+    path("cariler/<int:pk>/kesinti/<int:fis_pk>/sil/", views.cari_kesinti_sil, name="cari_kesinti_sil"),
     path("cariler/<int:pk>/vade/", views.cari_vade_api, name="cari_vade_api"),
     # FİNANS modülü
     path("finans/kasa/", views.kasalar, name="kasalar"),

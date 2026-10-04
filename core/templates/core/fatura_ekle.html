@@ -11,6 +11,8 @@
 {{ tip_stopajli|json_script:"tip-stopajli" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
+{{ yon|json_script:"fatura-yon" }}
+{{ demirbas_bilgi|json_script:"demirbas-bilgi" }}
 {{ tevkifat_oran|json_script:"tevkifat-oran" }}
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
@@ -30,6 +32,17 @@
   #fatura-satir-tablo.gider-modu .stok-alani, #fatura-satir-tablo.gider-modu .th-stok { display:none; }
   #fatura-satir-tablo.gider-modu .hesap-alani, #fatura-satir-tablo.gider-modu .kdv-secim { display:block; }
   #fatura-satir-tablo.gider-modu .th-hesap { display:inline; }
+  /* SATIŞ faturası: satır türü (Stok / Hesap satırı / Demirbaş satışı) — satır başına; JS tabloya .satis-modu ekler. */
+  .tur-alani, .demirbas-alani, .th-satis { display:none; }
+  #fatura-satir-tablo.satis-modu:not(.gider-modu) .tur-alani { display:block; margin-bottom:.3rem; }
+  #fatura-satir-tablo.satis-modu:not(.gider-modu) .th-satis { display:inline; }
+  #fatura-satir-tablo.satis-modu:not(.gider-modu) .th-stok { display:none; }
+  .tur-alani select { width:100%; font-size:.82rem; }
+  #fatura-satir-tablo tr.satir-form.tur-hesap .stok-alani, #fatura-satir-tablo tr.satir-form.tur-demirbas .stok-alani { display:none; }
+  #fatura-satir-tablo tr.satir-form.tur-hesap .hesap-alani { display:block; }
+  #fatura-satir-tablo tr.satir-form.tur-demirbas .hesap-alani { display:none; }
+  #fatura-satir-tablo tr.satir-form.tur-demirbas .demirbas-alani { display:block; }
+  #fatura-satir-tablo tr.satir-form.tur-hesap .kdv-secim, #fatura-satir-tablo tr.satir-form.tur-demirbas .kdv-secim { display:block; }
   .kdv-secim { margin-bottom:.3rem; }
   .kdv-secim select { width:100%; font-size:.82rem; }
   /* Tevkifat seçici her iki modda da (stoklu + gider) görünür — stokluda stok kartından
@@ -171,14 +184,14 @@
         <colgroup><col style="width:41%"><col style="width:15%"><col style="width:18%">
           <col style="width:19%"><col style="width:7%"></colgroup>
         <thead><tr>
-          <th><span class="th-stok">Stok</span><span class="th-hesap">Gider Hesabı</span></th>
+          <th><span class="th-stok">Stok</span><span class="th-hesap">Gider Hesabı</span><span class="th-satis">Kalem (stok · hesap · demirbaş)</span></th>
           <th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
           <th class="sag">Tutar</th><th></th>
         </tr></thead>
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ f.yatirim_projesi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td><div class="tur-alani">{{ f.tur }}</div><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ f.hesap }}</div><div class="demirbas-alani">{{ f.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ f.yatirim_projesi }}</div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">{{ f.miktar }}</td>
               <td class="sag">{{ f.birim_fiyat }}</td>
               <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tevkifat-secim">{{ f.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -202,7 +215,7 @@
     </section>
 
     <template id="bos-satir">
-      <td><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}</div></td>
+      <td><div class="tur-alani">{{ formset.empty_form.tur }}</div><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="demirbas-alani">{{ formset.empty_form.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}</div></td>
       <td class="sag">{{ formset.empty_form.miktar }}</td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
       <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tevkifat-secim">{{ formset.empty_form.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -226,6 +239,8 @@
   var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
   var TEVORAN = JSON.parse(document.getElementById('tevkifat-oran').textContent) || {};   // tevkifat_id -> pay/payda
+  var YON = JSON.parse(document.getElementById('fatura-yon').textContent);
+  var DEMBILGI = JSON.parse(document.getElementById('demirbas-bilgi').textContent) || {};
   var KUR_API = '{% url "core:kur_usd_api" %}';
   var VADE_API_TMPL = '{% url "core:cari_vade_api" 999999 %}';   // 999999 -> gerçek cari id
   var kurElleDegisti = false;
@@ -239,6 +254,30 @@
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
   function giderMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_GIDER[t.value]); }
   function stopajliMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_STOPAJLI[t.value]); }
+  // Satır türü: gider faturasında hep HESAP; satış faturasında satırdaki seçici (STOK/HESAP/DEMIRBAS); alışta STOK.
+  function satirTuru(r){
+    if(giderMi()) return 'HESAP';
+    if(YON!=='SATIS') return 'STOK';
+    var t=el(r,'-tur'); return (t && t.value) ? t.value : 'STOK';
+  }
+  function demirbasEtiketGuncelle(r){
+    var et=r.querySelector('.demirbas-etiket'); if(!et) return;
+    var sel=el(r,'-demirbas'); var b=(sel&&sel.value)?DEMBILGI[sel.value]:null;
+    et.textContent = b ? ('Maliyet '+fmt(b.maliyet)+' · birikmiş amortisman '+fmt(b.amortisman)+' · defter değeri '+fmt(b.maliyet-b.amortisman)) : '';
+  }
+  function turUygula(r, temizle){
+    var tur=satirTuru(r); var gider=giderMi();
+    r.classList.toggle('tur-hesap', !gider && tur==='HESAP');
+    r.classList.toggle('tur-demirbas', !gider && tur==='DEMIRBAS');
+    if(temizle && !gider){
+      if(tur!=='STOK') alanTemizle(r.querySelector('.stok-alani'));
+      if(tur!=='HESAP') alanTemizle(r.querySelector('.hesap-alani'));
+      if(tur!=='DEMIRBAS') alanTemizle(r.querySelector('.demirbas-alani'));
+    }
+    var m=el(r,'-miktar');
+    if(m){ if(!gider && tur==='DEMIRBAS'){ m.value='1'; m.readOnly=true; } else { m.readOnly=false; } }
+    projeAlaniGuncelle(r); demirbasEtiketGuncelle(r);
+  }
   function sahsiMi(){ var s=document.getElementById('id_sahsi_alis'); return !!(s && s.checked); }
   function alanTemizle(kap){ if(!kap) return;
     var s=kap.querySelector('select'); if(s) s.value='';
@@ -248,6 +287,7 @@
   function modUygula(){
     var g=giderMi(); var onceki=tablo.classList.contains('gider-modu');
     tablo.classList.toggle('gider-modu', g);
+    tablo.classList.toggle('satis-modu', YON==='SATIS');
     var depo=document.getElementById('id_depo'); var depoAlan=depo?depo.closest('.alan'):null;
     if(depoAlan) depoAlan.style.display = g ? 'none' : '';
     if(g && depo) depo.value='';
@@ -268,6 +308,7 @@
         projeAlaniGuncelle(r);
       });
     }
+    document.querySelectorAll('.satir-form').forEach(function(r){ turUygula(r, false); });
     hesapla();
   }
   // Ortak adına (şahsi) alış işaretlenince: kalemlerde "Gider Hesabı" sütunu gizlenir
@@ -298,7 +339,7 @@
       var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
       var f=parseTR(el(r,'-birim_fiyat')?el(r,'-birim_fiyat').value:'');
       var oran;
-      if(gider){
+      if(gider || satirTuru(r)!=='STOK'){
         var ks=el(r,'-kdv');
         oran=(ks&&ks.value&&KDVORAN[ks.value]!=null)?KDVORAN[ks.value]:0;
       } else {
@@ -314,7 +355,7 @@
       var ratio=0;
       if(tevVal && tevVal!=='YOK' && TEVORAN[tevVal]!=null){
         ratio=TEVORAN[tevVal];
-      } else if(!tevVal && !gider){
+      } else if(!tevVal && !gider && satirTuru(r)==='STOK'){
         var stokSel2=el(r,'-stok');
         var stokTevId=(stokSel2&&stokSel2.value)?STOK_TEV[stokSel2.value]:null;
         if(stokTevId!=null && TEVORAN[String(stokTevId)]!=null) ratio=TEVORAN[String(stokTevId)];
@@ -454,6 +495,7 @@
     tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g,i);
     document.getElementById('satir-govde').appendChild(tr); tf.value=i+1;
     if(sahsiMi()) sahsiSatirGuncelle(tr);
+    turUygula(tr, false);
     hesapla();
     if(window.akilliSecKur) tr.querySelectorAll('select.akilli-sec').forEach(window.akilliSecKur);
   }
@@ -469,6 +511,8 @@
       tedarikciGuncelle(row);
       tevkifatOnDoldur(row);
     }
+    if(row && e.target.name && e.target.name.indexOf('-tur')>-1) turUygula(row, true);
+    if(row && e.target.name && e.target.name.indexOf('-demirbas')>-1) demirbasEtiketGuncelle(row);
     if(row && e.target.name && e.target.name.indexOf('-hesap')>-1) projeAlaniGuncelle(row);
     hesapla();
   });
@@ -511,6 +555,7 @@
   document.querySelectorAll('.satir-form').forEach(projeAlaniGuncelle);
   modUygula();
   sahsiUygula();
+  document.querySelectorAll('.satir-form').forEach(function(r){ turUygula(r, false); });
   kurCek();
 })();
 </script>

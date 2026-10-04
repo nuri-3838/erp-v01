@@ -14,6 +14,7 @@ from django import forms
 from django.contrib.auth import password_validation
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
+from django.db.models import Q
 from django.utils import timezone
 
 from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
@@ -23,7 +24,7 @@ from core.models import (
     AdayTipTanim, Banka,
     BankaHesap, Birim, Cari,
     CariAktivite, CariKategori, KapanisNedeni,
-    CekSenet, Depo, FaturaSatir, FaturaTipi, FirmaBanka,
+    CekSenet, Depo, DuranVarlik, FaturaSatir, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
     PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
     TevkifatOrani, Ulke, YatirimProjesi, YevmiyeSatir,
@@ -1721,11 +1722,29 @@ class FaturaSatirForm(forms.Form):
     # sayılır); TEVKIFAT_YOK = açıkça "tevkifat uygulanmasın" (stok kartında tanımlı olsa
     # bile); <pk> = o tevkifatı uygula.
     tevkifat = forms.ChoiceField(label="Tevkifat", required=False, choices=[])
+    # SATIŞ faturasında satır türü: STOK / HESAP (alış iade: gider·258 hesabı ALACAK) / DEMIRBAS (aktif duran
+    # varlık kartı satışı). Gider faturasında ve alış yönünde kullanılmaz (JS gizler).
+    tur = forms.ChoiceField(
+        label="Satır türü", required=False, initial="STOK",
+        choices=[("STOK", "Stok"), ("HESAP", "Hesap satırı"), ("DEMIRBAS", "Demirbaş satışı")])
+    demirbas = forms.ModelChoiceField(
+        label="Demirbaş", queryset=DuranVarlik.objects.none(), required=False,
+        empty_label="— demirbaş seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
-    def __init__(self, *args, yon=None, **kwargs):
+    def __init__(self, *args, yon=None, fatura_pk=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.yon = yon
+        self.fields["tur"].widget.attrs["class"] = "tur-secim"
+        # Yalnız AKTİF (satılmamış) kartlar; düzenlenen faturanın kendi sattığı kart da listede kalır.
+        dq = Q(durum=DuranVarlik.Durum.AKTIF)
+        if fatura_pk:
+            dq |= Q(durum=DuranVarlik.Durum.SATILDI, satis_faturasi_id=fatura_pk)
+        self.fields["demirbas"].queryset = DuranVarlik.objects.filter(dq, silindi=False).order_by("demirbas_kodu")
+        self.fields["demirbas"].label_from_instance = (
+            lambda o: f"{o.demirbas_kodu}  {o.ad} · maliyet {o.maliyet:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        self.fields["demirbas"].widget.attrs["class"] = "akilli-sec"
         self.fields["stok"].queryset = (
             Stok.objects.filter(silindi=False).select_related("kategori", "kdv").order_by("kod"))
         if yon == "ALIS":
@@ -1748,9 +1767,20 @@ class FaturaSatirForm(forms.Form):
         self.fields["hesap"].queryset = (gider_qs | duran_qs | ortak_qs).distinct()
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
-        _gruplu_secenekler_uygula(self.fields["hesap"], [
-            ("Gider Hesapları", gider_qs), ("Duran Varlık Hesapları", duran_qs),
-            ("Ortak Hesapları (şahsi alış)", ortak_qs)])
+        if yon == "SATIS":
+            # Satış faturası hesap satırı (alış iadesi): yalnız gider hesapları + 258 ailesi.
+            from core.services.fatura import _satis_hesap_kumesi
+            satis_qs = _satis_hesap_kumesi()
+            self.fields["hesap"].queryset = satis_qs
+            self.fields["hesap"].label = "Hesap"
+            self.fields["hesap"].empty_label = "— hesap seç —"
+            _gruplu_secenekler_uygula(self.fields["hesap"], [
+                ("Gider Hesapları", gider_qs),
+                ("Yatırım (258)", duran_qs.filter(Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258.")))])
+        else:
+            _gruplu_secenekler_uygula(self.fields["hesap"], [
+                ("Gider Hesapları", gider_qs), ("Duran Varlık Hesapları", duran_qs),
+                ("Ortak Hesapları (şahsi alış)", ortak_qs)])
         from core.services.yatirim_projesi import aktif_projeler
         self.fields["yatirim_projesi"].queryset = aktif_projeler()
         self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
@@ -1769,24 +1799,47 @@ class FaturaSatirForm(forms.Form):
         self.fields["tevkifat"].widget.attrs["class"] = "akilli-sec"
 
     def clean(self):
+        from decimal import Decimal as _D
         from core.services.hesap_plani import hesap_kodu_258_mi, hesap_kodu_duran_varlik_mi
         cd = super().clean()
         stok = cd.get("stok")
         hesap = cd.get("hesap")
+        dv = cd.get("demirbas")
+        tur = (cd.get("tur") or "STOK") if self.yon == "SATIS" else "STOK"
         miktar = cd.get("miktar")
         fiyat = cd.get("birim_fiyat")
-        if not stok and not hesap and miktar is None and fiyat is None:
+        if not stok and not hesap and not dv and miktar is None and fiyat is None:
             return cd                              # boş satır — atlanır
+        if self.yon == "SATIS":
+            if tur == "HESAP" and not hesap:
+                raise forms.ValidationError("Hesap satırı için bir hesap seçin.")
+            if tur == "DEMIRBAS" and not dv:
+                raise forms.ValidationError("Demirbaş satırı için satılacak kartı seçin.")
+            if tur == "STOK" and not stok:
+                raise forms.ValidationError("Stok seçin (ya da satır türünü Hesap/Demirbaş yapın).")
+            # Seçilen türün dışındaki alanlar yok sayılır (JS temizler; sunucu da temizler).
+            if tur != "STOK":
+                stok = cd["stok"] = None
+            if tur != "HESAP":
+                hesap = cd["hesap"] = None if tur != "DEMIRBAS" else None
+            if tur != "DEMIRBAS":
+                dv = cd["demirbas"] = None
+        else:
+            dv = cd["demirbas"] = None
         if stok and hesap:
             raise forms.ValidationError("Ya stok ya da gider hesabı seçin; ikisi birden olmaz.")
-        if not stok and not hesap:
+        if not stok and not hesap and not dv:
             raise forms.ValidationError("Stok seçin (gider faturasında gider hesabı seçin).")
+        if dv is not None and miktar is None:
+            miktar = cd["miktar"] = _D("1")         # demirbaş tek birimdir
         if miktar is None or miktar <= 0:
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
         if fiyat is None or fiyat < 0:
-            raise forms.ValidationError("Birim fiyat girin.")
+            raise forms.ValidationError("Birim fiyat girin." if dv is None else "Satış bedelini girin.")
         if stok:
             cd["kdv"] = None                       # stok kaleminde KDV stoktan gelir
+            cd["yatirim_projesi"] = None
+        elif dv is not None:
             cd["yatirim_projesi"] = None
         elif hesap and hesap_kodu_duran_varlik_mi(hesap.hesap_kodu):
             if hesap_kodu_258_mi(hesap.hesap_kodu) and not cd.get("yatirim_projesi"):
@@ -1846,6 +1899,8 @@ class DuranVarlikDuzenleForm(forms.Form):
     _K = {"autocomplete": "off"}
     ad = forms.CharField(label="Ad", max_length=200, widget=forms.TextInput(attrs=_K))
     maliyet = TRDecimalField(label="Maliyet (KDV Hariç, TRY)", basamak=2)
+    birikmis_amortisman = TRDecimalField(label="Birikmiş Amortisman (257, TRY)", basamak=2, required=False,
+                                         initial=Decimal("0"))
     marka_model = forms.CharField(label="Marka / Model", max_length=200, required=False,
                                   widget=forms.TextInput(attrs=_K))
     seri_no = forms.CharField(label="Seri No", max_length=100, required=False,
@@ -3007,3 +3062,27 @@ class DovizIslemForm(forms.Form):
             if cd.get(f"masraf_tutar_{i}") and not cd.get(f"masraf_hesap_{i}"):
                 self.add_error(f"masraf_hesap_{i}", "Masraf tutarı için hesap seçilmelidir.")
         return cd
+
+
+class CariKesintiForm(forms.Form):
+    """Cari kartından Kesinti / Masraf hareketi: tarih, tutar, gider hesabı (varsayılan 770.03), açıklama."""
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    tutar = TRDecimalField(label="Tutar (TL)", basamak=2)
+    gider = forms.ModelChoiceField(
+        label="Gider hesabı", queryset=HesapPlani.objects.none(), to_field_name="hesap_kodu",
+        empty_label=None)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.cari_kesinti import VARSAYILAN_GIDER
+        from core.services.hesap_plani import gider_hesaplari
+        self.fields["gider"].queryset = gider_hesaplari()
+        self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["gider"].widget.attrs["class"] = "akilli-sec"
+        if not self.is_bound and "gider" not in (self.initial or {}):
+            self.initial["gider"] = VARSAYILAN_GIDER

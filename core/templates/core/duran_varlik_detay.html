@@ -12,11 +12,13 @@
   </div>
   <span class="islem-bag">
     <a class="dugme" href="{% url 'core:duran_varlik_duzenle' varlik.pk %}">Düzenle</a>
+    {% if varlik.durum != "SATILDI" %}
     <form method="post" action="{% url 'core:duran_varlik_durum_degistir' varlik.pk %}" style="margin:0">
       {% csrf_token %}
       <button type="submit" class="dugme" style="border:0;cursor:pointer">
         {% if varlik.durum == "AKTIF" %}Pasife Al{% else %}Aktife Al{% endif %}</button>
     </form>
+    {% endif %}
     {% if silinebilir %}
     <form method="post" action="{% url 'core:duran_varlik_sil' varlik.pk %}" style="margin:0"
           onsubmit="return confirm('{{ varlik.demirbas_kodu }} kalıcı olarak silinsin mi?');">
@@ -30,6 +32,10 @@
     <span class="dg"><span class="mono">{{ varlik.hesap.hesap_kodu }}</span> {{ varlik.hesap.hesap_adi }}</span></div>
   <div class="satir"><span class="et">Aktifleştirme Tarihi</span><span class="dg mono">{{ varlik.aktiflestirme_tarihi|date:"d.m.Y" }}</span></div>
   <div class="satir"><span class="et">Maliyet (KDV Hariç)</span><span class="dg mono">{{ varlik.maliyet|tr_kur:2 }} TRY</span></div>
+  <div class="satir"><span class="et">Birikmiş Amortisman (257)</span><span class="dg mono">{{ varlik.birikmis_amortisman|tr_kur:2 }} TRY</span></div>
+  {% if varlik.durum == "SATILDI" %}
+  <div class="satir"><span class="et">Satış</span><span class="dg">{{ varlik.satis_tarihi|date:"d.m.Y" }}{% if varlik.satis_faturasi %} · <a href="{% url 'core:fatura_detay' varlik.satis_faturasi.pk %}">satış faturası {{ varlik.satis_faturasi.fatura_no|default:"#" }}{{ varlik.satis_faturasi.pk }}</a>{% endif %}</span></div>
+  {% endif %}
   <div class="satir"><span class="et">Kaynak</span><span class="dg">{{ varlik.get_kaynak_display }}</span></div>
   {% if varlik.yatirim_projesi %}
   <div class="satir"><span class="et">Yatırım Projesi</span>
