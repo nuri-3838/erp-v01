@@ -277,3 +277,22 @@ class DonusumKomutuTest(DovizCariBase):
             with mock.patch("core.management.commands.doviz_cari_odeme_donustur.ARGEMA_100K_FIS", (self.f300.yil, self.f300.fis_no)):
                 call_command("doviz_cari_odeme_donustur", "--ara-hesap", "159.20.0001", "--uygula", stdout=out)   # çek bordrosu yok
         self.assertEqual(Cari.objects.get(pk=self.argema.pk).para_birimi, "TRY")
+
+    def test_cari_filtresi_yalniz_argema_formal_dokunulmaz(self):
+        self._veri()
+        cek_servis.hesap_ayari_kaydet({"verilen_cek": "103.01.0001"}, kullanici=self.su)      # ara hesap henüz tanımsız (komut atar)
+        b9 = cek_servis.firma_cikis_bordrosu_olustur(
+            cari_id=self.argema.pk, tarih=D(2026, 5, 22), para_birimi="TRY", kullanici=self.su,
+            satirlar=[{"tip": "CEK", "tutar": "790000", "vade": D(2026, 12, 31)},
+                      {"tip": "CEK", "tutar": "790000", "vade": D(2027, 3, 31)}])
+        fis181 = b9.fisler.get()
+        with mock.patch("core.management.commands.doviz_cari_odeme_donustur.ARGEMA_CEK_BORDRO_FIS", (fis181.yil, fis181.fis_no)):
+            c = self._komut("--cari", "320.30.0001", "--aciklama-dovizine-uy", "--uygula")
+        self.assertIn("UYGULANDI", c)
+        self.assertIn("Kapsam: 320.30.0001", c)
+        self.assertEqual(Cari.objects.get(pk=self.argema.pk).para_birimi, "EUR")
+        self.assertEqual(YevmiyeSatir.objects.filter(hesap_id="320.10.0001", islem_pb="TRY").count(), 2)      # Formal'e dokunulmadı
+        self.assertFalse(YevmiyeSatir.objects.filter(hesap_id="320.10.0001", islem_pb="USD", borc__gt=0).exists())
+        self.assertEqual(_bak("159.20.0001"), Dc("1580000.00"))
+        self.assertTrue(all(x.ara_hesapta for x in CekSenet.objects.all()))
+

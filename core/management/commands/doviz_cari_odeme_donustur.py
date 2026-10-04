@@ -12,7 +12,10 @@
 Kur farkı motoru etkilenen havuzları yeniden hesaplar (646/656; yatırım carisi kuralı geçerli).
 Kontroller: mizan dengesi, banka/kasa/kart/kredi bakiyeleri, cari bazında önce/sonra USD/EUR/TL bakiyeleri, oluşan kur farkı.
 
-    python manage.py doviz_cari_odeme_donustur --ara-hesap 159.20.0001 [--ara-hesap-adi ADI] [--aciklama-dovizine-uy] [--uygula]
+    python manage.py doviz_cari_odeme_donustur --ara-hesap 159.20.0001 [--cari 320.30.0001] [--ara-hesap-adi ADI] [--aciklama-dovizine-uy] [--uygula]
+
+ ``--cari``: yalnız o cariyi işler (320.10.0001 Formal ya da 320.30.0001 Argema); verilmezse ikisi de. Filtre varken diğer cariye
+ DOKUNULMAZ ve bilgi listesi (bölüm 3) yazılmaz.
 """
 import datetime
 import re
@@ -69,6 +72,8 @@ class Command(BaseCommand):
         parser.add_argument("--ara-hesap", required=True, help="Döviz carilere verilen çekler ara hesabı (yaprak; yoksa açılır)")
         parser.add_argument("--ara-hesap-adi", default="DÖVİZ CARİLERE VERİLEN ÇEKLER (ÖDEME BEKLEYEN)")
         parser.add_argument("--aciklama-dovizine-uy", action="store_true")
+        parser.add_argument("--cari", choices=(FORMAL, ARGEMA), default=None,
+                            help="Yalnız bu carinin hesabını işle (verilmezse Formal + Argema)")
 
     def _mizan(self):
         a = YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False).aggregate(n=Count("id"), b=Sum("borc"), c=Sum("alacak"))
@@ -115,12 +120,16 @@ class Command(BaseCommand):
         argema = Cari.objects.filter(muhasebe_kodu=ARGEMA, silindi=False).first()
         if formal is None or argema is None:
             raise CommandError("Formal ya da Argema carisi bulunamadı.")
+        kapsam = (opts["cari"],) if opts["cari"] else (FORMAL, ARGEMA)
+        w(f"Kapsam: {', '.join(kapsam)}")
         once = {"mizan": self._mizan(), "nakit": self._nakit(),
-                "havuz": {k: _havuzlar(k) for k in (FORMAL, ARGEMA)},
+                "havuz": {k: _havuzlar(k) for k in kapsam},
                 "kf": {k: _bak(k) for k in ("646", "656", "258")}}
         w(f"\nÖNCE mizan: {once['mizan']}")
-        w(f"Formal ({FORMAL}, {formal.para_birimi}): {_fmt_havuz(once['havuz'][FORMAL])}")
-        w(f"Argema ({ARGEMA}, {argema.para_birimi}): {_fmt_havuz(once['havuz'][ARGEMA])}")
+        if FORMAL in kapsam:
+            w(f"Formal ({FORMAL}, {formal.para_birimi}): {_fmt_havuz(once['havuz'][FORMAL])}")
+        if ARGEMA in kapsam:
+            w(f"Argema ({ARGEMA}, {argema.para_birimi}): {_fmt_havuz(once['havuz'][ARGEMA])}")
         sorunlar = []
         with transaction.atomic():
             w("\n== 0) Ara hesap ==")
@@ -133,10 +142,13 @@ class Command(BaseCommand):
             havuzlar = set()
             # ------------------------------------------------------------ FORMAL
             w(f"\n== 1) FORMAL — TL ödemeler döviz borcuna ==")
-            kap = {pb: -once["havuz"][FORMAL].get(pb, (SIFIR, SIFIR))[0] for pb in ("USD", "EUR")}   # açık döviz borcu (alacak bakiye)
-            w(f"  kapasite (açık döviz borcu): USD {format_tr(kap['USD'])} | EUR {format_tr(kap['EUR'])}")
+            if FORMAL not in kapsam:
+                w("  (kapsam dışı — DOKUNULMADI)")
+            kap = {pb: -once["havuz"].get(FORMAL, {}).get(pb, (SIFIR, SIFIR))[0] for pb in ("USD", "EUR")}   # açık döviz borcu (alacak bakiye)
+            if FORMAL in kapsam:
+                w(f"  kapasite (açık döviz borcu): USD {format_tr(kap['USD'])} | EUR {format_tr(kap['EUR'])}")
             lines = (YevmiyeSatir.objects.filter(hesap_id=FORMAL, islem_pb="TRY", silindi=False, fis__silindi=False, borc__gt=0)
-                     .select_related("fis").order_by("fis__tarih", "id"))
+                     .select_related("fis").order_by("fis__tarih", "id")) if FORMAL in kapsam else []
             toplam_tl = SIFIR
             sayac = defaultdict(lambda: [0, SIFIR, SIFIR])
             for s in lines:
@@ -176,41 +188,44 @@ class Command(BaseCommand):
 
             # ------------------------------------------------------------ ARGEMA
             w(f"\n== 2) ARGEMA — para birimi EUR; 100.000 TL → EUR; çek bordrosu #9 → ara hesap ==")
-            if argema.para_birimi != "EUR":
+            if ARGEMA not in kapsam:
+                w("  (kapsam dışı — DOKUNULMADI)")
+            elif argema.para_birimi != "EUR":
                 argema.para_birimi = "EUR"
                 argema.save(update_fields=["para_birimi", "updated_at"])
                 w("  Argema para birimi: TRY → EUR")
-            s100 = YevmiyeSatir.objects.filter(hesap_id=ARGEMA, fis__yil=ARGEMA_100K_FIS[0], fis__fis_no=ARGEMA_100K_FIS[1],
-                                               silindi=False, fis__silindi=False, borc__gt=0).select_related("fis").first()
-            if s100 is None or s100.borc != Decimal("100000.00") or s100.fis.tarih != datetime.date(2026, 6, 1):
-                sorunlar.append(s100)
-                w("  ✗ 2026/300 (01.06.2026, 100.000 TL) satırı bulunamadı/uymuyor; DOKUNULMADI")
-            elif s100.islem_pb == "TRY":
-                dvz, kur = self._donustur(s100, "EUR")
-                havuzlar.add((ARGEMA, "EUR"))
-                w(f"  2026/300 01.06.2026: 100.000,00 TL → {format_tr(dvz)} EUR @ {kur}")
-            bordro = CekBordrosu.objects.filter(fisler__yil=ARGEMA_CEK_BORDRO_FIS[0], fisler__fis_no=ARGEMA_CEK_BORDRO_FIS[1],
-                                                fisler__silindi=False).first()
-            cekler = list(bordro.cek_senetler.all()) if bordro else []
-            sc = (YevmiyeSatir.objects.filter(hesap_id=ARGEMA, fis__cek_bordrosu=bordro, silindi=False, borc__gt=0).first()
-                  if bordro else None)
-            if (bordro is None or bordro.tur != CekBordrosu.Tur.FIRMA_CIKIS or bordro.tarih != datetime.date(2026, 5, 22)
-                    or len(cekler) != 2 or sum(c.tutar for c in cekler) != Decimal("1580000.00")
-                    or sc is None or sc.borc != Decimal("1580000.00")):
-                sorunlar.append(None)
-                w("  ✗ çek bordrosu #9 (22.05.2026, 2 × 790.000 TL) beklenen yapıda değil; DOKUNULMADI")
-            else:
-                sc.hesap_id = ara.hesap_kodu
-                sc.save(update_fields=["hesap", "updated_at"])
-                for c in cekler:
-                    c.ara_hesapta = True
-                    c.save(update_fields=["ara_hesapta", "updated_at"])
-                w(f"  çek bordrosu #{bordro.pk} ({bordro.tarih:%d.%m.%Y}): {format_tr(sc.borc)} TL cari satırı {FORMAL.replace(FORMAL, ARGEMA)} → "
-                  f"{ara.hesap_kodu}; {len(cekler)} çek 'ara hesapta' (vade {', '.join(f'{c.vade:%d.%m.%Y}' for c in cekler)})")
+            if ARGEMA in kapsam:
+                s100 = YevmiyeSatir.objects.filter(hesap_id=ARGEMA, fis__yil=ARGEMA_100K_FIS[0], fis__fis_no=ARGEMA_100K_FIS[1],
+                                                   silindi=False, fis__silindi=False, borc__gt=0).select_related("fis").first()
+                if s100 is None or s100.borc != Decimal("100000.00") or s100.fis.tarih != datetime.date(2026, 6, 1):
+                    sorunlar.append(s100)
+                    w("  ✗ 2026/300 (01.06.2026, 100.000 TL) satırı bulunamadı/uymuyor; DOKUNULMADI")
+                elif s100.islem_pb == "TRY":
+                    dvz, kur = self._donustur(s100, "EUR")
+                    havuzlar.add((ARGEMA, "EUR"))
+                    w(f"  2026/300 01.06.2026: 100.000,00 TL → {format_tr(dvz)} EUR @ {kur}")
+                bordro = CekBordrosu.objects.filter(fisler__yil=ARGEMA_CEK_BORDRO_FIS[0], fisler__fis_no=ARGEMA_CEK_BORDRO_FIS[1],
+                                                    fisler__silindi=False).first()
+                cekler = list(bordro.cek_senetler.all()) if bordro else []
+                sc = (YevmiyeSatir.objects.filter(hesap_id=ARGEMA, fis__cek_bordrosu=bordro, silindi=False, borc__gt=0).first()
+                      if bordro else None)
+                if (bordro is None or bordro.tur != CekBordrosu.Tur.FIRMA_CIKIS or bordro.tarih != datetime.date(2026, 5, 22)
+                        or len(cekler) != 2 or sum(c.tutar for c in cekler) != Decimal("1580000.00")
+                        or sc is None or sc.borc != Decimal("1580000.00")):
+                    sorunlar.append(None)
+                    w("  ✗ çek bordrosu #9 (22.05.2026, 2 × 790.000 TL) beklenen yapıda değil; DOKUNULMADI")
+                else:
+                    sc.hesap_id = ara.hesap_kodu
+                    sc.save(update_fields=["hesap", "updated_at"])
+                    for c in cekler:
+                        c.ara_hesapta = True
+                        c.save(update_fields=["ara_hesapta", "updated_at"])
+                    w(f"  çek bordrosu #{bordro.pk} ({bordro.tarih:%d.%m.%Y}): {format_tr(sc.borc)} TL cari satırı {FORMAL.replace(FORMAL, ARGEMA)} → "
+                      f"{ara.hesap_kodu}; {len(cekler)} çek 'ara hesapta' (vade {', '.join(f'{c.vade:%d.%m.%Y}' for c in cekler)})")
 
             # ------------------------------------------------------------ bilgi: diğer döviz cariler
             w("\n== 3) Diğer döviz cariler (BİLGİ — dokunulmaz) ==")
-            for c in Cari.objects.filter(silindi=False).exclude(para_birimi="TRY").exclude(muhasebe_kodu__in=(FORMAL, ARGEMA)).order_by("muhasebe_kodu"):
+            for c in (Cari.objects.none() if opts["cari"] else Cari.objects.filter(silindi=False)).exclude(para_birimi="TRY").exclude(muhasebe_kodu__in=(FORMAL, ARGEMA)).order_by("muhasebe_kodu"):
                 q = YevmiyeSatir.objects.filter(hesap_id=c.muhasebe_kodu, islem_pb="TRY", silindi=False, fis__silindi=False)
                 n, b, a = q.count(), sum((x.borc for x in q), SIFIR), sum((x.alacak for x in q), SIFIR)
                 if n:
@@ -228,12 +243,14 @@ class Command(BaseCommand):
             tamam &= ok
             w(f"Mizan: {sonra_mizan} → {'DENGEDE' if ok else 'DENGESİZ!'}")
             for kod, ad in ((FORMAL, "Formal"), (ARGEMA, "Argema")):
+                if kod not in kapsam:
+                    continue
                 w(f"{ad} ÖNCE : {_fmt_havuz(once['havuz'][kod])}")
                 w(f"{ad} SONRA: {_fmt_havuz(_havuzlar(kod))}")
             for k in ("646", "656", "258"):
                 w(f"Kur farkı etkisi — {k}: {format_tr(once['kf'][k])} → {format_tr(_bak(k))} (fark {format_tr(_bak(k) - once['kf'][k])})")
             w(f"Ara hesap {ara.hesap_kodu} bakiyesi: {format_tr(_bak(ara.hesap_kodu))} (Argema çekleri 1.580.000,00 BORÇ beklenir)")
-            ok = _bak(ara.hesap_kodu) == Decimal("1580000.00")
+            ok = _bak(ara.hesap_kodu) == (Decimal("1580000.00") if ARGEMA in kapsam else Decimal("0.00"))
             tamam &= ok
             sn = self._nakit()
             degisen = [k for k in once["nakit"] if once["nakit"][k] != sn[k]]
