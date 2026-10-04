@@ -41,6 +41,16 @@
           {% for e in form.karsi_cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan tam">
+          <label for="{{ form.karsi_hesap.id_for_label }}">{{ form.karsi_hesap.label }}</label><div class="akilli">{{ form.karsi_hesap }}</div>
+          <p class="yardim">Karşı taraf cari yerine <strong>hesap</strong> olabilir (ör. araç kiralama depozito iadesi: Nuri Özer BORÇ / 770.10 SEYAHAT GİDERİ ALACAK).
+            Cari <strong>veya</strong> hesaptan yalnız biri seçilir.</p>
+          {% for e in form.karsi_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label><div class="akilli">{{ form.yatirim_projesi }}</div>
+          {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
           <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
           <p class="yardim">{{ form.sayilan_pb.help_text }}</p>
         </div>

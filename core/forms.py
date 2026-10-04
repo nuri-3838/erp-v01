@@ -3151,7 +3151,12 @@ class CariVirmanForm(forms.Form):
                             initial=timezone.localdate)
     tutar = TRDecimalField(label="Tutar (TL)", basamak=2)
     yon = forms.ChoiceField(label="Yön", choices=[], widget=forms.RadioSelect)
-    karsi_cari = forms.ModelChoiceField(label="Karşı cari", queryset=Cari.objects.none(), empty_label="— cari seç —")
+    karsi_cari = forms.ModelChoiceField(label="Karşı cari", queryset=Cari.objects.none(), required=False, empty_label="— cari seç —")
+    karsi_hesap = forms.ModelChoiceField(
+        label="veya Karşı HESAP (gider · gelir 64x/67x · 258)", queryset=HesapPlani.objects.none(), required=False,
+        to_field_name="hesap_kodu", empty_label="— hesap seç —")
+    yatirim_projesi = forms.ModelChoiceField(label="Yatırım projesi (yalnız 258 için)", queryset=YatirimProjesi.objects.none(),
+                                             required=False, empty_label="— proje —")
     sayilan_pb = forms.ChoiceField(
         label="Döviz carilerde hangi dövize sayılsın", required=False, choices=[],
         help_text="Taraflardan biri döviz carisiyse TL tutar, işlem günü TCMB alış kuruyla seçilen dövize çevrilir (TL aynı). "
@@ -3171,8 +3176,31 @@ class CariVirmanForm(forms.Form):
         self.fields["karsi_cari"].queryset = qs
         self.fields["karsi_cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["karsi_cari"].widget.attrs["class"] = "akilli-sec"
+        from core.services.cari_kesinti import kesinti_hesap_kumesi
+        from core.services.yatirim_projesi import aktif_projeler
+        self.fields["karsi_hesap"].queryset = kesinti_hesap_kumesi().order_by("hesap_kodu")
+        self.fields["karsi_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["karsi_hesap"].widget.attrs["class"] = "akilli-sec"
+        self.fields["yatirim_projesi"].queryset = aktif_projeler().filter(durum=YatirimProjesi.Durum.DEVAM)
+        self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["yatirim_projesi"].widget.attrs["class"] = "akilli-sec"
         if not self.is_bound and "yon" not in (self.initial or {}):
             self.initial["yon"] = "alacak"
+
+    def clean(self):
+        from core.services.hesap_plani import hesap_kodu_258_mi
+        cd = super().clean()
+        cari, hesap, proje = cd.get("karsi_cari"), cd.get("karsi_hesap"), cd.get("yatirim_projesi")
+        if bool(cari) == bool(hesap):
+            raise forms.ValidationError("Karşı tarafı cari VEYA hesap olarak seçin (yalnız biri).")
+        if hesap is not None:
+            if hesap_kodu_258_mi(hesap.hesap_kodu) and not proje:
+                self.add_error("yatirim_projesi", "258 hesabı için yatırım projesi seçilmelidir.")
+            elif not hesap_kodu_258_mi(hesap.hesap_kodu) and proje:
+                self.add_error("yatirim_projesi", "Yatırım projesi yalnız 258 hesabında seçilebilir.")
+        elif proje:
+            self.add_error("yatirim_projesi", "Yatırım projesi yalnız karşı HESAP 258 iken seçilebilir.")
+        return cd
 
 
 class CariKesintiForm(forms.Form):

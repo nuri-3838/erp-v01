@@ -143,3 +143,72 @@ class VirmanEkranTest(VirmanBase):
         self.client.force_login(self.su)
         r = self.client.get(reverse("core:fis_detay", args=[f.pk]))
         self.assertContains(r, "cari virman hareketinden")
+
+
+class VirmanHesapTest(VirmanBase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Kur.objects.create(tarih=D(2026, 8, 30), usd_alis=Dc("40"), eur_alis=Dc("44"))
+        _hesap("770.10", "SEYAHAT GİDERİ", kalem="C", grup="GELIR_TABLOSU")
+        _hesap("649", "DİĞER OLAĞAN GELİRLER", kalem="E", grup="GELIR_TABLOSU")
+        _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR", kalem="DDV")
+        from core.services.yatirim_projesi import proje_olustur
+        cls.proje = proje_olustur(ad="hat", kullanici=cls.su)
+
+    def test_depozito_iadesi_nuri_borc_gider_alacak(self):
+        f = cv.virman_olustur(cari=self.nuri, karsi_hesap_kodu="770.10", tarih=D(2026, 8, 30), tutar="4500", yon="borc",
+                              aciklama="araç kiralama depozito iadesi", kullanici=self.su)
+        self.assertEqual(self._satirlar(f), {("500.10.0001", "B"): Dc("4500.00"), ("770.10", "A"): Dc("4500.00")})
+        self.assertEqual((f.kaynak, f.cari_id, f.karsi_cari_id), ("CARI_VIRMAN", self.nuri.pk, None))
+        self.assertEqual((_bak("500.10.0001"), _bak("770.10")), (Dc("4500.00"), Dc("-4500.00")))
+        e = raporlar.ekstre_devirli("500.10.0001", D(2026, 1, 1), D(2026, 12, 31))
+        self.assertTrue(any(s.fis_pk == f.pk for s in e.satirlar))
+
+    def test_gelir_ve_258_proje(self):
+        f = cv.virman_olustur(cari=self.kaygun, karsi_hesap_kodu="649", tarih=D(2026, 7, 13), tutar="100", yon="borc", kullanici=self.su)
+        self.assertEqual(self._satirlar(f), {("320.30.0038", "B"): Dc("100.00"), ("649", "A"): Dc("100.00")})
+        f = cv.virman_olustur(cari=self.nuri, karsi_hesap_kodu="258", yatirim_projesi_id=self.proje.pk, tarih=D(2026, 7, 13),
+                              tutar="700", yon="alacak", kullanici=self.su)
+        s = f.satirlar.get(hesap_id="258")
+        self.assertEqual((s.borc, s.yatirim_projesi_id), (Dc("700.00"), self.proje.pk))
+        from core.services.yatirim_projesi import proje_toplami
+        self.assertEqual(proje_toplami(self.proje), Dc("700.00"))
+
+    def test_duzenle_hesap_modu_ve_cariye_cevirme(self):
+        f = cv.virman_olustur(cari=self.nuri, karsi_hesap_kodu="770.10", tarih=D(2026, 8, 30), tutar="4500", yon="borc", kullanici=self.su)
+        b = cv.duzenleme_bilgisi(f, self.nuri)
+        self.assertEqual((b["karsi_cari"], b["karsi_hesap"].hesap_kodu, b["yon"], b["tutar"]), (None, "770.10", "borc", Dc("4500.00")))
+        cv.virman_guncelle(fis=f, cari=self.nuri, karsi_hesap_kodu="770.10", tarih=D(2026, 8, 30), tutar="5000", yon="borc", kullanici=self.su)
+        self.assertEqual(self._satirlar(f)[("770.10", "A")], Dc("5000.00"))
+        cv.virman_guncelle(fis=f, cari=self.nuri, karsi_cari=self.kaygun, tarih=D(2026, 8, 30), tutar="5000", yon="borc", kullanici=self.su)
+        f.refresh_from_db()
+        self.assertEqual((f.karsi_cari_id, self._satirlar(f)), (self.kaygun.pk, {("500.10.0001", "B"): Dc("5000.00"), ("320.30.0038", "A"): Dc("5000.00")}))
+        cv.virman_sil(fis=f, cari=self.nuri, kullanici=self.su)
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=f.pk).exists())
+
+    def test_gecersiz_hesap_kombinasyonlari(self):
+        taban = dict(cari=self.nuri, tarih=D(2026, 8, 30), tutar="10", yon="borc", kullanici=self.su)
+        for kw in (dict(karsi_cari=self.kaygun, karsi_hesap_kodu="770.10"),            # ikisi birden
+                   dict(),                                                               # ikisi de yok
+                   dict(karsi_hesap_kodu="102.01.0001"),                                 # banka hesabı küme dışı
+                   dict(karsi_hesap_kodu="258"),                                         # 258 projesiz
+                   dict(karsi_hesap_kodu="770.10", yatirim_projesi_id=self.proje.pk)):   # proje yalnız 258 hesabında
+            with self.assertRaises(cv.CariVirmanHatasi):
+                cv.virman_olustur(**taban, **kw)
+        self.assertEqual(YevmiyeFisi.objects.filter(kaynak="CARI_VIRMAN").count(), 0)
+
+    def test_ekran_hesap_secenegi(self):
+        self.client.force_login(self.su)
+        r = self.client.get(reverse("core:cari_virman_ekle", args=[self.nuri.pk]))
+        self.assertContains(r, "Karşı HESAP")
+        r = self.client.post(reverse("core:cari_virman_ekle", args=[self.nuri.pk]), {
+            "tarih": "2026-08-30", "tutar": "4.500,00", "yon": "borc", "karsi_cari": "", "karsi_hesap": "770.10", "aciklama": ""})
+        self.assertRedirects(r, reverse("core:cari_ekstresi", args=[self.nuri.pk]))
+        f = YevmiyeFisi.objects.get(kaynak="CARI_VIRMAN")
+        self.assertEqual(self._satirlar(f), {("500.10.0001", "B"): Dc("4500.00"), ("770.10", "A"): Dc("4500.00")})
+        r = self.client.get(reverse("core:cari_virman_duzenle", args=[self.nuri.pk, f.pk]))
+        self.assertEqual(r.status_code, 200)
+        r = self.client.post(reverse("core:cari_virman_ekle", args=[self.nuri.pk]), {             # ikisi de boş: hata
+            "tarih": "2026-08-30", "tutar": "1,00", "yon": "borc", "karsi_cari": "", "karsi_hesap": "", "aciklama": ""})
+        self.assertContains(r, "yalnız biri")
