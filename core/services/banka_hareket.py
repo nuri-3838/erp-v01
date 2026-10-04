@@ -5,13 +5,18 @@ fişi (kaynak=BANKA, kaynak banka hesabına bağlı). Yeni bakiye/hareket modeli
 bakiye/ekstre bağlı muhasebe hesabının (102.x) yevmiyesinden gelir. Fiş hem banka
 hesabının hem karşı tarafın hesabını işlediği için ilgili tüm ekstrelerde görünür.
 
-5 hareket tipi — banka hesabı perspektifi (yönler KİLİTLİ; kasa modülüyle TUTARLI,
+7 hareket tipi — banka hesabı perspektifi (yönler KİLİTLİ; kasa modülüyle TUTARLI,
 aynı işlem her iki ekrandan da kaydedilebilir):
   cari_tahsilat  Banka B / Cari A         (giriş, karşı=Cari)
   cari_odeme     Banka A / Cari B          (çıkış, karşı=Cari)
   banka_virman   Kaynak Banka A / Hedef Banka B  (transfer, karşı=BankaHesap)
   banka_yatan    Banka B / Kasa A          (giriş, karşı=Kasa)  kasadan bankaya nakit
   banka_cekilen  Banka A / Kasa B          (çıkış, karşı=Kasa)  bankadan kasaya nakit
+  hesaba_odeme   Banka A / Karşı hesap(lar) B   (çıkış, karşı=hesap planından muavin hesap;
+                 çok satırlı: ör. kredi taksidi 300 anapara + 780 faiz, EFT + masraf)
+  hesaptan_giris Banka B / Karşı hesap(lar) A   (giriş, karşı=hesap planından muavin hesap)
+  Karşı satırların toplamı banka tutarına EŞİT olmalı; 258 karşı hesabında yatırım projesi
+  zorunludur. Döviz hesapta işlem dövizi + kur her satırda saklanır (kuruş farkı son satırda).
 
 İlk dilim: banka hesabının para birimi + TCMB kuru. Karşı taraf (banka/kasa) banka
 hesabıyla AYNI para biriminde olmalı (çapraz kur sonraki dilim).
@@ -24,7 +29,7 @@ from django.db import transaction
 
 from core.metin import buyuk_harf_tr
 from core.models import Cari, HesapPlani, Kur, YevmiyeFisi
-from core.sayi import SayiHatasi, parse_tr
+from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_iptal,
                                    fis_olustur)
 
@@ -51,6 +56,14 @@ HAREKET = {
     "banka_cekilen": {"ad": "Banka Çekilen", "banka": "A", "karsi": "kasa", "yon": "cikis",
                       "ikon": "🏧", "ack": "BANKADAN ÇEKİLEN",
                       "aciklama": "Bankadan kasaya nakit — Kasa borç / Banka alacak."},
+    "hesaba_odeme": {"ad": "Hesaba Ödeme", "banka": "A", "karsi": "hesap", "yon": "cikis",
+                     "ikon": "💸", "ack": "HESABA ÖDEME",
+                     "aciklama": "Bankadan muavin hesaba (kredi taksidi, masraf, ortak…) — "
+                                 "Karşı hesap(lar) borç / Banka alacak."},
+    "hesaptan_giris": {"ad": "Hesaptan Giriş", "banka": "B", "karsi": "hesap", "yon": "giris",
+                       "ikon": "💰", "ack": "HESAPTAN GİRİŞ",
+                       "aciklama": "Muavin hesaptan bankaya (kredi kullanımı, iade…) — "
+                                   "Banka borç / Karşı hesap(lar) alacak."},
 }
 
 
@@ -112,21 +125,67 @@ def _karsi_coz(tip, banka_hesap, karsi):
     raise BankaHareketHatasi("Geçersiz hareket tipi.")
 
 
+def _hesap_satirlarini_coz(banka_hesap, satirlar, toplam):
+    """Hesaba Ödeme/Hesaptan Giriş karşı satırlarını doğrular. ``satirlar`` = [{"hesap_kodu",
+    "tutar" (tek satırda boş olabilir -> tamamı), "aciklama", "yatirim_projesi_id"}]. Döner:
+    [(HesapPlani, tutar, aciklama, proje_id)]. Toplam banka tutarına eşit olmalı."""
+    from core.services.hesap_plani import hesap_kodu_258_mi, yaprak_mi
+    satirlar = [s for s in (satirlar or []) if s and s.get("hesap_kodu")]
+    if not satirlar:
+        raise BankaHareketHatasi("En az bir karşı hesap satırı gerekli.")
+    cozulen = []
+    for i, s in enumerate(satirlar, 1):
+        hesap = HesapPlani.objects.filter(
+            hesap_kodu=s["hesap_kodu"], aktif=True, silindi=False).first()
+        if hesap is None or not yaprak_mi(hesap):
+            raise BankaHareketHatasi(
+                f"Satır {i}: karşı hesap bulunamadı ya da yaprak (fişe kesilebilir) değil.")
+        if hesap.hesap_kodu == banka_hesap.muhasebe.hesap_kodu:
+            raise BankaHareketHatasi(f"Satır {i}: karşı hesap banka hesabının kendisi olamaz.")
+        ham = s.get("tutar")
+        if ham in (None, "") and len(satirlar) == 1:
+            t = toplam
+        else:
+            t = _tutar(ham)
+        proje_id = s.get("yatirim_projesi_id") or None
+        if hesap_kodu_258_mi(hesap.hesap_kodu) and not proje_id:
+            raise BankaHareketHatasi(
+                f"Satır {i}: 258 hesabı için yatırım projesi seçilmelidir.")
+        if proje_id and not hesap_kodu_258_mi(hesap.hesap_kodu):
+            raise BankaHareketHatasi(
+                f"Satır {i}: yatırım projesi yalnız 258 hesabında seçilebilir.")
+        cozulen.append((hesap, t, (s.get("aciklama") or "").strip(), proje_id))
+    fark = toplam - sum((c[1] for c in cozulen), Decimal("0"))
+    if fark != 0:
+        raise BankaHareketHatasi(
+            f"Karşı satırların toplamı ({sum((c[1] for c in cozulen), Decimal('0')):,.2f}) "
+            f"banka tutarına ({toplam:,.2f}) eşit olmalı; fark {fark:,.2f}.")
+    return cozulen
+
+
 @transaction.atomic
 def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
-                    kur_override=None) -> YevmiyeFisi:
+                    kur_override=None, satirlar=None) -> YevmiyeFisi:
     """Bir banka hesabı hareketinden otomatik DENGELİ yevmiye fişi üretir
     (kaynak=BANKA, kaynak banka hesabı=`banka_hesap`). `karsi` tipe göre
     Cari / (hedef) BankaHesap / Kasa. İhlalde hiçbir şey kaydedilmez. ``kur_override``
     doluysa (kullanıcı formda elle girdi/değiştirdi) carinin kur_tipi'ne göre otomatik
-    hesaplama YERİNE doğrudan kullanılır."""
+    hesaplama YERİNE doğrudan kullanılır. Hesaba Ödeme/Hesaptan Giriş tiplerinde ``karsi`` yerine
+    ``satirlar`` (bir ya da birden çok karşı hesap satırı) verilir; ``tutar`` banka tutarıdır."""
     if tip not in HAREKET:
         raise BankaHareketHatasi("Geçersiz hareket tipi.")
     if banka_hesap.muhasebe_id is None:
         raise BankaHareketHatasi("Banka hesabının muhasebe hesabı tanımlı değil.")
     tan = HAREKET[tip]
-    karsi_kod, karsi_ad = _karsi_coz(tip, banka_hesap, karsi)
     tut = _tutar(tutar)
+    hesap_satirlari = None
+    if tan["karsi"] == "hesap":
+        hesap_satirlari = _hesap_satirlarini_coz(banka_hesap, satirlar, tut)
+        karsi_kod = None
+        karsi_ad = (hesap_satirlari[0][0].hesap_adi if len(hesap_satirlari) == 1
+                    else f"{len(hesap_satirlari)} KALEM")
+    else:
+        karsi_kod, karsi_ad = _karsi_coz(tip, banka_hesap, karsi)
     pb = banka_hesap.para_birimi
     if pb == "TRY":
         kur = Decimal("1")
@@ -138,14 +197,24 @@ def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kulla
     ack = (buyuk_harf_tr((aciklama or "").strip())
            or buyuk_harf_tr(f"BANKA {tan['ack']} - {karsi_ad}"))
 
-    satirlar = [
-        SatirGirdi(hesap_kodu=banka_hesap.muhasebe.hesap_kodu, taraf=banka_taraf,
-                   islem_tutari=tut, islem_pb=pb, islem_kuru=kur),
-        SatirGirdi(hesap_kodu=karsi_kod, taraf=karsi_taraf,
-                   islem_tutari=tut, islem_pb=pb, islem_kuru=kur),
-    ]
+    fis_satirlari = [SatirGirdi(hesap_kodu=banka_hesap.muhasebe.hesap_kodu, taraf=banka_taraf,
+                                islem_tutari=tut, islem_pb=pb, islem_kuru=kur)]
+    if hesap_satirlari is None:
+        fis_satirlari.append(SatirGirdi(hesap_kodu=karsi_kod, taraf=karsi_taraf,
+                                        islem_tutari=tut, islem_pb=pb, islem_kuru=kur))
+    else:
+        banka_tl = yuvarla(tut * kur, 2)
+        verilen_tl = Decimal("0")
+        for i, (hesap, t, satir_ack, proje_id) in enumerate(hesap_satirlari):
+            son = i == len(hesap_satirlari) - 1
+            tl = banka_tl - verilen_tl if son else yuvarla(t * kur, 2)     # kuruş farkı son satırda
+            verilen_tl += tl
+            fis_satirlari.append(SatirGirdi(
+                hesap_kodu=hesap.hesap_kodu, taraf=karsi_taraf, islem_tutari=t, islem_pb=pb,
+                islem_kuru=kur, aciklama=satir_ack, yatirim_projesi_id=proje_id,
+                tl_override=(tl if pb != "TRY" else None)))
     try:
-        fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack, kur_usd=None,
+        fis = fis_olustur(tarih=tarih, satirlar=fis_satirlari, aciklama=ack, kur_usd=None,
                           kaynak=YevmiyeFisi.Kaynak.BANKA, kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise BankaHareketHatasi(str(e))

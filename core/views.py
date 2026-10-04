@@ -43,7 +43,7 @@ from core.forms import (
     SatisProformaBaslikForm, SatisProformaKalemForm,
     TanimSecenegiForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
-    DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
+    BankaHesapHareketForm, BankaHesapSatirForm, DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
     UrunAgaciForm,
@@ -1928,9 +1928,45 @@ def banka_hesap_detay(request, pk):
                    "banka_fis_pks": banka_fis_pks})
 
 
+BankaHesapSatirFormSet = formset_factory(BankaHesapSatirForm, extra=0, min_num=1, validate_min=True)
+
+
+def _banka_hesap_hareket_form(request, hesap, tip):
+    """Hesaba Ödeme / Hesaptan Giriş: karşı taraf hesap planından bir ya da birden çok muavin hesap."""
+    tan = banka_hareket_servis.HAREKET[tip]
+    if request.method == "POST":
+        form = BankaHesapHareketForm(request.POST)
+        formset = BankaHesapSatirFormSet(request.POST)
+        if form.is_valid() and formset.is_valid():
+            satirlar = [
+                {"hesap_kodu": f.cleaned_data["hesap"].hesap_kodu,
+                 "tutar": f.cleaned_data.get("tutar"),
+                 "aciklama": f.cleaned_data.get("aciklama", ""),
+                 "yatirim_projesi_id": (f.cleaned_data["yatirim_projesi"].pk
+                                        if f.cleaned_data.get("yatirim_projesi") else None)}
+                for f in formset if f.cleaned_data.get("hesap")]
+            try:
+                fis = banka_hareket_servis.hareket_olustur(
+                    banka_hesap=hesap, tip=tip, karsi=None, satirlar=satirlar,
+                    tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                    aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
+                    kur_override=form.cleaned_data.get("kur"))
+                messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:banka_hesap_detay", pk=hesap.pk)
+            except banka_hareket_servis.BankaHareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BankaHesapHareketForm()
+        formset = BankaHesapSatirFormSet()
+    return render(request, "core/banka_hesap_hareket_form.html",
+                  {"hesap": hesap, "form": form, "formset": formset, "tip": tip, "tan": tan})
+
+
 def _banka_hareket_form(request, hesap, tip):
     """Tipe göre banka hesabı hareketi formu (GET) / kaydı (POST) → otomatik dengeli fiş."""
     tan = banka_hareket_servis.HAREKET[tip]
+    if tan["karsi"] == "hesap":
+        return _banka_hesap_hareket_form(request, hesap, tip)
     if tan["karsi"] == "banka" and not BankaHesap.objects.filter(
             silindi=False).exclude(pk=hesap.pk).exists():
         messages.error(request, "Virman için en az iki banka hesabı tanımlı olmalı.")
@@ -1959,7 +1995,7 @@ def _banka_hareket_form(request, hesap, tip):
 
 @ekran_gerekli("banka")
 def banka_hareket_ekle(request, pk, tip):
-    """Banka hesabı hareketi — 5 tip de tipe göre form + otomatik dengeli fiş (kaynak=BANKA)."""
+    """Banka hesabı hareketi — 7 tip de tipe göre form + otomatik dengeli fiş (kaynak=BANKA)."""
     hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
     if tip not in banka_hareket_servis.HAREKET:
         messages.error(request, "Geçersiz hareket tipi.")

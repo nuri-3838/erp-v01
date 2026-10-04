@@ -91,6 +91,10 @@
         <span class="hd-ik">🏦</span><span class="hd-ad">Banka Yatan</span><span class="hd-yon">GİRİŞ</span></a>
       <a class="hareket-dugme cikis" href="{% url 'core:banka_hareket_ekle' hesap.pk 'banka_cekilen' %}">
         <span class="hd-ik">🏧</span><span class="hd-ad">Banka Çekilen</span><span class="hd-yon">ÇIKIŞ</span></a>
+      <a class="hareket-dugme cikis" href="{% url 'core:banka_hareket_ekle' hesap.pk 'hesaba_odeme' %}">
+        <span class="hd-ik">💸</span><span class="hd-ad">Hesaba Ödeme</span><span class="hd-yon">ÇIKIŞ</span></a>
+      <a class="hareket-dugme giris" href="{% url 'core:banka_hareket_ekle' hesap.pk 'hesaptan_giris' %}">
+        <span class="hd-ik">💰</span><span class="hd-ad">Hesaptan Giriş</span><span class="hd-yon">GİRİŞ</span></a>
     </div>
   </section>
 

@@ -1965,6 +1965,61 @@ class BankaHareketForm(forms.Form):
         f.widget.attrs["class"] = "akilli-sec"
 
 
+class BankaHesapHareketForm(forms.Form):
+    """Hesaba Ödeme / Hesaptan Giriş başlığı: banka tutarı + tarih + (döviz hesapta) kur + açıklama.
+    Karşı hesap satırları ``BankaHesapSatirFormSet``'te (bkz. core.services.banka_hareket)."""
+    tutar = TRDecimalField(label="Tutar", basamak=2)
+    tarih = forms.DateField(
+        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    kur = TRDecimalField(label="Kur", basamak=6, required=False)
+    aciklama = forms.CharField(
+        label="Açıklama", max_length=200, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off",
+                                      "placeholder": "Boş bırakılırsa otomatik"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
+
+
+class BankaHesapSatirForm(forms.Form):
+    """Tek karşı hesap satırı: hesap + tutar (tek satırda boşsa tamamı) + açıklama + (258'de zorunlu)
+    yatırım projesi."""
+    hesap = forms.ModelChoiceField(
+        label="Karşı hesap", queryset=HesapPlani.objects.none(), to_field_name="hesap_kodu",
+        empty_label="— hesap seç —", required=False)
+    tutar = TRDecimalField(label="Tutar", basamak=2, required=False)
+    yatirim_projesi = forms.ModelChoiceField(
+        label="Yatırım projesi", queryset=YatirimProjesi.objects.none(), required=False,
+        empty_label="— proje —")
+    aciklama = forms.CharField(label="Satır açıklaması", required=False, max_length=200)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import yaprak_hesaplar
+        from core.services.yatirim_projesi import aktif_projeler
+        self.fields["hesap"].queryset = yaprak_hesaplar()
+        self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+        self.fields["yatirim_projesi"].queryset = aktif_projeler().filter(
+            durum=YatirimProjesi.Durum.DEVAM)
+        self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+
+    def clean(self):
+        cd = super().clean()
+        hesap, proje = cd.get("hesap"), cd.get("yatirim_projesi")
+        if hesap is not None:
+            from core.services.hesap_plani import hesap_kodu_258_mi
+            if hesap_kodu_258_mi(hesap.hesap_kodu) and not proje:
+                self.add_error("yatirim_projesi", "258 hesabı için yatırım projesi seçilmelidir.")
+            if not hesap_kodu_258_mi(hesap.hesap_kodu) and proje:
+                self.add_error("yatirim_projesi", "Yatırım projesi yalnız 258 hesabında seçilebilir.")
+        elif cd.get("tutar") or proje:
+            self.add_error("hesap", "Karşı hesap seçilmelidir.")
+        return cd
+
+
 class KrediKartiHareketForm(forms.Form):
     """Kredi kartı hareketi: karşı taraf (Harcama/İade → Cari VEYA Gider; Ödeme → Banka VEYA
     Kasa) + tutar + tarih + açıklama. Karşı alanlar tipe göre __init__'te eklenir; tam olarak

@@ -1,0 +1,169 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ tan.ad }} · {{ hesap.ad }}{% endblock %}
+{% block sayfa_adi %}{{ tan.ad }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:banka_hesap_detay' hesap.pk %}">← {{ hesap.banka.ad }} · {{ hesap.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">{{ tan.ikon }}</span>{{ tan.ad }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  {% if formset.non_form_errors %}
+    <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents" id="bh-form">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">🏦</span>{{ hesap.banka.ad }} · {{ hesap.ad }} — {{ tan.ad }}</h2>
+      <p class="yardim" style="margin-top:-.3rem">Para birimi <span class="mono">{{ hesap.para_birimi }}</span> ·
+        Hesap <span class="mono">{{ hesap.muhasebe.hesap_kodu }}</span> {{ hesap.muhasebe.hesap_adi }} ·
+        {{ tan.aciklama }}</p>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.tutar.id_for_label }}">Banka tutarı ({{ hesap.para_birimi }})</label>
+          {{ form.tutar }}
+          {% for e in form.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }}</label>
+          {{ form.tarih }}
+          {% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% if hesap.para_birimi != "TRY" %}
+        <div class="alan">
+          <label for="{{ form.kur.id_for_label }}">{{ form.kur.label }}</label>
+          {{ form.kur }}
+          <span class="kur-etiket" id="kur-etiket"></span>
+          {% for e in form.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% endif %}
+        <div class="alan tam">
+          <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
+          {{ form.aciklama }}
+          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Karşı Hesap Satırları</h2>
+      <p class="yardim" style="margin-top:-.3rem">Satırların toplamı banka tutarına eşit olmalı. Tek satırda tutar boş
+        bırakılırsa tamamı o satıra yazılır. 258 hesabında yatırım projesi zorunludur.</p>
+      <div class="tablo-kapsayici">
+      <table class="satir-tablo">
+        <thead><tr><th style="width:34%">Karşı hesap</th><th class="sag" style="width:16%">Tutar ({{ hesap.para_birimi }})</th>
+          <th style="width:20%">Yatırım projesi</th><th>Açıklama</th></tr></thead>
+        <tbody id="bh-satirlar">
+          {% for f in formset %}
+          <tr class="bh-satir">
+            <td>{{ f.hesap }}{% for e in f.hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+              {% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+            <td class="sag">{{ f.tutar }}{% for e in f.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+            <td>{{ f.yatirim_projesi }}{% for e in f.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+            <td>{{ f.aciklama }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <button type="button" id="bh-satir-ekle" class="dugme-ikincil" style="margin-top:.6rem">+ Satır ekle</button>
+      <p class="yardim" id="bh-toplam" style="margin-top:.5rem"></p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:banka_hesap_detay' hesap.pk %}">İptal</a>
+      <button type="submit" class="birincil">{{ tan.ad }} Kaydet</button>
+    </div>
+  </form>
+</div>
+
+<template id="bh-bos-satir">
+  <tr class="bh-satir">
+    <td>{{ formset.empty_form.hesap }}</td>
+    <td class="sag">{{ formset.empty_form.tutar }}</td>
+    <td>{{ formset.empty_form.yatirim_projesi }}</td>
+    <td>{{ formset.empty_form.aciklama }}</td>
+  </tr>
+</template>
+
+<style>
+  .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
+  .kur-etiket.hata { color:var(--hata); }
+</style>
+<script>
+(function(){
+  // Satır ekle (formset __prefix__ şablonu) + satır toplamı / banka tutarı karşılaştırması.
+  var tf = document.getElementById('id_form-TOTAL_FORMS');
+  var govde = document.getElementById('bh-satirlar');
+  function sayi(s){ s=(s||'').toString().trim().replace(/\./g,'').replace(',','.'); var n=parseFloat(s); return isNaN(n)?0:n; }
+  function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function toplamGuncelle(){
+    var tutar = sayi((document.getElementById('id_tutar')||{}).value), top = 0, dolu = 0;
+    govde.querySelectorAll('.bh-satir').forEach(function(tr){
+      var h = tr.querySelector('select[name$="-hesap"]'), t = tr.querySelector('input[name$="-tutar"]');
+      if(h && h.value){ dolu++; top += sayi(t && t.value); }
+    });
+    var e = document.getElementById('bh-toplam');
+    if(dolu === 1 && top === 0){ e.textContent = 'Tek satır: tutar boş — tamamı ' + fmt(tutar) + ' yazılacak.'; return; }
+    var fark = tutar - top;
+    e.textContent = 'Satırlar toplamı ' + fmt(top) + ' / banka tutarı ' + fmt(tutar) +
+      (Math.abs(fark) < 0.005 ? ' ✓' : ' — fark ' + fmt(fark));
+    e.style.color = Math.abs(fark) < 0.005 ? '' : 'var(--hata)';
+  }
+  function baglaSatir(tr){
+    var sel = tr.querySelector('select.akilli-sec'); if(sel && window.akilliSecKur) window.akilliSecKur(sel);
+    tr.querySelectorAll('input,select').forEach(function(i){ i.addEventListener('input', toplamGuncelle); i.addEventListener('change', toplamGuncelle); });
+  }
+  document.getElementById('bh-satir-ekle').addEventListener('click', function(){
+    var i = parseInt(tf.value, 10);
+    var kok = document.createElement('tbody');
+    kok.innerHTML = document.getElementById('bh-bos-satir').innerHTML.replace(/__prefix__/g, i);
+    var tr = kok.firstElementChild;
+    govde.appendChild(tr); tf.value = i + 1; baglaSatir(tr); toplamGuncelle();
+  });
+  var tutarInp = document.getElementById('id_tutar'); if(tutarInp) tutarInp.addEventListener('input', toplamGuncelle);
+  window.addEventListener('load', function(){ govde.querySelectorAll('.bh-satir').forEach(baglaSatir); toplamGuncelle(); });
+})();
+</script>
+{% if hesap.para_birimi != "TRY" %}
+<script>
+(function(){
+  var KUR_API = '{% url "core:kur_usd_api" %}';
+  var PB = '{{ hesap.para_birimi }}';
+  var kurElleDegisti = false;
+  function fmtKur(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
+  var kurIstek = 0;
+  function kurCek(){
+    var tarihInp=document.querySelector('[name="tarih"]');
+    var kurInp=document.getElementById('id_kur');
+    var etiket=document.getElementById('kur-etiket');
+    if(!tarihInp||!tarihInp.value||tarihInp.value<'2000-01-01'){ if(etiket) etiket.textContent=''; return; }
+    var no = ++kurIstek;
+    fetch(KUR_API+'?tarih='+encodeURIComponent(tarihInp.value)+'&pb='+encodeURIComponent(PB))
+      .then(function(r){ return r.json(); }).then(function(j){
+        if(no !== kurIstek) return;
+        var kurDeger = j.kur ? parseFloat(j.kur) : null;
+        if(kurInp && !kurElleDegisti) kurInp.value = kurDeger ? fmtKur(kurDeger) : '';
+        if(etiket){
+          if(kurDeger){ etiket.textContent = '1 '+PB+' = '+fmtKur(kurDeger)+' TL'; etiket.classList.remove('hata'); }
+          else { etiket.textContent = '⚠ '+tarihInp.value.split('-').reverse().join('.')+' için '+PB+' kuru bulunamadı — Kurlar ekranından çekin.'; etiket.classList.add('hata'); }
+        }
+      }).catch(function(){ if(etiket) etiket.textContent=''; });
+  }
+  var tarihInp=document.querySelector('[name="tarih"]');
+  if(tarihInp) tarihInp.addEventListener('change', kurCek);
+  var kurInp=document.getElementById('id_kur');
+  if(kurInp) kurInp.addEventListener('input', function(){ kurElleDegisti=true; });
+  kurCek();
+})();
+</script>
+{% endif %}
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}
