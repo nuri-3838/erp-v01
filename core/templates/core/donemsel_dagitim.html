@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Dönemsel Dağıtım · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Dönemsel Dağıtım (180){% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik"><span class="emoji">🗓️</span>Dönemsel Dağıtımlar (180 Gelecek Aylara Ait Giderler)</h1>
+<p class="sayfa-alt">Alış faturasındaki <strong>Dönemsel gider</strong> satırları ay sonlarında 180 hesabından gider hesabına dağıtılır
+  (her ay sonu fiş: 180 ALACAK / gider BORÇ). Seçilen tarihe kadar vadesi gelen aylar için fiş üretilir; <strong>gelecek aylar için üretilmez</strong>, işlem tekrarlanabilir (aynı ay iki kez üretilmez).</p>
+
+<form method="post" class="kur-cek-alanlar">
+  {% csrf_token %}
+  <div class="alan"><label for="tarih">Bu tarihe kadar</label>
+    <input type="date" id="tarih" name="tarih" value="{{ tarih|date:'Y-m-d' }}"></div>
+  <button type="submit" class="birincil">Dönemsel dağıtımları oluştur ({{ bekleyen|length }} bekliyor)</button>
+</form>
+<form method="get" class="kur-cek-alanlar" style="margin-top:.4rem">
+  <input type="hidden" name="tarih" value="{{ tarih|date:'Y-m-d' }}">
+  <span class="yardim">Tarihi değiştirip önizlemek için sayfayı yenileyin:</span>
+  <input type="date" name="tarih" value="{{ tarih|date:'Y-m-d' }}"><button type="submit">Önizle</button>
+</form>
+
+<h2 class="etiket">Üretilecek (≤ {{ tarih|date:"d.m.Y" }})</h2>
+<div class="tablo-kapsayici genis"><table>
+  <thead><tr><th>Ay sonu</th><th>Fatura</th><th>180 hesabı</th><th>Gider hesabı</th><th class="sag">Tutar</th><th class="sag">TL</th></tr></thead>
+  <tbody>
+  {% for r in bekleyen %}
+    <tr><td class="mono">{{ r.ay_sonu|date:"d.m.Y" }}</td><td><a href="{% url 'core:fatura_detay' r.fatura.pk %}">{{ r.fatura.fatura_no|default:"—" }}</a></td>
+      <td class="mono">{{ r.hesap_id }} {{ r.hesap.hesap_adi }}</td><td class="mono">{{ r.gider_hesap_id }}</td>
+      <td class="sag mono">{{ r.doviz|tr_kur:2 }} {{ r.para_birimi }}</td><td class="sag mono">{{ r.tl|tr_kur:2 }}</td></tr>
+  {% empty %}
+    <tr><td colspan="6" class="yardim">Bu tarihe kadar üretilecek dağıtım yok.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h2 class="etiket">Son üretilen fişler</h2>
+<div class="tablo-kapsayici genis"><table>
+  <thead><tr><th>Ay sonu</th><th>Fatura</th><th>180 hesabı</th><th class="sag">TL</th><th>Fiş</th></tr></thead>
+  <tbody>
+  {% for r in uretilen %}
+    <tr><td class="mono">{{ r.ay_sonu|date:"d.m.Y" }}</td><td><a href="{% url 'core:fatura_detay' r.fatura.pk %}">{{ r.fatura.fatura_no|default:"—" }}</a></td>
+      <td class="mono">{{ r.hesap_id }}</td><td class="sag mono">{{ r.tl|tr_kur:2 }}</td>
+      <td><a href="{% url 'core:fis_detay' r.fis.pk %}">{{ r.fis.yil }}/{{ r.fis.fis_no }}</a></td></tr>
+  {% empty %}
+    <tr><td colspan="5" class="yardim">Henüz üretilmiş dağıtım fişi yok.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

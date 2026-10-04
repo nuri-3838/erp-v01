@@ -101,6 +101,7 @@ from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
 from core.services import doviz_islem as doviz_islem_servis
 from core.services import kur_degerleme as kur_degerleme_servis
+from core.services import donemsel_gider as donemsel_servis
 from core.services import kur_farki as kur_farki_servis
 from core.services import kredi_karti_hareket as kredi_karti_hareket_servis
 from core.services import kredi_hareket as kredi_hareket_servis
@@ -2166,6 +2167,30 @@ def kur_degerleme(request):
     return render(request, "core/kur_degerleme.html", {
         "tarih": tarih, "onizleme": kur_degerleme_servis.onizle(tarih),
         "degerlemeler": KurDegerleme.objects.filter(silindi=False).select_related("fis", "ters_fis")})
+
+
+@ekran_gerekli("donemsel_dagitim")
+def donemsel_dagitim(request):
+    """Dönemsel gider (180) aylık dağıtım fişlerini "bu tarihe kadar" üretir (idempotent; gelecek aylar için fiş üretmez)."""
+    ham = request.GET.get("tarih") or request.POST.get("tarih")
+    try:
+        tarih = datetime.date.fromisoformat(ham) if ham else timezone.localdate()
+    except ValueError:
+        tarih = timezone.localdate()
+    if request.method == "POST":
+        try:
+            n = donemsel_servis.uret(tarih, kullanici=request.user)
+            messages.success(request, f"{n} dönemsel dağıtım fişi oluşturuldu." if n else "Üretilecek dönemsel dağıtım yok (hepsi güncel).")
+        except donemsel_servis.DonemselGiderHatasi as e:
+            messages.error(request, str(e))
+        return redirect(f"{reverse('core:donemsel_dagitim')}?tarih={tarih.isoformat()}")
+    from core.models import DonemselDagitim
+    bekleyen = (DonemselDagitim.objects.filter(silindi=False, fis__isnull=True, ay_sonu__lte=tarih, fatura__silindi=False,
+                                               fatura__durum=Fatura.Durum.ONAYLI)
+                .select_related("fatura", "hesap", "gider_hesap").order_by("ay_sonu", "fatura_id", "hesap_id"))
+    uretilen = (DonemselDagitim.objects.filter(silindi=False, fis__isnull=False).select_related("fatura", "hesap", "fis")
+                .order_by("-ay_sonu", "-id")[:60])
+    return render(request, "core/donemsel_dagitim.html", {"tarih": tarih, "bekleyen": bekleyen, "uretilen": uretilen})
 
 
 @ekran_gerekli("banka")
@@ -6772,6 +6797,11 @@ def _fatura_satir_girdileri(formset):
             "tevkifat_id": tevkifat_id, "tevkifat_yok": tevkifat_yok,
             "yatirim_projesi_id": cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
             "varlik_adi": (cd.get("varlik_adi") or "").strip(),
+            "donemsel": bool(cd.get("donemsel")),
+            "donem_grup": cd["donem_grup"].hesap_kodu if cd.get("donem_grup") else None,
+            "donem_hesap_id": (cd.get("donem_hesap") or "").strip() or None,
+            "donem_baslangic": cd.get("donem_baslangic"), "donem_bitis": cd.get("donem_bitis"),
+            "donem_aciklama": (cd.get("donem_aciklama") or "").strip(),
             "miktar": cd["miktar"], "birim_fiyat": cd["birim_fiyat"]})
     return girdiler
 
@@ -6974,7 +7004,10 @@ def fatura_duzenle(request, pk):
             "sahsi_alis": fatura.sahsi_alis, "sahsi_ortak": fatura.sahsi_ortak_id,
             "gv_stopaj_orani": fatura.gv_stopaj_orani if fatura.gv_stopaj_orani is not None
             else Decimal("20")})
-        ilk = [{"stok": s.stok_id, "hesap": None if s.demirbas_id else s.hesap_id, "kdv": s.kdv_id,
+        ilk = [{"stok": s.stok_id,
+                "hesap": s.donem_gider_id if s.donem_baslangic else (None if s.demirbas_id else s.hesap_id), "kdv": s.kdv_id,
+                "donemsel": bool(s.donem_baslangic), "donem_hesap": s.hesap_id if s.donem_baslangic else "",
+                "donem_baslangic": s.donem_baslangic, "donem_bitis": s.donem_bitis, "donem_aciklama": s.donem_aciklama,
                 "tur": s.satir_tipi, "demirbas": s.demirbas_id,
                 "yatirim_projesi": s.yatirim_projesi_id,
                 "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
@@ -7001,6 +7034,7 @@ def fatura_detay(request, pk):
         hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
+                   "donemsel_tablolar": donemsel_servis.fatura_tablolari(fatura),
                    "irsaliye_farklari": fatura_servis.irsaliye_miktar_farklari(fatura),
                    "liste_url": _fatura_liste_url(fatura.yon),
                    "ekler": fatura_ek_servis.ek_listele(fatura),

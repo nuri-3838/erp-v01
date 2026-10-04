@@ -1721,6 +1721,19 @@ class FaturaSatirForm(forms.Form):
     varlik_adi = forms.CharField(
         label="Yeni kart adı", max_length=200, required=False,
         widget=forms.TextInput(attrs={"placeholder": "Yeni kart adı (grup seçildiyse)", "autocomplete": "off"}))
+    # DÖNEMSEL GİDER (yalnız alış gider faturası): gider hesabı = ``hesap`` (730.03 gibi); satır 180.xx grubunda faturaya özel açılan
+    # 000N hesabına yazılır; ay sonlarında otomatik dağıtım fişi (bkz. core.services.donemsel_gider).
+    donemsel = forms.BooleanField(label="Dönemsel gider", required=False)
+    donem_grup = forms.ModelChoiceField(label="180 grubu", queryset=HesapPlani.objects.none(), required=False,
+                                        to_field_name="hesap_kodu", empty_label="— 180 grubu —")
+    donem_hesap = forms.CharField(required=False, widget=forms.HiddenInput)         # düzenlemede mevcut 180.xx.000N korunur
+    donem_baslangic = forms.DateField(label="Dönem başlangıcı", required=False,
+                                      widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    donem_bitis = forms.DateField(label="Dönem bitişi", required=False,
+                                  widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    donem_aciklama = forms.CharField(label="Dönem açıklaması", required=False, max_length=200,
+                                     widget=forms.TextInput(attrs={"placeholder": "açıklama (ör. KİRA 07.2026-06.2027)",
+                                                                   "autocomplete": "off"}))
     # Stoklu kalemde stok kartından (JS) otomatik ön-dolar ama DEĞİŞTİRİLEBİLİR; hesap
     # (gider/duran varlık) kaleminde elle seçilir. ÜÇ AYRI durum (bkz. TEVKIFAT_YOK altında
     # modül seviyesi sabiti + core.services.fatura._satir_coz): "" (boş) = stoklu kalemde
@@ -1791,6 +1804,10 @@ class FaturaSatirForm(forms.Form):
                 ("Duran Varlık — YENİ KART AÇ (grup seç)", duran_grup_qs),
                 ("Duran Varlık — MEVCUT KARTA EKLE / Yatırım (258: proje seç)", duran_qs),
                 ("Ortak Hesapları (şahsi alış)", ortak_qs)])
+        from core.services import donemsel_gider
+        self.fields["donem_grup"].queryset = donemsel_gider.grup_hesaplari()
+        self.fields["donem_grup"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["donem_grup"].widget.attrs["class"] = "akilli-sec"
         from core.services.yatirim_projesi import aktif_projeler
         self.fields["yatirim_projesi"].queryset = aktif_projeler()
         self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
@@ -1846,6 +1863,19 @@ class FaturaSatirForm(forms.Form):
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
         if fiyat is None or fiyat < 0:
             raise forms.ValidationError("Birim fiyat girin." if dv is None else "Satış bedelini girin.")
+        if cd.get("donemsel"):
+            if stok or dv is not None or self.yon == "SATIS":
+                raise forms.ValidationError("Dönemsel gider yalnız alış gider faturasında, gider hesabıyla kullanılır.")
+            if not hesap:
+                raise forms.ValidationError("Dönemsel gider için gider hesabı seçin.")
+            if not cd.get("donem_baslangic") or not cd.get("donem_bitis"):
+                raise forms.ValidationError("Dönemsel gider için başlangıç ve bitiş tarihi girin.")
+            if not cd.get("donem_grup") and not (cd.get("donem_hesap") or "").strip():
+                raise forms.ValidationError("Dönemsel gider için 180 grubunu seçin (ör. 180.01 KİRA).")
+            cd["yatirim_projesi"] = None
+            cd["varlik_adi"] = ""
+            cd["dolu"] = True
+            return cd
         if stok:
             cd["kdv"] = None                       # stok kaleminde KDV stoktan gelir
             cd["yatirim_projesi"] = None

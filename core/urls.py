@@ -204,6 +204,7 @@ urlpatterns = [
     path("finans/banka-hesap/<int:pk>/", views.banka_hesap_detay, name="banka_hesap_detay"),
     path("finans/doviz-alis-satis/", views.doviz_islem_ekle, name="doviz_islem_ekle"),
     path("muhasebe/kur-degerleme/", views.kur_degerleme, name="kur_degerleme"),
+    path("muhasebe/donemsel-dagitim/", views.donemsel_dagitim, name="donemsel_dagitim"),
     path("finans/banka-hesap/<int:pk>/hareket/<str:tip>/", views.banka_hareket_ekle, name="banka_hareket_ekle"),
     path("finans/banka-hesap/<int:pk>/hareket-sil/<int:fis_pk>/", views.banka_hareket_sil, name="banka_hareket_sil"),
     path("finans/banka-hesap/<int:pk>/duzenle/", views.banka_hesap_duzenle, name="banka_hesap_duzenle"),

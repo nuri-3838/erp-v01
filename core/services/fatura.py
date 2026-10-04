@@ -29,6 +29,7 @@ from core.models import (Cari, Depo, DuranVarlik, Fatura, FaturaSatir, FaturaTip
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
+from core.services import donemsel_gider
 from core.services import duran_hesap
 from core.services import duran_varlik as dv_servis
 from core.services.hesap_plani import (duran_varlik_hesaplari, gider_hesaplari,
@@ -270,6 +271,44 @@ def _hesap_satiri_coz(g, i, hesap_kumesi, *, kullanici=None, tarih=None):
     return hesap, kdv, tevkifat, proje
 
 
+def _donemsel_satir_coz(g, i, *, kullanici=None, fatura_no=""):
+    """Dönemsel gider satırı (alış gider faturası): 180.xx.000N hesabı (faturaya özel; düzenlemede mevcut hesap korunur) + gider hesabı + dönem.
+    (None, hesap180, kdv, tevkifat, None, None) döner; hesap180._donem = gider/dönem bilgisi (bkz. _satirlari_yaz)."""
+    gider_h = gider_hesaplari().filter(pk=g.get("hesap_id")).first() if g.get("hesap_id") else None
+    if gider_h is None:
+        raise FaturaHatasi(f"Satır {i}: dönemsel gider için gider hesabı (7xx/65x/66x/68x yaprak) seçin.")
+    baslangic, bitis = g.get("donem_baslangic"), g.get("donem_bitis")
+    try:
+        donemsel_gider.ay_sonlari(baslangic, bitis)
+    except donemsel_gider.DonemselGiderHatasi as e:
+        raise FaturaHatasi(f"Satır {i}: {e}")
+    aciklama = (g.get("donem_aciklama") or "").strip()[:200]
+    h180 = None
+    if g.get("donem_hesap_id"):
+        h180 = HesapPlani.objects.filter(pk=g["donem_hesap_id"], silindi=False).first()
+        if h180 is None or not donemsel_gider.HESAP_180.match(h180.hesap_kodu):
+            raise FaturaHatasi(f"Satır {i}: dönemsel gider 180 hesabı geçersiz.")
+    else:
+        try:
+            h180 = donemsel_gider.hesap_ac(g.get("donem_grup"), fatura_no, aciklama, kullanici=kullanici)
+        except donemsel_gider.DonemselGiderHatasi as e:
+            raise FaturaHatasi(f"Satır {i}: {e}")
+    kdv = None
+    if g.get("kdv_id"):
+        kdv = KdvOrani.objects.filter(pk=g["kdv_id"], silindi=False).first()
+        if kdv is None:
+            raise FaturaHatasi(f"Satır {i}: KDV oranı bulunamadı.")
+    h180._donem = {"baslangic": baslangic, "bitis": bitis, "gider": gider_h, "aciklama": aciklama}
+    return None, h180, kdv, _tevkifat_coz(g, i), None, None
+
+
+def _donemsel_senkronla(fatura, kullanici):
+    try:
+        donemsel_gider.senkronla(fatura, kullanici)
+    except donemsel_gider.DonemselGiderHatasi as e:
+        raise FaturaHatasi(str(e))
+
+
 def _demirbas_coz(g, i, *, fatura_pk=None):
     """Demirbaş satırı: satılabilir (AKTİF, silinmemiş; bu fatura zaten satmışsa SATILDI da olur) kartı çözer."""
     dv = DuranVarlik.objects.filter(pk=g.get("demirbas_id"), silindi=False).first() if g.get("demirbas_id") else None
@@ -285,7 +324,7 @@ def _demirbas_coz(g, i, *, fatura_pk=None):
     return dv
 
 
-def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None, kullanici=None, tarih=None):
+def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None, kullanici=None, tarih=None, fatura_no=""):
     """Girdi satırını çözer -> (stok, hesap, kdv, tevkifat, proje, demirbas).
 
     Satır türü (``g["tur"]``: STOK / HESAP / DEMIRBAS; verilmezse alanlardan türetilir):
@@ -304,6 +343,10 @@ def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None, ku
         if g.get("stok_id") or g.get("demirbas_id"):
             raise FaturaHatasi(
                 f"Satır {i}: gider faturasında stok kullanılamaz; gider hesabı seçin.")
+        if g.get("donemsel"):
+            if sahsi_ortak is not None:
+                raise FaturaHatasi(f"Satır {i}: ortak adına (şahsi) alışta dönemsel gider kullanılamaz.")
+            return _donemsel_satir_coz(g, i, kullanici=kullanici, fatura_no=fatura_no)
         if sahsi_ortak is not None:
             kdv = None
             if g.get("kdv_id"):
@@ -393,7 +436,7 @@ def _demirbas_geri_al(fatura, kullanici=None):
 
 
 def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None,
-             sahsi_ortak_id=None, gv_stopaj_orani=None, fatura_pk=None, kullanici=None):
+             sahsi_ortak_id=None, gv_stopaj_orani=None, fatura_pk=None, kullanici=None, fatura_no=""):
     """Ortak hazırlık (oluştur+güncelle): doğrula, kur çöz, yevmiye satırlarını ve
     FaturaSatir verisini kur. (tip, cari, pb, kur, yevmiye_satirlari, hazir) döner.
     ``kur_override`` doluysa (kullanıcı elle girdi/değiştirdi) carinin kur_tipi'ne göre
@@ -454,7 +497,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
     for i, g in enumerate(satirlar, start=1):
         stok, hesap, kdv, tevkifat, proje, dv = _satir_coz(
             g, i, tip.gider, sahsi_ortak=sahsi_ortak, satis=not alis, fatura_pk=fatura_pk,
-            kullanici=kullanici, tarih=tarih)
+            kullanici=kullanici, tarih=tarih, fatura_no=fatura_no)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         if dv is not None:
@@ -580,7 +623,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
 
 
 def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_id=None, satis=False,
-                    fatura_pk=None, kullanici=None, tarih=None):
+                    fatura_pk=None, kullanici=None, tarih=None, fatura_no=""):
     """Taslak oluştur/güncelle ortak hazırlığı: cari + satırları doğrular — TİP'e ihtiyaç
     DUYMAZ (muhasebe haritası + yevmiye satırları onaylamaya ertelenir, bkz. fatura_onayla).
     KDV stoktan, tevkifat ise satırda elle seçilmemişse stoktan (seçilmişse formdan) bu anda
@@ -604,7 +647,7 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_
     for i, g in enumerate(satirlar, start=1):
         stok, hesap, kdv, tevkifat, proje, dv = _satir_coz(
             g, i, gider, sahsi_ortak=sahsi_ortak, satis=satis, fatura_pk=fatura_pk,
-            kullanici=kullanici, tarih=tarih)
+            kullanici=kullanici, tarih=tarih, fatura_no=fatura_no)
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         if dv is not None:
@@ -785,9 +828,12 @@ def _kartlari_yenile(fatura, kullanici):
 
 def _satirlari_yaz(fatura, hazir, kullanici):
     for stok, hesap, miktar, birim, kdv, tevkifat, proje, demirbas in hazir:
+        donem = getattr(hesap, "_donem", None) or {}       # dönemsel gider: gider hesabı + dönem (bkz. _donemsel_satir_coz)
         satir = FaturaSatir.objects.create(
             fatura=fatura, stok=stok, hesap=hesap, miktar=miktar, birim_fiyat=birim, kdv=kdv,
             tevkifat=tevkifat, yatirim_projesi=proje, demirbas=demirbas,
+            donem_baslangic=donem.get("baslangic"), donem_bitis=donem.get("bitis"), donem_gider=donem.get("gider"),
+            donem_aciklama=donem.get("aciklama", ""),
             created_by=kullanici, updated_by=kullanici)
         dv_servis.satiri_karta_bagla(satir, kullanici=kullanici)   # kalem = kart / mevcut karta ekle
     _kartlari_yenile(fatura, kullanici)
@@ -934,7 +980,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
     satis = bool(tip and tip.yon == FaturaTipi.Yon.SATIS) or (tip is None and yon == FaturaTipi.Yon.SATIS)
     cari, pb, hazir = _hazirla_taslak(
         cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider, satis=satis,
-        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih)
+        sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih, fatura_no=fatura_no)
     if tip is not None:
         cozulen_yon = tip.yon
     elif yon in FaturaTipi.Yon.values:
@@ -995,6 +1041,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
     fatura.save(update_fields=["fis", "kur", "durum", "updated_by", "updated_at"])
     _demirbas_satildi_yaz(fatura, kullanici)
     _kartlari_yenile(fatura, kullanici)
+    _donemsel_senkronla(fatura, kullanici)
     if irsaliyeden_mi(fatura):
         _irsaliye_girislerini_fiyatla(fatura)
     elif fatura.depo_id:
@@ -1049,7 +1096,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         cari, pb, hazir = _hazirla_taslak(
             cari_id=cari_id, satirlar=satirlar, para_birimi=para_birimi, gider=gider,
             satis=(cozulen_yon == FaturaTipi.Yon.SATIS), fatura_pk=fatura.pk,
-            sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih)
+            sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih, fatura_no=fatura_no)
         if gider and cozulen_yon != FaturaTipi.Yon.ALIS:
             raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
         depo = None if gider else _depo_coz(depo_id)
@@ -1079,7 +1126,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
         para_birimi=para_birimi, kur_override=kur,
         sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None),
-        gv_stopaj_orani=gv_stopaj_orani, fatura_pk=fatura.pk, kullanici=kullanici)
+        gv_stopaj_orani=gv_stopaj_orani, fatura_pk=fatura.pk, kullanici=kullanici, fatura_no=fatura_no)
     depo = None if tip.gider else _depo_coz(depo_id)    # gider faturasında depo/stok hareketi yok
     fatura_no = (fatura_no or "").strip()
     _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=tip.yon, haric_pk=fatura.pk)
@@ -1107,6 +1154,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                                "sahsi_ortak", "gv_stopaj_orani", "updated_by", "updated_at"])
     _satirlari_yaz(fatura, hazir, kullanici)
     _demirbas_satildi_yaz(fatura, kullanici)
+    _donemsel_senkronla(fatura, kullanici)
     if irsaliyeden_mi(fatura):
         _irsaliye_girislerini_fiyatla(fatura)
     elif depo is not None:
@@ -1145,6 +1193,7 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     StokHareket.objects.filter(id__in=[h.pk for h in hareketler]).delete()
     YevmiyeFisi.objects.filter(pk__in=maliyet_fis_idler,
                                kaynak=YevmiyeFisi.Kaynak.STOK_SATIS).delete()
+    donemsel_gider.fatura_temizle(fatura)             # aylık dağıtım fişleri + plan silinir (180 hesabı geçmiş için kalır)
     fis_id = fatura.fis_id
     fis_yil = fatura.fis.yil if fis_id else None
     fatura.delete()                                    # FaturaSatir CASCADE

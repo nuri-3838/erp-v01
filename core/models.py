@@ -160,6 +160,7 @@ class YevmiyeFisi(TemelModel):
         KUR_DEGERLEME = "KUR_DEGERLEME", "Dönem Sonu Kur Değerleme"
         CARI_KESINTI = "CARI_KESINTI", "Cari Kesinti / Masraf (otomatik)"
         DURAN_VARLIK = "DURAN_VARLIK", "Duran Varlık Kartı Açılışı (otomatik)"
+        DONEMSEL = "DONEMSEL", "Dönemsel Dağıtım (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -1775,6 +1776,14 @@ class FaturaSatir(TemelModel):
     demirbas = models.ForeignKey(
         "DuranVarlik", verbose_name="satılan demirbaş", null=True, blank=True,
         on_delete=models.PROTECT, related_name="satis_satirlari")
+    # DÖNEMSEL GİDER (alış gider faturası): satır ``hesap`` = faturaya özel 180.xx.000N hesabı; gider hesabı + dönem burada tutulur,
+    # aylık dağıtım fişleri bu bilgiyle üretilir (bkz. core.services.donemsel_gider).
+    donem_baslangic = models.DateField("dönem başlangıcı", null=True, blank=True)
+    donem_bitis = models.DateField("dönem bitişi", null=True, blank=True)
+    donem_gider = models.ForeignKey(
+        HesapPlani, verbose_name="dönemsel gider hesabı", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="donemsel_satirlar")
+    donem_aciklama = models.CharField("dönemsel gider açıklaması", max_length=200, blank=True)
 
     class Meta:
         db_table = "fatura_satir"
@@ -3631,3 +3640,32 @@ class KurDegerleme(TemelModel):
 
     def __str__(self):
         return f"Kur değerleme {self.tarih:%d.%m.%Y}"
+
+
+class DonemselDagitim(TemelModel):
+    """Dönemsel gider (180) aylık dağıtım planı satırı: her ay sonu için döviz/TL tutarı; ``fis`` üretilmişse aylık fiş
+    (180.xx ALACAK / gider hesabı BORÇ, kaynak=DONEMSEL). Fatura düzenlenince/silinince plan + fişler yeniden hesaplanır/silinir
+    (bkz. core.services.donemsel_gider)."""
+
+    fatura = models.ForeignKey(Fatura, verbose_name="fatura", on_delete=models.CASCADE, related_name="donemsel_dagitimlar")
+    hesap = models.ForeignKey(HesapPlani, verbose_name="180 hesabı", on_delete=models.PROTECT, related_name="donemsel_dagitimlar")
+    gider_hesap = models.ForeignKey(HesapPlani, verbose_name="gider hesabı", on_delete=models.PROTECT, related_name="+")
+    sira = models.PositiveIntegerField("sıra")
+    ay_sonu = models.DateField("ay sonu")
+    doviz = models.DecimalField("tutar (fatura para birimi)", max_digits=18, decimal_places=2)
+    para_birimi = models.CharField("para birimi", max_length=3)
+    kur = models.DecimalField("kur", max_digits=18, decimal_places=6)
+    tl = models.DecimalField("TL karşılığı", max_digits=18, decimal_places=2)
+    aciklama = models.CharField("açıklama", max_length=200, blank=True)
+    fis = models.ForeignKey(YevmiyeFisi, verbose_name="dağıtım fişi", null=True, blank=True, on_delete=models.PROTECT,
+                            related_name="donemsel_dagitimlari")
+
+    class Meta:
+        db_table = "donemsel_dagitim"
+        verbose_name = "dönemsel dağıtım"
+        verbose_name_plural = "dönemsel dağıtımlar"
+        ordering = ["fatura", "hesap", "sira"]
+        constraints = [models.UniqueConstraint(fields=["fatura", "hesap", "sira"], name="uq_donemsel_dagitim_sira")]
+
+    def __str__(self):
+        return f"{self.hesap_id} {self.ay_sonu:%m.%Y}"
