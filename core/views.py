@@ -1776,7 +1776,8 @@ def cari_kesinti_ekle(request, pk):
             try:
                 fis = cari_kesinti_servis.kesinti_olustur(
                     cari=cari, tarih=cd["tarih"], tutar=cd["tutar"], gider_kodu=cd["gider"].hesap_kodu,
-                    aciklama=cd["aciklama"], kullanici=request.user)
+                    aciklama=cd["aciklama"], kullanici=request.user,
+                    yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:cari_ekstresi", pk=cari.pk)
             except cari_kesinti_servis.CariKesintiHatasi as e:
@@ -1802,14 +1803,15 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
             try:
                 cari_kesinti_servis.kesinti_guncelle(
                     fis=fis, cari=cari, tarih=cd["tarih"], tutar=cd["tutar"], gider_kodu=cd["gider"].hesap_kodu,
-                    aciklama=cd["aciklama"], kullanici=request.user)
+                    aciklama=cd["aciklama"], kullanici=request.user,
+                    yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf güncellendi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:cari_ekstresi", pk=cari.pk)
             except cari_kesinti_servis.CariKesintiHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = CariKesintiForm(initial={"tarih": fis.tarih, "tutar": bilgi["tutar"], "gider": bilgi["gider"].hesap_kodu,
-                                        "aciklama": fis.aciklama})
+                                        "yatirim_projesi": bilgi["yatirim_projesi_id"], "aciklama": fis.aciklama})
     return render(request, "core/cari_kesinti_form.html", {
         "cari": cari, "form": form, "yon": bilgi["yon"], "duzenle": True, "fis": fis})
 

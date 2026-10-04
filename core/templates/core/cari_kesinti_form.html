@@ -21,7 +21,7 @@
       <h2 class="bolum-baslik">{{ cari.kod }} · {{ cari.unvan }}</h2>
       <p class="yardim" style="margin-top:-.3rem">Cari hesap <span class="mono">{{ cari.muhasebe_kodu }}</span> ·
         {% if yon == "musteri" %}Fiş: <strong>Gider BORÇ / Cari ALACAK</strong> (müşteri bakiyesinden düşer — ör. güvenli ödeme gideri, kuruş farkı).
-        {% else %}Fiş: <strong>Cari BORÇ / Gider ALACAK</strong> (tedarikçi bakiyesinden düşer).{% endif %}
+        {% else %}Fiş: <strong>Cari BORÇ / Hesap ALACAK</strong> (tedarikçi bakiyesinden düşer; 258'de proje maliyeti, gelir hesabında gelir tutar kadar artar/azalır).{% endif %}
         Yön cari hesabından otomatik belirlenir.</p>
       <div class="izgara">
         <div class="alan">
@@ -35,6 +35,12 @@
         <div class="alan tam">
           <label for="{{ form.gider.id_for_label }}">{{ form.gider.label }}</label>{{ form.gider }}
           {% for e in form.gider.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label>{{ form.yatirim_projesi }}
+          <p class="yardim">Hesap <strong>258 Yapılmakta Olan Yatırımlar</strong> ise proje zorunludur: tutar o projenin toplamına işlenir
+            (320 carisinde 258 ALACAK → proje maliyeti tutar kadar düşer; alış iadesi gibi) ve aktifleştirmede karta maliyet olarak bağlanmaz.</p>
+          {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
         <div class="alan tam">
           <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}

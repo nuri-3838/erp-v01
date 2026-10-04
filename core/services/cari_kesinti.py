@@ -2,7 +2,10 @@
 770.03), açıklama. Fiş otomatik ve dengeli (kaynak=CARI_KESINTI, fiş→cari bağı); Düzenle ve (yalnız süper
 kullanıcı) kalıcı Sil vardır.
 
-Yön cari hesabının türünden gelir (otomatik):
+Hesap listesi: gider hesapları (7xx/65x/66x/68x), 258 YAPILMAKTA OLAN YATIRIMLAR (yatırım projesi ZORUNLU, proje "Devam
+Ediyor" olmalı; satır projeye yazılır — proje toplamı tutar kadar düşer/artar, karta maliyet olarak BAĞLANMAZ) ve gelir
+hesapları (64x / 67x yaprak, ör. 649, 679).
+Yön cari hesabının türünden gelir (otomatik; hesap türünden bağımsız):
   120/121 (müşteri / alacak tarafı): Gider BORÇ / Cari ALACAK — müşteri ödemesinden kesilen gider (ör. güvenli ödeme
       masrafı) cari bakiyesini kapatır; kuruş farkları da böyle girilir.
   320/321 (tedarikçi / borç tarafı): Cari BORÇ / Gider ALACAK — tedarikçiden gelen kesinti/indirim.
@@ -49,12 +52,43 @@ def yon_coz(cari):
         f"{cari.unvan} carisinin muhasebe hesabı ({kod or 'yok'}) 120/320 ailesinde değil; yön belirlenemedi.")
 
 
+def kesinti_hesap_kumesi():
+    """Kesinti/masraf hesabı olarak seçilebilen TAM küme: gider hesapları + 258 ailesi + gelir hesapları (64x/67x yaprak)."""
+    from django.db.models import Q
+    from core.services.hesap_plani import duran_varlik_hesaplari, gider_hesaplari, yaprak_hesaplar
+    gider = gider_hesaplari()
+    yatirim = duran_varlik_hesaplari().filter(Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258."))
+    gelir = yaprak_hesaplar().filter(hesap_kodu__regex=GELIR_KOD_DESENI)
+    return (gider | yatirim | gelir).distinct()
+
+
+GELIR_KOD_DESENI = r"^(64\d|67\d)(\.|$)"
+
+
 def gider_hesabi_coz(kod):
-    from core.services.hesap_plani import gider_hesaplari
-    h = gider_hesaplari().filter(hesap_kodu=(kod or VARSAYILAN_GIDER)).first()
+    h = kesinti_hesap_kumesi().filter(hesap_kodu=(kod or VARSAYILAN_GIDER)).first()
     if h is None:
-        raise CariKesintiHatasi(f"Geçerli bir gider hesabı seçin (yaprak 7xx/65x/66x/68x): {kod}")
+        raise CariKesintiHatasi(
+            f"Geçerli bir hesap seçin (gider 7xx/65x/66x/68x, 258 yatırım ya da gelir 64x/67x yaprak hesap): {kod}")
     return h
+
+
+def proje_coz(hesap, yatirim_projesi_id):
+    """258 ailesinde proje ZORUNLU ve 'Devam Ediyor' olmalı; diğer hesaplarda proje verilemez. proje pk ya da None."""
+    from core.models import YatirimProjesi
+    from core.services.hesap_plani import hesap_kodu_258_mi
+    if hesap_kodu_258_mi(hesap.hesap_kodu):
+        if not yatirim_projesi_id:
+            raise CariKesintiHatasi("258 hesabı için yatırım projesi seçilmelidir.")
+        proje = YatirimProjesi.objects.filter(pk=yatirim_projesi_id, silindi=False).first()
+        if proje is None:
+            raise CariKesintiHatasi("Yatırım projesi bulunamadı.")
+        if proje.durum != YatirimProjesi.Durum.DEVAM:
+            raise CariKesintiHatasi(f"{proje.kod} projesi aktifleşmiş; yeni kalem eklenemez.")
+        return proje.pk
+    if yatirim_projesi_id:
+        raise CariKesintiHatasi("Yatırım projesi yalnız 258 hesabında seçilebilir.")
+    return None
 
 
 def _ack(cari, aciklama, yon):
@@ -62,7 +96,7 @@ def _ack(cari, aciklama, yon):
     return ack or buyuk_harf_tr(f"KESİNTİ / MASRAF - {cari.unvan}")
 
 
-def _satirlar(cari, gider, tutar, yon):
+def _satirlar(cari, gider, tutar, yon, proje_id=None):
     if cari.para_birimi != "TRY":
         raise CariKesintiHatasi("Döviz carilerde kesinti/masraf hareketi girilemez (kur gerekir); manuel fiş kullanın.")
     cari_hesap = HesapPlani.objects.filter(hesap_kodu=cari.muhasebe_kodu, silindi=False).first()
@@ -70,18 +104,21 @@ def _satirlar(cari, gider, tutar, yon):
         raise CariKesintiHatasi(f"{cari.unvan} carisinin muhasebe hesabı hesap planında yok.")
     gider_taraf, cari_taraf = ("B", "A") if yon == "musteri" else ("A", "B")
     return [SatirGirdi(hesap_kodu=gider.hesap_kodu, taraf=gider_taraf, islem_tutari=tutar,
-                       aciklama=gider.hesap_adi),
+                       aciklama=gider.hesap_adi, yatirim_projesi_id=proje_id),
             SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf=cari_taraf, islem_tutari=tutar,
                        aciklama=cari.unvan)]
 
 
 @transaction.atomic
-def kesinti_olustur(*, cari, tarih, tutar, gider_kodu=None, aciklama="", kullanici=None) -> YevmiyeFisi:
+def kesinti_olustur(*, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
+                    kullanici=None) -> YevmiyeFisi:
     yon = yon_coz(cari)
     gider = gider_hesabi_coz(gider_kodu)
+    proje_id = proje_coz(gider, yatirim_projesi_id)
     tut = _tutar(tutar)
     try:
-        fis = fis_olustur(tarih=tarih, satirlar=_satirlar(cari, gider, tut, yon), aciklama=_ack(cari, aciklama, yon),
+        fis = fis_olustur(tarih=tarih, satirlar=_satirlar(cari, gider, tut, yon, proje_id),
+                          aciklama=_ack(cari, aciklama, yon),
                           kaynak=YevmiyeFisi.Kaynak.CARI_KESINTI, kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise CariKesintiHatasi(str(e))
@@ -99,18 +136,21 @@ def duzenleme_bilgisi(fis, cari):
     gider_s = [s for s in satirlar if s.hesap_id != cari.muhasebe_kodu]
     if len(satirlar) != 2 or len(gider_s) != 1:
         raise CariKesintiHatasi("Hareketin satır yapısı düzenlemeye uygun değil.")
-    return {"gider": gider_s[0].hesap, "tutar": gider_s[0].borc or gider_s[0].alacak, "yon": yon}
+    return {"gider": gider_s[0].hesap, "tutar": gider_s[0].borc or gider_s[0].alacak, "yon": yon,
+            "yatirim_projesi_id": gider_s[0].yatirim_projesi_id}
 
 
 @transaction.atomic
-def kesinti_guncelle(*, fis, cari, tarih, tutar, gider_kodu=None, aciklama="", kullanici=None) -> YevmiyeFisi:
-    """Tarih/tutar/gider hesabı/açıklama düzenlenir; fiş yeniden yazılır (kur farkı motoru da çalışır)."""
+def kesinti_guncelle(*, fis, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
+                     kullanici=None) -> YevmiyeFisi:
+    """Tarih/tutar/hesap/proje/açıklama düzenlenir; fiş yeniden yazılır (kur farkı motoru da çalışır)."""
     duzenleme_bilgisi(fis, cari)
     yon = yon_coz(cari)
     gider = gider_hesabi_coz(gider_kodu)
+    proje_id = proje_coz(gider, yatirim_projesi_id)
     tut = _tutar(tutar)
     try:
-        fis_guncelle(fis, tarih=tarih, satirlar=_satirlar(cari, gider, tut, yon),
+        fis_guncelle(fis, tarih=tarih, satirlar=_satirlar(cari, gider, tut, yon, proje_id),
                      aciklama=_ack(cari, aciklama, yon), kullanici=kullanici)
     except YevmiyeHatasi as e:
         raise CariKesintiHatasi(str(e))

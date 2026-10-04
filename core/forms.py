@@ -3071,18 +3071,35 @@ class CariKesintiForm(forms.Form):
         initial=timezone.localdate)
     tutar = TRDecimalField(label="Tutar (TL)", basamak=2)
     gider = forms.ModelChoiceField(
-        label="Gider hesabı", queryset=HesapPlani.objects.none(), to_field_name="hesap_kodu",
-        empty_label=None)
+        label="Hesap (gider · 258 yatırım · gelir 64x/67x)", queryset=HesapPlani.objects.none(),
+        to_field_name="hesap_kodu", empty_label=None)
+    yatirim_projesi = forms.ModelChoiceField(
+        label="Yatırım projesi", queryset=YatirimProjesi.objects.none(), required=False,
+        empty_label="— proje (yalnız 258 için) —")
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.cari_kesinti import VARSAYILAN_GIDER
-        from core.services.hesap_plani import gider_hesaplari
-        self.fields["gider"].queryset = gider_hesaplari()
+        from core.services.cari_kesinti import VARSAYILAN_GIDER, kesinti_hesap_kumesi
+        from core.services.yatirim_projesi import aktif_projeler
+        self.fields["gider"].queryset = kesinti_hesap_kumesi().order_by("hesap_kodu")
         self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["gider"].widget.attrs["class"] = "akilli-sec"
+        self.fields["yatirim_projesi"].queryset = aktif_projeler().filter(durum=YatirimProjesi.Durum.DEVAM)
+        self.fields["yatirim_projesi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["yatirim_projesi"].widget.attrs["class"] = "akilli-sec"
         if not self.is_bound and "gider" not in (self.initial or {}):
             self.initial["gider"] = VARSAYILAN_GIDER
+
+    def clean(self):
+        from core.services.hesap_plani import hesap_kodu_258_mi
+        cd = super().clean()
+        gider, proje = cd.get("gider"), cd.get("yatirim_projesi")
+        if gider is not None:
+            if hesap_kodu_258_mi(gider.hesap_kodu) and not proje:
+                self.add_error("yatirim_projesi", "258 hesabı için yatırım projesi seçilmelidir.")
+            elif not hesap_kodu_258_mi(gider.hesap_kodu) and proje:
+                self.add_error("yatirim_projesi", "Yatırım projesi yalnız 258 hesabında seçilebilir.")
+        return cd
