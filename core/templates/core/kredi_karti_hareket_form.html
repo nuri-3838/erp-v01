@@ -36,6 +36,10 @@
             {{ form.gider }}
             {% for e in form.gider.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
+          {% if form.sayilan_pb %}<div class="alan tam">
+            <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
+            <p class="yardim">{{ form.sayilan_pb.help_text }}</p>
+          </div>{% endif %}
           {% if form.yatirim_projesi %}
           <div class="alan tam">
             <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label>

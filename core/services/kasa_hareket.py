@@ -114,7 +114,7 @@ def _karsi_coz(tip, kasa, karsi):
 
 @transaction.atomic
 def hareket_olustur(*, kasa, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
-                    kur_override=None) -> YevmiyeFisi:
+                    kur_override=None, sayilan_pb=None) -> YevmiyeFisi:
     """Bir kasa hareketinden otomatik DENGELİ yevmiye fişi üretir (kaynak=KASA,
     kaynak kasa=`kasa`). `karsi` tipe göre Cari / BankaHesap / (hedef) Kasa.
     Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır). ``kur_override``
@@ -144,6 +144,14 @@ def hareket_olustur(*, kasa, tip, karsi, tutar, tarih, aciklama="", kullanici=No
         SatirGirdi(hesap_kodu=karsi_kod, taraf=karsi_taraf,
                    islem_tutari=tut, islem_pb=pb, islem_kuru=kur),
     ]
+    if tip == "cari_odeme" and pb == "TRY":
+        # Döviz carisine TL ödeme: cari satırı ödeme günü TCMB alış kuruyla dövize çevrilir (TL aynı; bkz. doviz_cari).
+        from core.services import doviz_cari
+        try:
+            if doviz_cari.donusum_gerekli_mi(karsi, sayilan_pb):
+                satirlar[1] = doviz_cari.cari_satiri(karsi, tut, tarih, karsi_taraf, sayilan_pb)
+        except doviz_cari.DovizCariHatasi as e:
+            raise KasaHareketHatasi(str(e))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack, kur_usd=None,
                           kaynak=YevmiyeFisi.Kaynak.KASA, kullanici=kullanici)

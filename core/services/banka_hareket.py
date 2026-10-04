@@ -166,7 +166,7 @@ def _hesap_satirlarini_coz(banka_hesap, satirlar, toplam):
 
 @transaction.atomic
 def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
-                    kur_override=None, satirlar=None) -> YevmiyeFisi:
+                    kur_override=None, satirlar=None, sayilan_pb=None) -> YevmiyeFisi:
     """Bir banka hesabı hareketinden otomatik DENGELİ yevmiye fişi üretir
     (kaynak=BANKA, kaynak banka hesabı=`banka_hesap`). `karsi` tipe göre
     Cari / (hedef) BankaHesap / Kasa. İhlalde hiçbir şey kaydedilmez. ``kur_override``
@@ -214,6 +214,14 @@ def hareket_olustur(*, banka_hesap, tip, karsi, tutar, tarih, aciklama="", kulla
                 hesap_kodu=hesap.hesap_kodu, taraf=karsi_taraf, islem_tutari=t, islem_pb=pb,
                 islem_kuru=kur, aciklama=satir_ack, yatirim_projesi_id=proje_id,
                 tl_override=(tl if pb != "TRY" else None)))
+    if tip == "cari_odeme" and pb == "TRY" and hesap_satirlari is None:
+        # Döviz carisine TL ödeme: cari satırı ödeme günü TCMB alış kuruyla dövize çevrilir (TL aynı; bkz. doviz_cari).
+        from core.services import doviz_cari
+        try:
+            if doviz_cari.donusum_gerekli_mi(karsi, sayilan_pb):
+                fis_satirlari[1] = doviz_cari.cari_satiri(karsi, tut, tarih, karsi_taraf, sayilan_pb)
+        except doviz_cari.DovizCariHatasi as e:
+            raise BankaHareketHatasi(str(e))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=fis_satirlari, aciklama=ack, kur_usd=None,
                           kaynak=YevmiyeFisi.Kaynak.BANKA, kullanici=kullanici)

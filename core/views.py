@@ -1790,6 +1790,7 @@ def cari_kesinti_ekle(request, pk):
                     cari=cari, tarih=cd["tarih"], tutar=cd["tutar"],
                     gider_kodu=cd["gider"].hesap_kodu if cd.get("gider") else None,
                     karsi_cari=cd.get("karsi_cari"), para_birimi=cd.get("para_birimi") or "TRY", kur=cd.get("kur"),
+                    sayilan_pb=cd.get("sayilan_pb"),
                     aciklama=cd["aciklama"], kullanici=request.user,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
@@ -1822,6 +1823,7 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
                     fis=fis, cari=cari, tarih=cd["tarih"], tutar=cd["tutar"],
                     gider_kodu=cd["gider"].hesap_kodu if cd.get("gider") else None,
                     karsi_cari=cd.get("karsi_cari"), para_birimi=cd.get("para_birimi") or "TRY", kur=cd.get("kur"),
+                    sayilan_pb=cd.get("sayilan_pb"),
                     aciklama=cd["aciklama"], kullanici=request.user,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
                 messages.success(request, f"Kesinti / masraf güncellendi: fiş {fis.yil}/{fis.fis_no}.")
@@ -1993,7 +1995,7 @@ def _kasa_hareket_form(request, kasa, tip):
                     kasa=kasa, tip=tip, karsi=form.cleaned_data["karsi"],
                     tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                     aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
-                    kur_override=form.cleaned_data.get("kur"))
+                    kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"))
                 messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kasa_detay", pk=kasa.pk)
             except kasa_hareket_servis.KasaHareketHatasi as e:
@@ -2116,7 +2118,7 @@ def _banka_hareket_form(request, hesap, tip):
                     banka_hesap=hesap, tip=tip, karsi=form.cleaned_data["karsi"],
                     tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                     aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
-                    kur_override=form.cleaned_data.get("kur"))
+                    kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"))
                 messages.success(request, f"{tan['ad']} kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:banka_hesap_detay", pk=hesap.pk)
             except banka_hareket_servis.BankaHareketHatasi as e:
@@ -3854,7 +3856,7 @@ def _kredi_karti_hareket_form(request, kart, tip):
                         taksit_adedi=form.cleaned_data.get("taksit_adedi") or 1,
                         ilk_vade=form.cleaned_data.get("ilk_vade"),
                         aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
-                        kur_override=form.cleaned_data.get("kur"),
+                        kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"),
                         yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
                                             if form.cleaned_data.get("yatirim_projesi") else None))
                 else:
@@ -4569,7 +4571,7 @@ def cek_hesap_ayari(request):
         if form.is_valid():
             try:
                 kodlar = {a: (form.cleaned_data[a].hesap_kodu if form.cleaned_data[a] else "")
-                          for a in cek_servis.AYAR_ALANLARI}
+                          for a in (*cek_servis.AYAR_ALANLARI, "doviz_cari_ara")}
                 cek_servis.hesap_ayari_kaydet(kodlar, kullanici=request.user)
                 messages.success(request, "Çek/Senet muhasebe hesapları kaydedildi.")
                 return redirect("core:cek_senetler")
@@ -4578,7 +4580,7 @@ def cek_hesap_ayari(request):
     else:
         form = CekHesapAyariForm(initial={
             a: (getattr(ayar, a).hesap_kodu if getattr(ayar, a) else None)
-            for a in cek_servis.AYAR_ALANLARI})
+            for a in (*cek_servis.AYAR_ALANLARI, "doviz_cari_ara")})
     return render(request, "core/cek_hesap_ayari.html", {"form": form})
 
 

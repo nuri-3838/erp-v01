@@ -162,9 +162,19 @@ def _satirlar(cari, gider, tutar, yon, proje_id=None, pb="TRY", kur=Decimal("1")
                        tl_override=(tl if pb != "TRY" else None), aciklama=cari.unvan)]
 
 
-def _satirlar_karsi_cari(cari, karsi, tutar, pb="TRY", kur=Decimal("1")):
-    """Ortak, carinin borcunu ödedi: cari BORÇ (seçilen para biriminde) / ortak (500.xx) ALACAK (TL karşılığı)."""
+def _satirlar_karsi_cari(cari, karsi, tutar, pb="TRY", kur=Decimal("1"), sayilan_pb=None, tarih=None):
+    """Ortak, carinin borcunu ödedi: cari BORÇ (seçilen para biriminde) / ortak (500.xx) ALACAK (TL karşılığı).
+    TL tutar + döviz carisi: cari satırı ödeme günü TCMB alış kuruyla dövize çevrilir (TL aynı; bkz. doviz_cari)."""
     cari_hesap = _cari_hesabi(cari)
+    if pb == "TRY" and tarih is not None:
+        from core.services import doviz_cari
+        try:
+            if doviz_cari.donusum_gerekli_mi(cari, sayilan_pb):
+                tl = yuvarla(tutar, 2)
+                return [doviz_cari.cari_satiri(cari, tl, tarih, "B", sayilan_pb, aciklama=cari.unvan),
+                        SatirGirdi(hesap_kodu=karsi.muhasebe_kodu, taraf="A", islem_tutari=tl, aciklama=karsi.unvan)]
+        except doviz_cari.DovizCariHatasi as e:
+            raise CariKesintiHatasi(str(e))
     if not HesapPlani.objects.filter(hesap_kodu=karsi.muhasebe_kodu, silindi=False, aktif=True).exists():
         raise CariKesintiHatasi(f"{karsi.unvan} carisinin muhasebe hesabı hesap planında yok.")
     tl = yuvarla(tutar * kur, 2)
@@ -189,12 +199,12 @@ def havuz_bakiyeleri(cari):
 
 @transaction.atomic
 def kesinti_olustur(*, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
-                    kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None) -> YevmiyeFisi:
+                    kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None, sayilan_pb=None) -> YevmiyeFisi:
     karsi = karsi_cari_coz(cari, karsi_cari)
     tut = _tutar(tutar)
     pb, kur = pb_kur_coz(cari, para_birimi, kur, tarih)
     if karsi is not None:                       # ortak, carinin borcunu ödedi
-        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut, pb, kur), (
+        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut, pb, kur, sayilan_pb, tarih), (
             buyuk_harf_tr((aciklama or "").strip()) or buyuk_harf_tr(f"ORTAK ÖDEMESİ - {cari.unvan} ({karsi.unvan})"))
     else:
         yon = yon_coz(cari)
@@ -237,14 +247,14 @@ def duzenleme_bilgisi(fis, cari):
 
 @transaction.atomic
 def kesinti_guncelle(*, fis, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
-                     kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None) -> YevmiyeFisi:
+                     kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None, sayilan_pb=None) -> YevmiyeFisi:
     """Tarih/tutar/para birimi/kur/hesap/proje/açıklama düzenlenir; fiş yeniden yazılır (kur farkı motoru da çalışır)."""
     duzenleme_bilgisi(fis, cari)
     karsi = karsi_cari_coz(cari, karsi_cari)
     tut = _tutar(tutar)
     pb, kur = pb_kur_coz(cari, para_birimi, kur, tarih)
     if karsi is not None:
-        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut, pb, kur), (
+        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut, pb, kur, sayilan_pb, tarih), (
             buyuk_harf_tr((aciklama or "").strip()) or buyuk_harf_tr(f"ORTAK ÖDEMESİ - {cari.unvan} ({karsi.unvan})"))
     else:
         yon = yon_coz(cari)

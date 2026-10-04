@@ -42,8 +42,15 @@ def hesap_ayari() -> CekHesapAyari:
 @transaction.atomic
 def hesap_ayari_kaydet(kodlar: dict, kullanici=None) -> CekHesapAyari:
     """kodlar: {alan: hesap_kodu | ""}. Dolu olanlar YAPRAK doğrulanıp atanır;
-    boş olanlar None'a çekilir (o durum henüz tanımlanmadı)."""
+    boş olanlar None'a çekilir (o durum henüz tanımlanmadı). ``doviz_cari_ara`` (döviz carilere verilen çekler ara hesabı) de
+    kodlar içinde gelebilir (matris dışı tekil alan)."""
     ayar = CekHesapAyari.get()
+    if "doviz_cari_ara" in kodlar:
+        kod = (kodlar.get("doviz_cari_ara") or "").strip()
+        try:
+            ayar.doviz_cari_ara = _yaprak_hesap_coz(kod) if kod else None
+        except FinansHatasi as e:
+            raise CekHatasi(str(e))
     for alan in AYAR_ALANLARI:
         kod = (kodlar.get(alan) or "").strip()
         if kod:
@@ -185,6 +192,14 @@ def _bordro_olustur(tan, *, cari_id, tarih, para_birimi="TRY", satirlar,
             created_by=kullanici, updated_by=kullanici)
     cek_taraf = tan["cek_taraf"]
     cari_taraf = "A" if cek_taraf == "B" else "B"
+    ara = None
+    if tan is GIRIS_TANIM["cikis"] and pb == "TRY" and cari.para_birimi != "TRY":
+        # Döviz carisine TL çek: cari borcu şimdi düşmez; tutar ara hesapta bekler, ödeme gününde döviz borcundan düşülür.
+        ara = ayar.doviz_cari_ara
+        if ara is None:
+            raise CekHatasi(
+                f"{cari.unvan} döviz carisi: döviz carilere verilen çekler için ara hesap tanımlı değil; "
+                f"Muhasebe Hesap Kodları ekranından seçin.")
     # Çek/senet satırları (per tip) + cari DENGE satırı: dövizde per-tip yuvarlama toplamı tek
     # cari satırından sapmasın diye cari TL'si tl_override ile çek satırları toplamına eşitlenir.
     girdiler, cek_tl = [], Decimal("0")
@@ -192,8 +207,10 @@ def _bordro_olustur(tan, *, cari_id, tarih, para_birimi="TRY", satirlar,
         cek_tl += yuvarla(tut * kur, 2)
         girdiler.append(SatirGirdi(hesap_kodu=kod, taraf=cek_taraf,
                                    islem_tutari=tut, islem_pb=pb, islem_kuru=kur))
-    girdiler.append(SatirGirdi(hesap_kodu=cari_hesap.hesap_kodu, taraf=cari_taraf,
+    girdiler.append(SatirGirdi(hesap_kodu=(ara.hesap_kodu if ara else cari_hesap.hesap_kodu), taraf=cari_taraf,
                                islem_tutari=toplam, islem_pb=pb, islem_kuru=kur, tl_override=cek_tl))
+    if ara is not None:
+        CekSenet.objects.filter(giris_bordrosu=bordro).update(ara_hesapta=True)
     try:
         fis = fis_olustur(tarih=tarih, satirlar=girdiler, aciklama=bordro.aciklama,
                           kur_usd=None, kaynak=YevmiyeFisi.Kaynak.CEK_SENET, kullanici=kullanici)
@@ -335,7 +352,11 @@ def _cari_terminal_bordrosu(tan, *, tarih, cek_ids, aciklama="", kullanici=None)
     cek_taraf = "A" if cari_taraf == "B" else "B"
     # CARİ tarafı: her cari kendi toplamına (TL satır bazında yuvarlanır → anchor).
     cari_toplam, cari_nesne = {}, {}
+    ara_toplam = Decimal("0")                 # döviz carisine verilmiş (ara hesapta bekleyen) çek: borç geri doğacak cari YOK → ara hesap
     for c in cekler:
+        if c.ara_hesapta:
+            ara_toplam += c.tutar
+            continue
         cari_toplam[c.cari_id] = cari_toplam.get(c.cari_id, Decimal("0")) + c.tutar
         cari_nesne[c.cari_id] = c.cari
     cari_satir, cari_tl = [], Decimal("0")
@@ -343,6 +364,11 @@ def _cari_terminal_bordrosu(tan, *, tarih, cek_ids, aciklama="", kullanici=None)
         _, hesap = _cari_coz(cari_id)
         cari_satir.append((hesap.hesap_kodu, tutar))
         cari_tl += yuvarla(tutar * kur, 2)
+    if ara_toplam > 0:
+        if ayar.doviz_cari_ara is None:
+            raise CekHatasi("Döviz carilere verilen çekler ara hesabı tanımlı değil; Muhasebe Hesap Kodları ekranından seçin.")
+        cari_satir.append((ayar.doviz_cari_ara.hesap_kodu, ara_toplam))
+        cari_tl += yuvarla(ara_toplam * kur, 2)
     # ÇEK-SENET tarafı: (durum öneki, tip) grubu → config hesabı.
     grup = {}
     for c in cekler:
@@ -588,6 +614,22 @@ def _nakit_bordrosu(tan, *, tarih, cek_ids, banka_hesap_id=None, kasa_id=None,
     # dövizde çok gruplu bordroda kuruş yuvarlama farkı fişi dengesiz bırakmasın.
     girdiler.insert(0, SatirGirdi(hesap_kodu=hedef_kod, taraf=nakit_taraf, islem_tutari=toplam,
                                   islem_pb=pb, islem_kuru=kur, tl_override=karsi_tl))
+    ara_cekler = [c for c in cekler if c.ara_hesapta]
+    if tan["tur"] == CekBordrosu.Tur.ODEME and ara_cekler:
+        # Döviz carisine verilmiş TL çek ÖDENDİ: o günün TCMB alış kuruyla cari döviz borcundan düşülür (ara hesap kapanır).
+        from core.services import doviz_cari
+        if ayar.doviz_cari_ara is None:
+            raise CekHatasi("Döviz carilere verilen çekler ara hesabı tanımlı değil; Muhasebe Hesap Kodları ekranından seçin.")
+        carilere = {}
+        for c in ara_cekler:
+            carilere.setdefault(c.cari_id, [c.cari, Decimal("0")])[1] += c.tutar
+        for cari, tl in carilere.values():
+            try:
+                girdiler.append(doviz_cari.cari_satiri(cari, tl, tarih, "B", aciklama=cari.unvan))
+            except doviz_cari.DovizCariHatasi as e:
+                raise CekHatasi(str(e))
+            girdiler.append(SatirGirdi(hesap_kodu=ayar.doviz_cari_ara.hesap_kodu, taraf="A",
+                                       islem_tutari=tl, aciklama="DÖVİZ CARİ ÇEK ÖDEME"))
     bordro = CekBordrosu.objects.create(
         tur=tan["tur"], tarih=tarih, banka_hesap=banka, kasa=kasa,
         aciklama=(aciklama.strip() or buyuk_harf_tr(f"{tan['ack']} - {hedef_ad}")),

@@ -2688,6 +2688,9 @@ class CekHesapAyari(TemelModel):
     teminatta_senet = _cek_hesap_fk("bankada teminattaki senet hesabı")
     verilen_cek = _cek_hesap_fk("verilen çek hesabı")
     verilen_senet = _cek_hesap_fk("verilen senet hesabı")
+    # Döviz carilere verilen TL çekler: çıkışta cari borcu DÜŞMEZ (çek tutarı bu ara hesapta bekler); çek ödendiği gün o günün TCMB
+    # alış kuruyla cari döviz borcundan düşülür (bkz. core.services.doviz_cari, core.services.cek).
+    doviz_cari_ara = _cek_hesap_fk("döviz carilere verilen çekler ara hesabı")
 
     class Meta:
         db_table = "finans_cek_hesap_ayari"
@@ -2790,6 +2793,8 @@ class CekSenet(TemelModel):
     belge_no = models.CharField("belge no", max_length=50, blank=True)
     durum = models.CharField("durum", max_length=12, choices=Durum.choices,
                              default=Durum.PORTFOYDE)
+    # Döviz carisine verilen TL çek: tutar ara hesapta bekliyor; ödeme gününde cari döviz borcundan düşülür.
+    ara_hesapta = models.BooleanField("ara hesapta bekliyor", default=False)
     cari = models.ForeignKey(
         "Cari", verbose_name="cari", null=True, blank=True, on_delete=models.PROTECT,
         related_name="cek_senetler")

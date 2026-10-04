@@ -1095,10 +1095,12 @@ class CekHesapAyariForm(forms.Form):
     teminatta_senet = _muhasebe_alani()
     verilen_cek = _muhasebe_alani()
     verilen_senet = _muhasebe_alani()
+    doviz_cari_ara = _muhasebe_alani()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.cek import AYAR_ALANLARI
+        AYAR_ALANLARI = (*AYAR_ALANLARI, "doviz_cari_ara")
         from core.services.hesap_plani import yaprak_hesaplar
         from django.db.models import Q
         qs = yaprak_hesaplar()
@@ -1972,6 +1974,15 @@ class AktiflestirmeSatirForm(forms.Form):
         return bool(cd.get("hesap") or cd.get("varlik_adi") or cd.get("tutar"))
 
 
+def _sayilan_pb_alani():
+    """TL ödemenin döviz cariye hangi dövize sayılacağı (yalnız döviz carilerde anlamlı; TL carisinde yok sayılır)."""
+    from core.services.doviz_cari import SECENEKLER
+    return forms.ChoiceField(
+        label="Döviz carisinde hangi dövize sayılsın", required=False, choices=SECENEKLER,
+        help_text="Yalnız cari para birimi döviz ise: TL ödeme, ödeme günü TCMB alış kuruyla seçilen dövize çevrilip döviz borcundan "
+                  "düşer (TL tutar aynı). Boş = carinin ana para birimi.")
+
+
 class KasaHareketForm(forms.Form):
     """Kasa hareketi: karşı taraf (tipe göre Cari / BankaHesap / hedef Kasa) +
     tutar + tarih + açıklama. Kasa ve tip URL'den gelir; fiş otomatik üretilir."""
@@ -2013,6 +2024,8 @@ class KasaHareketForm(forms.Form):
             f.queryset = Cari.objects.filter(silindi=False).order_by("unvan")
             f.label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
             f.label, f.empty_label = "Cari (karşı taraf)", "— cari seç —"
+            if tip == "cari_odeme":
+                self.fields["sayilan_pb"] = _sayilan_pb_alani()
         f.widget.attrs["class"] = "akilli-sec"
 
 
@@ -2055,6 +2068,8 @@ class BankaHareketForm(forms.Form):
             f.queryset = Cari.objects.filter(silindi=False).order_by("unvan")
             f.label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
             f.label, f.empty_label = "Cari (karşı taraf)", "— cari seç —"
+            if tip == "cari_odeme":
+                self.fields["sayilan_pb"] = _sayilan_pb_alani()
         f.widget.attrs["class"] = "akilli-sec"
 
 
@@ -2194,6 +2209,8 @@ class KrediKartiHareketForm(forms.Form):
                 widget=forms.Select(attrs={"class": "akilli-sec"}))
             self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
             self.fields["yatirim_projesi"] = _yatirim_projesi_alani()
+            if tip == "harcama":
+                self.fields["sayilan_pb"] = _sayilan_pb_alani()
         if "banka" in turler:
             self.fields["banka_hesap"] = forms.ModelChoiceField(
                 label="Banka Hesabı", required=False, empty_label="— banka hesabı seç —",
@@ -3108,6 +3125,10 @@ class CariKesintiForm(forms.Form):
     para_birimi = forms.ChoiceField(label="Para birimi", required=False, initial="TRY",
                                     choices=[("TRY", "TRY (TL)"), ("USD", "USD"), ("EUR", "EUR"), ("GBP", "GBP")])
     kur = TRDecimalField(label="Kur (TL)", basamak=6, required=False)
+    sayilan_pb = forms.ChoiceField(
+        label="TL tutar hangi dövize sayılsın (ortak ödedi + TRY)", required=False, choices=[],
+        help_text="Para birimi TRY seçiliyken, 'ortak ödedi' (karşı cari) hareketinde döviz carisinin borcundan düşülecek döviz: ödeme günü "
+                  "TCMB alış kuruyla çevrilir (TL tutar aynı). Boş = carinin ana para birimi; 'TL (çevirme)' = TL havuzu.")
     gider = forms.ModelChoiceField(
         label="Hesap (gider · 258 yatırım · gelir 64x/67x)", queryset=HesapPlani.objects.none(),
         to_field_name="hesap_kodu", empty_label=None)
@@ -3124,7 +3145,10 @@ class CariKesintiForm(forms.Form):
     def __init__(self, *args, ortak_secenegi=True, doviz_secenegi=False, **kwargs):
         super().__init__(*args, **kwargs)
         if not doviz_secenegi:
-            del self.fields["para_birimi"], self.fields["kur"]
+            del self.fields["para_birimi"], self.fields["kur"], self.fields["sayilan_pb"]
+        else:
+            from core.services.doviz_cari import SECENEKLER
+            self.fields["sayilan_pb"].choices = SECENEKLER
         from core.services.cari_kesinti import VARSAYILAN_GIDER, kesinti_hesap_kumesi, ortak_cariler
         if ortak_secenegi:
             self.fields["karsi_cari"].queryset = ortak_cariler()

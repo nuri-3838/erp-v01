@@ -28,6 +28,10 @@
           {{ form.karsi }}
           {% for e in form.karsi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if form.sayilan_pb %}<div class="alan tam">
+          <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
+          <p class="yardim">{{ form.sayilan_pb.help_text }}</p>
+        </div>{% endif %}
         <div class="alan">
           <label for="{{ form.tutar.id_for_label }}">Tutar ({{ hesap.para_birimi }})</label>
           {{ form.tutar }}

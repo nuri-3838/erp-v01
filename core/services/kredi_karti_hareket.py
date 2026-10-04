@@ -133,7 +133,7 @@ def _proje_coz(karsi_kod, yatirim_projesi_id):
 
 @transaction.atomic
 def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=None,
-                    kur_override=None, yatirim_projesi_id=None) -> YevmiyeFisi:
+                    kur_override=None, yatirim_projesi_id=None, sayilan_pb=None) -> YevmiyeFisi:
     """Bir kredi kartı hareketinden otomatik DENGELİ yevmiye fişi üretir (kaynak=KREDI_KARTI,
     fiş→kart FK). Kart satırı tan['kk'] tarafına, karşı ters tarafa; ikisi de kartın PB'sinde.
     Kural ihlalinde hiçbir şey kaydedilmez (transaction geri alınır). ``kur_override`` doluysa
@@ -163,6 +163,14 @@ def hareket_olustur(*, kart, tip, karsi, tutar, tarih, aciklama="", kullanici=No
         SatirGirdi(hesap_kodu=karsi_kod, taraf=karsi_taraf,
                    islem_tutari=tut, islem_pb=pb, islem_kuru=kur, yatirim_projesi_id=proje_id),
     ]
+    if tip == "harcama" and pb == "TRY" and isinstance(karsi, Cari):
+        # Döviz carisine kartla TL ödeme: cari satırı ödeme günü TCMB alış kuruyla dövize çevrilir (TL aynı; bkz. doviz_cari).
+        from core.services import doviz_cari
+        try:
+            if doviz_cari.donusum_gerekli_mi(karsi, sayilan_pb):
+                satirlar[1] = doviz_cari.cari_satiri(karsi, tut, tarih, karsi_taraf, sayilan_pb)
+        except doviz_cari.DovizCariHatasi as e:
+            raise KrediKartiHareketHatasi(str(e))
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack, kur_usd=None,
                           kaynak=YevmiyeFisi.Kaynak.KREDI_KARTI, kullanici=kullanici)
@@ -197,12 +205,13 @@ def _ay_ekle(tarih, n):
 
 @transaction.atomic
 def harcama_olustur(*, kart, karsi, tutar, tarih, taksit_adedi=1, ilk_vade=None,
-                    aciklama="", kullanici=None, kur_override=None, yatirim_projesi_id=None) -> YevmiyeFisi:
+                    aciklama="", kullanici=None, kur_override=None, yatirim_projesi_id=None,
+                    sayilan_pb=None) -> YevmiyeFisi:
     """Harcama (peşin ya da taksitli). Muhasebe HER ZAMAN tam tutar tek fiş (borç anında gerçek);
     taksit_adedi>1 ise ayrıca BİLGİ amaçlı KrediKartiTaksit planı oluşur (ledger'ı etkilemez)."""
     fis = hareket_olustur(kart=kart, tip="harcama", karsi=karsi, tutar=tutar, tarih=tarih,
                           aciklama=aciklama, kullanici=kullanici, kur_override=kur_override,
-                          yatirim_projesi_id=yatirim_projesi_id)
+                          yatirim_projesi_id=yatirim_projesi_id, sayilan_pb=sayilan_pb)
     adet = int(taksit_adedi or 1)
     if adet > 1:
         if not ilk_vade:

@@ -44,7 +44,7 @@ class KesintiDovizTest(TestCase):
         return list(fis.satirlar.filter(silindi=False).order_by("id"))
 
     def test_try_secilirse_cari_satiri_tl_havuza(self):
-        f = ck.kesinti_olustur(cari=self.formal, tarih=D(2026, 9, 7), tutar="509437,10", para_birimi="TRY",
+        f = ck.kesinti_olustur(cari=self.formal, tarih=D(2026, 9, 7), tutar="509437,10", para_birimi="TRY", sayilan_pb="TRY",
                                karsi_cari=self.nuri, kullanici=self.su)
         s = {x.hesap_id: x for x in self._satirlar(f)}
         self.assertEqual((s["320.10.0001"].islem_pb, s["320.10.0001"].borc), ("TRY", Dc("509437.10")))
@@ -90,12 +90,12 @@ class KesintiDovizTest(TestCase):
                             karsi_cari=self.nuri, kullanici=self.su)
         b = ck.duzenleme_bilgisi(f, self.formal)
         self.assertEqual(b["tutar"], Dc("500.00"))
-        ck.kesinti_guncelle(fis=f, cari=self.formal, tarih=D(2026, 9, 7), tutar="22500", para_birimi="TRY",
+        ck.kesinti_guncelle(fis=f, cari=self.formal, tarih=D(2026, 9, 7), tutar="22500", para_birimi="TRY", sayilan_pb="TRY",
                             karsi_cari=self.nuri, kullanici=self.su)
         self.assertEqual(ck.duzenleme_bilgisi(f, self.formal)["para_birimi"], "TRY")
 
     def test_havuz_bakiyeleri(self):
-        ck.kesinti_olustur(cari=self.formal, tarih=D(2026, 9, 7), tutar="1000", para_birimi="TRY", karsi_cari=self.nuri,
+        ck.kesinti_olustur(cari=self.formal, tarih=D(2026, 9, 7), tutar="1000", para_birimi="TRY", sayilan_pb="TRY", karsi_cari=self.nuri,
                            kullanici=self.su)
         h = {x["pb"]: x for x in ck.havuz_bakiyeleri(self.formal)}
         self.assertEqual((h["USD"]["doviz"], h["USD"]["taraf"]), (Dc("1000.00"), "alacak"))

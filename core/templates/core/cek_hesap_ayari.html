@@ -64,6 +64,13 @@
         </tbody>
       </table>
       </div>
+      <h2 class="bolum-baslik" style="margin-top:1rem">Döviz Carilere Verilen Çekler — Ara Hesap</h2>
+      <p class="yardim" style="margin-top:-.3rem">Para birimi döviz olan bir cariye TL çek verilince cari borcu <strong>düşmez</strong>: çek tutarı bu ara
+        hesapta (borç) bekler. Çek ödendiği gün o günün TCMB döviz alış kuruyla cari döviz borcundan düşülür ve ara hesap kapanır.
+        Karşılıksız çıkarsa ara hesap alacaklanır (cari borcu hiç düşmediği için).</p>
+      <div class="ha-sar"><table class="ha-tablo"><tbody><tr>
+        <td class="ha-durum">Ara hesap<small>yaprak hesap</small></td>
+        <td><div class="akilli">{{ form.doviz_cari_ara }}</div></td></tr></tbody></table></div>
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:cek_senetler' %}">İptal</a>

@@ -45,6 +45,10 @@
           <p class="yardim">TRY: cari satırı TL yazılır (carinin TL havuzu). Döviz: cari satırı o dövizle, karşı taraf TL karşılığıyla.</p>
           {% for e in form.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        <div class="alan" id="sayilan-alani">
+          <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
+          <p class="yardim">{{ form.sayilan_pb.help_text }}</p>
+        </div>
         <div class="alan" id="kur-alani">
           <label for="{{ form.kur.id_for_label }}">{{ form.kur.label }}</label>{{ form.kur }}
           <span class="yardim" id="kur-etiket"></span>
