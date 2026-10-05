@@ -42,7 +42,9 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Personel Satırları</h2>
       <p class="yardim" style="margin-top:-.3rem">Her satırda kontrol: <strong>brüt − SGK işçi − işsizlik işçi − gelir vergisi − damga vergisi = net</strong>;
-        tutmazsa kaydedilmez. Personel listede yoksa "yeni personel" alanına ad soyad yazın (sistem 335.10.000N carisini açar). Gider hesabı varsayılan
+        tutmazsa kaydedilmez. Personel listede yoksa "yeni personel" alanına ad soyad yazın (sistem 335.10.000N carisini açar).
+        <strong>Net ödenen 0</strong> olan satırda cari seçmek zorunda değilsiniz: "ad soyad (cari yok)" yazın — personel carisine ALACAK yazılmaz,
+        gider ve 360.20/361 satırları normal oluşur. Gider hesabı varsayılan
         730.06 PERSONEL MAAŞ GİDERİ; satırda değiştirilebilir (örn. 770.xx).</p>
       <div class="tablo-kapsayici genis">
       <table class="satir-tablo">
@@ -52,7 +54,7 @@
         <tbody id="bd-satirlar">
           {% for f in formset %}
           <tr class="bd-satir">
-            <td>{{ f.cari }}{{ f.yeni_ad }}
+            <td>{{ f.cari }}{{ f.yeni_ad }}{{ f.ad_soyad }}
               {% for e in f.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
             <td>{{ f.gider_hesap }}</td>
             <td class="sag">{{ f.brut }}</td><td class="sag">{{ f.sgk_isci }}</td><td class="sag">{{ f.issizlik_isci }}</td>
@@ -79,7 +81,7 @@
 
 <template id="bd-bos-satir">
   <tr class="bd-satir">
-    <td>{{ formset.empty_form.cari }}{{ formset.empty_form.yeni_ad }}</td>
+    <td>{{ formset.empty_form.cari }}{{ formset.empty_form.yeni_ad }}{{ formset.empty_form.ad_soyad }}</td>
     <td>{{ formset.empty_form.gider_hesap }}</td>
     <td class="sag">{{ formset.empty_form.brut }}</td><td class="sag">{{ formset.empty_form.sgk_isci }}</td><td class="sag">{{ formset.empty_form.issizlik_isci }}</td>
     <td class="sag">{{ formset.empty_form.gelir_vergisi }}</td><td class="sag">{{ formset.empty_form.damga_vergisi }}</td><td class="sag">{{ formset.empty_form.net }}</td>

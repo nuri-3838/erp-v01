@@ -3314,6 +3314,7 @@ class PersonelBordroSatirForm(forms.Form):
     """Bordro satırı: personel carisi (seç) VEYA yeni personel (ad soyad) + gider hesabı + tutarlar. Tamamen boş satır yok sayılır."""
     cari = forms.ModelChoiceField(label="Personel (335)", queryset=Cari.objects.none(), required=False, empty_label="— personel seç —")
     yeni_ad = forms.CharField(label="veya yeni personel (ad soyad)", max_length=150, required=False)
+    ad_soyad = forms.CharField(label="ad soyad (cari yok — yalnız net 0)", max_length=150, required=False)
     gider_hesap = forms.ModelChoiceField(
         label="Gider hesabı", queryset=HesapPlani.objects.none(), required=False, to_field_name="hesap_kodu", empty_label=None)
     brut = TRDecimalField(label="Brüt", basamak=2, required=False)
@@ -3332,6 +3333,8 @@ class PersonelBordroSatirForm(forms.Form):
         self.fields["cari"].queryset = personel_carileri()
         self.fields["cari"].label_from_instance = lambda o: f"{o.muhasebe_kodu}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        self.fields["yeni_ad"].widget.attrs.update({"placeholder": "veya yeni personel (ad soyad)", "autocomplete": "off"})
+        self.fields["ad_soyad"].widget.attrs.update({"placeholder": "net 0 ise: ad soyad (cari yok)", "autocomplete": "off"})
         qs = yaprak_hesaplar().filter(hesap_kodu__regex=r"^(7|63)")
         self.fields["gider_hesap"].queryset = qs
         self.fields["gider_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
@@ -3342,12 +3345,12 @@ class PersonelBordroSatirForm(forms.Form):
 
     def dolu_mu(self):
         cd = getattr(self, "cleaned_data", {}) or {}
-        return bool(cd.get("cari") or (cd.get("yeni_ad") or "").strip() or any(
+        return bool(cd.get("cari") or (cd.get("yeni_ad") or "").strip() or (cd.get("ad_soyad") or "").strip() or any(
             cd.get(a) for a in ("brut", "sgk_isci", "issizlik_isci", "gelir_vergisi", "damga_vergisi", "net", "sgk_isveren", "issizlik_isveren")))
 
     def girdi(self):
         cd = self.cleaned_data
-        return {"cari": cd.get("cari"), "yeni_ad": cd.get("yeni_ad"),
+        return {"cari": cd.get("cari"), "yeni_ad": cd.get("yeni_ad"), "ad_soyad": cd.get("ad_soyad"),
                 "gider_hesap_kodu": cd["gider_hesap"].hesap_kodu if cd.get("gider_hesap") else "",
                 **{a: cd.get(a) for a in ("brut", "sgk_isci", "issizlik_isci", "gelir_vergisi", "damga_vergisi", "net", "sgk_isveren",
                                           "issizlik_isveren")}}

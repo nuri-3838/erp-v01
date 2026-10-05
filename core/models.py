@@ -3708,7 +3708,10 @@ class PersonelBordroSatir(TemelModel):
     """Bordro satırı: bir personel carisinin aylık kalemleri (TL). Kontrol: brüt − SGK işçi − işsizlik işçi − GV − DV = net."""
 
     bordro = models.ForeignKey(PersonelBordro, verbose_name="bordro", on_delete=models.CASCADE, related_name="satirlar")
-    cari = models.ForeignKey("Cari", verbose_name="personel carisi", on_delete=models.PROTECT, related_name="bordro_satirlari")
+    # Net ödenen > 0 satırda personel carisi ZORUNLU; net = 0 satırda cari olmayabilir (yalnız ``ad_soyad`` — personel carisine ALACAK yazılmaz).
+    cari = models.ForeignKey("Cari", verbose_name="personel carisi", null=True, blank=True, on_delete=models.PROTECT,
+                             related_name="bordro_satirlari")
+    ad_soyad = models.CharField("ad soyad (cari yok)", max_length=150, blank=True)
     gider_hesap = models.ForeignKey(HesapPlani, verbose_name="gider hesabı", on_delete=models.PROTECT, related_name="+")
     brut = models.DecimalField("brüt kazanç", max_digits=18, decimal_places=2)
     sgk_isci = models.DecimalField("SGK işçi payı", max_digits=18, decimal_places=2, default=0)
@@ -3724,3 +3727,7 @@ class PersonelBordroSatir(TemelModel):
         verbose_name = "bordro satırı"
         verbose_name_plural = "bordro satırları"
         ordering = ["bordro", "id"]
+
+    @property
+    def personel_adi(self):
+        return self.cari.unvan if self.cari_id else self.ad_soyad

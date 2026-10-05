@@ -8523,7 +8523,8 @@ def _bordro_form_baglam(request, bordro=None):
     fis = bordro_servis.bordro_fisi(bordro)
     baslik = PersonelBordroForm(initial={"yil": bordro.yil, "ay": bordro.ay, "tahakkuk_tarihi": bordro.tahakkuk_tarihi,
                                          "aciklama": bordro.aciklama})
-    ilk = [{"cari": s.cari_id, "gider_hesap": s.gider_hesap_id, **{a: getattr(s, a) for a in bordro_servis.TUTAR_ALANLARI}}
+    ilk = [{"cari": s.cari_id, "ad_soyad": s.ad_soyad, "gider_hesap": s.gider_hesap_id,
+            **{a: getattr(s, a) for a in bordro_servis.TUTAR_ALANLARI}}
            for s in bordro_servis.satirlar(bordro)]
     return baslik, PersonelBordroSatirFormSet(initial=ilk)
 

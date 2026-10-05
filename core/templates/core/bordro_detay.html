@@ -21,7 +21,7 @@
   <tbody>
   {% for s in satirlar %}
     <tr>
-      <td><a href="{% url 'core:cari_ekstresi' s.cari_id %}">{{ s.cari.unvan }}</a> <span class="mono yardim">{{ s.cari.muhasebe_kodu }}</span></td>
+      <td>{% if s.cari_id %}<a href="{% url 'core:cari_ekstresi' s.cari_id %}">{{ s.cari.unvan }}</a> <span class="mono yardim">{{ s.cari.muhasebe_kodu }}</span>{% else %}{{ s.ad_soyad }} <span class="yardim">(cari yok)</span>{% endif %}</td>
       <td class="mono">{{ s.gider_hesap_id }}</td>
       <td class="sag mono">{{ s.brut|tr_para }}</td><td class="sag mono">{{ s.sgk_isci|tr_para }}</td><td class="sag mono">{{ s.issizlik_isci|tr_para }}</td>
       <td class="sag mono">{{ s.gelir_vergisi|tr_para }}</td><td class="sag mono">{{ s.damga_vergisi|tr_para }}</td>

@@ -1,12 +1,12 @@
 """AYLIK BORDRO TAHAKKUĞU — mali müşavirden gelen maaş bordrosu (PDF) ERP'de kendi ekranından işlenir; manuel fiş yok.
 
 Bordro = bir dönem (ay/yıl) + tahakkuk tarihi + (ops.) PDF eki + personel satırları. Her satır: personel carisi (335.10.000N; ad soyadla yeni
-personel carisi de açılabilir), gider hesabı (varsayılan 730.06; satırda değiştirilebilir), brüt, SGK işçi, işsizlik işçi, gelir vergisi,
+personel carisi de açılabilir; NET = 0 satırda cari yerine "ad soyad (cari yok)" yazılabilir), gider hesabı (varsayılan 730.06; satırda değiştirilebilir), brüt, SGK işçi, işsizlik işçi, gelir vergisi,
 damga vergisi, net, SGK işveren (teşvik sonrası net), işsizlik işveren. Kontrol: brüt − SGK işçi − işsizlik işçi − GV − DV = net.
 
 TEK fiş (kaynak=BORDRO; fiş→bordro bağı), satır başına:
   gider hesabı            BORÇ   brüt + SGK işveren + işsizlik işveren
-  335 personel carisi     ALACAK net
+  335 personel carisi     ALACAK net   (net = 0 / carisiz satırda YAZILMAZ)
  ve toplamlar:
   360.20                  ALACAK gelir vergisi + damga vergisi
   361                     ALACAK SGK işçi + işsizlik işçi + SGK işveren + işsizlik işveren
@@ -92,33 +92,44 @@ def _satirlari_coz(satirlar, kullanici):
     cozulen, goruldu = [], set()
     for i, s in enumerate(girdiler, 1):
         cari, yeni_ad = s.get("cari"), (s.get("yeni_ad") or "").strip()
-        if bool(cari) == bool(yeni_ad):
-            raise BordroHatasi(f"Satır {i}: personel carisini seçin YA DA yeni personelin ad soyadını yazın (yalnız biri).")
+        ad_soyad = buyuk_harf_tr((s.get("ad_soyad") or "").strip())
+        t = {a: _tutar(s.get(a), a, i) for a in TUTAR_ALANLARI}
+        if t["net"] > 0:                                   # net > 0: personel carisi ZORUNLU (seç YA DA yeni aç)
+            if ad_soyad:
+                raise BordroHatasi(f"Satır {i}: net ödenen sıfırdan büyükse personel carisi gerekir; 'ad soyad (cari yok)' yalnız net 0 satırda kullanılır.")
+            if bool(cari) == bool(yeni_ad):
+                raise BordroHatasi(f"Satır {i}: personel carisini seçin YA DA yeni personelin ad soyadını yazın (yalnız biri).")
+        else:                                              # net = 0: cari yok olabilir; yeni cari AÇILMAZ
+            if yeni_ad:
+                raise BordroHatasi(f"Satır {i}: net ödenen 0 olan satır için yeni personel carisi açılmaz; ad soyadı 'ad soyad (cari yok)' alanına yazın.")
+            if cari is not None and ad_soyad:
+                raise BordroHatasi(f"Satır {i}: personel carisi seçildiyse 'ad soyad (cari yok)' yazılmaz.")
+            if cari is None and not ad_soyad:
+                raise BordroHatasi(f"Satır {i}: personel carisini seçin ya da 'ad soyad (cari yok)' yazın.")
         if cari is not None:
             if cari.silindi or not (cari.muhasebe_kodu or "").startswith("335."):
                 raise BordroHatasi(f"Satır {i}: {cari.unvan} bir personel (335) carisi değil.")
-        t = {a: _tutar(s.get(a), a, i) for a in TUTAR_ALANLARI}
         if t["brut"] <= 0:
             raise BordroHatasi(f"Satır {i}: brüt kazanç sıfırdan büyük olmalı.")
         hesapla = t["brut"] - t["sgk_isci"] - t["issizlik_isci"] - t["gelir_vergisi"] - t["damga_vergisi"]
         if hesapla != t["net"]:
-            ad = cari.unvan if cari else yeni_ad
+            ad = cari.unvan if cari else (yeni_ad or ad_soyad)
             raise BordroHatasi(
                 f"Satır {i} ({ad}): brüt − SGK işçi − işsizlik işçi − gelir vergisi − damga vergisi = {format_tr(hesapla)}; "
                 f"girilen net {format_tr(t['net'])} — tutmuyor.")
         gider = _gider_hesabi(s.get("gider_hesap_kodu") or VARSAYILAN_GIDER, i)
-        anahtar = cari.pk if cari else yeni_ad.upper()
+        anahtar = cari.pk if cari else (yeni_ad or ad_soyad).upper()
         if anahtar in goruldu:
             raise BordroHatasi(f"Satır {i}: aynı personel bordroda ikinci kez var.")
         goruldu.add(anahtar)
-        cozulen.append({"cari": cari, "yeni_ad": yeni_ad, "gider": gider, **t})
+        cozulen.append({"cari": cari, "yeni_ad": yeni_ad, "ad_soyad": ad_soyad, "gider": gider, **t})
     for ad, kod in (("gelir vergisi/damga vergisi", GV_DV_HESABI), ("SGK kesintileri", SGK_HESABI)):
         h = HesapPlani.objects.filter(hesap_kodu=kod, silindi=False, aktif=True).first()
         from core.services.hesap_plani import yaprak_mi
         if h is None or not yaprak_mi(h):
             raise BordroHatasi(f"{kod} ({ad}) hesabı hesap planında yaprak ve aktif olmalı.")
     for c in cozulen:
-        if c["cari"] is None:
+        if c["cari"] is None and c["yeni_ad"]:
             c["cari"] = yeni_personel_cari(c["yeni_ad"], kullanici)
     return cozulen
 
@@ -127,10 +138,11 @@ def _fis_satirlari(cozulen):
     out = []
     gv_dv = sgk = Decimal("0.00")
     for c in cozulen:
-        ad = c["cari"].unvan
+        ad = c["cari"].unvan if c["cari"] else c["ad_soyad"]
         out.append(SatirGirdi(hesap_kodu=c["gider"].hesap_kodu, taraf="B", aciklama=ad,
                               islem_tutari=c["brut"] + c["sgk_isveren"] + c["issizlik_isveren"]))
-        out.append(SatirGirdi(hesap_kodu=c["cari"].muhasebe_kodu, taraf="A", aciklama=ad, islem_tutari=c["net"]))
+        if c["net"] > 0:                                   # net 0 (carisiz) satırda personel carisine ALACAK yazılmaz
+            out.append(SatirGirdi(hesap_kodu=c["cari"].muhasebe_kodu, taraf="A", aciklama=ad, islem_tutari=c["net"]))
         gv_dv += c["gelir_vergisi"] + c["damga_vergisi"]
         sgk += c["sgk_isci"] + c["issizlik_isci"] + c["sgk_isveren"] + c["issizlik_isveren"]
     if gv_dv > 0:
@@ -173,7 +185,8 @@ def _pdf_kontrol(dosya):
 def _kaydet_satirlar(bordro, cozulen, kullanici):
     for c in cozulen:
         PersonelBordroSatir.objects.create(
-            bordro=bordro, cari=c["cari"], gider_hesap=c["gider"], created_by=kullanici, updated_by=kullanici,
+            bordro=bordro, cari=c["cari"], ad_soyad=c["ad_soyad"] if c["cari"] is None else "", gider_hesap=c["gider"],
+            created_by=kullanici, updated_by=kullanici,
             **{a: c[a] for a in TUTAR_ALANLARI})
 
 
@@ -267,7 +280,7 @@ def bordro_sil(bordro, *, kullanici):
         raise BordroHatasi("Bordro zaten silinmiş.")
     fis = bordro_fisi(bordro)
     ek = {"bordro": {"pk": bordro.pk, "donem": f"{bordro.ay:02d}.{bordro.yil}", "tahakkuk_tarihi": str(bordro.tahakkuk_tarihi),
-                     "satirlar": [{"cari": s.cari.unvan, "gider": s.gider_hesap_id, **{a: str(getattr(s, a)) for a in TUTAR_ALANLARI}}
+                     "satirlar": [{"cari": s.personel_adi, "gider": s.gider_hesap_id, **{a: str(getattr(s, a)) for a in TUTAR_ALANLARI}}
                                   for s in satirlar(bordro)]}}
     try:
         if fis is not None:
