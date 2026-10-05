@@ -2148,6 +2148,10 @@ def banka_hesap_detay(request, pk):
             fis_id__in=banka_fis_pks, silindi=False, ana_satir__isnull=True, borc__gt=0,
             hesap_id__in=Cari.objects.filter(silindi=False).exclude(muhasebe_kodu="").values("muhasebe_kodu"),
         ).values_list("fis_id", flat=True))
+    gorunen = {s.fis_pk for s in satirlar} & banka_fis_pks      # Hesaba Ödeme / Hesaptan Giriş (tek ya da bölünmüş): her para biriminde Düzenle
+    for f in YevmiyeFisi.objects.filter(pk__in=gorunen - banka_duzenle_pks):
+        if banka_hareket_servis.hesap_hareketi_uygun_mu(f, hesap):
+            banka_duzenle_pks.add(f.pk)
 
     return render(request, "core/banka_hesap_detay.html",
                   {"hesap": hesap, "form": form, "ekstre": ekstre,
@@ -2315,11 +2319,50 @@ def doviz_islem_ekle(request):
     return render(request, "core/doviz_islem_form.html", {"form": form, "pb_haritasi": form.pb})
 
 
+def _banka_hesap_hareketi_duzenle(request, hesap, fis, bilgi):
+    """Hesaba Ödeme / Hesaptan Giriş düzenle (tarih, tutar, karşı hesap satırları [bölme], proje, açıklama) — yeni kayıt formuyla aynı alanlar."""
+    tip = bilgi["tip"]
+    tan = banka_hareket_servis.HAREKET[tip]
+    if request.method == "POST":
+        form = BankaHesapHareketForm(request.POST)
+        formset = BankaHesapSatirFormSet(request.POST)
+        if form.is_valid() and formset.is_valid():
+            satirlar = [
+                {"hesap_kodu": f.cleaned_data["hesap"].hesap_kodu,
+                 "tutar": f.cleaned_data.get("tutar"),
+                 "aciklama": f.cleaned_data.get("aciklama", ""),
+                 "yatirim_projesi_id": (f.cleaned_data["yatirim_projesi"].pk
+                                        if f.cleaned_data.get("yatirim_projesi") else None)}
+                for f in formset if f.cleaned_data.get("hesap")]
+            try:
+                banka_hareket_servis.hesap_hareketi_guncelle(
+                    fis=fis, banka_hesap=hesap, tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
+                    aciklama=form.cleaned_data["aciklama"], satirlar=satirlar, kur_override=form.cleaned_data.get("kur"),
+                    kullanici=request.user)
+                messages.success(request, f"{tan['ad']} güncellendi: fiş {fis.yil}/{fis.fis_no}.")
+                return redirect("core:banka_hesap_detay", pk=hesap.pk)
+            except banka_hareket_servis.BankaHareketHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BankaHesapHareketForm(initial={
+            "tutar": bilgi["tutar"], "tarih": fis.tarih, "aciklama": fis.aciklama,
+            "kur": bilgi["kur"] if hesap.para_birimi != "TRY" else None})
+        formset = BankaHesapSatirFormSet(initial=[
+            {"hesap": s.hesap_id, "tutar": s.islem_tutari, "yatirim_projesi": s.yatirim_projesi_id, "aciklama": s.aciklama}
+            for s in bilgi["satirlar"]])
+    return render(request, "core/banka_hesap_hareket_form.html",
+                  {"hesap": hesap, "form": form, "formset": formset, "tip": tip, "tan": tan, "duzenle": True, "fis": fis})
+
+
 @ekran_gerekli("banka")
 def banka_hareket_duzenle(request, pk, fis_pk):
-    """TL banka hesabından cariye ödeme hareketini düzenle: açıklama + döviz karşılığı (sayılan para birimi / döviz tutarı → kur)."""
+    """Banka hareketini düzenle: Hesaba Ödeme / Hesaptan Giriş (hesap bölme dahil) ya da TL hesaptan cariye ödeme (açıklama + döviz karşılığı)."""
     hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
     fis = get_object_or_404(YevmiyeFisi, pk=fis_pk)
+    try:
+        return _banka_hesap_hareketi_duzenle(request, hesap, fis, banka_hareket_servis.hesap_hareketi_bilgisi(fis, hesap))
+    except banka_hareket_servis.BankaHareketHatasi:
+        pass                                                                            # başka yapı: cariye ödeme düzenleme yolu
     try:
         bilgi = banka_hareket_servis.duzenleme_bilgisi(fis, hesap)
     except banka_hareket_servis.BankaHareketHatasi as e:

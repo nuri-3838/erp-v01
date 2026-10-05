@@ -1,14 +1,14 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
-{% block baslik %}{{ tan.ad }} · {{ hesap.ad }}{% endblock %}
-{% block sayfa_adi %}{{ tan.ad }}{% endblock %}
+{% block baslik %}{% if duzenle %}Düzenle · {% endif %}{{ tan.ad }} · {{ hesap.ad }}{% endblock %}
+{% block sayfa_adi %}{% if duzenle %}{{ tan.ad }} Düzenle{% else %}{{ tan.ad }}{% endif %}{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:banka_hesap_detay' hesap.pk %}">← {{ hesap.banka.ad }} · {{ hesap.ad }}</a>
-    <h1 class="ust-baslik"><span class="emoji">{{ tan.ikon }}</span>{{ tan.ad }}</h1>
+    <h1 class="ust-baslik"><span class="emoji">{{ tan.ikon }}</span>{{ tan.ad }}{% if duzenle %} — Düzenle (fiş {{ fis.yil }}/{{ fis.fis_no }}){% endif %}</h1>
   </div>
 
   {% if form.non_field_errors %}
@@ -55,8 +55,8 @@
 
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Karşı Hesap Satırları</h2>
-      <p class="yardim" style="margin-top:-.3rem">Satırların toplamı banka tutarına eşit olmalı. Tek satırda tutar boş
-        bırakılırsa tamamı o satıra yazılır. 258 hesabında yatırım projesi zorunludur.</p>
+      <p class="yardim" style="margin-top:-.3rem">Tutarı birden çok hesaba bölebilirsiniz (örn. muhtasar 360.20 + 770.11): satırların toplamı banka
+        tutarına eşit olmalı. Tek satırda tutar boş bırakılırsa tamamı o satıra yazılır. 258 hesabında yatırım projesi zorunludur.</p>
       <div class="tablo-kapsayici">
       <table class="satir-tablo">
         <thead><tr><th style="width:34%">Karşı hesap</th><th class="sag" style="width:16%">Tutar ({{ hesap.para_birimi }})</th>
@@ -79,7 +79,7 @@
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:banka_hesap_detay' hesap.pk %}">İptal</a>
-      <button type="submit" class="birincil">{{ tan.ad }} Kaydet</button>
+      <button type="submit" class="birincil">{% if duzenle %}Değişiklikleri Kaydet{% else %}{{ tan.ad }} Kaydet{% endif %}</button>
     </div>
   </form>
 </div>
@@ -137,7 +137,7 @@
 (function(){
   var KUR_API = '{% url "core:kur_usd_api" %}';
   var PB = '{{ hesap.para_birimi }}';
-  var kurElleDegisti = false;
+  var kurElleDegisti = {% if duzenle %}true{% else %}false{% endif %};
   function fmtKur(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
   var kurIstek = 0;
   function kurCek(){
