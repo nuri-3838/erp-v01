@@ -1886,9 +1886,10 @@ class FaturaSatirForm(forms.Form):
             if hesap_kodu_258_mi(hesap.hesap_kodu) and not cd.get("yatirim_projesi"):
                 raise forms.ValidationError(
                     f"{hesap.hesap_kodu} hesabı için yatırım projesi seçimi zorunludur.")
-            if cd.get("yatirim_projesi") and cd["yatirim_projesi"].durum == YatirimProjesi.Durum.AKTIFLESTI:
+            if cd.get("yatirim_projesi") and cd["yatirim_projesi"].durum != YatirimProjesi.Durum.DEVAM:
+                durum_ad = "kapanmış" if cd["yatirim_projesi"].durum == YatirimProjesi.Durum.KAPANDI else "aktifleşmiş"
                 raise forms.ValidationError(
-                    f"{cd['yatirim_projesi'].kod} projesi aktifleşmiş; yeni kalem eklenemez.")
+                    f"{cd['yatirim_projesi'].kod} projesi {durum_ad}; yeni kalem eklenemez.")
         else:
             cd["yatirim_projesi"] = None           # gider hesabında proje anlamsız — temizle
             cd["varlik_adi"] = ""
@@ -3355,3 +3356,13 @@ class PersonelBordroSatirForm(forms.Form):
                 **{a: cd.get(a) for a in ("brut", "sgk_isci", "issizlik_isci", "gelir_vergisi", "damga_vergisi", "net", "sgk_isveren",
                                           "issizlik_isveren")}}
 
+
+
+class YatirimProjesiKapatForm(forms.Form):
+    """Yatırım projesini kapat (258 bakiyesi 0): kapanış tarihi + neden (Satıldı / Diğer) + açıklama. Fiş üretmez."""
+    kapanis_tarihi = forms.DateField(label="Kapanış tarihi", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+                                     initial=timezone.localdate)
+    kapanis_nedeni = forms.ChoiceField(label="Kapanış nedeni", choices=YatirimProjesi.KapanisNedeni.choices,
+                                       initial=YatirimProjesi.KapanisNedeni.SATILDI)
+    kapanis_aciklama = forms.CharField(label="Açıklama", required=False,
+                                       widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Satıldıysa: parsel/alıcı bilgisi; 'Diğer' ise zorunlu"}))

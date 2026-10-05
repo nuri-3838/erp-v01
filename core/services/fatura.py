@@ -248,9 +248,10 @@ def _hesap_satiri_coz(g, i, hesap_kumesi, *, kullanici=None, tarih=None):
             proje = YatirimProjesi.objects.filter(pk=proje_id, silindi=False).first()
             if proje is None:
                 raise FaturaHatasi(f"Satır {i}: yatırım projesi bulunamadı.")
-            if proje.durum == YatirimProjesi.Durum.AKTIFLESTI:
+            if proje.durum != YatirimProjesi.Durum.DEVAM:
+                durum_ad = "kapanmış" if proje.durum == YatirimProjesi.Durum.KAPANDI else "aktifleşmiş"
                 raise FaturaHatasi(
-                    f"Satır {i}: {proje.kod} projesi aktifleşmiş; yeni kalem eklenemez.")
+                    f"Satır {i}: {proje.kod} projesi {durum_ad}; yeni kalem eklenemez.")
         elif hesap_kodu_258_mi(hesap.hesap_kodu):
             raise FaturaHatasi(
                 f"Satır {i}: {hesap.hesap_kodu} hesabı için yatırım projesi seçimi "

@@ -8,11 +8,18 @@
   <div>
     <a class="ust-link" href="{% url 'core:yatirim_projeleri' %}">← Yatırım Projeleri</a>
     <h1 class="ust-baslik"><span class="emoji">🏗️</span>{{ proje.kod }} — {{ proje.ad }}
-      <span class="rozet {% if proje.durum == 'AKTIFLESTI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ proje.get_durum_display }}</span></h1>
+      <span class="rozet {% if proje.durum == 'AKTIFLESTI' %}rozet-aktif{% elif proje.durum == 'KAPANDI' %}rozet-kapali{% else %}rozet-notr{% endif %}">{{ proje.get_durum_display }}</span></h1>
   </div>
   <span class="islem-bag">
     {% if proje.durum == "DEVAM" %}
       <a class="dugme birincil" href="{% url 'core:yatirim_projesi_aktiflestir' proje.pk %}">Aktifleştir</a>
+      {% if kapatilabilir %}<a class="dugme" href="{% url 'core:yatirim_projesi_kapat' proje.pk %}">Kapat</a>
+      {% else %}<a class="dugme" href="{% url 'core:yatirim_projesi_kapat' proje.pk %}" title="258 bakiyesi 0,00 değil; kapatılamaz"
+                   style="opacity:.55">Kapat</a>{% endif %}
+    {% elif proje.durum == "KAPANDI" and user.is_superuser %}
+      <form method="post" action="{% url 'core:yatirim_projesi_yeniden_ac' proje.pk %}" style="margin:0"
+            onsubmit="return confirm('Proje yeniden açılsın mı? Durum Devam Ediyor olur; kapanış bilgisi silinir.');">
+        {% csrf_token %}<button type="submit" class="dugme">Yeniden Aç</button></form>
     {% elif proje.durum == "AKTIFLESTI" and yonetici %}
       <form method="post" action="{% url 'core:yatirim_projesi_geri_al' proje.pk %}" style="margin:0"
             onsubmit="return confirm('Aktifleştirme geri alınsın mı? Fiş iptal edilecek ve üretilen duran varlık kartları silinecek.');">
@@ -20,6 +27,14 @@
     {% endif %}
   </span>
 </div>
+
+{% if proje.durum == "KAPANDI" %}
+<div class="uyari" style="background:rgba(106,61,154,.08);border-color:#6a3d9a">
+  <div>🔒 Kapandı — {{ proje.kapanis_tarihi|date:"d.m.Y" }} · {{ proje.get_kapanis_nedeni_display }}
+    {% if proje.kapanis_aciklama %}· {{ proje.kapanis_aciklama }}{% endif %}
+    <br><span class="yardim">Fiş üretilmedi; projeye yeni fatura/kesinti/virman satırı bağlanamaz.</span></div>
+</div>
+{% endif %}
 
 {% if proje.durum == "AKTIFLESTI" and proje.aktiflestirme_fisi %}
 <div class="uyari" style="background:rgba(10,125,40,.08);border-color:var(--ok)">

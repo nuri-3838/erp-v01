@@ -48,7 +48,7 @@
         <td class="mono">{{ p.proje.kod }}</td>
         <td class="mono">{{ p.proje.hesap_id|default:"—" }}</td>
         <td>{{ p.proje.ad }}</td>
-        <td><span class="rozet {% if p.proje.durum == 'AKTIFLESTI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ p.proje.get_durum_display }}</span></td>
+        <td><span class="rozet {% if p.proje.durum == 'AKTIFLESTI' %}rozet-aktif{% elif p.proje.durum == 'KAPANDI' %}rozet-kapali{% else %}rozet-notr{% endif %}">{{ p.proje.get_durum_display }}</span></td>
         <td class="sag mono">{{ p.toplam|tr_kur:2 }}</td>
         <td class="sag mono">{{ p.fatura_sayisi }}</td>
       </tr>

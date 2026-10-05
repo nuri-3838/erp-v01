@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ proje.kod }} Kapat · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yatırım Projesini Kapat{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:yatirim_projesi_detay' proje.pk %}">← {{ proje.kod }} — {{ proje.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🔒</span>Projeyi Kapat</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik">{{ proje.kod }} — {{ proje.ad }}{% if proje.hesap_id %} <span class="mono">({{ proje.hesap_id }})</span>{% endif %}</h2>
+    <p class="yardim">258 bakiyesi: <strong class="mono">{{ bakiye|tr_para }} TL</strong>.
+      {% if kapatilabilir %}Bakiye 0,00 — proje fiş üretilmeden kapatılabilir.{% else %}
+      <strong style="color:var(--hata)">Bakiye 0,00 olmadığı için proje kapatılamaz.</strong> Önce kalan bakiyeyi satış/aktarım kaydıyla kapatın ya da
+      projeyi aktifleştirin.{% endif %}</p>
+  </section>
+
+  {% if kapatilabilir %}
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <p class="yardim" style="margin-top:-.3rem">Kapanış fiş üretmez; yalnız durum <strong>Kapandı</strong> olur. Kapanmış projeye yeni fatura/kesinti/virman
+        satırı bağlanamaz; süper kullanıcı "Yeniden Aç" ile geri alabilir.</p>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.kapanis_tarihi.id_for_label }}">{{ form.kapanis_tarihi.label }}</label>{{ form.kapanis_tarihi }}
+          {% for e in form.kapanis_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.kapanis_nedeni.id_for_label }}">{{ form.kapanis_nedeni.label }}</label>{{ form.kapanis_nedeni }}
+          {% for e in form.kapanis_nedeni.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.kapanis_aciklama.id_for_label }}">{{ form.kapanis_aciklama.label }}</label>{{ form.kapanis_aciklama }}
+          {% for e in form.kapanis_aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:yatirim_projesi_detay' proje.pk %}">İptal</a>
+      <button type="submit" class="birincil">Projeyi Kapat</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="form-altbar"><a class="iptal-bag" href="{% url 'core:yatirim_projesi_detay' proje.pk %}">Geri dön</a></div>
+  {% endif %}
+</div>
+{% endblock %}

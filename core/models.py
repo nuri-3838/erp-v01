@@ -1699,6 +1699,11 @@ class YatirimProjesi(TemelModel):
     class Durum(models.TextChoices):
         DEVAM = "DEVAM", "Devam Ediyor"
         AKTIFLESTI = "AKTIFLESTI", "Aktifleşti"
+        KAPANDI = "KAPANDI", "Kapandı"      # 258 bakiyesi 0 (satıldı / aktarıldı): fiş üretmeden kapatılır; "yeniden aç" ile geri alınır
+
+    class KapanisNedeni(models.TextChoices):
+        SATILDI = "SATILDI", "Satıldı"
+        DIGER = "DIGER", "Diğer"
 
     kod = models.CharField("proje kodu", max_length=20)
     ad = models.CharField("ad", max_length=200)
@@ -1707,6 +1712,9 @@ class YatirimProjesi(TemelModel):
     aktiflestirme_fisi = models.ForeignKey(
         YevmiyeFisi, verbose_name="aktifleştirme fişi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="yatirim_projesi_aktiflestirmeleri")
+    kapanis_tarihi = models.DateField("kapanış tarihi", null=True, blank=True)
+    kapanis_nedeni = models.CharField("kapanış nedeni", max_length=10, choices=KapanisNedeni.choices, blank=True)
+    kapanis_aciklama = models.TextField("kapanış açıklaması", blank=True)
     # Projeye özel 258.0X.000N muhasebe hesabı (grup: 258.01 makine-teçhizat ... 258.04 arsa); projeye yazılan TÜM 258
     # satırları bu hesaba gider (bkz. core.services.duran_hesap). Proje silinse/aktifleşse de hesap geçmiş için kalır.
     hesap = models.ForeignKey(

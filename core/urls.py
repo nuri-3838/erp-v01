@@ -19,6 +19,8 @@ urlpatterns = [
     path("yatirim-projeleri/<int:pk>/", views.yatirim_projesi_detay, name="yatirim_projesi_detay"),
     path("yatirim-projeleri/<int:pk>/aktiflestir/", views.yatirim_projesi_aktiflestir,
          name="yatirim_projesi_aktiflestir"),
+    path("yatirim-projeleri/<int:pk>/kapat/", views.yatirim_projesi_kapat, name="yatirim_projesi_kapat"),
+    path("yatirim-projeleri/<int:pk>/yeniden-ac/", views.yatirim_projesi_yeniden_ac, name="yatirim_projesi_yeniden_ac"),
     path("yatirim-projeleri/<int:pk>/geri-al/", views.yatirim_projesi_geri_al,
          name="yatirim_projesi_geri_al"),
     path("duran-varliklar/", views.duran_varliklar, name="duran_varliklar"),

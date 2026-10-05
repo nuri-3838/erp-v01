@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, PersonelBordroForm, PersonelBordroSatirForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -7257,8 +7257,10 @@ def yatirim_projesi_detay(request, pk):
     sarf_toplam = sum((s["tutar_try"] or Decimal("0.00") for s in sarf_hareketleri), Decimal("0.00"))
     duran_varliklar_qs = DuranVarlik.objects.filter(
         yatirim_projesi=proje, silindi=False).select_related("hesap")
+    bakiye = yp_servis.proje_bakiye_258(proje) if proje.durum == YatirimProjesi.Durum.DEVAM else None
     return render(request, "core/yatirim_projesi_detay.html",
                   {"proje": proje, "satirlar": satirlar, "fatura_toplam": fatura_toplam,
+                   "bakiye_258": bakiye, "kapatilabilir": bakiye is not None and bakiye == Decimal("0.00"),
                    "sarf_hareketleri": sarf_hareketleri, "sarf_toplam": sarf_toplam,
                    "toplam": yp_servis.proje_toplami(proje),
                    "yonetici": yonetici_mi(request.user), "duran_varliklar": duran_varliklar_qs})
@@ -7272,7 +7274,8 @@ AktiflestirmeSatirFormSet = formset_factory(
 def yatirim_projesi_aktiflestir(request, pk):
     proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
     if proje.durum != YatirimProjesi.Durum.DEVAM:
-        messages.info(request, "Bu proje zaten aktifleştirilmiş.")
+        messages.info(request, "Bu proje kapatılmış; aktifleştirmek için önce yeniden açın."
+                      if proje.durum == YatirimProjesi.Durum.KAPANDI else "Bu proje zaten aktifleştirilmiş.")
         return redirect("core:yatirim_projesi_detay", pk=proje.pk)
     toplam = yp_servis.proje_toplami(proje)
 
@@ -7299,6 +7302,44 @@ def yatirim_projesi_aktiflestir(request, pk):
         formset = AktiflestirmeSatirFormSet()
     return render(request, "core/yatirim_projesi_aktiflestir.html", {
         "proje": proje, "toplam": toplam, "baslik": baslik, "formset": formset})
+
+
+@ekran_gerekli("yatirim_projeleri")
+def yatirim_projesi_kapat(request, pk):
+    """Projeyi kapat (satıldı / diğer): yalnız 258 bakiyesi 0,00 ise; fiş üretmez, durum 'Kapandı' olur."""
+    proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
+    if proje.durum != YatirimProjesi.Durum.DEVAM:
+        messages.info(request, "Yalnız 'Devam Ediyor' durumundaki proje kapatılabilir.")
+        return redirect("core:yatirim_projesi_detay", pk=proje.pk)
+    bakiye = yp_servis.proje_bakiye_258(proje)
+    if request.method == "POST":
+        form = YatirimProjesiKapatForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                yp_servis.proje_kapat(proje, tarih=cd["kapanis_tarihi"], neden=cd["kapanis_nedeni"],
+                                      aciklama=cd["kapanis_aciklama"], kullanici=request.user)
+                messages.success(request, f"{proje.kod} kapatıldı.")
+                return redirect("core:yatirim_projesi_detay", pk=proje.pk)
+            except yp_servis.YatirimProjesiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = YatirimProjesiKapatForm()
+    return render(request, "core/yatirim_projesi_kapat.html", {
+        "proje": proje, "form": form, "bakiye": bakiye, "kapatilabilir": bakiye == Decimal("0.00")})
+
+
+@ekran_gerekli("yatirim_projeleri")
+def yatirim_projesi_yeniden_ac(request, pk):
+    """Kapanmış projeyi geri açar (yalnız süper kullanıcı; POST)."""
+    proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            yp_servis.proje_yeniden_ac(proje, kullanici=request.user)
+            messages.success(request, f"{proje.kod} yeniden açıldı.")
+        except yp_servis.YatirimProjesiHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:yatirim_projesi_detay", pk=proje.pk)
 
 
 @yonetici_gerekli

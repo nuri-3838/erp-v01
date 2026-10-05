@@ -189,6 +189,58 @@ def proje_aktiflestir(proje: YatirimProjesi, *, tarih, satirlar, kullanici=None)
     return proje
 
 
+def proje_bakiye_258(proje: YatirimProjesi) -> Decimal:
+    """Projenin 258 bakiyesi: projeye özel 258.0X.000N hesabının defter bakiyesi (borç − alacak); hesapsız eski projede proje toplamı."""
+    import datetime
+
+    from core.services import raporlar
+    if proje.hesap_id:
+        return raporlar._devir(proje.hesap_id, datetime.date(2100, 1, 1))[0]
+    return proje_toplami(proje)
+
+
+def proje_kapat(proje: YatirimProjesi, *, tarih, neden, aciklama="", kullanici=None) -> YatirimProjesi:
+    """258 bakiyesi 0,00 olan (satılmış / başka hesaba aktarılmış) projeyi AKTİFLEŞTİRMEDEN kapatır. Fiş üretmez; yalnız durum 'Kapandı'
+    olur (kapanış tarihi, nedeni, açıklaması saklanır). Bakiye 0 değilse kalan bakiye gösterilerek reddedilir. Kapanmış projeye yeni
+    fatura/kesinti/virman/sarf satırı bağlanamaz."""
+    import datetime
+    if proje.silindi or proje.durum != YatirimProjesi.Durum.DEVAM:
+        raise YatirimProjesiHatasi("Yalnız 'Devam Ediyor' durumundaki proje kapatılabilir.")
+    if not isinstance(tarih, datetime.date):
+        raise YatirimProjesiHatasi("Kapanış tarihi gerekli.")
+    if neden not in YatirimProjesi.KapanisNedeni.values:
+        raise YatirimProjesiHatasi("Kapanış nedeni seçin (Satıldı / Diğer).")
+    aciklama = (aciklama or "").strip()
+    if neden == YatirimProjesi.KapanisNedeni.DIGER and not aciklama:
+        raise YatirimProjesiHatasi("Neden 'Diğer' ise açıklama yazın.")
+    bakiye = proje_bakiye_258(proje)
+    if bakiye != SIFIR:
+        from core.sayi import format_tr
+        raise YatirimProjesiHatasi(
+            f"{proje.kod} kapatılamaz: 258 bakiyesi {format_tr(bakiye)} TL (0,00 olmalı). Önce kalan bakiyeyi satış/aktarım kaydıyla "
+            f"kapatın ya da projeyi aktifleştirin.")
+    with transaction.atomic():
+        proje.durum = YatirimProjesi.Durum.KAPANDI
+        proje.kapanis_tarihi, proje.kapanis_nedeni, proje.kapanis_aciklama = tarih, neden, aciklama
+        proje.updated_by = kullanici
+        proje.save(update_fields=["durum", "kapanis_tarihi", "kapanis_nedeni", "kapanis_aciklama", "updated_by", "updated_at"])
+    return proje
+
+
+def proje_yeniden_ac(proje: YatirimProjesi, *, kullanici=None) -> YatirimProjesi:
+    """Kapanmış projeyi 'Devam Ediyor'a döndürür (yalnız süper kullanıcı). Kapanış bilgileri temizlenir; fiş etkilenmez."""
+    if not getattr(kullanici, "is_superuser", False):
+        raise YatirimProjesiHatasi("Projeyi yeniden açmak yalnız süper kullanıcıya açıktır.")
+    if proje.silindi or proje.durum != YatirimProjesi.Durum.KAPANDI:
+        raise YatirimProjesiHatasi("Yalnız 'Kapandı' durumundaki proje yeniden açılabilir.")
+    with transaction.atomic():
+        proje.durum = YatirimProjesi.Durum.DEVAM
+        proje.kapanis_tarihi, proje.kapanis_nedeni, proje.kapanis_aciklama = None, "", ""
+        proje.updated_by = kullanici
+        proje.save(update_fields=["durum", "kapanis_tarihi", "kapanis_nedeni", "kapanis_aciklama", "updated_by", "updated_at"])
+    return proje
+
+
 def proje_geri_al(proje: YatirimProjesi, *, kullanici=None) -> YatirimProjesi:
     """Aktifleştirmeyi geri alır: fişi iptal eder, bu aktifleştirmeden üretilen
     DuranVarlik kartlarını siler, proje DEVAM'a döner. Yetki kontrolü (yalnız
