@@ -58,6 +58,10 @@
     <p class="yardim" style="margin:0 0 .6rem">✂️ Bu fiş bir <strong>cari kesinti/masraf hareketinden</strong> otomatik oluştu;
       düzenleme/silme cari ekstresinden yapılır.</p>
     {% if fis.cari_id %}<a class="dugme" href="{% url 'core:cari_ekstresi' fis.cari_id %}">📄 Cari ekstresine git</a>{% endif %}
+  {% elif fis.kaynak == 'BORDRO' %}
+    <p class="yardim" style="margin:0 0 .6rem">👥 Bu fiş bir <strong>personel bordrosundan</strong> otomatik oluştu;
+      düzenleme/silme bordro ekranından yapılır.</p>
+    {% if fis.personel_bordro_id %}<a class="dugme" href="{% url 'core:bordro_detay' fis.personel_bordro_id %}">👥 Bordroya git</a>{% endif %}
   {% elif fis.kaynak == 'CARI_VIRMAN' %}
     <p class="yardim" style="margin:0 0 .6rem">🔁 Bu fiş bir <strong>cari virman hareketinden</strong> otomatik oluştu;
       düzenleme/silme cari ekstresinden yapılır.</p>

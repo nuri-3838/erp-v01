@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.storage import (
-    aday_ek_yolu, cari_ek_yolu, cek_gorsel_yolu, fatura_ek_yolu, ik_ozel_depo, ozel_depo,
+    aday_ek_yolu, bordro_dosya_yolu, cari_ek_yolu, cek_gorsel_yolu, fatura_ek_yolu, ik_ozel_depo, ozel_depo,
     personel_belge_yolu, personel_foto_yolu,
 )
 
@@ -162,6 +162,7 @@ class YevmiyeFisi(TemelModel):
         DURAN_VARLIK = "DURAN_VARLIK", "Duran Varlık Kartı Açılışı (otomatik)"
         DONEMSEL = "DONEMSEL", "Dönemsel Dağıtım (otomatik)"
         CARI_VIRMAN = "CARI_VIRMAN", "Cari Virman (otomatik)"
+        BORDRO = "BORDRO", "Personel Bordro Tahakkuku (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -200,6 +201,11 @@ class YevmiyeFisi(TemelModel):
     karsi_cari = models.ForeignKey(
         "Cari", verbose_name="virman karşı cari", null=True, blank=True,
         on_delete=models.PROTECT, related_name="virman_karsi_fisleri",
+    )
+    # Kaynak=BORDRO fişin kaynağı olan aylık personel bordrosu (bordro başına TEK fiş); düzenle/sil bordro ekranından.
+    personel_bordro = models.ForeignKey(
+        "PersonelBordro", verbose_name="kaynak personel bordrosu", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fisler",
     )
     # Kaynak=KREDI fişin kaynağı olan kredi (hareket motoru); kasa ile aynı amaç.
     kredi = models.ForeignKey(
@@ -3675,3 +3681,46 @@ class DonemselDagitim(TemelModel):
 
     def __str__(self):
         return f"{self.hesap_id} {self.ay_sonu:%m.%Y}"
+
+
+class PersonelBordro(TemelModel):
+    """Aylık personel bordrosu tahakkuku (mali müşavirin PDF bordrosu): dönem + tahakkuk tarihi + (ops.) PDF eki (özel depo) + personel
+    satırları; bordro başına TEK yevmiye fişi (kaynak=BORDRO, fiş→bordro bağı). Bkz. core.services.bordro."""
+
+    yil = models.PositiveSmallIntegerField("dönem yılı")
+    ay = models.PositiveSmallIntegerField("dönem ayı")
+    tahakkuk_tarihi = models.DateField("tahakkuk tarihi")
+    aciklama = models.CharField("açıklama", max_length=200, blank=True)
+    dosya = models.FileField("bordro PDF", storage=ozel_depo, upload_to=bordro_dosya_yolu, blank=True)
+    orijinal_ad = models.CharField("özgün dosya adı", max_length=255, blank=True)
+
+    class Meta:
+        db_table = "personel_bordro"
+        verbose_name = "personel bordrosu"
+        verbose_name_plural = "personel bordroları"
+        ordering = ["-yil", "-ay", "-id"]
+
+    def __str__(self):
+        return f"{self.ay:02d}.{self.yil} bordro"
+
+
+class PersonelBordroSatir(TemelModel):
+    """Bordro satırı: bir personel carisinin aylık kalemleri (TL). Kontrol: brüt − SGK işçi − işsizlik işçi − GV − DV = net."""
+
+    bordro = models.ForeignKey(PersonelBordro, verbose_name="bordro", on_delete=models.CASCADE, related_name="satirlar")
+    cari = models.ForeignKey("Cari", verbose_name="personel carisi", on_delete=models.PROTECT, related_name="bordro_satirlari")
+    gider_hesap = models.ForeignKey(HesapPlani, verbose_name="gider hesabı", on_delete=models.PROTECT, related_name="+")
+    brut = models.DecimalField("brüt kazanç", max_digits=18, decimal_places=2)
+    sgk_isci = models.DecimalField("SGK işçi payı", max_digits=18, decimal_places=2, default=0)
+    issizlik_isci = models.DecimalField("işsizlik işçi payı", max_digits=18, decimal_places=2, default=0)
+    gelir_vergisi = models.DecimalField("gelir vergisi", max_digits=18, decimal_places=2, default=0)
+    damga_vergisi = models.DecimalField("damga vergisi", max_digits=18, decimal_places=2, default=0)
+    net = models.DecimalField("net ödenen", max_digits=18, decimal_places=2)
+    sgk_isveren = models.DecimalField("SGK işveren (teşvik sonrası net)", max_digits=18, decimal_places=2, default=0)
+    issizlik_isveren = models.DecimalField("işsizlik işveren", max_digits=18, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = "personel_bordro_satir"
+        verbose_name = "bordro satırı"
+        verbose_name_plural = "bordro satırları"
+        ordering = ["bordro", "id"]

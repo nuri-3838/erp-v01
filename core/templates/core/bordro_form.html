@@ -1,0 +1,128 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{% if duzenle %}Bordro Düzenle{% else %}Yeni Bordro{% endif %} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{% if duzenle %}Bordro Düzenle{% else %}Yeni Bordro{% endif %}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% if duzenle %}{% url 'core:bordro_detay' bordro.pk %}{% else %}{% url 'core:bordro_listesi' %}{% endif %}">← {% if duzenle %}Bordro{% else %}Bordrolar{% endif %}</a>
+    <h1 class="ust-baslik"><span class="emoji">👥</span>{% if duzenle %}Bordro Düzenle{% else %}Aylık Bordro Tahakkuku{% endif %}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  {% if formset.non_form_errors %}
+    <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" autocomplete="off" style="display:contents" id="bd-form">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Dönem</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.yil.id_for_label }}">{{ form.yil.label }}</label>{{ form.yil }}
+          {% for e in form.yil.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.ay.id_for_label }}">{{ form.ay.label }}</label>{{ form.ay }}
+          {% for e in form.ay.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.tahakkuk_tarihi.id_for_label }}">{{ form.tahakkuk_tarihi.label }}</label>{{ form.tahakkuk_tarihi }}
+          {% for e in form.tahakkuk_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.dosya.id_for_label }}">{{ form.dosya.label }}</label>{{ form.dosya }}
+          {% if duzenle and bordro.dosya %}<p class="yardim">Mevcut: <a href="{% url 'core:bordro_dosya' bordro.pk %}" target="_blank">{{ bordro.orijinal_ad }}</a>
+            · {{ form.dosyayi_kaldir }} {{ form.dosyayi_kaldir.label }}</p>{% endif %}
+          {% for e in form.dosya.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}
+          {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Personel Satırları</h2>
+      <p class="yardim" style="margin-top:-.3rem">Her satırda kontrol: <strong>brüt − SGK işçi − işsizlik işçi − gelir vergisi − damga vergisi = net</strong>;
+        tutmazsa kaydedilmez. Personel listede yoksa "yeni personel" alanına ad soyad yazın (sistem 335.10.000N carisini açar). Gider hesabı varsayılan
+        730.06 PERSONEL MAAŞ GİDERİ; satırda değiştirilebilir (örn. 770.xx).</p>
+      <div class="tablo-kapsayici genis">
+      <table class="satir-tablo">
+        <thead><tr><th style="min-width:13rem">Personel / yeni personel</th><th style="min-width:11rem">Gider hesabı</th>
+          <th class="sag">Brüt</th><th class="sag">SGK işçi</th><th class="sag">İşsizlik işçi</th><th class="sag">G. Vergisi</th><th class="sag">Damga V.</th>
+          <th class="sag">Net</th><th class="sag">SGK işveren</th><th class="sag">İşsizlik işveren</th><th>Kontrol</th></tr></thead>
+        <tbody id="bd-satirlar">
+          {% for f in formset %}
+          <tr class="bd-satir">
+            <td>{{ f.cari }}{{ f.yeni_ad }}
+              {% for e in f.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+            <td>{{ f.gider_hesap }}</td>
+            <td class="sag">{{ f.brut }}</td><td class="sag">{{ f.sgk_isci }}</td><td class="sag">{{ f.issizlik_isci }}</td>
+            <td class="sag">{{ f.gelir_vergisi }}</td><td class="sag">{{ f.damga_vergisi }}</td><td class="sag">{{ f.net }}</td>
+            <td class="sag">{{ f.sgk_isveren }}</td><td class="sag">{{ f.issizlik_isveren }}</td>
+            <td class="bd-kontrol yardim"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="2">Toplam</th><th class="sag bd-t" data-a="brut"></th><th class="sag bd-t" data-a="sgk_isci"></th>
+          <th class="sag bd-t" data-a="issizlik_isci"></th><th class="sag bd-t" data-a="gelir_vergisi"></th><th class="sag bd-t" data-a="damga_vergisi"></th>
+          <th class="sag bd-t" data-a="net"></th><th class="sag bd-t" data-a="sgk_isveren"></th><th class="sag bd-t" data-a="issizlik_isveren"></th><th></th></tr></tfoot>
+      </table>
+      </div>
+      <button type="button" id="bd-satir-ekle" class="dugme-ikincil" style="margin-top:.6rem">+ Personel satırı ekle</button>
+      <p class="yardim" id="bd-maliyet" style="margin-top:.5rem"></p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% if duzenle %}{% url 'core:bordro_detay' bordro.pk %}{% else %}{% url 'core:bordro_listesi' %}{% endif %}">İptal</a>
+      <button type="submit" class="birincil">{% if duzenle %}Bordroyu Güncelle{% else %}Bordroyu Kaydet{% endif %}</button>
+    </div>
+  </form>
+</div>
+
+<template id="bd-bos-satir">
+  <tr class="bd-satir">
+    <td>{{ formset.empty_form.cari }}{{ formset.empty_form.yeni_ad }}</td>
+    <td>{{ formset.empty_form.gider_hesap }}</td>
+    <td class="sag">{{ formset.empty_form.brut }}</td><td class="sag">{{ formset.empty_form.sgk_isci }}</td><td class="sag">{{ formset.empty_form.issizlik_isci }}</td>
+    <td class="sag">{{ formset.empty_form.gelir_vergisi }}</td><td class="sag">{{ formset.empty_form.damga_vergisi }}</td><td class="sag">{{ formset.empty_form.net }}</td>
+    <td class="sag">{{ formset.empty_form.sgk_isveren }}</td><td class="sag">{{ formset.empty_form.issizlik_isveren }}</td>
+    <td class="bd-kontrol yardim"></td>
+  </tr>
+</template>
+
+<script>
+(function(){
+  var tf = document.getElementById('id_form-TOTAL_FORMS');
+  var govde = document.getElementById('bd-satirlar');
+  var ALANLAR = ['brut','sgk_isci','issizlik_isci','gelir_vergisi','damga_vergisi','net','sgk_isveren','issizlik_isveren'];
+  function sayi(s){ s=(s||'').toString().trim().replace(/\./g,'').replace(',','.'); var n=parseFloat(s); return isNaN(n)?0:n; }
+  function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function deger(tr,a){ var i = tr.querySelector('input[name$="-'+a+'"]'); return sayi(i && i.value); }
+  function guncelle(){
+    var top = {}; ALANLAR.forEach(function(a){ top[a]=0; });
+    govde.querySelectorAll('.bd-satir').forEach(function(tr){
+      var k = tr.querySelector('.bd-kontrol');
+      var dolu = ALANLAR.some(function(a){ return deger(tr,a) !== 0; });
+      ALANLAR.forEach(function(a){ top[a] += deger(tr,a); });
+      if(!dolu){ k.textContent=''; return; }
+      var hesap = deger(tr,'brut') - deger(tr,'sgk_isci') - deger(tr,'issizlik_isci') - deger(tr,'gelir_vergisi') - deger(tr,'damga_vergisi');
+      var fark = hesap - deger(tr,'net');
+      if(Math.abs(fark) < 0.005){ k.textContent = '✓'; k.style.color=''; }
+      else { k.textContent = 'fark ' + fmt(fark); k.style.color = 'var(--hata)'; }
+    });
+    document.querySelectorAll('.bd-t').forEach(function(th){ th.textContent = fmt(top[th.dataset.a]); });
+    document.getElementById('bd-maliyet').textContent = 'Toplam işveren maliyeti (brüt + SGK işveren + işsizlik işveren): ' +
+      fmt(top.brut + top.sgk_isveren + top.issizlik_isveren);
+  }
+  function bagla(tr){
+    var sel = tr.querySelector('select.akilli-sec'); if(sel && window.akilliSecKur) window.akilliSecKur(sel);
+    tr.querySelectorAll('input').forEach(function(i){ i.addEventListener('input', guncelle); });
+  }
+  document.getElementById('bd-satir-ekle').addEventListener('click', function(){
+    var i = parseInt(tf.value, 10), kok = document.createElement('tbody');
+    kok.innerHTML = document.getElementById('bd-bos-satir').innerHTML.replace(/__prefix__/g, i);
+    var tr = kok.firstElementChild; govde.appendChild(tr); tf.value = i + 1; bagla(tr); guncelle();
+  });
+  window.addEventListener('load', function(){ govde.querySelectorAll('.bd-satir').forEach(bagla); guncelle(); });
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

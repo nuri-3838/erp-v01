@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, PersonelBordroForm, PersonelBordroSatirForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -60,7 +60,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
-    YevmiyeFisi, YevmiyeSatir, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
+    YevmiyeFisi, YevmiyeSatir, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
     MesaiKaydi, MesaiIzinliAg,
 )
@@ -100,6 +100,7 @@ from core.services import finans as finans_servis
 from core.services import fis_sil as fis_sil_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
+from core.services import bordro as bordro_servis
 from core.services import doviz_islem as doviz_islem_servis
 from core.services import kur_degerleme as kur_degerleme_servis
 from core.services import donemsel_gider as donemsel_servis
@@ -296,6 +297,10 @@ def fis_duzenle(request, pk):
         messages.info(request, "Bu fiş bir cari kesinti/masraf hareketinden oluştu; cari ekstresinden düzenlenir.")
         return (redirect("core:cari_ekstresi", pk=fis.cari_id) if fis.cari_id
                 else redirect("core:fis_detay", pk=fis.pk))
+    if fis.kaynak == YevmiyeFisi.Kaynak.BORDRO:
+        messages.info(request, "Bu fiş bir personel bordrosundan oluştu; bordro ekranından düzenlenir.")
+        return (redirect("core:bordro_detay", pk=fis.personel_bordro_id) if fis.personel_bordro_id
+                else redirect("core:fis_detay", pk=fis.pk))
     if fis.kaynak == YevmiyeFisi.Kaynak.CARI_VIRMAN:
         messages.info(request, "Bu fiş bir cari virman hareketinden oluştu; cari ekstresinden düzenlenir.")
         return (redirect("core:cari_ekstresi", pk=fis.cari_id) if fis.cari_id
@@ -392,6 +397,9 @@ def fis_sil_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.CARI_KESINTI and fis.cari_id:
         messages.info(request, "Bu fiş bir cari kesinti/masraf hareketinden oluştu; silmek için cari ekstresini kullanın.")
         return redirect("core:cari_ekstresi", pk=fis.cari_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.BORDRO and fis.personel_bordro_id:
+        messages.info(request, "Bu fiş bir personel bordrosundan oluştu; silmek için bordro ekranını kullanın.")
+        return redirect("core:bordro_detay", pk=fis.personel_bordro_id)
     if fis.kaynak == YevmiyeFisi.Kaynak.CARI_VIRMAN and fis.cari_id:
         messages.info(request, "Bu fiş bir cari virman hareketinden oluştu; silmek için cari ekstresini kullanın.")
         return redirect("core:cari_ekstresi", pk=fis.cari_id)
@@ -8499,3 +8507,101 @@ def mesai_ag_sil(request, pk):
         mesai_ag_servis.ag_sil(ag, kullanici=request.user)
         messages.success(request, f"İzinli ağ silindi: {ag.cidr}")
     return redirect("core:mesai_ayarlari")
+
+
+
+# === İNSAN KAYNAKLARI — Aylık Bordro Tahakkuku ===
+def _bordro_form_baglam(request, bordro=None):
+    """Bordro ekle/düzenle: başlık formu + satır formset'i (POST ya da düzenlemede mevcut kayıttan)."""
+    if request.method == "POST":
+        return PersonelBordroForm(request.POST, request.FILES), PersonelBordroSatirFormSet(request.POST)
+    if bordro is None:
+        bugun = timezone.localdate()
+        ay_sonu = (bugun.replace(day=1) - datetime.timedelta(days=1))          # varsayılan: geçen ay sonu
+        return (PersonelBordroForm(initial={"yil": ay_sonu.year, "ay": ay_sonu.month, "tahakkuk_tarihi": ay_sonu}),
+                PersonelBordroSatirFormSet())
+    fis = bordro_servis.bordro_fisi(bordro)
+    baslik = PersonelBordroForm(initial={"yil": bordro.yil, "ay": bordro.ay, "tahakkuk_tarihi": bordro.tahakkuk_tarihi,
+                                         "aciklama": bordro.aciklama})
+    ilk = [{"cari": s.cari_id, "gider_hesap": s.gider_hesap_id, **{a: getattr(s, a) for a in bordro_servis.TUTAR_ALANLARI}}
+           for s in bordro_servis.satirlar(bordro)]
+    return baslik, PersonelBordroSatirFormSet(initial=ilk)
+
+
+def _bordro_kaydet(request, bordro=None):
+    form, formset = _bordro_form_baglam(request, bordro)
+    if request.method == "POST" and form.is_valid() and formset.is_valid():
+        satirlar = [f.girdi() for f in formset if f.dolu_mu()]
+        cd = form.cleaned_data
+        try:
+            kw = dict(yil=cd["yil"], ay=cd["ay"], tahakkuk_tarihi=cd["tahakkuk_tarihi"], satirlar=satirlar,
+                      aciklama=cd["aciklama"], dosya=cd.get("dosya") or None, kullanici=request.user)
+            if bordro is None:
+                bordro = bordro_servis.bordro_olustur(**kw)
+                messages.success(request, f"Bordro kaydedildi: {AYLAR_TR[bordro.ay]} {bordro.yil}.")
+            else:
+                bordro_servis.bordro_guncelle(bordro, dosyayi_kaldir=cd.get("dosyayi_kaldir"), **kw)
+                messages.success(request, "Bordro güncellendi; fiş yeniden yazıldı.")
+            return None, None, redirect("core:bordro_detay", pk=bordro.pk)
+        except bordro_servis.BordroHatasi as e:
+            form.add_error(None, str(e))
+    return form, formset, None
+
+
+PersonelBordroSatirFormSet = formset_factory(PersonelBordroSatirForm, extra=0, min_num=1, validate_min=True)
+AYLAR_TR = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+
+
+@ekran_gerekli("bordro")
+def bordro_listesi(request):
+    liste = []
+    for b in PersonelBordro.objects.filter(silindi=False):
+        liste.append({"bordro": b, "t": bordro_servis.ozet(b), "fis": bordro_servis.bordro_fisi(b), "ay_adi": AYLAR_TR[b.ay]})
+    return render(request, "core/bordro_listesi.html", {"liste": liste})
+
+
+@ekran_gerekli("bordro")
+def bordro_ekle(request):
+    form, formset, yanit = _bordro_kaydet(request)
+    if yanit:
+        return yanit
+    return render(request, "core/bordro_form.html", {"form": form, "formset": formset, "duzenle": False})
+
+
+@ekran_gerekli("bordro")
+def bordro_duzenle(request, pk):
+    bordro = get_object_or_404(PersonelBordro, pk=pk, silindi=False)
+    form, formset, yanit = _bordro_kaydet(request, bordro)
+    if yanit:
+        return yanit
+    return render(request, "core/bordro_form.html", {"form": form, "formset": formset, "duzenle": True, "bordro": bordro})
+
+
+@ekran_gerekli("bordro")
+def bordro_detay(request, pk):
+    bordro = get_object_or_404(PersonelBordro, pk=pk, silindi=False)
+    return render(request, "core/bordro_detay.html", {
+        "bordro": bordro, "satirlar": bordro_servis.satirlar(bordro), "t": bordro_servis.ozet(bordro),
+        "fis": bordro_servis.bordro_fisi(bordro), "ay_adi": AYLAR_TR[bordro.ay]})
+
+
+@ekran_gerekli("bordro")
+def bordro_sil(request, pk):
+    bordro = get_object_or_404(PersonelBordro, pk=pk, silindi=False)
+    fis = bordro_servis.bordro_fisi(bordro)
+    if fis is None:
+        messages.error(request, "Bordronun fişi bulunamadı.")
+        return redirect("core:bordro_detay", pk=bordro.pk)
+    return _fis_sil_akisi(
+        request, fis, baslik=f"Bordro · {AYLAR_TR[bordro.ay]} {bordro.yil}", geri=reverse("core:bordro_listesi"),
+        sil=lambda: bordro_servis.bordro_sil(bordro, kullanici=request.user))
+
+
+@never_cache
+@ekran_gerekli("bordro")
+def bordro_dosya(request, pk):
+    """Bordro PDF'ini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""
+    bordro = get_object_or_404(PersonelBordro, pk=pk, silindi=False)
+    if not bordro.dosya:
+        raise Http404
+    return _ozel_dosya_yanit(bordro.dosya, bordro.orijinal_ad)

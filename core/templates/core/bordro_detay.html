@@ -1,0 +1,47 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Bordro {{ ay_adi }} {{ bordro.yil }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Bordro{% endblock %}
+
+{% block content %}
+<p><a href="{% url 'core:bordro_listesi' %}">← Bordrolar</a></p>
+<h1 class="ust-baslik"><span class="emoji">👥</span>{{ ay_adi }} {{ bordro.yil }} Bordro Tahakkuku</h1>
+<p class="sayfa-alt">Tahakkuk tarihi <strong>{{ bordro.tahakkuk_tarihi|date:"d.m.Y" }}</strong>
+  {% if fis %} · Fiş <a href="{% url 'core:fis_detay' fis.pk %}">{{ fis.yil }}/{{ fis.fis_no }}</a>{% endif %}
+  {% if bordro.dosya %} · <a href="{% url 'core:bordro_dosya' bordro.pk %}" target="_blank">📎 Bordro PDF</a>{% endif %}
+  {% if bordro.aciklama %} · {{ bordro.aciklama }}{% endif %}</p>
+<p>
+  <a class="dugme" href="{% url 'core:bordro_duzenle' bordro.pk %}">✏️ Düzenle</a>
+  {% if user.is_superuser %}<a class="dugme" style="color:var(--hata)" href="{% url 'core:bordro_sil' bordro.pk %}">🗑️ Sil</a>{% endif %}
+</p>
+
+<div class="tablo-kapsayici genis"><table>
+  <thead><tr><th>Personel</th><th>Gider hesabı</th><th class="sag">Brüt</th><th class="sag">SGK işçi</th><th class="sag">İşsizlik işçi</th>
+    <th class="sag">G. Vergisi</th><th class="sag">Damga V.</th><th class="sag">Net</th><th class="sag">SGK işveren</th><th class="sag">İşsizlik işveren</th></tr></thead>
+  <tbody>
+  {% for s in satirlar %}
+    <tr>
+      <td><a href="{% url 'core:cari_ekstresi' s.cari_id %}">{{ s.cari.unvan }}</a> <span class="mono yardim">{{ s.cari.muhasebe_kodu }}</span></td>
+      <td class="mono">{{ s.gider_hesap_id }}</td>
+      <td class="sag mono">{{ s.brut|tr_para }}</td><td class="sag mono">{{ s.sgk_isci|tr_para }}</td><td class="sag mono">{{ s.issizlik_isci|tr_para }}</td>
+      <td class="sag mono">{{ s.gelir_vergisi|tr_para }}</td><td class="sag mono">{{ s.damga_vergisi|tr_para }}</td>
+      <td class="sag mono"><strong>{{ s.net|tr_para }}</strong></td>
+      <td class="sag mono">{{ s.sgk_isveren|tr_para }}</td><td class="sag mono">{{ s.issizlik_isveren|tr_para }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr>
+    <th colspan="2">Toplam ({{ t.kisi }} kişi)</th>
+    <th class="sag mono">{{ t.brut|tr_para }}</th><th class="sag mono">{{ t.sgk_isci|tr_para }}</th><th class="sag mono">{{ t.issizlik_isci|tr_para }}</th>
+    <th class="sag mono">{{ t.gelir_vergisi|tr_para }}</th><th class="sag mono">{{ t.damga_vergisi|tr_para }}</th>
+    <th class="sag mono">{{ t.net|tr_para }}</th><th class="sag mono">{{ t.sgk_isveren|tr_para }}</th><th class="sag mono">{{ t.issizlik_isveren|tr_para }}</th>
+  </tr></tfoot>
+</table></div>
+
+<section class="icerik-kart" style="margin-top:1rem">
+  <h2 class="bolum-baslik">Fiş özeti</h2>
+  <p class="yardim">Gider hesapları BORÇ <strong>{{ t.maliyet|tr_para }}</strong> (brüt + işveren payları) ·
+    Personel carileri ALACAK <strong>{{ t.net|tr_para }}</strong> (net) · 360.20 ALACAK <strong>{{ t.gv_dv|tr_para }}</strong> (gelir + damga vergisi) ·
+    361 ALACAK <strong>{{ t.sgk_toplam|tr_para }}</strong> (SGK + işsizlik, işçi + işveren).</p>
+</section>
+{% endblock %}

@@ -85,6 +85,7 @@ MODULLER = (
         Ekran("resmi_tatil", "Resmî Tatiller", "core:resmi_tatiller"),
         Ekran("mesai_kayitlari", "Mesai Kayıtları", "core:mesai_kayitlari"),
         Ekran("personel_ucret", "Personel Ücretleri", "core:personeller"),
+        Ekran("bordro", "Aylık Bordro", "core:bordro_listesi"),
         Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
     )),
     Modul("FASON", "Fason", (

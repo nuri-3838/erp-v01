@@ -89,3 +89,7 @@ def cek_gorsel_yolu(instance, ad):
 
 def fatura_ek_yolu(instance, ad):
     return _uuid_yolu("fatura_ek", ad)
+
+
+def bordro_dosya_yolu(instance, ad):
+    return _uuid_yolu("personel_bordro", ad)

@@ -3294,3 +3294,61 @@ class CariKesintiForm(forms.Form):
             elif not hesap_kodu_258_mi(gider.hesap_kodu) and proje:
                 self.add_error("yatirim_projesi", "Yatırım projesi yalnız 258 hesabında seçilebilir.")
         return cd
+
+
+class PersonelBordroForm(forms.Form):
+    """Aylık bordro başlığı: dönem + tahakkuk tarihi (ay sonu) + açıklama + PDF eki."""
+    yil = forms.IntegerField(label="Dönem yılı", min_value=2000, max_value=2100)
+    ay = forms.TypedChoiceField(label="Dönem ayı", coerce=int, choices=[
+        (i, a.capitalize()) for i, a in enumerate(
+            ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]) if i])
+    tahakkuk_tarihi = forms.DateField(
+        label="Tahakkuk tarihi (ay sonu)", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Ops. (fiş açıklamasına eklenir)"}))
+    dosya = forms.FileField(label="Bordro PDF", required=False, widget=forms.ClearableFileInput(attrs={"accept": "application/pdf,.pdf"}))
+    dosyayi_kaldir = forms.BooleanField(label="Mevcut PDF'i kaldır", required=False)
+
+
+class PersonelBordroSatirForm(forms.Form):
+    """Bordro satırı: personel carisi (seç) VEYA yeni personel (ad soyad) + gider hesabı + tutarlar. Tamamen boş satır yok sayılır."""
+    cari = forms.ModelChoiceField(label="Personel (335)", queryset=Cari.objects.none(), required=False, empty_label="— personel seç —")
+    yeni_ad = forms.CharField(label="veya yeni personel (ad soyad)", max_length=150, required=False)
+    gider_hesap = forms.ModelChoiceField(
+        label="Gider hesabı", queryset=HesapPlani.objects.none(), required=False, to_field_name="hesap_kodu", empty_label=None)
+    brut = TRDecimalField(label="Brüt", basamak=2, required=False)
+    sgk_isci = TRDecimalField(label="SGK işçi", basamak=2, required=False)
+    issizlik_isci = TRDecimalField(label="İşsizlik işçi", basamak=2, required=False)
+    gelir_vergisi = TRDecimalField(label="Gelir vergisi", basamak=2, required=False)
+    damga_vergisi = TRDecimalField(label="Damga vergisi", basamak=2, required=False)
+    net = TRDecimalField(label="Net ödenen", basamak=2, required=False)
+    sgk_isveren = TRDecimalField(label="SGK işveren (net)", basamak=2, required=False)
+    issizlik_isveren = TRDecimalField(label="İşsizlik işveren", basamak=2, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.bordro import VARSAYILAN_GIDER, personel_carileri
+        from core.services.hesap_plani import yaprak_hesaplar
+        self.fields["cari"].queryset = personel_carileri()
+        self.fields["cari"].label_from_instance = lambda o: f"{o.muhasebe_kodu}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        qs = yaprak_hesaplar().filter(hesap_kodu__regex=r"^(7|63)")
+        self.fields["gider_hesap"].queryset = qs
+        self.fields["gider_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["gider_hesap"].initial = VARSAYILAN_GIDER
+        self.fields["gider_hesap"].widget.attrs["class"] = "akilli-sec"
+        for a in ("brut", "sgk_isci", "issizlik_isci", "gelir_vergisi", "damga_vergisi", "net", "sgk_isveren", "issizlik_isveren"):
+            self.fields[a].widget.attrs.update({"class": "bordro-tutar", "style": "text-align:right;min-width:7.5rem"})
+
+    def dolu_mu(self):
+        cd = getattr(self, "cleaned_data", {}) or {}
+        return bool(cd.get("cari") or (cd.get("yeni_ad") or "").strip() or any(
+            cd.get(a) for a in ("brut", "sgk_isci", "issizlik_isci", "gelir_vergisi", "damga_vergisi", "net", "sgk_isveren", "issizlik_isveren")))
+
+    def girdi(self):
+        cd = self.cleaned_data
+        return {"cari": cd.get("cari"), "yeni_ad": cd.get("yeni_ad"),
+                "gider_hesap_kodu": cd["gider_hesap"].hesap_kodu if cd.get("gider_hesap") else "",
+                **{a: cd.get(a) for a in ("brut", "sgk_isci", "issizlik_isci", "gelir_vergisi", "damga_vergisi", "net", "sgk_isveren",
+                                          "issizlik_isveren")}}
+
