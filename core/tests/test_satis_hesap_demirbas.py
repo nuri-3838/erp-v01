@@ -166,8 +166,6 @@ class DemirbasSatisiTest(SatisHesapDemirbasTestBase):
         with self.assertRaises(fs.FaturaHatasi):
             self._fatura([self._dv_satir(v, "100")])
         DuranVarlik.objects.filter(pk=v.pk).update(durum="AKTIF")
-        with self.assertRaises(fs.FaturaHatasi):
-            self._fatura([self._dv_satir(v, "100"), self._dv_satir(v, "100")])      # aynı faturada iki kez
         self._fatura([self._dv_satir(v, "100")])
         with self.assertRaises(fs.FaturaHatasi):
             self._fatura([self._dv_satir(v, "100")])                                  # zaten satıldı

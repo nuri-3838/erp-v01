@@ -251,3 +251,75 @@ class BolmeEkranTest(BolmeBase):
         self.bol_esit(v)
         self.assertEqual(self.client.get(bol).status_code, 302)                                            # bölünmüş karta bölme ekranı açılmaz
         self.assertNotContains(self.client.get(reverse("core:duran_varlik_detay", args=[v.pk])), bol)
+
+
+class AyniKartCokSatirTest(BolmeBase):
+    """Aynı demirbaş kartı tek satış faturasında birden çok 'Demirbaş satışı' satırıyla satılabilir: bedeller toplanır, maliyet/amortisman/kâr-zarar TEK kez."""
+
+    def kartlar(self, maliyet="460000", amort="0"):
+        return self.bol_esit(self.kart(maliyet, amort))
+
+    def test_iki_satir_ayni_kart_maliyet_tek_kez_kar_zarar_sifir(self):
+        y1, y2 = self.kartlar()
+        f = self._fatura([self._dv_satir(y1, "100000", self.kdv20), self._dv_satir(y1, "130000", self.kdv0)])
+        s = self._fis(f)
+        self.assertEqual(s[("120.01", "B")][0], Dc("250000.00"))                                       # 100.000 + 20.000 KDV + 130.000
+        self.assertEqual(s[("391.20", "A")][0], Dc("20000.00"))
+        self.assertEqual(s[("253", "A")][0], Dc("230000.00"))                                           # maliyet TEK kez
+        self.assertNotIn(("679", "A"), s)
+        self.assertNotIn(("770.04", "B"), s)                                                            # kâr-zarar 0
+        self.assertEqual(sum(x.borc for x in f.fis.satirlar.all()), sum(x.alacak for x in f.fis.satirlar.all()))
+        self.assertEqual(f.satirlar.filter(silindi=False, demirbas=y1).count(), 2)                      # iki fatura satırı
+        y1.refresh_from_db()
+        y2.refresh_from_db()
+        self.assertEqual((y1.durum, y1.satis_faturasi_id, y2.durum), ("SATILDI", f.pk, "AKTIF"))
+        self.assertEqual(_bak("253"), Dc("230000.00"))
+
+    def test_amortisman_bir_kez_ve_kar_toplam_bedelden(self):
+        y1, _ = self.kartlar(amort="46000")                                                              # kart: 230.000 maliyet, 23.000 amortisman
+        f = self._fatura([self._dv_satir(y1, "100000", self.kdv20), self._dv_satir(y1, "130000", self.kdv0)])
+        s = self._fis(f)
+        self.assertEqual((s[("253", "A")][0], s[("257", "B")][0]), (Dc("230000.00"), Dc("23000.00")))
+        self.assertEqual(s[("679", "A")][0], Dc("23000.00"))                                            # 230.000 − (230.000 − 23.000)
+
+    def test_toplam_bedel_defter_degerinden_dusukse_zarar_tek_satir(self):
+        y1, _ = self.kartlar()
+        f = self._fatura([self._dv_satir(y1, "100000", self.kdv20), self._dv_satir(y1, "100000", self.kdv0)])
+        s = self._fis(f)
+        self.assertEqual((s[("253", "A")][0], s[("770.04", "B")][0]), (Dc("230000.00"), Dc("30000.00")))
+
+    def test_uc_satir_iki_kart(self):
+        y1, y2 = self.kartlar()
+        f = self._fatura([self._dv_satir(y1, "100000", self.kdv20), self._dv_satir(y2, "230000", self.kdv0), self._dv_satir(y1, "130000", self.kdv0)])
+        s = self._fis(f)
+        self.assertEqual(sorted(x.alacak for x in f.fis.satirlar.filter(hesap_id="253", silindi=False)), [Dc("230000.00"), Dc("230000.00")])   # her kartın maliyeti 1 kez
+        self.assertEqual(s[("120.01", "B")][0], Dc("480000.00"))
+        self.assertEqual(_bak("253"), Dc("0.00"))
+
+    def test_baska_faturada_ikinci_kez_satilamaz(self):
+        y1, _ = self.kartlar()
+        self._fatura([self._dv_satir(y1, "100000"), self._dv_satir(y1, "130000", self.kdv0)])
+        with self.assertRaises(fs.FaturaHatasi):
+            self._fatura([self._dv_satir(y1, "10")])
+
+    def test_taslak_onay_guncelle_ve_silme(self):
+        y1, y2 = self.kartlar()
+        t = fs.fatura_taslak_olustur(cari_id=self.cari.pk, tarih=D(2026, 3, 10), tip_id=self.satis.pk, kullanici=self.su,
+                                     satirlar=[self._dv_satir(y1, "100000", self.kdv20), self._dv_satir(y1, "130000", self.kdv0)])
+        y1.refresh_from_db()
+        self.assertEqual(y1.durum, "AKTIF")                                                              # taslakta satılmaz
+        fs.fatura_onayla(t, kullanici=self.su)
+        t.refresh_from_db()
+        s = self._fis(t)
+        self.assertEqual((s[("253", "A")][0], s[("120.01", "B")][0]), (Dc("230000.00"), Dc("250000.00")))
+        y1.refresh_from_db()
+        self.assertEqual(y1.durum, "SATILDI")
+        fs.fatura_guncelle(t, tip_id=self.satis.pk, cari_id=self.cari.pk, tarih=D(2026, 3, 10), kullanici=self.su,
+                           satirlar=[self._dv_satir(y1, "120000", self.kdv20), self._dv_satir(y1, "110000", self.kdv0)])
+        t.refresh_from_db()
+        s = self._fis(t)
+        self.assertEqual((s[("253", "A")][0], s[("391.20", "A")][0]), (Dc("230000.00"), Dc("24000.00")))   # maliyet yine tek kez
+        fs.fatura_sil(t, kullanici=self.su)
+        y1.refresh_from_db()
+        self.assertEqual(y1.durum, "AKTIF")                                                              # silinince kart aktife döner
+        self.assertEqual(_bak("253"), Dc("460000.00"))

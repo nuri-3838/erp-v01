@@ -494,7 +494,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
     if tip.gider and not alis:
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
 
-    demirbas_idler = set()
+    dv_satis = {}
     for i, g in enumerate(satirlar, start=1):
         stok, hesap, kdv, tevkifat, proje, dv = _satir_coz(
             g, i, tip.gider, sahsi_ortak=sahsi_ortak, satis=not alis, fatura_pk=fatura_pk,
@@ -502,9 +502,6 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         if dv is not None:
-            if dv.pk in demirbas_idler:
-                raise FaturaHatasi(f"Satır {i}: {dv.demirbas_kodu} aynı faturada iki kez satılamaz.")
-            demirbas_idler.add(dv.pk)
             miktar = Decimal("1")                  # kart tek birimdir; birim fiyat = satış bedeli
 
         # Mal/gider hesabı: gider faturasında satırın kendi gider hesabı; diğer tiplerde
@@ -533,11 +530,9 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         # Mal/gider/gelir satırı (alış: Borç, satış: Alacak). Şahsi alışta KDV DAHİL
         # (gross) tutarla ortak hesabına borçlanır — ortak faturanın tamamını öder.
         if dv is not None:
-            # Demirbaş satışı: 25x maliyet alacak, 257 borç, kâr 679 / zarar 770.04 (TL; cari TL'si denge satırı).
-            dv_satirlar, dv_b, dv_a = _demirbas_satirlari(dv, yuvarla(satir_tutar * kur, 2))
-            yevmiye_satirlari.extend(dv_satirlar)
-            borc_tl += dv_b
-            alacak_tl += dv_a
+            # Demirbaş satışı: aynı kart birden çok satırda olabilir (ör. biri %20 KDV'li, biri KDV'siz) — satış bedelleri TOPLANIR; kartın maliyet/
+            # amortisman/kâr-zarar satırları döngüden sonra TEK kez yazılır.
+            dv_satis.setdefault(dv.pk, [dv, SIFIR])[1] += yuvarla(satir_tutar * kur, 2)
         else:
             mal_taraf = "B" if alis else "A"
             mal_tutar = (satir_tutar + satir_kdv) if sahsi else satir_tutar
@@ -575,6 +570,12 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         cari_pb += satir_tutar + kdv_net
         matrah_toplam += satir_tutar
         hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv))
+
+    for dv_, satis_tl in dv_satis.values():               # aynı kart birden çok satırda → maliyet/amortisman/kâr-zarar TEK kez
+        dv_satirlar, dv_b, dv_a = _demirbas_satirlari(dv_, satis_tl)
+        yevmiye_satirlari.extend(dv_satirlar)
+        borc_tl += dv_b
+        alacak_tl += dv_a
 
     # KDV satırları (alış: Borç, satış: Alacak)
     for hkod, tutar in kdv_hesap_toplam.items():
@@ -644,7 +645,7 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_
 
     sahsi_ortak = _ortak_hesabi_coz(sahsi_ortak_id) if sahsi_ortak_id else None
     hazir = []
-    demirbas_idler = set()
+    dv_satis = {}
     for i, g in enumerate(satirlar, start=1):
         stok, hesap, kdv, tevkifat, proje, dv = _satir_coz(
             g, i, gider, sahsi_ortak=sahsi_ortak, satis=satis, fatura_pk=fatura_pk,
@@ -652,9 +653,6 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         if dv is not None:
-            if dv.pk in demirbas_idler:
-                raise FaturaHatasi(f"Satır {i}: {dv.demirbas_kodu} aynı faturada iki kez satılamaz.")
-            demirbas_idler.add(dv.pk)
             miktar = Decimal("1")
         hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv))
     return cari, pb, hazir
@@ -703,6 +701,7 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
     if tip.gider and not alis:
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
 
+    dv_satis = {}
     for i, satir in enumerate(satirlar, start=1):
         dv = satir.demirbas if satir.demirbas_id else None
         if tip.gider:
@@ -734,11 +733,9 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
         kdv_net = satir_kdv - tev
 
         if dv is not None:
-            # Demirbaş satışı: 25x maliyet alacak, 257 borç, kâr 679 / zarar 770.04 (TL; cari TL'si denge satırı).
-            dv_satirlar, dv_b, dv_a = _demirbas_satirlari(dv, yuvarla(satir_tutar * kur, 2))
-            yevmiye_satirlari.extend(dv_satirlar)
-            borc_tl += dv_b
-            alacak_tl += dv_a
+            # Demirbaş satışı: aynı kart birden çok satırda olabilir (ör. biri %20 KDV'li, biri KDV'siz) — satış bedelleri TOPLANIR; kartın maliyet/
+            # amortisman/kâr-zarar satırları döngüden sonra TEK kez yazılır.
+            dv_satis.setdefault(dv.pk, [dv, SIFIR])[1] += yuvarla(satir_tutar * kur, 2)
         else:
             mal_taraf = "B" if alis else "A"
             mal_tutar = (satir_tutar + satir_kdv) if sahsi else satir_tutar
@@ -773,6 +770,12 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
 
         cari_pb += satir_tutar + kdv_net
         matrah_toplam += satir_tutar
+
+    for dv_, satis_tl in dv_satis.values():               # aynı kart birden çok satırda → maliyet/amortisman/kâr-zarar TEK kez
+        dv_satirlar, dv_b, dv_a = _demirbas_satirlari(dv_, satis_tl)
+        yevmiye_satirlari.extend(dv_satirlar)
+        borc_tl += dv_b
+        alacak_tl += dv_a
 
     for hkod, tutar in kdv_hesap_toplam.items():
         kdv_taraf = "B" if alis else "A"
