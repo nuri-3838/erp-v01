@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.storage import (
-    aday_ek_yolu, bordro_dosya_yolu, cari_ek_yolu, cek_gorsel_yolu, fatura_ek_yolu, ik_ozel_depo, ozel_depo,
+    aday_ek_yolu, bordro_dosya_yolu, cari_ek_yolu, kdv_mahsup_dosya_yolu, cek_gorsel_yolu, fatura_ek_yolu, ik_ozel_depo, ozel_depo,
     personel_belge_yolu, personel_foto_yolu,
 )
 
@@ -163,6 +163,7 @@ class YevmiyeFisi(TemelModel):
         DONEMSEL = "DONEMSEL", "Dönemsel Dağıtım (otomatik)"
         CARI_VIRMAN = "CARI_VIRMAN", "Cari Virman (otomatik)"
         BORDRO = "BORDRO", "Personel Bordro Tahakkuku (otomatik)"
+        KDV_MAHSUP = "KDV_MAHSUP", "KDV Dönem Mahsubu (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -205,6 +206,11 @@ class YevmiyeFisi(TemelModel):
     # Kaynak=BORDRO fişin kaynağı olan aylık personel bordrosu (bordro başına TEK fiş); düzenle/sil bordro ekranından.
     personel_bordro = models.ForeignKey(
         "PersonelBordro", verbose_name="kaynak personel bordrosu", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="fisler",
+    )
+    # Kaynak=KDV_MAHSUP fişin kaynağı olan KDV dönem mahsubu (dönem başına TEK fiş); düzenle/sil KDV Dönem Mahsubu ekranından.
+    kdv_mahsup = models.ForeignKey(
+        "KdvMahsup", verbose_name="kaynak KDV dönem mahsubu", null=True, blank=True,
         on_delete=models.PROTECT, related_name="fisler",
     )
     # Kaynak=KREDI fişin kaynağı olan kredi (hareket motoru); kasa ile aynı amaç.
@@ -3742,3 +3748,35 @@ class PersonelBordroSatir(TemelModel):
     @property
     def personel_adi(self):
         return self.cari.unvan if self.cari_id else self.ad_soyad
+
+
+class KdvMahsup(TemelModel):
+    """KDV dönem mahsubu (191/391/190/360.30): beyanname verilince AY SONU tarihli TEK otomatik fiş (kaynak=KDV_MAHSUP, fiş→mahsup bağı). Alanlardaki ERP
+    değerleri kayıt anındaki hesaplamadır (liste + "mahsup sonrası değişiklik" tespiti); bakiyeler yine defterden hesaplanır. Bkz. core.services.kdv_mahsup."""
+
+    yil = models.PositiveSmallIntegerField("dönem yılı")
+    ay = models.PositiveSmallIntegerField("dönem ayı")
+    donem_sonu = models.DateField("dönem sonu (fiş tarihi)")
+    beyan_devreden = models.DecimalField("beyan: sonraki döneme devreden KDV", max_digits=18, decimal_places=2, default=0)
+    beyan_odenecek = models.DecimalField("beyan: ödenecek KDV", max_digits=18, decimal_places=2, default=0)
+    fark_hesap = models.ForeignKey(HesapPlani, verbose_name="fark hesabı", on_delete=models.PROTECT, related_name="+")
+    aciklama = models.CharField("açıklama", max_length=200, blank=True)
+    dosya = models.FileField("beyanname PDF", storage=ozel_depo, upload_to=kdv_mahsup_dosya_yolu, blank=True)
+    orijinal_ad = models.CharField("özgün dosya adı", max_length=255, blank=True)
+    erp_191 = models.DecimalField("ERP 191 bakiyesi", max_digits=18, decimal_places=2, default=0)
+    erp_391 = models.DecimalField("ERP 391 bakiyesi", max_digits=18, decimal_places=2, default=0)
+    erp_190 = models.DecimalField("önceki 190 bakiyesi", max_digits=18, decimal_places=2, default=0)
+    erp_devreden = models.DecimalField("ERP devreden (190+191−391)", max_digits=18, decimal_places=2, default=0)
+    fark = models.DecimalField("fark (ERP − beyan)", max_digits=18, decimal_places=2, default=0)
+
+    class Meta:
+        db_table = "kdv_mahsup"
+        verbose_name = "KDV dönem mahsubu"
+        verbose_name_plural = "KDV dönem mahsupları"
+        ordering = ["-yil", "-ay", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["yil", "ay"], condition=models.Q(silindi=False), name="uq_kdv_mahsup_donem_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.ay:02d}/{self.yil} KDV mahsubu"

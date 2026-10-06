@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -60,7 +60,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
-    YevmiyeFisi, YevmiyeSatir, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
+    YevmiyeFisi, YevmiyeSatir, KdvMahsup, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
     MesaiKaydi, MesaiIzinliAg,
 )
@@ -102,6 +102,7 @@ from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
 from core.services import bordro as bordro_servis
 from core.services import finans_ozet as finans_ozet_servis
+from core.services import kdv_mahsup as kdv_servis
 from core.services import kk_donem as kk_donem_servis
 from core.services import doviz_islem as doviz_islem_servis
 from core.services import kur_degerleme as kur_degerleme_servis
@@ -299,6 +300,9 @@ def fis_duzenle(request, pk):
         messages.info(request, "Bu fiş bir cari kesinti/masraf hareketinden oluştu; cari ekstresinden düzenlenir.")
         return (redirect("core:cari_ekstresi", pk=fis.cari_id) if fis.cari_id
                 else redirect("core:fis_detay", pk=fis.pk))
+    if fis.kaynak == YevmiyeFisi.Kaynak.KDV_MAHSUP:
+        messages.info(request, "Bu fiş bir KDV dönem mahsubundan oluştu; KDV Dönem Mahsubu ekranından düzenlenir.")
+        return redirect("core:kdv_mahsup_listesi")
     if fis.kaynak == YevmiyeFisi.Kaynak.BORDRO:
         messages.info(request, "Bu fiş bir personel bordrosundan oluştu; bordro ekranından düzenlenir.")
         return (redirect("core:bordro_detay", pk=fis.personel_bordro_id) if fis.personel_bordro_id
@@ -399,6 +403,9 @@ def fis_sil_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.CARI_KESINTI and fis.cari_id:
         messages.info(request, "Bu fiş bir cari kesinti/masraf hareketinden oluştu; silmek için cari ekstresini kullanın.")
         return redirect("core:cari_ekstresi", pk=fis.cari_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.KDV_MAHSUP:
+        messages.info(request, "Bu fiş bir KDV dönem mahsubundan oluştu; silmek için KDV Dönem Mahsubu ekranını kullanın.")
+        return redirect("core:kdv_mahsup_listesi")
     if fis.kaynak == YevmiyeFisi.Kaynak.BORDRO and fis.personel_bordro_id:
         messages.info(request, "Bu fiş bir personel bordrosundan oluştu; silmek için bordro ekranını kullanın.")
         return redirect("core:bordro_detay", pk=fis.personel_bordro_id)
@@ -8767,3 +8774,100 @@ def kredi_karti_taksit_onerileri(request):
             messages.error(request, str(e))
         return redirect("core:kredi_karti_taksit_onerileri")
     return render(request, "core/kredi_karti_taksit_onerileri.html", {"oneriler": kk_donem_servis.oneriler()})
+
+
+
+# === MUHASEBE — KDV Dönem Mahsubu (191 / 391 / 190 / 360.30) ===
+def _kdv_baglam(request, m=None):
+    """Mahsup formu: (form, önizleme). POST ``islem=onizle`` → hesapla ve göster; ``islem=kaydet`` → yaz."""
+    if request.method == "POST":
+        return KdvMahsupForm(request.POST, request.FILES, donem_sabit=m is not None, initial=({"yil": m.yil, "ay": m.ay} if m is not None else None))
+    if m is None:
+        bugun = timezone.localdate()
+        onceki = bugun.replace(day=1) - datetime.timedelta(days=1)
+        return KdvMahsupForm(initial={"yil": onceki.year, "ay": onceki.month, "fark_hesap": "689"})
+    return KdvMahsupForm(donem_sabit=True, initial={
+        "yil": m.yil, "ay": m.ay, "beyan_devreden": m.beyan_devreden, "beyan_odenecek": m.beyan_odenecek, "fark_hesap": m.fark_hesap_id, "aciklama": m.aciklama})
+
+
+def _kdv_kaydet_ekran(request, m=None):
+    form = _kdv_baglam(request, m)
+    onizleme, yanit = None, None
+    if request.method == "POST" and form.is_valid():
+        cd = form.cleaned_data
+        yil, ay = (m.yil, m.ay) if m is not None else (cd["yil"], cd["ay"])
+        fis = kdv_servis.fis_of(m) if m is not None else None
+        try:
+            onizleme = kdv_servis.hesapla(yil=yil, ay=ay, beyan_devreden=cd.get("beyan_devreden"), beyan_odenecek=cd.get("beyan_odenecek"),
+                                          fark_hesap_kodu=cd["fark_hesap"], haric_fis=fis)
+            if request.POST.get("islem") == "kaydet":
+                kw = dict(beyan_devreden=cd.get("beyan_devreden"), beyan_odenecek=cd.get("beyan_odenecek"), fark_hesap_kodu=cd["fark_hesap"],
+                          aciklama=cd["aciklama"], dosya=cd.get("dosya") or None, kullanici=request.user)
+                if m is None:
+                    m = kdv_servis.olustur(yil=yil, ay=ay, **kw)
+                    messages.success(request, f"{kdv_servis.donem_adi(m.yil, m.ay)} KDV mahsubu kaydedildi: fiş {kdv_servis.fis_of(m).yil}/{kdv_servis.fis_of(m).fis_no}.")
+                else:
+                    kdv_servis.guncelle(m, dosyayi_kaldir=cd.get("dosyayi_kaldir"), **kw)
+                    messages.success(request, f"{kdv_servis.donem_adi(m.yil, m.ay)} KDV mahsubu güncellendi; fiş aynı numarayla yeniden yazıldı.")
+                yanit = redirect("core:kdv_mahsup_listesi")
+        except kdv_servis.KdvMahsupHatasi as e:
+            form.add_error(None, str(e))
+            if onizleme is None:
+                onizleme = None
+    return form, onizleme, yanit
+
+
+@ekran_gerekli("kdv_mahsup")
+def kdv_mahsup_listesi(request):
+    satirlar = []
+    for m in kdv_servis.aktifler():
+        sonraki = kdv_servis.sonraki_mahsup(m)
+        satirlar.append({"m": m, "fis": kdv_servis.fis_of(m), "degisiklik": kdv_servis.degisiklik_var(m), "sonraki": sonraki,
+                         "donem": kdv_servis.donem_adi(m.yil, m.ay)})
+    return render(request, "core/kdv_mahsup_listesi.html", {"satirlar": satirlar})
+
+
+@ekran_gerekli("kdv_mahsup")
+def kdv_mahsup_ekle(request):
+    form, onizleme, yanit = _kdv_kaydet_ekran(request)
+    if yanit:
+        return yanit
+    return render(request, "core/kdv_mahsup_form.html", {"form": form, "o": onizleme, "duzenle": False})
+
+
+@ekran_gerekli("kdv_mahsup")
+def kdv_mahsup_duzenle(request, pk):
+    m = get_object_or_404(KdvMahsup, pk=pk, silindi=False)
+    sonraki = kdv_servis.sonraki_mahsup(m)
+    if sonraki is not None:
+        messages.error(request, f"{kdv_servis.donem_adi(sonraki.yil, sonraki.ay)} dönemine ait mahsup var; bu mahsup düzenlenemez "
+                                f"(190 açılışı sonraki dönemi etkiler). Önce {kdv_servis.donem_adi(sonraki.yil, sonraki.ay)} mahsubunu silin.")
+        return redirect("core:kdv_mahsup_listesi")
+    form, onizleme, yanit = _kdv_kaydet_ekran(request, m)
+    if yanit:
+        return yanit
+    return render(request, "core/kdv_mahsup_form.html", {"form": form, "o": onizleme, "duzenle": True, "m": m})
+
+
+@ekran_gerekli("kdv_mahsup")
+def kdv_mahsup_sil(request, pk):
+    m = get_object_or_404(KdvMahsup, pk=pk, silindi=False)
+    fis = kdv_servis.fis_of(m)
+    sonraki = kdv_servis.sonraki_mahsup(m)
+    if sonraki is not None or fis is None:
+        messages.error(request, (f"{kdv_servis.donem_adi(sonraki.yil, sonraki.ay)} dönemine ait mahsup var; önce onu silin (en yeni dönemden geriye doğru)."
+                                 if sonraki is not None else "Mahsubun fişi bulunamadı."))
+        return redirect("core:kdv_mahsup_listesi")
+    return _fis_sil_akisi(
+        request, fis, baslik=f"KDV dönem mahsubu · {kdv_servis.donem_adi(m.yil, m.ay)}", geri=reverse("core:kdv_mahsup_listesi"),
+        sil=lambda: kdv_servis.sil(m, kullanici=request.user))
+
+
+@never_cache
+@ekran_gerekli("kdv_mahsup")
+def kdv_mahsup_dosya(request, pk):
+    """Beyanname PDF'ini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""
+    m = get_object_or_404(KdvMahsup, pk=pk, silindi=False)
+    if not m.dosya:
+        raise Http404
+    return _ozel_dosya_yanit(m.dosya, m.orijinal_ad)

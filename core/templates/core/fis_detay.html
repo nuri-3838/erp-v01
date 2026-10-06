@@ -58,6 +58,10 @@
     <p class="yardim" style="margin:0 0 .6rem">✂️ Bu fiş bir <strong>cari kesinti/masraf hareketinden</strong> otomatik oluştu;
       düzenleme/silme cari ekstresinden yapılır.</p>
     {% if fis.cari_id %}<a class="dugme" href="{% url 'core:cari_ekstresi' fis.cari_id %}">📄 Cari ekstresine git</a>{% endif %}
+  {% elif fis.kaynak == 'KDV_MAHSUP' %}
+    <p class="yardim" style="margin:0 0 .6rem">🧾 Bu fiş bir <strong>KDV dönem mahsubundan</strong> otomatik oluştu;
+      düzenleme/silme KDV Dönem Mahsubu ekranından yapılır.</p>
+    <a class="dugme" href="{% url 'core:kdv_mahsup_listesi' %}">🧾 KDV Dönem Mahsubu'na git</a>
   {% elif fis.kaynak == 'BORDRO' %}
     <p class="yardim" style="margin:0 0 .6rem">👥 Bu fiş bir <strong>personel bordrosundan</strong> otomatik oluştu;
       düzenleme/silme bordro ekranından yapılır.</p>

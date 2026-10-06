@@ -3383,3 +3383,27 @@ class YatirimProjesiKapatForm(forms.Form):
                                        initial=YatirimProjesi.KapanisNedeni.SATILDI)
     kapanis_aciklama = forms.CharField(label="Açıklama", required=False,
                                        widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Satıldıysa: parsel/alıcı bilgisi; 'Diğer' ise zorunlu"}))
+
+
+class KdvMahsupForm(forms.Form):
+    """KDV dönem mahsubu girdileri: dönem (yıl/ay; fiş tarihi ay sonu) + beyanname tutarları + fark hesabı + açıklama + beyanname PDF."""
+    yil = forms.IntegerField(label="Dönem yılı", min_value=2000, max_value=2100)
+    ay = forms.TypedChoiceField(label="Dönem ayı", coerce=int, choices=[
+        (i, a) for i, a in enumerate(["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]) if i])
+    beyan_devreden = TRDecimalField(label="Sonraki döneme devreden KDV (beyan)", basamak=2, required=False,
+                                    help_text="KDV1 beyannamesindeki 'sonraki döneme devreden KDV'. Ödenecek varsa 0.")
+    beyan_odenecek = TRDecimalField(label="Ödenecek KDV (beyan)", basamak=2, required=False, help_text="Devreden varsa 0.")
+    fark_hesap = forms.ChoiceField(label="Fark hesabı", choices=[], initial="689",
+                                   help_text="ERP ile beyan arasındaki fark bu hesaba yazılır (ERP fazlaysa BORÇ, eksikse ALACAK).")
+    aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Ops. (fiş açıklamasına eklenir)"}))
+    dosya = forms.FileField(label="Beyanname PDF", required=False, widget=forms.ClearableFileInput(attrs={"accept": "application/pdf,.pdf"}))
+    dosyayi_kaldir = forms.BooleanField(label="Mevcut PDF'i kaldır", required=False)
+
+    def __init__(self, *args, donem_sabit=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.kdv_mahsup import fark_hesap_secenekleri
+        self.fields["fark_hesap"].choices = [(h.hesap_kodu, f"{h.hesap_kodu}  {h.hesap_adi}") for h in fark_hesap_secenekleri()]
+        if donem_sabit:                                              # düzenlemede dönem değişmez (fiş yılı/numarası korunur)
+            self.fields["yil"].disabled = True
+            self.fields["ay"].disabled = True

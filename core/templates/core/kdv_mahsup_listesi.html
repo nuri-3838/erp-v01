@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}KDV Dönem Mahsubu · ERP v0.1{% endblock %}
+{% block sayfa_adi %}KDV Dönem Mahsubu{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik"><span class="emoji">🧾</span>KDV Dönem Mahsubu</h1>
+<p class="sayfa-alt">KDV1 beyannamesi verilince ay sonu tarihli <strong>tek otomatik fiş</strong>: 391 BORÇ · 191 ALACAK · önceki 190 kapanır · 190 BORÇ (beyan devreden) ·
+  360.30 ALACAK (ödenecek) · fark hesabı. KDV2 tevkifat (360.10) bu fişe girmez. Aynı dönem için bir mahsup yapılabilir; sonraki dönem mahsubu varsa önceki düzenlenemez/silinemez.</p>
+<p><a class="dugme birincil" href="{% url 'core:kdv_mahsup_ekle' %}">+ Yeni mahsup</a></p>
+
+<div class="tablo-kapsayici genis"><table>
+  <thead><tr><th>Dönem</th><th>Fiş (ay sonu)</th><th class="sag">ERP 191</th><th class="sag">ERP 391</th><th class="sag">Önceki 190</th><th class="sag">ERP devreden</th>
+    <th class="sag">Beyan devreden</th><th class="sag">Beyan ödenecek</th><th class="sag">Fark</th><th>Fark hesabı</th><th>PDF</th><th>Uyarı</th><th></th></tr></thead>
+  <tbody>
+  {% for r in satirlar %}
+    <tr>
+      <td><strong>{{ r.donem }}</strong></td>
+      <td>{% if r.fis %}<a href="{% url 'core:fis_detay' r.fis.pk %}">{{ r.fis.yil }}/{{ r.fis.fis_no }}</a> <span class="mono yardim">{{ r.fis.tarih|date:"d.m.Y" }}</span>{% else %}—{% endif %}</td>
+      <td class="sag mono">{{ r.m.erp_191|tr_para }}</td><td class="sag mono">{{ r.m.erp_391|tr_para }}</td><td class="sag mono">{{ r.m.erp_190|tr_para }}</td>
+      <td class="sag mono">{{ r.m.erp_devreden|tr_para }}</td>
+      <td class="sag mono">{{ r.m.beyan_devreden|tr_para }}</td><td class="sag mono">{{ r.m.beyan_odenecek|tr_para }}</td>
+      <td class="sag mono {% if r.m.fark %}hata-metin{% endif %}" {% if r.m.fark %}style="color:var(--hata)"{% endif %}>{{ r.m.fark|tr_para }}</td>
+      <td class="mono">{{ r.m.fark_hesap_id }}</td>
+      <td>{% if r.m.dosya %}<a href="{% url 'core:kdv_mahsup_dosya' r.m.pk %}" target="_blank">📎 PDF</a>{% else %}—{% endif %}</td>
+      <td>
+        {% if r.degisiklik %}<div style="color:var(--hata)">⚠ Mahsup sonrası 191/391 değişikliği var</div>{% endif %}
+        {% if r.sonraki %}<div class="yardim">🔒 {{ r.sonraki.ay|stringformat:"02d" }}/{{ r.sonraki.yil }} mahsubu var (düzenleme kilitli)</div>{% endif %}
+      </td>
+      <td>
+        {% if not r.sonraki %}<a class="dugme-ikincil" href="{% url 'core:kdv_mahsup_duzenle' r.m.pk %}">Düzenle</a>
+          {% if user.is_superuser %}<a class="sil" style="display:inline-block;text-decoration:none;padding:.3rem .7rem;border-radius:8px" href="{% url 'core:kdv_mahsup_sil' r.m.pk %}">Sil</a>{% endif %}{% endif %}
+      </td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="13" class="yardim" style="text-align:center;padding:1.4rem 0">Henüz KDV dönem mahsubu yok.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

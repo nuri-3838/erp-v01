@@ -28,6 +28,7 @@ MODULLER = (
         Ekran("kurlar", "Kurlar", "core:kurlar"),
         Ekran("kur_degerleme", "Kur Değerleme", "core:kur_degerleme"),
         Ekran("donemsel_dagitim", "Dönemsel Dağıtım (180)", "core:donemsel_dagitim"),
+        Ekran("kdv_mahsup", "KDV Dönem Mahsubu", "core:kdv_mahsup_listesi"),
         Ekran("hesap_plani", "Hesap Planı", "core:hesap_plani"),
         Ekran("yatirim_projeleri", "Yatırım Projeleri", "core:yatirim_projeleri"),
         Ekran("duran_varliklar", "Duran Varlıklar", "core:duran_varliklar"),

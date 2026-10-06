@@ -93,3 +93,7 @@ def fatura_ek_yolu(instance, ad):
 
 def bordro_dosya_yolu(instance, ad):
     return _uuid_yolu("personel_bordro", ad)
+
+
+def kdv_mahsup_dosya_yolu(instance, ad):
+    return _uuid_yolu("kdv_mahsup", ad)

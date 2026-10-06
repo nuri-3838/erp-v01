@@ -1,0 +1,89 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{% if duzenle %}KDV Mahsubu Düzenle{% else %}Yeni KDV Mahsubu{% endif %} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}KDV Dönem Mahsubu{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .km-tablo th, .km-tablo td { white-space:nowrap; }
+  .km-toplam td, .km-toplam th { font-weight:650; border-top:2px solid var(--cizgi-koyu); background:#f7f9fd; }
+  .km-uyari { border-radius:12px; padding:.7rem 1rem; margin:.6rem 0; background:#fff1de; border:1px solid #f0c48a; color:#7a4300; }
+  .km-ok { border-radius:12px; padding:.7rem 1rem; margin:.6rem 0; background:#e7f7ec; border:1px solid #9bd6ad; color:#0a5a1e; }
+  .km-iki { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(20rem,100%),1fr)); gap:1rem; }
+</style>
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:kdv_mahsup_listesi' %}">← KDV Dönem Mahsubu</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>{% if duzenle %}{{ m.ay|stringformat:"02d" }}/{{ m.yil }} Mahsubunu Düzenle{% else %}Yeni KDV Dönem Mahsubu{% endif %}</h1>
+  </div>
+  {% if form.non_field_errors %}<div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
+
+  <form method="post" enctype="multipart/form-data" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Beyanname</h2>
+      <p class="yardim" style="margin-top:-.3rem">Fiş tarihi dönemin <strong>ay sonu</strong> olur (08/2026 → 31.08.2026). İlk mahsupta başlangıçtan (açılış kayıtları dahil) dönem sonuna kadar
+        tüm 191/391 bakiyeleri dahil edilir.</p>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.yil.id_for_label }}">{{ form.yil.label }}</label>{{ form.yil }}{% for e in form.yil.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.ay.id_for_label }}">{{ form.ay.label }}</label>{{ form.ay }}{% for e in form.ay.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.beyan_devreden.id_for_label }}">{{ form.beyan_devreden.label }}</label>{{ form.beyan_devreden }}
+          <p class="yardim">{{ form.beyan_devreden.help_text }}</p>{% for e in form.beyan_devreden.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.beyan_odenecek.id_for_label }}">{{ form.beyan_odenecek.label }}</label>{{ form.beyan_odenecek }}
+          <p class="yardim">{{ form.beyan_odenecek.help_text }}</p>{% for e in form.beyan_odenecek.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.fark_hesap.id_for_label }}">{{ form.fark_hesap.label }}</label>{{ form.fark_hesap }}
+          <p class="yardim">{{ form.fark_hesap.help_text }}</p>{% for e in form.fark_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.dosya.id_for_label }}">{{ form.dosya.label }}</label>{{ form.dosya }}
+          {% if duzenle and m.dosya %}<p class="yardim">Mevcut: <a href="{% url 'core:kdv_mahsup_dosya' m.pk %}" target="_blank">{{ m.orijinal_ad }}</a> · {{ form.dosyayi_kaldir }} {{ form.dosyayi_kaldir.label }}</p>{% endif %}
+          {% for e in form.dosya.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}{% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+    </section>
+
+    {% if o %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Önizleme — {{ o.donem }} (fiş tarihi {{ o.donem_sonu|date:"d.m.Y" }})</h2>
+      <div class="km-iki">
+        <div class="tablo-kapsayici"><table class="km-tablo">
+          <thead><tr><th>191 İndirilecek KDV</th><th class="sag">Bakiye</th></tr></thead>
+          <tbody>{% for x in o.l191 %}<tr><td><span class="mono">{{ x.kod }}</span> {{ x.ad }}</td><td class="sag mono">{{ x.tutar|tr_para }}</td></tr>{% empty %}<tr><td colspan="2" class="yardim">Bakiye yok</td></tr>{% endfor %}</tbody>
+          <tfoot><tr class="km-toplam"><th>191 toplam</th><td class="sag mono">{{ o.t191|tr_para }}</td></tr></tfoot>
+        </table></div>
+        <div class="tablo-kapsayici"><table class="km-tablo">
+          <thead><tr><th>391 Hesaplanan KDV</th><th class="sag">Bakiye (alacak)</th></tr></thead>
+          <tbody>{% for x in o.l391 %}<tr><td><span class="mono">{{ x.kod }}</span> {{ x.ad }}</td><td class="sag mono">{{ x.tutar|tr_para }}</td></tr>{% empty %}<tr><td colspan="2" class="yardim">Bakiye yok</td></tr>{% endfor %}</tbody>
+          <tfoot><tr class="km-toplam"><th>391 toplam</th><td class="sag mono">{{ o.t391|tr_para }}</td></tr></tfoot>
+        </table></div>
+      </div>
+      <div class="tablo-kapsayici" style="margin-top:1rem"><table class="km-tablo"><tbody>
+        <tr><td>Önceki dönemden 190 bakiyesi (devreden)</td><td class="sag mono">{{ o.a190|tr_para }}</td></tr>
+        <tr><td>ERP devreden = 190 + 191 − 391 {% if o.erp_devreden < 0 %}<span class="yardim">(negatif = ödenecek)</span>{% endif %}</td><td class="sag mono"><strong>{{ o.erp_devreden|tr_para }}</strong></td></tr>
+        <tr><td>Beyan: devreden {{ o.beyan_devreden|tr_para }} − ödenecek {{ o.beyan_odenecek|tr_para }}</td><td class="sag mono">{{ o.beyan|tr_para }}</td></tr>
+        <tr class="km-toplam"><td>Fark (ERP − beyan) → {{ o.fark_hesap }}</td><td class="sag mono" {% if o.fark %}style="color:var(--hata)"{% endif %}>{{ o.fark|tr_para }}</td></tr>
+      </tbody></table></div>
+      {% if o.uyari %}<div class="km-uyari">⚠️ {{ o.uyari }}</div>{% else %}<div class="km-ok">✓ ERP, beyanla birebir uyumlu (fark yok).</div>{% endif %}
+
+      <h3 style="margin:1rem 0 .4rem">Yazılacak fiş (kaynak: KDV Dönem Mahsubu)</h3>
+      <div class="tablo-kapsayici"><table class="km-tablo">
+        <thead><tr><th>Hesap</th><th>Açıklama</th><th class="sag">Borç</th><th class="sag">Alacak</th></tr></thead>
+        <tbody>
+          {% for s in o.satirlar %}<tr><td><span class="mono">{{ s.hesap }}</span> {{ s.ad }}</td><td>{{ s.aciklama }}</td>
+            <td class="sag mono">{% if s.taraf == "B" %}{{ s.tutar|tr_para }}{% endif %}</td><td class="sag mono">{% if s.taraf == "A" %}{{ s.tutar|tr_para }}{% endif %}</td></tr>
+          {% empty %}<tr><td colspan="4" class="yardim">Kapatılacak bakiye yok.</td></tr>{% endfor %}
+        </tbody>
+        <tfoot><tr class="km-toplam"><th colspan="2">Toplam {% if o.dengeli %}✓ dengeli{% else %}<span style="color:var(--hata)">DENGELİ DEĞİL</span>{% endif %}</th>
+          <td class="sag mono">{{ o.borc|tr_para }}</td><td class="sag mono">{{ o.alacak|tr_para }}</td></tr></tfoot>
+      </table></div>
+      <p class="yardim">PDF eki opsiyonel; onaylamadan önce dosyayı yukarıdaki alandan seçin. Onaylayınca fiş yazılır.</p>
+    </section>
+    {% endif %}
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:kdv_mahsup_listesi' %}">İptal</a>
+      <button type="submit" name="islem" value="onizle" class="dugme-ikincil">Önizle</button>
+      {% if o and not o.bos and o.dengeli %}<button type="submit" name="islem" value="kaydet" class="birincil">{% if duzenle %}Onayla ve fişi yeniden yaz{% else %}Onayla ve fişi yaz{% endif %}</button>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
