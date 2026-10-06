@@ -8698,13 +8698,4 @@ def bordro_dosya(request, pk):
 def finans_ozeti(request):
     """FİNANS özeti (dashboard): kasa/banka bakiyeleri, kredi kartı + kredi borcu, çek/senet durumu ve yaklaşan vadeler (yalnız okur)."""
     o = finans_ozet_servis.ozet(timezone.localdate())
-    c = o["cek"]
-    cek_satirlari = [
-        ("Alınan · portföyde", c["portfoy"], False), ("Alınan · bankada tahsilde", c["tahsilde"], False),
-        ("Alınan · bankada teminatta", c["teminatta"], False),
-        (f"Alınan · vadesi {o['yakin_gun']} gün içinde", c["alinan_yakin"], False), ("Alınan · vadesi geçmiş", c["alinan_vadesi_gecmis"], True),
-        ("Verilen · ödenecek (açık)", c["verilen"], False),
-        (f"Verilen · vadesi {o['yakin_gun']} gün içinde", c["verilen_yakin"], False), ("Verilen · vadesi geçmiş", c["verilen_vadesi_gecmis"], True),
-        ("Karşılıksız", c["karsiliksiz"], True),
-    ]
-    return render(request, "core/finans_ozet.html", {"o": o, "cek_satirlari": cek_satirlari})
+    return render(request, "core/finans_ozet.html", {"o": o})

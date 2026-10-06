@@ -78,6 +78,8 @@ class FinansOzetServisTest(FinansOzetBase):
         self.assertEqual((k["limit"], k["borc"], k["kullanilabilir"], k["doluluk"]), (Dc("100000.00"), Dc("30000.00"), Dc("70000.00"), 30))
         self.assertEqual(k["son_odeme"], D(2026, 10, 28))                                    # bugün 6'sı, son ödeme günü 28
         self.assertEqual(o["kart_borc_tl"], Dc("30000.00"))
+        self.assertEqual((o["kart_limit_tl"], o["kart_kullanilabilir_tl"]), (Dc("100000.00"), Dc("70000.00")))
+        self.assertEqual((k["kalan_gun"], k["ton"]), (22, "iyi"))                           # 28.10 − 06.10
         self.assertEqual(o["krediler"][0]["kalan"], Dc("200000.00"))
         self.assertEqual(o["kredi_tl"], Dc("200000.00"))
 
@@ -98,6 +100,14 @@ class FinansOzetServisTest(FinansOzetBase):
         self.assertEqual(tutar(c["verilen"]), [("TRY", Dc("23000.00"), 2)])
         self.assertEqual(tutar(c["verilen_vadesi_gecmis"]), [("TRY", Dc("3000.00"), 1)])
         self.assertEqual((o["cek_alinan_tl"], o["cek_verilen_tl"]), (Dc("22000.00"), Dc("23000.00")))
+        self.assertEqual(o["cek_net_tl"], Dc("-1000.00"))
+        al, ve = o["cek_ozet"]["alinan"], o["cek_ozet"]["verilen"]
+        self.assertEqual((al["toplam"], al["adet"]), (Dc("22000.00"), 3))
+        self.assertEqual([(p["ad"], p["tl"], p["ton"]) for p in al["parcalar"]],
+                         [("Portföyde", Dc("15000.00"), "iyi"), ("Tahsilde", Dc("7000.00"), "iyi"),
+                          ("30 gün içinde", Dc("10000.00"), "orta"), ("Vadesi geçmiş", Dc("5000.00"), "yuksek")])
+        self.assertEqual([(p["ad"], p["tl"]) for p in ve["parcalar"]], [("30 gün içinde", Dc("20000.00")), ("Vadesi geçmiş", Dc("3000.00"))])
+        self.assertIsNone(o["cek_ozet"]["karsiliksiz"])
         self.assertEqual([x.belge_no for x in o["yaklasan"]], ["V2", "A2", "V1", "A1"])        # vadeye göre; kapanmış çekler yok
         self.assertEqual(o["net_pozisyon"], Dc("133000") + Dc("22000") - Dc("30000") - Dc("200000") - Dc("23000"))
 
@@ -119,7 +129,7 @@ class FinansOzetEkranTest(FinansOzetBase):
         self.client.force_login(self.su)
         r = self.client.get(reverse("core:finans_ozet"))
         self.assertEqual(r.status_code, 200)
-        for metin in ("Finans Özeti", "133.000,00", "HALK KART", "Vadesi Yaklaşan", "V1"):
+        for metin in ("Finans Özeti", "133.000,00", "HALK KART", "Kullanılabilir Kart Limiti", "Kullanılabilir limit", "70.000,00", "Vadesi Yaklaşan", "V1"):
             self.assertContains(r, metin)
 
     def test_menude_finans_basligi_ozete_gider_ve_modul_acik(self):

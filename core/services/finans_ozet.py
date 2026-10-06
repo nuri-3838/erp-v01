@@ -98,7 +98,13 @@ def ozet(bugun=None):
             "limit": k.limit, "borc": borc, "kullanilabilir": k.limit - borc,
             "doluluk": int(min(100, (borc / k.limit * 100))) if k.limit else None,
             "kesim": k.kesim_gunu, "son_odeme": _sonraki_tarih(k.son_odeme_gunu, bugun), "pk": k.pk})
+    for r in kartlar:
+        r["kalan_gun"] = (r["son_odeme"] - bugun).days if r["son_odeme"] else None
+        d = r["doluluk"]
+        r["ton"] = "yuksek" if d is not None and d >= 85 else ("orta" if d is not None and d >= 60 else "iyi")
     kart_borc_tl = sum((_tl(r["borc"], r["pb"], kurlar) or r["borc"] for r in kartlar), SIFIR)
+    kart_limit_tl = sum((_tl(r["limit"], r["pb"], kurlar) or r["limit"] for r in kartlar), SIFIR)
+    kart_kullanilabilir_tl = sum((_tl(r["kullanilabilir"], r["pb"], kurlar) or r["kullanilabilir"] for r in kartlar), SIFIR)
 
     # --- Krediler -------------------------------------------------------------------------------------------------------
     krediler = []
@@ -140,14 +146,28 @@ def ozet(bugun=None):
         "karsiliksiz": _grup(cekler.filter(durum=D.KARSILIKSIZ)),
     }
     alinan_tl, verilen_tl = _tl_toplam(_grup(alinan_acik)), _tl_toplam(cek["verilen"])
+    def _parca(ad, gruplar, ton):
+        tl = _tl_toplam(gruplar)
+        return {"ad": ad, "tl": tl, "adet": sum(g["adet"] for g in gruplar), "ton": ton} if gruplar else None
+
+    cek_ozet = {
+        "alinan": {"toplam": alinan_tl, "adet": sum(g["adet"] for g in _grup(alinan_acik)), "parcalar": [p for p in (
+            _parca("Portföyde", cek["portfoy"], "iyi"), _parca("Tahsilde", cek["tahsilde"], "iyi"),
+            _parca("Teminatta", cek["teminatta"], "iyi"),
+            _parca(f"{YAKIN_GUN} gün içinde", cek["alinan_yakin"], "orta"), _parca("Vadesi geçmiş", cek["alinan_vadesi_gecmis"], "yuksek")) if p]},
+        "verilen": {"toplam": verilen_tl, "adet": sum(g["adet"] for g in cek["verilen"]), "parcalar": [p for p in (
+            _parca(f"{YAKIN_GUN} gün içinde", cek["verilen_yakin"], "orta"),
+            _parca("Vadesi geçmiş", cek["verilen_vadesi_gecmis"], "yuksek")) if p]},
+        "karsiliksiz": _parca("Karşılıksız", cek["karsiliksiz"], "yuksek"),
+    }
     yaklasan = list(cekler.filter(durum__in=[D.PORTFOYDE, D.TAHSILDE, D.TEMINATTA, D.VERILDI], vade__lte=yakin_son)
-                    .select_related("cari").order_by("vade", "id")[:15])
+                    .select_related("cari").order_by("vade", "id")[:8])
 
     return {
         "bugun": bugun, "kur_tarihi": kur_tarihi, "kurlar": kurlar,
         "kasalar": kasalar, "banka": banka, "pb_toplam": pb_toplam, "nakit_tl": nakit_tl, "bos_hesap": sum(1 for r in nakit if r["bos"]),
-        "kartlar": kartlar, "kart_borc_tl": kart_borc_tl, "kart_limit_tl": sum((r["limit"] for r in kartlar if r["pb"] == "TRY"), SIFIR),
+        "kartlar": kartlar, "kart_borc_tl": kart_borc_tl, "kart_limit_tl": kart_limit_tl, "kart_kullanilabilir_tl": kart_kullanilabilir_tl,
         "krediler": krediler, "kredi_tl": kredi_tl,
-        "cek": cek, "cek_alinan_tl": alinan_tl, "cek_verilen_tl": verilen_tl, "yaklasan": yaklasan, "yakin_gun": YAKIN_GUN,
+        "cek": cek, "cek_ozet": cek_ozet, "cek_net_tl": alinan_tl - verilen_tl, "cek_alinan_tl": alinan_tl, "cek_verilen_tl": verilen_tl, "yaklasan": yaklasan, "yakin_gun": YAKIN_GUN,
         "net_pozisyon": nakit_tl + alinan_tl - kart_borc_tl - kredi_tl - verilen_tl,
     }
