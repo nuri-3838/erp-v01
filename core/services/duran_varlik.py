@@ -145,6 +145,8 @@ def satir_bagla(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik
     """Kalemi karta bağlar VE kart maliyetini bağlı (silinmemiş) kalemlerin matrah
     toplamına göre otomatik günceller (bkz. baglanti_toplami) — elle girilmiş maliyet
     bundan sonra korunmaz."""
+    if varlik.durum == DuranVarlik.Durum.BOLUNDU:
+        raise DuranVarlikHatasi("Bölünmüş karta kalem bağlanamaz; yeni kartlardan birini kullanın.")
     satirlar = _dogrula_satirlar([satir_id], varlik.hesap_id, haric_varlik_pk=varlik.pk)
     varlik.fatura_satirlari.add(*satirlar)
     varlik.maliyet = baglanti_toplami(varlik)
@@ -156,6 +158,8 @@ def satir_bagla(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik
 def satir_cikar(varlik: DuranVarlik, satir_id, *, kullanici=None) -> DuranVarlik:
     """Kalemi karttan çıkarır VE kart maliyetini kalan bağlı kalemlerin matrah toplamına
     göre otomatik günceller (hiç kalem kalmazsa 0,00 olur)."""
+    if varlik.durum == DuranVarlik.Durum.BOLUNDU:
+        raise DuranVarlikHatasi("Bölünmüş kartın kalemleri değiştirilemez (önce 'Bölmeyi geri al').")
     satir = varlik.fatura_satirlari.filter(pk=satir_id).first()
     if not satir:
         raise DuranVarlikHatasi("Bu kalem karta bağlı değil.")
@@ -177,6 +181,8 @@ def baglanti_toplami(varlik: DuranVarlik) -> Decimal:
 def durum_degistir(varlik: DuranVarlik, *, durum, kullanici=None) -> DuranVarlik:
     if durum not in DuranVarlik.Durum.values:
         raise DuranVarlikHatasi("Geçersiz durum.")
+    if durum == DuranVarlik.Durum.BOLUNDU or varlik.durum == DuranVarlik.Durum.BOLUNDU:
+        raise DuranVarlikHatasi("Bölündü durumu yalnız Böl / Bölmeyi geri al işlemleriyle değişir.")
     if durum == DuranVarlik.Durum.SATILDI or varlik.durum == DuranVarlik.Durum.SATILDI:
         raise DuranVarlikHatasi(
             "Satıldı durumu yalnız satış faturasıyla değişir (faturayı silince kart Aktif'e döner).")
@@ -266,11 +272,14 @@ def silinebilir_mi(varlik: DuranVarlik) -> bool:
     "Aktifleştirmeyi Geri Al" akışıyla kaldırılır, bkz. core.services.yatirim_projesi
     .proje_geri_al)."""
     return (varlik.kaynak != DuranVarlik.Kaynak.PROJE
-            and varlik.durum != DuranVarlik.Durum.SATILDI
+            and varlik.durum not in (DuranVarlik.Durum.SATILDI, DuranVarlik.Durum.BOLUNDU)
+            and varlik.bolunen_kart_id is None
             and not varlik.fatura_satirlari.exists())
 
 
 def varlik_sil(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
+    if varlik.durum == DuranVarlik.Durum.BOLUNDU or varlik.bolunen_kart_id is not None:
+        raise DuranVarlikHatasi("Bölme ile oluşan/bölünen kart silinemez; önce 'Bölmeyi geri al'.")
     if varlik.durum == DuranVarlik.Durum.SATILDI:
         raise DuranVarlikHatasi("Satılmış kart silinemez (önce satış faturasını silin).")
     if varlik.kaynak == DuranVarlik.Kaynak.PROJE:
@@ -293,6 +302,8 @@ def varlik_sil(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
 def duran_varlik_guncelle(varlik: DuranVarlik, *, ad, maliyet=None, marka_model="", seri_no="",
                           notlar="", birikmis_amortisman=None, kullanici=None,
                           karsi_hesap_guncelle=False, karsi_hesap_kodu=None) -> DuranVarlik:
+    if varlik.durum == DuranVarlik.Durum.BOLUNDU:
+        raise DuranVarlikHatasi("Bölünmüş kart düzenlenemez (önce 'Bölmeyi geri al').")
     """Yalnız ad/marka-model/seri no/notlar/maliyet düzenlenebilir — hesap ve kaynak
     SABİTTİR (hesap kartın temsil ettiği muhasebe hesabını, kaynak kartın nasıl
     üretildiğini belirler; ikisi de düzenleme ekranından değiştirilemez). Kartın bağlı
@@ -396,8 +407,13 @@ def kart_ac(grup_kodu, ad, *, tarih, kaynak=DuranVarlik.Kaynak.FATURA, maliyet=S
 
 
 def hesaptaki_kart(hesap_kodu):
-    """Varlık hesabının (253.01.0001) silinmemiş kartı (hesap başına tek kart; satılmış kart da döner)."""
-    return DuranVarlik.objects.filter(hesap_id=hesap_kodu, silindi=False).first()
+    """Varlık hesabının (253.01.0001) silinmemiş kartı (hesap başına tek kart; satılmış kart da döner). BÖLÜNMÜŞ kart gruplarında (aynı hesapta birden
+    çok canlı kart) hangi kart olduğu belirsizdir → None döner (otomatik kalem bağlama/maliyet eşitleme yapılmaz; kontrol raporu farkı gösterir).
+    Yalnız BÖLÜNDÜ durumundaki (geçmiş) orijinal kart canlı sayılmaz."""
+    kartlar = list(DuranVarlik.objects.filter(hesap_id=hesap_kodu, silindi=False).exclude(durum=DuranVarlik.Durum.BOLUNDU)[:2])
+    if len(kartlar) == 1:
+        return kartlar[0]
+    return None if kartlar else DuranVarlik.objects.filter(hesap_id=hesap_kodu, silindi=False).first()
 
 
 def satiri_karta_bagla(satir, *, kullanici=None):
@@ -442,3 +458,135 @@ def kart_maliyetini_yenile(hesap_kodu, *, kullanici=None):
     kart.updated_by = kullanici
     kart.save(update_fields=["maliyet", "aktiflestirme_tarihi", "updated_by", "updated_at"])
     return kart
+
+
+# === BÖLME (kısmi satış) ====================================================================================================
+def bolunebilir_mi(varlik: DuranVarlik) -> bool:
+    """Yalnız AKTİF, satılmamış, bölünmemiş, silinmemiş kart bölünebilir (kart hesabı kartı: kaynak PROJE dahil)."""
+    return (not varlik.silindi and varlik.durum == DuranVarlik.Durum.AKTIF and varlik.satis_faturasi_id is None and varlik.maliyet > 0)
+
+
+def bolme_onerisi(varlik: DuranVarlik, adet: int):
+    """Eşit bölme önerisi: [{'ad', 'maliyet', 'amortisman'}]. Bölünemeyen kuruş SON karta eklenir (diğerleri kuruşta aşağı kesilir); birikmiş amortisman
+    kart maliyetlerine ORANTILI dağıtılır (son karta kalan)."""
+    from decimal import ROUND_DOWN
+    if not (2 <= int(adet) <= 50):
+        raise DuranVarlikHatasi("Yeni kart sayısı 2 ile 50 arasında olmalı.")
+    adet = int(adet)
+    her = (varlik.maliyet / adet).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    maliyetler = [her] * (adet - 1)
+    maliyetler.append(varlik.maliyet - sum(maliyetler, SIFIR))
+    return [{"ad": f"{varlik.ad} - {i + 1}/{adet}"[:200], "maliyet": m} for i, m in enumerate(maliyetler)]
+
+
+def _amortisman_dagit(toplam_amortisman, maliyetler):
+    """Birikmiş amortismanı maliyetlerle orantılı dağıtır (kuruşta aşağı kesilir); kuruş farkı SON karta eklenir (toplam birebir korunur)."""
+    from decimal import ROUND_DOWN
+    toplam_maliyet = sum(maliyetler, SIFIR)
+    pay, kalan = [], toplam_amortisman
+    for i, m in enumerate(maliyetler):
+        if i == len(maliyetler) - 1:
+            a = kalan
+        else:
+            a = (toplam_amortisman * m / toplam_maliyet).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+            kalan -= a
+        pay.append(a)
+    return pay
+
+
+def bol(varlik: DuranVarlik, parcalar, *, kullanici=None):
+    """Kartı yeni kartlara BÖLER (kısmi satış için). ``parcalar``: [{'ad', 'maliyet'}] (≥2; maliyetlerin toplamı kart maliyetine KURUŞUNA eşit olmalı).
+    Yeni kartlar AYNI muhasebe hesabında kalır, aynı aktifleştirme tarihi/kaynak/proje/marka/seri bilgisini taşır, birikmiş amortisman maliyetle orantılı dağıtılır;
+    ``bolunen_kart`` orijinali gösterir. Orijinal kart BÖLÜNDÜ durumuna geçer (silinmez, satışta seçilemez). MUHASEBE FİŞİ YAZILMAZ — hesap bakiyesi değişmez."""
+    from django.db import transaction
+    from core.sayi import SayiHatasi, parse_tr, yuvarla
+    if not bolunebilir_mi(varlik):
+        raise DuranVarlikHatasi("Yalnız aktif, satılmamış ve bölünmemiş kart bölünebilir.")
+    parcalar = [p for p in (parcalar or []) if p]
+    if len(parcalar) < 2:
+        raise DuranVarlikHatasi("Bölmek için en az 2 yeni kart gerekli.")
+    ad_l, mal_l = [], []
+    for i, p in enumerate(parcalar, 1):
+        ad = buyuk_harf_tr((p.get("ad") or "").strip())
+        if not ad:
+            raise DuranVarlikHatasi(f"Kart {i}: ad boş olamaz.")
+        try:
+            m = yuvarla(parse_tr(p.get("maliyet") if p.get("maliyet") not in (None, "") else 0), 2)
+        except SayiHatasi:
+            raise DuranVarlikHatasi(f"Kart {i}: maliyet geçerli bir sayı olmalı.")
+        if m <= 0:
+            raise DuranVarlikHatasi(f"Kart {i}: maliyet sıfırdan büyük olmalı.")
+        ad_l.append(ad[:200])
+        mal_l.append(m)
+    if sum(mal_l, SIFIR) != varlik.maliyet:
+        fark = varlik.maliyet - sum(mal_l, SIFIR)
+        raise DuranVarlikHatasi(f"Yeni kartların maliyet toplamı ({sum(mal_l, SIFIR):,.2f}) kart maliyetine ({varlik.maliyet:,.2f}) eşit olmalı; "
+                                f"fark {fark:,.2f}.".replace(",", "X").replace(".", ",").replace("X", "."))
+    amort_l = _amortisman_dagit(varlik.birikmis_amortisman or SIFIR, mal_l)
+    with transaction.atomic():
+        yeniler = []
+        for ad, m, a in zip(ad_l, mal_l, amort_l):
+            yeniler.append(DuranVarlik.objects.create(
+                demirbas_kodu=sonraki_demirbas_kodu(), ad=ad, hesap=varlik.hesap, aktiflestirme_tarihi=varlik.aktiflestirme_tarihi, maliyet=m,
+                marka_model=varlik.marka_model, seri_no="", durum=DuranVarlik.Durum.AKTIF, birikmis_amortisman=a, kaynak=varlik.kaynak,
+                yatirim_projesi=varlik.yatirim_projesi, bolunen_kart=varlik,
+                notlar=(f"{varlik.demirbas_kodu} kartından bölündü." + (f"\n{varlik.notlar}" if varlik.notlar else ""))[:2000],
+                created_by=kullanici, updated_by=kullanici))
+        varlik.durum = DuranVarlik.Durum.BOLUNDU
+        varlik.updated_by = kullanici
+        varlik.save(update_fields=["durum", "updated_by", "updated_at"])
+    return yeniler
+
+
+def yeni_kartlar(varlik: DuranVarlik):
+    """Bu karttan bölünerek oluşan (silinmemiş) kartlar."""
+    return DuranVarlik.objects.filter(bolunen_kart=varlik, silindi=False).order_by("demirbas_kodu")
+
+
+def bolme_geri_alinabilir_mi(varlik: DuranVarlik) -> str:
+    """Boş string = geri alınabilir; aksi halde engel nedeni. Koşul: kart BÖLÜNDÜ; yeni kartların hiçbiri satılmamış/pasif/bölünmemiş, bağlı kalemi yok ve
+    maliyet/amortisman toplamları orijinalle aynı (hareket görmemiş)."""
+    if varlik.durum != DuranVarlik.Durum.BOLUNDU:
+        return "Kart bölünmüş değil."
+    yeniler = list(yeni_kartlar(varlik))
+    if not yeniler:
+        return "Bölünmüş kartın yeni kartı bulunamadı."
+    for y in yeniler:
+        if y.durum != DuranVarlik.Durum.AKTIF:
+            return f"{y.demirbas_kodu} kartı {y.get_durum_display().lower()}; hareket gören bölmeler geri alınamaz."
+        if y.fatura_satirlari.exists() or y.fis_id:
+            return f"{y.demirbas_kodu} kartına fatura kalemi/fiş bağlanmış; geri alınamaz."
+    if sum((y.maliyet for y in yeniler), SIFIR) != varlik.maliyet:
+        return "Yeni kartların maliyet toplamı orijinal maliyetten farklı (düzenlenmiş); geri alınamaz."
+    if sum((y.birikmis_amortisman for y in yeniler), SIFIR) != (varlik.birikmis_amortisman or SIFIR):
+        return "Yeni kartların birikmiş amortisman toplamı orijinalden farklı (düzenlenmiş); geri alınamaz."
+    return ""
+
+
+def bolmeyi_geri_al(varlik: DuranVarlik, *, kullanici=None) -> DuranVarlik:
+    """Bölmeyi geri alır: yeni kartlar silinir (pasifleşir), orijinal kart AKTİF'e döner. Muhasebeye dokunmaz."""
+    from django.db import transaction
+    from django.utils import timezone
+    neden = bolme_geri_alinabilir_mi(varlik)
+    if neden:
+        raise DuranVarlikHatasi(neden)
+    with transaction.atomic():
+        simdi = timezone.now()
+        for y in yeni_kartlar(varlik):
+            y.silindi, y.silindi_at, y.updated_by = True, simdi, kullanici
+            y.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+        varlik.durum, varlik.updated_by = DuranVarlik.Durum.AKTIF, kullanici
+        varlik.save(update_fields=["durum", "updated_by", "updated_at"])
+    return varlik
+
+
+def kaynak_satirlari(varlik: DuranVarlik):
+    """Kartın (bölünmüşse orijinal zinciri üzerinden) fatura kalemleri — "orijinal fatura bağlantısı" gösterimi için."""
+    k, gorulen = varlik, set()
+    while k is not None and k.pk not in gorulen:
+        gorulen.add(k.pk)
+        qs = k.fatura_satirlari.filter(silindi=False, fatura__silindi=False).select_related("fatura", "fatura__cari").order_by("fatura__tarih", "fatura_id")
+        if qs.exists():
+            return qs
+        k = k.bolunen_kart
+    return FaturaSatir.objects.none()

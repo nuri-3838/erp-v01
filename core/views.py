@@ -7423,7 +7423,7 @@ def duran_varliklar(request):
     qs = dv_servis.varliklar(hesap_id=hesap_id, durum=durum)
     return render(request, "core/duran_varliklar.html", {
         "varliklar": qs,
-        "hesap_ozet": dv_servis.hesap_bazli_toplam(qs),
+        "hesap_ozet": dv_servis.hesap_bazli_toplam(qs if durum == DuranVarlik.Durum.BOLUNDU else qs.exclude(durum=DuranVarlik.Durum.BOLUNDU)),
         "hesaplar": hp.duran_varlik_karti_hesaplari(),
         "durum_secenekleri": DuranVarlik.Durum.choices,
         "hesap_id": hesap_id, "durum": durum,
@@ -7499,6 +7499,10 @@ def duran_varlik_detay(request, pk):
         "baglanti_toplami": baglanti_toplami,
         "toplam_farkli": satirlar.exists() and baglanti_toplami != varlik.maliyet,
         "silinebilir": dv_servis.silinebilir_mi(varlik),
+        "bolunebilir": dv_servis.bolunebilir_mi(varlik),
+        "yeni_kartlar": list(dv_servis.yeni_kartlar(varlik)) if varlik.durum == DuranVarlik.Durum.BOLUNDU else [],
+        "geri_neden": dv_servis.bolme_geri_alinabilir_mi(varlik) if varlik.durum == DuranVarlik.Durum.BOLUNDU else "",
+        "kaynak_satirlari": dv_servis.kaynak_satirlari(varlik) if varlik.bolunen_kart_id else [],
     })
 
 
@@ -7585,6 +7589,45 @@ def duran_varlik_kalem_cikar(request, pk, satir_id):
         try:
             dv_servis.satir_cikar(varlik, satir_id, kullanici=request.user)
             messages.success(request, "Fatura kalemi karttan çıkarıldı.")
+        except dv_servis.DuranVarlikHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:duran_varlik_detay", pk=pk)
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_bol(request, pk):
+    """Kartı yeni kartlara böl (kısmi satış için): yeni kart sayısı + her kartın adı/maliyeti (varsayılan eşit; kuruş son karta). Muhasebe fişi yazılmaz."""
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    if not dv_servis.bolunebilir_mi(varlik):
+        messages.error(request, "Yalnız aktif, satılmamış ve bölünmemiş kart bölünebilir.")
+        return redirect("core:duran_varlik_detay", pk=pk)
+    try:
+        adet = min(max(int(request.POST.get("adet") or request.GET.get("adet") or 2), 2), 50)
+    except ValueError:
+        adet = 2
+    satirlar = None
+    if request.method == "POST" and request.POST.get("islem") == "kaydet":
+        satirlar = [{"ad": request.POST.get(f"ad_{i}", ""), "maliyet": request.POST.get(f"maliyet_{i}", "")} for i in range(1, adet + 1)]
+        try:
+            yeniler = dv_servis.bol(varlik, satirlar, kullanici=request.user)
+            messages.success(request, f"{varlik.demirbas_kodu} bölündü: " + ", ".join(y.demirbas_kodu for y in yeniler) + ". Muhasebe fişi yazılmadı; hesap bakiyesi değişmedi.")
+            return redirect("core:duran_varlik_detay", pk=pk)
+        except dv_servis.DuranVarlikHatasi as e:
+            messages.error(request, str(e))
+    if satirlar is None:
+        satirlar = [{"ad": o["ad"], "maliyet": format_tr(o["maliyet"])} for o in dv_servis.bolme_onerisi(varlik, adet)]
+    for i, s in enumerate(satirlar, 1):
+        s["no"] = i
+    return render(request, "core/duran_varlik_bol.html", {"varlik": varlik, "adet": adet, "satirlar": satirlar})
+
+
+@ekran_gerekli("duran_varliklar")
+def duran_varlik_bolmeyi_geri_al(request, pk):
+    varlik = get_object_or_404(DuranVarlik, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            dv_servis.bolmeyi_geri_al(varlik, kullanici=request.user)
+            messages.success(request, f"{varlik.demirbas_kodu} bölmesi geri alındı; kart yeniden aktif.")
         except dv_servis.DuranVarlikHatasi as e:
             messages.error(request, str(e))
     return redirect("core:duran_varlik_detay", pk=pk)

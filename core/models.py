@@ -1883,6 +1883,7 @@ class DuranVarlik(TemelModel):
         AKTIF = "AKTIF", "Aktif"
         PASIF = "PASIF", "Pasif"
         SATILDI = "SATILDI", "Satıldı"
+        BOLUNDU = "BOLUNDU", "Bölündü"      # birden çok adet tek kartta tutuluyordu → yeni kartlara bölündü (kısmi satış için); satışta seçilemez
 
     class Kaynak(models.TextChoices):
         FATURA = "FATURA", "Fatura"
@@ -1924,6 +1925,9 @@ class DuranVarlik(TemelModel):
     fatura_satirlari = models.ManyToManyField(
         FaturaSatir, verbose_name="fatura kalemleri", blank=True,
         related_name="duran_varliklar")
+    # Bölme (kısmi satış): bu kart hangi karttan bölündü (aynı muhasebe hesabında kalır; bölme fiş yazmaz). Orijinal kart durum=BOLUNDU olur.
+    bolunen_kart = models.ForeignKey(
+        "self", verbose_name="bölündüğü kart", null=True, blank=True, on_delete=models.PROTECT, related_name="bolunmus_kartlar")
 
     class Meta:
         db_table = "duran_varlik"

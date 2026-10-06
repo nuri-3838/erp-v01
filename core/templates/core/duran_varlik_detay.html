@@ -11,8 +11,15 @@
       <span class="rozet {% if varlik.durum == 'AKTIF' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ varlik.get_durum_display }}</span></h1>
   </div>
   <span class="islem-bag">
+    {% if bolunebilir %}<a class="dugme" href="{% url 'core:duran_varlik_bol' varlik.pk %}">✂️ Böl</a>{% endif %}
+    {% if varlik.durum == "BOLUNDU" %}
+      <form method="post" action="{% url 'core:duran_varlik_bolmeyi_geri_al' varlik.pk %}" style="margin:0"
+            onsubmit="return confirm('Bölme geri alınsın mı? Yeni kartlar silinecek, bu kart yeniden aktif olacak.');">
+        {% csrf_token %}<button type="submit" class="dugme" {% if geri_neden %}disabled title="{{ geri_neden }}" style="opacity:.55"{% endif %}>↩️ Bölmeyi geri al</button></form>
+    {% else %}
     <a class="dugme" href="{% url 'core:duran_varlik_duzenle' varlik.pk %}">Düzenle</a>
-    {% if varlik.durum != "SATILDI" %}
+    {% endif %}
+    {% if varlik.durum != "SATILDI" and varlik.durum != "BOLUNDU" %}
     <form method="post" action="{% url 'core:duran_varlik_durum_degistir' varlik.pk %}" style="margin:0">
       {% csrf_token %}
       <button type="submit" class="dugme" style="border:0;cursor:pointer">
@@ -52,11 +59,43 @@
   {% endif %}
 </section>
 
+{% if varlik.bolunen_kart %}
+<div class="uyari" style="background:rgba(33,56,95,.07);border-color:var(--lacivert-acik)">
+  <div>✂️ Bu kart <a href="{% url 'core:duran_varlik_detay' varlik.bolunen_kart.pk %}">{{ varlik.bolunen_kart.demirbas_kodu }} — {{ varlik.bolunen_kart.ad }}</a>
+    kartından bölünerek oluştu (aynı muhasebe hesabı {{ varlik.hesap_id }}; bölme fiş yazmadı).</div>
+</div>
+{% endif %}
+{% if varlik.durum == "BOLUNDU" %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">✂️ Bölündü — Yeni Kartlar</h2>
+  <p class="yardim" style="margin-top:-.3rem">Bu kart geçmiş olarak durur (silinmez, satışta seçilemez). Maliyet ve birikmiş amortisman yeni kartlara dağıtıldı; muhasebe hesabı ({{ varlik.hesap_id }}) değişmedi.</p>
+  <div class="tablo-kapsayici"><table>
+    <thead><tr><th>Kod</th><th>Ad</th><th>Durum</th><th class="sag">Maliyet</th><th class="sag">Birikmiş amortisman</th></tr></thead>
+    <tbody>
+      {% for y in yeni_kartlar %}<tr><td class="mono"><a href="{% url 'core:duran_varlik_detay' y.pk %}">{{ y.demirbas_kodu }}</a></td><td>{{ y.ad }}</td><td>{{ y.get_durum_display }}</td>
+        <td class="sag mono">{{ y.maliyet|tr_kur:2 }}</td><td class="sag mono">{{ y.birikmis_amortisman|tr_kur:2 }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if geri_neden %}<p class="yardim">↩️ Bölme geri alınamaz: {{ geri_neden }}</p>{% endif %}
+</section>
+{% endif %}
+
 {% if toplam_farkli %}
 <div class="uyari">
   <div>⚠️ Bağlı kalemlerin toplamı ({{ baglanti_toplami|tr_kur:2 }}) kart maliyetiyle
     ({{ varlik.maliyet|tr_kur:2 }}) uyuşmuyor.</div>
 </div>
+{% endif %}
+
+{% if kaynak_satirlari %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Orijinal Fatura (bölünen karttan)</h2>
+  <div class="tablo-kapsayici genis"><table>
+    <thead><tr><th>Tarih</th><th>Cari</th><th>Fatura No</th><th class="sag">Tutar</th></tr></thead>
+    <tbody>{% for s in kaynak_satirlari %}<tr><td class="mono"><a href="{% url 'core:fatura_detay' s.fatura.pk %}">{{ s.fatura.tarih|date:"d.m.Y" }}</a></td>
+      <td>{{ s.fatura.cari.unvan }}</td><td class="mono">{{ s.fatura.fatura_no|default:"—" }}</td><td class="sag mono">{{ s.tutar|tr_kur:2 }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
 {% endif %}
 
 <section class="icerik-kart">

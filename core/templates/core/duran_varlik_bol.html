@@ -1,0 +1,53 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ varlik.demirbas_kodu }} Böl · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Duran Varlık Böl{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:duran_varlik_detay' varlik.pk %}">← {{ varlik.demirbas_kodu }}</a>
+    <h1 class="ust-baslik"><span class="emoji">✂️</span>{{ varlik.demirbas_kodu }} — Kartı Böl</h1>
+  </div>
+  <section class="icerik-kart">
+    <p class="yardim" style="margin-top:0"><strong>{{ varlik.ad }}</strong> · hesap <span class="mono">{{ varlik.hesap_id }}</span> · maliyet <strong class="mono">{{ varlik.maliyet|tr_kur:2 }}</strong>
+      · birikmiş amortisman <span class="mono">{{ varlik.birikmis_amortisman|tr_kur:2 }}</span>.</p>
+    <p class="yardim">Bölme <strong>muhasebe fişi yazmaz</strong>; yeni kartlar aynı hesapta kalır, hesap bakiyesi değişmez. Birikmiş amortisman yeni kartların maliyetine orantılı dağıtılır;
+      bölünemeyen kuruş son karta eklenir. Bu kart "Bölündü" durumuna geçer (silinmez), satışta yalnız yeni kartlar seçilebilir.</p>
+    <form method="get" class="kur-cek-alanlar" style="margin-bottom:.8rem">
+      <div class="alan"><label for="bol-adet">Yeni kart sayısı</label><input type="number" min="2" max="50" id="bol-adet" name="adet" value="{{ adet }}" style="width:6rem"></div>
+      <button type="submit" class="dugme-ikincil">Eşit böl (yenile)</button>
+    </form>
+    <form method="post" autocomplete="off">
+      {% csrf_token %}
+      <input type="hidden" name="adet" value="{{ adet }}">
+      <div class="tablo-kapsayici"><table>
+        <thead><tr><th>#</th><th>Kart adı</th><th class="sag">Maliyet (TRY)</th></tr></thead>
+        <tbody>
+          {% for s in satirlar %}
+            <tr><td class="mono">{{ s.no }}</td>
+              <td><input type="text" name="ad_{{ s.no }}" value="{{ s.ad }}" maxlength="200" style="width:100%"></td>
+              <td class="sag"><input type="text" name="maliyet_{{ s.no }}" value="{{ s.maliyet }}" class="bol-maliyet" inputmode="decimal" style="text-align:right;width:10rem"></td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="2" class="sag">Toplam / Kart maliyeti</th><th class="sag mono"><span id="bol-toplam">—</span> / {{ varlik.maliyet|tr_kur:2 }}</th></tr></tfoot>
+      </table></div>
+      <div class="form-altbar" style="margin-top:1rem">
+        <a class="iptal-bag" href="{% url 'core:duran_varlik_detay' varlik.pk %}">İptal</a>
+        <button type="submit" name="islem" value="kaydet" class="birincil" onclick="return confirm('Kart bölünsün mü? (Muhasebe fişi yazılmaz; geri alınabilir)');">Böl</button>
+      </div>
+    </form>
+  </section>
+</div>
+<script>
+(function(){
+  function sayi(s){ s=(s||"").toString().trim().replace(/\./g,"").replace(",","."); var n=parseFloat(s); return isNaN(n)?0:n; }
+  function fmt(n){ return n.toLocaleString("tr-TR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  var hedef = {{ varlik.maliyet|stringformat:"s"|default:"0" }};
+  function topla(){ var t=0; document.querySelectorAll(".bol-maliyet").forEach(function(i){ t+=sayi(i.value); });
+    var e=document.getElementById("bol-toplam"); e.textContent=fmt(t); e.style.color = Math.abs(t-hedef)<0.005 ? "" : "var(--hata)"; }
+  document.querySelectorAll(".bol-maliyet").forEach(function(i){ i.addEventListener("input", topla); }); topla();
+})();
+</script>
+{% endblock %}

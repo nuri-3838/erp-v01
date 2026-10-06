@@ -40,6 +40,8 @@ urlpatterns = [
     path("duran-varliklar/<int:pk>/duzenle/", views.duran_varlik_duzenle,
          name="duran_varlik_duzenle"),
     path("duran-varliklar/<int:pk>/sil/", views.duran_varlik_sil, name="duran_varlik_sil"),
+    path("duran-varliklar/<int:pk>/bol/", views.duran_varlik_bol, name="duran_varlik_bol"),
+    path("duran-varliklar/<int:pk>/bolmeyi-geri-al/", views.duran_varlik_bolmeyi_geri_al, name="duran_varlik_bolmeyi_geri_al"),
     path("fis/<int:pk>/", views.fis_detay, name="fis_detay"),
     path("fis/<int:pk>/duzenle/", views.fis_duzenle, name="fis_duzenle"),
     path("fis/<int:pk>/sil/", views.fis_sil_gorunum, name="fis_sil"),
