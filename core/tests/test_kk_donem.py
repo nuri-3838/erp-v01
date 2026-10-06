@@ -316,3 +316,79 @@ class EkranTest(KkDonemBase):
         self.assertContains(r, reverse("core:kredi_karti_nakit_akisi"))
         self.assertContains(r, reverse("core:kredi_karti_taksit_onerileri"))
         self.assertContains(self.client.get(reverse("core:kredi_karti_detay", args=[self.halk.pk])), "Dönem Ekstresi")
+
+
+class KurusFarkiTest(KkDonemBase):
+    def test_bolme_ilk_taksite(self):
+        self.assertEqual(kd.bolme(Dc("100.00"), 3, ilk=True), [Dc("33.34"), Dc("33.33"), Dc("33.33")])
+        self.assertEqual(kd.bolme(Dc("59788.00"), 3, ilk=True), [Dc("19929.34"), Dc("19929.33"), Dc("19929.33")])
+        self.assertEqual(kd.bolme(Dc("27499.00"), 5, ilk=True), [Dc("5499.80")] * 5)                 # tam bölünürse fark yok
+        for tutar, adet in ((Dc("1000000.00"), 4), (Dc("81685.00"), 6), (Dc("7.01"), 7)):
+            self.assertEqual(sum(kd.bolme(tutar, adet, ilk=True)), tutar)
+
+    def test_varsayilan_son_ve_ayar_degisince_planlar_yeniden_hesaplanir_fis_degismez(self):
+        self.assertEqual((self.halk.kurus_farki, self.ziraat.kurus_farki), ("SON", "SON"))
+        f = self.harcama(self.ziraat, "59788", D(2026, 3, 3), "VATAN - 3 TAKSİT", taksit_adedi=3)
+        plan = kd.aktif_plan(f)
+        self.assertEqual([r["tutar"] for r in kd.plan_satirlari(self.ziraat, plan)], [Dc("19929.33"), Dc("19929.33"), Dc("19929.34")])
+        e_son = kd.donem_ekstresi(self.ziraat, D(2026, 4, 2), D(2026, 10, 7))
+        once = self.snapshot()
+        self.ziraat.kurus_farki = "ILK"
+        self.ziraat.save()
+        plan = kd.aktif_plan(f)
+        self.assertEqual([r["tutar"] for r in kd.plan_satirlari(self.ziraat, plan)], [Dc("19929.34"), Dc("19929.33"), Dc("19929.33")])
+        e_ilk = kd.donem_ekstresi(self.ziraat, D(2026, 4, 2), D(2026, 10, 7))
+        self.assertEqual((e_son["t_taksit"], e_ilk["t_taksit"]), (Dc("19929.33"), Dc("19929.34")))      # ilk taksit kuruşu üstlenir
+        self.assertEqual(self.snapshot(), once)                                                          # fiş ve 309 bakiyesi aynı
+        self.assertEqual(_bak("309.02"), Dc("-59788.00"))
+        self.assertEqual(kd.donem_ekstresi(self.ziraat, D(2026, 6, 2), D(2026, 10, 7))["t_taksit"], Dc("19929.33"))
+
+    def test_toplam_ayardan_bagimsiz_ve_uyum_korunur(self):
+        self.harcama(self.ziraat, "59788", D(2026, 3, 3), "A - 3 TAKSİT", taksit_adedi=3)
+        self.harcama(self.ziraat, "100", D(2026, 8, 24), "B - 3 TAKSİT", taksit_adedi=3)
+        sonuc = {}
+        for ayar in ("SON", "ILK"):
+            self.ziraat.kurus_farki = ayar
+            self.ziraat.save()
+            o = kd.nakit_akisi(D(2026, 4, 3))
+            sonuc[ayar] = o["toplam"]
+            for c in (D(2026, 4, 2), D(2026, 6, 2), D(2026, 9, 2)):
+                e = kd.donem_ekstresi(self.ziraat, c, D(2026, 10, 7))
+                self.assertEqual(e["uyum"], e["defter_borcu"])
+        self.assertEqual(sonuc["SON"], sonuc["ILK"])
+
+    def test_kart_formu_ve_servis(self):
+        self.client.force_login(self.su)
+        url = reverse("core:kredi_karti_duzenle", args=[self.ziraat.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "Taksitte Kuruş Farkı")
+        self.assertContains(r, 'value="SON" selected')
+        post = {"ad": self.ziraat.ad, "kart_son4": "", "limit": "50.000,00", "kesim_gunu": "2", "son_odeme_gunu": "12", "kurus_farki": "ILK",
+                "para_birimi": "TRY", "muhasebe": "309.02"}
+        self.assertEqual(self.client.post(url, post).status_code, 302)
+        self.ziraat.refresh_from_db()
+        self.assertEqual(self.ziraat.kurus_farki, "ILK")
+        self.assertContains(self.client.get(url), 'value="ILK" selected')
+        self.assertEqual(self.client.post(url, {**post, "kurus_farki": "ORTA"}).status_code, 200)             # geçersiz değer reddedilir
+        from core.services.finans import kredi_karti_guncelle
+        kredi_karti_guncelle(self.ziraat, ad=self.ziraat.ad, limit=50000, kesim_gunu=2, son_odeme_gunu=12, muhasebe_kodu="309.02", kullanici=self.su)
+        self.ziraat.refresh_from_db()
+        self.assertEqual(self.ziraat.kurus_farki, "ILK")                                                       # verilmezse dokunulmaz
+
+    def test_ilk_taksite_kurus_kesilerek_bolunur_son_taksite_yuvarlanir(self):
+        self.assertEqual(kd.bolme(Dc("14500.00"), 6, ilk=True), [Dc("2416.70")] + [Dc("2416.66")] * 5)       # kesilir, artan kuruş ilk taksitte
+        self.assertEqual(kd.bolme(Dc("14500.00"), 6), [Dc("2416.67")] * 5 + [Dc("2416.65")])                  # yuvarlanır, fark son taksitte
+        self.assertEqual(kd.bolme(Dc("81685.00"), 6, ilk=True), [Dc("13614.20")] + [Dc("13614.16")] * 5)
+
+    def test_ziraat_02_10_kontrol_ilk_taksite_151173_66(self):
+        """Canlıdaki Ziraat planlarının 02.10.2026 kesim taksit toplamı: İLK taksite (kesilerek) 135.052,48 → banka ekstresiyle aynı; SON 135.052,50."""
+        plan = ((D(2026, 6, 24), "14500", 6), (D(2026, 8, 24), "81685", 6), (D(2026, 8, 24), "7999", 3), (D(2026, 8, 24), "168", 3),
+                (D(2026, 8, 24), "11398", 3), (D(2026, 7, 9), "450000", 4))
+        for tarih, tutar, adet in plan:
+            self.harcama(self.ziraat, tutar, tarih, f"PLAN - {adet} TAKSİT", taksit_adedi=adet)
+        sonuc = {}
+        for ayar in ("SON", "ILK"):
+            self.ziraat.kurus_farki = ayar
+            self.ziraat.save()
+            sonuc[ayar] = kd.donem_ekstresi(self.ziraat, D(2026, 10, 2), D(2026, 10, 7))["t_taksit"]
+        self.assertEqual((sonuc["ILK"], sonuc["SON"]), (Dc("135052.48"), Dc("135052.50")))

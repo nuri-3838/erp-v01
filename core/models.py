@@ -2565,6 +2565,9 @@ class KrediKarti(TemelModel):
     limit = models.DecimalField("kart limiti", max_digits=14, decimal_places=2, default=0)
     kesim_gunu = models.PositiveSmallIntegerField("hesap kesim günü", null=True, blank=True)
     son_odeme_gunu = models.PositiveSmallIntegerField("son ödeme günü", null=True, blank=True)
+    # Taksit bölümünde bölünemeyen kuruş farkı hangi taksite eklenir (bankaya göre değişir); bkz. core.services.kk_donem.bolme.
+    kurus_farki = models.CharField("kuruş farkı", max_length=3, default="SON",
+                                   choices=(("ILK", "İlk taksite"), ("SON", "Son taksite")))
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")
     muhasebe = models.ForeignKey(

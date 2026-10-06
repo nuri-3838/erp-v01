@@ -1062,6 +1062,9 @@ class KrediKartiForm(forms.Form):
     limit = TRDecimalField(label="Kart Limiti", basamak=2, required=False)
     kesim_gunu = forms.IntegerField(label="Hesap Kesim Günü", min_value=1, max_value=31, required=False)
     son_odeme_gunu = forms.IntegerField(label="Son Ödeme Günü", min_value=1, max_value=31, required=False)
+    kurus_farki = forms.ChoiceField(
+        label="Taksitte Kuruş Farkı", choices=(("SON", "Son taksite"), ("ILK", "İlk taksite")), initial="SON",
+        help_text="Taksit tutarı tam bölünmezse artan/eksik kuruş hangi taksite eklensin (bankanın ekstreleriyle aynı olacak şekilde seçin).")
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     muhasebe = _muhasebe_alani()
 

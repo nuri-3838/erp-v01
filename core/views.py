@@ -4150,7 +4150,7 @@ def kredi_karti_ekle(request):
                     ad=cd["ad"], banka=cd["banka"], kart_son4=cd["kart_son4"],
                     limit=cd["limit"], kesim_gunu=cd["kesim_gunu"],
                     son_odeme_gunu=cd["son_odeme_gunu"], para_birimi=cd["para_birimi"],
-                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user, kurus_farki=cd["kurus_farki"])
                 messages.success(request, "Kredi kartı eklendi.")
                 return redirect("core:kredi_kartlari")
             except finans_servis.FinansHatasi as e:
@@ -4174,7 +4174,7 @@ def kredi_karti_duzenle(request, pk):
                     kart, ad=cd["ad"], banka=cd["banka"], kart_son4=cd["kart_son4"],
                     limit=cd["limit"], kesim_gunu=cd["kesim_gunu"],
                     son_odeme_gunu=cd["son_odeme_gunu"], para_birimi=cd["para_birimi"],
-                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user)
+                    muhasebe_kodu=cd["muhasebe"].hesap_kodu, kullanici=request.user, kurus_farki=cd["kurus_farki"])
                 messages.success(request, "Kredi kartı güncellendi.")
                 return redirect("core:kredi_kartlari")
             except finans_servis.FinansHatasi as e:
@@ -4183,7 +4183,7 @@ def kredi_karti_duzenle(request, pk):
         form = KrediKartiForm(initial={
             "ad": kart.ad, "banka": kart.banka_id, "kart_son4": kart.kart_son4,
             "limit": kart.limit, "kesim_gunu": kart.kesim_gunu,
-            "son_odeme_gunu": kart.son_odeme_gunu, "para_birimi": kart.para_birimi,
+            "son_odeme_gunu": kart.son_odeme_gunu, "kurus_farki": kart.kurus_farki, "para_birimi": kart.para_birimi,
             "muhasebe": kart.muhasebe.hesap_kodu}, mevcut_hesap=kart.muhasebe.hesap_kodu)
     return render(request, "core/finans_form.html",
                   {"form": form, "baslik": "Kredi Kartı Düzenle", "emoji": "💳",

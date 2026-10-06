@@ -7,7 +7,8 @@ Dönem kuralları (kartta ``kesim_gunu`` ve ``son_odeme_gunu`` tanımlı olmalı
   * Dönem = (önceki kesim, kesim]  →  kesim GÜNÜNDEKİ harcama O ekstreye DÂHİLDİR; ertesi gün sonraki ekstreye düşer.
   * Son ödeme = kesimden sonraki ilk ``son_odeme_gunu`` günü (kısa aylarda ay sonuna çekilir); hafta sonu/resmî tatile denk gelirse sonraki iş günü.
   * Harcama ilk ekstre dönemine (varsayılan: harcamanın düştüğü dönem; ``kaydirma`` ile sonraki dönemler) girer; sonraki taksitler birer ay sonraki ekstrelere.
-  * Eşit taksit; bölünemeyen kuruş SON taksite eklenir.
+  * Eşit taksit; kartın kurus_farki ayarı: SON (varsayılan) = taksitler kuruşa yuvarlanır, fark son taksitte; İLK = taksitler kuruş kesilerek hesaplanır, artan
+    kuruş ilk taksitte. Plan satırları her seferinde bu ayara göre HESAPLANIR; ayar değişince mevcut planlar da yeniden hesaplanır — fiş/309 değişmez.
 Dönem borcu (kesimdeki ekstre bakiyesi) = Σ tek çekimler(≤kesim) + Σ taksitler(kesim ≤ kesim) − Σ kart ödemeleri/iadeleri(≤kesim). 309 defter borcu =
 bu tutar + kesimden sonraki tek çekim/taksitler − kesimden sonraki ödemeler (uyum tablosu ekranda). Bu modül yalnız okur / plan kaydeder; fiş yazmaz.
 """
@@ -16,7 +17,7 @@ from __future__ import annotations
 import calendar
 import datetime
 import re
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -89,12 +90,15 @@ def ilk_vade_onerisi(kart, harcama_tarihi, kaydirma=0):
     return vade(kart, kesim_ekle(kart, donem_kesimi(kart, harcama_tarihi), int(kaydirma or 0)))
 
 
-def bolme(toplam, adet):
-    """Eşit taksitler; bölünemeyen kuruş SON taksite eklenir."""
+def bolme(toplam, adet, ilk=False):
+    """Eşit taksitler. ``ilk=False`` (varsayılan, "Son taksite"): taksitler kuruşa YUVARLANIR, bölünemeyen fark SON taksite eklenir. ``ilk=True`` ("İlk taksite"):
+    taksitler kuruş KESİLEREK (aşağı) hesaplanır, artan kuruş İLK taksite eklenir (bazı bankaların ekstre usulü)."""
+    if ilk:
+        her = (toplam / adet).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        return [toplam - her * (adet - 1), *([her] * (adet - 1))]
     her = yuvarla(toplam / adet, 2)
-    out = [her] * (adet - 1)
-    out.append(toplam - sum(out, SIFIR))
-    return out
+    kalan = [her] * (adet - 1)
+    return [*kalan, toplam - sum(kalan, SIFIR)]
 
 
 # --- taksit planı -----------------------------------------------------------------------------------------------------------
@@ -112,7 +116,7 @@ def ilk_kesim_plan(kart, plan):
 
 def plan_satirlari(kart, plan):
     """[{'sira', 'kesim', 'vade', 'tutar'}] — kartta kesim+son ödeme günü varsa ekstre/son ödeme günlerinden; yoksa eski aylık takvim (kesim=None)."""
-    tut = bolme(plan.toplam_tutar, plan.taksit_adedi)
+    tut = bolme(plan.toplam_tutar, plan.taksit_adedi, ilk=getattr(kart, "kurus_farki", "SON") == "ILK")
     out = []
     if gunler_tanimli(kart):
         c0 = ilk_kesim_plan(kart, plan)

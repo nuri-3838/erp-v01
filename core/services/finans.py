@@ -260,10 +260,17 @@ def aktif_kredi_kartlari():
     return KrediKarti.objects.filter(silindi=False).select_related("muhasebe").order_by("ad")
 
 
+def _kurus_farki(deger):
+    deger = (deger or "SON").strip().upper()
+    if deger not in ("ILK", "SON"):
+        raise FinansHatasi("Kuruş farkı 'İlk taksite' ya da 'Son taksite' olmalı.")
+    return deger
+
+
 def kredi_karti_olustur(*, ad, banka=None, kart_son4="", limit=0, kesim_gunu=None,
                         son_odeme_gunu=None, para_birimi="TRY", muhasebe_kodu,
-                        kullanici=None) -> KrediKarti:
-    return KrediKarti.objects.create(
+                        kullanici=None, kurus_farki="SON") -> KrediKarti:
+    return KrediKarti.objects.create(kurus_farki=_kurus_farki(kurus_farki),
         ad=_ad_dogrula(KrediKarti, ad), banka=banka,
         kart_son4=(kart_son4 or "").strip(), limit=_sayi(limit, "Limit"),
         kesim_gunu=_gun(kesim_gunu, "Kesim günü"),
@@ -274,7 +281,7 @@ def kredi_karti_olustur(*, ad, banka=None, kart_son4="", limit=0, kesim_gunu=Non
 
 def kredi_karti_guncelle(k: KrediKarti, *, ad, banka=None, kart_son4="", limit=0,
                          kesim_gunu=None, son_odeme_gunu=None, para_birimi="TRY",
-                         muhasebe_kodu, kullanici=None) -> KrediKarti:
+                         muhasebe_kodu, kullanici=None, kurus_farki=None) -> KrediKarti:
     if k.silindi:
         raise FinansHatasi("Silinmiş kayıt düzenlenemez.")
     k.ad = _ad_dogrula(KrediKarti, ad, haric_pk=k.pk)
@@ -283,13 +290,15 @@ def kredi_karti_guncelle(k: KrediKarti, *, ad, banka=None, kart_son4="", limit=0
     k.limit = _sayi(limit, "Limit")
     k.kesim_gunu = _gun(kesim_gunu, "Kesim günü")
     k.son_odeme_gunu = _gun(son_odeme_gunu, "Son ödeme günü")
+    if kurus_farki is not None:
+        k.kurus_farki = _kurus_farki(kurus_farki)
     pb, hesap = _pb(para_birimi), _yaprak_hesap_coz(muhasebe_kodu)
     _hareket_kilidi(k, yeni_pb=pb, yeni_muhasebe=hesap, ad="Kartın")
     k.para_birimi = pb
     k.muhasebe = hesap
     k.updated_by = kullanici
-    k.save(update_fields=["ad", "banka", "kart_son4", "limit", "kesim_gunu",
-                          "son_odeme_gunu", "para_birimi", "muhasebe", "updated_by", "updated_at"])
+    k.save(update_fields=["ad", "banka", "kart_son4", "limit", "kesim_gunu", "son_odeme_gunu", "kurus_farki",
+                          "para_birimi", "muhasebe", "updated_by", "updated_at"])
     return k
 
 
