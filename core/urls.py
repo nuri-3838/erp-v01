@@ -193,6 +193,7 @@ urlpatterns = [
     path("cariler/<int:pk>/kesinti/<int:fis_pk>/sil/", views.cari_kesinti_sil, name="cari_kesinti_sil"),
     path("cariler/<int:pk>/vade/", views.cari_vade_api, name="cari_vade_api"),
     # FİNANS modülü
+    path("finans/", views.finans_ozeti, name="finans_ozet"),
     path("finans/kasa/", views.kasalar, name="kasalar"),
     path("finans/kasa/ekle/", views.kasa_ekle, name="kasa_ekle"),
     path("finans/kasa/<int:pk>/", views.kasa_detay, name="kasa_detay"),

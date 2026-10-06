@@ -101,6 +101,7 @@ from core.services import fis_sil as fis_sil_servis
 from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
 from core.services import bordro as bordro_servis
+from core.services import finans_ozet as finans_ozet_servis
 from core.services import doviz_islem as doviz_islem_servis
 from core.services import kur_degerleme as kur_degerleme_servis
 from core.services import donemsel_gider as donemsel_servis
@@ -8690,3 +8691,20 @@ def bordro_dosya(request, pk):
     if not bordro.dosya:
         raise Http404
     return _ozel_dosya_yanit(bordro.dosya, bordro.orijinal_ad)
+
+
+
+@ekran_gerekli_herhangi("kasa", "banka", "kredi_karti", "kredi", "cek_senet")
+def finans_ozeti(request):
+    """FİNANS özeti (dashboard): kasa/banka bakiyeleri, kredi kartı + kredi borcu, çek/senet durumu ve yaklaşan vadeler (yalnız okur)."""
+    o = finans_ozet_servis.ozet(timezone.localdate())
+    c = o["cek"]
+    cek_satirlari = [
+        ("Alınan · portföyde", c["portfoy"], False), ("Alınan · bankada tahsilde", c["tahsilde"], False),
+        ("Alınan · bankada teminatta", c["teminatta"], False),
+        (f"Alınan · vadesi {o['yakin_gun']} gün içinde", c["alinan_yakin"], False), ("Alınan · vadesi geçmiş", c["alinan_vadesi_gecmis"], True),
+        ("Verilen · ödenecek (açık)", c["verilen"], False),
+        (f"Verilen · vadesi {o['yakin_gun']} gün içinde", c["verilen_yakin"], False), ("Verilen · vadesi geçmiş", c["verilen_vadesi_gecmis"], True),
+        ("Karşılıksız", c["karsiliksiz"], True),
+    ]
+    return render(request, "core/finans_ozet.html", {"o": o, "cek_satirlari": cek_satirlari})

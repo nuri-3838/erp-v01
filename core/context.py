@@ -12,7 +12,7 @@ def yetki(request):
     aktif_view = rm.view_name if rm else ""   # ör. "core:mizan"
     aktif_modul_kod = ""
     for m in moduller:
-        if any(e.url_adi == aktif_view for e in m.ekranlar):
+        if any(e.url_adi == aktif_view for e in m.ekranlar) or (m.ana_url_adi and m.ana_url_adi == aktif_view):
             aktif_modul_kod = m.kod
             break
 

@@ -1,0 +1,166 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Finans Özeti · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Finans Özeti{% endblock %}
+
+{% block content %}
+<style>
+  .fo-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); gap:.8rem; margin:0 0 1.2rem; }
+  .fo-kart { border:1px solid var(--cizgi-koyu); border-radius:14px; padding:.85rem 1rem; background:rgba(255,255,255,.7); }
+  .fo-kart .et { font-size:.78rem; color:var(--metin-soluk); text-transform:uppercase; letter-spacing:.03em; }
+  .fo-kart .dg { font-size:1.35rem; font-weight:650; margin-top:.2rem; font-variant-numeric:tabular-nums; }
+  .fo-kart .alt { font-size:.78rem; color:var(--metin-soluk); margin-top:.15rem; }
+  .fo-kart.eksi .dg { color:var(--hata); }
+  .fo-ikili { display:grid; grid-template-columns:repeat(auto-fit,minmax(24rem,1fr)); gap:1rem; align-items:start; }
+  .fo-bolum { margin-bottom:1.2rem; }
+  .fo-bolum h2 { font-size:1.02rem; margin:0 0 .5rem; }
+  .fo-bolum h2 a { font-size:.8rem; font-weight:500; margin-left:.5rem; }
+  .fo-cubuk { height:7px; border-radius:6px; background:#e6eaf2; overflow:hidden; min-width:6rem; }
+  .fo-cubuk > span { display:block; height:100%; background:var(--turuncu); }
+  .fo-cubuk > span.yuksek { background:var(--hata); }
+  .fo-eksi { color:var(--hata); }
+  .fo-soluk { color:var(--metin-soluk); }
+  .fo-tablo th, .fo-tablo td { white-space:nowrap; }
+  .fo-tablo tr.fo-bos { display:none; }
+  .fo-bolum.fo-hepsi .fo-tablo tr.fo-bos { display:table-row; }
+  .fo-toplam td, .fo-toplam th { font-weight:650; border-top:2px solid var(--cizgi-koyu); }
+</style>
+
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">📊</span>Finans Özeti</h1>
+</div>
+<p class="sayfa-alt">{{ o.bugun|date:"d.m.Y" }} itibarıyla; bakiyeler muhasebe kayıtlarından hesaplanır.
+  {% if o.kur_tarihi %}Döviz karşılıkları <strong>{{ o.kur_tarihi|date:"d.m.Y" }}</strong> TCMB alış kuruyla
+  ({% for pb, k in o.kurlar.items %}{{ pb }} {{ k|tr_kur:4 }}{% if not forloop.last %} · {% endif %}{% endfor %}).{% else %}Kur kaydı yok: döviz hesaplar defter değeriyle toplanır.{% endif %}</p>
+
+<div class="fo-kpi">
+  <div class="fo-kart"><div class="et">Kasa + Banka (TL karşılığı)</div>
+    <div class="dg {% if o.nakit_tl < 0 %}fo-eksi{% endif %}">{{ o.nakit_tl|tr_para }} ₺</div>
+    <div class="alt">{{ o.kasalar|length }} kasa · {{ o.banka|length }} banka hesabı</div></div>
+  <div class="fo-kart"><div class="et">Alınan çek / senet (açık)</div>
+    <div class="dg">{{ o.cek_alinan_tl|tr_para }} ₺</div>
+    <div class="alt">portföy + tahsilde + teminatta</div></div>
+  <div class="fo-kart eksi"><div class="et">Kredi kartı borcu</div>
+    <div class="dg">{{ o.kart_borc_tl|tr_para }} ₺</div>
+    <div class="alt">{% if o.kart_limit_tl %}toplam TL limit {{ o.kart_limit_tl|tr_para }}{% else %}{{ o.kartlar|length }} kart{% endif %}</div></div>
+  <div class="fo-kart eksi"><div class="et">Kredi kalan borcu</div>
+    <div class="dg">{{ o.kredi_tl|tr_para }} ₺</div>
+    <div class="alt">{{ o.krediler|length }} kredi</div></div>
+  <div class="fo-kart eksi"><div class="et">Verilen çek / senet (ödenecek)</div>
+    <div class="dg">{{ o.cek_verilen_tl|tr_para }} ₺</div>
+    <div class="alt">vadesi gelmemiş + geçmiş</div></div>
+  <div class="fo-kart {% if o.net_pozisyon < 0 %}eksi{% endif %}"><div class="et">Net finansal durum (yaklaşık)</div>
+    <div class="dg">{{ o.net_pozisyon|tr_para }} ₺</div>
+    <div class="alt">nakit + alınan çek − kart − kredi − verilen çek</div></div>
+</div>
+
+<section class="fo-bolum" id="fo-nakit">
+  <h2>🏦 Kasa ve Banka Hesapları <a href="{% url 'core:bankalar' %}">Bankalar →</a><a href="{% url 'core:kasalar' %}">Kasalar →</a>
+    {% if o.bos_hesap %}<button type="button" class="dugme-ikincil" id="fo-bos-dugme" style="margin-left:.6rem;font-size:.78rem;padding:.2rem .6rem"
+      data-n="{{ o.bos_hesap }}">Bakiyesi 0 olan {{ o.bos_hesap }} hesabı göster</button>{% endif %}</h2>
+  <div class="tablo-kapsayici genis"><table class="fo-tablo">
+    <thead><tr><th>Hesap</th><th>PB</th><th class="sag">Bakiye</th><th class="sag">TL karşılığı (güncel kur)</th><th class="sag">Defter değeri (TL)</th></tr></thead>
+    <tbody>
+      {% for r in o.banka %}
+        <tr class="{% if r.bos %}fo-bos{% endif %}"><td>{{ r.ad }} <span class="fo-soluk">· {{ r.alt }}</span></td><td class="mono">{{ r.pb }}</td>
+          <td class="sag mono {% if r.bakiye < 0 %}fo-eksi{% endif %}">{{ r.bakiye|tr_para }}</td>
+          <td class="sag mono {% if r.guncel < 0 %}fo-eksi{% endif %}">{{ r.guncel|tr_para }}</td>
+          <td class="sag mono fo-soluk">{% if r.pb != "TRY" %}{{ r.defter|tr_para }}{% else %}—{% endif %}</td></tr>
+      {% endfor %}
+      {% for r in o.kasalar %}
+        <tr class="{% if r.bos %}fo-bos{% endif %}"><td>{{ r.ad }} <span class="fo-soluk">· Kasa</span></td><td class="mono">{{ r.pb }}</td>
+          <td class="sag mono {% if r.bakiye < 0 %}fo-eksi{% endif %}">{{ r.bakiye|tr_para }}</td>
+          <td class="sag mono {% if r.guncel < 0 %}fo-eksi{% endif %}">{{ r.guncel|tr_para }}</td>
+          <td class="sag mono fo-soluk">{% if r.pb != "TRY" %}{{ r.defter|tr_para }}{% else %}—{% endif %}</td></tr>
+      {% empty %}{% if not o.banka %}<tr><td colspan="5" class="yardim">Kasa/banka hesabı yok.</td></tr>{% endif %}
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      {% for t in o.pb_toplam %}{% if t.bakiye or t.pb == "TRY" %}
+        <tr class="fo-toplam"><th>Toplam {{ t.pb }} ({{ t.adet }} hesap)</th><td class="mono">{{ t.pb }}</td>
+          <td class="sag mono">{{ t.bakiye|tr_para }}</td><td class="sag mono">{{ t.guncel|tr_para }}</td>
+          <td class="sag mono fo-soluk">{% if t.pb != "TRY" %}{{ t.defter|tr_para }}{% else %}—{% endif %}</td></tr>
+      {% endif %}{% endfor %}
+      <tr class="fo-toplam"><th colspan="3">Genel toplam (TL karşılığı)</th><td class="sag mono">{{ o.nakit_tl|tr_para }}</td><td></td></tr>
+    </tfoot>
+  </table></div>
+</section>
+
+<div class="fo-ikili">
+  <section class="fo-bolum">
+    <h2>💳 Kredi Kartları <a href="{% url 'core:kredi_kartlari' %}">Kartlar →</a></h2>
+    <div class="tablo-kapsayici"><table class="fo-tablo">
+      <thead><tr><th>Kart</th><th class="sag">Limit</th><th class="sag">Borç</th><th class="sag">Kullanılabilir</th><th>Doluluk</th><th>Son ödeme</th></tr></thead>
+      <tbody>
+        {% for k in o.kartlar %}
+          <tr><td><a href="{% url 'core:kredi_karti_detay' k.pk %}">{{ k.ad }}</a>{% if k.son4 %} <span class="fo-soluk mono">**{{ k.son4 }}</span>{% endif %}
+              {% if k.pb != "TRY" %}<span class="mono fo-soluk">({{ k.pb }})</span>{% endif %}</td>
+            <td class="sag mono">{{ k.limit|tr_para }}</td>
+            <td class="sag mono {% if k.borc %}fo-eksi{% endif %}">{{ k.borc|tr_para }}</td>
+            <td class="sag mono {% if k.kullanilabilir < 0 %}fo-eksi{% endif %}">{{ k.kullanilabilir|tr_para }}</td>
+            <td>{% if k.doluluk is not None %}<div class="fo-cubuk" title="%{{ k.doluluk }}"><span class="{% if k.doluluk >= 85 %}yuksek{% endif %}" style="width:{{ k.doluluk }}%"></span></div>{% else %}—{% endif %}</td>
+            <td class="mono">{% if k.son_odeme %}{{ k.son_odeme|date:"d.m.Y" }}{% else %}—{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="6" class="yardim">Kredi kartı yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="fo-bolum">
+    <h2>🏛️ Krediler <a href="{% url 'core:krediler' %}">Krediler →</a></h2>
+    <div class="tablo-kapsayici"><table class="fo-tablo">
+      <thead><tr><th>Kredi</th><th>Banka</th><th class="sag">Anapara</th><th class="sag">Kalan borç</th></tr></thead>
+      <tbody>
+        {% for k in o.krediler %}
+          <tr><td><a href="{% url 'core:kredi_detay' k.pk %}">{{ k.ad }}</a> {% if k.pb != "TRY" %}<span class="mono fo-soluk">({{ k.pb }})</span>{% endif %}</td>
+            <td>{{ k.banka|default:"—" }}</td><td class="sag mono">{{ k.anapara|tr_para }}</td>
+            <td class="sag mono {% if k.kalan %}fo-eksi{% endif %}">{{ k.kalan|tr_para }}</td></tr>
+        {% empty %}<tr><td colspan="4" class="yardim">Kredi yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+
+<section class="fo-bolum">
+  <h2>🧾 Çek / Senet <a href="{% url 'core:cek_senetler' %}">Çek-Senet →</a></h2>
+  <div class="tablo-kapsayici"><table class="fo-tablo">
+    <thead><tr><th>Durum</th><th>Tutar</th></tr></thead>
+    <tbody>
+      {% for baslik, liste, eksi in cek_satirlari %}
+        <tr><td>{{ baslik }}</td>
+          <td class="mono {% if eksi and liste %}fo-eksi{% endif %}">{% for g in liste %}{{ g.tutar|tr_para }} {{ g.pb }} <span class="fo-soluk">({{ g.adet }} adet)</span>{% if not forloop.last %} · {% endif %}{% empty %}<span class="fo-soluk">—</span>{% endfor %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="fo-bolum">
+  <h2>⏰ Vadesi Yaklaşan / Geçmiş Çek-Senet (≤ {{ o.yakin_gun }} gün) <span class="fo-soluk" style="font-weight:400;font-size:.8rem">ilk 15</span></h2>
+  <div class="tablo-kapsayici"><table class="fo-tablo">
+    <thead><tr><th>Vade</th><th>Yön</th><th>Tip</th><th>Cari / Keşideci</th><th>Belge no</th><th>Durum</th><th class="sag">Tutar</th></tr></thead>
+    <tbody>
+      {% for c in o.yaklasan %}
+        <tr class="{% if c.vade < o.bugun %}fo-eksi{% endif %}">
+          <td class="mono">{{ c.vade|date:"d.m.Y" }}{% if c.vade < o.bugun %} <span title="Vadesi geçmiş">⚠</span>{% endif %}</td>
+          <td>{{ c.get_yon_display }}</td><td>{{ c.get_tip_display }}</td>
+          <td>{% if c.cari %}{{ c.cari.unvan }}{% else %}{{ c.kesideci|default:"—" }}{% endif %}</td>
+          <td class="mono">{{ c.belge_no|default:"—" }}</td><td>{{ c.get_durum_display }}</td>
+          <td class="sag mono">{{ c.tutar|tr_para }} {{ c.para_birimi }}</td></tr>
+      {% empty %}<tr><td colspan="7" class="yardim">Önümüzdeki {{ o.yakin_gun }} gün içinde vadesi gelen ya da geçmiş açık çek/senet yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+<script>
+(function(){
+  var d = document.getElementById("fo-bos-dugme");
+  if(!d) return;
+  d.addEventListener("click", function(){
+    var b = document.getElementById("fo-nakit"), ac = b.classList.toggle("fo-hepsi");
+    d.textContent = ac ? "Bakiyesi 0 olan hesapları gizle" : "Bakiyesi 0 olan " + d.dataset.n + " hesabı göster";
+  });
+})();
+</script>
+<p class="yardim">Net finansal durum yaklaşık bir göstergedir (alacak/borç carileri ve diğer yükümlülükler dahil değildir).</p>
+{% endblock %}

@@ -19,6 +19,7 @@ class Modul:
     ad: str
     ekranlar: tuple
     yonetici_modulu: bool = False   # True ise yalnızca yöneticiye görünür
+    ana_url_adi: str = ""           # modül adına tıklayınca açılan özet/dashboard sayfası (boşsa yalnız menüyü açar)
 
 
 MODULLER = (
@@ -76,7 +77,7 @@ MODULLER = (
         Ekran("kredi_karti", "Kredi Kartı", "core:kredi_kartlari"),
         Ekran("kredi", "Kredi", "core:krediler"),
         Ekran("cek_senet", "Çek-Senet", "core:cek_senetler"),
-    )),
+    ), ana_url_adi="core:finans_ozet"),
     Modul("IK", "İnsan Kaynakları", (
         Ekran("personel", "Personel Kartları", "core:personeller"),
         Ekran("personel_izinleri", "İzinler", "core:izinler"),
