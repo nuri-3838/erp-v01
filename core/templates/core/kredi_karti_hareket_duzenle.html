@@ -40,6 +40,17 @@
         </div>
         <p class="yardim tam">{{ form.sayilan_doviz.help_text }}</p>
         {% endif %}
+        {% if form.taksit_adedi %}
+        <div class="alan">
+          <label for="{{ form.taksit_adedi.id_for_label }}">{{ form.taksit_adedi.label }}</label>{{ form.taksit_adedi }}
+          {% for e in form.taksit_adedi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.ilk_donem.id_for_label }}">{{ form.ilk_donem.label }}</label>{{ form.ilk_donem }}
+        </div>
+        <p class="yardim tam">Taksit planı yalnız ödeme takvimi içindir; <strong>fiş ve 309 bakiyesi değişmez</strong>. 1 yazarsanız plan kalkar (tek çekim).
+          {% if plan %}Mevcut plan: {{ plan.taksit_adedi }} taksit.{% endif %}</p>
+        {% endif %}
         {% if form.gider %}
         <div class="alan tam">
           <label for="{{ form.gider.id_for_label }}">{{ form.gider.label }}</label>

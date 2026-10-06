@@ -63,6 +63,7 @@
   <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:kredi_kartlari' %}">← Kredi Kartı</a>
     <div class="detay-aksiyon">
+      <a class="dugme" href="{% url 'core:kredi_karti_donem_ekstresi' kart.pk %}">📅 Dönem Ekstresi</a>
       <a class="dugme" href="{% url 'core:kredi_karti_duzenle' kart.pk %}">✏️ Düzenle</a>
       <form method="post" action="{% url 'core:kredi_karti_sil' kart.pk %}" style="margin:0"
             onsubmit="return confirm('{{ kart.ad }} kartı silinsin mi?');">
@@ -114,11 +115,12 @@
     <h2 class="bolum-baslik"><span class="emoji">🗓️</span>Taksit Takvimi</h2>
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Vade</th><th>Harcama</th><th>Taksit</th><th class="sag">Tutar</th></tr></thead>
+      <thead><tr><th>Son ödeme</th><th>Ekstre kesim</th><th>Harcama</th><th>Taksit</th><th class="sag">Tutar</th></tr></thead>
       <tbody>
         {% for t in taksitler %}
         <tr>
           <td class="mono">{{ t.vade|date:"d.m.Y" }}</td>
+          <td class="mono">{% if t.kesim %}{{ t.kesim|date:"d.m.Y" }}{% else %}—{% endif %}</td>
           <td><a href="{% url 'core:fis_detay' t.fis.pk %}">{{ t.aciklama|default:"—"|truncatechars:44 }}</a></td>
           <td class="mono">{{ t.sira }}/{{ t.adet }}</td>
           <td class="sag mono">{{ t.tutar|tr_para }}</td>

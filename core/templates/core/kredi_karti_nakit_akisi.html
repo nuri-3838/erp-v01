@@ -1,0 +1,45 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Kart Nakit Akışı · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Kart Nakit Akışı{% endblock %}
+
+{% block content %}
+<style>
+  .na-tablo th, .na-tablo td { white-space:nowrap; }
+  .na-toplam td, .na-toplam th { font-weight:650; border-top:2px solid var(--cizgi-koyu); background:#f7f9fd; }
+  .na-rozet { display:inline-block; border-radius:999px; padding:.1rem .55rem; font-size:.72rem; font-weight:600; background:#eef1f7; color:#4a5568; }
+  .na-rozet.kes { background:#fdecef; color:#b3253f; } .na-rozet.acik { background:#fff1de; color:#b35a00; }
+</style>
+<div class="sayfa-ust"><div><a class="ust-link" href="{% url 'core:kredi_kartlari' %}">← Kredi Kartları</a>
+  <h1 class="ust-baslik"><span class="emoji">📆</span>Kart Nakit Akışı — Gelecek Son Ödemeler</h1></div></div>
+<p class="sayfa-alt">Tüm TL kartların kesilmiş-ödenmemiş ekstreleri, açık dönemleri ve gelecek taksit dönemleri son ödeme tarihine göre.
+  Toplam <strong>{{ o.toplam|tr_para }} ₺</strong>. Açık dönem tutarı o ana kadar yapılmış harcama + taksitlerdir; dönem bitene kadar artabilir.</p>
+
+{% if o.atlanan %}<div class="uyari"><div>⚠️ Kesim/son ödeme günü tanımsız olduğu için hesaplanmayan kart: {% for k in o.atlanan %}{{ k.ad }}{% if not forloop.last %}, {% endif %}{% endfor %}.</div></div>{% endif %}
+
+<h2 class="etiket">Ay bazında</h2>
+<div class="tablo-kapsayici"><table class="na-tablo">
+  <thead><tr><th>Ay</th><th>Kartlar</th><th class="sag">Toplam</th></tr></thead>
+  <tbody>
+    {% for a in o.aylar %}
+      <tr><td class="mono">{{ a.ay|stringformat:"02d" }}.{{ a.yil }}</td>
+        <td>{% for ad, t in a.kartlar.items %}{{ ad }}: <strong class="mono">{{ t|tr_para }}</strong>{% if not forloop.last %} · {% endif %}{% endfor %}</td>
+        <td class="sag mono"><strong>{{ a.toplam|tr_para }}</strong></td></tr>
+    {% empty %}<tr><td colspan="3" class="yardim">Ödenecek ekstre/taksit yok.</td></tr>{% endfor %}
+  </tbody>
+  <tfoot><tr class="na-toplam"><th colspan="2">Genel toplam</th><td class="sag mono">{{ o.toplam|tr_para }}</td></tr></tfoot>
+</table></div>
+
+<h2 class="etiket" style="margin-top:1.3rem">Ayrıntı</h2>
+<div class="tablo-kapsayici"><table class="na-tablo">
+  <thead><tr><th>Son ödeme</th><th>Kart</th><th>Kesim</th><th>Tür</th><th class="sag">Tutar</th><th></th></tr></thead>
+  <tbody>
+    {% for r in o.satirlar %}
+      <tr><td class="mono">{{ r.vade|date:"d.m.Y" }}</td><td>{{ r.kart.ad }}</td><td class="mono">{{ r.kesim|date:"d.m.Y" }}</td>
+        <td><span class="na-rozet {% if r.tur == 'Kesilmiş ekstre' %}kes{% elif r.tur == 'Açık dönem' %}acik{% endif %}">{{ r.tur }}</span></td>
+        <td class="sag mono">{{ r.tutar|tr_para }}</td>
+        <td><a href="{% url 'core:kredi_karti_donem_ekstresi' r.kart.pk %}?kesim={{ r.kesim|date:'Y-m-d' }}">Dönem ekstresi →</a></td></tr>
+    {% empty %}<tr><td colspan="6" class="yardim">Kayıt yok.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

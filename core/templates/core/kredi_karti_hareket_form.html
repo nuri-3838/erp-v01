@@ -64,14 +64,19 @@
             {% for e in form.taksit_adedi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
           <div class="alan">
+            <label for="{{ form.ilk_donem.id_for_label }}">{{ form.ilk_donem.label }}</label>
+            {{ form.ilk_donem }}
+          </div>
+          <div class="alan">
             <label for="{{ form.ilk_vade.id_for_label }}">{{ form.ilk_vade.label }}</label>
             {{ form.ilk_vade }}
+            <p class="yardim">{{ form.ilk_vade.help_text }}</p>
             {% for e in form.ilk_vade.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         </div>
-        <p class="yardim">Peşin için taksit sayısını <strong>1</strong> bırakın. Taksitli ise
-          ilk taksit tarihi zorunlu; muhasebe yine <strong>tam tutar tek fiştir</strong>, taksitler
-          kart detayında takvim olarak görünür.</p>
+        <p class="yardim">Peşin için taksit sayısını <strong>1</strong> bırakın. Taksitli ise ilk taksit, kartın kesim/son ödeme günlerinden
+          harcamanın düştüğü ekstre dönemine bağlanır (kesim günündeki harcama o ekstreye dâhildir); muhasebe yine <strong>tam tutar tek fiştir</strong>,
+          taksitler kart detayında ve Dönem Ekstresi'nde görünür.</p>
       {% endif %}
 
       {% if form.banka_hesap or form.kasa %}

@@ -2014,6 +2014,13 @@ def _sayilan_pb_alani():
                   "düşer (TL tutar aynı). Boş = carinin ana para birimi.")
 
 
+def _ilk_donem_alani():
+    """Taksitli harcamada ilk taksidin hangi ekstre dönemine gireceği (kartın kesim günlerine göre)."""
+    return forms.TypedChoiceField(
+        label="İlk taksit dönemi", required=False, coerce=int, empty_value=0,
+        choices=[(0, "Harcamanın düştüğü ekstre dönemi (varsayılan)"), (1, "Bir sonraki ekstre"), (2, "İki ekstre sonra"), (3, "Üç ekstre sonra")])
+
+
 def _sayilan_doviz_alani():
     """Karşı tarafın (döviz cari) saydığı döviz tutarı → kur = TL tutar / döviz tutarı (boşsa TCMB alış kuru)."""
     return TRDecimalField(
@@ -2194,10 +2201,13 @@ class KrediKartiHareketDuzenleForm(forms.Form):
     aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
-    def __init__(self, *args, gider_duzenlenebilir=False, doviz_alanlari=False, **kwargs):
+    def __init__(self, *args, gider_duzenlenebilir=False, doviz_alanlari=False, taksit_alanlari=False, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.hesap_plani import yaprak_hesaplar
         self.gider_duzenlenebilir = gider_duzenlenebilir
+        if taksit_alanlari:                                         # TL kart harcaması: taksit planı düzenlenir (fiş/muhasebe değişmez)
+            self.fields["taksit_adedi"] = forms.IntegerField(label="Taksit Sayısı", min_value=1, max_value=60, required=False, initial=1)
+            self.fields["ilk_donem"] = _ilk_donem_alani()
         if doviz_alanlari:                                          # karşı taraf cari + TL kart: döviz karşılığı düzenlenir
             self.fields["sayilan_pb"] = _sayilan_pb_alani()
             self.fields["sayilan_doviz"] = _sayilan_doviz_alani()
@@ -2281,10 +2291,13 @@ class KrediKartiHareketForm(forms.Form):
                 widget=forms.Select(attrs={"class": "akilli-sec"}))
             self.fields["kasa"].label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
         if tip == "harcama":
+            self._kart = kart
             self.fields["taksit_adedi"] = forms.IntegerField(
                 label="Taksit Sayısı", min_value=1, max_value=60, initial=1, required=False)
+            self.fields["ilk_donem"] = _ilk_donem_alani()
             self.fields["ilk_vade"] = forms.DateField(
-                label="İlk Taksit Tarihi", required=False,
+                label="İlk Taksit Tarihi (ops.)", required=False,
+                help_text="Boş bırakılırsa kartın kesim/son ödeme günlerinden hesaplanır.",
                 widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
 
     def clean(self):
@@ -2296,8 +2309,9 @@ class KrediKartiHareketForm(forms.Form):
         if "yatirim_projesi" in self.fields:
             _yatirim_projesi_denetle(self, cd.get("gider"), cd.get("yatirim_projesi"))
         adet = cd.get("taksit_adedi") or 1
-        if int(adet) > 1 and not cd.get("ilk_vade"):
-            self.add_error("ilk_vade", "Taksitli harcamada ilk taksit tarihi zorunlu.")
+        kart = getattr(self, "_kart", None)
+        if int(adet) > 1 and not cd.get("ilk_vade") and not (kart and kart.kesim_gunu and kart.son_odeme_gunu):
+            self.add_error("ilk_vade", "Kartta kesim günü ve son ödeme günü tanımlı değilse ilk taksit tarihi zorunlu.")
         return cd
 
 

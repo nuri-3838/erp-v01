@@ -208,20 +208,20 @@ def _ay_ekle(tarih, n):
 @transaction.atomic
 def harcama_olustur(*, kart, karsi, tutar, tarih, taksit_adedi=1, ilk_vade=None,
                     aciklama="", kullanici=None, kur_override=None, yatirim_projesi_id=None,
-                    sayilan_pb=None, sayilan_doviz=None) -> YevmiyeFisi:
+                    sayilan_pb=None, sayilan_doviz=None, ilk_donem=0) -> YevmiyeFisi:
     """Harcama (peşin ya da taksitli). Muhasebe HER ZAMAN tam tutar tek fiş (borç anında gerçek);
-    taksit_adedi>1 ise ayrıca BİLGİ amaçlı KrediKartiTaksit planı oluşur (ledger'ı etkilemez)."""
+    taksit_adedi>1 ise ayrıca ödeme takvimi için KrediKartiTaksit planı oluşur (ledger'ı etkilemez). ``ilk_vade`` verilmezse ilk taksit,
+    kartın kesim/son ödeme günlerinden harcamanın düştüğü ekstre dönemine (``ilk_donem`` kadar ay sonraya) bağlanır (bkz. core.services.kk_donem)."""
     fis = hareket_olustur(kart=kart, tip="harcama", karsi=karsi, tutar=tutar, tarih=tarih,
                           aciklama=aciklama, kullanici=kullanici, kur_override=kur_override,
                           yatirim_projesi_id=yatirim_projesi_id, sayilan_pb=sayilan_pb, sayilan_doviz=sayilan_doviz)
     adet = int(taksit_adedi or 1)
     if adet > 1:
-        if not ilk_vade:
-            raise KrediKartiHareketHatasi("Taksitli harcamada ilk taksit tarihi zorunlu.")
-        KrediKartiTaksit.objects.create(
-            kart=kart, fis=fis, taksit_adedi=adet, ilk_vade=ilk_vade,
-            toplam_tutar=_tutar(tutar), para_birimi=kart.para_birimi,
-            created_by=kullanici, updated_by=kullanici)
+        from core.services import kk_donem
+        try:
+            kk_donem.plan_ayarla(fis=fis, kart=kart, adet=adet, ilk_vade=ilk_vade or None, kaydirma=ilk_donem, kullanici=kullanici)
+        except kk_donem.KkDonemHatasi as e:
+            raise KrediKartiHareketHatasi(str(e))
     return fis
 
 
@@ -241,10 +241,11 @@ def taksit_takvimi(plan):
 def kart_taksit_takvimi(kart):
     """Kartın AKTİF taksit planlarının tüm taksitleri, vade artan. Her satır: vade, tutar, sira,
     adet, fis, pb, aciklama. Kart detayında 'Taksit Takvimi' bölümü için."""
+    from core.services import kk_donem
     hepsi = []
     for p in (KrediKartiTaksit.objects.filter(kart=kart, silindi=False)
               .select_related("fis").order_by("ilk_vade", "id")):
-        for t in taksit_takvimi(p):
+        for t in kk_donem.plan_satirlari(kart, p):             # kartta kesim + son ödeme günü varsa ekstre/son ödeme günlerinden
             hepsi.append({**t, "adet": p.taksit_adedi, "fis": p.fis, "pb": p.para_birimi,
                           "aciklama": p.fis.aciklama})
     hepsi.sort(key=lambda x: (x["vade"], x["fis"].pk, x["sira"]))
@@ -272,11 +273,12 @@ def duzenleme_bilgisi(fis, kart):
 
 @transaction.atomic
 def hareket_guncelle(*, fis, kart, aciklama=None, gider=None, yatirim_projesi_id=None, kullanici=None,
-                     sayilan_pb=None, sayilan_doviz=None):
+                     sayilan_pb=None, sayilan_doviz=None, taksit_adedi=None, ilk_donem=None, ilk_vade=None):
     """Kredi kartı hareketini DÜZENLER: açıklama, gider hesabı (karşı taraf gider hesabıysa) ve yatırım
     projesi (258'de zorunlu); karşı taraf CARİ ise (TL kart harcaması) sayılan para birimi / sayılan döviz tutarı
     (döviz tutarı doluysa kur = TL / döviz; yalnız para birimi doluysa TCMB alış; ikisi de boşsa satır aynen kalır).
-    Tutar (TL)/tarih/kart tarafı değişmez. Fiş ``fis_guncelle`` ile yeniden yazılır; kur farkı
+    ``taksit_adedi`` (None = dokunma): taksit planını kurar/günceller/siler (1 → plan kalkar); ``ilk_donem`` (0..3) ilk taksidin kaç ekstre sonra
+    başlayacağı; fiş/muhasebe DEĞİŞMEZ. Tutar (TL)/tarih/kart tarafı değişmez. Fiş ``fis_guncelle`` ile yeniden yazılır; kur farkı
     motoru yeniden çalışır. Hatada hiçbir şey değişmez."""
     from core.services.yevmiye import fis_guncelle
     bilgi = duzenleme_bilgisi(fis, kart)
@@ -309,4 +311,14 @@ def hareket_guncelle(*, fis, kart, aciklama=None, gider=None, yatirim_projesi_id
                      satirlar=[_satir(kart_s, kart_s.hesap_id), karsi_girdi])
     except YevmiyeHatasi as e:
         raise KrediKartiHareketHatasi(str(e))
+    if taksit_adedi is not None:
+        from core.services import kk_donem
+        try:
+            plan = kk_donem.aktif_plan(fis)
+            ayni = (plan is not None and plan.taksit_adedi == int(taksit_adedi or 1)
+                    and (ilk_donem is None or int(ilk_donem) == kk_donem.mevcut_kaydirma(kart, fis, plan)) and not ilk_vade)
+            if not ayni and not (plan is None and int(taksit_adedi or 1) <= 1):
+                kk_donem.plan_ayarla(fis=fis, kart=kart, adet=taksit_adedi, ilk_vade=ilk_vade or None, kaydirma=ilk_donem or 0, kullanici=kullanici)
+        except kk_donem.KkDonemHatasi as e:
+            raise KrediKartiHareketHatasi(str(e))
     return fis

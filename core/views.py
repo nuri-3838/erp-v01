@@ -102,6 +102,7 @@ from core.services import kasa_hareket as kasa_hareket_servis
 from core.services import banka_hareket as banka_hareket_servis
 from core.services import bordro as bordro_servis
 from core.services import finans_ozet as finans_ozet_servis
+from core.services import kk_donem as kk_donem_servis
 from core.services import doviz_islem as doviz_islem_servis
 from core.services import kur_degerleme as kur_degerleme_servis
 from core.services import donemsel_gider as donemsel_servis
@@ -4048,7 +4049,7 @@ def _kredi_karti_hareket_form(request, kart, tip):
                         ilk_vade=form.cleaned_data.get("ilk_vade"),
                         aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
                         kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"),
-                        sayilan_doviz=form.cleaned_data.get("sayilan_doviz"),
+                        sayilan_doviz=form.cleaned_data.get("sayilan_doviz"), ilk_donem=form.cleaned_data.get("ilk_donem") or 0,
                         yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
                                             if form.cleaned_data.get("yatirim_projesi") else None))
                 else:
@@ -4064,7 +4065,8 @@ def _kredi_karti_hareket_form(request, kart, tip):
             except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = KrediKartiHareketForm(tip=tip, kart=kart)
+        ilk = {k: request.GET[k] for k in ("gider", "tarih", "aciklama") if request.GET.get(k)}      # dönem ekstresi kısayolları (faiz/masraf)
+        form = KrediKartiHareketForm(tip=tip, kart=kart, initial=ilk)
     return render(request, "core/kredi_karti_hareket_form.html",
                   {"kart": kart, "form": form, "tip": tip, "tan": tan})
 
@@ -4089,9 +4091,10 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
         messages.error(request, str(e))
         return redirect("core:kredi_karti_detay", pk=kart.pk)
     duzenlenebilir = bilgi["gider_duzenlenebilir"]
+    taksit_duzenlenebilir = kart.para_birimi == "TRY" and bool(bilgi["kart_satiri"].alacak)      # harcama: taksit planı düzenlenebilir
     if request.method == "POST":
         form = KrediKartiHareketDuzenleForm(request.POST, gider_duzenlenebilir=duzenlenebilir,
-                                            doviz_alanlari=bilgi["doviz_duzenlenebilir"])
+                                            doviz_alanlari=bilgi["doviz_duzenlenebilir"], taksit_alanlari=taksit_duzenlenebilir)
         if form.is_valid():
             try:
                 kredi_karti_hareket_servis.hareket_guncelle(
@@ -4100,6 +4103,8 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
                     yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
                                         if form.cleaned_data.get("yatirim_projesi") else None),
                     sayilan_pb=form.cleaned_data.get("sayilan_pb"), sayilan_doviz=form.cleaned_data.get("sayilan_doviz"),
+                    taksit_adedi=(form.cleaned_data.get("taksit_adedi") or 1) if taksit_duzenlenebilir else None,
+                    ilk_donem=form.cleaned_data.get("ilk_donem") or 0 if taksit_duzenlenebilir else None,
                     kullanici=request.user)
                 messages.success(request, f"Hareket güncellendi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_karti_detay", pk=kart.pk)
@@ -4112,10 +4117,15 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
             ilk["gider"] = karsi.hesap_id
         if bilgi["doviz_duzenlenebilir"] and karsi.islem_pb != "TRY":
             ilk["sayilan_pb"], ilk["sayilan_doviz"] = karsi.islem_pb, karsi.islem_tutari
+        if taksit_duzenlenebilir:
+            plan = kk_donem_servis.aktif_plan(fis)
+            ilk["taksit_adedi"] = plan.taksit_adedi if plan else 1
+            ilk["ilk_donem"] = kk_donem_servis.mevcut_kaydirma(kart, fis, plan)
         form = KrediKartiHareketDuzenleForm(initial=ilk, gider_duzenlenebilir=duzenlenebilir,
-                                            doviz_alanlari=bilgi["doviz_duzenlenebilir"])
+                                            doviz_alanlari=bilgi["doviz_duzenlenebilir"], taksit_alanlari=taksit_duzenlenebilir)
     return render(request, "core/kredi_karti_hareket_duzenle.html", {
-        "kart": kart, "fis": fis, "form": form, "bilgi": bilgi, "tutar": bilgi["kart_satiri"].islem_tutari})
+        "kart": kart, "fis": fis, "form": form, "bilgi": bilgi, "tutar": bilgi["kart_satiri"].islem_tutari,
+        "plan": kk_donem_servis.aktif_plan(fis) if taksit_duzenlenebilir else None})
 
 
 @ekran_gerekli("kredi_karti")
@@ -8699,3 +8709,61 @@ def finans_ozeti(request):
     """FİNANS özeti (dashboard): kasa/banka bakiyeleri, kredi kartı + kredi borcu, çek/senet durumu ve yaklaşan vadeler (yalnız okur)."""
     o = finans_ozet_servis.ozet(timezone.localdate())
     return render(request, "core/finans_ozet.html", {"o": o})
+
+
+
+# === KREDİ KARTI — Dönem Ekstresi / Nakit Akışı / Taksit Önerileri ===
+@ekran_gerekli("kredi_karti")
+def kredi_karti_donem_ekstresi(request, pk):
+    """Kart başına dönem ekstresi: kesim tarihi seç → devir + taksitler + tek çekimler − ödemeler = dönem borcu, son ödeme tarihi; banka ekstresiyle
+    karşılaştırma (yalnız görüntü — kayıt yazmaz)."""
+    kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
+    bugun = timezone.localdate()
+    ctx = {"kart": kart, "bugun": bugun, "hata": ""}
+    if kart.para_birimi != "TRY" or not kk_donem_servis.gunler_tanimli(kart):
+        ctx["hata"] = ("Dönem ekstresi yalnız TL kartlar için hesaplanır." if kart.para_birimi != "TRY"
+                       else "Kartta hesap kesim günü ve son ödeme günü tanımlı olmalı — Kart Düzenle'den girin.")
+        return render(request, "core/kredi_karti_donem_ekstresi.html", ctx)
+    secenekler = kk_donem_servis.kesim_secenekleri(kart, bugun)
+    ham = request.GET.get("kesim")
+    try:
+        kesim = datetime.date.fromisoformat(ham) if ham else kk_donem_servis.son_kesilmis_kesim(kart, bugun)
+    except ValueError:
+        kesim = kk_donem_servis.son_kesilmis_kesim(kart, bugun)
+    kesim = kk_donem_servis.donem_kesimi(kart, kesim)
+    ekstre = kk_donem_servis.donem_ekstresi(kart, kesim, bugun)
+    banka_tutar, fark = None, None
+    ham_banka = (request.GET.get("banka_tutar") or "").strip()
+    if ham_banka:
+        try:
+            banka_tutar = parse_tr(ham_banka)
+            fark = banka_tutar - ekstre["donem_borcu"]
+        except SayiHatasi:
+            ctx["hata"] = "Banka ekstresi tutarı geçerli bir sayı değil (örn. 12.345,67)."
+    from core.services.hesap_plani import yaprak_hesaplar
+    kodlar = {h.hesap_kodu for h in yaprak_hesaplar().filter(hesap_kodu__in=["770.03"]) | yaprak_hesaplar().filter(hesap_kodu__startswith="780")}
+    faiz = sorted(k for k in kodlar if k.startswith("780"))
+    ctx.update({"ekstre": ekstre, "secenekler": secenekler, "kesim": kesim, "banka_tutar": banka_tutar, "fark": fark, "ham_banka": ham_banka,
+                "faiz_kodu": faiz[0] if faiz else "", "masraf_kodu": "770.03" if "770.03" in kodlar else ""})
+    return render(request, "core/kredi_karti_donem_ekstresi.html", ctx)
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_nakit_akisi(request):
+    """Tüm TL kartların gelecek son ödeme tarihleri ve tutarları (ay bazında özet + ayrıntı)."""
+    return render(request, "core/kredi_karti_nakit_akisi.html", {"o": kk_donem_servis.nakit_akisi(timezone.localdate())})
+
+
+@ekran_gerekli("kredi_karti")
+def kredi_karti_taksit_onerileri(request):
+    """Mevcut harcamalardan açıklamasında 'N TAKSİT' geçen ve planı olmayanlar için taksit planı önerisi; seçilenler onayla uygulanır
+    (yalnız plan kaydeder; fiş/muhasebe değişmez)."""
+    if request.method == "POST":
+        secilen = request.POST.getlist("fis")
+        try:
+            n = kk_donem_servis.oneri_uygula(secilen, kullanici=request.user) if secilen else 0
+            messages.success(request, f"{n} harcama için taksit planı oluşturuldu." if n else "Seçim yapılmadı.")
+        except kk_donem_servis.KkDonemHatasi as e:
+            messages.error(request, str(e))
+        return redirect("core:kredi_karti_taksit_onerileri")
+    return render(request, "core/kredi_karti_taksit_onerileri.html", {"oneriler": kk_donem_servis.oneriler()})

@@ -1,0 +1,130 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Dönem Ekstresi · {{ kart.ad }}{% endblock %}
+{% block sayfa_adi %}Dönem Ekstresi{% endblock %}
+
+{% block content %}
+<style>
+  .de-ozet { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(13rem,100%),1fr)); gap:.8rem; margin:.8rem 0 1.2rem; }
+  .de-kart { background:#fff; border:1px solid var(--cizgi); border-radius:14px; padding:.8rem 1rem; box-shadow:var(--golge-sm); }
+  .de-kart .et { font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--metin-soluk); font-weight:600; }
+  .de-kart .dg { font-size:1.4rem; font-weight:700; font-variant-numeric:tabular-nums; margin-top:.15rem; }
+  .de-kart.vurgu { background:linear-gradient(135deg,#15294d,#21385f); color:#fff; border-color:transparent; }
+  .de-kart.vurgu .et { color:rgba(255,255,255,.72); }
+  .de-kart .alt { font-size:.76rem; color:var(--metin-soluk); margin-top:.2rem; }
+  .de-kart.vurgu .alt { color:rgba(255,255,255,.72); }
+  .de-filtre { display:flex; flex-wrap:wrap; gap:.7rem; align-items:flex-end; margin:.6rem 0 1rem; }
+  .de-eksi { color:var(--hata); } .de-ok { color:#13774b; }
+  .de-tablo th, .de-tablo td { white-space:nowrap; }
+  .de-tablo td.ack { white-space:normal; min-width:14rem; }
+  .de-toplam td, .de-toplam th { font-weight:650; border-top:2px solid var(--cizgi-koyu); background:#f7f9fd; }
+</style>
+
+<div class="sayfa-ust">
+  <div><a class="ust-link" href="{% url 'core:kredi_karti_detay' kart.pk %}">← {{ kart.ad }}</a>
+    <h1 class="ust-baslik"><span class="emoji">📅</span>Dönem Ekstresi · {{ kart.ad }}</h1></div>
+</div>
+
+{% if hata and not ekstre %}
+  <div class="uyari"><div>⚠️ {{ hata }}</div></div>
+{% else %}
+{% if hata %}<div class="uyari"><div>⚠️ {{ hata }}</div></div>{% endif %}
+
+<form method="get" class="de-filtre">
+  <div class="alan"><label for="de-kesim">Hesap kesim tarihi</label>
+    <select id="de-kesim" name="kesim" onchange="this.form.submit()">
+      {% for t in secenekler %}<option value="{{ t|date:'Y-m-d' }}" {% if t == kesim %}selected{% endif %}>{{ t|date:"d.m.Y" }}{% if t > bugun %} (açık dönem){% endif %}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="de-banka">Banka ekstresi tutarı (karşılaştırma)</label>
+    <input type="text" id="de-banka" name="banka_tutar" value="{{ ham_banka }}" placeholder="örn. 125.430,50" inputmode="decimal" autocomplete="off"></div>
+  <button type="submit" class="dugme-ikincil">Karşılaştır</button>
+</form>
+
+{% if banka_tutar is not None %}
+<div class="uyari" style="background:{% if fark == 0 %}rgba(10,125,40,.08){% else %}rgba(193,21,57,.07){% endif %}">
+  <div>🏦 Banka ekstresi <strong>{{ banka_tutar|tr_para }}</strong> · ERP dönem borcu <strong>{{ ekstre.donem_borcu|tr_para }}</strong> ·
+    {% if fark == 0 %}<strong class="de-ok">fark yok ✓</strong>
+    {% else %}fark (banka − ERP) <strong class="de-eksi">{{ fark|tr_para }}</strong>
+      <span class="yardim"> — {% if fark > 0 %}bankada ERP'den fazla görünüyor: faiz/ücret/gecikme kalemi veya eksik harcama olabilir{% else %}ERP'de bankadan fazla: fazla taksit, eksik ödeme ya da yanlış dönem olabilir{% endif %}.</span>{% endif %}
+    <br><span class="yardim">Yalnızca görüntü; hiçbir kayıt yazılmaz.</span></div>
+</div>
+{% endif %}
+
+<div class="de-ozet">
+  <div class="de-kart"><div class="et">Dönem</div><div class="dg" style="font-size:1.05rem">{{ ekstre.onceki_kesim|date:"d.m.Y" }} → {{ ekstre.kesim|date:"d.m.Y" }}</div>
+    <div class="alt">kesim günü dâhil; {{ ekstre.kesilmis|yesno:"ekstre kesildi,açık dönem (henüz kesilmedi)" }}</div></div>
+  <div class="de-kart vurgu"><div class="et">Dönem borcu</div><div class="dg">{{ ekstre.donem_borcu|tr_para }} ₺</div>
+    <div class="alt">devir + taksit + tek çekim − ödeme</div></div>
+  <div class="de-kart"><div class="et">Son ödeme tarihi</div><div class="dg">{{ ekstre.son_odeme|date:"d.m.Y" }}</div>
+    <div class="alt">hafta sonu/resmî tatilde sonraki iş günü</div></div>
+  <div class="de-kart"><div class="et">Kesimden sonra ödenen</div><div class="dg">{{ ekstre.t_sonra_odeme|tr_para }} ₺</div>
+    <div class="alt">son ödeme tarihine kadar</div></div>
+  <div class="de-kart"><div class="et">Ödenecek kalan</div>
+    <div class="dg {% if ekstre.kalan > 0 %}de-eksi{% else %}de-ok{% endif %}">{{ ekstre.kalan|tr_para }} ₺</div>
+    <div class="alt">{% if ekstre.kalan < 0 %}fazla ödeme{% else %}dönem borcu − kesimden sonraki ödemeler{% endif %}</div></div>
+</div>
+
+<div class="tablo-kapsayici genis"><table class="de-tablo">
+  <thead><tr><th>Kalem</th><th>Tarih / Vade</th><th>Fiş</th><th>Açıklama</th><th class="sag">Tutar</th></tr></thead>
+  <tbody>
+    <tr><td>Devreden bakiye</td><td class="mono">{{ ekstre.onceki_kesim|date:"d.m.Y" }}</td><td>—</td><td class="ack">önceki ekstrelerden devreden net borç</td>
+      <td class="sag mono">{{ ekstre.devir|tr_para }}</td></tr>
+    {% for x in ekstre.taksitler %}
+      <tr><td>Taksit {{ x.sira }}/{{ x.adet }}</td><td class="mono">{{ x.vade|date:"d.m.Y" }}</td>
+        <td class="mono"><a href="{% url 'core:fis_detay' x.fis_pk %}">{{ x.fis_no }}</a></td><td class="ack">{{ x.aciklama }}</td>
+        <td class="sag mono">{{ x.tutar|tr_para }}</td></tr>
+    {% endfor %}
+    {% for x in ekstre.cekimler %}
+      <tr><td>Tek çekim</td><td class="mono">{{ x.tarih|date:"d.m.Y" }}</td>
+        <td class="mono"><a href="{% url 'core:fis_detay' x.fis_pk %}">{{ x.fis_no }}</a></td><td class="ack">{{ x.aciklama }}</td>
+        <td class="sag mono">{{ x.tutar|tr_para }}</td></tr>
+    {% endfor %}
+    {% for x in ekstre.odemeler %}
+      <tr><td>Ödeme / iade</td><td class="mono">{{ x.tarih|date:"d.m.Y" }}</td>
+        <td class="mono"><a href="{% url 'core:fis_detay' x.fis_pk %}">{{ x.fis_no }}</a></td><td class="ack">{{ x.aciklama }}</td>
+        <td class="sag mono de-ok">−{{ x.tutar|tr_para }}</td></tr>
+    {% endfor %}
+    {% if not ekstre.taksitler and not ekstre.cekimler and not ekstre.odemeler %}
+      <tr><td colspan="5" class="yardim" style="text-align:center;padding:1.2rem 0">Bu dönemde taksit, harcama ya da ödeme yok.</td></tr>
+    {% endif %}
+  </tbody>
+  <tfoot>
+    <tr class="de-toplam"><th colspan="4">Dönem borcu (devir {{ ekstre.devir|tr_para }} + taksit {{ ekstre.t_taksit|tr_para }} + tek çekim {{ ekstre.t_cekim|tr_para }} − ödeme {{ ekstre.t_odeme|tr_para }})</th>
+      <td class="sag mono">{{ ekstre.donem_borcu|tr_para }}</td></tr>
+  </tfoot>
+</table></div>
+
+{% if ekstre.sonra_odemeler %}
+<h3 style="margin:1.1rem 0 .4rem">Kesimden sonra, son ödeme tarihine kadar yapılan ödemeler</h3>
+<div class="tablo-kapsayici"><table class="de-tablo"><tbody>
+  {% for x in ekstre.sonra_odemeler %}
+    <tr><td class="mono">{{ x.tarih|date:"d.m.Y" }}</td><td class="mono"><a href="{% url 'core:fis_detay' x.fis_pk %}">{{ x.fis_no }}</a></td>
+      <td class="ack">{{ x.aciklama }}</td><td class="sag mono de-ok">−{{ x.tutar|tr_para }}</td></tr>
+  {% endfor %}
+</tbody></table></div>
+{% endif %}
+
+<section class="icerik-kart" style="margin-top:1.2rem">
+  <h2 class="bolum-baslik">309 defter borcu uyumu</h2>
+  <p class="yardim" style="margin-top:-.3rem">Muhasebe, harcamayı tam tutarla yazar; ekstre ise yalnız bu dönemin taksitlerini taşır. Fark, sonraki dönemlere ait kalemlerdir.</p>
+  <div class="tablo-kapsayici"><table class="de-tablo"><tbody>
+    <tr><td>Bu ekstrenin dönem borcu</td><td class="sag mono">{{ ekstre.donem_borcu|tr_para }}</td></tr>
+    <tr><td>+ Kesimden sonraki tek çekimler</td><td class="sag mono">{{ ekstre.sonraki.cekim|tr_para }}</td></tr>
+    <tr><td>+ Sonraki dönemlerin taksitleri</td><td class="sag mono">{{ ekstre.sonraki.taksit|tr_para }}</td></tr>
+    <tr><td>− Kesimden sonraki ödemeler</td><td class="sag mono de-ok">−{{ ekstre.sonraki.odeme|tr_para }}</td></tr>
+    <tr class="de-toplam"><td>= Kart defter borcu (309)</td><td class="sag mono">{{ ekstre.uyum|tr_para }}</td></tr>
+  </tbody></table></div>
+  {% if ekstre.uyum != ekstre.defter_borcu %}<p class="yardim de-eksi">⚠ Hesaplanan {{ ekstre.uyum|tr_para }} ile defter {{ ekstre.defter_borcu|tr_para }} farklı.</p>{% endif %}
+</section>
+
+<section class="icerik-kart" style="margin-top:1rem">
+  <h2 class="bolum-baslik">Faiz / ücret / gecikme kalemi</h2>
+  <p class="yardim" style="margin-top:-.3rem">Banka ekstresinde olup ERP'de bulunmayan faiz, ücret ya da gecikme tutarını Kart Harcaması olarak girin (dönemin kesim tarihiyle önerilir).</p>
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+    {% if faiz_kodu %}<a class="dugme" href="{% url 'core:kredi_karti_hareket_ekle' kart.pk 'harcama' %}?gider={{ faiz_kodu|urlencode }}&tarih={{ ekstre.kesim|date:'Y-m-d' }}&aciklama={{ 'KART FAİZİ'|urlencode }}">➕ Faiz ekle ({{ faiz_kodu }})</a>{% endif %}
+    {% if masraf_kodu %}<a class="dugme" href="{% url 'core:kredi_karti_hareket_ekle' kart.pk 'harcama' %}?gider={{ masraf_kodu|urlencode }}&tarih={{ ekstre.kesim|date:'Y-m-d' }}&aciklama={{ 'KART ÜCRETİ'|urlencode }}">➕ Banka masrafı / ücret ekle (770.03)</a>{% endif %}
+    {% if not faiz_kodu and not masraf_kodu %}<span class="yardim">780 / 770.03 hesabı hesap planında bulunamadı.</span>{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
