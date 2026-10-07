@@ -130,7 +130,7 @@ class YatirimProjesiEkranTest(TestCase):
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:yatirim_projeleri"))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Henüz yatırım projesi yok.")
+        self.assertContains(r, "Bu filtreyle eşleşen proje yok.")
 
     def test_ekle_view(self):
         self.client.force_login(self.yetkili)

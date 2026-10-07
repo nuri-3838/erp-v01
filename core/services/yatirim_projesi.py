@@ -52,27 +52,60 @@ def proje_olustur(*, ad, aciklama="", grup_kodu=None, kullanici=None) -> Yatirim
             created_by=kullanici, updated_by=kullanici)
 
 
+def proje_parcalari(proje: YatirimProjesi) -> dict:
+    """Proje toplamının PARÇALARI + hareket istatistiği (liste ve detay ortak kaynağı; ``proje_toplami`` bunun toplamıdır):
+    fatura (KDV hariç TL; SATIŞ yönlü 258 hesap satırı = alış iadesi EKSİ) + sarf (stok sarf FIFO maliyeti) + diger (projeye bağlı
+    fiş satırları: kesinti/virman/banka/kur farkı… net borç). ``hareket`` = fatura kalemi + diğer satır + sarf sayısı;
+    ``ilk``/``son`` = bu hareketlerin tarih aralığı (hiç hareket yoksa None)."""
+    from core.models import YevmiyeSatir
+    from core.services import stok_maliyet
+    fatura, sarf, diger = SIFIR, SIFIR, SIFIR
+    tarihler = []
+    fatura_adet = diger_adet = sarf_adet = 0
+    for s in (proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False).select_related("fatura")):
+        fatura += s.tutar_tl if s.fatura.yon != "SATIS" else -s.tutar_tl
+        tarihler.append(s.fatura.tarih)
+        fatura_adet += 1
+    for h in proje_sarf_hareketleri(proje):
+        sarf += stok_maliyet.hareket_maliyet_durumu(h)["tutar_try"] or SIFIR
+        tarihler.append(h.tarih)
+        sarf_adet += 1
+    for s in proje_diger_hareketler(proje):
+        diger += s.borc - s.alacak
+        tarihler.append(s.fis.tarih)
+        diger_adet += 1
+    return {"fatura": fatura, "sarf": sarf, "diger": diger, "toplam": fatura + sarf + diger,
+            "hareket": fatura_adet + diger_adet + sarf_adet, "fatura_adet": fatura_adet, "diger_adet": diger_adet,
+            "sarf_adet": sarf_adet, "ilk": min(tarihler) if tarihler else None, "son": max(tarihler) if tarihler else None}
+
+
 def proje_toplami(proje: YatirimProjesi) -> Decimal:
     """Projeye bağlı tüm (silinmemiş faturadaki silinmemiş) kalemlerin KDV HARİÇ TL
     karşılığı toplamı (``tutar_tl`` = tutar × fatura kuru; döviz faturada ``tutar`` TL
     DEĞİLDİR, fatura para biriminde kalır — bkz. FaturaSatir.tutar_tl)
     + projeye bağlı (silinmemiş) stok sarf çıkışlarının FIFO maliyet toplamı (zaten TL)
-    + projeye bağlı manuel fiş satırlarının (258, fatura dışı — örn. gümrükçü dekontu)
-    net borç toplamı (zaten TL, bkz. core.models.YevmiyeSatir.yatirim_projesi)."""
+    + projeye bağlı fiş satırlarının (258, fatura dışı — kesinti/virman/banka/gümrükçü dekontu)
+    net borç toplamı (zaten TL, bkz. core.models.YevmiyeSatir.yatirim_projesi). Parçalar: ``proje_parcalari``."""
+    return proje_parcalari(proje)["toplam"]
+
+
+def proje_diger_hareketler(proje: YatirimProjesi):
+    """Projeye bağlı (``YevmiyeSatir.yatirim_projesi``) silinmemiş fiş satırları — fatura/sarf dışı hareketler (kesinti, virman, banka,
+    kur farkı…). Tarih, fiş no, satır sırasıyla."""
     from core.models import YevmiyeSatir
-    from core.services import stok_maliyet
-    toplam = SIFIR
-    for s in (proje.fatura_satirlari.filter(silindi=False, fatura__silindi=False)
-             .select_related("fatura")):
-        # SATIŞ yönlü faturadaki 258 hesap satırı (alış iadesi) proje maliyetini AZALTIR.
-        toplam += s.tutar_tl if s.fatura.yon != "SATIS" else -s.tutar_tl
-    for h in proje_sarf_hareketleri(proje):
-        durum = stok_maliyet.hareket_maliyet_durumu(h)
-        toplam += durum["tutar_try"] or SIFIR
-    for s in YevmiyeSatir.objects.filter(
-            yatirim_projesi=proje, silindi=False, fis__silindi=False):
-        toplam += s.borc - s.alacak
-    return toplam
+    return (YevmiyeSatir.objects.filter(yatirim_projesi=proje, silindi=False, fis__silindi=False)
+            .select_related("fis", "hesap").order_by("fis__tarih", "fis__fis_no", "id"))
+
+
+def proje_yevmiye_kalemleri(proje: YatirimProjesi):
+    """Projenin 258 hesabındaki TÜM fiş satırları (kaynağından bağımsız) yürüyen bakiyeli — ``raporlar.ekstre`` ile BİREBİR aynı motor
+    (tüm tarihler). Hesapsız eski projede None."""
+    import datetime
+
+    from core.services import raporlar
+    if not proje.hesap_id:
+        return None
+    return raporlar.ekstre(proje.hesap_id, datetime.date(1900, 1, 1), datetime.date(2999, 12, 31))
 
 
 def proje_sarf_hareketleri(proje: YatirimProjesi):
@@ -265,3 +298,68 @@ def proje_geri_al(proje: YatirimProjesi, *, kullanici=None) -> YatirimProjesi:
         proje.save(update_fields=["durum", "aktiflestirme_fisi", "updated_by", "updated_at"])
 
     return proje
+
+
+# === Liste ekranı: filtre / sekme / özet / sıralama ===
+DURUM_SEKMELERI = (("DEVAM", "Devam Ediyor"), ("AKTIFLESTI", "Aktifleşti"), ("KAPANDI", "Kapandı"), ("TUMU", "Tümü"))
+SIRALAMA_ANAHTARLARI = ("kod", "ad", "hesap", "durum", "ilk", "son", "hareket", "toplam")
+
+
+def _siralama_anahtari(kayit, anahtar):
+    p = kayit["proje"]
+    return {"kod": p.kod, "ad": p.ad, "hesap": p.hesap_id or "", "durum": p.get_durum_display(), "ilk": kayit["ilk"],
+            "son": kayit["son"], "hareket": kayit["hareket"], "toplam": kayit["toplam"]}[anahtar]
+
+
+def proje_listesi(*, arama="", grup="", baslangic=None, bitis=None, durum="DEVAM", sirala="son", yon="azalan", bugun=None) -> dict:
+    """Yatırım projeleri listesi: arama (kod/ad/hesap kodu/açıklama) + hesap grubu (258.0X) + son hareket tarih aralığı TABAN kümeyi,
+    durum sekmesi satırları belirler. Sekme sayıları ve özet kartları taban kümeden hesaplanır (durum seçimi onları değiştirmez).
+    Döner: kayitlar (sıralı), sayilar{DEVAM,AKTIFLESTI,KAPANDI,TUMU}, devam_toplam, bu_yil_aktiflesen, mizan_258, devam_toplam_tum
+    (filtresiz, mizan karşılaştırması için), uyari (devam toplamı ≠ 258 bakiyesi), toplam (listelenenlerin)."""
+    import datetime
+
+    from core.metin import buyuk_harf_tr
+    from core.models import DuranVarlik
+    from core.services import raporlar
+    bugun = bugun or datetime.date.today()
+    durum = durum if durum in {d for d, _ in DURUM_SEKMELERI} else "DEVAM"
+    sirala = sirala if sirala in SIRALAMA_ANAHTARLARI else "son"
+    azalan = yon != "artan"
+
+    tum = list(YatirimProjesi.objects.filter(silindi=False).select_related("aktiflestirme_fisi", "hesap"))
+    ozet = {p.pk: proje_parcalari(p) for p in tum}
+    kartlar = {}
+    for v in DuranVarlik.objects.filter(yatirim_projesi__isnull=False, silindi=False).order_by("demirbas_kodu"):
+        kartlar.setdefault(v.yatirim_projesi_id, []).append(v)
+
+    kayitlar = [{"proje": p, **ozet[p.pk], "kartlar": kartlar.get(p.pk, [])} for p in tum]
+    devam_toplam_tum = sum((k["toplam"] for k in kayitlar if k["proje"].durum == YatirimProjesi.Durum.DEVAM), SIFIR)
+
+    arama = (arama or "").strip()
+    if arama:
+        aranan = buyuk_harf_tr(arama)          # TR büyük harf (i→İ ı→I): ad/açıklama büyük harfle saklanır
+        kayitlar = [k for k in kayitlar if aranan in buyuk_harf_tr(
+            " ".join([k["proje"].kod, k["proje"].ad, k["proje"].hesap_id or "", k["proje"].aciklama or ""]))]
+    if grup:
+        kayitlar = [k for k in kayitlar if (k["proje"].hesap_id or "").startswith(grup + ".")]
+    if baslangic or bitis:
+        kayitlar = [k for k in kayitlar if k["son"] is not None and (not baslangic or k["son"] >= baslangic)
+                    and (not bitis or k["son"] <= bitis)]
+
+    sayilar = {"TUMU": len(kayitlar)}
+    for d, _ in DURUM_SEKMELERI[:3]:
+        sayilar[d] = sum(1 for k in kayitlar if k["proje"].durum == d)
+    devam_toplam = sum((k["toplam"] for k in kayitlar if k["proje"].durum == YatirimProjesi.Durum.DEVAM), SIFIR)
+    bu_yil = sum((k["toplam"] for k in kayitlar if k["proje"].durum == YatirimProjesi.Durum.AKTIFLESTI
+                  and k["proje"].aktiflestirme_fisi_id and k["proje"].aktiflestirme_fisi.tarih.year == bugun.year), SIFIR)
+
+    secili = kayitlar if durum == "TUMU" else [k for k in kayitlar if k["proje"].durum == durum]
+    dolu = [k for k in secili if _siralama_anahtari(k, sirala) is not None]
+    bos = [k for k in secili if _siralama_anahtari(k, sirala) is None]       # tarihi olmayanlar her yönde SONDA
+    dolu.sort(key=lambda k: (_siralama_anahtari(k, sirala), k["proje"].kod), reverse=azalan)
+    secili = dolu + bos
+
+    mizan_258 = raporlar._devir("258", datetime.date(2100, 1, 1))[0]
+    return {"kayitlar": secili, "sayilar": sayilar, "devam_toplam": devam_toplam, "bu_yil_aktiflesen": bu_yil,
+            "mizan_258": mizan_258, "devam_toplam_tum": devam_toplam_tum, "uyari": devam_toplam_tum != mizan_258, "fark": devam_toplam_tum - mizan_258,
+            "toplam": sum((k["toplam"] for k in secili), SIFIR), "durum": durum, "sirala": sirala, "yon": "azalan" if azalan else "artan"}

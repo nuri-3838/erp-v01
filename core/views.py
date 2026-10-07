@@ -7273,20 +7273,42 @@ def _proje_satir_qs(proje):
             .order_by("fatura__tarih", "fatura_id"))
 
 
+_YP_KOLONLAR = (("kod", "Kod", False), ("ad", "Ad", False), ("hesap", "Hesap", False), ("durum", "Durum", False),
+                ("ilk", "İlk hareket", False), ("son", "Son hareket", False), ("hareket", "Hareket", True), ("toplam", "Toplam (KDV hariç)", True))
+
+
 @ekran_gerekli("yatirim_projeleri")
 def yatirim_projeleri(request):
-    projeler = []
-    qs = yp_servis.aktif_projeler().prefetch_related(
-        Prefetch("fatura_satirlari",
-                 queryset=FaturaSatir.objects.filter(silindi=False, fatura__silindi=False)
-                 .select_related("fatura")))
-    for p in qs:
-        satirlar = list(p.fatura_satirlari.all())
-        fatura_sayisi = len({s.fatura_id for s in satirlar})
-        projeler.append({"proje": p, "toplam": yp_servis.proje_toplami(p),
-                         "fatura_sayisi": fatura_sayisi})
+    from urllib.parse import urlencode
+    g = request.GET
+
+    def _tarih(anahtar):
+        try:
+            return datetime.date.fromisoformat(g.get(anahtar) or "")
+        except ValueError:
+            return None
+
+    sonuc = yp_servis.proje_listesi(
+        arama=g.get("q", ""), grup=g.get("grup", ""), baslangic=_tarih("bas"), bitis=_tarih("bit"),
+        durum=g.get("durum", "DEVAM"), sirala=g.get("sirala", "son"), yon=g.get("yon", "azalan"), bugun=timezone.localdate())
+    temel = {k: g.get(k) for k in ("q", "grup", "bas", "bit") if g.get(k)}
+
+    def url(**ek):
+        d = {**temel, "durum": sonuc["durum"], "sirala": sonuc["sirala"], "yon": sonuc["yon"], **ek}
+        return "?" + urlencode(d)
+
+    sekmeler = [{"kod": k, "ad": ad, "sayi": sonuc["sayilar"][k], "aktif": sonuc["durum"] == k, "url": url(durum=k)}
+                for k, ad in yp_servis.DURUM_SEKMELERI]
+    kolonlar = []
+    for anahtar, etiket, sag in _YP_KOLONLAR:
+        aktif = sonuc["sirala"] == anahtar
+        yeni = ("artan" if sonuc["yon"] == "azalan" else "azalan") if aktif else ("artan" if anahtar in ("kod", "ad", "hesap", "durum") else "azalan")
+        kolonlar.append({"etiket": etiket, "sag": sag, "aktif": aktif, "ok": ("▼" if sonuc["yon"] == "azalan" else "▲") if aktif else "",
+                         "url": url(sirala=anahtar, yon=yeni)})
     return render(request, "core/yatirim_projeleri.html", {
-        "projeler": projeler, "gruplar": duran_hesap_servis.grup_hesaplari(("258",))})
+        **sonuc, "sekmeler": sekmeler, "kolonlar": kolonlar, "gruplar": duran_hesap_servis.grup_hesaplari(("258",)),
+        "q": g.get("q", ""), "grup": g.get("grup", ""), "bas": g.get("bas", ""), "bit": g.get("bit", ""),
+        "filtre_var": bool(temel), "temizle_url": "?durum=" + sonuc["durum"], "bugun_yil": timezone.localdate().year})
 
 
 @ekran_gerekli("yatirim_projeleri")
@@ -7309,21 +7331,39 @@ def yatirim_projesi_ekle(request):
 def yatirim_projesi_detay(request, pk):
     from core.services import stok_maliyet
     proje = get_object_or_404(YatirimProjesi, pk=pk, silindi=False)
-    satirlar = _proje_satir_qs(proje)
-    fatura_toplam = sum((s.tutar for s in satirlar), Decimal("0.00"))
+    parca = yp_servis.proje_parcalari(proje)
+    satirlar = list(_proje_satir_qs(proje))
     sarf_hareketleri = [
         {"hareket": h, "tutar_try": stok_maliyet.hareket_maliyet_durumu(h)["tutar_try"]}
         for h in yp_servis.proje_sarf_hareketleri(proje)
     ]
-    sarf_toplam = sum((s["tutar_try"] or Decimal("0.00") for s in sarf_hareketleri), Decimal("0.00"))
+    diger = list(yp_servis.proje_diger_hareketler(proje))
+    ekstre = yp_servis.proje_yevmiye_kalemleri(proje)
+    yevmiye_satirlari = []
+    if ekstre:
+        kaynaklar = {f.pk: f.get_kaynak_display() for f in YevmiyeFisi.objects.filter(pk__in={e.fis_pk for e in ekstre.satirlar})}
+        yevmiye_satirlari = [{"tarih": e.tarih, "fis_pk": e.fis_pk, "fis_yil": e.fis_yil, "fis_no": e.fis_no, "kaynak": kaynaklar.get(e.fis_pk, ""),
+                              "satir_aciklama": e.satir_aciklama, "fis_aciklama": e.fis_aciklama, "borc": e.borc, "alacak": e.alacak,
+                              "yur_bakiye": e.yur_bakiye} for e in ekstre.satirlar]
     duran_varliklar_qs = DuranVarlik.objects.filter(
         yatirim_projesi=proje, silindi=False).select_related("hesap")
     bakiye = yp_servis.proje_bakiye_258(proje) if proje.durum == YatirimProjesi.Durum.DEVAM else None
+    sekme = request.GET.get("sekme") if request.GET.get("sekme") in ("faturalar", "diger", "yevmiye") else "faturalar"
+    sekmeler = [
+        {"kod": "faturalar", "ad": "Faturalar", "sayi": len(satirlar)},
+        {"kod": "diger", "ad": "Diğer Hareketler", "sayi": len(diger)},
+        {"kod": "yevmiye", "ad": "Yevmiye Kalemleri", "sayi": len(ekstre.satirlar) if ekstre else 0},
+    ]
+    for t in sekmeler:
+        t["aktif"] = t["kod"] == sekme
     return render(request, "core/yatirim_projesi_detay.html",
-                  {"proje": proje, "satirlar": satirlar, "fatura_toplam": fatura_toplam,
+                  {"proje": proje, "satirlar": satirlar, "fatura_toplam": parca["fatura"],
                    "bakiye_258": bakiye, "kapatilabilir": bakiye is not None and bakiye == Decimal("0.00"),
-                   "sarf_hareketleri": sarf_hareketleri, "sarf_toplam": sarf_toplam,
-                   "toplam": yp_servis.proje_toplami(proje),
+                   "sarf_hareketleri": sarf_hareketleri, "sarf_toplam": parca["sarf"],
+                   "diger_hareketler": diger, "diger_toplam": parca["diger"], "ekstre": ekstre,
+                   "yevmiye_satirlari": yevmiye_satirlari,
+                   "sekme": sekme, "sekmeler": sekmeler,
+                   "toplam": parca["toplam"],
                    "yonetici": yonetici_mi(request.user), "duran_varliklar": duran_varliklar_qs})
 
 

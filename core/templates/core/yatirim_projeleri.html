@@ -4,6 +4,35 @@
 {% block sayfa_adi %}Yatırım Projeleri{% endblock %}
 
 {% block content %}
+<style>
+  .yp-sekmeler { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 .9rem; }
+  .yp-sekme { display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .95rem; border-radius:14px;
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.7); text-decoration:none; color:var(--metin);
+    font-weight:650; font-size:.9rem; }
+  .yp-sekme:hover { border-color:var(--turuncu); }
+  .yp-sekme.aktif { background:var(--lacivert); color:#fff; border-color:var(--lacivert); }
+  .yp-sekme .sayi { display:inline-flex; align-items:center; justify-content:center; min-width:1.4rem; height:1.4rem;
+    padding:0 .3rem; border-radius:999px; font-size:.75rem; background:rgba(33,56,95,.12); color:var(--metin); }
+  .yp-sekme.aktif .sayi { background:rgba(255,255,255,.25); color:#fff; }
+  .yp-filtre { display:flex; gap:.6rem; align-items:flex-end; flex-wrap:wrap; margin:0 0 1rem; }
+  .yp-filtre .alan { margin:0; }
+  .yp-filtre .alan.ara { flex:1 1 14rem; }
+  .yp-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr)); gap:.8rem; margin:0 0 1.1rem; }
+  .yp-kpi .kart { background:rgba(255,255,255,.7); border:1px solid var(--cizgi-koyu); border-radius:16px; padding:.8rem 1rem; }
+  .yp-kpi .et { font-size:.8rem; color:var(--soluk,#667); }
+  .yp-kpi .dg { font-size:1.3rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .yp-kpi .kart.uyari-kart { border-color:#c0392b; background:rgba(192,57,43,.07); }
+  .yp-kpi .not { font-size:.78rem; margin-top:.25rem; }
+  .yp-tablo th a { color:inherit; text-decoration:none; white-space:nowrap; }
+  .yp-tablo th a.aktif { text-decoration:underline; }
+  .yp-tablo td.sonuc { font-size:.85rem; }
+  .yp-tablo td.sonuc a { white-space:nowrap; }
+  .yp-tablo .kisayol { display:inline-flex; gap:.3rem; white-space:nowrap; }
+  .yp-tablo .kisayol a { padding:.15rem .5rem; border:1px solid var(--cizgi-koyu); border-radius:8px; font-size:.78rem;
+    text-decoration:none; background:rgba(255,255,255,.8); }
+  .yp-tablo tbody tr[data-href] { cursor:pointer; }
+</style>
+
 <div class="sayfa-ust">
   <h1 class="ust-baslik"><span class="emoji">🏗️</span>Yatırım Projeleri</h1>
 </div>
@@ -34,31 +63,94 @@
   </form>
 </details>
 
-<p class="sayfa-alt">{{ projeler|length }} proje.</p>
+<div class="yp-sekmeler">
+  {% for s in sekmeler %}
+    <a class="yp-sekme{% if s.aktif %} aktif{% endif %}" href="{{ s.url }}">{{ s.ad }} <span class="sayi">{{ s.sayi }}</span></a>
+  {% endfor %}
+</div>
 
-<div class="tablo-kapsayici genis">
-<table>
+<form method="get" class="yp-filtre">
+  <input type="hidden" name="durum" value="{{ durum }}">
+  <input type="hidden" name="sirala" value="{{ sirala }}">
+  <input type="hidden" name="yon" value="{{ yon }}">
+  <div class="alan ara"><label for="yp-q">Ara</label>
+    <input type="search" id="yp-q" name="q" value="{{ q }}" placeholder="kod, ad, hesap kodu, açıklama" autocomplete="off"></div>
+  <div class="alan"><label for="yp-g">Hesap grubu</label>
+    <select id="yp-g" name="grup">
+      <option value="">Tümü</option>
+      {% for g in gruplar %}<option value="{{ g.hesap_kodu }}"{% if g.hesap_kodu == grup %} selected{% endif %}>{{ g.hesap_kodu }}  {{ g.hesap_adi }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="yp-b">Son hareket (başlangıç)</label><input type="date" id="yp-b" name="bas" value="{{ bas }}"></div>
+  <div class="alan"><label for="yp-t">Son hareket (bitiş)</label><input type="date" id="yp-t" name="bit" value="{{ bit }}"></div>
+  <button type="submit" class="birincil">Filtrele</button>
+  {% if filtre_var %}<a class="dugme" href="{{ temizle_url }}">Temizle</a>{% endif %}
+</form>
+
+<div class="yp-kpi">
+  <div class="kart{% if uyari %} uyari-kart{% endif %}">
+    <div class="et">Devam eden toplam (KDV hariç)</div>
+    <div class="dg">{{ devam_toplam|tr_kur:2 }}</div>
+    {% if uyari %}
+      <div class="not">⚠️ Tüm devam eden projelerin toplamı ({{ devam_toplam_tum|tr_kur:2 }}) 258 mizan bakiyesinden ({{ mizan_258|tr_kur:2 }}) farklı —
+        fark {{ fark|tr_kur:2 }} TL. Hesapsız/eski kayıtları ya da projeye bağlanmamış 258 satırlarını kontrol edin.</div>
+    {% else %}
+      <div class="not yardim">258 mizan bakiyesiyle uyumlu ({{ mizan_258|tr_kur:2 }}).</div>
+    {% endif %}
+  </div>
+  <div class="kart"><div class="et">{{ bugun_yil }} yılında aktifleşen toplam</div><div class="dg">{{ bu_yil_aktiflesen|tr_kur:2 }}</div></div>
+  <div class="kart"><div class="et">Listelenen proje</div><div class="dg">{{ kayitlar|length }}</div></div>
+</div>
+
+<div class="tablo-kapsayici genis" style="overflow-x:auto">
+<table class="yp-tablo">
   <thead><tr>
-    <th>Kod</th><th>Hesap</th><th>Ad</th><th>Durum</th>
-    <th class="sag">Toplam (KDV Hariç)</th><th class="sag">Fatura Sayısı</th>
+    {% for k in kolonlar %}<th{% if k.sag %} class="sag"{% endif %}><a href="{{ k.url }}"{% if k.aktif %} class="aktif"{% endif %}>{{ k.etiket }}{% if k.ok %} {{ k.ok }}{% endif %}</a></th>{% endfor %}
+    <th>Sonuç</th><th></th>
   </tr></thead>
   <tbody>
-    {% for p in projeler %}
-      <tr onclick="window.location='{% url 'core:yatirim_projesi_detay' p.proje.pk %}'" style="cursor:pointer">
-        <td class="mono">{{ p.proje.kod }}</td>
-        <td class="mono">{{ p.proje.hesap_id|default:"—" }}</td>
-        <td>{{ p.proje.ad }}</td>
-        <td><span class="rozet {% if p.proje.durum == 'AKTIFLESTI' %}rozet-aktif{% elif p.proje.durum == 'KAPANDI' %}rozet-kapali{% else %}rozet-notr{% endif %}">{{ p.proje.get_durum_display }}</span></td>
-        <td class="sag mono">{{ p.toplam|tr_kur:2 }}</td>
-        <td class="sag mono">{{ p.fatura_sayisi }}</td>
+    {% for k in kayitlar %}
+      <tr data-href="{% url 'core:yatirim_projesi_detay' k.proje.pk %}">
+        <td class="mono">{{ k.proje.kod }}</td>
+        <td>{{ k.proje.ad }}</td>
+        <td class="mono">{{ k.proje.hesap_id|default:"—" }}</td>
+        <td><span class="rozet {% if k.proje.durum == 'AKTIFLESTI' %}rozet-aktif{% elif k.proje.durum == 'KAPANDI' %}rozet-kapali{% else %}rozet-notr{% endif %}">{{ k.proje.get_durum_display }}</span></td>
+        <td class="mono">{{ k.ilk|date:"d.m.Y"|default:"—" }}</td>
+        <td class="mono">{{ k.son|date:"d.m.Y"|default:"—" }}</td>
+        <td class="sag mono">{{ k.hareket }}</td>
+        <td class="sag mono">{{ k.toplam|tr_kur:2 }}</td>
+        <td class="sonuc">
+          {% if k.proje.durum == "AKTIFLESTI" %}
+            {% if k.proje.aktiflestirme_fisi %}{{ k.proje.aktiflestirme_fisi.tarih|date:"d.m.Y" }} ·
+              <a href="{% url 'core:fis_detay' k.proje.aktiflestirme_fisi.pk %}">Fiş {{ k.proje.aktiflestirme_fisi.yil }}/{{ k.proje.aktiflestirme_fisi.fis_no }}</a>{% endif %}
+            {% for v in k.kartlar %} · <a href="{% url 'core:duran_varlik_detay' v.pk %}">{{ v.demirbas_kodu }}</a>{% endfor %}
+          {% elif k.proje.durum == "KAPANDI" %}
+            {{ k.proje.kapanis_tarihi|date:"d.m.Y" }} · {{ k.proje.get_kapanis_nedeni_display }}
+          {% endif %}
+        </td>
+        <td>{% if k.proje.durum == "DEVAM" %}<span class="kisayol">
+            <a href="{% url 'core:yatirim_projesi_aktiflestir' k.proje.pk %}">Aktifleştir</a>
+            <a href="{% url 'core:yatirim_projesi_kapat' k.proje.pk %}">Kapat</a></span>{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="yardim">Henüz yatırım projesi yok.</td></tr>
+      <tr><td colspan="10" class="yardim">Bu filtreyle eşleşen proje yok.</td></tr>
     {% endfor %}
   </tbody>
+  {% if kayitlar %}
+  <tfoot>
+    <tr><th colspan="7" class="sag">Filtrelenmiş toplam ({{ kayitlar|length }} proje)</th>
+        <th class="sag mono">{{ toplam|tr_kur:2 }}</th><th colspan="2"></th></tr>
+  </tfoot>
+  {% endif %}
 </table>
 </div>
-<p class="yardim">258 (Yapılmakta Olan Yatırımlar) hesabına işlenen alış gider faturası
-  kalemleri burada bir projeye bağlanır; toplam, projeye bağlı kalemlerin KDV hariç
-  tutarlarının toplamıdır.</p>
+<p class="yardim">Toplam: projeye bağlı fatura kalemleri (KDV hariç) + stok sarf çıkışları + projeye bağlı kesinti/virman/banka satırları.
+  Hareket sayısı bu üç kaynağın satır sayısıdır. Varsayılan görünüm yalnız “Devam Ediyor” projelerdir.</p>
+<script>
+  document.querySelectorAll('.yp-tablo tbody tr[data-href]').forEach(function (tr) {
+    tr.addEventListener('click', function (e) {
+      if (e.target.closest('a,button,input,select')) return;
+      window.location = tr.dataset.href;
+    });
+  });
+</script>
 {% endblock %}

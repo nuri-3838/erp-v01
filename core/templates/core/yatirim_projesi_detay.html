@@ -4,6 +4,19 @@
 {% block sayfa_adi %}Yatırım Projesi{% endblock %}
 
 {% block content %}
+<style>
+  .yp-sekmeler { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 .9rem; }
+  .yp-sekme { display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .95rem; border-radius:14px;
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.7); text-decoration:none; color:var(--metin);
+    font-weight:650; font-size:.9rem; }
+  .yp-sekme:hover { border-color:var(--turuncu); }
+  .yp-sekme.aktif { background:var(--lacivert); color:#fff; border-color:var(--lacivert); }
+  .yp-sekme .sayi { display:inline-flex; align-items:center; justify-content:center; min-width:1.4rem; height:1.4rem;
+    padding:0 .3rem; border-radius:999px; font-size:.75rem; background:rgba(33,56,95,.12); color:var(--metin); }
+  .yp-sekme.aktif .sayi { background:rgba(255,255,255,.25); color:#fff; }
+  @media (max-width:899px) { .yp-sekmeler { flex-wrap:nowrap; overflow-x:auto; } .yp-sekme { flex:0 0 auto; white-space:nowrap; } }
+</style>
+
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url 'core:yatirim_projeleri' %}">← Yatırım Projeleri</a>
@@ -53,7 +66,7 @@
 {% if duran_varliklar %}
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Oluşturulan Duran Varlık Kartları</h2>
-  <div class="tablo-kapsayici genis">
+  <div class="tablo-kapsayici genis" style="overflow-x:auto">
   <table>
     <thead><tr><th>Demirbaş Kodu</th><th>Ad</th><th>Hesap</th><th class="sag">Maliyet</th></tr></thead>
     <tbody>
@@ -71,21 +84,28 @@
 </section>
 {% endif %}
 
+<div class="yp-sekmeler">
+  {% for t in sekmeler %}
+    <a class="yp-sekme{% if t.aktif %} aktif{% endif %}" href="?sekme={{ t.kod }}">{{ t.ad }} <span class="sayi">{{ t.sayi }}</span></a>
+  {% endfor %}
+</div>
+
+{% if sekme == "faturalar" %}
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Fatura Kalemleri</h2>
-  <div class="tablo-kapsayici genis">
+  <div class="tablo-kapsayici genis" style="overflow-x:auto">
   <table>
     <thead><tr>
-      <th>Tarih</th><th>Cari</th><th>Fatura No</th><th>Hesap</th><th class="sag">Tutar</th>
+      <th>Tarih</th><th>Cari</th><th>Fatura No</th><th>Hesap</th><th class="sag">Tutar (TL, KDV hariç)</th>
     </tr></thead>
     <tbody>
       {% for s in satirlar %}
         <tr onclick="window.location='{% url 'core:fatura_detay' s.fatura.pk %}'" style="cursor:pointer">
           <td class="mono">{{ s.fatura.tarih|date:"d.m.Y" }}</td>
           <td>{{ s.fatura.cari.unvan }}</td>
-          <td class="mono">{{ s.fatura.fatura_no|default:"—" }}</td>
+          <td class="mono">{{ s.fatura.fatura_no|default:"—" }}{% if s.fatura.yon == "SATIS" %} <span class="yardim">(iade)</span>{% endif %}</td>
           <td><span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}</td>
-          <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
+          <td class="sag mono">{% if s.fatura.yon == "SATIS" %}−{% endif %}{{ s.tutar_tl|tr_kur:2 }}</td>
         </tr>
       {% empty %}
         <tr><td colspan="5" class="yardim">Bu projeye bağlı fatura kalemi yok.</td></tr>
@@ -100,7 +120,7 @@
 
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Stok Sarf Çıkışları</h2>
-  <div class="tablo-kapsayici genis">
+  <div class="tablo-kapsayici genis" style="overflow-x:auto">
   <table>
     <thead><tr>
       <th>Tarih</th><th>Stok</th><th>Depo</th><th class="sag">Miktar</th><th class="sag">Tutar</th><th></th>
@@ -126,8 +146,69 @@
   </div>
 </section>
 
+{% elif sekme == "diger" %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Diğer Hareketler</h2>
+  <p class="yardim">Projeye bağlı kesinti, virman, banka ve kur farkı satırları (fatura dışı). Tutar = borç − alacak.</p>
+  <div class="tablo-kapsayici genis" style="overflow-x:auto">
+  <table>
+    <thead><tr><th>Tarih</th><th>Fiş</th><th>Kaynak</th><th>Açıklama</th><th class="sag">Tutar</th></tr></thead>
+    <tbody>
+      {% for s in diger_hareketler %}
+        <tr>
+          <td class="mono">{{ s.fis.tarih|date:"d.m.Y" }}</td>
+          <td><a href="{% url 'core:fis_detay' s.fis.pk %}">{{ s.fis.yil }}/{{ s.fis.fis_no }}</a></td>
+          <td>{{ s.fis.get_kaynak_display }}</td>
+          <td>{{ s.aciklama|default:s.fis.aciklama }}</td>
+          <td class="sag mono">{% if s.alacak %}−{{ s.alacak|tr_kur:2 }}{% else %}{{ s.borc|tr_kur:2 }}{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="yardim">Bu projeye bağlı kesinti/virman/banka satırı yok.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="4" class="sag">Diğer Hareketler Toplamı</th><th class="sag mono">{{ diger_toplam|tr_kur:2 }}</th></tr></tfoot>
+  </table>
+  </div>
+</section>
+
+{% else %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Yevmiye Kalemleri{% if proje.hesap_id %} — <a class="mono" href="{% url 'core:hesap_ekstresi' proje.hesap_id %}">{{ proje.hesap_id }}</a>{% endif %}</h2>
+  {% if not ekstre %}
+    <p class="yardim">Bu proje kendi 258 hesabına bağlı değil (eski kayıt); hesap ekstresi yok.</p>
+  {% else %}
+  <p class="yardim">Projenin 258 hesabındaki TÜM fiş satırları (fatura, kesinti, virman, banka, kur farkı, aktifleştirme/kapanış fişleri) — hesap ekstresiyle aynı.</p>
+  <div class="tablo-kapsayici genis" style="overflow-x:auto">
+  <table>
+    <thead><tr><th>Tarih</th><th>Fiş</th><th>Kaynak</th><th>Açıklama</th><th class="sag">Borç</th><th class="sag">Alacak</th><th class="sag">Bakiye</th></tr></thead>
+    <tbody>
+      {% for e in yevmiye_satirlari %}
+        <tr>
+          <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
+          <td><a href="{% url 'core:fis_detay' e.fis_pk %}">{{ e.fis_yil }}/{{ e.fis_no }}</a></td>
+          <td>{{ e.kaynak }}</td>
+          <td>{{ e.satir_aciklama|default:e.fis_aciklama }}</td>
+          <td class="sag mono">{% if e.borc %}{{ e.borc|tr_kur:2 }}{% endif %}</td>
+          <td class="sag mono">{% if e.alacak %}{{ e.alacak|tr_kur:2 }}{% endif %}</td>
+          <td class="sag mono">{{ e.yur_bakiye|tr_kur:2 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="yardim">Bu hesapta hareket yok.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="4" class="sag">Toplam</th><th class="sag mono">{{ ekstre.toplam_borc|tr_kur:2 }}</th>
+      <th class="sag mono">{{ ekstre.toplam_alacak|tr_kur:2 }}</th><th class="sag mono">{{ ekstre.bakiye|tr_kur:2 }}</th></tr></tfoot>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="icerik-kart">
   <div class="kv">
+    <div class="satir"><span class="et">Fatura kalemleri</span><span class="dg mono">{{ fatura_toplam|tr_kur:2 }}</span></div>
+    <div class="satir"><span class="et">+ Diğer hareketler (kesinti/virman/banka)</span><span class="dg mono">{{ diger_toplam|tr_kur:2 }}</span></div>
+    <div class="satir"><span class="et">+ Stok sarf çıkışları</span><span class="dg mono">{{ sarf_toplam|tr_kur:2 }}</span></div>
     <div class="satir"><span class="et">Genel Toplam (KDV Hariç)</span>
       <span class="dg mono" style="font-size:1.1rem;font-weight:600">{{ toplam|tr_kur:2 }}</span></div>
   </div>
