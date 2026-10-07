@@ -84,6 +84,7 @@ class VirmanElleKurTest(VirmanBase):
         self.client.force_login(self.sade)
         r = self.client.get(reverse("core:cari_virman_ekle", args=[self.formal.pk]))
         self.assertContains(r, 'name="kur"')
+        self.assertContains(r, 'id="kur-onizleme"')                                                                 # anlık TL önizleme kutusu (JS)
         self.assertNotContains(self.client.get(reverse("core:cari_virman_ekle", args=[self.kaygun.pk])), 'name="kur"')   # TRY carisinde gizli
         r = self.client.post(reverse("core:cari_virman_ekle", args=[self.formal.pk]), {
             "tarih": "2026-07-14", "tutar": "15.100,00", "kur": "48,85", "yon": "alacak", "karsi_cari": self.usd2.pk,

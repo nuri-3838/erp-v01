@@ -35,6 +35,7 @@
         <div class="alan">
           <label for="{{ form.kur.id_for_label }}">{{ form.kur.label }}</label>{{ form.kur }}
           {% for e in form.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" id="kur-onizleme" hidden style="font-weight:600"></p>
           <p class="yardim">{{ form.kur.help_text }}</p>
         </div>
         {% endif %}
@@ -73,5 +74,29 @@
     </div>
   </form>
 </div>
+<script>
+  // Elle kur önizlemesi: "= tutar × kur TL" (yalnız ekranda; sunucuya kayıt yok). Kur boşken gizli.
+  (function () {
+    var tutar = document.getElementById("{{ form.tutar.id_for_label }}");
+    var kur = document.getElementById("{{ form.kur.id_for_label }}");
+    var kutu = document.getElementById("kur-onizleme");
+    if (!tutar || !kur || !kutu) return;
+    function sayi(v) {
+      v = String(v || "").trim().replace(/\./g, "").replace(",", ".");
+      var n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    }
+    function guncelle() {
+      var t = sayi(tutar.value), k = sayi(kur.value);
+      if (!kur.value.trim() || t === null || k === null || k <= 0 || t <= 0) { kutu.hidden = true; kutu.textContent = ""; return; }
+      var tl = Math.round(t * k * 100) / 100;
+      kutu.textContent = "= " + tl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL";
+      kutu.hidden = false;
+    }
+    tutar.addEventListener("input", guncelle);
+    kur.addEventListener("input", guncelle);
+    guncelle();
+  })();
+</script>
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}
