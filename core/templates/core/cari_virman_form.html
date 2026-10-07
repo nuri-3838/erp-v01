@@ -31,6 +31,13 @@
           <label for="{{ form.tutar.id_for_label }}">{{ form.tutar.label }}</label>{{ form.tutar }}
           {% for e in form.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if cari.para_birimi != "TRY" %}
+        <div class="alan">
+          <label for="{{ form.kur.id_for_label }}">{{ form.kur.label }}</label>{{ form.kur }}
+          {% for e in form.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">{{ form.kur.help_text }}</p>
+        </div>
+        {% endif %}
         <div class="alan tam">
           <label>{{ form.yon.label }}</label>
           {% for r in form.yon %}<div style="margin:.15rem 0"><label style="font-weight:500">{{ r.tag }} {{ r.choice_label }}</label></div>{% endfor %}

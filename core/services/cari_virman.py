@@ -40,7 +40,21 @@ def _tutar(deger):
     return d
 
 
-def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu=None, yatirim_projesi_id=None):
+def _kur(deger):
+    """İsteğe bağlı elle kur: boş → None; dolu → 6 basamak, sıfırdan büyük."""
+    if deger in (None, ""):
+        return None
+    try:
+        d = parse_tr(deger)
+    except SayiHatasi:
+        raise CariVirmanHatasi("Kur geçerli bir sayı olmalı.")
+    d = yuvarla(d, 6)
+    if d <= 0:
+        raise CariVirmanHatasi("Kur sıfırdan büyük olmalı.")
+    return d
+
+
+def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None):
     if bool(karsi_cari) == bool(karsi_hesap_kodu):
         raise CariVirmanHatasi("Karşı tarafı cari VEYA hesap olarak seçin (yalnız biri).")
     if karsi_cari is not None and karsi_cari.pk == cari.pk:
@@ -52,12 +66,31 @@ def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_he
                 hesap_kodu=c.muhasebe_kodu, silindi=False, aktif=True).exists()):
             raise CariVirmanHatasi(f"{c.unvan} carisinin muhasebe hesabı yok ya da pasif.")
     tut = _tutar(tutar)
+    kur_d = _kur(kur)
     taraf_cari = "A" if yon == "alacak" else "B"
     taraf_karsi = "B" if yon == "alacak" else "A"
     try:
-        satirlar = [doviz_cari.cari_satiri(cari, tut, tarih, taraf_cari, sayilan_pb, aciklama=cari.unvan)]
+        pb = doviz_cari.hedef_pb(cari, sayilan_pb)
+        if kur_d is not None and pb == "TRY":
+            kur_d = None                                  # TL cari / 'TL (çevirme)': elle kur yok sayılır, tutar TL
+        if kur_d is not None:
+            # ELLE KUR: tutar DÖVİZ cinsindendir (cari para biriminde); TL = tutar × kur; iki tarafta aynı döviz/TL (kur farkı doğmaz).
+            tut_tl = yuvarla(tut * kur_d, 2)
+            satirlar = [doviz_cari.elle_kur_satiri(cari, tut, kur_d, taraf_cari, pb, aciklama=cari.unvan)]
+        else:
+            tut_tl = tut
+            satirlar = [doviz_cari.cari_satiri(cari, tut, tarih, taraf_cari, sayilan_pb, aciklama=cari.unvan)]
         if karsi_cari is not None:
-            satirlar.append(doviz_cari.cari_satiri(karsi_cari, tut, tarih, taraf_karsi, sayilan_pb, aciklama=karsi_cari.unvan))
+            if kur_d is not None:
+                pb2 = doviz_cari.hedef_pb(karsi_cari, sayilan_pb)
+                if pb2 == pb:
+                    satirlar.append(doviz_cari.elle_kur_satiri(karsi_cari, tut, kur_d, taraf_karsi, pb, aciklama=karsi_cari.unvan))
+                elif pb2 == "TRY":
+                    satirlar.append(doviz_cari.cari_satiri(karsi_cari, tut_tl, tarih, taraf_karsi, sayilan_pb, aciklama=karsi_cari.unvan))
+                else:
+                    raise CariVirmanHatasi(f"Elle kurda iki cari aynı para biriminde olmalı ({pb} ↔ {pb2}); karşı cariyi TL ya da aynı dövizde seçin.")
+            else:
+                satirlar.append(doviz_cari.cari_satiri(karsi_cari, tut, tarih, taraf_karsi, sayilan_pb, aciklama=karsi_cari.unvan))
             hedef_ad = karsi_cari.unvan
         else:
             from core.services import cari_kesinti
@@ -66,7 +99,7 @@ def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_he
                 proje_id = cari_kesinti.proje_coz(hesap, yatirim_projesi_id)
             except cari_kesinti.CariKesintiHatasi as e:
                 raise CariVirmanHatasi(str(e))
-            satirlar.append(SatirGirdi(hesap_kodu=hesap.hesap_kodu, taraf=taraf_karsi, islem_tutari=tut,
+            satirlar.append(SatirGirdi(hesap_kodu=hesap.hesap_kodu, taraf=taraf_karsi, islem_tutari=tut_tl,
                                        aciklama=hesap.hesap_adi, yatirim_projesi_id=proje_id))
             hedef_ad = hesap.hesap_adi
     except doviz_cari.DovizCariHatasi as e:
@@ -77,8 +110,9 @@ def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_he
 
 @transaction.atomic
 def virman_olustur(*, cari, karsi_cari=None, tarih, tutar, yon, aciklama="", sayilan_pb=None, kullanici=None,
-                   karsi_hesap_kodu=None, yatirim_projesi_id=None) -> YevmiyeFisi:
-    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id)
+                   karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None) -> YevmiyeFisi:
+    """``kur`` (opsiyonel, elle): dolu ve cari döviz iken ``tutar`` DÖVİZ cinsindendir, TL = tutar × kur; boşsa tutar TL, tarihin TCMB kuru."""
+    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id, kur)
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack, kaynak=YevmiyeFisi.Kaynak.CARI_VIRMAN, kullanici=kullanici)
     except YevmiyeHatasi as e:
@@ -103,7 +137,14 @@ def duzenleme_bilgisi(fis, cari):
     s = s[0]
     tl = s.ham_tl if s.ham_tl is not None else (s.borc or s.alacak)       # kur farkı motoru satır TL'sini değiştirmiş olabilir
     out = {"karsi_cari": karsi, "karsi_hesap": None, "yatirim_projesi_id": None, "yon": "alacak" if s.alacak else "borc",
-           "tutar": tl, "sayilan_pb": (s.islem_pb if cari.para_birimi != "TRY" else "")}
+           "tutar": tl, "sayilan_pb": (s.islem_pb if cari.para_birimi != "TRY" else ""), "kur": None}
+    if s.islem_pb != "TRY" and s.islem_kuru:                                # elle girilmiş kur mu? (tarihin TCMB alış kurundan farklıysa)
+        try:
+            tcmb = doviz_cari.alis_kuru(s.islem_pb, fis.tarih)
+        except doviz_cari.DovizCariHatasi:
+            tcmb = None
+        if tcmb is None or yuvarla(s.islem_kuru, 6) != yuvarla(tcmb, 6):
+            out["kur"], out["tutar"] = s.islem_kuru, s.islem_tutari          # elle kurda tutar DÖVİZ cinsindendir
     if karsi is None:                                                       # karşı taraf HESAP
         diger = [x for x in fis.satirlar.filter(silindi=False, ana_satir__isnull=True) if x.pk != s.pk]
         if len(diger) != 1:
@@ -115,9 +156,9 @@ def duzenleme_bilgisi(fis, cari):
 
 @transaction.atomic
 def virman_guncelle(*, fis, cari, karsi_cari=None, tarih, tutar, yon, aciklama="", sayilan_pb=None, kullanici=None,
-                    karsi_hesap_kodu=None, yatirim_projesi_id=None) -> YevmiyeFisi:
+                    karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None) -> YevmiyeFisi:
     _fis_kontrol(fis, cari)
-    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id)
+    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id, kur)
     try:
         fis_guncelle(fis, tarih=tarih, satirlar=satirlar, aciklama=ack, kullanici=kullanici)
     except YevmiyeHatasi as e:

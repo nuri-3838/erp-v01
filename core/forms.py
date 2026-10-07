@@ -3196,7 +3196,10 @@ class CariVirmanForm(forms.Form):
     """Cari virman: tarih, tutar (TL), yön, karşı cari (tüm cariler), (döviz carilerde) hangi dövize sayılacağı, açıklama."""
     tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
                             initial=timezone.localdate)
-    tutar = TRDecimalField(label="Tutar (TL)", basamak=2)
+    tutar = TRDecimalField(label="Tutar (TL; kur girilirse DÖVİZ)", basamak=2)
+    kur = TRDecimalField(label="Kur (opsiyonel)", basamak=6, required=False,
+                         help_text="Yalnız döviz carilerde. Boşsa tutar TL'dir ve tarihin TCMB alış kuru kullanılır. Doluysa tutar DÖVİZ "
+                                   "cinsindendir: TL = tutar × kur; iki tarafta aynı döviz ve TL yazılır (kur farkı doğmaz).")
     yon = forms.ChoiceField(label="Yön", choices=[], widget=forms.RadioSelect)
     karsi_cari = forms.ModelChoiceField(label="Karşı cari", queryset=Cari.objects.none(), required=False, empty_label="— cari seç —")
     karsi_hesap = forms.ModelChoiceField(

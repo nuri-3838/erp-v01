@@ -1882,7 +1882,8 @@ def cari_virman_ekle(request, pk):
                     cari=cari, karsi_cari=cd.get("karsi_cari"), tarih=cd["tarih"], tutar=cd["tutar"], yon=cd["yon"],
                     aciklama=cd["aciklama"], sayilan_pb=cd.get("sayilan_pb"), kullanici=request.user,
                     karsi_hesap_kodu=cd["karsi_hesap"].hesap_kodu if cd.get("karsi_hesap") else None,
-                    yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
+                    yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
+                    kur=cd.get("kur"))
                 messages.success(request, f"Virman kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:cari_ekstresi", pk=cari.pk)
             except cari_virman_servis.CariVirmanHatasi as e:
@@ -1910,14 +1911,15 @@ def cari_virman_duzenle(request, pk, fis_pk):
                     fis=fis, cari=cari, karsi_cari=cd.get("karsi_cari"), tarih=cd["tarih"], tutar=cd["tutar"], yon=cd["yon"],
                     aciklama=cd["aciklama"], sayilan_pb=cd.get("sayilan_pb"), kullanici=request.user,
                     karsi_hesap_kodu=cd["karsi_hesap"].hesap_kodu if cd.get("karsi_hesap") else None,
-                    yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None)
+                    yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
+                    kur=cd.get("kur"))
                 messages.success(request, f"Virman güncellendi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:cari_ekstresi", pk=cari.pk)
             except cari_virman_servis.CariVirmanHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = CariVirmanForm(cari=cari, initial={
-            "tarih": fis.tarih, "tutar": bilgi["tutar"], "yon": bilgi["yon"],
+            "tarih": fis.tarih, "tutar": bilgi["tutar"], "kur": bilgi["kur"], "yon": bilgi["yon"],
             "karsi_cari": bilgi["karsi_cari"].pk if bilgi["karsi_cari"] else None,
             "karsi_hesap": bilgi["karsi_hesap"].hesap_kodu if bilgi["karsi_hesap"] else None,
             "yatirim_projesi": bilgi["yatirim_projesi_id"],
