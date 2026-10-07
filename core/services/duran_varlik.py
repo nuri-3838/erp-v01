@@ -87,6 +87,9 @@ def _duran_varlik_olustur_hesapli(*, ad, hesap_id, aktiflestirme_tarihi, maliyet
     if not duran_varlik_karti_hesaplari().filter(pk=hesap_id).exists():
         raise DuranVarlikHatasi(
             "Geçerli bir duran varlık hesabı seçin (253/254/255/260, yaprak hesap olmalı).")
+    from core.services import duran_hesap
+    if duran_hesap.varlik_hesabi_mi(hesap_id) and hesaptaki_kart(hesap_id) is not None:
+        raise DuranVarlikHatasi(f"{hesap_id} hesabında zaten bir duran varlık kartı var (hesap başına tek kart).")
 
     satirlar = _dogrula_satirlar(fatura_satirlari, hesap_id)
     if satirlar:

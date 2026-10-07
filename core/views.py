@@ -7438,10 +7438,12 @@ def duran_varlik_ekle(request):
              .select_related("fatura", "hesap").first()) if satir_id else None
 
     if satir and duran_hesap_servis.varlik_hesabi_mi(satir.hesap_id):
-        # Kalem zaten bir kart hesabında (kalem = kart ya da mevcut karta eklenmiş): yeni kart açılmaz.
+        # Kalem zaten bir kartın hesabında (kalem = kart ya da mevcut karta eklenmiş): yeni kart açılmaz.
+        # Hesap kart hesabı BİÇİMİNDE ama henüz kartı yoksa (kartsız yaprak) kart bu hesaba bağlanarak açılır.
         kart = dv_servis.hesaptaki_kart(satir.hesap_id)
-        messages.info(request, "Bu kalem zaten bir duran varlık kartının hesabında; yeni kart açılmaz.")
-        return redirect("core:duran_varlik_detay", pk=kart.pk) if kart else redirect("core:duran_varliklar")
+        if kart is not None:
+            messages.info(request, "Bu kalem zaten bir duran varlık kartının hesabında; yeni kart açılmaz.")
+            return redirect("core:duran_varlik_detay", pk=kart.pk)
 
     adaylar = FaturaSatir.objects.none()
     otomatik_maliyet = None

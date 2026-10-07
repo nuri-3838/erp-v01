@@ -1905,11 +1905,15 @@ class FaturaSatirForm(forms.Form):
 
 def _yeni_kart_hedefleri():
     """Yeni duran varlık kartının bağlanacağı hedef: GRUP hesapları (253.01 …; sistem sıradaki 000N hesabını açar) + (grup
-    açılmamış eski planda) kartsız düz yaprak hesaplar. Mevcut kart hesapları (253.01.0001 …) ASLA seçilemez (hesap başına tek kart)."""
+    açılmamış eski planda) kartsız düz yaprak hesaplar + KARTSIZ mevcut kart-biçimli yapraklar (253.02.0003 …; kart bu hesaba
+    bağlanır, fiş yazılmaz). Kartı olan hesaplar (253.01.0001 …) ASLA seçilemez (hesap başına tek kart)."""
     from core.services import duran_hesap
     from core.services.hesap_plani import duran_varlik_karti_hesaplari
+    kartli = DuranVarlik.objects.filter(silindi=False).values("hesap_id")
     duz = duran_varlik_karti_hesaplari().exclude(hesap_kodu__regex=r"^\d{3}\.\d{2}\.\d{4}$")
-    return (duran_hesap.grup_hesaplari(duran_hesap.KART_AILELERI) | duz).distinct().order_by("hesap_kodu")
+    kartsiz_yaprak = (duran_varlik_karti_hesaplari().filter(hesap_kodu__regex=r"^\d{3}\.\d{2}\.\d{4}$")
+                      .exclude(hesap_kodu__in=kartli))
+    return (duran_hesap.grup_hesaplari(duran_hesap.KART_AILELERI) | duz | kartsiz_yaprak).distinct().order_by("hesap_kodu")
 
 
 class DuranVarlikForm(forms.Form):
@@ -1918,8 +1922,8 @@ class DuranVarlikForm(forms.Form):
 
     _K = {"autocomplete": "off"}
     ad = forms.CharField(label="Ad", max_length=200, widget=forms.TextInput(attrs=_K))
-    hesap = forms.ModelChoiceField(label="Grup (yeni hesap otomatik açılır)", queryset=HesapPlani.objects.none(),
-                                   empty_label="— grup seç —")
+    hesap = forms.ModelChoiceField(label="Grup (yeni hesap otomatik açılır) ya da kartsız mevcut hesap",
+                                   queryset=HesapPlani.objects.none(), empty_label="— grup / hesap seç —")
     aktiflestirme_tarihi = forms.DateField(
         label="Aktifleştirme Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
