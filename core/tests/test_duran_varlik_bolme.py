@@ -267,7 +267,7 @@ class AyniKartCokSatirTest(BolmeBase):
         self.assertEqual(s[("391.20", "A")][0], Dc("20000.00"))
         self.assertEqual(s[("253", "A")][0], Dc("230000.00"))                                           # maliyet TEK kez
         self.assertNotIn(("649", "A"), s)
-        self.assertNotIn(("770.04", "B"), s)                                                            # kâr-zarar 0
+        self.assertNotIn(("659", "B"), s)                                                            # kâr-zarar 0
         self.assertEqual(sum(x.borc for x in f.fis.satirlar.all()), sum(x.alacak for x in f.fis.satirlar.all()))
         self.assertEqual(f.satirlar.filter(silindi=False, demirbas=y1).count(), 2)                      # iki fatura satırı
         y1.refresh_from_db()
@@ -286,7 +286,7 @@ class AyniKartCokSatirTest(BolmeBase):
         y1, _ = self.kartlar()
         f = self._fatura([self._dv_satir(y1, "100000", self.kdv20), self._dv_satir(y1, "100000", self.kdv0)])
         s = self._fis(f)
-        self.assertEqual((s[("253", "A")][0], s[("770.04", "B")][0]), (Dc("230000.00"), Dc("30000.00")))
+        self.assertEqual((s[("253", "A")][0], s[("659", "B")][0]), (Dc("230000.00"), Dc("30000.00")))
 
     def test_uc_satir_iki_kart(self):
         y1, y2 = self.kartlar()

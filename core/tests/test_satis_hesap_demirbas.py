@@ -1,4 +1,4 @@
-"""Satış faturasında HESAP satırı (alış iadesi: gider/258 alacak), DEMİRBAŞ satışı (kâr 649 / zarar 770.04 /
+"""Satış faturasında HESAP satırı (alış iadesi: gider/258 alacak), DEMİRBAŞ satışı (kâr 649 / zarar 659 /
 257 amortisman; kart Satıldı; fatura silinince geri) ve satır tipi görünürlüğü."""
 import datetime
 from decimal import Decimal
@@ -30,7 +30,7 @@ class SatisHesapDemirbasTestBase(TestCase):
             _hesap(kod, ad)
         _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR", kalem="DDV")
         _hesap("649", "DİĞER OLAĞAN GELİR VE KÂRLAR", kalem="E", grup="GELIR_TABLOSU")
-        _hesap("770.04", "DEMİRBAŞ SATIŞ ZARARI", kalem="C", grup="GELIR_TABLOSU")
+        _hesap("659", "DİĞER OLAĞAN GİDER VE ZARARLAR", kalem="F", grup="GELIR_TABLOSU")
         cls.kdv0 = KdvOrani.objects.create(aciklama="%00", oran=Dc("0"))
         cls.kdv1 = KdvOrani.objects.create(aciklama="%01", oran=Dc("1"),
                                            hesap_borc=HesapPlani.objects.get(hesap_kodu="191.01"),
@@ -130,14 +130,14 @@ class HesapSatiriTest(SatisHesapDemirbasTestBase):
 
 
 class DemirbasSatisiTest(SatisHesapDemirbasTestBase):
-    def test_zarar_770_04_kart_satildi_fatura_baglanir(self):
+    def test_zarar_659_kart_satildi_fatura_baglanir(self):
         v = self._demirbas("67000")
         f = self._fatura([self._dv_satir(v, "58333.33")])
         s = self._fis(f)
         self.assertEqual(s[("120.01", "B")][0], Dc("70000.00"))        # 58.333,33 + %20 KDV 11.666,67
         self.assertEqual(s[("391.20", "A")][0], Dc("11666.67"))
         self.assertEqual(s[("253", "A")][0], Dc("67000.00"))           # maliyetle alacak
-        self.assertEqual(s[("770.04", "B")][0], Dc("8666.67"))         # zarar
+        self.assertEqual(s[("659", "B")][0], Dc("8666.67"))         # zarar
         self.assertNotIn(("649", "A"), s)
         self.assertEqual(sum(x.borc for x in f.fis.satirlar.all()), sum(x.alacak for x in f.fis.satirlar.all()))
         v.refresh_from_db()
@@ -149,7 +149,7 @@ class DemirbasSatisiTest(SatisHesapDemirbasTestBase):
         f = self._fatura([self._dv_satir(v, "80000", self.kdv0)])
         s = self._fis(f)
         self.assertEqual(s[("649", "A")][0], Dc("13000.00"))
-        self.assertNotIn(("770.04", "B"), s)
+        self.assertNotIn(("659", "B"), s)
 
     def test_birikmis_amortismanli_kart_257_borc(self):
         v = self._demirbas("67000", amort="20000")                     # defter değeri 47.000
@@ -291,4 +291,4 @@ class AktiflestirmeSonrasiDemirbasTest(SatisHesapDemirbasTestBase):
         kart.refresh_from_db()
         self.assertEqual(kart.durum, "SATILDI")
         self.assertEqual(self._fis(f)[("254", "A")][0], Dc("4000.00"))
-        self.assertEqual(self._fis(f)[("770.04", "B")][0], Dc("1000.00"))        # 3.000 − 4.000
+        self.assertEqual(self._fis(f)[("659", "B")][0], Dc("1000.00"))        # 3.000 − 4.000
