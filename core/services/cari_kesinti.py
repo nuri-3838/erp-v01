@@ -4,7 +4,7 @@ kullanıcı) kalıcı Sil vardır.
 
 Hesap listesi: gider hesapları (7xx/65x/66x/68x), 258 YAPILMAKTA OLAN YATIRIMLAR (yatırım projesi ZORUNLU, proje "Devam
 Ediyor" olmalı; satır projeye yazılır — proje toplamı tutar kadar düşer/artar, karta maliyet olarak BAĞLANMAZ) ve gelir
-hesapları (64x / 67x yaprak, ör. 649, 679).
+hesapları (64x / 67x yaprak, ör. 649; 679 pasif — birleştirildi).
 Yön cari hesabının türünden gelir (otomatik; hesap türünden bağımsız):
   120/121 (müşteri / alacak tarafı): Gider BORÇ / Cari ALACAK — müşteri ödemesinden kesilen gider (ör. güvenli ödeme
       masrafı) cari bakiyesini kapatır; kuruş farkları da böyle girilir.

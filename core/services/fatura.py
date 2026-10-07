@@ -39,8 +39,8 @@ from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
 
 SIFIR = Decimal("0.00")
 
-# Demirbaş (duran varlık) satışı: defter değeri üzerinden kâr 679'a, zarar 770.04'e; birikmiş amortisman 257'ye borç.
-DEMIRBAS_KAR_HESABI = "679"
+# Demirbaş (duran varlık) satışı: defter değeri üzerinden kâr 649'a, zarar 770.04'e; birikmiş amortisman 257'ye borç.
+DEMIRBAS_KAR_HESABI = "649"
 DEMIRBAS_ZARAR_HESABI = "770.04"
 BIRIKMIS_AMORTISMAN_HESABI = "257"
 
@@ -393,7 +393,7 @@ def _satir_coz(g, i, gider, *, sahsi_ortak=None, satis=False, fatura_pk=None, ku
 
 def _demirbas_satirlari(dv, satis_tl):
     """Demirbaş satışının TL yevmiye satırları: 25x hesabı kart maliyetiyle ALACAK, birikmiş amortisman (257)
-    varsa BORÇ, defter değeri ile satış bedeli (KDV hariç) farkı: kâr → 679 ALACAK, zarar → 770.04 BORÇ.
+    varsa BORÇ, defter değeri ile satış bedeli (KDV hariç) farkı: kâr → 649 ALACAK, zarar → 770.04 BORÇ.
     (satırlar, borç_tl, alacak_tl) döner; cari/KDV satırları çağıranda."""
     maliyet = yuvarla(dv.maliyet, 2)
     amort = yuvarla(dv.birikmis_amortisman or SIFIR, 2)

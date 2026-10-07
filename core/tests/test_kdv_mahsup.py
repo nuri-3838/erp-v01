@@ -37,7 +37,7 @@ class KdvBase(TestCase):
         _hesap("360.10", "KDV TEVKİFATLARI", kalem="KVYK")
         _hesap("360.10.0210", "2/10 TEVKİFAT", kalem="KVYK")
         _hesap("360.30", "ÖDENECEK KDV", kalem="KVYK")
-        _hesap("689", "DİĞER OLAĞANDIŞI GİDER", kalem="I", grup="GELIR_TABLOSU")
+        _hesap("649", "DİĞER OLAĞAN GELİR", kalem="E", grup="GELIR_TABLOSU")
         _hesap("770", "GENEL YÖNETİM", kalem="C", grup="GELIR_TABLOSU")
         _hesap("770.11", "VERGİ ÖDEMELERİ", kalem="C", grup="GELIR_TABLOSU")
         _hesap("770.01", "DİĞER", kalem="C", grup="GELIR_TABLOSU")
@@ -82,7 +82,7 @@ class HesapTest(KdvBase):
         self.assertEqual(sorted((s["hesap"], s["taraf"], s["tutar"]) for s in h["satirlar"]),
                          sorted([("391.20", "B", Dc("15526.13")), ("391.01", "B", Dc("12772.28")), ("391.10", "B", Dc("500000.00")),
                                  ("191.20", "A", Dc("560896.83")), ("191.01", "A", Dc("166.71")), ("191.10", "A", Dc("497145.36")),
-                                 ("190", "B", Dc("528720.87")), ("689", "B", Dc("1189.62"))]))
+                                 ("190", "B", Dc("528720.87")), ("659", "B", Dc("1189.62"))]))
         self.assertEqual((h["borc"], h["alacak"], h["dengeli"]), (Dc("1058208.90"), Dc("1058208.90"), True))
         self.assertIn("1.189,62", h["uyari"])
         self.assertIn("FAZLA", h["uyari"])
@@ -94,7 +94,7 @@ class HesapTest(KdvBase):
         self.assertEqual((fis.kaynak, fis.tarih, fis.kdv_mahsup_id), ("KDV_MAHSUP", D(2026, 8, 31), m.pk))
         self.assertEqual(fis.aciklama, "AĞUSTOS 2026 KDV DÖNEM MAHSUBU")
         self.assertEqual(sum(x.borc for x in fis.satirlar.all()), Dc("1058208.90"))
-        self.assertEqual((_bak("191"), _bak("391"), _bak("190"), _bak("689")), (Dc("0"), Dc("0"), Dc("528720.87"), Dc("1189.62")))
+        self.assertEqual((_bak("191"), _bak("391"), _bak("190"), _bak("659")), (Dc("0"), Dc("0"), Dc("528720.87"), Dc("1189.62")))
         self.assertEqual((m.erp_191, m.erp_391, m.erp_devreden, m.fark), (Dc("1058208.90"), Dc("528298.41"), Dc("529910.49"), Dc("1189.62")))
 
     def test_odenecek_senaryosu_360_30(self):
@@ -120,6 +120,18 @@ class HesapTest(KdvBase):
         with self.assertRaises(km.KdvMahsupHatasi):
             km.hesapla(yil=2026, ay=8, beyan_devreden="520", beyan_odenecek="0", fark_hesap_kodu="770.01")
         km.hesapla(yil=2026, ay=8, beyan_devreden="500", beyan_odenecek="0", fark_hesap_kodu="770.01")     # fark yoksa hesap önemsiz
+
+    def test_fark_yonleri_649_ve_659(self):
+        self.indirilecek("191.10", "800", D(2026, 8, 5))
+        self.hesaplanan("391.10", "300", D(2026, 8, 6))                          # ERP devreden 500
+        eksik = km.hesapla(yil=2026, ay=8, beyan_devreden="520", beyan_odenecek="0", fark_hesap_kodu="649")      # beyan fazla → ALACAK
+        self.assertIn(("649", "A", Dc("20.00")), [(s["hesap"], s["taraf"], s["tutar"]) for s in eksik["satirlar"]])
+        fazla = km.hesapla(yil=2026, ay=8, beyan_devreden="480", beyan_odenecek="0", fark_hesap_kodu="659")      # ERP fazla → BORÇ
+        self.assertIn(("659", "B", Dc("20.00")), [(s["hesap"], s["taraf"], s["tutar"]) for s in fazla["satirlar"]])
+        self.assertEqual(km.hesapla(yil=2026, ay=8, beyan_devreden="480", beyan_odenecek="0")["fark_hesap"], "659")   # varsayılan
+        for eski in ("679", "689"):
+            with self.assertRaises(km.KdvMahsupHatasi):
+                km.hesapla(yil=2026, ay=8, beyan_devreden="480", beyan_odenecek="0", fark_hesap_kodu=eski)
 
     def test_alt_hesap_bazinda_kapama_ters_bakiye(self):
         self.indirilecek("191.10", "100", D(2026, 8, 5))
@@ -187,13 +199,13 @@ class DonemlerTest(KdvBase):
         m = self.olustur()
         fis = km.fis_of(m)
         no, sayac = (fis.yil, fis.fis_no), YevmiyeFisi.objects.filter(silindi=False).count()
-        km.guncelle(m, beyan_devreden="529.910,49", beyan_odenecek="0", fark_hesap_kodu="689", aciklama="düzeltme", kullanici=self.su)
+        km.guncelle(m, beyan_devreden="529.910,49", beyan_odenecek="0", fark_hesap_kodu="659", aciklama="düzeltme", kullanici=self.su)
         fis.refresh_from_db()
         m.refresh_from_db()
         self.assertEqual(((fis.yil, fis.fis_no), fis.silindi, fis.tarih), (no, False, D(2026, 8, 31)))
         self.assertEqual(YevmiyeFisi.objects.filter(silindi=False).count(), sayac)
-        self.assertNotIn("689", [x[0] for x in self.satirlar(fis)])                                          # fark sıfırlandı
-        self.assertEqual((_bak("190"), _bak("689"), _bak("191"), _bak("391")), (Dc("529910.49"), Dc("0"), Dc("0"), Dc("0")))
+        self.assertNotIn("659", [x[0] for x in self.satirlar(fis)])                                          # fark sıfırlandı
+        self.assertEqual((_bak("190"), _bak("659"), _bak("191"), _bak("391")), (Dc("529910.49"), Dc("0"), Dc("0"), Dc("0")))
         self.assertEqual((m.fark, m.beyan_devreden, m.aciklama), (Dc("0.00"), Dc("529910.49"), "düzeltme"))
         self.assertIn("DÜZELTME", fis.aciklama)
 
@@ -256,7 +268,7 @@ class EkranTest(KdvBase):
         self.client.force_login(self.su)
 
     def post(self, islem, **kw):
-        v = {"yil": "2026", "ay": "8", "beyan_devreden": "528.720,87", "beyan_odenecek": "", "fark_hesap": "689", "aciklama": "", "islem": islem, **kw}
+        v = {"yil": "2026", "ay": "8", "beyan_devreden": "528.720,87", "beyan_odenecek": "", "fark_hesap": "659", "aciklama": "", "islem": islem, **kw}
         return v
 
     def test_liste_onizleme_kaydet_duzenle_sil(self):

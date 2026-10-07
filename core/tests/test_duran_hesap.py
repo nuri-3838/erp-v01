@@ -148,7 +148,7 @@ class KalemKartTest(DuranHesapTestBase):
         f = self._fatura([self._dv_satir(kart, "5000")])
         s = self._fis(f)
         self.assertEqual(s[("253.02.0001", "A")][0], Dc("4000.00"))
-        self.assertEqual(s[("679", "A")][0], Dc("1000.00"))
+        self.assertEqual(s[("649", "A")][0], Dc("1000.00"))
         self.assertEqual(_bak("253.02.0001"), Dc("0"))                      # satılınca hesap 0, KALIR
         self.assertEqual(_bak("253.01.0001"), Dc("10000.00"))               # diğer kart etkilenmez
 

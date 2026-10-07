@@ -8830,7 +8830,7 @@ def _kdv_baglam(request, m=None):
     if m is None:
         bugun = timezone.localdate()
         onceki = bugun.replace(day=1) - datetime.timedelta(days=1)
-        return KdvMahsupForm(initial={"yil": onceki.year, "ay": onceki.month, "fark_hesap": "689"})
+        return KdvMahsupForm(initial={"yil": onceki.year, "ay": onceki.month, "fark_hesap": "659"})
     return KdvMahsupForm(donem_sabit=True, initial={
         "yil": m.yil, "ay": m.ay, "beyan_devreden": m.beyan_devreden, "beyan_odenecek": m.beyan_odenecek, "fark_hesap": m.fark_hesap_id, "aciklama": m.aciklama})
 

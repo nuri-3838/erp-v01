@@ -29,8 +29,8 @@ from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_guncelle, fis_o
 SIFIR = Decimal("0.00")
 DEVREDEN = "190"
 ODENECEK = "360.30"
-FARK_HESAPLARI = ("689", "770.11", "659")
-VARSAYILAN_FARK = "689"
+FARK_HESAPLARI = ("659", "770.11", "649")
+VARSAYILAN_FARK = "659"
 MAKS_PDF = 10 * 1024 * 1024
 AYLAR = ["", "OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
 
@@ -59,7 +59,7 @@ def _tutar(deger, ad):
 
 
 def fark_hesap_secenekleri():
-    """Fark hesabı olarak seçilebilen (aktif + yaprak) hesaplar: 689, 770.11, 659."""
+    """Fark hesabı olarak seçilebilen (aktif + yaprak) hesaplar: 659, 770.11, 649."""
     out = []
     for kod in FARK_HESAPLARI:
         h = HesapPlani.objects.filter(hesap_kodu=kod, silindi=False, aktif=True).first()

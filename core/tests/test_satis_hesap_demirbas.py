@@ -1,4 +1,4 @@
-"""Satış faturasında HESAP satırı (alış iadesi: gider/258 alacak), DEMİRBAŞ satışı (kâr 679 / zarar 770.04 /
+"""Satış faturasında HESAP satırı (alış iadesi: gider/258 alacak), DEMİRBAŞ satışı (kâr 649 / zarar 770.04 /
 257 amortisman; kart Satıldı; fatura silinince geri) ve satır tipi görünürlüğü."""
 import datetime
 from decimal import Decimal
@@ -29,7 +29,7 @@ class SatisHesapDemirbasTestBase(TestCase):
                         ("253", "TESİS MAKİNE"), ("771", "DİĞER")):
             _hesap(kod, ad)
         _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR", kalem="DDV")
-        _hesap("679", "DİĞER OLAĞANDIŞI GELİR VE KÂRLAR", kalem="H", grup="GELIR_TABLOSU")
+        _hesap("649", "DİĞER OLAĞAN GELİR VE KÂRLAR", kalem="E", grup="GELIR_TABLOSU")
         _hesap("770.04", "DEMİRBAŞ SATIŞ ZARARI", kalem="C", grup="GELIR_TABLOSU")
         cls.kdv0 = KdvOrani.objects.create(aciklama="%00", oran=Dc("0"))
         cls.kdv1 = KdvOrani.objects.create(aciklama="%01", oran=Dc("1"),
@@ -138,17 +138,17 @@ class DemirbasSatisiTest(SatisHesapDemirbasTestBase):
         self.assertEqual(s[("391.20", "A")][0], Dc("11666.67"))
         self.assertEqual(s[("253", "A")][0], Dc("67000.00"))           # maliyetle alacak
         self.assertEqual(s[("770.04", "B")][0], Dc("8666.67"))         # zarar
-        self.assertNotIn(("679", "A"), s)
+        self.assertNotIn(("649", "A"), s)
         self.assertEqual(sum(x.borc for x in f.fis.satirlar.all()), sum(x.alacak for x in f.fis.satirlar.all()))
         v.refresh_from_db()
         self.assertEqual((v.durum, v.satis_tarihi, v.satis_faturasi_id), ("SATILDI", D(2026, 3, 10), f.pk))
         self.assertEqual(f.satirlar.get().satir_tipi, "DEMIRBAS")
 
-    def test_kar_679(self):
+    def test_kar_649(self):
         v = self._demirbas("67000")
         f = self._fatura([self._dv_satir(v, "80000", self.kdv0)])
         s = self._fis(f)
-        self.assertEqual(s[("679", "A")][0], Dc("13000.00"))
+        self.assertEqual(s[("649", "A")][0], Dc("13000.00"))
         self.assertNotIn(("770.04", "B"), s)
 
     def test_birikmis_amortismanli_kart_257_borc(self):
@@ -157,7 +157,7 @@ class DemirbasSatisiTest(SatisHesapDemirbasTestBase):
         s = self._fis(f)
         self.assertEqual(s[("253", "A")][0], Dc("67000.00"))
         self.assertEqual(s[("257", "B")][0], Dc("20000.00"))
-        self.assertEqual(s[("679", "A")][0], Dc("11333.33"))           # 58.333,33 − 47.000
+        self.assertEqual(s[("649", "A")][0], Dc("11333.33"))           # 58.333,33 − 47.000
         self.assertEqual(sum(x.borc for x in f.fis.satirlar.all()), sum(x.alacak for x in f.fis.satirlar.all()))
 
     def test_satilamayan_kartlar_ve_cift_satis(self):

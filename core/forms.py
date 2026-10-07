@@ -3397,7 +3397,7 @@ class KdvMahsupForm(forms.Form):
     beyan_devreden = TRDecimalField(label="Sonraki döneme devreden KDV (beyan)", basamak=2, required=False,
                                     help_text="KDV1 beyannamesindeki 'sonraki döneme devreden KDV'. Ödenecek varsa 0.")
     beyan_odenecek = TRDecimalField(label="Ödenecek KDV (beyan)", basamak=2, required=False, help_text="Devreden varsa 0.")
-    fark_hesap = forms.ChoiceField(label="Fark hesabı", choices=[], initial="689",
+    fark_hesap = forms.ChoiceField(label="Fark hesabı", choices=[], initial="659",
                                    help_text="ERP ile beyan arasındaki fark bu hesaba yazılır (ERP fazlaysa BORÇ, eksikse ALACAK).")
     aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Ops. (fiş açıklamasına eklenir)"}))

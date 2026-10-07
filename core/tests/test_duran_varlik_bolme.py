@@ -139,7 +139,7 @@ class SatisVeGeriAlmaTest(BolmeBase):
         s = self._fis(f)
         self.assertEqual(s[("253", "A")][0], Dc("230000.00"))                                           # yalnız yeni kartın maliyeti kapanır
         self.assertEqual(s[("257", "B")][0], Dc("23000.00"))
-        self.assertEqual(s[("679", "A")][0], Dc("93000.00"))                                            # 300.000 − (230.000 − 23.000)
+        self.assertEqual(s[("649", "A")][0], Dc("93000.00"))                                            # 300.000 − (230.000 − 23.000)
         y1.refresh_from_db()
         y2.refresh_from_db()
         v.refresh_from_db()
@@ -266,7 +266,7 @@ class AyniKartCokSatirTest(BolmeBase):
         self.assertEqual(s[("120.01", "B")][0], Dc("250000.00"))                                       # 100.000 + 20.000 KDV + 130.000
         self.assertEqual(s[("391.20", "A")][0], Dc("20000.00"))
         self.assertEqual(s[("253", "A")][0], Dc("230000.00"))                                           # maliyet TEK kez
-        self.assertNotIn(("679", "A"), s)
+        self.assertNotIn(("649", "A"), s)
         self.assertNotIn(("770.04", "B"), s)                                                            # kâr-zarar 0
         self.assertEqual(sum(x.borc for x in f.fis.satirlar.all()), sum(x.alacak for x in f.fis.satirlar.all()))
         self.assertEqual(f.satirlar.filter(silindi=False, demirbas=y1).count(), 2)                      # iki fatura satırı
@@ -280,7 +280,7 @@ class AyniKartCokSatirTest(BolmeBase):
         f = self._fatura([self._dv_satir(y1, "100000", self.kdv20), self._dv_satir(y1, "130000", self.kdv0)])
         s = self._fis(f)
         self.assertEqual((s[("253", "A")][0], s[("257", "B")][0]), (Dc("230000.00"), Dc("23000.00")))
-        self.assertEqual(s[("679", "A")][0], Dc("23000.00"))                                            # 230.000 − (230.000 − 23.000)
+        self.assertEqual(s[("649", "A")][0], Dc("23000.00"))                                            # 230.000 − (230.000 − 23.000)
 
     def test_toplam_bedel_defter_degerinden_dusukse_zarar_tek_satir(self):
         y1, _ = self.kartlar()
