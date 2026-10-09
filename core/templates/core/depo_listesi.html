@@ -13,12 +13,13 @@
 
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th>Kod</th><th>Ad</th><th>İşlem</th></tr></thead>
+  <thead><tr><th>Kod</th><th>Ad</th><th>Fasoncu</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for d in depolar %}
       <tr>
         <td class="mono">{{ d.kod }}</td>
         <td>{{ d.ad }}</td>
+        <td>{% if d.fason_cari %}<span class="rozet rozet-notr">Fason</span> {{ d.fason_cari.unvan }}{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:depo_duzenle' d.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:depo_sil' d.pk %}"
@@ -27,7 +28,7 @@
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="3" class="yardim">Henüz depo yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="4" class="yardim">Henüz depo yok. “+ Yeni” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

@@ -1123,7 +1123,7 @@ def depo_duzenle(request, pk):
             except depo_servis.DepoHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = DepoForm(initial={"kod": depo.kod, "ad": depo.ad})
+        form = DepoForm(initial={"kod": depo.kod, "ad": depo.ad, "fason_cari": depo.fason_cari_id})
     return render(request, "core/depo_form.html",
                   {"form": form, "baslik": "Depo Düzenle", "duzenlenen": depo})
 

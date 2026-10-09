@@ -8,7 +8,7 @@ from __future__ import annotations
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Depo
+from core.models import Cari, Depo
 
 
 class DepoHatasi(ValueError):
@@ -16,7 +16,7 @@ class DepoHatasi(ValueError):
 
 
 def aktif_depolar():
-    return Depo.objects.filter(silindi=False).order_by("kod")
+    return Depo.objects.filter(silindi=False).select_related("fason_cari").order_by("kod")
 
 
 def _dogrula(kod, ad, *, haric_pk=None):
@@ -35,18 +35,41 @@ def _dogrula(kod, ad, *, haric_pk=None):
     return kod, ad
 
 
-def depo_olustur(*, kod, ad, kullanici=None) -> Depo:
+def _fason_cari_coz(fason_cari, *, haric_pk=None):
+    """``fason_cari`` (Cari ya da pk; boş = fason deposu değil) → Cari | None. Bir cariye en çok bir aktif fason deposu bağlanır."""
+    if fason_cari in (None, ""):
+        return None
+    cari = fason_cari if isinstance(fason_cari, Cari) else Cari.objects.filter(pk=fason_cari, silindi=False).first()
+    if cari is None or cari.silindi:
+        raise DepoHatasi("Fasoncu (cari) bulunamadı.")
+    qs = Depo.objects.filter(silindi=False, fason_cari=cari)
+    if haric_pk is not None:
+        qs = qs.exclude(pk=haric_pk)
+    var = qs.first()
+    if var is not None:
+        raise DepoHatasi(f"{cari.unvan} için zaten bir fason deposu bağlı: {var.kod}.")
+    return cari
+
+
+def fason_deposu(cari):
+    """Carinin aktif fason deposu (yoksa None)."""
+    return Depo.objects.filter(silindi=False, fason_cari=getattr(cari, "pk", cari)).first()
+
+
+def depo_olustur(*, kod, ad, fason_cari=None, kullanici=None) -> Depo:
     kod, ad = _dogrula(kod, ad)
-    return Depo.objects.create(kod=kod, ad=ad, created_by=kullanici, updated_by=kullanici)
+    cari = _fason_cari_coz(fason_cari)
+    return Depo.objects.create(kod=kod, ad=ad, fason_cari=cari, created_by=kullanici, updated_by=kullanici)
 
 
-def depo_guncelle(depo: Depo, *, kod, ad, kullanici=None) -> Depo:
+def depo_guncelle(depo: Depo, *, kod, ad, fason_cari=None, kullanici=None) -> Depo:
     if depo.silindi:
         raise DepoHatasi("Silinmiş depo düzenlenemez.")
     kod, ad = _dogrula(kod, ad, haric_pk=depo.pk)
-    depo.kod, depo.ad = kod, ad
+    cari = _fason_cari_coz(fason_cari, haric_pk=depo.pk)
+    depo.kod, depo.ad, depo.fason_cari = kod, ad, cari
     depo.updated_by = kullanici
-    depo.save(update_fields=["kod", "ad", "updated_by", "updated_at"])
+    depo.save(update_fields=["kod", "ad", "fason_cari", "updated_by", "updated_at"])
     return depo
 
 

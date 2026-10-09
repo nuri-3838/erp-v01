@@ -2269,6 +2269,10 @@ class Depo(TemelModel):
 
     kod = models.CharField("kod", max_length=20)
     ad = models.CharField("ad", max_length=100)
+    # FASON deposu: bu depo bir fasoncunun (cari) elindeki stoğu gösterir. Fason dönüşte (OperasyonKaydi.fason_cari) girdiler bu depodan
+    # düşer; ham profil sevki bu depoya depo transferiyle yapılır. Bir cariye en çok bir aktif fason deposu bağlanır.
+    fason_cari = models.ForeignKey(
+        "Cari", verbose_name="fasoncu (cari)", null=True, blank=True, on_delete=models.PROTECT, related_name="fason_depolari")
 
     class Meta:
         db_table = "depo"
@@ -2276,6 +2280,8 @@ class Depo(TemelModel):
         verbose_name_plural = "depolar"
         ordering = ["kod"]
         constraints = [
+            models.UniqueConstraint(fields=["fason_cari"], condition=models.Q(silindi=False, fason_cari__isnull=False),
+                                    name="uq_depo_fason_cari_aktif"),
             models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
                                     name="uq_depo_kod_aktif"),
             models.UniqueConstraint(fields=["ad"], condition=models.Q(silindi=False),

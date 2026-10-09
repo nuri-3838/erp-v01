@@ -22,12 +22,13 @@
         {% for field in form %}
           <div class="alan">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
+            {% if field.name == "fason_cari" %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         {% endfor %}
       </div>
-      <p class="yardim">Kod ve Ad otomatik BÜYÜK harfe çevrilir ve benzersizdir.</p>
+      <p class="yardim">Kod ve Ad otomatik BÜYÜK harfe çevrilir ve benzersizdir. Bir fasoncunun elindeki stoğu gösteren depoda fasoncuyu seçin:
+        fason dönüş kayıtları girdileri bu depodan düşer (bir cariye bir fason deposu).</p>
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:depolar' %}">İptal</a>
@@ -35,4 +36,5 @@
     </div>
   </form>
 </div>
+{% include "core/_akilli_hesap.html" %}
 {% endblock %}

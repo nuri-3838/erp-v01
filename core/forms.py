@@ -2796,6 +2796,14 @@ class DepoForm(forms.Form):
                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
     ad = forms.CharField(label="Ad", max_length=100,
                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    fason_cari = forms.ModelChoiceField(
+        label="Fasoncu (fason deposu ise)", queryset=Cari.objects.none(), required=False, empty_label="— fason deposu değil —")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["fason_cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["fason_cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["fason_cari"].widget.attrs["class"] = "akilli-sec"
 
 
 class StokHareketForm(forms.Form):
