@@ -164,6 +164,7 @@ class YevmiyeFisi(TemelModel):
         CARI_VIRMAN = "CARI_VIRMAN", "Cari Virman (otomatik)"
         BORDRO = "BORDRO", "Personel Bordro Tahakkuku (otomatik)"
         KDV_MAHSUP = "KDV_MAHSUP", "KDV Dönem Mahsubu (otomatik)"
+        FASON_TAHAKKUK = "FASON_TAHAKKUK", "Fason Tahakkuku (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -847,6 +848,9 @@ class Cari(TemelModel):
     """
 
     PARA_CHOICES = YevmiyeSatir.IslemPB.choices   # TRY/USD/EUR/GBP
+
+    # FASON: fasoncu fatura kesmiyorsa dönüş onayında fason bedeli ayrı bir tahakkuk fişiyle (151 alt hesabı borç / bu cari alacak) cariye yazılır.
+    fason_faturasiz = models.BooleanField("faturasız fason (dönüş onayında cariye yaz)", default=False)
 
     class KurTipi(models.TextChoices):
         MB_ALIS = "MB_ALIS", "MB Alış"
@@ -3022,6 +3026,9 @@ class FasonDonus(TemelModel):
     # Fatura ONAYLI olunca fason bedeli 'tahmini'likten çıkar; fatura silinirse bağ kopar (SET_NULL) ve bedel yeniden tahmini olur.
     fatura = models.ForeignKey("Fatura", verbose_name="fason faturası", null=True, blank=True, on_delete=models.SET_NULL,
                                related_name="fason_donusleri")
+    # Faturasız fasoncuda (Cari.fason_faturasiz) onayda yazılan tahakkuk fişi: 151 alt hesap(lar)ı BORÇ / fasoncu cari ALACAK (KDV yok).
+    tahakkuk_fis = models.ForeignKey("YevmiyeFisi", verbose_name="fason tahakkuk fişi", null=True, blank=True, on_delete=models.PROTECT,
+                                     related_name="fason_tahakkuk_donusleri", editable=False)
 
     class Meta:
         db_table = "core_fason_donus"

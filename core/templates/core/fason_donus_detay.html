@@ -74,7 +74,21 @@
   <p class="yardim">Gelen adet beklenenden fazla olamaz; boş/aynı bırakılan satır eksiksiz gelmiş sayılır. Girdi (ham profil) tüketimi beklenen çalıştırmadan, stoğa giren adet ve fason bedeli
     <strong>gelen</strong> adet üzerinden hesaplanır; fark fire olarak kaydedilir ve profil maliyeti gelen parçalara dağılır.</p>
 {% endif %}
-{% if bilgi.durum == "ONAYLI" %}
+{% if bilgi.durum == "ONAYLI" and faturasiz %}
+<section class="icerik-kart" style="margin-top:1rem">
+  <h2 class="bolum-baslik"><span class="emoji">📒</span>Cariye tahakkuk (faturasız fason)</h2>
+  {% if tahakkuk_var %}
+    <p>Fason bedeli <strong>{{ donus.cari.unvan }}</strong> carisine tahakkuk etti: <a href="{% url 'core:fis_detay' donus.tahakkuk_fis_id %}" class="mono">Fiş {{ donus.tahakkuk_fis.yil }}/{{ donus.tahakkuk_fis.fis_no }}</a>
+      · {{ donus.tahakkuk_fis.tarih|date:"d.m.Y" }}. Bedel kesindir (tahmini değil).</p>
+  {% else %}
+    <p class="yardim">Bu dönüş için henüz cari tahakkuk fişi yok; fason bedeli <strong>tahmini</strong> sayılıyor.</p>
+    {% if yonetici %}
+      <form method="post" action="{% url 'core:fason_donus_tahakkuk_olustur' donus.pk %}" onsubmit="return confirm('Tahakkuk fişi dönüş tarihiyle ({{ donus.tarih|date:"d.m.Y" }}) oluşturulsun mu?');">
+        {% csrf_token %}<button type="submit" class="birincil">Tahakkuk fişi oluştur</button></form>
+    {% endif %}
+  {% endif %}
+</section>
+{% elif bilgi.durum == "ONAYLI" %}
 <section class="icerik-kart" style="margin-top:1rem">
   <h2 class="bolum-baslik"><span class="emoji">🧾</span>Fasoncunun faturası</h2>
   {% if donus.fatura %}
@@ -101,6 +115,10 @@
     {% else %}
       <p class="yardim">{{ donus.cari.unvan }} için alış faturası bulunamadı. Önce Faturalar → Alış Faturaları'ndan faturayı girin.</p>
     {% endif %}
+  {% endif %}
+  {% if yonetici and not donus.fatura %}
+    <div style="margin-top:.6rem"><button type="button" class="dugme-ikincil" disabled title="Önce cari kartında 'Faturasız fason' kutusunu işaretleyin">Tahakkuk fişi oluştur</button>
+      <span class="yardim">Fasoncu fatura kesmiyorsa Cari kartı → Fason → "Faturasız fason" kutusunu işaretleyin; bu düğme etkinleşir.</span></div>
   {% endif %}
 </section>
 {% endif %}

@@ -92,6 +92,12 @@
     </section>
 
     <section class="icerik-kart">
+      <h2 class="bolum-baslik"><span class="emoji">✂️</span>Fason</h2>
+      <div class="alan"><label class="ad-inline-checkbox" for="{{ form.fason_faturasiz.id_for_label }}">{{ form.fason_faturasiz }} {{ form.fason_faturasiz.label }}</label>
+        <p class="yardim">Fasoncu fatura kesmiyorsa işaretleyin: fason dönüş onaylanınca fason bedeli, çıktının 151 alt hesabına borç / bu cariye alacak olarak ayrı bir fişle yazılır (KDV yok); faturaya bağlanmaz.</p></div>
+    </section>
+
+    <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
       <div class="alan">{{ form.notlar }}</div>
     </section>

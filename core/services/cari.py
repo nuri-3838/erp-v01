@@ -155,7 +155,7 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
             eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kur_tipi=None,
             kur_degerleme=None, kur_farki_hedefi=None,
             kredi_limiti, iskonto_yuzdesi, odeme_kosulu=None, odeme_gunu=None,
-            notlar, ulke, sehir):
+            notlar, ulke, sehir, fason_faturasiz=None):
     """Ortak alan hazırlığı (create/update paylaşır). (dict, uyarılar) döner. ``kur_tipi``
     opsiyonel — verilmezse (mevcut çağıranlar: aday->cari dönüşümü, veri taşıma scriptleri,
     testler) varsayılan MB_ALIS kullanılır."""
@@ -195,6 +195,8 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         odeme_kosulu=odeme_kosulu, odeme_gunu=odeme_gunu,
         notlar=(notlar or "").strip(),
     )
+    if fason_faturasiz is not None:                 # verilmezse (aday dönüşümü, scriptler) mevcut değer korunur / varsayılan False
+        veri["fason_faturasiz"] = bool(fason_faturasiz)
     return veri, uyarilar
 
 
@@ -216,7 +218,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kur_degerleme", "kur_farki_hedefi", "kredi_limiti",
-                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar")})
+                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz")})
     kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
     if Cari.objects.filter(silindi=False, kod=kod).exists():
         raise CariHatasi(f"Cari kodu zaten kayıtlı: {kod}")
@@ -315,7 +317,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kur_degerleme", "kur_farki_hedefi", "kredi_limiti",
-                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar")})
+                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz")})
 
     with transaction.atomic():
         eski_muhasebe_kodu = cari.muhasebe_kodu

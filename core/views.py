@@ -274,6 +274,9 @@ def fis_duzenle(request, pk):
         fat = fis.faturalar.filter(silindi=False).first()
         messages.info(request, "Bu fiş bir faturadan oluştu; düzenlemek için faturayı düzenleyin.")
         return redirect("core:fatura_duzenle", pk=fat.pk) if fat else redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.FASON_TAHAKKUK:
+        messages.info(request, "Bu fiş bir fason dönüşünün cari tahakkukudur; elle düzenlenemez (dönüş belgesiyle birlikte yönetilir).")
+        return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak in (YevmiyeFisi.Kaynak.STOK_SARF, YevmiyeFisi.Kaynak.URETIM,
                       YevmiyeFisi.Kaynak.STOK_SATIS):
         messages.info(request, "Bu fiş stok maliyetinden otomatik üretilir; elle düzenlenemez "
@@ -424,6 +427,9 @@ def fis_sil_gorunum(request, pk):
             messages.info(request, "Bu fiş bir stok sarf çıkışından oluştu; iptal için "
                                    "stok detayındaki hareketi silin.")
             return redirect("core:stok_detay", pk=hareket.stok_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.FASON_TAHAKKUK and not fis.silindi:
+        messages.info(request, "Bu fiş bir fason dönüşünün cari tahakkukudur; elle silinemez (dönüşü geri alınca iptal olur).")
+        return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.URETIM and not fis.silindi:
         messages.info(request, "Bu fiş bir üretim kaydının maliyet aktarımıdır; elle silinemez "
                                "(üretim kaydı ve stok hareketleriyle birlikte yönetilir).")
@@ -1676,7 +1682,7 @@ def _cari_form_kw(cd):
         kredi_limiti=cd["kredi_limiti"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"],
         odeme_kosulu=cd["odeme_kosulu"] or None, odeme_gunu=cd["odeme_gunu"],
-        notlar=cd["notlar"])
+        notlar=cd["notlar"], fason_faturasiz=bool(cd.get("fason_faturasiz")))
 
 
 @ekran_gerekli("cariler")
@@ -1775,7 +1781,7 @@ def cari_duzenle(request, pk):
             "kredi_limiti": cari.kredi_limiti,
             "iskonto_yuzdesi": cari.iskonto_yuzdesi,
             "odeme_kosulu": cari.odeme_kosulu or "", "odeme_gunu": cari.odeme_gunu,
-            "notlar": cari.notlar})
+            "notlar": cari.notlar, "fason_faturasiz": cari.fason_faturasiz})
         if kategori_kilitli:
             form.fields["kategori"].widget.attrs["disabled"] = True
     return render(request, "core/cari_form.html",
@@ -6469,6 +6475,7 @@ def fason_donus_detay(request, pk):
         adaylar = list(Fatura.objects.filter(silindi=False, yon="ALIS", cari_id=donus.cari_id).order_by("-tarih", "-pk")[:50])
     return render(request, "core/fason_donus_detay.html", {
         "donus": donus, "bilgi": bilgi, "fatura_adaylari": adaylar, "yonetici": yonetici_mi(request.user),
+        "faturasiz": donus.cari.fason_faturasiz, "tahakkuk_var": fason_donus_servis.tahakkuk_var_mi(donus),
         "kar": fason_donus_servis.fatura_karsilastirma(donus.fatura) if donus.fatura_id else None})
 
 
@@ -6481,6 +6488,22 @@ def fason_donus_geri_al_sil(request, pk):
             fason_donus_servis.donus_geri_al_sil(donus, kullanici=request.user)
             messages.success(request, f"{donus.no} geri alındı ve silindi (stok hareketleri ve maliyet fişleri dahil).")
             return redirect("core:fason_donusleri")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_donus_detay", pk=donus.pk)
+
+
+@yonetici_gerekli
+def fason_donus_tahakkuk_olustur(request, pk):
+    """YALNIZ yönetici: mevcut ONAYLI dönüş için (faturasız fasoncu, fişi yoksa) cari tahakkuk fişini DÖNÜŞ TARİHİYLE yazar; mükerrer engelli."""
+    donus = get_object_or_404(FasonDonus.objects.select_related("cari"), pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fis = fason_donus_servis.tahakkuk_olustur(donus, kullanici=request.user)
+            if fis is None:
+                messages.info(request, f"{donus.no}: fason bedeli olmadığı için tahakkuk fişi yazılmadı.")
+            else:
+                messages.success(request, f"{donus.no} cariye tahakkuk etti: fiş {fis.yil}/{fis.fis_no}.")
         except fason_servis.FasonHatasi as e:
             messages.error(request, str(e))
     return redirect("core:fason_donus_detay", pk=donus.pk)

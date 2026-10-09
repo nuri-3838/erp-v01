@@ -11,7 +11,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Prefetch
 from django.utils import timezone
 
-from core.models import Cari, Depo, Fatura, FasonDonus, Operasyon, OperasyonKaydi
+from core.models import Cari, Depo, Fatura, FasonDonus, Operasyon, OperasyonKaydi, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services import depo as depo_servis
 from core.services import uretim as uretim_servis
@@ -157,6 +157,8 @@ def donus_onayla(donus: FasonDonus, kullanici=None) -> FasonDonus:
             uretim_servis.operasyon_kaydi_onayla(kayit, kullanici=kullanici)
         except uretim_servis.UretimHatasi as e:
             raise FasonHatasi(f"{kayit.no} ({kayit.operasyon.cikti.kod}): {e}")
+    if donus.cari.fason_faturasiz:
+        tahakkuk_olustur(donus, kullanici=kullanici)
     return donus
 
 
@@ -192,6 +194,9 @@ def donus_geri_al_sil(donus: FasonDonus, kullanici=None) -> FasonDonus:
             uretim_servis.operasyon_kaydi_sil(kayit, kullanici=kullanici, onayli_geri_al=True)
         except uretim_servis.UretimHatasi as e:
             raise FasonHatasi(f"{kayit.no} ({kayit.operasyon.cikti.kod}) geri alınamadı: {e}")
+    if tahakkuk_var_mi(donus):                                    # faturasız fasoncu: cari tahakkuk fişi de iptal (aynı atomik işlem)
+        from core.services.yevmiye import fis_iptal
+        fis_iptal(donus.tahakkuk_fis, kullanici=kullanici)
     donus.silindi = True
     donus.silindi_at = timezone.now()
     donus.updated_by = kullanici
@@ -237,6 +242,68 @@ def donus_bilgisi(donus: FasonDonus) -> dict:
             "eksikler": eksikler}
 
 
+# === Faturasız fason: cariye tahakkuk ======================================================================
+# Fasoncu fatura kesmiyorsa (Cari.fason_faturasiz) dönüş onayında fason bedeli AYRI bir fişle cariye yazılır: her çıktının stok kategorisinin
+# hesap haritasındaki 151 alt hesabı (kesilmiş parça → 151.10, menteşe → 151.20 …) BORÇ, fasoncu cari hesabı ALACAK; tutar = Σ gelen adet × fason
+# birim fiyatı (TL, onay anı snapshot'ı = çıktının ``fason_tutar``); KDV yok; bedeli 0 olan çıktı fişe girmez. Fiş dönüş TARİHİYLE yazılır. Bedel
+# artık kesindir (giris_tahmini=False) ve değerleme raporunda 'faturası bekleyen' sayılmaz.
+
+def tahakkuk_var_mi(donus: FasonDonus) -> bool:
+    return bool(donus.tahakkuk_fis_id and not donus.tahakkuk_fis.silindi)
+
+
+def tahakkuk_satirlari(donus: FasonDonus) -> list:
+    """[(hesap_kodu, tutar)] — yalnız fason bedeli > 0 olan çıktılar, 151 alt hesabına göre toplanmış. Boşsa fiş yazılmaz."""
+    from core.models import OperasyonKaydiCikti
+    from core.services.stok_fis import stok_hesabi_kodu
+    toplam = {}
+    ciktilar = (OperasyonKaydiCikti.objects.filter(silindi=False, kayit__silindi=False, kayit__fason_donus=donus,
+                                                   kayit__durum=OperasyonKaydi.Durum.ONAYLI, fason_tutar__gt=0)
+                .select_related("stok").order_by("pk"))
+    for c in ciktilar:
+        kod = stok_hesabi_kodu(c.stok)
+        toplam[kod] = toplam.get(kod, SIFIR) + c.fason_tutar
+    return sorted(toplam.items())
+
+
+@transaction.atomic
+def tahakkuk_olustur(donus: FasonDonus, kullanici=None):
+    """Onaylı dönüş için cari tahakkuk fişini yazar (fiş ya da — bedel yoksa — None döner). Mükerrer engelli: aktif fişi olan dönüşe ikinci fiş yazılmaz."""
+    from core.services.stok_fis import MaliyetHatasi
+    from core.services.yevmiye import SatirGirdi, YevmiyeHatasi, fis_olustur
+    if donus.silindi:
+        raise FasonHatasi("Silinmiş dönüş için tahakkuk yazılamaz.")
+    if not donus.cari.fason_faturasiz:
+        raise FasonHatasi(f"{donus.cari.unvan} faturasız fasoncu olarak işaretli değil (Cari kartı → Fason).")
+    if donus_durumu(donus) != "ONAYLI":
+        raise FasonHatasi("Yalnız onaylı fason dönüş için tahakkuk yazılabilir.")
+    if tahakkuk_var_mi(donus):
+        raise FasonHatasi(f"{donus.no} için tahakkuk fişi zaten var (fiş {donus.tahakkuk_fis.yil}/{donus.tahakkuk_fis.fis_no}).")
+    if donus.fatura_id:
+        raise FasonHatasi("Bu dönüş bir faturaya bağlı; faturasız tahakkuk yazılamaz (önce fatura bağını kaldırın).")
+    if not donus.cari.muhasebe_kodu:
+        raise FasonHatasi(f"{donus.cari.unvan} carisinin muhasebe hesabı yok.")
+    try:
+        borclar = tahakkuk_satirlari(donus)
+    except MaliyetHatasi as e:
+        raise FasonHatasi(str(e))
+    toplam = sum((t for _k, t in borclar), SIFIR)
+    if toplam <= 0:
+        return None                                              # fason bedeli yok → fiş yok
+    satirlar = [SatirGirdi(kod, "B", tutar, aciklama=f"{donus.no} fason bedeli") for kod, tutar in borclar]
+    satirlar.append(SatirGirdi(donus.cari.muhasebe_kodu, "A", toplam, aciklama=f"{donus.no} fason bedeli"))
+    try:
+        fis = fis_olustur(tarih=donus.tarih, satirlar=satirlar, aciklama=f"{donus.no} fason tahakkuku — {donus.cari.unvan}",
+                          kaynak=YevmiyeFisi.Kaynak.FASON_TAHAKKUK, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise FasonHatasi(f"Tahakkuk fişi yazılamadı: {e}")
+    donus.tahakkuk_fis = fis
+    donus.updated_by = kullanici
+    donus.save(update_fields=["tahakkuk_fis", "updated_by", "updated_at"])
+    yeniden_senkronla([donus])                                   # bedel artık kesin: çıktı girişleri giris_tahmini=False, ortalama yeniden
+    return fis
+
+
 # === Fasoncunun faturası ====================================================================================
 # Fason hizmet faturası normal bir ALIŞ faturasıdır (kalemi, kategorisi 151 yarı mamul alt hesabına eşli bir hizmet kartı; depo YOK → stok
 # hareketi yok): fatura 151'e borç yazar, fason bedeli de stok değerinde olduğundan fatura gelince mizan = stok değeri olur. Fatura ONAYLI olana
@@ -272,6 +339,8 @@ def faturaya_bagla(donus: FasonDonus, fatura: Fatura, kullanici=None) -> FasonDo
         raise FasonHatasi("Fason faturası bir ALIŞ faturası olmalı.")
     if fatura.cari_id != donus.cari_id:
         raise FasonHatasi("Fatura, dönüşün fasoncusuna (cari) ait olmalı.")
+    if donus.cari.fason_faturasiz or tahakkuk_var_mi(donus):
+        raise FasonHatasi("Faturasız fasoncunun dönüşü faturaya bağlanamaz; fason bedeli cariye tahakkuk fişiyle yazılır.")
     with transaction.atomic():
         donus.fatura = fatura
         donus.updated_by = kullanici

@@ -13,10 +13,13 @@ SIFIR = Decimal("0")
 
 
 def fason_bekliyor(kayit) -> bool:
-    """Fason kaydın bedeli fasoncunun FATURASI gelene kadar 'tahmini'dir: dönüş belgesine ONAYLI bir fatura bağlı değilse True."""
+    """Fason kaydın bedeli fasoncunun FATURASI gelene kadar 'tahmini'dir: dönüş belgesine ONAYLI bir fatura bağlı değilse True.
+    Faturasız fasoncuda (Cari.fason_faturasiz) bedel, tahakkuk fişi yazılınca kesinleşir (fatura aranmaz)."""
     if not kayit.fason_cari_id:
         return False
     donus = kayit.fason_donus
+    if donus is not None and donus.tahakkuk_fis_id and not donus.tahakkuk_fis.silindi:
+        return False                                     # faturasız fasoncu: bedel cariye tahakkuk etti → kesin
     fatura = donus.fatura if (donus is not None and donus.fatura_id) else None
     return not (fatura is not None and not fatura.silindi and fatura.durum == "ONAYLI")
 
@@ -56,7 +59,7 @@ def bekleyen_ciktilar() -> list:
     from core.models import OperasyonKaydi, OperasyonKaydiCikti, StokHareket
     adaylar = [c for c in OperasyonKaydiCikti.objects.filter(
         silindi=False, fason_tutar__gt=0, kayit__silindi=False, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__fason_cari__isnull=False)
-        .select_related("kayit__fason_donus__fatura", "stok")]
+        .select_related("kayit__fason_donus__fatura", "kayit__fason_donus__tahakkuk_fis", "stok")]
     adaylar = [c for c in adaylar if fason_bekliyor(c.kayit)]
     if not adaylar:
         return []

@@ -70,7 +70,7 @@ def mutabakat(cari, baslangic=None, bitis=None) -> dict:
             "fark": a_ + tr + dg - ge[0] - t[0] - k})     # ≠ 0 ise fason depoda hesap dışı hareket var (silinmiş/elle düzeltilmiş kayıt vb.)
 
     # fasoncudan gelen parçalar + fason bedeli (onaylı kayıtların çıktı satırları)
-    donusler = list(tarihli(FasonDonus.objects.filter(silindi=False, cari=cari)).select_related("fatura").order_by("yil", "sira"))
+    donusler = list(tarihli(FasonDonus.objects.filter(silindi=False, cari=cari)).select_related("fatura", "tahakkuk_fis").order_by("yil", "sira"))
     ciktilar = OperasyonKaydiCikti.objects.filter(
         silindi=False, kayit__silindi=False, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__fason_donus__in=donusler)
     parcalar = {}
@@ -88,15 +88,17 @@ def mutabakat(cari, baslangic=None, bitis=None) -> dict:
     donus_satirlari, toplam = [], {"try": SIFIR, "usd": SIFIR}
     faturali = {"try": SIFIR, "usd": SIFIR, "adet": 0}
     bekleyen = {"try": SIFIR, "usd": SIFIR, "adet": 0}
+    tahakkuk = {"try": SIFIR, "usd": SIFIR, "adet": 0}              # faturasız fasoncu: cariye tahakkuk eden
     fatura_farki = SIFIR
     for d in donuslar_onayli(donusler):
         t_try, t_usd = donus_tutar.get(d.pk, [SIFIR, SIFIR])
         onayli_fatura = bool(d.fatura_id and not d.fatura.silindi and d.fatura.durum == "ONAYLI")
+        tahakkuklu = fd.tahakkuk_var_mi(d)
         donus_satirlari.append({"donus": d, "tutar_try": t_try, "tutar_usd": t_usd, "fatura": d.fatura if d.fatura_id else None,
-                                "faturali": onayli_fatura})
+                                "faturali": onayli_fatura, "tahakkuklu": tahakkuklu, "tahakkuk_fis": d.tahakkuk_fis if tahakkuklu else None})
         toplam["try"] += t_try
         toplam["usd"] += t_usd
-        grup = faturali if onayli_fatura else bekleyen
+        grup = tahakkuk if tahakkuklu else (faturali if onayli_fatura else bekleyen)
         grup["try"] += t_try
         grup["usd"] += t_usd
         grup["adet"] += 1
@@ -106,7 +108,8 @@ def mutabakat(cari, baslangic=None, bitis=None) -> dict:
             "parcalar": sorted(parcalar.values(), key=lambda p: p["stok"].kod), "donusler": donus_satirlari,
             "taslak_sayisi": len(donusler) - len(donus_satirlari),
             "toplam_fire": sum((p["fire"] for p in parcalar.values()), SIFIR),
-            "toplam": toplam, "faturali": faturali, "bekleyen": bekleyen, "fatura_farki": fatura_farki,
+            "toplam": toplam, "faturali": faturali, "bekleyen": bekleyen, "tahakkuk": tahakkuk, "fatura_farki": fatura_farki,
+            "faturasiz": bool(cari.fason_faturasiz),
             "kalan_deger": sum((p["kalan_deger"] or SIFIR for p in profiller), SIFIR)}
 
 

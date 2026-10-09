@@ -574,6 +574,7 @@ class CariForm(forms.Form):
         choices=[("", "— koşul yok (vade elle girilir) —")] + list(Cari.OdemeKosulu.choices))
     odeme_gunu = forms.IntegerField(label="Gün", required=False, min_value=0, max_value=365,
                                     widget=forms.NumberInput(attrs=_K))
+    fason_faturasiz = forms.BooleanField(label="Faturasız fason (dönüş onayında cariye yaz)", required=False)
     notlar = forms.CharField(label="Notlar", required=False,
                              widget=forms.Textarea(attrs={"rows": 3, **_K}))
 
