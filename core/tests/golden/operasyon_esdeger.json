@@ -1,0 +1,3157 @@
+{
+ "birim_tuketim": {
+  "152-10-0001": {
+   "1": {
+    "ihtiyac": "0.1111111111111111111111111111",
+    "stok": "150-10-0001",
+    "yaprak": true
+   },
+   "10": {
+    "ihtiyac": "1",
+    "stok": "151-30-0001",
+    "yaprak": false
+   },
+   "4": {
+    "ihtiyac": "2",
+    "stok": "150-30-0001",
+    "yaprak": true
+   },
+   "5": {
+    "ihtiyac": "2",
+    "stok": "151-10-0001",
+    "yaprak": false
+   }
+  },
+  "152-10-0002": {
+   "1": {
+    "ihtiyac": "0.05555555555555555555555555556",
+    "stok": "150-10-0001",
+    "yaprak": true
+   },
+   "2": {
+    "ihtiyac": "0.7847684732652949711919665353",
+    "stok": "150-10-0002",
+    "yaprak": true
+   },
+   "5": {
+    "ihtiyac": "1",
+    "stok": "151-10-0001",
+    "yaprak": false
+   },
+   "6": {
+    "ihtiyac": "3",
+    "stok": "151-10-0002",
+    "yaprak": false
+   },
+   "7": {
+    "ihtiyac": "1",
+    "stok": "151-10-0003",
+    "yaprak": true
+   }
+  },
+  "152-22-0001": {
+   "1": {
+    "ihtiyac": "0.08680555555555555555555555556",
+    "stok": "150-10-0001",
+    "yaprak": true
+   },
+   "3": {
+    "ihtiyac": "0.625",
+    "stok": "150-20-0001",
+    "yaprak": true
+   },
+   "5": {
+    "ihtiyac": "1",
+    "stok": "151-10-0001",
+    "yaprak": false
+   },
+   "8": {
+    "ihtiyac": "1",
+    "stok": "151-20-0001",
+    "yaprak": false
+   },
+   "9": {
+    "ihtiyac": "2",
+    "stok": "151-20-0002",
+    "yaprak": false
+   }
+  },
+  "152-22-0002": {
+   "1": {
+    "ihtiyac": "0.2222222222222222222222222222",
+    "stok": "150-10-0001",
+    "yaprak": true
+   },
+   "10": {
+    "ihtiyac": "2",
+    "stok": "151-30-0001",
+    "yaprak": false
+   },
+   "2": {
+    "ihtiyac": "0.2615894910884316570639888451",
+    "stok": "150-10-0002",
+    "yaprak": true
+   },
+   "5": {
+    "ihtiyac": "4",
+    "stok": "151-10-0001",
+    "yaprak": false
+   },
+   "6": {
+    "ihtiyac": "1",
+    "stok": "151-10-0002",
+    "yaprak": false
+   }
+  }
+ },
+ "emir_kayitlari": [
+  [
+   "151-10-0001",
+   "18",
+   [
+    [
+     "150-10-0001",
+     "1"
+    ]
+   ]
+  ],
+  [
+   "151-10-0002",
+   "9",
+   [
+    [
+     "150-10-0002",
+     "3"
+    ]
+   ]
+  ],
+  [
+   "151-20-0001",
+   "7",
+   [
+    [
+     "150-20-0001",
+     "4.375"
+    ]
+   ]
+  ],
+  [
+   "151-20-0002",
+   "14",
+   [
+    [
+     "150-10-0001",
+     "0.21875"
+    ]
+   ]
+  ],
+  [
+   "152-10-0002",
+   "3",
+   [
+    [
+     "151-10-0001",
+     "3"
+    ],
+    [
+     "151-10-0002",
+     "9"
+    ],
+    [
+     "151-10-0003",
+     "3"
+    ]
+   ]
+  ],
+  [
+   "152-22-0001",
+   "7",
+   [
+    [
+     "151-10-0001",
+     "7"
+    ],
+    [
+     "151-20-0001",
+     "7"
+    ],
+    [
+     "151-20-0002",
+     "14"
+    ]
+   ]
+  ]
+ ],
+ "fason_listesi": {
+  "cari": null,
+  "detay": [
+   {
+    "calistirma": "5",
+    "fazla": "0",
+    "ihtiyac": "5",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "5",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "7",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:152-22-0001",
+    "stok": "152-22-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "1",
+    "fazla": "6",
+    "ihtiyac": "12",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": true,
+    "uretilecek": "18",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "5",
+    "fazla": "0",
+    "ihtiyac": "15",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": true,
+    "uretilecek": "15",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "5",
+      "stok": "151-10-0003"
+     }
+    ]
+   },
+   {
+    "calistirma": "1.75",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:151-20-0001",
+    "stok": "151-20-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "14",
+    "fazla": "0",
+    "ihtiyac": "14",
+    "operasyon": "OP:151-20-0002",
+    "stok": "151-20-0002",
+    "tam": false,
+    "uretilecek": "14",
+    "yan_ciktilar": []
+   }
+  ],
+  "fiyat_eksikleri": [],
+  "ozet": [
+   {
+    "birim_fiyat": null,
+    "boy": "1",
+    "fasoncu_kodu": "",
+    "kesilmis_parca": "151-10-0001",
+    "op": "151-10-0001",
+    "para_birimi": "",
+    "profil": "150-10-0001",
+    "sira_no": 0,
+    "toplam_adet": "18",
+    "tutar": null,
+    "yan": false
+   },
+   {
+    "birim_fiyat": null,
+    "boy": "0.21875",
+    "fasoncu_kodu": "",
+    "kesilmis_parca": "151-20-0002",
+    "op": "151-20-0002",
+    "para_birimi": "",
+    "profil": "150-10-0001",
+    "sira_no": 0,
+    "toplam_adet": "14",
+    "tutar": null,
+    "yan": false
+   },
+   {
+    "birim_fiyat": null,
+    "boy": "5",
+    "fasoncu_kodu": "",
+    "kesilmis_parca": "151-10-0002",
+    "op": "151-10-0002",
+    "para_birimi": "",
+    "profil": "150-10-0002",
+    "sira_no": 0,
+    "toplam_adet": "15",
+    "tutar": null,
+    "yan": false
+   },
+   {
+    "birim_fiyat": null,
+    "boy": null,
+    "fasoncu_kodu": "",
+    "kesilmis_parca": "151-10-0003",
+    "op": "151-10-0002",
+    "para_birimi": "",
+    "profil": "150-10-0002",
+    "sira_no": 1,
+    "toplam_adet": "5",
+    "tutar": null,
+    "yan": true
+   },
+   {
+    "birim_fiyat": null,
+    "boy": "4.375",
+    "fasoncu_kodu": "",
+    "kesilmis_parca": "151-20-0001",
+    "op": "151-20-0001",
+    "para_birimi": "",
+    "profil": "150-20-0001",
+    "sira_no": 0,
+    "toplam_adet": "7",
+    "tutar": null,
+    "yan": false
+   }
+  ],
+  "toplam_tutar": {}
+ },
+ "ihtiyac_ara_stok": {
+  "agac": [
+   {
+    "calistirma": "2",
+    "cocuklar": [
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "2",
+      "operasyon": null,
+      "stok": "150-10-0002",
+      "yaprak": true
+     }
+    ],
+    "fazla": "2",
+    "ihtiyac_toplam": "4",
+    "istasyon": "10",
+    "miktar": "4",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": true,
+    "uretilecek": "6",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "2",
+      "stok": "151-10-0003"
+     }
+    ],
+    "yaprak": false
+   },
+   {
+    "calistirma": "2",
+    "cocuklar": [
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "2",
+      "operasyon": null,
+      "stok": "150-10-0001",
+      "yaprak": true
+     }
+    ],
+    "fazla": "17",
+    "ihtiyac_toplam": "19",
+    "istasyon": "10",
+    "miktar": "19",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": true,
+    "uretilecek": "36",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "ozet": [
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "2",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0002",
+    "tam": false,
+    "toplam_miktar": "2",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "2",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0001",
+    "tam": false,
+    "toplam_miktar": "2",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   }
+  ],
+  "plan": [
+   {
+    "calistirma": "2",
+    "fazla": "2",
+    "ihtiyac": "4",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": true,
+    "uretilecek": "6",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "2",
+      "stok": "151-10-0003"
+     }
+    ]
+   },
+   {
+    "calistirma": "2",
+    "fazla": "17",
+    "ihtiyac": "19",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": true,
+    "uretilecek": "36",
+    "yan_ciktilar": []
+   }
+  ]
+ },
+ "ihtiyac_graf": {
+  "agac": [
+   {
+    "calistirma": "5",
+    "cocuklar": [
+     {
+      "calistirma": "9",
+      "cocuklar": [
+       {
+        "calistirma": "2",
+        "cocuklar": [
+         {
+          "cocuklar": [],
+          "istasyon": null,
+          "miktar": "2",
+          "operasyon": null,
+          "stok": "150-10-0001",
+          "yaprak": true
+         }
+        ],
+        "fazla": "8",
+        "ihtiyac_toplam": "28",
+        "istasyon": "10",
+        "miktar": "10",
+        "operasyon": "OP:151-10-0001",
+        "stok": "151-10-0001",
+        "tam": true,
+        "uretilecek": "36",
+        "yan_ciktilar": [],
+        "yaprak": false
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "9",
+      "istasyon": "70",
+      "miktar": "5",
+      "operasyon": "OP:151-30-0001",
+      "stok": "151-30-0001",
+      "tam": false,
+      "uretilecek": "9",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "10",
+      "operasyon": null,
+      "stok": "150-30-0001",
+      "yaprak": true
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "5",
+    "istasyon": "70",
+    "miktar": "5",
+    "operasyon": "OP:152-10-0001",
+    "stok": "152-10-0001",
+    "tam": false,
+    "uretilecek": "5",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "3",
+    "cocuklar": [
+     {
+      "calistirma": "2",
+      "cocuklar": [],
+      "fazla": "8",
+      "ihtiyac_toplam": "28",
+      "istasyon": "10",
+      "miktar": "3",
+      "operasyon": "OP:151-10-0001",
+      "stok": "151-10-0001",
+      "tam": true,
+      "tekrar": true,
+      "uretilecek": "36",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "4",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "4",
+        "operasyon": null,
+        "stok": "150-10-0002",
+        "yaprak": true
+       }
+      ],
+      "fazla": "1",
+      "ihtiyac_toplam": "11",
+      "istasyon": "10",
+      "miktar": "9",
+      "operasyon": "OP:151-10-0002",
+      "stok": "151-10-0002",
+      "tam": true,
+      "uretilecek": "12",
+      "yan_ciktilar": [
+       {
+        "boy_mm": "1063.53",
+        "miktar": "4",
+        "stok": "151-10-0003"
+       }
+      ],
+      "yaprak": false
+     },
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "3",
+      "operasyon": null,
+      "stok": "151-10-0003",
+      "yaprak": true
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "3",
+    "istasyon": "70",
+    "miktar": "3",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "3",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "7",
+    "cocuklar": [
+     {
+      "calistirma": "1.75",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "4.375",
+        "operasyon": null,
+        "stok": "150-20-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "7",
+      "istasyon": "10",
+      "miktar": "7",
+      "operasyon": "OP:151-20-0001",
+      "stok": "151-20-0001",
+      "tam": false,
+      "uretilecek": "7",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "14",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.21875",
+        "operasyon": null,
+        "stok": "150-10-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "14",
+      "istasyon": "10",
+      "miktar": "14",
+      "operasyon": "OP:151-20-0002",
+      "stok": "151-20-0002",
+      "tam": false,
+      "uretilecek": "14",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "2",
+      "cocuklar": [],
+      "fazla": "8",
+      "ihtiyac_toplam": "28",
+      "istasyon": "10",
+      "miktar": "7",
+      "operasyon": "OP:151-10-0001",
+      "stok": "151-10-0001",
+      "tam": true,
+      "tekrar": true,
+      "uretilecek": "36",
+      "yan_ciktilar": [],
+      "yaprak": false
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "7",
+    "istasyon": "70",
+    "miktar": "7",
+    "operasyon": "OP:152-22-0001",
+    "stok": "152-22-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "2",
+    "cocuklar": [
+     {
+      "calistirma": "9",
+      "cocuklar": [
+       {
+        "calistirma": "2",
+        "cocuklar": [],
+        "fazla": "8",
+        "ihtiyac_toplam": "28",
+        "istasyon": "10",
+        "miktar": "8",
+        "operasyon": "OP:151-10-0001",
+        "stok": "151-10-0001",
+        "tam": true,
+        "tekrar": true,
+        "uretilecek": "36",
+        "yan_ciktilar": [],
+        "yaprak": false
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "9",
+      "istasyon": "70",
+      "miktar": "4",
+      "operasyon": "OP:151-30-0001",
+      "stok": "151-30-0001",
+      "tam": false,
+      "uretilecek": "9",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "4",
+      "cocuklar": [],
+      "fazla": "1",
+      "ihtiyac_toplam": "11",
+      "istasyon": "10",
+      "miktar": "2",
+      "operasyon": "OP:151-10-0002",
+      "stok": "151-10-0002",
+      "tam": true,
+      "tekrar": true,
+      "uretilecek": "12",
+      "yan_ciktilar": [
+       {
+        "boy_mm": "1063.53",
+        "miktar": "4",
+        "stok": "151-10-0003"
+       }
+      ],
+      "yaprak": false
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "2",
+    "istasyon": "70",
+    "miktar": "2",
+    "operasyon": "OP:152-22-0002",
+    "stok": "152-22-0002",
+    "tam": false,
+    "uretilecek": "2",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "ozet": [
+   {
+    "calistirma_sayisi": "9",
+    "fazla_miktar": "0",
+    "ihtiyac": "9",
+    "istasyon": "70",
+    "operasyon": "OP:151-30-0001",
+    "stok": "151-30-0001",
+    "tam": false,
+    "toplam_miktar": "9",
+    "uretilecek_miktar": "9",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": "2",
+    "fazla_miktar": "8",
+    "ihtiyac": "28",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": true,
+    "toplam_miktar": "28",
+    "uretilecek_miktar": "36",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "2.21875",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0001",
+    "tam": false,
+    "toplam_miktar": "2.21875",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "10",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-30-0001",
+    "tam": false,
+    "toplam_miktar": "10",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "4",
+    "fazla_miktar": "1",
+    "ihtiyac": "11",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": true,
+    "toplam_miktar": "11",
+    "uretilecek_miktar": "12",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "4",
+      "stok": "151-10-0003"
+     }
+    ],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "4",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0002",
+    "tam": false,
+    "toplam_miktar": "4",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "3",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "151-10-0003",
+    "tam": false,
+    "toplam_miktar": "3",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "1.75",
+    "fazla_miktar": "0",
+    "ihtiyac": "7",
+    "istasyon": "10",
+    "operasyon": "OP:151-20-0001",
+    "stok": "151-20-0001",
+    "tam": false,
+    "toplam_miktar": "7",
+    "uretilecek_miktar": "7",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "4.375",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-20-0001",
+    "tam": false,
+    "toplam_miktar": "4.375",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "14",
+    "fazla_miktar": "0",
+    "ihtiyac": "14",
+    "istasyon": "10",
+    "operasyon": "OP:151-20-0002",
+    "stok": "151-20-0002",
+    "tam": false,
+    "toplam_miktar": "14",
+    "uretilecek_miktar": "14",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "plan": [
+   {
+    "calistirma": "5",
+    "fazla": "0",
+    "ihtiyac": "5",
+    "operasyon": "OP:152-10-0001",
+    "stok": "152-10-0001",
+    "tam": false,
+    "uretilecek": "5",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "3",
+    "fazla": "0",
+    "ihtiyac": "3",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "3",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "7",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:152-22-0001",
+    "stok": "152-22-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "2",
+    "fazla": "0",
+    "ihtiyac": "2",
+    "operasyon": "OP:152-22-0002",
+    "stok": "152-22-0002",
+    "tam": false,
+    "uretilecek": "2",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "9",
+    "fazla": "0",
+    "ihtiyac": "9",
+    "operasyon": "OP:151-30-0001",
+    "stok": "151-30-0001",
+    "tam": false,
+    "uretilecek": "9",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "2",
+    "fazla": "8",
+    "ihtiyac": "28",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": true,
+    "uretilecek": "36",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "4",
+    "fazla": "1",
+    "ihtiyac": "11",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": true,
+    "uretilecek": "12",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "4",
+      "stok": "151-10-0003"
+     }
+    ]
+   },
+   {
+    "calistirma": "1.75",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:151-20-0001",
+    "stok": "151-20-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "14",
+    "fazla": "0",
+    "ihtiyac": "14",
+    "operasyon": "OP:151-20-0002",
+    "stok": "151-20-0002",
+    "tam": false,
+    "uretilecek": "14",
+    "yan_ciktilar": []
+   }
+  ]
+ },
+ "ihtiyac_kesirli": {
+  "agac": [
+   {
+    "calistirma": "5",
+    "cocuklar": [
+     {
+      "calistirma": "9",
+      "cocuklar": [
+       {
+        "calistirma": "1.555555555555555555555555556",
+        "cocuklar": [
+         {
+          "cocuklar": [],
+          "istasyon": null,
+          "miktar": "0.5555555555555555555555555556",
+          "operasyon": null,
+          "stok": "150-10-0001",
+          "yaprak": true
+         }
+        ],
+        "fazla": "0",
+        "ihtiyac_toplam": "28",
+        "istasyon": "10",
+        "miktar": "10",
+        "operasyon": "OP:151-10-0001",
+        "stok": "151-10-0001",
+        "tam": false,
+        "uretilecek": "28",
+        "yan_ciktilar": [],
+        "yaprak": false
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "9",
+      "istasyon": "70",
+      "miktar": "5",
+      "operasyon": "OP:151-30-0001",
+      "stok": "151-30-0001",
+      "tam": false,
+      "uretilecek": "9",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "10",
+      "operasyon": null,
+      "stok": "150-30-0001",
+      "yaprak": true
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "5",
+    "istasyon": "70",
+    "miktar": "5",
+    "operasyon": "OP:152-10-0001",
+    "stok": "152-10-0001",
+    "tam": false,
+    "uretilecek": "5",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "3",
+    "cocuklar": [
+     {
+      "calistirma": "1.555555555555555555555555556",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.1666666666666666666666666667",
+        "operasyon": null,
+        "stok": "150-10-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "28",
+      "istasyon": "10",
+      "miktar": "3",
+      "operasyon": "OP:151-10-0001",
+      "stok": "151-10-0001",
+      "tam": false,
+      "uretilecek": "28",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "3.666666666666666666666666667",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "3",
+        "operasyon": null,
+        "stok": "150-10-0002",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "11",
+      "istasyon": "10",
+      "miktar": "9",
+      "operasyon": "OP:151-10-0002",
+      "stok": "151-10-0002",
+      "tam": false,
+      "uretilecek": "11",
+      "yan_ciktilar": [
+       {
+        "boy_mm": "1063.53",
+        "miktar": "3.666666666666666666666666667",
+        "stok": "151-10-0003"
+       }
+      ],
+      "yaprak": false
+     },
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "3",
+      "operasyon": null,
+      "stok": "151-10-0003",
+      "yaprak": true
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "3",
+    "istasyon": "70",
+    "miktar": "3",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "3",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "7",
+    "cocuklar": [
+     {
+      "calistirma": "1.75",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "4.375",
+        "operasyon": null,
+        "stok": "150-20-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "7",
+      "istasyon": "10",
+      "miktar": "7",
+      "operasyon": "OP:151-20-0001",
+      "stok": "151-20-0001",
+      "tam": false,
+      "uretilecek": "7",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "14",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.21875",
+        "operasyon": null,
+        "stok": "150-10-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "14",
+      "istasyon": "10",
+      "miktar": "14",
+      "operasyon": "OP:151-20-0002",
+      "stok": "151-20-0002",
+      "tam": false,
+      "uretilecek": "14",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "1.555555555555555555555555556",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.3888888888888888888888888889",
+        "operasyon": null,
+        "stok": "150-10-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "28",
+      "istasyon": "10",
+      "miktar": "7",
+      "operasyon": "OP:151-10-0001",
+      "stok": "151-10-0001",
+      "tam": false,
+      "uretilecek": "28",
+      "yan_ciktilar": [],
+      "yaprak": false
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "7",
+    "istasyon": "70",
+    "miktar": "7",
+    "operasyon": "OP:152-22-0001",
+    "stok": "152-22-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "2",
+    "cocuklar": [
+     {
+      "calistirma": "9",
+      "cocuklar": [
+       {
+        "calistirma": "1.555555555555555555555555556",
+        "cocuklar": [
+         {
+          "cocuklar": [],
+          "istasyon": null,
+          "miktar": "0.4444444444444444444444444444",
+          "operasyon": null,
+          "stok": "150-10-0001",
+          "yaprak": true
+         }
+        ],
+        "fazla": "0",
+        "ihtiyac_toplam": "28",
+        "istasyon": "10",
+        "miktar": "8",
+        "operasyon": "OP:151-10-0001",
+        "stok": "151-10-0001",
+        "tam": false,
+        "uretilecek": "28",
+        "yan_ciktilar": [],
+        "yaprak": false
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "9",
+      "istasyon": "70",
+      "miktar": "4",
+      "operasyon": "OP:151-30-0001",
+      "stok": "151-30-0001",
+      "tam": false,
+      "uretilecek": "9",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "3.666666666666666666666666667",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.6666666666666666666666666667",
+        "operasyon": null,
+        "stok": "150-10-0002",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "11",
+      "istasyon": "10",
+      "miktar": "2",
+      "operasyon": "OP:151-10-0002",
+      "stok": "151-10-0002",
+      "tam": false,
+      "uretilecek": "11",
+      "yan_ciktilar": [
+       {
+        "boy_mm": "1063.53",
+        "miktar": "3.666666666666666666666666667",
+        "stok": "151-10-0003"
+       }
+      ],
+      "yaprak": false
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "2",
+    "istasyon": "70",
+    "miktar": "2",
+    "operasyon": "OP:152-22-0002",
+    "stok": "152-22-0002",
+    "tam": false,
+    "uretilecek": "2",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "ozet": [
+   {
+    "calistirma_sayisi": "9",
+    "fazla_miktar": "0",
+    "ihtiyac": "9",
+    "istasyon": "70",
+    "operasyon": "OP:151-30-0001",
+    "stok": "151-30-0001",
+    "tam": false,
+    "toplam_miktar": "9",
+    "uretilecek_miktar": "9",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": "1.555555555555555555555555556",
+    "fazla_miktar": "0",
+    "ihtiyac": "28",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": false,
+    "toplam_miktar": "28",
+    "uretilecek_miktar": "28",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "1.774305555555555555555555556",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0001",
+    "tam": false,
+    "toplam_miktar": "1.774305555555555555555555556",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "10",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-30-0001",
+    "tam": false,
+    "toplam_miktar": "10",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "3.666666666666666666666666667",
+    "fazla_miktar": "0",
+    "ihtiyac": "11",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": false,
+    "toplam_miktar": "11",
+    "uretilecek_miktar": "11",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "3.666666666666666666666666667",
+      "stok": "151-10-0003"
+     }
+    ],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "3.666666666666666666666666667",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0002",
+    "tam": false,
+    "toplam_miktar": "3.666666666666666666666666667",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "3",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "151-10-0003",
+    "tam": false,
+    "toplam_miktar": "3",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "1.75",
+    "fazla_miktar": "0",
+    "ihtiyac": "7",
+    "istasyon": "10",
+    "operasyon": "OP:151-20-0001",
+    "stok": "151-20-0001",
+    "tam": false,
+    "toplam_miktar": "7",
+    "uretilecek_miktar": "7",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "4.375",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-20-0001",
+    "tam": false,
+    "toplam_miktar": "4.375",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "14",
+    "fazla_miktar": "0",
+    "ihtiyac": "14",
+    "istasyon": "10",
+    "operasyon": "OP:151-20-0002",
+    "stok": "151-20-0002",
+    "tam": false,
+    "toplam_miktar": "14",
+    "uretilecek_miktar": "14",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "plan": [
+   {
+    "calistirma": "5",
+    "fazla": "0",
+    "ihtiyac": "5",
+    "operasyon": "OP:152-10-0001",
+    "stok": "152-10-0001",
+    "tam": false,
+    "uretilecek": "5",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "3",
+    "fazla": "0",
+    "ihtiyac": "3",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "3",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "7",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:152-22-0001",
+    "stok": "152-22-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "2",
+    "fazla": "0",
+    "ihtiyac": "2",
+    "operasyon": "OP:152-22-0002",
+    "stok": "152-22-0002",
+    "tam": false,
+    "uretilecek": "2",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "9",
+    "fazla": "0",
+    "ihtiyac": "9",
+    "operasyon": "OP:151-30-0001",
+    "stok": "151-30-0001",
+    "tam": false,
+    "uretilecek": "9",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "1.555555555555555555555555556",
+    "fazla": "0",
+    "ihtiyac": "28",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": false,
+    "uretilecek": "28",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "3.666666666666666666666666667",
+    "fazla": "0",
+    "ihtiyac": "11",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": false,
+    "uretilecek": "11",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "3.666666666666666666666666667",
+      "stok": "151-10-0003"
+     }
+    ]
+   },
+   {
+    "calistirma": "1.75",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:151-20-0001",
+    "stok": "151-20-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "14",
+    "fazla": "0",
+    "ihtiyac": "14",
+    "operasyon": "OP:151-20-0002",
+    "stok": "151-20-0002",
+    "tam": false,
+    "uretilecek": "14",
+    "yan_ciktilar": []
+   }
+  ]
+ },
+ "ihtiyac_maliyet_gorunumu": {
+  "agac": [
+   {
+    "calistirma": "1",
+    "cocuklar": [
+     {
+      "calistirma": "0.05555555555555555555555555556",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.05555555555555555555555555556",
+        "operasyon": null,
+        "stok": "150-10-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "1",
+      "istasyon": "10",
+      "miktar": "1",
+      "operasyon": "OP:151-10-0001",
+      "stok": "151-10-0001",
+      "tam": false,
+      "uretilecek": "1",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "1",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.7847684732652949711919665353",
+        "operasyon": null,
+        "stok": "150-10-0002",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "3",
+      "istasyon": "10",
+      "miktar": "3",
+      "operasyon": "OP:151-10-0002",
+      "stok": "151-10-0002",
+      "tam": false,
+      "uretilecek": "3",
+      "yan_ciktilar": [
+       {
+        "boy_mm": "1063.53",
+        "miktar": "1",
+        "stok": "151-10-0003"
+       }
+      ],
+      "yaprak": false
+     },
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "1",
+      "operasyon": null,
+      "stok": "151-10-0003",
+      "yaprak": true
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "1",
+    "istasyon": "70",
+    "miktar": "1",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "1",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "ozet": [
+   {
+    "calistirma_sayisi": "0.05555555555555555555555555556",
+    "fazla_miktar": "0",
+    "ihtiyac": "1",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": false,
+    "toplam_miktar": "1",
+    "uretilecek_miktar": "1",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "0.05555555555555555555555555556",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0001",
+    "tam": false,
+    "toplam_miktar": "0.05555555555555555555555555556",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "1",
+    "fazla_miktar": "0",
+    "ihtiyac": "3",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": false,
+    "toplam_miktar": "3",
+    "uretilecek_miktar": "3",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "1",
+      "stok": "151-10-0003"
+     }
+    ],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "0.7847684732652949711919665353",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0002",
+    "tam": false,
+    "toplam_miktar": "0.7847684732652949711919665353",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "1",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "151-10-0003",
+    "tam": false,
+    "toplam_miktar": "1",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   }
+  ],
+  "plan": [
+   {
+    "calistirma": "1",
+    "fazla": "0",
+    "ihtiyac": "1",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "1",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "0.05555555555555555555555555556",
+    "fazla": "0",
+    "ihtiyac": "1",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": false,
+    "uretilecek": "1",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "1",
+    "fazla": "0",
+    "ihtiyac": "3",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": false,
+    "uretilecek": "3",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "1",
+      "stok": "151-10-0003"
+     }
+    ]
+   }
+  ]
+ },
+ "ihtiyac_varsayilan": {
+  "agac": [
+   {
+    "calistirma": "5",
+    "cocuklar": [
+     {
+      "calistirma": "9",
+      "cocuklar": [
+       {
+        "calistirma": "2",
+        "cocuklar": [
+         {
+          "cocuklar": [],
+          "istasyon": null,
+          "miktar": "2",
+          "operasyon": null,
+          "stok": "150-10-0001",
+          "yaprak": true
+         }
+        ],
+        "fazla": "8",
+        "ihtiyac_toplam": "28",
+        "istasyon": "10",
+        "miktar": "10",
+        "operasyon": "OP:151-10-0001",
+        "stok": "151-10-0001",
+        "tam": true,
+        "uretilecek": "36",
+        "yan_ciktilar": [],
+        "yaprak": false
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "9",
+      "istasyon": "70",
+      "miktar": "5",
+      "operasyon": "OP:151-30-0001",
+      "stok": "151-30-0001",
+      "tam": false,
+      "uretilecek": "9",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "10",
+      "operasyon": null,
+      "stok": "150-30-0001",
+      "yaprak": true
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "5",
+    "istasyon": "70",
+    "miktar": "5",
+    "operasyon": "OP:152-10-0001",
+    "stok": "152-10-0001",
+    "tam": false,
+    "uretilecek": "5",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "3",
+    "cocuklar": [
+     {
+      "calistirma": "2",
+      "cocuklar": [],
+      "fazla": "8",
+      "ihtiyac_toplam": "28",
+      "istasyon": "10",
+      "miktar": "3",
+      "operasyon": "OP:151-10-0001",
+      "stok": "151-10-0001",
+      "tam": true,
+      "tekrar": true,
+      "uretilecek": "36",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "4",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "4",
+        "operasyon": null,
+        "stok": "150-10-0002",
+        "yaprak": true
+       }
+      ],
+      "fazla": "1",
+      "ihtiyac_toplam": "11",
+      "istasyon": "10",
+      "miktar": "9",
+      "operasyon": "OP:151-10-0002",
+      "stok": "151-10-0002",
+      "tam": true,
+      "uretilecek": "12",
+      "yan_ciktilar": [
+       {
+        "boy_mm": "1063.53",
+        "miktar": "4",
+        "stok": "151-10-0003"
+       }
+      ],
+      "yaprak": false
+     },
+     {
+      "cocuklar": [],
+      "istasyon": null,
+      "miktar": "3",
+      "operasyon": null,
+      "stok": "151-10-0003",
+      "yaprak": true
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "3",
+    "istasyon": "70",
+    "miktar": "3",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "3",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "7",
+    "cocuklar": [
+     {
+      "calistirma": "1.75",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "4.375",
+        "operasyon": null,
+        "stok": "150-20-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "7",
+      "istasyon": "10",
+      "miktar": "7",
+      "operasyon": "OP:151-20-0001",
+      "stok": "151-20-0001",
+      "tam": false,
+      "uretilecek": "7",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "14",
+      "cocuklar": [
+       {
+        "cocuklar": [],
+        "istasyon": null,
+        "miktar": "0.21875",
+        "operasyon": null,
+        "stok": "150-10-0001",
+        "yaprak": true
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "14",
+      "istasyon": "10",
+      "miktar": "14",
+      "operasyon": "OP:151-20-0002",
+      "stok": "151-20-0002",
+      "tam": false,
+      "uretilecek": "14",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "2",
+      "cocuklar": [],
+      "fazla": "8",
+      "ihtiyac_toplam": "28",
+      "istasyon": "10",
+      "miktar": "7",
+      "operasyon": "OP:151-10-0001",
+      "stok": "151-10-0001",
+      "tam": true,
+      "tekrar": true,
+      "uretilecek": "36",
+      "yan_ciktilar": [],
+      "yaprak": false
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "7",
+    "istasyon": "70",
+    "miktar": "7",
+    "operasyon": "OP:152-22-0001",
+    "stok": "152-22-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma": "2",
+    "cocuklar": [
+     {
+      "calistirma": "9",
+      "cocuklar": [
+       {
+        "calistirma": "2",
+        "cocuklar": [],
+        "fazla": "8",
+        "ihtiyac_toplam": "28",
+        "istasyon": "10",
+        "miktar": "8",
+        "operasyon": "OP:151-10-0001",
+        "stok": "151-10-0001",
+        "tam": true,
+        "tekrar": true,
+        "uretilecek": "36",
+        "yan_ciktilar": [],
+        "yaprak": false
+       }
+      ],
+      "fazla": "0",
+      "ihtiyac_toplam": "9",
+      "istasyon": "70",
+      "miktar": "4",
+      "operasyon": "OP:151-30-0001",
+      "stok": "151-30-0001",
+      "tam": false,
+      "uretilecek": "9",
+      "yan_ciktilar": [],
+      "yaprak": false
+     },
+     {
+      "calistirma": "4",
+      "cocuklar": [],
+      "fazla": "1",
+      "ihtiyac_toplam": "11",
+      "istasyon": "10",
+      "miktar": "2",
+      "operasyon": "OP:151-10-0002",
+      "stok": "151-10-0002",
+      "tam": true,
+      "tekrar": true,
+      "uretilecek": "12",
+      "yan_ciktilar": [
+       {
+        "boy_mm": "1063.53",
+        "miktar": "4",
+        "stok": "151-10-0003"
+       }
+      ],
+      "yaprak": false
+     }
+    ],
+    "fazla": "0",
+    "ihtiyac_toplam": "2",
+    "istasyon": "70",
+    "miktar": "2",
+    "operasyon": "OP:152-22-0002",
+    "stok": "152-22-0002",
+    "tam": false,
+    "uretilecek": "2",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "ozet": [
+   {
+    "calistirma_sayisi": "9",
+    "fazla_miktar": "0",
+    "ihtiyac": "9",
+    "istasyon": "70",
+    "operasyon": "OP:151-30-0001",
+    "stok": "151-30-0001",
+    "tam": false,
+    "toplam_miktar": "9",
+    "uretilecek_miktar": "9",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": "2",
+    "fazla_miktar": "8",
+    "ihtiyac": "28",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": true,
+    "toplam_miktar": "28",
+    "uretilecek_miktar": "36",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "2.21875",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0001",
+    "tam": false,
+    "toplam_miktar": "2.21875",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "10",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-30-0001",
+    "tam": false,
+    "toplam_miktar": "10",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "4",
+    "fazla_miktar": "1",
+    "ihtiyac": "11",
+    "istasyon": "10",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": true,
+    "toplam_miktar": "11",
+    "uretilecek_miktar": "12",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "4",
+      "stok": "151-10-0003"
+     }
+    ],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "4",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-10-0002",
+    "tam": false,
+    "toplam_miktar": "4",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "3",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "151-10-0003",
+    "tam": false,
+    "toplam_miktar": "3",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "1.75",
+    "fazla_miktar": "0",
+    "ihtiyac": "7",
+    "istasyon": "10",
+    "operasyon": "OP:151-20-0001",
+    "stok": "151-20-0001",
+    "tam": false,
+    "toplam_miktar": "7",
+    "uretilecek_miktar": "7",
+    "yan_ciktilar": [],
+    "yaprak": false
+   },
+   {
+    "calistirma_sayisi": null,
+    "fazla_miktar": null,
+    "ihtiyac": "4.375",
+    "istasyon": null,
+    "operasyon": null,
+    "stok": "150-20-0001",
+    "tam": false,
+    "toplam_miktar": "4.375",
+    "uretilecek_miktar": null,
+    "yan_ciktilar": [],
+    "yaprak": true
+   },
+   {
+    "calistirma_sayisi": "14",
+    "fazla_miktar": "0",
+    "ihtiyac": "14",
+    "istasyon": "10",
+    "operasyon": "OP:151-20-0002",
+    "stok": "151-20-0002",
+    "tam": false,
+    "toplam_miktar": "14",
+    "uretilecek_miktar": "14",
+    "yan_ciktilar": [],
+    "yaprak": false
+   }
+  ],
+  "plan": [
+   {
+    "calistirma": "5",
+    "fazla": "0",
+    "ihtiyac": "5",
+    "operasyon": "OP:152-10-0001",
+    "stok": "152-10-0001",
+    "tam": false,
+    "uretilecek": "5",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "3",
+    "fazla": "0",
+    "ihtiyac": "3",
+    "operasyon": "OP:152-10-0002",
+    "stok": "152-10-0002",
+    "tam": false,
+    "uretilecek": "3",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "7",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:152-22-0001",
+    "stok": "152-22-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "2",
+    "fazla": "0",
+    "ihtiyac": "2",
+    "operasyon": "OP:152-22-0002",
+    "stok": "152-22-0002",
+    "tam": false,
+    "uretilecek": "2",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "9",
+    "fazla": "0",
+    "ihtiyac": "9",
+    "operasyon": "OP:151-30-0001",
+    "stok": "151-30-0001",
+    "tam": false,
+    "uretilecek": "9",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "2",
+    "fazla": "8",
+    "ihtiyac": "28",
+    "operasyon": "OP:151-10-0001",
+    "stok": "151-10-0001",
+    "tam": true,
+    "uretilecek": "36",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "4",
+    "fazla": "1",
+    "ihtiyac": "11",
+    "operasyon": "OP:151-10-0002",
+    "stok": "151-10-0002",
+    "tam": true,
+    "uretilecek": "12",
+    "yan_ciktilar": [
+     {
+      "boy_mm": "1063.53",
+      "miktar": "4",
+      "stok": "151-10-0003"
+     }
+    ]
+   },
+   {
+    "calistirma": "1.75",
+    "fazla": "0",
+    "ihtiyac": "7",
+    "operasyon": "OP:151-20-0001",
+    "stok": "151-20-0001",
+    "tam": false,
+    "uretilecek": "7",
+    "yan_ciktilar": []
+   },
+   {
+    "calistirma": "14",
+    "fazla": "0",
+    "ihtiyac": "14",
+    "operasyon": "OP:151-20-0002",
+    "stok": "151-20-0002",
+    "tam": false,
+    "uretilecek": "14",
+    "yan_ciktilar": []
+   }
+  ]
+ },
+ "karsilastir_maliyet": {
+  "gruplar": [
+   {
+    "kategori": "EŞDEĞERLİK H",
+    "satirlar": [
+     {
+      "birim": "BOY",
+      "hucreler": [
+       {
+        "deger": "71.1111111111111111111111111",
+        "kaynak": "ORTALAMA",
+        "maliyet_yok": false,
+        "miktar": "0.1111111111111111111111111111"
+       },
+       {
+        "deger": "35.55555555555555555555555556",
+        "kaynak": "ORTALAMA",
+        "maliyet_yok": false,
+        "miktar": "0.05555555555555555555555555556"
+       },
+       {
+        "deger": "55.55555555555555555555555556",
+        "kaynak": "ORTALAMA",
+        "maliyet_yok": false,
+        "miktar": "0.08680555555555555555555555556"
+       },
+       {
+        "deger": "142.2222222222222222222222222",
+        "kaynak": "ORTALAMA",
+        "maliyet_yok": false,
+        "miktar": "0.2222222222222222222222222222"
+       }
+      ],
+      "kaynak": "ORTALAMA",
+      "stok": "150-10-0001"
+     },
+     {
+      "birim": "BOY",
+      "hucreler": [
+       null,
+       {
+        "deger": "549.3379312857064798343765747",
+        "kaynak": "ORTALAMA",
+        "maliyet_yok": false,
+        "miktar": "0.7847684732652949711919665353"
+       },
+       null,
+       {
+        "deger": "183.1126437619021599447921916",
+        "kaynak": "ORTALAMA",
+        "maliyet_yok": false,
+        "miktar": "0.2615894910884316570639888451"
+       }
+      ],
+      "kaynak": "ORTALAMA",
+      "stok": "150-10-0002"
+     },
+     {
+      "birim": "MT",
+      "hucreler": [
+       null,
+       null,
+       {
+        "deger": "7.5",
+        "kaynak": "ORTALAMA",
+        "maliyet_yok": false,
+        "miktar": "0.625"
+       },
+       null
+      ],
+      "kaynak": "ORTALAMA",
+      "stok": "150-20-0001"
+     },
+     {
+      "birim": "AD",
+      "hucreler": [
+       {
+        "deger": "5",
+        "kaynak": "KART",
+        "maliyet_yok": false,
+        "miktar": "2"
+       },
+       null,
+       null,
+       null
+      ],
+      "kaynak": "KART",
+      "stok": "150-30-0001"
+     }
+    ]
+   },
+   {
+    "kategori": "EŞDEĞERLİK P",
+    "satirlar": [
+     {
+      "birim": "AD",
+      "hucreler": [
+       null,
+       {
+        "deger": null,
+        "kaynak": "YOK",
+        "maliyet_yok": true,
+        "miktar": "1"
+       },
+       null,
+       null
+      ],
+      "kaynak": "YOK",
+      "stok": "151-10-0003"
+     }
+    ]
+   }
+  ],
+  "kart_kalem": 1,
+  "kur_notu": "Alış fiyatı çevrimi: TCMB 09.10.2026, USD 40,0000",
+  "kur_uyarilari": [],
+  "mod": "maliyet",
+  "pb": "TL",
+  "satir_sayisi": 5,
+  "toplamlar": [
+   {
+    "maliyetsiz": 0,
+    "toplam": "76.1111111111111111111111111"
+   },
+   {
+    "maliyetsiz": 1,
+    "toplam": "584.8934868412620353899321303"
+   },
+   {
+    "maliyetsiz": 0,
+    "toplam": "63.05555555555555555555555556"
+   },
+   {
+    "maliyetsiz": 0,
+    "toplam": "325.3348659841243821670144138"
+   }
+  ],
+  "urunler": [
+   "152-10-0001",
+   "152-10-0002",
+   "152-22-0001",
+   "152-22-0002"
+  ]
+ },
+ "karsilastir_miktar": {
+  "gruplar": [
+   {
+    "kategori": "EŞDEĞERLİK H",
+    "satirlar": [
+     {
+      "birim": "BOY",
+      "hucreler": [
+       {
+        "deger": "0.1111111111111111111111111111",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "0.1111111111111111111111111111"
+       },
+       {
+        "deger": "0.05555555555555555555555555556",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "0.05555555555555555555555555556"
+       },
+       {
+        "deger": "0.08680555555555555555555555556",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "0.08680555555555555555555555556"
+       },
+       {
+        "deger": "0.2222222222222222222222222222",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "0.2222222222222222222222222222"
+       }
+      ],
+      "kaynak": "",
+      "stok": "150-10-0001"
+     },
+     {
+      "birim": "BOY",
+      "hucreler": [
+       null,
+       {
+        "deger": "0.7847684732652949711919665353",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "0.7847684732652949711919665353"
+       },
+       null,
+       {
+        "deger": "0.2615894910884316570639888451",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "0.2615894910884316570639888451"
+       }
+      ],
+      "kaynak": "",
+      "stok": "150-10-0002"
+     },
+     {
+      "birim": "MT",
+      "hucreler": [
+       null,
+       null,
+       {
+        "deger": "0.625",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "0.625"
+       },
+       null
+      ],
+      "kaynak": "",
+      "stok": "150-20-0001"
+     },
+     {
+      "birim": "AD",
+      "hucreler": [
+       {
+        "deger": "2",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "2"
+       },
+       null,
+       null,
+       null
+      ],
+      "kaynak": "",
+      "stok": "150-30-0001"
+     }
+    ]
+   },
+   {
+    "kategori": "EŞDEĞERLİK P",
+    "satirlar": [
+     {
+      "birim": "AD",
+      "hucreler": [
+       null,
+       {
+        "deger": "1",
+        "kaynak": "",
+        "maliyet_yok": false,
+        "miktar": "1"
+       },
+       null,
+       null
+      ],
+      "kaynak": "",
+      "stok": "151-10-0003"
+     }
+    ]
+   }
+  ],
+  "kart_kalem": 0,
+  "kur_notu": "",
+  "kur_uyarilari": [],
+  "mod": "miktar",
+  "pb": "TL",
+  "satir_sayisi": 5,
+  "toplamlar": null,
+  "urunler": [
+   "152-10-0001",
+   "152-10-0002",
+   "152-22-0001",
+   "152-22-0002"
+  ]
+ },
+ "kokler": [
+  "152-10-0001",
+  "152-10-0002",
+  "152-22-0001",
+  "152-22-0002"
+ ],
+ "maliyet": {
+  "152-10-0002": {
+   "gruplar": [
+    {
+     "kategori": "EŞDEĞERLİK H",
+     "pay": "100",
+     "satirlar": [
+      {
+       "birim": "BOY",
+       "kaynak": "ORTALAMA",
+       "kurlar": [],
+       "maliyet_yok": false,
+       "ort_try": "640",
+       "ort_usd": "16",
+       "pay": "6.078979567301149309900130734",
+       "stok": "150-10-0001",
+       "tuketim": "0.05555555555555555555555555556",
+       "tutar_try": "35.55555555555555555555555556",
+       "tutar_try_n": "71.11111111111111111111111112",
+       "tutar_usd": "0.888888888888888888888888889",
+       "tutar_usd_n": "1.777777777777777777777777778",
+       "uyari": ""
+      },
+      {
+       "birim": "BOY",
+       "kaynak": "ORTALAMA",
+       "kurlar": [],
+       "maliyet_yok": false,
+       "ort_try": "700",
+       "ort_usd": "17.5",
+       "pay": "93.92102043269885069009986926",
+       "stok": "150-10-0002",
+       "tuketim": "0.7847684732652949711919665353",
+       "tutar_try": "549.3379312857064798343765747",
+       "tutar_try_n": "1098.675862571412959668753149",
+       "tutar_usd": "13.73344828214266199585941437",
+       "tutar_usd_n": "27.46689656428532399171882874",
+       "uyari": ""
+      }
+     ],
+     "toplam_try": "584.8934868412620353899321303",
+     "toplam_try_n": "1169.786973682524070779864261",
+     "toplam_usd": "14.62233717103155088474830326",
+     "toplam_usd_n": "29.24467434206310176949660652"
+    },
+    {
+     "kategori": "EŞDEĞERLİK P",
+     "pay": "0",
+     "satirlar": [
+      {
+       "birim": "AD",
+       "kaynak": "YOK",
+       "kurlar": [],
+       "maliyet_yok": true,
+       "ort_try": null,
+       "ort_usd": null,
+       "pay": null,
+       "stok": "151-10-0003",
+       "tuketim": "1",
+       "tutar_try": null,
+       "tutar_try_n": null,
+       "tutar_usd": null,
+       "tutar_usd_n": null,
+       "uyari": ""
+      }
+     ],
+     "toplam_try": "0",
+     "toplam_try_n": "0",
+     "toplam_usd": "0",
+     "toplam_usd_n": "0"
+    }
+   ],
+   "kart_pay": "0",
+   "kart_sayi": 0,
+   "kur_notu": "",
+   "kur_uyarilari": [],
+   "maliyetsiz": 1,
+   "miktar": "2",
+   "miktar_toplam_try": "1169.786973682524070779864261",
+   "miktar_toplam_usd": "29.24467434206310176949660652",
+   "ortalama_sayi": 2,
+   "satir_sayisi": 3,
+   "toplam_try": "584.8934868412620353899321303",
+   "toplam_usd": "14.62233717103155088474830326",
+   "usd_eksik": 0
+  },
+  "152-22-0001": {
+   "gruplar": [
+    {
+     "kategori": "EŞDEĞERLİK H",
+     "pay": "100",
+     "satirlar": [
+      {
+       "birim": "BOY",
+       "kaynak": "ORTALAMA",
+       "kurlar": [],
+       "maliyet_yok": false,
+       "ort_try": "640",
+       "ort_usd": "16",
+       "pay": "88.10572687224669603524229075",
+       "stok": "150-10-0001",
+       "tuketim": "0.08680555555555555555555555556",
+       "tutar_try": "55.55555555555555555555555556",
+       "tutar_try_n": "111.1111111111111111111111111",
+       "tutar_usd": "1.388888888888888888888888889",
+       "tutar_usd_n": "2.777777777777777777777777778",
+       "uyari": ""
+      },
+      {
+       "birim": "MT",
+       "kaynak": "ORTALAMA",
+       "kurlar": [],
+       "maliyet_yok": false,
+       "ort_try": "12",
+       "ort_usd": "0.3",
+       "pay": "11.89427312775330396475770925",
+       "stok": "150-20-0001",
+       "tuketim": "0.625",
+       "tutar_try": "7.5",
+       "tutar_try_n": "15",
+       "tutar_usd": "0.1875",
+       "tutar_usd_n": "0.375",
+       "uyari": ""
+      }
+     ],
+     "toplam_try": "63.05555555555555555555555556",
+     "toplam_try_n": "126.1111111111111111111111111",
+     "toplam_usd": "1.576388888888888888888888889",
+     "toplam_usd_n": "3.152777777777777777777777778"
+    }
+   ],
+   "kart_pay": "0",
+   "kart_sayi": 0,
+   "kur_notu": "",
+   "kur_uyarilari": [],
+   "maliyetsiz": 0,
+   "miktar": "2",
+   "miktar_toplam_try": "126.1111111111111111111111111",
+   "miktar_toplam_usd": "3.152777777777777777777777778",
+   "ortalama_sayi": 2,
+   "satir_sayisi": 2,
+   "toplam_try": "63.05555555555555555555555556",
+   "toplam_usd": "1.576388888888888888888888889",
+   "usd_eksik": 0
+  }
+ },
+ "malzeme": {
+  "eksik": 3,
+  "gruplar": [
+   {
+    "kategori": "EŞDEĞERLİK H",
+    "satirlar": [
+     {
+      "birim": "BOY",
+      "eksik": "1",
+      "eldeki": "0",
+      "gerekli": "1",
+      "stok": "150-10-0001"
+     },
+     {
+      "birim": "BOY",
+      "eksik": "3",
+      "eldeki": "0",
+      "gerekli": "3",
+      "stok": "150-10-0002"
+     }
+    ]
+   },
+   {
+    "kategori": "EŞDEĞERLİK P",
+    "satirlar": [
+     {
+      "birim": "AD",
+      "eksik": "3",
+      "eldeki": "0",
+      "gerekli": "3",
+      "stok": "151-10-0003"
+     }
+    ]
+   }
+  ],
+  "satir_sayisi": 3,
+  "yeterli": 0
+ },
+ "nerede_p1": {
+  "birim": "BOY",
+  "bitmis_urun": false,
+  "gruplar": [
+   {
+    "ad": "A tipi",
+    "satirlar": [
+     {
+      "seri": "A",
+      "tuketim": "0.1111111111111111111111111111",
+      "urun": "152-10-0001",
+      "yan_cikti_ureten": [],
+      "yol": [
+       "150-10-0001",
+       "151-10-0001",
+       "151-30-0001",
+       "152-10-0001"
+      ]
+     },
+     {
+      "seri": "A",
+      "tuketim": "0.05555555555555555555555555556",
+      "urun": "152-10-0002",
+      "yan_cikti_ureten": [],
+      "yol": [
+       "150-10-0001",
+       "151-10-0001",
+       "152-10-0002"
+      ]
+     }
+    ],
+    "seri": "A"
+   },
+   {
+    "ad": "Çift çıkış",
+    "satirlar": [
+     {
+      "seri": "C",
+      "tuketim": "0.08680555555555555555555555556",
+      "urun": "152-22-0001",
+      "yan_cikti_ureten": [],
+      "yol": [
+       "150-10-0001",
+       "151-10-0001",
+       "152-22-0001"
+      ]
+     },
+     {
+      "seri": "C",
+      "tuketim": "0.2222222222222222222222222222",
+      "urun": "152-22-0002",
+      "yan_cikti_ureten": [],
+      "yol": [
+       "150-10-0001",
+       "151-10-0001",
+       "151-30-0001",
+       "152-22-0002"
+      ]
+     }
+    ],
+    "seri": "C"
+   }
+  ],
+  "sayi": 4,
+  "stok": "150-10-0001",
+  "yan_cikti_ureten": []
+ },
+ "nerede_y1": {
+  "birim": "AD",
+  "bitmis_urun": false,
+  "gruplar": [
+   {
+    "ad": "A tipi",
+    "satirlar": [
+     {
+      "seri": "A",
+      "tuketim": "1",
+      "urun": "152-10-0002",
+      "yan_cikti_ureten": [
+       "151-10-0002"
+      ],
+      "yol": [
+       "151-10-0003",
+       "152-10-0002"
+      ]
+     }
+    ],
+    "seri": "A"
+   }
+  ],
+  "sayi": 1,
+  "stok": "151-10-0003",
+  "yan_cikti_ureten": [
+   "151-10-0002"
+  ]
+ },
+ "onay": {
+  "151-10-0001": {
+   "ciktilar": [
+    [
+     "151-10-0001",
+     "54",
+     null,
+     "1",
+     true
+    ]
+   ],
+   "fis": [
+    [
+     "150.10",
+     "0",
+     "1920"
+    ],
+    [
+     "151.10",
+     "1920",
+     "0"
+    ]
+   ],
+   "hareketler": [
+    [
+     "150-10-0001",
+     "CIKIS",
+     "3",
+     "1920",
+     "48"
+    ],
+    [
+     "151-10-0001",
+     "GIRIS",
+     "54",
+     "1920",
+     "48"
+    ]
+   ],
+   "hedef": "54"
+  },
+  "151-10-0002": {
+   "ciktilar": [
+    [
+     "151-10-0002",
+     "9",
+     "1292.6",
+     "0.7847684733",
+     true
+    ],
+    [
+     "151-10-0003",
+     "3",
+     "1063.53",
+     "0.2152315267",
+     false
+    ]
+   ],
+   "fis": [
+    [
+     "150.10",
+     "0",
+     "2100"
+    ],
+    [
+     "151.10",
+     "2100",
+     "0"
+    ]
+   ],
+   "hareketler": [
+    [
+     "150-10-0002",
+     "CIKIS",
+     "3",
+     "2100",
+     "52.5"
+    ],
+    [
+     "151-10-0002",
+     "GIRIS",
+     "9",
+     "1648.01",
+     "41.2"
+    ],
+    [
+     "151-10-0003",
+     "GIRIS",
+     "3",
+     "451.99",
+     "11.3"
+    ]
+   ],
+   "hedef": "9"
+  },
+  "151-20-0001": {
+   "ciktilar": [
+    [
+     "151-20-0001",
+     "10",
+     null,
+     "1",
+     true
+    ]
+   ],
+   "fis": [
+    [
+     "150.10",
+     "0",
+     "75"
+    ],
+    [
+     "151.10",
+     "75",
+     "0"
+    ]
+   ],
+   "hareketler": [
+    [
+     "150-20-0001",
+     "CIKIS",
+     "6.25",
+     "75",
+     "1.88"
+    ],
+    [
+     "151-20-0001",
+     "GIRIS",
+     "10",
+     "75",
+     "1.88"
+    ]
+   ],
+   "hedef": "10"
+  },
+  "151-20-0002": {
+   "ciktilar": [
+    [
+     "151-20-0002",
+     "5",
+     null,
+     "1",
+     true
+    ]
+   ],
+   "fis": [
+    [
+     "150.10",
+     "0",
+     "50"
+    ],
+    [
+     "151.10",
+     "50",
+     "0"
+    ]
+   ],
+   "hareketler": [
+    [
+     "150-10-0001",
+     "CIKIS",
+     "0.078125",
+     "50",
+     "1.25"
+    ],
+    [
+     "151-20-0002",
+     "GIRIS",
+     "5",
+     "50",
+     "1.25"
+    ]
+   ],
+   "hedef": "5"
+  }
+ },
+ "operasyon_liste": {
+  "ozet": {
+   "baglantisiz": 0,
+   "tam_boy": 2,
+   "toplam": 9,
+   "yan_cikti": 1
+  },
+  "satirlar": [
+   {
+    "bitmis_urun": false,
+    "kullanan_sayisi": 3,
+    "op": "OP:151-10-0001",
+    "ozet": {
+     "ana": "1 BOY 150-10-0001 → 18 adet",
+     "girdi_sayisi": 1,
+     "tam_liste": "1 BOY 150-10-0001",
+     "yan": []
+    },
+    "seri": "ORTAK",
+    "tam_boy": true,
+    "yan_sayisi": 0
+   },
+   {
+    "bitmis_urun": false,
+    "kullanan_sayisi": 2,
+    "op": "OP:151-10-0002",
+    "ozet": {
+     "ana": "1 BOY 150-10-0002 → 3 adet",
+     "girdi_sayisi": 1,
+     "tam_liste": "1 BOY 150-10-0002",
+     "yan": [
+      "+1 × 151-10-0003"
+     ]
+    },
+    "seri": "ORTAK",
+    "tam_boy": true,
+    "yan_sayisi": 1
+   },
+   {
+    "bitmis_urun": false,
+    "kullanan_sayisi": 1,
+    "op": "OP:151-20-0001",
+    "ozet": {
+     "ana": "2,5 MT 150-20-0001 → 4 adet",
+     "girdi_sayisi": 1,
+     "tam_liste": "2,5 MT 150-20-0001",
+     "yan": []
+    },
+    "seri": "C",
+    "tam_boy": false,
+    "yan_sayisi": 0
+   },
+   {
+    "bitmis_urun": false,
+    "kullanan_sayisi": 1,
+    "op": "OP:151-20-0002",
+    "ozet": {
+     "ana": "0,015625 BOY 150-10-0001 → 1 adet",
+     "girdi_sayisi": 1,
+     "tam_liste": "0,015625 BOY 150-10-0001",
+     "yan": []
+    },
+    "seri": "C",
+    "tam_boy": false,
+    "yan_sayisi": 0
+   },
+   {
+    "bitmis_urun": false,
+    "kullanan_sayisi": 2,
+    "op": "OP:151-30-0001",
+    "ozet": {
+     "ana": "2 AD 151-10-0001 → 1 adet",
+     "girdi_sayisi": 1,
+     "tam_liste": "2 AD 151-10-0001",
+     "yan": []
+    },
+    "seri": "ORTAK",
+    "tam_boy": false,
+    "yan_sayisi": 0
+   },
+   {
+    "bitmis_urun": true,
+    "kullanan_sayisi": 0,
+    "op": "OP:152-10-0001",
+    "ozet": {
+     "ana": "151-30-0001, 150-30-0001",
+     "girdi_sayisi": 2,
+     "tam_liste": "1 AD 151-30-0001\n2 AD 150-30-0001",
+     "yan": []
+    },
+    "seri": "A",
+    "tam_boy": false,
+    "yan_sayisi": 0
+   },
+   {
+    "bitmis_urun": true,
+    "kullanan_sayisi": 0,
+    "op": "OP:152-10-0002",
+    "ozet": {
+     "ana": "151-10-0001, 151-10-0002 +1 girdi",
+     "girdi_sayisi": 3,
+     "tam_liste": "1 AD 151-10-0001\n3 AD 151-10-0002\n1 AD 151-10-0003",
+     "yan": []
+    },
+    "seri": "A",
+    "tam_boy": false,
+    "yan_sayisi": 0
+   },
+   {
+    "bitmis_urun": true,
+    "kullanan_sayisi": 0,
+    "op": "OP:152-22-0001",
+    "ozet": {
+     "ana": "151-20-0001, 151-20-0002 +1 girdi",
+     "girdi_sayisi": 3,
+     "tam_liste": "1 AD 151-20-0001\n2 AD 151-20-0002\n1 AD 151-10-0001",
+     "yan": []
+    },
+    "seri": "C",
+    "tam_boy": false,
+    "yan_sayisi": 0
+   },
+   {
+    "bitmis_urun": true,
+    "kullanan_sayisi": 0,
+    "op": "OP:152-22-0002",
+    "ozet": {
+     "ana": "151-30-0001, 151-10-0002",
+     "girdi_sayisi": 2,
+     "tam_liste": "2 AD 151-30-0001\n1 AD 151-10-0002",
+     "yan": []
+    },
+    "seri": "C",
+    "tam_boy": false,
+    "yan_sayisi": 0
+   }
+  ],
+  "seri_dagilimi": {
+   "A": 2,
+   "BAGLANTISIZ": 0,
+   "C": 4,
+   "DIGER": 0,
+   "ORTAK": 3
+  }
+ },
+ "operasyon_liste_tam": [
+  "OP:151-10-0001",
+  "OP:151-10-0002"
+ ],
+ "operasyon_liste_yan": [
+  "OP:151-10-0002"
+ ],
+ "operasyon_serileri": {
+  "151-10-0001": "ORTAK",
+  "151-10-0002": "ORTAK",
+  "151-20-0001": "C",
+  "151-20-0002": "C",
+  "151-30-0001": "ORTAK",
+  "152-10-0001": "A",
+  "152-10-0002": "A",
+  "152-22-0001": "C",
+  "152-22-0002": "C"
+ },
+ "stok_ortalama": {
+  "150-10-0001": [
+   "6.921875",
+   "640",
+   "16"
+  ],
+  "150-10-0002": [
+   "17",
+   "700",
+   "17.5"
+  ],
+  "150-20-0001": [
+   "23.75",
+   "12",
+   "0.299789"
+  ],
+  "150-30-0001": [
+   "0",
+   null,
+   null
+  ],
+  "151-10-0001": [
+   "54",
+   "35.555556",
+   "0.888889"
+  ],
+  "151-10-0002": [
+   "9",
+   "183.112222",
+   "4.577778"
+  ],
+  "151-10-0003": [
+   "3",
+   "150.663333",
+   "3.766667"
+  ],
+  "151-20-0001": [
+   "10",
+   "7.5",
+   "0.188"
+  ],
+  "151-20-0002": [
+   "5",
+   "10",
+   "0.25"
+  ],
+  "151-30-0001": [
+   "0",
+   null,
+   null
+  ],
+  "152-10-0001": [
+   "0",
+   null,
+   null
+  ],
+  "152-10-0002": [
+   "0",
+   null,
+   null
+  ],
+  "152-22-0001": [
+   "0",
+   null,
+   null
+  ],
+  "152-22-0002": [
+   "0",
+   null,
+   null
+  ]
+ }
+}
