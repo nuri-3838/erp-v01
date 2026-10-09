@@ -1,10 +1,10 @@
-"""FASON > Mutabakat (fasoncu cari bazında): fasoncuya gönderilen ham profil, dönüşlerde tüketilen, geri alınan, fason depoda kalan (miktar + değer);
+"""FASON > Mutabakat (fasoncu cari bazında): fasoncuya gönderilen ham profil (transfer + doğrudan alış), açılış, dönüşlerde tüketilen, geri alınan, fason depoda kalan (miktar + değer);
 fasoncudan gelen parça adetleri; fason bedeli: faturalanmış / faturası bekleyen dönüşler ve tutarları. Salt-okunur."""
 from __future__ import annotations
 
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
 from core.models import FasonDonus, OperasyonKaydi, OperasyonKaydiCikti, Stok, StokHareket
 from core.services import depo as depo_servis
@@ -38,25 +38,36 @@ def mutabakat(cari, baslangic=None, bitis=None) -> dict:
         return qs
 
     hareket = StokHareket.objects.filter(silindi=False, depo=depo)
-    gonderilen = _topla(tarihli(hareket.filter(tur=GIRIS, kaynak=TRANSFER)))
-    geri = _topla(tarihli(hareket.filter(tur=CIKIS, kaynak=TRANSFER)))
-    tuketilen = _topla(tarihli(hareket.filter(tur=CIKIS, operasyon_kaydi__fason_cari=cari, operasyon_kaydi__silindi=False)))
-    # kalan = fason deposundaki GÜNCEL eldeki (tarih filtresinden bağımsız)
-    kalan = {}
-    for r in StokHareket.objects.filter(silindi=False, depo=depo).values("stok_id", "tur").annotate(m=Sum("miktar")):
-        kalan[r["stok_id"]] = kalan.get(r["stok_id"], SIFIR) + (r["m"] if r["tur"] == GIRIS else -r["m"])
-    idler = set(gonderilen) | set(geri) | set(tuketilen) | {k for k, v in kalan.items() if v != 0}
+    tuketim_q = Q(operasyon_kaydi__fason_cari=cari, operasyon_kaydi__silindi=False)       # dönüş (fason kesim) tüketimi
+    # Gönderilen = fason depoya TÜM girişler: transfer (gelen) + doğrudan alış (irsaliye/fatura) + diğer girişler
+    transfer = _topla(tarihli(hareket.filter(tur=GIRIS, kaynak=TRANSFER)))
+    dogrudan = _topla(tarihli(hareket.filter(tur=GIRIS).exclude(kaynak=TRANSFER)))
+    # Geri alınan = transferle çıkış + alış iadesi vb. diğer çıkışlar (dönüş tüketimi HARİÇ)
+    geri = _topla(tarihli(hareket.filter(tur=CIKIS).exclude(tuketim_q)))
+    tuketilen = _topla(tarihli(hareket.filter(tur=CIKIS).filter(tuketim_q)))
+
+    def bakiye(qs):
+        d = {}
+        for r in qs.values("stok_id", "tur").annotate(m=Sum("miktar")):
+            d[r["stok_id"]] = d.get(r["stok_id"], SIFIR) + (r["m"] if r["tur"] == GIRIS else -r["m"])
+        return d
+    # açılış = başlangıçtan ÖNCEKİ kalan (başlangıç yoksa 0); kalan = bitiş tarihi itibarıyla (bitiş yoksa fason depodaki GÜNCEL eldeki)
+    acilis = bakiye(hareket.filter(tarih__lt=baslangic)) if baslangic else {}
+    kalan = bakiye(hareket.filter(tarih__lte=bitis) if bitis else hareket)
+    idler = set(transfer) | set(dogrudan) | set(geri) | set(tuketilen) | {k for k, v in kalan.items() if v != 0} | {k for k, v in acilis.items() if v != 0}
     stoklar = {s.pk: s for s in Stok.objects.filter(pk__in=idler).select_related("uretim_birimi")}
     profiller = []
     for pk in sorted(idler, key=lambda p: stoklar[p].kod):
         s = stoklar[pk]
-        g, ge, t = gonderilen.get(pk, (SIFIR, SIFIR)), geri.get(pk, (SIFIR, SIFIR)), tuketilen.get(pk, (SIFIR, SIFIR))
-        k = kalan.get(pk, SIFIR)
+        tr, dg = transfer.get(pk, (SIFIR, SIFIR))[0], dogrudan.get(pk, (SIFIR, SIFIR))[0]
+        ge, t = geri.get(pk, (SIFIR, SIFIR)), tuketilen.get(pk, (SIFIR, SIFIR))
+        a_, k = acilis.get(pk, SIFIR), kalan.get(pk, SIFIR)
         ort = s.ort_maliyet_try
         profiller.append({
-            "stok": s, "birim": s.uretim_birimi.kisa_ad or s.uretim_birimi.ad, "gonderilen": g[0], "geri": ge[0], "tuketilen": t[0], "kalan": k,
+            "stok": s, "birim": s.uretim_birimi.kisa_ad or s.uretim_birimi.ad, "acilis": a_,
+            "transfer": tr, "dogrudan": dg, "gonderilen": tr + dg, "geri": ge[0], "tuketilen": t[0], "kalan": k,
             "kalan_deger": (k * ort) if ort is not None else None, "tuketilen_deger": t[1],
-            "fark": g[0] - ge[0] - t[0] - k})            # ≠ 0 ise fason depoda transfer/dönüş dışı elle hareket var
+            "fark": a_ + tr + dg - ge[0] - t[0] - k})     # ≠ 0 ise fason depoda hesap dışı hareket var (silinmiş/elle düzeltilmiş kayıt vb.)
 
     # fasoncudan gelen parçalar + fason bedeli (onaylı kayıtların çıktı satırları)
     donusler = list(tarihli(FasonDonus.objects.filter(silindi=False, cari=cari)).select_related("fatura").order_by("yil", "sira"))

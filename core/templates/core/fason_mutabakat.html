@@ -45,24 +45,27 @@
   <h2 class="bolum-baslik">Ham profil — {{ rapor.depo.kod }} {{ rapor.depo.ad }}</h2>
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>Stok</th><th class="sag">Gönderilen</th><th class="sag">Geri alınan</th><th class="sag">Dönüşte tüketilen</th><th class="sag">Fason depoda kalan</th><th class="sag">Kalan değer (TL)</th></tr></thead>
+    <thead><tr><th>Stok</th><th class="sag">Açılış</th><th class="sag">Gönderilen</th><th class="sag">Geri alınan</th><th class="sag">Dönüşte tüketilen</th><th class="sag">Fason depoda kalan</th><th class="sag">Kalan değer (TL)</th></tr></thead>
     <tbody>
       {% for p in rapor.profiller %}
         <tr>
           <td><span class="mono">{{ p.stok.kod }}</span> {{ p.stok.ad }}</td>
-          <td class="sag mono">{{ p.gonderilen|tr_miktar_sade }} {{ p.birim }}</td>
+          <td class="sag mono">{{ p.acilis|tr_miktar_sade }}</td>
+          <td class="sag mono"><strong>{{ p.gonderilen|tr_miktar_sade }}</strong> {{ p.birim }}
+            <div class="fm-alt">Transfer {{ p.transfer|tr_miktar_sade }} · Doğrudan alış {{ p.dogrudan|tr_miktar_sade }}</div></td>
           <td class="sag mono">{{ p.geri|tr_miktar_sade }}</td>
           <td class="sag mono">{{ p.tuketilen|tr_miktar_sade }}</td>
-          <td class="sag mono"><strong>{{ p.kalan|tr_miktar_sade }}</strong>{% if p.fark %} <span class="rozet rozet-pasif" title="Gönderilen − geri − tüketilen ≠ kalan: fason depoda transfer/dönüş dışı elle hareket var">fark {{ p.fark|tr_miktar_sade }}</span>{% endif %}</td>
+          <td class="sag mono"><strong>{{ p.kalan|tr_miktar_sade }}</strong>{% if p.fark %} <span class="rozet rozet-pasif" title="Açılış + gönderilen − geri alınan − tüketilen ≠ kalan: fason depoda hesap dışı hareket var">fark {{ p.fark|tr_miktar_sade }}</span>{% endif %}</td>
           <td class="sag mono">{% if p.kalan_deger is not None %}{{ p.kalan_deger|tr_para }}{% else %}<span class="pasif">maliyet yok</span>{% endif %}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="6" class="yardim">Bu fasoncuya henüz ham profil gönderilmemiş.</td></tr>
+        <tr><td colspan="7" class="yardim">Bu fasoncuya henüz ham profil gönderilmemiş.</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="yardim">Gönderilen/geri alınan = fason depoya/depodan yapılan depo transferleri (Stoklar → stok kartı → Depo Transferi). Kalan, fason depodaki güncel eldeki miktardır.</p>
+  <p class="yardim"><strong>Gönderilen</strong> = fason depoya tüm girişler (depo transferi + tedarikçiden doğrudan alış irsaliyesi/faturası + diğer girişler). <strong>Geri alınan</strong> = transferle ve alış iadesi vb. ile çıkışlar (dönüş tüketimi hariç).
+    <strong>Açılış</strong> = başlangıç tarihinden önceki kalan. Fark = açılış + gönderilen − geri alınan − tüketilen − kalan. Kalan, bitiş tarihi itibarıyla (bitiş boşsa güncel) fason depodaki miktardır.</p>
 </section>
 
 <section class="icerik-kart">
@@ -113,6 +116,7 @@
   .fm-filtre { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:0 0 1rem; }
   .fm-filtre select, .fm-filtre input { min-height:2.2rem; padding:.3rem .6rem; }
   .fm-filtre label { display:inline-flex; gap:.35rem; align-items:center; font-size:.84rem; color:var(--metin-soluk); }
+  .fm-alt { font-size:.72rem; color:var(--metin-soluk); font-family:inherit; }
   .fm-ozet { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 .8rem; }
   .fm-chip { display:inline-flex; align-items:center; gap:.35rem; padding:.4rem .8rem; border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.75); font-size:.85rem; }
   .fm-chip.yesil { border-color:rgba(10,125,40,.35); background:#e7f7ec; color:#0a7d28; }
