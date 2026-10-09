@@ -6805,7 +6805,7 @@ def _xlsx_yanit(veri, ad):
 def urun_agaci(request):
     from urllib.parse import urlencode
     g = request.GET
-    gorunum = "urun"
+    gorunum = "kullanim" if g.get("gorunum") == "kullanim" else "urun"
     graf = urun_agaci_servis.graf_yukle()
     xlsx = g.get("xlsx") == "1"
 
@@ -6817,7 +6817,7 @@ def urun_agaci(request):
 
     ctx = {
         "gorunum": gorunum, "acik_seviye": URUN_AGACI_ACIK_SEVIYE,
-        "segmentler": [("urun", "Ürün", "?")],
+        "segmentler": [("urun", "Ürün", "?"), ("kullanim", "Nerede kullanılıyor", "?gorunum=kullanim")],
         "xlsx_url": None, "sonuc_var": False, "baslik_yazdir": "",
     }
 
@@ -6865,6 +6865,16 @@ def urun_agaci(request):
             "kokler": None if sonuc else kok_ops, "sonuc_var": bool(sonuc),
             "xlsx_url": url(xlsx="1") if sonuc else None,
             "baslik_yazdir": (f"{urun.kod} {urun.ad} × {miktar.normalize():f}" if urun and sonuc else "")})
+
+    elif gorunum == "kullanim":
+        secenekler = urun_agaci_servis.kullanim_secenekleri(graf)
+        stok = urun_agaci_servis.stok_bul(graf, int(g["stok"])) if (g.get("stok") or "").isdigit() else None
+        sonuc = urun_agaci_servis.nerede_kullaniliyor(graf, stok) if stok else None
+        if xlsx and sonuc:
+            return _xlsx_yanit(urun_agaci_xlsx.kullanim_xlsx(sonuc), f"nerede_kullaniliyor_{stok.kod}")
+        ctx.update({"secenekler": secenekler, "stok": stok, "sonuc": sonuc, "sonuc_var": bool(sonuc),
+                    "xlsx_url": url(xlsx="1") if sonuc else None,
+                    "baslik_yazdir": f"Nerede kullanılıyor: {stok.kod} {stok.ad}" if stok else ""})
 
     return render(request, "core/urun_agaci.html", ctx)
 

@@ -26,7 +26,8 @@
     {% for k, ad, u in segmentler %}<a href="{{ u }}" class="ua-seg{% if k == gorunum %} aktif{% endif %}">{{ ad }}</a>{% endfor %}
   </nav>
 
-  {% include "core/_ua_urun.html" %}
+  {% if gorunum == "kullanim" %}{% include "core/_ua_kullanim.html" %}
+  {% else %}{% include "core/_ua_urun.html" %}{% endif %}
 </div>
 
 <style>

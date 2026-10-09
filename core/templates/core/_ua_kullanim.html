@@ -1,0 +1,61 @@
+{% load core_extras %}
+<form method="get" autocomplete="off" class="ua-form" style="display:contents">
+  <input type="hidden" name="gorunum" value="kullanim">
+  <section class="icerik-kart ua-ekran">
+    <h2 class="bolum-baslik">Stok Seç</h2>
+    <div class="ua-secim">
+      <div class="ua-alan ua-alan-genis">
+        <label for="ua-stok">Hammadde veya ara parça (kod / ad ile ara)</label>
+        <select name="stok" id="ua-stok" class="akilli-sec">
+          <option value="">— stok seç —</option>
+          {% for grup, uyeler in secenekler %}
+            <optgroup label="{{ grup }}">
+              {% for pk, etiket in uyeler %}<option value="{{ pk }}"{% if stok and stok.pk == pk %} selected{% endif %}>{{ etiket }}</option>{% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="birincil">Göster</button>
+    </div>
+  </section>
+</form>
+
+{% if sonuc %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🔎</span>Nerede kullanılıyor — <span class="mono">{{ stok.kod }}</span> {{ stok.ad }}</h2>
+    {% if sonuc.yan_cikti_ureten %}
+      <p class="ua-not">➕ Bu stok aynı zamanda yan çıktı olarak da üretiliyor:
+        {% for u in sonuc.yan_cikti_ureten %}<span class="mono">{{ u.kod }}</span> {{ u.ad }} kesiminden{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
+    {% endif %}
+    {% if sonuc.sayi %}
+      <div class="ua-ozet"><span class="ua-chip"><strong>{{ sonuc.sayi }}</strong> bitmiş ürün zincirinde kullanılıyor</span></div>
+      <div class="tablo-kapsayici">
+        <table class="ua-tablo">
+          <thead><tr><th>Ürün</th><th class="sag">1 adet ürün başına tüketim</th><th>Yol</th></tr></thead>
+          <tbody>
+            {% for g in sonuc.gruplar %}
+              <tr class="ua-kat"><td colspan="3">{{ g.ad }} · {{ g.satirlar|length }} ürün</td></tr>
+              {% for s in g.satirlar %}
+                <tr class="ua-s">
+                  <td class="ua-ad-h" data-et="Ürün"><a href="?urun={{ s.urun.pk }}&amp;sekme=maliyet"><span class="mono">{{ s.urun.kod }}</span> {{ s.urun.ad }}</a></td>
+                  <td class="sag" data-et="Tüketim / adet">{{ s.tuketim|tr_miktar_sade:4 }} {{ sonuc.birim }}</td>
+                  <td data-et="Yol">
+                    <span class="ua-yol">
+                      {% for x in s.yol %}<span{% if forloop.last %} class="son"{% endif %}><span class="mono">{{ x.kod }}</span> {{ x.ad }}</span>{% if not forloop.last %}<span class="ok">→</span>{% endif %}{% endfor %}
+                    </span>
+                    {% if s.yan_cikti_ureten %}<span class="ua-yan-not">➕ yan çıktı olarak da üretiliyor ({% for u in s.yan_cikti_ureten %}{{ u.kod }}{% if not forloop.last %}, {% endif %}{% endfor %} kesiminden)</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="ua-not">Tüketim gerçek (kesirli) hesaplanır: tam boy yuvarlaması yapılmaz; yan çıktılı kesimlerde girdi, ana çıktının boy payı oranında düşülür.</p>
+    {% elif sonuc.bitmis_urun %}
+      <p class="yardim ua-bos">Bu stok bir <strong>bitmiş ürün</strong> — başka bir ürünün zincirinde girdi değil.</p>
+    {% else %}
+      <p class="yardim ua-bos">Bu stok hiçbir ürün zincirinde yok.</p>
+    {% endif %}
+  </section>
+{% endif %}

@@ -149,3 +149,23 @@ def maliyet_xlsx(urun, miktar, sonuc) -> bytes:
         _sayi(ws, r, 7, sonuc["miktar_toplam_try"], PARA_FMT).font = Font(bold=True)
         _sayi(ws, r, 8, sonuc["miktar_toplam_usd"], PARA_FMT).font = Font(bold=True)
     return _bayt(wb)
+
+
+# --- Nerede kullanılıyor ---------------------------------------------------------------------------------------------------
+
+def kullanim_xlsx(sonuc) -> bytes:
+    stok = sonuc["stok"]
+    wb, ws = _yeni(f"Nerede kullanılıyor — {stok.kod} {stok.ad}", f"{sonuc['sayi']} bitmiş ürün · tüketim 1 adet ürün başına ({sonuc['birim']})",
+                   ["Seri", "Ürün kodu", "Ürün adı", "Tüketim", "Yol", "Not"], [14, 16, 46, 14, 90, 50])
+    r = 5
+    for g in sonuc["gruplar"]:
+        for s in g["satirlar"]:
+            ws.cell(row=r, column=1, value=g["ad"])
+            ws.cell(row=r, column=2, value=s["urun"].kod)
+            ws.cell(row=r, column=3, value=_ad(s["urun"]))
+            _sayi(ws, r, 4, s["tuketim"], MIKTAR_FMT)
+            ws.cell(row=r, column=5, value=" → ".join(f"{x.kod} {x.ad}" for x in s["yol"]))
+            ws.cell(row=r, column=6, value=("yan çıktı olarak da üretiliyor: " + ", ".join(x.kod for x in s["yan_cikti_ureten"]))
+                    if s["yan_cikti_ureten"] else "")
+            r += 1
+    return _bayt(wb)

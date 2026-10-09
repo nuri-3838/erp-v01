@@ -7,11 +7,12 @@ kesimde girdi, ana çıktının boy payı (``uretim.ana_cikti_payi``) oranında 
 yüzden Ürün, Nerede kullanılıyor ve Karşılaştır ekranlarındaki rakamlar birbiriyle birebir aynıdır."""
 from __future__ import annotations
 
+from collections import deque
 from decimal import Decimal
 
 from django.db.models import Prefetch, Sum
 
-from core.models import Depo, Operasyon, OperasyonGirdi, OperasyonYanCikti, StokHareket
+from core.models import Depo, Operasyon, OperasyonGirdi, OperasyonYanCikti, Stok, StokHareket
 from core.services.uretim import ihtiyac_hesapla
 
 SIFIR = Decimal("0")
@@ -173,3 +174,69 @@ def urun_maliyet(graf: Graf, urun, miktar) -> dict:
     return {"gruplar": gruplar, "toplam_try": toplam_try, "toplam_usd": toplam_usd,
             "miktar_toplam_try": toplam_try * miktar, "miktar_toplam_usd": toplam_usd * miktar, "miktar": miktar,
             "maliyetsiz": sum(1 for s in satirlar if s["maliyet_yok"]), "satir_sayisi": len(satirlar)}
+
+
+# --- 2. NEREDE KULLANILIYOR ---------------------------------------------------------------------------------------------------
+
+def kullanim_secenekleri(graf: Graf):
+    """Zincirdeki her stok (hammadde + ara parça + bitmiş ürün), gruplu: Hammadde/hazır stok · Ara parçalar."""
+    kok_idler = {s.pk for s in graf.kokler()}
+    hazir = sorted((s for pk, s in graf.stoklar.items() if pk not in graf.op_of), key=lambda s: s.kod)
+    ara = sorted((s for pk, s in graf.stoklar.items() if pk in graf.op_of and pk not in kok_idler), key=lambda s: s.kod)
+    gruplar = []
+    if hazir:
+        gruplar.append(("Hammadde / hazır stok", [(s.pk, f"{s.kod}  {s.ad}") for s in hazir]))
+    if ara:
+        gruplar.append(("Ara parçalar", [(s.pk, f"{s.kod}  {s.ad}") for s in ara]))
+    diger = (Stok.objects.filter(silindi=False).exclude(pk__in=list(graf.stoklar)).order_by("kod").values_list("pk", "kod", "ad"))
+    diger = [(pk, f"{kod}  {ad}") for pk, kod, ad in diger]
+    if diger:
+        gruplar.append(("Hiçbir zincirde olmayan stoklar", diger))
+    return gruplar
+
+
+def stok_bul(graf: Graf, pk):
+    """Zincirdeki stok (bellekten) ya da zincir dışı aktif stok (1 sorgu); yoksa None."""
+    if pk in graf.stoklar:
+        return graf.stoklar[pk]
+    return Stok.objects.filter(pk=pk, silindi=False).select_related("uretim_birimi").first()
+
+
+def _yol_bul(graf: Graf, stok, kok):
+    """``stok``tan bitmiş ürüne (kok) giden EN KISA yol: [stok, ..., kok] (girdi → çıktı kenarları; BFS). Yoksa None."""
+    onceki = {stok.pk: None}
+    kuyruk = deque([stok.pk])
+    while kuyruk:
+        pk = kuyruk.popleft()
+        if pk == kok.pk:
+            yol = []
+            while pk is not None:
+                yol.append(graf.stoklar[pk])
+                pk = onceki[pk]
+            return list(reversed(yol))
+        for op in graf.kullanan.get(pk, []):
+            if op.cikti_id not in onceki:
+                onceki[op.cikti_id] = pk
+                kuyruk.append(op.cikti_id)
+    return None
+
+
+def nerede_kullaniliyor(graf: Graf, stok) -> dict:
+    """Bu stoğu kullanan BİTMİŞ ürünler: 1 adet ürün başına KESİRLİ tüketim + yol (ara parça zinciri) + yan çıktı notu; seriye göre gruplu."""
+    satirlar = []
+    for kok in graf.kokler():
+        if kok.pk == stok.pk:
+            continue
+        o = graf.birim_tuketim(kok).get(stok.pk)
+        if o is None:
+            continue
+        yol = _yol_bul(graf, stok, kok)
+        zincir_idler = set(graf.birim_tuketim(kok))
+        yan = [op.cikti for op in graf.yan_ureten.get(stok.pk, []) if op.cikti_id in zincir_idler or op.cikti_id == kok.pk]
+        satirlar.append({"urun": kok, "seri": seri_of(kok.kod), "tuketim": o["ihtiyac"], "yol": yol or [stok, kok],
+                         "yan_cikti_ureten": yan})
+    gruplar = [{"seri": s, "ad": SERI_AD[s], "satirlar": [r for r in satirlar if r["seri"] == s]} for s in SERI_SIRA]
+    return {"stok": stok, "gruplar": [g for g in gruplar if g["satirlar"]], "sayi": len(satirlar),
+            "bitmis_urun": stok.pk in {k.pk for k in graf.kokler()},
+            "yan_cikti_ureten": [op.cikti for op in graf.yan_ureten.get(stok.pk, [])],
+            "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad}
