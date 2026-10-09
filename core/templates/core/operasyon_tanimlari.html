@@ -31,6 +31,7 @@
         <td class="sag mono">{{ o.girdi_sayisi }}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:operasyon_duzenle' o.pk %}">Düzenle</a>
+          <a href="{% url 'core:operasyon_ekle' %}?kopya={{ o.pk }}" title="İstasyon, miktar, girdiler ve yan çıktılarla dolu yeni operasyon (çıktı boş)">Kopyala</a>
           <form method="post" action="{% url 'core:operasyon_sil' o.pk %}" onsubmit="return confirm('Silinsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
         </span></td>

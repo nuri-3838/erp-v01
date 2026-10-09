@@ -225,6 +225,12 @@ def boy_stok_idleri():
     return [s.pk for s in Stok.objects.filter(silindi=False).select_related("uretim_birimi") if _boy_birimli_mi(s)]
 
 
+def stok_bilgi_haritasi() -> dict:
+    """{stok pk: {"k": kod, "b": üretim birimi kısa adı, "boy": BOY birimli mi}} — Operasyon formunda satır birimi / özet / tam boy rozeti (JS)."""
+    return {s.pk: {"k": s.kod, "b": s.uretim_birimi.kisa_ad or s.uretim_birimi.ad, "boy": _boy_birimli_mi(s)}
+            for s in Stok.objects.filter(silindi=False).select_related("uretim_birimi")}
+
+
 @transaction.atomic
 def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanici=None, boy_mm=None, yan_ciktilar=None) -> Operasyon:
     istasyon = _istasyon_coz(istasyon_id)

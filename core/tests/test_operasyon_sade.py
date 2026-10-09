@@ -62,7 +62,8 @@ class SadeOperasyonTest(YanCiktiBase):
                                    satirlar=[(self.profil, D("1"))])
         h2 = self.client.get(reverse("core:operasyon_duzenle", args=[yansiz.pk])).content.decode()
         self.assertIn('id="boy-alan" hidden', h2)
-        self.assertIn(">Evet<", h2)                                                            # BOY girdili → rozet Evet (sunucu tarafı ilk durum)
+        self.assertIn("Tam boy: Evet", h2)                                                     # BOY girdili → rozet Evet (sunucu tarafı ilk durum)
+        self.assertIn("1 boydan kaç adet", h2)                                                 # tam boyda miktar etiketi
 
     # --- ekran: POST akışları
     def _satir_post(self, girdi, yan=None, **ek):

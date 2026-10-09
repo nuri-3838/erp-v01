@@ -6625,8 +6625,35 @@ def operasyon_tanimlari(request):
                   {"operasyonlar": uretim_servis.aktif_operasyonlar()})
 
 
+def _form_hatalari(bform, formset, yan_formset) -> list:
+    """Sayfa başı hata özeti: başlık formu + girdi satırları + yan çıktı satırları hataları (alan altındaki hatalarla birlikte gösterilir)."""
+    out = []
+    if bform is not None:
+        out += [str(e) for e in bform.non_field_errors()]
+        for ad, hatalar in bform.errors.items():
+            if ad != "__all__":
+                out += [f"{bform.fields[ad].label}: {e}" for e in hatalar]
+    out += [str(e) for e in formset.non_form_errors()]
+    for i, f in enumerate(formset, start=1):
+        out += [f"Girdi {i}: {e}" for e in f.non_field_errors()]
+        out += [f"Girdi {i} — {f.fields[ad].label}: {e}" for ad, hatalar in f.errors.items() if ad != "__all__" for e in hatalar]
+    for i, f in enumerate(yan_formset, start=1):
+        out += [f"Yan çıktı {i}: {e}" for e in f.non_field_errors()]
+        out += [f"Yan çıktı {i} — {f.fields[ad].label}: {e}" for ad, hatalar in f.errors.items() if ad != "__all__" for e in hatalar]
+    return out
+
+
+def _operasyon_form_baglam(**ek):
+    return {"boy_stok_idler": uretim_servis.boy_stok_idleri(), "stok_bilgi": uretim_servis.stok_bilgi_haritasi(), **ek}
+
+
 @ekran_gerekli("operasyon_tanimlari")
 def operasyon_ekle(request):
+    """Yeni operasyon. ``?kopya=<operasyon pk>``: kaynağın istasyonu, çıktı miktarı, girdileri ve yan çıktılarıyla DOLU, ÇIKTI BOŞ açılır
+    (kayıt yine bu görünümün normal oluşturma akışından geçer)."""
+    kaynak = Operasyon.objects.filter(pk=request.GET.get("kopya") or 0, silindi=False).select_related("cikti").first()
+    baslik = f"Operasyon Kopyala — kaynak: {kaynak.cikti.kod}" if kaynak else "Yeni Operasyon"
+    hatalar = []
     if request.method == "POST":
         bform = OperasyonBaslikForm(request.POST)
         formset = OperasyonGirdiSatirFormSet(request.POST, prefix="satir")
@@ -6646,18 +6673,26 @@ def operasyon_ekle(request):
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
+        hatalar = _form_hatalari(bform, formset, yan_formset)
+    elif kaynak is not None:
+        bform = OperasyonBaslikForm(initial={"istasyon": kaynak.istasyon_id, "cikti_miktar": kaynak.cikti_miktar})
+        formset = OperasyonGirdiSatirFormSet(initial=[
+            {"girdi": s.girdi_id, "miktar": s.miktar} for s in uretim_servis.operasyon_girdileri(kaynak)], prefix="satir")
+        yan_formset = OperasyonYanCiktiFormSet(initial=[
+            {"stok": y.stok_id, "miktar": y.miktar, "boy_mm": y.boy_mm}
+            for y in uretim_servis.operasyon_yan_ciktilari(kaynak)], prefix="yan")
     else:
         bform = OperasyonBaslikForm()
         formset = OperasyonGirdiSatirFormSet(prefix="satir")
         yan_formset = OperasyonYanCiktiFormSet(prefix="yan")
-    return render(request, "core/operasyon_form.html",
-                  {"bform": bform, "formset": formset, "yan_formset": yan_formset, "baslik": "Yeni Operasyon",
-                   "boy_stok_idler": uretim_servis.boy_stok_idleri()})
+    return render(request, "core/operasyon_form.html", _operasyon_form_baglam(
+        bform=bform, formset=formset, yan_formset=yan_formset, baslik=baslik, hatalar=hatalar, kopya_kaynak=kaynak))
 
 
 @ekran_gerekli("operasyon_tanimlari")
 def operasyon_duzenle(request, pk):
     operasyon = get_object_or_404(Operasyon, pk=pk, silindi=False)
+    hatalar = []
     if request.method == "POST":
         formset = OperasyonGirdiSatirFormSet(request.POST, prefix="satir")
         yan_formset, yan_var = _yan_ciktilar_post(request.POST)
@@ -6677,7 +6712,9 @@ def operasyon_duzenle(request, pk):
                 messages.success(request, "Operasyon tanımı güncellendi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
-                messages.error(request, str(e))
+                hatalar = [str(e)]
+        else:
+            hatalar = _form_hatalari(None, formset, yan_formset)
     else:
         formset = OperasyonGirdiSatirFormSet(initial=[
             {"girdi": s.girdi_id, "miktar": s.miktar}
@@ -6686,9 +6723,9 @@ def operasyon_duzenle(request, pk):
             {"stok": y.stok_id, "miktar": y.miktar, "boy_mm": y.boy_mm}
             for y in uretim_servis.operasyon_yan_ciktilari(operasyon)], prefix="yan")
     istasyonlar = uretim_servis.aktif_istasyonlar()
-    return render(request, "core/operasyon_form.html", {
-        "formset": formset, "yan_formset": yan_formset, "operasyon": operasyon, "istasyonlar": istasyonlar,
-        "baslik": "Operasyon Düzenle", "boy_stok_idler": uretim_servis.boy_stok_idleri()})
+    return render(request, "core/operasyon_form.html", _operasyon_form_baglam(
+        formset=formset, yan_formset=yan_formset, operasyon=operasyon, istasyonlar=istasyonlar,
+        baslik="Operasyon Düzenle", hatalar=hatalar))
 
 
 @ekran_gerekli("operasyon_tanimlari")
