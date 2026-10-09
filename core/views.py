@@ -6513,8 +6513,22 @@ def fason_donus_detay(request, pk):
     if bilgi["durum"] == "ONAYLI" and not donus.fatura_id:
         adaylar = list(Fatura.objects.filter(silindi=False, yon="ALIS", cari_id=donus.cari_id).order_by("-tarih", "-pk")[:50])
     return render(request, "core/fason_donus_detay.html", {
-        "donus": donus, "bilgi": bilgi, "fatura_adaylari": adaylar,
+        "donus": donus, "bilgi": bilgi, "fatura_adaylari": adaylar, "yonetici": yonetici_mi(request.user),
         "kar": fason_donus_servis.fatura_karsilastirma(donus.fatura) if donus.fatura_id else None})
+
+
+@yonetici_gerekli
+def fason_donus_geri_al_sil(request, pk):
+    """YALNIZ yönetici: onaylı dönüşü tüm satırlarıyla (atomik) geri alıp siler."""
+    donus = get_object_or_404(FasonDonus, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fason_donus_servis.donus_geri_al_sil(donus, kullanici=request.user)
+            messages.success(request, f"{donus.no} geri alındı ve silindi (stok hareketleri ve maliyet fişleri dahil).")
+            return redirect("core:fason_donusleri")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_donus_detay", pk=donus.pk)
 
 
 @ekran_gerekli("fason_donusleri")

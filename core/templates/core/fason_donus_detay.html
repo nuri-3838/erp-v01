@@ -16,6 +16,14 @@
         <button type="submit" class="birincil" onclick="return confirm('Belge onaylansın mı? Girdiler fason depodan düşer, çıktılar depoya girer.');">Onayla</button></form>
       <form method="post" action="{% url 'core:fason_donus_sil' donus.pk %}" style="margin:0" onsubmit="return confirm('Taslak belge silinsin mi?');">{% csrf_token %}
         <button type="submit" class="dugme-ikincil">Sil</button></form>
+    {% elif yonetici %}
+      {% if donus.fatura_id %}
+        <span class="yardim" title="Önce fatura bağını kaldırın">Geri almak için önce faturadan ayırın</span>
+      {% else %}
+        <form method="post" action="{% url 'core:fason_donus_geri_al_sil' donus.pk %}" style="margin:0"
+              onsubmit="return confirm('Onaylı dönüş GERİ ALINIP SİLİNSİN mi? Tüm satırların stok hareketleri ve maliyet fişleri geri alınır (atomik).');">{% csrf_token %}
+          <button type="submit" class="dugme-ikincil" style="color:var(--hata)">Geri al ve sil</button></form>
+      {% endif %}
     {% endif %}
   </div>
 </div>

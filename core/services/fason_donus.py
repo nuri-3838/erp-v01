@@ -176,6 +176,29 @@ def donus_sil(donus: FasonDonus, kullanici=None) -> FasonDonus:
     return donus
 
 
+@transaction.atomic
+def donus_geri_al_sil(donus: FasonDonus, kullanici=None) -> FasonDonus:
+    """YÖNETİCİ işlemi: ONAYLI belgeyi geri alır ve siler — tüm satırlar ATOMİK (``operasyon_kaydi_sil(onayli_geri_al=True)`` mantığı: girdi çıkışları,
+    ana + yan çıktı girişleri ve maliyet aktarım fişi geri alınır). Fatura bağlıysa önce bağ kaldırılmalıdır. Çıktı sonradan kullanılmış/transfer
+    edilmişse (eldeki yetmez) hata verir ve hiçbir şey değişmez. Taslak belgede ``donus_sil`` ile aynıdır."""
+    if donus.silindi:
+        return donus
+    if donus.fatura_id:
+        raise FasonHatasi("Bu dönüş bir faturaya bağlı; önce fatura bağını kaldırın (Faturadan ayır), sonra geri alın.")
+    if donus_durumu(donus) != "ONAYLI":
+        return donus_sil(donus, kullanici=kullanici)
+    for kayit in reversed(list(donus_kayitlari(donus))):
+        try:
+            uretim_servis.operasyon_kaydi_sil(kayit, kullanici=kullanici, onayli_geri_al=True)
+        except uretim_servis.UretimHatasi as e:
+            raise FasonHatasi(f"{kayit.no} ({kayit.operasyon.cikti.kod}) geri alınamadı: {e}")
+    donus.silindi = True
+    donus.silindi_at = timezone.now()
+    donus.updated_by = kullanici
+    donus.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return donus
+
+
 def donus_bilgisi(donus: FasonDonus) -> dict:
     """Belge detayı için: kayıtlar (çıktı satırlarıyla: beklenen, GELEN, fire), durum ve fason bedeli.
     ONAYLI → snapshot (gelen = stoğa giren, fason bedeli gelen adet üzerinden; TL/USD); TASLAK → girilmiş gelen adetle (boşsa beklenen) TAHMİN —
