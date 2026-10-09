@@ -79,6 +79,10 @@ def agac_xlsx(agac, miktar, baslik_ek="") -> bytes:
             notlar.append(f"tam boy · çalıştırma {d['calistirma'].normalize():f} · üretilecek {d['uretilecek'].normalize():f}")
         for y in d.get("yan_ciktilar", []):
             notlar.append(f"yan çıktı: {y['miktar'].normalize():f} × {y['stok'].kod}")
+        if d.get("tur") == "PARCALA":
+            for c in d.get("ciktilar", []):
+                if c["stok"].pk != d["stok"].pk:
+                    notlar.append(f"parçala · aynı boydan {c['uretilecek'].normalize():f} × {c['stok'].kod} (ihtiyaç {c['ihtiyac'].normalize():f}, fazla {c['fazla'].normalize():f})")
         if d.get("tekrar"):
             notlar.append("↑ aynı stok yukarıda toplam talep üzerinden hesaplandı")
         ws.cell(row=r, column=1, value=derinlik)

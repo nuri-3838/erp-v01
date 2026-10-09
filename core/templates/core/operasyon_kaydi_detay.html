@@ -49,18 +49,18 @@
     <span class="dg">{% if kayit.uretim_emri %}<a href="{% url 'core:uretim_emri_detay' kayit.uretim_emri.pk %}">{{ kayit.uretim_emri.no }}</a>{% else %}<span class="pasif">— bağımsız/serbest kayıt —</span>{% endif %}</span></div>
   {% if kayit.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ kayit.aciklama }}</span></div>{% endif %}
   {% if kayit.durum != "ONAYLI" and yan_tanimlar %}
-    <div class="satir"><span class="et">Yan Çıktılar (onayda stoğa girer)</span>
-      <span class="dg">{% for y in yan_tanimlar %}<div><span class="mono">{{ y.stok.kod }}</span> {{ y.stok.ad }} · 1 çalıştırmada {{ y.miktar|tr_miktar_sade }} adet · {{ y.boy_mm|tr_kur:2 }} mm</div>{% endfor %}</span></div>
+    <div class="satir"><span class="et">{% if parcala %}Diğer Çıktılar (parçala · aynı çalıştırmadan, onayda stoğa girer){% else %}Yan Çıktılar (onayda stoğa girer){% endif %}</span>
+      <span class="dg">{% for y in yan_tanimlar %}<div><span class="mono">{{ y.stok.kod }}</span> {{ y.stok.ad }} · 1 çalıştırmada {{ y.miktar|tr_miktar_sade }} adet{% if y.boy_mm %} · {{ y.boy_mm|tr_kur:2 }} mm{% endif %}{% if y.yuzde %} · %{{ y.yuzde|tr_miktar_sade }}{% endif %}</div>{% endfor %}</span></div>
   {% endif %}
   {% if kayit.durum == "ONAYLI" and ciktilar|length > 1 %}
-    <div class="satir"><span class="et">Çıktılar (ana + yan) ve maliyet dağılımı</span>
+    <div class="satir"><span class="et">{% if parcala %}Çıktılar (parçala) ve maliyet dağılımı{% else %}Çıktılar (ana + yan) ve maliyet dağılımı{% endif %}</span>
       <span class="dg">
         <table style="margin:0">
           <thead><tr><th>Stok</th><th class="sag">Giriş</th><th class="sag">Boy (mm)</th><th class="sag">Maliyet (TL)</th><th class="sag">Pay</th></tr></thead>
           <tbody>
             {% for c in ciktilar %}
               <tr>
-                <td><span class="mono">{{ c.hareket.stok.kod }}</span> {{ c.hareket.stok.ad }} {% if c.ana %}<span class="rozet rozet-notr">ana</span>{% else %}<span class="rozet rozet-aktif">yan</span>{% endif %}</td>
+                <td><span class="mono">{{ c.hareket.stok.kod }}</span> {{ c.hareket.stok.ad }} {% if parcala %}{% if c.ana %}<span class="rozet rozet-notr">referans</span>{% endif %}{% elif c.ana %}<span class="rozet rozet-notr">ana</span>{% else %}<span class="rozet rozet-aktif">yan</span>{% endif %}</td>
                 <td class="sag mono">{{ c.hareket.miktar|tr_miktar_sade }}</td>
                 <td class="sag mono">{% if c.boy_mm %}{{ c.boy_mm|tr_kur:2 }}{% else %}—{% endif %}</td>
                 <td class="sag mono">{% if c.hareket.tutar_try is not None %}{{ c.hareket.tutar_try|tr_kur:2 }}{% else %}—{% endif %}</td>

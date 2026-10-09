@@ -7242,9 +7242,10 @@ def operasyon_kaydi_detay(request, pk):
     else:
         ciktilar = []
     yan_tanimlar = list(uretim_servis.ek_ciktilar(kayit.operasyon))
+    parcala = kayit.operasyon.tur == Operasyon.Tur.PARCALA
     return render(request, "core/operasyon_kaydi_detay.html",
                   {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
-                   "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar,
+                   "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar, "parcala": parcala,
                    "yonetici": yonetici_mi(request.user)})
 
 

@@ -121,7 +121,7 @@ def urun_secenekleri(graf: Graf):
         uyeler = [(s.pk, f"{s.kod}  {s.ad}") for s in kokler if seri_of(s.kod) == seri]
         if uyeler:
             gruplar.append((f"Bitmiş ürünler – {SERI_AD[seri]}", uyeler))
-    ara = sorted((op.cikti for op in graf.operasyonlar if op.cikti_id not in kok_idler), key=lambda s: s.kod)
+    ara = sorted((graf.stoklar[pk] for pk in graf.op_of if pk not in kok_idler), key=lambda s: s.kod)     # PARÇALA'nın her çıktısı dahil
     if ara:
         gruplar.append(("Ara parçalar", [(s.pk, f"{s.kod}  {s.ad}") for s in ara]))
     return gruplar
@@ -301,9 +301,10 @@ def _yol_bul(graf: Graf, stok, kok):
                 pk = onceki[pk]
             return list(reversed(yol))
         for op in graf.kullanan.get(pk, []):
-            if op.cikti_id not in onceki:
-                onceki[op.cikti_id] = pk
-                kuyruk.append(op.cikti_id)
+            for c in graf.ciktilar.get(op.pk, []):                 # ÜRET: ana çıktı; PARÇALA: her (sürücü) çıktı
+                if c.surucu and c.stok_id not in onceki:
+                    onceki[c.stok_id] = pk
+                    kuyruk.append(c.stok_id)
     return None
 
 

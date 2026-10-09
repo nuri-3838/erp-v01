@@ -92,8 +92,9 @@ FASON_ISTASYON_KODU = "10"
 
 def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
     """``kalemler``: [(urun, miktar), ...]. Döner: {"ozet": [satır], "detay": [...], "toplam_tutar": {para birimi: tutar}, "cari": cari, "fiyat_eksikleri": [...]}.
-    Özet satırı: {"profil", "boy" (ham profil adedi), "kesilmis_parca", "toplam_adet", "yan" (yan çıktı mı), "fasoncu_kodu", "birim_fiyat", "para_birimi",
-    "tutar"} — operasyon başına bir ana satır + yan çıktılar. Fasoncu yoksa ya da fiyatı tanımsızsa fiyat alanları None."""
+    Özet satırı: {"profil", "boy" (ham profil adedi), "kesilmis_parca", "toplam_adet", "yan" (ÜRET yan çıktısı mı), "ihtiyac", "fazla", "fasoncu_kodu",
+    "birim_fiyat", "para_birimi", "tutar"} — operasyon başına referans satır + diğer çıktılar (ÜRET: yan çıktılar; PARÇALA: aynı boydan çıkan eşit düzey
+    çıktılar, her biri kendi ihtiyacı/fazlasıyla). Fasoncu yoksa ya da fiyatı tanımsızsa fiyat alanları None."""
     from core.services.uretim import UretimHatasi, ihtiyac_hesapla, operasyon_girdileri
     hedefler = [(u, Decimal(int(m))) for u, m in kalemler if m and int(m) > 0]
     tarih = tarih or timezone.localdate()
@@ -109,8 +110,8 @@ def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
         girdi = next(iter(operasyon_girdileri(op)), None)
         profil = girdi.girdi if girdi else None
         boy = (p["calistirma"] * girdi.miktar) if girdi else None
-        satirlar = [(p["stok"], p["uretilecek"], False)] + [(y["stok"], y["miktar"], True) for y in p["yan_ciktilar"]]
-        for i, (parca, adet, yan) in enumerate(satirlar):
+        satirlar = [(c["stok"], c["uretilecek"], not c["surucu"], c["ihtiyac"], c["fazla"]) for c in p["ciktilar"]]
+        for i, (parca, adet, yan, ihtiyac, fazla) in enumerate(satirlar):
             fiyat = gecerli_fiyat(cari, parca, tarih) if cari else None
             tutar = (fiyat.birim_fiyat * adet) if fiyat else None
             if cari and fiyat is None:
@@ -118,6 +119,7 @@ def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
             if tutar is not None:
                 toplam[fiyat.para_birimi] = toplam.get(fiyat.para_birimi, Decimal("0")) + tutar
             ozet.append({"op": p["stok"].kod, "sira_no": i, "profil": profil, "boy": boy if i == 0 else None, "kesilmis_parca": parca, "toplam_adet": adet, "yan": yan,
+                         "ihtiyac": ihtiyac, "fazla": fazla, "tur": p["tur"],
                          "fasoncu_kodu": fiyat.fasoncu_kodu if fiyat else "", "birim_fiyat": fiyat.birim_fiyat if fiyat else None,
                          "para_birimi": fiyat.para_birimi if fiyat else "", "tutar": tutar})
     ozet.sort(key=lambda r: ((r["profil"].kod if r["profil"] else ""), r["op"], r["sira_no"]))      # profil → operasyon → ana satır, sonra yan çıktılar

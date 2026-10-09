@@ -70,9 +70,9 @@
     <tbody>
       {% for o in sonuc.ozet %}
         <tr>
-          <td>{% if o.profil and not o.yan %}{{ o.profil.ad }}{% endif %}</td>
+          <td>{% if o.profil and o.sira_no == 0 %}{{ o.profil.ad }}{% endif %}</td>
           <td class="sag mono">{% if o.boy is not None %}{{ o.boy|tr_miktar_sade }}{% endif %}</td>
-          <td class="parca">{% if o.yan %}<span class="yan">yan çıktı</span> {% endif %}{{ o.kesilmis_parca.ad }}</td>
+          <td class="parca">{% if o.yan %}<span class="yan">yan çıktı</span> {% elif o.tur == "PARCALA" and o.sira_no != 0 %}<span class="yan">aynı boydan</span> {% endif %}{{ o.kesilmis_parca.ad }}</td>
           {% if sonuc.cari %}<td class="mono">{{ o.fasoncu_kodu|default:"—" }}</td>{% endif %}
           <td class="sag mono adet">{{ o.toplam_adet|tr_miktar_sade }}</td>
           {% if sonuc.cari %}

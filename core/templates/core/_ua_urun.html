@@ -133,7 +133,7 @@
         </tbody>
       </table>
     </div>
-    <p class="ua-not">Tüketim gerçek (kesirli) hesaplanır: tam boy yuvarlaması yapılmaz; yan çıktılı kesimlerde girdi, ana çıktının boy payı oranında düşülür.
+    <p class="ua-not">Tüketim gerçek (kesirli) hesaplanır: tam boy yuvarlaması yapılmaz; yan çıktılı kesimlerde girdi, ana çıktının boy payı oranında, parçala tanımında her çıktının kendi payı (boy / eşit / yüzde) oranında düşülür.
       Birim maliyet: hareketli ağırlıklı ortalama; yoksa stok kartındaki alış fiyatı; ikisi de yoksa "maliyet yok".{% if maliyet.kur_notu %}
       <br>{{ maliyet.kur_notu }}{% endif %}</p>
   </section>

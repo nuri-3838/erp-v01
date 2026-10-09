@@ -71,7 +71,8 @@
             {% for o in sonuc.ozet %}
               <tr>
                 <td><span class="mono">{{ o.stok.kod }}</span> {{ o.stok.ad }}
-                  {% for y in o.yan_ciktilar %}<br><small class="yardim">➕ ayrıca {{ y.miktar|tr_miktar_sade }} adet {{ y.stok.kod }} {{ y.stok.ad }} çıkar</small>{% endfor %}</td>
+                  {% for y in o.yan_ciktilar %}<br><small class="yardim">➕ ayrıca {{ y.miktar|tr_miktar_sade }} adet {{ y.stok.kod }} {{ y.stok.ad }} çıkar</small>{% endfor %}
+                  {% if o.tur == "PARCALA" %}<span class="rozet rozet-notr" title="Parçala: 1 girdi → N çıktı; çalıştırma en büyük ihtiyaç/miktar oranından">parçala</span>{% for c in o.ciktilar %}{% if c.stok.pk != o.stok.pk %}<br><small class="yardim">⇄ aynı boydan {{ c.uretilecek|tr_miktar_sade }} adet {{ c.stok.kod }} {{ c.stok.ad }} (ihtiyaç {{ c.ihtiyac|tr_miktar_sade }}{% if c.fazla %}, fazla {{ c.fazla|tr_miktar_sade }} stoğa{% endif %})</small>{% endif %}{% endfor %}{% endif %}</td>
                 <td>{% if o.istasyon %}<span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}
                   {% else %}<span class="pasif">— hazır stok —</span>{% endif %}</td>
                 <td class="sag mono">{{ o.ihtiyac|tr_miktar_sade }}</td>
