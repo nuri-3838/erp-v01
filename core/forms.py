@@ -1171,32 +1171,6 @@ class FirmaBankaForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
-class FasonKesimForm(forms.Form):
-    """FASON > Kesim Tanımları ekle/düzenle: 1 adet bitmiş ürün için hangi kesilmiş
-    parçadan kaç adet gerektiği (o parçanın hangi ham profilden kesildiği kendi stok
-    kartında — bkz. `Stok.kesildigi_profil` — burada seçilmez, salt-okunur gösterilir)."""
-    urun = forms.ModelChoiceField(
-        label="Ürün (Bitmiş)", queryset=Stok.objects.none(), empty_label="— ürün seç —")
-    kesilmis_parca = forms.ModelChoiceField(
-        label="Kesilmiş Parça", queryset=Stok.objects.none(), empty_label="— parça seç —")
-    adet = forms.IntegerField(label="Adet (1 ürün için)", min_value=1, initial=1,
-                              widget=forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}))
-    sira = forms.IntegerField(label="Sıra", min_value=0, initial=0,
-                              widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["urun"].queryset = (
-            Stok.objects.filter(silindi=False, satis_urunu=True).order_by("kod"))
-        self.fields["urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
-        self.fields["urun"].widget.attrs["class"] = "akilli-sec"
-        from core.services.fason import kesilmis_parca_secenekleri
-        self.fields["kesilmis_parca"].queryset = kesilmis_parca_secenekleri()
-        self.fields["kesilmis_parca"].label_from_instance = (
-            lambda o: f"{o.kod}  {o.ad}  ←  {o.kesildigi_profil.kod} {o.kesildigi_profil.ad}")
-        self.fields["kesilmis_parca"].widget.attrs["class"] = "akilli-sec"
-
-
 class FasonFiyatForm(forms.Form):
     """FASON > Fason Fiyatları ekle/düzenle: fasoncunun bir kesilmiş parça için PARÇA ADEDİ başına sabit fiyatı."""
     cari = forms.ModelChoiceField(label="Fasoncu (cari)", queryset=Cari.objects.none(), empty_label="— cari seç —")

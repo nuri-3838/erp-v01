@@ -598,13 +598,6 @@ class Stok(TemelModel):
     # ad'dan (ad) BAĞIMSIZ; satınalma ekranlarında/PDF'lerinde ad yerine kullanılır. Boşsa
     # ad_satinalma() dahili ad'a düşer (ad_dil() ile aynı desen, satış yerine satınalma yönü).
     tedarikci_adi = models.CharField("tedarikçi ürün adı", max_length=200, blank=True, default="")
-    # FASON: bu kart bir "kesilmiş parça" (fasoncunun bir ham profilden kestiği ara ürün)
-    # ise, hangi ham profilden (Stok, kendi kendine FK) kesildiği — 1:1, o parçanın kendi
-    # tanımının sabit bir özelliği (bkz. FasonKesim, üst katman: bitmiş ürün → kesilmiş
-    # parça). Diğer tüm kartlarda boş kalır.
-    kesildigi_profil = models.ForeignKey(
-        "self", verbose_name="kesildiği ham profil", null=True, blank=True,
-        on_delete=models.PROTECT, related_name="kesilen_parcalar")
     # Alış fiyatı — bilgi amaçlı (muhasebe/fatura fiyatını ETKİLEMEZ, yalnız referans).
     # Opsiyonel. Para birimi: YevmiyeSatir.IslemPB.choices ile aynı kaynak (Cari.PARA_CHOICES
     # bunu aliaslar, ama Cari bu dosyada Stok'tan SONRA tanımlı — ileri referans olmasın diye
@@ -2982,82 +2975,6 @@ class FirmaBanka(TemelModel):
         return f"{self.banka_adi} ({self.para_birimi})"
 
 
-class FasonKesim(TemelModel):
-    """FASON > Kesim Tanımları — 1 adet bitmiş ürün (`urun`, Stok satis_urunu=True) için
-    hangi KESİLMİŞ PARÇA'dan (`kesilmis_parca`, Stok uretim_urunu=True — fasoncunun
-    kestiği ara ürün, ör. "KESİLMİŞ A TİPİ ÖN AYAK 2+1") kaç adet gerektiğini tanımlar
-    (2 seviyeli BOM'un üst katmanı: bitmiş ürün → kesilmiş parça). Kesilmiş parçanın HANGİ
-    HAM PROFİLDEN kesildiği ayrı bir alan DEĞİL — `Stok.kesildigi_profil`'de (alt katman:
-    kesilmiş parça → ham profil, 1:1, o parçanın kendi tanımının bir özelliği). Fasoncuya
-    gönderilecek kesim listesi/PDF'i bu iki katman birlikte hesaplanarak üretilir."""
-
-    urun = models.ForeignKey(Stok, verbose_name="ürün (bitmiş)", null=True,
-                             on_delete=models.PROTECT, related_name="fason_kesimleri")
-    kesilmis_parca = models.ForeignKey(Stok, verbose_name="kesilmiş parça", null=True,
-                                       on_delete=models.PROTECT, related_name="fason_kullanimlari")
-    adet = models.PositiveSmallIntegerField("adet (1 ürün için)", default=1)
-    sira = models.PositiveSmallIntegerField("sıra", default=0)
-
-    class Meta:
-        db_table = "core_fason_kesim"
-        verbose_name = "fason kesim satırı"
-        verbose_name_plural = "fason kesim satırları"
-        ordering = ["sira", "pk"]
-        constraints = [
-            models.CheckConstraint(condition=models.Q(adet__gte=1),
-                                   name="ck_fason_kesim_adet_gte1"),
-            models.UniqueConstraint(fields=["urun", "kesilmis_parca"],
-                                    condition=models.Q(silindi=False),
-                                    name="uq_fason_kesim_urun_parca_aktif"),
-        ]
-
-    def __str__(self):
-        return f"{self.urun.kod} ← {self.kesilmis_parca.kod} × {self.adet}"
-
-
-class FasonKesimKaydi(TemelModel):
-    """Kaydedilmiş bir Kesim Listesi Hesapla isteği — kullanıcının girdiği ürün/miktar
-    satırları (bkz. FasonKesimKaydiKalemi). Sonuç (hangi profilden kaç parça) burada
-    SAKLANMAZ, her açılışta güncel Kesim Tanımları'ndan (FasonKesim) yeniden hesaplanır —
-    böylece bir tanım sonradan düzeltilirse geçmiş kayıtların PDF'i de güncel/doğru kalır."""
-
-    yil = models.PositiveSmallIntegerField("yıl", editable=False)
-    sira = models.PositiveIntegerField("sıra", editable=False)
-    no = models.CharField("kayıt no", max_length=20, editable=False)
-    # Listenin hazırlandığı fasoncu: PDF'te fasoncunun parça kodu ve birim fiyatı bu cariye göre gösterilir (boş = fiyat sütunları yok).
-    cari = models.ForeignKey("Cari", verbose_name="fasoncu (cari)", null=True, blank=True, on_delete=models.PROTECT,
-                             related_name="fason_kesim_kayitlari")
-
-    class Meta:
-        db_table = "core_fason_kesim_kaydi"
-        verbose_name = "fason kesim kaydı"
-        verbose_name_plural = "fason kesim kayıtları"
-        ordering = ["-yil", "-sira"]
-        constraints = [models.UniqueConstraint(
-            fields=["yil", "sira"], name="uq_fason_kesim_kaydi_yil_sira")]
-
-    def __str__(self):
-        return self.no
-
-
-class FasonKesimKaydiKalemi(TemelModel):
-    kayit = models.ForeignKey(FasonKesimKaydi, on_delete=models.CASCADE, related_name="kalemler")
-    urun = models.ForeignKey(Stok, verbose_name="ürün (bitmiş)", on_delete=models.PROTECT)
-    miktar = models.PositiveIntegerField("miktar")
-    sira = models.PositiveSmallIntegerField("sıra", default=0)
-
-    class Meta:
-        db_table = "core_fason_kesim_kaydi_kalemi"
-        verbose_name = "fason kesim kaydı satırı"
-        verbose_name_plural = "fason kesim kaydı satırları"
-        ordering = ["sira", "pk"]
-        constraints = [models.CheckConstraint(condition=models.Q(miktar__gte=1),
-                                              name="ck_fason_kesim_kaydi_kalemi_miktar_gte1")]
-
-    def __str__(self):
-        return f"{self.kayit.no} — {self.urun.kod} × {self.miktar}"
-
-
 class FasonFiyat(TemelModel):
     """FASON > Fason Fiyatları — fasoncunun (cari) bir KESİLMİŞ PARÇA için PARÇA ADEDİ başına faturaladığı sabit fiyat. Fasoncunun kendi parça
     kodu (``fasoncu_kodu``, örn. GZ-P-00041) kesim listesi PDF'inde kullanılır. Aynı cari + stok için birden çok satır olabilir (farklı
@@ -3124,8 +3041,7 @@ class FasonDonus(TemelModel):
 
 
 # === ÜRETİM modülü — İş İstasyonu + Operasyon (rota) + Üretim Emri + Operasyon Kaydı ===
-# Bağımsız, sıfırdan kurulan bir Stok↔Stok rota modeli — FASON'daki kesilmiş-parça/
-# kesildigi_profil kavramıyla hiçbir ilişkisi yoktur. Bitmiş bir ürün, farklı İŞ
+# Bağımsız, sıfırdan kurulan bir Stok↔Stok rota modeli. Bitmiş bir ürün, farklı İŞ
 # İSTASYONLARINDA (Lazer Kesim, Büküm, ...) art arda yapılan OPERASYONLARLA adım adım
 # ortaya çıkar: her Operasyon, bir istasyonda, bir/daha fazla GİRDİ stoktan TEK bir ÇIKTI
 # stok üretir (oranlı dönüşüm — örn. 1 boy profil → 2 adet kesilmiş parça). Bir Üretim

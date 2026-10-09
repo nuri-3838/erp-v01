@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonDonusBaslikForm, FasonDonusSatirForm, FasonFiyatForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonDonusBaslikForm, FasonDonusSatirForm, FasonFiyatForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -56,7 +56,7 @@ from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
-    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat, FasonKesim, FasonKesimKaydi,
+    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
@@ -6426,63 +6426,7 @@ def firma_bilgileri(request):
                   {"form": form, "formset": formset, "firma": firma})
 
 
-# === FASON — Kesim Tanımları (yönetici) + Kesim Listesi Hesapla (+ PDF) ===
-@yonetici_gerekli
-def fason_kesim_tanimlari(request):
-    return render(request, "core/fason_kesim_listesi.html",
-                  {"kesimler": fason_servis.aktif_kesimler()})
-
-
-@yonetici_gerekli
-def fason_kesim_ekle(request):
-    if request.method == "POST":
-        form = FasonKesimForm(request.POST)
-        if form.is_valid():
-            try:
-                cd = form.cleaned_data
-                fason_servis.kesim_olustur(
-                    urun_id=cd["urun"].pk, kesilmis_parca_id=cd["kesilmis_parca"].pk,
-                    adet=cd["adet"], sira=cd["sira"], kullanici=request.user)
-                messages.success(request, "Kesim tanımı eklendi.")
-                return redirect("core:fason_kesim_tanimlari")
-            except fason_servis.FasonHatasi as e:
-                form.add_error(None, str(e))
-    else:
-        form = FasonKesimForm()
-    return render(request, "core/fason_kesim_form.html",
-                  {"form": form, "baslik": "Yeni Kesim Tanımı"})
-
-
-@yonetici_gerekli
-def fason_kesim_duzenle(request, pk):
-    k = get_object_or_404(FasonKesim, pk=pk, silindi=False)
-    if request.method == "POST":
-        form = FasonKesimForm(request.POST)
-        if form.is_valid():
-            try:
-                cd = form.cleaned_data
-                fason_servis.kesim_guncelle(
-                    k, urun_id=cd["urun"].pk, kesilmis_parca_id=cd["kesilmis_parca"].pk,
-                    adet=cd["adet"], sira=cd["sira"], kullanici=request.user)
-                messages.success(request, "Kesim tanımı güncellendi.")
-                return redirect("core:fason_kesim_tanimlari")
-            except fason_servis.FasonHatasi as e:
-                form.add_error(None, str(e))
-    else:
-        form = FasonKesimForm(initial={
-            "urun": k.urun_id, "kesilmis_parca": k.kesilmis_parca_id,
-            "adet": k.adet, "sira": k.sira})
-    return render(request, "core/fason_kesim_form.html",
-                  {"form": form, "baslik": "Kesim Tanımı Düzenle", "duzenlenen": k})
-
-
-@yonetici_gerekli
-def fason_kesim_sil(request, pk):
-    k = get_object_or_404(FasonKesim, pk=pk, silindi=False)
-    if request.method == "POST":
-        fason_servis.kesim_sil(k, kullanici=request.user)
-        messages.success(request, "Kesim tanımı silindi.")
-    return redirect("core:fason_kesim_tanimlari")
+# === FASON — Kesim Listesi Hesapla (+ PDF), Fason Fiyatları, Dönüşler, Mutabakat ===
 
 
 FasonDonusSatirFormSet = formset_factory(FasonDonusSatirForm, extra=0)
@@ -6707,7 +6651,7 @@ def _fason_cari_secimi(request):
     return cariler, next((c for c in cariler if str(c.pk) == secili), None)
 
 
-def _fason_pdf_yanit(*, kalemler, sonuc, kullanici, no=None):
+def _fason_pdf_yanit(*, kalemler, sonuc, kullanici):
     import base64
 
     from django.contrib.staticfiles import finders
@@ -6718,12 +6662,12 @@ def _fason_pdf_yanit(*, kalemler, sonuc, kullanici, no=None):
         with open(logo_yol, "rb") as f:
             logo_b64 = base64.b64encode(f.read()).decode("ascii")
     html = render_to_string("core/fason_pdf.html", {
-        "kalemler": kalemler, "sonuc": sonuc, "logo_b64": logo_b64, "no": no,
+        "kalemler": kalemler, "sonuc": sonuc, "logo_b64": logo_b64,
         "hazirlayan": kullanici.get_full_name() or kullanici.username,
         "tarih": timezone.localdate()})
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")
-    dosya_adi = f"fason-kesim-listesi-{no}.pdf" if no else "fason-kesim-listesi.pdf"
+    dosya_adi = "fason-kesim-listesi.pdf"
     resp["Content-Disposition"] = f'inline; filename="{dosya_adi}"'
     return resp
 
@@ -6741,42 +6685,12 @@ def fason_hesapla(request):
                 messages.error(request, "En az bir ürün satırı girin.")
             else:
                 sonuc = fason_servis.fason_listesi_operasyondan(kalemler, cari=cari)
-                if request.POST.get("eylem") == "pdf":
-                    kayit = fason_servis.fason_kaydi_olustur(
-                        kalemler=kalemler, cari=cari, kullanici=request.user)
-                    return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc,
-                                            kullanici=request.user, no=kayit.no)
+                if request.POST.get("eylem") == "pdf":          # PDF indirir; kayıt OLUŞTURMAZ
+                    return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc, kullanici=request.user)
     else:
         formset = FasonSatirFormSet(prefix="satir")
     return render(request, "core/fason_hesapla.html", {
-        "formset": formset, "sonuc": sonuc, "yonetici": yonetici_mi(request.user), "cariler": cariler, "cari": cari,
-        "kayitlar_yetkili": ekran_gorebilir(request.user, "fason_kayitlari")})
-
-
-@ekran_gerekli("fason_kayitlari")
-def fason_kayitlari(request):
-    kayitlar = (FasonKesimKaydi.objects.filter(silindi=False)
-                .select_related("created_by").order_by("-yil", "-sira"))
-    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
-    return render(request, "core/fason_kayitlari.html", {"kayitlar": sayfa})
-
-
-@ekran_gerekli("fason_kayitlari")
-def fason_kaydi_detay(request, pk):
-    kayit = get_object_or_404(FasonKesimKaydi, pk=pk, silindi=False)
-    kalemler = fason_servis.kayit_kalemleri(kayit)
-    sonuc = fason_servis.kayit_sonucu(kayit)
-    return render(request, "core/fason_kaydi_detay.html",
-                  {"kayit": kayit, "kalemler": kalemler, "sonuc": sonuc})
-
-
-@ekran_gerekli("fason_kayitlari")
-def fason_kaydi_pdf(request, pk):
-    kayit = get_object_or_404(FasonKesimKaydi, pk=pk, silindi=False)
-    kalemler = fason_servis.kayit_kalemleri(kayit)
-    sonuc = fason_servis.kayit_sonucu(kayit)
-    return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc,
-                            kullanici=kayit.created_by or request.user, no=kayit.no)
+        "formset": formset, "sonuc": sonuc, "cariler": cariler, "cari": cari})
 
 
 # === ÜRETİM — İş İstasyonu + Operasyon (rota) modeli (FASON'dan bağımsız) ===

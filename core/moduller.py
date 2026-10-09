@@ -92,11 +92,9 @@ MODULLER = (
     )),
     Modul("FASON", "Fason", (
         Ekran("fason_hesapla", "Kesim Listesi Hesapla", "core:fason_hesapla"),
-        Ekran("fason_kayitlari", "Kesim Kayıtları", "core:fason_kayitlari"),
-        Ekran("fason_kesim_tanimlari", "Kesim Tanımları", "core:fason_kesim_tanimlari"),
+        Ekran("fason_fiyatlari", "Fason Fiyatları", "core:fason_fiyatlari"),
         Ekran("fason_donusleri", "Fason Dönüşler", "core:fason_donusleri"),
         Ekran("fason_mutabakat", "Fason Mutabakat", "core:fason_mutabakat"),
-        Ekran("fason_fiyatlari", "Fason Fiyatları", "core:fason_fiyatlari"),
     )),
     Modul("URETIM", "Üretim", (
         Ekran("uretim_emirleri", "Üretim Emirleri", "core:uretim_emirleri"),

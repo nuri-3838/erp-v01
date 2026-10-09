@@ -6,9 +6,9 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import Birim, Cari, FasonKesimKaydi, IsIstasyonu, Kategori, Operasyon, Stok
+from core.models import Birim, Cari, IsIstasyonu, Kategori, Operasyon, Stok
 from core.services import fason as fs
-from core.services.uretim import operasyon_guncelle, operasyon_olustur
+from core.services.uretim import operasyon_olustur
 
 D = Decimal
 
@@ -94,23 +94,6 @@ class HesapTest(ListeBase):
         self.assertEqual(s["toplam_tutar"], {"USD": D("3.00"), "TRY": D("24")})
 
 
-class KayitTest(ListeBase):
-    def test_kayit_fasoncuyu_saklar_ve_sonuc_canli(self):
-        self.fiyatlar()
-        kayit = fs.fason_kaydi_olustur(kalemler=[(self.urun1, 5)], cari=self.salim)
-        self.assertEqual(kayit.cari, self.salim)
-        self.assertEqual(fs.kayit_sonucu(kayit)["ozet"][0]["toplam_adet"], D("12"))
-        operasyon_guncelle(self.op_kesim, istasyon_id=self.lazer.pk, cikti_miktar=D("5"), satirlar=[(self.profil, D("1"))], boy_mm=D("1292.60"),
-                           yan_ciktilar=[(self.yan, D("1"), D("1063.53"))])
-        self.assertEqual(fs.kayit_sonucu(kayit)["ozet"][0]["toplam_adet"], D("10"))                        # 10 parça → 2 boy × 5 = 10; güncel tanım
-        self.assertEqual(fs.kayit_sonucu(kayit)["cari"], self.salim)
-
-    def test_kayit_fasoncusuz(self):
-        kayit = fs.fason_kaydi_olustur(kalemler=[(self.urun1, 5)])
-        self.assertIsNone(kayit.cari)
-        self.assertIsNone(fs.kayit_sonucu(kayit)["cari"])
-
-
 class EkranTest(ListeBase):
     def setUp(self):
         self.client.force_login(User.objects.create_superuser("kl_y", password="x"))
@@ -144,18 +127,11 @@ class EkranTest(ListeBase):
         r = self.client.post(reverse("core:fason_hesapla"), self.govde(cari=self.salim.pk))
         self.assertContains(r, "geçerli fason fiyatı olmayan parçalar")
 
-    def test_pdf_ve_kayit_fasoncu_ile(self):
+    def test_pdf_fasoncu_ile_indirilir_kayit_yok(self):
         self.fiyatlar()
         r = self.client.post(reverse("core:fason_hesapla"), self.govde(cari=self.salim.pk, eylem="pdf"))
         self.assertEqual(r["Content-Type"], "application/pdf")
-        kayit = FasonKesimKaydi.objects.get()
-        self.assertEqual(kayit.cari, self.salim)
-        det = self.client.get(reverse("core:fason_kaydi_detay", args=[kayit.pk]))
-        self.assertContains(det, "GZ-P-00041")
-        self.assertContains(det, "SALİM FASON")
-        pdf = self.client.get(reverse("core:fason_kaydi_pdf", args=[kayit.pk]))
-        self.assertEqual(pdf.status_code, 200)
-        self.assertGreater(len(pdf.content), 500)
+        self.assertGreater(len(r.content), 500)
 
     def test_urun_secici_operasyonlu_bitmis_urunler(self):
         r = self.client.get(reverse("core:fason_hesapla"))

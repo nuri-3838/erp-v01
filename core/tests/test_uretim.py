@@ -1,5 +1,4 @@
-"""ÜRETİM modülü — İş İstasyonu + Operasyon (rota) modeli. FASON'daki kesilmiş-parça/
-kesildigi_profil kavramıyla hiçbir ilişkisi yok. Bir Operasyon, bir iş istasyonunda,
+"""ÜRETİM modülü — İş İstasyonu + Operasyon (rota) modeli. Bir Operasyon, bir iş istasyonunda,
 bir/daha fazla GİRDİ stoktan TEK bir ÇIKTI stok üretir (oranlı dönüşüm). Bir Üretim Emri
 ("N adet [hedef ürün] istiyorum"), İhtiyaç Hesapla ile aynı özyinelemeli algoritmayla
 zinciri hesaplayıp zincirdeki HER operasyon için ayrı bir TASLAK Operasyon Kaydı açar; her

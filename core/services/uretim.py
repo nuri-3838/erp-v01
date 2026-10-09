@@ -1,7 +1,6 @@
 """ÜRETİM modülü servis katmanı — İş İstasyonu + Operasyon (rota) modeli.
 
-Bağımsız, sıfırdan kurulan bir Stok↔Stok rota modeli — FASON'daki (kesilmiş parça /
-kesildigi_profil) kavramlarıyla hiçbir ilişkisi yoktur. Bitmiş bir ürün, farklı iş
+Bağımsız, sıfırdan kurulan bir Stok↔Stok rota modeli. Bitmiş bir ürün, farklı iş
 istasyonlarında art arda yapılan operasyonlarla adım adım ortaya çıkar: her Operasyon,
 bir istasyonda, bir/daha fazla GİRDİ stoktan TEK bir ÇIKTI stok üretir (oranlı dönüşüm).
 
