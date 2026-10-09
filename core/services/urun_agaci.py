@@ -14,9 +14,9 @@ from decimal import Decimal
 from django.db.models import Prefetch, Sum
 from django.utils import timezone
 
-from core.models import Cari, Depo, Kur, Operasyon, OperasyonGirdi, OperasyonYanCikti, Stok, StokHareket
+from core.models import Cari, Depo, Kur, Operasyon, OperasyonCikti, OperasyonGirdi, Stok, StokHareket
 from core.sayi import format_tr, yuvarla
-from core.services.uretim import ihtiyac_hesapla
+from core.services.uretim import ihtiyac_hesapla, tanim_ciktilari
 
 SIFIR = Decimal("0")
 BIR = Decimal("1")
@@ -41,20 +41,22 @@ class Graf:
         self.operasyonlar = operasyonlar
         self.bugun = bugun
         self._kurlar = None
-        self.op_of = {op.cikti_id: op for op in operasyonlar}                 # stok pk -> operasyon
+        self.ciktilar = {op.pk: tanim_ciktilari(op) for op in operasyonlar}   # operasyon pk -> çıktı satırları (sıra 0 referans)
+        self.op_of = {c.stok_id: op for op in operasyonlar for c in self.ciktilar[op.pk] if c.surucu}   # stok pk -> üreten operasyon
         self.girdiler = {op.pk: list(op.girdiler.all()) for op in operasyonlar}
-        self.yanlar = {op.pk: list(op.yan_ciktilar.all()) for op in operasyonlar}
+        self.yanlar = {op.pk: [c for c in self.ciktilar[op.pk] if c.sira != 0] for op in operasyonlar}   # ek çıktılar (ÜRET: yan)
         self.stoklar = {}                                                      # stok pk -> Stok (zincirdeki her stok)
         self.kullanan = {}                                                     # stok pk -> [girdi olarak kullanan operasyon]
-        self.yan_ureten = {}                                                   # stok pk -> [yan çıktı olarak üreten operasyon]
+        self.yan_ureten = {}                                                   # stok pk -> [yan çıktı (sürücü olmayan) olarak üreten operasyon]
         for op in operasyonlar:
             self.stoklar[op.cikti_id] = op.cikti
             for g in self.girdiler[op.pk]:
                 self.stoklar.setdefault(g.girdi_id, g.girdi)
                 self.kullanan.setdefault(g.girdi_id, []).append(op)
-            for y in self.yanlar[op.pk]:
-                self.stoklar.setdefault(y.stok_id, y.stok)
-                self.yan_ureten.setdefault(y.stok_id, []).append(op)
+            for c in self.ciktilar[op.pk]:
+                self.stoklar.setdefault(c.stok_id, c.stok)
+                if not c.surucu:
+                    self.yan_ureten.setdefault(c.stok_id, []).append(op)
         self._tuketim = {}
 
     @property
@@ -82,14 +84,14 @@ class Graf:
 
 
 def graf_yukle(bugun=None) -> Graf:
-    """3 sorgu: operasyonlar (+istasyon, çıktı stoku), girdiler (+stok/kategori/birim/ortalama maliyet), yan çıktılar."""
+    """3 sorgu: operasyonlar (+istasyon, çıktı stoku), girdiler (+stok/kategori/birim/ortalama maliyet), çıktı satırları (OperasyonCikti)."""
     ops = list(
         Operasyon.objects.filter(silindi=False)
         .select_related("istasyon", "cikti__kategori__ust", "cikti__uretim_birimi")
         .prefetch_related(
             Prefetch("girdiler", queryset=OperasyonGirdi.objects.filter(silindi=False)
                      .select_related("girdi__kategori__ust", "girdi__uretim_birimi").order_by("sira", "pk")),
-            Prefetch("yan_ciktilar", queryset=OperasyonYanCikti.objects.filter(silindi=False)
+            Prefetch("ciktilar", queryset=OperasyonCikti.objects.filter(silindi=False)
                      .select_related("stok__kategori__ust", "stok__uretim_birimi").order_by("sira", "pk")))
         .order_by("cikti__kod"))
     return Graf(ops, bugun)

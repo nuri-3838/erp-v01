@@ -88,7 +88,12 @@ def uretim_cikti_agirliklari(kayit, ciktilar) -> tuple:
     agirlik = {}
     for h in ciktilar:
         c = satirlar.get(h.stok_id)
-        agirlik[h.pk] = (c.miktar * c.boy_mm) if (c is not None and c.boy_mm) else Decimal("0")
+        if c is None:
+            agirlik[h.pk] = Decimal("0")
+        elif c.agirlik is not None:                       # onay anında saklanan ağırlık (BOY / EŞİT / YÜZDE anahtarına göre)
+            agirlik[h.pk] = c.agirlik
+        else:                                             # eski kayıt: miktar × boy
+            agirlik[h.pk] = (c.miktar * c.boy_mm) if c.boy_mm else Decimal("0")
     if not satirlar:                                   # eski kayıt: yalnız ana çıktı var → %100
         agirlik = {ana.pk: Decimal("1")}
     return agirlik, ana.pk

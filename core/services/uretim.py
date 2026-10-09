@@ -115,7 +115,7 @@ def aktif_operasyonlar():
     return (Operasyon.objects.filter(silindi=False)
             .select_related("istasyon", "cikti")
             .annotate(girdi_sayisi=Count("girdiler", filter=Q(girdiler__silindi=False), distinct=True),
-                      yan_cikti_sayisi=Count("yan_ciktilar", filter=Q(yan_ciktilar__silindi=False), distinct=True))
+                      yan_cikti_sayisi=Count("ciktilar", filter=Q(ciktilar__silindi=False) & ~Q(ciktilar__sira=0), distinct=True))
             .order_by("istasyon__kod", "cikti__kod"))
 
 
@@ -126,14 +126,31 @@ SERI_KOK_ONEKI = {"A": "152-10-", "C": "152-22-"}      # bitmiş ürün (kök) k
 
 
 def operasyonlari_yukle() -> list:
-    """Aktif operasyonlar + girdiler + yan çıktılar + stok/birim bilgisi: TOPLAM 4 sorgu (operasyon sayısından bağımsız)."""
+    """Aktif operasyonlar + girdiler + çıktı satırları (OperasyonCikti) + stok/birim bilgisi: TOPLAM 4 sorgu (operasyon sayısından bağımsız)."""
     return list(
         Operasyon.objects.filter(silindi=False)
         .select_related("istasyon", "cikti__uretim_birimi")
         .prefetch_related(
             Prefetch("girdiler", queryset=OperasyonGirdi.objects.filter(silindi=False).select_related("girdi__uretim_birimi").order_by("sira", "pk")),
-            Prefetch("yan_ciktilar", queryset=OperasyonYanCikti.objects.filter(silindi=False).select_related("stok").order_by("sira", "pk")))
+            Prefetch("ciktilar", queryset=OperasyonCikti.objects.filter(silindi=False).select_related("stok").order_by("sira", "pk")))
         .order_by("istasyon__kod", "cikti__kod"))
+
+
+def tanim_ciktilari(operasyon: Operasyon) -> list:
+    """Tanımın aktif çıktı satırları (OperasyonCikti; sıra 0 = referans/ana çıktı). ``ciktilar`` prefetch edilmişse sorgu yok."""
+    return [c for c in operasyon.ciktilar.all() if not c.silindi]
+
+
+def ek_ciktilar(operasyon: Operasyon) -> list:
+    """Referans dışındaki çıktı satırları: ÜRET'te yan çıktılar, PARÇALA'da diğer çıktılar (``miktar``, ``boy_mm``, ``stok`` alanlı)."""
+    return [c for c in tanim_ciktilari(operasyon) if c.sira != 0]
+
+
+def ureten_operasyon(stok) -> Operasyon | None:
+    """``stok``u üreten aktif tanım — OperasyonCikti.surucu satırı üzerinden (ÜRET'te ana çıktı, PARÇALA'da her çıktı). Yoksa None."""
+    c = (OperasyonCikti.objects.filter(stok=stok, silindi=False, surucu=True, operasyon__silindi=False)
+         .select_related("operasyon__istasyon", "operasyon__cikti").first())
+    return c.operasyon if c else None
 
 
 def operasyon_serileri(operasyonlar=None) -> dict:
@@ -149,7 +166,7 @@ def operasyon_serileri(operasyonlar=None) -> dict:
         for g in op.girdiler.all():
             kullanan.setdefault(g.girdi_id, set()).add(op.pk)
             kod_of.setdefault(g.girdi_id, g.girdi.kod)
-        for y in op.yan_ciktilar.all():
+        for y in ek_ciktilar(op):
             kullanan.setdefault(y.stok_id, set()).add(op.pk)
             kod_of.setdefault(y.stok_id, y.stok.kod)
     kok_memo = {}
@@ -171,7 +188,7 @@ def operasyon_serileri(operasyonlar=None) -> dict:
 
     sonuc = {}
     for op in operasyonlar:
-        baslar = (op.cikti_id,) + tuple(y.stok_id for y in op.yan_ciktilar.all())
+        baslar = (op.cikti_id,) + tuple(y.stok_id for y in ek_ciktilar(op))
         anahtar = frozenset(baslar)
         if anahtar not in kok_memo:
             kok_memo[anahtar] = kokler(baslar)
@@ -189,7 +206,7 @@ def _girdi_ozeti(op) -> dict:
         q = yuvarla(d, 6).normalize()
         return format_tr(q, max(0, -q.as_tuple().exponent))
     girdiler = list(op.girdiler.all())
-    yanlar = list(op.yan_ciktilar.all())
+    yanlar = ek_ciktilar(op)
     birim = (op.cikti.uretim_birimi.ad or "").lower()
     tam_liste = "\n".join(f"{sade(g.miktar)} {g.girdi.uretim_birimi.kisa_ad or g.girdi.uretim_birimi.ad} {g.girdi.kod}" for g in girdiler)
     yan_metin = [f"+{sade(y.miktar)} × {y.stok.kod}" for y in yanlar]
@@ -221,10 +238,10 @@ def operasyon_liste(*, ara="", istasyon=None, seri="", tam_boy=False, yan_cikti=
         kok = op.cikti.kod.startswith("152-") and not kul
         return {
             "op": op, "seri": seriler[op.pk], "seri_etiket": SERI_ETIKET[seriler[op.pk]], "baglantisiz": seriler[op.pk] == "BAGLANTISIZ",
-            "tam_boy": op.tam_calistirma, "yan_sayisi": len(op.yan_ciktilar.all()), "kullanan_sayisi": len({o.pk for o in kul}),
+            "tam_boy": op.tam_calistirma, "yan_sayisi": len(ek_ciktilar(op)), "kullanan_sayisi": len({o.pk for o in kul}),
             "bitmis_urun": kok, "ozet": _girdi_ozeti(op),
             "ara_metin": buyuk_harf_tr(" ".join([op.cikti.kod, op.cikti.ad] + [f"{g.girdi.kod} {g.girdi.ad}" for g in op.girdiler.all()]
-                                                + [f"{y.stok.kod} {y.stok.ad}" for y in op.yan_ciktilar.all()]))}
+                                                + [f"{y.stok.kod} {y.stok.ad}" for y in ek_ciktilar(op)]))}
 
     satirlar = [zenginlestir(op) for op in ops]
     ozet = {"toplam": len(satirlar), "tam_boy": sum(1 for r in satirlar if r["tam_boy"]),
@@ -259,7 +276,8 @@ def operasyon_girdileri(operasyon: Operasyon):
 
 
 def operasyonlu_stok_idler():
-    return aktif_operasyonlar().values_list("cikti_id", flat=True)
+    """Aktif bir tanımın ÜRETTİĞİ stoklar (OperasyonCikti.surucu)."""
+    return OperasyonCikti.objects.filter(silindi=False, surucu=True, operasyon__silindi=False).values_list("stok_id", flat=True)
 
 
 def kok_operasyonlar():
@@ -399,7 +417,7 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanic
     """``tam_boy`` None ise varsayılan: BOY birimli girdi varsa True; True/False verilirse kullanıcının seçimi."""
     istasyon = _istasyon_coz(istasyon_id)
     cikti = _cikti_coz(cikti_id)
-    if Operasyon.objects.filter(silindi=False, cikti=cikti).exists():
+    if ureten_operasyon(cikti) is not None:
         raise UretimHatasi("Bu çıktı için zaten aktif bir operasyon tanımlı.")
     cm = _sayi_coz(cikti_miktar, "Çıktı miktarı geçerli bir sayı olmalı.")
     if cm <= 0:
@@ -511,10 +529,10 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
                 satirlar = list(graf.girdiler.get(operasyon.pk, [])) if operasyon else []
                 yan_onbellek[stok.pk] = list(graf.yanlar.get(operasyon.pk, [])) if operasyon else []
             else:
-                operasyon = (Operasyon.objects.filter(cikti=stok, silindi=False).select_related("istasyon").first())
+                operasyon = ureten_operasyon(stok)
                 satirlar = (list(operasyon.girdiler.filter(silindi=False).select_related("girdi").order_by("sira", "pk"))
                             if operasyon else [])
-                yan_onbellek[stok.pk] = list(operasyon_yan_ciktilari(operasyon)) if operasyon else []
+                yan_onbellek[stok.pk] = ek_ciktilar(operasyon) if operasyon else []
             onbellek[stok.pk] = (operasyon, satirlar)
         return onbellek[stok.pk]
 
@@ -656,7 +674,7 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
         if urun.pk in gorulen:
             raise UretimHatasi(f"{urun.kod} birden fazla satırda tekrarlanamaz.")
         gorulen.add(urun.pk)
-        if not Operasyon.objects.filter(silindi=False, cikti=urun).exists():
+        if ureten_operasyon(urun) is None:
             raise UretimHatasi(
                 f"{urun.kod} için tanımlı bir operasyon yok; önce Operasyon Tanımları'ndan ekleyin.")
         miktar = _sayi_coz(satir["hedef_miktar"], "Hedef miktar geçerli bir sayı olmalı.")
@@ -709,7 +727,7 @@ def siparis_uretilebilir_kalemleri(siparis):
     for k in siparis.kalemler.filter(silindi=False).select_related("stok"):
         if not k.stok.uretim_urunu:
             uygun_degil.append((k, "üretim ürünü işaretli değil"))
-        elif not Operasyon.objects.filter(silindi=False, cikti=k.stok).exists():
+        elif ureten_operasyon(k.stok) is None:
             uygun_degil.append((k, "tanımlı operasyonu yok"))
         else:
             uygun.append(k)
@@ -859,10 +877,14 @@ def operasyon_kaydi_girdi_guncelle(satir: OperasyonKaydiGirdi, *, gerceklesen_mi
 def kayit_ciktilari(kayit: OperasyonKaydi) -> list:
     """Kaydın çıktıları: [(anahtar, Stok, BEKLENEN miktar, boy_mm)] — ana çıktı + yan çıktılar (çalıştırma başına tanım × çalıştırma)."""
     operasyon = kayit.operasyon
-    calistirma = kayit.hedef_cikti_miktari / operasyon.cikti_miktar
-    sonuc = [("ana", operasyon.cikti, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
-    for y in operasyon_yan_ciktilari(operasyon):
-        sonuc.append((f"yan{y.pk}", y.stok, yuvarla(calistirma * y.miktar, 6), y.boy_mm))
+    tanim = tanim_ciktilari(operasyon)
+    if not tanim:                                                             # (güvenlik) çıktı satırı yoksa yalnız ana çıktı
+        return [("ana", operasyon.cikti, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
+    referans = tanim[0]
+    calistirma = kayit.hedef_cikti_miktari / referans.miktar
+    sonuc = [("ana", referans.stok, kayit.hedef_cikti_miktari, referans.boy_mm)]
+    for c in tanim[1:]:
+        sonuc.append((f"yan{c.pk}", c.stok, yuvarla(calistirma * c.miktar, 6), c.boy_mm))
     return sonuc
 
 
@@ -971,12 +993,13 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
         f = fason[anahtar] if fason else None
         OperasyonKaydiCikti.objects.create(
             kayit=kayit, stok_id=stok_id, miktar=miktar, beklenen_miktar=beklenen[anahtar], boy_mm=boy, pay_orani=oran, ana_mi=(anahtar == "ana"),
+            agirlik=agirlik[anahtar],
             fason_birim_fiyat=f["fiyat"].birim_fiyat if f else None, fason_para_birimi=f["fiyat"].para_birimi if f else "",
             fason_kur=f["kur"] if f else None, fason_tutar=f["tutar_try"] if f else None, fason_tutar_usd=f["tutar_usd"] if f else None,
             created_by=kullanici, updated_by=kullanici)
     for anahtar, stok_id, boy in gelmeyen:
         OperasyonKaydiCikti.objects.create(kayit=kayit, stok_id=stok_id, miktar=Decimal("0"), beklenen_miktar=beklenen[anahtar], boy_mm=boy,
-                                           pay_orani=Decimal("0"), ana_mi=False, fason_tutar=Decimal("0"), fason_tutar_usd=Decimal("0"),
+                                           pay_orani=Decimal("0"), agirlik=Decimal("0"), ana_mi=False, fason_tutar=Decimal("0"), fason_tutar_usd=Decimal("0"),
                                            created_by=kullanici, updated_by=kullanici)
     pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, "ana")
     pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, "ana")

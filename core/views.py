@@ -6887,7 +6887,7 @@ def operasyon_ekle(request):
             {"girdi": s.girdi_id, "miktar": s.miktar} for s in uretim_servis.operasyon_girdileri(kaynak)], prefix="satir")
         yan_formset = OperasyonYanCiktiFormSet(initial=[
             {"stok": y.stok_id, "miktar": y.miktar, "boy_mm": y.boy_mm}
-            for y in uretim_servis.operasyon_yan_ciktilari(kaynak)], prefix="yan")
+            for y in uretim_servis.ek_ciktilar(kaynak)], prefix="yan")
     else:
         bform = OperasyonBaslikForm()
         formset = OperasyonGirdiSatirFormSet(prefix="satir")
@@ -6929,7 +6929,7 @@ def operasyon_duzenle(request, pk):
             for s in uretim_servis.operasyon_girdileri(operasyon)], prefix="satir")
         yan_formset = OperasyonYanCiktiFormSet(initial=[
             {"stok": y.stok_id, "miktar": y.miktar, "boy_mm": y.boy_mm}
-            for y in uretim_servis.operasyon_yan_ciktilari(operasyon)], prefix="yan")
+            for y in uretim_servis.ek_ciktilar(operasyon)], prefix="yan")
     istasyonlar = uretim_servis.aktif_istasyonlar()
     return render(request, "core/operasyon_form.html", _operasyon_form_baglam(
         formset=formset, yan_formset=yan_formset, operasyon=operasyon, istasyonlar=istasyonlar,
@@ -7241,7 +7241,7 @@ def operasyon_kaydi_detay(request, pk):
                     for h in cikti_hareketleri]
     else:
         ciktilar = []
-    yan_tanimlar = list(uretim_servis.operasyon_yan_ciktilari(kayit.operasyon))
+    yan_tanimlar = list(uretim_servis.ek_ciktilar(kayit.operasyon))
     return render(request, "core/operasyon_kaydi_detay.html",
                   {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
                    "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar,
