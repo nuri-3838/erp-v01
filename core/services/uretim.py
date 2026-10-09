@@ -215,9 +215,18 @@ def _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici):
                                          created_by=kullanici, updated_by=kullanici)
 
 
+def _tam_boy_mi(satirlar) -> bool:
+    """Tam boy kuralı (OTOMATİK): girdilerden en az birinin üretim birimi BOY ise çalıştırma sayısı tam sayıdır."""
+    return any(_boy_birimli_mi(girdi) for girdi, _ in satirlar)
+
+
+def boy_stok_idleri():
+    """Üretim birimi BOY olan stokların pk listesi (Operasyon formunda 'Tam boy: Evet/Hayır' rozetini JS ile göstermek için)."""
+    return [s.pk for s in Stok.objects.filter(silindi=False).select_related("uretim_birimi") if _boy_birimli_mi(s)]
+
+
 @transaction.atomic
-def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", aciklama="",
-                      kullanici=None, tam_calistirma=False, boy_mm=None, yan_ciktilar=None) -> Operasyon:
+def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanici=None, boy_mm=None, yan_ciktilar=None) -> Operasyon:
     istasyon = _istasyon_coz(istasyon_id)
     cikti = _cikti_coz(cikti_id)
     if Operasyon.objects.filter(silindi=False, cikti=cikti).exists():
@@ -230,8 +239,7 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", a
     yan_ciktilar = list(yan_ciktilar or [])
     _yan_ciktilari_dogrula(cikti, satirlar, yan_ciktilar, boy)
     operasyon = Operasyon.objects.create(
-        istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=bool(tam_calistirma), boy_mm=boy,
-        ad=(ad or "").strip(), aciklama=(aciklama or "").strip(),
+        istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=_tam_boy_mi(satirlar), boy_mm=boy,
         created_by=kullanici, updated_by=kullanici)
     _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici)
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
@@ -242,8 +250,8 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", a
 
 
 @transaction.atomic
-def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satirlar, ad="",
-                       aciklama="", kullanici=None, tam_calistirma=None, boy_mm=_KORU, yan_ciktilar=None) -> Operasyon:
+def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satirlar,
+                       kullanici=None, boy_mm=_KORU, yan_ciktilar=None) -> Operasyon:
     """``boy_mm`` verilmezse ana çıktı boyu, ``yan_ciktilar`` verilmezse (None) yan çıktılar KORUNUR; [] verilirse yan çıktılar silinir."""
     if operasyon.silindi:
         raise UretimHatasi("Silinmiş operasyon düzenlenemez.")
@@ -265,13 +273,10 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satir
     operasyon.boy_mm = yeni_boy
     operasyon.istasyon = istasyon
     operasyon.cikti_miktar = cm
-    if tam_calistirma is not None:
-        operasyon.tam_calistirma = bool(tam_calistirma)
-    operasyon.ad = (ad or "").strip()
-    operasyon.aciklama = (aciklama or "").strip()
+    operasyon.tam_calistirma = _tam_boy_mi(satirlar)               # girdi birimi değişince OTOMATİK güncellenir
     operasyon.updated_by = kullanici
     operasyon.save(update_fields=[
-        "istasyon", "cikti_miktar", "tam_calistirma", "boy_mm", "ad", "aciklama", "updated_by", "updated_at"])
+        "istasyon", "cikti_miktar", "tam_calistirma", "boy_mm", "updated_by", "updated_at"])
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,

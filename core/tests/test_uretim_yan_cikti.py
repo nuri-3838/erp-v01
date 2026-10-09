@@ -46,8 +46,7 @@ class YanCiktiBase(TestCase):
         cls.ana = cls._stok("AYAK66", cls.kat_ana)                    # 6+6 SAĞ (3 ad/boy, 1292,60 mm)
         cls.yan = cls._stok("AYAK55", cls.kat_yan)                    # 5+5 SAĞ (yan çıktı, 1063,53 mm)
         cls.op = operasyon_olustur(
-            istasyon_id=cls.kesim.pk, cikti_id=cls.ana.pk, cikti_miktar=D("3"), satirlar=[(cls.profil, D("1"))],
-            tam_calistirma=True, boy_mm=D("1292.60"), yan_ciktilar=[(cls.yan, D("1"), D("1063.53"))])
+            istasyon_id=cls.kesim.pk, cikti_id=cls.ana.pk, cikti_miktar=D("3"), satirlar=[(cls.profil, D("1"))], boy_mm=D("1292.60"), yan_ciktilar=[(cls.yan, D("1"), D("1063.53"))])
 
     @classmethod
     def _stok(cls, kod, kat, birim=None, **kw):
@@ -112,7 +111,7 @@ class KisitTest(YanCiktiBase):
 
     def test_guncelle_koru_degistir_sil(self):
         op = self.op
-        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(self.profil, D("1"))], tam_calistirma=True)
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(self.profil, D("1"))])
         self.assertEqual((op.boy_mm, op.yan_ciktilar.filter(silindi=False).count()), (D("1292.60"), 1))                    # korunur
         operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(self.profil, D("1"))],
                            yan_ciktilar=[(self.yan, D("2"), D("1000"))])
@@ -161,7 +160,7 @@ class OnayVeMaliyetTest(YanCiktiBase):
 
     def test_yuvarlama_farki_ana_cikti(self):
         op = operasyon_olustur(istasyon_id=self.kesim.pk, cikti_id=self._stok("ANA3", self.kat_ana).pk, cikti_miktar=D("1"),
-                               satirlar=[(self.profil, D("1"))], boy_mm=D("100"), tam_calistirma=True,
+                               satirlar=[(self.profil, D("1"))], boy_mm=D("100"),
                                yan_ciktilar=[(self._stok("YA", self.kat_yan), D("1"), D("100")), (self._stok("YB", self.kat_yan), D("1"), D("100"))])
         self.profil_gir(1, "100.00", "3.33")
         k = operasyon_kaydi_olustur(operasyon_id=op.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 9), hedef_cikti_miktari=D("1"))

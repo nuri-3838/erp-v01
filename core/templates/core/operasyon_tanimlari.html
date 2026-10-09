@@ -24,7 +24,7 @@
     {% for o in operasyonlar %}
       <tr>
         <td><span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
-        <td><span class="mono">{{ o.cikti.kod }}</span> {{ o.ad|default:o.cikti.ad }}
+        <td><span class="mono">{{ o.cikti.kod }}</span> {{ o.cikti.ad }}
           {% if o.tam_calistirma %}<span class="rozet rozet-notr" title="Çalıştırma sayısı tam sayı; fazla parça stoğa girer">tam boy</span>{% endif %}
           {% if o.yan_cikti_sayisi %}<span class="rozet rozet-aktif" title="Bu operasyon ana çıktının yanında {{ o.yan_cikti_sayisi }} yan çıktı üretir">+{{ o.yan_cikti_sayisi }} yan çıktı</span>{% endif %}</td>
         <td class="sag mono">{{ o.cikti_miktar|tr_kur:3 }}</td>

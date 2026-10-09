@@ -236,10 +236,10 @@ class UretimMaliyetAktarimiTest(MaliyetBTemel):
         self.ist = _istasyon("LAZER")
         self.kesim = operasyon_olustur(
             istasyon_id=self.ist.pk, cikti_id=k["yari"].pk, cikti_miktar=Decimal("2"),
-            satirlar=[(k["ham"], Decimal("1"))], ad="Kesim")
+            satirlar=[(k["ham"], Decimal("1"))])
         self.bukum = operasyon_olustur(
             istasyon_id=_istasyon("BUKUM").pk, cikti_id=k["yari2"].pk, cikti_miktar=Decimal("1"),
-            satirlar=[(k["yari"], Decimal("1"))], ad="Büküm")
+            satirlar=[(k["yari"], Decimal("1"))])
 
     def _onayla(self, op, tarih, hedef):
         kayit = operasyon_kaydi_olustur(operasyon_id=op.pk, depo_id=self.da.pk, tarih=tarih,
@@ -280,7 +280,7 @@ class UretimMaliyetAktarimiTest(MaliyetBTemel):
             uretim_birimi=self.stok.uretim_birimi, fatura_birimi=self.stok.uretim_birimi)
         op = operasyon_olustur(
             istasyon_id=_istasyon("TEST").pk, cikti_id=yeni.pk, cikti_miktar=Decimal("1"),
-            satirlar=[(self.kart["ham"], Decimal("1"))], ad="Tanımsız")
+            satirlar=[(self.kart["ham"], Decimal("1"))])
         self.alis_yap(D(2026, 3, 5), "10", "10", stok=self.kart["ham"])
         from core.services.uretim import UretimHatasi
         kayit = operasyon_kaydi_olustur(operasyon_id=op.pk, depo_id=self.da.pk,

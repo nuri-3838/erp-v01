@@ -6641,9 +6641,7 @@ def operasyon_ekle(request):
                 uretim_servis.operasyon_olustur(
                     istasyon_id=cd["istasyon"].pk, cikti_id=cd["cikti"].pk,
                     cikti_miktar=cd["cikti_miktar"], satirlar=satirlar,
-                    ad=cd.get("ad", ""), aciklama=cd.get("aciklama", ""),
-                    kullanici=request.user, tam_calistirma=cd.get("tam_calistirma", False),
-                    boy_mm=cd.get("boy_mm"), yan_ciktilar=yanlar)
+                    kullanici=request.user, boy_mm=cd.get("boy_mm"), yan_ciktilar=yanlar)
                 messages.success(request, "Operasyon tanımı kaydedildi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
@@ -6653,7 +6651,8 @@ def operasyon_ekle(request):
         formset = OperasyonGirdiSatirFormSet(prefix="satir")
         yan_formset = OperasyonYanCiktiFormSet(prefix="yan")
     return render(request, "core/operasyon_form.html",
-                  {"bform": bform, "formset": formset, "yan_formset": yan_formset, "baslik": "Yeni Operasyon"})
+                  {"bform": bform, "formset": formset, "yan_formset": yan_formset, "baslik": "Yeni Operasyon",
+                   "boy_stok_idler": uretim_servis.boy_stok_idleri()})
 
 
 @ekran_gerekli("operasyon_tanimlari")
@@ -6664,8 +6663,6 @@ def operasyon_duzenle(request, pk):
         yan_formset, yan_var = _yan_ciktilar_post(request.POST)
         istasyon_id = request.POST.get("istasyon")
         cikti_miktar = request.POST.get("cikti_miktar")
-        ad = request.POST.get("ad", "")
-        aciklama = request.POST.get("aciklama", "")
         if formset.is_valid() and yan_formset.is_valid():
             satirlar = [(f.cleaned_data["girdi"], f.cleaned_data["miktar"])
                        for f in formset if f.dolu_mu()]
@@ -6674,8 +6671,7 @@ def operasyon_duzenle(request, pk):
             try:
                 uretim_servis.operasyon_guncelle(
                     operasyon, istasyon_id=istasyon_id, cikti_miktar=cikti_miktar,
-                    satirlar=satirlar, ad=ad, aciklama=aciklama, kullanici=request.user,
-                    tam_calistirma=request.POST.get("tam_calistirma") == "on",
+                    satirlar=satirlar, kullanici=request.user,
                     boy_mm=request.POST.get("boy_mm", "") if yan_var or "boy_mm" in request.POST else uretim_servis.KORU,
                     yan_ciktilar=yanlar if yan_var else None)
                 messages.success(request, "Operasyon tanımı güncellendi.")
@@ -6692,7 +6688,7 @@ def operasyon_duzenle(request, pk):
     istasyonlar = uretim_servis.aktif_istasyonlar()
     return render(request, "core/operasyon_form.html", {
         "formset": formset, "yan_formset": yan_formset, "operasyon": operasyon, "istasyonlar": istasyonlar,
-        "baslik": "Operasyon Düzenle"})
+        "baslik": "Operasyon Düzenle", "boy_stok_idler": uretim_servis.boy_stok_idleri()})
 
 
 @ekran_gerekli("operasyon_tanimlari")

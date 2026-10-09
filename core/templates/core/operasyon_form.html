@@ -18,6 +18,7 @@
     <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
   {% endif %}
 
+  {{ boy_stok_idler|json_script:"boy-stok-idler" }}
   <form method="post" autocomplete="off" style="display:contents">
     {% csrf_token %}
     {{ formset.management_form }}
@@ -43,24 +44,15 @@
             <input type="text" name="cikti_miktar" id="id_cikti_miktar" inputmode="decimal"
                    value="{{ operasyon.cikti_miktar|tr_kur:3 }}">
           </div>
-          <div class="alan">
+          <div class="alan" id="boy-alan"{% if not yan_formset.forms %} hidden{% endif %}>
             <label for="id_boy_mm">Ana çıktı boyu (mm)</label>
             <input type="text" name="boy_mm" id="id_boy_mm" inputmode="decimal" value="{% if operasyon.boy_mm %}{{ operasyon.boy_mm|tr_kur:2 }}{% endif %}">
-            <p class="yardim">Yalnız yan çıktısı olan operasyonda zorunlu (maliyet boy oranına göre paylaştırılır).</p>
+            <p class="yardim">Yan çıktı olduğu için zorunlu: maliyet ana ve yan çıktının boy oranına göre paylaştırılır.</p>
           </div>
           <div class="alan tam">
-            <label><input type="checkbox" name="tam_calistirma"{% if operasyon.tam_calistirma %} checked{% endif %}> Tam çalıştırma zorunlu (tam boy)</label>
-            <p class="yardim">İşaretliyse çalıştırma sayısı hep TAM SAYIDIR (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer.
-              BOY girdili kesimler için işaretleyin; kayış gibi MT birimli kesimlerde işaretlemeyin.</p>
-          </div>
-          <div class="alan">
-            <label for="id_ad">Ad</label>
-            <input type="text" name="ad" id="id_ad" maxlength="150" value="{{ operasyon.ad }}" autocomplete="off">
-          </div>
-          <div class="alan tam">
-            <label for="id_aciklama">Açıklama</label>
-            <input type="text" name="aciklama" id="id_aciklama" maxlength="300"
-                   value="{{ operasyon.aciklama }}" autocomplete="off">
+            <span class="et">Tam boy</span>
+            <span id="tam-boy-rozet" class="rozet {% if operasyon.tam_calistirma %}rozet-aktif{% else %}rozet-notr{% endif %}">{% if operasyon.tam_calistirma %}Evet{% else %}Hayır{% endif %}</span>
+            <p class="yardim">Otomatik: girdilerden biri BOY birimliyse çalıştırma sayısı hep TAM SAYIDIR (yukarı yuvarlanır) ve bir boydan çıkan fazla parça stoğa girer.</p>
           </div>
         </div>
       {% else %}
@@ -80,23 +72,16 @@
             {{ bform.cikti_miktar }}
             {% for e in bform.cikti_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
-          <div class="alan">
+          <div class="alan" id="boy-alan"{% if not yan_formset.forms %} hidden{% endif %}>
             <label for="{{ bform.boy_mm.id_for_label }}">{{ bform.boy_mm.label }}</label>
             {{ bform.boy_mm }}
-            <p class="yardim">{{ bform.boy_mm.help_text }}</p>
+            <p class="yardim">Yan çıktı olduğu için zorunlu: maliyet ana ve yan çıktının boy oranına göre paylaştırılır.</p>
             {% for e in bform.boy_mm.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
           <div class="alan tam">
-            <label>{{ bform.tam_calistirma }} {{ bform.tam_calistirma.label }}</label>
-            <p class="yardim">{{ bform.tam_calistirma.help_text }}</p>
-          </div>
-          <div class="alan">
-            <label for="{{ bform.ad.id_for_label }}">{{ bform.ad.label }}</label>
-            {{ bform.ad }}
-          </div>
-          <div class="alan tam">
-            <label for="{{ bform.aciklama.id_for_label }}">{{ bform.aciklama.label }}</label>
-            {{ bform.aciklama }}
+            <span class="et">Tam boy</span>
+            <span id="tam-boy-rozet" class="rozet rozet-notr">Hayır</span>
+            <p class="yardim">Otomatik: girdilerden biri BOY birimliyse çalıştırma sayısı hep TAM SAYIDIR (yukarı yuvarlanır) ve bir boydan çıkan fazla parça stoğa girer.</p>
           </div>
         </div>
       {% endif %}
@@ -127,7 +112,7 @@
       <h2 class="bolum-baslik">Yan Çıktılar</h2>
       <p class="yardim">Tam boy kesimde ana parçadan artan malzemeden kesilen ikinci parça (ör. 6+6 SAĞ ayak boyundan 3 adet kesilince 1 adet 5+5 SAĞ).
         Kayıt onayında yan çıktı da stoğa girer; girdi maliyeti ana ve yan çıktının <strong>boy oranına</strong> göre paylaştırılır.
-        Yan çıktısı olan operasyonda ana çıktının boyu (mm) zorunludur.</p>
+        İlk yan çıktıyı ekleyince "Ana çıktı boyu (mm)" alanı belirir ve zorunlu olur.</p>
       {% for f in yan_formset %}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}{% endfor %}
       <div class="tablo-kapsayici">
         <table class="ua-tablo">
@@ -176,36 +161,65 @@
     font-size:.95rem; padding:.2rem .5rem; }
   .ua-sil:hover { color:var(--hata); }
   .satir-alt { margin-top:.7rem; }
+  #boy-alan[hidden] { display:none !important; }
 </style>
 
 <script>
 (function(){
+  var BOY = new Set(JSON.parse(document.getElementById('boy-stok-idler').textContent || '[]').map(String));
+  var satirGovde = document.getElementById('satir-govde');
+  var yanGovde = document.getElementById('yan-govde');
+  var rozet = document.getElementById('tam-boy-rozet');
+  var boyAlan = document.getElementById('boy-alan');
+  var boyInput = boyAlan.querySelector('input');
+
+  // Tam boy rozeti: girdilerden biri BOY birimliyse Evet (yalnız bilgi; sunucu aynı kuralı uygular)
+  function tamBoyGuncelle(){
+    var evet = Array.prototype.some.call(satirGovde.querySelectorAll('select[name$="-girdi"]'),
+      function(s){ return s.value && BOY.has(String(s.value)); });
+    rozet.textContent = evet ? 'Evet' : 'Hayır';
+    rozet.className = 'rozet ' + (evet ? 'rozet-aktif' : 'rozet-notr');
+  }
+
+  // Ana çıktı boyu: yan çıktı satırı varken görünür + zorunlu; hiç yan çıktı kalmazsa gizlenir ve temizlenir
+  function boyGuncelle(){
+    var var_mi = yanGovde.querySelectorAll('tr').length > 0;
+    boyAlan.hidden = !var_mi;
+    boyInput.required = var_mi;
+    if (!var_mi) boyInput.value = '';
+  }
+
   function satirEkle(){
     var tf = document.getElementById('id_satir-TOTAL_FORMS');
     var i = parseInt(tf.value, 10);
     var tr = document.createElement('tr'); tr.className = 'ua-satir';
     tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
-    document.getElementById('satir-govde').appendChild(tr);
+    satirGovde.appendChild(tr);
     tf.value = i + 1;
     if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+    tamBoyGuncelle();
   }
-  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
-  document.getElementById('satir-govde').addEventListener('click', function(e){
-    if(e.target.classList.contains('ua-sil')) e.target.closest('tr').remove();
-  });
   function yanEkle(){
     var tf = document.getElementById('id_yan-TOTAL_FORMS');
     var i = parseInt(tf.value, 10);
     var tr = document.createElement('tr'); tr.className = 'ua-satir';
     tr.innerHTML = document.getElementById('bos-yan').innerHTML.replace(/__prefix__/g, i);
-    document.getElementById('yan-govde').appendChild(tr);
+    yanGovde.appendChild(tr);
     tf.value = i + 1;
     if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+    boyGuncelle();
   }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
   document.getElementById('yan-ekle').addEventListener('click', yanEkle);
-  document.getElementById('yan-govde').addEventListener('click', function(e){
-    if(e.target.classList.contains('ua-sil')) e.target.closest('tr').remove();
+  satirGovde.addEventListener('click', function(e){
+    if(e.target.classList.contains('ua-sil')){ e.target.closest('tr').remove(); tamBoyGuncelle(); }
   });
+  yanGovde.addEventListener('click', function(e){
+    if(e.target.classList.contains('ua-sil')){ e.target.closest('tr').remove(); boyGuncelle(); }
+  });
+  satirGovde.addEventListener('change', tamBoyGuncelle);
+  tamBoyGuncelle();
+  if (yanGovde.querySelectorAll('tr').length > 0) boyInput.required = true;
 })();
 </script>
 {% include "core/_akilli_hesap.html" %}

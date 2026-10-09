@@ -35,7 +35,7 @@
   <div class="satir"><span class="et">İş İstasyonu</span>
     <span class="dg"><span class="mono">{{ kayit.operasyon.istasyon.kod }}</span> {{ kayit.operasyon.istasyon.ad }}</span></div>
   <div class="satir"><span class="et">Operasyon / Çıktı</span>
-    <span class="dg"><span class="mono">{{ kayit.operasyon.cikti.kod }}</span> {{ kayit.operasyon.ad|default:kayit.operasyon.cikti.ad }}</span></div>
+    <span class="dg"><span class="mono">{{ kayit.operasyon.cikti.kod }}</span> {{ kayit.operasyon.cikti.ad }}</span></div>
   <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ kayit.tarih|date:"d.m.Y" }}</span></div>
   <div class="satir"><span class="et">Hedef Çıktı Miktarı</span><span class="dg mono">{{ kayit.hedef_cikti_miktari|tr_kur:3 }}</span></div>
   <div class="satir"><span class="et">Depo</span>

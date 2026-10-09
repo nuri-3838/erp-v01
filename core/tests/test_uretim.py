@@ -98,7 +98,7 @@ class OperasyonServisTest(TestCase):
     def test_olustur(self):
         op = operasyon_olustur(
             istasyon_id=self.istasyon.pk, cikti_id=self.cikti.pk, cikti_miktar=Decimal("2"),
-            satirlar=[(self.girdi, Decimal("1"))], ad="Kesim")
+            satirlar=[(self.girdi, Decimal("1"))])
         self.assertEqual(op.cikti_miktar, Decimal("2.000"))
         self.assertEqual(list(operasyon_girdileri(op))[0].girdi_id, self.girdi.pk)
 
@@ -188,10 +188,10 @@ class OperasyonKaydiServisTest(TestCase):
         cls.bukulmus = _stok(cls.kat, cls.birim, kod="UT-BUKULMUS", ad="bükülmüş parça")
         cls.kesim_op = operasyon_olustur(
             istasyon_id=cls.lazer.pk, cikti_id=cls.kesilmis.pk, cikti_miktar=Decimal("2"),
-            satirlar=[(cls.profil, Decimal("1"))], ad="Kesim")
+            satirlar=[(cls.profil, Decimal("1"))])
         cls.bukum_op = operasyon_olustur(
             istasyon_id=cls.bukum.pk, cikti_id=cls.bukulmus.pk, cikti_miktar=Decimal("1"),
-            satirlar=[(cls.kesilmis, Decimal("1"))], ad="Büküm")
+            satirlar=[(cls.kesilmis, Decimal("1"))])
 
     def test_olustur_oran_matematigi(self):
         """10 adet kesilmiş parça hedefi, cikti_miktar=2 olan kesim operasyonunda
