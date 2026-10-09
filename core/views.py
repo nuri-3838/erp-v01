@@ -6630,7 +6630,7 @@ def operasyon_ekle(request):
                     istasyon_id=cd["istasyon"].pk, cikti_id=cd["cikti"].pk,
                     cikti_miktar=cd["cikti_miktar"], satirlar=satirlar,
                     ad=cd.get("ad", ""), aciklama=cd.get("aciklama", ""),
-                    kullanici=request.user)
+                    kullanici=request.user, tam_calistirma=cd.get("tam_calistirma", False))
                 messages.success(request, "Operasyon tanımı kaydedildi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
@@ -6657,7 +6657,8 @@ def operasyon_duzenle(request, pk):
             try:
                 uretim_servis.operasyon_guncelle(
                     operasyon, istasyon_id=istasyon_id, cikti_miktar=cikti_miktar,
-                    satirlar=satirlar, ad=ad, aciklama=aciklama, kullanici=request.user)
+                    satirlar=satirlar, ad=ad, aciklama=aciklama, kullanici=request.user,
+                    tam_calistirma=request.POST.get("tam_calistirma") == "on")
                 messages.success(request, "Operasyon tanımı güncellendi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:

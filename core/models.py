@@ -3092,6 +3092,8 @@ class Operasyon(TemelModel):
         Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="operasyonlar")
     cikti_miktar = models.DecimalField(
         "çıktı miktarı (1 çalıştırma için)", max_digits=18, decimal_places=3, default=1)
+    # Kesimde TAM BOY: çalıştırma sayısı kesirli olamaz (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer.
+    tam_calistirma = models.BooleanField("tam çalıştırma zorunlu (tam boy)", default=False)
     ad = models.CharField("ad", max_length=150, blank=True, default="")
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
 

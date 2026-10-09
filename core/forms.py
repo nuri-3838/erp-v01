@@ -1249,6 +1249,10 @@ class OperasyonBaslikForm(forms.Form):
         label="Çıktı", queryset=Stok.objects.none(), empty_label="— çıktı seç —")
     cikti_miktar = TRDecimalField(label="Çıktı Miktarı (1 çalıştırma için)", basamak=3,
                                   initial=Decimal("1"))
+    tam_calistirma = forms.BooleanField(
+        label="Tam çalıştırma zorunlu (tam boy)", required=False,
+        help_text="İşaretliyse çalıştırma sayısı hep TAM SAYIDIR (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer. "
+                  "BOY girdili kesimler için işaretleyin; kayış gibi MT birimli kesimlerde işaretlemeyin.")
     ad = forms.CharField(label="Ad", max_length=150, required=False,
                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,

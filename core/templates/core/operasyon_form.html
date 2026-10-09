@@ -42,6 +42,11 @@
             <input type="text" name="cikti_miktar" id="id_cikti_miktar" inputmode="decimal"
                    value="{{ operasyon.cikti_miktar|tr_kur:3 }}">
           </div>
+          <div class="alan tam">
+            <label><input type="checkbox" name="tam_calistirma"{% if operasyon.tam_calistirma %} checked{% endif %}> Tam çalıştırma zorunlu (tam boy)</label>
+            <p class="yardim">İşaretliyse çalıştırma sayısı hep TAM SAYIDIR (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer.
+              BOY girdili kesimler için işaretleyin; kayış gibi MT birimli kesimlerde işaretlemeyin.</p>
+          </div>
           <div class="alan">
             <label for="id_ad">Ad</label>
             <input type="text" name="ad" id="id_ad" maxlength="150" value="{{ operasyon.ad }}" autocomplete="off">
@@ -68,6 +73,10 @@
             <label for="{{ bform.cikti_miktar.id_for_label }}">{{ bform.cikti_miktar.label }}</label>
             {{ bform.cikti_miktar }}
             {% for e in bform.cikti_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan tam">
+            <label>{{ bform.tam_calistirma }} {{ bform.tam_calistirma.label }}</label>
+            <p class="yardim">{{ bform.tam_calistirma.help_text }}</p>
           </div>
           <div class="alan">
             <label for="{{ bform.ad.id_for_label }}">{{ bform.ad.label }}</label>

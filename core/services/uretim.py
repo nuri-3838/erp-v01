@@ -19,7 +19,7 @@ bir istasyonda, bir/daha fazla GİRDİ stoktan TEK bir ÇIKTI stok üretir (oran
 """
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q
@@ -45,6 +45,20 @@ def _sayi_coz(deger, hata_mesaji):
         return parse_tr(deger)
     except SayiHatasi:
         raise UretimHatasi(hata_mesaji)
+
+
+def _yukari_yuvarla(deger: Decimal) -> Decimal:
+    """Tam sayıya YUKARI yuvarlar (6 ondalıkta temizledikten sonra: 1,0000000001 gibi bölme artıkları fazladan bir çalıştırma doğurmasın)."""
+    return yuvarla(deger, 6).to_integral_value(rounding=ROUND_CEILING)
+
+
+def _boy_birimli_mi(stok: Stok) -> bool:
+    """Stoğun ÜRETİM birimi BOY mu (kesimde tam sayı olması gereken profil)."""
+    b = stok.uretim_birimi
+    return (b.ad or "").strip().upper() == "BOY" or (b.kisa_ad or "").strip().upper() == "BOY"
+
+
+TAM_BOY_HATASI = "Bu kesim tam boy kesilmelidir; girdi miktarı tam sayı olmalı."
 
 
 # === İş İstasyonları (Depo servisiyle birebir aynı desen) ===
@@ -157,7 +171,7 @@ def _girdi_satirlarini_dogrula(cikti, satirlar):
 
 @transaction.atomic
 def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", aciklama="",
-                      kullanici=None) -> Operasyon:
+                      kullanici=None, tam_calistirma=False) -> Operasyon:
     istasyon = _istasyon_coz(istasyon_id)
     cikti = _cikti_coz(cikti_id)
     if Operasyon.objects.filter(silindi=False, cikti=cikti).exists():
@@ -167,7 +181,7 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", a
         raise UretimHatasi("Çıktı miktarı sıfırdan büyük olmalı.")
     _girdi_satirlarini_dogrula(cikti, satirlar)
     operasyon = Operasyon.objects.create(
-        istasyon=istasyon, cikti=cikti, cikti_miktar=cm,
+        istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=bool(tam_calistirma),
         ad=(ad or "").strip(), aciklama=(aciklama or "").strip(),
         created_by=kullanici, updated_by=kullanici)
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
@@ -179,7 +193,7 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", a
 
 @transaction.atomic
 def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satirlar, ad="",
-                       aciklama="", kullanici=None) -> Operasyon:
+                       aciklama="", kullanici=None, tam_calistirma=None) -> Operasyon:
     if operasyon.silindi:
         raise UretimHatasi("Silinmiş operasyon düzenlenemez.")
     istasyon = _istasyon_coz(istasyon_id)
@@ -191,11 +205,13 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satir
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     operasyon.istasyon = istasyon
     operasyon.cikti_miktar = cm
+    if tam_calistirma is not None:
+        operasyon.tam_calistirma = bool(tam_calistirma)
     operasyon.ad = (ad or "").strip()
     operasyon.aciklama = (aciklama or "").strip()
     operasyon.updated_by = kullanici
     operasyon.save(update_fields=[
-        "istasyon", "cikti_miktar", "ad", "aciklama", "updated_by", "updated_at"])
+        "istasyon", "cikti_miktar", "tam_calistirma", "ad", "aciklama", "updated_by", "updated_at"])
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
@@ -220,66 +236,140 @@ def operasyon_sil(operasyon: Operasyon, kullanici=None) -> Operasyon:
 def ihtiyac_hesapla(kalemler):
     """kalemler: [(Stok hedef, Decimal miktar), ...].
 
-    Döner: {"agac": [...], "ozet": [...]}
+    İKİ AŞAMALI, SEVİYE BAZLI hesap (low-level code):
+      1) Zincirdeki her stoğun EN DERİN seviyesi bulunur (köklerden en uzun yol; döngü varsa UretimHatasi).
+      2) Stoklar seviye sırasıyla işlenir: bir stoğun TÜM talebi (kökten gelen + üst seviyelerin girdi talepleri) toplanmadan
+         işlenmez. ``tam_calistirma=True`` operasyonda çalıştırma = ceil(TOPLAM talep / çıktı miktarı) — yuvarlama dal bazında DEĞİL,
+         toplanmış talep üzerinde TEK kez yapılır; girdilere (yuvarlanmış çalıştırma × girdi miktarı) talep aktarılır. ``tam_calistirma=False``
+         operasyonda çalıştırma kesirli kalır (eski davranış).
+
+    Döner: {"agac": [...], "ozet": [...], "plan": [...]}
       agac — her hedef satırı için, kökten yapraklara iç içe ağaç:
-        {"stok", "miktar", "istasyon"(None ise yaprak), "operasyon"(None ise yaprak),
-         "yaprak": bool, "cocuklar": [...]}
-      ozet — kökler HARİÇ, zincirde geçilen HER stok için TEK satır (bir stoğun en fazla
-        1 aktif operasyonu olduğu için istasyon deterministik), toplam miktarları
-        biriktirilmiş: {"stok", "istasyon", "operasyon", "toplam_miktar",
-        "calistirma_sayisi"(yaprakta None), "yaprak"}.
+        {"stok", "miktar"(bu dalın talebi), "istasyon", "operasyon"(None ise yaprak), "yaprak": bool, "cocuklar": [...]}
+        + yaprak olmayanda: "tam", "calistirma", "uretilecek", "fazla", "ihtiyac_toplam" (stoğun ZİNCİR TOPLAMI üzerinden). ``tam``
+        operasyonlu bir stok ağaçta ilk geçtiği yerde açılır; sonraki geçişlerde "tekrar": True (çocuksuz) — kesirli boy hiç görünmez.
+      ozet — kökler HARİÇ zincirde geçilen HER stok için TEK satır: {"stok", "istasyon", "operasyon", "toplam_miktar"(kök talebi hariç
+        gelen talep), "calistirma_sayisi"(yaprakta None), "uretilecek_miktar", "fazla_miktar", "ihtiyac"(zincir toplamı), "tam",
+        "yaprak"}.
+      plan — operasyonu olan HER stok (kökler önce) için üretim planı: {"stok", "operasyon", "ihtiyac", "calistirma", "uretilecek",
+        "fazla", "tam"} — Üretim Emri kayıt açarken ``uretilecek`` miktarını kullanır.
 
-    Döngü koruması: `yol`, mevcut dal boyunca ziyaret edilen stok id'lerinin frozenset'i
-    (dal-yerel — aynı stoğun bağımsız dallarda geçmesi sorun değil). Bir stok kendi ata
-    zincirinde tekrar ederse UretimHatasi fırlatılır (sessizce kesilip yanlış/eksik rakam
-    göstermek yerine — üretim planlamasında yanıltıcı olur)."""
-    ozet_map = {}
+    Döngü koruması: bir stok kendi ata zincirinde tekrar ederse UretimHatasi fırlatılır (sessizce kesilip yanlış/eksik rakam göstermek
+    yerine — üretim planlamasında yanıltıcı olur)."""
+    hedefler = [(stok, miktar) for stok, miktar in kalemler if miktar is not None and miktar > 0]
+    onbellek = {}                                      # stok.pk -> (operasyon|None, girdi satırları)
 
-    def ozete_ekle(stok, miktar, operasyon):
-        kayit = ozet_map.get(stok.pk)
-        if kayit is None:
-            kayit = {
-                "stok": stok, "operasyon": operasyon,
-                "istasyon": operasyon.istasyon if operasyon else None,
-                "toplam_miktar": Decimal("0"), "yaprak": operasyon is None,
-                "_sira": len(ozet_map),
-            }
-            ozet_map[stok.pk] = kayit
-        kayit["toplam_miktar"] += miktar
+    def op_bul(stok):
+        if stok.pk not in onbellek:
+            operasyon = (Operasyon.objects.filter(cikti=stok, silindi=False).select_related("istasyon").first())
+            satirlar = (list(operasyon.girdiler.filter(silindi=False).select_related("girdi").order_by("sira", "pk"))
+                        if operasyon else [])
+            onbellek[stok.pk] = (operasyon, satirlar)
+        return onbellek[stok.pk]
 
-    def gez(stok, miktar, yol, kok=False):
+    # --- 1. aşama: zinciri keşfet (döngü kontrolü), ebeveynleri topla, seviyeleri bul
+    stoklar, sira_no, ebeveynler, bitti = {}, {}, {}, set()
+
+    def kesfet(stok, yol):
         if stok.pk in yol:
             raise UretimHatasi(
-                f"Operasyon zincirinde döngü tespit edildi: {stok.kod} kendi üretim "
-                f"zincirinde tekrar ediyor.")
-        operasyon = (Operasyon.objects.filter(cikti=stok, silindi=False)
-                    .select_related("istasyon").first())
-        if not kok:
-            ozete_ekle(stok, miktar, operasyon)
+                f"Operasyon zincirinde döngü tespit edildi: {stok.kod} kendi üretim zincirinde tekrar ediyor.")
+        if stok.pk not in stoklar:
+            stoklar[stok.pk] = stok
+            sira_no[stok.pk] = len(sira_no)
+        if stok.pk in bitti:
+            return
+        _, satirlar = op_bul(stok)
+        for satir in satirlar:
+            ebeveynler.setdefault(satir.girdi_id, set()).add(stok.pk)
+            kesfet(satir.girdi, yol | {stok.pk})
+        bitti.add(stok.pk)
+
+    for stok, _ in hedefler:
+        kesfet(stok, frozenset())
+
+    seviye = {}
+
+    def seviye_bul(pk):
+        if pk not in seviye:
+            seviye[pk] = 0 if not ebeveynler.get(pk) else 1 + max(seviye_bul(p) for p in ebeveynler[pk])
+        return seviye[pk]
+
+    for pk in stoklar:
+        seviye_bul(pk)
+
+    # --- 2. aşama: seviye sırasıyla toplanmış talep → (tam boyda yukarı yuvarlanmış) çalıştırma → girdilere aktarım
+    kok_talep = {}
+    for stok, miktar in hedefler:
+        kok_talep[stok.pk] = kok_talep.get(stok.pk, Decimal("0")) + miktar
+    talep = dict(kok_talep)
+    plan_map = {}
+    for pk in sorted(stoklar, key=lambda k: (seviye[k], sira_no[k])):
+        operasyon, satirlar = op_bul(stoklar[pk])
+        if operasyon is None:
+            continue
+        ihtiyac = talep.get(pk, Decimal("0"))
+        cm = operasyon.cikti_miktar
+        if operasyon.tam_calistirma:
+            calistirma = _yukari_yuvarla(ihtiyac / cm)
+            uretilecek = calistirma * cm
+        else:
+            calistirma = ihtiyac / cm
+            uretilecek = ihtiyac                     # kesirli çalıştırmada hedef talebin kendisi (bölme artığı yok)
+        plan_map[pk] = {"stok": stoklar[pk], "operasyon": operasyon, "ihtiyac": ihtiyac, "calistirma": calistirma,
+                        "uretilecek": uretilecek, "fazla": uretilecek - ihtiyac, "tam": operasyon.tam_calistirma}
+        for satir in satirlar:
+            talep[satir.girdi_id] = talep.get(satir.girdi_id, Decimal("0")) + calistirma * satir.miktar
+
+    # --- ağaç (gösterim) + özet sırası: DFS, tam çalıştırmalı stok yalnız İLK geçtiği yerde açılır
+    ozet_sira = []
+    acildi = set()
+
+    def gez(stok, miktar, kok=False):
+        operasyon, satirlar = op_bul(stok)
+        if not kok and stok.pk not in ozet_sira:
+            ozet_sira.append(stok.pk)
         if operasyon is None:
             return {"stok": stok, "miktar": miktar, "istasyon": None,
                     "operasyon": None, "yaprak": True, "cocuklar": []}
-        calistirma = miktar / operasyon.cikti_miktar
-        yeni_yol = yol | {stok.pk}
-        girdi_satirlari = (operasyon.girdiler.filter(silindi=False)
-                           .select_related("girdi").order_by("sira", "pk"))
-        cocuklar = [gez(satir.girdi, calistirma * satir.miktar, yeni_yol)
-                   for satir in girdi_satirlari]
-        return {"stok": stok, "miktar": miktar, "istasyon": operasyon.istasyon,
-                "operasyon": operasyon, "yaprak": False, "cocuklar": cocuklar}
+        p = plan_map[stok.pk]
+        dugum = {"stok": stok, "miktar": miktar, "istasyon": operasyon.istasyon, "operasyon": operasyon, "yaprak": False,
+                 "tam": p["tam"], "calistirma": p["calistirma"], "uretilecek": p["uretilecek"], "fazla": p["fazla"],
+                 "ihtiyac_toplam": p["ihtiyac"], "cocuklar": []}
+        if p["tam"]:
+            if stok.pk in acildi:
+                dugum["tekrar"] = True
+                return dugum
+            acildi.add(stok.pk)
+            calistirma = p["calistirma"]
+        else:
+            calistirma = miktar / operasyon.cikti_miktar
+        dugum["cocuklar"] = [gez(satir.girdi, calistirma * satir.miktar) for satir in satirlar]
+        return dugum
 
-    agac = []
-    for stok, miktar in kalemler:
-        if miktar is None or miktar <= 0:
-            continue
-        agac.append(gez(stok, miktar, frozenset(), kok=True))
+    agac = [gez(stok, miktar, kok=True) for stok, miktar in hedefler]
 
-    ozet = [ozet_map[k] for k in sorted(ozet_map, key=lambda k: ozet_map[k]["_sira"])]
-    for o in ozet:
-        o["calistirma_sayisi"] = (
-            o["toplam_miktar"] / o["operasyon"].cikti_miktar if o["operasyon"] else None)
-        del o["_sira"]
-    return {"agac": agac, "ozet": ozet}
+    ozet = []
+    for pk in ozet_sira:
+        operasyon, _ = op_bul(stoklar[pk])
+        p = plan_map.get(pk)
+        ozet.append({
+            "stok": stoklar[pk], "operasyon": operasyon, "istasyon": operasyon.istasyon if operasyon else None,
+            "toplam_miktar": talep.get(pk, Decimal("0")) - kok_talep.get(pk, Decimal("0")), "yaprak": operasyon is None,
+            "ihtiyac": talep.get(pk, Decimal("0")), "tam": bool(p and p["tam"]),
+            "calistirma_sayisi": p["calistirma"] if p else None,
+            "uretilecek_miktar": p["uretilecek"] if p else None, "fazla_miktar": p["fazla"] if p else None})
+
+    plan, planda = [], set()
+    for stok, _ in hedefler:                              # önce kökler (kalem sırası), sonra ara stoklar (özet sırası)
+        if stok.pk in plan_map and stok.pk not in planda:
+            plan.append(plan_map[stok.pk])
+            planda.add(stok.pk)
+    for pk in ozet_sira:
+        if pk in plan_map and pk not in planda:
+            plan.append(plan_map[pk])
+            planda.add(pk)
+    return {"agac": agac, "ozet": ozet, "plan": plan}
 
 
 # === Üretim Emirleri — üst-düzey tetikleyici ===
@@ -343,43 +433,15 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
 
 
 def _emir_operasyon_kayitlarini_ac(*, emir, kokler, depo, tarih, kullanici):
-    """kokler: [(Stok, Decimal), ...] — zaten Operasyonu doğrulanmış kök ürünler (emrin
-    kalemleri). ihtiyac_hesapla TEK bir çağrıda tüm kökleri birlikte işler:
-      - agac[i] her KÖKÜN kendi düğümüdür; agac[i]["operasyon"] o kökün KENDİ operasyonudur
-        (ozet KÖKLERİ hariç tutar — bkz. ihtiyac_hesapla docstring'i — bu yüzden kökler için
-        ayrıca "kok_talep" biriktirilir, tıpkı eski tek-köklü kodun agac[0] için yaptığı gibi).
-      - ozet, KÖKLER HARİÇ zincirde geçilen HER düğümü zaten TEK satırda TOPLAR (iki farklı
-        kalem aynı ara parçayı paylaşıyorsa miktarları otomatik toplanır).
-    Bu fonksiyonun tek EK işi: bir KÖKÜN kendisi aynı zamanda BAŞKA bir kökün ağacında ARA
-    bileşen olarak da geçebilir (örn. sipariş hem X'i hem de X'i içeren Y'yi istiyor) — bu
-    durumda X için ayrı/çakışan iki OperasyonKaydi açmak yerine TEK toplam kayıtta
-    birleştirilir."""
+    """kokler: [(Stok, Decimal), ...] — zaten Operasyonu doğrulanmış kök ürünler (emrin kalemleri). ihtiyac_hesapla TEK çağrıda tüm
+    kökleri birlikte işler ve operasyonu olan HER stok için (kökler dâhil; bir kök başka bir kökün ağacında da geçiyorsa talepler
+    TOPLANIR) tek bir ``plan`` satırı verir: her satır için TEK taslak kayıt, hedef çıktı = ``uretilecek`` (tam boyda yukarı
+    yuvarlanmış çalıştırma × çıktı miktarı; fazla parça onayda stoğa girer)."""
     sonuc = ihtiyac_hesapla(kokler)
-
-    kok_talep = {}                                 # stok.pk -> {"operasyon", "toplam_miktar"}
-    for (urun, miktar), dugum in zip(kokler, sonuc["agac"]):
-        kayit = kok_talep.setdefault(
-            urun.pk, {"operasyon": dugum["operasyon"], "toplam_miktar": Decimal("0")})
-        kayit["toplam_miktar"] += miktar
-
-    ara_talep = {}
-    for dugum in sonuc["ozet"]:
-        if dugum["yaprak"]:
-            continue                                # hammadde/satınalma — zaten stokta varsayılır
-        stok_pk = dugum["stok"].pk
-        if stok_pk in kok_talep:
-            kok_talep[stok_pk]["toplam_miktar"] += dugum["toplam_miktar"]   # PAYLAŞILAN kök
-        else:
-            ara_talep[stok_pk] = dugum
-
-    for kayit in kok_talep.values():
+    for p in sonuc["plan"]:
         operasyon_kaydi_olustur(
-            operasyon_id=kayit["operasyon"].pk, depo_id=depo.pk, tarih=tarih,
-            hedef_cikti_miktari=kayit["toplam_miktar"], uretim_emri=emir, kullanici=kullanici)
-    for dugum in ara_talep.values():
-        operasyon_kaydi_olustur(
-            operasyon_id=dugum["operasyon"].pk, depo_id=depo.pk, tarih=tarih,
-            hedef_cikti_miktari=dugum["toplam_miktar"], uretim_emri=emir, kullanici=kullanici)
+            operasyon_id=p["operasyon"].pk, depo_id=depo.pk, tarih=tarih,
+            hedef_cikti_miktari=p["uretilecek"], uretim_emri=emir, kullanici=kullanici)
 
 
 def siparis_uretilebilir_kalemleri(siparis):
@@ -485,6 +547,8 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
     girdi_satirlari = list(operasyon_girdileri(operasyon))
     if not girdi_satirlari:
         raise UretimHatasi("Operasyonda hiç girdi satırı yok.")
+    if operasyon.tam_calistirma:                       # tam boy: çalıştırma sayısı tam sayı (hedef çıktı çıktı miktarının katına yükseltilir)
+        miktar = _yukari_yuvarla(miktar / operasyon.cikti_miktar) * operasyon.cikti_miktar
 
     yil = tarih.year
     kayit = None
@@ -513,6 +577,12 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
     return kayit
 
 
+def _tam_boy_kontrol(kayit: OperasyonKaydi, satir: OperasyonKaydiGirdi, miktar: Decimal):
+    """Tam boy zorunlu operasyonda BOY birimli girdinin gerçekleşen miktarı tam sayı olmalı."""
+    if kayit.operasyon.tam_calistirma and _boy_birimli_mi(satir.girdi) and miktar != miktar.to_integral_value():
+        raise UretimHatasi(TAM_BOY_HATASI)
+
+
 @transaction.atomic
 def operasyon_kaydi_girdi_guncelle(satir: OperasyonKaydiGirdi, *, gerceklesen_miktar,
                                    kullanici=None):
@@ -521,6 +591,7 @@ def operasyon_kaydi_girdi_guncelle(satir: OperasyonKaydiGirdi, *, gerceklesen_mi
     m = _sayi_coz(gerceklesen_miktar, "Gerçekleşen miktar geçerli bir sayı olmalı.")
     if m < 0:
         raise UretimHatasi("Gerçekleşen miktar negatif olamaz.")
+    _tam_boy_kontrol(satir.kayit, satir, m)
     satir.gerceklesen_miktar = m
     satir.updated_by = kullanici
     satir.save(update_fields=["gerceklesen_miktar", "updated_by", "updated_at"])
@@ -545,6 +616,8 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     if kayit.durum == OperasyonKaydi.Durum.ONAYLI:
         return kayit
     satirlar = list(kaydi_girdi_satirlari(kayit))
+    for satir in satirlar:
+        _tam_boy_kontrol(kayit, satir, satir.gerceklesen_miktar)
     toplam_girdi_maliyeti = Decimal("0")
     toplam_girdi_usd = Decimal("0")
     herhangi_biri_tahmini = False

@@ -65,19 +65,21 @@
       <h2 class="bolum-baslik"><span class="emoji">📋</span>Özet (istasyon bazında, toplanmış)</h2>
       <div class="tablo-kapsayici">
         <table>
-          <thead><tr><th>Stok</th><th>İş İstasyonu</th><th class="sag">Toplam Miktar</th>
-            <th class="sag">Çalıştırma Sayısı</th></tr></thead>
+          <thead><tr><th>Stok</th><th>İş İstasyonu</th><th class="sag">Toplam İhtiyaç</th>
+            <th class="sag">Çalıştırma</th><th class="sag">Üretilecek</th><th class="sag">Fazla (stoğa)</th></tr></thead>
           <tbody>
             {% for o in sonuc.ozet %}
               <tr>
                 <td><span class="mono">{{ o.stok.kod }}</span> {{ o.stok.ad }}</td>
                 <td>{% if o.istasyon %}<span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}
                   {% else %}<span class="pasif">— hazır stok —</span>{% endif %}</td>
-                <td class="sag mono">{{ o.toplam_miktar|tr_kur:3 }}</td>
-                <td class="sag mono">{% if o.calistirma_sayisi is not None %}{{ o.calistirma_sayisi|tr_kur:3 }}{% else %}—{% endif %}</td>
+                <td class="sag mono">{{ o.ihtiyac|tr_miktar_sade }}</td>
+                <td class="sag mono">{% if o.calistirma_sayisi is not None %}{{ o.calistirma_sayisi|tr_miktar_sade }}{% if o.tam %} boy{% endif %}{% else %}—{% endif %}</td>
+                <td class="sag mono">{% if o.uretilecek_miktar is not None %}{{ o.uretilecek_miktar|tr_miktar_sade }}{% else %}—{% endif %}</td>
+                <td class="sag mono">{% if o.fazla_miktar %}{{ o.fazla_miktar|tr_miktar_sade }}{% else %}—{% endif %}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="4" class="yardim">Girilen ürünler için tanımlı bir operasyon bulunamadı.</td></tr>
+              <tr><td colspan="6" class="yardim">Girilen ürünler için tanımlı bir operasyon bulunamadı.</td></tr>
             {% endfor %}
           </tbody>
         </table>
