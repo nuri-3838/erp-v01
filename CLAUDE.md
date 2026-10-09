@@ -46,3 +46,9 @@ Eski `semta_erp` projesiyle ilgisi yok. Buraya hiçbir şey kopyalama; o sadece 
 
 ## Kapsam genişletme notu (bilinçli, 2026-05-30)
 Giriş + kullanıcı bazlı ekran yetkisi v0.1'e **bilinçli** eklendi (normalde v0.7). Gerekçe: sistem ekipçe kullanılacak. Mimari: modül (MUHASEBE) → ekran (7 rapor/giriş ekranı) → **kullanıcı bazlı** erişim (sabit rol yok). Şimdilik yalnızca erişim düzeyi (görür/göremez); "görür ama değiştiremez" ileride. Yeni modüller (Stok/Cari/Üretim) aynı mantıkla eklenecek.
+
+## Test disiplini
+- **Geliştirme sırasında yalnız ilgili test modüllerini çalıştır** (ör. `python manage.py test core.tests -p "test_uretim*.py"` ya da `python manage.py test core.tests.test_uretim core.tests.test_uretim_tam_boy`). Her küçük değişiklikte tam paketi çalıştırma.
+- **Tam paket her işin SONUNDA bir kez** (hata/başarısız sayısı ve exit code raporlanır). Şimdilik sıralı: `python manage.py test` (~7 dk).
+  - *Paralel çalıştırma notu (2026-10-09 denemesi, 12 çekirdek):* `python manage.py test --parallel` (keepdb YOK) 2761 testi hatasız geçirdi (test çalışması ~89 sn, kurulum dâhil ~138 sn; sıralı ~407 sn). `--parallel --keepdb` ise `core/tests/test_hatali_kayit_sil.py` yüzünden hata verdi: o test BankaHesap pk'lerini sabit (4/12/13) varsayıyor, kalıcı veritabanında dizi (sequence) ilerlediği için çakışıyor. Bu test sıra/pk'den bağımsız yapılana kadar tam paket için `--parallel --keepdb` KULLANMA, sıralı çalıştır (tblib kurulu değil: paralelde hata ayrıntısı da kaybolur).
+- **Ekran görüntüsü yalnız arayüz değişikliği olan işlerde** al; servis/veri/test işlerinde alma.
