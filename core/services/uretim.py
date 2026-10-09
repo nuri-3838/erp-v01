@@ -385,15 +385,50 @@ def operasyon_ciktilari(operasyon: Operasyon):
     return operasyon.ciktilar.filter(silindi=False).select_related("stok").order_by("sira", "pk")
 
 
-def _ciktilari_esitle(operasyon: Operasyon, kullanici):
-    """ÇİFT YAZIM (geçiş dönemi): ``cikti``/``cikti_miktar``/``boy_mm`` + yan çıktı satırlarını OperasyonCikti tablosuna aynen yansıtır —
-    mevcut satırlar soft-delete, güncel durum yeniden yazılır (olustur/guncelle sonunda çağrılır)."""
+def _ciktilari_esitle(operasyon: Operasyon, kullanici, satirlar):
+    """Tanımın çıktı satırlarını (OperasyonCikti) yeniden yazar: mevcut aktif satırlar soft-delete, ``satirlar``
+    [(stok, miktar, boy_mm, yuzde, surucu), ...] sırasıyla (sıra 0 = referans) yazılır. ÜRET'te çift yazım: ``cikti``/``cikti_miktar``/``boy_mm`` +
+    yan çıktı satırlarının yansıması; PARÇALA'da çıktıların TEK kaynağı bu tablodur."""
     operasyon.ciktilar.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    OperasyonCikti.objects.create(operasyon=operasyon, stok=operasyon.cikti, miktar=operasyon.cikti_miktar, boy_mm=operasyon.boy_mm, sira=0,
-                                  surucu=True, created_by=kullanici, updated_by=kullanici)
-    for i, y in enumerate(operasyon_yan_ciktilari(operasyon), start=1):
-        OperasyonCikti.objects.create(operasyon=operasyon, stok=y.stok, miktar=y.miktar, boy_mm=y.boy_mm, sira=i * 10, surucu=False,
+    for i, (stok, miktar, boy, yuzde, surucu) in enumerate(satirlar):
+        OperasyonCikti.objects.create(operasyon=operasyon, stok=stok, miktar=miktar, boy_mm=boy, yuzde=yuzde, sira=i * 10, surucu=surucu,
                                       created_by=kullanici, updated_by=kullanici)
+
+
+def _uret_cikti_satirlari(operasyon, yanlar):
+    """ÜRET: [(ana, cm, boy, None, True)] + yan çıktılar (sürücü değil)."""
+    return [(operasyon.cikti, operasyon.cikti_miktar, operasyon.boy_mm, None, True)] + [(stok, miktar, boy, None, False) for stok, miktar, boy in yanlar]
+
+
+def cikti_agirliklari(operasyon, ciktilar, miktarlar=None) -> dict:
+    """{stok_id: paylaştırma ağırlığı} — ``pay_anahtari``ne göre: BOY = miktar × boy_mm (boy yoksa 0), ESIT = miktar (adet başı eşit),
+    YUZDE = tanımdaki yüzde (miktardan bağımsız). ``miktarlar`` ({stok_id: GELEN miktar}) verilirse BOY/ESIT ağırlığı gelen adetten hesaplanır
+    (fire malzemeyi gelen parçalara yayar); YÜZDE sabittir. ``ciktilar``: ``stok_id``, ``miktar``, ``boy_mm``, ``yuzde`` alanlı satırlar."""
+    anahtar = operasyon.pay_anahtari
+    agirlik = {}
+    for c in ciktilar:
+        m = miktarlar.get(c.stok_id, c.miktar) if miktarlar is not None else c.miktar
+        if anahtar == Operasyon.PayAnahtari.YUZDE:
+            agirlik[c.stok_id] = c.yuzde or Decimal("0")
+        elif anahtar == Operasyon.PayAnahtari.ESIT:
+            agirlik[c.stok_id] = m
+        else:
+            agirlik[c.stok_id] = (m * c.boy_mm) if c.boy_mm else Decimal("0")
+    return agirlik
+
+
+def cikti_paylari(operasyon, ciktilar) -> dict:
+    """{stok_id: pay (0-1)} — bir çalıştırmada her çıktının girdi maliyetinden/tüketiminden alacağı pay (``ana_cikti_payi`` kuralının
+    genellemesi): tek çıktı ya da ağırlıklardan biri eksik/sıfırsa referans (sıra 0) %100, diğerleri 0."""
+    ciktilar = list(ciktilar)
+    if not ciktilar:
+        return {}
+    agirlik = cikti_agirliklari(operasyon, ciktilar)
+    idler = [c.stok_id for c in ciktilar]
+    if len(idler) <= 1 or any(agirlik[i] <= 0 for i in idler):
+        return {i: (Decimal("1") if k == 0 else Decimal("0")) for k, i in enumerate(idler)}
+    toplam = sum((agirlik[i] for i in idler), Decimal("0"))
+    return {i: agirlik[i] / toplam for i in idler}
 
 
 def _tam_boy_mi(satirlar) -> bool:
@@ -412,10 +447,87 @@ def stok_bilgi_haritasi() -> dict:
             for s in Stok.objects.filter(silindi=False).select_related("uretim_birimi")}
 
 
+YUZDE_TOLERANS = Decimal("0.0001")
+
+
+def _pay_anahtari_coz(deger):
+    deger = (deger or Operasyon.PayAnahtari.BOY)
+    if deger not in Operasyon.PayAnahtari.values:
+        raise UretimHatasi("Geçersiz maliyet pay anahtarı.")
+    return deger
+
+
+def _parcala_ciktilari_dogrula(satirlar, ciktilar, pay_anahtari, haric_op=None):
+    """PARÇALA: tek girdi; ``ciktilar`` [(Stok, miktar, boy_mm|None, yuzde|None), ...] en az 1 satır, ilk satır referans. Her çıktı üretim ürünü,
+    girdiyle aynı değil, tekrarsız, miktar > 0; BOY anahtarında her çıktının boyu, YÜZDE'de her çıktının yüzdesi (toplam 100) zorunlu; bir çıktı
+    başka bir aktif tanımdan üretiliyorsa (sürücü) reddedilir. Döner: [(stok, miktar, boy, yuzde)] temizlenmiş."""
+    if len(satirlar) != 1:
+        raise UretimHatasi("PARÇALA tanımında tek girdi olur (1 girdi → N çıktı).")
+    if not ciktilar:
+        raise UretimHatasi("PARÇALA tanımında en az bir çıktı satırı gerekli.")
+    girdi = satirlar[0][0]
+    gorulen, temiz = set(), []
+    for satir in ciktilar:
+        stok, miktar, boy, yuzde = (list(satir) + [None, None])[:4]
+        if stok is None:
+            raise UretimHatasi("Çıktı seçin.")
+        if stok.pk == girdi.pk:
+            raise UretimHatasi(f"{stok.kod} operasyonun girdisi; aynı zamanda çıktısı olamaz.")
+        if stok.pk in gorulen:
+            raise UretimHatasi(f"{stok.kod} aynı tanımda birden fazla çıktı olarak tekrarlanamaz.")
+        gorulen.add(stok.pk)
+        if not stok.uretim_urunu:
+            raise UretimHatasi(f"{stok.kod} üretim ürünü değil; çıktı olamaz.")
+        m = _sayi_coz(miktar, f"{stok.kod}: çıktı miktarı geçerli bir sayı olmalı.")
+        if m <= 0:
+            raise UretimHatasi(f"{stok.kod}: çıktı miktarı sıfırdan büyük olmalı.")
+        b = _boy_coz(boy, f"{stok.kod}: boy (mm) geçerli bir sayı olmalı.")
+        y = None if yuzde in (None, "") else _sayi_coz(yuzde, f"{stok.kod}: maliyet payı (%) geçerli bir sayı olmalı.")
+        if y is not None and not (0 < y <= 100):
+            raise UretimHatasi(f"{stok.kod}: maliyet payı (%) 0 ile 100 arasında olmalı.")
+        if pay_anahtari == Operasyon.PayAnahtari.BOY and b is None:
+            raise UretimHatasi(f"{stok.kod} için boy (mm) girin (maliyet boy oranına göre paylaştırılır).")
+        if pay_anahtari == Operasyon.PayAnahtari.YUZDE and y is None:
+            raise UretimHatasi(f"{stok.kod} için maliyet payı (%) girin.")
+        ureten = ureten_operasyon(stok)
+        if ureten is not None and (haric_op is None or ureten.pk != haric_op.pk):
+            raise UretimHatasi(f"{stok.kod} zaten {ureten.cikti.kod} tanımından üretiliyor; bir stok tek bir tanımdan üretilir.")
+        temiz.append((stok, m, b, y))
+    if pay_anahtari == Operasyon.PayAnahtari.YUZDE:
+        toplam = sum((y for _s, _m, _b, y in temiz), Decimal("0"))
+        if abs(toplam - 100) > YUZDE_TOLERANS:
+            raise UretimHatasi(f"Maliyet payları toplamı %100 olmalı (girilen: %{toplam.normalize():f}).")
+    return temiz
+
+
 @transaction.atomic
-def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanici=None, boy_mm=None, yan_ciktilar=None, tam_boy=None) -> Operasyon:
-    """``tam_boy`` None ise varsayılan: BOY birimli girdi varsa True; True/False verilirse kullanıcının seçimi."""
+def operasyon_olustur(*, istasyon_id, cikti_id=None, cikti_miktar=None, satirlar, kullanici=None, boy_mm=None, yan_ciktilar=None, tam_boy=None,
+                      tur=None, ciktilar=None, pay_anahtari=None) -> Operasyon:
+    """``tam_boy`` None ise varsayılan: BOY birimli girdi varsa True; True/False verilirse kullanıcının seçimi.
+    ``tur`` ÜRET (varsayılan): ``cikti_id`` + ``cikti_miktar`` (+ ``boy_mm``, ``yan_ciktilar``). PARÇALA: ``ciktilar`` [(Stok, miktar, boy_mm, yuzde)]
+    — ilk satır referans çıktı (``cikti_id``/``cikti_miktar``/``boy_mm`` verilmişse onunla uyuşmalı, verilmezse oradan türetilir); ``pay_anahtari``
+    BOY / ESIT / YUZDE (varsayılan BOY). PARÇALA'nın HER çıktısı bu tanımdan üretilir sayılır (stok başına tek aktif üreten tanım)."""
     istasyon = _istasyon_coz(istasyon_id)
+    tur = tur or Operasyon.Tur.URET
+    if tur not in Operasyon.Tur.values:
+        raise UretimHatasi("Geçersiz operasyon türü.")
+    if tur == Operasyon.Tur.PARCALA:
+        anahtar = _pay_anahtari_coz(pay_anahtari)
+        if not satirlar:
+            raise UretimHatasi("En az bir girdi satırı gerekli.")
+        temiz = _parcala_ciktilari_dogrula(satirlar, ciktilar or [], anahtar)
+        referans = temiz[0]
+        if cikti_id not in (None, "") and str(referans[0].pk) != str(cikti_id):
+            raise UretimHatasi("PARÇALA tanımında referans çıktı, çıktı listesinin ilk satırıdır.")
+        cikti, cm, boy = referans[0], referans[1], referans[2]
+        _girdi_satirlarini_dogrula(cikti, satirlar)
+        operasyon = Operasyon.objects.create(
+            istasyon=istasyon, cikti=cikti, cikti_miktar=cm, boy_mm=boy, tur=tur, pay_anahtari=anahtar,
+            tam_calistirma=_tam_boy_mi(satirlar) if tam_boy is None else bool(tam_boy), created_by=kullanici, updated_by=kullanici)
+        for i, (girdi, miktar) in enumerate(satirlar, start=1):
+            OperasyonGirdi.objects.create(operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10, created_by=kullanici, updated_by=kullanici)
+        _ciktilari_esitle(operasyon, kullanici, [(st, m, b, y, True) for st, m, b, y in temiz])
+        return operasyon
     cikti = _cikti_coz(cikti_id)
     if ureten_operasyon(cikti) is not None:
         raise UretimHatasi("Bu çıktı için zaten aktif bir operasyon tanımlı.")
@@ -434,22 +546,57 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanic
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
             created_by=kullanici, updated_by=kullanici)
-    _ciktilari_esitle(operasyon, kullanici)
+    _ciktilari_esitle(operasyon, kullanici, _uret_cikti_satirlari(operasyon, yan_ciktilar))
     return operasyon
 
 
 @transaction.atomic
-def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satirlar,
-                       kullanici=None, boy_mm=_KORU, yan_ciktilar=None, tam_boy=None) -> Operasyon:
-    """``tam_boy`` verilmezse (None) mevcut seçim KORUNUR (girdi birimi değişse de otomatik değişmez). ``boy_mm`` verilmezse ana çıktı boyu, ``yan_ciktilar`` verilmezse (None) yan çıktılar KORUNUR; [] verilirse yan çıktılar silinir."""
+def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar=None, satirlar,
+                       kullanici=None, boy_mm=_KORU, yan_ciktilar=None, tam_boy=None, tur=None, ciktilar=None, pay_anahtari=None) -> Operasyon:
+    """``tam_boy`` verilmezse (None) mevcut seçim KORUNUR (girdi birimi değişse de otomatik değişmez). ``boy_mm`` verilmezse ana çıktı boyu, ``yan_ciktilar``
+    verilmezse (None) yan çıktılar KORUNUR; [] verilirse yan çıktılar silinir. ``tur`` verilirse ÜRET ↔ PARÇALA geçişi yapılabilir (onaylı kayıtlar
+    snapshot'larıyla etkilenmez). PARÇALA'da ``ciktilar`` [(Stok, miktar, boy_mm, yuzde)] — ilk satır referans (tanımın çıktısı, değiştirilemez); verilmezse
+    mevcut çıktı satırları korunur (referans miktarı ``cikti_miktar`` ile güncellenir)."""
     if operasyon.silindi:
         raise UretimHatasi("Silinmiş operasyon düzenlenemez.")
     istasyon = _istasyon_coz(istasyon_id)
+    yeni_tur = tur or operasyon.tur
+    if yeni_tur not in Operasyon.Tur.values:
+        raise UretimHatasi("Geçersiz operasyon türü.")
+    if yeni_tur == Operasyon.Tur.PARCALA:
+        anahtar = _pay_anahtari_coz(pay_anahtari or (operasyon.pay_anahtari if operasyon.tur == Operasyon.Tur.PARCALA else None))
+        if ciktilar is None:
+            if operasyon.tur != Operasyon.Tur.PARCALA:
+                raise UretimHatasi("PARÇALA'ya geçerken çıktı satırlarını girin.")
+            mevcut = [(c.stok, c.miktar, c.boy_mm, c.yuzde) for c in tanim_ciktilari(operasyon)]
+            if cikti_miktar not in (None, "") and mevcut:
+                mevcut[0] = (mevcut[0][0], _sayi_coz(cikti_miktar, "Çıktı miktarı geçerli bir sayı olmalı."), mevcut[0][2], mevcut[0][3])
+            ciktilar = mevcut
+        if not satirlar:
+            raise UretimHatasi("En az bir girdi satırı gerekli.")
+        temiz = _parcala_ciktilari_dogrula(satirlar, ciktilar, anahtar, haric_op=operasyon)
+        if temiz[0][0].pk != operasyon.cikti_id:
+            raise UretimHatasi("Tanımın referans çıktısı (ilk satır) sonradan değiştirilemez; yeni tanım açın.")
+        _girdi_satirlarini_dogrula(operasyon.cikti, satirlar)
+        operasyon.girdiler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+        operasyon.yan_ciktilar.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)   # ÜRET'ten geçişte yan satırlar kalkar
+        operasyon.istasyon, operasyon.tur, operasyon.pay_anahtari = istasyon, yeni_tur, anahtar
+        operasyon.cikti_miktar, operasyon.boy_mm = temiz[0][1], temiz[0][2]
+        if tam_boy is not None:
+            operasyon.tam_calistirma = bool(tam_boy)
+        operasyon.updated_by = kullanici
+        operasyon.save(update_fields=["istasyon", "tur", "pay_anahtari", "cikti_miktar", "tam_calistirma", "boy_mm", "updated_by", "updated_at"])
+        for i, (girdi, miktar) in enumerate(satirlar, start=1):
+            OperasyonGirdi.objects.create(operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10, created_by=kullanici, updated_by=kullanici)
+        _ciktilari_esitle(operasyon, kullanici, [(st, m, b, y, True) for st, m, b, y in temiz])
+        return operasyon
     cm = _sayi_coz(cikti_miktar, "Çıktı miktarı geçerli bir sayı olmalı.")
     if cm <= 0:
         raise UretimHatasi("Çıktı miktarı sıfırdan büyük olmalı.")
     _girdi_satirlarini_dogrula(operasyon.cikti, satirlar)
     yeni_boy = operasyon.boy_mm if boy_mm is _KORU else _boy_coz(boy_mm, "Ana çıktı boyu (mm) geçerli bir sayı olmalı.")
+    if operasyon.tur == Operasyon.Tur.PARCALA and yan_ciktilar is None:
+        yan_ciktilar = []                                                      # PARÇALA'dan ÜRET'e geçiş: yan çıktı yok
     yeni_yanlar = ([(y.stok, y.miktar, y.boy_mm) for y in operasyon_yan_ciktilari(operasyon)]
                    if yan_ciktilar is None else list(yan_ciktilar))
     _yan_ciktilari_dogrula(operasyon.cikti, satirlar, yeni_yanlar, yeni_boy)
@@ -462,16 +609,17 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satir
     operasyon.boy_mm = yeni_boy
     operasyon.istasyon = istasyon
     operasyon.cikti_miktar = cm
+    operasyon.tur, operasyon.pay_anahtari = Operasyon.Tur.URET, Operasyon.PayAnahtari.BOY
     if tam_boy is not None:
         operasyon.tam_calistirma = bool(tam_boy)
     operasyon.updated_by = kullanici
     operasyon.save(update_fields=[
-        "istasyon", "cikti_miktar", "tam_calistirma", "boy_mm", "updated_by", "updated_at"])
+        "istasyon", "tur", "pay_anahtari", "cikti_miktar", "tam_calistirma", "boy_mm", "updated_by", "updated_at"])
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
             created_by=kullanici, updated_by=kullanici)
-    _ciktilari_esitle(operasyon, kullanici)
+    _ciktilari_esitle(operasyon, kullanici, _uret_cikti_satirlari(operasyon, yeni_yanlar))
     return operasyon
 
 
@@ -520,19 +668,22 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
     yerine — üretim planlamasında yanıltıcı olur)."""
     hedefler = [(stok, miktar) for stok, miktar in kalemler if miktar is not None and miktar > 0]
     onbellek = {}                                      # stok.pk -> (operasyon|None, girdi satırları)
-    yan_onbellek = {}                                  # stok.pk -> yan çıktı satırları (YALNIZ BİLGİ: hesaba katılmaz)
+    cikti_onbellek = {}                                # operasyon.pk -> tanım çıktı satırları (OperasyonCikti; sıra 0 referans)
+    PARCALA = Operasyon.Tur.PARCALA
 
     def op_bul(stok):
         if stok.pk not in onbellek:
             if graf is not None:
                 operasyon = graf.op_of.get(stok.pk)
                 satirlar = list(graf.girdiler.get(operasyon.pk, [])) if operasyon else []
-                yan_onbellek[stok.pk] = list(graf.yanlar.get(operasyon.pk, [])) if operasyon else []
+                if operasyon is not None:
+                    cikti_onbellek.setdefault(operasyon.pk, list(graf.ciktilar.get(operasyon.pk, [])))
             else:
                 operasyon = ureten_operasyon(stok)
                 satirlar = (list(operasyon.girdiler.filter(silindi=False).select_related("girdi").order_by("sira", "pk"))
                             if operasyon else [])
-                yan_onbellek[stok.pk] = ek_ciktilar(operasyon) if operasyon else []
+                if operasyon is not None:
+                    cikti_onbellek.setdefault(operasyon.pk, tanim_ciktilari(operasyon))
             onbellek[stok.pk] = (operasyon, satirlar)
         return onbellek[stok.pk]
 
@@ -548,7 +699,12 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
             sira_no[stok.pk] = len(sira_no)
         if stok.pk in bitti:
             return
-        _, satirlar = op_bul(stok)
+        operasyon, satirlar = op_bul(stok)
+        if operasyon is not None and operasyon.tur == PARCALA:         # PARÇALA: kardeş çıktılar da aynı çalıştırmadan çıkar → planda yer alır
+            for c in cikti_onbellek[operasyon.pk]:
+                if c.surucu and c.stok_id not in stoklar:
+                    stoklar[c.stok_id] = c.stok
+                    sira_no[c.stok_id] = len(sira_no)
         for satir in satirlar:
             ebeveynler.setdefault(satir.girdi_id, set()).add(stok.pk)
             kesfet(satir.girdi, yol | {stok.pk})
@@ -567,35 +723,62 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
     for pk in stoklar:
         seviye_bul(pk)
 
-    # --- 2. aşama: seviye sırasıyla toplanmış talep → (tam boyda yukarı yuvarlanmış) çalıştırma → girdilere aktarım
+    # --- 2. aşama: OPERASYON sırasıyla (seviye = sürücü çıktılarının en derini) toplanmış talep → çalıştırma → girdilere aktarım
+    #   ÜRET: çalıştırma = talep(ana) / çıktı miktarı. PARÇALA: çalıştırma = max_i(talep_i / miktar_i) (tüm sürücü çıktılar aynı çalıştırmadan
+    #   çıkar); tam boyda yukarı yuvarlanır. Üretilecek_i = çalıştırma × miktar_i, fazla_i = üretilecek_i − talep_i — fazla, aynı hesapta zaten
+    #   toplanmış talepten karşılandığından ayrıca mahsup gerekmez (çift sayım yok).
     kok_talep = {}
     for stok, miktar in hedefler:
         kok_talep[stok.pk] = kok_talep.get(stok.pk, Decimal("0")) + miktar
     talep = dict(kok_talep)
-    plan_map, pay_map = {}, {}
-    for pk in sorted(stoklar, key=lambda k: (seviye[k], sira_no[k])):
-        operasyon, satirlar = op_bul(stoklar[pk])
-        if operasyon is None:
-            continue
-        ihtiyac = talep.get(pk, Decimal("0"))
-        cm = operasyon.cikti_miktar
+    plan_map, pay_map, plan_op = {}, {}, {}
+    op_of_pk, op_stoklar = {}, {}
+    for pk in stoklar:
+        operasyon, _ = op_bul(stoklar[pk])
+        if operasyon is not None:
+            op_of_pk[operasyon.pk] = operasyon
+            op_stoklar.setdefault(operasyon.pk, []).append(pk)
+    op_sira = sorted(op_of_pk, key=lambda o: (max(seviye[p] for p in op_stoklar[o]), min(sira_no[p] for p in op_stoklar[o])))
+    for opk in op_sira:
+        operasyon = op_of_pk[opk]
+        _, satirlar = op_bul(stoklar[op_stoklar[opk][0]])
+        ciktilar = cikti_onbellek[opk]
+        surucu = [c for c in ciktilar if c.surucu]
+        paylar = cikti_paylari(operasyon, ciktilar) if pay_dus else {c.stok_id: Decimal("1") for c in ciktilar}
         tam = operasyon.tam_calistirma and boy_yuvarla
+        ham = {c.stok_id: talep.get(c.stok_id, Decimal("0")) / c.miktar for c in surucu}     # çıktı başına gereken çalıştırma
+        calistirma = max(ham.values())
         if tam:
-            calistirma = _yukari_yuvarla(ihtiyac / cm)
-            uretilecek = calistirma * cm
-        else:
-            calistirma = ihtiyac / cm
-            uretilecek = ihtiyac                     # kesirli çalıştırmada hedef talebin kendisi (bölme artığı yok)
-        pay = ana_cikti_payi(cm, operasyon.boy_mm, yan_onbellek.get(pk, [])) if pay_dus else Decimal("1")
-        pay_map[pk] = pay
-        plan_map[pk] = {"stok": stoklar[pk], "operasyon": operasyon, "ihtiyac": ihtiyac, "calistirma": calistirma,
-                        "uretilecek": uretilecek, "fazla": uretilecek - ihtiyac, "tam": tam,
-                        "yan_ciktilar": [{"stok": y.stok, "miktar": calistirma * y.miktar, "boy_mm": y.boy_mm}
-                                         for y in yan_onbellek.get(pk, [])]}
+            calistirma = _yukari_yuvarla(calistirma)
         for satir in satirlar:
-            talep[satir.girdi_id] = talep.get(satir.girdi_id, Decimal("0")) + calistirma * satir.miktar * pay
+            if pay_dus:                                     # her sürücü çıktının kendi talebi × girdi × kendi payı (ÜRET: ana × ana payı)
+                ek = sum((((_yukari_yuvarla(h) if tam else h) * satir.miktar * paylar[sid]) for sid, h in ham.items()), Decimal("0"))
+            else:
+                ek = calistirma * satir.miktar * Decimal("1")
+            talep[satir.girdi_id] = talep.get(satir.girdi_id, Decimal("0")) + ek
+        plan_ciktilar = []
+        for c in ciktilar:
+            t_i = talep.get(c.stok_id, Decimal("0")) if c.surucu else Decimal("0")
+            if not c.surucu:
+                u_i = calistirma * c.miktar                  # ÜRET yan çıktı: bilgi (talebi etkilemez)
+            elif tam or ham[c.stok_id] != calistirma:
+                u_i = calistirma * c.miktar
+            else:
+                u_i = t_i                                    # kesirli çalıştırmada sürücü talebin kendisi (bölme artığı yok)
+            plan_ciktilar.append({"stok": c.stok, "miktar": c.miktar, "boy_mm": c.boy_mm, "yuzde": c.yuzde, "surucu": c.surucu,
+                                  "ihtiyac": t_i, "uretilecek": u_i, "fazla": u_i - t_i, "pay": paylar[c.stok_id]})
+        yan_bilgi = [{"stok": y.stok, "miktar": calistirma * y.miktar, "boy_mm": y.boy_mm} for y in ciktilar if not y.surucu]
+        for pc in plan_ciktilar:
+            if not pc["surucu"]:
+                continue
+            sid = pc["stok"].pk
+            pay_map[sid] = paylar[sid]
+            plan_map[sid] = {"stok": pc["stok"], "operasyon": operasyon, "ihtiyac": pc["ihtiyac"], "calistirma": calistirma,
+                             "uretilecek": pc["uretilecek"], "fazla": pc["fazla"], "tam": tam, "yan_ciktilar": yan_bilgi,
+                             "tur": operasyon.tur, "ciktilar": plan_ciktilar, "cikti_miktar": pc["miktar"]}
+        plan_op[opk] = plan_map[ciktilar[0].stok_id] if ciktilar and ciktilar[0].stok_id in plan_map else plan_map[op_stoklar[opk][0]]
 
-    # --- ağaç (gösterim) + özet sırası: DFS, tam çalıştırmalı stok yalnız İLK geçtiği yerde açılır
+    # --- ağaç (gösterim) + özet sırası: DFS, tam çalıştırmalı operasyon yalnız İLK geçtiği yerde açılır
     ozet_sira = []
     acildi = set()
 
@@ -609,15 +792,15 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
         p = plan_map[stok.pk]
         dugum = {"stok": stok, "miktar": miktar, "istasyon": operasyon.istasyon, "operasyon": operasyon, "yaprak": False,
                  "tam": p["tam"], "calistirma": p["calistirma"], "uretilecek": p["uretilecek"], "fazla": p["fazla"],
-                 "ihtiyac_toplam": p["ihtiyac"], "yan_ciktilar": p["yan_ciktilar"], "cocuklar": []}
+                 "ihtiyac_toplam": p["ihtiyac"], "yan_ciktilar": p["yan_ciktilar"], "tur": p["tur"], "ciktilar": p["ciktilar"], "cocuklar": []}
         if p["tam"]:
-            if stok.pk in acildi:
+            if operasyon.pk in acildi:
                 dugum["tekrar"] = True
                 return dugum
-            acildi.add(stok.pk)
+            acildi.add(operasyon.pk)
             calistirma = p["calistirma"]
         else:
-            calistirma = miktar / operasyon.cikti_miktar
+            calistirma = miktar / p["cikti_miktar"]
         pay = pay_map[stok.pk]
         dugum["cocuklar"] = [gez(satir.girdi, calistirma * satir.miktar * pay) for satir in satirlar]
         return dugum
@@ -634,17 +817,19 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
             "ihtiyac": talep.get(pk, Decimal("0")), "tam": bool(p and p["tam"]),
             "calistirma_sayisi": p["calistirma"] if p else None,
             "uretilecek_miktar": p["uretilecek"] if p else None, "fazla_miktar": p["fazla"] if p else None,
-            "yan_ciktilar": p["yan_ciktilar"] if p else []})
+            "yan_ciktilar": p["yan_ciktilar"] if p else [], "tur": p["tur"] if p else None, "ciktilar": p["ciktilar"] if p else []})
 
-    plan, planda = [], set()
-    for stok, _ in hedefler:                              # önce kökler (kalem sırası), sonra ara stoklar (özet sırası)
-        if stok.pk in plan_map and stok.pk not in planda:
-            plan.append(plan_map[stok.pk])
-            planda.add(stok.pk)
+    plan, planda = [], set()                              # OPERASYON başına tek satır ("stok" = referans çıktı); önce kökler, sonra özet sırası
+    for stok, _ in hedefler:
+        operasyon, _ = op_bul(stok)
+        if operasyon is not None and operasyon.pk not in planda:
+            plan.append(plan_op[operasyon.pk])
+            planda.add(operasyon.pk)
     for pk in ozet_sira:
-        if pk in plan_map and pk not in planda:
-            plan.append(plan_map[pk])
-            planda.add(pk)
+        operasyon, _ = op_bul(stoklar[pk])
+        if operasyon is not None and operasyon.pk not in planda:
+            plan.append(plan_op[operasyon.pk])
+            planda.add(operasyon.pk)
     return {"agac": agac, "ozet": ozet, "plan": plan}
 
 
