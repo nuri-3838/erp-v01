@@ -57,7 +57,7 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
         raise FasonHatasi("Çıktıların gireceği depo bulunamadı.")
     if depo.fason_cari_id:
         raise FasonHatasi("Çıktılar fason deposuna değil, üretim/ana depoya girmelidir.")
-    satirlar = [(oid, a) for oid, a in satirlar if oid]
+    satirlar = [tuple(s) for s in satirlar if s and s[0]]       # (operasyon_id, beklenen adet[, gelen ana adet[, {yan stok pk: gelen adet}]])
     if not satirlar:
         raise FasonHatasi("En az bir satır (operasyon + adet) girin.")
     yil = tarih.year
@@ -75,7 +75,9 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
             continue
     if donus is None:
         raise FasonHatasi("Belge numarası üretilemedi; tekrar deneyin.")
-    for i, (operasyon_id, adet) in enumerate(satirlar, start=1):
+    for i, (operasyon_id, adet, *ek) in enumerate(satirlar, start=1):
+        gelen_ana = ek[0] if len(ek) > 0 else None
+        gelen_yan = ek[1] if len(ek) > 1 else None
         try:
             adet = adet if hasattr(adet, "as_tuple") else parse_tr(adet)
         except SayiHatasi:
@@ -83,14 +85,60 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
         if adet <= 0:
             raise FasonHatasi(f"{i}. satır: adet sıfırdan büyük olmalı.")
         try:
-            uretim_servis.operasyon_kaydi_olustur(
+            kayit = uretim_servis.operasyon_kaydi_olustur(
                 operasyon_id=operasyon_id, depo_id=depo.pk, tarih=tarih, hedef_cikti_miktari=adet,
                 aciklama=f"Fason dönüş {donus.no}" + (f" · irsaliye {donus.irsaliye_no}" if donus.irsaliye_no else ""),
                 kullanici=kullanici, fason_cari=cari, fason_donus=donus)
         except uretim_servis.UretimHatasi as e:
             raise FasonHatasi(f"{i}. satır: {e}")
+        if gelen_ana not in (None, "") or gelen_yan:
+            try:
+                gelen_ayarla(kayit, gelen_ana, gelen_yan)
+            except FasonHatasi as e:
+                raise FasonHatasi(f"{i}. satır: {e}")
     if onayla:
         donus_onayla(donus, kullanici=kullanici)
+    return donus
+
+
+def _adet_coz(ham, etiket):
+    if ham in (None, ""):
+        return None
+    try:
+        return ham if hasattr(ham, "as_tuple") else parse_tr(str(ham))
+    except SayiHatasi:
+        raise FasonHatasi(f"{etiket}: gelen adet geçerli bir sayı olmalı.")
+
+
+def gelen_ayarla(kayit: OperasyonKaydi, gelen_ana=None, gelen_yan=None) -> OperasyonKaydi:
+    """TASLAK fason kaydında fasoncudan GELEN adetleri yazar (boş = beklenen gelmiş sayılır). ``gelen_yan``: {yan çıktı stok pk: adet}.
+    Gelen > beklenen, negatif ya da ana çıktı için 0 reddedilir. Girdi tüketimi beklenen (tam boya yuvarlanmış) çalıştırmadan, stoğa giren adet ve
+    fason bedeli gelen adetten; fark FİRE olarak kayda geçer (onayda)."""
+    if kayit.durum != OperasyonKaydi.Durum.TASLAK or kayit.silindi:
+        raise FasonHatasi(f"{kayit.no}: yalnız taslak kaydın gelen adetleri değiştirilebilir.")
+    kayit.gelen_ana = _adet_coz(gelen_ana, f"{kayit.operasyon.cikti.kod}")
+    kayit.gelen_yan = {str(pk): format(_adet_coz(v, str(pk)), "f") for pk, v in (gelen_yan or {}).items() if v not in (None, "")}
+    try:
+        uretim_servis.kayit_gelen_adetleri(kayit)                  # doğrula (kaydetmeden önce)
+    except uretim_servis.UretimHatasi as e:
+        raise FasonHatasi(str(e))
+    kayit.save(update_fields=["gelen_ana", "gelen_yan", "updated_at"])
+    return kayit
+
+
+@transaction.atomic
+def gelen_guncelle(donus: FasonDonus, veri) -> FasonDonus:
+    """Belgenin taslak kayıtlarının gelen adetlerini toplu günceller. ``veri`` (POST benzeri): ``gelen_<kayıt pk>_ana`` ve
+    ``gelen_<kayıt pk>_<yan çıktı stok pk>`` alanları; boş = beklenen."""
+    if donus.silindi or donus_durumu(donus) == "ONAYLI":
+        raise FasonHatasi("Yalnız taslak belgenin gelen adetleri değiştirilebilir.")
+    for kayit in donus_kayitlari(donus):
+        gelen_ana = veri.get(f"gelen_{kayit.pk}_ana")
+        yan = {}
+        for anahtar, stok, _m, _b in uretim_servis.kayit_ciktilari(kayit):
+            if anahtar != "ana":
+                yan[stok.pk] = veri.get(f"gelen_{kayit.pk}_{stok.pk}")
+        gelen_ayarla(kayit, gelen_ana, yan)
     return donus
 
 
@@ -129,33 +177,41 @@ def donus_sil(donus: FasonDonus, kullanici=None) -> FasonDonus:
 
 
 def donus_bilgisi(donus: FasonDonus) -> dict:
-    """Belge detayı için: kayıtlar (çıktı satırlarıyla), durum ve fason bedeli.
-    ONAYLI → snapshot toplamı (TL/USD); TASLAK → bugünkü geçerli fiyatla TAHMİN (fiyatı olmayan çıktılar ``eksikler``de)."""
+    """Belge detayı için: kayıtlar (çıktı satırlarıyla: beklenen, GELEN, fire), durum ve fason bedeli.
+    ONAYLI → snapshot (gelen = stoğa giren, fason bedeli gelen adet üzerinden; TL/USD); TASLAK → girilmiş gelen adetle (boşsa beklenen) TAHMİN —
+    fiyatı olmayan çıktılar ``eksikler``de."""
     kayitlar = list(donus_kayitlari(donus))
     durum = donus_durumu(donus)
     satirlar, eksikler = [], []
-    toplam_try = toplam_usd = SIFIR
+    toplam_try = toplam_usd = toplam_fire = SIFIR
     for k in kayitlar:
         ciktilar = []
         if k.durum == OperasyonKaydi.Durum.ONAYLI:
             for c in sorted(k.ciktilar.all(), key=lambda x: (not x.ana_mi, x.pk)):
-                ciktilar.append({"stok": c.stok, "miktar": c.miktar, "birim_fiyat": c.fason_birim_fiyat, "pb": c.fason_para_birimi,
+                beklenen = c.beklenen_miktar if c.beklenen_miktar is not None else c.miktar
+                ciktilar.append({"anahtar": "ana" if c.ana_mi else str(c.stok_id), "stok": c.stok, "beklenen": beklenen, "miktar": c.miktar,
+                                 "fire": beklenen - c.miktar, "birim_fiyat": c.fason_birim_fiyat, "pb": c.fason_para_birimi,
                                  "tutar_try": c.fason_tutar, "tutar_usd": c.fason_tutar_usd})
                 toplam_try += c.fason_tutar or SIFIR
                 toplam_usd += c.fason_tutar_usd or SIFIR
+                toplam_fire += beklenen - c.miktar
         else:
-            op = k.operasyon
-            calistirma = k.hedef_cikti_miktari / op.cikti_miktar
-            adaylar = [(op.cikti, k.hedef_cikti_miktari)] + [
-                (y.stok, y.miktar * calistirma) for y in uretim_servis.operasyon_yan_ciktilari(op)]
-            for stok, miktar in adaylar:
+            tam = uretim_servis.kayit_ciktilari(k)
+            try:
+                gelen = uretim_servis.kayit_gelen_adetleri(k, tam)
+            except uretim_servis.UretimHatasi:
+                gelen = {a: m for a, _st, m, _b in tam}
+            for anahtar, stok, beklenen, _boy in tam:
+                g = gelen[anahtar]
                 f = gecerli_fiyat(donus.cari_id, stok, k.tarih)
                 if f is None:
                     eksikler.append(stok)
-                ciktilar.append({"stok": stok, "miktar": miktar, "birim_fiyat": f.birim_fiyat if f else None,
-                                 "pb": f.para_birimi if f else "", "tutar_try": None, "tutar_usd": None})
+                ciktilar.append({"anahtar": "ana" if anahtar == "ana" else str(stok.pk), "stok": stok, "beklenen": beklenen, "miktar": g,
+                                 "fire": beklenen - g, "birim_fiyat": f.birim_fiyat if f else None, "pb": f.para_birimi if f else "",
+                                 "tutar_try": None, "tutar_usd": None})
         satirlar.append({"kayit": k, "ciktilar": ciktilar})
-    return {"satirlar": satirlar, "durum": durum, "toplam_try": toplam_try, "toplam_usd": toplam_usd, "eksikler": eksikler}
+    return {"satirlar": satirlar, "durum": durum, "toplam_try": toplam_try, "toplam_usd": toplam_usd, "toplam_fire": toplam_fire,
+            "eksikler": eksikler}
 
 
 # === Fasoncunun faturası ====================================================================================

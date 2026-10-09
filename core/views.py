@@ -6488,7 +6488,7 @@ def fason_donus_ekle(request):
         baslik = FasonDonusBaslikForm(request.POST)
         formset = FasonDonusSatirFormSet(request.POST, prefix="satir")
         if baslik.is_valid() and formset.is_valid():
-            satirlar = [(f.cleaned_data["operasyon"].pk, f.cleaned_data["adet"]) for f in formset if f.dolu_mu()]
+            satirlar = [(f.cleaned_data["operasyon"].pk, f.cleaned_data["adet"], f.cleaned_data.get("gelen")) for f in formset if f.dolu_mu()]
             cd = baslik.cleaned_data
             try:
                 donus = fason_donus_servis.donus_olustur(
@@ -6554,6 +6554,19 @@ def fason_fatura_guncelle(request, pk):
         except fason_servis.FasonHatasi as e:
             messages.error(request, str(e))
     return redirect("core:fatura_detay", pk=fatura.pk)
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donus_gelen(request, pk):
+    """TASLAK belgede fasoncudan GELEN adetleri (ana + yan çıktılar) kaydeder."""
+    donus = get_object_or_404(FasonDonus, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fason_donus_servis.gelen_guncelle(donus, request.POST)
+            messages.success(request, "Gelen adetler kaydedildi.")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_donus_detay", pk=donus.pk)
 
 
 @ekran_gerekli("fason_donusleri")

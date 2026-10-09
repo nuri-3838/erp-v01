@@ -835,6 +835,40 @@ def operasyon_kaydi_girdi_guncelle(satir: OperasyonKaydiGirdi, *, gerceklesen_mi
     return satir
 
 
+def kayit_ciktilari(kayit: OperasyonKaydi) -> list:
+    """Kaydın çıktıları: [(anahtar, Stok, BEKLENEN miktar, boy_mm)] — ana çıktı + yan çıktılar (çalıştırma başına tanım × çalıştırma)."""
+    operasyon = kayit.operasyon
+    calistirma = kayit.hedef_cikti_miktari / operasyon.cikti_miktar
+    sonuc = [("ana", operasyon.cikti, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
+    for y in operasyon_yan_ciktilari(operasyon):
+        sonuc.append((f"yan{y.pk}", y.stok, yuvarla(calistirma * y.miktar, 3), y.boy_mm))
+    return sonuc
+
+
+def kayit_gelen_adetleri(kayit: OperasyonKaydi, ciktilar=None) -> dict:
+    """{anahtar: stoğa girecek adet}. Fason dönüşte fasoncudan GELEN adet (boşsa beklenen); gelen > beklenen ya da negatif / ana çıktı için 0 reddedilir.
+    Fasonsuz kayıtta her zaman beklenen adet."""
+    ciktilar = ciktilar if ciktilar is not None else kayit_ciktilari(kayit)
+    if not kayit.fason_cari_id:
+        return {a: m for a, _st, m, _b in ciktilar}
+    gelen_yan = kayit.gelen_yan or {}
+    sonuc = {}
+    for anahtar, stok, beklenen, _boy in ciktilar:
+        ham = kayit.gelen_ana if anahtar == "ana" else gelen_yan.get(str(stok.pk))
+        try:
+            g = beklenen if ham in (None, "") else Decimal(str(ham))
+        except Exception:
+            raise UretimHatasi(f"{stok.kod}: gelen adet geçerli bir sayı olmalı.")
+        if g < 0:
+            raise UretimHatasi(f"{stok.kod}: gelen adet negatif olamaz.")
+        if g > beklenen:
+            raise UretimHatasi(f"{stok.kod}: gelen adet ({g.normalize():f}) beklenenden ({beklenen.normalize():f}) fazla olamaz.")
+        if anahtar == "ana" and g <= 0:
+            raise UretimHatasi(f"{stok.kod}: ana çıktının gelen adedi sıfırdan büyük olmalı.")
+        sonuc[anahtar] = g
+    return sonuc
+
+
 @transaction.atomic
 def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKaydi:
     """TASLAK → ONAYLI: her girdi satırı için depo ÇIKIŞ (gerceklesen_miktar==0 olanlar
@@ -856,12 +890,12 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     for satir in satirlar:
         _tam_boy_kontrol(kayit, satir, satir.gerceklesen_miktar)
     operasyon = kayit.operasyon
-    calistirma = kayit.hedef_cikti_miktari / operasyon.cikti_miktar
-    ciktilar = [("ana", operasyon.cikti_id, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
-    cikti_stok = {"ana": operasyon.cikti}
-    for y in operasyon_yan_ciktilari(operasyon):
-        ciktilar.append((f"yan{y.pk}", y.stok_id, yuvarla(calistirma * y.miktar, 3), y.boy_mm))
-        cikti_stok[f"yan{y.pk}"] = y.stok
+    tam_ciktilar = kayit_ciktilari(kayit)                        # BEKLENEN çıktılar (girdi tüketimi bunlara göre planlıdır)
+    gelen = kayit_gelen_adetleri(kayit, tam_ciktilar)            # stoğa girecek / fason bedeli ödenecek adetler (fasonsuzda = beklenen)
+    cikti_stok = {a: st for a, st, _m, _b in tam_ciktilar}
+    beklenen = {a: m for a, _st, m, _b in tam_ciktilar}
+    ciktilar = [(a, st.pk, gelen[a], b) for a, st, _m, b in tam_ciktilar if gelen[a] > 0]
+    gelmeyen = [(a, st.pk, b) for a, st, _m, b in tam_ciktilar if gelen[a] <= 0]       # hiç gelmeyen yan çıktı: yalnız fire kaydı
     # FASON dönüş: girdiler carinin fason deposundan düşer, çıktıların her birine kendi FasonFiyat bedeli eklenir (fiyat yoksa onay engellenir).
     girdi_depo_id, fason, fason_bekleyen = kayit.depo_id, None, False
     if kayit.fason_cari_id:
@@ -915,10 +949,14 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
             oran = (agirlik[anahtar] / toplam_agirlik).quantize(Decimal("0.0000000001"))
         f = fason[anahtar] if fason else None
         OperasyonKaydiCikti.objects.create(
-            kayit=kayit, stok_id=stok_id, miktar=miktar, boy_mm=boy, pay_orani=oran, ana_mi=(anahtar == "ana"),
+            kayit=kayit, stok_id=stok_id, miktar=miktar, beklenen_miktar=beklenen[anahtar], boy_mm=boy, pay_orani=oran, ana_mi=(anahtar == "ana"),
             fason_birim_fiyat=f["fiyat"].birim_fiyat if f else None, fason_para_birimi=f["fiyat"].para_birimi if f else "",
             fason_kur=f["kur"] if f else None, fason_tutar=f["tutar_try"] if f else None, fason_tutar_usd=f["tutar_usd"] if f else None,
             created_by=kullanici, updated_by=kullanici)
+    for anahtar, stok_id, boy in gelmeyen:
+        OperasyonKaydiCikti.objects.create(kayit=kayit, stok_id=stok_id, miktar=Decimal("0"), beklenen_miktar=beklenen[anahtar], boy_mm=boy,
+                                           pay_orani=Decimal("0"), ana_mi=False, fason_tutar=Decimal("0"), fason_tutar_usd=Decimal("0"),
+                                           created_by=kullanici, updated_by=kullanici)
     pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, "ana")
     pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, "ana")
     for anahtar, stok_id, miktar, _boy in ciktilar:

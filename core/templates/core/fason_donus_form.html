@@ -10,7 +10,7 @@
     <h1 class="ust-baslik"><span class="emoji">📥</span>Yeni Fason Dönüş</h1>
   </div>
   <p class="yardim" style="margin-top:-.4rem">Fasoncudan gelen irsaliyedeki her parça için bir satır girin (operasyon + dönen ana çıktı adedi). Yan çıktılar (sağ/sol) operasyon
-    tanımından otomatik gelir. Tam boy kuralı: adet, tam boya yükseltilir.</p>
+    tanımından otomatik gelir. <strong>Beklenen adet</strong> tam boya yükseltilir (girdi tüketimi buna göre); <strong>gelen adet</strong> fasoncudan fiilen gelendir (boş = beklenen gelmiş sayılır) — stoğa giren adet ve fason bedeli gelen adet üzerinden, aradaki fark <strong>fire</strong> olarak kaydedilir. Yan çıktıların gelen adedi belge detayında ayrı girilir.</p>
 
   {% if baslik.non_field_errors %}<div class="uyari">{% for e in baslik.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
   {% if formset.non_form_errors %}<div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
@@ -36,12 +36,13 @@
       <h2 class="bolum-baslik">Dönen parçalar</h2>
       <div class="tablo-kapsayici">
         <table class="fh-tablo">
-          <thead><tr><th>Operasyon (çıktı parça)</th><th>Adet</th><th></th></tr></thead>
+          <thead><tr><th>Operasyon (çıktı parça)</th><th>Beklenen adet</th><th>Gelen adet</th><th></th></tr></thead>
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="fh-satir">
                 <td>{{ f.operasyon }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                 <td>{{ f.adet }}</td>
+                <td>{{ f.gelen }}</td>
                 <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
               </tr>
             {% endfor %}
@@ -54,6 +55,7 @@
     <template id="bos-satir">
       <td>{{ formset.empty_form.operasyon }}</td>
       <td>{{ formset.empty_form.adet }}</td>
+      <td>{{ formset.empty_form.gelen }}</td>
       <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
     </template>
 

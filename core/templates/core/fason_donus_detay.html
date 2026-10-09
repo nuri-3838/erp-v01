@@ -34,9 +34,10 @@
     <a href="{% url 'core:fason_fiyat_ekle' %}">Fason Fiyatları</a>'ndan ekleyin.</div>
 {% endif %}
 
+{% if bilgi.durum != "ONAYLI" %}<form method="post" action="{% url 'core:fason_donus_gelen' donus.pk %}">{% csrf_token %}{% endif %}
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th>Kayıt</th><th>Çıktı</th><th class="sag">Adet</th><th class="sag">Birim fiyat</th><th class="sag">Fason tutarı (TL)</th><th class="sag">USD</th></tr></thead>
+  <thead><tr><th>Kayıt</th><th>Çıktı</th><th class="sag">Beklenen</th><th class="sag">Gelen</th><th class="sag">Fire</th><th class="sag">Birim fiyat</th><th class="sag">Fason tutarı (TL)</th><th class="sag">USD</th></tr></thead>
   <tbody>
     {% for s in bilgi.satirlar %}
       {% for c in s.ciktilar %}
@@ -44,7 +45,9 @@
           {% if forloop.first %}<td rowspan="{{ s.ciktilar|length }}"><a class="mono" href="{% url 'core:operasyon_kaydi_detay' s.kayit.pk %}">{{ s.kayit.no }}</a>
             <div class="yardim" style="margin:0">{{ s.kayit.get_durum_display }}</div></td>{% endif %}
           <td><span class="mono">{{ c.stok.kod }}</span> {{ c.stok.ad }}{% if not forloop.first %} <span class="rozet rozet-aktif">yan çıktı</span>{% endif %}</td>
-          <td class="sag mono">{{ c.miktar|tr_miktar_sade }}</td>
+          <td class="sag mono">{{ c.beklenen|tr_miktar_sade }}</td>
+          <td class="sag mono">{% if bilgi.durum != "ONAYLI" %}<input type="text" inputmode="decimal" name="gelen_{{ s.kayit.pk }}_{{ c.anahtar }}" value="{{ c.miktar|tr_miktar_sade }}" style="width:6rem;text-align:right">{% else %}{{ c.miktar|tr_miktar_sade }}{% endif %}</td>
+          <td class="sag mono">{% if c.fire %}<span class="rozet rozet-pasif">{{ c.fire|tr_miktar_sade }}</span>{% else %}—{% endif %}</td>
           <td class="sag mono">{% if c.birim_fiyat is not None %}{{ c.birim_fiyat|tr_kur:4 }} {{ c.pb }}{% else %}<span class="ua-yok">fiyat yok</span>{% endif %}</td>
           <td class="sag mono">{% if c.tutar_try is not None %}{{ c.tutar_try|tr_para }}{% else %}—{% endif %}</td>
           <td class="sag mono">{% if c.tutar_usd is not None %}{{ c.tutar_usd|tr_para }}{% else %}—{% endif %}</td>
@@ -52,12 +55,17 @@
       {% endfor %}
     {% endfor %}
     {% if bilgi.durum == "ONAYLI" %}
-      <tr><td colspan="4" class="sag"><strong>Toplam fason bedeli</strong></td><td class="sag mono"><strong>{{ bilgi.toplam_try|tr_para }}</strong></td>
-        <td class="sag mono"><strong>{{ bilgi.toplam_usd|tr_para }}</strong></td></tr>
+      <tr><td colspan="4" class="sag"><strong>Toplam fason bedeli · toplam fire</strong></td><td class="sag mono"><strong>{{ bilgi.toplam_fire|tr_miktar_sade }}</strong></td><td></td>
+        <td class="sag mono"><strong>{{ bilgi.toplam_try|tr_para }}</strong></td><td class="sag mono"><strong>{{ bilgi.toplam_usd|tr_para }}</strong></td></tr>
     {% endif %}
   </tbody>
 </table>
 </div>
+{% if bilgi.durum != "ONAYLI" %}
+  <div style="margin:.6rem 0"><button type="submit" class="dugme-ikincil">Gelen adetleri kaydet</button></div></form>
+  <p class="yardim">Gelen adet beklenenden fazla olamaz; boş/aynı bırakılan satır eksiksiz gelmiş sayılır. Girdi (ham profil) tüketimi beklenen çalıştırmadan, stoğa giren adet ve fason bedeli
+    <strong>gelen</strong> adet üzerinden hesaplanır; fark fire olarak kaydedilir ve profil maliyeti gelen parçalara dağılır.</p>
+{% endif %}
 {% if bilgi.durum == "ONAYLI" %}
 <section class="icerik-kart" style="margin-top:1rem">
   <h2 class="bolum-baslik"><span class="emoji">🧾</span>Fasoncunun faturası</h2>

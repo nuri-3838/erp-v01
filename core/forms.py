@@ -1416,7 +1416,8 @@ class FasonDonusSatirForm(forms.Form):
     """Fason dönüş satırı: operasyon + dönen ana çıktı adedi. Boş satır atlanır."""
     operasyon = forms.ModelChoiceField(label="Operasyon (çıktı)", queryset=Operasyon.objects.none(), required=False,
                                        empty_label="— operasyon seç —")
-    adet = TRDecimalField(label="Adet", basamak=3, required=False)
+    adet = TRDecimalField(label="Beklenen adet", basamak=3, required=False)
+    gelen = TRDecimalField(label="Gelen adet", basamak=3, required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1434,6 +1435,9 @@ class FasonDonusSatirForm(forms.Form):
             raise forms.ValidationError("Operasyon seçin.")
         if adet is None or adet <= 0:
             raise forms.ValidationError("Adet sıfırdan büyük olmalı.")
+        gelen = cd.get("gelen")
+        if gelen is not None and gelen <= 0:
+            raise forms.ValidationError("Gelen adet sıfırdan büyük olmalı (boş bırakılırsa beklenen adet gelmiş sayılır).")
         cd["dolu"] = True
         return cd
 

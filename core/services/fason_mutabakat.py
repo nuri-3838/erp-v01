@@ -65,8 +65,10 @@ def mutabakat(cari, baslangic=None, bitis=None) -> dict:
     parcalar = {}
     donus_tutar = {}
     for c in ciktilar.select_related("stok", "kayit"):
-        p = parcalar.setdefault(c.stok_id, {"stok": c.stok, "adet": SIFIR, "tutar_try": SIFIR, "tutar_usd": SIFIR})
+        p = parcalar.setdefault(c.stok_id, {"stok": c.stok, "adet": SIFIR, "beklenen": SIFIR, "fire": SIFIR, "tutar_try": SIFIR, "tutar_usd": SIFIR})
         p["adet"] += c.miktar
+        p["beklenen"] += c.beklenen_miktar if c.beklenen_miktar is not None else c.miktar
+        p["fire"] += (c.beklenen_miktar - c.miktar) if c.beklenen_miktar is not None else SIFIR
         p["tutar_try"] += c.fason_tutar or SIFIR
         p["tutar_usd"] += c.fason_tutar_usd or SIFIR
         d = donus_tutar.setdefault(c.kayit.fason_donus_id, [SIFIR, SIFIR])
@@ -92,6 +94,7 @@ def mutabakat(cari, baslangic=None, bitis=None) -> dict:
     return {"cari": cari, "depo": depo, "profiller": profiller,
             "parcalar": sorted(parcalar.values(), key=lambda p: p["stok"].kod), "donusler": donus_satirlari,
             "taslak_sayisi": len(donusler) - len(donus_satirlari),
+            "toplam_fire": sum((p["fire"] for p in parcalar.values()), SIFIR),
             "toplam": toplam, "faturali": faturali, "bekleyen": bekleyen, "fatura_farki": fatura_farki,
             "kalan_deger": sum((p["kalan_deger"] or SIFIR for p in profiller), SIFIR)}
 

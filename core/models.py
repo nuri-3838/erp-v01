@@ -3198,6 +3198,8 @@ class OperasyonKaydiCikti(TemelModel):
     kayit = models.ForeignKey("OperasyonKaydi", on_delete=models.CASCADE, related_name="ciktilar")
     stok = models.ForeignKey(Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="kayit_cikti_satirlari")
     miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=3)
+    # Beklenen (çalıştırmadan çıkması gereken) adet: fason dönüşte ``miktar`` GELEN adettir, ``beklenen_miktar − miktar`` = FİRE (eksik teslim).
+    beklenen_miktar = models.DecimalField("beklenen miktar", max_digits=18, decimal_places=3, null=True, blank=True)
     boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
     pay_orani = models.DecimalField("maliyet pay oranı", max_digits=12, decimal_places=10, default=1)
     ana_mi = models.BooleanField("ana çıktı", default=True)
@@ -3381,6 +3383,10 @@ class OperasyonKaydi(TemelModel):
         "Cari", verbose_name="fasoncu (cari)", null=True, blank=True, on_delete=models.PROTECT, related_name="fason_operasyon_kayitlari")
     fason_donus = models.ForeignKey(
         "FasonDonus", verbose_name="fason dönüş belgesi", null=True, blank=True, on_delete=models.PROTECT, related_name="kayitlar")
+    # FASON GELEN ADET (taslakta girilir): fasoncudan fiilen gelen ana çıktı adedi ve yan çıktılar ({stok pk: adet}); boşsa BEKLENEN adet gelmiş sayılır.
+    # Girdi tüketimi beklenen (tam boya yuvarlanmış) çalıştırmadan, stoğa giren adet ve fason bedeli GELEN adetten; fark FİRE (OperasyonKaydiCikti).
+    gelen_ana = models.DecimalField("gelen ana çıktı adedi", max_digits=18, decimal_places=3, null=True, blank=True)
+    gelen_yan = models.JSONField("gelen yan çıktı adetleri", default=dict, blank=True)
 
     class Meta:
         db_table = "core_operasyon_kaydi"
