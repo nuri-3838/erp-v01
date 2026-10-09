@@ -1,0 +1,29 @@
+{% load core_extras %}
+<tr class="ol-satir" data-href="{% url 'core:operasyon_duzenle' r.op.pk %}" data-ara="{{ r.ara_metin }}"{% if grup %} data-grup-satir="{{ grup }}"{% endif %}>
+  <td data-et="Çıktı">
+    <span class="mono">{{ r.op.cikti.kod }}</span> {{ r.op.cikti.ad }}
+    <div class="ol-rozetler">
+      {% if r.tam_boy %}<span class="rozet rozet-notr" title="Çalıştırma sayısı tam sayı; fazla parça stoğa girer">tam boy</span>{% endif %}
+      {% if r.yan_sayisi %}<span class="rozet rozet-aktif" title="Ana çıktının yanında {{ r.yan_sayisi }} yan çıktı üretir">+{{ r.yan_sayisi }} yan çıktı</span>{% endif %}
+      {% if r.baglantisiz %}<span class="rozet rozet-kirmizi" title="Zincir hiçbir bitmiş ürüne (152-*) ulaşmıyor">⚠ bağlantısız</span>
+      {% elif r.seri == "A" or r.seri == "C" or r.seri == "ORTAK" or r.seri == "DIGER" %}<span class="rozet rozet-notr" title="Zincirin ulaştığı bitmiş ürün serisi">{{ r.seri_etiket }}</span>{% endif %}
+    </div>
+  </td>
+  <td data-et="Girdi özeti" title="{{ r.ozet.tam_liste }}">
+    {{ r.ozet.ana }}
+    {% for y in r.ozet.yan %}<div class="ol-yan">{{ y }}</div>{% endfor %}
+  </td>
+  <td class="sag mono" data-et="Çıktı miktarı">{{ r.op.cikti_miktar|tr_miktar_sade }}</td>
+  <td data-et="Kullanıldığı yer">
+    {% if r.bitmis_urun %}<span class="rozet rozet-aktif">Bitmiş ürün</span>
+    {% elif r.kullanan_sayisi %}<a href="?kullanan={{ r.op.pk }}" title="Bu çıktıyı girdi olarak kullanan operasyonları listele">{{ r.kullanan_sayisi }} operasyon</a>
+    {% else %}<span class="rozet rozet-kirmizi" title="Bu çıktı hiçbir operasyonda girdi olarak kullanılmıyor">⚠ bağlantısız</span>{% endif %}
+  </td>
+  <td class="ol-islem-h" data-et="">
+    <span class="ol-islem">
+      <a class="ol-ikon" href="{% url 'core:operasyon_ekle' %}?kopya={{ r.op.pk }}" title="Kopyala — istasyon, miktar, girdiler ve yan çıktılarla dolu yeni operasyon (çıktı boş)" aria-label="Kopyala">⧉</a>
+      <form method="post" action="{% url 'core:operasyon_sil' r.op.pk %}" onsubmit="return confirm('Silinsin mi?');">
+        {% csrf_token %}<button type="submit" class="ol-ikon sil" title="Sil" aria-label="Sil">🗑</button></form>
+    </span>
+  </td>
+</tr>

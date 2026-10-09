@@ -21,7 +21,7 @@ class KopyalaTest(YanCiktiBase):
     def test_listede_kopyala_dugmesi(self):
         r = self.client.get(reverse("core:operasyon_tanimlari"))
         self.assertContains(r, f"?kopya={self.op.pk}")
-        self.assertContains(r, ">Kopyala<")
+        self.assertContains(r, 'aria-label="Kopyala"')
 
     def test_kopya_get_dolu_ve_cikti_bos(self):
         r = self.client.get(self.url, {"kopya": self.op.pk})

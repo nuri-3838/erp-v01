@@ -22,7 +22,7 @@ from __future__ import annotations
 from decimal import ROUND_CEILING, Decimal
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Prefetch, Q
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
@@ -118,6 +118,139 @@ def aktif_operasyonlar():
             .annotate(girdi_sayisi=Count("girdiler", filter=Q(girdiler__silindi=False), distinct=True),
                       yan_cikti_sayisi=Count("yan_ciktilar", filter=Q(yan_ciktilar__silindi=False), distinct=True))
             .order_by("istasyon__kod", "cikti__kod"))
+
+
+# === Operasyon Tanımları LİSTESİ: seri (A/C/ortak), bağlantı, filtre, sekme, özet — tek yükleme, bellekte, sabit sorgu sayısı ===
+
+SERI_ETIKET = {"A": "A tipi", "C": "C tipi", "ORTAK": "Ortak", "DIGER": "Diğer", "BAGLANTISIZ": "Bağlantısız"}
+SERI_KOK_ONEKI = {"A": "152-10-", "C": "152-22-"}      # bitmiş ürün (kök) kodu öneki → seri
+
+
+def operasyonlari_yukle() -> list:
+    """Aktif operasyonlar + girdiler + yan çıktılar + stok/birim bilgisi: TOPLAM 4 sorgu (operasyon sayısından bağımsız)."""
+    return list(
+        Operasyon.objects.filter(silindi=False)
+        .select_related("istasyon", "cikti__uretim_birimi")
+        .prefetch_related(
+            Prefetch("girdiler", queryset=OperasyonGirdi.objects.filter(silindi=False).select_related("girdi__uretim_birimi").order_by("sira", "pk")),
+            Prefetch("yan_ciktilar", queryset=OperasyonYanCikti.objects.filter(silindi=False).select_related("stok").order_by("sira", "pk")))
+        .order_by("istasyon__kod", "cikti__kod"))
+
+
+def operasyon_serileri(operasyonlar=None) -> dict:
+    """{operasyon.pk: "A" | "C" | "ORTAK" | "DIGER" | "BAGLANTISIZ"}. Her operasyonun çıktısından (ana + yan çıktılar) zincir YUKARI izlenir: bir stoğu
+    girdi ya da yan çıktı olarak kullanan operasyonların ana çıktısına geçilir → … → artık hiçbir operasyonun kullanmadığı uç stok. Uç stok kodu
+    152-10-* ise kök A, 152-22-* ise C; ulaşılan kökler arasında ikisi de varsa ORTAK, başka 152-* kök varsa DIGER, hiç kök yoksa BAGLANTISIZ.
+    Tüm aktif operasyonlar için TEK seferde, bellekte (``operasyonlar`` verilirse sorgu yok)."""
+    operasyonlar = operasyonlari_yukle() if operasyonlar is None else operasyonlar
+    kullanan = {}                                          # stok pk -> {operasyon pk} (girdi VEYA yan çıktı olarak kullanan)
+    cikti_of = {op.pk: op.cikti_id for op in operasyonlar}
+    kod_of = {op.cikti_id: op.cikti.kod for op in operasyonlar}
+    for op in operasyonlar:
+        for g in op.girdiler.all():
+            kullanan.setdefault(g.girdi_id, set()).add(op.pk)
+            kod_of.setdefault(g.girdi_id, g.girdi.kod)
+        for y in op.yan_ciktilar.all():
+            kullanan.setdefault(y.stok_id, set()).add(op.pk)
+            kod_of.setdefault(y.stok_id, y.stok.kod)
+    kok_memo = {}
+
+    def kokler(basla):
+        gorulen, yigin, bulunan = set(), list(basla), set()
+        while yigin:
+            stok = yigin.pop()
+            if stok in gorulen:
+                continue
+            gorulen.add(stok)
+            sonraki = kullanan.get(stok)
+            if not sonraki:                                # uç stok
+                if kod_of.get(stok, "").startswith("152-"):
+                    bulunan.add(kod_of[stok])
+                continue
+            yigin.extend(cikti_of[o] for o in sonraki)
+        return bulunan
+
+    sonuc = {}
+    for op in operasyonlar:
+        baslar = (op.cikti_id,) + tuple(y.stok_id for y in op.yan_ciktilar.all())
+        anahtar = frozenset(baslar)
+        if anahtar not in kok_memo:
+            kok_memo[anahtar] = kokler(baslar)
+        k = kok_memo[anahtar]
+        a = any(x.startswith(SERI_KOK_ONEKI["A"]) for x in k)
+        c = any(x.startswith(SERI_KOK_ONEKI["C"]) for x in k)
+        sonuc[op.pk] = "ORTAK" if (a and c) else "A" if a else "C" if c else ("DIGER" if k else "BAGLANTISIZ")
+    return sonuc
+
+
+def _girdi_ozeti(op) -> dict:
+    """Liste 'Girdi özeti': tek girdili → '1 BOY 150-10-0007 → 3 adet' (+ yan çıktı); çok girdili → ilk 2 kod + '+N girdi' (hover'da tam liste)."""
+    from core.sayi import format_tr
+    def sade(d):
+        return format_tr(d, 0 if d == d.to_integral_value() else 3)
+    girdiler = list(op.girdiler.all())
+    yanlar = list(op.yan_ciktilar.all())
+    birim = (op.cikti.uretim_birimi.ad or "").lower()
+    tam_liste = "\n".join(f"{sade(g.miktar)} {g.girdi.uretim_birimi.kisa_ad or g.girdi.uretim_birimi.ad} {g.girdi.kod}" for g in girdiler)
+    yan_metin = [f"+{sade(y.miktar)} × {y.stok.kod}" for y in yanlar]
+    if len(girdiler) == 1:
+        g = girdiler[0]
+        ana = f"{sade(g.miktar)} {g.girdi.uretim_birimi.kisa_ad or g.girdi.uretim_birimi.ad} {g.girdi.kod} → {sade(op.cikti_miktar)} {birim}"
+    else:
+        ilk = ", ".join(g.girdi.kod for g in girdiler[:2])
+        ana = ilk + (f" +{len(girdiler) - 2} girdi" if len(girdiler) > 2 else "")
+    return {"ana": ana, "yan": yan_metin, "tam_liste": tam_liste, "girdi_sayisi": len(girdiler)}
+
+
+def operasyon_liste(*, ara="", istasyon=None, seri="", tam_boy=False, yan_cikti=False, baglantisiz=False, kullanan=None) -> dict:
+    """Operasyon Tanımları listesi — filtre/sekme/özet/gruplama (hepsi bellekte, tek yükleme). Döner:
+      satirlar (tüm filtreler dâhil), sekmeler (istasyon sekmeleri; sayılar İSTASYON HARİÇ diğer filtrelerden SONRA), tum_sayi, ozet (filtresiz
+      toplamlar), gruplar (istasyon seçili değilse istasyona göre), kullanan_op (filtre rozeti için)."""
+    from core.metin import buyuk_harf_tr
+    ops = operasyonlari_yukle()
+    seriler = operasyon_serileri(ops)
+    tuketen = {}                                           # stok pk -> [operasyon] (girdi olarak kullanan)
+    for op in ops:
+        for g in op.girdiler.all():
+            tuketen.setdefault(g.girdi_id, []).append(op)
+    kullanan_op = next((o for o in ops if str(o.pk) == str(kullanan)), None) if kullanan else None
+    kullananlar = {o.pk for o in tuketen.get(kullanan_op.cikti_id, [])} if kullanan_op else None
+
+    def zenginlestir(op):
+        kul = tuketen.get(op.cikti_id, [])
+        kok = op.cikti.kod.startswith("152-") and not kul
+        return {
+            "op": op, "seri": seriler[op.pk], "seri_etiket": SERI_ETIKET[seriler[op.pk]], "baglantisiz": seriler[op.pk] == "BAGLANTISIZ",
+            "tam_boy": op.tam_calistirma, "yan_sayisi": len(op.yan_ciktilar.all()), "kullanan_sayisi": len({o.pk for o in kul}),
+            "bitmis_urun": kok, "ozet": _girdi_ozeti(op),
+            "ara_metin": buyuk_harf_tr(" ".join([op.cikti.kod, op.cikti.ad] + [f"{g.girdi.kod} {g.girdi.ad}" for g in op.girdiler.all()]
+                                                + [f"{y.stok.kod} {y.stok.ad}" for y in op.yan_ciktilar.all()]))}
+
+    satirlar = [zenginlestir(op) for op in ops]
+    ozet = {"toplam": len(satirlar), "tam_boy": sum(1 for r in satirlar if r["tam_boy"]),
+            "yan_cikti": sum(1 for r in satirlar if r["yan_sayisi"]), "baglantisiz": sum(1 for r in satirlar if r["baglantisiz"])}
+    seri_dagilimi = {k: sum(1 for r in satirlar if r["seri"] == k) for k in SERI_ETIKET}
+
+    aranan = buyuk_harf_tr((ara or "").strip())
+    seri = (seri or "").upper()
+    diger = [r for r in satirlar
+             if (not aranan or aranan in r["ara_metin"])
+             and (not seri or r["seri"] == ("BAGLANTISIZ" if seri == "BAGLANTISIZ" else seri))
+             and (not tam_boy or r["tam_boy"]) and (not yan_cikti or r["yan_sayisi"]) and (not baglantisiz or r["baglantisiz"])
+             and (kullananlar is None or r["op"].pk in kullananlar)]
+    istasyonlar = {}
+    for r in diger:
+        i = r["op"].istasyon
+        istasyonlar.setdefault(i.pk, {"pk": i.pk, "kod": i.kod, "ad": i.ad, "sayi": 0})["sayi"] += 1
+    sekmeler = sorted(istasyonlar.values(), key=lambda x: x["kod"])
+    secili = next((x for x in sekmeler if str(x["pk"]) == str(istasyon)), None) if istasyon else None
+    liste = [r for r in diger if secili is None or r["op"].istasyon_id == secili["pk"]]
+    gruplar = []
+    if secili is None:
+        for x in sekmeler:
+            gruplar.append({**x, "satirlar": [r for r in liste if r["op"].istasyon_id == x["pk"]]})
+    return {"satirlar": liste, "sekmeler": sekmeler, "tum_sayi": len(diger), "secili_istasyon": secili, "gruplar": gruplar,
+            "ozet": ozet, "seri_dagilimi": seri_dagilimi, "kullanan_op": kullanan_op}
 
 
 def operasyon_girdileri(operasyon: Operasyon):

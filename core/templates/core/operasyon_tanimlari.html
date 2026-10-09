@@ -4,6 +4,62 @@
 {% block sayfa_adi %}Operasyon Tanımları{% endblock %}
 
 {% block content %}
+<style>
+  .ol-ozet { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 .9rem; }
+  .ol-chip { display:inline-flex; align-items:center; gap:.35rem; padding:.4rem .8rem; border-radius:999px; border:1px solid var(--cizgi-koyu);
+    background:rgba(255,255,255,.75); color:var(--metin); font-size:.85rem; text-decoration:none; }
+  .ol-chip strong { font-weight:750; }
+  a.ol-chip:hover { border-color:var(--turuncu); }
+  .ol-chip.kirmizi { border-color:rgba(193,21,57,.45); background:rgba(193,21,57,.08); color:var(--hata); }
+  .ol-sekmeler { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 .9rem; }
+  .ol-sekme { display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .85rem; border-radius:14px; border:1px solid var(--cizgi-koyu);
+    background:rgba(255,255,255,.7); text-decoration:none; color:var(--metin); font-weight:650; font-size:.86rem; white-space:nowrap; }
+  .ol-sekme:hover { border-color:var(--turuncu); }
+  .ol-sekme.aktif { background:var(--lacivert); color:#fff; border-color:var(--lacivert); }
+  .ol-sekme .sayi { display:inline-flex; align-items:center; justify-content:center; min-width:1.4rem; height:1.4rem; padding:0 .3rem; border-radius:999px;
+    font-size:.74rem; background:rgba(33,56,95,.12); color:var(--metin); }
+  .ol-sekme.aktif .sayi { background:rgba(255,255,255,.25); color:#fff; }
+  .ol-filtre { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:0 0 1rem; }
+  .ol-filtre input[type=search] { flex:1 1 15rem; min-width:12rem; padding:.45rem .7rem; min-height:2.2rem; }
+  .ol-filtre select { padding:.4rem .6rem; min-height:2.2rem; }
+  .ol-tik { display:inline-flex; align-items:center; gap:.35rem; padding:.35rem .7rem; border:1px solid var(--cizgi-koyu); border-radius:999px; font-size:.84rem; cursor:pointer; background:rgba(255,255,255,.7); }
+  .ol-tik input { margin:0; }
+  .ol-tablo { width:100%; border-collapse:collapse; }
+  .ol-tablo th { text-align:left; font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); padding:.3rem .6rem; }
+  .ol-tablo th.sag, .ol-tablo td.sag { text-align:right; }
+  .ol-tablo td { padding:.5rem .6rem; vertical-align:top; border-top:1px solid var(--cizgi); }
+  .ol-satir { cursor:pointer; }
+  .ol-satir:hover td { background:rgba(240,124,0,.05); }
+  .ol-rozetler { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.25rem; }
+  .rozet-kirmizi { background:rgba(193,21,57,.1); color:var(--hata); border:1px solid rgba(193,21,57,.35); }
+  .ol-grup td { background:rgba(21,41,77,.06); font-weight:700; cursor:pointer; border-top:1px solid var(--cizgi-koyu); }
+  .ol-grup .ok { display:inline-block; width:1.1rem; }
+  .ol-yan { font-size:.82rem; color:var(--metin-soluk); }
+  .ol-ikon { display:inline-flex; align-items:center; justify-content:center; width:2rem; height:2rem; border:1px solid var(--cizgi-koyu); border-radius:10px;
+    background:rgba(255,255,255,.8); cursor:pointer; text-decoration:none; font-size:1rem; padding:0; color:var(--metin); }
+  .ol-ikon:hover { border-color:var(--turuncu); }
+  .ol-ikon.sil:hover { border-color:var(--hata); color:var(--hata); }
+  .ol-islem { display:inline-flex; gap:.35rem; }
+  .ol-islem form { margin:0; display:inline; }
+  .ol-bos { padding:1.2rem; text-align:center; }
+  tr[hidden] { display:none !important; }
+  @media (max-width:639px) {
+    .ol-sekmeler { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:.2rem; scrollbar-width:none; }
+    .ol-sekmeler::-webkit-scrollbar { display:none; }
+    .ol-sekme { flex:0 0 auto; }
+    .ol-tablo thead { display:none; }
+    .ol-tablo, .ol-tablo tbody { display:block; }
+    .ol-tablo tr.ol-satir { display:block; position:relative; padding:.7rem 3.3rem .7rem .8rem; margin-bottom:.55rem; border:1px solid var(--cizgi-koyu);
+      border-radius:14px; background:rgba(255,255,255,.75); }
+    .ol-tablo tr.ol-grup { display:block; margin:.6rem 0 .4rem; }
+    .ol-tablo tr.ol-grup td { display:block; border-radius:12px; border-top:0; }
+    .ol-tablo td { display:block; padding:.15rem 0; border-top:0; text-align:left !important; }
+    .ol-tablo td[data-et]:not([data-et=""])::before { content:attr(data-et); display:block; font-size:.68rem; color:var(--metin-soluk); text-transform:uppercase; letter-spacing:.04em; }
+    .ol-tablo td.ol-islem-h { position:absolute; top:.5rem; right:.5rem; padding:0; }
+    .ol-tablo td.ol-islem-h .ol-islem { flex-direction:column; }
+  }
+</style>
+
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url 'core:is_istasyonlari' %}">İş İstasyonları →</a>
@@ -12,34 +68,99 @@
   <a class="dugme" href="{% url 'core:operasyon_ekle' %}">+ Yeni</a>
 </div>
 
-<p class="yardim">Her tanım: bir iş istasyonunda, hangi girdilerden (hammadde/ara ürün) ne
-  miktarda hangi çıktının üretildiğini gösterir — kesimde "1 boydan 2 adet" gibi oranlı
-  dönüşümler de tanımlanabilir. İhtiyaç Hesapla ve Üretim Emri buradan zinciri hesaplar.</p>
+<div class="ol-ozet">
+  <a class="ol-chip" href="{{ ozet_url_tumu }}"><strong>{{ ozet.toplam }}</strong> tanım</a>
+  <a class="ol-chip" href="{{ ozet_url_tam }}"><strong>{{ ozet.tam_boy }}</strong> tam boy</a>
+  <a class="ol-chip" href="{{ ozet_url_yan }}"><strong>{{ ozet.yan_cikti }}</strong> yan çıktılı</a>
+  <a class="ol-chip{% if ozet.baglantisiz %} kirmizi{% endif %}" href="{{ ozet_url_baglantisiz }}"><strong>{{ ozet.baglantisiz }}</strong> bağlantısız</a>
+</div>
+
+<form method="get" class="ol-filtre" id="ol-form">
+  <input type="search" name="ara" id="ol-ara" value="{{ ara }}" placeholder="Ara: çıktı / girdi / yan çıktı kodu veya adı" autocomplete="off">
+  <select name="seri" aria-label="Seri">
+    {% for k, ad in seri_secenekleri %}<option value="{{ k }}"{% if k == seri %} selected{% endif %}>{{ ad }}</option>{% endfor %}
+  </select>
+  <label class="ol-tik"><input type="checkbox" name="tam_boy" value="1"{% if tam_boy %} checked{% endif %}> tam boy</label>
+  <label class="ol-tik"><input type="checkbox" name="yan_cikti" value="1"{% if yan_cikti %} checked{% endif %}> yan çıktılı</label>
+  <label class="ol-tik"><input type="checkbox" name="baglantisiz" value="1"{% if baglantisiz %} checked{% endif %}> bağlantısız</label>
+  {% if istasyon %}<input type="hidden" name="istasyon" value="{{ istasyon }}">{% endif %}
+  {% if kullanan_op %}<input type="hidden" name="kullanan" value="{{ kullanan_op.pk }}">{% endif %}
+  <button type="submit" class="birincil">Filtrele</button>
+  {% if filtre_var %}<a class="dugme" href="?">Temizle</a>{% endif %}
+</form>
+{% if kullanan_op %}
+  <p class="yardim">Yalnız <strong class="mono">{{ kullanan_op.cikti.kod }}</strong> çıktısını girdi olarak kullanan operasyonlar gösteriliyor.</p>
+{% endif %}
+
+<div class="ol-sekmeler">
+  {% for t in sekmeler_url %}
+    <a class="ol-sekme{% if t.aktif %} aktif{% endif %}" href="{{ t.url }}">{% if t.kod %}{{ t.kod }} {% endif %}{{ t.ad }} <span class="sayi">{{ t.sayi }}</span></a>
+  {% endfor %}
+</div>
 
 <div class="tablo-kapsayici">
-<table>
-  <thead><tr><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Çıktı Miktarı</th>
-    <th class="sag">Girdi Sayısı</th><th>İşlem</th></tr></thead>
-  <tbody>
-    {% for o in operasyonlar %}
-      <tr>
-        <td><span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
-        <td><span class="mono">{{ o.cikti.kod }}</span> {{ o.cikti.ad }}
-          {% if o.tam_calistirma %}<span class="rozet rozet-notr" title="Çalıştırma sayısı tam sayı; fazla parça stoğa girer">tam boy</span>{% endif %}
-          {% if o.yan_cikti_sayisi %}<span class="rozet rozet-aktif" title="Bu operasyon ana çıktının yanında {{ o.yan_cikti_sayisi }} yan çıktı üretir">+{{ o.yan_cikti_sayisi }} yan çıktı</span>{% endif %}</td>
-        <td class="sag mono">{{ o.cikti_miktar|tr_kur:3 }}</td>
-        <td class="sag mono">{{ o.girdi_sayisi }}</td>
-        <td><span class="islem-bag">
-          <a href="{% url 'core:operasyon_duzenle' o.pk %}">Düzenle</a>
-          <a href="{% url 'core:operasyon_ekle' %}?kopya={{ o.pk }}" title="İstasyon, miktar, girdiler ve yan çıktılarla dolu yeni operasyon (çıktı boş)">Kopyala</a>
-          <form method="post" action="{% url 'core:operasyon_sil' o.pk %}" onsubmit="return confirm('Silinsin mi?');">
-            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
-        </span></td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="5" class="yardim">Henüz operasyon tanımı yok. "+ Yeni" ile ekleyin.</td></tr>
+<table class="ol-tablo">
+  <thead><tr><th>Çıktı</th><th>Girdi özeti</th><th class="sag">Çıktı miktarı</th><th>Kullanıldığı yer</th><th>İşlem</th></tr></thead>
+  {% if gruplar %}
+    {% for g in gruplar %}
+      <tbody data-grup="{{ g.kod }}">
+        <tr class="ol-grup" data-grup-baslik="{{ g.kod }}"><td colspan="5"><span class="ok">▾</span> {{ g.kod }} {{ g.ad }} · {{ g.sayi }} tanım</td></tr>
+        {% for r in g.satirlar %}{% include "core/_operasyon_liste_satir.html" with r=r grup=g.kod %}{% endfor %}
+      </tbody>
     {% endfor %}
-  </tbody>
+  {% else %}
+    <tbody>{% for r in satirlar %}{% include "core/_operasyon_liste_satir.html" with r=r grup="" %}{% endfor %}</tbody>
+  {% endif %}
+  {% if not satirlar %}
+    <tbody><tr><td colspan="5" class="yardim ol-bos">{% if filtre_var %}Bu filtreyle eşleşen operasyon yok.{% else %}Henüz operasyon tanımı yok. "+ Yeni" ile ekleyin.{% endif %}</td></tr></tbody>
+  {% endif %}
 </table>
 </div>
+
+<script>
+(function(){
+  var trUpper = function(s){ return (s || '').toLocaleUpperCase('tr-TR'); };
+  var satirlar = Array.prototype.slice.call(document.querySelectorAll('tr.ol-satir'));
+  var ara = document.getElementById('ol-ara');
+
+  // Yazarken anında süz (sunucu filtresi Enter / Filtrele ile)
+  function suz(){
+    var q = trUpper(ara.value.trim());
+    satirlar.forEach(function(tr){ tr.hidden = !!q && trUpper(tr.dataset.ara).indexOf(q) < 0; });
+    document.querySelectorAll('tbody[data-grup]').forEach(function(tb){
+      var gorunen = tb.querySelectorAll('tr.ol-satir:not([hidden])').length;
+      tb.querySelector('tr.ol-grup').hidden = !!q && gorunen === 0;
+    });
+  }
+  ara.addEventListener('input', suz);
+  suz();
+
+  // Satıra tıkla → düzenle (ikon/bağlantı/düğme/form tıklaması satır tıklamasını tetiklemez)
+  satirlar.forEach(function(tr){
+    tr.addEventListener('click', function(e){
+      if (e.target.closest('a, button, form, input, select')) return;
+      window.location = tr.dataset.href;
+    });
+  });
+
+  // Grup aç/kapa (durum localStorage'da)
+  function anahtar(k){ return 'op-liste-grup-' + k; }
+  function uygula(tb, kapali){
+    var baslik = tb.querySelector('tr.ol-grup');
+    baslik.classList.toggle('kapali', kapali);
+    baslik.querySelector('.ok').textContent = kapali ? '▸' : '▾';
+    tb.querySelectorAll('tr.ol-satir').forEach(function(tr){ tr.style.display = kapali ? 'none' : ''; });
+  }
+  document.querySelectorAll('tbody[data-grup]').forEach(function(tb){
+    var k = tb.dataset.grup, kapali = false;
+    try { kapali = localStorage.getItem(anahtar(k)) === '1'; } catch (e) {}
+    uygula(tb, kapali);
+    tb.querySelector('tr.ol-grup').addEventListener('click', function(){
+      kapali = !tb.querySelector('tr.ol-grup').classList.contains('kapali');
+      uygula(tb, kapali);
+      try { localStorage.setItem(anahtar(k), kapali ? '1' : '0'); } catch (e) {}
+    });
+  });
+})();
+</script>
 {% endblock %}

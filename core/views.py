@@ -6621,8 +6621,35 @@ def is_istasyonu_sil(request, pk):
 # --- Operasyon Tanımları ---
 @ekran_gerekli("operasyon_tanimlari")
 def operasyon_tanimlari(request):
-    return render(request, "core/operasyon_tanimlari.html",
-                  {"operasyonlar": uretim_servis.aktif_operasyonlar()})
+    """Operasyon Tanımları listesi: ?ara= (çıktı/girdi/yan çıktı kod-ad), ?istasyon=<pk> (sekme), ?seri=A|C|ORTAK|BAGLANTISIZ, ?tam_boy=1,
+    ?yan_cikti=1, ?baglantisiz=1, ?kullanan=<operasyon pk> (bu operasyonun çıktısını girdi olarak kullananlar). Hepsi birlikte çalışır, URL'de kalır."""
+    from urllib.parse import urlencode
+    g = request.GET
+    ara, istasyon, seri = (g.get("ara") or "").strip(), g.get("istasyon") or "", (g.get("seri") or "").upper()
+    seri = seri if seri in ("A", "C", "ORTAK", "BAGLANTISIZ") else ""
+    tam_boy, yan_cikti, baglantisiz = g.get("tam_boy") == "1", g.get("yan_cikti") == "1", g.get("baglantisiz") == "1"
+    kullanan = g.get("kullanan") or ""
+    veri = uretim_servis.operasyon_liste(ara=ara, istasyon=istasyon or None, seri=seri, tam_boy=tam_boy, yan_cikti=yan_cikti,
+                                         baglantisiz=baglantisiz, kullanan=kullanan or None)
+    temel = {k: v for k, v in (("ara", ara), ("seri", seri), ("tam_boy", "1" if tam_boy else ""), ("yan_cikti", "1" if yan_cikti else ""),
+                               ("baglantisiz", "1" if baglantisiz else ""), ("kullanan", kullanan if veri["kullanan_op"] else "")) if v}
+
+    def url(**ek):
+        d = {**temel, **ek}
+        d = {k: v for k, v in d.items() if v not in ("", None)}
+        return "?" + urlencode(d) if d else "?"
+
+    secili = veri["secili_istasyon"]
+    sekmeler = [{"ad": "Tümü", "kod": "", "sayi": veri["tum_sayi"], "aktif": secili is None, "url": url()}] + [
+        {"ad": x["ad"], "kod": x["kod"], "sayi": x["sayi"], "aktif": secili is not None and secili["pk"] == x["pk"], "url": url(istasyon=x["pk"])}
+        for x in veri["sekmeler"]]
+    ozet = veri["ozet"]
+    seri_secenekleri = [("", "Tüm seriler"), ("A", "A tipi"), ("C", "C tipi"), ("ORTAK", "Ortak"), ("BAGLANTISIZ", "Bağlantısız")]
+    return render(request, "core/operasyon_tanimlari.html", {
+        **veri, "sekmeler_url": sekmeler, "ara": ara, "seri": seri, "seri_secenekleri": seri_secenekleri, "tam_boy": tam_boy, "yan_cikti": yan_cikti,
+        "baglantisiz": baglantisiz, "istasyon": istasyon if secili else "", "filtre_var": bool(temel or secili),
+        "ozet_url_baglantisiz": "?baglantisiz=1", "ozet_url_tam": "?tam_boy=1", "ozet_url_yan": "?yan_cikti=1",
+        "ozet_url_tumu": "?"})
 
 
 def _form_hatalari(bform, formset, yan_formset) -> list:
