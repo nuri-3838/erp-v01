@@ -733,7 +733,9 @@ def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
     değiştirdiği ``irsaliye.kur`` VARSA bu kur, carinin kur_tipi'ne göre otomatik hesaplama
     YERİNE doğrudan kullanılır."""
     from core.sayi import yuvarla
-    for k in irsaliye.kalemler.filter(silindi=False).select_related("stok"):
+    for k in irsaliye.kalemler.filter(silindi=False).select_related("stok__kategori"):
+        if k.stok.kategori.hizmet_kategorisi:            # hizmet kartı: stok girişi YOK
+            continue
         cevirici = k.stok.cevirici or Decimal("1")
         uretim_miktar = (k.uretim_miktar if k.uretim_miktar is not None
                         else yuvarla(k.miktar / cevirici, 3))

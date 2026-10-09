@@ -14,7 +14,7 @@ from __future__ import annotations
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import FaturaTipi, HesapPlani, Kategori, KategoriHesap
+from core.models import FaturaTipi, HesapPlani, Kategori, KategoriHesap, StokHareket
 from core.services.hesap_plani import yaprak_mi
 
 
@@ -70,7 +70,20 @@ def _yaprak_hesap_coz(hesap_kodu):
     return h
 
 
-def kategori_olustur(*, ad, kod, ust_id=None, kullanici=None) -> Kategori:
+def _hizmet_dogrula(kategori, hizmet):
+    """Hizmet kategorisi yalnız ALT kategoride; işaretlenirken kategorideki kartlarda aktif stok hareketi OLMAMALI (aksi hâlde stok defteri ile
+    'stoksuz' kuralı çelişir)."""
+    if not hizmet:
+        return False
+    if kategori is not None and kategori.ust_id is None:
+        raise KategoriHatasi("Hizmet işareti yalnız alt kategoride kullanılır (stok kartları alt kategoriye bağlıdır).")
+    if kategori is not None and StokHareket.objects.filter(stok__kategori=kategori, silindi=False).exists():
+        raise KategoriHatasi(
+            "Bu kategorideki kartların aktif stok hareketi var; hizmet (stoksuz) olarak işaretlenemez. Önce hareketleri geri alın/silin.")
+    return True
+
+
+def kategori_olustur(*, ad, kod, ust_id=None, hizmet=False, kullanici=None) -> Kategori:
     """Yeni ÜST (ust_id=None) ya da ALT kategori oluşturur. KategoriHatasi yükseltebilir."""
     ad = _ad_dogrula(ad)
     ust = None
@@ -83,20 +96,29 @@ def kategori_olustur(*, ad, kod, ust_id=None, kullanici=None) -> Kategori:
                 "En fazla 2 seviye: bir alt kategorinin altına kategori açılamaz."
             )
     kod = _kod_dogrula(kod, ust.pk if ust else None)
+    if hizmet and ust is None:
+        raise KategoriHatasi("Hizmet işareti yalnız alt kategoride kullanılır (stok kartları alt kategoriye bağlıdır).")
     return Kategori.objects.create(
-        ad=ad, kod=kod, ust=ust,
+        ad=ad, kod=kod, ust=ust, hizmet_kategorisi=bool(hizmet),
         created_by=kullanici, updated_by=kullanici,
     )
 
 
-def kategori_guncelle(kategori: Kategori, *, ad, kod, kullanici=None) -> Kategori:
-    """Ad + Kod günceller (üst kategori DEĞİŞMEZ)."""
+def kategori_guncelle(kategori: Kategori, *, ad, kod, hizmet=None, kullanici=None) -> Kategori:
+    """Ad + Kod (+ ``hizmet`` verilmişse hizmet işaretini) günceller (üst kategori DEĞİŞMEZ)."""
     if kategori.silindi:
         raise KategoriHatasi("Silinmiş kategori düzenlenemez.")
     kategori.ad = _ad_dogrula(ad)
     kategori.kod = _kod_dogrula(kod, kategori.ust_id, haric_pk=kategori.pk)
+    alanlar = ["ad", "kod", "updated_by", "updated_at"]
+    if hizmet is not None:
+        yeni = bool(hizmet)
+        if yeni and not kategori.hizmet_kategorisi:
+            _hizmet_dogrula(kategori, True)
+        kategori.hizmet_kategorisi = yeni
+        alanlar.append("hizmet_kategorisi")
     kategori.updated_by = kullanici
-    kategori.save(update_fields=["ad", "kod", "updated_by", "updated_at"])
+    kategori.save(update_fields=alanlar)
     return kategori
 
 

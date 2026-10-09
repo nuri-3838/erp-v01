@@ -133,6 +133,7 @@
             <label for="{{ fform.depo.id_for_label }}">{{ fform.depo.label }}</label>
             {{ fform.depo }}
             {% for e in fform.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            <p class="yardim" style="margin:.25rem 0 0">Hizmet kategorisindeki kalemler depoya girmez; faturada yalnız hizmet kalemi varsa depo yok sayılır (boş bırakılabilir).</p>
           </div>
         </div>
         <div class="bb-satir">

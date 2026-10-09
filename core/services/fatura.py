@@ -28,7 +28,7 @@ from core.models import (Cari, Depo, DuranVarlik, Fatura, FaturaSatir, FaturaTip
                          YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
-from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil
+from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil, hizmet_mi
 from core.services import donemsel_gider
 from core.services import duran_hesap
 from core.services import duran_varlik as dv_servis
@@ -123,10 +123,10 @@ def irsaliye_miktar_farklari(fatura) -> list:
     if irsaliye is None:
         return []
     ir, fa, stoklar = defaultdict(Decimal), defaultdict(Decimal), {}
-    for k in irsaliye.kalemler.filter(silindi=False).select_related("stok"):
+    for k in irsaliye.kalemler.filter(silindi=False, stok__kategori__hizmet_kategorisi=False).select_related("stok"):
         ir[k.stok_id] += k.miktar
         stoklar[k.stok_id] = k.stok
-    for s in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok"):
+    for s in fatura.satirlar.filter(silindi=False, stok__isnull=False, stok__kategori__hizmet_kategorisi=False).select_related("stok"):
         fa[s.stok_id] += s.miktar
         stoklar[s.stok_id] = s.stok
     return [(stoklar[i], ir[i], fa[i]) for i in stoklar
@@ -830,6 +830,14 @@ def _kartlari_yenile(fatura, kullanici):
             dv_servis.kart_maliyetini_yenile(kod, kullanici=kullanici)
 
 
+def _hizmetsiz_depo(hazir, depo):
+    """Faturada stok kalemi VAR ve hepsi hizmet kartıysa depo YOK SAYILIR (None). Karışık faturada depo diğer (stoklu) kalemler için geçerlidir."""
+    stoklar = [h[0] for h in hazir if h[0] is not None]
+    if depo is not None and stoklar and all(hizmet_mi(s) for s in stoklar):
+        return None
+    return depo
+
+
 def _satirlari_yaz(fatura, hazir, kullanici):
     for stok, hesap, miktar, birim, kdv, tevkifat, proje, demirbas in hazir:
         donem = getattr(hesap, "_donem", None) or {}       # dönemsel gider: gider hesabı + dönem (bkz. _donemsel_satir_coz)
@@ -872,7 +880,9 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
     birimi ediyorsa, üretim birimi o kadar daha pahalıdır — bkz. Stok.cevirici)."""
     alis = (fatura.tip.yon == FaturaTipi.Yon.ALIS)
     tur = StokHareket.Tur.GIRIS if alis else StokHareket.Tur.CIKIS
-    for satir in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok"):
+    for satir in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok__kategori"):
+        if hizmet_mi(satir.stok):                     # hizmet kartı: stok hareketi YOK (muhasebe fişi kategori haritasından normal oluşur)
+            continue
         cevirici = satir.stok.cevirici or Decimal("1")
         uretim_miktar = yuvarla(satir.miktar / cevirici, 3)
         if uretim_miktar <= 0:
@@ -995,7 +1005,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
     if sahsi_ortak is not None and cozulen_yon != FaturaTipi.Yon.ALIS:
         raise FaturaHatasi("Ortak adına şahsi alış yalnız alış yönünde olabilir.")
-    depo = None if gider else _depo_coz(depo_id)        # gider faturasında depo/stok hareketi yok
+    depo = None if gider else _hizmetsiz_depo(hazir, _depo_coz(depo_id))   # gider faturasında depo/stok hareketi yok; yalnız hizmet kalemi varsa depo yok sayılır
     fatura_no = (fatura_no or "").strip()
     _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=cozulen_yon)
     # Sunucu tarafı yedek: vade boş + carinin ödeme koşulu tanımlıysa otomatik hesapla
@@ -1105,7 +1115,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
             sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih, fatura_no=fatura_no)
         if gider and cozulen_yon != FaturaTipi.Yon.ALIS:
             raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
-        depo = None if gider else _depo_coz(depo_id)
+        depo = None if gider else _hizmetsiz_depo(hazir, _depo_coz(depo_id))
         fatura_no = (fatura_no or "").strip()
         _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=cozulen_yon,
                                haric_pk=fatura.pk)
@@ -1133,7 +1143,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         para_birimi=para_birimi, kur_override=kur,
         sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None),
         gv_stopaj_orani=gv_stopaj_orani, fatura_pk=fatura.pk, kullanici=kullanici, fatura_no=fatura_no)
-    depo = None if tip.gider else _depo_coz(depo_id)    # gider faturasında depo/stok hareketi yok
+    depo = None if tip.gider else _hizmetsiz_depo(hazir, _depo_coz(depo_id))    # gider faturasında depo yok; yalnız hizmet kalemi varsa depo yok sayılır
     fatura_no = (fatura_no or "").strip()
     _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=tip.yon, haric_pk=fatura.pk)
     try:

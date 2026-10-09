@@ -65,6 +65,17 @@ def stok_hareketleri(stok):
             .order_by("-tarih", "-id"))
 
 
+def hizmet_mi(stok) -> bool:
+    """Stok kartı HİZMET kategorisinde mi (stok tutulmaz)?"""
+    return bool(stok.kategori_id and stok.kategori.hizmet_kategorisi)
+
+
+def hizmet_kontrol(stok):
+    """Hizmet kartına stok hareketi yazılamaz — TÜM yazma yolları (fatura, irsaliye, transfer, üretim, elle hareket, sarf) bu kontrolden geçer."""
+    if hizmet_mi(stok):
+        raise HareketHatasi(f"{stok.kod}: hizmet kartı — stok tutulmaz; stok hareketi yazılamaz.")
+
+
 @transaction.atomic
 def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                  kaynak=StokHareket.Kaynak.MANUEL, fatura_satir=None,
@@ -80,9 +91,10 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
     üretim girdi çıkışı/çıktı girişi maliyet aktarımı için; ``transfer_grubu`` depo transferi
     bacakları için (maliyeti DEĞİŞTİRMEZ). Her yazımdan sonra kart yeniden hesaplanır, dönen
     hareket güncel ``tutar_try``/``maliyet_durumu`` ile gelir."""
-    stok = Stok.objects.filter(pk=stok_id, silindi=False).first()
+    stok = Stok.objects.filter(pk=stok_id, silindi=False).select_related("kategori").first()
     if stok is None:
         raise HareketHatasi("Stok bulunamadı.")
+    hizmet_kontrol(stok)
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if depo is None:
         raise HareketHatasi("Depo bulunamadı.")
@@ -141,6 +153,7 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
     stok = Stok.objects.filter(pk=stok_id, silindi=False).select_related("kategori").first()
     if stok is None:
         raise HareketHatasi("Stok bulunamadı.")
+    hizmet_kontrol(stok)
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if depo is None:
         raise HareketHatasi("Depo bulunamadı.")

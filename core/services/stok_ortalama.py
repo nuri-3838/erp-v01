@@ -329,7 +329,7 @@ def degerleme_raporu() -> dict:
     girişlerin değeri mizan karşılaştırmasından DÜŞÜLÜR (henüz faturası/fişi yok). Muhasebe
     hesabı kategori eşlemesinden bulunamayan kartlar 'TANIMSIZ' grubunda ayrı gösterilir."""
     from core.services import kategori as kategori_servis
-    kartlar = (Stok.objects.filter(silindi=False)
+    kartlar = (Stok.objects.filter(silindi=False, kategori__hizmet_kategorisi=False)         # hizmet kartları stok değerine girmez
                .filter(Q(hareketler__silindi=False) | ~Q(maliyet_miktar=0)).distinct()
                .select_related("uretim_birimi", "kategori").order_by("kod"))
     gecici = {r["stok_id"]: r["t"] for r in StokHareket.objects.filter(

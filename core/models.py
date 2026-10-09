@@ -425,6 +425,10 @@ class Kategori(TemelModel):
         "self", verbose_name="üst kategori", null=True, blank=True,
         on_delete=models.PROTECT, related_name="alt_kategoriler",
     )
+    # HİZMET kategorisi (stoksuz): bu kategorideki kartlar HİÇBİR koşulda stok hareketi yazmaz (fatura/irsaliye kalemi atlanır; elle hareket,
+    # transfer, sarf, operasyon kaydı reddedilir), değerleme raporuna ve stok miktarına girmez. Fatura muhasebe fişi kategori hesap haritasına
+    # göre normal oluşur (örn. fason hizmet faturası 151 alt hesabına borç). Yalnız ALT kategoride anlamlıdır.
+    hizmet_kategorisi = models.BooleanField("hizmet kategorisi (stok hareketi yapmaz)", default=False)
 
     class Meta:
         db_table = "kategori"

@@ -320,6 +320,7 @@ class KategoriForm(forms.Form):
     kod = forms.CharField(
         label="Kod", max_length=30,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    hizmet_kategorisi = forms.BooleanField(label="Hizmet (stok hareketi yapmaz)", required=False)
 
 
 class FaturaTipiForm(forms.Form):

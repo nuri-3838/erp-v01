@@ -109,7 +109,7 @@
         </td>
         <td><span class="rozet rozet-notr">{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</span></td>
         <td>{{ s.uretim_birimi.kisa_ad }}</td>
-        <td class="sag mono" data-arama-disi>{{ s.eldeki|tr_kur:3 }}</td>
+        <td class="sag mono" data-arama-disi>{% if s.hizmet %}<span class="rozet rozet-notr" title="Hizmet kartı — stok tutulmaz">Hizmet</span>{% else %}{{ s.eldeki|tr_kur:3 }}{% endif %}</td>
         <td class="stk-ok">›</td>
       </tr>
     {% empty %}

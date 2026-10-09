@@ -89,6 +89,7 @@
         {% if stok.satinalma_urunu %}<span class="d-rozet tip">🛒 Satınalma</span>{% endif %}
         {% if stok.uretim_urunu %}<span class="d-rozet tip">🏭 Üretim</span>{% endif %}
         {% if stok.satis_urunu %}<span class="d-rozet tip">📤 Satış</span>{% endif %}
+        {% if hizmet %}<span class="d-rozet tip">🧾 Hizmet kartı — stok tutulmaz</span>{% endif %}
         {% if kritik_alti %}<span class="d-rozet uyari">⚠️ Kritik seviyenin altında</span>{% endif %}
       </div>
       <div class="detay-ad">{{ stok.ad }}</div>
@@ -97,6 +98,12 @@
   </div>
 
   <div class="ozet-izgara">
+    {% if hizmet %}
+    <section class="icerik-kart ozet-kart">
+      <h2 class="ozet-bsl"><span>🧾</span>Hizmet kartı</h2>
+      <div class="ozet-not">Hizmet kartı — stok tutulmaz. Faturada/irsaliyede stok hareketi yazılmaz; muhasebe fişi kategori hesap haritasına göre oluşur.</div>
+    </section>
+    {% else %}
     <section class="icerik-kart ozet-kart{% if kritik_alti %} ozet-uyari{% endif %}">
       <h2 class="ozet-bsl"><span>📦</span>Mevcut Miktar</h2>
       <div class="ozet-buyuk"><span class="mono">{{ eldeki|tr_kur:3 }}</span> <span class="birim">{{ stok.uretim_birimi.kisa_ad }}</span></div>
@@ -106,6 +113,7 @@
           <span class="mono">{{ stok.kritik_stok|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</div>
       {% endif %}
     </section>
+    {% endif %}
 
     <section class="icerik-kart ozet-kart">
       <h2 class="ozet-bsl"><span>🧮</span>Ortalama Maliyet</h2>
@@ -157,11 +165,13 @@
   <section class="icerik-kart">
     <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">📦</span>Stok Hareketleri</h2>
+      {% if not hizmet %}
       <span class="islem-bag">
         <a class="dugme" href="{% url 'core:stok_sarf_ekle' stok.pk %}">+ Sarf (Hesaba Çıkış)</a>
         <a class="dugme" href="{% url 'core:stok_depo_transferi' stok.pk %}">⇄ Depo Transferi</a>
         <a class="dugme" href="{% url 'core:stok_hareket_ekle' stok.pk %}">+ Hareket</a>
       </span>
+      {% endif %}
     </div>
     {% if hareket_sayisi > 100 %}
       <p class="yardim" style="margin:0 0 .7rem">Son 100 hareket gösteriliyor (toplam {{ hareket_sayisi }}).</p>

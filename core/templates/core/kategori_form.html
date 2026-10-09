@@ -37,6 +37,13 @@
           {% if ekle %}<input type="hidden" name="ust" value="{{ ust.pk }}">{% endif %}
           <p class="yardim">Bu, seçilen üstün altına bir <strong>alt kategori</strong>dir; üst değişmez.</p>
         </div>
+        <div class="alan tam">
+          <label>{{ form.hizmet_kategorisi }} {{ form.hizmet_kategorisi.label }}</label>
+          {% for e in form.hizmet_kategorisi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">İşaretlenirse bu kategorideki kartlar <strong>stok tutmaz</strong>: faturada/irsaliyede depo seçilse bile stok hareketi yazılmaz, elle hareket/transfer/sarf
+            yapılamaz, stok değerleme raporuna girmez. Muhasebe fişi yukarıdaki hesap haritasına göre normal oluşur (örn. fason hizmet faturası 151 alt hesabına borç).
+            Kategorideki kartların aktif stok hareketi varsa işaretlenemez.</p>
+        </div>
         {% endif %}
       </div>
       {% if not kat_alt %}

@@ -909,6 +909,7 @@ def stoklar(request):
     eldeki = hareket_servis.toplu_eldeki(s.pk for s in stok_listesi)
     for s in stok_listesi:
         s.eldeki = eldeki.get(s.pk, hareket_servis.SIFIR)
+        s.hizmet = s.kategori.hizmet_kategorisi
     return render(request, "core/stok_listesi.html", {
         "stoklar": stok_listesi, "ara": ara, "secili_kategori": kategori_id,
         "kategoriler": kategoriler,
@@ -1077,9 +1078,10 @@ def stok_detay(request, pk):
         pk=pk, silindi=False)
     eldeki = hareket_servis.eldeki_miktar(stok)
     hareketler = hareket_servis.stok_hareketleri(stok)
+    hizmet = hareket_servis.hizmet_mi(stok)
     return render(request, "core/stok_detay.html", {
-        "stok": stok, "eldeki": eldeki,
-        "kritik_alti": stok.kritik_stok > 0 and eldeki < stok.kritik_stok,
+        "stok": stok, "eldeki": eldeki, "hizmet": hizmet,
+        "kritik_alti": (not hizmet) and stok.kritik_stok > 0 and eldeki < stok.kritik_stok,
         # Yalnız stoğu OLAN depolar — net 0'a inmiş depo "stok nerede" sorusunda gürültüdür
         # (geçmişi hareket defterinde zaten görünür).
         "depo_bakiye": [(d, m) for d, m in hareket_servis.depo_bazinda_eldeki(stok) if m != 0],
@@ -1143,8 +1145,11 @@ def depo_sil(request, pk):
 
 @ekran_gerekli("stoklar")
 def stok_hareket_ekle(request, pk):
-    stok = get_object_or_404(Stok.objects.select_related("uretim_birimi"),
+    stok = get_object_or_404(Stok.objects.select_related("uretim_birimi", "kategori"),
                              pk=pk, silindi=False)
+    if hareket_servis.hizmet_mi(stok):
+        messages.error(request, f"{stok.kod}: hizmet kartı — stok tutulmaz; stok hareketi eklenemez.")
+        return redirect("core:stok_detay", pk=stok.pk)
     if request.method == "POST":
         form = StokHareketForm(request.POST)
         if form.is_valid():
@@ -1167,7 +1172,10 @@ def stok_hareket_ekle(request, pk):
 def stok_depo_transferi(request, pk):
     """Aynı stoğu depolar arasında taşır (maliyeti değiştirmez, fiş üretmez)."""
     from core.services import depo_transfer
-    stok = get_object_or_404(Stok.objects.select_related("uretim_birimi"), pk=pk, silindi=False)
+    stok = get_object_or_404(Stok.objects.select_related("uretim_birimi", "kategori"), pk=pk, silindi=False)
+    if hareket_servis.hizmet_mi(stok):
+        messages.error(request, f"{stok.kod}: hizmet kartı — stok tutulmaz; depo transferi yapılamaz.")
+        return redirect("core:stok_detay", pk=stok.pk)
     if request.method == "POST":
         form = DepoTransferForm(request.POST)
         if form.is_valid():
@@ -1220,6 +1228,9 @@ def stok_sarf_ekle(request, pk):
     seçeneği DEĞİŞMEDİ — bu ayrı, fiş üreten bir ekrandır."""
     stok = get_object_or_404(Stok.objects.select_related("uretim_birimi", "kategori"),
                              pk=pk, silindi=False)
+    if hareket_servis.hizmet_mi(stok):
+        messages.error(request, f"{stok.kod}: hizmet kartı — stok tutulmaz; sarf çıkışı yapılamaz.")
+        return redirect("core:stok_detay", pk=stok.pk)
     if request.method == "POST":
         form = SarfCikisForm(request.POST)
         if form.is_valid():
@@ -1301,7 +1312,7 @@ def kategori_ekle(request):
             try:
                 k = kategori_servis.kategori_olustur(
                     ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
-                    ust_id=ust.pk if ust else None, kullanici=request.user)
+                    ust_id=ust.pk if ust else None, hizmet=form.cleaned_data["hizmet_kategorisi"], kullanici=request.user)
                 if alt_mod:
                     kategori_servis.kategori_hesaplari_kaydet(
                         k, eslesmeler=secili_map, kullanici=request.user)
@@ -1332,7 +1343,7 @@ def kategori_duzenle(request, pk):
             try:
                 kategori_servis.kategori_guncelle(
                     kat, ad=form.cleaned_data["ad"], kod=form.cleaned_data["kod"],
-                    kullanici=request.user)
+                    hizmet=form.cleaned_data["hizmet_kategorisi"] if kat_alt else None, kullanici=request.user)
                 if kat_alt:
                     kategori_servis.kategori_hesaplari_kaydet(
                         kat, eslesmeler=secili_map, kullanici=request.user)
@@ -1341,7 +1352,7 @@ def kategori_duzenle(request, pk):
             except kategori_servis.KategoriHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = KategoriForm(initial={"ad": kat.ad, "kod": kat.kod})
+        form = KategoriForm(initial={"ad": kat.ad, "kod": kat.kod, "hizmet_kategorisi": kat.hizmet_kategorisi})
         mevcut = kategori_servis.kategori_hesaplari(kat)
         secili_map = {ft_id: kh.hesap_id for ft_id, kh in mevcut.items()}
     satis, alis = _harita_gruplari(aktif_ft, secili_map)
