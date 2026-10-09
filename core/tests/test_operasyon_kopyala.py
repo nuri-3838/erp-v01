@@ -86,7 +86,7 @@ class FormYapisiTest(YanCiktiBase):
         h = self.client.get(reverse("core:operasyon_duzenle", args=[self.op.pk])).content.decode()
         self.assertIn('id="yan-bolum">', h)
         self.assertIn('id="yan-ac" class="op-yan-ac" hidden', h)
-        self.assertIn("Tam boy: Evet", h)
+        self.assertIn('id="id_tam_boy" value="1" checked', h)
 
     def test_duzenle_hata_ozeti_sayfa_basinda(self):
         veri = {"satir-TOTAL_FORMS": "1", "satir-INITIAL_FORMS": "0", "satir-0-girdi": self.profil.pk, "satir-0-miktar": "1",

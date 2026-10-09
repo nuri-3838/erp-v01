@@ -184,9 +184,10 @@ def operasyon_serileri(operasyonlar=None) -> dict:
 
 def _girdi_ozeti(op) -> dict:
     """Liste 'Girdi özeti': tek girdili → '1 BOY 150-10-0007 → 3 adet' (+ yan çıktı); çok girdili → ilk 2 kod + '+N girdi' (hover'da tam liste)."""
-    from core.sayi import format_tr
-    def sade(d):
-        return format_tr(d, 0 if d == d.to_integral_value() else 3)
+    from core.sayi import format_tr, yuvarla
+    def sade(d):                                   # tam sayı ondalıksız; kesirli 6 ondalığa kadar (sondaki sıfırlar kırpılır)
+        q = yuvarla(d, 6).normalize()
+        return format_tr(q, max(0, -q.as_tuple().exponent))
     girdiler = list(op.girdiler.all())
     yanlar = list(op.yan_ciktilar.all())
     birim = (op.cikti.uretim_birimi.ad or "").lower()
@@ -362,7 +363,7 @@ def _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici):
 
 
 def _tam_boy_mi(satirlar) -> bool:
-    """Tam boy kuralı (OTOMATİK): girdilerden en az birinin üretim birimi BOY ise çalıştırma sayısı tam sayıdır."""
+    """Tam boy VARSAYILANI: girdilerden en az birinin üretim birimi BOY ise işaretli (kullanıcı formda kaldırabilir)."""
     return any(_boy_birimli_mi(girdi) for girdi, _ in satirlar)
 
 
@@ -378,7 +379,8 @@ def stok_bilgi_haritasi() -> dict:
 
 
 @transaction.atomic
-def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanici=None, boy_mm=None, yan_ciktilar=None) -> Operasyon:
+def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanici=None, boy_mm=None, yan_ciktilar=None, tam_boy=None) -> Operasyon:
+    """``tam_boy`` None ise varsayılan: BOY birimli girdi varsa True; True/False verilirse kullanıcının seçimi."""
     istasyon = _istasyon_coz(istasyon_id)
     cikti = _cikti_coz(cikti_id)
     if Operasyon.objects.filter(silindi=False, cikti=cikti).exists():
@@ -391,7 +393,7 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanic
     yan_ciktilar = list(yan_ciktilar or [])
     _yan_ciktilari_dogrula(cikti, satirlar, yan_ciktilar, boy)
     operasyon = Operasyon.objects.create(
-        istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=_tam_boy_mi(satirlar), boy_mm=boy,
+        istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=_tam_boy_mi(satirlar) if tam_boy is None else bool(tam_boy), boy_mm=boy,
         created_by=kullanici, updated_by=kullanici)
     _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici)
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
@@ -403,8 +405,8 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanic
 
 @transaction.atomic
 def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satirlar,
-                       kullanici=None, boy_mm=_KORU, yan_ciktilar=None) -> Operasyon:
-    """``boy_mm`` verilmezse ana çıktı boyu, ``yan_ciktilar`` verilmezse (None) yan çıktılar KORUNUR; [] verilirse yan çıktılar silinir."""
+                       kullanici=None, boy_mm=_KORU, yan_ciktilar=None, tam_boy=None) -> Operasyon:
+    """``tam_boy`` verilmezse (None) mevcut seçim KORUNUR (girdi birimi değişse de otomatik değişmez). ``boy_mm`` verilmezse ana çıktı boyu, ``yan_ciktilar`` verilmezse (None) yan çıktılar KORUNUR; [] verilirse yan çıktılar silinir."""
     if operasyon.silindi:
         raise UretimHatasi("Silinmiş operasyon düzenlenemez.")
     istasyon = _istasyon_coz(istasyon_id)
@@ -425,7 +427,8 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satir
     operasyon.boy_mm = yeni_boy
     operasyon.istasyon = istasyon
     operasyon.cikti_miktar = cm
-    operasyon.tam_calistirma = _tam_boy_mi(satirlar)               # girdi birimi değişince OTOMATİK güncellenir
+    if tam_boy is not None:
+        operasyon.tam_calistirma = bool(tam_boy)
     operasyon.updated_by = kullanici
     operasyon.save(update_fields=[
         "istasyon", "cikti_miktar", "tam_calistirma", "boy_mm", "updated_by", "updated_at"])
@@ -805,7 +808,7 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
         raise UretimHatasi("Kayıt numarası üretilemedi; tekrar deneyin.")
 
     for i, satir in enumerate(girdi_satirlari, start=1):
-        gerekli = yuvarla(miktar * satir.miktar / operasyon.cikti_miktar, 3)
+        gerekli = yuvarla(miktar * satir.miktar / operasyon.cikti_miktar, 6)
         OperasyonKaydiGirdi.objects.create(
             kayit=kayit, girdi=satir.girdi, planlanan_miktar=gerekli,
             gerceklesen_miktar=gerekli, sira=i * 10,
@@ -840,7 +843,7 @@ def kayit_ciktilari(kayit: OperasyonKaydi) -> list:
     calistirma = kayit.hedef_cikti_miktari / operasyon.cikti_miktar
     sonuc = [("ana", operasyon.cikti, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
     for y in operasyon_yan_ciktilari(operasyon):
-        sonuc.append((f"yan{y.pk}", y.stok, yuvarla(calistirma * y.miktar, 3), y.boy_mm))
+        sonuc.append((f"yan{y.pk}", y.stok, yuvarla(calistirma * y.miktar, 6), y.boy_mm))
     return sonuc
 
 

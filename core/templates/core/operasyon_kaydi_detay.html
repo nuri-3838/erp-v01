@@ -107,13 +107,13 @@
         {% for satir, f, maliyet in satirlar %}
           <tr>
             <td><span class="mono">{{ satir.girdi.kod }}</span> {{ satir.girdi.ad }}</td>
-            <td class="sag mono">{{ satir.planlanan_miktar|tr_kur:3 }}</td>
+            <td class="sag mono">{{ satir.planlanan_miktar|tr_miktar6 }}</td>
             <td class="sag">
               {% if kayit.durum == "TASLAK" %}
                 {{ f.satir_id }}{{ f.gerceklesen_miktar }}
                 {% for e in f.errors %}<div class="hata">{{ e }}</div>{% endfor %}
               {% else %}
-                <span class="mono">{{ satir.gerceklesen_miktar|tr_kur:3 }}</span>
+                <span class="mono">{{ satir.gerceklesen_miktar|tr_miktar6 }}</span>
               {% endif %}
             </td>
             {% if kayit.durum == "ONAYLI" %}

@@ -83,6 +83,18 @@ def tr_miktar_sade(value, basamak=3):
 
 
 @register.filter
+def tr_miktar6(value):
+    """Miktar gösterimi: en az 3, gerekirse 6 ondalık (kesirli girdi/tüketim): "50,000", "0,077",
+    "0,015625". ``tr_kur:3`` miktarı 3 ondalığa yuvarlayıp 1/64 gibi değerleri bozar."""
+    if value is None or value == "":
+        return ""
+    d = value if isinstance(value, Decimal) else Decimal(str(value))
+    q = yuvarla(d, 6)
+    basamak = max(3, -q.normalize().as_tuple().exponent)
+    return format_tr(q, basamak)
+
+
+@register.filter
 def tr_bakiye(value):
     """Yürüyen bakiye: pozitif → '1.234,56 B', negatif → '1.234,56 A', sıfır → '0,00'."""
     if value is None or value == "":

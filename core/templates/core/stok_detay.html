@@ -106,7 +106,7 @@
     {% else %}
     <section class="icerik-kart ozet-kart{% if kritik_alti %} ozet-uyari{% endif %}">
       <h2 class="ozet-bsl"><span>📦</span>Mevcut Miktar</h2>
-      <div class="ozet-buyuk"><span class="mono">{{ eldeki|tr_kur:3 }}</span> <span class="birim">{{ stok.uretim_birimi.kisa_ad }}</span></div>
+      <div class="ozet-buyuk"><span class="mono">{{ eldeki|tr_miktar6 }}</span> <span class="birim">{{ stok.uretim_birimi.kisa_ad }}</span></div>
       <div class="ozet-not">Tüm depoların toplamı</div>
       {% if stok.kritik_stok > 0 %}
         <div class="ozet-not{% if kritik_alti %} uyari-metin{% endif %}">{% if kritik_alti %}⚠️ {% endif %}Kritik seviye:
@@ -185,7 +185,7 @@
             <td class="mono">{{ h.tarih|date:"d.m.Y" }}</td>
             <td>{% if h.tur == 'GIRIS' %}<span class="rozet rozet-aktif">Giriş ▲</span>{% else %}<span class="rozet rozet-pasif">Çıkış ▼</span>{% endif %}</td>
             <td class="mono">{{ h.depo.kod }}</td>
-            <td class="sag mono {% if h.tur == 'GIRIS' %}giris{% else %}cikis{% endif %}">{% if h.tur == 'GIRIS' %}+{% else %}−{% endif %}{{ h.miktar|tr_kur:3 }}</td>
+            <td class="sag mono {% if h.tur == 'GIRIS' %}giris{% else %}cikis{% endif %}">{% if h.tur == 'GIRIS' %}+{% else %}−{% endif %}{{ h.miktar|tr_miktar6 }}</td>
             <td class="sag mono">{% if h.maliyet_durumu == 'YOK' %}<span class="pasif" title="Maliyet belli değil (fatura bekleniyor)">—</span>{% else %}{{ h.birim_maliyet_try|tr_kur:4 }}{% endif %}</td>
             <td class="sag mono">{% if h.maliyet_durumu != 'YOK' %}{{ h.tutar_try|tr_kur:2 }}{% if h.maliyet_durumu == 'GECICI' %} <span class="rozet rozet-pasif" title="Fiyatsız giriş var: ortalama geçici">geçici</span>{% endif %}{% endif %}</td>
             <td class="hareket-kaynak">{{ h.get_kaynak_display }}

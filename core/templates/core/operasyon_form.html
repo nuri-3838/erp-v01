@@ -102,7 +102,7 @@
               <label for="id_cikti_miktar" id="miktar-etiket">{% if operasyon.tam_calistirma %}1 boydan kaç adet{% else %}1 çalıştırmada çıktı miktarı{% endif %}</label>
               <div class="op-miktar">
                 <input type="text" name="cikti_miktar" id="id_cikti_miktar" inputmode="decimal" value="{{ operasyon.cikti_miktar|tr_kur:3 }}">
-                <span class="rozet {% if operasyon.tam_calistirma %}rozet-aktif{% else %}rozet-notr{% endif %}" id="tam-boy-rozet" title="Girdilerden biri BOY birimliyse çalıştırma sayısı hep tam sayıdır; fazla parça stoğa girer">{% if operasyon.tam_calistirma %}Tam boy: Evet{% else %}Tam boy: Hayır{% endif %}</span>
+                <label class="tam-boy-kutu" title="İşaretliyse çalıştırma sayısı hep tam sayıdır (yukarı yuvarlanır); fazla parça stoğa girer. Kapalıysa kesirli çalıştırma yapılır, girdi boy oranıyla düşülür."><input type="checkbox" name="tam_boy" id="id_tam_boy" value="1"{% if operasyon.tam_calistirma %} checked{% endif %} data-elle="1"> Tam boy zorunlu</label><input type="hidden" name="tam_boy_var" value="1">
               </div>
             </div>
           {% else %}
@@ -122,7 +122,7 @@
               <label for="{{ bform.cikti_miktar.id_for_label }}" id="miktar-etiket">1 çalıştırmada çıktı miktarı</label>
               <div class="op-miktar">
                 {{ bform.cikti_miktar }}
-                <span class="rozet rozet-notr" id="tam-boy-rozet" title="Girdilerden biri BOY birimliyse çalıştırma sayısı hep tam sayıdır; fazla parça stoğa girer">Tam boy: Hayır</span>
+                <label class="tam-boy-kutu" title="İşaretliyse çalıştırma sayısı hep tam sayıdır (yukarı yuvarlanır); fazla parça stoğa girer. Kapalıysa kesirli çalıştırma yapılır, girdi boy oranıyla düşülür."><input type="checkbox" name="tam_boy" id="id_tam_boy" value="1"{% if tam_boy_secili %} checked{% endif %}{% if tam_boy_secili is not None %} data-elle="1"{% endif %}> Tam boy zorunlu</label><input type="hidden" name="tam_boy_var" value="1">
               </div>
               {% for e in bform.cikti_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
             </div>
@@ -221,7 +221,9 @@
   var BILGI = JSON.parse(document.getElementById('stok-bilgi').textContent || '{}');
   var satirGovde = document.getElementById('satir-govde');
   var yanGovde = document.getElementById('yan-govde');
-  var rozet = document.getElementById('tam-boy-rozet');
+  var tamKutu = document.getElementById('id_tam_boy');
+  var tamElle = tamKutu.hasAttribute('data-elle');         // düzenleme / hatalı POST: kullanıcının seçimi korunur
+  tamKutu.addEventListener('change', function(){ tamElle = true; guncelle(); });
   var boyAlan = document.getElementById('boy-alan');
   var boyInput = boyAlan.querySelector('input');
   var yanBolum = document.getElementById('yan-bolum');
@@ -230,7 +232,7 @@
   var miktarEtiket = document.getElementById('miktar-etiket');
 
   function sayi(v){ v = String(v || '').trim().replace(/\./g, '').replace(',', '.'); var n = parseFloat(v); return isNaN(n) ? null : n; }
-  function fmt(n, d){ return n.toLocaleString('tr-TR', {minimumFractionDigits: 0, maximumFractionDigits: d == null ? 3 : d}); }
+  function fmt(n, d){ return n.toLocaleString('tr-TR', {minimumFractionDigits: 0, maximumFractionDigits: d == null ? 6 : d}); }
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function bilgi(v){ return v ? BILGI[String(v)] : null; }
 
@@ -265,9 +267,8 @@
       var uyari = g.tr.querySelector('.op-uyari'); if (uyari) uyari.hidden = !(g.stok && sayac[g.stok] > 1);
     });
     // 2) tam boy (girdilerden biri BOY birimli) → rozet + miktar etiketi + özet
-    var tam = girdiler.some(function(g){ return g.b && g.b.boy; });
-    rozet.textContent = tam ? 'Tam boy: Evet' : 'Tam boy: Hayır';
-    rozet.className = 'rozet ' + (tam ? 'rozet-aktif' : 'rozet-notr');
+    if (!tamElle) tamKutu.checked = girdiler.some(function(g){ return g.b && g.b.boy; });   // varsayılan: BOY girdisi varsa işaretli
+    var tam = tamKutu.checked;
     miktarEtiket.textContent = tam ? '1 boydan kaç adet' : '1 çalıştırmada çıktı miktarı';
     document.getElementById('ozet-tam').textContent = tam ? 'Evet' : 'Hayır';
     // 3) yan çıktı bölümü / ana boy görünürlüğü

@@ -567,7 +567,7 @@ class Stok(TemelModel):
     # yeniden_hesapla her hareket değişiminde günceller, testle sıfırdan hesapla = saklanan
     # eşitliği denetlenir. Elle DÜZENLENMEZ.
     maliyet_miktar = models.DecimalField(
-        "maliyet miktarı (önbellek)", max_digits=18, decimal_places=3, default=0)
+        "maliyet miktarı (önbellek)", max_digits=18, decimal_places=6, default=0)
     maliyet_deger_try = models.DecimalField(
         "stok değeri TL (önbellek)", max_digits=18, decimal_places=2, default=0)
     maliyet_deger_usd = models.DecimalField(
@@ -2312,7 +2312,7 @@ class StokHareket(TemelModel):
         Depo, verbose_name="depo", related_name="hareketler", on_delete=models.PROTECT)
     tarih = models.DateField("tarih")
     tur = models.CharField("tür", max_length=5, choices=Tur.choices)
-    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
+    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=6)
     aciklama = models.CharField("açıklama", max_length=300, blank=True)
     # Faturadan otomatik üretilen hareketler bu kaleme bağlanır (iptal/güncellemede izlenir).
     fatura_satir = models.ForeignKey(
@@ -2385,7 +2385,7 @@ class StokHareket(TemelModel):
     birim_maliyet_usd = models.DecimalField(
         "birim maliyet USD", max_digits=18, decimal_places=6, null=True, blank=True)
     sonrasi_miktar = models.DecimalField(
-        "hareket sonrası miktar", max_digits=18, decimal_places=3, null=True, blank=True)
+        "hareket sonrası miktar", max_digits=18, decimal_places=6, null=True, blank=True)
     sonrasi_deger_try = models.DecimalField(
         "hareket sonrası değer TL", max_digits=18, decimal_places=2, null=True, blank=True)
     sonrasi_deger_usd = models.DecimalField(
@@ -2424,8 +2424,8 @@ class StokMaliyetKatmani(TemelModel):
     depo = models.ForeignKey(Depo, verbose_name="depo", on_delete=models.PROTECT,
                              related_name="maliyet_katmanlari")
     tarih = models.DateField("tarih")
-    giris_miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=3)
-    kalan_miktar = models.DecimalField("kalan miktar", max_digits=18, decimal_places=3)
+    giris_miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=6)
+    kalan_miktar = models.DecimalField("kalan miktar", max_digits=18, decimal_places=6)
     birim_maliyet_try = models.DecimalField("birim maliyet (TL)", max_digits=18, decimal_places=6)
     kaynak_pb = models.CharField("kaynak para birimi", max_length=3, blank=True, default="")
     kaynak_birim_fiyat = models.DecimalField(
@@ -2469,7 +2469,7 @@ class StokMaliyetTuketimi(TemelModel):
     tuketen_hareket = models.ForeignKey(
         StokHareket, verbose_name="tüketen hareket", on_delete=models.PROTECT,
         related_name="maliyet_tuketimleri")
-    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
+    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=6)
     birim_maliyet_try = models.DecimalField("birim maliyet (TL, snapshot)",
                                             max_digits=18, decimal_places=6)
     tutar_try = models.DecimalField("tutar (TL)", max_digits=18, decimal_places=2)
@@ -3087,8 +3087,8 @@ class Operasyon(TemelModel):
     cikti_miktar = models.DecimalField(
         "çıktı miktarı (1 çalıştırma için)", max_digits=18, decimal_places=3, default=1)
     # Kesimde TAM BOY: çalıştırma sayısı kesirli olamaz (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer.
-    # OTOMATİK (serviste): girdilerden en az birinin üretim birimi BOY ise True. Elle düzenlenmez.
-    tam_calistirma = models.BooleanField("tam çalıştırma zorunlu (tam boy)", default=False, editable=False)
+    # Yeni tanımda varsayılan: girdilerden en az biri BOY birimliyse işaretli; formdan kullanıcı kaldırabilir/işaretleyebilir.
+    tam_calistirma = models.BooleanField("tam çalıştırma zorunlu (tam boy)", default=False)
     # Ana çıktının parça boyu (mm): yan çıktısı olan operasyonda girdi maliyeti BOY ORANINA göre paylaştırılır (miktar × boy_mm).
     boy_mm = models.DecimalField("ana çıktı boyu (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
 
@@ -3117,9 +3117,9 @@ class OperasyonKaydiCikti(TemelModel):
 
     kayit = models.ForeignKey("OperasyonKaydi", on_delete=models.CASCADE, related_name="ciktilar")
     stok = models.ForeignKey(Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="kayit_cikti_satirlari")
-    miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=3)
+    miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=6)
     # Beklenen (çalıştırmadan çıkması gereken) adet: fason dönüşte ``miktar`` GELEN adettir, ``beklenen_miktar − miktar`` = FİRE (eksik teslim).
-    beklenen_miktar = models.DecimalField("beklenen miktar", max_digits=18, decimal_places=3, null=True, blank=True)
+    beklenen_miktar = models.DecimalField("beklenen miktar", max_digits=18, decimal_places=6, null=True, blank=True)
     boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
     pay_orani = models.DecimalField("maliyet pay oranı", max_digits=12, decimal_places=10, default=1)
     ana_mi = models.BooleanField("ana çıktı", default=True)
@@ -3155,7 +3155,7 @@ class OperasyonYanCikti(TemelModel):
 
     operasyon = models.ForeignKey(Operasyon, on_delete=models.CASCADE, related_name="yan_ciktilar")
     stok = models.ForeignKey(Stok, verbose_name="yan çıktı", on_delete=models.PROTECT, related_name="yan_cikti_kullanimlari")
-    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=3)
+    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=6)
     boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
 
@@ -3181,7 +3181,7 @@ class OperasyonGirdi(TemelModel):
     girdi = models.ForeignKey(
         Stok, verbose_name="girdi", on_delete=models.PROTECT,
         related_name="operasyon_girdi_kullanimlari")
-    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=3)
+    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=6)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
 
     class Meta:
@@ -3290,7 +3290,7 @@ class OperasyonKaydi(TemelModel):
         Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="operasyon_kayitlari")
     tarih = models.DateField("tarih")
     hedef_cikti_miktari = models.DecimalField(
-        "hedef çıktı miktarı", max_digits=18, decimal_places=3)
+        "hedef çıktı miktarı", max_digits=18, decimal_places=6)
     durum = models.CharField("durum", max_length=6, choices=Durum.choices, default=Durum.TASLAK)
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
     # Onayda girdi maliyetinin çıktıya aktarımı için 15x→15x fişi (hesaplar aynıysa fiş yok).
@@ -3305,7 +3305,7 @@ class OperasyonKaydi(TemelModel):
         "FasonDonus", verbose_name="fason dönüş belgesi", null=True, blank=True, on_delete=models.PROTECT, related_name="kayitlar")
     # FASON GELEN ADET (taslakta girilir): fasoncudan fiilen gelen ana çıktı adedi ve yan çıktılar ({stok pk: adet}); boşsa BEKLENEN adet gelmiş sayılır.
     # Girdi tüketimi beklenen (tam boya yuvarlanmış) çalıştırmadan, stoğa giren adet ve fason bedeli GELEN adetten; fark FİRE (OperasyonKaydiCikti).
-    gelen_ana = models.DecimalField("gelen ana çıktı adedi", max_digits=18, decimal_places=3, null=True, blank=True)
+    gelen_ana = models.DecimalField("gelen ana çıktı adedi", max_digits=18, decimal_places=6, null=True, blank=True)
     gelen_yan = models.JSONField("gelen yan çıktı adetleri", default=dict, blank=True)
 
     class Meta:
@@ -3334,9 +3334,9 @@ class OperasyonKaydiGirdi(TemelModel):
     # sarfiyat/fire planlanandan sapabilir); Onayla'da STOK ÇIKIŞI bu değerle yazılır —
     # gerceklesen_miktar == 0 ise o satır için hiç hareket yazılmaz (bu girdiye bu seferlik
     # gerek kalmadı anlamına gelir, hata sayılmaz).
-    planlanan_miktar = models.DecimalField("planlanan miktar", max_digits=18, decimal_places=3)
+    planlanan_miktar = models.DecimalField("planlanan miktar", max_digits=18, decimal_places=6)
     gerceklesen_miktar = models.DecimalField(
-        "gerçekleşen miktar", max_digits=18, decimal_places=3)
+        "gerçekleşen miktar", max_digits=18, decimal_places=6)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
 
     class Meta:

@@ -1273,7 +1273,7 @@ class OperasyonGirdiSatirForm(forms.Form):
     Listesi Hesapla ile aynı 'boş satır atlanır' deseni)."""
     girdi = forms.ModelChoiceField(
         label="Girdi", queryset=Stok.objects.none(), required=False, empty_label="— girdi seç —")
-    miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
+    miktar = TRDecimalField(label="Miktar", basamak=3, required=False)    # 6 ondalığa kadar saklanır; prepare_value derin değeri tam gösterir
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

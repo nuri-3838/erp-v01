@@ -44,7 +44,7 @@ class SadeOperasyonTest(YanCiktiBase):
         h = r.content.decode()
         for yok in ('name="ad"', 'name="aciklama"', 'name="tam_calistirma"', "Tam çalıştırma zorunlu"):
             self.assertNotIn(yok, h)
-        self.assertIn('id="tam-boy-rozet"', h)
+        self.assertIn('id="id_tam_boy"', h)
         self.assertIn('id="boy-alan" hidden', h)                                              # yan çıktı yokken gizli
         self.assertIn('id="boy-stok-idler"', h)
         self.assertIn(self.profil.pk, r.context["boy_stok_idler"])                             # BOY birimli stok JS'e verilir
@@ -62,7 +62,7 @@ class SadeOperasyonTest(YanCiktiBase):
                                    satirlar=[(self.profil, D("1"))])
         h2 = self.client.get(reverse("core:operasyon_duzenle", args=[yansiz.pk])).content.decode()
         self.assertIn('id="boy-alan" hidden', h2)
-        self.assertIn("Tam boy: Evet", h2)                                                     # BOY girdili → rozet Evet (sunucu tarafı ilk durum)
+        self.assertIn('id="id_tam_boy" value="1" checked', h2)                    # BOY girdili tanım → "Tam boy zorunlu" kutusu işaretli
         self.assertIn("1 boydan kaç adet", h2)                                                 # tam boyda miktar etiketi
 
     # --- ekran: POST akışları
@@ -86,7 +86,7 @@ class SadeOperasyonTest(YanCiktiBase):
         self.client.post(reverse("core:operasyon_ekle"), {**self._satir_post(adet_girdi), "cikti": c2.pk})
         self.assertFalse(Operasyon.objects.get(cikti=c2, silindi=False).tam_calistirma)       # ADET girdi → False
 
-    def test_duzenle_post_girdi_birimi_degisince_tam_boy_guncellenir(self):
+    def test_duzenle_post_tam_boy_kutusu_secimi_uygulanir_kutu_yoksa_korunur(self):
         c = self._stok("S6", self.kat_ana)
         adet_girdi = self._stok("ADETGIRDI2", self.kat_girdi, satinalma=True)
         op = operasyon_olustur(istasyon_id=self.kesim.pk, cikti_id=c.pk, cikti_miktar=D("1"), satirlar=[(adet_girdi, D("1"))])
@@ -94,7 +94,15 @@ class SadeOperasyonTest(YanCiktiBase):
         r = self.client.post(reverse("core:operasyon_duzenle", args=[op.pk]), self._satir_post(self.profil, boy_mm=""))
         self.assertEqual(r.status_code, 302)
         op.refresh_from_db()
+        self.assertFalse(op.tam_calistirma)                                                    # kutu alanı yok → mevcut değer korunur
+        r = self.client.post(reverse("core:operasyon_duzenle", args=[op.pk]),
+                             self._satir_post(self.profil, boy_mm="", tam_boy_var="1", tam_boy="1"))
+        op.refresh_from_db()
         self.assertTrue(op.tam_calistirma)
+        r = self.client.post(reverse("core:operasyon_duzenle", args=[op.pk]),
+                             self._satir_post(self.profil, boy_mm="", tam_boy_var="1"))      # kutu kaldırıldı (işaret yok, tam_boy gönderilmez)
+        op.refresh_from_db()
+        self.assertFalse(op.tam_calistirma)
 
     def test_duzenle_post_yan_cikti_varken_ana_boy_bossa_sunucu_reddeder(self):
         c = self._stok("S7", self.kat_ana)

@@ -234,7 +234,7 @@ class UretimEmriTamBoyTest(TamBoyBase):
 
 
 class OperasyonGuncelleTest(TamBoyBase):
-    def test_tam_calistirma_girdi_birimine_gore_otomatik_ve_girdi_degisince_guncellenir(self):
+    def test_tam_calistirma_varsayilan_girdi_birimine_gore_guncellemede_korunur_veya_secilir(self):
         boy_profil = self.stok("BOYPROFIL", self.boy, satinalma=True)
         adet_parca = self.stok("ADETPARCA", self.adet, satinalma=True)
         mt_kayis = self.stok("KAYIS", self.mt, satinalma=True)
@@ -243,13 +243,16 @@ class OperasyonGuncelleTest(TamBoyBase):
         self.assertFalse(op.tam_calistirma)                                                                   # AD → False
         operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(boy_profil, D("1"))])
         op.refresh_from_db()
-        self.assertTrue(op.tam_calistirma)                                                                    # BOY → True
+        self.assertFalse(op.tam_calistirma)                                                                   # seçim verilmedi → mevcut değer KORUNUR
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(boy_profil, D("1"))], tam_boy=True)
+        op.refresh_from_db()
+        self.assertTrue(op.tam_calistirma)                                                                    # açıkça işaretlendi
         operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(mt_kayis, D("1"))])
         op.refresh_from_db()
-        self.assertFalse(op.tam_calistirma)                                                                   # MT → False
-        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(mt_kayis, D("1")), (boy_profil, D("2"))])
+        self.assertTrue(op.tam_calistirma)                                                                    # girdi değişti ama seçim korunur
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(boy_profil, D("1"))], tam_boy=False)
         op.refresh_from_db()
-        self.assertTrue(op.tam_calistirma)                                                                    # girdilerden biri BOY → True
+        self.assertFalse(op.tam_calistirma)                                                                   # kullanıcı kaldırdı
 
     def test_olusturmada_birim_boy_ise_true(self):
         boy_profil = self.stok("BOYPROFIL2", self.boy, satinalma=True)

@@ -6818,8 +6818,15 @@ def _form_hatalari(bform, formset, yan_formset) -> list:
     return out
 
 
+def _tam_boy_post(post):
+    """Formdaki 'Tam boy zorunlu' kutusu: işaret alanı (tam_boy_var) varsa kutunun durumu, yoksa None (servis varsayılanı / mevcut değer)."""
+    if post.get("tam_boy_var") is None:
+        return None
+    return post.get("tam_boy") == "1"
+
+
 def _operasyon_form_baglam(**ek):
-    return {"boy_stok_idler": uretim_servis.boy_stok_idleri(), "stok_bilgi": uretim_servis.stok_bilgi_haritasi(), **ek}
+    return {"tam_boy_secili": None, "boy_stok_idler": uretim_servis.boy_stok_idleri(), "stok_bilgi": uretim_servis.stok_bilgi_haritasi(), **ek}
 
 
 @ekran_gerekli("operasyon_tanimlari")
@@ -6829,6 +6836,7 @@ def operasyon_ekle(request):
     kaynak = Operasyon.objects.filter(pk=request.GET.get("kopya") or 0, silindi=False).select_related("cikti").first()
     baslik = f"Operasyon Kopyala — kaynak: {kaynak.cikti.kod}" if kaynak else "Yeni Operasyon"
     hatalar = []
+    tam_boy_secili = None
     if request.method == "POST":
         bform = OperasyonBaslikForm(request.POST)
         formset = OperasyonGirdiSatirFormSet(request.POST, prefix="satir")
@@ -6843,12 +6851,13 @@ def operasyon_ekle(request):
                 uretim_servis.operasyon_olustur(
                     istasyon_id=cd["istasyon"].pk, cikti_id=cd["cikti"].pk,
                     cikti_miktar=cd["cikti_miktar"], satirlar=satirlar,
-                    kullanici=request.user, boy_mm=cd.get("boy_mm"), yan_ciktilar=yanlar)
+                    kullanici=request.user, boy_mm=cd.get("boy_mm"), yan_ciktilar=yanlar, tam_boy=_tam_boy_post(request.POST))
                 messages.success(request, "Operasyon tanımı kaydedildi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
         hatalar = _form_hatalari(bform, formset, yan_formset)
+        tam_boy_secili = _tam_boy_post(request.POST)
     elif kaynak is not None:
         bform = OperasyonBaslikForm(initial={"istasyon": kaynak.istasyon_id, "cikti_miktar": kaynak.cikti_miktar})
         formset = OperasyonGirdiSatirFormSet(initial=[
@@ -6861,7 +6870,8 @@ def operasyon_ekle(request):
         formset = OperasyonGirdiSatirFormSet(prefix="satir")
         yan_formset = OperasyonYanCiktiFormSet(prefix="yan")
     return render(request, "core/operasyon_form.html", _operasyon_form_baglam(
-        bform=bform, formset=formset, yan_formset=yan_formset, baslik=baslik, hatalar=hatalar, kopya_kaynak=kaynak))
+        bform=bform, formset=formset, yan_formset=yan_formset, baslik=baslik, hatalar=hatalar, kopya_kaynak=kaynak,
+        tam_boy_secili=tam_boy_secili))
 
 
 @ekran_gerekli("operasyon_tanimlari")
@@ -6883,7 +6893,7 @@ def operasyon_duzenle(request, pk):
                     operasyon, istasyon_id=istasyon_id, cikti_miktar=cikti_miktar,
                     satirlar=satirlar, kullanici=request.user,
                     boy_mm=request.POST.get("boy_mm", "") if yan_var or "boy_mm" in request.POST else uretim_servis.KORU,
-                    yan_ciktilar=yanlar if yan_var else None)
+                    yan_ciktilar=yanlar if yan_var else None, tam_boy=_tam_boy_post(request.POST))
                 messages.success(request, "Operasyon tanımı güncellendi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
