@@ -471,6 +471,10 @@ class FaturaTipi(TemelModel):
     # Serbest meslek makbuzu gibi GV STOPAJI kesilen tip (yalnız gider+alış): faturada stopaj
     # oranı girilir, stopaj 360.xx'e alacak yazılıp cariden düşülür (bkz. core.services.fatura).
     stopajli = models.BooleanField("GV stopajlı (serbest meslek makbuzu)", default=False)
+    # Yalnız KDV (yalnız ALIŞ): fatura kalemleri normal girilir (belge/KDV raporları matrah + KDV gösterir) ama yevmiye fişine YALNIZ KDV yazılır
+    # (191 B / cari A; tevkifat varsa 360 A, cari net KDV). Matrah için satır, stok hareketi ve kategori-hesap eşlemesi yoktur — matrah başka yoldan
+    # (ör. fason tahakkuk fişi) zaten yazılmıştır. Gider/stopajlı ile birlikte olmaz.
+    yalniz_kdv = models.BooleanField("yalnız KDV (matrah fişe yazılmaz)", default=False)
 
     class MaliyetFisi(models.TextChoices):
         YOK = "", "Maliyet fişi yok"
@@ -1692,6 +1696,8 @@ class Fatura(TemelModel):
     def odenecek(self):
         """Carinin borç/alacağı = mal + KDV − tevkifat − GV stopajı (ikisi de karşı tarafa
         ödenmez, vergi dairesine yatar)."""
+        if self.tip_id and self.tip.yalniz_kdv:            # matrah başka yoldan yazılmış: cariye yalnız net KDV
+            return self.kdv_toplam - self.tevkifat_toplam
         return self.genel_toplam - self.tevkifat_toplam - self.gv_stopaj_tutari
 
 

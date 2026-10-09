@@ -58,19 +58,31 @@ def _stopajli_dogrula(stopajli, gider):
     return stopajli
 
 
-def fatura_tipi_olustur(*, ad, yon, sira=0, gider=False, stopajli=False,
+def _yalniz_kdv_dogrula(yalniz_kdv, yon, gider, stopajli):
+    """'Yalnız KDV' (matrah fişe yazılmaz) yalnız ALIŞ yönünde; gider / GV stopajlı ile birlikte seçilemez."""
+    yalniz_kdv = bool(yalniz_kdv)
+    if yalniz_kdv:
+        if yon != FaturaTipi.Yon.ALIS:
+            raise FaturaTipiHatasi("'Yalnız KDV' yalnız Alış yönünde seçilebilir.")
+        if gider or stopajli:
+            raise FaturaTipiHatasi("'Yalnız KDV' tipi gider faturası ya da GV stopajlı ile birlikte seçilemez.")
+    return yalniz_kdv
+
+
+def fatura_tipi_olustur(*, ad, yon, sira=0, gider=False, stopajli=False, yalniz_kdv=False,
                         kullanici=None) -> FaturaTipi:
     yon = _yon_dogrula(yon)
     ad = _ad_dogrula(ad)
     gider = _gider_dogrula(gider, yon)
     stopajli = _stopajli_dogrula(stopajli, gider)
+    yalniz_kdv = _yalniz_kdv_dogrula(yalniz_kdv, yon, gider, stopajli)
     return FaturaTipi.objects.create(
-        ad=ad, yon=yon, sira=int(sira or 0), gider=gider, stopajli=stopajli,
+        ad=ad, yon=yon, sira=int(sira or 0), gider=gider, stopajli=stopajli, yalniz_kdv=yalniz_kdv,
         created_by=kullanici, updated_by=kullanici,
     )
 
 
-def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, gider=False, stopajli=False,
+def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, gider=False, stopajli=False, yalniz_kdv=False,
                          kullanici=None) -> FaturaTipi:
     if tip.silindi:
         raise FaturaTipiHatasi("Silinmiş fatura tipi düzenlenemez.")
@@ -84,10 +96,13 @@ def fatura_tipi_guncelle(tip: FaturaTipi, *, ad, yon, sira, gider=False, stopajl
     stopajli = _stopajli_dogrula(stopajli, gider)
     if stopajli != tip.stopajli and Fatura.objects.filter(tip=tip, silindi=False).exists():
         raise FaturaTipiHatasi("Bu tipte fatura kesilmiş; 'GV stopajlı' işareti değiştirilemez.")
-    tip.yon, tip.ad, tip.gider, tip.stopajli = yon, ad, gider, stopajli
+    yalniz_kdv = _yalniz_kdv_dogrula(yalniz_kdv, yon, gider, stopajli)
+    if yalniz_kdv != tip.yalniz_kdv and Fatura.objects.filter(tip=tip, silindi=False).exists():
+        raise FaturaTipiHatasi("Bu tipte fatura kesilmiş; 'Yalnız KDV' işareti değiştirilemez.")
+    tip.yon, tip.ad, tip.gider, tip.stopajli, tip.yalniz_kdv = yon, ad, gider, stopajli, yalniz_kdv
     tip.sira = int(sira or 0)
     tip.updated_by = kullanici
-    tip.save(update_fields=["ad", "yon", "sira", "gider", "stopajli",
+    tip.save(update_fields=["ad", "yon", "sira", "gider", "stopajli", "yalniz_kdv",
                             "updated_by", "updated_at"])
     return tip
 

@@ -339,6 +339,9 @@ class FaturaTipiForm(forms.Form):
     stopajli = forms.BooleanField(
         label="GV stopajlı (serbest meslek makbuzu — faturada stopaj oranı girilir; "
               "yalnız gider faturası)", required=False)
+    yalniz_kdv = forms.BooleanField(
+        label="Yalnız KDV (matrah fişe yazılmaz — fişe yalnız 191 KDV borç / cari alacak yazılır; stok hareketi yok; "
+              "yalnız Alış, gider/stopajlı ile birlikte olmaz)", required=False)
 
 
 class StokForm(forms.Form):

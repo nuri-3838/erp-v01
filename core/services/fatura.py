@@ -506,7 +506,9 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
 
         # Mal/gider hesabı: gider faturasında satırın kendi gider hesabı; diğer tiplerde
         # kategori × fatura tipi haritası
-        if hesap is not None:
+        if tip.yalniz_kdv:                                 # matrah fişe yazılmaz: kategori-hesap eşlemesi gerekmez
+            mal_kodu, mal_ad, etiket = None, stok.ad, stok.kod
+        elif hesap is not None:
             mal_kodu, mal_ad, etiket = hesap.hesap_kodu, hesap.hesap_adi, hesap.hesap_kodu
         else:
             kh = KategoriHesap.objects.filter(
@@ -533,7 +535,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
             # Demirbaş satışı: aynı kart birden çok satırda olabilir (ör. biri %20 KDV'li, biri KDV'siz) — satış bedelleri TOPLANIR; kartın maliyet/
             # amortisman/kâr-zarar satırları döngüden sonra TEK kez yazılır.
             dv_satis.setdefault(dv.pk, [dv, SIFIR])[1] += yuvarla(satir_tutar * kur, 2)
-        else:
+        elif not tip.yalniz_kdv:
             mal_taraf = "B" if alis else "A"
             mal_tutar = (satir_tutar + satir_kdv) if sahsi else satir_tutar
             _ekle(mal_taraf, mal_tutar)
@@ -567,7 +569,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
             tevkifat_hesap_toplam[tev_hesap.hesap_kodu] = (
                 tevkifat_hesap_toplam.get(tev_hesap.hesap_kodu, SIFIR) + tev)
 
-        cari_pb += satir_tutar + kdv_net
+        cari_pb += kdv_net if tip.yalniz_kdv else (satir_tutar + kdv_net)       # yalnız KDV: cariye yalnız net KDV
         matrah_toplam += satir_tutar
         hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv))
 
@@ -713,7 +715,10 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
             raise FaturaHatasi(
                 f"Satır {i}: kalem türü fatura tipiyle uyuşmuyor "
                 f"(hesap/demirbaş satırı yalnız satış faturasında olabilir).")
-        if satir.hesap_id:
+        if tip.yalniz_kdv:                                 # matrah fişe yazılmaz: kategori-hesap eşlemesi gerekmez
+            stok = satir.stok
+            mal_kodu, mal_ad, etiket = None, stok.ad if stok else "", stok.kod if stok else ""
+        elif satir.hesap_id:
             mal_kodu, mal_ad, etiket = satir.hesap.hesap_kodu, satir.hesap.hesap_adi, satir.hesap.hesap_kodu
         else:
             stok = satir.stok
@@ -736,7 +741,7 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
             # Demirbaş satışı: aynı kart birden çok satırda olabilir (ör. biri %20 KDV'li, biri KDV'siz) — satış bedelleri TOPLANIR; kartın maliyet/
             # amortisman/kâr-zarar satırları döngüden sonra TEK kez yazılır.
             dv_satis.setdefault(dv.pk, [dv, SIFIR])[1] += yuvarla(satir_tutar * kur, 2)
-        else:
+        elif not tip.yalniz_kdv:
             mal_taraf = "B" if alis else "A"
             mal_tutar = (satir_tutar + satir_kdv) if sahsi else satir_tutar
             _ekle(mal_taraf, mal_tutar)
@@ -768,7 +773,7 @@ def _muhasebe_satirlari(fatura, tip, cari, pb, kur):
             tevkifat_hesap_toplam[tev_hesap.hesap_kodu] = (
                 tevkifat_hesap_toplam.get(tev_hesap.hesap_kodu, SIFIR) + tev)
 
-        cari_pb += satir_tutar + kdv_net
+        cari_pb += kdv_net if tip.yalniz_kdv else (satir_tutar + kdv_net)       # yalnız KDV: cariye yalnız net KDV
         matrah_toplam += satir_tutar
 
     for dv_, satis_tl in dv_satis.values():               # aynı kart birden çok satırda → maliyet/amortisman/kâr-zarar TEK kez
@@ -1005,7 +1010,7 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
     if sahsi_ortak is not None and cozulen_yon != FaturaTipi.Yon.ALIS:
         raise FaturaHatasi("Ortak adına şahsi alış yalnız alış yönünde olabilir.")
-    depo = None if gider else _hizmetsiz_depo(hazir, _depo_coz(depo_id))   # gider faturasında depo/stok hareketi yok; yalnız hizmet kalemi varsa depo yok sayılır
+    depo = None if (gider or (tip and tip.yalniz_kdv)) else _hizmetsiz_depo(hazir, _depo_coz(depo_id))   # gider / yalnız KDV faturasında depo/stok hareketi yok; yalnız hizmet kalemi varsa depo yok sayılır
     fatura_no = (fatura_no or "").strip()
     _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=cozulen_yon)
     # Sunucu tarafı yedek: vade boş + carinin ödeme koşulu tanımlıysa otomatik hesapla
@@ -1115,7 +1120,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
             sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), kullanici=kullanici, tarih=tarih, fatura_no=fatura_no)
         if gider and cozulen_yon != FaturaTipi.Yon.ALIS:
             raise FaturaHatasi("Gider faturası yalnız alış yönünde olabilir.")
-        depo = None if gider else _hizmetsiz_depo(hazir, _depo_coz(depo_id))
+        depo = None if (gider or (tip and tip.yalniz_kdv)) else _hizmetsiz_depo(hazir, _depo_coz(depo_id))
         fatura_no = (fatura_no or "").strip()
         _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=cozulen_yon,
                                haric_pk=fatura.pk)
@@ -1143,7 +1148,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         para_birimi=para_birimi, kur_override=kur,
         sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None),
         gv_stopaj_orani=gv_stopaj_orani, fatura_pk=fatura.pk, kullanici=kullanici, fatura_no=fatura_no)
-    depo = None if tip.gider else _hizmetsiz_depo(hazir, _depo_coz(depo_id))    # gider faturasında depo yok; yalnız hizmet kalemi varsa depo yok sayılır
+    depo = None if (tip.gider or tip.yalniz_kdv) else _hizmetsiz_depo(hazir, _depo_coz(depo_id))    # gider / yalnız KDV faturasında depo yok; yalnız hizmet kalemi varsa depo yok sayılır
     fatura_no = (fatura_no or "").strip()
     _mukerrer_alis_kontrol(cari=cari, fatura_no=fatura_no, yon=tip.yon, haric_pk=fatura.pk)
     try:

@@ -1474,7 +1474,7 @@ def fatura_tipi_duzenle(request, pk):
     else:
         form = FaturaTipiForm(initial={
             "ad": tip.ad, "yon": tip.yon, "sira": tip.sira, "gider": tip.gider,
-            "stopajli": tip.stopajli})
+            "stopajli": tip.stopajli, "yalniz_kdv": tip.yalniz_kdv})
     return render(request, "core/fatura_tipi_form.html",
                   {"form": form, "baslik": "Fatura Tipi Düzenle", "duzenlenen": tip})
 
