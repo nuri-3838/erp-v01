@@ -1366,13 +1366,15 @@ class UrunAgaciForm(forms.Form):
         label="Ürün", queryset=Stok.objects.none(), empty_label="— ürün seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False, initial=Decimal("1"))
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, secenekler=None, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.uretim import operasyonlu_stok_idler
         self.fields["urun"].queryset = (
             Stok.objects.filter(silindi=False, pk__in=operasyonlu_stok_idler()).order_by("kod"))
         self.fields["urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["urun"].widget.attrs["class"] = "akilli-sec"
+        if secenekler is not None:      # gruplu seçici: Bitmiş ürünler (A tipi / Çift çıkış) / Ara parçalar
+            self.fields["urun"].widget.choices = [("", "— ürün seç —")] + [(g, list(u)) for g, u in secenekler]
 
     def clean_miktar(self):
         miktar = self.cleaned_data.get("miktar")

@@ -6,81 +6,43 @@
 
 {% block content %}
 <div class="form-kapsa">
-  <div class="form-ust">
-    <a class="ust-link" href="{% url 'core:operasyon_tanimlari' %}">Operasyon Tanımları →</a>
-    <h1 class="ust-baslik"><span class="emoji">🌳</span>Ürün Ağacı</h1>
+  <div class="form-ust ua-ust">
+    <div>
+      <a class="ust-link ua-ekran" href="{% url 'core:operasyon_tanimlari' %}">Operasyon Tanımları →</a>
+      <h1 class="ust-baslik"><span class="emoji">🌳</span>Ürün Ağacı</h1>
+    </div>
+    {% if xlsx_url %}
+      <div class="ua-araclar ua-ekran">
+        <a class="dugme" href="{{ xlsx_url }}" title="Bu görünümü Excel'e indir">⬇ Excel</a>
+        <button type="button" class="dugme" onclick="window.print()" title="Yazdır (A4)">🖨 Yazdır</button>
+      </div>
+    {% endif %}
   </div>
-  <p class="yardim" style="margin-top:-.4rem">Bir ürünün, tanımlı operasyon zincirinden türetilen
-    ağacı: hangi iş istasyonunda, hangi girdilerden, ne kadar. Salt okunurdur, hiçbir kayıt
-    açmaz — değiştirmek için Operasyon Tanımları'nı kullan. Birden çok ürünün toplanmış ihtiyacı
-    için İhtiyaç Hesapla'ya bak.</p>
+  {% if baslik_yazdir %}<h2 class="ua-yazdir-baslik">{{ baslik_yazdir }}</h2>{% endif %}
+  <p class="yardim ua-ekran" style="margin-top:-.4rem">Operasyon zincirinden türetilen salt-okunur görünümler: hiçbir kayıt açmaz —
+    değiştirmek için Operasyon Tanımları'nı kullan. Birden çok ürünün toplanmış ihtiyacı için İhtiyaç Hesapla'ya bak.</p>
 
-  <form method="get" autocomplete="off" style="display:contents">
-    <section class="icerik-kart">
-      <h2 class="bolum-baslik">Ürün Seç</h2>
-      <div class="ua-secim">
-        <div class="ua-alan ua-alan-genis">
-          <label for="{{ form.urun.id_for_label }}">Ürün</label>
-          {{ form.urun }}
-          {% for e in form.urun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
-        <div class="ua-alan">
-          <label for="{{ form.miktar.id_for_label }}">Miktar</label>
-          {{ form.miktar }}
-          {% for e in form.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
-        <button type="submit" class="birincil">Ağacı Göster</button>
-      </div>
-    </section>
-  </form>
+  <nav class="ua-segment ua-ekran" aria-label="Görünüm">
+    {% for k, ad, u in segmentler %}<a href="{{ u }}" class="ua-seg{% if k == gorunum %} aktif{% endif %}">{{ ad }}</a>{% endfor %}
+  </nav>
 
-  {% if agac %}
-    <section class="icerik-kart">
-      <div class="ua-baslik-satiri">
-        <h2 class="bolum-baslik"><span class="emoji">🌳</span>Ağaç</h2>
-        <span class="ua-arac">
-          <button type="button" class="ua-baglanti" data-ua="ac">Hepsini Aç</button>
-          <span aria-hidden="true">/</span>
-          <button type="button" class="ua-baglanti" data-ua="kapat">Hepsini Kapat</button>
-        </span>
-      </div>
-      <div class="ua-agac">
-        {% include "core/_urun_agaci_dugum.html" with dugum=agac derinlik=0 %}
-      </div>
-    </section>
-  {% endif %}
-
-  {% if kokler is not None %}
-    <section class="icerik-kart">
-      <h2 class="bolum-baslik"><span class="emoji">📦</span>Bitmiş Ürünler</h2>
-      <p class="yardim" style="margin-top:-.3rem">Çıktısı başka bir operasyonun girdisi olmayan
-        ürünler — zincirin en üstü.</p>
-      <div class="tablo-kapsayici">
-        <table>
-          <thead><tr><th>Ürün (ağacı için tıkla)</th><th>Son İstasyon</th><th class="sag">Girdi</th></tr></thead>
-          <tbody>
-            {% for op in kokler %}
-              <tr>
-                <td><a href="?urun={{ op.cikti_id }}"><span class="mono">{{ op.cikti.kod }}</span> {{ op.cikti.ad }}</a></td>
-                <td><span class="mono">{{ op.istasyon.kod }}</span> {{ op.istasyon.ad }}</td>
-                <td class="sag mono">{{ op.girdi_sayisi }}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="3" class="yardim">Henüz tanımlı operasyon yok.
-                <a href="{% url 'core:operasyon_tanimlari' %}">Operasyon Tanımları</a>'ndan ekleyin.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  {% endif %}
+  {% include "core/_ua_urun.html" %}
 </div>
 
 <style>
+  .ua-ust { display:flex; justify-content:space-between; align-items:flex-start; gap:.8rem; flex-wrap:wrap; }
+  .ua-araclar { display:flex; gap:.5rem; }
+  .ua-segment { display:inline-flex; gap:.25rem; padding:.25rem; border:1px solid var(--cizgi-koyu); border-radius:14px;
+    background:rgba(255,255,255,.7); margin:0 0 1rem; flex-wrap:wrap; }
+  .ua-seg { padding:.45rem 1rem; border-radius:10px; text-decoration:none; color:var(--metin); font-weight:650; font-size:.88rem; }
+  .ua-seg:hover { background:rgba(240,124,0,.1); }
+  .ua-seg.aktif { background:var(--lacivert); color:#fff; }
+  .ua-yazdir-baslik { display:none; }
+
   .ua-secim { display:flex; gap:.8rem; align-items:flex-end; flex-wrap:wrap; }
   .ua-alan { display:flex; flex-direction:column; gap:.3rem; min-width:8rem; }
   .ua-alan-genis { flex:1 1 18rem; }
-  .ua-alan label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
+  .ua-alan label, .ua-etiket { font-size:.72rem; font-weight:700; letter-spacing:.03em;
     text-transform:uppercase; color:var(--metin-soluk); }
   .ua-alan input, .ua-alan select { width:100%; box-sizing:border-box; }
   .ua-baslik-satiri { display:flex; align-items:baseline; justify-content:space-between;
@@ -90,6 +52,36 @@
   .ua-baglanti { background:none; border:0; box-shadow:none; min-height:0; padding:0; font:inherit;
     font-weight:600; color:var(--lacivert-acik); cursor:pointer; }
   .ua-baglanti:hover { color:var(--turuncu-koyu); text-decoration:underline; }
+
+  .ua-sekmeler { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 .9rem; }
+  .ua-sekme { padding:.42rem .9rem; border-radius:12px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.7);
+    text-decoration:none; color:var(--metin); font-weight:650; font-size:.86rem; }
+  .ua-sekme:hover { border-color:var(--turuncu); }
+  .ua-sekme.aktif { background:var(--lacivert); color:#fff; border-color:var(--lacivert); }
+
+  .ua-ozet { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 .8rem; align-items:center; }
+  .ua-chip { display:inline-flex; align-items:center; gap:.35rem; padding:.4rem .8rem; border-radius:999px; border:1px solid var(--cizgi-koyu);
+    background:rgba(255,255,255,.75); font-size:.85rem; }
+  .ua-chip strong { font-weight:750; }
+  .ua-chip.kirmizi { border-color:rgba(193,21,57,.45); background:rgba(193,21,57,.08); color:var(--hata); }
+  .ua-chip.yesil { border-color:rgba(10,125,40,.35); background:#e7f7ec; color:#0a7d28; }
+  .ua-not { font-size:.78rem; color:var(--metin-soluk); margin:.4rem 0 .8rem; }
+
+  .ua-tablo { width:100%; border-collapse:collapse; }
+  .ua-tablo th { text-align:left; font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); padding:.3rem .6rem; }
+  .ua-tablo td { padding:.42rem .6rem; border-top:1px solid var(--cizgi); vertical-align:top; }
+  .ua-tablo .sag { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ua-tablo tr.ua-kat td { background:rgba(21,41,77,.06); font-weight:700; border-top:1px solid var(--cizgi-koyu); }
+  .ua-tablo tr.ua-ara td { font-weight:650; background:rgba(21,41,77,.025); }
+  .ua-tablo tr.ua-genel td { font-weight:750; background:rgba(240,124,0,.1); border-top:2px solid var(--cizgi-koyu); }
+  .ua-tablo tr.eksik td { color:var(--hata); }
+  .ua-tablo tr.eksik td.sag.vurgu { font-weight:750; }
+  .ua-yok { color:var(--metin-soluk); font-style:italic; }
+  .ua-yol { display:flex; flex-wrap:wrap; gap:.25rem .35rem; align-items:center; font-size:.82rem; }
+  .ua-yol .ok { color:var(--metin-soluk); }
+  .ua-yol .son { font-weight:700; }
+  .ua-yan-not { display:block; margin-top:.2rem; font-size:.75rem; color:var(--metin-soluk); }
+  .ua-bos { padding:1.2rem; text-align:center; }
 
   .ua-agac { container-type:inline-size; }
   .ua-dugum { margin-left:.9rem; padding-left:.7rem; border-left:1px solid var(--cizgi); }
@@ -119,20 +111,89 @@
     .ua-miktar { flex-basis:4.5rem; order:2; }   /* sayı en sağda sabit: her satırda aynı hiza */
     .ua-ist { flex:0 1 8.5rem; order:1; }        /* rozet solunda; yer daralırsa o kırpılır */
   }
+
+  /* Karşılaştır matrisi: başlık satırı + ilk sütun yapışkan, yatay/dikey kaydırma */
+  .ua-matris { overflow:auto; max-height:72vh; border:1px solid var(--cizgi-koyu); border-radius:12px; background:#fff; -webkit-overflow-scrolling:touch; }
+  .ua-matris table { border-collapse:separate; border-spacing:0; min-width:100%; }
+  .ua-matris th, .ua-matris td { padding:.4rem .6rem; border-bottom:1px solid var(--cizgi); background:#fff; }
+  .ua-matris thead th { position:sticky; top:0; z-index:3; background:#f1f4fa; font-size:.74rem; text-align:right; vertical-align:bottom;
+    min-width:8.5rem; max-width:11rem; border-bottom:1px solid var(--cizgi-koyu); }
+  .ua-matris thead th.ua-ilk { text-align:left; z-index:5; }
+  .ua-matris .ua-ilk { position:sticky; left:0; z-index:2; min-width:14rem; max-width:18rem; box-shadow:1px 0 0 var(--cizgi-koyu); background:#fff; }
+  .ua-matris thead th small { display:block; font-weight:500; color:var(--metin-soluk); text-transform:none; letter-spacing:0; }
+  .ua-matris td.sag { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ua-matris tr.ua-kat td { background:#eef1f7; font-weight:700; }
+  .ua-matris tr.ua-kat td.ua-ilk { background:#eef1f7; }
+  .ua-matris tr.ua-toplam td { position:sticky; bottom:0; z-index:2; background:#fdf1e0; font-weight:750; border-top:2px solid var(--cizgi-koyu); }
+  .ua-matris tr.ua-toplam td.ua-ilk { z-index:4; background:#fdf1e0; }
+  .ua-secim-kutu { display:flex; flex-wrap:wrap; gap:.35rem .8rem; }
+  .ua-secim-kutu label { display:inline-flex; align-items:center; gap:.35rem; font-size:.84rem; padding:.2rem .55rem; border:1px solid var(--cizgi);
+    border-radius:999px; background:rgba(255,255,255,.7); cursor:pointer; text-transform:none; letter-spacing:0; font-weight:500; color:var(--metin); }
+  .ua-secim-kutu input { margin:0; width:auto; }
+  .ua-grup-baslik { flex-basis:100%; font-size:.7rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); margin-top:.3rem; }
+  .ua-ikili { display:inline-flex; border:1px solid var(--cizgi-koyu); border-radius:12px; overflow:hidden; }
+  .ua-ikili a { padding:.4rem .9rem; text-decoration:none; color:var(--metin); font-weight:650; font-size:.85rem; background:rgba(255,255,255,.7); }
+  .ua-ikili a.aktif { background:var(--lacivert); color:#fff; }
+
+  @media (max-width:639px) {
+    .ua-tablo thead { display:none; }
+    .ua-tablo, .ua-tablo tbody { display:block; }
+    .ua-tablo tr { display:block; }
+    .ua-tablo tr.ua-s { padding:.55rem .7rem; margin-bottom:.45rem; border:1px solid var(--cizgi-koyu); border-radius:12px; background:rgba(255,255,255,.75); }
+    .ua-tablo tr.ua-kat, .ua-tablo tr.ua-ara, .ua-tablo tr.ua-genel { margin:.5rem 0 .3rem; }
+    .ua-tablo tr.ua-kat td, .ua-tablo tr.ua-ara td, .ua-tablo tr.ua-genel td { display:flex; justify-content:space-between; border-radius:10px; }
+    .ua-tablo tr.ua-s td { display:flex; justify-content:space-between; gap:.8rem; border-top:0; padding:.12rem 0; text-align:right; }
+    .ua-tablo tr.ua-s td::before { content:attr(data-et); color:var(--metin-soluk); font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; text-align:left; flex:0 0 auto; }
+    .ua-tablo tr.ua-s td.ua-ad-h { display:block; text-align:left; font-weight:650; }
+    .ua-tablo tr.ua-s td.ua-ad-h::before { display:none; }
+  }
+
+  @page ua-yatay { size:A4 landscape; margin:9mm; }
+  @page { size:A4; margin:10mm; }
+  @media print {
+    .yan, .ust-cubuk, .ua-ekran, #yan-ac, .akilli-liste, form.ua-form, .ua-sekmeler, .ua-ozet-sekme { display:none !important; }
+    .kabuk, .icerik-sutun, .govde { display:block !important; margin:0 !important; padding:0 !important; width:auto !important; }
+    .icerik-kart, .kart-yok { box-shadow:none !important; border:0 !important; background:none !important; padding:0 !important; }
+    body { background:#fff !important; font-size:10.5pt; }
+    .ua-yazdir-baslik { display:block; font-size:13pt; margin:0 0 .5rem; color:#15294d; }
+    .ua-matris { overflow:visible; max-height:none; border:0; page:ua-yatay; }
+    .ua-matris .ua-ilk, .ua-matris thead th, .ua-matris tr.ua-toplam td { position:static; box-shadow:none; }
+    .ua-matris th, .ua-matris td { padding:.15rem .3rem; font-size:8.5pt; }
+    .ua-tablo td, .ua-tablo th { padding:.18rem .35rem; font-size:9.5pt; }
+    tr { break-inside:avoid; }
+  }
 </style>
-{% if agac %}
 <script>
 (function(){
   var kok = document.querySelector('.ua-agac');
-  if(!kok) return;
-  document.querySelectorAll('.ua-arac [data-ua]').forEach(function(b){
-    b.addEventListener('click', function(){
-      var ac = b.getAttribute('data-ua') === 'ac';
-      kok.querySelectorAll('details').forEach(function(d){ d.open = ac; });
+  if (kok) {
+    document.querySelectorAll('.ua-arac [data-ua]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var ac = b.getAttribute('data-ua') === 'ac';
+        kok.querySelectorAll('details').forEach(function(d){ d.open = ac; });
+      });
     });
-  });
+    window.addEventListener('beforeprint', function(){ kok.querySelectorAll('details').forEach(function(d){ d.open = true; }); });
+  }
+  // Karşılaştır: elle seçimde en fazla N ürün
+  var kutular = document.querySelectorAll('.ua-secim-kutu input[type=checkbox]');
+  if (kutular.length) {
+    var enFazla = parseInt(document.querySelector('.ua-secim-kutu').getAttribute('data-en-fazla'), 10) || 8;
+    var say = document.getElementById('ua-secili-say');
+    function guncelle(){
+      var n = 0; kutular.forEach(function(k){ if (k.checked) n++; });
+      kutular.forEach(function(k){ if (!k.checked) k.disabled = n >= enFazla; });
+      if (say) say.textContent = n + ' / ' + enFazla;
+    }
+    kutular.forEach(function(k){ k.addEventListener('change', guncelle); });
+    var seriSel = document.getElementById('ua-seri');
+    if (seriSel) seriSel.addEventListener('change', function(){
+      var elle = !seriSel.value;
+      document.querySelectorAll('.ua-secim-kutu').forEach(function(b){ b.style.opacity = elle ? '1' : '.45'; });
+    });
+    guncelle();
+  }
 })();
 </script>
-{% endif %}
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}

@@ -81,6 +81,8 @@ from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import duran_hesap as duran_hesap_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
+from core.services import urun_agaci as urun_agaci_servis
+from core.services import urun_agaci_xlsx
 from core.services import birim as birim_servis
 from core.services import kategori as kategori_servis
 from core.services import fatura_tipi as fatura_tipi_servis
@@ -6788,27 +6790,83 @@ def ihtiyac_hesapla(request):
     return render(request, "core/ihtiyac_hesapla.html", {"formset": formset, "sonuc": sonuc})
 
 
-# --- Ürün Ağacı (salt-okunur GET görünümü; ağaç ihtiyac_hesapla'dan gelir, kayıt açmaz) ---
+# --- Ürün Ağacı: üç salt-okunur görünüm (Ürün · Nerede kullanılıyor · Karşılaştır) — hepsi Operasyon zincirinden hesaplanır, kayıt açmaz ---
 URUN_AGACI_ACIK_SEVIYE = 2      # kök + bir alt seviye açık başlar; derindekiler kapalı
+URUN_AGACI_SEKMELER = (("agac", "Ağaç"), ("malzeme", "Malzeme ve Stok"), ("maliyet", "Maliyet"))
+
+
+def _xlsx_yanit(veri, ad):
+    resp = HttpResponse(veri, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp["Content-Disposition"] = f'attachment; filename="{ad}.xlsx"'
+    return resp
 
 
 @ekran_gerekli("urun_agaci")
 def urun_agaci(request):
-    agac = None
-    if request.GET.get("urun"):
-        form = UrunAgaciForm(request.GET)
-        if form.is_valid():
-            try:
-                sonuc = uretim_servis.ihtiyac_hesapla(
-                    [(form.cleaned_data["urun"], form.cleaned_data["miktar"])])
-                agac = sonuc["agac"][0]
-            except uretim_servis.UretimHatasi as e:
-                messages.error(request, str(e))
-    else:
-        form = UrunAgaciForm()
-    return render(request, "core/urun_agaci.html", {
-        "form": form, "agac": agac, "acik_seviye": URUN_AGACI_ACIK_SEVIYE,
-        "kokler": None if agac else uretim_servis.kok_operasyonlar()})
+    from urllib.parse import urlencode
+    g = request.GET
+    gorunum = "urun"
+    graf = urun_agaci_servis.graf_yukle()
+    xlsx = g.get("xlsx") == "1"
+
+    def url(**ek):
+        d = {k: v for k, v in g.items() if k not in ("xlsx",)}
+        d.update(ek)
+        d = {k: v for k, v in d.items() if v not in ("", None)}
+        return "?" + urlencode(d) if d else "?"
+
+    ctx = {
+        "gorunum": gorunum, "acik_seviye": URUN_AGACI_ACIK_SEVIYE,
+        "segmentler": [("urun", "Ürün", "?")],
+        "xlsx_url": None, "sonuc_var": False, "baslik_yazdir": "",
+    }
+
+    if gorunum == "urun":
+        sekme = g.get("sekme") if g.get("sekme") in ("agac", "malzeme", "maliyet") else "agac"
+        secenekler = urun_agaci_servis.urun_secenekleri(graf)
+        agac = malzeme = maliyet = urun = None
+        miktar = Decimal("1")
+        depo = None
+        depo_listesi = urun_agaci_servis.depolar() if sekme == "malzeme" else []
+        if g.get("depo"):
+            depo = next((d for d in depo_listesi if str(d.pk) == g.get("depo")), None)
+        if g.get("urun"):
+            form = UrunAgaciForm(g, secenekler=secenekler)
+            if form.is_valid():
+                urun = graf.stoklar.get(form.cleaned_data["urun"].pk, form.cleaned_data["urun"])
+                miktar = form.cleaned_data["miktar"]
+                try:
+                    if sekme == "agac":
+                        agac = uretim_servis.ihtiyac_hesapla([(urun, miktar)], graf=graf)["agac"][0]
+                    elif sekme == "malzeme":
+                        malzeme = urun_agaci_servis.urun_malzeme(graf, urun, miktar, depo)
+                    else:
+                        maliyet = urun_agaci_servis.urun_maliyet(graf, urun, miktar)
+                except uretim_servis.UretimHatasi as e:
+                    messages.error(request, str(e))
+        else:
+            form = UrunAgaciForm(secenekler=secenekler)
+        sonuc = agac or malzeme or maliyet
+        if xlsx and sonuc:
+            ad = f"urun_agaci_{urun.kod}_{sekme}"
+            if sekme == "agac":
+                return _xlsx_yanit(urun_agaci_xlsx.agac_xlsx(agac, miktar), ad)
+            if sekme == "malzeme":
+                return _xlsx_yanit(urun_agaci_xlsx.malzeme_xlsx(urun, miktar, malzeme, depo.ad if depo else "Tüm depolar"), ad)
+            return _xlsx_yanit(urun_agaci_xlsx.maliyet_xlsx(urun, miktar, maliyet), ad)
+        kok_ops = []
+        for st in graf.kokler():
+            op = graf.op_of[st.pk]
+            op.girdi_sayisi = len(graf.girdiler[op.pk])
+            kok_ops.append(op)
+        ctx.update({
+            "form": form, "agac": agac, "malzeme": malzeme, "maliyet": maliyet, "urun": urun, "miktar": miktar, "sekme": sekme,
+            "sekmeler": [(k, ad, url(sekme=k)) for k, ad in URUN_AGACI_SEKMELER], "depolar": depo_listesi, "depo": depo,
+            "kokler": None if sonuc else kok_ops, "sonuc_var": bool(sonuc),
+            "xlsx_url": url(xlsx="1") if sonuc else None,
+            "baslik_yazdir": (f"{urun.kod} {urun.ad} × {miktar.normalize():f}" if urun and sonuc else "")})
+
+    return render(request, "core/urun_agaci.html", ctx)
 
 
 # --- Üretim Emirleri (üst-düzey tetikleyici) ---

@@ -17,10 +17,16 @@ eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) ça
     aktifInp = inp; konumla(inp);
     filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
     var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
+    var sonGrup = null;
     Array.prototype.forEach.call(sel.options, function(o){
       var t = o.value ? o.textContent.trim() : bos;
       if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
       if(n++ > 80) return;
+      if(o.parentNode && o.parentNode.tagName === 'OPTGROUP' && o.parentNode.label !== sonGrup){
+        sonGrup = o.parentNode.label;
+        var gb = document.createElement('div'); gb.className = 'akilli-grup'; gb.textContent = sonGrup;
+        gListe.appendChild(gb);
+      }
       var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
       d.addEventListener('mousedown', function(ev){ ev.preventDefault();
         sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';

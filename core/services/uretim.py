@@ -310,6 +310,20 @@ def operasyon_yan_ciktilari(operasyon: Operasyon):
     return operasyon.yan_ciktilar.filter(silindi=False).select_related("stok").order_by("sira", "pk")
 
 
+def ana_cikti_payi(cikti_miktar, boy_mm, yanlar) -> Decimal:
+    """Bir çalıştırmada ANA çıktının girdi maliyetinden/tüketiminden alacağı pay (0-1): ağırlık = miktar × boy_mm (ana + yan çıktılar).
+    Onaydaki maliyet paylaştırmasıyla AYNI kural: yan çıktı yoksa ya da herhangi bir ağırlık eksik/sıfırsa ana çıktı %100. ``yanlar``:
+    ``miktar`` ve ``boy_mm`` alanlı satırlar (OperasyonYanCikti), bir çalıştırma başına miktarlarla."""
+    yanlar = list(yanlar)
+    if not yanlar:
+        return Decimal("1")
+    ana = (cikti_miktar * boy_mm) if boy_mm else Decimal("0")
+    agirliklar = [ana] + [(y.miktar * y.boy_mm) if y.boy_mm else Decimal("0") for y in yanlar]
+    if any(a <= 0 for a in agirliklar):
+        return Decimal("1")
+    return ana / sum(agirliklar, Decimal("0"))
+
+
 def _boy_coz(deger, mesaj):
     if deger in (None, ""):
         return None
@@ -437,8 +451,13 @@ def operasyon_sil(operasyon: Operasyon, kullanici=None) -> Operasyon:
 
 # === İhtiyaç Hesapla — özyinelemeli, salt-okunur, hiçbir kayıt/stok hareketi üretmez ===
 
-def ihtiyac_hesapla(kalemler):
+def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
     """kalemler: [(Stok hedef, Decimal miktar), ...].
+
+    ``boy_yuvarla=False`` → tam boy yukarı yuvarlaması KAPALI: bütün çalıştırmalar kesirli (gerçek tüketim; maliyet görünümleri için).
+    ``pay_dus=True`` → yan çıktılı kesimde girdi talebi ana çıktının boy payı (``ana_cikti_payi``) kadar düşülür. Varsayılanlarla
+    davranış eskisiyle BİREBİR aynıdır. ``graf`` (core.services.urun_agaci.Graf) verilirse operasyon/girdi/yan çıktı bilgisi bellekten
+    okunur (sorgu yok).
 
     İKİ AŞAMALI, SEVİYE BAZLI hesap (low-level code):
       1) Zincirdeki her stoğun EN DERİN seviyesi bulunur (köklerden en uzun yol; döngü varsa UretimHatasi).
@@ -466,11 +485,16 @@ def ihtiyac_hesapla(kalemler):
 
     def op_bul(stok):
         if stok.pk not in onbellek:
-            operasyon = (Operasyon.objects.filter(cikti=stok, silindi=False).select_related("istasyon").first())
-            satirlar = (list(operasyon.girdiler.filter(silindi=False).select_related("girdi").order_by("sira", "pk"))
-                        if operasyon else [])
+            if graf is not None:
+                operasyon = graf.op_of.get(stok.pk)
+                satirlar = list(graf.girdiler.get(operasyon.pk, [])) if operasyon else []
+                yan_onbellek[stok.pk] = list(graf.yanlar.get(operasyon.pk, [])) if operasyon else []
+            else:
+                operasyon = (Operasyon.objects.filter(cikti=stok, silindi=False).select_related("istasyon").first())
+                satirlar = (list(operasyon.girdiler.filter(silindi=False).select_related("girdi").order_by("sira", "pk"))
+                            if operasyon else [])
+                yan_onbellek[stok.pk] = list(operasyon_yan_ciktilari(operasyon)) if operasyon else []
             onbellek[stok.pk] = (operasyon, satirlar)
-            yan_onbellek[stok.pk] = list(operasyon_yan_ciktilari(operasyon)) if operasyon else []
         return onbellek[stok.pk]
 
     # --- 1. aşama: zinciri keşfet (döngü kontrolü), ebeveynleri topla, seviyeleri bul
@@ -509,25 +533,28 @@ def ihtiyac_hesapla(kalemler):
     for stok, miktar in hedefler:
         kok_talep[stok.pk] = kok_talep.get(stok.pk, Decimal("0")) + miktar
     talep = dict(kok_talep)
-    plan_map = {}
+    plan_map, pay_map = {}, {}
     for pk in sorted(stoklar, key=lambda k: (seviye[k], sira_no[k])):
         operasyon, satirlar = op_bul(stoklar[pk])
         if operasyon is None:
             continue
         ihtiyac = talep.get(pk, Decimal("0"))
         cm = operasyon.cikti_miktar
-        if operasyon.tam_calistirma:
+        tam = operasyon.tam_calistirma and boy_yuvarla
+        if tam:
             calistirma = _yukari_yuvarla(ihtiyac / cm)
             uretilecek = calistirma * cm
         else:
             calistirma = ihtiyac / cm
             uretilecek = ihtiyac                     # kesirli çalıştırmada hedef talebin kendisi (bölme artığı yok)
+        pay = ana_cikti_payi(cm, operasyon.boy_mm, yan_onbellek.get(pk, [])) if pay_dus else Decimal("1")
+        pay_map[pk] = pay
         plan_map[pk] = {"stok": stoklar[pk], "operasyon": operasyon, "ihtiyac": ihtiyac, "calistirma": calistirma,
-                        "uretilecek": uretilecek, "fazla": uretilecek - ihtiyac, "tam": operasyon.tam_calistirma,
+                        "uretilecek": uretilecek, "fazla": uretilecek - ihtiyac, "tam": tam,
                         "yan_ciktilar": [{"stok": y.stok, "miktar": calistirma * y.miktar, "boy_mm": y.boy_mm}
                                          for y in yan_onbellek.get(pk, [])]}
         for satir in satirlar:
-            talep[satir.girdi_id] = talep.get(satir.girdi_id, Decimal("0")) + calistirma * satir.miktar
+            talep[satir.girdi_id] = talep.get(satir.girdi_id, Decimal("0")) + calistirma * satir.miktar * pay
 
     # --- ağaç (gösterim) + özet sırası: DFS, tam çalıştırmalı stok yalnız İLK geçtiği yerde açılır
     ozet_sira = []
@@ -552,7 +579,8 @@ def ihtiyac_hesapla(kalemler):
             calistirma = p["calistirma"]
         else:
             calistirma = miktar / operasyon.cikti_miktar
-        dugum["cocuklar"] = [gez(satir.girdi, calistirma * satir.miktar) for satir in satirlar]
+        pay = pay_map[stok.pk]
+        dugum["cocuklar"] = [gez(satir.girdi, calistirma * satir.miktar * pay) for satir in satirlar]
         return dugum
 
     agac = [gez(stok, miktar, kok=True) for stok, miktar in hedefler]

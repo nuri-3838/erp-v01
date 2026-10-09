@@ -1,0 +1,154 @@
+{% load core_extras %}
+<form method="get" autocomplete="off" class="ua-form" style="display:contents">
+  <input type="hidden" name="sekme" value="{{ sekme }}">
+  <section class="icerik-kart ua-ekran">
+    <h2 class="bolum-baslik">Ürün Seç</h2>
+    <div class="ua-secim">
+      <div class="ua-alan ua-alan-genis">
+        <label for="{{ form.urun.id_for_label }}">Ürün</label>
+        {{ form.urun }}
+        {% for e in form.urun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="ua-alan">
+        <label for="{{ form.miktar.id_for_label }}">Miktar</label>
+        {{ form.miktar }}
+        {% for e in form.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+      </div>
+      {% if sekme == "malzeme" %}
+        <div class="ua-alan">
+          <label for="ua-depo">Depo</label>
+          <select name="depo" id="ua-depo">
+            <option value="">Tüm depolar</option>
+            {% for d in depolar %}<option value="{{ d.pk }}"{% if depo and depo.pk == d.pk %} selected{% endif %}>{{ d.kod }} · {{ d.ad }}</option>{% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <button type="submit" class="birincil">Göster</button>
+    </div>
+  </section>
+</form>
+
+{% if sonuc_var %}
+  <nav class="ua-sekmeler ua-ekran" aria-label="Alt görünüm">
+    {% for k, ad, u in sekmeler %}<a class="ua-sekme{% if k == sekme %} aktif{% endif %}" href="{{ u }}">{{ ad }}</a>{% endfor %}
+  </nav>
+{% endif %}
+
+{% if agac %}
+  <section class="icerik-kart">
+    <div class="ua-baslik-satiri">
+      <h2 class="bolum-baslik"><span class="emoji">🌳</span>Ağaç</h2>
+      <span class="ua-arac ua-ekran">
+        <button type="button" class="ua-baglanti" data-ua="ac">Hepsini Aç</button>
+        <span aria-hidden="true">/</span>
+        <button type="button" class="ua-baglanti" data-ua="kapat">Hepsini Kapat</button>
+      </span>
+    </div>
+    <div class="ua-agac">
+      {% include "core/_urun_agaci_dugum.html" with dugum=agac derinlik=0 %}
+    </div>
+  </section>
+{% endif %}
+
+{% if malzeme %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📋</span>Malzeme ve Stok</h2>
+    <div class="ua-ozet">
+      <span class="ua-chip yesil"><strong>{{ malzeme.yeterli }}</strong> kalem yeterli</span>
+      <span class="ua-chip{% if malzeme.eksik %} kirmizi{% endif %}"><strong>{{ malzeme.eksik }}</strong> kalem eksik</span>
+      <span class="ua-chip">Depo: <strong>{% if depo %}{{ depo.kod }}{% else %}tüm depolar{% endif %}</strong></span>
+    </div>
+    <div class="tablo-kapsayici">
+      <table class="ua-tablo">
+        <thead><tr><th>Kod · Ad</th><th>Birim</th><th class="sag">Gerekli</th><th class="sag">Eldeki stok</th><th class="sag">Eksik</th></tr></thead>
+        <tbody>
+          {% for g in malzeme.gruplar %}
+            <tr class="ua-kat"><td colspan="5">{{ g.kategori }} · {{ g.satirlar|length }} kalem</td></tr>
+            {% for s in g.satirlar %}
+              <tr class="ua-s{% if s.eksik > 0 %} eksik{% endif %}">
+                <td class="ua-ad-h" data-et="Kalem"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td>
+                <td data-et="Birim">{{ s.birim }}</td>
+                <td class="sag" data-et="Gerekli">{{ s.gerekli|tr_miktar_sade:3 }}</td>
+                <td class="sag" data-et="Eldeki stok">{{ s.eldeki|tr_miktar_sade:3 }}</td>
+                <td class="sag vurgu" data-et="Eksik">{% if s.eksik > 0 %}{{ s.eksik|tr_miktar_sade:3 }}{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          {% empty %}
+            <tr><td colspan="5" class="yardim ua-bos">Bu ürünün zincirinde hazır stok kalemi yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="ua-not">Gerekli miktar tam boy hesabıyla bulunur (İhtiyaç Hesapla ile aynı). Açık kayıtlara ayrılan stok düşülmez.</p>
+  </section>
+{% endif %}
+
+{% if maliyet %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">💰</span>Malzeme Maliyeti</h2>
+    <div class="ua-ozet">
+      <span class="ua-chip"><strong>1</strong> adet: <strong>{{ maliyet.toplam_try|tr_para }} TL</strong> · {{ maliyet.toplam_usd|tr_para }} USD</span>
+      {% if maliyet.miktar != 1 %}
+        <span class="ua-chip yesil"><strong>{{ maliyet.miktar|tr_miktar_sade:3 }}</strong> adet: <strong>{{ maliyet.miktar_toplam_try|tr_para }} TL</strong> · {{ maliyet.miktar_toplam_usd|tr_para }} USD</span>
+      {% endif %}
+      {% if maliyet.maliyetsiz %}
+        <span class="ua-chip kirmizi">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>
+      {% endif %}
+    </div>
+    <div class="tablo-kapsayici">
+      <table class="ua-tablo">
+        <thead><tr><th>Kod · Ad</th><th class="sag">Birim tüketim</th><th class="sag">Ort. birim maliyet</th><th class="sag">Tutar TL</th><th class="sag">Tutar USD</th><th class="sag">Pay %</th></tr></thead>
+        <tbody>
+          {% for g in maliyet.gruplar %}
+            <tr class="ua-kat"><td colspan="6">{{ g.kategori }}</td></tr>
+            {% for s in g.satirlar %}
+              <tr class="ua-s">
+                <td class="ua-ad-h" data-et="Kalem"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td>
+                <td class="sag" data-et="Birim tüketim">{{ s.tuketim|tr_miktar_sade:4 }} {{ s.birim }}</td>
+                {% if s.maliyet_yok %}
+                  <td class="sag ua-yok" data-et="Ort. birim maliyet" colspan="4" style="text-align:right">maliyet yok</td>
+                {% else %}
+                  <td class="sag" data-et="Ort. birim maliyet">{{ s.ort_try|tr_kur:4 }}</td>
+                  <td class="sag" data-et="Tutar TL">{{ s.tutar_try|tr_para }}</td>
+                  <td class="sag" data-et="Tutar USD">{% if s.tutar_usd is not None %}{{ s.tutar_usd|tr_para }}{% else %}—{% endif %}</td>
+                  <td class="sag" data-et="Pay %">{% if s.pay is not None %}{{ s.pay|tr_miktar_sade:1 }}{% endif %}</td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+            <tr class="ua-ara"><td colspan="3">{{ g.kategori }} ara toplam</td><td class="sag">{{ g.toplam_try|tr_para }}</td><td class="sag">{{ g.toplam_usd|tr_para }}</td><td class="sag">{% if g.pay is not None %}{{ g.pay|tr_miktar_sade:1 }}{% endif %}</td></tr>
+          {% empty %}
+            <tr><td colspan="6" class="yardim ua-bos">Bu ürünün zincirinde hazır stok kalemi yok.</td></tr>
+          {% endfor %}
+          <tr class="ua-genel"><td colspan="3">GENEL TOPLAM (1 adet){% if maliyet.maliyetsiz %} <span class="ua-yok">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}</td><td class="sag">{{ maliyet.toplam_try|tr_para }}</td><td class="sag">{{ maliyet.toplam_usd|tr_para }}</td><td class="sag">100</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="ua-not">Tüketim gerçek (kesirli) hesaplanır: tam boy yuvarlaması yapılmaz; yan çıktılı kesimlerde girdi, ana çıktının boy payı oranında düşülür.
+      Birim maliyet: hareketli ağırlıklı ortalama.</p>
+  </section>
+{% endif %}
+
+{% if kokler is not None %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📦</span>Bitmiş Ürünler</h2>
+    <p class="yardim" style="margin-top:-.3rem">Çıktısı başka bir operasyonun girdisi olmayan
+      ürünler — zincirin en üstü.</p>
+    <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Ürün (ağacı için tıkla)</th><th>Son İstasyon</th><th class="sag">Girdi</th></tr></thead>
+        <tbody>
+          {% for op in kokler %}
+            <tr>
+              <td><a href="?urun={{ op.cikti_id }}"><span class="mono">{{ op.cikti.kod }}</span> {{ op.cikti.ad }}</a></td>
+              <td><span class="mono">{{ op.istasyon.kod }}</span> {{ op.istasyon.ad }}</td>
+              <td class="sag mono">{{ op.girdi_sayisi }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" class="yardim">Henüz tanımlı operasyon yok.
+              <a href="{% url 'core:operasyon_tanimlari' %}">Operasyon Tanımları</a>'ndan ekleyin.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
