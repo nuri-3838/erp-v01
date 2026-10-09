@@ -19,6 +19,15 @@
           <label style="display:contents"><input type="radio" name="mod" value="maliyet" hidden{% if mod == "maliyet" %} checked{% endif %}><a href="{{ mod_url_maliyet }}" class="{% if mod == 'maliyet' %}aktif{% endif %}">Maliyet</a></label>
         </span>
       </div>
+      {% if mod == "maliyet" %}
+      <div class="ua-alan">
+        <span class="ua-etiket">Para birimi</span>
+        <span class="ua-ikili">
+          <label style="display:contents"><input type="radio" name="pb" value="TL" hidden{% if pb == "TL" %} checked{% endif %}><a href="{{ pb_url_tl }}" class="{% if pb == 'TL' %}aktif{% endif %}">TL</a></label>
+          <label style="display:contents"><input type="radio" name="pb" value="USD" hidden{% if pb == "USD" %} checked{% endif %}><a href="{{ pb_url_usd }}" class="{% if pb == 'USD' %}aktif{% endif %}">USD</a></label>
+        </span>
+      </div>
+      {% endif %}
       <button type="submit" class="birincil">Karşılaştır</button>
     </div>
     <div class="ua-alan" style="margin-top:.8rem">
@@ -40,8 +49,8 @@
 {% if sonuc %}
   <section class="icerik-kart ua-matris-kapsa">
     <div class="ua-baslik-satiri">
-      <h2 class="bolum-baslik"><span class="emoji">🧮</span>{% if mod == "maliyet" %}Maliyet matrisi (TL){% else %}Miktar matrisi{% endif %}</h2>
-      <span class="ua-arac ua-ekran">{{ sonuc.satir_sayisi }} malzeme × {{ sonuc.urunler|length }} ürün · hücre = 1 adet ürün başına {% if mod == "maliyet" %}TL maliyet{% else %}kesirli tüketim{% endif %}</span>
+      <h2 class="bolum-baslik"><span class="emoji">🧮</span>{% if mod == "maliyet" %}Maliyet matrisi ({{ pb }}){% else %}Miktar matrisi{% endif %}</h2>
+      <span class="ua-arac ua-ekran">{{ sonuc.satir_sayisi }} malzeme × {{ sonuc.urunler|length }} ürün · hücre = 1 adet ürün başına {% if mod == "maliyet" %}{{ pb }} maliyet{% else %}kesirli tüketim{% endif %}</span>
     </div>
     <div class="ua-matris">
       <table>
@@ -58,20 +67,24 @@
               <tr>
                 <td class="ua-ilk"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }} <span class="ua-yok">({{ s.birim }})</span></td>
                 {% for h in s.hucreler %}
-                  <td class="sag">{% if h %}{% if mod == "maliyet" %}{% if h.maliyet_yok %}<span class="ua-yok" title="Ortalama maliyeti yok">maliyet yok</span>{% else %}{{ h.deger|tr_para }}{% endif %}{% else %}{{ h.deger|tr_miktar_sade:4 }}{% endif %}{% endif %}</td>
+                  <td class="sag">{% if h %}{% if mod == "maliyet" %}{% if h.maliyet_yok %}<span class="ua-yok" title="Ortalama maliyet ve kart alış fiyatı yok">maliyet yok</span>{% else %}{% if h.kaynak == "KART" %}<span class="ua-kart" title="Stok kartındaki alış fiyatı (TCMB kuruyla çevrildi)">{{ h.deger|tr_para }}*</span>{% else %}{{ h.deger|tr_para }}{% endif %}{% endif %}{% else %}{{ h.deger|tr_miktar_sade:4 }}{% endif %}{% endif %}</td>
                 {% endfor %}
               </tr>
             {% endfor %}
           {% endfor %}
           {% if mod == "maliyet" %}
             <tr class="ua-toplam">
-              <td class="ua-ilk">ÜRÜN BAŞINA TOPLAM (TL)</td>
+              <td class="ua-ilk">ÜRÜN BAŞINA TOPLAM ({{ pb }})</td>
               {% for t in sonuc.toplamlar %}<td class="sag">{{ t.toplam|tr_para }}{% if t.maliyetsiz %}<div class="ua-yok" style="font-weight:500;font-size:.72rem">⚠ {{ t.maliyetsiz }} kalem maliyetsiz</div>{% endif %}</td>{% endfor %}
             </tr>
           {% endif %}
         </tbody>
       </table>
     </div>
+    {% if mod == "maliyet" %}
+      {% for u in sonuc.kur_uyarilari %}<div class="uyari" style="margin-top:.6rem">{{ u }}</div>{% endfor %}
+      <p class="ua-not">Birim maliyet: hareketli ağırlıklı ortalama; yoksa stok kartındaki alış fiyatı (*); ikisi de yoksa "maliyet yok".{% if sonuc.kart_kalem %} {{ sonuc.kart_kalem }} malzeme alış fiyatından hesaplandı.{% endif %}{% if sonuc.kur_notu %} {{ sonuc.kur_notu }}{% endif %}</p>
+    {% endif %}
   </section>
 {% elif not uyari %}
   <section class="icerik-kart ua-ekran"><p class="yardim ua-bos">Bir seri seç ya da en fazla {{ en_fazla }} ürün işaretle.</p></section>

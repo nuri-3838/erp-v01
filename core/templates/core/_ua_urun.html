@@ -87,44 +87,55 @@
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">💰</span>Malzeme Maliyeti</h2>
     <div class="ua-ozet">
-      <span class="ua-chip"><strong>1</strong> adet: <strong>{{ maliyet.toplam_try|tr_para }} TL</strong> · {{ maliyet.toplam_usd|tr_para }} USD</span>
+      <span class="ua-chip"><strong>1</strong> adet: <strong>{{ maliyet.toplam_try|tr_para }} TL</strong> · <strong>{{ maliyet.toplam_usd|tr_para }} USD</strong></span>
       {% if maliyet.miktar != 1 %}
-        <span class="ua-chip yesil"><strong>{{ maliyet.miktar|tr_miktar_sade:3 }}</strong> adet: <strong>{{ maliyet.miktar_toplam_try|tr_para }} TL</strong> · {{ maliyet.miktar_toplam_usd|tr_para }} USD</span>
-      {% endif %}
-      {% if maliyet.maliyetsiz %}
-        <span class="ua-chip kirmizi">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>
+        <span class="ua-chip yesil"><strong>{{ maliyet.miktar|tr_miktar_sade:3 }}</strong> adet: <strong>{{ maliyet.miktar_toplam_try|tr_para }} TL</strong> · <strong>{{ maliyet.miktar_toplam_usd|tr_para }} USD</strong></span>
       {% endif %}
     </div>
+    <div class="ua-ozet">
+      <span class="ua-chip"><strong>{{ maliyet.ortalama_sayi }}</strong> kalem ortalama</span>
+      <span class="ua-chip{% if maliyet.kart_sayi %} sari{% endif %}"><strong>{{ maliyet.kart_sayi }}</strong> kalem alış fiyatı{% if maliyet.kart_sayi and maliyet.kart_pay is not None %} (toplamın %{{ maliyet.kart_pay|tr_miktar_sade:1 }}'i){% endif %}</span>
+      <span class="ua-chip{% if maliyet.maliyetsiz %} kirmizi{% endif %}"><strong>{{ maliyet.maliyetsiz }}</strong> kalem maliyetsiz</span>
+      {% if maliyet.maliyetsiz %}<span class="ua-chip kirmizi">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}
+      {% if maliyet.usd_eksik %}<span class="ua-chip kirmizi">⚠ {{ maliyet.usd_eksik }} kalemin USD değeri yok — USD toplamı eksik</span>{% endif %}
+    </div>
+    {% for u in maliyet.kur_uyarilari %}<div class="uyari">{{ u }}</div>{% endfor %}
     <div class="tablo-kapsayici">
       <table class="ua-tablo">
-        <thead><tr><th>Kod · Ad</th><th class="sag">Birim tüketim</th><th class="sag">Ort. birim maliyet</th><th class="sag">Tutar TL</th><th class="sag">Tutar USD</th><th class="sag">Pay %</th></tr></thead>
+        <thead><tr><th>Kod · Ad</th><th class="sag">Birim tüketim</th><th class="sag">Birim maliyet TL / USD</th><th class="sag">Tutar TL</th><th class="sag">Tutar USD</th><th class="sag">Pay %</th>{% if maliyet.miktar != 1 %}<th class="sag">Tutar TL ×{{ maliyet.miktar|tr_miktar_sade:3 }}</th><th class="sag">Tutar USD ×{{ maliyet.miktar|tr_miktar_sade:3 }}</th>{% endif %}</tr></thead>
         <tbody>
           {% for g in maliyet.gruplar %}
-            <tr class="ua-kat"><td colspan="6">{{ g.kategori }}</td></tr>
+            <tr class="ua-kat"><td colspan="{% if maliyet.miktar != 1 %}8{% else %}6{% endif %}">{{ g.kategori }}</td></tr>
             {% for s in g.satirlar %}
               <tr class="ua-s">
-                <td class="ua-ad-h" data-et="Kalem"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td>
+                <td class="ua-ad-h" data-et="Kalem"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}
+                  <span class="rozet kaynak-{{ s.kaynak|lower }}" title="{% if s.kaynak == 'ORTALAMA' %}Hareketli ağırlıklı ortalama maliyet{% elif s.kaynak == 'KART' %}Stok kartındaki alış fiyatı ({{ s.stok.alis_fiyati_pb }}), TCMB kuruyla çevrildi{% else %}{{ s.uyari|default:'Ortalama maliyet ve kart alış fiyatı yok' }}{% endif %}">{% if s.kaynak == "ORTALAMA" %}Ortalama{% elif s.kaynak == "KART" %}Alış fiyatı (kart){% else %}Yok{% endif %}</span></td>
                 <td class="sag" data-et="Birim tüketim">{{ s.tuketim|tr_miktar_sade:4 }} {{ s.birim }}</td>
                 {% if s.maliyet_yok %}
-                  <td class="sag ua-yok" data-et="Ort. birim maliyet" colspan="4" style="text-align:right">maliyet yok</td>
+                  <td class="sag ua-yok" data-et="Birim maliyet" colspan="{% if maliyet.miktar != 1 %}6{% else %}4{% endif %}" style="text-align:right">maliyet yok</td>
                 {% else %}
-                  <td class="sag" data-et="Ort. birim maliyet">{{ s.ort_try|tr_kur:4 }}</td>
+                  <td class="sag" data-et="Birim maliyet">{{ s.ort_try|tr_kur:4 }} TL{% if s.ort_usd is not None %}<small class="ua-yan-not">{{ s.ort_usd|tr_kur:4 }} USD</small>{% endif %}</td>
                   <td class="sag" data-et="Tutar TL">{{ s.tutar_try|tr_para }}</td>
                   <td class="sag" data-et="Tutar USD">{% if s.tutar_usd is not None %}{{ s.tutar_usd|tr_para }}{% else %}—{% endif %}</td>
                   <td class="sag" data-et="Pay %">{% if s.pay is not None %}{{ s.pay|tr_miktar_sade:1 }}{% endif %}</td>
+                  {% if maliyet.miktar != 1 %}
+                    <td class="sag" data-et="Tutar TL ×{{ maliyet.miktar|tr_miktar_sade:3 }}">{{ s.tutar_try_n|tr_para }}</td>
+                    <td class="sag" data-et="Tutar USD ×{{ maliyet.miktar|tr_miktar_sade:3 }}">{% if s.tutar_usd_n is not None %}{{ s.tutar_usd_n|tr_para }}{% else %}—{% endif %}</td>
+                  {% endif %}
                 {% endif %}
               </tr>
             {% endfor %}
-            <tr class="ua-ara"><td colspan="3">{{ g.kategori }} ara toplam</td><td class="sag">{{ g.toplam_try|tr_para }}</td><td class="sag">{{ g.toplam_usd|tr_para }}</td><td class="sag">{% if g.pay is not None %}{{ g.pay|tr_miktar_sade:1 }}{% endif %}</td></tr>
+            <tr class="ua-ara"><td colspan="3">{{ g.kategori }} ara toplam</td><td class="sag">{{ g.toplam_try|tr_para }}</td><td class="sag">{{ g.toplam_usd|tr_para }}</td><td class="sag">{% if g.pay is not None %}{{ g.pay|tr_miktar_sade:1 }}{% endif %}</td>{% if maliyet.miktar != 1 %}<td class="sag">{{ g.toplam_try_n|tr_para }}</td><td class="sag">{{ g.toplam_usd_n|tr_para }}</td>{% endif %}</tr>
           {% empty %}
             <tr><td colspan="6" class="yardim ua-bos">Bu ürünün zincirinde hazır stok kalemi yok.</td></tr>
           {% endfor %}
-          <tr class="ua-genel"><td colspan="3">GENEL TOPLAM (1 adet){% if maliyet.maliyetsiz %} <span class="ua-yok">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}</td><td class="sag">{{ maliyet.toplam_try|tr_para }}</td><td class="sag">{{ maliyet.toplam_usd|tr_para }}</td><td class="sag">100</td></tr>
+          <tr class="ua-genel"><td colspan="3">GENEL TOPLAM{% if maliyet.maliyetsiz %} <span class="ua-yok">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}</td><td class="sag">{{ maliyet.toplam_try|tr_para }}</td><td class="sag">{{ maliyet.toplam_usd|tr_para }}</td><td class="sag">100</td>{% if maliyet.miktar != 1 %}<td class="sag">{{ maliyet.miktar_toplam_try|tr_para }}</td><td class="sag">{{ maliyet.miktar_toplam_usd|tr_para }}</td>{% endif %}</tr>
         </tbody>
       </table>
     </div>
     <p class="ua-not">Tüketim gerçek (kesirli) hesaplanır: tam boy yuvarlaması yapılmaz; yan çıktılı kesimlerde girdi, ana çıktının boy payı oranında düşülür.
-      Birim maliyet: hareketli ağırlıklı ortalama.</p>
+      Birim maliyet: hareketli ağırlıklı ortalama; yoksa stok kartındaki alış fiyatı; ikisi de yoksa "maliyet yok".{% if maliyet.kur_notu %}
+      <br>{{ maliyet.kur_notu }}{% endif %}</p>
   </section>
 {% endif %}
 

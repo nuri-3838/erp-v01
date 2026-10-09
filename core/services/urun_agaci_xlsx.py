@@ -8,6 +8,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from core.services.urun_agaci import KAYNAK_AD
+
 MIKTAR_FMT = "#,##0.0000"
 PARA_FMT = "#,##0.00"
 YUZDE_FMT = "0.0"
@@ -116,38 +118,52 @@ def malzeme_xlsx(urun, miktar, sonuc, depo_ad="Tüm depolar") -> bytes:
 # --- Ürün / Maliyet --------------------------------------------------------------------------------------------------------
 
 def maliyet_xlsx(urun, miktar, sonuc) -> bytes:
+    """TL ve USD AYRI sütunlarda (birim ve — miktar 1 değilse — seçilen miktar için); kaynak sütunu: Ortalama / Alış fiyatı (kart) / Yok."""
+    n = miktar != 1
+    ozet = (f"{sonuc['ortalama_sayi']} kalem ortalama · {sonuc['kart_sayi']} kalem alış fiyatı · {sonuc['maliyetsiz']} kalem maliyetsiz"
+            + (f" (alış fiyatı payı %{sonuc['kart_pay']:.1f})" if sonuc["kart_pay"] is not None and sonuc["kart_sayi"] else ""))
     uyari = f" · ⚠ {sonuc['maliyetsiz']} kalemin maliyeti yok — toplam eksik" if sonuc["maliyetsiz"] else ""
-    wb, ws = _yeni(f"Maliyet — {urun.kod} {urun.ad}", f"1 adet için kesirli malzeme maliyeti (ortalama birim maliyetle){uyari}",
-                   ["Kategori", "Kod", "Ad", "Birim", "Birim tüketim", "Ort. birim maliyet TL", "Tutar TL", "Tutar USD", "Pay %"],
-                   [28, 16, 46, 8, 14, 16, 14, 14, 9])
+    kolonlar = ["Kategori", "Kod", "Ad", "Birim", "Kaynak", "Birim tüketim", "Birim maliyet TL", "Birim maliyet USD", "Tutar TL", "Tutar USD", "Pay %"]
+    genis = [28, 16, 46, 8, 18, 14, 16, 16, 14, 14, 9]
+    if n:
+        kolonlar += [f"Tutar TL ({miktar.normalize():f} adet)", f"Tutar USD ({miktar.normalize():f} adet)"]
+        genis += [18, 18]
+    alt = f"1 adet için kesirli malzeme maliyeti · {ozet}{uyari}" + (f" · {sonuc['kur_notu']}" if sonuc["kur_notu"] else "")
+    wb, ws = _yeni(f"Maliyet — {urun.kod} {urun.ad}", alt, kolonlar, genis)
     r = 5
+
+    def toplam_hucreleri(satir, try_, usd, try_n, usd_n):
+        _sayi(ws, satir, 9, try_, PARA_FMT).font = Font(bold=True)
+        _sayi(ws, satir, 10, usd, PARA_FMT).font = Font(bold=True)
+        if n:
+            _sayi(ws, satir, 12, try_n, PARA_FMT).font = Font(bold=True)
+            _sayi(ws, satir, 13, usd_n, PARA_FMT).font = Font(bold=True)
+
     for g in sonuc["gruplar"]:
         for s in g["satirlar"]:
             ws.cell(row=r, column=1, value=g["kategori"])
             ws.cell(row=r, column=2, value=s["stok"].kod)
             ws.cell(row=r, column=3, value=_ad(s["stok"]))
             ws.cell(row=r, column=4, value=s["birim"])
-            _sayi(ws, r, 5, s["tuketim"], MIKTAR_FMT)
+            ws.cell(row=r, column=5, value=KAYNAK_AD[s["kaynak"]])
+            _sayi(ws, r, 6, s["tuketim"], MIKTAR_FMT)
             if s["maliyet_yok"]:
-                ws.cell(row=r, column=6, value="maliyet yok").font = GRI
+                ws.cell(row=r, column=7, value="maliyet yok").font = GRI
             else:
-                _sayi(ws, r, 6, s["ort_try"], "#,##0.0000")
-                _sayi(ws, r, 7, s["tutar_try"], PARA_FMT)
-                _sayi(ws, r, 8, s["tutar_usd"], PARA_FMT)
-                _sayi(ws, r, 9, s["pay"], YUZDE_FMT)
+                _sayi(ws, r, 7, s["ort_try"], "#,##0.0000")
+                _sayi(ws, r, 8, s["ort_usd"], "#,##0.0000")
+                _sayi(ws, r, 9, s["tutar_try"], PARA_FMT)
+                _sayi(ws, r, 10, s["tutar_usd"], PARA_FMT)
+                _sayi(ws, r, 11, s["pay"], YUZDE_FMT)
+                if n:
+                    _sayi(ws, r, 12, s["tutar_try_n"], PARA_FMT)
+                    _sayi(ws, r, 13, s["tutar_usd_n"], PARA_FMT)
             r += 1
-        _grup_satiri(ws, r, f"{g['kategori']} ara toplam", 9)
-        _sayi(ws, r, 7, g["toplam_try"], PARA_FMT).font = Font(bold=True)
-        _sayi(ws, r, 8, g["toplam_usd"], PARA_FMT).font = Font(bold=True)
+        _grup_satiri(ws, r, f"{g['kategori']} ara toplam", len(kolonlar))
+        toplam_hucreleri(r, g["toplam_try"], g["toplam_usd"], g["toplam_try_n"], g["toplam_usd_n"])
         r += 1
-    _grup_satiri(ws, r, "GENEL TOPLAM (1 adet)", 9)
-    _sayi(ws, r, 7, sonuc["toplam_try"], PARA_FMT).font = Font(bold=True)
-    _sayi(ws, r, 8, sonuc["toplam_usd"], PARA_FMT).font = Font(bold=True)
-    if miktar != 1:
-        r += 1
-        _grup_satiri(ws, r, f"GENEL TOPLAM ({miktar.normalize():f} adet)", 9)
-        _sayi(ws, r, 7, sonuc["miktar_toplam_try"], PARA_FMT).font = Font(bold=True)
-        _sayi(ws, r, 8, sonuc["miktar_toplam_usd"], PARA_FMT).font = Font(bold=True)
+    _grup_satiri(ws, r, "GENEL TOPLAM", len(kolonlar))
+    toplam_hucreleri(r, sonuc["toplam_try"], sonuc["toplam_usd"], sonuc["miktar_toplam_try"], sonuc["miktar_toplam_usd"])
     return _bayt(wb)
 
 
@@ -173,12 +189,28 @@ def kullanim_xlsx(sonuc) -> bytes:
 
 # --- Karşılaştır -----------------------------------------------------------------------------------------------------------
 
-def karsilastir_xlsx(sonuc, baslik_ek="") -> bytes:
+def _karsilastir_sayfa(wb, ws, sonuc, ilk, baslik_ek=""):
     urunler = sonuc["urunler"]
     maliyet = sonuc["mod"] == "maliyet"
-    alt = ("Hücre = 1 adet ürün başına malzeme maliyeti (TL)" if maliyet else "Hücre = 1 adet ürün başına kesirli tüketim") + " " + baslik_ek
-    kolonlar = ["Kategori", "Kod", "Ad", "Birim"] + [f"{u.kod}\n{u.ad}" for u in urunler]
-    wb, ws = _yeni("Karşılaştırma", alt.strip(), kolonlar, [26, 16, 40, 8] + [16] * len(urunler))
+    pb = sonuc["pb"]
+    ws.title = f"Maliyet {pb}" if maliyet else "Miktar"
+    ws["A1"] = "Karşılaştırma"
+    ws["A1"].font = Font(bold=True, size=13, color="15294D")
+    alt = (f"Hücre = 1 adet ürün başına malzeme maliyeti ({pb})" if maliyet else "Hücre = 1 adet ürün başına kesirli tüketim")
+    if maliyet and sonuc["kur_notu"]:
+        alt += " · " + sonuc["kur_notu"]
+    ws["A2"] = (alt + " " + baslik_ek).strip()
+    ws["A2"].font = Font(color="5B6678")
+    kolonlar = ["Kategori", "Kod", "Ad", "Birim"] + ([("Kaynak")] if maliyet else []) + [f"{u.kod}\n{u.ad}" for u in urunler]
+    ofset = 5 if maliyet else 4
+    for i, k in enumerate(kolonlar, start=1):
+        c = ws.cell(row=4, column=i, value=k)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = BASLIK_DOLGU
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for i, w in enumerate([26, 16, 40, 8] + ([18] if maliyet else []) + [16] * len(urunler), start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = "A5"
     ws.row_dimensions[4].height = 48
     r = 5
     for g in sonuc["gruplar"]:
@@ -187,23 +219,33 @@ def karsilastir_xlsx(sonuc, baslik_ek="") -> bytes:
             ws.cell(row=r, column=2, value=s["stok"].kod)
             ws.cell(row=r, column=3, value=_ad(s["stok"]))
             ws.cell(row=r, column=4, value=s["birim"])
+            if maliyet:
+                ws.cell(row=r, column=5, value=KAYNAK_AD[s["kaynak"]])
             for i, h in enumerate(s["hucreler"]):
                 if h is None:
                     continue
                 if maliyet and h["maliyet_yok"]:
-                    ws.cell(row=r, column=5 + i, value="maliyet yok").font = GRI
+                    ws.cell(row=r, column=ofset + 1 + i, value="maliyet yok").font = GRI
                 else:
-                    _sayi(ws, r, 5 + i, h["deger"], PARA_FMT if maliyet else MIKTAR_FMT)
+                    _sayi(ws, r, ofset + 1 + i, h["deger"], PARA_FMT if maliyet else MIKTAR_FMT)
             r += 1
     if maliyet:
-        _grup_satiri(ws, r, "ÜRÜN BAŞINA TOPLAM (TL)", 4 + len(urunler))
+        _grup_satiri(ws, r, f"ÜRÜN BAŞINA TOPLAM ({pb})", ofset + len(urunler))
         for i, t in enumerate(sonuc["toplamlar"]):
-            _sayi(ws, r, 5 + i, t["toplam"], PARA_FMT).font = Font(bold=True)
+            _sayi(ws, r, ofset + 1 + i, t["toplam"], PARA_FMT).font = Font(bold=True)
         eksik = [t["maliyetsiz"] for t in sonuc["toplamlar"]]
         if any(eksik):
             r += 1
-            ws.cell(row=r, column=1, value="Maliyeti olmayan kalem sayısı").font = GRI
+            ws.cell(row=r, column=1, value=f"{pb} maliyeti olmayan kalem sayısı").font = GRI
             for i, n in enumerate(eksik):
                 if n:
-                    ws.cell(row=r, column=5 + i, value=n).font = KIRMIZI
+                    ws.cell(row=r, column=ofset + 1 + i, value=n).font = KIRMIZI
+
+
+def karsilastir_xlsx(sonuclar, baslik_ek="") -> bytes:
+    """``sonuclar``: tek sayfa (Miktar) ya da maliyette [TL sonucu, USD sonucu] → iki AYRI sayfa."""
+    wb = Workbook()
+    for i, sonuc in enumerate(sonuclar):
+        ws = wb.active if i == 0 else wb.create_sheet()
+        _karsilastir_sayfa(wb, ws, sonuc, i, baslik_ek)
     return _bayt(wb)

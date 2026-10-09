@@ -6880,13 +6880,15 @@ def urun_agaci(request):
     else:
         seri = g.get("seri") if g.get("seri") in ("A", "C") else ""
         mod = "maliyet" if g.get("mod") == "maliyet" else "miktar"
+        pb = "USD" if g.get("pb") == "USD" else "TL"
         idler = [int(x) for x in g.getlist("urunler") if x.isdigit()]
         urunler, uyari = urun_agaci_servis.karsilastir_urunleri(graf, seri, idler)
-        sonuc = urun_agaci_servis.karsilastir(graf, urunler, mod) if urunler else None
+        sonuc = urun_agaci_servis.karsilastir(graf, urunler, mod, pb) if urunler else None
         kok_gruplar = [x for x in urun_agaci_servis.urun_secenekleri(graf) if x[0] != "Ara parçalar"]
         if xlsx and sonuc:
-            return _xlsx_yanit(urun_agaci_xlsx.karsilastir_xlsx(sonuc), f"karsilastir_{seri or 'secim'}_{mod}")
-        ctx.update({"seri": seri, "mod": mod, "urunler_secili": {u.pk for u in urunler}, "uyari": uyari, "sonuc": sonuc,
+            sonuclar = [sonuc] if mod == "miktar" else [urun_agaci_servis.karsilastir(graf, urunler, mod, x) for x in ("TL", "USD")]
+            return _xlsx_yanit(urun_agaci_xlsx.karsilastir_xlsx(sonuclar), f"karsilastir_{seri or 'secim'}_{mod}")
+        ctx.update({"seri": seri, "mod": mod, "pb": pb, "pb_url_tl": url(pb="TL"), "pb_url_usd": url(pb="USD"), "urunler_secili": {u.pk for u in urunler}, "uyari": uyari, "sonuc": sonuc,
                     "kok_gruplar": kok_gruplar, "sonuc_var": bool(sonuc), "en_fazla": urun_agaci_servis.KARSILASTIR_EN_FAZLA,
                     "mod_url_miktar": url(mod="miktar"), "mod_url_maliyet": url(mod="maliyet"),
                     "xlsx_url": url(xlsx="1") if sonuc else None,
