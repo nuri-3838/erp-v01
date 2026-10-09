@@ -1234,8 +1234,9 @@ class FasonSatirForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from core.services.uretim import operasyonlu_stok_idler
         self.fields["urun"].queryset = (
-            Stok.objects.filter(silindi=False, satis_urunu=True).order_by("kod"))
+            Stok.objects.filter(silindi=False, satis_urunu=True, pk__in=operasyonlu_stok_idler()).order_by("kod"))
         self.fields["urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["urun"].widget.attrs["class"] = "akilli-sec"
 

@@ -3020,6 +3020,9 @@ class FasonKesimKaydi(TemelModel):
     yil = models.PositiveSmallIntegerField("yıl", editable=False)
     sira = models.PositiveIntegerField("sıra", editable=False)
     no = models.CharField("kayıt no", max_length=20, editable=False)
+    # Listenin hazırlandığı fasoncu: PDF'te fasoncunun parça kodu ve birim fiyatı bu cariye göre gösterilir (boş = fiyat sütunları yok).
+    cari = models.ForeignKey("Cari", verbose_name="fasoncu (cari)", null=True, blank=True, on_delete=models.PROTECT,
+                             related_name="fason_kesim_kayitlari")
 
     class Meta:
         db_table = "core_fason_kesim_kaydi"

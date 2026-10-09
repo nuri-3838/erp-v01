@@ -12,7 +12,7 @@
   <a class="dugme" href="{% url 'core:fason_kaydi_pdf' kayit.pk %}">PDF İndir</a>
 </div>
 
-<p class="yardim">{{ kayit.created_at|date:"d.m.Y H:i" }} · Hazırlayan:
+<p class="yardim">{% if kayit.cari %}Fasoncu: <strong>{{ kayit.cari.unvan }}</strong> · {% endif %}{{ kayit.created_at|date:"d.m.Y H:i" }} · Hazırlayan:
   {{ kayit.created_by.get_full_name|default:kayit.created_by.username|default:"—" }}</p>
 
 <section class="icerik-kart">
@@ -31,24 +31,6 @@
 
 <section class="icerik-kart">
   <h2 class="bolum-baslik"><span class="emoji">✂️</span>Kesim Listesi (Fasoncuya)</h2>
-  {% if sonuc.ozet %}
-    <div class="tablo-kapsayici">
-      <table>
-        <thead><tr><th>Ham Profil</th><th>Kesilmiş Parça</th><th class="sag">Toplam Adet</th></tr></thead>
-        <tbody>
-          {% for o in sonuc.ozet %}
-            <tr>
-              <td>{% if o.profil %}{{ o.profil.ad }}{% else %}<span class="pasif">— tanımsız —</span>{% endif %}</td>
-              <td>{{ o.kesilmis_parca.ad }}</td>
-              <td class="sag mono">{{ o.toplam_adet }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="yardim">Bu ürünler için tanımlı bir kesim bulunamadı — Kesim Tanımları
-      değişmiş olabilir.</p>
-  {% endif %}
+  {% include "core/_fason_liste_tablo.html" %}
 </section>
 {% endblock %}

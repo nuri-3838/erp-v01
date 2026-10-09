@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% load core_extras %}<!DOCTYPE html>
 <html lang="tr">
 <head>
 <meta charset="utf-8">
@@ -37,6 +37,7 @@
   .ozet td { font-weight: 700; }
   .ozet .parca { color: #d56e00; font-weight: 800; }
   .ozet .adet { color: #15294d; font-weight: 800; font-size: 11px; }
+  .ozet .yan { font-size: 7.5px; color: #0a7d28; font-weight: 800; }
 </style>
 </head>
 <body>
@@ -62,20 +63,30 @@
     </tbody>
   </table>
 
-  <div class="bolum-baslik">Kesim Listesi (Fasoncuya)</div>
+  <div class="bolum-baslik">Kesim Listesi{% if sonuc.cari %} — {{ sonuc.cari.unvan }}{% else %} (Fasoncuya){% endif %}</div>
   <table class="ozet">
-    <thead><tr><th>Ham Profil</th><th>Kesilmiş Parça</th><th class="sag">Toplam Adet</th></tr></thead>
+    <thead><tr><th>Ham Profil</th><th class="sag">Boy</th><th>Kesilmiş Parça</th>{% if sonuc.cari %}<th>Fasoncu Kodu</th>{% endif %}<th class="sag">Adet</th>
+      {% if sonuc.cari %}<th class="sag">Birim Fiyat</th><th class="sag">Tutar</th>{% endif %}</tr></thead>
     <tbody>
       {% for o in sonuc.ozet %}
         <tr>
-          <td>{% if o.profil %}{{ o.profil.ad }}{% else %}—{% endif %}</td>
-          <td class="parca">{{ o.kesilmis_parca.ad }}</td>
-          <td class="sag mono adet">{{ o.toplam_adet }}</td>
+          <td>{% if o.profil and not o.yan %}{{ o.profil.ad }}{% endif %}</td>
+          <td class="sag mono">{% if o.boy is not None %}{{ o.boy|tr_miktar_sade }}{% endif %}</td>
+          <td class="parca">{% if o.yan %}<span class="yan">yan çıktı</span> {% endif %}{{ o.kesilmis_parca.ad }}</td>
+          {% if sonuc.cari %}<td class="mono">{{ o.fasoncu_kodu|default:"—" }}</td>{% endif %}
+          <td class="sag mono adet">{{ o.toplam_adet|tr_miktar_sade }}</td>
+          {% if sonuc.cari %}
+            <td class="sag mono">{% if o.birim_fiyat is not None %}{{ o.birim_fiyat|tr_kur:4 }} {{ o.para_birimi }}{% else %}—{% endif %}</td>
+            <td class="sag mono">{% if o.tutar is not None %}{{ o.tutar|tr_para }} {{ o.para_birimi }}{% else %}—{% endif %}</td>
+          {% endif %}
         </tr>
       {% empty %}
-        <tr><td colspan="3">Girilen ürünler için tanımlı bir kesim bulunamadı.</td></tr>
+        <tr><td colspan="7">Girilen ürünler için İstasyon 10 (Boru Lazer) operasyonu bulunamadı.</td></tr>
       {% endfor %}
     </tbody>
+    {% if sonuc.cari and sonuc.toplam_tutar %}
+      <tfoot>{% for pb, t in sonuc.toplam_tutar.items %}<tr><td colspan="6" class="sag"><strong>Toplam fason bedeli</strong></td><td class="sag mono"><strong>{{ t|tr_para }} {{ pb }}</strong></td></tr>{% endfor %}</tfoot>
+    {% endif %}
   </table>
 </body>
 </html>

@@ -1,5 +1,7 @@
 """FASON > Kesim Tanımları + Kesim Listesi Hesapla — 2 katmanlı BOM: bitmiş ürün →
 kesilmiş parça (FasonKesim × adet) → o parçanın ham profili (Stok.kesildigi_profil, 1:1)."""
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
@@ -7,7 +9,7 @@ from django.urls import reverse
 from core.models import Birim, EkranYetki, FasonKesim, FasonKesimKaydi, Kategori, Stok
 from core.services.fason import (
     FasonHatasi, aktif_kesimler, fason_kaydi_olustur, fason_listesi_hesapla, kayit_kalemleri,
-    kayit_sonucu, kesim_guncelle, kesim_olustur, kesim_sil,
+    kesim_guncelle, kesim_olustur, kesim_sil,
 )
 
 
@@ -141,20 +143,6 @@ class FasonKesimKaydiServisTest(TestCase):
         self.assertEqual([(u.pk, m) for u, m in kalemler],
                          [(self.a21.pk, 3), (self.a51.pk, 7)])
 
-    def test_kayit_sonucu_fason_listesi_hesapla_ile_ayni(self):
-        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
-        kayit = fason_kaydi_olustur(kalemler=[(self.a21, 5)])
-        self.assertEqual(kayit_sonucu(kayit), fason_listesi_hesapla([(self.a21, 5)]))
-
-    def test_kayit_sonucu_canli_hesaplanir_saklanmaz(self):
-        """Bir kesim tanımı, kayıt oluşturulduktan SONRA değişirse, kayit_sonucu() eski
-        (kayıt anındaki) değil GÜNCEL sonucu döndürmeli — 'saklanmaz, hesaplanır' felsefesi."""
-        k = kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
-        kayit = fason_kaydi_olustur(kalemler=[(self.a21, 5)])
-        self.assertEqual(kayit_sonucu(kayit)["ozet"][0]["toplam_adet"], 5)
-        kesim_guncelle(k, urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=3)
-        self.assertEqual(kayit_sonucu(kayit)["ozet"][0]["toplam_adet"], 15)
-
 
 class FasonViewTest(TestCase):
     @classmethod
@@ -174,6 +162,16 @@ class FasonViewTest(TestCase):
                              kod="151-TEST-ON", ad="kesilmiş a tipi ön ayak 2+1",
                              kesildigi_profil=cls.ham_on)
         cls.a21 = _stok(cls.kat, cls.birim, satis=True, kod="A21", ad="a tipi 2+1")
+
+    def _zincir(self):
+        """İstasyon 10 (Boru Lazer): 1 boy ham profil → 2 kesilmiş ön ayak; montaj: 1 kesilmiş → 1 bitmiş ürün (A21)."""
+        from core.models import IsIstasyonu
+        from core.services.uretim import operasyon_olustur
+        lazer = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER")
+        montaj = IsIstasyonu.objects.create(kod="70", ad="MONTAJ")
+        Stok.objects.filter(pk=self.a21.pk).update(uretim_urunu=True)
+        operasyon_olustur(istasyon_id=lazer.pk, cikti_id=self.parca_on.pk, cikti_miktar=Decimal("2"), satirlar=[(self.ham_on, Decimal("1"))])
+        operasyon_olustur(istasyon_id=montaj.pk, cikti_id=self.a21.pk, cikti_miktar=Decimal("1"), satirlar=[(self.parca_on, Decimal("1"))])
 
     # --- Kesim Tanımları: yönetici-only ---
     def test_tanimlar_anonim_login_yonlenir(self):
@@ -244,7 +242,7 @@ class FasonViewTest(TestCase):
         return veri
 
     def test_hesapla_post_sonucu_gosterir(self):
-        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        self._zincir()
         self.client.force_login(self.yon)
         gövde = {"eylem": "hesapla"}
         gövde.update(self._formset_govde([{"urun": self.a21.pk, "miktar": "10"}]))
@@ -255,7 +253,7 @@ class FasonViewTest(TestCase):
         self.assertContains(r, "10")
 
     def test_hesapla_post_hesapla_kayit_olusturmaz(self):
-        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        self._zincir()
         self.client.force_login(self.yon)
         gövde = {"eylem": "hesapla"}
         gövde.update(self._formset_govde([{"urun": self.a21.pk, "miktar": "10"}]))
@@ -263,7 +261,7 @@ class FasonViewTest(TestCase):
         self.assertEqual(FasonKesimKaydi.objects.count(), 0)
 
     def test_hesapla_post_pdf_indirir_ve_kayit_olusturur(self):
-        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        self._zincir()
         self.client.force_login(self.yon)
         gövde = {"eylem": "pdf"}
         gövde.update(self._formset_govde([{"urun": self.a21.pk, "miktar": "10"}]))
@@ -297,7 +295,7 @@ class FasonViewTest(TestCase):
         self.assertEqual(self.client.get(reverse("core:fason_kayitlari")).status_code, 403)
 
     def test_kayitlar_listesi_ve_detay_pdf(self):
-        kesim_olustur(urun_id=self.a21.pk, kesilmis_parca_id=self.parca_on.pk, adet=1)
+        self._zincir()
         kayit = fason_kaydi_olustur(kalemler=[(self.a21, 10)], kullanici=self.yon)
 
         self.client.force_login(self.kayit_yetkili)

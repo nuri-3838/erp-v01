@@ -6661,6 +6661,14 @@ def fason_fiyat_sil(request, pk):
 FasonSatirFormSet = formset_factory(FasonSatirForm, extra=0)
 
 
+def _fason_cari_secimi(request):
+    """Kesim listesi hazırlanan fasoncu (isteğe bağlı): fason fiyatı tanımlı cariler arasından."""
+    from core.models import Cari
+    cariler = list(Cari.objects.filter(silindi=False, fason_fiyatlari__silindi=False).distinct().order_by("unvan"))
+    secili = request.POST.get("cari") or request.GET.get("cari") or ""
+    return cariler, next((c for c in cariler if str(c.pk) == secili), None)
+
+
 def _fason_pdf_yanit(*, kalemler, sonuc, kullanici, no=None):
     import base64
 
@@ -6685,6 +6693,7 @@ def _fason_pdf_yanit(*, kalemler, sonuc, kullanici, no=None):
 @ekran_gerekli("fason_hesapla")
 def fason_hesapla(request):
     sonuc = None
+    cariler, cari = _fason_cari_secimi(request)
     if request.method == "POST":
         formset = FasonSatirFormSet(request.POST, prefix="satir")
         if formset.is_valid():
@@ -6693,16 +6702,16 @@ def fason_hesapla(request):
             if not kalemler:
                 messages.error(request, "En az bir ürün satırı girin.")
             else:
-                sonuc = fason_servis.fason_listesi_hesapla(kalemler)
+                sonuc = fason_servis.fason_listesi_operasyondan(kalemler, cari=cari)
                 if request.POST.get("eylem") == "pdf":
                     kayit = fason_servis.fason_kaydi_olustur(
-                        kalemler=kalemler, kullanici=request.user)
+                        kalemler=kalemler, cari=cari, kullanici=request.user)
                     return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc,
                                             kullanici=request.user, no=kayit.no)
     else:
         formset = FasonSatirFormSet(prefix="satir")
     return render(request, "core/fason_hesapla.html", {
-        "formset": formset, "sonuc": sonuc, "yonetici": yonetici_mi(request.user),
+        "formset": formset, "sonuc": sonuc, "yonetici": yonetici_mi(request.user), "cariler": cariler, "cari": cari,
         "kayitlar_yetkili": ekran_gorebilir(request.user, "fason_kayitlari")})
 
 

@@ -12,7 +12,7 @@
     {% if yonetici %}<a class="ust-link" href="{% url 'core:fason_kesim_tanimlari' %}">Kesim Tanımları →</a>{% endif %}
   </div>
   <p class="yardim" style="margin-top:-.4rem">İstediğin ürün ve miktarları gir, hangi
-    profilden kaç parça kesilmesi gerektiğini hesapla; fasoncuna göndermek için PDF indir —
+    profilden kaç parça kesilmesi gerektiğini hesapla (Operasyon Tanımları'ndaki İstasyon 10 · Boru Lazer işlerinden, tam boy kuralıyla); fasoncuna göndermek için PDF indir —
     indirilen her PDF bir kayıt olarak saklanır, sonradan Kesim Kayıtları'ndan tekrar açabilirsin.</p>
 
   {% if formset.non_form_errors %}
@@ -22,6 +22,17 @@
   <form method="post" autocomplete="off" style="display:contents">
     {% csrf_token %}
     {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Fasoncu</h2>
+      <div class="ua-alan" style="max-width:24rem">
+        <select name="cari" aria-label="Fasoncu">
+          <option value="">— fiyatsız liste (fasoncu seçme) —</option>
+          {% for c in cariler %}<option value="{{ c.pk }}"{% if cari and cari.pk == c.pk %} selected{% endif %}>{{ c.unvan }}</option>{% endfor %}
+        </select>
+        <p class="yardim" style="margin:.3rem 0 0">Fasoncu seçilirse listeye fasoncunun parça kodu ve geçerli birim fiyatı eklenir.</p>
+      </div>
+    </section>
+
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Ürün / Miktar</h2>
       <div class="tablo-kapsayici">
@@ -58,25 +69,7 @@
   {% if sonuc %}
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">📋</span>Kesim Listesi (Fasoncuya)</h2>
-      {% if sonuc.ozet %}
-        <div class="tablo-kapsayici">
-          <table>
-            <thead><tr><th>Ham Profil</th><th>Kesilmiş Parça</th><th class="sag">Toplam Adet</th></tr></thead>
-            <tbody>
-              {% for o in sonuc.ozet %}
-                <tr>
-                  <td>{% if o.profil %}{{ o.profil.ad }}{% else %}<span class="pasif">— tanımsız —</span>{% endif %}</td>
-                  <td>{{ o.kesilmis_parca.ad }}</td>
-                  <td class="sag mono">{{ o.toplam_adet }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="yardim">Girilen ürünler için tanımlı bir kesim bulunamadı — Kesim
-          Tanımları'nı kontrol edin.</p>
-      {% endif %}
+      {% include "core/_fason_liste_tablo.html" %}
     </section>
   {% endif %}
 </div>

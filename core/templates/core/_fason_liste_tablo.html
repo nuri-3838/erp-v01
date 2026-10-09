@@ -1,0 +1,33 @@
+{% load core_extras %}
+{% if sonuc.ozet %}
+  {% if sonuc.fiyat_eksikleri %}
+    <div class="uyari">⚠️ {{ sonuc.cari.unvan }} için geçerli fason fiyatı olmayan parçalar:
+      {% for s in sonuc.fiyat_eksikleri %}{{ s.ad }}{% if not forloop.last %}, {% endif %}{% endfor %}. <a href="{% url 'core:fason_fiyat_ekle' %}">Fason Fiyatları</a>'ndan ekleyin.</div>
+  {% endif %}
+  <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Ham Profil</th><th class="sag">Boy</th><th>Kesilmiş Parça</th>{% if sonuc.cari %}<th>Fasoncu Kodu</th>{% endif %}<th class="sag">Adet</th>
+        {% if sonuc.cari %}<th class="sag">Birim Fiyat</th><th class="sag">Tutar</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for o in sonuc.ozet %}
+          <tr>
+            <td>{% if o.profil and not o.yan %}{{ o.profil.ad }}{% endif %}</td>
+            <td class="sag mono">{% if o.boy is not None %}{{ o.boy|tr_miktar_sade }}{% endif %}</td>
+            <td>{% if o.yan %}<span class="rozet rozet-aktif">yan çıktı</span> {% endif %}{{ o.kesilmis_parca.ad }}</td>
+            {% if sonuc.cari %}<td class="mono">{{ o.fasoncu_kodu|default:"—" }}</td>{% endif %}
+            <td class="sag mono">{{ o.toplam_adet|tr_miktar_sade }}</td>
+            {% if sonuc.cari %}
+              <td class="sag mono">{% if o.birim_fiyat is not None %}{{ o.birim_fiyat|tr_kur:4 }} {{ o.para_birimi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+              <td class="sag mono">{% if o.tutar is not None %}{{ o.tutar|tr_para }} {{ o.para_birimi }}{% else %}—{% endif %}</td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+      {% if sonuc.cari and sonuc.toplam_tutar %}
+        <tfoot>{% for pb, t in sonuc.toplam_tutar.items %}<tr><th colspan="6" class="sag">Toplam fason bedeli</th><th class="sag mono">{{ t|tr_para }} {{ pb }}</th></tr>{% endfor %}</tfoot>
+      {% endif %}
+    </table>
+  </div>
+{% else %}
+  <p class="yardim">Girilen ürünler için İş İstasyonu {{ "10" }} (Boru Lazer) operasyonu bulunamadı — Operasyon Tanımları'nı kontrol edin.</p>
+{% endif %}

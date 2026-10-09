@@ -8,6 +8,8 @@
 
 Fasoncuya gönderilecek liste iki katman birlikte hesaplanarak üretilir: bitmiş ürün →
 kesilmiş parça (katman 2) → o parçanın ham profili (katman 1) → profil bazında toplam."""
+from decimal import Decimal
+
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -97,7 +99,8 @@ def kesim_sil(k: FasonKesim, kullanici=None) -> FasonKesim:
 
 
 def fason_listesi_hesapla(kalemler):
-    """``kalemler``: [(urun, miktar), ...] (bitmiş ürün + istenen adet).
+    """ESKİ hesap (Kesim Tanımları tabanlı); ekranlar artık ``fason_listesi_operasyondan`` kullanır — Kesim Tanımları ekranı ve bu hesap yalnız
+    geriye dönük/kontrol amaçlı duruyor. ``kalemler``: [(urun, miktar), ...] (bitmiş ürün + istenen adet).
 
     Döner: {"detay": [{"urun","miktar","kesim","toplam_adet"}, ...],
             "ozet":  [{"profil","parca_kod_ad","toplam_adet"}, ...]}
@@ -138,7 +141,7 @@ def _sonraki_sira(yil):
 
 
 @transaction.atomic
-def fason_kaydi_olustur(*, kalemler, kullanici=None) -> FasonKesimKaydi:
+def fason_kaydi_olustur(*, kalemler, cari=None, kullanici=None) -> FasonKesimKaydi:
     """kalemler: [(Stok, miktar), ...] — dolu satırlar (fason_hesapla view'ında formset'ten
     zaten filtrelenmiş halde gelir). Kaydın kendisi yalnızca ürün+miktar girdisini saklar;
     kesim sonucu SAKLANMAZ — bkz. kayit_sonucu()."""
@@ -151,7 +154,7 @@ def fason_kaydi_olustur(*, kalemler, kullanici=None) -> FasonKesimKaydi:
             with transaction.atomic():
                 sira = _sonraki_sira(yil)
                 kayit = FasonKesimKaydi.objects.create(
-                    yil=yil, sira=sira, no=f"FKL-{yil}-{sira:04d}",
+                    yil=yil, sira=sira, no=f"FKL-{yil}-{sira:04d}", cari=cari,
                     created_by=kullanici, updated_by=kullanici)
             break
         except IntegrityError:
@@ -168,12 +171,6 @@ def fason_kaydi_olustur(*, kalemler, kullanici=None) -> FasonKesimKaydi:
 def kayit_kalemleri(kayit):
     return [(k.urun, k.miktar) for k in
             kayit.kalemler.filter(silindi=False).select_related("urun").order_by("sira", "pk")]
-
-
-def kayit_sonucu(kayit):
-    """Kayıttaki ürün/miktarları GÜNCEL Kesim Tanımları'na göre yeniden hesaplar (bkz.
-    fason_listesi_hesapla) — kayıt oluşturulduğu andaki değil, ŞU ANKİ tanımlara göre."""
-    return fason_listesi_hesapla(kayit_kalemleri(kayit))
 
 
 # === Fason fiyat listesi ======================================================================================
@@ -244,3 +241,50 @@ def fiyat_sil(f: FasonFiyat, kullanici=None) -> FasonFiyat:
     f.updated_by = kullanici
     f.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
     return f
+
+
+# === Kesim listesi: OPERASYON TANIMLARINDAN (İstasyon 10 — Boru Lazer) ================================================
+# Fasoncuya gidecek liste artık Kesim Tanımları'ndan değil Operasyon Tanımları'ndan hesaplanır: bitmiş ürün zinciri ``ihtiyac_hesapla`` ile (TAM BOY
+# kuralı, ortak parçalar toplanmış talep üzerinden tek yuvarlama) çözülür, İŞ İSTASYONU 10 (Boru Lazer) operasyonları fasonda kesilen işlerdir:
+# girdi ham profil (boy adedi), ana çıktı + yan çıktılar kesilmiş parçalardır. Fasoncu seçilirse her parçaya kendi parça kodu ve geçerli birim fiyat eklenir.
+
+FASON_ISTASYON_KODU = "10"
+
+
+def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
+    """``kalemler``: [(urun, miktar), ...]. Döner: {"ozet": [satır], "detay": [...], "toplam_tutar": {para birimi: tutar}, "cari": cari, "fiyat_eksikleri": [...]}.
+    Özet satırı: {"profil", "boy" (ham profil adedi), "kesilmis_parca", "toplam_adet", "yan" (yan çıktı mı), "fasoncu_kodu", "birim_fiyat", "para_birimi",
+    "tutar"} — operasyon başına bir ana satır + yan çıktılar. Fasoncu yoksa ya da fiyatı tanımsızsa fiyat alanları None."""
+    from core.services.uretim import UretimHatasi, ihtiyac_hesapla, operasyon_girdileri
+    hedefler = [(u, Decimal(int(m))) for u, m in kalemler if m and int(m) > 0]
+    tarih = tarih or timezone.localdate()
+    ozet, eksik, toplam = [], [], {}
+    if not hedefler:
+        return {"ozet": [], "detay": [], "toplam_tutar": {}, "cari": cari, "fiyat_eksikleri": []}
+    sonuc = ihtiyac_hesapla(hedefler)
+    siralama = {}
+    for p in sonuc["plan"]:
+        op = p["operasyon"]
+        if op.istasyon.kod != FASON_ISTASYON_KODU:
+            continue
+        girdi = next(iter(operasyon_girdileri(op)), None)
+        profil = girdi.girdi if girdi else None
+        boy = (p["calistirma"] * girdi.miktar) if girdi else None
+        satirlar = [(p["stok"], p["uretilecek"], False)] + [(y["stok"], y["miktar"], True) for y in p["yan_ciktilar"]]
+        for i, (parca, adet, yan) in enumerate(satirlar):
+            fiyat = gecerli_fiyat(cari, parca, tarih) if cari else None
+            tutar = (fiyat.birim_fiyat * adet) if fiyat else None
+            if cari and fiyat is None:
+                eksik.append(parca)
+            if tutar is not None:
+                toplam[fiyat.para_birimi] = toplam.get(fiyat.para_birimi, Decimal("0")) + tutar
+            ozet.append({"op": p["stok"].kod, "sira_no": i, "profil": profil, "boy": boy if i == 0 else None, "kesilmis_parca": parca, "toplam_adet": adet, "yan": yan,
+                         "fasoncu_kodu": fiyat.fasoncu_kodu if fiyat else "", "birim_fiyat": fiyat.birim_fiyat if fiyat else None,
+                         "para_birimi": fiyat.para_birimi if fiyat else "", "tutar": tutar})
+    ozet.sort(key=lambda r: ((r["profil"].kod if r["profil"] else ""), r["op"], r["sira_no"]))      # profil → operasyon → ana satır, sonra yan çıktılar
+    return {"ozet": ozet, "detay": sonuc["plan"], "toplam_tutar": toplam, "cari": cari, "fiyat_eksikleri": eksik}
+
+
+def kayit_sonucu(kayit):
+    """Kayıttaki ürün/miktarları GÜNCEL Operasyon Tanımları'na ve (kayıtta fasoncu varsa) güncel fason fiyatlarına göre yeniden hesaplar."""
+    return fason_listesi_operasyondan(kayit_kalemleri(kayit), cari=kayit.cari)
