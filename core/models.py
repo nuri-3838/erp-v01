@@ -3094,6 +3094,10 @@ class FasonDonus(TemelModel):
     irsaliye_no = models.CharField("fasoncunun irsaliye no", max_length=50, blank=True, default="")
     tarih = models.DateField("tarih")
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+    # Fasoncunun ALIŞ faturası (fason hizmet kalemi; kategorisi 151 yarı mamul hesabına eşli): bir fatura birden çok dönüş belgesine bağlanabilir.
+    # Fatura ONAYLI olunca fason bedeli 'tahmini'likten çıkar; fatura silinirse bağ kopar (SET_NULL) ve bedel yeniden tahmini olur.
+    fatura = models.ForeignKey("Fatura", verbose_name="fason faturası", null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="fason_donusleri")
 
     class Meta:
         db_table = "core_fason_donus"

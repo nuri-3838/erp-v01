@@ -1050,6 +1050,8 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
         _irsaliye_girislerini_fiyatla(fatura)
     elif fatura.depo_id:
         _hareketleri_yaz(fatura, fatura.depo, kur=kur, kullanici=kullanici)
+    from core.services import fason_donus
+    fason_donus.fatura_degisti(fatura)                  # bağlı fason dönüşlerin fason bedeli 'tahmini'likten çıkar
     return fatura
 
 
@@ -1176,6 +1178,8 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     Bu fatura bir İrsaliye'den doğduysa (irsaliye.fatura), o bağlantı temizlenir —
     İrsaliye SİLİNMEZ, "Faturaya Dönüştü" rozetini kaybedip yeniden düzenlenebilir hale
     gelir (bkz. teklif_siparis.teklif_siparis_onayi_geri_al)."""
+    from core.models import FasonDonus
+    bagli_fason_donusleri = list(FasonDonus.objects.filter(fatura=fatura, silindi=False).values_list("pk", flat=True))   # silinince bağ kopar → bedel yeniden tahmini
     _demirbas_geri_al(fatura, kullanici)             # satılan demirbaş kartları eski durumuna döner
     kart_hesaplari = set(fatura.satirlar.values_list("hesap_id", flat=True))
     hareketler = list(StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False))
@@ -1200,7 +1204,10 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     donemsel_gider.fatura_temizle(fatura)             # aylık dağıtım fişleri + plan silinir (180 hesabı geçmiş için kalır)
     fis_id = fatura.fis_id
     fis_yil = fatura.fis.yil if fis_id else None
-    fatura.delete()                                    # FaturaSatir CASCADE
+    fatura.delete()                                    # FaturaSatir CASCADE (FasonDonus.fatura SET_NULL)
+    if bagli_fason_donusleri:
+        from core.services import fason_donus
+        fason_donus.yeniden_senkronla(list(FasonDonus.objects.filter(pk__in=bagli_fason_donusleri)))
     if fis_id:
         from core.services.yevmiye import fis_no_sayacini_koru
         fis_no_sayacini_koru(fis_yil)                  # silinen fiş numarası bir daha verilmez

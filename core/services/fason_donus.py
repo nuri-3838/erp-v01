@@ -11,8 +11,8 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Prefetch
 from django.utils import timezone
 
-from core.models import Cari, Depo, FasonDonus, Operasyon, OperasyonKaydi
-from core.sayi import SayiHatasi, parse_tr
+from core.models import Cari, Depo, Fatura, FasonDonus, Operasyon, OperasyonKaydi
+from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services import depo as depo_servis
 from core.services import uretim as uretim_servis
 from core.services.fason import FasonHatasi, gecerli_fiyat
@@ -156,3 +156,115 @@ def donus_bilgisi(donus: FasonDonus) -> dict:
                                  "pb": f.para_birimi if f else "", "tutar_try": None, "tutar_usd": None})
         satirlar.append({"kayit": k, "ciktilar": ciktilar})
     return {"satirlar": satirlar, "durum": durum, "toplam_try": toplam_try, "toplam_usd": toplam_usd, "eksikler": eksikler}
+
+
+# === Fasoncunun faturası ====================================================================================
+# Fason hizmet faturası normal bir ALIŞ faturasıdır (kalemi, kategorisi 151 yarı mamul alt hesabına eşli bir hizmet kartı; depo YOK → stok
+# hareketi yok): fatura 151'e borç yazar, fason bedeli de stok değerinde olduğundan fatura gelince mizan = stok değeri olur. Fatura ONAYLI olana
+# kadar bedel 'tahmini'dir. Beklenen tutar (Σ fason_tutar) ile fatura tutarı (ara toplam × kur, TL) farklıysa uyarı verilir; maliyet ancak
+# AÇIK işlemle ("faturaya göre güncelle") fatura tutarına çekilir — sessiz düzeltme yoktur.
+
+FARK_ESIGI = Decimal("0.01")
+
+
+def yeniden_senkronla(donuslar):
+    """Dönüşlerin ONAYLI kayıtlarının çıktı maliyetini (fason bedeli + tahmini durumu) yeniden yazar ve değişen çıktı kartlarının ortalama
+    maliyetini baştan hesaplar (``stok_ortalama.yeniden_hesapla``). Fatura bağlanınca/onaylanınca/silinince/güncellenince çağrılır."""
+    from core.services import stok_fis, stok_ortalama
+    for donus in donuslar:
+        for kayit in donus_kayitlari(donus):
+            if kayit.durum != OperasyonKaydi.Durum.ONAYLI:
+                continue
+            for stok in stok_fis.uretim_senkronla(kayit):
+                stok_ortalama.yeniden_hesapla(stok)
+
+
+def fatura_degisti(fatura):
+    """Fatura ONAYLANDI / GÜNCELLENDİ: ona bağlı dönüşlerin maliyeti yeniden senkronlanır."""
+    yeniden_senkronla(list(FasonDonus.objects.filter(fatura=fatura, silindi=False)))
+
+
+def faturaya_bagla(donus: FasonDonus, fatura: Fatura, kullanici=None) -> FasonDonus:
+    if donus.silindi or fatura.silindi:
+        raise FasonHatasi("Silinmiş belge/fatura bağlanamaz.")
+    if donus_durumu(donus) != "ONAYLI":
+        raise FasonHatasi("Yalnız onaylı fason dönüş faturaya bağlanabilir.")
+    if fatura.yon != "ALIS":
+        raise FasonHatasi("Fason faturası bir ALIŞ faturası olmalı.")
+    if fatura.cari_id != donus.cari_id:
+        raise FasonHatasi("Fatura, dönüşün fasoncusuna (cari) ait olmalı.")
+    with transaction.atomic():
+        donus.fatura = fatura
+        donus.updated_by = kullanici
+        donus.save(update_fields=["fatura", "updated_by", "updated_at"])
+        yeniden_senkronla([donus])
+    return donus
+
+
+def faturadan_kopar(donus: FasonDonus, kullanici=None) -> FasonDonus:
+    if not donus.fatura_id:
+        return donus
+    with transaction.atomic():
+        donus.fatura = None
+        donus.updated_by = kullanici
+        donus.save(update_fields=["fatura", "updated_by", "updated_at"])
+        yeniden_senkronla([donus])
+    return donus
+
+
+def fatura_tutari_try(fatura: Fatura) -> Decimal:
+    """Faturanın KDV hariç ara toplamı, TL (fatura para birimi × fatura kuru)."""
+    return yuvarla(fatura.ara_toplam * (fatura.kur or Decimal("1")), 2)
+
+
+def fatura_karsilastirma(fatura: Fatura) -> dict:
+    """Faturaya bağlı dönüşlerin beklenen fason bedeli (Σ onaylı çıktı fason_tutar) ile fatura tutarı. ``fark`` = fatura − beklenen."""
+    donusler = list(FasonDonus.objects.filter(fatura=fatura, silindi=False).select_related("cari").order_by("yil", "sira"))
+    beklenen_try = beklenen_usd = SIFIR
+    for d in donusler:
+        for k in donus_kayitlari(d):
+            if k.durum != OperasyonKaydi.Durum.ONAYLI:
+                continue
+            for c in k.ciktilar.all():
+                beklenen_try += c.fason_tutar or SIFIR
+                beklenen_usd += c.fason_tutar_usd or SIFIR
+    ft = fatura_tutari_try(fatura)
+    fark = ft - beklenen_try
+    return {"donusler": donusler, "beklenen_try": beklenen_try, "beklenen_usd": beklenen_usd, "fatura_try": ft, "fark": fark,
+            "fark_var": bool(donusler) and abs(fark) >= FARK_ESIGI, "onayli": fatura.durum == Fatura.Durum.ONAYLI}
+
+
+@transaction.atomic
+def faturaya_gore_guncelle(fatura: Fatura, kullanici=None) -> dict:
+    """AÇIK işlem: bağlı dönüşlerin fason bedelleri fatura tutarına ORANTILI çekilir (her çıktı: eski × fatura/beklenen, yuvarlama farkı en büyük
+    satıra; USD aynı oranla), ardından çıktı maliyetleri yeniden hesaplanır (ortalama dahil). Yalnız ONAYLI faturada."""
+    if fatura.durum != Fatura.Durum.ONAYLI or fatura.silindi:
+        raise FasonHatasi("Maliyet yalnız ONAYLI faturanın tutarına göre güncellenebilir.")
+    kar = fatura_karsilastirma(fatura)
+    if not kar["donusler"]:
+        raise FasonHatasi("Bu faturaya bağlı fason dönüş yok.")
+    if kar["beklenen_try"] <= 0:
+        raise FasonHatasi("Beklenen fason bedeli sıfır; oranlanamaz.")
+    ft = kar["fatura_try"]
+    if ft <= 0:
+        raise FasonHatasi("Fatura tutarı sıfır; maliyet güncellenemez.")
+    if not kar["fark_var"]:
+        return {**kar, "guncellendi": False}
+    oran = ft / kar["beklenen_try"]
+    satirlar = []
+    for d in kar["donusler"]:
+        for k in donus_kayitlari(d):
+            if k.durum == OperasyonKaydi.Durum.ONAYLI:
+                satirlar.extend(c for c in k.ciktilar.all() if (c.fason_tutar or SIFIR) > 0)
+    yeni = {c.pk: yuvarla(c.fason_tutar * oran, 2) for c in satirlar}
+    fark_try = ft - sum(yeni.values(), SIFIR)
+    en_buyuk = max(satirlar, key=lambda c: c.fason_tutar)
+    yeni[en_buyuk.pk] += fark_try                              # toplam fatura tutarına BİREBİR eşit
+    hedef_usd = yuvarla(kar["beklenen_usd"] * oran, 2)
+    yeni_usd = {c.pk: yuvarla((c.fason_tutar_usd or SIFIR) * oran, 2) for c in satirlar}
+    yeni_usd[en_buyuk.pk] += hedef_usd - sum(yeni_usd.values(), SIFIR)
+    for c in satirlar:
+        c.fason_tutar, c.fason_tutar_usd, c.updated_by = yeni[c.pk], yeni_usd[c.pk], kullanici
+        c.save(update_fields=["fason_tutar", "fason_tutar_usd", "updated_by", "updated_at"])
+    yeniden_senkronla(kar["donusler"])
+    return {**fatura_karsilastirma(fatura), "guncellendi": True}

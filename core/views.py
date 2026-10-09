@@ -6507,8 +6507,53 @@ def fason_donus_ekle(request):
 
 @ekran_gerekli("fason_donusleri")
 def fason_donus_detay(request, pk):
-    donus = get_object_or_404(FasonDonus.objects.select_related("cari", "depo"), pk=pk, silindi=False)
-    return render(request, "core/fason_donus_detay.html", {"donus": donus, "bilgi": fason_donus_servis.donus_bilgisi(donus)})
+    donus = get_object_or_404(FasonDonus.objects.select_related("cari", "depo", "fatura"), pk=pk, silindi=False)
+    bilgi = fason_donus_servis.donus_bilgisi(donus)
+    adaylar = []
+    if bilgi["durum"] == "ONAYLI" and not donus.fatura_id:
+        adaylar = list(Fatura.objects.filter(silindi=False, yon="ALIS", cari_id=donus.cari_id).order_by("-tarih", "-pk")[:50])
+    return render(request, "core/fason_donus_detay.html", {
+        "donus": donus, "bilgi": bilgi, "fatura_adaylari": adaylar,
+        "kar": fason_donus_servis.fatura_karsilastirma(donus.fatura) if donus.fatura_id else None})
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donus_fatura_bagla(request, pk):
+    donus = get_object_or_404(FasonDonus, pk=pk, silindi=False)
+    if request.method == "POST":
+        fatura = Fatura.objects.filter(pk=request.POST.get("fatura") or 0, silindi=False).first()
+        if fatura is None:
+            messages.error(request, "Fatura seçin.")
+        else:
+            try:
+                fason_donus_servis.faturaya_bagla(donus, fatura, kullanici=request.user)
+                messages.success(request, f"{donus.no} faturaya bağlandı.")
+            except fason_servis.FasonHatasi as e:
+                messages.error(request, str(e))
+    return redirect("core:fason_donus_detay", pk=donus.pk)
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donus_fatura_kopar(request, pk):
+    donus = get_object_or_404(FasonDonus, pk=pk, silindi=False)
+    if request.method == "POST":
+        fason_donus_servis.faturadan_kopar(donus, kullanici=request.user)
+        messages.success(request, f"{donus.no} faturadan ayrıldı; fason bedeli yeniden tahmini sayılıyor.")
+    return redirect("core:fason_donus_detay", pk=donus.pk)
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_fatura_guncelle(request, pk):
+    """AÇIK işlem: bağlı dönüşlerin fason maliyetini fatura tutarına çeker (sessiz düzeltme yok)."""
+    fatura = get_object_or_404(Fatura, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            sonuc = fason_donus_servis.faturaya_gore_guncelle(fatura, kullanici=request.user)
+            messages.success(request, "Fason maliyeti fatura tutarına göre güncellendi; ortalama maliyet yeniden hesaplandı."
+                             if sonuc["guncellendi"] else "Fark yok; güncelleme gerekmedi.")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fatura_detay", pk=fatura.pk)
 
 
 @ekran_gerekli("fason_donusleri")
@@ -7548,6 +7593,8 @@ def fatura_detay(request, pk):
                    "donemsel_tablolar": donemsel_servis.fatura_tablolari(fatura),
                    "irsaliye_farklari": fatura_servis.irsaliye_miktar_farklari(fatura),
                    "liste_url": _fatura_liste_url(fatura.yon),
+                   "fason_kar": (fason_donus_servis.fatura_karsilastirma(fatura)
+                                 if fatura.yon == "ALIS" and fatura.fason_donusleri.filter(silindi=False).exists() else None),
                    "ekler": fatura_ek_servis.ek_listele(fatura),
                    "kart_acilabilir_hesap": kart_acilabilir_hesap})
 

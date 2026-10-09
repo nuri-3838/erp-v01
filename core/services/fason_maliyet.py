@@ -13,11 +13,12 @@ SIFIR = Decimal("0")
 
 
 def fason_bekliyor(kayit) -> bool:
-    """Fason kaydın bedeli fasoncunun FATURASI gelene kadar 'tahmini'dir: dönüş belgesine fatura bağlı değilse True."""
+    """Fason kaydın bedeli fasoncunun FATURASI gelene kadar 'tahmini'dir: dönüş belgesine ONAYLI bir fatura bağlı değilse True."""
     if not kayit.fason_cari_id:
         return False
     donus = kayit.fason_donus
-    return not (donus is not None and getattr(donus, "fatura_id", None))
+    fatura = donus.fatura if (donus is not None and donus.fatura_id) else None
+    return not (fatura is not None and not fatura.silindi and fatura.durum == "ONAYLI")
 
 
 def fiyatlari_coz(kayit, ciktilar) -> dict:
@@ -47,3 +48,25 @@ def fiyatlari_coz(kayit, ciktilar) -> dict:
     if eksik:
         raise FasonHatasi("Fason dönüş onaylanamaz: " + "; ".join(eksik) + ".")
     return sonuc
+
+
+def bekleyen_ciktilar() -> list:
+    """Faturası gelmemiş (bağlı ONAYLI fatura yok) fason kayıtlarının fason bedelli ÇIKTI satırları:
+    [{"cikti": OperasyonKaydiCikti, "hareket": giriş StokHareket | None, "malzeme_tahmini": bool}]. Değerleme raporu bu bedeli açıklamak için kullanır."""
+    from core.models import OperasyonKaydi, OperasyonKaydiCikti, StokHareket
+    adaylar = [c for c in OperasyonKaydiCikti.objects.filter(
+        silindi=False, fason_tutar__gt=0, kayit__silindi=False, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__fason_cari__isnull=False)
+        .select_related("kayit__fason_donus__fatura", "stok")]
+    adaylar = [c for c in adaylar if fason_bekliyor(c.kayit)]
+    if not adaylar:
+        return []
+    kayit_idler = {c.kayit_id for c in adaylar}
+    hareketler = {}
+    for h in StokHareket.objects.filter(operasyon_kaydi_id__in=kayit_idler, silindi=False):
+        hareketler[(h.operasyon_kaydi_id, h.stok_id, h.tur)] = h
+    malzeme_tahmini = {}
+    for h in hareketler.values():
+        if h.tur == StokHareket.Tur.CIKIS and h.maliyet_durumu != StokHareket.MaliyetDurumu.KESIN:
+            malzeme_tahmini[h.operasyon_kaydi_id] = True
+    return [{"cikti": c, "hareket": hareketler.get((c.kayit_id, c.stok_id, StokHareket.Tur.GIRIS)),
+             "malzeme_tahmini": malzeme_tahmini.get(c.kayit_id, False)} for c in adaylar]

@@ -86,6 +86,28 @@
   </div>
 </section>
 
+{% if fason_kar %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik"><span class="emoji">✂️</span>Fason dönüşler</h2>
+  <p class="yardim">Bu fatura şu fason dönüş belgelerine bağlı:
+    {% for d in fason_kar.donusler %}<a class="mono" href="{% url 'core:fason_donus_detay' d.pk %}">{{ d.no }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+  <div class="satir"><span class="et">Beklenen fason bedeli</span><span class="dg mono">{{ fason_kar.beklenen_try|tr_para }} TL · {{ fason_kar.beklenen_usd|tr_para }} USD</span></div>
+  <div class="satir"><span class="et">Fatura (KDV hariç)</span><span class="dg mono">{{ fason_kar.fatura_try|tr_para }} TL</span></div>
+  {% if fason_kar.fark_var %}
+    <div class="uyari" style="margin-top:.6rem">⚠️ Fatura tutarı beklenen fason bedelinden <strong>{{ fason_kar.fark|tr_para }} TL</strong> farklı.
+      Stok maliyeti şu an beklenen bedelle duruyor; fatura tutarına çekmek için açık işlemi kullanın.
+      {% if fason_kar.onayli %}
+        <form method="post" action="{% url 'core:fason_fatura_guncelle' fatura.pk %}" style="margin-top:.5rem"
+              onsubmit="return confirm('Fason maliyeti fatura tutarına göre güncellensin mi? Ortalama maliyet yeniden hesaplanır.');">
+          {% csrf_token %}<button type="submit" class="birincil">Maliyeti faturaya göre güncelle</button></form>
+      {% else %}<div class="yardim">(Fatura onaylanınca güncelleme yapılabilir.)</div>{% endif %}
+    </div>
+  {% else %}
+    <div class="yardim">✔ Fatura tutarı beklenen fason bedeliyle uyumlu.</div>
+  {% endif %}
+</section>
+{% endif %}
+
 {% for t in donemsel_tablolar %}
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Dönemsel Dağıtım · <span class="mono">{{ t.hesap.hesap_kodu }}</span> {{ t.hesap.hesap_adi }}</h2>

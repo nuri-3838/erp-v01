@@ -54,6 +54,10 @@
         <td class="sag mono" {% if k.fark %}style="color:var(--kirmizi,#b00)"{% endif %}>{{ k.fark|tr_kur:2 }}</td>
         <td class="sag mono">{{ k.gecici|tr_kur:2 }}</td>
       </tr>
+      {% if k.fason_bekleyen %}
+      <tr><td colspan="5" class="yardim" style="padding-top:0">✂️ {{ k.kod }} grubunda stok değeri mizandan <strong>{{ k.ham_fark|tr_kur:2 }}</strong> yüksek: <strong>{{ k.fason_bekleyen|tr_kur:2 }} TL</strong>
+        faturası bekleyen fason bedeli (tahmini; fasoncunun faturası 151'e işlenince fark kapanır — Fason → Fason Dönüşler).</td></tr>
+      {% endif %}
       {% endfor %}
       {% if rapor.tanimsiz %}
       <tr><td>Hesabı tanımsız kartlar</td><td class="sag mono">{{ rapor.tanimsiz.deger|tr_kur:2 }}</td><td class="sag">—</td><td class="sag">—</td><td class="sag mono">{{ rapor.tanimsiz.gecici|tr_kur:2 }}</td></tr>
@@ -63,6 +67,6 @@
   </div>
   <p class="yardim">Fark sıfır değilse stok hareketleri ile yevmiye arasında tutarsızlık var demektir (ör. fatura
     gelmemiş irsaliye girişi ya da kategorisi için muhasebe hesabı tanımlanmamış kart). Geçici (fiyatsız) giriş
-    değerleri henüz fişi olmadığı için karşılaştırmadan düşülür.</p>
+    değerleri henüz fişi olmadığı için karşılaştırmadan düşülür. Faturası gelmemiş fason bedeli de geçici sayılır (yalnız fason payı).</p>
 </section>
 {% endblock %}

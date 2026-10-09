@@ -58,6 +58,36 @@
   </tbody>
 </table>
 </div>
+{% if bilgi.durum == "ONAYLI" %}
+<section class="icerik-kart" style="margin-top:1rem">
+  <h2 class="bolum-baslik"><span class="emoji">🧾</span>Fasoncunun faturası</h2>
+  {% if donus.fatura %}
+    <p>Bağlı fatura: <a href="{% url 'core:fatura_detay' donus.fatura_id %}" class="mono">{{ donus.fatura.fatura_no|default:donus.fatura_id }}</a>
+      · {{ donus.fatura.tarih|date:"d.m.Y" }} · {{ donus.fatura.get_durum_display }}</p>
+    {% if kar.fark_var %}
+      <div class="uyari">⚠️ Fatura tutarı beklenen fason bedelinden farklı: beklenen <strong>{{ kar.beklenen_try|tr_para }} TL</strong>, fatura (KDV hariç)
+        <strong>{{ kar.fatura_try|tr_para }} TL</strong> (fark {{ kar.fark|tr_para }} TL). Fatura detayında "faturaya göre güncelle" ile maliyet düzeltilebilir.</div>
+    {% endif %}
+    <form method="post" action="{% url 'core:fason_donus_fatura_kopar' donus.pk %}" onsubmit="return confirm('Fatura bağı kaldırılsın mı? Fason bedeli yeniden tahmini sayılır.');">
+      {% csrf_token %}<button type="submit" class="dugme-ikincil">Faturadan ayır</button></form>
+  {% else %}
+    <p class="yardim">Fason bedeli şu an <strong>tahmini</strong>. Fasoncunun ALIŞ faturasını (hizmet kalemi 151 yarı mamul hesabına eşli bir kart) bu belgeye bağlayın;
+      fatura onaylı olunca bedel kesinleşir.</p>
+    {% if fatura_adaylari %}
+      <form method="post" action="{% url 'core:fason_donus_fatura_bagla' donus.pk %}" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+        {% csrf_token %}
+        <select name="fatura" required>
+          <option value="">— fatura seç —</option>
+          {% for f in fatura_adaylari %}<option value="{{ f.pk }}">{{ f.tarih|date:"d.m.Y" }} · {{ f.fatura_no|default:"no yok" }} · {{ f.ara_toplam|tr_para }} {{ f.para_birimi }} · {{ f.get_durum_display }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="birincil">Faturaya bağla</button>
+      </form>
+    {% else %}
+      <p class="yardim">{{ donus.cari.unvan }} için alış faturası bulunamadı. Önce Faturalar → Alış Faturaları'ndan faturayı girin.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endif %}
 <p class="yardim">Fason bedeli, fasoncunun faturası bu belgeye bağlanana kadar <strong>tahmini</strong> sayılır. Malzeme (ham profil) maliyeti boy oranıyla paylaşılır; fason bedeli her çıktıya kendi
   birim fiyatıyla eklenir.</p>
 {% endblock %}

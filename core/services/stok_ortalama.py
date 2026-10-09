@@ -334,6 +334,16 @@ def degerleme_raporu() -> dict:
                .select_related("uretim_birimi", "kategori").order_by("kod"))
     gecici = {r["stok_id"]: r["t"] for r in StokHareket.objects.filter(
         silindi=False, tur=GIRIS, maliyet_durumu=GECICI).values("stok_id").annotate(t=Sum("tutar_try"))}
+    # FASON: faturası gelmemiş fason bedeli 'tahmini'dir; mizanda YOKTUR (fason faturası 151 alt hesabına borç yazar). Çıktı girişi tahmini
+    # sayıldığından tutarının TAMAMI 'geçici' düşer; oysa malzeme payı fişle mizana girmiştir → geçiciden yalnız fason payı düşülür (malzeme
+    # de tahminiyse eskisi gibi tamamı). Böylece stok değeri − mizan farkı (``ham_fark``) tam olarak bekleyen fason bedeline eşit olur.
+    from core.services.fason_maliyet import bekleyen_ciktilar
+    fason_bekleyen = {}                                   # stok_id -> bekleyen fason bedeli (TL)
+    for b in bekleyen_ciktilar():
+        c, h = b["cikti"], b["hareket"]
+        fason_bekleyen[c.stok_id] = fason_bekleyen.get(c.stok_id, SIFIR) + c.fason_tutar
+        if h is not None and h.maliyet_durumu == GECICI and not b["malzeme_tahmini"]:
+            gecici[c.stok_id] = gecici.get(c.stok_id, SIFIR) - (h.tutar_try or SIFIR) + min(h.tutar_try or SIFIR, c.fason_tutar)
     yok = {r["stok_id"]: r["n"] for r in StokHareket.objects.filter(
         silindi=False, maliyet_durumu=YOK).values("stok_id").annotate(n=Count("id"))}
     hesap_onbellek = {}
@@ -351,17 +361,19 @@ def degerleme_raporu() -> dict:
                          "ort_try": s.ort_maliyet_try, "ort_usd": s.ort_maliyet_usd,
                          "deger_try": s.maliyet_deger_try, "deger_usd": s.maliyet_deger_usd,
                          "gecici_try": g, "yok_adet": yok.get(s.pk, 0)})
-        agg = grup_toplam.setdefault(grup, {"deger": SIFIR, "gecici": SIFIR, "usd": SIFIR})
+        agg = grup_toplam.setdefault(grup, {"deger": SIFIR, "gecici": SIFIR, "usd": SIFIR, "fason": SIFIR})
         agg["deger"] += s.maliyet_deger_try
         agg["usd"] += s.maliyet_deger_usd
         agg["gecici"] += g
+        agg["fason"] += fason_bekleyen.get(s.pk, SIFIR)
     karsilastirma = []
     for kod in HESAP_GRUPLARI:
-        agg = grup_toplam.get(kod, {"deger": SIFIR, "gecici": SIFIR, "usd": SIFIR})
+        agg = grup_toplam.get(kod, {"deger": SIFIR, "gecici": SIFIR, "usd": SIFIR, "fason": SIFIR})
         kesin = agg["deger"] - agg["gecici"]
         mizan = _mizan_bakiyesi(kod)
         karsilastirma.append({"kod": kod, "stok_degeri": kesin, "gecici": agg["gecici"],
-                              "mizan": mizan, "fark": kesin - mizan})
+                              "mizan": mizan, "fark": kesin - mizan,
+                              "toplam_deger": agg["deger"], "ham_fark": agg["deger"] - mizan, "fason_bekleyen": agg["fason"]})
     tanimsiz = grup_toplam.get("TANIMSIZ")
     return {"satirlar": satirlar, "karsilastirma": karsilastirma, "tanimsiz": tanimsiz,
             "toplam_deger": sum((r["deger_try"] for r in satirlar), SIFIR),

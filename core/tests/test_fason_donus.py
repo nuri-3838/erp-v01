@@ -103,8 +103,8 @@ class FasonOnayTest(FasonBase):
         operasyon_kaydi_onayla(k)
         k.refresh_from_db()
         self.assertIsNotNone(k.fis)
-        borc = sum((s.borc for s in k.fis.satirlar.all()), D("0"))
-        alacak = sum((s.alacak for s in k.fis.satirlar.all()), D("0"))
+        borc = sum((s.borc for s in k.fis.satirlar.filter(silindi=False)), D("0"))
+        alacak = sum((s.alacak for s in k.fis.satirlar.filter(silindi=False)), D("0"))
         self.assertEqual(borc, alacak)                                                # dengeli
         self.assertEqual(borc, D("100.00"))                                           # 136 DEĞİL: fason bedeli fişte yok
 
