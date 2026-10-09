@@ -1,0 +1,4 @@
+# Yalnız GELİŞTİRME/test bağımlılıkları — canlıya (requirements.txt) EKLENMEZ, sunucuda kurulmaz.
+-r requirements.txt
+# manage.py test --parallel: işçi süreçlerdeki hata izlerini (traceback) ana sürece taşıyabilmek için (yoksa "cannot pickle 'traceback'" ile çöker)
+tblib==3.2.2

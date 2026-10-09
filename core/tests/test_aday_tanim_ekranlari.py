@@ -59,6 +59,19 @@ class Migrasyon0132Test(TransactionTestCase):
     olmadan geri gelmez)."""
     serialized_rollback = True
 
+    @classmethod
+    def tearDownClass(cls):
+        """Sınıfın SON testinin flush'ı tabloları boş bırakır; serialized_rollback tohumu yalnız bir SONRAKİ TransactionTestCase'in başında geri
+        yükler. Kalıcı test veritabanında (--keepdb) o sonraki test yoktur → sonraki koşunun tüm TestCase'leri boş tohum tablolarıyla başlar
+        (AdayTipTanim.DoesNotExist vb.). Bu yüzden tohum verisini sınıf bitince BURADA geri yükle (Django'nun _fixture_setup'ıyla aynı yöntem)."""
+        super().tearDownClass()
+        from django.db import connections
+        for ad in cls._databases_names(include_mirrors=False):
+            baglanti = connections[ad]
+            icerik = getattr(baglanti, "_test_serialized_contents", None)
+            if icerik:
+                baglanti.creation.deserialize_db_from_string(icerik)
+
     def tearDown(self):
         # Şemayı güncel migration'a geri getir (flush + serialized_rollback'ten ÖNCE —
         # aksi halde flush yanlış/eksik tablo kümesine karşı çalışır).

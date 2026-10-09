@@ -3,12 +3,14 @@ hareket düzenleme (açıklama / gider hesabı / proje) fişi günceller; kk_pro
 import datetime
 from decimal import Decimal
 from io import StringIO
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
+from core.management.commands import kk_proje_duzelt as kpd
 from core.models import Cari, EkranYetki, Kur, YatirimProjesi, YevmiyeFisi, YevmiyeSatir
 from core.services import kredi_karti_hareket as kk
 from core.services.finans import kredi_karti_olustur
@@ -139,26 +141,31 @@ class KkProjeDuzeltKomutTest(TestCase):
         _hesap("258", "YAPILMAKTA OLAN YATIRIMLAR", kalem="DDV")
         cls.su = User.objects.create_superuser("kkc", password="x")
         cls.kart = kredi_karti_olustur(ad="ziraat", para_birimi="TRY", muhasebe_kodu="309.02", kullanici=cls.su)
-        # id 8'li proje YP-0008: önce 7 proje aç
+        # YP-0008 ROLÜNDEKİ proje: 8. açılan proje (kod YP-0008). pk'si doğaldır — komutun sabit pk=8 varsayımı mock ile bu pk'ye çevrilir.
         for i in range(8):
             p = proje_olustur(ad=f"p{i}", kullanici=cls.su)
-        YatirimProjesi.objects.filter(pk=p.pk).update(id=8)
-        cls.p8 = YatirimProjesi.objects.get(pk=8)
+        cls.p8 = p
 
     def _eski_veri(self):
-        def ham(pk, no, ack, kaynak, satirlar, kart=None):
-            f = YevmiyeFisi.objects.create(pk=pk, yil=2026, fis_no=no, tarih=D(2026, 4, 3), aciklama=ack,
+        def ham(no, ack, kaynak, satirlar, kart=None):
+            f = YevmiyeFisi.objects.create(yil=2026, fis_no=no, tarih=D(2026, 4, 3), aciklama=ack,
                                            kaynak=kaynak, kredi_karti=kart)
             for hesap, b, a, proje in satirlar:
                 YevmiyeSatir.objects.create(fis=f, hesap_id=hesap, borc=b, alacak=a, islem_pb="TRY",
                                             islem_tutari=b or a, islem_kuru=1, yatirim_projesi_id=proje)
             return f
-        ham(645, 574, "EXPERTİZ - GEZEN ADAM (MEGANE)", "KREDI_KARTI",
-            [("309.02", 0, Dc("7000"), None), ("258", Dc("7000"), 0, None)], kart=self.kart)
-        ham(705, 634, "EXPERTİZ - GEZEN ADAM (MEGANE) - YP-0008 PROJE BAĞLAMA (KK FİŞ 2026/574)", "MANUEL",
-            [("258", Dc("7000"), 0, 8), ("258", 0, Dc("7000"), None)])
-        ham(646, 575, "BAŞKA KK GİDERİ", "KREDI_KARTI",
-            [("309.02", 0, Dc("100"), None), ("258", Dc("100"), 0, None)], kart=self.kart)
+        self.kk = ham(574, "EXPERTİZ - GEZEN ADAM (MEGANE)", "KREDI_KARTI",
+                      [("309.02", 0, Dc("7000"), None), ("258", Dc("7000"), 0, None)], kart=self.kart)
+        self.mahsup = ham(634, "EXPERTİZ - GEZEN ADAM (MEGANE) - YP-0008 PROJE BAĞLAMA (KK FİŞ 2026/574)", "MANUEL",
+                          [("258", Dc("7000"), 0, self.p8.pk), ("258", 0, Dc("7000"), None)])
+        self.diger = ham(575, "BAŞKA KK GİDERİ", "KREDI_KARTI",
+                         [("309.02", 0, Dc("100"), None), ("258", Dc("100"), 0, None)], kart=self.kart)
+        # komutun canlı sabitleri (fiş id 645/705, proje id 8) bu testin gerçek pk'lerine çevrilir; fiş no/açıklama sabitleri aynen kalır
+        for patcher in (mock.patch.object(kpd, "KK_FIS", (self.kk.pk,) + tuple(kpd.KK_FIS[1:])),
+                        mock.patch.object(kpd, "MAHSUP_FIS", (self.mahsup.pk,) + tuple(kpd.MAHSUP_FIS[1:])),
+                        mock.patch.object(kpd, "PROJE_PK", self.p8.pk)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def _komut(self, *ek):
         out = StringIO()
@@ -171,21 +178,21 @@ class KkProjeDuzeltKomutTest(TestCase):
         once = proje_toplami(self.p8)
         c = self._komut()
         self.assertIn("DRY-RUN", c)
-        self.assertTrue(YevmiyeFisi.objects.filter(pk=705).exists())
-        self.assertIsNone(YevmiyeSatir.objects.get(fis_id=645, hesap_id="258").yatirim_projesi_id)
+        self.assertTrue(YevmiyeFisi.objects.filter(pk=self.mahsup.pk).exists())
+        self.assertIsNone(YevmiyeSatir.objects.get(fis_id=self.kk.pk, hesap_id="258").yatirim_projesi_id)
         self.assertIn("BAŞKA KK GİDERİ", c)                                    # diğer projesiz KK 258 raporlandı
         c = self._komut("--uygula")
         self.assertIn("UYGULANDI", c)
-        self.assertEqual(YevmiyeSatir.objects.get(fis_id=645, hesap_id="258").yatirim_projesi_id, 8)
-        self.assertFalse(YevmiyeFisi.objects.filter(pk=705).exists())
-        self.assertIsNone(YevmiyeSatir.objects.get(fis_id=646, hesap_id="258").yatirim_projesi_id)   # değiştirilmedi
+        self.assertEqual(YevmiyeSatir.objects.get(fis_id=self.kk.pk, hesap_id="258").yatirim_projesi_id, self.p8.pk)
+        self.assertFalse(YevmiyeFisi.objects.filter(pk=self.mahsup.pk).exists())
+        self.assertIsNone(YevmiyeSatir.objects.get(fis_id=self.diger.pk, hesap_id="258").yatirim_projesi_id)   # değiştirilmedi
         self.assertEqual(proje_toplami(self.p8), once)                          # proje toplamı aynı
         self.assertIn("DENGEDE", c)
         self.assertEqual(SilmeKaydi.objects.get().veri["temizlik"], "kk_proje_duzelt")
 
     def test_uymayan_veri_dokunulmaz(self):
         self._eski_veri()
-        YevmiyeFisi.objects.filter(pk=645).update(aciklama="BAŞKA")
+        YevmiyeFisi.objects.filter(pk=self.kk.pk).update(aciklama="BAŞKA")
         c = self._komut("--uygula")
         self.assertIn("DOKUNULMAZ", c)
-        self.assertTrue(YevmiyeFisi.objects.filter(pk=705).exists())            # mahsup de silinmez
+        self.assertTrue(YevmiyeFisi.objects.filter(pk=self.mahsup.pk).exists())            # mahsup de silinmez
