@@ -1,0 +1,78 @@
+{% load core_extras %}
+<form method="get" autocomplete="off" class="ua-form" style="display:contents">
+  <input type="hidden" name="gorunum" value="karsilastir">
+  <section class="icerik-kart ua-ekran">
+    <h2 class="bolum-baslik">Karşılaştırılacak Ürünler</h2>
+    <div class="ua-secim">
+      <div class="ua-alan">
+        <label for="ua-seri">Seri</label>
+        <select name="seri" id="ua-seri">
+          <option value="">Elle seçim (en fazla {{ en_fazla }} ürün)</option>
+          <option value="A"{% if seri == "A" %} selected{% endif %}>A tipi (152-10)</option>
+          <option value="C"{% if seri == "C" %} selected{% endif %}>Çift çıkış (152-22)</option>
+        </select>
+      </div>
+      <div class="ua-alan">
+        <span class="ua-etiket">Anahtar</span>
+        <span class="ua-ikili">
+          <label style="display:contents"><input type="radio" name="mod" value="miktar" hidden{% if mod == "miktar" %} checked{% endif %}><a href="{{ mod_url_miktar }}" class="{% if mod == 'miktar' %}aktif{% endif %}">Miktar</a></label>
+          <label style="display:contents"><input type="radio" name="mod" value="maliyet" hidden{% if mod == "maliyet" %} checked{% endif %}><a href="{{ mod_url_maliyet }}" class="{% if mod == 'maliyet' %}aktif{% endif %}">Maliyet</a></label>
+        </span>
+      </div>
+      <button type="submit" class="birincil">Karşılaştır</button>
+    </div>
+    <div class="ua-alan" style="margin-top:.8rem">
+      <span class="ua-etiket">Elle seçim · <span id="ua-secili-say"></span></span>
+      <div class="ua-secim-kutu" data-en-fazla="{{ en_fazla }}"{% if seri %} style="opacity:.45"{% endif %}>
+        {% for grup, uyeler in kok_gruplar %}
+          <span class="ua-grup-baslik">{{ grup }}</span>
+          {% for pk, etiket in uyeler %}
+            <label><input type="checkbox" name="urunler" value="{{ pk }}"{% if not seri and pk in urunler_secili %} checked{% endif %}> {{ etiket }}</label>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+</form>
+
+{% if uyari %}<div class="uyari">{{ uyari }}</div>{% endif %}
+
+{% if sonuc %}
+  <section class="icerik-kart ua-matris-kapsa">
+    <div class="ua-baslik-satiri">
+      <h2 class="bolum-baslik"><span class="emoji">🧮</span>{% if mod == "maliyet" %}Maliyet matrisi (TL){% else %}Miktar matrisi{% endif %}</h2>
+      <span class="ua-arac ua-ekran">{{ sonuc.satir_sayisi }} malzeme × {{ sonuc.urunler|length }} ürün · hücre = 1 adet ürün başına {% if mod == "maliyet" %}TL maliyet{% else %}kesirli tüketim{% endif %}</span>
+    </div>
+    <div class="ua-matris">
+      <table>
+        <thead>
+          <tr>
+            <th class="ua-ilk">Malzeme</th>
+            {% for u in sonuc.urunler %}<th title="{{ u.kod }} {{ u.ad }}"><span class="mono">{{ u.kod }}</span><small>{{ u.ad }}</small></th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for g in sonuc.gruplar %}
+            <tr class="ua-kat"><td class="ua-ilk">{{ g.kategori }}</td>{% for u in sonuc.urunler %}<td></td>{% endfor %}</tr>
+            {% for s in g.satirlar %}
+              <tr>
+                <td class="ua-ilk"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }} <span class="ua-yok">({{ s.birim }})</span></td>
+                {% for h in s.hucreler %}
+                  <td class="sag">{% if h %}{% if mod == "maliyet" %}{% if h.maliyet_yok %}<span class="ua-yok" title="Ortalama maliyeti yok">maliyet yok</span>{% else %}{{ h.deger|tr_para }}{% endif %}{% else %}{{ h.deger|tr_miktar_sade:4 }}{% endif %}{% endif %}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          {% endfor %}
+          {% if mod == "maliyet" %}
+            <tr class="ua-toplam">
+              <td class="ua-ilk">ÜRÜN BAŞINA TOPLAM (TL)</td>
+              {% for t in sonuc.toplamlar %}<td class="sag">{{ t.toplam|tr_para }}{% if t.maliyetsiz %}<div class="ua-yok" style="font-weight:500;font-size:.72rem">⚠ {{ t.maliyetsiz }} kalem maliyetsiz</div>{% endif %}</td>{% endfor %}
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% elif not uyari %}
+  <section class="icerik-kart ua-ekran"><p class="yardim ua-bos">Bir seri seç ya da en fazla {{ en_fazla }} ürün işaretle.</p></section>
+{% endif %}

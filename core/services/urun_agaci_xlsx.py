@@ -169,3 +169,41 @@ def kullanim_xlsx(sonuc) -> bytes:
                     if s["yan_cikti_ureten"] else "")
             r += 1
     return _bayt(wb)
+
+
+# --- Karşılaştır -----------------------------------------------------------------------------------------------------------
+
+def karsilastir_xlsx(sonuc, baslik_ek="") -> bytes:
+    urunler = sonuc["urunler"]
+    maliyet = sonuc["mod"] == "maliyet"
+    alt = ("Hücre = 1 adet ürün başına malzeme maliyeti (TL)" if maliyet else "Hücre = 1 adet ürün başına kesirli tüketim") + " " + baslik_ek
+    kolonlar = ["Kategori", "Kod", "Ad", "Birim"] + [f"{u.kod}\n{u.ad}" for u in urunler]
+    wb, ws = _yeni("Karşılaştırma", alt.strip(), kolonlar, [26, 16, 40, 8] + [16] * len(urunler))
+    ws.row_dimensions[4].height = 48
+    r = 5
+    for g in sonuc["gruplar"]:
+        for s in g["satirlar"]:
+            ws.cell(row=r, column=1, value=g["kategori"])
+            ws.cell(row=r, column=2, value=s["stok"].kod)
+            ws.cell(row=r, column=3, value=_ad(s["stok"]))
+            ws.cell(row=r, column=4, value=s["birim"])
+            for i, h in enumerate(s["hucreler"]):
+                if h is None:
+                    continue
+                if maliyet and h["maliyet_yok"]:
+                    ws.cell(row=r, column=5 + i, value="maliyet yok").font = GRI
+                else:
+                    _sayi(ws, r, 5 + i, h["deger"], PARA_FMT if maliyet else MIKTAR_FMT)
+            r += 1
+    if maliyet:
+        _grup_satiri(ws, r, "ÜRÜN BAŞINA TOPLAM (TL)", 4 + len(urunler))
+        for i, t in enumerate(sonuc["toplamlar"]):
+            _sayi(ws, r, 5 + i, t["toplam"], PARA_FMT).font = Font(bold=True)
+        eksik = [t["maliyetsiz"] for t in sonuc["toplamlar"]]
+        if any(eksik):
+            r += 1
+            ws.cell(row=r, column=1, value="Maliyeti olmayan kalem sayısı").font = GRI
+            for i, n in enumerate(eksik):
+                if n:
+                    ws.cell(row=r, column=5 + i, value=n).font = KIRMIZI
+    return _bayt(wb)

@@ -6805,7 +6805,7 @@ def _xlsx_yanit(veri, ad):
 def urun_agaci(request):
     from urllib.parse import urlencode
     g = request.GET
-    gorunum = "kullanim" if g.get("gorunum") == "kullanim" else "urun"
+    gorunum = g.get("gorunum") if g.get("gorunum") in ("kullanim", "karsilastir") else "urun"
     graf = urun_agaci_servis.graf_yukle()
     xlsx = g.get("xlsx") == "1"
 
@@ -6817,7 +6817,8 @@ def urun_agaci(request):
 
     ctx = {
         "gorunum": gorunum, "acik_seviye": URUN_AGACI_ACIK_SEVIYE,
-        "segmentler": [("urun", "Ürün", "?"), ("kullanim", "Nerede kullanılıyor", "?gorunum=kullanim")],
+        "segmentler": [("urun", "Ürün", "?"), ("kullanim", "Nerede kullanılıyor", "?gorunum=kullanim"),
+                       ("karsilastir", "Karşılaştır", "?gorunum=karsilastir")],
         "xlsx_url": None, "sonuc_var": False, "baslik_yazdir": "",
     }
 
@@ -6876,6 +6877,20 @@ def urun_agaci(request):
                     "xlsx_url": url(xlsx="1") if sonuc else None,
                     "baslik_yazdir": f"Nerede kullanılıyor: {stok.kod} {stok.ad}" if stok else ""})
 
+    else:
+        seri = g.get("seri") if g.get("seri") in ("A", "C") else ""
+        mod = "maliyet" if g.get("mod") == "maliyet" else "miktar"
+        idler = [int(x) for x in g.getlist("urunler") if x.isdigit()]
+        urunler, uyari = urun_agaci_servis.karsilastir_urunleri(graf, seri, idler)
+        sonuc = urun_agaci_servis.karsilastir(graf, urunler, mod) if urunler else None
+        kok_gruplar = [x for x in urun_agaci_servis.urun_secenekleri(graf) if x[0] != "Ara parçalar"]
+        if xlsx and sonuc:
+            return _xlsx_yanit(urun_agaci_xlsx.karsilastir_xlsx(sonuc), f"karsilastir_{seri or 'secim'}_{mod}")
+        ctx.update({"seri": seri, "mod": mod, "urunler_secili": {u.pk for u in urunler}, "uyari": uyari, "sonuc": sonuc,
+                    "kok_gruplar": kok_gruplar, "sonuc_var": bool(sonuc), "en_fazla": urun_agaci_servis.KARSILASTIR_EN_FAZLA,
+                    "mod_url_miktar": url(mod="miktar"), "mod_url_maliyet": url(mod="maliyet"),
+                    "xlsx_url": url(xlsx="1") if sonuc else None,
+                    "baslik_yazdir": "Karşılaştırma — " + (urun_agaci_servis.SERI_AD[seri] + " serisi" if seri else f"{len(urunler)} ürün")})
     return render(request, "core/urun_agaci.html", ctx)
 
 

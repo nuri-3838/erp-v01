@@ -240,3 +240,57 @@ def nerede_kullaniliyor(graf: Graf, stok) -> dict:
             "bitmis_urun": stok.pk in {k.pk for k in graf.kokler()},
             "yan_cikti_ureten": [op.cikti for op in graf.yan_ureten.get(stok.pk, [])],
             "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad}
+
+
+# --- 3. KARŞILAŞTIR ---------------------------------------------------------------------------------------------------------
+
+def karsilastir_urunleri(graf: Graf, seri: str = "", urun_idler=()):
+    """(ürünler, uyarı): ``seri`` A/C ise o serinin bitmiş ürünleri; yoksa elle seçilen (en çok 8) operasyonlu stoklar."""
+    kokler = graf.kokler()
+    uyari = ""
+    if seri in SERI_ONEKI:
+        return [s for s in kokler if seri_of(s.kod) == seri], uyari
+    secili, gorulen = [], set()
+    for pk in urun_idler:
+        stok = graf.stoklar.get(pk)
+        if stok is not None and stok.pk in graf.op_of and stok.pk not in gorulen:
+            secili.append(stok)
+            gorulen.add(stok.pk)
+    if len(secili) > KARSILASTIR_EN_FAZLA:
+        uyari = f"En fazla {KARSILASTIR_EN_FAZLA} ürün karşılaştırılabilir; ilk {KARSILASTIR_EN_FAZLA} ürün gösteriliyor."
+        secili = secili[:KARSILASTIR_EN_FAZLA]
+    return secili, uyari
+
+
+def karsilastir(graf: Graf, urunler, mod="miktar") -> dict:
+    """Matris: satırlar yaprak malzemeler (kategoriye göre gruplu), sütunlar ürünler; hücre = 1 adet başına KESİRLİ tüketim
+    (``mod='maliyet'``: TL tutar). Kullanılmayan hücre None. Maliyet modunda ürün başına toplam + maliyeti olmayan kalem sayısı."""
+    maliyet = mod == "maliyet"
+    yaprak_of = [graf.yapraklar(u) for u in urunler]
+    stoklar = {}
+    for y in yaprak_of:
+        for pk, (stok, _) in y.items():
+            stoklar[pk] = stok
+    satirlar = []
+    for pk, stok in stoklar.items():
+        hucreler = []
+        for y in yaprak_of:
+            if pk not in y:
+                hucreler.append(None)
+                continue
+            miktar = y[pk][1]
+            if maliyet:
+                tutar = None if stok.ort_maliyet_try is None else miktar * stok.ort_maliyet_try
+                hucreler.append({"miktar": miktar, "deger": tutar, "maliyet_yok": tutar is None})
+            else:
+                hucreler.append({"miktar": miktar, "deger": miktar, "maliyet_yok": False})
+        satirlar.append({"stok": stok, "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad, "hucreler": hucreler})
+    toplamlar = None
+    if maliyet:
+        toplamlar = []
+        for i in range(len(urunler)):
+            hs = [s["hucreler"][i] for s in satirlar if s["hucreler"][i] is not None]
+            toplamlar.append({"toplam": sum((h["deger"] for h in hs if h["deger"] is not None), SIFIR),
+                              "maliyetsiz": sum(1 for h in hs if h["maliyet_yok"])})
+    return {"urunler": urunler, "gruplar": _grupla(satirlar, lambda s: s["stok"]), "mod": "maliyet" if maliyet else "miktar",
+            "satir_sayisi": len(satirlar), "toplamlar": toplamlar}
