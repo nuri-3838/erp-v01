@@ -1241,7 +1241,7 @@ class IsIstasyonuForm(forms.Form):
 class OperasyonBaslikForm(forms.Form):
     """ÜRETİM > Operasyon Tanımları başlığı: istasyon + çıktı (yalnız oluştururken seçilir —
     mevcut bir operasyonun çıktısı sonradan değiştirilemez, bkz. operasyon_guncelle) +
-    çıktı miktarı (1 çalıştırmada üretilen adet) + açıklama. Çıktı adayları uretim_urunu=True
+    çıktı miktarı (1 çalıştırmada üretilen adet) + (yalnız yan çıktı varken) ana çıktı boyu. Çıktı adayları uretim_urunu=True
     kartlarla sınırlı — ara parçalar da (satis_urunu=False olsalar bile) geçerli çıktıdır."""
     istasyon = forms.ModelChoiceField(
         label="İş İstasyonu", queryset=IsIstasyonu.objects.none(), empty_label="— istasyon seç —")
@@ -1251,14 +1251,6 @@ class OperasyonBaslikForm(forms.Form):
                                   initial=Decimal("1"))
     boy_mm = TRDecimalField(label="Ana çıktı boyu (mm)", basamak=2, required=False,
                             help_text="Yalnız yan çıktısı olan operasyonda zorunlu: maliyet, ana ve yan çıktı boylarının oranına (miktar × boy) göre paylaştırılır.")
-    tam_calistirma = forms.BooleanField(
-        label="Tam çalıştırma zorunlu (tam boy)", required=False,
-        help_text="İşaretliyse çalıştırma sayısı hep TAM SAYIDIR (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer. "
-                  "BOY girdili kesimler için işaretleyin; kayış gibi MT birimli kesimlerde işaretlemeyin.")
-    ad = forms.CharField(label="Ad", max_length=150, required=False,
-                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
-    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
-                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

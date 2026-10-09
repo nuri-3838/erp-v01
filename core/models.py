@@ -3093,11 +3093,10 @@ class Operasyon(TemelModel):
     cikti_miktar = models.DecimalField(
         "çıktı miktarı (1 çalıştırma için)", max_digits=18, decimal_places=3, default=1)
     # Kesimde TAM BOY: çalıştırma sayısı kesirli olamaz (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer.
-    tam_calistirma = models.BooleanField("tam çalıştırma zorunlu (tam boy)", default=False)
+    # OTOMATİK (serviste): girdilerden en az birinin üretim birimi BOY ise True. Elle düzenlenmez.
+    tam_calistirma = models.BooleanField("tam çalıştırma zorunlu (tam boy)", default=False, editable=False)
     # Ana çıktının parça boyu (mm): yan çıktısı olan operasyonda girdi maliyeti BOY ORANINA göre paylaştırılır (miktar × boy_mm).
     boy_mm = models.DecimalField("ana çıktı boyu (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
-    ad = models.CharField("ad", max_length=150, blank=True, default="")
-    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
 
     class Meta:
         db_table = "core_operasyon"
@@ -3114,7 +3113,7 @@ class Operasyon(TemelModel):
         ]
 
     def __str__(self):
-        return self.ad or f"{self.cikti.kod} operasyonu"
+        return f"{self.istasyon.kod} {self.cikti.kod}"
 
 
 class OperasyonKaydiCikti(TemelModel):

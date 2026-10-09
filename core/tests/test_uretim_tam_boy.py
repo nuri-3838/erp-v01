@@ -36,9 +36,9 @@ class TamBoyBase(TestCase):
     def stok(self, kod, birim=None, **kw):
         return _stok(self.kat, birim or self.adet, kod=kod, ad=kod.lower(), **kw)
 
-    def op(self, istasyon, cikti, cikti_miktar, girdiler, tam=False):
+    def op(self, istasyon, cikti, cikti_miktar, girdiler):
         return operasyon_olustur(istasyon_id=istasyon.pk, cikti_id=cikti.pk, cikti_miktar=D(str(cikti_miktar)),
-                                 satirlar=[(g, D(str(m))) for g, m in girdiler], tam_calistirma=tam)
+                                 satirlar=[(g, D(str(m))) for g, m in girdiler])
 
     def ozet(self, sonuc):
         return {o["stok"].kod: o for o in sonuc["ozet"]}
@@ -49,7 +49,7 @@ class TekUrunTest(TamBoyBase):
         profil = self.stok("PROFIL", self.boy, satinalma=True)
         kesilmis = self.stok("KESILMIS")
         mamul = self.stok("MAMUL", satis=True)
-        self.op(self.kesim, kesilmis, 18, [(profil, 1)], tam=True)
+        self.op(self.kesim, kesilmis, 18, [(profil, 1)])
         self.op(self.montaj, mamul, 1, [(kesilmis, 1)])
         sonuc = ihtiyac_hesapla([(mamul, D("1"))])
         o = self.ozet(sonuc)
@@ -66,7 +66,7 @@ class TekUrunTest(TamBoyBase):
         profil = self.stok("PROFIL", self.boy, satinalma=True)
         kesilmis = self.stok("KESILMIS")
         mamul = self.stok("MAMUL", satis=True)
-        self.op(self.kesim, kesilmis, 7, [(profil, 1)], tam=True)
+        self.op(self.kesim, kesilmis, 7, [(profil, 1)])
         self.op(self.montaj, mamul, 1, [(kesilmis, 3)])
         for adet in range(1, 12):
             o = self.ozet(ihtiyac_hesapla([(mamul, D(adet))]))
@@ -79,7 +79,7 @@ class TekUrunTest(TamBoyBase):
         profil = self.stok("PROFIL", self.boy, satinalma=True)
         kesilmis = self.stok("KESILMIS")
         mamul = self.stok("MAMUL", satis=True)
-        self.op(self.kesim, kesilmis, 18, [(profil, 1)], tam=True)
+        self.op(self.kesim, kesilmis, 18, [(profil, 1)])
         self.op(self.montaj, mamul, 1, [(kesilmis, 1)])
         u = User.objects.create_user("tb", password="x")
         for k in ("ihtiyac_hesapla", "urun_agaci"):
@@ -98,7 +98,7 @@ class OrtakParcaTest(TamBoyBase):
     def kur(self, adet_model=5):
         profil = self.stok("PROFIL", self.boy, satinalma=True)
         ortak = self.stok("ORTAK")
-        self.op(self.kesim, ortak, 18, [(profil, 1)], tam=True)
+        self.op(self.kesim, ortak, 18, [(profil, 1)])
         modeller = []
         for i in range(adet_model):
             m = self.stok(f"MODEL{i}", satis=True)
@@ -131,12 +131,12 @@ class OrtakParcaTest(TamBoyBase):
 class CokSeviyeTest(TamBoyBase):
     def test_zincir_ve_elmas_yapi(self):
         profil = self.stok("PROFIL", self.boy, satinalma=True)
-        b = self.stok("B")
+        b = self.stok("B", self.boy)                                          # A, B'den (BOY birimli) kesilir → A da otomatik tam boy
         a = self.stok("A")
         y = self.stok("Y")
         r = self.stok("R", satis=True)
-        self.op(self.kesim, b, 3, [(profil, 1)], tam=True)
-        self.op(self.kesim, a, 4, [(b, 1)], tam=True)                         # A ← B (iki kesim basamağı)
+        self.op(self.kesim, b, 3, [(profil, 1)])
+        self.op(self.kesim, a, 4, [(b, 1)])                         # A ← B (iki kesim basamağı)
         self.op(self.montaj, y, 1, [(a, 1)])
         self.op(self.montaj, r, 1, [(a, 1), (y, 1)])                          # R: A doğrudan + Y üzerinden (A iki derinlikte)
         o = self.ozet(ihtiyac_hesapla([(r, D("2"))]))
@@ -148,10 +148,10 @@ class CokSeviyeTest(TamBoyBase):
 
     def test_cok_seviyeli_zincirde_yukari_yuvarlama_zinciri(self):
         profil = self.stok("PROFIL", self.boy, satinalma=True)
-        b = self.stok("B")
+        b = self.stok("B", self.boy)
         a = self.stok("A")
-        self.op(self.kesim, b, 3, [(profil, 1)], tam=True)
-        self.op(self.kesim, a, 4, [(b, 1)], tam=True)
+        self.op(self.kesim, b, 3, [(profil, 1)])
+        self.op(self.kesim, a, 4, [(b, 1)])
         o = self.ozet(ihtiyac_hesapla([(a, D("5"))]))                          # ceil(5/4)=2 A çalıştırması → 2 B → ceil(2/3)=1 → 1 profil
         self.assertEqual((o["B"]["ihtiyac"], o["B"]["calistirma_sayisi"], o["PROFIL"]["toplam_miktar"]), (D("2"), D("1"), D("1")))
 
@@ -161,7 +161,7 @@ class TamOlmayanRegresyonTest(TamBoyBase):
         profil = self.stok("PROFIL", self.mt, satinalma=True)
         kesilmis = self.stok("KESILMIS")
         mamul = self.stok("MAMUL", satis=True)
-        self.op(self.kesim, kesilmis, 4, [(profil, 1)], tam=False)            # kayış gibi: kesirli kalır
+        self.op(self.kesim, kesilmis, 4, [(profil, 1)])            # kayış gibi: kesirli kalır
         self.op(self.montaj, mamul, 1, [(kesilmis, 1)])
         o = self.ozet(ihtiyac_hesapla([(mamul, D("10"))]))
         self.assertEqual((o["KESILMIS"]["toplam_miktar"], o["KESILMIS"]["calistirma_sayisi"], o["KESILMIS"]["fazla_miktar"]),
@@ -175,7 +175,7 @@ class UretimEmriTamBoyTest(TamBoyBase):
         self.profil = self.stok("PROFIL", self.boy, satinalma=True)
         self.kesilmis = self.stok("KESILMIS")
         self.mamul = self.stok("MAMUL", satis=True)
-        self.kesim_op = self.op(self.kesim, self.kesilmis, 18, [(self.profil, 1)], tam=True)
+        self.kesim_op = self.op(self.kesim, self.kesilmis, 18, [(self.profil, 1)])
         self.mamul_op = self.op(self.montaj, self.mamul, 1, [(self.kesilmis, 1)])
 
     def test_emirde_hedef_ve_planlanan_miktarlar_tam_boy(self):
@@ -226,7 +226,7 @@ class UretimEmriTamBoyTest(TamBoyBase):
     def test_tam_olmayan_kesimde_kesirli_girdi_serbest(self):
         mt = self.stok("KAYIS", self.mt, satinalma=True)
         kes = self.stok("KAYISKES")
-        op = self.op(self.kesim, kes, 4, [(mt, 1)], tam=False)
+        op = self.op(self.kesim, kes, 4, [(mt, 1)])
         k = operasyon_kaydi_olustur(operasyon_id=op.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 9), hedef_cikti_miktari=D("10"))
         s = kaydi_girdi_satirlari(k).get(girdi=mt)
         self.assertEqual(s.planlanan_miktar, D("2.500"))
@@ -234,17 +234,37 @@ class UretimEmriTamBoyTest(TamBoyBase):
 
 
 class OperasyonGuncelleTest(TamBoyBase):
-    def test_tam_calistirma_duzenlenebilir(self):
-        profil = self.stok("PROFIL", self.boy, satinalma=True)
+    def test_tam_calistirma_girdi_birimine_gore_otomatik_ve_girdi_degisince_guncellenir(self):
+        boy_profil = self.stok("BOYPROFIL", self.boy, satinalma=True)
+        adet_parca = self.stok("ADETPARCA", self.adet, satinalma=True)
+        mt_kayis = self.stok("KAYIS", self.mt, satinalma=True)
         kes = self.stok("KES")
-        op = self.op(self.kesim, kes, 2, [(profil, 1)], tam=False)
-        self.assertFalse(op.tam_calistirma)
-        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(profil, D("1"))], tam_calistirma=True)
+        op = self.op(self.kesim, kes, 2, [(adet_parca, 1)])
+        self.assertFalse(op.tam_calistirma)                                                                   # AD → False
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(boy_profil, D("1"))])
         op.refresh_from_db()
-        self.assertTrue(op.tam_calistirma)
-        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(profil, D("1"))])      # parametre yok → korunur
+        self.assertTrue(op.tam_calistirma)                                                                    # BOY → True
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(mt_kayis, D("1"))])
         op.refresh_from_db()
-        self.assertTrue(op.tam_calistirma)
+        self.assertFalse(op.tam_calistirma)                                                                   # MT → False
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("2"), satirlar=[(mt_kayis, D("1")), (boy_profil, D("2"))])
+        op.refresh_from_db()
+        self.assertTrue(op.tam_calistirma)                                                                    # girdilerden biri BOY → True
+
+    def test_olusturmada_birim_boy_ise_true(self):
+        boy_profil = self.stok("BOYPROFIL2", self.boy, satinalma=True)
+        self.assertTrue(self.op(self.kesim, self.stok("K1"), 2, [(boy_profil, 1)]).tam_calistirma)
+        self.assertFalse(self.op(self.kesim, self.stok("K2"), 2, [(self.stok("AD1", self.adet, satinalma=True), 1)]).tam_calistirma)
+
+    def test_ad_aciklama_olmadan_olusturma_guncelleme_ve_str(self):
+        profil = self.stok("PROFIL3", self.boy, satinalma=True)
+        kes = self.stok("KES3")
+        op = self.op(self.kesim, kes, 2, [(profil, 1)])
+        self.assertFalse(hasattr(op, "ad") or hasattr(op, "aciklama"))
+        self.assertEqual(str(op), "KESIM KES3")                                                               # "<istasyon kodu> <çıktı kodu>"
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(profil, D("1"))])
+        op.refresh_from_db()
+        self.assertEqual(op.cikti_miktar, D("3"))
 
 
 class VeriMigrationTest(TamBoyBase):
@@ -260,6 +280,7 @@ class VeriMigrationTest(TamBoyBase):
         sil_op = self.op(self.kesim, silinmis_cikti, 2, [(boy_profil, 1)])
         from core.services.uretim import operasyon_sil
         operasyon_sil(sil_op)
+        Operasyon.objects.update(tam_calistirma=False)                                  # migration öncesi durum (eski veri)
         mig.isaretle(apps, None)
         for o in (boy_op, mt_op, sil_op):
             o.refresh_from_db()
