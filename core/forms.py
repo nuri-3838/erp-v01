@@ -1386,6 +1386,60 @@ class IhtiyacHesaplaSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+class FasonDonusBaslikForm(forms.Form):
+    """FASON > Fason Dönüşler başlığı: fasoncudan gelen irsaliye (cari + çıktıların gireceği depo + irsaliye no + tarih)."""
+    cari = forms.ModelChoiceField(label="Fasoncu (cari)", queryset=Cari.objects.none(), empty_label="— fasoncu seç —")
+    depo = forms.ModelChoiceField(label="Çıktıların gireceği depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    irsaliye_no = forms.CharField(label="Fasoncunun irsaliye no", max_length=50, required=False,
+                                  widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # yalnız fason deposu bağlı cariler; çıktı deposu fason deposu OLAMAZ
+        self.fields["cari"].queryset = (Cari.objects.filter(silindi=False, fason_depolari__silindi=False).distinct().order_by("unvan"))
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        depolar = Depo.objects.filter(silindi=False, fason_cari__isnull=True).order_by("kod")
+        self.fields["depo"].queryset = depolar
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+        if not self.is_bound and "depo" not in self.initial:
+            vd = depolar.filter(ad__icontains="ÜRETİM").first() or depolar.first()
+            if vd:
+                self.fields["depo"].initial = vd.pk
+
+
+class FasonDonusSatirForm(forms.Form):
+    """Fason dönüş satırı: operasyon + dönen ana çıktı adedi. Boş satır atlanır."""
+    operasyon = forms.ModelChoiceField(label="Operasyon (çıktı)", queryset=Operasyon.objects.none(), required=False,
+                                       empty_label="— operasyon seç —")
+    adet = TRDecimalField(label="Adet", basamak=3, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["operasyon"].queryset = (Operasyon.objects.filter(silindi=False).select_related("cikti", "istasyon")
+                                             .order_by("cikti__kod"))
+        self.fields["operasyon"].label_from_instance = lambda o: f"{o.cikti.kod}  {o.cikti.ad}  [{o.istasyon.kod}]"
+        self.fields["operasyon"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        op, adet = cd.get("operasyon"), cd.get("adet")
+        if not op and adet is None:
+            return cd
+        if not op:
+            raise forms.ValidationError("Operasyon seçin.")
+        if adet is None or adet <= 0:
+            raise forms.ValidationError("Adet sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
 class UrunAgaciForm(forms.Form):
     """ÜRETİM > Ürün Ağacı (salt-okunur, GET): ağacı gösterilecek ürün + isteğe bağlı miktar
     (boş = 1, yani "bir adet için ağaç"). Ürün adayları en az bir aktif Operasyon'u olan

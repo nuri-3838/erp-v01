@@ -38,8 +38,13 @@
     <span class="dg"><span class="mono">{{ kayit.operasyon.cikti.kod }}</span> {{ kayit.operasyon.cikti.ad }}</span></div>
   <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ kayit.tarih|date:"d.m.Y" }}</span></div>
   <div class="satir"><span class="et">Hedef Çıktı Miktarı</span><span class="dg mono">{{ kayit.hedef_cikti_miktari|tr_kur:3 }}</span></div>
-  <div class="satir"><span class="et">Depo</span>
+  <div class="satir"><span class="et">{% if kayit.fason_cari %}Çıktı deposu{% else %}Depo{% endif %}</span>
     <span class="dg"><span class="mono">{{ kayit.depo.kod }}</span> {{ kayit.depo.ad }}</span></div>
+  {% if kayit.fason_cari %}
+  <div class="satir"><span class="et">Fason</span>
+    <span class="dg"><span class="rozet rozet-notr">Fason</span> {{ kayit.fason_cari.unvan }} — girdiler fason depodan düşer
+      {% if kayit.fason_donus %}· <a href="{% url 'core:fason_donus_detay' kayit.fason_donus_id %}" class="mono">{{ kayit.fason_donus.no }}</a>{% endif %}</span></div>
+  {% endif %}
   <div class="satir"><span class="et">Üretim Emri</span>
     <span class="dg">{% if kayit.uretim_emri %}<a href="{% url 'core:uretim_emri_detay' kayit.uretim_emri.pk %}">{{ kayit.uretim_emri.no }}</a>{% else %}<span class="pasif">— bağımsız/serbest kayıt —</span>{% endif %}</span></div>
   {% if kayit.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ kayit.aciklama }}</span></div>{% endif %}

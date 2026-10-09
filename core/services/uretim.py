@@ -770,7 +770,7 @@ def kaydi_girdi_satirlari(kayit: OperasyonKaydi):
 
 @transaction.atomic
 def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari,
-                            uretim_emri=None, aciklama="", kullanici=None) -> OperasyonKaydi:
+                            uretim_emri=None, aciklama="", kullanici=None, fason_cari=None, fason_donus=None) -> OperasyonKaydi:
     operasyon = (Operasyon.objects.filter(pk=operasyon_id, silindi=False)
                 .select_related("istasyon", "cikti").first())
     if not operasyon:
@@ -797,7 +797,7 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
                     yil=yil, sira=sira, no=f"OP-{yil}-{sira:04d}",
                     operasyon=operasyon, uretim_emri=uretim_emri, depo=depo, tarih=tarih,
                     hedef_cikti_miktari=miktar, aciklama=(aciklama or "").strip(),
-                    durum=OperasyonKaydi.Durum.TASLAK,
+                    durum=OperasyonKaydi.Durum.TASLAK, fason_cari=fason_cari, fason_donus=fason_donus,
                     created_by=kullanici, updated_by=kullanici)
             break
         except IntegrityError:
@@ -855,6 +855,28 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     satirlar = list(kaydi_girdi_satirlari(kayit))
     for satir in satirlar:
         _tam_boy_kontrol(kayit, satir, satir.gerceklesen_miktar)
+    operasyon = kayit.operasyon
+    calistirma = kayit.hedef_cikti_miktari / operasyon.cikti_miktar
+    ciktilar = [("ana", operasyon.cikti_id, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
+    cikti_stok = {"ana": operasyon.cikti}
+    for y in operasyon_yan_ciktilari(operasyon):
+        ciktilar.append((f"yan{y.pk}", y.stok_id, yuvarla(calistirma * y.miktar, 3), y.boy_mm))
+        cikti_stok[f"yan{y.pk}"] = y.stok
+    # FASON dönüş: girdiler carinin fason deposundan düşer, çıktıların her birine kendi FasonFiyat bedeli eklenir (fiyat yoksa onay engellenir).
+    girdi_depo_id, fason, fason_bekleyen = kayit.depo_id, None, False
+    if kayit.fason_cari_id:
+        from core.services import depo as depo_servis
+        from core.services import fason_maliyet
+        from core.services.fason import FasonHatasi
+        fason_deposu = depo_servis.fason_deposu(kayit.fason_cari_id)
+        if fason_deposu is None:
+            raise UretimHatasi(f"{kayit.fason_cari.unvan} için bağlı bir fason deposu yok (Depolar ekranında fasoncuyu bir depoya bağlayın).")
+        girdi_depo_id = fason_deposu.pk
+        try:
+            fason = fason_maliyet.fiyatlari_coz(kayit, [(a, cikti_stok[a], m) for a, _sid, m, _b in ciktilar])
+        except FasonHatasi as e:
+            raise UretimHatasi(str(e))
+        fason_bekleyen = fason_maliyet.fason_bekliyor(kayit)
     toplam_girdi_maliyeti = Decimal("0")
     toplam_girdi_usd = Decimal("0")
     herhangi_biri_tahmini = False
@@ -863,7 +885,7 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
             continue
         try:
             girdi_hareketi = hareket_ekle(
-                stok_id=satir.girdi_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
+                stok_id=satir.girdi_id, depo_id=girdi_depo_id, tarih=kayit.tarih,
                 tur=StokHareket.Tur.CIKIS, miktar=satir.gerceklesen_miktar,
                 aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
                 operasyon_kaydi_girdi=satir, operasyon_kaydi=kayit, kullanici=kullanici)
@@ -882,11 +904,6 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     # YAN ÇIKTI varsa her biri için de GİRİŞ yazılır; toplam girdi maliyeti BOY ORANINA göre (miktar × boy_mm) paylaştırılır — TL ve USD
     # ayrı, yuvarlama farkı ana çıktıya (toplam birebir korunur).
     from core.services import stok_fis
-    operasyon = kayit.operasyon
-    calistirma = kayit.hedef_cikti_miktari / operasyon.cikti_miktar
-    ciktilar = [("ana", operasyon.cikti_id, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
-    for y in operasyon_yan_ciktilari(operasyon):
-        ciktilar.append((f"yan{y.pk}", y.stok_id, yuvarla(calistirma * y.miktar, 3), y.boy_mm))
     agirlik = {k: (m * boy if boy else Decimal("0")) for k, _, m, boy in ciktilar}
     bilinen = toplam_girdi_maliyeti > 0
     # ONAY ANI SNAPSHOT'I: çıktı satırları (miktar, boy, pay oranı) kayda yazılır; sonraki yeniden paylaştırmalar bunlara göre yapılır.
@@ -896,18 +913,25 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
             oran = Decimal("1") if anahtar == "ana" else Decimal("0")
         else:
             oran = (agirlik[anahtar] / toplam_agirlik).quantize(Decimal("0.0000000001"))
-        OperasyonKaydiCikti.objects.create(kayit=kayit, stok_id=stok_id, miktar=miktar, boy_mm=boy, pay_orani=oran,
-                                           ana_mi=(anahtar == "ana"), created_by=kullanici, updated_by=kullanici)
+        f = fason[anahtar] if fason else None
+        OperasyonKaydiCikti.objects.create(
+            kayit=kayit, stok_id=stok_id, miktar=miktar, boy_mm=boy, pay_orani=oran, ana_mi=(anahtar == "ana"),
+            fason_birim_fiyat=f["fiyat"].birim_fiyat if f else None, fason_para_birimi=f["fiyat"].para_birimi if f else "",
+            fason_kur=f["kur"] if f else None, fason_tutar=f["tutar_try"] if f else None, fason_tutar_usd=f["tutar_usd"] if f else None,
+            created_by=kullanici, updated_by=kullanici)
     pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, "ana")
     pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, "ana")
     for anahtar, stok_id, miktar, _boy in ciktilar:
+        f_try = fason[anahtar]["tutar_try"] if fason else Decimal("0")
+        f_usd = fason[anahtar]["tutar_usd"] if fason else Decimal("0")
         hareket_ekle(
             stok_id=stok_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
             tur=StokHareket.Tur.GIRIS, miktar=miktar,
             aciklama=f"Operasyon kaydı {kayit.no}" + ("" if anahtar == "ana" else " (yan çıktı)"),
-            kaynak=StokHareket.Kaynak.URETIM, tahmini=herhangi_biri_tahmini, operasyon_kaydi=kayit,
-            giris_tutar_try=pay_try[anahtar] if bilinen else None,
-            giris_tutar_usd=pay_usd[anahtar] if bilinen else None,
+            kaynak=StokHareket.Kaynak.URETIM, operasyon_kaydi=kayit,
+            tahmini=herhangi_biri_tahmini or (fason_bekleyen and f_try > 0),
+            giris_tutar_try=(pay_try[anahtar] + f_try) if bilinen else None,
+            giris_tutar_usd=(pay_usd[anahtar] + f_usd) if bilinen else None,
             kullanici=kullanici)
     kayit.durum = OperasyonKaydi.Durum.ONAYLI
     kayit.updated_by = kullanici

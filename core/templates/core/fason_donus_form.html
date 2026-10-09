@@ -1,0 +1,95 @@
+{% extends "core/base.html" %}
+{% block baslik %}Yeni Fason Dönüş · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yeni Fason Dönüş{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:fason_donusleri' %}">← Fason Dönüşler</a>
+    <h1 class="ust-baslik"><span class="emoji">📥</span>Yeni Fason Dönüş</h1>
+  </div>
+  <p class="yardim" style="margin-top:-.4rem">Fasoncudan gelen irsaliyedeki her parça için bir satır girin (operasyon + dönen ana çıktı adedi). Yan çıktılar (sağ/sol) operasyon
+    tanımından otomatik gelir. Tam boy kuralı: adet, tam boya yükseltilir.</p>
+
+  {% if baslik.non_field_errors %}<div class="uyari">{% for e in baslik.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
+  {% if formset.non_form_errors %}<div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">İrsaliye</h2>
+      <div class="izgara">
+        {% for f in baslik %}
+          <div class="alan {% if f.name == 'aciklama' %}tam{% endif %}">
+            <label for="{{ f.id_for_label }}">{{ f.label }}</label>
+            {% if f.name == "cari" or f.name == "depo" %}<div class="akilli">{{ f }}</div>{% else %}{{ f }}{% endif %}
+            {% for e in f.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="yardim" style="margin:.5rem 0 0">Yalnız Depolar ekranında bir fason deposuna bağlanmış fasoncular listelenir.</p>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Dönen parçalar</h2>
+      <div class="tablo-kapsayici">
+        <table class="fh-tablo">
+          <thead><tr><th>Operasyon (çıktı parça)</th><th>Adet</th><th></th></tr></thead>
+          <tbody id="satir-govde">
+            {% for f in formset %}
+              <tr class="fh-satir">
+                <td>{{ f.operasyon }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.adet }}</td>
+                <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="satir-alt"><button type="button" id="satir-ekle" class="dugme-ikincil">+ Satır Ekle</button></div>
+    </section>
+
+    <template id="bos-satir">
+      <td>{{ formset.empty_form.operasyon }}</td>
+      <td>{{ formset.empty_form.adet }}</td>
+      <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+    </template>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:fason_donusleri' %}">İptal</a>
+      <button type="submit" name="eylem" value="taslak" class="dugme-ikincil">Taslak Kaydet</button>
+      <button type="submit" name="eylem" value="onayla" class="birincil">Kaydet ve Onayla</button>
+    </div>
+  </form>
+</div>
+
+<style>
+  .fh-tablo { width:100%; border-collapse:collapse; }
+  .fh-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); padding:0 .5rem .3rem; }
+  .fh-tablo td { padding:.25rem .5rem; }
+  .fh-tablo input, .fh-tablo select { min-width:12rem; }
+  .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer; font-size:.95rem; padding:.2rem .5rem; }
+  .fh-sil:hover { color:var(--hata); }
+  .satir-alt { margin-top:.7rem; }
+</style>
+<script>
+(function(){
+  function satirEkle(){
+    var tf = document.getElementById('id_satir-TOTAL_FORMS');
+    var i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr'); tr.className = 'fh-satir';
+    tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
+    document.getElementById('satir-govde').appendChild(tr);
+    tf.value = i + 1;
+    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+  }
+  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('fh-sil')) e.target.closest('tr').remove();
+  });
+})();
+</script>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

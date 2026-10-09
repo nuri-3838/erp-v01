@@ -111,16 +111,27 @@ def uretim_senkronla(kayit, *, kullanici=None):
     agirlik, ana_pk = uretim_cikti_agirliklari(kayit, ciktilar)
     pay_try = maliyet_paylastir(toplam if toplam > 0 else SIFIR, agirlik, ana_pk)
     pay_usd = maliyet_paylastir(toplam_usd if toplam > 0 else SIFIR, agirlik, ana_pk)
+    # FASON dönüş: her çıktının kendi fason bedeli (onay anı snapshot'ı) malzeme payının ÜSTÜNE eklenir — bölüşüm yok. Fatura gelmemişse bu
+    # bedel 'tahmini'dir. Muhasebe fişine YALNIZ malzeme payı girer; fason bedelini fasoncunun faturası (151 alt hesabına borç) besler.
+    fason_satir, bekliyor = {}, False
+    if kayit.fason_cari_id:
+        from core.services.fason_maliyet import fason_bekliyor
+        fason_satir = {c.stok_id: c for c in kayit.ciktilar.filter(silindi=False)}
+        bekliyor = fason_bekliyor(kayit)
     degisen_stoklar, net = [], defaultdict(lambda: SIFIR)
     for cikti in ciktilar:
-        yeni_try = pay_try[cikti.pk] if toplam > 0 else None
-        yeni_usd = pay_usd[cikti.pk] if toplam > 0 else None
-        if (cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini) != (yeni_try, yeni_usd, tahmini):
-            cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini = yeni_try, yeni_usd, tahmini
+        f = fason_satir.get(cikti.stok_id)
+        f_try = (f.fason_tutar or SIFIR) if f else SIFIR
+        f_usd = (f.fason_tutar_usd or SIFIR) if f else SIFIR
+        yeni_try = (pay_try[cikti.pk] + f_try) if toplam > 0 else None
+        yeni_usd = (pay_usd[cikti.pk] + f_usd) if toplam > 0 else None
+        cikti_tahmini = tahmini or (bekliyor and f_try > 0)
+        if (cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini) != (yeni_try, yeni_usd, cikti_tahmini):
+            cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini = yeni_try, yeni_usd, cikti_tahmini
             cikti.save(update_fields=["giris_tutar_try", "giris_tutar_usd", "giris_tahmini", "updated_at"])
             degisen_stoklar.append(cikti.stok)
-        if yeni_try:
-            net[stok_hesabi_kodu(cikti.stok)] += yeni_try
+        if toplam > 0 and pay_try[cikti.pk]:
+            net[stok_hesabi_kodu(cikti.stok)] += pay_try[cikti.pk]
     if toplam > 0:
         for g in bilinen:
             net[stok_hesabi_kodu(g.stok)] -= g.tutar_try

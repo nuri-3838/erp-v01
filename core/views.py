@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonFiyatForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonDonusBaslikForm, FasonDonusSatirForm, FasonFiyatForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -56,7 +56,7 @@ from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
-    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonFiyat, FasonKesim, FasonKesimKaydi,
+    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
@@ -82,6 +82,7 @@ from core.services import duran_hesap as duran_hesap_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import urun_agaci as urun_agaci_servis
+from core.services import fason_donus as fason_donus_servis
 from core.services import urun_agaci_xlsx
 from core.services import birim as birim_servis
 from core.services import kategori as kategori_servis
@@ -6471,6 +6472,68 @@ def fason_kesim_sil(request, pk):
         fason_servis.kesim_sil(k, kullanici=request.user)
         messages.success(request, "Kesim tanımı silindi.")
     return redirect("core:fason_kesim_tanimlari")
+
+
+FasonDonusSatirFormSet = formset_factory(FasonDonusSatirForm, extra=0)
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donusleri(request):
+    return render(request, "core/fason_donus_listesi.html", {"donusler": fason_donus_servis.aktif_donusler()})
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donus_ekle(request):
+    if request.method == "POST":
+        baslik = FasonDonusBaslikForm(request.POST)
+        formset = FasonDonusSatirFormSet(request.POST, prefix="satir")
+        if baslik.is_valid() and formset.is_valid():
+            satirlar = [(f.cleaned_data["operasyon"].pk, f.cleaned_data["adet"]) for f in formset if f.dolu_mu()]
+            cd = baslik.cleaned_data
+            try:
+                donus = fason_donus_servis.donus_olustur(
+                    cari_id=cd["cari"].pk, depo_id=cd["depo"].pk, tarih=cd["tarih"], irsaliye_no=cd["irsaliye_no"],
+                    aciklama=cd["aciklama"], satirlar=satirlar, onayla=request.POST.get("eylem") == "onayla", kullanici=request.user)
+                messages.success(request, f"Fason dönüş {donus.no} " + ("kaydedildi ve onaylandı." if request.POST.get("eylem") == "onayla"
+                                                                      else "taslak olarak kaydedildi."))
+                return redirect("core:fason_donus_detay", pk=donus.pk)
+            except fason_servis.FasonHatasi as e:
+                messages.error(request, str(e))
+    else:
+        baslik = FasonDonusBaslikForm()
+        formset = FasonDonusSatirFormSet(prefix="satir", initial=[{}, {}, {}])
+    return render(request, "core/fason_donus_form.html", {"baslik": baslik, "formset": formset})
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donus_detay(request, pk):
+    donus = get_object_or_404(FasonDonus.objects.select_related("cari", "depo"), pk=pk, silindi=False)
+    return render(request, "core/fason_donus_detay.html", {"donus": donus, "bilgi": fason_donus_servis.donus_bilgisi(donus)})
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donus_onayla(request, pk):
+    donus = get_object_or_404(FasonDonus, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fason_donus_servis.donus_onayla(donus, kullanici=request.user)
+            messages.success(request, f"{donus.no} onaylandı: girdiler fason depodan düşüldü, çıktılar depoya girdi.")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_donus_detay", pk=donus.pk)
+
+
+@ekran_gerekli("fason_donusleri")
+def fason_donus_sil(request, pk):
+    donus = get_object_or_404(FasonDonus, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fason_donus_servis.donus_sil(donus, kullanici=request.user)
+            messages.success(request, f"{donus.no} silindi.")
+            return redirect("core:fason_donusleri")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_donus_detay", pk=donus.pk)
 
 
 @ekran_gerekli("fason_fiyatlari")

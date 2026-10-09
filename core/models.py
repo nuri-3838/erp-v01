@@ -3080,6 +3080,38 @@ class FasonFiyat(TemelModel):
         return f"{self.cari_id} · {self.stok_id} · {self.birim_fiyat} {self.para_birimi}"
 
 
+class FasonDonus(TemelModel):
+    """FASON > Fason Dönüşler — fasoncudan gelen bir İRSALİYE: aynı belgeye bağlı bir ya da birden çok fason operasyon kaydı
+    (``OperasyonKaydi.fason_donus``). Her satır bir operasyonun çalıştırılmasıdır: girdiler (ham profil) carinin fason deposundan düşer,
+    ana + yan çıktılar ``depo``ya (DEPO-ÜRETİM) girer, çıktı başına fasoncunun ``FasonFiyat`` bedeli maliyete eklenir. Fasoncunun
+    alış faturası bu belgeye bağlanınca (``fatura``) fason bedeli 'tahmini'likten çıkar."""
+
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("belge no", max_length=20, editable=False)
+    cari = models.ForeignKey("Cari", verbose_name="fasoncu (cari)", on_delete=models.PROTECT, related_name="fason_donusleri")
+    depo = models.ForeignKey("Depo", verbose_name="çıktıların gireceği depo", on_delete=models.PROTECT, related_name="fason_donusleri")
+    irsaliye_no = models.CharField("fasoncunun irsaliye no", max_length=50, blank=True, default="")
+    tarih = models.DateField("tarih")
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+
+    class Meta:
+        db_table = "core_fason_donus"
+        verbose_name = "fason dönüş"
+        verbose_name_plural = "fason dönüşler"
+        ordering = ["-yil", "-sira"]
+        constraints = [models.UniqueConstraint(fields=["yil", "sira"], name="uq_fason_donus_yil_sira")]
+
+    def __str__(self):
+        return self.no
+
+    @property
+    def onayli(self):
+        """Belgenin (silinmemiş) tüm kayıtları onaylıysa True; onay tek atomik işlem olduğundan arası yoktur."""
+        kayitlar = [k for k in self.kayitlar.all() if not k.silindi]
+        return bool(kayitlar) and all(k.durum == "ONAYLI" for k in kayitlar)
+
+
 # === ÜRETİM modülü — İş İstasyonu + Operasyon (rota) + Üretim Emri + Operasyon Kaydı ===
 # Bağımsız, sıfırdan kurulan bir Stok↔Stok rota modeli — FASON'daki kesilmiş-parça/
 # kesildigi_profil kavramıyla hiçbir ilişkisi yoktur. Bitmiş bir ürün, farklı İŞ
@@ -3162,6 +3194,13 @@ class OperasyonKaydiCikti(TemelModel):
     boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
     pay_orani = models.DecimalField("maliyet pay oranı", max_digits=12, decimal_places=10, default=1)
     ana_mi = models.BooleanField("ana çıktı", default=True)
+    # FASON dönüş kaydında ONAY ANI SNAPSHOT'I: çıktının kendi fason birim fiyatı (fiyatın para biriminde), kur ve TL/USD tutarı. Bölüşüm YOK:
+    # her çıktı kendi fiyatı × adedi kadar bedel alır; malzeme maliyeti ise boy oranıyla paylaşılır (bkz. stok_fis.uretim_senkronla).
+    fason_birim_fiyat = models.DecimalField("fason birim fiyat", max_digits=18, decimal_places=6, null=True, blank=True)
+    fason_para_birimi = models.CharField("fason fiyat para birimi", max_length=3, blank=True, default="")
+    fason_kur = models.DecimalField("fason kur (TL)", max_digits=18, decimal_places=6, null=True, blank=True)
+    fason_tutar = models.DecimalField("fason tutarı (TL)", max_digits=18, decimal_places=2, null=True, blank=True)
+    fason_tutar_usd = models.DecimalField("fason tutarı (USD)", max_digits=18, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "core_operasyon_kaydi_cikti"
@@ -3329,6 +3368,12 @@ class OperasyonKaydi(TemelModel):
     fis = models.ForeignKey(
         "YevmiyeFisi", verbose_name="maliyet aktarım fişi", null=True, blank=True,
         on_delete=models.PROTECT, related_name="operasyon_kayitlari")
+    # FASON: doluysa kayıt fasoncuda (dışarıda) yapılan işin dönüşüdür — girdiler carinin fason deposundan düşer (``depo`` yalnız ÇIKTILARIN
+    # gireceği depodur), çıktılara FasonFiyat bedeli eklenir; ``fason_donus`` aynı irsaliyeye bağlı kayıtları toplar.
+    fason_cari = models.ForeignKey(
+        "Cari", verbose_name="fasoncu (cari)", null=True, blank=True, on_delete=models.PROTECT, related_name="fason_operasyon_kayitlari")
+    fason_donus = models.ForeignKey(
+        "FasonDonus", verbose_name="fason dönüş belgesi", null=True, blank=True, on_delete=models.PROTECT, related_name="kayitlar")
 
     class Meta:
         db_table = "core_operasyon_kaydi"

@@ -1,0 +1,38 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fason Dönüşler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fason Dönüşler{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_hesapla' %}">← Fason</a>
+    <h1 class="ust-baslik"><span class="emoji">📥</span>Fason Dönüşler</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:fason_donus_ekle' %}">+ Yeni Dönüş</a>
+</div>
+
+<p class="yardim">Fasoncudan gelen irsaliye = bir belge. Onayda ham profil <strong>fason depodan</strong> düşer, kesilmiş parçalar (ana + yan çıktı) üretim deposuna girer ve
+  her parçaya fasoncunun kendi birim fiyatı eklenir.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Belge</th><th>Tarih</th><th>Fasoncu</th><th>İrsaliye no</th><th class="sag">Satır</th><th>Durum</th><th>Fatura</th></tr></thead>
+  <tbody>
+    {% for d in donusler %}
+      <tr>
+        <td><a href="{% url 'core:fason_donus_detay' d.pk %}" class="mono">{{ d.no }}</a></td>
+        <td>{{ d.tarih|date:"d.m.Y" }}</td>
+        <td>{{ d.cari.unvan }}</td>
+        <td class="mono">{{ d.irsaliye_no|default:"—" }}</td>
+        <td class="sag mono">{{ d.kayitlar.all|length }}</td>
+        <td>{% if d.onayli %}<span class="rozet rozet-aktif">Onaylı</span>{% else %}<span class="rozet rozet-notr">Taslak</span>{% endif %}</td>
+        <td>{% if d.fatura_id %}<span class="rozet rozet-aktif">Bağlı</span>{% else %}<span class="pasif">bekliyor</span>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim">Henüz fason dönüş yok. "+ Yeni Dönüş" ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

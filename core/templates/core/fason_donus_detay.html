@@ -1,0 +1,63 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ donus.no }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fason Dönüş {{ donus.no }}{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_donusleri' %}">← Fason Dönüşler</a>
+    <h1 class="ust-baslik"><span class="emoji">📥</span>{{ donus.no }}
+      {% if bilgi.durum == "ONAYLI" %}<span class="rozet rozet-aktif">Onaylı</span>{% else %}<span class="rozet rozet-notr">Taslak</span>{% endif %}</h1>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    {% if bilgi.durum != "ONAYLI" %}
+      <form method="post" action="{% url 'core:fason_donus_onayla' donus.pk %}" style="margin:0">{% csrf_token %}
+        <button type="submit" class="birincil" onclick="return confirm('Belge onaylansın mı? Girdiler fason depodan düşer, çıktılar depoya girer.');">Onayla</button></form>
+      <form method="post" action="{% url 'core:fason_donus_sil' donus.pk %}" style="margin:0" onsubmit="return confirm('Taslak belge silinsin mi?');">{% csrf_token %}
+        <button type="submit" class="dugme-ikincil">Sil</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="izgara" style="margin-bottom:1rem">
+  <div class="alan"><label>Fasoncu</label><div>{{ donus.cari.unvan }}</div></div>
+  <div class="alan"><label>Tarih</label><div>{{ donus.tarih|date:"d.m.Y" }}</div></div>
+  <div class="alan"><label>İrsaliye no</label><div class="mono">{{ donus.irsaliye_no|default:"—" }}</div></div>
+  <div class="alan"><label>Çıktıların gireceği depo</label><div>{{ donus.depo.kod }} {{ donus.depo.ad }}</div></div>
+  {% if donus.aciklama %}<div class="alan tam"><label>Açıklama</label><div>{{ donus.aciklama }}</div></div>{% endif %}
+</div>
+
+{% if bilgi.eksikler %}
+  <div class="uyari">⚠️ Şu çıktılar için {{ donus.cari.unvan }}'nin {{ donus.tarih|date:"d.m.Y" }} tarihinde geçerli fason fiyatı yok — onay engellenir:
+    {% for s in bilgi.eksikler %}<span class="mono">{{ s.kod }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}.
+    <a href="{% url 'core:fason_fiyat_ekle' %}">Fason Fiyatları</a>'ndan ekleyin.</div>
+{% endif %}
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Kayıt</th><th>Çıktı</th><th class="sag">Adet</th><th class="sag">Birim fiyat</th><th class="sag">Fason tutarı (TL)</th><th class="sag">USD</th></tr></thead>
+  <tbody>
+    {% for s in bilgi.satirlar %}
+      {% for c in s.ciktilar %}
+        <tr>
+          {% if forloop.first %}<td rowspan="{{ s.ciktilar|length }}"><a class="mono" href="{% url 'core:operasyon_kaydi_detay' s.kayit.pk %}">{{ s.kayit.no }}</a>
+            <div class="yardim" style="margin:0">{{ s.kayit.get_durum_display }}</div></td>{% endif %}
+          <td><span class="mono">{{ c.stok.kod }}</span> {{ c.stok.ad }}{% if not forloop.first %} <span class="rozet rozet-aktif">yan çıktı</span>{% endif %}</td>
+          <td class="sag mono">{{ c.miktar|tr_miktar_sade }}</td>
+          <td class="sag mono">{% if c.birim_fiyat is not None %}{{ c.birim_fiyat|tr_kur:4 }} {{ c.pb }}{% else %}<span class="ua-yok">fiyat yok</span>{% endif %}</td>
+          <td class="sag mono">{% if c.tutar_try is not None %}{{ c.tutar_try|tr_para }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{% if c.tutar_usd is not None %}{{ c.tutar_usd|tr_para }}{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+    {% endfor %}
+    {% if bilgi.durum == "ONAYLI" %}
+      <tr><td colspan="4" class="sag"><strong>Toplam fason bedeli</strong></td><td class="sag mono"><strong>{{ bilgi.toplam_try|tr_para }}</strong></td>
+        <td class="sag mono"><strong>{{ bilgi.toplam_usd|tr_para }}</strong></td></tr>
+    {% endif %}
+  </tbody>
+</table>
+</div>
+<p class="yardim">Fason bedeli, fasoncunun faturası bu belgeye bağlanana kadar <strong>tahmini</strong> sayılır. Malzeme (ham profil) maliyeti boy oranıyla paylaşılır; fason bedeli her çıktıya kendi
+  birim fiyatıyla eklenir.</p>
+{% endblock %}
