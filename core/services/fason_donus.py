@@ -45,8 +45,10 @@ def _sonraki_sira(yil):
 
 @transaction.atomic
 def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama="", onayla=False, kullanici=None) -> FasonDonus:
-    """``satirlar``: [(operasyon_id, adet), ...] — adet = fasoncudan dönen ANA çıktı adedi (tam boy kuralı: tam boya yükseltilir). Her satır için
-    fason operasyon kaydı (TASLAK) açılır; ``onayla=True`` ise belge hemen onaylanır."""
+    """``satirlar``: [(operasyon_id, adet[, gelen_ana[, {stok pk: gelen}]]), ...]. ÜRET: adet = BEKLENEN ana çıktı adedi (tam boy kuralı: tam boya
+    yükseltilir), gelen ayrı (boş = beklenen). PARÇALA: adet = REFERANS çıktının GELEN adedi; diğer çıktıların geleni sözlükten (boş = 0); beklenen
+    gelenlerden türetilir (çalıştırma = max_i gelen_i/miktar_i, tam boyda ⌈·⌉; beklenen_i = çalıştırma × miktar_i, fire_i = beklenen_i − gelen_i).
+    Her satır için fason operasyon kaydı (TASLAK) açılır; ``onayla=True`` ise belge hemen onaylanır."""
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise FasonHatasi("Fasoncu (cari) bulunamadı.")
@@ -84,16 +86,26 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
             raise FasonHatasi(f"{i}. satır: adet geçerli bir sayı olmalı.")
         if adet <= 0:
             raise FasonHatasi(f"{i}. satır: adet sıfırdan büyük olmalı.")
+        operasyon = Operasyon.objects.filter(pk=operasyon_id, silindi=False).select_related("cikti").first()
+        parcala = operasyon is not None and operasyon.tur == Operasyon.Tur.PARCALA
+        gelen = None
+        hedef = adet
+        if parcala:                                                 # adet = referans çıktının GELEN adedi; beklenen gelenlerden türetilir
+            gelen = {str(pk): _adet_coz(v, str(pk)) for pk, v in (gelen_yan or {}).items() if v not in (None, "")}
+            gelen[str(operasyon.cikti_id)] = _adet_coz(gelen_ana, operasyon.cikti.kod) if gelen_ana not in (None, "") else adet
+            hedef = uretim_servis.parcala_hedef_gelenden(operasyon, gelen)
+            if hedef <= 0:
+                raise FasonHatasi(f"{i}. satır: en az bir çıktı için gelen adet girin.")
         try:
             kayit = uretim_servis.operasyon_kaydi_olustur(
-                operasyon_id=operasyon_id, depo_id=depo.pk, tarih=tarih, hedef_cikti_miktari=adet,
+                operasyon_id=operasyon_id, depo_id=depo.pk, tarih=tarih, hedef_cikti_miktari=hedef,
                 aciklama=f"Fason dönüş {donus.no}" + (f" · irsaliye {donus.irsaliye_no}" if donus.irsaliye_no else ""),
                 kullanici=kullanici, fason_cari=cari, fason_donus=donus)
         except uretim_servis.UretimHatasi as e:
             raise FasonHatasi(f"{i}. satır: {e}")
-        if gelen_ana not in (None, "") or gelen_yan:
+        if parcala or gelen_ana not in (None, "") or gelen_yan:
             try:
-                gelen_ayarla(kayit, gelen_ana, gelen_yan)
+                gelen_ayarla(kayit, gelen_ana, gelen_yan, gelen=gelen)
             except FasonHatasi as e:
                 raise FasonHatasi(f"{i}. satır: {e}")
     if onayla:
@@ -110,14 +122,32 @@ def _adet_coz(ham, etiket):
         raise FasonHatasi(f"{etiket}: gelen adet geçerli bir sayı olmalı.")
 
 
-def gelen_ayarla(kayit: OperasyonKaydi, gelen_ana=None, gelen_yan=None) -> OperasyonKaydi:
-    """TASLAK fason kaydında fasoncudan GELEN adetleri yazar (boş = beklenen gelmiş sayılır). ``gelen_yan``: {yan çıktı stok pk: adet}.
-    Gelen > beklenen, negatif ya da ana çıktı için 0 reddedilir. Girdi tüketimi beklenen (tam boya yuvarlanmış) çalıştırmadan, stoğa giren adet ve
-    fason bedeli gelen adetten; fark FİRE olarak kayda geçer (onayda)."""
+def gelen_ayarla(kayit: OperasyonKaydi, gelen_ana=None, gelen_yan=None, *, gelen=None) -> OperasyonKaydi:
+    """TASLAK fason kaydında fasoncudan GELEN adetleri yazar — TEK yapı: ``gelen`` {stok pk: adet} tüm çıktılar (referans dahil); ``gelen_ana`` /
+    ``gelen_yan`` eski çağıranlar için aynı sözlüğe katılır. ÜRET: boş = beklenen gelmiş sayılır; gelen > beklenen, negatif ya da ana çıktı için 0
+    reddedilir. PARÇALA: boş = 0; beklenen gelenlerden türetilir (hedef ve girdi planı yeniden yazılır), en az bir çıktı > 0 olmalı. Girdi tüketimi
+    beklenen çalıştırmadan, stoğa giren adet ve fason bedeli gelen adetten; fark FİRE olarak kayda geçer (onayda)."""
     if kayit.durum != OperasyonKaydi.Durum.TASLAK or kayit.silindi:
         raise FasonHatasi(f"{kayit.no}: yalnız taslak kaydın gelen adetleri değiştirilebilir.")
-    kayit.gelen_ana = _adet_coz(gelen_ana, f"{kayit.operasyon.cikti.kod}")
-    kayit.gelen_yan = {str(pk): format(_adet_coz(v, str(pk)), "f") for pk, v in (gelen_yan or {}).items() if v not in (None, "")}
+    referans_pk = str(kayit.operasyon.cikti_id)
+    veri = {str(pk): v for pk, v in (gelen_yan or {}).items() if v not in (None, "")}
+    veri.update({str(pk): v for pk, v in (gelen or {}).items() if v not in (None, "")})
+    if gelen_ana not in (None, ""):
+        veri[referans_pk] = gelen_ana
+    temiz = {pk: _adet_coz(v, pk) for pk, v in veri.items()}
+    for pk, v in temiz.items():
+        if v is not None and v < 0:
+            raise FasonHatasi(f"{kayit.no}: gelen adet negatif olamaz.")
+    if kayit.operasyon.tur == Operasyon.Tur.PARCALA:
+        hedef = uretim_servis.parcala_hedef_gelenden(kayit.operasyon, temiz)
+        if hedef <= 0:
+            raise FasonHatasi(f"{kayit.no}: en az bir çıktı için gelen adet girin.")
+        try:
+            uretim_servis.kayit_hedefini_guncelle(kayit, hedef)
+        except uretim_servis.UretimHatasi as e:
+            raise FasonHatasi(str(e))
+    kayit.gelen_ana = temiz.get(referans_pk)
+    kayit.gelen_yan = {pk: format(v, "f") for pk, v in temiz.items()}
     try:
         uretim_servis.kayit_gelen_adetleri(kayit)                  # doğrula (kaydetmeden önce)
     except uretim_servis.UretimHatasi as e:
@@ -133,12 +163,10 @@ def gelen_guncelle(donus: FasonDonus, veri) -> FasonDonus:
     if donus.silindi or donus_durumu(donus) == "ONAYLI":
         raise FasonHatasi("Yalnız taslak belgenin gelen adetleri değiştirilebilir.")
     for kayit in donus_kayitlari(donus):
-        gelen_ana = veri.get(f"gelen_{kayit.pk}_ana")
-        yan = {}
+        gelen = {}
         for anahtar, stok, _m, _b in uretim_servis.kayit_ciktilari(kayit):
-            if anahtar != "ana":
-                yan[stok.pk] = veri.get(f"gelen_{kayit.pk}_{stok.pk}")
-        gelen_ayarla(kayit, gelen_ana, yan)
+            gelen[str(stok.pk)] = veri.get(f"gelen_{kayit.pk}_{'ana' if anahtar == 'ana' else stok.pk}")
+        gelen_ayarla(kayit, gelen=gelen)
     return donus
 
 
@@ -237,7 +265,7 @@ def donus_bilgisi(donus: FasonDonus) -> dict:
                 ciktilar.append({"anahtar": "ana" if anahtar == "ana" else str(stok.pk), "stok": stok, "beklenen": beklenen, "miktar": g,
                                  "fire": beklenen - g, "birim_fiyat": f.birim_fiyat if f else None, "pb": f.para_birimi if f else "",
                                  "tutar_try": None, "tutar_usd": None})
-        satirlar.append({"kayit": k, "ciktilar": ciktilar})
+        satirlar.append({"kayit": k, "ciktilar": ciktilar, "tur": k.operasyon.tur})
     return {"satirlar": satirlar, "durum": durum, "toplam_try": toplam_try, "toplam_usd": toplam_usd, "toplam_fire": toplam_fire,
             "eksikler": eksikler}
 

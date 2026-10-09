@@ -10,7 +10,9 @@
     <h1 class="ust-baslik"><span class="emoji">📥</span>Yeni Fason Dönüş</h1>
   </div>
   <p class="yardim" style="margin-top:-.4rem">Fasoncudan gelen irsaliyedeki her parça için bir satır girin (operasyon + dönen ana çıktı adedi). Yan çıktılar (sağ/sol) operasyon
-    tanımından otomatik gelir. <strong>Beklenen adet</strong> tam boya yükseltilir (girdi tüketimi buna göre); <strong>gelen adet</strong> fasoncudan fiilen gelendir (boş = beklenen gelmiş sayılır) — stoğa giren adet ve fason bedeli gelen adet üzerinden, aradaki fark <strong>fire</strong> olarak kaydedilir. Yan çıktıların gelen adedi belge detayında ayrı girilir.</p>
+    tanımından otomatik gelir. <strong>Beklenen adet</strong> tam boya yükseltilir (girdi tüketimi buna göre); <strong>gelen adet</strong> fasoncudan fiilen gelendir (boş = beklenen gelmiş sayılır) — stoğa giren adet ve fason bedeli gelen adet üzerinden, aradaki fark <strong>fire</strong> olarak kaydedilir. Yan çıktıların gelen adedi belge detayında ayrı girilir.
+    <strong>Parçala</strong> (1 boy → N çıktı) tanımında girilen adet <strong>referans çıktının gelen adedidir</strong>; diğer çıktıların gelen adedi belge detayında girilir (boş = 0),
+    beklenen ve fire gelen adetlerden türetilir.</p>
 
   {% if baslik.non_field_errors %}<div class="uyari">{% for e in baslik.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
   {% if formset.non_form_errors %}<div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}

@@ -52,7 +52,7 @@
         <tr>
           {% if forloop.first %}<td rowspan="{{ s.ciktilar|length }}"><a class="mono" href="{% url 'core:operasyon_kaydi_detay' s.kayit.pk %}">{{ s.kayit.no }}</a>
             <div class="yardim" style="margin:0">{{ s.kayit.get_durum_display }}</div></td>{% endif %}
-          <td><span class="mono">{{ c.stok.kod }}</span> {{ c.stok.ad }}{% if not forloop.first %} <span class="rozet rozet-aktif">yan çıktı</span>{% endif %}</td>
+          <td><span class="mono">{{ c.stok.kod }}</span> {{ c.stok.ad }}{% if not forloop.first and s.tur == "URET" %} <span class="rozet rozet-aktif">yan çıktı</span>{% endif %}{% if s.tur == "PARCALA" %} <span class="rozet rozet-notr" title="Parçala: 1 girdi → N çıktı; beklenen, gelen adetlerden türetilir">parçala</span>{% endif %}</td>
           <td class="sag mono">{{ c.beklenen|tr_miktar_sade }}</td>
           <td class="sag mono">{% if bilgi.durum != "ONAYLI" %}<input type="text" inputmode="decimal" name="gelen_{{ s.kayit.pk }}_{{ c.anahtar }}" value="{{ c.miktar|tr_miktar_sade }}" style="width:6rem;text-align:right">{% else %}{{ c.miktar|tr_miktar_sade }}{% endif %}</td>
           <td class="sag mono">{% if c.fire %}<span class="rozet rozet-pasif">{{ c.fire|tr_miktar_sade }}</span>{% else %}—{% endif %}</td>
@@ -71,7 +71,8 @@
 </div>
 {% if bilgi.durum != "ONAYLI" %}
   <div style="margin:.6rem 0"><button type="submit" class="dugme-ikincil">Gelen adetleri kaydet</button></div></form>
-  <p class="yardim">Gelen adet beklenenden fazla olamaz; boş/aynı bırakılan satır eksiksiz gelmiş sayılır. Girdi (ham profil) tüketimi beklenen çalıştırmadan, stoğa giren adet ve fason bedeli
+  <p class="yardim">Gelen adet beklenenden fazla olamaz; boş/aynı bırakılan satır eksiksiz gelmiş sayılır. <strong>Parçala</strong> tanımında her çıktının gelen adedi ayrı girilir (boş = 0 gelen);
+    beklenen, gelen adetlerden türetilir: çalıştırma = en büyük gelen ÷ 1 çalıştırmadaki miktar (tam boyda yukarı yuvarlanır), beklenen = çalıştırma × miktar, fire = beklenen − gelen. Girdi (ham profil) tüketimi beklenen çalıştırmadan, stoğa giren adet ve fason bedeli
     <strong>gelen</strong> adet üzerinden hesaplanır; fark fire olarak kaydedilir ve profil maliyeti gelen parçalara dağılır.</p>
 {% endif %}
 {% if bilgi.durum == "ONAYLI" and faturasiz %}

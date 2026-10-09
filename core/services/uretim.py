@@ -1074,27 +1074,78 @@ def kayit_ciktilari(kayit: OperasyonKaydi) -> list:
 
 
 def kayit_gelen_adetleri(kayit: OperasyonKaydi, ciktilar=None) -> dict:
-    """{anahtar: stoğa girecek adet}. Fason dönüşte fasoncudan GELEN adet (boşsa beklenen); gelen > beklenen ya da negatif / ana çıktı için 0 reddedilir.
-    Fasonsuz kayıtta her zaman beklenen adet."""
+    """{anahtar: stoğa girecek adet}. Fason dönüşte fasoncudan GELEN adet — TEK yapı: ``gelen_yan`` {stok pk: adet} tüm çıktılar için (referans dahil;
+    eski kayıtta referans ``gelen_ana``da). Boş: ÜRET'te beklenen gelmiş sayılır, PARÇALA'da 0. Gelen > beklenen ya da negatif reddedilir; ÜRET'te ana
+    çıktı 0 olamaz, PARÇALA'da en az bir çıktı > 0 olmalı. Fasonsuz kayıtta her zaman beklenen adet."""
     ciktilar = ciktilar if ciktilar is not None else kayit_ciktilari(kayit)
     if not kayit.fason_cari_id:
         return {a: m for a, _st, m, _b in ciktilar}
-    gelen_yan = kayit.gelen_yan or {}
+    parcala = kayit.operasyon.tur == Operasyon.Tur.PARCALA
+    gelen = kayit.gelen_yan or {}
     sonuc = {}
     for anahtar, stok, beklenen, _boy in ciktilar:
-        ham = kayit.gelen_ana if anahtar == "ana" else gelen_yan.get(str(stok.pk))
+        ham = gelen.get(str(stok.pk))
+        if ham in (None, "") and anahtar == "ana":
+            ham = kayit.gelen_ana
         try:
-            g = beklenen if ham in (None, "") else Decimal(str(ham))
+            g = (Decimal("0") if parcala else beklenen) if ham in (None, "") else Decimal(str(ham))
         except Exception:
             raise UretimHatasi(f"{stok.kod}: gelen adet geçerli bir sayı olmalı.")
         if g < 0:
             raise UretimHatasi(f"{stok.kod}: gelen adet negatif olamaz.")
         if g > beklenen:
             raise UretimHatasi(f"{stok.kod}: gelen adet ({g.normalize():f}) beklenenden ({beklenen.normalize():f}) fazla olamaz.")
-        if anahtar == "ana" and g <= 0:
+        if anahtar == "ana" and g <= 0 and not parcala:
             raise UretimHatasi(f"{stok.kod}: ana çıktının gelen adedi sıfırdan büyük olmalı.")
         sonuc[anahtar] = g
+    if parcala and all(g <= 0 for g in sonuc.values()):
+        raise UretimHatasi("En az bir çıktı için gelen adet girin (hepsi 0 olamaz).")
     return sonuc
+
+
+def parcala_hedef_gelenden(operasyon: Operasyon, gelen: dict) -> Decimal:
+    """PARÇALA fason dönüşü: GELEN adetlerden ({stok pk: adet}) çalıştırma = max_i(gelen_i / miktar_i) — tam boy açıksa ⌈·⌉ — ve hedef (referans çıktı)
+    = çalıştırma × referans miktarı (6 ondalık, yukarı; beklenen_i = çalıştırma × miktar_i ≥ gelen_i garantisi). Gelen yoksa 0."""
+    tanim = tanim_ciktilari(operasyon)
+    if not tanim:
+        return Decimal("0")
+    calistirma = Decimal("0")
+    for c in tanim:
+        if not c.surucu:
+            continue
+        g = gelen.get(str(c.stok_id), gelen.get(c.stok_id))
+        g = Decimal(str(g)) if g not in (None, "") else Decimal("0")
+        calistirma = max(calistirma, g / c.miktar)
+    if operasyon.tam_calistirma:
+        calistirma = _yukari_yuvarla(calistirma)
+    return (calistirma * tanim[0].miktar).quantize(Decimal("0.000001"), rounding=ROUND_CEILING)
+
+
+@transaction.atomic
+def kayit_hedefini_guncelle(kayit: OperasyonKaydi, hedef, kullanici=None) -> OperasyonKaydi:
+    """TASLAK kaydın hedef çıktı miktarını (referans çıktı) ve girdi satırlarının planlanan miktarını yeniden yazar (PARÇALA fason dönüşünde
+    çalıştırma gelen adetlerden türetilince). Elle düzeltilmiş gerçekleşen miktar (planlanandan farklı) korunur, diğerleri plana eşitlenir."""
+    if kayit.silindi or kayit.durum != OperasyonKaydi.Durum.TASLAK:
+        raise UretimHatasi("Yalnız taslak kaydın hedef miktarı değiştirilebilir.")
+    hedef = _sayi_coz(hedef, "Hedef çıktı miktarı geçerli bir sayı olmalı.")
+    if hedef <= 0:
+        raise UretimHatasi("Hedef çıktı miktarı sıfırdan büyük olmalı.")
+    operasyon = kayit.operasyon
+    tanim = tanim_ciktilari(operasyon)
+    referans_miktar = tanim[0].miktar if tanim else operasyon.cikti_miktar
+    tanim_girdi = {g.girdi_id: g.miktar for g in operasyon_girdileri(operasyon)}
+    kayit.hedef_cikti_miktari = hedef
+    kayit.updated_by = kullanici
+    kayit.save(update_fields=["hedef_cikti_miktari", "updated_by", "updated_at"])
+    for satir in kaydi_girdi_satirlari(kayit):
+        gerekli = yuvarla(hedef * tanim_girdi.get(satir.girdi_id, Decimal("0")) / referans_miktar, 6)
+        elle = satir.gerceklesen_miktar != satir.planlanan_miktar
+        satir.planlanan_miktar = gerekli
+        if not elle:
+            satir.gerceklesen_miktar = gerekli
+        satir.updated_by = kullanici
+        satir.save(update_fields=["planlanan_miktar", "gerceklesen_miktar", "updated_by", "updated_at"])
+    return kayit
 
 
 @transaction.atomic
@@ -1179,9 +1230,10 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     bilinen = toplam_girdi_maliyeti > 0
     # ONAY ANI SNAPSHOT'I: çıktı satırları (miktar, boy, pay oranı) kayda yazılır; sonraki yeniden paylaştırmalar bunlara göre yapılır.
     toplam_agirlik = sum(agirlik.values(), Decimal("0"))
+    referans_anahtar = "ana" if any(a == "ana" for a, _s, _m, _b in ciktilar) else ciktilar[0][0]     # PARÇALA: referans gelmediyse ilk gelen çıktı
     for anahtar, stok_id, miktar, boy in ciktilar:
         if len(ciktilar) == 1 or not toplam_agirlik or any(a <= 0 for a in agirlik.values()):
-            oran = Decimal("1") if anahtar == "ana" else Decimal("0")
+            oran = Decimal("1") if anahtar == referans_anahtar else Decimal("0")
         else:
             oran = (agirlik[anahtar] / toplam_agirlik).quantize(Decimal("0.0000000001"))
         f = fason[anahtar] if fason else None
@@ -1195,8 +1247,8 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
         OperasyonKaydiCikti.objects.create(kayit=kayit, stok_id=stok_id, miktar=Decimal("0"), beklenen_miktar=beklenen[anahtar], boy_mm=boy,
                                            pay_orani=Decimal("0"), agirlik=Decimal("0"), ana_mi=False, fason_tutar=Decimal("0"), fason_tutar_usd=Decimal("0"),
                                            created_by=kullanici, updated_by=kullanici)
-    pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, "ana")
-    pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, "ana")
+    pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, referans_anahtar)
+    pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, referans_anahtar)
     for anahtar, stok_id, miktar, _boy in ciktilar:
         f_try = fason[anahtar]["tutar_try"] if fason else Decimal("0")
         f_usd = fason[anahtar]["tutar_usd"] if fason else Decimal("0")

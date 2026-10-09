@@ -138,7 +138,7 @@ class GelenBelgeTest(GelenBase):
         d, k = self.kayit("3")
         fd.gelen_guncelle(d, {f"gelen_{k.pk}_ana": "2", f"gelen_{k.pk}_{self.yan.pk}": "0"})
         k.refresh_from_db()
-        self.assertEqual((k.gelen_ana, k.gelen_yan), (D("2"), {str(self.yan.pk): "0"}))
+        self.assertEqual((k.gelen_ana, k.gelen_yan), (D("2"), {str(self.ana.pk): "2", str(self.yan.pk): "0"}))   # tek yapı: referans da gelen_yan içinde
         info = fd.donus_bilgisi(d)
         c = {x["stok"].kod: x for x in info["satirlar"][0]["ciktilar"]}
         self.assertEqual((c["AYAK66"]["beklenen"], c["AYAK66"]["miktar"], c["AYAK66"]["fire"]), (D("3"), D("2"), D("1")))
@@ -203,7 +203,7 @@ class GelenEkranTest(GelenBase):
         self.assertContains(det, "Gelen adetleri kaydet")
         r = self.client.post(reverse("core:fason_donus_gelen", args=[d.pk]), {f"gelen_{k.pk}_ana": "3", f"gelen_{k.pk}_{self.yan.pk}": "0"})
         k.refresh_from_db()
-        self.assertEqual((k.gelen_ana, k.gelen_yan), (D("3"), {str(self.yan.pk): "0"}))
+        self.assertEqual((k.gelen_ana, k.gelen_yan), (D("3"), {str(self.ana.pk): "3", str(self.yan.pk): "0"}))
         r = self.client.post(reverse("core:fason_donus_gelen", args=[d.pk]), {f"gelen_{k.pk}_ana": "9"}, follow=True)
         self.assertContains(r, "beklenenden")
         self.client.post(reverse("core:fason_donus_onayla", args=[d.pk]))
