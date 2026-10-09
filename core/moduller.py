@@ -95,6 +95,7 @@ MODULLER = (
         Ekran("fason_kayitlari", "Kesim Kayıtları", "core:fason_kayitlari"),
         Ekran("fason_kesim_tanimlari", "Kesim Tanımları", "core:fason_kesim_tanimlari"),
         Ekran("fason_donusleri", "Fason Dönüşler", "core:fason_donusleri"),
+        Ekran("fason_mutabakat", "Fason Mutabakat", "core:fason_mutabakat"),
         Ekran("fason_fiyatlari", "Fason Fiyatları", "core:fason_fiyatlari"),
     )),
     Modul("URETIM", "Üretim", (

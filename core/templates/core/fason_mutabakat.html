@@ -1,0 +1,119 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fason Mutabakat · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fason Mutabakat{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_hesapla' %}">← Fason</a>
+    <h1 class="ust-baslik"><span class="emoji">⚖️</span>Fason Mutabakat</h1>
+  </div>
+</div>
+
+<form method="get" class="fm-filtre">
+  <select name="cari" onchange="this.form.submit()" aria-label="Fasoncu">
+    <option value="">— fasoncu seç —</option>
+    {% for c in cariler %}<option value="{{ c.pk }}"{% if cari and cari.pk == c.pk %} selected{% endif %}>{{ c.unvan }}</option>{% endfor %}
+  </select>
+  <label>Başlangıç <input type="date" name="baslangic" value="{{ baslangic|date:'Y-m-d' }}"></label>
+  <label>Bitiş <input type="date" name="bitis" value="{{ bitis|date:'Y-m-d' }}"></label>
+  <button type="submit" class="birincil">Göster</button>
+</form>
+
+{% if not cariler %}
+  <p class="yardim">Henüz fason deposuna bağlı fasoncu yok. Depolar ekranında bir depoyu fasoncuya (cari) bağlayın.</p>
+{% elif not cari %}
+  <p class="yardim">Mutabakat için bir fasoncu seçin.</p>
+{% else %}
+
+<div class="fm-ozet">
+  <span class="fm-chip"><strong>{{ rapor.toplam.try|tr_para }} TL</strong> toplam fason bedeli <small>({{ rapor.toplam.usd|tr_para }} USD)</small></span>
+  <span class="fm-chip yesil"><strong>{{ rapor.faturali.try|tr_para }} TL</strong> faturalanmış · {{ rapor.faturali.adet }} dönüş</span>
+  <span class="fm-chip{% if rapor.bekleyen.adet %} sari{% endif %}"><strong>{{ rapor.bekleyen.try|tr_para }} TL</strong> faturası bekleyen · {{ rapor.bekleyen.adet }} dönüş</span>
+  {% if rapor.fatura_farki %}<span class="fm-chip kirmizi">Fatura − beklenen fark: <strong>{{ rapor.fatura_farki|tr_para }} TL</strong></span>{% endif %}
+  <span class="fm-chip">Fason depoda kalan ham profil değeri: <strong>{{ rapor.kalan_deger|tr_para }} TL</strong></span>
+</div>
+{% if rapor.bekleyen.try %}
+  <p class="yardim">✂️ Faturası bekleyen fason bedeli stok değerinde <strong>tahmini</strong> olarak durur ve Stok Değerleme raporundaki "stok değeri − 151 mizanı" farkını açıklar;
+    fasoncunun faturası bağlanıp onaylanınca fark kapanır.</p>
+{% endif %}
+{% if rapor.taslak_sayisi %}<p class="yardim">{{ rapor.taslak_sayisi }} taslak dönüş belgesi henüz stok/maliyet üretmediği için hesaba katılmadı.</p>{% endif %}
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Ham profil — {{ rapor.depo.kod }} {{ rapor.depo.ad }}</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Stok</th><th class="sag">Gönderilen</th><th class="sag">Geri alınan</th><th class="sag">Dönüşte tüketilen</th><th class="sag">Fason depoda kalan</th><th class="sag">Kalan değer (TL)</th></tr></thead>
+    <tbody>
+      {% for p in rapor.profiller %}
+        <tr>
+          <td><span class="mono">{{ p.stok.kod }}</span> {{ p.stok.ad }}</td>
+          <td class="sag mono">{{ p.gonderilen|tr_miktar_sade }} {{ p.birim }}</td>
+          <td class="sag mono">{{ p.geri|tr_miktar_sade }}</td>
+          <td class="sag mono">{{ p.tuketilen|tr_miktar_sade }}</td>
+          <td class="sag mono"><strong>{{ p.kalan|tr_miktar_sade }}</strong>{% if p.fark %} <span class="rozet rozet-pasif" title="Gönderilen − geri − tüketilen ≠ kalan: fason depoda transfer/dönüş dışı elle hareket var">fark {{ p.fark|tr_miktar_sade }}</span>{% endif %}</td>
+          <td class="sag mono">{% if p.kalan_deger is not None %}{{ p.kalan_deger|tr_para }}{% else %}<span class="pasif">maliyet yok</span>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="yardim">Bu fasoncuya henüz ham profil gönderilmemiş.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="yardim">Gönderilen/geri alınan = fason depoya/depodan yapılan depo transferleri (Stoklar → stok kartı → Depo Transferi). Kalan, fason depodaki güncel eldeki miktardır.</p>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Fasoncudan gelen parçalar (onaylı dönüşler)</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Parça</th><th class="sag">Gelen adet</th><th class="sag">Fason bedeli (TL)</th><th class="sag">USD</th></tr></thead>
+    <tbody>
+      {% for p in rapor.parcalar %}
+        <tr><td><span class="mono">{{ p.stok.kod }}</span> {{ p.stok.ad }}</td><td class="sag mono">{{ p.adet|tr_miktar_sade }}</td>
+          <td class="sag mono">{{ p.tutar_try|tr_para }}</td><td class="sag mono">{{ p.tutar_usd|tr_para }}</td></tr>
+      {% empty %}
+        <tr><td colspan="4" class="yardim">Onaylı fason dönüş yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Dönüş belgeleri ve faturalar</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Belge</th><th>Tarih</th><th>İrsaliye</th><th class="sag">Fason bedeli (TL)</th><th class="sag">USD</th><th>Fatura</th></tr></thead>
+    <tbody>
+      {% for r in rapor.donusler %}
+        <tr>
+          <td><a class="mono" href="{% url 'core:fason_donus_detay' r.donus.pk %}">{{ r.donus.no }}</a></td>
+          <td>{{ r.donus.tarih|date:"d.m.Y" }}</td>
+          <td class="mono">{{ r.donus.irsaliye_no|default:"—" }}</td>
+          <td class="sag mono">{{ r.tutar_try|tr_para }}</td>
+          <td class="sag mono">{{ r.tutar_usd|tr_para }}</td>
+          <td>{% if r.faturali %}<span class="rozet rozet-aktif">Faturalı</span> <a href="{% url 'core:fatura_detay' r.fatura.pk %}" class="mono">{{ r.fatura.fatura_no|default:r.fatura.pk }}</a>
+            {% elif r.fatura %}<span class="rozet rozet-notr">Taslak fatura</span> bekliyor{% else %}<span class="rozet rozet-pasif">Bekliyor</span>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="yardim">Onaylı fason dönüş yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<style>
+  .fm-filtre { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:0 0 1rem; }
+  .fm-filtre select, .fm-filtre input { min-height:2.2rem; padding:.3rem .6rem; }
+  .fm-filtre label { display:inline-flex; gap:.35rem; align-items:center; font-size:.84rem; color:var(--metin-soluk); }
+  .fm-ozet { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 .8rem; }
+  .fm-chip { display:inline-flex; align-items:center; gap:.35rem; padding:.4rem .8rem; border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.75); font-size:.85rem; }
+  .fm-chip.yesil { border-color:rgba(10,125,40,.35); background:#e7f7ec; color:#0a7d28; }
+  .fm-chip.sari { border-color:rgba(240,124,0,.45); background:rgba(240,124,0,.1); color:#a35200; }
+  .fm-chip.kirmizi { border-color:rgba(193,21,57,.45); background:rgba(193,21,57,.08); color:var(--hata); }
+</style>
+{% endblock %}

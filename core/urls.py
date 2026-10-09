@@ -118,6 +118,7 @@ urlpatterns = [
     path("fason/donusler/<int:pk>/fatura-bagla/", views.fason_donus_fatura_bagla, name="fason_donus_fatura_bagla"),
     path("fason/donusler/<int:pk>/fatura-kopar/", views.fason_donus_fatura_kopar, name="fason_donus_fatura_kopar"),
     path("fason/faturalar/<int:pk>/guncelle/", views.fason_fatura_guncelle, name="fason_fatura_guncelle"),
+    path("fason/mutabakat/", views.fason_mutabakat, name="fason_mutabakat"),
     path("fason/fiyatlar/", views.fason_fiyatlari, name="fason_fiyatlari"),
     path("fason/fiyatlar/ekle/", views.fason_fiyat_ekle, name="fason_fiyat_ekle"),
     path("fason/fiyatlar/<int:pk>/duzenle/", views.fason_fiyat_duzenle, name="fason_fiyat_duzenle"),

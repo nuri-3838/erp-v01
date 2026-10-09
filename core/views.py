@@ -6581,6 +6581,23 @@ def fason_donus_sil(request, pk):
     return redirect("core:fason_donus_detay", pk=donus.pk)
 
 
+@ekran_gerekli("fason_mutabakat")
+def fason_mutabakat(request):
+    from core.models import Cari
+    from core.services import fason_mutabakat as fason_mutabakat_servis
+    cariler = list(fason_mutabakat_servis.fasoncular())
+    cari = next((c for c in cariler if str(c.pk) == request.GET.get("cari", "")), cariler[0] if len(cariler) == 1 else None)
+
+    def tarih(ad):
+        try:
+            return datetime.date.fromisoformat(request.GET.get(ad, ""))
+        except ValueError:
+            return None
+    bas, bit = tarih("baslangic"), tarih("bitis")
+    rapor = fason_mutabakat_servis.mutabakat(cari, bas, bit) if cari else None
+    return render(request, "core/fason_mutabakat.html", {"cariler": cariler, "cari": cari, "rapor": rapor, "baslangic": bas, "bitis": bit})
+
+
 @ekran_gerekli("fason_fiyatlari")
 def fason_fiyatlari(request):
     return render(request, "core/fason_fiyat_listesi.html", {"fiyatlar": fason_servis.aktif_fiyatlar(), "bugun": timezone.localdate()})

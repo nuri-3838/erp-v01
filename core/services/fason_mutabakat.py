@@ -1,0 +1,105 @@
+"""FASON > Mutabakat (fasoncu cari bazında): fasoncuya gönderilen ham profil, dönüşlerde tüketilen, geri alınan, fason depoda kalan (miktar + değer);
+fasoncudan gelen parça adetleri; fason bedeli: faturalanmış / faturası bekleyen dönüşler ve tutarları. Salt-okunur."""
+from __future__ import annotations
+
+from decimal import Decimal
+
+from django.db.models import Sum
+
+from core.models import FasonDonus, OperasyonKaydi, OperasyonKaydiCikti, Stok, StokHareket
+from core.services import depo as depo_servis
+from core.services import fason_donus as fd
+
+SIFIR = Decimal("0")
+GIRIS, CIKIS = StokHareket.Tur.GIRIS, StokHareket.Tur.CIKIS
+TRANSFER = StokHareket.Kaynak.TRANSFER
+
+
+def fasoncular():
+    """Mutabakat alınabilecek fasoncular: aktif fason deposu bağlı cariler."""
+    from core.models import Cari
+    return Cari.objects.filter(silindi=False, fason_depolari__silindi=False).distinct().order_by("unvan")
+
+
+def _topla(qs):
+    return {r["stok_id"]: (r["m"] or SIFIR, r["t"] or SIFIR) for r in qs.values("stok_id").annotate(m=Sum("miktar"), t=Sum("tutar_try"))}
+
+
+def mutabakat(cari, baslangic=None, bitis=None) -> dict:
+    depo = depo_servis.fason_deposu(cari)
+    if depo is None:
+        return {"cari": cari, "depo": None}
+
+    def tarihli(qs, alan="tarih"):
+        if baslangic:
+            qs = qs.filter(**{f"{alan}__gte": baslangic})
+        if bitis:
+            qs = qs.filter(**{f"{alan}__lte": bitis})
+        return qs
+
+    hareket = StokHareket.objects.filter(silindi=False, depo=depo)
+    gonderilen = _topla(tarihli(hareket.filter(tur=GIRIS, kaynak=TRANSFER)))
+    geri = _topla(tarihli(hareket.filter(tur=CIKIS, kaynak=TRANSFER)))
+    tuketilen = _topla(tarihli(hareket.filter(tur=CIKIS, operasyon_kaydi__fason_cari=cari, operasyon_kaydi__silindi=False)))
+    # kalan = fason deposundaki GÜNCEL eldeki (tarih filtresinden bağımsız)
+    kalan = {}
+    for r in StokHareket.objects.filter(silindi=False, depo=depo).values("stok_id", "tur").annotate(m=Sum("miktar")):
+        kalan[r["stok_id"]] = kalan.get(r["stok_id"], SIFIR) + (r["m"] if r["tur"] == GIRIS else -r["m"])
+    idler = set(gonderilen) | set(geri) | set(tuketilen) | {k for k, v in kalan.items() if v != 0}
+    stoklar = {s.pk: s for s in Stok.objects.filter(pk__in=idler).select_related("uretim_birimi")}
+    profiller = []
+    for pk in sorted(idler, key=lambda p: stoklar[p].kod):
+        s = stoklar[pk]
+        g, ge, t = gonderilen.get(pk, (SIFIR, SIFIR)), geri.get(pk, (SIFIR, SIFIR)), tuketilen.get(pk, (SIFIR, SIFIR))
+        k = kalan.get(pk, SIFIR)
+        ort = s.ort_maliyet_try
+        profiller.append({
+            "stok": s, "birim": s.uretim_birimi.kisa_ad or s.uretim_birimi.ad, "gonderilen": g[0], "geri": ge[0], "tuketilen": t[0], "kalan": k,
+            "kalan_deger": (k * ort) if ort is not None else None, "tuketilen_deger": t[1],
+            "fark": g[0] - ge[0] - t[0] - k})            # ≠ 0 ise fason depoda transfer/dönüş dışı elle hareket var
+
+    # fasoncudan gelen parçalar + fason bedeli (onaylı kayıtların çıktı satırları)
+    donusler = list(tarihli(FasonDonus.objects.filter(silindi=False, cari=cari)).select_related("fatura").order_by("yil", "sira"))
+    ciktilar = OperasyonKaydiCikti.objects.filter(
+        silindi=False, kayit__silindi=False, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__fason_donus__in=donusler)
+    parcalar = {}
+    donus_tutar = {}
+    for c in ciktilar.select_related("stok", "kayit"):
+        p = parcalar.setdefault(c.stok_id, {"stok": c.stok, "adet": SIFIR, "tutar_try": SIFIR, "tutar_usd": SIFIR})
+        p["adet"] += c.miktar
+        p["tutar_try"] += c.fason_tutar or SIFIR
+        p["tutar_usd"] += c.fason_tutar_usd or SIFIR
+        d = donus_tutar.setdefault(c.kayit.fason_donus_id, [SIFIR, SIFIR])
+        d[0] += c.fason_tutar or SIFIR
+        d[1] += c.fason_tutar_usd or SIFIR
+    donus_satirlari, toplam = [], {"try": SIFIR, "usd": SIFIR}
+    faturali = {"try": SIFIR, "usd": SIFIR, "adet": 0}
+    bekleyen = {"try": SIFIR, "usd": SIFIR, "adet": 0}
+    fatura_farki = SIFIR
+    for d in donuslar_onayli(donusler):
+        t_try, t_usd = donus_tutar.get(d.pk, [SIFIR, SIFIR])
+        onayli_fatura = bool(d.fatura_id and not d.fatura.silindi and d.fatura.durum == "ONAYLI")
+        donus_satirlari.append({"donus": d, "tutar_try": t_try, "tutar_usd": t_usd, "fatura": d.fatura if d.fatura_id else None,
+                                "faturali": onayli_fatura})
+        toplam["try"] += t_try
+        toplam["usd"] += t_usd
+        grup = faturali if onayli_fatura else bekleyen
+        grup["try"] += t_try
+        grup["usd"] += t_usd
+        grup["adet"] += 1
+    for f in {d.fatura for d in donusler if d.fatura_id and not d.fatura.silindi and d.fatura.durum == "ONAYLI"}:
+        fatura_farki += fd.fatura_karsilastirma(f)["fark"]
+    return {"cari": cari, "depo": depo, "profiller": profiller,
+            "parcalar": sorted(parcalar.values(), key=lambda p: p["stok"].kod), "donusler": donus_satirlari,
+            "taslak_sayisi": len(donusler) - len(donus_satirlari),
+            "toplam": toplam, "faturali": faturali, "bekleyen": bekleyen, "fatura_farki": fatura_farki,
+            "kalan_deger": sum((p["kalan_deger"] or SIFIR for p in profiller), SIFIR)}
+
+
+def donuslar_onayli(donusler):
+    """Yalnız ONAYLI dönüşler (taslaklar bedel/stok üretmez)."""
+    sonuc = []
+    for d in donusler:
+        if d.kayitlar.filter(silindi=False).exists() and not d.kayitlar.filter(silindi=False).exclude(durum=OperasyonKaydi.Durum.ONAYLI).exists():
+            sonuc.append(d)
+    return sonuc
