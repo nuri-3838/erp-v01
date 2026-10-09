@@ -3094,6 +3094,8 @@ class Operasyon(TemelModel):
         "çıktı miktarı (1 çalıştırma için)", max_digits=18, decimal_places=3, default=1)
     # Kesimde TAM BOY: çalıştırma sayısı kesirli olamaz (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer.
     tam_calistirma = models.BooleanField("tam çalıştırma zorunlu (tam boy)", default=False)
+    # Ana çıktının parça boyu (mm): yan çıktısı olan operasyonda girdi maliyeti BOY ORANINA göre paylaştırılır (miktar × boy_mm).
+    boy_mm = models.DecimalField("ana çıktı boyu (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
     ad = models.CharField("ad", max_length=150, blank=True, default="")
     aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
 
@@ -3107,10 +3109,40 @@ class Operasyon(TemelModel):
                                     name="uq_operasyon_cikti_aktif"),
             models.CheckConstraint(condition=models.Q(cikti_miktar__gt=0),
                                    name="ck_operasyon_cikti_miktar_gt0"),
+            models.CheckConstraint(condition=models.Q(boy_mm__isnull=True) | models.Q(boy_mm__gt=0),
+                                   name="ck_operasyon_boy_mm_gt0"),
         ]
 
     def __str__(self):
         return self.ad or f"{self.cikti.kod} operasyonu"
+
+
+class OperasyonYanCikti(TemelModel):
+    """Operasyonun YAN ÇIKTISI: ana çıktıyla birlikte (1 çalıştırmada) çıkan ikinci parça — ör. 6+6 SAĞ ayak boyundan 3 adet
+    kesilince kalan artandan 1 adet 5+5 SAĞ. Kayıt onayında ana çıktının yanında stoğa GİRİŞ yazılır; girdi maliyeti boy oranına
+    (miktar × boy_mm) göre paylaştırılır. 'Çıktı başına 1 aktif operasyon' kuralı yalnız ANA çıktı içindir: bir stok başka bir
+    operasyonun yan çıktısı da olabilir."""
+
+    operasyon = models.ForeignKey(Operasyon, on_delete=models.CASCADE, related_name="yan_ciktilar")
+    stok = models.ForeignKey(Stok, verbose_name="yan çıktı", on_delete=models.PROTECT, related_name="yan_cikti_kullanimlari")
+    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=3)
+    boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_operasyon_yan_cikti"
+        verbose_name = "operasyon yan çıktısı"
+        verbose_name_plural = "operasyon yan çıktıları"
+        ordering = ["sira", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_operasyon_yan_cikti_miktar_gt0"),
+            models.CheckConstraint(condition=models.Q(boy_mm__gt=0), name="ck_operasyon_yan_cikti_boy_gt0"),
+            models.UniqueConstraint(fields=["operasyon", "stok"], condition=models.Q(silindi=False),
+                                    name="uq_operasyon_yan_cikti_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.operasyon} → yan: {self.stok.kod} × {self.miktar}"
 
 
 class OperasyonGirdi(TemelModel):

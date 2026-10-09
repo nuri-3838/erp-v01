@@ -11,6 +11,7 @@
         ihtiyaç: {{ dugum.ihtiyac_toplam|tr_miktar_sade }} · fazla: {{ dugum.fazla|tr_miktar_sade }}{% if dugum.fazla %} (stoğa){% endif %}</span>
       {% if dugum.tekrar %}<span class="pasif">↑ aynı stok yukarıda toplam talep üzerinden hesaplandı</span>{% endif %}
     {% endif %}
+    {% for y in dugum.yan_ciktilar %}<span class="yardim" title="Bilgi: ihtiyaç hesabına katılmaz">➕ bu kesimden ayrıca {{ y.miktar|tr_miktar_sade }} adet <span class="mono">{{ y.stok.kod }}</span> {{ y.stok.ad }} çıkar</span>{% endfor %}
   </div>
   {% for cocuk in dugum.cocuklar %}
     {% include "core/_ihtiyac_dugum.html" with dugum=cocuk derinlik=derinlik|add:1 %}

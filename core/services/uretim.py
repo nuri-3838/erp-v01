@@ -27,7 +27,7 @@ from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Depo, IsIstasyonu, Operasyon, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiGirdi,
+    Depo, IsIstasyonu, Operasyon, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiGirdi, OperasyonYanCikti,
     Stok, StokHareket, TeklifSiparis, UretimEmri, UretimEmriKalemi,
 )
 from core.sayi import SayiHatasi, parse_tr, yuvarla
@@ -115,7 +115,8 @@ def istasyon_sil(istasyon: IsIstasyonu, kullanici=None) -> IsIstasyonu:
 def aktif_operasyonlar():
     return (Operasyon.objects.filter(silindi=False)
             .select_related("istasyon", "cikti")
-            .annotate(girdi_sayisi=Count("girdiler", filter=Q(girdiler__silindi=False)))
+            .annotate(girdi_sayisi=Count("girdiler", filter=Q(girdiler__silindi=False), distinct=True),
+                      yan_cikti_sayisi=Count("yan_ciktilar", filter=Q(yan_ciktilar__silindi=False), distinct=True))
             .order_by("istasyon__kod", "cikti__kod"))
 
 
@@ -169,9 +170,54 @@ def _girdi_satirlarini_dogrula(cikti, satirlar):
             raise UretimHatasi("Girdi miktarı sıfırdan büyük olmalı.")
 
 
+_KORU = KORU = object()          # operasyon_guncelle: "bu alana dokunma"
+
+
+def operasyon_yan_ciktilari(operasyon: Operasyon):
+    return operasyon.yan_ciktilar.filter(silindi=False).select_related("stok").order_by("sira", "pk")
+
+
+def _boy_coz(deger, mesaj):
+    if deger in (None, ""):
+        return None
+    b = _sayi_coz(deger, mesaj)
+    if b <= 0:
+        raise UretimHatasi("Boy (mm) sıfırdan büyük olmalı.")
+    return b
+
+
+def _yan_ciktilari_dogrula(cikti, satirlar, yan_ciktilar, boy_mm):
+    """yan_ciktilar: [(Stok, miktar Decimal, boy_mm Decimal), ...]. Yan çıktı: ana çıktıyla aynı olamaz, operasyonun kendi girdisi
+    olamaz, aynı operasyonda tekrar edemez, miktar ve boy > 0; yan çıktısı olan operasyonda ANA çıktının boyu (mm) zorunlu."""
+    gorulen = set()
+    girdi_idler = {g.pk for g, _ in satirlar}
+    for stok, miktar, boy in yan_ciktilar:
+        if stok.pk == cikti.pk:
+            raise UretimHatasi("Yan çıktı, ana çıktıyla aynı stok olamaz.")
+        if stok.pk in girdi_idler:
+            raise UretimHatasi(f"{stok.kod} operasyonun girdisi; aynı zamanda yan çıktısı olamaz.")
+        if stok.pk in gorulen:
+            raise UretimHatasi(f"{stok.kod} aynı operasyonda birden fazla yan çıktı olarak tekrarlanamaz.")
+        gorulen.add(stok.pk)
+        if not stok.uretim_urunu:
+            raise UretimHatasi(f"{stok.kod} üretim ürünü değil; yan çıktı olamaz.")
+        if miktar is None or miktar <= 0:
+            raise UretimHatasi("Yan çıktı miktarı sıfırdan büyük olmalı.")
+        if boy is None or boy <= 0:
+            raise UretimHatasi(f"{stok.kod} yan çıktısı için boy (mm) girin (maliyet boy oranına göre paylaştırılır).")
+    if yan_ciktilar and (boy_mm is None or boy_mm <= 0):
+        raise UretimHatasi("Yan çıktısı olan operasyonda ana çıktının boyu (mm) zorunludur.")
+
+
+def _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici):
+    for i, (stok, miktar, boy) in enumerate(yan_ciktilar, start=1):
+        OperasyonYanCikti.objects.create(operasyon=operasyon, stok=stok, miktar=miktar, boy_mm=boy, sira=i * 10,
+                                         created_by=kullanici, updated_by=kullanici)
+
+
 @transaction.atomic
 def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", aciklama="",
-                      kullanici=None, tam_calistirma=False) -> Operasyon:
+                      kullanici=None, tam_calistirma=False, boy_mm=None, yan_ciktilar=None) -> Operasyon:
     istasyon = _istasyon_coz(istasyon_id)
     cikti = _cikti_coz(cikti_id)
     if Operasyon.objects.filter(silindi=False, cikti=cikti).exists():
@@ -180,10 +226,14 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", a
     if cm <= 0:
         raise UretimHatasi("Çıktı miktarı sıfırdan büyük olmalı.")
     _girdi_satirlarini_dogrula(cikti, satirlar)
+    boy = _boy_coz(boy_mm, "Ana çıktı boyu (mm) geçerli bir sayı olmalı.")
+    yan_ciktilar = list(yan_ciktilar or [])
+    _yan_ciktilari_dogrula(cikti, satirlar, yan_ciktilar, boy)
     operasyon = Operasyon.objects.create(
-        istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=bool(tam_calistirma),
+        istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=bool(tam_calistirma), boy_mm=boy,
         ad=(ad or "").strip(), aciklama=(aciklama or "").strip(),
         created_by=kullanici, updated_by=kullanici)
+    _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici)
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
@@ -193,7 +243,8 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, ad="", a
 
 @transaction.atomic
 def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satirlar, ad="",
-                       aciklama="", kullanici=None, tam_calistirma=None) -> Operasyon:
+                       aciklama="", kullanici=None, tam_calistirma=None, boy_mm=_KORU, yan_ciktilar=None) -> Operasyon:
+    """``boy_mm`` verilmezse ana çıktı boyu, ``yan_ciktilar`` verilmezse (None) yan çıktılar KORUNUR; [] verilirse yan çıktılar silinir."""
     if operasyon.silindi:
         raise UretimHatasi("Silinmiş operasyon düzenlenemez.")
     istasyon = _istasyon_coz(istasyon_id)
@@ -201,8 +252,17 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satir
     if cm <= 0:
         raise UretimHatasi("Çıktı miktarı sıfırdan büyük olmalı.")
     _girdi_satirlarini_dogrula(operasyon.cikti, satirlar)
+    yeni_boy = operasyon.boy_mm if boy_mm is _KORU else _boy_coz(boy_mm, "Ana çıktı boyu (mm) geçerli bir sayı olmalı.")
+    yeni_yanlar = ([(y.stok, y.miktar, y.boy_mm) for y in operasyon_yan_ciktilari(operasyon)]
+                   if yan_ciktilar is None else list(yan_ciktilar))
+    _yan_ciktilari_dogrula(operasyon.cikti, satirlar, yeni_yanlar, yeni_boy)
     operasyon.girdiler.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    if yan_ciktilar is not None:
+        operasyon.yan_ciktilar.filter(silindi=False).update(
+            silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+        _yan_ciktilari_yaz(operasyon, yeni_yanlar, kullanici)
+    operasyon.boy_mm = yeni_boy
     operasyon.istasyon = istasyon
     operasyon.cikti_miktar = cm
     if tam_calistirma is not None:
@@ -211,7 +271,7 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satir
     operasyon.aciklama = (aciklama or "").strip()
     operasyon.updated_by = kullanici
     operasyon.save(update_fields=[
-        "istasyon", "cikti_miktar", "tam_calistirma", "ad", "aciklama", "updated_by", "updated_at"])
+        "istasyon", "cikti_miktar", "tam_calistirma", "boy_mm", "ad", "aciklama", "updated_by", "updated_at"])
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
@@ -258,6 +318,7 @@ def ihtiyac_hesapla(kalemler):
     yerine — üretim planlamasında yanıltıcı olur)."""
     hedefler = [(stok, miktar) for stok, miktar in kalemler if miktar is not None and miktar > 0]
     onbellek = {}                                      # stok.pk -> (operasyon|None, girdi satırları)
+    yan_onbellek = {}                                  # stok.pk -> yan çıktı satırları (YALNIZ BİLGİ: hesaba katılmaz)
 
     def op_bul(stok):
         if stok.pk not in onbellek:
@@ -265,6 +326,7 @@ def ihtiyac_hesapla(kalemler):
             satirlar = (list(operasyon.girdiler.filter(silindi=False).select_related("girdi").order_by("sira", "pk"))
                         if operasyon else [])
             onbellek[stok.pk] = (operasyon, satirlar)
+            yan_onbellek[stok.pk] = list(operasyon_yan_ciktilari(operasyon)) if operasyon else []
         return onbellek[stok.pk]
 
     # --- 1. aşama: zinciri keşfet (döngü kontrolü), ebeveynleri topla, seviyeleri bul
@@ -317,7 +379,9 @@ def ihtiyac_hesapla(kalemler):
             calistirma = ihtiyac / cm
             uretilecek = ihtiyac                     # kesirli çalıştırmada hedef talebin kendisi (bölme artığı yok)
         plan_map[pk] = {"stok": stoklar[pk], "operasyon": operasyon, "ihtiyac": ihtiyac, "calistirma": calistirma,
-                        "uretilecek": uretilecek, "fazla": uretilecek - ihtiyac, "tam": operasyon.tam_calistirma}
+                        "uretilecek": uretilecek, "fazla": uretilecek - ihtiyac, "tam": operasyon.tam_calistirma,
+                        "yan_ciktilar": [{"stok": y.stok, "miktar": calistirma * y.miktar, "boy_mm": y.boy_mm}
+                                         for y in yan_onbellek.get(pk, [])]}
         for satir in satirlar:
             talep[satir.girdi_id] = talep.get(satir.girdi_id, Decimal("0")) + calistirma * satir.miktar
 
@@ -335,7 +399,7 @@ def ihtiyac_hesapla(kalemler):
         p = plan_map[stok.pk]
         dugum = {"stok": stok, "miktar": miktar, "istasyon": operasyon.istasyon, "operasyon": operasyon, "yaprak": False,
                  "tam": p["tam"], "calistirma": p["calistirma"], "uretilecek": p["uretilecek"], "fazla": p["fazla"],
-                 "ihtiyac_toplam": p["ihtiyac"], "cocuklar": []}
+                 "ihtiyac_toplam": p["ihtiyac"], "yan_ciktilar": p["yan_ciktilar"], "cocuklar": []}
         if p["tam"]:
             if stok.pk in acildi:
                 dugum["tekrar"] = True
@@ -358,7 +422,8 @@ def ihtiyac_hesapla(kalemler):
             "toplam_miktar": talep.get(pk, Decimal("0")) - kok_talep.get(pk, Decimal("0")), "yaprak": operasyon is None,
             "ihtiyac": talep.get(pk, Decimal("0")), "tam": bool(p and p["tam"]),
             "calistirma_sayisi": p["calistirma"] if p else None,
-            "uretilecek_miktar": p["uretilecek"] if p else None, "fazla_miktar": p["fazla"] if p else None})
+            "uretilecek_miktar": p["uretilecek"] if p else None, "fazla_miktar": p["fazla"] if p else None,
+            "yan_ciktilar": p["yan_ciktilar"] if p else []})
 
     plan, planda = [], set()
     for stok, _ in hedefler:                              # önce kökler (kalem sırası), sonra ara stoklar (özet sırası)
@@ -640,21 +705,32 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
             toplam_girdi_usd += girdi_hareketi.tutar_usd or Decimal("0")
             if girdi_hareketi.maliyet_durumu != StokHareket.MaliyetDurumu.KESIN:
                 herhangi_biri_tahmini = True
-    # Çıktı girişinin tutarı girdi çıkışlarının ağırlıklı ortalama maliyet toplamıdır; girdi
-    # maliyeti sonradan değişirse çıktıya (ve onu kullanan sonraki üretime) zincirleme yayılır
-    # ve maliyet aktarım fişi güncellenir (bkz. core.services.stok_fis.uretim_senkronla).
-    hareket_ekle(
-        stok_id=kayit.operasyon.cikti_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
-        tur=StokHareket.Tur.GIRIS, miktar=kayit.hedef_cikti_miktari,
-        aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
-        tahmini=herhangi_biri_tahmini, operasyon_kaydi=kayit,
-        giris_tutar_try=toplam_girdi_maliyeti if toplam_girdi_maliyeti > 0 else None,
-        giris_tutar_usd=toplam_girdi_usd if toplam_girdi_maliyeti > 0 else None,
-        kullanici=kullanici)
+    # Çıktı girişinin tutarı girdi çıkışlarının ağırlıklı ortalama maliyet toplamıdır; girdi maliyeti sonradan değişirse çıktıya (ve onu
+    # kullanan sonraki üretime) zincirleme yayılır ve maliyet aktarım fişi güncellenir (bkz. core.services.stok_fis.uretim_senkronla).
+    # YAN ÇIKTI varsa her biri için de GİRİŞ yazılır; toplam girdi maliyeti BOY ORANINA göre (miktar × boy_mm) paylaştırılır — TL ve USD
+    # ayrı, yuvarlama farkı ana çıktıya (toplam birebir korunur).
+    from core.services import stok_fis
+    operasyon = kayit.operasyon
+    calistirma = kayit.hedef_cikti_miktari / operasyon.cikti_miktar
+    ciktilar = [("ana", operasyon.cikti_id, kayit.hedef_cikti_miktari, operasyon.boy_mm)]
+    for y in operasyon_yan_ciktilari(operasyon):
+        ciktilar.append((f"yan{y.pk}", y.stok_id, yuvarla(calistirma * y.miktar, 3), y.boy_mm))
+    agirlik = {k: (m * boy if boy else Decimal("0")) for k, _, m, boy in ciktilar}
+    bilinen = toplam_girdi_maliyeti > 0
+    pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, "ana")
+    pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, "ana")
+    for anahtar, stok_id, miktar, _boy in ciktilar:
+        hareket_ekle(
+            stok_id=stok_id, depo_id=kayit.depo_id, tarih=kayit.tarih,
+            tur=StokHareket.Tur.GIRIS, miktar=miktar,
+            aciklama=f"Operasyon kaydı {kayit.no}" + ("" if anahtar == "ana" else " (yan çıktı)"),
+            kaynak=StokHareket.Kaynak.URETIM, tahmini=herhangi_biri_tahmini, operasyon_kaydi=kayit,
+            giris_tutar_try=pay_try[anahtar] if bilinen else None,
+            giris_tutar_usd=pay_usd[anahtar] if bilinen else None,
+            kullanici=kullanici)
     kayit.durum = OperasyonKaydi.Durum.ONAYLI
     kayit.updated_by = kullanici
     kayit.save(update_fields=["durum", "updated_by", "updated_at"])
-    from core.services import stok_fis
     try:
         stok_fis.uretim_senkronla(kayit, kullanici=kullanici)    # 15x→15x maliyet aktarım fişi
     except stok_fis.MaliyetHatasi as e:
@@ -662,11 +738,28 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     return kayit
 
 
-def operasyon_kaydi_sil(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKaydi:
+@transaction.atomic
+def operasyon_kaydi_sil(kayit: OperasyonKaydi, kullanici=None, *, onayli_geri_al=False) -> OperasyonKaydi:
+    """Taslak kaydı iptal eder. ONAYLI kayıt varsayılan olarak iptal EDİLEMEZ; ``onayli_geri_al=True`` verilirse (yalnız servis
+    çağrısı — ekranda düğmesi yok) kaydın TÜM stok hareketleri (girdi çıkışları + ana ve yan çıktı girişleri) geri alınır, maliyet
+    aktarım fişi iptal edilir ve kayıt silinir. Çıktı başka üretimde kullanıldıysa (eldeki yetmez) işlem hata verir ve hiçbir şey
+    değişmez."""
     if kayit.silindi:
         return kayit
     if kayit.durum == OperasyonKaydi.Durum.ONAYLI:
-        raise UretimHatasi("Onaylı kayıt iptal edilemez.")
+        if not onayli_geri_al:
+            raise UretimHatasi("Onaylı kayıt iptal edilemez.")
+        from core.services.hareket import hareket_sil
+        from core.services.yevmiye import fis_iptal
+        hareketler = list(StokHareket.objects.filter(operasyon_kaydi=kayit, silindi=False).order_by("tur", "-pk"))
+        try:
+            for h in [h for h in hareketler if h.tur == StokHareket.Tur.GIRIS] + \
+                     [h for h in hareketler if h.tur == StokHareket.Tur.CIKIS]:
+                hareket_sil(h, kullanici=kullanici)             # önce çıktılar (yan çıktılar dâhil), sonra girdi çıkışları
+        except HareketHatasi as e:
+            raise UretimHatasi(str(e))
+        if kayit.fis_id and not kayit.fis.silindi:
+            fis_iptal(kayit.fis, kullanici=kullanici)
     kayit.silindi = True
     kayit.silindi_at = timezone.now()
     kayit.updated_by = kullanici

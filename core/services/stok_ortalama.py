@@ -202,8 +202,7 @@ def _degisenleri_isle(degisen, derinlik):
         elif h.fatura_satir_id:
             faturalar[h.fatura_satir.fatura_id] = h.fatura_satir.fatura
     for kayit in kayitlar.values():
-        cikti_stok = stok_fis.uretim_senkronla(kayit)
-        if cikti_stok is not None:
+        for cikti_stok in stok_fis.uretim_senkronla(kayit):          # ana + yan çıktılar
             yeniden_hesapla(cikti_stok, _derinlik=derinlik + 1)
     for fatura in faturalar.values():
         stok_fis.satis_senkronla(fatura)

@@ -45,7 +45,7 @@ from core.forms import (
     KullaniciDuzenleForm, KullaniciEkleForm,
     BankaHesapHareketForm, BankaHesapSatirForm, DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
-    IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, IhtiyacHesaplaSatirForm,
+    IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, OperasyonYanCiktiSatirForm, IhtiyacHesaplaSatirForm,
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
@@ -6547,6 +6547,15 @@ def fason_kaydi_pdf(request, pk):
 
 # === ÜRETİM — İş İstasyonu + Operasyon (rota) modeli (FASON'dan bağımsız) ===
 OperasyonGirdiSatirFormSet = formset_factory(OperasyonGirdiSatirForm, extra=0)
+OperasyonYanCiktiFormSet = formset_factory(OperasyonYanCiktiSatirForm, extra=0)
+
+
+def _yan_ciktilar_post(post):
+    """(formset, gonderildi): yan çıktı bölümü forma hiç gönderilmediyse (eski/özel istemci) boş-geçerli formset + gonderildi=False
+    (düzenlemede mevcut yan çıktılar KORUNUR)."""
+    if "yan-TOTAL_FORMS" in post:
+        return OperasyonYanCiktiFormSet(post, prefix="yan"), True
+    return OperasyonYanCiktiFormSet({"yan-TOTAL_FORMS": "0", "yan-INITIAL_FORMS": "0"}, prefix="yan"), False
 IhtiyacHesaplaSatirFormSet = formset_factory(IhtiyacHesaplaSatirForm, extra=0)
 OperasyonKaydiGirdiDuzeltFormSet = formset_factory(OperasyonKaydiGirdiDuzeltForm, extra=0)
 UretimEmriKalemSatirFormSet = formset_factory(
@@ -6621,16 +6630,20 @@ def operasyon_ekle(request):
     if request.method == "POST":
         bform = OperasyonBaslikForm(request.POST)
         formset = OperasyonGirdiSatirFormSet(request.POST, prefix="satir")
-        if bform.is_valid() and formset.is_valid():
+        yan_formset, _yan_var = _yan_ciktilar_post(request.POST)
+        if bform.is_valid() and formset.is_valid() and yan_formset.is_valid():
             satirlar = [(f.cleaned_data["girdi"], f.cleaned_data["miktar"])
                        for f in formset if f.dolu_mu()]
+            yanlar = [(f.cleaned_data["stok"], f.cleaned_data["miktar"], f.cleaned_data["boy_mm"])
+                      for f in yan_formset if f.dolu_mu()]
             cd = bform.cleaned_data
             try:
                 uretim_servis.operasyon_olustur(
                     istasyon_id=cd["istasyon"].pk, cikti_id=cd["cikti"].pk,
                     cikti_miktar=cd["cikti_miktar"], satirlar=satirlar,
                     ad=cd.get("ad", ""), aciklama=cd.get("aciklama", ""),
-                    kullanici=request.user, tam_calistirma=cd.get("tam_calistirma", False))
+                    kullanici=request.user, tam_calistirma=cd.get("tam_calistirma", False),
+                    boy_mm=cd.get("boy_mm"), yan_ciktilar=yanlar)
                 messages.success(request, "Operasyon tanımı kaydedildi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
@@ -6638,8 +6651,9 @@ def operasyon_ekle(request):
     else:
         bform = OperasyonBaslikForm()
         formset = OperasyonGirdiSatirFormSet(prefix="satir")
+        yan_formset = OperasyonYanCiktiFormSet(prefix="yan")
     return render(request, "core/operasyon_form.html",
-                  {"bform": bform, "formset": formset, "baslik": "Yeni Operasyon"})
+                  {"bform": bform, "formset": formset, "yan_formset": yan_formset, "baslik": "Yeni Operasyon"})
 
 
 @ekran_gerekli("operasyon_tanimlari")
@@ -6647,18 +6661,23 @@ def operasyon_duzenle(request, pk):
     operasyon = get_object_or_404(Operasyon, pk=pk, silindi=False)
     if request.method == "POST":
         formset = OperasyonGirdiSatirFormSet(request.POST, prefix="satir")
+        yan_formset, yan_var = _yan_ciktilar_post(request.POST)
         istasyon_id = request.POST.get("istasyon")
         cikti_miktar = request.POST.get("cikti_miktar")
         ad = request.POST.get("ad", "")
         aciklama = request.POST.get("aciklama", "")
-        if formset.is_valid():
+        if formset.is_valid() and yan_formset.is_valid():
             satirlar = [(f.cleaned_data["girdi"], f.cleaned_data["miktar"])
                        for f in formset if f.dolu_mu()]
+            yanlar = [(f.cleaned_data["stok"], f.cleaned_data["miktar"], f.cleaned_data["boy_mm"])
+                      for f in yan_formset if f.dolu_mu()]
             try:
                 uretim_servis.operasyon_guncelle(
                     operasyon, istasyon_id=istasyon_id, cikti_miktar=cikti_miktar,
                     satirlar=satirlar, ad=ad, aciklama=aciklama, kullanici=request.user,
-                    tam_calistirma=request.POST.get("tam_calistirma") == "on")
+                    tam_calistirma=request.POST.get("tam_calistirma") == "on",
+                    boy_mm=request.POST.get("boy_mm", "") if yan_var or "boy_mm" in request.POST else uretim_servis.KORU,
+                    yan_ciktilar=yanlar if yan_var else None)
                 messages.success(request, "Operasyon tanımı güncellendi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
@@ -6667,9 +6686,12 @@ def operasyon_duzenle(request, pk):
         formset = OperasyonGirdiSatirFormSet(initial=[
             {"girdi": s.girdi_id, "miktar": s.miktar}
             for s in uretim_servis.operasyon_girdileri(operasyon)], prefix="satir")
+        yan_formset = OperasyonYanCiktiFormSet(initial=[
+            {"stok": y.stok_id, "miktar": y.miktar, "boy_mm": y.boy_mm}
+            for y in uretim_servis.operasyon_yan_ciktilari(operasyon)], prefix="yan")
     istasyonlar = uretim_servis.aktif_istasyonlar()
     return render(request, "core/operasyon_form.html", {
-        "formset": formset, "operasyon": operasyon, "istasyonlar": istasyonlar,
+        "formset": formset, "yan_formset": yan_formset, "operasyon": operasyon, "istasyonlar": istasyonlar,
         "baslik": "Operasyon Düzenle"})
 
 
@@ -6885,11 +6907,19 @@ def operasyon_kaydi_detay(request, pk):
                 tur=StokHareket.Tur.CIKIS).first()
             if hareket is not None:
                 maliyetler[i] = stok_maliyet.hareket_maliyet_durumu(hareket)
-        cikti_katmani = StokHareket.objects.filter(
-            operasyon_kaydi=kayit, tur=StokHareket.Tur.GIRIS, silindi=False).first()
+        cikti_hareketleri = list(StokHareket.objects.filter(
+            operasyon_kaydi=kayit, tur=StokHareket.Tur.GIRIS, silindi=False).select_related("stok").order_by("pk"))
+        cikti_katmani = next((h for h in cikti_hareketleri if h.stok_id == kayit.operasyon.cikti_id), None)
+        toplam_cikti_tutar = sum((h.tutar_try or 0 for h in cikti_hareketleri), 0)
+        ciktilar = [{"hareket": h, "ana": h.stok_id == kayit.operasyon.cikti_id,
+                     "pay": (h.tutar_try / toplam_cikti_tutar * 100) if (h.tutar_try and toplam_cikti_tutar) else None}
+                    for h in cikti_hareketleri]
+    else:
+        ciktilar = []
+    yan_tanimlar = list(uretim_servis.operasyon_yan_ciktilari(kayit.operasyon))
     return render(request, "core/operasyon_kaydi_detay.html",
                   {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
-                   "formset": formset, "cikti_katmani": cikti_katmani})
+                   "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar})
 
 
 @ekran_gerekli("operasyon_kayitlari")

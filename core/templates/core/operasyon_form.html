@@ -21,6 +21,7 @@
   <form method="post" autocomplete="off" style="display:contents">
     {% csrf_token %}
     {{ formset.management_form }}
+    {{ yan_formset.management_form }}
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Operasyon</h2>
       {% if operasyon %}
@@ -41,6 +42,11 @@
             <label for="id_cikti_miktar">Çıktı Miktarı (1 çalıştırma için)</label>
             <input type="text" name="cikti_miktar" id="id_cikti_miktar" inputmode="decimal"
                    value="{{ operasyon.cikti_miktar|tr_kur:3 }}">
+          </div>
+          <div class="alan">
+            <label for="id_boy_mm">Ana çıktı boyu (mm)</label>
+            <input type="text" name="boy_mm" id="id_boy_mm" inputmode="decimal" value="{% if operasyon.boy_mm %}{{ operasyon.boy_mm|tr_kur:2 }}{% endif %}">
+            <p class="yardim">Yalnız yan çıktısı olan operasyonda zorunlu (maliyet boy oranına göre paylaştırılır).</p>
           </div>
           <div class="alan tam">
             <label><input type="checkbox" name="tam_calistirma"{% if operasyon.tam_calistirma %} checked{% endif %}> Tam çalıştırma zorunlu (tam boy)</label>
@@ -73,6 +79,12 @@
             <label for="{{ bform.cikti_miktar.id_for_label }}">{{ bform.cikti_miktar.label }}</label>
             {{ bform.cikti_miktar }}
             {% for e in bform.cikti_miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="alan">
+            <label for="{{ bform.boy_mm.id_for_label }}">{{ bform.boy_mm.label }}</label>
+            {{ bform.boy_mm }}
+            <p class="yardim">{{ bform.boy_mm.help_text }}</p>
+            {% for e in bform.boy_mm.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
           <div class="alan tam">
             <label>{{ bform.tam_calistirma }} {{ bform.tam_calistirma.label }}</label>
@@ -111,9 +123,39 @@
       </div>
     </section>
 
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Yan Çıktılar</h2>
+      <p class="yardim">Tam boy kesimde ana parçadan artan malzemeden kesilen ikinci parça (ör. 6+6 SAĞ ayak boyundan 3 adet kesilince 1 adet 5+5 SAĞ).
+        Kayıt onayında yan çıktı da stoğa girer; girdi maliyeti ana ve yan çıktının <strong>boy oranına</strong> göre paylaştırılır.
+        Yan çıktısı olan operasyonda ana çıktının boyu (mm) zorunludur.</p>
+      {% for f in yan_formset %}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}{% endfor %}
+      <div class="tablo-kapsayici">
+        <table class="ua-tablo">
+          <thead><tr><th>Yan çıktı</th><th>Adet / çalıştırma</th><th>Boy (mm)</th><th></th></tr></thead>
+          <tbody id="yan-govde">
+            {% for f in yan_formset %}
+              <tr class="ua-satir">
+                <td>{{ f.stok }}</td><td>{{ f.miktar }}</td><td>{{ f.boy_mm }}</td>
+                <td><button type="button" class="ua-sil" title="Satırı kaldır">✕</button></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="satir-alt">
+        <button type="button" id="yan-ekle" class="dugme-ikincil">+ Yan Çıktı Ekle</button>
+      </div>
+    </section>
+
     <template id="bos-satir">
       <td>{{ formset.empty_form.girdi }}</td>
       <td>{{ formset.empty_form.miktar }}</td>
+      <td><button type="button" class="ua-sil" title="Satırı kaldır">✕</button></td>
+    </template>
+    <template id="bos-yan">
+      <td>{{ yan_formset.empty_form.stok }}</td>
+      <td>{{ yan_formset.empty_form.miktar }}</td>
+      <td>{{ yan_formset.empty_form.boy_mm }}</td>
       <td><button type="button" class="ua-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
@@ -149,6 +191,19 @@
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
   document.getElementById('satir-govde').addEventListener('click', function(e){
+    if(e.target.classList.contains('ua-sil')) e.target.closest('tr').remove();
+  });
+  function yanEkle(){
+    var tf = document.getElementById('id_yan-TOTAL_FORMS');
+    var i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr'); tr.className = 'ua-satir';
+    tr.innerHTML = document.getElementById('bos-yan').innerHTML.replace(/__prefix__/g, i);
+    document.getElementById('yan-govde').appendChild(tr);
+    tf.value = i + 1;
+    if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+  }
+  document.getElementById('yan-ekle').addEventListener('click', yanEkle);
+  document.getElementById('yan-govde').addEventListener('click', function(e){
     if(e.target.classList.contains('ua-sil')) e.target.closest('tr').remove();
   });
 })();

@@ -65,41 +65,69 @@ def _fis_senkronla(mevcut, satirlar, *, tarih, aciklama, kaynak, kullanici=None)
 
 # === Üretim ============================================================================
 
+def maliyet_paylastir(toplam, agirliklar: dict, ana_anahtar) -> dict:
+    """``toplam`` tutarı ``agirliklar`` ({anahtar: ağırlık}) oranında paylaştırır (2 ondalık, ROUND_HALF_UP); yuvarlama farkı
+    ``ana_anahtar``a yazılır → paylaşılan toplam girdiyle BİREBİR eşit. Tek çıktı ya da ağırlıklardan biri eksik/sıfırsa tamamı anaya gider."""
+    from core.sayi import yuvarla
+    anahtarlar = list(agirliklar)
+    if len(anahtarlar) <= 1 or any(not (agirliklar[k] and agirliklar[k] > 0) for k in anahtarlar):
+        return {k: (toplam if k == ana_anahtar else SIFIR) for k in anahtarlar}
+    toplam_agirlik = sum(agirliklar.values(), Decimal("0"))
+    pay = {k: yuvarla(toplam * agirliklar[k] / toplam_agirlik, 2) for k in anahtarlar if k != ana_anahtar}
+    pay[ana_anahtar] = toplam - sum(pay.values(), SIFIR)
+    return pay
+
+
+def uretim_cikti_agirliklari(kayit, ciktilar) -> tuple:
+    """(ağırlıklar {hareket.pk: miktar × boy_mm}, ana hareket pk). Ana çıktının boyu ``Operasyon.boy_mm``, yan çıktılarınki
+    ``OperasyonYanCikti.boy_mm``; boyu bilinmeyen çıktı ağırlığı 0 sayılır (paylaştırma tamamen ana çıktıya düşer)."""
+    op = kayit.operasyon
+    yan_boy = {y.stok_id: y.boy_mm for y in op.yan_ciktilar.filter(silindi=False)}
+    ana = next((h for h in ciktilar if h.stok_id == op.cikti_id), ciktilar[0])
+    agirlik = {}
+    for h in ciktilar:
+        boy = op.boy_mm if h.pk == ana.pk else yan_boy.get(h.stok_id)
+        agirlik[h.pk] = (h.miktar * boy) if boy else Decimal("0")
+    return agirlik, ana.pk
+
+
 def uretim_senkronla(kayit, *, kullanici=None):
-    """Operasyon kaydının maliyet aktarımı: çıktı girişinin tutarını girdi çıkışlarının
-    ağırlıklı ortalama maliyet toplamından türetir ve 15x→15x fişini yazar/günceller.
-    Çıktı tutarı DEĞİŞTİYSE çıktı stokunu döner (çağıran onu da yeniden hesaplar)."""
+    """Operasyon kaydının maliyet aktarımı: ÇIKTI girişlerinin (ana + yan çıktılar) tutarını girdi çıkışlarının ağırlıklı ortalama
+    maliyet toplamından türetir — yan çıktı varsa toplam BOY ORANINA göre paylaştırılır (TL ve USD ayrı, yuvarlama farkı ana çıktıda) —
+    ve 15x→15x fişini yazar/günceller. Tutarı DEĞİŞEN çıktı stoklarının LİSTESİNİ döner (çağıran onları yeniden hesaplar)."""
     hs = list(StokHareket.objects.filter(operasyon_kaydi=kayit, silindi=False)
-              .select_related("stok"))
+              .select_related("stok").order_by("pk"))
     girdiler = [h for h in hs if h.tur == CIKIS]
     ciktilar = [h for h in hs if h.tur == GIRIS]
     if not ciktilar:
-        return None
-    cikti = ciktilar[0]
+        return []
     bilinen = [g for g in girdiler if g.maliyet_durumu != YOK and (g.tutar_try or 0) > 0]
     toplam = sum((g.tutar_try for g in bilinen), SIFIR)
     toplam_usd = sum((g.tutar_usd or SIFIR for g in bilinen), SIFIR)
     tahmini = any(g.maliyet_durumu != KESIN for g in girdiler)
-    yeni_try = toplam if toplam > 0 else None
-    yeni_usd = toplam_usd if toplam > 0 else None
-    degisti = ((cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini)
-               != (yeni_try, yeni_usd, tahmini))
-    if degisti:
-        cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini = yeni_try, yeni_usd, tahmini
-        cikti.save(update_fields=["giris_tutar_try", "giris_tutar_usd", "giris_tahmini",
-                                  "updated_at"])
-    net = defaultdict(lambda: SIFIR)
-    if yeni_try:
+    agirlik, ana_pk = uretim_cikti_agirliklari(kayit, ciktilar)
+    pay_try = maliyet_paylastir(toplam if toplam > 0 else SIFIR, agirlik, ana_pk)
+    pay_usd = maliyet_paylastir(toplam_usd if toplam > 0 else SIFIR, agirlik, ana_pk)
+    degisen_stoklar, net = [], defaultdict(lambda: SIFIR)
+    for cikti in ciktilar:
+        yeni_try = pay_try[cikti.pk] if toplam > 0 else None
+        yeni_usd = pay_usd[cikti.pk] if toplam > 0 else None
+        if (cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini) != (yeni_try, yeni_usd, tahmini):
+            cikti.giris_tutar_try, cikti.giris_tutar_usd, cikti.giris_tahmini = yeni_try, yeni_usd, tahmini
+            cikti.save(update_fields=["giris_tutar_try", "giris_tutar_usd", "giris_tahmini", "updated_at"])
+            degisen_stoklar.append(cikti.stok)
+        if yeni_try:
+            net[stok_hesabi_kodu(cikti.stok)] += yeni_try
+    if toplam > 0:
         for g in bilinen:
             net[stok_hesabi_kodu(g.stok)] -= g.tutar_try
-        net[stok_hesabi_kodu(cikti.stok)] += yeni_try
     fis = _fis_senkronla(kayit.fis, _satirlar(net), tarih=kayit.tarih,
                          aciklama=f"{kayit.no} maliyet aktarımı",
                          kaynak=YevmiyeFisi.Kaynak.URETIM, kullanici=kullanici)
     if (fis.pk if fis else None) != kayit.fis_id:
         kayit.fis = fis
         kayit.save(update_fields=["fis", "updated_at"])
-    return cikti.stok if degisti else None
+    return degisen_stoklar
 
 
 # === Satış / satış iadesi ==============================================================

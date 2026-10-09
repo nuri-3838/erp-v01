@@ -1249,6 +1249,8 @@ class OperasyonBaslikForm(forms.Form):
         label="Çıktı", queryset=Stok.objects.none(), empty_label="— çıktı seç —")
     cikti_miktar = TRDecimalField(label="Çıktı Miktarı (1 çalıştırma için)", basamak=3,
                                   initial=Decimal("1"))
+    boy_mm = TRDecimalField(label="Ana çıktı boyu (mm)", basamak=2, required=False,
+                            help_text="Yalnız yan çıktısı olan operasyonda zorunlu: maliyet, ana ve yan çıktı boylarının oranına (miktar × boy) göre paylaştırılır.")
     tam_calistirma = forms.BooleanField(
         label="Tam çalıştırma zorunlu (tam boy)", required=False,
         help_text="İşaretliyse çalıştırma sayısı hep TAM SAYIDIR (yukarı yuvarlanır); bir boydan çıkan fazla parça stoğa girer. "
@@ -1293,6 +1295,36 @@ class OperasyonGirdiSatirForm(forms.Form):
             raise forms.ValidationError("Girdi seçin.")
         if miktar is None or miktar <= 0:
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+class OperasyonYanCiktiSatirForm(forms.Form):
+    """ÜRETİM > Operasyon Tanımları > Yan Çıktılar satırı: stok + adet/çalıştırma + boy (mm). Boş satır atlanır."""
+    stok = forms.ModelChoiceField(label="Yan çıktı", queryset=Stok.objects.none(), required=False, empty_label="— yan çıktı seç —")
+    miktar = TRDecimalField(label="Adet / çalıştırma", basamak=3, required=False)
+    boy_mm = TRDecimalField(label="Boy (mm)", basamak=2, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["stok"].queryset = Stok.objects.filter(silindi=False, uretim_urunu=True).order_by("kod")
+        self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["stok"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        stok, miktar, boy = cd.get("stok"), cd.get("miktar"), cd.get("boy_mm")
+        if not stok and miktar is None and boy is None:
+            return cd                              # boş satır — atlanır
+        if not stok:
+            raise forms.ValidationError("Yan çıktı stoğunu seçin.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Adet sıfırdan büyük olmalı.")
+        if boy is None or boy <= 0:
+            raise forms.ValidationError("Boy (mm) sıfırdan büyük olmalı.")
         cd["dolu"] = True
         return cd
 

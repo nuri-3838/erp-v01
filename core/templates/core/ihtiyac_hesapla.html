@@ -70,7 +70,8 @@
           <tbody>
             {% for o in sonuc.ozet %}
               <tr>
-                <td><span class="mono">{{ o.stok.kod }}</span> {{ o.stok.ad }}</td>
+                <td><span class="mono">{{ o.stok.kod }}</span> {{ o.stok.ad }}
+                  {% for y in o.yan_ciktilar %}<br><small class="yardim">➕ ayrıca {{ y.miktar|tr_miktar_sade }} adet {{ y.stok.kod }} {{ y.stok.ad }} çıkar</small>{% endfor %}</td>
                 <td>{% if o.istasyon %}<span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}
                   {% else %}<span class="pasif">— hazır stok —</span>{% endif %}</td>
                 <td class="sag mono">{{ o.ihtiyac|tr_miktar_sade }}</td>
