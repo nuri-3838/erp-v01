@@ -26,7 +26,7 @@ from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Depo, IsIstasyonu, Operasyon, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiCikti, OperasyonKaydiGirdi, OperasyonYanCikti,
+    Depo, IsIstasyonu, Operasyon, OperasyonCikti, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiCikti, OperasyonKaydiGirdi, OperasyonYanCikti,
     Stok, StokHareket, TeklifSiparis, UretimEmri, UretimEmriKalemi,
 )
 from core.sayi import SayiHatasi, parse_tr, yuvarla
@@ -362,6 +362,22 @@ def _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici):
                                          created_by=kullanici, updated_by=kullanici)
 
 
+def operasyon_ciktilari(operasyon: Operasyon):
+    """Tanımın çıktı satırları (OperasyonCikti): sıra 0 referans/ana çıktı, sonra yan (ÜRET) ya da diğer (PARÇALA) çıktılar."""
+    return operasyon.ciktilar.filter(silindi=False).select_related("stok").order_by("sira", "pk")
+
+
+def _ciktilari_esitle(operasyon: Operasyon, kullanici):
+    """ÇİFT YAZIM (geçiş dönemi): ``cikti``/``cikti_miktar``/``boy_mm`` + yan çıktı satırlarını OperasyonCikti tablosuna aynen yansıtır —
+    mevcut satırlar soft-delete, güncel durum yeniden yazılır (olustur/guncelle sonunda çağrılır)."""
+    operasyon.ciktilar.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    OperasyonCikti.objects.create(operasyon=operasyon, stok=operasyon.cikti, miktar=operasyon.cikti_miktar, boy_mm=operasyon.boy_mm, sira=0,
+                                  surucu=True, created_by=kullanici, updated_by=kullanici)
+    for i, y in enumerate(operasyon_yan_ciktilari(operasyon), start=1):
+        OperasyonCikti.objects.create(operasyon=operasyon, stok=y.stok, miktar=y.miktar, boy_mm=y.boy_mm, sira=i * 10, surucu=False,
+                                      created_by=kullanici, updated_by=kullanici)
+
+
 def _tam_boy_mi(satirlar) -> bool:
     """Tam boy VARSAYILANI: girdilerden en az birinin üretim birimi BOY ise işaretli (kullanıcı formda kaldırabilir)."""
     return any(_boy_birimli_mi(girdi) for girdi, _ in satirlar)
@@ -400,6 +416,7 @@ def operasyon_olustur(*, istasyon_id, cikti_id, cikti_miktar, satirlar, kullanic
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
             created_by=kullanici, updated_by=kullanici)
+    _ciktilari_esitle(operasyon, kullanici)
     return operasyon
 
 
@@ -436,6 +453,7 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar, satir
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
             created_by=kullanici, updated_by=kullanici)
+    _ciktilari_esitle(operasyon, kullanici)
     return operasyon
 
 
@@ -444,6 +462,7 @@ def operasyon_sil(operasyon: Operasyon, kullanici=None) -> Operasyon:
         return operasyon
     if operasyon.kayitlar.filter(silindi=False).exists():
         raise UretimHatasi("Bu operasyona bağlı kayıt var; silinemez.")
+    operasyon.ciktilar.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)   # sürücü kilidi serbest kalır
     operasyon.silindi = True
     operasyon.silindi_at = timezone.now()
     operasyon.updated_by = kullanici
