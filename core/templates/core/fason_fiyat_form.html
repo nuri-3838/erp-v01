@@ -1,0 +1,66 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:fason_fiyatlari' %}">← Fason Fiyatları</a>
+    <h1 class="ust-baslik"><span class="emoji">🏷️</span>{{ baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Fason Fiyatı</h2>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.cari.id_for_label }}">{{ form.cari.label }}</label>
+          <div class="akilli">{{ form.cari }}</div>
+          {% for e in form.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.stok.id_for_label }}">{{ form.stok.label }}</label>
+          <div class="akilli">{{ form.stok }}</div>
+          {% for e in form.stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.fasoncu_kodu.id_for_label }}">{{ form.fasoncu_kodu.label }}</label>
+          {{ form.fasoncu_kodu }}
+          {% for e in form.fasoncu_kodu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.gecerlilik_baslangic.id_for_label }}">{{ form.gecerlilik_baslangic.label }}</label>
+          {{ form.gecerlilik_baslangic }}
+          {% for e in form.gecerlilik_baslangic.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.birim_fiyat.id_for_label }}">{{ form.birim_fiyat.label }}</label>
+          {{ form.birim_fiyat }}
+          {% for e in form.birim_fiyat.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>
+          {{ form.para_birimi }}
+          {% for e in form.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label>{{ form.aktif }} {{ form.aktif.label }}</label>
+        </div>
+      </div>
+      <p class="yardim" style="margin:.6rem 0 0">Fiyat <strong>parça adedi başına</strong>dır. Döviz fiyat, fason dönüş kaydının tarihindeki TCMB kuruyla TL'ye çevrilir.</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:fason_fiyatlari' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

@@ -3045,6 +3045,35 @@ class FasonKesimKaydiKalemi(TemelModel):
         return f"{self.kayit.no} — {self.urun.kod} × {self.miktar}"
 
 
+class FasonFiyat(TemelModel):
+    """FASON > Fason Fiyatları — fasoncunun (cari) bir KESİLMİŞ PARÇA için PARÇA ADEDİ başına faturaladığı sabit fiyat. Fasoncunun kendi parça
+    kodu (``fasoncu_kodu``, örn. GZ-P-00041) kesim listesi PDF'inde kullanılır. Aynı cari + stok için birden çok satır olabilir (farklı
+    ``gecerlilik_baslangic``); verilen tarihte geçerli fiyat = başlangıcı o tarihi geçmeyen EN SON aktif satır (bkz. core.services.fason.gecerli_fiyat).
+    Fason dönüşte (OperasyonKaydi.fason_cari) her çıktının maliyetine bu fiyat × adet eklenir."""
+
+    cari = models.ForeignKey("Cari", verbose_name="fasoncu (cari)", on_delete=models.PROTECT, related_name="fason_fiyatlari")
+    stok = models.ForeignKey(Stok, verbose_name="kesilmiş parça", on_delete=models.PROTECT, related_name="fason_fiyatlari")
+    fasoncu_kodu = models.CharField("fasoncunun parça kodu", max_length=40, blank=True, default="")
+    birim_fiyat = models.DecimalField("birim fiyat (parça adedi başına)", max_digits=18, decimal_places=6)
+    para_birimi = models.CharField("para birimi", max_length=3, choices=YevmiyeSatir.IslemPB.choices, default="TRY")
+    gecerlilik_baslangic = models.DateField("geçerlilik başlangıcı")
+    aktif = models.BooleanField("aktif", default=True)
+
+    class Meta:
+        db_table = "core_fason_fiyat"
+        verbose_name = "fason fiyatı"
+        verbose_name_plural = "fason fiyatları"
+        ordering = ["cari__unvan", "stok__kod", "-gecerlilik_baslangic"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(birim_fiyat__gte=0), name="ck_fason_fiyat_gte0"),
+            models.UniqueConstraint(fields=["cari", "stok", "gecerlilik_baslangic"], condition=models.Q(silindi=False),
+                                    name="uq_fason_fiyat_cari_stok_tarih_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.cari_id} · {self.stok_id} · {self.birim_fiyat} {self.para_birimi}"
+
+
 # === ÜRETİM modülü — İş İstasyonu + Operasyon (rota) + Üretim Emri + Operasyon Kaydı ===
 # Bağımsız, sıfırdan kurulan bir Stok↔Stok rota modeli — FASON'daki kesilmiş-parça/
 # kesildigi_profil kavramıyla hiçbir ilişkisi yoktur. Bitmiş bir ürün, farklı İŞ

@@ -34,7 +34,7 @@ from core.forms import (
     AdayYetkiliForm,
     BilancoTarihForm, BirimForm, CariAktiviteForm, CariBankaForm, CariForm, CariKategoriForm,
     CariSevkAdresiForm,
-    BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
+    BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonFiyatForm, FasonKesimForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
     KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
@@ -56,7 +56,7 @@ from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
-    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonKesim, FasonKesimKaydi,
+    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonFiyat, FasonKesim, FasonKesimKaydi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
@@ -6471,6 +6471,66 @@ def fason_kesim_sil(request, pk):
         fason_servis.kesim_sil(k, kullanici=request.user)
         messages.success(request, "Kesim tanımı silindi.")
     return redirect("core:fason_kesim_tanimlari")
+
+
+@ekran_gerekli("fason_fiyatlari")
+def fason_fiyatlari(request):
+    return render(request, "core/fason_fiyat_listesi.html", {"fiyatlar": fason_servis.aktif_fiyatlar(), "bugun": timezone.localdate()})
+
+
+def _fason_fiyat_kaydet(request, form, f=None):
+    cd = form.cleaned_data
+    ortak = dict(cari_id=cd["cari"].pk, stok_id=cd["stok"].pk, birim_fiyat=cd["birim_fiyat"], para_birimi=cd["para_birimi"],
+                 gecerlilik_baslangic=cd["gecerlilik_baslangic"], fasoncu_kodu=cd["fasoncu_kodu"], aktif=cd["aktif"],
+                 kullanici=request.user)
+    if f is None:
+        return fason_servis.fiyat_olustur(**ortak)
+    return fason_servis.fiyat_guncelle(f, **ortak)
+
+
+@yonetici_gerekli
+def fason_fiyat_ekle(request):
+    if request.method == "POST":
+        form = FasonFiyatForm(request.POST)
+        if form.is_valid():
+            try:
+                _fason_fiyat_kaydet(request, form)
+                messages.success(request, "Fason fiyatı eklendi.")
+                return redirect("core:fason_fiyatlari")
+            except fason_servis.FasonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        initial = {k: request.GET[k] for k in ("cari", "stok") if request.GET.get(k, "").isdigit()}
+        form = FasonFiyatForm(initial=initial)
+    return render(request, "core/fason_fiyat_form.html", {"form": form, "baslik": "Yeni Fason Fiyatı"})
+
+
+@yonetici_gerekli
+def fason_fiyat_duzenle(request, pk):
+    f = get_object_or_404(FasonFiyat, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = FasonFiyatForm(request.POST)
+        if form.is_valid():
+            try:
+                _fason_fiyat_kaydet(request, form, f)
+                messages.success(request, "Fason fiyatı güncellendi.")
+                return redirect("core:fason_fiyatlari")
+            except fason_servis.FasonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = FasonFiyatForm(initial={
+            "cari": f.cari_id, "stok": f.stok_id, "fasoncu_kodu": f.fasoncu_kodu, "birim_fiyat": f.birim_fiyat,
+            "para_birimi": f.para_birimi, "gecerlilik_baslangic": f.gecerlilik_baslangic, "aktif": f.aktif})
+    return render(request, "core/fason_fiyat_form.html", {"form": form, "baslik": "Fason Fiyatı Düzenle", "duzenlenen": f})
+
+
+@yonetici_gerekli
+def fason_fiyat_sil(request, pk):
+    f = get_object_or_404(FasonFiyat, pk=pk, silindi=False)
+    if request.method == "POST":
+        fason_servis.fiyat_sil(f, kullanici=request.user)
+        messages.success(request, "Fason fiyatı silindi.")
+    return redirect("core:fason_fiyatlari")
 
 
 FasonSatirFormSet = formset_factory(FasonSatirForm, extra=0)

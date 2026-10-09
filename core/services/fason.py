@@ -12,7 +12,8 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from core.models import FasonKesim, FasonKesimKaydi, FasonKesimKaydiKalemi, Stok
+from core.models import Cari, FasonFiyat, FasonKesim, FasonKesimKaydi, FasonKesimKaydiKalemi, Stok
+from core.sayi import SayiHatasi, parse_tr
 
 
 class FasonHatasi(Exception):
@@ -173,3 +174,73 @@ def kayit_sonucu(kayit):
     """Kayıttaki ürün/miktarları GÜNCEL Kesim Tanımları'na göre yeniden hesaplar (bkz.
     fason_listesi_hesapla) — kayıt oluşturulduğu andaki değil, ŞU ANKİ tanımlara göre."""
     return fason_listesi_hesapla(kayit_kalemleri(kayit))
+
+
+# === Fason fiyat listesi ======================================================================================
+
+def aktif_fiyatlar():
+    return (FasonFiyat.objects.filter(silindi=False).select_related("cari", "stok")
+            .order_by("cari__unvan", "stok__kod", "-gecerlilik_baslangic"))
+
+
+def gecerli_fiyat(cari, stok, tarih):
+    """``tarih``te geçerli fason fiyatı: aynı cari + stok için başlangıcı ``tarih``i GEÇMEYEN EN SON aktif satır; yoksa None.
+    (cari/stok nesne ya da pk olabilir.)"""
+    cari_id = getattr(cari, "pk", cari)
+    stok_id = getattr(stok, "pk", stok)
+    return (FasonFiyat.objects.filter(silindi=False, aktif=True, cari_id=cari_id, stok_id=stok_id,
+                                      gecerlilik_baslangic__lte=tarih)
+            .order_by("-gecerlilik_baslangic", "-pk").first())
+
+
+def _fiyat_dogrula(cari_id, stok_id, birim_fiyat, para_birimi):
+    cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
+    if not cari:
+        raise FasonHatasi("Fasoncu (cari) bulunamadı.")
+    stok = Stok.objects.filter(pk=stok_id, silindi=False, uretim_urunu=True).first()
+    if not stok:
+        raise FasonHatasi("Kesilmiş parça bulunamadı (üretim ürünü olmalı).")
+    try:
+        fiyat = birim_fiyat if hasattr(birim_fiyat, "as_tuple") else parse_tr(birim_fiyat)
+    except SayiHatasi:
+        raise FasonHatasi("Birim fiyat geçerli bir sayı olmalı.")
+    if fiyat < 0:
+        raise FasonHatasi("Birim fiyat negatif olamaz.")
+    if para_birimi not in dict(FasonFiyat._meta.get_field("para_birimi").choices):
+        raise FasonHatasi("Para birimi geçersiz.")
+    return cari, stok, fiyat
+
+
+def fiyat_olustur(*, cari_id, stok_id, birim_fiyat, para_birimi="TRY", gecerlilik_baslangic, fasoncu_kodu="", aktif=True,
+                  kullanici=None) -> FasonFiyat:
+    cari, stok, fiyat = _fiyat_dogrula(cari_id, stok_id, birim_fiyat, para_birimi)
+    if FasonFiyat.objects.filter(silindi=False, cari=cari, stok=stok, gecerlilik_baslangic=gecerlilik_baslangic).exists():
+        raise FasonHatasi("Bu fasoncu + parça için aynı başlangıç tarihli bir fiyat zaten var.")
+    return FasonFiyat.objects.create(
+        cari=cari, stok=stok, birim_fiyat=fiyat, para_birimi=para_birimi, gecerlilik_baslangic=gecerlilik_baslangic,
+        fasoncu_kodu=(fasoncu_kodu or "").strip(), aktif=bool(aktif), created_by=kullanici, updated_by=kullanici)
+
+
+def fiyat_guncelle(f: FasonFiyat, *, cari_id, stok_id, birim_fiyat, para_birimi="TRY", gecerlilik_baslangic, fasoncu_kodu="",
+                   aktif=True, kullanici=None) -> FasonFiyat:
+    if f.silindi:
+        raise FasonHatasi("Silinmiş kayıt düzenlenemez.")
+    cari, stok, fiyat = _fiyat_dogrula(cari_id, stok_id, birim_fiyat, para_birimi)
+    if (FasonFiyat.objects.filter(silindi=False, cari=cari, stok=stok, gecerlilik_baslangic=gecerlilik_baslangic)
+            .exclude(pk=f.pk).exists()):
+        raise FasonHatasi("Bu fasoncu + parça için aynı başlangıç tarihli bir fiyat zaten var.")
+    f.cari, f.stok, f.birim_fiyat, f.para_birimi = cari, stok, fiyat, para_birimi
+    f.gecerlilik_baslangic, f.fasoncu_kodu, f.aktif = gecerlilik_baslangic, (fasoncu_kodu or "").strip(), bool(aktif)
+    f.updated_by = kullanici
+    f.save()
+    return f
+
+
+def fiyat_sil(f: FasonFiyat, kullanici=None) -> FasonFiyat:
+    if f.silindi:
+        return f
+    f.silindi = True
+    f.silindi_at = timezone.now()
+    f.updated_by = kullanici
+    f.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    return f

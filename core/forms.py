@@ -1196,6 +1196,34 @@ class FasonKesimForm(forms.Form):
         self.fields["kesilmis_parca"].widget.attrs["class"] = "akilli-sec"
 
 
+class FasonFiyatForm(forms.Form):
+    """FASON > Fason Fiyatları ekle/düzenle: fasoncunun bir kesilmiş parça için PARÇA ADEDİ başına sabit fiyatı."""
+    cari = forms.ModelChoiceField(label="Fasoncu (cari)", queryset=Cari.objects.none(), empty_label="— cari seç —")
+    stok = forms.ModelChoiceField(label="Kesilmiş parça", queryset=Stok.objects.none(), empty_label="— parça seç —")
+    fasoncu_kodu = forms.CharField(label="Fasoncunun parça kodu", max_length=40, required=False,
+                                   widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "örn. GZ-P-00041"}))
+    birim_fiyat = TRDecimalField(label="Birim fiyat (adet başına)", basamak=4)
+    para_birimi = forms.ChoiceField(label="Para birimi", choices=Cari.PARA_CHOICES, initial="TRY")
+    gecerlilik_baslangic = forms.DateField(
+        label="Geçerlilik başlangıcı", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    aktif = forms.BooleanField(label="Aktif", required=False, initial=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        self.fields["stok"].queryset = Stok.objects.filter(silindi=False, uretim_urunu=True).order_by("kod")
+        self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["stok"].widget.attrs["class"] = "akilli-sec"
+
+    def clean_birim_fiyat(self):
+        v = self.cleaned_data.get("birim_fiyat")
+        if v is None or v < 0:
+            raise forms.ValidationError("Birim fiyat sıfır ya da pozitif olmalı.")
+        return v
+
+
 class FasonSatirForm(forms.Form):
     """FASON > Kesim Listesi Hesapla: bir satır (ürün + miktar). Teklif/Sipariş
     kalemleriyle aynı 'boş satır atlanır' deseni (TeklifSiparisKalemForm)."""

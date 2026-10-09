@@ -1,0 +1,42 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fason Fiyatları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fason Fiyatları{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_hesapla' %}">← Fason</a>
+    <h1 class="ust-baslik"><span class="emoji">🏷️</span>Fason Fiyatları</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:fason_fiyat_ekle' %}">+ Yeni</a>
+</div>
+
+<p class="yardim">Fasoncunun her kesilmiş parça için <strong>parça adedi başına</strong> faturaladığı sabit fiyat. Bir fasoncu + parça için birden çok satır
+  olabilir; fason dönüşün tarihinde geçerli fiyat, başlangıcı o tarihi geçmeyen <strong>en son aktif</strong> satırdır.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Fasoncu</th><th>Kesilmiş parça</th><th>Fasoncu kodu</th><th class="sag">Birim fiyat</th><th>Geçerlilik</th><th>Durum</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for f in fiyatlar %}
+      <tr>
+        <td>{{ f.cari.unvan }}</td>
+        <td><span class="mono">{{ f.stok.kod }}</span> {{ f.stok.ad }}</td>
+        <td class="mono">{{ f.fasoncu_kodu|default:"—" }}</td>
+        <td class="sag mono">{{ f.birim_fiyat|tr_kur:4 }} {{ f.para_birimi }}</td>
+        <td>{{ f.gecerlilik_baslangic|date:"d.m.Y" }}{% if f.gecerlilik_baslangic > bugun %} <span class="rozet rozet-notr">ileri tarihli</span>{% endif %}</td>
+        <td>{% if f.aktif %}<span class="rozet rozet-aktif">Aktif</span>{% else %}<span class="rozet rozet-pasif">Pasif</span>{% endif %}</td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:fason_fiyat_duzenle' f.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:fason_fiyat_sil' f.pk %}" onsubmit="return confirm('Silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim">Henüz fason fiyatı yok. "+ Yeni" ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
