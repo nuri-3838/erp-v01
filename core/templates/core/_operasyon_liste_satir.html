@@ -4,6 +4,7 @@
     <span class="mono">{{ r.op.cikti.kod }}</span> {{ r.op.cikti.ad }}
     <div class="ol-rozetler">
       {% if r.tam_boy %}<span class="rozet rozet-notr" title="Çalıştırma sayısı tam sayı; fazla parça stoğa girer">tam boy</span>{% endif %}
+      {% if r.parcala %}<span class="rozet rozet-notr" title="Parçala: 1 girdi → {{ r.cikti_sayisi }} eşit düzey çıktı; her çıktı bu tanımdan üretilir">parçala · {{ r.cikti_sayisi }} çıktı</span>{% endif %}
       {% if r.yan_sayisi %}<span class="rozet rozet-aktif" title="Ana çıktının yanında {{ r.yan_sayisi }} yan çıktı üretir">+{{ r.yan_sayisi }} yan çıktı</span>{% endif %}
       {% if r.baglantisiz %}<span class="rozet rozet-kirmizi" title="Zincir hiçbir bitmiş ürüne (152-*) ulaşmıyor">⚠ bağlantısız</span>
       {% elif r.seri == "A" or r.seri == "C" or r.seri == "ORTAK" or r.seri == "DIGER" %}<span class="rozet rozet-notr" title="Zincirin ulaştığı bitmiş ürün serisi">{{ r.seri_etiket }}</span>{% endif %}

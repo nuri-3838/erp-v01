@@ -26,7 +26,9 @@
   .op-sil:hover { color:var(--hata); background:rgba(180,40,40,.08); }
   .op-ekle { margin-top:.5rem; }
   .op-uyari { color:var(--hata); font-size:.78rem; margin-top:.2rem; }
-  .op-uyari[hidden], #boy-alan[hidden], #yan-bolum[hidden], #yan-ac[hidden], #ozet-pay[hidden] { display:none !important; }
+  .op-uyari[hidden], #boy-alan[hidden], #yan-bolum[hidden], #yan-ac[hidden], #ozet-pay[hidden], #parcala-bolum[hidden], #yan-kart[hidden],
+  #uret-cikti-alan[hidden], #uret-miktar-alan[hidden], #satir-ekle[hidden] { display:none !important; }
+  .op-tur { max-width:28rem; }
   .op-yan-ac { width:100%; padding:.7rem; border:1.5px dashed var(--cizgi-koyu); background:transparent; border-radius:14px;
     color:var(--lacivert); font-weight:650; cursor:pointer; }
   .op-yan-ac:hover { border-color:var(--turuncu); color:var(--turuncu); }
@@ -76,11 +78,19 @@
     {% csrf_token %}
     {{ formset.management_form }}
     {{ yan_formset.management_form }}
+    {{ pc_formset.management_form }}
     <div class="op-grid">
       <div class="op-ana">
 
         <section class="icerik-kart">
           <h2 class="bolum-baslik">Operasyon</h2>
+          <div class="alan" style="margin-bottom:.6rem">
+            <label for="id_tur">Tür</label>
+            <select name="tur" id="id_tur" class="op-tur">
+              <option value="URET"{% if tur != "PARCALA" %} selected{% endif %}>Üret — N girdi → 1 çıktı (+ yan çıktılar)</option>
+              <option value="PARCALA"{% if tur == "PARCALA" %} selected{% endif %}>Parçala — 1 girdi → N eşit düzey çıktı</option>
+            </select>
+          </div>
           {% if operasyon %}
             <div class="op-iki">
               <div class="alan">
@@ -93,12 +103,12 @@
                   </select>
                 </div>
               </div>
-              <div class="alan">
-                <label>Çıktı</label>
+              <div class="alan" id="uret-cikti-alan">
+                <label>Çıktı{% if tur == "PARCALA" %} (referans){% endif %}</label>
                 <div class="op-birim" style="padding-left:0;color:inherit"><span class="mono" id="cikti-kod" data-pk="{{ operasyon.cikti_id }}">{{ operasyon.cikti.kod }}</span> {{ operasyon.cikti.ad }}</div>
               </div>
             </div>
-            <div class="alan" style="margin-top:.7rem">
+            <div class="alan" style="margin-top:.7rem" id="uret-miktar-alan">
               <label for="id_cikti_miktar" id="miktar-etiket">{% if operasyon.tam_calistirma %}1 boydan kaç adet{% else %}1 çalıştırmada çıktı miktarı{% endif %}</label>
               <div class="op-miktar">
                 <input type="text" name="cikti_miktar" id="id_cikti_miktar" inputmode="decimal" value="{{ operasyon.cikti_miktar|tr_kur:3 }}">
@@ -112,13 +122,13 @@
                 <div class="akilli">{{ bform.istasyon }}</div>
                 {% for e in bform.istasyon.errors %}<div class="hata">{{ e }}</div>{% endfor %}
               </div>
-              <div class="alan">
+              <div class="alan" id="uret-cikti-alan">
                 <label for="{{ bform.cikti.id_for_label }}">{{ bform.cikti.label }}</label>
                 <div class="akilli">{{ bform.cikti }}</div>
                 {% for e in bform.cikti.errors %}<div class="hata">{{ e }}</div>{% endfor %}
               </div>
             </div>
-            <div class="alan" style="margin-top:.7rem">
+            <div class="alan" style="margin-top:.7rem" id="uret-miktar-alan">
               <label for="{{ bform.cikti_miktar.id_for_label }}" id="miktar-etiket">1 çalıştırmada çıktı miktarı</label>
               <div class="op-miktar">
                 {{ bform.cikti_miktar }}
@@ -150,7 +160,35 @@
           <button type="button" id="satir-ekle" class="dugme-ikincil op-ekle">+ Girdi ekle</button>
         </section>
 
-        <section class="icerik-kart" id="yan-kart">
+        <section class="icerik-kart" id="parcala-bolum"{% if tur != "PARCALA" %} hidden{% endif %}>
+          <h2 class="bolum-baslik">Çıktılar (parçala)</h2>
+          <p class="yardim">Tek girdiden (ör. 1 BOY profil) aynı çalıştırmada çıkan parçalar — ana/yan ayrımı yok; <strong>ilk satır referans çıktıdır</strong> ve her çıktı bu
+            tanımdan üretilir sayılır. Planlamada çalıştırma = en büyük (ihtiyaç ÷ miktar) — tam boy açıksa yukarı yuvarlanır; diğer çıktıların fazlası stoğa girer ve aynı hesapta
+            mahsup edilir. Girdi maliyeti seçilen anahtarla paylaştırılır (BOY: miktar × boy · EŞİT: adet başı · YÜZDE: elle, toplam 100).</p>
+          <div class="alan" style="max-width:24rem">
+            <label for="id_pay_anahtari">Maliyet pay anahtarı</label>
+            <select name="pay_anahtari" id="id_pay_anahtari">{% for k, ad in pay_secenekleri %}<option value="{{ k }}"{% if k == pay_anahtari %} selected{% endif %}>{{ ad }}</option>{% endfor %}</select>
+          </div>
+          {% for f in pc_formset %}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}{% endfor %}
+          <table class="op-tablo" style="margin-top:.5rem">
+            <thead><tr><th>Çıktı</th><th>Adet / çalıştırma</th><th>Boy (mm)</th><th>Pay %</th><th></th></tr></thead>
+            <tbody id="pc-govde">
+              {% for f in pc_formset %}
+                <tr{% if forloop.first %} data-referans="1"{% endif %}>
+                  <td data-et="Çıktı">{% if operasyon and forloop.first %}<input type="hidden" name="pc-0-stok" value="{{ operasyon.cikti_id }}"><span class="op-birim" style="padding-left:0;color:inherit"><span class="mono">{{ operasyon.cikti.kod }}</span> {{ operasyon.cikti.ad }}</span> <span class="rozet rozet-notr" title="Referans çıktı sonradan değiştirilemez">referans</span>{% else %}<div class="akilli">{{ f.stok }}</div>{% endif %}
+                    {% for e in f.stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                  <td data-et="Adet / çalıştırma" class="op-miktar-h">{{ f.miktar }}{% for e in f.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                  <td data-et="Boy (mm)" class="op-miktar-h">{{ f.boy_mm }}{% for e in f.boy_mm.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                  <td data-et="Pay %" class="op-miktar-h">{{ f.yuzde }}{% for e in f.yuzde.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                  <td class="op-sil-h">{% if not operasyon or not forloop.first %}<button type="button" class="op-sil" title="Satırı sil">🗑</button>{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <button type="button" id="pc-ekle" class="dugme-ikincil op-ekle">+ Çıktı ekle</button>
+        </section>
+
+        <section class="icerik-kart" id="yan-kart"{% if tur == "PARCALA" %} hidden{% endif %}>
           <button type="button" id="yan-ac" class="op-yan-ac"{% if yan_formset.forms %} hidden{% endif %}>+ Yan çıktı ekle</button>
           <div id="yan-bolum"{% if not yan_formset.forms %} hidden{% endif %}>
             <h2 class="bolum-baslik">Yan Çıktılar</h2>
@@ -202,6 +240,13 @@
       <td data-et="Birim"><span class="op-birim mono">—</span></td>
       <td class="op-sil-h"><button type="button" class="op-sil" title="Satırı sil">🗑</button></td>
     </template>
+    <template id="bos-pc">
+      <td data-et="Çıktı"><div class="akilli">{{ pc_formset.empty_form.stok }}</div></td>
+      <td data-et="Adet / çalıştırma" class="op-miktar-h">{{ pc_formset.empty_form.miktar }}</td>
+      <td data-et="Boy (mm)" class="op-miktar-h">{{ pc_formset.empty_form.boy_mm }}</td>
+      <td data-et="Pay %" class="op-miktar-h">{{ pc_formset.empty_form.yuzde }}</td>
+      <td class="op-sil-h"><button type="button" class="op-sil" title="Satırı sil">🗑</button></td>
+    </template>
     <template id="bos-yan">
       <td data-et="Yan çıktı"><div class="akilli">{{ yan_formset.empty_form.stok }}</div></td>
       <td data-et="Adet / çalıştırma" class="op-miktar-h">{{ yan_formset.empty_form.miktar }}</td>
@@ -230,6 +275,16 @@
   var yanAc = document.getElementById('yan-ac');
   var miktarInput = document.getElementById('id_cikti_miktar');
   var miktarEtiket = document.getElementById('miktar-etiket');
+  var turSel = document.getElementById('id_tur');
+  var pcGovde = document.getElementById('pc-govde');
+  var paySel = document.getElementById('id_pay_anahtari');
+  var parcalaBolum = document.getElementById('parcala-bolum');
+  var yanKart = document.getElementById('yan-kart');
+  var uretCiktiAlan = document.getElementById('uret-cikti-alan');
+  var uretMiktarAlan = document.getElementById('uret-miktar-alan');
+  var satirEkleDugme = document.getElementById('satir-ekle');
+  var duzenleme = !!document.getElementById('cikti-kod');
+  function parcalaMi(){ return !!(turSel && turSel.value === 'PARCALA'); }
 
   function sayi(v){ v = String(v || '').trim().replace(/\./g, '').replace(',', '.'); var n = parseFloat(v); return isNaN(n) ? null : n; }
   function fmt(n, d){ return n.toLocaleString('tr-TR', {minimumFractionDigits: 0, maximumFractionDigits: d == null ? 6 : d}); }
@@ -250,6 +305,13 @@
       return {tr: tr, sel: sel, mik: mik, stok: sel ? sel.value : '', b: sel ? bilgi(sel.value) : null, miktar: mik ? sayi(mik.value) : null};
     });
   }
+  function pcSatirlari(){
+    return Array.prototype.map.call(pcGovde.querySelectorAll('tr'), function(tr){
+      var sel = tr.querySelector('select[name$="-stok"], input[name$="-stok"]'), mik = tr.querySelector('input[name$="-miktar"]'),
+          boy = tr.querySelector('input[name$="-boy_mm"]'), yz = tr.querySelector('input[name$="-yuzde"]');
+      return {tr: tr, b: sel ? bilgi(sel.value) : null, miktar: mik ? sayi(mik.value) : null, boy: boy ? sayi(boy.value) : null, yuzde: yz ? sayi(yz.value) : null};
+    });
+  }
   function yanSatirlari(){
     return Array.prototype.map.call(yanGovde.querySelectorAll('tr'), function(tr){
       var sel = tr.querySelector('select[name$="-stok"]'), mik = tr.querySelector('input[name$="-miktar"]'), boy = tr.querySelector('input[name$="-boy_mm"]');
@@ -257,8 +319,19 @@
     });
   }
 
+  function modGuncelle(){
+    var p = parcalaMi();
+    parcalaBolum.hidden = !p;
+    yanKart.hidden = p;
+    uretMiktarAlan.hidden = p;                                       // PARÇALA: referans miktarı çıktı tablosunun ilk satırında
+    if (!duzenleme) uretCiktiAlan.hidden = p;                        // yeni tanımda referans çıktı tablonun ilk satırı
+    satirEkleDugme.hidden = p;                                       // PARÇALA: tek girdi
+    if (p && pcGovde.querySelectorAll('tr').length === 0) pcEkle();
+  }
+
   function guncelle(){
-    var girdiler = girdiSatirlari(), yanlar = yanSatirlari();
+    var parcala = parcalaMi();
+    var girdiler = girdiSatirlari(), yanlar = parcala ? [] : yanSatirlari();
     // 1) satır birimi (otomatik) + aynı stok iki kez uyarısı
     var sayac = {};
     girdiler.forEach(function(g){ if (g.stok) sayac[g.stok] = (sayac[g.stok] || 0) + 1; });
@@ -274,8 +347,9 @@
     // 3) yan çıktı bölümü / ana boy görünürlüğü
     var yanVar = yanlar.length > 0;
     yanBolum.hidden = !yanVar; yanAc.hidden = yanVar;
-    boyAlan.hidden = !yanVar; boyInput.required = yanVar;
+    boyAlan.hidden = !yanVar; boyInput.required = yanVar && !parcala;
     if (!yanVar) boyInput.value = '';
+    if (parcala) { parcalaOzet(girdiler); return; }
     // 4) özet formülü
     var cik = ciktiKodu(), cm = miktarInput ? sayi(miktarInput.value) : null;
     var girdiMetin = girdiler.filter(function(g){ return g.b && g.miktar != null; }).map(function(g){
@@ -306,6 +380,43 @@
     } else { payKutu.hidden = true; payKutu.innerHTML = ''; }
   }
 
+  function parcalaOzet(girdiler){
+    var pcler = pcSatirlari();
+    var formul = document.getElementById('ozet-formul'), payKutu = document.getElementById('ozet-pay');
+    var girdiMetin = girdiler.filter(function(g){ return g.b && g.miktar != null; }).map(function(g){
+      return '<strong>' + fmt(g.miktar) + '</strong> ' + esc(g.b.b) + ' ' + esc(g.b.k); });
+    var pcMetin = pcler.filter(function(c){ return c.b && c.miktar != null; }).map(function(c){
+      return '<strong>' + fmt(c.miktar) + '</strong> × ' + esc(c.b.k); });
+    if (!girdiMetin.length && !pcMetin.length) {
+      formul.innerHTML = '<span class="bos">Girdi ve çıktılar seçildikçe burada görünür.</span>';
+    } else {
+      formul.innerHTML = '1 çalıştırma (parçala):<br>' + (girdiMetin.join(' + ') || '<span class="bos">girdi…</span>') +
+        ' <span class="ok">→</span> ' + (pcMetin.join(' + ') || '<span class="bos">çıktılar…</span>');
+    }
+    var anahtar = paySel ? paySel.value : 'BOY';
+    var parcalar = pcler.filter(function(c){ return c.b; }).map(function(c){
+      var w = anahtar === 'YUZDE' ? c.yuzde : anahtar === 'ESIT' ? c.miktar : ((c.miktar != null && c.boy != null) ? c.miktar * c.boy : null);
+      return {ad: c.b.k, w: w}; });
+    var hazir = parcalar.length > 1 && parcalar.every(function(p){ return p.w != null && p.w > 0; });
+    var etiket = anahtar === 'YUZDE' ? 'yüzde (elle)' : anahtar === 'ESIT' ? 'eşit (adet başı)' : 'boy oranı';
+    if (hazir) {
+      var toplam = parcalar.reduce(function(t, p){ return t + p.w; }, 0);
+      payKutu.innerHTML = '<div class="op-ozet-baslik" style="margin-bottom:.3rem">Maliyet payı (' + etiket + ')</div>' + parcalar.map(function(p){
+        return '<div class="op-pay"><span class="mono">' + esc(p.ad) + '</span><strong>%' + fmt(p.w / toplam * 100, 1) + '</strong></div>'; }).join('') +
+        (anahtar === 'YUZDE' && Math.abs(toplam - 100) > 0.0001 ? '<div class="op-uyari">Yüzdeler toplamı %100 olmalı (şu an %' + fmt(toplam, 2) + ').</div>' : '');
+      payKutu.hidden = false;
+    } else if (parcalar.length > 1) {
+      payKutu.innerHTML = '<span class="bos">Maliyet payı için her çıktının ' + (anahtar === 'YUZDE' ? 'yüzdesi' : anahtar === 'ESIT' ? 'adedi' : 'adedi ve boyu') + ' gerekli.</span>'; payKutu.hidden = false;
+    } else { payKutu.hidden = true; payKutu.innerHTML = ''; }
+  }
+  function pcEkle(){
+    var tf = document.getElementById('id_pc-TOTAL_FORMS'), i = parseInt(tf.value, 10);
+    var tr = document.createElement('tr');
+    tr.innerHTML = document.getElementById('bos-pc').innerHTML.replace(/__prefix__/g, i);
+    pcGovde.appendChild(tr); tf.value = i + 1;
+    if (window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+    guncelle();
+  }
   function satirEkle(){
     var tf = document.getElementById('id_satir-TOTAL_FORMS'), i = parseInt(tf.value, 10);
     var tr = document.createElement('tr');
@@ -324,8 +435,11 @@
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
   document.getElementById('yan-ekle').addEventListener('click', yanEkle);
+  document.getElementById('pc-ekle').addEventListener('click', pcEkle);
   yanAc.addEventListener('click', yanEkle);
-  [satirGovde, yanGovde].forEach(function(g){
+  if (turSel) turSel.addEventListener('change', function(){ modGuncelle(); guncelle(); });
+  if (paySel) paySel.addEventListener('change', guncelle);
+  [satirGovde, yanGovde, pcGovde].forEach(function(g){
     g.addEventListener('click', function(e){ if (e.target.classList.contains('op-sil')) { e.target.closest('tr').remove(); guncelle(); } });
     g.addEventListener('change', guncelle);
     g.addEventListener('input', guncelle);
@@ -333,6 +447,7 @@
   [miktarInput, boyInput].forEach(function(el){ if (el) el.addEventListener('input', guncelle); });
   var ciktiSel = document.querySelector('select[name="cikti"]'); if (ciktiSel) ciktiSel.addEventListener('change', guncelle);
   if (!satirGovde.querySelector('tr')) satirEkle();                 // yeni operasyon: ilk girdi satırı hazır gelir (boş satır sunucuda atlanır)
+  modGuncelle();
   guncelle();
   if (yanGovde.querySelectorAll('tr').length > 0) boyInput.required = true;
 })();

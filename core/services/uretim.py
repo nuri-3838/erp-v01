@@ -209,6 +209,11 @@ def _girdi_ozeti(op) -> dict:
     yanlar = ek_ciktilar(op)
     birim = (op.cikti.uretim_birimi.ad or "").lower()
     tam_liste = "\n".join(f"{sade(g.miktar)} {g.girdi.uretim_birimi.kisa_ad or g.girdi.uretim_birimi.ad} {g.girdi.kod}" for g in girdiler)
+    if op.tur == Operasyon.Tur.PARCALA:                                      # '1 BOY 150-20-0002 → 64 × 151-20-0014 + 64 × 151-20-0015'
+        g = girdiler[0] if girdiler else None
+        ana = (f"{sade(g.miktar)} {g.girdi.uretim_birimi.kisa_ad or g.girdi.uretim_birimi.ad} {g.girdi.kod} → " if g else "") + \
+              " + ".join(f"{sade(c.miktar)} × {c.stok.kod}" for c in tanim_ciktilari(op))
+        return {"ana": ana, "yan": [], "tam_liste": tam_liste, "girdi_sayisi": len(girdiler)}
     yan_metin = [f"+{sade(y.miktar)} × {y.stok.kod}" for y in yanlar]
     if len(girdiler) == 1:
         g = girdiler[0]
@@ -238,7 +243,8 @@ def operasyon_liste(*, ara="", istasyon=None, seri="", tam_boy=False, yan_cikti=
         kok = op.cikti.kod.startswith("152-") and not kul
         return {
             "op": op, "seri": seriler[op.pk], "seri_etiket": SERI_ETIKET[seriler[op.pk]], "baglantisiz": seriler[op.pk] == "BAGLANTISIZ",
-            "tam_boy": op.tam_calistirma, "yan_sayisi": len(ek_ciktilar(op)), "kullanan_sayisi": len({o.pk for o in kul}),
+            "tam_boy": op.tam_calistirma, "yan_sayisi": len(ek_ciktilar(op)) if op.tur == Operasyon.Tur.URET else 0,
+            "parcala": op.tur == Operasyon.Tur.PARCALA, "cikti_sayisi": len(tanim_ciktilari(op)), "kullanan_sayisi": len({o.pk for o in kul}),
             "bitmis_urun": kok, "ozet": _girdi_ozeti(op),
             "ara_metin": buyuk_harf_tr(" ".join([op.cikti.kod, op.cikti.ad] + [f"{g.girdi.kod} {g.girdi.ad}" for g in op.girdiler.all()]
                                                 + [f"{y.stok.kod} {y.stok.ad}" for y in ek_ciktilar(op)]))}

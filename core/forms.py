@@ -1332,6 +1332,40 @@ class OperasyonYanCiktiSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+class OperasyonParcaCiktiSatirForm(forms.Form):
+    """ÜRETİM > Operasyon Tanımları > PARÇALA çıktıları satırı: stok + adet/çalıştırma + boy (mm, BOY anahtarında) + pay % (YÜZDE anahtarında).
+    İlk satır referans çıktı. Boş satır atlanır; anahtara bağlı zorunluluklar serviste."""
+    stok = forms.ModelChoiceField(label="Çıktı", queryset=Stok.objects.none(), required=False, empty_label="— çıktı seç —")
+    miktar = TRDecimalField(label="Adet / çalıştırma", basamak=3, required=False)
+    boy_mm = TRDecimalField(label="Boy (mm)", basamak=2, required=False)
+    yuzde = TRDecimalField(label="Pay %", basamak=4, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["stok"].queryset = Stok.objects.filter(silindi=False, uretim_urunu=True).order_by("kod")
+        self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["stok"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        stok, miktar, boy, yuzde = cd.get("stok"), cd.get("miktar"), cd.get("boy_mm"), cd.get("yuzde")
+        if not stok and miktar is None and boy is None and yuzde is None:
+            return cd                              # boş satır — atlanır
+        if not stok:
+            raise forms.ValidationError("Çıktı stoğunu seçin.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Adet sıfırdan büyük olmalı.")
+        if boy is not None and boy <= 0:
+            raise forms.ValidationError("Boy (mm) sıfırdan büyük olmalı.")
+        if yuzde is not None and not (0 < yuzde <= 100):
+            raise forms.ValidationError("Pay % 0 ile 100 arasında olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
 class IhtiyacHesaplaSatirForm(forms.Form):
     """ÜRETİM > İhtiyaç Hesapla satırı: hedef ürün + miktar (formset satırı, aynı 'boş satır
     atlanır' deseni). Hedef adayları en az bir aktif Operasyon'u olan kartlarla sınırlı —
