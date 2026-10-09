@@ -1166,7 +1166,16 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     # YAN ÇIKTI varsa her biri için de GİRİŞ yazılır; toplam girdi maliyeti BOY ORANINA göre (miktar × boy_mm) paylaştırılır — TL ve USD
     # ayrı, yuvarlama farkı ana çıktıya (toplam birebir korunur).
     from core.services import stok_fis
-    agirlik = {k: (m * boy if boy else Decimal("0")) for k, _, m, boy in ciktilar}
+    tanim_satiri = {c.stok_id: c for c in tanim_ciktilari(operasyon)}
+    agirlik = {}                                   # paylaştırma ağırlığı: tanımın pay anahtarına göre, GELEN adetten (fire gelenlere yayılır); YÜZDE sabit
+    for k, sid, m, boy in ciktilar:
+        if operasyon.pay_anahtari == Operasyon.PayAnahtari.YUZDE:
+            c = tanim_satiri.get(sid)
+            agirlik[k] = (c.yuzde if c is not None and c.yuzde else Decimal("0"))
+        elif operasyon.pay_anahtari == Operasyon.PayAnahtari.ESIT:
+            agirlik[k] = m
+        else:
+            agirlik[k] = (m * boy) if boy else Decimal("0")
     bilinen = toplam_girdi_maliyeti > 0
     # ONAY ANI SNAPSHOT'I: çıktı satırları (miktar, boy, pay oranı) kayda yazılır; sonraki yeniden paylaştırmalar bunlara göre yapılır.
     toplam_agirlik = sum(agirlik.values(), Decimal("0"))

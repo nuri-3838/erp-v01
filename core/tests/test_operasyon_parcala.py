@@ -237,3 +237,62 @@ class UretimEmriTest(ParcalaBase):
         k = kayitlar[op.pk]
         self.assertEqual(k.hedef_cikti_miktari, D("20"))                                                     # referans SAĞ üretilecek
         self.assertEqual(kaydi_girdi_satirlari(k).get().planlanan_miktar, D("1.666667"))
+
+
+class OnayPayTest(ParcalaBase):
+    """Onayda girdi maliyeti çıktılara pay anahtarıyla dağıtılır: BOY (miktar × boy), EŞİT (adet başı), YÜZDE (elle); snapshot ağırlığı saklanır ve
+    yeniden paylaştırma (uretim_senkronla) tanıma değil snapshot'a bakar."""
+
+    def kur(self, anahtar, ciktilar):
+        from core.models import StokHareket
+        from core.services.hareket import hareket_ekle
+        profil = self.stok("P", self.boy, satinalma=True)
+        sag, sol = self.stok("SAG"), self.stok("SOL")
+        op = self.parcala(profil, [(sag,) + ciktilar[0], (sol,) + ciktilar[1]], anahtar=anahtar, tam_boy=True)
+        hareket_ekle(stok_id=profil.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 1), tur=StokHareket.Tur.GIRIS, miktar=D("10"), giris_tutar_try=D("6400"),
+                     giris_tutar_usd=D("160"))
+        k = operasyon_kaydi_olustur(operasyon_id=op.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 9), hedef_cikti_miktari=D(str(ciktilar[0][0])))
+        operasyon_kaydi_onayla(k)
+        return profil, sag, sol, k
+
+    def girisler(self, k):
+        from core.models import StokHareket
+        return {h.stok.kod: h for h in StokHareket.objects.filter(operasyon_kaydi=k, silindi=False, tur=StokHareket.Tur.GIRIS).select_related("stok")}
+
+    def snap(self, k):
+        from core.models import OperasyonKaydiCikti
+        return {c.stok.kod: c for c in OperasyonKaydiCikti.objects.filter(kayit=k, silindi=False).select_related("stok")}
+
+    def test_esit_adet_basi(self):
+        profil, sag, sol, k = self.kur(ESIT, [(12, None, None), (4, None, None)])                      # 1 BOY = 640 TL → 16 adet, adet başı 40
+        g = self.girisler(k)
+        self.assertEqual((g["SAG"].miktar, g["SAG"].tutar_try, g["SOL"].miktar, g["SOL"].tutar_try), (D("12"), D("480.00"), D("4"), D("160.00")))
+        self.assertEqual((g["SAG"].tutar_usd, g["SOL"].tutar_usd), (D("12.00"), D("4.00")))
+        s = self.snap(k)
+        self.assertEqual((s["SAG"].pay_orani, s["SAG"].agirlik, s["SOL"].pay_orani, s["SOL"].agirlik, s["SAG"].ana_mi, s["SOL"].ana_mi),
+                         (D("0.75"), D("12"), D("0.25"), D("4"), True, False))
+        for st in (sag, sol):
+            st.refresh_from_db()
+            self.assertEqual(st.ort_maliyet_try, D("40.000000"))                                             # adet başı eşit
+
+    def test_boy_orani(self):
+        profil, sag, sol, k = self.kur(BOY, [(12, 300, None), (4, 600, None)])                         # 3600 : 2400 → %60 / %40
+        g = self.girisler(k)
+        self.assertEqual((g["SAG"].tutar_try, g["SOL"].tutar_try), (D("384.00"), D("256.00")))
+        self.assertEqual((self.snap(k)["SAG"].agirlik, self.snap(k)["SOL"].agirlik), (D("3600"), D("2400")))
+
+    def test_yuzde_elle(self):
+        profil, sag, sol, k = self.kur(YUZDE, [(12, None, 25), (4, None, 75)])
+        g = self.girisler(k)
+        self.assertEqual((g["SAG"].tutar_try, g["SOL"].tutar_try), (D("160.00"), D("480.00")))
+        self.assertEqual((self.snap(k)["SAG"].agirlik, self.snap(k)["SOL"].agirlik, self.snap(k)["SOL"].pay_orani), (D("25"), D("75"), D("0.75")))
+
+    def test_yeniden_paylastirma_snapshottan_tanim_degisse_de(self):
+        from core.services import stok_fis
+        profil, sag, sol, k = self.kur(ESIT, [(12, None, None), (4, None, None)])
+        op = k.operasyon
+        operasyon_guncelle(op, istasyon_id=self.kesim.pk, satirlar=[(profil, D("1"))], pay_anahtari=YUZDE,
+                           ciktilar=[(sag, D("12"), None, D("10")), (sol, D("4"), None, D("90"))])          # tanım değişti
+        self.assertEqual(stok_fis.uretim_senkronla(k), [])                                                    # snapshot ağırlığı: pay aynı → değişen yok
+        g = self.girisler(k)
+        self.assertEqual((g["SAG"].tutar_try, g["SOL"].tutar_try), (D("480.00"), D("160.00")))
