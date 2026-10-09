@@ -3177,34 +3177,6 @@ class OperasyonKaydiCikti(TemelModel):
         return f"{self.kayit} → {self.stok.kod} × {self.miktar} (%{self.pay_orani * 100:.1f})"
 
 
-class OperasyonYanCikti(TemelModel):
-    """Operasyonun YAN ÇIKTISI: ana çıktıyla birlikte (1 çalıştırmada) çıkan ikinci parça — ör. 6+6 SAĞ ayak boyundan 3 adet
-    kesilince kalan artandan 1 adet 5+5 SAĞ. Kayıt onayında ana çıktının yanında stoğa GİRİŞ yazılır; girdi maliyeti boy oranına
-    (miktar × boy_mm) göre paylaştırılır. 'Çıktı başına 1 aktif operasyon' kuralı yalnız ANA çıktı içindir: bir stok başka bir
-    operasyonun yan çıktısı da olabilir."""
-
-    operasyon = models.ForeignKey(Operasyon, on_delete=models.CASCADE, related_name="yan_ciktilar")
-    stok = models.ForeignKey(Stok, verbose_name="yan çıktı", on_delete=models.PROTECT, related_name="yan_cikti_kullanimlari")
-    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=6)
-    boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2)
-    sira = models.PositiveSmallIntegerField("sıra", default=0)
-
-    class Meta:
-        db_table = "core_operasyon_yan_cikti"
-        verbose_name = "operasyon yan çıktısı"
-        verbose_name_plural = "operasyon yan çıktıları"
-        ordering = ["sira", "pk"]
-        constraints = [
-            models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_operasyon_yan_cikti_miktar_gt0"),
-            models.CheckConstraint(condition=models.Q(boy_mm__gt=0), name="ck_operasyon_yan_cikti_boy_gt0"),
-            models.UniqueConstraint(fields=["operasyon", "stok"], condition=models.Q(silindi=False),
-                                    name="uq_operasyon_yan_cikti_aktif"),
-        ]
-
-    def __str__(self):
-        return f"{self.operasyon} → yan: {self.stok.kod} × {self.miktar}"
-
-
 class OperasyonCikti(TemelModel):
     """Operasyon TANIMININ çıktıları (ÜRET: ana + yan çıktılar; PARÇALA: N çıktı). Sıra 0 = REFERANS çıktı (``Operasyon.cikti`` ile aynı stok).
     ``surucu``: bu çıktı bu tanımdan "üretilir" sayılır (planlama/ürün ağacı onu bu tanıma bağlar) — ÜRET'te yalnız referans çıktı, PARÇALA'da
@@ -3364,10 +3336,9 @@ class OperasyonKaydi(TemelModel):
         "Cari", verbose_name="fasoncu (cari)", null=True, blank=True, on_delete=models.PROTECT, related_name="fason_operasyon_kayitlari")
     fason_donus = models.ForeignKey(
         "FasonDonus", verbose_name="fason dönüş belgesi", null=True, blank=True, on_delete=models.PROTECT, related_name="kayitlar")
-    # FASON GELEN ADET (taslakta girilir): fasoncudan fiilen gelen ana çıktı adedi ve yan çıktılar ({stok pk: adet}); boşsa BEKLENEN adet gelmiş sayılır.
-    # Girdi tüketimi beklenen (tam boya yuvarlanmış) çalıştırmadan, stoğa giren adet ve fason bedeli GELEN adetten; fark FİRE (OperasyonKaydiCikti).
-    gelen_ana = models.DecimalField("gelen ana çıktı adedi", max_digits=18, decimal_places=6, null=True, blank=True)
-    gelen_yan = models.JSONField("gelen yan çıktı adetleri", default=dict, blank=True)
+    # FASON GELEN ADET (taslakta girilir): fasoncudan fiilen gelen adetler, TÜM çıktılar için {stok pk: adet} (referans dahil). Boşsa ÜRET'te BEKLENEN adet
+    # gelmiş sayılır, PARÇALA'da 0. Girdi tüketimi beklenen çalıştırmadan, stoğa giren adet ve fason bedeli GELEN adetten; fark FİRE (OperasyonKaydiCikti).
+    gelen = models.JSONField("gelen adetler ({stok pk: adet})", default=dict, blank=True)
 
     class Meta:
         db_table = "core_operasyon_kaydi"

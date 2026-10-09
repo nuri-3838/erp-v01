@@ -7,7 +7,7 @@ from core.models import Operasyon, OperasyonKaydi
 from core.services import urun_agaci as ua
 from core.services.uretim import (
     UretimHatasi, ihtiyac_hesapla, kaydi_girdi_satirlari, operasyon_guncelle, operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_olustur,
-    tanim_ciktilari, uretim_emri_olustur,
+    operasyon_yan_ciktilari, tanim_ciktilari, uretim_emri_olustur,
 )
 from core.tests.test_uretim_tam_boy import TamBoyBase
 
@@ -199,7 +199,7 @@ class TanimKuraliTest(ParcalaBase):
         operasyon_guncelle(op, istasyon_id=self.kesim.pk, satirlar=[(profil, D("1"))], tur=PARCALA, pay_anahtari=ESIT,
                            ciktilar=[(ana, D("3"), None, None), (sol, D("1"), None, None)])
         op.refresh_from_db()
-        self.assertEqual((op.tur, op.pay_anahtari, op.cikti.kod, op.cikti_miktar, op.yan_ciktilar.filter(silindi=False).count()), (PARCALA, ESIT, "ANA", D("3.000"), 0))
+        self.assertEqual((op.tur, op.pay_anahtari, op.cikti.kod, op.cikti_miktar, operasyon_yan_ciktilari(op).count()), (PARCALA, ESIT, "ANA", D("3.000"), 0))
         self.assertEqual([(c.stok.kod, c.surucu) for c in tanim_ciktilari(op)], [("ANA", True), ("SOL", True)])
         with self.assertRaisesMessage(UretimHatasi, "referans çıktısı"):
             operasyon_guncelle(op, istasyon_id=self.kesim.pk, satirlar=[(profil, D("1"))], ciktilar=[(sol, D("1"), None, None), (ana, D("3"), None, None)])

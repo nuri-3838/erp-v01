@@ -97,7 +97,7 @@ class GelenTest(FasonParcalaBase):
         fd.gelen_guncelle(d, {f"gelen_{k.pk}_ana": "6", f"gelen_{k.pk}_{self.sol.pk}": "24"})     # SOL sürücü: 24/12 = 2
         k.refresh_from_db()
         self.assertEqual((k.hedef_cikti_miktari, kaydi_girdi_satirlari(k).get().planlanan_miktar), (D("24"), D("2")))
-        self.assertEqual(k.gelen_yan, {str(self.sag.pk): "6", str(self.sol.pk): "24"})          # tek yapı: referans dahil
+        self.assertEqual(k.gelen, {str(self.sag.pk): "6", str(self.sol.pk): "24"})          # tek yapı: referans dahil
         c = self.ciktilar(d)
         self.assertEqual((c["151-20-0014"]["beklenen"], c["151-20-0014"]["fire"], c["151-20-0015"]["fire"]), (D("24"), D("18"), D("0")))
         with self.assertRaisesMessage(FasonHatasi, "negatif"):

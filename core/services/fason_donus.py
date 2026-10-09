@@ -146,13 +146,12 @@ def gelen_ayarla(kayit: OperasyonKaydi, gelen_ana=None, gelen_yan=None, *, gelen
             uretim_servis.kayit_hedefini_guncelle(kayit, hedef)
         except uretim_servis.UretimHatasi as e:
             raise FasonHatasi(str(e))
-    kayit.gelen_ana = temiz.get(referans_pk)
-    kayit.gelen_yan = {pk: format(v, "f") for pk, v in temiz.items()}
+    kayit.gelen = {pk: format(v, "f") for pk, v in temiz.items()}
     try:
         uretim_servis.kayit_gelen_adetleri(kayit)                  # doğrula (kaydetmeden önce)
     except uretim_servis.UretimHatasi as e:
         raise FasonHatasi(str(e))
-    kayit.save(update_fields=["gelen_ana", "gelen_yan", "updated_at"])
+    kayit.save(update_fields=["gelen", "updated_at"])
     return kayit
 
 

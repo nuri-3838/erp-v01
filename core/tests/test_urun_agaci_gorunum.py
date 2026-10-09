@@ -15,7 +15,7 @@ from core.models import EkranYetki, Kategori, Stok, StokHareket
 from core.services import urun_agaci as ua
 from core.services.hareket import hareket_ekle
 from core.services.uretim import (
-    ana_cikti_payi, ihtiyac_hesapla, operasyon_kaydi_onayla, operasyon_olustur,
+    ana_cikti_payi, ihtiyac_hesapla, operasyon_kaydi_onayla, operasyon_olustur, operasyon_yan_ciktilari,
 )
 from core.tests.test_uretim_yan_cikti import YanCiktiBase
 
@@ -74,7 +74,7 @@ class IhtiyacSecenekTest(GorunumBase):
 
     def test_yan_cikti_pay_dusumu(self):
         """6+6 SAĞ: 1 boy → 3 ana adet (+1 yan); ana başına girdi = 1/3 × boy payı."""
-        yan = [self.op.yan_ciktilar.get()]
+        yan = [operasyon_yan_ciktilari(self.op).get()]
         pay = ana_cikti_payi(self.op.cikti_miktar, self.op.boy_mm, yan)
         self.assertEqual(pay, D("3") * D("1292.60") / (D("3") * D("1292.60") + D("1063.53")))
         tam = ihtiyac_hesapla([(self.ana, D("1"))], boy_yuvarla=False)["ozet"][0]["ihtiyac"]
@@ -88,7 +88,7 @@ class IhtiyacSecenekTest(GorunumBase):
         kayit = self.kayit("3")
         operasyon_kaydi_onayla(kayit)
         ana = kayit.ciktilar.get(ana_mi=True)
-        pay = ana_cikti_payi(self.op.cikti_miktar, self.op.boy_mm, [self.op.yan_ciktilar.get()])
+        pay = ana_cikti_payi(self.op.cikti_miktar, self.op.boy_mm, [operasyon_yan_ciktilari(self.op).get()])
         self.assertAlmostEqual(ana.pay_orani, pay, places=9)
 
     def test_pay_eksik_boyda_ana_yuzde_100(self):
@@ -167,7 +167,7 @@ class MalzemeMaliyetTest(GorunumBase):
         self.maliyetli()
         m = ua.urun_maliyet(ua.graf_yukle(), self.mamul_c, D("1"))
         satir = {s["stok"].kod: s for gr in m["gruplar"] for s in gr["satirlar"]}
-        pay = ana_cikti_payi(self.op.cikti_miktar, self.op.boy_mm, [self.op.yan_ciktilar.get()])
+        pay = ana_cikti_payi(self.op.cikti_miktar, self.op.boy_mm, [operasyon_yan_ciktilari(self.op).get()])
         self.assertEqual(satir["PROFIL"]["tuketim"], D("1") * pay)                  # 3 AYAK66 = 1 boy × pay
 
 

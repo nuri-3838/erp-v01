@@ -26,7 +26,7 @@ from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Depo, IsIstasyonu, Operasyon, OperasyonCikti, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiCikti, OperasyonKaydiGirdi, OperasyonYanCikti,
+    Depo, IsIstasyonu, Operasyon, OperasyonCikti, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiCikti, OperasyonKaydiGirdi,
     Stok, StokHareket, TeklifSiparis, UretimEmri, UretimEmriKalemi,
 )
 from core.sayi import SayiHatasi, parse_tr, yuvarla
@@ -331,13 +331,14 @@ _KORU = KORU = object()          # operasyon_guncelle: "bu alana dokunma"
 
 
 def operasyon_yan_ciktilari(operasyon: Operasyon):
-    return operasyon.yan_ciktilar.filter(silindi=False).select_related("stok").order_by("sira", "pk")
+    """ÜRET tanımın yan çıktı satırları (OperasyonCikti, sürücü olmayan) — queryset; PARÇALA'da boş (yan çıktı kavramı yok)."""
+    return operasyon.ciktilar.filter(silindi=False, surucu=False).select_related("stok").order_by("sira", "pk")
 
 
 def ana_cikti_payi(cikti_miktar, boy_mm, yanlar) -> Decimal:
     """Bir çalıştırmada ANA çıktının girdi maliyetinden/tüketiminden alacağı pay (0-1): ağırlık = miktar × boy_mm (ana + yan çıktılar).
     Onaydaki maliyet paylaştırmasıyla AYNI kural: yan çıktı yoksa ya da herhangi bir ağırlık eksik/sıfırsa ana çıktı %100. ``yanlar``:
-    ``miktar`` ve ``boy_mm`` alanlı satırlar (OperasyonYanCikti), bir çalıştırma başına miktarlarla."""
+    ``miktar`` ve ``boy_mm`` alanlı satırlar (OperasyonCikti yan satırları), bir çalıştırma başına miktarlarla."""
     yanlar = list(yanlar)
     if not yanlar:
         return Decimal("1")
@@ -380,21 +381,15 @@ def _yan_ciktilari_dogrula(cikti, satirlar, yan_ciktilar, boy_mm):
         raise UretimHatasi("Yan çıktısı olan operasyonda ana çıktının boyu (mm) zorunludur.")
 
 
-def _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici):
-    for i, (stok, miktar, boy) in enumerate(yan_ciktilar, start=1):
-        OperasyonYanCikti.objects.create(operasyon=operasyon, stok=stok, miktar=miktar, boy_mm=boy, sira=i * 10,
-                                         created_by=kullanici, updated_by=kullanici)
-
-
 def operasyon_ciktilari(operasyon: Operasyon):
     """Tanımın çıktı satırları (OperasyonCikti): sıra 0 referans/ana çıktı, sonra yan (ÜRET) ya da diğer (PARÇALA) çıktılar."""
     return operasyon.ciktilar.filter(silindi=False).select_related("stok").order_by("sira", "pk")
 
 
 def _ciktilari_esitle(operasyon: Operasyon, kullanici, satirlar):
-    """Tanımın çıktı satırlarını (OperasyonCikti) yeniden yazar: mevcut aktif satırlar soft-delete, ``satirlar``
-    [(stok, miktar, boy_mm, yuzde, surucu), ...] sırasıyla (sıra 0 = referans) yazılır. ÜRET'te çift yazım: ``cikti``/``cikti_miktar``/``boy_mm`` +
-    yan çıktı satırlarının yansıması; PARÇALA'da çıktıların TEK kaynağı bu tablodur."""
+    """Tanımın çıktı satırlarını (OperasyonCikti — çıktıların TEK kaynağı) yeniden yazar: mevcut aktif satırlar soft-delete, ``satirlar``
+    [(stok, miktar, boy_mm, yuzde, surucu), ...] sırasıyla (sıra 0 = referans) yazılır. ``Operasyon.cikti``/``cikti_miktar``/``boy_mm`` referans
+    satırın (sıra 0) kopyasıdır (liste/form/kayıt kolaylığı; tanım servisleri birlikte günceller)."""
     operasyon.ciktilar.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     for i, (stok, miktar, boy, yuzde, surucu) in enumerate(satirlar):
         OperasyonCikti.objects.create(operasyon=operasyon, stok=stok, miktar=miktar, boy_mm=boy, yuzde=yuzde, sira=i * 10, surucu=surucu,
@@ -547,7 +542,6 @@ def operasyon_olustur(*, istasyon_id, cikti_id=None, cikti_miktar=None, satirlar
     operasyon = Operasyon.objects.create(
         istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=_tam_boy_mi(satirlar) if tam_boy is None else bool(tam_boy), boy_mm=boy,
         created_by=kullanici, updated_by=kullanici)
-    _yan_ciktilari_yaz(operasyon, yan_ciktilar, kullanici)
     for i, (girdi, miktar) in enumerate(satirlar, start=1):
         OperasyonGirdi.objects.create(
             operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
@@ -585,7 +579,6 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar=None, 
             raise UretimHatasi("Tanımın referans çıktısı (ilk satır) sonradan değiştirilemez; yeni tanım açın.")
         _girdi_satirlarini_dogrula(operasyon.cikti, satirlar)
         operasyon.girdiler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-        operasyon.yan_ciktilar.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)   # ÜRET'ten geçişte yan satırlar kalkar
         operasyon.istasyon, operasyon.tur, operasyon.pay_anahtari = istasyon, yeni_tur, anahtar
         operasyon.cikti_miktar, operasyon.boy_mm = temiz[0][1], temiz[0][2]
         if tam_boy is not None:
@@ -608,10 +601,6 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar=None, 
     _yan_ciktilari_dogrula(operasyon.cikti, satirlar, yeni_yanlar, yeni_boy)
     operasyon.girdiler.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    if yan_ciktilar is not None:
-        operasyon.yan_ciktilar.filter(silindi=False).update(
-            silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-        _yan_ciktilari_yaz(operasyon, yeni_yanlar, kullanici)
     operasyon.boy_mm = yeni_boy
     operasyon.istasyon = istasyon
     operasyon.cikti_miktar = cm
@@ -1080,19 +1069,17 @@ def kayit_ciktilari(kayit: OperasyonKaydi) -> list:
 
 
 def kayit_gelen_adetleri(kayit: OperasyonKaydi, ciktilar=None) -> dict:
-    """{anahtar: stoğa girecek adet}. Fason dönüşte fasoncudan GELEN adet — TEK yapı: ``gelen_yan`` {stok pk: adet} tüm çıktılar için (referans dahil;
-    eski kayıtta referans ``gelen_ana``da). Boş: ÜRET'te beklenen gelmiş sayılır, PARÇALA'da 0. Gelen > beklenen ya da negatif reddedilir; ÜRET'te ana
+    """{anahtar: stoğa girecek adet}. Fason dönüşte fasoncudan GELEN adet — TEK yapı: ``gelen`` {stok pk: adet} tüm çıktılar için (referans dahil).
+    Boş: ÜRET'te beklenen gelmiş sayılır, PARÇALA'da 0. Gelen > beklenen ya da negatif reddedilir; ÜRET'te ana
     çıktı 0 olamaz, PARÇALA'da en az bir çıktı > 0 olmalı. Fasonsuz kayıtta her zaman beklenen adet."""
     ciktilar = ciktilar if ciktilar is not None else kayit_ciktilari(kayit)
     if not kayit.fason_cari_id:
         return {a: m for a, _st, m, _b in ciktilar}
     parcala = kayit.operasyon.tur == Operasyon.Tur.PARCALA
-    gelen = kayit.gelen_yan or {}
+    gelen = kayit.gelen or {}
     sonuc = {}
     for anahtar, stok, beklenen, _boy in ciktilar:
         ham = gelen.get(str(stok.pk))
-        if ham in (None, "") and anahtar == "ana":
-            ham = kayit.gelen_ana
         try:
             g = (Decimal("0") if parcala else beklenen) if ham in (None, "") else Decimal(str(ham))
         except Exception:

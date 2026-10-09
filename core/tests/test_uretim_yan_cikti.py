@@ -101,7 +101,7 @@ class KisitTest(YanCiktiBase):
     def test_stok_baska_operasyonun_ana_cikti_olup_bu_operasyonun_yan_ciktisi_olabilir(self):
         """5+5 SAĞ'ın kendi operasyonu da var; 6+6'nın yan çıktısı da — 'çıktı başına 1 operasyon' yalnız ANA çıktı için."""
         self.yeni_op(self.yan, [], girdi=self.profil, boy="1063.53")                    # AYAK55'in kendi (ana çıktı) operasyonu
-        self.assertEqual(self.op.yan_ciktilar.filter(silindi=False, stok=self.yan).count(), 1)     # setUp'taki yan çıktı bağı duruyor
+        self.assertEqual(operasyon_yan_ciktilari(self.op).filter(stok=self.yan).count(), 1)     # setUp'taki yan çıktı bağı duruyor
 
     def test_yan_cikti_uretim_urunu_olmali(self):
         c = self._stok("C6", self.kat_ana)
@@ -112,7 +112,7 @@ class KisitTest(YanCiktiBase):
     def test_guncelle_koru_degistir_sil(self):
         op = self.op
         operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(self.profil, D("1"))])
-        self.assertEqual((op.boy_mm, op.yan_ciktilar.filter(silindi=False).count()), (D("1292.60"), 1))                    # korunur
+        self.assertEqual((op.boy_mm, operasyon_yan_ciktilari(op).count()), (D("1292.60"), 1))                    # korunur
         operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(self.profil, D("1"))],
                            yan_ciktilar=[(self.yan, D("2"), D("1000"))])
         y = operasyon_yan_ciktilari(op).get()
@@ -121,7 +121,7 @@ class KisitTest(YanCiktiBase):
             operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(self.profil, D("1"))], boy_mm="")
         operasyon_guncelle(op, istasyon_id=self.kesim.pk, cikti_miktar=D("3"), satirlar=[(self.profil, D("1"))], yan_ciktilar=[], boy_mm="")
         op.refresh_from_db()
-        self.assertEqual((op.boy_mm, op.yan_ciktilar.filter(silindi=False).count()), (None, 0))
+        self.assertEqual((op.boy_mm, operasyon_yan_ciktilari(op).count()), (None, 0))
 
 
 class OnayVeMaliyetTest(YanCiktiBase):

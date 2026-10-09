@@ -12,7 +12,7 @@ from openpyxl import load_workbook
 
 from core.models import Kategori, Stok
 from core.services import urun_agaci as ua
-from core.services.uretim import ana_cikti_payi, operasyon_olustur
+from core.services.uretim import ana_cikti_payi, operasyon_olustur, operasyon_yan_ciktilari
 from core.tests.test_uretim import _istasyon
 from core.tests.test_urun_agaci_gorunum import GorunumBase
 
@@ -104,7 +104,7 @@ class KullanimServisTest(KullanimBase):
     def test_ana_cikti_yan_payi_tuketime_yansir(self):
         m = self._stok("152-22-8003", self.kat_ana)
         operasyon_olustur(istasyon_id=self.montaj.pk, cikti_id=m.pk, cikti_miktar=D("1"), satirlar=[(self.ana, D("3"))])
-        pay = ana_cikti_payi(self.op.cikti_miktar, self.op.boy_mm, [self.op.yan_ciktilar.get()])
+        pay = ana_cikti_payi(self.op.cikti_miktar, self.op.boy_mm, [operasyon_yan_ciktilari(self.op).get()])
         satirlar = [x for g in self.sonuc(self.profil)["gruplar"] for x in g["satirlar"]]
         r = next(x for x in satirlar if x["urun"].pk == m.pk)
         self.assertEqual(r["tuketim"], pay)                                              # 3 ana ayak = 1 boy × pay

@@ -1,17 +1,12 @@
-"""Operasyon PARÇALA geçişi adım 2: veri göçü (0195) ve çift yazım — OperasyonCikti satırları tanımın cikti/cikti_miktar/boy_mm + yan çıktılarını
-birebir yansıtır; olustur/guncelle/sil sonrası tutarlı; göç idempotent ve geri alınabilir."""
-import importlib
+"""Operasyon PARÇALA geçişi: OperasyonCikti satırları tanımın referans çıktısı (cikti/cikti_miktar/boy_mm kopyası) + yan çıktılarını birebir
+yansıtır; olustur/guncelle/sil sonrası tutarlı. (Veri göçü 0195 canlıda bir kez koşar; eski yan çıktı tablosu 0197 ile kaldırıldı.)"""
 from decimal import Decimal
-
-from django.apps import apps
-from django.test import TestCase
 
 from core.models import Operasyon, OperasyonCikti
 from core.services.uretim import operasyon_ciktilari, operasyon_guncelle, operasyon_olustur, operasyon_sil
 from core.tests.test_uretim_tam_boy import TamBoyBase
 
 D = Decimal
-m = importlib.import_module("core.migrations.0195_operasyon_cikti_veri")
 
 
 def satirlar(op):
@@ -44,25 +39,3 @@ class CiftYazimTest(TamBoyBase):
                           boy_mm=D("100"), yan_ciktilar=[(yan, D("1"), D("50"))])
         op2 = operasyon_olustur(istasyon_id=self.kesim.pk, cikti_id=yan.pk, cikti_miktar=D("5"), satirlar=[(profil, D("1"))])   # YAN'ın kendi tanımı
         self.assertEqual(satirlar(op2), [("YAN", D("5"), None, 0, True)])
-
-
-class GocTest(TamBoyBase):
-    def test_goc_idempotent_ve_geri_alinabilir(self):
-        profil = self.stok("PROFIL", self.boy, satinalma=True)
-        ana, yan, tek = self.stok("ANA"), self.stok("YAN"), self.stok("TEK")
-        op = operasyon_olustur(istasyon_id=self.kesim.pk, cikti_id=ana.pk, cikti_miktar=D("3"), satirlar=[(profil, D("1"))],
-                               boy_mm=D("1292.60"), yan_ciktilar=[(yan, D("1"), D("1063.53"))])
-        op2 = operasyon_olustur(istasyon_id=self.kesim.pk, cikti_id=tek.pk, cikti_miktar=D("18"), satirlar=[(profil, D("1"))])
-        silinen = operasyon_olustur(istasyon_id=self.kesim.pk, cikti_id=self.stok("SIL").pk, cikti_miktar=D("1"), satirlar=[(profil, D("1"))])
-        operasyon_sil(silinen)
-        OperasyonCikti.objects.all().delete()                                                      # göç öncesi durum
-        m.ileri(apps, None)
-        self.assertEqual(satirlar(op), [("ANA", D("3"), D("1292.60"), 0, True), ("YAN", D("1"), D("1063.53"), 10, False)])
-        self.assertEqual(satirlar(op2), [("TEK", D("18"), None, 0, True)])
-        self.assertEqual(OperasyonCikti.objects.filter(operasyon=silinen).count(), 0)              # silinmiş tanım için satır yok
-        m.ileri(apps, None)                                                                        # ikinci koşu: mükerrer yok
-        self.assertEqual(OperasyonCikti.objects.count(), 3)
-        m.geri(apps, None)
-        self.assertEqual(OperasyonCikti.objects.count(), 0)
-        op.refresh_from_db()
-        self.assertEqual((op.cikti.kod, op.cikti_miktar, op.yan_ciktilar.filter(silindi=False).count()), ("ANA", D("3.000"), 1))   # tanım bozulmadı
