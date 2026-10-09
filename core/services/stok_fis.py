@@ -79,15 +79,18 @@ def maliyet_paylastir(toplam, agirliklar: dict, ana_anahtar) -> dict:
 
 
 def uretim_cikti_agirliklari(kayit, ciktilar) -> tuple:
-    """(ağırlıklar {hareket.pk: miktar × boy_mm}, ana hareket pk). Ana çıktının boyu ``Operasyon.boy_mm``, yan çıktılarınki
-    ``OperasyonYanCikti.boy_mm``; boyu bilinmeyen çıktı ağırlığı 0 sayılır (paylaştırma tamamen ana çıktıya düşer)."""
-    op = kayit.operasyon
-    yan_boy = {y.stok_id: y.boy_mm for y in op.yan_ciktilar.filter(silindi=False)}
-    ana = next((h for h in ciktilar if h.stok_id == op.cikti_id), ciktilar[0])
+    """(ağırlıklar {hareket.pk: miktar × boy_mm}, ana hareket pk). Ağırlıklar operasyon TANIMINDAN değil, kayda ONAY ANINDA saklanan
+    ``OperasyonKaydiCikti`` satırlarından (miktar, boy_mm, ana_mi) gelir → tanım sonradan değişse de geçmiş kayıt aynı oranla paylaşılır.
+    Satırı olmayan (eski) kayıt tek çıktıdır: ana çıktı %100. Boyu bilinmeyen çıktı ağırlığı 0 sayılır (tamamı ana çıktıya düşer)."""
+    satirlar = {c.stok_id: c for c in kayit.ciktilar.filter(silindi=False)}
+    ana_stok = next((c.stok_id for c in satirlar.values() if c.ana_mi), kayit.operasyon.cikti_id)
+    ana = next((h for h in ciktilar if h.stok_id == ana_stok), ciktilar[0])
     agirlik = {}
     for h in ciktilar:
-        boy = op.boy_mm if h.pk == ana.pk else yan_boy.get(h.stok_id)
-        agirlik[h.pk] = (h.miktar * boy) if boy else Decimal("0")
+        c = satirlar.get(h.stok_id)
+        agirlik[h.pk] = (c.miktar * c.boy_mm) if (c is not None and c.boy_mm) else Decimal("0")
+    if not satirlar:                                   # eski kayıt: yalnız ana çıktı var → %100
+        agirlik = {ana.pk: Decimal("1")}
     return agirlik, ana.pk
 
 

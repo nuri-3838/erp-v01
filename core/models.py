@@ -3117,6 +3117,34 @@ class Operasyon(TemelModel):
         return self.ad or f"{self.cikti.kod} operasyonu"
 
 
+class OperasyonKaydiCikti(TemelModel):
+    """Onaylı operasyon kaydının ÇIKTI satırı (ana + yan çıktılar): ONAY ANINDAKİ miktar, boy (mm) ve maliyet pay oranı SAKLANIR.
+    Sonradan maliyet yeniden paylaştırması (geç gelen fatura vb.) operasyon tanımına DEĞİL bu satırlara göre yapılır; tanımdaki boy/yan
+    çıktı değişiklikleri geçmiş onaylı kayıtları etkilemez. Satırı olmayan (eski) onaylı kayıt = tek çıktı, ana çıktı %100."""
+
+    kayit = models.ForeignKey("OperasyonKaydi", on_delete=models.CASCADE, related_name="ciktilar")
+    stok = models.ForeignKey(Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="kayit_cikti_satirlari")
+    miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=3)
+    boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
+    pay_orani = models.DecimalField("maliyet pay oranı", max_digits=12, decimal_places=10, default=1)
+    ana_mi = models.BooleanField("ana çıktı", default=True)
+
+    class Meta:
+        db_table = "core_operasyon_kaydi_cikti"
+        verbose_name = "operasyon kaydı çıktısı"
+        verbose_name_plural = "operasyon kaydı çıktıları"
+        ordering = ["-ana_mi", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["kayit", "stok"], condition=models.Q(silindi=False),
+                                    name="uq_operasyon_kaydi_cikti_aktif"),
+            models.CheckConstraint(condition=models.Q(pay_orani__gte=0) & models.Q(pay_orani__lte=1),
+                                   name="ck_operasyon_kaydi_cikti_pay_0_1"),
+        ]
+
+    def __str__(self):
+        return f"{self.kayit} → {self.stok.kod} × {self.miktar} (%{self.pay_orani * 100:.1f})"
+
+
 class OperasyonYanCikti(TemelModel):
     """Operasyonun YAN ÇIKTISI: ana çıktıyla birlikte (1 çalıştırmada) çıkan ikinci parça — ör. 6+6 SAĞ ayak boyundan 3 adet
     kesilince kalan artandan 1 adet 5+5 SAĞ. Kayıt onayında ana çıktının yanında stoğa GİRİŞ yazılır; girdi maliyeti boy oranına

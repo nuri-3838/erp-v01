@@ -6910,16 +6910,18 @@ def operasyon_kaydi_detay(request, pk):
         cikti_hareketleri = list(StokHareket.objects.filter(
             operasyon_kaydi=kayit, tur=StokHareket.Tur.GIRIS, silindi=False).select_related("stok").order_by("pk"))
         cikti_katmani = next((h for h in cikti_hareketleri if h.stok_id == kayit.operasyon.cikti_id), None)
-        toplam_cikti_tutar = sum((h.tutar_try or 0 for h in cikti_hareketleri), 0)
+        saklanan = {c.stok_id: c for c in kayit.ciktilar.filter(silindi=False)}          # onay anında saklanan boy / pay oranı
         ciktilar = [{"hareket": h, "ana": h.stok_id == kayit.operasyon.cikti_id,
-                     "pay": (h.tutar_try / toplam_cikti_tutar * 100) if (h.tutar_try and toplam_cikti_tutar) else None}
+                     "boy_mm": saklanan[h.stok_id].boy_mm if h.stok_id in saklanan else None,
+                     "pay": saklanan[h.stok_id].pay_orani * 100 if h.stok_id in saklanan else None}
                     for h in cikti_hareketleri]
     else:
         ciktilar = []
     yan_tanimlar = list(uretim_servis.operasyon_yan_ciktilari(kayit.operasyon))
     return render(request, "core/operasyon_kaydi_detay.html",
                   {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
-                   "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar})
+                   "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar,
+                   "yonetici": yonetici_mi(request.user)})
 
 
 @ekran_gerekli("operasyon_kayitlari")
@@ -6932,6 +6934,25 @@ def operasyon_kaydi_onayla(request, pk):
         except uretim_servis.UretimHatasi as e:
             messages.error(request, str(e))
     return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
+
+
+@yonetici_gerekli
+def operasyon_kaydi_geri_al_sil(request, pk):
+    """YALNIZ yönetici: ONAYLI kaydın tüm stok hareketlerini (girdi çıkışları + ana/yan çıktı girişleri) ve maliyet aktarım fişini geri alıp
+    kaydı siler. Çıktı başka yerde tüketildiyse servisin hata mesajı gösterilir, hiçbir şey değişmez."""
+    kayit = get_object_or_404(OperasyonKaydi, pk=pk, silindi=False)
+    if request.method != "POST":
+        return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
+    if kayit.durum != OperasyonKaydi.Durum.ONAYLI:
+        messages.error(request, "Yalnız onaylı kayıt geri alınıp silinebilir (taslak için 'İptal Et').")
+        return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
+    try:
+        uretim_servis.operasyon_kaydi_sil(kayit, kullanici=request.user, onayli_geri_al=True)
+    except uretim_servis.UretimHatasi as e:
+        messages.error(request, str(e))
+        return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
+    messages.success(request, f"{kayit.no}: stok hareketleri ve maliyet fişi geri alındı, kayıt silindi.")
+    return redirect("core:operasyon_kayitlari")
 
 
 @ekran_gerekli("operasyon_kayitlari")

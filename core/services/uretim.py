@@ -27,7 +27,7 @@ from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
 from core.models import (
-    Depo, IsIstasyonu, Operasyon, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiGirdi, OperasyonYanCikti,
+    Depo, IsIstasyonu, Operasyon, OperasyonGirdi, OperasyonKaydi, OperasyonKaydiCikti, OperasyonKaydiGirdi, OperasyonYanCikti,
     Stok, StokHareket, TeklifSiparis, UretimEmri, UretimEmriKalemi,
 )
 from core.sayi import SayiHatasi, parse_tr, yuvarla
@@ -717,6 +717,15 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
         ciktilar.append((f"yan{y.pk}", y.stok_id, yuvarla(calistirma * y.miktar, 3), y.boy_mm))
     agirlik = {k: (m * boy if boy else Decimal("0")) for k, _, m, boy in ciktilar}
     bilinen = toplam_girdi_maliyeti > 0
+    # ONAY ANI SNAPSHOT'I: çıktı satırları (miktar, boy, pay oranı) kayda yazılır; sonraki yeniden paylaştırmalar bunlara göre yapılır.
+    toplam_agirlik = sum(agirlik.values(), Decimal("0"))
+    for anahtar, stok_id, miktar, boy in ciktilar:
+        if len(ciktilar) == 1 or not toplam_agirlik or any(a <= 0 for a in agirlik.values()):
+            oran = Decimal("1") if anahtar == "ana" else Decimal("0")
+        else:
+            oran = (agirlik[anahtar] / toplam_agirlik).quantize(Decimal("0.0000000001"))
+        OperasyonKaydiCikti.objects.create(kayit=kayit, stok_id=stok_id, miktar=miktar, boy_mm=boy, pay_orani=oran,
+                                           ana_mi=(anahtar == "ana"), created_by=kullanici, updated_by=kullanici)
     pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, "ana")
     pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, "ana")
     for anahtar, stok_id, miktar, _boy in ciktilar:

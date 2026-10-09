@@ -138,6 +138,7 @@ urlpatterns = [
     path("uretim/kayitlar/<int:pk>/onayla/", views.operasyon_kaydi_onayla,
          name="operasyon_kaydi_onayla"),
     path("uretim/kayitlar/<int:pk>/sil/", views.operasyon_kaydi_sil, name="operasyon_kaydi_sil"),
+    path("uretim/kayitlar/<int:pk>/geri-al-sil/", views.operasyon_kaydi_geri_al_sil, name="operasyon_kaydi_geri_al_sil"),
     # AYARLAR > Tanım Listeleri
     path("ayarlar/tanimlar/", views.tanim_listeleri, name="tanim_listeleri"),
     path("ayarlar/tanimlar/kdv/", views.kdv_oranlari, name="kdv_oranlari"),
