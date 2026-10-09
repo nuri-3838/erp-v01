@@ -94,7 +94,7 @@
     </div>
     <div class="ua-ozet">
       <span class="ua-chip"><strong>{{ maliyet.ortalama_sayi }}</strong> kalem ortalama</span>
-      <span class="ua-chip{% if maliyet.kart_sayi %} sari{% endif %}"><strong>{{ maliyet.kart_sayi }}</strong> kalem alış fiyatı{% if maliyet.kart_sayi and maliyet.kart_pay is not None %} (toplamın %{{ maliyet.kart_pay|tr_miktar_sade:1 }}'i){% endif %}</span>
+      <span class="ua-chip{% if maliyet.kart_sayi %} sari{% endif %}"><strong>{{ maliyet.kart_sayi }}</strong> kalem alış fiyatı{% if maliyet.kart_sayi and maliyet.kart_pay is not None %} (toplamın %{{ maliyet.kart_pay|tr_miktar_sade:1 }}'ini oluşturuyor){% endif %}</span>
       <span class="ua-chip{% if maliyet.maliyetsiz %} kirmizi{% endif %}"><strong>{{ maliyet.maliyetsiz }}</strong> kalem maliyetsiz</span>
       {% if maliyet.maliyetsiz %}<span class="ua-chip kirmizi">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}
       {% if maliyet.usd_eksik %}<span class="ua-chip kirmizi">⚠ {{ maliyet.usd_eksik }} kalemin USD değeri yok — USD toplamı eksik</span>{% endif %}

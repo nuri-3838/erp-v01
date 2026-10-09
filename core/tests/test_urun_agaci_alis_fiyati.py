@@ -167,7 +167,7 @@ class AlisFiyatiEkranTest(KullanimBase):
         self.assertIn("Alış fiyatı (kart)", h)
         self.assertIn("<strong>2</strong> kalem ortalama", h)
         self.assertIn("<strong>1</strong> kalem alış fiyatı", h)
-        self.assertIn("toplamın %14,7'i", h)
+        self.assertIn("toplamın %14,7'ini oluşturuyor", h)
         self.assertIn("<strong>0</strong> kalem maliyetsiz", h)
         self.assertIn("Alış fiyatı çevrimi: TCMB", h)
         self.assertIn("USD 40,0000", h)
