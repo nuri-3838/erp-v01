@@ -123,7 +123,7 @@ class EsdegerlikTest(TestCase):
         s["ihtiyac_kesirli"] = ihtiyac_hesapla(k, boy_yuvarla=False)
         s["ihtiyac_maliyet_gorunumu"] = ihtiyac_hesapla([(self.u2, D("1"))], boy_yuvarla=False, pay_dus=True)
         s["ihtiyac_ara_stok"] = ihtiyac_hesapla([(self.b1, D("4")), (self.a1, D("19"))])
-        s["birim_tuketim"] = {u.kod: graf.birim_tuketim(u) for u in (self.u1, self.u2, self.u3, self.u4)}
+        s["birim_tuketim"] = {u.kod: {v["stok"].kod: v for v in graf.birim_tuketim(u).values()} for u in (self.u1, self.u2, self.u3, self.u4)}   # pk değil kod
         s["kokler"] = graf.kokler()
         s["malzeme"] = ua.urun_malzeme(graf, self.u2, D("3"))
         s["maliyet"] = {u.kod: ua.urun_maliyet(graf, u, D("2")) for u in (self.u2, self.u3)}

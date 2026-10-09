@@ -3092,9 +3092,23 @@ class Operasyon(TemelModel):
     adedi (kesimde 2 olabilir — 1 boydan 2 parça). Çıktı başına en fazla 1 aktif operasyon
     olur; çıktı, oluşturulduktan sonra değişmez. Girdi satırları OperasyonGirdi'de."""
 
+    class Tur(models.TextChoices):
+        URET = "URET", "Üret (N girdi → 1 çıktı)"
+        PARCALA = "PARCALA", "Parçala (1 girdi → N çıktı)"
+
+    class PayAnahtari(models.TextChoices):
+        BOY = "BOY", "Boy oranı (miktar × boy)"
+        ESIT = "ESIT", "Eşit (adet başı)"
+        YUZDE = "YUZDE", "Yüzde (elle)"
+
     istasyon = models.ForeignKey(
         IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT,
         related_name="operasyonlar")
+    # ÜRET: tek (ana) çıktı + isteğe bağlı yan çıktılar. PARÇALA: tek girdi, N eşit düzey çıktı (ana/yan ayrımı yok) — çıktıların TAMAMI
+    # ``ciktilar`` (OperasyonCikti) tablosundadır; ``cikti`` / ``cikti_miktar`` / ``boy_mm`` o tablonun sıra 0 satırının (referans çıktı) kopyasıdır.
+    tur = models.CharField("tür", max_length=7, choices=Tur.choices, default=Tur.URET)
+    # Girdi maliyetinin çıktılara paylaştırma anahtarı. ÜRET her zaman BOY (ana + yan çıktılar, miktar × boy_mm); PARÇALA: BOY / ESIT / YUZDE.
+    pay_anahtari = models.CharField("maliyet pay anahtarı", max_length=5, choices=PayAnahtari.choices, default=PayAnahtari.BOY)
     cikti = models.ForeignKey(
         Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="operasyonlar")
     cikti_miktar = models.DecimalField(
@@ -3135,6 +3149,9 @@ class OperasyonKaydiCikti(TemelModel):
     beklenen_miktar = models.DecimalField("beklenen miktar", max_digits=18, decimal_places=6, null=True, blank=True)
     boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
     pay_orani = models.DecimalField("maliyet pay oranı", max_digits=12, decimal_places=10, default=1)
+    # Onay anındaki paylaştırma AĞIRLIĞI (BOY: gelen miktar × boy_mm, ESIT: gelen miktar, YUZDE: tanımdaki yüzde): sonradan yeniden paylaştırma
+    # tanıma değil bu değere bakar. Boşsa (eski kayıt) miktar × boy_mm kullanılır.
+    agirlik = models.DecimalField("paylaştırma ağırlığı", max_digits=30, decimal_places=8, null=True, blank=True)
     ana_mi = models.BooleanField("ana çıktı", default=True)
     # FASON dönüş kaydında ONAY ANI SNAPSHOT'I: çıktının kendi fason birim fiyatı (fiyatın para biriminde), kur ve TL/USD tutarı. Bölüşüm YOK:
     # her çıktı kendi fiyatı × adedi kadar bedel alır; malzeme maliyeti ise boy oranıyla paylaşılır (bkz. stok_fis.uretim_senkronla).
@@ -3186,6 +3203,37 @@ class OperasyonYanCikti(TemelModel):
 
     def __str__(self):
         return f"{self.operasyon} → yan: {self.stok.kod} × {self.miktar}"
+
+
+class OperasyonCikti(TemelModel):
+    """Operasyon TANIMININ çıktıları (ÜRET: ana + yan çıktılar; PARÇALA: N çıktı). Sıra 0 = REFERANS çıktı (``Operasyon.cikti`` ile aynı stok).
+    ``surucu``: bu çıktı bu tanımdan "üretilir" sayılır (planlama/ürün ağacı onu bu tanıma bağlar) — ÜRET'te yalnız referans çıktı, PARÇALA'da
+    HER çıktı; stok başına tek aktif sürücü satır olur. ÜRET'in yan çıktıları (surucu=False) yalnız ek üründür: talebi etkilemez."""
+
+    operasyon = models.ForeignKey(Operasyon, on_delete=models.CASCADE, related_name="ciktilar")
+    stok = models.ForeignKey(Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="operasyon_cikti_satirlari")
+    miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=6)
+    boy_mm = models.DecimalField("boy (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
+    yuzde = models.DecimalField("maliyet payı (%)", max_digits=7, decimal_places=4, null=True, blank=True)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+    surucu = models.BooleanField("bu tanımdan üretilir", default=True)
+
+    class Meta:
+        db_table = "core_operasyon_cikti"
+        verbose_name = "operasyon çıktısı"
+        verbose_name_plural = "operasyon çıktıları"
+        ordering = ["sira", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_op_cikti_satir_miktar_gt0"),
+            models.CheckConstraint(condition=models.Q(boy_mm__isnull=True) | models.Q(boy_mm__gt=0), name="ck_op_cikti_satir_boy_gt0"),
+            models.CheckConstraint(condition=models.Q(yuzde__isnull=True) | (models.Q(yuzde__gt=0) & models.Q(yuzde__lte=100)),
+                                   name="ck_op_cikti_satir_yuzde_0_100"),
+            models.UniqueConstraint(fields=["operasyon", "stok"], condition=models.Q(silindi=False), name="uq_operasyon_cikti_aktif_op_stok"),
+            models.UniqueConstraint(fields=["stok"], condition=models.Q(silindi=False, surucu=True), name="uq_operasyon_cikti_surucu_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.operasyon} → {self.stok.kod} × {self.miktar}"
 
 
 class OperasyonGirdi(TemelModel):
