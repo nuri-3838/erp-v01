@@ -119,10 +119,12 @@ class UsEkranDuzeltmeTest(kt.KapanisTaban):
         url = reverse("core:fason_donus_ekle") + f"?istasyon_emri={ie.pk}"
         self.assertNotContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), url)
         self.assertNotContains(self.client.get(reverse("core:istasyon_emirleri")), url)
-        self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), reverse("core:istasyon_emri_kayit_ac", args=[ie.pk]))   # kayıt aç hep var
+        uret = reverse("core:istasyon_emri_uret", args=[ie.pk])
+        self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), uret)               # fason değilde "Üretildi" var
         ie.istasyon.kod = "10"
         ie.istasyon.save()
         self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), url)
+        self.assertNotContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), uret)            # fason emrinde "Üretildi" yok
         self.assertContains(self.client.get(reverse("core:istasyon_emirleri")), url)
 
     def test_revizyon_tarihi_islem_ani(self):

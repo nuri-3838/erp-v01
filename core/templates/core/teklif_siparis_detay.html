@@ -6,6 +6,12 @@
 
 {% block content %}
 <style>
+  .us-rozet { display:inline-block; margin:.2rem .4rem .2rem 0; padding:.35rem .75rem; border-radius:10px; background:#fff4e5; border:1px solid #f3c27f; font-weight:600; font-size:.9rem; }
+  .us-rozet.ana { background:#fff0d6; border-color:var(--turuncu); font-size:1rem; }
+  .us-rozet.soluk { opacity:.5; background:#f1f3f7; border-color:#d4d8e0; font-weight:500; text-decoration:line-through; }
+  .pasif-dugme { opacity:.55; cursor:not-allowed; }
+</style>
+<style>
   .detay-kapsa { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
   .detay-ustbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
   .detay-aksiyon { display:flex; gap:.5rem; flex-wrap:wrap; }
@@ -69,6 +75,11 @@
         {% if donusen_fatura %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% endif %}
         {% if uretim_emri %}<span class="d-rozet aktif">🏭 Üretim Siparişine Dönüştü</span>{% endif %}
       </div>
+      {% for r in uretim_rozetleri %}
+      <div class="us-rozet{% if r.e.durum == 'IPTAL' %} soluk{% elif forloop.first %} ana{% endif %}">
+        🏭 Üretim siparişi: <a href="{% url 'core:uretim_emri_detay' r.e.pk %}">{{ r.e.no }}</a> · {{ r.e.get_durum_display }}{% if r.yuzde is not None %} · %{{ r.yuzde|tr_kur:0 }}{% endif %}
+      </div>
+      {% endfor %}
       <div class="detay-ad">{{ ts.get_belge_tur_display }}</div>
       <div class="detay-alt">
         {% if ts.cari %}<span class="mono">{{ ts.cari.kod }}</span> {{ ts.cari.unvan }}
@@ -119,8 +130,12 @@
         {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and not donusen_fatura and ts.yon == "SATIS" %}
         <a class="dugme" href="{% url 'core:siparis_faturaya_cevir' ts.pk %}">🧾 Faturaya Çevir</a>
         {% endif %}
-        {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and not uretim_emri and ts.yon == "SATIS" and uretim_emri_acilabilir %}
-        <a class="dugme" href="{% url 'core:siparis_uretim_emrine_cevir' ts.pk %}">🏭 Üretim Siparişi Aç</a>
+        {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and ts.yon == "SATIS" %}
+          {% if uretim_emri %}
+          <span class="dugme pasif-dugme" title="Bu siparişin zaten bir üretim siparişi var; iptal edilirse veya silinirse yeniden açılabilir">🏭 Zaten açık: {{ uretim_emri.no }}</span>
+          {% elif uretim_emri_acilabilir %}
+          <a class="dugme" href="{% url 'core:siparis_uretim_emrine_cevir' ts.pk %}">🏭 Üretim Siparişi Aç</a>
+          {% endif %}
         {% endif %}
         {% if ts.durum == "TASLAK" %}
           {% if ts.belge_tur == "PROFORMA" %}

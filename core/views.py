@@ -2709,6 +2709,12 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)),
     ).order_by("-tarih", "-id").prefetch_related("kalemler__kdv", "kalemler__tevkifat")
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
+    if belge_tur == TeklifSiparis.BelgeTur.SIPARIS and yon == TeklifSiparis.Yon.SATIS:       # bağlı AKTİF (iptal olmayan) üretim siparişi rozeti
+        aktif_us = {}
+        for e in (UretimEmri.objects.filter(silindi=False, kaynak_siparis_id__in=[k.pk for k in sayfa]).exclude(durum=UretimEmri.Durum.IPTAL).order_by("pk")):
+            aktif_us[e.kaynak_siparis_id] = e
+        for k in sayfa:
+            k.us = aktif_us.get(k.pk)
     # sayfa linkleri: sayfa DIŞINDAKİ her şeyi (durum dahil) korur — yalnız sayfa değişir.
     sabit_qs = request.GET.copy()
     sabit_qs.pop("sayfa", None)
@@ -3172,8 +3178,12 @@ def teklif_siparis_detay(request, pk):
                        if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS else None)
     uretim_emri = None
     uretim_emri_acilabilir = False
+    uretim_rozetleri = []
     if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS and ts.yon == TeklifSiparis.Yon.SATIS:
         uretim_emri = ts.uretim_emirleri.filter(silindi=False).exclude(durum=UretimEmri.Durum.IPTAL).first()
+        siralama = {UretimEmri.Durum.ACIK: 0, UretimEmri.Durum.KAPALI: 1, UretimEmri.Durum.IPTAL: 2}
+        for e in sorted(ts.uretim_emirleri.filter(silindi=False), key=lambda e: (siralama[e.durum], -e.pk)):          # aktif önce, iptaller sonda (soluk)
+            uretim_rozetleri.append({"e": e, "yuzde": None if e.durum == UretimEmri.Durum.IPTAL else uretim_servis.uretim_emri_yuzde(e)})
         if not uretim_emri and ts.durum == TeklifSiparis.Durum.ONAYLI:
             uygun, _ = uretim_servis.siparis_uretilebilir_kalemleri(ts)
             uretim_emri_acilabilir = bool(uygun)
@@ -3191,7 +3201,7 @@ def teklif_siparis_detay(request, pk):
                    "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis,
                    "donusen_proforma": donusen_proforma,
                    "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura,
-                   "uretim_emri": uretim_emri, "uretim_emri_acilabilir": uretim_emri_acilabilir,
+                   "uretim_emri": uretim_emri, "uretim_emri_acilabilir": uretim_emri_acilabilir, "uretim_rozetleri": uretim_rozetleri,
                    "donusum_kilitli": donusum_kilitli})
 
 
@@ -7253,12 +7263,15 @@ def uretim_emri_detay(request, pk):
         kalem_satirlari.append({"k": k, "ayrilan": ayrilan.get(k.hedef_urun_id, Decimal("0")), "sevk": sevk_k,
                                 "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde})
     emirler = []
+    hatalar = request.session.pop("uret_hata", {})
     for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti", "istasyon").order_by("seviye", "pk"):
         ref = uretim_servis._referans_miktar(ie.operasyon)
         acilabilir = emir.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
+        fason = ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU
         emirler.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
                         "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
-                        "kayit_acilabilir": acilabilir, "fason_acilabilir": acilabilir and ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU})
+                        "uretilebilir": acilabilir and not fason and ie.durum != IstasyonEmri.Durum.BITTI, "hata": hatalar.get(str(ie.pk)),
+                        "fason_acilabilir": acilabilir and fason and ie.durum != IstasyonEmri.Durum.BITTI})
     kayitlar = (emir.operasyon_kayitlari.filter(silindi=False)
                .select_related("operasyon__istasyon", "operasyon__cikti", "istasyon_emri")
                .order_by("operasyon__istasyon__kod", "pk"))
@@ -7268,7 +7281,8 @@ def uretim_emri_detay(request, pk):
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kalemler": kalem_satirlari, "kayitlar": kayitlar, "istasyon_emirleri": emirler, "ayirmalar": ayirmalar,
-        "eksikler": uretim_servis.uretim_emri_eksikleri(emir),
+        "eksikler": uretim_servis.uretim_emri_eksikleri(emir), "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
+        "bugun": timezone.localdate().isoformat(),
         "revizyonlar": _revizyon_satirlari(emir), "silinebilir": uretim_servis.uretim_emri_silinebilir(emir), "revize_url": revize_url,
         "ilerleme": uretim_servis.uretim_emri_ilerleme(emir)})
 
@@ -7383,38 +7397,58 @@ def istasyon_emirleri(request):
         qs = qs.filter(Q(no__icontains=ara) | Q(uretim_emri__no__icontains=ara) | Q(operasyon__cikti__kod__icontains=ara) | Q(operasyon__cikti__ad__contains=buyuk))
     sayfa = Paginator(qs, 50).get_page(request.GET.get("sayfa"))
     satirlar = []
+    hatalar = request.session.pop("uret_hata", {})
     for ie in sayfa:
         ref = uretim_servis._referans_miktar(ie.operasyon)
         acilabilir = ie.uretim_emri.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
+        fason = ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU
         satirlar.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
                          "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
-                         "kayit_acilabilir": acilabilir, "fason_acilabilir": acilabilir and ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU})
+                         "uretilebilir": acilabilir and not fason and ie.durum != IstasyonEmri.Durum.BITTI, "hata": hatalar.get(str(ie.pk)),
+                         "fason_acilabilir": acilabilir and fason and ie.durum != IstasyonEmri.Durum.BITTI})
     return render(request, "core/istasyon_emirleri.html", {
         "satirlar": satirlar, "sayfa": sayfa, "ara": ara, "durum": durum, "istasyon": istasyon,
-        "durumlar": IstasyonEmri.Durum.choices, "istasyonlar": uretim_servis.aktif_istasyonlar(), "uretim_emri": request.GET.get("uretim_emri", "")})
+        "durumlar": IstasyonEmri.Durum.choices, "istasyonlar": uretim_servis.aktif_istasyonlar(), "uretim_emri": request.GET.get("uretim_emri", ""),
+        "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
+        "bugun": timezone.localdate().isoformat(), "geri": request.get_full_path()})
 
 
-@ekran_gerekli_herhangi("istasyon_emirleri", "uretim_emirleri")
-def istasyon_emri_kayit_ac_gorunum(request, pk):
-    """İstasyon emrinden TASLAK operasyon kaydı açar (POST); isteğe bağlı ``hedef`` (referans çıktı adedi) kalanı aşabilir — uyarı verilir."""
+def _guvenli_geri(request, varsayilan):
+    geri = request.POST.get("geri") or ""
+    return geri if geri and url_has_allowed_host_and_scheme(geri, allowed_hosts={request.get_host()}) else varsayilan
+
+
+@ekran_gerekli("operasyon_kayitlari")
+def istasyon_emri_uret_gorunum(request, pk):
+    """"Üretildi": istasyon emrinden kayıt açıp onaylar (tek işlem, bkz. uretim_servis.istasyon_emri_uret). Hata satırda gösterilir (oturumda taşınır)."""
     ie = get_object_or_404(IstasyonEmri, pk=pk, silindi=False)
-    geri = reverse("core:uretim_emri_detay", args=[ie.uretim_emri_id])
+    geri = _guvenli_geri(request, reverse("core:uretim_emri_detay", args=[ie.uretim_emri_id]))
     if request.method != "POST":
         return redirect(geri)
-    hedef = None
-    ham = (request.POST.get("hedef") or "").strip()
+    hedef, tarih, hata = None, None, None
     try:
+        ham = (request.POST.get("miktar") or "").strip()
         if ham:
             hedef = parse_tr(ham)
-        kayit = uretim_servis.istasyon_emri_kayit_ac(ie, hedef=hedef, kullanici=request.user)
-    except (uretim_servis.UretimHatasi, SayiHatasi) as e:
-        messages.error(request, str(e))
-        return redirect(geri)
-    messages.success(request, f"Operasyon kaydı açıldı: {kayit.no}")
-    uyari = uretim_servis.kayit_fazla_uyarisi(kayit)
+        if (request.POST.get("tarih") or "").strip():
+            tarih = datetime.date.fromisoformat(request.POST["tarih"].strip())
+        kayit, uyari = uretim_servis.istasyon_emri_uret(ie, miktar=hedef, tarih=tarih, kullanici=request.user)
+    except uretim_servis.UretimHatasi as e:
+        hata = str(e)
+    except SayiHatasi:
+        hata = "Miktar geçerli bir sayı değil."
+    except ValueError:
+        hata = "Tarih geçerli değil."
+    if hata:
+        hatalar = request.session.get("uret_hata", {})
+        hatalar[str(ie.pk)] = hata
+        request.session["uret_hata"] = hatalar
+        messages.error(request, f"{ie.no}: üretim yapılmadı (ayrıntı satırda).")
+        return redirect(f"{geri}#ie-{ie.pk}")
+    messages.success(request, f"{ie.no}: üretildi — {kayit.no} oluşturuldu ve onaylandı; stok hareketleri yazıldı.")
     if uyari:
         messages.warning(request, uyari)
-    return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
+    return redirect(f"{geri}#ie-{ie.pk}")
 
 
 # --- Operasyon Kayıtları ---

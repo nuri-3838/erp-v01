@@ -38,7 +38,7 @@ class EkranTest(EkranTaban):
         r = self.client.get(reverse("core:uretim_emirleri") + "?durum=KAPALI")
         self.assertNotContains(r, emir.no)
         d = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
-        for metin in (emir.no, self.ie.no, "Ayrılan Stoklar", "Revizyon Geçmişi", "Kayıt aç", "Fason dönüş aç", "Açılış", "İptal Et", "Revize", "Sil"):
+        for metin in (emir.no, self.ie.no, "Ayrılan Stoklar", "Revizyon Geçmişi", "Üretildi", "Fason dönüş aç", "Açılış", "İptal Et", "Revize", "Sil"):
             self.assertContains(d, metin)
         self.assertContains(d, reverse("core:siparis_revize", args=[self.sip.pk]))            # siparişli ÜS: revize sipariş kalemlerinden
         self.assertContains(d, f"?istasyon_emri={self.ie.pk}")
@@ -58,25 +58,19 @@ class EkranTest(EkranTaban):
         self.assertNotContains(self.client.get(url), self.ie.no)                               # bitti → açık işlerde yok
         self.assertContains(self.client.get(url + "?durum=BITTI"), self.ie.no)
 
-    def test_emirden_kayit_ac_ve_kayit_listesi(self):
+    def test_uretildi_kaydi_onayli_acar_ve_kayit_listesi(self):
         emir = self.kur()
-        r = self.client.post(reverse("core:istasyon_emri_kayit_ac", args=[self.ie.pk]), {}, follow=True)
+        r = self.client.post(reverse("core:istasyon_emri_uret", args=[self.ie.pk]), {"miktar": "", "tarih": "2026-06-29"}, follow=True)
         kayit = OperasyonKaydi.objects.get(istasyon_emri=self.ie)
-        self.assertEqual((kayit.durum, kayit.uretim_emri_id, kayit.hedef_cikti_miktari), (OperasyonKaydi.Durum.TASLAK, emir.pk, D("3")))
+        self.assertEqual((kayit.durum, kayit.uretim_emri_id, kayit.hedef_cikti_miktari, kayit.tarih), (OperasyonKaydi.Durum.ONAYLI, emir.pk, D("3"), date(2026, 6, 29)))
         self.assertContains(r, kayit.no)
-        self.assertContains(r, self.ie.no)                                                     # kayıt detayında istasyon emri görünür
+        self.assertContains(r, "Tamamlandı")                                                   # açık kalan 0 → satırda Tamamlandı
         liste = self.client.get(reverse("core:operasyon_kayitlari") + f"?istasyon_emri={self.ie.pk}")
         self.assertContains(liste, kayit.no)
         self.assertContains(liste, self.ie.no)
         self.assertNotContains(self.client.get(reverse("core:operasyon_kayitlari") + "?emir=bagimsiz"), kayit.no)
-        self.assertContains(self.client.get(reverse("core:operasyon_kayitlari") + f"?uretim_emri={emir.pk}"), kayit.no)
-        # kalan yokken (açık taslak kalanı kapattı) hedefsiz ikinci açılış reddedilir, hedefli fazla açılış uyarı verir
-        r2 = self.client.post(reverse("core:istasyon_emri_kayit_ac", args=[self.ie.pk]), {}, follow=True)
-        self.assertContains(r2, "kalan miktar yok")
-        r3 = self.client.post(reverse("core:istasyon_emri_kayit_ac", args=[self.ie.pk]), {"hedef": "2"}, follow=True)
-        self.assertContains(r3, "kalanını aşıyor")
-        self.assertEqual(OperasyonKaydi.objects.filter(istasyon_emri=self.ie).count(), 2)
-        self.assertEqual(self.client.get(reverse("core:istasyon_emri_kayit_ac", args=[self.ie.pk])).status_code, 302)   # GET kayıt açmaz
+        self.assertContains(self.client.get(reverse("core:operasyon_kayitlari") + f"?uretim_emri={emir.pk}&sekme=onayli"), kayit.no)
+        self.assertEqual(self.client.get(reverse("core:istasyon_emri_uret", args=[self.ie.pk])).status_code, 302)   # GET üretmez
 
     def test_iptal_ekrani_sip_detayi_rozeti_ve_yeniden_acma(self):
         emir = self.kur()
@@ -86,12 +80,12 @@ class EkranTest(EkranTaban):
         self.assertContains(r, "iptal edildi")
         d = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
         self.assertContains(d, "İptal")
-        self.assertNotContains(d, reverse("core:istasyon_emri_kayit_ac", args=[self.ie.pk]))   # iptal ÜS'nin emirleri kayıt açtırmaz
+        self.assertNotContains(d, reverse("core:istasyon_emri_uret", args=[self.ie.pk]))   # iptal ÜS'nin emirleri üretim açtırmaz
         self.assertNotContains(d, reverse("core:uretim_emri_iptal", args=[emir.pk]))
         s = self.client.get(reverse("core:teklif_siparis_detay", args=[self.sip.pk]))
         self.assertNotContains(s, "Üretim Siparişine Dönüştü")                                 # IPTAL ÜS rozeti/kilidi yok
         self.assertContains(s, "Üretim Siparişi Aç")                                           # yeniden açılabilir
-        self.assertContains(self.client.post(reverse("core:istasyon_emri_kayit_ac", args=[self.ie.pk]), follow=True), "açık üretim siparişinin")
+        self.assertContains(self.client.post(reverse("core:istasyon_emri_uret", args=[self.ie.pk]), follow=True), "açık üretim siparişinin")
 
     def test_sil_dugmesi_yalniz_baslamamis_ve_basladiktan_sonra_sil_reddedilir(self):
         emir = self.kur()
@@ -151,10 +145,11 @@ class EkranTest(EkranTaban):
         self.client.force_login(self.bos)
         for ad, args in (("uretim_emirleri", []), ("istasyon_emirleri", []), ("uretim_emri_detay", [emir.pk]), ("uretim_emri_revize", [emir.pk])):
             self.assertEqual(self.client.get(reverse("core:" + ad, args=args)).status_code, 403, ad)
-        for ad, args in (("uretim_emri_iptal", [emir.pk]), ("istasyon_emri_kayit_ac", [self.ie.pk])):
+        for ad, args in (("uretim_emri_iptal", [emir.pk]), ("istasyon_emri_uret", [self.ie.pk])):
             self.assertEqual(self.client.post(reverse("core:" + ad, args=args)).status_code, 403, ad)
         self.assertEqual(self.client.get(reverse("core:siparis_revize", args=[self.sip.pk])).status_code, 403)
         self.client.force_login(self.sadece_us)                                                # ÜS ekranı yetkisi İstasyon Emirleri listesini açmaz
         self.assertEqual(self.client.get(reverse("core:uretim_emirleri")).status_code, 200)
         self.assertEqual(self.client.get(reverse("core:istasyon_emirleri")).status_code, 403)
-        self.assertEqual(self.client.post(reverse("core:istasyon_emri_kayit_ac", args=[self.ie.pk])).status_code, 302)   # ÜS detayından kayıt açılabilir
+        self.assertEqual(self.client.post(reverse("core:istasyon_emri_uret", args=[self.ie.pk])).status_code, 403)       # "Üretildi" operasyon kaydı yetkisi ister
+        self.assertNotContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), reverse("core:istasyon_emri_uret", args=[self.ie.pk]))   # yetkisiz görmez

@@ -184,7 +184,8 @@
           {% if k.irsaliye_no %}<br><span class="pasif ts-belge-no">{{ k.irsaliye_no }}</span>{% endif %}</td>
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>
           {% if k.donustu %}<span class="rozet rozet-notr">{{ donustu_etiket }}</span>{% endif %}
-          {% if k.fatura_id %}<span class="rozet rozet-notr">🧾 Faturaya Dönüştü</span>{% endif %}</td>
+          {% if k.fatura_id %}<span class="rozet rozet-notr">🧾 Faturaya Dönüştü</span>{% endif %}
+          {% if k.us %}<a class="rozet rozet-aktif" href="{% url 'core:uretim_emri_detay' k.us.pk %}" title="Bağlı üretim siparişi ({{ k.us.get_durum_display }})">🏭 {{ k.us.no }}</a>{% endif %}</td>
         <td class="sag mono">{{ k.odenecek|tr_kur:2 }} {{ k.para_birimi }}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>

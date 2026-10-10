@@ -18,6 +18,8 @@ bir istasyonda, bir/daha fazla GİRDİ stoktan TEK bir ÇIKTI stok üretir (oran
 """
 from __future__ import annotations
 
+import re
+
 from decimal import ROUND_CEILING, Decimal
 
 from django.db import IntegrityError, connection, transaction
@@ -1166,6 +1168,48 @@ def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=
         uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici)
     istasyon_emri_durum_guncelle(ie)
     return kayit
+
+
+def _eksik_mesaji(mesaj: str) -> str:
+    """Stok yetersizliği mesajına ("Yetersiz stok: 150 deposunda KOD için eldeki X, çıkış Y olamaz.") eksik miktarı ekler; diğer mesajlar aynen."""
+    m = re.search(r"eldeki (-?[\d.,]+), çıkış ([\d.,]+) olamaz", mesaj)
+    if not m:
+        return mesaj
+    try:
+        eldeki, gereken = Decimal(m.group(1)), Decimal(m.group(2))
+    except Exception:
+        return mesaj
+    return f"{mesaj.rstrip('.')} — eksik: {(gereken - eldeki).normalize():f}."
+
+
+@transaction.atomic
+def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=None):
+    """TEK TIKLA ÜRETİM ("Üretildi"): istasyon emrinden operasyon kaydı açar (girdi/çıktı operasyon tanımından, miktar oranlı) ve MEVCUT onay servisiyle
+    hemen ONAYLAR — hepsi tek işlemde; stok yetersizliği vb. bir hata olursa kayıt da dahil hiçbir şey kalmaz. ``miktar`` referans çıktı adedidir
+    (boş = açık kalan); açık kalandan fazlası yazılabilir (fazlası serbest stok). Fason istasyonunda üretim fason dönüşle yapılır, burada reddedilir.
+    (onaylı kayıt, uyarı metni) döner; uyarı = kalanı aşıyor ('' = aşmıyor)."""
+    from core.services.fason import FASON_ISTASYON_KODU
+    ie = IstasyonEmri.objects.select_related("istasyon", "uretim_emri").get(pk=ie.pk)
+    if ie.istasyon.kod == FASON_ISTASYON_KODU:
+        raise UretimHatasi("Fason istasyonunda üretim, fason dönüş belgesiyle yapılır (\"Fason dönüş aç\").")
+    kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, kullanici=kullanici)
+    uyari = kayit_fazla_uyarisi(kayit)                           # onaydan ÖNCE: onay sonrası tamamlanan zaten artmış olur
+    try:
+        operasyon_kaydi_onayla(kayit, kullanici=kullanici)
+    except UretimHatasi as e:
+        raise UretimHatasi(_eksik_mesaji(str(e)))
+    return OperasyonKaydi.objects.get(pk=kayit.pk), uyari
+
+
+def uretim_emri_yuzde(emir: UretimEmri) -> Decimal:
+    """ÜS ilerleme yüzdesi: Σ min(hedef, ayrılan + sevk edilen) ÷ Σ hedef × 100 (0–100)."""
+    ayrilan = {a.stok_id: a.miktar for a in stok_ayirma.emir_ayirmalari(emir)}
+    sevk = emir.sevk_dusen or {}
+    toplam = hazir = Decimal("0")
+    for k in emir.kalemler.filter(silindi=False):
+        toplam += k.hedef_miktar
+        hazir += min(k.hedef_miktar, ayrilan.get(k.hedef_urun_id, Decimal("0")) + Decimal(str(sevk.get(str(k.hedef_urun_id), "0"))))
+    return (hazir * 100 / toplam) if toplam else Decimal("0")
 
 
 def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
