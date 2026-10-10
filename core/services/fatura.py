@@ -32,7 +32,7 @@ from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, ha
 from core.services import donemsel_gider
 from core.services import duran_hesap
 from core.services import duran_varlik as dv_servis
-from core.services.hesap_plani import (duran_varlik_hesaplari, gider_hesaplari,
+from core.services.hesap_plani import (duran_varlik_hesaplari, gelir_hesaplari, gider_hesaplari,
                                        hesap_kodu_258_mi, hesap_kodu_duran_varlik_mi)
 from core.services.yevmiye import (SatirGirdi, YevmiyeHatasi, fis_guncelle,
                                    fis_iptal, fis_olustur)
@@ -217,10 +217,11 @@ def _tevkifat_coz(g, i, *, stok_varsayilani=None):
 
 def _satis_hesap_kumesi():
     """SATIŞ faturasındaki "Hesap satırı" için izin verilen TAM küme: gider hesapları (7xx/65x/66x/68x) +
-    258 Yapılmakta Olan Yatırımlar ailesi (alış iade faturaları: gideri/maliyeti azaltır). Diğer duran varlık
-    hesapları (253/254/255/260) BURADA yoktur — duran varlık satışı "Demirbaş satırı" ile yapılır."""
+    258 Yapılmakta Olan Yatırımlar ailesi (alış iade faturaları: gideri/maliyeti azaltır) + GELİR hesapları (60x/64x: ör. ihracat
+    navlunu 601). Diğer duran varlık hesapları (253/254/255/260) BURADA yoktur — duran varlık satışı "Demirbaş satırı" ile yapılır.
+    Her satır hesaba ALACAK yazılır; KDV satırın KDV oranına göre, cari borç tüm satırların toplamıdır."""
     return (gider_hesaplari() | duran_varlik_hesaplari().filter(
-        Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258.")))
+        Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258.")) | gelir_hesaplari())
 
 
 def _hesap_satiri_coz(g, i, hesap_kumesi, *, kullanici=None, tarih=None):

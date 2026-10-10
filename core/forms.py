@@ -1921,9 +1921,10 @@ class FaturaSatirForm(forms.Form):
             self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["stok"].widget.attrs["class"] = "akilli-sec"
 
-        from core.services.hesap_plani import (duran_varlik_hesaplari, gider_hesaplari,
+        from core.services.hesap_plani import (duran_varlik_hesaplari, gelir_hesaplari, gider_hesaplari,
                                                ortak_hesaplari)
         gider_qs = gider_hesaplari()
+        gelir_qs = gelir_hesaplari()
         duran_qs = duran_varlik_hesaplari()
         # ortak_qs: Ortak adına şahsi alışta JS, gizlenen bu alana ortak hesabını otomatik
         # yazar (bkz. fatura_ekle.html sahsiUygula) — kalemde elle seçilmez, ama form/DB
@@ -1935,13 +1936,14 @@ class FaturaSatirForm(forms.Form):
         self.fields["hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
         if yon == "SATIS":
-            # Satış faturası hesap satırı (alış iadesi): yalnız gider hesapları + 258 ailesi.
+            # Satış faturası hesap satırı: gelir hesapları (60x/64x) + gider hesapları (alış iadesi) + 258 ailesi.
             from core.services.fatura import _satis_hesap_kumesi
             satis_qs = _satis_hesap_kumesi()
             self.fields["hesap"].queryset = satis_qs
             self.fields["hesap"].label = "Hesap"
             self.fields["hesap"].empty_label = "— hesap seç —"
             _gruplu_secenekler_uygula(self.fields["hesap"], [
+                ("Gelir Hesapları (60x / 64x)", gelir_qs),
                 ("Gider Hesapları", gider_qs),
                 ("Yatırım (258)", duran_qs.filter(Q(hesap_kodu="258") | Q(hesap_kodu__startswith="258.")))])
         else:

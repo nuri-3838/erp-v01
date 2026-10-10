@@ -117,6 +117,9 @@ def yaprak_hesaplar():
 # olağandışı). 62x/63x DIŞARIDA — 7/A'da bunlara ay sonu YANSITMA ile aktarım yapılır, doğrudan
 # fatura kesilmez; gelir hesapları da dışarıda. "YANSITMA" hesapları hariç.
 GIDER_KOD_DESENI = r"^(7\d\d|65\d|66\d|68\d)(\.|$)"
+# SATIŞ faturasında "Hesap satırı" olarak seçilebilen GELİR hesapları: 60x (brüt satışlar) + 64x (diğer olağan gelir ve kârlar). Örn. ihracat faturasında
+# navlun bedeli 601'e yazılır. Satır tutarı hesaba ALACAK yazılır (stok satırının 60x'e yazıldığı yönle aynı).
+GELIR_KOD_DESENI = r"^(60\d|64\d)(\.|$)"
 # Sıralamada öne alınan gider alt hesapları (bkz. migration 0124).
 GIDER_ONCELIKLI_ONEKLER = ("730.", "770.")
 
@@ -139,6 +142,11 @@ def gider_hesaplari():
             default=Value(2), output_field=IntegerField()))
         .order_by("_oncelik", "hesap_kodu")
     )
+
+
+def gelir_hesaplari():
+    """Satış faturası hesap satırında seçilebilen aktif YAPRAK gelir hesapları (60x / 64x), kod sırasıyla."""
+    return yaprak_hesaplar().filter(hesap_kodu__regex=GELIR_KOD_DESENI).order_by("hesap_kodu")
 
 
 # Duran Varlık modülü FAZ 1: Alış-Gider faturasında gider hesaplarına EK OLARAK seçilebilen
