@@ -3296,7 +3296,7 @@ def siparis_faturaya_cevir(request, pk):
             "para_birimi": siparis.para_birimi})
         ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
                for k in siparis.kalemler.filter(silindi=False).select_related("stok")]
-        formset = FaturaSatirFormSet(initial=ilk)
+        formset = FaturaSatirFormSet(initial=ilk, form_kwargs={"yon": yon})
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,

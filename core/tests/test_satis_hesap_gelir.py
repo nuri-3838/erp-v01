@@ -9,6 +9,7 @@ from core.models import Birim, Cari, FaturaTipi, HesapPlani, Kategori, KategoriH
 from core.services import fatura as fs
 from core.services.hesap_plani import gelir_hesaplari
 from core.tests.test_banka_hesap_hareketi import _hesap
+from core.tests import test_uretim_siparisi_kapanis as kt
 from core.tests.test_satis_hesap_demirbas import D, Dc, SatisHesapDemirbasTestBase
 
 
@@ -95,3 +96,35 @@ class GelirHesapSatiriTest(SatisHesapDemirbasTestBase):
         self.assertContains(r, "601  YURTDIŞI SATIŞLAR")
         self.assertContains(r, "— hesap seç —")
         self.assertNotContains(self.client.get(reverse("core:alis_fatura_ekle")), "601  YURTDIŞI SATIŞLAR")     # alış ekranında gelir hesabı yok
+
+
+class FaturayaCevirGelirHesapTest(kt.KapanisTaban):
+    """Sipariş→Fatura ekranı (GET) satır formunu SATIŞ yönüyle kurar: hesap satırı listesinde 60x/64x gelir hesapları görünür (eskiden yön verilmediği için alış/gider listesi çıkıyordu)."""
+
+    def setUp(self):
+        super().setUp()
+        _hesap("601.10", "YURTDIŞI SATIŞLAR TEST", kalem="A", grup="GELIR_TABLOSU")
+        _hesap("649", "DİĞER OLAĞAN GELİRLER", kalem="E", grup="GELIR_TABLOSU")
+
+    def test_get_formunda_gelir_hesaplari_ve_etiket(self):
+        sip = self.siparis("3")
+        r = self.client.get(reverse("core:siparis_faturaya_cevir", args=[sip.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "601.10  YURTDIŞI SATIŞLAR TEST")
+        self.assertContains(r, "649  DİĞER OLAĞAN GELİRLER")
+        self.assertContains(r, "Gelir Hesapları (60x / 64x)")
+        self.assertContains(r, "— hesap seç —")
+        self.assertNotContains(r, "Ortak Hesapları (şahsi alış)")                                      # alış/gider seçenek grupları satış formunda yok
+
+    def test_post_navlun_hesap_satiri_601_ile_fatura_kesilir(self):
+        sip = self.siparis("3")
+        h601 = HesapPlani.objects.get(hesap_kodu="601.10")
+        r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "depo": "",
+            "form-TOTAL_FORMS": "2", "form-INITIAL_FORMS": "0", "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50", "form-0-kdv": self.kdv.pk,
+            "form-1-tur": "HESAP", "form-1-hesap": h601.pk, "form-1-miktar": "1", "form-1-birim_fiyat": "40", "form-1-kdv": self.kdv.pk}, follow=True)
+        sip.refresh_from_db()
+        self.assertIsNotNone(sip.fatura_id, [str(m) for m in r.context["messages"]] if r.context else r.content[:300])
+        satirlar = {s.hesap.hesap_kodu if s.hesap_id else "STOK": s.tutar for s in sip.fatura.satirlar.filter(silindi=False)}
+        self.assertEqual(satirlar["601.10"], Decimal("40"))
