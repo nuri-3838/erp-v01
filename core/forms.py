@@ -1415,12 +1415,13 @@ class FasonDonusBaslikForm(forms.Form):
         self.fields["cari"].queryset = (Cari.objects.filter(silindi=False, fason_depolari__silindi=False).distinct().order_by("unvan"))
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
-        depolar = Depo.objects.filter(silindi=False, fason_cari__isnull=True).order_by("kod")
+        depolar = Depo.objects.filter(silindi=False, aktif=True, fason_cari__isnull=True).order_by("kod")
         self.fields["depo"].queryset = depolar
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["depo"].widget.attrs["class"] = "akilli-sec"
         if not self.is_bound and "depo" not in self.initial:
-            vd = depolar.filter(ad__icontains="ÜRETİM").first() or depolar.first()
+            from core.services.depo import varsayilan_depo
+            vd = varsayilan_depo(depolar)
             if vd:
                 self.fields["depo"].initial = vd.pk
 
@@ -1504,9 +1505,10 @@ class UretimEmriBaslikForm(forms.Form):
         self.fields["depo"].queryset = depolar
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["depo"].widget.attrs["class"] = "akilli-sec"
-        # FaturaForm ile aynı desen: yeni emirde ANA DEPO ön-seçili.
+        # Yeni üretim siparişinde SEMTA DEPO ön-seçili.
         if not self.is_bound and "depo" not in self.initial:
-            vd = depolar.filter(ad="ANA DEPO").first() or depolar.first()
+            from core.services.depo import varsayilan_depo
+            vd = varsayilan_depo(depolar)
             if vd:
                 self.fields["depo"].initial = vd.pk
 
@@ -1796,12 +1798,13 @@ class FaturaForm(forms.Form):
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
-        depolar = Depo.objects.filter(silindi=False).order_by("kod")
+        depolar = Depo.objects.filter(silindi=False, aktif=True).order_by("kod")
         self.fields["depo"].queryset = depolar
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         # Yeni faturada ANA DEPO ön-seçili; düzenlemede faturanın deposu (initial) korunur.
         if not self.is_bound and "depo" not in self.initial:
-            vd = depolar.filter(ad="ANA DEPO").first() or depolar.first()
+            from core.services.depo import varsayilan_depo
+            vd = varsayilan_depo(depolar)
             if vd:
                 self.fields["depo"].initial = vd.pk
         from core.services.hesap_plani import ortak_hesaplari
@@ -2598,7 +2601,7 @@ class TeklifSiparisForm(forms.Form):
         if belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
             del self.fields["gecerlilik_teslim_tarihi"]
             self.fields["depo"] = forms.ModelChoiceField(
-                label="Depo", queryset=Depo.objects.filter(silindi=False).order_by("kod"),
+                label="Depo", queryset=Depo.objects.filter(silindi=False, aktif=True).order_by("kod"),
                 empty_label="— depo seç —")
             self.fields["depo"].widget.attrs["class"] = "akilli-sec"
             # Tedarikçinin KENDİ (kağıt) irsaliye numarası — bizim otomatik belge_no'muzdan
@@ -2880,6 +2883,7 @@ class DepoForm(forms.Form):
                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
     fason_cari = forms.ModelChoiceField(
         label="Fasoncu (fason deposu ise)", queryset=Cari.objects.none(), required=False, empty_label="— fason deposu değil —")
+    aktif = forms.BooleanField(label="Aktif (pasif depo yeni kayıtlarda seçilmez)", required=False, initial=True)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

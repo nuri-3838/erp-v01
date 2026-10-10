@@ -421,9 +421,8 @@ def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
         elif ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS:
             if not ts.donusen_irsaliyeler.filter(silindi=False).exists():
                 # FaturaForm ile aynı desen: önce ANA DEPO'yu dene, yoksa ilk aktif depo.
-                aktif_depolar = Depo.objects.filter(silindi=False)
-                depo = (aktif_depolar.filter(ad="ANA DEPO").first()
-                       or aktif_depolar.order_by("kod").first())
+                from core.services.depo import varsayilan_depo
+                depo = varsayilan_depo(Depo.objects.filter(silindi=False, aktif=True).order_by("kod"))
                 if depo is None:
                     raise TeklifSiparisHatasi(
                         "Aktif depo yok; sipariş irsaliyeye otomatik çevrilemedi. Önce "

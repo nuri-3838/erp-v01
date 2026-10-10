@@ -67,7 +67,7 @@
 <section class="icerik-kart">
   <h2 class="bolum-baslik">İstasyon Emirleri</h2>
   <p class="yardim">Net plandaki her operasyon için bir emir (miktarlar referans çıktı adedi cinsinden). “Kayıt aç” emirden taslak operasyon kaydı açar
-    (boş bırakılırsa açık kalan; daha fazlası yazılabilir, fazlası serbest stoğa girer); “Fason dönüş aç” aynı emre bağlı fason dönüş belgesi açar.</p>
+    (boş bırakılırsa açık kalan; daha fazlası yazılabilir, fazlası serbest stoğa girer); “Fason dönüş aç” yalnız fason istasyonu (10) emirlerinde çıkar ve aynı emre bağlı fason dönüş belgesi açar.</p>
   <div class="tablo-kapsayici">
   <table>
     <thead><tr><th>Emir</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Planlanan</th><th class="sag">Tamamlanan</th><th class="sag">Açık kalan</th><th>Durum</th><th></th></tr></thead>
@@ -86,6 +86,7 @@
             <form method="post" action="{% url 'core:istasyon_emri_kayit_ac' s.ie.pk %}" style="display:inline-flex;gap:.3rem;align-items:center;margin:0">
               {% csrf_token %}<input type="text" name="hedef" inputmode="decimal" placeholder="adet" style="width:5rem" autocomplete="off">
               <button type="submit" class="dugme-ikincil">Kayıt aç</button></form>
+            {% endif %}{% if s.fason_acilabilir %}
             <a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>
             {% endif %}
             <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>
@@ -98,6 +99,26 @@
   </table>
   </div>
 </section>
+
+{% if emir.durum == 'ACIK' %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Eksik Malzeme (satınalma ihtiyacı)</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Stok</th><th class="sag">Gerekli</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
+    <tbody>
+      {% for e in eksikler %}
+        <tr><td><a href="{% url 'core:stok_detay' e.stok.pk %}"><span class="mono">{{ e.stok.kod }}</span> {{ e.stok.ad }}</a></td>
+            <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
+            <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td></tr>
+      {% empty %}
+        <tr><td colspan="4" class="yardim">Eksik malzeme yok: kalan üretim için gereken tüm ham madde kullanılabilir stokta var.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
 
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Ayrılan Stoklar</h2>
@@ -143,12 +164,12 @@
   <h2 class="bolum-baslik">Revizyon Geçmişi</h2>
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>No</th><th>Tarih</th><th>Olay</th><th>Açıklama / Değişiklik</th></tr></thead>
+    <thead><tr><th>No</th><th>İşlem Zamanı</th><th>Olay</th><th>Açıklama / Değişiklik</th></tr></thead>
     <tbody>
       {% for r, farklar in revizyonlar %}
         <tr>
           <td class="mono">{{ r.no }}</td>
-          <td class="mono">{{ r.tarih|date:"d.m.Y" }}</td>
+          <td class="mono">{{ r.created_at|date:"d.m.Y H:i" }}</td>
           <td>{{ r.get_tur_display }}</td>
           <td>{{ r.aciklama }}{% for f in farklar %}<div class="mono">{{ f }}</div>{% endfor %}</td>
         </tr>

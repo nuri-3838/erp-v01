@@ -893,10 +893,11 @@ def emir_hedef_cikti(istasyon_emri: IstasyonEmri, calistirma=None) -> Decimal:
 
 
 def _revizyon_yaz(emir: UretimEmri, tur, tarih, aciklama="", detay=None, kullanici=None) -> UretimEmriRevizyon:
-    """Üretim siparişi olay geçmişine satır ekler (açılış = 0, sonrakiler 1, 2…); ``UretimEmri.revizyon_no`` son numaraya çekilir."""
+    """Üretim siparişi olay geçmişine satır ekler (açılış = 0, sonrakiler 1, 2…); ``UretimEmri.revizyon_no`` son numaraya çekilir. Revizyonun
+    tarihi İŞLEM ANIDIR (bugün; ekranda ``created_at`` saatiyle) — sipariş/belge tarihi değil; ``tarih`` parametresi geriye uyumluluk içindir."""
     son = emir.revizyonlar.aggregate(m=Max("no"))["m"]
     no = 0 if son is None else son + 1
-    r = UretimEmriRevizyon.objects.create(uretim_emri=emir, no=no, tur=tur, tarih=tarih, aciklama=(aciklama or "")[:300], detay=detay or {},
+    r = UretimEmriRevizyon.objects.create(uretim_emri=emir, no=no, tur=tur, tarih=timezone.localdate(), aciklama=(aciklama or "")[:300], detay=detay or {},
                                           created_by=kullanici, updated_by=kullanici)
     UretimEmri.objects.filter(pk=emir.pk).update(revizyon_no=no)
     emir.revizyon_no = no
@@ -1242,6 +1243,22 @@ def plan_kalemleri(coz, sevk: dict) -> list:
         if miktar - d > 0:
             sonuc.append((urun, miktar - d))
     return sonuc
+
+
+def uretim_emri_eksikleri(emir: UretimEmri, graf=None) -> list:
+    """Açık ÜS'nin SATINALMA ihtiyacı: kalan net planda eksik > 0 olan yaprak stoklar → [{"stok", "gerekli", "kullanilabilir", "eksik"}] (stok koduna
+    göre). Revizenin kullandığı hesapla aynı: ÜS'nin kendi ayırmaları ona açık, başkalarının ayırmaları düşülmüş kullanılabilir; sevk edilen mamul
+    plan dışı. Kapalı/iptal ÜS için boş. ``graf`` (urun_agaci.graf_yukle()) verilirse liste ekranında sorgu sayısı düşer."""
+    if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
+        return []
+    coz = [(k.hedef_urun, k.hedef_miktar) for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun").order_by("sira", "pk")]
+    if not coz:
+        return []
+    sonuc = ihtiyac_hesapla(plan_kalemleri(coz, sevk_edilen_haritasi(emir)), graf=graf,
+                            kullanilabilir=lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=emir))
+    eksikler = [{"stok": o["stok"], "gerekli": o["ihtiyac"], "kullanilabilir": o["ayrilan"], "eksik": o["eksik"]}
+                for o in sonuc["ozet"] if o["yaprak"] and o["eksik"] is not None and o["eksik"] > 0]
+    return sorted(eksikler, key=lambda x: x["stok"].kod)
 
 
 def _onceki_ayrilan(ie: IstasyonEmri, stok_id) -> Decimal:

@@ -51,7 +51,8 @@
           <form method="post" action="{% url 'core:istasyon_emri_kayit_ac' s.ie.pk %}" style="display:inline-flex;gap:.3rem;align-items:center;margin:0">
             {% csrf_token %}<input type="text" name="hedef" inputmode="decimal" placeholder="adet" style="width:5rem" autocomplete="off">
             <button type="submit" class="dugme-ikincil">Kayıt aç</button></form>
-          <a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>
+          {% endif %}{% if s.fason_acilabilir %}
+            <a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>
           {% endif %}
           <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>
         </td>

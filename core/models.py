@@ -2280,6 +2280,8 @@ class Depo(TemelModel):
     # düşer; ham profil sevki bu depoya depo transferiyle yapılır. Bir cariye en çok bir aktif fason deposu bağlanır.
     fason_cari = models.ForeignKey(
         "Cari", verbose_name="fasoncu (cari)", null=True, blank=True, on_delete=models.PROTECT, related_name="fason_depolari")
+    # PASİF depo: tarihçesi (hareketler) korunur ama yeni kayıtlarda/formlarda seçilmez; silinmez. Pasif yapmak için eldeki stok 0 olmalı.
+    aktif = models.BooleanField("aktif", default=True)
 
     class Meta:
         db_table = "depo"

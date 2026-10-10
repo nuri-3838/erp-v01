@@ -121,3 +121,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   siparişli ÜS sipariş revizesine yönlenir), `siparis_revize` (sipariş kalemleri + ÜS tek işlemde), `istasyon_emirleri` (istasyon/durum/ÜS/arama süzgeci; varsayılan bekleyen+başlayan),
   `istasyon_emri_kayit_ac` (POST; fazla uyarısı). Operasyon kayıtları listesi: istasyon emri sütunu + `?istasyon_emri=`/`?uretim_emri=`/`?emir=bagimsiz`. Sipariş detayı: ÜS rozeti
   (durum, revizyon) + "Kalemleri revize et"; IPTAL ÜS rozet/kilit yok ve yeniden açılabilir. Testler: `test_uretim_siparisi_ekranlar.py`.
+- **Canlı ilk deneme düzeltmeleri (adım 10 sonrası, 0202):** (1) Tek fabrika deposu: `Depo.aktif` (migration `0202_depo_aktif`, saf şema; pasif depo seçimde çıkmaz, silinmez, eldeki stoklu depo pasif yapılamaz);
+  `aktif_depolar()` yalnız aktif, `tum_depolar()` yönetim listesi (Pasif rozeti), `varsayilan_depo()` = SEMTA DEPO (yoksa ANA DEPO, yoksa ilk fason-dışı). Komut `depo_sadelestir [--dry-run]`:
+  150 → "SEMTA DEPO" adı, 151/152 eldeki stoğu `depo_transferi_yap` ile (maliyet değişmez, tarih bugün) 150'ye, sonra 151/152 pasif; değerleme/mizan veya stok toplamı değişirse tüm işlem geri alınır;
+  fason depoları dokunulmaz. (2) ÜS detayı "Eksik Malzeme (satınalma ihtiyacı)" (`uretim_emri_eksikleri`: revizenin net-plan hesabıyla yaprak eksikleri) + liste rozeti. (3) "Fason dönüş aç" yalnız istasyon kodu 10
+  (`fason.FASON_ISTASYON_KODU`) emirlerinde. (4) Revizyon tarihi = işlem günü, ekranda `created_at` saatiyle ("İşlem Zamanı").

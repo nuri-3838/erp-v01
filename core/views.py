@@ -1106,7 +1106,7 @@ def stok_detay(request, pk):
 @ekran_gerekli("depolar")
 def depolar(request):
     return render(request, "core/depo_listesi.html",
-                  {"depolar": depo_servis.aktif_depolar()})
+                  {"depolar": depo_servis.tum_depolar()})
 
 
 @ekran_gerekli("depolar")
@@ -1138,7 +1138,7 @@ def depo_duzenle(request, pk):
             except depo_servis.DepoHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = DepoForm(initial={"kod": depo.kod, "ad": depo.ad, "fason_cari": depo.fason_cari_id})
+        form = DepoForm(initial={"kod": depo.kod, "ad": depo.ad, "fason_cari": depo.fason_cari_id, "aktif": depo.aktif})
     return render(request, "core/depo_form.html",
                   {"form": form, "baslik": "Depo Düzenle", "duzenlenen": depo})
 
@@ -7179,6 +7179,7 @@ def uretim_emirleri(request):
             | Q(kalemler__hedef_urun__ad__contains=buyuk) | Q(depo__kod__icontains=ara)
             | Q(depo__ad__contains=buyuk) | Q(kaynak_siparis__belge_no__icontains=ara)).distinct()
     emirler = []
+    graf = urun_agaci_servis.graf_yukle()
     for e in qs:
         kalemler = list(e.kalemler.all())
         if kalemler:
@@ -7189,6 +7190,7 @@ def uretim_emirleri(request):
         else:
             kalem_ozet = "—"
         emirler.append({"e": e, "kalem_ozet": kalem_ozet, "silinebilir": uretim_servis.uretim_emri_silinebilir(e),
+                        "eksik_sayisi": len(uretim_servis.uretim_emri_eksikleri(e, graf=graf)),
                         "ilerleme": uretim_servis.uretim_emri_ilerleme(e)})
     return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum, "durumlar": UretimEmri.Durum.choices})
 
@@ -7253,9 +7255,10 @@ def uretim_emri_detay(request, pk):
     emirler = []
     for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti", "istasyon").order_by("seviye", "pk"):
         ref = uretim_servis._referans_miktar(ie.operasyon)
+        acilabilir = emir.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
         emirler.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
                         "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
-                        "kayit_acilabilir": emir.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL})
+                        "kayit_acilabilir": acilabilir, "fason_acilabilir": acilabilir and ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU})
     kayitlar = (emir.operasyon_kayitlari.filter(silindi=False)
                .select_related("operasyon__istasyon", "operasyon__cikti", "istasyon_emri")
                .order_by("operasyon__istasyon__kod", "pk"))
@@ -7265,6 +7268,7 @@ def uretim_emri_detay(request, pk):
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kalemler": kalem_satirlari, "kayitlar": kayitlar, "istasyon_emirleri": emirler, "ayirmalar": ayirmalar,
+        "eksikler": uretim_servis.uretim_emri_eksikleri(emir),
         "revizyonlar": _revizyon_satirlari(emir), "silinebilir": uretim_servis.uretim_emri_silinebilir(emir), "revize_url": revize_url,
         "ilerleme": uretim_servis.uretim_emri_ilerleme(emir)})
 
@@ -7381,9 +7385,10 @@ def istasyon_emirleri(request):
     satirlar = []
     for ie in sayfa:
         ref = uretim_servis._referans_miktar(ie.operasyon)
+        acilabilir = ie.uretim_emri.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
         satirlar.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
                          "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
-                         "kayit_acilabilir": ie.uretim_emri.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL})
+                         "kayit_acilabilir": acilabilir, "fason_acilabilir": acilabilir and ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU})
     return render(request, "core/istasyon_emirleri.html", {
         "satirlar": satirlar, "sayfa": sayfa, "ara": ara, "durum": durum, "istasyon": istasyon,
         "durumlar": IstasyonEmri.Durum.choices, "istasyonlar": uretim_servis.aktif_istasyonlar(), "uretim_emri": request.GET.get("uretim_emri", "")})

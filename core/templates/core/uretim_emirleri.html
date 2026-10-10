@@ -106,7 +106,8 @@
         </td>
         <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
         <td><span class="mono">{{ e.depo.kod }}</span> {{ e.depo.ad }}</td>
-        <td><span class="rozet {% if e.durum == 'ACIK' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ e.get_durum_display }}</span></td>
+        <td><span class="rozet {% if e.durum == 'ACIK' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ e.get_durum_display }}</span>
+          {% if satir.eksik_sayisi %}<span class="rozet rozet-pasif" title="Satınalma ihtiyacı olan malzeme">Eksik malzeme: {{ satir.eksik_sayisi }}</span>{% endif %}</td>
         <td>
           <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
             {{ ilerleme.onayli }}/{{ ilerleme.toplam }} onaylı</span>

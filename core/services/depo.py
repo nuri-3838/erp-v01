@@ -15,8 +15,35 @@ class DepoHatasi(ValueError):
     """Depo kural ihlali (Türkçe mesaj)."""
 
 
-def aktif_depolar():
+def tum_depolar():
+    """Depo yönetim listesi: pasifler dahil, silinmemiş tüm depolar."""
     return Depo.objects.filter(silindi=False).select_related("fason_cari").order_by("kod")
+
+
+def aktif_depolar():
+    """Seçim listeleri / yeni kayıtlar: yalnız AKTİF depolar (pasifler çıkmaz)."""
+    return tum_depolar().filter(aktif=True)
+
+
+VARSAYILAN_DEPO_ADI = "SEMTA DEPO"
+
+
+def varsayilan_depo(depolar=None):
+    """Yeni kayıtlarda ön-seçili depo: SEMTA DEPO (aktifse), yoksa eski ANA DEPO, yoksa listedeki ilk fason-dışı depo, o da yoksa ilk depo."""
+    depolar = aktif_depolar() if depolar is None else depolar
+    return (depolar.filter(ad=VARSAYILAN_DEPO_ADI).first() or depolar.filter(ad="ANA DEPO").first()
+            or depolar.filter(fason_cari__isnull=True).first() or depolar.first())
+
+
+def depo_eldeki_stoklar(depo) -> dict:
+    """{stok id: eldeki miktar} — yalnız eldeki > 0 olanlar (silinmemiş hareketlerden; hizmet kartı hareketi olmaz)."""
+    from collections import defaultdict
+    from django.db.models import Sum
+    from core.models import StokHareket
+    toplam = defaultdict(lambda: 0)
+    for r in StokHareket.objects.filter(depo=depo, silindi=False).values("stok_id", "tur").annotate(s=Sum("miktar")):
+        toplam[r["stok_id"]] += r["s"] if r["tur"] == StokHareket.Tur.GIRIS else -r["s"]
+    return {k: v for k, v in toplam.items() if v > 0}
 
 
 def _dogrula(kod, ad, *, haric_pk=None):
@@ -56,20 +83,25 @@ def fason_deposu(cari):
     return Depo.objects.filter(silindi=False, fason_cari=getattr(cari, "pk", cari)).first()
 
 
-def depo_olustur(*, kod, ad, fason_cari=None, kullanici=None) -> Depo:
+def depo_olustur(*, kod, ad, fason_cari=None, aktif=True, kullanici=None) -> Depo:
     kod, ad = _dogrula(kod, ad)
     cari = _fason_cari_coz(fason_cari)
-    return Depo.objects.create(kod=kod, ad=ad, fason_cari=cari, created_by=kullanici, updated_by=kullanici)
+    return Depo.objects.create(kod=kod, ad=ad, fason_cari=cari, aktif=bool(aktif), created_by=kullanici, updated_by=kullanici)
 
 
-def depo_guncelle(depo: Depo, *, kod, ad, fason_cari=None, kullanici=None) -> Depo:
+def depo_guncelle(depo: Depo, *, kod, ad, fason_cari=None, aktif=None, kullanici=None) -> Depo:
+    """``aktif`` None = değişmez. Aktif depo pasif yapılırken eldeki stok kalmamış olmalı (önce depo transferiyle taşınır)."""
     if depo.silindi:
         raise DepoHatasi("Silinmiş depo düzenlenemez.")
     kod, ad = _dogrula(kod, ad, haric_pk=depo.pk)
     cari = _fason_cari_coz(fason_cari, haric_pk=depo.pk)
+    if aktif is not None and depo.aktif and not aktif and depo_eldeki_stoklar(depo):
+        raise DepoHatasi(f"{depo.kod} deposunda eldeki stok var; pasif yapmadan önce stoğu başka depoya taşıyın.")
     depo.kod, depo.ad, depo.fason_cari = kod, ad, cari
+    if aktif is not None:
+        depo.aktif = bool(aktif)
     depo.updated_by = kullanici
-    depo.save(update_fields=["kod", "ad", "fason_cari", "updated_by", "updated_at"])
+    depo.save(update_fields=["kod", "ad", "fason_cari", "aktif", "updated_by", "updated_at"])
     return depo
 
 
