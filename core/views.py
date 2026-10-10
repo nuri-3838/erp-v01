@@ -3274,6 +3274,9 @@ def siparis_faturaya_cevir(request, pk):
                 messages.success(
                     request, f"Fatura oluşturuldu (sipariş {siparis.pk} kaynaklı); "
                              f"fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu.")
+                sevk_notu = uretim_servis.siparis_sevk_edildi(siparis, kullanici=request.user)       # üretim siparişi varsa kapanış / uyarı
+                if sevk_notu:
+                    messages.warning(request, sevk_notu)
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
                 _fatura_hatasi_ekle(fform, e)

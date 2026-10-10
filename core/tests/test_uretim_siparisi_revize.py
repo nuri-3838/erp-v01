@@ -26,7 +26,7 @@ BUGUN = date(2026, 1, 15)
 def tutarlilik_dogrula(tc, emir):
     """Revize sonrası değişmez kurallar (tüm revize testlerinde çağrılır)."""
     emir.refresh_from_db()
-    kalemler = [(k.hedef_urun, k.hedef_miktar) for k in emir.kalemler.filter(silindi=False)]
+    kalemler = uretim.plan_kalemleri([(k.hedef_urun, k.hedef_miktar) for k in emir.kalemler.filter(silindi=False)], uretim.sevk_edilen_haritasi(emir))
     sonuc = ihtiyac_hesapla(kalemler, kullanilabilir=lambda idler: sa.kullanilabilir_haritasi(idler, haric_emir=emir))
     # 1) ayırma toplamı = güncel net planın ayrılanı (eldeki ihtiyaçla tutarlı), hiçbir stok eksik/fazla ayrılmış değil
     tc.assertEqual({a.stok_id: a.miktar for a in sa.emir_ayirmalari(emir)}, {pk: m for pk, m in sonuc["ayrilan"].items() if m > 0}, "ayırma ≠ plan")
@@ -151,9 +151,10 @@ class RevizeTest(RevizeTaban):
             with self.assertRaisesMessage(UretimHatasi, "sevk/fatura edilmiş miktarın (8) altına düşürülemez"):
                 self.revize((self.bukulmus, "6"))
             self.assertEqual((self.emir.revizyon_no, self.planlanan()[self.bukum_op.pk][0]), (0, D("10")))   # hiçbir şey değişmedi
-            self.revize((self.bukulmus, "8"))                                                # eşit: kabul
-        self.assertEqual(self.planlanan()[self.bukum_op.pk][0], D("8"))
-        tutarlilik_dogrula(self, self.emir)
+            self.revize((self.bukulmus, "8"))                                                # eşit: kabul — 8'in tamamı sevk edilmiş, üretim gerekmez
+            self.assertEqual({k: v[2] for k, v in self.planlanan().items()}, {self.kesim_op.pk: "IPTAL", self.bukum_op.pk: "IPTAL"})
+            self.assertEqual(self.ayr(self.profil), D("0"))
+            tutarlilik_dogrula(self, self.emir)
 
     def test_art_arda_iki_revize_ve_gecmis(self):
         self.revize((self.bukulmus, "14"), aciklama="müşteri artırdı")

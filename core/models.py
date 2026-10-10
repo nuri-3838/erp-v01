@@ -3271,6 +3271,8 @@ class UretimEmri(TemelModel):
     durum = models.CharField("durum", max_length=6, choices=Durum.choices, default=Durum.ACIK)
     revizyon_no = models.PositiveSmallIntegerField("revizyon no", default=0)
     kapanis_tarihi = models.DateField("kapanış tarihi", null=True, blank=True)
+    # Sevk (depolu satış faturası) nedeniyle ÜS ayırmasından düşen miktarlar {stok pk: miktar}: fatura silinince aynen geri eklenir (adım 8).
+    sevk_dusen = models.JSONField("sevk nedeniyle ayırmadan düşen ({stok pk: miktar})", default=dict, blank=True)
 
     class Meta:
         db_table = "core_uretim_emri"

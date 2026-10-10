@@ -1208,7 +1208,13 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
         fis_iptal(fatura.fis, kullanici=kullanici)
     if irsaliyeden_mi(fatura):
         _irsaliye_girislerini_fiyatsiz_yap(fatura)    # maliyeti fatura belirlemişti; geri al
+    bagli_siparisler = list(TeklifSiparis.objects.filter(fatura=fatura))
     TeklifSiparis.objects.filter(fatura=fatura).update(fatura=None)
+    if bagli_siparisler:                                  # üretim siparişi: sevk nedeniyle düşen ayırma geri gelir, kapalı ÜS yeniden açılır
+        from core.services import uretim as uretim_servis
+        for sip in bagli_siparisler:
+            sip.fatura = None
+            uretim_servis.siparis_fatura_silindi(sip, kullanici=kullanici)
     katman_ids = list(StokMaliyetKatmani.objects.filter(
         stok_hareket__in=hareketler).values_list("id", flat=True))
     StokMaliyetTuketimi.objects.filter(katman_id__in=katman_ids).delete()

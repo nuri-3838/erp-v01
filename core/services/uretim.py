@@ -1196,6 +1196,8 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
     ie.tamamlanan = ie.tamamlanan + kayit_calistirma(kayit)
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
+    emir.refresh_from_db()
+    _kapanis_kontrol(emir, kullanici)                          # sevk edilmiş sipariş: son emir bitince kapanır
 
 
 def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
@@ -1227,6 +1229,19 @@ def sevk_edilen_haritasi(emir: UretimEmri) -> dict:
     for sat in sip.fatura.satirlar.filter(silindi=False, stok__isnull=False):
         h[sat.stok_id] = h.get(sat.stok_id, Decimal("0")) + sat.miktar
     return h
+
+
+def plan_kalemleri(coz, sevk: dict) -> list:
+    """Planlanacak kalemler: ÜS kalemlerinden sevk/fatura edilmiş miktar (stok başına, sırayla) düşülür — sevk edilen mamul zaten çıktı, yeniden
+    üretilmez/ayrılmaz. Sıfıra inenler dışarıda kalır (hepsi sevk edilmişse plan boş)."""
+    kalan = dict(sevk or {})
+    sonuc = []
+    for urun, miktar in coz:
+        d = min(miktar, kalan.get(urun.pk, Decimal("0")))
+        kalan[urun.pk] = kalan.get(urun.pk, Decimal("0")) - d
+        if miktar - d > 0:
+            sonuc.append((urun, miktar - d))
+    return sonuc
 
 
 def _onceki_ayrilan(ie: IstasyonEmri, stok_id) -> Decimal:
@@ -1283,11 +1298,12 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
     yeni_toplam = {}
     for urun, miktar in coz:
         yeni_toplam[urun.pk] = yeni_toplam.get(urun.pk, Decimal("0")) + miktar
-    for stok_pk, sevk in sevk_edilen_haritasi(emir).items():
+    sevk_haritasi = sevk_edilen_haritasi(emir)
+    for stok_pk, sevk in sevk_haritasi.items():
         if yeni_toplam.get(stok_pk, Decimal("0")) < sevk:
             raise UretimHatasi(f"{Stok.objects.get(pk=stok_pk).kod}: sevk/fatura edilmiş miktarın ({sevk.normalize():f}) altına düşürülemez.")
     once = _emir_ozeti(emir)
-    sonuc = ihtiyac_hesapla(coz, kullanilabilir=lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=emir))
+    sonuc = ihtiyac_hesapla(plan_kalemleri(coz, sevk_haritasi), kullanilabilir=lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=emir))
 
     emir.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici)
@@ -1366,6 +1382,77 @@ def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None
         raise UretimHatasi("Revize sonrası üretime uygun kalem kalmıyor; önce üretim siparişini iptal edin.")
     return uretim_emri_revize(emir, kalemler=[{"hedef_urun_id": k.stok_id, "hedef_miktar": k.miktar} for k in uygun],
                               tarih=tarih, aciklama=aciklama or f"Sipariş {siparis.belge_no} revizesi", kullanici=kullanici, siparis_kalemleri=list(uygun))
+
+# === Üretim siparişi KAPANIŞ (adım 8): sevk = depolu satış faturası ===
+
+def sevk_depolu_mu(siparis) -> bool:
+    """Kaynak siparişin bağlı satış faturası var, silinmemiş, ONAYLI ve DEPOLU (depo seçili → stok çıkışı yazılmış) mı? Deposuz fatura stok
+    çıkarmaz; bu yüzden sevk sayılmaz (karar 5)."""
+    f = siparis.fatura if siparis.fatura_id else None
+    return bool(f is not None and not f.silindi and f.depo_id and f.durum == f.Durum.ONAYLI)
+
+
+def _kapanis_kontrol(emir: UretimEmri, kullanici=None, tarih=None) -> bool:
+    """Sevk edilmiş (``sevk_dusen`` dolu) açık ÜS'nin tüm istasyon emirleri BITTI/IPTAL ise ÜS'yi KAPATIR (revizyon KAPANIS). Kapattıysa True."""
+    if emir.durum != UretimEmri.Durum.ACIK or not emir.sevk_dusen:
+        return False
+    if emir.istasyon_emirleri.filter(silindi=False).exclude(durum__in=[IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL]).exists():
+        return False
+    emir.durum = UretimEmri.Durum.KAPALI
+    emir.kapanis_tarihi = tarih or timezone.localdate()
+    emir.updated_by = kullanici
+    emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.KAPANIS, emir.kapanis_tarihi, "Kapanış (sevk: satış faturası)", {"sevk_dusen": emir.sevk_dusen}, kullanici)
+    return True
+
+
+@transaction.atomic
+def siparis_sevk_edildi(siparis, kullanici=None, tarih=None) -> str:
+    """Satış siparişi faturalandığında (``siparis.fatura`` bağlandıktan SONRA) çağrılır. Depolu ve onaylı faturada: fatura satırı kadar ÜS'nin o stok
+    ayırması düşer (sevk edilen mamul artık ayrılı değil; ``sevk_dusen``e yazılır), tüm istasyon emirleri bitmişse ÜS KAPALI olur. Deposuz fatura ÜS'ye
+    dokunmaz ve UYARI metni döner ('' = uyarı yok). Açık ÜS yoksa sessiz ''."""
+    emir = siparis.uretim_emirleri.select_for_update().filter(silindi=False, durum=UretimEmri.Durum.ACIK).first()
+    if emir is None or not siparis.fatura_id:
+        return ""
+    if not sevk_depolu_mu(siparis):
+        return ("Fatura depo seçilmeden/onaysız oluştu: stok çıkışı yazılmadı, üretim siparişi kapanmadı ve mamul ayırması düşmedi. "
+                "Faturaya depo seçip yeniden oluşturun.")
+    satis = {}
+    for sat in siparis.fatura.satirlar.filter(silindi=False, stok__isnull=False):
+        satis[sat.stok_id] = satis.get(sat.stok_id, Decimal("0")) + sat.miktar
+    dusen = {int(k): Decimal(str(v)) for k, v in (emir.sevk_dusen or {}).items()}
+    for stok_pk, miktar in satis.items():
+        dus = min(stok_ayirma.ayrilan_miktar(emir, stok_pk), max(Decimal("0"), miktar - dusen.get(stok_pk, Decimal("0"))))
+        if dus > 0:
+            stok_ayirma.ayirma_ekle(emir, stok_pk, -dus, kullanici)
+            dusen[stok_pk] = dusen.get(stok_pk, Decimal("0")) + dus
+    emir.sevk_dusen = {str(k): _ds(v) for k, v in dusen.items()}
+    emir.updated_by = kullanici
+    emir.save(update_fields=["sevk_dusen", "updated_by", "updated_at"])
+    if not _kapanis_kontrol(emir, kullanici, tarih):
+        return "Sevk edildi; üretim siparişinin bitmemiş istasyon emirleri var, tamamlanınca kapanacak."
+    return ""
+
+
+@transaction.atomic
+def siparis_fatura_silindi(siparis, kullanici=None, tarih=None) -> None:
+    """Satış faturası silinince (sipariş bağı kopmuş olarak) çağrılır: sevk nedeniyle düşen ayırmalar aynen geri eklenir; ÜS KAPALI ise yeniden AÇILIR
+    (revizyon YENIDEN_ACILIS). Sevkten etkilenmemiş ÜS'ye dokunmaz."""
+    emir = (siparis.uretim_emirleri.select_for_update().filter(silindi=False, durum__in=[UretimEmri.Durum.ACIK, UretimEmri.Durum.KAPALI])
+            .order_by("-pk").first())
+    if emir is None or (emir.durum == UretimEmri.Durum.ACIK and not emir.sevk_dusen):
+        return
+    detay = {"sevk_dusen": emir.sevk_dusen}
+    for k, v in (emir.sevk_dusen or {}).items():
+        stok_ayirma.ayirma_ekle(emir, int(k), Decimal(str(v)), kullanici)
+    emir.sevk_dusen = {}
+    yeniden = emir.durum == UretimEmri.Durum.KAPALI
+    emir.durum = UretimEmri.Durum.ACIK
+    emir.kapanis_tarihi = None
+    emir.updated_by = kullanici
+    emir.save(update_fields=["sevk_dusen", "durum", "kapanis_tarihi", "updated_by", "updated_at"])
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.YENIDEN_ACILIS, tarih or timezone.localdate(),
+                  "Yeniden açıldı (satış faturası silindi)" if yeniden else "Sevk geri alındı (satış faturası silindi)", detay, kullanici)
 
 
 def uretim_emri_ilerleme(emir: UretimEmri):

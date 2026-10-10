@@ -39,8 +39,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 | 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | TAMAM | `f6069f6` |
 | 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | TAMAM | `1cc6443`, `9d71ed2` |
 | 6 | Fason dönüşü emre bağlama, fire | TAMAM | `404fc57` |
-| 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | TAMAM | (bu commit) |
-| 8 | Kapanış (satış faturası) + yeniden açılış; deposuz fatura uyarısı | bekliyor | |
+| 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | TAMAM | `7a0b49a` |
+| 8 | Kapanış (satış faturası) + yeniden açılış; deposuz fatura uyarısı | TAMAM | (bu commit) |
 | 9 | Ekranlar: ÜS liste/detay, istasyon emirleri (yeni ekran kodu `istasyon_emirleri`), kayıt listesi/formu, sipariş detayı rozeti | bekliyor | |
 | 10 | Deploy (ayrı talimat): yedek, migrate, canlıdaki eski emrin silinmesi, yetki ataması | bekliyor | |
 
@@ -106,3 +106,10 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   özetleri). `siparis_revize(siparis, satirlar)`: onaylı satış siparişinin kalemlerini değiştirir (teklif_siparis satır biçimi, eski kalemler soft-delete)
   ve ÜS'yi üretime uygun kalemlerle revize eder; uygun kalem kalmazsa reddedilir. Kalem/ÜS ekranı adım 9. Test: `tutarlilik_dogrula` ortak doğrulayıcı
   (ayırma = güncel net plan ayrılanı; planlanan = tamamlanan + net; ihtiyaç kümülatif; taslaklar kalana sığar; durumlar) her revize sonrası çağrılır.
+- **Adım 8 (migration 0201, saf şema `UretimEmri.sevk_dusen`):** sevk = depolu + ONAYLI satış faturası (`sevk_depolu_mu`). `siparis_sevk_edildi(siparis)` (sipariş→fatura
+  ekranı faturayı bağlayınca çağrılır): fatura satırı kadar ÜS'nin o stok ayırması düşer (`sevk_dusen`e yazılır); tüm istasyon emirleri BITTI/IPTAL ise ÜS KAPALI
+  (`kapanis_tarihi`, revizyon KAPANIS), değilse uyarı ("bitmemiş istasyon emirleri var"); deposuz/onaysız fatura ÜS'ye dokunmaz, uyarı döner (ekranda `messages.warning`).
+  Son istasyon emri onaylanınca (`_istasyon_emri_onay_etkisi`) sevk edilmiş ÜS otomatik kapanır. `fatura_sil` → `siparis_fatura_silindi`: `sevk_dusen` aynen geri
+  eklenir, KAPALI ÜS yeniden ACIK (YENIDEN_ACILIS); deposuz fatura silinmesi ÜS'yi değiştirmez. Revize artık sevk edilen miktarı üretim ihtiyacından düşer
+  (`plan_kalemleri`): sevk edilen mamul yeniden üretilmez/ayrılmaz; kalem miktarı sevkin altına düşemez (gerçek fatura fixture'ıyla test edildi). Bilinen sınır:
+  fatura sonradan düzenlenip depo/miktarı değişirse (`fatura_guncelle`) ÜS otomatik yeniden değerlendirilmez (fatura silip yeniden kesilmesi gerekir).
