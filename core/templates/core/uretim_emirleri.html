@@ -5,46 +5,71 @@
 
 {% block content %}
 <style>
-  .ue-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .ue-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:.5rem; }
+  .ue-ozet { margin:0 0 .9rem; }
 
   .ue-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);
-    border-radius:18px; padding:1rem 1.1rem 1.1rem; margin-bottom:1.2rem; }
-
+    border-radius:16px; padding:.8rem 1rem .9rem; margin-bottom:1rem; }
   .ue-arama-cubuk { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
   .ue-alan-grup { display:flex; flex-direction:column; gap:.3rem; }
-  .ue-alan-grup label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
-    text-transform:uppercase; color:var(--metin-soluk); }
-
+  .ue-alan-grup label { font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
   .ue-arama-kutu { position:relative; flex:1 1 18rem; }
-  .ue-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
+  .ue-arama-kutu input { width:100%; min-height:44px; padding:.55rem 1rem .55rem 2.5rem;
     border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
     font-size:.95rem; transition:border-color .15s, box-shadow .15s; box-sizing:border-box; }
-  .ue-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
-    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
-  .ue-arama-ikon { position:absolute; left:.85rem; bottom:.72rem; font-size:1rem; opacity:.55;
-    pointer-events:none; }
+  .ue-arama-kutu input:focus { outline:none; border-color:var(--turuncu); box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
+  .ue-arama-ikon { position:absolute; left:.85rem; bottom:.7rem; font-size:1rem; opacity:.55; pointer-events:none; }
   .ue-arama-temizle { display:none; }
   .ue-arama-temizle.gorunur { display:inline-flex; }
   .ue-btn-cubuk { display:flex; gap:.6rem; margin-left:auto; }
 
-  .ue-hucre { display:flex; align-items:center; gap:.75rem; }
-  .ue-ikon { width:40px; height:40px; border-radius:12px; flex:0 0 auto; display:grid; place-items:center;
-    font-size:1.1rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
-    border:1px solid rgba(33,56,95,.08); }
-  .ue-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
-  .ue-hucre .no { font-size:.78rem; color:var(--metin-soluk); font-family:"Cascadia Mono",Consolas,monospace; margin-top:.1rem; }
+  /* satır: başlık (ÜS no) / müşteri / küçük gri sipariş bilgisi */
+  .ue-hucre { display:flex; align-items:center; gap:.7rem; }
+  .ue-ikon { width:36px; height:36px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center; font-size:1rem;
+    background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06)); border:1px solid rgba(33,56,95,.08); }
+  .ue-hucre .baslik { font-weight:750; line-height:1.2; color:var(--metin); font-family:"Cascadia Mono",Consolas,monospace; font-size:.95rem; }
+  .ue-hucre .musteri { font-weight:600; line-height:1.25; color:var(--metin); margin-top:.1rem; }
+  .ue-hucre .musteri.stok { color:var(--metin-soluk); font-style:italic; font-weight:500; }
+  .ue-hucre .alt { font-size:.76rem; color:var(--metin-soluk); margin-top:.1rem; }
 
-  #ue-tablo td { padding-top:.85rem; padding-bottom:.85rem; }
+  #ue-tablo td { padding-top:.55rem; padding-bottom:.55rem; vertical-align:middle; }
   #ue-tablo tbody tr { cursor:pointer; }
   #ue-tablo tbody tr:hover td { background:rgba(240,124,0,.06); }
   #ue-tablo tbody tr:active td { background:rgba(240,124,0,.1); }
-  .ue-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
+  .ue-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; white-space:nowrap; }
   #ue-tablo tbody tr:hover .ue-ok { color:var(--turuncu-koyu); opacity:1; }
+  .ue-termin.gecmis { color:#c11539; font-weight:700; }
+
+  /* durum rozeti: açık = turuncu, tamamlandı = yeşil, iptal = gri + üstü çizili */
+  .ue-durum { display:inline-block; padding:.15rem .6rem; border-radius:999px; font-size:.78rem; font-weight:700; }
+  .ue-durum.acik { background:#fff1e0; color:#b45f00; }
+  .ue-durum.tamam { background:#e7f7ec; color:#0a7d28; }
+  .ue-durum.iptal { background:#eceef2; color:#6b7385; text-decoration:line-through; }
+  .ue-eksik { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#fdecef; color:#b3253f; }
+
+  /* ilerleme: ince çubuk + %X, altında küçük istasyon sayısı */
+  .ue-ilerleme { min-width:9rem; }
+  .ue-bar { height:6px; border-radius:999px; background:#e6e9f0; overflow:hidden; }
+  .ue-bar i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg, var(--turuncu), var(--turuncu-acik)); }
+  .ue-ilerleme.tamam .ue-bar i { background:#18a34a; }
+  .ue-yuzde { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:.25rem; font-size:.84rem; font-weight:700; }
+  .ue-ist { font-size:.72rem; color:var(--metin-soluk); margin-top:.25rem; }
 
   .ue-satir[hidden] { display:none; }
   .ue-bos-js { display:none; }
   .ue-bos-js.gorunur { display:table-row; }
-  .ue-sil-hucre { text-align:right; }
+
+  /* dar ekran: satır kart olur (yatay kaydırma yok); Termin ve İlerleme alt alta düşer */
+  @media (max-width: 760px) {
+    #ue-tablo, #ue-tablo tbody, #ue-tablo tr, #ue-tablo td { display:block; width:100%; box-sizing:border-box; }
+    #ue-tablo thead { display:none; }
+    #ue-tablo tr.ue-satir { padding:.6rem .2rem; border-bottom:1px solid var(--cizgi-koyu); }
+    #ue-tablo td { padding:.2rem .6rem; border:0; }
+    #ue-tablo td[data-et]::before { content:attr(data-et) ": "; font-size:.72rem; font-weight:700; text-transform:uppercase; color:var(--metin-soluk); margin-right:.3rem; }
+    #ue-tablo td.ue-ilerleme-td::before { display:block; margin-bottom:.2rem; }
+    .ue-ok { text-align:left; }
+    .ue-btn-cubuk { margin-left:0; }
+  }
 </style>
 
 <div class="ue-ust">
@@ -56,8 +81,7 @@
   </span>
 </div>
 
-<p class="yardim" style="margin-top:-.3rem">Bir üretim siparişi açıldığında eldeki kullanılabilir stok ayrılır ve zincirdeki
-  HER iş istasyonu için ayrı bir istasyon emri oluşur — her istasyon kendi kaydını kendi zamanında onaylar.</p>
+<p class="yardim ue-ozet">Satış siparişinden açılan üretimler. Satıra tıkla, istasyon emirlerine git.</p>
 
 <div class="ue-panel">
   <form method="get" class="ue-arama-cubuk" id="ue-arama-form">
@@ -65,13 +89,13 @@
       <label for="ue-arama">Ara</label>
       <span class="ue-arama-ikon">🔍</span>
       <input type="text" id="ue-arama" name="ara" value="{{ ara }}"
-             placeholder="Sipariş no, hedef ürün, depo veya kaynak sipariş ara…" autocomplete="off">
+             placeholder="Sipariş no, müşteri, ürün, depo veya kaynak sipariş ara…" autocomplete="off">
     </div>
     <div class="ue-alan-grup">
       <label for="ue-durum">Durum</label>
       <select name="durum" id="ue-durum" onchange="this.form.submit()">
         <option value="">Tümü</option>
-        {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}
+        {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{% if k == 'KAPALI' %}Tamamlandı{% else %}{{ ad }}{% endif %}</option>{% endfor %}
       </select>
     </div>
     <div class="ue-btn-cubuk">
@@ -88,45 +112,51 @@
 <table id="ue-tablo">
   <thead>
     <tr>
-      <th>Üretim Siparişi</th><th>Tarih</th><th>Depo</th><th>Durum</th><th>İlerleme</th><th></th><th></th>
+      <th>Üretim Siparişi</th><th>Tarih</th><th>Termin</th><th>Durum</th><th>İlerleme</th><th></th>
     </tr>
   </thead>
   <tbody>
-    {% for satir in emirler %}
-      {% with e=satir.e ilerleme=satir.ilerleme kalem_ozet=satir.kalem_ozet %}
-      <tr class="ue-satir" onclick="window.location='{% url 'core:uretim_emri_detay' e.pk %}'">
+    {% for s in emirler %}
+      {% with e=s.e %}
+      <tr class="ue-satir" data-arama="{{ s.arama }}" onclick="window.location='{% url 'core:uretim_emri_detay' e.pk %}'">
         <td>
           <div class="ue-hucre">
             <span class="ue-ikon">🏭</span>
             <div>
-              <div class="ad">{{ kalem_ozet }}</div>
-              <div class="no">{{ e.no }}{% if e.revizyon_no %} · rev.{{ e.revizyon_no }}{% endif %}{% if e.kaynak_siparis %} · Sip. {{ e.kaynak_siparis.belge_no|default:e.kaynak_siparis.pk }}{% endif %}</div>
+              <div class="baslik">{{ e.no }}</div>
+              <div class="musteri{% if not s.siparisli %} stok{% endif %}">{{ s.musteri }}</div>
+              <div class="alt">{% if s.siparisli %}Sip. {{ s.sip_no }} · {% endif %}{{ s.kalem_sayisi }} ürün · {{ s.toplam_miktar|tr_miktar_sade:3 }} adet</div>
             </div>
           </div>
         </td>
-        <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
-        <td><span class="mono">{{ e.depo.kod }}</span> {{ e.depo.ad }}</td>
-        <td><span class="rozet {% if e.durum == 'ACIK' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ e.get_durum_display }}</span>
-          {% if satir.eksik_sayisi %}<span class="rozet rozet-pasif" title="Satınalma ihtiyacı olan malzeme">Eksik malzeme: {{ satir.eksik_sayisi }}</span>{% endif %}</td>
-        <td>
-          <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
-            {{ ilerleme.onayli }}/{{ ilerleme.toplam }} onaylı</span>
+        <td class="mono" data-et="Tarih">{{ e.tarih|date:"d.m.Y" }}</td>
+        <td data-et="Termin">{% if s.termin %}<span class="mono ue-termin{% if s.termin_gecmis %} gecmis{% endif %}"{% if s.termin_gecmis %} title="Termin geçti"{% endif %}>{{ s.termin|date:"d.m.Y" }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td data-et="Durum">
+          <span class="ue-durum {% if e.durum == 'ACIK' %}acik{% elif e.durum == 'KAPALI' %}tamam{% else %}iptal{% endif %}">{% if e.durum == 'ACIK' %}Açık{% elif e.durum == 'KAPALI' %}Tamamlandı{% else %}İptal{% endif %}</span>
+          {% if s.eksik_sayisi %}<br><span class="ue-eksik" title="Satınalma ihtiyacı olan malzeme">Eksik malzeme: {{ s.eksik_sayisi }}</span>{% endif %}
         </td>
-        <td class="ue-ok">›</td>
-        <td class="ue-sil-hucre" onclick="event.stopPropagation()">
-          {% if satir.silinebilir %}
-          <form method="post" action="{% url 'core:uretim_emri_sil' e.pk %}" onsubmit="return confirm('Bu üretim siparişi ve bağlı taslak kayıtlar KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');" style="margin:0">
+        <td class="ue-ilerleme-td" data-et="İlerleme">
+          <div class="ue-ilerleme{% if e.durum == 'KAPALI' %} tamam{% endif %}">
+            <div class="ue-yuzde"><span>%{{ s.yuzde|floatformat:0 }}</span></div>
+            <div class="ue-bar"><i style="width:{{ s.yuzde|floatformat:'0u' }}%"></i></div>
+            <div class="ue-ist">{{ s.ilerleme.onayli }}/{{ s.ilerleme.toplam }} istasyon</div>
+          </div>
+        </td>
+        <td class="ue-ok" onclick="event.stopPropagation()">
+          {% if s.silinebilir %}
+          <form method="post" action="{% url 'core:uretim_emri_sil' e.pk %}" onsubmit="return confirm('Bu üretim siparişi ve bağlı taslak kayıtlar KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');" style="display:inline;margin:0">
             {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form>
           {% endif %}
+          <a href="{% url 'core:uretim_emri_detay' e.pk %}" style="text-decoration:none;color:inherit" title="Aç">›</a>
         </td>
       </tr>
       {% endwith %}
     {% empty %}
-      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara %}🔍 Bu süzgeçle eşleşen üretim siparişi yok.
-        {% else %}🏭 Henüz üretim siparişi yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
+      <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara or durum %}🔍 Bu süzgeçle eşleşen üretim siparişi yok.
+        {% else %}🏭 Henüz üretim siparişi yok. Bir satış siparişinden “Üretim Siparişi Aç” ile ya da “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
-    <tr class="ue-bos-js" style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+    <tr class="ue-bos-js" style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
       🔍 Bu süzgeçle eşleşen üretim siparişi yok.</td></tr>
   </tbody>
 </table>
@@ -142,14 +172,14 @@
   if(!satirlar.length) return;
 
   satirlar.forEach(function(tr){
-    tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
+    tr.dataset.aramaKucuk = (tr.getAttribute('data-arama') || tr.textContent).toLocaleLowerCase('tr');
   });
 
   function filtrele(){
     var q = (girdi ? girdi.value : '').trim().toLocaleLowerCase('tr');
     var n = 0;
     satirlar.forEach(function(tr){
-      var gorunsun = !q || tr.dataset.arama.indexOf(q) > -1;
+      var gorunsun = !q || tr.dataset.aramaKucuk.indexOf(q) > -1;
       tr.hidden = !gorunsun;
       if(gorunsun) n++;
     });

@@ -7175,7 +7175,7 @@ def uretim_emirleri(request):
     ara = (request.GET.get("ara") or "").strip()
     durum = (request.GET.get("durum") or "").strip()
     qs = (UretimEmri.objects.filter(silindi=False)
-         .select_related("depo", "kaynak_siparis")
+         .select_related("depo", "kaynak_siparis__cari")
          .prefetch_related(Prefetch(
              "kalemler",
              queryset=UretimEmriKalemi.objects.filter(silindi=False).select_related("hedef_urun")))
@@ -7187,21 +7187,26 @@ def uretim_emirleri(request):
         qs = qs.filter(
             Q(no__icontains=ara) | Q(kalemler__hedef_urun__kod__icontains=ara)
             | Q(kalemler__hedef_urun__ad__contains=buyuk) | Q(depo__kod__icontains=ara)
-            | Q(depo__ad__contains=buyuk) | Q(kaynak_siparis__belge_no__icontains=ara)).distinct()
-    emirler = []
+            | Q(depo__ad__contains=buyuk) | Q(kaynak_siparis__belge_no__icontains=ara)
+            | Q(kaynak_siparis__cari__unvan__contains=buyuk) | Q(kaynak_siparis__cari__kod__icontains=ara)).distinct()
+    liste = list(qs)
+    ozet = uretim_servis.uretim_emirleri_ozet(liste)                      # toplu: ilerleme / % / silinebilir (emir başına sorgu yok)
     graf = urun_agaci_servis.graf_yukle()
-    for e in qs:
+    bugun = timezone.localdate()
+    emirler = []
+    for e in liste:
         kalemler = list(e.kalemler.all())
-        if kalemler:
-            ilk = kalemler[0].hedef_urun
-            kalem_ozet = f"{ilk.kod} {ilk.ad}"
-            if len(kalemler) > 1:
-                kalem_ozet += f" +{len(kalemler) - 1} kalem daha"
-        else:
-            kalem_ozet = "—"
-        emirler.append({"e": e, "kalem_ozet": kalem_ozet, "silinebilir": uretim_servis.uretim_emri_silinebilir(e),
-                        "eksik_sayisi": len(uretim_servis.uretim_emri_eksikleri(e, graf=graf)),
-                        "ilerleme": uretim_servis.uretim_emri_ilerleme(e)})
+        sip = e.kaynak_siparis
+        musteri = sip.cari.unvan if sip is not None and sip.cari_id else ("Stok için üretim" if sip is None else (sip.aday_musteri.unvan if sip.aday_musteri_id else "—"))
+        termin = sip.gecerlilik_teslim_tarihi if sip is not None else None
+        o = ozet[e.pk]
+        emirler.append({
+            "e": e, "musteri": musteri, "siparisli": sip is not None, "sip_no": (sip.belge_no or f"#{sip.pk}") if sip is not None else "",
+            "kalem_sayisi": len(kalemler), "toplam_miktar": sum((k.hedef_miktar for k in kalemler), Decimal("0")),
+            "termin": termin, "termin_gecmis": bool(termin and termin < bugun and e.durum == UretimEmri.Durum.ACIK),
+            "silinebilir": o["silinebilir"], "ilerleme": o["ilerleme"], "yuzde": o["yuzde"] if e.durum != UretimEmri.Durum.IPTAL else Decimal("0"),
+            "eksik_sayisi": len(uretim_servis.uretim_emri_eksikleri(e, graf=graf)),
+            "arama": " ".join([e.no, musteri, e.depo.kod, e.depo.ad, (sip.belge_no or "") if sip is not None else ""] + [f"{k.hedef_urun.kod} {k.hedef_urun.ad}" for k in kalemler])})
     return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum, "durumlar": UretimEmri.Durum.choices})
 
 

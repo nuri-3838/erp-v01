@@ -1525,6 +1525,40 @@ def uretim_emri_ilerleme(emir: UretimEmri):
     return {"toplam": kayitlar.count(), "onayli": kayitlar.filter(durum=OperasyonKaydi.Durum.ONAYLI).count()}
 
 
+def uretim_emirleri_ozet(emirler) -> dict:
+    """Liste ekranı için TOPLU özet (sabit sayıda sorgu, emir başına sorgu YOK): {emir pk: {"ilerleme": {"toplam","onayli"}, "yuzde", "silinebilir"}}.
+    Tek emirlik ``uretim_emri_ilerleme`` / ``uretim_emri_yuzde`` / ``uretim_emri_silinebilir`` ile AYNI anlam (kalemler emirlere prefetch edilmiş olmalı)."""
+    emirler = list(emirler)
+    idler = [e.pk for e in emirler]
+    ie = {r["uretim_emri_id"]: r for r in IstasyonEmri.objects.filter(uretim_emri_id__in=idler, silindi=False).values("uretim_emri_id").annotate(
+        toplam=Count("id", filter=~Q(durum=IstasyonEmri.Durum.IPTAL)),
+        biten=Count("id", filter=Q(durum=IstasyonEmri.Durum.BITTI)),
+        baslamis=Count("id", filter=Q(durum__in=[IstasyonEmri.Durum.BASLADI, IstasyonEmri.Durum.BITTI]) | Q(tamamlanan__gt=0)))}
+    kayit = {r["uretim_emri_id"]: r for r in OperasyonKaydi.objects.filter(uretim_emri_id__in=idler, silindi=False).values("uretim_emri_id").annotate(
+        toplam=Count("id"), onayli=Count("id", filter=Q(durum=OperasyonKaydi.Durum.ONAYLI)),
+        baslamis=Count("id", filter=Q(durum=OperasyonKaydi.Durum.ONAYLI) | Q(istasyon_emri__isnull=False)))}
+    izli = set(StokHareket.objects.filter(operasyon_kaydi__uretim_emri_id__in=idler).values_list("operasyon_kaydi__uretim_emri_id", flat=True))
+    ayrilan = {}
+    for a in stok_ayirma.acik_ayirmalar().filter(uretim_emri_id__in=idler):
+        ayrilan.setdefault(a.uretim_emri_id, {})[a.stok_id] = a.miktar
+    sonuc = {}
+    for e in emirler:
+        i, k = ie.get(e.pk), kayit.get(e.pk)
+        if i and i["toplam"]:
+            ilerleme = {"toplam": i["toplam"], "onayli": i["biten"]}
+        else:
+            ilerleme = {"toplam": k["toplam"], "onayli": k["onayli"]} if k else {"toplam": 0, "onayli": 0}
+        baslamis = bool((i and i["baslamis"]) or (k and k["baslamis"]) or e.pk in izli)
+        sevk, ayr = e.sevk_dusen or {}, ayrilan.get(e.pk, {})
+        toplam = hazir = Decimal("0")
+        for kl in e.kalemler.all():
+            toplam += kl.hedef_miktar
+            hazir += min(kl.hedef_miktar, ayr.get(kl.hedef_urun_id, Decimal("0")) + Decimal(str(sevk.get(str(kl.hedef_urun_id), "0"))))
+        sonuc[e.pk] = {"ilerleme": ilerleme, "yuzde": (hazir * 100 / toplam) if toplam else Decimal("0"),
+                       "silinebilir": e.durum == UretimEmri.Durum.ACIK and not baslamis}
+    return sonuc
+
+
 def uretim_emri_silinebilir(emir: UretimEmri) -> bool:
     """Açık ve başlamamış ÜS kalıcı silinebilir; başlamış/kapalı/iptal olan yalnız iptal edilir (karar 9)."""
     return emir.durum == UretimEmri.Durum.ACIK and not _basladi_mi(emir)
