@@ -38,8 +38,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 | 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | TAMAM | `9387369` |
 | 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | TAMAM | `f6069f6` |
 | 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | TAMAM | `1cc6443`, `9d71ed2` |
-| 6 | Fason dönüşü emre bağlama, fire | TAMAM | (bu commit) |
-| 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | bekliyor | |
+| 6 | Fason dönüşü emre bağlama, fire | TAMAM | `404fc57` |
+| 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | TAMAM | (bu commit) |
 | 8 | Kapanış (satış faturası) + yeniden açılış; deposuz fatura uyarısı | bekliyor | |
 | 9 | Ekranlar: ÜS liste/detay, istasyon emirleri (yeni ekran kodu `istasyon_emirleri`), kayıt listesi/formu, sipariş detayı rozeti | bekliyor | |
 | 10 | Deploy (ayrı talimat): yedek, migrate, canlıdaki eski emrin silinmesi, yetki ataması | bekliyor | |
@@ -96,3 +96,13 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   kayıt 1 tam boy beklenir; fazlası serbest stok). PARÇALA: çıktı bazlı gelenden çalıştırma, talep edilmeyen kardeş çıktı serbest stok. Geri al / taslak sil
   emri geri sarar. Ekran: fason dönüş formunda gizli `istasyon_emri` alanı; `?istasyon_emri=<pk>` ile operasyon ve açık kalan adet ön dolu gelir
   (istasyon emri ekranındaki "Fason dönüş aç" düğmesi adım 9'da bu bağlantıyı kullanacak).
+- **Adım 7:** `uretim_emri_revize(emir, kalemler, tarih, aciklama, siparis_kalemleri)` — danışma kilidi + ÜS satır kilidi; (1) sevk/fatura edilmiş
+  miktarın (`sevk_edilen_haritasi`: kaynak siparişin bağlı satış faturası satırları) altına düşürme reddedilir; (2) net plan ÜS'nin kendi ayırmaları
+  kullanılabilir sayılarak (`haric_emir`) çözülür; (3) kalemler soft-delete + yeniden (`eldeki_ayrilan` yeniden); ayırmalar plana çekilir
+  (`_ayirmalari_esitle`: azalan fark serbest, planda olmayan kapanır); (4) her operasyon: planlanan = tamamlanan + yeni net, `ihtiyac` = yeni net +
+  onaylıdan ayrılan (KÜMÜLATİF — onay kuralı `ihtiyac − önceki ayrılan` ile uyumlu), yeni net 0 & tamamlanan 0 → IPTAL (taslakları iptal), tamamlanan varsa
+  planlanan = tamamlanan (BITTI); iptal edilmiş emir gerekli olursa aynı satır yeniden açılır (uq kısıtı); yeni operasyona yeni emir; açık taslak kayıtlar
+  eski sıradan yeni nete sığdırılır (`_taslaklari_sigdir`: hedef düşürme / iptal, revizyon detayında listelenir); (5) REVIZE revizyonu (`once`/`sonra`
+  özetleri). `siparis_revize(siparis, satirlar)`: onaylı satış siparişinin kalemlerini değiştirir (teklif_siparis satır biçimi, eski kalemler soft-delete)
+  ve ÜS'yi üretime uygun kalemlerle revize eder; uygun kalem kalmazsa reddedilir. Kalem/ÜS ekranı adım 9. Test: `tutarlilik_dogrula` ortak doğrulayıcı
+  (ayırma = güncel net plan ayrılanı; planlanan = tamamlanan + net; ihtiyaç kümülatif; taslaklar kalana sığar; durumlar) her revize sonrası çağrılır.

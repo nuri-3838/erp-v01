@@ -918,32 +918,11 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     hammadde) düşülür. Sonuç: (1) ayrılan her stok için ``StokAyirma`` (stok hareketi YOK, yumuşak kural), (2) çalıştırması gereken her operasyon için
     ``IstasyonEmri`` (planlanan = net çalıştırma, seviye sırasıyla), (3) kalem başına ``eldeki_ayrilan`` snapshot'ı, (4) açılış revizyon kaydı.
     OperasyonKaydi AÇILMAZ — kayıtlar istasyon emrinden açılır. depo/tarih kayıtların varsayılanı olarak emirde durur."""
-    if not kalemler:
-        raise UretimHatasi("En az bir hedef ürün satırı gerekli.")
-    if siparis_kalemleri is not None and len(siparis_kalemleri) != len(kalemler):
-        raise UretimHatasi("Sipariş kalemi listesi kalem listesiyle aynı uzunlukta olmalı.")
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if not depo:
         raise UretimHatasi("Depo bulunamadı.")
-
-    coz = []                                       # [(Stok, Decimal), ...] — kökler
-    gorulen = set()
-    for satir in kalemler:
-        urun = _cikti_coz(satir["hedef_urun_id"])
-        if urun.pk in gorulen and siparis_kalemleri is None:
-            raise UretimHatasi(f"{urun.kod} birden fazla satırda tekrarlanamaz.")
-        gorulen.add(urun.pk)
-        if ureten_operasyon(urun) is None:
-            raise UretimHatasi(
-                f"{urun.kod} için tanımlı bir operasyon yok; önce Operasyon Tanımları'ndan ekleyin.")
-        miktar = _sayi_coz(satir["hedef_miktar"], "Hedef miktar geçerli bir sayı olmalı.")
-        if miktar <= 0:
-            raise UretimHatasi("Hedef miktar sıfırdan büyük olmalı.")
-        coz.append((urun, miktar))
-
-    # Eş zamanlı iki ÜS aynı stoğu iki kez ayırmasın: planlama transaction'ı boyunca tek danışma kilidi (ayırma yazımları bitene kadar tutulur)
-    with connection.cursor() as c:
-        c.execute("SELECT pg_advisory_xact_lock(%s)", [URETIM_PLANLAMA_KILIDI])
+    coz = _kalemleri_coz(kalemler, siparis_kalemleri)
+    _planlama_kilidi()
     sonuc = ihtiyac_hesapla(coz, kullanilabilir=stok_ayirma.kullanilabilir_haritasi)       # önce hesapla: döngü hatası hiçbir şey yazdırmaz
 
     yil = tarih.year
@@ -962,22 +941,8 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     if emir is None:
         raise UretimHatasi("Emir numarası üretilemedi; tekrar deneyin.")
 
-    havuz = dict(sonuc["ayrilan"])                  # kalem başına eldeki_ayrilan: kök stoğun ayrılanından sırayla (kalem miktarını aşmaz)
-    kalem_detay = []
-    for i, (urun, miktar) in enumerate(coz, start=1):
-        a = min(miktar, havuz.get(urun.pk, Decimal("0")))
-        havuz[urun.pk] = havuz.get(urun.pk, Decimal("0")) - a
-        UretimEmriKalemi.objects.create(
-            uretim_emri=emir, hedef_urun=urun, hedef_miktar=miktar, sira=i * 10, eldeki_ayrilan=a,
-            siparis_kalem=siparis_kalemleri[i - 1] if siparis_kalemleri else None,
-            created_by=kullanici, updated_by=kullanici)
-        kalem_detay.append({"stok": urun.kod, "miktar": _ds(miktar), "eldeki_ayrilan": _ds(a)})
-
-    ayirma_detay = []
-    for stok_pk, miktar in sorted(sonuc["ayrilan"].items(), key=lambda kv: kv[0]):
-        if miktar > 0:
-            stok_ayirma.ayirma_ayarla(emir, stok_pk, miktar, kullanici)
-            ayirma_detay.append({"stok": Stok.objects.get(pk=stok_pk).kod, "miktar": _ds(miktar)})
+    kalem_detay = _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici)
+    ayirma_detay = _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici)
 
     emir_detay = []
     for p in sonuc["plan"]:
@@ -988,6 +953,61 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     _revizyon_yaz(emir, UretimEmriRevizyon.Tur.ACILIS, tarih, "Açılış",
                   {"kalemler": kalem_detay, "ayirmalar": ayirma_detay, "istasyon_emirleri": emir_detay}, kullanici)
     return emir
+
+
+def _planlama_kilidi():
+    """Eş zamanlı iki ÜS açılışı/revizesi aynı stoğu iki kez ayırmasın: planlama transaction'ı boyunca tek danışma kilidi."""
+    with connection.cursor() as c:
+        c.execute("SELECT pg_advisory_xact_lock(%s)", [URETIM_PLANLAMA_KILIDI])
+
+
+def _kalemleri_coz(kalemler, siparis_kalemleri=None):
+    """[(Stok, Decimal), ...] — her kalemin operasyonu olmalı, miktar > 0; siparişsizde aynı ürün tek satır."""
+    if not kalemler:
+        raise UretimHatasi("En az bir hedef ürün satırı gerekli.")
+    if siparis_kalemleri is not None and len(siparis_kalemleri) != len(kalemler):
+        raise UretimHatasi("Sipariş kalemi listesi kalem listesiyle aynı uzunlukta olmalı.")
+    coz, gorulen = [], set()
+    for satir in kalemler:
+        urun = _cikti_coz(satir["hedef_urun_id"])
+        if urun.pk in gorulen and siparis_kalemleri is None:
+            raise UretimHatasi(f"{urun.kod} birden fazla satırda tekrarlanamaz.")
+        gorulen.add(urun.pk)
+        if ureten_operasyon(urun) is None:
+            raise UretimHatasi(
+                f"{urun.kod} için tanımlı bir operasyon yok; önce Operasyon Tanımları'ndan ekleyin.")
+        miktar = _sayi_coz(satir["hedef_miktar"], "Hedef miktar geçerli bir sayı olmalı.")
+        if miktar <= 0:
+            raise UretimHatasi("Hedef miktar sıfırdan büyük olmalı.")
+        coz.append((urun, miktar))
+    return coz
+
+
+def _kalemleri_yaz(emir, coz, ayrilan, siparis_kalemleri, kullanici):
+    """ÜS kalemlerini yazar; ``eldeki_ayrilan`` kök stoğun ayrılanından sırayla (kalem miktarını aşmaz). Detay listesi döner."""
+    havuz = dict(ayrilan)
+    detay = []
+    for i, (urun, miktar) in enumerate(coz, start=1):
+        a = min(miktar, havuz.get(urun.pk, Decimal("0")))
+        havuz[urun.pk] = havuz.get(urun.pk, Decimal("0")) - a
+        UretimEmriKalemi.objects.create(
+            uretim_emri=emir, hedef_urun=urun, hedef_miktar=miktar, sira=i * 10, eldeki_ayrilan=a,
+            siparis_kalem=siparis_kalemleri[i - 1] if siparis_kalemleri else None,
+            created_by=kullanici, updated_by=kullanici)
+        detay.append({"stok": urun.kod, "miktar": _ds(miktar), "eldeki_ayrilan": _ds(a)})
+    return detay
+
+
+def _ayirmalari_esitle(emir, ayrilan, kullanici):
+    """ÜS ayırmalarını plan ayrılanına ÇEKER (artan/azalan; planda olmayan stoklar kapanır). Yeni durumun detay listesi döner."""
+    mevcut = {a.stok_id for a in stok_ayirma.emir_ayirmalari(emir)}
+    detay = []
+    for stok_pk in sorted(mevcut | set(ayrilan)):
+        miktar = ayrilan.get(stok_pk, Decimal("0"))
+        stok_ayirma.ayirma_ayarla(emir, stok_pk, max(miktar, Decimal("0")), kullanici)
+        if miktar > 0:
+            detay.append({"stok": Stok.objects.get(pk=stok_pk).kod, "miktar": _ds(miktar)})
+    return detay
 
 
 def _istasyon_emri_ac(emir: UretimEmri, plan_satiri: dict, kullanici=None) -> IstasyonEmri:
@@ -1194,6 +1214,158 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
     ie.tamamlanan = max(Decimal("0"), ie.tamamlanan - kayit_calistirma(kayit))
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
+
+# === Üretim siparişi REVİZE (adım 7) ===
+
+def sevk_edilen_haritasi(emir: UretimEmri) -> dict:
+    """{stok pk: sevk/faturalanmış miktar} — siparişli ÜS'de kaynak siparişin bağlı (silinmemiş) satış faturası satırlarından; manuel ÜS'de boş.
+    Revize bunun altına düşürmeyi reddeder (adım 8 kapanışı aynı kaynağı kullanır)."""
+    sip = emir.kaynak_siparis
+    if sip is None or not sip.fatura_id or sip.fatura.silindi:
+        return {}
+    h = {}
+    for sat in sip.fatura.satirlar.filter(silindi=False, stok__isnull=False):
+        h[sat.stok_id] = h.get(sat.stok_id, Decimal("0")) + sat.miktar
+    return h
+
+
+def _onceki_ayrilan(ie: IstasyonEmri, stok_id) -> Decimal:
+    """Bu emrin ONAYLI kayıtlarının bu çıktı için ÜS'ye ayırdığı toplam (kayıt çıktı satırı izleri)."""
+    return sum((c.ayrilan for c in OperasyonKaydiCikti.objects.filter(
+        kayit__istasyon_emri=ie, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__silindi=False, stok_id=stok_id, silindi=False)), Decimal("0"))
+
+
+def _taslaklari_sigdir(ie: IstasyonEmri, yeni_net, kullanici=None) -> list:
+    """Emrin açık TASLAK kayıtlarını yeni net çalıştırmaya sığdırır (eski sıradan): sığmayan hedef düşürülür (``kayit_hedefini_guncelle``), pay kalmayan
+    kayıt iptal edilir. [{"kayit", "once", "sonra"}] döner (sonra None = iptal)."""
+    ref = _referans_miktar(ie.operasyon)
+    izin = max(yeni_net, Decimal("0"))
+    degisen = []
+    for k in ie.kayitlar.filter(silindi=False, durum=OperasyonKaydi.Durum.TASLAK).select_related("operasyon").order_by("pk"):
+        run = kayit_calistirma(k)
+        if izin <= 0:
+            operasyon_kaydi_sil(k, kullanici=kullanici)
+            degisen.append({"kayit": k.no, "once": _ds(k.hedef_cikti_miktari), "sonra": None})
+            continue
+        if run > izin:
+            once = k.hedef_cikti_miktari
+            kayit_hedefini_guncelle(k, (izin * ref).quantize(Decimal("0.000001")), kullanici)
+            degisen.append({"kayit": k.no, "once": _ds(once), "sonra": _ds(k.hedef_cikti_miktari)})
+            run = izin
+        izin -= run
+    return degisen
+
+
+def _emir_ozeti(emir: UretimEmri) -> dict:
+    return {
+        "kalemler": [{"stok": k.hedef_urun.kod, "miktar": _ds(k.hedef_miktar), "eldeki_ayrilan": _ds(k.eldeki_ayrilan)}
+                     for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun")],
+        "ayirmalar": [{"stok": a.stok.kod, "miktar": _ds(a.miktar)} for a in stok_ayirma.emir_ayirmalari(emir)],
+        "istasyon_emirleri": [{"no": ie.no, "operasyon": ie.operasyon.cikti.kod, "planlanan": _ds(ie.planlanan), "tamamlanan": _ds(ie.tamamlanan),
+                               "durum": ie.durum} for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti")],
+    }
+
+
+@transaction.atomic
+def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", kullanici=None, siparis_kalemleri=None) -> UretimEmri:
+    """ÜS kalemlerini ``kalemler`` ile DEĞİŞTİRİR (adet ±, ekle/çıkar) ve ayırma + istasyon emirlerini yeniden planlar (docs/uretim-siparisi-plan.md):
+    (1) sevk/fatura edilmiş miktarın altına düşürme reddedilir; (2) net plan, ÜS'nin kendi ayırmaları kullanılabilir sayılarak çözülür (kendi
+    ürettiği/ayırdığı stok ona açık); (3) ayırmalar plana çekilir (azalan fark serbest); (4) her operasyon: planlanan = tamamlanan + yeni net çalıştırma,
+    ihtiyaç = yeni net + daha önce onaylıdan ayrılan (kümülatif); yeni net 0 ve tamamlanan 0 ise IPTAL (taslak kayıtları iptal), tamamlanan varsa
+    planlanan = tamamlanan (BITTI); gereken yeni/iptal edilmiş operasyona emir açılır/yeniden açılır; açık taslak kayıtlar yeni nete sığdırılır;
+    (5) REVIZE revizyonu (önce/sonra). Yalnız ACIK sipariş. Tamamen atomik: doğrulama hatası hiçbir şey değiştirmez."""
+    _planlama_kilidi()
+    verilen = emir
+    emir = UretimEmri.objects.select_for_update(of=("self",)).select_related("kaynak_siparis", "depo").get(pk=emir.pk)
+    if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
+        raise UretimHatasi("Yalnız açık üretim siparişi revize edilebilir.")
+    coz = _kalemleri_coz(kalemler, siparis_kalemleri)
+    yeni_toplam = {}
+    for urun, miktar in coz:
+        yeni_toplam[urun.pk] = yeni_toplam.get(urun.pk, Decimal("0")) + miktar
+    for stok_pk, sevk in sevk_edilen_haritasi(emir).items():
+        if yeni_toplam.get(stok_pk, Decimal("0")) < sevk:
+            raise UretimHatasi(f"{Stok.objects.get(pk=stok_pk).kod}: sevk/fatura edilmiş miktarın ({sevk.normalize():f}) altına düşürülemez.")
+    once = _emir_ozeti(emir)
+    sonuc = ihtiyac_hesapla(coz, kullanilabilir=lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=emir))
+
+    emir.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici)
+    _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici)
+
+    taslak_degisen = []
+    plan = {p["operasyon"].pk: p for p in sonuc["plan"]}
+    mevcut = {ie.operasyon_id: ie for ie in IstasyonEmri.objects.select_for_update().filter(uretim_emri=emir, silindi=False).select_related("operasyon")}
+    for opk, p in plan.items():
+        ie = mevcut.get(opk)
+        net = p["calistirma"]
+        if ie is None:
+            if net > 0:
+                _istasyon_emri_ac(emir, p, kullanici)
+            continue
+        ie.seviye = p["seviye"]
+        ie.planlanan = ie.tamamlanan + max(net, Decimal("0"))
+        ie.ihtiyac = {}
+        for c in p["ciktilar"]:
+            if not c["surucu"]:
+                continue
+            toplam = c["net"] + _onceki_ayrilan(ie, c["stok"].pk)
+            if toplam > 0:
+                ie.ihtiyac[str(c["stok"].pk)] = _ds(toplam)
+        if net <= 0 and ie.tamamlanan <= 0:
+            ie.durum = IstasyonEmri.Durum.IPTAL
+            ie.updated_by = kullanici
+            ie.save()
+            taslak_degisen += _taslaklari_sigdir(ie, Decimal("0"), kullanici)
+            continue
+        if ie.durum == IstasyonEmri.Durum.IPTAL:
+            ie.durum = IstasyonEmri.Durum.BEKLIYOR                      # yeniden gerekli oldu
+        ie.updated_by = kullanici
+        ie.save()
+        taslak_degisen += _taslaklari_sigdir(ie, net, kullanici)
+        istasyon_emri_durum_guncelle(ie)
+    for opk, ie in mevcut.items():
+        if opk in plan or ie.durum == IstasyonEmri.Durum.IPTAL:
+            continue
+        ie.planlanan = ie.tamamlanan                                     # artık gerekmiyor
+        if ie.tamamlanan <= 0:
+            ie.durum = IstasyonEmri.Durum.IPTAL
+        ie.updated_by = kullanici
+        ie.save()
+        taslak_degisen += _taslaklari_sigdir(ie, Decimal("0"), kullanici)
+        istasyon_emri_durum_guncelle(ie)
+    sonra = _emir_ozeti(emir)
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.REVIZE, tarih or timezone.localdate(), aciklama or "Revize",
+                  {"once": once, "sonra": sonra, "taslak_kayitlar": taslak_degisen}, kullanici)
+    if verilen is not emir:
+        verilen.refresh_from_db()                                         # çağıranın nesnesi de güncel (revizyon_no vb.)
+    return emir
+
+
+@transaction.atomic
+def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None) -> UretimEmri:
+    """Onaylı SATIŞ siparişinin kalemlerini ``satirlar`` (teklif_siparis_olustur satır biçimi) ile DEĞİŞTİRİR ve aynı işlemde bağlı açık üretim
+    siparişini revize eder (karar 6): ÜS kalemleri = siparişin üretime uygun kalemleri (miktar = sipariş kalem miktarı); üretime uygun kalem
+    kalmazsa reddedilir (önce ÜS iptal edilmeli). Sipariş başlığı/fiyat mantığı teklif_siparis servisininkiyle aynıdır."""
+    from core.services import teklif_siparis as ts
+    if siparis.belge_tur != TeklifSiparis.BelgeTur.SIPARIS or siparis.yon != TeklifSiparis.Yon.SATIS:
+        raise UretimHatasi("Yalnız SATIŞ siparişi revize edilebilir.")
+    if siparis.silindi or siparis.durum != TeklifSiparis.Durum.ONAYLI:
+        raise UretimHatasi("Yalnız onaylı sipariş revize edilebilir.")
+    emir = siparis.uretim_emirleri.filter(silindi=False, durum=UretimEmri.Durum.ACIK).first()
+    if emir is None:
+        raise UretimHatasi("Bu siparişin açık bir üretim siparişi yok; siparişi normal yoldan düzenleyin.")
+    try:
+        _cari, _aday, hazir = ts._hazirla(cari_id=siparis.cari_id, satirlar=satirlar)
+    except ts.TeklifSiparisHatasi as e:
+        raise UretimHatasi(str(e))
+    siparis.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
+    ts._kalemleri_yaz(siparis, hazir, kullanici)
+    uygun, _ = siparis_uretilebilir_kalemleri(siparis)
+    if not uygun:
+        raise UretimHatasi("Revize sonrası üretime uygun kalem kalmıyor; önce üretim siparişini iptal edin.")
+    return uretim_emri_revize(emir, kalemler=[{"hedef_urun_id": k.stok_id, "hedef_miktar": k.miktar} for k in uygun],
+                              tarih=tarih, aciklama=aciklama or f"Sipariş {siparis.belge_no} revizesi", kullanici=kullanici, siparis_kalemleri=list(uygun))
 
 
 def uretim_emri_ilerleme(emir: UretimEmri):
