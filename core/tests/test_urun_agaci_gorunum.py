@@ -201,7 +201,7 @@ class EkranTest(GorunumBase):
         h = r.content.decode()
         self.assertIn("kalem yeterli", h)
         self.assertIn("kalem eksik", h)
-        self.assertIn("Açık kayıtlara ayrılan stok düşülmez", h)
+        self.assertIn("Kullanılabilir = eldeki − açık üretim siparişlerine ayrılan", h)
         self.assertIn('class="ua-s eksik"', h)
         self.assertIsNone(r.context["kokler"])
 

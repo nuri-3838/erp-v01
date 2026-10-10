@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from core.models import Cari, Depo, FasonFiyat, Kur, Operasyon, OperasyonCikti, OperasyonGirdi, Stok, StokHareket
 from core.sayi import format_tr, yuvarla
+from core.services.stok_ayirma import toplu_kullanilabilir
 from core.services.stok_ortalama import fiyatsiz_girisli_stoklar
 from core.services.uretim import ihtiyac_hesapla, tanim_ciktilari
 
@@ -158,19 +159,24 @@ def depolar():
 # --- 1. ÜRÜN görünümü: Malzeme ve Stok · Maliyet ---------------------------------------------------------------------------
 
 def urun_malzeme(graf: Graf, urun, miktar, depo=None) -> dict:
-    """Ağacın yaprakları toplanmış düz liste: Gerekli (TAM BOY hesabıyla — ``ihtiyac_hesapla`` varsayılan sonucu) | Eldeki | Eksik."""
+    """Ağacın yaprakları toplanmış düz liste: Gerekli (TAM BOY hesabıyla — ``ihtiyac_hesapla`` varsayılan sonucu) | Eldeki | Ayrılan |
+    Kullanılabilir | Eksik. Ayrılan = açık üretim siparişlerine ayrılmış stok (tüm depolar — ``stok_ayirma``), kullanılabilir = eldeki − ayrılan
+    (eksi olabilir: ``asim``), eksik = max(0, gerekli − kullanılabilir). ``depo`` verilirse eldeki o depodan, ayrılan yine tüm depolardan."""
     sonuc = ihtiyac_hesapla([(urun, miktar)], graf=graf)
     yapraklar = [o for o in sonuc["ozet"] if o["yaprak"]]
-    eldeki = eldeki_haritasi([o["stok"].pk for o in yapraklar], depo)
+    idler = [o["stok"].pk for o in yapraklar]
+    durum = toplu_kullanilabilir(idler, eldeki=eldeki_haritasi(idler, depo))
     satirlar = []
     for o in yapraklar:
         stok, gerekli = o["stok"], o["ihtiyac"]
-        mevcut = eldeki.get(stok.pk, SIFIR)
+        d = durum[stok.pk]
         satirlar.append({"stok": stok, "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad, "gerekli": gerekli,
-                         "eldeki": mevcut, "eksik": max(SIFIR, gerekli - mevcut)})
+                         "eldeki": d["eldeki"], "ayrilan": d["ayrilan"], "kullanilabilir": d["kullanilabilir"],
+                         "eksik": max(SIFIR, gerekli - d["kullanilabilir"]), "asim": d["kullanilabilir"] < 0})
     eksik_sayi = sum(1 for s in satirlar if s["eksik"] > 0)
     return {"gruplar": _grupla(satirlar, lambda s: s["stok"]), "yeterli": len(satirlar) - eksik_sayi, "eksik": eksik_sayi,
-            "satir_sayisi": len(satirlar)}
+            "satir_sayisi": len(satirlar), "ayrilan_sayi": sum(1 for s in satirlar if s["ayrilan"] > 0),
+            "asim_sayi": sum(1 for s in satirlar if s["asim"])}
 
 
 KUR_GERI_GUN = 7

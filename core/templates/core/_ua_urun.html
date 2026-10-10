@@ -70,30 +70,35 @@
     <div class="ua-ozet">
       <span class="ua-chip yesil"><strong>{{ malzeme.yeterli }}</strong> kalem yeterli</span>
       <span class="ua-chip{% if malzeme.eksik %} kirmizi{% endif %}"><strong>{{ malzeme.eksik }}</strong> kalem eksik</span>
+      <span class="ua-chip{% if malzeme.ayrilan_sayi %} mavi{% endif %}"><strong>{{ malzeme.ayrilan_sayi }}</strong> kalemde üretim siparişine ayrılan stok var</span>
+      {% if malzeme.asim_sayi %}<span class="ua-chip kirmizi">⚠ {{ malzeme.asim_sayi }} kalemde ayrılan stok eldekini aşıyor (fiilen tüketilmiş)</span>{% endif %}
       <span class="ua-chip">Depo: <strong>{% if depo %}{{ depo.kod }}{% else %}tüm depolar{% endif %}</strong></span>
     </div>
     <div class="tablo-kapsayici">
       <table class="ua-tablo">
-        <thead><tr><th>Kod · Ad</th><th>Birim</th><th class="sag">Gerekli</th><th class="sag">Eldeki stok</th><th class="sag">Eksik</th></tr></thead>
+        <thead><tr><th>Kod · Ad</th><th>Birim</th><th class="sag">Gerekli</th><th class="sag">Eldeki stok</th><th class="sag">Ayrılan</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
         <tbody>
           {% for g in malzeme.gruplar %}
-            <tr class="ua-kat"><td colspan="5">{{ g.kategori }} · {{ g.satirlar|length }} kalem</td></tr>
+            <tr class="ua-kat"><td colspan="7">{{ g.kategori }} · {{ g.satirlar|length }} kalem</td></tr>
             {% for s in g.satirlar %}
               <tr class="ua-s{% if s.eksik > 0 %} eksik{% endif %}">
                 <td class="ua-ad-h" data-et="Kalem"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td>
                 <td data-et="Birim">{{ s.birim }}</td>
                 <td class="sag" data-et="Gerekli">{{ s.gerekli|tr_miktar_sade:3 }}</td>
                 <td class="sag" data-et="Eldeki stok">{{ s.eldeki|tr_miktar_sade:3 }}</td>
+                <td class="sag" data-et="Ayrılan">{% if s.ayrilan > 0 %}{{ s.ayrilan|tr_miktar_sade:3 }}{% else %}—{% endif %}</td>
+                <td class="sag{% if s.asim %} ua-asim{% endif %}" data-et="Kullanılabilir" title="{% if s.asim %}Ayrılan stok eldekini aşıyor — ayrılmış stok başka bir çıkışla fiilen tüketilmiş{% else %}Eldeki − açık üretim siparişlerine ayrılan{% endif %}">{{ s.kullanilabilir|tr_miktar_sade:3 }}</td>
                 <td class="sag vurgu" data-et="Eksik">{% if s.eksik > 0 %}{{ s.eksik|tr_miktar_sade:3 }}{% else %}—{% endif %}</td>
               </tr>
             {% endfor %}
           {% empty %}
-            <tr><td colspan="5" class="yardim ua-bos">Bu ürünün zincirinde hazır stok kalemi yok.</td></tr>
+            <tr><td colspan="7" class="yardim ua-bos">Bu ürünün zincirinde hazır stok kalemi yok.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <p class="ua-not">Gerekli miktar tam boy hesabıyla bulunur (İhtiyaç Hesapla ile aynı). Açık kayıtlara ayrılan stok düşülmez.</p>
+    <p class="ua-not">Gerekli miktar tam boy hesabıyla bulunur (İhtiyaç Hesapla ile aynı). Kullanılabilir = eldeki − açık üretim siparişlerine ayrılan (ayrılan tüm depolar için); eksik kullanılabilirden hesaplanır.
+      Ayırma hiçbir çıkışı engellemez: ayrılmış stok başka yerde tüketilmişse kullanılabilir eksiye düşer ve uyarılır.</p>
   </section>
 {% endif %}
 

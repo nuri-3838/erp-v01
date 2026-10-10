@@ -3300,6 +3300,32 @@ class UretimEmriKalemi(TemelModel):
         return f"{self.uretim_emri.no} — {self.hedef_urun.kod} × {self.hedef_miktar}"
 
 
+class StokAyirma(TemelModel):
+    """ÜRETİM > Üretim Siparişi STOK AYIRMASI (rezervasyon): bir üretim siparişine (``UretimEmri``) bir stoktan AYRILAN güncel miktar —
+    (sipariş, stok) başına TEK aktif satır; olaylarla (açılış, revize, kayıt onayı, sevk) güncellenir, geçmişi revizyon kaydında tutulur.
+    Stok hareketi DEĞİLDİR: eldekiyi değiştirmez; yalnız "kullanılabilir = eldeki − açık siparişlerin ayrılan toplamı" hesabında düşülür
+    (core.services.stok_ayirma). Kural YUMUŞAKTIR: başka çıkışlar ayrılmış stoğu fiilen tüketebilir, hiçbir hareket engellenmez; kullanılabilir
+    eksiye düşünce ekranlar uyarır. Depo bazında değildir (tüm depolar). Bkz. docs/uretim-siparisi-plan.md."""
+
+    uretim_emri = models.ForeignKey(
+        UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="ayirmalar")
+    stok = models.ForeignKey(Stok, verbose_name="stok", on_delete=models.PROTECT, related_name="ayirmalar")
+    miktar = models.DecimalField("ayrılan miktar", max_digits=18, decimal_places=6)
+
+    class Meta:
+        db_table = "core_stok_ayirma"
+        verbose_name = "stok ayırması"
+        verbose_name_plural = "stok ayırmaları"
+        ordering = ["uretim_emri", "stok__kod"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gte=0), name="ck_stok_ayirma_miktar_gte0"),
+            models.UniqueConstraint(fields=["uretim_emri", "stok"], condition=models.Q(silindi=False), name="uq_stok_ayirma_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.uretim_emri_id} ← {self.stok_id} × {self.miktar}"
+
+
 class OperasyonKaydi(TemelModel):
     """ÜRETİM > Operasyon Kayıtları — bir Operasyon'un fiilen çalıştırılma kaydı, bir
     istasyonda, bir tarihte. TASLAK'ta serbestçe düzenlenir/silinir; Onayla'da tek atomik

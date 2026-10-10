@@ -105,10 +105,13 @@ def agac_xlsx(agac, miktar, baslik_ek="") -> bytes:
 # --- Ürün / Malzeme ve Stok ------------------------------------------------------------------------------------------------
 
 def malzeme_xlsx(urun, miktar, sonuc, depo_ad="Tüm depolar") -> bytes:
+    """Gerekli | Eldeki | Ayrılan (açık üretim siparişleri, tüm depolar) | Kullanılabilir (= eldeki − ayrılan, eksi olabilir) | Eksik (kullanılabilirden)."""
+    asim = f" · ⚠ {sonuc['asim_sayi']} kalemde ayrılan stok eldekini aşıyor" if sonuc.get("asim_sayi") else ""
     wb, ws = _yeni(f"Malzeme ve Stok — {urun.kod} {urun.ad}",
                    f"Miktar: {miktar} · Depo: {depo_ad} · {sonuc['yeterli']} kalem yeterli · {sonuc['eksik']} kalem eksik "
-                   "(açık kayıtlara ayrılan stok düşülmez)",
-                   ["Kategori", "Kod", "Ad", "Birim", "Gerekli", "Eldeki stok", "Eksik"], [28, 16, 46, 8, 14, 14, 14])
+                   f"(kullanılabilir = eldeki − açık üretim siparişlerine ayrılan; ayrılan tüm depolar için){asim}",
+                   ["Kategori", "Kod", "Ad", "Birim", "Gerekli", "Eldeki stok", "Ayrılan", "Kullanılabilir", "Eksik"],
+                   [28, 16, 46, 8, 14, 14, 14, 15, 14])
     r = 5
     for g in sonuc["gruplar"]:
         for s in g["satirlar"]:
@@ -118,7 +121,11 @@ def malzeme_xlsx(urun, miktar, sonuc, depo_ad="Tüm depolar") -> bytes:
             ws.cell(row=r, column=4, value=s["birim"])
             _sayi(ws, r, 5, s["gerekli"], MIKTAR_FMT)
             _sayi(ws, r, 6, s["eldeki"], MIKTAR_FMT)
-            c = _sayi(ws, r, 7, s["eksik"], MIKTAR_FMT)
+            _sayi(ws, r, 7, s["ayrilan"], MIKTAR_FMT)
+            k = _sayi(ws, r, 8, s["kullanilabilir"], MIKTAR_FMT)
+            if s["asim"]:
+                k.font = KIRMIZI
+            c = _sayi(ws, r, 9, s["eksik"], MIKTAR_FMT)
             if s["eksik"] > 0:
                 c.font = KIRMIZI
                 ws.cell(row=r, column=2).font = KIRMIZI
