@@ -1153,6 +1153,7 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
     ie, emir = kayit.istasyon_emri, kayit.uretim_emri
     if ie is None or emir is None:
         return
+    ie = IstasyonEmri.objects.select_for_update().get(pk=ie.pk)      # aynı emrin iki kaydı eş zamanlı onaylanırsa sıraya girer (çift ayırma olmaz)
     for satir in kaydi_girdi_satirlari(kayit):
         if satir.gerceklesen_miktar <= 0:
             continue
@@ -1172,7 +1173,6 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
             stok_ayirma.ayirma_ekle(emir, c.stok_id, a, kullanici)
             c.ayrilan = a
             c.save(update_fields=["ayrilan", "updated_at"])
-    ie.refresh_from_db()
     ie.tamamlanan = ie.tamamlanan + kayit_calistirma(kayit)
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
@@ -1183,6 +1183,7 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
     ie, emir = kayit.istasyon_emri, kayit.uretim_emri
     if ie is None or emir is None:
         return
+    ie = IstasyonEmri.objects.select_for_update().get(pk=ie.pk)
     if emir.durum == UretimEmri.Durum.ACIK:
         for c in kayit.ciktilar.filter(silindi=False):
             if c.ayrilan > 0:
@@ -1190,7 +1191,6 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
         for satir in kaydi_girdi_satirlari(kayit):
             if satir.ayrilan_dusen > 0:
                 stok_ayirma.ayirma_ekle(emir, satir.girdi_id, satir.ayrilan_dusen, kullanici)
-    ie.refresh_from_db()
     ie.tamamlanan = max(Decimal("0"), ie.tamamlanan - kayit_calistirma(kayit))
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)

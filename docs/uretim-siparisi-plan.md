@@ -87,5 +87,5 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   serbest — karar 8), `tamamlanan += kayit_calistirma(kayit)` (ÜRET'te ana çıktının giriş miktarı / referans = fason fire sonrası; PARÇALA'da hedef/referans),
   durum yeniden hesaplanır (BEKLIYOR/BASLADI/BITTI; açık taslak = BASLADI). Geri al (`operasyon_kaydi_sil(onayli_geri_al=True)`): ayırma izleri ve tamamlanan
   geri sarılır; taslak silinince durum güncellenir. İptal edilmiş/kapanmış ÜS'nin emre bağlı kaydı onaylanamaz. Emre bağlı olmayan (bağımsız) kayıtlar etkilenmez.
-  Bilinen sınır: ayırma yazımlarında satır kilidi var ama çıktı ayırması 'önceki onaylı' toplamına bakar (aynı emrin iki kaydı eş zamanlı onaylanırsa
-  teorik çift ayırma; onay ekranı tek kullanıcılı akış). Fason dönüşü emre bağlama adım 6'da.
+  Eş zamanlılık: onay ve geri alma etkisi istasyon emri satırını `select_for_update` ile kilitler (aynı emrin iki kaydı sıraya girer; çift ayırma yok).
+  Fason dönüşü emre bağlama adım 6'da.

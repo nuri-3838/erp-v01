@@ -152,3 +152,25 @@ class OnayTest(Taban):
         operasyon_kaydi_onayla(k)
         self.assertEqual((self.ayr(self.profil), self.ayr(self.kesilmis)), (D("5"), D("0")))
         self.assertEqual(self.durum(self.ie_kesim), (IstasyonEmri.Durum.BEKLIYOR, D("0")))
+
+    def test_onay_ve_geri_al_istasyon_emri_satirini_kilitler(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        k = istasyon_emri_kayit_ac(self.ie_kesim)
+        with CaptureQueriesContext(connection) as q:
+            operasyon_kaydi_onayla(k)
+        self.assertTrue(any("core_istasyon_emri" in x["sql"] and "FOR UPDATE" in x["sql"] for x in q.captured_queries))
+        with CaptureQueriesContext(connection) as q:
+            operasyon_kaydi_sil(k, onayli_geri_al=True)
+        self.assertTrue(any("core_istasyon_emri" in x["sql"] and "FOR UPDATE" in x["sql"] for x in q.captured_queries))
+
+    def test_ayni_emrin_iki_kaydi_ayirmayi_iki_kez_saymaz(self):
+        k1 = istasyon_emri_kayit_ac(self.ie_kesim, hedef="6")
+        k2 = istasyon_emri_kayit_ac(self.ie_kesim, hedef="6")                             # toplam 12 > ihtiyaç 10
+        operasyon_kaydi_onayla(k1)
+        operasyon_kaydi_onayla(k2)
+        self.assertEqual(self.ayr(self.kesilmis), D("10"))
+        self.assertEqual(sum(c.ayrilan for c in OperasyonKaydiCikti.objects.filter(kayit__istasyon_emri=self.ie_kesim, stok=self.kesilmis)), D("10"))
+        operasyon_kaydi_sil(k1, onayli_geri_al=True)                                      # ilk kayıt geri alınınca k2'nin ayırması korunur
+        self.assertEqual(self.ayr(self.kesilmis), D("4"))
+
