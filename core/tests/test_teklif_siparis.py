@@ -1374,10 +1374,9 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
             self.client.get(reverse("core:siparis_faturaya_cevir", args=[sip.pk])).status_code, 403)
 
 
-class TeklifSiparisUretimEmrineCevirTest(TestCase):
-    """Sipariş→Üretim Emri dönüşümü: 'tek emir, çoklu kalem' — Faturaya Çevir ile aynı UX
-    ağırlığı (önce ön-doldurulmuş onay ekranı, sonra tek tık onay), fakat üretime uygun
-    olmayan kalemler (üretim ürünü değil / tanımlı operasyonu yok) sessizce dışlanır."""
+class SiparisUretimFixture:
+    """Sipariş→Üretim Emri testlerinin ORTAK fixture'ı (mixin, TestCase ile birlikte kullanılır; test_uretim_siparisi_sema.py de
+    kullanır): hammadde → üretilebilir ürün (ISTU istasyonu, 1:1), üretilemez ticari ürün, müşteri, depo; ``_siparis`` onaylı satış siparişi."""
     @classmethod
     def setUpTestData(cls):
         import datetime
@@ -1437,6 +1436,12 @@ class TeklifSiparisUretimEmrineCevirTest(TestCase):
             "form-0-kalem_id": sip.kalemler.get(stok=self.uretilebilir).pk,
             "form-0-hedef_miktar": miktar,
         }
+
+
+class TeklifSiparisUretimEmrineCevirTest(SiparisUretimFixture, TestCase):
+    """Sipariş→Üretim Emri dönüşümü: 'tek emir, çoklu kalem' — Faturaya Çevir ile aynı UX
+    ağırlığı (önce ön-doldurulmuş onay ekranı, sonra tek tık onay), fakat üretime uygun
+    olmayan kalemler (üretim ürünü değil / tanımlı operasyonu yok) sessizce dışlanır."""
 
     def test_get_form_on_doldurulmus(self):
         sip = self._siparis()

@@ -3244,7 +3244,17 @@ class UretimEmri(TemelModel):
     Bir emir BİRDEN ÇOK kalem taşıyabilir ("tek emir, çoklu kalem" — bkz. UretimEmriKalemi);
     hedef ürün/miktar burada değil, ayrı kalem satırlarındadır. kaynak_siparis doluysa bu
     emir bir SATIŞ Siparişi onaylandıktan sonra 'Üretim Emri Aç' ile açılmıştır
-    (izlenebilirlik için); manuel (Üretim Emirleri > + Yeni) emirlerde boştur."""
+    (izlenebilirlik için); manuel (Üretim Emirleri > + Yeni) emirlerde boştur.
+
+    ÜRETİM SİPARİŞİ (2026-10, bkz. docs/uretim-siparisi-plan.md): bu model "Üretim Siparişi"dir (ekran adı); yeni kayıtlar ``ÜS-yyyy-nnnn``
+    numarası alır (eski ``UE-`` kayıtlar aynen). ``durum`` ACIK → KAPALI (sipariş sevk edilince) / IPTAL (başlamış sipariş silinmez, iptal
+    edilir); ``revizyon_no`` her revizede artar (geçmiş: UretimEmriRevizyon). Açılışta stok AYRILIR (StokAyirma) ve her operasyon için
+    İSTASYON EMRİ (IstasyonEmri) açılır; operasyon kayıtları emirden açılır (adım 4+)."""
+
+    class Durum(models.TextChoices):
+        ACIK = "ACIK", "Açık"
+        KAPALI = "KAPALI", "Kapalı"
+        IPTAL = "IPTAL", "İptal"
 
     yil = models.PositiveSmallIntegerField("yıl", editable=False)
     sira = models.PositiveIntegerField("sıra", editable=False)
@@ -3256,11 +3266,14 @@ class UretimEmri(TemelModel):
     kaynak_siparis = models.ForeignKey(
         "TeklifSiparis", verbose_name="kaynak sipariş", null=True, blank=True,
         on_delete=models.PROTECT, related_name="uretim_emirleri")
+    durum = models.CharField("durum", max_length=6, choices=Durum.choices, default=Durum.ACIK)
+    revizyon_no = models.PositiveSmallIntegerField("revizyon no", default=0)
+    kapanis_tarihi = models.DateField("kapanış tarihi", null=True, blank=True)
 
     class Meta:
         db_table = "core_uretim_emri"
-        verbose_name = "üretim emri"
-        verbose_name_plural = "üretim emirleri"
+        verbose_name = "üretim siparişi"
+        verbose_name_plural = "üretim siparişleri"
         ordering = ["-yil", "-sira"]
         constraints = [
             models.UniqueConstraint(fields=["yil", "sira"], name="uq_uretim_emri_yil_sira"),
@@ -3285,6 +3298,13 @@ class UretimEmriKalemi(TemelModel):
         related_name="uretim_emri_kalemleri")
     hedef_miktar = models.DecimalField("hedef miktar", max_digits=18, decimal_places=3)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
+    # Siparişten açılan üretim siparişinde kalemin SATIŞ sipariş kalemi (karar 6/10: hedef miktar = sipariş kalem miktarı); manuelde boş.
+    siparis_kalem = models.ForeignKey(
+        "TeklifSiparisKalem", verbose_name="sipariş kalemi", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="uretim_emri_kalemleri")
+    # Açılış/revize anında eldeki kullanılabilir mamulden AYRILAN miktar (snapshot; detay ekranı "ayrılan / üretilecek" için). Güncel ayırma
+    # StokAyirma'dadır.
+    eldeki_ayrilan = models.DecimalField("eldekinden ayrılan", max_digits=18, decimal_places=6, default=0)
 
     class Meta:
         db_table = "core_uretim_emri_kalemi"
@@ -3326,6 +3346,84 @@ class StokAyirma(TemelModel):
         return f"{self.uretim_emri_id} ← {self.stok_id} × {self.miktar}"
 
 
+class IstasyonEmri(TemelModel):
+    """ÜRETİM > İstasyon Emirleri: bir üretim siparişinin (``UretimEmri``) net planındaki HER operasyon için bir emir — "bu istasyon bu
+    operasyonu şu kadar çalıştıracak". ``planlanan``/``tamamlanan`` ÇALIŞTIRMA birimindedir (ekranda referans çıktı adedi × gösterilir);
+    kalan = planlanan − tamamlanan. Operasyon kayıtları (``OperasyonKaydi.istasyon_emri``) emirden açılır; kayıt onaylanınca tamamlanan
+    artar ve üretilen parça siparişe ayrılır. ``durum`` servis tarafından her olayda yeniden hesaplanır (BEKLIYOR: hiç kayıt yok; BASLADI:
+    açık taslak var ya da kısmen tamamlandı; BITTI: tamamlanan ≥ planlanan; IPTAL: revizede gereksiz kaldı). Numara ``IE-yyyy-nnnn``.
+    Bkz. docs/uretim-siparisi-plan.md."""
+
+    class Durum(models.TextChoices):
+        BEKLIYOR = "BEKLIYOR", "Bekliyor"
+        BASLADI = "BASLADI", "Başladı"
+        BITTI = "BITTI", "Bitti"
+        IPTAL = "IPTAL", "İptal"
+
+    uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="istasyon_emirleri")
+    operasyon = models.ForeignKey(Operasyon, verbose_name="operasyon", on_delete=models.PROTECT, related_name="istasyon_emirleri")
+    istasyon = models.ForeignKey(IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT, related_name="emirler")   # açılış anı snapshot'ı
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("emir no", max_length=20, editable=False)
+    seviye = models.PositiveSmallIntegerField("seviye (zincir sırası)", default=0)
+    planlanan = models.DecimalField("planlanan çalıştırma", max_digits=18, decimal_places=6)
+    tamamlanan = models.DecimalField("tamamlanan çalıştırma", max_digits=18, decimal_places=6, default=0)
+    durum = models.CharField("durum", max_length=8, choices=Durum.choices, default=Durum.BEKLIYOR)
+
+    class Meta:
+        db_table = "core_istasyon_emri"
+        verbose_name = "istasyon emri"
+        verbose_name_plural = "istasyon emirleri"
+        ordering = ["uretim_emri", "seviye", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["yil", "sira"], name="uq_istasyon_emri_yil_sira"),
+            models.UniqueConstraint(fields=["uretim_emri", "operasyon"], condition=models.Q(silindi=False), name="uq_istasyon_emri_aktif_op"),
+            models.CheckConstraint(condition=models.Q(planlanan__gte=0), name="ck_istasyon_emri_planlanan_gte0"),
+            models.CheckConstraint(condition=models.Q(tamamlanan__gte=0), name="ck_istasyon_emri_tamamlanan_gte0"),
+        ]
+
+    def __str__(self):
+        return self.no
+
+    @property
+    def kalan(self):
+        from decimal import Decimal
+        return max(Decimal("0"), self.planlanan - self.tamamlanan)
+
+
+class UretimEmriRevizyon(TemelModel):
+    """Üretim siparişi OLAY/REVİZE GEÇMİŞİ: açılış, revize (kalem ±, ekle/çıkar), kapanış, yeniden açılış, iptal — her olayda bir satır;
+    ``detay`` JSON önce/sonra farklarını (kalemler, ayırmalar, istasyon emirleri) taşır. ``no`` sipariş içinde sıralı (revizyon_no ile aynı
+    sayaç). Yalnız kayıttır; hiçbir hesabı etkilemez."""
+
+    class Tur(models.TextChoices):
+        ACILIS = "ACILIS", "Açılış"
+        REVIZE = "REVIZE", "Revize"
+        KAPANIS = "KAPANIS", "Kapanış"
+        YENIDEN_ACILIS = "YENIDEN_ACILIS", "Yeniden açılış"
+        IPTAL = "IPTAL", "İptal"
+
+    uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="revizyonlar")
+    no = models.PositiveSmallIntegerField("sıra no")
+    tur = models.CharField("tür", max_length=14, choices=Tur.choices)
+    tarih = models.DateField("tarih")
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+    detay = models.JSONField("detay (önce/sonra)", default=dict, blank=True)
+
+    class Meta:
+        db_table = "core_uretim_emri_revizyon"
+        verbose_name = "üretim siparişi revizyonu"
+        verbose_name_plural = "üretim siparişi revizyonları"
+        ordering = ["uretim_emri", "no"]
+        constraints = [
+            models.UniqueConstraint(fields=["uretim_emri", "no"], name="uq_uretim_emri_revizyon_no"),
+        ]
+
+    def __str__(self):
+        return f"{self.uretim_emri_id} #{self.no} {self.tur}"
+
+
 class OperasyonKaydi(TemelModel):
     """ÜRETİM > Operasyon Kayıtları — bir Operasyon'un fiilen çalıştırılma kaydı, bir
     istasyonda, bir tarihte. TASLAK'ta serbestçe düzenlenir/silinir; Onayla'da tek atomik
@@ -3345,6 +3443,9 @@ class OperasyonKaydi(TemelModel):
     uretim_emri = models.ForeignKey(
         UretimEmri, verbose_name="üretim emri", null=True, blank=True,
         on_delete=models.PROTECT, related_name="operasyon_kayitlari")
+    # Üretim siparişi akışında kaydın açıldığı İSTASYON EMRİ (uretim_emri de dolu olur); eski/bağımsız kayıtlarda boş.
+    istasyon_emri = models.ForeignKey(
+        "IstasyonEmri", verbose_name="istasyon emri", null=True, blank=True, on_delete=models.PROTECT, related_name="kayitlar")
     depo = models.ForeignKey(
         Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="operasyon_kayitlari")
     tarih = models.DateField("tarih")

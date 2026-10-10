@@ -73,8 +73,13 @@ class ServisTest(AyirmaBase):
         self.assertEqual(sa.kullanilabilir(self.profil), D("6"))
         UretimEmri.objects.filter(pk=self.emir1.pk).update(silindi=True)
         self.assertEqual(sa.kullanilabilir(self.profil), D("10"))
-        # yumuşak kural: ayrılmış stok başka çıkışla tüketilebilir → kullanılabilir EKSİ
         UretimEmri.objects.filter(pk=self.emir1.pk).update(silindi=False)
+        for durum in (UretimEmri.Durum.KAPALI, UretimEmri.Durum.IPTAL):              # kapalı / iptal sipariş de sayılmaz
+            UretimEmri.objects.filter(pk=self.emir1.pk).update(durum=durum)
+            self.assertEqual((sa.kullanilabilir(self.profil), sa.ayrilan_miktar(self.emir1, self.profil)), (D("10"), D("0")), durum)
+        UretimEmri.objects.filter(pk=self.emir1.pk).update(durum=UretimEmri.Durum.ACIK)
+        self.assertEqual(sa.kullanilabilir(self.profil), D("6"))
+        # yumuşak kural: ayrılmış stok başka çıkışla tüketilebilir → kullanılabilir EKSİ
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 2), tur=StokHareket.Tur.CIKIS, miktar=D("8"))
         self.assertEqual(sa.kullanilabilir(self.profil), D("-2"))
         # verilen eldeki haritası yeniden sorgulanmaz (depo filtreli kullanım)

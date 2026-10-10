@@ -908,7 +908,7 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
             with transaction.atomic():
                 sira = _sonraki_emir_sira(yil)
                 emir = UretimEmri.objects.create(
-                    yil=yil, sira=sira, no=f"UE-{yil}-{sira:04d}", depo=depo, tarih=tarih,
+                    yil=yil, sira=sira, no=f"ÜS-{yil}-{sira:04d}", depo=depo, tarih=tarih,      # üretim siparişi (eski UE- kayıtlar aynen)
                     aciklama=(aciklama or "").strip(), kaynak_siparis=kaynak_siparis,
                     created_by=kullanici, updated_by=kullanici)
             break

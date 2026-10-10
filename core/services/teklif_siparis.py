@@ -19,7 +19,7 @@ from django.db.models import Max
 
 from core.models import (AdayMusteri, BankaHesap, Cari, Depo, KdvOrani, Kur, Stok, StokHareket,
                          StokMaliyetKatmani, StokMaliyetTuketimi, TanimSecenegi, TeklifSiparis,
-                         TeklifSiparisKalem)
+                         TeklifSiparisKalem, UretimEmri)
 from core.sayi import SayiHatasi, parse_tr
 from core.services import aday_donustur
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
@@ -305,6 +305,16 @@ def _donusum_hedefi(ts):
         return "irsaliyeye"
     if ts.fatura_id:
         return "faturaya"
+    return _uretim_siparisi_hedefi(ts)
+
+
+def _uretim_siparisi_hedefi(ts):
+    """SATIŞ siparişi aktif (iptal edilmemiş) bir ÜRETİM SİPARİŞİNE bağlıysa "üretim siparişine" — arkada ayırma/istasyon emri zinciri varken
+    kaynak sipariş düzenlenemez, iptal edilemez, onayı geri alınamaz (eskiden yalnız ekranda kilitliydi; bkz. docs/uretim-siparisi-plan.md).
+    Onaylı siparişin kalem revizesi ayrı yoldan (adım 7) yapılır."""
+    if (ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS and ts.yon == TeklifSiparis.Yon.SATIS
+            and ts.uretim_emirleri.filter(silindi=False).exclude(durum=UretimEmri.Durum.IPTAL).exists()):
+        return "üretim siparişine"
     return None
 
 
@@ -322,7 +332,7 @@ def _donusum_hedefi_manuel(ts):
     if (ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
             and ts.donusen_siparisler.filter(silindi=False).exists()):
         return "siparişe"
-    return None
+    return _uretim_siparisi_hedefi(ts)
 
 
 @transaction.atomic

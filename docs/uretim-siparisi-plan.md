@@ -34,8 +34,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 | # | Adım | Durum | Commit |
 |---|------|-------|--------|
 | 1 | `StokAyirma` + `stok_ayirma` servisi (kullanılabilir) + ürün ağacı malzeme sekmesi Ayrılan/Kullanılabilir/Eksik (ekran + Excel) | TAMAM | `09233a8` |
-| 2 | Motor: `ihtiyac_hesapla(kullanilabilir=)`; İhtiyaç Hesapla "stoku düş" seçeneği | TAMAM | (bu commit) |
-| 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | bekliyor | |
+| 2 | Motor: `ihtiyac_hesapla(kullanilabilir=)`; İhtiyaç Hesapla "stoku düş" seçeneği | TAMAM | `b6cc2a8` |
+| 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | TAMAM | (bu commit) |
 | 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | bekliyor | |
 | 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | bekliyor | |
 | 6 | Fason dönüşü emre bağlama, fire | bekliyor | |
@@ -46,7 +46,7 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 
 ## Adım notları
 
-- **Adım 1:** Ayırma kümesi şimdilik "silinmemiş ÜS" ile sınırlı; adım 3'te `durum=ACIK` filtresi eklenir (`stok_ayirma.acik_ayirmalar`).
+- **Adım 1:** Ayırma kümesi adım 1'de "silinmemiş ÜS" ile sınırlıydı; adım 3'te `durum=ACIK` filtresi eklendi (`stok_ayirma.acik_ayirmalar`).
   Ürün ağacı malzeme sekmesinde depo filtresi seçiliyse eldeki o depodan, ayrılan tüm depolardan; kullanılabilir eksiye düşebilir (`asim`).
   Mevcut `uretim_emri_olustur` davranışı (taslak kayıt açma) bu adımda DEĞİŞMEDİ.
 - **Adım 2:** `ihtiyac_hesapla(kullanilabilir=)` — sözlük ya da çağrılabilir (zincir keşfinden sonra stok pk listesiyle tek çağrı,
@@ -56,3 +56,14 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   `pay_dus=True` ile birlikte kullanım öngörülmedi (maliyet görünümleri brüt). Brüt yol (None) birebir aynı — golden geçti.
   İhtiyaç Hesapla ekranı: "Kullanılabilir stoğu düş" onay kutusu (varsayılan kapalı = brüt); özet tablosuna "Stoktan Ayrılan" ve
   "Net İhtiyaç / Eksik" sütunları, ağaçta "stoktan X · net Y" / "eksik" notu.
+- **Adım 3 (migration 0199, saf şema):** `UretimEmri.durum` (ACIK/KAPALI/IPTAL, varsayılan ACIK), `revizyon_no`, `kapanis_tarihi`; yeni
+  numara `ÜS-yyyy-nnnn` (aynı yıl/sıra sayacı, eski `UE-` numaralar aynen); `UretimEmriKalemi.siparis_kalem` (FK, PROTECT) ve
+  `eldeki_ayrilan` (açılış/revize snapshot'ı); `IstasyonEmri` (sipariş×operasyon tek aktif satır, `IE-yyyy-nnnn`, `seviye`, `planlanan`/
+  `tamamlanan` ÇALIŞTIRMA biriminde, `kalan` özelliği, durum BEKLIYOR/BASLADI/BITTI/IPTAL); `OperasyonKaydi.istasyon_emri` (FK, PROTECT);
+  `UretimEmriRevizyon` (sipariş içinde sıralı `no`, tür ACILIS/REVIZE/KAPANIS/YENIDEN_ACILIS/IPTAL, `tarih`, `detay` JSON).
+  Sipariş servis kilidi: `teklif_siparis._uretim_siparisi_hedefi` — SATIŞ siparişi iptal edilmemiş bir üretim siparişine bağlıysa
+  düzenleme / onay geri alma / iptal servis katmanında da reddedilir (önceden yalnız ekranda). `stok_ayirma.acik_ayirmalar` artık yalnız
+  `durum=ACIK` siparişleri sayar (kapalı/iptal siparişin ayırması kullanılabilirden düşmez). Test fixture'ı `SiparisUretimFixture` mixin'e
+  çıkarıldı (test_teklif_siparis). Numara üretimi ve emir açma servisi adım 4'te.
+  İnceleme notu (adım 4/9'a devir): `siparisten_uretim_emri_olustur` ve sipariş detay ekranı iptal edilmiş ÜS'yi hâlâ "açılmış" sayar
+  (servis kilidi saymaz) — adım 4'te kural: siparişin tüm ÜS'leri IPTAL ise yeni ÜS açılabilir; adım 9'da ekran rozeti/düğmeleri aynı kurala.

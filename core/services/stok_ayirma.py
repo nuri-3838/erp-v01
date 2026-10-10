@@ -12,7 +12,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from core.models import StokAyirma
+from core.models import StokAyirma, UretimEmri
 from core.services.hareket import toplu_eldeki
 
 SIFIR = Decimal("0")
@@ -31,9 +31,9 @@ def _sayi(miktar) -> Decimal:
 
 
 def acik_ayirmalar():
-    """Kullanılabilir hesabına giren ayırmalar: silinmemiş satır, silinmemiş üretim siparişi.
-    (Adım 3'te sipariş durumu gelince yalnız AÇIK siparişler sayılacak — kapalı/iptal siparişin ayırması zaten kapanışta sıfırlanır.)"""
-    return StokAyirma.objects.filter(silindi=False, uretim_emri__silindi=False)
+    """Kullanılabilir hesabına giren ayırmalar: silinmemiş satır, silinmemiş ve AÇIK (durum=ACIK) üretim siparişi — kapalı/iptal siparişin
+    ayırması (kapanış/iptal satırları sıfırlamamış olsa bile) kullanılabilirden düşülmez."""
+    return StokAyirma.objects.filter(silindi=False, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK)
 
 
 def emir_ayirmalari(emir):

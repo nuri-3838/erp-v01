@@ -509,7 +509,7 @@ class UretimEmriServisTest(TestCase):
         emir = uretim_emri_olustur(
             kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
             depo_id=self.depo.pk, tarih=date(2026, 1, 10))
-        self.assertEqual(emir.no, "UE-2026-0001")
+        self.assertEqual(emir.no, "ÜS-2026-0001")
         kayitlar = {k.operasyon_id: k for k in OperasyonKaydi.objects.filter(uretim_emri=emir)}
         self.assertEqual(len(kayitlar), 2)
         # bukum_op'un kaydı bukulmus'un kendisini üretir (hedef 10); kesim_op'un kaydı ise
@@ -807,7 +807,7 @@ class UretimViewTest(TestCase):
             "satir-0-hedef_urun": self.mamul.pk, "satir-0-hedef_miktar": "10"})
         self.assertEqual(r.status_code, 302)
         emir = UretimEmri.objects.get(kalemler__hedef_urun=self.mamul)
-        self.assertEqual(emir.no, "UE-2026-0001")
+        self.assertEqual(emir.no, "ÜS-2026-0001")
 
         r = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
         self.assertEqual(r.status_code, 200)
