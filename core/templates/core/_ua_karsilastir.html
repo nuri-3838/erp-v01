@@ -77,9 +77,9 @@
             <tr class="ua-kat"><td class="ua-ilk">{{ g.kategori }}</td>{% for u in sonuc.urunler %}<td></td>{% endfor %}</tr>
             {% for s in g.satirlar %}
               <tr>
-                <td class="ua-ilk"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }} <span class="ua-yok">({{ s.birim }})</span></td>
+                <td class="ua-ilk"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }} <span class="ua-yok">({{ s.birim }})</span>{% if s.ortalama_notu %} <span class="ua-kart" title="Ortalama 0 — {{ s.ortalama_notu }}; ortalama yerine kart alış fiyatı kullanıldı">({{ s.ortalama_notu }})</span>{% endif %}</td>
                 {% for h in s.hucreler %}
-                  <td class="sag">{% if h %}{% if mod == "maliyet" %}{% if h.maliyet_yok %}<span class="ua-yok" title="Ortalama maliyet ve kart alış fiyatı yok">maliyet yok</span>{% else %}{% if h.kaynak == "KART" %}<span class="ua-kart" title="Stok kartındaki alış fiyatı (TCMB kuruyla çevrildi)">{{ h.deger|tr_para }}*</span>{% else %}{{ h.deger|tr_para }}{% endif %}{% endif %}{% else %}{{ h.deger|tr_miktar_sade:4 }}{% endif %}{% endif %}</td>
+                  <td class="sag">{% if h %}{% if mod == "maliyet" %}{% if h.maliyet_yok %}<span class="ua-yok" title="Ortalama maliyet ve kart alış fiyatı yok{% if s.ortalama_notu %} — {{ s.ortalama_notu }}{% endif %}">maliyet yok</span>{% else %}{% if h.kaynak == "KART" %}<span class="ua-kart" title="Stok kartındaki alış fiyatı (TCMB kuruyla çevrildi){% if s.ortalama_notu %} — ortalama 0 ({{ s.ortalama_notu }}), ortalama kullanılmadı{% endif %}">{{ h.deger|tr_para }}*</span>{% else %}{{ h.deger|tr_para }}{% endif %}{% endif %}{% else %}{{ h.deger|tr_miktar_sade:4 }}{% endif %}{% endif %}</td>
                 {% endfor %}
               </tr>
             {% endfor %}

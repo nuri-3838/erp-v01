@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from core.models import Cari, Depo, FasonFiyat, Kur, Operasyon, OperasyonCikti, OperasyonGirdi, Stok, StokHareket
 from core.sayi import format_tr, yuvarla
+from core.services.stok_ortalama import fiyatsiz_girisli_stoklar
 from core.services.uretim import ihtiyac_hesapla, tanim_ciktilari
 
 SIFIR = Decimal("0")
@@ -43,6 +44,7 @@ class Graf:
         self.operasyonlar = operasyonlar
         self.bugun = bugun
         self._kurlar = None
+        self._fiyatsiz = None
         self.ciktilar = {op.pk: tanim_ciktilari(op) for op in operasyonlar}   # operasyon pk -> çıktı satırları (sıra 0 referans)
         self.op_of = {c.stok_id: op for op in operasyonlar for c in self.ciktilar[op.pk] if c.surucu}   # stok pk -> üreten operasyon
         self.girdiler = {op.pk: list(op.girdiler.all()) for op in operasyonlar}
@@ -67,6 +69,14 @@ class Graf:
         if self._kurlar is None:
             self._kurlar = kur_haritasi(self.bugun)
         return self._kurlar
+
+    @property
+    def fiyatsiz_girisli(self):
+        """Zincirdeki kartlardan fiyatsız (fatura tutarı yazılmamış) girişi olanların id kümesi (``stok_ortalama.fiyatsiz_girisli_stoklar``;
+        ilk kullanımda 1 sorgu) — ``birim_maliyet`` sıfır ortalamayı bununla ayıklar."""
+        if self._fiyatsiz is None:
+            self._fiyatsiz = fiyatsiz_girisli_stoklar(self.stoklar)
+        return self._fiyatsiz
 
     def kokler(self):
         """Zincirin en üstü (bitmiş ürünler): çıktısı hiçbir operasyonun girdisi olmayanlar, kod sırasıyla."""
@@ -181,25 +191,36 @@ def kur_haritasi(bugun=None) -> dict:
     return haritasi
 
 
-def birim_maliyet(stok, kurlar) -> dict:
+ORTALAMA_NOTU = "stokta maliyetsiz giriş var"
+
+
+def birim_maliyet(stok, kurlar, fiyatsiz_girisli=frozenset()) -> dict:
     """Bir stoğun BİRİM maliyeti — Ürün/Maliyet, Karşılaştır ve Excel'in TEK kaynağı. Öncelik:
-      a) hareketli ağırlıklı ortalama (Stok.ort_maliyet_try/usd — stok_ortalama servisinin önbelleği; TL ve USD ayrı) → "ORTALAMA"
+      a) hareketli ağırlıklı ortalama (Stok.ort_maliyet_try/usd — stok_ortalama servisinin önbelleği; TL ve USD ayrı) → "ORTALAMA".
+         Ortalama yalnız fiyatlanmış girişlerden gelmişse geçerlidir: ortalama 0 ve kartta fiyatsız giriş varsa (irsaliye fatura bekliyor /
+         manuel açılış — ``fiyatsiz_girisli``: fiyatsız girişi olan kart id kümesi, ``Graf.fiyatsiz_girisli``) ortalama SAYILMAZ, b)'ye
+         düşülür ve ``ortalama_notu`` = "stokta maliyetsiz giriş var". Ortalama > 0 (fiyatlı + fiyatsız karışık) mevcut ortalamadır.
       b) stok kartındaki alış fiyatı (+ para birimi), en güncel TCMB kuruyla çevrilir → "KART":
            TRY: TL = fiyat, USD = fiyat / USD · USD: USD = fiyat, TL = fiyat × USD · EUR/GBP: TL = fiyat × kur, USD = TL / USD
          (gereken kur bulunamazsa yanlış rakam üretmek yerine "YOK" + uyarı)
       c) ikisi de yoksa → "YOK".
-    Döner: {"kaynak", "try", "usd", "uyari", "kurlar": kullanılan para birimleri}. Birim tutarlar 6 ondalık, ROUND_HALF_UP."""
-    if stok.ort_maliyet_try is not None:
-        return {"kaynak": "ORTALAMA", "try": stok.ort_maliyet_try, "usd": stok.ort_maliyet_usd, "uyari": "", "kurlar": ()}
+    Döner: {"kaynak", "try", "usd", "uyari", "kurlar": kullanılan para birimleri, "ortalama_notu"}. Birim tutarlar 6 ondalık, ROUND_HALF_UP.
+    Yalnız GÖSTERİM kuralıdır: stok değerleme / mizan / ortalama motoru buna bakmaz."""
+    ort = stok.ort_maliyet_try
+    notu = ""
+    if ort is not None:
+        if ort > 0 or stok.pk not in fiyatsiz_girisli:
+            return {"kaynak": "ORTALAMA", "try": ort, "usd": stok.ort_maliyet_usd, "uyari": "", "kurlar": (), "ortalama_notu": ""}
+        notu = ORTALAMA_NOTU
     fiyat = stok.alis_fiyati
     if fiyat:
         pb = stok.alis_fiyati_pb or "TRY"
         tl, usd, gerekli, eksik = doviz_cevir(fiyat, pb, kurlar)
         if eksik:
-            return {"kaynak": "YOK", "try": None, "usd": None, "kurlar": (),
+            return {"kaynak": "YOK", "try": None, "usd": None, "kurlar": (), "ortalama_notu": notu,
                     "uyari": f"{stok.kod}: alış fiyatı ({pb}) çevrilemedi — {', '.join(eksik)} için TCMB kuru bulunamadı"}
-        return {"kaynak": "KART", "try": tl, "usd": usd, "uyari": "", "kurlar": gerekli}
-    return {"kaynak": "YOK", "try": None, "usd": None, "uyari": "", "kurlar": ()}
+        return {"kaynak": "KART", "try": tl, "usd": usd, "uyari": "", "kurlar": gerekli, "ortalama_notu": notu}
+    return {"kaynak": "YOK", "try": None, "usd": None, "uyari": "", "kurlar": (), "ortalama_notu": notu}
 
 
 def doviz_cevir(fiyat, pb, kurlar):
@@ -231,12 +252,12 @@ def kur_notu(kurlar, kullanilan, baslik="Alış fiyatı çevrimi") -> str:
     return f"{baslik}: " + ", ".join(f"{pb} {format_tr(kurlar[pb][0], 4)} (TCMB {kurlar[pb][1]:%d.%m.%Y})" for pb in pbler)
 
 
-def _maliyet_satiri(stok, miktar, kurlar):
-    b = birim_maliyet(stok, kurlar)
+def _maliyet_satiri(stok, miktar, kurlar, fiyatsiz_girisli=frozenset()):
+    b = birim_maliyet(stok, kurlar, fiyatsiz_girisli)
     yok = b["try"] is None
     return {"stok": stok, "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad, "tuketim": miktar,
             "ort_try": b["try"], "ort_usd": b["usd"], "kaynak": b["kaynak"], "uyari": b["uyari"], "kurlar": b["kurlar"],
-            "maliyet_yok": yok,
+            "ortalama_notu": b["ortalama_notu"], "maliyet_yok": yok,
             "tutar_try": None if yok else miktar * b["try"],
             "tutar_usd": None if (yok or b["usd"] is None) else miktar * b["usd"]}
 
@@ -251,7 +272,7 @@ def urun_maliyet(graf: Graf, urun, miktar, *, tarih=None, fasoncu_id=None) -> di
     Malzemenin yanında ikinci grup: ``fason`` (``fason_bedeli`` — üretilen çıktı başına birim ihtiyaç × fason fiyatı; ``tarih``/``fasoncu_id``
     seçimi) ve ``genel_*`` = malzeme + işlem/fason. Malzeme anahtarları (``toplam_try``, ``gruplar``, ``pay``…) fason eklenince DEĞİŞMEZ."""
     kurlar = graf.kurlar
-    satirlar = [_maliyet_satiri(stok, m, kurlar) for stok, m in graf.yapraklar(urun).values()]
+    satirlar = [_maliyet_satiri(stok, m, kurlar, graf.fiyatsiz_girisli) for stok, m in graf.yapraklar(urun).values()]
     toplam_try, toplam_usd = _toplam(satirlar, "tutar_try"), _toplam(satirlar, "tutar_usd")
     for s in satirlar:
         s["pay"] = (s["tutar_try"] / toplam_try * 100) if (s["tutar_try"] is not None and toplam_try) else None
@@ -277,6 +298,7 @@ def urun_maliyet(graf: Graf, urun, miktar, *, tarih=None, fasoncu_id=None) -> di
             "miktar_toplam_try": toplam_try * miktar, "miktar_toplam_usd": toplam_usd * miktar, "miktar": miktar,
             "maliyetsiz": sum(1 for s in satirlar if s["maliyet_yok"]), "satir_sayisi": len(satirlar),
             "ortalama_sayi": sum(1 for s in satirlar if s["kaynak"] == "ORTALAMA"), "kart_sayi": len(kart),
+            "kart_notlu": sum(1 for s in satirlar if s["ortalama_notu"]),            # ortalama 0 + fiyatsız giriş → ortalama kullanılmadı
             "kart_pay": (kart_try / toplam_try * 100) if toplam_try else None,
             "usd_eksik": sum(1 for s in satirlar if not s["maliyet_yok"] and s["tutar_usd"] is None),
             "kur_notu": kur_notu(kurlar, kullanilan),
@@ -458,7 +480,7 @@ def karsilastir(graf: Graf, urunler, mod="miktar", pb="TL", *, tarih=None, fason
     for y in yaprak_of:
         for pk, (stok, _) in y.items():
             stoklar[pk] = stok
-    birim = {pk: birim_maliyet(st, kurlar) for pk, st in stoklar.items()} if maliyet else {}
+    birim = {pk: birim_maliyet(st, kurlar, graf.fiyatsiz_girisli) for pk, st in stoklar.items()} if maliyet else {}
     satirlar = []
     for pk, stok in stoklar.items():
         hucreler = []
@@ -474,7 +496,7 @@ def karsilastir(graf: Graf, urunler, mod="miktar", pb="TL", *, tarih=None, fason
             else:
                 hucreler.append({"miktar": miktar, "deger": miktar, "maliyet_yok": False, "kaynak": ""})
         satirlar.append({"stok": stok, "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad, "hucreler": hucreler,
-                         "kaynak": birim[pk]["kaynak"] if maliyet else ""})
+                         "kaynak": birim[pk]["kaynak"] if maliyet else "", "ortalama_notu": birim[pk]["ortalama_notu"] if maliyet else ""})
     toplamlar = None
     kart_kalem, kur_n, fason = 0, "", None
     if maliyet:

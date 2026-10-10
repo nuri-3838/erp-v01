@@ -61,6 +61,13 @@ def _ad(stok):
     return stok.ad
 
 
+def kaynak_adi(s):
+    """Kaynak sütunu: Ortalama / Alış fiyatı (kart) / Yok — ortalama 0 olup kartta maliyetsiz giriş varsa (ortalama kullanılmadı) notu eklenir:
+    "Alış fiyatı (stokta maliyetsiz giriş var)" / "Yok (stokta maliyetsiz giriş var)"."""
+    ad = KAYNAK_AD[s["kaynak"]]
+    return f"{ad.split(' (')[0]} ({s['ortalama_notu']})" if s.get("ortalama_notu") else ad
+
+
 # --- Ürün / Ağaç -----------------------------------------------------------------------------------------------------------
 
 def _agac_duz(dugum, derinlik=0):
@@ -156,7 +163,7 @@ def maliyet_xlsx(urun, miktar, sonuc) -> bytes:
             ws.cell(row=r, column=2, value=s["stok"].kod)
             ws.cell(row=r, column=3, value=_ad(s["stok"]))
             ws.cell(row=r, column=4, value=s["birim"])
-            ws.cell(row=r, column=5, value=KAYNAK_AD[s["kaynak"]])
+            ws.cell(row=r, column=5, value=kaynak_adi(s))
             _sayi(ws, r, 6, s["tuketim"], MIKTAR_FMT)
             if s["maliyet_yok"]:
                 ws.cell(row=r, column=7, value="maliyet yok").font = GRI
@@ -258,7 +265,7 @@ def _karsilastir_sayfa(wb, ws, sonuc, ilk, baslik_ek=""):
             ws.cell(row=r, column=3, value=_ad(s["stok"]))
             ws.cell(row=r, column=4, value=s["birim"])
             if maliyet:
-                ws.cell(row=r, column=5, value=KAYNAK_AD[s["kaynak"]])
+                ws.cell(row=r, column=5, value=kaynak_adi(s))
             for i, h in enumerate(s["hucreler"]):
                 if h is None:
                     continue

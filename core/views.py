@@ -1085,8 +1085,13 @@ def stok_detay(request, pk):
     eldeki = hareket_servis.eldeki_miktar(stok)
     hareketler = hareket_servis.stok_hareketleri(stok)
     hizmet = hareket_servis.hizmet_mi(stok)
+    # Ortalama 0 ve kartta fiyatsız giriş varsa (yalnız maliyetsiz girişlerle oluşmuş ortalama) "maliyet henüz belli değil" — ürün ağacı
+    # maliyetiyle aynı kural (core.services.urun_agaci.birim_maliyet); yalnız gösterim, değerleme/mizan değişmez.
+    from core.services.stok_ortalama import fiyatsiz_girisli_stoklar
+    maliyet_belirsiz = (not hizmet and stok.ort_maliyet_try is not None and stok.ort_maliyet_try == 0
+                        and stok.pk in fiyatsiz_girisli_stoklar([stok.pk]))
     return render(request, "core/stok_detay.html", {
-        "stok": stok, "eldeki": eldeki, "hizmet": hizmet,
+        "stok": stok, "eldeki": eldeki, "hizmet": hizmet, "maliyet_belirsiz": maliyet_belirsiz,
         "kritik_alti": (not hizmet) and stok.kritik_stok > 0 and eldeki < stok.kritik_stok,
         # Yalnız stoğu OLAN depolar — net 0'a inmiş depo "stok nerede" sorusunda gürültüdür
         # (geçmişi hareket defterinde zaten görünür).

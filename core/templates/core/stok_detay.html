@@ -117,11 +117,14 @@
 
     <section class="icerik-kart ozet-kart">
       <h2 class="ozet-bsl"><span>🧮</span>Ortalama Maliyet</h2>
-      {% if stok.ort_maliyet_try is not None %}
+      {% if stok.ort_maliyet_try is not None and not maliyet_belirsiz %}
         <div class="ozet-buyuk"><span class="mono">{{ stok.ort_maliyet_try|tr_kur:4 }}</span> <span class="birim">TL / {{ stok.uretim_birimi.kisa_ad }}</span></div>
         <div class="satir-cift"><span class="et">USD</span><span class="dg mono">{{ stok.ort_maliyet_usd|tr_kur:4 }}</span></div>
         <div class="satir-cift"><span class="et">Stok değeri</span><span class="dg mono">{{ stok.maliyet_deger_try|tr_kur:2 }} TL</span></div>
         <div class="ozet-not">Hareketli ağırlıklı ortalama (tüm depolar); maliyeti fatura belirler.</div>
+      {% elif maliyet_belirsiz %}
+        <div class="ozet-bos">Maliyet henüz belli değil (eldeki girişler fatura tutarıyla fiyatlanmamış: irsaliye fatura bekliyor / manuel açılış; sıfır ortalama gösterilmez).</div>
+        <div class="ozet-not">Ürün ağacı maliyetinde bu kart için ortalama yerine kart alış fiyatı kullanılır{% if stok.alis_fiyati %}: <span class="mono">{{ stok.alis_fiyati|tr_kur:4 }}</span> {{ stok.alis_fiyati_pb }}{% else %} — alış fiyatı da tanımlı değil{% endif %}.</div>
       {% else %}
         <div class="ozet-bos">Maliyet henüz belli değil (fatura tutarıyla fiyatlanmış giriş yok).</div>
       {% endif %}

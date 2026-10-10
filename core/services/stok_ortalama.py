@@ -229,6 +229,17 @@ def _cikis_fisini_guncelle(hareket):
         raise MaliyetHatasi(str(e))
 
 
+def fiyatsiz_girisli_stoklar(stok_idler) -> set:
+    """Verilen kartlardan en az bir FİYATSIZ girişi (fatura tutarı yazılmamış: irsaliye fatura bekliyor / manuel açılış; depo transferi
+    bacağı hariç) olanların id kümesi — TEK sorgu. Yalnız GÖSTERİM kararı içindir (ürün ağacı maliyeti ve stok kartı, yalnız maliyetsiz
+    girişlerden oluşan 0 ortalamayı "ortalama" saymaz); maliyet hesabını, değerlemeyi ve mizanı DEĞİŞTİRMEZ."""
+    idler = list(stok_idler)
+    if not idler:
+        return set()
+    return set(StokHareket.objects.filter(stok_id__in=idler, silindi=False, tur=GIRIS, giris_tutar_try__isnull=True)
+               .exclude(kaynak=StokHareket.Kaynak.TRANSFER).values_list("stok_id", flat=True).distinct())
+
+
 def tum_kartlari_yeniden_hesapla(stok_idler=None, *, fis_guncelle=True) -> dict:
     """Hareketi olan (veya verilen) tüm kartları hesaplar. {stok_id: değişen çıkış sayısı}."""
     qs = Stok.objects.filter(silindi=False)

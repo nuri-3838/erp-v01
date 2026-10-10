@@ -109,6 +109,7 @@
     <div class="ua-ozet">
       <span class="ua-chip"><strong>{{ maliyet.ortalama_sayi }}</strong> kalem ortalama</span>
       <span class="ua-chip{% if maliyet.kart_sayi %} sari{% endif %}"><strong>{{ maliyet.kart_sayi }}</strong> kalem alış fiyatı{% if maliyet.kart_sayi and maliyet.kart_pay is not None %} (toplamın %{{ maliyet.kart_pay|tr_miktar_sade:1 }}'ini oluşturuyor){% endif %}</span>
+      {% if maliyet.kart_notlu %}<span class="ua-chip sari" title="Ortalama yalnız maliyetsiz girişlerden (irsaliye fatura bekliyor / manuel açılış) oluştuğu için 0; ortalama yerine kart alış fiyatı kullanıldı">{{ maliyet.kart_notlu }} kalemde stokta maliyetsiz giriş var (ortalama 0 kullanılmadı)</span>{% endif %}
       <span class="ua-chip{% if maliyet.maliyetsiz %} kirmizi{% endif %}"><strong>{{ maliyet.maliyetsiz }}</strong> kalem maliyetsiz</span>
       {% if maliyet.maliyetsiz %}<span class="ua-chip kirmizi">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}
       {% if maliyet.usd_eksik %}<span class="ua-chip kirmizi">⚠ {{ maliyet.usd_eksik }} kalemin USD değeri yok — USD toplamı eksik</span>{% endif %}
@@ -129,7 +130,7 @@
             {% for s in g.satirlar %}
               <tr class="ua-s">
                 <td class="ua-ad-h" data-et="Kalem"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}
-                  <span class="rozet kaynak-{{ s.kaynak|lower }}" title="{% if s.kaynak == 'ORTALAMA' %}Hareketli ağırlıklı ortalama maliyet{% elif s.kaynak == 'KART' %}Stok kartındaki alış fiyatı ({{ s.stok.alis_fiyati_pb }}), TCMB kuruyla çevrildi{% else %}{{ s.uyari|default:'Ortalama maliyet ve kart alış fiyatı yok' }}{% endif %}">{% if s.kaynak == "ORTALAMA" %}Ortalama{% elif s.kaynak == "KART" %}Alış fiyatı (kart){% else %}Yok{% endif %}</span></td>
+                  <span class="rozet kaynak-{{ s.kaynak|lower }}" title="{% if s.kaynak == 'ORTALAMA' %}Hareketli ağırlıklı ortalama maliyet{% elif s.kaynak == 'KART' %}Stok kartındaki alış fiyatı ({{ s.stok.alis_fiyati_pb }}), TCMB kuruyla çevrildi{% if s.ortalama_notu %} — ortalama 0 ({{ s.ortalama_notu }}), ortalama kullanılmadı{% endif %}{% else %}{{ s.uyari|default:'Ortalama maliyet ve kart alış fiyatı yok' }}{% if s.ortalama_notu %} — ortalama 0 ({{ s.ortalama_notu }}){% endif %}{% endif %}">{% if s.kaynak == "ORTALAMA" %}Ortalama{% elif s.kaynak == "KART" %}Alış fiyatı ({% if s.ortalama_notu %}{{ s.ortalama_notu }}{% else %}kart{% endif %}){% else %}Yok{% if s.ortalama_notu %} ({{ s.ortalama_notu }}){% endif %}{% endif %}</span></td>
                 <td class="sag" data-et="Birim tüketim">{{ s.tuketim|tr_miktar_sade:4 }} {{ s.birim }}</td>
                 {% if s.maliyet_yok %}
                   <td class="sag ua-yok" data-et="Birim maliyet" colspan="{% if maliyet.miktar != 1 %}6{% else %}4{% endif %}" style="text-align:right">maliyet yok</td>
