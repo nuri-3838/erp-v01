@@ -23,6 +23,20 @@
           </select>
         </div>
       {% endif %}
+      {% if sekme == "maliyet" %}
+        <div class="ua-alan">
+          <label for="ua-tarih">Fason fiyat tarihi</label>
+          <input type="date" name="tarih" id="ua-tarih" value="{{ fason_tarih }}">
+        </div>
+        {% if maliyet and maliyet.fason.fasoncular|length > 1 %}
+          <div class="ua-alan">
+            <label for="ua-fasoncu">Fasoncu</label>
+            <select name="fasoncu" id="ua-fasoncu">
+              {% for s in maliyet.fason.fasoncular %}<option value="{{ s.cari.pk }}"{% if maliyet.fason.fasoncu.pk == s.cari.pk %} selected{% endif %}>{{ s.cari.unvan }} · {{ s.sayi }} parça fiyatlı</option>{% endfor %}
+            </select>
+          </div>
+        {% endif %}
+      {% endif %}
       <button type="submit" class="birincil">Göster</button>
     </div>
   </section>
@@ -85,11 +99,11 @@
 
 {% if maliyet %}
   <section class="icerik-kart">
-    <h2 class="bolum-baslik"><span class="emoji">💰</span>Malzeme Maliyeti</h2>
+    <h2 class="bolum-baslik"><span class="emoji">💰</span>Maliyet</h2>
     <div class="ua-ozet">
-      <span class="ua-chip"><strong>1</strong> adet: <strong>{{ maliyet.toplam_try|tr_para }} TL</strong> · <strong>{{ maliyet.toplam_usd|tr_para }} USD</strong></span>
+      <span class="ua-chip"><strong>1</strong> adet: Malzeme <strong>{{ maliyet.toplam_try|tr_para }} TL</strong> · İşlem/fason <strong>{{ maliyet.fason.toplam_try|tr_para }} TL</strong> · GENEL <strong>{{ maliyet.genel_try|tr_para }} TL</strong> <small class="ua-usd">({{ maliyet.toplam_usd|tr_para }} · {{ maliyet.fason.toplam_usd|tr_para }} · <strong>{{ maliyet.genel_usd|tr_para }} USD</strong>)</small></span>
       {% if maliyet.miktar != 1 %}
-        <span class="ua-chip yesil"><strong>{{ maliyet.miktar|tr_miktar_sade:3 }}</strong> adet: <strong>{{ maliyet.miktar_toplam_try|tr_para }} TL</strong> · <strong>{{ maliyet.miktar_toplam_usd|tr_para }} USD</strong></span>
+        <span class="ua-chip yesil"><strong>{{ maliyet.miktar|tr_miktar_sade:3 }}</strong> adet: Malzeme <strong>{{ maliyet.miktar_toplam_try|tr_para }} TL</strong> · İşlem/fason <strong>{{ maliyet.fason.toplam_try_n|tr_para }} TL</strong> · GENEL <strong>{{ maliyet.genel_try_n|tr_para }} TL</strong> <small class="ua-usd">({{ maliyet.miktar_toplam_usd|tr_para }} · {{ maliyet.fason.toplam_usd_n|tr_para }} · <strong>{{ maliyet.genel_usd_n|tr_para }} USD</strong>)</small></span>
       {% endif %}
     </div>
     <div class="ua-ozet">
@@ -98,12 +112,18 @@
       <span class="ua-chip{% if maliyet.maliyetsiz %} kirmizi{% endif %}"><strong>{{ maliyet.maliyetsiz }}</strong> kalem maliyetsiz</span>
       {% if maliyet.maliyetsiz %}<span class="ua-chip kirmizi">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}
       {% if maliyet.usd_eksik %}<span class="ua-chip kirmizi">⚠ {{ maliyet.usd_eksik }} kalemin USD değeri yok — USD toplamı eksik</span>{% endif %}
+      <span class="ua-chip{% if maliyet.fason.fiyatli %} mavi{% endif %}"><strong>{{ maliyet.fason.fiyatli }}</strong> parça fason fiyatlı{% if maliyet.fason.fasoncu %} ({{ maliyet.fason.fasoncu.unvan }}){% endif %}</span>
+      <span class="ua-chip">fason fiyatı olmayan üretilen parça: <strong>{{ maliyet.fason.fiyatsiz }}</strong></span>
+      {% if maliyet.fason.kursuz %}<span class="ua-chip kirmizi">⚠ {{ maliyet.fason.kursuz }} fason fiyatı çevrilemedi — işlem/fason toplamı eksik</span>{% endif %}
+      {% if maliyet.fason.usd_eksik %}<span class="ua-chip kirmizi">⚠ {{ maliyet.fason.usd_eksik }} fason fiyatının USD değeri yok — USD toplamı eksik</span>{% endif %}
     </div>
     {% for u in maliyet.kur_uyarilari %}<div class="uyari">{{ u }}</div>{% endfor %}
+    {% for u in maliyet.fason.kur_uyarilari %}<div class="uyari">{{ u }}</div>{% endfor %}
     <div class="tablo-kapsayici">
       <table class="ua-tablo">
         <thead><tr><th>Kod · Ad</th><th class="sag">Birim tüketim</th><th class="sag">Birim maliyet TL / USD</th><th class="sag">Tutar TL</th><th class="sag">Tutar USD</th><th class="sag">Pay %</th>{% if maliyet.miktar != 1 %}<th class="sag">Tutar TL ×{{ maliyet.miktar|tr_miktar_sade:3 }}</th><th class="sag">Tutar USD ×{{ maliyet.miktar|tr_miktar_sade:3 }}</th>{% endif %}</tr></thead>
         <tbody>
+          <tr class="ua-bolum"><td colspan="{% if maliyet.miktar != 1 %}8{% else %}6{% endif %}">Malzeme</td></tr>
           {% for g in maliyet.gruplar %}
             <tr class="ua-kat"><td colspan="{% if maliyet.miktar != 1 %}8{% else %}6{% endif %}">{{ g.kategori }}</td></tr>
             {% for s in g.satirlar %}
@@ -127,15 +147,41 @@
             {% endfor %}
             <tr class="ua-ara"><td colspan="3">{{ g.kategori }} ara toplam</td><td class="sag">{{ g.toplam_try|tr_para }}</td><td class="sag">{{ g.toplam_usd|tr_para }}</td><td class="sag">{% if g.pay is not None %}{{ g.pay|tr_miktar_sade:1 }}{% endif %}</td>{% if maliyet.miktar != 1 %}<td class="sag">{{ g.toplam_try_n|tr_para }}</td><td class="sag">{{ g.toplam_usd_n|tr_para }}</td>{% endif %}</tr>
           {% empty %}
-            <tr><td colspan="6" class="yardim ua-bos">Bu ürünün zincirinde hazır stok kalemi yok.</td></tr>
+            <tr><td colspan="{% if maliyet.miktar != 1 %}8{% else %}6{% endif %}" class="yardim ua-bos">Bu ürünün zincirinde hazır stok kalemi yok.</td></tr>
           {% endfor %}
-          <tr class="ua-genel"><td colspan="3">GENEL TOPLAM{% if maliyet.maliyetsiz %} <span class="ua-yok">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}</td><td class="sag">{{ maliyet.toplam_try|tr_para }}</td><td class="sag">{{ maliyet.toplam_usd|tr_para }}</td><td class="sag">100</td>{% if maliyet.miktar != 1 %}<td class="sag">{{ maliyet.miktar_toplam_try|tr_para }}</td><td class="sag">{{ maliyet.miktar_toplam_usd|tr_para }}</td>{% endif %}</tr>
+          <tr class="ua-toplam-ara"><td colspan="3">Malzeme toplamı{% if maliyet.maliyetsiz %} <span class="ua-yok">⚠ {{ maliyet.maliyetsiz }} kalemin maliyeti yok — toplam eksik</span>{% endif %}</td><td class="sag">{{ maliyet.toplam_try|tr_para }}</td><td class="sag">{{ maliyet.toplam_usd|tr_para }}</td><td class="sag">100</td>{% if maliyet.miktar != 1 %}<td class="sag">{{ maliyet.miktar_toplam_try|tr_para }}</td><td class="sag">{{ maliyet.miktar_toplam_usd|tr_para }}</td>{% endif %}</tr>
+          <tr class="ua-bolum"><td colspan="{% if maliyet.miktar != 1 %}8{% else %}6{% endif %}">İşlem / fason bedeli{% if maliyet.fason.fasoncu %} · {{ maliyet.fason.fasoncu.unvan }}{% endif %} · {{ maliyet.fason.tarih|date:"d.m.Y" }} tarihinde geçerli fiyatlar</td></tr>
+          {% for s in maliyet.fason.satirlar %}
+            <tr class="ua-s">
+              <td class="ua-ad-h" data-et="Parça"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}
+                <span class="rozet kaynak-fason" title="Fasoncunun {{ s.gecerlilik|date:'d.m.Y' }} tarihinden geçerli fason fiyatı{% if s.fasoncu_kodu %} · fasoncu kodu {{ s.fasoncu_kodu }}{% endif %}">Fason fiyatı{% if s.pb != "TRY" %} ({{ s.pb }}){% endif %}</span></td>
+              <td class="sag" data-et="Birim ihtiyaç">{{ s.tuketim|tr_miktar_sade:4 }} {{ s.birim }}</td>
+              {% if s.maliyet_yok %}
+                <td class="sag ua-yok" data-et="Birim fiyat" colspan="{% if maliyet.miktar != 1 %}6{% else %}4{% endif %}" style="text-align:right">{{ s.fiyat|tr_kur:4 }} {{ s.pb }} — kur yok</td>
+              {% else %}
+                <td class="sag" data-et="Birim fiyat">{{ s.birim_try|tr_kur:4 }} TL{% if s.pb != "TRY" %}<small class="ua-yan-not">{{ s.fiyat|tr_kur:4 }} {{ s.pb }}</small>{% endif %}{% if s.birim_usd is not None %}<small class="ua-yan-not">{{ s.birim_usd|tr_kur:4 }} USD</small>{% endif %}</td>
+                <td class="sag" data-et="Tutar TL">{{ s.tutar_try|tr_para }}</td>
+                <td class="sag" data-et="Tutar USD">{% if s.tutar_usd is not None %}{{ s.tutar_usd|tr_para }}{% else %}—{% endif %}</td>
+                <td class="sag"></td>
+                {% if maliyet.miktar != 1 %}
+                  <td class="sag" data-et="Tutar TL ×{{ maliyet.miktar|tr_miktar_sade:3 }}">{{ s.tutar_try_n|tr_para }}</td>
+                  <td class="sag" data-et="Tutar USD ×{{ maliyet.miktar|tr_miktar_sade:3 }}">{% if s.tutar_usd_n is not None %}{{ s.tutar_usd_n|tr_para }}{% else %}—{% endif %}</td>
+                {% endif %}
+              {% endif %}
+            </tr>
+          {% empty %}
+            <tr><td colspan="{% if maliyet.miktar != 1 %}8{% else %}6{% endif %}" class="yardim ua-bos">{% if maliyet.fason.uretilen %}Bu ürünün zincirindeki {{ maliyet.fason.uretilen }} üretilen parça için {{ maliyet.fason.tarih|date:"d.m.Y" }} tarihinde geçerli fason fiyatı yok.{% else %}Bu ürünün zincirinde üretilen parça yok.{% endif %}</td></tr>
+          {% endfor %}
+          <tr class="ua-toplam-ara"><td colspan="3">İşlem/fason toplamı <span class="ua-yok">fason fiyatı olmayan üretilen parça: {{ maliyet.fason.fiyatsiz }}</span></td><td class="sag">{{ maliyet.fason.toplam_try|tr_para }}</td><td class="sag">{{ maliyet.fason.toplam_usd|tr_para }}</td><td class="sag"></td>{% if maliyet.miktar != 1 %}<td class="sag">{{ maliyet.fason.toplam_try_n|tr_para }}</td><td class="sag">{{ maliyet.fason.toplam_usd_n|tr_para }}</td>{% endif %}</tr>
+          <tr class="ua-genel"><td colspan="3">GENEL TOPLAM <span class="ua-yok">malzeme + işlem/fason</span></td><td class="sag">{{ maliyet.genel_try|tr_para }}</td><td class="sag">{{ maliyet.genel_usd|tr_para }}</td><td class="sag"></td>{% if maliyet.miktar != 1 %}<td class="sag">{{ maliyet.genel_try_n|tr_para }}</td><td class="sag">{{ maliyet.genel_usd_n|tr_para }}</td>{% endif %}</tr>
         </tbody>
       </table>
     </div>
     <p class="ua-not">Tüketim gerçek (kesirli) hesaplanır: tam boy yuvarlaması yapılmaz; yan çıktılı kesimlerde girdi, ana çıktının boy payı oranında, parçala tanımında her çıktının kendi payı (boy / eşit / yüzde) oranında düşülür.
       Birim maliyet: hareketli ağırlıklı ortalama; yoksa stok kartındaki alış fiyatı; ikisi de yoksa "maliyet yok".{% if maliyet.kur_notu %}
-      <br>{{ maliyet.kur_notu }}{% endif %}</p>
+      <br>{{ maliyet.kur_notu }}{% endif %}
+      <br>İşlem/fason bedeli: ağaçtaki her üretilen parça (parçala tanımında her çıktı, ürünün kendisi dahil) için birim ihtiyaç adedi × fasoncunun seçilen tarihte geçerli fason fiyatı (başlangıcı tarihi geçmeyen en son aktif fiyat); döviz fiyat TCMB alış kuruyla TL'ye çevrilir. Fason fiyatı olmayan üretilen parça (iç üretim) listelenmez, sayısı verilir.{% if maliyet.fason.kur_notu %}
+      <br>{{ maliyet.fason.kur_notu }}{% endif %}</p>
   </section>
 {% endif %}
 

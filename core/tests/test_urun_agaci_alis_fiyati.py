@@ -182,13 +182,13 @@ class AlisFiyatiEkranTest(KullanimBase):
 
     def test_karsilastir_tl_usd_anahtari(self):
         h = self.al(gorunum="karsilastir", seri="A", mod="maliyet", pb="TL").content.decode()
-        self.assertIn("ÜRÜN BAŞINA TOPLAM (TL)", h)
+        self.assertIn("GENEL TOPLAM (TL)", h)
         self.assertIn("Maliyet matrisi (TL)", h)
         self.assertIn('class="aktif">TL<', h)
         self.assertIn("alış fiyatından hesaplandı", h)
         self.assertIn("*", h)                                                        # kart kaynaklı hücre işareti
         h = self.al(gorunum="karsilastir", seri="A", mod="maliyet", pb="USD").content.decode()
-        self.assertIn("ÜRÜN BAŞINA TOPLAM (USD)", h)
+        self.assertIn("GENEL TOPLAM (USD)", h)
         self.assertIn('class="aktif">USD<', h)
 
     def test_miktar_modunda_para_anahtari_yok(self):
@@ -216,10 +216,10 @@ class AlisFiyatiEkranTest(KullanimBase):
         for ad in wb.sheetnames:
             ws = wb[ad]
             self.assertIn("Kaynak", [c.value for c in ws[4]])
-            son = [row for row in ws.iter_rows(min_row=5, values_only=True) if row[0] and str(row[0]).startswith("ÜRÜN BAŞINA TOPLAM")][0]
+            son = [row for row in ws.iter_rows(min_row=5, values_only=True) if row[0] and str(row[0]).startswith("GENEL TOPLAM")][0]
             self.assertIn(ad.split()[-1], son[0])
-        tl = [row for row in wb["Maliyet TL"].iter_rows(min_row=5, values_only=True) if row[0] and str(row[0]).startswith("ÜRÜN BAŞINA")][0]
-        usd = [row for row in wb["Maliyet USD"].iter_rows(min_row=5, values_only=True) if row[0] and str(row[0]).startswith("ÜRÜN BAŞINA")][0]
+        tl = [row for row in wb["Maliyet TL"].iter_rows(min_row=5, values_only=True) if row[0] and str(row[0]).startswith("GENEL TOPLAM")][0]
+        usd = [row for row in wb["Maliyet USD"].iter_rows(min_row=5, values_only=True) if row[0] and str(row[0]).startswith("GENEL TOPLAM")][0]
         self.assertTrue(all(isinstance(v, (int, float, D)) for v in tl[5:]))
         self.assertTrue(all(u <= t for t, u in zip(tl[5:], usd[5:])))
         self.assertEqual((tl[5], usd[5]), (68, 1.7))                                # 152-10-0001: 68 TL; 50/100 + 8 + 10 → USD 1,25 + 0,2 + 0,25

@@ -7043,6 +7043,12 @@ def urun_agaci(request):
     gorunum = g.get("gorunum") if g.get("gorunum") in ("kullanim", "karsilastir") else "urun"
     graf = urun_agaci_servis.graf_yukle()
     xlsx = g.get("xlsx") == "1"
+    # işlem/fason bedeli seçimi (Maliyet sekmesi + Karşılaştır/maliyet): fiyat tarihi (ISO; boş/geçersiz = bugün) ve fasoncu (pk; geçersiz = varsayılan)
+    try:
+        fason_tarih = datetime.date.fromisoformat(g.get("tarih") or "")
+    except ValueError:
+        fason_tarih = None
+    fasoncu_id = int(g["fasoncu"]) if (g.get("fasoncu") or "").isdigit() else None
 
     def url(**ek):
         d = {k: v for k, v in g.items() if k not in ("xlsx",)}
@@ -7055,6 +7061,7 @@ def urun_agaci(request):
         "segmentler": [("urun", "Ürün", "?"), ("kullanim", "Nerede kullanılıyor", "?gorunum=kullanim"),
                        ("karsilastir", "Karşılaştır", "?gorunum=karsilastir")],
         "xlsx_url": None, "sonuc_var": False, "baslik_yazdir": "",
+        "fason_tarih": (fason_tarih or timezone.localdate()).isoformat(),
     }
 
     if gorunum == "urun":
@@ -7077,7 +7084,7 @@ def urun_agaci(request):
                     elif sekme == "malzeme":
                         malzeme = urun_agaci_servis.urun_malzeme(graf, urun, miktar, depo)
                     else:
-                        maliyet = urun_agaci_servis.urun_maliyet(graf, urun, miktar)
+                        maliyet = urun_agaci_servis.urun_maliyet(graf, urun, miktar, tarih=fason_tarih, fasoncu_id=fasoncu_id)
                 except uretim_servis.UretimHatasi as e:
                     messages.error(request, str(e))
         else:
@@ -7118,10 +7125,11 @@ def urun_agaci(request):
         pb = "USD" if g.get("pb") == "USD" else "TL"
         idler = [int(x) for x in g.getlist("urunler") if x.isdigit()]
         urunler, uyari = urun_agaci_servis.karsilastir_urunleri(graf, seri, idler)
-        sonuc = urun_agaci_servis.karsilastir(graf, urunler, mod, pb) if urunler else None
+        sonuc = urun_agaci_servis.karsilastir(graf, urunler, mod, pb, tarih=fason_tarih, fasoncu_id=fasoncu_id) if urunler else None
         kok_gruplar = [x for x in urun_agaci_servis.urun_secenekleri(graf) if x[0] != "Ara parçalar"]
         if xlsx and sonuc:
-            sonuclar = [sonuc] if mod == "miktar" else [urun_agaci_servis.karsilastir(graf, urunler, mod, x) for x in ("TL", "USD")]
+            sonuclar = [sonuc] if mod == "miktar" else [urun_agaci_servis.karsilastir(graf, urunler, mod, x, tarih=fason_tarih, fasoncu_id=fasoncu_id)
+                                                        for x in ("TL", "USD")]
             return _xlsx_yanit(urun_agaci_xlsx.karsilastir_xlsx(sonuclar), f"karsilastir_{seri or 'secim'}_{mod}")
         ctx.update({"seri": seri, "mod": mod, "pb": pb, "pb_url_tl": url(pb="TL"), "pb_url_usd": url(pb="USD"), "urunler_secili": {u.pk for u in urunler}, "uyari": uyari, "sonuc": sonuc,
                     "kok_gruplar": kok_gruplar, "sonuc_var": bool(sonuc), "en_fazla": urun_agaci_servis.KARSILASTIR_EN_FAZLA,

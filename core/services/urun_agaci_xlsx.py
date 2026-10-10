@@ -122,17 +122,24 @@ def malzeme_xlsx(urun, miktar, sonuc, depo_ad="Tüm depolar") -> bytes:
 # --- Ürün / Maliyet --------------------------------------------------------------------------------------------------------
 
 def maliyet_xlsx(urun, miktar, sonuc) -> bytes:
-    """TL ve USD AYRI sütunlarda (birim ve — miktar 1 değilse — seçilen miktar için); kaynak sütunu: Ortalama / Alış fiyatı (kart) / Yok."""
+    """TL ve USD AYRI sütunlarda (birim ve — miktar 1 değilse — seçilen miktar için); kaynak sütunu: Ortalama / Alış fiyatı (kart) / Yok.
+    Malzeme gruplarının ardından MALZEME TOPLAMI, sonra İŞLEM / FASON BEDELİ satırları (kaynak: Fason fiyatı (PB)), İŞLEM/FASON TOPLAMI ve
+    GENEL TOPLAM (malzeme + işlem/fason)."""
     n = miktar != 1
+    f = sonuc["fason"]
     ozet = (f"{sonuc['ortalama_sayi']} kalem ortalama · {sonuc['kart_sayi']} kalem alış fiyatı · {sonuc['maliyetsiz']} kalem maliyetsiz"
             + (f" (alış fiyatı payı %{sonuc['kart_pay']:.1f})" if sonuc["kart_pay"] is not None and sonuc["kart_sayi"] else ""))
     uyari = f" · ⚠ {sonuc['maliyetsiz']} kalemin maliyeti yok — toplam eksik" if sonuc["maliyetsiz"] else ""
+    fason_ozet = (f" · işlem/fason: {f['fiyatli']} parça fason fiyatlı" + (f" ({f['fasoncu'].unvan})" if f["fasoncu"] else "")
+                  + f", fason fiyatı olmayan üretilen parça: {f['fiyatsiz']}, fiyat tarihi {f['tarih']:%d.%m.%Y}"
+                  + (f" · ⚠ {f['kursuz']} fason fiyatı çevrilemedi — işlem/fason toplamı eksik" if f["kursuz"] else ""))
     kolonlar = ["Kategori", "Kod", "Ad", "Birim", "Kaynak", "Birim tüketim", "Birim maliyet TL", "Birim maliyet USD", "Tutar TL", "Tutar USD", "Pay %"]
     genis = [28, 16, 46, 8, 18, 14, 16, 16, 14, 14, 9]
     if n:
         kolonlar += [f"Tutar TL ({miktar.normalize():f} adet)", f"Tutar USD ({miktar.normalize():f} adet)"]
         genis += [18, 18]
-    alt = f"1 adet için kesirli malzeme maliyeti · {ozet}{uyari}" + (f" · {sonuc['kur_notu']}" if sonuc["kur_notu"] else "")
+    alt = (f"1 adet için kesirli malzeme maliyeti · {ozet}{uyari}" + (f" · {sonuc['kur_notu']}" if sonuc["kur_notu"] else "")
+           + fason_ozet + (f" · {f['kur_notu']}" if f["kur_notu"] else ""))
     wb, ws = _yeni(f"Maliyet — {urun.kod} {urun.ad}", alt, kolonlar, genis)
     r = 5
 
@@ -166,8 +173,35 @@ def maliyet_xlsx(urun, miktar, sonuc) -> bytes:
         _grup_satiri(ws, r, f"{g['kategori']} ara toplam", len(kolonlar))
         toplam_hucreleri(r, g["toplam_try"], g["toplam_usd"], g["toplam_try_n"], g["toplam_usd_n"])
         r += 1
-    _grup_satiri(ws, r, "GENEL TOPLAM", len(kolonlar))
+    _grup_satiri(ws, r, "MALZEME TOPLAMI", len(kolonlar))
     toplam_hucreleri(r, sonuc["toplam_try"], sonuc["toplam_usd"], sonuc["miktar_toplam_try"], sonuc["miktar_toplam_usd"])
+    r += 1
+    etiket = "İŞLEM / FASON BEDELİ" + (f" — {f['fasoncu'].unvan}" if f["fasoncu"] else "") + f" · {f['tarih']:%d.%m.%Y} tarihinde geçerli fiyatlar"
+    _grup_satiri(ws, r, etiket, len(kolonlar))
+    r += 1
+    for s in f["satirlar"]:
+        ws.cell(row=r, column=1, value="İşlem / fason bedeli")
+        ws.cell(row=r, column=2, value=s["stok"].kod)
+        ws.cell(row=r, column=3, value=_ad(s["stok"]))
+        ws.cell(row=r, column=4, value=s["birim"])
+        ws.cell(row=r, column=5, value=f"Fason fiyatı ({s['pb']})" + (f" · {s['fasoncu_kodu']}" if s["fasoncu_kodu"] else ""))
+        _sayi(ws, r, 6, s["tuketim"], MIKTAR_FMT)
+        if s["maliyet_yok"]:
+            ws.cell(row=r, column=7, value=f"kur yok ({s['fiyat'].normalize():f} {s['pb']})").font = GRI
+        else:
+            _sayi(ws, r, 7, s["birim_try"], "#,##0.0000")
+            _sayi(ws, r, 8, s["birim_usd"], "#,##0.0000")
+            _sayi(ws, r, 9, s["tutar_try"], PARA_FMT)
+            _sayi(ws, r, 10, s["tutar_usd"], PARA_FMT)
+            if n:
+                _sayi(ws, r, 12, s["tutar_try_n"], PARA_FMT)
+                _sayi(ws, r, 13, s["tutar_usd_n"], PARA_FMT)
+        r += 1
+    _grup_satiri(ws, r, f"İŞLEM/FASON TOPLAMI · fason fiyatı olmayan üretilen parça: {f['fiyatsiz']}", len(kolonlar))
+    toplam_hucreleri(r, f["toplam_try"], f["toplam_usd"], f["toplam_try_n"], f["toplam_usd_n"])
+    r += 1
+    _grup_satiri(ws, r, "GENEL TOPLAM (malzeme + işlem/fason)", len(kolonlar))
+    toplam_hucreleri(r, sonuc["genel_try"], sonuc["genel_usd"], sonuc["genel_try_n"], sonuc["genel_usd_n"])
     return _bayt(wb)
 
 
@@ -234,9 +268,31 @@ def _karsilastir_sayfa(wb, ws, sonuc, ilk, baslik_ek=""):
                     _sayi(ws, r, ofset + 1 + i, h["deger"], PARA_FMT if maliyet else MIKTAR_FMT)
             r += 1
     if maliyet:
-        _grup_satiri(ws, r, f"ÜRÜN BAŞINA TOPLAM ({pb})", ofset + len(urunler))
-        for i, t in enumerate(sonuc["toplamlar"]):
-            _sayi(ws, r, ofset + 1 + i, t["toplam"], PARA_FMT).font = Font(bold=True)
+        f = sonuc["fason"]
+        if f["satirlar"]:
+            _grup_satiri(ws, r, "İşlem / fason bedeli" + (f" — {f['fasoncu'].unvan}" if f["fasoncu"] else "") + f" · {f['tarih']:%d.%m.%Y}",
+                         ofset + len(urunler))
+            r += 1
+        for s in f["satirlar"]:
+            ws.cell(row=r, column=1, value="İşlem / fason bedeli")
+            ws.cell(row=r, column=2, value=s["stok"].kod)
+            ws.cell(row=r, column=3, value=_ad(s["stok"]))
+            ws.cell(row=r, column=4, value=s["birim"])
+            ws.cell(row=r, column=5, value="Fason fiyatı")
+            for i, h in enumerate(s["hucreler"]):
+                if h is None:
+                    continue
+                if h["maliyet_yok"]:
+                    ws.cell(row=r, column=ofset + 1 + i, value="kur yok").font = GRI
+                else:
+                    _sayi(ws, r, ofset + 1 + i, h["deger"], PARA_FMT)
+            r += 1
+        for etiket, anahtar in ((f"MALZEME TOPLAMI ({pb})", "toplam"), (f"İŞLEM/FASON TOPLAMI ({pb})", "fason"), (f"GENEL TOPLAM ({pb})", "genel")):
+            _grup_satiri(ws, r, etiket, ofset + len(urunler))
+            for i, t in enumerate(sonuc["toplamlar"]):
+                _sayi(ws, r, ofset + 1 + i, t[anahtar], PARA_FMT).font = Font(bold=True)
+            r += 1
+        r -= 1
         eksik = [t["maliyetsiz"] for t in sonuc["toplamlar"]]
         if any(eksik):
             r += 1
@@ -244,6 +300,13 @@ def _karsilastir_sayfa(wb, ws, sonuc, ilk, baslik_ek=""):
             for i, n in enumerate(eksik):
                 if n:
                     ws.cell(row=r, column=ofset + 1 + i, value=n).font = KIRMIZI
+        fiyatsiz = [t["fiyatsiz"] for t in sonuc["toplamlar"]]
+        if any(fiyatsiz):
+            r += 1
+            ws.cell(row=r, column=1, value="fason fiyatı olmayan üretilen parça sayısı").font = GRI
+            for i, n in enumerate(fiyatsiz):
+                if n:
+                    ws.cell(row=r, column=ofset + 1 + i, value=n).font = GRI
 
 
 def karsilastir_xlsx(sonuclar, baslik_ek="") -> bytes:

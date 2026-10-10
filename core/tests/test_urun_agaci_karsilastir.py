@@ -127,11 +127,13 @@ class MatrisEkranTest(KarsilastirBase):
         self.assertIn('class="ua-matris"', h)
         self.assertEqual(r.context["sonuc"]["satir_sayisi"], 4)
         self.assertIn("0,5", h)
-        self.assertNotIn("ÜRÜN BAŞINA TOPLAM", h)
+        self.assertNotIn("GENEL TOPLAM", h)
         h = self.al(seri="A", mod="maliyet").content.decode()
-        self.assertIn("ÜRÜN BAŞINA TOPLAM (TL)", h)
+        for parca in ("MALZEME TOPLAMI (TL)", "İŞLEM/FASON TOPLAMI (TL)", "GENEL TOPLAM (TL)"):
+            self.assertIn(parca, h)
         self.assertIn("5,00", h)
         self.assertIn("kalem maliyetsiz", h)
+        self.assertIn("Seçilen tarihte fason fiyatı olan üretilen parça yok", h)
 
     def test_elle_secim_ve_sinir_uyarisi(self):
         r = self.al(urunler=[self.mamul_a.pk, self.mamul_c.pk])
@@ -145,14 +147,14 @@ class MatrisEkranTest(KarsilastirBase):
         self.assertEqual(self.al(seri="Z", mod="x", urunler=["a", ""]).status_code, 200)
 
     def test_excel_miktar_ve_maliyet(self):
-        for mod, satir in (("miktar", 8), ("maliyet", 10)):
+        for mod, satir in (("miktar", 8), ("maliyet", 13)):
             r = self.al(seri="A", mod=mod, xlsx="1")
             self.assertIn("spreadsheetml", r["Content-Type"])
             ws = load_workbook(BytesIO(r.content)).active
             self.assertEqual(ws["A1"].value, "Karşılaştırma")
             self.assertEqual([c.value for c in ws[4]][:4], ["Kategori", "Kod", "Ad", "Birim"])
             self.assertEqual(len([c for c in ws[4] if c.value]), (4 if mod == "miktar" else 5) + 6)   # 6 ürün sütunu (+ Kaynak)
-            self.assertEqual(ws.max_row, satir)                                      # 4 malzeme (+ maliyette toplam + maliyetsiz notu)
+            self.assertEqual(ws.max_row, satir)        # 4 malzeme (+ maliyette malzeme/işlem-fason/genel toplam + maliyetsiz notu + fiyatsız parça notu)
 
     def test_sorgu_sayisi_sabit(self):
         sayi = {}

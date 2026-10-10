@@ -71,6 +71,9 @@
   .rozet.kaynak-ortalama { background:#e7f7ec; color:#0a7d28; margin-left:.3rem; font-size:.68rem; }
   .rozet.kaynak-kart { background:rgba(240,124,0,.13); color:#a35200; margin-left:.3rem; font-size:.68rem; }
   .rozet.kaynak-yok { background:#eef1f7; color:#8a93a5; margin-left:.3rem; font-size:.68rem; }
+  .rozet.kaynak-fason { background:#e6edfb; color:#2a4a8f; margin-left:.3rem; font-size:.68rem; }
+  .ua-chip.mavi { border-color:rgba(42,74,143,.4); background:#e6edfb; color:#2a4a8f; }
+  .ua-usd { color:var(--metin-soluk); font-size:.78rem; }
   .ua-not { font-size:.78rem; color:var(--metin-soluk); margin:.4rem 0 .8rem; }
 
   .ua-tablo { width:100%; border-collapse:collapse; }
@@ -79,6 +82,9 @@
   .ua-tablo .sag { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .ua-tablo tr.ua-kat td { background:rgba(21,41,77,.06); font-weight:700; border-top:1px solid var(--cizgi-koyu); }
   .ua-tablo tr.ua-ara td { font-weight:650; background:rgba(21,41,77,.025); }
+  .ua-tablo tr.ua-bolum td { background:rgba(21,41,77,.13); font-weight:750; font-size:.76rem; letter-spacing:.04em; text-transform:uppercase;
+    border-top:2px solid var(--cizgi-koyu); }
+  .ua-tablo tr.ua-toplam-ara td { font-weight:720; background:rgba(21,41,77,.06); border-top:1px solid var(--cizgi-koyu); }
   .ua-tablo tr.ua-genel td { font-weight:750; background:rgba(240,124,0,.1); border-top:2px solid var(--cizgi-koyu); }
   .ua-tablo tr.eksik td { color:var(--hata); }
   .ua-tablo tr.eksik td.sag.vurgu { font-weight:750; }
@@ -131,6 +137,8 @@
   .ua-matris td.sag { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .ua-matris tr.ua-kat td { background:#eef1f7; font-weight:700; }
   .ua-matris tr.ua-kat td.ua-ilk { background:#eef1f7; }
+  .ua-matris tr.ua-ara-m td { background:#f6f8fc; font-weight:700; border-top:1px solid var(--cizgi-koyu); }
+  .ua-matris tr.ua-ara-m td.ua-ilk { background:#f6f8fc; }
   .ua-matris tr.ua-toplam td { position:sticky; bottom:0; z-index:2; background:#fdf1e0; font-weight:750; border-top:2px solid var(--cizgi-koyu); }
   .ua-matris tr.ua-toplam td.ua-ilk { z-index:4; background:#fdf1e0; }
   .ua-secim-kutu { display:flex; flex-wrap:wrap; gap:.35rem .8rem; }
@@ -148,8 +156,8 @@
     .ua-tablo, .ua-tablo tbody { display:block; }
     .ua-tablo tr { display:block; }
     .ua-tablo tr.ua-s { padding:.55rem .7rem; margin-bottom:.45rem; border:1px solid var(--cizgi-koyu); border-radius:12px; background:rgba(255,255,255,.75); }
-    .ua-tablo tr.ua-kat, .ua-tablo tr.ua-ara, .ua-tablo tr.ua-genel { margin:.5rem 0 .3rem; }
-    .ua-tablo tr.ua-kat td, .ua-tablo tr.ua-ara td, .ua-tablo tr.ua-genel td { display:flex; justify-content:space-between; border-radius:10px; }
+    .ua-tablo tr.ua-kat, .ua-tablo tr.ua-ara, .ua-tablo tr.ua-genel, .ua-tablo tr.ua-bolum, .ua-tablo tr.ua-toplam-ara { margin:.5rem 0 .3rem; }
+    .ua-tablo tr.ua-kat td, .ua-tablo tr.ua-ara td, .ua-tablo tr.ua-genel td, .ua-tablo tr.ua-bolum td, .ua-tablo tr.ua-toplam-ara td { display:flex; justify-content:space-between; border-radius:10px; }
     .ua-tablo tr.ua-s td { display:flex; justify-content:space-between; gap:.8rem; border-top:0; padding:.12rem 0; text-align:right; }
     .ua-tablo tr.ua-s td::before { content:attr(data-et); color:var(--metin-soluk); font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; text-align:left; flex:0 0 auto; }
     .ua-tablo tr.ua-s td.ua-ad-h { display:block; text-align:left; font-weight:650; }
