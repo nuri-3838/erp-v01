@@ -37,8 +37,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 | 2 | Motor: `ihtiyac_hesapla(kullanilabilir=)`; İhtiyaç Hesapla "stoku düş" seçeneği | TAMAM | `b6cc2a8` |
 | 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | TAMAM | `9387369` |
 | 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | TAMAM | `f6069f6` |
-| 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | TAMAM | (bu commit) |
-| 6 | Fason dönüşü emre bağlama, fire | bekliyor | |
+| 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | TAMAM | `1cc6443`, `9d71ed2` |
+| 6 | Fason dönüşü emre bağlama, fire | TAMAM | (bu commit) |
 | 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | bekliyor | |
 | 8 | Kapanış (satış faturası) + yeniden açılış; deposuz fatura uyarısı | bekliyor | |
 | 9 | Ekranlar: ÜS liste/detay, istasyon emirleri (yeni ekran kodu `istasyon_emirleri`), kayıt listesi/formu, sipariş detayı rozeti | bekliyor | |
@@ -89,3 +89,10 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   geri sarılır; taslak silinince durum güncellenir. İptal edilmiş/kapanmış ÜS'nin emre bağlı kaydı onaylanamaz. Emre bağlı olmayan (bağımsız) kayıtlar etkilenmez.
   Eş zamanlılık: onay ve geri alma etkisi istasyon emri satırını `select_for_update` ile kilitler (aynı emrin iki kaydı sıraya girer; çift ayırma yok).
   Fason dönüşü emre bağlama adım 6'da.
+- **Adım 6:** `donus_olustur` satırına 5. öğe `istasyon_emri_id` (ÜS istasyon emri): operasyon eşleşmeli, ÜS açık ve emir iptal olmamalı; kayıt `uretim_emri` +
+  `istasyon_emri` bağlı açılır, emir durumu güncellenir. `istasyon_emri_fason_donusu_ac(ie, cari_id, depo_id, tarih, adet=None, gelen_ana, gelen)`: tek satırlı
+  taslak belge; varsayılan adet = açık kalan × referans (ÜRET beklenen ana adet; PARÇALA referansın gelen adedi). Onayda tamamlanan GELEN adetten artar
+  (`kayit_calistirma`): fire sonrası kalan açık kalır, ikinci dönüş kalanı kapatır; ayırma yalnız gelen kadar. Tam boy kuralı korunur (kalan 0,67 boy için
+  kayıt 1 tam boy beklenir; fazlası serbest stok). PARÇALA: çıktı bazlı gelenden çalıştırma, talep edilmeyen kardeş çıktı serbest stok. Geri al / taslak sil
+  emri geri sarar. Ekran: fason dönüş formunda gizli `istasyon_emri` alanı; `?istasyon_emri=<pk>` ile operasyon ve açık kalan adet ön dolu gelir
+  (istasyon emri ekranındaki "Fason dönüş aç" düğmesi adım 9'da bu bağlantıyı kullanacak).

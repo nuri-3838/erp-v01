@@ -11,7 +11,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Prefetch
 from django.utils import timezone
 
-from core.models import Cari, Depo, Fatura, FasonDonus, Operasyon, OperasyonKaydi, YevmiyeFisi
+from core.models import Cari, Depo, Fatura, FasonDonus, IstasyonEmri, Operasyon, OperasyonKaydi, UretimEmri, YevmiyeFisi
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services import depo as depo_servis
 from core.services import uretim as uretim_servis
@@ -45,7 +45,8 @@ def _sonraki_sira(yil):
 
 @transaction.atomic
 def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama="", onayla=False, kullanici=None) -> FasonDonus:
-    """``satirlar``: [(operasyon_id, adet[, gelen_ana[, {stok pk: gelen}]]), ...]. ÜRET: adet = BEKLENEN ana çıktı adedi (tam boy kuralı: tam boya
+    """``satirlar``: [(operasyon_id, adet[, gelen_ana[, {stok pk: gelen}[, istasyon_emri_id]]]), ...]. ``istasyon_emri_id`` doluysa kayıt o üretim
+    siparişi istasyon emrine bağlı açılır (onayda emrin tamamlananı GELEN adetten artar; fire sonrası kalan açık kalır). ÜRET: adet = BEKLENEN ana çıktı adedi (tam boy kuralı: tam boya
     yükseltilir), gelen ayrı (boş = beklenen). PARÇALA: adet = REFERANS çıktının GELEN adedi; diğer çıktıların geleni sözlükten (boş = 0); beklenen
     gelenlerden türetilir (çalıştırma = max_i gelen_i/miktar_i, tam boyda ⌈·⌉; beklenen_i = çalıştırma × miktar_i, fire_i = beklenen_i − gelen_i).
     Her satır için fason operasyon kaydı (TASLAK) açılır; ``onayla=True`` ise belge hemen onaylanır."""
@@ -80,6 +81,7 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
     for i, (operasyon_id, adet, *ek) in enumerate(satirlar, start=1):
         gelen_ana = ek[0] if len(ek) > 0 else None
         gelen_yan = ek[1] if len(ek) > 1 else None
+        ie = _istasyon_emri_coz(ek[2] if len(ek) > 2 else None, operasyon_id, i)
         try:
             adet = adet if hasattr(adet, "as_tuple") else parse_tr(adet)
         except SayiHatasi:
@@ -100,9 +102,12 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
             kayit = uretim_servis.operasyon_kaydi_olustur(
                 operasyon_id=operasyon_id, depo_id=depo.pk, tarih=tarih, hedef_cikti_miktari=hedef,
                 aciklama=f"Fason dönüş {donus.no}" + (f" · irsaliye {donus.irsaliye_no}" if donus.irsaliye_no else ""),
-                kullanici=kullanici, fason_cari=cari, fason_donus=donus)
+                kullanici=kullanici, fason_cari=cari, fason_donus=donus,
+                uretim_emri=ie.uretim_emri if ie else None, istasyon_emri=ie)
         except uretim_servis.UretimHatasi as e:
             raise FasonHatasi(f"{i}. satır: {e}")
+        if ie is not None:
+            uretim_servis.istasyon_emri_durum_guncelle(ie)
         if parcala or gelen_ana not in (None, "") or gelen_yan:
             try:
                 gelen_ayarla(kayit, gelen_ana, gelen_yan, gelen=gelen)
@@ -111,6 +116,35 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
     if onayla:
         donus_onayla(donus, kullanici=kullanici)
     return donus
+
+
+def _istasyon_emri_coz(ie_id, operasyon_id, satir_no):
+    """Satırın bağlandığı istasyon emri (yoksa None): operasyonu tutmalı; üretim siparişi açık, emir iptal edilmemiş olmalı."""
+    if ie_id in (None, ""):
+        return None
+    ie = IstasyonEmri.objects.filter(pk=ie_id, silindi=False).select_related("uretim_emri", "operasyon").first()
+    if ie is None:
+        raise FasonHatasi(f"{satir_no}. satır: istasyon emri bulunamadı.")
+    if ie.operasyon_id != int(operasyon_id):
+        raise FasonHatasi(f"{satir_no}. satır: seçilen operasyon istasyon emrinin operasyonu ({ie.no}) değil.")
+    if ie.uretim_emri.silindi or ie.uretim_emri.durum != UretimEmri.Durum.ACIK or ie.durum == IstasyonEmri.Durum.IPTAL:
+        raise FasonHatasi(f"{satir_no}. satır: {ie.no} için üretim siparişi açık değil ya da istasyon emri iptal edilmiş.")
+    return ie
+
+
+@transaction.atomic
+def istasyon_emri_fason_donusu_ac(ie: IstasyonEmri, *, cari_id, depo_id, tarih, adet=None, gelen_ana=None, gelen=None, irsaliye_no="", aciklama="",
+                                  kullanici=None) -> FasonDonus:
+    """İstasyon emrinden TEK satırlı TASLAK fason dönüş belgesi açar. ``adet`` yoksa emrin açık kalanı × referans çıktı miktarı (ÜRET: beklenen ana
+    adet; PARÇALA: referans çıktının gelen adedi). Kayıt emre bağlı açılır; fire (gelen < beklenen) onayda emrin tamamlananına gelen kadar yazılır."""
+    ie = IstasyonEmri.objects.select_for_update().get(pk=ie.pk)
+    if adet in (None, ""):
+        kalan = uretim_servis.istasyon_emri_acik_kalan(ie)
+        if kalan <= 0:
+            raise FasonHatasi("Bu istasyon emrinde açılacak kalan miktar yok; adedi girin.")
+        adet = (kalan * uretim_servis._referans_miktar(ie.operasyon)).quantize(Decimal("0.001"))
+    return donus_olustur(cari_id=cari_id, depo_id=depo_id, tarih=tarih, satirlar=[(ie.operasyon_id, adet, gelen_ana, gelen, ie.pk)],
+                         irsaliye_no=irsaliye_no, aciklama=aciklama, kullanici=kullanici)
 
 
 def _adet_coz(ham, etiket):

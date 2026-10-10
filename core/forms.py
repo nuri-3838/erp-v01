@@ -1431,6 +1431,7 @@ class FasonDonusSatirForm(forms.Form):
                                        empty_label="— operasyon seç —")
     adet = TRDecimalField(label="Beklenen adet", basamak=3, required=False)
     gelen = TRDecimalField(label="Gelen adet", basamak=3, required=False)
+    istasyon_emri = forms.IntegerField(required=False, widget=forms.HiddenInput())      # üretim siparişi istasyon emrinden açılan satır
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

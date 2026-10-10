@@ -42,7 +42,7 @@
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="fh-satir">
-                <td>{{ f.operasyon }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.operasyon }}{{ f.istasyon_emri }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                 <td>{{ f.adet }}</td>
                 <td>{{ f.gelen }}</td>
                 <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
@@ -55,7 +55,7 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.operasyon }}</td>
+      <td>{{ formset.empty_form.operasyon }}{{ formset.empty_form.istasyon_emri }}</td>
       <td>{{ formset.empty_form.adet }}</td>
       <td>{{ formset.empty_form.gelen }}</td>
       <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>

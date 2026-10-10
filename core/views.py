@@ -60,7 +60,7 @@ from core.models import (
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
     YemekSayimi,
-    YevmiyeFisi, YevmiyeSatir, KdvMahsup, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, OperasyonKaydi,
+    YevmiyeFisi, YevmiyeSatir, KdvMahsup, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, IstasyonEmri, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
     MesaiKaydi, MesaiIzinliAg,
 )
@@ -6455,7 +6455,8 @@ def fason_donus_ekle(request):
         baslik = FasonDonusBaslikForm(request.POST)
         formset = FasonDonusSatirFormSet(request.POST, prefix="satir")
         if baslik.is_valid() and formset.is_valid():
-            satirlar = [(f.cleaned_data["operasyon"].pk, f.cleaned_data["adet"], f.cleaned_data.get("gelen")) for f in formset if f.dolu_mu()]
+            satirlar = [(f.cleaned_data["operasyon"].pk, f.cleaned_data["adet"], f.cleaned_data.get("gelen"), None, f.cleaned_data.get("istasyon_emri"))
+                        for f in formset if f.dolu_mu()]
             cd = baslik.cleaned_data
             try:
                 donus = fason_donus_servis.donus_olustur(
@@ -6468,7 +6469,14 @@ def fason_donus_ekle(request):
                 messages.error(request, str(e))
     else:
         baslik = FasonDonusBaslikForm()
-        formset = FasonDonusSatirFormSet(prefix="satir", initial=[{}, {}, {}])
+        ilk = [{}, {}, {}]
+        ie = (IstasyonEmri.objects.filter(pk=request.GET["istasyon_emri"], silindi=False).select_related("operasyon").first()
+              if (request.GET.get("istasyon_emri") or "").isdigit() else None)
+        if ie is not None:                                             # istasyon emrinden "Fason dönüş aç": operasyon + açık kalan adet hazır gelir
+            kalan = uretim_servis.istasyon_emri_acik_kalan(ie)
+            ilk = [{"operasyon": ie.operasyon_id, "istasyon_emri": ie.pk,
+                    "adet": (max(kalan, 0) * uretim_servis._referans_miktar(ie.operasyon)).quantize(Decimal("0.001")) or None}]
+        formset = FasonDonusSatirFormSet(prefix="satir", initial=ilk)
     return render(request, "core/fason_donus_form.html", {"baslik": baslik, "formset": formset})
 
 
