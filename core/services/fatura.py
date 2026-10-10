@@ -1089,6 +1089,22 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
     return fatura_onayla(fatura, kullanici=kullanici, kur_override=kur)
 
 
+def _uretim_siparisi_kilidi(fatura: Fatura, *, depo_id, satirlar) -> None:
+    """Üretim siparişine (ÜS) bağlı satış faturasında depo / stok / miktar değiştiren düzenleme engellenir: ÜS'nin sevk düşümü (``sevk_dusen``) ve kapanışı
+    bu bilgiye dayanır. Faturayı silip yeniden kesmek gerekir. Fiyat, tarih, açıklama vb. serbesttir. İptal edilmiş ÜS engel değildir."""
+    if not TeklifSiparis.objects.filter(fatura=fatura, uretim_emirleri__silindi=False, uretim_emirleri__durum__in=["ACIK", "KAPALI"]).exists():
+        return
+    yeni = {}
+    for i, g in enumerate(satirlar, 1):
+        if g.get("stok_id"):
+            yeni[int(g["stok_id"])] = yeni.get(int(g["stok_id"]), Decimal("0")) + _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
+    eski = {}
+    for sat in fatura.satirlar.filter(silindi=False, stok__isnull=False):
+        eski[sat.stok_id] = eski.get(sat.stok_id, Decimal("0")) + sat.miktar
+    if (fatura.depo_id or None) != (int(depo_id) if depo_id not in (None, "") else None) or yeni != eski:
+        raise FaturaHatasi("Bu fatura bir üretim siparişine bağlı; depo, stok ve miktar değiştirilemez. Faturayı silip yeniden kesin.")
+
+
 @transaction.atomic
 def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                     fatura_no="", para_birimi="TRY", depo_id=None, aciklama="",
@@ -1107,6 +1123,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     if sahsi_alis and not sahsi_ortak_id:
         raise FaturaHatasi("Ortak adına şahsi alış için bir ortak hesabı seçin.")
     sahsi_ortak = _ortak_hesabi_coz(sahsi_ortak_id) if sahsi_alis else None
+    _uretim_siparisi_kilidi(fatura, depo_id=depo_id, satirlar=satirlar)
 
     if fatura.durum == Fatura.Durum.TASLAK:
         tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first() if tip_id else None

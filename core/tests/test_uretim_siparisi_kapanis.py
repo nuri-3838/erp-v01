@@ -142,3 +142,34 @@ class KapanisTest(KapanisTaban):
         self.assertFalse(any("üretim siparişi" in m for m in mesajlar))
         fatura_servis.fatura_sil(sip.fatura)                                                              # ÜS yokken fatura silme sorunsuz
         self.assertIsNone(TeklifSiparis.objects.get(pk=sip.pk).fatura_id)
+
+
+class FaturaDuzenlemeKilidiTest(KapanisTaban):
+    """ÜS'ye bağlı faturada depo/stok/miktar değiştiren düzenleme engellenir (sevk_dusen ve kapanış buna dayanır); fiyat serbest; ÜS'süz fatura serbest."""
+
+    def guncelle(self, fatura, miktar="3", depo=True, fiyat="50"):
+        sat = fatura.satirlar.filter(silindi=False).first()
+        return fatura_servis.fatura_guncelle(
+            fatura, tip_id=fatura.tip_id, cari_id=fatura.cari_id, tarih=fatura.tarih, depo_id=self.depo.pk if depo else None,
+            satirlar=[{"stok_id": sat.stok_id, "kdv_id": sat.kdv_id, "miktar": miktar, "birim_fiyat": fiyat}], kullanici=self.yon)
+
+    def test_depo_miktar_degisikligi_engellenir_fiyat_serbest(self):
+        sip = self.siparis()
+        emir = self.emir_ac(sip)
+        self.uret(emir)
+        self.fatura_kes(sip)
+        fatura = sip.fatura
+        for kw in ({"miktar": "2"}, {"depo": False}):
+            with self.assertRaisesMessage(fatura_servis.FaturaHatasi, "Faturayı silip yeniden kesin"):
+                self.guncelle(fatura, **kw)
+        emir.refresh_from_db()
+        self.assertEqual((emir.durum, emir.sevk_dusen, fatura.satirlar.filter(silindi=False).get().miktar), (UretimEmri.Durum.KAPALI, {str(self.stok.pk): "3"}, D("3")))
+        self.guncelle(fatura, fiyat="60")                                                                 # yalnız fiyat: serbest
+        self.assertEqual(fatura.satirlar.filter(silindi=False).get().birim_fiyat, D("60"))
+
+    def test_iptal_us_ve_us_siz_fatura_serbest(self):
+        hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.GIRIS, miktar=D("3"), giris_tutar_try=D("150"))
+        sip = self.siparis()
+        self.fatura_kes(sip)                                                                              # ÜS yok
+        self.guncelle(sip.fatura, miktar="2")
+        self.assertEqual(sip.fatura.satirlar.filter(silindi=False).get().miktar, D("2"))
