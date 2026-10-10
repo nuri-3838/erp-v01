@@ -4,56 +4,94 @@
 {% block sayfa_adi %}Operasyon Kayıtları{% endblock %}
 
 {% block content %}
+<style>
+  .ok-cipler { display:flex; gap:.6rem; flex-wrap:wrap; margin:.2rem 0 1rem; }
+  .ok-cip { display:inline-flex; align-items:baseline; gap:.45rem; padding:.45rem .85rem; border-radius:12px;
+    background:rgba(33,56,95,.07); border:1px solid rgba(33,56,95,.1); font-size:.82rem; color:var(--metin-soluk); }
+  .ok-cip b { font-size:1.15rem; color:var(--metin); font-variant-numeric:tabular-nums; }
+  .ok-sekmeler { display:flex; gap:.3rem; margin-bottom:.8rem; border-bottom:1px solid var(--cizgi-koyu); }
+  .ok-sekme { padding:.5rem 1rem; border-radius:10px 10px 0 0; font-weight:600; font-size:.9rem; color:var(--metin-soluk); text-decoration:none; }
+  .ok-sekme:hover { color:var(--metin); background:rgba(240,124,0,.06); }
+  .ok-sekme.aktif { color:var(--turuncu-koyu); background:rgba(240,124,0,.1); box-shadow:inset 0 -2px 0 var(--turuncu); }
+  .ok-sure { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem; }
+  .ok-sure .alan { margin:0; }
+  .ok-sure .alan label { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .ok-sure input, .ok-sure select { min-height:38px; }
+  .ok-ist { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; padding:.15rem .5rem; border-radius:8px; background:#eef1f7; color:#33415c; }
+  .ok-ipucu { display:inline-grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:50%; border:1px solid var(--cizgi-koyu);
+    font-size:.75rem; font-weight:700; color:var(--metin-soluk); cursor:help; margin-left:.5rem; vertical-align:middle; }
+  .ok-kaynak a { white-space:nowrap; }
+</style>
+
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url 'core:operasyon_tanimlari' %}">← Operasyon Tanımları</a>
-    <h1 class="ust-baslik"><span class="emoji">📋</span>Operasyon Kayıtları</h1>
+    <h1 class="ust-baslik"><span class="emoji">📋</span>Operasyon Kayıtları
+      <span class="ok-ipucu" tabindex="0" title="İstasyon emirlerinden ve fason dönüşlerden açılan kayıtlar burada görünür. “Kaynak” sütunu kaydın geldiği üretim siparişi / istasyon emri ya da fason dönüşüdür; boşsa kayıt bağımsızdır. “+ Yeni (Bağımsız)” bir emre bağlı olmayan serbest kayıt açar.">?</span></h1>
   </div>
   <a class="dugme" href="{% url 'core:operasyon_kaydi_ekle' %}">+ Yeni (Bağımsız)</a>
 </div>
 
-<p class="yardim">İstasyon emirlerinden açılan kayıtlar burada da görünür (emir ve üretim siparişi bağlantılarıyla);
-  "+ Yeni (Bağımsız)" bir istasyon emrine bağlı olmadan, istasyonun kendi inisiyatifiyle açtığı serbest kayıt içindir.
-  Süzgeç:
-  <a href="{% url 'core:operasyon_kayitlari' %}">Tümü</a> ·
-  <a href="{% url 'core:operasyon_kayitlari' %}?emir=bagimsiz">Yalnız bağımsız</a>
-  {% if filtre.uretim_emri %}· üretim siparişi #{{ filtre.uretim_emri }}{% endif %}{% if filtre.istasyon_emri %}· istasyon emri #{{ filtre.istasyon_emri }}{% endif %}</p>
+<div class="ok-cipler">
+  <span class="ok-cip"><b>{{ cipler.taslak }}</b> bekleyen taslak</span>
+  <span class="ok-cip"><b>{{ cipler.bugun }}</b> bugün onaylanan</span>
+  <span class="ok-cip"><b>{{ cipler.hafta }}</b> bu hafta onaylanan</span>
+</div>
+
+<nav class="ok-sekmeler">
+  <a class="ok-sekme{% if sekme == 'taslak' %} aktif{% endif %}" href="?{{ sekme_url.taslak }}">Taslak</a>
+  <a class="ok-sekme{% if sekme == 'onayli' %} aktif{% endif %}" href="?{{ sekme_url.onayli }}">Onaylı</a>
+  <a class="ok-sekme{% if sekme == 'tumu' %} aktif{% endif %}" href="?{{ sekme_url.tumu }}">Tümü</a>
+</nav>
+
+<form method="get" class="ok-sure">
+  <input type="hidden" name="sekme" value="{{ sekme }}">
+  {% if filtre.uretim_emri %}<input type="hidden" name="uretim_emri" value="{{ filtre.uretim_emri }}">{% endif %}
+  {% if filtre.istasyon_emri %}<input type="hidden" name="istasyon_emri" value="{{ filtre.istasyon_emri }}">{% endif %}
+  <div class="alan"><label for="ok-ist">İstasyon</label>
+    <select name="istasyon" id="ok-ist">
+      <option value="">Tümü</option>
+      {% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="ok-bas">Tarih (başlangıç)</label><input type="date" name="bas" id="ok-bas" value="{{ bas }}"></div>
+  <div class="alan"><label for="ok-bit">Tarih (bitiş)</label><input type="date" name="bit" id="ok-bit" value="{{ bit }}"></div>
+  <div class="alan"><label for="ok-us">ÜS</label><input type="text" name="us" id="ok-us" value="{{ us }}" placeholder="ÜS-2026-0001" size="14" autocomplete="off"></div>
+  <div class="alan"><label for="ok-ara">Ara</label><input type="text" name="ara" id="ok-ara" value="{{ ara }}" placeholder="Kayıt no, çıktı, IE/FD…" size="22" autocomplete="off"></div>
+  <button type="submit" class="birincil">Filtrele</button>
+  <a class="iptal-bag" href="{% url 'core:operasyon_kayitlari' %}?sekme={{ sekme }}">Temizle</a>
+</form>
 
 <div class="tablo-kapsayici">
 <table>
   <thead><tr>
-    <th>No</th><th>Tarih</th><th>İş İstasyonu</th><th>Çıktı</th>
-    <th class="sag">Hedef Miktar</th><th>İstasyon Emri</th><th>Üretim Siparişi</th><th>Durum</th>
+    <th>No</th><th>Tarih</th><th>İstasyon</th><th>Çıktı</th><th class="sag">Miktar</th><th>Kaynak</th><th>Durum</th>
   </tr></thead>
   <tbody>
     {% for k in kayitlar %}
       <tr>
         <td><a class="mono" href="{% url 'core:operasyon_kaydi_detay' k.pk %}">{{ k.no }}</a></td>
         <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
-        <td><span class="mono">{{ k.operasyon.istasyon.kod }}</span> {{ k.operasyon.istasyon.ad }}</td>
-        <td><span class="mono">{{ k.operasyon.cikti.kod }}</span> {{ k.operasyon.cikti.ad }}</td>
+        <td><span class="ok-ist" title="{{ k.operasyon.istasyon.ad }}">{{ k.operasyon.istasyon.kod }}</span></td>
+        <td title="{{ k.operasyon.cikti.ad }}"><span class="mono">{{ k.operasyon.cikti.kod }}</span> {{ k.operasyon.cikti.ad|truncatechars:28 }}</td>
         <td class="sag mono">{{ k.hedef_cikti_miktari|tr_kur:3 }}</td>
-        <td class="mono">{% if k.istasyon_emri %}<a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ k.istasyon_emri_id }}">{{ k.istasyon_emri.no }}</a>{% else %}—{% endif %}</td>
-        <td>{% if k.uretim_emri %}<a class="mono" href="{% url 'core:uretim_emri_detay' k.uretim_emri.pk %}">{{ k.uretim_emri.no }}</a>{% else %}<span class="pasif">— bağımsız —</span>{% endif %}</td>
+        <td class="ok-kaynak">
+          {% if k.istasyon_emri %}<a class="mono" href="{% url 'core:uretim_emri_detay' k.uretim_emri_id %}">{{ k.uretim_emri.no }}</a> /
+            <a class="mono" href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ k.istasyon_emri_id }}">{{ k.istasyon_emri.no }}</a>
+          {% elif k.uretim_emri %}<a class="mono" href="{% url 'core:uretim_emri_detay' k.uretim_emri_id %}">{{ k.uretim_emri.no }}</a>{% endif %}
+          {% if k.fason_donus %}{% if k.uretim_emri %}· {% endif %}Fason <a class="mono" href="{% url 'core:fason_donus_detay' k.fason_donus_id %}">{{ k.fason_donus.no }}</a>{% endif %}
+        </td>
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="8" class="yardim">Henüz operasyon kaydı yok.</td></tr>
+      <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.4rem 0">Bu süzgeçle eşleşen operasyon kaydı yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
 </div>
 
-{% if kayitlar.paginator.num_pages > 1 %}
 <nav class="sayfalama">
-  {% if kayitlar.has_previous %}
-    <a href="?sayfa={{ kayitlar.previous_page_number }}">‹ Önceki</a>
-  {% else %}<span class="pasif">‹ Önceki</span>{% endif %}
-  <span class="sayfalama-bilgi">Sayfa {{ kayitlar.number }} / {{ kayitlar.paginator.num_pages }}
-    · {{ kayitlar.paginator.count }} kayıt</span>
-  {% if kayitlar.has_next %}
-    <a href="?sayfa={{ kayitlar.next_page_number }}">Sonraki ›</a>
-  {% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+  {% if kayitlar.has_previous %}<a href="?{{ sorgu }}{% if sorgu %}&amp;{% endif %}sayfa={{ kayitlar.previous_page_number }}">‹ Önceki</a>{% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  <span class="sayfalama-bilgi">Sayfa {{ kayitlar.number }} / {{ kayitlar.paginator.num_pages }} · {{ kayitlar.paginator.count }} kayıt</span>
+  {% if kayitlar.has_next %}<a href="?{{ sorgu }}{% if sorgu %}&amp;{% endif %}sayfa={{ kayitlar.next_page_number }}">Sonraki ›</a>{% else %}<span class="pasif">Sonraki ›</span>{% endif %}
 </nav>
-{% endif %}
 {% endblock %}

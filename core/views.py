@@ -7418,23 +7418,64 @@ def istasyon_emri_kayit_ac_gorunum(request, pk):
 
 
 # --- Operasyon Kayıtları ---
+def _iso_tarih(ham):
+    try:
+        return datetime.date.fromisoformat((ham or "").strip())
+    except ValueError:
+        return None
+
+
 @ekran_gerekli("operasyon_kayitlari")
 def operasyon_kayitlari(request):
-    kayitlar = (OperasyonKaydi.objects.filter(silindi=False)
-               .select_related("operasyon__istasyon", "operasyon__cikti", "depo", "uretim_emri", "istasyon_emri")
-               .order_by("-yil", "-sira"))
+    """Sade kayıt listesi: Taslak (varsayılan) / Onaylı / Tümü sekmeleri, özet çipleri, tek satır süzgeç, 50/sayfa. Emirlerden gelen bağlantılar
+    (``?istasyon_emri=``, ``?uretim_emri=``) sekme verilmediyse TÜMÜ gösterir."""
+    g = request.GET
+    taban = OperasyonKaydi.objects.filter(silindi=False)
+    bugun = timezone.localdate()
+    hafta_bas = bugun - datetime.timedelta(days=bugun.weekday())
+    onayli = taban.filter(durum=OperasyonKaydi.Durum.ONAYLI)            # onaylı kayıt kilitlidir: updated_at = onay anı
+    cipler = {"taslak": taban.filter(durum=OperasyonKaydi.Durum.TASLAK).count(),
+              "bugun": onayli.filter(updated_at__date=bugun).count(),
+              "hafta": onayli.filter(updated_at__date__gte=hafta_bas, updated_at__date__lte=bugun).count()}
+    emirden = bool(g.get("istasyon_emri", "").isdigit() or g.get("uretim_emri", "").isdigit())
+    sekme = g.get("sekme") if g.get("sekme") in ("taslak", "onayli", "tumu") else ("tumu" if emirden else "taslak")
+    kayitlar = (taban.select_related("operasyon__istasyon", "operasyon__cikti", "uretim_emri", "istasyon_emri", "fason_donus").order_by("-yil", "-sira"))
+    if sekme == "taslak":
+        kayitlar = kayitlar.filter(durum=OperasyonKaydi.Durum.TASLAK)
+    elif sekme == "onayli":
+        kayitlar = kayitlar.filter(durum=OperasyonKaydi.Durum.ONAYLI)
+    istasyon = (g.get("istasyon") or "").strip()
+    if istasyon.isdigit():
+        kayitlar = kayitlar.filter(operasyon__istasyon_id=int(istasyon))
+    bas, bit = _iso_tarih(g.get("bas")), _iso_tarih(g.get("bit"))
+    if bas:
+        kayitlar = kayitlar.filter(tarih__gte=bas)
+    if bit:
+        kayitlar = kayitlar.filter(tarih__lte=bit)
+    us = (g.get("us") or "").strip()
+    if us:
+        kayitlar = kayitlar.filter(uretim_emri__no__icontains=us)
+    ara = (g.get("ara") or "").strip()
+    if ara:
+        buyuk = buyuk_harf_tr(ara)
+        kayitlar = kayitlar.filter(Q(no__icontains=ara) | Q(operasyon__cikti__kod__icontains=ara) | Q(operasyon__cikti__ad__contains=buyuk)
+                                   | Q(istasyon_emri__no__icontains=ara) | Q(fason_donus__no__icontains=ara))
     filtre = {}
-    if request.GET.get("uretim_emri", "").isdigit():
-        filtre["uretim_emri"] = int(request.GET["uretim_emri"])
+    if g.get("uretim_emri", "").isdigit():
+        filtre["uretim_emri"] = int(g["uretim_emri"])
         kayitlar = kayitlar.filter(uretim_emri_id=filtre["uretim_emri"])
-    if request.GET.get("istasyon_emri", "").isdigit():
-        filtre["istasyon_emri"] = int(request.GET["istasyon_emri"])
+    if g.get("istasyon_emri", "").isdigit():
+        filtre["istasyon_emri"] = int(g["istasyon_emri"])
         kayitlar = kayitlar.filter(istasyon_emri_id=filtre["istasyon_emri"])
-    if request.GET.get("emir") == "bagimsiz":
+    if g.get("emir") == "bagimsiz":
         filtre["bagimsiz"] = True
-        kayitlar = kayitlar.filter(istasyon_emri__isnull=True)
-    sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
-    return render(request, "core/operasyon_kayitlari.html", {"kayitlar": sayfa, "filtre": filtre})
+        kayitlar = kayitlar.filter(istasyon_emri__isnull=True, fason_donus__isnull=True)
+    sayfa = Paginator(kayitlar, 50).get_page(g.get("sayfa"))
+    sorgu = {k: v for k, v in g.items() if k != "sayfa" and v}
+    return render(request, "core/operasyon_kayitlari.html", {
+        "kayitlar": sayfa, "filtre": filtre, "sekme": sekme, "cipler": cipler, "istasyon": istasyon, "bas": g.get("bas", ""), "bit": g.get("bit", ""),
+        "us": us, "ara": ara, "istasyonlar": uretim_servis.aktif_istasyonlar(), "sorgu": urlencode(sorgu),
+        "sekme_url": {k: urlencode({**{a: b for a, b in sorgu.items() if a != "sekme"}, "sekme": k}) for k in ("taslak", "onayli", "tumu")}})
 
 
 @ekran_gerekli("operasyon_kayitlari")
