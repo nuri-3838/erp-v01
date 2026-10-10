@@ -1001,6 +1001,7 @@ def _istasyon_emri_ac(emir: UretimEmri, plan_satiri: dict, kullanici=None) -> Is
                 return IstasyonEmri.objects.create(
                     uretim_emri=emir, operasyon=op, istasyon_id=op.istasyon_id, yil=yil, sira=sira, no=f"IE-{yil}-{sira:04d}",
                     seviye=plan_satiri["seviye"], planlanan=plan_satiri["calistirma"], tamamlanan=Decimal("0"),
+                    ihtiyac={str(c["stok"].pk): _ds(c["net"]) for c in plan_satiri["ciktilar"] if c["surucu"] and c["net"] > 0},
                     durum=IstasyonEmri.Durum.BEKLIYOR, created_by=kullanici, updated_by=kullanici)
         except IntegrityError:
             continue
@@ -1063,6 +1064,136 @@ def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, 
     return uretim_emri_olustur(
         kalemler=kalemler, depo_id=depo_id, tarih=tarih, aciklama=aciklama,
         kaynak_siparis=siparis, kullanici=kullanici, siparis_kalemleri=[kalem for kalem, _ in secim])
+
+# === İstasyon emrinden operasyon kaydı: açma, onay/geri alma etkileri, durum ===
+
+def _referans_miktar(operasyon) -> Decimal:
+    tanim = tanim_ciktilari(operasyon)
+    return tanim[0].miktar if tanim else operasyon.cikti_miktar
+
+
+def kayit_calistirma(kayit: OperasyonKaydi) -> Decimal:
+    """Kaydın ÇALIŞTIRMA birimindeki miktarı. Onaylı ÜRET kaydında ana çıktının GİRİŞ miktarından (fasonda fire sonrası gelen adet),
+    diğerlerinde hedeften (PARÇALA'da hedef zaten gelenden türetilir): çalıştırma = referans çıktı adedi / referans miktar."""
+    op = kayit.operasyon
+    ref = _referans_miktar(op)
+    if kayit.durum == OperasyonKaydi.Durum.ONAYLI and op.tur == Operasyon.Tur.URET:
+        ana = kayit.ciktilar.filter(ana_mi=True, silindi=False).first()
+        if ana is not None:
+            return ana.miktar / ref
+    return kayit.hedef_cikti_miktari / ref
+
+
+def istasyon_emri_acik_kalan(ie: IstasyonEmri, haric_kayit=None) -> Decimal:
+    """Henüz bir kayda bağlanmamış çalıştırma: planlanan − tamamlanan − açık TASLAK kayıtların çalıştırması (eksiye inebilir = fazla planlandı)."""
+    acik = Decimal("0")
+    for k in ie.kayitlar.filter(silindi=False, durum=OperasyonKaydi.Durum.TASLAK).select_related("operasyon"):
+        if haric_kayit is None or k.pk != haric_kayit.pk:
+            acik += kayit_calistirma(k)
+    return ie.planlanan - ie.tamamlanan - acik
+
+
+def istasyon_emri_durum_guncelle(ie: IstasyonEmri) -> IstasyonEmri:
+    """Durumu olaylardan yeniden hesaplar: IPTAL kalır; tamamlanan ≥ planlanan → BITTI; tamamlanan > 0 ya da açık taslak kayıt var → BASLADI; yoksa BEKLIYOR."""
+    ie.refresh_from_db()
+    if ie.durum == IstasyonEmri.Durum.IPTAL:
+        return ie
+    if ie.tamamlanan >= ie.planlanan:
+        yeni = IstasyonEmri.Durum.BITTI
+    elif ie.tamamlanan > 0 or ie.kayitlar.filter(silindi=False, durum=OperasyonKaydi.Durum.TASLAK).exists():
+        yeni = IstasyonEmri.Durum.BASLADI
+    else:
+        yeni = IstasyonEmri.Durum.BEKLIYOR
+    if yeni != ie.durum:
+        ie.durum = yeni
+        ie.save(update_fields=["durum", "updated_at"])
+    return ie
+
+
+def kayit_fazla_uyarisi(kayit: OperasyonKaydi) -> str:
+    """Kayıt, istasyon emrinin kalanını aşıyorsa uyarı metni ('' = aşmıyor) — engellenmez (karar 7: fazlası serbest stok)."""
+    ie = kayit.istasyon_emri
+    if ie is None:
+        return ""
+    kalan = istasyon_emri_acik_kalan(ie, haric_kayit=kayit)
+    c = kayit_calistirma(kayit)
+    if c > kalan:
+        return (f"Bu kayıt istasyon emrinin kalanını aşıyor ({c.normalize():f} çalıştırma, kalan {max(kalan, Decimal('0')).normalize():f}); "
+                "fazla üretilen parça serbest stoğa girer.")
+    return ""
+
+
+@transaction.atomic
+def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=None, aciklama="", kullanici=None) -> OperasyonKaydi:
+    """İstasyon emrinden TASLAK operasyon kaydı açar (``uretim_emri`` + ``istasyon_emri`` bağlı). ``hedef`` (referans çıktı adedi) verilmezse
+    açık kalan çalıştırma × referans miktar; kalan yoksa hedef zorunlu. Hedef kalanı AŞABİLİR (uyarı: ``kayit_fazla_uyarisi``; fazlası serbest stok).
+    Emir satırı kilitlenir (aynı emirden eş zamanlı iki açılış kalanı iki kez kullanmasın). Yalnız açık ÜS'nin bitmemiş/iptal olmamış emri için."""
+    ie = IstasyonEmri.objects.select_for_update().select_related("uretim_emri", "operasyon").get(pk=ie.pk)
+    emir = ie.uretim_emri
+    if ie.silindi or emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
+        raise UretimHatasi("Yalnız açık üretim siparişinin istasyon emrinden kayıt açılabilir.")
+    if ie.durum == IstasyonEmri.Durum.IPTAL:
+        raise UretimHatasi("İptal edilmiş istasyon emrinden kayıt açılamaz.")
+    ref = _referans_miktar(ie.operasyon)
+    if hedef in (None, ""):
+        kalan = istasyon_emri_acik_kalan(ie)
+        if kalan <= 0:
+            raise UretimHatasi("Bu istasyon emrinde açılacak kalan miktar yok; fazla üretim için hedef miktarı girin.")
+        hedef = (kalan * ref).quantize(Decimal("0.000001"))
+    kayit = operasyon_kaydi_olustur(
+        operasyon_id=ie.operasyon_id, depo_id=depo_id or emir.depo_id, tarih=tarih or timezone.localdate(), hedef_cikti_miktari=hedef,
+        uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici)
+    istasyon_emri_durum_guncelle(ie)
+    return kayit
+
+
+def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
+    """Onaylanan, istasyon emrine bağlı kayıt: (1) girdi tüketimi kadar ÜS'nin o stok ayırması düşer (ayrılmış malzeme tüketildi), (2) üretilen
+    parça ÜS'nin kalan NET ihtiyacına kadar ayrılır (fazlası serbest), (3) tamamlanan artar, durum güncellenir. İzler kayıt satırlarına yazılır."""
+    ie, emir = kayit.istasyon_emri, kayit.uretim_emri
+    if ie is None or emir is None:
+        return
+    for satir in kaydi_girdi_satirlari(kayit):
+        if satir.gerceklesen_miktar <= 0:
+            continue
+        dus = min(stok_ayirma.ayrilan_miktar(emir, satir.girdi_id), satir.gerceklesen_miktar)
+        if dus > 0:
+            stok_ayirma.ayirma_ekle(emir, satir.girdi_id, -dus, kullanici)
+            satir.ayrilan_dusen = dus
+            satir.save(update_fields=["ayrilan_dusen", "updated_at"])
+    ihtiyac = {int(k): Decimal(str(v)) for k, v in (ie.ihtiyac or {}).items()}
+    for c in kayit.ciktilar.filter(silindi=False):
+        if c.miktar <= 0 or c.stok_id not in ihtiyac:
+            continue
+        onceki = sum((x.ayrilan for x in OperasyonKaydiCikti.objects.filter(
+            kayit__istasyon_emri=ie, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__silindi=False, stok_id=c.stok_id, silindi=False).exclude(pk=c.pk)), Decimal("0"))
+        a = min(c.miktar, max(Decimal("0"), ihtiyac[c.stok_id] - onceki))
+        if a > 0:
+            stok_ayirma.ayirma_ekle(emir, c.stok_id, a, kullanici)
+            c.ayrilan = a
+            c.save(update_fields=["ayrilan", "updated_at"])
+    ie.refresh_from_db()
+    ie.tamamlanan = ie.tamamlanan + kayit_calistirma(kayit)
+    ie.save(update_fields=["tamamlanan", "updated_at"])
+    istasyon_emri_durum_guncelle(ie)
+
+
+def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
+    """Onaylı kaydın geri alınması (stok hareketleri geri alındıktan sonra): ayırma izleri aynen geri sarılır, tamamlanan düşer, durum güncellenir."""
+    ie, emir = kayit.istasyon_emri, kayit.uretim_emri
+    if ie is None or emir is None:
+        return
+    if emir.durum == UretimEmri.Durum.ACIK:
+        for c in kayit.ciktilar.filter(silindi=False):
+            if c.ayrilan > 0:
+                stok_ayirma.ayirma_ekle(emir, c.stok_id, -c.ayrilan, kullanici)
+        for satir in kaydi_girdi_satirlari(kayit):
+            if satir.ayrilan_dusen > 0:
+                stok_ayirma.ayirma_ekle(emir, satir.girdi_id, satir.ayrilan_dusen, kullanici)
+    ie.refresh_from_db()
+    ie.tamamlanan = max(Decimal("0"), ie.tamamlanan - kayit_calistirma(kayit))
+    ie.save(update_fields=["tamamlanan", "updated_at"])
+    istasyon_emri_durum_guncelle(ie)
 
 
 def uretim_emri_ilerleme(emir: UretimEmri):
@@ -1129,7 +1260,8 @@ def kaydi_girdi_satirlari(kayit: OperasyonKaydi):
 
 @transaction.atomic
 def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari,
-                            uretim_emri=None, aciklama="", kullanici=None, fason_cari=None, fason_donus=None) -> OperasyonKaydi:
+                            uretim_emri=None, aciklama="", kullanici=None, fason_cari=None, fason_donus=None,
+                            istasyon_emri=None) -> OperasyonKaydi:
     operasyon = (Operasyon.objects.filter(pk=operasyon_id, silindi=False)
                 .select_related("istasyon", "cikti").first())
     if not operasyon:
@@ -1154,7 +1286,7 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
                 sira = _sonraki_kayit_sira(yil)
                 kayit = OperasyonKaydi.objects.create(
                     yil=yil, sira=sira, no=f"OP-{yil}-{sira:04d}",
-                    operasyon=operasyon, uretim_emri=uretim_emri, depo=depo, tarih=tarih,
+                    operasyon=operasyon, uretim_emri=uretim_emri, istasyon_emri=istasyon_emri, depo=depo, tarih=tarih,
                     hedef_cikti_miktari=miktar, aciklama=(aciklama or "").strip(),
                     durum=OperasyonKaydi.Durum.TASLAK, fason_cari=fason_cari, fason_donus=fason_donus,
                     created_by=kullanici, updated_by=kullanici)
@@ -1298,6 +1430,8 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
         raise UretimHatasi("İptal edilmiş kayıt onaylanamaz.")
     if kayit.durum == OperasyonKaydi.Durum.ONAYLI:
         return kayit
+    if kayit.istasyon_emri_id and (kayit.istasyon_emri.durum == IstasyonEmri.Durum.IPTAL or kayit.uretim_emri.durum != UretimEmri.Durum.ACIK):
+        raise UretimHatasi("Bu kaydın üretim siparişi/istasyon emri iptal edilmiş ya da kapanmış; kayıt onaylanamaz.")
     satirlar = list(kaydi_girdi_satirlari(kayit))
     for satir in satirlar:
         _tam_boy_kontrol(kayit, satir, satir.gerceklesen_miktar)
@@ -1401,6 +1535,7 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
         stok_fis.uretim_senkronla(kayit, kullanici=kullanici)    # 15x→15x maliyet aktarım fişi
     except stok_fis.MaliyetHatasi as e:
         raise UretimHatasi(str(e))
+    _istasyon_emri_onay_etkisi(kayit, kullanici)             # üretim siparişi: ayırma düş/ekle, tamamlanan, durum
     return kayit
 
 
@@ -1426,8 +1561,11 @@ def operasyon_kaydi_sil(kayit: OperasyonKaydi, kullanici=None, *, onayli_geri_al
             raise UretimHatasi(str(e))
         if kayit.fis_id and not kayit.fis.silindi:
             fis_iptal(kayit.fis, kullanici=kullanici)
+        _istasyon_emri_geri_al_etkisi(kayit, kullanici)          # üretim siparişi: ayırma izleri + tamamlanan geri sarılır (kayıt hâlâ ONAYLI iken)
     kayit.silindi = True
     kayit.silindi_at = timezone.now()
     kayit.updated_by = kullanici
     kayit.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    if kayit.istasyon_emri_id:
+        istasyon_emri_durum_guncelle(kayit.istasyon_emri)
     return kayit

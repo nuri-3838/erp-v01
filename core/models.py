@@ -3152,6 +3152,8 @@ class OperasyonKaydiCikti(TemelModel):
     # Onay anındaki paylaştırma AĞIRLIĞI (BOY: gelen miktar × boy_mm, ESIT: gelen miktar, YUZDE: tanımdaki yüzde): sonradan yeniden paylaştırma
     # tanıma değil bu değere bakar. Boşsa (eski kayıt) miktar × boy_mm kullanılır.
     agirlik = models.DecimalField("paylaştırma ağırlığı", max_digits=30, decimal_places=8, null=True, blank=True)
+    # Üretim siparişi akışı: bu çıktıdan onay anında ÜS'ye AYRILAN miktar (stok ayırma izi; onaylı kaydın geri alınmasında tam geri sarılır).
+    ayrilan = models.DecimalField("üretim siparişine ayrılan", max_digits=18, decimal_places=6, default=0)
     ana_mi = models.BooleanField("ana çıktı", default=True)
     # FASON dönüş kaydında ONAY ANI SNAPSHOT'I: çıktının kendi fason birim fiyatı (fiyatın para biriminde), kur ve TL/USD tutarı. Bölüşüm YOK:
     # her çıktı kendi fiyatı × adedi kadar bedel alır; malzeme maliyeti ise boy oranıyla paylaşılır (bkz. stok_fis.uretim_senkronla).
@@ -3370,6 +3372,9 @@ class IstasyonEmri(TemelModel):
     planlanan = models.DecimalField("planlanan çalıştırma", max_digits=24, decimal_places=10)
     tamamlanan = models.DecimalField("tamamlanan çalıştırma", max_digits=24, decimal_places=10, default=0)
     durum = models.CharField("durum", max_length=8, choices=Durum.choices, default=Durum.BEKLIYOR)
+    # Açılış/revize anı snapshot'ı: bu emrin sürücü çıktıları için ÜS'nin ÜRETİMLE karşılaması gereken NET miktar {stok pk: miktar}. Kayıt onayında
+    # üretilen parça bu miktara kadar ÜS'ye ayrılır (fazlası serbest stok — karar 8).
+    ihtiyac = models.JSONField("net ihtiyaç ({stok pk: miktar})", default=dict, blank=True)
 
     class Meta:
         db_table = "core_istasyon_emri"
@@ -3497,6 +3502,8 @@ class OperasyonKaydiGirdi(TemelModel):
     gerceklesen_miktar = models.DecimalField(
         "gerçekleşen miktar", max_digits=18, decimal_places=6)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
+    # Üretim siparişi akışı: onayda bu girdi için ÜS'nin ayırmasından DÜŞEN miktar (ayrılmış malzeme tüketildi; geri alınınca aynen geri eklenir).
+    ayrilan_dusen = models.DecimalField("ayırmadan düşen", max_digits=18, decimal_places=6, default=0)
 
     class Meta:
         db_table = "core_operasyon_kaydi_girdi"

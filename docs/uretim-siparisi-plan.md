@@ -36,8 +36,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 | 1 | `StokAyirma` + `stok_ayirma` servisi (kullanılabilir) + ürün ağacı malzeme sekmesi Ayrılan/Kullanılabilir/Eksik (ekran + Excel) | TAMAM | `09233a8` |
 | 2 | Motor: `ihtiyac_hesapla(kullanilabilir=)`; İhtiyaç Hesapla "stoku düş" seçeneği | TAMAM | `b6cc2a8` |
 | 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | TAMAM | `9387369` |
-| 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | TAMAM | (bu commit) |
-| 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | bekliyor | |
+| 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | TAMAM | `f6069f6` |
+| 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | TAMAM | (bu commit) |
 | 6 | Fason dönüşü emre bağlama, fire | bekliyor | |
 | 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | bekliyor | |
 | 8 | Kapanış (satış faturası) + yeniden açılış; deposuz fatura uyarısı | bekliyor | |
@@ -79,3 +79,13 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   (servis + sipariş ekranları). `uretim_emri_ilerleme` istasyon emirlerinden (BITTI/iptal olmayan; eski emirlerde kayıtlardan).
   `uretim_emri_sil` yalnız başlamamış ÜS'yi siler (başlamış = istasyon emri BASLADI/BITTI/tamamlanan>0 ya da onaylı/emirden açılmış kayıt; karar 9),
   `uretim_emri_iptal` eklendi (taslak kayıtlar iptal, bitmemiş istasyon emirleri IPTAL, ayırmalar kapanır, IPTAL revizyonu). İptal ekranı adım 9.
+- **Adım 5 (migration 0200, saf şema):** üç iz alanı — `IstasyonEmri.ihtiyac` (açılış/revize anı: sürücü çıktı başına üretimle karşılanacak NET miktar),
+  `OperasyonKaydiCikti.ayrilan` (onayda ÜS'ye ayrılan), `OperasyonKaydiGirdi.ayrilan_dusen` (onayda ayırmadan düşen) — geri alma bu izlerle aynen geri sarılır.
+  `istasyon_emri_kayit_ac(ie, hedef=None, depo_id, tarih)`: emir satırı kilitli; varsayılan hedef = açık kalan × referans (kalan = planlanan − tamamlanan −
+  açık taslak kayıtlar); kalan yoksa hedef zorunlu; hedef kalanı aşabilir (`kayit_fazla_uyarisi`; karar 7). Yalnız açık ÜS / iptal olmayan emir.
+  Onay (`operasyon_kaydi_onayla` sonu): girdi tüketimi kadar ÜS ayırması düşer, üretilen parça `ihtiyac − önceki onaylı ayrılan` kadar ayrılır (fazlası
+  serbest — karar 8), `tamamlanan += kayit_calistirma(kayit)` (ÜRET'te ana çıktının giriş miktarı / referans = fason fire sonrası; PARÇALA'da hedef/referans),
+  durum yeniden hesaplanır (BEKLIYOR/BASLADI/BITTI; açık taslak = BASLADI). Geri al (`operasyon_kaydi_sil(onayli_geri_al=True)`): ayırma izleri ve tamamlanan
+  geri sarılır; taslak silinince durum güncellenir. İptal edilmiş/kapanmış ÜS'nin emre bağlı kaydı onaylanamaz. Emre bağlı olmayan (bağımsız) kayıtlar etkilenmez.
+  Bilinen sınır: ayırma yazımlarında satır kilidi var ama çıktı ayırması 'önceki onaylı' toplamına bakar (aynı emrin iki kaydı eş zamanlı onaylanırsa
+  teorik çift ayırma; onay ekranı tek kullanıcılı akış). Fason dönüşü emre bağlama adım 6'da.
