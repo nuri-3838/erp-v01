@@ -128,3 +128,40 @@ class FaturayaCevirGelirHesapTest(kt.KapanisTaban):
         self.assertIsNotNone(sip.fatura_id, [str(m) for m in r.context["messages"]] if r.context else r.content[:300])
         satirlar = {s.hesap.hesap_kodu if s.hesap_id else "STOK": s.tutar for s in sip.fatura.satirlar.filter(silindi=False)}
         self.assertEqual(satirlar["601.10"], Decimal("40"))
+
+
+class StokSatiriKdvTest(SatisHesapDemirbasTestBase):
+    """Stok satırı KDV'si: İHRACAT / İHRAÇ KAYITLI'da %0 zorla (formdan gelen yok sayılır); diğer tiplerde formdaki korunur, boşsa stok kartı."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        _hesap("600", "YURTİÇİ SATIŞLAR", kalem="A", grup="GELIR_TABLOSU")
+        cls.ihracat = FaturaTipi.objects.create(ad="SATIŞ FATURASI-İHRACAT", yon=FaturaTipi.Yon.SATIS)
+        cls.kayitli = FaturaTipi.objects.create(ad="SATIŞ FATURASI-İHRAÇ KAYITLI", yon=FaturaTipi.Yon.SATIS)
+        kat = Kategori.objects.create(ad="MAMUL KDV", kod="mk")
+        birim = Birim.objects.create(ad="ADET K", kisa_ad="AK", ondalik=0)
+        cls.stok = Stok.objects.create(kod="K-1", ad="KDV ÜRÜN", kategori=kat, kdv=cls.kdv20, uretim_birimi=birim, fatura_birimi=birim)
+        for tip in (cls.satis, cls.ihracat, cls.kayitli):
+            KategoriHesap.objects.create(kategori=kat, fatura_tipi=tip, hesap=HesapPlani.objects.get(hesap_kodu="600"))
+
+    def _satir(self, **ek):
+        return {"stok_id": self.stok.pk, "miktar": "2", "birim_fiyat": "100", **ek}
+
+    def test_ihracat_ve_ihrac_kayitli_stok_kdv_sifir_zorla(self):
+        for tip in (self.ihracat, self.kayitli):
+            for ek in ({"kdv_id": self.kdv20.pk}, {"kdv_id": self.kdv0.pk}, {}):          # formdan gelen ne olursa %0
+                f = self._fatura([self._satir(**ek)], tip=tip)
+                s = f.satirlar.get()
+                self.assertEqual((s.kdv.oran, s.kdv_tutari), (Decimal("0"), Decimal("0")), (tip.ad, ek))
+                fis = self._fis(f)
+                self.assertEqual(fis[("120.01", "B")][0], Dc("200.00"))                      # KDV yok: cari = matrah
+                self.assertNotIn("391.20", {k[0] for k in fis})
+
+    def test_normal_satista_formdaki_kdv_korunur_bos_ise_stok_karti(self):
+        f = self._fatura([self._satir(kdv_id=self.kdv0.pk)], tip=self.satis)
+        self.assertEqual(f.satirlar.get().kdv.oran, Decimal("0"))                           # stok kartı %20 ama formda %0 seçildi
+        f = self._fatura([self._satir()], tip=self.satis)
+        self.assertEqual(f.satirlar.get().kdv.oran, Decimal("20"))                          # boşsa stok kartından
+        f = self._fatura([self._satir(kdv_id=self.kdv20.pk)], tip=self.satis)
+        self.assertEqual(self._fis(f)[("120.01", "B")][0], Dc("240.00"))
