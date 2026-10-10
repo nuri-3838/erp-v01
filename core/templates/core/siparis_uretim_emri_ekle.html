@@ -12,7 +12,7 @@
   </div>
   <p class="yardim" style="margin-top:-.4rem">Sipariş {{ siparis.pk }}{% if siparis.belge_no %}
     · {{ siparis.belge_no }}{% endif %} için, üretime uygun kalemlerden TEK bir Üretim Emri
-    açılır. Zincirdeki her iş istasyonu için ayrı bir taslak operasyon kaydı otomatik açılır —
+    açılır. Eldeki stok ayrılır, kalan ihtiyaç için her iş istasyonuna ayrı bir istasyon emri açılır —
     bu ekran hiçbir stok hareketi üretmez.</p>
 
   {% if bform.non_field_errors %}

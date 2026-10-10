@@ -6,7 +6,7 @@ from decimal import Decimal
 from core.models import Operasyon, OperasyonKaydi
 from core.services import urun_agaci as ua
 from core.services.uretim import (
-    UretimHatasi, ihtiyac_hesapla, kaydi_girdi_satirlari, operasyon_guncelle, operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_olustur,
+    UretimHatasi, emir_hedef_cikti, ihtiyac_hesapla, kaydi_girdi_satirlari, operasyon_guncelle, operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_olustur,
     operasyon_yan_ciktilari, tanim_ciktilari, uretim_emri_olustur,
 )
 from core.tests.test_uretim_tam_boy import TamBoyBase
@@ -232,10 +232,11 @@ class UretimEmriTest(ParcalaBase):
         self.op(self.montaj, u2, 1, [(sol, 1)])
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": u1.pk, "hedef_miktar": D("10")}, {"hedef_urun_id": u2.pk, "hedef_miktar": D("10")}],
                                    depo_id=self.depo.pk, tarih=date(2026, 10, 9))
-        kayitlar = {k.operasyon_id: k for k in OperasyonKaydi.objects.filter(uretim_emri=emir, silindi=False)}
-        self.assertEqual(len(kayitlar), 3)
-        k = kayitlar[op.pk]
-        self.assertEqual(k.hedef_cikti_miktari, D("20"))                                                     # referans SAĞ üretilecek
+        iemirleri = {i.operasyon_id: i for i in emir.istasyon_emirleri.all()}
+        self.assertEqual(len(iemirleri), 3)
+        self.assertEqual(emir_hedef_cikti(iemirleri[op.pk]), D("20"))                                        # referans SAĞ üretilecek
+        k = operasyon_kaydi_olustur(operasyon_id=op.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 9), hedef_cikti_miktari=emir_hedef_cikti(iemirleri[op.pk]),
+                                    uretim_emri=emir)
         self.assertEqual(kaydi_girdi_satirlari(k).get().planlanan_miktar, D("1.666667"))
 
 

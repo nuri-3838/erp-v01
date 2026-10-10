@@ -35,8 +35,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 |---|------|-------|--------|
 | 1 | `StokAyirma` + `stok_ayirma` servisi (kullanılabilir) + ürün ağacı malzeme sekmesi Ayrılan/Kullanılabilir/Eksik (ekran + Excel) | TAMAM | `09233a8` |
 | 2 | Motor: `ihtiyac_hesapla(kullanilabilir=)`; İhtiyaç Hesapla "stoku düş" seçeneği | TAMAM | `b6cc2a8` |
-| 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | TAMAM | (bu commit) |
-| 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | bekliyor | |
+| 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | TAMAM | `9387369` |
+| 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | TAMAM | (bu commit) |
 | 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | bekliyor | |
 | 6 | Fason dönüşü emre bağlama, fire | bekliyor | |
 | 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | bekliyor | |
@@ -67,3 +67,15 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   çıkarıldı (test_teklif_siparis). Numara üretimi ve emir açma servisi adım 4'te.
   İnceleme notu (adım 4/9'a devir): `siparisten_uretim_emri_olustur` ve sipariş detay ekranı iptal edilmiş ÜS'yi hâlâ "açılmış" sayar
   (servis kilidi saymaz) — adım 4'te kural: siparişin tüm ÜS'leri IPTAL ise yeni ÜS açılabilir; adım 9'da ekran rozeti/düğmeleri aynı kurala.
+- **Adım 4:** `uretim_emri_olustur` artık net plan çalıştırır (`ihtiyac_hesapla(kullanilabilir=kullanilabilir_haritasi)`; hesap yazmadan önce, döngü hatası
+  hiçbir şey bırakmaz) ve yazar: kalemler (`eldeki_ayrilan` snapshot'ı, kök stoğun ayrılanından sırayla, kalem miktarını aşmaz), ayırmalar
+  (`StokAyirma`, stok hareketi yok), her operasyon için `IstasyonEmri` (`planlanan` = net çalıştırma, `seviye` plan satırından — `ihtiyac_hesapla`
+  planına `seviye` anahtarı eklendi; net çalıştırma 0 ise emir açılmaz), açılış revizyonu (no 0, detay JSON). OperasyonKaydi AÇILMAZ.
+  `emir_hedef_cikti(ie)` = planlanan × referans çıktı miktarı (kayıt hedefi; adım 5'te kalan × referans). Golden eşdeğerlik değişmedi: emir kayıtları
+  istasyon emri hedefinden açılınca eski taslak kayıtlarla BİREBİR aynı hedef/girdi planı verir (test bu yoldan türetir).
+  `IstasyonEmri.planlanan/tamamlanan` 10 ondalık (6 ondalıkta 20/12 gibi çalıştırmalar 20,000004 hata veriyordu); 0199 henüz uygulanmadığı için yerinde güncellendi.
+  Siparişten açılış: `siparis_kalemleri` ile `siparis_kalem` bağı; ÜS miktarı sipariş kalem miktarına EŞİT olmalı (karar 6/10); aynı sipariş kalemi
+  iki kez seçilemez; aynı stok iki ayrı sipariş satırında olabilir (toplanmış talepten netleme); siparişin tüm ÜS'leri IPTAL ise yenisi açılabilir
+  (servis + sipariş ekranları). `uretim_emri_ilerleme` istasyon emirlerinden (BITTI/iptal olmayan; eski emirlerde kayıtlardan).
+  `uretim_emri_sil` yalnız başlamamış ÜS'yi siler (başlamış = istasyon emri BASLADI/BITTI/tamamlanan>0 ya da onaylı/emirden açılmış kayıt; karar 9),
+  `uretim_emri_iptal` eklendi (taslak kayıtlar iptal, bitmemiş istasyon emirleri IPTAL, ayırmalar kapanır, IPTAL revizyonu). İptal ekranı adım 9.

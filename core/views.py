@@ -3173,7 +3173,7 @@ def teklif_siparis_detay(request, pk):
     uretim_emri = None
     uretim_emri_acilabilir = False
     if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS and ts.yon == TeklifSiparis.Yon.SATIS:
-        uretim_emri = ts.uretim_emirleri.filter(silindi=False).first()
+        uretim_emri = ts.uretim_emirleri.filter(silindi=False).exclude(durum=UretimEmri.Durum.IPTAL).first()
         if not uretim_emri and ts.durum == TeklifSiparis.Durum.ONAYLI:
             uygun, _ = uretim_servis.siparis_uretilebilir_kalemleri(ts)
             uretim_emri_acilabilir = bool(uygun)
@@ -3304,7 +3304,7 @@ def siparis_uretim_emrine_cevir(request, pk):
     if siparis.yon != TeklifSiparis.Yon.SATIS:
         messages.error(request, "Yalnız satış siparişinden üretim emri açılabilir.")
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
-    mevcut = siparis.uretim_emirleri.filter(silindi=False).first()
+    mevcut = siparis.uretim_emirleri.filter(silindi=False).exclude(durum=UretimEmri.Durum.IPTAL).first()
     if mevcut:
         messages.info(request, "Bu siparişten zaten bir üretim emri açılmış.")
         return redirect("core:uretim_emri_detay", pk=mevcut.pk)
@@ -7196,8 +7196,7 @@ def uretim_emri_ekle(request):
                     kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
                     aciklama=cd.get("aciklama", ""), kullanici=request.user)
                 messages.success(
-                    request, f"Üretim emri açıldı: {emir.no} — zincirdeki tüm istasyonlarda "
-                             f"taslak operasyon kaydı oluşturuldu.")
+                    request, f"Üretim siparişi açıldı: {emir.no} — stok ayrıldı, istasyon emirleri oluşturuldu.")
                 return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))

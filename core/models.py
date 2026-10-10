@@ -3367,8 +3367,8 @@ class IstasyonEmri(TemelModel):
     sira = models.PositiveIntegerField("sıra", editable=False)
     no = models.CharField("emir no", max_length=20, editable=False)
     seviye = models.PositiveSmallIntegerField("seviye (zincir sırası)", default=0)
-    planlanan = models.DecimalField("planlanan çalıştırma", max_digits=18, decimal_places=6)
-    tamamlanan = models.DecimalField("tamamlanan çalıştırma", max_digits=18, decimal_places=6, default=0)
+    planlanan = models.DecimalField("planlanan çalıştırma", max_digits=24, decimal_places=10)
+    tamamlanan = models.DecimalField("tamamlanan çalıştırma", max_digits=24, decimal_places=10, default=0)
     durum = models.CharField("durum", max_length=8, choices=Durum.choices, default=Durum.BEKLIYOR)
 
     class Meta:

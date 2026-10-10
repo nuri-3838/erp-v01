@@ -8,9 +8,13 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
-from core.models import IstasyonEmri, OperasyonKaydi, TeklifSiparis, UretimEmri, UretimEmriKalemi, UretimEmriRevizyon
+from core.models import IstasyonEmri, OperasyonKaydi, StokHareket, TeklifSiparis, TeklifSiparisKalem, UretimEmri, UretimEmriKalemi, UretimEmriRevizyon
+from core.services import stok_ayirma
 from core.services import teklif_siparis as ts_servis
-from core.services.uretim import operasyon_kaydi_olustur, siparisten_uretim_emri_olustur, ureten_operasyon, uretim_emri_olustur
+from core.services.hareket import hareket_ekle
+from core.services.uretim import (
+    UretimHatasi, operasyon_kaydi_olustur, siparisten_uretim_emri_olustur, ureten_operasyon, uretim_emri_iptal, uretim_emri_olustur,
+)
 from core.tests.test_teklif_siparis import SiparisUretimFixture
 
 D = Decimal
@@ -41,9 +45,10 @@ class SemaTest(SiparisUretimFixture, TestCase):
     def test_istasyon_emri_kisitlar_ve_kalan(self):
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.uretilebilir.pk, "hedef_miktar": "2"}], depo_id=self.depo.pk, tarih=date(2026, 10, 2))
         op = ureten_operasyon(self.uretilebilir)
-        ie = IstasyonEmri.objects.create(uretim_emri=emir, operasyon=op, istasyon=op.istasyon, yil=2026, sira=1, no="IE-2026-0001", seviye=0,
-                                         planlanan=D("5"), tamamlanan=D("2"))
-        self.assertEqual((ie.kalan, ie.durum, str(ie)), (D("3"), IstasyonEmri.Durum.BEKLIYOR, "IE-2026-0001"))
+        ie = emir.istasyon_emirleri.get()                                                  # açılış servisi emri yazar
+        self.assertEqual((ie.no, ie.planlanan, ie.tamamlanan, ie.durum), ("IE-2026-0001", D("2"), D("0"), IstasyonEmri.Durum.BEKLIYOR))
+        ie.planlanan, ie.tamamlanan = D("5"), D("2")
+        self.assertEqual((ie.kalan, str(ie)), (D("3"), "IE-2026-0001"))
         ie.tamamlanan = D("9")
         self.assertEqual(ie.kalan, D("0"))
         with self.assertRaises(IntegrityError):
@@ -51,6 +56,7 @@ class SemaTest(SiparisUretimFixture, TestCase):
                 IstasyonEmri.objects.create(uretim_emri=emir, operasyon=op, istasyon=op.istasyon, yil=2026, sira=2, no="IE-2026-0002", planlanan=D("1"))
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
+                IstasyonEmri.objects.filter(pk=ie.pk).update(silindi=True)                       # aktif-op kısıtını devre dışı bırak: yalnız (yıl, sıra) çakışması kalsın
                 IstasyonEmri.objects.create(uretim_emri=emir, operasyon=op, istasyon=op.istasyon, yil=2026, sira=1, no="IE-2026-0001", planlanan=D("1"))
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
@@ -61,12 +67,12 @@ class SemaTest(SiparisUretimFixture, TestCase):
         self.assertEqual([k.pk for k in ie.kayitlar.all()], [kayit.pk])
         self.assertIsNone(OperasyonKaydi.objects.filter(uretim_emri__isnull=True).first().istasyon_emri_id if OperasyonKaydi.objects.filter(uretim_emri__isnull=True).exists() else None)
         self.assertEqual(list(emir.istasyon_emirleri.values_list("no", flat=True)), ["IE-2026-0001"])
+        self.assertEqual(emir.istasyon_emirleri.get().kayitlar.get().pk, kayit.pk)
 
     def test_revizyon_kaydi(self):
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.uretilebilir.pk, "hedef_miktar": "2"}], depo_id=self.depo.pk, tarih=date(2026, 10, 2))
-        r = UretimEmriRevizyon.objects.create(uretim_emri=emir, no=0, tur=UretimEmriRevizyon.Tur.ACILIS, tarih=date(2026, 10, 2),
-                                              detay={"kalemler": [{"stok": self.uretilebilir.kod, "once": None, "sonra": "2"}]})
-        self.assertEqual((str(r), r.detay["kalemler"][0]["sonra"]), (f"{emir.pk} #0 ACILIS", "2"))
+        r = emir.revizyonlar.get()                                                         # açılış servisi 0 numaralı kaydı yazar
+        self.assertEqual((str(r), r.tur, r.detay["kalemler"][0]["miktar"]), (f"{emir.pk} #0 ACILIS", "ACILIS", "2"))
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 UretimEmriRevizyon.objects.create(uretim_emri=emir, no=0, tur=UretimEmriRevizyon.Tur.REVIZE, tarih=date(2026, 10, 3))
@@ -106,3 +112,56 @@ class SiparisKilitTest(SiparisUretimFixture, TestCase):
         ts_servis.teklif_siparis_iptal(sip)                                                   # silinmiş üretim siparişi de kilitlemez
         sip.refresh_from_db()
         self.assertTrue(sip.silindi)
+
+
+class SiparistenAcilisTest(SiparisUretimFixture, TestCase):
+    """Siparişten ÜS açılışı (adım 4): kalem bağı, miktar = sipariş kalem miktarı (karar 6/10), mükerrer stok satırı, iptalden sonra yeni ÜS."""
+
+    def _ac(self, sip, miktar="5", **ek):
+        return siparisten_uretim_emri_olustur(siparis=sip, depo_id=self.depo.pk, tarih=date(2026, 10, 2),
+                                              kalem_secimleri=[{"kalem_id": k.pk, "hedef_miktar": miktar} for k in sip.kalemler.filter(stok=self.uretilebilir)], **ek)
+
+    def test_kalem_baglanir_ve_miktar_esit_olmali(self):
+        sip = self._siparis(iki_kalemli=False)
+        with self.assertRaisesMessage(UretimHatasi, "sipariş miktarına (5) eşit olmalı"):
+            self._ac(sip, "4")
+        with self.assertRaisesMessage(UretimHatasi, "sipariş miktarına (5) eşit olmalı"):
+            self._ac(sip, "6")
+        self.assertFalse(UretimEmri.objects.exists())
+        emir = self._ac(sip, "5")
+        k = emir.kalemler.get()
+        self.assertEqual((k.siparis_kalem_id, k.hedef_miktar), (sip.kalemler.get().pk, D("5")))
+        self.assertEqual(emir.istasyon_emirleri.get().planlanan, D("5"))
+        self.assertFalse(OperasyonKaydi.objects.filter(uretim_emri=emir).exists())
+
+    def test_ayni_kalem_iki_kez_secilemez_ve_mukerrer_stok_satiri_toplanir(self):
+        sip = self._siparis(iki_kalemli=False)
+        kalem = sip.kalemler.get()
+        with self.assertRaisesMessage(UretimHatasi, "birden fazla kez"):
+            siparisten_uretim_emri_olustur(siparis=sip, depo_id=self.depo.pk, tarih=date(2026, 10, 2),
+                                           kalem_secimleri=[{"kalem_id": kalem.pk, "hedef_miktar": "5"}, {"kalem_id": kalem.pk, "hedef_miktar": "5"}])
+        # aynı stok iki ayrı sipariş satırında: iki ÜS kalemi, netleme toplanmış talepten
+        kalem2 = TeklifSiparisKalem.objects.create(teklif_siparis=sip, stok=self.uretilebilir, miktar=D("3"), birim_fiyat=D("100"), kdv=kalem.kdv)
+        emir = siparisten_uretim_emri_olustur(siparis=sip, depo_id=self.depo.pk, tarih=date(2026, 10, 2),
+                                              kalem_secimleri=[{"kalem_id": kalem.pk, "hedef_miktar": "5"}, {"kalem_id": kalem2.pk, "hedef_miktar": "3"}])
+        self.assertEqual([(k.siparis_kalem_id, k.hedef_miktar) for k in emir.kalemler.all()], [(kalem.pk, D("5")), (kalem2.pk, D("3"))])
+        self.assertEqual(emir.istasyon_emirleri.get().planlanan, D("8"))
+
+    def test_eldeki_mamul_ayrilir_kalem_snapshot(self):
+        hareket_ekle(stok_id=self.uretilebilir.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 1), tur=StokHareket.Tur.GIRIS, miktar=D("2"))
+        sip = self._siparis(iki_kalemli=False)
+        emir = self._ac(sip, "5")
+        self.assertEqual(emir.kalemler.get().eldeki_ayrilan, D("2"))
+        self.assertEqual(stok_ayirma.ayrilan_miktar(emir, self.uretilebilir), D("2"))
+        self.assertEqual(emir.istasyon_emirleri.get().planlanan, D("3"))                      # net 3
+        self.assertEqual(emir.revizyonlar.get().detay["ayirmalar"], [{"stok": "Su1", "miktar": "2"}])
+
+    def test_iptalden_sonra_yeni_siparis_acilir(self):
+        sip = self._siparis(iki_kalemli=False)
+        emir = self._ac(sip, "5")
+        with self.assertRaisesMessage(UretimHatasi, "zaten bir üretim siparişi açılmış"):
+            self._ac(sip, "5")
+        uretim_emri_iptal(emir)
+        emir2 = self._ac(sip, "5")
+        self.assertNotEqual(emir2.pk, emir.pk)
+        self.assertEqual(sip.uretim_emirleri.count(), 2)

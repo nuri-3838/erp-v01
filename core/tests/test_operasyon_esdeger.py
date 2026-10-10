@@ -17,7 +17,8 @@ from core.services import urun_agaci as ua
 from core.services.fason import fason_listesi_operasyondan
 from core.services.hareket import hareket_ekle
 from core.services.uretim import (
-    ihtiyac_hesapla, kaydi_girdi_satirlari, operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_liste, operasyon_olustur, operasyon_serileri, uretim_emri_olustur,
+    emir_hedef_cikti, ihtiyac_hesapla, kaydi_girdi_satirlari, operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_kaydi_sil, operasyon_liste, operasyon_olustur,
+    operasyon_serileri, uretim_emri_olustur,
 )
 
 D = Decimal
@@ -141,8 +142,13 @@ class EsdegerlikTest(TestCase):
         # üretim emri: plan satırlarından açılan kayıtlar
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.u3.pk, "hedef_miktar": D("7")}, {"hedef_urun_id": self.u2.pk, "hedef_miktar": D("3")}],
                                    depo_id=self.depo.pk, tarih=BUGUN)
+        # Emir artık taslak kayıt açmaz: istasyon emri hedefinden kayıt açılınca eski taslak kayıtla (hedef, girdi planı) BİREBİR aynı değerler (referans değişmedi)
+        kayitlar = [operasyon_kaydi_olustur(operasyon_id=ie.operasyon_id, depo_id=self.depo.pk, tarih=BUGUN, hedef_cikti_miktari=emir_hedef_cikti(ie), uretim_emri=emir)
+                    for ie in emir.istasyon_emirleri.select_related("operasyon__cikti")]
         s["emir_kayitlari"] = sorted([(k.operasyon.cikti.kod, k.hedef_cikti_miktari, [(g.girdi.kod, g.planlanan_miktar) for g in kaydi_girdi_satirlari(k).order_by("girdi__kod")])
-                                      for k in OperasyonKaydi.objects.filter(uretim_emri=emir, silindi=False).select_related("operasyon__cikti")], key=lambda r: r[0])
+                                      for k in kayitlar], key=lambda r: r[0])
+        for k in kayitlar:
+            operasyon_kaydi_sil(k)                                                                       # sonraki onay bölümünü etkilemesin
         # kayıt onayı: yan çıktılı + normal + kesirli
         hareket_ekle(stok_id=self.p2.pk, depo_id=self.depo.pk, tarih=BUGUN, tur=StokHareket.Tur.GIRIS, miktar=D("20"), giris_tutar_try=D("14000"), giris_tutar_usd=D("350"))
         hareket_ekle(stok_id=self.p1.pk, depo_id=self.depo.pk, tarih=BUGUN, tur=StokHareket.Tur.GIRIS, miktar=D("10"), giris_tutar_try=D("6400"), giris_tutar_usd=D("160"))

@@ -11,7 +11,7 @@ from django.test import TestCase
 from core.models import Birim, Depo, FaturaTipi, HesapPlani, KategoriHesap, Operasyon, OperasyonKaydi, StokHareket
 from core.services.hareket import eldeki_miktar, hareket_ekle
 from core.services.uretim import (
-    UretimHatasi, ihtiyac_hesapla, kaydi_girdi_satirlari, operasyon_guncelle, operasyon_kaydi_girdi_guncelle,
+    UretimHatasi, emir_hedef_cikti, ihtiyac_hesapla, kaydi_girdi_satirlari, operasyon_guncelle, operasyon_kaydi_girdi_guncelle,
     operasyon_kaydi_olustur, operasyon_kaydi_onayla, operasyon_olustur, uretim_emri_olustur,
 )
 from core.tests.test_uretim import _depo, _istasyon, _kategori, _stok
@@ -181,17 +181,22 @@ class UretimEmriTamBoyTest(TamBoyBase):
     def test_emirde_hedef_ve_planlanan_miktarlar_tam_boy(self):
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": D("1")}], depo_id=self.depo.pk,
                                    tarih=date(2026, 10, 9))
-        kayitlar = {k.operasyon_id: k for k in emir.operasyon_kayitlari.filter(silindi=False)}
-        kesim = kayitlar[self.kesim_op.pk]
-        self.assertEqual(kesim.hedef_cikti_miktari, D("18.000"))                       # çalıştırma 1 × 18
+        ie = {i.operasyon_id: i for i in emir.istasyon_emirleri.all()}
+        self.assertEqual(ie[self.kesim_op.pk].planlanan, D("1"))                       # çalıştırma 1 (tam boy: ⌈1/18⌉)
+        self.assertEqual(emir_hedef_cikti(ie[self.kesim_op.pk]), D("18"))              # 1 × 18
+        self.assertEqual(emir_hedef_cikti(ie[self.mamul_op.pk]), D("1"))
+        kesim = operasyon_kaydi_olustur(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 9),
+                                        hedef_cikti_miktari=emir_hedef_cikti(ie[self.kesim_op.pk]), uretim_emri=emir)
+        self.assertEqual(kesim.hedef_cikti_miktari, D("18.000"))
         self.assertEqual(kaydi_girdi_satirlari(kesim).get(girdi=self.profil).planlanan_miktar, D("1.000"))
-        self.assertEqual(kayitlar[self.mamul_op.pk].hedef_cikti_miktari, D("1.000"))
 
     def test_fazla_parca_onayda_stoga_girer(self):
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1), tur=StokHareket.Tur.GIRIS, miktar=D("5"))
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": D("1")}], depo_id=self.depo.pk,
                                    tarih=date(2026, 10, 9))
-        kayitlar = {k.operasyon_id: k for k in emir.operasyon_kayitlari.filter(silindi=False)}
+        ie = {i.operasyon_id: i for i in emir.istasyon_emirleri.all()}
+        kayitlar = {op: operasyon_kaydi_olustur(operasyon_id=op, depo_id=self.depo.pk, tarih=date(2026, 10, 9), hedef_cikti_miktari=emir_hedef_cikti(i),
+                                                uretim_emri=emir) for op, i in ie.items()}
         operasyon_kaydi_onayla(kayitlar[self.kesim_op.pk])
         self.assertEqual(eldeki_miktar(self.kesilmis, self.depo), D("18"))
         self.assertEqual(eldeki_miktar(self.profil, self.depo), D("4"))
