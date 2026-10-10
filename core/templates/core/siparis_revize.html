@@ -1,14 +1,17 @@
 {% extends "core/base.html" %}
-{% block baslik %}{{ baslik|default:"Yeni Üretim Siparişi" }} · ERP v0.1{% endblock %}
-{% block sayfa_adi %}{{ baslik|default:"Yeni Üretim Siparişi" }}{% endblock %}
+{% load core_extras %}
+{% block baslik %}Sipariş Revize · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Sipariş Revize{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
 <div class="form-kapsa">
   <div class="form-ust">
-    <a class="ust-link" href="{{ geri_url|default:'/uretim/emirler/' }}">← Geri</a>
-    <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ baslik|default:"Yeni Üretim Siparişi" }}</h1>
+    <a class="ust-link" href="{{ geri_url }}">← Geri</a>
+    <h1 class="ust-baslik"><span class="emoji">✏️</span>Sipariş Revize — {{ siparis.belge_no|default:siparis.pk }}</h1>
   </div>
+  <p class="yardim" style="margin-top:-.4rem">Sipariş kalemleri güncellenir ve aynı işlemde <a href="{% url 'core:uretim_emri_detay' emir.pk %}">{{ emir.no }}</a> üretim siparişi
+    revize edilir: ayırmalar ve istasyon emirleri yeniden planlanır. Sevk/fatura edilmiş miktarın altına inilemez.</p>
 
   {% if bform.non_field_errors %}
     <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
@@ -17,9 +20,7 @@
   <form method="post" autocomplete="off">
     {% csrf_token %}
     <section class="icerik-kart">
-      <h2 class="bolum-baslik">Üretim Siparişi</h2>
-      <p class="yardim" style="margin-top:0">{% if aciklama %}{{ aciklama }}{% else %}Eldeki kullanılabilir stok siparişe ayrılır; kalan ihtiyaç için zincirdeki HER iş
-        istasyonuna ayrı bir istasyon emri açılır — bu ekran hiçbir stok hareketi üretmez. Onaylama her istasyonun kendi işidir.{% endif %}</p>
+      <h2 class="bolum-baslik">Revizyon</h2>
       <div class="izgara">
         {% for field in bform %}
           <div class="alan">
@@ -38,16 +39,15 @@
 
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Kalemler</h2>
-      <p class="yardim" style="margin-top:0">Yalnız tanımlı bir operasyonu olan ürünler
-        listelenir — bkz. Operasyon Tanımları.</p>
       <div class="tablo-kapsayici">
         <table class="fh-tablo">
-          <thead><tr><th>Hedef Ürün</th><th>Hedef Miktar</th><th></th></tr></thead>
+          <thead><tr><th>Stok</th><th>Miktar</th><th>Birim Fiyat</th><th></th></tr></thead>
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="fh-satir">
-                <td>{{ f.hedef_urun }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
-                <td>{{ f.hedef_miktar }}</td>
+                <td>{{ f.stok }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}{% for e in f.stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.miktar }}{% for e in f.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.birim_fiyat }}{{ f.uretim_miktar.as_hidden }}</td>
                 <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
               </tr>
             {% endfor %}
@@ -55,19 +55,20 @@
         </table>
       </div>
       <div class="satir-alt">
-        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Ürün Ekle</button>
+        <button type="button" id="satir-ekle" class="dugme-ikincil">+ Kalem Ekle</button>
       </div>
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.hedef_urun }}</td>
-      <td>{{ formset.empty_form.hedef_miktar }}</td>
+      <td>{{ formset.empty_form.stok }}</td>
+      <td>{{ formset.empty_form.miktar }}</td>
+      <td>{{ formset.empty_form.birim_fiyat }}{{ formset.empty_form.uretim_miktar.as_hidden }}</td>
       <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
     <div class="form-altbar">
-      <a class="iptal-bag" href="{{ geri_url|default:'/uretim/emirler/' }}">İptal</a>
-      <button type="submit" class="birincil">{{ gonder_etiket|default:"Siparişi Aç" }}</button>
+      <a class="iptal-bag" href="{{ geri_url }}">İptal</a>
+      <button type="submit" class="birincil">Revize Et</button>
     </div>
   </form>
 </div>
@@ -77,25 +78,24 @@
   .fh-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase;
     color:var(--metin-soluk); padding:0 .5rem .3rem; }
   .fh-tablo td { padding:.25rem .5rem; }
-  .fh-tablo input, .fh-tablo select { min-width:12rem; }
-  .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
-    font-size:.95rem; padding:.2rem .5rem; }
+  .fh-tablo input, .fh-tablo select { min-width:10rem; }
+  .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer; font-size:.95rem; padding:.2rem .5rem; }
   .fh-sil:hover { color:var(--hata); }
   .satir-alt { margin-top:.7rem; }
 </style>
 
 <script>
 (function(){
-  function satirEkle(){
-    var tf = document.getElementById('id_satir-TOTAL_FORMS');
+  var onek = '{{ formset.prefix }}';
+  document.getElementById('satir-ekle').addEventListener('click', function(){
+    var tf = document.getElementById('id_' + onek + '-TOTAL_FORMS');
     var i = parseInt(tf.value, 10);
     var tr = document.createElement('tr'); tr.className = 'fh-satir';
     tr.innerHTML = document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g, i);
     document.getElementById('satir-govde').appendChild(tr);
     tf.value = i + 1;
     if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
-  }
-  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  });
   document.getElementById('satir-govde').addEventListener('click', function(e){
     if(e.target.classList.contains('fh-sil')) e.target.closest('tr').remove();
   });

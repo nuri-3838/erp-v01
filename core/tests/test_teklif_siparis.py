@@ -1545,7 +1545,7 @@ class TeklifSiparisUretimEmrineCevirTest(SiparisUretimFixture, TestCase):
         self.assertNotContains(d1, reverse("core:siparis_uretim_emrine_cevir", args=[sip.pk]))
         self.assertNotContains(d1, reverse("core:teklif_siparis_onayi_geri_al", args=[sip.pk]))
         self.assertNotContains(d1, reverse("core:teklif_siparis_iptal", args=[sip.pk]))
-        self.assertContains(d1, "Üretim Emrine Dönüştü")
+        self.assertContains(d1, "Üretim Siparişine Dönüştü")
 
     def test_uretim_emri_detay_kaynak_linki(self):
         from core.models import UretimEmri

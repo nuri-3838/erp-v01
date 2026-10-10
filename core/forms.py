@@ -1511,6 +1511,15 @@ class UretimEmriBaslikForm(forms.Form):
                 self.fields["depo"].initial = vd.pk
 
 
+class UretimRevizeBaslikForm(forms.Form):
+    """Üretim siparişi / sipariş revizesinde başlık: revizyonun tarihi ve açıklaması (depo değişmez)."""
+    tarih = forms.DateField(
+        label="Revize Tarihi", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        initial=timezone.localdate)
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
 class UretimEmriKalemSatirForm(forms.Form):
     """Manuel (+ Yeni) Üretim Emri ekranı satırı — serbest ürün seçimi, diğer formset
     satırlarıyla birebir aynı 'boş satır atlanır' deseni."""

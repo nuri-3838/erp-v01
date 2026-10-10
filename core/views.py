@@ -45,7 +45,7 @@ from core.forms import (
     KullaniciDuzenleForm, KullaniciEkleForm,
     BankaHesapHareketForm, BankaHesapSatirForm, DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
-    IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, OperasyonYanCiktiSatirForm, OperasyonParcaCiktiSatirForm, IhtiyacHesaplaSatirForm,
+    IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, OperasyonYanCiktiSatirForm, OperasyonParcaCiktiSatirForm, IhtiyacHesaplaSatirForm, UretimRevizeBaslikForm,
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
@@ -7159,22 +7159,25 @@ def urun_agaci(request):
     return render(request, "core/urun_agaci.html", ctx)
 
 
-# --- Üretim Emirleri (üst-düzey tetikleyici) ---
+# --- Üretim Siparişleri (ÜS; modeli UretimEmri — ekran kodu geçmişten `uretim_emirleri`) ---
 @ekran_gerekli("uretim_emirleri")
 def uretim_emirleri(request):
     ara = (request.GET.get("ara") or "").strip()
+    durum = (request.GET.get("durum") or "").strip()
     qs = (UretimEmri.objects.filter(silindi=False)
-         .select_related("depo")
+         .select_related("depo", "kaynak_siparis")
          .prefetch_related(Prefetch(
              "kalemler",
              queryset=UretimEmriKalemi.objects.filter(silindi=False).select_related("hedef_urun")))
          .order_by("-yil", "-sira"))
+    if durum in UretimEmri.Durum.values:
+        qs = qs.filter(durum=durum)
     if ara:
         buyuk = buyuk_harf_tr(ara)
         qs = qs.filter(
             Q(no__icontains=ara) | Q(kalemler__hedef_urun__kod__icontains=ara)
             | Q(kalemler__hedef_urun__ad__contains=buyuk) | Q(depo__kod__icontains=ara)
-            | Q(depo__ad__contains=buyuk)).distinct()
+            | Q(depo__ad__contains=buyuk) | Q(kaynak_siparis__belge_no__icontains=ara)).distinct()
     emirler = []
     for e in qs:
         kalemler = list(e.kalemler.all())
@@ -7185,9 +7188,9 @@ def uretim_emirleri(request):
                 kalem_ozet += f" +{len(kalemler) - 1} kalem daha"
         else:
             kalem_ozet = "—"
-        emirler.append({"e": e, "kalem_ozet": kalem_ozet,
+        emirler.append({"e": e, "kalem_ozet": kalem_ozet, "silinebilir": uretim_servis.uretim_emri_silinebilir(e),
                         "ilerleme": uretim_servis.uretim_emri_ilerleme(e)})
-    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara})
+    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum, "durumlar": UretimEmri.Durum.choices})
 
 
 @ekran_gerekli("uretim_emirleri")
@@ -7217,17 +7220,52 @@ def uretim_emri_ekle(request):
     return render(request, "core/uretim_emri_form.html", {"bform": bform, "formset": formset})
 
 
+def _revizyon_satirlari(emir):
+    """Revize geçmişi: her olay için (revizyon, kalem değişim satırları). REVIZE'de önce/sonra kalem miktarları ("KOD: 3 → 5") çıkarılır."""
+    sonuc = []
+    for r in emir.revizyonlar.all():
+        farklar = []
+        if r.tur == "REVIZE":
+            once = {k["stok"]: k["miktar"] for k in (r.detay.get("once") or {}).get("kalemler", [])}
+            sonra = {k["stok"]: k["miktar"] for k in (r.detay.get("sonra") or {}).get("kalemler", [])}
+            for kod in sorted(set(once) | set(sonra)):
+                if once.get(kod) != sonra.get(kod):
+                    farklar.append(f"{kod}: {once.get(kod, '—')} → {sonra.get(kod, '—')}")
+        sonuc.append((r, farklar))
+    return sonuc
+
+
 @ekran_gerekli("uretim_emirleri")
 def uretim_emri_detay(request, pk):
     emir = get_object_or_404(
         UretimEmri.objects.select_related("depo", "kaynak_siparis", "kaynak_siparis__cari"),
         pk=pk, silindi=False)
-    kalemler = emir.kalemler.filter(silindi=False).select_related("hedef_urun")
+    ayirmalar = list(stok_ayirma_servis.emir_ayirmalari(emir))
+    ayrilan = {a.stok_id: a.miktar for a in ayirmalar}
+    sevk = emir.sevk_dusen or {}
+    kalem_satirlari = []
+    for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun"):
+        sevk_k = Decimal(str(sevk.get(str(k.hedef_urun_id), "0")))
+        hazir = ayrilan.get(k.hedef_urun_id, Decimal("0")) + sevk_k
+        yuzde = min(Decimal("100"), hazir * 100 / k.hedef_miktar) if k.hedef_miktar else Decimal("0")
+        kalem_satirlari.append({"k": k, "ayrilan": ayrilan.get(k.hedef_urun_id, Decimal("0")), "sevk": sevk_k,
+                                "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde})
+    emirler = []
+    for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti", "istasyon").order_by("seviye", "pk"):
+        ref = uretim_servis._referans_miktar(ie.operasyon)
+        emirler.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
+                        "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
+                        "kayit_acilabilir": emir.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL})
     kayitlar = (emir.operasyon_kayitlari.filter(silindi=False)
-               .select_related("operasyon__istasyon", "operasyon__cikti")
+               .select_related("operasyon__istasyon", "operasyon__cikti", "istasyon_emri")
                .order_by("operasyon__istasyon__kod", "pk"))
+    revize_url = None
+    if emir.durum == UretimEmri.Durum.ACIK:
+        revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
+                      else reverse("core:uretim_emri_revize", args=[emir.pk]))
     return render(request, "core/uretim_emri_detay.html", {
-        "emir": emir, "kalemler": kalemler, "kayitlar": kayitlar,
+        "emir": emir, "kalemler": kalem_satirlari, "kayitlar": kayitlar, "istasyon_emirleri": emirler, "ayirmalar": ayirmalar,
+        "revizyonlar": _revizyon_satirlari(emir), "silinebilir": uretim_servis.uretim_emri_silinebilir(emir), "revize_url": revize_url,
         "ilerleme": uretim_servis.uretim_emri_ilerleme(emir)})
 
 
@@ -7240,19 +7278,158 @@ def uretim_emri_sil_gorunum(request, pk):
         except uretim_servis.UretimHatasi as e:
             messages.error(request, str(e))
             return redirect("core:uretim_emri_detay", pk=emir.pk)
-        messages.success(request, "Üretim emri ve bağlı taslak operasyon kayıtları kalıcı olarak silindi.")
+        messages.success(request, "Üretim siparişi ve bağlı taslak kayıtlar kalıcı olarak silindi.")
         return redirect("core:uretim_emirleri")
     return redirect("core:uretim_emri_detay", pk=emir.pk)
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_iptal_gorunum(request, pk):
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            uretim_servis.uretim_emri_iptal(emir, kullanici=request.user)
+            messages.success(request, "Üretim siparişi iptal edildi; ayrılan stok serbest kaldı, bitmemiş istasyon emirleri iptal oldu.")
+        except uretim_servis.UretimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:uretim_emri_detay", pk=emir.pk)
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_revize_gorunum(request, pk):
+    """Manuel (siparişsiz) ÜS'nin kalemlerini revize eder; siparişli ÜS sipariş revize ekranına yönlenir (kalemler sipariş kaleminden gelir)."""
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    if emir.kaynak_siparis_id:
+        return redirect("core:siparis_revize", pk=emir.kaynak_siparis_id)
+    if emir.durum != UretimEmri.Durum.ACIK:
+        messages.error(request, "Yalnız açık üretim siparişi revize edilebilir.")
+        return redirect("core:uretim_emri_detay", pk=emir.pk)
+    if request.method == "POST":
+        bform = UretimRevizeBaslikForm(request.POST)
+        formset = UretimEmriKalemSatirFormSet(request.POST, prefix="satir")
+        if bform.is_valid() and formset.is_valid():
+            kalemler = [{"hedef_urun_id": f.cleaned_data["hedef_urun"].pk, "hedef_miktar": f.cleaned_data["hedef_miktar"]} for f in formset if f.dolu_mu()]
+            try:
+                uretim_servis.uretim_emri_revize(emir, kalemler=kalemler, tarih=bform.cleaned_data["tarih"],
+                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)
+                messages.success(request, f"{emir.no} revize edildi (revizyon {emir.revizyon_no}).")
+                return redirect("core:uretim_emri_detay", pk=emir.pk)
+            except uretim_servis.UretimHatasi as e:
+                bform.add_error(None, str(e))
+    else:
+        bform = UretimRevizeBaslikForm()
+        formset = UretimEmriKalemSatirFormSet(prefix="satir", initial=[
+            {"hedef_urun": k.hedef_urun_id, "hedef_miktar": k.hedef_miktar} for k in emir.kalemler.filter(silindi=False).order_by("sira", "pk")])
+    return render(request, "core/uretim_emri_form.html", {
+        "bform": bform, "formset": formset, "baslik": f"{emir.no} Revize", "geri_url": reverse("core:uretim_emri_detay", args=[emir.pk]),
+        "gonder_etiket": "Revize Et",
+        "aciklama": "Kalem miktarını artırıp azaltabilir, kalem ekleyip çıkarabilirsiniz. Ayırma ve istasyon emirleri yeniden planlanır; "
+                    "sevk/fatura edilmiş miktarın altına inilemez."})
+
+
+@ekran_gerekli_herhangi("satis_siparisleri", "uretim_emirleri")
+def siparis_revize_gorunum(request, pk):
+    """Onaylı SATIŞ siparişinin kalemlerini düzenler ve aynı işlemde bağlı açık üretim siparişini revize eder (karar 6)."""
+    siparis = get_object_or_404(TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.SIPARIS, yon=TeklifSiparis.Yon.SATIS)
+    emir = siparis.uretim_emirleri.filter(silindi=False, durum=UretimEmri.Durum.ACIK).first()
+    if emir is None or siparis.durum != TeklifSiparis.Durum.ONAYLI:
+        messages.error(request, "Bu siparişin açık bir üretim siparişi yok; siparişi normal yoldan düzenleyin.")
+        return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+    if request.method == "POST":
+        bform = UretimRevizeBaslikForm(request.POST)
+        formset = TeklifSiparisKalemFormSet(request.POST, form_kwargs={"yon": siparis.yon})
+        if bform.is_valid() and formset.is_valid():
+            satirlar = [{"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"], "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                         "uretim_miktar": f.cleaned_data.get("uretim_miktar")} for f in formset if f.dolu_mu()]
+            try:
+                uretim_servis.siparis_revize(siparis, satirlar=satirlar, tarih=bform.cleaned_data["tarih"],
+                                             aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)
+                emir.refresh_from_db()
+                messages.success(request, f"Sipariş kalemleri güncellendi; {emir.no} revize edildi (revizyon {emir.revizyon_no}).")
+                return redirect("core:uretim_emri_detay", pk=emir.pk)
+            except uretim_servis.UretimHatasi as e:
+                bform.add_error(None, str(e))
+    else:
+        bform = UretimRevizeBaslikForm()
+        formset = TeklifSiparisKalemFormSet(form_kwargs={"yon": siparis.yon}, initial=[
+            {"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat, "uretim_miktar": k.uretim_miktar}
+            for k in siparis.kalemler.filter(silindi=False).select_related("stok")])
+    return render(request, "core/siparis_revize.html", {"bform": bform, "formset": formset, "siparis": siparis, "emir": emir,
+                                                         "geri_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
+
+
+# --- İstasyon Emirleri ---
+@ekran_gerekli("istasyon_emirleri")
+def istasyon_emirleri(request):
+    ara = (request.GET.get("ara") or "").strip()
+    durum = (request.GET.get("durum") or "").strip()
+    istasyon = (request.GET.get("istasyon") or "").strip()
+    qs = (IstasyonEmri.objects.filter(silindi=False, uretim_emri__silindi=False)
+         .select_related("uretim_emri", "istasyon", "operasyon__cikti").order_by("-yil", "-sira"))
+    if durum == "":
+        qs = qs.filter(durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI], uretim_emri__durum=UretimEmri.Durum.ACIK)   # varsayılan: iş bekleyenler
+    elif durum in IstasyonEmri.Durum.values:
+        qs = qs.filter(durum=durum)
+    if istasyon.isdigit():
+        qs = qs.filter(istasyon_id=int(istasyon))
+    if request.GET.get("uretim_emri", "").isdigit():
+        qs = qs.filter(uretim_emri_id=int(request.GET["uretim_emri"]))
+    if ara:
+        buyuk = buyuk_harf_tr(ara)
+        qs = qs.filter(Q(no__icontains=ara) | Q(uretim_emri__no__icontains=ara) | Q(operasyon__cikti__kod__icontains=ara) | Q(operasyon__cikti__ad__contains=buyuk))
+    sayfa = Paginator(qs, 50).get_page(request.GET.get("sayfa"))
+    satirlar = []
+    for ie in sayfa:
+        ref = uretim_servis._referans_miktar(ie.operasyon)
+        satirlar.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
+                         "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
+                         "kayit_acilabilir": ie.uretim_emri.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL})
+    return render(request, "core/istasyon_emirleri.html", {
+        "satirlar": satirlar, "sayfa": sayfa, "ara": ara, "durum": durum, "istasyon": istasyon,
+        "durumlar": IstasyonEmri.Durum.choices, "istasyonlar": uretim_servis.aktif_istasyonlar(), "uretim_emri": request.GET.get("uretim_emri", "")})
+
+
+@ekran_gerekli_herhangi("istasyon_emirleri", "uretim_emirleri")
+def istasyon_emri_kayit_ac_gorunum(request, pk):
+    """İstasyon emrinden TASLAK operasyon kaydı açar (POST); isteğe bağlı ``hedef`` (referans çıktı adedi) kalanı aşabilir — uyarı verilir."""
+    ie = get_object_or_404(IstasyonEmri, pk=pk, silindi=False)
+    geri = reverse("core:uretim_emri_detay", args=[ie.uretim_emri_id])
+    if request.method != "POST":
+        return redirect(geri)
+    hedef = None
+    ham = (request.POST.get("hedef") or "").strip()
+    try:
+        if ham:
+            hedef = parse_tr(ham)
+        kayit = uretim_servis.istasyon_emri_kayit_ac(ie, hedef=hedef, kullanici=request.user)
+    except (uretim_servis.UretimHatasi, SayiHatasi) as e:
+        messages.error(request, str(e))
+        return redirect(geri)
+    messages.success(request, f"Operasyon kaydı açıldı: {kayit.no}")
+    uyari = uretim_servis.kayit_fazla_uyarisi(kayit)
+    if uyari:
+        messages.warning(request, uyari)
+    return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
 
 
 # --- Operasyon Kayıtları ---
 @ekran_gerekli("operasyon_kayitlari")
 def operasyon_kayitlari(request):
     kayitlar = (OperasyonKaydi.objects.filter(silindi=False)
-               .select_related("operasyon__istasyon", "operasyon__cikti", "depo")
+               .select_related("operasyon__istasyon", "operasyon__cikti", "depo", "uretim_emri", "istasyon_emri")
                .order_by("-yil", "-sira"))
+    filtre = {}
+    if request.GET.get("uretim_emri", "").isdigit():
+        filtre["uretim_emri"] = int(request.GET["uretim_emri"])
+        kayitlar = kayitlar.filter(uretim_emri_id=filtre["uretim_emri"])
+    if request.GET.get("istasyon_emri", "").isdigit():
+        filtre["istasyon_emri"] = int(request.GET["istasyon_emri"])
+        kayitlar = kayitlar.filter(istasyon_emri_id=filtre["istasyon_emri"])
+    if request.GET.get("emir") == "bagimsiz":
+        filtre["bagimsiz"] = True
+        kayitlar = kayitlar.filter(istasyon_emri__isnull=True)
     sayfa = Paginator(kayitlar, 50).get_page(request.GET.get("sayfa"))
-    return render(request, "core/operasyon_kayitlari.html", {"kayitlar": sayfa})
+    return render(request, "core/operasyon_kayitlari.html", {"kayitlar": sayfa, "filtre": filtre})
 
 
 @ekran_gerekli("operasyon_kayitlari")

@@ -97,7 +97,8 @@ MODULLER = (
         Ekran("fason_mutabakat", "Fason Mutabakat", "core:fason_mutabakat"),
     )),
     Modul("URETIM", "Üretim", (
-        Ekran("uretim_emirleri", "Üretim Emirleri", "core:uretim_emirleri"),
+        Ekran("uretim_emirleri", "Üretim Siparişleri", "core:uretim_emirleri"),
+        Ekran("istasyon_emirleri", "İstasyon Emirleri", "core:istasyon_emirleri"),
         Ekran("ihtiyac_hesapla", "İhtiyaç Hesapla", "core:ihtiyac_hesapla"),
         Ekran("urun_agaci", "Ürün Ağacı", "core:urun_agaci"),
         Ekran("operasyon_kayitlari", "Operasyon Kayıtları", "core:operasyon_kayitlari"),

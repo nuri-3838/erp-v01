@@ -1,0 +1,73 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}İstasyon Emirleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}İstasyon Emirleri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Siparişleri</a>
+    <h1 class="ust-baslik"><span class="emoji">🛠️</span>İstasyon Emirleri</h1>
+  </div>
+</div>
+
+<p class="yardim">Üretim siparişlerinin net planından doğan, istasyon bazlı iş emirleri. Varsayılan görünüm bekleyen ve başlamış işlerdir;
+  miktarlar referans çıktı adedi cinsindendir.</p>
+
+<form method="get" class="ue-arama-cubuk" style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
+  <div class="alan"><label for="ie-ara">Ara</label>
+    <input type="text" id="ie-ara" name="ara" value="{{ ara }}" placeholder="Emir no, sipariş no veya çıktı…" autocomplete="off"></div>
+  <div class="alan"><label for="ie-istasyon">İş İstasyonu</label>
+    <select name="istasyon" id="ie-istasyon">
+      <option value="">Tümü</option>
+      {% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="ie-durum">Durum</label>
+    <select name="durum" id="ie-durum">
+      <option value="">Açık işler (bekleyen + başlayan)</option>
+      {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}
+    </select></div>
+  {% if uretim_emri %}<input type="hidden" name="uretim_emri" value="{{ uretim_emri }}">{% endif %}
+  <button type="submit" class="birincil">Filtrele</button>
+  <a class="iptal-bag" href="{% url 'core:istasyon_emirleri' %}">Temizle</a>
+</form>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr><th>Emir</th><th>Üretim Siparişi</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Planlanan</th><th class="sag">Tamamlanan</th><th class="sag">Açık kalan</th><th>Durum</th><th></th></tr></thead>
+  <tbody>
+    {% for s in satirlar %}
+      <tr>
+        <td class="mono">{{ s.ie.no }}</td>
+        <td><a class="mono" href="{% url 'core:uretim_emri_detay' s.ie.uretim_emri_id %}">{{ s.ie.uretim_emri.no }}</a></td>
+        <td><span class="mono">{{ s.ie.istasyon.kod }}</span> {{ s.ie.istasyon.ad }}</td>
+        <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}</td>
+        <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>
+        <td class="sag mono">{{ s.tamamlanan|tr_kur:3 }}</td>
+        <td class="sag mono">{{ s.acik|tr_kur:3 }}</td>
+        <td><span class="rozet {% if s.ie.durum == 'BITTI' %}rozet-aktif{% elif s.ie.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ s.ie.get_durum_display }}</span></td>
+        <td>
+          {% if s.kayit_acilabilir %}
+          <form method="post" action="{% url 'core:istasyon_emri_kayit_ac' s.ie.pk %}" style="display:inline-flex;gap:.3rem;align-items:center;margin:0">
+            {% csrf_token %}<input type="text" name="hedef" inputmode="decimal" placeholder="adet" style="width:5rem" autocomplete="off">
+            <button type="submit" class="dugme-ikincil">Kayıt aç</button></form>
+          <a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>
+          {% endif %}
+          <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="9" class="yardim" style="text-align:center;padding:1.6rem 0">🛠️ Bu süzgeçle eşleşen istasyon emri yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if sayfa.paginator.num_pages > 1 %}
+<nav class="sayfalama">
+  {% if sayfa.has_previous %}<a href="?sayfa={{ sayfa.previous_page_number }}&ara={{ ara|urlencode }}&durum={{ durum }}&istasyon={{ istasyon }}&uretim_emri={{ uretim_emri }}">‹ Önceki</a>{% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  <span class="sayfalama-bilgi">Sayfa {{ sayfa.number }} / {{ sayfa.paginator.num_pages }} · {{ sayfa.paginator.count }} emir</span>
+  {% if sayfa.has_next %}<a href="?sayfa={{ sayfa.next_page_number }}&ara={{ ara|urlencode }}&durum={{ durum }}&istasyon={{ istasyon }}&uretim_emri={{ uretim_emri }}">Sonraki ›</a>{% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

@@ -961,5 +961,6 @@ class UretimViewTest(TestCase):
         self.assertContains(r, "İş İstasyonları")
         self.assertContains(r, "Operasyon Tanımları")
         self.assertContains(r, "İhtiyaç Hesapla")
-        self.assertContains(r, "Üretim Emirleri")
+        self.assertContains(r, "Üretim Siparişleri")
+        self.assertContains(r, "İstasyon Emirleri")
         self.assertContains(r, "Operasyon Kayıtları")

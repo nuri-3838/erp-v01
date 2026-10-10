@@ -12,15 +12,18 @@
   <a class="dugme" href="{% url 'core:operasyon_kaydi_ekle' %}">+ Yeni (Bağımsız)</a>
 </div>
 
-<p class="yardim">Bir Üretim Emri'nden otomatik açılan kayıtlar burada da görünür (üst emre
-  detaydan link verilir); "+ Yeni (Bağımsız)" bir üretim emrine bağlı olmadan, istasyonun
-  kendi inisiyatifiyle açtığı serbest kayıt içindir.</p>
+<p class="yardim">İstasyon emirlerinden açılan kayıtlar burada da görünür (emir ve üretim siparişi bağlantılarıyla);
+  "+ Yeni (Bağımsız)" bir istasyon emrine bağlı olmadan, istasyonun kendi inisiyatifiyle açtığı serbest kayıt içindir.
+  Süzgeç:
+  <a href="{% url 'core:operasyon_kayitlari' %}">Tümü</a> ·
+  <a href="{% url 'core:operasyon_kayitlari' %}?emir=bagimsiz">Yalnız bağımsız</a>
+  {% if filtre.uretim_emri %}· üretim siparişi #{{ filtre.uretim_emri }}{% endif %}{% if filtre.istasyon_emri %}· istasyon emri #{{ filtre.istasyon_emri }}{% endif %}</p>
 
 <div class="tablo-kapsayici">
 <table>
   <thead><tr>
     <th>No</th><th>Tarih</th><th>İş İstasyonu</th><th>Çıktı</th>
-    <th class="sag">Hedef Miktar</th><th>Üretim Emri</th><th>Durum</th>
+    <th class="sag">Hedef Miktar</th><th>İstasyon Emri</th><th>Üretim Siparişi</th><th>Durum</th>
   </tr></thead>
   <tbody>
     {% for k in kayitlar %}
@@ -30,11 +33,12 @@
         <td><span class="mono">{{ k.operasyon.istasyon.kod }}</span> {{ k.operasyon.istasyon.ad }}</td>
         <td><span class="mono">{{ k.operasyon.cikti.kod }}</span> {{ k.operasyon.cikti.ad }}</td>
         <td class="sag mono">{{ k.hedef_cikti_miktari|tr_kur:3 }}</td>
+        <td class="mono">{% if k.istasyon_emri %}<a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ k.istasyon_emri_id }}">{{ k.istasyon_emri.no }}</a>{% else %}—{% endif %}</td>
         <td>{% if k.uretim_emri %}<a class="mono" href="{% url 'core:uretim_emri_detay' k.uretim_emri.pk %}">{{ k.uretim_emri.no }}</a>{% else %}<span class="pasif">— bağımsız —</span>{% endif %}</td>
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="7" class="yardim">Henüz operasyon kaydı yok.</td></tr>
+      <tr><td colspan="8" class="yardim">Henüz operasyon kaydı yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>

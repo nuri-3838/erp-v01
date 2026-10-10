@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
-{% block baslik %}Üretim Emirleri · ERP v0.1{% endblock %}
-{% block sayfa_adi %}Üretim Emirleri{% endblock %}
+{% block baslik %}Üretim Siparişleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Üretim Siparişleri{% endblock %}
 
 {% block content %}
 <style>
@@ -48,16 +48,16 @@
 </style>
 
 <div class="ue-ust">
-  <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emirleri</h1>
+  <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Siparişleri</h1>
   <span class="islem-bag">
+    <a class="dugme" href="{% url 'core:istasyon_emirleri' %}">İstasyon Emirleri</a>
     <a class="dugme" href="{% url 'core:ihtiyac_hesapla' %}">İhtiyaç Hesapla</a>
     <a class="dugme" href="{% url 'core:uretim_emri_ekle' %}">+ Yeni</a>
   </span>
 </div>
 
-<p class="yardim" style="margin-top:-.3rem">Bir emir açıldığında, zincirdeki HER iş istasyonu
-  için ayrı bir istasyon emri oluşur (eldeki stok ayrılır) — her istasyon kendi kaydını kendi
-  zamanında onaylar.</p>
+<p class="yardim" style="margin-top:-.3rem">Bir üretim siparişi açıldığında eldeki kullanılabilir stok ayrılır ve zincirdeki
+  HER iş istasyonu için ayrı bir istasyon emri oluşur — her istasyon kendi kaydını kendi zamanında onaylar.</p>
 
 <div class="ue-panel">
   <form method="get" class="ue-arama-cubuk" id="ue-arama-form">
@@ -65,7 +65,14 @@
       <label for="ue-arama">Ara</label>
       <span class="ue-arama-ikon">🔍</span>
       <input type="text" id="ue-arama" name="ara" value="{{ ara }}"
-             placeholder="Emir no, hedef ürün veya depo ara…" autocomplete="off">
+             placeholder="Sipariş no, hedef ürün, depo veya kaynak sipariş ara…" autocomplete="off">
+    </div>
+    <div class="ue-alan-grup">
+      <label for="ue-durum">Durum</label>
+      <select name="durum" id="ue-durum" onchange="this.form.submit()">
+        <option value="">Tümü</option>
+        {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}
+      </select>
     </div>
     <div class="ue-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
@@ -75,13 +82,13 @@
   </form>
 </div>
 
-<p class="sayfa-alt"><span id="ue-sayac-sayi">{{ emirler|length }}</span> üretim emri.</p>
+<p class="sayfa-alt"><span id="ue-sayac-sayi">{{ emirler|length }}</span> üretim siparişi.</p>
 
 <div class="tablo-kapsayici genis">
 <table id="ue-tablo">
   <thead>
     <tr>
-      <th>Emir</th><th>Tarih</th><th>Depo</th><th>İlerleme</th><th></th><th></th>
+      <th>Üretim Siparişi</th><th>Tarih</th><th>Depo</th><th>Durum</th><th>İlerleme</th><th></th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -93,30 +100,33 @@
             <span class="ue-ikon">🏭</span>
             <div>
               <div class="ad">{{ kalem_ozet }}</div>
-              <div class="no">{{ e.no }}</div>
+              <div class="no">{{ e.no }}{% if e.revizyon_no %} · rev.{{ e.revizyon_no }}{% endif %}{% if e.kaynak_siparis %} · Sip. {{ e.kaynak_siparis.belge_no|default:e.kaynak_siparis.pk }}{% endif %}</div>
             </div>
           </div>
         </td>
         <td class="mono">{{ e.tarih|date:"d.m.Y" }}</td>
         <td><span class="mono">{{ e.depo.kod }}</span> {{ e.depo.ad }}</td>
+        <td><span class="rozet {% if e.durum == 'ACIK' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ e.get_durum_display }}</span></td>
         <td>
           <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
             {{ ilerleme.onayli }}/{{ ilerleme.toplam }} onaylı</span>
         </td>
         <td class="ue-ok">›</td>
         <td class="ue-sil-hucre" onclick="event.stopPropagation()">
-          <form method="post" action="{% url 'core:uretim_emri_sil' e.pk %}" onsubmit="return confirm('Bu üretim emri ve bağlı taslak operasyon kayıtları KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');" style="margin:0">
+          {% if satir.silinebilir %}
+          <form method="post" action="{% url 'core:uretim_emri_sil' e.pk %}" onsubmit="return confirm('Bu üretim siparişi ve bağlı taslak kayıtlar KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');" style="margin:0">
             {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form>
+          {% endif %}
         </td>
       </tr>
       {% endwith %}
     {% empty %}
-      <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara %}🔍 Bu süzgeçle eşleşen üretim emri yok.
-        {% else %}🏭 Henüz üretim emri yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
+      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if ara %}🔍 Bu süzgeçle eşleşen üretim siparişi yok.
+        {% else %}🏭 Henüz üretim siparişi yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
-    <tr class="ue-bos-js" style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-      🔍 Bu süzgeçle eşleşen üretim emri yok.</td></tr>
+    <tr class="ue-bos-js" style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+      🔍 Bu süzgeçle eşleşen üretim siparişi yok.</td></tr>
   </tbody>
 </table>
 </div>

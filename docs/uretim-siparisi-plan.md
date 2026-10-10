@@ -40,8 +40,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 | 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | TAMAM | `1cc6443`, `9d71ed2` |
 | 6 | Fason dönüşü emre bağlama, fire | TAMAM | `404fc57` |
 | 7 | Revize algoritması + geçmiş; onaylı sipariş kalem düzenleme → ÜS revize | TAMAM | `7a0b49a` |
-| 8 | Kapanış (satış faturası) + yeniden açılış; deposuz fatura uyarısı | TAMAM | (bu commit) |
-| 9 | Ekranlar: ÜS liste/detay, istasyon emirleri (yeni ekran kodu `istasyon_emirleri`), kayıt listesi/formu, sipariş detayı rozeti | bekliyor | |
+| 8 | Kapanış (satış faturası) + yeniden açılış; deposuz fatura uyarısı | TAMAM | `75edbf9` |
+| 9 | Ekranlar: ÜS liste/detay, istasyon emirleri (yeni ekran kodu `istasyon_emirleri`), kayıt listesi/formu, sipariş detayı rozeti | TAMAM | (bu commit) |
 | 10 | Deploy (ayrı talimat): yedek, migrate, canlıdaki eski emrin silinmesi, yetki ataması | bekliyor | |
 
 ## Adım notları
@@ -111,5 +111,13 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
   (`kapanis_tarihi`, revizyon KAPANIS), değilse uyarı ("bitmemiş istasyon emirleri var"); deposuz/onaysız fatura ÜS'ye dokunmaz, uyarı döner (ekranda `messages.warning`).
   Son istasyon emri onaylanınca (`_istasyon_emri_onay_etkisi`) sevk edilmiş ÜS otomatik kapanır. `fatura_sil` → `siparis_fatura_silindi`: `sevk_dusen` aynen geri
   eklenir, KAPALI ÜS yeniden ACIK (YENIDEN_ACILIS); deposuz fatura silinmesi ÜS'yi değiştirmez. Revize artık sevk edilen miktarı üretim ihtiyacından düşer
-  (`plan_kalemleri`): sevk edilen mamul yeniden üretilmez/ayrılmaz; kalem miktarı sevkin altına düşemez (gerçek fatura fixture'ıyla test edildi). Bilinen sınır:
-  fatura sonradan düzenlenip depo/miktarı değişirse (`fatura_guncelle`) ÜS otomatik yeniden değerlendirilmez (fatura silip yeniden kesilmesi gerekir).
+  (`plan_kalemleri`): sevk edilen mamul yeniden üretilmez/ayrılmaz; kalem miktarı sevkin altına düşemez (gerçek fatura fixture'ıyla test edildi). Önceki bilinen
+  sınır (fatura düzenlemesiyle depo/miktar değişimi) adım 9 başında KAPATILDI (`8b33865`): ÜS'ye (ACIK/KAPALI) bağlı faturada `fatura_guncelle` depo/stok/miktar
+  değişimini "Üretim siparişine bağlı; faturayı silip yeniden kesin" diye reddeder; fiyat/tarih/açıklama serbest; İPTAL ÜS engel değil.
+- **Adım 9 (ekranlar, şema yok):** `moduller.py`: "Üretim Siparişleri" (kod `uretim_emirleri` aynı) + yeni ekran `istasyon_emirleri` (kimseye otomatik açılmaz; adım 10'da yetki ata).
+  ÜS liste: durum süzgeci/rozeti, revizyon no, kaynak sipariş; sil yalnız başlamamış ÜS'de (`uretim_emri_silinebilir`). ÜS detay: kalem tablosu (hedef/ayrılan/üretilecek/sevk/ilerleme %),
+  istasyon emirleri (planlanan/tamamlanan/açık kalan referans adedinde; "Kayıt aç" [isteğe bağlı adet] ve "Fason dönüş aç" `?istasyon_emri=`), ayırma listesi, operasyon kayıtları
+  (istasyon emri sütunu), revizyon geçmişi (REVIZE'de "KOD: 3 → 5"), düğmeler Revize / İptal Et / Sil. Yeni görünümler: `uretim_emri_iptal`, `uretim_emri_revize` (manuel ÜS;
+  siparişli ÜS sipariş revizesine yönlenir), `siparis_revize` (sipariş kalemleri + ÜS tek işlemde), `istasyon_emirleri` (istasyon/durum/ÜS/arama süzgeci; varsayılan bekleyen+başlayan),
+  `istasyon_emri_kayit_ac` (POST; fazla uyarısı). Operasyon kayıtları listesi: istasyon emri sütunu + `?istasyon_emri=`/`?uretim_emri=`/`?emir=bagimsiz`. Sipariş detayı: ÜS rozeti
+  (durum, revizyon) + "Kalemleri revize et"; IPTAL ÜS rozet/kilit yok ve yeniden açılabilir. Testler: `test_uretim_siparisi_ekranlar.py`.

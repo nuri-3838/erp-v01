@@ -45,8 +45,8 @@
     <span class="dg"><span class="rozet rozet-notr">Fason</span> {{ kayit.fason_cari.unvan }} — girdiler fason depodan düşer
       {% if kayit.fason_donus %}· <a href="{% url 'core:fason_donus_detay' kayit.fason_donus_id %}" class="mono">{{ kayit.fason_donus.no }}</a>{% endif %}</span></div>
   {% endif %}
-  <div class="satir"><span class="et">Üretim Emri</span>
-    <span class="dg">{% if kayit.uretim_emri %}<a href="{% url 'core:uretim_emri_detay' kayit.uretim_emri.pk %}">{{ kayit.uretim_emri.no }}</a>{% else %}<span class="pasif">— bağımsız/serbest kayıt —</span>{% endif %}</span></div>
+  <div class="satir"><span class="et">Üretim Siparişi</span>
+    <span class="dg">{% if kayit.uretim_emri %}<a href="{% url 'core:uretim_emri_detay' kayit.uretim_emri.pk %}">{{ kayit.uretim_emri.no }}</a>{% if kayit.istasyon_emri %} · istasyon emri <span class="mono">{{ kayit.istasyon_emri.no }}</span>{% endif %}{% else %}<span class="pasif">— bağımsız/serbest kayıt —</span>{% endif %}</span></div>
   {% if kayit.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ kayit.aciklama }}</span></div>{% endif %}
   {% if kayit.durum != "ONAYLI" and yan_tanimlar %}
     <div class="satir"><span class="et">{% if parcala %}Diğer Çıktılar (parçala · aynı çalıştırmadan, onayda stoğa girer){% else %}Yan Çıktılar (onayda stoğa girer){% endif %}</span>

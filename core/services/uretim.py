@@ -1464,6 +1464,11 @@ def uretim_emri_ilerleme(emir: UretimEmri):
     return {"toplam": kayitlar.count(), "onayli": kayitlar.filter(durum=OperasyonKaydi.Durum.ONAYLI).count()}
 
 
+def uretim_emri_silinebilir(emir: UretimEmri) -> bool:
+    """Açık ve başlamamış ÜS kalıcı silinebilir; başlamış/kapalı/iptal olan yalnız iptal edilir (karar 9)."""
+    return emir.durum == UretimEmri.Durum.ACIK and not _basladi_mi(emir)
+
+
 def _basladi_mi(emir: UretimEmri) -> bool:
     """Başlamış üretim siparişi: bir istasyon emri BASLADI/BITTI ya da tamamlanan > 0, ya da onaylı / emre bağlı bir operasyon kaydı var."""
     if emir.istasyon_emirleri.filter(silindi=False).filter(Q(durum__in=[IstasyonEmri.Durum.BASLADI, IstasyonEmri.Durum.BITTI]) | Q(tamamlanan__gt=0)).exists():

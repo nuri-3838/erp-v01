@@ -1,19 +1,27 @@
 {% extends "core/base.html" %}
 {% load core_extras %}
 {% block baslik %}{{ emir.no }} · ERP v0.1{% endblock %}
-{% block sayfa_adi %}Üretim Emri{% endblock %}
+{% block sayfa_adi %}Üretim Siparişi{% endblock %}
 
 {% block content %}
 <div class="sayfa-ust">
   <div>
-    <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Emirleri</a>
+    <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Siparişleri</a>
     <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ emir.no }}
+      <span class="rozet {% if emir.durum == 'ACIK' %}rozet-aktif{% elif emir.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-kapali{% endif %}">{{ emir.get_durum_display }}</span>
       <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
-        {{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon onaylandı</span></h1>
+        {{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon bitti</span></h1>
   </div>
   <span class="islem-bag">
-    <form method="post" action="{% url 'core:uretim_emri_sil' emir.pk %}" onsubmit="return confirm('Bu üretim emri ve bağlı taslak operasyon kayıtları KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
+    {% if revize_url %}<a class="dugme" href="{{ revize_url }}">✏️ Revize</a>{% endif %}
+    {% if emir.durum == 'ACIK' %}
+    <form method="post" action="{% url 'core:uretim_emri_iptal' emir.pk %}" onsubmit="return confirm('Üretim siparişi İPTAL edilsin mi? Ayrılan stok serbest kalır, bitmemiş istasyon emirleri iptal olur; onaylı kayıtların ürettiği parçalar serbest stokta kalır.');">
+      {% csrf_token %}<button type="submit" class="dugme">⛔ İptal Et</button></form>
+    {% endif %}
+    {% if silinebilir %}
+    <form method="post" action="{% url 'core:uretim_emri_sil' emir.pk %}" onsubmit="return confirm('Bu üretim siparişi ve bağlı taslak kayıtlar KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
       {% csrf_token %}<button type="submit" class="sil">🗑️ Sil</button></form>
+    {% endif %}
   </span>
 </div>
 
@@ -23,24 +31,33 @@
     <span class="dg"><span class="mono">{{ emir.depo.kod }}</span> {{ emir.depo.ad }}</span></div>
   {% if emir.kaynak_siparis %}
   <div class="satir"><span class="et">Kaynak Sipariş</span>
-    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' emir.kaynak_siparis.pk %}">{{ emir.kaynak_siparis.get_belge_tur_display }}{% if emir.kaynak_siparis.belge_no %} · {{ emir.kaynak_siparis.belge_no }}{% endif %}</a></span></div>
+    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' emir.kaynak_siparis.pk %}">{{ emir.kaynak_siparis.get_belge_tur_display }}{% if emir.kaynak_siparis.belge_no %} · {{ emir.kaynak_siparis.belge_no }}{% endif %}</a>
+      {% if emir.kaynak_siparis.cari %} · {{ emir.kaynak_siparis.cari.unvan }}{% endif %}</span></div>
   {% endif %}
+  <div class="satir"><span class="et">Revizyon</span><span class="dg mono">{{ emir.revizyon_no }}</span></div>
+  {% if emir.kapanis_tarihi %}<div class="satir"><span class="et">Kapanış</span><span class="dg mono">{{ emir.kapanis_tarihi|date:"d.m.Y" }}</span></div>{% endif %}
   {% if emir.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ emir.aciklama }}</span></div>{% endif %}
 </section>
 
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Kalemler</h2>
+  <p class="yardim">Ayrılan: şu an bu siparişe ayrılı mamul. Üretilecek: açılış/revizede eldekinden karşılanmayan, üretimle karşılanacak miktar.
+    İlerleme: (ayrılan + sevk edilen) ÷ hedef.</p>
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>Ürün</th><th class="sag">Hedef Miktar</th></tr></thead>
+    <thead><tr><th>Ürün</th><th class="sag">Hedef</th><th class="sag">Ayrılan</th><th class="sag">Üretilecek</th><th class="sag">Sevk edilen</th><th class="sag">İlerleme</th></tr></thead>
     <tbody>
-      {% for k in kalemler %}
+      {% for s in kalemler %}
         <tr>
-          <td><span class="mono">{{ k.hedef_urun.kod }}</span> {{ k.hedef_urun.ad }}</td>
-          <td class="sag mono">{{ k.hedef_miktar|tr_kur:3 }}</td>
+          <td><span class="mono">{{ s.k.hedef_urun.kod }}</span> {{ s.k.hedef_urun.ad }}</td>
+          <td class="sag mono">{{ s.k.hedef_miktar|tr_kur:3 }}</td>
+          <td class="sag mono">{{ s.ayrilan|tr_kur:3 }}</td>
+          <td class="sag mono">{{ s.uretilecek|tr_kur:3 }}</td>
+          <td class="sag mono">{{ s.sevk|tr_kur:3 }}</td>
+          <td class="sag mono">% {{ s.yuzde|tr_kur:0 }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="2" class="yardim">Bu emrin hiç kalemi yok.</td></tr>
+        <tr><td colspan="6" class="yardim">Bu siparişin hiç kalemi yok.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -48,24 +65,95 @@
 </section>
 
 <section class="icerik-kart">
-  <h2 class="bolum-baslik">Zincirdeki Operasyon Kayıtları</h2>
-  <p class="yardim">Her satır ayrı bir iş istasyonunun kendi taslak kaydıdır — her istasyon
-    kendi kaydını kendi zamanında açıp onaylar; buradaki liste yalnızca izleme amaçlıdır.</p>
+  <h2 class="bolum-baslik">İstasyon Emirleri</h2>
+  <p class="yardim">Net plandaki her operasyon için bir emir (miktarlar referans çıktı adedi cinsinden). “Kayıt aç” emirden taslak operasyon kaydı açar
+    (boş bırakılırsa açık kalan; daha fazlası yazılabilir, fazlası serbest stoğa girer); “Fason dönüş aç” aynı emre bağlı fason dönüş belgesi açar.</p>
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>No</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Hedef Miktar</th>
-      <th>Durum</th></tr></thead>
+    <thead><tr><th>Emir</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Planlanan</th><th class="sag">Tamamlanan</th><th class="sag">Açık kalan</th><th>Durum</th><th></th></tr></thead>
+    <tbody>
+      {% for s in istasyon_emirleri %}
+        <tr>
+          <td class="mono">{{ s.ie.no }}</td>
+          <td><span class="mono">{{ s.ie.istasyon.kod }}</span> {{ s.ie.istasyon.ad }}</td>
+          <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}</td>
+          <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>
+          <td class="sag mono">{{ s.tamamlanan|tr_kur:3 }}</td>
+          <td class="sag mono">{{ s.acik|tr_kur:3 }}</td>
+          <td><span class="rozet {% if s.ie.durum == 'BITTI' %}rozet-aktif{% elif s.ie.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ s.ie.get_durum_display }}</span></td>
+          <td>
+            {% if s.kayit_acilabilir %}
+            <form method="post" action="{% url 'core:istasyon_emri_kayit_ac' s.ie.pk %}" style="display:inline-flex;gap:.3rem;align-items:center;margin:0">
+              {% csrf_token %}<input type="text" name="hedef" inputmode="decimal" placeholder="adet" style="width:5rem" autocomplete="off">
+              <button type="submit" class="dugme-ikincil">Kayıt aç</button></form>
+            <a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>
+            {% endif %}
+            <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="yardim">Bu siparişte istasyon emri yok{% if kayitlar %} (eski emir: kayıtlar aşağıda){% endif %}.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Ayrılan Stoklar</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Stok</th><th class="sag">Ayrılan</th></tr></thead>
+    <tbody>
+      {% for a in ayirmalar %}
+        <tr><td><a href="{% url 'core:stok_detay' a.stok_id %}"><span class="mono">{{ a.stok.kod }}</span> {{ a.stok.ad }}</a></td>
+            <td class="sag mono">{{ a.miktar|tr_kur:3 }}</td></tr>
+      {% empty %}
+        <tr><td colspan="2" class="yardim">Bu siparişe ayrılı stok yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Operasyon Kayıtları</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>No</th><th>İstasyon Emri</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Hedef Miktar</th><th>Durum</th></tr></thead>
     <tbody>
       {% for k in kayitlar %}
         <tr>
           <td><a class="mono" href="{% url 'core:operasyon_kaydi_detay' k.pk %}">{{ k.no }}</a></td>
+          <td class="mono">{{ k.istasyon_emri.no|default:"—" }}</td>
           <td><span class="mono">{{ k.operasyon.istasyon.kod }}</span> {{ k.operasyon.istasyon.ad }}</td>
           <td><span class="mono">{{ k.operasyon.cikti.kod }}</span> {{ k.operasyon.cikti.ad }}</td>
           <td class="sag mono">{{ k.hedef_cikti_miktari|tr_kur:3 }}</td>
           <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
         </tr>
       {% empty %}
-        <tr><td colspan="5" class="yardim">Bu emre bağlı operasyon kaydı yok.</td></tr>
+        <tr><td colspan="6" class="yardim">Bu siparişe bağlı operasyon kaydı yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Revizyon Geçmişi</h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>No</th><th>Tarih</th><th>Olay</th><th>Açıklama / Değişiklik</th></tr></thead>
+    <tbody>
+      {% for r, farklar in revizyonlar %}
+        <tr>
+          <td class="mono">{{ r.no }}</td>
+          <td class="mono">{{ r.tarih|date:"d.m.Y" }}</td>
+          <td>{{ r.get_tur_display }}</td>
+          <td>{{ r.aciklama }}{% for f in farklar %}<div class="mono">{{ f }}</div>{% endfor %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="yardim">Revizyon kaydı yok (eski emir).</td></tr>
       {% endfor %}
     </tbody>
   </table>
