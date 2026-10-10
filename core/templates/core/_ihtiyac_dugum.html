@@ -5,7 +5,8 @@
     <span>{{ dugum.stok.ad }}</span>
     <span class="mono">× {{ dugum.miktar|tr_miktar_sade }}</span>
     {% if dugum.istasyon %}<span class="rozet rozet-notr">{{ dugum.istasyon.kod }}</span>{% if dugum.tur == "PARCALA" %} <span class="rozet rozet-notr" title="Parçala: 1 girdi → N çıktı">parçala</span>{% endif %}
-    {% else %}<span class="pasif">yaprak (hazır stok)</span>{% endif %}
+      {% if net_mod and not dugum.tekrar %}<span class="yardim" title="Stoğun zincir toplamı üzerinden: kullanılabilirden ayrılan ve üretilecek net miktar">stoktan {{ dugum.ayrilan_toplam|tr_miktar_sade }} · net {{ dugum.net_toplam|tr_miktar_sade }}</span>{% endif %}
+    {% else %}<span class="pasif">yaprak (hazır stok)</span>{% if net_mod %}<span class="yardim{% if dugum.eksik_toplam %} ih-eksik{% endif %}" title="Stoğun zincir toplamı üzerinden">stoktan {{ dugum.ayrilan_toplam|tr_miktar_sade }} · eksik {{ dugum.eksik_toplam|tr_miktar_sade }}</span>{% endif %}{% endif %}
     {% if dugum.tam %}
       <span class="yardim">çalıştırma: {{ dugum.calistirma|tr_miktar_sade }} boy · üretilecek: {{ dugum.uretilecek|tr_miktar_sade }} ·
         ihtiyaç: {{ dugum.ihtiyac_toplam|tr_miktar_sade }} · fazla: {{ dugum.fazla|tr_miktar_sade }}{% if dugum.fazla %} (stoğa){% endif %}</span>
@@ -15,6 +16,6 @@
     {% if dugum.tur == "PARCALA" %}{% for c in dugum.ciktilar %}{% if c.stok.pk != dugum.stok.pk %}<span class="yardim" title="Aynı çalıştırmadan çıkar; fazlası diğer ihtiyaçlardan mahsup edilir">⇄ aynı boydan {{ c.uretilecek|tr_miktar_sade }} adet <span class="mono">{{ c.stok.kod }}</span> {{ c.stok.ad }} (ihtiyaç {{ c.ihtiyac|tr_miktar_sade }}{% if c.fazla %}, fazla {{ c.fazla|tr_miktar_sade }}{% endif %})</span>{% endif %}{% endfor %}{% endif %}
   </div>
   {% for cocuk in dugum.cocuklar %}
-    {% include "core/_ihtiyac_dugum.html" with dugum=cocuk derinlik=derinlik|add:1 %}
+    {% include "core/_ihtiyac_dugum.html" with dugum=cocuk derinlik=derinlik|add:1 net_mod=net_mod %}
   {% endfor %}
 </div>

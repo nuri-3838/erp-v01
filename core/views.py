@@ -81,6 +81,7 @@ from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import duran_hesap as duran_hesap_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
+from core.services import stok_ayirma as stok_ayirma_servis
 from core.services import urun_agaci as urun_agaci_servis
 from core.services import fason_donus as fason_donus_servis
 from core.services import urun_agaci_xlsx
@@ -7022,12 +7023,15 @@ def ihtiyac_hesapla(request):
                 messages.error(request, "En az bir hedef ürün satırı girin.")
             else:
                 try:
-                    sonuc = uretim_servis.ihtiyac_hesapla(kalemler)
+                    # "stoku düş": NET ihtiyaç — kullanılabilir (eldeki − üretim siparişlerine ayrılan) her seviyede düşülür; varsayılan BRÜT
+                    sonuc = uretim_servis.ihtiyac_hesapla(
+                        kalemler, kullanilabilir=stok_ayirma_servis.kullanilabilir_haritasi if request.POST.get("stok_dus") == "1" else None)
                 except uretim_servis.UretimHatasi as e:
                     messages.error(request, str(e))
     else:
         formset = IhtiyacHesaplaSatirFormSet(prefix="satir")
-    return render(request, "core/ihtiyac_hesapla.html", {"formset": formset, "sonuc": sonuc})
+    return render(request, "core/ihtiyac_hesapla.html",
+                  {"formset": formset, "sonuc": sonuc, "stok_dus": request.method == "POST" and request.POST.get("stok_dus") == "1"})
 
 
 # --- Ürün Ağacı: üç salt-okunur görünüm (Ürün · Nerede kullanılıyor · Karşılaştır) — hepsi Operasyon zincirinden hesaplanır, kayıt açmaz ---

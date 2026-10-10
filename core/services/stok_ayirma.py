@@ -76,6 +76,12 @@ def kullanilabilir(stok, haric_emir=None) -> Decimal:
     return toplu_kullanilabilir([_pk(stok)], haric_emir)[_pk(stok)]["kullanilabilir"]
 
 
+def kullanilabilir_haritasi(stok_idler, haric_emir=None) -> dict:
+    """{stok id: kullanılabilir} — ``uretim.ihtiyac_hesapla(kullanilabilir=...)`` için (çağrılabilir olarak da verilebilir: zincir
+    keşfedilince stok id listesiyle çağrılır)."""
+    return {pk: d["kullanilabilir"] for pk, d in toplu_kullanilabilir(stok_idler, haric_emir).items()}
+
+
 @transaction.atomic
 def ayirma_ayarla(emir, stok, miktar, kullanici=None):
     """(sipariş, stok) ayırmasını ``miktar``a ÇEKER (artış/azalış fark etmez). 0 → aktif satır kapatılır (soft-delete), None döner.

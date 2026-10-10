@@ -33,8 +33,8 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 
 | # | Adım | Durum | Commit |
 |---|------|-------|--------|
-| 1 | `StokAyirma` + `stok_ayirma` servisi (kullanılabilir) + ürün ağacı malzeme sekmesi Ayrılan/Kullanılabilir/Eksik (ekran + Excel) | TAMAM | (bu commit) |
-| 2 | Motor: `ihtiyac_hesapla(kullanilabilir=)`; İhtiyaç Hesapla "stoku düş" seçeneği | bekliyor | |
+| 1 | `StokAyirma` + `stok_ayirma` servisi (kullanılabilir) + ürün ağacı malzeme sekmesi Ayrılan/Kullanılabilir/Eksik (ekran + Excel) | TAMAM | `09233a8` |
+| 2 | Motor: `ihtiyac_hesapla(kullanilabilir=)`; İhtiyaç Hesapla "stoku düş" seçeneği | TAMAM | (bu commit) |
 | 3 | Şema: ÜS durum/revizyon alanları, `UretimEmriKalemi.siparis_kalem`, `IstasyonEmri`, `OperasyonKaydi.istasyon_emri`, `UretimEmriRevizyon`; ÜS-numara; sipariş servis kilitleri | bekliyor | |
 | 4 | ÜS açılış servisi (siparişten + manuel): ayırma + istasyon emirleri; taslak kayıt açma kaldırılır | bekliyor | |
 | 5 | Emirden kayıt açma; onay/geri alma etkileri (ayırma, tamamlanan, durum) | bekliyor | |
@@ -49,3 +49,10 @@ kararlar aşağıda. Ara deploy YOK — tüm adımlar `main`'de birikir, canlıy
 - **Adım 1:** Ayırma kümesi şimdilik "silinmemiş ÜS" ile sınırlı; adım 3'te `durum=ACIK` filtresi eklenir (`stok_ayirma.acik_ayirmalar`).
   Ürün ağacı malzeme sekmesinde depo filtresi seçiliyse eldeki o depodan, ayrılan tüm depolardan; kullanılabilir eksiye düşebilir (`asim`).
   Mevcut `uretim_emri_olustur` davranışı (taslak kayıt açma) bu adımda DEĞİŞMEDİ.
+- **Adım 2:** `ihtiyac_hesapla(kullanilabilir=)` — sözlük ya da çağrılabilir (zincir keşfinden sonra stok pk listesiyle tek çağrı,
+  `stok_ayirma.kullanilabilir_haritasi`). Ayırma her stok için TEK kez: sürücü çıktılar kendi operasyonunda (seviye sırası, toplanmış talep),
+  yapraklar operasyon döngüsünden sonra. Plan/özet satırlarına `ayrilan`, `net`, `eksik` (yaprak); ağaç düğümlerine `ayrilan_toplam`,
+  `net_toplam`, `eksik_toplam`; dönüşe `net_mod`, `ayrilan` haritası. Tam boy olmayan dalda çocuk talebi net/ihtiyaç oranıyla küçülür.
+  `pay_dus=True` ile birlikte kullanım öngörülmedi (maliyet görünümleri brüt). Brüt yol (None) birebir aynı — golden geçti.
+  İhtiyaç Hesapla ekranı: "Kullanılabilir stoğu düş" onay kutusu (varsayılan kapalı = brüt); özet tablosuna "Stoktan Ayrılan" ve
+  "Net İhtiyaç / Eksik" sütunları, ağaçta "stoktan X · net Y" / "eksik" notu.

@@ -49,6 +49,7 @@
     </template>
 
     <div class="form-altbar">
+      <label class="ih-sec" title="Her seviyede kullanılabilir stok (eldeki − üretim siparişlerine ayrılan) düşülür; yalnız kalan için üretim/satınalma gösterilir. Kapalıyken brüt hesap."><input type="checkbox" name="stok_dus" value="1"{% if stok_dus %} checked{% endif %}> Kullanılabilir stoğu düş</label>
       <button type="submit" class="birincil">Hesapla</button>
     </div>
   </form>
@@ -57,35 +58,41 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">🌳</span>Zincir</h2>
       {% for dugum in sonuc.agac %}
-        {% include "core/_ihtiyac_dugum.html" with dugum=dugum derinlik=0 %}
+        {% include "core/_ihtiyac_dugum.html" with dugum=dugum derinlik=0 net_mod=sonuc.net_mod %}
       {% endfor %}
     </section>
 
     <section class="icerik-kart">
-      <h2 class="bolum-baslik"><span class="emoji">📋</span>Özet (istasyon bazında, toplanmış)</h2>
+      <h2 class="bolum-baslik"><span class="emoji">📋</span>Özet (istasyon bazında, toplanmış){% if sonuc.net_mod %} <span class="rozet rozet-aktif" title="Kullanılabilir stok (eldeki − üretim siparişlerine ayrılan) her seviyede düşüldü">net — stok düşüldü</span>{% endif %}</h2>
       <div class="tablo-kapsayici">
         <table>
           <thead><tr><th>Stok</th><th>İş İstasyonu</th><th class="sag">Toplam İhtiyaç</th>
+            {% if sonuc.net_mod %}<th class="sag">Stoktan Ayrılan</th><th class="sag">Net İhtiyaç / Eksik</th>{% endif %}
             <th class="sag">Çalıştırma</th><th class="sag">Üretilecek</th><th class="sag">Fazla (stoğa)</th></tr></thead>
           <tbody>
             {% for o in sonuc.ozet %}
               <tr>
                 <td><span class="mono">{{ o.stok.kod }}</span> {{ o.stok.ad }}
                   {% for y in o.yan_ciktilar %}<br><small class="yardim">➕ ayrıca {{ y.miktar|tr_miktar_sade }} adet {{ y.stok.kod }} {{ y.stok.ad }} çıkar</small>{% endfor %}
-                  {% if o.tur == "PARCALA" %}<span class="rozet rozet-notr" title="Parçala: 1 girdi → N çıktı; çalıştırma en büyük ihtiyaç/miktar oranından">parçala</span>{% for c in o.ciktilar %}{% if c.stok.pk != o.stok.pk %}<br><small class="yardim">⇄ aynı boydan {{ c.uretilecek|tr_miktar_sade }} adet {{ c.stok.kod }} {{ c.stok.ad }} (ihtiyaç {{ c.ihtiyac|tr_miktar_sade }}{% if c.fazla %}, fazla {{ c.fazla|tr_miktar_sade }} stoğa{% endif %})</small>{% endif %}{% endfor %}{% endif %}</td>
+                  {% if o.tur == "PARCALA" %}<span class="rozet rozet-notr" title="Parçala: 1 girdi → N çıktı; çalıştırma en büyük ihtiyaç/miktar oranından">parçala</span>{% for c in o.ciktilar %}{% if c.stok.pk != o.stok.pk %}<br><small class="yardim">⇄ aynı boydan {{ c.uretilecek|tr_miktar_sade }} adet {{ c.stok.kod }} {{ c.stok.ad }} (ihtiyaç {{ c.ihtiyac|tr_miktar_sade }}{% if sonuc.net_mod %}, stoktan {{ c.ayrilan|tr_miktar_sade }}, net {{ c.net|tr_miktar_sade }}{% endif %}{% if c.fazla %}, fazla {{ c.fazla|tr_miktar_sade }} stoğa{% endif %})</small>{% endif %}{% endfor %}{% endif %}</td>
                 <td>{% if o.istasyon %}<span class="mono">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}
                   {% else %}<span class="pasif">— hazır stok —</span>{% endif %}</td>
                 <td class="sag mono">{{ o.ihtiyac|tr_miktar_sade }}</td>
+                {% if sonuc.net_mod %}
+                  <td class="sag mono">{% if o.ayrilan %}{{ o.ayrilan|tr_miktar_sade }}{% else %}—{% endif %}</td>
+                  <td class="sag mono{% if o.yaprak and o.eksik %} ih-eksik{% endif %}">{% if o.yaprak %}{% if o.eksik %}eksik {{ o.eksik|tr_miktar_sade }}{% else %}—{% endif %}{% else %}{{ o.net|tr_miktar_sade }}{% endif %}</td>
+                {% endif %}
                 <td class="sag mono">{% if o.calistirma_sayisi is not None %}{{ o.calistirma_sayisi|tr_miktar_sade }}{% if o.tam %} boy{% endif %}{% else %}—{% endif %}</td>
                 <td class="sag mono">{% if o.uretilecek_miktar is not None %}{{ o.uretilecek_miktar|tr_miktar_sade }}{% else %}—{% endif %}</td>
                 <td class="sag mono">{% if o.fazla_miktar %}{{ o.fazla_miktar|tr_miktar_sade }}{% else %}—{% endif %}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="6" class="yardim">Girilen ürünler için tanımlı bir operasyon bulunamadı.</td></tr>
+              <tr><td colspan="{% if sonuc.net_mod %}8{% else %}6{% endif %}" class="yardim">Girilen ürünler için tanımlı bir operasyon bulunamadı.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+      {% if sonuc.net_mod %}<p class="yardim" style="margin:.6rem 0 0">Net ihtiyaç: her seviyede toplanmış talepten kullanılabilir stok (eldeki − açık üretim siparişlerine ayrılan; eksi ise 0) düşülür, çalıştırma ve alt seviye talebi net miktardan hesaplanır. Yaprakta "eksik" = satınalma ihtiyacı. Fazla (tam boy / parçala kardeşi) serbest stoktur.</p>{% endif %}
     </section>
   {% endif %}
 </div>
@@ -100,6 +107,9 @@
     font-size:.95rem; padding:.2rem .5rem; }
   .fh-sil:hover { color:var(--hata); }
   .satir-alt { margin-top:.7rem; }
+  .ih-sec { display:inline-flex; align-items:center; gap:.4rem; font-size:.86rem; text-transform:none; letter-spacing:0; font-weight:500; color:var(--metin); margin-right:auto; cursor:pointer; }
+  .ih-sec input { width:auto; margin:0; }
+  .ih-eksik { color:var(--hata); font-weight:700; }
   .ih-dugum { padding:.15rem 0; }
   .ih-dugum-baslik { display:flex; gap:.4rem; align-items:baseline; flex-wrap:wrap; }
 </style>

@@ -633,13 +633,20 @@ def operasyon_sil(operasyon: Operasyon, kullanici=None) -> Operasyon:
 
 # === İhtiyaç Hesapla — özyinelemeli, salt-okunur, hiçbir kayıt/stok hareketi üretmez ===
 
-def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
+def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None, kullanilabilir=None):
     """kalemler: [(Stok hedef, Decimal miktar), ...].
 
     ``boy_yuvarla=False`` → tam boy yukarı yuvarlaması KAPALI: bütün çalıştırmalar kesirli (gerçek tüketim; maliyet görünümleri için).
     ``pay_dus=True`` → yan çıktılı kesimde girdi talebi ana çıktının boy payı (``ana_cikti_payi``) kadar düşülür. Varsayılanlarla
     davranış eskisiyle BİREBİR aynıdır. ``graf`` (core.services.urun_agaci.Graf) verilirse operasyon/girdi/yan çıktı bilgisi bellekten
     okunur (sorgu yok).
+
+    ``kullanilabilir`` → NET ihtiyaç modu (üretim siparişi / "stoku düş"; bkz. docs/uretim-siparisi-plan.md): {stok pk: kullanılabilir miktar}
+    sözlüğü ya da zincirdeki stok pk listesini alıp o sözlüğü döndüren bir çağrılabilir (zincir keşfedildikten sonra TEK kez çağrılır).
+    Her seviyede, toplanmış talep üzerinden: ayrılan = min(talep, kalan kullanılabilir) (eksi kullanılabilir 0 sayılır), net = talep − ayrılan;
+    çalıştırma NET talepten (tam boy ⌈·⌉, PARÇALA max), girdilere net çalıştırma aktarılır; fazla = üretilecek − net (serbest stok). Yaprakta
+    ayrılan = min(talep, kullanılabilir), eksik = talep − ayrılan (satınalma ihtiyacı). ``None`` iken (varsayılan) kod yolu brüt hesapla
+    BİREBİR aynıdır (ayrılan 0, net = talep).
 
     İKİ AŞAMALI, SEVİYE BAZLI hesap (low-level code):
       1) Zincirdeki her stoğun EN DERİN seviyesi bulunur (köklerden en uzun yol; döngü varsa UretimHatasi).
@@ -708,6 +715,21 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
     for stok, _ in hedefler:
         kesfet(stok, frozenset())
 
+    # NET mod: kullanılabilir stok (eksi → 0); her stok için tek ayırma (stok başına tek sürücü çıktı / tek yaprak satırı)
+    if callable(kullanilabilir):
+        kullanilabilir = kullanilabilir(list(stoklar))
+    kalan = None if kullanilabilir is None else {pk: max(Decimal("0"), Decimal(str(v))) for pk, v in kullanilabilir.items()}
+    ayrilan = {}
+
+    def _ayir(pk, talep_m):
+        if kalan is None or talep_m <= 0:
+            return Decimal("0")
+        a = min(talep_m, kalan.get(pk, Decimal("0")))
+        if a > 0:
+            kalan[pk] = kalan[pk] - a
+            ayrilan[pk] = ayrilan.get(pk, Decimal("0")) + a
+        return a
+
     seviye = {}
 
     def seviye_bul(pk):
@@ -741,7 +763,11 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
         surucu = [c for c in ciktilar if c.surucu]
         paylar = cikti_paylari(operasyon, ciktilar) if pay_dus else {c.stok_id: Decimal("1") for c in ciktilar}
         tam = operasyon.tam_calistirma and boy_yuvarla
-        ham = {c.stok_id: talep.get(c.stok_id, Decimal("0")) / c.miktar for c in surucu}     # çıktı başına gereken çalıştırma
+        net = {}                                             # sürücü çıktı başına NET talep (brütte = talep)
+        for c in surucu:
+            t = talep.get(c.stok_id, Decimal("0"))
+            net[c.stok_id] = t - _ayir(c.stok_id, t)
+        ham = {c.stok_id: net[c.stok_id] / c.miktar for c in surucu}                            # çıktı başına gereken çalıştırma
         calistirma = max(ham.values())
         if tam:
             calistirma = _yukari_yuvarla(calistirma)
@@ -754,24 +780,30 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
         plan_ciktilar = []
         for c in ciktilar:
             t_i = talep.get(c.stok_id, Decimal("0")) if c.surucu else Decimal("0")
+            n_i = net.get(c.stok_id, Decimal("0")) if c.surucu else Decimal("0")
             if not c.surucu:
                 u_i = calistirma * c.miktar                  # ÜRET yan çıktı: bilgi (talebi etkilemez)
             elif tam or ham[c.stok_id] != calistirma:
                 u_i = calistirma * c.miktar
             else:
-                u_i = t_i                                    # kesirli çalıştırmada sürücü talebin kendisi (bölme artığı yok)
+                u_i = n_i                                    # kesirli çalıştırmada sürücü NET talebin kendisi (bölme artığı yok; brütte net = talep)
             plan_ciktilar.append({"stok": c.stok, "miktar": c.miktar, "boy_mm": c.boy_mm, "yuzde": c.yuzde, "surucu": c.surucu,
-                                  "ihtiyac": t_i, "uretilecek": u_i, "fazla": u_i - t_i, "pay": paylar[c.stok_id]})
+                                  "ihtiyac": t_i, "net": n_i, "ayrilan": t_i - n_i, "uretilecek": u_i, "fazla": u_i - n_i, "pay": paylar[c.stok_id]})
         yan_bilgi = [{"stok": y.stok, "miktar": calistirma * y.miktar, "boy_mm": y.boy_mm} for y in ciktilar if not y.surucu]
         for pc in plan_ciktilar:
             if not pc["surucu"]:
                 continue
             sid = pc["stok"].pk
             pay_map[sid] = paylar[sid]
-            plan_map[sid] = {"stok": pc["stok"], "operasyon": operasyon, "ihtiyac": pc["ihtiyac"], "calistirma": calistirma,
-                             "uretilecek": pc["uretilecek"], "fazla": pc["fazla"], "tam": tam, "yan_ciktilar": yan_bilgi,
+            plan_map[sid] = {"stok": pc["stok"], "operasyon": operasyon, "ihtiyac": pc["ihtiyac"], "net": pc["net"], "ayrilan": pc["ayrilan"],
+                             "calistirma": calistirma, "uretilecek": pc["uretilecek"], "fazla": pc["fazla"], "tam": tam, "yan_ciktilar": yan_bilgi,
                              "tur": operasyon.tur, "ciktilar": plan_ciktilar, "cikti_miktar": pc["miktar"]}
         plan_op[opk] = plan_map[ciktilar[0].stok_id] if ciktilar and ciktilar[0].stok_id in plan_map else plan_map[op_stoklar[opk][0]]
+
+    # yapraklar (operasyonsuz hazır stok): NET modda toplanmış talepten ayrılan, kalanı eksik (satınalma ihtiyacı)
+    for pk in stoklar:
+        if op_bul(stoklar[pk])[0] is None:
+            _ayir(pk, talep.get(pk, Decimal("0")))
 
     # --- ağaç (gösterim) + özet sırası: DFS, tam çalıştırmalı operasyon yalnız İLK geçtiği yerde açılır
     ozet_sira = []
@@ -781,13 +813,16 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
         operasyon, satirlar = op_bul(stok)
         if not kok and stok.pk not in ozet_sira:
             ozet_sira.append(stok.pk)
+        toplam = talep.get(stok.pk, Decimal("0"))
+        ayr = ayrilan.get(stok.pk, Decimal("0"))
         if operasyon is None:
-            return {"stok": stok, "miktar": miktar, "istasyon": None,
-                    "operasyon": None, "yaprak": True, "cocuklar": []}
+            return {"stok": stok, "miktar": miktar, "istasyon": None, "operasyon": None, "yaprak": True, "cocuklar": [],
+                    "ihtiyac_toplam": toplam, "ayrilan_toplam": ayr, "eksik_toplam": toplam - ayr}
         p = plan_map[stok.pk]
         dugum = {"stok": stok, "miktar": miktar, "istasyon": operasyon.istasyon, "operasyon": operasyon, "yaprak": False,
                  "tam": p["tam"], "calistirma": p["calistirma"], "uretilecek": p["uretilecek"], "fazla": p["fazla"],
-                 "ihtiyac_toplam": p["ihtiyac"], "yan_ciktilar": p["yan_ciktilar"], "tur": p["tur"], "ciktilar": p["ciktilar"], "cocuklar": []}
+                 "ihtiyac_toplam": p["ihtiyac"], "ayrilan_toplam": p["ayrilan"], "net_toplam": p["net"],
+                 "yan_ciktilar": p["yan_ciktilar"], "tur": p["tur"], "ciktilar": p["ciktilar"], "cocuklar": []}
         if p["tam"]:
             if operasyon.pk in acildi:
                 dugum["tekrar"] = True
@@ -795,7 +830,8 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
             acildi.add(operasyon.pk)
             calistirma = p["calistirma"]
         else:
-            calistirma = miktar / p["cikti_miktar"]
+            oran = (p["net"] / p["ihtiyac"]) if (kalan is not None and p["ihtiyac"]) else Decimal("1")    # net mod: dal talebi net oranıyla
+            calistirma = miktar * oran / p["cikti_miktar"]
         pay = pay_map[stok.pk]
         dugum["cocuklar"] = [gez(satir.girdi, calistirma * satir.miktar * pay) for satir in satirlar]
         return dugum
@@ -806,13 +842,16 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
     for pk in ozet_sira:
         operasyon, _ = op_bul(stoklar[pk])
         p = plan_map.get(pk)
+        ayr = ayrilan.get(pk, Decimal("0"))
         ozet.append({
             "stok": stoklar[pk], "operasyon": operasyon, "istasyon": operasyon.istasyon if operasyon else None,
             "toplam_miktar": talep.get(pk, Decimal("0")) - kok_talep.get(pk, Decimal("0")), "yaprak": operasyon is None,
             "ihtiyac": talep.get(pk, Decimal("0")), "tam": bool(p and p["tam"]),
             "calistirma_sayisi": p["calistirma"] if p else None,
             "uretilecek_miktar": p["uretilecek"] if p else None, "fazla_miktar": p["fazla"] if p else None,
-            "yan_ciktilar": p["yan_ciktilar"] if p else [], "tur": p["tur"] if p else None, "ciktilar": p["ciktilar"] if p else []})
+            "yan_ciktilar": p["yan_ciktilar"] if p else [], "tur": p["tur"] if p else None, "ciktilar": p["ciktilar"] if p else [],
+            "ayrilan": ayr, "net": talep.get(pk, Decimal("0")) - ayr,                               # net mod: stoktan ayrılan / net ihtiyaç
+            "eksik": (talep.get(pk, Decimal("0")) - ayr) if operasyon is None else None})             # yaprakta satınalma ihtiyacı
 
     plan, planda = [], set()                              # OPERASYON başına tek satır ("stok" = referans çıktı); önce kökler, sonra özet sırası
     for stok, _ in hedefler:
@@ -825,7 +864,7 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None):
         if operasyon is not None and operasyon.pk not in planda:
             plan.append(plan_op[operasyon.pk])
             planda.add(operasyon.pk)
-    return {"agac": agac, "ozet": ozet, "plan": plan}
+    return {"agac": agac, "ozet": ozet, "plan": plan, "net_mod": kalan is not None, "ayrilan": ayrilan}
 
 
 # === Üretim Emirleri — üst-düzey tetikleyici ===
