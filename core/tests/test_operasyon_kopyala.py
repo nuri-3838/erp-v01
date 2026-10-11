@@ -99,6 +99,6 @@ class FormYapisiTest(YanCiktiBase):
     def test_stok_bilgi_json_birim_ve_boy(self):
         r = self.client.get(reverse("core:operasyon_ekle"))
         bilgi = r.context["stok_bilgi"]
-        self.assertEqual(bilgi[self.profil.pk], {"k": "PROFIL", "b": "BOY", "boy": True})
+        self.assertEqual(bilgi[self.profil.pk], {"k": "PROFIL", "b": "BOY", "boy": True, "v": False})   # v: varyantlı kart (E-5)
         self.assertEqual(bilgi[self.ana.pk]["boy"], False)
         self.assertContains(r, 'id="stok-bilgi"')

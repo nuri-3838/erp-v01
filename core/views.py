@@ -7077,7 +7077,11 @@ def _tam_boy_post(post):
 
 
 def _operasyon_form_baglam(**ek):
+    op = ek.get("operasyon")
     return {"tam_boy_secili": None, "tur": Operasyon.Tur.URET, "pay_anahtari": Operasyon.PayAnahtari.BOY, "pay_secenekleri": Operasyon.PayAnahtari.choices,
+            "varyant_degerleri": varyant_servis.secilebilir_varyantlar(), "kural_secenekleri": Operasyon.VaryantKurali.choices,
+            "cikti_kurali": op.cikti_varyant_kurali if op else Operasyon.VaryantKurali.TASI,
+            "cikti_sabit_id": op.cikti_sabit_varyant_id if op else None,
             "boy_stok_idler": uretim_servis.boy_stok_idleri(), "stok_bilgi": uretim_servis.stok_bilgi_haritasi(), **ek}
 
 
@@ -7101,7 +7105,8 @@ def operasyon_ekle(request):
         yan_formset, _yan_var = _yan_ciktilar_post(request.POST)
         pc_formset, _pc_var = _parca_ciktilar_post(request.POST)
         if bform.is_valid() and formset.is_valid() and yan_formset.is_valid() and pc_formset.is_valid():
-            satirlar = [(f.cleaned_data["girdi"], f.cleaned_data["miktar"])
+            satirlar = [(f.cleaned_data["girdi"], f.cleaned_data["miktar"], f.cleaned_data.get("varyant_kurali") or None,
+                         f.cleaned_data.get("sabit_varyant"))
                        for f in formset if f.dolu_mu()]
             cd = bform.cleaned_data
             try:
@@ -7115,7 +7120,9 @@ def operasyon_ekle(request):
                     uretim_servis.operasyon_olustur(
                         istasyon_id=cd["istasyon"].pk, cikti_id=cd["cikti"].pk,
                         cikti_miktar=cd["cikti_miktar"], satirlar=satirlar,
-                        kullanici=request.user, boy_mm=cd.get("boy_mm"), yan_ciktilar=yanlar, tam_boy=_tam_boy_post(request.POST))
+                        kullanici=request.user, boy_mm=cd.get("boy_mm"), yan_ciktilar=yanlar, tam_boy=_tam_boy_post(request.POST),
+                        tur=tur, cikti_varyant_kurali=cd.get("cikti_varyant_kurali") or None,
+                        cikti_sabit_varyant_id=(cd["cikti_sabit_varyant"].pk if cd.get("cikti_sabit_varyant") else None))
                 messages.success(request, "Operasyon tanımı kaydedildi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
@@ -7126,7 +7133,7 @@ def operasyon_ekle(request):
         tur, pay_anahtari = kaynak.tur, kaynak.pay_anahtari
         bform = OperasyonBaslikForm(initial={"istasyon": kaynak.istasyon_id, "cikti_miktar": kaynak.cikti_miktar})
         formset = OperasyonGirdiSatirFormSet(initial=[
-            {"girdi": s.girdi_id, "miktar": s.miktar} for s in uretim_servis.operasyon_girdileri(kaynak)], prefix="satir")
+            {"girdi": s.girdi_id, "miktar": s.miktar, "varyant_kurali": s.varyant_kurali, "sabit_varyant": s.sabit_varyant_id} for s in uretim_servis.operasyon_girdileri(kaynak)], prefix="satir")
         yan_formset = OperasyonYanCiktiFormSet(initial=[
             {"stok": y.stok_id, "miktar": y.miktar, "boy_mm": y.boy_mm}
             for y in (uretim_servis.ek_ciktilar(kaynak) if kaynak.tur == Operasyon.Tur.URET else [])], prefix="yan")
@@ -7155,7 +7162,8 @@ def operasyon_duzenle(request, pk):
         istasyon_id = request.POST.get("istasyon")
         cikti_miktar = request.POST.get("cikti_miktar")
         if formset.is_valid() and yan_formset.is_valid() and pc_formset.is_valid():
-            satirlar = [(f.cleaned_data["girdi"], f.cleaned_data["miktar"])
+            satirlar = [(f.cleaned_data["girdi"], f.cleaned_data["miktar"], f.cleaned_data.get("varyant_kurali") or None,
+                         f.cleaned_data.get("sabit_varyant"))
                        for f in formset if f.dolu_mu()]
             try:
                 if tur == Operasyon.Tur.PARCALA:
@@ -7169,7 +7177,9 @@ def operasyon_duzenle(request, pk):
                         operasyon, istasyon_id=istasyon_id, cikti_miktar=cikti_miktar,
                         satirlar=satirlar, kullanici=request.user,
                         boy_mm=request.POST.get("boy_mm", "") if yan_var or "boy_mm" in request.POST else uretim_servis.KORU,
-                        yan_ciktilar=yanlar if yan_var else None, tam_boy=_tam_boy_post(request.POST), tur=tur)
+                        yan_ciktilar=yanlar if yan_var else None, tam_boy=_tam_boy_post(request.POST), tur=tur,
+                        cikti_varyant_kurali=request.POST.get("cikti_varyant_kurali") or None,
+                        cikti_sabit_varyant_id=request.POST.get("cikti_sabit_varyant") or None)
                 messages.success(request, "Operasyon tanımı güncellendi.")
                 return redirect("core:operasyon_tanimlari")
             except uretim_servis.UretimHatasi as e:
@@ -7178,7 +7188,7 @@ def operasyon_duzenle(request, pk):
             hatalar = _form_hatalari(None, formset, yan_formset, pc_formset)
     else:
         formset = OperasyonGirdiSatirFormSet(initial=[
-            {"girdi": s.girdi_id, "miktar": s.miktar}
+            {"girdi": s.girdi_id, "miktar": s.miktar, "varyant_kurali": s.varyant_kurali, "sabit_varyant": s.sabit_varyant_id}
             for s in uretim_servis.operasyon_girdileri(operasyon)], prefix="satir")
         yan_formset = OperasyonYanCiktiFormSet(initial=[
             {"stok": y.stok_id, "miktar": y.miktar, "boy_mm": y.boy_mm}

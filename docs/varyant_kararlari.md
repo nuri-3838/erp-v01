@@ -56,7 +56,16 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
 | E-2 | Hareket/ayırma/özet varyant boyutu, motor (eldeki, tarih kontrolü, ortalama, ayırma), stok kartı kırılımı, `varyant_veri_gocu` komutu (kuru + altın kontrol) | TAMAM, canlıda; VERİ GÖÇÜ UYGULANDI 2026-10-11 15:35 (53 kart, 338 hareket, 7 ayırma; altın kontrol EŞİT; raporlar `docs/varyant_veri_gocu_kuru_20261011.txt`, `docs/varyant_veri_gocu_uygulandi_20261011.txt`) | `064f2c0` (3288 test) |
 | E-3 | Giriş/çıkış ekranlarında varyant seçimi (alış/satış faturası, irsaliye, numune, sarf, transfer, elle hareket; kartın varsayılanı dolu gelir, varyantsızda alan yok; alış faturasında yeni kombinasyon açılır; sipariş→fatura ve alış zincirinde kalem varyantı taşınır) | TAMAM, canlıda | (bu commit) |
 | E-4 | Proforma/teklif/sipariş satırında "Varyant" bölümü (4 soru; SEMTA dolu, boş = YOK), "+ yeni varyant", dönüşümlerde taşıma, PDF TR/EN'de yalnız standart dışı seçimler; ÜS kilidi (özel varyantlı siparişten ÜS açılmaz, E-6'ya kadar) | TAMAM, canlıda | (bu commit) |
-| E-5 | Operasyon tanımında girdi/çıktı varyant kuralları + LAZER MARKALAMA istasyonu + DÖNÜŞTÜR tipi; yan etiket paketlemeye (veri) | bekliyor | |
+| E-5 | Operasyon girdi/çıktı varyant kuralları (TAŞI/SABİT) + DÖNÜŞTÜR tipi + `varyant_operasyon_hazirla` komutu (LAZER MARKALAMA istasyonu, kesim SABİT YOK, 11 dönüştür tanımı, ÇÇ montaj ayak bölme, yan etiket → paketleme; altın kontrol) | kod canlıda; VERİ (kuru rapor alındı) kullanıcı onayı bekliyor | (bu commit) |
+| E-6 | Planlama motoru (stok, varyant) + ÜS/istasyon emri/kayıt/onay/fason dönüş varyantı; lazer emirleri | bekliyor | |
+
+## E-5 notları
+
+- DÖNÜŞTÜR tanımının çıktı satırı sürücü DEĞİLDİR: `ureten_operasyon`, `ihtiyac_hesapla` ve ürün ağacı bu tanımı görmez → E-6'ya kadar pasif,
+  standart ÜS planı/istasyon emirleri birebir (komutun altın kontrolü + test). Kartı üreten tanım kesim (fason) tanımı kalır.
+- Kurallar yalnız tanımdır; E-6 planlama: istenen çıktı varyantı → TASI girdiler o kartın boyutlarıyla aynı varyant, SABİT girdiler sabit değer;
+  istenen varyant kesimin SABİT YOK çıktısından farklıysa DÖNÜŞTÜR (lazer) tanımı araya girer.
+- Veri hazırlığı `python manage.py varyant_operasyon_hazirla` (kuru) → `--uygula` yalnız onayla; ÜS-2026-0001…0004 ve geçmiş kayıtlar değişmez.
 
 ## E-4 notları
 

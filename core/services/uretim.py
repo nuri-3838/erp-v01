@@ -289,7 +289,8 @@ def operasyon_liste(*, ara="", istasyon=None, seri="", tam_boy=False, yan_cikti=
         return {
             "op": op, "seri": seriler[op.pk], "seri_etiket": SERI_ETIKET[seriler[op.pk]], "baglantisiz": seriler[op.pk] == "BAGLANTISIZ",
             "tam_boy": op.tam_calistirma, "yan_sayisi": len(ek_ciktilar(op)) if op.tur == Operasyon.Tur.URET else 0,
-            "parcala": op.tur == Operasyon.Tur.PARCALA, "cikti_sayisi": len(tanim_ciktilari(op)), "kullanan_sayisi": len({o.pk for o in kul}),
+            "parcala": op.tur == Operasyon.Tur.PARCALA, "donustur": op.tur == Operasyon.Tur.DONUSTUR,
+            "cikti_sayisi": len(tanim_ciktilari(op)), "kullanan_sayisi": len({o.pk for o in kul}),
             "bitmis_urun": kok, "ozet": _girdi_ozeti(op),
             "ara_metin": buyuk_harf_tr(" ".join([op.cikti.kod, op.cikti.ad] + [f"{g.girdi.kod} {g.girdi.ad}" for g in op.girdiler.all()]
                                                 + [f"{y.stok.kod} {y.stok.ad}" for y in ek_ciktilar(op)]))}
@@ -356,20 +357,80 @@ def _istasyon_coz(istasyon_id) -> IsIstasyonu:
     return istasyon
 
 
-def _girdi_satirlarini_dogrula(cikti, satirlar):
-    """satirlar: [(Stok, Decimal), ...]. En az 1 satır, girdi tekrarsız, çıktı kendi
-    girdisi olamaz, miktar > 0."""
+def _girdi_satiri_coz(satir):
+    """Girdi satırı girdisi → (Stok, miktar, kural, sabit Varyant|None). Kısa biçim (stok, miktar) = TASI. ``sabit`` Varyant ya da pk."""
+    from core.models import Varyant
+    girdi, miktar = satir[0], satir[1]
+    kural = (satir[2] if len(satir) > 2 and satir[2] else Operasyon.VaryantKurali.TASI)
+    sabit = satir[3] if len(satir) > 3 else None
+    if kural not in Operasyon.VaryantKurali.values:
+        raise UretimHatasi(f"{girdi.kod}: geçersiz varyant kuralı.")
+    if kural == Operasyon.VaryantKurali.SABIT:
+        if sabit is not None and not isinstance(sabit, Varyant):
+            sabit = Varyant.objects.filter(pk=sabit, silindi=False).first()
+        if sabit is None:
+            raise UretimHatasi(f"{girdi.kod}: sabit varyant kuralı için değer seçin.")
+        if not girdi.varyantli:
+            raise UretimHatasi(f"{girdi.kod} varyantlı bir kart değil; sabit varyant verilemez.")
+    else:
+        sabit = None
+    return girdi, miktar, kural, sabit
+
+
+def _girdi_satirlarini_dogrula(cikti, satirlar, donustur=False):
+    """satirlar: [(Stok, Decimal[, kural, sabit]), ...]. En az 1 satır, (girdi, kural, sabit) tekrarsız, çıktı kendi girdisi olamaz
+    (DÖNÜŞTÜR hariç: aynı kart girdi ve çıktıdır), miktar > 0. Çözülmüş 4'lü listeyi döner."""
     if not satirlar:
         raise UretimHatasi("En az bir girdi satırı gerekli.")
-    gorulen = set()
-    for girdi, miktar in satirlar:
-        if girdi.pk == cikti.pk:
+    gorulen, coz = set(), []
+    for satir in satirlar:
+        girdi, miktar, kural, sabit = _girdi_satiri_coz(satir)
+        if girdi.pk == cikti.pk and not donustur:
             raise UretimHatasi("Çıktı kendi girdisi olamaz.")
-        if girdi.pk in gorulen:
-            raise UretimHatasi(f"{girdi.kod} birden fazla satırda tekrarlanamaz.")
-        gorulen.add(girdi.pk)
+        anahtar = (girdi.pk, kural, sabit.pk if sabit else None)
+        if anahtar in gorulen:
+            raise UretimHatasi(f"{girdi.kod} birden fazla satırda tekrarlanamaz (aynı varyant kuralıyla).")
+        gorulen.add(anahtar)
         if miktar <= 0:
             raise UretimHatasi("Girdi miktarı sıfırdan büyük olmalı.")
+        coz.append((girdi, miktar, kural, sabit))
+    return coz
+
+
+def _girdileri_yaz(operasyon, coz, kullanici):
+    for i, (girdi, miktar, kural, sabit) in enumerate(coz, start=1):
+        OperasyonGirdi.objects.create(operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10, varyant_kurali=kural, sabit_varyant=sabit,
+                                      created_by=kullanici, updated_by=kullanici)
+
+
+def _cikti_kurali_coz(cikti, kural, sabit):
+    """Çıktı varyant kuralı → (kural, Varyant|None). Varsayılan TASI; SABIT'te varyantlı çıktı + değer zorunlu."""
+    from core.models import Varyant
+    kural = kural or Operasyon.VaryantKurali.TASI
+    if kural not in Operasyon.VaryantKurali.values:
+        raise UretimHatasi("Geçersiz çıktı varyant kuralı.")
+    if kural != Operasyon.VaryantKurali.SABIT:
+        return kural, None
+    if sabit is not None and not isinstance(sabit, Varyant):
+        sabit = Varyant.objects.filter(pk=sabit, silindi=False).first()
+    if sabit is None:
+        raise UretimHatasi("Çıktı sabit varyant kuralı için değer seçin.")
+    if not cikti.varyantli:
+        raise UretimHatasi(f"{cikti.kod} varyantlı bir kart değil; çıktı sabit varyantı verilemez.")
+    return kural, sabit
+
+
+def _donustur_dogrula(cikti, coz):
+    """DÖNÜŞTÜR: çıktı varyantlı; girdilerden tam biri aynı kart (dönüşen) ve SABIT kurallı (ör. YOK → markalı)."""
+    if not cikti.varyantli:
+        raise UretimHatasi(f"{cikti.kod} varyantlı bir kart değil; dönüştür tanımı yalnız varyantlı kartta olur.")
+    ayni = [c for c in coz if c[0].pk == cikti.pk]
+    if len(ayni) != 1:
+        raise UretimHatasi("Dönüştür tanımında girdilerden tam biri çıktı kartının kendisi olmalı (dönüşen varyant).")
+    if ayni[0][2] != Operasyon.VaryantKurali.SABIT:
+        raise UretimHatasi("Dönüştür tanımında dönüşen girdi SABİT varyant kurallı olmalı (ör. YOK → istenen marka).")
+    if Operasyon.objects.filter(cikti=cikti, tur=Operasyon.Tur.DONUSTUR, silindi=False).exists():
+        raise UretimHatasi("Bu kart için zaten aktif bir dönüştür tanımı var.")
 
 
 _KORU = KORU = object()          # operasyon_guncelle: "bu alana dokunma"
@@ -407,7 +468,7 @@ def _yan_ciktilari_dogrula(cikti, satirlar, yan_ciktilar, boy_mm):
     """yan_ciktilar: [(Stok, miktar Decimal, boy_mm Decimal), ...]. Yan çıktı: ana çıktıyla aynı olamaz, operasyonun kendi girdisi
     olamaz, aynı operasyonda tekrar edemez, miktar ve boy > 0; yan çıktısı olan operasyonda ANA çıktının boyu (mm) zorunlu."""
     gorulen = set()
-    girdi_idler = {g.pk for g, _ in satirlar}
+    girdi_idler = {g.pk for g, *_ in satirlar}
     for stok, miktar, boy in yan_ciktilar:
         if stok.pk == cikti.pk:
             raise UretimHatasi("Yan çıktı, ana çıktıyla aynı stok olamaz.")
@@ -479,7 +540,7 @@ def cikti_paylari(operasyon, ciktilar) -> dict:
 
 def _tam_boy_mi(satirlar) -> bool:
     """Tam boy VARSAYILANI: girdilerden en az birinin üretim birimi BOY ise işaretli (kullanıcı formda kaldırabilir)."""
-    return any(_boy_birimli_mi(girdi) for girdi, _ in satirlar)
+    return any(_boy_birimli_mi(girdi) for girdi, *_ in satirlar)
 
 
 def boy_stok_idleri():
@@ -489,7 +550,7 @@ def boy_stok_idleri():
 
 def stok_bilgi_haritasi() -> dict:
     """{stok pk: {"k": kod, "b": üretim birimi kısa adı, "boy": BOY birimli mi}} — Operasyon formunda satır birimi / özet / tam boy rozeti (JS)."""
-    return {s.pk: {"k": s.kod, "b": s.uretim_birimi.kisa_ad or s.uretim_birimi.ad, "boy": _boy_birimli_mi(s)}
+    return {s.pk: {"k": s.kod, "b": s.uretim_birimi.kisa_ad or s.uretim_birimi.ad, "boy": _boy_birimli_mi(s), "v": s.varyantli}
             for s in Stok.objects.filter(silindi=False).select_related("uretim_birimi")}
 
 
@@ -548,7 +609,7 @@ def _parcala_ciktilari_dogrula(satirlar, ciktilar, pay_anahtari, haric_op=None):
 
 @transaction.atomic
 def operasyon_olustur(*, istasyon_id, cikti_id=None, cikti_miktar=None, satirlar, kullanici=None, boy_mm=None, yan_ciktilar=None, tam_boy=None,
-                      tur=None, ciktilar=None, pay_anahtari=None) -> Operasyon:
+                      tur=None, ciktilar=None, pay_anahtari=None, cikti_varyant_kurali=None, cikti_sabit_varyant_id=None) -> Operasyon:
     """``tam_boy`` None ise varsayılan: BOY birimli girdi varsa True; True/False verilirse kullanıcının seçimi.
     ``tur`` ÜRET (varsayılan): ``cikti_id`` + ``cikti_miktar`` (+ ``boy_mm``, ``yan_ciktilar``). PARÇALA: ``ciktilar`` [(Stok, miktar, boy_mm, yuzde)]
     — ilk satır referans çıktı (``cikti_id``/``cikti_miktar``/``boy_mm`` verilmişse onunla uyuşmalı, verilmezse oradan türetilir); ``pay_anahtari``
@@ -566,38 +627,42 @@ def operasyon_olustur(*, istasyon_id, cikti_id=None, cikti_miktar=None, satirlar
         if cikti_id not in (None, "") and str(referans[0].pk) != str(cikti_id):
             raise UretimHatasi("PARÇALA tanımında referans çıktı, çıktı listesinin ilk satırıdır.")
         cikti, cm, boy = referans[0], referans[1], referans[2]
-        _girdi_satirlarini_dogrula(cikti, satirlar)
+        coz = _girdi_satirlarini_dogrula(cikti, satirlar)
         operasyon = Operasyon.objects.create(
             istasyon=istasyon, cikti=cikti, cikti_miktar=cm, boy_mm=boy, tur=tur, pay_anahtari=anahtar,
             tam_calistirma=_tam_boy_mi(satirlar) if tam_boy is None else bool(tam_boy), created_by=kullanici, updated_by=kullanici)
-        for i, (girdi, miktar) in enumerate(satirlar, start=1):
-            OperasyonGirdi.objects.create(operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10, created_by=kullanici, updated_by=kullanici)
+        _girdileri_yaz(operasyon, coz, kullanici)
         _ciktilari_esitle(operasyon, kullanici, [(st, m, b, y, True) for st, m, b, y in temiz])
         return operasyon
     cikti = _cikti_coz(cikti_id)
-    if ureten_operasyon(cikti) is not None:
+    donustur = tur == Operasyon.Tur.DONUSTUR
+    if not donustur and ureten_operasyon(cikti) is not None:
         raise UretimHatasi("Bu çıktı için zaten aktif bir operasyon tanımlı.")
     cm = _sayi_coz(cikti_miktar, "Çıktı miktarı geçerli bir sayı olmalı.")
     if cm <= 0:
         raise UretimHatasi("Çıktı miktarı sıfırdan büyük olmalı.")
-    _girdi_satirlarini_dogrula(cikti, satirlar)
+    coz = _girdi_satirlarini_dogrula(cikti, satirlar, donustur=donustur)
+    c_kural, c_sabit = _cikti_kurali_coz(cikti, cikti_varyant_kurali, cikti_sabit_varyant_id)
+    if donustur:
+        _donustur_dogrula(cikti, coz)
     boy = _boy_coz(boy_mm, "Ana çıktı boyu (mm) geçerli bir sayı olmalı.")
-    yan_ciktilar = list(yan_ciktilar or [])
+    yan_ciktilar = [] if donustur else list(yan_ciktilar or [])
     _yan_ciktilari_dogrula(cikti, satirlar, yan_ciktilar, boy)
     operasyon = Operasyon.objects.create(
         istasyon=istasyon, cikti=cikti, cikti_miktar=cm, tam_calistirma=_tam_boy_mi(satirlar) if tam_boy is None else bool(tam_boy), boy_mm=boy,
-        created_by=kullanici, updated_by=kullanici)
-    for i, (girdi, miktar) in enumerate(satirlar, start=1):
-        OperasyonGirdi.objects.create(
-            operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
-            created_by=kullanici, updated_by=kullanici)
-    _ciktilari_esitle(operasyon, kullanici, _uret_cikti_satirlari(operasyon, yan_ciktilar))
+        tur=tur, cikti_varyant_kurali=c_kural, cikti_sabit_varyant=c_sabit, created_by=kullanici, updated_by=kullanici)
+    _girdileri_yaz(operasyon, coz, kullanici)
+    if donustur:                                                       # çıktı satırı sürücü DEĞİL: kartı üreten tanım kesim/üretim tanımıdır
+        _ciktilari_esitle(operasyon, kullanici, [(cikti, cm, boy, None, False)])
+    else:
+        _ciktilari_esitle(operasyon, kullanici, _uret_cikti_satirlari(operasyon, yan_ciktilar))
     return operasyon
 
 
 @transaction.atomic
 def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar=None, satirlar,
-                       kullanici=None, boy_mm=_KORU, yan_ciktilar=None, tam_boy=None, tur=None, ciktilar=None, pay_anahtari=None) -> Operasyon:
+                       kullanici=None, boy_mm=_KORU, yan_ciktilar=None, tam_boy=None, tur=None, ciktilar=None, pay_anahtari=None,
+                       cikti_varyant_kurali=_KORU, cikti_sabit_varyant_id=None) -> Operasyon:
     """``tam_boy`` verilmezse (None) mevcut seçim KORUNUR (girdi birimi değişse de otomatik değişmez). ``boy_mm`` verilmezse ana çıktı boyu, ``yan_ciktilar``
     verilmezse (None) yan çıktılar KORUNUR; [] verilirse yan çıktılar silinir. ``tur`` verilirse ÜRET ↔ PARÇALA geçişi yapılabilir (onaylı kayıtlar
     snapshot'larıyla etkilenmez). PARÇALA'da ``ciktilar`` [(Stok, miktar, boy_mm, yuzde)] — ilk satır referans (tanımın çıktısı, değiştirilemez); verilmezse
@@ -622,7 +687,7 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar=None, 
         temiz = _parcala_ciktilari_dogrula(satirlar, ciktilar, anahtar, haric_op=operasyon)
         if temiz[0][0].pk != operasyon.cikti_id:
             raise UretimHatasi("Tanımın referans çıktısı (ilk satır) sonradan değiştirilemez; yeni tanım açın.")
-        _girdi_satirlarini_dogrula(operasyon.cikti, satirlar)
+        coz = _girdi_satirlarini_dogrula(operasyon.cikti, satirlar)
         operasyon.girdiler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
         operasyon.istasyon, operasyon.tur, operasyon.pay_anahtari = istasyon, yeni_tur, anahtar
         operasyon.cikti_miktar, operasyon.boy_mm = temiz[0][1], temiz[0][2]
@@ -630,17 +695,27 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar=None, 
             operasyon.tam_calistirma = bool(tam_boy)
         operasyon.updated_by = kullanici
         operasyon.save(update_fields=["istasyon", "tur", "pay_anahtari", "cikti_miktar", "tam_calistirma", "boy_mm", "updated_by", "updated_at"])
-        for i, (girdi, miktar) in enumerate(satirlar, start=1):
-            OperasyonGirdi.objects.create(operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10, created_by=kullanici, updated_by=kullanici)
+        _girdileri_yaz(operasyon, coz, kullanici)
         _ciktilari_esitle(operasyon, kullanici, [(st, m, b, y, True) for st, m, b, y in temiz])
         return operasyon
+    donustur = yeni_tur == Operasyon.Tur.DONUSTUR
+    if donustur != (operasyon.tur == Operasyon.Tur.DONUSTUR):
+        raise UretimHatasi("Dönüştür tanımı diğer türlere (ya da tersine) çevrilemez; yeni tanım açın.")
     cm = _sayi_coz(cikti_miktar, "Çıktı miktarı geçerli bir sayı olmalı.")
     if cm <= 0:
         raise UretimHatasi("Çıktı miktarı sıfırdan büyük olmalı.")
-    _girdi_satirlarini_dogrula(operasyon.cikti, satirlar)
+    coz = _girdi_satirlarini_dogrula(operasyon.cikti, satirlar, donustur=donustur)
+    if cikti_varyant_kurali is _KORU:
+        c_kural, c_sabit = operasyon.cikti_varyant_kurali, operasyon.cikti_sabit_varyant
+    else:
+        c_kural, c_sabit = _cikti_kurali_coz(operasyon.cikti, cikti_varyant_kurali, cikti_sabit_varyant_id)
+    if donustur:
+        ayni = [c for c in coz if c[0].pk == operasyon.cikti_id]
+        if len(ayni) != 1 or ayni[0][2] != Operasyon.VaryantKurali.SABIT:
+            raise UretimHatasi("Dönüştür tanımında girdilerden tam biri çıktı kartının kendisi ve SABİT varyant kurallı olmalı.")
     yeni_boy = operasyon.boy_mm if boy_mm is _KORU else _boy_coz(boy_mm, "Ana çıktı boyu (mm) geçerli bir sayı olmalı.")
-    if operasyon.tur == Operasyon.Tur.PARCALA and yan_ciktilar is None:
-        yan_ciktilar = []                                                      # PARÇALA'dan ÜRET'e geçiş: yan çıktı yok
+    if (operasyon.tur == Operasyon.Tur.PARCALA and yan_ciktilar is None) or donustur:
+        yan_ciktilar = []                                                      # PARÇALA'dan ÜRET'e geçiş / DÖNÜŞTÜR: yan çıktı yok
     yeni_yanlar = ([(y.stok, y.miktar, y.boy_mm) for y in operasyon_yan_ciktilari(operasyon)]
                    if yan_ciktilar is None else list(yan_ciktilar))
     _yan_ciktilari_dogrula(operasyon.cikti, satirlar, yeni_yanlar, yeni_boy)
@@ -649,17 +724,19 @@ def operasyon_guncelle(operasyon: Operasyon, *, istasyon_id, cikti_miktar=None, 
     operasyon.boy_mm = yeni_boy
     operasyon.istasyon = istasyon
     operasyon.cikti_miktar = cm
-    operasyon.tur, operasyon.pay_anahtari = Operasyon.Tur.URET, Operasyon.PayAnahtari.BOY
+    operasyon.tur, operasyon.pay_anahtari = (Operasyon.Tur.DONUSTUR if donustur else Operasyon.Tur.URET), Operasyon.PayAnahtari.BOY
+    operasyon.cikti_varyant_kurali, operasyon.cikti_sabit_varyant = c_kural, c_sabit
     if tam_boy is not None:
         operasyon.tam_calistirma = bool(tam_boy)
     operasyon.updated_by = kullanici
     operasyon.save(update_fields=[
-        "istasyon", "tur", "pay_anahtari", "cikti_miktar", "tam_calistirma", "boy_mm", "updated_by", "updated_at"])
-    for i, (girdi, miktar) in enumerate(satirlar, start=1):
-        OperasyonGirdi.objects.create(
-            operasyon=operasyon, girdi=girdi, miktar=miktar, sira=i * 10,
-            created_by=kullanici, updated_by=kullanici)
-    _ciktilari_esitle(operasyon, kullanici, _uret_cikti_satirlari(operasyon, yeni_yanlar))
+        "istasyon", "tur", "pay_anahtari", "cikti_miktar", "tam_calistirma", "boy_mm", "cikti_varyant_kurali", "cikti_sabit_varyant",
+        "updated_by", "updated_at"])
+    _girdileri_yaz(operasyon, coz, kullanici)
+    if donustur:
+        _ciktilari_esitle(operasyon, kullanici, [(operasyon.cikti, cm, yeni_boy, None, False)])
+    else:
+        _ciktilari_esitle(operasyon, kullanici, _uret_cikti_satirlari(operasyon, yeni_yanlar))
     return operasyon
 
 

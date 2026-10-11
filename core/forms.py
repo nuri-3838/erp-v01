@@ -25,7 +25,7 @@ from core.models import (
     BankaHesap, Birim, Cari,
     CariAktivite, CariKategori, KapanisNedeni,
     CekSenet, Depo, DuranVarlik, FaturaSatir, FaturaTipi, FirmaBanka,
-    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge,
+    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge, Varyant,
     PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
     TevkifatOrani, Ulke, YatirimProjesi, YevmiyeSatir,
 )
@@ -1293,9 +1293,16 @@ class OperasyonBaslikForm(forms.Form):
                                   initial=Decimal("1"))
     boy_mm = TRDecimalField(label="Ana çıktı boyu (mm)", basamak=2, required=False,
                             help_text="Yalnız yan çıktısı olan operasyonda zorunlu: maliyet, ana ve yan çıktı boylarının oranına (miktar × boy) göre paylaştırılır.")
+    # E-5: çıktı varyant kuralı (Gelişmiş): TASI (varsayılan) / SABIT + değer (ör. fason kesim çıktısı hep YOK).
+    cikti_varyant_kurali = forms.ChoiceField(label="Çıktı varyant kuralı", choices=Operasyon.VaryantKurali.choices, required=False,
+                                             initial=Operasyon.VaryantKurali.TASI)
+    cikti_sabit_varyant = forms.ModelChoiceField(label="Çıktı sabit varyantı", queryset=Varyant.objects.none(), required=False,
+                                                 empty_label="— değer —")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["cikti_sabit_varyant"].queryset = Varyant.objects.filter(silindi=False, aktif=True).order_by("sira", "kod")
+        self.fields["cikti_sabit_varyant"].label_from_instance = lambda o: o.kod
         from core.services.uretim import aktif_istasyonlar
         self.fields["istasyon"].queryset = aktif_istasyonlar()
         self.fields["istasyon"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
@@ -1312,12 +1319,20 @@ class OperasyonGirdiSatirForm(forms.Form):
     girdi = forms.ModelChoiceField(
         label="Girdi", queryset=Stok.objects.none(), required=False, empty_label="— girdi seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)    # 6 ondalığa kadar saklanır; prepare_value derin değeri tam gösterir
+    # E-5 varyant kuralı (yalnız varyantlı girdide anlamlı; şablon JS'i varyantsızda gizler): TASI (varsayılan) / SABIT + sabit değer.
+    varyant_kurali = forms.ChoiceField(label="Varyant", choices=Operasyon.VaryantKurali.choices, required=False,
+                                       initial=Operasyon.VaryantKurali.TASI)
+    sabit_varyant = forms.ModelChoiceField(label="Sabit değer", queryset=Varyant.objects.none(), required=False, empty_label="— değer —")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["girdi"].queryset = Stok.objects.filter(silindi=False).order_by("kod")
         self.fields["girdi"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["girdi"].widget.attrs["class"] = "akilli-sec"
+        self.fields["varyant_kurali"].widget.attrs["class"] = "op-kural-sec"
+        self.fields["sabit_varyant"].queryset = Varyant.objects.filter(silindi=False, aktif=True).order_by("sira", "kod")
+        self.fields["sabit_varyant"].label_from_instance = lambda o: o.kod
+        self.fields["sabit_varyant"].widget.attrs["class"] = "op-sabit-sec"
 
     def clean(self):
         cd = super().clean()

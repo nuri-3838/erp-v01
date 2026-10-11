@@ -3199,18 +3199,31 @@ class Operasyon(TemelModel):
     class Tur(models.TextChoices):
         URET = "URET", "Üret (N girdi → 1 çıktı)"
         PARCALA = "PARCALA", "Parçala (1 girdi → N çıktı)"
+        # DÖNÜŞTÜR (E-5, docs/varyant_kararlari.md): AYNI kartın bir varyantını başka varyanta çevirir (lazer markalama: markasız ayak →
+        # sipariş markalı ayak). Çıktı satırı sürücü DEĞİLDİR (kartı üreten tanım kesim/üretim tanımı kalır); planlama motoru E-6'da
+        # istenen varyanta göre bu tanımı seçer. E-6'ya kadar PASİF: ihtiyaç hesabı/ÜS açılışı bu tanımları görmez.
+        DONUSTUR = "DONUSTUR", "Dönüştür (aynı kart: varyant → varyant)"
 
     class PayAnahtari(models.TextChoices):
         BOY = "BOY", "Boy oranı (miktar × boy)"
         ESIT = "ESIT", "Eşit (adet başı)"
         YUZDE = "YUZDE", "Yüzde (elle)"
 
+    class VaryantKurali(models.TextChoices):
+        TASI = "TASI", "Taşı (istenen çıktı varyantından)"
+        SABIT = "SABIT", "Sabit değer"
+
     istasyon = models.ForeignKey(
         IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT,
         related_name="operasyonlar")
+    # ÇIKTI varyant kuralı (E-5): TASI = çıktının varyantı planlamada istenen varyanttır (varsayılan); SABIT = hep ``cikti_sabit_varyant``
+    # (ör. fason kesim çıktısı hep YOK/markasız). Varyantsız çıktıda anlamsız. E-6'ya kadar yalnız tanım.
+    cikti_varyant_kurali = models.CharField("çıktı varyant kuralı", max_length=5, choices=VaryantKurali.choices, default=VaryantKurali.TASI)
+    cikti_sabit_varyant = models.ForeignKey(
+        "Varyant", verbose_name="çıktı sabit varyantı", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     # ÜRET: tek (ana) çıktı + isteğe bağlı yan çıktılar. PARÇALA: tek girdi, N eşit düzey çıktı (ana/yan ayrımı yok) — çıktıların TAMAMI
     # ``ciktilar`` (OperasyonCikti) tablosundadır; ``cikti`` / ``cikti_miktar`` / ``boy_mm`` o tablonun sıra 0 satırının (referans çıktı) kopyasıdır.
-    tur = models.CharField("tür", max_length=7, choices=Tur.choices, default=Tur.URET)
+    tur = models.CharField("tür", max_length=8, choices=Tur.choices, default=Tur.URET)
     # Girdi maliyetinin çıktılara paylaştırma anahtarı. ÜRET her zaman BOY (ana + yan çıktılar, miktar × boy_mm); PARÇALA: BOY / ESIT / YUZDE.
     pay_anahtari = models.CharField("maliyet pay anahtarı", max_length=5, choices=PayAnahtari.choices, default=PayAnahtari.BOY)
     cikti = models.ForeignKey(
@@ -3229,8 +3242,11 @@ class Operasyon(TemelModel):
         verbose_name_plural = "operasyonlar"
         ordering = ["istasyon__kod", "cikti__kod"]
         constraints = [
-            models.UniqueConstraint(fields=["cikti"], condition=models.Q(silindi=False),
+            # Üreten tanım (ÜRET/PARÇALA) çıktı başına tek; DÖNÜŞTÜR tanımı aynı kart için ayrıca tek (kesim + lazer markalama birlikte olabilir).
+            models.UniqueConstraint(fields=["cikti"], condition=models.Q(silindi=False) & ~models.Q(tur="DONUSTUR"),
                                     name="uq_operasyon_cikti_aktif"),
+            models.UniqueConstraint(fields=["cikti"], condition=models.Q(silindi=False, tur="DONUSTUR"),
+                                    name="uq_operasyon_donustur_cikti_aktif"),
             models.CheckConstraint(condition=models.Q(cikti_miktar__gt=0),
                                    name="ck_operasyon_cikti_miktar_gt0"),
             models.CheckConstraint(condition=models.Q(boy_mm__isnull=True) | models.Q(boy_mm__gt=0),
@@ -3322,6 +3338,13 @@ class OperasyonGirdi(TemelModel):
         related_name="operasyon_girdi_kullanimlari")
     miktar = models.DecimalField("miktar (1 çalıştırma için)", max_digits=18, decimal_places=6)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
+    # GİRDİ varyant kuralı (E-5): TASI = girdinin varyantı, istenen çıktı varyantından o kartın boyutlarıyla türetilir (varsayılan);
+    # SABIT = hep ``sabit_varyant`` (ör. çift çıkış montajında 2. birleştirilmiş ön ayak hep YOK/markasız; lazer markalama girdisi YOK).
+    # Aynı kart aynı tanımda TASI + SABIT satırlarıyla iki kez yer alabilir (tekillik kurala göre). Varyantsız girdide anlamsız.
+    varyant_kurali = models.CharField("varyant kuralı", max_length=5, choices=Operasyon.VaryantKurali.choices,
+                                      default=Operasyon.VaryantKurali.TASI)
+    sabit_varyant = models.ForeignKey(
+        "Varyant", verbose_name="sabit varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
 
     class Meta:
         db_table = "core_operasyon_girdi"
@@ -3332,8 +3355,11 @@ class OperasyonGirdi(TemelModel):
             models.CheckConstraint(condition=models.Q(miktar__gt=0),
                                    name="ck_operasyon_girdi_miktar_gt0"),
             models.UniqueConstraint(fields=["operasyon", "girdi"],
-                                    condition=models.Q(silindi=False),
+                                    condition=models.Q(silindi=False, varyant_kurali="TASI"),
                                     name="uq_operasyon_girdi_aktif"),
+            models.UniqueConstraint(fields=["operasyon", "girdi", "sabit_varyant"],
+                                    condition=models.Q(silindi=False, varyant_kurali="SABIT"),
+                                    name="uq_operasyon_girdi_sabit_aktif"),
         ]
 
     def __str__(self):

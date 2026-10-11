@@ -144,7 +144,7 @@
         <section class="icerik-kart">
           <h2 class="bolum-baslik">Girdiler</h2>
           <table class="op-tablo">
-            <thead><tr><th>Stok</th><th>Miktar</th><th>Birim</th><th></th></tr></thead>
+            <thead><tr><th>Stok</th><th>Miktar</th><th>Birim</th><th>Varyant</th><th></th></tr></thead>
             <tbody id="satir-govde">
               {% for f in formset %}
                 <tr>
@@ -153,6 +153,7 @@
                     <div class="op-uyari" hidden>Bu stok zaten girdi olarak seçildi.</div></td>
                   <td data-et="Miktar" class="op-miktar-h">{{ f.miktar }}{% for e in f.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                   <td data-et="Birim"><span class="op-birim mono">—</span></td>
+                  <td data-et="Varyant" class="op-kural" hidden>{{ f.varyant_kurali }}{{ f.sabit_varyant }}{% for e in f.sabit_varyant.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                   <td class="op-sil-h"><button type="button" class="op-sil" title="Satırı sil">🗑</button></td>
                 </tr>
               {% endfor %}
@@ -171,7 +172,17 @@
             <select name="tur" id="id_tur" class="op-tur">
               <option value="URET"{% if tur != "PARCALA" %} selected{% endif %}>Üret — N girdi → 1 çıktı (+ yan çıktılar)</option>
               <option value="PARCALA"{% if tur == "PARCALA" %} selected{% endif %}>Parçala — 1 girdi → N eşit düzey çıktı</option>
+              <option value="DONUSTUR"{% if tur == "DONUSTUR" %} selected{% endif %}>Dönüştür — aynı kart: varyant → varyant (lazer markalama)</option>
             </select>
+          </div>
+          <div class="alan op-cikti-kural" style="max-width:34rem">
+            <label for="id_cikti_varyant_kurali">Çıktı varyant kuralı <span class="yardim">(yalnız varyantlı çıktıda; E-6 planlama motoruna kadar yalnız tanım)</span></label>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <select name="cikti_varyant_kurali" id="id_cikti_varyant_kurali">{% for k, ad in kural_secenekleri %}<option value="{{ k }}"{% if k == cikti_kurali %} selected{% endif %}>{{ ad }}</option>{% endfor %}</select>
+              <select name="cikti_sabit_varyant" id="id_cikti_sabit_varyant"><option value="">— değer —</option>{% for v in varyant_degerleri %}<option value="{{ v.pk }}"{% if v.pk == cikti_sabit_id %} selected{% endif %}>{{ v.kod }}</option>{% endfor %}</select>
+            </div>
+            <p class="yardim">TAŞI: çıktının varyantı planlamada istenen varyanttır. SABİT: çıktı hep seçilen değer (ör. fason kesim → YOK/markasız).
+              Dönüştür tanımında dönüşen girdi SABİT (YOK), çıktı TAŞI olur.</p>
           </div>
 
         <div class="op-alt" id="parcala-bolum"{% if tur != "PARCALA" %} hidden{% endif %}>
@@ -253,6 +264,7 @@
       <td data-et="Stok"><div class="akilli">{{ formset.empty_form.girdi }}</div><div class="op-uyari" hidden>Bu stok zaten girdi olarak seçildi.</div></td>
       <td data-et="Miktar" class="op-miktar-h">{{ formset.empty_form.miktar }}</td>
       <td data-et="Birim"><span class="op-birim mono">—</span></td>
+      <td data-et="Varyant" class="op-kural" hidden>{{ formset.empty_form.varyant_kurali }}{{ formset.empty_form.sabit_varyant }}</td>
       <td class="op-sil-h"><button type="button" class="op-sil" title="Satırı sil">🗑</button></td>
     </template>
     <template id="bos-pc">
@@ -316,8 +328,10 @@
 
   function girdiSatirlari(){
     return Array.prototype.map.call(satirGovde.querySelectorAll('tr'), function(tr){
-      var sel = tr.querySelector('select[name$="-girdi"]'), mik = tr.querySelector('input[name$="-miktar"]');
-      return {tr: tr, sel: sel, mik: mik, stok: sel ? sel.value : '', b: sel ? bilgi(sel.value) : null, miktar: mik ? sayi(mik.value) : null};
+      var sel = tr.querySelector('select[name$="-girdi"]'), mik = tr.querySelector('input[name$="-miktar"]'),
+          kr = tr.querySelector('select[name$="-varyant_kurali"]'), sv = tr.querySelector('select[name$="-sabit_varyant"]');
+      return {tr: tr, sel: sel, mik: mik, stok: sel ? sel.value : '', b: sel ? bilgi(sel.value) : null, miktar: mik ? sayi(mik.value) : null,
+              anahtar: (sel ? sel.value : '') + '|' + (kr ? kr.value : '') + '|' + (sv ? sv.value : '')};
     });
   }
   function pcSatirlari(){
@@ -351,10 +365,11 @@
     var girdiler = girdiSatirlari(), yanlar = parcala ? [] : yanSatirlari();
     // 1) satır birimi (otomatik) + aynı stok iki kez uyarısı
     var sayac = {};
-    girdiler.forEach(function(g){ if (g.stok) sayac[g.stok] = (sayac[g.stok] || 0) + 1; });
+    girdiler.forEach(function(g){ if (g.stok) sayac[g.anahtar] = (sayac[g.anahtar] || 0) + 1; });
     girdiler.forEach(function(g){
       var birim = g.tr.querySelector('.op-birim'); if (birim) birim.textContent = g.b ? g.b.b : '—';
-      var uyari = g.tr.querySelector('.op-uyari'); if (uyari) uyari.hidden = !(g.stok && sayac[g.stok] > 1);
+      var kural = g.tr.querySelector('.op-kural'); if (kural) kural.hidden = !(g.b && g.b.v);      // yalnız varyantlı girdide
+      var uyari = g.tr.querySelector('.op-uyari'); if (uyari) uyari.hidden = !(g.stok && sayac[g.anahtar] > 1);
     });
     // 2) tam boy (girdilerden biri BOY birimli) → rozet + miktar etiketi + özet
     if (!tamElle) tamKutu.checked = girdiler.some(function(g){ return g.b && g.b.boy; });   // varsayılan: BOY girdisi varsa işaretli
