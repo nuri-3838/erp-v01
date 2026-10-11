@@ -107,6 +107,7 @@ from core.services import banka_hareket as banka_hareket_servis
 from core.services import bordro as bordro_servis
 from core.services import finans_ozet as finans_ozet_servis
 from core.services import kdv_mahsup as kdv_servis
+from core.services import stok_ayirma as stok_ayirma_servis
 from core.services import kk_donem as kk_donem_servis
 from core.services import doviz_islem as doviz_islem_servis
 from core.services import kur_degerleme as kur_degerleme_servis
@@ -914,6 +915,9 @@ def stoklar(request):
             | Q(kategori__ad__contains=buyuk) | Q(kategori__ust__ad__contains=buyuk))
     if kategori_id:
         qs = qs.filter(kategori_id=kategori_id)
+    mamul = request.GET.get("mamul") == "1"
+    if mamul:
+        qs = qs.filter(kod__startswith="152-")               # yalnız mamuller (152 stok hesabı ailesi)
     # Filtre seçenekleri yalnız en az bir stokta fiilen kullanılan ALT kategorilerden
     # oluşur (bkz. aday müşteri listesindeki aynı desen) — tüm kategori master verisini
     # değil, ekrandaki gerçek veriyi yansıtır.
@@ -921,14 +925,31 @@ def stoklar(request):
         silindi=False, pk__in=stok_servis.aktif_stoklar().exclude(kategori=None).values("kategori_id")
     ).select_related("ust").order_by("ust__ad", "ad")
     stok_listesi = list(qs)
-    eldeki = hareket_servis.toplu_eldeki(s.pk for s in stok_listesi)
+    idler = [s.pk for s in stok_listesi]
+    eldeki = hareket_servis.toplu_eldeki(idler)
+    kul = stok_ayirma_servis.toplu_kullanilabilir(idler, eldeki=eldeki)         # mevcut ayırma/kullanılabilir hesabı (sabit sorgu)
+    ayirma_detay = _ayirma_detaylari(idler)                                      # ÜS bazında dağılım: tek sorgu
     for s in stok_listesi:
         s.eldeki = eldeki.get(s.pk, hareket_servis.SIFIR)
         s.hizmet = s.kategori.hizmet_kategorisi
+        s.ayrilan, s.kullanilabilir = kul[s.pk]["ayrilan"], kul[s.pk]["kullanilabilir"]
+        s.ayirma_detay = ayirma_detay.get(s.pk, [])
     return render(request, "core/stok_listesi.html", {
         "stoklar": stok_listesi, "ara": ara, "secili_kategori": kategori_id,
-        "kategoriler": kategoriler,
+        "kategoriler": kategoriler, "mamul": mamul,
     })
+
+
+def _ayirma_detaylari(stok_idler) -> dict:
+    """{stok id: [{"emir", "musteri", "miktar"}]} — açık ÜS ayırmaları (tek sorgu, select_related)."""
+    sonuc = {}
+    qs = (stok_ayirma_servis.acik_ayirmalar().filter(stok_id__in=list(stok_idler))
+          .select_related("uretim_emri", "uretim_emri__kaynak_siparis__cari", "uretim_emri__kaynak_siparis__aday_musteri").order_by("uretim_emri__no"))
+    for a in qs:
+        sip = a.uretim_emri.kaynak_siparis
+        musteri = sip.cari.unvan if sip is not None and sip.cari_id else ("Stok için üretim" if sip is None else (sip.aday_musteri.unvan if sip.aday_musteri_id else "—"))
+        sonuc.setdefault(a.stok_id, []).append({"emir": a.uretim_emri, "musteri": musteri, "miktar": a.miktar})
+    return sonuc
 
 
 @ekran_gerekli("stoklar")
@@ -1099,8 +1120,10 @@ def stok_detay(request, pk):
     from core.services.stok_ortalama import fiyatsiz_girisli_stoklar
     maliyet_belirsiz = (not hizmet and stok.ort_maliyet_try is not None and stok.ort_maliyet_try == 0
                         and stok.pk in fiyatsiz_girisli_stoklar([stok.pk]))
+    kul = stok_ayirma_servis.toplu_kullanilabilir([stok.pk], eldeki={stok.pk: eldeki})[stok.pk]
     return render(request, "core/stok_detay.html", {
         "stok": stok, "eldeki": eldeki, "hizmet": hizmet, "maliyet_belirsiz": maliyet_belirsiz,
+        "ayrilan": kul["ayrilan"], "kullanilabilir": kul["kullanilabilir"], "ayirma_detay": _ayirma_detaylari([stok.pk]).get(stok.pk, []),
         "kritik_alti": (not hizmet) and stok.kritik_stok > 0 and eldeki < stok.kritik_stok,
         # Yalnız stoğu OLAN depolar — net 0'a inmiş depo "stok nerede" sorusunda gürültüdür
         # (geçmişi hareket defterinde zaten görünür).

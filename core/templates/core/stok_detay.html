@@ -91,6 +91,11 @@
         {% if stok.satis_urunu %}<span class="d-rozet tip">📤 Satış</span>{% endif %}
         {% if hizmet %}<span class="d-rozet tip">🧾 Hizmet kartı — stok tutulmaz</span>{% endif %}
         {% if kritik_alti %}<span class="d-rozet uyari">⚠️ Kritik seviyenin altında</span>{% endif %}
+        {% if not hizmet %}
+          <span class="d-rozet tip" title="Tüm depoların toplamı">📦 Mevcut {{ eldeki|tr_kur:3 }}</span>
+          <span class="d-rozet tip" title="{% for d in ayirma_detay %}{{ d.emir.no }} · {{ d.musteri }} · {{ d.miktar|tr_kur:3 }}{% if not forloop.last %}; {% endif %}{% endfor %}">🔒 Ayrılan {% if ayrilan %}{{ ayrilan|tr_kur:3 }}{% else %}—{% endif %}</span>
+          <span class="d-rozet {% if kullanilabilir < 0 %}uyari{% else %}tip{% endif %}">✅ Kullanılabilir {{ kullanilabilir|tr_kur:3 }}</span>
+        {% endif %}
       </div>
       <div class="detay-ad">{{ stok.ad }}</div>
       <div class="detay-alt">{{ stok.kategori.ust.ad }} → {{ stok.kategori.ad }}</div>

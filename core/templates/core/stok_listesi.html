@@ -49,6 +49,14 @@
   #stk-tablo tbody tr:hover .stk-ok { color:var(--turuncu-koyu); opacity:1; }
 
   .stk-satir[hidden] { display:none; }
+  .stk-eksi { color:var(--hata); font-weight:700; }
+  .stk-ayr { position:relative; }
+  .stk-ayr-dugme { border:none; background:none; font:inherit; color:var(--turuncu-koyu); cursor:pointer; text-decoration:underline dotted; }
+  .stk-ayr-pop { position:absolute; right:0; top:100%; z-index:20; min-width:16rem; text-align:left; font-family:inherit; font-size:.82rem;
+    background:var(--kart, #fff); border:1px solid rgba(0,0,0,.15); border-radius:8px; padding:.5rem .7rem; box-shadow:0 6px 18px rgba(0,0,0,.18); }
+  .stk-ayr-pop[hidden] { display:none; }
+  .stk-ayr-pop div { padding:.15rem 0; }
+  .stk-mamul-etiket { display:flex; align-items:center; gap:.4rem; font-weight:600; padding:.55rem 0; }
   .stk-bos-js { display:none; }
   .stk-bos-js.gorunur { display:table-row; }
 </style>
@@ -76,9 +84,13 @@
         {% endfor %}
       </select>
     </div>
+    <div class="stk-alan-grup">
+      <label for="stk-mamul">Hızlı filtre</label>
+      <label class="stk-mamul-etiket"><input type="checkbox" id="stk-mamul" name="mamul" value="1" {% if mamul %}checked{% endif %} onchange="this.form.submit()"> Yalnız mamuller (152)</label>
+    </div>
     <div class="stk-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
-      <a class="iptal-bag stk-arama-temizle{% if ara or secili_kategori %} gorunur{% endif %}" id="stk-arama-temizle"
+      <a class="iptal-bag stk-arama-temizle{% if ara or secili_kategori or mamul %} gorunur{% endif %}" id="stk-arama-temizle"
          href="{% url 'core:stoklar' %}">Temizle</a>
     </div>
   </form>
@@ -92,7 +104,7 @@
 <table id="stk-tablo">
   <thead>
     <tr>
-      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th><th class="sag">Mevcut Miktar</th><th></th>
+      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th><th class="sag">Mevcut Miktar</th><th class="sag">Ayrılan</th><th class="sag">Kullanılabilir</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -110,15 +122,21 @@
         <td><span class="rozet rozet-notr">{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</span></td>
         <td>{{ s.uretim_birimi.kisa_ad }}</td>
         <td class="sag mono" data-arama-disi>{% if s.hizmet %}<span class="rozet rozet-notr" title="Hizmet kartı — stok tutulmaz">Hizmet</span>{% else %}{{ s.eldeki|tr_kur:3 }}{% endif %}</td>
+        <td class="sag mono stk-ayr" data-arama-disi>{% if s.hizmet or not s.ayrilan %}<span class="pasif">—</span>{% else %}
+          <button type="button" class="stk-ayr-dugme" onclick="event.stopPropagation();var p=this.nextElementSibling;var ac=p.hidden;document.querySelectorAll('.stk-ayr-pop').forEach(function(x){x.hidden=true});p.hidden=!ac;">{{ s.ayrilan|tr_kur:3 }} ▾</button>
+          <div class="stk-ayr-pop" hidden onclick="event.stopPropagation()">
+            {% for d in s.ayirma_detay %}<div><a href="{% url 'core:uretim_emri_detay' d.emir.pk %}">{{ d.emir.no }}</a> · {{ d.musteri }} · <strong>{{ d.miktar|tr_kur:3 }}</strong></div>{% endfor %}
+          </div>{% endif %}</td>
+        <td class="sag mono{% if not s.hizmet and s.kullanilabilir < 0 %} stk-eksi{% endif %}" data-arama-disi>{% if s.hizmet %}<span class="pasif">—</span>{% else %}{{ s.kullanilabilir|tr_kur:3 }}{% endif %}</td>
         <td class="stk-ok">›</td>
       </tr>
     {% empty %}
-      <tr style="cursor:default"><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if ara or secili_kategori %}🔍 Bu süzgeçle eşleşen stok yok.
         {% else %}📦 Henüz stok yok. “+ Yeni Stok” ile ekleyin.
           (Önce en az bir <strong>alt kategori</strong> tanımlı olmalı.){% endif %}</td></tr>
     {% endfor %}
-    <tr class="stk-bos-js" style="cursor:default"><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">
+    <tr class="stk-bos-js" style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
       🔍 Bu süzgeçle eşleşen stok yok.</td></tr>
   </tbody>
 </table>
