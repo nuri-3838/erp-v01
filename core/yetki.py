@@ -30,6 +30,15 @@ def mesai_kullanicisi_mi(user) -> bool:
     return Personel.objects.filter(kullanici=user, silindi=False).exists()
 
 
+def atolye_kullanicisi_mi(user) -> bool:
+    """Atölye operatörü: personel kartına bağlı, yönetici olmayan ve ekran yetkileri yalnız ``atolye`` olan hesap — giriş sonrası doğrudan
+    /atolye/ ekranına yönlendirilir (menü/ofis ekranları yok). Başka ekran yetkisi de olan kullanıcı normal panoya düşer."""
+    if not mesai_kullanicisi_mi(user):
+        return False
+    kodlar = _izinli_kodlar(user)
+    return bool(kodlar) and kodlar <= {"atolye"}
+
+
 def kullanici_telefon(user) -> str:
     """Kullanıcının profil.telefon'u (Profil satırı yoksa boş döner)."""
     try:

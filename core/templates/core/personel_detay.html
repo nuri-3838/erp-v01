@@ -260,9 +260,15 @@
         <div class="satir"><span class="et">Durum</span><span class="dg">
           {% if p.kullanici.is_active %}<span class="rozet rozet-aktif">Aktif</span>{% else %}<span class="rozet rozet-pasif">Kapalı</span>{% endif %}
         </span></div>
+        <div class="satir"><span class="et">Atölye operatörü</span><span class="dg">
+          {% if atolye_operator %}<span class="rozet rozet-aktif">Evet</span> <span class="yardim">giriş sonrası /atolye/ ekranı (mesai + Üretildi)</span>{% else %}<span class="rozet rozet-notr">Hayır</span> <span class="yardim">yalnız Mesaim ekranı</span>{% endif %}
+        </span></div>
       </div>
       <div class="detay-aksiyon" style="margin-top:.8rem">
         <a class="dugme-ikincil" href="{% url 'core:mesai_sifre_sifirla' p.pk %}">Şifre Sıfırla</a>
+        <form method="post" action="{% url 'core:mesai_hesap_atolye' p.pk %}" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme-ikincil">{% if atolye_operator %}Atölye Yetkisini Kaldır{% else %}Atölye Operatörü Yap{% endif %}</button>
+        </form>
         <form method="post" action="{% url 'core:mesai_hesap_durum' p.pk %}" style="margin:0"
               onsubmit="return confirm('{% if p.kullanici.is_active %}Mesai hesabı kapatılsın mı? Personel kendi telefonundan mesai başlatamayacak.{% else %}Mesai hesabı yeniden açılsın mı?{% endif %}');">
           {% csrf_token %}<button type="submit" class="{% if p.kullanici.is_active %}sil{% else %}dugme-ikincil{% endif %}">{% if p.kullanici.is_active %}Hesabı Kapat{% else %}Hesabı Aç{% endif %}</button>

@@ -1,0 +1,59 @@
+{% load core_extras %}<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>{% block baslik %}Atölye · SEMTA{% endblock %}</title>
+  <style>
+    :root { --lacivert:#15294d; --turuncu:#f07c00; --yesil:#0b6b3f; --kirmizi:#b1122c; --gri:#f3f5f9; --cizgi:#d7dde8; --soluk:#5b6678; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:-apple-system, "Segoe UI", Roboto, Inter, Arial, sans-serif; background:var(--gri); color:#1c2433; font-size:18px; }
+    .at-ust { background:var(--lacivert); color:#fff; padding:.75rem 1rem; display:flex; justify-content:space-between; align-items:center; gap:.6rem; position:sticky; top:0; z-index:5; }
+    .at-ust .ad { font-weight:800; font-size:1.05rem; }
+    .at-ust .alt { font-size:.85rem; opacity:.85; }
+    .at-ust a { color:#fff; text-decoration:none; font-weight:700; font-size:.95rem; border:1px solid rgba(255,255,255,.5); border-radius:10px; padding:.45rem .7rem; }
+    .at-govde { max-width:640px; margin:0 auto; padding:1rem; display:flex; flex-direction:column; gap:1rem; }
+    .at-mesaj { border-radius:16px; padding:1rem 1.1rem; font-size:1.15rem; font-weight:700; line-height:1.35; }
+    .at-mesaj.error { background:#ffe3e6; color:var(--kirmizi); border:2px solid var(--kirmizi); }
+    .at-mesaj.success { background:#def7ea; color:var(--yesil); border:2px solid var(--yesil); }
+    .at-mesaj.warning, .at-mesaj.info { background:#fff1dd; color:#8a4b00; border:2px solid var(--turuncu); }
+    .at-buton { display:block; width:100%; min-height:5.5rem; border:none; border-radius:22px; font-size:1.4rem; font-weight:800; color:#fff; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.15); }
+    .at-buton.baslat { background:linear-gradient(135deg,#1fbf75,#0b6b3f); }
+    .at-buton.bitir { background:linear-gradient(135deg,#ff6b6b,#b1122c); min-height:3.6rem; font-size:1.1rem; }
+    .at-buton.ikincil { background:#fff; color:var(--lacivert); border:2px solid var(--cizgi); box-shadow:none; min-height:3.4rem; font-size:1.05rem; }
+    .at-kart { background:#fff; border:1px solid var(--cizgi); border-radius:18px; padding:1rem; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+    .at-baslik { font-size:1.15rem; font-weight:800; color:var(--lacivert); margin:0 0 .6rem; }
+    .at-ist { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+    .at-ist a { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:5.2rem; background:#fff; border:2px solid var(--cizgi); border-radius:18px; text-decoration:none; color:var(--lacivert); font-weight:800; font-size:1.05rem; text-align:center; padding:.6rem; }
+    .at-ist a .kod { font-size:1.5rem; color:var(--turuncu); }
+    .at-emir { border-left:6px solid var(--turuncu); }
+    .at-emir .ust { display:flex; justify-content:space-between; gap:.6rem; font-size:.9rem; color:var(--soluk); font-weight:700; }
+    .at-emir .urun { font-size:1.12rem; font-weight:800; margin:.3rem 0; }
+    .at-emir .varyant { display:inline-block; background:#fff1dd; color:#8a4b00; border-radius:8px; padding:.1rem .5rem; font-size:.9rem; font-weight:800; }
+    .at-sayilar { display:flex; gap:.5rem; margin:.6rem 0; }
+    .at-sayilar div { flex:1; background:var(--gri); border-radius:12px; padding:.5rem; text-align:center; }
+    .at-sayilar .et { font-size:.75rem; color:var(--soluk); font-weight:700; text-transform:uppercase; }
+    .at-sayilar .dg { font-size:1.35rem; font-weight:800; }
+    .at-sayilar .kalan .dg { color:var(--turuncu); }
+    .at-form { display:flex; gap:.6rem; align-items:stretch; }
+    .at-form input { flex:1; min-width:0; font-size:1.6rem; font-weight:800; text-align:center; border:2px solid var(--cizgi); border-radius:14px; padding:.5rem; }
+    .at-form button { flex:1.4; border:none; border-radius:14px; background:linear-gradient(135deg,#ffa63d,#f07c00); color:#fff; font-size:1.25rem; font-weight:800; cursor:pointer; }
+    .at-geri { margin-top:.6rem; display:flex; justify-content:space-between; align-items:center; gap:.6rem; font-size:.95rem; color:var(--soluk); }
+    .at-geri button { background:#fff; color:var(--kirmizi); border:2px solid var(--kirmizi); border-radius:12px; padding:.5rem .8rem; font-weight:800; font-size:.95rem; cursor:pointer; }
+    .at-bos { text-align:center; color:var(--soluk); padding:2rem 0; font-size:1.05rem; }
+    .at-yardim { font-size:.9rem; color:var(--soluk); text-align:center; }
+  </style>
+</head>
+<body>
+  <header class="at-ust">
+    <div><div class="ad">{{ personel.ad_soyad }}</div>
+      <div class="alt">{% if acik_kayit %}Mesai açık · {{ acik_kayit.giris_zamani|tr_zaman:"H:i" }}{% else %}Mesai kapalı{% endif %}{% block ust_alt %}{% endblock %}</div></div>
+    <div>{% block ust_sag %}{% endblock %}</div>
+  </header>
+  <main class="at-govde">
+    {% if messages %}{% for m in messages %}<div class="at-mesaj {{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
+    {% block icerik %}{% endblock %}
+  </main>
+  {% block js %}{% endblock %}
+</body>
+</html>

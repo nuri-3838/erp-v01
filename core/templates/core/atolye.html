@@ -1,0 +1,45 @@
+{% extends "core/atolye_base.html" %}
+{% block ust_sag %}{% if acik_kayit %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.95rem;padding:0 .8rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
+
+{% block icerik %}
+{% if not calisiyor %}
+  <div class="at-mesaj error">Artık çalışmıyorsunuz; mesai başlatamazsınız.</div>
+{% elif not acik_kayit %}
+  <form method="post" action="{% url 'core:atolye_mesai' %}">
+    {% csrf_token %}<input type="hidden" name="eylem" value="baslat">
+    <button type="submit" class="at-buton baslat">▶ MESAİYİ BAŞLAT</button>
+  </form>
+  <p class="at-yardim">Yalnızca fabrika Wi-Fi'ına bağlıyken başlatılabilir. Mesai açılmadan üretim girilemez.</p>
+{% else %}
+  <section class="at-kart">
+    <h2 class="at-baslik">İstasyonunuzu seçin</h2>
+    <div class="at-ist" id="istasyonlar">
+      {% for i in istasyonlar %}
+        <a href="{% url 'core:atolye_istasyon' i.pk %}" data-pk="{{ i.pk }}"><span class="kod">{{ i.kod }}</span><span>{{ i.ad }}</span></a>
+      {% empty %}
+        <p class="at-bos">Tanımlı istasyon yok.</p>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block js %}
+<script>
+(function(){
+  // Seçilen istasyon cihazda hatırlanır: mesai açıkken ve kullanıcı "İstasyon değiştir" demediyse (?sec=1) doğrudan o istasyona geçilir.
+  try {
+    var pk = localStorage.getItem('atolyeIstasyon');
+    var secimEkrani = location.search.indexOf('sec=1') >= 0;
+    var kutu = document.getElementById('istasyonlar');
+    if (kutu && pk && !secimEkrani) {
+      var a = kutu.querySelector('a[data-pk="' + pk + '"]');
+      if (a) { location.replace(a.getAttribute('href')); return; }
+    }
+    if (kutu) kutu.querySelectorAll('a[data-pk]').forEach(function(a){
+      a.addEventListener('click', function(){ try { localStorage.setItem('atolyeIstasyon', a.dataset.pk); } catch(e){} });
+    });
+  } catch (e) {}
+})();
+</script>
+{% endblock %}

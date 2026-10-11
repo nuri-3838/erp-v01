@@ -121,6 +121,7 @@ from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import uretim as uretim_servis
 from core.services import planlama_varyant as planlama_varyant_servis
+from core.services import atolye as atolye_servis
 from core.services import stok_maliyet
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
@@ -143,7 +144,7 @@ from core.ip import istemci_ip
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir,
-    kullanici_telefon, mesai_kullanicisi_mi, yonetici_gerekli, yonetici_mi,
+    atolye_kullanicisi_mi, kullanici_telefon, mesai_kullanicisi_mi, yonetici_gerekli, yonetici_mi,
 )
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
@@ -168,6 +169,8 @@ def pano(request):
     """Giriş sonrası açılan PANO (dashboard). Şimdilik karşılama;
     ileride özet/grafik eklenecek (yol haritası). Mesai kullanıcısı (self-servis, EkranYetki'siz)
     doğrudan kendi /mesai/ sayfasına yönlendirilir — LOGIN_REDIRECT_URL hep buraya düştüğü için."""
+    if atolye_kullanicisi_mi(request.user):
+        return redirect("core:atolye")
     if mesai_kullanicisi_mi(request.user):
         return redirect("core:mesaim")
     return render(request, "core/pano.html")
@@ -7774,7 +7777,8 @@ def operasyon_kayitlari(request):
     if sekme == "taslak" and not taslak_sekmesi:
         sekme = "onayli"
     taban = OperasyonKaydi.objects.filter(Q(silindi=False) | Q(geri_alan__isnull=False))        # Tümü: geri alınan (soft-silinmiş) kayıtlar da
-    kayitlar = (taban.select_related("operasyon__istasyon", "operasyon__cikti", "uretim_emri", "istasyon_emri", "fason_donus", "geri_alan")
+    kayitlar = (taban.select_related("operasyon__istasyon", "operasyon__cikti", "uretim_emri", "istasyon_emri", "fason_donus", "geri_alan",
+                                     "personel", "created_by")
                 .order_by("-yil", "-sira"))
     if sekme == "taslak":
         kayitlar = kayitlar.filter(silindi=False, durum=OperasyonKaydi.Durum.TASLAK)
@@ -8961,6 +8965,7 @@ def personel_detay(request, pk):
         ctx["devam_ay_param"] = f"{bugun.year:04d}-{bugun.month:02d}"
     if yonetici_mi(request.user):
         ctx["mesai_hesap_gorebilir"] = True
+        ctx["atolye_operator"] = atolye_servis.operator_mu(p)
     return render(request, "core/personel_detay.html", ctx)
 
 
@@ -9559,6 +9564,91 @@ def mesai_hesap_durum(request, pk):
         except mesai_hesap_servis.MesaiHesapHatasi as e:
             messages.error(request, str(e))
     return redirect("core:personel_detay", pk=p.pk)
+
+
+@yonetici_gerekli
+def mesai_hesap_atolye(request, pk):
+    """Personel kartı: "Atölye operatörü" yetkisini verir/kaldırır (EkranYetki 'atolye'; toggle, POST only)."""
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            acik = atolye_servis.operator_ayarla(p, not atolye_servis.operator_mu(p), yapan=request.user)
+            messages.success(request, "Atölye operatörü yetkisi verildi." if acik else "Atölye operatörü yetkisi kaldırıldı.")
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:personel_detay", pk=p.pk)
+
+
+# --- ATÖLYE (operatör ekranı: mesai → istasyon → Üretildi; bkz. core.services.atolye) ---
+def _atolye_baglam(request):
+    try:
+        d = atolye_servis.durum(request.user)
+    except atolye_servis.AtolyeHatasi as e:
+        raise PermissionDenied(str(e))
+    return d
+
+
+@ekran_gerekli("atolye")
+@never_cache
+def atolye(request):
+    d = _atolye_baglam(request)
+    return render(request, "core/atolye.html", {**d, "istasyonlar": atolye_servis.istasyonlar()})
+
+
+@ekran_gerekli("atolye")
+def atolye_mesai(request):
+    if request.method == "POST":
+        ip = istemci_ip(request)
+        try:
+            if request.POST.get("eylem") == "baslat":
+                atolye_servis.mesai_baslat(request.user, ip)
+                messages.success(request, "Mesai başlatıldı. İstasyonunuzu seçin.")
+            elif request.POST.get("eylem") == "bitir":
+                atolye_servis.mesai_bitir(request.user, ip)
+                messages.success(request, "Mesai bitirildi. İyi günler.")
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, str(e))
+    return redirect(f"{reverse('core:atolye')}?sec=1")
+
+
+@ekran_gerekli("atolye")
+@never_cache
+def atolye_istasyon(request, pk):
+    d = _atolye_baglam(request)
+    istasyon = get_object_or_404(IsIstasyonu, pk=pk, silindi=False, fason=False)
+    if d["acik_kayit"] is None:
+        messages.error(request, "Önce mesainizi başlatın; mesai açık değilken üretim girilemez.")
+        return redirect(f"{reverse('core:atolye')}?sec=1")
+    return render(request, "core/atolye_istasyon.html", {**d, "istasyon": istasyon, "emirler": atolye_servis.acik_emirler(istasyon, request.user)})
+
+
+@ekran_gerekli("atolye")
+def atolye_uret(request, pk):
+    ie = get_object_or_404(IstasyonEmri.objects.select_related("istasyon", "operasyon__cikti"), pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            kayit, uyari, miktar = atolye_servis.uret(request.user, ie, request.POST.get("miktar"), istemci_ip(request))
+            messages.success(request, f"✅ {ie.operasyon.cikti.kod}: {miktar.normalize():f} adet yazıldı · {kayit.no}")
+            if uyari:
+                messages.warning(request, uyari)
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, f"❌ {ie.operasyon.cikti.kod}: {e}")
+    return redirect(f"{reverse('core:atolye_istasyon', args=[ie.istasyon_id])}#ie-{ie.pk}")
+
+
+@ekran_gerekli("atolye")
+def atolye_geri_al(request, pk):
+    kayit = get_object_or_404(OperasyonKaydi.objects.select_related("istasyon_emri", "uretim_emri", "operasyon__cikti"), pk=pk, silindi=False)
+    ie = kayit.istasyon_emri
+    if request.method == "POST":
+        try:
+            atolye_servis.geri_al(request.user, kayit, istemci_ip(request))
+            messages.success(request, f"↶ {kayit.no} geri alındı ({kayit.operasyon.cikti.kod}).")
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, f"❌ {e}")
+    if ie is None:
+        return redirect("core:atolye")
+    return redirect(f"{reverse('core:atolye_istasyon', args=[ie.istasyon_id])}#ie-{ie.pk}")
 
 
 # --- Mesaim (personelin kendisi, mobil öncelikli) ---

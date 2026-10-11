@@ -1338,7 +1338,8 @@ def kayit_fazla_uyarisi(kayit: OperasyonKaydi) -> str:
 
 
 @transaction.atomic
-def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=None, aciklama="", kullanici=None) -> OperasyonKaydi:
+def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=None, aciklama="", kullanici=None,
+                           personel=None, mesai_kaydi=None) -> OperasyonKaydi:
     """İstasyon emrinden TASLAK operasyon kaydı açar (``uretim_emri`` + ``istasyon_emri`` bağlı). ``hedef`` (referans çıktı adedi) verilmezse
     açık kalan çalıştırma × referans miktar; kalan yoksa hedef zorunlu. Hedef kalanı AŞABİLİR (uyarı: ``kayit_fazla_uyarisi``; fazlası serbest stok).
     Emir satırı kilitlenir (aynı emirden eş zamanlı iki açılış kalanı iki kez kullanmasın). Yalnız açık ÜS'nin bitmemiş/iptal olmamış emri için."""
@@ -1362,7 +1363,8 @@ def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=
                                f"emri): en çok {izin.normalize():f} üretilebilir, {h.normalize():f} istendi.")
     kayit = operasyon_kaydi_olustur(
         operasyon_id=ie.operasyon_id, depo_id=depo_id or emir.depo_id, tarih=tarih or timezone.localdate(), hedef_cikti_miktari=hedef,
-        uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici, cikti_varyant=ie.cikti_varyant)
+        uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici, cikti_varyant=ie.cikti_varyant,
+        personel=personel, mesai_kaydi=mesai_kaydi)
     istasyon_emri_durum_guncelle(ie)
     return kayit
 
@@ -1392,7 +1394,7 @@ def _eksik_mesaji(mesaj: str) -> str:
 
 
 @transaction.atomic
-def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=None):
+def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=None, personel=None, mesai_kaydi=None):
     """TEK TIKLA ÜRETİM ("Üretildi"): istasyon emrinden operasyon kaydı açar (girdi/çıktı operasyon tanımından, miktar oranlı) ve MEVCUT onay servisiyle
     hemen ONAYLAR — hepsi tek işlemde; stok yetersizliği vb. bir hata olursa kayıt da dahil hiçbir şey kalmaz. ``miktar`` referans çıktı adedidir
     (boş = açık kalan); açık kalandan fazlası yazılabilir (fazlası serbest stok). Fason istasyonunda üretim fason dönüşle yapılır, burada reddedilir.
@@ -1400,7 +1402,7 @@ def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=N
     ie = IstasyonEmri.objects.select_related("istasyon", "uretim_emri").get(pk=ie.pk)
     if ie.istasyon.fason:
         raise UretimHatasi("Fason istasyonunda üretim, fason dönüş belgesiyle yapılır (\"Fason dönüş aç\").")
-    kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, kullanici=kullanici)
+    kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, kullanici=kullanici, personel=personel, mesai_kaydi=mesai_kaydi)
     uyari = kayit_fazla_uyarisi(kayit)                           # onaydan ÖNCE: onay sonrası tamamlanan zaten artmış olur
     try:
         operasyon_kaydi_onayla(kayit, kullanici=kullanici)
@@ -2071,10 +2073,14 @@ def kaydi_girdi_satirlari(kayit: OperasyonKaydi):
 @transaction.atomic
 def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari,
                             uretim_emri=None, aciklama="", kullanici=None, fason_cari=None, fason_donus=None,
-                            istasyon_emri=None, cikti_varyant=None) -> OperasyonKaydi:
+                            istasyon_emri=None, cikti_varyant=None, personel=None, mesai_kaydi=None) -> OperasyonKaydi:
     """``cikti_varyant`` (E-6, istasyon emrinden): kaydın ürettiği ana çıktı varyantı; girdi satırlarının varyantı tanım kuralından türetilir
     (``planlama_varyant.girdi_varyanti``), atlanan (tüm boyutları YOK, satın alınan) girdi satırı yazılmaz. Boşsa bugünkü davranış (varyant boş →
-    kartın varsayılanı)."""
+    kartın varsayılanı). ``personel``/``mesai_kaydi`` (atölye): kaydı giren personel ve açık mesai kaydı; personel verilmezse kullanıcıya bağlı
+    personel kartı (varsa) yazılır."""
+    if personel is None and kullanici is not None and getattr(kullanici, "pk", None):
+        from core.models import Personel
+        personel = Personel.objects.filter(kullanici_id=kullanici.pk, silindi=False).first()
     operasyon = (Operasyon.objects.filter(pk=operasyon_id, silindi=False)
                 .select_related("istasyon", "cikti").first())
     if not operasyon:
@@ -2110,6 +2116,7 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
                 kayit = OperasyonKaydi.objects.create(
                     yil=yil, sira=sira, no=f"OP-{yil}-{sira:04d}",
                     operasyon=operasyon, uretim_emri=uretim_emri, istasyon_emri=istasyon_emri, cikti_varyant=cikti_varyant, depo=depo,
+                    personel=personel, mesai_kaydi=mesai_kaydi,
                     tarih=tarih, hedef_cikti_miktari=miktar, aciklama=(aciklama or "").strip(),
                     durum=OperasyonKaydi.Durum.TASLAK, fason_cari=fason_cari, fason_donus=fason_donus,
                     created_by=kullanici, updated_by=kullanici)

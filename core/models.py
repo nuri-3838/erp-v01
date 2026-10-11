@@ -3632,6 +3632,12 @@ class OperasyonKaydi(TemelModel):
     geri_alan = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="geri alan", null=True, blank=True, on_delete=models.PROTECT,
                                   related_name="geri_aldigi_operasyon_kayitlari")
     geri_alma_zamani = models.DateTimeField("geri alma zamanı", null=True, blank=True)
+    # ATÖLYE / işçilik: kaydı giren personel ve o anki açık mesai kaydı (atölye ekranından hep dolu; ofisten açılan kayıtta kullanıcıya bağlı
+    # personel varsa dolar). İleride işçilik/GÜG dağıtımının kaynağı.
+    personel = models.ForeignKey("Personel", verbose_name="giren personel", null=True, blank=True, on_delete=models.PROTECT,
+                                 related_name="operasyon_kayitlari")
+    mesai_kaydi = models.ForeignKey("MesaiKaydi", verbose_name="mesai kaydı", null=True, blank=True, on_delete=models.PROTECT,
+                                    related_name="operasyon_kayitlari")
 
     class Meta:
         db_table = "core_operasyon_kaydi"

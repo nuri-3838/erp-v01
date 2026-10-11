@@ -105,6 +105,9 @@ MODULLER = (
         Ekran("operasyon_tanimlari", "Operasyon Tanımları", "core:operasyon_tanimlari"),
         Ekran("is_istasyonlari", "İş İstasyonları", "core:is_istasyonlari"),
     )),
+    Modul("ATOLYE", "Atölye", (
+        Ekran("atolye", "Atölye (Operatör Ekranı)", "core:atolye"),
+    )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),
