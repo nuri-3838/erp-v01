@@ -73,6 +73,64 @@ class MaliyetDuzeltTest(kt.KapanisTaban):
         call_command("stok_maliyet_duzelt", "--fiyat", "150-50-0004=1,20", stdout=out2)
         self.assertIn("FIYATLANAN GIRISLER (0)", out2.getvalue())                                         # ikinci koşu: fiyatsız giriş kalmadı
 
+    def test_fis_ile_uygula_giderden_stoga_aktarim_ve_fis_korumali(self):
+        from django.urls import reverse
+        from core.models import HesapPlani, Kur
+        from core.tests.test_teklif_siparis import _hesap
+        Kur.objects.get_or_create(tarih=date(2026, 1, 2), defaults={"usd_alis": D("40")})
+        _hesap("770.08", "OFİS MALZEMELERİ GİDERİ", grup="GELIR_TABLOSU", kalem="A")
+        sip = self.kur_fiyatsiz()
+        out = StringIO()
+        call_command("stok_maliyet_duzelt", "--fiyat", "150-50-0004=1", "--fis", "150-50-0004=770.08:Kullanma kılavuzu iç baskı maliyeti – giderden stoğa aktarım",
+                     stdout=out)
+        self.assertIn("YENI FISLER (1;", out.getvalue())
+        self.assertIn("MIZAN KONTROLU", out.getvalue())
+        self.assertFalse(YevmiyeFisi.objects.filter(kaynak="STOK_DUZELTME").exists())                       # dry-run: fiş kalmadı
+        call_command("stok_maliyet_duzelt", "--fiyat", "150-50-0004=1", "--fis", "150-50-0004=770.08:Kullanma kılavuzu iç baskı maliyeti – giderden stoğa aktarım",
+                     "--uygula", stdout=StringIO())
+        giris = StokHareket.objects.get(stok=self.ham2, tur="GIRIS")
+        fis = giris.fis
+        self.assertEqual((giris.giris_tutar_try, fis.kaynak, fis.tarih, fis.aciklama),
+                         (D("50.00"), YevmiyeFisi.Kaynak.STOK_DUZELTME, date(2026, 1, 2), "KULLANMA KILAVUZU İÇ BASKI MALİYETİ – GİDERDEN STOĞA AKTARIM"))   # fiş açıklaması büyük harf
+        stok_hesabi = HesapPlani.objects.get(hesap_kodu="153.10").hesap_kodu                                    # fixture: ham kategorisi 153.10
+        self.assertEqual(sorted((s.hesap.hesap_kodu, s.borc, s.alacak) for s in fis.satirlar.filter(silindi=False)),
+                         sorted([(stok_hesabi, D("50.00"), D("0.00")), ("770.08", D("0.00"), D("50.00"))]))
+        cikti = StokHareket.objects.get(stok=self.stok, tur="GIRIS", kaynak="URETIM", silindi=False)
+        self.assertEqual((cikti.tutar_try, cikti.maliyet_durumu), (D("33.00"), "KESIN"))                      # 30 + 3 × 1,00
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:fis_sil", args=[fis.pk]), follow=True)                            # elle silinemez
+        self.assertTrue(any("elle silinemez" in str(m) for m in r.context["messages"]))
+        fis.refresh_from_db()
+        self.assertFalse(fis.silindi)
+        r = self.client.get(reverse("core:fis_duzenle", args=[fis.pk]), follow=True)
+        self.assertTrue(any("elle düzenlenemez" in str(m) for m in r.context["messages"]))
+
+    def test_irsaliye_girisine_fis_kesilmez_fatura_gelince_fiyat_yerinde_ezilir(self):
+        from core.models import Kur
+        from core.services import stok_ortalama as so
+        from core.tests.test_teklif_siparis import _hesap
+        _hesap("770.08", "OFİS MALZEMELERİ GİDERİ", grup="GELIR_TABLOSU", kalem="A")
+        Kur.objects.get_or_create(tarih=date(2026, 1, 2), defaults={"usd_alis": D("40")})
+        tapa = Stok.objects.create(kod="151-40-0007", ad="PLASTİK Q16 TAPA", kategori=self.ham.kategori, kdv=self.kdv,
+                                   uretim_birimi=self.ham.uretim_birimi, fatura_birimi=self.ham.fatura_birimi, satinalma_urunu=True, uretim_urunu=False)
+        giris = hareket_ekle(stok_id=tapa.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.GIRIS, miktar=D("100"),
+                             kaynak=StokHareket.Kaynak.IRSALIYE)                                                 # faturasız irsaliye girişi (fiyatsız)
+        out = StringIO()
+        call_command("stok_maliyet_duzelt", "--fiyat", "151-40-0007=1", "--fis", "151-40-0007=770.08", "--uygula", stdout=out)
+        self.assertIn("YENI FISLER (0;", out.getvalue())
+        self.assertIn("irsaliye girişi: fatura gelince", out.getvalue())
+        giris.refresh_from_db()
+        self.assertEqual((giris.giris_tutar_try, giris.fis_id, giris.maliyet_durumu), (D("100.00"), None, "KESIN"))
+        # Fatura gelince: irsaliye_girislerini_fiyatla girişi önce fiyatsıza döndürür, sonra fatura tutarını AYNI harekete yazar (silme yok;
+        # gerçek akış test_stok_ortalama.IrsaliyeliFaturaTest'te) — burada aynı adımlar elle
+        giris.giris_tutar_try = None
+        giris.save(update_fields=["giris_tutar_try"])
+        giris.giris_tutar_try = D("130.00")                                                                       # fatura 100 × 1,30
+        giris.save(update_fields=["giris_tutar_try"])
+        so.yeniden_hesapla(tapa)
+        self.assertEqual(StokHareket.objects.filter(stok=tapa, silindi=False).count(), 1)
+        self.assertEqual(Stok.objects.get(pk=tapa.pk).ort_maliyet_try, D("1.300000"))
+
     def test_hatali_argumanlar(self):
         with self.assertRaisesMessage(CommandError, "KOD=TUTAR"):
             call_command("stok_maliyet_duzelt", "--fiyat", "150-50-0004", stdout=StringIO())

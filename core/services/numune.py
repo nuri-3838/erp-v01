@@ -202,8 +202,45 @@ def numune_onayla(nc: NumuneCikis, kullanici=None) -> NumuneCikis:
         raise NumuneHatasi(str(e))
     nc.fis, nc.durum, nc.updated_by = fis, NumuneCikis.Durum.ONAYLI, kullanici
     nc.save(update_fields=["fis", "durum", "updated_by", "updated_at"])
-    # Çıkış maliyeti sonradan (başka stok hareketiyle) değişirse hareket tutarı güncellenir; fiş tutarı onay anındaki maliyettir.
+    # Çıkış maliyeti sonradan değişirse (geç gelen fatura / fiyat düzeltme) stok_ortalama.yeniden_hesapla zinciri numune_senkronla'yı çağırır.
     return nc
+
+
+@transaction.atomic
+def numune_senkronla(nc: NumuneCikis, *, kullanici=None):
+    """Onaylı numunenin satır maliyetlerini ve gider fişini (760.06 B / stok hesabı A) hareketlerin GÜNCEL ağırlıklı ortalama tutarına
+    eşitler — fiş YERİNDE güncellenir (yenisi açılmaz). Maliyet sonradan değişince (geç gelen fatura, fiyatsız girişe fiyat verilmesi)
+    ``stok_ortalama._degisenleri_isle`` çağırır. Bir satırın maliyeti bilinmez (0) olduysa fiş onay anındaki tutarıyla bırakılır."""
+    from core.services.yevmiye import fis_guncelle
+    if nc.durum != NumuneCikis.Durum.ONAYLI or not nc.fis_id or nc.fis.silindi:
+        return None
+    stok_toplam, degisti = defaultdict(lambda: SIFIR), False
+    for s in _aktif_satirlar(nc):
+        if not s.hareket_id:
+            continue
+        tutar = s.hareket.tutar_try or SIFIR
+        if tutar <= 0:
+            return None
+        if s.maliyet_try != tutar:
+            s.maliyet_try = tutar
+            s.save(update_fields=["maliyet_try", "updated_at"])
+            degisti = True
+        try:
+            stok_toplam[kategori_servis.stok_muhasebe_hesabi(s.stok).hesap_kodu] += tutar
+        except KategoriHatasi as e:
+            raise NumuneHatasi(f"{s.stok.kod}: {e}")
+    if not degisti:
+        return nc.fis
+    gider_satiri = nc.fis.satirlar.filter(silindi=False, borc__gt=0).select_related("hesap").first()   # onay anındaki gider hesabı korunur
+    gider_kodu = gider_satiri.hesap.hesap_kodu if gider_satiri else gider_hesabi().hesap_kodu
+    toplam = sum(stok_toplam.values(), SIFIR)
+    try:
+        fis_guncelle(nc.fis, tarih=nc.fis.tarih,
+                     satirlar=[SatirGirdi(gider_kodu, "B", toplam)] + [SatirGirdi(kod, "A", t) for kod, t in stok_toplam.items()],
+                     aciklama=nc.fis.aciklama, kur_usd=nc.fis.kur_usd, kullanici=kullanici)
+    except YevmiyeHatasi as e:
+        raise NumuneHatasi(str(e))
+    return nc.fis
 
 
 @transaction.atomic

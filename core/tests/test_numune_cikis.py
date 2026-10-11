@@ -57,6 +57,24 @@ class NumuneOnayTest(NumuneTaban):
         self.assertEqual(ns.numune_onayla(nc).fis_id, nc.fis_id)                                          # idempotent
         self.assertEqual(YevmiyeFisi.objects.filter(kaynak=YevmiyeFisi.Kaynak.NUMUNE).count(), 1)
 
+    def test_maliyet_sonradan_degisince_satir_ve_760_fisi_yerinde_guncellenir(self):
+        from io import StringIO
+        from django.core.management import call_command
+        hareket_ekle(stok_id=self.ham.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.GIRIS, miktar=D("100"))   # fiyatsız (GECICI)
+        nc = ns.numune_onayla(self.nc("4"), kullanici=self.yon)
+        s = nc.satirlar.get()
+        self.assertEqual((s.maliyet_try, s.hareket.maliyet_durumu), (D("40.00"), "GECICI"))                       # fiyatsız giriş ortalamayı değiştirmez
+        fis_pk, fis_say = nc.fis_id, YevmiyeFisi.objects.filter(silindi=False).count()
+        call_command("stok_maliyet_duzelt", "--fiyat", "Sf-HAM=20", "--uygula", stdout=StringIO())             # 100 @ 20 → ortalama (1000+2000)/200 = 15
+        s.refresh_from_db()
+        nc.refresh_from_db()
+        self.assertEqual((s.maliyet_try, s.hareket.tutar_try, s.hareket.maliyet_durumu), (D("60.00"), D("60.00"), "KESIN"))
+        self.assertEqual(nc.fis_id, fis_pk)                                                                        # fiş yerinde
+        self.assertEqual(sorted((s.hesap.hesap_kodu, s.borc, s.alacak) for s in nc.fis.satirlar.filter(silindi=False)),   # eski satırlar silindi=True kalır
+                         sorted([("760.06", D("60.00"), D("0.00")), (self.stok_hesap, D("0.00"), D("60.00"))]))
+        self.assertEqual(YevmiyeFisi.objects.filter(silindi=False).count(), fis_say)
+        self.assertEqual(ns.numune_senkronla(nc).pk, fis_pk)                                                       # idempotent
+
     def test_yetersiz_stok_hicbir_sey_kaydedilmez(self):
         nc = self.nc("101")
         n_hareket, n_fis = StokHareket.objects.count(), YevmiyeFisi.objects.count()

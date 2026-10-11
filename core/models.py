@@ -166,6 +166,7 @@ class YevmiyeFisi(TemelModel):
         KDV_MAHSUP = "KDV_MAHSUP", "KDV Dönem Mahsubu (otomatik)"
         FASON_TAHAKKUK = "FASON_TAHAKKUK", "Fason Tahakkuku (otomatik)"
         NUMUNE = "NUMUNE", "Numune Çıkışı (otomatik)"
+        STOK_DUZELTME = "STOK_DUZELTME", "Stok Maliyet Düzeltme (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
