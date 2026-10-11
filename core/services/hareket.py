@@ -22,14 +22,36 @@ class HareketHatasi(ValueError):
     """Stok hareketi kural ihlali (Türkçe mesaj)."""
 
 
-def eldeki_miktar(stok, depo=None) -> Decimal:
-    """Stok (opsiyonel depo) için eldeki miktar = Σgiriş − Σçıkış (silinmemiş)."""
+def eldeki_miktar(stok, depo=None, tarih=None) -> Decimal:
+    """Stok (opsiyonel depo) için eldeki miktar = Σgiriş − Σçıkış (silinmemiş). ``tarih`` verilirse O TARİH SONU itibarıyla
+    (tarihi ``tarih``i geçmeyen hareketler): geriye tarihli çıkış, o gün henüz gelmemiş stoğu tüketemesin diye."""
     qs = StokHareket.objects.filter(stok=stok, silindi=False)
     if depo is not None:
         qs = qs.filter(depo=depo)
+    if tarih is not None:
+        qs = qs.filter(tarih__lte=tarih)
     g = qs.filter(tur=StokHareket.Tur.GIRIS).aggregate(t=Sum("miktar"))["t"] or SIFIR
     c = qs.filter(tur=StokHareket.Tur.CIKIS).aggregate(t=Sum("miktar"))["t"] or SIFIR
     return g - c
+
+
+def _sayi_metni(d: Decimal) -> str:
+    return format(Decimal(d).normalize(), "f")
+
+
+def yetersiz_mesaji(stok, depo, tarih, eldeki, gerekli) -> str:
+    """TARİH BAZLI stok yetersizliği mesajı — tek biçim (üretim girdisi, satış faturası, numune, sarf, elle çıkış hepsi bunu kullanır; ``uretim.
+    _eksik_mesaji`` bu biçimi ayrıştırır): "Bu tarihte yetersiz: KOD (eldeki X, gerekli Y) — DEPO, gg.aa.yyyy"."""
+    return (f"Bu tarihte yetersiz: {stok.kod} (eldeki {_sayi_metni(eldeki)}, gerekli {_sayi_metni(gerekli)}) — {depo.kod}, "
+            f"{tarih:%d.%m.%Y}")
+
+
+def cikis_kontrol(stok, depo, tarih, miktar) -> Decimal:
+    """ÇIKIŞ öncesi kontrol: ``tarih`` sonu itibarıyla depodaki eldeki ``miktar``dan azsa HareketHatasi (hiçbir şey yazılmaz). Eldekiyi döner."""
+    mevcut = eldeki_miktar(stok, depo, tarih)
+    if miktar > mevcut:
+        raise HareketHatasi(yetersiz_mesaji(stok, depo, tarih, mevcut, miktar))
+    return mevcut
 
 
 def toplu_eldeki(stok_idler) -> dict:
@@ -107,11 +129,7 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
     if m <= 0:
         raise HareketHatasi("Miktar sıfırdan büyük olmalı.")
     if tur == StokHareket.Tur.CIKIS:
-        mevcut = eldeki_miktar(stok, depo)
-        if m > mevcut:
-            raise HareketHatasi(
-                f"Yetersiz stok: {depo.kod} deposunda {stok.kod} için eldeki {mevcut}, "
-                f"çıkış {m} olamaz.")
+        cikis_kontrol(stok, depo, tarih, m)                 # TARİH BAZLI: o gün henüz gelmemiş stok çıkamaz
     hareket = StokHareket.objects.create(
         stok=stok, depo=depo, tarih=tarih, tur=tur, miktar=m,
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=kaynak,
@@ -179,11 +197,7 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
         raise HareketHatasi("Miktar geçerli bir sayı olmalı.")
     if m <= 0:
         raise HareketHatasi("Miktar sıfırdan büyük olmalı.")
-    mevcut = eldeki_miktar(stok, depo)
-    if m > mevcut:
-        raise HareketHatasi(
-            f"Yetersiz stok: {depo.kod} deposunda {stok.kod} için eldeki {mevcut}, "
-            f"çıkış {m} olamaz.")
+    cikis_kontrol(stok, depo, tarih, m)
 
     try:
         stok_hesabi = kategori_servis.stok_muhasebe_hesabi(stok)

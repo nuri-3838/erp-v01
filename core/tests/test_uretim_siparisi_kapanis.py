@@ -51,7 +51,7 @@ class KapanisTaban(TestCase):
 
     def uret(self, emir):
         for ie in emir.istasyon_emirleri.exclude(durum="IPTAL"):
-            operasyon_kaydi_onayla(istasyon_emri_kayit_ac(ie))
+            operasyon_kaydi_onayla(istasyon_emri_kayit_ac(ie, tarih=GUN))      # sevk faturası GUN tarihli: üretim satıştan sonra olamaz (tarih bazlı kontrol)
 
     def fatura_kes(self, sip, miktar="3", depo=True):
         r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {

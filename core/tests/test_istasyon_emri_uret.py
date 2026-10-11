@@ -76,7 +76,7 @@ class UretildiTest(UretTaban):
         ie = self.yenile()
         self.assertEqual((ie.tamamlanan, ie.durum), (D("0"), IstasyonEmri.Durum.BEKLIYOR))
         self.assertEqual(eldeki_miktar(self.ham), D("100"))
-        self.assertContains(r, "Yetersiz stok")
+        self.assertContains(r, "Bu tarihte yetersiz")
         self.assertContains(r, "Sf-HAM")
         self.assertContains(r, "eksik: 50")                                                            # hangi stok, ne kadar eksik
         self.assertContains(r, 'class="ie-hata"')                                                      # satırda görünür

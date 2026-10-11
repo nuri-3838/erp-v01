@@ -1213,8 +1213,8 @@ def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=
 
 
 def _eksik_mesaji(mesaj: str) -> str:
-    """Stok yetersizliği mesajına ("Yetersiz stok: 150 deposunda KOD için eldeki X, çıkış Y olamaz.") eksik miktarı ekler; diğer mesajlar aynen."""
-    m = re.search(r"eldeki (-?[\d.,]+), çıkış ([\d.,]+) olamaz", mesaj)
+    """Stok yetersizliği mesajına ("Bu tarihte yetersiz: KOD (eldeki X, gerekli Y) — DEPO, tarih") eksik miktarı ekler; diğer mesajlar aynen."""
+    m = re.search(r"eldeki (-?[\d.]+), gerekli ([\d.]+)\)", mesaj)
     if not m:
         return mesaj
     try:

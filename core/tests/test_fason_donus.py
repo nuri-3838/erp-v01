@@ -63,7 +63,7 @@ class FasonOnayTest(FasonBase):
         k = self.fason_kayit()
         with self.assertRaises(UretimHatasi) as c:
             operasyon_kaydi_onayla(k)
-        self.assertIn("Yetersiz stok", str(c.exception))
+        self.assertIn("Bu tarihte yetersiz", str(c.exception))
         self.assertIn("999", str(c.exception))
         k.refresh_from_db()
         self.assertEqual(k.durum, OperasyonKaydi.Durum.TASLAK)
@@ -223,7 +223,7 @@ class DonusBelgeTest(FasonBase):
         d = fd.donus_olustur(cari_id=self.salim.pk, depo_id=self.depo.pk, tarih=TARIH, satirlar=[(self.op.pk, "3"), (self.op.pk, "3")])
         with self.assertRaises(FasonHatasi) as c:
             fd.donus_onayla(d)
-        self.assertIn("Yetersiz stok", str(c.exception))
+        self.assertIn("Bu tarihte yetersiz", str(c.exception))
         self.assertEqual(fd.donus_durumu(d), "TASLAK")
         self.assertEqual(eldeki_miktar(self.profil, self.fdepo), D("1"))
         self.assertFalse(StokHareket.objects.filter(operasyon_kaydi__fason_donus=d, silindi=False).exists())

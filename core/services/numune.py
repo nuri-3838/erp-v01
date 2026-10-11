@@ -152,9 +152,10 @@ def uygunluk_kontrol(nc: NumuneCikis, satirlar=None) -> None:
         stoklar[s.stok_id] = s.stok
     for sid, m in toplam.items():
         stok = stoklar[sid]
-        depoda = eldeki_miktar(stok, nc.depo)
+        depoda = eldeki_miktar(stok, nc.depo, tarih=nc.tarih)                   # TARİH BAZLI (belge tarihi sonu itibarıyla)
         if m > depoda:
-            raise NumuneHatasi(f"Yetersiz stok: {nc.depo.kod} deposunda {stok.kod} için eldeki {depoda:f}, numune çıkışı {m:f}.".replace(".000000", ""))
+            from core.services.hareket import yetersiz_mesaji
+            raise NumuneHatasi(yetersiz_mesaji(stok, nc.depo, nc.tarih, depoda, m))
         kullanilabilir = stok_ayirma.kullanilabilir(stok)
         if m > kullanilabilir:
             raise NumuneHatasi(f"{stok.kod}: serbest (kullanılabilir) stok {kullanilabilir:f}; üretim siparişine ayrılan stok numuneye verilemez "

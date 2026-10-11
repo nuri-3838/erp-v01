@@ -60,7 +60,7 @@ class NumuneOnayTest(NumuneTaban):
     def test_yetersiz_stok_hicbir_sey_kaydedilmez(self):
         nc = self.nc("101")
         n_hareket, n_fis = StokHareket.objects.count(), YevmiyeFisi.objects.count()
-        with self.assertRaisesMessage(ns.NumuneHatasi, "Yetersiz stok"):
+        with self.assertRaisesMessage(ns.NumuneHatasi, "Bu tarihte yetersiz"):
             ns.numune_onayla(nc)
         self.assertEqual((StokHareket.objects.count(), YevmiyeFisi.objects.count()), (n_hareket, n_fis))
         nc.refresh_from_db()
