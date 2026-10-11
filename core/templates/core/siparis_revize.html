@@ -41,13 +41,14 @@
       <h2 class="bolum-baslik">Kalemler</h2>
       <div class="tablo-kapsayici">
         <table class="fh-tablo">
-          <thead><tr><th>Stok</th><th>Miktar</th><th>Birim Fiyat</th><th></th></tr></thead>
+          <thead><tr><th>Stok</th><th>Miktar</th><th>{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>{% if iskonto_sutunu %}<th>İskonto %</th>{% endif %}<th></th></tr></thead>
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="fh-satir">
                 <td>{{ f.stok }}<div class="varyant-alan" hidden></div>{{ f.varyant }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}{% for e in f.stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                 <td>{{ f.miktar }}{% for e in f.miktar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                 <td>{{ f.birim_fiyat }}{{ f.uretim_miktar.as_hidden }}</td>
+                {% if iskonto_sutunu %}<td>{{ f.iskonto_yuzdesi }}</td>{% else %}{{ f.iskonto_yuzdesi.as_hidden }}{% endif %}
                 <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
               </tr>
             {% endfor %}
@@ -63,6 +64,7 @@
       <td>{{ formset.empty_form.stok }}<div class="varyant-alan" hidden></div>{{ formset.empty_form.varyant }}</td>
       <td>{{ formset.empty_form.miktar }}</td>
       <td>{{ formset.empty_form.birim_fiyat }}{{ formset.empty_form.uretim_miktar.as_hidden }}</td>
+      {% if iskonto_sutunu %}<td>{{ formset.empty_form.iskonto_yuzdesi }}</td>{% else %}{{ formset.empty_form.iskonto_yuzdesi.as_hidden }}{% endif %}
       <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
     </template>
 

@@ -2653,11 +2653,15 @@ class TeklifSiparisKalemForm(forms.Form):
     # gerçek dünyada tolerans farkı olabilir (bkz. TeklifSiparisKalem.uretim_miktar model
     # alanı). Girildiyse İrsaliye stok girişinde bunun YERİNE kullanılır.
     uretim_miktar = TRDecimalField(label="Üretim Miktarı", basamak=3, required=False)
+    # Satır iskontosu (%): satış teklifi/proformasından gelen siparişte liste fiyatı + iskonto taşınır (net = liste × (1 − %)); düzenleme/revize
+    # formu bu alanı taşımazsa iskonto sessizce 0'lanırdı. Satış siparişinde görünür sütun, diğer belgelerde gizli (değer korunur).
+    iskonto_yuzdesi = TRDecimalField(label="İskonto %", basamak=2, required=False)
     # Varyantlı kartta kalemin varyantı (E-3; JS core/_varyant_js.html); boş = kartın varsayılanı.
     varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))
 
     def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["iskonto_yuzdesi"].widget.attrs.update({"inputmode": "decimal", "autocomplete": "off", "class": "iskonto-girdi"})
         self.fields["stok"].queryset = (
             Stok.objects.filter(silindi=False).select_related("kategori", "kdv").order_by("kod"))
         if yon == "ALIS":
@@ -2688,6 +2692,11 @@ class TeklifSiparisKalemForm(forms.Form):
             raise forms.ValidationError("Birim fiyat girin.")
         if uretim_miktar is not None and uretim_miktar <= 0:
             raise forms.ValidationError("Üretim miktarı girildiyse sıfırdan büyük olmalı.")
+        iskonto = cd.get("iskonto_yuzdesi")
+        if iskonto is None:
+            cd["iskonto_yuzdesi"] = Decimal("0")
+        elif iskonto < 0 or iskonto > 100:
+            raise forms.ValidationError("İskonto 0 ile 100 arasında olmalı.")
         cd["dolu"] = True
         return cd
 

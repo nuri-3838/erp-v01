@@ -2924,7 +2924,7 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
         if bform.is_valid() and formset.is_valid():
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
-                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"], "iskonto_yuzdesi": f.cleaned_data.get("iskonto_yuzdesi"),
                  "uretim_miktar": f.cleaned_data.get("uretim_miktar"), "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dolu_mu()
             ]
@@ -2948,8 +2948,13 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
         bform = TeklifSiparisForm(belge_tur=belge_tur)
         formset = TeklifSiparisKalemFormSet(form_kwargs={"yon": yon})
     return render(request, "core/teklif_siparis_ekle.html",
-                  {"bform": bform, "formset": formset, "baslik": baslik, "emoji": emoji,
+                  {"bform": bform, "formset": formset, "baslik": baslik, "emoji": emoji, "iskonto_sutunu": _iskonto_sutunu(belge_tur, yon), "kalem_sutun": 5 if _iskonto_sutunu(belge_tur, yon) else 4,
                    "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": _stok_meta(yon), "iptal_url": reverse("core:" + ekran)})
+
+
+def _iskonto_sutunu(belge_tur, yon) -> bool:
+    """Kalem formunda iskonto sütunu görünür mü: yalnız SATIŞ SİPARİŞİ (proforma/tekliften gelen liste fiyatı + iskonto; irsaliye/alış gizli)."""
+    return belge_tur == TeklifSiparis.BelgeTur.SIPARIS and yon == TeklifSiparis.Yon.SATIS
 
 
 @ekran_gerekli("satinalma_teklifleri")
@@ -3261,6 +3266,7 @@ def teklif_siparis_detay(request, pk):
         or uretim_emri)
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
+                   "iskonto_sutunu": _iskonto_sutunu(ts.belge_tur, ts.yon), "kalem_sutun": 5 if _iskonto_sutunu(ts.belge_tur, ts.yon) else 3,
                    "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis,
                    "donusen_proforma": donusen_proforma,
                    "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura,
@@ -3358,8 +3364,10 @@ def siparis_faturaya_cevir(request, pk):
         fform = FaturaForm(yon=yon, initial={
             "cari": siparis.cari_id, "tarih": timezone.localdate(),
             "para_birimi": siparis.para_birimi})
-        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat,
-                "varyant": varyant_servis.secim_degeri(k.varyant_id)}                    # sipariş kalem varyantı faturaya taşınır (boş = standart)
+        # NET (iskontolu) birim fiyat, tam hassasiyet: fatura satırında iskonto alanı yok — liste fiyatı taşınırsa iskonto kaybolur, sipariş tutarı
+        # ile fatura tutarı tutmaz (irsaliyeyi_faturaya_cevir ile aynı kural). Varyant: sipariş kalem varyantı faturaya taşınır (boş = standart).
+        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam,
+                "varyant": varyant_servis.secim_degeri(k.varyant_id)}
                for k in siparis.kalemler.filter(silindi=False).select_related("stok")]
         formset = FaturaSatirFormSet(initial=ilk, form_kwargs={"yon": yon})
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
@@ -3450,7 +3458,7 @@ def teklif_siparis_duzenle(request, pk):
         if bform.is_valid() and formset.is_valid():
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
-                 "birim_fiyat": f.cleaned_data["birim_fiyat"],
+                 "birim_fiyat": f.cleaned_data["birim_fiyat"], "iskonto_yuzdesi": f.cleaned_data.get("iskonto_yuzdesi"),
                  "uretim_miktar": f.cleaned_data.get("uretim_miktar"), "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dolu_mu()
             ]
@@ -3476,13 +3484,14 @@ def teklif_siparis_duzenle(request, pk):
             "gecerlilik_teslim_tarihi": ts.gecerlilik_teslim_tarihi,
             "para_birimi": ts.para_birimi, "kur": ts.kur, "aciklama": ts.aciklama,
             "depo": ts.depo_id, "irsaliye_no": ts.irsaliye_no})
-        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat,
+        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat, "iskonto_yuzdesi": k.iskonto_yuzdesi,
                "uretim_miktar": k.uretim_miktar, "varyant": varyant_servis.secim_degeri(k.varyant_id)}
                for k in ts.kalemler.filter(silindi=False).select_related("stok")]
         formset = TeklifSiparisKalemFormSet(initial=ilk, form_kwargs={"yon": ts.yon})
     return render(request, "core/teklif_siparis_ekle.html",
                   {"bform": bform, "formset": formset,
-                   "baslik": f"{ts.get_belge_tur_display()} Düzenle", "emoji": emoji,
+                   "baslik": f"{ts.get_belge_tur_display()} Düzenle", "emoji": emoji, "iskonto_sutunu": _iskonto_sutunu(ts.belge_tur, ts.yon),
+                   "kalem_sutun": 5 if _iskonto_sutunu(ts.belge_tur, ts.yon) else 4,
                    "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": _stok_meta(ts.yon),
                    "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
@@ -7602,7 +7611,8 @@ def siparis_revize_gorunum(request, pk):
         formset = TeklifSiparisKalemFormSet(request.POST, form_kwargs={"yon": siparis.yon})
         if bform.is_valid() and formset.is_valid():
             satirlar = [{"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"], "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                         "uretim_miktar": f.cleaned_data.get("uretim_miktar"), "varyant": f.cleaned_data.get("varyant")} for f in formset if f.dolu_mu()]
+                         "iskonto_yuzdesi": f.cleaned_data.get("iskonto_yuzdesi"), "uretim_miktar": f.cleaned_data.get("uretim_miktar"),
+                         "varyant": f.cleaned_data.get("varyant")} for f in formset if f.dolu_mu()]
             try:
                 uretim_servis.siparis_revize(siparis, satirlar=satirlar, tarih=bform.cleaned_data["tarih"],
                                              aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)
@@ -7614,9 +7624,11 @@ def siparis_revize_gorunum(request, pk):
     else:
         bform = UretimRevizeBaslikForm()
         formset = TeklifSiparisKalemFormSet(form_kwargs={"yon": siparis.yon}, initial=[
-            {"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat, "uretim_miktar": k.uretim_miktar, "varyant": varyant_servis.secim_degeri(k.varyant_id)}
+            {"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat, "iskonto_yuzdesi": k.iskonto_yuzdesi, "uretim_miktar": k.uretim_miktar,
+             "varyant": varyant_servis.secim_degeri(k.varyant_id)}
             for k in siparis.kalemler.filter(silindi=False).select_related("stok")])
     return render(request, "core/siparis_revize.html", {"bform": bform, "formset": formset, "siparis": siparis, "emir": emir, "varyant_meta": varyant_servis.varyant_meta(),
+                                                         "iskonto_sutunu": _iskonto_sutunu(siparis.belge_tur, siparis.yon),
                                                          "geri_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
 

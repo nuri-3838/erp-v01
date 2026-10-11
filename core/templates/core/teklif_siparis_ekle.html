@@ -52,10 +52,16 @@
       <h2 class="bolum-baslik">Kalemler</h2>
       <div class="tablo-kapsayici genis">
       <table class="satir-tablo" id="ts-satir-tablo">
+        {% if iskonto_sutunu %}
+        <colgroup><col style="width:30%"><col style="width:13%"><col style="width:11%"><col style="width:14%"><col style="width:10%">
+          <col style="width:16%"><col style="width:6%"></colgroup>
+        {% else %}
         <colgroup><col style="width:32%"><col style="width:15%"><col style="width:13%"><col style="width:16%">
           <col style="width:18%"><col style="width:6%"></colgroup>
+        {% endif %}
         <thead><tr>
-          <th>Stok</th><th class="sag">Üretim Miktarı</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
+          <th>Stok</th><th class="sag">Üretim Miktarı</th><th class="sag">Miktar</th><th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
+          {% if iskonto_sutunu %}<th class="sag">İskonto %</th>{% endif %}
           <th class="sag">Tutar</th><th></th>
         </tr></thead>
         <tbody id="satir-govde">
@@ -68,16 +74,17 @@
               </td>
               <td class="sag">{{ f.miktar }}<span class="birim-etiket birim-fatura"></span></td>
               <td class="sag">{{ f.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
+              {% if iskonto_sutunu %}<td class="sag">{{ f.iskonto_yuzdesi }}<span class="birim-etiket net-etiket"></span></td>{% else %}{{ f.iskonto_yuzdesi.as_hidden }}{% endif %}
               <td class="sag"><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
               <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
             </tr>
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr><th colspan="4" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th></tr>
-          <tr><th colspan="4" class="sag">KDV</th><th class="sag deger" id="tKdv">0,00</th><th></th></tr>
-          <tr id="satirTevkifat" hidden><th colspan="4" class="sag">Tevkifat (−)</th><th class="sag deger" id="tTev">0,00</th><th></th></tr>
-          <tr><th colspan="4" class="sag">Ödenecek</th>
+          <tr><th colspan="{{ kalem_sutun }}" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th></tr>
+          <tr><th colspan="{{ kalem_sutun }}" class="sag">KDV</th><th class="sag deger" id="tKdv">0,00</th><th></th></tr>
+          <tr id="satirTevkifat" hidden><th colspan="{{ kalem_sutun }}" class="sag">Tevkifat (−)</th><th class="sag deger" id="tTev">0,00</th><th></th></tr>
+          <tr><th colspan="{{ kalem_sutun }}" class="sag">Ödenecek</th>
             <th class="sag deger" id="tGenel"><span id="tGenelDeger">0,00</span><span class="birim-etiket tl-etiket" id="tGenelTl"></span></th><th></th></tr>
         </tfoot>
       </table>
@@ -96,6 +103,7 @@
       </td>
       <td class="sag">{{ formset.empty_form.miktar }}<span class="birim-etiket birim-fatura"></span></td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
+      {% if iskonto_sutunu %}<td class="sag">{{ formset.empty_form.iskonto_yuzdesi }}<span class="birim-etiket net-etiket"></span></td>{% else %}{{ formset.empty_form.iskonto_yuzdesi.as_hidden }}{% endif %}
       <td class="sag"><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
       <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
     </template>
@@ -124,8 +132,11 @@
     document.querySelectorAll('.satir-form').forEach(function(r){
       var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
       var f=parseTR(el(r,'-birim_fiyat')?el(r,'-birim_fiyat').value:'');
+      var isk=parseTR(el(r,'-iskonto_yuzdesi')?el(r,'-iskonto_yuzdesi').value:'');
+      var netF=f*(1-isk/100);
+      var ne=r.querySelector('.net-etiket'); if(ne) ne.textContent = (isk>0 && f>0) ? ('Net: '+netF.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:4})) : '';
       var meta=stokMeta(r); var oran=meta?meta.kdv:0; var tevOran=meta?meta.tevkifat:0;
-      var tutar=Math.round(m*f*100)/100;
+      var tutar=Math.round(m*netF*100)/100;
       var skdv=Math.round(tutar*oran)/100;
       var stev=Math.round(skdv*tevOran*100)/100;
       var ct=r.querySelector('.tutar'), ck=r.querySelector('.kdv-etiket');
