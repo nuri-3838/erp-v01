@@ -1897,6 +1897,8 @@ class FaturaSatirForm(forms.Form):
     # sayılır); TEVKIFAT_YOK = açıkça "tevkifat uygulanmasın" (stok kartında tanımlı olsa
     # bile); <pk> = o tevkifatı uygula.
     tevkifat = forms.ChoiceField(label="Tevkifat", required=False, choices=[])
+    # Varyantlı kartta satırın varyantı — JS (core/_varyant_js.html) 'v:BOYUT=pk|…' yazar; boş = kartın varsayılanı (bkz. varyant.secim_coz).
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))
     # SATIŞ faturasında satır türü: STOK / HESAP (alış iade: gider·258 hesabı ALACAK) / DEMIRBAS (aktif duran
     # varlık kartı satışı). Gider faturasında ve alış yönünde kullanılmaz (JS gizler).
     tur = forms.ChoiceField(
@@ -2636,6 +2638,8 @@ class TeklifSiparisKalemForm(forms.Form):
     # gerçek dünyada tolerans farkı olabilir (bkz. TeklifSiparisKalem.uretim_miktar model
     # alanı). Girildiyse İrsaliye stok girişinde bunun YERİNE kullanılır.
     uretim_miktar = TRDecimalField(label="Üretim Miktarı", basamak=3, required=False)
+    # Varyantlı kartta kalemin varyantı (E-3; JS core/_varyant_js.html); boş = kartın varsayılanı.
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))
 
     def __init__(self, *args, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2915,6 +2919,7 @@ class StokHareketForm(forms.Form):
         initial=timezone.localdate)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput)          # E-3: varyantlı kartta (JS core/_varyant_js.html)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2936,6 +2941,7 @@ class DepoTransferForm(forms.Form):
         initial=timezone.localdate)
     aciklama = forms.CharField(label="Açıklama", max_length=250, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput)          # E-3: varyantlı kartta
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2969,6 +2975,7 @@ class SarfCikisForm(forms.Form):
         empty_label="— proje seç —")
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput)          # E-3: varyantlı kartta (JS core/_varyant_js.html)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3618,6 +3625,7 @@ class NumuneSatirForm(forms.Form):
     """Numune satırı (stok + miktar) — 'boş satır atlanır' deseni."""
     stok = forms.ModelChoiceField(label="Stok", queryset=Stok.objects.none(), required=False, empty_label="— stok seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))   # E-3: varyantlı kartta
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -52,6 +52,13 @@
           {{ form.aciklama }}
           {% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {{ form.varyant }}
+        {% if stok.varyantli %}
+        <div class="alan tam">
+          <label>Varyant <span class="pasif">(kartın varsayılanı dolu gelir)</span></label>
+          <div class="varyant-alan" data-stok="{{ stok.pk }}"></div>
+        </div>
+        {% endif %}
       </div>
       <p class="yardim">Miktar üretim biriminde ({{ stok.uretim_birimi.kisa_ad }}). Maliyet, mevcut
         FIFO katmanlarından otomatik hesaplanır ve karşı hesap BORÇ / {{ stok.kod }}'un muhasebe
@@ -113,4 +120,5 @@
   });
 })();
 </script>
+{% include "core/_varyant_js.html" %}
 {% endblock %}

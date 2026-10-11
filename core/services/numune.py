@@ -54,7 +54,9 @@ def _sonraki_sira(yil) -> int:
 
 
 def _satirlari_coz(satirlar):
-    """[{'stok_id':…, 'miktar':…}] -> [(Stok, Decimal)]; aynı stok birden çok satırsa ayrı satır kalır."""
+    """[{'stok_id':…, 'miktar':…, 'varyant':…}] -> [(Stok, Decimal, StokVaryant|None)]; aynı stok birden çok satırsa ayrı satır kalır.
+    Varyant (E-3): boş → kartın varsayılanı (onayda çözülür); 'v:…'/pk → o kombinasyon."""
+    from core.services import varyant as varyant_servis
     sonuc = []
     for i, g in enumerate(satirlar or [], start=1):
         stok = Stok.objects.filter(pk=g.get("stok_id"), silindi=False).first()
@@ -66,7 +68,11 @@ def _satirlari_coz(satirlar):
             raise NumuneHatasi(f"Satır {i}: miktar geçerli bir sayı olmalı.")
         if m <= 0:
             raise NumuneHatasi(f"Satır {i}: miktar sıfırdan büyük olmalı.")
-        sonuc.append((stok, m))
+        try:
+            varyant = varyant_servis.secim_coz(stok, g.get("varyant"))
+        except varyant_servis.VaryantHatasi as e:
+            raise NumuneHatasi(f"Satır {i}: {e}")
+        sonuc.append((stok, m, varyant))
     if not sonuc:
         raise NumuneHatasi("En az bir satır olmalı.")
     return sonuc
@@ -105,8 +111,8 @@ def numune_olustur(*, tarih, depo_id, satirlar, cari_id=None, alici_adi="", ulke
             nc = None
     if nc is None:
         raise NumuneHatasi("Belge numarası üretilemedi; tekrar deneyin.")
-    for stok, m in coz:
-        NumuneCikisSatir.objects.create(cikis=nc, stok=stok, miktar=m, created_by=kullanici, updated_by=kullanici)
+    for stok, m, varyant in coz:
+        NumuneCikisSatir.objects.create(cikis=nc, stok=stok, varyant=varyant, miktar=m, created_by=kullanici, updated_by=kullanici)
     return nc
 
 
@@ -124,8 +130,8 @@ def numune_guncelle(nc: NumuneCikis, *, tarih, depo_id, satirlar, cari_id=None, 
     nc.belge_no_gumruk, nc.aciklama, nc.updated_by = (belge_no_gumruk or "").strip(), (aciklama or "").strip(), kullanici
     nc.save()
     nc.satirlar.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    for stok, m in coz:
-        NumuneCikisSatir.objects.create(cikis=nc, stok=stok, miktar=m, created_by=kullanici, updated_by=kullanici)
+    for stok, m, varyant in coz:
+        NumuneCikisSatir.objects.create(cikis=nc, stok=stok, varyant=varyant, miktar=m, created_by=kullanici, updated_by=kullanici)
     return nc
 
 
@@ -145,17 +151,23 @@ def _aktif_satirlar(nc):
 def uygunluk_kontrol(nc: NumuneCikis, satirlar=None) -> None:
     """Stok yetersizse açık hata (yazma yok). Satırlar stok bazında toplanır; ayrılan (üretim siparişi) stok kullanılmaz."""
     satirlar = satirlar if satirlar is not None else _aktif_satirlar(nc)
+    from core.services import varyant as varyant_servis
     toplam = defaultdict(lambda: SIFIR)
     stoklar = {}
     for s in satirlar:
-        toplam[s.stok_id] += s.miktar
-        stoklar[s.stok_id] = s.stok
-    for sid, m in toplam.items():
-        stok = stoklar[sid]
-        depoda = eldeki_miktar(stok, nc.depo, tarih=nc.tarih)                   # TARİH BAZLI (belge tarihi sonu itibarıyla)
+        try:
+            sv = varyant_servis.hareket_varyanti(s.stok, s.varyant_id)             # varyantlı kartta satırın / kartın varsayılan varyantı
+        except varyant_servis.VaryantHatasi as e:
+            raise NumuneHatasi(f"{s.stok.kod}: {e}")
+        anahtar = (s.stok_id, sv.pk if sv else None)
+        toplam[anahtar] += s.miktar
+        stoklar[anahtar] = (s.stok, sv)
+    for anahtar, m in toplam.items():
+        stok, sv = stoklar[anahtar]
+        depoda = eldeki_miktar(stok, nc.depo, tarih=nc.tarih, varyant=sv)        # TARİH BAZLI (belge tarihi sonu itibarıyla), varyant bazında
         if m > depoda:
             from core.services.hareket import yetersiz_mesaji
-            raise NumuneHatasi(yetersiz_mesaji(stok, nc.depo, nc.tarih, depoda, m))
+            raise NumuneHatasi(yetersiz_mesaji(stok, nc.depo, nc.tarih, depoda, m, varyant=sv))
         kullanilabilir = stok_ayirma.kullanilabilir(stok)
         if m > kullanilabilir:
             raise NumuneHatasi(f"{stok.kod}: serbest (kullanılabilir) stok {kullanilabilir:f}; üretim siparişine ayrılan stok numuneye verilemez "
@@ -183,7 +195,8 @@ def numune_onayla(nc: NumuneCikis, kullanici=None) -> NumuneCikis:
             raise NumuneHatasi(f"{s.stok.kod}: {e}")
         try:
             h = hareket_ekle(stok_id=s.stok_id, depo_id=nc.depo_id, tarih=nc.tarih, tur=StokHareket.Tur.CIKIS, miktar=s.miktar,
-                             aciklama=f"NUMUNE ÇIKIŞI {nc.no} — {alici}", kaynak=StokHareket.Kaynak.NUMUNE, kullanici=kullanici)
+                             varyant=s.varyant_id, aciklama=f"NUMUNE ÇIKIŞI {nc.no} — {alici}", kaynak=StokHareket.Kaynak.NUMUNE,
+                             kullanici=kullanici)
         except HareketHatasi as e:
             raise NumuneHatasi(str(e))
         tutar = h.tutar_try or SIFIR

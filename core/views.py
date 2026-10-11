@@ -79,6 +79,7 @@ from core.services.yevmiye import (
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import duran_hesap as duran_hesap_servis
+from core.services import varyant as varyant_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import stok_ayirma as stok_ayirma_servis
@@ -1219,15 +1220,21 @@ def stok_hareket_ekle(request, pk):
             try:
                 hareket_servis.hareket_ekle(
                     stok_id=stok.pk, depo_id=cd["depo"].pk, tarih=cd["tarih"],
-                    tur=cd["tur"], miktar=cd["miktar"],
+                    tur=cd["tur"], miktar=cd["miktar"], varyant=_varyant_secimi(stok, cd),
                     aciklama=cd.get("aciklama", ""), kullanici=request.user)
                 messages.success(request, "Stok hareketi eklendi.")
                 return redirect("core:stok_detay", pk=stok.pk)
-            except hareket_servis.HareketHatasi as e:
+            except (hareket_servis.HareketHatasi, varyant_servis.VaryantHatasi) as e:
                 form.add_error(None, str(e))
     else:
         form = StokHareketForm()
-    return render(request, "core/stok_hareket_form.html", {"form": form, "stok": stok})
+    return render(request, "core/stok_hareket_form.html",
+                  {"form": form, "stok": stok, "varyant_meta": varyant_servis.varyant_meta([stok.pk])})
+
+
+def _varyant_secimi(stok, cd):
+    """Tek stoklu formların (elle hareket / transfer / sarf) gizli varyant alanı → StokVaryant|None (boş = kartın varsayılanı)."""
+    return varyant_servis.secim_coz(stok, (cd.get("varyant") or "").strip() or None)
 
 
 @ekran_gerekli("stoklar")
@@ -1246,14 +1253,15 @@ def stok_depo_transferi(request, pk):
                 depo_transfer.depo_transferi_yap(
                     stok_id=stok.pk, kaynak_depo_id=cd["kaynak_depo"].pk,
                     hedef_depo_id=cd["hedef_depo"].pk, tarih=cd["tarih"], miktar=cd["miktar"],
-                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user, varyant=_varyant_secimi(stok, cd))
                 messages.success(request, "Depo transferi yapıldı.")
                 return redirect("core:stok_detay", pk=stok.pk)
-            except hareket_servis.HareketHatasi as e:
+            except (hareket_servis.HareketHatasi, varyant_servis.VaryantHatasi) as e:
                 form.add_error(None, str(e))
     else:
         form = DepoTransferForm()
-    return render(request, "core/stok_transfer_form.html", {"form": form, "stok": stok})
+    return render(request, "core/stok_transfer_form.html",
+                  {"form": form, "stok": stok, "varyant_meta": varyant_servis.varyant_meta([stok.pk])})
 
 
 @ekran_gerekli("stoklar")
@@ -1302,17 +1310,17 @@ def stok_sarf_ekle(request, pk):
                     stok_id=stok.pk, depo_id=cd["depo"].pk, tarih=cd["tarih"],
                     miktar=cd["miktar"], karsi_hesap_id=cd["karsi_hesap"].pk,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
-                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user, varyant=_varyant_secimi(stok, cd))
                 messages.success(request, "Sarf çıkışı ve muhasebe fişi oluşturuldu.")
                 return redirect("core:stok_detay", pk=stok.pk)
-            except hareket_servis.HareketHatasi as e:
+            except (hareket_servis.HareketHatasi, varyant_servis.VaryantHatasi) as e:
                 form.add_error(None, str(e))
     else:
         form = SarfCikisForm()
     kodlar_258 = {str(h.pk): hp.hesap_kodu_258_mi(h.hesap_kodu)
                  for h in form.fields["karsi_hesap"].queryset}
     return render(request, "core/stok_sarf_form.html",
-                  {"form": form, "stok": stok, "kodlar_258": kodlar_258})
+                  {"form": form, "stok": stok, "kodlar_258": kodlar_258, "varyant_meta": varyant_servis.varyant_meta([stok.pk])})
 
 
 @ekran_gerekli("stoklar")
@@ -2916,7 +2924,7 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
                  "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                 "uretim_miktar": f.cleaned_data.get("uretim_miktar")}
+                 "uretim_miktar": f.cleaned_data.get("uretim_miktar"), "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dolu_mu()
             ]
             try:
@@ -2940,7 +2948,7 @@ def _ts_ekle(request, belge_tur, yon, baslik, emoji):
         formset = TeklifSiparisKalemFormSet(form_kwargs={"yon": yon})
     return render(request, "core/teklif_siparis_ekle.html",
                   {"bform": bform, "formset": formset, "baslik": baslik, "emoji": emoji,
-                   "stok_meta": _stok_meta(yon), "iptal_url": reverse("core:" + ekran)})
+                   "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": _stok_meta(yon), "iptal_url": reverse("core:" + ekran)})
 
 
 @ekran_gerekli("satinalma_teklifleri")
@@ -3344,14 +3352,15 @@ def siparis_faturaya_cevir(request, pk):
         fform = FaturaForm(yon=yon, initial={
             "cari": siparis.cari_id, "tarih": timezone.localdate(),
             "para_birimi": siparis.para_birimi})
-        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat}
+        ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat,
+                "varyant": varyant_servis.secim_degeri(k.varyant_id)}                    # sipariş kalem varyantı faturaya taşınır (boş = standart)
                for k in siparis.kalemler.filter(silindi=False).select_related("stok")]
         formset = FaturaSatirFormSet(initial=ilk, form_kwargs={"yon": yon})
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
-                   **_fatura_gider_baglami(fform),
+                   **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(),
                    "baslik": f"Fatura Oluştur (Sipariş {siparis.pk} kaynaklı)",
                    "iptal_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
@@ -3433,7 +3442,7 @@ def teklif_siparis_duzenle(request, pk):
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
                  "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                 "uretim_miktar": f.cleaned_data.get("uretim_miktar")}
+                 "uretim_miktar": f.cleaned_data.get("uretim_miktar"), "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dolu_mu()
             ]
             try:
@@ -3459,13 +3468,13 @@ def teklif_siparis_duzenle(request, pk):
             "para_birimi": ts.para_birimi, "kur": ts.kur, "aciklama": ts.aciklama,
             "depo": ts.depo_id, "irsaliye_no": ts.irsaliye_no})
         ilk = [{"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat,
-               "uretim_miktar": k.uretim_miktar}
+               "uretim_miktar": k.uretim_miktar, "varyant": varyant_servis.secim_degeri(k.varyant_id)}
                for k in ts.kalemler.filter(silindi=False).select_related("stok")]
         formset = TeklifSiparisKalemFormSet(initial=ilk, form_kwargs={"yon": ts.yon})
     return render(request, "core/teklif_siparis_ekle.html",
                   {"bform": bform, "formset": formset,
                    "baslik": f"{ts.get_belge_tur_display()} Düzenle", "emoji": emoji,
-                   "stok_meta": _stok_meta(ts.yon),
+                   "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": _stok_meta(ts.yon),
                    "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
 
 
@@ -7539,7 +7548,7 @@ def siparis_revize_gorunum(request, pk):
         formset = TeklifSiparisKalemFormSet(request.POST, form_kwargs={"yon": siparis.yon})
         if bform.is_valid() and formset.is_valid():
             satirlar = [{"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"], "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                         "uretim_miktar": f.cleaned_data.get("uretim_miktar")} for f in formset if f.dolu_mu()]
+                         "uretim_miktar": f.cleaned_data.get("uretim_miktar"), "varyant": f.cleaned_data.get("varyant")} for f in formset if f.dolu_mu()]
             try:
                 uretim_servis.siparis_revize(siparis, satirlar=satirlar, tarih=bform.cleaned_data["tarih"],
                                              aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)
@@ -7551,9 +7560,9 @@ def siparis_revize_gorunum(request, pk):
     else:
         bform = UretimRevizeBaslikForm()
         formset = TeklifSiparisKalemFormSet(form_kwargs={"yon": siparis.yon}, initial=[
-            {"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat, "uretim_miktar": k.uretim_miktar}
+            {"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat, "uretim_miktar": k.uretim_miktar, "varyant": varyant_servis.secim_degeri(k.varyant_id)}
             for k in siparis.kalemler.filter(silindi=False).select_related("stok")])
-    return render(request, "core/siparis_revize.html", {"bform": bform, "formset": formset, "siparis": siparis, "emir": emir,
+    return render(request, "core/siparis_revize.html", {"bform": bform, "formset": formset, "siparis": siparis, "emir": emir, "varyant_meta": varyant_servis.varyant_meta(),
                                                          "geri_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
 
@@ -7915,6 +7924,7 @@ def _fatura_satir_girdileri(formset):
             "tevkifat_id": tevkifat_id, "tevkifat_yok": tevkifat_yok,
             "yatirim_projesi_id": cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
             "varlik_adi": (cd.get("varlik_adi") or "").strip(),
+            "varyant": (cd.get("varyant") or "").strip() or None,
             "donemsel": bool(cd.get("donemsel")),
             "donem_grup": cd["donem_grup"].hesap_kodu if cd.get("donem_grup") else None,
             "donem_hesap_id": (cd.get("donem_hesap") or "").strip() or None,
@@ -8055,7 +8065,7 @@ def _fatura_ekle(request, yon, baslik):
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
-                   **_fatura_gider_baglami(fform),
+                   **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(),
                    "baslik": baslik, "yon": yon, "iptal_url": reverse(_fatura_liste_url(yon))})
 
 
@@ -8127,7 +8137,7 @@ def fatura_duzenle(request, pk):
                 "donemsel": bool(s.donem_baslangic), "donem_hesap": s.hesap_id if s.donem_baslangic else "",
                 "donem_baslangic": s.donem_baslangic, "donem_bitis": s.donem_bitis, "donem_aciklama": s.donem_aciklama,
                 "tur": s.satir_tipi, "demirbas": s.demirbas_id,
-                "yatirim_projesi": s.yatirim_projesi_id,
+                "yatirim_projesi": s.yatirim_projesi_id, "varyant": varyant_servis.secim_degeri(s.varyant_id),
                 "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
                for s in fatura.satirlar.filter(silindi=False)
                .select_related("stok__tevkifat", "hesap")]
@@ -8136,7 +8146,7 @@ def fatura_duzenle(request, pk):
     return render(request, "core/fatura_ekle.html",
                   {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
                    "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
-                   **_fatura_gider_baglami(fform),
+                   **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(),
                    "baslik": "Fatura Düzenle", "yon": yon,
                    "iptal_url": reverse("core:fatura_detay", args=[fatura.pk])})
 
@@ -8150,6 +8160,9 @@ def fatura_detay(request, pk):
         Prefetch("duran_varliklar", queryset=DuranVarlik.objects.filter(silindi=False)))
     kart_acilabilir_hesap = set(
         hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))
+    satirlar = list(satirlar.select_related("varyant"))
+    for s in satirlar:                                            # varyantlı kartta satır varyantı rozeti (E-3)
+        s.varyant_etiketi = varyant_servis.varyant_kisa(s.varyant) if s.varyant_id else ""
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
                    "donemsel_tablolar": donemsel_servis.fatura_tablolari(fatura),
@@ -9899,7 +9912,8 @@ numune_yetkisi = ekran_gerekli_herhangi("numune_cikislari", "stoklar", "satis_si
 
 
 def _numune_satirlari(formset):
-    return [{"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"]} for f in formset if f.dolu_mu()]
+    return [{"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
+             "varyant": (f.cleaned_data.get("varyant") or "").strip() or None} for f in formset if f.dolu_mu()]
 
 
 @numune_yetkisi
@@ -9951,8 +9965,10 @@ def _numune_form(request, nc=None):
             "tarih": nc.tarih, "depo": nc.depo_id, "cari": nc.cari_id, "alici_adi": nc.alici_adi, "ulke": nc.ulke_id,
             "belge_no_gumruk": nc.belge_no_gumruk, "aciklama": nc.aciklama})
         formset = NumuneSatirFormSet(prefix="satir", initial=[
-            {"stok": s.stok_id, "miktar": s.miktar.normalize()} for s in nc.satirlar.filter(silindi=False).order_by("id")])
-    return render(request, "core/numune_form.html", {"bform": bform, "formset": formset, "nc": nc})
+            {"stok": s.stok_id, "miktar": s.miktar.normalize(), "varyant": varyant_servis.secim_degeri(s.varyant_id)}
+            for s in nc.satirlar.filter(silindi=False).order_by("id")])
+    return render(request, "core/numune_form.html", {"bform": bform, "formset": formset, "nc": nc,
+                                                     "varyant_meta": varyant_servis.varyant_meta()})
 
 
 @numune_yetkisi

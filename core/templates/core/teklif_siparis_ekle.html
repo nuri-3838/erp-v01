@@ -61,7 +61,7 @@
         <tbody id="satir-govde">
           {% for f in formset %}
             <tr class="satir-form">
-              <td>{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+              <td>{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span><div class="varyant-alan" hidden></div>{{ f.varyant }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
               <td class="sag">
                 {{ f.uretim_miktar }}
                 <span class="birim-etiket birim-uretim"></span>
@@ -89,7 +89,7 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span></td>
+      <td>{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span><div class="varyant-alan" hidden></div>{{ formset.empty_form.varyant }}</td>
       <td class="sag">
         {{ formset.empty_form.uretim_miktar }}
         <span class="birim-etiket birim-uretim"></span>
@@ -263,5 +263,6 @@
   kurCek();
 })();
 </script>
+{% include "core/_varyant_js.html" %}
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}

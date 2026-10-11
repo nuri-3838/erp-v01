@@ -21,12 +21,20 @@
         <span class="pasif">({{ stok.uretim_birimi.kisa_ad }})</span></h2>
       <div class="izgara">
         {% for field in form %}
+          {% if field.is_hidden %}{{ field }}{% else %}
           <div class="alan {% if field.name == 'aciklama' %}tam{% endif %}">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
+          {% endif %}
         {% endfor %}
+        {% if stok.varyantli %}
+        <div class="alan tam">
+          <label>Varyant <span class="pasif">(kartın varsayılanı dolu gelir)</span></label>
+          <div class="varyant-alan" data-stok="{{ stok.pk }}"></div>
+        </div>
+        {% endif %}
       </div>
       <p class="yardim">Miktar üretim biriminde ({{ stok.uretim_birimi.kisa_ad }}). Transfer ortalama
         maliyeti DEĞİŞTİRMEZ ve muhasebe fişi oluşturmaz; kaynak depodaki eldeki miktardan fazla
@@ -38,4 +46,5 @@
     </div>
   </form>
 </div>
+{% include "core/_varyant_js.html" %}
 {% endblock %}

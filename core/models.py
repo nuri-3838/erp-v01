@@ -1870,6 +1870,9 @@ class FaturaSatir(TemelModel):
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="fatura_satirlari", on_delete=models.PROTECT,
         null=True, blank=True)
+    # Varyantlı kartta satırın varyantı (E-3): stok hareketi bununla yazılır; boşsa kartın varsayılan varyantı. Varyantsız kartta boş.
+    varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="fatura_satirlari")
     hesap = models.ForeignKey(
         HesapPlani, verbose_name="gider hesabı", related_name="fatura_satirlari",
         on_delete=models.PROTECT, null=True, blank=True)
@@ -2239,6 +2242,10 @@ class TeklifSiparisKalem(TemelModel):
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="teklif_siparis_kalemleri",
         on_delete=models.PROTECT)
+    # Varyantlı kartta kalemin varyantı (E-3/E-4): teklif → proforma → sipariş → irsaliye/fatura zincirinde aynen taşınır; irsaliye
+    # girişi ve siparişten fatura bu varyantla yazılır. Boş = kartın varsayılan varyantı (standart). Varyantsız kartta boş.
+    varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="teklif_siparis_kalemleri")
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=3)
     birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6)
     # Fatura biriminden (miktar / stok.cevirici) hesaplanan üretim miktarı yalnız TEORİK
@@ -4191,6 +4198,7 @@ class NumuneCikis(TemelModel):
 class NumuneCikisSatir(TemelModel):
     cikis = models.ForeignKey(NumuneCikis, verbose_name="numune çıkışı", on_delete=models.CASCADE, related_name="satirlar")
     stok = models.ForeignKey(Stok, verbose_name="stok", on_delete=models.PROTECT, related_name="numune_satirlari")
+    varyant = models.ForeignKey("StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="numune_satirlari")
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=6)
     hareket = models.ForeignKey(StokHareket, verbose_name="stok hareketi", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     maliyet_try = models.DecimalField("maliyet TL", max_digits=18, decimal_places=2, null=True, blank=True)

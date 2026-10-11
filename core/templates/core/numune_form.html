@@ -44,7 +44,7 @@
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="fh-satir">
-                <td>{{ f.stok }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.stok }}<div class="varyant-alan" hidden></div>{{ f.varyant }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                 <td>{{ f.miktar }}</td>
                 <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
               </tr>
@@ -56,7 +56,7 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.stok }}</td>
+      <td>{{ formset.empty_form.stok }}<div class="varyant-alan" hidden></div>{{ formset.empty_form.varyant }}</td>
       <td>{{ formset.empty_form.miktar }}</td>
       <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
     </template>
@@ -95,5 +95,6 @@
   });
 })();
 </script>
+{% include "core/_varyant_js.html" %}
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}

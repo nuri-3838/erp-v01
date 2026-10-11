@@ -54,7 +54,17 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
 |---|---|---|---|
 | E-1 | `Varyant` + `Stok.varyantli/varyant_boyutlari` + `StokVaryant` + AYARLAR › Varyantlar + stok kartı işareti/boyut seçimi; seed SEMTA/YOK/MR. MOP | TAMAM, canlıda | `9bd7917` (3278 test) |
 | E-2 | Hareket/ayırma/özet varyant boyutu, motor (eldeki, tarih kontrolü, ortalama, ayırma), stok kartı kırılımı, `varyant_veri_gocu` komutu (kuru + altın kontrol) | TAMAM, canlıda; VERİ GÖÇÜ UYGULANDI 2026-10-11 15:35 (53 kart, 338 hareket, 7 ayırma; altın kontrol EŞİT; raporlar `docs/varyant_veri_gocu_kuru_20261011.txt`, `docs/varyant_veri_gocu_uygulandi_20261011.txt`) | `064f2c0` (3288 test) |
-| E-3 | Giriş/çıkış ekranlarında varyant seçimi (fatura, irsaliye, numune, sarf, transfer; varsayılan kartın varsayılanı) | bekliyor | |
+| E-3 | Giriş/çıkış ekranlarında varyant seçimi (alış/satış faturası, irsaliye, numune, sarf, transfer, elle hareket; kartın varsayılanı dolu gelir, varyantsızda alan yok; alış faturasında yeni kombinasyon açılır; sipariş→fatura ve alış zincirinde kalem varyantı taşınır) | TAMAM, canlıda | (bu commit) |
+| E-4 | Proforma/teklif/sipariş satırında "Varyant" sekmesi (4 soru), dönüşümlerde taşıma, PDF TR/EN, "+ yeni varyant" | bekliyor | |
+
+## E-3 notları
+
+- `FaturaSatir.varyant`, `TeklifSiparisKalem.varyant`, `NumuneCikisSatir.varyant` (0211 yalnız şema). Boş = kartın varsayılanı (hareket o
+  varyantla yazılır); satır/kalem kaydında varyant seçildiyse `varyant.secim_coz` 'v:BOYUT=pk|…' değerini çözer, kombinasyon yoksa açar.
+- Ortak JS `core/_varyant_js.html`: `select[name$="-stok"]` değişince satırda boyut başına select; tek stoklu formlarda `.varyant-alan[data-stok]`.
+  Alış/satış faturası, teklif/sipariş/irsaliye, sipariş revize, numune, elle hareket, depo transferi, sarf bu parçayı kullanır.
+- Fatura yerinde güncelleme anahtarı artık (stok, miktar, varyant): yalnız fiyat değişince hareket korunur; varyant değişince sil + yeniden yaz.
+- Satış belgelerinde (teklif/proforma) 4 soruluk "Varyant" sekmesi ve PDF E-4'te; bu adımda satış sipariş formunda da aynı genel alan var.
 
 ## E-2 notları
 

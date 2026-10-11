@@ -1,0 +1,56 @@
+{# Varyant seçimi (E-3): varyantlı kart seçilince satırda boyut başına select; değer gizli alana 'v:BOYUT=pk|…' yazılır (boş = seçilmedi). #}
+{# Kullanım: sayfada `varyant_meta` (core.services.varyant.varyant_meta) + satırda `.varyant-alan` + gizli `*-varyant` alanı; tek stoklu formda #}
+{# `.varyant-alan[data-stok]` + `#id_varyant`. Varyantsız kartta alan görünmez, gizli değer boş kalır (bugünkü davranış). #}
+{{ varyant_meta|json_script:"varyant-meta" }}
+<style>
+  .varyant-alan { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.25rem; }
+  .varyant-alan[hidden] { display:none; }
+  .varyant-alan select.varyant-sec { min-height:0; padding:.15rem .4rem; font-size:.82rem; width:auto; max-width:16rem; }
+</style>
+<script>
+(function(){
+  var kaynak = document.getElementById('varyant-meta');
+  var M = kaynak ? JSON.parse(kaynak.textContent) : {etiket:{}, degerler:[], stoklar:{}};
+  function parseDeger(v){
+    if(!v || v.indexOf('v:') !== 0) return null;
+    var r = {};
+    v.slice(2).split('|').forEach(function(p){ var kv = p.split('='); if(kv[0]) r[kv[0]] = kv[1] || ''; });
+    return r;
+  }
+  window.varyantKur = function(kap, stokPk, gizli){
+    kap.innerHTML = '';
+    var s = M.stoklar[String(stokPk || '')];
+    if(!s){ if(gizli) gizli.value = ''; kap.hidden = true; return; }
+    kap.hidden = false;
+    var mevcut = parseDeger(gizli ? gizli.value : '');
+    var secimler = {};
+    function yaz(){ if(gizli) gizli.value = 'v:' + s.boyutlar.map(function(b){ return b + '=' + secimler[b].value; }).join('|'); }
+    s.boyutlar.forEach(function(b){
+      var sel = document.createElement('select'); sel.className = 'varyant-sec'; sel.title = M.etiket[b];
+      var bos = document.createElement('option'); bos.value = ''; bos.textContent = M.etiket[b] + ': —'; sel.appendChild(bos);
+      M.degerler.forEach(function(d){ var o = document.createElement('option'); o.value = String(d[0]); o.textContent = M.etiket[b] + ': ' + d[1]; sel.appendChild(o); });
+      var v = mevcut ? (mevcut[b] || '') : (s.varsayilan[b] == null ? '' : String(s.varsayilan[b]));
+      sel.value = v;
+      secimler[b] = sel;
+      sel.addEventListener('change', yaz);
+      kap.appendChild(sel);
+    });
+    yaz();
+  };
+  window.varyantSatirKur = function(row){
+    var sel = row.querySelector('select[name$="-stok"]'); var kap = row.querySelector('.varyant-alan');
+    var gizli = row.querySelector('input[name$="-varyant"]');
+    if(sel && kap) window.varyantKur(kap, sel.value, gizli);
+  };
+  document.addEventListener('change', function(e){
+    if(!(e.target && e.target.matches && e.target.matches('select[name$="-stok"]'))) return;
+    var row = e.target.closest('tr, .fk-satir, .satir-form');
+    if(!row) return;
+    var gizli = row.querySelector('input[name$="-varyant"]'); if(gizli) gizli.value = '';   // stok değişti: varsayılan varyant
+    window.varyantSatirKur(row);
+  });
+  document.querySelectorAll('select[name$="-stok"]').forEach(function(sel){ var row = sel.closest('tr, .fk-satir, .satir-form'); if(row) window.varyantSatirKur(row); });
+  var tekil = document.querySelector('.varyant-alan[data-stok]');
+  if(tekil) window.varyantKur(tekil, tekil.dataset.stok, document.getElementById('id_varyant'));
+})();
+</script>

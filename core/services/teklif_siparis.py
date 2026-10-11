@@ -114,8 +114,17 @@ def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar):
         uretim_miktar = (_sayi(s["uretim_miktar"], "Üretim miktarı", pozitif=True)
                          if s.get("uretim_miktar") not in (None, "") else None)
         hazir.append((stok, miktar, birim_fiyat, iskonto_yuzdesi, stok.kdv, stok.tevkifat,
-                     uretim_miktar))
+                     uretim_miktar, _kalem_varyanti(stok, s.get("varyant"))))
     return cari, aday, hazir
+
+
+def _kalem_varyanti(stok, deger):
+    """Kalemin varyantı (E-3): boş → None (kartın varsayılanı); 'v:…' / pk → StokVaryant (gerekirse açılır). Varyantsız kartta dolu değer hata."""
+    from core.services import varyant as varyant_servis
+    try:
+        return varyant_servis.secim_coz(stok, deger)
+    except varyant_servis.VaryantHatasi as e:
+        raise TeklifSiparisHatasi(str(e))
 
 
 def _pb_dogrula(para_birimi):
@@ -184,9 +193,9 @@ def _depo_coz_irsaliye(belge_tur, depo_id):
 
 
 def _kalemleri_yaz(ts, hazir, kullanici):
-    for stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat, uretim_miktar in hazir:
+    for stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat, uretim_miktar, varyant in hazir:
         TeklifSiparisKalem.objects.create(
-            teklif_siparis=ts, stok=stok, miktar=miktar, birim_fiyat=birim_fiyat,
+            teklif_siparis=ts, stok=stok, varyant=varyant, miktar=miktar, birim_fiyat=birim_fiyat,
             iskonto_yuzdesi=iskonto_yuzdesi, kdv=kdv, tevkifat=tevkifat,
             uretim_miktar=uretim_miktar, created_by=kullanici, updated_by=kullanici)
 
@@ -588,7 +597,7 @@ def teklifi_siparise_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) -> T
                              kaynak_teklif=teklif, kullanici=kullanici)
     for k in kalemler:
         TeklifSiparisKalem.objects.create(
-            teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            teklif_siparis=siparis, stok=k.stok, varyant=k.varyant, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
             uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return siparis
@@ -624,7 +633,7 @@ def teklifi_proformaya_cevir(teklif: TeklifSiparis, *, tarih, kullanici=None) ->
                               kaynak_teklif=teklif, kullanici=kullanici)
     for k in kalemler:
         TeklifSiparisKalem.objects.create(
-            teklif_siparis=proforma, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            teklif_siparis=proforma, stok=k.stok, varyant=k.varyant, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
             uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return proforma
@@ -671,7 +680,7 @@ def proformayi_siparise_cevir(proforma: TeklifSiparis, *, tarih, kullanici=None)
                              kaynak_proforma=proforma, kullanici=kullanici)
     for k in kalemler:
         TeklifSiparisKalem.objects.create(
-            teklif_siparis=siparis, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            teklif_siparis=siparis, stok=k.stok, varyant=k.varyant, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
             uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return siparis
@@ -707,7 +716,7 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
                               kaynak_siparis=siparis, depo=depo, kullanici=kullanici)
     for k in kalemler:
         TeklifSiparisKalem.objects.create(
-            teklif_siparis=irsaliye, stok=k.stok, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            teklif_siparis=irsaliye, stok=k.stok, varyant=k.varyant, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
             uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
     return irsaliye
@@ -755,7 +764,7 @@ def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
         try:
             hareket_ekle(
                 stok_id=k.stok_id, depo_id=irsaliye.depo_id, tarih=irsaliye.tarih,
-                tur=StokHareket.Tur.GIRIS, miktar=uretim_miktar,
+                tur=StokHareket.Tur.GIRIS, miktar=uretim_miktar, varyant=k.varyant_id,
                 aciklama=f"{irsaliye.belge_no} irsaliyesi — {irsaliye.cari.unvan}",
                 kaynak=StokHareket.Kaynak.IRSALIYE, teklif_siparis_kalem=k, kullanici=kullanici)
         except HareketHatasi as e:
@@ -782,7 +791,7 @@ def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> Teklif
         raise TeklifSiparisHatasi("İrsaliyede kalem yok; fatura oluşturulamaz.")
     # NET (iskontolu) birim fiyat, TAM hassasiyetle (6 hane): fatura satırında ayrı iskonto alanı yok;
     # liste fiyatı taşınırsa iskonto kaybolur, 4 haneye yuvarlanırsa toplam kayar.
-    satirlar = [{"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam}
+    satirlar = [{"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam, "varyant": k.varyant_id}
                 for k in kalemler]
     fatura = fatura_servis.fatura_taslak_olustur(
         cari_id=irsaliye.cari_id, tarih=irsaliye.tarih, satirlar=satirlar,

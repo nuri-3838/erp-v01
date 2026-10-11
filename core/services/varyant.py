@@ -243,6 +243,68 @@ def hareket_varyanti(stok: Stok, varyant=None) -> StokVaryant | None:
     return sv
 
 
+def secim_degeri(sv) -> str:
+    """Form gizli alanı için kodlanmış değer: 'v:MARKALAMA=3|AFIS=' (boş boyut = seçilmedi). None → ''."""
+    if sv is None:
+        return ""
+    if not isinstance(sv, StokVaryant):
+        sv = StokVaryant.objects.select_related("stok").filter(pk=sv).first()
+        if sv is None:
+            return ""
+    return "v:" + "|".join(f"{b}={getattr(sv, _BOYUT_ALANI[b] + '_id') or ''}" for b in stok_boyutlari(sv.stok))
+
+
+def secim_coz(stok: Stok, deger, kullanici=None) -> StokVaryant | None:
+    """Ekran/servis girdisinden StokVaryant: None/'' → None (çağıran kartın varsayılanını kullanır); StokVaryant / pk / 'sv:<pk>' → o satır
+    (karta ait olmalı); 'v:BOYUT=pk|…' ya da {boyut: pk} → kombinasyon bulunur ya da AÇILIR (alış faturasında yeni varyant, ör. Afiş: MR. MOP).
+    Varyantsız kartta dolu değer hata."""
+    if deger in (None, ""):
+        return None
+    if not stok.varyantli:
+        raise VaryantHatasi(f"{stok.kod} varyantlı bir kart değil; varyant verilemez.")
+    if isinstance(deger, StokVaryant):
+        sv = deger
+    elif isinstance(deger, int) or (isinstance(deger, str) and deger.isdigit()):
+        sv = StokVaryant.objects.filter(pk=int(deger), silindi=False).first()
+    elif isinstance(deger, str) and deger.startswith("sv:"):
+        sv = StokVaryant.objects.filter(pk=int(deger[3:] or 0), silindi=False).first()
+    elif isinstance(deger, (str, dict)):
+        if isinstance(deger, str):
+            if not deger.startswith("v:"):
+                raise VaryantHatasi(f"{stok.kod}: varyant değeri çözümlenemedi.")
+            secimler = {}
+            for parca in deger[2:].split("|"):
+                k, _, v = parca.partition("=")
+                if k:
+                    secimler[k.strip()] = int(v) if v.strip() else None
+        else:
+            secimler = {k: (int(getattr(v, "pk", v)) if v not in (None, "") else None) for k, v in deger.items()}
+        bilinmeyen = set(secimler) - set(stok_boyutlari(stok))
+        if bilinmeyen:
+            raise VaryantHatasi(f"{stok.kod}: kartta olmayan varyant boyutu: {', '.join(sorted(bilinmeyen))}")
+        for b in stok_boyutlari(stok):
+            secimler.setdefault(b, None)
+        return stok_varyanti_bul_veya_olustur(stok, secimler, kullanici)
+    else:
+        raise VaryantHatasi(f"{stok.kod}: varyant değeri çözümlenemedi.")
+    if sv is None or sv.stok_id != stok.pk:
+        raise VaryantHatasi(f"{stok.kod}: geçersiz varyant.")
+    return sv
+
+
+def varyant_meta(stok_pkler=None) -> dict:
+    """Satır ekranları JS'i (core/_varyant_js.html): aktif değerler, boyut etiketleri, varyantlı kartların boyutları + varsayılan seçimleri."""
+    qs = Stok.objects.filter(silindi=False, varyantli=True).select_related("varsayilan_varyant")
+    if stok_pkler is not None:
+        qs = qs.filter(pk__in=list(stok_pkler))
+    stoklar = {}
+    for s in qs:
+        vs = s.varsayilan_varyant
+        stoklar[str(s.pk)] = {"boyutlar": stok_boyutlari(s),
+                              "varsayilan": {b: (getattr(vs, _BOYUT_ALANI[b] + "_id") if vs else None) for b in stok_boyutlari(s)}}
+    return {"etiket": BOYUT_ETIKETI, "degerler": [[v.pk, v.kod] for v in secilebilir_varyantlar()], "stoklar": stoklar}
+
+
 def varyant_ozeti(stok: Stok) -> list:
     """Stok kartı varyant kırılımı: [{"varyant", "etiket", "eldeki", "ayrilan", "kullanilabilir", "ort_try", "deger_try"}]."""
     from core.services.hareket import toplu_eldeki_varyant
