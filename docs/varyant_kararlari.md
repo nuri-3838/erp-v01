@@ -52,5 +52,5 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
 
 | Adım | İçerik | Durum | Commit |
 |---|---|---|---|
-| E-1 | `Varyant` + `Stok.varyantli/varyant_boyutlari` + `StokVaryant` + AYARLAR › Varyantlar + stok kartı işareti/boyut seçimi; seed SEMTA/YOK/MR. MOP | TAMAM | (bu commit) |
+| E-1 | `Varyant` + `Stok.varyantli/varyant_boyutlari` + `StokVaryant` + AYARLAR › Varyantlar + stok kartı işareti/boyut seçimi; seed SEMTA/YOK/MR. MOP | TAMAM, canlıda | `9bd7917` (3278 test) |
 | E-2 | Hareket/ayırma/özet varyant boyutu, motor, veri göçü | bekliyor | |
