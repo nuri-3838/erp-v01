@@ -67,7 +67,7 @@
     <tbody>
       {% for s in kalemler %}
         <tr>
-          <td><span class="mono">{{ s.k.hedef_urun.kod }}</span> {{ s.k.hedef_urun.ad }}</td>
+          <td><span class="mono">{{ s.k.hedef_urun.kod }}</span> {{ s.k.hedef_urun.ad }}{% if s.varyant %} <span class="rozet rozet-notr" title="Kalem varyantı">{{ s.varyant }}</span>{% endif %}</td>
           <td class="sag mono">{{ s.k.hedef_miktar|tr_kur:3 }}</td>
           <td class="sag mono">{% if tamamlandi %}<span class="rozet rozet-aktif" title="Stok için üretim tamamlandı: ayırma serbest bırakıldı, mamul serbest stokta">Tamamlandı</span>{% else %}{{ s.ayrilan|tr_kur:3 }}{% endif %}</td>
           <td class="sag mono">{{ s.uretilecek|tr_kur:3 }}</td>
@@ -122,7 +122,7 @@
         {% for s in g.satirlar %}
           <tr>
             <td class="mono">{{ s.ie.no }}</td>
-            <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}</td>
+            <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}{% if s.varyant %} <span class="rozet rozet-notr" title="Çıktı varyantı">{{ s.varyant }}</span>{% endif %}</td>
             <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>
             <td class="sag mono">{{ s.tamamlanan|tr_kur:3 }}</td>
             <td class="sag mono">{{ s.acik|tr_kur:3 }}</td>
@@ -132,7 +132,7 @@
               {% elif s.uretilebilir and uret_yetkili %}
               <form method="post" action="{% url 'core:istasyon_emri_uret' s.ie.pk %}" class="ie-uret-form">
                 {% csrf_token %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
-                <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer" autocomplete="off">
+                <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="{% if s.fazla_yasak %}Üretilen miktar (referans çıktı adedi); bu emirde açık kalandan fazlası yazılamaz (varyantlı markalama/mamul emri){% else %}Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer{% endif %}" autocomplete="off">
                 <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi">
                 <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">Üretildi</button></form>
               {% endif %}
@@ -159,7 +159,7 @@
     <thead><tr><th>Stok</th><th class="sag">Gerekli</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
     <tbody>
       {% for e in eksikler %}
-        <tr><td><a href="{% url 'core:stok_detay' e.stok.pk %}"><span class="mono">{{ e.stok.kod }}</span> {{ e.stok.ad }}</a></td>
+        <tr><td><a href="{% url 'core:stok_detay' e.stok.pk %}"><span class="mono">{{ e.stok.kod }}</span> {{ e.stok.ad }}</a>{% if e.varyant_etiketi %} <span class="rozet rozet-notr">{{ e.varyant_etiketi }}</span>{% endif %}</td>
             <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
             <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td></tr>
       {% empty %}
@@ -178,7 +178,7 @@
     <thead><tr><th>Stok</th><th class="sag">Ayrılan</th></tr></thead>
     <tbody>
       {% for a in ayirmalar %}
-        <tr><td><a href="{% url 'core:stok_detay' a.stok_id %}"><span class="mono">{{ a.stok.kod }}</span> {{ a.stok.ad }}</a></td>
+        <tr><td><a href="{% url 'core:stok_detay' a.stok_id %}"><span class="mono">{{ a.stok.kod }}</span> {{ a.stok.ad }}</a>{% if a.varyant_etiketi %} <span class="rozet rozet-notr">{{ a.varyant_etiketi }}</span>{% endif %}</td>
             <td class="sag mono">{{ a.miktar|tr_kur:3 }}</td></tr>
       {% empty %}
         <tr><td colspan="2" class="yardim">{% if tamamlandi %}Tamamlandı: stok için üretim bitti, ayrılan stoklar serbest bırakıldı.{% else %}Bu siparişe ayrılı stok yok.{% endif %}</td></tr>

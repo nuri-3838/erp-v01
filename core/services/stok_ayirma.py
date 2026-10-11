@@ -84,6 +84,32 @@ def kullanilabilir(stok, haric_emir=None) -> Decimal:
     return toplu_kullanilabilir([_pk(stok)], haric_emir)[_pk(stok)]["kullanilabilir"]
 
 
+def kullanilabilir_varyant_haritasi(dugumler, haric_emir=None) -> dict:
+    """E-6: {(stok id, varyant id|None): kullanılabilir} — varyantlı düğümde o varyantın eldekisi − o varyantın ayrılanı; varyantsız düğümde
+    (None) kart toplamı (bugünkü anlam). ``haric_emir`` revize/yeniden planlamada ÜS'nin kendi ayırmalarını kullanılabilir sayar."""
+    from core.services.hareket import toplu_eldeki_varyant
+    dugumler = list(dugumler)
+    idler = {pk for pk, _ in dugumler}
+    if not idler:
+        return {}
+    eldeki = toplu_eldeki(idler)
+    eldeki_v = toplu_eldeki_varyant(idler)
+    qs = acik_ayirmalar().filter(stok_id__in=idler)
+    if haric_emir is not None:
+        qs = qs.exclude(uretim_emri_id=_pk(haric_emir))
+    ayrilan, ayrilan_v = {}, {}
+    for r in qs.values("stok_id", "varyant_id").annotate(t=Sum("miktar")):
+        ayrilan[r["stok_id"]] = ayrilan.get(r["stok_id"], SIFIR) + r["t"]
+        ayrilan_v[(r["stok_id"], r["varyant_id"])] = r["t"]
+    sonuc = {}
+    for pk, vpk in dugumler:
+        if vpk is None:
+            sonuc[(pk, None)] = eldeki.get(pk, SIFIR) - ayrilan.get(pk, SIFIR)
+        else:
+            sonuc[(pk, vpk)] = eldeki_v.get((pk, vpk), SIFIR) - ayrilan_v.get((pk, vpk), SIFIR)
+    return sonuc
+
+
 def kullanilabilir_haritasi(stok_idler, haric_emir=None) -> dict:
     """{stok id: kullanılabilir} — ``uretim.ihtiyac_hesapla(kullanilabilir=...)`` için (çağrılabilir olarak da verilebilir: zincir
     keşfedilince stok id listesiyle çağrılır)."""

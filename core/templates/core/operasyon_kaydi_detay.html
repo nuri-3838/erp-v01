@@ -40,7 +40,7 @@
   <div class="satir"><span class="et">İş İstasyonu</span>
     <span class="dg"><span class="mono">{{ kayit.operasyon.istasyon.kod }}</span> {{ kayit.operasyon.istasyon.ad }}</span></div>
   <div class="satir"><span class="et">Operasyon / Çıktı</span>
-    <span class="dg"><span class="mono">{{ kayit.operasyon.cikti.kod }}</span> {{ kayit.operasyon.cikti.ad }}</span></div>
+    <span class="dg"><span class="mono">{{ kayit.operasyon.cikti.kod }}</span> {{ kayit.operasyon.cikti.ad }}{% if cikti_varyant %} <span class="rozet rozet-notr" title="Çıktı varyantı">{{ cikti_varyant }}</span>{% endif %}</span></div>
   <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ kayit.tarih|date:"d.m.Y" }}</span></div>
   <div class="satir"><span class="et">Hedef Çıktı Miktarı</span><span class="dg mono">{{ kayit.hedef_cikti_miktari|tr_kur:3 }}</span></div>
   <div class="satir"><span class="et">{% if kayit.fason_cari %}Çıktı deposu{% else %}Depo{% endif %}</span>
@@ -111,7 +111,7 @@
       <tbody>
         {% for satir, f, maliyet in satirlar %}
           <tr>
-            <td><span class="mono">{{ satir.girdi.kod }}</span> {{ satir.girdi.ad }}</td>
+            <td><span class="mono">{{ satir.girdi.kod }}</span> {{ satir.girdi.ad }}{% if satir.varyant_etiketi %} <span class="rozet rozet-notr" title="Girdi varyantı">{{ satir.varyant_etiketi }}</span>{% endif %}</td>
             <td class="sag mono">{{ satir.planlanan_miktar|tr_miktar6 }}</td>
             <td class="sag">
               {% if kayit.durum == "TASLAK" and not kayit.silindi %}

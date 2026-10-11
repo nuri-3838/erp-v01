@@ -57,7 +57,29 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
 | E-3 | Giriş/çıkış ekranlarında varyant seçimi (alış/satış faturası, irsaliye, numune, sarf, transfer, elle hareket; kartın varsayılanı dolu gelir, varyantsızda alan yok; alış faturasında yeni kombinasyon açılır; sipariş→fatura ve alış zincirinde kalem varyantı taşınır) | TAMAM, canlıda | (bu commit) |
 | E-4 | Proforma/teklif/sipariş satırında "Varyant" bölümü (4 soru; SEMTA dolu, boş = YOK), "+ yeni varyant", dönüşümlerde taşıma, PDF TR/EN'de yalnız standart dışı seçimler; ÜS kilidi (özel varyantlı siparişten ÜS açılmaz, E-6'ya kadar) | TAMAM, canlıda | (bu commit) |
 | E-5 | Operasyon girdi/çıktı varyant kuralları (TAŞI/SABİT) + DÖNÜŞTÜR tipi + `varyant_operasyon_hazirla` komutu (LAZER MARKALAMA istasyonu, kesim SABİT YOK, 11 dönüştür tanımı, ÇÇ montaj ayak bölme, yan etiket → paketleme; altın kontrol) | TAMAM, canlıda; VERİ UYGULANDI 2026-10-11 17:08 (raporlar `docs/varyant_operasyon_hazirla_kuru_20261011.txt`, `..._uygulandi_20261011.txt`; ÜS-2026-0001…0004 ve 264 kayıt birebir aynı) | `b8b6b89` (3331 test) |
-| E-6 | Planlama motoru (stok, varyant) + ÜS/istasyon emri/kayıt/onay/fason dönüş varyantı; lazer emirleri | bekliyor | |
+| E-6 | Planlama motoru (stok, varyant) düğümleriyle (`services/planlama_varyant.py`), ÜS/kalem/istasyon emri/kayıt/onay/geri alma/fason dönüş/sevk varyantı, LAZER MARKALAMA emirleri, AYARLAR › Üretim Ayarları › "Varyantlı planlama" anahtarı (varsayılan KAPALI; kapalıda eski motor birebir + E-4 kilidi) | kod canlıda, ANAHTAR KAPALI; kuru planlar gösterildi, açılış onay bekliyor | (bu commit) |
+
+## E-6 notları
+
+- Anahtar `UretimAyari.varyantli_planlama` (AYARLAR › Üretim Ayarları, yalnız yönetici; `planlama_varyant.acik()`). KAPALI: `ihtiyac_hesapla`
+  çözücüsüz (kart bazında, eski kod yolu birebir), ÜS `varyantli_plan=False`, istasyon emri/kayıt varyant alanları boş, özel varyantlı siparişten
+  ÜS açılmaz. AÇIK: ÜS `varyantli_plan=True` olarak açılır ve ömrü boyunca (revize, eksik, sevk) o modda kalır — anahtar sonradan kapansa bile.
+- Plan düğümü `(stok, varyant)`: `planlama_varyant.Cozucu` → `ihtiyac_hesapla(cozucu=)`; koşum = (tanım, çıktı varyantı) → aynı tanım bir ÜS'de
+  varyant başına ayrı istasyon emri (`IstasyonEmri.cikti_varyant`; ÇÇ birleştirme markalı + markasız). `ihtiyac`/`sevk_dusen` anahtarı
+  "stok:varyant" (varyantsızda "stok").
+- Tanım seçimi: üreten tanım TAŞI → istenen varyant; SABİT ve istenen ≠ sabit → kartın DÖNÜŞTÜR (lazer) tanımı, girdisi (kart, YOK). Dönüştür
+  tanımı yoksa açık hata ("… varyantı üretilemiyor").
+- Girdi varyantı: SABİT → tanımdaki değer (tüm boyutlar); TAŞI → çıktı varyantının aynı boyutu, çıktıda olmayan boyut girdi kartının varsayılanı.
+  Satın alınan (operasyonsuz) varyantlı girdi tüm boyutları YOK ise satır planda ve kayıtta YOK (afiş/kılavuz/yan etiket istenmiyor → tüketim yok).
+- Kullanılabilir düğüm bazında (`stok_ayirma.kullanilabilir_varyant_haritasi`): standart dışı mamul 152 standart stoğundan karşılanmaz; markasız
+  ayak stoğu markalı ihtiyacı karşılamaz (lazer emri açılır). Standart planda ara stoklar tek varyantta olduğundan kesim/paketleme adetleri
+  kapalı modla aynı (altın test `test_varyant_planlama`).
+- Kayıt: `operasyon_kaydi_olustur(cikti_varyant=)` girdi satırı varyantlarını türetir (`OperasyonKaydiGirdi.varyant`), onayda çıkış/giriş
+  hareketleri ve `OperasyonKaydiCikti.varyant` o varyanta; ÜS ayırmaları varyant bazında düşer/eklenir, geri almada aynen geri sarılır.
+- Fazla üretim reddi (karar 4): `fazla_uretim_yasak(ie)` — çıktı varyantlı emirde DÖNÜŞTÜR (lazer) ve çıktısı 152-* (paketleme) için açık
+  kalandan fazlası reddedilir; diğer istasyonlarda fazlası serbest stok (eski kural).
+- Kalem ilerlemesi/sevk: kalemde varyant varsa o varyantın ayırması/sevki (`kalem_ayrilan_sevk`); kapalı planda kartın toplamı (eski anlam).
+- Canlıya KAPALI deploy edildi; açılış kullanıcı onayıyla ekrandan.
 
 ## E-5 notları
 
@@ -92,4 +114,4 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
   dokunulmadan çalışsın diye). Standart kartlarda SEMTA; kesilmiş ön ayak / SOL ayakta veri göçü YOK atar (karar 5: mevcut ayaklar markasız).
   Karar 9'daki "formlarda SEMTA dolu gelir" ekran kuralı E-3'te; ayaklarda formun varsayılanı kartın varsayılanı (YOK) olacak.
 - Varyantlı kartta her varyant ayrı ortalama; kart önbelleği toplam (tek varyantta bugünkü değerlerle birebir — altın kontrol bunu kanıtlar).
-- Kullanılabilir (kart toplamı) ve `ihtiyac_hesapla` değişmedi (E-6).
+- Kullanılabilir (kart toplamı) ve `ihtiyac_hesapla` E-2'de değişmedi; E-6'da anahtar AÇIK iken düğüm bazına geçti (bkz. E-6 notları).

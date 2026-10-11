@@ -120,6 +120,7 @@ from core.services import cek as cek_servis
 from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import uretim as uretim_servis
+from core.services import planlama_varyant as planlama_varyant_servis
 from core.services import stok_maliyet
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
@@ -3247,7 +3248,7 @@ def teklif_siparis_detay(request, pk):
             uretim_rozetleri.append({"e": e, "yuzde": None if e.durum == UretimEmri.Durum.IPTAL else uretim_servis.uretim_emri_yuzde(e)})
         if not uretim_emri and ts.durum == TeklifSiparis.Durum.ONAYLI:
             uygun, _ = uretim_servis.siparis_uretilebilir_kalemleri(ts)
-            ozel_varyant = uretim_servis.siparis_ozel_varyantli(ts)        # E-6'ya kadar ÜS açılmaz
+            ozel_varyant = not planlama_varyant_servis.acik() and uretim_servis.siparis_ozel_varyantli(ts)   # kilit yalnız anahtar KAPALI iken
             uretim_emri_acilabilir = bool(uygun) and not ozel_varyant
     # SATIŞ'taki manuel dönüşüm zincirinde (Teklif->Proforma->Sipariş) kaynak belge artık
     # düzenlenemez/iptal edilemez (bkz. core.services.teklif_siparis._donusum_hedefi_manuel).
@@ -3389,7 +3390,7 @@ def siparis_uretim_emrine_cevir(request, pk):
         messages.error(request, "Yalnız onaylı sipariş için üretim emri açılabilir.")
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
 
-    if uretim_servis.siparis_ozel_varyantli(siparis):                                   # E-4 kilidi (E-6'ya kadar)
+    if not planlama_varyant_servis.acik() and uretim_servis.siparis_ozel_varyantli(siparis):   # E-4 kilidi: yalnız varyantlı planlama KAPALI iken
         messages.error(request, uretim_servis.OZEL_VARYANT_MESAJI)
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
     uygun, uygun_degil = uretim_servis.siparis_uretilebilir_kalemleri(siparis)
@@ -6234,6 +6235,24 @@ def aday_ek_indir(request, pk):
     return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
 
 
+# --- AYARLAR > Üretim Ayarları (E-6 varyantlı planlama anahtarı; docs/varyant_kararlari.md) ---
+@yonetici_gerekli
+def uretim_ayarlari(request):
+    """"Varyantlı planlama" anahtarı (varsayılan KAPALI): kapalıyken planlama/ÜS/istasyon emri kart bazında (bugünkü motor) ve özel varyantlı
+    siparişten ÜS açılmaz; açıkken plan (stok, varyant) düğümleriyle kurulur (lazer markalama emirleri, TAŞI/SABİT girdiler)."""
+    from core.forms import UretimAyariForm
+    if request.method == "POST":
+        form = UretimAyariForm(request.POST)
+        if form.is_valid():
+            planlama_varyant_servis.anahtar_ayarla(form.cleaned_data["varyantli_planlama"], kullanici=request.user)
+            messages.success(request, "Üretim ayarları kaydedildi: varyantlı planlama "
+                             + ("AÇIK." if form.cleaned_data["varyantli_planlama"] else "KAPALI."))
+            return redirect("core:uretim_ayarlari")
+    else:
+        form = UretimAyariForm(initial={"varyantli_planlama": planlama_varyant_servis.acik()})
+    return render(request, "core/uretim_ayarlari.html", {"form": form, "acik": planlama_varyant_servis.acik()})
+
+
 # --- AYARLAR > Varyantlar (docs/varyant_kararlari.md) ------------------------
 @yonetici_gerekli
 def varyantlar(request):
@@ -7451,14 +7470,13 @@ def uretim_emri_detay(request, pk):
         UretimEmri.objects.select_related("depo", "kaynak_siparis", "kaynak_siparis__cari"),
         pk=pk, silindi=False)
     ayirmalar = list(stok_ayirma_servis.emir_ayirmalari(emir))
-    ayrilan = {a.stok_id: a.miktar for a in ayirmalar}
-    sevk = emir.sevk_dusen or {}
+    for a in ayirmalar:                                                   # varyantlı planda ayırma satırı varyantıyla gösterilir
+        a.varyant_etiketi = planlama_varyant_servis.etiket(a.varyant_id) if (emir.varyantli_plan and a.varyant_id) else ""
     kalem_satirlari = []
-    for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun"):
-        sevk_k = Decimal(str(sevk.get(str(k.hedef_urun_id), "0")))
-        hazir = ayrilan.get(k.hedef_urun_id, Decimal("0")) + sevk_k
+    for k, ayrilan_k, sevk_k in uretim_servis.kalem_ayrilan_sevk(emir, ayirmalar):
+        hazir = ayrilan_k + sevk_k
         yuzde = min(Decimal("100"), hazir * 100 / k.hedef_miktar) if k.hedef_miktar else Decimal("0")
-        kalem_satirlari.append({"k": k, "ayrilan": ayrilan.get(k.hedef_urun_id, Decimal("0")), "sevk": sevk_k,
+        kalem_satirlari.append({"k": k, "ayrilan": ayrilan_k, "sevk": sevk_k, "varyant": planlama_varyant_servis.etiket(k.varyant_id) if k.varyant_id else "",
                                 "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde})
     hatalar = request.session.pop("uret_hata", {})
     gruplar = uretim_servis.istasyon_emri_gruplari(emir, hatalar)                     # istasyon bazında katlanır gruplar (üretim sırası)
@@ -7790,6 +7808,8 @@ def operasyon_kaydi_detay(request, pk):
     """Kayıt detayı; GERİ ALINMIŞ (soft-silinmiş, ``geri_alan`` dolu) kayıt da salt-okunur görünür (kim/ne zaman geri aldı)."""
     kayit = get_object_or_404(OperasyonKaydi.objects.filter(Q(silindi=False) | Q(geri_alan__isnull=False)), pk=pk)
     satirlar = list(uretim_servis.kaydi_girdi_satirlari(kayit))
+    for satir in satirlar:                                                # E-6: girdi varyantı (varyantlı planda dolu)
+        satir.varyant_etiketi = planlama_varyant_servis.etiket(satir.varyant_id) if satir.varyant_id else ""
     if request.method == "POST" and kayit.durum == OperasyonKaydi.Durum.TASLAK and not kayit.silindi:
         formset = OperasyonKaydiGirdiDuzeltFormSet(request.POST, prefix="gs")
         if formset.is_valid():
@@ -7840,6 +7860,7 @@ def operasyon_kaydi_detay(request, pk):
     return render(request, "core/operasyon_kaydi_detay.html",
                   {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
                    "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar, "parcala": parcala,
+                   "cikti_varyant": planlama_varyant_servis.etiket(kayit.cikti_varyant_id) if kayit.cikti_varyant_id else "",
                    "geri_alindi": bool(kayit.silindi and kayit.geri_alan_id)})
 
 

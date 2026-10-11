@@ -9,6 +9,7 @@ from django.urls import reverse
 
 from core import views
 from core.models import Stok, TeklifSiparis, UretimEmri, Varyant
+from core.services import planlama_varyant as pv
 from core.services import teklif_siparis as ts_servis
 from core.services import uretim
 from core.services import varyant as vs
@@ -143,3 +144,55 @@ class ProformaEkraniVaryantTest(tsp.SatisProformaTest):
             "form-1-dahil": "on", "form-1-miktar": "5", "form-1-varyant": "v:AFIS=1"}))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "varyantlı bir kart değil")
+
+
+class PlanlamaAcikSiparisTest(SatisVaryantTaban):
+    """E-6, anahtar AÇIK: özel varyantlı siparişten ÜS açılır (kilit kalkar), ÜS/kalem/istasyon emri/kayıt varyant taşır, mamul o varyanta
+    girer; sevk (depolu fatura, satırda aynı varyant) o varyantın ayırmasını düşürür (``sevk_dusen`` "stok:varyant"), fatura silinince geri gelir."""
+
+    def setUp(self):
+        super().setUp()
+        pv.anahtar_ayarla(True, self.yon)
+
+    def fatura_kes_v(self, sip, sv, miktar="3"):
+        r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "depo": self.depo.pk,
+            "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0", "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+            "form-0-stok": self.stok.pk, "form-0-miktar": miktar, "form-0-birim_fiyat": "50", "form-0-varyant": vs.secim_degeri(sv)}, follow=True)
+        sip.refresh_from_db()
+        return r, [str(m) for m in r.context["messages"]]
+
+    def test_ozel_siparis_us_acilir_uretilir_sevk_varyant_bazinda(self):
+        from core.services import stok_ayirma as sa
+        from core.services import fatura as fatura_servis
+        from core.services.hareket import eldeki_miktar
+        ozel = self.siparis_v(_secim(self.semta, self.mop))
+        sv = ozel.kalemler.get(silindi=False).varyant
+        self.assertTrue(uretim.siparis_ozel_varyantli(ozel))
+        r = self.client.get(reverse("core:teklif_siparis_detay", args=[ozel.pk]))
+        self.assertNotContains(r, "henüz devrede değil")
+        self.assertContains(r, reverse("core:siparis_uretim_emrine_cevir", args=[ozel.pk]))
+        emir = self.emir_ac(ozel)                                                                       # kilit yok
+        self.assertTrue(emir.varyantli_plan)
+        self.assertEqual(emir.kalemler.get().varyant_id, sv.pk)
+        ie = emir.istasyon_emirleri.get()
+        self.assertEqual((ie.cikti_varyant_id, ie.ihtiyac), (sv.pk, {f"{self.stok.pk}:{sv.pk}": "3"}))
+        self.uret(emir)
+        kayit = emir.operasyon_kayitlari.get(silindi=False)
+        self.assertEqual((kayit.cikti_varyant_id, kayit.ciktilar.get(ana_mi=True).varyant_id), (sv.pk, sv.pk))
+        self.assertEqual((eldeki_miktar(self.stok, varyant=sv), sa.ayrilan_miktar(emir, self.stok, varyant=sv)), (D("3"), D("3")))
+        self.assertEqual(uretim.uretim_emri_yuzde(emir), D("100"))
+        r, mesajlar = self.fatura_kes_v(ozel, sv)                                                       # sevk: satırda aynı varyant
+        self.assertIsNotNone(ozel.fatura_id)
+        self.assertFalse(any("kapanmadı" in m or "bitmemiş" in m for m in mesajlar), mesajlar)
+        emir.refresh_from_db()
+        self.assertEqual((emir.durum, emir.sevk_dusen), (UretimEmri.Durum.KAPALI, {f"{self.stok.pk}:{sv.pk}": "3"}))
+        self.assertEqual((eldeki_miktar(self.stok, varyant=sv), sa.ayrilan_miktar(emir, self.stok)), (D("0"), D("0")))
+        fatura_servis.fatura_sil(ozel.fatura)                                                           # geri alma: ayırma aynı varyanta döner
+        emir.refresh_from_db()
+        self.assertEqual((emir.durum, emir.sevk_dusen), (UretimEmri.Durum.ACIK, {}))
+        self.assertEqual(sa.ayrilan_miktar(emir, self.stok, varyant=sv), D("3"))
+        pv.anahtar_ayarla(False, self.yon)                                                              # anahtar kapanınca mevcut ÜS varyantlı kalır
+        emir.refresh_from_db()
+        self.assertTrue(emir.varyantli_plan)
+        self.assertEqual(uretim.uretim_emri_eksikleri(emir), [])

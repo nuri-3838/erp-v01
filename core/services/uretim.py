@@ -32,7 +32,7 @@ from core.models import (
     Stok, StokHareket, TeklifSiparis, UretimEmri, UretimEmriKalemi, UretimEmriRevizyon,
 )
 from core.sayi import SayiHatasi, parse_tr, yuvarla
-from core.services import stok_ayirma
+from core.services import planlama_varyant, stok_ayirma
 from core.services.hareket import HareketHatasi, hareket_ekle
 
 
@@ -755,8 +755,12 @@ def operasyon_sil(operasyon: Operasyon, kullanici=None) -> Operasyon:
 
 # === İhtiyaç Hesapla — özyinelemeli, salt-okunur, hiçbir kayıt/stok hareketi üretmez ===
 
-def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None, kullanilabilir=None):
+def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None, kullanilabilir=None, cozucu=None):
     """kalemler: [(Stok hedef, Decimal miktar), ...].
+
+    ``cozucu`` (E-6, ``planlama_varyant.Cozucu``) verilirse kalemler (stok, varyant) DÜĞÜMLERİDİR (``planlama_varyant.Dugum``: pk = (stok pk,
+    varyant pk)) ve operasyon/girdi/çıktı satırları ondan okunur (koşum pk = (tanım pk, çıktı varyantı); kesim SABİT ≠ istenen → dönüştür tanımı);
+    ``kullanilabilir`` çağrılabilir düğüm pk listesi alır. Verilmezse (varsayılan) hesap kart bazında ve BİREBİR eskisi gibidir.
 
     ``boy_yuvarla=False`` → tam boy yukarı yuvarlaması KAPALI: bütün çalıştırmalar kesirli (gerçek tüketim; maliyet görünümleri için).
     ``pay_dus=True`` → yan çıktılı kesimde girdi talebi ana çıktının boy payı (``ana_cikti_payi``) kadar düşülür. Varsayılanlarla
@@ -797,7 +801,11 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None, kul
 
     def op_bul(stok):
         if stok.pk not in onbellek:
-            if graf is not None:
+            if cozucu is not None:
+                operasyon, satirlar, ciktilar = cozucu.op_bul(stok)
+                if operasyon is not None:
+                    cikti_onbellek.setdefault(operasyon.pk, list(ciktilar))
+            elif graf is not None:
                 operasyon = graf.op_of.get(stok.pk)
                 satirlar = list(graf.girdiler.get(operasyon.pk, [])) if operasyon else []
                 if operasyon is not None:
@@ -1043,9 +1051,10 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if not depo:
         raise UretimHatasi("Depo bulunamadı.")
-    coz = _kalemleri_coz(kalemler, siparis_kalemleri)
+    varyantli = planlama_varyant.acik()                                                     # E-6 anahtarı (açılış anında; ÜS'ye yazılır)
+    coz = _kalemleri_coz(kalemler, siparis_kalemleri, varyantli)
     _planlama_kilidi()
-    sonuc = ihtiyac_hesapla(coz, kullanilabilir=stok_ayirma.kullanilabilir_haritasi)       # önce hesapla: döngü hatası hiçbir şey yazdırmaz
+    sonuc, cz = _plani_hesapla(coz, varyantli, kullanici)                                   # önce hesapla: döngü hatası hiçbir şey yazdırmaz
 
     yil = tarih.year
     emir = None
@@ -1055,7 +1064,7 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
                 sira = _sonraki_emir_sira(yil)
                 emir = UretimEmri.objects.create(
                     yil=yil, sira=sira, no=f"ÜS-{yil}-{sira:04d}", depo=depo, tarih=tarih,      # üretim siparişi (eski UE- kayıtlar aynen)
-                    aciklama=(aciklama or "").strip(), kaynak_siparis=kaynak_siparis,
+                    aciklama=(aciklama or "").strip(), kaynak_siparis=kaynak_siparis, varyantli_plan=varyantli,
                     created_by=kullanici, updated_by=kullanici)
             break
         except IntegrityError:
@@ -1063,15 +1072,18 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     if emir is None:
         raise UretimHatasi("Emir numarası üretilemedi; tekrar deneyin.")
 
-    kalem_detay = _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici)
-    ayirma_detay = _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici)
+    kalem_detay = _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici, cz)
+    ayirma_detay = _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici, varyantli)
 
     emir_detay = []
     for p in sonuc["plan"]:
         if p["calistirma"] <= 0:                    # net ihtiyaç 0: tamamı stoktan karşılandı, istasyon emri gerekmez
             continue
         ie = _istasyon_emri_ac(emir, p, kullanici)
-        emir_detay.append({"no": ie.no, "operasyon": p["operasyon"].cikti.kod, "planlanan": _ds(ie.planlanan)})
+        d = {"no": ie.no, "operasyon": p["operasyon"].cikti.kod, "planlanan": _ds(ie.planlanan)}
+        if ie.cikti_varyant_id:
+            d["varyant"] = planlama_varyant.etiket(ie.cikti_varyant)
+        emir_detay.append(d)
     _revizyon_yaz(emir, UretimEmriRevizyon.Tur.ACILIS, tarih, "Açılış",
                   {"kalemler": kalem_detay, "ayirmalar": ayirma_detay, "istasyon_emirleri": emir_detay}, kullanici)
     return emir
@@ -1083,14 +1095,16 @@ def _planlama_kilidi():
         c.execute("SELECT pg_advisory_xact_lock(%s)", [URETIM_PLANLAMA_KILIDI])
 
 
-def _kalemleri_coz(kalemler, siparis_kalemleri=None):
-    """[(Stok, Decimal), ...] — her kalemin operasyonu olmalı, miktar > 0; siparişsizde aynı ürün tek satır."""
+def _kalemleri_coz(kalemler, siparis_kalemleri=None, varyantli=False):
+    """[(Stok, Decimal, varyant), ...] — her kalemin operasyonu olmalı, miktar > 0; siparişsizde aynı ürün tek satır. ``varyant`` (E-6) yalnız
+    varyantlı planlamada: sipariş kaleminin varyantı ya da satırdaki ``varyant_id`` (StokVaryant|pk), yoksa None (= kartın STANDART varyantı,
+    ``planlama_varyant.Cozucu.kalem_dugumu``); kapalıda hep None."""
     if not kalemler:
         raise UretimHatasi("En az bir hedef ürün satırı gerekli.")
     if siparis_kalemleri is not None and len(siparis_kalemleri) != len(kalemler):
         raise UretimHatasi("Sipariş kalemi listesi kalem listesiyle aynı uzunlukta olmalı.")
     coz, gorulen = [], set()
-    for satir in kalemler:
+    for i, satir in enumerate(kalemler):
         urun = _cikti_coz(satir["hedef_urun_id"])
         if urun.pk in gorulen and siparis_kalemleri is None:
             raise UretimHatasi(f"{urun.kod} birden fazla satırda tekrarlanamaz.")
@@ -1101,53 +1115,99 @@ def _kalemleri_coz(kalemler, siparis_kalemleri=None):
         miktar = _sayi_coz(satir["hedef_miktar"], "Hedef miktar geçerli bir sayı olmalı.")
         if miktar <= 0:
             raise UretimHatasi("Hedef miktar sıfırdan büyük olmalı.")
-        coz.append((urun, miktar))
+        varyant = None
+        if varyantli and urun.varyantli:
+            varyant = siparis_kalemleri[i].varyant if siparis_kalemleri is not None else satir.get("varyant_id")
+        coz.append((urun, miktar, varyant))
     return coz
 
 
-def _kalemleri_yaz(emir, coz, ayrilan, siparis_kalemleri, kullanici):
-    """ÜS kalemlerini yazar; ``eldeki_ayrilan`` kök stoğun ayrılanından sırayla (kalem miktarını aşmaz). Detay listesi döner."""
+def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None):
+    """NET plan (``ihtiyac_hesapla``): kapalıda kart bazında — bugünkü yol, birebir; varyantlı planlamada (stok, varyant) düğümleriyle
+    (``planlama_varyant.Cozucu``). (sonuç, çözücü|None) döner."""
+    if not varyantli:
+        if haric_emir is None:
+            kh = stok_ayirma.kullanilabilir_haritasi
+        else:
+            kh = lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=haric_emir)      # noqa: E731
+        return ihtiyac_hesapla([(u, m) for u, m, _v in coz], graf=graf, kullanilabilir=kh), None
+    cz = planlama_varyant.Cozucu(kullanici)
+    kalemler = [(cz.kalem_dugumu(u, v), m) for u, m, v in coz]
+    return ihtiyac_hesapla(kalemler, cozucu=cz,
+                           kullanilabilir=lambda d: stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=haric_emir)), cz
+
+
+def _kalemleri_yaz(emir, coz, ayrilan, siparis_kalemleri, kullanici, cz=None):
+    """ÜS kalemlerini yazar; ``eldeki_ayrilan`` kök stoğun (varyantlı planlamada kök düğümün) ayrılanından sırayla (kalem miktarını aşmaz).
+    Detay listesi döner."""
     havuz = dict(ayrilan)
     detay = []
-    for i, (urun, miktar) in enumerate(coz, start=1):
-        a = min(miktar, havuz.get(urun.pk, Decimal("0")))
-        havuz[urun.pk] = havuz.get(urun.pk, Decimal("0")) - a
+    for i, (urun, miktar, varyant) in enumerate(coz, start=1):
+        sv = cz.kalem_dugumu(urun, varyant).varyant if cz is not None else None
+        anahtar = (urun.pk, sv.pk if sv is not None else None) if cz is not None else urun.pk
+        a = min(miktar, havuz.get(anahtar, Decimal("0")))
+        havuz[anahtar] = havuz.get(anahtar, Decimal("0")) - a
         UretimEmriKalemi.objects.create(
-            uretim_emri=emir, hedef_urun=urun, hedef_miktar=miktar, sira=i * 10, eldeki_ayrilan=a,
+            uretim_emri=emir, hedef_urun=urun, varyant=sv, hedef_miktar=miktar, sira=i * 10, eldeki_ayrilan=a,
             siparis_kalem=siparis_kalemleri[i - 1] if siparis_kalemleri else None,
             created_by=kullanici, updated_by=kullanici)
-        detay.append({"stok": urun.kod, "miktar": _ds(miktar), "eldeki_ayrilan": _ds(a)})
+        d = {"stok": urun.kod, "miktar": _ds(miktar), "eldeki_ayrilan": _ds(a)}
+        if sv is not None:
+            d["varyant"] = planlama_varyant.etiket(sv)
+        detay.append(d)
     return detay
 
 
-def _ayirmalari_esitle(emir, ayrilan, kullanici):
-    """ÜS ayırmalarını plan ayrılanına ÇEKER (artan/azalan; planda olmayan stoklar kapanır). Yeni durumun detay listesi döner."""
-    mevcut = {a.stok_id for a in stok_ayirma.emir_ayirmalari(emir)}
+def _ayirmalari_esitle(emir, ayrilan, kullanici, varyantli=False):
+    """ÜS ayırmalarını plan ayrılanına ÇEKER (artan/azalan; planda olmayan stoklar kapanır). Yeni durumun detay listesi döner.
+    Varyantlı planlamada anahtar (stok pk, varyant pk|None) ve ayırma o varyanta yazılır; kapalıda stok pk (kartın varsayılanı)."""
     detay = []
-    for stok_pk in sorted(mevcut | set(ayrilan)):
-        miktar = ayrilan.get(stok_pk, Decimal("0"))
-        stok_ayirma.ayirma_ayarla(emir, stok_pk, max(miktar, Decimal("0")), kullanici)
+    if not varyantli:
+        mevcut = {a.stok_id for a in stok_ayirma.emir_ayirmalari(emir)}
+        for stok_pk in sorted(mevcut | set(ayrilan)):
+            miktar = ayrilan.get(stok_pk, Decimal("0"))
+            stok_ayirma.ayirma_ayarla(emir, stok_pk, max(miktar, Decimal("0")), kullanici)
+            if miktar > 0:
+                detay.append({"stok": Stok.objects.get(pk=stok_pk).kod, "miktar": _ds(miktar)})
+        return detay
+    mevcut = {(a.stok_id, a.varyant_id) for a in stok_ayirma.emir_ayirmalari(emir)}
+    for stok_pk, var_pk in sorted(mevcut | set(ayrilan), key=lambda k: (k[0], k[1] or 0)):
+        miktar = ayrilan.get((stok_pk, var_pk), Decimal("0"))
+        stok_ayirma.ayirma_ayarla(emir, stok_pk, max(miktar, Decimal("0")), kullanici, varyant=var_pk)
         if miktar > 0:
-            detay.append({"stok": Stok.objects.get(pk=stok_pk).kod, "miktar": _ds(miktar)})
+            d = {"stok": Stok.objects.get(pk=stok_pk).kod, "miktar": _ds(miktar)}
+            if var_pk:
+                d["varyant"] = planlama_varyant.etiket(var_pk)
+            detay.append(d)
     return detay
 
 
 def _istasyon_emri_ac(emir: UretimEmri, plan_satiri: dict, kullanici=None) -> IstasyonEmri:
-    """Plan satırından (ihtiyac_hesapla ``plan``) istasyon emri yazar (IE-yyyy-nnnn; 10 denemeli iyimser numara)."""
-    op = plan_satiri["operasyon"]
+    """Plan satırından (ihtiyac_hesapla ``plan``) istasyon emri yazar (IE-yyyy-nnnn; 10 denemeli iyimser numara). Varyantlı planda
+    ``cikti_varyant`` koşumun çıktı varyantı, ``ihtiyac`` anahtarı "stok:varyant"."""
+    op, cikti_varyant = planlama_varyant.kosum_coz(plan_satiri["operasyon"])
     yil = emir.tarih.year
+    ihtiyac = {}
+    for c in plan_satiri["ciktilar"]:
+        if c["surucu"] and c["net"] > 0:
+            st, sv = planlama_varyant.dugum_coz(c["stok"])
+            ihtiyac[planlama_varyant.ihtiyac_anahtari(st.pk, sv.pk if sv is not None else None)] = _ds(c["net"])
     for _ in range(10):
         try:
             with transaction.atomic():
                 sira = _sonraki_ie_sira(yil)
                 return IstasyonEmri.objects.create(
-                    uretim_emri=emir, operasyon=op, istasyon_id=op.istasyon_id, yil=yil, sira=sira, no=f"IE-{yil}-{sira:04d}",
-                    seviye=plan_satiri["seviye"], planlanan=plan_satiri["calistirma"], tamamlanan=Decimal("0"),
-                    ihtiyac={str(c["stok"].pk): _ds(c["net"]) for c in plan_satiri["ciktilar"] if c["surucu"] and c["net"] > 0},
-                    durum=IstasyonEmri.Durum.BEKLIYOR, created_by=kullanici, updated_by=kullanici)
+                    uretim_emri=emir, operasyon=op, cikti_varyant=cikti_varyant, istasyon_id=op.istasyon_id, yil=yil, sira=sira,
+                    no=f"IE-{yil}-{sira:04d}", seviye=plan_satiri["seviye"], planlanan=plan_satiri["calistirma"], tamamlanan=Decimal("0"),
+                    ihtiyac=ihtiyac, durum=IstasyonEmri.Durum.BEKLIYOR, created_by=kullanici, updated_by=kullanici)
         except IntegrityError:
             continue
     raise UretimHatasi("İstasyon emri numarası üretilemedi; tekrar deneyin.")
+
+
+def _ihtiyac_coz(ie: IstasyonEmri) -> dict:
+    """İstasyon emri ``ihtiyac`` JSON'u → {(stok pk, varyant pk|None): Decimal}."""
+    return {planlama_varyant.anahtar_coz(k): Decimal(str(v)) for k, v in (ie.ihtiyac or {}).items()}
 
 
 OZEL_VARYANT_MESAJI = "Bu siparişte özel varyant var; varyantlı üretim henüz devrede değil."
@@ -1189,7 +1249,7 @@ def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, 
         raise UretimHatasi("Yalnız onaylı sipariş için üretim emri açılabilir.")
     if siparis.uretim_emirleri.filter(silindi=False).exclude(durum=UretimEmri.Durum.IPTAL).exists():      # tüm ÜS'leri iptalse yenisi açılabilir
         raise UretimHatasi("Bu siparişten zaten bir üretim siparişi açılmış.")
-    if siparis_ozel_varyantli(siparis):                                                                   # E-6'ya kadar (docs/varyant_kararlari.md)
+    if not planlama_varyant.acik() and siparis_ozel_varyantli(siparis):                                   # kilit yalnız anahtar KAPALI iken (E-6)
         raise UretimHatasi(OZEL_VARYANT_MESAJI)
 
     uygun, _ = siparis_uretilebilir_kalemleri(siparis)
@@ -1289,16 +1349,34 @@ def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=
     if ie.durum == IstasyonEmri.Durum.IPTAL:
         raise UretimHatasi("İptal edilmiş istasyon emrinden kayıt açılamaz.")
     ref = _referans_miktar(ie.operasyon)
+    kalan = istasyon_emri_acik_kalan(ie)
     if hedef in (None, ""):
-        kalan = istasyon_emri_acik_kalan(ie)
         if kalan <= 0:
             raise UretimHatasi("Bu istasyon emrinde açılacak kalan miktar yok; fazla üretim için hedef miktarı girin.")
         hedef = (kalan * ref).quantize(Decimal("0.000001"))
+    elif fazla_uretim_yasak(ie):
+        h = _sayi_coz(hedef, "Hedef çıktı miktarı geçerli bir sayı olmalı.")
+        izin = (max(kalan, Decimal("0")) * ref).quantize(Decimal("0.000001"))
+        if h > izin:
+            raise UretimHatasi(f"Bu emirde fazla üretim yapılamaz (varyantlı {('markalama' if ie.operasyon.tur == Operasyon.Tur.DONUSTUR else 'mamul')} "
+                               f"emri): en çok {izin.normalize():f} üretilebilir, {h.normalize():f} istendi.")
     kayit = operasyon_kaydi_olustur(
         operasyon_id=ie.operasyon_id, depo_id=depo_id or emir.depo_id, tarih=tarih or timezone.localdate(), hedef_cikti_miktari=hedef,
-        uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici)
+        uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici, cikti_varyant=ie.cikti_varyant)
     istasyon_emri_durum_guncelle(ie)
     return kayit
+
+
+def fazla_uretim_yasak(ie: IstasyonEmri) -> bool:
+    """E-6 (karar 4): varyantlı planlanmış emirde LAZER MARKALAMA (dönüştür tanımı) ve PAKETLEME (çıktısı satılabilir mamul) için açık kalandan
+    fazlası reddedilir — özel varyantlı parça serbest stoğa girmesin. Diğer istasyonlarda fazlası serbest stok (bugünkü kural)."""
+    if not ie.cikti_varyant_id:
+        return False
+    op = ie.operasyon
+    return op.tur == Operasyon.Tur.DONUSTUR or op.cikti.kod.startswith(MAMUL_KOD_ONEKI)
+
+
+MAMUL_KOD_ONEKI = "152-"       # mamul (paketleme çıktısı) kartları: stok kodu 152-xx-nnnn (bkz. operasyon_serileri kök tespiti)
 
 
 def _eksik_mesaji(mesaj: str) -> str:
@@ -1425,7 +1503,8 @@ def istasyon_emri_satiri(ie: IstasyonEmri, emir: UretimEmri, hatalar=None) -> di
     return {"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
             "acik": max(istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
             "uretilebilir": acilabilir and not ie.istasyon.fason and not bitti, "hata": (hatalar or {}).get(str(ie.pk)),
-            "fason_acilabilir": acilabilir and ie.istasyon.fason and not bitti}
+            "fason_acilabilir": acilabilir and ie.istasyon.fason and not bitti,
+            "varyant": planlama_varyant.etiket(ie.cikti_varyant) if ie.cikti_varyant_id else "", "fazla_yasak": fazla_uretim_yasak(ie)}
 
 
 def istasyon_emri_gruplari(emir: UretimEmri, hatalar=None) -> list:
@@ -1454,13 +1533,38 @@ def uretim_emri_yuzde(emir: UretimEmri) -> Decimal:
     """ÜS ilerleme yüzdesi: Σ min(hedef, ayrılan + sevk edilen) ÷ Σ hedef × 100 (0–100)."""
     if emir.durum == UretimEmri.Durum.KAPALI and stok_us_mu(emir) and not emir.sevk_dusen:
         return Decimal("100")                                # tamamlanmış stok ÜS'si: ayırmalar serbest, ilerleme %100
-    ayrilan = {a.stok_id: a.miktar for a in stok_ayirma.emir_ayirmalari(emir)}
-    sevk = emir.sevk_dusen or {}
     toplam = hazir = Decimal("0")
-    for k in emir.kalemler.filter(silindi=False):
+    for k, h in kalem_hazir_miktarlari(emir, stok_ayirma.emir_ayirmalari(emir)):
         toplam += k.hedef_miktar
-        hazir += min(k.hedef_miktar, ayrilan.get(k.hedef_urun_id, Decimal("0")) + Decimal(str(sevk.get(str(k.hedef_urun_id), "0"))))
+        hazir += h
     return (hazir * 100 / toplam) if toplam else Decimal("0")
+
+
+def kalem_hazir_miktarlari(emir: UretimEmri, ayirmalar) -> list:
+    """[(kalem, min(hedef, ayrılan + sevk edilen))] — bkz. ``kalem_ayrilan_sevk``."""
+    return [(k, min(k.hedef_miktar, a + s)) for k, a, s in kalem_ayrilan_sevk(emir, ayirmalar)]
+
+
+def kalem_ayrilan_sevk(emir: UretimEmri, ayirmalar) -> list:
+    """[(kalem, ayrılan, sevk edilen)] — kalemde varyant varsa (varyantlı plan) o varyantın ayırması/sevki, yoksa kartın toplamı (tüm varyantlar).
+    ``ayirmalar``: ÜS'nin aktif ayırma satırları (sorgu ya da liste); kalemler prefetch edilmişse ek sorgu yok (``all()`` + bellekte süzme)."""
+    ayr_kart, ayr_var = {}, {}
+    for a in ayirmalar:
+        ayr_kart[a.stok_id] = ayr_kart.get(a.stok_id, Decimal("0")) + a.miktar
+        ayr_var[(a.stok_id, a.varyant_id)] = ayr_var.get((a.stok_id, a.varyant_id), Decimal("0")) + a.miktar
+    sevk = emir.sevk_dusen or {}
+    sonuc = []
+    for k in emir.kalemler.all():
+        if k.silindi:
+            continue
+        if k.varyant_id:
+            a = ayr_var.get((k.hedef_urun_id, k.varyant_id), Decimal("0"))
+            s = Decimal(str(sevk.get(planlama_varyant.ihtiyac_anahtari(k.hedef_urun_id, k.varyant_id), "0")))
+        else:
+            a = ayr_kart.get(k.hedef_urun_id, Decimal("0"))
+            s = Decimal(str(sevk.get(str(k.hedef_urun_id), "0")))
+        sonuc.append((k, a, s))
+    return sonuc
 
 
 def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
@@ -1473,20 +1577,22 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
     for satir in kaydi_girdi_satirlari(kayit):
         if satir.gerceklesen_miktar <= 0:
             continue
-        dus = min(stok_ayirma.ayrilan_miktar(emir, satir.girdi_id), satir.gerceklesen_miktar)
+        dus = min(stok_ayirma.ayrilan_miktar(emir, satir.girdi_id, varyant=satir.varyant_id), satir.gerceklesen_miktar)
         if dus > 0:
-            stok_ayirma.ayirma_ekle(emir, satir.girdi_id, -dus, kullanici)
+            stok_ayirma.ayirma_ekle(emir, satir.girdi_id, -dus, kullanici, varyant=satir.varyant_id)
             satir.ayrilan_dusen = dus
             satir.save(update_fields=["ayrilan_dusen", "updated_at"])
-    ihtiyac = {int(k): Decimal(str(v)) for k, v in (ie.ihtiyac or {}).items()}
+    ihtiyac = _ihtiyac_coz(ie)
     for c in kayit.ciktilar.filter(silindi=False):
-        if c.miktar <= 0 or c.stok_id not in ihtiyac:
+        anahtar = (c.stok_id, c.varyant_id)
+        if c.miktar <= 0 or anahtar not in ihtiyac:
             continue
         onceki = sum((x.ayrilan for x in OperasyonKaydiCikti.objects.filter(
-            kayit__istasyon_emri=ie, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__silindi=False, stok_id=c.stok_id, silindi=False).exclude(pk=c.pk)), Decimal("0"))
-        a = min(c.miktar, max(Decimal("0"), ihtiyac[c.stok_id] - onceki))
+            kayit__istasyon_emri=ie, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__silindi=False, stok_id=c.stok_id, varyant_id=c.varyant_id,
+            silindi=False).exclude(pk=c.pk)), Decimal("0"))
+        a = min(c.miktar, max(Decimal("0"), ihtiyac[anahtar] - onceki))
         if a > 0:
-            stok_ayirma.ayirma_ekle(emir, c.stok_id, a, kullanici)
+            stok_ayirma.ayirma_ekle(emir, c.stok_id, a, kullanici, varyant=c.varyant_id)
             c.ayrilan = a
             c.save(update_fields=["ayrilan", "updated_at"])
     ie.tamamlanan = ie.tamamlanan + kayit_calistirma(kayit)
@@ -1495,6 +1601,13 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
     emir.refresh_from_db()
     if not _kapanis_kontrol(emir, kullanici):                  # sevk edilmiş sipariş: son emir bitince kapanır
         stok_us_tamamla(emir, kullanici)                       # kaynak siparişsiz ("stok için üretim") ÜS: %100 olunca tamamlanır, ayırmalar serbest
+
+
+def _ayirma_etiketi(a, emir) -> str:
+    """Revizyon detayında ayırma anahtarı: 'KOD' (varyantsız / kapalı plan) ya da 'KOD [VARYANT]' (varyantlı planda varyantlı kart)."""
+    if a.varyant_id and emir.varyantli_plan:
+        return f"{a.stok.kod} [{planlama_varyant.etiket(a.varyant_id)}]"
+    return a.stok.kod
 
 
 def stok_us_mu(emir: UretimEmri) -> bool:
@@ -1511,9 +1624,9 @@ def stok_us_tamamla(emir: UretimEmri, kullanici=None) -> bool:
     ilerleme = uretim_emri_ilerleme(emir)
     if not ilerleme["toplam"] or ilerleme["onayli"] < ilerleme["toplam"]:
         return False
-    serbest = {a.stok.kod: _ds(a.miktar) for a in stok_ayirma.emir_ayirmalari(emir)}
+    serbest = {_ayirma_etiketi(a, emir): _ds(a.miktar) for a in stok_ayirma.emir_ayirmalari(emir)}
     for a in list(stok_ayirma.emir_ayirmalari(emir)):
-        stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici)
+        stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici, varyant=a.varyant_id)
     emir.durum = UretimEmri.Durum.KAPALI
     emir.kapanis_tarihi = timezone.localdate()
     emir.updated_by = kullanici
@@ -1535,10 +1648,10 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
         if not yeniden_ac:                                  # tamamlanmış ÜS'de mamul ayırması GERİ GELMEZ (serbest kalır)
             for c in kayit.ciktilar.filter(silindi=False):
                 if c.ayrilan > 0:
-                    stok_ayirma.ayirma_ekle(emir, c.stok_id, -c.ayrilan, kullanici)
+                    stok_ayirma.ayirma_ekle(emir, c.stok_id, -c.ayrilan, kullanici, varyant=c.varyant_id)
         for satir in kaydi_girdi_satirlari(kayit):          # kalan üretimin girdi ayırması mevcut mantıkla yeniden kurulur
             if satir.ayrilan_dusen > 0:
-                stok_ayirma.ayirma_ekle(emir, satir.girdi_id, satir.ayrilan_dusen, kullanici)
+                stok_ayirma.ayirma_ekle(emir, satir.girdi_id, satir.ayrilan_dusen, kullanici, varyant=satir.varyant_id)
     ie.tamamlanan = max(Decimal("0"), ie.tamamlanan - kayit_calistirma(kayit))
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
@@ -1552,51 +1665,83 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
 
 # === Üretim siparişi REVİZE (adım 7) ===
 
-def sevk_edilen_haritasi(emir: UretimEmri) -> dict:
+def sevk_edilen_haritasi(emir: UretimEmri, siparis=None) -> dict:
     """{stok pk: sevk/faturalanmış miktar} — siparişli ÜS'de kaynak siparişin bağlı (silinmemiş) satış faturası satırlarından; manuel ÜS'de boş.
+    Varyantlı planlanmış ÜS'de anahtar (stok pk, varyant pk) (fatura satırının varyantı); kart bazlı (kapalı) planda düz stok pk — eski biçim.
     Revize bunun altına düşürmeyi reddeder (adım 8 kapanışı aynı kaynağı kullanır)."""
-    sip = emir.kaynak_siparis
+    sip = siparis if siparis is not None else emir.kaynak_siparis
     if sip is None or not sip.fatura_id or sip.fatura.silindi:
         return {}
     h = {}
     for sat in sip.fatura.satirlar.filter(silindi=False, stok__isnull=False):
-        h[sat.stok_id] = h.get(sat.stok_id, Decimal("0")) + sat.miktar
+        k = (sat.stok_id, sat.varyant_id) if emir.varyantli_plan else sat.stok_id
+        h[k] = h.get(k, Decimal("0")) + sat.miktar
     return h
 
 
-def plan_kalemleri(coz, sevk: dict) -> list:
-    """Planlanacak kalemler: ÜS kalemlerinden sevk/fatura edilmiş miktar (stok başına, sırayla) düşülür — sevk edilen mamul zaten çıktı, yeniden
-    üretilmez/ayrılmaz. Sıfıra inenler dışarıda kalır (hepsi sevk edilmişse plan boş)."""
-    kalan = dict(sevk or {})
+def _sevk_anahtar_coz(k) -> tuple:
+    """Sevk haritası anahtarı → (stok pk, varyant pk|None): düz pk (kart bazlı) ya da (stok, varyant) ikilisi."""
+    return k if isinstance(k, tuple) else (k, None)
+
+
+def _kalem_anahtari(urun, varyant, varyantli) -> tuple:
+    """(stok pk, varyant pk|None) — varyantlı planda kalemin varyantı (StokVaryant|pk|None: None = standart), kapalıda None."""
+    if not varyantli or not urun.varyantli:
+        return (urun.pk, None)
+    if varyant is None:
+        from core.services import varyant as vs
+        varyant = vs.standart_varyant(urun)
+    return (urun.pk, getattr(varyant, "pk", varyant))
+
+
+def plan_kalemleri(coz, sevk: dict, varyantli=False) -> list:
+    """Planlanacak kalemler: ÜS kalemlerinden sevk/fatura edilmiş miktar ((stok, varyant) başına, sırayla) düşülür — sevk edilen mamul zaten çıktı,
+    yeniden üretilmez/ayrılmaz. Sıfıra inenler dışarıda kalır (hepsi sevk edilmişse plan boş). ``coz`` 2'li (ürün, miktar) ya da 3'lü
+    (ürün, miktar, varyant); çıktı girdiyle aynı biçimdedir."""
+    kalan = {_sevk_anahtar_coz(k): v for k, v in (sevk or {}).items()}
     sonuc = []
-    for urun, miktar in coz:
-        d = min(miktar, kalan.get(urun.pk, Decimal("0")))
-        kalan[urun.pk] = kalan.get(urun.pk, Decimal("0")) - d
+    for satir in coz:
+        urun, miktar, *kalan_alanlar = satir
+        varyant = kalan_alanlar[0] if kalan_alanlar else None
+        k = _kalem_anahtari(urun, varyant, varyantli)
+        d = min(miktar, kalan.get(k, Decimal("0")))
+        kalan[k] = kalan.get(k, Decimal("0")) - d
         if miktar - d > 0:
-            sonuc.append((urun, miktar - d))
+            sonuc.append((urun, miktar - d, varyant) if kalan_alanlar else (urun, miktar - d))
     return sonuc
 
 
+def _emir_kalemleri(emir: UretimEmri) -> list:
+    """ÜS kalemleri 3'lü (ürün, miktar, varyant) — varyant yalnız varyantlı planda dolu."""
+    return [(k.hedef_urun, k.hedef_miktar, k.varyant if emir.varyantli_plan else None)
+            for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun", "varyant").order_by("sira", "pk")]
+
+
 def uretim_emri_eksikleri(emir: UretimEmri, graf=None) -> list:
-    """Açık ÜS'nin SATINALMA ihtiyacı: kalan net planda eksik > 0 olan yaprak stoklar → [{"stok", "gerekli", "kullanilabilir", "eksik"}] (stok koduna
-    göre). Revizenin kullandığı hesapla aynı: ÜS'nin kendi ayırmaları ona açık, başkalarının ayırmaları düşülmüş kullanılabilir; sevk edilen mamul
-    plan dışı. Kapalı/iptal ÜS için boş. ``graf`` (urun_agaci.graf_yukle()) verilirse liste ekranında sorgu sayısı düşer."""
+    """Açık ÜS'nin SATINALMA ihtiyacı: kalan net planda eksik > 0 olan yaprak stoklar → [{"stok", "varyant", "varyant_etiketi", "gerekli",
+    "kullanilabilir", "eksik"}] (stok koduna göre; varyantlı planda düğüm = (stok, varyant)). Revizenin kullandığı hesapla aynı: ÜS'nin kendi ayırmaları
+    ona açık, başkalarının ayırmaları düşülmüş kullanılabilir; sevk edilen mamul plan dışı. Kapalı/iptal ÜS için boş. ``graf``
+    (urun_agaci.graf_yukle()) verilirse (kapalı planda) liste ekranında sorgu sayısı düşer."""
     if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
         return []
-    coz = [(k.hedef_urun, k.hedef_miktar) for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun").order_by("sira", "pk")]
+    coz = _emir_kalemleri(emir)
     if not coz:
         return []
-    sonuc = ihtiyac_hesapla(plan_kalemleri(coz, sevk_edilen_haritasi(emir)), graf=graf,
-                            kullanilabilir=lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=emir))
-    eksikler = [{"stok": o["stok"], "gerekli": o["ihtiyac"], "kullanilabilir": o["ayrilan"], "eksik": o["eksik"]}
-                for o in sonuc["ozet"] if o["yaprak"] and o["eksik"] is not None and o["eksik"] > 0]
-    return sorted(eksikler, key=lambda x: x["stok"].kod)
+    sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk_edilen_haritasi(emir), emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf)
+    eksikler = []
+    for o in sonuc["ozet"]:
+        if o["yaprak"] and o["eksik"] is not None and o["eksik"] > 0:
+            st, sv = planlama_varyant.dugum_coz(o["stok"])
+            eksikler.append({"stok": st, "varyant": sv, "varyant_etiketi": planlama_varyant.etiket(sv), "gerekli": o["ihtiyac"],
+                             "kullanilabilir": o["ayrilan"], "eksik": o["eksik"]})
+    return sorted(eksikler, key=lambda x: (x["stok"].kod, x["varyant_etiketi"]))
 
 
-def _onceki_ayrilan(ie: IstasyonEmri, stok_id) -> Decimal:
-    """Bu emrin ONAYLI kayıtlarının bu çıktı için ÜS'ye ayırdığı toplam (kayıt çıktı satırı izleri)."""
+def _onceki_ayrilan(ie: IstasyonEmri, stok_id, varyant_id=None) -> Decimal:
+    """Bu emrin ONAYLI kayıtlarının bu çıktı (stok, varyant) için ÜS'ye ayırdığı toplam (kayıt çıktı satırı izleri)."""
     return sum((c.ayrilan for c in OperasyonKaydiCikti.objects.filter(
-        kayit__istasyon_emri=ie, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__silindi=False, stok_id=stok_id, silindi=False)), Decimal("0"))
+        kayit__istasyon_emri=ie, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__silindi=False, stok_id=stok_id, varyant_id=varyant_id,
+        silindi=False)), Decimal("0"))
 
 
 def _taslaklari_sigdir(ie: IstasyonEmri, yeni_net, kullanici=None) -> list:
@@ -1620,13 +1765,22 @@ def _taslaklari_sigdir(ie: IstasyonEmri, yeni_net, kullanici=None) -> list:
     return degisen
 
 
+def _varyantla(d: dict, varyant_id) -> dict:
+    """Revizyon detay satırına varsa varyant etiketi ekler (yoksa satır aynen: kapalı planda JSON birebir eski)."""
+    if varyant_id:
+        d["varyant"] = planlama_varyant.etiket(varyant_id)
+    return d
+
+
 def _emir_ozeti(emir: UretimEmri) -> dict:
     return {
-        "kalemler": [{"stok": k.hedef_urun.kod, "miktar": _ds(k.hedef_miktar), "eldeki_ayrilan": _ds(k.eldeki_ayrilan)}
+        "kalemler": [_varyantla({"stok": k.hedef_urun.kod, "miktar": _ds(k.hedef_miktar), "eldeki_ayrilan": _ds(k.eldeki_ayrilan)}, k.varyant_id)
                      for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun")],
-        "ayirmalar": [{"stok": a.stok.kod, "miktar": _ds(a.miktar)} for a in stok_ayirma.emir_ayirmalari(emir)],
-        "istasyon_emirleri": [{"no": ie.no, "operasyon": ie.operasyon.cikti.kod, "planlanan": _ds(ie.planlanan), "tamamlanan": _ds(ie.tamamlanan),
-                               "durum": ie.durum} for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti")],
+        "ayirmalar": [_varyantla({"stok": a.stok.kod, "miktar": _ds(a.miktar)}, a.varyant_id if emir.varyantli_plan else None)
+                      for a in stok_ayirma.emir_ayirmalari(emir)],
+        "istasyon_emirleri": [_varyantla({"no": ie.no, "operasyon": ie.operasyon.cikti.kod, "planlanan": _ds(ie.planlanan),
+                                          "tamamlanan": _ds(ie.tamamlanan), "durum": ie.durum}, ie.cikti_varyant_id)
+                              for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti")],
     }
 
 
@@ -1643,24 +1797,31 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
     emir = UretimEmri.objects.select_for_update(of=("self",)).select_related("kaynak_siparis", "depo").get(pk=emir.pk)
     if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
         raise UretimHatasi("Yalnız açık üretim siparişi revize edilebilir.")
-    coz = _kalemleri_coz(kalemler, siparis_kalemleri)
+    varyantli = emir.varyantli_plan                                                       # ÜS hangi modda açıldıysa o modda revize edilir
+    coz = _kalemleri_coz(kalemler, siparis_kalemleri, varyantli)
     yeni_toplam = {}
-    for urun, miktar in coz:
-        yeni_toplam[urun.pk] = yeni_toplam.get(urun.pk, Decimal("0")) + miktar
+    for urun, miktar, varyant in coz:
+        k = _kalem_anahtari(urun, varyant, varyantli)
+        yeni_toplam[k] = yeni_toplam.get(k, Decimal("0")) + miktar
     sevk_haritasi = sevk_edilen_haritasi(emir)
-    for stok_pk, sevk in sevk_haritasi.items():
-        if yeni_toplam.get(stok_pk, Decimal("0")) < sevk:
+    for anahtar, sevk in sevk_haritasi.items():
+        stok_pk, var_pk = _sevk_anahtar_coz(anahtar)
+        if yeni_toplam.get((stok_pk, var_pk), Decimal("0")) < sevk:
             raise UretimHatasi(f"{Stok.objects.get(pk=stok_pk).kod}: sevk/fatura edilmiş miktarın ({sevk.normalize():f}) altına düşürülemez.")
     once = _emir_ozeti(emir)
-    sonuc = ihtiyac_hesapla(plan_kalemleri(coz, sevk_haritasi), kullanilabilir=lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=emir))
+    sonuc, cz = _plani_hesapla(plan_kalemleri(coz, sevk_haritasi, varyantli), varyantli, kullanici, haric_emir=emir)
 
     emir.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici)
-    _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici)
+    _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici, cz)
+    _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici, varyantli)
 
     taslak_degisen = []
-    plan = {p["operasyon"].pk: p for p in sonuc["plan"]}
-    mevcut = {ie.operasyon_id: ie for ie in IstasyonEmri.objects.select_for_update().filter(uretim_emri=emir, silindi=False).select_related("operasyon")}
+    plan = {}
+    for p in sonuc["plan"]:
+        op, sv = planlama_varyant.kosum_coz(p["operasyon"])
+        plan[(op.pk, sv.pk if sv is not None else None)] = p
+    mevcut = {(ie.operasyon_id, ie.cikti_varyant_id): ie
+              for ie in IstasyonEmri.objects.select_for_update().filter(uretim_emri=emir, silindi=False).select_related("operasyon")}
     for opk, p in plan.items():
         ie = mevcut.get(opk)
         net = p["calistirma"]
@@ -1674,9 +1835,11 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
         for c in p["ciktilar"]:
             if not c["surucu"]:
                 continue
-            toplam = c["net"] + _onceki_ayrilan(ie, c["stok"].pk)
+            st, sv = planlama_varyant.dugum_coz(c["stok"])
+            var_pk = sv.pk if sv is not None else None
+            toplam = c["net"] + _onceki_ayrilan(ie, st.pk, var_pk)
             if toplam > 0:
-                ie.ihtiyac[str(c["stok"].pk)] = _ds(toplam)
+                ie.ihtiyac[planlama_varyant.ihtiyac_anahtari(st.pk, var_pk)] = _ds(toplam)
         if net <= 0 and ie.tamamlanan <= 0:
             ie.durum = IstasyonEmri.Durum.IPTAL
             ie.updated_by = kullanici
@@ -1766,16 +1929,15 @@ def siparis_sevk_edildi(siparis, kullanici=None, tarih=None) -> str:
     if not sevk_depolu_mu(siparis):
         return ("Fatura depo seçilmeden/onaysız oluştu: stok çıkışı yazılmadı, üretim siparişi kapanmadı ve mamul ayırması düşmedi. "
                 "Faturaya depo seçip yeniden oluşturun.")
-    satis = {}
-    for sat in siparis.fatura.satirlar.filter(silindi=False, stok__isnull=False):
-        satis[sat.stok_id] = satis.get(sat.stok_id, Decimal("0")) + sat.miktar
-    dusen = {int(k): Decimal(str(v)) for k, v in (emir.sevk_dusen or {}).items()}
-    for stok_pk, miktar in satis.items():
-        dus = min(stok_ayirma.ayrilan_miktar(emir, stok_pk), max(Decimal("0"), miktar - dusen.get(stok_pk, Decimal("0"))))
+    satis = sevk_edilen_haritasi(emir, siparis)                           # {(stok, varyant|None): fatura miktarı} — varyant yalnız varyantlı planda
+    dusen = {planlama_varyant.anahtar_coz(k): Decimal(str(v)) for k, v in (emir.sevk_dusen or {}).items()}
+    for anahtar, miktar in satis.items():
+        stok_pk, var_pk = _sevk_anahtar_coz(anahtar)
+        dus = min(stok_ayirma.ayrilan_miktar(emir, stok_pk, varyant=var_pk), max(Decimal("0"), miktar - dusen.get((stok_pk, var_pk), Decimal("0"))))
         if dus > 0:
-            stok_ayirma.ayirma_ekle(emir, stok_pk, -dus, kullanici)
-            dusen[stok_pk] = dusen.get(stok_pk, Decimal("0")) + dus
-    emir.sevk_dusen = {str(k): _ds(v) for k, v in dusen.items()}
+            stok_ayirma.ayirma_ekle(emir, stok_pk, -dus, kullanici, varyant=var_pk)
+            dusen[(stok_pk, var_pk)] = dusen.get((stok_pk, var_pk), Decimal("0")) + dus
+    emir.sevk_dusen = {planlama_varyant.ihtiyac_anahtari(k[0], k[1]): _ds(v) for k, v in dusen.items()}
     emir.updated_by = kullanici
     emir.save(update_fields=["sevk_dusen", "updated_by", "updated_at"])
     if not _kapanis_kontrol(emir, kullanici, tarih):
@@ -1793,7 +1955,8 @@ def siparis_fatura_silindi(siparis, kullanici=None, tarih=None) -> None:
         return
     detay = {"sevk_dusen": emir.sevk_dusen}
     for k, v in (emir.sevk_dusen or {}).items():
-        stok_ayirma.ayirma_ekle(emir, int(k), Decimal(str(v)), kullanici)
+        stok_pk, var_pk = planlama_varyant.anahtar_coz(k)
+        stok_ayirma.ayirma_ekle(emir, stok_pk, Decimal(str(v)), kullanici, varyant=var_pk)
     emir.sevk_dusen = {}
     yeniden = emir.durum == UretimEmri.Durum.KAPALI
     emir.durum = UretimEmri.Durum.ACIK
@@ -1828,7 +1991,7 @@ def uretim_emirleri_ozet(emirler) -> dict:
     izli = set(StokHareket.objects.filter(operasyon_kaydi__uretim_emri_id__in=idler).values_list("operasyon_kaydi__uretim_emri_id", flat=True))
     ayrilan = {}
     for a in stok_ayirma.acik_ayirmalar().filter(uretim_emri_id__in=idler):
-        ayrilan.setdefault(a.uretim_emri_id, {})[a.stok_id] = a.miktar
+        ayrilan.setdefault(a.uretim_emri_id, []).append(a)
     sonuc = {}
     for e in emirler:
         i, k = ie.get(e.pk), kayit.get(e.pk)
@@ -1837,11 +2000,10 @@ def uretim_emirleri_ozet(emirler) -> dict:
         else:
             ilerleme = {"toplam": k["toplam"], "onayli": k["onayli"]} if k else {"toplam": 0, "onayli": 0}
         baslamis = bool((i and i["baslamis"]) or (k and k["baslamis"]) or e.pk in izli)
-        sevk, ayr = e.sevk_dusen or {}, ayrilan.get(e.pk, {})
         toplam = hazir = Decimal("0")
-        for kl in e.kalemler.all():
+        for kl, h in kalem_hazir_miktarlari(e, ayrilan.get(e.pk, [])):
             toplam += kl.hedef_miktar
-            hazir += min(kl.hedef_miktar, ayr.get(kl.hedef_urun_id, Decimal("0")) + Decimal(str(sevk.get(str(kl.hedef_urun_id), "0"))))
+            hazir += h
         tamam = e.durum == UretimEmri.Durum.KAPALI and e.kaynak_siparis_id is None and not e.sevk_dusen         # tamamlanmış stok ÜS'si
         sonuc[e.pk] = {"ilerleme": ilerleme, "yuzde": Decimal("100") if tamam else ((hazir * 100 / toplam) if toplam else Decimal("0")),
                        "silinebilir": e.durum == UretimEmri.Durum.ACIK and not baslamis}
@@ -1886,7 +2048,7 @@ def uretim_emri_iptal(emir: UretimEmri, kullanici=None, tarih=None) -> UretimEmr
         operasyon_kaydi_sil(k, kullanici=kullanici)
     emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.BITTI).update(durum=IstasyonEmri.Durum.IPTAL, updated_by=kullanici)
     for a in list(emir.ayirmalar.filter(silindi=False)):
-        stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici)
+        stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici, varyant=a.varyant_id)
     emir.durum = UretimEmri.Durum.IPTAL
     emir.updated_by = kullanici
     emir.save(update_fields=["durum", "updated_by", "updated_at"])
@@ -1909,7 +2071,10 @@ def kaydi_girdi_satirlari(kayit: OperasyonKaydi):
 @transaction.atomic
 def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari,
                             uretim_emri=None, aciklama="", kullanici=None, fason_cari=None, fason_donus=None,
-                            istasyon_emri=None) -> OperasyonKaydi:
+                            istasyon_emri=None, cikti_varyant=None) -> OperasyonKaydi:
+    """``cikti_varyant`` (E-6, istasyon emrinden): kaydın ürettiği ana çıktı varyantı; girdi satırlarının varyantı tanım kuralından türetilir
+    (``planlama_varyant.girdi_varyanti``), atlanan (tüm boyutları YOK, satın alınan) girdi satırı yazılmaz. Boşsa bugünkü davranış (varyant boş →
+    kartın varsayılanı)."""
     operasyon = (Operasyon.objects.filter(pk=operasyon_id, silindi=False)
                 .select_related("istasyon", "cikti").first())
     if not operasyon:
@@ -1920,9 +2085,19 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
     miktar = _sayi_coz(hedef_cikti_miktari, "Hedef çıktı miktarı geçerli bir sayı olmalı.")
     if miktar <= 0:
         raise UretimHatasi("Hedef çıktı miktarı sıfırdan büyük olmalı.")
-    girdi_satirlari = list(operasyon_girdileri(operasyon))
+    girdi_satirlari = [(g, None) for g in operasyon_girdileri(operasyon)]
     if not girdi_satirlari:
         raise UretimHatasi("Operasyonda hiç girdi satırı yok.")
+    if cikti_varyant is not None:
+        ob = planlama_varyant.Onbellek()
+        secilen = []
+        for g, _v in girdi_satirlari:
+            sv, atla = planlama_varyant.girdi_varyanti(g, cikti_varyant, kullanici, ob)
+            if not atla:
+                secilen.append((g, sv))
+        girdi_satirlari = secilen
+        if not girdi_satirlari:
+            raise UretimHatasi("Bu varyant için tüketilecek girdi kalmıyor (tüm girdiler YOK).")
     if operasyon.tam_calistirma:                       # tam boy: çalıştırma sayısı tam sayı (hedef çıktı çıktı miktarının katına yükseltilir)
         miktar = _yukari_yuvarla(miktar / operasyon.cikti_miktar) * operasyon.cikti_miktar
 
@@ -1934,8 +2109,8 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
                 sira = _sonraki_kayit_sira(yil)
                 kayit = OperasyonKaydi.objects.create(
                     yil=yil, sira=sira, no=f"OP-{yil}-{sira:04d}",
-                    operasyon=operasyon, uretim_emri=uretim_emri, istasyon_emri=istasyon_emri, depo=depo, tarih=tarih,
-                    hedef_cikti_miktari=miktar, aciklama=(aciklama or "").strip(),
+                    operasyon=operasyon, uretim_emri=uretim_emri, istasyon_emri=istasyon_emri, cikti_varyant=cikti_varyant, depo=depo,
+                    tarih=tarih, hedef_cikti_miktari=miktar, aciklama=(aciklama or "").strip(),
                     durum=OperasyonKaydi.Durum.TASLAK, fason_cari=fason_cari, fason_donus=fason_donus,
                     created_by=kullanici, updated_by=kullanici)
             break
@@ -1944,10 +2119,10 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
     if kayit is None:
         raise UretimHatasi("Kayıt numarası üretilemedi; tekrar deneyin.")
 
-    for i, satir in enumerate(girdi_satirlari, start=1):
+    for i, (satir, sv) in enumerate(girdi_satirlari, start=1):
         gerekli = yuvarla(miktar * satir.miktar / operasyon.cikti_miktar, 6)
         OperasyonKaydiGirdi.objects.create(
-            kayit=kayit, girdi=satir.girdi, planlanan_miktar=gerekli,
+            kayit=kayit, girdi=satir.girdi, varyant=sv, planlanan_miktar=gerekli,
             gerceklesen_miktar=gerekli, sira=i * 10,
             created_by=kullanici, updated_by=kullanici)
     return kayit
@@ -2116,7 +2291,7 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
                 stok_id=satir.girdi_id, depo_id=girdi_depo_id, tarih=kayit.tarih,
                 tur=StokHareket.Tur.CIKIS, miktar=satir.gerceklesen_miktar,
                 aciklama=f"Operasyon kaydı {kayit.no}", kaynak=StokHareket.Kaynak.URETIM,
-                operasyon_kaydi_girdi=satir, operasyon_kaydi=kayit, kullanici=kullanici)
+                operasyon_kaydi_girdi=satir, operasyon_kaydi=kayit, kullanici=kullanici, varyant=satir.varyant_id)
         except HareketHatasi as e:
             raise UretimHatasi(str(e))
         # Girdi, o anki ağırlıklı ortalamayla değerlenir (bkz. core.services.stok_ortalama).
@@ -2146,6 +2321,7 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
     # ONAY ANI SNAPSHOT'I: çıktı satırları (miktar, boy, pay oranı) kayda yazılır; sonraki yeniden paylaştırmalar bunlara göre yapılır.
     toplam_agirlik = sum(agirlik.values(), Decimal("0"))
     referans_anahtar = "ana" if any(a == "ana" for a, _s, _m, _b in ciktilar) else ciktilar[0][0]     # PARÇALA: referans gelmediyse ilk gelen çıktı
+    cikti_varyant = planlama_varyant.kayit_cikti_varyantlari(kayit, tam_ciktilar)                      # {anahtar: StokVaryant|None} (E-6)
     for anahtar, stok_id, miktar, boy in ciktilar:
         if len(ciktilar) == 1 or not toplam_agirlik or any(a <= 0 for a in agirlik.values()):
             oran = Decimal("1") if anahtar == referans_anahtar else Decimal("0")
@@ -2153,15 +2329,15 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
             oran = (agirlik[anahtar] / toplam_agirlik).quantize(Decimal("0.0000000001"))
         f = fason[anahtar] if fason else None
         OperasyonKaydiCikti.objects.create(
-            kayit=kayit, stok_id=stok_id, miktar=miktar, beklenen_miktar=beklenen[anahtar], boy_mm=boy, pay_orani=oran, ana_mi=(anahtar == "ana"),
-            agirlik=agirlik[anahtar],
+            kayit=kayit, stok_id=stok_id, varyant=cikti_varyant.get(anahtar), miktar=miktar, beklenen_miktar=beklenen[anahtar], boy_mm=boy,
+            pay_orani=oran, ana_mi=(anahtar == "ana"), agirlik=agirlik[anahtar],
             fason_birim_fiyat=f["fiyat"].birim_fiyat if f else None, fason_para_birimi=f["fiyat"].para_birimi if f else "",
             fason_kur=f["kur"] if f else None, fason_tutar=f["tutar_try"] if f else None, fason_tutar_usd=f["tutar_usd"] if f else None,
             created_by=kullanici, updated_by=kullanici)
     for anahtar, stok_id, boy in gelmeyen:
-        OperasyonKaydiCikti.objects.create(kayit=kayit, stok_id=stok_id, miktar=Decimal("0"), beklenen_miktar=beklenen[anahtar], boy_mm=boy,
-                                           pay_orani=Decimal("0"), agirlik=Decimal("0"), ana_mi=False, fason_tutar=Decimal("0"), fason_tutar_usd=Decimal("0"),
-                                           created_by=kullanici, updated_by=kullanici)
+        OperasyonKaydiCikti.objects.create(kayit=kayit, stok_id=stok_id, varyant=cikti_varyant.get(anahtar), miktar=Decimal("0"),
+                                           beklenen_miktar=beklenen[anahtar], boy_mm=boy, pay_orani=Decimal("0"), agirlik=Decimal("0"), ana_mi=False,
+                                           fason_tutar=Decimal("0"), fason_tutar_usd=Decimal("0"), created_by=kullanici, updated_by=kullanici)
     pay_try = stok_fis.maliyet_paylastir(toplam_girdi_maliyeti if bilinen else Decimal("0.00"), agirlik, referans_anahtar)
     pay_usd = stok_fis.maliyet_paylastir(toplam_girdi_usd if bilinen else Decimal("0.00"), agirlik, referans_anahtar)
     for anahtar, stok_id, miktar, _boy in ciktilar:
@@ -2175,7 +2351,7 @@ def operasyon_kaydi_onayla(kayit: OperasyonKaydi, kullanici=None) -> OperasyonKa
             tahmini=herhangi_biri_tahmini or (fason_bekleyen and f_try > 0),
             giris_tutar_try=(pay_try[anahtar] + f_try) if bilinen else None,
             giris_tutar_usd=(pay_usd[anahtar] + f_usd) if bilinen else None,
-            kullanici=kullanici)
+            kullanici=kullanici, varyant=cikti_varyant.get(anahtar))
     kayit.durum = OperasyonKaydi.Durum.ONAYLI
     kayit.updated_by = kullanici
     kayit.save(update_fields=["durum", "updated_by", "updated_at"])

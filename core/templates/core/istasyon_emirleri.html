@@ -72,7 +72,7 @@
         <td class="mono ie-no"><a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}" title="Bu emrin operasyon kayıtları">{{ s.ie.no }}</a></td>
         <td><a class="mono" href="{% url 'core:uretim_emri_detay' s.ie.uretim_emri_id %}">{{ s.ie.uretim_emri.no }}</a></td>
         {% if not secili %}<td><span class="mono">{{ s.ie.istasyon.kod }}</span> {{ s.ie.istasyon.ad }}{% if s.ie.istasyon.fason %} <span class="rozet rozet-notr">fason</span>{% endif %}</td>{% endif %}
-        <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}</td>
+        <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}{% if s.varyant %} <span class="rozet rozet-notr" title="Çıktı varyantı">{{ s.varyant }}</span>{% endif %}</td>
         <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>
         <td class="sag mono">{{ s.tamamlanan|tr_kur:3 }}</td>
         <td class="sag mono">{{ s.acik|tr_kur:3 }}</td>
@@ -83,7 +83,7 @@
             {% elif s.uretilebilir and uret_yetkili %}
             <form method="post" action="{% url 'core:istasyon_emri_uret' s.ie.pk %}" class="ie-uret-form">
               {% csrf_token %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
-              <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer" autocomplete="off">
+              <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="{% if s.fazla_yasak %}Üretilen miktar (referans çıktı adedi); bu emirde açık kalandan fazlası yazılamaz (varyantlı markalama/mamul emri){% else %}Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer{% endif %}" autocomplete="off">
               <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi">
               <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">Üretildi</button></form>
             {% else %}<span class="pasif">—</span>{% endif %}

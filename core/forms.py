@@ -3666,6 +3666,11 @@ class NumuneSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
+class UretimAyariForm(forms.Form):
+    """AYARLAR › Üretim Ayarları — E-6 varyantlı planlama anahtarı."""
+    varyantli_planlama = forms.BooleanField(label="Varyantlı planlama", required=False)
+
+
 class NumuneAyariForm(forms.Form):
     gider_hesap = forms.ModelChoiceField(label="Numune gider hesabı (borç)", queryset=HesapPlani.objects.none(), empty_label="— hesap seç —")
 

@@ -103,7 +103,7 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
                 operasyon_id=operasyon_id, depo_id=depo.pk, tarih=tarih, hedef_cikti_miktari=hedef,
                 aciklama=f"Fason dönüş {donus.no}" + (f" · irsaliye {donus.irsaliye_no}" if donus.irsaliye_no else ""),
                 kullanici=kullanici, fason_cari=cari, fason_donus=donus,
-                uretim_emri=ie.uretim_emri if ie else None, istasyon_emri=ie)
+                uretim_emri=ie.uretim_emri if ie else None, istasyon_emri=ie, cikti_varyant=ie.cikti_varyant if ie else None)
         except uretim_servis.UretimHatasi as e:
             raise FasonHatasi(f"{i}. satır: {e}")
         if ie is not None:

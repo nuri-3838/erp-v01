@@ -154,6 +154,7 @@ urlpatterns = [
     path("uretim/kayitlar/<int:pk>/sil/", views.operasyon_kaydi_sil, name="operasyon_kaydi_sil"),
     path("uretim/kayitlar/<int:pk>/geri-al-sil/", views.operasyon_kaydi_geri_al_sil, name="operasyon_kaydi_geri_al_sil"),
     # AYARLAR > Varyantlar
+    path("ayarlar/uretim/", views.uretim_ayarlari, name="uretim_ayarlari"),
     path("ayarlar/varyantlar/", views.varyantlar, name="varyantlar"),
     path("ayarlar/varyantlar/ekle/", views.varyant_ekle, name="varyant_ekle"),
     path("ayarlar/varyantlar/<int:pk>/duzenle/", views.varyant_duzenle, name="varyant_duzenle"),

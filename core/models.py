@@ -3264,6 +3264,9 @@ class OperasyonKaydiCikti(TemelModel):
 
     kayit = models.ForeignKey("OperasyonKaydi", on_delete=models.CASCADE, related_name="ciktilar")
     stok = models.ForeignKey(Stok, verbose_name="çıktı", on_delete=models.PROTECT, related_name="kayit_cikti_satirlari")
+    # E-6: stoğa giren varyant (ana çıktıda kaydın ``cikti_varyant``ı; yan çıktıda kurala göre türetilir). Boş = kartın varsayılanı.
+    varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="operasyon_kaydi_ciktilari")
     miktar = models.DecimalField("giriş miktarı", max_digits=18, decimal_places=6)
     # Beklenen (çalıştırmadan çıkması gereken) adet: fason dönüşte ``miktar`` GELEN adettir, ``beklenen_miktar − miktar`` = FİRE (eksik teslim).
     beklenen_miktar = models.DecimalField("beklenen miktar", max_digits=18, decimal_places=6, null=True, blank=True)
@@ -3403,6 +3406,9 @@ class UretimEmri(TemelModel):
     kapanis_tarihi = models.DateField("kapanış tarihi", null=True, blank=True)
     # Sevk (depolu satış faturası) nedeniyle ÜS ayırmasından düşen miktarlar {stok pk: miktar}: fatura silinince aynen geri eklenir (adım 8).
     sevk_dusen = models.JSONField("sevk nedeniyle ayırmadan düşen ({stok pk: miktar})", default=dict, blank=True)
+    # E-6: ÜS varyantlı planlama anahtarı AÇIKKEN açıldı — revize/eksik/sevk hesapları (stok, varyant) düğümleriyle sürer; kapalıda açılan ÜS kart
+    # bazında kalır (anahtar sonradan değişse bile).
+    varyantli_plan = models.BooleanField("varyantlı plan", default=False)
 
     class Meta:
         db_table = "core_uretim_emri"
@@ -3430,6 +3436,9 @@ class UretimEmriKalemi(TemelModel):
     hedef_urun = models.ForeignKey(
         Stok, verbose_name="hedef ürün", on_delete=models.PROTECT,
         related_name="uretim_emri_kalemleri")
+    # Varyantlı planlamada (E-6) kalemin istenen mamul varyantı (sipariş kaleminden; stok ÜS'de standart). Kapalıda boş.
+    varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="uretim_emri_kalemleri")
     hedef_miktar = models.DecimalField("hedef miktar", max_digits=18, decimal_places=3)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
     # Siparişten açılan üretim siparişinde kalemin SATIŞ sipariş kalemi (karar 6/10: hedef miktar = sipariş kalem miktarı); manuelde boş.
@@ -3502,6 +3511,10 @@ class IstasyonEmri(TemelModel):
 
     uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="istasyon_emirleri")
     operasyon = models.ForeignKey(Operasyon, verbose_name="operasyon", on_delete=models.PROTECT, related_name="istasyon_emirleri")
+    # Varyantlı planlamada (E-6) bu emrin ürettiği ÇIKTI varyantı: aynı operasyon bir ÜS'de varyant başına ayrı emir (çift çıkış birleştirme:
+    # markalı + markasız). Kapalı/varyantsızda boş; ``ihtiyac`` anahtarı "stok" ya da "stok:varyant".
+    cikti_varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="çıktı varyantı", null=True, blank=True, on_delete=models.PROTECT, related_name="istasyon_emirleri")
     istasyon = models.ForeignKey(IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT, related_name="emirler")   # açılış anı snapshot'ı
     yil = models.PositiveSmallIntegerField("yıl", editable=False)
     sira = models.PositiveIntegerField("sıra", editable=False)
@@ -3521,7 +3534,10 @@ class IstasyonEmri(TemelModel):
         ordering = ["uretim_emri", "seviye", "pk"]
         constraints = [
             models.UniqueConstraint(fields=["yil", "sira"], name="uq_istasyon_emri_yil_sira"),
-            models.UniqueConstraint(fields=["uretim_emri", "operasyon"], condition=models.Q(silindi=False), name="uq_istasyon_emri_aktif_op"),
+            models.UniqueConstraint(fields=["uretim_emri", "operasyon"], condition=models.Q(silindi=False, cikti_varyant__isnull=True),
+                                    name="uq_istasyon_emri_aktif_op"),
+            models.UniqueConstraint(fields=["uretim_emri", "operasyon", "cikti_varyant"],
+                                    condition=models.Q(silindi=False, cikti_varyant__isnull=False), name="uq_istasyon_emri_aktif_op_varyant"),
             models.CheckConstraint(condition=models.Q(planlanan__gte=0), name="ck_istasyon_emri_planlanan_gte0"),
             models.CheckConstraint(condition=models.Q(tamamlanan__gte=0), name="ck_istasyon_emri_tamamlanan_gte0"),
         ]
@@ -3589,6 +3605,9 @@ class OperasyonKaydi(TemelModel):
     # Üretim siparişi akışında kaydın açıldığı İSTASYON EMRİ (uretim_emri de dolu olur); eski/bağımsız kayıtlarda boş.
     istasyon_emri = models.ForeignKey(
         "IstasyonEmri", verbose_name="istasyon emri", null=True, blank=True, on_delete=models.PROTECT, related_name="kayitlar")
+    # Varyantlı planlamada (E-6) bu kaydın ÜRETTİĞİ ana çıktı varyantı (istasyon emrinden); boşsa çıktı kartın varsayılan varyantına girer.
+    cikti_varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="çıktı varyantı", null=True, blank=True, on_delete=models.PROTECT, related_name="operasyon_kayitlari")
     depo = models.ForeignKey(
         Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="operasyon_kayitlari")
     tarih = models.DateField("tarih")
@@ -3635,6 +3654,9 @@ class OperasyonKaydiGirdi(TemelModel):
     girdi = models.ForeignKey(
         Stok, verbose_name="girdi", on_delete=models.PROTECT,
         related_name="operasyon_kaydi_kullanimlari")
+    # E-6: tüketilecek girdi varyantı (TAŞI → çıktı varyantından, SABİT → tanımdaki sabit); boşsa kartın varsayılanı (bugünkü davranış).
+    varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="operasyon_kaydi_girdileri")
     # OperasyonGirdi'den SNAPSHOT (kayıt açıldığı andaki tanıma göre) — tanım sonradan
     # değişse bu kayıt etkilenmez. gerceklesen_miktar TASLAK'ta elle düzeltilebilir (gerçek
     # sarfiyat/fire planlanandan sapabilir); Onayla'da STOK ÇIKIŞI bu değerle yazılır —
@@ -4166,6 +4188,24 @@ class KdvMahsup(TemelModel):
 
     def __str__(self):
         return f"{self.ay:02d}/{self.yil} KDV mahsubu"
+
+
+class UretimAyari(TemelModel):
+    """Üretim ayarları — TEKİL kayıt (pk=1). ``varyantli_planlama`` (E-6, docs/varyant_kararlari.md): KAPALI (varsayılan) iken planlama motoru,
+    ÜS açılışı/revizesi ve istasyon emirleri bugünkü gibi (kart bazında) çalışır ve özel varyantlı siparişten ÜS açılmaz; AÇIK iken plan
+    (stok, varyant) düğümleriyle kurulur (kesim/lazer seçimi, TAŞI/SABİT girdiler, lazer emirleri, standart dışı mamul 152'den karşılanmaz)."""
+
+    varyantli_planlama = models.BooleanField("varyantlı planlama", default=False)
+
+    class Meta:
+        db_table = "core_uretim_ayari"
+        verbose_name = "üretim ayarı"
+        verbose_name_plural = "üretim ayarı"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
 
 
 class NumuneAyari(TemelModel):

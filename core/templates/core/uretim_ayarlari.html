@@ -1,0 +1,30 @@
+{% extends "core/base.html" %}
+{% block baslik %}Üretim Ayarları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Üretim Ayarları{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:tanim_listeleri' %}">← Ayarlar</a>
+    <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Ayarları</h1>
+  </div>
+  <form method="post" autocomplete="off">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Varyantlı planlama</h2>
+      <p class="yardim" style="margin-top:0">
+        <strong>Kapalı</strong> (varsayılan): planlama, üretim siparişi ve istasyon emirleri stok kartı bazında çalışır; kalemlerinde özel (standart dışı)
+        varyant olan siparişten üretim siparişi açılmaz.<br>
+        <strong>Açık:</strong> plan (stok, varyant) bazında kurulur — markalama gereken ayak için LAZER MARKALAMA emri açılır, çift çıkış birleştirme emri
+        markalı/markasız ayrılır, özel varyantlı mamul standart stoktan karşılanmaz, müşterinin istemediği (YOK) afiş/kılavuz/yan etiket tüketilmez;
+        LAZER MARKALAMA ve PAKETLEME emirlerinde açık kalandan fazlası yazılamaz. Mevcut üretim siparişleri açıldıkları modda kalır.
+      </p>
+      {% for e in form.non_field_errors %}<div class="uyari">⚠️ {{ e }}</div>{% endfor %}
+      <div class="alan"><label><input type="checkbox" name="varyantli_planlama" value="on"{% if form.varyantli_planlama.value %} checked{% endif %}> Varyantlı planlama AÇIK</label></div>
+      <p>Şu anki durum: {% if acik %}<span class="rozet rozet-aktif">AÇIK</span>{% else %}<span class="rozet rozet-pasif">KAPALI</span>{% endif %}</p>
+    </section>
+    <div class="form-altbar"><a class="iptal-bag" href="{% url 'core:tanim_listeleri' %}">İptal</a><button type="submit" class="birincil">Kaydet</button></div>
+  </form>
+</div>
+{% endblock %}
