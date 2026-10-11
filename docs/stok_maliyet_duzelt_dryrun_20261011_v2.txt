@@ -1,0 +1,262 @@
+DRY-RUN (geri alindi, kalici degisiklik YOK) — 150-50-0004=1 TL, 151-40-0007=1 TL | fis: 150-50-0004 -> 770.08
+
+FIYATLANAN GIRISLER (2)
+  hareket 98 01.09.2026 150-50-0004 MANUEL 1000 x 1 = 1,000.00 TL
+  hareket 99 22.09.2026 151-40-0007 IRSALIYE 34632 x 1 = 34,632.00 TL
+
+YENI FISLER (1; giderden stoga aktarim, kaynak STOK_DUZELTME)
+  fis 2026/1340 01.09.2026  150.50 B 1,000.00 / 770.08 A 1,000.00  — KULLANMA KILAVUZU İÇ BASKI MALİYETİ – GİDERDEN STOĞA AKTARIM  [hareket 98 150-50-0004]
+
+FISSIZ FIYATLANAN GIRISLER (1)
+  hareket 99 151-40-0007 34,632.00 TL — irsaliye girişi: fatura gelince fiyat ve fiş faturadan
+
+TUTARI/DURUMU DEGISEN HAREKETLER (140; cikis = tuketim, giris = uretim ciktisi)
+  hareket 98 01.09.2026 150-50-0004   GIRIS MANUEL         1000            0.00 ->       1,000.00 TL  [YOK->KESIN]
+  hareket 717 25.09.2026 150-50-0004   CIKIS URETIM            3            0.00 ->           3.00 TL  [YOK->KESIN]
+  hareket 721 25.09.2026 150-50-0004   CIKIS URETIM            3            0.00 ->           3.00 TL  [YOK->KESIN]
+  hareket 725 25.09.2026 150-50-0004   CIKIS URETIM            3            0.00 ->           3.00 TL  [YOK->KESIN]
+  hareket 729 25.09.2026 150-50-0004   CIKIS URETIM           50            0.00 ->          50.00 TL  [YOK->KESIN]
+  hareket 733 25.09.2026 150-50-0004   CIKIS URETIM           50            0.00 ->          50.00 TL  [YOK->KESIN]
+  hareket 737 25.09.2026 150-50-0004   CIKIS URETIM            3            0.00 ->           3.00 TL  [YOK->KESIN]
+  hareket 741 25.09.2026 150-50-0004   CIKIS URETIM            3            0.00 ->           3.00 TL  [YOK->KESIN]
+  hareket 745 25.09.2026 150-50-0004   CIKIS URETIM            3            0.00 ->           3.00 TL  [YOK->KESIN]
+  hareket 1480 29.09.2026 150-50-0004   CIKIS URETIM            1            0.00 ->           1.00 TL  [YOK->KESIN]
+  hareket 1016 09.10.2026 150-50-0004   CIKIS URETIM           50            0.00 ->          50.00 TL  [YOK->KESIN]
+  hareket 1021 09.10.2026 150-50-0004   CIKIS URETIM          100            0.00 ->         100.00 TL  [YOK->KESIN]
+  hareket 1026 09.10.2026 150-50-0004   CIKIS URETIM          100            0.00 ->         100.00 TL  [YOK->KESIN]
+  hareket 1031 09.10.2026 150-50-0004   CIKIS URETIM           20            0.00 ->          20.00 TL  [YOK->KESIN]
+  hareket 1036 09.10.2026 150-50-0004   CIKIS URETIM          100            0.00 ->         100.00 TL  [YOK->KESIN]
+  hareket 1041 09.10.2026 150-50-0004   CIKIS URETIM          100            0.00 ->         100.00 TL  [YOK->KESIN]
+  hareket 1046 09.10.2026 150-50-0004   CIKIS URETIM           50            0.00 ->          50.00 TL  [YOK->KESIN]
+  hareket 1392 09.10.2026 150-50-0004   CIKIS URETIM           53            0.00 ->          53.00 TL  [YOK->KESIN]
+  hareket 1397 09.10.2026 150-50-0004   CIKIS URETIM           35            0.00 ->          35.00 TL  [YOK->KESIN]
+  hareket 1402 09.10.2026 150-50-0004   CIKIS URETIM           21            0.00 ->          21.00 TL  [YOK->KESIN]
+  hareket 1407 09.10.2026 150-50-0004   CIKIS URETIM            3            0.00 ->           3.00 TL  [YOK->KESIN]
+  hareket 1412 09.10.2026 150-50-0004   CIKIS URETIM           18            0.00 ->          18.00 TL  [YOK->KESIN]
+  hareket 1417 09.10.2026 150-50-0004   CIKIS URETIM            6            0.00 ->           6.00 TL  [YOK->KESIN]
+  hareket 1422 09.10.2026 150-50-0004   CIKIS URETIM           20            0.00 ->          20.00 TL  [YOK->KESIN]
+  hareket 1427 09.10.2026 150-50-0004   CIKIS URETIM           13            0.00 ->          13.00 TL  [YOK->KESIN]
+  hareket 1432 09.10.2026 150-50-0004   CIKIS URETIM            9            0.00 ->           9.00 TL  [YOK->KESIN]
+  hareket 1437 09.10.2026 150-50-0004   CIKIS URETIM            7            0.00 ->           7.00 TL  [YOK->KESIN]
+  hareket 1442 09.10.2026 150-50-0004   CIKIS URETIM           17            0.00 ->          17.00 TL  [YOK->KESIN]
+  hareket 99 22.09.2026 151-40-0007   GIRIS IRSALIYE      34632            0.00 ->      34,632.00 TL  [YOK->KESIN]
+  hareket 644 25.09.2026 151-40-0007   CIKIS URETIM           12            0.00 ->          12.00 TL  [YOK->KESIN]
+  hareket 653 25.09.2026 151-40-0007   CIKIS URETIM           12            0.00 ->          12.00 TL  [YOK->KESIN]
+  hareket 1476 29.09.2026 151-40-0007   CIKIS URETIM            4            0.00 ->           4.00 TL  [YOK->KESIN]
+  hareket 950 09.10.2026 151-40-0007   CIKIS URETIM          200            0.00 ->         200.00 TL  [YOK->KESIN]
+  hareket 959 09.10.2026 151-40-0007   CIKIS URETIM          600            0.00 ->         600.00 TL  [YOK->KESIN]
+  hareket 968 09.10.2026 151-40-0007   CIKIS URETIM          600            0.00 ->         600.00 TL  [YOK->KESIN]
+  hareket 979 09.10.2026 151-40-0007   CIKIS URETIM          120            0.00 ->         120.00 TL  [YOK->KESIN]
+  hareket 1287 09.10.2026 151-40-0007   CIKIS URETIM          212            0.00 ->         212.00 TL  [YOK->KESIN]
+  hareket 1296 09.10.2026 151-40-0007   CIKIS URETIM          140            0.00 ->         140.00 TL  [YOK->KESIN]
+  hareket 1305 09.10.2026 151-40-0007   CIKIS URETIM          126            0.00 ->         126.00 TL  [YOK->KESIN]
+  hareket 1314 09.10.2026 151-40-0007   CIKIS URETIM           18            0.00 ->          18.00 TL  [YOK->KESIN]
+  hareket 1325 09.10.2026 151-40-0007   CIKIS URETIM          108            0.00 ->         108.00 TL  [YOK->KESIN]
+  hareket 645 25.09.2026 151-99-0001   GIRIS URETIM            3        1,883.48 ->       1,895.48 TL  [GECICI->KESIN]
+  hareket 715 25.09.2026 151-99-0001   CIKIS URETIM            3        1,883.48 ->       1,895.48 TL  [GECICI->KESIN]
+  hareket 1288 09.10.2026 151-99-0001   GIRIS URETIM           53       32,679.57 ->      32,891.57 TL  [GECICI->KESIN]
+  hareket 1389 09.10.2026 151-99-0001   CIKIS URETIM           53       32,679.57 ->      32,891.57 TL  [GECICI->KESIN]
+  hareket 654 25.09.2026 151-99-0003   GIRIS URETIM            3        2,291.80 ->       2,303.80 TL  [GECICI->KESIN]
+  hareket 719 25.09.2026 151-99-0003   CIKIS URETIM            3        2,291.80 ->       2,303.80 TL  [GECICI->KESIN]
+  hareket 1477 29.09.2026 151-99-0003   GIRIS URETIM            1          760.32 ->         764.32 TL  [GECICI->KESIN]
+  hareket 1478 29.09.2026 151-99-0003   CIKIS URETIM            1          760.32 ->         764.32 TL  [GECICI->KESIN]
+  hareket 951 09.10.2026 151-99-0003   GIRIS URETIM           50       37,911.78 ->      38,111.78 TL  [GECICI->KESIN]
+  hareket 1013 09.10.2026 151-99-0003   CIKIS URETIM           50       37,911.79 ->      38,111.79 TL  [GECICI->KESIN]
+  hareket 1297 09.10.2026 151-99-0003   GIRIS URETIM           35       26,538.26 ->      26,678.26 TL  [GECICI->KESIN]
+  hareket 1394 09.10.2026 151-99-0003   CIKIS URETIM           35       26,538.25 ->      26,678.25 TL  [GECICI->KESIN]
+  hareket 960 09.10.2026 151-99-0004   GIRIS URETIM          100       92,262.54 ->      92,862.54 TL  [GECICI->KESIN]
+  hareket 1018 09.10.2026 151-99-0004   CIKIS URETIM          100       92,262.53 ->      92,862.53 TL  [GECICI->KESIN]
+  hareket 1306 09.10.2026 151-99-0004   GIRIS URETIM           21       19,375.12 ->      19,501.12 TL  [GECICI->KESIN]
+  hareket 1399 09.10.2026 151-99-0004   CIKIS URETIM           21       19,375.13 ->      19,501.13 TL  [GECICI->KESIN]
+  hareket 971 09.10.2026 151-99-0005   GIRIS URETIM          100      107,579.05 ->     108,179.05 TL  [GECICI->KESIN]
+  hareket 1023 09.10.2026 151-99-0005   CIKIS URETIM          100      107,579.06 ->     108,179.06 TL  [GECICI->KESIN]
+  hareket 1317 09.10.2026 151-99-0005   GIRIS URETIM            3        3,227.38 ->       3,245.38 TL  [GECICI->KESIN]
+  hareket 1404 09.10.2026 151-99-0005   CIKIS URETIM            3        3,227.37 ->       3,245.37 TL  [GECICI->KESIN]
+  hareket 982 09.10.2026 151-99-0006   GIRIS URETIM           20       24,648.87 ->      24,768.87 TL  [GECICI->KESIN]
+  hareket 1028 09.10.2026 151-99-0006   CIKIS URETIM           20       24,648.87 ->      24,768.87 TL  [GECICI->KESIN]
+  hareket 1328 09.10.2026 151-99-0006   GIRIS URETIM           18       22,183.98 ->      22,291.98 TL  [GECICI->KESIN]
+  hareket 1409 09.10.2026 151-99-0006   CIKIS URETIM           18       22,183.98 ->      22,291.98 TL  [GECICI->KESIN]
+  hareket 718 25.09.2026 152-10-0001   GIRIS URETIM            3        1,909.70 ->       1,924.70 TL  [GECICI->KESIN]
+  hareket 755 25.09.2026 152-10-0001   CIKIS FATURA            3        1,909.70 ->       1,924.70 TL  [GECICI->KESIN]
+  hareket 1393 09.10.2026 152-10-0001   GIRIS URETIM           53       33,214.35 ->      33,479.35 TL  [GECICI->KESIN]
+  hareket 1494 10.10.2026 152-10-0001   CIKIS NUMUNE            1          626.69 ->         631.69 TL  [GECICI->KESIN]
+  hareket 1496 10.10.2026 152-10-0001   CIKIS NUMUNE            1          626.69 ->         631.69 TL  [GECICI->KESIN]
+  hareket 1498 10.10.2026 152-10-0001   CIKIS NUMUNE            1          626.69 ->         631.69 TL  [GECICI->KESIN]
+  hareket 1508 10.10.2026 152-10-0001   CIKIS NUMUNE            1          626.69 ->         631.69 TL  [GECICI->KESIN]
+  hareket 1512 10.10.2026 152-10-0001   CIKIS NUMUNE            1          626.69 ->         631.69 TL  [GECICI->KESIN]
+  hareket 1520 10.10.2026 152-10-0001   CIKIS NUMUNE            1          626.69 ->         631.69 TL  [GECICI->KESIN]
+  hareket 722 25.09.2026 152-10-0002   GIRIS URETIM            3        2,324.43 ->       2,339.43 TL  [GECICI->KESIN]
+  hareket 756 25.09.2026 152-10-0002   CIKIS FATURA            3        2,324.43 ->       2,339.43 TL  [GECICI->KESIN]
+  hareket 1481 29.09.2026 152-10-0002   GIRIS URETIM            1          771.20 ->         776.20 TL  [GECICI->KESIN]
+  hareket 1482 30.09.2026 152-10-0002   CIKIS FATURA            1          771.20 ->         776.20 TL  [GECICI->KESIN]
+  hareket 1017 09.10.2026 152-10-0002   GIRIS URETIM           50       38,523.09 ->      38,773.09 TL  [GECICI->KESIN]
+  hareket 1398 09.10.2026 152-10-0002   GIRIS URETIM           35       26,966.16 ->      27,141.16 TL  [GECICI->KESIN]
+  hareket 1483 09.10.2026 152-10-0002   CIKIS FATURA            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1485 09.10.2026 152-10-0002   CIKIS FATURA            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1490 10.10.2026 152-10-0002   CIKIS NUMUNE            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1492 10.10.2026 152-10-0002   CIKIS NUMUNE            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1500 10.10.2026 152-10-0002   CIKIS NUMUNE            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1506 10.10.2026 152-10-0002   CIKIS NUMUNE            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1510 10.10.2026 152-10-0002   CIKIS NUMUNE            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1513 10.10.2026 152-10-0002   CIKIS NUMUNE            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1517 10.10.2026 152-10-0002   CIKIS NUMUNE            1          770.46 ->         775.46 TL  [GECICI->KESIN]
+  hareket 1022 09.10.2026 152-10-0003   GIRIS URETIM          100       93,823.77 ->      94,523.77 TL  [GECICI->KESIN]
+  hareket 1403 09.10.2026 152-10-0003   GIRIS URETIM           21       19,702.99 ->      19,849.99 TL  [GECICI->KESIN]
+  hareket 1484 09.10.2026 152-10-0003   CIKIS FATURA            1          938.24 ->         945.24 TL  [GECICI->KESIN]
+  hareket 1486 09.10.2026 152-10-0003   CIKIS FATURA            1          938.24 ->         945.24 TL  [GECICI->KESIN]
+  hareket 1487 09.10.2026 152-10-0003   CIKIS FATURA            1          938.24 ->         945.24 TL  [GECICI->KESIN]
+  hareket 1489 09.10.2026 152-10-0003   CIKIS FATURA            1          938.24 ->         945.24 TL  [GECICI->KESIN]
+  hareket 1501 10.10.2026 152-10-0003   CIKIS NUMUNE            1          938.24 ->         945.24 TL  [GECICI->KESIN]
+  hareket 1515 10.10.2026 152-10-0003   CIKIS NUMUNE            1          938.24 ->         945.24 TL  [GECICI->KESIN]
+  hareket 1027 09.10.2026 152-10-0004   GIRIS URETIM          100      109,278.92 ->     109,978.92 TL  [GECICI->KESIN]
+  hareket 1408 09.10.2026 152-10-0004   GIRIS URETIM            3        3,278.37 ->       3,299.37 TL  [GECICI->KESIN]
+  hareket 1502 10.10.2026 152-10-0004   CIKIS NUMUNE            1        1,092.79 ->       1,099.79 TL  [GECICI->KESIN]
+  hareket 1032 09.10.2026 152-10-0005   GIRIS URETIM           20       24,967.59 ->      25,107.59 TL  [GECICI->KESIN]
+  hareket 1413 09.10.2026 152-10-0005   GIRIS URETIM           18       22,470.83 ->      22,596.83 TL  [GECICI->KESIN]
+  hareket 1488 10.10.2026 152-10-0005   CIKIS FATURA            1        1,248.38 ->       1,255.38 TL  [GECICI->KESIN]
+  hareket 726 25.09.2026 152-22-0001   GIRIS URETIM            3        1,369.46 ->       1,372.46 TL  [GECICI->KESIN]
+  hareket 757 25.09.2026 152-22-0001   CIKIS FATURA            3        1,369.46 ->       1,372.46 TL  [GECICI->KESIN]
+  hareket 1418 09.10.2026 152-22-0001   GIRIS URETIM            6        2,725.42 ->       2,731.42 TL  [GECICI->KESIN]
+  hareket 730 25.09.2026 152-22-0002   GIRIS URETIM           50       32,978.62 ->      33,028.62 TL  [GECICI->KESIN]
+  hareket 758 25.09.2026 152-22-0002   CIKIS FATURA           50       32,978.62 ->      33,028.62 TL  [GECICI->KESIN]
+  hareket 1423 09.10.2026 152-22-0002   GIRIS URETIM           20       13,146.42 ->      13,166.42 TL  [GECICI->KESIN]
+  hareket 1491 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1493 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1495 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1497 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1499 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1503 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1509 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1511 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1514 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1519 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 1521 10.10.2026 152-22-0002   CIKIS NUMUNE            1          657.32 ->         658.32 TL  [GECICI->KESIN]
+  hareket 734 25.09.2026 152-22-0003   GIRIS URETIM           50       43,708.50 ->      43,758.50 TL  [GECICI->KESIN]
+  hareket 759 25.09.2026 152-22-0003   CIKIS FATURA           50       43,708.50 ->      43,758.50 TL  [GECICI->KESIN]
+  hareket 1037 09.10.2026 152-22-0003   GIRIS URETIM          100       87,191.81 ->      87,291.81 TL  [GECICI->KESIN]
+  hareket 1428 09.10.2026 152-22-0003   GIRIS URETIM           13       11,334.94 ->      11,347.94 TL  [GECICI->KESIN]
+  hareket 1504 10.10.2026 152-22-0003   CIKIS NUMUNE            1          871.92 ->         872.92 TL  [GECICI->KESIN]
+  hareket 1507 10.10.2026 152-22-0003   CIKIS NUMUNE            1          871.92 ->         872.92 TL  [GECICI->KESIN]
+  hareket 1516 10.10.2026 152-22-0003   CIKIS NUMUNE            1          871.92 ->         872.92 TL  [GECICI->KESIN]
+  hareket 738 25.09.2026 152-22-0004   GIRIS URETIM            3        3,275.59 ->       3,278.59 TL  [GECICI->KESIN]
+  hareket 760 25.09.2026 152-22-0004   CIKIS FATURA            3        3,275.59 ->       3,278.59 TL  [GECICI->KESIN]
+  hareket 1042 09.10.2026 152-22-0004   GIRIS URETIM          100      108,961.14 ->     109,061.14 TL  [GECICI->KESIN]
+  hareket 1433 09.10.2026 152-22-0004   GIRIS URETIM            9        9,806.51 ->       9,815.51 TL  [GECICI->KESIN]
+  hareket 1505 10.10.2026 152-22-0004   CIKIS NUMUNE            1        1,089.61 ->       1,090.61 TL  [GECICI->KESIN]
+  hareket 1518 10.10.2026 152-22-0004   CIKIS NUMUNE            1        1,089.61 ->       1,090.61 TL  [GECICI->KESIN]
+  hareket 742 25.09.2026 152-22-0005   GIRIS URETIM            3        3,964.52 ->       3,967.52 TL  [GECICI->KESIN]
+  hareket 761 25.09.2026 152-22-0005   CIKIS FATURA            3        3,964.52 ->       3,967.52 TL  [GECICI->KESIN]
+  hareket 1047 09.10.2026 152-22-0005   GIRIS URETIM           50       65,962.71 ->      66,012.71 TL  [GECICI->KESIN]
+  hareket 1438 09.10.2026 152-22-0005   GIRIS URETIM            7        9,234.78 ->       9,241.78 TL  [GECICI->KESIN]
+  hareket 746 25.09.2026 152-22-0006   GIRIS URETIM            3        4,671.62 ->       4,674.62 TL  [GECICI->KESIN]
+  hareket 762 25.09.2026 152-22-0006   CIKIS FATURA            3        4,671.62 ->       4,674.62 TL  [GECICI->KESIN]
+  hareket 1443 09.10.2026 152-22-0006   GIRIS URETIM           17       26,434.25 ->      26,451.25 TL  [GECICI->KESIN]
+
+MAMUL (152) BIRIM MALIYETI DEGISENLER (11)
+  152-10-0001   A TİPİ ALÜMİNYUM MERDİVEN 2+1            eldeki         47  ort       626.685319 ->       631.685319 TL
+  152-10-0002   A TİPİ ALÜMİNYUM MERDİVEN 3+1            eldeki         76  ort       770.461974 ->       775.461974 TL
+  152-10-0003   A TİPİ ALÜMİNYUM MERDİVEN 4+1            eldeki        115  ort       938.237565 ->       945.237565 TL
+  152-10-0004   A TİPİ ALÜMİNYUM MERDİVEN 5+1            eldeki        102  ort     1,092.789216 ->     1,099.789216 TL
+  152-10-0005   A TİPİ ALÜMİNYUM MERDİVEN 6+1            eldeki         37  ort     1,248.379459 ->     1,255.379459 TL
+  152-22-0001   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 2+2      eldeki          6  ort       454.236667 ->       455.236667 TL
+  152-22-0002   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 3+3      eldeki          9  ort       657.322222 ->       658.322222 TL
+  152-22-0003   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 4+4      eldeki        110  ort       871.918091 ->       872.918091 TL
+  152-22-0004   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 5+5      eldeki        107  ort     1,089.611495 ->     1,090.611495 TL
+  152-22-0005   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 6+6      eldeki         57  ort     1,319.254211 ->     1,320.254211 TL
+  152-22-0006   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 7+7      eldeki         17  ort     1,554.955882 ->     1,555.955882 TL
+
+YARI MAMUL (151) BIRIM MALIYETI DEGISENLER (1)
+  151-40-0007   PLASTİK Q16 TAPA YAN-SİYAH               eldeki      32480  ort         0.000000 ->         1.000000 TL
+
+DIGER KARTLAR (1)
+  150-50-0004   KULLANMA KILAVUZU                        eldeki        159  ort         0.000000 ->         1.000000 TL
+
+MIZAN FARKLARI (hesap: once / sonra / fark)
+  150:     3,390,336.39 /     3,390,495.39 /         159.00  <--
+  151:       633,484.25 /       631,332.25 /      -2,152.00  <--
+  152:       676,333.66 /       679,032.66 /       2,699.00  <--
+  620:       101,515.90 /       101,707.90 /         192.00  <--
+  621:             0.00 /             0.00 /           0.00
+  623:             0.00 /             0.00 /           0.00
+  760:        56,737.85 /        56,839.85 /         102.00  <--
+  770:       771,053.07 /       770,053.07 /      -1,000.00  <--
+
+STOK DEGERI FARKLARI (grup: once / sonra / fark)
+  150:     3,390,336.39 /     3,390,495.39 /         159.00  <--
+  151:       633,484.25 /       665,964.25 /      32,480.00  <--
+  152:       676,333.66 /       679,032.66 /       2,699.00  <--
+  153:             0.00 /             0.00 /           0.00
+
+DEGISEN/YENI FIS SAYISI: 63
+  fis 1209: 1,883.48 -> 1,895.48
+  fis 1210: 2,291.80 -> 2,303.80
+  fis 1217: 1,909.70 -> 1,924.70
+  fis 1218: 2,324.43 -> 2,339.43
+  fis 1219: 1,369.46 -> 1,372.46
+  fis 1220: 32,978.62 -> 33,028.62
+  fis 1221: 43,708.50 -> 43,758.50
+  fis 1222: 3,275.59 -> 3,278.59
+  fis 1223: 3,964.52 -> 3,967.52
+  fis 1224: 4,671.62 -> 4,674.62
+  fis 1227: 94,202.44 -> 94,344.44
+  fis 1277: 37,911.78 -> 38,111.78
+  fis 1278: 92,262.54 -> 92,862.54
+  fis 1279: 107,579.05 -> 108,179.05
+  fis 1280: 24,648.87 -> 24,768.87
+  fis 1284: 38,523.09 -> 38,773.09
+  fis 1285: 93,823.77 -> 94,523.77
+  fis 1286: 109,278.92 -> 109,978.92
+  fis 1287: 24,967.59 -> 25,107.59
+  fis 1288: 87,191.81 -> 87,291.81
+  fis 1289: 108,961.14 -> 109,061.14
+  fis 1290: 65,962.71 -> 66,012.71
+  fis 1349: 32,679.57 -> 32,891.57
+  fis 1350: 26,538.26 -> 26,678.26
+  fis 1351: 19,375.12 -> 19,501.12
+  fis 1352: 3,227.38 -> 3,245.38
+  fis 1353: 22,183.98 -> 22,291.98
+  fis 1360: 33,214.35 -> 33,479.35
+  fis 1361: 26,966.16 -> 27,141.16
+  fis 1362: 19,702.99 -> 19,849.99
+  fis 1363: 3,278.37 -> 3,299.37
+  fis 1364: 22,470.83 -> 22,596.83
+  fis 1365: 2,725.42 -> 2,731.42
+  fis 1366: 13,146.42 -> 13,166.42
+  fis 1367: 11,334.94 -> 11,347.94
+  fis 1368: 9,806.51 -> 9,815.51
+  fis 1369: 9,234.78 -> 9,241.78
+  fis 1370: 26,434.25 -> 26,451.25
+  fis 1378: 760.32 -> 764.32
+  fis 1379: 771.20 -> 776.20
+  fis 1381: 771.20 -> 776.20
+  fis 1383: 770.46 -> 775.46
+  fis 1385: 938.24 -> 945.24
+  fis 1387: 770.46 -> 775.46
+  fis 1389: 938.24 -> 945.24
+  fis 1391: 938.24 -> 945.24
+  fis 1393: 1,248.38 -> 1,255.38
+  fis 1395: 938.24 -> 945.24
+  fis 1397: 1,427.78 -> 1,433.78
+  fis 1398: 1,427.78 -> 1,433.78
+  fis 1399: 1,284.01 -> 1,290.01
+  fis 1400: 1,284.01 -> 1,290.01
+  fis 1401: 1,284.01 -> 1,290.01
+  fis 1402: 5,420.34 -> 5,442.34
+  fis 1403: 1,642.38 -> 1,648.38
+  fis 1404: 1,284.01 -> 1,290.01
+  fis 1405: 1,427.78 -> 1,433.78
+  fis 1406: 2,054.47 -> 2,065.47
+  fis 1407: 1,810.16 -> 1,818.16
+  fis 1408: 1,860.07 -> 1,866.07
+  fis 1409: 657.32 -> 658.32
+  fis 1410: 1,284.01 -> 1,290.01
+  fis 1411: - -> 1,000.00
+
+MIZAN KONTROLU — uygulama sonrasi (grup: stok degeri / mizan / fark)
+  150:     3,390,495.39 /     3,390,495.39 /           0.00  = esit
+  151:       665,964.25 /       631,332.25 /      34,632.00  <-- fark
+  152:       679,032.66 /       679,032.66 /           0.00  = esit
+  Fissiz (fatura bekleyen) fiyatlanan girisler — farki aciklar: toplam = eldeki degeri + tuketilen degeri
+    151-40-0007 PLASTİK Q16 TAPA YAN-SİYAH: 34,632.00 = eldeki 32,480.00 (32480 adet) + tuketilen 2,152.00
+
+DRY-RUN: kalici uygulamak icin --uygula.
