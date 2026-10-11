@@ -53,7 +53,8 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
 | Adım | İçerik | Durum | Commit |
 |---|---|---|---|
 | E-1 | `Varyant` + `Stok.varyantli/varyant_boyutlari` + `StokVaryant` + AYARLAR › Varyantlar + stok kartı işareti/boyut seçimi; seed SEMTA/YOK/MR. MOP | TAMAM, canlıda | `9bd7917` (3278 test) |
-| E-2 | Hareket/ayırma/özet varyant boyutu, motor (eldeki, tarih kontrolü, ortalama, ayırma), stok kartı kırılımı, `varyant_veri_gocu` komutu (kuru + altın kontrol) | kod canlıda; VERİ GÖÇÜ kullanıcı onayı bekliyor | (bu commit) |
+| E-2 | Hareket/ayırma/özet varyant boyutu, motor (eldeki, tarih kontrolü, ortalama, ayırma), stok kartı kırılımı, `varyant_veri_gocu` komutu (kuru + altın kontrol) | TAMAM, canlıda; VERİ GÖÇÜ UYGULANDI 2026-10-11 15:35 (53 kart, 338 hareket, 7 ayırma; altın kontrol EŞİT; raporlar `docs/varyant_veri_gocu_kuru_20261011.txt`, `docs/varyant_veri_gocu_uygulandi_20261011.txt`) | `064f2c0` (3288 test) |
+| E-3 | Giriş/çıkış ekranlarında varyant seçimi (fatura, irsaliye, numune, sarf, transfer; varsayılan kartın varsayılanı) | bekliyor | |
 
 ## E-2 notları
 

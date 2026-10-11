@@ -1,0 +1,127 @@
+UYGULANDI
+
+VARYANTLI YAPILACAK KARTLAR (53; planda 53, zaten varyantli 0)
+  kod           ad                                       boyutlar                             hedef   hareket  (tum)  acik ayirma
+  151-10-0001   KESİLMİŞ A TİPİ ÖN AYAK 2+1 (2688,79 MM) MARKALAMA                            YOK           5      8            0
+  151-10-0002   KESİLMİŞ A TİPİ ÖN AYAK 3+1 (3147,27 MM) MARKALAMA                            YOK           6      8            0
+  151-10-0003   KESİLMİŞ A TİPİ ÖN AYAK 4+1 (3605,27 MM) MARKALAMA                            YOK           4      6            0
+  151-10-0004   KESİLMİŞ A TİPİ ÖN AYAK 5+1 (4063,37 MM) MARKALAMA                            YOK           4      6            0
+  151-10-0005   KESİLMİŞ A TİPİ ÖN AYAK 6+1 (4521,41 MM) MARKALAMA                            YOK           4      6            0
+  151-10-0014   KESİLMİŞ C TİPİ AYAK 2+2 SOL (376,32 MM) MARKALAMA                            YOK           4      6            0
+  151-10-0016   KESİLMİŞ C TİPİ AYAK 3+3 SOL (605,91 MM) MARKALAMA                            YOK           5      8            0
+  151-10-0018   KESİLMİŞ C TİPİ AYAK 4+4 SOL (834,46 MM) MARKALAMA                            YOK           7     11            0
+  151-10-0020   KESİLMİŞ C TİPİ AYAK 5+5 SOL (1063,53 MM MARKALAMA                            YOK           6      9            0
+  151-10-0022   KESİLMİŞ C TİPİ AYAK 6+6 SOL (1292,60 MM MARKALAMA                            YOK           5      7            0
+  151-10-0024   KESİLMİŞ C TİPİ AYAK 7+7 SOL (1521,67 MM MARKALAMA                            YOK           4      6            0
+  151-20-0001   BÜKÜLMÜŞ A TİPİ ÖN AYAK 2+1              MARKALAMA                            SEMTA         4      4            0
+  151-20-0002   BÜKÜLMÜŞ A TİPİ ÖN AYAK 3+1              MARKALAMA                            SEMTA         8      8            0
+  151-20-0003   BÜKÜLMÜŞ A TİPİ ÖN AYAK 4+1              MARKALAMA                            SEMTA         4      4            0
+  151-20-0004   BÜKÜLMÜŞ A TİPİ ÖN AYAK 5+1              MARKALAMA                            SEMTA         4      4            0
+  151-20-0005   BÜKÜLMÜŞ A TİPİ ÖN AYAK 6+1              MARKALAMA                            SEMTA         4      4            0
+  151-80-0001   BİRLEŞTİRİLMİŞ ÖN AYAK 2+1               MARKALAMA                            SEMTA         4      4            0
+  151-80-0002   BİRLEŞTİRİLMİŞ ÖN AYAK 3+1               MARKALAMA                            SEMTA         8      8            0
+  151-80-0003   BİRLEŞTİRİLMİŞ ÖN AYAK 4+1               MARKALAMA                            SEMTA         4      4            0
+  151-80-0004   BİRLEŞTİRİLMİŞ ÖN AYAK 5+1               MARKALAMA                            SEMTA         4      4            0
+  151-80-0005   BİRLEŞTİRİLMİŞ ÖN AYAK 6+1               MARKALAMA                            SEMTA         4      4            0
+  151-80-0011   BİRLEŞTİRİLMİŞ ÖN AYAK 2+2               MARKALAMA                            SEMTA         4      4            0
+  151-80-0012   BİRLEŞTİRİLMİŞ ÖN AYAK 3+3               MARKALAMA                            SEMTA         4      4            0
+  151-80-0013   BİRLEŞTİRİLMİŞ ÖN AYAK 4+4               MARKALAMA                            SEMTA         6      6            0
+  151-80-0014   BİRLEŞTİRİLMİŞ ÖN AYAK 5+5               MARKALAMA                            SEMTA         6      6            0
+  151-80-0015   BİRLEŞTİRİLMİŞ ÖN AYAK 6+6               MARKALAMA                            SEMTA         6      6            0
+  151-80-0016   BİRLEŞTİRİLMİŞ ÖN AYAK 7+7               MARKALAMA                            SEMTA         4      4            0
+  151-99-0001   PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN 2+1   MARKALAMA                            SEMTA         4      4            0
+  151-99-0002   PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN MARKALAMA                            SEMTA         4      4            0
+  151-99-0003   PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN 3+1   MARKALAMA                            SEMTA         8      8            0
+  151-99-0004   PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN 4+1   MARKALAMA                            SEMTA         4      4            0
+  151-99-0005   PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN 5+1   MARKALAMA                            SEMTA         4      4            0
+  151-99-0006   PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN 6+1   MARKALAMA                            SEMTA         4      4            0
+  151-99-0007   PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN MARKALAMA                            SEMTA         4      4            0
+  151-99-0008   PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN MARKALAMA                            SEMTA         6      6            0
+  151-99-0009   PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN MARKALAMA                            SEMTA         6      6            0
+  151-99-0010   PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN MARKALAMA                            SEMTA         6      6            0
+  151-99-0011   PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN MARKALAMA                            SEMTA         4      4            0
+  150-50-0001   AFİŞ - A TİPİ A5 STICKER                 AFIS                                 SEMTA        10     10            0
+  150-50-0003   AFİŞ - C TİPİ A5 STICKER                 AFIS                                 SEMTA        10     10            0
+  150-50-0002   YAN ETİKET                               YAN_ETIKET                           SEMTA        29     31            0
+  150-50-0004   KULLANMA KILAVUZU                        KILAVUZ                              SEMTA        28     28            0
+  152-10-0001   A TİPİ ALÜMİNYUM MERDİVEN 2+1            MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         9     10            0
+  152-10-0002   A TİPİ ALÜMİNYUM MERDİVEN 3+1            MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA        15     16            1
+  152-10-0003   A TİPİ ALÜMİNYUM MERDİVEN 4+1            MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         8      8            1
+  152-10-0004   A TİPİ ALÜMİNYUM MERDİVEN 5+1            MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         3      3            1
+  152-10-0005   A TİPİ ALÜMİNYUM MERDİVEN 6+1            MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         3      3            1
+  152-22-0001   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 2+2      MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         3      4            0
+  152-22-0002   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 3+3      MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA        14     15            0
+  152-22-0003   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 4+4      MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         7      8            1
+  152-22-0004   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 5+5      MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         6      7            1
+  152-22-0005   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 6+6      MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         4      5            1
+  152-22-0006   ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 7+7      MARKALAMA+KILAVUZ+AFIS+YAN_ETIKET    SEMTA         3      4            0
+
+TOPLAM: hareket 338 (tum 375), acik ayirma 7; acik US: ÜS-2026-0002
+
+ALTIN KONTROL — kartlar (eldeki / maliyet miktari / deger TL / deger USD / ort TL / ort USD) ONCE -> SONRA
+  150-50-0001   =      150.000000   150.000000         202.50         4.12       1.350000     0.027467
+  150-50-0002   =     1359.000000  1359.000000       3,598.23        73.74       2.647704     0.054260
+  150-50-0003   =      228.000000   228.000000         307.80         6.26       1.350000     0.027456
+  150-50-0004   =      159.000000   159.000000         159.00         3.30       1.000000     0.020755
+  151-10-0001   =       98.000000    98.000000      24,496.96       507.40     249.968980     5.177551
+  151-10-0002   =      166.000000   166.000000      48,992.78     1,014.45     295.137229     6.111145
+  151-10-0003   =      104.000000   104.000000      35,734.91       739.89     343.604904     7.114327
+  151-10-0004   =       47.000000    47.000000      18,071.20       374.17     384.493617     7.961064
+  151-10-0005   =       82.000000    82.000000      34,778.41       720.12     424.126951     8.781951
+  151-10-0014   =       42.000000    42.000000       1,836.54        37.95      43.727143     0.903571
+  151-10-0016   =      224.000000   224.000000      14,477.95       299.27      64.633705     1.336027
+  151-10-0018   =       20.000000    20.000000       1,724.00        35.66      86.200000     1.783000
+  151-10-0020   =       20.000000    20.000000       2,143.74        44.35     107.187000     2.217500
+  151-10-0022   =       60.000000    60.000000       7,710.80       159.54     128.513333     2.659000
+  151-10-0024   =       80.000000    80.000000      11,920.83       246.67     149.010375     3.083375
+  151-20-0001   =        0.000000     0.000000           0.00         0.00              -            -
+  151-20-0002   =        0.000000     0.000000           0.00         0.00              -            -
+  151-20-0003   =        0.000000     0.000000           0.00         0.00              -            -
+  151-20-0004   =        0.000000     0.000000           0.00         0.00              -            -
+  151-20-0005   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0001   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0002   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0003   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0004   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0005   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0011   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0012   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0013   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0014   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0015   =        0.000000     0.000000           0.00         0.00              -            -
+  151-80-0016   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0001   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0002   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0003   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0004   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0005   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0006   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0007   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0008   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0009   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0010   =        0.000000     0.000000           0.00         0.00              -            -
+  151-99-0011   =        0.000000     0.000000           0.00         0.00              -            -
+  152-10-0001   =       47.000000    47.000000      29,689.21       616.73     631.685319    13.121915
+  152-10-0002   =       76.000000    76.000000      58,935.11     1,223.62     775.461974    16.100263
+  152-10-0003   =      115.000000   115.000000     108,702.32     2,256.53     945.237565    19.622000
+  152-10-0004   =      102.000000   102.000000     112,178.50     2,328.52    1099.789216    22.828627
+  152-10-0005   =       37.000000    37.000000      46,449.04       964.01    1255.379459    26.054324
+  152-22-0001   =        6.000000     6.000000       2,731.42        56.58     455.236667     9.430000
+  152-22-0002   =        9.000000     9.000000       5,924.90       122.78     658.322222    13.642222
+  152-22-0003   =      110.000000   110.000000      96,020.99     1,990.38     872.918091    18.094364
+  152-22-0004   =      107.000000   107.000000     116,695.43     2,419.11    1090.611495    22.608505
+  152-22-0005   =       57.000000    57.000000      75,254.49     1,560.11    1320.254211    27.370351
+  152-22-0006   =       17.000000    17.000000      26,451.25       548.39    1555.955882    32.258235
+ALTIN KONTROL — degerleme (stok degeri / mizan / fark) ve mizan
+  150:     3,390,495.39 /     3,390,495.39 /         0.00  =
+  151:       665,964.25 /       631,332.25 /    34,632.00  =
+  152:       679,032.66 /       679,032.66 /         0.00  =
+  mizan 150:     3,390,495.39  =
+  mizan 151:       631,332.25  =
+  mizan 152:       679,032.66  =
+  mizan 620:       101,707.90  =
+ALTIN KONTROL — acik US ayirmalari
+  ÜS-2026-0002: 7 stok, toplam 520.000000  =
+hareket satirlari karsilastirildi: 338
+
+ALTIN KONTROL: ESIT (once = sonra, birebir)
