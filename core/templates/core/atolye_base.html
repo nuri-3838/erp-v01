@@ -46,8 +46,8 @@
 </head>
 <body>
   <header class="at-ust">
-    <div><div class="ad">{{ personel.ad_soyad }}</div>
-      <div class="alt">{% if acik_kayit %}Mesai açık · {{ acik_kayit.giris_zamani|tr_zaman:"H:i" }}{% else %}Mesai kapalı{% endif %}{% block ust_alt %}{% endblock %}</div></div>
+    <div><div class="ad">{% if personel %}{{ personel.ad_soyad }}{% else %}{{ request.user.username }}{% endif %}</div>
+      <div class="alt">{% if izleme %}Yönetici görüntüleme{% elif acik_kayit %}Mesai açık · {{ acik_kayit.giris_zamani|tr_zaman:"H:i" }}{% else %}Mesai kapalı{% endif %}{% block ust_alt %}{% endblock %}</div></div>
     <div>{% block ust_sag %}{% endblock %}</div>
   </header>
   <main class="at-govde">

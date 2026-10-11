@@ -47,10 +47,16 @@ def istasyonlar():
 
 
 def durum(user) -> dict:
-    """{personel, acik_kayit, calisiyor} — ekranın üst durumu."""
+    """{personel, acik_kayit, calisiyor, izleme} — ekranın üst durumu. Personel kartı olmayan YÖNETİCİ ekranı yalnız izler (istasyonlar ve
+    emirler görünür; mesai/üretim/geri alma personel hesabı ister); personel kartı olmayan diğer kullanıcı için hata."""
     from core.services.personel import aktif_mi
-    p = _personel(user)
-    return {"personel": p, "acik_kayit": mesai_servis.acik_kayit(p), "calisiyor": aktif_mi(p)}
+    from core.yetki import yonetici_mi
+    p = personel_coz(user)
+    if p is None:
+        if yonetici_mi(user):
+            return {"personel": None, "acik_kayit": None, "calisiyor": False, "izleme": True}
+        raise AtolyeHatasi("Bu hesaba bağlı bir personel kartı yok.")
+    return {"personel": p, "acik_kayit": mesai_servis.acik_kayit(p), "calisiyor": aktif_mi(p), "izleme": False}
 
 
 def mesai_baslat(user, ip) -> None:

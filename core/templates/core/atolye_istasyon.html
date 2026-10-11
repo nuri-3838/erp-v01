@@ -2,7 +2,7 @@
 {% load core_extras %}
 {% block baslik %}{{ istasyon.kod }} {{ istasyon.ad }} · Atölye{% endblock %}
 {% block ust_alt %} · <b>{{ istasyon.kod }} {{ istasyon.ad }}</b>{% endblock %}
-{% block ust_sag %}<div style="display:flex;gap:.4rem;align-items:center"><a href="{% url 'core:atolye' %}?sec=1">İstasyon değiştir</a><form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto">⏹ Mesaiyi Bitir</button></form></div>{% endblock %}
+{% block ust_sag %}<div style="display:flex;gap:.4rem;align-items:center"><a href="{% url 'core:atolye' %}?sec=1">İstasyon değiştir</a>{% if not izleme %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}</div>{% endblock %}
 
 {% block icerik %}
   {% for s in emirler %}
@@ -15,11 +15,13 @@
         <div><div class="et">Tamamlanan</div><div class="dg">{{ s.tamamlanan|tr_miktar_sade }}</div></div>
         <div class="kalan"><div class="et">Kalan</div><div class="dg">{{ s.acik|tr_miktar_sade }}</div></div>
       </div>
+      {% if not izleme %}
       <form method="post" action="{% url 'core:atolye_uret' s.ie.pk %}" class="at-form" onsubmit="return confirm(this.miktar.value + ' adet üretildi olarak yazılsın mı?');">
         {% csrf_token %}
         <input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" value="{{ s.kalan_tam }}" autocomplete="off" aria-label="Miktar">
         <button type="submit">✔ ÜRETİLDİ</button>
       </form>
+      {% endif %}
       {% if s.fazla_yasak %}<p class="at-yardim" style="margin:.4rem 0 0">Bu emirde kalandan fazlası yazılamaz.</p>{% endif %}
       {% if s.son_kaydim %}
         <div class="at-geri">

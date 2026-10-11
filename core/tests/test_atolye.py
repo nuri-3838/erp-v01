@@ -10,6 +10,7 @@ from django.urls import reverse
 from core.models import EkranYetki, IsIstasyonu, OperasyonKaydi, StokHareket
 from core.services import atolye
 from core.services.mesai import acik_kayit
+from core.tarih import tr_bugun
 from core.services.mesai_ag import ag_ekle
 from core.services.mesai_hesap import hesap_olustur
 from core.tests.ik_yardimci import personel_kur
@@ -55,9 +56,24 @@ class YetkiYonlendirmeTest(AtolyeTaban):
         self.client.logout()
         self.assertEqual(self.client.get(reverse("core:atolye")).status_code, 302)                   # anonim → giriş
 
-    def test_yonetici_personel_karti_olmadan_403_ve_operator_dugmesi(self):
+    def test_yonetici_personel_karti_olmadan_izleme_ve_operator_dugmesi(self):
         self.client.force_login(self.yon)
-        self.assertEqual(self.client.get(reverse("core:atolye")).status_code, 403)                   # personel kartı yok
+        r = self.client.get(reverse("core:atolye"))                                                  # personel kartı yok → yönetici görüntüleme
+        self.assertContains(r, "Yönetici görüntüleme")
+        self.assertNotContains(r, "MESAİYİ BAŞLAT")
+        r = self.client.get(reverse("core:atolye_istasyon", args=[self.lazer.pk]))
+        self.assertContains(r, self.emir.no)
+        self.assertNotContains(r, "ÜRETİLDİ")
+        self.assertNotContains(r, "Mesaiyi Bitir")
+        r = self.uret(self.ie_kesim, "4")                                                              # izlemede üretim/mesai yok
+        self.assertTrue(any("personel kartı yok" in m for m in self.mesajlar(r)))
+        r = self.client.post(reverse("core:atolye_mesai"), {"eylem": "baslat"}, HTTP_X_REAL_IP=IZINLI, follow=True)
+        self.assertTrue(any("personel kartı yok" in m for m in self.mesajlar(r)))
+        bos = User.objects.create_user("bosyetkili", password="x")                                  # yönetici olmayan, personelsiz, yetkili → 403
+        EkranYetki.objects.create(kullanici=bos, ekran_kod="atolye")
+        self.client.force_login(bos)
+        self.assertEqual(self.client.get(reverse("core:atolye")).status_code, 403)
+        self.client.force_login(self.yon)
         r = self.client.get(reverse("core:personel_detay", args=[self.p2.pk]))
         self.assertContains(r, "Atölye Operatörü Yap")
         self.client.post(reverse("core:mesai_hesap_atolye", args=[self.p2.pk]))
@@ -117,7 +133,7 @@ class AkisTest(AtolyeTaban):
         r = self.uret(self.ie_kesim, "4")
         self.assertTrue(any("4 adet yazıldı" in m for m in self.mesajlar(r)), self.mesajlar(r))
         k = OperasyonKaydi.objects.get(istasyon_emri=self.ie_kesim, silindi=False)
-        self.assertEqual((k.durum, k.personel_id, k.mesai_kaydi_id, k.created_by_id, k.tarih), ("ONAYLI", self.p.pk, acik_kayit(self.p).pk, self.u.pk, date.today()))
+        self.assertEqual((k.durum, k.personel_id, k.mesai_kaydi_id, k.created_by_id, k.tarih), ("ONAYLI", self.p.pk, acik_kayit(self.p).pk, self.u.pk, tr_bugun()))
         self.assertEqual(StokHareket.objects.get(operasyon_kaydi=k, tur="GIRIS").miktar, D("4"))
         self.assertContains(r, "Son kaydım")
         self.assertContains(r, k.no)

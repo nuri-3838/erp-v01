@@ -9616,7 +9616,7 @@ def atolye_mesai(request):
 def atolye_istasyon(request, pk):
     d = _atolye_baglam(request)
     istasyon = get_object_or_404(IsIstasyonu, pk=pk, silindi=False, fason=False)
-    if d["acik_kayit"] is None:
+    if d["acik_kayit"] is None and not d["izleme"]:
         messages.error(request, "Önce mesainizi başlatın; mesai açık değilken üretim girilemez.")
         return redirect(f"{reverse('core:atolye')}?sec=1")
     return render(request, "core/atolye_istasyon.html", {**d, "istasyon": istasyon, "emirler": atolye_servis.acik_emirler(istasyon, request.user)})
