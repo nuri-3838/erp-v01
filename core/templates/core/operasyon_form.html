@@ -40,6 +40,14 @@
   .op-pay { display:flex; justify-content:space-between; gap:.5rem; }
   .op-hata-ozet { background:rgba(180,40,40,.07); border:1px solid rgba(180,40,40,.35); border-radius:14px; padding:.7rem 1rem; }
   .op-hata-ozet ul { margin:.3rem 0 0 1.1rem; padding:0; }
+  .op-gelismis > summary { cursor:pointer; list-style:none; display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap; font-weight:650; }
+  .op-gelismis > summary::-webkit-details-marker { display:none; }
+  .op-gelismis > summary::before { content:"▸"; color:var(--turuncu); display:inline-block; width:1rem; transition:transform .15s; }
+  .op-gelismis[open] > summary::before { transform:rotate(90deg); }
+  .op-gelismis > summary .yardim { font-weight:400; }
+  .op-gelismis-tur { max-width:28rem; margin-top:.8rem !important; }
+  .op-alt { margin-top:1rem; padding-top:.9rem; border-top:1px solid var(--cizgi); }
+  #tur-rozet[hidden] { display:none !important; }
   @media (max-width:899px) {
     .op-grid { grid-template-columns:1fr; }
     .op-ozet { position:static; order:-1; }
@@ -83,14 +91,7 @@
       <div class="op-ana">
 
         <section class="icerik-kart">
-          <h2 class="bolum-baslik">Operasyon</h2>
-          <div class="alan" style="margin-bottom:.6rem">
-            <label for="id_tur">Tür</label>
-            <select name="tur" id="id_tur" class="op-tur">
-              <option value="URET"{% if tur != "PARCALA" %} selected{% endif %}>Üret — N girdi → 1 çıktı (+ yan çıktılar)</option>
-              <option value="PARCALA"{% if tur == "PARCALA" %} selected{% endif %}>Parçala — 1 girdi → N eşit düzey çıktı</option>
-            </select>
-          </div>
+          <h2 class="bolum-baslik">Operasyon{% if tur == "PARCALA" %} <span class="rozet rozet-notr" id="tur-rozet">parçala</span>{% else %} <span class="rozet rozet-notr" id="tur-rozet" hidden>parçala</span>{% endif %}</h2>
           {% if operasyon %}
             <div class="op-iki">
               <div class="alan">
@@ -160,7 +161,20 @@
           <button type="button" id="satir-ekle" class="dugme-ikincil op-ekle">+ Girdi ekle</button>
         </section>
 
-        <section class="icerik-kart" id="parcala-bolum"{% if tur != "PARCALA" %} hidden{% endif %}>
+        <details class="icerik-kart op-gelismis" id="gelismis"{% if tur == "PARCALA" or yan_formset.forms %} open{% endif %}>
+          <summary>
+            <span class="op-gelismis-ad">Gelişmiş</span>
+            <span class="yardim">tür (Parçala) · yan çıktılar · ana çıktı boyu (mm) · maliyet pay anahtarı</span>
+          </summary>
+          <div class="alan op-gelismis-tur">
+            <label for="id_tur">Tür</label>
+            <select name="tur" id="id_tur" class="op-tur">
+              <option value="URET"{% if tur != "PARCALA" %} selected{% endif %}>Üret — N girdi → 1 çıktı (+ yan çıktılar)</option>
+              <option value="PARCALA"{% if tur == "PARCALA" %} selected{% endif %}>Parçala — 1 girdi → N eşit düzey çıktı</option>
+            </select>
+          </div>
+
+        <div class="op-alt" id="parcala-bolum"{% if tur != "PARCALA" %} hidden{% endif %}>
           <h2 class="bolum-baslik">Çıktılar (parçala)</h2>
           <p class="yardim">Tek girdiden (ör. 1 BOY profil) aynı çalıştırmada çıkan parçalar — ana/yan ayrımı yok; <strong>ilk satır referans çıktıdır</strong> ve her çıktı bu
             tanımdan üretilir sayılır. Planlamada çalıştırma = en büyük (ihtiyaç ÷ miktar) — tam boy açıksa yukarı yuvarlanır; diğer çıktıların fazlası stoğa girer ve aynı hesapta
@@ -186,9 +200,9 @@
             </tbody>
           </table>
           <button type="button" id="pc-ekle" class="dugme-ikincil op-ekle">+ Çıktı ekle</button>
-        </section>
+        </div>
 
-        <section class="icerik-kart" id="yan-kart"{% if tur == "PARCALA" %} hidden{% endif %}>
+        <div class="op-alt" id="yan-kart"{% if tur == "PARCALA" %} hidden{% endif %}>
           <button type="button" id="yan-ac" class="op-yan-ac"{% if yan_formset.forms %} hidden{% endif %}>+ Yan çıktı ekle</button>
           <div id="yan-bolum"{% if not yan_formset.forms %} hidden{% endif %}>
             <h2 class="bolum-baslik">Yan Çıktılar</h2>
@@ -221,7 +235,8 @@
             </table>
             <button type="button" id="yan-ekle" class="dugme-ikincil op-ekle">+ Yan çıktı ekle</button>
           </div>
-        </section>
+        </div>
+        </details>
       </div>
 
       <aside class="op-ozet">
@@ -319,10 +334,12 @@
     });
   }
 
+  var turRozet = document.getElementById('tur-rozet');
   function modGuncelle(){
     var p = parcalaMi();
     parcalaBolum.hidden = !p;
     yanKart.hidden = p;
+    if (turRozet) turRozet.hidden = !p;                             // ana kartta "parçala" rozeti (Gelişmiş kapalıyken de görünür)
     uretMiktarAlan.hidden = p;                                       // PARÇALA: referans miktarı çıktı tablosunun ilk satırında
     if (!duzenleme) uretCiktiAlan.hidden = p;                        // yeni tanımda referans çıktı tablonun ilk satırı
     satirEkleDugme.hidden = p;                                       // PARÇALA: tek girdi

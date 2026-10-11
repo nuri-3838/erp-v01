@@ -9,8 +9,8 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
 | 2 | Tarih bazlı stok kontrolü (`eldeki_miktar(..., tarih=)`) + maliyet düzeltme komutu (yalnız kuru çalıştırma) | TAMAM (canlıda) | `a51f9e1` | 3233 OK | ÜS detay/İstasyon Emirleri/Numune 200; canlı veride geriye tarihli çıkış denemesi "Bu tarihte yetersiz: 150-20-0003 (eldeki 0, gerekli 1) — 150, 30.06.2026" ile reddedildi (geri alındı); kuru çalıştırma raporu alındı (aşağıda) |
 | 3 | ÜS detay: istasyon bazlı katlanır gruplar; "Bu istasyonu üret" / "Tümünü üret" (atomik) | TAMAM (canlıda) | `3268375` | 3244 OK | ÜS-2026-0002/0003/0004 detay 200; gruplar istasyon sırasıyla (12,15,20,…,80), tamamlanan gruplar kapalı; açık emir olmadığından toplu düğmeler görünmüyor (beklenen); "Kayıtları gör" var; traceback yok |
 | 4 | Operasyon Kayıtları: varsayılan Onaylı; bağımsız yeni kaldırıldı; geri al yetkisi + iz | TAMAM (canlıda) | `e820306` | 3244 OK (klon DB'ler yeniden kuruldu) | 0206 uygulandı; liste 200 (aktif sekme Onaylı, "Bağımsız" yok, canlıda taslak 0 → Taslak sekmesi gizli), Tümü 200, OP-2026-0437 detay 200 ("Geri al ve sil" + iz notu); `/uretim/kayitlar/ekle/` dışarıdan 404; traceback yok |
-| 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | kod+test tamam, deploy bekliyor | | | |
-| 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | bekliyor | | | |
+| 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | TAMAM (canlıda) | `9ad676d` | 3248 OK | eski adres 301 → `/uretim/urun-agaci/?gorunum=ihtiyac`; yeni görünüm 200 (segment aktif, form var); 152-10-0001 ağacında 16 ✎ + düzenle bağlantısı; ÜRETİM menüsünde İhtiyaç Hesapla yok; traceback yok |
+| 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | kod+test tamam, deploy bekliyor | | | |
 | 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | bekliyor | | | |
 | 8 | ÜS listesi: varsayılan Açık; tamamlanmış stok ÜS'de "Tamamlandı" | bekliyor | | | |
 
@@ -58,3 +58,8 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
   `urun_agaci`; yalnız eski `ihtiyac_hesapla` yetkisi olan kullanıcı yeni yerde 403 alır — yetki ekranından `urun_agaci` verilmeli). `moduller.py`'den
   "İhtiyaç Hesapla" ekranı kalktı; eski `ihtiyac_hesapla.html` silindi; ÜS listesindeki düğme yeni yere. Ağaç düğümlerinde (ürün ağacı satırı ve ihtiyaç
   zinciri) ✎ → `operasyon_duzenle` (yalnız `operasyon_tanimlari` yetkisi olana; yazdırmada gizli). Testler `test_urun_agaci_ihtiyac.py`.
+- **Adım 6 (yalnız şablon):** `operasyon_form.html` — ana kart: istasyon + çıktı + çıktı miktarı (+ tam boy kutusu) ve Girdiler; `<details
+  class="op-gelismis" id="gelismis">` "Gelişmiş ▸": Tür (Üret/Parçala), Çıktılar (parçala) + maliyet pay anahtarı, Yan Çıktılar + ana çıktı boyu (mm).
+  Yeni tanımda ve sade tanım düzenlemede KAPALI; PARÇALA tanımı ya da yan çıktısı olan tanım (kopya dahil) düzenlenirken AÇIK. Ana kart başlığında
+  "parçala" rozeti (JS ile tür değişince de). Alan adları/ID'ler ve JS mantığı değişmedi (POST davranışı aynı; mevcut 149 form/servis testi geçti).
+  Testler `test_operasyon_form_gelismis.py`.
