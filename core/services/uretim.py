@@ -1242,6 +1242,88 @@ def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=N
     return OperasyonKaydi.objects.get(pk=kayit.pk), uyari
 
 
+class TopluUretimHatasi(UretimHatasi):
+    """Toplu üretim ilk hatada durdu: ``istasyon_emri`` = duran emir, ``tamamlanan`` = ondan önce üretilmiş (ve geri alınmış) emir sayısı."""
+
+    def __init__(self, mesaj, *, istasyon_emri=None, tamamlanan=0):
+        super().__init__(mesaj)
+        self.istasyon_emri = istasyon_emri
+        self.tamamlanan = tamamlanan
+
+
+def istasyon_emri_sirasi(emir: UretimEmri, istasyon=None):
+    """ÜS'nin istasyon emirleri ÜRETİM SIRASIYLA: istasyon sırası (``IsIstasyonu.sira``, kod), aynı istasyonda zincirin derini önce (seviye büyük
+    önce — girdi, onu kullanan operasyondan önce üretilir), pk. ``istasyon`` verilirse yalnız o istasyon."""
+    qs = (emir.istasyon_emirleri.filter(silindi=False).select_related("istasyon__fasoncu", "operasyon__cikti")
+          .order_by("istasyon__sira", "istasyon__kod", "-seviye", "pk"))
+    if istasyon is not None:
+        qs = qs.filter(istasyon_id=getattr(istasyon, "pk", istasyon))
+    return list(qs)
+
+
+def toplu_uretilecek_emirler(emir: UretimEmri, istasyon=None) -> list:
+    """Toplu üretimde sırayla işlenecek emirler: BITTI/IPTAL olmayan, FASON OLMAYAN (fason emri fason dönüşle kapanır) ve açık kalanı > 0 olanlar."""
+    return [ie for ie in istasyon_emri_sirasi(emir, istasyon)
+            if ie.durum not in (IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL) and not ie.istasyon.fason and istasyon_emri_acik_kalan(ie) > 0]
+
+
+@transaction.atomic
+def uretim_emri_toplu_uret(emir: UretimEmri, *, istasyon=None, tarih=None, kullanici=None) -> list:
+    """"Bu istasyonu üret" / "Tümünü üret": ÜS'nin üretilecek istasyon emirlerini (``toplu_uretilecek_emirler``) istasyon sırasıyla, TEK tarihle,
+    her birini açık kalan kadar ``istasyon_emri_uret`` ile (kayıt aç + onayla; tarih bazlı stok kontrolü dahil) üretir — TEK ATOMİK İŞLEM: herhangi
+    bir emir hata verirse (stok yetersiz vb.) daha önce üretilenler dahil HİÇBİR ŞEY yazılmaz; ``TopluUretimHatasi`` hangi emirde/stokta durduğunu
+    söyler. Fason emirleri atlanır. Döner: [(istasyon emri, onaylı kayıt), ...] üretim sırasıyla."""
+    emir = UretimEmri.objects.select_for_update(of=("self",)).get(pk=emir.pk)
+    if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
+        raise UretimHatasi("Yalnız açık üretim siparişinde toplu üretim yapılabilir.")
+    sira = toplu_uretilecek_emirler(emir, istasyon)
+    if not sira:
+        raise UretimHatasi("Üretilecek açık istasyon emri yok (fason emirleri fason dönüş belgesiyle kapanır).")
+    yapilan = []
+    for ie in sira:
+        try:
+            kayit, _uyari = istasyon_emri_uret(ie, tarih=tarih, kullanici=kullanici)
+        except UretimHatasi as e:
+            ek = f" ({len(yapilan)} emir üretilmişti; hepsi geri alındı)" if yapilan else ""
+            raise TopluUretimHatasi(f"{ie.no} · {ie.istasyon.kod} {ie.istasyon.ad} · {ie.operasyon.cikti.kod}: {e}{ek}",
+                                    istasyon_emri=ie, tamamlanan=len(yapilan))
+        yapilan.append((ie, kayit))
+    return yapilan
+
+
+def istasyon_emri_satiri(ie: IstasyonEmri, emir: UretimEmri, hatalar=None) -> dict:
+    """ÜS detayı / İstasyon Emirleri satırı: miktarlar referans çıktı adedinde; ``uretilebilir`` (Üretildi düğmesi) ve ``fason_acilabilir``."""
+    ref = _referans_miktar(ie.operasyon)
+    acilabilir = emir.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
+    bitti = ie.durum == IstasyonEmri.Durum.BITTI
+    return {"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
+            "acik": max(istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
+            "uretilebilir": acilabilir and not ie.istasyon.fason and not bitti, "hata": (hatalar or {}).get(str(ie.pk)),
+            "fason_acilabilir": acilabilir and ie.istasyon.fason and not bitti}
+
+
+def istasyon_emri_gruplari(emir: UretimEmri, hatalar=None) -> list:
+    """ÜS detayı: istasyon emirleri İSTASYON bazında (üretim sırasıyla) gruplar. Grup: istasyon, satirlar, toplam, bitti, iptal, acik_adet
+    (toplu üretilebilir emir sayısı), fason, uretilebilir ("Bu istasyonu üret" düğmesi), tamam (hepsi BITTI/IPTAL → katlanmış başlar)."""
+    gruplar, sira = {}, []
+    for ie in istasyon_emri_sirasi(emir):
+        g = gruplar.get(ie.istasyon_id)
+        if g is None:
+            g = gruplar[ie.istasyon_id] = {"istasyon": ie.istasyon, "satirlar": [], "toplam": 0, "bitti": 0, "iptal": 0, "acik_adet": 0,
+                                           "fason": ie.istasyon.fason}
+            sira.append(g)
+        s = istasyon_emri_satiri(ie, emir, hatalar)
+        g["satirlar"].append(s)
+        g["toplam"] += 1
+        g["bitti"] += ie.durum == IstasyonEmri.Durum.BITTI
+        g["iptal"] += ie.durum == IstasyonEmri.Durum.IPTAL
+        g["acik_adet"] += bool(s["uretilebilir"] and s["acik"] > 0)
+    for g in sira:
+        g["uretilebilir"] = g["acik_adet"] > 0 and not g["fason"]
+        g["tamam"] = g["bitti"] + g["iptal"] == g["toplam"]
+    return sira
+
+
 def uretim_emri_yuzde(emir: UretimEmri) -> Decimal:
     """ÜS ilerleme yüzdesi: Σ min(hedef, ayrılan + sevk edilen) ÷ Σ hedef × 100 (0–100)."""
     if emir.durum == UretimEmri.Durum.KAPALI and stok_us_mu(emir) and not emir.sevk_dusen:

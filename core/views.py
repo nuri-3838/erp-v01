@@ -7307,29 +7307,56 @@ def uretim_emri_detay(request, pk):
         yuzde = min(Decimal("100"), hazir * 100 / k.hedef_miktar) if k.hedef_miktar else Decimal("0")
         kalem_satirlari.append({"k": k, "ayrilan": ayrilan.get(k.hedef_urun_id, Decimal("0")), "sevk": sevk_k,
                                 "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde})
-    emirler = []
     hatalar = request.session.pop("uret_hata", {})
-    for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti", "istasyon").order_by("seviye", "pk"):
-        ref = uretim_servis._referans_miktar(ie.operasyon)
-        acilabilir = emir.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
-        fason = ie.istasyon.fason
-        emirler.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
-                        "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
-                        "uretilebilir": acilabilir and not fason and ie.durum != IstasyonEmri.Durum.BITTI, "hata": hatalar.get(str(ie.pk)),
-                        "fason_acilabilir": acilabilir and fason and ie.durum != IstasyonEmri.Durum.BITTI})
-    kayitlar = (emir.operasyon_kayitlari.filter(silindi=False)
-               .select_related("operasyon__istasyon", "operasyon__cikti", "istasyon_emri")
-               .order_by("operasyon__istasyon__kod", "pk"))
+    gruplar = uretim_servis.istasyon_emri_gruplari(emir, hatalar)                     # istasyon bazında katlanır gruplar (üretim sırası)
+    emirler = [s for g in gruplar for s in g["satirlar"]]
+    kayitlar = emir.operasyon_kayitlari.filter(silindi=False)
+    kayit_sayisi = {"toplam": kayitlar.count(), "onayli": kayitlar.filter(durum=OperasyonKaydi.Durum.ONAYLI).count()}
+    kayit_sayisi["taslak"] = kayit_sayisi["toplam"] - kayit_sayisi["onayli"]
     revize_url = None
     if emir.durum == UretimEmri.Durum.ACIK:
         revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     return render(request, "core/uretim_emri_detay.html", {
-        "emir": emir, "kalemler": kalem_satirlari, "kayitlar": kayitlar, "istasyon_emirleri": emirler, "ayirmalar": ayirmalar,
+        "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar,
+        "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
         "eksikler": uretim_servis.uretim_emri_eksikleri(emir), "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
         "bugun": timezone.localdate().isoformat(),
         "revizyonlar": _revizyon_satirlari(emir), "silinebilir": uretim_servis.uretim_emri_silinebilir(emir), "revize_url": revize_url,
         "ilerleme": uretim_servis.uretim_emri_ilerleme(emir)})
+
+
+@ekran_gerekli("operasyon_kayitlari")
+def uretim_emri_toplu_uret_gorunum(request, pk):
+    """"Bu istasyonu üret" (``istasyon``=pk) / "Tümünü üret": ÜS'nin açık, fason olmayan istasyon emirlerini istasyon sırasıyla tek tarihle üretir —
+    tek atomik işlem (ilk hatada hiçbir şey yazılmaz; hata hangi emir/stokta durduğunu söyler, ilgili satırda da gösterilir)."""
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    geri = reverse("core:uretim_emri_detay", args=[emir.pk])
+    if request.method != "POST":
+        return redirect(geri)
+    istasyon = request.POST.get("istasyon") or None
+    if istasyon is not None and not istasyon.isdigit():
+        messages.error(request, "İstasyon geçerli değil.")
+        return redirect(geri)
+    try:
+        tarih = datetime.date.fromisoformat((request.POST.get("tarih") or "").strip()) if (request.POST.get("tarih") or "").strip() else None
+        yapilan = uretim_servis.uretim_emri_toplu_uret(emir, istasyon=int(istasyon) if istasyon else None, tarih=tarih, kullanici=request.user)
+    except uretim_servis.TopluUretimHatasi as e:
+        hatalar = request.session.get("uret_hata", {})
+        hatalar[str(e.istasyon_emri.pk)] = str(e)
+        request.session["uret_hata"] = hatalar
+        messages.error(request, f"Toplu üretim yapılmadı — {e}")
+        return redirect(f"{geri}#ie-{e.istasyon_emri.pk}")
+    except uretim_servis.UretimHatasi as e:
+        messages.error(request, str(e))
+        return redirect(geri)
+    except ValueError:
+        messages.error(request, "Tarih geçerli değil.")
+        return redirect(geri)
+    kapsam = f"{yapilan[0][0].istasyon.kod} {yapilan[0][0].istasyon.ad}" if istasyon else "tüm istasyonlar"
+    messages.success(request, f"{len(yapilan)} istasyon emri üretildi ({kapsam}): " + ", ".join(f"{ie.no} → {k.no}" for ie, k in yapilan)
+                     + " — kayıtlar onaylandı, stok hareketleri yazıldı.")
+    return redirect(geri)
 
 
 @ekran_gerekli("uretim_emirleri")
@@ -7441,16 +7468,8 @@ def istasyon_emirleri(request):
         buyuk = buyuk_harf_tr(ara)
         qs = qs.filter(Q(no__icontains=ara) | Q(uretim_emri__no__icontains=ara) | Q(operasyon__cikti__kod__icontains=ara) | Q(operasyon__cikti__ad__contains=buyuk))
     sayfa = Paginator(qs, 50).get_page(request.GET.get("sayfa"))
-    satirlar = []
     hatalar = request.session.pop("uret_hata", {})
-    for ie in sayfa:
-        ref = uretim_servis._referans_miktar(ie.operasyon)
-        acilabilir = ie.uretim_emri.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
-        fason = ie.istasyon.fason
-        satirlar.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
-                         "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
-                         "uretilebilir": acilabilir and not fason and ie.durum != IstasyonEmri.Durum.BITTI, "hata": hatalar.get(str(ie.pk)),
-                         "fason_acilabilir": acilabilir and fason and ie.durum != IstasyonEmri.Durum.BITTI})
+    satirlar = [uretim_servis.istasyon_emri_satiri(ie, ie.uretim_emri, hatalar) for ie in sayfa]
     return render(request, "core/istasyon_emirleri.html", {
         "satirlar": satirlar, "sayfa": sayfa, "ara": ara, "durum": durum, "istasyon": istasyon,
         "durumlar": IstasyonEmri.Durum.choices, "istasyonlar": uretim_servis.aktif_istasyonlar(), "uretim_emri": request.GET.get("uretim_emri", ""),

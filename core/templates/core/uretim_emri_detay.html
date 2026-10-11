@@ -8,6 +8,19 @@
   .ie-uret-form { display:inline-flex; gap:.3rem; align-items:center; margin:0 .4rem .2rem 0; flex-wrap:wrap; }
   .ie-uret-form input[type=text] { width:6.2rem; text-align:right; }
   .ie-hata { margin-top:.35rem; padding:.4rem .6rem; border-radius:8px; background:#fdecef; color:#b3253f; font-size:.82rem; max-width:34rem; }
+  .ie-baslik { display:flex; justify-content:space-between; align-items:center; gap:.8rem; flex-wrap:wrap; }
+  .ie-baslik .bolum-baslik { margin:0; }
+  .ie-grup { border:1px solid rgba(21,41,77,.12); border-radius:10px; margin:.6rem 0; background:rgba(255,255,255,.55); }
+  .ie-grup > summary { cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:.8rem; flex-wrap:wrap;
+                       padding:.55rem .8rem; font-weight:600; }
+  .ie-grup > summary::-webkit-details-marker { display:none; }
+  .ie-grup > summary::before { content:"▸"; display:inline-block; width:1rem; color:var(--turuncu); transition:transform .15s; }
+  .ie-grup[open] > summary::before { transform:rotate(90deg); }
+  .ie-grup-ad { flex:1 1 auto; }
+  .ie-grup-ozet { display:flex; gap:.5rem; align-items:center; font-weight:400; }
+  .ie-grup-islem { padding:0 .8rem .4rem; }
+  .ie-grup .tablo-kapsayici { margin:0 .4rem .4rem; }
+  .ie-kayit-sayac { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin:0; }
 </style>
 <div class="sayfa-ust">
   <div>
@@ -70,42 +83,72 @@
 </section>
 
 <section class="icerik-kart">
-  <h2 class="bolum-baslik">İstasyon Emirleri</h2>
-  <p class="yardim">Net plandaki her operasyon için bir emir (miktarlar referans çıktı adedi cinsinden). “Üretildi” miktarı (varsayılan açık kalan; fazlası serbest stoğa girer) ve tarihi ile kaydı tek işlemde açıp onaylar —
-    stok yetersizse hiçbir şey yazılmaz. “Fason dönüş aç” yalnız fason işaretli istasyonların emirlerinde çıkar ve aynı emre bağlı fason dönüş belgesi açar.</p>
-  <div class="tablo-kapsayici">
-  <table>
-    <thead><tr><th>Emir</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Planlanan</th><th class="sag">Tamamlanan</th><th class="sag">Açık kalan</th><th>Durum</th><th></th></tr></thead>
-    <tbody>
-      {% for s in istasyon_emirleri %}
-        <tr>
-          <td class="mono">{{ s.ie.no }}</td>
-          <td><span class="mono">{{ s.ie.istasyon.kod }}</span> {{ s.ie.istasyon.ad }}</td>
-          <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}</td>
-          <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>
-          <td class="sag mono">{{ s.tamamlanan|tr_kur:3 }}</td>
-          <td class="sag mono">{{ s.acik|tr_kur:3 }}</td>
-          <td><span class="rozet {% if s.ie.durum == 'BITTI' %}rozet-aktif{% elif s.ie.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ s.ie.get_durum_display }}</span></td>
-          <td id="ie-{{ s.ie.pk }}" class="ie-uret">
-            {% if s.ie.durum == 'BITTI' %}<span class="rozet rozet-aktif">Tamamlandı</span>
-            {% elif s.uretilebilir and uret_yetkili %}
-            <form method="post" action="{% url 'core:istasyon_emri_uret' s.ie.pk %}" class="ie-uret-form">
-              {% csrf_token %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
-              <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer" autocomplete="off">
-              <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi">
-              <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">Üretildi</button></form>
-            {% endif %}
-            {% if s.fason_acilabilir %}<a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>{% endif %}
-            <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>
-            {% if s.hata %}<div class="ie-hata">⚠️ {{ s.hata }}</div>{% endif %}
-          </td>
-        </tr>
-      {% empty %}
-        <tr><td colspan="8" class="yardim">Bu siparişte istasyon emri yok{% if kayitlar %} (eski emir: kayıtlar aşağıda){% endif %}.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="ie-baslik">
+    <h2 class="bolum-baslik">İstasyon Emirleri</h2>
+    {% if toplu_uretilebilir and uret_yetkili %}
+    <form method="post" action="{% url 'core:uretim_emri_toplu_uret' emir.pk %}" class="ie-uret-form ie-toplu"
+          onsubmit="return confirm('Tüm istasyonların açık emirleri istasyon sırasıyla, bu tarihle üretilsin mi? Fason emirleri atlanır; bir emirde hata olursa hiçbiri yazılmaz.');">
+      {% csrf_token %}
+      <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (tüm emirler için tek tarih)">
+      <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶▶ Tümünü üret</button>
+    </form>
+    {% endif %}
   </div>
+  <p class="yardim">Net plandaki her operasyon için bir emir, istasyon bazında (üretim sırasıyla) gruplanmış; tamamlanan gruplar kapalı başlar. “Üretildi” kaydı tek
+    işlemde açıp onaylar. “Bu istasyonu üret” / “Tümünü üret” açık emirleri istasyon sırasıyla tek tarihle üretir — tek atomik işlem: bir emirde hata olursa
+    (o tarihte stok yetersiz vb.) hiçbir şey yazılmaz, hangi emirde durduğu gösterilir; fason istasyonu emirleri atlanır (onlar “Fason dönüş aç” ile açılan
+    fason dönüş belgesiyle kapanır).</p>
+  {% for g in gruplar %}
+  <details class="ie-grup"{% if not g.tamam %} open{% endif %}>
+    <summary>
+      <span class="ie-grup-ad"><span class="mono">{{ g.istasyon.kod }}</span> {{ g.istasyon.ad }}{% if g.fason %} <span class="rozet rozet-notr" title="Fason istasyonu: emirler fason dönüşle kapanır">fason</span>{% endif %}</span>
+      <span class="ie-grup-ozet">{% if g.tamam %}<span class="rozet rozet-aktif">tamamlandı</span>{% else %}<span class="rozet rozet-notr">{{ g.acik_adet }} açık</span>{% endif %}
+        <span class="yardim">{{ g.bitti }}/{{ g.toplam }} bitti{% if g.iptal %} · {{ g.iptal }} iptal{% endif %}</span></span>
+    </summary>
+    {% if g.uretilebilir and emir.durum == 'ACIK' and uret_yetkili %}
+    <div class="ie-grup-islem">
+      <form method="post" action="{% url 'core:uretim_emri_toplu_uret' emir.pk %}" class="ie-uret-form"
+            onsubmit="return confirm('{{ g.istasyon.kod }} {{ g.istasyon.ad }} istasyonunun açık emirleri bu tarihle üretilsin mi? Bir emirde hata olursa hiçbiri yazılmaz.');">
+        {% csrf_token %}<input type="hidden" name="istasyon" value="{{ g.istasyon.pk }}">
+        <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (bu istasyonun tüm açık emirleri için)">
+        <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶ Bu istasyonu üret</button>
+      </form>
+    </div>
+    {% endif %}
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Emir</th><th>Çıktı</th><th class="sag">Planlanan</th><th class="sag">Tamamlanan</th><th class="sag">Açık kalan</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for s in g.satirlar %}
+          <tr>
+            <td class="mono">{{ s.ie.no }}</td>
+            <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}</td>
+            <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>
+            <td class="sag mono">{{ s.tamamlanan|tr_kur:3 }}</td>
+            <td class="sag mono">{{ s.acik|tr_kur:3 }}</td>
+            <td><span class="rozet {% if s.ie.durum == 'BITTI' %}rozet-aktif{% elif s.ie.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ s.ie.get_durum_display }}</span></td>
+            <td id="ie-{{ s.ie.pk }}" class="ie-uret">
+              {% if s.ie.durum == 'BITTI' %}<span class="rozet rozet-aktif">Tamamlandı</span>
+              {% elif s.uretilebilir and uret_yetkili %}
+              <form method="post" action="{% url 'core:istasyon_emri_uret' s.ie.pk %}" class="ie-uret-form">
+                {% csrf_token %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
+                <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer" autocomplete="off">
+                <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi">
+                <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">Üretildi</button></form>
+              {% endif %}
+              {% if s.fason_acilabilir %}<a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>{% endif %}
+              <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>
+              {% if s.hata %}<div class="ie-hata">⚠️ {{ s.hata }}</div>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {% empty %}
+    <p class="yardim">Bu siparişte istasyon emri yok{% if kayit_sayisi.toplam %} (eski emir: kayıtlar aşağıdaki bağlantıda){% endif %}.</p>
+  {% endfor %}
 </section>
 
 {% if emir.durum == 'ACIK' %}
@@ -147,25 +190,16 @@
 
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Operasyon Kayıtları</h2>
-  <div class="tablo-kapsayici">
-  <table>
-    <thead><tr><th>No</th><th>İstasyon Emri</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Hedef Miktar</th><th>Durum</th></tr></thead>
-    <tbody>
-      {% for k in kayitlar %}
-        <tr>
-          <td><a class="mono" href="{% url 'core:operasyon_kaydi_detay' k.pk %}">{{ k.no }}</a></td>
-          <td class="mono">{{ k.istasyon_emri.no|default:"—" }}</td>
-          <td><span class="mono">{{ k.operasyon.istasyon.kod }}</span> {{ k.operasyon.istasyon.ad }}</td>
-          <td><span class="mono">{{ k.operasyon.cikti.kod }}</span> {{ k.operasyon.cikti.ad }}</td>
-          <td class="sag mono">{{ k.hedef_cikti_miktari|tr_kur:3 }}</td>
-          <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
-        </tr>
-      {% empty %}
-        <tr><td colspan="6" class="yardim">Bu siparişe bağlı operasyon kaydı yok.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
+  <p class="ie-kayit-sayac">
+    {% if kayit_sayisi.toplam %}
+      <span class="rozet rozet-aktif">{{ kayit_sayisi.onayli }} onaylı</span>
+      {% if kayit_sayisi.taslak %}<span class="rozet rozet-notr">{{ kayit_sayisi.taslak }} taslak</span>{% endif %}
+      <span class="yardim">toplam {{ kayit_sayisi.toplam }} kayıt</span>
+    {% else %}
+      <span class="yardim">Bu siparişe bağlı operasyon kaydı yok.</span>
+    {% endif %}
+    · <a href="{% url 'core:operasyon_kayitlari' %}?uretim_emri={{ emir.pk }}">Kayıtları gör →</a>
+  </p>
 </section>
 
 <section class="icerik-kart">
