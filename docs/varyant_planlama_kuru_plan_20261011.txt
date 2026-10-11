@@ -1,0 +1,187 @@
+E-6 KURU PLAN — canlı, salt-okunur (tamamı geri alındı), 2026-10-11 18:0x UTC, commit a276798, anahtar canlıda KAPALI (işlem içinde geçici AÇIK).
+(a) standart: 100 adet 152-10-0003 A 4+1 + 100 adet 152-22-0003 Ç 4+4 — (b) özel: aynı ürünler, Markalama MR. MOP, Afiş YOK.
+Karşılaştırma: E-5 doğrulamasındaki kapalı-mod denemesi (100+100) 28 istasyon emri, lazer yok → açık modda 31 = 28 + 2 lazer + ÇÇ birleştirme (markalı/markasız) ayrımı.
+
+ONCE: US/IE/kayit/ayirma sayilari + anahtar: (4, 203, 437, 371, None)
+anahtar (islem icinde, gecici): True
+==== (a) STANDART 100 A 4+1 + 100 C 4+4: ÜS-2026-0005 (varyantli_plan=True) ====
+  kalem 152-10-0003 x100 varyant=[SEMTA/SEMTA/SEMTA/SEMTA] eldeki_ayrilan=15
+  kalem 152-22-0003 x100 varyant=[SEMTA/SEMTA/SEMTA/SEMTA] eldeki_ayrilan=10
+  istasyon emri: 31 | lazer (11): 2 | DONUSTUR: 2
+  --- 10 BORU LAZER
+     IE-2026-0227 op  88 URET     151-10-0018 KESİLMİŞ C TİPİ AYAK 4+4 SOL (834, [YOK] planlanan=160 ihtiyac={'47:80': '160'}
+     IE-2026-0225 op  87 URET     151-10-0017 KESİLMİŞ C TİPİ AYAK 4+4 SAĞ (834, [-] planlanan=160 ihtiyac={'46': '160'}
+     IE-2026-0234 op 112 PARCALA  151-20-0014 ÇİFT ÇIKIŞ METAL MENTEŞE (SAĞ)     [-] planlanan=1.6875 ihtiyac={'167': '108', '168': '108'}
+  --- 11 LAZER MARKALAMA
+     IE-2026-0209 op 126 DONUSTUR 151-10-0003 KESİLMİŞ A TİPİ ÖN AYAK 4+1 (3605, [SEMTA] planlanan=85 ihtiyac={'32:69': '85'}
+     IE-2026-0226 op 131 DONUSTUR 151-10-0018 KESİLMİŞ C TİPİ AYAK 4+4 SOL (834, [SEMTA] planlanan=90 ihtiyac={'47:79': '90'}
+  --- 12 MANUEL TESTERE
+     IE-2026-0211 op   8 URET     151-10-0043 KESİLMİŞ BORU Q16 ÖN AYAK ÜST TABL [-] planlanan=5 ihtiyac={'122': '78'}
+     IE-2026-0219 op   7 URET     151-10-0044 KESİLMİŞ BORU Q16 ARKA AYAK ÜST TA [-] planlanan=5 ihtiyac={'123': '84'}
+     IE-2026-0221 op  32 URET     151-10-0047 KESİLMİŞ BORU Q16 ARKA AYAK 4+1 (4 [-] planlanan=6 ihtiyac={'126': '80'}
+     IE-2026-0222 op   9 URET     151-10-0045 KESİLMİŞ BORU Q16 ARKA AYAK 2+1 /  [-] planlanan=5 ihtiyac={'124': '73'}
+  --- 15 DARALTMA
+     IE-2026-0210 op  14 URET     151-30-0001 DARALTILMIŞ BORU Q16 ÖN AYAK ÜST T [-] planlanan=85 ihtiyac={'115': '85'}
+     IE-2026-0218 op  15 URET     151-30-0002 DARALTILMIŞ BORU Q16 ARKA AYAK ÜST [-] planlanan=85 ihtiyac={'116': '85'}
+     IE-2026-0220 op  50 URET     151-30-0005 DARALTILMIŞ BORU Q16 ARKA AYAK 4+1 [-] planlanan=85 ihtiyac={'119': '85'}
+  --- 20 BÜKÜM-ÖN AYAK
+     IE-2026-0208 op  36 URET     151-20-0003 BÜKÜLMÜŞ A TİPİ ÖN AYAK 4+1        [SEMTA] planlanan=85 ihtiyac={'90:89': '85'}
+  --- 30 BÜKÜM-ARKA AYAK
+     IE-2026-0217 op  40 URET     151-20-0008 BÜKÜLMÜŞ A TİPİ ARKA AYAK 4+1      [-] planlanan=170 ihtiyac={'95': '170'}
+  --- 40 BASAMAK KESİM
+     IE-2026-0212 op  12 URET     151-10-0026 KESİLMİŞ A TİPİ 1.BASAMAK (349,73  [-] planlanan=5 ihtiyac={'98': '76'}
+     IE-2026-0213 op  13 URET     151-10-0027 KESİLMİŞ A TİPİ 2.BASAMAK (368,61  [-] planlanan=5 ihtiyac={'99': '76'}
+     IE-2026-0214 op  45 URET     151-10-0028 KESİLMİŞ A TİPİ 3.BASAMAK (387,48  [-] planlanan=6 ihtiyac={'100': '76'}
+     IE-2026-0215 op  46 URET     151-10-0029 KESİLMİŞ A TİPİ 4.BASAMAK (406,37  [-] planlanan=6 ihtiyac={'101': '81'}
+     IE-2026-0228 op  68 URET     151-10-0032 KESİLMİŞ C TİPİ 1.BASAMAK (306,00  [-] planlanan=10 ihtiyac={'104': '174'}
+     IE-2026-0229 op  69 URET     151-10-0033 KESİLMİŞ C TİPİ 2.BASAMAK (319,13  [-] planlanan=10 ihtiyac={'105': '166'}
+     IE-2026-0230 op  80 URET     151-10-0034 KESİLMİŞ C TİPİ 3.BASAMAK (341,10  [-] planlanan=11 ihtiyac={'106': '180'}
+     IE-2026-0231 op  81 URET     151-10-0035 KESİLMİŞ C TİPİ 4.BASAMAK (363,01  [-] planlanan=11 ihtiyac={'107': '170'}
+  --- 45 KAYIŞ KESİM
+     IE-2026-0233 op  95 URET     151-10-0040 KESİLMİŞ KAYIŞ 470 MM (4+4 / 5+5)  [-] planlanan=180 ihtiyac={'112': '180'}
+  --- 50 ÖN AYAK BİRLEŞTİRME
+     IE-2026-0207 op  55 URET     151-80-0003 BİRLEŞTİRİLMİŞ ÖN AYAK 4+1         [SEMTA] planlanan=85 ihtiyac={'140:94': '85'}
+     IE-2026-0224 op 100 URET     151-80-0013 BİRLEŞTİRİLMİŞ ÖN AYAK 4+4         [SEMTA] planlanan=90 ihtiyac={'150:99': '90'}
+     IE-2026-0232 op 100 URET     151-80-0013 BİRLEŞTİRİLMİŞ ÖN AYAK 4+4         [YOK] planlanan=90 ihtiyac={'150:129': '90'}
+  --- 60 ARKA AYAK BİRLEŞTİRME
+     IE-2026-0216 op  59 URET     151-90-0003 BİRLEŞTİRİLMİŞ ARKA AYAK 4+1       [-] planlanan=85 ihtiyac={'145': '85'}
+  --- 70 MONTAJ
+     IE-2026-0206 op  76 URET     151-99-0004 PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN [SEMTA] planlanan=85 ihtiyac={'175:106': '85'}
+     IE-2026-0223 op 101 URET     151-99-0008 PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM ME [SEMTA] planlanan=90 ihtiyac={'179:110': '90'}
+  --- 80 PAKETLEME
+     IE-2026-0204 op  63 URET     152-10-0003 A TİPİ ALÜMİNYUM MERDİVEN 4+1      [SEMTA/SEMTA/SEMTA/SEMTA] planlanan=85 ihtiyac={'21:120': '85'}
+     IE-2026-0205 op 102 URET     152-22-0003 ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 4+ [SEMTA/SEMTA/SEMTA/SEMTA] planlanan=90 ihtiyac={'26:125': '90'}
+  ayirma: 42 satir
+     150-10-0007 7378-ÖN AYAK 20X40 - 5090 MM   [-] 53.43808
+     150-10-0011 7376-BASAMAK-6000MM            [-] 64
+     150-20-0001 Q16 LIK BORU GALVENİZLİ 1MM -  [-] 21
+     150-20-0002 40X40X2 PROFİL DKP - 6000MM    [-] 1.6875
+     150-40-0001 4,8X8 POP PERÇİN (STANDART)    [-] 7440
+     150-40-0002 4,8X10 POP PERÇİN PULLU (KAYIŞ [-] 360
+     150-40-0003 4,8X10 POP PERÇİN (ÇÇ. MENTEŞE [-] 180
+     150-40-0004 6X25 YD DEMİR PERÇİN           [-] 170
+     150-40-0005 6X36 YD DEMİR PERÇİN           [-] 170
+     150-40-0006 KAYIŞ                          [-] 99.9
+     150-50-0001 AFİŞ - A TİPİ A5 STICKER       [SEMTA] 85
+     150-50-0002 YAN ETİKET                     [SEMTA] 175
+     150-50-0003 AFİŞ - C TİPİ A5 STICKER       [SEMTA] 90
+     150-50-0004 KULLANMA KILAVUZU              [SEMTA] 159
+     150-60-0003 NAYLON 5 BASAMAK (4+1)         [-] 85
+     150-60-0009 NAYLON 4+4 BASAMAK             [-] 90
+     151-10-0003 KESİLMİŞ A TİPİ ÖN AYAK 4+1 (3 [YOK] 85
+     151-10-0008 KESİLMİŞ A TİPİ ARKA AYAK 4+1  [-] 170
+     151-10-0017 KESİLMİŞ C TİPİ AYAK 4+4 SAĞ ( [-] 20
+     151-10-0018 KESİLMİŞ C TİPİ AYAK 4+4 SOL ( [YOK] 20
+     151-10-0026 KESİLMİŞ A TİPİ 1.BASAMAK (349 [-] 9
+     151-10-0027 KESİLMİŞ A TİPİ 2.BASAMAK (368 [-] 9
+     151-10-0028 KESİLMİŞ A TİPİ 3.BASAMAK (387 [-] 9
+     151-10-0029 KESİLMİŞ A TİPİ 4.BASAMAK (406 [-] 4
+     151-10-0032 KESİLMİŞ C TİPİ 1.BASAMAK (306 [-] 6
+     151-10-0033 KESİLMİŞ C TİPİ 2.BASAMAK (319 [-] 14
+     151-10-0035 KESİLMİŞ C TİPİ 4.BASAMAK (363 [-] 10
+     151-10-0043 KESİLMİŞ BORU Q16 ÖN AYAK ÜST  [-] 7
+     151-10-0044 KESİLMİŞ BORU Q16 ARKA AYAK ÜS [-] 1
+     151-10-0045 KESİLMİŞ BORU Q16 ARKA AYAK 2+ [-] 12
+     151-10-0047 KESİLMİŞ BORU Q16 ARKA AYAK 4+ [-] 5
+     151-20-0014 ÇİFT ÇIKIŞ METAL MENTEŞE (SAĞ) [-] 72
+     151-20-0015 ÇİFT ÇIKIŞ METAL MENTEŞE (SOL) [-] 72
+     151-40-0001 PLASTİK ÜST TABLA-SİYAH        [-] 85
+     151-40-0002 PLASTİK ÜST TABLA BAĞLANTI-SİY [-] 170
+     151-40-0003 PLASTİK SOKET SAĞ-SİYAH        [-] 880
+     151-40-0004 PLASTİK SOKET SOL-SİYAH        [-] 880
+     151-40-0005 PLASTİK AYAK TAPA ÖN-SİYAH     [-] 530
+     151-40-0006 PLASTİK AYAK TAPA ARKA-SİYAH   [-] 170
+     151-40-0007 PLASTİK Q16 TAPA YAN-SİYAH     [-] 510
+     152-10-0003 A TİPİ ALÜMİNYUM MERDİVEN 4+1  [SEMTA/SEMTA/SEMTA/SEMTA] 15
+     152-22-0003 ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVE [SEMTA/SEMTA/SEMTA/SEMTA] 10
+  eksik malzeme: 1 satir
+     150-50-0004 KULLANMA KILAVUZU              [SEMTA] gerekli=175 kullanilabilir=159 eksik=16
+==== (b) OZEL 100 A + 100 C — Markalama MR. MOP, Afis YOK: ÜS-2026-0006 (varyantli_plan=True) ====
+  kalem 152-10-0003 x100 varyant=[MR. MOP/SEMTA/YOK/SEMTA] eldeki_ayrilan=0
+  kalem 152-22-0003 x100 varyant=[MR. MOP/SEMTA/YOK/SEMTA] eldeki_ayrilan=0
+  istasyon emri: 31 | lazer (11): 2 | DONUSTUR: 2
+  --- 10 BORU LAZER
+     IE-2026-0258 op  88 URET     151-10-0018 KESİLMİŞ C TİPİ AYAK 4+4 SOL (834, [YOK] planlanan=180 ihtiyac={'47:80': '180'}
+     IE-2026-0256 op  87 URET     151-10-0017 KESİLMİŞ C TİPİ AYAK 4+4 SAĞ (834, [-] planlanan=180 ihtiyac={'46': '180'}
+     IE-2026-0265 op 112 PARCALA  151-20-0014 ÇİFT ÇIKIŞ METAL MENTEŞE (SAĞ)     [-] planlanan=2 ihtiyac={'167': '128', '168': '128'}
+  --- 11 LAZER MARKALAMA
+     IE-2026-0240 op 126 DONUSTUR 151-10-0003 KESİLMİŞ A TİPİ ÖN AYAK 4+1 (3605, [MR. MOP] planlanan=100 ihtiyac={'32:136': '100'}
+     IE-2026-0257 op 131 DONUSTUR 151-10-0018 KESİLMİŞ C TİPİ AYAK 4+4 SOL (834, [MR. MOP] planlanan=100 ihtiyac={'47:140': '100'}
+  --- 12 MANUEL TESTERE
+     IE-2026-0242 op   8 URET     151-10-0043 KESİLMİŞ BORU Q16 ÖN AYAK ÜST TABL [-] planlanan=6 ihtiyac={'122': '93'}
+     IE-2026-0250 op   7 URET     151-10-0044 KESİLMİŞ BORU Q16 ARKA AYAK ÜST TA [-] planlanan=6 ihtiyac={'123': '99'}
+     IE-2026-0252 op  32 URET     151-10-0047 KESİLMİŞ BORU Q16 ARKA AYAK 4+1 (4 [-] planlanan=7 ihtiyac={'126': '95'}
+     IE-2026-0253 op   9 URET     151-10-0045 KESİLMİŞ BORU Q16 ARKA AYAK 2+1 /  [-] planlanan=6 ihtiyac={'124': '88'}
+  --- 15 DARALTMA
+     IE-2026-0241 op  14 URET     151-30-0001 DARALTILMIŞ BORU Q16 ÖN AYAK ÜST T [-] planlanan=100 ihtiyac={'115': '100'}
+     IE-2026-0249 op  15 URET     151-30-0002 DARALTILMIŞ BORU Q16 ARKA AYAK ÜST [-] planlanan=100 ihtiyac={'116': '100'}
+     IE-2026-0251 op  50 URET     151-30-0005 DARALTILMIŞ BORU Q16 ARKA AYAK 4+1 [-] planlanan=100 ihtiyac={'119': '100'}
+  --- 20 BÜKÜM-ÖN AYAK
+     IE-2026-0239 op  36 URET     151-20-0003 BÜKÜLMÜŞ A TİPİ ÖN AYAK 4+1        [MR. MOP] planlanan=100 ihtiyac={'90:135': '100'}
+  --- 30 BÜKÜM-ARKA AYAK
+     IE-2026-0248 op  40 URET     151-20-0008 BÜKÜLMÜŞ A TİPİ ARKA AYAK 4+1      [-] planlanan=200 ihtiyac={'95': '200'}
+  --- 40 BASAMAK KESİM
+     IE-2026-0243 op  12 URET     151-10-0026 KESİLMİŞ A TİPİ 1.BASAMAK (349,73  [-] planlanan=6 ihtiyac={'98': '91'}
+     IE-2026-0244 op  13 URET     151-10-0027 KESİLMİŞ A TİPİ 2.BASAMAK (368,61  [-] planlanan=6 ihtiyac={'99': '91'}
+     IE-2026-0245 op  45 URET     151-10-0028 KESİLMİŞ A TİPİ 3.BASAMAK (387,48  [-] planlanan=7 ihtiyac={'100': '91'}
+     IE-2026-0246 op  46 URET     151-10-0029 KESİLMİŞ A TİPİ 4.BASAMAK (406,37  [-] planlanan=7 ihtiyac={'101': '96'}
+     IE-2026-0259 op  68 URET     151-10-0032 KESİLMİŞ C TİPİ 1.BASAMAK (306,00  [-] planlanan=11 ihtiyac={'104': '194'}
+     IE-2026-0260 op  69 URET     151-10-0033 KESİLMİŞ C TİPİ 2.BASAMAK (319,13  [-] planlanan=11 ihtiyac={'105': '186'}
+     IE-2026-0261 op  80 URET     151-10-0034 KESİLMİŞ C TİPİ 3.BASAMAK (341,10  [-] planlanan=12 ihtiyac={'106': '200'}
+     IE-2026-0262 op  81 URET     151-10-0035 KESİLMİŞ C TİPİ 4.BASAMAK (363,01  [-] planlanan=12 ihtiyac={'107': '190'}
+  --- 45 KAYIŞ KESİM
+     IE-2026-0264 op  95 URET     151-10-0040 KESİLMİŞ KAYIŞ 470 MM (4+4 / 5+5)  [-] planlanan=200 ihtiyac={'112': '200'}
+  --- 50 ÖN AYAK BİRLEŞTİRME
+     IE-2026-0238 op  55 URET     151-80-0003 BİRLEŞTİRİLMİŞ ÖN AYAK 4+1         [MR. MOP] planlanan=100 ihtiyac={'140:134': '100'}
+     IE-2026-0255 op 100 URET     151-80-0013 BİRLEŞTİRİLMİŞ ÖN AYAK 4+4         [MR. MOP] planlanan=100 ihtiyac={'150:139': '100'}
+     IE-2026-0263 op 100 URET     151-80-0013 BİRLEŞTİRİLMİŞ ÖN AYAK 4+4         [YOK] planlanan=100 ihtiyac={'150:129': '100'}
+  --- 60 ARKA AYAK BİRLEŞTİRME
+     IE-2026-0247 op  59 URET     151-90-0003 BİRLEŞTİRİLMİŞ ARKA AYAK 4+1       [-] planlanan=100 ihtiyac={'145': '100'}
+  --- 70 MONTAJ
+     IE-2026-0237 op  76 URET     151-99-0004 PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN [MR. MOP] planlanan=100 ihtiyac={'175:132': '100'}
+     IE-2026-0254 op 101 URET     151-99-0008 PAKETSİZ ÇİFT ÇIKIŞLI ALÜMİNYUM ME [MR. MOP] planlanan=100 ihtiyac={'179:137': '100'}
+  --- 80 PAKETLEME
+     IE-2026-0235 op  63 URET     152-10-0003 A TİPİ ALÜMİNYUM MERDİVEN 4+1      [MR. MOP/SEMTA/YOK/SEMTA] planlanan=100 ihtiyac={'21:130': '100'}
+     IE-2026-0236 op 102 URET     152-22-0003 ÇİFT ÇIKIŞLI ALÜMİNYUM MERDİVEN 4+ [MR. MOP/SEMTA/YOK/SEMTA] planlanan=100 ihtiyac={'26:131': '100'}
+  ayirma: 38 satir
+     150-10-0007 7378-ÖN AYAK 20X40 - 5090 MM   [-] 60.11784
+     150-10-0011 7376-BASAMAK-6000MM            [-] 72
+     150-20-0001 Q16 LIK BORU GALVENİZLİ 1MM -  [-] 25
+     150-20-0002 40X40X2 PROFİL DKP - 6000MM    [-] 2
+     150-40-0001 4,8X8 POP PERÇİN (STANDART)    [-] 8400
+     150-40-0002 4,8X10 POP PERÇİN PULLU (KAYIŞ [-] 400
+     150-40-0003 4,8X10 POP PERÇİN (ÇÇ. MENTEŞE [-] 200
+     150-40-0004 6X25 YD DEMİR PERÇİN           [-] 200
+     150-40-0005 6X36 YD DEMİR PERÇİN           [-] 200
+     150-40-0006 KAYIŞ                          [-] 111
+     150-50-0002 YAN ETİKET                     [SEMTA] 200
+     150-50-0004 KULLANMA KILAVUZU              [SEMTA] 159
+     150-60-0003 NAYLON 5 BASAMAK (4+1)         [-] 100
+     150-60-0009 NAYLON 4+4 BASAMAK             [-] 100
+     151-10-0003 KESİLMİŞ A TİPİ ÖN AYAK 4+1 (3 [YOK] 100
+     151-10-0008 KESİLMİŞ A TİPİ ARKA AYAK 4+1  [-] 200
+     151-10-0017 KESİLMİŞ C TİPİ AYAK 4+4 SAĞ ( [-] 20
+     151-10-0018 KESİLMİŞ C TİPİ AYAK 4+4 SOL ( [YOK] 20
+     151-10-0026 KESİLMİŞ A TİPİ 1.BASAMAK (349 [-] 9
+     151-10-0027 KESİLMİŞ A TİPİ 2.BASAMAK (368 [-] 9
+     151-10-0028 KESİLMİŞ A TİPİ 3.BASAMAK (387 [-] 9
+     151-10-0029 KESİLMİŞ A TİPİ 4.BASAMAK (406 [-] 4
+     151-10-0032 KESİLMİŞ C TİPİ 1.BASAMAK (306 [-] 6
+     151-10-0033 KESİLMİŞ C TİPİ 2.BASAMAK (319 [-] 14
+     151-10-0035 KESİLMİŞ C TİPİ 4.BASAMAK (363 [-] 10
+     151-10-0043 KESİLMİŞ BORU Q16 ÖN AYAK ÜST  [-] 7
+     151-10-0044 KESİLMİŞ BORU Q16 ARKA AYAK ÜS [-] 1
+     151-10-0045 KESİLMİŞ BORU Q16 ARKA AYAK 2+ [-] 12
+     151-10-0047 KESİLMİŞ BORU Q16 ARKA AYAK 4+ [-] 5
+     151-20-0014 ÇİFT ÇIKIŞ METAL MENTEŞE (SAĞ) [-] 72
+     151-20-0015 ÇİFT ÇIKIŞ METAL MENTEŞE (SOL) [-] 72
+     151-40-0001 PLASTİK ÜST TABLA-SİYAH        [-] 100
+     151-40-0002 PLASTİK ÜST TABLA BAĞLANTI-SİY [-] 200
+     151-40-0003 PLASTİK SOKET SAĞ-SİYAH        [-] 1000
+     151-40-0004 PLASTİK SOKET SOL-SİYAH        [-] 1000
+     151-40-0005 PLASTİK AYAK TAPA ÖN-SİYAH     [-] 600
+     151-40-0006 PLASTİK AYAK TAPA ARKA-SİYAH   [-] 200
+     151-40-0007 PLASTİK Q16 TAPA YAN-SİYAH     [-] 600
+  eksik malzeme: 1 satir
+     150-50-0004 KULLANMA KILAVUZU              [SEMTA] gerekli=200 kullanilabilir=159 eksik=41
+SONRA: (4, 203, 437, 371, None) | ESIT: True | ROLLBACK OK | anahtar canlida: False
