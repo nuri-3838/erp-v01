@@ -1,9 +1,10 @@
 """TCMB kurlarını otomatik çek (Aşama 2 — cron).
 
-KUR tablosundaki son tarihin bir gün öncesinden YARINA kadar tüm günleri (yeniden) çeker: TCMB'nin bugün 15:30'da yayımladığı
-kur, kaydırmalı kuralla YARININ kurudur — yarının satırı bugün yazılır ki ertesi sabah açılan fiş/fatura "kur yok" hatası almasın.
-Sunucu kapanır ya da bir gün kaçarsa görev ertesi çalıştığında aradaki günleri tamamlar (telafi); son satırlar yeniden çekildiğinden
-yayın gecikmesiyle eski kurla yazılmış bir gün sonraki koşuda düzelir (idempotent upsert).
+KUR tablosundaki son tarihin bir gün öncesinden BUGÜNE kadar günleri (yeniden) çeker, sonra YARIN (D+1) satırını şu kuralla yazar
+(``tcmb.yarin_kuru_sec``): (1) bugün TCMB yayını alındıysa D+1 = bugünün yayını; (2) bugün yayın yok (hafta sonu/tatil) ve saat 16:00'yı
+geçtiyse D+1 = son yayın; (3) iş günü olup yayın henüz gelmediyse D+1 YAZILMAZ (yer tutucu kur belgeye girmesin) — 18:00 koşusu tamamlar.
+Bir tarihin kuru değişecekse ve o tarihli fiş/fatura varsa üzerine yazılmaz, ``KurUyarisi`` açılır (Kurlar ekranı + pano uyarısı).
+Sunucu kapanır ya da bir gün kaçarsa görev ertesi çalıştığında aradaki günleri tamamlar (telafi).
 Yoğun/kaydırmalı/tatil-atlamalı ``kurlari_guncelle`` motorunu kullanır. Çalışma
 ``logs/kur_cron.log`` dosyasına loglanır (ne zaman, hangi aralık, kaç gün, hata).
 
@@ -27,7 +28,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from core.models import Kur
-from core.services.tcmb import AZAMI_GUN, TcmbHatasi, kurlari_guncelle
+from core.services.tcmb import AZAMI_GUN, TcmbHatasi, _yaz, kurlari_guncelle, yarin_kuru_sec
 
 ILK_BACKFILL = 7              # tablo boşken kaç gün geriden başlanacağı (varsayılan)
 _TR = ZoneInfo("Europe/Istanbul")
@@ -36,6 +37,11 @@ _TR = ZoneInfo("Europe/Istanbul")
 def tr_bugun() -> datetime.date:
     """TR takvim günü (sunucu UTC olsa da muhasebe tarihi TR'ye göre)."""
     return timezone.now().astimezone(_TR).date()
+
+
+def tr_simdi() -> datetime.time:
+    """TR saati (yarın kuralı: 16:00 eşiği)."""
+    return timezone.now().astimezone(_TR).time()
 
 
 def _logger():
@@ -52,7 +58,7 @@ def _logger():
 
 
 class Command(BaseCommand):
-    help = "TCMB kurlarını çeker (son tarihin bir gün öncesinden YARINA kadar; eksik günleri telafi eder)."
+    help = "TCMB kurlarını çeker (son tarihin bir gün öncesinden bugüne; yarın satırı yayın/16:00 kuralıyla; belgeli tarih korunur)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -63,8 +69,9 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         log = _logger()
         bugun = tr_bugun()
-        bitis = bugun + datetime.timedelta(days=1)          # YARIN: bugünkü TCMB yayını yarının kurudur (kaydırmalı kural)
-        son = Kur.objects.aggregate(m=Max("tarih"))["m"]
+        bitis = bugun                                       # bugüne kadar; YARIN ayrı kuralla (aşağıda)
+        yarin = bugun + datetime.timedelta(days=1)
+        son = min(Kur.objects.aggregate(m=Max("tarih"))["m"] or bugun, bugun) if Kur.objects.exists() else None
 
         if son is None:
             baslangic = bugun - datetime.timedelta(days=opts["gun"])
@@ -91,9 +98,19 @@ class Command(BaseCommand):
             self.stderr.write(f"kur_cek beklenmeyen HATA: {e}")
             return
 
-        log.info("bitti: yayin=%s yazilan=%s atlanan=%s",
-                 ozet["yayin"], ozet["yazilan"], ozet["atlanan"])
+        kurlar, neden = yarin_kuru_sec(bugun, tr_simdi(), ozet.get("bitis_yayin"), ozet.get("son_yayin"))
+        if kurlar:
+            yarin_sonuc = _yaz(yarin, kurlar, None, kaynak="cron")
+            log.info("yarın %s: %s (%s)", yarin, yarin_sonuc, neden)
+        else:
+            yarin_sonuc = "yazilmadi"
+            log.info("yarın %s yazılmadı: %s", yarin, neden)
+        if ozet.get("korunan"):
+            log.warning("KORUNAN %s gün: kur değişecekti ama o tarihli belge var — Kurlar ekranındaki uyarıya bakın", ozet["korunan"])
+        log.info("bitti: yayin=%s yazilan=%s atlanan=%s korunan=%s",
+                 ozet["yayin"], ozet["yazilan"], ozet["atlanan"], ozet.get("korunan", 0))
         self.stdout.write(self.style.SUCCESS(
             f"kur_cek tamam: {baslangic}..{bitis} -> "
-            f"yayin={ozet['yayin']} yazilan={ozet['yazilan']} atlanan={ozet['atlanan']}"
+            f"yayin={ozet['yayin']} yazilan={ozet['yazilan']} atlanan={ozet['atlanan']} korunan={ozet.get('korunan', 0)} | "
+            f"yarın {yarin}: {yarin_sonuc} ({neden})"
         ))

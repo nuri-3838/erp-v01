@@ -137,6 +137,27 @@ class Kur(TemelModel):
         return getattr(self, f"{pb.lower()}_{suf}", None)
 
 
+class KurUyarisi(TemelModel):
+    """Kur çekiminde bir tarihin kuru DEĞİŞECEKTİ ama o tarihli fiş/fatura var: üzerine yazılmadı, bu uyarı açıldı (Kurlar ekranı ve pano).
+    Yönetici "Gördüm" deyince ``gorulme_zamani`` dolar. ``eski``/``yeni``: {alan: değer} (yalnız farklı alanlar)."""
+
+    tarih = models.DateField("kur tarihi")
+    eski = models.JSONField("mevcut kur", default=dict, blank=True)
+    yeni = models.JSONField("gelen kur", default=dict, blank=True)
+    belge_sayisi = models.PositiveIntegerField("o tarihli belge sayısı", default=0)
+    kaynak = models.CharField("kaynak", max_length=20, blank=True, default="")        # "cron" / "elle"
+    gorulme_zamani = models.DateTimeField("görülme zamanı", null=True, blank=True)
+
+    class Meta:
+        db_table = "core_kur_uyarisi"
+        verbose_name = "kur uyarısı"
+        verbose_name_plural = "kur uyarıları"
+        ordering = ["-tarih", "-pk"]
+
+    def __str__(self):
+        return f"{self.tarih:%d.%m.%Y} kur uyarısı"
+
+
 class YevmiyeFisi(TemelModel):
     """Yevmiye fişi başlığı (spec bölüm 2 — Tablo: YEVMIYE_FISI).
 

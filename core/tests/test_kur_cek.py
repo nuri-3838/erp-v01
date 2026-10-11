@@ -32,27 +32,27 @@ class KurCekKomutTest(TestCase):
     def test_bos_tablo_son_7_gun(self):
         cagrilar = _calistir()
         b = tr_bugun()
-        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=7), b + datetime.timedelta(days=1))])        # bitiş = YARIN
+        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=7), b)])        # bitiş = bugün (yarın ayrı kural: tcmb.yarin_kuru_sec)
 
     def test_bos_tablo_gun_parametresi(self):
         cagrilar = _calistir("--gun", "3")
         b = tr_bugun()
-        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=3), b + datetime.timedelta(days=1))])
+        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=3), b)])
 
     def test_son_tarihten_telafi(self):
         b = tr_bugun()
         Kur.objects.create(tarih=b - datetime.timedelta(days=3), usd_alis=Decimal("30"))
         cagrilar = _calistir()
-        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=4), b + datetime.timedelta(days=1))])   # son günün bir öncesinden yarına
+        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=4), b)])   # son günün bir öncesinden bugüne (gecikmiş yayın düzelsin)
 
     def test_buyuk_bosluk_caplanir(self):
         b = tr_bugun()
         Kur.objects.create(tarih=b - datetime.timedelta(days=400), usd_alis=Decimal("30"))
         cagrilar = _calistir()
-        self.assertEqual(cagrilar, [(b + datetime.timedelta(days=1) - datetime.timedelta(days=AZAMI_GUN - 1), b + datetime.timedelta(days=1))])
+        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=AZAMI_GUN - 1), b)])
 
     def test_son_tarih_gelecekteyse_bugun(self):
         b = tr_bugun()
         Kur.objects.create(tarih=b + datetime.timedelta(days=5), usd_alis=Decimal("30"))
         cagrilar = _calistir()
-        self.assertEqual(cagrilar, [(b, b + datetime.timedelta(days=1))])
+        self.assertEqual(cagrilar, [(b - datetime.timedelta(days=1), b)])     # gelecek satır varsa bugünden (bir gün geriden) başlar

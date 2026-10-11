@@ -26,7 +26,9 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
 
-from core.models import Kur
+from core.models import Kur, KurUyarisi
+
+YARIN_SAATI = _dt.time(16, 0)     # yayın yoksa (hafta sonu/tatil) yarının satırı ancak bu saatten sonra "son yayın"la yazılır
 
 PARA_BIRIMLERI = ("USD", "EUR", "GBP")
 AZAMI_GUN = 62          # tek çekimde aralık üst sınırı (zaman aşımı koruması)
@@ -110,19 +112,60 @@ def tcmb_gunluk_cek(tarih: _dt.date):
     return parse_tcmb_xml(ham)
 
 
-def _yaz(hedef: _dt.date, kurlar: dict, kullanici):
-    """Bir takvim gününe (hedef) verilen kur setini upsert eder (4 kur × 3 PB)."""
+def _alanlar(kurlar: dict) -> dict:
     alanlar = {}
     for pb in PARA_BIRIMLERI:
         d = kurlar.get(pb) or {}
         on = pb.lower()
         for alan, _etiket in _KUR_TIPLERI:
             alanlar[f"{on}_{alan}"] = d.get(alan)
+    return alanlar
+
+
+def tarihli_belge_sayisi(tarih: _dt.date) -> int:
+    """O tarihli (silinmemiş) yevmiye fişi + fatura sayısı — kuru değiştirmenin etkileyeceği belgeler."""
+    from core.models import Fatura, YevmiyeFisi
+    return YevmiyeFisi.objects.filter(tarih=tarih, silindi=False).count() + Fatura.objects.filter(tarih=tarih, silindi=False).count()
+
+
+def _yaz(hedef: _dt.date, kurlar: dict, kullanici, kaynak="elle") -> str:
+    """Bir takvim gününe (hedef) verilen kur setini upsert eder (4 kur × 3 PB). KORUMA: satır varsa ve gelen değerler farklıysa, o tarihli
+    fiş/fatura olduğunda ÜZERİNE YAZMAZ — ``KurUyarisi`` açar (yönetici görür) ve "korundu" döner. Döner: "yazildi" | "ayni" | "korundu"."""
+    alanlar = _alanlar(kurlar)
+    mevcut = Kur.objects.filter(tarih=hedef).first()
+    if mevcut is not None and not mevcut.silindi:
+        farkli = {a: (getattr(mevcut, a), v) for a, v in alanlar.items() if (getattr(mevcut, a) or None) != (v or None)}
+        if not farkli:
+            return "ayni"
+        belge = tarihli_belge_sayisi(hedef)
+        if belge:
+            uyari = KurUyarisi.objects.filter(tarih=hedef, silindi=False, gorulme_zamani__isnull=True).first()
+            eski = {a: str(e) if e is not None else None for a, (e, _y) in farkli.items()}
+            yeni = {a: str(y) if y is not None else None for a, (_e, y) in farkli.items()}
+            if uyari is None:
+                KurUyarisi.objects.create(tarih=hedef, eski=eski, yeni=yeni, belge_sayisi=belge, kaynak=kaynak,
+                                          created_by=kullanici, updated_by=kullanici)
+            else:
+                uyari.eski, uyari.yeni, uyari.belge_sayisi, uyari.kaynak, uyari.updated_by = eski, yeni, belge, kaynak, kullanici
+                uyari.save(update_fields=["eski", "yeni", "belge_sayisi", "kaynak", "updated_by", "updated_at"])
+            return "korundu"
     defaults = {**alanlar, "updated_by": kullanici, "silindi": False, "silindi_at": None}
     create_defaults = {**alanlar, "created_by": kullanici, "updated_by": kullanici}
     Kur.objects.update_or_create(
         tarih=hedef, defaults=defaults, create_defaults=create_defaults,
     )
+    return "yazildi"
+
+
+def yarin_kuru_sec(bugun: _dt.date, simdi: _dt.time, bugun_yayin, son_yayin):
+    """YARIN (D+1) satırı hangi kurla yazılsın? (kurlar | None, neden).
+    1) D günü TCMB yayını alındıysa → D yayını.  2) D günü yayın yok (XML 404: hafta sonu/tatil ya da henüz gelmedi) ve saat ≥ 16:00 ise →
+    son yayın.  3) Aksi hâlde (iş günü, yayın henüz yok, 16:00 öncesi) YAZILMAZ — yer tutucu kur belgeye girmesin; sonraki koşu tamamlar."""
+    if bugun_yayin:
+        return bugun_yayin, "bugünün yayını"
+    if simdi >= YARIN_SAATI and son_yayin:
+        return son_yayin, "yayın yok (hafta sonu/tatil), 16:00 sonrası son yayın"
+    return None, ("bugünün yayını henüz yok, 16:00 öncesi — yarın yazılmadı" if son_yayin else "son yayın bulunamadı")
 
 
 def _hafta_ici(gun: _dt.date) -> bool:
@@ -138,9 +181,9 @@ def kurlari_guncelle(baslangic: _dt.date, bitis: _dt.date, *,
     (KAYDIRMALI). Hafta sonu/tatil günlerine de bir önceki iş günü kuru yazılır.
     ``cekici`` enjekte edilebilir (test ağsız). Idempotenttir.
 
-    Döner: ``{'yayin', 'yazilan', 'atlanan'}`` — yayin: aralıkta TCMB yayını olan gün,
-    atlanan: yayını olmayan gün (hafta sonu/tatil; yine de satır yazılır), yazilan:
-    yazılan toplam satır.
+    Döner: ``{'yayin', 'yazilan', 'atlanan', 'korunan', 'son_yayin', 'bitis_yayin'}`` — yayin: aralıkta TCMB yayını olan gün,
+    atlanan: yayını olmayan gün (hafta sonu/tatil; yine de satır yazılır), yazilan: yazılan/aynı kalan satır, korunan: belgesi olduğu için
+    üzerine yazılmayan satır (``KurUyarisi``), son_yayin: aralık sonunda geçerli son yayın, bitis_yayin: bitiş gününün kendi yayını (yoksa None).
     """
     if baslangic > bitis:
         raise TcmbHatasi("Başlangıç tarihi bitişten sonra olamaz.")
@@ -164,7 +207,8 @@ def kurlari_guncelle(baslangic: _dt.date, bitis: _dt.date, *,
         geri -= birgun
 
     # 2) İleri yürü: her gün için KUR[gün] = (günden önceki son yayın = 'son').
-    yayin = yazilan = atlanan = 0
+    yayin = yazilan = atlanan = korunan = 0
+    bitis_yayin = None
     gun = baslangic
     while gun <= bitis:
         bugun_kur = cekici(gun) if _hafta_ici(gun) else None
@@ -173,10 +217,14 @@ def kurlari_guncelle(baslangic: _dt.date, bitis: _dt.date, *,
         else:
             atlanan += 1
         if son is not None:
-            _yaz(gun, son, kullanici)
-            yazilan += 1
+            if _yaz(gun, son, kullanici, kaynak="elle" if kullanici is not None else "cron") == "korundu":
+                korunan += 1
+            else:
+                yazilan += 1
         if bugun_kur:        # bugünün yayını ertesi günden itibaren geçerli olur
             son = bugun_kur
+        if gun == bitis:
+            bitis_yayin = bugun_kur
         gun += birgun
 
-    return {"yayin": yayin, "yazilan": yazilan, "atlanan": atlanan}
+    return {"yayin": yayin, "yazilan": yazilan, "atlanan": atlanan, "korunan": korunan, "son_yayin": son, "bitis_yayin": bitis_yayin}

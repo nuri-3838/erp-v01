@@ -11,6 +11,15 @@
   (kaydırmalı). Hafta sonu ve resmî tatil günlerine de bir önceki iş gününün kuru yazılır
   (TCMB o gün yayın yapmaz). Mevcut fiş USD kuru otomatik doldurma "MB Alış"ı kullanır.</p>
 
+{% for u in uyarilar %}
+<div class="uyari" id="kur-uyari-{{ u.pk }}">
+  <div>⚠️ <strong>{{ u.tarih|date:"d.m.Y" }}</strong> kuru değişecekti ama o tarihli <strong>{{ u.belge_sayisi }}</strong> fiş/fatura var; üzerine YAZILMADI ({{ u.kaynak }}, {{ u.created_at|date:"d.m.Y H:i" }}).
+    Mevcut → gelen: {% for alan, eski in u.eski.items %}<span class="mono">{{ alan }}: {{ eski|default:"—" }} → {{ u.yeni|get_item:alan|default:"—" }}</span>{% if not forloop.last %} · {% endif %}{% endfor %}.
+    Belgeler o günkü kurla kaldı; isterseniz belgeleri gözden geçirip kuru Kurlar çekme formuyla değil, kayıtları düzeltip yeniden değerlendirin.</div>
+  <form method="post" style="margin:.4rem 0 0">{% csrf_token %}<input type="hidden" name="eylem" value="uyari_gordum"><input type="hidden" name="uyari" value="{{ u.pk }}"><button type="submit" class="dugme-ikincil">Gördüm</button></form>
+</div>
+{% endfor %}
+
 <form method="post">
   {% csrf_token %}
   {% if form.non_field_errors %}

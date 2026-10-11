@@ -173,7 +173,11 @@ def pano(request):
         return redirect("core:atolye")
     if mesai_kullanicisi_mi(request.user):
         return redirect("core:mesaim")
-    return render(request, "core/pano.html")
+    kur_uyarisi = 0
+    if yonetici_mi(request.user):
+        from core.models import KurUyarisi
+        kur_uyarisi = KurUyarisi.objects.filter(silindi=False, gorulme_zamani__isnull=True).count()
+    return render(request, "core/pano.html", {"kur_uyarisi": kur_uyarisi})
 
 
 def _satir_girdileri(formset):
@@ -566,6 +570,14 @@ def kurlar(request):
         request.POST or None,
         initial={"baslangic": bugun - datetime.timedelta(days=7), "bitis": bugun},
     )
+    if request.method == "POST" and request.POST.get("eylem") == "uyari_gordum":
+        from core.models import KurUyarisi
+        u = get_object_or_404(KurUyarisi, pk=request.POST.get("uyari"), silindi=False)
+        u.gorulme_zamani = timezone.now()
+        u.updated_by = request.user
+        u.save(update_fields=["gorulme_zamani", "updated_by", "updated_at"])
+        messages.success(request, f"{u.tarih:%d.%m.%Y} kur uyarısı kapatıldı (kur değiştirilmedi).")
+        return redirect(f"{reverse('core:kurlar')}?pb={pb}")
     if request.method == "POST" and form.is_valid():
         try:
             ozet = kurlari_guncelle(
@@ -581,6 +593,8 @@ def kurlar(request):
                 f"{ozet['yazilan']} kur satırı yazıldı, "
                 f"{ozet['atlanan']} gün yayın yok (hafta sonu/tatil — önceki iş günü kuru yazıldı).",
             )
+            if ozet.get("korunan"):
+                messages.warning(request, f"{ozet['korunan']} günün kuru DEĞİŞMEDİ: o tarihli fiş/fatura var; aşağıdaki uyarılara bakın.")
             return redirect(f"{reverse('core:kurlar')}?pb={pb}")
 
     # Liste filtresi (GET) — varsayılan son 30 gün
@@ -598,9 +612,11 @@ def kurlar(request):
         Kur.objects.filter(silindi=False, tarih__gte=liste_bas, tarih__lte=liste_bit)
         .order_by("-tarih")
     )
+    from core.models import KurUyarisi
     return render(request, "core/kurlar.html", {
         "form": form, "pb": pb, "kayitlar": kayitlar,
         "liste_bas": liste_bas, "liste_bit": liste_bit,
+        "uyarilar": list(KurUyarisi.objects.filter(silindi=False, gorulme_zamani__isnull=True).order_by("tarih")),
     })
 
 

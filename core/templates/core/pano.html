@@ -4,6 +4,7 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
+{% if kur_uyarisi %}<div class="uyari">⚠️ <strong>{{ kur_uyarisi }}</strong> kur uyarısı var: bir tarihin TCMB kuru değişecekti ama o tarihli belge olduğu için üzerine yazılmadı — <a href="{% url 'core:kurlar' %}">Kurlar ekranına bakın</a>.</div>{% endif %}
 <div class="pano-head">
   <h1 class="pano-merhaba">Hoş geldin{% if user.first_name %}, {{ user.first_name }}{% endif %}</h1>
   <p class="pano-alt">SEMTA ERP — Muhasebe paneli. Soldaki menüden bir ekrana geçebilirsin.</p>
