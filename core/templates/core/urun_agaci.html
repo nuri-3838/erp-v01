@@ -20,7 +20,7 @@
   </div>
   {% if baslik_yazdir %}<h2 class="ua-yazdir-baslik">{{ baslik_yazdir }}</h2>{% endif %}
   <p class="yardim ua-ekran" style="margin-top:-.4rem">Operasyon zincirinden türetilen salt-okunur görünümler: hiçbir kayıt açmaz —
-    değiştirmek için Operasyon Tanımları'nı kullan. Birden çok ürünün toplanmış ihtiyacı için İhtiyaç Hesapla'ya bak.</p>
+    bir düğümün tanımını değiştirmek için yanındaki ✎ işaretini kullan. Birden çok ürünün toplanmış ihtiyacı için “İhtiyaç (çoklu ürün)” görünümü.</p>
 
   <nav class="ua-segment ua-ekran" aria-label="Görünüm">
     {% for k, ad, u in segmentler %}<a href="{{ u }}" class="ua-seg{% if k == gorunum %} aktif{% endif %}">{{ ad }}</a>{% endfor %}
@@ -28,6 +28,7 @@
 
   {% if gorunum == "kullanim" %}{% include "core/_ua_kullanim.html" %}
   {% elif gorunum == "karsilastir" %}{% include "core/_ua_karsilastir.html" %}
+  {% elif gorunum == "ihtiyac" %}{% include "core/_ua_ihtiyac.html" %}
   {% else %}{% include "core/_ua_urun.html" %}{% endif %}
 </div>
 
@@ -117,6 +118,8 @@
   .ua-hazir { display:inline-flex; align-items:center; gap:.35rem; font-size:.72rem; font-weight:500;
     color:var(--metin-soluk); white-space:nowrap; }
   .ua-hazir::before { content:""; width:.42rem; height:.42rem; border-radius:50%; background:#c4cad6; }
+  .ua-duzenle { flex:0 0 auto; text-decoration:none; color:var(--metin-soluk); padding:0 .3rem; font-size:.9rem; line-height:1; }
+  .ua-duzenle:hover { color:var(--turuncu-koyu); }
 
   @container (max-width: 34rem) {
     .ua-dugum > summary, .ua-yaprak { flex-wrap:wrap; }

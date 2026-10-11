@@ -8,8 +8,8 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
 | 1 | İş İstasyonları: `fason` / `fasoncu` / `sira`; sabit "10" kodu kaldırıldı; liste sütunları; şema 0204 + veri 0205 | TAMAM (canlıda) | `f263438` | 3210 OK | 0204+0205 uygulandı; istasyon 10 → fason + 320-30-0040 FASON GÜRBÜZ LAZER, 11 istasyona sıra 10…110; liste/İstasyon Emirleri/ÜS-2026-0002 detay/istasyon düzenle 200; journal'da traceback yok |
 | 2 | Tarih bazlı stok kontrolü (`eldeki_miktar(..., tarih=)`) + maliyet düzeltme komutu (yalnız kuru çalıştırma) | TAMAM (canlıda) | `a51f9e1` | 3233 OK | ÜS detay/İstasyon Emirleri/Numune 200; canlı veride geriye tarihli çıkış denemesi "Bu tarihte yetersiz: 150-20-0003 (eldeki 0, gerekli 1) — 150, 30.06.2026" ile reddedildi (geri alındı); kuru çalıştırma raporu alındı (aşağıda) |
 | 3 | ÜS detay: istasyon bazlı katlanır gruplar; "Bu istasyonu üret" / "Tümünü üret" (atomik) | TAMAM (canlıda) | `3268375` | 3244 OK | ÜS-2026-0002/0003/0004 detay 200; gruplar istasyon sırasıyla (12,15,20,…,80), tamamlanan gruplar kapalı; açık emir olmadığından toplu düğmeler görünmüyor (beklenen); "Kayıtları gör" var; traceback yok |
-| 4 | Operasyon Kayıtları: varsayılan Onaylı; bağımsız yeni kaldırıldı; geri al yetkisi + iz | kod+test tamam, deploy bekliyor | | | |
-| 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | bekliyor | | | |
+| 4 | Operasyon Kayıtları: varsayılan Onaylı; bağımsız yeni kaldırıldı; geri al yetkisi + iz | TAMAM (canlıda) | `e820306` | 3244 OK (klon DB'ler yeniden kuruldu) | 0206 uygulandı; liste 200 (aktif sekme Onaylı, "Bağımsız" yok, canlıda taslak 0 → Taslak sekmesi gizli), Tümü 200, OP-2026-0437 detay 200 ("Geri al ve sil" + iz notu); `/uretim/kayitlar/ekle/` dışarıdan 404; traceback yok |
+| 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | kod+test tamam, deploy bekliyor | | | |
 | 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | bekliyor | | | |
 | 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | bekliyor | | | |
 | 8 | ÜS listesi: varsayılan Açık; tamamlanmış stok ÜS'de "Tamamlandı" | bekliyor | | | |
@@ -51,4 +51,10 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
   (`operasyon_kaydi_ekle`, `OperasyonKaydiForm`, `operasyon_kaydi_form.html`; servis `operasyon_kaydi_olustur` fason/üretim için duruyor). "Geri al ve sil"
   yetkisi `operasyon_kayitlari` ekran yetkisi (eski `@yonetici_gerekli` kalktı); detay geri alınmış kaydı salt-okunur gösterir ("Geri alan: kullanıcı ·
   zaman"). Fason dönüş geri alma (`fason_donus_geri_al_sil`) DEĞİŞMEDİ (hâlâ yönetici). Testler: `test_uretim_yan_cikti_saklama.GeriAlSilEkranTest`,
-  `test_operasyon_kayitlari_liste`, `test_uretim.test_bagimsiz_kayit_ekrani_kaldirildi`.
+  `test_operasyon_kayitlari_liste`, `test_uretim.test_bagimsiz_kayit_ekrani_kaldirildi`. Ders: yeni migration sonrası `--parallel --keepdb` klon
+  test DB'leri eski şemada kalır → tam paket bir kez `--keepdb`siz koşulmalı (sahte 270 hata görüldü).
+- **Adım 5:** Ürün Ağacı'na 4. segment `?gorunum=ihtiyac` "İhtiyaç (çoklu ürün)" (`views._ihtiyac_gorunumu`, şablon `_ua_ihtiyac.html`; POST formset,
+  "Kullanılabilir stoğu düş", zincir + istasyon özeti aynen; `graf` ile hesap). `core:ihtiyac_hesapla` URL adı/yolu duruyor → Ürün Ağacı'na 301 (yetki artık
+  `urun_agaci`; yalnız eski `ihtiyac_hesapla` yetkisi olan kullanıcı yeni yerde 403 alır — yetki ekranından `urun_agaci` verilmeli). `moduller.py`'den
+  "İhtiyaç Hesapla" ekranı kalktı; eski `ihtiyac_hesapla.html` silindi; ÜS listesindeki düğme yeni yere. Ağaç düğümlerinde (ürün ağacı satırı ve ihtiyaç
+  zinciri) ✎ → `operasyon_duzenle` (yalnız `operasyon_tanimlari` yetkisi olana; yazdırmada gizli). Testler `test_urun_agaci_ihtiyac.py`.

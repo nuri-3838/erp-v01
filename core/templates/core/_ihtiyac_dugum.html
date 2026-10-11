@@ -4,7 +4,7 @@
     <span class="mono">{{ dugum.stok.kod }}</span>
     <span>{{ dugum.stok.ad }}</span>
     <span class="mono">× {{ dugum.miktar|tr_miktar_sade }}</span>
-    {% if dugum.istasyon %}<span class="rozet rozet-notr">{{ dugum.istasyon.kod }}</span>{% if dugum.tur == "PARCALA" %} <span class="rozet rozet-notr" title="Parçala: 1 girdi → N çıktı">parçala</span>{% endif %}
+    {% if dugum.istasyon %}<span class="rozet rozet-notr">{{ dugum.istasyon.kod }}</span>{% if duzenleyebilir and dugum.operasyon %}<a class="ua-duzenle ua-ekran" href="{% url 'core:operasyon_duzenle' dugum.operasyon.pk %}" title="Operasyon tanımını düzenle: {{ dugum.stok.kod }}">✎</a>{% endif %}{% if dugum.tur == "PARCALA" %} <span class="rozet rozet-notr" title="Parçala: 1 girdi → N çıktı">parçala</span>{% endif %}
       {% if net_mod and not dugum.tekrar %}<span class="yardim" title="Stoğun zincir toplamı üzerinden: kullanılabilirden ayrılan ve üretilecek net miktar">stoktan {{ dugum.ayrilan_toplam|tr_miktar_sade }} · net {{ dugum.net_toplam|tr_miktar_sade }}</span>{% endif %}
     {% else %}<span class="pasif">yaprak (hazır stok)</span>{% if net_mod %}<span class="yardim{% if dugum.eksik_toplam %} ih-eksik{% endif %}" title="Stoğun zincir toplamı üzerinden">stoktan {{ dugum.ayrilan_toplam|tr_miktar_sade }} · eksik {{ dugum.eksik_toplam|tr_miktar_sade }}</span>{% endif %}{% endif %}
     {% if dugum.tam %}

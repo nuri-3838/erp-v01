@@ -829,8 +829,13 @@ class UretimViewTest(TestCase):
     def test_operasyon_tanimlari_izinleri(self):
         self._ekran_izin_testleri("core:operasyon_tanimlari", self.operasyon_yetkili)
 
-    def test_ihtiyac_hesapla_izinleri(self):
-        self._ekran_izin_testleri("core:ihtiyac_hesapla", self.hesapla_yetkili)
+    def test_eski_ihtiyac_hesapla_adresi_urun_agacina_yonlenir(self):
+        """Adım 5: İhtiyaç Hesapla menüden kalktı; eski adres Ürün Ağacı'nın İhtiyaç görünümüne kalıcı yönlenir (yetki: urun_agaci)."""
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:ihtiyac_hesapla"))
+        self.assertRedirects(r, reverse("core:urun_agaci") + "?gorunum=ihtiyac", status_code=301, fetch_redirect_response=False)
+        self.client.force_login(self.hesapla_yetkili)                                   # yalnız eski ihtiyac_hesapla yetkisi: yeni yer 403
+        self.assertEqual(self.client.get(reverse("core:urun_agaci") + "?gorunum=ihtiyac").status_code, 403)
 
     def test_uretim_emirleri_izinleri(self):
         self._ekran_izin_testleri("core:uretim_emirleri", self.emir_yetkili)
@@ -860,7 +865,7 @@ class UretimViewTest(TestCase):
         gövde = {"satir-TOTAL_FORMS": "1", "satir-INITIAL_FORMS": "0",
                  "satir-MIN_NUM_FORMS": "0", "satir-MAX_NUM_FORMS": "1000",
                  "satir-0-hedef": self.mamul.pk, "satir-0-miktar": "10"}
-        r = self.client.post(reverse("core:ihtiyac_hesapla"), gövde)
+        r = self.client.post(reverse("core:urun_agaci") + "?gorunum=ihtiyac", gövde)
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, self.profil.kod)
         self.assertContains(r, self.istasyon.kod)
@@ -960,7 +965,8 @@ class UretimViewTest(TestCase):
         self.assertContains(r, "Üretim")
         self.assertContains(r, "İş İstasyonları")
         self.assertContains(r, "Operasyon Tanımları")
-        self.assertContains(r, "İhtiyaç Hesapla")
+        self.assertNotContains(r, "İhtiyaç Hesapla")                                      # adım 5: Ürün Ağacı'na taşındı
+        self.assertContains(r, "Ürün Ağacı")
         self.assertContains(r, "Üretim Siparişleri")
         self.assertContains(r, "İstasyon Emirleri")
         self.assertContains(r, "Operasyon Kayıtları")

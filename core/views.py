@@ -7071,31 +7071,36 @@ def operasyon_sil(request, pk):
     return redirect("core:operasyon_tanimlari")
 
 
-# --- İhtiyaç Hesapla (salt-okunur, hiçbir kayıt açmaz) ---
-@ekran_gerekli("ihtiyac_hesapla")
+# --- İhtiyaç Hesapla: ESKİ adres (menüden kalktı; adım 5) → Ürün Ağacı'nın "İhtiyaç (çoklu ürün)" görünümüne kalıcı yönlendirme ---
+@login_required
 def ihtiyac_hesapla(request):
-    sonuc = None
+    return redirect(reverse("core:urun_agaci") + "?gorunum=ihtiyac", permanent=True)
+
+
+def _ihtiyac_gorunumu(request, graf):
+    """Ürün Ağacı > İhtiyaç (çoklu ürün): birden çok hedef ürün + miktar, zincir ve istasyon bazında toplanmış özet (salt-okunur, kayıt açmaz).
+    "Kullanılabilir stoğu düş" → NET ihtiyaç (kullanılabilir = eldeki − üretim siparişlerine ayrılan, her seviyede); varsayılan BRÜT."""
+    sonuc, stok_dus = None, False
     if request.method == "POST":
         formset = IhtiyacHesaplaSatirFormSet(request.POST, prefix="satir")
+        stok_dus = request.POST.get("stok_dus") == "1"
         if formset.is_valid():
-            kalemler = [(f.cleaned_data["hedef"], f.cleaned_data["miktar"])
-                       for f in formset if f.dolu_mu()]
+            kalemler = [(f.cleaned_data["hedef"], f.cleaned_data["miktar"]) for f in formset if f.dolu_mu()]
             if not kalemler:
                 messages.error(request, "En az bir hedef ürün satırı girin.")
             else:
                 try:
-                    # "stoku düş": NET ihtiyaç — kullanılabilir (eldeki − üretim siparişlerine ayrılan) her seviyede düşülür; varsayılan BRÜT
                     sonuc = uretim_servis.ihtiyac_hesapla(
-                        kalemler, kullanilabilir=stok_ayirma_servis.kullanilabilir_haritasi if request.POST.get("stok_dus") == "1" else None)
+                        kalemler, graf=graf, kullanilabilir=stok_ayirma_servis.kullanilabilir_haritasi if stok_dus else None)
                 except uretim_servis.UretimHatasi as e:
                     messages.error(request, str(e))
     else:
         formset = IhtiyacHesaplaSatirFormSet(prefix="satir")
-    return render(request, "core/ihtiyac_hesapla.html",
-                  {"formset": formset, "sonuc": sonuc, "stok_dus": request.method == "POST" and request.POST.get("stok_dus") == "1"})
+    return {"formset": formset, "sonuc": sonuc, "stok_dus": stok_dus, "sonuc_var": bool(sonuc),
+            "baslik_yazdir": "İhtiyaç (çoklu ürün)" if sonuc else ""}
 
 
-# --- Ürün Ağacı: üç salt-okunur görünüm (Ürün · Nerede kullanılıyor · Karşılaştır) — hepsi Operasyon zincirinden hesaplanır, kayıt açmaz ---
+# --- Ürün Ağacı: dört salt-okunur görünüm (Ürün · Nerede kullanılıyor · Karşılaştır · İhtiyaç) — hepsi Operasyon zincirinden hesaplanır, kayıt açmaz ---
 URUN_AGACI_ACIK_SEVIYE = 2      # kök + bir alt seviye açık başlar; derindekiler kapalı
 URUN_AGACI_SEKMELER = (("agac", "Ağaç"), ("malzeme", "Malzeme ve Stok"), ("maliyet", "Maliyet"))
 
@@ -7110,7 +7115,7 @@ def _xlsx_yanit(veri, ad):
 def urun_agaci(request):
     from urllib.parse import urlencode
     g = request.GET
-    gorunum = g.get("gorunum") if g.get("gorunum") in ("kullanim", "karsilastir") else "urun"
+    gorunum = g.get("gorunum") if g.get("gorunum") in ("kullanim", "karsilastir", "ihtiyac") else "urun"
     graf = urun_agaci_servis.graf_yukle()
     xlsx = g.get("xlsx") == "1"
     # işlem/fason bedeli seçimi (Maliyet sekmesi + Karşılaştır/maliyet): fiyat tarihi (ISO; boş/geçersiz = bugün) ve fasoncu (pk; geçersiz = varsayılan)
@@ -7129,12 +7134,15 @@ def urun_agaci(request):
     ctx = {
         "gorunum": gorunum, "acik_seviye": URUN_AGACI_ACIK_SEVIYE,
         "segmentler": [("urun", "Ürün", "?"), ("kullanim", "Nerede kullanılıyor", "?gorunum=kullanim"),
-                       ("karsilastir", "Karşılaştır", "?gorunum=karsilastir")],
+                       ("karsilastir", "Karşılaştır", "?gorunum=karsilastir"), ("ihtiyac", "İhtiyaç (çoklu ürün)", "?gorunum=ihtiyac")],
         "xlsx_url": None, "sonuc_var": False, "baslik_yazdir": "",
         "fason_tarih": (fason_tarih or timezone.localdate()).isoformat(),
+        "duzenleyebilir": ekran_gorebilir(request.user, "operasyon_tanimlari"),      # ağaç düğümlerindeki ✎ (operasyon tanımını düzenle)
     }
 
-    if gorunum == "urun":
+    if gorunum == "ihtiyac":
+        ctx.update(_ihtiyac_gorunumu(request, graf))
+    elif gorunum == "urun":
         sekme = g.get("sekme") if g.get("sekme") in ("agac", "malzeme", "maliyet") else "agac"
         secenekler = urun_agaci_servis.urun_secenekleri(graf)
         agac = malzeme = maliyet = urun = None

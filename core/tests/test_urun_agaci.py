@@ -255,7 +255,7 @@ class UrunAgaciViewTest(ZincirTaban):
 
         self.assertIn("urun_agaci", uretim_kodlari(self.yon))
         self.assertEqual(uretim_kodlari(self.yetkili), ["urun_agaci"])
-        self.assertEqual(uretim_kodlari(self.hesapla_yetkili), ["ihtiyac_hesapla"])
+        self.assertEqual(uretim_kodlari(self.hesapla_yetkili), [])                   # adım 5: ihtiyac_hesapla ekranı menüden kalktı
         self.assertEqual(uretim_kodlari(self.bos), [])
 
 

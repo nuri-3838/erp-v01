@@ -139,7 +139,7 @@ class MotorTest(NetBase):
 class EkranTest(NetBase):
     def setUp(self):
         self.client.force_login(User.objects.create_superuser("ih_net", password="x"))
-        self.url = reverse("core:ihtiyac_hesapla")
+        self.url = reverse("core:urun_agaci") + "?gorunum=ihtiyac"                     # adım 5: Ürün Ağacı > İhtiyaç (çoklu ürün)
         hareket_ekle(stok_id=self.kesilmis.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1), tur=StokHareket.Tur.GIRIS, miktar=D("3"), giris_tutar_try=D("30"))
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.mamul2.pk, "hedef_miktar": "1"}], depo_id=self.depo.pk, tarih=date(2026, 10, 1))
         sa.ayirma_ayarla(emir, self.kesilmis, "2")                                         # kullanılabilir 3 − 2 = 1

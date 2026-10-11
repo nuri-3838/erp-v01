@@ -86,7 +86,7 @@ class EkranTest(GorunumBase):
 
     def test_ihtiyac_hesapla_ekrani_parcala_notu(self):
         veri = {"satir-TOTAL_FORMS": "1", "satir-INITIAL_FORMS": "0", "satir-0-hedef": self.u2.pk, "satir-0-miktar": "16"}
-        r = self.client.post(reverse("core:ihtiyac_hesapla"), veri)
+        r = self.client.post(reverse("core:urun_agaci") + "?gorunum=ihtiyac", veri)
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "parçala")
         self.assertContains(r, "aynı boydan")
