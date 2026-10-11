@@ -136,17 +136,25 @@ class FaturaStokTest(FaturaTestTemel):
         h = StokHareket.objects.get(fatura_satir__fatura=fs, silindi=False)
         self.assertEqual(h.tutar_try, Decimal("400.00"))   # 4 x 100 TL (ortalama)
 
-    def test_guncelleme_uretimde_tuketilmis_katmani_engeller(self):
+    def test_guncelleme_uretimde_tuketilmis_giriste_miktar_degisemez_tutar_yerinde_degisir(self):
         f = fatura_olustur(tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
                            depo_id=self.depo.pk)
         # Üretim gibi başka bir hareketin bu girişin maliyetini tüketmesini simüle et.
         hareket_ekle(stok_id=self.stok.pk, depo_id=self.depo.pk, tarih=D(2026, 3, 11),
                     tur=StokHareket.Tur.CIKIS, miktar="3", kaynak=StokHareket.Kaynak.URETIM)
-        with self.assertRaises(FaturaHatasi):
+        with self.assertRaisesMessage(FaturaHatasi, "negatife düşer"):      # miktar değişimi: sil + yeniden yaz → eldeki 7 < 10
             fatura_guncelle(f, tip_id=self.alis.pk, cari_id=self.tedarikci.pk,
-                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10"),
+                            tarih=D(2026, 3, 10), satirlar=self._satir(miktar="8"),
                             depo_id=self.depo.pk)
+        giris = StokHareket.objects.get(fatura_satir__fatura=f, tur="GIRIS", silindi=False)
+        fatura_guncelle(f, tip_id=self.alis.pk, cari_id=self.tedarikci.pk,              # yalnız fiyat: hareket silinmez, yerinde güncellenir
+                        tarih=D(2026, 3, 10), satirlar=self._satir(miktar="10", fiyat="200"),
+                        depo_id=self.depo.pk)
+        giris.refresh_from_db()
+        self.assertEqual((giris.silindi, giris.giris_tutar_try), (False, Decimal("2000.00")))
+        cikis = StokHareket.objects.get(stok=self.stok, tur="CIKIS", silindi=False)
+        self.assertEqual(cikis.tutar_try, Decimal("600.00"))                            # 3 × 200: tüketim yeni ortalamayla
 
     def test_cevirici_sifira_yuvarlarsa_hata(self):
         adet = Birim.objects.create(ad="ADET9", kisa_ad="AD9", ondalik=0)

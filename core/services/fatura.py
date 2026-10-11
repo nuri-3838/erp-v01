@@ -897,45 +897,114 @@ def _depo_coz(depo_id):
     return depo
 
 
+def _uretim_miktari(stok, miktar):
+    """Fatura birimindeki miktarın üretim birimi karşılığı (çevirici; bkz. Stok.cevirici)."""
+    cevirici = stok.cevirici or Decimal("1")
+    uretim_miktar = yuvarla(miktar / cevirici, 3)
+    if uretim_miktar <= 0:
+        raise FaturaHatasi(
+            f"{stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar "
+            f"sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
+    return uretim_miktar
+
+
+def _hareket_degerleri(fatura, satir) -> dict:
+    """Bir fatura satırının stok hareketine yazılacak MALİYET değerleri (giriş tutarı TL/USD,
+    maliyet kaynağı satır, ortalamayla giriş). Hem ilk yazımda (``_hareketleri_yaz``) hem de
+    yalnız tutar değişince yerinde güncellemede (``_hareketleri_yerinde_guncelle``) kullanılır."""
+    alis = (fatura.tip.yon == FaturaTipi.Yon.ALIS)
+    # Ağırlıklı ortalama maliyet: giriş tutarı = fatura satır tutarı (TL, KDV/tevkifat hariç).
+    # Alış iadesi (tedarikçiye iade) çıkışı da ortalamayla DEĞİL iade faturasının tutarıyla değerlenir.
+    alis_iade = (not alis) and fatura.tip.maliyet_fisi == FaturaTipi.MaliyetFisi.ALIS_IADE
+    giris_tl = satir.tutar_tl if (alis or alis_iade) else None
+    giris_usd = None
+    if giris_tl is not None:
+        usd_kuru = fatura.fis.kur_usd if fatura.fis_id else None
+        giris_usd = yuvarla(giris_tl / usd_kuru, 2) if usd_kuru else None
+    # Satış iadesi tipi: giriş fatura (satış) fiyatıyla DEĞİL o anki ortalama maliyetle değerlenir.
+    iade = alis and fatura.tip.maliyet_fisi == FaturaTipi.MaliyetFisi.SATIS_IADE
+    if iade:
+        giris_tl = giris_usd = None
+    return {"giris_tutar_try": giris_tl, "giris_tutar_usd": giris_usd,
+            "maliyet_fatura_satir": satir if ((alis and not iade) or alis_iade) else None,
+            "giris_ortalama": iade}
+
+
 def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
     """Fatura kalemleri için stok hareketi: ALIŞ→giriş, SATIŞ→çıkış. Miktar fatura
     biriminden üretim birimine çevrilir (çevirici). Çıkışta eldeki yetmezse engellenir.
-    ALIŞ yönünde ayrıca bir FIFO maliyet katmanı açılır: birim_maliyet_try = birim_fiyat
-    (fatura para biriminde) × kur (TL karşılığı) × cevirici (1 üretim birimi kaç fatura
-    birimi ediyorsa, üretim birimi o kadar daha pahalıdır — bkz. Stok.cevirici)."""
+    Giriş tutarı = satır tutarı (TL, KDV hariç); bkz. _hareket_degerleri."""
     alis = (fatura.tip.yon == FaturaTipi.Yon.ALIS)
     tur = StokHareket.Tur.GIRIS if alis else StokHareket.Tur.CIKIS
     for satir in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok__kategori"):
         if hizmet_mi(satir.stok):                     # hizmet kartı: stok hareketi YOK (muhasebe fişi kategori haritasından normal oluşur)
             continue
-        cevirici = satir.stok.cevirici or Decimal("1")
-        uretim_miktar = yuvarla(satir.miktar / cevirici, 3)
-        if uretim_miktar <= 0:
-            raise FaturaHatasi(
-                f"{satir.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar "
-                f"sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
-        # Ağırlıklı ortalama maliyet: giriş tutarı = fatura satır tutarı (TL, KDV/tevkifat hariç).
-        # Alış iadesi (tedarikçiye iade) çıkışı da ortalamayla DEĞİL iade faturasının tutarıyla değerlenir.
-        alis_iade = (not alis) and fatura.tip.maliyet_fisi == FaturaTipi.MaliyetFisi.ALIS_IADE
-        giris_tl = satir.tutar_tl if (alis or alis_iade) else None
-        giris_usd = None
-        if giris_tl is not None:
-            usd_kuru = fatura.fis.kur_usd if fatura.fis_id else None
-            giris_usd = yuvarla(giris_tl / usd_kuru, 2) if usd_kuru else None
-        # Satış iadesi tipi: giriş fatura (satış) fiyatıyla DEĞİL o anki ortalama maliyetle değerlenir.
-        iade = alis and fatura.tip.maliyet_fisi == FaturaTipi.MaliyetFisi.SATIS_IADE
-        if iade:
-            giris_tl = giris_usd = None
+        uretim_miktar = _uretim_miktari(satir.stok, satir.miktar)
         try:
             hareket_ekle(
                 stok_id=satir.stok_id, depo_id=depo.pk, tarih=fatura.tarih, tur=tur,
                 miktar=uretim_miktar,
                 aciklama=_aciklama(fatura.tip, fatura.cari, fatura.fatura_no),
                 kaynak=StokHareket.Kaynak.FATURA, fatura_satir=satir, kullanici=kullanici,
-                giris_tutar_try=giris_tl, giris_tutar_usd=giris_usd,
-                maliyet_fatura_satir=satir if ((alis and not iade) or alis_iade) else None,
-                giris_ortalama=iade)
+                **_hareket_degerleri(fatura, satir))
         except HareketHatasi as e:
+            raise FaturaHatasi(str(e))
+    _maliyet_fisi_senkronla(fatura, kullanici)
+
+
+def _hareket_anahtari(stok, miktar):
+    return (stok.pk, _uretim_miktari(stok, miktar))
+
+
+def _yerinde_eslesme(fatura, *, tip, depo, tarih, hazir):
+    """Onaylı fatura güncellemesinde stok hareketleri SİLİNMEDEN yerinde güncellenebilir mi?
+    Koşul: tip, depo ve tarih aynı; faturanın aktif hareketleri ile yeni stok kalemleri
+    (stok, üretim miktarı) bire bir eşleşiyor — yani yalnız birim fiyat/tutar (ya da kur) değişti.
+    Sağlanıyorsa mevcut hareketlerin listesi, değilse None (sil + yeniden yaz yolu)."""
+    if (depo is None or tip.pk != fatura.tip_id or depo.pk != fatura.depo_id or tarih != fatura.tarih
+            or irsaliyeden_mi(fatura)):
+        return None
+    eski = list(StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False)
+                .select_related("stok").order_by("id"))
+    if not eski or any(h.depo_id != depo.pk or h.tarih != tarih for h in eski):
+        return None
+    yeni = [(stok, miktar) for stok, _hesap, miktar, *_ in hazir if stok is not None and not hizmet_mi(stok)]
+    if len(yeni) != len(eski):
+        return None
+    try:
+        if sorted(_hareket_anahtari(s, m) for s, m in yeni) != sorted((h.stok_id, h.miktar) for h in eski):
+            return None
+    except FaturaHatasi:
+        return None
+    return eski
+
+
+def _hareketleri_yerinde_guncelle(fatura, eski, *, kullanici):
+    """Yalnız tutar değişen onaylı faturada mevcut stok hareketlerini yeni satırlara bağlar ve
+    maliyet değerlerini (giriş tutarı vb.) YERİNDE yazar; hareket silinmez (kısmen tüketilmiş
+    giriş de düzeltilebilir). Sonra kart baştan hesaplanır: değişen çıkışların zinciri —
+    üretim çıktıları + aktarım fişi, sonraki üretimler, satış/numune/sarf fişleri — mevcut
+    ``stok_ortalama.yeniden_hesapla`` mantığıyla yerinde güncellenir."""
+    from core.services import stok_ortalama
+    havuz = {}
+    for h in eski:
+        havuz.setdefault((h.stok_id, h.miktar), []).append(h)
+    aciklama = buyuk_harf_tr(_aciklama(fatura.tip, fatura.cari, fatura.fatura_no))
+    stoklar = {}
+    for satir in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok__kategori").order_by("id"):
+        if hizmet_mi(satir.stok):
+            continue
+        h = havuz[_hareket_anahtari(satir.stok, satir.miktar)].pop(0)
+        h.fatura_satir, h.aciklama, h.updated_by = satir, aciklama, kullanici
+        for alan, deger in _hareket_degerleri(fatura, satir).items():
+            setattr(h, alan, deger)
+        h.save(update_fields=["fatura_satir", "aciklama", "giris_tutar_try", "giris_tutar_usd",
+                              "maliyet_fatura_satir", "giris_ortalama", "updated_by", "updated_at"])
+        stoklar[h.stok_id] = h.stok
+    for stok in stoklar.values():
+        try:
+            stok_ortalama.yeniden_hesapla(stok)
+        except stok_ortalama.MaliyetHatasi as e:
             raise FaturaHatasi(str(e))
     _maliyet_fisi_senkronla(fatura, kullanici)
 
@@ -1197,9 +1266,12 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         raise FaturaHatasi(str(e))
     # Etkilenen (stok, depo) çiftleri — eski + yeni; güncelleme sonrası NEGATİF eldeki backstop'u.
     etkilenen = _fatura_hareket_ciftleri(fatura)
+    # Yalnız tutar/fiyat (ya da kur) değiştiyse hareketler silinmez, yerinde güncellenir (tüketilmiş giriş de düzeltilebilir).
+    yerinde = _yerinde_eslesme(fatura, tip=tip, depo=depo, tarih=tarih, hazir=hazir)
     # Eski stok hareketleri + satırları geri al (yeni çıkış kontrolü doğru eldekiyi görsün)
     _demirbas_geri_al(fatura, kullanici)             # önceki demirbaş satışları (yeniden işaretlenecek)
-    _hareketleri_iptal(fatura, kullanici=kullanici)
+    if yerinde is None:
+        _hareketleri_iptal(fatura, kullanici=kullanici)
     fatura.satirlar.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     fatura.tip, fatura.yon, fatura.cari, fatura.tarih = tip, tip.yon, cari, tarih
@@ -1217,6 +1289,8 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     _donemsel_senkronla(fatura, kullanici)
     if irsaliyeden_mi(fatura):
         _irsaliye_girislerini_fiyatla(fatura)
+    elif yerinde is not None:
+        _hareketleri_yerinde_guncelle(fatura, yerinde, kullanici=kullanici)
     elif depo is not None:
         _hareketleri_yaz(fatura, depo, kur=kur, kullanici=kullanici)
     _negatif_eldeki_dogrula(etkilenen | _fatura_hareket_ciftleri(fatura))
