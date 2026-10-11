@@ -1,0 +1,73 @@
+UYGULANDI
+
+ISTASYON: YENİ 11 LAZER MARKALAMA (sıra 15)
+
+KESIM CIKTI KURALI (SABIT YOK) (11)
+  10 → 151-10-0001: çıktı kuralı SABİT YOK
+  10 → 151-10-0002: çıktı kuralı SABİT YOK
+  10 → 151-10-0003: çıktı kuralı SABİT YOK
+  10 → 151-10-0004: çıktı kuralı SABİT YOK
+  10 → 151-10-0005: çıktı kuralı SABİT YOK
+  10 → 151-10-0014: çıktı kuralı SABİT YOK
+  10 → 151-10-0016: çıktı kuralı SABİT YOK
+  10 → 151-10-0018: çıktı kuralı SABİT YOK
+  10 → 151-10-0020: çıktı kuralı SABİT YOK
+  10 → 151-10-0022: çıktı kuralı SABİT YOK
+  10 → 151-10-0024: çıktı kuralı SABİT YOK
+
+DONUSTUR TANIMLARI (lazer markalama) (11)
+  11 DÖNÜŞTÜR 151-10-0001: girdi 151-10-0001 ×1 [SABİT YOK] → çıktı 151-10-0001 ×1 [TAŞI] (op 124)
+  11 DÖNÜŞTÜR 151-10-0002: girdi 151-10-0002 ×1 [SABİT YOK] → çıktı 151-10-0002 ×1 [TAŞI] (op 125)
+  11 DÖNÜŞTÜR 151-10-0003: girdi 151-10-0003 ×1 [SABİT YOK] → çıktı 151-10-0003 ×1 [TAŞI] (op 126)
+  11 DÖNÜŞTÜR 151-10-0004: girdi 151-10-0004 ×1 [SABİT YOK] → çıktı 151-10-0004 ×1 [TAŞI] (op 127)
+  11 DÖNÜŞTÜR 151-10-0005: girdi 151-10-0005 ×1 [SABİT YOK] → çıktı 151-10-0005 ×1 [TAŞI] (op 128)
+  11 DÖNÜŞTÜR 151-10-0014: girdi 151-10-0014 ×1 [SABİT YOK] → çıktı 151-10-0014 ×1 [TAŞI] (op 129)
+  11 DÖNÜŞTÜR 151-10-0016: girdi 151-10-0016 ×1 [SABİT YOK] → çıktı 151-10-0016 ×1 [TAŞI] (op 130)
+  11 DÖNÜŞTÜR 151-10-0018: girdi 151-10-0018 ×1 [SABİT YOK] → çıktı 151-10-0018 ×1 [TAŞI] (op 131)
+  11 DÖNÜŞTÜR 151-10-0020: girdi 151-10-0020 ×1 [SABİT YOK] → çıktı 151-10-0020 ×1 [TAŞI] (op 132)
+  11 DÖNÜŞTÜR 151-10-0022: girdi 151-10-0022 ×1 [SABİT YOK] → çıktı 151-10-0022 ×1 [TAŞI] (op 133)
+  11 DÖNÜŞTÜR 151-10-0024: girdi 151-10-0024 ×1 [SABİT YOK] → çıktı 151-10-0024 ×1 [TAŞI] (op 134)
+
+CIFT CIKIS MONTAJ AYAK BOLME (6)
+  70 → 151-99-0002: 151-80-0011 ×2 → ×1 [TAŞI] + ×1 [SABİT YOK]
+  70 → 151-99-0007: 151-80-0012 ×2 → ×1 [TAŞI] + ×1 [SABİT YOK]
+  70 → 151-99-0008: 151-80-0013 ×2 → ×1 [TAŞI] + ×1 [SABİT YOK]
+  70 → 151-99-0009: 151-80-0014 ×2 → ×1 [TAŞI] + ×1 [SABİT YOK]
+  70 → 151-99-0010: 151-80-0015 ×2 → ×1 [TAŞI] + ×1 [SABİT YOK]
+  70 → 151-99-0011: 151-80-0016 ×2 → ×1 [TAŞI] + ×1 [SABİT YOK]
+
+YAN ETIKET — MONTAJDAN CIKAR (11)
+  70 MONTAJ → 151-99-0001: 150-50-0002 ×1 çıkarıldı (girdi 269)
+  70 MONTAJ → 151-99-0003: 150-50-0002 ×1 çıkarıldı (girdi 320)
+  70 MONTAJ → 151-99-0004: 150-50-0002 ×1 çıkarıldı (girdi 328)
+  70 MONTAJ → 151-99-0005: 150-50-0002 ×1 çıkarıldı (girdi 522)
+  70 MONTAJ → 151-99-0006: 150-50-0002 ×1 çıkarıldı (girdi 532)
+  70 MONTAJ → 151-99-0002: 150-50-0002 ×1 çıkarıldı (girdi 310)
+  70 MONTAJ → 151-99-0007: 150-50-0002 ×1 çıkarıldı (girdi 410)
+  70 MONTAJ → 151-99-0008: 150-50-0002 ×1 çıkarıldı (girdi 432)
+  70 MONTAJ → 151-99-0009: 150-50-0002 ×1 çıkarıldı (girdi 455)
+  70 MONTAJ → 151-99-0010: 150-50-0002 ×1 çıkarıldı (girdi 479)
+  70 MONTAJ → 151-99-0011: 150-50-0002 ×1 çıkarıldı (girdi 504)
+
+YAN ETIKET — PAKETLEMEYE EKLE (11)
+  80 PAKETLEME → 152-10-0001: 150-50-0002 ×1 eklendi (girdi 693)
+  80 PAKETLEME → 152-10-0002: 150-50-0002 ×1 eklendi (girdi 694)
+  80 PAKETLEME → 152-10-0003: 150-50-0002 ×1 eklendi (girdi 695)
+  80 PAKETLEME → 152-10-0004: 150-50-0002 ×1 eklendi (girdi 696)
+  80 PAKETLEME → 152-10-0005: 150-50-0002 ×1 eklendi (girdi 697)
+  80 PAKETLEME → 152-22-0001: 150-50-0002 ×1 eklendi (girdi 698)
+  80 PAKETLEME → 152-22-0002: 150-50-0002 ×1 eklendi (girdi 699)
+  80 PAKETLEME → 152-22-0003: 150-50-0002 ×1 eklendi (girdi 700)
+  80 PAKETLEME → 152-22-0004: 150-50-0002 ×1 eklendi (girdi 701)
+  80 PAKETLEME → 152-22-0005: 150-50-0002 ×1 eklendi (girdi 702)
+  80 PAKETLEME → 152-22-0006: 150-50-0002 ×1 eklendi (girdi 703)
+
+ATLANAN (0)
+
+EKSIK/HATA (0)
+
+YAN ETIKET DEGISEN TANIM SATIRI: 22 (cikar 11 + ekle 11)
+
+ALTIN KONTROL — standart plan 10×152-10-0003 + 10×152-22-0003 (138 satir): fark 1
+  KULLANIM 150-50-0002: ('70',) -> ('80',)
+ALTIN KONTROL: yalniz yan etiketin istasyonu degisti (70 -> 80); miktar/calistirma birebir
