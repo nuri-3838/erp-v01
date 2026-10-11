@@ -278,6 +278,10 @@ def fis_duzenle(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.FASON_TAHAKKUK:
         messages.info(request, "Bu fiş bir fason dönüşünün cari tahakkukudur; elle düzenlenemez (dönüş belgesiyle birlikte yönetilir).")
         return redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.NUMUNE:
+        nc = fis.numune_cikislari.filter(silindi=False).first()
+        messages.info(request, "Bu fiş bir numune çıkışından oluştu; elle düzenlenemez (belgeyle birlikte yönetilir).")
+        return redirect("core:numune_detay", pk=nc.pk) if nc else redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak in (YevmiyeFisi.Kaynak.STOK_SARF, YevmiyeFisi.Kaynak.URETIM,
                       YevmiyeFisi.Kaynak.STOK_SATIS):
         messages.info(request, "Bu fiş stok maliyetinden otomatik üretilir; elle düzenlenemez "
@@ -428,6 +432,10 @@ def fis_sil_gorunum(request, pk):
             messages.info(request, "Bu fiş bir stok sarf çıkışından oluştu; iptal için "
                                    "stok detayındaki hareketi silin.")
             return redirect("core:stok_detay", pk=hareket.stok_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.NUMUNE and not fis.silindi:
+        nc = fis.numune_cikislari.filter(silindi=False).first()
+        messages.info(request, "Bu fiş bir numune çıkışından oluştu; elle silinemez (belgenin onayını geri alınca iptal olur).")
+        return redirect("core:numune_detay", pk=nc.pk) if nc else redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.FASON_TAHAKKUK and not fis.silindi:
         messages.info(request, "Bu fiş bir fason dönüşünün cari tahakkukudur; elle silinemez (dönüşü geri alınca iptal olur).")
         return redirect("core:fis_detay", pk=fis.pk)
@@ -9682,3 +9690,156 @@ def kdv_mahsup_dosya(request, pk):
     if not m.dosya:
         raise Http404
     return _ozel_dosya_yanit(m.dosya, m.orijinal_ad)
+
+
+# === Numune Çıkışı (Satış menüsü) =========================================================
+from core.forms import NumuneAyariForm, NumuneBaslikForm, NumuneSatirForm      # noqa: E402
+from core.models import NumuneCikis      # noqa: E402
+from core.services import numune as numune_servis      # noqa: E402
+
+NumuneSatirFormSet = formset_factory(NumuneSatirForm, extra=0, min_num=1, validate_min=True)
+numune_yetkisi = ekran_gerekli_herhangi("numune_cikislari", "stoklar", "satis_siparisleri")
+
+
+def _numune_satirlari(formset):
+    return [{"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"]} for f in formset if f.dolu_mu()]
+
+
+@numune_yetkisi
+def numune_cikislari(request):
+    ara = (request.GET.get("ara") or "").strip()
+    durum = (request.GET.get("durum") or "").strip()
+    qs = NumuneCikis.objects.filter(silindi=False).select_related("cari", "ulke", "depo", "fis").prefetch_related("satirlar")
+    if durum in NumuneCikis.Durum.values:
+        qs = qs.filter(durum=durum)
+    satirlar = []
+    for nc in qs:
+        adet = sum((s.miktar for s in nc.satirlar.all() if not s.silindi), Decimal("0"))
+        maliyet = sum((s.maliyet_try or Decimal("0") for s in nc.satirlar.all() if not s.silindi), Decimal("0")) if nc.durum == NumuneCikis.Durum.ONAYLI else None
+        metin = f"{nc.no} {nc.alici} {nc.ulke.ad if nc.ulke_id else ''} {nc.belge_no_gumruk}".lower()
+        if ara and ara.lower() not in metin:
+            continue
+        satirlar.append({"nc": nc, "adet": adet, "maliyet": maliyet})
+    return render(request, "core/numune_listesi.html", {
+        "satirlar": satirlar, "ara": ara, "durum": durum, "durumlar": NumuneCikis.Durum.choices,
+        "toplam_adet": sum((r["adet"] for r in satirlar), Decimal("0")),
+        "toplam_maliyet": sum((r["maliyet"] or Decimal("0") for r in satirlar), Decimal("0"))})
+
+
+def _numune_form(request, nc=None):
+    if request.method == "POST":
+        bform = NumuneBaslikForm(request.POST)
+        formset = NumuneSatirFormSet(request.POST, prefix="satir")
+        if bform.is_valid() and formset.is_valid():
+            cd = bform.cleaned_data
+            kw = dict(tarih=cd["tarih"], depo_id=cd["depo"].pk, satirlar=_numune_satirlari(formset),
+                      cari_id=cd["cari"].pk if cd.get("cari") else None, alici_adi=cd.get("alici_adi", ""),
+                      ulke_id=cd["ulke"].pk if cd.get("ulke") else None, belge_no_gumruk=cd.get("belge_no_gumruk", ""),
+                      aciklama=cd.get("aciklama", ""), kullanici=request.user)
+            try:
+                if nc is None:
+                    nc = numune_servis.numune_olustur(**kw)
+                    messages.success(request, f"Numune çıkışı kaydedildi: {nc.no} (taslak) — stoktan düşmek için onaylayın.")
+                else:
+                    numune_servis.numune_guncelle(nc, **kw)
+                    messages.success(request, f"{nc.no} güncellendi.")
+                return redirect("core:numune_detay", pk=nc.pk)
+            except numune_servis.NumuneHatasi as e:
+                bform.add_error(None, str(e))
+    elif nc is None:
+        bform = NumuneBaslikForm()
+        formset = NumuneSatirFormSet(prefix="satir")
+    else:
+        bform = NumuneBaslikForm(initial={
+            "tarih": nc.tarih, "depo": nc.depo_id, "cari": nc.cari_id, "alici_adi": nc.alici_adi, "ulke": nc.ulke_id,
+            "belge_no_gumruk": nc.belge_no_gumruk, "aciklama": nc.aciklama})
+        formset = NumuneSatirFormSet(prefix="satir", initial=[
+            {"stok": s.stok_id, "miktar": s.miktar.normalize()} for s in nc.satirlar.filter(silindi=False).order_by("id")])
+    return render(request, "core/numune_form.html", {"bform": bform, "formset": formset, "nc": nc})
+
+
+@numune_yetkisi
+def numune_ekle(request):
+    return _numune_form(request)
+
+
+@numune_yetkisi
+def numune_duzenle(request, pk):
+    nc = get_object_or_404(NumuneCikis, pk=pk, silindi=False)
+    if nc.durum != NumuneCikis.Durum.TASLAK:
+        messages.error(request, "Onaylı numune çıkışı düzenlenemez; önce onayını geri alın.")
+        return redirect("core:numune_detay", pk=nc.pk)
+    return _numune_form(request, nc)
+
+
+@numune_yetkisi
+def numune_detay(request, pk):
+    nc = get_object_or_404(NumuneCikis.objects.select_related("cari", "ulke", "depo", "fis"), pk=pk, silindi=False)
+    satirlar = list(nc.satirlar.filter(silindi=False).select_related("stok").order_by("id"))
+    hatalar = []
+    if nc.durum == NumuneCikis.Durum.TASLAK:
+        try:
+            numune_servis.uygunluk_kontrol(nc, satirlar)
+        except numune_servis.NumuneHatasi as e:
+            hatalar.append(str(e))
+    toplam = sum((s.maliyet_try or Decimal("0") for s in satirlar), Decimal("0"))
+    return render(request, "core/numune_detay.html", {
+        "nc": nc, "satirlar": satirlar, "adet": sum((s.miktar for s in satirlar), Decimal("0")),
+        "maliyet": toplam if nc.durum == NumuneCikis.Durum.ONAYLI else None, "uygunluk_hatalari": hatalar})
+
+
+@numune_yetkisi
+def numune_onayla(request, pk):
+    nc = get_object_or_404(NumuneCikis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            numune_servis.numune_onayla(nc, kullanici=request.user)
+            messages.success(request, f"{nc.no} onaylandı: stoktan düşüldü, gider fişi kesildi.")
+        except numune_servis.NumuneHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:numune_detay", pk=nc.pk)
+
+
+@numune_yetkisi
+def numune_geri_al(request, pk):
+    nc = get_object_or_404(NumuneCikis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            numune_servis.numune_geri_al(nc, kullanici=request.user)
+            messages.success(request, f"{nc.no} onayı geri alındı: stok ve fiş geri döndü (taslak).")
+        except numune_servis.NumuneHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:numune_detay", pk=nc.pk)
+
+
+@numune_yetkisi
+def numune_sil(request, pk):
+    nc = get_object_or_404(NumuneCikis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            numune_servis.numune_sil(nc, kullanici=request.user)
+            messages.success(request, f"{nc.no} silindi.")
+            return redirect("core:numune_cikislari")
+        except numune_servis.NumuneHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:numune_detay", pk=nc.pk)
+
+
+@yonetici_gerekli
+def numune_ayari(request):
+    """Numune gider hesabı (varsayılan 760.06 NUMUNE GİDERLERİ) — Ayarlar."""
+    from core.models import NumuneAyari
+    ayar = NumuneAyari.get()
+    if request.method == "POST":
+        form = NumuneAyariForm(request.POST)
+        if form.is_valid():
+            numune_servis.ayar_kaydet(form.cleaned_data["gider_hesap"], kullanici=request.user)
+            messages.success(request, "Numune gider hesabı kaydedildi.")
+            return redirect("core:numune_cikislari")
+    else:
+        try:
+            mevcut = numune_servis.gider_hesabi()
+        except numune_servis.NumuneHatasi:
+            mevcut = None
+        form = NumuneAyariForm(initial={"gider_hesap": mevcut.pk if mevcut else None})
+    return render(request, "core/numune_ayari.html", {"form": form, "ayar": ayar})

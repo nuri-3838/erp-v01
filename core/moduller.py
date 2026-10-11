@@ -52,6 +52,7 @@ MODULLER = (
         Ekran("satis_teklifleri", "Satış Teklifleri", "core:satis_teklifleri"),
         Ekran("satis_proformalari", "Satış Proformaları", "core:satis_proformalari"),
         Ekran("satis_siparisleri", "Satış Siparişleri", "core:satis_siparisleri"),
+        Ekran("numune_cikislari", "Numune Çıkışları", "core:numune_cikislari"),
     )),
     Modul("STOKLAR", "Stoklar", (
         Ekran("stoklar", "Stoklar", "core:stoklar"),

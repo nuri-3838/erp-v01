@@ -248,7 +248,7 @@ def sarf_onizleme(*, stok_id, depo_id, miktar) -> dict:
 
 
 @transaction.atomic
-def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False) -> StokHareket:
+def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False, _numune_icinden=False) -> StokHareket:
     """Soft-delete. Giriş silinince eldeki azalır; negatife düşürmemeli. Silinen hareketin
     kartı yeniden hesaplanır (sonraki çıkışların maliyeti ve sarf/üretim/satış fişleri
     güncellenir); bağlı otomatik muhasebe fişi iptal edilir (bkz. core.services.yevmiye.
@@ -258,6 +258,8 @@ def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False
         return hareket
     if hareket.kaynak == StokHareket.Kaynak.TRANSFER and not _transfer_icinden:
         raise HareketHatasi("Depo transferinin tek bacağı silinemez; Depo Transferi'ni silin.")
+    if hareket.kaynak == StokHareket.Kaynak.NUMUNE and not _numune_icinden:
+        raise HareketHatasi("Numune çıkışı hareketi tek başına silinemez; Numune Çıkışı belgesinin onayını geri alın.")
     if hareket.tur == StokHareket.Tur.GIRIS:
         # Bu girişi geri alınca eldeki negatif olur mu?
         if eldeki_miktar(hareket.stok, hareket.depo) - hareket.miktar < 0:

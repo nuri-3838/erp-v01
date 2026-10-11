@@ -3568,3 +3568,75 @@ class KdvMahsupForm(forms.Form):
         if donem_sabit:                                              # düzenlemede dönem değişmez (fiş yılı/numarası korunur)
             self.fields["yil"].disabled = True
             self.fields["ay"].disabled = True
+
+
+class NumuneBaslikForm(forms.Form):
+    """SATIŞ > Numune Çıkışı başlığı: alıcı cari (opsiyonel) VEYA serbest metin alıcı adı — biri zorunlu."""
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    depo = forms.ModelChoiceField(label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    cari = forms.ModelChoiceField(label="Cari (opsiyonel)", queryset=Cari.objects.none(), required=False, empty_label="— cari seç —")
+    alici_adi = forms.CharField(label="Alıcı adı (cari yoksa)", max_length=200, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ulke = forms.ModelChoiceField(label="Ülke (opsiyonel)", queryset=Ulke.objects.none(), required=False, empty_label="— ülke seç —")
+    belge_no_gumruk = forms.CharField(label="İrsaliye / gümrük belge no", max_length=60, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.depo import aktif_depolar, varsayilan_depo
+        depolar = aktif_depolar()
+        self.fields["depo"].queryset = depolar
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+        if not self.is_bound and "depo" not in self.initial:
+            vd = varsayilan_depo(depolar)
+            if vd:
+                self.fields["depo"].initial = vd.pk
+        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        self.fields["ulke"].queryset = Ulke.objects.all().order_by("ad")
+        self.fields["ulke"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        if not cd.get("cari") and not (cd.get("alici_adi") or "").strip():
+            raise forms.ValidationError("Alıcı için bir cari seçin ya da alıcı adı yazın.")
+        return cd
+
+
+class NumuneSatirForm(forms.Form):
+    """Numune satırı (stok + miktar) — 'boş satır atlanır' deseni."""
+    stok = forms.ModelChoiceField(label="Stok", queryset=Stok.objects.none(), required=False, empty_label="— stok seç —")
+    miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["stok"].queryset = Stok.objects.filter(silindi=False).order_by("kod")
+        self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["stok"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        stok, miktar = cd.get("stok"), cd.get("miktar")
+        if not stok and miktar is None:
+            return cd
+        if not stok:
+            raise forms.ValidationError("Stok seçin.")
+        if miktar is None or miktar <= 0:
+            raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        cd["dolu"] = True
+        return cd
+
+    def dolu_mu(self) -> bool:
+        return bool(getattr(self, "cleaned_data", {}).get("dolu"))
+
+
+class NumuneAyariForm(forms.Form):
+    gider_hesap = forms.ModelChoiceField(label="Numune gider hesabı (borç)", queryset=HesapPlani.objects.none(), empty_label="— hesap seç —")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.hesap_plani import gider_hesaplari
+        self.fields["gider_hesap"].queryset = gider_hesaplari()
+        self.fields["gider_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
+        self.fields["gider_hesap"].widget.attrs["class"] = "akilli-sec"

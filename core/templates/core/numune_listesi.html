@@ -1,0 +1,39 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Numune Çıkışları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Numune Çıkışları{% endblock %}
+
+{% block content %}
+<h1 class="ust-baslik"><span class="emoji">🎁</span>Numune Çıkışları</h1>
+<p class="sayfa-alt">Müşterilere bedelsiz giden numuneler: onayda stoktan ortalama maliyetle düşer, <strong>760.06 NUMUNE GİDERLERİ</strong> borç / stok hesabı alacak fişi kesilir. Fatura ve KDV yoktur.</p>
+<form method="get" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.8rem">
+  <a class="dugme birincil" href="{% url 'core:numune_ekle' %}">+ Yeni numune çıkışı</a>
+  <input type="search" name="ara" value="{{ ara }}" placeholder="No, alıcı, ülke, belge no ara…" style="min-width:16rem">
+  <select name="durum" onchange="this.form.submit()">
+    <option value="">Tüm durumlar</option>
+    {% for k, ad in durumlar %}<option value="{{ k }}" {% if durum == k %}selected{% endif %}>{{ ad }}</option>{% endfor %}
+  </select>
+  <button class="dugme-ikincil" type="submit">Ara</button>
+  {% if user.is_superuser %}<a class="dugme-ikincil" href="{% url 'core:numune_ayari' %}">⚙️ Gider hesabı</a>{% endif %}
+</form>
+
+<div class="tablo-kapsayici genis"><table>
+  <thead><tr><th>No</th><th>Tarih</th><th>Alıcı</th><th>Ülke</th><th class="sag">Adet</th><th class="sag">Maliyet TL</th><th>Durum</th></tr></thead>
+  <tbody>
+  {% for r in satirlar %}
+    <tr>
+      <td class="mono"><a href="{% url 'core:numune_detay' r.nc.pk %}">{{ r.nc.no }}</a></td>
+      <td>{{ r.nc.tarih|date:"d.m.Y" }}</td>
+      <td>{{ r.nc.alici }}</td>
+      <td>{{ r.nc.ulke.ad|default:"—" }}</td>
+      <td class="sag mono">{{ r.adet|tr_miktar6 }}</td>
+      <td class="sag mono">{% if r.maliyet is not None %}{{ r.maliyet|tr_para }}{% else %}—{% endif %}</td>
+      <td>{% if r.nc.durum == 'ONAYLI' %}<span class="rozet rozet-aktif">Onaylı</span>{% else %}<span class="rozet rozet-pasif">Taslak</span>{% endif %}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.4rem 0">Henüz numune çıkışı yok.</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if satirlar %}<tfoot><tr><th colspan="4">Toplam</th><th class="sag mono">{{ toplam_adet|tr_miktar6 }}</th><th class="sag mono">{{ toplam_maliyet|tr_para }}</th><th></th></tr></tfoot>{% endif %}
+</table></div>
+{% endblock %}

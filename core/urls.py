@@ -414,4 +414,12 @@ urlpatterns = [
     path("diger/yemek-takibi/<int:pk>/duzenle/", views.yemek_sayimi_duzenle,
          name="yemek_sayimi_duzenle"),
     path("diger/yemek-takibi/<int:pk>/sil/", views.yemek_sayimi_sil, name="yemek_sayimi_sil"),
+    path("satis/numune-cikislari/", views.numune_cikislari, name="numune_cikislari"),
+    path("satis/numune-cikislari/ekle/", views.numune_ekle, name="numune_ekle"),
+    path("satis/numune-cikislari/ayar/", views.numune_ayari, name="numune_ayari"),
+    path("satis/numune-cikislari/<int:pk>/", views.numune_detay, name="numune_detay"),
+    path("satis/numune-cikislari/<int:pk>/duzenle/", views.numune_duzenle, name="numune_duzenle"),
+    path("satis/numune-cikislari/<int:pk>/onayla/", views.numune_onayla, name="numune_onayla"),
+    path("satis/numune-cikislari/<int:pk>/geri-al/", views.numune_geri_al, name="numune_geri_al"),
+    path("satis/numune-cikislari/<int:pk>/sil/", views.numune_sil, name="numune_sil"),
 ]

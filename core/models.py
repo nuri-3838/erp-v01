@@ -165,6 +165,7 @@ class YevmiyeFisi(TemelModel):
         BORDRO = "BORDRO", "Personel Bordro Tahakkuku (otomatik)"
         KDV_MAHSUP = "KDV_MAHSUP", "KDV Dönem Mahsubu (otomatik)"
         FASON_TAHAKKUK = "FASON_TAHAKKUK", "Fason Tahakkuku (otomatik)"
+        NUMUNE = "NUMUNE", "Numune Çıkışı (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -2317,6 +2318,7 @@ class StokHareket(TemelModel):
         URETIM = "URETIM", "Üretim"
         SARF = "SARF", "Sarf (hesaba çıkış)"
         TRANSFER = "TRANSFER", "Depo transferi"
+        NUMUNE = "NUMUNE", "Numune Çıkışı"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -4028,3 +4030,69 @@ class KdvMahsup(TemelModel):
 
     def __str__(self):
         return f"{self.ay:02d}/{self.yil} KDV mahsubu"
+
+
+class NumuneAyari(TemelModel):
+    """Numune çıkışı muhasebe ayarı — TEKİL kayıt (pk=1). ``gider_hesap`` boşsa varsayılan 760.06 NUMUNE GİDERLERİ kullanılır."""
+
+    gider_hesap = models.ForeignKey(HesapPlani, verbose_name="numune gider hesabı", null=True, blank=True,
+                                    on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        db_table = "numune_ayari"
+        verbose_name = "numune ayarı"
+        verbose_name_plural = "numune ayarı"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class NumuneCikis(TemelModel):
+    """Numune Çıkışı (NC-yyyy-nnnn): müşteriye BEDELSİZ giden numunenin stoktan ortalama maliyetle düşülmesi + gider fişi (760.06 B / stok hesabı A).
+    Fatura ve KDV yoktur. Onayda stok hareketleri (kaynak=NUMUNE) + TEK fiş üretilir; geri almada ikisi de iptal edilir. Bkz. core.services.numune."""
+
+    class Durum(models.TextChoices):
+        TASLAK = "TASLAK", "Taslak"
+        ONAYLI = "ONAYLI", "Onaylı"
+
+    yil = models.PositiveSmallIntegerField("yıl")
+    sira = models.PositiveIntegerField("sıra")
+    no = models.CharField("belge no", max_length=20)
+    tarih = models.DateField("tarih")
+    depo = models.ForeignKey(Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="numune_cikislari")
+    cari = models.ForeignKey(Cari, verbose_name="cari", null=True, blank=True, on_delete=models.PROTECT, related_name="numune_cikislari")
+    alici_adi = models.CharField("alıcı adı", max_length=200, blank=True)
+    ulke = models.ForeignKey(Ulke, verbose_name="ülke", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    belge_no_gumruk = models.CharField("irsaliye / gümrük belge no", max_length=60, blank=True)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True)
+    durum = models.CharField("durum", max_length=8, choices=Durum.choices, default=Durum.TASLAK)
+    fis = models.ForeignKey(YevmiyeFisi, verbose_name="muhasebe fişi", null=True, blank=True, on_delete=models.PROTECT, related_name="numune_cikislari")
+
+    class Meta:
+        db_table = "numune_cikis"
+        verbose_name = "numune çıkışı"
+        verbose_name_plural = "numune çıkışları"
+        ordering = ["-tarih", "-id"]
+        constraints = [models.UniqueConstraint(fields=["yil", "sira"], name="uq_numune_cikis_yil_sira")]
+
+    def __str__(self):
+        return self.no
+
+    @property
+    def alici(self):
+        return self.cari.unvan if self.cari_id else self.alici_adi
+
+
+class NumuneCikisSatir(TemelModel):
+    cikis = models.ForeignKey(NumuneCikis, verbose_name="numune çıkışı", on_delete=models.CASCADE, related_name="satirlar")
+    stok = models.ForeignKey(Stok, verbose_name="stok", on_delete=models.PROTECT, related_name="numune_satirlari")
+    miktar = models.DecimalField("miktar", max_digits=18, decimal_places=6)
+    hareket = models.ForeignKey(StokHareket, verbose_name="stok hareketi", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    maliyet_try = models.DecimalField("maliyet TL", max_digits=18, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = "numune_cikis_satir"
+        ordering = ["id"]
+        constraints = [models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_numune_satir_miktar_gt0")]

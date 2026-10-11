@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% block baslik %}Numune Gider Hesabı · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Numune Gider Hesabı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:numune_cikislari' %}">← Numune Çıkışları</a>
+    <h1 class="ust-baslik"><span class="emoji">⚙️</span>Numune Gider Hesabı</h1>
+  </div>
+  <form method="post" autocomplete="off">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <p class="yardim" style="margin-top:0">Numune çıkışı fişinin BORÇ hesabı. Varsayılan: 760.06 NUMUNE GİDERLERİ. Alacak tarafı stoğun kategori hesabıdır (152.xx…).</p>
+      {% for e in form.non_field_errors %}<div class="uyari">⚠️ {{ e }}</div>{% endfor %}
+      <div class="alan">{{ form.gider_hesap.label_tag }}{{ form.gider_hesap }}{% for e in form.gider_hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+    </section>
+    <div class="form-altbar"><a class="iptal-bag" href="{% url 'core:numune_cikislari' %}">İptal</a><button type="submit" class="birincil">Kaydet</button></div>
+  </form>
+</div>
+{% include "core/_akilli_hesap.html" %}
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ nc.no }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ nc.no }}{% endblock %}
+
+{% block content %}
+<p><a class="ust-link" href="{% url 'core:numune_cikislari' %}">← Numune Çıkışları</a></p>
+<h1 class="ust-baslik"><span class="emoji">🎁</span>{{ nc.no }}
+  {% if nc.durum == 'ONAYLI' %}<span class="rozet rozet-aktif">Onaylı</span>{% else %}<span class="rozet rozet-pasif">Taslak</span>{% endif %}</h1>
+
+{% for h in uygunluk_hatalari %}<div class="uyari">⚠️ {{ h }}</div>{% endfor %}
+
+<section class="icerik-kart">
+  <div class="izgara">
+    <div class="alan"><label>Tarih</label><div>{{ nc.tarih|date:"d.m.Y" }}</div></div>
+    <div class="alan"><label>Depo</label><div>{{ nc.depo.kod }} {{ nc.depo.ad }}</div></div>
+    <div class="alan"><label>Alıcı</label><div>{{ nc.alici }}{% if nc.cari %} <span class="yardim">(cari {{ nc.cari.kod }})</span>{% endif %}</div></div>
+    <div class="alan"><label>Ülke</label><div>{{ nc.ulke.ad|default:"—" }}</div></div>
+    <div class="alan"><label>İrsaliye / gümrük belge no</label><div>{{ nc.belge_no_gumruk|default:"—" }}</div></div>
+    <div class="alan"><label>Açıklama</label><div>{{ nc.aciklama|default:"—" }}</div></div>
+    <div class="alan"><label>Muhasebe fişi</label><div>{% if nc.fis %}<a href="{% url 'core:fis_detay' nc.fis.pk %}">Fiş {{ nc.fis.yil }}/{{ nc.fis.fis_no }}</a>{% else %}—{% endif %}</div></div>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Satırlar</h2>
+  <div class="tablo-kapsayici"><table>
+    <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">Maliyet TL</th></tr></thead>
+    <tbody>
+      {% for s in satirlar %}
+        <tr><td><a href="{% url 'core:stok_detay' s.stok_id %}">{{ s.stok.kod }}</a> {{ s.stok.ad }}</td>
+          <td class="sag mono">{{ s.miktar|tr_miktar6 }}</td>
+          <td class="sag mono">{% if s.maliyet_try is not None %}{{ s.maliyet_try|tr_para }}{% else %}—{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th>Toplam</th><th class="sag mono">{{ adet|tr_miktar6 }}</th><th class="sag mono">{% if maliyet is not None %}{{ maliyet|tr_para }}{% else %}—{% endif %}</th></tr></tfoot>
+  </table></div>
+</section>
+
+<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem">
+  {% if nc.durum == 'TASLAK' %}
+    <form method="post" action="{% url 'core:numune_onayla' nc.pk %}">{% csrf_token %}<button class="birincil" type="submit"
+      onclick="return confirm('Onaylanınca stoktan düşülür ve gider fişi kesilir. Devam?')">✅ Onayla</button></form>
+    <a class="dugme-ikincil" href="{% url 'core:numune_duzenle' nc.pk %}">Düzenle</a>
+    <form method="post" action="{% url 'core:numune_sil' nc.pk %}">{% csrf_token %}<button class="sil" type="submit" onclick="return confirm('Taslak silinsin mi?')">Sil</button></form>
+  {% else %}
+    <form method="post" action="{% url 'core:numune_geri_al' nc.pk %}">{% csrf_token %}<button class="dugme-ikincil" type="submit"
+      onclick="return confirm('Onay geri alınsın mı? Stok geri döner, fiş iptal edilir.')">↩️ Onayı geri al</button></form>
+  {% endif %}
+</div>
+{% endblock %}
