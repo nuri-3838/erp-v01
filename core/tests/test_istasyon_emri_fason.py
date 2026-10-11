@@ -45,13 +45,17 @@ class UretFasonTest(FasonParcalaBase):
         self.assertEqual(d2.kayitlar.get().hedef_cikti_miktari, D("3"))                       # tam boy: beklenen 1 boy = 3 adet; gelen 2 (fire 1)
         fd.donus_onayla(d2)
         self.assertEqual(self.durum(), (IstasyonEmri.Durum.BITTI, D("2")))
-        self.assertEqual(sa.ayrilan_miktar(self.emir, self.ana), D("6"))
+        self.emir.refresh_from_db()                                                           # stok ÜS'si %100: tamamlandı, ayırma serbest (kök neden düzeltmesi)
+        self.assertEqual((self.emir.durum, sa.ayrilan_miktar(self.emir, self.ana)), ("KAPALI", D("0")))
+        self.assertEqual(sa.kullanilabilir(self.ana), D("6"))
 
     def test_geri_al_tamamlanan_ve_ayirmayi_geri_sarar(self):
         d = fd.istasyon_emri_fason_donusu_ac(self.ie, cari_id=self.salim.pk, depo_id=self.depo.pk, tarih=TARIH)
         fd.donus_onayla(d)
-        self.assertEqual((self.durum(), sa.ayrilan_miktar(self.emir, self.ana)), ((IstasyonEmri.Durum.BITTI, D("2")), D("6")))
+        self.assertEqual((self.durum(), sa.ayrilan_miktar(self.emir, self.ana)), ((IstasyonEmri.Durum.BITTI, D("2")), D("0")))     # tamamlandı → ayırma serbest
         fd.donus_geri_al_sil(d)
+        self.emir.refresh_from_db()
+        self.assertEqual(self.emir.durum, "ACIK")                                              # geri alınca ÜS yeniden açılır
         self.assertEqual((self.durum(), sa.ayrilan_miktar(self.emir, self.ana)), ((IstasyonEmri.Durum.BEKLIYOR, D("0")), D("0")))
         self.assertEqual(eldeki_miktar(self.profil, self.fdepo), D("10"))
 

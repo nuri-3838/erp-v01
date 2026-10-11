@@ -1203,6 +1203,8 @@ def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=N
 
 def uretim_emri_yuzde(emir: UretimEmri) -> Decimal:
     """ÜS ilerleme yüzdesi: Σ min(hedef, ayrılan + sevk edilen) ÷ Σ hedef × 100 (0–100)."""
+    if emir.durum == UretimEmri.Durum.KAPALI and stok_us_mu(emir) and not emir.sevk_dusen:
+        return Decimal("100")                                # tamamlanmış stok ÜS'si: ayırmalar serbest, ilerleme %100
     ayrilan = {a.stok_id: a.miktar for a in stok_ayirma.emir_ayirmalari(emir)}
     sevk = emir.sevk_dusen or {}
     toplam = hazir = Decimal("0")
@@ -1242,7 +1244,34 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
     emir.refresh_from_db()
-    _kapanis_kontrol(emir, kullanici)                          # sevk edilmiş sipariş: son emir bitince kapanır
+    if not _kapanis_kontrol(emir, kullanici):                  # sevk edilmiş sipariş: son emir bitince kapanır
+        stok_us_tamamla(emir, kullanici)                       # kaynak siparişsiz ("stok için üretim") ÜS: %100 olunca tamamlanır, ayırmalar serbest
+
+
+def stok_us_mu(emir: UretimEmri) -> bool:
+    """Kaynak satış siparişi olmayan ("Stok için üretim") ÜS: üretilen mamulü düşürecek bir satış faturası gelmeyecek."""
+    return emir.kaynak_siparis_id is None
+
+
+def stok_us_tamamla(emir: UretimEmri, kullanici=None) -> bool:
+    """Stok ÜS'sinin iptal olmayan TÜM istasyon emirleri BITTI ise (ilerleme %100) ÜS KAPALI (ekranda "Tamamlandı") olur ve ÜS'nin TÜM aktif
+    ayırmaları (mamul + kalan ham madde/yarı mamul) serbest bırakılır (revizyon KAPANIS, detayda serbest kalan miktarlar). Siparişe bağlı ÜS'ye
+    DOKUNMAZ (onun kapanışı depolu satış faturası onayıdır — ``_kapanis_kontrol``). Kapattıysa True."""
+    if emir.durum != UretimEmri.Durum.ACIK or not stok_us_mu(emir):
+        return False
+    ilerleme = uretim_emri_ilerleme(emir)
+    if not ilerleme["toplam"] or ilerleme["onayli"] < ilerleme["toplam"]:
+        return False
+    serbest = {a.stok.kod: _ds(a.miktar) for a in stok_ayirma.emir_ayirmalari(emir)}
+    for a in list(stok_ayirma.emir_ayirmalari(emir)):
+        stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici)
+    emir.durum = UretimEmri.Durum.KAPALI
+    emir.kapanis_tarihi = timezone.localdate()
+    emir.updated_by = kullanici
+    emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.KAPANIS, emir.kapanis_tarihi, "Tamamlandı (stok için üretim %100): ayırmalar serbest bırakıldı",
+                  {"serbest_birakilan": serbest}, kullanici)
+    return True
 
 
 def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
@@ -1251,16 +1280,26 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
     if ie is None or emir is None:
         return
     ie = IstasyonEmri.objects.select_for_update().get(pk=ie.pk)
-    if emir.durum == UretimEmri.Durum.ACIK:
-        for c in kayit.ciktilar.filter(silindi=False):
-            if c.ayrilan > 0:
-                stok_ayirma.ayirma_ekle(emir, c.stok_id, -c.ayrilan, kullanici)
-        for satir in kaydi_girdi_satirlari(kayit):
+    emir.refresh_from_db()
+    yeniden_ac = emir.durum == UretimEmri.Durum.KAPALI and stok_us_mu(emir) and not emir.sevk_dusen      # tamamlanmış stok ÜS'si
+    if emir.durum == UretimEmri.Durum.ACIK or yeniden_ac:
+        if not yeniden_ac:                                  # tamamlanmış ÜS'de mamul ayırması GERİ GELMEZ (serbest kalır)
+            for c in kayit.ciktilar.filter(silindi=False):
+                if c.ayrilan > 0:
+                    stok_ayirma.ayirma_ekle(emir, c.stok_id, -c.ayrilan, kullanici)
+        for satir in kaydi_girdi_satirlari(kayit):          # kalan üretimin girdi ayırması mevcut mantıkla yeniden kurulur
             if satir.ayrilan_dusen > 0:
                 stok_ayirma.ayirma_ekle(emir, satir.girdi_id, satir.ayrilan_dusen, kullanici)
     ie.tamamlanan = max(Decimal("0"), ie.tamamlanan - kayit_calistirma(kayit))
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
+    if yeniden_ac:
+        emir.durum = UretimEmri.Durum.ACIK
+        emir.kapanis_tarihi = None
+        emir.updated_by = kullanici
+        emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
+        _revizyon_yaz(emir, UretimEmriRevizyon.Tur.YENIDEN_ACILIS, timezone.localdate(),
+                      "Yeniden açıldı (operasyon kaydı geri alındı); mamul ayırması geri gelmedi", {"kayit": kayit.no}, kullanici)
 
 # === Üretim siparişi REVİZE (adım 7) ===
 
@@ -1554,7 +1593,8 @@ def uretim_emirleri_ozet(emirler) -> dict:
         for kl in e.kalemler.all():
             toplam += kl.hedef_miktar
             hazir += min(kl.hedef_miktar, ayr.get(kl.hedef_urun_id, Decimal("0")) + Decimal(str(sevk.get(str(kl.hedef_urun_id), "0"))))
-        sonuc[e.pk] = {"ilerleme": ilerleme, "yuzde": (hazir * 100 / toplam) if toplam else Decimal("0"),
+        tamam = e.durum == UretimEmri.Durum.KAPALI and e.kaynak_siparis_id is None and not e.sevk_dusen         # tamamlanmış stok ÜS'si
+        sonuc[e.pk] = {"ilerleme": ilerleme, "yuzde": Decimal("100") if tamam else ((hazir * 100 / toplam) if toplam else Decimal("0")),
                        "silinebilir": e.durum == UretimEmri.Durum.ACIK and not baslamis}
     return sonuc
 

@@ -87,9 +87,8 @@ class OnayTest(Taban):
         bukum = istasyon_emri_kayit_ac(self.ie_bukum)
         operasyon_kaydi_onayla(bukum)
         self.assertEqual(self.durum(self.ie_bukum), (IstasyonEmri.Durum.BITTI, D("10")))
-        self.assertEqual((self.ayr(self.kesilmis), self.ayr(self.bukulmus)), (D("0"), D("10")))
-        self.assertEqual(sa.kullanilabilir(self.bukulmus), D("0"))                         # başka siparişe kullanılabilir değil
-        self.assertEqual(sa.kullanilabilir(self.bukulmus, haric_emir=self.emir), D("10"))
+        self.assertEqual((self.ayr(self.kesilmis), self.ayr(self.bukulmus)), (D("0"), D("0")))     # stok ÜS'si %100: tamamlandı, mamul ayırması serbest
+        self.assertEqual(sa.kullanilabilir(self.bukulmus), D("10"))
 
     def test_kismi_uretim_basladi(self):
         k = istasyon_emri_kayit_ac(self.ie_kesim, hedef="4")                               # 2 çalıştırma
