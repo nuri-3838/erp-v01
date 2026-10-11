@@ -12,7 +12,12 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
 | 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | TAMAM (canlıda) | `9ad676d` | 3248 OK | eski adres 301 → `/uretim/urun-agaci/?gorunum=ihtiyac`; yeni görünüm 200 (segment aktif, form var); 152-10-0001 ağacında 16 ✎ + düzenle bağlantısı; ÜRETİM menüsünde İhtiyaç Hesapla yok; traceback yok |
 | 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | TAMAM (canlıda) | `893aef6` | 3252 OK | yeni form ve sade tanım (151-10-0001) düzenlemede Gelişmiş kapalı, tür alanı içinde; PARÇALA tanımı (151-20-0014) düzenlemede açık + "parçala" rozeti; canlıda yan çıktılı tanım yok; traceback yok |
 | 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | TAMAM (canlıda) | `81a016c` | 3258 OK | Tümü 200 (sekmeler, İş İstasyonu sütunu, ÜS no süzgeci); istasyon sekmeleri (10/12/15) 200 aktif; canlıda açık emir olmadığından Üretildi/toplu düğme yok (beklenen); `durum=BITTI&us=ÜS-2026-0002` → 50 Tamamlandı satırı; traceback yok |
-| 8 | ÜS listesi: varsayılan Açık; tamamlanmış stok ÜS'de "Tamamlandı" | kod+test tamam, deploy bekliyor | | | |
+| 8 | ÜS listesi: varsayılan Açık; tamamlanmış stok ÜS'de "Tamamlandı" | TAMAM (canlıda) | `527e4e4` | 3259 OK | liste varsayılan: açık ÜS'ler var, kapalılar yok, seçili option ACIK; `durum=TUMU` hepsi + 2 tamamlanmış stok ÜS'de "Tamamlandı · ayrılan serbest"; ÜS-2026-0004 detayında Kalemler "Tamamlandı" rozeti + serbest notu; journal'da traceback yok |
+
+**Gece oturumu sonucu (2026-10-11 03:30):** 8 adımın 8'i de canlıda (`f263438` → `527e4e4`, 8 commit, son tam paket 3259 OK). Uygulanmayan / sabah
+konuşulacak: maliyet düzeltmenin UYGULANMASI (`python manage.py stok_maliyet_duzelt --uygula`; kuru çalıştırma raporu aşağıda ve
+`docs/stok_maliyet_duzelt_dryrun_20261011.txt`), opsiyonel/siparişe özel girdi, işçilik/GÜG maliyeti, kullanıcı yetkileri (not: yalnız eski
+`ihtiyac_hesapla` yetkisi olan kullanıcılara artık `urun_agaci` verilmeli).
 
 ## Adım notları
 
