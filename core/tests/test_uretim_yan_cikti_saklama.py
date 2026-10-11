@@ -99,29 +99,46 @@ class GeriAlSilEkranTest(YanCiktiBase):
         self.url = reverse("core:operasyon_kaydi_geri_al_sil", args=[self.k.pk])
         self.detay = reverse("core:operasyon_kaydi_detay", args=[self.k.pk])
 
-    def test_yonetici_dugmeyi_gorur_onay_metniyle_sade_kullanici_gormez(self):
+    def test_ekran_yetkili_herkes_dugmeyi_gorur_yetkisiz_gormez(self):
+        """Adım 4: geri alma yetkisi operasyon_kayitlari ekran yetkisiyle (yalnız yönetici değil)."""
         self.client.force_login(self.yonetici)
         r = self.client.get(self.detay)
         self.assertContains(r, "Geri al ve sil")
         self.assertContains(r, "Bu kaydın tüm stok hareketleri ve maliyet fişi geri alınıp kayıt kalıcı silinecek")
         self.client.force_login(self.sade)
-        self.assertNotContains(self.client.get(self.detay), "Geri al ve sil")
+        self.assertContains(self.client.get(self.detay), "Geri al ve sil")
+        yetkisiz = User.objects.create_user("gyetkisiz", password="x")
+        self.client.force_login(yetkisiz)
+        self.assertEqual(self.client.get(self.detay).status_code, 403)
 
-    def test_yonetici_olmayana_403_ve_hicbir_sey_degismez(self):
-        self.client.force_login(self.sade)
+    def test_ekran_yetkisi_olmayana_403_ve_hicbir_sey_degismez(self):
+        yetkisiz = User.objects.create_user("gyetkisiz2", password="x")
+        self.client.force_login(yetkisiz)
         self.assertEqual(self.client.post(self.url).status_code, 403)
         self.k.refresh_from_db()
         self.assertFalse(self.k.silindi)
         self.assertEqual(StokHareket.objects.filter(operasyon_kaydi=self.k, silindi=False).count(), 3)
 
-    def test_yonetici_geri_alir_ve_siler(self):
-        self.client.force_login(self.yonetici)
+    def test_sade_yetkili_geri_alir_iz_kaydedilir_detayda_gorunur(self):
+        self.client.force_login(self.sade)
         r = self.client.post(self.url)
         self.assertRedirects(r, reverse("core:operasyon_kayitlari"), fetch_redirect_response=False)
         self.k.refresh_from_db()
         self.assertTrue(self.k.silindi)
+        self.assertEqual(self.k.geri_alan, self.sade)
+        self.assertIsNotNone(self.k.geri_alma_zamani)
         self.assertEqual((eldeki_miktar(self.ana, self.depo), eldeki_miktar(self.yan, self.depo), eldeki_miktar(self.profil, self.depo)),
                          (D("0"), D("0"), D("10")))
+        d = self.client.get(self.detay)                                                   # geri alınmış kayıt salt-okunur görünür
+        self.assertEqual(d.status_code, 200)
+        self.assertContains(d, "Geri alındı")
+        self.assertContains(d, "Geri alan: <b>gsade</b>")
+        self.assertNotContains(d, "Geri al ve sil")
+        self.assertNotContains(d, "Miktarları Kaydet")
+        liste = self.client.get(reverse("core:operasyon_kayitlari"), {"sekme": "tumu"})
+        self.assertContains(liste, self.k.no)                                             # Tümü: geri alınan rozetli
+        self.assertContains(liste, ">Geri alındı<")
+        self.assertNotContains(self.client.get(reverse("core:operasyon_kayitlari")), self.k.no)   # Onaylı sekmesinde yok
 
     def test_cikti_baska_yerde_tuketildiyse_hata_mesaji_ve_degisiklik_yok(self):
         hareket_ekle(stok_id=self.yan.pk, depo_id=self.depo.pk, tarih=date(2026, 10, 10), tur=StokHareket.Tur.CIKIS, miktar=D("1"))

@@ -8,7 +8,8 @@
   <div>
     <a class="ust-link" href="{% url 'core:operasyon_kayitlari' %}">← Operasyon Kayıtları</a>
     <h1 class="ust-baslik"><span class="emoji">📋</span>{{ kayit.no }}
-      <span class="rozet {% if kayit.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ kayit.get_durum_display }}</span></h1>
+      {% if geri_alindi %}<span class="rozet rozet-pasif">Geri alındı</span>
+      {% else %}<span class="rozet {% if kayit.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ kayit.get_durum_display }}</span>{% endif %}</h1>
   </div>
   {% if not kayit.silindi %}
   <span class="islem-bag">
@@ -17,7 +18,7 @@
       {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
     <form method="post" action="{% url 'core:operasyon_kaydi_sil' kayit.pk %}" onsubmit="return confirm('Kayıt iptal edilsin mi?');">
       {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
-    {% elif kayit.durum == "ONAYLI" and yonetici %}
+    {% elif kayit.durum == "ONAYLI" %}
     <form method="post" action="{% url 'core:operasyon_kaydi_geri_al_sil' kayit.pk %}" style="margin:0"
           onsubmit="return confirm('Bu kaydın tüm stok hareketleri ve maliyet fişi geri alınıp kayıt kalıcı silinecek. Devam edilsin mi?');">
       {% csrf_token %}<button type="submit" class="sil">Geri al ve sil</button></form>
@@ -26,9 +27,13 @@
   {% endif %}
 </div>
 
-{% if kayit.durum == "ONAYLI" %}
+{% if geri_alindi %}
+  <div class="uyari"><div>⟲ Bu kayıt <b>geri alındı</b>: stok hareketleri ve maliyet fişi geri sarıldı, kayıt silindi.
+    Geri alan: <b>{{ kayit.geri_alan.get_full_name|default:kayit.geri_alan.username }}</b> · {{ kayit.geri_alma_zamani|date:"d.m.Y H:i" }}.
+    Aşağıdaki bilgiler kaydın geri alınmadan önceki hâlidir (salt-okunur).</div></div>
+{% elif kayit.durum == "ONAYLI" %}
   <div class="uyari"><div>✅ Bu kayıt onaylanmış; girdi çıkış + çıktı giriş stok hareketleri
-    oluşturuldu. Bir daha değiştirilemez.</div></div>
+    oluşturuldu. Bir daha değiştirilemez. “Geri al ve sil” hareketleri ve fişi geri sarar; geri alan kullanıcı ve zaman kaydedilir.</div></div>
 {% endif %}
 
 <section class="icerik-kart">
@@ -90,7 +95,7 @@
 
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Girdiler</h2>
-  {% if kayit.durum == "TASLAK" %}
+  {% if kayit.durum == "TASLAK" and not kayit.silindi %}
     <p class="yardim">Gerçekleşen miktar planlanandan sapıyorsa (fire, fazla sarfiyat vb.)
       burada düzeltip "Miktarları Kaydet" ile saklayın — Onayla'da stok çıkışı bu değerle
       yazılır. 0 girilen bir satır için hiç stok hareketi yazılmaz.</p>
@@ -109,7 +114,7 @@
             <td><span class="mono">{{ satir.girdi.kod }}</span> {{ satir.girdi.ad }}</td>
             <td class="sag mono">{{ satir.planlanan_miktar|tr_miktar6 }}</td>
             <td class="sag">
-              {% if kayit.durum == "TASLAK" %}
+              {% if kayit.durum == "TASLAK" and not kayit.silindi %}
                 {{ f.satir_id }}{{ f.gerceklesen_miktar }}
                 {% for e in f.errors %}<div class="hata">{{ e }}</div>{% endfor %}
               {% else %}
@@ -131,7 +136,7 @@
       </tbody>
     </table>
     </div>
-    {% if kayit.durum == "TASLAK" %}
+    {% if kayit.durum == "TASLAK" and not kayit.silindi %}
       <div class="form-altbar">
         <button type="submit" class="dugme-ikincil">Miktarları Kaydet</button>
       </div>

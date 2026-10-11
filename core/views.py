@@ -48,7 +48,7 @@ from core.forms import (
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, OperasyonYanCiktiSatirForm, OperasyonParcaCiktiSatirForm, IhtiyacHesaplaSatirForm, UretimRevizeBaslikForm,
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
-    OperasyonKaydiForm, OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
+    OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
     PersonelBelgeForm, PersonelFotoForm, PersonelUcretForm, ResmiTatilForm,
     GirisForm, MesaiHesapOlusturForm, MesaiSifreForm, MesaiIzinliAgForm, MesaiDuzeltForm,
 )
@@ -7525,23 +7525,29 @@ def _iso_tarih(ham):
 
 @ekran_gerekli("operasyon_kayitlari")
 def operasyon_kayitlari(request):
-    """Sade kayıt listesi: Taslak (varsayılan) / Onaylı / Tümü sekmeleri, özet çipleri, tek satır süzgeç, 50/sayfa. Emirlerden gelen bağlantılar
-    (``?istasyon_emri=``, ``?uretim_emri=``) sekme verilmediyse TÜMÜ gösterir."""
+    """Sade kayıt listesi: Onaylı (varsayılan) / Taslak (yalnız açık taslak varsa — pratikte fason dönüş taslakları) / Tümü (geri alınan kayıtlar
+    dahil, rozetli) sekmeleri, özet çipleri, tek satır süzgeç, 50/sayfa. Emirlerden gelen bağlantılar (``?istasyon_emri=``, ``?uretim_emri=``) sekme
+    verilmediyse TÜMÜ gösterir. Bağımsız kayıt açma ekranı yok: kayıtlar istasyon emirlerinden ("Üretildi") ve fason dönüşlerden açılır."""
     g = request.GET
-    taban = OperasyonKaydi.objects.filter(silindi=False)
+    aktif = OperasyonKaydi.objects.filter(silindi=False)
     bugun = timezone.localdate()
     hafta_bas = bugun - datetime.timedelta(days=bugun.weekday())
-    onayli = taban.filter(durum=OperasyonKaydi.Durum.ONAYLI)            # onaylı kayıt kilitlidir: updated_at = onay anı
-    cipler = {"taslak": taban.filter(durum=OperasyonKaydi.Durum.TASLAK).count(),
+    onayli = aktif.filter(durum=OperasyonKaydi.Durum.ONAYLI)            # onaylı kayıt kilitlidir: updated_at = onay anı
+    cipler = {"taslak": aktif.filter(durum=OperasyonKaydi.Durum.TASLAK).count(),
               "bugun": onayli.filter(updated_at__date=bugun).count(),
               "hafta": onayli.filter(updated_at__date__gte=hafta_bas, updated_at__date__lte=bugun).count()}
+    taslak_sekmesi = cipler["taslak"] > 0                                 # açık taslak yoksa sekme gizli
     emirden = bool(g.get("istasyon_emri", "").isdigit() or g.get("uretim_emri", "").isdigit())
-    sekme = g.get("sekme") if g.get("sekme") in ("taslak", "onayli", "tumu") else ("tumu" if emirden else "taslak")
-    kayitlar = (taban.select_related("operasyon__istasyon", "operasyon__cikti", "uretim_emri", "istasyon_emri", "fason_donus").order_by("-yil", "-sira"))
+    sekme = g.get("sekme") if g.get("sekme") in ("taslak", "onayli", "tumu") else ("tumu" if emirden else "onayli")
+    if sekme == "taslak" and not taslak_sekmesi:
+        sekme = "onayli"
+    taban = OperasyonKaydi.objects.filter(Q(silindi=False) | Q(geri_alan__isnull=False))        # Tümü: geri alınan (soft-silinmiş) kayıtlar da
+    kayitlar = (taban.select_related("operasyon__istasyon", "operasyon__cikti", "uretim_emri", "istasyon_emri", "fason_donus", "geri_alan")
+                .order_by("-yil", "-sira"))
     if sekme == "taslak":
-        kayitlar = kayitlar.filter(durum=OperasyonKaydi.Durum.TASLAK)
+        kayitlar = kayitlar.filter(silindi=False, durum=OperasyonKaydi.Durum.TASLAK)
     elif sekme == "onayli":
-        kayitlar = kayitlar.filter(durum=OperasyonKaydi.Durum.ONAYLI)
+        kayitlar = kayitlar.filter(silindi=False, durum=OperasyonKaydi.Durum.ONAYLI)
     istasyon = (g.get("istasyon") or "").strip()
     if istasyon.isdigit():
         kayitlar = kayitlar.filter(operasyon__istasyon_id=int(istasyon))
@@ -7571,36 +7577,18 @@ def operasyon_kayitlari(request):
     sayfa = Paginator(kayitlar, 50).get_page(g.get("sayfa"))
     sorgu = {k: v for k, v in g.items() if k != "sayfa" and v}
     return render(request, "core/operasyon_kayitlari.html", {
-        "kayitlar": sayfa, "filtre": filtre, "sekme": sekme, "cipler": cipler, "istasyon": istasyon, "bas": g.get("bas", ""), "bit": g.get("bit", ""),
+        "kayitlar": sayfa, "filtre": filtre, "sekme": sekme, "cipler": cipler, "taslak_sekmesi": taslak_sekmesi, "istasyon": istasyon,
+        "bas": g.get("bas", ""), "bit": g.get("bit", ""),
         "us": us, "ara": ara, "istasyonlar": uretim_servis.aktif_istasyonlar(), "sorgu": urlencode(sorgu),
         "sekme_url": {k: urlencode({**{a: b for a, b in sorgu.items() if a != "sekme"}, "sekme": k}) for k in ("taslak", "onayli", "tumu")}})
 
 
 @ekran_gerekli("operasyon_kayitlari")
-def operasyon_kaydi_ekle(request):
-    if request.method == "POST":
-        form = OperasyonKaydiForm(request.POST)
-        if form.is_valid():
-            cd = form.cleaned_data
-            try:
-                kayit = uretim_servis.operasyon_kaydi_olustur(
-                    operasyon_id=cd["operasyon"].pk, depo_id=cd["depo"].pk, tarih=cd["tarih"],
-                    hedef_cikti_miktari=cd["hedef_cikti_miktari"],
-                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
-                messages.success(request, f"Operasyon kaydı oluşturuldu: {kayit.no}")
-                return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
-            except uretim_servis.UretimHatasi as e:
-                form.add_error(None, str(e))
-    else:
-        form = OperasyonKaydiForm()
-    return render(request, "core/operasyon_kaydi_form.html", {"form": form})
-
-
-@ekran_gerekli("operasyon_kayitlari")
 def operasyon_kaydi_detay(request, pk):
-    kayit = get_object_or_404(OperasyonKaydi, pk=pk, silindi=False)
+    """Kayıt detayı; GERİ ALINMIŞ (soft-silinmiş, ``geri_alan`` dolu) kayıt da salt-okunur görünür (kim/ne zaman geri aldı)."""
+    kayit = get_object_or_404(OperasyonKaydi.objects.filter(Q(silindi=False) | Q(geri_alan__isnull=False)), pk=pk)
     satirlar = list(uretim_servis.kaydi_girdi_satirlari(kayit))
-    if request.method == "POST" and kayit.durum == OperasyonKaydi.Durum.TASLAK:
+    if request.method == "POST" and kayit.durum == OperasyonKaydi.Durum.TASLAK and not kayit.silindi:
         formset = OperasyonKaydiGirdiDuzeltFormSet(request.POST, prefix="gs")
         if formset.is_valid():
             satir_map = {s.pk: s for s in satirlar}
@@ -7650,7 +7638,7 @@ def operasyon_kaydi_detay(request, pk):
     return render(request, "core/operasyon_kaydi_detay.html",
                   {"kayit": kayit, "satirlar": list(zip(satirlar, formset, maliyetler)),
                    "formset": formset, "cikti_katmani": cikti_katmani, "ciktilar": ciktilar, "yan_tanimlar": yan_tanimlar, "parcala": parcala,
-                   "yonetici": yonetici_mi(request.user)})
+                   "geri_alindi": bool(kayit.silindi and kayit.geri_alan_id)})
 
 
 @ekran_gerekli("operasyon_kayitlari")
@@ -7665,10 +7653,11 @@ def operasyon_kaydi_onayla(request, pk):
     return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
 
 
-@yonetici_gerekli
+@ekran_gerekli("operasyon_kayitlari")
 def operasyon_kaydi_geri_al_sil(request, pk):
-    """YALNIZ yönetici: ONAYLI kaydın tüm stok hareketlerini (girdi çıkışları + ana/yan çıktı girişleri) ve maliyet aktarım fişini geri alıp
-    kaydı siler. Çıktı başka yerde tüketildiyse servisin hata mesajı gösterilir, hiçbir şey değişmez."""
+    """Operasyon Kayıtları ekran yetkisi olan herkes (yalnız yönetici değil): ONAYLI kaydın tüm stok hareketlerini (girdi çıkışları + ana/yan çıktı
+    girişleri) ve maliyet aktarım fişini geri alıp kaydı siler; geri alan kullanıcı + zaman kayda yazılır (detayda görünür). Çıktı başka yerde
+    tüketildiyse servisin hata mesajı gösterilir, hiçbir şey değişmez."""
     kayit = get_object_or_404(OperasyonKaydi, pk=pk, silindi=False)
     if request.method != "POST":
         return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
@@ -7680,7 +7669,7 @@ def operasyon_kaydi_geri_al_sil(request, pk):
     except uretim_servis.UretimHatasi as e:
         messages.error(request, str(e))
         return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
-    messages.success(request, f"{kayit.no}: stok hareketleri ve maliyet fişi geri alındı, kayıt silindi.")
+    messages.success(request, f"{kayit.no}: stok hareketleri ve maliyet fişi geri alındı, kayıt silindi (geri alan: {request.user.username}).")
     return redirect("core:operasyon_kayitlari")
 
 

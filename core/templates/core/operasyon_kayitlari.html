@@ -27,9 +27,8 @@
   <div>
     <a class="ust-link" href="{% url 'core:operasyon_tanimlari' %}">← Operasyon Tanımları</a>
     <h1 class="ust-baslik"><span class="emoji">📋</span>Operasyon Kayıtları
-      <span class="ok-ipucu" tabindex="0" title="İstasyon emirlerinden ve fason dönüşlerden açılan kayıtlar burada görünür. “Kaynak” sütunu kaydın geldiği üretim siparişi / istasyon emri ya da fason dönüşüdür; boşsa kayıt bağımsızdır. “+ Yeni (Bağımsız)” bir emre bağlı olmayan serbest kayıt açar.">?</span></h1>
+      <span class="ok-ipucu" tabindex="0" title="Kayıtlar istasyon emirlerinden (“Üretildi” / toplu üretim) ve fason dönüşlerden açılır; burada elle kayıt açılmaz. “Kaynak” sütunu kaydın geldiği üretim siparişi / istasyon emri ya da fason dönüşüdür. Taslak sekmesi yalnız açık taslak (fason dönüş) varken görünür; Tümü sekmesi geri alınan kayıtları da listeler.">?</span></h1>
   </div>
-  <a class="dugme" href="{% url 'core:operasyon_kaydi_ekle' %}">+ Yeni (Bağımsız)</a>
 </div>
 
 <div class="ok-cipler">
@@ -39,8 +38,8 @@
 </div>
 
 <nav class="ok-sekmeler">
-  <a class="ok-sekme{% if sekme == 'taslak' %} aktif{% endif %}" href="?{{ sekme_url.taslak }}">Taslak</a>
   <a class="ok-sekme{% if sekme == 'onayli' %} aktif{% endif %}" href="?{{ sekme_url.onayli }}">Onaylı</a>
+  {% if taslak_sekmesi %}<a class="ok-sekme{% if sekme == 'taslak' %} aktif{% endif %}" href="?{{ sekme_url.taslak }}">Taslak ({{ cipler.taslak }})</a>{% endif %}
   <a class="ok-sekme{% if sekme == 'tumu' %} aktif{% endif %}" href="?{{ sekme_url.tumu }}">Tümü</a>
 </nav>
 
@@ -80,7 +79,8 @@
           {% elif k.uretim_emri %}<a class="mono" href="{% url 'core:uretim_emri_detay' k.uretim_emri_id %}">{{ k.uretim_emri.no }}</a>{% endif %}
           {% if k.fason_donus %}{% if k.uretim_emri %}· {% endif %}Fason <a class="mono" href="{% url 'core:fason_donus_detay' k.fason_donus_id %}">{{ k.fason_donus.no }}</a>{% endif %}
         </td>
-        <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span></td>
+        <td>{% if k.silindi %}<span class="rozet rozet-pasif" title="Geri alan: {{ k.geri_alan.username }} · {{ k.geri_alma_zamani|date:'d.m.Y H:i' }}">Geri alındı</span>
+            {% else %}<span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>{% endif %}</td>
       </tr>
     {% empty %}
       <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.4rem 0">Bu süzgeçle eşleşen operasyon kaydı yok.</td></tr>

@@ -1592,32 +1592,8 @@ class SiparisUretimEmriSatirForm(forms.Form):
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))
 
 
-class OperasyonKaydiForm(forms.Form):
-    """ÜRETİM > Operasyon Kayıtları: bağımsız/serbest kayıt açma formu (bir istasyonun kendi
-    inisiyatifiyle, herhangi bir Üretim Emri'ne bağlı olmadan açtığı kayıt) — operasyon +
-    hedef çıktı miktarı + depo + tarih."""
-    operasyon = forms.ModelChoiceField(
-        label="Operasyon", queryset=Operasyon.objects.none(), empty_label="— operasyon seç —")
-    hedef_cikti_miktari = TRDecimalField(label="Hedef Çıktı Miktarı", basamak=3)
-    depo = forms.ModelChoiceField(
-        label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
-    tarih = forms.DateField(
-        label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
-    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
-                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from core.services.uretim import aktif_operasyonlar
-        self.fields["operasyon"].queryset = aktif_operasyonlar()
-        self.fields["operasyon"].label_from_instance = (
-            lambda o: f"{o.istasyon.kod} — {o.cikti.kod} {o.cikti.ad}")
-        self.fields["operasyon"].widget.attrs["class"] = "akilli-sec"
-        from core.services.depo import aktif_depolar
-        self.fields["depo"].queryset = aktif_depolar()
-        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
-        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+# (Bağımsız/serbest operasyon kaydı formu kaldırıldı — 2026-10-11 üretim sadeleştirme adım 4: kayıtlar yalnız istasyon emrinden ("Üretildi")
+#  ve fason dönüşten açılır; servis ``operasyon_kaydi_olustur`` fason/üretim akışı için duruyor.)
 
 
 class OperasyonKaydiGirdiDuzeltForm(forms.Form):

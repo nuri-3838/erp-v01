@@ -945,14 +945,14 @@ class UretimViewTest(TestCase):
         r2 = self.client.get(reverse("core:uretim_emirleri"), {"ara": "yok-boyle-bir-sey"})
         self.assertNotContains(r2, emir.no)
 
-    def test_operasyon_kaydi_ekle_bagimsiz(self):
+    def test_bagimsiz_kayit_ekrani_kaldirildi(self):
+        """Adım 4 (2026-10-11): elle/bağımsız kayıt açma ekranı yok — kayıtlar istasyon emrinden ve fason dönüşten açılır."""
+        from django.urls import NoReverseMatch
         self.client.force_login(self.yon)
-        r = self.client.post(reverse("core:operasyon_kaydi_ekle"), {
-            "operasyon": self.operasyon.pk, "hedef_cikti_miktari": "1", "depo": self.depo.pk,
-            "tarih": "2026-01-10", "aciklama": ""})
-        self.assertEqual(r.status_code, 302)
-        kayit = OperasyonKaydi.objects.get(operasyon=self.operasyon)
-        self.assertIsNone(kayit.uretim_emri)
+        with self.assertRaises(NoReverseMatch):
+            reverse("core:operasyon_kaydi_ekle")
+        self.assertEqual(self.client.get("/uretim/kayitlar/ekle/").status_code, 404)
+        self.assertNotContains(self.client.get(reverse("core:operasyon_kayitlari")), "Bağımsız")
 
     def test_menude_uretim_ekranlari_gorunur(self):
         self.client.force_login(self.yon)

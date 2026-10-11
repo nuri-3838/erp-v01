@@ -2084,10 +2084,12 @@ def operasyon_kaydi_sil(kayit: OperasyonKaydi, kullanici=None, *, onayli_geri_al
         if kayit.fis_id and not kayit.fis.silindi:
             fis_iptal(kayit.fis, kullanici=kullanici)
         _istasyon_emri_geri_al_etkisi(kayit, kullanici)          # üretim siparişi: ayırma izleri + tamamlanan geri sarılır (kayıt hâlâ ONAYLI iken)
+        kayit.geri_alan = kullanici                                # iz: kim, ne zaman (detay ekranında görünür)
+        kayit.geri_alma_zamani = timezone.now()
     kayit.silindi = True
     kayit.silindi_at = timezone.now()
     kayit.updated_by = kullanici
-    kayit.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    kayit.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at", "geri_alan", "geri_alma_zamani"])
     if kayit.istasyon_emri_id:
         istasyon_emri_durum_guncelle(kayit.istasyon_emri)
     return kayit

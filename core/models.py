@@ -3484,6 +3484,10 @@ class OperasyonKaydi(TemelModel):
     # FASON GELEN ADET (taslakta girilir): fasoncudan fiilen gelen adetler, TÜM çıktılar için {stok pk: adet} (referans dahil). Boşsa ÜRET'te BEKLENEN adet
     # gelmiş sayılır, PARÇALA'da 0. Girdi tüketimi beklenen çalıştırmadan, stoğa giren adet ve fason bedeli GELEN adetten; fark FİRE (OperasyonKaydiCikti).
     gelen = models.JSONField("gelen adetler ({stok pk: adet})", default=dict, blank=True)
+    # ONAYLI kaydın GERİ ALINMASI (stok hareketleri + maliyet fişi geri sarılıp kayıt soft-silinir): kim, ne zaman — iz; detay ekranında görünür.
+    geri_alan = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="geri alan", null=True, blank=True, on_delete=models.PROTECT,
+                                  related_name="geri_aldigi_operasyon_kayitlari")
+    geri_alma_zamani = models.DateTimeField("geri alma zamanı", null=True, blank=True)
 
     class Meta:
         db_table = "core_operasyon_kaydi"

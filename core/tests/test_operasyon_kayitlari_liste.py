@@ -26,16 +26,18 @@ class KayitListeTest(kt.KapanisTaban):
         taslak = self.bagimsiz()[0]
         onayli = self.bagimsiz()[0]
         operasyon_kaydi_onayla(onayli)
-        r = self.liste()                                                                           # varsayılan: Taslak
-        self.assertContains(r, taslak.no)
-        self.assertNotContains(r, onayli.no)
+        r = self.liste()                                                                           # varsayılan: ONAYLI (adım 4)
+        self.assertContains(r, onayli.no)
+        self.assertNotContains(r, taslak.no)
+        self.assertEqual(r.context["sekme"], "onayli")
         self.assertEqual(r.context["cipler"], {"taslak": 1, "bugun": 1, "hafta": 1})
         self.assertContains(r, "bekleyen taslak")
         self.assertContains(r, "bugün onaylanan")
         self.assertContains(r, "bu hafta onaylanan")
-        o = self.liste(sekme="onayli")
-        self.assertContains(o, onayli.no)
-        self.assertNotContains(o, taslak.no)
+        self.assertContains(r, "Taslak (1)")                                                       # açık taslak var → sekme görünür
+        ts = self.liste(sekme="taslak")
+        self.assertContains(ts, taslak.no)
+        self.assertNotContains(ts, onayli.no)
         t = self.liste(sekme="tumu")
         self.assertContains(t, taslak.no)
         self.assertContains(t, onayli.no)
@@ -72,15 +74,15 @@ class KayitListeTest(kt.KapanisTaban):
     def test_suzgecler(self):
         yeni = self.bagimsiz(tarih=date(2026, 7, 10))[0]
         eski = self.bagimsiz(tarih=date(2026, 5, 10))[0]
-        r = self.liste(bas="2026-07-01", bit="2026-07-31")
+        r = self.liste(sekme="tumu", bas="2026-07-01", bit="2026-07-31")                           # taslaklar: Tümü sekmesinde (varsayılan Onaylı)
         self.assertContains(r, yeni.no)
         self.assertNotContains(r, eski.no)
-        self.assertNotContains(self.liste(istasyon=self.op.istasyon_id + 999), yeni.no)
-        self.assertContains(self.liste(istasyon=self.op.istasyon_id), yeni.no)
+        self.assertNotContains(self.liste(sekme="tumu", istasyon=self.op.istasyon_id + 999), yeni.no)
+        self.assertContains(self.liste(sekme="tumu", istasyon=self.op.istasyon_id), yeni.no)
         emir = self.emir_ac(self.siparis("3"))
         k = istasyon_emri_kayit_ac(emir.istasyon_emirleri.get())
-        self.assertContains(self.liste(us=emir.no), k.no)
-        self.assertNotContains(self.liste(us=emir.no), yeni.no)
+        self.assertContains(self.liste(sekme="tumu", us=emir.no), k.no)
+        self.assertNotContains(self.liste(sekme="tumu", us=emir.no), yeni.no)
         self.assertEqual(self.liste(bas="gecersiz").status_code, 200)                              # bozuk tarih sessizce yok sayılır
 
     def test_emirden_gelen_baglanti_tumunu_gosterir(self):
@@ -88,8 +90,11 @@ class KayitListeTest(kt.KapanisTaban):
         ie = emir.istasyon_emirleri.get()
         k = istasyon_emri_kayit_ac(ie)
         operasyon_kaydi_onayla(k)
-        self.assertContains(self.liste(istasyon_emri=ie.pk), k.no)                                 # onaylı da görünür (sekme verilmedi)
-        self.assertNotContains(self.liste(), k.no)                                                 # düz liste: taslak sekmesi
+        self.assertContains(self.liste(istasyon_emri=ie.pk), k.no)                                 # emirden gelince TÜMÜ (sekme verilmedi)
+        self.assertEqual(self.liste(istasyon_emri=ie.pk).context["sekme"], "tumu")
+        self.assertContains(self.liste(), k.no)                                                    # düz liste: varsayılan ONAYLI sekmesi
+        self.assertNotContains(self.liste(), "Taslak (")                                           # açık taslak yok → Taslak sekmesi gizli
+        self.assertEqual(self.liste(sekme="taslak").context["sekme"], "onayli")                    # gizli sekme istenirse Onaylı'ya düşer
 
     def test_sayfalama_tum_kayitlar_gorunur(self):
         kayitlar = self.bagimsiz(61)

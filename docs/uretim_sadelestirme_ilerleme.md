@@ -7,8 +7,8 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
 |---|------|-------|--------|-----------|-----------------|
 | 1 | İş İstasyonları: `fason` / `fasoncu` / `sira`; sabit "10" kodu kaldırıldı; liste sütunları; şema 0204 + veri 0205 | TAMAM (canlıda) | `f263438` | 3210 OK | 0204+0205 uygulandı; istasyon 10 → fason + 320-30-0040 FASON GÜRBÜZ LAZER, 11 istasyona sıra 10…110; liste/İstasyon Emirleri/ÜS-2026-0002 detay/istasyon düzenle 200; journal'da traceback yok |
 | 2 | Tarih bazlı stok kontrolü (`eldeki_miktar(..., tarih=)`) + maliyet düzeltme komutu (yalnız kuru çalıştırma) | TAMAM (canlıda) | `a51f9e1` | 3233 OK | ÜS detay/İstasyon Emirleri/Numune 200; canlı veride geriye tarihli çıkış denemesi "Bu tarihte yetersiz: 150-20-0003 (eldeki 0, gerekli 1) — 150, 30.06.2026" ile reddedildi (geri alındı); kuru çalıştırma raporu alındı (aşağıda) |
-| 3 | ÜS detay: istasyon bazlı katlanır gruplar; "Bu istasyonu üret" / "Tümünü üret" (atomik) | kod+test tamam, deploy bekliyor | | | |
-| 4 | Operasyon Kayıtları: varsayılan Onaylı; bağımsız yeni kaldırıldı; geri al yetkisi + iz | bekliyor | | | |
+| 3 | ÜS detay: istasyon bazlı katlanır gruplar; "Bu istasyonu üret" / "Tümünü üret" (atomik) | TAMAM (canlıda) | `3268375` | 3244 OK | ÜS-2026-0002/0003/0004 detay 200; gruplar istasyon sırasıyla (12,15,20,…,80), tamamlanan gruplar kapalı; açık emir olmadığından toplu düğmeler görünmüyor (beklenen); "Kayıtları gör" var; traceback yok |
+| 4 | Operasyon Kayıtları: varsayılan Onaylı; bağımsız yeni kaldırıldı; geri al yetkisi + iz | kod+test tamam, deploy bekliyor | | | |
 | 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | bekliyor | | | |
 | 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | bekliyor | | | |
 | 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | bekliyor | | | |
@@ -43,3 +43,12 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
   sayıları, "▶ Bu istasyonu üret", üstte "▶▶ Tümünü üret"; İş İstasyonu sütunu kalktı (grup başlığında). `istasyon_emri_satiri` ÜS detayı + İstasyon Emirleri
   listesinin ortak satır kurucusu. Operasyon Kayıtları bölümü: "N onaylı / M taslak / toplam" + "Kayıtları gör →" (`?uretim_emri=`). Testler
   `test_uretim_toplu_uret.py` (sıra, atomiklik, tek istasyon, fason atlama, geçmiş tarih, ekran).
+- **Adım 4 (migration 0206, saf şema):** `OperasyonKaydi.geri_alan` (User FK) + `geri_alma_zamani`; `operasyon_kaydi_sil(onayli_geri_al=True)` izi yazar.
+  Liste: varsayılan sekme **Onaylı** (emirden gelen `?uretim_emri=`/`?istasyon_emri=` bağlantıları yine Tümü); **Taslak** sekmesi yalnız açık taslak
+  varken (sayıyla) görünür — pratikte yalnız fason dönüş taslakları (bağımsız kayıt ekranı kalktığından başka taslak kaynağı yok; "yalnız fason taslağı"
+  yerine "herhangi açık taslak" seçildi ki olası bir taslak görünmez kalmasın); gizli sekme istenirse Onaylı'ya düşer; **Tümü** geri alınan (soft-silinmiş,
+  `geri_alan` dolu) kayıtları "Geri alındı" rozetiyle (kim/ne zaman ipucu) listeler. "+ Yeni (Bağımsız)" view/URL/form/şablon KALDIRILDI
+  (`operasyon_kaydi_ekle`, `OperasyonKaydiForm`, `operasyon_kaydi_form.html`; servis `operasyon_kaydi_olustur` fason/üretim için duruyor). "Geri al ve sil"
+  yetkisi `operasyon_kayitlari` ekran yetkisi (eski `@yonetici_gerekli` kalktı); detay geri alınmış kaydı salt-okunur gösterir ("Geri alan: kullanıcı ·
+  zaman"). Fason dönüş geri alma (`fason_donus_geri_al_sil`) DEĞİŞMEDİ (hâlâ yönetici). Testler: `test_uretim_yan_cikti_saklama.GeriAlSilEkranTest`,
+  `test_operasyon_kayitlari_liste`, `test_uretim.test_bagimsiz_kayit_ekrani_kaldirildi`.
