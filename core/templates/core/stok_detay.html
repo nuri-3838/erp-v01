@@ -240,8 +240,31 @@
       <div class="satir"><span class="et">Tedarikçi Ürün Adı</span>
         <span class="dg">{{ stok.tedarikci_adi }}</span></div>
       {% endif %}
+      {% if stok.varyantli %}
+      <div class="satir"><span class="et">Varyantlı Kart</span>
+        <span class="dg">🔀 Evet — boyutlar: {{ varyant_boyut_adlari|join:", " }}</span></div>
+      {% endif %}
     </div>
   </section>
+
+  {% if stok.varyantli %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🔀</span>Varyantlar</h2>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Varyant</th><th>Standart</th></tr></thead>
+      <tbody>
+        {% for sv, etiket in varyant_satirlari %}
+          <tr><td>{{ etiket }}</td><td>{% if sv.standart %}★ standart{% else %}<span class="pasif">—</span>{% endif %}</td></tr>
+        {% empty %}
+          <tr><td colspan="2" class="yardim">Henüz varyant yok (AYARLAR › Varyantlar'da varsayılan değer tanımlı olmalı).</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="yardim">Stok, ayırma ve maliyet kırılımı varyant bazında bir sonraki adımda gelir; bu adımda yalnız tanım.</p>
+  </section>
+  {% endif %}
 
   {% if stok.satis_urunu %}
   <section class="icerik-kart">

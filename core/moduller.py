@@ -110,6 +110,7 @@ MODULLER = (
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),
         Ekran("firma_bilgileri", "Firma Bilgileri", "core:firma_bilgileri"),
         Ekran("tanim_listeleri", "Tanım Listeleri", "core:tanim_listeleri"),
+        Ekran("varyantlar", "Varyantlar", "core:varyantlar"),
         Ekran("yedek", "Yedek", "core:yedek"),
         Ekran("mesai_ayarlari", "Mesai Ayarları", "core:mesai_ayarlari"),
     ), yonetici_modulu=True),

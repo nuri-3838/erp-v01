@@ -41,7 +41,7 @@ from core.forms import (
     TeklifSiparisForm, TeklifSiparisKalemForm, SatisBelgeBaslikForm, SatisTeklifKalemForm,
     TeklifRedForm,
     SatisProformaBaslikForm, SatisProformaKalemForm,
-    TanimSecenegiForm,
+    TanimSecenegiForm, VaryantForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     BankaHesapHareketForm, BankaHesapSatirForm, DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
     UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
@@ -58,7 +58,7 @@ from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, YatirimProjesi,
+    KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, YatirimProjesi,
     YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, KdvMahsup, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, IstasyonEmri, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
@@ -997,6 +997,7 @@ def stok_ekle(request):
                     gorsel=gorsel_dosya,
                     fiyat_try=cd.get("fiyat_try"), fiyat_usd=cd.get("fiyat_usd"),
                     fiyat_eur=cd.get("fiyat_eur"), fiyat_gbp=cd.get("fiyat_gbp"),
+                    varyantli=cd.get("varyantli"), varyant_boyutlari=cd.get("varyant_boyutlari"),
                     kullanici=request.user)
                 messages.success(request, f"Stok eklendi: {s.kod} — {s.ad}")
                 return redirect("core:stoklar")
@@ -1047,6 +1048,7 @@ def stok_duzenle(request, pk):
                     gorsel=gorsel_dosya,
                     fiyat_try=cd.get("fiyat_try"), fiyat_usd=cd.get("fiyat_usd"),
                     fiyat_eur=cd.get("fiyat_eur"), fiyat_gbp=cd.get("fiyat_gbp"),
+                    varyantli=cd.get("varyantli"), varyant_boyutlari=cd.get("varyant_boyutlari"),
                     kullanici=request.user)
                 messages.success(request, "Stok güncellendi.")
                 return redirect("core:stoklar")
@@ -1072,7 +1074,8 @@ def stok_duzenle(request, pk):
             "yukleme_20dc": stok.yukleme_20dc, "yukleme_40hq": stok.yukleme_40hq,
             "yukleme_tir": stok.yukleme_tir,
             "fiyat_try": fiyatlar.get("TRY"), "fiyat_usd": fiyatlar.get("USD"),
-            "fiyat_eur": fiyatlar.get("EUR"), "fiyat_gbp": fiyatlar.get("GBP")})
+            "fiyat_eur": fiyatlar.get("EUR"), "fiyat_gbp": fiyatlar.get("GBP"),
+            "varyantli": stok.varyantli, "varyant_boyutlari": list(stok.varyant_boyutlari or [])})
     return render(request, "core/stok_form.html",
                   {"form": form, "baslik": "Stok Düzenle", "duzenlenen": stok})
 
@@ -1128,8 +1131,13 @@ def stok_detay(request, pk):
     maliyet_belirsiz = (not hizmet and stok.ort_maliyet_try is not None and stok.ort_maliyet_try == 0
                         and stok.pk in fiyatsiz_girisli_stoklar([stok.pk]))
     kul = stok_ayirma_servis.toplu_kullanilabilir([stok.pk], eldeki={stok.pk: eldeki})[stok.pk]
+    from core.services import varyant as varyant_servis
+    varyant_satirlari = ([(sv, varyant_servis.varyant_etiketi(sv)) for sv in varyant_servis.stok_varyantlari(stok)]
+                         if stok.varyantli else [])
     return render(request, "core/stok_detay.html", {
         "stok": stok, "eldeki": eldeki, "hizmet": hizmet, "maliyet_belirsiz": maliyet_belirsiz,
+        "varyant_boyut_adlari": [varyant_servis.BOYUT_ETIKETI[b] for b in varyant_servis.stok_boyutlari(stok)],
+        "varyant_satirlari": varyant_satirlari,
         "ayrilan": kul["ayrilan"], "kullanilabilir": kul["kullanilabilir"], "ayirma_detay": _ayirma_detaylari([stok.pk]).get(stok.pk, []),
         "kritik_alti": (not hizmet) and stok.kritik_stok > 0 and eldeki < stok.kritik_stok,
         # Yalnız stoğu OLAN depolar — net 0'a inmiş depo "stok nerede" sorusunda gürültüdür
@@ -6200,6 +6208,83 @@ def aday_ek_indir(request, pk):
         AdayAktiviteEk, pk=pk, silindi=False, aktivite__silindi=False,
         aktivite__aday__silindi=False)
     return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
+
+
+# --- AYARLAR > Varyantlar (docs/varyant_kararlari.md) ------------------------
+@yonetici_gerekli
+def varyantlar(request):
+    from core.services import varyant as varyant_servis
+    return render(request, "core/varyant_listesi.html", {"varyantlar": varyant_servis.aktif_varyantlar()})
+
+
+def _varyant_form_kaydet(request, form, v=None):
+    from core.services import varyant as varyant_servis
+    cd = form.cleaned_data
+    kw = dict(kod=cd["kod"], ad=cd["ad"], ad_en=cd.get("ad_en", ""), sira=cd["sira"], aktif=cd.get("aktif", True),
+              varsayilan=cd.get("varsayilan", False), kullanici=request.user)
+    return varyant_servis.varyant_olustur(**kw) if v is None else varyant_servis.varyant_guncelle(v, **kw)
+
+
+@yonetici_gerekli
+def varyant_ekle(request):
+    from core.services import varyant as varyant_servis
+    if request.method == "POST":
+        form = VaryantForm(request.POST)
+        if form.is_valid():
+            try:
+                _varyant_form_kaydet(request, form)
+                messages.success(request, "Varyant eklendi.")
+                return redirect("core:varyantlar")
+            except varyant_servis.VaryantHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = VaryantForm()
+    return render(request, "core/varyant_form.html", {"form": form, "form_baslik": "Yeni Varyant"})
+
+
+@yonetici_gerekli
+def varyant_duzenle(request, pk):
+    from core.services import varyant as varyant_servis
+    v = get_object_or_404(Varyant, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = VaryantForm(request.POST)
+        if form.is_valid():
+            try:
+                _varyant_form_kaydet(request, form, v)
+                messages.success(request, "Varyant güncellendi.")
+                return redirect("core:varyantlar")
+            except varyant_servis.VaryantHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = VaryantForm(initial={"kod": v.kod, "ad": v.ad, "ad_en": v.ad_en, "sira": v.sira, "aktif": v.aktif,
+                                    "varsayilan": v.varsayilan})
+    return render(request, "core/varyant_form.html", {"form": form, "form_baslik": "Varyant Düzenle", "duzenlenen": v})
+
+
+@yonetici_gerekli
+def varyant_varsayilan_yap(request, pk):
+    from core.services import varyant as varyant_servis
+    v = get_object_or_404(Varyant, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            varyant_servis.varyant_varsayilan_yap(v, kullanici=request.user)
+            messages.success(request, f"Varsayılan varyant: {v.kod}")
+        except varyant_servis.VaryantHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:varyantlar")
+
+
+@yonetici_gerekli
+def varyant_sil(request, pk):
+    from core.services import varyant as varyant_servis
+    v = get_object_or_404(Varyant, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            varyant_servis.varyant_sil(v, kullanici=request.user)
+            messages.success(request, "Varyant silindi.")
+        except varyant_servis.VaryantHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:varyantlar")
 
 
 # --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------

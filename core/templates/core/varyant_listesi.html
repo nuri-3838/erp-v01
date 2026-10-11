@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% block baslik %}Varyantlar · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Varyantlar{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:tanim_listeleri' %}">← Tanım Listeleri</a>
+    <h1 class="ust-baslik"><span class="emoji">🔀</span>Varyantlar</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:varyant_ekle' %}">+ Yeni</a>
+</div>
+<p class="sayfa-alt">Varyantlı stok kartlarında (markalama, kullanma kılavuzu, afiş, yan etiket) seçilen değerler — tek liste.
+  <b>Varsayılan</b> değer standart varyanttır (teklif/proforma/sipariş/ÜS alanları bununla dolu gelir); boş seçim "YOK" anlamındadır.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th class="sag">Sıra</th><th>Kod</th><th>Ad</th><th>Ad (İngilizce)</th><th style="text-align:center">Aktif</th>
+    <th style="text-align:center">Varsayılan</th><th>İşlem</th></tr></thead>
+  <tbody>
+    {% for v in varyantlar %}
+      <tr{% if not v.aktif %} class="pasif-satir"{% endif %}>
+        <td class="sag mono">{{ v.sira }}</td>
+        <td class="mono"><b>{{ v.kod }}</b></td>
+        <td>{{ v.ad }}</td>
+        <td>{% if v.ad_en %}{{ v.ad_en }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td style="text-align:center">{% if v.aktif %}✅{% else %}<span class="pasif">pasif</span>{% endif %}</td>
+        <td style="text-align:center">
+          {% if v.varsayilan %}<span class="rozet" title="Standart varyant">★ varsayılan</span>
+          {% else %}
+          <form method="post" action="{% url 'core:varyant_varsayilan_yap' v.pk %}" onsubmit="return confirm('{{ v.kod }} varsayılan (standart) varyant olsun mu?');">
+            {% csrf_token %}<button type="submit" class="bag-dugme" title="Bu değeri varsayılan yap">varsayılan yap</button></form>
+          {% endif %}
+        </td>
+        <td><span class="islem-bag">
+          <a href="{% url 'core:varyant_duzenle' v.pk %}">Düzenle</a>
+          {% if not v.varsayilan %}
+          <form method="post" action="{% url 'core:varyant_sil' v.pk %}" onsubmit="return confirm('Silinsin mi?');">
+            {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+          {% endif %}
+        </span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7" class="yardim">Henüz kayıt yok. “+ Yeni” ile ekleyin.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<style>.pasif-satir td { opacity:.55; } .bag-dugme { background:none; border:0; color:var(--lacivert); text-decoration:underline; cursor:pointer; padding:0; font:inherit; }</style>
+{% endblock %}

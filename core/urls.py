@@ -153,6 +153,12 @@ urlpatterns = [
          name="operasyon_kaydi_onayla"),
     path("uretim/kayitlar/<int:pk>/sil/", views.operasyon_kaydi_sil, name="operasyon_kaydi_sil"),
     path("uretim/kayitlar/<int:pk>/geri-al-sil/", views.operasyon_kaydi_geri_al_sil, name="operasyon_kaydi_geri_al_sil"),
+    # AYARLAR > Varyantlar
+    path("ayarlar/varyantlar/", views.varyantlar, name="varyantlar"),
+    path("ayarlar/varyantlar/ekle/", views.varyant_ekle, name="varyant_ekle"),
+    path("ayarlar/varyantlar/<int:pk>/duzenle/", views.varyant_duzenle, name="varyant_duzenle"),
+    path("ayarlar/varyantlar/<int:pk>/varsayilan/", views.varyant_varsayilan_yap, name="varyant_varsayilan_yap"),
+    path("ayarlar/varyantlar/<int:pk>/sil/", views.varyant_sil, name="varyant_sil"),
     # AYARLAR > Tanım Listeleri
     path("ayarlar/tanimlar/", views.tanim_listeleri, name="tanim_listeleri"),
     path("ayarlar/tanimlar/kdv/", views.kdv_oranlari, name="kdv_oranlari"),

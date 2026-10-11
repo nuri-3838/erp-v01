@@ -540,6 +540,36 @@ class KategoriHesap(TemelModel):
         return f"{self.kategori_id}:{self.fatura_tipi_id} -> {self.hesap_id}"
 
 
+class Varyant(TemelModel):
+    """AYARLAR > Varyantlar — stok varyant DEĞERLERİ (SEMTA, YOK, MR. MOP …): tek liste; hem markalama hem ambalaj boyutlarında
+    aynı değerler kullanılır (bkz. docs/varyant_kararlari.md). ``varsayilan`` tek satırda True olabilir (SEMTA): varyantlı kartın
+    STANDART varyantı tüm boyutlarda bu değerdir; teklif/proforma/sipariş/ÜS varyant alanları bununla dolu gelir."""
+
+    kod = models.CharField("kod", max_length=30)
+    ad = models.CharField("ad", max_length=100)
+    ad_en = models.CharField("ad (İngilizce)", max_length=100, blank=True, default="")
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+    aktif = models.BooleanField("aktif", default=True)
+    varsayilan = models.BooleanField("varsayılan (standart)", default=False)
+
+    class Meta:
+        db_table = "core_varyant"
+        verbose_name = "varyant"
+        verbose_name_plural = "varyantlar"
+        ordering = ["sira", "kod"]
+        constraints = [
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False), name="uq_varyant_kod_aktif"),
+            models.UniqueConstraint(fields=["varsayilan"], condition=models.Q(varsayilan=True, silindi=False),
+                                    name="uq_varyant_varsayilan_tek"),
+        ]
+
+    def __str__(self):
+        return self.kod
+
+    def ad_dil(self, dil):
+        return (self.ad_en or self.ad) if dil == "en" else self.ad
+
+
 class Stok(TemelModel):
     """Stok/ürün kartı (STOKLAR — master). Miktar BURADA tutulmaz (bakiye saklanmaz
     ilkesi); eldeki miktar ileride stok hareketlerinden hesaplanacak.
@@ -664,6 +694,18 @@ class Stok(TemelModel):
     # burada max_kenar=1600 ile çağrılır).
     gorsel = models.ImageField(
         "ürün görseli", upload_to="stok_gorsel/", blank=True, null=True)
+
+    # VARYANTLI KART (docs/varyant_kararlari.md): stok, ayırma, eldeki, hareket ve maliyet "kart + varyant" bazında tutulacak (adım 2+).
+    # ``varyant_boyutlari``: kartta anlamlı boyutların listesi (VaryantBoyutu kodları; sıra sabit BOYUT_SIRASI). Varyantsız kart (perçin,
+    # profil…) bugünkü gibi kalır. Bu adımda (E-1) yalnız tanım: motor/hareket/ayırma/planlama DEĞİŞMEZ.
+    class VaryantBoyutu(models.TextChoices):
+        MARKALAMA = "MARKALAMA", "Markalama"
+        KILAVUZ = "KILAVUZ", "Kullanma kılavuzu"
+        AFIS = "AFIS", "Afiş"
+        YAN_ETIKET = "YAN_ETIKET", "Yan etiket"
+
+    varyantli = models.BooleanField("varyantlı kart", default=False)
+    varyant_boyutlari = models.JSONField("varyant boyutları", default=list, blank=True)
 
     class Meta:
         db_table = "stok"
@@ -1500,6 +1542,34 @@ class KdvOrani(TemelModel):
 
     def __str__(self):
         return f"%{self.oran} {self.aciklama}"
+
+
+class StokVaryant(TemelModel):
+    """Varyantlı stok kartında fiilen KULLANILAN varyant kombinasyonu — kartın boyutlarından (Stok.varyant_boyutlari) her biri için bir
+    Varyant değeri (uygulanmayan boyut boş). ``anahtar`` kartın boyut sırasına göre türetilir ("MARKALAMA=3|AFIS=1" gibi) ve (stok, anahtar)
+    aktif satırda tekildir — NULL'lu FK'larla tekillik DB'de sağlanamadığı için. Standart varyant = tüm uygulanan boyutlar varsayılan
+    (SEMTA) değer. Adım 2+: StokHareket / StokAyirma / varyant özeti bu satıra bağlanır."""
+
+    stok = models.ForeignKey(Stok, verbose_name="stok", on_delete=models.CASCADE, related_name="varyantlar")
+    markalama = models.ForeignKey(Varyant, verbose_name="markalama", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    kilavuz = models.ForeignKey(Varyant, verbose_name="kullanma kılavuzu", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    afis = models.ForeignKey(Varyant, verbose_name="afiş", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    yan_etiket = models.ForeignKey(Varyant, verbose_name="yan etiket", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    anahtar = models.CharField("anahtar", max_length=120)
+    standart = models.BooleanField("standart varyant", default=False)
+
+    class Meta:
+        db_table = "core_stok_varyant"
+        verbose_name = "stok varyantı"
+        verbose_name_plural = "stok varyantları"
+        ordering = ["stok", "-standart", "anahtar"]
+        constraints = [
+            models.UniqueConstraint(fields=["stok", "anahtar"], condition=models.Q(silindi=False), name="uq_stok_varyant_anahtar_aktif"),
+            models.UniqueConstraint(fields=["stok"], condition=models.Q(silindi=False, standart=True), name="uq_stok_varyant_standart_tek"),
+        ]
+
+    def __str__(self):
+        return f"{self.stok_id} [{self.anahtar}]"
 
 
 class TanimSecenegi(TemelModel):

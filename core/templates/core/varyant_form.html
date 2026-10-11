@@ -1,0 +1,46 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ form_baslik }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}{{ form_baslik }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:varyantlar' %}">← Varyantlar</a>
+    <h1 class="ust-baslik"><span class="emoji">🔀</span>{{ form_baslik }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Varyant</h2>
+      <div class="izgara">
+        {% for field in form %}
+          <div class="alan {% if field.name == 'ad' or field.name == 'ad_en' %}tam{% endif %}">
+            {% if field.name == 'aktif' or field.name == 'varsayilan' %}
+              <label class="grup-secenek"><input type="checkbox" name="{{ field.html_name }}" id="{{ field.id_for_label }}"
+                {% if field.value %}checked{% endif %}> <span>{{ field.label }}</span></label>
+            {% else %}
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            {% endif %}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="yardim">Kod ve ad büyük harfe çevrilir. Yalnız bir değer varsayılan olabilir; varsayılan değer silinemez ve pasif yapılamaz.
+        Kullanımdaki değer silinemez, pasif yapılabilir.</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:varyantlar' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+</div>
+<style>.grup-secenek { display:inline-flex; align-items:center; gap:.5rem; cursor:pointer; padding:.6rem 1rem; border-radius:12px;
+  font-weight:600; background:rgba(255,255,255,.55); border:1px solid var(--cizgi); } .grup-secenek input { margin:0; width:auto; min-height:0; }</style>
+{% endblock %}

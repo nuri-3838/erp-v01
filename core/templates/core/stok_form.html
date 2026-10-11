@@ -103,6 +103,27 @@
       <p class="yardim">Birden fazlası seçilebilir. Seçime göre aşağıdaki bölümler görünür/gizlenir.</p>
     </section>
 
+    <section class="icerik-kart" id="varyant-bolum">
+      <h2 class="bolum-baslik"><span class="emoji">🔀</span>Varyant</h2>
+      <div class="grup-secim">
+        <label class="grup-secenek"><input type="checkbox" name="{{ form.varyantli.html_name }}"
+          id="{{ form.varyantli.id_for_label }}" {% if form.varyantli.value %}checked{% endif %}>
+          <span>Varyantlı kart</span></label>
+      </div>
+      <div id="varyant-boyutlar" class="varyant-boyutlar">
+        <label>Varyant boyutları <span class="zorunlu">*</span></label>
+        <div class="grup-secim">
+          {% for secenek in form.varyant_boyutlari %}
+            <label class="grup-secenek">{{ secenek.tag }} <span>{{ secenek.choice_label }}</span></label>
+          {% endfor %}
+        </div>
+        {% for e in form.varyant_boyutlari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+      </div>
+      <p class="yardim">Varyantlı kartta stok, ayırma, hareket ve maliyet <b>kart + varyant</b> bazında tutulur (markalama / kullanma
+        kılavuzu / afiş / yan etiket). Standart varyant: tüm boyutlarda varsayılan değer (AYARLAR › Varyantlar).
+        Varyantsız kartlar (perçin, profil, kayış…) bugünkü gibi kalır.</p>
+    </section>
+
     <section class="icerik-kart grup-blok" data-grup="satinalma_urunu">
       <h2 class="bolum-baslik"><span class="emoji">🛒</span>Satınalma</h2>
       <div class="izgara">
@@ -303,6 +324,10 @@
     if(kutu) kutu.addEventListener('change', sirala);
   });
   sirala();
+  var vk = document.getElementById('id_varyantli'), vb = document.getElementById('varyant-boyutlar');
+  function varyantGoster(){ if(vb) vb.style.display = (vk && vk.checked) ? '' : 'none'; }
+  if(vk) vk.addEventListener('change', varyantGoster);
+  varyantGoster();
 })();
 </script>
 

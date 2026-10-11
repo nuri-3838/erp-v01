@@ -252,8 +252,13 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                  cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
                  gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
-                 kullanici=None) -> Stok:
+                 varyantli=False, varyant_boyutlari=(), kullanici=None) -> Stok:
+    from core.services import varyant as varyant_servis
     ad = _ad_dogrula(ad)
+    try:
+        boyutlar = varyant_servis.boyutlari_dogrula(varyantli, varyant_boyutlari)
+    except varyant_servis.VaryantHatasi as e:
+        raise StokHatasi(str(e))
     kategori = Kategori.objects.filter(pk=kategori_id, silindi=False).first()
     if kategori is None:
         raise StokHatasi("Kategori bulunamadı.")
@@ -284,10 +289,13 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         satinalma_urunu=bool(satinalma_urunu), uretim_urunu=bool(uretim_urunu),
         satis_urunu=bool(satis_urunu),
         gorsel=(gorsel if satis_urunu else None),
+        varyantli=bool(varyantli), varyant_boyutlari=boyutlar,
         created_by=kullanici, updated_by=kullanici,
         **satis_alanlari,
     )
     _fiyat_listesini_yaz(stok, fiyat_listesi, kullanici)
+    if stok.varyantli:
+        varyant_servis.standart_varyant(stok, kullanici)          # standart (SEMTA/…) varyant satırı hazır gelsin
     return stok
 
 
@@ -317,6 +325,7 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
         yukleme_tir=stok.yukleme_tir, gorsel=(stok.gorsel if stok.gorsel else None),
         fiyat_try=fiyatlar.get("TRY"), fiyat_usd=fiyatlar.get("USD"),
         fiyat_eur=fiyatlar.get("EUR"), fiyat_gbp=fiyatlar.get("GBP"),
+        varyantli=stok.varyantli, varyant_boyutlari=list(stok.varyant_boyutlari or []),
         kullanici=kullanici)
 
 
@@ -331,13 +340,19 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                   cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
                   gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
-                  kullanici=None) -> Stok:
+                  varyantli=False, varyant_boyutlari=(), kullanici=None) -> Stok:
     """Ad, birimler, çevirici, vergi/stok/grup/teklif/görsel/fiyat listesi alanları
     güncellenir. KOD ve KATEGORİ DEĞİŞMEZ. ``gorsel=None`` + Satış işaretliyse mevcut
     görsel korunur (yeni dosya yüklenmedi demektir); Satış işareti kaldırılırsa görsel
-    de temizlenir (bkz. diğer satış/teklif alanları)."""
+    de temizlenir (bkz. diğer satış/teklif alanları). Varyantlı/boyut ayarı değişince
+    StokVaryant satırları eşitlenir (bkz. core.services.varyant)."""
+    from core.services import varyant as varyant_servis
     if stok.silindi:
         raise StokHatasi("Silinmiş stok düzenlenemez.")
+    try:
+        boyutlar = varyant_servis.boyutlari_dogrula(varyantli, varyant_boyutlari)
+    except varyant_servis.VaryantHatasi as e:
+        raise StokHatasi(str(e))
     _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
     satis_alanlari = _satis_alanlarini_coz(
         satis_urunu, model_kodu=model_kodu, ad_en=ad_en, hs_kodu=hs_kodu,
@@ -369,14 +384,18 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
             stok.gorsel = gorsel
     else:
         stok.gorsel = None
+    varyant_degisti = (stok.varyantli, list(stok.varyant_boyutlari or [])) != (bool(varyantli), boyutlar)
+    stok.varyantli, stok.varyant_boyutlari = bool(varyantli), boyutlar
     stok.updated_by = kullanici
     stok.save(update_fields=[
         "ad", "uretim_birimi", "fatura_birimi", "cevirici", "kdv", "tevkifat",
         "kritik_stok", "tedarikci", "tedarikci_adi", "alis_fiyati", "alis_fiyati_pb",
         "satinalma_urunu", "uretim_urunu", "satis_urunu",
         *_SATIS_ALAN_ADLARI, *_SATIS_METIN_ALAN_ADLARI,
-        "gorsel", "updated_by", "updated_at"])
+        "gorsel", "varyantli", "varyant_boyutlari", "updated_by", "updated_at"])
     _fiyat_listesini_yaz(stok, fiyat_listesi, kullanici)
+    if varyant_degisti:
+        varyant_servis.stok_varyantlarini_esitle(stok, kullanici)
     return stok
 
 

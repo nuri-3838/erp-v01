@@ -435,12 +435,20 @@ class StokForm(forms.Form):
     fiyat_eur = TRDecimalField(label="Satış Fiyatı (EUR)", basamak=4, required=False)
     fiyat_gbp = TRDecimalField(label="Satış Fiyatı (GBP)", basamak=4, required=False)
 
+    # Varyantlı kart (docs/varyant_kararlari.md): işaretliyse en az bir boyut seçilir; stok/maliyet kart + varyant bazında (adım 2+).
+    varyantli = forms.BooleanField(label="Varyantlı kart", required=False)
+    varyant_boyutlari = forms.MultipleChoiceField(
+        label="Varyant boyutları", choices=Stok.VaryantBoyutu.choices, required=False,
+        widget=forms.CheckboxSelectMultiple)
+
     def clean(self):
         cd = super().clean()
         if not (cd.get("satinalma_urunu") or cd.get("uretim_urunu")
                or cd.get("satis_urunu")):
             raise forms.ValidationError(
                 "En az bir grup (Satınalma/Üretim/Satış) seçilmelidir.")
+        if cd.get("varyantli") and not cd.get("varyant_boyutlari"):
+            self.add_error("varyant_boyutlari", "Varyantlı kartta en az bir boyut seçin.")
         return cd
 
     def __init__(self, *args, duzenle: bool = False, **kwargs):
@@ -967,6 +975,20 @@ class TevkifatOraniForm(forms.Form):
         from core.services.hesap_plani import yaprak_hesaplar
         self.fields["hesap"].queryset = yaprak_hesaplar()
         self.fields["hesap"].widget.attrs["class"] = "akilli-sec"
+
+
+class VaryantForm(forms.Form):
+    """Varyant değeri ekle/düzenle (AYARLAR > Varyantlar). Kod/ad TR büyük harf + benzersizlik + tek varsayılan serviste."""
+
+    sira = forms.IntegerField(label="Sıra", min_value=0, initial=0,
+                              widget=forms.NumberInput(attrs={"min": 0, "inputmode": "numeric"}))
+    kod = forms.CharField(label="Kod", max_length=30,
+                          widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "örn. SEMTA, YOK, MR. MOP"}))
+    ad = forms.CharField(label="Ad", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ad_en = forms.CharField(label="Ad (İngilizce — EN proforma/sipariş PDF'i)", max_length=100, required=False,
+                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    aktif = forms.BooleanField(label="Aktif (seçilebilir)", required=False, initial=True)
+    varsayilan = forms.BooleanField(label="Varsayılan (standart varyant)", required=False)
 
 
 class TanimSecenegiForm(forms.Form):
