@@ -22,6 +22,27 @@ class KategoriHatasi(ValueError):
     """Kategori kural ihlali (Türkçe mesaj)."""
 
 
+MAMUL_KOK_KODU = "152"                    # MAMULLER kök kategorisi (satış ürünlerinin yeri)
+SATIS_URUNU_YASAK_KOKLER = ("150", "151")   # ham madde / yarı mamul kökleri: satış ürünü işaretlenemez (ara mamul teklif listesine girmesin)
+
+
+def kok_kategori_kodu(kategori) -> str:
+    """Kategorinin kök (en üst) kategorisinin kodu ("152" gibi); kök kategorinin kendisi için kendi kodu."""
+    k = kategori
+    while k.ust_id:
+        k = k.ust
+    return k.kod
+
+
+def mamul_kategorisi_mi(kategori) -> bool:
+    return kok_kategori_kodu(kategori) == MAMUL_KOK_KODU
+
+
+def satis_urunu_olabilir_mi(kategori) -> bool:
+    """Satış ürünü (teklif/proforma/sipariş listesi) işareti: ham madde (150) ve yarı mamul (151) köklerinde YASAK; mamul (152) ve diğerleri serbest."""
+    return kok_kategori_kodu(kategori) not in SATIS_URUNU_YASAK_KOKLER
+
+
 def aktif_kategoriler():
     """Silinmemiş kategoriler (ad'a göre); üst birlikte çekilir."""
     return Kategori.objects.filter(silindi=False).select_related("ust").order_by("ad")

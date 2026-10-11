@@ -25,6 +25,7 @@ from django.utils import timezone
 from core.metin import buyuk_harf_tr
 from core.models import Birim, Cari, Kategori, KdvOrani, Stok, StokFiyat, TevkifatOrani
 from core.sayi import SayiHatasi, parse_tr
+from core.services import kategori as kategori_servis
 
 
 class StokHatasi(ValueError):
@@ -138,9 +139,15 @@ def _pb_dogrula(para_birimi):
     return pb
 
 
-def _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu):
+SATIS_URUNU_MAMUL_MESAJI = ("Satış ürünü ham madde (150) ve yarı mamul (151) kartlarında işaretlenemez; teklif/proforma/sipariş listesine "
+                            "yalnız 152 MAMULLER gelir.")
+
+
+def _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu, kategori=None):
     if not (satinalma_urunu or uretim_urunu or satis_urunu):
         raise StokHatasi("En az bir grup (Satınalma/Üretim/Satış) seçilmelidir.")
+    if satis_urunu and kategori is not None and not kategori_servis.satis_urunu_olabilir_mi(kategori):
+        raise StokHatasi(SATIS_URUNU_MAMUL_MESAJI)
 
 
 def _tam_sayi_opsiyonel(deger, etiket):
@@ -266,7 +273,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         raise StokHatasi("Stok yalnız ALT kategoriye açılabilir (üst kategori değil).")
     uretim = _birim_coz(uretim_birimi_id, "Üretim birimi")
     fatura = _birim_coz(fatura_birimi_id, "Fatura birimi")
-    _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
+    _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu, kategori)
     satis_alanlari = _satis_alanlarini_coz(
         satis_urunu, model_kodu=model_kodu, ad_en=ad_en, hs_kodu=hs_kodu,
         materyal=materyal, materyal_en=materyal_en, basamak_sayisi=basamak_sayisi,
@@ -353,7 +360,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
         boyutlar = varyant_servis.boyutlari_dogrula(varyantli, varyant_boyutlari)
     except varyant_servis.VaryantHatasi as e:
         raise StokHatasi(str(e))
-    _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu)
+    _grup_dogrula(satinalma_urunu, uretim_urunu, satis_urunu, stok.kategori)
     satis_alanlari = _satis_alanlarini_coz(
         satis_urunu, model_kodu=model_kodu, ad_en=ad_en, hs_kodu=hs_kodu,
         materyal=materyal, materyal_en=materyal_en, basamak_sayisi=basamak_sayisi,

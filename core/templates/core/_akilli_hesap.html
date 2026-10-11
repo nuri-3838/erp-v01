@@ -27,7 +27,7 @@ eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) ça
         var gb = document.createElement('div'); gb.className = 'akilli-grup'; gb.textContent = sonGrup;
         gListe.appendChild(gb);
       }
-      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
+      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t; d.dataset.deger = o.value;
       d.addEventListener('mousedown', function(ev){ ev.preventDefault();
         sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
         sel.dispatchEvent(new Event('change', {bubbles:true})); });
@@ -49,6 +49,32 @@ eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) ça
     if(sel.value) inp.value = metin(sel, sel.value);
     inp.addEventListener('focus', function(){ ac(sel, inp, sel.value?'':inp.value); });
     inp.addEventListener('input', function(){ sel.value=''; ac(sel, inp, inp.value); });
+    // Klavye: Enter liste açıkken vurgulu (yoksa ilk) seçeneği SEÇER ve formu ASLA göndermez (önceden Enter formu gönderiyor, seçim
+    // kayboluyordu); ↑/↓ vurguyu gezdirir, Esc listeyi kapatır.
+    inp.addEventListener('keydown', function(ev){
+      var acik = gListe.style.display === 'block' && aktifInp === inp;
+      if(ev.key === 'Enter'){
+        ev.preventDefault();
+        if(!acik) return;
+        // vurgulu seçenek; yoksa metin yazılmışsa ilk GERÇEK eşleşme (boş "— seç —" satırı değil), metin boşsa ilk satır
+        var vurgulu = gListe.querySelector('.akilli-secenek.vurgulu')
+          || (inp.value ? gListe.querySelector('.akilli-secenek:not([data-deger=""])') : null)
+          || gListe.querySelector('.akilli-secenek');
+        if(vurgulu) vurgulu.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
+      } else if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
+        if(!acik){ ac(sel, inp, inp.value); return; }
+        ev.preventDefault();
+        var secenekler = Array.prototype.slice.call(gListe.querySelectorAll('.akilli-secenek'));
+        if(!secenekler.length) return;
+        var i = secenekler.findIndex(function(d){ return d.classList.contains('vurgulu'); });
+        var y = ev.key === 'ArrowDown' ? Math.min(i + 1, secenekler.length - 1) : Math.max(i - 1, 0);
+        secenekler.forEach(function(d){ d.classList.remove('vurgulu'); });
+        secenekler[y].classList.add('vurgulu');
+        if(secenekler[y].scrollIntoView) secenekler[y].scrollIntoView({block: 'nearest'});
+      } else if(ev.key === 'Escape' && acik){
+        ev.preventDefault(); gListe.style.display = 'none';
+      }
+    });
     inp.addEventListener('blur', function(){ setTimeout(function(){
       gListe.style.display='none'; inp.value=metin(sel, sel.value); }, 150); });
   }

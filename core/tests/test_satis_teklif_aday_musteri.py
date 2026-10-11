@@ -57,7 +57,7 @@ class SatisTeklifAdayMusteriTest(TestCase):
         cls.donusmus_aday.cari = cls.cari
         cls.donusmus_aday.save(update_fields=["cari"])
 
-        ust = Kategori.objects.create(kod="150", ad="MAMUL", created_by=cls.yon,
+        ust = Kategori.objects.create(kod="152", ad="MAMUL", created_by=cls.yon,
                                       updated_by=cls.yon)
         cls.kat = Kategori.objects.create(kod="10", ad="MERDİVEN", ust=ust,
                                           created_by=cls.yon, updated_by=cls.yon)
@@ -368,7 +368,7 @@ class TeklifCrmAsamaOtomasyonuTest(TestCase):
         cls.yon = User.objects.create_superuser("tcaoyon", password="x")
         cls.aday = aday_musteri_olustur(
             unvan="asama test aday", para_birimi="TRY", kullanici=cls.yon)
-        ust = Kategori.objects.create(kod="151", ad="MAMUL2", created_by=cls.yon,
+        ust = Kategori.objects.create(kod="153", ad="MAMUL2", created_by=cls.yon,
                                       updated_by=cls.yon)
         cls.kat = Kategori.objects.create(kod="11", ad="MERDİVEN2", ust=ust,
                                           created_by=cls.yon, updated_by=cls.yon)

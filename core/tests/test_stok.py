@@ -20,7 +20,7 @@ from core.services.tanim import (TanimHatasi, kdv_orani_sil, tevkifat_orani_sil)
 
 
 def _veri():
-    ust = kategori_olustur(ad="hammadde", kod="150")
+    ust = kategori_olustur(ad="hammadde", kod="152")
     alt = kategori_olustur(ad="alüminyum", kod="10", ust_id=ust.pk)
     alt2 = kategori_olustur(ad="çelik", kod="20", ust_id=ust.pk)
     adet = birim_olustur(ad="adet", kisa_ad="ad", ondalik=0)
@@ -58,13 +58,13 @@ class StokServisTest(TestCase):
         s1 = self._stok(alt, adet, kg)
         s2 = self._stok(alt, adet, kg, ad="alüminyum boru")
         s3 = self._stok(alt2, adet, kg, ad="çelik sac")
-        self.assertEqual(s1.kod, "150-10-0001")
-        self.assertEqual(s2.kod, "150-10-0002")
-        self.assertEqual(s3.kod, "150-20-0001")        # ayrı kategori, sıfırdan
+        self.assertEqual(s1.kod, "152-10-0001")
+        self.assertEqual(s2.kod, "152-10-0002")
+        self.assertEqual(s3.kod, "152-20-0001")        # ayrı kategori, sıfırdan
 
     def test_sonraki_kod_fonksiyonu(self):
         _, alt, _, _, _ = _veri()
-        self.assertEqual(sonraki_stok_kodu(alt), "150-10-0001")
+        self.assertEqual(sonraki_stok_kodu(alt), "152-10-0001")
 
     def test_tr_buyuk_harf(self):
         _, alt, _, adet, kg = _veri()
@@ -187,7 +187,7 @@ class StokServisTest(TestCase):
         s2 = self._stok(alt, adet, kg, ad="ikinci")     # 0002
         stok_sil(s2)
         s3 = self._stok(alt, adet, kg, ad="ucuncu")     # 0002 değil -> 0003
-        self.assertEqual(s3.kod, "150-10-0003")
+        self.assertEqual(s3.kod, "152-10-0003")
 
     def test_guncelle_kod_kategori_sabit(self):
         _, alt, _, adet, kg = _veri()
@@ -222,7 +222,7 @@ class StokServisTest(TestCase):
                          alis_fiyati="99,90", alis_fiyati_pb="eur")
         kopya = stok_kopyala(s, kullanici=None)
         self.assertNotEqual(kopya.pk, s.pk)
-        self.assertEqual(kopya.kod, "150-10-0002")          # sıradaki numara
+        self.assertEqual(kopya.kod, "152-10-0002")          # sıradaki numara
         self.assertEqual(kopya.ad, f"{s.ad} KOPYA")         # ad ayırt edici sonek alır
         self.assertEqual(
             (kopya.kategori_id, kopya.uretim_birimi_id, kopya.fatura_birimi_id,
@@ -232,7 +232,7 @@ class StokServisTest(TestCase):
              s.cevirici, s.kdv_id, s.tevkifat_id, s.kritik_stok, s.tedarikci_id,
              s.tedarikci_adi, s.alis_fiyati, s.alis_fiyati_pb))
         s.refresh_from_db()
-        self.assertEqual((s.kod, s.ad), ("150-10-0001", "ORİJİNAL"))   # orijinal değişmedi
+        self.assertEqual((s.kod, s.ad), ("152-10-0001", "ORİJİNAL"))   # orijinal değişmedi
 
     def test_sil_soft_delete(self):
         _, alt, _, adet, kg = _veri()
@@ -247,36 +247,36 @@ class StokServisTest(TestCase):
     def test_db_cevirici_kisit(self):
         _, alt, _, adet, kg = _veri()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Stok.objects.create(kod="150-10-9001", ad="X", kategori=alt,
+            Stok.objects.create(kod="152-10-9001", ad="X", kategori=alt,
                                  uretim_birimi=adet, fatura_birimi=kg,
                                  cevirici=Decimal("0"))
 
     def test_db_alis_fiyati_kisit(self):
         _, alt, _, adet, kg = _veri()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Stok.objects.create(kod="150-10-9002", ad="Y", kategori=alt,
+            Stok.objects.create(kod="152-10-9002", ad="Y", kategori=alt,
                                  uretim_birimi=adet, fatura_birimi=kg,
                                  alis_fiyati=Decimal("-5"))
 
     def test_db_kod_unique(self):
         _, alt, _, adet, kg = _veri()
-        Stok.objects.create(kod="150-10-5000", ad="A", kategori=alt,
+        Stok.objects.create(kod="152-10-5000", ad="A", kategori=alt,
                             uretim_birimi=adet, fatura_birimi=kg)
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Stok.objects.create(kod="150-10-5000", ad="B", kategori=alt,
+            Stok.objects.create(kod="152-10-5000", ad="B", kategori=alt,
                                 uretim_birimi=adet, fatura_birimi=kg)
 
     def test_db_agirlik_kisit(self):
         _, alt, _, adet, kg = _veri()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Stok.objects.create(kod="150-10-9003", ad="Z", kategori=alt,
+            Stok.objects.create(kod="152-10-9003", ad="Z", kategori=alt,
                                 uretim_birimi=adet, fatura_birimi=kg,
                                 satis_urunu=True, agirlik=Decimal("-1"))
 
     def test_db_en_az_bir_grup_kisit(self):
         _, alt, _, adet, kg = _veri()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Stok.objects.create(kod="150-10-9004", ad="W", kategori=alt,
+            Stok.objects.create(kod="152-10-9004", ad="W", kategori=alt,
                                 uretim_birimi=adet, fatura_birimi=kg,
                                 satinalma_urunu=False, uretim_urunu=False,
                                 satis_urunu=False)
@@ -288,6 +288,10 @@ class StokGrupTeknikAlanTest(TestCase):
 
     def _kur(self, alt, adet, kg, **kw):
         kw.setdefault("kdv_id", _kdv("20").pk)
+        if kw.get("satis_urunu"):                                   # satış ürünü ham madde (150) kökünde yasak → mamul (152) kökü
+            from core.models import Kategori
+            mam, _ = Kategori.objects.get_or_create(kod="152", ust=None, defaults={"ad": "MAMULLER"})
+            alt, _ = Kategori.objects.get_or_create(kod="10", ust=mam, defaults={"ad": "A TİPİ"})
         return stok_olustur(ad=kw.pop("ad", "x"), kategori_id=alt.pk,
                             uretim_birimi_id=adet.pk, fatura_birimi_id=kg.pk,
                             cevirici=Decimal("1"), **kw)
@@ -410,6 +414,10 @@ class StokFiyatTest(TestCase):
 
     def _kur(self, alt, adet, kg, **kw):
         kw.setdefault("kdv_id", _kdv("20").pk)
+        if kw.get("satis_urunu"):                                   # satış ürünü ham madde (150) kökünde yasak → mamul (152) kökü
+            from core.models import Kategori
+            mam, _ = Kategori.objects.get_or_create(kod="152", ust=None, defaults={"ad": "MAMULLER"})
+            alt, _ = Kategori.objects.get_or_create(kod="10", ust=mam, defaults={"ad": "A TİPİ"})
         return stok_olustur(ad=kw.pop("ad", "x"), kategori_id=alt.pk,
                             uretim_birimi_id=adet.pk, fatura_birimi_id=kg.pk,
                             cevirici=Decimal("1"), **kw)
@@ -507,6 +515,10 @@ class StokGorselTest(TestCase):
 
     def _kur(self, alt, adet, kg, **kw):
         kw.setdefault("kdv_id", _kdv("20").pk)
+        if kw.get("satis_urunu"):                                   # satış ürünü ham madde (150) kökünde yasak → mamul (152) kökü
+            from core.models import Kategori
+            mam, _ = Kategori.objects.get_or_create(kod="152", ust=None, defaults={"ad": "MAMULLER"})
+            alt, _ = Kategori.objects.get_or_create(kod="10", ust=mam, defaults={"ad": "A TİPİ"})
         return stok_olustur(ad=kw.pop("ad", "x"), kategori_id=alt.pk,
                             uretim_birimi_id=adet.pk, fatura_birimi_id=kg.pk,
                             cevirici=Decimal("1"), **kw)
@@ -601,7 +613,7 @@ class StokViewTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:stoklar"))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "150-10-0001")
+        self.assertContains(r, "152-10-0001")
         self.assertContains(r, "ALÜMİNYUM LEVHA")
         self.assertContains(r, "+ Yeni Stok")
 
@@ -611,7 +623,7 @@ class StokViewTest(TestCase):
         stok_olustur(ad="boru", kategori_id=self.alt2.pk, uretim_birimi_id=self.adet.pk,
                      fatura_birimi_id=self.kg.pk, cevirici=Decimal("1"), kdv_id=_kdv("20").pk)
         self.client.force_login(self.yon)
-        r = self.client.get(reverse("core:stoklar"), {"ara": "150-10"})
+        r = self.client.get(reverse("core:stoklar"), {"ara": "152-10"})
         self.assertContains(r, "LEVHA")
         self.assertNotContains(r, "BORU")
 
@@ -645,7 +657,7 @@ class StokViewTest(TestCase):
         self.assertEqual(r.status_code, 302)
         s = Stok.objects.get(ad="ALÜMİNYUM LEVHA")
         self.assertEqual((s.kod, s.kategori_id, s.kdv_id),
-                         ("150-10-0001", self.alt.pk, k.pk))
+                         ("152-10-0001", self.alt.pk, k.pk))
 
     def test_ekle_post_alis_fiyati_kaydedilir_ve_detayda_gorunur(self):
         k = _kdv("20")
@@ -705,7 +717,7 @@ class StokViewTest(TestCase):
         self.assertEqual(r.status_code, 302)
         s.refresh_from_db()
         self.assertEqual((s.ad, s.kod, s.cevirici, s.kdv_id),
-                         ("LEVHA YENİ", "150-10-0001", Decimal("2.500000"), k10.pk))
+                         ("LEVHA YENİ", "152-10-0001", Decimal("2.500000"), k10.pk))
 
     def test_sil_post(self):
         s = stok_olustur(ad="levha", kategori_id=self.alt.pk,
@@ -742,7 +754,7 @@ class StokViewTest(TestCase):
     def test_kod_api(self):
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:stok_kod_api"), {"kategori": self.alt.pk})
-        self.assertEqual(r.json()["kod"], "150-10-0001")
+        self.assertEqual(r.json()["kod"], "152-10-0001")
         # üst kategori -> kod yok
         r2 = self.client.get(reverse("core:stok_kod_api"), {"kategori": self.ust.pk})
         self.assertIsNone(r2.json()["kod"])
@@ -843,7 +855,7 @@ class StokViewTest(TestCase):
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:stok_detay", args=[s.pk]))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "150-10-0001")
+        self.assertContains(r, "152-10-0001")
         self.assertContains(r, "ALÜMİNYUM LEVHA")
         self.assertContains(r, "Temel Bilgiler")
         self.assertContains(r, "Stok Hareketleri")

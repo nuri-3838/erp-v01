@@ -32,7 +32,7 @@ class SatisProformaTest(TestCase):
             kod="C3", unvan="MÜŞTERİ SATIŞ PROFORMA", muhasebe_kodu="120.03",
             para_birimi="USD", iskonto_yuzdesi=Decimal("10"),
             created_by=cls.yon, updated_by=cls.yon)
-        ust = Kategori.objects.create(kod="150", ad="MAMUL", created_by=cls.yon,
+        ust = Kategori.objects.create(kod="152", ad="MAMUL", created_by=cls.yon,
                                       updated_by=cls.yon)
         cls.kat = Kategori.objects.create(kod="10", ad="MERDİVEN", ust=ust,
                                           created_by=cls.yon, updated_by=cls.yon)
@@ -490,7 +490,7 @@ class SatisProformaBankaHesabiTest(TestCase):
         cls.cari = Cari.objects.create(
             kod="C4", unvan="MÜŞTERİ SATIŞ PROFORMA BANKA", muhasebe_kodu="120.04",
             para_birimi="USD", created_by=cls.yon, updated_by=cls.yon)
-        ust = Kategori.objects.create(kod="151", ad="MAMUL2", created_by=cls.yon,
+        ust = Kategori.objects.create(kod="153", ad="MAMUL2", created_by=cls.yon,
                                       updated_by=cls.yon)
         kat = Kategori.objects.create(kod="11", ad="MERDİVEN2", ust=ust,
                                       created_by=cls.yon, updated_by=cls.yon)

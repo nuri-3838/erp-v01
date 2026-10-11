@@ -36,7 +36,7 @@ class SatisTeklifTest(TestCase):
             kod="C1", unvan="MÜŞTERİ SATIŞ TEKLİF", muhasebe_kodu="120.01",
             para_birimi="USD", iskonto_yuzdesi=Decimal("10"),
             created_by=cls.yon, updated_by=cls.yon)
-        ust = Kategori.objects.create(kod="150", ad="MAMUL", created_by=cls.yon,
+        ust = Kategori.objects.create(kod="152", ad="MAMUL", created_by=cls.yon,
                                       updated_by=cls.yon)
         cls.kat = Kategori.objects.create(kod="10", ad="MERDİVEN", ust=ust,
                                           created_by=cls.yon, updated_by=cls.yon)
