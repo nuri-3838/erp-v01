@@ -1239,11 +1239,23 @@ class FasonSatirForm(forms.Form):
 # === ÜRETİM modülü — İş İstasyonları + Operasyon Tanımları + İhtiyaç Hesapla
 #     + Üretim Emirleri + Operasyon Kayıtları ===
 class IsIstasyonuForm(forms.Form):
-    """ÜRETİM > İş İstasyonları — DepoForm ile birebir aynı desen."""
+    """ÜRETİM > İş İstasyonları — DepoForm ile birebir aynı desen. ``fason``: işi dışarıda fasoncu yapar (emirler fason dönüşle kapanır);
+    ``fasoncu``: fason dönüş açarken varsayılan cari; ``sira``: üretim akış sırası (küçük önce)."""
     kod = forms.CharField(label="Kod", max_length=20,
                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
     ad = forms.CharField(label="Ad", max_length=100,
                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    sira = forms.IntegerField(label="Sıra (üretim akışı, küçük önce)", min_value=0, initial=0,
+                              widget=forms.NumberInput(attrs={"autocomplete": "off", "inputmode": "numeric"}))
+    fason = forms.BooleanField(label="Fason istasyonu (işi dışarıda fasoncu yapar)", required=False)
+    fasoncu = forms.ModelChoiceField(label="Varsayılan fasoncu (cari)", queryset=Cari.objects.none(), required=False,
+                                     empty_label="— yok —")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["fasoncu"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["fasoncu"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["fasoncu"].widget.attrs["class"] = "akilli-sec"
 
 
 class OperasyonBaslikForm(forms.Form):

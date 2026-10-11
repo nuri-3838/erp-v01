@@ -20,14 +20,19 @@
       <h2 class="bolum-baslik">İş İstasyonu Bilgileri</h2>
       <div class="izgara">
         {% for field in form %}
-          <div class="alan">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
+          <div class="alan{% if field.name == 'fason' %} alan-onay{% endif %}">
+            {% if field.name == "fason" %}
+              <label class="onay-etiket" for="{{ field.id_for_label }}">{{ field }} {{ field.label }}</label>
+            {% else %}
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {% if field.name == "fasoncu" %}<div class="akilli">{{ field }}</div>{% else %}{{ field }}{% endif %}
+            {% endif %}
             {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         {% endfor %}
       </div>
-      <p class="yardim">Kod ve Ad otomatik BÜYÜK harfe çevrilir ve benzersizdir.</p>
+      <p class="yardim">Kod ve Ad otomatik BÜYÜK harfe çevrilir ve benzersizdir. Fason istasyonunun emirleri “Üretildi” ile değil Fason Dönüş
+        belgesiyle kapanır; varsayılan fasoncu, emirden fason dönüş açarken hazır seçili gelir. Sıra: üretim akışı (küçük önce).</p>
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:is_istasyonlari' %}">İptal</a>
@@ -35,4 +40,9 @@
     </div>
   </form>
 </div>
+<style>
+  .alan-onay .onay-etiket { display:flex; align-items:center; gap:.5rem; text-transform:none; cursor:pointer; }
+  .alan-onay input[type=checkbox] { width:auto; margin:0; }
+</style>
+{% include "core/_akilli_hesap.html" %}
 {% endblock %}

@@ -3073,12 +3073,19 @@ class IsIstasyonu(TemelModel):
 
     kod = models.CharField("kod", max_length=20)
     ad = models.CharField("ad", max_length=100)
+    # FASON istasyonu: işi dışarıda bir fasoncu yapar — bu istasyonun emirleri "Üretildi" ile değil Fason Dönüş belgesiyle kapanır, kesim
+    # listesi (FASON > Kesim Listesi Hesapla) bu istasyonların operasyonlarından çıkar. Sabit "10" kodu YOK; bayrak tek doğruluk kaynağı.
+    fason = models.BooleanField("fason istasyonu", default=False)
+    fasoncu = models.ForeignKey("Cari", verbose_name="varsayılan fasoncu", null=True, blank=True, on_delete=models.PROTECT,
+                                related_name="fason_istasyonlari")
+    # Üretim akış sırası (küçük önce): ÜS detayındaki gruplama ve "Tümünü üret" bu sırayla ilerler.
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
 
     class Meta:
         db_table = "core_is_istasyonu"
         verbose_name = "iş istasyonu"
         verbose_name_plural = "iş istasyonları"
-        ordering = ["kod"]
+        ordering = ["sira", "kod"]
         constraints = [
             models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
                                     name="uq_is_istasyonu_kod_aktif"),

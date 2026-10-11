@@ -86,7 +86,7 @@ class UretildiTest(UretTaban):
 
     def test_fason_emrinde_uretildi_yok_ve_servis_reddeder(self):
         self.kur("3")
-        self.ie.istasyon.kod = "10"
+        self.ie.istasyon.fason = True                                                                  # bayrak belirler (kod "10" değil)
         self.ie.istasyon.save()
         d = self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk]))
         self.assertNotContains(d, f'action="{self.url}"')

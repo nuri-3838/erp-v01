@@ -6512,14 +6512,17 @@ def fason_donus_ekle(request):
             except fason_servis.FasonHatasi as e:
                 messages.error(request, str(e))
     else:
-        baslik = FasonDonusBaslikForm()
         ilk = [{}, {}, {}]
-        ie = (IstasyonEmri.objects.filter(pk=request.GET["istasyon_emri"], silindi=False).select_related("operasyon").first()
+        bas_ilk = {}
+        ie = (IstasyonEmri.objects.filter(pk=request.GET["istasyon_emri"], silindi=False).select_related("operasyon", "istasyon").first()
               if (request.GET.get("istasyon_emri") or "").isdigit() else None)
         if ie is not None:                                             # istasyon emrinden "Fason dönüş aç": operasyon + açık kalan adet hazır gelir
             kalan = uretim_servis.istasyon_emri_acik_kalan(ie)
             ilk = [{"operasyon": ie.operasyon_id, "istasyon_emri": ie.pk,
                     "adet": (max(kalan, 0) * uretim_servis._referans_miktar(ie.operasyon)).quantize(Decimal("0.001")) or None}]
+            if ie.istasyon.fasoncu_id:                                 # istasyonun varsayılan fasoncusu hazır seçili gelir
+                bas_ilk["cari"] = ie.istasyon.fasoncu_id
+        baslik = FasonDonusBaslikForm(initial=bas_ilk)
         formset = FasonDonusSatirFormSet(prefix="satir", initial=ilk)
     return render(request, "core/fason_donus_form.html", {"baslik": baslik, "formset": formset})
 
@@ -6823,7 +6826,12 @@ SiparisUretimEmriSatirFormSet = formset_factory(SiparisUretimEmriSatirForm, extr
 @ekran_gerekli("is_istasyonlari")
 def is_istasyonlari(request):
     return render(request, "core/is_istasyonu_listesi.html",
-                  {"istasyonlar": uretim_servis.aktif_istasyonlar()})
+                  {"satirlar": uretim_servis.istasyon_listesi()})
+
+
+def _istasyon_form_verisi(cd):
+    return dict(kod=cd["kod"], ad=cd["ad"], fason=cd.get("fason", False), fasoncu_id=cd["fasoncu"].pk if cd.get("fasoncu") else None,
+                sira=cd.get("sira") or 0)
 
 
 @ekran_gerekli("is_istasyonlari")
@@ -6832,7 +6840,7 @@ def is_istasyonu_ekle(request):
         form = IsIstasyonuForm(request.POST)
         if form.is_valid():
             try:
-                i = uretim_servis.istasyon_olustur(**form.cleaned_data, kullanici=request.user)
+                i = uretim_servis.istasyon_olustur(**_istasyon_form_verisi(form.cleaned_data), kullanici=request.user)
                 messages.success(request, f"İş istasyonu eklendi: {i.kod} — {i.ad}")
                 return redirect("core:is_istasyonlari")
             except uretim_servis.UretimHatasi as e:
@@ -6851,13 +6859,14 @@ def is_istasyonu_duzenle(request, pk):
         if form.is_valid():
             try:
                 uretim_servis.istasyon_guncelle(
-                    istasyon, **form.cleaned_data, kullanici=request.user)
+                    istasyon, **_istasyon_form_verisi(form.cleaned_data), kullanici=request.user)
                 messages.success(request, "İş istasyonu güncellendi.")
                 return redirect("core:is_istasyonlari")
             except uretim_servis.UretimHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = IsIstasyonuForm(initial={"kod": istasyon.kod, "ad": istasyon.ad})
+        form = IsIstasyonuForm(initial={"kod": istasyon.kod, "ad": istasyon.ad, "fason": istasyon.fason, "fasoncu": istasyon.fasoncu_id,
+                                        "sira": istasyon.sira})
     return render(request, "core/is_istasyonu_form.html",
                   {"form": form, "baslik": "İş İstasyonu Düzenle", "duzenlenen": istasyon})
 
@@ -7303,7 +7312,7 @@ def uretim_emri_detay(request, pk):
     for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti", "istasyon").order_by("seviye", "pk"):
         ref = uretim_servis._referans_miktar(ie.operasyon)
         acilabilir = emir.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
-        fason = ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU
+        fason = ie.istasyon.fason
         emirler.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
                         "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
                         "uretilebilir": acilabilir and not fason and ie.durum != IstasyonEmri.Durum.BITTI, "hata": hatalar.get(str(ie.pk)),
@@ -7437,7 +7446,7 @@ def istasyon_emirleri(request):
     for ie in sayfa:
         ref = uretim_servis._referans_miktar(ie.operasyon)
         acilabilir = ie.uretim_emri.durum == UretimEmri.Durum.ACIK and ie.durum != IstasyonEmri.Durum.IPTAL
-        fason = ie.istasyon.kod == fason_servis.FASON_ISTASYON_KODU
+        fason = ie.istasyon.fason
         satirlar.append({"ie": ie, "ref": ref, "planlanan": ie.planlanan * ref, "tamamlanan": ie.tamamlanan * ref,
                          "acik": max(uretim_servis.istasyon_emri_acik_kalan(ie), Decimal("0")) * ref,
                          "uretilebilir": acilabilir and not fason and ie.durum != IstasyonEmri.Durum.BITTI, "hata": hatalar.get(str(ie.pk)),

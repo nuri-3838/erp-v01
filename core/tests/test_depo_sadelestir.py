@@ -113,7 +113,7 @@ class UsEkranDuzeltmeTest(kt.KapanisTaban):
         self.assertContains(d, "Eksik malzeme yok")
         self.assertNotContains(self.client.get(reverse("core:uretim_emirleri")), "Eksik malzeme: ")
 
-    def test_fason_donus_dugmesi_yalniz_istasyon_10(self):
+    def test_fason_donus_dugmesi_yalniz_fason_istasyonunda(self):
         emir = self.emir_ac(self.siparis("3"))
         ie = emir.istasyon_emirleri.get()
         url = reverse("core:fason_donus_ekle") + f"?istasyon_emri={ie.pk}"
@@ -121,7 +121,7 @@ class UsEkranDuzeltmeTest(kt.KapanisTaban):
         self.assertNotContains(self.client.get(reverse("core:istasyon_emirleri")), url)
         uret = reverse("core:istasyon_emri_uret", args=[ie.pk])
         self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), uret)               # fason değilde "Üretildi" var
-        ie.istasyon.kod = "10"
+        ie.istasyon.fason = True                                                                   # bayrak belirler (kod "10" değil)
         ie.istasyon.save()
         self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), url)
         self.assertNotContains(self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk])), uret)            # fason emrinde "Üretildi" yok

@@ -19,7 +19,7 @@ class ListeBase(TestCase):
         cls.adet = Birim.objects.create(ad="ADET", kisa_ad="AD", ondalik=0)
         cls.boy = Birim.objects.create(ad="BOY", kisa_ad="BOY", ondalik=0)
         kat = Kategori.objects.create(kod="KL", ad="KESİM LİSTESİ TEST")
-        cls.lazer = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER")
+        cls.lazer = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER", fason=True)
         cls.montaj = IsIstasyonu.objects.create(kod="70", ad="MONTAJ")
 
         def stok(kod, ad, birim=None, **kw):

@@ -10,24 +10,30 @@
   </div>
   <a class="dugme" href="{% url 'core:is_istasyonu_ekle' %}">+ Yeni</a>
 </div>
+<p class="yardim">Sıra: üretim akışı (küçük önce; ÜS detayındaki gruplama ve “Tümünü üret” bu sırayla ilerler). Fason istasyonunun emirleri
+  “Üretildi” ile değil Fason Dönüş belgesiyle kapanır; kesim listesi fason istasyonlarının operasyonlarından hesaplanır.</p>
 
 <div class="tablo-kapsayici">
 <table>
-  <thead><tr><th>Kod</th><th>Ad</th><th>İşlem</th></tr></thead>
+  <thead><tr><th class="sag">Sıra</th><th>Kod</th><th>Ad</th><th>Fason</th><th class="sag">Operasyon sayısı</th><th class="sag">Açık emir</th><th>İşlem</th></tr></thead>
   <tbody>
-    {% for i in istasyonlar %}
+    {% for s in satirlar %}
       <tr>
-        <td class="mono">{{ i.kod }}</td>
-        <td>{{ i.ad }}</td>
+        <td class="sag mono">{{ s.istasyon.sira }}</td>
+        <td class="mono">{{ s.istasyon.kod }}</td>
+        <td>{{ s.istasyon.ad }}</td>
+        <td>{% if s.istasyon.fason %}<span class="rozet rozet-aktif" title="Fason istasyonu">Fason</span>{% if s.istasyon.fasoncu %} <span class="yardim">{{ s.istasyon.fasoncu.unvan }}</span>{% endif %}{% else %}<span class="yardim">—</span>{% endif %}</td>
+        <td class="sag mono">{{ s.operasyon_sayisi }}</td>
+        <td class="sag mono">{% if s.acik_emir %}<a href="{% url 'core:istasyon_emirleri' %}?istasyon={{ s.istasyon.pk }}">{{ s.acik_emir }}</a>{% else %}0{% endif %}</td>
         <td><span class="islem-bag">
-          <a href="{% url 'core:is_istasyonu_duzenle' i.pk %}">Düzenle</a>
-          <form method="post" action="{% url 'core:is_istasyonu_sil' i.pk %}"
-                onsubmit="return confirm('{{ i.ad }} istasyonu silinsin mi?');">
+          <a href="{% url 'core:is_istasyonu_duzenle' s.istasyon.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:is_istasyonu_sil' s.istasyon.pk %}"
+                onsubmit="return confirm('{{ s.istasyon.ad }} istasyonu silinsin mi?');">
             {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
         </span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="3" class="yardim">Henüz iş istasyonu yok. “+ Yeni” ile ekleyin.</td></tr>
+      <tr><td colspan="7" class="yardim">Henüz iş istasyonu yok. “+ Yeni” ile ekleyin.</td></tr>
     {% endfor %}
   </tbody>
 </table>

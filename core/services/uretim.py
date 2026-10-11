@@ -66,10 +66,27 @@ TAM_BOY_HATASI = "Bu kesim tam boy kesilmelidir; girdi miktarı tam sayı olmal�
 # === İş İstasyonları (Depo servisiyle birebir aynı desen) ===
 
 def aktif_istasyonlar():
-    return IsIstasyonu.objects.filter(silindi=False).order_by("kod")
+    """Aktif istasyonlar ÜRETİM AKIŞ SIRASIYLA (``sira``, sonra kod)."""
+    return IsIstasyonu.objects.filter(silindi=False).select_related("fasoncu").order_by("sira", "kod")
 
 
-def _istasyon_dogrula(kod, ad, *, haric_pk=None):
+def fason_istasyonlari():
+    return aktif_istasyonlar().filter(fason=True)
+
+
+def istasyon_listesi() -> list:
+    """İş İstasyonları ekranı: her istasyon için aktif operasyon tanımı sayısı ve AÇIK istasyon emri sayısı (bekleyen + başlamış, açık ÜS'de) —
+    sabit sayıda sorgu."""
+    istasyonlar = list(aktif_istasyonlar())
+    idler = [i.pk for i in istasyonlar]
+    op = {r["istasyon_id"]: r["n"] for r in Operasyon.objects.filter(silindi=False, istasyon_id__in=idler).values("istasyon_id").annotate(n=Count("id"))}
+    acik = {r["istasyon_id"]: r["n"] for r in IstasyonEmri.objects.filter(
+        silindi=False, istasyon_id__in=idler, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
+        durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI]).values("istasyon_id").annotate(n=Count("id"))}
+    return [{"istasyon": i, "operasyon_sayisi": op.get(i.pk, 0), "acik_emir": acik.get(i.pk, 0)} for i in istasyonlar]
+
+
+def _istasyon_dogrula(kod, ad, *, haric_pk=None, fason=False, fasoncu_id=None, sira=0):
     kod = buyuk_harf_tr((kod or "").strip())
     ad = buyuk_harf_tr((ad or "").strip())
     if not kod:
@@ -82,21 +99,46 @@ def _istasyon_dogrula(kod, ad, *, haric_pk=None):
             qs = qs.exclude(pk=haric_pk)
         if qs.exists():
             raise UretimHatasi(f"Bu {etiket} zaten kayıtlı: {deger}")
-    return kod, ad
+    fasoncu = None
+    if fasoncu_id not in (None, ""):
+        from core.models import Cari
+        fasoncu = Cari.objects.filter(pk=getattr(fasoncu_id, "pk", fasoncu_id), silindi=False).first()
+        if fasoncu is None:
+            raise UretimHatasi("Fasoncu (cari) bulunamadı.")
+    if fasoncu is not None and not fason:
+        raise UretimHatasi("Varsayılan fasoncu yalnız fason istasyonunda seçilebilir.")
+    try:
+        sira = int(sira or 0)
+    except (TypeError, ValueError):
+        raise UretimHatasi("Sıra tam sayı olmalı.")
+    if sira < 0:
+        raise UretimHatasi("Sıra negatif olamaz.")
+    return kod, ad, bool(fason), fasoncu, sira
 
 
-def istasyon_olustur(*, kod, ad, kullanici=None) -> IsIstasyonu:
-    kod, ad = _istasyon_dogrula(kod, ad)
-    return IsIstasyonu.objects.create(kod=kod, ad=ad, created_by=kullanici, updated_by=kullanici)
+def istasyon_olustur(*, kod, ad, fason=False, fasoncu_id=None, sira=0, kullanici=None) -> IsIstasyonu:
+    kod, ad, fason, fasoncu, sira = _istasyon_dogrula(kod, ad, fason=fason, fasoncu_id=fasoncu_id, sira=sira)
+    return IsIstasyonu.objects.create(kod=kod, ad=ad, fason=fason, fasoncu=fasoncu, sira=sira, created_by=kullanici, updated_by=kullanici)
 
 
-def istasyon_guncelle(istasyon: IsIstasyonu, *, kod, ad, kullanici=None) -> IsIstasyonu:
+_KORU_ISTASYON = object()          # istasyon_guncelle: "fasoncu alanına dokunma"
+
+
+def istasyon_guncelle(istasyon: IsIstasyonu, *, kod, ad, fason=None, fasoncu_id=_KORU_ISTASYON, sira=None, kullanici=None) -> IsIstasyonu:
+    """``fason`` / ``fasoncu_id`` / ``sira`` verilmezse mevcut değer KORUNUR (eski çağıranlar yalnız kod+ad günceller)."""
     if istasyon.silindi:
         raise UretimHatasi("Silinmiş iş istasyonu düzenlenemez.")
-    kod, ad = _istasyon_dogrula(kod, ad, haric_pk=istasyon.pk)
-    istasyon.kod, istasyon.ad = kod, ad
+    fason = istasyon.fason if fason is None else fason
+    fasoncu_id = istasyon.fasoncu_id if fasoncu_id is _KORU_ISTASYON else fasoncu_id
+    sira = istasyon.sira if sira is None else sira
+    kod, ad, fason, fasoncu, sira = _istasyon_dogrula(kod, ad, haric_pk=istasyon.pk, fason=fason, fasoncu_id=fasoncu_id, sira=sira)
+    if not fason and istasyon.fason and istasyon.emirler.filter(
+            silindi=False, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
+            durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI]).exists():
+        raise UretimHatasi("Bu istasyonun açık istasyon emirleri var; fason bayrağı şimdi kaldırılamaz (emirler kapanınca değiştirin).")
+    istasyon.kod, istasyon.ad, istasyon.fason, istasyon.fasoncu, istasyon.sira = kod, ad, fason, fasoncu, sira
     istasyon.updated_by = kullanici
-    istasyon.save(update_fields=["kod", "ad", "updated_by", "updated_at"])
+    istasyon.save(update_fields=["kod", "ad", "fason", "fasoncu", "sira", "updated_by", "updated_at"])
     return istasyon
 
 
@@ -1188,9 +1230,8 @@ def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=N
     hemen ONAYLAR — hepsi tek işlemde; stok yetersizliği vb. bir hata olursa kayıt da dahil hiçbir şey kalmaz. ``miktar`` referans çıktı adedidir
     (boş = açık kalan); açık kalandan fazlası yazılabilir (fazlası serbest stok). Fason istasyonunda üretim fason dönüşle yapılır, burada reddedilir.
     (onaylı kayıt, uyarı metni) döner; uyarı = kalanı aşıyor ('' = aşmıyor)."""
-    from core.services.fason import FASON_ISTASYON_KODU
     ie = IstasyonEmri.objects.select_related("istasyon", "uretim_emri").get(pk=ie.pk)
-    if ie.istasyon.kod == FASON_ISTASYON_KODU:
+    if ie.istasyon.fason:
         raise UretimHatasi("Fason istasyonunda üretim, fason dönüş belgesiyle yapılır (\"Fason dönüş aç\").")
     kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, kullanici=kullanici)
     uyari = kayit_fazla_uyarisi(kayit)                           # onaydan ÖNCE: onay sonrası tamamlanan zaten artmış olur

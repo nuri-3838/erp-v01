@@ -23,7 +23,7 @@ class GorunumBase(TamBoyBase):
     def setUpTestData(cls):
         super().setUpTestData()
         from core.models import IsIstasyonu
-        cls.lazer = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER")
+        cls.lazer = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER", fason=True)
         s = lambda kod, birim=None, **kw: Stok.objects.create(kod=kod, ad=kod.lower(), kategori=cls.kat, uretim_birimi=birim or cls.adet, fatura_birimi=birim or cls.adet,
                                                               uretim_urunu=kw.pop("uretim", True), satinalma_urunu=kw.pop("satinalma", False), satis_urunu=kw.pop("satis", False))
         cls.profil = s("150-20-0002", cls.boy, uretim=False, satinalma=True)

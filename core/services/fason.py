@@ -1,4 +1,4 @@
-"""FASON servis katmanı: fason fiyat listesi (FasonFiyat) ve Kesim Listesi hesabı (Operasyon Tanımları'ndan, İstasyon 10 · Boru Lazer).
+"""FASON servis katmanı: fason fiyat listesi (FasonFiyat) ve Kesim Listesi hesabı (Operasyon Tanımları'ndan, FASON işaretli istasyonlar).
 Eski Kesim Tanımları / Kesim Kayıtları (FasonKesim*) ve Stok.kesildigi_profil kaldırıldı — liste yalnız operasyon zincirinden hesaplanır."""
 from decimal import Decimal
 
@@ -82,12 +82,11 @@ def fiyat_sil(f: FasonFiyat, kullanici=None) -> FasonFiyat:
     return f
 
 
-# === Kesim listesi: OPERASYON TANIMLARINDAN (İstasyon 10 — Boru Lazer) ================================================
+# === Kesim listesi: OPERASYON TANIMLARINDAN (FASON istasyonları) ================================================
 # Fasoncuya gidecek liste artık Kesim Tanımları'ndan değil Operasyon Tanımları'ndan hesaplanır: bitmiş ürün zinciri ``ihtiyac_hesapla`` ile (TAM BOY
-# kuralı, ortak parçalar toplanmış talep üzerinden tek yuvarlama) çözülür, İŞ İSTASYONU 10 (Boru Lazer) operasyonları fasonda kesilen işlerdir:
-# girdi ham profil (boy adedi), ana çıktı + yan çıktılar kesilmiş parçalardır. Fasoncu seçilirse her parçaya kendi parça kodu ve geçerli birim fiyat eklenir.
-
-FASON_ISTASYON_KODU = "10"
+# kuralı, ortak parçalar toplanmış talep üzerinden tek yuvarlama) çözülür, FASON işaretli iş istasyonlarının (``IsIstasyonu.fason``) operasyonları
+# fasonda kesilen işlerdir: girdi ham profil (boy adedi), ana çıktı + yan çıktılar kesilmiş parçalardır. Fasoncu seçilirse her parçaya kendi parça kodu
+# ve geçerli birim fiyat eklenir. (Eski sabit "10" istasyon kodu kaldırıldı — bayrak tek doğruluk kaynağı.)
 
 
 def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
@@ -105,7 +104,7 @@ def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
     siralama = {}
     for p in sonuc["plan"]:
         op = p["operasyon"]
-        if op.istasyon.kod != FASON_ISTASYON_KODU:
+        if not op.istasyon.fason:
             continue
         girdi = next(iter(operasyon_girdileri(op)), None)
         profil = girdi.girdi if girdi else None

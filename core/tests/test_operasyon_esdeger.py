@@ -83,7 +83,7 @@ class EsdegerlikTest(TestCase):
             h = HesapPlani.objects.create(hesap_kodu=hesap_kodu, hesap_adi=f"TEST {hesap_kodu}", rapor_grubu="BILANCO", rapor_kalemi="DV", parasal=True, aktif=True)
             kats[kod] = Kategori.objects.create(kod="E" + kod, ad="EŞDEĞERLİK " + kod)
             KategoriHesap.objects.create(kategori=kats[kod], hesap=h, fatura_tipi=tip)
-        cls.kesim = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER")
+        cls.kesim = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER", fason=True)
         cls.montaj = IsIstasyonu.objects.create(kod="70", ad="MONTAJ")
         cls.depo = Depo.objects.create(kod="MRK", ad="MERKEZ")
         Kur.objects.create(tarih=BUGUN, usd_alis=D("40"), eur_alis=D("44"))

@@ -29,7 +29,7 @@ class FasonViewTest(TestCase):
         cls.ham_on = _stok(kat, birim, satinalma=True, kod="150-TEST-ON", ad="7378-ön ayak 20x40 (2+1)-5480mm")
         cls.parca_on = _stok(kat, birim, kod="151-TEST-ON", ad="kesilmiş a tipi ön ayak 2+1")
         cls.a21 = _stok(kat, birim, satis=True, kod="A21", ad="a tipi 2+1")
-        lazer = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER")
+        lazer = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER", fason=True)
         montaj = IsIstasyonu.objects.create(kod="70", ad="MONTAJ")
         operasyon_olustur(istasyon_id=lazer.pk, cikti_id=cls.parca_on.pk, cikti_miktar=Decimal("2"), satirlar=[(cls.ham_on, Decimal("1"))])
         operasyon_olustur(istasyon_id=montaj.pk, cikti_id=cls.a21.pk, cikti_miktar=Decimal("1"), satirlar=[(cls.parca_on, Decimal("1"))])

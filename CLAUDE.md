@@ -53,3 +53,40 @@ Giriş + kullanıcı bazlı ekran yetkisi v0.1'e **bilinçli** eklendi (normalde
   - *Paralel/keepdb notu (2026-10-09, sorun giderildi):* Testler sabit pk varsaymamalı — komutların canlıdaki sabit kayıtlarına (fiş/banka hesap/proje pk'leri) bağlı testler kendi doğal pk'lerini komut sabitlerine `mock.patch.object` ile verir. `TransactionTestCase` sonrası tohum verisi sınıf sonunda geri yüklenir (`tearDownClass`). Doğrulama: `--parallel --keepdb` art arda 3 kez + `--parallel` 1 kez hepsi OK.
   - Test koşusunu YARIDA KESME (timeout/Ctrl-C): `--keepdb` ile kalan test veritabanı bozuk/kirli kalır ve sonraki koşular sahte hata verir. Kesildiyse önce `python manage.py test --parallel --noinput` (eski test DB'sini siler, sıfırdan kurar) çalıştır.
 - **Ekran görüntüsü yalnız arayüz değişikliği olan işlerde** al; servis/veri/test işlerinde alma.
+
+## Canlıya alma — standart deploy (her seferinde bu sırayla, komutlar birebir)
+Sunucu: Hetzner `nuri@159.69.218.128` (SSH, WSL'deki `~/.ssh/id_ed25519`), klasör `/home/nuri/erp_v01`, venv `.venv` (aktivasyon YOK, doğrudan `.venv/bin/python`), servis `erp_v01` (gunicorn 127.0.0.1:8001), adres https://erp.semtahome.com. WSL'den GitHub'a doğrudan push ÇALIŞMAZ (HTTPS, kimlik yok) — GitHub'a yazma sunucunun deploy key'iyle, sunucudan yapılır. Local kontroller (ilgili testler + tam paket) temizse onay beklemeden canlıya al.
+
+```bash
+# 0) Local: tam test paketi OK, commit atılmış, çalışma ağacı temiz.
+
+# 1) WSL → sunucuya geçici dal (worktree/feature dalı: önce origin/main üstüne rebase, yoksa ff-only reddeder)
+cd ~/erp-v01 && git fetch origin && git push nuri@159.69.218.128:erp_v01 main:refs/heads/wsl-X
+#    feature dalı için: git push nuri@159.69.218.128:erp_v01 feature/<dal>:refs/heads/wsl-<ad>
+
+# 2) Sunucuda TEK ssh betiği: yedek → pull(ff-merge)+GitHub push → migrate → restart
+ssh nuri@159.69.218.128 "bash -s" <<'EOF'
+set -e
+cd ~/erp_v01
+bash scripts/db_backup.sh
+git merge --ff-only wsl-X && git push origin main && git branch -d wsl-X
+.venv/bin/python manage.py migrate core
+sudo systemctl restart erp_v01
+systemctl is-active erp_v01
+EOF
+#    yedek: DB + ozel_dosyalar + media → backups/ (çıktı yok, logs/backup.log'a yazar) — deploy öncesi geri dönüş noktası
+#    restart: sudoers NOPASSWD (/etc/sudoers.d/90-erp-restart). Sudo bozulursa şifresiz eşdeğer:
+#    ssh nuri@159.69.218.128 'kill -HUP $(systemctl show erp_v01 -p MainPID --value)'
+
+# 3) HEAD eşitliği — local HEAD == sunucu HEAD olmalı
+cd ~/erp-v01 && git rev-parse HEAD && ssh nuri@159.69.218.128 'cd ~/erp_v01 && git rev-parse HEAD && git status --short'
+
+# 4) Bağımsız doğrulama — AYRI ssh (deploy çıktısına güvenme; stdout/stderr iç içe karışır)
+ssh nuri@159.69.218.128 'cd ~/erp_v01 && systemctl show erp_v01 -p ActiveEnterTimestamp && .venv/bin/python manage.py check && .venv/bin/python manage.py migrate --plan | tail -3 && journalctl -u erp_v01 -n 30 --no-pager && tail -n 30 logs/gunicorn-error.log'
+#    ActiveEnterTimestamp gerçekten yeni olmalı; migrate --plan "No planned migration operations" demeli; logda Traceback olmamalı.
+#    Dışarıdan: curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://erp.semtahome.com/<yeni-rota>/   → 302→login (rota var); olmayan yol 404.
+
+# 5) WSL'i senkronla
+cd ~/erp-v01 && git fetch origin
+```
+Kurallar: `;` değil `&&` zinciri (bir adım düşerse sonrakiler ÇALIŞMASIN); `2>/dev/null` ile stderr ASLA bastırma; `source venv/bin/activate` YAZMA (sunucuda klasör `.venv`, aktivasyon gereksiz — bir kez migration uygulanmadan "active" görünmüştü); migration ya SADECE şema ya SADECE veri içersin (Postgres "pending trigger events"). Git Bash'te `$(...)` genişler → `'EOF'` tırnaklı heredoc kullan veya betik dosyasından çalıştır.
