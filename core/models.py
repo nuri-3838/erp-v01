@@ -706,6 +706,10 @@ class Stok(TemelModel):
 
     varyantli = models.BooleanField("varyantlı kart", default=False)
     varyant_boyutlari = models.JSONField("varyant boyutları", default=list, blank=True)
+    # Varyant verilmeden yazılan hareket/ayırmanın varyantı (E-2): normalde standart (SEMTA); kesilmiş ayaklarda veri göçü YOK (markasız) atar.
+    # Planlama/ekranlar açıkça varyant verince (E-3+) kullanılmaz. Varyantsız kartta boş.
+    varsayilan_varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varsayılan hareket varyantı", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "stok"
@@ -1557,6 +1561,13 @@ class StokVaryant(TemelModel):
     yan_etiket = models.ForeignKey(Varyant, verbose_name="yan etiket", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     anahtar = models.CharField("anahtar", max_length=120)
     standart = models.BooleanField("standart varyant", default=False)
+    # Varyant bazında hareketli ağırlıklı ortalama maliyet ÖNBELLEĞİ (E-2; Stok'taki alanların varyant karşılığı; kart alanları toplam).
+    # core.services.stok_ortalama.yeniden_hesapla her hareket değişiminde yazar. Elle DÜZENLENMEZ.
+    maliyet_miktar = models.DecimalField("maliyet miktarı (önbellek)", max_digits=18, decimal_places=6, default=0)
+    maliyet_deger_try = models.DecimalField("stok değeri TL (önbellek)", max_digits=18, decimal_places=2, default=0)
+    maliyet_deger_usd = models.DecimalField("stok değeri USD (önbellek)", max_digits=18, decimal_places=2, default=0)
+    ort_maliyet_try = models.DecimalField("ortalama maliyet TL (önbellek)", max_digits=18, decimal_places=6, null=True, blank=True)
+    ort_maliyet_usd = models.DecimalField("ortalama maliyet USD (önbellek)", max_digits=18, decimal_places=6, null=True, blank=True)
 
     class Meta:
         db_table = "core_stok_varyant"
@@ -2395,6 +2406,10 @@ class StokHareket(TemelModel):
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
     depo = models.ForeignKey(
         Depo, verbose_name="depo", related_name="hareketler", on_delete=models.PROTECT)
+    # Varyantlı kartta (Stok.varyantli) her hareketin varyantı (E-2; docs/varyant_kararlari.md): eldeki, tarih bazlı kontrol ve ortalama
+    # maliyet (kart, varyant) bazında. Varyantsız kartta boş. Servis boş verilirse kartın varsayılan varyantını yazar.
+    varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="hareketler")
     tarih = models.DateField("tarih")
     tur = models.CharField("tür", max_length=5, choices=Tur.choices)
     miktar = models.DecimalField("miktar", max_digits=18, decimal_places=6)
@@ -3416,6 +3431,9 @@ class StokAyirma(TemelModel):
     uretim_emri = models.ForeignKey(
         UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="ayirmalar")
     stok = models.ForeignKey(Stok, verbose_name="stok", on_delete=models.PROTECT, related_name="ayirmalar")
+    # Varyantlı kartta ayırma (sipariş, stok, varyant) başına tek aktif satır (E-2); varyantsız kartta boş → (sipariş, stok) tekil.
+    varyant = models.ForeignKey(
+        "StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="ayirmalar")
     miktar = models.DecimalField("ayrılan miktar", max_digits=18, decimal_places=6)
 
     class Meta:
@@ -3425,7 +3443,10 @@ class StokAyirma(TemelModel):
         ordering = ["uretim_emri", "stok__kod"]
         constraints = [
             models.CheckConstraint(condition=models.Q(miktar__gte=0), name="ck_stok_ayirma_miktar_gte0"),
-            models.UniqueConstraint(fields=["uretim_emri", "stok"], condition=models.Q(silindi=False), name="uq_stok_ayirma_aktif"),
+            models.UniqueConstraint(fields=["uretim_emri", "stok"], condition=models.Q(silindi=False, varyant__isnull=True),
+                                    name="uq_stok_ayirma_aktif"),
+            models.UniqueConstraint(fields=["uretim_emri", "stok", "varyant"], condition=models.Q(silindi=False, varyant__isnull=False),
+                                    name="uq_stok_ayirma_varyant_aktif"),
         ]
 
     def __str__(self):

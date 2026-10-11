@@ -1132,8 +1132,12 @@ def stok_detay(request, pk):
                         and stok.pk in fiyatsiz_girisli_stoklar([stok.pk]))
     kul = stok_ayirma_servis.toplu_kullanilabilir([stok.pk], eldeki={stok.pk: eldeki})[stok.pk]
     from core.services import varyant as varyant_servis
-    varyant_satirlari = ([(sv, varyant_servis.varyant_etiketi(sv)) for sv in varyant_servis.stok_varyantlari(stok)]
-                         if stok.varyantli else [])
+    varyant_satirlari = varyant_servis.varyant_ozeti(stok) if stok.varyantli else []
+    son_hareketler = list(hareketler.select_related("varyant")[:100])
+    if stok.varyantli:                                    # hareket defterinde varyant sütunu (kısa etiket)
+        etiketler = {s["varyant"].pk: varyant_servis.varyant_kisa(s["varyant"]) for s in varyant_satirlari}
+        for h in son_hareketler:
+            h.varyant_etiketi = etiketler.get(h.varyant_id) or (varyant_servis.varyant_kisa(h.varyant) if h.varyant_id else "—")
     return render(request, "core/stok_detay.html", {
         "stok": stok, "eldeki": eldeki, "hizmet": hizmet, "maliyet_belirsiz": maliyet_belirsiz,
         "varyant_boyut_adlari": [varyant_servis.BOYUT_ETIKETI[b] for b in varyant_servis.stok_boyutlari(stok)],
@@ -1143,7 +1147,7 @@ def stok_detay(request, pk):
         # Yalnız stoğu OLAN depolar — net 0'a inmiş depo "stok nerede" sorusunda gürültüdür
         # (geçmişi hareket defterinde zaten görünür).
         "depo_bakiye": [(d, m) for d, m in hareket_servis.depo_bazinda_eldeki(stok) if m != 0],
-        "hareketler": hareketler[:100], "hareket_sayisi": hareketler.count(),
+        "hareketler": son_hareketler, "hareket_sayisi": hareketler.count(),
         "fiyatlar": stok.fiyatlar.filter(silindi=False).order_by("para_birimi"),
     })
 

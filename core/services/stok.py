@@ -395,7 +395,10 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
         "gorsel", "varyantli", "varyant_boyutlari", "updated_by", "updated_at"])
     _fiyat_listesini_yaz(stok, fiyat_listesi, kullanici)
     if varyant_degisti:
-        varyant_servis.stok_varyantlarini_esitle(stok, kullanici)
+        try:
+            varyant_servis.stok_varyantlarini_esitle(stok, kullanici)
+        except varyant_servis.VaryantHatasi as e:
+            raise StokHatasi(str(e))                      # atomic: kart kaydı da geri alınır
     return stok
 
 

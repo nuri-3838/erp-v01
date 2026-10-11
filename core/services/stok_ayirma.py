@@ -41,9 +41,17 @@ def emir_ayirmalari(emir):
     return acik_ayirmalar().filter(uretim_emri_id=_pk(emir)).select_related("stok__uretim_birimi").order_by("stok__kod")
 
 
-def ayrilan_miktar(emir, stok) -> Decimal:
-    satir = acik_ayirmalar().filter(uretim_emri_id=_pk(emir), stok_id=_pk(stok)).first()
-    return satir.miktar if satir else SIFIR
+def ayrilan_miktar(emir, stok, varyant=None) -> Decimal:
+    """Siparişin bir stoktaki ayrılanı — varyantlı kartta varyant verilmezse TÜM varyantların toplamı (kart anlamı)."""
+    qs = acik_ayirmalar().filter(uretim_emri_id=_pk(emir), stok_id=_pk(stok))
+    if varyant is not None:
+        qs = qs.filter(varyant_id=_pk(varyant))
+    return qs.aggregate(t=Sum("miktar"))["t"] or SIFIR
+
+
+def ayirma_varyant_haritasi(stok) -> dict:
+    """{varyant_id: açık ÜS'lere ayrılan toplam} — stok kartı varyant kırılımı için."""
+    return {r["varyant_id"]: r["t"] for r in acik_ayirmalar().filter(stok_id=_pk(stok)).values("varyant_id").annotate(t=Sum("miktar"))}
 
 
 def ayirma_haritasi(stok_idler, haric_emir=None) -> dict:
@@ -82,15 +90,29 @@ def kullanilabilir_haritasi(stok_idler, haric_emir=None) -> dict:
     return {pk: d["kullanilabilir"] for pk, d in toplu_kullanilabilir(stok_idler, haric_emir).items()}
 
 
+def _varyant_coz(stok, varyant):
+    """Varyantlı kartta ayırmanın varyantı (verilen ya da kartın varsayılanı), varyantsız kartta None."""
+    from core.models import Stok
+    from core.services import varyant as varyant_servis
+    stok_obj = stok if isinstance(stok, Stok) else Stok.objects.select_related("varsayilan_varyant").get(pk=_pk(stok))
+    try:
+        sv = varyant_servis.hareket_varyanti(stok_obj, varyant)
+    except varyant_servis.VaryantHatasi as e:
+        raise AyirmaHatasi(str(e))
+    return sv.pk if sv is not None else None
+
+
 @transaction.atomic
-def ayirma_ayarla(emir, stok, miktar, kullanici=None):
-    """(sipariş, stok) ayırmasını ``miktar``a ÇEKER (artış/azalış fark etmez). 0 → aktif satır kapatılır (soft-delete), None döner.
-    Negatif reddedilir. Satır kilitlenir (eş zamanlı iki olay üst üste yazmasın)."""
+def ayirma_ayarla(emir, stok, miktar, kullanici=None, varyant=None):
+    """(sipariş, stok[, varyant]) ayırmasını ``miktar``a ÇEKER (artış/azalış fark etmez). 0 → aktif satır kapatılır (soft-delete), None döner.
+    Negatif reddedilir. Satır kilitlenir (eş zamanlı iki olay üst üste yazmasın). Varyantlı kartta ``varyant`` boşsa kartın varsayılanı."""
     miktar = _sayi(miktar)
     if miktar < 0:
         raise AyirmaHatasi("Ayrılan miktar negatif olamaz.")
     emir_id, stok_id = _pk(emir), _pk(stok)
-    satir = (StokAyirma.objects.select_for_update().filter(uretim_emri_id=emir_id, stok_id=stok_id, silindi=False).first())
+    varyant_id = _varyant_coz(stok, varyant)
+    satir = (StokAyirma.objects.select_for_update()
+             .filter(uretim_emri_id=emir_id, stok_id=stok_id, varyant_id=varyant_id, silindi=False).first())
     if miktar == 0:
         if satir is not None:
             satir.silindi = True
@@ -99,7 +121,8 @@ def ayirma_ayarla(emir, stok, miktar, kullanici=None):
             satir.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
         return None
     if satir is None:
-        return StokAyirma.objects.create(uretim_emri_id=emir_id, stok_id=stok_id, miktar=miktar, created_by=kullanici, updated_by=kullanici)
+        return StokAyirma.objects.create(uretim_emri_id=emir_id, stok_id=stok_id, varyant_id=varyant_id, miktar=miktar,
+                                         created_by=kullanici, updated_by=kullanici)
     if satir.miktar != miktar:
         satir.miktar = miktar
         satir.updated_by = kullanici
@@ -108,7 +131,8 @@ def ayirma_ayarla(emir, stok, miktar, kullanici=None):
 
 
 @transaction.atomic
-def ayirma_ekle(emir, stok, fark, kullanici=None):
+def ayirma_ekle(emir, stok, fark, kullanici=None, varyant=None):
     """Mevcut ayırmaya ``fark`` ekler (negatif = düşer); sıfırın altına inmez, sıfırda satır kapanır. Döner: yeni satır ya da None."""
-    yeni = ayrilan_miktar(emir, stok) + _sayi(fark)
-    return ayirma_ayarla(emir, stok, max(SIFIR, yeni), kullanici)
+    varyant_id = _varyant_coz(stok, varyant)
+    yeni = ayrilan_miktar(emir, stok, varyant=varyant_id) + _sayi(fark)
+    return ayirma_ayarla(emir, stok, max(SIFIR, yeni), kullanici, varyant=varyant_id)

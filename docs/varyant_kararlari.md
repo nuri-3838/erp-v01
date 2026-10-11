@@ -53,4 +53,14 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
 | Adım | İçerik | Durum | Commit |
 |---|---|---|---|
 | E-1 | `Varyant` + `Stok.varyantli/varyant_boyutlari` + `StokVaryant` + AYARLAR › Varyantlar + stok kartı işareti/boyut seçimi; seed SEMTA/YOK/MR. MOP | TAMAM, canlıda | `9bd7917` (3278 test) |
-| E-2 | Hareket/ayırma/özet varyant boyutu, motor, veri göçü | bekliyor | |
+| E-2 | Hareket/ayırma/özet varyant boyutu, motor (eldeki, tarih kontrolü, ortalama, ayırma), stok kartı kırılımı, `varyant_veri_gocu` komutu (kuru + altın kontrol) | kod canlıda; VERİ GÖÇÜ kullanıcı onayı bekliyor | (bu commit) |
+
+## E-2 notları
+
+- Şema ve veri ayrı: 0210 yalnız şema; veri göçü `python manage.py varyant_veri_gocu` (varsayılan KURU; `--uygula` yalnız altın kontrol
+  birebir eşitse yazar; önce `bash scripts/db_backup.sh`).
+- `Stok.varsayilan_varyant`: varyant verilmeden yazılan hareket/ayırma bu varyanta gider (E-3/E-6'ya kadar üretim/fatura/numune akışları
+  dokunulmadan çalışsın diye). Standart kartlarda SEMTA; kesilmiş ön ayak / SOL ayakta veri göçü YOK atar (karar 5: mevcut ayaklar markasız).
+  Karar 9'daki "formlarda SEMTA dolu gelir" ekran kuralı E-3'te; ayaklarda formun varsayılanı kartın varsayılanı (YOK) olacak.
+- Varyantlı kartta her varyant ayrı ortalama; kart önbelleği toplam (tek varyantta bugünkü değerlerle birebir — altın kontrol bunu kanıtlar).
+- Kullanılabilir (kart toplamı) ve `ihtiyac_hesapla` değişmedi (E-6).

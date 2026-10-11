@@ -15,7 +15,8 @@ from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
 
 @transaction.atomic
 def depo_transferi_yap(*, stok_id, kaynak_depo_id, hedef_depo_id, tarih, miktar, aciklama="",
-                       kullanici=None) -> uuid.UUID:
+                       kullanici=None, varyant=None) -> uuid.UUID:
+    """``varyant``: varyantlı kartta taşınan varyant (boş = kartın varsayılanı); iki bacak da aynı varyantla yazılır."""
     if str(kaynak_depo_id) == str(hedef_depo_id):
         raise HareketHatasi("Kaynak ve hedef depo aynı olamaz.")
     grup = uuid.uuid4()
@@ -27,11 +28,11 @@ def depo_transferi_yap(*, stok_id, kaynak_depo_id, hedef_depo_id, tarih, miktar,
     cikis = hareket_ekle(
         stok_id=stok_id, depo_id=kaynak.pk, tarih=tarih, tur=StokHareket.Tur.CIKIS,
         miktar=miktar, aciklama=f"Transfer → {hedef.kod}" + (f" · {metin}" if metin else ""),
-        kaynak=StokHareket.Kaynak.TRANSFER, transfer_grubu=grup, kullanici=kullanici)
+        kaynak=StokHareket.Kaynak.TRANSFER, transfer_grubu=grup, kullanici=kullanici, varyant=varyant)
     hareket_ekle(
         stok_id=stok_id, depo_id=hedef.pk, tarih=tarih, tur=StokHareket.Tur.GIRIS,
         miktar=cikis.miktar, aciklama=f"Transfer ← {kaynak.kod}" + (f" · {metin}" if metin else ""),
-        kaynak=StokHareket.Kaynak.TRANSFER, transfer_grubu=grup, kullanici=kullanici)
+        kaynak=StokHareket.Kaynak.TRANSFER, transfer_grubu=grup, kullanici=kullanici, varyant=cikis.varyant_id)
     return grup
 
 

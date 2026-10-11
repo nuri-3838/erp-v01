@@ -186,13 +186,14 @@
     {% endif %}
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Tarih</th><th>Tür</th><th>Depo</th><th class="sag">Miktar</th><th class="sag">Birim Maliyet</th><th class="sag">Tutar (TL)</th><th>Kaynak</th><th>Açıklama</th><th></th></tr></thead>
+      <thead><tr><th>Tarih</th><th>Tür</th><th>Depo</th>{% if stok.varyantli %}<th>Varyant</th>{% endif %}<th class="sag">Miktar</th><th class="sag">Birim Maliyet</th><th class="sag">Tutar (TL)</th><th>Kaynak</th><th>Açıklama</th><th></th></tr></thead>
       <tbody>
         {% for h in hareketler %}
           <tr>
             <td class="mono">{{ h.tarih|date:"d.m.Y" }}</td>
             <td>{% if h.tur == 'GIRIS' %}<span class="rozet rozet-aktif">Giriş ▲</span>{% else %}<span class="rozet rozet-pasif">Çıkış ▼</span>{% endif %}</td>
             <td class="mono">{{ h.depo.kod }}</td>
+            {% if stok.varyantli %}<td class="mono">{{ h.varyant_etiketi }}</td>{% endif %}
             <td class="sag mono {% if h.tur == 'GIRIS' %}giris{% else %}cikis{% endif %}">{% if h.tur == 'GIRIS' %}+{% else %}−{% endif %}{{ h.miktar|tr_miktar6 }}</td>
             <td class="sag mono">{% if h.maliyet_durumu == 'YOK' %}<span class="pasif" title="Maliyet belli değil (fatura bekleniyor)">—</span>{% else %}{{ h.birim_maliyet_try|tr_kur:4 }}{% endif %}</td>
             <td class="sag mono">{% if h.maliyet_durumu != 'YOK' %}{{ h.tutar_try|tr_kur:2 }}{% if h.maliyet_durumu == 'GECICI' %} <span class="rozet rozet-pasif" title="Fiyatsız giriş var: ortalama geçici">geçici</span>{% endif %}{% endif %}</td>
@@ -249,20 +250,30 @@
 
   {% if stok.varyantli %}
   <section class="icerik-kart">
-    <h2 class="bolum-baslik"><span class="emoji">🔀</span>Varyantlar</h2>
+    <h2 class="bolum-baslik"><span class="emoji">🔀</span>Varyant Kırılımı</h2>
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Varyant</th><th>Standart</th></tr></thead>
+      <thead><tr><th>Varyant</th><th class="sag">Eldeki</th><th class="sag">Ayrılan</th><th class="sag">Kullanılabilir</th>
+        <th class="sag">Ort. Maliyet (TL)</th><th class="sag">Stok Değeri (TL)</th><th></th></tr></thead>
       <tbody>
-        {% for sv, etiket in varyant_satirlari %}
-          <tr><td>{{ etiket }}</td><td>{% if sv.standart %}★ standart{% else %}<span class="pasif">—</span>{% endif %}</td></tr>
+        {% for v in varyant_satirlari %}
+          <tr>
+            <td>{{ v.etiket }}</td>
+            <td class="sag mono">{{ v.eldeki|tr_miktar6 }}</td>
+            <td class="sag mono">{% if v.ayrilan %}{{ v.ayrilan|tr_kur:3 }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+            <td class="sag mono{% if v.kullanilabilir < 0 %} stk-eksi{% endif %}">{{ v.kullanilabilir|tr_kur:3 }}</td>
+            <td class="sag mono">{% if v.ort_try is not None %}{{ v.ort_try|tr_kur:4 }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+            <td class="sag mono">{{ v.deger_try|tr_kur:2 }}</td>
+            <td>{% if v.varyant.standart %}<span class="rozet rozet-aktif" title="Tüm boyutlar varsayılan değer">★ standart</span>{% endif %}
+              {% if v.varsayilan %}<span class="rozet rozet-notr" title="Varyant verilmeden yazılan hareket bu varyanta gider">varsayılan</span>{% endif %}</td>
+          </tr>
         {% empty %}
-          <tr><td colspan="2" class="yardim">Henüz varyant yok (AYARLAR › Varyantlar'da varsayılan değer tanımlı olmalı).</td></tr>
+          <tr><td colspan="7" class="yardim">Henüz varyant yok (AYARLAR › Varyantlar'da varsayılan değer tanımlı olmalı).</td></tr>
         {% endfor %}
       </tbody>
     </table>
     </div>
-    <p class="yardim">Stok, ayırma ve maliyet kırılımı varyant bazında bir sonraki adımda gelir; bu adımda yalnız tanım.</p>
+    <p class="yardim">Her varyantın kendi hareketli ağırlıklı ortalaması vardır; kart toplamı yukarıdaki özet kartlarında. Kullanılabilir = eldeki − açık üretim siparişlerine ayrılan.</p>
   </section>
   {% endif %}
 

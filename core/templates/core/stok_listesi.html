@@ -114,7 +114,7 @@
           <div class="stk-hucre">
             <span class="stk-ikon {% if s.gorsel %}gorsel-var{% endif %}">{% if s.gorsel %}<img src="{{ s.gorsel.url }}" alt="">{% else %}📦{% endif %}</span>
             <div>
-              <div class="ad"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.ad }}</a></div>
+              <div class="ad"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.ad }}</a>{% if s.varyantli %} <span class="rozet rozet-notr" title="Varyantlı kart: stok/maliyet varyant bazında (kart detayında kırılım)">🔀 varyantlı</span>{% endif %}</div>
               <div class="kod">{{ s.kod }}</div>
             </div>
           </div>

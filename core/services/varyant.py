@@ -9,11 +9,13 @@ Kurallar (docs/varyant_kararlari.md):
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.db import transaction
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
-from core.models import Stok, StokVaryant, Varyant
+from core.models import Stok, StokHareket, StokVaryant, Varyant
 
 BOYUT_SIRASI = [b.value for b in Stok.VaryantBoyutu]
 BOYUT_ETIKETI = dict(Stok.VaryantBoyutu.choices)
@@ -195,11 +197,65 @@ def stok_varyanti_bul_veya_olustur(stok: Stok, secimler: dict, kullanici=None) -
 
 
 def standart_varyant(stok: Stok, kullanici=None) -> StokVaryant | None:
-    """Kartın standart varyantı (tüm boyutlar varsayılan değer); yoksa açar. Varsayılan Varyant tanımlı değilse None."""
+    """Kartın standart varyantı (tüm boyutlar varsayılan değer); yoksa açar. Varsayılan Varyant tanımlı değilse None.
+    Kartın ``varsayilan_varyant``ı boşsa standart varyant yazılır."""
     vs = varsayilan_varyant()
     if vs is None or not stok.varyantli:
         return None
-    return stok_varyanti_bul_veya_olustur(stok, {b: vs for b in stok_boyutlari(stok)}, kullanici)
+    sv = stok_varyanti_bul_veya_olustur(stok, {b: vs for b in stok_boyutlari(stok)}, kullanici)
+    if stok.varsayilan_varyant_id is None:
+        stok.varsayilan_varyant = sv
+        Stok.objects.filter(pk=stok.pk).update(varsayilan_varyant=sv)
+    return sv
+
+
+def varyant_kisa(sv) -> str:
+    """Kısa etiket: boyut değer kodları '/' ile ('SEMTA', 'YOK', 'MR. MOP/SEMTA/SEMTA/SEMTA'); boş boyut '—'."""
+    if sv is None:
+        return ""
+    if not isinstance(sv, StokVaryant):
+        sv = StokVaryant.objects.select_related("stok", "markalama", "kilavuz", "afis", "yan_etiket").get(pk=sv)
+    return "/".join((getattr(sv, _BOYUT_ALANI[b]).kod if getattr(sv, _BOYUT_ALANI[b]) else "—") for b in stok_boyutlari(sv.stok)) or "—"
+
+
+def hareket_varyanti(stok: Stok, varyant=None) -> StokVaryant | None:
+    """Hareket/ayırma yazılırken varyantın çözümü (E-2): varyantsız kartta None (varyant verilirse hata); varyantlı kartta verilen
+    StokVaryant (karta ait ve aktif olmalı) ya da kartın ``varsayilan_varyant``ı (boşsa standart varyant açılır ve varsayılan yapılır)."""
+    if not stok.varyantli:
+        if varyant is not None:
+            raise VaryantHatasi(f"{stok.kod} varyantlı bir kart değil; varyant verilemez.")
+        return None
+    if varyant is not None:
+        if isinstance(varyant, StokVaryant):
+            sv = varyant
+        else:
+            sv = StokVaryant.objects.filter(pk=varyant, silindi=False).first()
+        if sv is None or sv.silindi or sv.stok_id != stok.pk:
+            raise VaryantHatasi(f"{stok.kod}: geçersiz varyant.")
+        return sv
+    if stok.varsayilan_varyant_id:
+        sv = StokVaryant.objects.filter(pk=stok.varsayilan_varyant_id, silindi=False).first()
+        if sv is not None:
+            return sv
+    sv = standart_varyant(stok)
+    if sv is None:
+        raise VaryantHatasi(f"{stok.kod}: varyantlı kart için varsayılan varyant yok (AYARLAR › Varyantlar'da varsayılan tanımlayın).")
+    return sv
+
+
+def varyant_ozeti(stok: Stok) -> list:
+    """Stok kartı varyant kırılımı: [{"varyant", "etiket", "eldeki", "ayrilan", "kullanilabilir", "ort_try", "deger_try"}]."""
+    from core.services.hareket import toplu_eldeki_varyant
+    from core.services.stok_ayirma import ayirma_varyant_haritasi
+    eldeki = toplu_eldeki_varyant([stok.pk])
+    ayrilan = ayirma_varyant_haritasi(stok)
+    satirlar = []
+    for sv in stok_varyantlari(stok):
+        e, a = eldeki.get((stok.pk, sv.pk), Decimal("0")), ayrilan.get(sv.pk, Decimal("0"))
+        satirlar.append({"varyant": sv, "etiket": varyant_etiketi(sv), "eldeki": e, "ayrilan": a, "kullanilabilir": e - a,
+                         "ort_try": sv.ort_maliyet_try, "ort_usd": sv.ort_maliyet_usd, "deger_try": sv.maliyet_deger_try,
+                         "varsayilan": sv.pk == stok.varsayilan_varyant_id})
+    return satirlar
 
 
 @transaction.atomic
@@ -208,9 +264,14 @@ def stok_varyantlarini_esitle(stok: Stok, kullanici=None) -> None:
     satırların anahtarı/standart işareti yeni boyut sırasına göre yeniden yazılır ve standart varyant garanti edilir."""
     satirlar = list(StokVaryant.objects.filter(stok=stok, silindi=False))
     if not stok.varyantli:
+        if StokHareket.objects.filter(stok=stok, varyant__isnull=False).exists():
+            raise VaryantHatasi(f"{stok.kod}: varyantlı hareketi olan kart varyantsız yapılamaz.")
         for sv in satirlar:
             sv.silindi, sv.silindi_at, sv.updated_by = True, timezone.now(), kullanici
             sv.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+        if stok.varsayilan_varyant_id:
+            stok.varsayilan_varyant = None
+            Stok.objects.filter(pk=stok.pk).update(varsayilan_varyant=None)
         return
     gorulen = set()
     for sv in satirlar:

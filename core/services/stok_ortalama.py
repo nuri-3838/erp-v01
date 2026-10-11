@@ -145,38 +145,70 @@ def _usd_doldur(hareketler):
             h.giris_tutar_usd = yuvarla(h.giris_tutar_try / kur, 2) if kur else SIFIR
 
 
+def _varyant_gruplari(stok, hareketler) -> list:
+    """[(varyant_id, hareket listesi)] — varyantlı kartta hareketler varyanta göre AYRI zincirlerdir (her varyantın kendi ortalaması);
+    varyantsız kartta tek grup (None). Sıra: ilk görülme sırası."""
+    if not stok.varyantli:
+        return [(None, hareketler)]
+    gruplar = {}
+    for h in hareketler:
+        gruplar.setdefault(h.varyant_id, []).append(h)
+    return list(gruplar.items())
+
+
 @transaction.atomic
 def yeniden_hesapla(stok, *, fis_guncelle=True, _derinlik=0) -> list:
     """Kartın TÜM hareketlerini baştan hesaplar, sonuçları hareketlere ve ``Stok`` önbelleğine
     yazar. Değeri değişen sarf çıkışlarının fişini günceller (``fis_guncelle=False`` ise
-    güncellemez, yalnız değişenleri döner). Dönüş: değeri değişen çıkış hareketleri."""
+    güncellemez, yalnız değişenleri döner). Dönüş: değeri değişen çıkış hareketleri.
+    VARYANTLI kartta (E-2) her varyant ayrı zincirdir: ``StokVaryant`` önbelleği varyant başına, ``Stok`` önbelleği toplam
+    (tek varyant varsa bugünkü değerlerle birebir aynı)."""
+    from core.models import StokVaryant
     hareketler = kart_hareketleri(stok)
     _usd_doldur(hareketler)
-    sonuclar = hesapla(hareketler)
-    degisen_cikislar, guncellenecek = [], []
-    for h, s in zip(hareketler, sonuclar):
-        eski_tutar = h.tutar_try
-        yeni = {"maliyet_durumu": s.durum, "tutar_try": s.tutar_try, "tutar_usd": s.tutar_usd,
-                "birim_maliyet_try": s.birim_try, "birim_maliyet_usd": s.birim_usd,
-                "sonrasi_miktar": s.sonrasi_miktar, "sonrasi_deger_try": s.sonrasi_deger_try,
-                "sonrasi_deger_usd": s.sonrasi_deger_usd, "sonrasi_ort_try": s.sonrasi_ort_try,
-                "sonrasi_ort_usd": s.sonrasi_ort_usd}
-        if any(getattr(h, a) != y for a, y in yeni.items()):
-            for a, y in yeni.items():
-                setattr(h, a, y)
-            guncellenecek.append(h)
-        if (eski_tutar is not None and eski_tutar != s.tutar_try
-                and (h.tur == CIKIS or h.giris_ortalama)
-                and h.kaynak != StokHareket.Kaynak.TRANSFER):
-            degisen_cikislar.append(h)
+    degisen_cikislar, guncellenecek, sonlar = [], [], {}
+    for varyant_id, grup in _varyant_gruplari(stok, hareketler):
+        sonuclar = hesapla(grup)
+        for h, s in zip(grup, sonuclar):
+            eski_tutar = h.tutar_try
+            yeni = {"maliyet_durumu": s.durum, "tutar_try": s.tutar_try, "tutar_usd": s.tutar_usd,
+                    "birim_maliyet_try": s.birim_try, "birim_maliyet_usd": s.birim_usd,
+                    "sonrasi_miktar": s.sonrasi_miktar, "sonrasi_deger_try": s.sonrasi_deger_try,
+                    "sonrasi_deger_usd": s.sonrasi_deger_usd, "sonrasi_ort_try": s.sonrasi_ort_try,
+                    "sonrasi_ort_usd": s.sonrasi_ort_usd}
+            if any(getattr(h, a) != y for a, y in yeni.items()):
+                for a, y in yeni.items():
+                    setattr(h, a, y)
+                guncellenecek.append(h)
+            if (eski_tutar is not None and eski_tutar != s.tutar_try
+                    and (h.tur == CIKIS or h.giris_ortalama)
+                    and h.kaynak != StokHareket.Kaynak.TRANSFER):
+                degisen_cikislar.append(h)
+        sonlar[varyant_id] = sonuclar[-1] if sonuclar else None
     if guncellenecek:
         StokHareket.objects.bulk_update(guncellenecek, _HAREKET_ALANLARI + ["giris_tutar_usd"])
-    son = sonuclar[-1] if sonuclar else None
-    stok.maliyet_miktar = son.sonrasi_miktar if son else SIFIR
-    stok.maliyet_deger_try = son.sonrasi_deger_try if son else SIFIR
-    stok.maliyet_deger_usd = son.sonrasi_deger_usd if son else SIFIR
-    stok.ort_maliyet_try = son.sonrasi_ort_try if son else None
-    stok.ort_maliyet_usd = son.sonrasi_ort_usd if son else None
+    if stok.varyantli:
+        for sv in StokVaryant.objects.filter(stok=stok, silindi=False):
+            son = sonlar.get(sv.pk)
+            yeni = {"maliyet_miktar": son.sonrasi_miktar if son else SIFIR, "maliyet_deger_try": son.sonrasi_deger_try if son else SIFIR,
+                    "maliyet_deger_usd": son.sonrasi_deger_usd if son else SIFIR, "ort_maliyet_try": son.sonrasi_ort_try if son else None,
+                    "ort_maliyet_usd": son.sonrasi_ort_usd if son else None}
+            if any(getattr(sv, a) != y for a, y in yeni.items()):
+                StokVaryant.objects.filter(pk=sv.pk).update(**yeni)
+    dolu = [s for s in sonlar.values() if s is not None]
+    if len(dolu) <= 1:                                   # varyantsız kart ya da tek varyant: bugünkü değerler birebir
+        son = dolu[0] if dolu else None
+        stok.maliyet_miktar = son.sonrasi_miktar if son else SIFIR
+        stok.maliyet_deger_try = son.sonrasi_deger_try if son else SIFIR
+        stok.maliyet_deger_usd = son.sonrasi_deger_usd if son else SIFIR
+        stok.ort_maliyet_try = son.sonrasi_ort_try if son else None
+        stok.ort_maliyet_usd = son.sonrasi_ort_usd if son else None
+    else:                                                # çok varyant: kart = toplam miktar/değer, ağırlıklı ortalama
+        stok.maliyet_miktar = sum((s.sonrasi_miktar for s in dolu), SIFIR)
+        stok.maliyet_deger_try = sum((s.sonrasi_deger_try for s in dolu), SIFIR)
+        stok.maliyet_deger_usd = sum((s.sonrasi_deger_usd for s in dolu), SIFIR)
+        stok.ort_maliyet_try = _ort(stok.maliyet_deger_try, stok.maliyet_miktar)
+        stok.ort_maliyet_usd = _ort(stok.maliyet_deger_usd, stok.maliyet_miktar)
     Stok.objects.filter(pk=stok.pk).update(
         maliyet_miktar=stok.maliyet_miktar, maliyet_deger_try=stok.maliyet_deger_try,
         maliyet_deger_usd=stok.maliyet_deger_usd, ort_maliyet_try=stok.ort_maliyet_try,

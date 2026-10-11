@@ -22,14 +22,17 @@ class HareketHatasi(ValueError):
     """Stok hareketi kural ihlali (Türkçe mesaj)."""
 
 
-def eldeki_miktar(stok, depo=None, tarih=None) -> Decimal:
+def eldeki_miktar(stok, depo=None, tarih=None, varyant=None) -> Decimal:
     """Stok (opsiyonel depo) için eldeki miktar = Σgiriş − Σçıkış (silinmemiş). ``tarih`` verilirse O TARİH SONU itibarıyla
-    (tarihi ``tarih``i geçmeyen hareketler): geriye tarihli çıkış, o gün henüz gelmemiş stoğu tüketemesin diye."""
+    (tarihi ``tarih``i geçmeyen hareketler): geriye tarihli çıkış, o gün henüz gelmemiş stoğu tüketemesin diye.
+    ``varyant`` (StokVaryant|pk) verilirse yalnız o varyant (varyantlı kart); verilmezse kart toplamı (bugünkü anlam)."""
     qs = StokHareket.objects.filter(stok=stok, silindi=False)
     if depo is not None:
         qs = qs.filter(depo=depo)
     if tarih is not None:
         qs = qs.filter(tarih__lte=tarih)
+    if varyant is not None:
+        qs = qs.filter(varyant_id=getattr(varyant, "pk", varyant))
     g = qs.filter(tur=StokHareket.Tur.GIRIS).aggregate(t=Sum("miktar"))["t"] or SIFIR
     c = qs.filter(tur=StokHareket.Tur.CIKIS).aggregate(t=Sum("miktar"))["t"] or SIFIR
     return g - c
@@ -39,19 +42,34 @@ def _sayi_metni(d: Decimal) -> str:
     return format(Decimal(d).normalize(), "f")
 
 
-def yetersiz_mesaji(stok, depo, tarih, eldeki, gerekli) -> str:
+def yetersiz_mesaji(stok, depo, tarih, eldeki, gerekli, varyant=None) -> str:
     """TARİH BAZLI stok yetersizliği mesajı — tek biçim (üretim girdisi, satış faturası, numune, sarf, elle çıkış hepsi bunu kullanır; ``uretim.
-    _eksik_mesaji`` bu biçimi ayrıştırır): "Bu tarihte yetersiz: KOD (eldeki X, gerekli Y) — DEPO, gg.aa.yyyy"."""
-    return (f"Bu tarihte yetersiz: {stok.kod} (eldeki {_sayi_metni(eldeki)}, gerekli {_sayi_metni(gerekli)}) — {depo.kod}, "
+    _eksik_mesaji`` bu biçimi ayrıştırır): "Bu tarihte yetersiz: KOD [VARYANT] (eldeki X, gerekli Y) — DEPO, gg.aa.yyyy"."""
+    from core.services.varyant import varyant_kisa
+    etiket = f" [{varyant_kisa(varyant)}]" if varyant is not None else ""
+    return (f"Bu tarihte yetersiz: {stok.kod}{etiket} (eldeki {_sayi_metni(eldeki)}, gerekli {_sayi_metni(gerekli)}) — {depo.kod}, "
             f"{tarih:%d.%m.%Y}")
 
 
-def cikis_kontrol(stok, depo, tarih, miktar) -> Decimal:
-    """ÇIKIŞ öncesi kontrol: ``tarih`` sonu itibarıyla depodaki eldeki ``miktar``dan azsa HareketHatasi (hiçbir şey yazılmaz). Eldekiyi döner."""
-    mevcut = eldeki_miktar(stok, depo, tarih)
+def cikis_kontrol(stok, depo, tarih, miktar, varyant=None) -> Decimal:
+    """ÇIKIŞ öncesi kontrol: ``tarih`` sonu itibarıyla depodaki (varyantlı kartta o varyantın) eldeki ``miktar``dan azsa HareketHatasi
+    (hiçbir şey yazılmaz). Eldekiyi döner."""
+    mevcut = eldeki_miktar(stok, depo, tarih, varyant=varyant)
     if miktar > mevcut:
-        raise HareketHatasi(yetersiz_mesaji(stok, depo, tarih, mevcut, miktar))
+        raise HareketHatasi(yetersiz_mesaji(stok, depo, tarih, mevcut, miktar, varyant=varyant))
     return mevcut
+
+
+def toplu_eldeki_varyant(stok_idler) -> dict:
+    """{(stok_id, varyant_id): eldeki} — varyantlı kartların varyant bazında eldekisi (tüm depolar), TEK gruplu sorgu."""
+    gruplu = (StokHareket.objects.filter(stok_id__in=list(stok_idler), silindi=False)
+              .values("stok_id", "varyant_id", "tur").annotate(t=Sum("miktar")))
+    eldeki = {}
+    for g in gruplu:
+        fark = g["t"] if g["tur"] == StokHareket.Tur.GIRIS else -g["t"]
+        anahtar = (g["stok_id"], g["varyant_id"])
+        eldeki[anahtar] = eldeki.get(anahtar, SIFIR) + fark
+    return eldeki
 
 
 def toplu_eldeki(stok_idler) -> dict:
@@ -104,8 +122,9 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                  teklif_siparis_kalem=None, operasyon_kaydi_girdi=None, kullanici=None,
                  tahmini=False, giris_tutar_try=None, giris_tutar_usd=None,
                  maliyet_fatura_satir=None, operasyon_kaydi=None, giris_ortalama=False,
-                 transfer_grubu=None) -> StokHareket:
-    """Miktar hareketi yazar. Hareketli ağırlıklı ortalama maliyet (bkz. core.services.
+                 transfer_grubu=None, varyant=None) -> StokHareket:
+    """Miktar hareketi yazar. ``varyant``: varyantlı kartta hareketin varyantı (StokVaryant|pk); verilmezse kartın varsayılan
+    varyantı (bkz. core.services.varyant.hareket_varyanti); varyantsız kartta boş kalır. Hareketli ağırlıklı ortalama maliyet (bkz. core.services.
     stok_ortalama): ``giris_tutar_try`` (+``giris_tutar_usd``) GİRİŞ'in fatura tutarıdır;
     verilmezse giriş fiyatsız/GEÇİCİ sayılır (``giris_ortalama=True``: satış iadesi — o anki
     ortalamayla değerlenir). Çıkışta ``giris_tutar_try`` yalnız alış iadesi faturasında verilir (çıkış
@@ -128,10 +147,11 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
         raise HareketHatasi("Miktar geçerli bir sayı olmalı.")
     if m <= 0:
         raise HareketHatasi("Miktar sıfırdan büyük olmalı.")
+    varyant = _varyant_coz(stok, varyant)
     if tur == StokHareket.Tur.CIKIS:
-        cikis_kontrol(stok, depo, tarih, m)                 # TARİH BAZLI: o gün henüz gelmemiş stok çıkamaz
+        cikis_kontrol(stok, depo, tarih, m, varyant=varyant)   # TARİH BAZLI: o gün henüz gelmemiş stok çıkamaz (varyantlı kartta o varyant)
     hareket = StokHareket.objects.create(
-        stok=stok, depo=depo, tarih=tarih, tur=tur, miktar=m,
+        stok=stok, depo=depo, tarih=tarih, tur=tur, miktar=m, varyant=varyant,
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=kaynak,
         fatura_satir=fatura_satir, teklif_siparis_kalem=teklif_siparis_kalem,
         operasyon_kaydi_girdi=operasyon_kaydi_girdi,
@@ -153,9 +173,18 @@ def _ortalamayi_hesapla(stok, **kw):
         raise HareketHatasi(str(e))
 
 
+def _varyant_coz(stok, varyant):
+    """Varyantlı kartta hareketin varyantı (verilen ya da kartın varsayılanı); varyantsız kartta None (varyant verilirse hata)."""
+    from core.services import varyant as varyant_servis
+    try:
+        return varyant_servis.hareket_varyanti(stok, varyant)
+    except varyant_servis.VaryantHatasi as e:
+        raise HareketHatasi(str(e))
+
+
 @transaction.atomic
 def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
-                    yatirim_projesi_id=None, aciklama="", kullanici=None) -> StokHareket:
+                    yatirim_projesi_id=None, aciklama="", kullanici=None, varyant=None) -> StokHareket:
     """Stoktan hesaba/yatırım projesine SARF çıkışı: miktar hareketi + FIFO maliyet
     tüketimi + muhasebe fişi (karşı hesap BORÇ, stoğun muhasebe hesabı ALACAK) BİR
     ARADA oluşturur. Tutar = o anki hareketli ağırlıklı ortalama maliyet (bkz. core.services.
@@ -197,7 +226,8 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
         raise HareketHatasi("Miktar geçerli bir sayı olmalı.")
     if m <= 0:
         raise HareketHatasi("Miktar sıfırdan büyük olmalı.")
-    cikis_kontrol(stok, depo, tarih, m)
+    varyant = _varyant_coz(stok, varyant)
+    cikis_kontrol(stok, depo, tarih, m, varyant=varyant)
 
     try:
         stok_hesabi = kategori_servis.stok_muhasebe_hesabi(stok)
@@ -205,7 +235,7 @@ def sarf_cikis_ekle(*, stok_id, depo_id, tarih, miktar, karsi_hesap_id,
         raise HareketHatasi(str(e))
 
     hareket = StokHareket.objects.create(
-        stok=stok, depo=depo, tarih=tarih, tur=StokHareket.Tur.CIKIS, miktar=m,
+        stok=stok, depo=depo, tarih=tarih, tur=StokHareket.Tur.CIKIS, miktar=m, varyant=varyant,
         aciklama=buyuk_harf_tr((aciklama or "").strip()), kaynak=StokHareket.Kaynak.SARF,
         karsi_hesap=karsi_hesap, yatirim_projesi=yatirim_projesi,
         created_by=kullanici, updated_by=kullanici)
@@ -275,8 +305,8 @@ def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False
     if hareket.kaynak == StokHareket.Kaynak.NUMUNE and not _numune_icinden:
         raise HareketHatasi("Numune çıkışı hareketi tek başına silinemez; Numune Çıkışı belgesinin onayını geri alın.")
     if hareket.tur == StokHareket.Tur.GIRIS:
-        # Bu girişi geri alınca eldeki negatif olur mu?
-        if eldeki_miktar(hareket.stok, hareket.depo) - hareket.miktar < 0:
+        # Bu girişi geri alınca eldeki negatif olur mu? (varyantlı kartta o varyantın eldekisi)
+        if eldeki_miktar(hareket.stok, hareket.depo, varyant=hareket.varyant_id) - hareket.miktar < 0:
             raise HareketHatasi(
                 "Bu giriş silinemez: depodaki eldeki miktar negatife düşer (önce çıkışları düzeltin).")
     if hareket.fis_id and not hareket.fis.silindi:
