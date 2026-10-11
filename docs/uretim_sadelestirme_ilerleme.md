@@ -10,8 +10,8 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
 | 3 | ÜS detay: istasyon bazlı katlanır gruplar; "Bu istasyonu üret" / "Tümünü üret" (atomik) | TAMAM (canlıda) | `3268375` | 3244 OK | ÜS-2026-0002/0003/0004 detay 200; gruplar istasyon sırasıyla (12,15,20,…,80), tamamlanan gruplar kapalı; açık emir olmadığından toplu düğmeler görünmüyor (beklenen); "Kayıtları gör" var; traceback yok |
 | 4 | Operasyon Kayıtları: varsayılan Onaylı; bağımsız yeni kaldırıldı; geri al yetkisi + iz | TAMAM (canlıda) | `e820306` | 3244 OK (klon DB'ler yeniden kuruldu) | 0206 uygulandı; liste 200 (aktif sekme Onaylı, "Bağımsız" yok, canlıda taslak 0 → Taslak sekmesi gizli), Tümü 200, OP-2026-0437 detay 200 ("Geri al ve sil" + iz notu); `/uretim/kayitlar/ekle/` dışarıdan 404; traceback yok |
 | 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | TAMAM (canlıda) | `9ad676d` | 3248 OK | eski adres 301 → `/uretim/urun-agaci/?gorunum=ihtiyac`; yeni görünüm 200 (segment aktif, form var); 152-10-0001 ağacında 16 ✎ + düzenle bağlantısı; ÜRETİM menüsünde İhtiyaç Hesapla yok; traceback yok |
-| 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | kod+test tamam, deploy bekliyor | | | |
-| 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | bekliyor | | | |
+| 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | TAMAM (canlıda) | `893aef6` | 3252 OK | yeni form ve sade tanım (151-10-0001) düzenlemede Gelişmiş kapalı, tür alanı içinde; PARÇALA tanımı (151-20-0014) düzenlemede açık + "parçala" rozeti; canlıda yan çıktılı tanım yok; traceback yok |
+| 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | kod+test tamam, deploy bekliyor | | | |
 | 8 | ÜS listesi: varsayılan Açık; tamamlanmış stok ÜS'de "Tamamlandı" | bekliyor | | | |
 
 ## Adım notları
@@ -63,3 +63,10 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
   Yeni tanımda ve sade tanım düzenlemede KAPALI; PARÇALA tanımı ya da yan çıktısı olan tanım (kopya dahil) düzenlenirken AÇIK. Ana kart başlığında
   "parçala" rozeti (JS ile tür değişince de). Alan adları/ID'ler ve JS mantığı değişmedi (POST davranışı aynı; mevcut 149 form/servis testi geçti).
   Testler `test_operasyon_form_gelismis.py`.
+- **Adım 7:** `istasyon_emirleri` görünümü: istasyon SEKMELERİ (`uretim.istasyon_acik_emir_sayilari`: açık ÜS'de BEKLIYOR/BASLADI emir sayısı) + Tümü;
+  süzgeç yalnız ÜS no (`us`; eski `ara` bağlantıları da kabul: ÜS no / emir no) ve durum (varsayılan açık); `?istasyon=` ve `?uretim_emri=` korunur;
+  bilinmeyen istasyon pk → boş liste. Satırda tek işlem: Tamamlandı rozeti / "Fason dönüş aç" (fason istasyonu) / Üretildi formu; emir no → o emrin
+  Operasyon Kayıtları (eski "Kayıtlar" bağlantısı kalktı); seçili istasyonda İş İstasyonu sütunu yok. Seçili, fason olmayan istasyonda ve açık süzgecinde
+  "▶▶ Bu istasyondaki açık emirlerin tümünü üret" → `istasyon_toplu_uret` (yeni URL `istasyon_toplu_uret`; yetki `operasyon_kayitlari`):
+  istasyonun TÜM açık ÜS'lerdeki üretilebilir emirleri ÜS sırasıyla (yıl, sıra; aynı ÜS'de derin seviye önce), tek tarih, tek atomik işlem; hata mesajında
+  ÜS no + emir + stok (`_sirayla_uret` adım 3 ile ortak). Testler `test_istasyon_emirleri_sekme.py`.

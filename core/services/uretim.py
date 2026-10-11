@@ -1267,6 +1267,21 @@ def toplu_uretilecek_emirler(emir: UretimEmri, istasyon=None) -> list:
             if ie.durum not in (IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL) and not ie.istasyon.fason and istasyon_emri_acik_kalan(ie) > 0]
 
 
+def _sirayla_uret(sira, tarih, kullanici, us_goster=False) -> list:
+    """Verilen emirleri sırayla ``istasyon_emri_uret`` ile üretir; ilk hatada ``TopluUretimHatasi`` (çağıranın transaction'ı geri sarar)."""
+    yapilan = []
+    for ie in sira:
+        try:
+            kayit, _uyari = istasyon_emri_uret(ie, tarih=tarih, kullanici=kullanici)
+        except UretimHatasi as e:
+            ek = f" ({len(yapilan)} emir üretilmişti; hepsi geri alındı)" if yapilan else ""
+            us = f"{ie.uretim_emri.no} · " if us_goster else ""
+            raise TopluUretimHatasi(f"{us}{ie.no} · {ie.istasyon.kod} {ie.istasyon.ad} · {ie.operasyon.cikti.kod}: {e}{ek}",
+                                    istasyon_emri=ie, tamamlanan=len(yapilan))
+        yapilan.append((ie, kayit))
+    return yapilan
+
+
 @transaction.atomic
 def uretim_emri_toplu_uret(emir: UretimEmri, *, istasyon=None, tarih=None, kullanici=None) -> list:
     """"Bu istasyonu üret" / "Tümünü üret": ÜS'nin üretilecek istasyon emirlerini (``toplu_uretilecek_emirler``) istasyon sırasıyla, TEK tarihle,
@@ -1279,16 +1294,38 @@ def uretim_emri_toplu_uret(emir: UretimEmri, *, istasyon=None, tarih=None, kulla
     sira = toplu_uretilecek_emirler(emir, istasyon)
     if not sira:
         raise UretimHatasi("Üretilecek açık istasyon emri yok (fason emirleri fason dönüş belgesiyle kapanır).")
-    yapilan = []
-    for ie in sira:
-        try:
-            kayit, _uyari = istasyon_emri_uret(ie, tarih=tarih, kullanici=kullanici)
-        except UretimHatasi as e:
-            ek = f" ({len(yapilan)} emir üretilmişti; hepsi geri alındı)" if yapilan else ""
-            raise TopluUretimHatasi(f"{ie.no} · {ie.istasyon.kod} {ie.istasyon.ad} · {ie.operasyon.cikti.kod}: {e}{ek}",
-                                    istasyon_emri=ie, tamamlanan=len(yapilan))
-        yapilan.append((ie, kayit))
-    return yapilan
+    return _sirayla_uret(sira, tarih, kullanici)
+
+
+def istasyon_acik_emir_sayilari() -> dict:
+    """{istasyon pk: açık istasyon emri sayısı} — BEKLIYOR/BASLADI, açık (ACIK) ÜS'lerde; İstasyon Emirleri ekranındaki sekme sayıları."""
+    return {r["istasyon_id"]: r["n"] for r in IstasyonEmri.objects.filter(
+        silindi=False, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
+        durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI]).values("istasyon_id").annotate(n=Count("id"))}
+
+
+def istasyon_toplu_uretilecek_emirler(istasyon) -> list:
+    """Bir istasyonun TÜM açık ÜS'lerdeki üretilebilir emirleri: ÜS sırası (yıl, sıra — eski sipariş önce), aynı ÜS'de derin seviye önce, pk.
+    Fason istasyonunda boş (fason dönüşle kapanır)."""
+    if istasyon.fason:
+        return []
+    qs = (IstasyonEmri.objects.filter(silindi=False, istasyon=istasyon, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
+                                      durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI])
+          .select_related("uretim_emri", "istasyon", "operasyon__cikti").order_by("uretim_emri__yil", "uretim_emri__sira", "-seviye", "pk"))
+    return [ie for ie in qs if istasyon_emri_acik_kalan(ie) > 0]
+
+
+@transaction.atomic
+def istasyon_toplu_uret(istasyon, *, tarih=None, kullanici=None) -> list:
+    """İstasyon Emirleri ekranı "Bu istasyondaki açık emirlerin tümünü üret": istasyonun tüm açık ÜS'lerdeki üretilebilir emirlerini
+    (``istasyon_toplu_uretilecek_emirler``) tek tarihle, tek atomik işlemde üretir — ilk hatada hiçbir şey yazılmaz (``TopluUretimHatasi``,
+    mesajda ÜS no da var). Fason istasyonu reddedilir."""
+    if istasyon.fason:
+        raise UretimHatasi("Fason istasyonunda üretim, fason dönüş belgesiyle yapılır (\"Fason dönüş aç\").")
+    sira = istasyon_toplu_uretilecek_emirler(istasyon)
+    if not sira:
+        raise UretimHatasi(f"{istasyon.kod} {istasyon.ad}: üretilecek açık istasyon emri yok.")
+    return _sirayla_uret(sira, tarih, kullanici, us_goster=True)
 
 
 def istasyon_emri_satiri(ie: IstasyonEmri, emir: UretimEmri, hatalar=None) -> dict:

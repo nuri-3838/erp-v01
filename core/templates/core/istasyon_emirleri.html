@@ -5,9 +5,23 @@
 
 {% block content %}
 <style>
-  .ie-uret-form { display:inline-flex; gap:.3rem; align-items:center; margin:0 .4rem .2rem 0; flex-wrap:wrap; }
+  .ie-uret-form { display:inline-flex; gap:.3rem; align-items:center; margin:0; flex-wrap:wrap; }
   .ie-uret-form input[type=text] { width:6.2rem; text-align:right; }
   .ie-hata { margin-top:.35rem; padding:.4rem .6rem; border-radius:8px; background:#fdecef; color:#b3253f; font-size:.82rem; max-width:34rem; }
+  .ie-sekmeler { display:flex; gap:.3rem; flex-wrap:wrap; margin:0 0 .8rem; border-bottom:1px solid var(--cizgi-koyu); }
+  .ie-sekme { padding:.45rem .9rem; border-radius:10px 10px 0 0; font-weight:600; font-size:.88rem; color:var(--metin-soluk); text-decoration:none;
+    display:inline-flex; align-items:center; gap:.4rem; }
+  .ie-sekme:hover { color:var(--metin); background:rgba(240,124,0,.06); }
+  .ie-sekme.aktif { color:var(--turuncu-koyu); background:rgba(240,124,0,.1); box-shadow:inset 0 -2px 0 var(--turuncu); }
+  .ie-sekme .sayi { display:inline-block; min-width:1.3rem; padding:.05rem .4rem; border-radius:999px; background:rgba(33,56,95,.1); color:#33415c;
+    font-size:.74rem; text-align:center; font-variant-numeric:tabular-nums; }
+  .ie-sekme.aktif .sayi { background:var(--turuncu); color:#fff; }
+  .ie-sekme .sayi.sifir { opacity:.5; }
+  .ie-suzgec { display:flex; gap:.7rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem; }
+  .ie-suzgec .alan { margin:0; }
+  .ie-toplu-kutu { display:flex; justify-content:space-between; align-items:center; gap:.8rem; flex-wrap:wrap; padding:.6rem .9rem; margin:0 0 .8rem;
+    border:1px solid rgba(240,124,0,.35); border-radius:12px; background:rgba(240,124,0,.06); }
+  .ie-no a { text-decoration:none; }
 </style>
 <div class="sayfa-ust">
   <div>
@@ -16,36 +30,48 @@
   </div>
 </div>
 
-<p class="yardim">Üretim siparişlerinin net planından doğan, istasyon bazlı iş emirleri. Varsayılan görünüm bekleyen ve başlamış işlerdir;
-  miktarlar referans çıktı adedi cinsindendir.</p>
+<p class="yardim">İstasyon sekmeleri açık (bekleyen + başlamış) emir sayısını gösterir. Miktarlar referans çıktı adedi cinsindendir; emir no kaydın
+  Operasyon Kayıtları'na gider. “Üretildi” kaydı tek işlemde açıp onaylar; fason istasyonunda emir “Fason dönüş aç” ile kapanır.</p>
 
-<form method="get" class="ue-arama-cubuk" style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem">
-  <div class="alan"><label for="ie-ara">Ara</label>
-    <input type="text" id="ie-ara" name="ara" value="{{ ara }}" placeholder="Emir no, sipariş no veya çıktı…" autocomplete="off"></div>
-  <div class="alan"><label for="ie-istasyon">İş İstasyonu</label>
-    <select name="istasyon" id="ie-istasyon">
-      <option value="">Tümü</option>
-      {% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}
-    </select></div>
+<nav class="ie-sekmeler" aria-label="İstasyon">
+  {% for s in sekmeler %}<a class="ie-sekme{% if s.aktif %} aktif{% endif %}" href="{{ s.url }}">{{ s.ad }} <span class="sayi{% if not s.sayi %} sifir{% endif %}">{{ s.sayi }}</span></a>{% endfor %}
+</nav>
+
+<form method="get" class="ie-suzgec">
+  {% if secili %}<input type="hidden" name="istasyon" value="{{ secili.pk }}">{% endif %}
+  {% if uretim_emri %}<input type="hidden" name="uretim_emri" value="{{ uretim_emri }}">{% endif %}
+  <div class="alan"><label for="ie-us">ÜS no</label>
+    <input type="text" id="ie-us" name="us" value="{{ us }}" placeholder="ÜS-2026-0001" size="16" autocomplete="off"></div>
   <div class="alan"><label for="ie-durum">Durum</label>
     <select name="durum" id="ie-durum">
-      <option value="">Açık işler (bekleyen + başlayan)</option>
+      <option value="">Açık (bekleyen + başlayan)</option>
       {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}
     </select></div>
-  {% if uretim_emri %}<input type="hidden" name="uretim_emri" value="{{ uretim_emri }}">{% endif %}
   <button type="submit" class="birincil">Filtrele</button>
-  <a class="iptal-bag" href="{% url 'core:istasyon_emirleri' %}">Temizle</a>
+  <a class="iptal-bag" href="{% url 'core:istasyon_emirleri' %}{% if secili %}?istasyon={{ secili.pk }}{% endif %}">Temizle</a>
 </form>
+
+{% if toplu_uretilebilir %}
+<div class="ie-toplu-kutu">
+  <span><strong>{{ secili.kod }} {{ secili.ad }}</strong> — açık emirlerin tümü, üretim siparişi sırasıyla tek tarihle üretilir; bir emirde hata olursa hiçbiri yazılmaz.</span>
+  <form method="post" action="{% url 'core:istasyon_toplu_uret' secili.pk %}" class="ie-uret-form"
+        onsubmit="return confirm('{{ secili.kod }} {{ secili.ad }} istasyonundaki TÜM açık emirler bu tarihle üretilsin mi? Bir emirde hata olursa hiçbiri yazılmaz.');">
+    {% csrf_token %}
+    <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (tüm emirler için tek tarih)">
+    <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶▶ Bu istasyondaki açık emirlerin tümünü üret</button>
+  </form>
+</div>
+{% endif %}
 
 <div class="tablo-kapsayici genis">
 <table>
-  <thead><tr><th>Emir</th><th>Üretim Siparişi</th><th>İş İstasyonu</th><th>Çıktı</th><th class="sag">Planlanan</th><th class="sag">Tamamlanan</th><th class="sag">Açık kalan</th><th>Durum</th><th></th></tr></thead>
+  <thead><tr><th>Emir</th><th>Üretim Siparişi</th>{% if not secili %}<th>İş İstasyonu</th>{% endif %}<th>Çıktı</th><th class="sag">Planlanan</th><th class="sag">Tamamlanan</th><th class="sag">Açık kalan</th><th>Durum</th><th>İşlem</th></tr></thead>
   <tbody>
     {% for s in satirlar %}
       <tr>
-        <td class="mono">{{ s.ie.no }}</td>
+        <td class="mono ie-no"><a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}" title="Bu emrin operasyon kayıtları">{{ s.ie.no }}</a></td>
         <td><a class="mono" href="{% url 'core:uretim_emri_detay' s.ie.uretim_emri_id %}">{{ s.ie.uretim_emri.no }}</a></td>
-        <td><span class="mono">{{ s.ie.istasyon.kod }}</span> {{ s.ie.istasyon.ad }}</td>
+        {% if not secili %}<td><span class="mono">{{ s.ie.istasyon.kod }}</span> {{ s.ie.istasyon.ad }}{% if s.ie.istasyon.fason %} <span class="rozet rozet-notr">fason</span>{% endif %}</td>{% endif %}
         <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}</td>
         <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>
         <td class="sag mono">{{ s.tamamlanan|tr_kur:3 }}</td>
@@ -53,20 +79,19 @@
         <td><span class="rozet {% if s.ie.durum == 'BITTI' %}rozet-aktif{% elif s.ie.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ s.ie.get_durum_display }}</span></td>
         <td id="ie-{{ s.ie.pk }}" class="ie-uret">
             {% if s.ie.durum == 'BITTI' %}<span class="rozet rozet-aktif">Tamamlandı</span>
+            {% elif s.fason_acilabilir %}<a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>
             {% elif s.uretilebilir and uret_yetkili %}
             <form method="post" action="{% url 'core:istasyon_emri_uret' s.ie.pk %}" class="ie-uret-form">
               {% csrf_token %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
               <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer" autocomplete="off">
               <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi">
               <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">Üretildi</button></form>
-            {% endif %}
-            {% if s.fason_acilabilir %}<a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>{% endif %}
-            <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>
+            {% else %}<span class="pasif">—</span>{% endif %}
             {% if s.hata %}<div class="ie-hata">⚠️ {{ s.hata }}</div>{% endif %}
           </td>
       </tr>
     {% empty %}
-      <tr><td colspan="9" class="yardim" style="text-align:center;padding:1.6rem 0">🛠️ Bu süzgeçle eşleşen istasyon emri yok.</td></tr>
+      <tr><td colspan="{% if secili %}8{% else %}9{% endif %}" class="yardim" style="text-align:center;padding:1.6rem 0">🛠️ Bu süzgeçle eşleşen istasyon emri yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -74,9 +99,9 @@
 
 {% if sayfa.paginator.num_pages > 1 %}
 <nav class="sayfalama">
-  {% if sayfa.has_previous %}<a href="?sayfa={{ sayfa.previous_page_number }}&ara={{ ara|urlencode }}&durum={{ durum }}&istasyon={{ istasyon }}&uretim_emri={{ uretim_emri }}">‹ Önceki</a>{% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  {% if sayfa.has_previous %}<a href="{{ sayfa_url }}{% if sayfa_url != '?' %}&amp;{% endif %}sayfa={{ sayfa.previous_page_number }}">‹ Önceki</a>{% else %}<span class="pasif">‹ Önceki</span>{% endif %}
   <span class="sayfalama-bilgi">Sayfa {{ sayfa.number }} / {{ sayfa.paginator.num_pages }} · {{ sayfa.paginator.count }} emir</span>
-  {% if sayfa.has_next %}<a href="?sayfa={{ sayfa.next_page_number }}&ara={{ ara|urlencode }}&durum={{ durum }}&istasyon={{ istasyon }}&uretim_emri={{ uretim_emri }}">Sonraki ›</a>{% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+  {% if sayfa.has_next %}<a href="{{ sayfa_url }}{% if sayfa_url != '?' %}&amp;{% endif %}sayfa={{ sayfa.next_page_number }}">Sonraki ›</a>{% else %}<span class="pasif">Sonraki ›</span>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}

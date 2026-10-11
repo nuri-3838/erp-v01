@@ -7459,30 +7459,78 @@ def siparis_revize_gorunum(request, pk):
 # --- İstasyon Emirleri ---
 @ekran_gerekli("istasyon_emirleri")
 def istasyon_emirleri(request):
-    ara = (request.GET.get("ara") or "").strip()
-    durum = (request.GET.get("durum") or "").strip()
-    istasyon = (request.GET.get("istasyon") or "").strip()
+    """İstasyon Emirleri: istasyon SEKMELERİ (açık emir sayısıyla) + Tümü; süzgeç ÜS no (``us``; eski ``ara`` da kabul) ve durum (varsayılan açık =
+    bekleyen + başlamış, açık ÜS); satır başına tek işlem (Üretildi / Fason dönüş aç / Tamamlandı); seçili (fason olmayan) istasyonda "Bu istasyondaki
+    açık emirlerin tümünü üret"."""
+    g = request.GET
+    us = (g.get("us") or g.get("ara") or "").strip()
+    durum = (g.get("durum") or "").strip()
+    istasyon_p = (g.get("istasyon") or "").strip()
+    istasyonlar = list(uretim_servis.aktif_istasyonlar())
+    secili = next((i for i in istasyonlar if istasyon_p.isdigit() and i.pk == int(istasyon_p)), None)
+    sayilar = uretim_servis.istasyon_acik_emir_sayilari()
+    uretim_emri = g.get("uretim_emri", "") if g.get("uretim_emri", "").isdigit() else ""
+
+    def url(**ek):
+        d = {"us": us, "durum": durum, "uretim_emri": uretim_emri, "istasyon": secili.pk if secili else ""}
+        d.update(ek)
+        d = {k: v for k, v in d.items() if v not in ("", None)}
+        return "?" + urlencode(d) if d else "?"
+
+    sekmeler = [{"istasyon": None, "ad": "Tümü", "sayi": sum(sayilar.values()), "aktif": secili is None, "url": url(istasyon="")}] + [
+        {"istasyon": i, "ad": f"{i.kod} {i.ad}", "sayi": sayilar.get(i.pk, 0), "aktif": secili is not None and secili.pk == i.pk, "url": url(istasyon=i.pk)}
+        for i in istasyonlar]
     qs = (IstasyonEmri.objects.filter(silindi=False, uretim_emri__silindi=False)
          .select_related("uretim_emri", "istasyon", "operasyon__cikti").order_by("-yil", "-sira"))
     if durum == "":
-        qs = qs.filter(durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI], uretim_emri__durum=UretimEmri.Durum.ACIK)   # varsayılan: iş bekleyenler
+        qs = qs.filter(durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI], uretim_emri__durum=UretimEmri.Durum.ACIK)   # varsayılan: açık işler
     elif durum in IstasyonEmri.Durum.values:
         qs = qs.filter(durum=durum)
-    if istasyon.isdigit():
-        qs = qs.filter(istasyon_id=int(istasyon))
-    if request.GET.get("uretim_emri", "").isdigit():
-        qs = qs.filter(uretim_emri_id=int(request.GET["uretim_emri"]))
-    if ara:
-        buyuk = buyuk_harf_tr(ara)
-        qs = qs.filter(Q(no__icontains=ara) | Q(uretim_emri__no__icontains=ara) | Q(operasyon__cikti__kod__icontains=ara) | Q(operasyon__cikti__ad__contains=buyuk))
-    sayfa = Paginator(qs, 50).get_page(request.GET.get("sayfa"))
+    if istasyon_p.isdigit():
+        qs = qs.filter(istasyon_id=int(istasyon_p))                      # bilinmeyen/silinmiş istasyon pk → boş liste (Tümü'ye düşmez)
+    if uretim_emri:
+        qs = qs.filter(uretim_emri_id=int(uretim_emri))
+    if us:
+        qs = qs.filter(Q(uretim_emri__no__icontains=us) | Q(no__icontains=us))
+    sayfa = Paginator(qs, 50).get_page(g.get("sayfa"))
     hatalar = request.session.pop("uret_hata", {})
     satirlar = [uretim_servis.istasyon_emri_satiri(ie, ie.uretim_emri, hatalar) for ie in sayfa]
+    uret_yetkili = ekran_gorebilir(request.user, "operasyon_kayitlari")
+    toplu = (secili is not None and not secili.fason and durum == "" and uret_yetkili
+             and bool(uretim_servis.istasyon_toplu_uretilecek_emirler(secili)))
     return render(request, "core/istasyon_emirleri.html", {
-        "satirlar": satirlar, "sayfa": sayfa, "ara": ara, "durum": durum, "istasyon": istasyon,
-        "durumlar": IstasyonEmri.Durum.choices, "istasyonlar": uretim_servis.aktif_istasyonlar(), "uretim_emri": request.GET.get("uretim_emri", ""),
-        "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
-        "bugun": timezone.localdate().isoformat(), "geri": request.get_full_path()})
+        "satirlar": satirlar, "sayfa": sayfa, "us": us, "durum": durum, "istasyon": istasyon_p, "secili": secili, "sekmeler": sekmeler,
+        "durumlar": IstasyonEmri.Durum.choices, "uretim_emri": uretim_emri, "uret_yetkili": uret_yetkili, "toplu_uretilebilir": toplu,
+        "bugun": timezone.localdate().isoformat(), "geri": request.get_full_path(), "sayfa_url": url()})
+
+
+@ekran_gerekli("operasyon_kayitlari")
+def istasyon_toplu_uret_gorunum(request, pk):
+    """"Bu istasyondaki açık emirlerin tümünü üret": istasyonun tüm açık ÜS'lerdeki emirleri tek tarihle, tek atomik işlemde (ilk hatada hiçbir şey
+    yazılmaz; hata mesajda + ilgili satırda)."""
+    istasyon = get_object_or_404(IsIstasyonu, pk=pk, silindi=False)
+    geri = reverse("core:istasyon_emirleri") + f"?istasyon={istasyon.pk}"
+    if request.method != "POST":
+        return redirect(geri)
+    try:
+        ham = (request.POST.get("tarih") or "").strip()
+        tarih = datetime.date.fromisoformat(ham) if ham else None
+        yapilan = uretim_servis.istasyon_toplu_uret(istasyon, tarih=tarih, kullanici=request.user)
+    except uretim_servis.TopluUretimHatasi as e:
+        hatalar = request.session.get("uret_hata", {})
+        hatalar[str(e.istasyon_emri.pk)] = str(e)
+        request.session["uret_hata"] = hatalar
+        messages.error(request, f"Toplu üretim yapılmadı — {e}")
+        return redirect(f"{geri}#ie-{e.istasyon_emri.pk}")
+    except uretim_servis.UretimHatasi as e:
+        messages.error(request, str(e))
+        return redirect(geri)
+    except ValueError:
+        messages.error(request, "Tarih geçerli değil.")
+        return redirect(geri)
+    messages.success(request, f"{istasyon.kod} {istasyon.ad}: {len(yapilan)} istasyon emri üretildi — "
+                     + ", ".join(f"{ie.uretim_emri.no}/{ie.no} → {k.no}" for ie, k in yapilan) + "; kayıtlar onaylandı, stok hareketleri yazıldı.")
+    return redirect(geri)
 
 
 def _guvenli_geri(request, varsayilan):
