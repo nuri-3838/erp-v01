@@ -1073,6 +1073,16 @@ def _istasyon_emri_ac(emir: UretimEmri, plan_satiri: dict, kullanici=None) -> Is
     raise UretimHatasi("İstasyon emri numarası üretilemedi; tekrar deneyin.")
 
 
+OZEL_VARYANT_MESAJI = "Bu siparişte özel varyant var; varyantlı üretim henüz devrede değil."
+
+
+def siparis_ozel_varyantli(siparis) -> bool:
+    """Siparişin bir kaleminde standart dışı varyant var mı (E-4 güvenlik kilidi: planlama motoru E-6'ya kadar ÜS açılmaz)."""
+    from core.services import varyant as varyant_servis
+    return any(varyant_servis.standart_disi_mi(k.varyant)
+               for k in siparis.kalemler.filter(silindi=False, varyant__isnull=False).select_related("varyant"))
+
+
 def siparis_uretilebilir_kalemleri(siparis):
     """(uygun, uygun_degil) döner — uygun_degil: [(TeklifSiparisKalem, sebep_metni), ...].
     Üretime uygun = stok.uretim_urunu=True VE o stok için aktif bir Operasyon tanımlı."""
@@ -1102,6 +1112,8 @@ def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, 
         raise UretimHatasi("Yalnız onaylı sipariş için üretim emri açılabilir.")
     if siparis.uretim_emirleri.filter(silindi=False).exclude(durum=UretimEmri.Durum.IPTAL).exists():      # tüm ÜS'leri iptalse yenisi açılabilir
         raise UretimHatasi("Bu siparişten zaten bir üretim siparişi açılmış.")
+    if siparis_ozel_varyantli(siparis):                                                                   # E-6'ya kadar (docs/varyant_kararlari.md)
+        raise UretimHatasi(OZEL_VARYANT_MESAJI)
 
     uygun, _ = siparis_uretilebilir_kalemleri(siparis)
     uygun_map = {k.pk: k for k in uygun}

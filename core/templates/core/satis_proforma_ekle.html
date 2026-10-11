@@ -117,6 +117,7 @@
               {% if s.kdv %}<span class="fk-kdv">KDV %{{ s.kdv.oran|floatformat:0 }}</span>{% endif %}
               <div class="fk-uyari" hidden>⚠ Bu para biriminde fiyat listesi tanımlı değil</div>
             </div>
+            <div class="fk-alan fk-varyant"><span class="et">Varyant</span><div class="varyant-alan" hidden></div>{{ f.varyant }}</div>
             <div class="fk-alan">
               <label for="{{ f.miktar.id_for_label }}">Miktar</label>
               {{ f.miktar }}
@@ -335,5 +336,6 @@
   ozetGuncelle();
 })();
 </script>
+{% include "core/_varyant_js.html" %}
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}

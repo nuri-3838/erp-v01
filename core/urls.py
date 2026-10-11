@@ -159,6 +159,7 @@ urlpatterns = [
     path("ayarlar/varyantlar/<int:pk>/duzenle/", views.varyant_duzenle, name="varyant_duzenle"),
     path("ayarlar/varyantlar/<int:pk>/varsayilan/", views.varyant_varsayilan_yap, name="varyant_varsayilan_yap"),
     path("ayarlar/varyantlar/<int:pk>/sil/", views.varyant_sil, name="varyant_sil"),
+    path("api/varyant/hizli-ekle/", views.varyant_hizli_ekle, name="varyant_hizli_ekle"),
     # AYARLAR > Tanım Listeleri
     path("ayarlar/tanimlar/", views.tanim_listeleri, name="tanim_listeleri"),
     path("ayarlar/tanimlar/kdv/", views.kdv_oranlari, name="kdv_oranlari"),

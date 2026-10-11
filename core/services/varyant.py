@@ -19,6 +19,8 @@ from core.models import Stok, StokHareket, StokVaryant, Varyant
 
 BOYUT_SIRASI = [b.value for b in Stok.VaryantBoyutu]
 BOYUT_ETIKETI = dict(Stok.VaryantBoyutu.choices)
+BOYUT_ETIKETI_EN = {"MARKALAMA": "Branding", "KILAVUZ": "User manual", "AFIS": "Sticker", "YAN_ETIKET": "Side label"}
+YOK_KODU = "YOK"               # "boş bırakılan = YOK" (karar 9): seçilmeyen boyut bu değere normalize edilir
 _BOYUT_ALANI = {"MARKALAMA": "markalama", "KILAVUZ": "kilavuz", "AFIS": "afis", "YAN_ETIKET": "yan_etiket"}
 
 
@@ -180,13 +182,16 @@ def stok_varyanti_bul_veya_olustur(stok: Stok, secimler: dict, kullanici=None) -
     """Kartın (boyut → Varyant) kombinasyonu için aktif StokVaryant satırını döner, yoksa açar. Varyantsız kartta hata."""
     if not stok.varyantli:
         raise VaryantHatasi(f"{stok.kod} varyantlı bir kart değil.")
+    yok = Varyant.objects.filter(kod=YOK_KODU, silindi=False).first()
     for b in stok_boyutlari(stok):
         v = secimler.get(b)
         if v is not None and not isinstance(v, Varyant):
             v = Varyant.objects.filter(pk=v, silindi=False).first()
             if v is None:
                 raise VaryantHatasi("Varyant bulunamadı.")
-            secimler[b] = v
+        if v is None and yok is not None:                      # boş bırakılan boyut = YOK (tek gösterim; karar 9)
+            v = yok
+        secimler[b] = v
     anahtar = anahtar_uret(stok, secimler)
     mevcut = StokVaryant.objects.filter(stok=stok, anahtar=anahtar, silindi=False).first()
     if mevcut is not None:
@@ -303,6 +308,43 @@ def varyant_meta(stok_pkler=None) -> dict:
         stoklar[str(s.pk)] = {"boyutlar": stok_boyutlari(s),
                               "varsayilan": {b: (getattr(vs, _BOYUT_ALANI[b] + "_id") if vs else None) for b in stok_boyutlari(s)}}
     return {"etiket": BOYUT_ETIKETI, "degerler": [[v.pk, v.kod] for v in secilebilir_varyantlar()], "stoklar": stoklar}
+
+
+def _deger_metni(v, dil) -> str:
+    if v is None or v.kod == YOK_KODU:
+        return "none" if dil == "en" else "yok"
+    return (v.ad_en or v.kod) if dil == "en" else v.kod
+
+
+def standart_disi_metin(sv, dil="tr") -> str:
+    """Belge satırı / PDF için YALNIZ standart dışı boyutlar: 'Afiş: yok · Markalama: MR. MOP' (EN: 'Sticker: none · Branding: MR. MOP').
+    Standart varyantta (ya da varyantsız) boş → PDF birebir aynı kalır."""
+    if sv is None:
+        return ""
+    if not isinstance(sv, StokVaryant):
+        sv = StokVaryant.objects.select_related("stok", "markalama", "kilavuz", "afis", "yan_etiket").filter(pk=sv).first()
+        if sv is None:
+            return ""
+    if sv.standart:
+        return ""
+    vs = varsayilan_varyant()
+    etiket = BOYUT_ETIKETI_EN if dil == "en" else BOYUT_ETIKETI
+    parcalar = []
+    for b in stok_boyutlari(sv.stok):
+        v = getattr(sv, _BOYUT_ALANI[b])
+        if vs is not None and v is not None and v.pk == vs.pk:
+            continue
+        parcalar.append(f"{etiket[b]}: {_deger_metni(v, dil)}")
+    return " · ".join(parcalar)
+
+
+def standart_disi_mi(sv) -> bool:
+    """Kalemde özel (standart dışı) varyant var mı — E-6'ya kadar ÜS açılışı engeli için."""
+    if sv is None:
+        return False
+    if not isinstance(sv, StokVaryant):
+        sv = StokVaryant.objects.filter(pk=sv).first()
+    return bool(sv) and not sv.standart
 
 
 def varyant_ozeti(stok: Stok) -> list:

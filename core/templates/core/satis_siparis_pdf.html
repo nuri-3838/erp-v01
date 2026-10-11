@@ -78,6 +78,7 @@
   .notlar li { position: relative; padding-left: 11px; margin: 1.5px 0; font-size: 7.8px; }
   .notlar li::before { content: ""; position: absolute; left: 0; top: 4.5px; width: 4px; height: 4px;
     border-radius: 50%; background: #36d399; }
+  .varyant-not { font-size: 7.3px; color: #6b7280; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -153,7 +154,7 @@
     <tbody>
       {% for k in kalemler %}
         <tr>
-          <td>{% if k.stok.model_kodu %}<span class="urun-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.urun_ad }}</td>
+          <td>{% if k.stok.model_kodu %}<span class="urun-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.urun_ad }}{% if k.varyant_metni %}<div class="varyant-not">{{ E.varyant }}: {{ k.varyant_metni }}</div>{% endif %}</td>
           <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
           <td class="sag mono">{{ k.net_birim_fiyat|tr_kur:4 }}</td>
           <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>

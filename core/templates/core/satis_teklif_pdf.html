@@ -108,6 +108,7 @@
   .notlar li { position: relative; padding-left: 11px; margin: 1.5px 0; font-size: 7.8px; }
   .notlar li::before { content: ""; position: absolute; left: 0; top: 4.5px; width: 4px; height: 4px;
     border-radius: 50%; background: #f07c00; }
+  .varyant-not { font-size: 7.3px; color: #6b7280; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -163,7 +164,7 @@
     <div class="urun-kart{% if forloop.counter|divisibleby:2 %} alt{% endif %}"{% if forloop.counter == 4 or forloop.counter == 8 %} style="page-break-before:always"{% endif %}>
       <span class="uk-gorsel">{% if k.gorsel_b64 %}<img src="data:image/png;base64,{{ k.gorsel_b64 }}" alt="">{% else %}<span class="bos"></span>{% endif %}</span>
       <div class="uk-govde">
-        <div class="uk-baslik">{% if k.stok.model_kodu %}<span class="model">{{ k.stok.model_kodu }}</span>{% endif %} <span class="urun-ad">{{ k.urun_ad }}</span></div>
+        <div class="uk-baslik">{% if k.stok.model_kodu %}<span class="model">{{ k.stok.model_kodu }}</span>{% endif %} <span class="urun-ad">{{ k.urun_ad }}</span></div>{% if k.varyant_metni %}<div class="varyant-not">{{ E.varyant }}: {{ k.varyant_metni }}</div>{% endif %}
         <div class="oz-satir">{% if k.basamak_goster %}<span class="oz"><span class="et">{{ E.basamak }}</span><span class="dg">{{ k.basamak_goster }}</span></span>{% endif %}{% if k.stok.yukseklik is not None %}<span class="oz"><span class="et">{{ E.yukseklik }}</span><span class="dg">{{ k.stok.yukseklik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.acik_derinlik is not None %}<span class="oz"><span class="et">{{ E.acik_derinlik }}</span><span class="dg">{{ k.stok.acik_derinlik|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.taban_genisligi is not None %}<span class="oz"><span class="et">{{ E.taban }}</span><span class="dg">{{ k.stok.taban_genisligi|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.kapali_boy is not None %}<span class="oz"><span class="et">{{ E.kapali }}</span><span class="dg">{{ k.stok.kapali_boy|tr_kur:1 }} cm</span></span>{% endif %}{% if k.stok.azami_yuk is not None %}<span class="oz"><span class="et">{{ E.azami_yuk }}</span><span class="dg">{{ k.stok.azami_yuk|tr_kur:0 }} kg</span></span>{% endif %}{% if k.materyal_goster %}<span class="oz"><span class="et">{{ E.materyal }}</span><span class="dg">{{ k.materyal_goster }}</span></span>{% endif %}{% if k.stok.hs_kodu %}<span class="oz"><span class="et">{{ E.hs_kodu }}</span><span class="dg mono">{{ k.stok.hs_kodu }}</span></span>{% endif %}</div>
         <div class="alt-satir">
           <div class="loj-info">

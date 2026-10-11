@@ -2828,6 +2828,7 @@ class SatisTeklifKalemForm(forms.Form):
         label="Stok", queryset=Stok.objects.filter(silindi=False, satis_urunu=True),
         required=False, widget=forms.HiddenInput())
     dahil = forms.BooleanField(label="Dahil", required=False, initial=True)
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))   # E-4: Varyant sekmesi (4 soru)
     iskonto_yuzdesi = TRDecimalField(label="İskonto %", basamak=2, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
@@ -2861,6 +2862,7 @@ class SatisProformaKalemForm(forms.Form):
         label="Stok", queryset=Stok.objects.filter(silindi=False, satis_urunu=True),
         required=False, widget=forms.HiddenInput())
     dahil = forms.BooleanField(label="Dahil", required=False, initial=False)
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))   # E-4: Varyant sekmesi (4 soru)
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
     iskonto_yuzdesi = TRDecimalField(label="İskonto %", basamak=2, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)

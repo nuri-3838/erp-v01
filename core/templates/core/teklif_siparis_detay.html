@@ -133,6 +133,8 @@
         {% if ts.belge_tur == "SIPARIS" and ts.durum == "ONAYLI" and ts.yon == "SATIS" %}
           {% if uretim_emri %}
           <span class="dugme pasif-dugme" title="Bu siparişin zaten bir üretim siparişi var; iptal edilirse veya silinirse yeniden açılabilir">🏭 Zaten açık: {{ uretim_emri.no }}</span>
+          {% elif ozel_varyant %}
+          <span class="dugme pasif-dugme" title="{{ ozel_varyant_mesaji }}">🏭 Üretim Siparişi Aç — özel varyant, henüz devrede değil</span>
           {% elif uretim_emri_acilabilir %}
           <a class="dugme" href="{% url 'core:siparis_uretim_emrine_cevir' ts.pk %}">🏭 Üretim Siparişi Aç</a>
           {% endif %}
@@ -232,7 +234,7 @@
       <tbody>
         {% for k in kalemler %}
           <tr>
-            <td>{% if k.stok.model_kodu %}<span class="fk-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}</td>
+            <td>{% if k.stok.model_kodu %}<span class="fk-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}{% if k.varyant_metni %}<div class="yardim">🔀 {{ k.varyant_metni }}</div>{% endif %}</td>
             <td class="sag mono">{{ k.birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</td>
             <td class="sag mono">{% if k.iskonto_yuzdesi %}%{{ k.iskonto_yuzdesi|tr_kur:2 }}{% else %}—{% endif %}</td>
             <td class="sag mono fk-net-hucre">{{ k.net_birim_fiyat|tr_kur:4 }} {{ ts.para_birimi }}</td>
@@ -265,7 +267,7 @@
       <tbody>
         {% for k in kalemler %}
           <tr>
-            <td>{% if k.stok.model_kodu %}<span class="fk-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}</td>
+            <td>{% if k.stok.model_kodu %}<span class="fk-model">{{ k.stok.model_kodu }}</span>{% endif %}{{ k.stok.ad }}{% if k.varyant_metni %}<div class="yardim">🔀 {{ k.varyant_metni }}</div>{% endif %}</td>
             <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
             <td class="sag mono">{{ k.birim_fiyat|tr_kur:4 }}</td>
             <td class="sag mono">{% if k.iskonto_yuzdesi %}%{{ k.iskonto_yuzdesi|tr_kur:2 }}{% else %}—{% endif %}</td>
@@ -312,7 +314,7 @@
       <tbody>
         {% for k in kalemler %}
           <tr>
-            <td><span class="mono">{{ k.stok.kod }}</span> {% if ts.yon == "ALIS" %}{{ k.stok.ad_satinalma }}{% else %}{{ k.stok.ad }}{% endif %}</td>
+            <td><span class="mono">{{ k.stok.kod }}</span> {% if ts.yon == "ALIS" %}{{ k.stok.ad_satinalma }}{% else %}{{ k.stok.ad }}{% endif %}{% if k.varyant_metni %}<div class="yardim">🔀 {{ k.varyant_metni }}</div>{% endif %}</td>
             <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
             <td class="sag mono">{{ k.birim_fiyat|tr_kur:4 }}</td>
             <td class="sag mono">{{ k.tutar|tr_kur:2 }}</td>

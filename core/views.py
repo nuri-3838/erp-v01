@@ -2983,7 +2983,7 @@ def satis_teklif_ekle(request):
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": Decimal("1"),
                  "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"], "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dahil_mi()
             ]
             if not satirlar:
@@ -3017,7 +3017,7 @@ def satis_teklif_ekle(request):
             for s in urunler])
     return render(request, "core/satis_teklif_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
         "tip_kodlari": _tip_kodlari(), "iptal_url": reverse("core:satis_teklifleri")})
 
 
@@ -3037,7 +3037,7 @@ def satis_teklif_duzenle(request, pk):
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": Decimal("1"),
                  "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"], "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dahil_mi()
             ]
             if not satirlar:
@@ -3069,7 +3069,7 @@ def satis_teklif_duzenle(request, pk):
             "navlun_tutari": ts.navlun_tutari})
         mevcut = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
         formset = SatisTeklifKalemFormSet(initial=[
-            {"stok": s.pk, "dahil": s.pk in mevcut,
+            {"stok": s.pk, "dahil": s.pk in mevcut, "varyant": (varyant_servis.secim_degeri(mevcut[s.pk].varyant_id) if s.pk in mevcut else ""),
              "iskonto_yuzdesi": (mevcut[s.pk].iskonto_yuzdesi if s.pk in mevcut
                                  else Decimal("0")),
              "birim_fiyat": (mevcut[s.pk].birim_fiyat if s.pk in mevcut else next(
@@ -3077,7 +3077,7 @@ def satis_teklif_duzenle(request, pk):
             for s in urunler])
     return render(request, "core/satis_teklif_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
         "tip_kodlari": _tip_kodlari(),
         "duzenleme": True,
         "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
@@ -3104,7 +3104,7 @@ def satis_proforma_ekle(request):
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
                  "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"], "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dahil_mi()
             ]
             if not satirlar:
@@ -3135,7 +3135,7 @@ def satis_proforma_ekle(request):
             for s in urunler])
     return render(request, "core/satis_proforma_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
         "banka_meta": _banka_meta(),
         "iptal_url": reverse("core:satis_proformalari")})
 
@@ -3155,7 +3155,7 @@ def satis_proforma_duzenle(request, pk):
             satirlar = [
                 {"stok_id": f.cleaned_data["stok"].pk, "miktar": f.cleaned_data["miktar"],
                  "birim_fiyat": f.cleaned_data["birim_fiyat"],
-                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"]}
+                 "iskonto_yuzdesi": f.cleaned_data["iskonto_yuzdesi"], "varyant": f.cleaned_data.get("varyant")}
                 for f in formset if f.dahil_mi()
             ]
             if not satirlar:
@@ -3188,7 +3188,7 @@ def satis_proforma_duzenle(request, pk):
             "navlun_tutari": ts.navlun_tutari, "banka_hesabi": ts.banka_hesabi_id})
         mevcut = {k.stok_id: k for k in ts.kalemler.filter(silindi=False)}
         formset = SatisProformaKalemFormSet(initial=[
-            {"stok": s.pk, "dahil": s.pk in mevcut,
+            {"stok": s.pk, "dahil": s.pk in mevcut, "varyant": (varyant_servis.secim_degeri(mevcut[s.pk].varyant_id) if s.pk in mevcut else ""),
              "miktar": mevcut[s.pk].miktar if s.pk in mevcut else None,
              "iskonto_yuzdesi": (mevcut[s.pk].iskonto_yuzdesi if s.pk in mevcut
                                  else Decimal("0")),
@@ -3197,7 +3197,7 @@ def satis_proforma_duzenle(request, pk):
             for s in urunler])
     return render(request, "core/satis_proforma_ekle.html", {
         "bform": bform, "formset": formset, "satirlar": list(zip(urunler, formset)),
-        "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
+        "varyant_meta": varyant_servis.varyant_meta(), "stok_meta": stok_meta, "cari_meta": _cari_meta(), "aday_meta": _aday_meta(),
         "banka_meta": _banka_meta(),
         "duzenleme": True,
         "iptal_url": reverse("core:teklif_siparis_detay", args=[ts.pk])})
@@ -3219,7 +3219,9 @@ def teklif_siparis_detay(request, pk):
             "cari", "aday_musteri", "kaynak_teklif", "kaynak_proforma", "kaynak_siparis",
             "depo", "banka_hesabi", "banka_hesabi__banka"),
         pk=pk)
-    kalemler = ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat")
+    kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat", "varyant"))
+    for k in kalemler:                                                    # satırda standart dışı varyant metni (E-4)
+        k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant, "tr") if k.varyant_id else ""
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = _TS_EMOJI[ekran]
     # kaynak_teklif'in "donustugu belge" ALIŞ'ta Sipariş, SATIŞ'ta Proforma'dır (bkz.
@@ -3236,6 +3238,7 @@ def teklif_siparis_detay(request, pk):
                        if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS else None)
     uretim_emri = None
     uretim_emri_acilabilir = False
+    ozel_varyant = False
     uretim_rozetleri = []
     if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS and ts.yon == TeklifSiparis.Yon.SATIS:
         uretim_emri = ts.uretim_emirleri.filter(silindi=False).exclude(durum=UretimEmri.Durum.IPTAL).first()
@@ -3244,7 +3247,8 @@ def teklif_siparis_detay(request, pk):
             uretim_rozetleri.append({"e": e, "yuzde": None if e.durum == UretimEmri.Durum.IPTAL else uretim_servis.uretim_emri_yuzde(e)})
         if not uretim_emri and ts.durum == TeklifSiparis.Durum.ONAYLI:
             uygun, _ = uretim_servis.siparis_uretilebilir_kalemleri(ts)
-            uretim_emri_acilabilir = bool(uygun)
+            ozel_varyant = uretim_servis.siparis_ozel_varyantli(ts)        # E-6'ya kadar ÜS açılmaz
+            uretim_emri_acilabilir = bool(uygun) and not ozel_varyant
     # SATIŞ'taki manuel dönüşüm zincirinde (Teklif->Proforma->Sipariş) kaynak belge artık
     # düzenlenemez/iptal edilemez (bkz. core.services.teklif_siparis._donusum_hedefi_manuel).
     # ALIŞ'taki otomatik zincir kasıtlı olarak kapsam dışı (o yüzden donusen_siparis burada
@@ -3260,6 +3264,7 @@ def teklif_siparis_detay(request, pk):
                    "donusen_proforma": donusen_proforma,
                    "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura,
                    "uretim_emri": uretim_emri, "uretim_emri_acilabilir": uretim_emri_acilabilir, "uretim_rozetleri": uretim_rozetleri,
+                   "ozel_varyant": ozel_varyant, "ozel_varyant_mesaji": uretim_servis.OZEL_VARYANT_MESAJI,
                    "donusum_kilitli": donusum_kilitli})
 
 
@@ -3384,6 +3389,9 @@ def siparis_uretim_emrine_cevir(request, pk):
         messages.error(request, "Yalnız onaylı sipariş için üretim emri açılabilir.")
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
 
+    if uretim_servis.siparis_ozel_varyantli(siparis):                                   # E-4 kilidi (E-6'ya kadar)
+        messages.error(request, uretim_servis.OZEL_VARYANT_MESAJI)
+        return redirect("core:teklif_siparis_detay", pk=siparis.pk)
     uygun, uygun_degil = uretim_servis.siparis_uretilebilir_kalemleri(siparis)
     if not uygun:
         messages.error(
@@ -3686,6 +3694,7 @@ def satis_teklif_pdf_baglam(ts, kalemler, dil, kullanici):
     E = _PDF_ETIKET[dil]
     for k in kalemler:
         k.urun_ad = k.stok.ad_dil(dil)
+        k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant_id, dil)      # yalnız standart dışı seçimler (E-4)
         k.basamak_goster = _basamak_goster(k.stok)
         k.materyal_goster = k.stok.materyal_dil(dil)
     # Yurt içi/dışı: KDV notu yalnız yurt içi alıcıya anlamlı (ihracatta KDV istisnası var —
@@ -3745,7 +3754,7 @@ _PDF_ETIKET_PROFORMA = {
         "gecerlilik": "Geçerlilik Tarihi", "para_birimi": "Para Birimi",
         "yukleme_sekli": "Teslim / Yükleme Şekli", "odeme_kosulu": "Ödeme Koşulu",
         "yukleme_tipi": "Yükleme Tipi", "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
-        "urun": "Ürün", "miktar": "Miktar", "fiyat": "Fiyat", "tutar": "Tutar", "kdv": "KDV",
+        "urun": "Ürün", "varyant": "Varyant", "miktar": "Miktar", "fiyat": "Fiyat", "tutar": "Tutar", "kdv": "KDV",
         "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)", "toplam": "TOPLAM",
         "navlun_dahil_toplam": "TOPLAM (Navlun Dahil)",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam",
@@ -3764,7 +3773,7 @@ _PDF_ETIKET_PROFORMA = {
         "tarih": "Date", "gecerlilik": "Valid Until", "para_birimi": "Currency",
         "yukleme_sekli": "Delivery Term", "odeme_kosulu": "Payment Term",
         "yukleme_tipi": "Transport Mode", "teslim_suresi": "Lead Time", "navlun": "Freight",
-        "urun": "Item", "miktar": "Qty", "fiyat": "Price", "tutar": "Amount", "kdv": "VAT",
+        "urun": "Item", "varyant": "Variant", "miktar": "Qty", "fiyat": "Price", "tutar": "Amount", "kdv": "VAT",
         "agirlik": "Weight (kg)", "cbm": "CBM (m³)", "toplam": "TOTAL",
         "navlun_dahil_toplam": "TOTAL (incl. Freight)",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total",
@@ -3797,6 +3806,7 @@ def satis_proforma_pdf_baglam(ts, kalemler, dil, kullanici):
     toplam_cbm = Decimal("0")
     for k in kalemler:
         k.urun_ad = k.stok.ad_dil(dil)
+        k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant_id, dil)      # yalnız standart dışı seçimler (E-4)
         k.agirlik_toplam = k.miktar * k.stok.agirlik if k.stok.agirlik is not None else None
         k.cbm_toplam = k.miktar * k.stok.cbm if k.stok.cbm is not None else None
         toplam_miktar += k.miktar
@@ -3852,7 +3862,7 @@ _PDF_ETIKET_SIPARIS = {
         "teslim_tarihi": "Teslim Tarihi", "para_birimi": "Para Birimi",
         "yukleme_sekli": "Teslim / Yükleme Şekli", "odeme_kosulu": "Ödeme Koşulu",
         "yukleme_tipi": "Yükleme Tipi", "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
-        "urun": "Ürün", "miktar": "Miktar", "fiyat": "Fiyat", "tutar": "Tutar", "kdv": "KDV",
+        "urun": "Ürün", "varyant": "Varyant", "miktar": "Miktar", "fiyat": "Fiyat", "tutar": "Tutar", "kdv": "KDV",
         "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)", "toplam": "TOPLAM",
         "navlun_dahil_toplam": "TOPLAM (Navlun Dahil)",
         "ara_toplam": "Ara Toplam", "kdv_toplam": "KDV Toplam", "tevkifat_toplam": "Tevkifat (−)",
@@ -3871,7 +3881,7 @@ _PDF_ETIKET_SIPARIS = {
         "tarih": "Date", "teslim_tarihi": "Delivery Date", "para_birimi": "Currency",
         "yukleme_sekli": "Delivery Term", "odeme_kosulu": "Payment Term",
         "yukleme_tipi": "Transport Mode", "teslim_suresi": "Lead Time", "navlun": "Freight",
-        "urun": "Item", "miktar": "Qty", "fiyat": "Price", "tutar": "Amount", "kdv": "VAT",
+        "urun": "Item", "varyant": "Variant", "miktar": "Qty", "fiyat": "Price", "tutar": "Amount", "kdv": "VAT",
         "agirlik": "Weight (kg)", "cbm": "CBM (m³)", "toplam": "TOTAL",
         "navlun_dahil_toplam": "TOTAL (incl. Freight)",
         "ara_toplam": "Subtotal", "kdv_toplam": "VAT Total", "tevkifat_toplam": "Withholding (−)",
@@ -3900,6 +3910,7 @@ def satis_siparis_pdf_baglam(ts, kalemler, dil, kullanici):
     toplam_cbm = Decimal("0")
     for k in kalemler:
         k.urun_ad = k.stok.ad_dil(dil)
+        k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant_id, dil)      # yalnız standart dışı seçimler (E-4)
         k.agirlik_toplam = k.miktar * k.stok.agirlik if k.stok.agirlik is not None else None
         k.cbm_toplam = k.miktar * k.stok.cbm if k.stok.cbm is not None else None
         toplam_miktar += k.miktar
@@ -4027,7 +4038,7 @@ _PDF_ETIKET = {
         "para_birimi": "Para Birimi", "yukleme_sekli": "Teslim / Yükleme Şekli",
         "odeme_kosulu": "Ödeme Koşulu", "yukleme_tipi": "Yükleme Tipi",
         "teslim_suresi": "Teslim Süresi", "navlun": "Navlun",
-        "gorsel": "Görsel", "urun": "Ürün", "ozellik": "Teknik Özellikler",
+        "gorsel": "Görsel", "urun": "Ürün", "varyant": "Varyant", "ozellik": "Teknik Özellikler",
         "fiyat": "Fiyat", "navlun_haric": "(navlun hariç)",
         "navlun_on": "Fiyatlara", "navlun_son": " navlunu dahildir.",
         "agirlik": "Ağırlık (kg)", "cbm": "CBM (m³)",
@@ -4058,7 +4069,7 @@ _PDF_ETIKET = {
         "para_birimi": "Currency", "yukleme_sekli": "Delivery Term",
         "odeme_kosulu": "Payment Term", "yukleme_tipi": "Transport Mode",
         "teslim_suresi": "Lead Time", "navlun": "Freight",
-        "gorsel": "Picture", "urun": "Item", "ozellik": "Specifications",
+        "gorsel": "Picture", "urun": "Item", "varyant": "Variant", "ozellik": "Specifications",
         "fiyat": "Unit Price", "navlun_haric": "(excl. freight)",
         "navlun_on": "Prices include freight for", "navlun_son": ".",
         "agirlik": "Weight (kg)", "cbm": "CBM (m³)",
@@ -6298,6 +6309,21 @@ def varyant_sil(request, pk):
         except varyant_servis.VaryantHatasi as e:
             messages.error(request, str(e))
     return redirect("core:varyantlar")
+
+
+@login_required
+def varyant_hizli_ekle(request):
+    """Proforma/teklif/sipariş satırındaki "+ yeni varyant" (E-4): POST kod[, ad] → JSON {pk, kod}; hata → {hata}. Yönetici ekranı
+    gerekmez (kullanıcı o anda değer ekleyebilsin — karar 4); kod büyük harf + benzersiz serviste."""
+    if request.method != "POST":
+        return JsonResponse({"hata": "POST gerekli."}, status=405)
+    kod = (request.POST.get("kod") or "").strip()
+    ad = (request.POST.get("ad") or kod).strip()
+    try:
+        v = varyant_servis.varyant_olustur(kod=kod, ad=ad, sira=100, kullanici=request.user)
+    except varyant_servis.VaryantHatasi as e:
+        return JsonResponse({"hata": str(e)}, status=400)
+    return JsonResponse({"pk": v.pk, "kod": v.kod})
 
 
 # --- AYARLAR > Tanım Listeleri (KDV / Tevkifat oranları) --------------------

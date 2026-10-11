@@ -27,16 +27,41 @@
     function yaz(){ if(gizli) gizli.value = 'v:' + s.boyutlar.map(function(b){ return b + '=' + secimler[b].value; }).join('|'); }
     s.boyutlar.forEach(function(b){
       var sel = document.createElement('select'); sel.className = 'varyant-sec'; sel.title = M.etiket[b];
-      var bos = document.createElement('option'); bos.value = ''; bos.textContent = M.etiket[b] + ': —'; sel.appendChild(bos);
-      M.degerler.forEach(function(d){ var o = document.createElement('option'); o.value = String(d[0]); o.textContent = M.etiket[b] + ': ' + d[1]; sel.appendChild(o); });
+      var bos = document.createElement('option'); bos.value = ''; bos.textContent = M.etiket[b] + ': YOK'; sel.appendChild(bos);   // boş = YOK
+      M.degerler.forEach(function(d){ if(d[1] === 'YOK') return; var o = document.createElement('option'); o.value = String(d[0]); o.textContent = M.etiket[b] + ': ' + d[1]; sel.appendChild(o); });
       var v = mevcut ? (mevcut[b] || '') : (s.varsayilan[b] == null ? '' : String(s.varsayilan[b]));
+      if(v && !sel.querySelector('option[value="' + v + '"]')) v = '';          // YOK değeri seçiliyse (ayaklar) boş = YOK
       sel.value = v;
       secimler[b] = sel;
       sel.addEventListener('change', yaz);
       kap.appendChild(sel);
     });
+    var yeni = document.createElement('button'); yeni.type = 'button'; yeni.className = 'varyant-yeni'; yeni.textContent = '+ yeni varyant';
+    yeni.title = 'Yeni varyant değeri ekle (ör. müşteri markası)';
+    yeni.addEventListener('click', function(){ yeniVaryant(kap); });
+    kap.appendChild(yeni);
     yaz();
   };
+  function yeniVaryant(kap){
+    var kod = window.prompt('Yeni varyant değeri (ör. MR. MOP):');
+    if(!kod || !kod.trim()) return;
+    var csrf = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    var fd = new FormData(); fd.append('kod', kod.trim()); if(csrf) fd.append('csrfmiddlewaretoken', csrf.value);
+    fetch(M.hizli_ekle_url || '/api/varyant/hizli-ekle/', {method: 'POST', body: fd, credentials: 'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(j.hata){ window.alert(j.hata); return; }
+        M.degerler.push([j.pk, j.kod]);
+        document.querySelectorAll('select.varyant-sec').forEach(function(sel){
+          if(sel.querySelector('option[value="' + j.pk + '"]')) return;
+          var b = Object.keys(M.etiket).find(function(k){ return M.etiket[k] === sel.title; });
+          var o = document.createElement('option'); o.value = String(j.pk); o.textContent = (b ? M.etiket[b] : '') + ': ' + j.kod; sel.appendChild(o);
+        });
+        var ilk = kap.querySelector('select.varyant-sec');
+        if(ilk){ ilk.value = String(j.pk); ilk.dispatchEvent(new Event('change')); }
+      })
+      .catch(function(){ window.alert('Varyant eklenemedi.'); });
+  }
   window.varyantSatirKur = function(row){
     var sel = row.querySelector('select[name$="-stok"]'); var kap = row.querySelector('.varyant-alan');
     var gizli = row.querySelector('input[name$="-varyant"]');
@@ -50,7 +75,14 @@
     window.varyantSatirKur(row);
   });
   document.querySelectorAll('select[name$="-stok"]').forEach(function(sel){ var row = sel.closest('tr, .fk-satir, .satir-form'); if(row) window.varyantSatirKur(row); });
+  // Satış teklifi / proforma: ürün satırı sabit (data-stok), stok gizli alan — "Varyant" bölümü kart başına
+  document.querySelectorAll('.fk-satir[data-stok]').forEach(function(card){
+    var kap = card.querySelector('.varyant-alan'); var gizli = card.querySelector('input[name$="-varyant"]');
+    if(kap) window.varyantKur(kap, card.dataset.stok, gizli);
+  });
   var tekil = document.querySelector('.varyant-alan[data-stok]');
   if(tekil) window.varyantKur(tekil, tekil.dataset.stok, document.getElementById('id_varyant'));
 })();
 </script>
+<style>.varyant-yeni { background:none; border:1px dashed var(--cizgi); border-radius:8px; padding:.1rem .5rem; font-size:.78rem; cursor:pointer; color:var(--metin-soluk); }
+  .fk-varyant { flex:1 1 100%; } .fk-varyant .et { font-size:.78rem; color:var(--metin-soluk); margin-right:.4rem; }</style>

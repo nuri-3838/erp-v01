@@ -55,7 +55,16 @@ Bu dosya kalıcı karar kaydıdır; uygulama adımları ilerledikçe durum tablo
 | E-1 | `Varyant` + `Stok.varyantli/varyant_boyutlari` + `StokVaryant` + AYARLAR › Varyantlar + stok kartı işareti/boyut seçimi; seed SEMTA/YOK/MR. MOP | TAMAM, canlıda | `9bd7917` (3278 test) |
 | E-2 | Hareket/ayırma/özet varyant boyutu, motor (eldeki, tarih kontrolü, ortalama, ayırma), stok kartı kırılımı, `varyant_veri_gocu` komutu (kuru + altın kontrol) | TAMAM, canlıda; VERİ GÖÇÜ UYGULANDI 2026-10-11 15:35 (53 kart, 338 hareket, 7 ayırma; altın kontrol EŞİT; raporlar `docs/varyant_veri_gocu_kuru_20261011.txt`, `docs/varyant_veri_gocu_uygulandi_20261011.txt`) | `064f2c0` (3288 test) |
 | E-3 | Giriş/çıkış ekranlarında varyant seçimi (alış/satış faturası, irsaliye, numune, sarf, transfer, elle hareket; kartın varsayılanı dolu gelir, varyantsızda alan yok; alış faturasında yeni kombinasyon açılır; sipariş→fatura ve alış zincirinde kalem varyantı taşınır) | TAMAM, canlıda | (bu commit) |
-| E-4 | Proforma/teklif/sipariş satırında "Varyant" sekmesi (4 soru), dönüşümlerde taşıma, PDF TR/EN, "+ yeni varyant" | bekliyor | |
+| E-4 | Proforma/teklif/sipariş satırında "Varyant" bölümü (4 soru; SEMTA dolu, boş = YOK), "+ yeni varyant", dönüşümlerde taşıma, PDF TR/EN'de yalnız standart dışı seçimler; ÜS kilidi (özel varyantlı siparişten ÜS açılmaz, E-6'ya kadar) | TAMAM, canlıda | (bu commit) |
+| E-5 | Operasyon tanımında girdi/çıktı varyant kuralları + LAZER MARKALAMA istasyonu + DÖNÜŞTÜR tipi; yan etiket paketlemeye (veri) | bekliyor | |
+
+## E-4 notları
+
+- Boş bırakılan boyut `YOK` değerine normalize edilir (`stok_varyanti_bul_veya_olustur`): "Afiş: boş" ve "Afiş: YOK" tek StokVaryant satırı.
+  Ekranda boş seçenek "YOK" diye görünür; ayaklardaki YOK varsayılanı da boş seçenek olarak gelir.
+- `standart_disi_metin(sv, dil)`: yalnız varsayılan (SEMTA) dışındaki boyutlar; YOK → "yok"/"none", diğerleri kod (EN: ad_en varsa).
+  PDF satır notu `varyant-not`; tamamı standart ise şablon çıktısı birebir aynı.
+- ÜS kilidi: `uretim.siparis_ozel_varyantli` + `OZEL_VARYANT_MESAJI`; `siparisten_uretim_emri_olustur` reddeder, sipariş detayında düğme pasif.
 
 ## E-3 notları
 

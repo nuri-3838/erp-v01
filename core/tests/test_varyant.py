@@ -95,8 +95,8 @@ class StokVaryantTest(VaryantTaban):
         self.assertEqual(vs.varyant_etiketi(sv), "Markalama: SEMTA · Yan etiket: SEMTA")
         self.assertEqual(vs.standart_varyant(s).pk, sv.pk)                                 # idempotent
         mop = Varyant.objects.get(kod="MR. MOP")
-        sv2 = vs.stok_varyanti_bul_veya_olustur(s, {"MARKALAMA": mop, "YAN_ETIKET": None})
-        self.assertEqual((sv2.standart, vs.varyant_etiketi(sv2)), (False, "Markalama: MR. MOP · Yan etiket: —"))
+        sv2 = vs.stok_varyanti_bul_veya_olustur(s, {"MARKALAMA": mop, "YAN_ETIKET": None})           # boş boyut = YOK (karar 9)
+        self.assertEqual((sv2.standart, vs.varyant_etiketi(sv2)), (False, "Markalama: MR. MOP · Yan etiket: YOK"))
         self.assertEqual(vs.stok_varyanti_bul_veya_olustur(s, {"MARKALAMA": mop.pk}).pk, sv2.pk)
         self.assertEqual(StokVaryant.objects.filter(stok=s, silindi=False).count(), 2)
         with self.assertRaisesMessage(StokHatasi, "Geçersiz varyant boyutu"):

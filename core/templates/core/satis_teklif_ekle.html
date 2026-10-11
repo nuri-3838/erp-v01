@@ -114,6 +114,7 @@
               <div class="fk-uyari" hidden>⚠ Bu para biriminde fiyat listesi tanımlı değil</div>
               <div class="fk-uyari fk-uyari-navlun" hidden>⚠ Bu yükleme tipi için stok kartında adet tanımlı değil</div>
             </div>
+            <div class="fk-alan fk-varyant"><span class="et">Varyant</span><div class="varyant-alan" hidden></div>{{ f.varyant }}</div>
             <div class="fk-alan">
               <label for="{{ f.birim_fiyat.id_for_label }}">Liste Fiyatı</label>
               {{ f.birim_fiyat }}
@@ -338,5 +339,6 @@
   ozetGuncelle();
 })();
 </script>
+{% include "core/_varyant_js.html" %}
 {% include "core/_akilli_hesap.html" %}
 {% endblock %}
