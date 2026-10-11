@@ -94,14 +94,14 @@
     <div class="ue-alan-grup">
       <label for="ue-durum">Durum</label>
       <select name="durum" id="ue-durum" onchange="this.form.submit()">
-        <option value="">Tümü</option>
         {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{% if k == 'KAPALI' %}Tamamlandı{% else %}{{ ad }}{% endif %}</option>{% endfor %}
+        <option value="TUMU"{% if durum == 'TUMU' %} selected{% endif %}>Tümü</option>
       </select>
     </div>
     <div class="ue-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
       <a class="iptal-bag ue-arama-temizle{% if ara %} gorunur{% endif %}" id="ue-arama-temizle"
-         href="{% url 'core:uretim_emirleri' %}">Temizle</a>
+         href="{% url 'core:uretim_emirleri' %}?durum={{ durum }}">Temizle</a>
     </div>
   </form>
 </div>
@@ -139,7 +139,7 @@
           <div class="ue-ilerleme{% if e.durum == 'KAPALI' %} tamam{% endif %}">
             <div class="ue-yuzde"><span>%{{ s.yuzde|floatformat:0 }}</span></div>
             <div class="ue-bar"><i style="width:{{ s.yuzde|floatformat:'0u' }}%"></i></div>
-            <div class="ue-ist">{{ s.ilerleme.onayli }}/{{ s.ilerleme.toplam }} istasyon</div>
+            <div class="ue-ist">{% if s.tamamlandi %}Tamamlandı · ayrılan serbest{% else %}{{ s.ilerleme.onayli }}/{{ s.ilerleme.toplam }} istasyon{% endif %}</div>
           </div>
         </td>
         <td class="ue-ok" onclick="event.stopPropagation()">
@@ -153,7 +153,7 @@
       {% endwith %}
     {% empty %}
       <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or durum %}🔍 Bu süzgeçle eşleşen üretim siparişi yok.
+        {% if ara or durum != 'TUMU' %}🔍 Bu süzgeçle eşleşen üretim siparişi yok{% if durum == 'ACIK' and not ara %} — açık sipariş yok; tamamlananlar için durumu “Tamamlandı” ya da “Tümü” yapın{% endif %}.
         {% else %}🏭 Henüz üretim siparişi yok. Bir satış siparişinden “Üretim Siparişi Aç” ile ya da “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
     <tr class="ue-bos-js" style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">

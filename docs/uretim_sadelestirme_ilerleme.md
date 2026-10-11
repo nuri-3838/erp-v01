@@ -11,8 +11,8 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
 | 4 | Operasyon Kayıtları: varsayılan Onaylı; bağımsız yeni kaldırıldı; geri al yetkisi + iz | TAMAM (canlıda) | `e820306` | 3244 OK (klon DB'ler yeniden kuruldu) | 0206 uygulandı; liste 200 (aktif sekme Onaylı, "Bağımsız" yok, canlıda taslak 0 → Taslak sekmesi gizli), Tümü 200, OP-2026-0437 detay 200 ("Geri al ve sil" + iz notu); `/uretim/kayitlar/ekle/` dışarıdan 404; traceback yok |
 | 5 | İhtiyaç Hesapla → Ürün Ağacı 4. görünüm; eski URL yönlendirme; düğümde ✎ | TAMAM (canlıda) | `9ad676d` | 3248 OK | eski adres 301 → `/uretim/urun-agaci/?gorunum=ihtiyac`; yeni görünüm 200 (segment aktif, form var); 152-10-0001 ağacında 16 ✎ + düzenle bağlantısı; ÜRETİM menüsünde İhtiyaç Hesapla yok; traceback yok |
 | 6 | Operasyon Tanımları formu: Gelişmiş ▸ bölümü | TAMAM (canlıda) | `893aef6` | 3252 OK | yeni form ve sade tanım (151-10-0001) düzenlemede Gelişmiş kapalı, tür alanı içinde; PARÇALA tanımı (151-20-0014) düzenlemede açık + "parçala" rozeti; canlıda yan çıktılı tanım yok; traceback yok |
-| 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | kod+test tamam, deploy bekliyor | | | |
-| 8 | ÜS listesi: varsayılan Açık; tamamlanmış stok ÜS'de "Tamamlandı" | bekliyor | | | |
+| 7 | İstasyon Emirleri: istasyon sekmeleri, filtre, toplu üret | TAMAM (canlıda) | `81a016c` | 3258 OK | Tümü 200 (sekmeler, İş İstasyonu sütunu, ÜS no süzgeci); istasyon sekmeleri (10/12/15) 200 aktif; canlıda açık emir olmadığından Üretildi/toplu düğme yok (beklenen); `durum=BITTI&us=ÜS-2026-0002` → 50 Tamamlandı satırı; traceback yok |
+| 8 | ÜS listesi: varsayılan Açık; tamamlanmış stok ÜS'de "Tamamlandı" | kod+test tamam, deploy bekliyor | | | |
 
 ## Adım notları
 
@@ -70,3 +70,8 @@ Oturum kesilirse buradan devam edilir. Canlıda hiçbir kayıt oluşturulmaz/ona
   "▶▶ Bu istasyondaki açık emirlerin tümünü üret" → `istasyon_toplu_uret` (yeni URL `istasyon_toplu_uret`; yetki `operasyon_kayitlari`):
   istasyonun TÜM açık ÜS'lerdeki üretilebilir emirleri ÜS sırasıyla (yıl, sıra; aynı ÜS'de derin seviye önce), tek tarih, tek atomik işlem; hata mesajında
   ÜS no + emir + stok (`_sirayla_uret` adım 3 ile ortak). Testler `test_istasyon_emirleri_sekme.py`.
+- **Adım 8:** ÜS listesi `durum` süzgeci: parametre yoksa **ACIK** (seçenekler Açık / Tamamlandı / İptal / Tümü=`TUMU`; "Temizle" seçili durumu korur;
+  açık süzgecinde boş listede yönlendirme notu). "Ayrılan yerine Tamamlandı" yorumu: ÜS listesinde Ayrılan sütunu yok; tamamlanmış stok ÜS'sinde
+  (KAPALI, kaynak siparişsiz, sevk yok → ayırmalar serbest) listede ilerleme altındaki "x/y istasyon" yerine "Tamamlandı · ayrılan serbest", ÜS detayında
+  Kalemler tablosunun Ayrılan hücresinde "Tamamlandı" rozeti ve Ayrılan Stoklar boş mesajı "Tamamlandı: … serbest bırakıldı". Siparişli ÜS değişmedi.
+  Testler `test_uretim_siparisi_liste.test_varsayilan_acik_ve_tamamlanmis_stok_us`.

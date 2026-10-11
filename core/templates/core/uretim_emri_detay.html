@@ -69,7 +69,7 @@
         <tr>
           <td><span class="mono">{{ s.k.hedef_urun.kod }}</span> {{ s.k.hedef_urun.ad }}</td>
           <td class="sag mono">{{ s.k.hedef_miktar|tr_kur:3 }}</td>
-          <td class="sag mono">{{ s.ayrilan|tr_kur:3 }}</td>
+          <td class="sag mono">{% if tamamlandi %}<span class="rozet rozet-aktif" title="Stok için üretim tamamlandı: ayırma serbest bırakıldı, mamul serbest stokta">Tamamlandı</span>{% else %}{{ s.ayrilan|tr_kur:3 }}{% endif %}</td>
           <td class="sag mono">{{ s.uretilecek|tr_kur:3 }}</td>
           <td class="sag mono">{{ s.sevk|tr_kur:3 }}</td>
           <td class="sag mono">% {{ s.yuzde|tr_kur:0 }}</td>
@@ -181,7 +181,7 @@
         <tr><td><a href="{% url 'core:stok_detay' a.stok_id %}"><span class="mono">{{ a.stok.kod }}</span> {{ a.stok.ad }}</a></td>
             <td class="sag mono">{{ a.miktar|tr_kur:3 }}</td></tr>
       {% empty %}
-        <tr><td colspan="2" class="yardim">Bu siparişe ayrılı stok yok.</td></tr>
+        <tr><td colspan="2" class="yardim">{% if tamamlandi %}Tamamlandı: stok için üretim bitti, ayrılan stoklar serbest bırakıldı.{% else %}Bu siparişe ayrılı stok yok.{% endif %}</td></tr>
       {% endfor %}
     </tbody>
   </table>

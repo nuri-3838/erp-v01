@@ -7220,8 +7220,11 @@ def urun_agaci(request):
 # --- Üretim Siparişleri (ÜS; modeli UretimEmri — ekran kodu geçmişten `uretim_emirleri`) ---
 @ekran_gerekli("uretim_emirleri")
 def uretim_emirleri(request):
+    """ÜS listesi: durum süzgeci varsayılan AÇIK (parametre yoksa); ``durum=TUMU`` hepsi."""
     ara = (request.GET.get("ara") or "").strip()
-    durum = (request.GET.get("durum") or "").strip()
+    durum = (request.GET.get("durum") or "").strip() if "durum" in request.GET else UretimEmri.Durum.ACIK
+    if durum == "TUMU":
+        durum = ""
     qs = (UretimEmri.objects.filter(silindi=False)
          .select_related("depo", "kaynak_siparis__cari")
          .prefetch_related(Prefetch(
@@ -7253,9 +7256,10 @@ def uretim_emirleri(request):
             "kalem_sayisi": len(kalemler), "toplam_miktar": sum((k.hedef_miktar for k in kalemler), Decimal("0")),
             "termin": termin, "termin_gecmis": bool(termin and termin < bugun and e.durum == UretimEmri.Durum.ACIK),
             "silinebilir": o["silinebilir"], "ilerleme": o["ilerleme"], "yuzde": o["yuzde"] if e.durum != UretimEmri.Durum.IPTAL else Decimal("0"),
+            "tamamlandi": e.durum == UretimEmri.Durum.KAPALI and sip is None and not e.sevk_dusen,       # tamamlanmış stok ÜS'si: ayırmalar serbest
             "eksik_sayisi": len(uretim_servis.uretim_emri_eksikleri(e, graf=graf)),
             "arama": " ".join([e.no, musteri, e.depo.kod, e.depo.ad, (sip.belge_no or "") if sip is not None else ""] + [f"{k.hedef_urun.kod} {k.hedef_urun.ad}" for k in kalemler])})
-    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum, "durumlar": UretimEmri.Durum.choices})
+    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum or "TUMU", "durumlar": UretimEmri.Durum.choices})
 
 
 @ekran_gerekli("uretim_emirleri")
@@ -7325,8 +7329,9 @@ def uretim_emri_detay(request, pk):
     if emir.durum == UretimEmri.Durum.ACIK:
         revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
+    tamamlandi = emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen   # stok ÜS'si %100: ayırmalar serbest
     return render(request, "core/uretim_emri_detay.html", {
-        "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar,
+        "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar, "tamamlandi": tamamlandi,
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
         "eksikler": uretim_servis.uretim_emri_eksikleri(emir), "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
         "bugun": timezone.localdate().isoformat(),

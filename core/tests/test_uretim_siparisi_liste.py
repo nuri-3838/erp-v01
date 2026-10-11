@@ -78,10 +78,36 @@ class ListeTest(kt.KapanisTaban):
         self.assertContains(r, "1/1 istasyon")
         self.assertContains(r, "width:100%")
         uretim.uretim_emri_iptal(emir)
-        r = self.liste()
+        self.assertNotContains(self.liste(), emir.no)                                                  # varsayılan süzgeç AÇIK: iptal görünmez (adım 8)
+        r = self.liste(durum="TUMU")
         self.assertContains(r, 'class="ue-durum iptal">İptal')
         TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=timezone.localdate() - timedelta(days=3))
-        self.assertNotContains(self.liste(), "ue-termin gecmis")                                       # açık değilse kırmızı değil
+        self.assertNotContains(self.liste(durum="TUMU"), "ue-termin gecmis")                           # açık değilse kırmızı değil
+
+    def test_varsayilan_acik_ve_tamamlanmis_stok_us(self):
+        """Adım 8: durum süzgeci varsayılan Açık; tamamlanmış stok ÜS'sinde (ayırmalar serbest) listede ve detayda 'Tamamlandı'."""
+        emir = uretim.uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.stok.pk, "hedef_miktar": "2"}], depo_id=self.depo.pk, tarih=kt.GUN)
+        r = self.liste()
+        self.assertEqual(r.context["durum"], "ACIK")
+        self.assertContains(r, '<option value="ACIK" selected>')
+        self.assertContains(r, '<option value="TUMU">Tümü</option>')
+        self.assertContains(r, emir.no)
+        uretim.operasyon_kaydi_onayla(uretim.istasyon_emri_kayit_ac(emir.istasyon_emirleri.get(), tarih=kt.GUN))   # %100 → tamamlandı
+        emir.refresh_from_db()
+        self.assertEqual(emir.durum, "KAPALI")
+        self.assertNotContains(self.liste(), emir.no)                                                  # açık süzgecinde yok
+        self.assertContains(self.liste(), "açık sipariş yok")
+        r = self.liste(durum="KAPALI")
+        self.assertContains(r, emir.no)
+        self.assertContains(r, "Tamamlandı · ayrılan serbest")
+        self.assertContains(self.liste(durum="TUMU"), emir.no)
+        d = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
+        self.assertContains(d, ">Tamamlandı</span>")                                                   # Kalemler: Ayrılan yerine
+        self.assertContains(d, "ayrılan stoklar serbest bırakıldı")
+        sip = self.siparis("3")                                                                        # siparişli ÜS: değişmez
+        s_emir = self.emir_ac(sip)
+        d2 = self.client.get(reverse("core:uretim_emri_detay", args=[s_emir.pk]))
+        self.assertNotContains(d2, "ayrılan stoklar serbest bırakıldı")
 
     def test_sabit_sorgu_sayisi_emir_basina_sorgu_yok(self):
         sip = self.siparis("3")
