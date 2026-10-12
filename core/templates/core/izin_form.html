@@ -55,7 +55,7 @@
 <script>
 (function(){
   // Tam gün / Saatlik geçişi: saatlikte tek tarih + saat aralığı, süre otomatik (SS:DD); gün alanı gizli (servis gün karşılığını hesaplar).
-  var f = document.querySelector('form[method=post]');
+  var ilk = document.querySelector('input[name=sure_turu]'); var f = ilk ? ilk.closest('form') : null;   // başlıktaki çıkış formu değil, izin formu
   var secimler = document.querySelectorAll('input[name=sure_turu]');
   var bs = document.getElementById('id_baslangic_saati'), bt = document.getElementById('id_bitis_saati'), sure = document.getElementById('sure-oneri');
   function saatlikMi(){ var s = document.querySelector('input[name=sure_turu]:checked'); return s && s.value === 'SAAT'; }
