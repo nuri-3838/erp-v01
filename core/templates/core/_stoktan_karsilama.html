@@ -47,8 +47,11 @@
   .sk-tablo { width:100%; border-collapse:collapse; }
   .sk-tablo th { text-align:left; font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); padding:.3rem .5rem; }
   .sk-tablo td { padding:.4rem .5rem; border-top:1px solid var(--cizgi); vertical-align:top; }
-  .sk-secenek { display:block; font-size:.9rem; margin:.15rem 0; }
-  .sk-elle { min-width:0 !important; width:5rem; }
+  .sk-secenek { display:flex; align-items:center; gap:.4rem; font-size:.9rem; margin:.2rem 0; font-weight:600; color:var(--metin);
+    text-transform:none; letter-spacing:0; cursor:pointer; }
+  .sk-secenek input[type=radio] { width:1.05rem; height:1.05rem; min-width:0; min-height:0; margin:0; flex:0 0 auto; accent-color:var(--turuncu); }
+  .sk-secenek small { color:var(--metin-soluk); font-weight:500; }
+  .sk-elle { min-width:0 !important; min-height:0 !important; width:5rem; padding:.2rem .4rem; font-size:.9rem; }
   .sk-not { font-size:.88rem; color:var(--metin-soluk); }
   .sk-varyant { color:#8a4b00; font-weight:700; }
   .sk-uretilecek { font-weight:700; }
