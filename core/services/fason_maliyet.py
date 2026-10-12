@@ -65,7 +65,7 @@ def bekleyen_ciktilar() -> list:
         return []
     kayit_idler = {c.kayit_id for c in adaylar}
     hareketler = {}
-    for h in StokHareket.objects.filter(operasyon_kaydi_id__in=kayit_idler, silindi=False):
+    for h in StokHareket.objects.filter(operasyon_kaydi_id__in=kayit_idler, silindi=False).exclude(kaynak=StokHareket.Kaynak.DUZELTME):
         hareketler[(h.operasyon_kaydi_id, h.stok_id, h.tur)] = h
     malzeme_tahmini = {}
     for h in hareketler.values():

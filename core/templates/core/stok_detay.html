@@ -198,6 +198,9 @@
             <td class="sag mono">{% if h.maliyet_durumu == 'YOK' %}<span class="pasif" title="Maliyet belli değil (fatura bekleniyor)">—</span>{% else %}{{ h.birim_maliyet_try|tr_kur:4 }}{% endif %}</td>
             <td class="sag mono">{% if h.maliyet_durumu != 'YOK' %}{{ h.tutar_try|tr_kur:2 }}{% if h.maliyet_durumu == 'GECICI' %} <span class="rozet rozet-pasif" title="Fiyatsız giriş var: ortalama geçici">geçici</span>{% endif %}{% endif %}</td>
             <td class="hareket-kaynak">{{ h.get_kaynak_display }}
+              {% if h.kaynak == 'DUZELTME' and h.fis_id %}
+                <br><a href="{% url 'core:fis_detay' h.fis_id %}" style="font-size:.78rem">Fiş {{ h.fis.yil }}/{{ h.fis.fis_no }}</a>
+              {% endif %}
               {% if h.kaynak == 'SARF' %}
                 <br><span class="mono" style="font-size:.78rem">{{ h.karsi_hesap.hesap_kodu }}</span>
                 {% if h.yatirim_projesi %}<span style="font-size:.78rem">({{ h.yatirim_projesi.kod }})</span>{% endif %}

@@ -2529,6 +2529,8 @@ def operasyon_kaydi_sil(kayit: OperasyonKaydi, kullanici=None, *, onayli_geri_al
         from core.services.hareket import hareket_sil
         from core.services.yevmiye import fis_iptal
         hareketler = list(StokHareket.objects.filter(operasyon_kaydi=kayit, silindi=False).order_by("tur", "-pk"))
+        if any(h.kaynak == StokHareket.Kaynak.DUZELTME for h in hareketler):
+            raise UretimHatasi(f"{kayit.no}: bu kayıt için reçete eksik sarf düzeltmesi yapılmış (düzeltme fişi/hareketleri bağlı); geri alınamaz.")
         try:
             for h in [h for h in hareketler if h.tur == StokHareket.Tur.GIRIS] + \
                      [h for h in hareketler if h.tur == StokHareket.Tur.CIKIS]:

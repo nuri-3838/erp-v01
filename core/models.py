@@ -2438,6 +2438,9 @@ class StokHareket(TemelModel):
         SARF = "SARF", "Sarf (hesaba çıkış)"
         TRANSFER = "TRANSFER", "Depo transferi"
         NUMUNE = "NUMUNE", "Numune Çıkışı"
+        # Reçete eksik sarf / maliyet düzeltmesi (core.services.recete_sarf): ÇIKIŞ sabit tutarlı; GİRİŞ 0 ADETLİK yalnız değer (kart ortalaması
+        # yükselir, eldeki değişmez). Her ikisi de STOK_DUZELTME fişine bağlı (``fis``); tek tek silinemez.
+        DUZELTME = "DUZELTME", "Maliyet düzeltmesi"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -2539,7 +2542,8 @@ class StokHareket(TemelModel):
         ordering = ["-tarih", "-id"]
         indexes = [models.Index(fields=["stok", "depo"], name="idx_stokhareket_stok_depo")]
         constraints = [
-            models.CheckConstraint(condition=models.Q(miktar__gt=0),
+            # Miktar pozitif; tek istisna 0 adetlik "maliyet düzeltmesi" GİRİŞİ (yalnız değer taşır).
+            models.CheckConstraint(condition=models.Q(miktar__gt=0) | models.Q(miktar=0, tur="GIRIS", kaynak="DUZELTME"),
                                    name="ck_stok_hareket_miktar_gt0"),
         ]
 

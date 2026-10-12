@@ -103,7 +103,7 @@ def uretim_senkronla(kayit, *, kullanici=None):
     """Operasyon kaydının maliyet aktarımı: ÇIKTI girişlerinin (ana + yan çıktılar) tutarını girdi çıkışlarının ağırlıklı ortalama
     maliyet toplamından türetir — yan çıktı varsa toplam BOY ORANINA göre paylaştırılır (TL ve USD ayrı, yuvarlama farkı ana çıktıda) —
     ve 15x→15x fişini yazar/günceller. Tutarı DEĞİŞEN çıktı stoklarının LİSTESİNİ döner (çağıran onları yeniden hesaplar)."""
-    hs = list(StokHareket.objects.filter(operasyon_kaydi=kayit, silindi=False)
+    hs = list(StokHareket.objects.filter(operasyon_kaydi=kayit, silindi=False).exclude(kaynak=StokHareket.Kaynak.DUZELTME)   # reçete düzeltmesi çıkışı ayrı fişte
               .select_related("stok").order_by("pk"))
     girdiler = [h for h in hs if h.tur == CIKIS]
     ciktilar = [h for h in hs if h.tur == GIRIS]

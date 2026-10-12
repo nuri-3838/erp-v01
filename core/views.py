@@ -303,7 +303,7 @@ def fis_duzenle(request, pk):
                                "(tutar ortalama maliyetten gelir).")
         return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.STOK_DUZELTME:
-        messages.info(request, "Bu fiş bir stok maliyet düzeltmesinden (giderden stoğa aktarım) oluştu; elle düzenlenemez.")
+        messages.info(request, "Bu fiş bir stok maliyet düzeltmesinden (giderden stoğa aktarım / reçete eksik sarfı) oluştu; elle düzenlenemez.")
         return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.KASA:
         messages.info(request, "Bu fiş bir kasa hareketinden oluştu; düzenlenemez. "
@@ -458,8 +458,8 @@ def fis_sil_gorunum(request, pk):
         messages.info(request, "Bu fiş bir fason dönüşünün cari tahakkukudur; elle silinemez (dönüşü geri alınca iptal olur).")
         return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.STOK_DUZELTME and not fis.silindi:
-        messages.info(request, "Bu fiş bir stok maliyet düzeltmesinden (giderden stoğa aktarım) oluştu; elle silinemez "
-                               "(bağlı stok girişiyle birlikte yönetilir).")
+        messages.info(request, "Bu fiş bir stok maliyet düzeltmesinden (giderden stoğa aktarım / reçete eksik sarfı) oluştu; elle silinemez "
+                               "(bağlı stok hareketleriyle birlikte yönetilir).")
         return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.URETIM and not fis.silindi:
         messages.info(request, "Bu fiş bir üretim kaydının maliyet aktarımıdır; elle silinemez "

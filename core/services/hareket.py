@@ -166,6 +166,22 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
     return hareket
 
 
+@transaction.atomic
+def maliyet_duzeltme_giris_ekle(*, stok, depo, tarih, tutar_try, tutar_usd, fis, aciklama="", varyant=None, kullanici=None) -> StokHareket:
+    """0 ADETLİK maliyet düzeltmesi GİRİŞİ (kaynak DUZELTME): karta yalnız DEĞER ekler — eldeki miktar değişmez, ağırlıklı ortalama yükselir
+    (bkz. core.services.recete_sarf: reçete eksik sarfının stokta kalan payı). STOK_DUZELTME fişine bağlıdır; tek başına silinemez."""
+    hizmet_kontrol(stok)
+    if tutar_try is None or tutar_try <= 0:
+        raise HareketHatasi("Maliyet düzeltmesi tutarı sıfırdan büyük olmalı.")
+    hareket = StokHareket.objects.create(
+        stok=stok, depo=depo, tarih=tarih, tur=StokHareket.Tur.GIRIS, miktar=Decimal("0"), varyant=_varyant_coz(stok, varyant),
+        aciklama=buyuk_harf_tr((aciklama or "").strip())[:300], kaynak=StokHareket.Kaynak.DUZELTME, fis=fis,
+        giris_tutar_try=tutar_try, giris_tutar_usd=tutar_usd, created_by=kullanici, updated_by=kullanici)
+    _ortalamayi_hesapla(stok)
+    hareket.refresh_from_db()
+    return hareket
+
+
 def _ortalamayi_hesapla(stok, **kw):
     try:
         return stok_ortalama.yeniden_hesapla(stok, **kw)
@@ -304,6 +320,8 @@ def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False
         raise HareketHatasi("Depo transferinin tek bacağı silinemez; Depo Transferi'ni silin.")
     if hareket.kaynak == StokHareket.Kaynak.NUMUNE and not _numune_icinden:
         raise HareketHatasi("Numune çıkışı hareketi tek başına silinemez; Numune Çıkışı belgesinin onayını geri alın.")
+    if hareket.kaynak == StokHareket.Kaynak.DUZELTME:
+        raise HareketHatasi("Maliyet düzeltmesi hareketi tek başına silinemez; düzeltme fişiyle birlikte (recete_sarf_duzelt) yönetilir.")
     if hareket.tur == StokHareket.Tur.GIRIS:
         # Bu girişi geri alınca eldeki negatif olur mu? (varyantlı kartta o varyantın eldekisi)
         if eldeki_miktar(hareket.stok, hareket.depo, varyant=hareket.varyant_id) - hareket.miktar < 0:
