@@ -18,6 +18,11 @@ Kural (kullanıcı kararı, 2026-10-12):
    BORÇ (satılan), numune gider hesabı BORÇ (numune), sarf karşı hesabı BORÇ; girdinin stok hesabı ALACAK (eksik sarfın tamamı). Tüm hareketler bu fişe
    bağlıdır (``StokHareket.fis``); fiş ya da hareketler tek tek silinemez.
 
+HAMMADDE MODU (``hammadde=``, 2026-10-12 kullanıcı kararı — kayış vakası): fiziki sayım girdinin (kesilmiş kayış) ERP ile aynı olduğunu gösterdiyse eksik
+olan girdi değil, girdiyi üreten kesim kaydına girilmemiş HAMMADDE sarfıdır. O zaman girdi stoğuna DOKUNULMAZ; çıkış girdiyi üreten (sürücü) tanımın
+reçete oranıyla hammaddeden yapılır (eksik adet × tanım girdi miktarı / tanım çıktı miktarı), değer = kayıt tarihindeki hammadde ortalaması (yoksa
+güncel ortalama); dağıtım ve fiş aynı, yalnız alacak hesabı hammaddenin stok hesabıdır.
+
 Varsayılan KURU çalıştırma: her şey bir transaction içinde gerçekten yapılır, rapor alınır ve GERİ ALINIR. ``uygula=True`` kalıcı yazar.
 """
 from __future__ import annotations
@@ -29,7 +34,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Sum
 
-from core.models import Depo, OperasyonGirdi, OperasyonKaydi, Stok, StokHareket, StokVaryant, YevmiyeFisi, YevmiyeSatir
+from core.models import Depo, Operasyon, OperasyonGirdi, OperasyonKaydi, Stok, StokHareket, StokVaryant, YevmiyeFisi, YevmiyeSatir
 from core.sayi import yuvarla
 from core.services import hareket as hareket_servis
 from core.services import stok_fis
@@ -60,10 +65,12 @@ class KayitSatiri:
     tanim_miktar: Decimal          # güncel tanımdaki birim (1 çalıştırma) miktar
     beklenen: Decimal
     gercek: Decimal
-    eksik: Decimal
-    birim: Decimal
-    birim_kaynagi: str             # "kayıt tarihi" | "güncel ortalama"
+    eksik: Decimal                 # girdi adedi
+    birim: Decimal                 # sarf stoğunun birim maliyeti
+    birim_kaynagi: str             # "kayıt tarihi" | "kayıt tarihi ortalaması" | "güncel ortalama"
     tutar: Decimal
+    sarf_stok: Stok                # çıkışı yazılacak kart (girdi ya da hammadde)
+    sarf_miktar: Decimal           # o kartın biriminde (hammadde modunda eksik × faktör)
     hareket: StokHareket | None = None
 
 
@@ -99,6 +106,26 @@ def tanim_miktarlari(girdi: Stok, operasyon_idler=None) -> dict:
     return toplam
 
 
+def hammadde_faktoru(girdi: Stok, hammadde: Stok) -> tuple[Operasyon, Decimal]:
+    """Girdiyi üreten (sürücü) tanımdaki hammadde miktarı / tanım çıktı miktarı → girdinin 1 adedi için hammadde (ör. kayış 1 adet = 0,745 MT)."""
+    op = next((o for o in Operasyon.objects.filter(cikti=girdi, silindi=False).order_by("pk")
+               if o.ciktilar.filter(stok=girdi, silindi=False, surucu=True).exists()), None)
+    if op is None:
+        op = Operasyon.objects.filter(cikti=girdi, silindi=False).order_by("pk").first()
+    if op is None:
+        raise ReceteDuzeltHatasi(f"{girdi.kod} için üreten (kesim) operasyon tanımı yok; hammadde modu kullanılamaz.")
+    m = sum((g.miktar for g in op.girdiler.filter(girdi=hammadde, silindi=False)), SIFIR)
+    if m <= 0:
+        raise ReceteDuzeltHatasi(f"op {op.pk} ({op.istasyon.kod}) tanımında {hammadde.kod} girdisi yok.")
+    return op, m / op.cikti_miktar
+
+
+def tarihteki_ortalama(stok: Stok, tarih: datetime.date) -> Decimal | None:
+    """Kartın o TARİH SONU itibarıyla ağırlıklı ortalaması (motorun o güne kadarki son hareketine yazdığı ``sonrasi_ort_try``); yoksa None."""
+    hs = [h for h in so.kart_hareketleri(stok) if h.tarih <= tarih and h.sonrasi_ort_try]
+    return hs[-1].sonrasi_ort_try if hs else None
+
+
 def _kayit_birim_maliyeti(girdi_cikislari) -> Decimal | None:
     """Kaydın o girdi çıkışlarının ağırlıklı birim maliyeti (motorun o tarihte yazdığı değer); maliyeti bilinmeyen/sıfırsa None."""
     bilinen = [h for h in girdi_cikislari if h.maliyet_durumu != StokHareket.MaliyetDurumu.YOK and (h.tutar_try or SIFIR) > 0]
@@ -108,8 +135,9 @@ def _kayit_birim_maliyeti(girdi_cikislari) -> Decimal | None:
     return yuvarla(sum((h.tutar_try for h in bilinen), SIFIR) / m, 6)
 
 
-def tespit(girdi: Stok, operasyon_idler=None) -> tuple[list[KayitSatiri], list[dict], dict]:
-    """(eksik sarflı kayıtlar, atlanan kayıtlar [{kayit, neden}], {operasyon: güncel miktar})."""
+def tespit(girdi: Stok, operasyon_idler=None, hammadde: Stok | None = None) -> tuple[list[KayitSatiri], list[dict], dict]:
+    """(eksik sarflı kayıtlar, atlanan kayıtlar [{kayit, neden}], {operasyon: güncel miktar}). ``hammadde`` verilirse sarf o karttan (reçete oranı)."""
+    faktor = hammadde_faktoru(girdi, hammadde)[1] if hammadde is not None else Decimal("1")
     tanimlar = tanim_miktarlari(girdi, operasyon_idler)
     if not tanimlar:
         raise ReceteDuzeltHatasi(f"{girdi.kod} girdisini kullanan (silinmemiş) operasyon tanımı yok.")
@@ -126,6 +154,10 @@ def tespit(girdi: Stok, operasyon_idler=None) -> tuple[list[KayitSatiri], list[d
         if ana is None:
             atlanan.append({"kayit": kayit, "neden": "çıktı girişi yok"})
             continue
+        onceki = [h for h in hs if h.tur == CIKIS and h.kaynak == K.DUZELTME]
+        if onceki:
+            atlanan.append({"kayit": kayit, "neden": "düzeltme zaten yapılmış (hareket " + ", ".join(str(h.pk) for h in onceki) + ")"})
+            continue
         calistirma = ana.miktar / op.cikti_miktar
         tanim_miktar = tanimlar[next(o for o in tanimlar if o.pk == op.pk)]
         beklenen = calistirma * tanim_miktar
@@ -134,14 +166,21 @@ def tespit(girdi: Stok, operasyon_idler=None) -> tuple[list[KayitSatiri], list[d
         if eksik <= 0:
             atlanan.append({"kayit": kayit, "neden": f"tüketim tam ({gercek.normalize():f} ≥ beklenen {beklenen.normalize():f})"})
             continue
-        birim, kaynak = _kayit_birim_maliyeti(kayit_cikislari), "kayıt tarihi"
-        if birim is None:
-            birim, kaynak = girdi.ort_maliyet_try, "güncel ortalama"
+        if hammadde is not None:
+            sarf_stok, sarf_miktar = hammadde, eksik * faktor
+            birim, kaynak = tarihteki_ortalama(hammadde, kayit.tarih), "kayıt tarihi ortalaması"
+            if birim is None:
+                birim, kaynak = hammadde.ort_maliyet_try, "güncel ortalama"
+        else:
+            sarf_stok, sarf_miktar = girdi, eksik
+            birim, kaynak = _kayit_birim_maliyeti(kayit_cikislari), "kayıt tarihi"
+            if birim is None:
+                birim, kaynak = girdi.ort_maliyet_try, "güncel ortalama"
         if not birim or birim <= 0:
-            raise ReceteDuzeltHatasi(f"{girdi.kod}: {kayit.no} için birim maliyet bilinmiyor (kayıtta da güncel ortalamada da yok).")
+            raise ReceteDuzeltHatasi(f"{sarf_stok.kod}: {kayit.no} için birim maliyet bilinmiyor (kayıtta da güncel ortalamada da yok).")
         satirlar.append(KayitSatiri(kayit=kayit, cikti=ana.stok, varyant=ana.varyant, uretilen=ana.miktar, calistirma=calistirma,
                                     tanim_miktar=tanim_miktar, beklenen=beklenen, gercek=gercek, eksik=eksik, birim=birim, birim_kaynagi=kaynak,
-                                    tutar=yuvarla(eksik * birim, 2)))
+                                    tutar=yuvarla(sarf_miktar * birim, 2), sarf_stok=sarf_stok, sarf_miktar=sarf_miktar))
     return satirlar, atlanan, tanimlar
 
 
@@ -283,32 +322,41 @@ def _fis_toplamlari():
             .values("fis_id").annotate(t=Sum("borc"))}
 
 
-def duzelt(girdi_kodu: str, *, tarih: datetime.date, aciklama: str, operasyon_idler=None, uygula=False, kullanici=None) -> dict:
-    """Tek transaction: tespit → dağıtım → fiş → hareketler → rapor; ``uygula=False`` ise GERİ ALINIR."""
+def duzelt(girdi_kodu: str, *, tarih: datetime.date, aciklama: str, operasyon_idler=None, hammadde_kodu=None, uygula=False, kullanici=None) -> dict:
+    """Tek transaction: tespit → dağıtım → fiş → hareketler → rapor; ``uygula=False`` ise GERİ ALINIR. ``hammadde_kodu``: hammadde modu."""
     with transaction.atomic():
-        rapor = _isle(girdi_kodu, tarih=tarih, aciklama=aciklama, operasyon_idler=operasyon_idler, kullanici=kullanici)
+        rapor = _isle(girdi_kodu, tarih=tarih, aciklama=aciklama, operasyon_idler=operasyon_idler, hammadde_kodu=hammadde_kodu, kullanici=kullanici)
         if not uygula:
             transaction.set_rollback(True)
     rapor["uygulandi"] = uygula
     return rapor
 
 
-def _isle(girdi_kodu, *, tarih, aciklama, operasyon_idler, kullanici):
+def _isle(girdi_kodu, *, tarih, aciklama, operasyon_idler, hammadde_kodu, kullanici):
     girdi = Stok.objects.filter(kod=girdi_kodu, silindi=False).select_related("kategori").first()
     if girdi is None:
         raise ReceteDuzeltHatasi(f"Stok bulunamadı: {girdi_kodu}")
+    hammadde, faktor_bilgi = None, None
+    if hammadde_kodu:
+        hammadde = Stok.objects.filter(kod=hammadde_kodu, silindi=False).select_related("kategori", "uretim_birimi").first()
+        if hammadde is None:
+            raise ReceteDuzeltHatasi(f"Hammadde bulunamadı: {hammadde_kodu}")
+        faktor_bilgi = hammadde_faktoru(girdi, hammadde)
+    sarf_stok = hammadde if hammadde is not None else girdi
     kur = kur_usd_birebir(tarih)
     if kur is None:
         raise ReceteDuzeltHatasi(f"{tarih:%d.%m.%Y} için USD kuru yok; Kurlar ekranından bu tarihi çekmeden düzeltme yapılamaz.")
     once_mizan, once_deger, once_fis = _mizan(), _stok_degerleri(), _fis_toplamlari()
     once_h = {h.pk: (h.tutar_try, h.maliyet_durumu) for h in StokHareket.objects.filter(silindi=False)}
     girdi_once = (girdi.maliyet_miktar, girdi.maliyet_deger_try, girdi.ort_maliyet_try)
+    sarf_once = (sarf_stok.maliyet_miktar, sarf_stok.maliyet_deger_try, sarf_stok.ort_maliyet_try)
+    ortak = {"girdi": girdi, "sarf_stok": sarf_stok, "hammadde": hammadde, "faktor": faktor_bilgi, "tarih": tarih, "kur": kur}
 
-    satirlar, atlanan, tanimlar = tespit(girdi, operasyon_idler)
+    satirlar, atlanan, tanimlar = tespit(girdi, operasyon_idler, hammadde)
     if not satirlar:
-        return {"girdi": girdi, "kayitlar": [], "atlanan": atlanan, "tanimlar": tanimlar, "paylar": [], "fis": None, "fis_satirlari": [],
-                "toplam_eksik": SIFIR, "toplam_tutar": SIFIR, "girdi_once": girdi_once, "girdi_sonra": girdi_once, "mizan": [], "deger": [],
-                "degisen": [], "fis_degisen": [], "kontrol": [], "tarih": tarih, "kur": kur}
+        return {**ortak, "kayitlar": [], "atlanan": atlanan, "tanimlar": tanimlar, "paylar": [], "fis": None, "fis_satirlari": [],
+                "toplam_eksik": SIFIR, "toplam_sarf": SIFIR, "toplam_tutar": SIFIR, "girdi_once": girdi_once, "girdi_sonra": girdi_once,
+                "sarf_once": sarf_once, "sarf_sonra": sarf_once, "mizan": [], "deger": [], "degisen": [], "fis_degisen": [], "kontrol": []}
     toplam_tutar = sum((s.tutar for s in satirlar), SIFIR)
 
     # Dağıtım: kayıt başına çıktı (ürün + varyant) → oran; aynı (ürün, varyant, kova, hesap) payları fişte birleşir
@@ -316,7 +364,7 @@ def _isle(girdi_kodu, *, tarih, aciklama, operasyon_idler, kullanici):
     for s in satirlar:
         paylar.extend(dagit(s.cikti, s.varyant, s.tutar))
     net = {}
-    girdi_hesabi = stok_fis.stok_hesabi_kodu(girdi)
+    girdi_hesabi = stok_fis.stok_hesabi_kodu(sarf_stok)                       # alacak: sarf edilen kartın (girdi ya da hammadde) stok hesabı
     for p in [p for p in paylar if p.kova != "URETIM"]:
         if p.kova == "STOK":
             p.hesap = stok_fis.stok_hesabi_kodu(p.stok)
@@ -337,11 +385,11 @@ def _isle(girdi_kodu, *, tarih, aciklama, operasyon_idler, kullanici):
     except YevmiyeHatasi as e:
         raise ReceteDuzeltHatasi(f"Fiş kesilemedi: {e}")
 
-    # Girdi çıkışları (kayıt başına, sabit tutarlı) — bu fişe bağlı
+    # Sarf çıkışları (girdi ya da hammadde; kayıt başına, sabit tutarlı) — bu fişe bağlı
     try:
         for s in satirlar:
-            depo = _depo_sec(girdi, None, tarih, s.eksik, tercih=s.kayit.depo)
-            h = hareket_servis.hareket_ekle(stok_id=girdi.pk, depo_id=depo.pk, tarih=tarih, tur=CIKIS, miktar=s.eksik, kaynak=K.DUZELTME,
+            depo = _depo_sec(s.sarf_stok, None, tarih, s.sarf_miktar, tercih=s.kayit.depo)
+            h = hareket_servis.hareket_ekle(stok_id=s.sarf_stok.pk, depo_id=depo.pk, tarih=tarih, tur=CIKIS, miktar=s.sarf_miktar, kaynak=K.DUZELTME,
                                             giris_tutar_try=s.tutar, giris_tutar_usd=yuvarla(s.tutar / kur, 2),
                                             aciklama=f"{aciklama} ({s.kayit.no})", operasyon_kaydi=s.kayit, kullanici=kullanici)
             h.fis = fis
@@ -364,6 +412,7 @@ def _isle(girdi_kodu, *, tarih, aciklama, operasyon_idler, kullanici):
         raise ReceteDuzeltHatasi(str(e))
 
     girdi.refresh_from_db()
+    sarf_stok.refresh_from_db()
     fis_dokumu = [(s.hesap.hesap_kodu, s.hesap.hesap_adi, s.borc, s.alacak) for s in fis.satirlar.filter(silindi=False).order_by("id").select_related("hesap")]
     bagli = list(fis.stok_sarf_hareketleri.filter(silindi=False).order_by("pk").values_list("pk", flat=True))
     duzeltme_girisleri = []
@@ -378,10 +427,11 @@ def _isle(girdi_kodu, *, tarih, aciklama, operasyon_idler, kullanici):
         if o is not None and o != (h.tutar_try, h.maliyet_durumu):
             degisen.append({"hareket": h, "eski": o[0], "yeni": h.tutar_try, "eski_durum": o[1], "yeni_durum": h.maliyet_durumu})
     fis_degisen = sorted(pk for pk in set(once_fis) | set(sonra_fis) if once_fis.get(pk) != sonra_fis.get(pk) and pk != fis.pk)
-    return {"girdi": girdi, "kayitlar": satirlar, "atlanan": atlanan, "tanimlar": tanimlar, "paylar": paylar, "fis": fis, "fis_satirlari": fis_satirlari,
+    return {**ortak, "kayitlar": satirlar, "atlanan": atlanan, "tanimlar": tanimlar, "paylar": paylar, "fis": fis, "fis_satirlari": fis_satirlari,
             "fis_dokumu": fis_dokumu, "bagli_hareketler": bagli, "duzeltme_girisleri": duzeltme_girisleri,
-            "toplam_eksik": sum((s.eksik for s in satirlar), SIFIR), "toplam_tutar": toplam_tutar, "tarih": tarih, "kur": kur,
+            "toplam_eksik": sum((s.eksik for s in satirlar), SIFIR), "toplam_sarf": sum((s.sarf_miktar for s in satirlar), SIFIR), "toplam_tutar": toplam_tutar,
             "girdi_once": girdi_once, "girdi_sonra": (girdi.maliyet_miktar, girdi.maliyet_deger_try, girdi.ort_maliyet_try),
+            "sarf_once": sarf_once, "sarf_sonra": (sarf_stok.maliyet_miktar, sarf_stok.maliyet_deger_try, sarf_stok.ort_maliyet_try),
             "mizan": [(k, once_mizan[k], sonra_mizan[k], sonra_mizan[k] - once_mizan[k]) for k in MIZAN_HESAPLARI],
             "deger": [(k, once_deger.get(k, (SIFIR, SIFIR, SIFIR))[0], sonra_deger.get(k, (SIFIR, SIFIR, SIFIR))[0]) for k in ("150", "151", "152", "153")],
             "kontrol": [(k, sonra_deger[k][0], sonra_deger[k][1], sonra_deger[k][2], once_deger[k][2]) for k in ("150", "151", "152", "153") if k in sonra_deger],
@@ -406,25 +456,35 @@ def rapor_metni(r: dict, *, girdi_kodu: str) -> str:
     s.append("\nTANIMLAR (güncel girdi miktarı, 1 çalıştırma):")
     for op, m in r["tanimlar"].items():
         s.append(f"  op {op.pk} [{op.istasyon.kod}] → {op.cikti.kod} {op.cikti.ad[:40]} (çıktı {_m(op.cikti_miktar)}): {girdi_kodu} × {_m(m)}")
+    hm = r.get("hammadde")
+    if hm is not None:
+        op, f = r["faktor"]
+        s.append(f"  HAMMADDE MODU: {girdi_kodu} stoğuna dokunulmaz; sarf {hm.kod} {hm.ad[:30]} — op {op.pk} [{op.istasyon.kod}] reçetesi: 1 {girdi_kodu} = {_m(f)} {hm.uretim_birimi.kisa_ad}")
     s.append(f"\n1) EKSİK SARFLI ONAYLI KAYITLAR ({len(r['kayitlar'])}):")
-    s.append(f"  {'kayıt':<14} {'tarih':<10} {'ÜS':<5} {'çıktı ürün':<13} {'varyant':<34} {'üretilen':>8} {'beklenen':>8} {'tüketilen':>9} {'eksik':>6} {'birim TL':>10} {'tutar TL':>10}  birim kaynağı")
+    sarf_bas = f"sarf {hm.uretim_birimi.kisa_ad}" if hm is not None else "sarf"
+    s.append(f"  {'kayıt':<14} {'tarih':<10} {'ÜS':<5} {'çıktı ürün':<13} {'varyant':<34} {'üretilen':>8} {'beklenen':>8} {'tüketilen':>9} {'eksik':>6} {sarf_bas:>10} {'birim TL':>10} {'tutar TL':>10}  birim kaynağı")
     for k in r["kayitlar"]:
         us = k.kayit.uretim_emri.no if k.kayit.uretim_emri_id else "-"
         s.append(f"  {k.kayit.no:<14} {k.kayit.tarih:%d.%m.%Y} {us:<5} {k.cikti.kod:<13} {_varyant_etiketi(k.varyant)[:34]:<34} {_m(k.uretilen):>8} {_m(k.beklenen):>8} "
-                 f"{_m(k.gercek):>9} {_m(k.eksik):>6} {k.birim:>10.4f} {_tl(k.tutar):>10}  {k.birim_kaynagi}")
-    s.append(f"  TOPLAM eksik sarf: {_m(r['toplam_eksik'])} adet = {_tl(r['toplam_tutar'])} TL")
+                 f"{_m(k.gercek):>9} {_m(k.eksik):>6} {_m(k.sarf_miktar):>10} {k.birim:>10.4f} {_tl(k.tutar):>10}  {k.birim_kaynagi}")
+    sarf_birim = hm.uretim_birimi.kisa_ad if hm is not None else "adet"
+    s.append(f"  TOPLAM eksik: {_m(r['toplam_eksik'])} adet {girdi_kodu} → sarf {_m(r['toplam_sarf'])} {sarf_birim} {r['sarf_stok'].kod} = {_tl(r['toplam_tutar'])} TL")
     if r["atlanan"]:
         s.append(f"  Atlanan kayıtlar ({len(r['atlanan'])}): " + "; ".join(f"{a['kayit'].no} ({a['neden']})" for a in r["atlanan"]))
     if not r["kayitlar"]:
         s.append("\nEksik sarflı kayıt yok; yapılacak düzeltme yok.")
         return "\n".join(s)
-    s.append(f"\n2) GİRDİ STOĞU {girdi_kodu} — düzeltme ÇIKIŞLARI (bugün tarihli, kayıt başına, sabit tutarlı):")
+    ss = r["sarf_stok"]
+    s.append(f"\n2) SARF STOĞU {ss.kod} — düzeltme ÇIKIŞLARI (bugün tarihli, kayıt başına, sabit tutarlı):")
     for k in r["kayitlar"]:
         h = k.hareket
-        s.append(f"  hareket {h.pk} {h.tarih:%d.%m.%Y} {h.depo.kod} ÇIKIŞ {_m(h.miktar)} × {k.birim:.4f} = {_tl(h.tutar_try)} TL  ({k.kayit.no})")
-    o, n = r["girdi_once"], r["girdi_sonra"]
-    s.append(f"  {girdi_kodu} STOĞU: önce {_m(o[0])} adet / {_tl(o[1])} TL (ort {o[2] or 0:.4f})  →  SONRA {_m(n[0])} adet / {_tl(n[1])} TL (ort {n[2] or 0:.4f})"
-             f"   [fiziki sayımla karşılaştırılacak eldeki: {_m(n[0])} adet]")
+        s.append(f"  hareket {h.pk} {h.tarih:%d.%m.%Y} {h.depo.kod} ÇIKIŞ {_m(h.miktar)} {sarf_birim} × {k.birim:.4f} = {_tl(h.tutar_try)} TL  ({k.kayit.no})")
+    o, n = r["sarf_once"], r["sarf_sonra"]
+    s.append(f"  {ss.kod} STOĞU: önce {_m(o[0])} {sarf_birim} / {_tl(o[1])} TL (ort {o[2] or 0:.4f})  →  SONRA {_m(n[0])} {sarf_birim} / {_tl(n[1])} TL (ort {n[2] or 0:.4f})"
+             f"   [fiziki sayımla karşılaştırılacak eldeki: {_m(n[0])} {sarf_birim}]")
+    if hm is not None:
+        o, n = r["girdi_once"], r["girdi_sonra"]
+        s.append(f"  {girdi_kodu} STOĞU: {_m(o[0])} adet / {_tl(o[1])} TL → {_m(n[0])} adet / {_tl(n[1])} TL  ({'DEĞİŞMEDİ' if o == n else 'DEĞİŞTİ!'})")
     s.append("\n3) DAĞITIM (ürün / varyant / kova: akıştaki adet / toplam akış → pay TL; üretimde tüketilen pay alt satırlardaki çıktıya geçer):")
     for p in r["paylar"]:
         girinti = "  " + "    " * p.seviye

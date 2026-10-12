@@ -1,6 +1,7 @@
 """``recete_sarf_duzelt`` komutu / ``core.services.recete_sarf``: reçetede sonradan artırılan girdi miktarı için geçmiş onaylı kayıtların eksik sarfı —
 bugün tarihli sabit tutarlı çıkış, ORAN bazında dağıtım (ara mamul stokta kalan / mamul stokta kalan / satılan / numune), 0 adetlik maliyet
-düzeltmesi girişleri, TEK STOK_DUZELTME fişi; kuru çalıştırma hiçbir şey bırakmaz, --uygula idempotent; stok değeri − mizan farkı değişmez."""
+düzeltmesi girişleri, TEK STOK_DUZELTME fişi; kuru çalıştırma hiçbir şey bırakmaz, --uygula idempotent; stok değeri − mizan farkı değişmez.
+HAMMADDE MODU (--hammadde): girdi stoğuna dokunmadan sarf kesim reçetesi oranıyla hammaddeden, kayıt tarihindeki hammadde ortalamasıyla."""
 from datetime import date
 from decimal import Decimal
 from io import StringIO
@@ -35,7 +36,7 @@ class ReceteSarfTaban(TestCase):
             Kur.objects.get_or_create(tarih=t, defaults={"usd_alis": D("40")})
         _hesap("191", "İNDİRİLECEK KDV")
         _hesap("391", "HESAPLANAN KDV", kalem="KVYK")
-        for kod, ad in (("151.10", "KESİLMİŞ PARÇALAR"), ("151.99", "PAKETSİZ MERDİVENLER"), ("152.10", "MAMUL A TİPİ")):
+        for kod, ad in (("150.40", "KAYIŞ HAMMADDE"), ("151.10", "KESİLMİŞ PARÇALAR"), ("151.99", "PAKETSİZ MERDİVENLER"), ("152.10", "MAMUL A TİPİ")):
             _hesap(kod, ad)
         _hesap("620", "SATILAN MAMULLER MALİYETİ", grup="GELIR_TABLOSU", kalem="A")
         _hesap("760.06", "NUMUNE GİDERLERİ", grup="GELIR_TABLOSU", kalem="A")
@@ -50,15 +51,18 @@ class ReceteSarfTaban(TestCase):
             KategoriHesap.objects.create(kategori=kat, fatura_tipi=alis, hesap=HesapPlani.objects.get(hesap_kodu=hesap))
             return Stok.objects.create(kod=kod, ad=ad, kategori=kat, kdv=cls.kdv, uretim_birimi=birim, fatura_birimi=birim, **kw)
 
-        cls.kayis = kart("RS-KAYIS", "KESİLMİŞ KAYIŞ", "151.10", satinalma_urunu=True, uretim_urunu=False)
+        cls.hammadde = kart("RS-HAM", "KAYIŞ RULO", "150.40", satinalma_urunu=True, uretim_urunu=False)
+        cls.kayis = kart("RS-KAYIS", "KESİLMİŞ KAYIŞ", "151.10", uretim_urunu=True)
         cls.ara = kart("RS-ARA", "PAKETSİZ MERDİVEN", "151.99", uretim_urunu=True)
         cls.mamul = kart("RS-MAMUL", "MERDİVEN 5+1", "152.10", uretim_urunu=True, satis_urunu=True)
         cls.depo = Depo.objects.create(kod="RSD", ad="RS DEPO")
         ist = IsIstasyonu.objects.create(kod="RSM", ad="MONTAJ RS", sira=10)
+        cls.op_kesim = operasyon_olustur(istasyon_id=ist.pk, cikti_id=cls.kayis.pk, cikti_miktar=D("1"), satirlar=[(cls.hammadde, D("0.66"))])   # 1 kayış = 0,66 MT
         cls.op_montaj = operasyon_olustur(istasyon_id=ist.pk, cikti_id=cls.ara.pk, cikti_miktar=D("1"), satirlar=[(cls.kayis, D("1"))])
         cls.op_paket = operasyon_olustur(istasyon_id=ist.pk, cikti_id=cls.mamul.pk, cikti_miktar=D("1"), satirlar=[(cls.ara, D("1"))])
 
     def setUp(self):
+        hareket_ekle(stok_id=self.hammadde.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur="GIRIS", miktar=D("100"), giris_tutar_try=D("500"))   # 5 TL/MT
         hareket_ekle(stok_id=self.kayis.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur="GIRIS", miktar=D("100"), giris_tutar_try=D("300"))
         emir1 = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.ara.pk, "hedef_miktar": "10"}], depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         uretim_emri_toplu_uret(emir1, tarih=date(2026, 1, 10))                                        # montaj: 10 ara, kayış 10 tüketildi (×1)
@@ -69,9 +73,10 @@ class ReceteSarfTaban(TestCase):
         hareket_ekle(stok_id=self.mamul.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 13), tur="CIKIS", miktar=D("1"), kaynak="NUMUNE")      # numune
         operasyon_guncelle(self.op_montaj, istasyon_id=self.op_montaj.istasyon_id, cikti_miktar=D("1"), satirlar=[(self.kayis, D("2"))])  # reçete düzeltildi
 
-    def kos(self, *args):
+    def kos(self, *args, hammadde="-"):
         out = StringIO()
-        call_command("recete_sarf_duzelt", "--girdi", "RS-KAYIS", "--tarih", "01.02.2026", "--aciklama", "Kayış reçete düzeltmesi – eksik sarf", *args, stdout=out)
+        call_command("recete_sarf_duzelt", "--girdi", "RS-KAYIS", "--hammadde", hammadde, "--tarih", "01.02.2026", "--aciklama", "Kayış reçete düzeltmesi – eksik sarf",
+                     *args, stdout=out)
         return out.getvalue()
 
     def fis_satirlari(self, fis):
@@ -114,7 +119,7 @@ class KomutTest(ReceteSarfTaban):
         self.assertTrue(any("RS-MAMUL" in l and "stokta kalan" in l and "5 / 9" in l for l in metin.splitlines()), metin)   # ara 1/10 stokta, 9 paketlendi
         self.assertIn("KURU ÇALIŞTIRMA", metin)
         self.assertIn("EKSİK SARFLI ONAYLI KAYITLAR (1)", metin)
-        self.assertIn("TOPLAM eksik sarf: 10 adet = 30.00 TL", metin)
+        self.assertIn("TOPLAM eksik: 10 adet RS-KAYIS → sarf 10 adet RS-KAYIS = 30.00 TL", metin)
         self.assertIn("fiziki sayımla karşılaştırılacak eldeki: 80 adet", metin)
         self.assertIn("151.99", metin)
         self.assertIn("= değişmedi", metin)
@@ -151,7 +156,7 @@ class KomutTest(ReceteSarfTaban):
         # ikinci koşu: tüketim artık tam → düzeltme yok
         metin2 = self.kos("--uygula")
         self.assertIn("Eksik sarflı kayıt yok", metin2)
-        self.assertIn("tüketim tam (20 ≥ beklenen 20)", metin2)
+        self.assertIn("düzeltme zaten yapılmış (hareket", metin2)
         self.assertEqual(YevmiyeFisi.objects.filter(kaynak="STOK_DUZELTME", silindi=False).count(), 1)
 
     def test_duzeltme_hareketi_ve_fis_korumali_kayit_geri_alinamaz(self):
@@ -177,8 +182,51 @@ class KomutTest(ReceteSarfTaban):
         with self.assertRaisesMessage(CommandError, "Stok bulunamadı: YOK"):
             self.kos("--girdi", "YOK")
         with self.assertRaisesMessage(CommandError, "gg.aa.yyyy"):
-            call_command("recete_sarf_duzelt", "--girdi", "RS-KAYIS", "--tarih", "2026-02-01", stdout=StringIO())
+            call_command("recete_sarf_duzelt", "--girdi", "RS-KAYIS", "--hammadde", "-", "--tarih", "2026-02-01", stdout=StringIO())
         with self.assertRaisesMessage(CommandError, "USD kuru yok"):
-            call_command("recete_sarf_duzelt", "--girdi", "RS-KAYIS", "--tarih", "03.02.2026", stdout=StringIO())
+            call_command("recete_sarf_duzelt", "--girdi", "RS-KAYIS", "--hammadde", "-", "--tarih", "03.02.2026", stdout=StringIO())
         with self.assertRaisesMessage(CommandError, "operasyon tanımı yok"):
             self.kos("--operasyon", str(self.op_paket.pk))
+        with self.assertRaisesMessage(CommandError, "Hammadde bulunamadı: YOK"):
+            self.kos(hammadde="YOK")
+        with self.assertRaisesMessage(CommandError, "tanımında RS-ARA girdisi yok"):
+            self.kos(hammadde="RS-ARA")
+
+
+class HammaddeModuTest(ReceteSarfTaban):
+    """Fiziki sayım girdi (kayış) stoğunu doğruladı: eksik olan kesim kaydına girilmemiş hammadde; kayış 90'da kalır, çıkış hammaddeden 0,66 MT/adet."""
+
+    def test_kuru_hammadde_metraj_tl_ve_girdi_degismez(self):
+        metin = self.kos(hammadde="RS-HAM")
+        self.assertIn("HAMMADDE MODU: RS-KAYIS stoğuna dokunulmaz; sarf RS-HAM", metin)
+        self.assertIn("reçetesi: 1 RS-KAYIS = 0.66 ADRS", metin)
+        self.assertIn("TOPLAM eksik: 10 adet RS-KAYIS → sarf 6.6 ADRS RS-HAM = 33.00 TL", metin)            # 10 × 0,66 MT × 5 TL
+        self.assertIn("fiziki sayımla karşılaştırılacak eldeki: 93.4 ADRS", metin)
+        self.assertIn("RS-KAYIS STOĞU: 90 adet / 270.00 TL → 90 adet / 270.00 TL  (DEĞİŞMEDİ)", metin)
+        self.assertIn("150.40", metin)
+        self.assertEqual((eldeki_miktar(self.hammadde), eldeki_miktar(self.kayis)), (D("100"), D("90")))      # kuru: geri alındı
+
+    def test_uygula_hammadde_cikisi_kayit_tarihi_ortalamasi_fis_ve_idempotent(self):
+        hareket_ekle(stok_id=self.hammadde.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 20), tur="GIRIS", miktar=D("50"), giris_tutar_try=D("1000"))  # sonradan 20 TL/MT
+        self.assertEqual(recete_sarf.tarihteki_ortalama(self.hammadde, date(2026, 1, 10)), D("5.000000"))
+        self.assertEqual(Stok.objects.get(pk=self.hammadde.pk).ort_maliyet_try, D("10.000000"))               # güncel ortalama 10 (1500/150)
+        satirlar, _a, _t = recete_sarf.tespit(self.kayis, hammadde=self.hammadde)
+        s = satirlar[0]
+        self.assertEqual((s.sarf_stok.pk, s.sarf_miktar, s.birim, s.birim_kaynagi, s.tutar), (self.hammadde.pk, D("6.60"), D("5.000000"), "kayıt tarihi ortalaması", D("33.00")))
+        metin = self.kos("--uygula", hammadde="RS-HAM")
+        self.assertIn("UYGULANDI", metin)
+        fis = YevmiyeFisi.objects.get(kaynak="STOK_DUZELTME", silindi=False)
+        self.assertEqual(self.fis_satirlari(fis), sorted([("150.40", D("0.00"), D("33.00")), ("151.99", D("6.60"), D("0.00")), ("152.10", D("13.20"), D("0.00")),
+                                                          ("620", D("9.90"), D("0.00")), ("760.06", D("3.30"), D("0.00"))]))
+        cikis = StokHareket.objects.get(stok=self.hammadde, kaynak="DUZELTME")
+        self.assertEqual((cikis.tur, cikis.miktar, cikis.tutar_try, cikis.fis_id, cikis.operasyon_kaydi_id), ("CIKIS", D("6.60"), D("33.00"), fis.pk, self.kayit.pk))
+        self.assertFalse(StokHareket.objects.filter(stok=self.kayis, kaynak="DUZELTME").exists())            # girdiye dokunulmadı
+        ham = Stok.objects.get(pk=self.hammadde.pk)
+        self.assertEqual((ham.maliyet_miktar, ham.maliyet_deger_try), (D("143.40"), D("1467.00")))             # 1500 − 33
+        self.assertEqual(Stok.objects.get(pk=self.kayis.pk).maliyet_miktar, D("90"))
+        self.assertEqual(Stok.objects.get(pk=self.mamul.pk).ort_maliyet_try, D("6.300000"))                   # (12 + 13,20) / 4
+        metin2 = self.kos("--uygula", hammadde="RS-HAM")
+        self.assertIn("düzeltme zaten yapılmış (hareket", metin2)
+        self.assertIn("Eksik sarflı kayıt yok", metin2)
+        self.assertIn("Eksik sarflı kayıt yok", self.kos("--uygula"))                                           # girdi modunda da tekrar yok
+        self.assertEqual(YevmiyeFisi.objects.filter(kaynak="STOK_DUZELTME", silindi=False).count(), 1)
