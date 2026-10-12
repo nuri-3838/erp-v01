@@ -93,6 +93,7 @@ MODULLER = (
     )),
     Modul("FASON", "Fason", (
         Ekran("fason_hesapla", "Kesim Listesi Hesapla", "core:fason_hesapla"),
+        Ekran("fason_siparisleri", "Fason Siparişleri", "core:fason_siparisleri"),
         Ekran("fason_fiyatlari", "Fason Fiyatları", "core:fason_fiyatlari"),
         Ekran("fason_donusleri", "Fason Dönüşler", "core:fason_donusleri"),
         Ekran("fason_mutabakat", "Fason Mutabakat", "core:fason_mutabakat"),

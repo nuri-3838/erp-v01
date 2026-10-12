@@ -90,7 +90,7 @@ class FasonViewTest(TestCase):
     def test_fason_menusu(self):
         fason = next(m for m in MODULLER if m.kod == "FASON")
         self.assertEqual([e.ad for e in fason.ekranlar],
-                         ["Kesim Listesi Hesapla", "Fason Fiyatları", "Fason Dönüşler", "Fason Mutabakat"])
+                         ["Kesim Listesi Hesapla", "Fason Siparişleri", "Fason Fiyatları", "Fason Dönüşler", "Fason Mutabakat"])
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:kullanici_listesi"))
         self.assertContains(r, "Fason Dönüşler")

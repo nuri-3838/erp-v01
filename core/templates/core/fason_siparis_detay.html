@@ -1,0 +1,98 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ siparis.no }} · Fason Siparişi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fason Siparişi {{ siparis.no }}{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_siparisleri' %}">← Fason Siparişleri</a>
+    <h1 class="ust-baslik"><span class="emoji">📤</span>{{ siparis.no }}
+      <span class="rozet {% if siparis.durum == 'TAMAMLANDI' %}rozet-aktif{% elif siparis.durum == 'IPTAL' %}rozet-pasif{% elif siparis.durum == 'TASLAK' %}rozet-notr{% else %}rozet-kapali{% endif %}">{{ siparis.get_durum_display }}</span></h1>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <a class="dugme-ikincil" href="{% url 'core:fason_siparis_pdf' siparis.pk %}" target="_blank" rel="noopener">PDF</a>
+    {% if duzenlenebilir %}<a class="dugme-ikincil" href="{% url 'core:fason_siparis_duzenle' siparis.pk %}">Düzenle</a>{% endif %}
+    {% if siparis.durum == "TASLAK" %}
+      <form method="post" action="{% url 'core:fason_siparis_gonder' siparis.pk %}" style="margin:0">{% csrf_token %}<button type="submit" class="dugme">Gönder</button></form>
+      <form method="post" action="{% url 'core:fason_siparis_sil' siparis.pk %}" style="margin:0" onsubmit="return confirm('Taslak sipariş silinsin mi?');">{% csrf_token %}<button type="submit" class="dugme-ikincil">Sil</button></form>
+    {% elif siparis.durum == "GONDERILDI" or siparis.durum == "KISMI" %}
+      <a class="dugme" href="{% url 'core:fason_donus_ekle' %}?fason_siparis={{ siparis.pk }}">📥 Dönüş Aç</a>
+    {% endif %}
+    {% if iptal_edilebilir %}
+      <form method="post" action="{% url 'core:fason_siparis_iptal' siparis.pk %}" style="margin:0" onsubmit="return confirm('Sipariş iptal edilsin mi? ÜS rezervleri geri alınır.');">{% csrf_token %}<button type="submit" class="dugme-ikincil">İptal Et</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<section class="icerik-kart">
+  <div class="izgara">
+    <div class="alan"><label>Fasoncu</label><div><a href="{% url 'core:cari_detay' siparis.cari.pk %}">{{ siparis.cari.unvan }}</a></div></div>
+    <div class="alan"><label>Tarih</label><div class="mono">{{ siparis.tarih|date:"d.m.Y" }}</div></div>
+    <div class="alan"><label>Termin</label><div class="mono">{% if siparis.termin %}{{ siparis.termin|date:"d.m.Y" }}{% else %}—{% endif %}</div></div>
+    <div class="alan"><label>Açıklama</label><div>{{ siparis.aciklama|default:"—" }}</div></div>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Satırlar</h2>
+  {% if t.fiyatsiz %}<div class="uyari">⚠️ Fason fiyatı olmayan parçalar: {% for s in t.fiyatsiz %}{{ s.kod }}{% if not forloop.last %}, {% endif %}{% endfor %} — <a href="{% url 'core:fason_fiyat_ekle' %}">Fason Fiyatları</a>.</div>{% endif %}
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Kesilmiş parça</th><th>Fasoncu kodu</th><th>Gerekli profil</th><th class="sag">Boy</th><th class="sag">Sipariş</th><th class="sag">Gelen</th><th class="sag">Rezerve</th><th class="sag">Kalan</th><th class="sag">Birim fiyat</th><th class="sag">Tutar</th></tr></thead>
+    <tbody>
+      {% for b in t.satirlar %}
+        <tr>
+          <td><a href="{% url 'core:stok_detay' b.satir.stok.pk %}"><span class="mono">{{ b.satir.stok.kod }}</span> {{ b.satir.stok.ad }}</a>{% if b.satir.varyant %} <span class="rozet rozet-notr">{{ b.satir.varyant.anahtar }}</span>{% endif %}</td>
+          <td class="mono">{{ b.satir.fasoncu_kodu|default:"—" }}</td>
+          <td>{% if b.satir.profil %}{{ b.satir.profil.ad }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td class="sag mono">{% if b.satir.profil_miktar is not None %}{{ b.satir.profil_miktar|tr_miktar_sade }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{{ b.satir.adet|tr_miktar_sade }}</td>
+          <td class="sag mono">{{ b.satir.gelen|tr_miktar_sade }}{% if b.satir.gelen > b.satir.adet %} <span class="rozet rozet-pasif" title="Gelen sipariş adedini aşıyor">fazla</span>{% endif %}</td>
+          <td class="sag mono">{{ b.rezerv|tr_miktar_sade }}</td>
+          <td class="sag mono"><strong>{{ b.kalan|tr_miktar_sade }}</strong></td>
+          <td class="sag mono">{% if b.satir.birim_fiyat is not None %}{{ b.satir.birim_fiyat|tr_kur:4 }} {{ b.satir.para_birimi }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td class="sag mono">{% if b.tutar is not None %}{{ b.tutar|tr_para }} {{ b.satir.para_birimi }}{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="4" class="sag">Toplam</th><th class="sag mono">{{ t.adet|tr_miktar_sade }}</th><th class="sag mono">{{ t.gelen|tr_miktar_sade }}</th><th class="sag mono">{{ t.rezerv|tr_miktar_sade }}</th><th class="sag mono">{{ t.kalan|tr_miktar_sade }}</th><th></th>
+        <th class="sag mono">{% for pb, tt in t.tutar.items %}{{ tt|tr_para }} {{ pb }}{% if not forloop.last %} · {% endif %}{% empty %}—{% endfor %}</th></tr>
+    </tfoot>
+  </table>
+  </div>
+  <p class="yardim" style="margin:.5rem 0 0">Kalan = sipariş − gelen − rezerve. Rezerve: üretim siparişi planlamasının bu satırdan "gelecek stok" olarak ayırdığı adet (parça gelince ÜS'nin stok ayırmasına dönüşür).</p>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Üretim siparişlerine rezerve</h2>
+  {% if us_rezervleri %}
+    <div class="tablo-kapsayici"><table>
+      <thead><tr><th>Üretim siparişi</th><th>Parça</th><th class="sag">Rezerve</th></tr></thead>
+      <tbody>
+        {% for g in us_rezervleri %}{% for r in g.satirlar %}
+          <tr><td>{% if forloop.first %}<a class="mono" href="{% url 'core:uretim_emri_detay' g.emir.pk %}">{{ g.emir.no }}</a>{% endif %}</td>
+              <td><span class="mono">{{ r.satir.stok.kod }}</span> {{ r.satir.stok.ad }}</td><td class="sag mono">{{ r.miktar|tr_miktar_sade }}</td></tr>
+        {% endfor %}{% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p class="yardim">Bu siparişten henüz bir üretim siparişine rezerve edilmiş parça yok.</p>
+  {% endif %}
+  {% if fason_emirleri %}
+    <div class="uyari" style="margin-top:.6rem">ℹ️ Aynı parçalar için açık ÜS'lerde fason istasyon emri de var (iki kez sipariş etmeyin; ÜS planı kendiliğinden değişmez):
+      {% for ie, stok, kalan in fason_emirleri %}<div><span class="mono">{{ stok.kod }}</span> — <a href="{% url 'core:uretim_emri_detay' ie.uretim_emri.pk %}">{{ ie.uretim_emri.no }}</a> / {{ ie.no }} · {{ kalan|tr_miktar_sade }} adet</div>{% endfor %}</div>
+  {% endif %}
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Fason dönüşler</h2>
+  {% if donusler %}
+    <ul>{% for d in donusler %}<li><a class="mono" href="{% url 'core:fason_donus_detay' d.pk %}">{{ d.no }}</a> · {{ d.tarih|date:"d.m.Y" }} · {% if d.onayli %}<span class="rozet rozet-aktif">Onaylı</span>{% else %}<span class="rozet rozet-notr">Taslak</span>{% endif %}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="yardim">Bu siparişe bağlı dönüş yok. Parçalar gelince "Dönüş Aç" ile fason dönüş belgesini bu siparişe bağlı açın; gelen adetler satırlara işler.</p>
+  {% endif %}
+</section>
+{% endblock %}

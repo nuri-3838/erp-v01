@@ -61,6 +61,7 @@
     <div class="form-altbar">
       <button type="submit" name="eylem" value="hesapla" class="dugme-ikincil">Hesapla</button>
       <button type="submit" name="eylem" value="pdf" class="birincil">PDF İndir</button>
+      {% if sonuc.ozet %}<button type="submit" name="eylem" value="fason_siparis" class="dugme" title="Hesaplanan satırlar ön dolu taslak fason siparişi formuna geçer; adetler kaydetmeden önce düzenlenebilir">📤 Fason Siparişi Oluştur</button>{% endif %}
     </div>
   </form>
 

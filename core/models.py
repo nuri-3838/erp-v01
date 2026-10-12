@@ -3166,6 +3166,10 @@ class FasonDonus(TemelModel):
     # Faturasız fasoncuda (Cari.fason_faturasiz) onayda yazılan tahakkuk fişi: 151 alt hesap(lar)ı BORÇ / fasoncu cari ALACAK (KDV yok).
     tahakkuk_fis = models.ForeignKey("YevmiyeFisi", verbose_name="fason tahakkuk fişi", null=True, blank=True, on_delete=models.PROTECT,
                                      related_name="fason_tahakkuk_donusleri", editable=False)
+    # FASON SİPARİŞİ bağı (2026-10-12): doluysa onayda gelen adetler siparişin satırlarına işler ve ÜS rezervleri stok ayırmasına dönüşür
+    # (core.services.fason_siparis.gelen_isle). Siparişsiz dönüş eskisi gibi çalışır.
+    fason_siparis = models.ForeignKey("FasonSiparisi", verbose_name="fason siparişi", null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name="fason_donusleri")
 
     class Meta:
         db_table = "core_fason_donus"
@@ -3182,6 +3186,96 @@ class FasonDonus(TemelModel):
         """Belgenin (silinmemiş) tüm kayıtları onaylıysa True; onay tek atomik işlem olduğundan arası yoktur."""
         kayitlar = [k for k in self.kayitlar.all() if not k.silindi]
         return bool(kayitlar) and all(k.durum == "ONAYLI" for k in kayitlar)
+
+
+class FasonSiparisi(TemelModel):
+    """FASON > Fason Siparişleri (FS-yyyy-nnnn; 2026-10-12): fasoncuya verilen KESİM SİPARİŞİ belgesi — stok/muhasebe etkisi YOK (stok ve maliyet
+    Fason Dönüş ile oluşur). TASLAK planlamaya girmez; GONDERILDI/KISMI açık siparişlerdir: ÜS planlaması kesilmiş parça ihtiyacını serbest stoktan
+    sonra bu siparişlerin rezerve edilmemiş kalanından karşılar (fason istasyon emri açılmaz; ``FasonSiparisRezerv``), kritik stok 'gelecek'
+    sayar. Bkz. core.services.fason_siparis."""
+
+    class Durum(models.TextChoices):
+        TASLAK = "TASLAK", "Taslak"
+        GONDERILDI = "GONDERILDI", "Gönderildi"
+        KISMI = "KISMI", "Kısmi Geldi"
+        TAMAMLANDI = "TAMAMLANDI", "Tamamlandı"
+        IPTAL = "IPTAL", "İptal"
+
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("belge no", max_length=20, editable=False)
+    cari = models.ForeignKey("Cari", verbose_name="fasoncu (cari)", on_delete=models.PROTECT, related_name="fason_siparisleri")
+    tarih = models.DateField("tarih")
+    termin = models.DateField("termin", null=True, blank=True)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+    durum = models.CharField("durum", max_length=10, choices=Durum.choices, default=Durum.TASLAK)
+
+    class Meta:
+        db_table = "core_fason_siparisi"
+        verbose_name = "fason siparişi"
+        verbose_name_plural = "fason siparişleri"
+        ordering = ["-yil", "-sira"]
+        constraints = [models.UniqueConstraint(fields=["yil", "sira"], name="uq_fason_siparisi_yil_sira")]
+
+    def __str__(self):
+        return self.no
+
+
+class FasonSiparisSatiri(TemelModel):
+    """Fason siparişi satırı: kesilmiş parça (stok + ÇÖZÜLMÜŞ varyant), sipariş adedi, gelen (FD onayında), rezerve (``FasonSiparisRezerv``),
+    kalan = adet − gelen − rezerve. Bilgi: üreten tanımın girdisi (ham profil) + boy adedi, sipariş tarihindeki FasonFiyat snapshot'ı."""
+
+    siparis = models.ForeignKey(FasonSiparisi, on_delete=models.CASCADE, related_name="satirlar")
+    stok = models.ForeignKey(Stok, verbose_name="kesilmiş parça", on_delete=models.PROTECT, related_name="fason_siparis_satirlari")
+    varyant = models.ForeignKey("StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    adet = models.DecimalField("sipariş adedi", max_digits=18, decimal_places=3)
+    gelen = models.DecimalField("gelen adet", max_digits=18, decimal_places=3, default=0)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+    profil = models.ForeignKey(Stok, verbose_name="gerekli profil", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    profil_miktar = models.DecimalField("profil boy adedi", max_digits=18, decimal_places=6, null=True, blank=True)
+    birim_fiyat = models.DecimalField("birim fiyat", max_digits=18, decimal_places=6, null=True, blank=True)
+    para_birimi = models.CharField("para birimi", max_length=3, blank=True, default="")
+    fasoncu_kodu = models.CharField("fasoncunun parça kodu", max_length=40, blank=True, default="")
+
+    class Meta:
+        db_table = "core_fason_siparis_satiri"
+        verbose_name = "fason siparişi satırı"
+        verbose_name_plural = "fason siparişi satırları"
+        ordering = ["sira", "pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(adet__gt=0), name="ck_fason_siparis_satiri_adet_gt0"),
+            models.CheckConstraint(condition=models.Q(gelen__gte=0), name="ck_fason_siparis_satiri_gelen_gte0"),
+        ]
+
+    def __str__(self):
+        return f"{self.siparis_id} · {self.stok_id} × {self.adet}"
+
+    @property
+    def acik(self):
+        from decimal import Decimal
+        return max(Decimal("0"), self.adet - self.gelen)
+
+
+class FasonSiparisRezerv(TemelModel):
+    """Fason siparişi satırından bir ÜS'ye REZERVE edilen adet (planlama 'gelecek stok'): stok ayırması DEĞİLDİR; parça FD ile gelince
+    ``StokAyirma``ya dönüşür. (satır, ÜS) başına tek aktif satır; ÜS iptal/kapanış ve FS iptal/adet düşürmede kapanır."""
+
+    satir = models.ForeignKey(FasonSiparisSatiri, on_delete=models.CASCADE, related_name="rezervler")
+    uretim_emri = models.ForeignKey("UretimEmri", verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="fason_rezervleri")
+    miktar = models.DecimalField("rezerve adet", max_digits=18, decimal_places=6)
+
+    class Meta:
+        db_table = "core_fason_siparis_rezerv"
+        verbose_name = "fason siparişi rezervi"
+        verbose_name_plural = "fason siparişi rezervleri"
+        ordering = ["uretim_emri", "satir"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_fason_siparis_rezerv_gt0"),
+            models.UniqueConstraint(fields=["satir", "uretim_emri"], condition=models.Q(silindi=False), name="uq_fason_siparis_rezerv_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.satir_id} → {self.uretim_emri_id} × {self.miktar}"
 
 
 # === ÜRETİM modülü — İş İstasyonu + Operasyon (rota) + Üretim Emri + Operasyon Kaydı ===

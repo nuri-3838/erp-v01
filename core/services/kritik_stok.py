@@ -6,8 +6,9 @@ varyantlı kartlarda kart toplamı.
   (kalan çalıştırma × tanım çıktı miktarı, sürücü çıktılar).
 * Bekleyen tüketim: açık istasyon emirlerinin henüz tüketmediği, AYRILMAMIŞ girdi ihtiyacı — ÜS başına: Σ(kalan çalıştırma × operasyon girdi
   miktarı) − ÜS'nin o stok için ayırması (ayrılan zaten "kullanılabilir"den düşüldüğünden bir daha sayılmaz), eksi olamaz.
-* Öneri: fason parça → "Fason sipariş"; satın alınan → "Satınalma"; 152 ve üretilen/stoklu 151 → "Stok için ÜS aç" (miktar = max(parti miktarı,
-  kritik − kalan), ÜS aç ekranı ön dolu)."""
+* Gelecek'e açık FASON SİPARİŞLERİNİN gelmemiş adedi de girer (adet − gelen; 2026-10-12).
+* Öneri: fason parça → "Fason sipariş" (yeni fason siparişi ekranı parça + eksik adetle ön dolu); satın alınan → "Satınalma"; 152 ve üretilen/stoklu 151 →
+  "Stok için ÜS aç" (miktar = max(parti miktarı, kritik − kalan), ÜS aç ekranı ön dolu)."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -93,7 +94,8 @@ def _ureten_haritasi(stok_idler) -> dict:
 def oneri_coz(stok, eksik, ureten) -> dict:
     """{"tur": FASON|SATINALMA|URETIM|None, "metin", "url", "miktar"}."""
     if stok.pk in ureten and ureten[stok.pk]:
-        return {"tur": "FASON", "metin": "Fason sipariş", "url": reverse("core:fason_donusleri"), "miktar": eksik}
+        return {"tur": "FASON", "metin": "Fason sipariş", "miktar": eksik,
+                "url": f"{reverse('core:fason_siparis_ekle')}?stok={stok.pk}&adet={eksik.normalize():f}"}
     if stok.satinalma_urunu:
         return {"tur": "SATINALMA", "metin": "Satınalma", "url": reverse("core:satinalma_siparisleri"), "miktar": eksik}
     if stok.pk in ureten:
@@ -114,11 +116,13 @@ def hesapla(stoklar, *, kullanilabilir=None) -> dict:
         kullanilabilir = stok_ayirma.kullanilabilir_haritasi(idler)
     satinalma = acik_satinalma_haritasi(idler)
     gelecek_ie, bekleyen = gelecek_ve_bekleyen(idler)
+    from core.services import fason_siparis as fs_servis
+    gelecek_fs = fs_servis.gelecek_haritasi(idler)                     # açık fason siparişlerinin gelmemiş adedi (2026-10-12)
     ureten = _ureten_haritasi(idler)
     sonuc = {}
     for s in stoklar:
         kul = kullanilabilir.get(s.pk, SIFIR)
-        gelecek = satinalma.get(s.pk, SIFIR) + gelecek_ie.get(s.pk, SIFIR)
+        gelecek = satinalma.get(s.pk, SIFIR) + gelecek_ie.get(s.pk, SIFIR) + gelecek_fs.get(s.pk, SIFIR)
         bek = bekleyen.get(s.pk, SIFIR)
         kalan = kul + gelecek - bek
         eksik = max(SIFIR, s.kritik_stok - kalan)

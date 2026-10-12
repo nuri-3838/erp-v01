@@ -1453,8 +1453,9 @@ class IhtiyacHesaplaSatirForm(forms.Form):
 
 
 class FasonDonusBaslikForm(forms.Form):
-    """FASON > Fason Dönüşler başlığı: fasoncudan gelen irsaliye (cari + çıktıların gireceği depo + irsaliye no + tarih)."""
+    """FASON > Fason Dönüşler başlığı: fasoncudan gelen irsaliye (cari + çıktıların gireceği depo + irsaliye no + tarih [+ bağlı fason siparişi])."""
     cari = forms.ModelChoiceField(label="Fasoncu (cari)", queryset=Cari.objects.none(), empty_label="— fasoncu seç —")
+    fason_siparis = forms.ModelChoiceField(label="Fason siparişi (isteğe bağlı)", queryset=None, required=False, empty_label="— siparişsiz dönüş —")
     depo = forms.ModelChoiceField(label="Çıktıların gireceği depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
     irsaliye_no = forms.CharField(label="Fasoncunun irsaliye no", max_length=50, required=False,
                                   widget=forms.TextInput(attrs={"autocomplete": "off"}))
@@ -1467,6 +1468,11 @@ class FasonDonusBaslikForm(forms.Form):
         self.fields["cari"].queryset = (Cari.objects.filter(silindi=False, fason_depolari__silindi=False).distinct().order_by("unvan"))
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        from core.models import FasonSiparisi
+        from core.services import fason_siparis as fs_servis
+        self.fields["fason_siparis"].queryset = (FasonSiparisi.objects.filter(silindi=False, durum__in=fs_servis.ACIK_DURUMLAR)
+                                                 .select_related("cari").order_by("-yil", "-sira"))
+        self.fields["fason_siparis"].label_from_instance = lambda o: f"{o.no}  {o.cari.unvan}" + (f"  (termin {o.termin:%d.%m.%Y})" if o.termin else "")
         depolar = Depo.objects.filter(silindi=False, aktif=True, fason_cari__isnull=True).order_by("kod")
         self.fields["depo"].queryset = depolar
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
@@ -3728,3 +3734,56 @@ class NumuneAyariForm(forms.Form):
         self.fields["gider_hesap"].queryset = gider_hesaplari()
         self.fields["gider_hesap"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
         self.fields["gider_hesap"].widget.attrs["class"] = "akilli-sec"
+
+
+class FasonSiparisBaslikForm(forms.Form):
+    """FASON > Fason Siparişleri başlığı (fasoncu + tarih + termin + açıklama); fasoncu = fason deposu bağlı ya da fason fiyatı tanımlı cariler."""
+    cari = forms.ModelChoiceField(label="Fasoncu (cari)", queryset=Cari.objects.none(), empty_label="— fasoncu seç —")
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    termin = forms.DateField(label="Termin", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["cari"].queryset = (Cari.objects.filter(silindi=False).filter(Q(fason_depolari__silindi=False) | Q(fason_fiyatlari__silindi=False))
+                                        .distinct().order_by("unvan"))
+        self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
+        self.fields["cari"].widget.attrs["class"] = "akilli-sec"
+        if not self.is_bound and "cari" not in self.initial:
+            from core.models import IsIstasyonu
+            ist = IsIstasyonu.objects.filter(silindi=False, fason=True, fasoncu__isnull=False).order_by("sira", "kod").first()
+            if ist is not None:
+                self.fields["cari"].initial = ist.fasoncu_id                     # fason istasyonunun varsayılan fasoncusu
+
+    def clean(self):
+        cd = super().clean()
+        if cd.get("termin") and cd.get("tarih") and cd["termin"] < cd["tarih"]:
+            raise forms.ValidationError("Termin sipariş tarihinden önce olamaz.")
+        return cd
+
+
+class FasonSiparisSatirForm(forms.Form):
+    """Fason siparişi satırı: kesilmiş parça (fason istasyonu operasyonlarının çıktıları) + sipariş adedi. Boş satır atlanır."""
+    stok = forms.ModelChoiceField(label="Kesilmiş parça", queryset=Stok.objects.none(), required=False, empty_label="— parça seç —")
+    adet = TRDecimalField(label="Sipariş adedi", basamak=3, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.services.fason_siparis import fason_parca_idleri
+        self.fields["stok"].queryset = Stok.objects.filter(silindi=False, pk__in=fason_parca_idleri()).order_by("kod")
+        self.fields["stok"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["stok"].widget.attrs["class"] = "akilli-sec"
+
+    def clean(self):
+        cd = super().clean()
+        stok, adet = cd.get("stok"), cd.get("adet")
+        if not stok and adet is None:
+            return cd
+        if not stok:
+            raise forms.ValidationError("Parça seçin.")
+        if adet is None or adet <= 0:
+            raise forms.ValidationError("Sipariş adedi sıfırdan büyük olmalı.")
+        return cd
+
+    def dolu_mu(self):
+        return bool(self.cleaned_data.get("stok"))

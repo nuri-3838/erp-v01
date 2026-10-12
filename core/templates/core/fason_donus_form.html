@@ -26,12 +26,13 @@
         {% for f in baslik %}
           <div class="alan {% if f.name == 'aciklama' %}tam{% endif %}">
             <label for="{{ f.id_for_label }}">{{ f.label }}</label>
-            {% if f.name == "cari" or f.name == "depo" %}<div class="akilli">{{ f }}</div>{% else %}{{ f }}{% endif %}
+            {% if f.name == "cari" or f.name == "depo" or f.name == "fason_siparis" %}<div class="akilli">{{ f }}</div>{% else %}{{ f }}{% endif %}
             {% for e in f.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
         {% endfor %}
       </div>
-      <p class="yardim" style="margin:.5rem 0 0">Yalnız Depolar ekranında bir fason deposuna bağlanmış fasoncular listelenir.</p>
+      <p class="yardim" style="margin:.5rem 0 0">Yalnız Depolar ekranında bir fason deposuna bağlanmış fasoncular listelenir. <strong>Fason siparişi</strong> seçilirse onayda gelen
+        adetler siparişin satırlarına işler ve ÜS rezervleri stok ayırmasına dönüşür (fazla gelen yalnız uyarı); siparişsiz dönüş eskisi gibi çalışır.</p>
     </section>
 
     <section class="icerik-kart">

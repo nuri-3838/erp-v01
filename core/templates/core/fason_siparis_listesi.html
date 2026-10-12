@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Fason Siparişleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Fason Siparişleri{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:fason_hesapla' %}">← Fason</a>
+    <h1 class="ust-baslik"><span class="emoji">📤</span>Fason Siparişleri</h1>
+  </div>
+  <a class="dugme" href="{% url 'core:fason_siparis_ekle' %}">+ Yeni Fason Siparişi</a>
+</div>
+
+<p class="yardim">Fasoncuya verilen kesim siparişi (stok/muhasebe etkisi yok; stok ve maliyet Fason Dönüş ile oluşur). <strong>Gönderilmiş</strong> siparişlerin
+  gelmemiş kalanı üretim siparişi planlamasında "gelecek stok" sayılır (fason emri açılmaz, ÜS'ye rezerve edilir) ve kritik stokta "gelecek"e girer.</p>
+
+<form method="get" class="filtre-satir" style="margin:0 0 .8rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+  <label for="fs-durum">Durum</label>
+  <select id="fs-durum" name="durum" onchange="this.form.submit()">
+    <option value="ACIK" {% if durum == "ACIK" %}selected{% endif %}>Açık (taslak + gönderildi + kısmi)</option>
+    <option value="TUMU" {% if durum == "TUMU" %}selected{% endif %}>Tümü</option>
+    {% for k, ad in durumlar %}<option value="{{ k }}" {% if durum == k %}selected{% endif %}>{{ ad }}</option>{% endfor %}
+  </select>
+</form>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Belge</th><th>Tarih</th><th>Termin</th><th>Fasoncu</th><th class="sag">Satır</th><th class="sag">Sipariş</th><th class="sag">Gelen</th><th class="sag">Açık kalan</th><th class="sag">Rezerve</th><th>Durum</th></tr></thead>
+  <tbody>
+    {% for r in satirlar %}
+      <tr data-href="{% url 'core:fason_siparis_detay' r.s.pk %}">
+        <td><a class="satir-bag mono" href="{% url 'core:fason_siparis_detay' r.s.pk %}">{{ r.s.no }}</a></td>
+        <td class="mono">{{ r.s.tarih|date:"d.m.Y" }}</td>
+        <td class="mono">{% if r.s.termin %}{{ r.s.termin|date:"d.m.Y" }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{{ r.s.cari.unvan }}</td>
+        <td class="sag mono">{{ r.t.satirlar|length }}</td>
+        <td class="sag mono">{{ r.t.adet|tr_miktar_sade }}</td>
+        <td class="sag mono">{{ r.t.gelen|tr_miktar_sade }}</td>
+        <td class="sag mono">{% if r.t.kalan %}<strong>{{ r.t.kalan|tr_miktar_sade }}</strong>{% else %}0{% endif %}</td>
+        <td class="sag mono">{{ r.t.rezerv|tr_miktar_sade }}</td>
+        <td><span class="rozet {% if r.s.durum == 'TAMAMLANDI' %}rozet-aktif{% elif r.s.durum == 'IPTAL' %}rozet-pasif{% elif r.s.durum == 'TASLAK' %}rozet-notr{% else %}rozet-kapali{% endif %}">{{ r.s.get_durum_display }}</span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10" class="yardim">Bu süzgeçte fason siparişi yok. Kesim Listesi Hesapla'dan "Fason Siparişi Oluştur" ya da "+ Yeni Fason Siparişi".</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

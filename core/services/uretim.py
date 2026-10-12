@@ -1087,8 +1087,11 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     if emir is None:
         raise UretimHatasi("Emir numarası üretilemedi; tekrar deneyin.")
 
-    kalem_detay = _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici, cz)
-    ayirma_detay = _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici, varyantli)
+    stok_pay, fason_pay = _ayrilani_bol(sonuc, varyantli)
+    kalem_detay = _kalemleri_yaz(emir, coz, stok_pay, siparis_kalemleri, kullanici, cz)
+    ayirma_detay = _ayirmalari_esitle(emir, stok_pay, kullanici, varyantli)
+    from core.services import fason_siparis as fs_servis
+    fason_detay = fs_servis.rezervleri_esitle(emir, fason_pay, kullanici)
 
     emir_detay = []
     for p in sonuc["plan"]:
@@ -1099,8 +1102,10 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
         if ie.cikti_varyant_id:
             d["varyant"] = planlama_varyant.etiket(ie.cikti_varyant)
         emir_detay.append(d)
-    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.ACILIS, tarih, "Açılış",
-                  {"kalemler": kalem_detay, "ayirmalar": ayirma_detay, "istasyon_emirleri": emir_detay}, kullanici)
+    detay = {"kalemler": kalem_detay, "ayirmalar": ayirma_detay, "istasyon_emirleri": emir_detay}
+    if fason_detay:
+        detay["fason_rezervleri"] = fason_detay
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.ACILIS, tarih, "Açılış", detay, kullanici)
     return emir
 
 
@@ -1144,24 +1149,60 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
     ``stoktan`` (2026-10-12, "stoktan karşıla" sorusu): {(stok pk, varyant pk|None): Decimal} — BİTMİŞ ÜRÜN (152) kök kalemleri için
     kullanıcının seçtiği "stoktan karşılanacak" miktar. Kök düğümün kullanılabilir stoğu bu tavanla sınırlanır; böylece ayırma yalnız seçilen
     kadar olur, kalanı üretilir. Sözlükte olmayan düğümler (ara mamul 151, hammadde, soru sorulmayan kökler) bugünkü gibi otomatik düşülür."""
+    # FASON SİPARİŞİ "gelecek stok" (2026-10-12, core.services.fason_siparis): serbest stoktan karşılanmayan kesilmiş parça ihtiyacı açık FS satırlarının
+    # rezerve edilmemiş kalanından karşılanır (fason emri açılmaz). Kullanılabilir = max(stok, 0) + FS kalanı; ``stok_kullanilabilir`` / ``fason_kalan``
+    # sonuca eklenir, ayrılan ``_ayrilani_bol`` ile stok ayırması ve FS rezervine bölünür. Kök tavanı (stok için ÜS) FS'den sonra uygulanır (kök FS kullanmaz).
+    from core.services import fason_siparis as fs_servis
+    fs_harita = fs_servis.acik_kalan_haritasi(haric_emir=haric_emir)
+    izler = {"stok": {}, "fason": {}}
+
+    def _fs_ekle(h, anahtar, stok_pk, vpk):
+        f = fs_servis.kalan_icin(fs_harita, stok_pk, vpk) if fs_harita else Decimal("0")
+        if f > 0:
+            izler["fason"][anahtar] = f
+            h[anahtar] = max(h.get(anahtar, Decimal("0")), Decimal("0")) + f
+
     if not varyantli:
         def kh(idler):
             h = stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=haric_emir)
+            izler["stok"] = dict(h)
+            for pk in list(h):
+                _fs_ekle(h, pk, pk, None)
             for (pk, _vpk), tavan in (stoktan or {}).items():
                 if pk in h:
                     h[pk] = min(h[pk], tavan)
             return h
-        return ihtiyac_hesapla([(u, m) for u, m, _v in coz], graf=graf, kullanilabilir=kh, stoklu_uretim=True, stoklu_haric=stoklu_haric), None
+        sonuc = ihtiyac_hesapla([(u, m) for u, m, _v in coz], graf=graf, kullanilabilir=kh, stoklu_uretim=True, stoklu_haric=stoklu_haric)
+        sonuc["stok_kullanilabilir"], sonuc["fason_kalan"] = izler["stok"], izler["fason"]
+        return sonuc, None
     cz = planlama_varyant.Cozucu(kullanici)
     kalemler = [(cz.kalem_dugumu(u, v), m) for u, m, v in coz]
 
     def khv(d):
         h = stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=haric_emir)
+        izler["stok"] = dict(h)
+        for (pk, vpk) in list(h):
+            _fs_ekle(h, (pk, vpk), pk, vpk)
         for anahtar, tavan in (stoktan or {}).items():
             if anahtar in h:
                 h[anahtar] = min(h[anahtar], tavan)
         return h
-    return ihtiyac_hesapla(kalemler, cozucu=cz, kullanilabilir=khv, stoklu_uretim=True, stoklu_haric=stoklu_haric), cz
+    sonuc = ihtiyac_hesapla(kalemler, cozucu=cz, kullanilabilir=khv, stoklu_uretim=True, stoklu_haric=stoklu_haric)
+    sonuc["stok_kullanilabilir"], sonuc["fason_kalan"] = izler["stok"], izler["fason"]
+    return sonuc, cz
+
+
+def _ayrilani_bol(sonuc, varyantli) -> tuple:
+    """Plan ayrılanını (stok|düğüm anahtarı → miktar) STOK AYIRMASI ve FASON SİPARİŞİ REZERVİ paylarına böler: önce kullanılabilir stok (eksi 0),
+    kalanı fason siparişinden. (stok_payi {aynı anahtar}, fason_payi {(stok pk, varyant pk|None)}) döner."""
+    stok_kul, fason = sonuc.get("stok_kullanilabilir", {}), sonuc.get("fason_kalan", {})
+    stok_pay, fason_pay = {}, {}
+    for k, a in sonuc["ayrilan"].items():
+        s = min(a, max(stok_kul.get(k, Decimal("0")), Decimal("0"))) if k in fason else a
+        stok_pay[k] = s
+        if a - s > 0:
+            fason_pay[k if varyantli else (k, None)] = a - s
+    return stok_pay, fason_pay
 
 
 # === "Stoktan karşıla" sorusu (2026-10-12): ÜS açılış/revizede bitmiş ürün (152) stoğu kullanıcıya sorulur ===
@@ -1763,6 +1804,8 @@ def stok_us_tamamla(emir: UretimEmri, kullanici=None) -> bool:
     serbest = {_ayirma_etiketi(a, emir): _ds(a.miktar) for a in stok_ayirma.emir_ayirmalari(emir)}
     for a in list(stok_ayirma.emir_ayirmalari(emir)):
         stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici, varyant=a.varyant_id)
+    from core.services import fason_siparis as fs_servis
+    fs_servis.rezervleri_sil(emir, kullanici)
     emir.durum = UretimEmri.Durum.KAPALI
     emir.kapanis_tarihi = timezone.localdate()
     emir.updated_by = kullanici
@@ -1877,8 +1920,27 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None) -> list:
         if o["yaprak"] and o["eksik"] is not None and o["eksik"] > 0:
             st, sv = planlama_varyant.dugum_coz(o["stok"])
             eksikler.append({"stok": st, "varyant": sv, "varyant_etiketi": planlama_varyant.etiket(sv), "gerekli": o["ihtiyac"],
-                             "kullanilabilir": o["ayrilan"], "eksik": o["eksik"], "stoklu": bool(st.stoklu_uretim)})
-    return sorted(eksikler, key=lambda x: (x["stok"].kod, x["varyant_etiketi"]))
+                             "kullanilabilir": o["ayrilan"], "eksik": o["eksik"], "stoklu": bool(st.stoklu_uretim),
+                             "tur": "STOKLU" if st.stoklu_uretim else "SATINALMA"})
+    eksikler.sort(key=lambda x: (x["stok"].kod, x["varyant_etiketi"]))
+    # FASON SİPARİŞİ (2026-10-12): (a) bu ÜS'ye rezerve edilmiş FS satırları "fason siparişinden bekleniyor"; (b) planın fason istasyonunda çalıştırma
+    # istediği ama ÜS'de (iptal olmayan) istasyon emri olmayan parçalar (FS iptal edildi / adet düştü) "fason emri gerekli — revize edin".
+    from core.services import fason_siparis as fs_servis
+    for r in fs_servis.emir_rezervleri(emir):
+        s = r.satir
+        eksikler.append({"stok": s.stok, "varyant": s.varyant, "varyant_etiketi": planlama_varyant.etiket(s.varyant) if s.varyant_id else "",
+                         "gerekli": r.miktar, "kullanilabilir": Decimal("0"), "eksik": Decimal("0"), "stoklu": False, "tur": "FASON_SIPARIS",
+                         "fs": s.siparis, "termin": s.siparis.termin})
+    mevcut_ie = {(ie.operasyon_id, ie.cikti_varyant_id) for ie in
+                 emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.IPTAL)}
+    for p in sonuc["plan"]:
+        op, sv = planlama_varyant.kosum_coz(p["operasyon"])
+        if not op.istasyon.fason or p["calistirma"] <= 0 or (op.pk, sv.pk if sv is not None else None) in mevcut_ie:
+            continue
+        st, csv = planlama_varyant.dugum_coz(p["stok"])
+        eksikler.append({"stok": st, "varyant": csv, "varyant_etiketi": planlama_varyant.etiket(csv) if csv is not None else "",
+                         "gerekli": p["ihtiyac"], "kullanilabilir": p["ayrilan"], "eksik": p["net"], "stoklu": False, "tur": "FASON_EMRI_GEREKLI"})
+    return eksikler
 
 
 def _onceki_ayrilan(ie: IstasyonEmri, stok_id, varyant_id=None) -> Decimal:
@@ -1925,6 +1987,8 @@ def _emir_ozeti(emir: UretimEmri) -> dict:
         "istasyon_emirleri": [_varyantla({"no": ie.no, "operasyon": ie.operasyon.cikti.kod, "planlanan": _ds(ie.planlanan),
                                           "tamamlanan": _ds(ie.tamamlanan), "durum": ie.durum}, ie.cikti_varyant_id)
                               for ie in emir.istasyon_emirleri.filter(silindi=False).select_related("operasyon__cikti")],
+        "fason_rezervleri": [{"fs": r.satir.siparis.no, "stok": r.satir.stok.kod, "miktar": _ds(r.miktar)}
+                             for r in __import__("core.services.fason_siparis", fromlist=["emir_rezervleri"]).emir_rezervleri(emir)],
     }
 
 
@@ -1958,8 +2022,11 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
     sonuc, cz = _plani_hesapla(plan_kalemleri(coz, sevk_haritasi, varyantli), varyantli, kullanici, haric_emir=emir, stoktan=stoktan)
 
     emir.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici, cz)
-    _ayirmalari_esitle(emir, sonuc["ayrilan"], kullanici, varyantli)
+    stok_pay, fason_pay = _ayrilani_bol(sonuc, varyantli)
+    _kalemleri_yaz(emir, coz, stok_pay, siparis_kalemleri, kullanici, cz)
+    _ayirmalari_esitle(emir, stok_pay, kullanici, varyantli)
+    from core.services import fason_siparis as fs_servis
+    fs_servis.rezervleri_esitle(emir, fason_pay, kullanici)
 
     taslak_degisen = []
     plan = {}
@@ -2057,6 +2124,8 @@ def _kapanis_kontrol(emir: UretimEmri, kullanici=None, tarih=None) -> bool:
         return False
     if emir.istasyon_emirleri.filter(silindi=False).exclude(durum__in=[IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL]).exists():
         return False
+    from core.services import fason_siparis as fs_servis
+    fs_servis.rezervleri_sil(emir, kullanici)
     emir.durum = UretimEmri.Durum.KAPALI
     emir.kapanis_tarihi = tarih or timezone.localdate()
     emir.updated_by = kullanici
@@ -2196,6 +2265,8 @@ def uretim_emri_iptal(emir: UretimEmri, kullanici=None, tarih=None) -> UretimEmr
     emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.BITTI).update(durum=IstasyonEmri.Durum.IPTAL, updated_by=kullanici)
     for a in list(emir.ayirmalar.filter(silindi=False)):
         stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici, varyant=a.varyant_id)
+    from core.services import fason_siparis as fs_servis
+    fs_servis.rezervleri_sil(emir, kullanici)                                     # fason siparişi rezervleri de serbest
     emir.durum = UretimEmri.Durum.IPTAL
     emir.updated_by = kullanici
     emir.save(update_fields=["durum", "updated_by", "updated_at"])

@@ -4,6 +4,7 @@
 {% block sayfa_adi %}Fason Dönüş {{ donus.no }}{% endblock %}
 
 {% block content %}
+{% if donus.fason_siparis_id %}<div class="basari" style="margin-bottom:.6rem">📤 Bağlı fason siparişi: <a class="mono" href="{% url 'core:fason_siparis_detay' donus.fason_siparis_id %}">{{ donus.fason_siparis.no }}</a> — onayda gelen adetler siparişe işler.</div>{% endif %}
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url 'core:fason_donusleri' %}">← Fason Dönüşler</a>

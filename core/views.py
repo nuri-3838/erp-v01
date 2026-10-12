@@ -56,7 +56,7 @@ from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
-    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat,
+    CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat, FasonSiparisi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, YatirimProjesi,
     YemekSayimi,
@@ -6703,9 +6703,12 @@ def fason_donus_ekle(request):
             try:
                 donus = fason_donus_servis.donus_olustur(
                     cari_id=cd["cari"].pk, depo_id=cd["depo"].pk, tarih=cd["tarih"], irsaliye_no=cd["irsaliye_no"],
-                    aciklama=cd["aciklama"], satirlar=satirlar, onayla=request.POST.get("eylem") == "onayla", kullanici=request.user)
+                    aciklama=cd["aciklama"], satirlar=satirlar, onayla=request.POST.get("eylem") == "onayla", kullanici=request.user,
+                    fason_siparis_id=cd["fason_siparis"].pk if cd.get("fason_siparis") else None)
                 messages.success(request, f"Fason dönüş {donus.no} " + ("kaydedildi ve onaylandı." if request.POST.get("eylem") == "onayla"
                                                                       else "taslak olarak kaydedildi."))
+                for u in getattr(donus, "fason_uyarilari", []):
+                    messages.warning(request, u)
                 return redirect("core:fason_donus_detay", pk=donus.pk)
             except fason_servis.FasonHatasi as e:
                 messages.error(request, str(e))
@@ -6720,6 +6723,12 @@ def fason_donus_ekle(request):
                     "adet": (max(kalan, 0) * uretim_servis._referans_miktar(ie.operasyon)).quantize(Decimal("0.001")) or None}]
             if ie.istasyon.fasoncu_id:                                 # istasyonun varsayılan fasoncusu hazır seçili gelir
                 bas_ilk["cari"] = ie.istasyon.fasoncu_id
+        fs = (FasonSiparisi.objects.filter(pk=request.GET["fason_siparis"], silindi=False).first()
+              if (request.GET.get("fason_siparis") or "").isdigit() else None)
+        if fs is not None:                                             # fason siparişinden "Dönüş aç": fasoncu + sipariş + kalan satırlar hazır gelir
+            from core.services import fason_siparis as fason_siparis_servis
+            bas_ilk.update({"cari": fs.cari_id, "fason_siparis": fs.pk})
+            ilk = fason_siparis_servis.fd_satir_onerisi(fs) or ilk
         baslik = FasonDonusBaslikForm(initial=bas_ilk)
         formset = FasonDonusSatirFormSet(prefix="satir", initial=ilk)
     return render(request, "core/fason_donus_form.html", {"baslik": baslik, "formset": formset})
@@ -6827,6 +6836,8 @@ def fason_donus_onayla(request, pk):
         try:
             fason_donus_servis.donus_onayla(donus, kullanici=request.user)
             messages.success(request, f"{donus.no} onaylandı: girdiler fason depodan düşüldü, çıktılar depoya girdi.")
+            for u in getattr(donus, "fason_uyarilari", []):
+                messages.warning(request, u)
         except fason_servis.FasonHatasi as e:
             messages.error(request, str(e))
     return redirect("core:fason_donus_detay", pk=donus.pk)
@@ -6969,6 +6980,15 @@ def fason_hesapla(request):
                 sonuc = fason_servis.fason_listesi_operasyondan(kalemler, cari=cari)
                 if request.POST.get("eylem") == "pdf":          # PDF indirir; kayıt OLUŞTURMAZ
                     return _fason_pdf_yanit(kalemler=kalemler, sonuc=sonuc, kullanici=request.user)
+                if request.POST.get("eylem") == "fason_siparis":    # hesaplanan liste → TASLAK fason siparişi formu (ön dolu, adetler düzenlenebilir)
+                    from urllib.parse import urlencode
+                    sorgu = [("satir", f"{o['kesilmis_parca'].pk}:{o['toplam_adet'].normalize():f}") for o in sonuc["ozet"] if o["toplam_adet"] > 0]
+                    if cari:
+                        sorgu.append(("cari", cari.pk))
+                    if not sorgu:
+                        messages.error(request, "Fason siparişi için hesaplanmış kesim satırı yok.")
+                    else:
+                        return redirect(reverse("core:fason_siparis_ekle") + "?" + urlencode(sorgu))
     else:
         formset = FasonSatirFormSet(prefix="satir")
     return render(request, "core/fason_hesapla.html", {
@@ -10494,3 +10514,173 @@ def numune_ayari(request):
             mevcut = None
         form = NumuneAyariForm(initial={"gider_hesap": mevcut.pk if mevcut else None})
     return render(request, "core/numune_ayari.html", {"form": form, "ayar": ayar})
+
+
+# === FASON > Fason Siparişleri (2026-10-12; core.services.fason_siparis) ===
+from core.forms import FasonSiparisBaslikForm, FasonSiparisSatirForm      # noqa: E402
+from core.services import fason_siparis as fason_siparis_servis      # noqa: E402
+
+FasonSiparisSatirFormSet = formset_factory(FasonSiparisSatirForm, extra=0)
+
+
+def _fs_satirlar_post(formset):
+    return [(f.cleaned_data["stok"].pk, f.cleaned_data["adet"]) for f in formset if f.dolu_mu()]
+
+
+def _fs_emir_notu(request, stok_idler):
+    """Aynı parça için açık ÜS'de fason istasyon emri varsa bilgi notu (ihtiyaç iki kez sipariş edilmesin); ÜS planı değişmez."""
+    for ie, stok, kalan in fason_siparis_servis.acik_fason_emirleri(stok_idler):
+        messages.info(request, f"Bilgi: {stok.kod} için {ie.uretim_emri.no} / {ie.no} fason emri zaten açık ({kalan.normalize():f} adet) — "
+                               "bu ihtiyaç ÜS'den de sipariş edilmiş olabilir; iki kez sipariş etmeyin. Açık ÜS'nin planı kendiliğinden değişmez.")
+
+
+def _fs_etkilenen_uyar(request, etkilenen):
+    if etkilenen:
+        messages.warning(request, "Rezervi düşen üretim siparişleri: " + ", ".join(e.no for e in etkilenen)
+                         + " — bu ÜS'lerde parça yeniden eksik görünür (fason emri gerekli); revize edin.")
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparisleri(request):
+    durum = (request.GET.get("durum") or "ACIK").upper()
+    qs = fason_siparis_servis.aktif_siparisler()
+    if durum == "ACIK":
+        qs = qs.filter(durum__in=fason_siparis_servis.LISTE_DURUMLARI)
+    elif durum in FasonSiparisi.Durum.values:
+        qs = qs.filter(durum=durum)
+    satirlar = [{"s": s, "t": fason_siparis_servis.siparis_toplamlari(s)} for s in qs]
+    return render(request, "core/fason_siparis_listesi.html", {"satirlar": satirlar, "durum": durum, "durumlar": FasonSiparisi.Durum.choices})
+
+
+def _fs_ilk_satirlar(request):
+    """GET ön doldurma: ``satir=stokpk:adet`` (kesim listesinden) ya da ``stok=&adet=`` (kritik stok önerisi)."""
+    ilk = []
+    for ham in request.GET.getlist("satir"):
+        pk, _, adet = ham.partition(":")
+        if pk.isdigit():
+            ilk.append({"stok": int(pk), "adet": adet})
+    if (request.GET.get("stok") or "").isdigit():
+        ilk.append({"stok": int(request.GET["stok"]), "adet": request.GET.get("adet") or ""})
+    return ilk
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparis_ekle(request):
+    if request.method == "POST":
+        baslik = FasonSiparisBaslikForm(request.POST)
+        formset = FasonSiparisSatirFormSet(request.POST, prefix="satir")
+        if baslik.is_valid() and formset.is_valid():
+            cd = baslik.cleaned_data
+            try:
+                fs = fason_siparis_servis.siparis_olustur(cari_id=cd["cari"].pk, tarih=cd["tarih"], termin=cd.get("termin"), aciklama=cd["aciklama"],
+                                                           satirlar=_fs_satirlar_post(formset), kullanici=request.user)
+                if request.POST.get("eylem") == "gonder":
+                    fason_siparis_servis.gonder(fs, kullanici=request.user)
+                messages.success(request, f"Fason siparişi {fs.no} " + ("kaydedildi ve gönderildi." if fs.durum == "GONDERILDI" else "taslak olarak kaydedildi."))
+                _fs_emir_notu(request, [s.stok_id for s in fs.satirlar.filter(silindi=False)])
+                return redirect("core:fason_siparis_detay", pk=fs.pk)
+            except fason_servis.FasonHatasi as e:
+                messages.error(request, str(e))
+    else:
+        bas_ilk = {}
+        if (request.GET.get("cari") or "").isdigit():
+            bas_ilk["cari"] = int(request.GET["cari"])
+        ilk = _fs_ilk_satirlar(request) or [{}, {}, {}]
+        baslik = FasonSiparisBaslikForm(initial=bas_ilk)
+        formset = FasonSiparisSatirFormSet(prefix="satir", initial=ilk)
+        _fs_emir_notu(request, [s["stok"] for s in ilk if s.get("stok")])
+    return render(request, "core/fason_siparis_form.html", {"baslik": baslik, "formset": formset, "siparis": None})
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparis_duzenle(request, pk):
+    fs = get_object_or_404(FasonSiparisi, pk=pk, silindi=False)
+    if fs.durum in ("TAMAMLANDI", "IPTAL"):
+        messages.error(request, "Tamamlanmış/iptal edilmiş fason siparişi düzenlenemez.")
+        return redirect("core:fason_siparis_detay", pk=fs.pk)
+    if request.method == "POST":
+        baslik = FasonSiparisBaslikForm(request.POST)
+        formset = FasonSiparisSatirFormSet(request.POST, prefix="satir")
+        if baslik.is_valid() and formset.is_valid():
+            cd = baslik.cleaned_data
+            try:
+                fs, etkilenen = fason_siparis_servis.siparis_guncelle(fs, cari_id=cd["cari"].pk, tarih=cd["tarih"], termin=cd.get("termin"),
+                                                                       aciklama=cd["aciklama"], satirlar=_fs_satirlar_post(formset), kullanici=request.user)
+                messages.success(request, f"{fs.no} güncellendi.")
+                _fs_etkilenen_uyar(request, etkilenen)
+                return redirect("core:fason_siparis_detay", pk=fs.pk)
+            except fason_servis.FasonHatasi as e:
+                messages.error(request, str(e))
+    else:
+        baslik = FasonSiparisBaslikForm(initial={"cari": fs.cari_id, "tarih": fs.tarih, "termin": fs.termin, "aciklama": fs.aciklama})
+        formset = FasonSiparisSatirFormSet(prefix="satir", initial=[{"stok": s.stok_id, "adet": s.adet} for s in fs.satirlar.filter(silindi=False)])
+    return render(request, "core/fason_siparis_form.html", {"baslik": baslik, "formset": formset, "siparis": fs})
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparis_detay(request, pk):
+    fs = get_object_or_404(FasonSiparisi.objects.select_related("cari"), pk=pk, silindi=False)
+    toplam = fason_siparis_servis.siparis_toplamlari(fs)
+    return render(request, "core/fason_siparis_detay.html", {
+        "siparis": fs, "t": toplam, "us_rezervleri": fason_siparis_servis.us_rezerv_ozeti(fs),
+        "donusler": fs.fason_donusleri.filter(silindi=False).order_by("-yil", "-sira"),
+        "fason_emirleri": fason_siparis_servis.acik_fason_emirleri([b["satir"].stok_id for b in toplam["satirlar"]]) if fs.durum != "IPTAL" else [],
+        "duzenlenebilir": fs.durum in ("TASLAK", "GONDERILDI", "KISMI"), "iptal_edilebilir": fs.durum in ("TASLAK", "GONDERILDI", "KISMI")})
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparis_gonder(request, pk):
+    fs = get_object_or_404(FasonSiparisi, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fason_siparis_servis.gonder(fs, kullanici=request.user)
+            messages.success(request, f"{fs.no} gönderildi: planlama ve kritik stok artık bu siparişi 'gelecek stok' sayar.")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_siparis_detay", pk=fs.pk)
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparis_iptal(request, pk):
+    fs = get_object_or_404(FasonSiparisi, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            etkilenen = fason_siparis_servis.iptal(fs, kullanici=request.user)
+            messages.success(request, f"{fs.no} iptal edildi; rezervler geri alındı.")
+            _fs_etkilenen_uyar(request, etkilenen)
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_siparis_detay", pk=fs.pk)
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparis_sil(request, pk):
+    fs = get_object_or_404(FasonSiparisi, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            fason_siparis_servis.sil(fs, kullanici=request.user)
+            messages.success(request, f"{fs.no} silindi.")
+            return redirect("core:fason_siparisleri")
+        except fason_servis.FasonHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:fason_siparis_detay", pk=fs.pk)
+
+
+@ekran_gerekli("fason_siparisleri")
+def fason_siparis_pdf(request, pk):
+    import base64
+
+    from django.contrib.staticfiles import finders
+    from weasyprint import HTML
+    fs = get_object_or_404(FasonSiparisi.objects.select_related("cari"), pk=pk, silindi=False)
+    logo_b64 = None
+    logo_yol = finders.find("core/img/semta-logo.png")
+    if logo_yol:
+        with open(logo_yol, "rb") as f:
+            logo_b64 = base64.b64encode(f.read()).decode("ascii")
+    html = render_to_string("core/fason_siparis_pdf.html", {
+        "siparis": fs, "t": fason_siparis_servis.siparis_toplamlari(fs), "logo_b64": logo_b64,
+        "hazirlayan": request.user.get_full_name() or request.user.username, "tarih": timezone.localdate()})
+    resp = HttpResponse(HTML(string=html).write_pdf(), content_type="application/pdf")
+    resp["Content-Disposition"] = f'inline; filename="fason-siparisi-{fs.no}.pdf"'
+    return resp

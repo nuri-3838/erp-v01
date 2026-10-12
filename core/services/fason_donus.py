@@ -44,7 +44,7 @@ def _sonraki_sira(yil):
 
 
 @transaction.atomic
-def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama="", onayla=False, kullanici=None) -> FasonDonus:
+def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama="", onayla=False, kullanici=None, fason_siparis_id=None) -> FasonDonus:
     """``satirlar``: [(operasyon_id, adet[, gelen_ana[, {stok pk: gelen}[, istasyon_emri_id]]]), ...]. ``istasyon_emri_id`` doluysa kayıt o üretim
     siparişi istasyon emrine bağlı açılır (onayda emrin tamamlananı GELEN adetten artar; fire sonrası kalan açık kalır). ÜRET: adet = BEKLENEN ana çıktı adedi (tam boy kuralı: tam boya
     yükseltilir), gelen ayrı (boş = beklenen). PARÇALA: adet = REFERANS çıktının GELEN adedi; diğer çıktıların geleni sözlükten (boş = 0); beklenen
@@ -63,6 +63,8 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
     satirlar = [tuple(s) for s in satirlar if s and s[0]]       # (operasyon_id, beklenen adet[, gelen ana adet[, {yan stok pk: gelen adet}]])
     if not satirlar:
         raise FasonHatasi("En az bir satır (operasyon + adet) girin.")
+    from core.services import fason_siparis as fs_servis
+    fason_siparis = fs_servis.fd_siparis_coz(fason_siparis_id, cari.pk)      # FS bağı (2026-10-12): açık ve aynı fasoncu
     yil = tarih.year
     donus = None
     for _ in range(10):
@@ -71,7 +73,7 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
                 sira = _sonraki_sira(yil)
                 donus = FasonDonus.objects.create(
                     yil=yil, sira=sira, no=f"FD-{yil}-{sira:04d}", cari=cari, depo=depo, tarih=tarih,
-                    irsaliye_no=(irsaliye_no or "").strip(), aciklama=(aciklama or "").strip(),
+                    irsaliye_no=(irsaliye_no or "").strip(), aciklama=(aciklama or "").strip(), fason_siparis=fason_siparis,
                     created_by=kullanici, updated_by=kullanici)
             break
         except IntegrityError:
@@ -220,6 +222,8 @@ def donus_onayla(donus: FasonDonus, kullanici=None) -> FasonDonus:
             raise FasonHatasi(f"{kayit.no} ({kayit.operasyon.cikti.kod}): {e}")
     if donus.cari.fason_faturasiz:
         tahakkuk_olustur(donus, kullanici=kullanici)
+    from core.services import fason_siparis as fs_servis
+    donus.fason_uyarilari = fs_servis.gelen_isle(donus, kullanici)          # FS bağlıysa: gelen adetler + rezerv → ayırma; uyarılar (fazla gelen)
     return donus
 
 
@@ -250,6 +254,8 @@ def donus_geri_al_sil(donus: FasonDonus, kullanici=None) -> FasonDonus:
         raise FasonHatasi("Bu dönüş bir faturaya bağlı; önce fatura bağını kaldırın (Faturadan ayır), sonra geri alın.")
     if donus_durumu(donus) != "ONAYLI":
         return donus_sil(donus, kullanici=kullanici)
+    from core.services import fason_siparis as fs_servis
+    fs_servis.gelen_geri_al(donus, kullanici)                                  # FS bağlıysa gelen adetler düşer (dönüşmüş ayırma geri alınmaz)
     for kayit in reversed(list(donus_kayitlari(donus))):
         try:
             uretim_servis.operasyon_kaydi_sil(kayit, kullanici=kullanici, onayli_geri_al=True)
