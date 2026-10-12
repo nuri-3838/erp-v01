@@ -82,7 +82,7 @@
   .ad-hucre .alt { font-size:.8rem; color:var(--metin-soluk); margin-top:.1rem; }
 
   #ad-tablo td { padding-top:.85rem; padding-bottom:.85rem; }
-  #ad-tablo tbody tr { cursor:pointer; }
+  #ad-tablo tbody tr { cursor:pointer; }   /* data-href: ortak dinleyici base.html'de */
   #ad-tablo tbody tr:hover td { background:rgba(240,124,0,.06); }
   #ad-tablo tbody tr:active td { background:rgba(240,124,0,.1); }
   .ad-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
@@ -373,7 +373,7 @@
   </tr></thead>
   <tbody>
     {% for a in kayitlar %}
-      <tr id="aday-{{ a.pk }}" onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
+      <tr id="aday-{{ a.pk }}" data-href="{% url 'core:aday_musteri_detay' a.pk %}">
         <td>
           <div class="ad-hucre">
             <span class="ad-ikon">🧲</span>
@@ -417,7 +417,7 @@
 
 <div class="ad-kart-listesi">
   {% for a in kayitlar %}
-    <div class="ad-kart" id="aday-{{ a.pk }}" onclick="window.location='{% url 'core:aday_musteri_detay' a.pk %}'">
+    <div class="ad-kart" id="aday-{{ a.pk }}" data-href="{% url 'core:aday_musteri_detay' a.pk %}">
       <div class="ust">
         <div>
           <div class="ad"><a href="{% url 'core:aday_musteri_detay' a.pk %}">{{ a.unvan }}</a>{% if a.cari_id %} <span class="rozet rozet-aktif">Cari</span>{% endif %}</div>

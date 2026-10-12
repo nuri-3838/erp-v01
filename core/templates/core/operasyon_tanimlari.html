@@ -136,13 +136,7 @@
   ara.addEventListener('input', suz);
   suz();
 
-  // Satıra tıkla → düzenle (ikon/bağlantı/düğme/form tıklaması satır tıklamasını tetiklemez)
-  satirlar.forEach(function(tr){
-    tr.addEventListener('click', function(e){
-      if (e.target.closest('a, button, form, input, select')) return;
-      window.location = tr.dataset.href;
-    });
-  });
+  // Satıra tıkla → düzenle: data-href, ortak dinleyici base.html'de (Ctrl/orta tuş yeni sekme)
 
   // Grup aç/kapa (durum localStorage'da)
   function anahtar(k){ return 'op-liste-grup-' + k; }

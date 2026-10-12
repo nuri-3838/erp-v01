@@ -224,6 +224,10 @@
                      color:var(--metin-soluk); }
     .kolon-ayrac { border-left:2px solid var(--cizgi); }
     a { color:var(--lacivert-acik); }
+    /* Tıklanabilir satır/kart (data-href): ortak dinleyici sayfa sonunda; ilk hücredeki ad/kod gerçek bağlantıdır (sağ tık / kopyala) */
+    [data-href] { cursor:pointer; }
+    [data-href] .satir-bag { color:inherit; text-decoration:none; }
+    [data-href] .satir-bag:hover { text-decoration:underline; }
     label, th, .etiket { text-transform: uppercase; }
     .ust-baslik { text-transform:none; letter-spacing:-.02em; font-weight:750; }
     .tablo-kapsayici { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:.2rem 0 1.1rem;
@@ -461,5 +465,33 @@
 
     {% if user.is_authenticated %}<label for="yan-ac" class="yan-perde" aria-hidden="true"></label>{% endif %}
   </div>
+  <script>
+  // Tıklanabilir satır/kart: [data-href] — normal tık aynı sekme, Ctrl/Cmd+tık ya da orta tuş yeni sekme, Shift+tık yeni pencere.
+  // Satır içindeki bağlantı/düğme/form elemanına tıklama satır gezinmesini tetiklemez; metin seçimi de gezinmez.
+  (function () {
+    function hedef(e) {
+      var el = e.target.closest('[data-href]');
+      if (!el || !el.dataset.href) return null;
+      if (e.target.closest('a, button, form, input, select, textarea, label, summary, details, [data-satir-disi]')) return null;
+      return el;
+    }
+    document.addEventListener('click', function (e) {
+      var el = hedef(e);
+      if (!el || e.button !== 0 || e.defaultPrevented) return;
+      var sec = window.getSelection && window.getSelection();
+      if (sec && String(sec).length && el.contains(sec.anchorNode)) return;
+      var url = el.dataset.href;
+      if (e.shiftKey) { window.open(url, '_blank', 'noopener,noreferrer,popup=yes'); }
+      else if (e.ctrlKey || e.metaKey) { window.open(url, '_blank', 'noopener,noreferrer'); }
+      else { window.location.href = url; }
+    });
+    document.addEventListener('auxclick', function (e) {
+      var el = hedef(e);
+      if (!el || e.button !== 1) return;
+      e.preventDefault();
+      window.open(el.dataset.href, '_blank', 'noopener,noreferrer');
+    });
+  })();
+  </script>
 </body>
 </html>

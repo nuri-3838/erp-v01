@@ -155,9 +155,9 @@
   <tbody>
     {% for k in kayitlar %}
       <tr class="ts-satir{% if sat_teklif %} ts-tiklanabilir{% endif %}"
-          {% if sat_teklif %}onclick="window.location='{% url 'core:teklif_siparis_detay' k.pk %}'"{% endif %}>
+          {% if sat_teklif %}data-href="{% url 'core:teklif_siparis_detay' k.pk %}"{% endif %}>
         {% if sat_teklif %}
-        <td>{% if k.belge_no %}<span class="ts-belge-no">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td>{% if k.belge_no %}<a class="satir-bag" href="{% url 'core:teklif_siparis_detay' k.pk %}"><span class="ts-belge-no">{{ k.belge_no }}</span></a>{% else %}<a class="satir-bag pasif" href="{% url 'core:teklif_siparis_detay' k.pk %}">—</a>{% endif %}</td>
         <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
         <td>
           <div class="ts-hucre">

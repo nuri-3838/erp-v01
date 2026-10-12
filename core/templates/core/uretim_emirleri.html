@@ -118,12 +118,12 @@
   <tbody>
     {% for s in emirler %}
       {% with e=s.e %}
-      <tr class="ue-satir" data-arama="{{ s.arama }}" onclick="window.location='{% url 'core:uretim_emri_detay' e.pk %}'">
+      <tr class="ue-satir" data-arama="{{ s.arama }}" data-href="{% url 'core:uretim_emri_detay' e.pk %}">
         <td>
           <div class="ue-hucre">
             <span class="ue-ikon">🏭</span>
             <div>
-              <div class="baslik">{{ e.no }}</div>
+              <div class="baslik"><a class="satir-bag" href="{% url 'core:uretim_emri_detay' e.pk %}">{{ e.no }}</a></div>
               <div class="musteri{% if not s.siparisli %} stok{% endif %}">{{ s.musteri }}</div>
               <div class="alt">{% if s.siparisli %}Sip. {{ s.sip_no }} · {% endif %}{{ s.kalem_sayisi }} ürün · {{ s.toplam_miktar|tr_miktar_sade:3 }} adet</div>
             </div>

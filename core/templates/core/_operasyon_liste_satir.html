@@ -1,7 +1,7 @@
 {% load core_extras %}
 <tr class="ol-satir" data-href="{% url 'core:operasyon_duzenle' r.op.pk %}" data-ara="{{ r.ara_metin }}"{% if grup %} data-grup-satir="{{ grup }}"{% endif %}>
   <td data-et="Çıktı">
-    <span class="mono">{{ r.op.cikti.kod }}</span> {{ r.op.cikti.ad }}
+    <a class="satir-bag" href="{% url 'core:operasyon_duzenle' r.op.pk %}"><span class="mono">{{ r.op.cikti.kod }}</span> {{ r.op.cikti.ad }}</a>
     <div class="ol-rozetler">
       {% if r.tam_boy %}<span class="rozet rozet-notr" title="Çalıştırma sayısı tam sayı; fazla parça stoğa girer">tam boy</span>{% endif %}
       {% if r.donustur %}<span class="rozet rozet-notr" title="Dönüştür: aynı kartın varyantını çevirir (lazer markalama); kartı üreten tanım değildir">dönüştür</span>{% endif %}

@@ -66,8 +66,8 @@
   </tr></thead>
   <tbody>
     {% for v in varliklar %}
-      <tr onclick="window.location='{% url 'core:duran_varlik_detay' v.pk %}'" style="cursor:pointer">
-        <td class="mono">{{ v.demirbas_kodu }}</td>
+      <tr data-href="{% url 'core:duran_varlik_detay' v.pk %}">
+        <td class="mono"><a class="satir-bag" href="{% url 'core:duran_varlik_detay' v.pk %}">{{ v.demirbas_kodu }}</a></td>
         <td>{{ v.ad }}</td>
         <td><span class="mono">{{ v.hesap.hesap_kodu }}</span> {{ v.hesap.hesap_adi }}</td>
         <td class="mono">{{ v.aktiflestirme_tarihi|date:"d.m.Y" }}</td>

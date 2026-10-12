@@ -115,7 +115,7 @@
   </thead>
   <tbody>
     {% for s in stoklar %}
-      <tr class="stk-satir" data-kategori="{{ s.kategori_id }}" onclick="window.location='{% url 'core:stok_detay' s.pk %}'">
+      <tr class="stk-satir" data-kategori="{{ s.kategori_id }}" data-href="{% url 'core:stok_detay' s.pk %}">
         <td>
           <div class="stk-hucre">
             <span class="stk-ikon {% if s.gorsel %}gorsel-var{% endif %}">{% if s.gorsel %}<img src="{{ s.gorsel.url }}" alt="">{% else %}📦{% endif %}</span>

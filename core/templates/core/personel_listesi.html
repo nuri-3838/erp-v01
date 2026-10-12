@@ -54,7 +54,7 @@
   </thead>
   <tbody>
     {% for p in personeller %}
-      <tr onclick="window.location='{% url 'core:personel_detay' p.pk %}'">
+      <tr data-href="{% url 'core:personel_detay' p.pk %}">
         <td>
           <div class="ik-hucre">
             <span class="ik-avatar">{{ p.ad|first }}{{ p.soyad|first }}</span>

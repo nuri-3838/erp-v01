@@ -71,8 +71,8 @@
     <thead><tr><th>Demirbaş Kodu</th><th>Ad</th><th>Hesap</th><th class="sag">Maliyet</th></tr></thead>
     <tbody>
       {% for v in duran_varliklar %}
-        <tr onclick="window.location='{% url 'core:duran_varlik_detay' v.pk %}'" style="cursor:pointer">
-          <td class="mono">{{ v.demirbas_kodu }}</td>
+        <tr data-href="{% url 'core:duran_varlik_detay' v.pk %}">
+          <td class="mono"><a class="satir-bag" href="{% url 'core:duran_varlik_detay' v.pk %}">{{ v.demirbas_kodu }}</a></td>
           <td>{{ v.ad }}</td>
           <td><span class="mono">{{ v.hesap.hesap_kodu }}</span> {{ v.hesap.hesap_adi }}</td>
           <td class="sag mono">{{ v.maliyet|tr_kur:2 }}</td>
@@ -100,8 +100,8 @@
     </tr></thead>
     <tbody>
       {% for s in satirlar %}
-        <tr onclick="window.location='{% url 'core:fatura_detay' s.fatura.pk %}'" style="cursor:pointer">
-          <td class="mono">{{ s.fatura.tarih|date:"d.m.Y" }}</td>
+        <tr data-href="{% url 'core:fatura_detay' s.fatura.pk %}">
+          <td class="mono"><a class="satir-bag" href="{% url 'core:fatura_detay' s.fatura.pk %}">{{ s.fatura.tarih|date:"d.m.Y" }}</a></td>
           <td>{{ s.fatura.cari.unvan }}</td>
           <td class="mono">{{ s.fatura.fatura_no|default:"—" }}{% if s.fatura.yon == "SATIS" %} <span class="yardim">(iade)</span>{% endif %}</td>
           <td><span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}</td>

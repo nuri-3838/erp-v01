@@ -86,7 +86,7 @@
   </thead>
   <tbody>
     {% for c in cariler %}
-      <tr class="crl-satir">
+      <tr class="crl-satir" data-href="{% url 'core:cari_detay' c.pk %}">
         <td>
           <div class="crl-hucre">
             <span class="crl-ikon">🧑‍💼</span>

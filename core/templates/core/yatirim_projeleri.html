@@ -110,7 +110,7 @@
   <tbody>
     {% for k in kayitlar %}
       <tr data-href="{% url 'core:yatirim_projesi_detay' k.proje.pk %}">
-        <td class="mono">{{ k.proje.kod }}</td>
+        <td class="mono"><a class="satir-bag" href="{% url 'core:yatirim_projesi_detay' k.proje.pk %}">{{ k.proje.kod }}</a></td>
         <td>{{ k.proje.ad }}</td>
         <td class="mono">{{ k.proje.hesap_id|default:"—" }}</td>
         <td><span class="rozet {% if k.proje.durum == 'AKTIFLESTI' %}rozet-aktif{% elif k.proje.durum == 'KAPANDI' %}rozet-kapali{% else %}rozet-notr{% endif %}">{{ k.proje.get_durum_display }}</span></td>
@@ -145,12 +145,4 @@
 </div>
 <p class="yardim">Toplam: projeye bağlı fatura kalemleri (KDV hariç) + stok sarf çıkışları + projeye bağlı kesinti/virman/banka satırları.
   Hareket sayısı bu üç kaynağın satır sayısıdır. Varsayılan görünüm yalnız “Devam Ediyor” projelerdir.</p>
-<script>
-  document.querySelectorAll('.yp-tablo tbody tr[data-href]').forEach(function (tr) {
-    tr.addEventListener('click', function (e) {
-      if (e.target.closest('a,button,input,select')) return;
-      window.location = tr.dataset.href;
-    });
-  });
-</script>
 {% endblock %}

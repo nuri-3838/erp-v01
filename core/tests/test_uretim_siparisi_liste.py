@@ -22,7 +22,7 @@ class ListeTest(kt.KapanisTaban):
     def gorunen_satir(self, yanit, emir):
         """Emrin satırının GÖRÜNEN içeriği (data-arama özniteliği hariç)."""
         satir = next(x for x in yanit.content.decode().split('<tr class="ue-satir"')[1:] if emir.no in x)
-        return satir.split('onclick="window.location', 1)[1].split("</tr>")[0]
+        return satir.split('data-href="', 1)[1].split("</tr>")[0]
 
     def test_satir_duzeni_musteri_siparis_ozeti_ve_depo_sutunu_yok(self):
         sip = self.siparis("3")
