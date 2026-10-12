@@ -280,6 +280,10 @@
         <div class="satir"><span class="et">Atölye operatörü</span><span class="dg">
           {% if atolye_operator %}<span class="rozet rozet-aktif">Evet</span> <span class="yardim">giriş sonrası /atolye/ ekranı (mesai + Üretildi)</span>{% else %}<span class="rozet rozet-notr">Hayır</span> <span class="yardim">yalnız Mesaim ekranı</span>{% endif %}
         </span></div>
+        <div class="satir"><span class="et">Son şifre değişikliği</span><span class="dg">
+          {% if p.sifre_degisiklik_zamani %}{{ p.sifre_degisiklik_zamani|tr_zaman:"d.m.Y H:i" }}{% else %}—{% endif %}
+          {% if p.sifre_degistirilmeli %}<span class="rozet rozet-pasif">ilk girişte değiştirilmeli</span>{% endif %}
+        </span></div>
       </div>
       <div class="detay-aksiyon" style="margin-top:.8rem">
         <a class="dugme-ikincil" href="{% url 'core:mesai_sifre_sifirla' p.pk %}">Şifre Sıfırla</a>

@@ -3343,6 +3343,14 @@ class MesaiSifreForm(forms.Form):
         label="Yeni Şifre", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
 
 
+class SifreDegistirForm(forms.Form):
+    """Atölye / Mesaim › 🔑 Şifre: personelin kendi şifresi (kurallar serviste: core.services.mesai_hesap.sifre_degistir)."""
+
+    mevcut = forms.CharField(label="Mevcut şifre", widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
+    yeni = forms.CharField(label="Yeni şifre", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+    yeni_tekrar = forms.CharField(label="Yeni şifre (tekrar)", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+
+
 class MesaiIzinliAgForm(forms.Form):
     """AYARLAR > Mesai Ayarları — izinli IP/CIDR ekle. Geçerlilik/benzersizlik serviste
     (core.services.mesai_ag) doğrulanır."""

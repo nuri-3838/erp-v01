@@ -283,7 +283,7 @@ class MesaimViewTest(TestCase):
     def setUp(self):
         _ag_ac()
         self.p = personel_kur(ad="mehmet", soyad="calisan", ise_giris_tarihi=date(2020, 1, 1))
-        self.u = hesap_olustur(self.p, kullanici_adi="mehmetc", sifre="cokGizli!2026")
+        self.u = hesap_olustur(self.p, kullanici_adi="mehmetc", sifre="cokGizli!2026", ilk_giris_sifre=False)
 
     def test_anonim_302(self):
         self.assertEqual(self.client.get(reverse("core:mesaim")).status_code, 302)

@@ -73,7 +73,7 @@ class EkranTest(TestCase):
     def setUpTestData(cls):
         cls.yon = User.objects.create_superuser("ibyon", password="x")
         cls.p = personel_kur(ad="hasan", soyad="demir", ise_giris_tarihi=date(2024, 3, 1))
-        cls.u = hesap_olustur(cls.p, kullanici_adi="hasand", sifre="cokGizli!2026")               # mesai hesabı (personel yetkisi yok)
+        cls.u = hesap_olustur(cls.p, kullanici_adi="hasand", sifre="cokGizli!2026", ilk_giris_sifre=False)               # mesai hesabı (personel yetkisi yok)
         cls.ik = User.objects.create_user("ikci", password="x")
         EkranYetki.objects.create(kullanici=cls.ik, ekran_kod="personel")
 

@@ -6,12 +6,14 @@
 
 {% block icerik %}
   {% include "core/_atolye_acik_isler.html" with istasyon_pk=istasyon.pk %}
+  {% if fazla_yasak_not %}<p class="at-yardim" style="margin:0">ℹ️ Bu istasyonda kalandan fazlası yazılamaz (varyantlı emirler).</p>{% endif %}
   {% for s in emirler %}
-    <section class="at-kart at-emir{% if s.oturumlar %} calisiyor{% endif %}{% if s.malzeme.yok %} malzeme-yok{% endif %}" id="ie-{{ s.ie.pk }}">
+    <section class="at-kart at-emir{% if s.oturumlar %} calisiyor{% endif %}{% if s.malzeme.durum == "YOK" %} malzeme-yok{% elif s.malzeme.durum == "KISMI" %} malzeme-kismi{% endif %}" id="ie-{{ s.ie.pk }}">
       <div class="ust"><span>{{ s.ie.uretim_emri.no }} <span class="ie-no">{{ s.ie.no }}</span></span><span>{% if s.musteri %}{{ s.musteri }}{% else %}<span class="rozet-stok">Stok</span>{% endif %}</span></div>
       <div class="urun"><span style="color:var(--soluk);font-size:.9rem">{{ s.ie.operasyon.cikti.kod }}</span><br>{{ s.ie.operasyon.cikti.ad }}
         {% if s.varyant_metni %}<div><span class="varyant">🔀 {{ s.varyant_metni }}</span></div>{% endif %}</div>
-      <div class="at-malzeme{% if s.malzeme.yok %} yok{% endif %}">{% if s.malzeme.yok %}⛔ Malzeme yok: {{ s.malzeme.eksik_metni }}{% else %}✅ Malzeme hazır: {{ s.malzeme.hazir_tam }} adet yapılabilir{% endif %}</div>
+      <div class="at-malzeme {{ s.malzeme.durum|lower }}">{% if s.malzeme.durum == "HAZIR" %}✅{% elif s.malzeme.durum == "KISMI" %}🟠{% else %}⛔{% endif %} {{ s.malzeme.metin }}</div>
+      {% for b in s.fason_bekleyen %}<div class="at-malzeme fason">📤 {{ b }}</div>{% endfor %}
       <div class="at-sayilar">
         <div><div class="et">Planlanan</div><div class="dg">{{ s.planlanan|tr_miktar_sade }}</div></div>
         <div><div class="et">Tamamlanan</div><div class="dg">{{ s.tamamlanan|tr_miktar_sade }}</div></div>
@@ -44,7 +46,7 @@
       {% if baslatabilir %}
         <details class="at-basla">
           <summary>▶ BAŞLA</summary>
-          <form method="post" action="{% url 'core:atolye_oturum_baslat' s.ie.pk %}"{% if s.malzeme.yok %} onsubmit="return confirm('Malzeme yok: {{ s.malzeme.eksik_metni|escapejs }}. Yine de başlansın mı?');"{% endif %}>
+          <form method="post" action="{% url 'core:atolye_oturum_baslat' s.ie.pk %}"{% if s.malzeme.yok %} onsubmit="return confirm('{{ s.malzeme.metin|escapejs }}. Yine de başlansın mı?');"{% endif %}>
             {% csrf_token %}
             {% if ekip_adaylari %}
               <p class="at-yardim" style="text-align:left">Birlikte çalışacağınız arkadaşlarınızı seçin (isteğe bağlı):</p>
@@ -58,7 +60,6 @@
           </form>
         </details>
       {% endif %}
-      {% if s.fazla_yasak %}<p class="at-yardim" style="margin:.4rem 0 0">Bu emirde kalandan fazlası yazılamaz.</p>{% endif %}
       {% if s.son_kaydim %}
         <div class="at-geri">
           <span>Son kaydım: <b>{{ s.son_kaydim.no }}</b> · {{ s.son_kaydim.hedef_cikti_miktari|tr_miktar_sade }} adet · {{ s.son_kaydim.created_at|tr_zaman:"H:i" }}</span>

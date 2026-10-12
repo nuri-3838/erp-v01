@@ -24,22 +24,45 @@ class MalzemeVeSiralamaTest(AtolyeTaban):
         emir2 = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": D("2")}], depo_id=self.depo.pk, tarih=date(2026, 1, 5))
         satirlar = atolye.acik_emirler(self.lazer)
         self.assertEqual([s["ie"].uretim_emri_id for s in satirlar], [emir2.pk, self.emir.pk])             # ikisi de hazır → tarihi yakın önce
-        self.assertEqual([(s["malzeme"]["hazir"], s["malzeme"]["yok"]) for s in satirlar], [(D("2"), False), (D("10"), False)])
-        # profil 5'e düşer: emir1 için kullanılabilir = 5 − emir2'nin ayırması 1 = 4 profil → 8 adet; emir2 için 5 − 5 = 0 → malzeme yok
+        self.assertEqual([(s["malzeme"]["hazir"], s["malzeme"]["durum"]) for s in satirlar], [(D("2"), "HAZIR"), (D("10"), "HAZIR")])
+        self.assertEqual(satirlar[1]["malzeme"]["metin"], "Malzeme hazır: 10 adet yapılabilir")
+        # profil 5'e düşer: emir1 için kullanılabilir = 5 − emir2'nin ayırması 1 = 4 profil → 8 adet (KISMI); emir2 için 5 − 5 = 0 → YOK
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.CIKIS, miktar=D("95"))
         satirlar = atolye.acik_emirler(self.lazer)
-        self.assertEqual([s["ie"].uretim_emri_id for s in satirlar], [self.emir.pk, emir2.pk])             # hazır olan öne geçti
-        self.assertEqual([(s["malzeme"]["hazir"], s["malzeme"]["yok"], s["malzeme"]["eksik_metni"]) for s in satirlar],
-                         [(D("8"), False, ""), (D("0"), True, "ham profil")])
-        self.assertTrue(atolye.acik_emirler(self.bukum)[0]["malzeme"]["yok"])                                 # kesilmiş parça stokta yok
+        self.assertEqual([s["ie"].uretim_emri_id for s in satirlar], [self.emir.pk, emir2.pk])             # KISMI, YOK'tan önce
+        self.assertEqual([(s["malzeme"]["hazir"], s["malzeme"]["durum"], s["malzeme"]["metin"]) for s in satirlar],
+                         [(D("8"), "KISMI", "Kısmen hazır: 8 / 10 — eksik: ham profil (8 adetlik) — satınalma bekleniyor"),
+                          (D("0"), "YOK", "Malzeme yok: ham profil yok — satınalma bekleniyor")])
+        bukum = atolye.acik_emirler(self.bukum)                                                               # kesilmiş: ara mamul, bu ÜS'de kesim emri
+        ie2 = emir2.istasyon_emirleri.get(operasyon=self.kesim_op)
+        self.assertEqual([s["malzeme"]["metin"] for s in bukum],                                                # ikisi de YOK → termin: emir2 önce
+                         [f"Malzeme yok: kesilmiş yok — önce LAZER LAZER İSTASYONU ({ie2.no})",
+                          f"Malzeme yok: kesilmiş yok — önce LAZER LAZER İSTASYONU ({self.ie_kesim.no})"])
         self.baslat()
         r = self.client.get(reverse("core:atolye_istasyon", args=[self.lazer.pk]))
-        self.assertContains(r, "Malzeme hazır: 8 adet yapılabilir")
-        self.assertContains(r, "Malzeme yok: ham profil")
+        self.assertContains(r, "🟠 Kısmen hazır: 8 / 10 — eksik: ham profil (8 adetlik) — satınalma bekleniyor")
+        self.assertContains(r, "⛔ Malzeme yok: ham profil yok — satınalma bekleniyor")
+        self.assertContains(r, "malzeme-kismi")
         self.assertContains(r, "malzeme-yok")
-        self.assertContains(r, "Yine de başlansın")
+        self.assertContains(r, "Yine de başlansın", count=1)                                                  # yalnız YOK kartında
+        self.assertNotContains(r, "kalandan fazlası yazılamaz")                                                # kart notu kalktı (varyantlı emir yok)
         r = self.basla(emir2.istasyon_emirleri.get(operasyon=self.kesim_op))                                  # engel yok, yalnız uyarı
         self.assertTrue(any("iş başladı" in m for m in self.mesajlar(r)), self.mesajlar(r))
+
+    def test_fason_siparisinden_bekleniyor_ve_fazla_yasak_notu(self):
+        from core.models import Cari, FasonSiparisi, FasonSiparisRezerv, FasonSiparisSatiri
+        cari = Cari.objects.create(kod="FSN", unvan="FASON LAZER", para_birimi="TRY")
+        fs = FasonSiparisi.objects.create(yil=2026, sira=1, no="FS-2026-0001", cari=cari, tarih=date(2026, 1, 5), termin=date(2026, 1, 20),
+                                          durum=FasonSiparisi.Durum.GONDERILDI)
+        satir = FasonSiparisSatiri.objects.create(siparis=fs, stok=self.kesilmis, adet=D("20"), sira=10)
+        FasonSiparisRezerv.objects.create(satir=satir, uretim_emri=self.emir, miktar=D("6"))
+        self.baslat()
+        r = self.client.get(reverse("core:atolye_istasyon", args=[self.bukum.pk]))
+        self.assertContains(r, "📤 6 adet fason siparişinden bekleniyor (FS-2026-0001, termin 20.01.2026)")
+        self.assertEqual(atolye.acik_emirler(self.bukum)[0]["fason_bekleyen"], ["6 adet fason siparişinden bekleniyor (FS-2026-0001, termin 20.01.2026)"])
+        self.assertEqual(atolye.acik_emirler(self.lazer)[0]["fason_bekleyen"], [])                           # kesim emrinin girdisi profil: eşleşmez
+        self.assertFalse(r.context["fazla_yasak_not"])
+        self.assertEqual(atolye._varyant_on_eki(None), "")
 
 
 class EkranTest(AtolyeTaban):

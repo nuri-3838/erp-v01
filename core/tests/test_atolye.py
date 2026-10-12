@@ -27,10 +27,10 @@ class AtolyeTaban(Taban):
         ag_ekle(cidr="10.0.0.0/24", aciklama="fabrika")
         cls.fason_ist = IsIstasyonu.objects.create(kod="10", ad="BORU LAZER (FASON)", sira=1, fason=True)
         cls.p = personel_kur(ad="errahman", soyad="operator", ise_giris_tarihi=date(2020, 1, 1))
-        cls.u = hesap_olustur(cls.p, kullanici_adi="errahman", sifre="cokGizli!2026")
+        cls.u = hesap_olustur(cls.p, kullanici_adi="errahman", sifre="cokGizli!2026", ilk_giris_sifre=False)
         atolye.operator_ayarla(cls.p, True)
         cls.p2 = personel_kur(ad="ayse", soyad="mesai", ise_giris_tarihi=date(2020, 1, 1))
-        cls.u2 = hesap_olustur(cls.p2, kullanici_adi="aysem", sifre="cokGizli!2026")          # yalnız mesai hesabı (atölye yetkisi yok)
+        cls.u2 = hesap_olustur(cls.p2, kullanici_adi="aysem", sifre="cokGizli!2026", ilk_giris_sifre=False)          # yalnız mesai hesabı (atölye yetkisi yok)
         cls.yon = User.objects.create_superuser("atyon", password="x")
 
     def baslat(self, user=None):

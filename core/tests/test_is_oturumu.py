@@ -28,7 +28,7 @@ class OturumTaban(AtolyeTaban):
         super().setUpTestData()
         atolye.operator_ayarla(cls.p2, True)                                                          # ayşe de operatör
         cls.p3 = personel_kur(ad="mehmet", soyad="usta", ise_giris_tarihi=date(2020, 1, 1))
-        cls.u3 = hesap_olustur(cls.p3, kullanici_adi="mehmetu", sifre="cokGizli!2026")
+        cls.u3 = hesap_olustur(cls.p3, kullanici_adi="mehmetu", sifre="cokGizli!2026", ilk_giris_sifre=False)
         atolye.operator_ayarla(cls.p3, True)
 
     def mesai_bitir(self, user):

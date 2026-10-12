@@ -50,7 +50,7 @@ from core.forms import (
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
     OperasyonKaydiGirdiDuzeltForm, PersonelForm, PersonelIzinForm,
     PersonelBelgeForm, PersonelFotoForm, PersonelUcretForm, ResmiTatilForm,
-    GirisForm, MesaiHesapOlusturForm, MesaiSifreForm, MesaiIzinliAgForm, MesaiDuzeltForm,
+    GirisForm, MesaiHesapOlusturForm, MesaiSifreForm, SifreDegistirForm, MesaiIzinliAgForm, MesaiDuzeltForm,
 )
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
@@ -9811,10 +9811,12 @@ def atolye_istasyon(request, pk):
         messages.error(request, "Önce mesainizi başlatın; mesai açık değilken üretim girilemez.")
         return redirect(f"{reverse('core:atolye')}?sec=1")
     acik_islerim = atolye_servis.acik_islerim(request.user) if not d["izleme"] else []
+    emirler = atolye_servis.acik_emirler(istasyon, request.user)
     return render(request, "core/atolye_istasyon.html", {
-        **d, "istasyon": istasyon, "emirler": atolye_servis.acik_emirler(istasyon, request.user), "acik_islerim": acik_islerim,
+        **d, "istasyon": istasyon, "emirler": emirler, "acik_islerim": acik_islerim,
         "ekip_adaylari": atolye_servis.ekip_adaylari(request.user) if not d["izleme"] else [],
-        "baslatabilir": not d["izleme"] and not acik_islerim})
+        "baslatabilir": not d["izleme"] and not acik_islerim,
+        "fazla_yasak_not": any(s["fazla_yasak"] for s in emirler)})        # LAZER MARKALAMA / PAKETLEME: not kartta değil, başlıkta bir kez
 
 
 @ekran_gerekli("atolye")
@@ -9882,6 +9884,37 @@ def atolye_geri_al(request, pk):
     if ie is None:
         return redirect("core:atolye")
     return redirect(f"{reverse('core:atolye_istasyon', args=[ie.istasyon_id])}#ie-{ie.pk}")
+
+
+# --- 🔑 Şifre (personel/operatör hesabı kendi şifresini değiştirir) ---
+@login_required
+@never_cache
+def sifre_degistir(request):
+    """Atölye/Mesaim › 🔑 Şifre: mevcut + yeni + tekrar; kurallar serviste (Türkçe mesaj); ilk girişte zorunluysa (middleware buraya
+    yönlendirir) değişmeden başka ekrana geçilemez; değişince oturum açık kalır (``update_session_auth_hash``)."""
+    from django.contrib.auth import update_session_auth_hash
+    p = Personel.objects.filter(kullanici=request.user, silindi=False).first()
+    if p is None:
+        raise PermissionDenied("Bu hesaba bağlı bir personel kartı yok.")
+    geri = reverse("core:atolye") if atolye_kullanicisi_mi(request.user) else reverse("core:mesaim")
+    if request.method == "POST":
+        form = SifreDegistirForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                u = mesai_hesap_servis.sifre_degistir(p, mevcut=cd["mevcut"], yeni=cd["yeni"], yeni_tekrar=cd["yeni_tekrar"], yapan=request.user)
+                update_session_auth_hash(request, u)
+                from core.middleware import SESSION_ANAHTARI
+                request.session[SESSION_ANAHTARI] = False                                   # zorunluluk kalktı (giriş anındaki işaret)
+                messages.success(request, "Şifreniz değiştirildi.")
+                return redirect(geri)
+            except mesai_hesap_servis.MesaiHesapHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = SifreDegistirForm()
+    zorunlu = p.sifre_degistirilmeli or bool(request.session.get("sifre_degistirilmeli"))
+    return render(request, "core/sifre_degistir.html", {"form": form, "personel": p, "zorunlu": zorunlu, "geri": geri,
+                                                        "acik_kayit": mesai_servis.acik_kayit(p)})
 
 
 # --- Mesaim (personelin kendisi, mobil öncelikli) ---

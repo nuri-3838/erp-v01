@@ -16,6 +16,10 @@
     .at-ust .sag { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
     .at-ust a { color:#fff; text-decoration:none; font-weight:700; font-size:.9rem; border:1px solid rgba(255,255,255,.5); border-radius:10px; padding:.4rem .6rem; white-space:nowrap; }
     .at-cikis-form { margin:0; }
+    .at-sifre-form { display:flex; flex-direction:column; gap:.7rem; }
+    .at-sifre-form label { display:flex; flex-direction:column; gap:.25rem; font-size:.9rem; font-weight:700; color:var(--soluk); }
+    .at-sifre-form input { font-size:1.25rem; font-weight:700; border:2px solid var(--cizgi); border-radius:14px; padding:.6rem .7rem; width:100%; min-width:0; }
+    .at-sifre-form .hata { font-size:1rem; font-weight:800; color:var(--kirmizi); }
     .at-cikis { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.5); border-radius:10px; padding:.4rem .6rem; font-weight:700; font-size:.9rem; cursor:pointer; white-space:nowrap; }
     .at-govde { max-width:640px; margin:0 auto; padding:.75rem; display:flex; flex-direction:column; gap:.9rem; min-width:0; }
     .at-mesaj { border-radius:16px; padding:1rem 1.1rem; font-size:1.15rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
@@ -42,7 +46,11 @@
     .at-emir .urun { font-size:1.12rem; font-weight:800; margin:.3rem 0; overflow-wrap:anywhere; }
     .at-emir .varyant { display:inline-block; background:#fff1dd; color:#8a4b00; border-radius:8px; padding:.1rem .5rem; font-size:.9rem; font-weight:800; }
     .at-malzeme { margin:.2rem 0 .5rem; font-size:.9rem; font-weight:700; color:var(--yesil); overflow-wrap:anywhere; }
-    .at-malzeme.yok { color:var(--kirmizi); }
+    .at-malzeme.kismi { color:#b35c00; }
+    .at-malzeme.yok { color:var(--soluk); }
+    .at-malzeme.fason { color:var(--lacivert); margin-top:-.2rem; }
+    .at-emir.malzeme-kismi { border-left-color:var(--turuncu); }
+    .at-emir.malzeme-yok { border-left-color:#9aa5b8; }
     .at-sayilar { display:flex; gap:.4rem; margin:.5rem 0; min-width:0; }
     .at-sayilar div { flex:1 1 0; min-width:0; background:var(--gri); border-radius:12px; padding:.45rem .25rem; text-align:center; overflow:hidden; }
     .at-sayilar .et { font-size:.68rem; color:var(--soluk); font-weight:700; text-transform:uppercase; letter-spacing:.02em; }
@@ -92,7 +100,7 @@
   <header class="at-ust">
     <div class="kim"><div class="ad">{% if personel %}{{ personel.ad_soyad }}{% else %}{{ request.user.get_full_name|default:"Yönetici" }}{% endif %}</div>
       <div class="alt">{% if izleme %}Yönetici görüntüleme{% elif acik_kayit %}Mesai açık · {{ acik_kayit.giris_zamani|tr_zaman:"H:i" }}{% else %}Mesai kapalı{% endif %}{% block ust_alt %}{% endblock %}</div></div>
-    <div class="sag">{% block ust_sag %}{% endblock %}
+    <div class="sag">{% block ust_sag %}{% endblock %}{% block sifre_dugmesi %}{% if personel %}<a href="{% url 'core:sifre_degistir' %}" class="at-sifre" title="Şifre değiştir">🔑 Şifre</a>{% endif %}{% endblock %}
       <form method="post" action="{% url 'logout' %}" class="at-cikis-form" data-uyari="{% if acik_islerim %}Açık işiniz var; çıkış yapsanız da iş oturumu açık kalır. Yine de çıkılsın mı?{% elif acik_kayit %}Mesainiz açık; çıkış yapsanız da mesai açık kalır. Yine de çıkılsın mı?{% endif %}" onsubmit="return !this.dataset.uyari || confirm(this.dataset.uyari);">{% csrf_token %}<button type="submit" class="at-cikis" title="Çıkış">⎋ Çıkış</button></form>
     </div>
   </header>

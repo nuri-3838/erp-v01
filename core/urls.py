@@ -417,6 +417,7 @@ urlpatterns = [
     path("ik/personel/<int:pk>/mesai-hesabi/durum/", views.mesai_hesap_durum,
          name="mesai_hesap_durum"),
     path("mesai/", views.mesaim, name="mesaim"),
+    path("hesap/sifre/", views.sifre_degistir, name="sifre_degistir"),
     path("atolye/", views.atolye, name="atolye"),
     path("atolye/mesai/", views.atolye_mesai, name="atolye_mesai"),
     path("atolye/istasyon/<int:pk>/", views.atolye_istasyon, name="atolye_istasyon"),

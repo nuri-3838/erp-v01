@@ -10,9 +10,11 @@ Kurallar (kullanıcı kararları, 2026-10-11/12):
 * Geri alma: yalnız bugünkü, KENDİ, o emrin SON onaylı kaydı (süre sınırı yok) — ``uretim.operasyon_kaydi_sil(onayli_geri_al=True)``; oturum kalır.
 * Yetki: ekran kodu ``atolye`` (AYARLAR › Kullanıcı Yetkileri ya da personel kartındaki "Atölye operatörü" düğmesi).
 * Malzeme durumu (2026-10-12): her emir kartında girdilerin BUGÜNKÜ kullanılabilir stoğuna (eldeki − başka ÜS'lerin ayırmaları; varyantlı emirde
-  girdi varyantı bazında) göre "Malzeme hazır: X adet yapılabilir" (X = min(kalan, yapılabilir)); 1 adet için bile yetmeyen girdi varsa kart soluk,
-  "Malzeme yok: <girdi>" ve Başla uyarı sorar (engel yok). Sıralama: malzemesi hazır olanlar önce, sonra termin (kaynak siparişin termini, yoksa
-  ÜS tarihi) yakın olan. Bitir: SAĞLAM + FİRE adet (boş sağlam → "Adet girin"; fire girdisi tüketilir, stoğa girmez — ``uretim.istasyon_emri_uret``)."""
+  girdi varyantı bazında) göre üç durum: HAZIR (kalanın tamamı yapılabilir, yeşil) / KISMI ("Kısmen hazır: X / kalan", turuncu) / YOK ("Malzeme
+  yok", gri, kart soluk, Başla uyarı sorar — engel yok). Eksik girdi "<varyant> markalı <ad> — önce <kaynak istasyon> (<IE no>)" (ara mamul: onu
+  üreten tanımın istasyonu + bu ÜS'deki emri) ya da "satınalma bekleniyor" (hammadde). Bu ÜS'ye rezerve açık fason siparişi satırı girdiyse kartta
+  "X adet fason siparişinden bekleniyor (FS-…, termin)". Sıralama: HAZIR, KISMI, YOK; sonra termin (kaynak siparişin termini, yoksa ÜS tarihi).
+  Bitir: SAĞLAM + FİRE adet (boş sağlam → "Adet girin"; fire girdisi tüketilir, stoğa girmez — ``uretim.istasyon_emri_uret``)."""
 from __future__ import annotations
 
 import datetime
@@ -23,6 +25,7 @@ from django.db.models import Count
 from django.utils import timezone
 
 from core.models import EkranYetki, IsIstasyonu, IstasyonEmri, OperasyonKaydi, Personel, UretimEmri
+from core.services import fason_siparis as fs_servis
 from core.services import is_oturumu, planlama_varyant, stok_ayirma
 from core.services import mesai as mesai_servis
 from core.services import mesai_ag, uretim
@@ -129,6 +132,8 @@ def acik_emirler(istasyon, user=None) -> list:
     emirler = list(qs)
     girdiler = _girdi_satirlari(emirler, user)
     kullanilabilir = _kullanilabilir_haritalari(emirler, girdiler)
+    kaynaklar = _girdi_kaynaklari(emirler, girdiler)
+    fason = _fason_bekleyenler(emirler)
     sonuc = []
     for ie in emirler:
         s = uretim.istasyon_emri_satiri(ie, ie.uretim_emri)
@@ -139,10 +144,13 @@ def acik_emirler(istasyon, user=None) -> list:
         s["kalan_tam"] = _tam_metin(s["acik"])
         s["son_kaydim"] = son_kaydim(user, ie) if user is not None else None
         s["oturumlar"] = [oturum_satiri(o, p) for o in acik.get(ie.pk, [])]
-        s["malzeme"] = malzeme_durumu(ie, s["acik"], girdiler[(ie.operasyon_id, ie.cikti_varyant_id)], kullanilabilir[ie.uretim_emri_id])
+        satirlar = girdiler[(ie.operasyon_id, ie.cikti_varyant_id)]
+        s["malzeme"] = malzeme_durumu(ie, s["acik"], satirlar, kullanilabilir[ie.uretim_emri_id], kaynaklar)
+        s["fason_bekleyen"] = [b["metin"] for b in fason.get(ie.uretim_emri_id, [])
+                               if any(g.girdi_id == b["stok_id"] and (vpk is None or vpk == b["varyant_id"]) for g, vpk in satirlar)]
         sonuc.append(s)
-    sonuc.sort(key=lambda s: (0 if s["malzeme"]["hazir"] > 0 else 1, s["termin"], s["ie"].uretim_emri.yil, s["ie"].uretim_emri.sira,
-                              -s["ie"].seviye, s["ie"].pk))
+    sira = {"HAZIR": 0, "KISMI": 1, "YOK": 2}
+    sonuc.sort(key=lambda s: (sira[s["malzeme"]["durum"]], s["termin"], s["ie"].uretim_emri.yil, s["ie"].uretim_emri.sira, -s["ie"].seviye, s["ie"].pk))
     return sonuc
 
 
@@ -176,27 +184,92 @@ def _kullanilabilir_haritalari(emirler, girdiler) -> dict:
     return {us: stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=us) for us, d in dugumler.items()}
 
 
-def malzeme_durumu(ie, kalan, girdi_satirlari, kullanilabilir) -> dict:
+def _girdi_kaynaklari(emirler, girdiler) -> dict:
+    """Eksik girdi için kaynak: ``{"ureten": {girdi stok pk: Operasyon|None}, "ie": {(ÜS pk, operasyon pk, çıktı varyant pk|None): IstasyonEmri}}``
+    — ara mamulü üreten tanımın istasyonu + bu ÜS'deki (iptal olmayan) emri; tanım yoksa hammadde/satınalma."""
+    ureten = {}
+    for satirlar in girdiler.values():
+        for g, _v in satirlar:
+            if g.girdi_id not in ureten:
+                ureten[g.girdi_id] = uretim.ureten_operasyon(g.girdi)
+    us_idler = {ie.uretim_emri_id for ie in emirler}
+    ie_harita = {}
+    for x in (IstasyonEmri.objects.filter(uretim_emri_id__in=us_idler, silindi=False).exclude(durum=IstasyonEmri.Durum.IPTAL)
+              .select_related("istasyon").order_by("pk")):
+        ie_harita.setdefault((x.uretim_emri_id, x.operasyon_id, x.cikti_varyant_id), x)
+        ie_harita.setdefault((x.uretim_emri_id, x.operasyon_id, None), x)
+    return {"ureten": ureten, "ie": ie_harita}
+
+
+def _fason_bekleyenler(emirler) -> dict:
+    """{ÜS pk: [{"stok_id", "varyant_id", "metin"}]} — ÜS'ye rezerve açık fason siparişi satırları (kartta girdiyle eşleşenler gösterilir)."""
+    sonuc = {}
+    for us in {ie.uretim_emri_id for ie in emirler}:
+        for r in fs_servis.emir_rezervleri(us):
+            fs = r.satir.siparis
+            termin = f"termin {fs.termin:%d.%m.%Y}" if fs.termin else "termin yok"
+            sonuc.setdefault(us, []).append({"stok_id": r.satir.stok_id, "varyant_id": r.satir.varyant_id,
+                                             "metin": f"{_tam_metin(r.miktar)} adet fason siparişinden bekleniyor ({fs.no}, {termin})"})
+    return sonuc
+
+
+def _varyant_on_eki(vpk) -> str:
+    """Girdi adının önüne varyant: tek boyut markalamaysa 'ELMOP markalı ', başka standart dışı boyut varsa '[Afiş: yok · …] '; standart → ''."""
+    if not vpk:
+        return ""
+    m = varyant_servis.standart_disi_metin(vpk, "tr")
+    if not m:
+        return ""
+    parcalar = m.split(" · ")
+    if len(parcalar) == 1 and parcalar[0].startswith("Markalama: "):
+        return parcalar[0][len("Markalama: "):] + " markalı "
+    return f"[{m}] "
+
+
+def _kaynak_metni(ie, girdi_id, vpk, kaynaklar) -> str:
+    op = kaynaklar["ureten"].get(girdi_id)
+    if op is None:
+        return "satınalma bekleniyor"
+    x = kaynaklar["ie"].get((ie.uretim_emri_id, op.pk, vpk)) or kaynaklar["ie"].get((ie.uretim_emri_id, op.pk, None))
+    return f"önce {op.istasyon.kod} {op.istasyon.ad} ({x.no if x is not None else 'bu siparişte açık emir yok'})"
+
+
+def malzeme_durumu(ie, kalan, girdi_satirlari, kullanilabilir, kaynaklar=None) -> dict:
     """Emrin girdilerinin bugünkü kullanılabilir stoğuna göre ``yapilabilir`` referans çıktı adedi (tam çalıştırma zorunluysa çalıştırma katı),
-    ``hazir`` = min(kalan, yapılabilir), ``eksik`` = 1 adet için bile yetmeyen girdiler (``yok`` → kart soluk, "Malzeme yok: …", Başla uyarır)."""
+    ``hazir`` = min(kalan, yapılabilir); ``durum`` HAZIR (hazır ≥ kalan) / KISMI (0 < hazır < kalan) / YOK (0); ``eksik`` = sınırlayan girdilerin
+    metinleri ("<varyant> markalı <ad> yok — önce 11 LAZER MARKALAMA (IE-…)" / "… — satınalma bekleniyor"); ``metin`` kart satırı."""
     op = ie.operasyon
     ref = uretim._referans_miktar(op)
-    en_az, eksik = None, []
+    kalan = max(Decimal(kalan), Decimal("0"))
+    kaynaklar = kaynaklar or {"ureten": {}, "ie": {}}
+    en_az, adetler = None, []
     for g, vpk in girdi_satirlari:
         kull = kullanilabilir.get((g.girdi_id, vpk), Decimal("0"))
         adet = (kull * ref / g.miktar) if kull > 0 else Decimal("0")          # bu girdiyle üretilebilecek referans çıktı adedi
-        if adet < 1:
-            eksik.append(g.girdi)
+        adetler.append((g, vpk, adet.to_integral_value(rounding=ROUND_FLOOR)))
         en_az = adet if en_az is None else min(en_az, adet)
     if en_az is None:
-        yapilabilir = max(Decimal(kalan), Decimal("0"))
+        yapilabilir = kalan
     elif op.tam_calistirma:
         yapilabilir = (en_az / ref).to_integral_value(rounding=ROUND_FLOOR) * ref
     else:
         yapilabilir = en_az.to_integral_value(rounding=ROUND_FLOOR)
-    hazir = max(min(Decimal(kalan), yapilabilir), Decimal("0"))
-    return {"yapilabilir": yapilabilir, "hazir": hazir, "hazir_tam": _tam_metin(hazir), "eksik": eksik,
-            "eksik_metni": ", ".join(s.ad for s in eksik), "yok": bool(eksik)}
+    hazir = max(min(kalan, yapilabilir), Decimal("0"))
+    durum = "HAZIR" if hazir >= kalan else ("KISMI" if hazir > 0 else "YOK")
+    eksik = []
+    for g, vpk, adet in adetler:
+        if (durum == "YOK" and adet < 1) or (durum == "KISMI" and adet < kalan):
+            ad = _varyant_on_eki(vpk) + g.girdi.ad
+            kaynak = _kaynak_metni(ie, g.girdi_id, vpk, kaynaklar)
+            eksik.append(f"{ad} yok — {kaynak}" if adet < 1 else f"{ad} ({_tam_metin(adet)} adetlik) — {kaynak}")
+    if durum == "HAZIR":
+        metin = f"Malzeme hazır: {_tam_metin(hazir)} adet yapılabilir"
+    elif durum == "KISMI":
+        metin = f"Kısmen hazır: {_tam_metin(hazir)} / {_tam_metin(kalan)} — eksik: " + "; ".join(eksik)
+    else:
+        metin = "Malzeme yok: " + ("; ".join(eksik) or "girdi stoğu yok")
+    return {"yapilabilir": yapilabilir, "hazir": hazir, "hazir_tam": _tam_metin(hazir), "kalan_tam": _tam_metin(kalan), "durum": durum,
+            "eksik": eksik, "eksik_metni": "; ".join(eksik), "metin": metin, "yok": durum == "YOK"}
 
 
 def oturum_satiri(oturum, personel=None) -> dict:

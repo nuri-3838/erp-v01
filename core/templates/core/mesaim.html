@@ -28,6 +28,7 @@
   <div class="ms-kisi">
     <div class="ms-ad">{{ p.ad_soyad }}</div>
     <div class="yardim">{{ p.gorev|default:"" }}</div>
+    <a class="dugme-ikincil" href="{% url 'core:sifre_degistir' %}" style="display:inline-block;margin-top:.5rem">🔑 Şifre Değiştir</a>
   </div>
 
   {% if not calisiyor %}

@@ -3862,6 +3862,10 @@ class Personel(TemelModel):
     kullanici = models.OneToOneField(
         settings.AUTH_USER_MODEL, verbose_name="mesai hesabı", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="personel_karti")
+    # Şifre disiplini (2026-10-12): yönetici hesap açınca / şifre sıfırlayınca İLK GİRİŞTE değiştirme zorunlu (core.middleware
+    # .SifreDegistirmeMiddleware yalnız 🔑 Şifre ekranına izin verir); personel kendi şifresini değiştirince kalkar. Zaman: kartta "Son şifre değişikliği".
+    sifre_degistirilmeli = models.BooleanField("ilk girişte şifre değiştirilmeli", default=False)
+    sifre_degisiklik_zamani = models.DateTimeField("son şifre değişikliği", null=True, blank=True)
 
     class Meta:
         db_table = "core_personel"

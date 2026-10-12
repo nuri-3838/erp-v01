@@ -138,7 +138,7 @@ class MesaiKullanicisiTespitiTest(TestCase):
 class MesaiKullanicisiViewTest(TestCase):
     def setUp(self):
         self.p = personel_kur(ad="mehmet", soyad="calisan", ise_giris_tarihi=date(2020, 1, 1))
-        self.u = hesap_olustur(self.p, kullanici_adi="mehmetc", sifre="cokGizli!2026")
+        self.u = hesap_olustur(self.p, kullanici_adi="mehmetc", sifre="cokGizli!2026", ilk_giris_sifre=False)
 
     def test_pano_mesaime_yonlendirir(self):
         self.client.force_login(self.u)
