@@ -1,0 +1,71 @@
+UYGULANDI — reçete eksik sarf düzeltmesi: 151-10-0042 KESİLMİŞ KAYIŞ 660 MM (5+1 / 6+1 / 7+1) | tarih 12.10.2026 | USD kuru 49.127400
+
+TANIMLAR (güncel girdi miktarı, 1 çalıştırma):
+  op 77 [70] → 151-99-0005 PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN 5+1 (çıktı 1): 151-10-0042 × 2
+  op 78 [70] → 151-99-0006 PAKETSİZ A TİPİ ALÜMİNYUM MERDİVEN 6+1 (çıktı 1): 151-10-0042 × 2
+  HAMMADDE MODU: 151-10-0042 stoğuna dokunulmaz; sarf 150-40-0006 KAYIŞ — op 53 [45] reçetesi: 1 151-10-0042 = 0.745 MT
+
+1) EKSİK SARFLI ONAYLI KAYITLAR (4):
+  kayıt          tarih      ÜS    çıktı ürün    varyant                            üretilen beklenen tüketilen  eksik    sarf MT   birim TL   tutar TL  birim kaynağı
+  OP-2026-0337   09.10.2026 ÜS-2026-0002 151-99-0005   MARKALAMA=1                             100      200       100    100       74.5     4.5455     338.64  kayıt tarihi ortalaması
+  OP-2026-0338   09.10.2026 ÜS-2026-0002 151-99-0006   MARKALAMA=1                              20       40        20     20       14.9     4.5455      67.73  kayıt tarihi ortalaması
+  OP-2026-0410   09.10.2026 ÜS-2026-0003 151-99-0005   MARKALAMA=1                               3        6         3      3      2.235     4.5455      10.16  kayıt tarihi ortalaması
+  OP-2026-0411   09.10.2026 ÜS-2026-0003 151-99-0006   MARKALAMA=1                              18       36        18     18      13.41     4.5455      60.95  kayıt tarihi ortalaması
+  TOPLAM eksik: 141 adet 151-10-0042 → sarf 105.045 MT 150-40-0006 = 477.48 TL
+
+2) SARF STOĞU 150-40-0006 — düzeltme ÇIKIŞLARI (bugün tarihli, kayıt başına, sabit tutarlı):
+  hareket 1600 12.10.2026 150 ÇIKIŞ 74.5 MT × 4.5455 = 338.64 TL  (OP-2026-0337)
+  hareket 1601 12.10.2026 150 ÇIKIŞ 14.9 MT × 4.5455 = 67.73 TL  (OP-2026-0338)
+  hareket 1602 12.10.2026 150 ÇIKIŞ 2.235 MT × 4.5455 = 10.16 TL  (OP-2026-0410)
+  hareket 1603 12.10.2026 150 ÇIKIŞ 13.41 MT × 4.5455 = 60.95 TL  (OP-2026-0411)
+  150-40-0006 STOĞU: önce 1102.355 MT / 5,010.70 TL (ort 4.5454)  →  SONRA 997.31 MT / 4,533.22 TL (ort 4.5454)   [fiziki sayımla karşılaştırılacak eldeki: 997.31 MT]
+  151-10-0042 STOĞU: 501 adet / 1,696.57 TL → 501 adet / 1,696.57 TL  (DEĞİŞMEDİ)
+
+3) DAĞITIM (ürün / varyant / kova: akıştaki adet / toplam akış → pay TL; üretimde tüketilen pay alt satırlardaki çıktıya geçer):
+  151-99-0005 PAKETSİZ A TİPİ ALÜMİNYUM MERDİV [MARKALAMA=1] üretimde tüketilen      103 / 103      →     348.80 TL
+      152-10-0004 A TİPİ ALÜMİNYUM MERDİVEN 5+1    [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] stokta kalan            102 / 103      →     345.41 TL  [152.10]
+      152-10-0004 A TİPİ ALÜMİNYUM MERDİVEN 5+1    [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] numune                    1 / 103      →       3.39 TL  [760.06]
+  151-99-0006 PAKETSİZ A TİPİ ALÜMİNYUM MERDİV [MARKALAMA=1] üretimde tüketilen       38 / 38       →     128.68 TL
+      152-10-0005 A TİPİ ALÜMİNYUM MERDİVEN 6+1    [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] stokta kalan             37 / 38       →     125.30 TL  [152.10]
+      152-10-0005 A TİPİ ALÜMİNYUM MERDİVEN 6+1    [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] satılan                   1 / 38       →       3.38 TL  [620]
+  Özet (ürün / varyant / kova: akıştaki adet → pay TL [hesap]):
+    152-10-0004 [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] stokta kalan            102 adet      345.41 TL  [152.10]
+    152-10-0004 [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] numune                    1 adet        3.39 TL  [760.06]
+    152-10-0005 [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] stokta kalan             37 adet      125.30 TL  [152.10]
+    152-10-0005 [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_E] satılan                   1 adet        3.38 TL  [620]
+
+4) YEVMİYE FİŞİ 2026/1367 12.10.2026 kaynak STOK_DUZELTME — A 5+1/6+1 KAYIŞ REÇETE DÜZELTMESİ – KAYITSIZ KESİM HAMMADDE SARFI
+  152.10     ALÜMİNYUM MERDİVEN - A TİPİ              B       470.71  A         0.00
+  760.06     NUMUNE GİDERLERİ                         B         3.39  A         0.00
+  620        SATILAN MAMULLER MALİYETİ (-)            B         3.38  A         0.00
+  150.40     HIRDAVAT MALZEMELERİ                     B         0.00  A       477.48
+  Bağlı stok hareketleri: 1600, 1601, 1602, 1603, 1604, 1605
+
+5) MALİYET DÜZELTMESİ GİRİŞLERİ (0 adet, yalnız değer; stokta kalan paylar):
+  hareket 1604 152-10-0004 [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_ETIKET=1] 150 +0 adet / 345.41 TL → kart ort 1103.175588 TL
+  hareket 1605 152-10-0005 [MARKALAMA=1|KILAVUZ=1|AFIS=1|YAN_ETIKET=1] 150 +0 adet / 125.30 TL → kart ort 1258.765946 TL
+
+MİZAN FARKLARI (hesap: önce / sonra / fark)
+  150:     3,365,880.26 /     3,365,402.78 /      -477.48  <--
+  151:       655,947.38 /       655,947.38 /         0.00
+  152:       679,032.66 /       679,503.37 /       470.71  <--
+  153:             0.00 /             0.00 /         0.00
+  620:       101,707.90 /       101,711.28 /         3.38  <--
+  621:             0.00 /             0.00 /         0.00
+  623:             0.00 /             0.00 /         0.00
+  760:        56,839.85 /        56,843.24 /         3.39  <--
+
+STOK DEĞERİ (grup: önce / sonra / fark)
+  150:     3,365,880.26 /     3,365,402.78 /      -477.48  <--
+  151:       690,579.38 /       690,579.38 /         0.00
+  152:       679,032.66 /       679,503.37 /       470.71  <--
+  153:             0.00 /             0.00 /         0.00
+
+KONTROL — stok değeri / mizan / fark (fark DEĞİŞMEMELİ: önceki fark)
+  150:     3,365,402.78 /     3,365,402.78 /         0.00  (önce 0.00)  = değişmedi
+  151:       690,579.38 /       655,947.38 /    34,632.00  (önce 34,632.00)  = değişmedi
+  152:       679,503.37 /       679,503.37 /         0.00  (önce 0.00)  = değişmedi
+  153:             0.00 /             0.00 /         0.00  (önce 0.00)  = değişmedi
+
+DEĞERİ DEĞİŞEN BAŞKA HAREKETLER (0; bugün tarihli sonraki çıkışlar yeni ortalamayı alır):
+DEĞİŞEN BAŞKA FİŞLER (0): 
