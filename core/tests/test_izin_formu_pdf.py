@@ -1,5 +1,5 @@
-"""İzin Talep ve Onay Formu PDF'i (2026-10-12): A5 dikey, siyah-beyaz, gri logo, alt bilgi yok, personel adı basılmaz (elle yazılır; TC ve işe
-giriş basılı); tam gün / saatlik içerik; yıllık izinde bakiye tablosu; imza kutuları. İmzalı form yükleme: izne bağlı + Özlük Belgeleri'ne
+"""İzin Talep ve Onay Formu PDF'i (2026-10-12): A5 dikey, siyah-beyaz, gri logo, alt bilgi yok, personel adı PERSONEL tablosunda basılı (TC ve işe
+giriş de), imza kutusundaki Ad Soyad/Tarih/İmza boş; tam gün / saatlik içerik; yıllık izinde bakiye tablosu; imza kutuları. İmzalı form yükleme: izne bağlı + Özlük Belgeleri'ne
 "İzin formu – tarih", ✅ İmzalı rozeti ve dosya bağlantısı, yeniden yükleme eskisini soft-siler, yetki personel kartı."""
 from datetime import date
 from decimal import Decimal
@@ -63,15 +63,20 @@ class IzinFormuTest(OzelDizinTestTemel):
         self.assertIn(firma_bilgisi_getir().adres, html)
         for metin in ("İzin Talep ve Onay Formu", "SEMTA ALÜMİNYUM A.Ş.", "10000000146", "15.03.2020", "Yıllık İzin", "13.07.2026 – 14.07.2026",
                       "2,0 gün", "16.07.2026", "Hak Edilen", "Bu İzinden Önce Kullanılan", "Kalan", "yaz tatili", "İzni Talep Eden Personel",
-                      "Onaylayan / İşveren Vekili", "Belge tarihi", "İmza / Kaşe"):
+                      "Onaylayan / İşveren Vekili", "Belge tarihi", "İmza / Kaşe", self.p.ad_soyad):
             self.assertIn(metin, html, metin)
-        for metin in ("METEHAN", "KAYA", "ÜRETİM", "USTA", "4857", "SEMTA ERP", "@bottom", "#15294d", "#f07c00"):
-            self.assertNotIn(metin, html, metin)                                                                      # ad/departman/görev, kanun notu, footer, renk yok
+        self.assertIn('<td class="et">Adı Soyadı</td><td class="dg">%s</td>' % self.p.ad_soyad, html)                 # ad PERSONEL tablosunda
+        imza = html[html.index('<div class="imza">'):]
+        self.assertNotIn(self.p.ad_soyad, imza)                                                                       # imza kutusu boş (elle)
+        self.assertEqual(imza.count('<span class="bos"></span>'), 6)
+        for metin in ("ÜRETİM", "USTA", "4857", "SEMTA ERP", "@bottom", "#15294d", "#f07c00"):
+            self.assertNotIn(metin, html, metin)                                                                      # departman/görev, kanun notu, footer, renk yok
         m = izin_ekle(self.p, tur="MAZERET", baslangic=date(2026, 6, 10), saatlik=True, baslangic_saati="09:00", bitis_saati="11:30", kullanici=self.yon)
         html = self.html(m)
         for metin in ("Mazeret İzni (saatlik)", "09:00 – 11:30", "2 sa 30 dk"):
             self.assertIn(metin, html)
-        for metin in ("Hak Edilen", "İşe Başlama", "METEHAN"):
+        self.assertIn(self.p.ad_soyad, html)
+        for metin in ("Hak Edilen", "İşe Başlama"):
             self.assertNotIn(metin, html)
         self.assertEqual(self.client.get(reverse("core:izin_formu_pdf", args=[m.pk])).status_code, 200)
         # düğmeler
