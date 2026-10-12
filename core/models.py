@@ -3820,6 +3820,9 @@ class PersonelIzin(TemelModel):
     baslangic_saati = models.TimeField("başlangıç saati", null=True, blank=True)
     bitis_saati = models.TimeField("bitiş saati", null=True, blank=True)
     dakika = models.PositiveIntegerField("süre (dakika)", default=0)
+    # İmzalı İzin Talep ve Onay Formu: Özlük Belgeleri'ne "İzin formu – <tarih>" olarak yüklenen belge (yeniden yükleme eskisini soft-siler).
+    imzali_belge = models.ForeignKey("PersonelBelge", verbose_name="imzalı form", null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name="izin_formlari")
 
     class Meta:
         db_table = "core_personel_izin"

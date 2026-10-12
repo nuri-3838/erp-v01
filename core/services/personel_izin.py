@@ -22,7 +22,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
-from core.models import Personel, PersonelIzin
+from core.models import Personel, PersonelBelge, PersonelIzin
 from core.services.resmi_tatil import tatil_gunleri_seti
 from core.tarih import tamamlanan_yil, tr_bugun, yil_donumu
 
@@ -201,7 +201,7 @@ def pazarsiz_gun(baslangic: date, bitis: date) -> Decimal:
 
 def aktif_izinler():
     return (PersonelIzin.objects.filter(silindi=False, personel__silindi=False)
-            .select_related("personel"))
+            .select_related("personel", "imzali_belge"))
 
 
 def izin_listele(*, personel_id=None, tur="", baslangic=None, bitis=None, izinde_bugun=None):
@@ -373,6 +373,27 @@ def izin_formu_baglam(izin: PersonelIzin) -> dict:
                        "once_metni": gun_saat_metni(once, gunluk), "bu_izin_metni": gun_saat_metni(izin.gun, gunluk),
                        "kalan_metni": gun_saat_metni(kalan, gunluk), "eksi": kalan < 0}
     return d
+
+
+@transaction.atomic
+def imzali_form_yukle(izin: PersonelIzin, dosya, kullanici=None) -> PersonelBelge:
+    """İmzalı İzin Talep ve Onay Formu'nu (PDF/JPG/PNG, ≤10 MB — personel_belge kuralları) Özlük Belgeleri'ne "İzin formu – dd.mm.yyyy" adıyla
+    ekler ve izne bağlar; önceki imzalı form varsa soft-silinir (ekranda onay sorulur)."""
+    from core.services import personel_belge as belge_servis
+    if izin.silindi:
+        raise PersonelIzinHatasi("Silinmiş izin kaydına form yüklenemez.")
+    try:
+        belge = belge_servis.belge_ekle(izin.personel, tur=PersonelBelge.Tur.DIGER, dosya=dosya,
+                                        aciklama=f"İzin formu – {izin.baslangic:%d.%m.%Y}", kullanici=kullanici)
+    except belge_servis.PersonelBelgeHatasi as e:
+        raise PersonelIzinHatasi(str(e))
+    eski = izin.imzali_belge
+    izin.imzali_belge = belge
+    izin.updated_by = kullanici
+    izin.save(update_fields=["imzali_belge", "updated_by", "updated_at"])
+    if eski is not None and not eski.silindi:
+        belge_servis.belge_sil(eski, kullanici=kullanici)
+    return belge
 
 
 def _cakisma_arg(veri):

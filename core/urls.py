@@ -419,6 +419,7 @@ urlpatterns = [
     path("ik/personel/<int:pk>/mesai-hesabi/atolye/", views.mesai_hesap_atolye, name="mesai_hesap_atolye"),
     path("ik/mesai-kayitlari/", views.mesai_kayitlari, name="mesai_kayitlari"),
     path("ik/izinler/<int:pk>/form.pdf", views.izin_formu_pdf, name="izin_formu_pdf"),
+    path("ik/izinler/<int:pk>/imzali-form/", views.izin_imzali_yukle, name="izin_imzali_yukle"),
     path("ayarlar/ik/", views.ik_ayari_kaydet, name="ik_ayari_kaydet"),
     path("ik/mesai-kayitlari/ekle/", views.mesai_kaydi_ekle, name="mesai_kaydi_ekle"),
     path("ik/mesai-kayitlari/<int:pk>/duzenle/", views.mesai_kaydi_duzenle,

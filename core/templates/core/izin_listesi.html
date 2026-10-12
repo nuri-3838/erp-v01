@@ -86,7 +86,8 @@
             </div>
           </div>
         </td>
-        <td><span class="rozet {% if i.tur == 'YILLIK' %}rozet-aktif{% elif i.tur == 'RAPOR' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ i.get_tur_display }}</span></td>
+        <td><span class="rozet {% if i.tur == 'YILLIK' %}rozet-aktif{% elif i.tur == 'RAPOR' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ i.get_tur_display }}</span>
+          {% if i.imzali_belge_id and not i.imzali_belge.silindi %}<a class="rozet rozet-aktif" href="{% url 'core:belge_indir' i.imzali_belge_id %}" target="_blank" title="İmzalı form: {{ i.imzali_belge.orijinal_ad }}">✅ İmzalı</a>{% endif %}</td>
         <td class="mono">{{ i.baslangic|date:"d.m.Y" }}</td>
         <td class="mono">{{ i.bitis|date:"d.m.Y" }}</td>
         <td class="mono">{% if i.saatlik %}{{ i.baslangic_saati|time:"H:i" }}–{{ i.bitis_saati|time:"H:i" }}{% else %}<span class="pasif">—</span>{% endif %}</td>
@@ -94,7 +95,8 @@
         <td class="sag mono">{% if i.saatlik %}{{ i.gun|tr_kur:3 }}{% else %}{{ i.gun|tr_kur:1 }}{% endif %}</td>
         <td>{{ i.aciklama|default:"—" }}</td>
         <td class="islem-bag">
-          {% if personel_link %}<a class="dugme-ikincil" href="{% url 'core:izin_formu_pdf' i.pk %}" target="_blank" title="İzin Talep ve Onay Formu (PDF)">🖨 Form (PDF)</a>{% endif %}
+          {% if personel_link %}<a class="dugme-ikincil" href="{% url 'core:izin_formu_pdf' i.pk %}" target="_blank" title="İzin Talep ve Onay Formu (PDF)">🖨 Form (PDF)</a>
+          {% include "core/_izin_imzali_dugme.html" with i=i sonraki="" %}{% endif %}
           <a class="dugme-ikincil" href="{% url 'core:izin_duzenle' i.pk %}">Düzenle</a>
           <form method="post" action="{% url 'core:izin_sil' i.pk %}" style="margin:0"
                 onsubmit="return confirm('{{ i.personel.ad_soyad|escapejs }} — {{ i.baslangic|date:"d.m.Y" }} izni silinsin mi?');">

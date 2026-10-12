@@ -9036,7 +9036,7 @@ def personel_detay(request, pk):
         ctx["izin_gorebilir"] = True
         ctx["bakiye"] = izin_servis.bakiye(p, bugun=bugun)
         ctx["son_izinler"] = list(
-            PersonelIzin.objects.filter(personel=p, silindi=False)
+            PersonelIzin.objects.filter(personel=p, silindi=False).select_related("imzali_belge")
             .order_by("-baslangic", "-id")[:10])
     if ekran_gorebilir(request.user, "personel_belgeleri"):
         ctx["belge_gorebilir"] = True
@@ -9262,22 +9262,62 @@ def izin_formu_pdf(request, pk):
     firma = firma_servis.firma_bilgisi_getir()
     ctx = izin_servis.izin_formu_baglam(izin)
     ctx.update({"firma": firma, "belge_tarihi": tr_bugun(), "logo_b64": None})
+    logo_bayt = None
     if firma.logo:
         try:
-            ctx["logo_b64"] = _pdf_gorsel_b64(firma.logo)
+            with firma.logo.open("rb") as f:
+                logo_bayt = f.read()
         except Exception:                                                      # bozuk/eksik dosya: statik logoya düş
-            ctx["logo_b64"] = None
-    if not ctx["logo_b64"]:
+            logo_bayt = None
+    if not logo_bayt:
         logo_yol = finders.find("core/img/semta-logo.png")
         if logo_yol:
             with open(logo_yol, "rb") as f:
-                ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
+                logo_bayt = f.read()
+    if logo_bayt:
+        ctx["logo_b64"] = _gri_png_b64(logo_bayt)                              # siyah-beyaz form: logo gri tonlamalı
     html = render_to_string("core/izin_formu_pdf.html", ctx)
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")
     resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("izin-formu", izin.personel.ad_soyad, izin.baslangic.isoformat()))
     resp["Cache-Control"] = "private, no-store"
     return resp
+
+
+def _gri_png_b64(bayt):
+    """Logoyu gri tonlamalı PNG'ye çevirip base64 döner (şeffaf alan beyaz)."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    try:
+        img = Image.open(io.BytesIO(bayt))
+        img.load()
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            img = img.convert("RGBA")
+            duz = Image.new("RGB", img.size, (255, 255, 255))
+            duz.paste(img, mask=img.split()[-1])
+            img = duz
+        img = img.convert("L")
+        cikti = io.BytesIO()
+        img.save(cikti, format="PNG")
+        return base64.b64encode(cikti.getvalue()).decode("ascii")
+    except Exception:
+        return None
+
+
+@ekran_gerekli("personel")
+def izin_imzali_yukle(request, pk):
+    """İmzalı formu (PDF/JPG/PNG ≤ 10 MB) izne bağlar + Özlük Belgeleri'ne "İzin formu – tarih"; yeniden yükleme eskisini değiştirir (onay ekranda)."""
+    izin = get_object_or_404(PersonelIzin.objects.select_related("personel"), pk=pk, silindi=False, personel__silindi=False)
+    if request.method == "POST":
+        try:
+            belge = izin_servis.imzali_form_yukle(izin, request.FILES.get("dosya"), kullanici=request.user)
+            messages.success(request, f"İmzalı izin formu yüklendi: {izin.personel.ad_soyad} — {belge.aciklama} (Özlük Belgeleri'ne de eklendi).")
+        except izin_servis.PersonelIzinHatasi as e:
+            messages.error(request, str(e))
+    return redirect(_izin_donus_url(request, izin.personel_id))
 
 
 def _izin_sure_metni(izin):

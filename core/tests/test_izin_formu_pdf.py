@@ -1,23 +1,23 @@
-"""İzin Talep ve Onay Formu PDF'i (2026-10-12): izin listesi ve personel kartında "🖨 Form (PDF)" düğmesi; WeasyPrint A4 PDF; yetki personel
-kartı; bağlam: firma ünvan/adres, personel (departman/görev yok), tam gün (tarihler, gün, işe başlama = bitişten sonraki ilk iş günü) /
-saatlik (tarih, saat aralığı, süre), yıllık izinde bakiye kutusu (hak edilen, önce kullanılan, bu izin, kalan) ve kanun notu; diğer türde yok."""
+"""İzin Talep ve Onay Formu PDF'i (2026-10-12): A5 dikey, siyah-beyaz, gri logo, alt bilgi yok, personel adı basılmaz (elle yazılır; TC ve işe
+giriş basılı); tam gün / saatlik içerik; yıllık izinde bakiye tablosu; imza kutuları. İmzalı form yükleme: izne bağlı + Özlük Belgeleri'ne
+"İzin formu – tarih", ✅ İmzalı rozeti ve dosya bağlantısı, yeniden yükleme eskisini soft-siler, yetki personel kartı."""
 from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.template.loader import render_to_string
 from django.urls import reverse
 
-from core.models import EkranYetki, ResmiTatil
+from core.models import EkranYetki, PersonelBelge, PersonelIzin, ResmiTatil
 from core.services import personel_izin as izin_servis
-from core.services.firma import firma_bilgisi_kaydet
-from core.services.personel_izin import izin_ekle, izin_formu_baglam
-from core.tests.ik_yardimci import personel_kur
+from core.services.firma import firma_bilgisi_getir, firma_bilgisi_kaydet
+from core.services.personel_izin import PersonelIzinHatasi, imzali_form_yukle, izin_ekle, izin_formu_baglam
+from core.tests.ik_yardimci import PDF_BAYT, OzelDizinTestTemel, personel_kur, png_bayt, yuklenen
 
 D = Decimal
 
 
-class IzinFormuTest(TestCase):
+class IzinFormuTest(OzelDizinTestTemel):
     @classmethod
     def setUpTestData(cls):
         cls.p = personel_kur(ad="metehan", soyad="kaya", ise_giris_tarihi=date(2020, 3, 15), tc_kimlik_no="10000000146", departman="ÜRETİM", gorev="USTA")
@@ -28,6 +28,9 @@ class IzinFormuTest(TestCase):
         EkranYetki.objects.create(kullanici=cls.izinci, ekran_kod="personel_izinleri")
         firma_bilgisi_kaydet(unvan="SEMTA ALÜMİNYUM A.Ş.", adres="Organize Sanayi 5. Cad. No:7 Kayseri", kullanici=cls.yon)
         ResmiTatil.objects.get_or_create(tarih=date(2026, 7, 15), silindi=False, defaults={"ad": "Demokrasi ve Millî Birlik Günü"})   # seed zaten ekler
+
+    def html(self, izin, tarih=date(2026, 7, 10)):
+        return render_to_string("core/izin_formu_pdf.html", {**izin_formu_baglam(izin), "firma": firma_bilgisi_getir(), "belge_tarihi": tarih})
 
     def test_baglam_tam_gun_yillik(self):
         izin_ekle(self.p, tur="YILLIK", baslangic=date(2026, 6, 1), bitis=date(2026, 6, 3), kullanici=self.yon)       # 3 gün (önce)
@@ -47,29 +50,28 @@ class IzinFormuTest(TestCase):
         bk = izin_formu_baglam(s)["bakiye"]
         self.assertEqual((bk["bu_izin"], bk["bu_izin_metni"], bk["kalan_metni"]), (D("0.4"), "3 sa", "89 gün 4,5 sa"))
 
-    def test_pdf_uretimi_icerik_ve_dugmeler(self):
+    def test_pdf_a5_siyah_beyaz_icerik_ve_dugmeler(self):
         i = izin_ekle(self.p, tur="YILLIK", baslangic=date(2026, 7, 13), bitis=date(2026, 7, 14), aciklama="yaz tatili", kullanici=self.yon)
         self.client.force_login(self.ik)
         url = reverse("core:izin_formu_pdf", args=[i.pk])
         r = self.client.get(url)
         self.assertEqual((r.status_code, r["Content-Type"]), (200, "application/pdf"))
         self.assertTrue(r.content.startswith(b"%PDF"))
-        self.assertIn("izin-formu", r["Content-Disposition"])
-        from django.template.loader import render_to_string
-        from core.services.firma import firma_bilgisi_getir
-        html = render_to_string("core/izin_formu_pdf.html", {**izin_formu_baglam(i), "firma": firma_bilgisi_getir(), "belge_tarihi": date(2026, 7, 10)})
+        html = self.html(i)
+        self.assertIn("size: A5 portrait", html)
+        self.assertIn("grayscale(100%)", html)
         self.assertIn(firma_bilgisi_getir().adres, html)
-        for metin in ("İzin Talep ve Onay Formu", "SEMTA ALÜMİNYUM A.Ş.", "METEHAN KAYA", "10000000146", "15.03.2020",
-                      "Yıllık İzin", "13.07.2026 – 14.07.2026", "2,0 gün", "16.07.2026", "Hak Edilen", "Bu İzinden Önce Kullanılan", "Kalan",
-                      "yaz tatili", "İzni Talep Eden Personel", "Onaylayan / İşveren Vekili", "4857 sayılı İş Kanunu", "Belge tarihi"):
+        for metin in ("İzin Talep ve Onay Formu", "SEMTA ALÜMİNYUM A.Ş.", "10000000146", "15.03.2020", "Yıllık İzin", "13.07.2026 – 14.07.2026",
+                      "2,0 gün", "16.07.2026", "Hak Edilen", "Bu İzinden Önce Kullanılan", "Kalan", "yaz tatili", "İzni Talep Eden Personel",
+                      "Onaylayan / İşveren Vekili", "Belge tarihi", "İmza / Kaşe"):
             self.assertIn(metin, html, metin)
-        for metin in ("ÜRETİM", "USTA"):
-            self.assertNotIn(metin, html, metin)                                                                     # departman/görev yazılmaz
+        for metin in ("METEHAN", "KAYA", "ÜRETİM", "USTA", "4857", "SEMTA ERP", "@bottom", "#15294d", "#f07c00"):
+            self.assertNotIn(metin, html, metin)                                                                      # ad/departman/görev, kanun notu, footer, renk yok
         m = izin_ekle(self.p, tur="MAZERET", baslangic=date(2026, 6, 10), saatlik=True, baslangic_saati="09:00", bitis_saati="11:30", kullanici=self.yon)
-        html = render_to_string("core/izin_formu_pdf.html", {**izin_formu_baglam(m), "firma": firma_bilgisi_getir(), "belge_tarihi": date(2026, 6, 10)})
+        html = self.html(m)
         for metin in ("Mazeret İzni (saatlik)", "09:00 – 11:30", "2 sa 30 dk"):
             self.assertIn(metin, html)
-        for metin in ("4857 sayılı", "Hak Edilen", "İşe Başlama"):
+        for metin in ("Hak Edilen", "İşe Başlama", "METEHAN"):
             self.assertNotIn(metin, html)
         self.assertEqual(self.client.get(reverse("core:izin_formu_pdf", args=[m.pk])).status_code, 200)
         # düğmeler
@@ -79,10 +81,52 @@ class IzinFormuTest(TestCase):
         r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]))
         self.assertContains(r, url)
         self.assertContains(r, "🖨 Form (PDF)")
-        self.assertContains(self.client.get(reverse("core:izinler")), url)
-        # yalnız izin yetkisi: liste görür ama form düğmesi/PDF yok (personel kartı yetkisi gerekir)
-        self.client.force_login(self.izinci)
-        self.assertNotContains(self.client.get(reverse("core:izinler")), "Form (PDF)")
+        self.assertContains(r, "İmzalı formu yükle")
+        r = self.client.get(reverse("core:izinler"))
+        self.assertContains(r, url)
+        self.assertContains(r, "İmzalı formu yükle")
+        self.client.force_login(self.izinci)                                                                          # yalnız izin yetkisi: düğme/PDF/yükleme yok
+        r = self.client.get(reverse("core:izinler"))
+        self.assertNotContains(r, "Form (PDF)")
+        self.assertNotContains(r, "İmzalı formu yükle")
         self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.post(reverse("core:izin_imzali_yukle", args=[i.pk]), {"dosya": yuklenen("f.pdf", PDF_BAYT)}).status_code, 403)
         self.client.logout()
         self.assertEqual(self.client.get(url).status_code, 302)
+
+    def test_imzali_form_yukleme_rozet_ve_yeniden_yukleme(self):
+        i = izin_ekle(self.p, tur="YILLIK", baslangic=date(2026, 7, 13), bitis=date(2026, 7, 14), kullanici=self.yon)
+        self.client.force_login(self.ik)
+        EkranYetki.objects.create(kullanici=self.ik, ekran_kod="personel_izinleri")
+        url = reverse("core:izin_imzali_yukle", args=[i.pk])
+        r = self.client.post(url, {"dosya": yuklenen("imzali.pdf", PDF_BAYT), "sonraki": "personel"}, follow=True)
+        self.assertRedirects(r, reverse("core:personel_detay", args=[self.p.pk]))
+        i.refresh_from_db()
+        b1 = i.imzali_belge
+        self.assertEqual((b1.personel_id, b1.tur, b1.aciklama, b1.orijinal_ad, b1.silindi), (self.p.pk, "DIGER", "İzin formu – 13.07.2026", "imzali.pdf", False))
+        self.assertContains(r, "✅ İmzalı")
+        self.assertContains(r, reverse("core:belge_indir", args=[b1.pk]))
+        self.assertContains(r, "Yeniden yükle")
+        r = self.client.get(reverse("core:izinler"))
+        self.assertContains(r, "✅ İmzalı")
+        # yeniden yükleme (PNG): eski belge soft-silinir, yeni bağlanır
+        r = self.client.post(url, {"dosya": yuklenen("imzali2.png", png_bayt())}, follow=True)
+        self.assertRedirects(r, reverse("core:izinler"))
+        i.refresh_from_db()
+        b1.refresh_from_db()
+        self.assertTrue(b1.silindi)
+        self.assertEqual((i.imzali_belge_id != b1.pk, i.imzali_belge.orijinal_ad, PersonelBelge.objects.filter(personel=self.p, silindi=False).count()),
+                         (True, "imzali2.png", 1))
+        # geçersiz dosya: hata mesajı, bağ değişmez
+        r = self.client.post(url, {"dosya": yuklenen("x.txt", b"merhaba")}, follow=True)
+        mesajlar = [str(x) for x in r.context["messages"]]
+        self.assertTrue(any("x.txt" in m or "uzant" in m.lower() or "dosya" in m.lower() for m in mesajlar), mesajlar)
+        i.refresh_from_db()
+        self.assertEqual(i.imzali_belge.orijinal_ad, "imzali2.png")
+        with self.assertRaisesMessage(PersonelIzinHatasi, "Dosya seçilmedi"):
+            imzali_form_yukle(i, None, kullanici=self.yon)
+        r = self.client.post(url, {}, follow=True)
+        self.assertTrue(any("Dosya seçilmedi" in str(x) for x in r.context["messages"]))
+        # izin silinince belge Özlük'te kalır
+        izin_servis.izin_sil(i, kullanici=self.yon)
+        self.assertEqual(PersonelBelge.objects.filter(personel=self.p, silindi=False).count(), 1)
