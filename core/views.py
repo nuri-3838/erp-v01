@@ -9250,6 +9250,36 @@ def izin_sil(request, pk):
     return redirect("core:izinler")
 
 
+@ekran_gerekli("personel")
+def izin_formu_pdf(request, pk):
+    """İzin Talep ve Onay Formu (WeasyPrint, tek sayfa A4) — teklif/çek PDF'leriyle aynı altyapı; yetki: personel kartı."""
+    import base64
+
+    from django.contrib.staticfiles import finders
+    from weasyprint import HTML
+
+    izin = get_object_or_404(PersonelIzin.objects.select_related("personel"), pk=pk, silindi=False, personel__silindi=False)
+    firma = firma_servis.firma_bilgisi_getir()
+    ctx = izin_servis.izin_formu_baglam(izin)
+    ctx.update({"firma": firma, "belge_tarihi": tr_bugun(), "logo_b64": None})
+    if firma.logo:
+        try:
+            ctx["logo_b64"] = _pdf_gorsel_b64(firma.logo)
+        except Exception:                                                      # bozuk/eksik dosya: statik logoya düş
+            ctx["logo_b64"] = None
+    if not ctx["logo_b64"]:
+        logo_yol = finders.find("core/img/semta-logo.png")
+        if logo_yol:
+            with open(logo_yol, "rb") as f:
+                ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
+    html = render_to_string("core/izin_formu_pdf.html", ctx)
+    pdf = HTML(string=html).write_pdf()
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("izin-formu", izin.personel.ad_soyad, izin.baslangic.isoformat()))
+    resp["Cache-Control"] = "private, no-store"
+    return resp
+
+
 def _izin_sure_metni(izin):
     if izin.saatlik:
         return f"{izin.baslangic:%d.%m.%Y} {izin.baslangic_saati:%H:%M}–{izin.bitis_saati:%H:%M} ({izin_servis.sure_metni(izin.dakika)}, {izin.gun.normalize():f} gün karşılığı)"

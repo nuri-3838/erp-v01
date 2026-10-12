@@ -190,6 +190,7 @@
             <td class="sag mono">{% if i.saatlik %}{{ i.gun|tr_kur:3 }}{% else %}{{ i.gun|tr_kur:1 }}{% endif %}</td>
             <td>{{ i.aciklama|default:"—" }}</td>
             <td class="islem-bag">
+              <a class="dugme-ikincil" href="{% url 'core:izin_formu_pdf' i.pk %}" target="_blank" title="İzin Talep ve Onay Formu (PDF)">🖨 Form (PDF)</a>
               <a class="dugme-ikincil" href="{% url 'core:izin_duzenle' i.pk %}?sonraki=personel">Düzenle</a>
               <form method="post" action="{% url 'core:izin_sil' i.pk %}" style="margin:0"
                     onsubmit="return confirm('{{ i.baslangic|date:"d.m.Y"|escapejs }} tarihli izin silinsin mi?');">

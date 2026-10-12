@@ -345,6 +345,36 @@ def _kilitle(personel_id):
     return p
 
 
+def ise_baslama_tarihi(bitis: date) -> date:
+    """Bitişten sonraki ilk iş günü (Pazar ve resmî tatil atlanır)."""
+    d = bitis + timedelta(days=1)
+    tatiller = tatil_gunleri_seti(d, d + timedelta(days=30))
+    while d.weekday() == 6 or d in tatiller:
+        d += timedelta(days=1)
+    return d
+
+
+def izin_formu_baglam(izin: PersonelIzin) -> dict:
+    """"İzin Talep ve Onay Formu" PDF'i: personel, izin bilgileri, yıllık izinde bakiye kutusu (hak edilen, bu izinden önce kullanılan, bu izin,
+    kalan — gün + saat), işe başlama tarihi (tam günde). Hesap izin BAŞLANGIÇ tarihi itibarıyladır."""
+    p = izin.personel
+    gunluk = gunluk_saat()
+    d = {"izin": izin, "personel": p, "gunluk_saat": gunluk, "sure_metni": sure_metni(izin.dakika) if izin.saatlik else "",
+         "ise_baslama": None if izin.saatlik else ise_baslama_tarihi(izin.bitis), "yillik": izin.tur == PersonelIzin.Tur.YILLIK, "bakiye": None}
+    if d["yillik"]:
+        tarih = izin.baslangic
+        hak = Decimal(hak_edilen_gun(p.ise_giris_tarihi, p.dogum_tarihi, _as_of(p, tarih)))
+        onceki = Decimal(p.izin_onceki_kullanilan or 0)
+        once = (PersonelIzin.objects.filter(personel=p, silindi=False, tur=PersonelIzin.Tur.YILLIK)
+                .filter(Q(baslangic__lt=izin.baslangic) | Q(baslangic=izin.baslangic, pk__lt=izin.pk)).aggregate(t=Sum("gun"))["t"] or SIFIR)
+        kalan = hak - onceki - once - izin.gun
+        d["bakiye"] = {"hak_edilen": hak, "onceki": onceki, "once_kullanilan": once, "bu_izin": izin.gun, "kalan": kalan,
+                       "hak_metni": gun_saat_metni(hak, gunluk), "onceki_metni": gun_saat_metni(onceki, gunluk),
+                       "once_metni": gun_saat_metni(once, gunluk), "bu_izin_metni": gun_saat_metni(izin.gun, gunluk),
+                       "kalan_metni": gun_saat_metni(kalan, gunluk), "eksi": kalan < 0}
+    return d
+
+
 def _cakisma_arg(veri):
     return {"saatlik": veri["saatlik"], "baslangic_saati": veri["baslangic_saati"], "bitis_saati": veri["bitis_saati"]}
 

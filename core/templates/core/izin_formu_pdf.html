@@ -1,0 +1,112 @@
+{% load core_extras %}<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4; margin: 15mm 14mm 16mm;
+    @bottom-left  { content: "SEMTA ERP · İzin Talep ve Onay Formu"; font-size: 8px; color: #9ca3af; }
+    @bottom-right { content: "{{ izin.personel.ad_soyad }} · {{ izin.baslangic|date:'d.m.Y' }}"; font-size: 8px; color: #9ca3af; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; color: #1c2533; font-size: 11px; line-height: 1.45; margin: 0; }
+  .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 3px solid #15294d; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand img { height: 44px; }
+  .brand .ad { font-size: 15px; font-weight: 800; color: #15294d; }
+  .brand .ad small { display: block; font-size: 9px; font-weight: 500; color: #6b7280; white-space: pre-line; }
+  .doc { text-align: right; }
+  .doc h1 { margin: 0; font-size: 15px; color: #15294d; text-transform: uppercase; letter-spacing: .6px; }
+  .doc .meta { margin-top: 5px; font-size: 10.5px; color: #374151; }
+  .doc .meta b { color: #15294d; }
+  .accent { height: 4px; background: #f07c00; border-radius: 2px; margin: 0 0 16px; }
+  h2 { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; margin: 14px 0 6px; }
+  table.kv { width: 100%; border-collapse: collapse; }
+  table.kv td { padding: 6px 10px; border: 1px solid #e3e8f0; vertical-align: top; }
+  table.kv td.et { width: 32%; background: #f4f6fa; color: #6b7280; font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; }
+  table.kv td.dg { font-weight: 700; color: #15294d; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .bakiye { display: flex; gap: 10px; margin-top: 6px; }
+  .bakiye .kart { flex: 1; border: 1px solid #e3e8f0; border-radius: 8px; padding: 8px 12px; background: #f8fafc; }
+  .bakiye .kart.kalan { background: #15294d; color: #fff; border-color: #15294d; }
+  .bakiye .kart.kalan.eksi { background: #b1122c; border-color: #b1122c; }
+  .bakiye .et { font-size: 8.5px; text-transform: uppercase; letter-spacing: .5px; opacity: .85; }
+  .bakiye .dg { font-size: 13px; font-weight: 800; margin-top: 2px; }
+  .bakiye .alt { font-size: 8.5px; opacity: .8; }
+  .aciklama { border: 1px solid #e3e8f0; border-radius: 8px; padding: 8px 12px; min-height: 40px; }
+  .imza { display: flex; gap: 40px; margin-top: 48px; }
+  .imza .kol { flex: 1; border: 1px solid #e3e8f0; border-radius: 8px; padding: 10px 12px 14px; min-height: 120px; }
+  .imza .rol { font-weight: 800; color: #15294d; font-size: 11px; border-bottom: 2px solid #f07c00; padding-bottom: 4px; margin-bottom: 8px; }
+  .imza .satir { display: flex; gap: 8px; margin-top: 10px; font-size: 10px; color: #374151; }
+  .imza .satir span:first-child { min-width: 64px; color: #6b7280; }
+  .imza .satir .bos { flex: 1; border-bottom: 1px dotted #9ca3af; }
+  .not { margin-top: 22px; font-size: 8.5px; color: #6b7280; border-top: 1px solid #e3e8f0; padding-top: 6px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="logo">{% endif %}
+      <div class="ad">{{ firma.unvan|default:"SEMTA" }}<small>{{ firma.adres|default:"" }}</small></div>
+    </div>
+    <div class="doc">
+      <h1>İzin Talep ve Onay Formu</h1>
+      <div class="meta">Belge tarihi: <b>{{ belge_tarihi|date:"d.m.Y" }}</b></div>
+    </div>
+  </div>
+  <div class="accent"></div>
+
+  <h2>Personel</h2>
+  <table class="kv">
+    <tr><td class="et">Adı Soyadı</td><td class="dg">{{ personel.ad_soyad }}</td></tr>
+    <tr><td class="et">TC Kimlik No</td><td class="dg mono">{{ personel.tc_kimlik_no|default:"—" }}</td></tr>
+    <tr><td class="et">İşe Giriş Tarihi</td><td class="dg mono">{{ personel.ise_giris_tarihi|date:"d.m.Y" }}</td></tr>
+  </table>
+
+  <h2>İzin</h2>
+  <table class="kv">
+    <tr><td class="et">İzin Türü</td><td class="dg">{{ izin.get_tur_display }}{% if izin.saatlik %} (saatlik){% endif %}</td></tr>
+    {% if izin.saatlik %}
+      <tr><td class="et">Tarih</td><td class="dg mono">{{ izin.baslangic|date:"d.m.Y" }}</td></tr>
+      <tr><td class="et">Saat Aralığı</td><td class="dg mono">{{ izin.baslangic_saati|time:"H:i" }} – {{ izin.bitis_saati|time:"H:i" }}</td></tr>
+      <tr><td class="et">Süre</td><td class="dg">{{ sure_metni }}{% if yillik %} ({{ izin.gun|tr_kur:3 }} gün karşılığı){% endif %}</td></tr>
+    {% else %}
+      <tr><td class="et">Başlangıç – Bitiş</td><td class="dg mono">{{ izin.baslangic|date:"d.m.Y" }} – {{ izin.bitis|date:"d.m.Y" }}</td></tr>
+      <tr><td class="et">Gün Sayısı</td><td class="dg">{{ izin.gun|tr_kur:1 }} gün</td></tr>
+      <tr><td class="et">İşe Başlama Tarihi</td><td class="dg mono">{{ ise_baslama|date:"d.m.Y" }}</td></tr>
+    {% endif %}
+  </table>
+
+  {% if yillik and bakiye %}
+  <h2>Yıllık İzin Bakiyesi ({{ izin.baslangic|date:"d.m.Y" }} itibarıyla)</h2>
+  <div class="bakiye">
+    <div class="kart"><div class="et">Hak Edilen</div><div class="dg">{{ bakiye.hak_metni }}</div></div>
+    <div class="kart"><div class="et">Bu İzinden Önce Kullanılan</div><div class="dg">{{ bakiye.once_metni }}</div>
+      {% if bakiye.onceki %}<div class="alt">+ sistem öncesi {{ bakiye.onceki_metni }}</div>{% endif %}</div>
+    <div class="kart"><div class="et">Bu İzin</div><div class="dg">{{ bakiye.bu_izin_metni }}</div></div>
+    <div class="kart kalan{% if bakiye.eksi %} eksi{% endif %}"><div class="et">Kalan</div><div class="dg">{{ bakiye.kalan_metni }}</div>
+      <div class="alt">1 gün = {{ gunluk_saat|tr_kur:1 }} saat</div></div>
+  </div>
+  {% endif %}
+
+  <h2>Açıklama</h2>
+  <div class="aciklama">{{ izin.aciklama|default:"" }}</div>
+
+  <div class="imza">
+    <div class="kol">
+      <div class="rol">İzni Talep Eden Personel</div>
+      <div class="satir"><span>Ad Soyad</span><span class="bos">{{ personel.ad_soyad }}</span></div>
+      <div class="satir"><span>Tarih</span><span class="bos"></span></div>
+      <div class="satir"><span>İmza</span><span class="bos"></span></div>
+    </div>
+    <div class="kol">
+      <div class="rol">Onaylayan / İşveren Vekili</div>
+      <div class="satir"><span>Ad Soyad</span><span class="bos"></span></div>
+      <div class="satir"><span>Tarih</span><span class="bos"></span></div>
+      <div class="satir"><span>İmza / Kaşe</span><span class="bos"></span></div>
+    </div>
+  </div>
+
+  {% if yillik %}<div class="not">4857 sayılı İş Kanunu ve Yıllık Ücretli İzin Yönetmeliği uyarınca düzenlenmiştir.</div>{% endif %}
+</body>
+</html>
