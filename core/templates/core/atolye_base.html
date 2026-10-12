@@ -42,6 +42,35 @@
     .at-geri button { background:#fff; color:var(--kirmizi); border:2px solid var(--kirmizi); border-radius:12px; padding:.5rem .8rem; font-weight:800; font-size:.95rem; cursor:pointer; }
     .at-bos { text-align:center; color:var(--soluk); padding:2rem 0; font-size:1.05rem; }
     .at-yardim { font-size:.9rem; color:var(--soluk); text-align:center; }
+    /* iş oturumu (Başla / Bitir) */
+    .at-emir.calisiyor { border-left-color:var(--yesil); }
+    .at-oturum { margin:.6rem 0; padding:.7rem .8rem; border-radius:14px; background:#eef9f3; border:2px solid #bfe6d1; }
+    .at-oturum.benim { background:#e4f6ec; border-color:var(--yesil); }
+    .at-oturum.dunku { background:#fff1dd; border-color:var(--turuncu); }
+    .at-oturum-ust { display:flex; justify-content:space-between; align-items:center; gap:.6rem; font-weight:800; color:var(--yesil); font-size:.95rem; }
+    .at-oturum.dunku .at-oturum-ust { color:#8a4b00; }
+    .at-sayac { font-size:1.5rem; font-variant-numeric:tabular-nums; }
+    .at-ekip { margin:.3rem 0 .5rem; font-size:.95rem; color:#1c2433; font-weight:700; }
+    .at-bitir .at-form button { background:linear-gradient(135deg,#ff6b6b,#b1122c); }
+    .at-bitis-saat { display:flex; flex-direction:column; gap:.2rem; font-size:.85rem; font-weight:700; color:#8a4b00; margin-bottom:.5rem; }
+    .at-bitis-saat input { font-size:1.05rem; font-weight:800; border:2px solid var(--turuncu); border-radius:12px; padding:.45rem; }
+    .at-iptal-form { margin:.5rem 0 0; text-align:right; }
+    .at-iptal { background:#fff; color:var(--soluk); border:2px solid var(--cizgi); border-radius:12px; padding:.45rem .8rem; font-weight:800; font-size:.9rem; cursor:pointer; }
+    .at-basla { margin-top:.4rem; }
+    .at-basla summary { list-style:none; display:block; text-align:center; background:linear-gradient(135deg,#1fbf75,#0b6b3f); color:#fff; border-radius:14px; padding:.9rem; font-size:1.25rem; font-weight:800; cursor:pointer; }
+    .at-basla summary::-webkit-details-marker { display:none; }
+    .at-basla[open] summary { border-radius:14px 14px 0 0; }
+    .at-basla form { border:2px solid #bfe6d1; border-top:none; border-radius:0 0 14px 14px; padding:.7rem .8rem; }
+    .at-aday { display:flex; align-items:center; gap:.6rem; padding:.55rem .3rem; font-size:1.05rem; font-weight:700; border-bottom:1px solid var(--cizgi); }
+    .at-aday input { width:1.5rem; height:1.5rem; }
+    .at-aday.mesgul { color:var(--soluk); font-weight:600; }
+    .at-aday small { font-weight:600; }
+    .at-basla-buton { display:block; width:100%; margin-top:.7rem; min-height:3.4rem; border:none; border-radius:14px; background:linear-gradient(135deg,#1fbf75,#0b6b3f); color:#fff; font-size:1.2rem; font-weight:800; cursor:pointer; }
+    .at-acik-isler { border-left:6px solid var(--yesil); }
+    .at-acik-is { padding:.5rem 0; border-bottom:1px solid var(--cizgi); font-size:1rem; }
+    .at-acik-is.dunku { color:#8a4b00; }
+    .at-acik-is .at-sayac { font-size:1.1rem; }
+    .at-git { display:inline-block; margin-top:.3rem; color:var(--lacivert); font-weight:800; text-decoration:none; }
   </style>
 </head>
 <body>
@@ -54,6 +83,23 @@
     {% if messages %}{% for m in messages %}<div class="at-mesaj {{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
     {% block icerik %}{% endblock %}
   </main>
+  <script>
+  (function(){
+    // Çalışan iş oturumu sayacı: sunucu başlangıç zamanından (ms) itibaren SS:DD biçiminde; sayfa yüklendiğinden değil.
+    var el = document.querySelectorAll('.at-sayac[data-baslangic]');
+    if (!el.length) return;
+    function p2(n){ return (n < 10 ? '0' : '') + n; }
+    function yaz(){
+      var simdi = Date.now();
+      el.forEach(function(e){
+        var sn = Math.max(0, Math.floor((simdi - Number(e.dataset.baslangic)) / 1000));
+        var sa = Math.floor(sn / 3600), dk = Math.floor((sn % 3600) / 60);
+        e.textContent = (sa >= 24 ? Math.floor(sa / 24) + 'g ' : '') + p2(sa % 24) + ':' + p2(dk);
+      });
+    }
+    yaz(); setInterval(yaz, 15000);
+  })();
+  </script>
   {% block js %}{% endblock %}
 </body>
 </html>

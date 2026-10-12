@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from core.storage import (
     aday_ek_yolu, bordro_dosya_yolu, cari_ek_yolu, kdv_mahsup_dosya_yolu, cek_gorsel_yolu, fatura_ek_yolu, ik_ozel_depo, ozel_depo,
@@ -4031,6 +4032,87 @@ class MesaiKaydi(TemelModel):
         if self.cikis_zamani is None:
             return None
         return int((self.cikis_zamani - self.giris_zamani).total_seconds() // 60)
+
+
+class IsOturumu(TemelModel):
+    """ATÖLYE > İş Oturumu — operatörün bir istasyon emrinde "Başla" ile açtığı, "Bitir" (adet) ya da "İptal (iş yapılmadı)" ile kapattığı
+    zaman dilimi: emir, ekip (``IsOturumuUyesi``: başlatan + seçtiği arkadaşları), başlangıç–bitiş. Bitir'de adetle MEVCUT üretim mantığı
+    (``uretim.istasyon_emri_uret``) çalışır ve açılan onaylı kayıt ``kayit`` ile bağlanır; hata olursa oturum AÇIK kalır. Kayıt sonradan geri
+    alınsa da oturum (süre) kalır — işçilik/GÜG dağıtımının (adam-saat) ham verisi. Üretim kaydının ``personel``'i = başlatan; bitiren ayrı iz.
+    Zaman HER ZAMAN sunucu saatidir; önceki günden kalan oturum kapatılırken bitiş saati operatörden alınır (bkz. core.services.is_oturumu)."""
+
+    class Durum(models.TextChoices):
+        ACIK = "ACIK", "Açık"
+        BITTI = "BITTI", "Bitti"
+        IPTAL = "IPTAL", "İptal (iş yapılmadı)"
+
+    istasyon_emri = models.ForeignKey("IstasyonEmri", verbose_name="istasyon emri", on_delete=models.PROTECT, related_name="is_oturumlari")
+    uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.PROTECT, related_name="is_oturumlari")
+    istasyon = models.ForeignKey(IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT, related_name="is_oturumlari")
+    baslatan = models.ForeignKey(Personel, verbose_name="başlatan", on_delete=models.PROTECT, related_name="baslattigi_is_oturumlari")
+    bitiren = models.ForeignKey(Personel, verbose_name="bitiren", null=True, blank=True, on_delete=models.PROTECT,
+                                related_name="bitirdigi_is_oturumlari")
+    is_tarihi = models.DateField("iş tarihi")                        # başlangıcın TR tarihi
+    baslangic_zamani = models.DateTimeField("başlangıç zamanı")
+    bitis_zamani = models.DateTimeField("bitiş zamanı", null=True, blank=True)
+    durum = models.CharField("durum", max_length=5, choices=Durum.choices, default=Durum.ACIK)
+    miktar = models.DecimalField("üretilen adet", max_digits=18, decimal_places=6, null=True, blank=True)
+    kayit = models.OneToOneField(OperasyonKaydi, verbose_name="operasyon kaydı", null=True, blank=True, on_delete=models.PROTECT,
+                                 related_name="is_oturumu")
+    baslangic_ip = models.GenericIPAddressField("başlangıç IP", null=True, blank=True)
+    bitis_ip = models.GenericIPAddressField("bitiş IP", null=True, blank=True)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+
+    class Meta:
+        db_table = "core_is_oturumu"
+        verbose_name = "iş oturumu"
+        verbose_name_plural = "iş oturumları"
+        ordering = ["-baslangic_zamani", "-id"]
+        indexes = [models.Index(fields=["istasyon_emri", "durum"], name="ix_is_oturumu_emir_durum"),
+                   models.Index(fields=["is_tarihi"], name="ix_is_oturumu_tarih")]
+        constraints = [
+            models.CheckConstraint(condition=(models.Q(bitis_zamani__isnull=True) | models.Q(bitis_zamani__gte=models.F("baslangic_zamani"))),
+                                   name="ck_is_oturumu_bitis_gte_baslangic"),
+        ]
+
+    def __str__(self):
+        return f"{self.istasyon_emri.no} — {self.baslatan.ad_soyad} {self.baslangic_zamani:%d.%m.%Y %H:%M}"
+
+    @property
+    def sure_saniye(self):
+        """Başlangıçtan bitişe (açıksa şimdiye) geçen süre (saniye)."""
+        bitis = self.bitis_zamani or timezone.now()
+        return max(int((bitis - self.baslangic_zamani).total_seconds()), 0)
+
+
+class IsOturumuUyesi(TemelModel):
+    """İş oturumunun ekip üyesi: başlatan (``baslatan=True``) ve seçilen arkadaşlar; her üyenin o anki açık mesai kaydı + katılım/ayrılma zamanı
+    (mesaisini bitiren üye oturumdan ayrılır, oturum diğerleriyle sürer). Adam-saat = üyelerin kendi katılım sürelerinin toplamı."""
+
+    oturum = models.ForeignKey(IsOturumu, verbose_name="iş oturumu", on_delete=models.PROTECT, related_name="uyeler")
+    personel = models.ForeignKey(Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="is_oturumu_uyelikleri")
+    mesai_kaydi = models.ForeignKey(MesaiKaydi, verbose_name="mesai kaydı", null=True, blank=True, on_delete=models.PROTECT,
+                                    related_name="is_oturumu_uyelikleri")
+    baslatan = models.BooleanField("başlatan", default=False)
+    katilim_zamani = models.DateTimeField("katılım zamanı")
+    ayrilma_zamani = models.DateTimeField("ayrılma zamanı", null=True, blank=True)
+
+    class Meta:
+        db_table = "core_is_oturumu_uyesi"
+        verbose_name = "iş oturumu üyesi"
+        verbose_name_plural = "iş oturumu üyeleri"
+        ordering = ["-baslatan", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["oturum", "personel"], condition=models.Q(silindi=False), name="uq_is_oturumu_uyesi_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.personel.ad_soyad} @ {self.oturum_id}"
+
+    def katilim_saniye(self, bitis=None):
+        """Üyenin oturumdaki süresi (saniye): katılımdan ayrılmaya (ayrılmadıysa oturum bitişine / şimdiye)."""
+        son = self.ayrilma_zamani or bitis or timezone.now()
+        return max(int((son - self.katilim_zamani).total_seconds()), 0)
 
 
 class SilmeKaydi(TemelModel):

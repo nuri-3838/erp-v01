@@ -3,7 +3,7 @@
 
 {% block icerik %}
 {% if izleme %}
-  <div class="at-mesaj info">Yönetici görüntüleme: bu hesabın personel kartı yok. İstasyonları ve emirleri görebilirsiniz; mesai ve "Üretildi" yalnız personel (operatör) hesabıyla girilir.</div>
+  <div class="at-mesaj info">Yönetici görüntüleme: bu hesabın personel kartı yok. İstasyonları ve emirleri görebilirsiniz; mesai ve "Başla / Bitir" yalnız personel (operatör) hesabıyla girilir.</div>
   <section class="at-kart">
     <h2 class="at-baslik">İstasyonlar</h2>
     <div class="at-ist" id="istasyonlar-izleme">
@@ -23,6 +23,7 @@
   </form>
   <p class="at-yardim">Yalnızca fabrika Wi-Fi'ına bağlıyken başlatılabilir. Mesai açılmadan üretim girilemez.</p>
 {% else %}
+  {% include "core/_atolye_acik_isler.html" with istasyon_pk=0 %}
   <section class="at-kart">
     <h2 class="at-baslik">İstasyonunuzu seçin</h2>
     <div class="at-ist" id="istasyonlar">
@@ -44,7 +45,8 @@
     var pk = localStorage.getItem('atolyeIstasyon');
     var secimEkrani = location.search.indexOf('sec=1') >= 0;
     var kutu = document.getElementById('istasyonlar');
-    if (kutu && pk && !secimEkrani) {
+    var acikIs = document.querySelector('.at-acik-isler');
+    if (kutu && pk && !secimEkrani && !acikIs) {
       var a = kutu.querySelector('a[data-pk="' + pk + '"]');
       if (a) { location.replace(a.getAttribute('href')); return; }
     }

@@ -1,0 +1,97 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}İş Oturumları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}İş Oturumları{% endblock %}
+
+{% block content %}
+<style>
+  .io-sure { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem; }
+  .io-sure .alan { margin:0; }
+  .io-sure .alan label { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .io-sure input, .io-sure select { min-height:38px; }
+  .io-ist { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; padding:.15rem .5rem; border-radius:8px; background:#eef1f7; color:#33415c; }
+  .io-acik { color:#0b6b3f; font-weight:700; }
+  .io-iptal { color:var(--metin-soluk); }
+  .io-ekip { font-size:.88rem; }
+  .io-toplam td { font-weight:700; background:rgba(33,56,95,.05); }
+  .io-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem; margin-top:1rem; flex-wrap:wrap; }
+  .io-sayfalama a, .io-sayfalama span.simdiki { display:inline-flex; align-items:center; justify-content:center; min-width:2.3rem; height:2.3rem;
+    padding:0 .5rem; border-radius:10px; text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .io-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .io-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
+  .io-ipucu { display:inline-grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:50%; border:1px solid var(--cizgi-koyu);
+    font-size:.75rem; font-weight:700; color:var(--metin-soluk); cursor:help; margin-left:.5rem; vertical-align:middle; }
+</style>
+
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:operasyon_kayitlari' %}">← Operasyon Kayıtları</a>
+    <h1 class="ust-baslik"><span class="emoji">⏱</span>İş Oturumları
+      <span class="io-ipucu" tabindex="0" title="Atölye ekranındaki Başla / Bitir oturumları: ekip (başlatan + seçilen arkadaşlar), başlangıç–bitiş, süre, adet. Adam-saat = üyelerin kendi katılım sürelerinin toplamı (mesaisini bitiren üye oturumdan ayrılır). Adet/saat oturum süresine, adet başı süre adam-saate göredir. İptal = iş yapılmadı (kayıt yok, süre kalır). Kayıt geri alınsa da oturum kalır.">?</span></h1>
+  </div>
+  <a class="dugme" href="{{ xlsx_url }}">⬇ Excel</a>
+</div>
+
+<form method="get" class="io-sure">
+  <div class="alan"><label for="io-bas">Tarih (başlangıç)</label><input type="date" name="bas" id="io-bas" value="{{ bas|date:'Y-m-d' }}"></div>
+  <div class="alan"><label for="io-bit">Tarih (bitiş)</label><input type="date" name="bit" id="io-bit" value="{{ bit|date:'Y-m-d' }}"></div>
+  <div class="alan"><label for="io-ist">İstasyon</label>
+    <select name="istasyon" id="io-ist"><option value="">Tümü</option>
+      {% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="io-per">Personel</label>
+    <select name="personel" id="io-per"><option value="">Tümü</option>
+      {% for p in personeller %}<option value="{{ p.pk }}"{% if personel == p.pk|stringformat:"s" %} selected{% endif %}>{{ p.ad_soyad }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="io-durum">Durum</label>
+    <select name="durum" id="io-durum"><option value="">Tümü</option>
+      {% for k, v in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="io-ara">Ara</label><input type="text" name="ara" id="io-ara" value="{{ ara }}" placeholder="ÜS, ürün, kayıt no…" size="20" autocomplete="off"></div>
+  <button type="submit" class="birincil">Filtrele</button>
+  <a class="iptal-bag" href="{% url 'core:is_oturumlari' %}">Temizle</a>
+</form>
+
+<p class="sayfa-alt">{{ sayfa.paginator.count }} iş oturumu.</p>
+
+<div class="tablo-kapsayici genis">
+<table>
+  <thead>
+    <tr><th>Tarih</th><th>İstasyon</th><th>ÜS / Ürün</th><th>Ekip</th><th>Başlangıç–Bitiş</th><th class="sag">Süre</th><th class="sag">Kişi</th>
+        <th class="sag">Adam-saat</th><th>Durum</th><th class="sag">Adet</th><th class="sag">Adet/saat</th><th class="sag">Adet başı</th><th>Kayıt</th></tr>
+  </thead>
+  <tbody>
+    {% for r in satirlar %}{% with o=r.oturum %}
+      <tr>
+        <td class="mono">{{ o.is_tarihi|date:"d.m.Y" }}</td>
+        <td><span class="io-ist">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
+        <td><a href="{% url 'core:uretim_emri_detay' o.uretim_emri_id %}">{{ o.uretim_emri.no }}</a> · <span class="mono">{{ o.istasyon_emri.operasyon.cikti.kod }}</span><br><small>{{ o.istasyon_emri.operasyon.cikti.ad }}</small></td>
+        <td class="io-ekip">{{ r.ekip_metni }}{% if o.bitiren_id and o.bitiren_id != o.baslatan_id %}<br><small>bitiren: {{ o.bitiren.ad_soyad }}</small>{% endif %}</td>
+        <td class="mono">{{ o.baslangic_zamani|tr_zaman:"H:i" }}–{% if o.bitis_zamani %}{{ o.bitis_zamani|tr_zaman:"H:i" }}{% else %}<span class="io-acik">açık</span>{% endif %}</td>
+        <td class="sag mono">{{ r.sure_metni }}</td>
+        <td class="sag mono">{{ r.kisi }}</td>
+        <td class="sag mono">{{ r.adam_saat|tr_kur:2 }}</td>
+        <td>{% if o.durum == "ACIK" %}<span class="io-acik">Açık</span>{% elif o.durum == "IPTAL" %}<span class="io-iptal">İptal (iş yapılmadı)</span>{% else %}Bitti{% endif %}{% if o.kayit_id and o.kayit.silindi %}<br><small class="io-iptal">kayıt geri alındı</small>{% endif %}</td>
+        <td class="sag mono">{% if r.adet %}{{ r.adet|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if r.adet_saat %}{{ r.adet_saat|tr_kur:1 }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{{ r.adet_basi_metni|default:"—" }}</td>
+        <td>{% if o.kayit_id %}<a href="{% url 'core:operasyon_kaydi_detay' o.kayit_id %}" class="mono">{{ o.kayit.no }}</a>{% else %}—{% endif %}</td>
+      </tr>
+    {% endwith %}{% empty %}
+      <tr><td colspan="13" class="bos">Bu aralıkta iş oturumu yok.</td></tr>
+    {% endfor %}
+  </tbody>
+  {% if satirlar %}
+  <tfoot><tr class="io-toplam"><td colspan="7">Sayfa toplamı</td><td class="sag mono">{{ toplam.adam_saat|tr_kur:2 }}</td><td></td><td class="sag mono">{{ toplam.adet|tr_miktar_sade }}</td><td colspan="3"></td></tr></tfoot>
+  {% endif %}
+</table>
+</div>
+
+{% if sayfa.has_other_pages %}
+<nav class="io-sayfalama">
+  {% if sayfa.has_previous %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.previous_page_number }}">‹</a>{% endif %}
+  <span class="simdiki">{{ sayfa.number }} / {{ sayfa.paginator.num_pages }}</span>
+  {% if sayfa.has_next %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.next_page_number }}">›</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

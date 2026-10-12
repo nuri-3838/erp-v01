@@ -5,8 +5,9 @@
 {% block ust_sag %}<div style="display:flex;gap:.4rem;align-items:center"><a href="{% url 'core:atolye' %}?sec=1">İstasyon değiştir</a>{% if not izleme %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}</div>{% endblock %}
 
 {% block icerik %}
+  {% include "core/_atolye_acik_isler.html" with istasyon_pk=istasyon.pk %}
   {% for s in emirler %}
-    <section class="at-kart at-emir" id="ie-{{ s.ie.pk }}">
+    <section class="at-kart at-emir{% if s.oturumlar %} calisiyor{% endif %}" id="ie-{{ s.ie.pk }}">
       <div class="ust"><span>{{ s.ie.uretim_emri.no }} · {{ s.ie.no }}</span><span>{{ s.musteri }}</span></div>
       <div class="urun"><span style="color:var(--soluk);font-size:.9rem">{{ s.ie.operasyon.cikti.kod }}</span><br>{{ s.ie.operasyon.cikti.ad }}
         {% if s.varyant_metni %}<div><span class="varyant">🔀 {{ s.varyant_metni }}</span></div>{% endif %}</div>
@@ -15,12 +16,45 @@
         <div><div class="et">Tamamlanan</div><div class="dg">{{ s.tamamlanan|tr_miktar_sade }}</div></div>
         <div class="kalan"><div class="et">Kalan</div><div class="dg">{{ s.acik|tr_miktar_sade }}</div></div>
       </div>
-      {% if not izleme %}
-      <form method="post" action="{% url 'core:atolye_uret' s.ie.pk %}" class="at-form" onsubmit="return confirm(this.miktar.value + ' adet üretildi olarak yazılsın mı?');">
-        {% csrf_token %}
-        <input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" value="{{ s.kalan_tam }}" autocomplete="off" aria-label="Miktar">
-        <button type="submit">✔ ÜRETİLDİ</button>
-      </form>
+      {% for o in s.oturumlar %}
+        <div class="at-oturum{% if o.benim %} benim{% endif %}{% if o.dunku %} dunku{% endif %}" id="oturum-{{ o.oturum.pk }}">
+          <div class="at-oturum-ust">
+            <span class="at-sayac" data-baslangic="{{ o.baslangic_ms }}">{{ o.sure_metni }}</span>
+            <span>{% if o.dunku %}⚠️ DÜNKÜ AÇIK İŞ · {{ o.oturum.baslangic_zamani|tr_zaman:"d.m.Y H:i" }}{% else %}⏱ Çalışıyor · {{ o.oturum.baslangic_zamani|tr_zaman:"H:i" }}'den beri{% endif %}</span>
+          </div>
+          <div class="at-ekip">👥 {{ o.ekip_metni }}</div>
+          {% if o.benim %}
+            <form method="post" action="{% url 'core:atolye_oturum_bitir' o.oturum.pk %}" class="at-bitir" onsubmit="return confirm(this.miktar.value + ' adet üretildi olarak yazılsın ve iş bitirilsin mi?');">
+              {% csrf_token %}
+              {% if o.dunku %}<label class="at-bitis-saat">Bitiş saati <input type="datetime-local" name="bitis" value="{{ o.bitis_varsayilan }}" required></label>{% endif %}
+              <div class="at-form">
+                <input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" value="{{ s.kalan_tam }}" autocomplete="off" aria-label="Adet">
+                <button type="submit">⏹ BİTİR</button>
+              </div>
+            </form>
+            <form method="post" action="{% url 'core:atolye_oturum_iptal' o.oturum.pk %}" class="at-iptal-form" onsubmit="return confirm('İş yapılmadı olarak iptal edilsin mi? Üretim kaydı açılmaz.');">
+              {% csrf_token %}{% if o.dunku %}<input type="hidden" name="bitis" value="{{ o.bitis_varsayilan }}">{% endif %}
+              <button type="submit" class="at-iptal">✕ İptal (iş yapılmadı)</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+      {% if baslatabilir %}
+        <details class="at-basla">
+          <summary>▶ BAŞLA</summary>
+          <form method="post" action="{% url 'core:atolye_oturum_baslat' s.ie.pk %}">
+            {% csrf_token %}
+            {% if ekip_adaylari %}
+              <p class="at-yardim" style="text-align:left">Birlikte çalışacağınız arkadaşlarınızı seçin (isteğe bağlı):</p>
+              {% for a in ekip_adaylari %}
+                <label class="at-aday{% if a.mesgul %} mesgul{% endif %}"><input type="checkbox" name="ekip" value="{{ a.personel.pk }}"{% if a.mesgul %} disabled{% endif %}> {{ a.personel.ad_soyad }}{% if a.mesgul %} <small>({{ a.mesgul.istasyon.kod }} › {{ a.mesgul.uretim_emri.no }} işinde)</small>{% endif %}</label>
+              {% endfor %}
+            {% else %}
+              <p class="at-yardim">Mesaisi açık başka operatör yok; tek başınıza başlıyorsunuz.</p>
+            {% endif %}
+            <button type="submit" class="at-basla-buton">▶ İŞİ BAŞLAT</button>
+          </form>
+        </details>
       {% endif %}
       {% if s.fazla_yasak %}<p class="at-yardim" style="margin:.4rem 0 0">Bu emirde kalandan fazlası yazılamaz.</p>{% endif %}
       {% if s.son_kaydim %}

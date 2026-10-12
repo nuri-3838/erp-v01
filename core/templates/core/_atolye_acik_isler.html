@@ -1,0 +1,13 @@
+{% load core_extras %}{% if acik_islerim %}
+<section class="at-kart at-acik-isler">
+  <h2 class="at-baslik">Açık işiniz var</h2>
+  {% for o in acik_islerim %}
+    <div class="at-acik-is{% if o.dunku %} dunku{% endif %}">
+      <div><b>{{ o.oturum.istasyon.kod }} {{ o.oturum.istasyon.ad }}</b> › {{ o.oturum.uretim_emri.no }} · {{ o.oturum.istasyon_emri.operasyon.cikti.kod }}</div>
+      <div class="at-ekip">{% if o.dunku %}⚠️ DÜNKÜ AÇIK İŞ · {{ o.oturum.baslangic_zamani|tr_zaman:"d.m.Y H:i" }}{% else %}⏱ <span class="at-sayac" data-baslangic="{{ o.baslangic_ms }}">{{ o.sure_metni }}</span> · {{ o.oturum.baslangic_zamani|tr_zaman:"H:i" }}'den beri{% endif %} · 👥 {{ o.ekip_metni }}</div>
+      {% if o.oturum.istasyon_id != istasyon_pk %}<a class="at-git" href="{% url 'core:atolye_istasyon' o.oturum.istasyon_id %}#ie-{{ o.oturum.istasyon_emri_id }}">Bu işe git →</a>{% endif %}
+    </div>
+  {% endfor %}
+  <p class="at-yardim">Yeni iş başlatmak için önce açık işinizi bitirin (ya da iş yapılmadıysa iptal edin).</p>
+</section>
+{% endif %}

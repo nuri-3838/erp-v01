@@ -1,13 +1,13 @@
 """ATÖLYE operatör ekranı (/atolye/): yetki/yönlendirme (operatör → /atolye/, yalnız mesai hesabı → /mesai/, yetkisiz 403), mesai açık değilken
-üretim yok, istasyon listesi (fason gizli), açık emirler, "Üretildi" (tam sayı, fabrika ağı, personel + mesai kaydı izi, fazla üretim uyarısı),
-bugünkü kendi son kaydını geri alma, personel kartından operatör yetkisi, kayıt listesinde "Giren"."""
+üretim yok, istasyon listesi (fason gizli), açık emirler, Başla → Bitir (tam sayı, fabrika ağı, personel + mesai kaydı izi, fazla üretim uyarısı),
+bugünkü kendi son kaydını geri alma, personel kartından operatör yetkisi, kayıt listesinde "Giren". Oturum kuralları: test_is_oturumu."""
 from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.urls import reverse
 
-from core.models import EkranYetki, IsIstasyonu, OperasyonKaydi, StokHareket
+from core.models import EkranYetki, IsIstasyonu, IsOturumu, OperasyonKaydi, StokHareket
 from core.services import atolye
 from core.services.mesai import acik_kayit
 from core.tarih import tr_bugun
@@ -37,8 +37,21 @@ class AtolyeTaban(Taban):
         self.client.force_login(user or self.u)
         return self.client.post(reverse("core:atolye_mesai"), {"eylem": "baslat"}, HTTP_X_REAL_IP=IZINLI)
 
+    def basla(self, ie, ekip=(), ip=IZINLI, follow=True):
+        return self.client.post(reverse("core:atolye_oturum_baslat", args=[ie.pk]), {"ekip": [str(p) for p in ekip]}, HTTP_X_REAL_IP=ip, follow=follow)
+
+    def bitir(self, oturum, miktar, ip=IZINLI, follow=True, **ek):
+        return self.client.post(reverse("core:atolye_oturum_bitir", args=[oturum.pk]), {"miktar": miktar, **ek}, HTTP_X_REAL_IP=ip, follow=follow)
+
     def uret(self, ie, miktar, ip=IZINLI, follow=True):
-        return self.client.post(reverse("core:atolye_uret", args=[ie.pk]), {"miktar": miktar}, HTTP_X_REAL_IP=ip, follow=follow)
+        """Başla + Bitir kısa yolu (ekipsiz)."""
+        self.basla(ie, ip=ip)
+        o = IsOturumu.objects.filter(istasyon_emri=ie, durum="ACIK").latest("pk")
+        return self.bitir(o, miktar, ip=ip, follow=follow)
+
+    @staticmethod
+    def acik_oturum(ie):
+        return IsOturumu.objects.filter(istasyon_emri=ie, durum="ACIK").order_by("-pk").first()
 
     @staticmethod
     def mesajlar(r):
@@ -63,9 +76,9 @@ class YetkiYonlendirmeTest(AtolyeTaban):
         self.assertNotContains(r, "MESAİYİ BAŞLAT")
         r = self.client.get(reverse("core:atolye_istasyon", args=[self.lazer.pk]))
         self.assertContains(r, self.emir.no)
-        self.assertNotContains(r, "ÜRETİLDİ")
+        self.assertNotContains(r, "BAŞLA")
         self.assertNotContains(r, "Mesaiyi Bitir")
-        r = self.uret(self.ie_kesim, "4")                                                              # izlemede üretim/mesai yok
+        r = self.basla(self.ie_kesim)                                                                 # izlemede üretim/mesai yok
         self.assertTrue(any("personel kartı yok" in m for m in self.mesajlar(r)))
         r = self.client.post(reverse("core:atolye_mesai"), {"eylem": "baslat"}, HTTP_X_REAL_IP=IZINLI, follow=True)
         self.assertTrue(any("personel kartı yok" in m for m in self.mesajlar(r)))
@@ -85,6 +98,7 @@ class YetkiYonlendirmeTest(AtolyeTaban):
         self.assertTrue(EkranYetki.objects.filter(kullanici=self.u2, ekran_kod="atolye", silindi=True).exists())
         r = self.client.get(reverse("core:kullanici_yetkileri"))
         self.assertContains(r, "Atölye (Operatör Ekranı)")                                          # mevcut yetki ekranında da seçilebilir
+        self.assertContains(r, "İş Oturumları")
 
     def test_atolye_sayfasi_menusuz_ve_sade(self):
         self.client.force_login(self.u)
@@ -101,8 +115,9 @@ class AkisTest(AtolyeTaban):
         self.client.force_login(self.u)
         r = self.client.get(reverse("core:atolye_istasyon", args=[self.lazer.pk]), follow=True)
         self.assertIn("Önce mesainizi başlatın; mesai açık değilken üretim girilemez.", self.mesajlar(r))
-        r = self.uret(self.ie_kesim, "4")
+        r = self.basla(self.ie_kesim)
         self.assertTrue(any("Önce mesainizi başlatın" in m for m in self.mesajlar(r)))
+        self.assertFalse(IsOturumu.objects.exists())
         self.assertFalse(OperasyonKaydi.objects.filter(istasyon_emri=self.ie_kesim).exists())
 
     def test_baslat_istasyon_sec_emirler(self):
@@ -118,35 +133,43 @@ class AkisTest(AtolyeTaban):
         self.assertContains(r, self.emir.no)
         self.assertContains(r, "IK-KESILMIS")
         self.assertContains(r, "Stok için üretim")
-        self.assertContains(r, "ÜRETİLDİ")
-        self.assertContains(r, 'value="10"')                                                          # kalan: referans çıktı adedi (5 çalıştırma × 2), tam sayı
+        self.assertContains(r, "BAŞLA")
+        self.assertNotContains(r, "ÜRETİLDİ")                                                         # süresiz hızlı giriş atölyeden kaldırıldı
         self.assertNotContains(r, "Son kaydım")
         self.assertContains(r, "Mesaiyi Bitir")
 
     def test_uretildi_tam_sayi_ip_personel_mesai_izi_ve_fazla_uyarisi(self):
         self.baslat()
-        r = self.uret(self.ie_kesim, "2,5")
+        self.basla(self.ie_kesim)
+        o = self.acik_oturum(self.ie_kesim)
+        r = self.bitir(o, "2,5")
         self.assertTrue(any("tam sayı" in m for m in self.mesajlar(r)))
-        r = self.uret(self.ie_kesim, "4", ip=IZINSIZ)
+        r = self.bitir(o, "4", ip=IZINSIZ)
         self.assertTrue(any("fabrika Wi-Fi" in m for m in self.mesajlar(r)))
         self.assertFalse(OperasyonKaydi.objects.filter(istasyon_emri=self.ie_kesim).exists())
-        r = self.uret(self.ie_kesim, "4")
+        o.refresh_from_db()
+        self.assertEqual(o.durum, "ACIK")                                                             # hata: oturum açık kaldı
+        r = self.bitir(o, "4")
         self.assertTrue(any("4 adet yazıldı" in m for m in self.mesajlar(r)), self.mesajlar(r))
         k = OperasyonKaydi.objects.get(istasyon_emri=self.ie_kesim, silindi=False)
         self.assertEqual((k.durum, k.personel_id, k.mesai_kaydi_id, k.created_by_id, k.tarih), ("ONAYLI", self.p.pk, acik_kayit(self.p).pk, self.u.pk, tr_bugun()))
         self.assertEqual(StokHareket.objects.get(operasyon_kaydi=k, tur="GIRIS").miktar, D("4"))
         self.assertContains(r, "Son kaydım")
         self.assertContains(r, k.no)
+        o.refresh_from_db()
+        self.assertEqual((o.durum, o.kayit_id, o.miktar, o.bitiren_id), ("BITTI", k.pk, D("4"), self.p.pk))
         r = self.uret(self.ie_kesim, "20")                                                           # kesimde fazlası serbest: uyarı
         self.assertTrue(any("kalanını aşıyor" in m for m in self.mesajlar(r)), self.mesajlar(r))
         self.assertEqual(OperasyonKaydi.objects.filter(istasyon_emri=self.ie_kesim, silindi=False).count(), 2)
-        # ofis listesi/detayı "Giren"
+        # ofis listesi/detayı "Giren" + iş oturumu
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:operasyon_kayitlari") + "?sekme=tumu")
         self.assertContains(r, self.p.ad_soyad)
         r = self.client.get(reverse("core:operasyon_kaydi_detay", args=[k.pk]))
         self.assertContains(r, self.p.ad_soyad)
         self.assertContains(r, "mesai ")
+        self.assertContains(r, "İş Oturumu")
+        self.assertContains(r, "1 kişi")
 
     def test_geri_alma_yalniz_bugunku_kendi_son_kaydi(self):
         self.baslat()
@@ -162,6 +185,7 @@ class AkisTest(AtolyeTaban):
         self.assertTrue(any("geri alındı" in m for m in self.mesajlar(r)), self.mesajlar(r))
         son.refresh_from_db()
         self.assertEqual((son.silindi, son.geri_alan_id), (True, self.u.pk))
+        self.assertEqual(IsOturumu.objects.get(kayit=son).durum, "BITTI")                             # oturum (süre) kalır
         self.ie_kesim.refresh_from_db()
         self.assertEqual(self.ie_kesim.tamamlanan, D("2"))                                          # 4 adet = 2 çalıştırma kaldı
         self.assertContains(r, "Son kaydım")                                                          # şimdi ilk kayıt son kayıt → geri alınabilir
@@ -179,9 +203,9 @@ class AkisTest(AtolyeTaban):
 
     def test_servis_kurallari(self):
         with self.assertRaisesMessage(atolye.AtolyeHatasi, "personel kartı yok"):
-            atolye.uret(self.yon, self.ie_kesim, "1", IZINLI)
+            atolye.oturum_baslat(self.yon, self.ie_kesim, [], IZINLI)
         with self.assertRaisesMessage(atolye.AtolyeHatasi, "Önce mesainizi başlatın"):
-            atolye.uret(self.u, self.ie_kesim, "1", IZINLI)
+            atolye.oturum_baslat(self.u, self.ie_kesim, [], IZINLI)
         self.assertEqual(sorted(i.kod for i in atolye.istasyonlar()), ["BUKUM", "LAZER"])                 # fason (10) yok
         self.assertEqual(atolye.acik_emirler(self.lazer)[0]["ie"].pk, self.ie_kesim.pk)
         self.assertEqual(atolye.acik_emirler(self.bukum)[0]["kalan_tam"], "10")

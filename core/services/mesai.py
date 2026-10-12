@@ -77,7 +77,14 @@ def bitir(personel: Personel, *, ip, kullanici=None) -> MesaiKaydi:
     kayit = acik_kayit(p)
     if kayit is None:
         raise MesaiHatasi("Açık bir mesai kaydınız yok.")
-    kayit.cikis_zamani = timezone.now()
+    simdi = timezone.now()
+    # ATÖLYE iş oturumu: kişi açık bir oturumdaysa üyeliği kapanır (oturum diğerleriyle sürer); oturumda tek kişiyse mesai bitirilemez.
+    from core.services import is_oturumu
+    try:
+        is_oturumu.mesai_bitiriliyor(p, simdi, kullanici=kullanici)
+    except is_oturumu.OturumHatasi as e:
+        raise MesaiHatasi(str(e))
+    kayit.cikis_zamani = simdi
     kayit.cikis_ip = ip or None
     kayit.updated_by = kullanici
     kayit.save(update_fields=["cikis_zamani", "cikis_ip", "updated_by", "updated_at"])

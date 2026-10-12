@@ -1,9 +1,13 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
 {% block baslik %}Pano · SEMTA ERP{% endblock %}
 {% block sayfa_adi %}Pano{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
+{% if acik_oturumlar %}<div class="uyari">⏱ <strong>{{ acik_oturumlar|length }}</strong> açık atölye iş oturumu var (bitirilmemiş):
+  {% for o in acik_oturumlar %}{{ o.oturum.istasyon.kod }} › {{ o.oturum.uretim_emri.no }} · {{ o.ekip_metni }} ({{ o.oturum.baslangic_zamani|tr_zaman:"d.m H:i" }}){% if not forloop.last %}; {% endif %}{% endfor %}
+  — <a href="{% url 'core:is_oturumlari' %}?durum=ACIK">İş Oturumları</a>.</div>{% endif %}
 {% if kur_uyarisi %}<div class="uyari">⚠️ <strong>{{ kur_uyarisi }}</strong> kur uyarısı var: bir tarihin TCMB kuru değişecekti ama o tarihli belge olduğu için üzerine yazılmadı — <a href="{% url 'core:kurlar' %}">Kurlar ekranına bakın</a>.</div>{% endif %}
 <div class="pano-head">
   <h1 class="pano-merhaba">Hoş geldin{% if user.first_name %}, {{ user.first_name }}{% endif %}</h1>
