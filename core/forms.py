@@ -17,7 +17,7 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
 
-from core.dogrulama import tc_dogrula, telefon_dogrula, telefon_kanonik
+from core.dogrulama import iban_dogrula, tc_dogrula, telefon_dogrula, telefon_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
     AdayAktivite, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori, AdayPotansiyelTanim,
@@ -3135,6 +3135,14 @@ class PersonelForm(forms.Form):
     # Yalnız İzinler ekranına yetkisi olan kullanıcıya gösterilir (izin_alani=True).
     izin_onceki_kullanilan = TRDecimalField(
         label="Sisteme geçmeden önce kullanılan yıllık izin (gün)", basamak=1, required=False)
+    # Banka bilgileri (yalnız personel kartı yetkisi; listede ve mesai/atölye ekranlarında yok)
+    iban = forms.CharField(label="IBAN", max_length=40, required=False, validators=[iban_dogrula],
+                           widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "TR12 3456 7890 1234 5678 9012 34",
+                                                         "class": "mono", "spellcheck": "false"}))
+    banka_adi = forms.CharField(label="Banka adı", max_length=80, required=False,
+                                widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "IBAN girilince önerilir"}))
+    hesap_sahibi = forms.CharField(label="Hesap sahibi", max_length=120, required=False,
+                                   widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "boşsa personelin adı soyadı"}))
 
     def __init__(self, *args, izin_alani=False, **kwargs):
         super().__init__(*args, **kwargs)

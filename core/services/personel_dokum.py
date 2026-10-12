@@ -20,6 +20,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.page import PageMargins
 
+from core.dogrulama import iban_bicimli
 from core.models import Personel, PersonelUcret
 from core.sayi import format_tr
 from core.services import personel_devam as devam_servis
@@ -36,7 +37,7 @@ _SUTUNLAR = (
     ("Pazar Çalışması", 14), ("Resmî Tatil", 12), ("Tatil Çalışması", 14),
     ("Gelmedi (Devamsız)", 16), ("Yıllık İzin", 11), ("Mazeret İzni", 12),
     ("Ücretsiz İzin", 12), ("Rapor", 8), ("Diğer İzin", 10), ("Girilmemiş Gün", 13),
-    ("Açıklama", 40),
+    ("Açıklama", 40), ("IBAN", 32),
 )
 _SARI = PatternFill("solid", fgColor="FFF9C4")
 _KIRMIZI = PatternFill("solid", fgColor="FFCDD2")
@@ -166,7 +167,7 @@ def dokum_xlsx(yil: int, ay: int, *, bugun=None, kullanici=None) -> bytes:
             s.sira, s.personel.ad_soyad, s.personel.tc_kimlik_no, s.ise_giris, s.isten_cikis,
             s.ucret_metni, o.geldi, o.yarim, o.pazar_calisma, o.resmi_tatil, o.tatil_calisma,
             o.gelmedi, o.yillik, o.mazeret, o.ucretsiz, o.rapor, o.diger, o.girilmemis,
-            s.aciklama,
+            s.aciklama, iban_bicimli(s.personel.iban),
         ]
         for col, deger in enumerate(degerler, start=1):
             hucre = ws.cell(row=satir_no, column=col, value=deger)

@@ -47,6 +47,34 @@
       </div>
     </section>
 
+    <section class="icerik-kart" id="banka-bilgileri">
+      <h2 class="bolum-baslik"><span class="emoji">🏦</span>Banka Bilgileri</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.iban.id_for_label }}">{{ form.iban.label }}</label>{{ form.iban }}{% for e in form.iban.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Boşluklar temizlenir, büyük harfe çevrilir; TR + 26 karakter ve kontrol hanesi doğrulanır.</p></div>
+        <div class="alan"><label for="{{ form.banka_adi.id_for_label }}">{{ form.banka_adi.label }}</label>{{ form.banka_adi }}{% for e in form.banka_adi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" id="banka-oneri">IBAN'daki banka kodundan önerilir; elle değiştirilebilir.</p></div>
+        <div class="alan"><label for="{{ form.hesap_sahibi.id_for_label }}">{{ form.hesap_sahibi.label }}</label>{{ form.hesap_sahibi }}{% for e in form.hesap_sahibi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Boş bırakılırsa personelin adı soyadı yazılır.</p></div>
+      </div>
+      {{ banka_kodlari|json_script:"banka-kodlari" }}
+      <script>
+      (function(){
+        var iban = document.getElementById("{{ form.iban.id_for_label }}"), banka = document.getElementById("{{ form.banka_adi.id_for_label }}");
+        if (!iban || !banka) return;
+        var kodlar = JSON.parse(document.getElementById("banka-kodlari").textContent), elleYazildi = !!banka.value;
+        banka.addEventListener("input", function(){ elleYazildi = !!banka.value; });
+        function oner(){
+          var k = iban.value.replace(/[\s-]/g, "").toUpperCase();
+          iban.value = k.replace(/(.{4})/g, "$1 ").trim();
+          var ad = k.indexOf("TR") === 0 ? (kodlar[k.substr(4, 5)] || "") : "";
+          if (ad && !elleYazildi) banka.value = ad;
+        }
+        iban.addEventListener("blur", oner); iban.addEventListener("change", oner);
+      })();
+      </script>
+    </section>
+
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">🏭</span>İş Bilgileri</h2>
       <div class="izgara">

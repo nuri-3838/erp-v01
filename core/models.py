@@ -3745,6 +3745,12 @@ class Personel(TemelModel):
     notlar = models.TextField("notlar", blank=True)
     # Sisteme geçmeden ÖNCE kullanılmış yıllık izin (gün) — mevcut personelin bakiyesi doğru
     # başlasın diye; sistemde ayrıca girilen izinler buraya EKLENMEZ (çifte sayım olur).
+    # BANKA BİLGİLERİ (2026-10-12): IBAN kanonik (boşluksuz, büyük harf; TR + 26 karakter, mod-97 — core.dogrulama.iban_*), banka adı IBAN'daki
+    # banka kodundan önerilir (elle değişir), hesap sahibi varsayılan personelin adı soyadı. Yalnız personel kartı yetkisiyle görünür/düzenlenir;
+    # personel listesinde ve mesai/atölye ekranlarında GÖSTERİLMEZ.
+    iban = models.CharField("IBAN", max_length=34, blank=True, default="")
+    banka_adi = models.CharField("banka adı", max_length=80, blank=True, default="")
+    hesap_sahibi = models.CharField("hesap sahibi", max_length=120, blank=True, default="")
     izin_onceki_kullanilan = models.DecimalField(
         "sisteme geçmeden önce kullanılan yıllık izin (gün)", max_digits=5, decimal_places=1,
         default=0)

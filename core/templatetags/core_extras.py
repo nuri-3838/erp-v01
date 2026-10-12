@@ -24,6 +24,13 @@ def tr_zaman(value, fmt="d.m.Y H:i"):
 
 
 @register.filter
+def iban_bicimli(deger):
+    """IBAN'ı 4'lü gruplarla gösterir (TR12 3456 …)."""
+    from core.dogrulama import iban_bicimli as _b
+    return _b(deger)
+
+
+@register.filter
 def sure_metni(dakika):
     """Dakika sayısını "8s 12dk" biçiminde gösterir; None ise boş."""
     if dakika is None:

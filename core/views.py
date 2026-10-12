@@ -8936,7 +8936,7 @@ def yemek_sayimi_sil(request, pk):
 _PERSONEL_ALANLARI = (
     "ad", "soyad", "tc_kimlik_no", "dogum_tarihi", "kan_grubu", "telefon", "eposta", "adres",
     "acil_durum_kisi", "acil_durum_telefon", "departman", "gorev", "ise_giris_tarihi",
-    "isten_cikis_tarihi", "cikis_nedeni", "notlar")
+    "isten_cikis_tarihi", "cikis_nedeni", "notlar", "iban", "banka_adi", "hesap_sahibi")
 
 
 def _personel_form_kw(cd):
@@ -8948,8 +8948,9 @@ def _personel_form_kw(cd):
 
 
 def _personel_form_context(form, baslik, **ek):
+    from core.dogrulama import TR_BANKA_KODLARI
     return {"form": form, "baslik": baslik, "departmanlar": personel_servis.departmanlar(),
-            "gorevler": personel_servis.gorevler(), **ek}
+            "gorevler": personel_servis.gorevler(), "banka_kodlari": TR_BANKA_KODLARI, **ek}
 
 
 @ekran_gerekli("personel")

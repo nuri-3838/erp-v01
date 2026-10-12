@@ -35,6 +35,64 @@ def tc_dogrula(deger):
         )
 
 
+# --- IBAN (TR) -------------------------------------------------------------
+# Banka kodu (IBAN 5.–9. karakter) → banka adı (öneri; elle değiştirilebilir). Liste kapsamlı değil; bilinmeyen kod → öneri yok.
+TR_BANKA_KODLARI = {
+    "00001": "TCMB", "00004": "İLLER BANKASI", "00010": "ZİRAAT BANKASI", "00012": "HALKBANK", "00015": "VAKIFBANK",
+    "00016": "EXIMBANK", "00017": "KALKINMA VE YATIRIM BANKASI", "00029": "BİRLEŞİK FON BANKASI", "00032": "TEB",
+    "00046": "AKBANK", "00059": "ŞEKERBANK", "00062": "GARANTİ BBVA", "00064": "İŞ BANKASI", "00067": "YAPI KREDİ",
+    "00091": "ARAP TÜRK BANKASI", "00092": "CİTİBANK", "00096": "TURKISH BANK", "00098": "BURGAN BANK", "00099": "ING",
+    "00103": "FİBABANKA", "00108": "TURKLAND BANK", "00109": "ICBC TURKEY", "00111": "QNB", "00123": "HSBC",
+    "00124": "ALTERNATİF BANK", "00125": "BURGAN BANK", "00134": "DENİZBANK", "00135": "ANADOLUBANK", "00137": "RABOBANK",
+    "00142": "BANK OF CHINA", "00143": "AKTİF BANK", "00146": "ODEA BANK", "00203": "ALBARAKA TÜRK", "00205": "KUVEYT TÜRK",
+    "00206": "TÜRKİYE FİNANS", "00209": "ZİRAAT KATILIM", "00210": "VAKIF KATILIM", "00211": "EMLAK KATILIM",
+    "00213": "HAYAT FİNANS", "00806": "ENPARA",
+}
+
+
+def iban_kanonik(deger) -> str:
+    """Boşlukları (ve tireleri) temizler, büyük harfe çevirir (Türkçe i → I değil: IBAN yalnız ASCII)."""
+    return re.sub(r"[\s\-]", "", str(deger or "")).upper()
+
+
+def _iban_mod97(iban: str) -> int:
+    donmus = iban[4:] + iban[:4]
+    sayi = "".join(str(ord(c) - 55) if c.isalpha() else c for c in donmus)
+    return int(sayi) % 97
+
+
+def iban_gecerli_tr(deger) -> bool:
+    """TR ile başlayan 26 karakter, 3.–26. karakterler rakam, mod-97 == 1 (ISO 7064)."""
+    iban = iban_kanonik(deger)
+    if len(iban) != 26 or not iban.startswith("TR") or not iban[2:].isdigit():
+        return False
+    return _iban_mod97(iban) == 1
+
+
+IBAN_HATA = "Geçersiz IBAN: TR ile başlayan 26 karakterlik, kontrol haneleri doğru bir IBAN girin (örn. TR12 3456 …)."
+
+
+def iban_dogrula(deger):
+    if deger and not iban_gecerli_tr(deger):
+        raise ValidationError(IBAN_HATA)
+
+
+def iban_bicimli(deger) -> str:
+    """Ekran gösterimi: 4'lü gruplar (TR12 3456 7890 …)."""
+    iban = iban_kanonik(deger)
+    return " ".join(iban[i:i + 4] for i in range(0, len(iban), 4))
+
+
+def iban_banka_kodu(deger) -> str:
+    iban = iban_kanonik(deger)
+    return iban[4:9] if len(iban) >= 9 and iban.startswith("TR") else ""
+
+
+def iban_banka_adi(deger) -> str:
+    """IBAN'daki banka kodundan banka adı önerisi; bilinmiyorsa ''."""
+    return TR_BANKA_KODLARI.get(iban_banka_kodu(deger), "")
+
+
 # --- Telefon --------------------------------------------------------------
 def _sadece_rakam(deger) -> str:
     """Yalnızca rakamları bırakır (boşluk/parantez/tire/+ temizlenir)."""

@@ -19,6 +19,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.dogrulama import tc_gecerli, telefon_kanonik
+from core.dogrulama import IBAN_HATA, iban_banka_adi, iban_gecerli_tr, iban_kanonik
 from core.metin import buyuk_harf_tr
 from core.models import (
     MesaiKaydi, Personel, PersonelBelge, PersonelDevam, PersonelIzin, PersonelUcret,
@@ -111,7 +112,7 @@ def _tc_benzersiz(tc, *, haric_pk=None):
 def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", telefon="",
              eposta="", adres="", acil_durum_kisi="", acil_durum_telefon="", departman="",
              gorev="", ise_giris_tarihi=None, isten_cikis_tarihi=None, cikis_nedeni="",
-             notlar="", izin_onceki_kullanilan=None, haric_pk=None) -> dict:
+             notlar="", izin_onceki_kullanilan=None, iban="", banka_adi="", hesap_sahibi="", haric_pk=None) -> dict:
     ad, soyad = _buyuk(ad), _buyuk(soyad)
     if not ad:
         raise PersonelHatasi("Ad boş olamaz.")
@@ -150,6 +151,13 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
                 "Sisteme geçmeden önce kullanılan izin yarım gün adımlarıyla girilmeli "
                 "(örn. 7 veya 7,5).")
 
+    # Banka bilgileri: IBAN kanonik + TR mod-97; banka adı boşsa IBAN'daki banka kodundan öneri; hesap sahibi boşsa personelin adı soyadı.
+    iban = iban_kanonik(iban)
+    if iban and not iban_gecerli_tr(iban):
+        raise PersonelHatasi(IBAN_HATA)
+    banka_adi = _buyuk(banka_adi) or (iban_banka_adi(iban) if iban else "")
+    hesap_sahibi = _buyuk(hesap_sahibi) or (f"{ad} {soyad}" if iban else "")
+
     veri = {
         "ad": ad, "soyad": soyad, "tc_kimlik_no": tc, "dogum_tarihi": dogum_tarihi,
         "kan_grubu": kan_grubu, "telefon": _telefon(telefon),
@@ -160,6 +168,7 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
         "departman": _buyuk(departman), "gorev": _buyuk(gorev),
         "ise_giris_tarihi": ise_giris_tarihi, "isten_cikis_tarihi": isten_cikis_tarihi,
         "cikis_nedeni": (cikis_nedeni or "").strip(), "notlar": (notlar or "").strip(),
+        "iban": iban, "banka_adi": banka_adi, "hesap_sahibi": hesap_sahibi,
     }
     if onceki is not None:                       # verilmediyse mevcut değer KORUNUR (yetkisiz form)
         veri["izin_onceki_kullanilan"] = onceki

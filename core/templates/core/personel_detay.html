@@ -79,6 +79,18 @@
     </div>
   </section>
 
+  <section class="icerik-kart" id="banka-bilgileri">
+    <h2 class="bolum-baslik"><span class="emoji">🏦</span>Banka Bilgileri</h2>
+    <div class="kv">
+      <div class="satir"><span class="et">IBAN</span>
+        <span class="dg mono">{% if p.iban %}{{ p.iban|iban_bicimli }}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
+      <div class="satir"><span class="et">Banka</span>
+        <span class="dg">{{ p.banka_adi|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Hesap Sahibi</span>
+        <span class="dg">{{ p.hesap_sahibi|default:"—" }}</span></div>
+    </div>
+  </section>
+
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">🏭</span>İş Bilgileri</h2>
     <div class="kv">
