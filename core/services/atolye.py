@@ -214,15 +214,18 @@ def _fason_bekleyenler(emirler) -> dict:
 
 
 def _varyant_on_eki(vpk) -> str:
-    """Girdi adının önüne varyant: tek boyut markalamaysa 'ELMOP markalı ', başka standart dışı boyut varsa '[Afiş: yok · …] '; standart → ''."""
-    if not vpk:
-        return ""
-    m = varyant_servis.standart_disi_metin(vpk, "tr")
+    """Girdi adının önüne varyant (standart dışı boyutlar): tek boyut markalamaysa 'ELMOP markalı ' / 'markasız ' (YOK), başka boyut da varsa
+    '[Afiş: yok · Markalama: ELMOP] '; standart ya da varyantsız → ''."""
+    return _on_ek_metni(varyant_servis.standart_disi_metin(vpk, "tr")) if vpk else ""
+
+
+def _on_ek_metni(m: str) -> str:
     if not m:
         return ""
     parcalar = m.split(" · ")
     if len(parcalar) == 1 and parcalar[0].startswith("Markalama: "):
-        return parcalar[0][len("Markalama: "):] + " markalı "
+        deger = parcalar[0][len("Markalama: "):].strip()
+        return "markasız " if deger.lower() in ("yok", "—", "") else f"{deger} markalı "
     return f"[{m}] "
 
 

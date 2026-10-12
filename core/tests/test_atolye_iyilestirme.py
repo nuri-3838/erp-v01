@@ -63,6 +63,8 @@ class MalzemeVeSiralamaTest(AtolyeTaban):
         self.assertEqual(atolye.acik_emirler(self.lazer)[0]["fason_bekleyen"], [])                           # kesim emrinin girdisi profil: eşleşmez
         self.assertFalse(r.context["fazla_yasak_not"])
         self.assertEqual(atolye._varyant_on_eki(None), "")
+        self.assertEqual([atolye._on_ek_metni(x) for x in ("", "Markalama: ELMOP", "Markalama: yok", "Afiş: yok · Markalama: ELMOP")],
+                         ["", "ELMOP markalı ", "markasız ", "[Afiş: yok · Markalama: ELMOP] "])
 
 
 class EkranTest(AtolyeTaban):
