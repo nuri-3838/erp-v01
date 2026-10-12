@@ -755,8 +755,13 @@ def operasyon_sil(operasyon: Operasyon, kullanici=None) -> Operasyon:
 
 # === İhtiyaç Hesapla — özyinelemeli, salt-okunur, hiçbir kayıt/stok hareketi üretmez ===
 
-def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None, kullanilabilir=None, cozucu=None):
+def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None, kullanilabilir=None, cozucu=None, stoklu_uretim=False,
+                    stoklu_haric=()):
     """kalemler: [(Stok hedef, Decimal miktar), ...].
+
+    ``stoklu_uretim=True`` (ÜS planlaması; 2026-10-12): ``Stok.stoklu_uretim`` işaretli bir stok KÖK hedef değilse YAPRAK sayılır — alt zinciri
+    planlanmaz, istasyon emri açılmaz; ihtiyaç kullanılabilir stoktan ayrılır, yetmeyen kısım ``eksik`` olur (ÜS'de "stoklu ara mamul").
+    ``stoklu_haric``: bu stok pk'leri yine de zincirle planlanır (açık ÜS'nin halihazırda istasyon emri olan parçaları — plan değişmesin).
 
     ``cozucu`` (E-6, ``planlama_varyant.Cozucu``) verilirse kalemler (stok, varyant) DÜĞÜMLERİDİR (``planlama_varyant.Dugum``: pk = (stok pk,
     varyant pk)) ve operasyon/girdi/çıktı satırları ondan okunur (koşum pk = (tanım pk, çıktı varyantı); kesim SABİT ≠ istenen → dönüştür tanımı);
@@ -799,8 +804,15 @@ def ihtiyac_hesapla(kalemler, *, boy_yuvarla=True, pay_dus=False, graf=None, kul
     cikti_onbellek = {}                                # operasyon.pk -> tanım çıktı satırları (OperasyonCikti; sıra 0 referans)
     PARCALA = Operasyon.Tur.PARCALA
 
+    kok_pks = {planlama_varyant.dugum_coz(s)[0].pk for s, _ in hedefler}
+    stoklu_haric = set(stoklu_haric or ())
+
     def op_bul(stok):
         if stok.pk not in onbellek:
+            st = planlama_varyant.dugum_coz(stok)[0]
+            if stoklu_uretim and st.stoklu_uretim and st.pk not in kok_pks and st.pk not in stoklu_haric:
+                onbellek[stok.pk] = (None, [])                       # stoklu üretim: yaprak gibi — stoktan ayrılır, alt zincir planlanmaz
+                return onbellek[stok.pk]
             if cozucu is not None:
                 operasyon, satirlar, ciktilar = cozucu.op_bul(stok)
                 if operasyon is not None:
@@ -1123,7 +1135,7 @@ def _kalemleri_coz(kalemler, siparis_kalemleri=None, varyantli=False):
     return coz
 
 
-def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, stoktan=None):
+def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, stoktan=None, stoklu_haric=None):
     """NET plan (``ihtiyac_hesapla``): kapalıda kart bazında — bugünkü yol, birebir; varyantlı planlamada (stok, varyant) düğümleriyle
     (``planlama_varyant.Cozucu``). (sonuç, çözücü|None) döner.
 
@@ -1137,7 +1149,7 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
                 if pk in h:
                     h[pk] = min(h[pk], tavan)
             return h
-        return ihtiyac_hesapla([(u, m) for u, m, _v in coz], graf=graf, kullanilabilir=kh), None
+        return ihtiyac_hesapla([(u, m) for u, m, _v in coz], graf=graf, kullanilabilir=kh, stoklu_uretim=True, stoklu_haric=stoklu_haric), None
     cz = planlama_varyant.Cozucu(kullanici)
     kalemler = [(cz.kalem_dugumu(u, v), m) for u, m, v in coz]
 
@@ -1147,7 +1159,7 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
             if anahtar in h:
                 h[anahtar] = min(h[anahtar], tavan)
         return h
-    return ihtiyac_hesapla(kalemler, cozucu=cz, kullanilabilir=khv), cz
+    return ihtiyac_hesapla(kalemler, cozucu=cz, kullanilabilir=khv, stoklu_uretim=True, stoklu_haric=stoklu_haric), cz
 
 
 # === "Stoktan karşıla" sorusu (2026-10-12): ÜS açılış/revizede bitmiş ürün (152) stoğu kullanıcıya sorulur ===
@@ -1842,13 +1854,21 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None) -> list:
     coz = _emir_kalemleri(emir)
     if not coz:
         return []
-    sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk_edilen_haritasi(emir), emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf)
+    # Açık ÜS'nin planı değişmesin: halihazırda (iptal olmayan) istasyon emri olan parçalar stoklu işaretlense de zincirle hesaplanır.
+    haric = set(emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.IPTAL).values_list("operasyon__cikti_id", flat=True))
+    # Bitmiş ürün stoğu: ÜS açılırken/revizede kullanıcının seçtiği kadar (kalem ``eldeki_ayrilan``) — yeniden hesap aynı kararı kullanır.
+    stoktan = {}
+    for k in emir.kalemler.filter(silindi=False):
+        anahtar = (k.hedef_urun_id, k.varyant_id if emir.varyantli_plan else None)
+        stoktan[anahtar] = stoktan.get(anahtar, Decimal("0")) + k.eldeki_ayrilan
+    sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk_edilen_haritasi(emir), emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf,
+                                stoktan=stoktan, stoklu_haric=haric)
     eksikler = []
     for o in sonuc["ozet"]:
         if o["yaprak"] and o["eksik"] is not None and o["eksik"] > 0:
             st, sv = planlama_varyant.dugum_coz(o["stok"])
             eksikler.append({"stok": st, "varyant": sv, "varyant_etiketi": planlama_varyant.etiket(sv), "gerekli": o["ihtiyac"],
-                             "kullanilabilir": o["ayrilan"], "eksik": o["eksik"]})
+                             "kullanilabilir": o["ayrilan"], "eksik": o["eksik"], "stoklu": bool(st.stoklu_uretim)})
     return sorted(eksikler, key=lambda x: (x["stok"].kod, x["varyant_etiketi"]))
 
 

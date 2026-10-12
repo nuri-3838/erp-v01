@@ -649,6 +649,12 @@ class Stok(TemelModel):
     # Kritik stok seviyesi: üretim biriminde miktar eşiği (Faz B'de uyarı için).
     kritik_stok = models.DecimalField("kritik stok seviyesi", max_digits=18,
                                       decimal_places=3, default=0)
+    # STOKLU ÜRETİM (2026-10-12): işaretli ara mamul başka bir ÜS'nin zincirinde PLANLANMAZ (alt zinciri açılmaz, istasyon emri yok): ihtiyaç
+    # stoktan ayrılır (StokAyirma), yetmeyen kısım ÜS'nin Eksik Malzeme listesine "stoklu ara mamul" olarak düşer; ÜS yine açılır. Kart "stok
+    # için ÜS"de hedefse kendi zinciri normal planlanır. Açık ÜS'lerin planı değişmez (yalnız yeni açılan / revize edilen). Varsayılan KAPALI.
+    stoklu_uretim = models.BooleanField("stoklu üretim", default=False)
+    # Kritik stok önerisinde "Stok için ÜS aç" miktarının tabanı: max(parti miktarı, kritik − kalan).
+    parti_miktari = models.DecimalField("parti miktarı", max_digits=18, decimal_places=3, default=0)
     # Tedarikçi: Cari modülüne FK (opsiyonel). Eski serbest metin kaldırıldı.
     tedarikci = models.ForeignKey(
         "Cari", verbose_name="tedarikçi (cari)", null=True, blank=True,

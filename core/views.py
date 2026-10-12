@@ -3,7 +3,7 @@ import calendar
 import datetime
 import json
 import os
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
@@ -123,6 +123,7 @@ from core.services import uretim as uretim_servis
 from core.services import planlama_varyant as planlama_varyant_servis
 from core.services import atolye as atolye_servis
 from core.services import is_oturumu as is_oturumu_servis
+from core.services import kritik_stok as kritik_stok_servis
 from core.services import is_oturumu_xlsx
 from core.services import stok_maliyet
 from core.services import yemek_takibi as yemek_takibi_servis
@@ -175,12 +176,13 @@ def pano(request):
         return redirect("core:atolye")
     if mesai_kullanicisi_mi(request.user):
         return redirect("core:mesaim")
-    kur_uyarisi, acik_oturumlar = 0, []
+    kur_uyarisi, acik_oturumlar, kritik_stok = 0, [], None
     if yonetici_mi(request.user):
         from core.models import KurUyarisi
         kur_uyarisi = KurUyarisi.objects.filter(silindi=False, gorulme_zamani__isnull=True).count()
         acik_oturumlar = [is_oturumu_servis.ozet(o) for o in is_oturumu_servis.unutulanlar()]   # 18:00 sonrası bugünküler + dünden kalanlar
-    return render(request, "core/pano.html", {"kur_uyarisi": kur_uyarisi, "acik_oturumlar": acik_oturumlar})
+        kritik_stok = kritik_stok_servis.kritik_kalemler()
+    return render(request, "core/pano.html", {"kur_uyarisi": kur_uyarisi, "acik_oturumlar": acik_oturumlar, "kritik_stok": kritik_stok})
 
 
 def _satir_girdileri(formset):
@@ -949,6 +951,9 @@ def stoklar(request):
     mamul = request.GET.get("mamul") == "1"
     if mamul:
         qs = qs.filter(kod__startswith="152-")               # yalnız mamuller (152 stok hesabı ailesi)
+    kritik = request.GET.get("kritik") == "1"
+    if kritik:
+        qs = qs.filter(kritik_stok__gt=0)                    # yalnız kritik eşiği olanlar; kalan < kritik süzgeci aşağıda (hesap sonrası)
     # Filtre seçenekleri yalnız en az bir stokta fiilen kullanılan ALT kategorilerden
     # oluşur (bkz. aday müşteri listesindeki aynı desen) — tüm kategori master verisini
     # değil, ekrandaki gerçek veriyi yansıtır.
@@ -960,14 +965,19 @@ def stoklar(request):
     eldeki = hareket_servis.toplu_eldeki(idler)
     kul = stok_ayirma_servis.toplu_kullanilabilir(idler, eldeki=eldeki)         # mevcut ayırma/kullanılabilir hesabı (sabit sorgu)
     ayirma_detay = _ayirma_detaylari(idler)                                      # ÜS bazında dağılım: tek sorgu
+    kritik_harita = kritik_stok_servis.hesapla(stok_listesi, kullanilabilir={pk: d["kullanilabilir"] for pk, d in kul.items()})
     for s in stok_listesi:
         s.eldeki = eldeki.get(s.pk, hareket_servis.SIFIR)
         s.hizmet = s.kategori.hizmet_kategorisi
         s.ayrilan, s.kullanilabilir = kul[s.pk]["ayrilan"], kul[s.pk]["kullanilabilir"]
         s.ayirma_detay = ayirma_detay.get(s.pk, [])
+        s.kritik = kritik_harita.get(s.pk)                                            # None: eşik yok / hizmet
+    if kritik:
+        stok_listesi = [s for s in stok_listesi if s.kritik and s.kritik["kritik_mi"]]
     return render(request, "core/stok_listesi.html", {
         "stoklar": stok_listesi, "ara": ara, "secili_kategori": kategori_id,
-        "kategoriler": kategoriler, "mamul": mamul,
+        "kategoriler": kategoriler, "mamul": mamul, "kritik": kritik,
+        "kritik_sayisi": sum(1 for s in stok_listesi if s.kritik and s.kritik["kritik_mi"]),
     })
 
 
@@ -1000,6 +1010,7 @@ def stok_ekle(request):
                     kdv_id=cd["kdv"].pk if cd.get("kdv") else None,
                     tevkifat_id=cd["tevkifat"].pk if cd.get("tevkifat") else None,
                     kritik_stok=cd.get("kritik_stok"),
+                    stoklu_uretim=cd.get("stoklu_uretim"), parti_miktari=cd.get("parti_miktari"),
                     tedarikci_id=cd["tedarikci"].pk if cd.get("tedarikci") else None,
                     tedarikci_adi=cd.get("tedarikci_adi"),
                     alis_fiyati=cd.get("alis_fiyati"),
@@ -1051,6 +1062,7 @@ def stok_duzenle(request, pk):
                     kdv_id=cd["kdv"].pk if cd.get("kdv") else None,
                     tevkifat_id=cd["tevkifat"].pk if cd.get("tevkifat") else None,
                     kritik_stok=cd.get("kritik_stok"),
+                    stoklu_uretim=cd.get("stoklu_uretim"), parti_miktari=cd.get("parti_miktari"),
                     tedarikci_id=cd["tedarikci"].pk if cd.get("tedarikci") else None,
                     tedarikci_adi=cd.get("tedarikci_adi"),
                     alis_fiyati=cd.get("alis_fiyati"),
@@ -1084,7 +1096,7 @@ def stok_duzenle(request, pk):
             "ad": stok.ad, "uretim_birimi": stok.uretim_birimi_id,
             "fatura_birimi": stok.fatura_birimi_id, "cevirici": stok.cevirici,
             "kdv": stok.kdv_id, "tevkifat": stok.tevkifat_id,
-            "kritik_stok": stok.kritik_stok, "tedarikci": stok.tedarikci_id,
+            "kritik_stok": stok.kritik_stok, "stoklu_uretim": stok.stoklu_uretim, "parti_miktari": stok.parti_miktari, "tedarikci": stok.tedarikci_id,
             "tedarikci_adi": stok.tedarikci_adi,
             "alis_fiyati": stok.alis_fiyati, "alis_fiyati_pb": stok.alis_fiyati_pb,
             "satinalma_urunu": stok.satinalma_urunu, "uretim_urunu": stok.uretim_urunu,
@@ -7508,7 +7520,14 @@ def uretim_emri_ekle(request):
                 bform.add_error(None, str(e))
     else:
         bform = UretimEmriBaslikForm()
-        formset = UretimEmriKalemSatirFormSet(prefix="satir")
+        ilk = []
+        urun, miktar = request.GET.get("urun", ""), request.GET.get("miktar", "")
+        if urun.isdigit():                                                         # kritik stok önerisi: ?urun=<pk>&miktar=<m> ön dolu
+            try:
+                ilk = [{"hedef_urun": int(urun), "hedef_miktar": Decimal(miktar.replace(",", ".")) if miktar else None}]
+            except (InvalidOperation, ValueError):
+                ilk = [{"hedef_urun": int(urun)}]
+        formset = UretimEmriKalemSatirFormSet(prefix="satir", initial=ilk)
     return render(request, "core/uretim_emri_form.html", {"bform": bform, "formset": formset, "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Siparişi Aç"})
 
 

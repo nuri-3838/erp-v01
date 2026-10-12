@@ -153,17 +153,18 @@
 
 {% if emir.durum == 'ACIK' %}
 <section class="icerik-kart">
-  <h2 class="bolum-baslik">Eksik Malzeme (satınalma ihtiyacı)</h2>
+  <h2 class="bolum-baslik">Eksik Malzeme (satınalma ihtiyacı / stoklu ara mamul)</h2>
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>Stok</th><th class="sag">Gerekli</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
+    <thead><tr><th>Stok</th><th>Tür</th><th class="sag">Gerekli</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
     <tbody>
       {% for e in eksikler %}
         <tr><td><a href="{% url 'core:stok_detay' e.stok.pk %}"><span class="mono">{{ e.stok.kod }}</span> {{ e.stok.ad }}</a>{% if e.varyant_etiketi %} <span class="rozet rozet-notr">{{ e.varyant_etiketi }}</span>{% endif %}</td>
+            <td>{% if e.stoklu %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu ara mamul</span>{% else %}satınalma{% endif %}</td>
             <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
             <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td></tr>
       {% empty %}
-        <tr><td colspan="4" class="yardim">Eksik malzeme yok: kalan üretim için gereken tüm ham madde kullanılabilir stokta var.</td></tr>
+        <tr><td colspan="5" class="yardim">Eksik malzeme yok: kalan üretim için gereken tüm ham madde ve stoklu ara mamul kullanılabilir stokta var.</td></tr>
       {% endfor %}
     </tbody>
   </table>

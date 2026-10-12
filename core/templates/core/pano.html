@@ -5,6 +5,7 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
+<style>.pk-kirmizi{background:#fdecef;color:#b1122c}.pano-kart-uyari{border-color:#b1122c}.pk-rozet[href]{text-decoration:none}</style>
 {% if acik_oturumlar %}<div class="uyari">⏱ <strong>{{ acik_oturumlar|length }}</strong> açık atölye iş oturumu var (bitirilmemiş):
   {% for o in acik_oturumlar %}{{ o.oturum.istasyon.kod }} › {{ o.oturum.uretim_emri.no }} · {{ o.ekip_metni }} ({{ o.oturum.baslangic_zamani|tr_zaman:"d.m H:i" }}){% if not forloop.last %}; {% endif %}{% endfor %}
   — <a href="{% url 'core:is_oturumlari' %}?durum=ACIK">İş Oturumları</a>.</div>{% endif %}
@@ -15,6 +16,18 @@
 </div>
 
 <div class="pano-kartlar">
+  {% if kritik_stok is not None %}
+  <div class="pano-kart{% if kritik_stok %} pano-kart-uyari{% endif %}" id="kritik-stok-kutusu">
+    <div class="pk-ust">
+      <span class="pk-ikon {% if kritik_stok %}pk-kirmizi{% else %}pk-yesil{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </span>
+      <a class="pk-rozet" href="{% url 'core:stoklar' %}?kritik=1">LİSTE</a>
+    </div>
+    <span class="pk-deger">{{ kritik_stok|length }}</span>
+    <span class="pk-etiket">Kritik stok: {{ kritik_stok|length }} kalem{% if kritik_stok %} — {% for r in kritik_stok|slice:":3" %}{{ r.stok.kod }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if kritik_stok|length > 3 %}…{% endif %}{% endif %}</span>
+  </div>
+  {% endif %}
   <div class="pano-kart">
     <div class="pk-ust">
       <span class="pk-ikon pk-mavi">

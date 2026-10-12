@@ -57,6 +57,8 @@
   .stk-ayr-pop[hidden] { display:none; }
   .stk-ayr-pop div { padding:.15rem 0; }
   .stk-mamul-etiket { display:flex; align-items:center; gap:.4rem; font-weight:600; padding:.55rem 0; }
+  .stk-kritik-rozet { background:#b1122c; color:#fff; }
+  .stk-oneri { white-space:nowrap; font-size:.8rem; }
   .stk-bos-js { display:none; }
   .stk-bos-js.gorunur { display:table-row; }
 </style>
@@ -87,10 +89,11 @@
     <div class="stk-alan-grup">
       <label for="stk-mamul">Hızlı filtre</label>
       <label class="stk-mamul-etiket"><input type="checkbox" id="stk-mamul" name="mamul" value="1" {% if mamul %}checked{% endif %} onchange="this.form.submit()"> Yalnız mamuller (152)</label>
+      <label class="stk-mamul-etiket"><input type="checkbox" id="stk-kritik" name="kritik" value="1" {% if kritik %}checked{% endif %} onchange="this.form.submit()"> Yalnız kritik{% if kritik %} ({{ kritik_sayisi }}){% endif %}</label>
     </div>
     <div class="stk-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
-      <a class="iptal-bag stk-arama-temizle{% if ara or secili_kategori or mamul %} gorunur{% endif %}" id="stk-arama-temizle"
+      <a class="iptal-bag stk-arama-temizle{% if ara or secili_kategori or mamul or kritik %} gorunur{% endif %}" id="stk-arama-temizle"
          href="{% url 'core:stoklar' %}">Temizle</a>
     </div>
   </form>
@@ -104,7 +107,10 @@
 <table id="stk-tablo">
   <thead>
     <tr>
-      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th><th class="sag">Mevcut Miktar</th><th class="sag">Ayrılan</th><th class="sag">Kullanılabilir</th><th></th>
+      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th><th class="sag">Mevcut Miktar</th><th class="sag">Ayrılan</th><th class="sag">Kullanılabilir</th>
+      <th class="sag" title="Açık satınalma siparişleri + açık istasyon emirlerinin kalan çıktısı">Gelecek</th>
+      <th class="sag" title="Açık istasyon emirlerinin henüz tüketmediği, ayrılmamış ihtiyacı">Bekleyen Tük.</th>
+      <th class="sag">Kritik</th><th class="sag" title="kritik − (kullanılabilir + gelecek − bekleyen)">Eksik</th><th>Öneri</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -114,7 +120,7 @@
           <div class="stk-hucre">
             <span class="stk-ikon {% if s.gorsel %}gorsel-var{% endif %}">{% if s.gorsel %}<img src="{{ s.gorsel.url }}" alt="">{% else %}📦{% endif %}</span>
             <div>
-              <div class="ad"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.ad }}</a>{% if s.varyantli %} <span class="rozet rozet-notr" title="Varyantlı kart: stok/maliyet varyant bazında (kart detayında kırılım)">🔀 varyantlı</span>{% endif %}</div>
+              <div class="ad"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.ad }}</a>{% if s.varyantli %} <span class="rozet rozet-notr" title="Varyantlı kart: stok/maliyet varyant bazında (kart detayında kırılım)">🔀 varyantlı</span>{% endif %}{% if s.kritik and s.kritik.kritik_mi %} <span class="rozet rozet-pasif stk-kritik-rozet" title="Kalan ({{ s.kritik.kalan|tr_kur:3 }}) kritik seviyenin ({{ s.kritik.kritik|tr_kur:3 }}) altında">⚠ kritik</span>{% endif %}{% if s.stoklu_uretim %} <span class="rozet rozet-notr" title="Stoklu üretim: başka ÜS'nin zincirinde planlanmaz, stoktan ayrılır">📦 stoklu</span>{% endif %}</div>
               <div class="kod">{{ s.kod }}</div>
             </div>
           </div>
@@ -128,15 +134,26 @@
             {% for d in s.ayirma_detay %}<div><a href="{% url 'core:uretim_emri_detay' d.emir.pk %}">{{ d.emir.no }}</a> · {{ d.musteri }} · <strong>{{ d.miktar|tr_kur:3 }}</strong></div>{% endfor %}
           </div>{% endif %}</td>
         <td class="sag mono{% if not s.hizmet and s.kullanilabilir < 0 %} stk-eksi{% endif %}" data-arama-disi>{% if s.hizmet %}<span class="pasif">—</span>{% else %}{{ s.kullanilabilir|tr_kur:3 }}{% endif %}</td>
+        {% if s.kritik %}
+          <td class="sag mono" data-arama-disi>{{ s.kritik.gelecek|tr_kur:3 }}</td>
+          <td class="sag mono" data-arama-disi>{{ s.kritik.bekleyen|tr_kur:3 }}</td>
+          <td class="sag mono" data-arama-disi>{{ s.kritik.kritik|tr_kur:3 }}</td>
+          <td class="sag mono{% if s.kritik.kritik_mi %} stk-eksi{% endif %}" data-arama-disi>{% if s.kritik.kritik_mi %}{{ s.kritik.eksik|tr_kur:3 }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td data-arama-disi onclick="event.stopPropagation()">{% if s.kritik.kritik_mi and s.kritik.oneri.tur %}{% if s.kritik.oneri.url %}<a class="dugme-ikincil stk-oneri" href="{{ s.kritik.oneri.url }}">{{ s.kritik.oneri.metin }}{% if s.kritik.oneri.tur == "URETIM" %} ({{ s.kritik.oneri.miktar|tr_kur:3 }}){% endif %}</a>{% else %}{{ s.kritik.oneri.metin }}{% endif %}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        {% else %}
+          <td class="sag" data-arama-disi><span class="pasif">—</span></td><td class="sag" data-arama-disi><span class="pasif">—</span></td>
+          <td class="sag" data-arama-disi><span class="pasif">—</span></td><td class="sag" data-arama-disi><span class="pasif">—</span></td><td data-arama-disi><span class="pasif">—</span></td>
+        {% endif %}
         <td class="stk-ok">›</td>
       </tr>
     {% empty %}
-      <tr style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or secili_kategori %}🔍 Bu süzgeçle eşleşen stok yok.
+      <tr style="cursor:default"><td colspan="12" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if kritik %}✅ Kritik seviyenin altında stok yok.
+        {% elif ara or secili_kategori %}🔍 Bu süzgeçle eşleşen stok yok.
         {% else %}📦 Henüz stok yok. “+ Yeni Stok” ile ekleyin.
           (Önce en az bir <strong>alt kategori</strong> tanımlı olmalı.){% endif %}</td></tr>
     {% endfor %}
-    <tr class="stk-bos-js" style="cursor:default"><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+    <tr class="stk-bos-js" style="cursor:default"><td colspan="12" class="yardim" style="text-align:center;padding:1.6rem 0">
       🔍 Bu süzgeçle eşleşen stok yok.</td></tr>
   </tbody>
 </table>

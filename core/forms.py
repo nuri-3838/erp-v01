@@ -371,6 +371,9 @@ class StokForm(forms.Form):
         empty_label="— yok —")
     kritik_stok = TRDecimalField(
         label="Kritik stok seviyesi", basamak=3, initial=Decimal("0"), required=False)
+    # Stoklu üretim (ara mamul başka ÜS'de planlanmaz, stoktan ayrılır) + kritik stok önerisi için parti miktarı.
+    stoklu_uretim = forms.BooleanField(label="Stoklu üretim", required=False)
+    parti_miktari = TRDecimalField(label="Parti miktarı", basamak=3, initial=Decimal("0"), required=False)
     tedarikci = forms.ModelChoiceField(
         label="Tedarikçi (Cari)", queryset=Cari.objects.none(), required=False,
         empty_label="— tedarikçi seç —")

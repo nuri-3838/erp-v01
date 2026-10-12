@@ -101,6 +101,21 @@
           <span>📤 Satış</span></label>
       </div>
       <p class="yardim">Birden fazlası seçilebilir. Seçime göre aşağıdaki bölümler görünür/gizlenir.</p>
+      <div class="izgara" style="margin-top:.8rem">
+        <div class="alan">
+          <label class="grup-secenek" style="display:inline-flex"><input type="checkbox" name="{{ form.stoklu_uretim.html_name }}"
+            id="{{ form.stoklu_uretim.id_for_label }}" {% if form.stoklu_uretim.value %}checked{% endif %}>
+            <span>📦 Stoklu üretim</span></label>
+          <p class="yardim">İşaretliyse bu ara mamul başka bir üretim siparişinin zincirinde planlanmaz (istasyon emri açılmaz): ihtiyaç stoktan ayrılır,
+            yetmeyen kısım ÜS'de "stoklu ara mamul" eksiği olarak görünür. "Stok için ÜS"de hedef seçilirse kendi zinciri normal planlanır.</p>
+        </div>
+        <div class="alan">
+          <label for="{{ form.parti_miktari.id_for_label }}">Parti Miktarı</label>
+          {{ form.parti_miktari }}
+          {% for e in form.parti_miktari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Kritik stok uyarısındaki "Stok için ÜS aç" önerisinin en az miktarı.</p>
+        </div>
+      </div>
     </section>
 
     <section class="icerik-kart" id="varyant-bolum">
