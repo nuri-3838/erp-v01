@@ -161,11 +161,11 @@
     </div>
     <div class="kv">
       <div class="satir"><span class="et">Kalan</span>
-        <span class="ik-buyuk-say mono {% if bakiye.eksi_mi %}ik-eksi{% endif %}">{{ bakiye.kalan|tr_kur:1 }} gün</span></div>
+        <span class="ik-buyuk-say mono {% if bakiye.eksi_mi %}ik-eksi{% endif %}">{{ bakiye.kalan_metni }}</span></div>
       <div class="satir"><span class="et">Hak Edilen</span>
         <span class="dg mono">{{ bakiye.hak_edilen|tr_kur:1 }} gün</span></div>
       <div class="satir"><span class="et">Kullanılan</span>
-        <span class="dg mono">{{ bakiye.onceki|tr_kur:1 }} (önceden) + {{ bakiye.kullanilan|tr_kur:1 }} (sistemde) gün</span></div>
+        <span class="dg mono">{{ bakiye.onceki|tr_kur:1 }} gün (önceden) + {{ bakiye.kullanilan_metni }} (sistemde)</span></div>
       {% if bakiye.planlanan %}
       <div class="satir"><span class="et">Planlanan (ileri tarihli)</span>
         <span class="dg mono">{{ bakiye.planlanan|tr_kur:1 }} gün</span></div>
@@ -178,14 +178,16 @@
     {% if son_izinler %}
     <div class="tablo-kapsayici" style="margin-top:1rem">
     <table>
-      <thead><tr><th>Tür</th><th>Başlangıç</th><th>Bitiş</th><th class="sag">Gün</th><th>Açıklama</th><th></th></tr></thead>
+      <thead><tr><th>Tür</th><th>Başlangıç</th><th>Bitiş</th><th>Saat</th><th class="sag">Süre</th><th class="sag">Gün</th><th>Açıklama</th><th></th></tr></thead>
       <tbody>
         {% for i in son_izinler %}
           <tr>
             <td><span class="rozet {% if i.tur == 'YILLIK' %}rozet-aktif{% elif i.tur == 'RAPOR' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ i.get_tur_display }}</span></td>
             <td class="mono">{{ i.baslangic|date:"d.m.Y" }}</td>
             <td class="mono">{{ i.bitis|date:"d.m.Y" }}</td>
-            <td class="sag mono">{{ i.gun|tr_kur:1 }}</td>
+            <td class="mono">{% if i.saatlik %}{{ i.baslangic_saati|time:"H:i" }}–{{ i.bitis_saati|time:"H:i" }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+            <td class="sag mono">{% if i.saatlik %}{{ i.dakika|izin_sure }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+            <td class="sag mono">{% if i.saatlik %}{{ i.gun|tr_kur:3 }}{% else %}{{ i.gun|tr_kur:1 }}{% endif %}</td>
             <td>{{ i.aciklama|default:"—" }}</td>
             <td class="islem-bag">
               <a class="dugme-ikincil" href="{% url 'core:izin_duzenle' i.pk %}?sonraki=personel">Düzenle</a>

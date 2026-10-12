@@ -39,6 +39,27 @@
       </div>
     </section>
 
+    {% if ucretsiz_saatlik and ucretsiz_saatlik.satirlar %}
+    <section class="icerik-kart" id="ucretsiz-saatlik">
+      <h2 class="bolum-baslik">Ücretsiz Saatlik İzinler — {{ ucretsiz_saatlik.ay }}/{{ ucretsiz_saatlik.yil }}</h2>
+      <p class="yardim" style="margin-top:-.3rem">Dönemde ücretsiz SAATLİK izni olan personel. Önerilen kesinti = net ücret ÷ 30 ÷ günlük çalışma süresi
+        ({{ ucretsiz_saatlik.gunluk|tr_kur:2 }} sa) × izin saati; satıra elle işlenir (bordro satırları otomatik değişmez).</p>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Personel</th><th class="sag">Ücretsiz saatlik izin</th><th class="sag">Saat</th><th class="sag">Net ücret</th><th class="sag">Önerilen kesinti</th></tr></thead>
+        <tbody>
+          {% for r in ucretsiz_saatlik.satirlar %}
+          <tr><td>{{ r.personel.ad_soyad }} <span class="yardim">({{ r.kayit_sayisi }} kayıt)</span></td>
+              <td class="sag mono">{{ r.sure_metni }}</td><td class="sag mono">{{ r.saat|tr_kur:2 }}</td>
+              <td class="sag mono">{% if r.net_ucret %}{{ r.net_ucret|tr_kur:2 }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+              <td class="sag mono">{% if r.kesinti %}{{ r.kesinti|tr_kur:2 }}{% else %}<span class="pasif">—</span>{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+    {% endif %}
+
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Personel Satırları</h2>
       <p class="yardim" style="margin-top:-.3rem">Her satırda kontrol: <strong>brüt − SGK işçi − işsizlik işçi − gelir vergisi − damga vergisi = net</strong>;

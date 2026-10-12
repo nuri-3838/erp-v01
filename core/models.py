@@ -3,6 +3,8 @@
 Burada yalnızca tüm tabloların paylaştığı invariant taban (audit + soft delete,
 spec 0b-g) ile v0.1 veri modelinin ilk tablosu HESAP_PLANI (spec bölüm 2) var.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
@@ -3808,8 +3810,16 @@ class PersonelIzin(TemelModel):
     tur = models.CharField("tür", max_length=10, choices=Tur.choices, default=Tur.YILLIK)
     baslangic = models.DateField("başlangıç")
     bitis = models.DateField("bitiş")
-    gun = models.DecimalField("gün", max_digits=5, decimal_places=1)
+    # ``gun``: izinden düşülen GÜN karşılığı. Tam günde takvim/yarım gün adımlı; SAATLİK izinde dakika / (günlük çalışma saati × 60), 3 ondalık
+    # (kayıt anındaki IkAyari.gunluk_calisma_saati ile — sonradan ayar değişse de kayıt sabit kalır).
+    gun = models.DecimalField("gün", max_digits=8, decimal_places=3)
     aciklama = models.CharField("açıklama", max_length=300, blank=True)
+    # SAATLİK izin (2026-10-12): tek gün (bitis = baslangic), saat aralığı ve dakika; devamda gün "Geldi" sayılır (rozetle), bakiyeden gün
+    # karşılığı düşer; ücretsiz saatlik izin bordro/puantajda saat bazlı kesinti bilgisi olarak okunur. Mevcut kayıtlar tam gün (False).
+    saatlik = models.BooleanField("saatlik", default=False)
+    baslangic_saati = models.TimeField("başlangıç saati", null=True, blank=True)
+    bitis_saati = models.TimeField("bitiş saati", null=True, blank=True)
+    dakika = models.PositiveIntegerField("süre (dakika)", default=0)
 
     class Meta:
         db_table = "core_personel_izin"
@@ -4322,6 +4332,23 @@ class UretimAyari(TemelModel):
         db_table = "core_uretim_ayari"
         verbose_name = "üretim ayarı"
         verbose_name_plural = "üretim ayarı"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class IkAyari(TemelModel):
+    """İK ayarları — TEKİL kayıt (pk=1). ``gunluk_calisma_saati``: saatlik izinde saat → gün çevriminin paydası (varsayılan 7,5 saat);
+    AYARLAR › Mesai Ayarları ekranından değiştirilir."""
+
+    gunluk_calisma_saati = models.DecimalField("günlük çalışma süresi (saat)", max_digits=4, decimal_places=2, default=Decimal("7.5"))
+
+    class Meta:
+        db_table = "core_ik_ayari"
+        verbose_name = "İK ayarı"
+        verbose_name_plural = "İK ayarı"
 
     @classmethod
     def get(cls):

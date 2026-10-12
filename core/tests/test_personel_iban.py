@@ -124,6 +124,6 @@ class EkranTest(TestCase):
         personel_servis.personel_guncelle(self.p, ad="hasan", soyad="demir", ise_giris_tarihi=date(2024, 3, 1), iban=GECERLI)
         ws = load_workbook(BytesIO(dokum_xlsx(2026, 6, bugun=date(2026, 7, 1)))).active
         basliklar = [c.value for c in ws[5]]
-        self.assertEqual(basliklar[-1], "IBAN")
+        self.assertIn("IBAN", basliklar)
         satir = next(r for r in ws.iter_rows(min_row=6, values_only=True) if r[1] == "HASAN DEMİR")
-        self.assertEqual(satir[len(basliklar) - 1], "TR33 0006 1005 1978 6457 8413 26")
+        self.assertEqual(satir[basliklar.index("IBAN")], "TR33 0006 1005 1978 6457 8413 26")

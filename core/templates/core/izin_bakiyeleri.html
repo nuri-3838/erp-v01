@@ -52,7 +52,7 @@
         <td class="sag mono">{{ s.b.hak_edilen|tr_kur:1 }}</td>
         <td class="sag mono">{{ s.b.onceki|tr_kur:1 }}</td>
         <td class="sag mono">{{ s.b.kullanilan|tr_kur:1 }}</td>
-        <td class="sag mono {% if s.b.eksi_mi %}ik-eksi{% endif %}">{{ s.b.kalan|tr_kur:1 }}</td>
+        <td title="{{ s.b.kalan|tr_kur:3 }} gün" class="sag mono {% if s.b.eksi_mi %}ik-eksi{% endif %}">{{ s.b.kalan_metni }}</td>
         <td class="sag mono">{% if s.b.planlanan %}{{ s.b.planlanan|tr_kur:1 }}{% else %}—{% endif %}</td>
         <td class="mono">{% if s.b.sonraki_hak_tarihi %}{{ s.b.sonraki_hak_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</td>
       </tr>

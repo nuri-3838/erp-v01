@@ -9190,10 +9190,11 @@ def izin_ekle(request):
             cd = form.cleaned_data
             try:
                 izin = izin_servis.izin_ekle(
-                    cd["personel"], tur=cd["tur"], baslangic=cd["baslangic"], bitis=cd["bitis"],
-                    gun=cd.get("gun"), aciklama=cd.get("aciklama", ""), kullanici=request.user)
-                messages.success(
-                    request, f"İzin kaydedildi: {izin.personel.ad_soyad} — {izin.gun} gün.")
+                    cd["personel"], tur=cd["tur"], baslangic=cd["baslangic"], bitis=cd.get("bitis"),
+                    gun=cd.get("gun"), aciklama=cd.get("aciklama", ""), kullanici=request.user,
+                    saatlik=form.saatlik, baslangic_saati=cd.get("baslangic_saati"), bitis_saati=cd.get("bitis_saati"))
+                messages.success(request, f"İzin kaydedildi: {izin.personel.ad_soyad} — {_izin_sure_metni(izin)}.")
+                _mesai_cakisma_uyarisi(request, izin)
                 return redirect(_izin_donus_url(request, izin.personel_id))
             except izin_servis.PersonelIzinHatasi as e:
                 form.add_error(None, str(e))
@@ -9219,16 +9220,19 @@ def izin_duzenle(request, pk):
             cd = form.cleaned_data
             try:
                 izin_servis.izin_guncelle(
-                    izin, tur=cd["tur"], baslangic=cd["baslangic"], bitis=cd["bitis"],
-                    gun=cd.get("gun"), aciklama=cd.get("aciklama", ""), kullanici=request.user)
-                messages.success(request, "İzin güncellendi.")
+                    izin, tur=cd["tur"], baslangic=cd["baslangic"], bitis=cd.get("bitis"),
+                    gun=cd.get("gun"), aciklama=cd.get("aciklama", ""), kullanici=request.user,
+                    saatlik=form.saatlik, baslangic_saati=cd.get("baslangic_saati"), bitis_saati=cd.get("bitis_saati"))
+                messages.success(request, f"İzin güncellendi — {_izin_sure_metni(izin)}.")
+                _mesai_cakisma_uyarisi(request, izin)
                 return redirect(_izin_donus_url(request, izin.personel_id))
             except izin_servis.PersonelIzinHatasi as e:
                 form.add_error(None, str(e))
     else:
         form = PersonelIzinForm(personel_sabit=True, initial={
             "tur": izin.tur, "baslangic": izin.baslangic, "bitis": izin.bitis,
-            "gun": izin.gun, "aciklama": izin.aciklama})
+            "gun": None if izin.saatlik else izin.gun, "aciklama": izin.aciklama,
+            "sure_turu": "SAAT" if izin.saatlik else "GUN", "baslangic_saati": izin.baslangic_saati, "bitis_saati": izin.bitis_saati})
     return render(request, "core/izin_form.html", {
         "form": form, "baslik": "İzin Düzenle", "duzenlenen": izin,
         "sonraki": request.GET.get("sonraki", ""), "tatil_tarihleri_json": _tatil_tarihleri_json()})
@@ -9244,6 +9248,23 @@ def izin_sil(request, pk):
         messages.success(request, f"İzin silindi: {izin.personel.ad_soyad}")
         return redirect(_izin_donus_url(request, izin.personel_id))
     return redirect("core:izinler")
+
+
+def _izin_sure_metni(izin):
+    if izin.saatlik:
+        return f"{izin.baslangic:%d.%m.%Y} {izin.baslangic_saati:%H:%M}–{izin.bitis_saati:%H:%M} ({izin_servis.sure_metni(izin.dakika)}, {izin.gun.normalize():f} gün karşılığı)"
+    return f"{izin.gun.normalize():f} gün"
+
+
+def _mesai_cakisma_uyarisi(request, izin):
+    """Saatlik izin aralığında mesai kaydı varsa uyarı (engel yok)."""
+    if not izin.saatlik:
+        return
+    kayitlar = izin_servis.mesai_cakismasi(izin.personel, izin.baslangic, izin.baslangic_saati, izin.bitis_saati)
+    if kayitlar:
+        from core.templatetags.core_extras import tr_zaman
+        aralik = ", ".join(f"{tr_zaman(m.giris_zamani, 'H:i')}–{tr_zaman(m.cikis_zamani, 'H:i') if m.cikis_zamani else 'açık'}" for m in kayitlar)
+        messages.warning(request, f"Dikkat: izin saatleri personelin mesai kaydıyla çakışıyor ({aralik}). Kayıt yapıldı; mesai kaydını kontrol edin.")
 
 
 def _izin_donus_url(request, personel_id):
@@ -9923,8 +9944,27 @@ def mesai_kaydi_sil(request, pk):
 # --- Mesai Ayarları (Ayarlar > yalnız yönetici) ---
 @yonetici_gerekli
 def mesai_ayarlari(request):
+    from core.forms import IkAyariForm
     return render(request, "core/mesai_ayarlari.html", {
-        "aglar": list(mesai_ag_servis.aktif_aglar())})
+        "aglar": list(mesai_ag_servis.aktif_aglar()),
+        "ik_form": IkAyariForm(initial={"gunluk_calisma_saati": izin_servis.gunluk_saat()}), "gunluk_saat": izin_servis.gunluk_saat()})
+
+
+@yonetici_gerekli
+def ik_ayari_kaydet(request):
+    """Günlük çalışma süresi (saatlik izin → gün çevrimi); Mesai Ayarları ekranından."""
+    from core.forms import IkAyariForm
+    if request.method == "POST":
+        form = IkAyariForm(request.POST)
+        if form.is_valid():
+            try:
+                izin_servis.gunluk_saat_ayarla(form.cleaned_data["gunluk_calisma_saati"], kullanici=request.user)
+                messages.success(request, f"Günlük çalışma süresi kaydedildi: {form.cleaned_data['gunluk_calisma_saati']} saat.")
+            except izin_servis.PersonelIzinHatasi as e:
+                messages.error(request, str(e))
+        else:
+            messages.error(request, "Günlük çalışma süresi geçerli bir sayı olmalı (örn. 7,5).")
+    return redirect("core:mesai_ayarlari")
 
 
 @yonetici_gerekli
@@ -10008,7 +10048,8 @@ def bordro_ekle(request):
     form, formset, yanit = _bordro_kaydet(request)
     if yanit:
         return yanit
-    return render(request, "core/bordro_form.html", {"form": form, "formset": formset, "duzenle": False})
+    return render(request, "core/bordro_form.html", {"form": form, "formset": formset, "duzenle": False,
+                                                     "ucretsiz_saatlik": _bordro_ucretsiz_saatlik(form)})
 
 
 @ekran_gerekli("bordro")
@@ -10017,7 +10058,28 @@ def bordro_duzenle(request, pk):
     form, formset, yanit = _bordro_kaydet(request, bordro)
     if yanit:
         return yanit
-    return render(request, "core/bordro_form.html", {"form": form, "formset": formset, "duzenle": True, "bordro": bordro})
+    return render(request, "core/bordro_form.html", {"form": form, "formset": formset, "duzenle": True, "bordro": bordro,
+                                                     "ucretsiz_saatlik": _bordro_ucretsiz_saatlik(form, bordro)})
+
+
+def _bordro_ucretsiz_saatlik(form, bordro=None):
+    """Bordro ekranı bilgi paneli: dönemin ÜCRETSİZ saatlik izinleri + önerilen kesinti (net ücret / 30 / günlük saat × saat). Bordro satırları elle
+    girildiğinden hesap öneri olarak gösterilir, satıra otomatik işlenmez."""
+    try:
+        yil = int(form["yil"].value() or (bordro.yil if bordro else 0))
+        ay = int(form["ay"].value() or (bordro.ay if bordro else 0))
+    except (TypeError, ValueError):
+        return None
+    if not (yil and 1 <= ay <= 12):
+        return None
+    gunluk = izin_servis.gunluk_saat()
+    satirlar = izin_servis.ucretsiz_saatlik_ozet(yil, ay)
+    ilk, son = ay_araligi(yil, ay)
+    for r in satirlar:
+        ucret = ucret_servis.gecerli_ucret(r["personel"], son)
+        r["net_ucret"] = ucret.net_tutar if (ucret is not None and ucret.tip != ucret.Tip.ASGARI and ucret.net_tutar) else None
+        r["kesinti"] = ((r["net_ucret"] / 30 / gunluk) * r["saat"]).quantize(Decimal("0.01")) if r["net_ucret"] else None
+    return {"yil": yil, "ay": ay, "satirlar": satirlar, "gunluk": gunluk}
 
 
 @ekran_gerekli("bordro")

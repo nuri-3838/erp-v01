@@ -72,7 +72,7 @@
 <div class="tablo-kapsayici genis">
 <table>
   <thead>
-    <tr><th>Personel</th><th>Tür</th><th>Başlangıç</th><th>Bitiş</th><th class="sag">Gün</th><th>Açıklama</th><th></th></tr>
+    <tr><th>Personel</th><th>Tür</th><th>Başlangıç</th><th>Bitiş</th><th>Saat</th><th class="sag">Süre</th><th class="sag">Gün</th><th>Açıklama</th><th></th></tr>
   </thead>
   <tbody>
     {% for i in kayitlar %}
@@ -89,7 +89,9 @@
         <td><span class="rozet {% if i.tur == 'YILLIK' %}rozet-aktif{% elif i.tur == 'RAPOR' %}rozet-pasif{% else %}rozet-notr{% endif %}">{{ i.get_tur_display }}</span></td>
         <td class="mono">{{ i.baslangic|date:"d.m.Y" }}</td>
         <td class="mono">{{ i.bitis|date:"d.m.Y" }}</td>
-        <td class="sag mono">{{ i.gun|tr_kur:1 }}</td>
+        <td class="mono">{% if i.saatlik %}{{ i.baslangic_saati|time:"H:i" }}–{{ i.bitis_saati|time:"H:i" }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="sag mono">{% if i.saatlik %}{{ i.dakika|izin_sure }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="sag mono">{% if i.saatlik %}{{ i.gun|tr_kur:3 }}{% else %}{{ i.gun|tr_kur:1 }}{% endif %}</td>
         <td>{{ i.aciklama|default:"—" }}</td>
         <td class="islem-bag">
           <a class="dugme-ikincil" href="{% url 'core:izin_duzenle' i.pk %}">Düzenle</a>
@@ -99,7 +101,7 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="7" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr><td colspan="9" class="yardim" style="text-align:center;padding:1.6rem 0">
         {% if secili_personel or secili_tur or bas or bit or izinde %}🔍 Bu süzgeçle eşleşen izin yok.
         {% else %}🌴 Henüz izin kaydı yok. “+ Yeni İzin” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}

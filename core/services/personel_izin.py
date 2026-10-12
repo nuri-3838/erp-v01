@@ -15,8 +15,8 @@ sonradan tatil takvimi değişse bile YENİDEN hesaplanmaz.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
-from decimal import Decimal
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -62,14 +62,81 @@ def hak_edilen_gun(giris, dogum, tarih) -> int:
 class IzinBakiye:
     hak_edilen: Decimal
     onceki: Decimal
-    kullanilan: Decimal          # sistemde girilmiş YILLIK izinler (planlananlar dahil)
+    kullanilan: Decimal          # sistemde girilmiş YILLIK izinler (planlananlar dahil; saatlik izinlerin gün karşılığı dahil)
     planlanan: Decimal           # kullanilan'ın başlangıcı bugünden SONRA olan kısmı
     kalan: Decimal
     sonraki_hak_tarihi: date | None
+    gunluk_saat: Decimal = Decimal("7.5")
 
     @property
     def eksi_mi(self) -> bool:
         return self.kalan < 0
+
+    @property
+    def kalan_metni(self) -> str:
+        """"12 gün 3 sa" — kalan gün + saat (günlük çalışma süresine göre)."""
+        return gun_saat_metni(self.kalan, self.gunluk_saat)
+
+    @property
+    def kullanilan_metni(self) -> str:
+        return gun_saat_metni(self.kullanilan, self.gunluk_saat)
+
+
+# === Saatlik izin: günlük çalışma süresi ve çevrimler (IkAyari.gunluk_calisma_saati, varsayılan 7,5 saat) ===
+
+def gunluk_saat() -> Decimal:
+    from core.models import IkAyari
+    return Decimal(IkAyari.get().gunluk_calisma_saati)
+
+
+def gunluk_saat_ayarla(deger, kullanici=None):
+    from core.models import IkAyari
+    try:
+        d = Decimal(str(deger).replace(",", "."))
+    except (InvalidOperation, ValueError):
+        raise PersonelIzinHatasi("Günlük çalışma süresi geçerli bir sayı olmalı (örn. 7,5).")
+    if not (Decimal("1") <= d <= Decimal("24")):
+        raise PersonelIzinHatasi("Günlük çalışma süresi 1 ile 24 saat arasında olmalı.")
+    ayar = IkAyari.get()
+    ayar.gunluk_calisma_saati = d
+    ayar.updated_by = kullanici
+    ayar.save(update_fields=["gunluk_calisma_saati", "updated_by", "updated_at"])
+    return ayar
+
+
+def dakika_gun(dakika, gunluk=None) -> Decimal:
+    """Dakika → gün karşılığı (3 ondalık), günlük çalışma süresine göre."""
+    gunluk = gunluk if gunluk is not None else gunluk_saat()
+    return (Decimal(int(dakika)) / (gunluk * 60)).quantize(Decimal("0.001"))
+
+
+def sure_metni(dakika) -> str:
+    """"2 sa 30 dk" / "45 dk" / "3 sa"."""
+    dakika = int(dakika or 0)
+    sa, dk = divmod(dakika, 60)
+    if sa and dk:
+        return f"{sa} sa {dk} dk"
+    return f"{sa} sa" if sa else f"{dk} dk"
+
+
+def gun_saat_metni(gun, gunluk=None) -> str:
+    """Gün (ondalık) → "12 gün 3 sa" / "12 gün" / "3,5 sa" / "0 gün"; eksi bakiyede "-2 gün 4 sa"."""
+    gunluk = Decimal(gunluk if gunluk is not None else gunluk_saat())
+    g = Decimal(gun or 0)
+    isaret = "-" if g < 0 else ""
+    g = abs(g)
+    tam = int(g)
+    saat = ((g - tam) * gunluk).quantize(Decimal("0.1"))
+    if saat >= gunluk:                                   # yuvarlama taşması (ör. 0,9999 gün)
+        tam, saat = tam + 1, Decimal("0")
+    saat_m = format(saat.normalize(), "f").replace(".", ",") if saat else ""
+    if tam and saat:
+        return f"{isaret}{tam} gün {saat_m} sa"
+    if tam:
+        return f"{isaret}{tam} gün"
+    if saat:
+        return f"{isaret}{saat_m} sa"
+    return "0 gün"
 
 
 def _as_of(personel, bugun):
@@ -92,7 +159,7 @@ def _bakiye_hesapla(personel, kullanilan, planlanan, bugun) -> IzinBakiye:
                              tamamlanan_yil(personel.ise_giris_tarihi, tarih) + 1)
     return IzinBakiye(
         hak_edilen=hak, onceki=onceki, kullanilan=kullanilan, planlanan=planlanan,
-        kalan=hak - onceki - kullanilan, sonraki_hak_tarihi=sonraki)
+        kalan=hak - onceki - kullanilan, sonraki_hak_tarihi=sonraki, gunluk_saat=gunluk_saat())
 
 
 def bakiye(personel: Personel, *, bugun=None) -> IzinBakiye:
@@ -159,9 +226,37 @@ def izinde_olanlar(bugun=None):
     return izin_listele(izinde_bugun=bugun)
 
 
-def _dogrula(personel, *, tur, baslangic, bitis, gun, aciklama) -> dict:
+def _saat_coz(deger, etiket):
+    if deger in (None, ""):
+        raise PersonelIzinHatasi(f"Saatlik izinde {etiket} zorunlu.")
+    if isinstance(deger, time):
+        return deger.replace(second=0, microsecond=0)
+    try:
+        sa, dk = str(deger).strip().split(":")[:2]
+        return time(int(sa), int(dk))
+    except (ValueError, TypeError):
+        raise PersonelIzinHatasi(f"{etiket} geçerli değil (örn. 09:30).")
+
+
+def _dogrula(personel, *, tur, baslangic, bitis, gun, aciklama, saatlik=False, baslangic_saati=None, bitis_saati=None) -> dict:
     if tur not in PersonelIzin.Tur.values:
         raise PersonelIzinHatasi("Geçersiz izin türü.")
+    if saatlik:
+        if baslangic is None:
+            raise PersonelIzinHatasi("Saatlik izinde tarih zorunlu.")
+        bitis = baslangic                                                                 # tek gün
+        bs, bt = _saat_coz(baslangic_saati, "başlangıç saati"), _saat_coz(bitis_saati, "bitiş saati")
+        if bt <= bs:
+            raise PersonelIzinHatasi("Bitiş saati başlangıç saatinden sonra olmalı.")
+        dakika = (bt.hour * 60 + bt.minute) - (bs.hour * 60 + bs.minute)
+        if baslangic < personel.ise_giris_tarihi:
+            raise PersonelIzinHatasi(
+                f"İzin, işe giriş tarihinden ({personel.ise_giris_tarihi:%d.%m.%Y}) önce başlayamaz.")
+        if personel.isten_cikis_tarihi is not None and bitis > personel.isten_cikis_tarihi:
+            raise PersonelIzinHatasi(
+                f"İzin, işten çıkış tarihinden ({personel.isten_cikis_tarihi:%d.%m.%Y}) sonra sürdürülemez.")
+        return {"tur": tur, "baslangic": baslangic, "bitis": bitis, "gun": dakika_gun(dakika), "aciklama": (aciklama or "").strip(),
+                "saatlik": True, "baslangic_saati": bs, "bitis_saati": bt, "dakika": dakika}
     if baslangic is None or bitis is None:
         raise PersonelIzinHatasi("Başlangıç ve bitiş tarihi zorunlu.")
     if bitis < baslangic:
@@ -190,19 +285,56 @@ def _dogrula(personel, *, tur, baslangic, bitis, gun, aciklama) -> dict:
             raise PersonelIzinHatasi(
                 f"Gün sayısı ({gun}) seçilen aralıktaki takvim gününden ({takvim}) fazla olamaz.")
     return {"tur": tur, "baslangic": baslangic, "bitis": bitis, "gun": gun,
-            "aciklama": (aciklama or "").strip()}
+            "aciklama": (aciklama or "").strip(), "saatlik": False, "baslangic_saati": None, "bitis_saati": None, "dakika": 0}
 
 
-def _cakisma_kontrol(personel, baslangic, bitis, *, haric_pk=None):
+def _cakisma_kontrol(personel, baslangic, bitis, *, haric_pk=None, saatlik=False, baslangic_saati=None, bitis_saati=None):
+    """Tam gün izin: tarih aralığına değen her izinle (saatlik dahil) çakışır. Saatlik izin: aynı gün tam gün izin varsa çakışır; aynı gün saatlik
+    izinle yalnız saat aralıkları kesişiyorsa çakışır."""
     qs = PersonelIzin.objects.filter(
         personel=personel, silindi=False, baslangic__lte=bitis, bitis__gte=baslangic)
     if haric_pk is not None:
         qs = qs.exclude(pk=haric_pk)
-    mevcut = qs.order_by("baslangic").first()
-    if mevcut is not None:
+    for mevcut in qs.order_by("baslangic"):
+        if saatlik and mevcut.saatlik and not (mevcut.baslangic_saati < bitis_saati and mevcut.bitis_saati > baslangic_saati):
+            continue
+        if mevcut.saatlik:
+            raise PersonelIzinHatasi(
+                f"Bu personelin {mevcut.baslangic:%d.%m.%Y} {mevcut.baslangic_saati:%H:%M}–{mevcut.bitis_saati:%H:%M} saatlik "
+                f"({mevcut.get_tur_display()}) izniyle çakışıyor.")
         raise PersonelIzinHatasi(
             f"Bu personelin {mevcut.baslangic:%d.%m.%Y} – {mevcut.bitis:%d.%m.%Y} tarihli "
             f"({mevcut.get_tur_display()}) izniyle çakışıyor.")
+
+
+def mesai_cakismasi(personel, tarih, baslangic_saati, bitis_saati) -> list:
+    """Saatlik izin aralığına değen mesai kayıtları (uyarı için; engel yok): [(giriş dt, çıkış dt|None)]."""
+    from core.models import MesaiKaydi
+    from core.tarih import _TR
+    bas = datetime.combine(tarih, baslangic_saati, tzinfo=_TR)
+    bit = datetime.combine(tarih, bitis_saati, tzinfo=_TR)
+    sonuc = []
+    for m in MesaiKaydi.objects.filter(personel=personel, silindi=False, is_tarihi=tarih).order_by("giris_zamani"):
+        cikis = m.cikis_zamani or timezone.now()
+        if m.giris_zamani < bit and cikis > bas:
+            sonuc.append(m)
+    return sonuc
+
+
+def ucretsiz_saatlik_ozet(yil, ay) -> list:
+    """Bordro için: dönemde ÜCRETSİZ saatlik izinleri olan personeller → [{"personel", "dakika", "saat", "kayit_sayisi"}] (ad soyad sırası)."""
+    from core.tarih import ay_araligi
+    ilk, son = ay_araligi(yil, ay)
+    toplam = {}
+    for i in (PersonelIzin.objects.filter(silindi=False, saatlik=True, tur=PersonelIzin.Tur.UCRETSIZ, baslangic__range=(ilk, son))
+              .select_related("personel").order_by("personel__ad", "personel__soyad", "baslangic")):
+        t = toplam.setdefault(i.personel_id, {"personel": i.personel, "dakika": 0, "kayit_sayisi": 0})
+        t["dakika"] += i.dakika
+        t["kayit_sayisi"] += 1
+    for t in toplam.values():
+        t["saat"] = (Decimal(t["dakika"]) / 60).quantize(Decimal("0.01"))
+        t["sure_metni"] = sure_metni(t["dakika"])
+    return list(toplam.values())
 
 
 def _kilitle(personel_id):
@@ -213,24 +345,30 @@ def _kilitle(personel_id):
     return p
 
 
+def _cakisma_arg(veri):
+    return {"saatlik": veri["saatlik"], "baslangic_saati": veri["baslangic_saati"], "bitis_saati": veri["bitis_saati"]}
+
+
 @transaction.atomic
-def izin_ekle(personel: Personel, *, tur, baslangic, bitis, gun=None, aciklama="",
-              kullanici=None) -> PersonelIzin:
+def izin_ekle(personel: Personel, *, tur, baslangic, bitis=None, gun=None, aciklama="",
+              kullanici=None, saatlik=False, baslangic_saati=None, bitis_saati=None) -> PersonelIzin:
     p = _kilitle(personel.pk)
-    veri = _dogrula(p, tur=tur, baslangic=baslangic, bitis=bitis, gun=gun, aciklama=aciklama)
-    _cakisma_kontrol(p, veri["baslangic"], veri["bitis"])
+    veri = _dogrula(p, tur=tur, baslangic=baslangic, bitis=bitis, gun=gun, aciklama=aciklama, saatlik=saatlik,
+                    baslangic_saati=baslangic_saati, bitis_saati=bitis_saati)
+    _cakisma_kontrol(p, veri["baslangic"], veri["bitis"], **_cakisma_arg(veri))
     return PersonelIzin.objects.create(
         personel=p, created_by=kullanici, updated_by=kullanici, **veri)
 
 
 @transaction.atomic
-def izin_guncelle(izin: PersonelIzin, *, tur, baslangic, bitis, gun=None, aciklama="",
-                  kullanici=None) -> PersonelIzin:
+def izin_guncelle(izin: PersonelIzin, *, tur, baslangic, bitis=None, gun=None, aciklama="",
+                  kullanici=None, saatlik=False, baslangic_saati=None, bitis_saati=None) -> PersonelIzin:
     if izin.silindi:
         raise PersonelIzinHatasi("Silinmiş izin kaydı düzenlenemez.")
     p = _kilitle(izin.personel_id)
-    veri = _dogrula(p, tur=tur, baslangic=baslangic, bitis=bitis, gun=gun, aciklama=aciklama)
-    _cakisma_kontrol(p, veri["baslangic"], veri["bitis"], haric_pk=izin.pk)
+    veri = _dogrula(p, tur=tur, baslangic=baslangic, bitis=bitis, gun=gun, aciklama=aciklama, saatlik=saatlik,
+                    baslangic_saati=baslangic_saati, bitis_saati=bitis_saati)
+    _cakisma_kontrol(p, veri["baslangic"], veri["bitis"], haric_pk=izin.pk, **_cakisma_arg(veri))
     for alan, deger in veri.items():
         setattr(izin, alan, deger)
     izin.updated_by = kullanici

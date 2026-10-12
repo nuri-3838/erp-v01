@@ -3167,9 +3167,33 @@ class PersonelIzinForm(forms.Form):
     gun = TRDecimalField(label="Gün Sayısı", basamak=1, required=False)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    # Saatlik izin: tek gün (tarih = başlangıç), saat aralığı; süre ekranda otomatik (JS) ve serviste hesaplanır.
+    sure_turu = forms.ChoiceField(label="Süre", choices=(("GUN", "Tam gün"), ("SAAT", "Saatlik")), initial="GUN", required=False,
+                                  widget=forms.RadioSelect)                                 # boş = tam gün (eski formlar/çağrılar)
+    baslangic_saati = forms.TimeField(label="Başlangıç saati", required=False, input_formats=["%H:%M", "%H:%M:%S"],
+                                      widget=forms.TimeInput(attrs={"type": "time", "step": "60"}, format="%H:%M"))
+    bitis_saati = forms.TimeField(label="Bitiş saati", required=False, input_formats=["%H:%M", "%H:%M:%S"],
+                                  widget=forms.TimeInput(attrs={"type": "time", "step": "60"}, format="%H:%M"))
+
+    def clean(self):
+        cd = super().clean()
+        if cd.get("sure_turu") == "SAAT":
+            if cd.get("baslangic"):
+                cd["bitis"] = cd["baslangic"]
+                self.errors.pop("bitis", None)
+            if not cd.get("baslangic_saati") or not cd.get("bitis_saati"):
+                self.add_error(None, "Saatlik izinde başlangıç ve bitiş saati zorunlu.")
+            elif cd["bitis_saati"] <= cd["baslangic_saati"]:
+                self.add_error("bitis_saati", "Bitiş saati başlangıç saatinden sonra olmalı.")
+        return cd
+
+    @property
+    def saatlik(self) -> bool:
+        return self.cleaned_data.get("sure_turu") == "SAAT"
 
     def __init__(self, *args, personel_sabit=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["bitis"].required = False                       # saatlikte tarih = başlangıç; tam günde servis zorunlu kılar
         if personel_sabit:
             del self.fields["personel"]
         else:
@@ -3180,6 +3204,10 @@ class PersonelIzinForm(forms.Form):
                 p.ad_soyad + (" (ayrıldı)" if p.isten_cikis_tarihi
                               and p.isten_cikis_tarihi < bugun else ""))
             self.fields["personel"].widget.attrs["class"] = "akilli-sec"
+
+
+class IkAyariForm(forms.Form):
+    gunluk_calisma_saati = TRDecimalField(label="Günlük çalışma süresi (saat)", basamak=2)
 
 
 class PersonelBelgeForm(forms.Form):

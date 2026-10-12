@@ -24,6 +24,13 @@ def tr_zaman(value, fmt="d.m.Y H:i"):
 
 
 @register.filter
+def izin_sure(dakika):
+    """Saatlik izin süresi: "2 sa 30 dk"."""
+    from core.services.personel_izin import sure_metni
+    return sure_metni(dakika)
+
+
+@register.filter
 def iban_bicimli(deger):
     """IBAN'ı 4'lü gruplarla gösterir (TR12 3456 …)."""
     from core.dogrulama import iban_bicimli as _b

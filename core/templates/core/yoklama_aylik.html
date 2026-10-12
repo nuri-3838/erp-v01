@@ -67,7 +67,7 @@
   <thead>
     <tr><th>Personel</th><th class="sag">Geldi</th><th class="sag">Yarım Gün</th><th class="sag">Gelmedi</th>
         <th class="sag">Resmî Tatil</th><th class="sag">Tatil Çalışması</th>
-        <th class="sag">İzinli</th><th class="sag">Raporlu</th><th class="sag">Girilmemiş</th></tr>
+        <th class="sag">İzinli</th><th class="sag">Raporlu</th><th class="sag">Girilmemiş</th><th class="sag" title="Saatlik izinler (gün sayaçlarına girmez)">Saatlik İzin</th></tr>
   </thead>
   <tbody>
     {% for s in satirlar %}
@@ -89,9 +89,10 @@
         <td class="sag mono {% if not s.izinli %}yk-sifir{% endif %}">{{ s.izinli }}</td>
         <td class="sag mono {% if not s.raporlu %}yk-sifir{% endif %}">{{ s.raporlu }}</td>
         <td class="sag mono {% if not s.girilmemis %}yk-sifir{% endif %}">{{ s.girilmemis }}</td>
+        <td class="sag mono {% if not s.saatlik_dakika %}yk-sifir{% endif %}">{% if s.saatlik_dakika %}{{ s.saatlik_dakika|izin_sure }}{% else %}0{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="9" class="yardim" style="text-align:center;padding:1.6rem 0">Bu ay için devam bilgisi gösterilecek personel yok.</td></tr>
+      <tr><td colspan="10" class="yardim" style="text-align:center;padding:1.6rem 0">Bu ay için devam bilgisi gösterilecek personel yok.</td></tr>
     {% endfor %}
   </tbody>
   {% if satirlar %}
@@ -101,7 +102,9 @@
       <td class="sag mono">{{ toplam.gelmedi }}</td>
       <td class="sag mono">{{ toplam.resmi_tatil }}</td><td class="sag mono">{{ toplam.tatil_calisma }}</td>
       <td class="sag mono">{{ toplam.izinli }}</td>
-      <td class="sag mono">{{ toplam.raporlu }}</td><td class="sag mono">{{ toplam.girilmemis }}</td></tr>
+      <td class="sag mono">{{ toplam.raporlu }}</td><td class="sag mono">{{ toplam.girilmemis }}</td>
+      <td class="sag mono">{{ toplam.saatlik_dakika|izin_sure }}</td></tr>
+    <tr><td colspan="10" class="yardim">Saatlik izin: {{ toplam.saatlik_saat|tr_kur:2 }} saat{% if toplam.ucretsiz_dakika %} (ücretsiz: {{ toplam.ucretsiz_saat|tr_kur:2 }} saat){% endif %} — gün sayaçlarına girmez; saatlik izinli gün "Geldi" olarak sayılır.</td></tr>
   </tfoot>
   {% endif %}
 </table>

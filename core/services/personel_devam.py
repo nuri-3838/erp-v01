@@ -23,6 +23,7 @@ davranış yukarıdaki gibi AYNEN kalır.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from datetime import timedelta
 from typing import Optional
 
@@ -76,6 +77,12 @@ class GunSatiri:
     personel: Personel
     kayit: Optional[PersonelDevam]
     izin_turu: Optional[str]
+    saatlik_dakika: int = 0                      # o günkü saatlik izin toplamı (gün Geldi sayılır; rozet)
+
+    @property
+    def saatlik_metni(self) -> str:
+        from core.services.personel_izin import sure_metni
+        return sure_metni(self.saatlik_dakika) if self.saatlik_dakika else ""
 
     @property
     def kilitli(self) -> bool:
@@ -97,12 +104,15 @@ def gun_satirlari(tarih) -> list:
     ids = [p.pk for p in personeller]
     kayitlar = {k.personel_id: k for k in PersonelDevam.objects.filter(
         silindi=False, tarih=tarih, personel_id__in=ids)}
-    izinler = {}
-    for pid, tur in PersonelIzin.objects.filter(
+    izinler, saatlik = {}, {}
+    for pid, tur, saatlik_mi, dakika in PersonelIzin.objects.filter(
             silindi=False, personel_id__in=ids, baslangic__lte=tarih, bitis__gte=tarih
-    ).values_list("personel_id", "tur"):
-        izinler.setdefault(pid, []).append(tur)
-    return [GunSatiri(p, kayitlar.get(p.pk), _izin_turu_sec(izinler.get(p.pk, ()))) for p in personeller]
+    ).values_list("personel_id", "tur", "saatlik", "dakika"):
+        if saatlik_mi:
+            saatlik[pid] = saatlik.get(pid, 0) + dakika        # saatlik izin günü kilitlemez: Geldi/Yarım/Gelmedi girilir
+        else:
+            izinler.setdefault(pid, []).append(tur)
+    return [GunSatiri(p, kayitlar.get(p.pk), _izin_turu_sec(izinler.get(p.pk, ())), saatlik.get(p.pk, 0)) for p in personeller]
 
 
 def gun_ozeti(satirlar) -> dict:
@@ -135,7 +145,7 @@ def gunluk_kaydet(tarih, satirlar, *, kullanici=None):
     with transaction.atomic():
         uygun = {p.pk: p for p in gun_uygun_personel(tarih).select_for_update()}   # eşzamanlı kayıtları sıraya dizer
         izinli = set(PersonelIzin.objects.filter(
-            silindi=False, personel_id__in=list(uygun), baslangic__lte=tarih, bitis__gte=tarih
+            silindi=False, saatlik=False, personel_id__in=list(uygun), baslangic__lte=tarih, bitis__gte=tarih
         ).values_list("personel_id", flat=True))
         mevcut = {k.personel_id: k for k in PersonelDevam.objects.filter(
             silindi=False, tarih=tarih, personel_id__in=list(uygun))}
@@ -191,11 +201,22 @@ class AylikSatir:
     # Tatil günü Geldi/Yarım Gün kaydı — geldi/yarim'e AYRICA dahildir (pazar_calisma ile aynı
     # desen); hem Pazar hem tatilse yalnız burası artar, pazar_calisma ARTMAZ.
     tatil_calisma: int = 0
+    # SAATLİK izin (dakika): gün sayaçlarına girmez (gün Geldi/Yarım/… olarak kayıttan sayılır); ayrı toplam. ucretsiz_dakika bordro kesintisi için.
+    saatlik_dakika: int = 0
+    ucretsiz_dakika: int = 0
+
+    @property
+    def saatlik_saat(self) -> Decimal:
+        return (Decimal(self.saatlik_dakika) / 60).quantize(Decimal("0.01"))
+
+    @property
+    def ucretsiz_saat(self) -> Decimal:
+        return (Decimal(self.ucretsiz_dakika) / 60).quantize(Decimal("0.01"))
 
 
 _SAYAC_ALANLARI = ("geldi", "yarim", "gelmedi", "izinli", "raporlu", "girilmemis",
                    "yillik", "ucretsiz", "mazeret", "rapor", "diger", "pazar_calisma",
-                   "resmi_tatil", "tatil_calisma")
+                   "resmi_tatil", "tatil_calisma", "saatlik_dakika", "ucretsiz_dakika")
 _DURUM_SAYAC = {"GELDI": "geldi", "YARIM_GUN": "yarim", "GELMEDI": "gelmedi"}
 _IZIN_TUR_SAYAC = {
     PersonelIzin.Tur.YILLIK.value: "yillik",
@@ -220,11 +241,14 @@ def aylik_ozet(yil, ay, *, bugun=None, personel_ids=None) -> list:
     kayitlar = {(pid, t): d for pid, t, d in PersonelDevam.objects.filter(
         silindi=False, personel_id__in=ids, tarih__range=(ilk, son)
     ).values_list("personel_id", "tarih", "durum")}
-    izinler = {}
-    for pid, b, e, tur in PersonelIzin.objects.filter(
+    izinler, saatlikler = {}, {}
+    for pid, b, e, tur, saatlik_mi, dakika in PersonelIzin.objects.filter(
             silindi=False, personel_id__in=ids, baslangic__lte=son, bitis__gte=ilk
-    ).values_list("personel_id", "baslangic", "bitis", "tur"):
-        izinler.setdefault(pid, []).append((b, e, tur))
+    ).values_list("personel_id", "baslangic", "bitis", "tur", "saatlik", "dakika"):
+        if saatlik_mi:
+            saatlikler.setdefault(pid, []).append((b, tur, dakika))
+        else:
+            izinler.setdefault(pid, []).append((b, e, tur))
     tatiller = tatil_gunleri_seti(ilk, son)
 
     satirlar = []
@@ -265,6 +289,11 @@ def aylik_ozet(yil, ay, *, bugun=None, personel_ids=None) -> list:
             elif not pazar:
                 sayac["girilmemis"] += 1
             gun += timedelta(days=1)
+        for b, tur, dakika in saatlikler.get(p.pk, ()):
+            if bas <= b <= bit:
+                sayac["saatlik_dakika"] += dakika
+                if tur == PersonelIzin.Tur.UCRETSIZ:
+                    sayac["ucretsiz_dakika"] += dakika
         satirlar.append(AylikSatir(personel=p, **sayac))
     return satirlar
 

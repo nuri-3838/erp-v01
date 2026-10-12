@@ -25,10 +25,16 @@
           <div class="akilli">{{ form.personel }}</div>{% for e in form.personel.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         {% endif %}
         <div class="alan"><label for="{{ form.tur.id_for_label }}">{{ form.tur.label }}</label>{{ form.tur }}{% for e in form.tur.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-        <div class="alan"><label for="{{ form.gun.id_for_label }}">{{ form.gun.label }}</label>{{ form.gun }}{% for e in form.gun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        <div class="alan"><label>{{ form.sure_turu.label }}</label>
+          <div class="sure-secim">{% for r in form.sure_turu %}<label class="sure-secenek">{{ r.tag }} <span>{{ r.choice_label }}</span></label>{% endfor %}</div>
+          {% for e in form.sure_turu.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan gun-alan"><label for="{{ form.gun.id_for_label }}">{{ form.gun.label }}</label>{{ form.gun }}{% for e in form.gun.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           <p class="yardim" id="gun-oneri" style="margin:.3rem 0 0">Boş bırakırsanız Pazar günleri ve resmî tatiller hariç takvim günü sayılır; gerekirse elle düzeltin (yarım gün: 0,5).</p></div>
-        <div class="alan"><label for="{{ form.baslangic.id_for_label }}">{{ form.baslangic.label }} <span class="zorunlu">*</span></label>{{ form.baslangic }}{% for e in form.baslangic.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-        <div class="alan"><label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }} <span class="zorunlu">*</span></label>{{ form.bitis }}{% for e in form.bitis.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.baslangic.id_for_label }}"><span class="gun-alan">{{ form.baslangic.label }}</span><span class="saat-alan">Tarih</span> <span class="zorunlu">*</span></label>{{ form.baslangic }}{% for e in form.baslangic.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan gun-alan"><label for="{{ form.bitis.id_for_label }}">{{ form.bitis.label }} <span class="zorunlu">*</span></label>{{ form.bitis }}{% for e in form.bitis.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan saat-alan"><label for="{{ form.baslangic_saati.id_for_label }}">{{ form.baslangic_saati.label }} <span class="zorunlu">*</span></label>{{ form.baslangic_saati }}{% for e in form.baslangic_saati.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan saat-alan"><label for="{{ form.bitis_saati.id_for_label }}">{{ form.bitis_saati.label }} <span class="zorunlu">*</span></label>{{ form.bitis_saati }}{% for e in form.bitis_saati.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" id="sure-oneri" style="margin:.3rem 0 0">Süre: —</p></div>
         <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}{% for e in form.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
       </div>
     </section>
@@ -39,7 +45,35 @@
   </form>
 </div>
 
+<style>
+  .sure-secim { display:flex; gap:1rem; align-items:center; min-height:38px; }
+  .sure-secenek { display:inline-flex; align-items:center; gap:.35rem; font-weight:600; cursor:pointer; }
+  .sure-secenek input { width:1.05rem; height:1.05rem; min-width:0; min-height:0; margin:0; accent-color:var(--turuncu); }
+  form.saatlik .gun-alan { display:none; }
+  form:not(.saatlik) .saat-alan { display:none; }
+</style>
 <script>
+(function(){
+  // Tam gün / Saatlik geçişi: saatlikte tek tarih + saat aralığı, süre otomatik (SS:DD); gün alanı gizli (servis gün karşılığını hesaplar).
+  var f = document.querySelector('form[method=post]');
+  var secimler = document.querySelectorAll('input[name=sure_turu]');
+  var bs = document.getElementById('id_baslangic_saati'), bt = document.getElementById('id_bitis_saati'), sure = document.getElementById('sure-oneri');
+  function saatlikMi(){ var s = document.querySelector('input[name=sure_turu]:checked'); return s && s.value === 'SAAT'; }
+  function sureHesapla(){
+    if (!bs || !bt || !sure) return;
+    if (!bs.value || !bt.value) { sure.textContent = 'Süre: —'; return; }
+    var a = bs.value.split(':'), b = bt.value.split(':');
+    var dk = (parseInt(b[0], 10) * 60 + parseInt(b[1], 10)) - (parseInt(a[0], 10) * 60 + parseInt(a[1], 10));
+    if (isNaN(dk)) { sure.textContent = 'Süre: —'; return; }
+    if (dk <= 0) { sure.textContent = 'Bitiş saati başlangıçtan sonra olmalı.'; sure.style.color = 'var(--hata)'; return; }
+    sure.style.color = '';
+    sure.textContent = 'Süre: ' + Math.floor(dk / 60) + ' sa ' + String(dk % 60).padStart(2, '0') + ' dk';
+  }
+  function uygula(){ if (f) f.classList.toggle('saatlik', saatlikMi()); sureHesapla(); }
+  secimler.forEach(function(r){ r.addEventListener('change', uygula); });
+  if (bs) bs.addEventListener('input', sureHesapla); if (bt) bt.addEventListener('input', sureHesapla);
+  uygula();
+})();
 (function(){
   var bas = document.getElementById('id_baslangic'), bit = document.getElementById('id_bitis');
   var gun = document.getElementById('id_gun'), ipucu = document.getElementById('gun-oneri');

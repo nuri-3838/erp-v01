@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
 {% block baslik %}Mesai Ayarları · ERP v0.1{% endblock %}
 {% block sayfa_adi %}Mesai Ayarları{% endblock %}
 
@@ -12,6 +13,16 @@
 {% if not aglar %}
   <div class="uyari">⚠️ Hiç izinli ağ tanımlı değil; mesai başlat/bitir özelliği şu anda herkes için kapalı.</div>
 {% endif %}
+
+<section class="icerik-kart" id="ik-ayari">
+  <h2 class="bolum-baslik">Günlük Çalışma Süresi (saatlik izin)</h2>
+  <form method="post" action="{% url 'core:ik_ayari_kaydet' %}" style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end">
+    {% csrf_token %}
+    <div class="alan" style="margin:0"><label for="{{ ik_form.gunluk_calisma_saati.id_for_label }}">{{ ik_form.gunluk_calisma_saati.label }}</label>{{ ik_form.gunluk_calisma_saati }}</div>
+    <button type="submit" class="birincil">Kaydet</button>
+    <span class="yardim">Saatlik izinler yıllık izinden bu süreye göre gün karşılığıyla düşer (şu an: {{ gunluk_saat|tr_kur:2 }} saat = 1 gün). Mevcut kayıtlar değişmez.</span>
+  </form>
+</section>
 
 <section class="icerik-kart">
   <h2 class="bolum-baslik">İzinli Ağ Ekle</h2>
