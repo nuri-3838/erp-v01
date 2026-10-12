@@ -659,26 +659,28 @@ class UretimEmriServisTest(TestCase):
         self.assertFalse(StokAyirma.objects.filter(uretim_emri_id=emir.pk).exists())
 
     def test_net_plan_eldeki_stogu_ayirir(self):
-        """Eldeki ayrılmamış stok her seviyede düşülür: 4 bükülmüş eldeki → bukum emri 6; 2 KESİLMİŞ eldeki → kesim emri 2 çalıştırma."""
+        """Eldeki ayrılmamış stok ALT seviyelerde düşülür; STOK İÇİN ÜS'de (kaynak sipariş yok) kök hedef kendi stoğundan KARŞILANMAZ (2026-10-12):
+        4 bükülmüş eldeki kullanılmaz → bukum emri 10; 2 KESİLMİŞ eldeki düşer → net 8 → kesim 4 çalıştırma → profil 4."""
         hareket_ekle(stok_id=self.bukulmus.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1), tur=StokHareket.Tur.GIRIS, miktar=Decimal("4"))
         hareket_ekle(stok_id=self.kesilmis.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1), tur=StokHareket.Tur.GIRIS, miktar=Decimal("2"))
         hareket_ekle(stok_id=self.profil.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 1), tur=StokHareket.Tur.GIRIS, miktar=Decimal("100"))
         emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
                                    depo_id=self.depo.pk, tarih=date(2026, 1, 10))
         ay = {a.stok.kod: a.miktar for a in stok_ayirma.emir_ayirmalari(emir)}
-        self.assertEqual(ay, {"UT-BUKULMUS": Decimal("4"), "UT-KESILMIS": Decimal("2"), "UT-PROFIL": Decimal("2")})   # kesilmiş net 4 → 2 çalıştırma → profil 2
-        self.assertEqual({ie.operasyon_id: ie.planlanan for ie in emir.istasyon_emirleri.all()}, {self.bukum_op.pk: Decimal("6"), self.kesim_op.pk: Decimal("2")})
-        self.assertEqual(emir.kalemler.get().eldeki_ayrilan, Decimal("4"))
+        self.assertEqual(ay, {"UT-KESILMIS": Decimal("2"), "UT-PROFIL": Decimal("4")})                                  # kök bükülmüş ayrılmaz; kesilmiş net 8 → 4 çalıştırma → profil 4
+        self.assertEqual({ie.operasyon_id: ie.planlanan for ie in emir.istasyon_emirleri.all()}, {self.bukum_op.pk: Decimal("10"), self.kesim_op.pk: Decimal("4")})
+        self.assertEqual(emir.kalemler.get().eldeki_ayrilan, Decimal("0"))
         # ikinci sipariş aynı stoğu göremez: kullanılabilir 0 → tamamı üretime
         emir2 = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("10")}],
                                     depo_id=self.depo.pk, tarih=date(2026, 1, 11))
         self.assertEqual(emir2.kalemler.get().eldeki_ayrilan, Decimal("0"))
         self.assertEqual(emir2.istasyon_emirleri.get(operasyon=self.bukum_op).planlanan, Decimal("10"))
-        # tamamen stoktan karşılanan kalem: istasyon emri yok, yalnız ayırma
+        # kök hedefin bol stoğu olsa da stok için ÜS'de kullanılmaz: emirler açılır, ayırma yok
         hareket_ekle(stok_id=self.bukulmus.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.GIRIS, miktar=Decimal("50"))
         emir3 = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": Decimal("5")}],
                                     depo_id=self.depo.pk, tarih=date(2026, 1, 12))
-        self.assertEqual((emir3.istasyon_emirleri.count(), emir3.kalemler.get().eldeki_ayrilan), (0, Decimal("5")))
+        self.assertEqual((emir3.istasyon_emirleri.count(), emir3.kalemler.get().eldeki_ayrilan,
+                          emir3.istasyon_emirleri.get(operasyon=self.bukum_op).planlanan), (2, Decimal("0"), Decimal("5")))
 
 
 class UretimEmriCokluKalemServisTest(TestCase):

@@ -1067,6 +1067,8 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     varyantli = planlama_varyant.acik()                                                     # E-6 anahtarı (açılış anında; ÜS'ye yazılır)
     coz = _kalemleri_coz(kalemler, siparis_kalemleri, varyantli)
     _planlama_kilidi()
+    if kaynak_siparis is None:
+        stoktan = stok_icin_tavan(coz, varyantli)                                           # STOK İÇİN ÜS: kök hedef kendi stoğundan karşılanmaz
     sonuc, cz = _plani_hesapla(coz, varyantli, kullanici, stoktan=stoktan)                  # önce hesapla: döngü hatası hiçbir şey yazdırmaz
 
     yil = tarih.year
@@ -1163,6 +1165,13 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
 
 
 # === "Stoktan karşıla" sorusu (2026-10-12): ÜS açılış/revizede bitmiş ürün (152) stoğu kullanıcıya sorulur ===
+
+def stok_icin_tavan(coz, varyantli) -> dict:
+    """STOK İÇİN ÜS (kaynak siparişi yok; 2026-10-12): amaç stoğu artırmak — kök hedef ürün (151 ya da 152) ASLA kendi stoğundan karşılanmaz,
+    tamamı üretilir: her kök düğüm için tavan 0. Alt bileşenler (ara mamul, hammadde) bugünkü gibi stoktan kullanılır. Siparişten açılan ÜS'de
+    152 için kullanıcıya sorulan akış ("stoktan karşıla") değişmez."""
+    return {_kalem_anahtari(u, v, varyantli): Decimal("0") for u, _m, v in coz}
+
 
 def stoktan_karsilama_onizleme(kalemler, *, varyantli=None, haric_emir=None, siparis_kalemleri=None, kullanici=None) -> list:
     """Kaydetmeden önce kalem başına ön izleme: {"sira", "urun", "varyant", "varyant_etiketi", "hedef", "serbest" (kullanılabilir bitmiş stok),
@@ -1944,6 +1953,8 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
         if yeni_toplam.get((stok_pk, var_pk), Decimal("0")) < sevk:
             raise UretimHatasi(f"{Stok.objects.get(pk=stok_pk).kod}: sevk/fatura edilmiş miktarın ({sevk.normalize():f}) altına düşürülemez.")
     once = _emir_ozeti(emir)
+    if not emir.kaynak_siparis_id:
+        stoktan = stok_icin_tavan(coz, varyantli)                                           # stok için ÜS: revizede de kök stoktan karşılanmaz
     sonuc, cz = _plani_hesapla(plan_kalemleri(coz, sevk_haritasi, varyantli), varyantli, kullanici, haric_emir=emir, stoktan=stoktan)
 
     emir.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)

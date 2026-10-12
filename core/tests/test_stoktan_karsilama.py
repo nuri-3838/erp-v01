@@ -60,18 +60,28 @@ class ServisTest(StoktanTaban):
         self.assertTrue(uretim.stoktan_sorusu_var(rows))
         self.assertFalse(uretim.stoktan_sorusu_var(stoktan_karsilama_onizleme([{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": "2"}])))
 
-    def test_secim_tavani_ayirma_ve_plan(self):
-        emir = self.ac()                                                                                            # stoktan=None: bugünkü otomatik
-        self.assertEqual((emir.kalemler.get().eldeki_ayrilan, sa.ayrilan_miktar(emir, self.mamul), self.planlanan(emir, self.pak_op)), (D("4"), D("4"), D("6")))
-        uretim.uretim_emri_iptal(emir)
-        emir = self.ac(stoktan={(self.mamul.pk, None): D("1")})                                                     # elle 1
-        self.assertEqual((emir.kalemler.get().eldeki_ayrilan, sa.ayrilan_miktar(emir, self.mamul), self.planlanan(emir, self.pak_op)), (D("1"), D("1"), D("9")))
-        uretim.uretim_emri_iptal(emir)
-        emir = self.ac(stoktan={(self.mamul.pk, None): D("0")})                                                     # tamamını üret
+    def test_stok_icin_us_kok_hedef_stoktan_karsilanmaz(self):
+        emir = self.ac()                                                                                            # stok için (kaynak sipariş yok): hedefin tamamı üretilir
         self.assertEqual((emir.kalemler.get().eldeki_ayrilan, sa.ayrilan_miktar(emir, self.mamul), self.planlanan(emir, self.pak_op)), (D("0"), D("0"), D("10")))
         uretim.uretim_emri_iptal(emir)
-        emir = self.ac(stoktan={(self.mamul.pk, None): D("99")})                                                    # tavan serbesti aşamaz: yine 4
-        self.assertEqual(emir.kalemler.get().eldeki_ayrilan, D("4"))
+        emir = self.ac(stoktan={(self.mamul.pk, None): D("4")})                                                     # verilse bile yok sayılır
+        self.assertEqual((emir.kalemler.get().eldeki_ayrilan, self.planlanan(emir, self.pak_op)), (D("0"), D("10")))
+        uretim.uretim_emri_iptal(emir)
+        hareket_ekle(stok_id=self.bukulmus.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.GIRIS, miktar=D("5"))
+        emir = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": "3"}], depo_id=self.depo.pk, tarih=date(2026, 1, 10),
+                                   kullanici=self.yon)                                                              # 151 ara mamul hedef: kendi stoğu (5) kullanılmaz
+        self.assertEqual((emir.kalemler.get().eldeki_ayrilan, sa.ayrilan_miktar(emir, self.bukulmus), self.planlanan(emir, self.bukum_op)), (D("0"), D("0"), D("3")))
+        uretim.uretim_emri_revize(emir, kalemler=[{"hedef_urun_id": self.bukulmus.pk, "hedef_miktar": "4"}], kullanici=self.yon,
+                                  stoktan={(self.bukulmus.pk, None): D("4")})                                       # revizede de yok sayılır
+        self.assertEqual((emir.kalemler.get(silindi=False).eldeki_ayrilan, self.planlanan(emir, self.bukum_op)), (D("0"), D("4")))
+        # tavan mekanizması (siparişli ÜS'nin kullandığı): doğrudan planlama
+        coz = uretim._kalemleri_coz([{"hedef_urun_id": self.mamul.pk, "hedef_miktar": "10"}], None, False)
+        sonuc, _ = uretim._plani_hesapla(coz, False, stoktan={(self.mamul.pk, None): D("1")})
+        self.assertEqual(sonuc["ayrilan"].get(self.mamul.pk), D("1"))
+        sonuc, _ = uretim._plani_hesapla(coz, False, stoktan=None)
+        self.assertEqual(sonuc["ayrilan"].get(self.mamul.pk), D("4"))
+        sonuc, _ = uretim._plani_hesapla(coz, False, stoktan={(self.mamul.pk, None): D("99")})
+        self.assertEqual(sonuc["ayrilan"].get(self.mamul.pk), D("4"))                                               # tavan serbesti aşamaz
 
     def test_ara_mamul_stogu_sorudan_etkilenmez(self):
         hareket_ekle(stok_id=self.bukulmus.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.GIRIS, miktar=D("3"))
@@ -100,14 +110,11 @@ class ServisTest(StoktanTaban):
         with self.assertRaisesMessage(UretimHatasi, "serbest stoğu (4) aşıyor"):
             stoktan_secimleri_coz(rows, [("stok", ""), ("stok", "")])
 
-    def test_revize_kendi_ayirmasi_serbest_sayilir(self):
-        emir = self.ac(stoktan={(self.mamul.pk, None): D("1")})
+    def test_onizleme_revizede_kendi_ayirmasi_serbest_sayilir(self):
+        emir = self.ac()
+        sa.ayirma_ayarla(emir, self.mamul.pk, D("1"), self.yon)                                                     # siparişli ÜS'de olabilecek durum
         rows = stoktan_karsilama_onizleme([{"hedef_urun_id": self.mamul.pk, "hedef_miktar": "12"}], haric_emir=emir)
         self.assertEqual((rows[0]["serbest"], rows[0]["ust_sinir"]), (D("4"), D("4")))                              # kendi 1'i de serbest görünür
-        uretim.uretim_emri_revize(emir, kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": "12"}], kullanici=self.yon,
-                                  stoktan={(self.mamul.pk, None): D("3")})
-        self.assertEqual((emir.kalemler.get(silindi=False).eldeki_ayrilan, sa.ayrilan_miktar(emir, self.mamul), self.planlanan(emir, self.pak_op)),
-                         (D("3"), D("3"), D("9")))
 
 
 class EkranTest(StoktanTaban):
@@ -121,54 +128,29 @@ class EkranTest(StoktanTaban):
         v.update(ek)
         return v
 
-    def test_us_ac_onizleme_ve_onay(self):
+    def test_us_ac_ve_revize_soru_yok_tamami_uretilir(self):
         url = reverse("core:uretim_emri_ekle")
-        r = self.client.post(url, self.veri())                                                                      # 1. adım: ön izleme, kayıt yok
-        self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "stoktan mı karşılansın")
-        self.assertContains(r, "Stoktan karşıla (4)")
-        self.assertContains(r, "Tamamını üret")
-        self.assertContains(r, "Hepsini stoktan karşıla")
-        self.assertContains(r, "Hepsini üret")
-        self.assertContains(r, "Seçimi Onayla ve Siparişi Aç")
-        self.assertContains(r, 'name="secim_onay" value="1"')
-        self.assertEqual(UretimEmri.objects.count(), 1)                                                   # yalnız fixture ÜS
-        r = self.client.post(url, self.veri(secim_onay="1", stoktan_mod_0="elle", stoktan_miktar_0="9"))            # üst sınırı aşan elle miktar
-        self.assertContains(r, "0 ile 4 arasında")
-        self.assertContains(r, 'value="9"')                                                                           # girilen değer korunur
-        self.assertEqual(UretimEmri.objects.count(), 1)                                                   # yalnız fixture ÜS
-        r = self.client.post(url, self.veri(secim_onay="1", stoktan_mod_0="elle", stoktan_miktar_0="2"), follow=True)
+        r = self.client.post(url, self.veri(), follow=True)                                                        # tek adım: soru yok
+        self.assertNotContains(r, "stoktan mı karşılansın")
         emir = UretimEmri.objects.latest("pk")
         self.assertContains(r, emir.no)
-        self.assertEqual((emir.kalemler.get().eldeki_ayrilan, self.planlanan(emir, self.pak_op)), (D("2"), D("8")))
-        uretim.uretim_emri_iptal(emir)
-        self.client.post(url, self.veri(secim_onay="1", stoktan_mod_0="uret"))
-        emir = UretimEmri.objects.latest("pk")
+        self.assertContains(r, "hedefin tamamı üretilecek")
         self.assertEqual((emir.kalemler.get().eldeki_ayrilan, self.planlanan(emir, self.pak_op)), (D("0"), D("10")))
-        uretim.uretim_emri_iptal(emir)
-        self.client.post(url, self.veri(secim_onay="1", stoktan_mod_0="stok"))
-        emir = UretimEmri.objects.latest("pk")
-        self.assertEqual((emir.kalemler.get().eldeki_ayrilan, self.planlanan(emir, self.pak_op)), (D("4"), D("6")))
-        # bitmiş ürün olmayan kök (ara mamul): soru yok, tek adımda açılır
-        uretim.uretim_emri_iptal(emir)
-        r = self.client.post(url, self.veri(**{"satir-0-hedef_urun": self.bukulmus.pk, "satir-0-hedef_miktar": "2"}), follow=True)
-        self.assertEqual(UretimEmri.objects.latest("pk").kalemler.get().hedef_urun_id, self.bukulmus.pk)
-        self.assertNotContains(r, "stoktan mı karşılansın")
-
-    def test_us_revize_onizleme_ve_onay(self):
-        emir = self.ac(stoktan={(self.mamul.pk, None): D("1")})
+        r = self.client.post(url, self.veri(secim_onay="1", stoktan_mod_0="stok"), follow=True)                    # eski seçim alanları gelse de etkisiz
+        emir2 = UretimEmri.objects.latest("pk")
+        self.assertEqual((emir2.kalemler.get().eldeki_ayrilan, self.planlanan(emir2, self.pak_op)), (D("0"), D("10")))
         url = reverse("core:uretim_emri_revize", args=[emir.pk])
         v = self.veri("12")
         v["satir-INITIAL_FORMS"] = "1"
-        r = self.client.post(url, v)
-        self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Seçimi Onayla ve Revize Et")
-        emir.refresh_from_db()
-        self.assertEqual(emir.revizyon_no, 0)
-        v.update(secim_onay="1", stoktan_mod_0="elle", stoktan_miktar_0="3")
         r = self.client.post(url, v, follow=True)
+        self.assertNotContains(r, "Seçimi Onayla")
         emir.refresh_from_db()
-        self.assertEqual((emir.revizyon_no, emir.kalemler.get(silindi=False).eldeki_ayrilan, self.planlanan(emir, self.pak_op)), (1, D("3"), D("9")))
+        self.assertEqual((emir.revizyon_no, emir.kalemler.get(silindi=False).eldeki_ayrilan, self.planlanan(emir, self.pak_op)), (1, D("0"), D("12")))
+        # bitmiş ürün olmayan kök (ara mamul) da tek adımda, kendi stoğundan karşılanmadan
+        hareket_ekle(stok_id=self.bukulmus.pk, depo_id=self.depo.pk, tarih=date(2026, 1, 2), tur=StokHareket.Tur.GIRIS, miktar=D("5"))
+        r = self.client.post(reverse("core:uretim_emri_ekle"), self.veri(**{"satir-0-hedef_urun": self.bukulmus.pk, "satir-0-hedef_miktar": "2"}), follow=True)
+        e3 = UretimEmri.objects.latest("pk")
+        self.assertEqual((e3.kalemler.get().hedef_urun_id, e3.kalemler.get().eldeki_ayrilan, self.planlanan(e3, self.bukum_op)), (self.bukulmus.pk, D("0"), D("2")))
 
 
 class SiparisEkranTest(kt.KapanisTaban):
@@ -228,12 +210,15 @@ class VaryantliTest(PlanlamaTaban):
         stoktan = stoktan_secimleri_coz(rows, [("elle", "2"), ("", "")])
         self.assertEqual(stoktan, {(self.mamul_a.pk, self.std_a.pk): D("2"), (self.mamul_a.pk, self.ozel_a.pk): D("0")})
         emir = uretim.uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.mamul_a.pk, "hedef_miktar": "10"}], depo_id=self.depo.pk, tarih=VGUN,
-                                          kullanici=self.yon, stoktan={(self.mamul_a.pk, self.std_a.pk): D("2")})
+                                          kullanici=self.yon, stoktan={(self.mamul_a.pk, self.std_a.pk): D("2")})   # stok için: yok sayılır
         k = emir.kalemler.get()
         self.assertEqual((k.varyant_id, k.eldeki_ayrilan, sa.ayrilan_miktar(emir, self.mamul_a, varyant=self.std_a.pk), self.ie(emir, self.pak_a).planlanan),
-                         (self.std_a.pk, D("2"), D("2"), D("8")))
+                         (self.std_a.pk, D("0"), D("0"), D("10")))
+        coz = uretim._kalemleri_coz([{"hedef_urun_id": self.mamul_a.pk, "hedef_miktar": "10"}], None, True)
+        sonuc, _ = uretim._plani_hesapla(coz, True, self.yon, stoktan={(self.mamul_a.pk, self.std_a.pk): D("2")})
+        self.assertEqual(sonuc["ayrilan"].get((self.mamul_a.pk, self.std_a.pk)), D("2"))                           # tavan (siparişli akış) varyant anahtarıyla
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:uretim_emri_ekle"), {
             "depo": self.depo.pk, "tarih": "2026-06-10", "aciklama": "", "satir-TOTAL_FORMS": "1", "satir-INITIAL_FORMS": "0", "satir-MIN_NUM_FORMS": "1",
-            "satir-MAX_NUM_FORMS": "1000", "satir-0-hedef_urun": self.mamul_a.pk, "satir-0-hedef_miktar": "4"})
-        self.assertContains(r, "Stoktan karşıla (1)")                                                                 # 3 − 2 (ilk ÜS ayırdı) = 1 serbest
+            "satir-MAX_NUM_FORMS": "1000", "satir-0-hedef_urun": self.mamul_a.pk, "satir-0-hedef_miktar": "4"}, follow=True)
+        self.assertNotContains(r, "Stoktan karşıla (")                                                             # stok için ÜS: soru yok

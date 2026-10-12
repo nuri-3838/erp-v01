@@ -7507,15 +7507,13 @@ def uretim_emri_ekle(request):
             ]
             cd = bform.cleaned_data
             try:
-                onizleme = uretim_servis.stoktan_karsilama_onizleme(kalemler, kullanici=request.user)
-                stoktan, onayli = _stoktan_coz(request, onizleme)
-                if onayli:
-                    emir = uretim_servis.uretim_emri_olustur(
-                        kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
-                        aciklama=cd.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
-                    messages.success(
-                        request, f"Üretim siparişi açıldı: {emir.no} — stok ayrıldı, istasyon emirleri oluşturuldu.")
-                    return redirect("core:uretim_emri_detay", pk=emir.pk)
+                # Stok için ÜS: kök hedef kendi stoğundan karşılanmaz (soru yok) — bkz. uretim.stok_icin_tavan
+                emir = uretim_servis.uretim_emri_olustur(
+                    kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                messages.success(
+                    request, f"Üretim siparişi açıldı: {emir.no} — hedefin tamamı üretilecek (stok için), alt bileşenler için stok ayrıldı, istasyon emirleri oluşturuldu.")
+                return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
@@ -7655,13 +7653,10 @@ def uretim_emri_revize_gorunum(request, pk):
         if bform.is_valid() and formset.is_valid():
             kalemler = [{"hedef_urun_id": f.cleaned_data["hedef_urun"].pk, "hedef_miktar": f.cleaned_data["hedef_miktar"]} for f in formset if f.dolu_mu()]
             try:
-                onizleme = uretim_servis.stoktan_karsilama_onizleme(kalemler, varyantli=emir.varyantli_plan, haric_emir=emir, kullanici=request.user)
-                stoktan, onayli = _stoktan_coz(request, onizleme)
-                if onayli:
-                    uretim_servis.uretim_emri_revize(emir, kalemler=kalemler, tarih=bform.cleaned_data["tarih"],
-                                                     aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
-                    messages.success(request, f"{emir.no} revize edildi (revizyon {emir.revizyon_no}).")
-                    return redirect("core:uretim_emri_detay", pk=emir.pk)
+                uretim_servis.uretim_emri_revize(emir, kalemler=kalemler, tarih=bform.cleaned_data["tarih"],
+                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)   # stok için: kök stoktan karşılanmaz
+                messages.success(request, f"{emir.no} revize edildi (revizyon {emir.revizyon_no}).")
+                return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:

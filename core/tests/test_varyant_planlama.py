@@ -205,22 +205,23 @@ class AnahtarAcikTest(PlanlamaTaban):
         self.assertContains(r, 'title="Çıktı varyantı">YOK</span>')
 
     def test_ara_stok_her_iki_modda_ayni_kesim_ve_mamul_stogu(self):
-        """Markasız ayak stoğu (4) ve standart mamul stoğu (3): kapalıda kesim 3 / paketleme 7; açıkta da kesim 3 / paketleme 7 (lazer 7)."""
+        """Markasız ayak stoğu (4) her iki modda düşer; standart mamul stoğu (3) STOK İÇİN ÜS'de kullanılmaz (kök hedef, 2026-10-12):
+        kapalıda kesim 6 / paketleme 10; açıkta da kesim 6 / paketleme 10 (lazer 10)."""
         self.giris(self.ayak_on, "4")                                                                        # varsayılan YOK
         self.giris(self.mamul_a, "3")                                                                        # varsayılan SEMTA
         pv.anahtar_ayarla(False)
         kapali = self.ac((self.mamul_a, "10"))
         kp = self.plan(kapali)
-        self.assertEqual((kp[(self.kesim_on.pk, "")], kp[(self.pak_a.pk, "")]), (D("3"), D("7")))
+        self.assertEqual((kp[(self.kesim_on.pk, "")], kp[(self.pak_a.pk, "")]), (D("6"), D("10")))
         uretim.uretim_emri_iptal(kapali, self.yon)
         pv.anahtar_ayarla(True)
         emir = self.ac((self.mamul_a, "10"))
         p = self.plan(emir)
         self.golden(p, kp)
-        self.assertEqual((p[(self.kesim_on.pk, "YOK")], p[(self.lazer_on.pk, "SEMTA")], p[(self.pak_a.pk, "SEMTA/SEMTA/SEMTA/SEMTA")]), (D("3"), D("7"), D("7")))
+        self.assertEqual((p[(self.kesim_on.pk, "YOK")], p[(self.lazer_on.pk, "SEMTA")], p[(self.pak_a.pk, "SEMTA/SEMTA/SEMTA/SEMTA")]), (D("6"), D("10"), D("10")))
         self.assertEqual(sa.ayrilan_miktar(emir, self.ayak_on, varyant=self.ayak_yok), D("4"))
-        self.assertEqual(sa.ayrilan_miktar(emir, self.mamul_a, varyant=self.std_a), D("3"))
-        self.assertEqual(emir.kalemler.get().eldeki_ayrilan, D("3"))
+        self.assertEqual(sa.ayrilan_miktar(emir, self.mamul_a, varyant=self.std_a), D("0"))                   # kök mamul stoğu kullanılmadı
+        self.assertEqual(emir.kalemler.get().eldeki_ayrilan, D("0"))
 
     def test_ozel_varyant_mr_mop_afis_yok(self):
         self.giris(self.mamul_a, "3")                                                                        # standart stok: özel için KULLANILMAZ
