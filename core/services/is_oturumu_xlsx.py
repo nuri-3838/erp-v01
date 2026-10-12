@@ -11,8 +11,8 @@ from openpyxl.utils import get_column_letter
 _TR = ZoneInfo("Europe/Istanbul")
 BASLIK_DOLGU = PatternFill("solid", fgColor="15294D")
 KOLONLAR = ("Tarih", "İstasyon", "ÜS", "İstasyon Emri", "Ürün Kodu", "Ürün", "Ekip", "Kişi", "Başlangıç", "Bitiş", "Süre (dk)",
-            "Adam-saat", "Durum", "Adet", "Adet/saat", "Adet başı (sn)", "Kayıt No", "Başlatan", "Bitiren")
-GENISLIKLER = (11, 18, 14, 14, 16, 34, 30, 6, 10, 10, 10, 10, 18, 9, 10, 13, 14, 20, 20)
+            "Adam-saat", "Durum", "Adet", "Fire", "Adet/saat", "Adet başı (sn)", "Kayıt No", "Başlatan", "Bitiren")
+GENISLIKLER = (11, 18, 14, 14, 16, 34, 30, 6, 10, 10, 10, 10, 18, 9, 8, 10, 13, 14, 20, 20)
 
 
 def _saat(dt):
@@ -41,12 +41,13 @@ def oturumlar_xlsx(satirlar, bas, bit) -> bytes:
         ie = o.istasyon_emri
         ws.append([o.is_tarihi, f"{o.istasyon.kod} {o.istasyon.ad}", o.uretim_emri.no, ie.no, ie.operasyon.cikti.kod, ie.operasyon.cikti.ad,
                    s["ekip_metni"], s["kisi"], _saat(o.baslangic_zamani), _saat(o.bitis_zamani), s["sure_saniye"] // 60, s["adam_saat"],
-                   o.get_durum_display(), s["adet"], s["adet_saat"], s["adet_basi_saniye"], o.kayit.no if o.kayit_id else "",
+                   o.get_durum_display(), s["adet"], s["fire"], s["adet_saat"], s["adet_basi_saniye"], o.kayit.no if o.kayit_id else "",
                    o.baslatan.ad_soyad, o.bitiren.ad_soyad if o.bitiren_id else ""])
         ws.cell(row=r, column=1).number_format = "DD.MM.YYYY"
         ws.cell(row=r, column=12).number_format = "0.00"
         ws.cell(row=r, column=14).number_format = "#,##0"
-        ws.cell(row=r, column=15).number_format = "0.0"
+        ws.cell(row=r, column=15).number_format = "#,##0"
+        ws.cell(row=r, column=16).number_format = "0.0"
         r += 1
     buf = BytesIO()
     wb.save(buf)

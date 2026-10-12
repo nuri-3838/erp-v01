@@ -1,5 +1,5 @@
 {% extends "core/atolye_base.html" %}
-{% block ust_sag %}{% if acik_kayit %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.95rem;padding:0 .8rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
+{% block ust_sag %}{% if acik_kayit %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
 
 {% block icerik %}
 {% if izleme %}
@@ -7,8 +7,8 @@
   <section class="at-kart">
     <h2 class="at-baslik">İstasyonlar</h2>
     <div class="at-ist" id="istasyonlar-izleme">
-      {% for i in istasyonlar %}
-        <a href="{% url 'core:atolye_istasyon' i.pk %}"><span class="kod">{{ i.kod }}</span><span>{{ i.ad }}</span></a>
+      {% for k in istasyon_kartlari %}
+        <a href="{% url 'core:atolye_istasyon' k.istasyon.pk %}" class="{% if not k.acik %}bos{% endif %}"><span class="kod">{{ k.istasyon.kod }}</span><span>{{ k.istasyon.ad }}</span><span class="acik">{% if k.acik %}{{ k.acik }} açık iş{% else %}açık iş yok{% endif %}</span></a>
       {% empty %}
         <p class="at-bos">Tanımlı istasyon yok.</p>
       {% endfor %}
@@ -27,8 +27,8 @@
   <section class="at-kart">
     <h2 class="at-baslik">İstasyonunuzu seçin</h2>
     <div class="at-ist" id="istasyonlar">
-      {% for i in istasyonlar %}
-        <a href="{% url 'core:atolye_istasyon' i.pk %}" data-pk="{{ i.pk }}"><span class="kod">{{ i.kod }}</span><span>{{ i.ad }}</span></a>
+      {% for k in istasyon_kartlari %}
+        <a href="{% url 'core:atolye_istasyon' k.istasyon.pk %}" data-pk="{{ k.istasyon.pk }}" class="{% if not k.acik %}bos{% endif %}"><span class="kod">{{ k.istasyon.kod }}</span><span>{{ k.istasyon.ad }}</span><span class="acik">{% if k.acik %}{{ k.acik }} açık iş{% else %}açık iş yok{% endif %}</span></a>
       {% empty %}
         <p class="at-bos">Tanımlı istasyon yok.</p>
       {% endfor %}

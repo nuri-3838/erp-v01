@@ -109,7 +109,7 @@ class BaslaBitirTest(OturumTaban):
         self.assertFalse(OperasyonKaydi.objects.filter(istasyon_emri=self.ie_bukum).exists())
         self.assertIsNotNone(is_oturumu.aktif_uyelik(self.p))
         r = self.bitir(o, "0")
-        self.assertTrue(any("tam sayı" in m for m in self.mesajlar(r)))
+        self.assertTrue(any("0 adetle bitirilemez" in m for m in self.mesajlar(r)), self.mesajlar(r))   # "0" → servis kuralı (boş → "Adet girin")
         with self.assertRaisesMessage(is_oturumu.OturumHatasi, "0 adetle bitirilemez"):
             is_oturumu.bitir(self.p, o, D("0"))
         # kesilmiş üretilince büküm bitirilir — aynı oturum (süre korunur)

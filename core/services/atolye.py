@@ -8,17 +8,22 @@ Kurallar (kullanıcı kararları, 2026-10-11/12):
 * İstasyon seçimi serbest (fason istasyonu listede yok); kalanı aşan miktar ofisteki kuralla: LAZER MARKALAMA (dönüştür) ve PAKETLEME'de
   yasak (``uretim.fazla_uretim_yasak``), diğerlerinde uyarıyla serbest.
 * Geri alma: yalnız bugünkü, KENDİ, o emrin SON onaylı kaydı (süre sınırı yok) — ``uretim.operasyon_kaydi_sil(onayli_geri_al=True)``; oturum kalır.
-* Yetki: ekran kodu ``atolye`` (AYARLAR › Kullanıcı Yetkileri ya da personel kartındaki "Atölye operatörü" düğmesi)."""
+* Yetki: ekran kodu ``atolye`` (AYARLAR › Kullanıcı Yetkileri ya da personel kartındaki "Atölye operatörü" düğmesi).
+* Malzeme durumu (2026-10-12): her emir kartında girdilerin BUGÜNKÜ kullanılabilir stoğuna (eldeki − başka ÜS'lerin ayırmaları; varyantlı emirde
+  girdi varyantı bazında) göre "Malzeme hazır: X adet yapılabilir" (X = min(kalan, yapılabilir)); 1 adet için bile yetmeyen girdi varsa kart soluk,
+  "Malzeme yok: <girdi>" ve Başla uyarı sorar (engel yok). Sıralama: malzemesi hazır olanlar önce, sonra termin (kaynak siparişin termini, yoksa
+  ÜS tarihi) yakın olan. Bitir: SAĞLAM + FİRE adet (boş sağlam → "Adet girin"; fire girdisi tüketilir, stoğa girmez — ``uretim.istasyon_emri_uret``)."""
 from __future__ import annotations
 
 import datetime
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from core.models import EkranYetki, IsIstasyonu, IstasyonEmri, OperasyonKaydi, Personel, UretimEmri
-from core.services import is_oturumu
+from core.services import is_oturumu, planlama_varyant, stok_ayirma
 from core.services import mesai as mesai_servis
 from core.services import mesai_ag, uretim
 from core.services import varyant as varyant_servis
@@ -47,6 +52,20 @@ def _personel(user) -> Personel:
 def istasyonlar():
     """Seçilebilir istasyonlar: fason olmayanlar, akış sırasıyla (11 LAZER MARKALAMA dahil)."""
     return list(IsIstasyonu.objects.filter(silindi=False, fason=False).order_by("sira", "kod"))
+
+
+def acik_emir_sayilari() -> dict:
+    """{istasyon pk: açık emir sayısı} — açık ÜS'lerin BEKLİYOR/BAŞLADI istasyon emirleri (seçim kartlarındaki "N açık iş")."""
+    qs = (IstasyonEmri.objects.filter(silindi=False, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
+                                      durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI])
+          .values("istasyon_id").annotate(n=Count("id")))
+    return {r["istasyon_id"]: r["n"] for r in qs}
+
+
+def istasyon_kartlari() -> list:
+    """İstasyon seçim kartları: [{istasyon, acik}] — açık işi olmayan istasyon soluk gösterilir."""
+    sayilar = acik_emir_sayilari()
+    return [{"istasyon": i, "acik": sayilar.get(i.pk, 0)} for i in istasyonlar()]
 
 
 def durum(user) -> dict:
@@ -95,8 +114,10 @@ def son_kaydim(user, ie: IstasyonEmri):
 
 
 def acik_emirler(istasyon, user=None) -> list:
-    """İstasyonun açık emirleri (açık ÜS'ler, BEKLİYOR/BAŞLADI; ÜS sırası, derin seviye önce): ``uretim.istasyon_emri_satiri`` satırı +
-    müşteri, varyant metni (standart dışı), tam sayı kalan, bugünkü kendi son kaydı, emrin açık iş oturumları (``oturumlar``: özet + ``benim``)."""
+    """İstasyonun açık emirleri (açık ÜS'ler, BEKLİYOR/BAŞLADI): ``uretim.istasyon_emri_satiri`` satırı + müşteri ("" = stok için üretim),
+    varyant metni (standart dışı), tam sayı kalan, bugünkü kendi son kaydı, emrin açık iş oturumları (``oturumlar``: özet + ``benim``),
+    ``malzeme`` (``malzeme_durumu``) ve ``termin``. SIRALAMA: malzemesi hazır olanlar önce, sonra termin yakın olan; eşitlikte ÜS sırası,
+    derin seviye önce."""
     qs = (IstasyonEmri.objects.filter(silindi=False, istasyon=istasyon, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
                                       durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI])
           .select_related("uretim_emri__kaynak_siparis__cari", "operasyon__cikti", "istasyon", "cikti_varyant")
@@ -105,17 +126,77 @@ def acik_emirler(istasyon, user=None) -> list:
     acik = {}
     for o in is_oturumu.acik_oturumlar():
         acik.setdefault(o.istasyon_emri_id, []).append(o)
+    emirler = list(qs)
+    girdiler = _girdi_satirlari(emirler, user)
+    kullanilabilir = _kullanilabilir_haritalari(emirler, girdiler)
     sonuc = []
-    for ie in qs:
+    for ie in emirler:
         s = uretim.istasyon_emri_satiri(ie, ie.uretim_emri)
         sip = ie.uretim_emri.kaynak_siparis
-        s["musteri"] = (sip.cari.kisa_ad or sip.cari.unvan) if (sip is not None and sip.cari_id) else "Stok için üretim"
+        s["musteri"] = (sip.cari.kisa_ad or sip.cari.unvan) if (sip is not None and sip.cari_id) else ""
+        s["termin"] = (getattr(sip, "termin", None) if sip is not None else None) or ie.uretim_emri.tarih
         s["varyant_metni"] = varyant_servis.standart_disi_metin(ie.cikti_varyant_id, "tr") if ie.cikti_varyant_id else ""
         s["kalan_tam"] = _tam_metin(s["acik"])
         s["son_kaydim"] = son_kaydim(user, ie) if user is not None else None
         s["oturumlar"] = [oturum_satiri(o, p) for o in acik.get(ie.pk, [])]
+        s["malzeme"] = malzeme_durumu(ie, s["acik"], girdiler[(ie.operasyon_id, ie.cikti_varyant_id)], kullanilabilir[ie.uretim_emri_id])
         sonuc.append(s)
+    sonuc.sort(key=lambda s: (0 if s["malzeme"]["hazir"] > 0 else 1, s["termin"], s["ie"].uretim_emri.yil, s["ie"].uretim_emri.sira,
+                              -s["ie"].seviye, s["ie"].pk))
     return sonuc
+
+
+def _girdi_satirlari(emirler, user=None) -> dict:
+    """{(operasyon pk, çıktı varyant pk|None): [(OperasyonGirdi, girdi varyant pk|None)]} — varyantlı emirde girdi varyantı tanım kuralından
+    (``planlama_varyant.girdi_varyanti``); atlanan (tüm boyutları YOK, satın alınan) girdi listede yok; varyantsız emirde kart toplamı (None)."""
+    ob = planlama_varyant.Onbellek()
+    sonuc = {}
+    for ie in emirler:
+        anahtar = (ie.operasyon_id, ie.cikti_varyant_id)
+        if anahtar in sonuc:
+            continue
+        satirlar = []
+        for g in uretim.operasyon_girdileri(ie.operasyon):
+            if ie.cikti_varyant_id:
+                sv, atla = planlama_varyant.girdi_varyanti(g, ie.cikti_varyant, user, ob)
+                if atla:
+                    continue
+                satirlar.append((g, sv.pk if sv is not None else None))
+            else:
+                satirlar.append((g, None))
+        sonuc[anahtar] = satirlar
+    return sonuc
+
+
+def _kullanilabilir_haritalari(emirler, girdiler) -> dict:
+    """{ÜS pk: {(stok pk, varyant pk|None): kullanılabilir}} — eldeki − BAŞKA ÜS'lerin ayırmaları (ÜS'nin kendi ayırması kendine kullanılabilir)."""
+    dugumler = {}
+    for ie in emirler:
+        dugumler.setdefault(ie.uretim_emri_id, set()).update((g.girdi_id, vpk) for g, vpk in girdiler[(ie.operasyon_id, ie.cikti_varyant_id)])
+    return {us: stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=us) for us, d in dugumler.items()}
+
+
+def malzeme_durumu(ie, kalan, girdi_satirlari, kullanilabilir) -> dict:
+    """Emrin girdilerinin bugünkü kullanılabilir stoğuna göre ``yapilabilir`` referans çıktı adedi (tam çalıştırma zorunluysa çalıştırma katı),
+    ``hazir`` = min(kalan, yapılabilir), ``eksik`` = 1 adet için bile yetmeyen girdiler (``yok`` → kart soluk, "Malzeme yok: …", Başla uyarır)."""
+    op = ie.operasyon
+    ref = uretim._referans_miktar(op)
+    en_az, eksik = None, []
+    for g, vpk in girdi_satirlari:
+        kull = kullanilabilir.get((g.girdi_id, vpk), Decimal("0"))
+        adet = (kull * ref / g.miktar) if kull > 0 else Decimal("0")          # bu girdiyle üretilebilecek referans çıktı adedi
+        if adet < 1:
+            eksik.append(g.girdi)
+        en_az = adet if en_az is None else min(en_az, adet)
+    if en_az is None:
+        yapilabilir = max(Decimal(kalan), Decimal("0"))
+    elif op.tam_calistirma:
+        yapilabilir = (en_az / ref).to_integral_value(rounding=ROUND_FLOOR) * ref
+    else:
+        yapilabilir = en_az.to_integral_value(rounding=ROUND_FLOOR)
+    hazir = max(min(Decimal(kalan), yapilabilir), Decimal("0"))
+    return {"yapilabilir": yapilabilir, "hazir": hazir, "hazir_tam": _tam_metin(hazir), "eksik": eksik,
+            "eksik_metni": ", ".join(s.ad for s in eksik), "yok": bool(eksik)}
 
 
 def oturum_satiri(oturum, personel=None) -> dict:
@@ -147,10 +228,15 @@ def _tam_metin(d: Decimal) -> str:
     return str(int(d)) if d == d.to_integral_value() else format(d.normalize(), "f")
 
 
-def _miktar_coz(ham) -> Decimal:
+def _miktar_coz(ham, *, ad="Miktar", zorunlu=True) -> Decimal:
+    """Tam sayı adet; boş: zorunluysa "Adet girin." (Bitir'de sağlam adet ön dolu gelmez), değilse 0 (fire)."""
     s = (ham or "").strip().replace(".", "").replace(" ", "")
-    if not s.isdigit() or int(s) <= 0:
-        raise AtolyeHatasi("Miktar tam sayı olmalı (ör. 12).")
+    if not s:
+        if zorunlu:
+            raise AtolyeHatasi("Adet girin.")
+        return Decimal("0")
+    if not s.isdigit():
+        raise AtolyeHatasi(f"{ad} tam sayı olmalı (ör. 12).")
     return Decimal(int(s))
 
 
@@ -184,16 +270,18 @@ def oturum_baslat(user, ie: IstasyonEmri, ekip_pks, ip):
         raise AtolyeHatasi(str(e))
 
 
-def oturum_bitir(user, oturum, miktar_ham, bitis_ham, ip):
-    """Operatör "Bitir": tam sayı adet; (kayıt, uyarı, miktar) döner; üretim hatasında oturum açık kalır (mesaj aynen)."""
+def oturum_bitir(user, oturum, miktar_ham, bitis_ham, ip, fire_ham=None):
+    """Operatör "Bitir": SAĞLAM adet (tam sayı, zorunlu) + FİRE adet (tam sayı, boş = 0); (kayıt, uyarı, sağlam, fire) döner; üretim hatasında
+    oturum açık kalır (mesaj aynen)."""
     p, _m = _acik_mesai(user)
     _ag_kontrol(ip, "Üretim girişi")
-    miktar = _miktar_coz(miktar_ham)
+    miktar = _miktar_coz(miktar_ham, ad="Sağlam adet")
+    fire = _miktar_coz(fire_ham, ad="Fire", zorunlu=False)
     try:
-        kayit, uyari = is_oturumu.bitir(p, oturum, miktar, bitis=_bitis_coz(bitis_ham), ip=ip, kullanici=user)
+        kayit, uyari = is_oturumu.bitir(p, oturum, miktar, fire=fire, bitis=_bitis_coz(bitis_ham), ip=ip, kullanici=user)
     except is_oturumu.OturumHatasi as e:
         raise AtolyeHatasi(str(e))
-    return kayit, uyari, miktar
+    return kayit, uyari, miktar, fire
 
 
 def oturum_iptal(user, oturum, bitis_ham, ip):

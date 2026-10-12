@@ -132,7 +132,7 @@ class AkisTest(AtolyeTaban):
         r = self.client.get(reverse("core:atolye_istasyon", args=[self.lazer.pk]))
         self.assertContains(r, self.emir.no)
         self.assertContains(r, "IK-KESILMIS")
-        self.assertContains(r, "Stok için üretim")
+        self.assertContains(r, "rozet-stok")                                                          # müşteri yok → "Stok" rozeti
         self.assertContains(r, "BAŞLA")
         self.assertNotContains(r, "ÜRETİLDİ")                                                         # süresiz hızlı giriş atölyeden kaldırıldı
         self.assertNotContains(r, "Son kaydım")

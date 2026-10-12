@@ -2,7 +2,8 @@
 
 * Operatör emir kartında **Başla** der; mesaisi açık ve atölye yetkili arkadaşlarını ekibe seçebilir. Bir personel aynı anda yalnız BİR açık
   oturumda olabilir (başlatan ya da üye). Zaman hep sunucu saati.
-* **Bitir** (adet, tam sayı > 0): ``uretim.istasyon_emri_uret`` aynen çalışır (tarih bazlı stok kontrolü, LAZER/PAKETLEME fazla üretim yasağı,
+* **Bitir** (SAĞLAM adet, tam sayı > 0; FİRE adet isteğe bağlı — girdiler sağlam+fire için tüketilir, stoğa yalnız sağlam girer, maliyet
+  sağlam adetlere yayılır; fason dönüşündeki gelen/fire mantığı): ``uretim.istasyon_emri_uret`` aynen çalışır (tarih bazlı stok kontrolü, LAZER/PAKETLEME fazla üretim yasağı,
   hata mesajları); hata olursa oturum AÇIK kalır, operatör adedi düzeltip tekrar dener. Ekipteki herkes bitirebilir; kaydın ``personel``'i =
   BAŞLATAN, bitiren ``bitiren`` alanında. **İptal (iş yapılmadı)**: kayıt yok, süre raporda kalır. Kayıt geri alınsa da oturum BITTI kalır.
 * Mesai bitirilirken üyelik o anda kapanır (oturum diğerleriyle sürer) — başlatan için de; oturumda tek kişi kaldıysa mesai bitirme ENGELLENİR.
@@ -107,7 +108,7 @@ def ozet(oturum: IsOturumu) -> dict:
     return {"oturum": oturum, "uyeler": uyeler, "kisi": len(uyeler), "ekip_metni": ", ".join(u.personel.ad_soyad for u in uyeler),
             "sure_saniye": sure, "sure_metni": sure_metni(sure), "adam_saniye": adam_sn,
             "adam_saat": (Decimal(adam_sn) / 3600).quantize(Decimal("0.01")), "adam_saat_metni": sure_metni(adam_sn),
-            "adet": adet, "adet_saat": adet_saat, "adet_basi_saniye": adet_basi_sn,
+            "adet": adet, "fire": oturum.fire, "adet_saat": adet_saat, "adet_basi_saniye": adet_basi_sn,
             "adet_basi_metni": sure_metni(adet_basi_sn) if adet_basi_sn is not None else "",
             "baslangic_ms": int(oturum.baslangic_zamani.timestamp() * 1000), "dunku": oturum.is_tarihi < tr_bugun()}
 
@@ -185,34 +186,38 @@ def baslat(personel, ie: IstasyonEmri, ekip, *, ip=None, kullanici=None) -> IsOt
     return oturum
 
 
-def _kapat(oturum: IsOturumu, *, durum, bitis, bitiren, ip, kullanici, miktar=None, kayit=None):
+def _kapat(oturum: IsOturumu, *, durum, bitis, bitiren, ip, kullanici, miktar=None, kayit=None, fire=None):
     oturum.durum, oturum.bitis_zamani, oturum.bitiren, oturum.bitis_ip = durum, bitis, bitiren, ip or None
-    oturum.miktar, oturum.kayit, oturum.updated_by = miktar, kayit, kullanici
-    oturum.save(update_fields=["durum", "bitis_zamani", "bitiren", "bitis_ip", "miktar", "kayit", "updated_by", "updated_at"])
+    oturum.miktar, oturum.fire, oturum.kayit, oturum.updated_by = miktar, fire, kayit, kullanici
+    oturum.save(update_fields=["durum", "bitis_zamani", "bitiren", "bitis_ip", "miktar", "fire", "kayit", "updated_by", "updated_at"])
     IsOturumuUyesi.objects.filter(oturum=oturum, silindi=False, ayrilma_zamani__isnull=True).update(
         ayrilma_zamani=bitis, updated_by=kullanici, updated_at=timezone.now())
 
 
 @transaction.atomic
-def bitir(personel, oturum: IsOturumu, miktar, *, bitis=None, ip=None, kullanici=None):
+def bitir(personel, oturum: IsOturumu, miktar, *, fire=None, bitis=None, ip=None, kullanici=None):
     """Adetle üretim: ``istasyon_emri_uret`` (kayıt personeli = başlatan, mesai = başlatanın oturumdaki mesaisi, tarih = bitişin TR tarihi)
     başarılıysa oturum BITTI + kayıt bağlı; üretim hatasında (stok, fazla üretim yasağı…) hiçbir şey değişmez — oturum açık kalır.
-    (kayıt, uyarı) döner."""
+    ``miktar`` = SAĞLAM adet; ``fire`` (≥ 0, isteğe bağlı) = fire adet (girdisi tüketilir, stoğa girmez). (kayıt, uyarı) döner."""
     oturum = IsOturumu.objects.select_for_update().select_related("istasyon_emri", "baslatan").get(pk=oturum.pk)
     if oturum.durum != IsOturumu.Durum.ACIK:
         raise OturumHatasi("Bu iş oturumu zaten kapatılmış.")
     _uyelik(personel, oturum)
     if miktar is None or miktar <= 0:
         raise OturumHatasi("Adet girilmeli (0 adetle bitirilemez; iş yapılmadıysa \"İptal\" kullanın).")
+    fire = Decimal(fire or 0)
+    if fire < 0:
+        raise OturumHatasi("Fire adedi negatif olamaz.")
     simdi = timezone.now()
     bitis = _bitis_coz(oturum, bitis, simdi)
     baslatan_uye = IsOturumuUyesi.objects.filter(oturum=oturum, baslatan=True, silindi=False).first()
     try:
         kayit, uyari = uretim.istasyon_emri_uret(oturum.istasyon_emri, miktar=miktar, tarih=bitis.astimezone(_TR).date(), kullanici=kullanici,
-                                                 personel=oturum.baslatan, mesai_kaydi=baslatan_uye.mesai_kaydi if baslatan_uye else None)
+                                                 personel=oturum.baslatan, mesai_kaydi=baslatan_uye.mesai_kaydi if baslatan_uye else None,
+                                                 fire=fire if fire > 0 else None)
     except uretim.UretimHatasi as e:
         raise OturumHatasi(str(e))
-    _kapat(oturum, durum=IsOturumu.Durum.BITTI, bitis=bitis, bitiren=personel, ip=ip, kullanici=kullanici, miktar=miktar, kayit=kayit)
+    _kapat(oturum, durum=IsOturumu.Durum.BITTI, bitis=bitis, bitiren=personel, ip=ip, kullanici=kullanici, miktar=miktar, kayit=kayit, fire=fire)
     return kayit, uyari
 
 

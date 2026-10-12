@@ -7,13 +7,18 @@
   <style>
     :root { --lacivert:#15294d; --turuncu:#f07c00; --yesil:#0b6b3f; --kirmizi:#b1122c; --gri:#f3f5f9; --cizgi:#d7dde8; --soluk:#5b6678; }
     * { box-sizing:border-box; }
+    html, body { max-width:100%; overflow-x:hidden; }
     body { margin:0; font-family:-apple-system, "Segoe UI", Roboto, Inter, Arial, sans-serif; background:var(--gri); color:#1c2433; font-size:18px; }
-    .at-ust { background:var(--lacivert); color:#fff; padding:.75rem 1rem; display:flex; justify-content:space-between; align-items:center; gap:.6rem; position:sticky; top:0; z-index:5; }
-    .at-ust .ad { font-weight:800; font-size:1.05rem; }
-    .at-ust .alt { font-size:.85rem; opacity:.85; }
-    .at-ust a { color:#fff; text-decoration:none; font-weight:700; font-size:.95rem; border:1px solid rgba(255,255,255,.5); border-radius:10px; padding:.45rem .7rem; }
-    .at-govde { max-width:640px; margin:0 auto; padding:1rem; display:flex; flex-direction:column; gap:1rem; }
-    .at-mesaj { border-radius:16px; padding:1rem 1.1rem; font-size:1.15rem; font-weight:700; line-height:1.35; }
+    .at-ust { background:var(--lacivert); color:#fff; padding:.6rem .8rem; display:flex; justify-content:space-between; align-items:center; gap:.5rem; flex-wrap:wrap; position:sticky; top:0; z-index:5; }
+    .at-ust .kim { min-width:0; flex:1 1 9rem; }
+    .at-ust .ad { font-weight:800; font-size:1.02rem; overflow-wrap:anywhere; }
+    .at-ust .alt { font-size:.82rem; opacity:.85; overflow-wrap:anywhere; }
+    .at-ust .sag { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .at-ust a { color:#fff; text-decoration:none; font-weight:700; font-size:.9rem; border:1px solid rgba(255,255,255,.5); border-radius:10px; padding:.4rem .6rem; white-space:nowrap; }
+    .at-cikis-form { margin:0; }
+    .at-cikis { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.5); border-radius:10px; padding:.4rem .6rem; font-weight:700; font-size:.9rem; cursor:pointer; white-space:nowrap; }
+    .at-govde { max-width:640px; margin:0 auto; padding:.75rem; display:flex; flex-direction:column; gap:.9rem; min-width:0; }
+    .at-mesaj { border-radius:16px; padding:1rem 1.1rem; font-size:1.15rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
     .at-mesaj.error { background:#ffe3e6; color:var(--kirmizi); border:2px solid var(--kirmizi); }
     .at-mesaj.success { background:#def7ea; color:var(--yesil); border:2px solid var(--yesil); }
     .at-mesaj.warning, .at-mesaj.info { background:#fff1dd; color:#8a4b00; border:2px solid var(--turuncu); }
@@ -21,39 +26,49 @@
     .at-buton.baslat { background:linear-gradient(135deg,#1fbf75,#0b6b3f); }
     .at-buton.bitir { background:linear-gradient(135deg,#ff6b6b,#b1122c); min-height:3.6rem; font-size:1.1rem; }
     .at-buton.ikincil { background:#fff; color:var(--lacivert); border:2px solid var(--cizgi); box-shadow:none; min-height:3.4rem; font-size:1.05rem; }
-    .at-kart { background:#fff; border:1px solid var(--cizgi); border-radius:18px; padding:1rem; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+    .at-kart { background:#fff; border:1px solid var(--cizgi); border-radius:18px; padding:.9rem; box-shadow:0 2px 8px rgba(0,0,0,.05); min-width:0; }
     .at-baslik { font-size:1.15rem; font-weight:800; color:var(--lacivert); margin:0 0 .6rem; }
     .at-ist { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
-    .at-ist a { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:5.2rem; background:#fff; border:2px solid var(--cizgi); border-radius:18px; text-decoration:none; color:var(--lacivert); font-weight:800; font-size:1.05rem; text-align:center; padding:.6rem; }
+    .at-ist a { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:5.6rem; background:#fff; border:2px solid var(--cizgi); border-radius:18px; text-decoration:none; color:var(--lacivert); font-weight:800; font-size:1.02rem; text-align:center; padding:.6rem; min-width:0; overflow-wrap:anywhere; }
     .at-ist a .kod { font-size:1.5rem; color:var(--turuncu); }
+    .at-ist a .acik { font-size:.8rem; font-weight:700; color:var(--yesil); margin-top:.2rem; }
+    .at-ist a.bos { opacity:.5; }
+    .at-ist a.bos .acik { color:var(--soluk); }
     .at-emir { border-left:6px solid var(--turuncu); }
-    .at-emir .ust { display:flex; justify-content:space-between; gap:.6rem; font-size:.9rem; color:var(--soluk); font-weight:700; }
-    .at-emir .urun { font-size:1.12rem; font-weight:800; margin:.3rem 0; }
+    .at-emir.malzeme-yok:not(.calisiyor) { opacity:.62; }
+    .at-emir .ust { display:flex; justify-content:space-between; align-items:center; gap:.5rem; flex-wrap:wrap; font-size:.9rem; color:var(--soluk); font-weight:700; }
+    .at-emir .ust .ie-no { font-size:.72rem; font-weight:600; opacity:.8; }
+    .rozet-stok { display:inline-block; background:#e8ecf5; color:var(--lacivert); border-radius:8px; padding:.1rem .5rem; font-size:.78rem; font-weight:800; }
+    .at-emir .urun { font-size:1.12rem; font-weight:800; margin:.3rem 0; overflow-wrap:anywhere; }
     .at-emir .varyant { display:inline-block; background:#fff1dd; color:#8a4b00; border-radius:8px; padding:.1rem .5rem; font-size:.9rem; font-weight:800; }
-    .at-sayilar { display:flex; gap:.5rem; margin:.6rem 0; }
-    .at-sayilar div { flex:1; background:var(--gri); border-radius:12px; padding:.5rem; text-align:center; }
-    .at-sayilar .et { font-size:.75rem; color:var(--soluk); font-weight:700; text-transform:uppercase; }
-    .at-sayilar .dg { font-size:1.35rem; font-weight:800; }
+    .at-malzeme { margin:.2rem 0 .5rem; font-size:.9rem; font-weight:700; color:var(--yesil); overflow-wrap:anywhere; }
+    .at-malzeme.yok { color:var(--kirmizi); }
+    .at-sayilar { display:flex; gap:.4rem; margin:.5rem 0; min-width:0; }
+    .at-sayilar div { flex:1 1 0; min-width:0; background:var(--gri); border-radius:12px; padding:.45rem .25rem; text-align:center; overflow:hidden; }
+    .at-sayilar .et { font-size:.68rem; color:var(--soluk); font-weight:700; text-transform:uppercase; letter-spacing:.02em; }
+    .at-sayilar .dg { font-size:1.15rem; font-weight:800; white-space:nowrap; }
     .at-sayilar .kalan .dg { color:var(--turuncu); }
-    .at-form { display:flex; gap:.6rem; align-items:stretch; }
-    .at-form input { flex:1; min-width:0; font-size:1.6rem; font-weight:800; text-align:center; border:2px solid var(--cizgi); border-radius:14px; padding:.5rem; }
-    .at-form button { flex:1.4; border:none; border-radius:14px; background:linear-gradient(135deg,#ffa63d,#f07c00); color:#fff; font-size:1.25rem; font-weight:800; cursor:pointer; }
-    .at-geri { margin-top:.6rem; display:flex; justify-content:space-between; align-items:center; gap:.6rem; font-size:.95rem; color:var(--soluk); }
+    .at-form { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; align-items:end; }
+    .at-form .at-alan { display:flex; flex-direction:column; gap:.15rem; font-size:.78rem; font-weight:700; color:var(--soluk); text-transform:uppercase; min-width:0; }
+    .at-form input { width:100%; min-width:0; font-size:1.4rem; font-weight:800; text-align:center; border:2px solid var(--cizgi); border-radius:14px; padding:.45rem; }
+    .at-form input::placeholder { color:#9aa5b8; font-weight:600; font-size:1rem; }
+    .at-form button { grid-column:1 / -1; min-height:3.2rem; border:none; border-radius:14px; background:linear-gradient(135deg,#ffa63d,#f07c00); color:#fff; font-size:1.25rem; font-weight:800; cursor:pointer; }
+    .at-geri { margin-top:.6rem; display:flex; justify-content:space-between; align-items:center; gap:.6rem; flex-wrap:wrap; font-size:.92rem; color:var(--soluk); }
     .at-geri button { background:#fff; color:var(--kirmizi); border:2px solid var(--kirmizi); border-radius:12px; padding:.5rem .8rem; font-weight:800; font-size:.95rem; cursor:pointer; }
     .at-bos { text-align:center; color:var(--soluk); padding:2rem 0; font-size:1.05rem; }
     .at-yardim { font-size:.9rem; color:var(--soluk); text-align:center; }
     /* iş oturumu (Başla / Bitir) */
     .at-emir.calisiyor { border-left-color:var(--yesil); }
-    .at-oturum { margin:.6rem 0; padding:.7rem .8rem; border-radius:14px; background:#eef9f3; border:2px solid #bfe6d1; }
+    .at-oturum { margin:.6rem 0; padding:.7rem .8rem; border-radius:14px; background:#eef9f3; border:2px solid #bfe6d1; min-width:0; }
     .at-oturum.benim { background:#e4f6ec; border-color:var(--yesil); }
     .at-oturum.dunku { background:#fff1dd; border-color:var(--turuncu); }
-    .at-oturum-ust { display:flex; justify-content:space-between; align-items:center; gap:.6rem; font-weight:800; color:var(--yesil); font-size:.95rem; }
+    .at-oturum-ust { display:flex; justify-content:space-between; align-items:center; gap:.6rem; flex-wrap:wrap; font-weight:800; color:var(--yesil); font-size:.95rem; }
     .at-oturum.dunku .at-oturum-ust { color:#8a4b00; }
     .at-sayac { font-size:1.5rem; font-variant-numeric:tabular-nums; }
-    .at-ekip { margin:.3rem 0 .5rem; font-size:.95rem; color:#1c2433; font-weight:700; }
+    .at-ekip { margin:.3rem 0 .5rem; font-size:.95rem; color:#1c2433; font-weight:700; overflow-wrap:anywhere; }
     .at-bitir .at-form button { background:linear-gradient(135deg,#ff6b6b,#b1122c); }
     .at-bitis-saat { display:flex; flex-direction:column; gap:.2rem; font-size:.85rem; font-weight:700; color:#8a4b00; margin-bottom:.5rem; }
-    .at-bitis-saat input { font-size:1.05rem; font-weight:800; border:2px solid var(--turuncu); border-radius:12px; padding:.45rem; }
+    .at-bitis-saat input { font-size:1.05rem; font-weight:800; border:2px solid var(--turuncu); border-radius:12px; padding:.45rem; max-width:100%; }
     .at-iptal-form { margin:.5rem 0 0; text-align:right; }
     .at-iptal { background:#fff; color:var(--soluk); border:2px solid var(--cizgi); border-radius:12px; padding:.45rem .8rem; font-weight:800; font-size:.9rem; cursor:pointer; }
     .at-basla { margin-top:.4rem; }
@@ -62,12 +77,12 @@
     .at-basla[open] summary { border-radius:14px 14px 0 0; }
     .at-basla form { border:2px solid #bfe6d1; border-top:none; border-radius:0 0 14px 14px; padding:.7rem .8rem; }
     .at-aday { display:flex; align-items:center; gap:.6rem; padding:.55rem .3rem; font-size:1.05rem; font-weight:700; border-bottom:1px solid var(--cizgi); }
-    .at-aday input { width:1.5rem; height:1.5rem; }
+    .at-aday input { width:1.5rem; height:1.5rem; flex:none; }
     .at-aday.mesgul { color:var(--soluk); font-weight:600; }
     .at-aday small { font-weight:600; }
     .at-basla-buton { display:block; width:100%; margin-top:.7rem; min-height:3.4rem; border:none; border-radius:14px; background:linear-gradient(135deg,#1fbf75,#0b6b3f); color:#fff; font-size:1.2rem; font-weight:800; cursor:pointer; }
     .at-acik-isler { border-left:6px solid var(--yesil); }
-    .at-acik-is { padding:.5rem 0; border-bottom:1px solid var(--cizgi); font-size:1rem; }
+    .at-acik-is { padding:.5rem 0; border-bottom:1px solid var(--cizgi); font-size:1rem; overflow-wrap:anywhere; }
     .at-acik-is.dunku { color:#8a4b00; }
     .at-acik-is .at-sayac { font-size:1.1rem; }
     .at-git { display:inline-block; margin-top:.3rem; color:var(--lacivert); font-weight:800; text-decoration:none; }
@@ -75,9 +90,11 @@
 </head>
 <body>
   <header class="at-ust">
-    <div><div class="ad">{% if personel %}{{ personel.ad_soyad }}{% else %}{{ request.user.username }}{% endif %}</div>
+    <div class="kim"><div class="ad">{% if personel %}{{ personel.ad_soyad }}{% else %}{{ request.user.get_full_name|default:"Yönetici" }}{% endif %}</div>
       <div class="alt">{% if izleme %}Yönetici görüntüleme{% elif acik_kayit %}Mesai açık · {{ acik_kayit.giris_zamani|tr_zaman:"H:i" }}{% else %}Mesai kapalı{% endif %}{% block ust_alt %}{% endblock %}</div></div>
-    <div>{% block ust_sag %}{% endblock %}</div>
+    <div class="sag">{% block ust_sag %}{% endblock %}
+      <form method="post" action="{% url 'logout' %}" class="at-cikis-form" data-uyari="{% if acik_islerim %}Açık işiniz var; çıkış yapsanız da iş oturumu açık kalır. Yine de çıkılsın mı?{% elif acik_kayit %}Mesainiz açık; çıkış yapsanız da mesai açık kalır. Yine de çıkılsın mı?{% endif %}" onsubmit="return !this.dataset.uyari || confirm(this.dataset.uyari);">{% csrf_token %}<button type="submit" class="at-cikis" title="Çıkış">⎋ Çıkış</button></form>
+    </div>
   </header>
   <main class="at-govde">
     {% if messages %}{% for m in messages %}<div class="at-mesaj {{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
@@ -99,6 +116,12 @@
     }
     yaz(); setInterval(yaz, 15000);
   })();
+  // Bitir onayı: sağlam adet boşsa gönderme ("Adet girin"); fire varsa onay metninde ayrıca.
+  window.atBitirOnay = function(form){
+    var m = (form.miktar.value || '').trim(), f = (form.fire && form.fire.value || '').trim();
+    if (!m) { alert('Adet girin.'); form.miktar.focus(); return false; }
+    return confirm(m + ' sağlam' + (f && f !== '0' ? ' + ' + f + ' fire' : '') + ' yazılsın ve iş bitirilsin mi?');
+  };
   </script>
   {% block js %}{% endblock %}
 </body>

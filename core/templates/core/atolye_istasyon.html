@@ -2,15 +2,16 @@
 {% load core_extras %}
 {% block baslik %}{{ istasyon.kod }} {{ istasyon.ad }} · Atölye{% endblock %}
 {% block ust_alt %} · <b>{{ istasyon.kod }} {{ istasyon.ad }}</b>{% endblock %}
-{% block ust_sag %}<div style="display:flex;gap:.4rem;align-items:center"><a href="{% url 'core:atolye' %}?sec=1">İstasyon değiştir</a>{% if not izleme %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}</div>{% endblock %}
+{% block ust_sag %}<a href="{% url 'core:atolye' %}?sec=1">İstasyon değiştir</a>{% if not izleme %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.85rem;padding:0 .6rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
 
 {% block icerik %}
   {% include "core/_atolye_acik_isler.html" with istasyon_pk=istasyon.pk %}
   {% for s in emirler %}
-    <section class="at-kart at-emir{% if s.oturumlar %} calisiyor{% endif %}" id="ie-{{ s.ie.pk }}">
-      <div class="ust"><span>{{ s.ie.uretim_emri.no }} · {{ s.ie.no }}</span><span>{{ s.musteri }}</span></div>
+    <section class="at-kart at-emir{% if s.oturumlar %} calisiyor{% endif %}{% if s.malzeme.yok %} malzeme-yok{% endif %}" id="ie-{{ s.ie.pk }}">
+      <div class="ust"><span>{{ s.ie.uretim_emri.no }} <span class="ie-no">{{ s.ie.no }}</span></span><span>{% if s.musteri %}{{ s.musteri }}{% else %}<span class="rozet-stok">Stok</span>{% endif %}</span></div>
       <div class="urun"><span style="color:var(--soluk);font-size:.9rem">{{ s.ie.operasyon.cikti.kod }}</span><br>{{ s.ie.operasyon.cikti.ad }}
         {% if s.varyant_metni %}<div><span class="varyant">🔀 {{ s.varyant_metni }}</span></div>{% endif %}</div>
+      <div class="at-malzeme{% if s.malzeme.yok %} yok{% endif %}">{% if s.malzeme.yok %}⛔ Malzeme yok: {{ s.malzeme.eksik_metni }}{% else %}✅ Malzeme hazır: {{ s.malzeme.hazir_tam }} adet yapılabilir{% endif %}</div>
       <div class="at-sayilar">
         <div><div class="et">Planlanan</div><div class="dg">{{ s.planlanan|tr_miktar_sade }}</div></div>
         <div><div class="et">Tamamlanan</div><div class="dg">{{ s.tamamlanan|tr_miktar_sade }}</div></div>
@@ -24,11 +25,12 @@
           </div>
           <div class="at-ekip">👥 {{ o.ekip_metni }}</div>
           {% if o.benim %}
-            <form method="post" action="{% url 'core:atolye_oturum_bitir' o.oturum.pk %}" class="at-bitir" onsubmit="return confirm(this.miktar.value + ' adet üretildi olarak yazılsın ve iş bitirilsin mi?');">
+            <form method="post" action="{% url 'core:atolye_oturum_bitir' o.oturum.pk %}" class="at-bitir" onsubmit="return atBitirOnay(this);">
               {% csrf_token %}
               {% if o.dunku %}<label class="at-bitis-saat">Bitiş saati <input type="datetime-local" name="bitis" value="{{ o.bitis_varsayilan }}" required></label>{% endif %}
               <div class="at-form">
-                <input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" value="{{ s.kalan_tam }}" autocomplete="off" aria-label="Adet">
+                <label class="at-alan"><span>Sağlam adet</span><input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" placeholder="Kalan: {{ s.kalan_tam }}" autocomplete="off" aria-label="Sağlam adet"></label>
+                <label class="at-alan"><span>Fire adet</span><input type="text" name="fire" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off" aria-label="Fire adet"></label>
                 <button type="submit">⏹ BİTİR</button>
               </div>
             </form>
@@ -42,7 +44,7 @@
       {% if baslatabilir %}
         <details class="at-basla">
           <summary>▶ BAŞLA</summary>
-          <form method="post" action="{% url 'core:atolye_oturum_baslat' s.ie.pk %}">
+          <form method="post" action="{% url 'core:atolye_oturum_baslat' s.ie.pk %}"{% if s.malzeme.yok %} onsubmit="return confirm('Malzeme yok: {{ s.malzeme.eksik_metni|escapejs }}. Yine de başlansın mı?');"{% endif %}>
             {% csrf_token %}
             {% if ekip_adaylari %}
               <p class="at-yardim" style="text-align:left">Birlikte çalışacağınız arkadaşlarınızı seçin (isteğe bağlı):</p>

@@ -4180,6 +4180,9 @@ class IsOturumu(TemelModel):
     bitis_zamani = models.DateTimeField("bitiş zamanı", null=True, blank=True)
     durum = models.CharField("durum", max_length=5, choices=Durum.choices, default=Durum.ACIK)
     miktar = models.DecimalField("üretilen adet", max_digits=18, decimal_places=6, null=True, blank=True)
+    # Bitir'de ayrı girilen FİRE adedi (sağlam ``miktar``'a ek): girdiler sağlam+fire için tüketilir, stoğa yalnız sağlam girer (kayıtta
+    # ``OperasyonKaydi.gelen`` = sağlam; fason dönüşündeki gelen/fire mantığı), girdi maliyetinin tamamı sağlam adetlere yayılır.
+    fire = models.DecimalField("fire adet", max_digits=18, decimal_places=6, null=True, blank=True)
     kayit = models.OneToOneField(OperasyonKaydi, verbose_name="operasyon kaydı", null=True, blank=True, on_delete=models.PROTECT,
                                  related_name="is_oturumu")
     baslangic_ip = models.GenericIPAddressField("başlangıç IP", null=True, blank=True)

@@ -9782,7 +9782,7 @@ def _atolye_baglam(request):
 @never_cache
 def atolye(request):
     d = _atolye_baglam(request)
-    return render(request, "core/atolye.html", {**d, "istasyonlar": atolye_servis.istasyonlar(),
+    return render(request, "core/atolye.html", {**d, "istasyon_kartlari": atolye_servis.istasyon_kartlari(),
                                                 "acik_islerim": atolye_servis.acik_islerim(request.user) if d["acik_kayit"] else []})
 
 
@@ -9837,13 +9837,17 @@ def _oturum_yonlendir(o):
 
 @ekran_gerekli("atolye")
 def atolye_oturum_bitir(request, pk):
-    """"Bitir": adet (+ önceki günden kalan oturumda ``bitis`` datetime-local); üretim hatasında oturum açık kalır."""
+    """"Bitir": sağlam adet + fire adet (+ önceki günden kalan oturumda ``bitis`` datetime-local); üretim hatasında oturum açık kalır."""
     o = get_object_or_404(IsOturumu.objects.select_related("istasyon_emri__operasyon__cikti"), pk=pk, silindi=False)
     kod = o.istasyon_emri.operasyon.cikti.kod
     if request.method == "POST":
         try:
-            kayit, uyari, miktar = atolye_servis.oturum_bitir(request.user, o, request.POST.get("miktar"), request.POST.get("bitis"), istemci_ip(request))
-            messages.success(request, f"✅ {kod}: {miktar.normalize():f} adet yazıldı · {kayit.no}")
+            kayit, uyari, miktar, fire = atolye_servis.oturum_bitir(request.user, o, request.POST.get("miktar"), request.POST.get("bitis"),
+                                                                    istemci_ip(request), request.POST.get("fire"))
+            if fire:
+                messages.success(request, f"✅ {kod}: {miktar.normalize():f} sağlam + {fire.normalize():f} fire yazıldı · {kayit.no}")
+            else:
+                messages.success(request, f"✅ {kod}: {miktar.normalize():f} adet yazıldı · {kayit.no}")
             if uyari:
                 messages.warning(request, uyari)
         except atolye_servis.AtolyeHatasi as e:
@@ -9943,7 +9947,8 @@ def is_oturumlari(request):
     sabit_qs = g.copy()
     sabit_qs.pop("sayfa", None)
     sabit_qs.pop("xlsx", None)
-    toplam = {"adet": sum((r["adet"] or 0) for r in satirlar), "adam_saat": sum(r["adam_saat"] for r in satirlar)}
+    toplam = {"adet": sum((r["adet"] or 0) for r in satirlar), "fire": sum((r["fire"] or 0) for r in satirlar),
+              "adam_saat": sum(r["adam_saat"] for r in satirlar)}
     return render(request, "core/is_oturumlari.html", {
         "sayfa": sayfa, "satirlar": satirlar, "bas": bas, "bit": bit, "istasyon": istasyon, "personel": personel, "durum": durum, "ara": ara,
         "istasyonlar": IsIstasyonu.objects.filter(silindi=False, fason=False).order_by("sira", "kod"),

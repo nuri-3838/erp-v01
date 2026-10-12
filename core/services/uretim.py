@@ -1470,6 +1470,10 @@ def kayit_calistirma(kayit: OperasyonKaydi) -> Decimal:
         ana = kayit.ciktilar.filter(ana_mi=True, silindi=False).first()
         if ana is not None:
             return ana.miktar / ref
+    if op.tur == Operasyon.Tur.URET and kayit.gelen and not kayit.fason_cari_id:       # atölye FİRE'li taslak: sağlam adet (hedef = sağlam + fire)
+        ham = kayit.gelen.get(str(op.cikti_id))
+        if ham not in (None, ""):
+            return Decimal(str(ham)) / ref
     return kayit.hedef_cikti_miktari / ref
 
 
@@ -1514,32 +1518,44 @@ def kayit_fazla_uyarisi(kayit: OperasyonKaydi) -> str:
 
 @transaction.atomic
 def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=None, aciklama="", kullanici=None,
-                           personel=None, mesai_kaydi=None) -> OperasyonKaydi:
+                           personel=None, mesai_kaydi=None, fire=None) -> OperasyonKaydi:
     """İstasyon emrinden TASLAK operasyon kaydı açar (``uretim_emri`` + ``istasyon_emri`` bağlı). ``hedef`` (referans çıktı adedi) verilmezse
     açık kalan çalıştırma × referans miktar; kalan yoksa hedef zorunlu. Hedef kalanı AŞABİLİR (uyarı: ``kayit_fazla_uyarisi``; fazlası serbest stok).
-    Emir satırı kilitlenir (aynı emirden eş zamanlı iki açılış kalanı iki kez kullanmasın). Yalnız açık ÜS'nin bitmemiş/iptal olmamış emri için."""
+    Emir satırı kilitlenir (aynı emirden eş zamanlı iki açılış kalanı iki kez kullanmasın). Yalnız açık ÜS'nin bitmemiş/iptal olmamış emri için.
+    ``fire`` (atölye Bitir, yalnız ÜRET): ``hedef`` SAĞLAM adettir; kaydın hedefi sağlam + fire olur (girdiler o kadar tüketilir), ``gelen`` = sağlam
+    (stoğa giren, emrin tamamlananına yazılan, fazla üretim yasağında/uyarısında sayılan adet) — fason dönüşündeki gelen/fire mantığı."""
     ie = IstasyonEmri.objects.select_for_update().select_related("uretim_emri", "operasyon").get(pk=ie.pk)
     emir = ie.uretim_emri
     if ie.silindi or emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
         raise UretimHatasi("Yalnız açık üretim siparişinin istasyon emrinden kayıt açılabilir.")
     if ie.durum == IstasyonEmri.Durum.IPTAL:
         raise UretimHatasi("İptal edilmiş istasyon emrinden kayıt açılamaz.")
+    fire_m = _sayi_coz(fire, "Fire adedi geçerli bir sayı olmalı.") if fire not in (None, "") else Decimal("0")
+    if fire_m < 0:
+        raise UretimHatasi("Fire adedi negatif olamaz.")
+    if fire_m > 0 and ie.operasyon.tur != Operasyon.Tur.URET:
+        raise UretimHatasi("Fire yalnız ÜRET tanımlı emirde girilebilir.")
     ref = _referans_miktar(ie.operasyon)
     kalan = istasyon_emri_acik_kalan(ie)
     if hedef in (None, ""):
         if kalan <= 0:
             raise UretimHatasi("Bu istasyon emrinde açılacak kalan miktar yok; fazla üretim için hedef miktarı girin.")
         hedef = (kalan * ref).quantize(Decimal("0.000001"))
-    elif fazla_uretim_yasak(ie):
-        h = _sayi_coz(hedef, "Hedef çıktı miktarı geçerli bir sayı olmalı.")
-        izin = (max(kalan, Decimal("0")) * ref).quantize(Decimal("0.000001"))
-        if h > izin:
-            raise UretimHatasi(f"Bu emirde fazla üretim yapılamaz (varyantlı {('markalama' if ie.operasyon.tur == Operasyon.Tur.DONUSTUR else 'mamul')} "
-                               f"emri): en çok {izin.normalize():f} üretilebilir, {h.normalize():f} istendi.")
+    else:
+        hedef = _sayi_coz(hedef, "Hedef çıktı miktarı geçerli bir sayı olmalı.")
+        if fazla_uretim_yasak(ie):
+            izin = (max(kalan, Decimal("0")) * ref).quantize(Decimal("0.000001"))
+            if hedef > izin:
+                raise UretimHatasi(f"Bu emirde fazla üretim yapılamaz (varyantlı {('markalama' if ie.operasyon.tur == Operasyon.Tur.DONUSTUR else 'mamul')} "
+                                   f"emri): en çok {izin.normalize():f} üretilebilir, {hedef.normalize():f} istendi.")
+    saglam = hedef
     kayit = operasyon_kaydi_olustur(
-        operasyon_id=ie.operasyon_id, depo_id=depo_id or emir.depo_id, tarih=tarih or timezone.localdate(), hedef_cikti_miktari=hedef,
+        operasyon_id=ie.operasyon_id, depo_id=depo_id or emir.depo_id, tarih=tarih or timezone.localdate(), hedef_cikti_miktari=saglam + fire_m,
         uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici, cikti_varyant=ie.cikti_varyant,
         personel=personel, mesai_kaydi=mesai_kaydi)
+    if fire_m > 0:
+        kayit.gelen = {str(ie.operasyon.cikti_id): format(saglam.normalize(), "f")}
+        kayit.save(update_fields=["gelen", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
     return kayit
 
@@ -1569,15 +1585,16 @@ def _eksik_mesaji(mesaj: str) -> str:
 
 
 @transaction.atomic
-def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=None, personel=None, mesai_kaydi=None):
+def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=None, personel=None, mesai_kaydi=None, fire=None):
     """TEK TIKLA ÜRETİM ("Üretildi"): istasyon emrinden operasyon kaydı açar (girdi/çıktı operasyon tanımından, miktar oranlı) ve MEVCUT onay servisiyle
     hemen ONAYLAR — hepsi tek işlemde; stok yetersizliği vb. bir hata olursa kayıt da dahil hiçbir şey kalmaz. ``miktar`` referans çıktı adedidir
     (boş = açık kalan); açık kalandan fazlası yazılabilir (fazlası serbest stok). Fason istasyonunda üretim fason dönüşle yapılır, burada reddedilir.
+    ``fire`` (atölye): ``miktar`` sağlam adet, fire kadar ek çalıştırma girdisi tüketilir, stoğa yalnız sağlam girer (``istasyon_emri_kayit_ac``).
     (onaylı kayıt, uyarı metni) döner; uyarı = kalanı aşıyor ('' = aşmıyor)."""
     ie = IstasyonEmri.objects.select_related("istasyon", "uretim_emri").get(pk=ie.pk)
     if ie.istasyon.fason:
         raise UretimHatasi("Fason istasyonunda üretim, fason dönüş belgesiyle yapılır (\"Fason dönüş aç\").")
-    kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, kullanici=kullanici, personel=personel, mesai_kaydi=mesai_kaydi)
+    kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, kullanici=kullanici, personel=personel, mesai_kaydi=mesai_kaydi, fire=fire)
     uyari = kayit_fazla_uyarisi(kayit)                           # onaydan ÖNCE: onay sonrası tamamlanan zaten artmış olur
     try:
         operasyon_kaydi_onayla(kayit, kullanici=kullanici)
@@ -2389,9 +2406,10 @@ def kayit_ciktilari(kayit: OperasyonKaydi) -> list:
 def kayit_gelen_adetleri(kayit: OperasyonKaydi, ciktilar=None) -> dict:
     """{anahtar: stoğa girecek adet}. Fason dönüşte fasoncudan GELEN adet — TEK yapı: ``gelen`` {stok pk: adet} tüm çıktılar için (referans dahil).
     Boş: ÜRET'te beklenen gelmiş sayılır, PARÇALA'da 0. Gelen > beklenen ya da negatif reddedilir; ÜRET'te ana
-    çıktı 0 olamaz, PARÇALA'da en az bir çıktı > 0 olmalı. Fasonsuz kayıtta her zaman beklenen adet."""
+    çıktı 0 olamaz, PARÇALA'da en az bir çıktı > 0 olmalı. Fasonsuz kayıtta beklenen adet — ATÖLYE FİRE'li ÜRET kaydı hariç (``gelen`` dolu:
+    ana çıktı için SAĞLAM adet, fark fire; girdiler beklenen çalıştırma kadar tüketilir, stoğa sağlam girer, maliyet sağlam adetlere yayılır)."""
     ciktilar = ciktilar if ciktilar is not None else kayit_ciktilari(kayit)
-    if not kayit.fason_cari_id:
+    if not kayit.fason_cari_id and not (kayit.gelen and kayit.operasyon.tur == Operasyon.Tur.URET):
         return {a: m for a, _st, m, _b in ciktilar}
     parcala = kayit.operasyon.tur == Operasyon.Tur.PARCALA
     gelen = kayit.gelen or {}
