@@ -101,7 +101,14 @@
           <span>📤 Satış</span></label>
       </div>
       <p class="yardim">Birden fazlası seçilebilir. Seçime göre aşağıdaki bölümler görünür/gizlenir.</p>
-      <div class="izgara" style="margin-top:.8rem">
+      <div class="izgara" style="margin-top:.8rem" id="stok-esik-alanlari">
+        <div class="alan">
+          <label for="{{ form.kritik_stok.id_for_label }}">Kritik Stok Seviyesi</label>
+          {{ form.kritik_stok }}
+          {% for e in form.kritik_stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Üretim biriminde eşik; ürün grubundan bağımsız her kartta. 0 = kontrol yok. Kalan (kullanılabilir + gelecek − bekleyen)
+            altına düşünce pano ve stok listesinde kritik uyarısı verilir.</p>
+        </div>
         <div class="alan">
           <label class="grup-secenek" style="display:inline-flex"><input type="checkbox" name="{{ form.stoklu_uretim.html_name }}"
             id="{{ form.stoklu_uretim.id_for_label }}" {% if form.stoklu_uretim.value %}checked{% endif %}>
@@ -152,12 +159,6 @@
           {{ form.tedarikci_adi }}
           {% for e in form.tedarikci_adi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           <p class="yardim">Tedarikçinin bu ürüne verdiği isim — boşsa satınalma ekranlarında dahili ad (Ad) kullanılır.</p>
-        </div>
-        <div class="alan">
-          <label for="{{ form.kritik_stok.id_for_label }}">Kritik Stok Seviyesi</label>
-          {{ form.kritik_stok }}
-          {% for e in form.kritik_stok.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          <p class="yardim">Üretim biriminde eşik (Faz B'de uyarı için) — altına düşünce yeniden sipariş gerekir.</p>
         </div>
         <div class="alan">
           <label for="{{ form.alis_fiyati_pb.id_for_label }}">Alış Fiyatı Para Birimi</label>

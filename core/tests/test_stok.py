@@ -950,3 +950,38 @@ class StokViewTest(TestCase):
         self.assertTrue(s.gorsel.name.endswith(".webp"))
         d = self.client.get(reverse("core:stok_detay", args=[s.pk]))
         self.assertContains(d, s.gorsel.url)
+
+
+class KritikStokAlaniTest(TestCase):
+    """Kritik Stok Seviyesi alanı ürün grubundan bağımsız (Ürün Grubu bölümünde, stoklu üretim/parti ile aynı yerde); yalnız ÜRETİM olan kartta
+    da görünür ve kaydedilir; satınalma bölümü gizliyken değer sıfırlanmaz."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.ust, cls.alt, cls.alt2, cls.adet, cls.kg = _veri()
+        cls.yetkili = User.objects.create_user("kritikyet", password="x")
+        EkranYetki.objects.create(kullanici=cls.yetkili, ekran_kod="stoklar")
+
+    def test_uretim_kartinda_gorunur_ve_kaydedilir(self):
+        s = stok_olustur(ad="ara parça", kategori_id=self.alt.pk, uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.adet.pk,
+                         cevirici=Decimal("1"), kdv_id=_kdv("20").pk, uretim_urunu=True, satinalma_urunu=False)
+        self.client.force_login(self.yetkili)
+        h = self.client.get(reverse("core:stok_duzenle", args=[s.pk])).content.decode()
+        i_kritik, i_satinalma = h.index("Kritik Stok Seviyesi"), h.index('data-grup="satinalma_urunu"')
+        self.assertLess(i_kritik, i_satinalma)                                                   # satınalma bloğunun DIŞINDA (gizlenmez)
+        self.assertLess(h.index('id="stok-esik-alanlari"'), i_kritik)
+        self.assertLess(i_kritik, h.index("Stoklu üretim"))                                       # stoklu üretim / parti ile aynı bölümde
+        govde = {"ad": "ara parça", "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.adet.pk), "cevirici": "1", "kdv": str(s.kdv_id),
+                 "uretim_urunu": "on", "kritik_stok": "12,5", "parti_miktari": "40", "stoklu_uretim": "on"}
+        self.assertEqual(self.client.post(reverse("core:stok_duzenle", args=[s.pk]), govde).status_code, 302)
+        s.refresh_from_db()
+        self.assertEqual((s.kritik_stok, s.parti_miktari, s.stoklu_uretim, s.satinalma_urunu), (Decimal("12.5"), Decimal("40"), True, False))
+        govde.update(parti_miktari="", stoklu_uretim="")                                          # yeniden kaydet: kritik değer korunur
+        del govde["stoklu_uretim"]
+        self.client.post(reverse("core:stok_duzenle", args=[s.pk]), govde)
+        s.refresh_from_db()
+        self.assertEqual((s.kritik_stok, s.parti_miktari, s.stoklu_uretim), (Decimal("12.5"), Decimal("0"), False))
+        h = self.client.get(reverse("core:stok_duzenle", args=[s.pk])).content.decode()
+        self.assertIn('value="12,5', h)                                                           # form mevcut değeri gösterir
+        h = self.client.get(reverse("core:stok_ekle")).content.decode()
+        self.assertLess(h.index("Kritik Stok Seviyesi"), h.index('data-grup="satinalma_urunu"'))
