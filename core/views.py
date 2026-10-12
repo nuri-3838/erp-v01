@@ -3430,6 +3430,7 @@ def siparis_uretim_emrine_cevir(request, pk):
                      "hiçbir kalem yok; üretim emri açılamıyor.")
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
 
+    onizleme = None
     if request.method == "POST":
         bform = UretimEmriBaslikForm(request.POST)
         formset = SiparisUretimEmriSatirFormSet(request.POST)
@@ -3440,13 +3441,17 @@ def siparis_uretim_emrine_cevir(request, pk):
                 for f in formset if f.dolu_mu()
             ]
             try:
-                emir = uretim_servis.siparisten_uretim_emri_olustur(
-                    siparis=siparis, depo_id=bform.cleaned_data["depo"].pk,
-                    tarih=bform.cleaned_data["tarih"], kalem_secimleri=secimler,
-                    aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)
-                messages.success(
-                    request, f"Üretim emri açıldı: {emir.no} — sipariş {siparis.pk} kaynaklı.")
-                return redirect("core:uretim_emri_detay", pk=emir.pk)
+                kalemler, sk = uretim_servis.siparisten_us_kalemleri(siparis, secimler)
+                onizleme = uretim_servis.stoktan_karsilama_onizleme(kalemler, siparis_kalemleri=sk, kullanici=request.user)
+                stoktan, onayli = _stoktan_coz(request, onizleme)
+                if onayli:
+                    emir = uretim_servis.siparisten_uretim_emri_olustur(
+                        siparis=siparis, depo_id=bform.cleaned_data["depo"].pk,
+                        tarih=bform.cleaned_data["tarih"], kalem_secimleri=secimler,
+                        aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
+                    messages.success(
+                        request, f"Üretim emri açıldı: {emir.no} — sipariş {siparis.pk} kaynaklı.")
+                    return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
@@ -3455,7 +3460,7 @@ def siparis_uretim_emrine_cevir(request, pk):
             {"kalem_id": k.pk, "hedef_miktar": k.miktar} for k in uygun])
     return render(request, "core/siparis_uretim_emri_ekle.html", {
         "bform": bform, "formset": formset, "siparis": siparis,
-        "satirlar": zip(uygun, formset), "uygun_degil": uygun_degil,
+        "satirlar": zip(uygun, formset), "uygun_degil": uygun_degil, "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Üretim Emri Aç",
         "iptal_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
 
@@ -7453,8 +7458,32 @@ def uretim_emirleri(request):
     return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum or "TUMU", "durumlar": UretimEmri.Durum.choices})
 
 
+# --- "Stoktan karşıla" sorusu (ÜS aç / siparişten aç / revize / sipariş revize): kaydetmeden önce kalem başına ön izleme + seçim onayı ---
+def _stoktan_secimleri(post, onizleme):
+    """POST'taki seçimleri (stoktan_mod_<i>, stoktan_miktar_<i>) okur, yeniden gösterim için satırlara işler; (mod, miktar) listesi döner."""
+    secimler = []
+    for r in onizleme:
+        i = r["sira"]
+        mod = post.get(f"stoktan_mod_{i}") or r["secim_mod"]
+        miktar = post.get(f"stoktan_miktar_{i}") or r["secim_miktar"]
+        r["secim_mod"], r["secim_miktar"] = mod, miktar
+        secimler.append((mod, miktar))
+    return secimler
+
+
+def _stoktan_coz(request, onizleme):
+    """Ön izlemede soru varsa: onay yoksa None (ekran gösterilir); onay varsa ``stoktan`` sözlüğü. Soru yoksa ({} , True) — doğrudan kaydet."""
+    if not uretim_servis.stoktan_sorusu_var(onizleme):
+        return {}, True
+    secimler = _stoktan_secimleri(request.POST, onizleme)
+    if request.POST.get("secim_onay") != "1":
+        return None, False
+    return uretim_servis.stoktan_secimleri_coz(onizleme, secimler), True
+
+
 @ekran_gerekli("uretim_emirleri")
 def uretim_emri_ekle(request):
+    onizleme = None
     if request.method == "POST":
         bform = UretimEmriBaslikForm(request.POST)
         formset = UretimEmriKalemSatirFormSet(request.POST, prefix="satir")
@@ -7466,18 +7495,21 @@ def uretim_emri_ekle(request):
             ]
             cd = bform.cleaned_data
             try:
-                emir = uretim_servis.uretim_emri_olustur(
-                    kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
-                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
-                messages.success(
-                    request, f"Üretim siparişi açıldı: {emir.no} — stok ayrıldı, istasyon emirleri oluşturuldu.")
-                return redirect("core:uretim_emri_detay", pk=emir.pk)
+                onizleme = uretim_servis.stoktan_karsilama_onizleme(kalemler, kullanici=request.user)
+                stoktan, onayli = _stoktan_coz(request, onizleme)
+                if onayli:
+                    emir = uretim_servis.uretim_emri_olustur(
+                        kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
+                        aciklama=cd.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
+                    messages.success(
+                        request, f"Üretim siparişi açıldı: {emir.no} — stok ayrıldı, istasyon emirleri oluşturuldu.")
+                    return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
         bform = UretimEmriBaslikForm()
         formset = UretimEmriKalemSatirFormSet(prefix="satir")
-    return render(request, "core/uretim_emri_form.html", {"bform": bform, "formset": formset})
+    return render(request, "core/uretim_emri_form.html", {"bform": bform, "formset": formset, "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Siparişi Aç"})
 
 
 def _revizyon_satirlari(emir):
@@ -7597,16 +7629,20 @@ def uretim_emri_revize_gorunum(request, pk):
     if emir.durum != UretimEmri.Durum.ACIK:
         messages.error(request, "Yalnız açık üretim siparişi revize edilebilir.")
         return redirect("core:uretim_emri_detay", pk=emir.pk)
+    onizleme = None
     if request.method == "POST":
         bform = UretimRevizeBaslikForm(request.POST)
         formset = UretimEmriKalemSatirFormSet(request.POST, prefix="satir")
         if bform.is_valid() and formset.is_valid():
             kalemler = [{"hedef_urun_id": f.cleaned_data["hedef_urun"].pk, "hedef_miktar": f.cleaned_data["hedef_miktar"]} for f in formset if f.dolu_mu()]
             try:
-                uretim_servis.uretim_emri_revize(emir, kalemler=kalemler, tarih=bform.cleaned_data["tarih"],
-                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)
-                messages.success(request, f"{emir.no} revize edildi (revizyon {emir.revizyon_no}).")
-                return redirect("core:uretim_emri_detay", pk=emir.pk)
+                onizleme = uretim_servis.stoktan_karsilama_onizleme(kalemler, varyantli=emir.varyantli_plan, haric_emir=emir, kullanici=request.user)
+                stoktan, onayli = _stoktan_coz(request, onizleme)
+                if onayli:
+                    uretim_servis.uretim_emri_revize(emir, kalemler=kalemler, tarih=bform.cleaned_data["tarih"],
+                                                     aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
+                    messages.success(request, f"{emir.no} revize edildi (revizyon {emir.revizyon_no}).")
+                    return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
@@ -7615,7 +7651,7 @@ def uretim_emri_revize_gorunum(request, pk):
             {"hedef_urun": k.hedef_urun_id, "hedef_miktar": k.hedef_miktar} for k in emir.kalemler.filter(silindi=False).order_by("sira", "pk")])
     return render(request, "core/uretim_emri_form.html", {
         "bform": bform, "formset": formset, "baslik": f"{emir.no} Revize", "geri_url": reverse("core:uretim_emri_detay", args=[emir.pk]),
-        "gonder_etiket": "Revize Et",
+        "gonder_etiket": "Revize Et", "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Revize Et",
         "aciklama": "Kalem miktarını artırıp azaltabilir, kalem ekleyip çıkarabilirsiniz. Ayırma ve istasyon emirleri yeniden planlanır; "
                     "sevk/fatura edilmiş miktarın altına inilemez."})
 
@@ -7628,6 +7664,7 @@ def siparis_revize_gorunum(request, pk):
     if emir is None or siparis.durum != TeklifSiparis.Durum.ONAYLI:
         messages.error(request, "Bu siparişin açık bir üretim siparişi yok; siparişi normal yoldan düzenleyin.")
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+    onizleme = None
     if request.method == "POST":
         bform = UretimRevizeBaslikForm(request.POST)
         formset = TeklifSiparisKalemFormSet(request.POST, form_kwargs={"yon": siparis.yon})
@@ -7636,11 +7673,16 @@ def siparis_revize_gorunum(request, pk):
                          "iskonto_yuzdesi": f.cleaned_data.get("iskonto_yuzdesi"), "uretim_miktar": f.cleaned_data.get("uretim_miktar"),
                          "varyant": f.cleaned_data.get("varyant")} for f in formset if f.dolu_mu()]
             try:
-                uretim_servis.siparis_revize(siparis, satirlar=satirlar, tarih=bform.cleaned_data["tarih"],
-                                             aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)
-                emir.refresh_from_db()
-                messages.success(request, f"Sipariş kalemleri güncellendi; {emir.no} revize edildi (revizyon {emir.revizyon_no}).")
-                return redirect("core:uretim_emri_detay", pk=emir.pk)
+                kalemler, sk = uretim_servis.siparis_revize_kalemleri(siparis, satirlar)
+                onizleme = uretim_servis.stoktan_karsilama_onizleme(kalemler, varyantli=emir.varyantli_plan, haric_emir=emir, siparis_kalemleri=sk,
+                                                                    kullanici=request.user)
+                stoktan, onayli = _stoktan_coz(request, onizleme)
+                if onayli:
+                    uretim_servis.siparis_revize(siparis, satirlar=satirlar, tarih=bform.cleaned_data["tarih"],
+                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
+                    emir.refresh_from_db()
+                    messages.success(request, f"Sipariş kalemleri güncellendi; {emir.no} revize edildi (revizyon {emir.revizyon_no}).")
+                    return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
@@ -7651,6 +7693,7 @@ def siparis_revize_gorunum(request, pk):
             for k in siparis.kalemler.filter(silindi=False).select_related("stok")])
     return render(request, "core/siparis_revize.html", {"bform": bform, "formset": formset, "siparis": siparis, "emir": emir, "varyant_meta": varyant_servis.varyant_meta(),
                                                          "iskonto_sutunu": _iskonto_sutunu(siparis.belge_tur, siparis.yon),
+                                                         "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Revize Et",
                                                          "geri_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
 
 

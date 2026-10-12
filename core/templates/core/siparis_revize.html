@@ -68,9 +68,10 @@
       <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
+    {% include "core/_stoktan_karsilama.html" %}
     <div class="form-altbar">
       <a class="iptal-bag" href="{{ geri_url }}">İptal</a>
-      <button type="submit" class="birincil">Revize Et</button>
+      <button type="submit" class="birincil">{% if onizleme %}{{ onay_etiket }}{% else %}Revize Et{% endif %}</button>
     </div>
   </form>
 </div>

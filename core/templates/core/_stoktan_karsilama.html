@@ -1,0 +1,86 @@
+{% load core_extras %}{% if onizleme %}
+<section class="sk-kutu" id="stoktan-karsilama">
+  <input type="hidden" name="secim_onay" value="1">
+  <div class="sk-ust">
+    <h3>Bitmiş ürün stoğu: stoktan mı karşılansın, üretilsin mi?</h3>
+    <div class="sk-toplu">
+      <button type="button" class="dugme-ikincil" data-toplu="stok">Hepsini stoktan karşıla</button>
+      <button type="button" class="dugme-ikincil" data-toplu="uret">Hepsini üret</button>
+    </div>
+  </div>
+  <p class="sk-aciklama">Serbest bitmiş (152) stoğu kullanıcı kararıyla düşülür; ara mamul (151) ve hammadde stoğu bugünkü gibi otomatik düşülmeye devam eder.
+    Seçimi onaylamadan kayıt yapılmaz.</p>
+  <div class="tablo-kapsayici">
+  <table class="sk-tablo">
+    <thead><tr><th>Ürün + varyant</th><th class="sag">Hedef</th><th class="sag">Serbest bitmiş stok</th><th>Stoktan karşılanacak</th><th class="sag">Üretilecek</th></tr></thead>
+    <tbody>
+    {% for r in onizleme %}
+      <tr class="sk-satir" data-sira="{{ r.sira }}" data-hedef="{{ r.hedef|stringformat:'f' }}" data-ust="{{ r.ust_sinir|stringformat:'f' }}">
+        <td><span class="mono">{{ r.urun.kod }}</span> {{ r.urun.ad }}{% if r.varyant_etiketi %}<br><small class="sk-varyant">🔀 {{ r.varyant_etiketi }}</small>{% endif %}</td>
+        <td class="sag mono">{{ r.hedef|tr_miktar_sade }}</td>
+        <td class="sag mono">{{ r.serbest|tr_miktar_sade }}</td>
+        <td>
+          {% if r.soru %}
+            <label class="sk-secenek"><input type="radio" name="stoktan_mod_{{ r.sira }}" value="stok"{% if r.secim_mod == "stok" %} checked{% endif %}{% if r.ust_sinir <= 0 %} disabled{% endif %}> Stoktan karşıla ({{ r.ust_sinir|tr_miktar_sade }})</label>
+            <label class="sk-secenek"><input type="radio" name="stoktan_mod_{{ r.sira }}" value="uret"{% if r.secim_mod == "uret" %} checked{% endif %}> Tamamını üret</label>
+            <label class="sk-secenek"><input type="radio" name="stoktan_mod_{{ r.sira }}" value="elle"{% if r.secim_mod == "elle" %} checked{% endif %}{% if r.ust_sinir <= 0 %} disabled{% endif %}> Elle:
+              <input type="text" name="stoktan_miktar_{{ r.sira }}" value="{{ r.secim_miktar }}" size="6" inputmode="decimal" class="sk-elle"{% if r.ust_sinir <= 0 %} disabled{% endif %}> <small>(0 – {{ r.ust_sinir|tr_miktar_sade }})</small></label>
+          {% elif r.ozel %}
+            <span class="sk-not">Özel varyant: tamamı üretilecek (standart stoktan karşılanmaz)</span>
+          {% else %}
+            <span class="sk-not">Ara mamul: stok bugünkü gibi otomatik düşülür</span>
+          {% endif %}
+        </td>
+        <td class="sag mono sk-uretilecek">{% if r.soru %}{% if r.secim_mod == "uret" %}{{ r.hedef|tr_miktar_sade }}{% else %}—{% endif %}{% elif r.ozel %}{{ r.hedef|tr_miktar_sade }}{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+<style>
+  .sk-kutu { margin:1rem 0; padding:1rem 1.1rem; border:2px solid var(--turuncu); border-radius:14px; background:#fff8ef; }
+  .sk-ust { display:flex; justify-content:space-between; align-items:center; gap:.8rem; flex-wrap:wrap; }
+  .sk-ust h3 { margin:0; font-size:1.02rem; color:var(--lacivert); }
+  .sk-toplu { display:flex; gap:.5rem; }
+  .sk-aciklama { font-size:.85rem; color:var(--metin-soluk); margin:.4rem 0 .7rem; }
+  .sk-tablo { width:100%; border-collapse:collapse; }
+  .sk-tablo th { text-align:left; font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); padding:.3rem .5rem; }
+  .sk-tablo td { padding:.4rem .5rem; border-top:1px solid var(--cizgi); vertical-align:top; }
+  .sk-secenek { display:block; font-size:.9rem; margin:.15rem 0; }
+  .sk-elle { min-width:0 !important; width:5rem; }
+  .sk-not { font-size:.88rem; color:var(--metin-soluk); }
+  .sk-varyant { color:#8a4b00; font-weight:700; }
+  .sk-uretilecek { font-weight:700; }
+</style>
+<script>
+(function(){
+  var kutu = document.getElementById('stoktan-karsilama');
+  if (!kutu) return;
+  function fmt(n){ return (Math.round(n * 1000) / 1000).toLocaleString('tr-TR'); }
+  function guncelle(tr){
+    var hedef = parseFloat(tr.dataset.hedef), ust = parseFloat(tr.dataset.ust);
+    var sec = tr.querySelector('input[type=radio]:checked');
+    if (!sec) return;
+    var stoktan = sec.value === 'stok' ? ust : sec.value === 'uret' ? 0 : parseFloat((tr.querySelector('.sk-elle').value || '0').replace(',', '.'));
+    if (isNaN(stoktan) || stoktan < 0) stoktan = 0;
+    if (stoktan > ust) stoktan = ust;
+    tr.querySelector('.sk-uretilecek').textContent = fmt(hedef - stoktan);
+  }
+  kutu.querySelectorAll('tr.sk-satir').forEach(function(tr){
+    if (!tr.querySelector('input[type=radio]')) return;
+    tr.querySelectorAll('input').forEach(function(i){ i.addEventListener('change', function(){ guncelle(tr); }); i.addEventListener('input', function(){
+      if (i.classList.contains('sk-elle')) { var r = tr.querySelector('input[value=elle]'); if (r && !r.disabled) r.checked = true; } guncelle(tr); }); });
+    guncelle(tr);
+  });
+  kutu.querySelectorAll('[data-toplu]').forEach(function(b){
+    b.addEventListener('click', function(){
+      kutu.querySelectorAll('tr.sk-satir').forEach(function(tr){
+        var r = tr.querySelector('input[value=' + b.dataset.toplu + ']');
+        if (r && !r.disabled) { r.checked = true; guncelle(tr); }
+      });
+    });
+  });
+})();
+</script>
+{% endif %}

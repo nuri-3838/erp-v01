@@ -70,9 +70,10 @@
       </div>
     </section>
 
+    {% include "core/_stoktan_karsilama.html" %}
     <div class="form-altbar">
       <a class="iptal-bag" href="{{ iptal_url }}">İptal</a>
-      <button type="submit" class="birincil">Üretim Emri Aç</button>
+      <button type="submit" class="birincil">{% if onizleme %}{{ onay_etiket }}{% else %}Üretim Emri Aç{% endif %}</button>
     </div>
   </form>
 </div>

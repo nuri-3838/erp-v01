@@ -1039,7 +1039,7 @@ def _ds(x) -> str:
 
 @transaction.atomic
 def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis=None,
-                        kullanici=None, siparis_kalemleri=None) -> UretimEmri:
+                        kullanici=None, siparis_kalemleri=None, stoktan=None) -> UretimEmri:
     """ÜRETİM SİPARİŞİ açar. kalemler: [{"hedef_urun_id": int, "hedef_miktar": Decimal|str}, ...] — en az 1 satır. ``siparis_kalemleri``
     (isteğe bağlı, ``kalemler`` ile aynı uzunlukta TeklifSiparisKalem listesi): siparişten açılışta kalem bağı; bu durumda aynı ürün birden çok
     satırda olabilir (netleme stok bazında toplanmış talepten yapılır).
@@ -1047,14 +1047,15 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     NET PLAN (docs/uretim-siparisi-plan.md): ``ihtiyac_hesapla(kullanilabilir=)`` — her seviyede eldeki AYRILMAMIŞ stok (mamul, yarı mamul,
     hammadde) düşülür. Sonuç: (1) ayrılan her stok için ``StokAyirma`` (stok hareketi YOK, yumuşak kural), (2) çalıştırması gereken her operasyon için
     ``IstasyonEmri`` (planlanan = net çalıştırma, seviye sırasıyla), (3) kalem başına ``eldeki_ayrilan`` snapshot'ı, (4) açılış revizyon kaydı.
-    OperasyonKaydi AÇILMAZ — kayıtlar istasyon emrinden açılır. depo/tarih kayıtların varsayılanı olarak emirde durur."""
+    OperasyonKaydi AÇILMAZ — kayıtlar istasyon emrinden açılır. depo/tarih kayıtların varsayılanı olarak emirde durur.
+    ``stoktan`` (``stoktan_secimleri_coz`` çıktısı): bitmiş ürün (152) kök kalemlerinde stoktan karşılanacak miktar tavanı; None = bugünkü otomatik."""
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if not depo:
         raise UretimHatasi("Depo bulunamadı.")
     varyantli = planlama_varyant.acik()                                                     # E-6 anahtarı (açılış anında; ÜS'ye yazılır)
     coz = _kalemleri_coz(kalemler, siparis_kalemleri, varyantli)
     _planlama_kilidi()
-    sonuc, cz = _plani_hesapla(coz, varyantli, kullanici)                                   # önce hesapla: döngü hatası hiçbir şey yazdırmaz
+    sonuc, cz = _plani_hesapla(coz, varyantli, kullanici, stoktan=stoktan)                  # önce hesapla: döngü hatası hiçbir şey yazdırmaz
 
     yil = tarih.year
     emir = None
@@ -1122,19 +1123,115 @@ def _kalemleri_coz(kalemler, siparis_kalemleri=None, varyantli=False):
     return coz
 
 
-def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None):
+def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, stoktan=None):
     """NET plan (``ihtiyac_hesapla``): kapalıda kart bazında — bugünkü yol, birebir; varyantlı planlamada (stok, varyant) düğümleriyle
-    (``planlama_varyant.Cozucu``). (sonuç, çözücü|None) döner."""
+    (``planlama_varyant.Cozucu``). (sonuç, çözücü|None) döner.
+
+    ``stoktan`` (2026-10-12, "stoktan karşıla" sorusu): {(stok pk, varyant pk|None): Decimal} — BİTMİŞ ÜRÜN (152) kök kalemleri için
+    kullanıcının seçtiği "stoktan karşılanacak" miktar. Kök düğümün kullanılabilir stoğu bu tavanla sınırlanır; böylece ayırma yalnız seçilen
+    kadar olur, kalanı üretilir. Sözlükte olmayan düğümler (ara mamul 151, hammadde, soru sorulmayan kökler) bugünkü gibi otomatik düşülür."""
     if not varyantli:
-        if haric_emir is None:
-            kh = stok_ayirma.kullanilabilir_haritasi
-        else:
-            kh = lambda idler: stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=haric_emir)      # noqa: E731
+        def kh(idler):
+            h = stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=haric_emir)
+            for (pk, _vpk), tavan in (stoktan or {}).items():
+                if pk in h:
+                    h[pk] = min(h[pk], tavan)
+            return h
         return ihtiyac_hesapla([(u, m) for u, m, _v in coz], graf=graf, kullanilabilir=kh), None
     cz = planlama_varyant.Cozucu(kullanici)
     kalemler = [(cz.kalem_dugumu(u, v), m) for u, m, v in coz]
-    return ihtiyac_hesapla(kalemler, cozucu=cz,
-                           kullanilabilir=lambda d: stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=haric_emir)), cz
+
+    def khv(d):
+        h = stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=haric_emir)
+        for anahtar, tavan in (stoktan or {}).items():
+            if anahtar in h:
+                h[anahtar] = min(h[anahtar], tavan)
+        return h
+    return ihtiyac_hesapla(kalemler, cozucu=cz, kullanilabilir=khv), cz
+
+
+# === "Stoktan karşıla" sorusu (2026-10-12): ÜS açılış/revizede bitmiş ürün (152) stoğu kullanıcıya sorulur ===
+
+def stoktan_karsilama_onizleme(kalemler, *, varyantli=None, haric_emir=None, siparis_kalemleri=None, kullanici=None) -> list:
+    """Kaydetmeden önce kalem başına ön izleme: {"sira", "urun", "varyant", "varyant_etiketi", "hedef", "serbest" (kullanılabilir bitmiş stok),
+    "soru" (152 bitmiş ürün ve özel varyant değil → kullanıcı seçer), "ozel" (standart dışı varyant → tamamı üretilir, seçenek yok),
+    "ust_sinir" = min(hedef, serbest), "varsayilan" = ust_sinir, "anahtar" (stok pk, varyant pk|None)}. Ara mamul (151) kökler sorulmaz, bugünkü
+    gibi otomatik. ``haric_emir`` revizede ÜS'nin kendi ayırmaları kullanılabilir sayılır. ``kalemler`` ``uretim_emri_olustur`` biçimindedir."""
+    if varyantli is None:
+        varyantli = planlama_varyant.acik()
+    coz = _kalemleri_coz(kalemler, siparis_kalemleri, varyantli)
+    cz = planlama_varyant.Cozucu(kullanici) if varyantli else None
+    satirlar = []
+    for i, (urun, miktar, varyant) in enumerate(coz):
+        sv = cz.kalem_dugumu(urun, varyant).varyant if cz is not None else None
+        satirlar.append({"sira": i, "urun": urun, "varyant": sv, "varyant_etiketi": planlama_varyant.etiket(sv) if sv is not None else "",
+                         "hedef": miktar, "anahtar": (urun.pk, sv.pk if sv is not None else None),
+                         "ozel": bool(sv is not None and not sv.standart), "mamul": urun.kod.startswith(MAMUL_KOD_ONEKI)})
+    if varyantli:
+        harita = stok_ayirma.kullanilabilir_varyant_haritasi({r["anahtar"] for r in satirlar}, haric_emir=haric_emir)
+    else:
+        h = stok_ayirma.kullanilabilir_haritasi({r["anahtar"][0] for r in satirlar}, haric_emir=haric_emir)
+        harita = {(pk, None): v for pk, v in h.items()}
+    for r in satirlar:
+        r["serbest"] = max(Decimal("0"), harita.get(r["anahtar"], Decimal("0")))
+        r["soru"] = r["mamul"] and not r["ozel"]
+        r["ust_sinir"] = min(r["hedef"], r["serbest"]) if r["soru"] else Decimal("0")
+        r["varsayilan"] = r["ust_sinir"]
+        r["secim_mod"] = "stok" if r["ust_sinir"] > 0 else "uret"
+        r["secim_miktar"] = _ds(r["ust_sinir"])
+    return satirlar
+
+
+def stoktan_sorusu_var(onizleme) -> bool:
+    return any(r["soru"] for r in onizleme)
+
+
+def stoktan_secimleri_coz(onizleme, secimler) -> dict:
+    """Kullanıcı seçimlerini ``_plani_hesapla(stoktan=)`` sözlüğüne çevirir. ``secimler``: ön izlemeyle aynı sırada (mod, miktar) çiftleri —
+    mod "stok" (= üst sınır), "uret" (= 0), "elle" (0 ≤ miktar ≤ üst sınır). Soru sorulmayan satırda: özel varyant → 0 (tamamı üretilir), ara
+    mamul → sınırsız (sözlükte yok = bugünkü gibi). Aynı (stok, varyant) birden çok kalemde ise toplam serbest stoğu aşamaz."""
+    if len(secimler) != len(onizleme):
+        raise UretimHatasi("Stoktan karşılama seçimi kalem sayısıyla uyuşmuyor; ön izlemeyi yenileyin.")
+    tavan, serbest = {}, {}
+    for r, (mod, miktar) in zip(onizleme, secimler):
+        k = r["anahtar"]
+        if not r["soru"]:
+            if r["ozel"]:
+                tavan[k] = Decimal("0")
+            continue
+        if mod == "stok":
+            m = r["ust_sinir"]
+        elif mod == "uret":
+            m = Decimal("0")
+        elif mod == "elle":
+            m = _sayi_coz(miktar, f"{r['urun'].kod}: stoktan karşılanacak miktar geçerli bir sayı olmalı.")
+            if m < 0 or m > r["ust_sinir"]:
+                raise UretimHatasi(f"{r['urun'].kod}: stoktan karşılanacak miktar 0 ile {_ds(r['ust_sinir'])} arasında olmalı.")
+        else:
+            raise UretimHatasi(f"{r['urun'].kod}: stoktan karşılama seçimi yapılmadı.")
+        tavan[k] = tavan.get(k, Decimal("0")) + m
+        serbest[k] = r["serbest"]
+        if tavan[k] > serbest[k]:
+            raise UretimHatasi(f"{r['urun'].kod}: kalemlerin toplam stoktan karşılanacak miktarı serbest stoğu ({_ds(serbest[k])}) aşıyor.")
+    return tavan
+
+
+def siparis_revize_kalemleri(siparis, satirlar) -> list:
+    """Sipariş revize ekranı ön izlemesi için: gönderilen satırlardan ÜS kalemleri (``siparis_revize``'nin yazacağı ``uygun`` kalemlerle aynı sıra
+    ve kural: üretim ürünü + tanımlı operasyon). (kalemler, sipariş kalemi yerine geçen varyant taşıyıcıları) döner."""
+    from core.services import teklif_siparis as ts
+    try:
+        _cari, _aday, hazir = ts._hazirla(cari_id=siparis.cari_id, satirlar=satirlar)
+    except ts.TeklifSiparisHatasi as e:
+        raise UretimHatasi(str(e))
+    from types import SimpleNamespace
+    kalemler, sk = [], []
+    for satir in hazir:
+        stok, miktar, varyant = satir[0], satir[1], satir[7]
+        if stok.uretim_urunu and ureten_operasyon(stok) is not None:
+            kalemler.append({"hedef_urun_id": stok.pk, "hedef_miktar": miktar})
+            sk.append(SimpleNamespace(varyant=varyant))                 # _kalemleri_coz: aynı ürün birden çok satırda olabilir + varyant kaynağı
+    return kalemler, sk
 
 
 def _kalemleri_yaz(emir, coz, ayrilan, siparis_kalemleri, kullanici, cz=None):
@@ -1236,7 +1333,7 @@ def siparis_uretilebilir_kalemleri(siparis):
 
 @transaction.atomic
 def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, aciklama="",
-                                   kullanici=None) -> UretimEmri:
+                                   kullanici=None, stoktan=None) -> UretimEmri:
     """SATIŞ+SIPARIS+ONAYLI bir belgeden TEK, çok kalemli bir Üretim Emri açar ('tek emir,
     çoklu kalem'). kalem_secimleri ZORUNLU: [{"kalem_id": int, "hedef_miktar": Decimal|str}, ...]
     — görüntüleme ekranından (kullanıcı satır çıkarmış/miktar düzeltmiş olabilir) gelir; boş
@@ -1277,7 +1374,23 @@ def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, 
     kalemler = [{"hedef_urun_id": kalem.stok_id, "hedef_miktar": miktar} for kalem, miktar in secim]
     return uretim_emri_olustur(
         kalemler=kalemler, depo_id=depo_id, tarih=tarih, aciklama=aciklama,
-        kaynak_siparis=siparis, kullanici=kullanici, siparis_kalemleri=[kalem for kalem, _ in secim])
+        kaynak_siparis=siparis, kullanici=kullanici, siparis_kalemleri=[kalem for kalem, _ in secim], stoktan=stoktan)
+
+
+def siparisten_us_kalemleri(siparis, kalem_secimleri) -> tuple:
+    """Siparişten ÜS ön izlemesi için (kalemler, siparis_kalemleri) — ``siparisten_uretim_emri_olustur`` ile aynı seçim/doğrulama."""
+    uygun, _ = siparis_uretilebilir_kalemleri(siparis)
+    uygun_map = {k.pk: k for k in uygun}
+    kalemler, sk = [], []
+    for satir in kalem_secimleri or []:
+        kalem = uygun_map.get(satir["kalem_id"])
+        if kalem is None:
+            raise UretimHatasi("Geçersiz veya üretime uygun olmayan bir sipariş kalemi seçildi.")
+        kalemler.append({"hedef_urun_id": kalem.stok_id, "hedef_miktar": _sayi_coz(satir["hedef_miktar"], "Hedef miktar geçerli bir sayı olmalı.")})
+        sk.append(kalem)
+    if not kalemler:
+        raise UretimHatasi("Bu siparişte üretime uygun (üretim ürünü + tanımlı operasyonu olan) hiçbir kalem seçilmedi.")
+    return kalemler, sk
 
 # === İstasyon emrinden operasyon kaydı: açma, onay/geri alma etkileri, durum ===
 
@@ -1787,7 +1900,7 @@ def _emir_ozeti(emir: UretimEmri) -> dict:
 
 
 @transaction.atomic
-def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", kullanici=None, siparis_kalemleri=None) -> UretimEmri:
+def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", kullanici=None, siparis_kalemleri=None, stoktan=None) -> UretimEmri:
     """ÜS kalemlerini ``kalemler`` ile DEĞİŞTİRİR (adet ±, ekle/çıkar) ve ayırma + istasyon emirlerini yeniden planlar (docs/uretim-siparisi-plan.md):
     (1) sevk/fatura edilmiş miktarın altına düşürme reddedilir; (2) net plan, ÜS'nin kendi ayırmaları kullanılabilir sayılarak çözülür (kendi
     ürettiği/ayırdığı stok ona açık); (3) ayırmalar plana çekilir (azalan fark serbest); (4) her operasyon: planlanan = tamamlanan + yeni net çalıştırma,
@@ -1811,7 +1924,7 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
         if yeni_toplam.get((stok_pk, var_pk), Decimal("0")) < sevk:
             raise UretimHatasi(f"{Stok.objects.get(pk=stok_pk).kod}: sevk/fatura edilmiş miktarın ({sevk.normalize():f}) altına düşürülemez.")
     once = _emir_ozeti(emir)
-    sonuc, cz = _plani_hesapla(plan_kalemleri(coz, sevk_haritasi, varyantli), varyantli, kullanici, haric_emir=emir)
+    sonuc, cz = _plani_hesapla(plan_kalemleri(coz, sevk_haritasi, varyantli), varyantli, kullanici, haric_emir=emir, stoktan=stoktan)
 
     emir.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     _kalemleri_yaz(emir, coz, sonuc["ayrilan"], siparis_kalemleri, kullanici, cz)
@@ -1873,7 +1986,7 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
 
 
 @transaction.atomic
-def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None) -> UretimEmri:
+def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None, stoktan=None) -> UretimEmri:
     """Onaylı SATIŞ siparişinin kalemlerini ``satirlar`` (teklif_siparis_olustur satır biçimi) ile DEĞİŞTİRİR ve aynı işlemde bağlı açık üretim
     siparişini revize eder (karar 6): ÜS kalemleri = siparişin üretime uygun kalemleri (miktar = sipariş kalem miktarı); üretime uygun kalem
     kalmazsa reddedilir (önce ÜS iptal edilmeli). Sipariş başlığı/fiyat mantığı teklif_siparis servisininkiyle aynıdır."""
@@ -1895,7 +2008,8 @@ def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None
     if not uygun:
         raise UretimHatasi("Revize sonrası üretime uygun kalem kalmıyor; önce üretim siparişini iptal edin.")
     return uretim_emri_revize(emir, kalemler=[{"hedef_urun_id": k.stok_id, "hedef_miktar": k.miktar} for k in uygun],
-                              tarih=tarih, aciklama=aciklama or f"Sipariş {siparis.belge_no} revizesi", kullanici=kullanici, siparis_kalemleri=list(uygun))
+                              tarih=tarih, aciklama=aciklama or f"Sipariş {siparis.belge_no} revizesi", kullanici=kullanici, siparis_kalemleri=list(uygun),
+                              stoktan=stoktan)
 
 # === Üretim siparişi KAPANIŞ (adım 8): sevk = depolu satış faturası ===
 
