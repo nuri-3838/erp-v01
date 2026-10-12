@@ -31,7 +31,7 @@ class ReceteSarfTaban(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.yon = User.objects.create_superuser("rsyon", password="x")
-        for t in (date(2026, 1, 2), date(2026, 1, 10), date(2026, 1, 11), GUN):
+        for t in (date(2026, 1, 2), date(2026, 1, 10), date(2026, 1, 11), date(2026, 1, 14), GUN):
             Kur.objects.get_or_create(tarih=t, defaults={"usd_alis": D("40")})
         _hesap("191", "İNDİRİLECEK KDV")
         _hesap("391", "HESAPLANAN KDV", kalem="KVYK")
@@ -106,8 +106,12 @@ class TespitVeDagitimTest(ReceteSarfTaban):
 
 class KomutTest(ReceteSarfTaban):
     def test_kuru_calistirma_rapor_verir_hicbir_sey_birakmaz(self):
+        emir3 = uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": "1"}], depo_id=self.depo.pk, tarih=date(2026, 1, 14))
+        uretim_emri_toplu_uret(emir3, tarih=date(2026, 1, 14))                       # ikinci paketleme kaydı: aynı mamule iki yoldan pay → birleşik satır
         fis_once = YevmiyeFisi.objects.filter(silindi=False).count()
         metin = self.kos()
+        self.assertEqual(len([l for l in metin.splitlines() if "RS-MAMUL" in l and "stokta kalan" in l]), 2)      # dağıtım + özet: tek satır
+        self.assertTrue(any("RS-MAMUL" in l and "stokta kalan" in l and "5 / 9" in l for l in metin.splitlines()), metin)   # ara 1/10 stokta, 9 paketlendi
         self.assertIn("KURU ÇALIŞTIRMA", metin)
         self.assertIn("EKSİK SARFLI ONAYLI KAYITLAR (1)", metin)
         self.assertIn("TOPLAM eksik sarf: 10 adet = 30.00 TL", metin)

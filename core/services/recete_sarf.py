@@ -234,6 +234,20 @@ def dagit(stok: Stok, varyant, tutar: Decimal, *, seviye=0) -> list[Pay]:
     return sonuc
 
 
+def birlestir(paylar: list[Pay]) -> list[Pay]:
+    """Aynı (ürün, varyant, kova, hesap, seviye) payları tek satırda toplar — kayıt başına dağıtım aynı karta birden çok yoldan düşebilir
+    (ör. iki paketleme kaydı aynı mamule); rapor ve 0 adetlik giriş birleşik yazılır. Miktar/akış aynı kartın akışıdır, toplanmaz."""
+    sonuc = {}
+    for p in paylar:
+        key = (p.stok.pk, getattr(p.varyant, "pk", None), p.kova, p.hesap, p.seviye)
+        if key in sonuc:
+            sonuc[key].tutar += p.tutar
+            sonuc[key].uyari = sonuc[key].uyari or p.uyari
+        else:
+            sonuc[key] = p
+    return list(sonuc.values())
+
+
 # === 3) Uygulama (fiş + hareketler) ====================================================
 
 def _depo_sec(stok, varyant_id, tarih, miktar, tercih=None):
@@ -315,6 +329,7 @@ def _isle(girdi_kodu, *, tarih, aciklama, operasyon_idler, kullanici):
             except numune_servis.NumuneHatasi as e:
                 raise ReceteDuzeltHatasi(str(e))
         net[p.hesap] = net.get(p.hesap, SIFIR) + p.tutar
+    paylar = birlestir(paylar)
     net[girdi_hesabi] = net.get(girdi_hesabi, SIFIR) - toplam_tutar
     fis_satirlari = [SatirGirdi(kod, "B", t) if t > 0 else SatirGirdi(kod, "A", -t) for kod, t in net.items() if t != 0]
     try:
@@ -416,16 +431,10 @@ def rapor_metni(r: dict, *, girdi_kodu: str) -> str:
         ek = f"  [{p.hesap}]" if p.hesap else ""
         uy = f"  ⚠ {p.uyari}" if p.uyari else ""
         s.append(f"{girinti}{p.stok.kod} {p.stok.ad[:32]:<32} [{_varyant_etiketi(p.varyant)[:34]}] {KOVA_ADI[p.kova]:<18} {_m(p.miktar):>8} / {_m(p.toplam_akis):<8} → {_tl(p.tutar):>10} TL{ek}{uy}")
-    s.append("  Özet (hesap bazında):")
-    ozet = {}
+    s.append("  Özet (ürün / varyant / kova: akıştaki adet → pay TL [hesap]):")
     for p in r["paylar"]:
         if p.kova != "URETIM":
-            key = (p.stok.kod, _varyant_etiketi(p.varyant), p.kova)
-            o_ = ozet.setdefault(key, [SIFIR, SIFIR])
-            o_[0] += p.miktar
-            o_[1] += p.tutar
-    for (kod, var, kova), (m, t) in ozet.items():
-        s.append(f"    {kod} [{var[:34]}] {KOVA_ADI[kova]:<18} {_m(m):>8} adet  {_tl(t):>10} TL")
+            s.append(f"    {p.stok.kod} [{_varyant_etiketi(p.varyant)[:34]}] {KOVA_ADI[p.kova]:<18} {_m(p.miktar):>8} adet  {_tl(p.tutar):>10} TL  [{p.hesap}]")
     f = r["fis"]
     s.append(f"\n4) YEVMİYE FİŞİ {f.yil}/{f.fis_no} {f.tarih:%d.%m.%Y} kaynak {f.kaynak} — {f.aciklama}")
     for kod, ad, b, a in r["fis_dokumu"]:
