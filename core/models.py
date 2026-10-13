@@ -3810,6 +3810,11 @@ class OperasyonKaydi(TemelModel):
     def __str__(self):
         return self.no
 
+    @property
+    def emirsiz(self) -> bool:
+        """EMİRSİZ kayıt: ne üretim siparişine / istasyon emrine ne de fasona (fason cari / dönüş) bağlı (2026-10-13)."""
+        return (self.uretim_emri_id is None and self.istasyon_emri_id is None and self.fason_cari_id is None and self.fason_donus_id is None)
+
 
 class OperasyonKaydiGirdi(TemelModel):
     kayit = models.ForeignKey(

@@ -1,0 +1,184 @@
+{% extends "core/base.html" %}
+{% block baslik %}Emirsiz Üretim · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Emirsiz Üretim{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .em-uyari { margin:.2rem 0 .8rem; padding:.6rem .85rem; border-radius:12px; font-size:.86rem; background:#fff6e5; border:1px solid #f1d49b; color:#7a4a00; }
+  .em-uyari[hidden], .em-hata[hidden], #em-girdi-kart[hidden], #em-onay-alan[hidden], #em-varyant-alan[hidden] { display:none; }
+  .em-hata { margin:.2rem 0 .8rem; padding:.6rem .85rem; border-radius:12px; font-size:.86rem; background:#fdecef; border:1px solid #f3b5c0; color:#b3253f; }
+  .em-yetersiz { color:#b3253f; font-weight:700; }
+  .em-ayrilmis { color:#b35a00; font-weight:700; }
+  .ad-inline-checkbox { display:inline-flex; align-items:center; gap:.45rem; font-size:.88rem; font-weight:600; cursor:pointer; }
+  .ad-inline-checkbox input { width:auto; }
+</style>
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:operasyon_kayitlari' %}">← Operasyon Kayıtları</a>
+    <h1 class="ust-baslik"><span class="emoji">🛠️</span>Emirsiz Üretim</h1>
+  </div>
+  <p class="sayfa-alt">İş emrine / üretim siparişine bağlı olmayan üretim: girdiler stoktan düşer, üretilen parça <strong>serbest stoğa</strong> girer ve kayıt hemen onaylanır
+    (malzeme kontrolü, maliyet ve fire hesabı istasyon emriyle yapılan üretimle aynıdır). Fason istasyonlarında emirsiz kayıt yapılamaz.</p>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Operasyon</h2>
+      <div class="izgara">
+        <div class="alan tam"><label for="{{ form.operasyon.id_for_label }}">{{ form.operasyon.label }} <span class="zorunlu">*</span></label>
+          <div class="akilli">{{ form.operasyon }}</div>{% for e in form.operasyon.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan" id="em-varyant-alan"{% if not varyant_secenekleri %} hidden{% endif %}><label for="em-varyant">Çıktı varyantı</label>
+          <select name="varyant" id="em-varyant">
+            <option value="">— kartın standart varyantı —</option>
+            {% for v in varyant_secenekleri %}<option value="{{ v.id }}"{% if secili_varyant == v.id|stringformat:"s" %} selected{% endif %}>{{ v.etiket }}{% if v.standart %} (standart){% endif %}</option>{% endfor %}
+          </select>
+          {% for e in form.varyant.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Markalama ve mamul operasyonlarında yalnız standart varyant seçilebilir.</p></div>
+        <div class="alan"><label for="{{ form.depo.id_for_label }}">{{ form.depo.label }} <span class="zorunlu">*</span></label>
+          <div class="akilli">{{ form.depo }}</div>{% for e in form.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }} <span class="zorunlu">*</span></label>{{ form.tarih }}{% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+      </div>
+      <div class="em-uyari" id="em-planli" hidden></div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Miktar</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.saglam.id_for_label }}">{{ form.saglam.label }} <span class="zorunlu">*</span></label>{{ form.saglam }}{% for e in form.saglam.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Stoğa giren sağlam parça adedi.</p></div>
+        <div class="alan"><label for="{{ form.fire.id_for_label }}">{{ form.fire.label }}</label>{{ form.fire }}{% for e in form.fire.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Girdisi tüketilen ama stoğa girmeyen adet; maliyeti sağlam adetlere dağıtılır (yalnız ÜRET operasyonları).</p></div>
+      </div>
+      <div class="em-hata" id="em-hata" hidden></div>
+    </section>
+
+    <section class="icerik-kart" id="em-girdi-kart" hidden>
+      <h2 class="bolum-baslik">Tüketilecek girdiler</h2>
+      <div class="tablo-kapsayici">
+        <table>
+          <thead><tr><th>Girdi</th><th class="sag">Gerekli</th><th class="sag">Eldeki</th><th class="sag">Açık ÜS'lere ayrılan</th><th class="sag">Kullanılabilir</th></tr></thead>
+          <tbody id="em-girdi"></tbody>
+        </table>
+      </div>
+      <div class="alan" id="em-onay-alan"{% if not ayrilmis_satirlar and not form.ayrilmis_onay.value %} hidden{% endif %} style="margin-top:.7rem">
+        <label class="ad-inline-checkbox" for="{{ form.ayrilmis_onay.id_for_label }}">{{ form.ayrilmis_onay }} {{ form.ayrilmis_onay.label }}</label>
+        <p class="yardim">Bu üretim bir açık üretim siparişine ayrılmış hammaddeyi tüketecek; o sipariş sonra eksik kalabilir.</p>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kayıt bilgisi</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.personel.id_for_label }}">{{ form.personel.label }}</label>{{ form.personel }}
+          <p class="yardim">Boşsa giriş yapan kullanıcıya bağlı personel yazılır; personelin açık mesaisi varsa kayda bağlanır.</p></div>
+        <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}</div>
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:operasyon_kayitlari' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet ve stoğa işle</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  var URL = '{% url "core:emirsiz_onizleme" %}';
+  var op = document.getElementById('{{ form.operasyon.id_for_label }}');
+  var depo = document.getElementById('{{ form.depo.id_for_label }}');
+  var vsec = document.getElementById('em-varyant'), valan = document.getElementById('em-varyant-alan');
+  var saglam = document.getElementById('{{ form.saglam.id_for_label }}'), fire = document.getElementById('{{ form.fire.id_for_label }}');
+  var planli = document.getElementById('em-planli'), hata = document.getElementById('em-hata');
+  var gkart = document.getElementById('em-girdi-kart'), gtab = document.getElementById('em-girdi'), onay = document.getElementById('em-onay-alan');
+  var sonOp = op.value, zamanlayici = null;
+  function sayi(x){ var n = parseFloat(x); return isNaN(n) ? x : n.toLocaleString('tr-TR', {maximumFractionDigits: 6}); }
+  function hucre(satir, metin, sinif){ var td = document.createElement('td'); td.textContent = metin; if (sinif) td.className = sinif; satir.appendChild(td); return td; }
+  function render(j){
+    if (op.value !== sonOp || !vsec.options.length || j.varyantlar) {
+      if (op.value !== sonOp) {
+        sonOp = op.value;
+        while (vsec.options.length > 1) vsec.remove(1);
+        (j.varyantlar || []).forEach(function(v){ var o = document.createElement('option'); o.value = v.id; o.textContent = v.etiket + (v.standart ? ' (standart)' : ''); vsec.appendChild(o); });
+        vsec.value = '';
+      }
+      valan.hidden = !(j.varyantlar && j.varyantlar.length);
+    }
+    planli.hidden = !(j.planli && j.planli.length);
+    if (!planli.hidden) {
+      planli.textContent = '⚠️ Açık üretim siparişlerinde bu parça için ' + sayi(j.planli_toplam) + ' adet planlı: ' +
+        j.planli.map(function(x){ return x.us + ' / ' + x.ie + ' (' + sayi(x.adet) + ')'; }).join(', ') +
+        '. Bu üretim serbest stoğa girer ve o planı değiştirmez (engel değil).';
+    }
+    hata.hidden = !j.hata; hata.textContent = j.hata || '';
+    gtab.innerHTML = '';
+    (j.girdiler || []).forEach(function(g){
+      var tr = document.createElement('tr');
+      hucre(tr, g.kod + ' ' + g.ad + (g.varyant ? ' [' + g.varyant + ']' : ''));
+      var yetersiz = parseFloat(g.gerekli) > parseFloat(g.eldeki);
+      hucre(tr, sayi(g.gerekli), 'sag mono' + (yetersiz ? ' em-yetersiz' : ''));
+      hucre(tr, sayi(g.eldeki), 'sag mono' + (yetersiz ? ' em-yetersiz' : ''));
+      hucre(tr, sayi(g.ayrilan), 'sag mono');
+      hucre(tr, sayi(g.kullanilabilir), 'sag mono' + (parseFloat(g.gerekli) > parseFloat(g.kullanilabilir) ? ' em-ayrilmis' : ''));
+      gtab.appendChild(tr);
+    });
+    gkart.hidden = !(j.girdiler && j.girdiler.length);
+    if (j.ayrilmis_gerekli) onay.hidden = false;
+  }
+  function cek(){
+    if (!op.value) { planli.hidden = true; hata.hidden = true; gkart.hidden = true; return; }
+    var q = new URLSearchParams({operasyon: op.value, varyant: vsec.value || '', saglam: saglam.value, fire: fire.value, depo: depo.value || ''});
+    fetch(URL + '?' + q.toString(), {credentials: 'same-origin'}).then(function(r){ return r.json(); }).then(render).catch(function(){});
+  }
+  function geciktir(){ clearTimeout(zamanlayici); zamanlayici = setTimeout(cek, 350); }
+  [op, vsec, depo].forEach(function(e){ e.addEventListener('change', cek); });
+  [saglam, fire].forEach(function(e){ e.addEventListener('input', geciktir); });
+  if (op.value) cek();
+})();
+</script>
+<script>
+(function(){
+  var gListe = document.createElement('div'); gListe.className = 'akilli-liste';
+  document.body.appendChild(gListe);
+  var aktifInp = null;
+  function konumla(inp){ var r = inp.getBoundingClientRect();
+    gListe.style.left = r.left+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = r.width+'px'; }
+  function metin(sel, v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
+    return o && o.value ? o.textContent.trim() : ''; }
+  function ac(sel, inp, filt){
+    aktifInp = inp; konumla(inp);
+    filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
+    var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
+    Array.prototype.forEach.call(sel.options, function(o){
+      var t = o.value ? o.textContent.trim() : bos;
+      if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(n++ > 80) return;
+      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
+      d.addEventListener('mousedown', function(ev){ ev.preventDefault();
+        sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
+        sel.dispatchEvent(new Event('change', {bubbles:true})); });
+      gListe.appendChild(d);
+    });
+    gListe.style.display = gListe.children.length ? 'block' : 'none';
+  }
+  document.querySelectorAll('select.akilli-sec').forEach(function(sel){
+    var inp = document.createElement('input'); inp.type='text'; inp.className='akilli-girdi';
+    inp.placeholder='ara / seç…'; inp.autocomplete='off';
+    sel.parentNode.insertBefore(inp, sel); sel.classList.add('akilli-gizli');
+    if(sel.value) inp.value = metin(sel, sel.value);
+    inp.addEventListener('focus', function(){ ac(sel, inp, sel.value?'':inp.value); });
+    inp.addEventListener('input', function(){ sel.value=''; ac(sel, inp, inp.value); });
+    inp.addEventListener('blur', function(){ setTimeout(function(){
+      gListe.style.display='none'; inp.value=metin(sel, sel.value); }, 150); });
+  });
+  window.addEventListener('scroll', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); }, true);
+  window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
+})();
+</script>
+{% endblock %}

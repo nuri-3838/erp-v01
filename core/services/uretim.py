@@ -1603,6 +1603,162 @@ def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=N
     return OperasyonKaydi.objects.get(pk=kayit.pk), uyari
 
 
+# === EMİRSİZ ÜRETİM (2026-10-13): iş emrine / üretim siparişine bağlı olmayan operasyon kaydı ===
+# Kayıt MEVCUT servislerle açılıp onaylanır (``operasyon_kaydi_olustur`` + ``operasyon_kaydi_onayla``): malzeme kontrolü, sarf, FIFO maliyet, fire
+# maliyetinin sağlama dağıtımı, stok girişi ve 15x→15x maliyet fişi birebir aynıdır. ÜS/IE/iş oturumu OLUŞTURULMAZ; üretilen parça serbest stoğa girer.
+
+class AyrilmisStokOnayGerekli(UretimHatasi):
+    """Emirsiz kayıt, açık ÜS'lere AYRILMIŞ stoktan tüketecek (eldeki yeter ama kullanılabilir = eldeki − ayırma yetmez): ``satirlar`` =
+    [{"stok", "varyant", "gerekli", "eldeki", "ayrilan", "kullanilabilir"}]. Kullanıcı ``ayrilmis_onay`` vermeden yazılmaz."""
+
+    def __init__(self, mesaj, satirlar):
+        super().__init__(mesaj)
+        self.satirlar = satirlar
+
+
+def emirsiz_varyant_kontrol(operasyon, varyant) -> None:
+    """Çıktı varyantı bu operasyonun çıktısına ait olmalı; DÖNÜŞTÜR (markalama) ve mamul (152-) çıktılı operasyonlarda STANDART DIŞI varyant reddedilir
+    (özel varyantlı parça plansız serbest stoğa girmesin — E-6 karar 4). Standart (SEMTA) varyant serbest. ``varyant`` StokVaryant|None."""
+    if varyant is None:
+        return
+    if varyant.stok_id != operasyon.cikti_id:
+        raise UretimHatasi("Seçilen varyant bu operasyonun çıktı kartına ait değil.")
+    if (operasyon.tur == Operasyon.Tur.DONUSTUR or operasyon.cikti.kod.startswith(MAMUL_KOD_ONEKI)) and not varyant.standart:
+        raise UretimHatasi("Bu operasyonda (markalama / mamul) standart dışı varyant emirsiz üretilemez; yalnız standart (SEMTA) varyant seçilebilir. "
+                           "Özel varyantlı üretim üretim siparişiyle yapılır.")
+
+
+def emirsiz_varyant_secenekleri(stok_id) -> list:
+    """Çıktı kartının varyantları: [{"id", "etiket", "standart"}] (varyantsız kartta boş)."""
+    from core.models import StokVaryant
+    return [{"id": v.pk, "etiket": planlama_varyant.etiket(v) or v.anahtar, "standart": v.standart}
+            for v in StokVaryant.objects.filter(stok_id=stok_id, silindi=False).order_by("-standart", "anahtar")]
+
+
+def emirsiz_planli_uyari(operasyon, cikti_varyant=None) -> list:
+    """Açık ÜS'lerde bu parça için PLANLI (henüz üretilmemiş) miktar: [{"us", "us_pk", "ie", "adet"}] — çift üretim uyarısı (engel değil)."""
+    qs = (IstasyonEmri.objects.filter(silindi=False, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK, operasyon__cikti_id=operasyon.cikti_id)
+          .exclude(durum__in=[IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL]).select_related("uretim_emri", "operasyon").order_by("uretim_emri__no", "pk"))
+    sonuc = []
+    for ie in qs:
+        if cikti_varyant is not None and ie.cikti_varyant_id not in (None, cikti_varyant.pk):
+            continue
+        kalan = istasyon_emri_acik_kalan(ie)
+        if kalan > 0:
+            sonuc.append({"us": ie.uretim_emri.no, "us_pk": ie.uretim_emri_id, "ie": ie.no, "adet": (kalan * _referans_miktar(ie.operasyon)).quantize(Decimal("0.001"))})
+    return sonuc
+
+
+def _emirsiz_taslak(*, operasyon, cikti_varyant, depo_id, tarih, saglam, fire, personel, aciklama, kullanici) -> OperasyonKaydi:
+    """Doğrulamalar + TASLAK kayıt (ÜS/IE/fason boş; fire varsa ``gelen`` = sağlam adet — atölye 'Bitir' ile aynı mantık). Çağıranın transaction'ı içinde."""
+    if operasyon.istasyon.fason:
+        raise UretimHatasi("Fason istasyonunda emirsiz üretim yapılamaz; fason işi fason dönüş belgesiyle yapılır.")
+    if tarih is None or tarih > timezone.localdate():
+        raise UretimHatasi("Tarih bugünden ileri olamaz.")
+    saglam = _sayi_coz(saglam, "Sağlam adet geçerli bir sayı olmalı.")
+    fire_m = _sayi_coz(fire, "Fire adedi geçerli bir sayı olmalı.") if fire not in (None, "") else Decimal("0")
+    if saglam <= 0:
+        raise UretimHatasi("Sağlam adet sıfırdan büyük olmalı.")
+    if fire_m < 0:
+        raise UretimHatasi("Fire adedi negatif olamaz.")
+    if fire_m > 0 and operasyon.tur != Operasyon.Tur.URET:
+        raise UretimHatasi("Fire yalnız ÜRET tanımlı operasyonda girilebilir.")
+    emirsiz_varyant_kontrol(operasyon, cikti_varyant)
+    mesai = None
+    if personel is not None:
+        from core.services import mesai as mesai_servis
+        mesai = mesai_servis.acik_kayit(personel)                    # personelin açık mesaisi varsa bağlanır (yoksa boş)
+    kayit = operasyon_kaydi_olustur(operasyon_id=operasyon.pk, depo_id=depo_id, tarih=tarih, hedef_cikti_miktari=saglam + fire_m, aciklama=aciklama,
+                                    kullanici=kullanici, cikti_varyant=cikti_varyant, personel=personel, mesai_kaydi=mesai)
+    if fire_m > 0:
+        kayit.gelen = {str(operasyon.cikti_id): format(saglam.normalize(), "f")}
+        kayit.save(update_fields=["gelen", "updated_at"])
+    return kayit
+
+
+def _emirsiz_girdi_durumu(kayit: OperasyonKaydi) -> list:
+    """Kaydın tüketeceği girdiler: [{"stok", "varyant", "gerekli", "eldeki", "ayrilan", "kullanilabilir"}] (düğüm başına; eldeki tüm depolar)."""
+    from core.services.hareket import toplu_eldeki, toplu_eldeki_varyant
+    gerekli, ad = {}, {}
+    for satir in kaydi_girdi_satirlari(kayit):
+        if satir.gerceklesen_miktar > 0:
+            anahtar = (satir.girdi_id, satir.varyant_id)
+            gerekli[anahtar] = gerekli.get(anahtar, Decimal("0")) + satir.gerceklesen_miktar
+            ad[anahtar] = satir.girdi
+    if not gerekli:
+        return []
+    idler = {pk for pk, _ in gerekli}
+    eldeki, eldeki_v = toplu_eldeki(idler), toplu_eldeki_varyant(idler)
+    kullanilabilir = stok_ayirma.kullanilabilir_varyant_haritasi(set(gerekli))
+    sonuc = []
+    for (pk, vpk), g in gerekli.items():
+        e = eldeki_v.get((pk, vpk), Decimal("0")) if vpk else eldeki.get(pk, Decimal("0"))
+        k = kullanilabilir[(pk, vpk)]
+        sonuc.append({"stok": ad[(pk, vpk)], "varyant": planlama_varyant.etiket(vpk) if vpk else "", "gerekli": g, "eldeki": e, "ayrilan": e - k, "kullanilabilir": k})
+    return sorted(sonuc, key=lambda x: x["stok"].kod)
+
+
+def emirsiz_onizleme(*, operasyon_id, saglam, fire=None, cikti_varyant_id=None, depo_id=None) -> dict:
+    """Kaydetmeden önce form uyarıları (hiçbir şey yazılmaz — taslak kayıt oluşturulup geri alınır): {"hata", "planli", "planli_toplam", "girdiler",
+    "ayrilmis_gerekli"}. ``planli`` = açık ÜS'lerde bu parça için planlı miktar (engel değil); ``ayrilmis_gerekli`` = onay kutusu gerekir."""
+    from core.models import StokVaryant
+    sonuc = {"hata": "", "planli": [], "planli_toplam": Decimal("0"), "girdiler": [], "ayrilmis_gerekli": False}
+    operasyon = Operasyon.objects.filter(pk=operasyon_id, silindi=False).select_related("istasyon", "cikti").first()
+    if operasyon is None:
+        sonuc["hata"] = "Operasyon bulunamadı."
+        return sonuc
+    varyant = StokVaryant.objects.filter(pk=cikti_varyant_id, silindi=False).first() if cikti_varyant_id else None
+    sonuc["planli"] = emirsiz_planli_uyari(operasyon, varyant)
+    sonuc["planli_toplam"] = sum((x["adet"] for x in sonuc["planli"]), Decimal("0"))
+    if saglam in (None, ""):
+        return sonuc
+    depo = Depo.objects.filter(pk=depo_id, silindi=False).first() if depo_id else Depo.objects.filter(silindi=False).order_by("pk").first()
+    try:
+        with transaction.atomic():
+            kayit = _emirsiz_taslak(operasyon=operasyon, cikti_varyant=varyant, depo_id=depo.pk if depo else None, tarih=timezone.localdate(), saglam=saglam, fire=fire,
+                                    personel=None, aciklama="", kullanici=None)
+            sonuc["girdiler"] = _emirsiz_girdi_durumu(kayit)
+            transaction.set_rollback(True)
+    except UretimHatasi as e:
+        sonuc["hata"] = str(e)
+        return sonuc
+    sonuc["ayrilmis_gerekli"] = any(g["eldeki"] >= g["gerekli"] > g["kullanilabilir"] for g in sonuc["girdiler"])
+    return sonuc
+
+
+@transaction.atomic
+def emirsiz_uret(*, operasyon_id, depo_id, tarih, saglam, fire=None, cikti_varyant_id=None, personel=None, aciklama="", kullanici=None, ayrilmis_onay=False):
+    """EMİRSİZ ÜRETİM: iş emrine / ÜS'ye bağlı olmayan operasyon kaydını açar ve MEVCUT onay servisiyle hemen ONAYLAR — tek işlemde; stok yetersizse
+    (mevcut kayıttaki mesajla) kayıt dahil hiçbir şey kalmaz. ``saglam`` stoğa giren adet, ``fire`` ek tüketilen (yalnız ÜRET). Açık ÜS'lere ayrılmış
+    stoktan tüketecekse ``ayrilmis_onay`` olmadan ``AyrilmisStokOnayGerekli``. Fason istasyonu ve standart dışı varyant (DÖNÜŞTÜR / 152- mamul) reddedilir.
+    (onaylı kayıt, planlı-ÜS uyarıları) döner."""
+    from core.models import StokVaryant
+    operasyon = Operasyon.objects.filter(pk=operasyon_id, silindi=False).select_related("istasyon", "cikti").first()
+    if operasyon is None:
+        raise UretimHatasi("Operasyon bulunamadı.")
+    varyant = None
+    if cikti_varyant_id:
+        varyant = StokVaryant.objects.filter(pk=cikti_varyant_id, silindi=False).first()
+        if varyant is None:
+            raise UretimHatasi("Varyant bulunamadı.")
+    planli = emirsiz_planli_uyari(operasyon, varyant)
+    kayit = _emirsiz_taslak(operasyon=operasyon, cikti_varyant=varyant, depo_id=depo_id, tarih=tarih, saglam=saglam, fire=fire, personel=personel,
+                            aciklama=aciklama, kullanici=kullanici)
+    durum = _emirsiz_girdi_durumu(kayit)
+    if not any(g["gerekli"] > g["eldeki"] for g in durum) and not ayrilmis_onay:       # eldeki yetmiyorsa onay sorusu değil, standart yetersiz-stok hatası
+        ayrilmis = [g for g in durum if g["gerekli"] > g["kullanilabilir"]]
+        if ayrilmis:
+            raise AyrilmisStokOnayGerekli(
+                "Bu üretim açık üretim siparişlerine AYRILMIŞ stoktan tüketecek: " + "; ".join(
+                    f"{g['stok'].kod} (gerekli {g['gerekli'].normalize():f}, kullanılabilir {g['kullanilabilir'].normalize():f}, ayrılan {g['ayrilan'].normalize():f})"
+                    for g in ayrilmis) + ". Devam etmek için onay kutusunu işaretleyin.", ayrilmis)
+    try:
+        operasyon_kaydi_onayla(kayit, kullanici=kullanici)
+    except UretimHatasi as e:
+        raise UretimHatasi(_eksik_mesaji(str(e)))
+    return OperasyonKaydi.objects.get(pk=kayit.pk), planli
+
+
 class TopluUretimHatasi(UretimHatasi):
     """Toplu üretim ilk hatada durdu: ``istasyon_emri`` = duran emir, ``tamamlanan`` = ondan önce üretilmiş (ve geri alınmış) emir sayısı."""
 

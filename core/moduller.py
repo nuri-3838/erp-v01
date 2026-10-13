@@ -104,6 +104,7 @@ MODULLER = (
         Ekran("istasyon_emirleri", "İstasyon Emirleri", "core:istasyon_emirleri"),
         Ekran("urun_agaci", "Ürün Ağacı", "core:urun_agaci"),
         Ekran("operasyon_kayitlari", "Operasyon Kayıtları", "core:operasyon_kayitlari"),
+        Ekran("emirsiz_uretim", "Emirsiz Üretim", "core:emirsiz_uretim"),
         Ekran("is_oturumlari", "İş Oturumları", "core:is_oturumlari"),
         Ekran("operasyon_tanimlari", "Operasyon Tanımları", "core:operasyon_tanimlari"),
         Ekran("is_istasyonlari", "İş İstasyonları", "core:is_istasyonlari"),

@@ -659,6 +659,36 @@ class CariForm(forms.Form):
         return cleaned
 
 
+class OperasyonEmirsizForm(forms.Form):
+    """ÜRETİM > Emirsiz Üretim (2026-10-13): iş emrine / üretim siparişine bağlı olmayan operasyon kaydı — operasyon (reçete), varyant, depo, tarih, sağlam + fire,
+    personel, not. Varyant seçimi şablonda elle çizilir (operasyonun çıktı kartına göre); burada yalnız doğrulanır."""
+
+    operasyon = forms.ModelChoiceField(label="Operasyon (reçete)", queryset=None, empty_label="— operasyon seç —")
+    varyant = forms.ModelChoiceField(label="Varyant", queryset=None, required=False)
+    depo = forms.ModelChoiceField(label="Çıktı deposu", queryset=None, empty_label="— depo seç —")
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    saglam = TRDecimalField(label="Sağlam adet", basamak=3)
+    fire = TRDecimalField(label="Fire adet", basamak=3, required=False)
+    personel = forms.ModelChoiceField(label="Personel", queryset=None, required=False, empty_label="— personel —")
+    aciklama = forms.CharField(label="Not", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ayrilmis_onay = forms.BooleanField(label="Açık üretim siparişlerine ayrılmış stoktan kullanmayı onaylıyorum", required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.models import Depo, Personel, StokVaryant
+        from core.services.depo import aktif_depolar
+        from core.services.uretim import aktif_operasyonlar
+        self.fields["operasyon"].queryset = aktif_operasyonlar().exclude(istasyon__fason=True)         # fason istasyonlarında emirsiz kayıt yok
+        self.fields["operasyon"].label_from_instance = lambda o: f"{o.istasyon.kod} — {o.cikti.kod} {o.cikti.ad}"
+        self.fields["operasyon"].widget.attrs["class"] = "akilli-sec"
+        self.fields["varyant"].queryset = StokVaryant.objects.filter(silindi=False)
+        self.fields["depo"].queryset = aktif_depolar()
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["depo"].widget.attrs["class"] = "akilli-sec"
+        self.fields["personel"].queryset = Personel.objects.filter(silindi=False).order_by("ad", "soyad")
+        self.fields["personel"].label_from_instance = lambda p: f"{p.ad} {p.soyad}"
+
+
 class AdayMusteriKategoriForm(forms.Form):
     """Aday müşteri kategorisi ekle/düzenle (CRM). Ad+Kod TR büyük harf + benzersizlik
     serviste. Üst kategori formda değil — ekleme giriş noktasıyla belirlenir (kök / +Alt)."""

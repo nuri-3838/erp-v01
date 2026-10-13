@@ -157,6 +157,8 @@ urlpatterns = [
     path("uretim/istasyon-emirleri/istasyon/<int:pk>/toplu-uret/", views.istasyon_toplu_uret_gorunum, name="istasyon_toplu_uret"),
     path("uretim/kayitlar/", views.operasyon_kayitlari, name="operasyon_kayitlari"),
     path("uretim/is-oturumlari/", views.is_oturumlari, name="is_oturumlari"),
+    path("uretim/kayitlar/emirsiz/", views.emirsiz_uretim, name="emirsiz_uretim"),
+    path("uretim/kayitlar/emirsiz/onizleme/", views.emirsiz_onizleme, name="emirsiz_onizleme"),
     path("uretim/kayitlar/<int:pk>/", views.operasyon_kaydi_detay, name="operasyon_kaydi_detay"),
     path("uretim/kayitlar/<int:pk>/onayla/", views.operasyon_kaydi_onayla,
          name="operasyon_kaydi_onayla"),

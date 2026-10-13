@@ -44,7 +44,7 @@ from core.forms import (
     TanimSecenegiForm, VaryantForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     BankaHesapHareketForm, BankaHesapSatirForm, DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
-    UlkeForm, VergiDairesiForm, YemekSayimForm, YemekTakibiFiltreForm,
+    OperasyonEmirsizForm, UlkeForm, VergiDairesiForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, OperasyonYanCiktiSatirForm, OperasyonParcaCiktiSatirForm, IhtiyacHesaplaSatirForm, UretimRevizeBaslikForm,
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
@@ -8151,16 +8151,85 @@ def operasyon_kayitlari(request):
     if g.get("istasyon_emri", "").isdigit():
         filtre["istasyon_emri"] = int(g["istasyon_emri"])
         kayitlar = kayitlar.filter(istasyon_emri_id=filtre["istasyon_emri"])
-    if g.get("emir") == "bagimsiz":
-        filtre["bagimsiz"] = True
-        kayitlar = kayitlar.filter(istasyon_emri__isnull=True, fason_donus__isnull=True)
+    emir = g.get("emir") or ""
+    if emir == "bagimsiz":                                                  # eski bağlantı adı
+        emir = "emirsiz"
+    if emir == "ie":                                                        # istasyon emirli
+        kayitlar = kayitlar.filter(istasyon_emri__isnull=False)
+    elif emir == "emirsiz":                                                 # ÜS/IE/fason yok
+        kayitlar = kayitlar.filter(uretim_emri__isnull=True, istasyon_emri__isnull=True, fason_cari__isnull=True, fason_donus__isnull=True)
+    elif emir == "fason":
+        kayitlar = kayitlar.filter(Q(fason_cari__isnull=False) | Q(fason_donus__isnull=False))
+    else:
+        emir = ""
     sayfa = Paginator(kayitlar, 50).get_page(g.get("sayfa"))
     sorgu = {k: v for k, v in g.items() if k != "sayfa" and v}
     return render(request, "core/operasyon_kayitlari.html", {
-        "kayitlar": sayfa, "filtre": filtre, "sekme": sekme, "cipler": cipler, "taslak_sekmesi": taslak_sekmesi, "istasyon": istasyon,
+        "kayitlar": sayfa, "filtre": filtre, "sekme": sekme, "cipler": cipler, "taslak_sekmesi": taslak_sekmesi, "istasyon": istasyon, "emir": emir,
+        "emirsiz_yetkili": ekran_gorebilir(request.user, "emirsiz_uretim"),
         "bas": g.get("bas", ""), "bit": g.get("bit", ""),
         "us": us, "ara": ara, "istasyonlar": uretim_servis.aktif_istasyonlar(), "sorgu": urlencode(sorgu),
         "sekme_url": {k: urlencode({**{a: b for a, b in sorgu.items() if a != "sekme"}, "sekme": k}) for k in ("taslak", "onayli", "tumu")}})
+
+
+def _emirsiz_sayi(ham):
+    ham = (ham or "").strip()
+    return ham or None
+
+
+@ekran_gerekli("emirsiz_uretim")
+def emirsiz_onizleme(request):
+    """Emirsiz üretim formunun canlı uyarıları (JSON; hiçbir şey yazılmaz): açık ÜS'lerde planlı miktar, girdi stok durumu (eldeki / ayrılan / kullanılabilir),
+    ayrılmış stok onayı gerekip gerekmediği, çıktı kartının varyantları."""
+    g = request.GET
+    op = Operasyon.objects.filter(pk=g.get("operasyon") or 0, silindi=False).first()
+    cevap = {"hata": "", "planli": [], "planli_toplam": "0", "girdiler": [], "ayrilmis_gerekli": False, "varyantlar": []}
+    if op is None:
+        return JsonResponse(cevap)
+    cevap["varyantlar"] = uretim_servis.emirsiz_varyant_secenekleri(op.cikti_id)
+    s = uretim_servis.emirsiz_onizleme(operasyon_id=op.pk, saglam=_emirsiz_sayi(g.get("saglam")), fire=_emirsiz_sayi(g.get("fire")),
+                                       cikti_varyant_id=int(g["varyant"]) if (g.get("varyant") or "").isdigit() else None,
+                                       depo_id=int(g["depo"]) if (g.get("depo") or "").isdigit() else None)
+    f = lambda d: format(d.normalize(), "f")
+    cevap.update(hata=s["hata"], planli=[{**x, "adet": f(x["adet"])} for x in s["planli"]], planli_toplam=f(s["planli_toplam"]),
+                 girdiler=[{"kod": x["stok"].kod, "ad": x["stok"].ad, "varyant": x["varyant"], "gerekli": f(x["gerekli"]), "eldeki": f(x["eldeki"]),
+                            "ayrilan": f(x["ayrilan"]), "kullanilabilir": f(x["kullanilabilir"])} for x in s["girdiler"]],
+                 ayrilmis_gerekli=s["ayrilmis_gerekli"])
+    return JsonResponse(cevap)
+
+
+@ekran_gerekli("emirsiz_uretim")
+def emirsiz_uretim(request):
+    """+ Yeni Kayıt: iş emrine / ÜS'ye bağlı olmayan operasyon kaydı (``uretim.emirsiz_uret``): mevcut onay servisiyle hemen onaylanır, stoğa girer."""
+    ayrilmis = []
+    if request.method == "POST":
+        form = OperasyonEmirsizForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                kayit, planli = uretim_servis.emirsiz_uret(
+                    operasyon_id=cd["operasyon"].pk, depo_id=cd["depo"].pk, tarih=cd["tarih"], saglam=cd["saglam"], fire=cd.get("fire"),
+                    cikti_varyant_id=cd["varyant"].pk if cd.get("varyant") else None, personel=cd.get("personel"), aciklama=cd.get("aciklama", ""),
+                    kullanici=request.user, ayrilmis_onay=bool(cd.get("ayrilmis_onay")))
+                messages.success(request, f"Emirsiz üretim kaydedildi ve stoğa işlendi: {kayit.no}")
+                if planli:
+                    messages.warning(request, "Not: açık üretim siparişlerinde bu parça için " + ", ".join(
+                        f"{x['us']}/{x['ie']} {x['adet'].normalize():f} adet" for x in planli) + " planlı; bu üretim serbest stoğa girdi, planı etkilemez.")
+                return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
+            except uretim_servis.AyrilmisStokOnayGerekli as e:
+                form.add_error(None, str(e))
+                ayrilmis = e.satirlar
+            except uretim_servis.UretimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = OperasyonEmirsizForm()
+    secili_op = None
+    ham_op = form.data.get("operasyon") if form.is_bound else None
+    if (ham_op or "").isdigit():
+        secili_op = Operasyon.objects.filter(pk=int(ham_op), silindi=False).select_related("cikti").first()
+    return render(request, "core/operasyon_emirsiz_form.html", {
+        "form": form, "ayrilmis_satirlar": ayrilmis, "varyant_secenekleri": uretim_servis.emirsiz_varyant_secenekleri(secili_op.cikti_id) if secili_op else [],
+        "secili_varyant": (form.data.get("varyant") or "") if form.is_bound else ""})
 
 
 @ekran_gerekli("operasyon_kayitlari")
