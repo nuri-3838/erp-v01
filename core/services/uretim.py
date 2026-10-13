@@ -1930,6 +1930,16 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None) -> list:
     for k in emir.kalemler.filter(silindi=False):
         anahtar = (k.hedef_urun_id, k.varyant_id if emir.varyantli_plan else None)
         stoktan[anahtar] = stoktan.get(anahtar, Decimal("0")) + k.eldeki_ayrilan
+    # ÜRETİLMİŞ KISIM (2026-10-13): biten istasyon emirlerinin ürettiği kök mamul ÜS'ye AYRILMIŞTIR (sevk edilene kadar ayrılı kalır). Kalan ihtiyaç
+    # = hedef − sevk − ÜS'nin bu kök üründeki ayırması; yoksa bitmiş emirlerin girdi ihtiyacı da "eksik" görünürdü. Tavan = ÜS'nin kendi ayırması
+    # (başkasının serbest stoğu kök için yine kullanılmaz): tümü bittiyse kalan 0 → eksik yok; kısmen bittiyse yalnız AÇIK kalan çalıştırmalar sayılır.
+    kok_ayrilan = {}
+    for a in stok_ayirma.emir_ayirmalari(emir):
+        if any(a.stok_id == k[0] for k in stoktan):
+            anahtar = (a.stok_id, a.varyant_id if emir.varyantli_plan else None)
+            kok_ayrilan[anahtar] = kok_ayrilan.get(anahtar, Decimal("0")) + a.miktar
+    for anahtar in stoktan:
+        stoktan[anahtar] = max(stoktan[anahtar], kok_ayrilan.get(anahtar, Decimal("0")))
     sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk_edilen_haritasi(emir), emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf,
                                 stoktan=stoktan, stoklu_haric=haric)
     eksikler = []
