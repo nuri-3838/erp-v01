@@ -79,8 +79,10 @@
       <section class="icerik-kart">
         <h2 class="bolum-baslik">Kimlik</h2>
         <div class="izgara">
+          <div class="alan"><label for="{{ form_a.tip.id_for_label }}">{{ form_a.tip.label }} <span class="zorunlu">*</span></label>{{ form_a.tip }}{% for e in form_a.tip.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+            <p class="yardim">Tüzel: VKN (10 hane) · Şahıs: TCKN (11 hane).</p></div>
           <div class="alan tam"><label for="{{ form_a.unvan.id_for_label }}">{{ form_a.unvan.label }} <span class="zorunlu">*</span></label>{{ form_a.unvan }}{% for e in form_a.unvan.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-          <div class="alan"><label for="{{ form_a.kategori.id_for_label }}">{{ form_a.kategori.label }}</label><div class="akilli">{{ form_a.kategori }}</div>
+          <div class="alan"><label for="{{ form_a.kategori.id_for_label }}">{{ form_a.kategori.label }} <span class="zorunlu">*</span></label><div class="akilli">{{ form_a.kategori }}</div>{% for e in form_a.kategori.errors %}<div class="hata">{{ e }}</div>{% endfor %}
             <p class="yardim">Aday tipine göre önerildi; değiştirebilirsiniz.</p></div>
           <div class="alan"><label for="{{ form_a.kisa_ad.id_for_label }}">{{ form_a.kisa_ad.label }}</label>{{ form_a.kisa_ad }}</div>
         </div>
@@ -90,7 +92,7 @@
         <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi</h2>
         <p class="yardim" style="margin:0 0 .6rem">Ülke Türkiye ise VKN/TCKN ve vergi dairesi zorunlu; yurtdışında aranmaz.</p>
         <div class="izgara">
-          <div class="alan tam"><label for="{{ form_a.vergi_dairesi.id_for_label }}">{{ form_a.vergi_dairesi.label }}</label>{{ form_a.vergi_dairesi }}{% for e in form_a.vergi_dairesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+          <div class="alan tam"><label for="{{ form_a.vergi_dairesi.id_for_label }}">{{ form_a.vergi_dairesi.label }}</label><div class="akilli">{{ form_a.vergi_dairesi }}</div>{% for e in form_a.vergi_dairesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
           <div class="alan"><label for="{{ form_a.vkn_tckn.id_for_label }}">{{ form_a.vkn_tckn.label }}</label>{{ form_a.vkn_tckn }}{% for e in form_a.vkn_tckn.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
           <div class="alan"><label for="{{ form_a.tax_id.id_for_label }}">{{ form_a.tax_id.label }}</label>{{ form_a.tax_id }}</div>
         </div>
@@ -127,7 +129,6 @@
         <div class="izgara">
           <div class="alan"><label for="{{ form_a.para_birimi.id_for_label }}">{{ form_a.para_birimi.label }}</label>{{ form_a.para_birimi }}</div>
           <div class="alan" id="ad-kur-tipi-alan"><label for="{{ form_a.kur_tipi.id_for_label }}">{{ form_a.kur_tipi.label }}</label>{{ form_a.kur_tipi }}</div>
-          <div class="alan"><label for="{{ form_a.kredi_limiti.id_for_label }}">{{ form_a.kredi_limiti.label }}</label>{{ form_a.kredi_limiti }}</div>
           <div class="alan"><label for="{{ form_a.iskonto_yuzdesi.id_for_label }}">{{ form_a.iskonto_yuzdesi.label }}</label>{{ form_a.iskonto_yuzdesi }}</div>
         </div>
       </section>

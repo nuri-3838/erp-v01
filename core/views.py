@@ -44,7 +44,7 @@ from core.forms import (
     TanimSecenegiForm, VaryantForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     BankaHesapHareketForm, BankaHesapSatirForm, DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
-    UlkeForm, YemekSayimForm, YemekTakibiFiltreForm,
+    UlkeForm, VergiDairesiForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, OperasyonYanCiktiSatirForm, OperasyonParcaCiktiSatirForm, IhtiyacHesaplaSatirForm, UretimRevizeBaslikForm,
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
@@ -58,7 +58,7 @@ from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat, FasonSiparisi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, YatirimProjesi,
+    KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, VergiDairesi, YatirimProjesi,
     YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, KdvMahsup, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, IstasyonEmri, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
@@ -90,6 +90,7 @@ from core.services import birim as birim_servis
 from core.services import kategori as kategori_servis
 from core.services import fatura_tipi as fatura_tipi_servis
 from core.services import lokasyon as lokasyon_servis
+from core.services import vergi_dairesi as vergi_dairesi_servis
 from core.services import cari_kategori as cari_kategori_servis
 from core.services import cari as cari_servis
 from core.services import cari_kesinti as cari_kesinti_servis
@@ -1769,7 +1770,7 @@ def _cari_form_kw(cd):
     """CariForm cleaned_data -> cari servis kwargs (FK'ler -> *_id)."""
     g = lambda x: x.pk if x else None
     return dict(
-        unvan=cd["unvan"], kategori_id=g(cd["kategori"]), kisa_ad=cd["kisa_ad"],
+        unvan=cd["unvan"], kategori_id=g(cd["kategori"]), kisa_ad=cd["kisa_ad"], tip=cd.get("tip"),
         vergi_dairesi=cd["vergi_dairesi"], vkn_tckn=cd["vkn_tckn"], tax_id=cd["tax_id"],
         telefon=cd["telefon"], telefon_whatsapp=cd["telefon_whatsapp"],
         telefon_2=cd["telefon_2"], telefon_2_whatsapp=cd["telefon_2_whatsapp"],
@@ -1778,7 +1779,6 @@ def _cari_form_kw(cd):
         ulke_id=g(cd["ulke"]), sehir_id=g(cd["sehir"]), adres=cd["adres"],
         para_birimi=cd["para_birimi"], kur_tipi=cd["kur_tipi"], kur_degerleme=cd.get("kur_degerleme"),
         kur_farki_hedefi=cd.get("kur_farki_hedefi"),
-        kredi_limiti=cd["kredi_limiti"],
         iskonto_yuzdesi=cd["iskonto_yuzdesi"],
         odeme_kosulu=cd["odeme_kosulu"] or None, odeme_gunu=cd["odeme_gunu"],
         notlar=cd["notlar"], fason_faturasiz=bool(cd.get("fason_faturasiz")))
@@ -1873,7 +1873,9 @@ def cari_duzenle(request, pk):
         veri = request.POST.copy()
         if pb_kilitli:
             veri["para_birimi"] = cari.para_birimi                   # disabled alan tarayıcıdan gelmez; sunucu kilidi servis katmanında da var
-        form = CariForm(veri, mevcut_vkn=cari.vkn_tckn)
+        if kategori_kilitli:
+            veri["kategori"] = cari.kategori_id or ""                # disabled alan gelmez; kategori zorunlu olduğundan mevcut değer verilir
+        form = CariForm(veri, mevcut_vkn=cari.vkn_tckn, mevcut_vergi_dairesi=cari.vergi_dairesi)
         if kategori_kilitli:
             form.fields["kategori"].widget.attrs["disabled"] = True
         if pb_kilitli:
@@ -1905,8 +1907,8 @@ def cari_duzenle(request, pk):
             except cari_servis.CariHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariForm(mevcut_vkn=cari.vkn_tckn, initial={
-            "unvan": cari.unvan, "kisa_ad": cari.kisa_ad, "kategori": cari.kategori_id,
+        form = CariForm(mevcut_vkn=cari.vkn_tckn, mevcut_vergi_dairesi=cari.vergi_dairesi, initial={
+            "unvan": cari.unvan, "kisa_ad": cari.kisa_ad, "kategori": cari.kategori_id, "tip": cari.tip,
             "vergi_dairesi": cari.vergi_dairesi, "vkn_tckn": cari.vkn_tckn,
             "tax_id": cari.tax_id, "telefon": cari.telefon,
             "telefon_whatsapp": cari.telefon_whatsapp,
@@ -1916,7 +1918,6 @@ def cari_duzenle(request, pk):
             "ulke": cari.ulke_id, "sehir": cari.sehir_id, "adres": cari.adres,
             "para_birimi": cari.para_birimi, "kur_tipi": cari.kur_tipi,
             "kur_degerleme": cari.kur_degerleme, "kur_farki_hedefi": cari.kur_farki_hedefi,
-            "kredi_limiti": cari.kredi_limiti,
             "iskonto_yuzdesi": cari.iskonto_yuzdesi,
             "odeme_kosulu": cari.odeme_kosulu or "", "odeme_gunu": cari.odeme_gunu,
             "notlar": cari.notlar, "fason_faturasiz": cari.fason_faturasiz})
@@ -1927,17 +1928,7 @@ def cari_duzenle(request, pk):
     return render(request, "core/cari_form.html",
                   {"form": form, "baslik": "Cari Düzenle", "duzenlenen": cari,
                    "kategori_kilitli": kategori_kilitli, "pb_kilitli": pb_kilitli, "vkn_uyari": vkn_uyari,
-                   "mukerrer": mukerrer, "yonetici": yonetici})
-
-
-def _cari_kur_farki_projesi(cari):
-    """Döviz hareketi olan carinin kur farkı yatırım maliyetine gidiyorsa o proje (bkz.
-    core.services.kur_farki.yatirim_hedefi), değilse None."""
-    if not cari.muhasebe_kodu:
-        return None
-    doviz = cari.para_birimi != "TRY" or YevmiyeSatir.objects.filter(
-        hesap_id=cari.muhasebe_kodu, silindi=False, fis__silindi=False).exclude(islem_pb="TRY").exists()
-    return kur_farki_servis.yatirim_hedefi(cari.muhasebe_kodu) if doviz else None
+                   "mukerrer": mukerrer, "yonetici": yonetici, "kur_gorunur": cari_servis.kur_alanlari_gorunur(cari)})
 
 
 @ekran_gerekli("cariler")
@@ -1948,9 +1939,11 @@ def cari_detay(request, pk):
                                     "created_by", "updated_by"),
         pk=pk, silindi=False)
     silme_engelleri = cari_servis.silme_engelleri(cari)
+    doviz_hareketli = cari_servis.cari_doviz_hareketli_mi(cari)
     return render(request, "core/cari_detay.html", {
         "cari": cari,
-        "kur_farki_proje": _cari_kur_farki_projesi(cari),
+        "kur_farki_proje": (kur_farki_servis.yatirim_hedefi(cari.muhasebe_kodu) if cari.muhasebe_kodu and (cari.para_birimi != "TRY" or doviz_hareketli) else None),
+        "kur_gorunur": cari_servis.kur_alanlari_gorunur(cari, doviz_hareketli=doviz_hareketli),
         "silme_engelleri": silme_engelleri,
         "silme_engeli_metni": cari_servis.silme_engeli_metni(silme_engelleri),
         "bankalar": cari_servis.aktif_bankalar(cari),
@@ -1962,6 +1955,75 @@ def cari_detay(request, pk):
         "kaynak_adaylar": cari.kaynak_adaylar.filter(silindi=False).order_by("unvan"),
         "ozet": cari_ozet_servis.ozet(cari),
         "belgeler": cari_ozet_servis.belgeler(cari)})
+
+
+@ekran_gerekli("cariler")
+def cari_son_temas(request, pk):
+    """Cari detayından elle son temas tarihi girişi (POST ``tarih``; ``temizle`` ile silinir)."""
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            if request.POST.get("temizle"):
+                cari_servis.cari_son_temas_ayarla(cari, None, kullanici=request.user)
+                messages.success(request, "Son temas tarihi temizlendi.")
+            else:
+                try:
+                    tarih = datetime.date.fromisoformat((request.POST.get("tarih") or "").strip())
+                except ValueError:
+                    raise cari_servis.CariHatasi("Geçerli bir tarih girin.")
+                cari_servis.cari_son_temas_ayarla(cari, tarih, kullanici=request.user)
+                messages.success(request, f"Son temas tarihi kaydedildi: {tarih:%d.%m.%Y}")
+        except cari_servis.CariHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:cari_detay", pk=cari.pk)
+
+
+# --- CARİLER modülü — Vergi Daireleri (aranabilir liste tanımı) --------------
+@ekran_gerekli("vergi_daireleri")
+def vergi_daireleri(request):
+    return render(request, "core/vergi_dairesi_listesi.html", {"daireler": vergi_dairesi_servis.aktif_vergi_daireleri()})
+
+
+@ekran_gerekli("vergi_daireleri")
+def vergi_dairesi_ekle(request):
+    if request.method == "POST":
+        form = VergiDairesiForm(request.POST)
+        if form.is_valid():
+            try:
+                vergi_dairesi_servis.vergi_dairesi_olustur(**form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Vergi dairesi eklendi.")
+                return redirect("core:vergi_daireleri")
+            except vergi_dairesi_servis.VergiDairesiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = VergiDairesiForm()
+    return render(request, "core/vergi_dairesi_form.html", {"form": form, "baslik": "Yeni Vergi Dairesi"})
+
+
+@ekran_gerekli("vergi_daireleri")
+def vergi_dairesi_duzenle(request, pk):
+    vd = get_object_or_404(VergiDairesi, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = VergiDairesiForm(request.POST)
+        if form.is_valid():
+            try:
+                vergi_dairesi_servis.vergi_dairesi_guncelle(vd, **form.cleaned_data, kullanici=request.user)
+                messages.success(request, "Vergi dairesi güncellendi.")
+                return redirect("core:vergi_daireleri")
+            except vergi_dairesi_servis.VergiDairesiHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = VergiDairesiForm(initial={"ad": vd.ad, "il": vd.il})
+    return render(request, "core/vergi_dairesi_form.html", {"form": form, "baslik": "Vergi Dairesi Düzenle", "duzenlenen": vd})
+
+
+@ekran_gerekli("vergi_daireleri")
+def vergi_dairesi_sil(request, pk):
+    vd = get_object_or_404(VergiDairesi, pk=pk, silindi=False)
+    if request.method == "POST":
+        vergi_dairesi_servis.vergi_dairesi_sil(vd, kullanici=request.user)
+        messages.success(request, f"Vergi dairesi silindi: {vd.ad}")
+    return redirect("core:vergi_daireleri")
 
 
 @ekran_gerekli("cariler")

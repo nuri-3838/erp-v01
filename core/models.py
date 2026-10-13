@@ -923,6 +923,26 @@ class CariKategori(TemelModel):
         return "-".join(parcalar)
 
 
+class VergiDairesi(TemelModel):
+    """Vergi dairesi tanımı (CARİLER, 2026-10-13): cari formundaki aranabilir liste. ``ad`` kısa ad ("MİMARSİNAN"; "Vergi Dairesi Müdürlüğü" eki yok),
+    ``il`` aynı adın farklı illerde bulunması için (isteğe bağlı). Cari'de yine yalnız ad metni saklanır (``Cari.vergi_dairesi``)."""
+
+    ad = models.CharField("vergi dairesi", max_length=100)
+    il = models.CharField("il", max_length=60, blank=True, default="")
+
+    class Meta:
+        db_table = "vergi_dairesi"
+        verbose_name = "vergi dairesi"
+        verbose_name_plural = "vergi daireleri"
+        ordering = ["ad", "il"]
+        constraints = [
+            models.UniqueConstraint(fields=["ad", "il"], condition=models.Q(silindi=False), name="uq_vergi_dairesi_ad_il_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.ad} ({self.il})" if self.il else self.ad
+
+
 class Cari(TemelModel):
     """Cari kartı (CARİLER) — müşteri/tedarikçi. ``kod`` kategori kod yolundan otomatik
     (örn. 320-10-0001), kategorisizse CAR-NNNN.
@@ -961,6 +981,12 @@ class Cari(TemelModel):
     muhasebe_kodu = models.CharField("muhasebe kodu", max_length=40, blank=True, default="")
     unvan = models.CharField("unvan / ad soyad", max_length=200)
     kisa_ad = models.CharField("kısa ad", max_length=80, blank=True)
+    # TÜZEL (VKN, 10 hane) / ŞAHIS (TCKN, 11 hane): form alanları ve doğrulama tipe göre değişir. Boş = henüz seçilmemiş eski kart (ilk düzenlemede seçilir).
+    class Tip(models.TextChoices):
+        TUZEL = "TUZEL", "Tüzel"
+        SAHIS = "SAHIS", "Şahıs"
+
+    tip = models.CharField("cari tipi", max_length=5, choices=Tip.choices, blank=True, default="")
     kategori = models.ForeignKey(
         CariKategori, verbose_name="kategori", null=True, blank=True,
         on_delete=models.PROTECT, related_name="cariler")
@@ -975,7 +1001,7 @@ class Cari(TemelModel):
     telefon_2_whatsapp = models.BooleanField("bu numara WhatsApp kullanıyor", default=False)
     eposta = models.EmailField("e-posta", blank=True)
     web = models.URLField("web", blank=True)
-    ilgili_kisi = models.CharField("adı soyadı", max_length=120, blank=True, default="")
+    ilgili_kisi = models.CharField("yetkili", max_length=120, blank=True, default="")
     kep_adresi = models.CharField("KEP", max_length=100, blank=True)
     # Ana adres
     ulke = models.ForeignKey(
@@ -1010,6 +1036,8 @@ class Cari(TemelModel):
         "ödeme koşulu", max_length=20, choices=OdemeKosulu.choices, null=True, blank=True)
     odeme_gunu = models.PositiveSmallIntegerField("ödeme günü", null=True, blank=True)
     notlar = models.TextField("notlar", blank=True)
+    # Elle girilen son temas (arama/görüşme) tarihi — cari detayında gösterilir; listede filtre yok.
+    son_temas_tarihi = models.DateField("son temas tarihi", null=True, blank=True)
     # PASİF cari (2026-10-13): yeni belge/harekette (fatura, teklif, sipariş, irsaliye, banka/kasa/kart hareketi, virman, fason…) seçilemez;
     # geçmiş belgeler, ekstre ve raporlar etkilenmez. ``silindi`` (soft-delete) ayrıdır: hareketli cari silinemez, pasife alınır.
     aktif = models.BooleanField("aktif", default=True)

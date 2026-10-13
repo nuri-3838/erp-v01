@@ -1,0 +1,45 @@
+{% extends "core/base.html" %}
+{% block baslik %}Vergi Daireleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Vergi Daireleri{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <h1 class="ust-baslik"><span class="emoji">🏛️</span>Vergi Daireleri</h1>
+  </div>
+  <p class="sayfa-alt">Cari formundaki vergi dairesi listesi. Listede olmayan daireyi buradan ekleyin; kartlarda yine yalnız ad saklanır.
+    {{ daireler|length }} kayıt.</p>
+
+  <section class="icerik-kart">
+    <div class="sayfa-ust">
+      <h2 class="bolum-baslik"><span class="emoji">🏛️</span>Tanımlı Vergi Daireleri</h2>
+      <a class="dugme" href="{% url 'core:vergi_dairesi_ekle' %}">+ Yeni Vergi Dairesi</a>
+    </div>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Vergi Dairesi</th><th>İl</th><th>İşlem</th></tr></thead>
+      <tbody>
+        {% for v in daireler %}
+          <tr>
+            <td>{{ v.ad }}</td>
+            <td>{{ v.il|default:"—" }}</td>
+            <td>
+              <span class="islem-bag">
+                <a href="{% url 'core:vergi_dairesi_duzenle' v.pk %}">Düzenle</a>
+                <form method="post" action="{% url 'core:vergi_dairesi_sil' v.pk %}"
+                      onsubmit="return confirm('{{ v.ad }} silinsin mi?');">
+                  {% csrf_token %}<button type="submit" class="sil">Sil</button>
+                </form>
+              </span>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3" class="yardim">Henüz vergi dairesi yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

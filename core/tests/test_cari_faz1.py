@@ -278,7 +278,7 @@ class PbKilidiTest(TestCase):
 
     def _post(self, c, pb, **ek):
         return self.client.post(reverse("core:cari_duzenle", args=[c.pk]), {
-            "unvan": c.unvan, "para_birimi": pb, "kur_tipi": "MB_ALIS", "kredi_limiti": "0", "iskonto_yuzdesi": "0", **ek})
+            "unvan": c.unvan, "tip": "TUZEL", "para_birimi": pb, "kur_tipi": "MB_ALIS", "iskonto_yuzdesi": "0", **ek})
 
     def test_yonetici_onay_ekrani_ve_normal_kullanici_kilidi(self):
         c = _hareketli_cari(self.alt)
@@ -308,13 +308,14 @@ class PbKilidiTest(TestCase):
 class VknTest(TestCase):
     @classmethod
     def setUpTestData(cls):
+        cls.kat = _kategori()
         cls.su = User.objects.create_superuser("vknsu", password="x")
         cls.sade = User.objects.create_user("vknsade", password="x")
         EkranYetki.objects.create(kullanici=cls.sade, ekran_kod="cariler")
 
     def _kayit(self, **ek):
-        return self.client.post(reverse("core:cari_ekle"), {"unvan": "vkn test", "para_birimi": "TRY", "kur_tipi": "MB_ALIS",
-                                                             "kredi_limiti": "0", "iskonto_yuzdesi": "0", **ek})
+        return self.client.post(reverse("core:cari_ekle"), {"unvan": "vkn test", "tip": "TUZEL", "kategori": str(self.kat.pk),
+                                                             "para_birimi": "TRY", "kur_tipi": "MB_ALIS", "iskonto_yuzdesi": "0", **ek})
 
     def test_yeni_kayitta_hatali_vkn_kaydedilmez_gecerli_kaydedilir(self):
         self.client.force_login(self.sade)
@@ -325,7 +326,7 @@ class VknTest(TestCase):
         r = self._kayit(vkn_tckn=gecerli_vkn())
         self.assertEqual(r.status_code, 302)
         self.assertTrue(Cari.objects.filter(unvan="VKN TEST", vkn_tckn=gecerli_vkn()).exists())
-        r = self._kayit(unvan="tc test", vkn_tckn=TC)
+        r = self._kayit(unvan="tc test", vkn_tckn=TC, tip="SAHIS")
         self.assertEqual(r.status_code, 302)
         r = self._kayit(unvan="harf", vkn_tckn="12345abcde")
         self.assertContains(r, "Geçersiz VKN/TCKN")
@@ -335,8 +336,8 @@ class VknTest(TestCase):
         self.client.force_login(self.sade)
         r = self.client.get(reverse("core:cari_duzenle", args=[c.pk]))
         self.assertContains(r, "kontrol hanesi hatalı")
-        veri = {"unvan": "ESKI HATALI 2", "para_birimi": "TRY", "kur_tipi": "MB_ALIS", "kredi_limiti": "0", "iskonto_yuzdesi": "0",
-                "vkn_tckn": hatali_vkn()}
+        veri = {"unvan": "ESKI HATALI 2", "tip": "TUZEL", "kategori": str(self.kat.pk), "para_birimi": "TRY", "kur_tipi": "MB_ALIS",
+                "iskonto_yuzdesi": "0", "vkn_tckn": hatali_vkn()}
         r = self.client.post(reverse("core:cari_duzenle", args=[c.pk]), veri)
         self.assertEqual(r.status_code, 302)                                   # VKN'ye dokunulmadı → engel yok
         veri["vkn_tckn"] = hatali_vkn("987654321")                             # değiştirildi ve hâlâ hatalı → engel

@@ -1,0 +1,36 @@
+== 1) ÜLKE adları (yalnız ad)
+   pk=2 US: ESKİ 'AMERIKA BIRLEŞIK DEVLETLERI' -> YENİ 'AMERİKA BİRLEŞİK DEVLETLERİ' | bağlı cari/şehir (0, 10) aynı
+   pk=7 BE: ESKİ 'BELÇIKA' -> YENİ 'BELÇİKA' | bağlı cari/şehir (0, 5) aynı
+   pk=8 GB: ESKİ 'BIRLEŞIK KRALLIK' -> YENİ 'BİRLEŞİK KRALLIK' | bağlı cari/şehir (0, 10) aynı
+   pk=9 BR: ESKİ 'BREZILYA' -> YENİ 'BREZİLYA' | bağlı cari/şehir (0, 8) aynı
+   pk=10 BG: ESKİ 'BULGARISTAN' -> YENİ 'BULGARİSTAN' | bağlı cari/şehir (1, 3) aynı
+   pk=12 DZ: ESKİ 'CEZAYIR' -> YENİ 'CEZAYİR' | bağlı cari/şehir (0, 3) aynı
+   pk=13 CN: ESKİ 'ÇIN' -> YENİ 'ÇİN' | bağlı cari/şehir (2, 10) aynı
+   pk=17 GE: ESKİ 'GÜRCISTAN' -> YENİ 'GÜRCİSTAN' | bağlı cari/şehir (0, 3) aynı
+   pk=18 IN: ESKİ 'HINDISTAN' -> YENİ 'HİNDİSTAN' | bağlı cari/şehir (0, 8) aynı
+   pk=23 IL: ESKİ 'İSRAIL' -> YENİ 'İSRAİL' | bağlı cari/şehir (0, 4) aynı
+   pk=24 CH: ESKİ 'İSVIÇRE' -> YENİ 'İSVİÇRE' | bağlı cari/şehir (0, 5) aynı
+   pk=29 KZ: ESKİ 'KAZAKISTAN' -> YENİ 'KAZAKİSTAN' | bağlı cari/şehir (0, 3) aynı
+   pk=31 LY: ESKİ 'LIBYA' -> YENİ 'LİBYA' | bağlı cari/şehir (0, 3) aynı
+   pk=33 MX: ESKİ 'MEKSIKA' -> YENİ 'MEKSİKA' | bağlı cari/şehir (0, 5) aynı
+   pk=35 UZ: ESKİ 'ÖZBEKISTAN' -> YENİ 'ÖZBEKİSTAN' | bağlı cari/şehir (0, 3) aynı
+   pk=36 PK: ESKİ 'PAKISTAN' -> YENİ 'PAKİSTAN' | bağlı cari/şehir (0, 3) aynı
+   pk=40 SG: ESKİ 'SINGAPUR' -> YENİ 'SİNGAPUR' | bağlı cari/şehir (0, 1) aynı
+   pk=41 SY: ESKİ 'SURIYE' -> YENİ 'SURİYE' | bağlı cari/şehir (0, 3) aynı
+   pk=42 SA: ESKİ 'SUUDI ARABISTAN' -> YENİ 'SUUDİ ARABİSTAN' | bağlı cari/şehir (0, 5) aynı
+   pk=45 TM: ESKİ 'TÜRKMENISTAN' -> YENİ 'TÜRKMENİSTAN' | bağlı cari/şehir (0, 3) aynı
+   pk=49 GR: ESKİ 'YUNANISTAN' -> YENİ 'YUNANİSTAN' | bağlı cari/şehir (0, 5) aynı
+== 1b) ŞEHİR adı
+   pk=185 (KZ): ESKİ 'ŞIMKENT' -> YENİ 'ŞİMKENT'
+== 2) Vergi dairesi yazımı: GEVHERNESİBE -> GEVHER NESİBE
+   pk=2 136-10-0001 BAREN PROJE YAPI SANAYİ VE TİCARET LİMİTED ŞİRKETİ: ESKİ 'GEVHERNESİBE' -> YENİ 'GEVHER NESİBE'
+== 3) MERKEZ ADRES sevk adresi = cari adresi
+   120-10-0001 ERTEKPA BANYO AKSESUARLARI İNŞAAT 
+      ESKİ sevk: ülke=TÜRKİYE şehir=KAYSERİ (TR) adres='ORGANİZE SAN.BÖL. 24.CADDE 25 MELİKGAZİ KAYSERİ' varsayılan=True
+      YENİ sevk: ülke=TÜRKİYE şehir=KAYSERİ (TR) adres='ORGANİZE SAN.BÖL. 24.CADDE 25 MELİKGAZİ' varsayılan=True
+      cari adresi (değişmedi): TÜRKİYE / KAYSERİ (TR) / 'ORGANİZE SAN.BÖL. 24.CADDE 25 MELİKGAZİ'
+   320-30-0040 FASON GÜRBÜZ LAZER
+      ESKİ sevk: ülke=TÜRKİYE şehir=None adres='' varsayılan=True
+      YENİ sevk: ülke=TÜRKİYE şehir=KAYSERİ (TR) adres='OYMAAĞAÇ MAH. MERİÇ KAPI NO:34 KOCASİNAN' varsayılan=True
+      cari adresi (değişmedi): TÜRKİYE / KAYSERİ (TR) / 'OYMAAĞAÇ MAH. MERİÇ KAPI NO:34 KOCASİNAN'
+== COMMIT EDİLDİ

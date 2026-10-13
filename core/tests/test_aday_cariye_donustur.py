@@ -654,11 +654,12 @@ class DonusturViewTest(TestCase):
     def test_mod_a_post_yeni_cari_acar(self):
         aday = _aday(unvan="mod a firma", ulke_id=_bae().pk, tip=AdayTip.TEDARIKCI)
         r = self.client.post(reverse("core:aday_cariye_donustur", args=[aday.pk]), {
-            "mod": "A", "unvan": aday.unvan, "kisa_ad": "", "vergi_dairesi": "",
+            "mod": "A", "unvan": aday.unvan, "kisa_ad": "", "vergi_dairesi": "", "tip": "TUZEL",
+            "kategori": str(CariKategori.objects.filter(ust__isnull=False).first().pk),
             "vkn_tckn": "", "tax_id": "", "telefon": "", "telefon_whatsapp": "",
             "telefon_2": "", "telefon_2_whatsapp": "", "eposta": "", "web": "",
             "ilgili_kisi": "", "kep_adresi": "", "ulke": "", "sehir": "", "adres": "",
-            "para_birimi": "TRY", "kur_tipi": "MB_ALIS", "kredi_limiti": "0",
+            "para_birimi": "TRY", "kur_tipi": "MB_ALIS",
             "iskonto_yuzdesi": "0", "notlar": "",
         })
         self.assertEqual(r.status_code, 302)
@@ -669,11 +670,12 @@ class DonusturViewTest(TestCase):
     def test_mod_a_turkiye_vkn_zorunlu_form_hatasi(self):
         aday = _aday(unvan="vknsiz firma", ulke_id=_tr().pk)
         r = self.client.post(reverse("core:aday_cariye_donustur", args=[aday.pk]), {
-            "mod": "A", "unvan": aday.unvan, "kisa_ad": "", "vergi_dairesi": "",
+            "mod": "A", "unvan": aday.unvan, "kisa_ad": "", "vergi_dairesi": "", "tip": "TUZEL",
+            "kategori": str(CariKategori.objects.filter(ust__isnull=False).first().pk),
             "vkn_tckn": "", "tax_id": "", "telefon": "", "telefon_whatsapp": "",
             "telefon_2": "", "telefon_2_whatsapp": "", "eposta": "", "web": "",
             "ilgili_kisi": "", "kep_adresi": "", "ulke": _tr().pk, "sehir": "", "adres": "",
-            "para_birimi": "TRY", "kur_tipi": "MB_ALIS", "kredi_limiti": "0",
+            "para_birimi": "TRY", "kur_tipi": "MB_ALIS",
             "iskonto_yuzdesi": "0", "notlar": "",
         })
         self.assertEqual(r.status_code, 200)

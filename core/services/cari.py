@@ -228,8 +228,8 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
             telefon_whatsapp=False, telefon_2_whatsapp=False,
             eposta, web, ilgili_kisi, kep_adresi, adres, para_birimi, kur_tipi=None,
             kur_degerleme=None, kur_farki_hedefi=None,
-            kredi_limiti, iskonto_yuzdesi, odeme_kosulu=None, odeme_gunu=None,
-            notlar, ulke, sehir, fason_faturasiz=None):
+            kredi_limiti=None, iskonto_yuzdesi, odeme_kosulu=None, odeme_gunu=None,
+            notlar, ulke, sehir, fason_faturasiz=None, tip=None):
     """Ortak alan hazırlığı (create/update paylaşır). (dict, uyarılar) döner. ``kur_tipi``
     opsiyonel — verilmezse (mevcut çağıranlar: aday->cari dönüşümü, veri taşıma scriptleri,
     testler) varsayılan MB_ALIS kullanılır."""
@@ -264,14 +264,78 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
         ulke=ulke, sehir=sehir, adres=buyuk_harf_tr((adres or "").strip()),
         para_birimi=para_birimi, kur_tipi=kur_tipi, kur_degerleme=kur_degerleme,
         kur_farki_hedefi=kur_farki_hedefi,
-        kredi_limiti=_para_dogrula(kredi_limiti, "Kredi limiti"),
         iskonto_yuzdesi=_para_dogrula(iskonto_yuzdesi, "İskonto"),
         odeme_kosulu=odeme_kosulu, odeme_gunu=odeme_gunu,
         notlar=(notlar or "").strip(),
     )
     if fason_faturasiz is not None:                 # verilmezse (aday dönüşümü, scriptler) mevcut değer korunur / varsayılan False
         veri["fason_faturasiz"] = bool(fason_faturasiz)
+    if kredi_limiti is not None:                    # Kredi/Risk Limiti ekrandan kalktı (2026-10-13): verilmezse mevcut değer korunur
+        veri["kredi_limiti"] = _para_dogrula(kredi_limiti, "Kredi limiti")
+    if tip is not None:                             # verilmezse mevcut tip korunur
+        if tip not in ("", *Cari.Tip.values):
+            raise CariHatasi("Geçersiz cari tipi.")
+        hata = tip_vkn_uyumsuzlugu(tip, veri["vkn_tckn"])
+        if hata:
+            raise CariHatasi(hata)
+        veri["tip"] = tip
     return veri, uyarilar
+
+
+def tip_vkn_uyumsuzlugu(tip, vkn) -> str:
+    """Cari tipi ile VKN/TCKN hane sayısı uyumu: TÜZEL → VKN (10 hane), ŞAHIS → TCKN (11 hane). Uyumluysa ya da biri boşsa ''; değilse hata metni."""
+    vkn = (vkn or "").strip()
+    if not tip or not vkn:
+        return ""
+    if tip == Cari.Tip.TUZEL and len(vkn) != 10:
+        return "Tüzel cari için 10 haneli VKN girilmeli (11 haneli TCKN için Şahıs seçin)."
+    if tip == Cari.Tip.SAHIS and len(vkn) != 11:
+        return "Şahıs cari için 11 haneli TCKN girilmeli (10 haneli VKN için Tüzel seçin)."
+    return ""
+
+
+def _merkez_adres_esitle(cari: Cari, kullanici=None) -> int:
+    """Cari adresi (ülke/şehir/adres) değişince YALNIZ "MERKEZ ADRES" adlı sevk adresi cari adresiyle eşitlenir (başka sevk adreslerine dokunulmaz;
+    yoksa açılmaz). Cari adresi tamamen boşaltıldıysa sevk adresi boşaltılmaz. Güncellenen sayıyı döner."""
+    if not (cari.ulke_id or cari.sehir_id or (cari.adres or "").strip()):
+        return 0
+    n = 0
+    for sv in CariSevkAdresi.objects.filter(cari=cari, silindi=False, ad="MERKEZ ADRES"):
+        sv.ulke_id, sv.sehir_id, sv.adres = cari.ulke_id, cari.sehir_id, cari.adres
+        sv.updated_by = kullanici
+        sv.save(update_fields=["ulke", "sehir", "adres", "updated_by", "updated_at"])
+        n += 1
+    return n
+
+
+def cari_doviz_hareketli_mi(cari: Cari) -> bool:
+    """Carinin muhasebe hesabında TL dışı işlem PB'li hareket var mı."""
+    if not cari.muhasebe_kodu:
+        return False
+    from core.models import YevmiyeSatir
+    return YevmiyeSatir.objects.filter(hesap_id=cari.muhasebe_kodu, silindi=False, fis__silindi=False).exclude(islem_pb="TRY").exists()
+
+
+def kur_alanlari_gorunur(cari: Cari, doviz_hareketli=None) -> bool:
+    """Kur alanları (Kur Tipi / Değerleme / Farkı Hedefi / Cari Kur Yöntemi) yalnız anlamlıysa görünür: ana PB TL dışı ya da TL carinin döviz hareketi var
+    ya da kur ayarı varsayılan dışı (kayıtlı ayar gizlenip unutulmasın). ``doviz_hareketli`` verilirse sorgu yapılmaz."""
+    if cari.para_birimi != "TRY":
+        return True
+    if (cari.kur_tipi, cari.kur_degerleme, cari.kur_farki_hedefi) != (Cari.KurTipi.MB_ALIS, Cari.DegerlemeKurali.OTOMATIK, Cari.KurFarkiHedefi.OTOMATIK):
+        return True
+    return cari_doviz_hareketli_mi(cari) if doviz_hareketli is None else bool(doviz_hareketli)
+
+
+def cari_son_temas_ayarla(cari: Cari, tarih, kullanici=None) -> Cari:
+    """Elle girilen son temas tarihi (None = temizle). Gelecek tarih olamaz."""
+    if cari.silindi:
+        raise CariHatasi("Silinmiş cari düzenlenemez.")
+    if tarih is not None and tarih > timezone.localdate():
+        raise CariHatasi("Son temas tarihi gelecekte olamaz.")
+    cari.son_temas_tarihi = tarih
+    cari.updated_by = kullanici
+    cari.save(update_fields=["son_temas_tarihi", "updated_by", "updated_at"])
+    return cari
 
 
 def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> Cari:
@@ -295,7 +359,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kur_degerleme", "kur_farki_hedefi", "kredi_limiti",
-                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz")})
+                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz", "tip")})
     acik_kod = (kod or "").strip()
     for _deneme in range(5):
         try:
@@ -384,6 +448,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
     if not unvan:
         raise CariHatasi("Unvan boş olamaz.")
     eski_unvan = cari.unvan
+    eski_adres = (cari.ulke_id, cari.sehir_id, cari.adres)
     kategori = None
     if kategori_id:
         kategori = CariKategori.objects.filter(pk=kategori_id, silindi=False).first()
@@ -406,7 +471,7 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                         "telefon_whatsapp", "telefon_2", "telefon_2_whatsapp",
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kur_degerleme", "kur_farki_hedefi", "kredi_limiti",
-                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz")})
+                        "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz", "tip")})
     if veri["para_birimi"] != cari.para_birimi and cari_hareketli_mi(cari):
         # Ana para birimi kilidi: hareketli carinin PB'si yalnız yönetici + mevcut havuz bakiyelerini gören onayla değişir.
         from core.yetki import yonetici_mi
@@ -428,6 +493,8 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
         cari.updated_by = kullanici
         cari.save()
         cari.telefon_uyarilari = uyarilar
+        if (cari.ulke_id, cari.sehir_id, cari.adres) != eski_adres:
+            _merkez_adres_esitle(cari, kullanici)
 
         if kategori_degisti:
             if eski_muhasebe_kodu:

@@ -145,7 +145,7 @@ class CariViewTest(TestCase):
     def test_ekle_post(self):
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:cari_ekle"), {
-            "unvan": "yeni cari", "kategori": str(self.alt.pk), "para_birimi": "TRY"})
+            "unvan": "yeni cari", "tip": "TUZEL", "kategori": str(self.alt.pk), "para_birimi": "TRY"})
         self.assertEqual(r.status_code, 302)
         c = Cari.objects.get(unvan="YENİ CARİ")
         self.assertEqual(c.kod, "320-10-0001")
@@ -177,7 +177,7 @@ class CariViewTest(TestCase):
         c = _olustur(unvan="formal", kategori_id=self.alt.pk)
         self.client.force_login(self.yetkili)
         r = self.client.post(reverse("core:cari_duzenle", args=[c.pk]), {
-            "unvan": "formal güncel", "kategori": str(self.alt.pk), "para_birimi": "USD"})
+            "unvan": "formal güncel", "tip": "TUZEL", "kategori": str(self.alt.pk), "para_birimi": "USD"})
         self.assertEqual(r.status_code, 302)
         c.refresh_from_db()
         self.assertEqual((c.unvan, c.para_birimi, c.kod),
@@ -378,7 +378,7 @@ class CariMuhasebeTest(TestCase):
         # Tarayıcı disabled select göndermez — ama biri kategoriyi zorla POST etse bile
         # servis katmanı değişikliği yok sayar (view kendi kategori_id'sini kullanır).
         r2 = client.post(reverse("core:cari_duzenle", args=[c.pk]), {
-            "unvan": "aleyna hrozan", "kategori": str(yeni_kategori.pk), "para_birimi": "TRY"})
+            "unvan": "aleyna hrozan", "tip": "SAHIS", "kategori": str(yeni_kategori.pk), "para_birimi": "TRY"})
         self.assertEqual(r2.status_code, 302)
         c.refresh_from_db()
         self.assertEqual(c.kategori_id, alt.pk)

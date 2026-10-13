@@ -46,6 +46,9 @@
   .ozet-kutu .dg { font-size:1.25rem; font-weight:750; margin-top:.15rem; font-family:"Cascadia Mono",Consolas,monospace; }
   .ozet-kutu .alt { font-size:.78rem; color:var(--metin-soluk); margin-top:.15rem; }
   .ozet-kutu .dg.kucuk { font-size:1rem; }
+  .son-temas-form { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem; align-items:center; }
+  .son-temas-form input[type=date] { width:auto; min-width:0; padding:.25rem .4rem; font-size:.8rem; }
+  .son-temas-form button { padding:.25rem .6rem; font-size:.78rem; }
   .bk-b { color:#0b6b3f; } .bk-a { color:#b1122c; }
   .gecikme { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#fde7ea; color:#b1122c; }
   .kv { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem 1.6rem; }
@@ -114,6 +117,7 @@
         <span class="d-rozet kod">{{ cari.kod }}</span>
         {% if cari.muhasebe_kodu %}<span class="d-rozet pb">Muh: {{ cari.muhasebe_kodu }}</span>{% endif %}
         <span class="d-rozet pb">{{ cari.para_birimi }}</span>
+        {% if cari.tip %}<span class="d-rozet pb">{{ cari.get_tip_display }}</span>{% endif %}
         {% if not cari.aktif %}<span class="d-rozet" style="background:#b1122c;color:#fff">PASİF</span>{% endif %}
       </div>
       <div class="detay-ad">{{ cari.unvan }}</div>
@@ -134,6 +138,13 @@
       {% if ozet.son %}<div class="dg kucuk">{{ ozet.son.tarih|date:"d.m.Y" }}</div>
         <div class="alt"><a href="{% url 'core:fis_detay' ozet.son.fis_pk %}">fiş {{ ozet.son.fis_no }}</a>{% if ozet.son.aciklama %} · {{ ozet.son.aciklama }}{% endif %}</div>
       {% else %}<div class="dg kucuk">—</div><div class="alt">hareket yok</div>{% endif %}</div>
+    <div class="ozet-kutu"><div class="et">Son temas</div>
+      <div class="dg kucuk">{% if cari.son_temas_tarihi %}{{ cari.son_temas_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</div>
+      <form method="post" action="{% url 'core:cari_son_temas' cari.pk %}" class="son-temas-form">{% csrf_token %}
+        <input type="date" name="tarih" value="{{ cari.son_temas_tarihi|date:'Y-m-d' }}" max="{% now 'Y-m-d' %}" aria-label="Son temas tarihi">
+        <button type="submit" class="dugme-ikincil">Kaydet</button>
+        {% if cari.son_temas_tarihi %}<button type="submit" name="temizle" value="1" class="dugme-ikincil">Temizle</button>{% endif %}
+      </form></div>
   </div>
 
   {% if ozet.acik.satirlar %}
@@ -182,6 +193,7 @@
     <div class="sek-panel" id="panel-bilgi">
       <h2 class="bolum-baslik">Vergi</h2>
       <div class="kv">
+        <div class="satir"><span class="et">Cari Tipi</span><span class="dg">{{ cari.get_tip_display|default:"—" }}</span></div>
         <div class="satir"><span class="et">Vergi Dairesi</span><span class="dg">{{ cari.vergi_dairesi|default:"—" }}</span></div>
         <div class="satir"><span class="et">VKN / TCKN</span><span class="dg mono">{{ cari.vkn_tckn|default:"—" }}</span></div>
         <div class="satir"><span class="et">Tax ID</span><span class="dg mono">{{ cari.tax_id|default:"—" }}</span></div>
@@ -202,7 +214,7 @@
         </span></div>
         <div class="satir"><span class="et">E-posta</span><span class="dg">{{ cari.eposta|default:"—" }}</span></div>
         <div class="satir"><span class="et">Web</span><span class="dg">{{ cari.web|default:"—" }}</span></div>
-        <div class="satir"><span class="et">Adı Soyadı</span><span class="dg">{{ cari.ilgili_kisi|default:"—" }}</span></div>
+        <div class="satir"><span class="et">Yetkili</span><span class="dg">{{ cari.ilgili_kisi|default:"—" }}</span></div>
         <div class="satir"><span class="et">KEP</span><span class="dg">{{ cari.kep_adresi|default:"—" }}</span></div>
       </div>
 
@@ -216,7 +228,7 @@
       <h2 class="bolum-baslik grup-ara">Ticari</h2>
       <div class="kv">
         <div class="satir"><span class="et">Para Birimi</span><span class="dg mono">{{ cari.para_birimi }}</span></div>
-        {% if cari.para_birimi != "TRY" %}
+        {% if kur_gorunur %}
         <div class="satir"><span class="et">Kur Tipi</span><span class="dg mono">{{ cari.get_kur_tipi_display }}</span></div>
         <div class="satir"><span class="et">Kur Değerlemesi</span><span class="dg">{{ cari.get_kur_degerleme_display }}</span></div>
         <div class="satir"><span class="et">Kur Farkı Hedefi</span><span class="dg">{{ cari.get_kur_farki_hedefi_display }}</span></div>
@@ -225,7 +237,6 @@
         {% if kur_farki_proje %}
         <div class="satir"><span class="et">Kur farkı</span><span class="dg">Yatırım maliyetine (<a href="{% url 'core:yatirim_projesi_detay' kur_farki_proje.pk %}">{{ kur_farki_proje.kod }}</a>) — 258'e, aynı projeye yazılır</span></div>
         {% endif %}
-        <div class="satir"><span class="et">Kredi/Risk Limiti</span><span class="dg mono">{{ cari.kredi_limiti|tr_kur:2 }}</span></div>
         <div class="satir"><span class="et">Varsayılan İskonto</span><span class="dg mono">%{{ cari.iskonto_yuzdesi|tr_kur:2 }}</span></div>
         <div class="satir"><span class="et">Ödeme Koşulu</span><span class="dg">{{ cari.odeme_kosulu_metni|default:"— (vade elle girilir)" }}</span></div>
       </div>

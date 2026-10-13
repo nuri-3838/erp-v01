@@ -379,6 +379,11 @@ urlpatterns = [
     path("cariler/sehir/ekle/", views.sehir_ekle, name="sehir_ekle"),
     path("cariler/sehir/<int:pk>/duzenle/", views.sehir_duzenle, name="sehir_duzenle"),
     path("cariler/sehir/<int:pk>/sil/", views.sehir_sil, name="sehir_sil"),
+    path("cariler/vergi-daireleri/", views.vergi_daireleri, name="vergi_daireleri"),
+    path("cariler/vergi-daireleri/ekle/", views.vergi_dairesi_ekle, name="vergi_dairesi_ekle"),
+    path("cariler/vergi-daireleri/<int:pk>/duzenle/", views.vergi_dairesi_duzenle, name="vergi_dairesi_duzenle"),
+    path("cariler/vergi-daireleri/<int:pk>/sil/", views.vergi_dairesi_sil, name="vergi_dairesi_sil"),
+    path("cariler/<int:pk>/son-temas/", views.cari_son_temas, name="cari_son_temas"),
     # İNSAN KAYNAKLARI modülü
     path("ik/personel/", views.personeller, name="personeller"),
     path("ik/personel/ekle/", views.personel_ekle, name="personel_ekle"),

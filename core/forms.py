@@ -496,6 +496,13 @@ class UlkeForm(forms.Form):
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
 
+class VergiDairesiForm(forms.Form):
+    """Vergi dairesi tanımı ekle/düzenle (CARİLER). Ad/il TR büyük harf + benzersizlik serviste."""
+
+    ad = forms.CharField(label="Vergi Dairesi", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    il = forms.CharField(label="İl (isteğe bağlı)", max_length=60, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
 class SehirForm(forms.Form):
     """Şehir ekle/düzenle (CARİLER). Ad ülke içinde benzersiz (serviste)."""
 
@@ -552,11 +559,12 @@ class CariForm(forms.Form):
                             widget=forms.TextInput(attrs=_K))
     kisa_ad = forms.CharField(label="Kısa Ad", max_length=80, required=False,
                               widget=forms.TextInput(attrs=_K))
+    # Cari tipi (2026-10-13): Tüzel → VKN (10 hane), Şahıs → TCKN (11 hane); ekranda etiketler/alanlar tipe göre değişir (JS), doğrulama sunucuda.
+    tip = forms.ChoiceField(label="Cari Tipi", choices=[("", "— seçin —")] + list(Cari.Tip.choices))
     kategori = forms.ModelChoiceField(label="Kategori", queryset=CariKategori.objects.none(),
-                                      required=False, empty_label="— kategori seç —")
-    # Vergi
-    vergi_dairesi = forms.CharField(label="Vergi Dairesi", max_length=100, required=False,
-                                    widget=forms.TextInput(attrs=_K))
+                                      empty_label="— kategori seç —")
+    # Vergi: tanımlı listeden aranabilir seçim (Cari / Vergi Daireleri); kartta yine yalnız ad saklanır.
+    vergi_dairesi = forms.ChoiceField(label="Vergi Dairesi", required=False, choices=[("", "— vergi dairesi seç —")])
     vkn_tckn = forms.CharField(label="VKN / TCKN", max_length=15, required=False,
                                widget=forms.TextInput(attrs={**_K, "inputmode": "numeric"}))
     tax_id = forms.CharField(label="Tax ID (yurtdışı)", max_length=30, required=False,
@@ -575,7 +583,7 @@ class CariForm(forms.Form):
     # reddetmez (Django URLField burada reddedebilirdi).
     web = forms.CharField(label="Web", max_length=200, required=False,
                           widget=forms.TextInput(attrs=_K))
-    ilgili_kisi = forms.CharField(label="Adı Soyadı", max_length=120, required=False,
+    ilgili_kisi = forms.CharField(label="Yetkili", max_length=120, required=False,
                                   widget=forms.TextInput(attrs=_K))
     kep_adresi = forms.CharField(label="KEP", max_length=100, required=False,
                                  widget=forms.TextInput(attrs=_K))
@@ -596,8 +604,6 @@ class CariForm(forms.Form):
                                       initial=Cari.DegerlemeKurali.OTOMATIK, required=False)
     kur_farki_hedefi = forms.ChoiceField(label="Kur Farkı Hedefi", choices=Cari.KurFarkiHedefi.choices,
                                          initial=Cari.KurFarkiHedefi.OTOMATIK, required=False)
-    kredi_limiti = TRDecimalField(label="Kredi/Risk Limiti", basamak=2,
-                                  initial=Decimal("0"), required=False)
     iskonto_yuzdesi = TRDecimalField(label="Varsayılan İskonto %", basamak=2,
                                      initial=Decimal("0"), required=False)
     # Boş: koşul yok, fatura vade tarihi elle girilir (varsayılan). odeme_gunu alanı
@@ -611,9 +617,17 @@ class CariForm(forms.Form):
     notlar = forms.CharField(label="Notlar", required=False,
                              widget=forms.Textarea(attrs={"rows": 3, **_K}))
 
-    def __init__(self, *args, mevcut_vkn=None, **kwargs):
-        """``mevcut_vkn``: düzenlenen carinin kayıtlı VKN/TCKN'si — hatalı olsa bile alana DOKUNULMADIYSA (aynı değer) kayıt engellenmez."""
+    def __init__(self, *args, mevcut_vkn=None, mevcut_vergi_dairesi=None, **kwargs):
+        """``mevcut_vkn``: düzenlenen carinin kayıtlı VKN/TCKN'si — hatalı olsa bile alana DOKUNULMADIYSA (aynı değer) kayıt engellenmez.
+        ``mevcut_vergi_dairesi``: kartta kayıtlı ama tanım listesinde olmayan değer — seçenek olarak korunur ("listede yok"), alana dokunulmazsa kayıt engellenmez."""
         super().__init__(*args, **kwargs)
+        from core.services.vergi_dairesi import aktif_vergi_daireleri
+        secenekler = [("", "— vergi dairesi seç —")] + [(v.ad, str(v)) for v in aktif_vergi_daireleri()]
+        mevcut_vd = (mevcut_vergi_dairesi or "").strip()
+        if mevcut_vd and mevcut_vd not in {a for a, _ in secenekler}:
+            secenekler.append((mevcut_vd, f"{mevcut_vd} (listede yok)"))
+        self.fields["vergi_dairesi"].choices = secenekler
+        self.fields["vergi_dairesi"].widget.attrs["class"] = "akilli-sec"
         self.mevcut_vkn = (mevcut_vkn or "").strip() if mevcut_vkn is not None else None
         from core.services.cari_kategori import aktif_cari_kategoriler
         from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
@@ -635,6 +649,14 @@ class CariForm(forms.Form):
         if not vkn_tckn_gecerli(v):
             raise forms.ValidationError(VKN_TCKN_HATA)
         return v
+
+    def clean(self):
+        cleaned = super().clean()
+        from core.services.cari import tip_vkn_uyumsuzlugu
+        hata = tip_vkn_uyumsuzlugu(cleaned.get("tip"), cleaned.get("vkn_tckn"))
+        if hata:
+            self.add_error("vkn_tckn", hata)
+        return cleaned
 
 
 class AdayMusteriKategoriForm(forms.Form):
