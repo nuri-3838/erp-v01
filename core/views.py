@@ -1786,44 +1786,53 @@ def _cari_form_kw(cd):
 
 @ekran_gerekli("cariler")
 def cariler(request):
-    ara = (request.GET.get("ara") or "").strip()
-    kategori_id = request.GET.get("kategori") or ""
-    sehir_id = request.GET.get("sehir") or ""
-    ulke_id = request.GET.get("ulke") or ""
-    pasif_goster = request.GET.get("pasif") == "1"
-    qs = cari_servis.aktif_cariler()
-    if not pasif_goster:
-        qs = qs.filter(aktif=True)                      # PASİF cariler varsayılan gizli ("Pasifleri göster" ile görünür)
-    if ara:
-        qs = qs.filter(
-            Q(unvan__contains=buyuk_harf_tr(ara)) | Q(kod__contains=ara)
-            | Q(vkn_tckn__contains=ara) | Q(tax_id__contains=ara))
-    if kategori_id:
-        qs = qs.filter(kategori_id=kategori_id)
-    if sehir_id:
-        qs = qs.filter(sehir_id=sehir_id)
-    if ulke_id:
-        qs = qs.filter(ulke_id=ulke_id)
+    """Cari listesi: bakiye (TL/döviz) + son hareket (toplu hesap, N+1 yok), filtreler (bakiye durumu, dövizli, pasif dahil, ticari/diğer, kategori, şehir, ülke),
+    arama (kod, ünvan, VKN, telefon, yetkili, e-posta, şehir — bu alanlar sütunda görünmez), sütun başlığıyla sıralama, sayfalama, Excel (``?xlsx=1``)."""
+    from core.services import cari_cikti as cari_cikti_servis
+    from core.services import cari_ozet as cari_ozet_servis
+    g = request.GET
+    ara = (g.get("ara") or "").strip()
+    kategori_id = g.get("kategori") or ""
+    sehir_id = g.get("sehir") or ""
+    ulke_id = g.get("ulke") or ""
+    tur = g.get("tur") if g.get("tur") in ("ticari", "diger") else ""
+    bakiye = g.get("bakiye") if g.get("bakiye") in ("bakiyeli", "borclu", "alacakli") else ""
+    doviz = g.get("doviz") == "1"
+    pasif_goster = g.get("pasif") == "1"
+    sirala = g.get("sirala") if g.get("sirala") in cari_ozet_servis.SIRALAMA_ANAHTARLARI else "cari"
+    yon = "desc" if g.get("yon") == "desc" else "asc"
+    satirlar = cari_ozet_servis.liste_getir(ara=ara, kategori_id=kategori_id, sehir_id=sehir_id, ulke_id=ulke_id, tur=tur, bakiye=bakiye, doviz=doviz,
+                                            pasif=pasif_goster, sirala=sirala, yon=yon)
+    if g.get("xlsx") == "1":
+        return _xlsx_yanit(cari_cikti_servis.liste_xlsx(satirlar), f"cariler_{tr_bugun():%Y%m%d}")
 
-    # Filtre seçenekleri yalnız en az bir cari'de fiilen kullanılanlardan oluşur
-    # (tüm hesap planı/lokasyon master verisini değil, sayfadaki gerçek veriyi yansıtır).
+    # Filtre seçenekleri yalnız en az bir cari'de fiilen kullanılanlardan oluşur.
     tumu = cari_servis.aktif_cariler()
     kategoriler = CariKategori.objects.filter(
         silindi=False, pk__in=tumu.exclude(kategori=None).values("kategori_id")
     ).select_related("ust").order_by("ust__kod", "kod")
-    sehirler = Sehir.objects.filter(
-        silindi=False, pk__in=tumu.exclude(sehir=None).values("sehir_id")
-    ).order_by("ad")
-    ulkeler = Ulke.objects.filter(
-        silindi=False, pk__in=tumu.exclude(ulke=None).values("ulke_id")
-    ).order_by("ad")
+    sehirler = Sehir.objects.filter(silindi=False, pk__in=tumu.exclude(sehir=None).values("sehir_id")).order_by("ad")
+    ulkeler = Ulke.objects.filter(silindi=False, pk__in=tumu.exclude(ulke=None).values("ulke_id")).order_by("ad")
 
+    sabit = g.copy()
+    for k in ("sayfa", "xlsx"):
+        sabit.pop(k, None)
+
+    def sira_linki(anahtar):
+        q = sabit.copy()
+        q["sirala"], q["yon"] = anahtar, ("desc" if (sirala == anahtar and yon == "asc") else "asc")
+        return "?" + q.urlencode()
+    siralama = {a: {"url": sira_linki(a), "isaret": (" ▲" if yon == "asc" else " ▼") if sirala == a else ""} for a in cari_ozet_servis.SIRALAMA_ANAHTARLARI}
+    sayfa = Paginator(satirlar, 50).get_page(g.get("sayfa"))
+    aktif_filtre = bool(ara or kategori_id or sehir_id or ulke_id or tur or bakiye or doviz or pasif_goster)
     return render(request, "core/cari_listesi.html", {
-        "cariler": qs, "ara": ara,
+        "sayfa": sayfa, "satirlar": list(sayfa), "toplam_adet": len(satirlar), "ara": ara,
         "kategoriler": kategoriler, "sehirler": sehirler, "ulkeler": ulkeler,
         "secili_kategori": kategori_id, "secili_sehir": sehir_id, "secili_ulke": ulke_id,
-        "pasif_goster": pasif_goster, "pasif_sayisi": cari_servis.aktif_cariler().filter(aktif=False).count(),
-    })
+        "tur": tur, "bakiye": bakiye, "doviz": doviz, "pasif_goster": pasif_goster, "sirala": sirala, "yon": yon, "siralama": siralama,
+        "pasif_sayisi": tumu.filter(aktif=False).count(), "aktif_filtre": aktif_filtre,
+        "tur_secenekleri": cari_ozet_servis.TUR_SECENEKLERI, "bakiye_secenekleri": cari_ozet_servis.BAKIYE_SECENEKLERI,
+        "sabit_qs": sabit.urlencode(), "xlsx_url": "?" + (sabit.urlencode() + "&" if sabit else "") + "xlsx=1"})
 
 
 @ekran_gerekli("cariler")
@@ -1933,6 +1942,7 @@ def _cari_kur_farki_projesi(cari):
 
 @ekran_gerekli("cariler")
 def cari_detay(request, pk):
+    from core.services import cari_ozet as cari_ozet_servis
     cari = get_object_or_404(
         Cari.objects.select_related("kategori", "kategori__ust", "ulke", "sehir",
                                     "created_by", "updated_by"),
@@ -1948,7 +1958,9 @@ def cari_detay(request, pk):
         "aktiviteler": cari_servis.aktif_aktiviteler(cari),
         # Cariye Dönüştür — bu carinin kaynağı olan aday(lar) (spec madde 4: birden çok
         # aday bağlıysa hepsi listelenir; (B) mevcut cariye bağlama birden fazlasına izin verir).
-        "kaynak_adaylar": cari.kaynak_adaylar.filter(silindi=False).order_by("unvan")})
+        "kaynak_adaylar": cari.kaynak_adaylar.filter(silindi=False).order_by("unvan"),
+        "ozet": cari_ozet_servis.ozet(cari),
+        "belgeler": cari_ozet_servis.belgeler(cari)})
 
 
 @ekran_gerekli("cariler")
@@ -2107,6 +2119,10 @@ def cari_kesinti_sil(request, pk, fis_pk):
         sil=lambda: cari_kesinti_servis.kesinti_sil(fis=fis, cari=cari, kullanici=request.user))
 
 
+def _ekstre_url(ad, cari, b, s):
+    return f"{reverse(ad, args=[cari.pk])}?baslangic={b:%Y-%m-%d}&bitis={s:%Y-%m-%d}"
+
+
 @ekran_gerekli("cariler")
 def cari_ekstresi(request, pk):
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
@@ -2116,7 +2132,79 @@ def cari_ekstresi(request, pk):
         kaynak=YevmiyeFisi.Kaynak.CARI_KESINTI, cari=cari, silindi=False).values_list("pk", flat=True))
     return render(request, "core/cari_ekstresi.html",
                   {"cari": cari, "form": form, "ekstre": eks, "kesinti_fis_pks": kesinti_fis_pks,
-                   "virman_fis_pks": cari_virman_servis.cari_virman_fisleri(cari)})
+                   "virman_fis_pks": cari_virman_servis.cari_virman_fisleri(cari),
+                   "pdf_url": _ekstre_url("core:cari_ekstre_pdf", cari, b, s), "excel_url": _ekstre_url("core:cari_ekstre_xlsx", cari, b, s),
+                   "mutabakat_url": reverse("core:cari_mutabakat_pdf", args=[cari.pk]), "bugun": tr_bugun()})
+
+
+def _ekstre_cikti_verisi(request, pk):
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    form, b, s = _tarih_araligi(request)
+    if not cari.muhasebe_kodu:
+        return cari, None, b, s
+    return cari, ekstre_devirli_servis(cari.muhasebe_kodu, b, s), b, s
+
+
+@ekran_gerekli("cariler")
+def cari_ekstre_xlsx(request, pk):
+    """Cari ekstresi Excel çıktısı (seçilen tarih aralığı; devir + hareketler + kapanış)."""
+    from core.services import cari_cikti as cari_cikti_servis
+    cari, eks, b, s = _ekstre_cikti_verisi(request, pk)
+    if eks is None:
+        messages.error(request, "Bu carinin muhasebe hesabı tanımlı değil; ekstre üretilemiyor.")
+        return redirect("core:cari_ekstresi", pk=cari.pk)
+    return _xlsx_yanit(cari_cikti_servis.ekstre_xlsx(cari, eks), f"cari_ekstre_{cari.kod}_{b:%Y%m%d}_{s:%Y%m%d}")
+
+
+def _pdf_firma_baglami():
+    """PDF başlığı için firma bilgisi + gri tonlamalı logo (b/w baskı); firma logosu yoksa statik SEMTA logosu."""
+    from django.contrib.staticfiles import finders
+    firma = firma_servis.firma_bilgisi_getir()
+    logo_bayt = None
+    if firma.logo:
+        try:
+            with firma.logo.open("rb") as f:
+                logo_bayt = f.read()
+        except Exception:
+            logo_bayt = None
+    if not logo_bayt:
+        yol = finders.find("core/img/semta-logo.png")
+        if yol:
+            with open(yol, "rb") as f:
+                logo_bayt = f.read()
+    return {"firma": firma, "logo_b64": _gri_png_b64(logo_bayt) if logo_bayt else None}
+
+
+@ekran_gerekli("cariler")
+def cari_ekstre_pdf(request, pk):
+    """Cari ekstresi PDF (A4 yatay): firma başlığı, dönem, devir, hareketler, kapanış, döviz toplamları."""
+    from weasyprint import HTML
+    cari, eks, b, s = _ekstre_cikti_verisi(request, pk)
+    if eks is None:
+        messages.error(request, "Bu carinin muhasebe hesabı tanımlı değil; ekstre üretilemiyor.")
+        return redirect("core:cari_ekstresi", pk=cari.pk)
+    html = render_to_string("core/cari_ekstre_pdf.html", {"cari": cari, "ekstre": eks, "belge_tarihi": tr_bugun(), **_pdf_firma_baglami()})
+    resp = HttpResponse(HTML(string=html).write_pdf(), content_type="application/pdf")
+    resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("cari-ekstre", cari.unvan[:40], f"{b:%Y%m%d}-{s:%Y%m%d}"))
+    resp["Cache-Control"] = "private, no-store"
+    return resp
+
+
+@ekran_gerekli("cariler")
+def cari_mutabakat_pdf(request, pk):
+    """Cari hesap MUTABAKAT MEKTUBU (A4, siyah-beyaz): ``?tarih=YYYY-MM-DD`` itibarıyla bakiye (TL + döviz), firma başlığı, mutabık/mutabık değil kutuları, imza alanları."""
+    from weasyprint import HTML
+    from core.services import cari_cikti as cari_cikti_servis
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    tarih = _iso_tarih(request.GET.get("tarih")) or tr_bugun()
+    if not cari.muhasebe_kodu:
+        messages.error(request, "Bu carinin muhasebe hesabı tanımlı değil; mutabakat mektubu üretilemiyor.")
+        return redirect("core:cari_ekstresi", pk=cari.pk)
+    ctx = {"cari": cari, "tarih": tarih, "belge_tarihi": tr_bugun(), **cari_cikti_servis.mutabakat_baglami(cari, tarih), **_pdf_firma_baglami()}
+    resp = HttpResponse(HTML(string=render_to_string("core/cari_mutabakat_pdf.html", ctx)).write_pdf(), content_type="application/pdf")
+    resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("mutabakat", cari.unvan[:40], f"{tarih:%Y%m%d}"))
+    resp["Cache-Control"] = "private, no-store"
+    return resp
 
 
 # === FİNANS — Kasa ===

@@ -149,7 +149,7 @@ class PasifCariTest(FaturaTestTemel):
         self.client.force_login(self.su)
         r = self.client.get(reverse("core:cariler"))
         self.assertNotContains(r, "PASIFFF CARI")
-        self.assertContains(r, "Pasifleri göster (1)")
+        self.assertContains(r, "Pasif dahil (1)")
         r = self.client.get(reverse("core:cariler") + "?pasif=1")
         self.assertContains(r, "PASIFFF CARI")
         self.assertContains(r, "crl-pasif-rozet")

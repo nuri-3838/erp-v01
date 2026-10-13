@@ -1,0 +1,110 @@
+{% load core_extras %}<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  /* A4 dikey, SİYAH-BEYAZ: renkli başlık/çerçeve/zemin yok; logo gri tonlamalı. */
+  @page { size: A4 portrait; margin: 16mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; color: #000; font-size: 10.5px; line-height: 1.45; margin: 0; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 8px; border-bottom: 1.4px solid #000; }
+  .brand { display: flex; align-items: center; gap: 10px; max-width: 62%; }
+  .brand img { height: 40px; filter: grayscale(100%); }
+  .brand .ad { font-size: 12px; font-weight: 700; }
+  .brand .ad small { display: block; font-size: 8.6px; font-weight: 400; white-space: pre-line; }
+  .doc { text-align: right; }
+  .doc h1 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; }
+  .doc .meta { margin-top: 3px; font-size: 10px; }
+  .alici { margin-top: 18px; }
+  .alici .unvan { font-size: 12px; font-weight: 700; }
+  .metin { margin: 14px 0 10px; text-align: justify; }
+  table.bakiye { width: 100%; border-collapse: collapse; margin: 6px 0 14px; }
+  table.bakiye th, table.bakiye td { border: 0.8px solid #000; padding: 6px 8px; }
+  table.bakiye th { font-size: 9px; text-transform: uppercase; letter-spacing: .3px; text-align: left; }
+  table.bakiye td.sag, table.bakiye th.sag { text-align: right; }
+  table.bakiye td.tutar { font-size: 12px; font-weight: 700; }
+  .cevap { border: 0.8px solid #000; padding: 10px 12px; margin-top: 8px; }
+  .cevap h2 { margin: 0 0 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; }
+  .kutu { display: inline-block; width: 12px; height: 12px; border: 1px solid #000; vertical-align: -2px; margin-right: 6px; }
+  .cevap .satir { margin: 7px 0; }
+  .cevap .yaz { display: inline-block; border-bottom: 0.8px dotted #000; min-width: 200px; height: 12px; vertical-align: bottom; }
+  .imza { display: flex; gap: 14px; margin-top: 18px; }
+  .imza .kol { flex: 1; border: 0.8px solid #000; padding: 8px 10px 10px; min-height: 120px; }
+  .imza .rol { font-weight: 700; font-size: 10.5px; border-bottom: 0.8px solid #000; padding-bottom: 4px; margin-bottom: 8px; }
+  .imza .satir { display: flex; gap: 6px; margin-top: 12px; font-size: 9.6px; align-items: flex-end; }
+  .imza .satir span:first-child { min-width: 62px; }
+  .imza .satir .bos { flex: 1; border-bottom: 0.8px dotted #000; height: 12px; }
+  .imza .satir.alan .bos { height: 38px; }
+  .not { margin-top: 12px; font-size: 8.6px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="logo">{% endif %}
+      <div class="ad">{{ firma.unvan|default:"SEMTA" }}<small>{{ firma.adres|default:"" }}{% if firma.vergi_dairesi or firma.vergi_no %}
+V.D.: {{ firma.vergi_dairesi }} · VKN: {{ firma.vergi_no }}{% endif %}{% if firma.telefon or firma.eposta %}
+{{ firma.telefon }}{% if firma.telefon and firma.eposta %} · {% endif %}{{ firma.eposta }}{% endif %}</small></div>
+    </div>
+    <div class="doc">
+      <h1>Cari Hesap Mutabakat Mektubu</h1>
+      <div class="meta">Düzenleme tarihi: <b>{{ belge_tarihi|date:"d.m.Y" }}</b></div>
+      <div class="meta">Bakiye tarihi: <b>{{ tarih|date:"d.m.Y" }}</b></div>
+    </div>
+  </div>
+
+  <div class="alici">
+    <div>Sayın</div>
+    <div class="unvan">{{ cari.unvan }}</div>
+    {% if cari.adres %}<div>{{ cari.adres }}</div>{% endif %}
+    {% if cari.vergi_dairesi or cari.vkn_tckn %}<div>{% if cari.vergi_dairesi %}V.D.: {{ cari.vergi_dairesi }}{% endif %}{% if cari.vkn_tckn %} · VKN/TCKN: {{ cari.vkn_tckn }}{% endif %}</div>{% endif %}
+    <div>Cari kodu: {{ cari.kod }}</div>
+  </div>
+
+  <p class="metin">Şirketimiz kayıtlarına göre <b>{{ tarih|date:"d.m.Y" }}</b> tarihi itibarıyla cari hesabınızın bakiyesi aşağıda gösterilmiştir.
+    Bakiyeyi kendi kayıtlarınızla karşılaştırmanızı, mutabık olup olmadığınızı aşağıdaki bölümü işaretleyerek ve kaşe/imza ile onaylayarak
+    tarafımıza iletmenizi rica ederiz.</p>
+
+  <table class="bakiye">
+    <thead><tr><th>Para birimi</th><th class="sag">Bakiye</th><th>Durum</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>TL</td>
+        <td class="sag tutar">{% if tl < 0 %}{{ tl|tr_para|cut:"-" }}{% else %}{{ tl|tr_para }}{% endif %}</td>
+        <td>{% if tl > 0 %}Bizim alacağımız (hesabınız BORÇ bakiyesi verir){% elif tl < 0 %}Bizim borcumuz (hesabınız ALACAK bakiyesi verir){% else %}Bakiye yok{% endif %}</td>
+      </tr>
+      {% for pb, net in doviz %}
+        <tr>
+          <td>{{ pb }}</td>
+          <td class="sag tutar">{% if net < 0 %}{{ net|tr_para|cut:"-" }}{% else %}{{ net|tr_para }}{% endif %}</td>
+          <td>{% if net > 0 %}Bizim alacağımız (hesabınız BORÇ bakiyesi verir){% else %}Bizim borcumuz (hesabınız ALACAK bakiyesi verir){% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="cevap">
+    <h2>Karşı taraf cevabı</h2>
+    <div class="satir"><span class="kutu"></span>Yukarıdaki bakiye ile <b>MUTABIKIZ</b>.</div>
+    <div class="satir"><span class="kutu"></span>Yukarıdaki bakiye ile <b>MUTABIK DEĞİLİZ</b>. Kayıtlarımıza göre bakiye: <span class="yaz"></span></div>
+    <div class="satir">Açıklama: <span class="yaz" style="min-width:420px"></span></div>
+    <div class="satir"><span class="yaz" style="min-width:100%"></span></div>
+  </div>
+
+  <div class="imza">
+    <div class="kol">
+      <div class="rol">Düzenleyen — {{ firma.unvan|default:"SEMTA" }}</div>
+      <div class="satir"><span>Ad Soyad</span><span class="bos"></span></div>
+      <div class="satir"><span>Tarih</span><span class="bos"></span></div>
+      <div class="satir alan"><span>İmza / Kaşe</span><span class="bos"></span></div>
+    </div>
+    <div class="kol">
+      <div class="rol">Karşı taraf — {{ cari.unvan|truncatechars:40 }}</div>
+      <div class="satir"><span>Ad Soyad</span><span class="bos"></span></div>
+      <div class="satir"><span>Tarih</span><span class="bos"></span></div>
+      <div class="satir alan"><span>İmza / Kaşe</span><span class="bos"></span></div>
+    </div>
+  </div>
+  <div class="not">Bakiyeler cari hesap kayıtlarından {{ tarih|date:"d.m.Y" }} tarihi (dahil) itibarıyla hesaplanmıştır; döviz hesaplarda bakiye ilgili para birimi cinsindendir.</div>
+</body>
+</html>

@@ -887,7 +887,7 @@ class Sehir(TemelModel):
 class CariKategori(TemelModel):
     """Cari kategorisi (CARİLER) — 2 seviye: ÜST (ust=None) → ALT. Kod ve ad, bağlı olduğu
     üst grup içinde benzersiz. ``kod_yolu`` üstten alta kodları '-' ile birleştirir
-    (örn. 320-10) — cari kodu Faz 3'te bundan türetilecek.
+    (örn. 320-10) — cari kodu bundan türetilir (services.cari.sonraki_cari_kodu).
     """
 
     ad = models.CharField("ad", max_length=100)
@@ -926,7 +926,7 @@ class CariKategori(TemelModel):
 class Cari(TemelModel):
     """Cari kartı (CARİLER) — müşteri/tedarikçi. ``kod`` kategori kod yolundan otomatik
     (örn. 320-10-0001), kategorisizse CAR-NNNN.
-    Cari hesap hareketi/ekstre Faz 4 (finans gerektirir).
+    Cari hesap hareketi/ekstre/bakiye yevmiyeden hesaplanır (services.cari_ozet, services.raporlar.ekstre_devirli).
     """
 
     PARA_CHOICES = YevmiyeSatir.IslemPB.choices   # TRY/USD/EUR/GBP

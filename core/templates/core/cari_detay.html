@@ -32,13 +32,22 @@
   #sek-yetkili:checked ~ .sek-bar label[for="sek-yetkili"],
   #sek-sevk:checked ~ .sek-bar label[for="sek-sevk"],
   #sek-aktivite:checked ~ .sek-bar label[for="sek-aktivite"],
+  #sek-belge:checked ~ .sek-bar label[for="sek-belge"],
   #sek-kayit:checked ~ .sek-bar label[for="sek-kayit"] {
     background:linear-gradient(135deg,var(--turuncu),var(--turuncu-koyu)); color:#fff; border-color:transparent;
     box-shadow:0 6px 14px rgba(213,110,0,.32); }
   #sek-bilgi:checked ~ #panel-bilgi, #sek-banka:checked ~ #panel-banka,
   #sek-yetkili:checked ~ #panel-yetkili, #sek-sevk:checked ~ #panel-sevk,
-  #sek-aktivite:checked ~ #panel-aktivite,
+  #sek-aktivite:checked ~ #panel-aktivite, #sek-belge:checked ~ #panel-belge,
   #sek-kayit:checked ~ #panel-kayit { display:block; }
+  .ozet-serit { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:.8rem; }
+  .ozet-kutu { background:#fff; border:1px solid var(--cizgi); border-radius:16px; padding:.8rem 1rem; box-shadow:var(--golge-sm, 0 1px 3px rgba(0,0,0,.05)); }
+  .ozet-kutu .et { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .ozet-kutu .dg { font-size:1.25rem; font-weight:750; margin-top:.15rem; font-family:"Cascadia Mono",Consolas,monospace; }
+  .ozet-kutu .alt { font-size:.78rem; color:var(--metin-soluk); margin-top:.15rem; }
+  .ozet-kutu .dg.kucuk { font-size:1rem; }
+  .bk-b { color:#0b6b3f; } .bk-a { color:#b1122c; }
+  .gecikme { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#fde7ea; color:#b1122c; }
   .kv { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem 1.6rem; }
   @media (max-width:680px){ .kv { grid-template-columns:1fr; } }
   .kv .satir { display:flex; flex-direction:column; gap:.15rem; }
@@ -112,12 +121,53 @@
     </div>
   </div>
 
+  <div class="ozet-serit">
+    <div class="ozet-kutu"><div class="et">Bakiye (TL)</div>
+      <div class="dg {% if ozet.tl > 0 %}bk-b{% elif ozet.tl < 0 %}bk-a{% endif %}">{% if ozet.tl %}{{ ozet.tl|tr_bakiye }}{% else %}0,00{% endif %}</div>
+      <div class="alt">{% if ozet.tl > 0 %}cari bize borçlu{% elif ozet.tl < 0 %}biz cariye borçluyuz{% else %}bakiye yok{% endif %}</div></div>
+    <div class="ozet-kutu"><div class="et">Döviz bakiyeleri</div>
+      {% for pb, net in ozet.doviz %}<div class="dg kucuk {% if net > 0 %}bk-b{% else %}bk-a{% endif %}">{{ net|tr_bakiye }} {{ pb }}</div>{% empty %}<div class="dg kucuk">—</div>{% endfor %}</div>
+    <div class="ozet-kutu"><div class="et">Açık fatura</div>
+      {% for pb, tutar in ozet.acik.toplam.items %}<div class="dg kucuk">{{ tutar|tr_para }} {{ pb }}</div>{% empty %}<div class="dg kucuk">—</div>{% endfor %}
+      <div class="alt">{{ ozet.acik_fatura_adedi }} fatura{% for pb, tutar in ozet.acik.vadesi_gecen.items %} · <span class="gecikme">vadesi geçen {{ tutar|tr_para }} {{ pb }}</span>{% endfor %}</div></div>
+    <div class="ozet-kutu"><div class="et">Son hareket</div>
+      {% if ozet.son %}<div class="dg kucuk">{{ ozet.son.tarih|date:"d.m.Y" }}</div>
+        <div class="alt"><a href="{% url 'core:fis_detay' ozet.son.fis_pk %}">fiş {{ ozet.son.fis_no }}</a>{% if ozet.son.aciklama %} · {{ ozet.son.aciklama }}{% endif %}</div>
+      {% else %}<div class="dg kucuk">—</div><div class="alt">hareket yok</div>{% endif %}</div>
+  </div>
+
+  {% if ozet.acik.satirlar %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">🧾</span>Açık Faturalar</h2>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Fatura</th><th>Tarih</th><th>Vade</th><th class="sag">Tutar</th><th class="sag">Kalan</th><th></th></tr></thead>
+      <tbody>
+        {% for k in ozet.acik.satirlar %}
+          <tr>
+            <td><a href="{% url 'core:fatura_detay' k.fatura.pk %}">{{ k.fatura.fatura_no|default:"—" }}</a> <span class="yardim">{{ k.fatura.tip.ad|default:"" }}</span></td>
+            <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
+            <td class="mono">{% if k.vade %}{{ k.vade|date:"d.m.Y" }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+            <td class="sag mono">{{ k.tutar|tr_para }} {{ k.pb }}</td>
+            <td class="sag mono"><strong>{{ k.kalan|tr_para }} {{ k.pb }}</strong></td>
+            <td>{% if k.gecikme %}<span class="gecikme">{{ k.gecikme }} gün gecikti</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="yardim">Kalan tutar: cari hesaptaki ödeme/tahsilat/mahsup, aynı para biriminde EN ESKİ faturadan başlayarak düşülür (faturalara özel ödeme eşleştirmesi tutulmaz).
+      {% for pb, tutar in ozet.acik.esitlenmemis.items %}Faturaya eşleşmeyen ödeme/alacak: <strong>{{ tutar|tr_para }} {{ pb }}</strong> (avans / fazla ödeme). {% endfor %}</p>
+  </section>
+  {% endif %}
+
   <section class="icerik-kart">
     <input type="radio" name="cari-sekme" id="sek-bilgi" class="sek-radio" checked>
     <input type="radio" name="cari-sekme" id="sek-banka" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-yetkili" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-sevk" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-aktivite" class="sek-radio">
+    <input type="radio" name="cari-sekme" id="sek-belge" class="sek-radio">
     <input type="radio" name="cari-sekme" id="sek-kayit" class="sek-radio">
     <div class="sek-bar">
       <label for="sek-bilgi">📋 Bilgiler</label>
@@ -125,6 +175,7 @@
       <label for="sek-yetkili">👤 Yetkili Kişiler ({{ yetkililer|length }})</label>
       <label for="sek-sevk">🚚 Sevk Adresleri ({{ sevk_adresleri|length }})</label>
       <label for="sek-aktivite">🗓️ Aktiviteler ({{ aktiviteler|length }})</label>
+      <label for="sek-belge">📑 Belgeler ({{ belgeler|length }})</label>
       <label for="sek-kayit">🕓 Kayıt Bilgisi</label>
     </div>
 
@@ -280,6 +331,29 @@
       {% empty %}
         <p class="yardim">Henüz aktivite yok. “+ Aktivite Ekle” ile ilk görüşme/temas kaydını girin.</p>
       {% endfor %}
+    </div>
+
+    <div class="sek-panel" id="panel-belge">
+      <div class="sayfa-ust"><h2 class="bolum-baslik"><span class="emoji">📑</span>Belgeler</h2></div>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Tarih</th><th>Tür</th><th>Belge no</th><th>Durum</th><th class="sag">Tutar (KDV dahil)</th></tr></thead>
+        <tbody>
+          {% for b in belgeler %}
+            <tr>
+              <td class="mono">{{ b.tarih|date:"d.m.Y" }}</td>
+              <td>{{ b.tur }}</td>
+              <td><a href="{{ b.url }}" class="mono">{{ b.no }}</a></td>
+              <td>{{ b.durum }}</td>
+              <td class="sag mono">{{ b.tutar|tr_para }} {{ b.pb }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="yardim">Bu cariye ait teklif, sipariş, irsaliye veya fatura yok.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="yardim">Teklif, proforma, sipariş, irsaliye ve faturalar tek listede, en yeni üstte.</p>
     </div>
 
     <div class="sek-panel" id="panel-kayit">

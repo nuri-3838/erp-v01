@@ -1,151 +1,135 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
 {% block baslik %}Cariler · ERP v0.1{% endblock %}
 {% block sayfa_adi %}Cariler{% endblock %}
 
 {% block content %}
 <style>
   .crl-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .crl-ust .crl-aksiyon { display:flex; gap:.5rem; flex-wrap:wrap; }
   .crl-arama-cubuk { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:.6rem; }
   .crl-arama-kutu { position:relative; flex:1 1 20rem; }
   .crl-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
     border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
     font-size:.95rem; transition:border-color .15s, box-shadow .15s; }
-  .crl-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
-    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
-  .crl-arama-ikon { position:absolute; left:.85rem; top:50%; transform:translateY(-50%);
-    font-size:1rem; opacity:.55; pointer-events:none; }
-  .crl-arama-temizle { display:none; }
-  .crl-arama-temizle.gorunur { display:inline-flex; }
+  .crl-arama-kutu input:focus { outline:none; border-color:var(--turuncu); box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
+  .crl-arama-ikon { position:absolute; left:.85rem; top:50%; transform:translateY(-50%); font-size:1rem; opacity:.55; pointer-events:none; }
 
   .crl-filtre-satir { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
   .crl-filtre-satir select { min-height:40px; padding:.4rem 2rem .4rem .85rem; border-radius:12px;
-    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.86rem;
-    color:var(--metin); max-width:16rem; }
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.86rem; color:var(--metin); max-width:15rem; }
   .crl-filtre-satir select:focus { outline:none; border-color:var(--turuncu); }
+  .crl-onay { display:inline-flex; align-items:center; gap:.35rem; font-size:.86rem; font-weight:600; color:var(--metin-soluk); cursor:pointer; }
+  .crl-onay input { width:auto; }
 
   .crl-hucre { display:flex; align-items:center; gap:.65rem; }
   .crl-ikon { width:38px; height:38px; border-radius:11px; flex:0 0 auto; display:grid; place-items:center;
-    font-size:1.05rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
-    border:1px solid rgba(33,56,95,.08); }
+    font-size:1.05rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06)); border:1px solid rgba(33,56,95,.08); }
   .crl-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
-  .crl-hucre .ad a { color:inherit; text-decoration:none; }
-  .crl-hucre .ad a:hover { color:var(--turuncu-koyu); }
   .crl-hucre .kod { font-size:.78rem; color:var(--metin-soluk); font-family:"Cascadia Mono",Consolas,monospace; }
-
-  .crl-satir[hidden] { display:none; }
   .crl-satir.pasif-satir { opacity:.6; }
-  .crl-pasif-rozet { display:inline-block; margin-left:.4rem; font-size:.68rem; font-weight:700; padding:.1rem .45rem; border-radius:999px;
-    background:#fde7ea; color:#b1122c; vertical-align:middle; }
-  .crl-pasif-sec { display:inline-flex; align-items:center; gap:.35rem; font-size:.86rem; font-weight:600; color:var(--metin-soluk); cursor:pointer; }
-  .crl-pasif-sec input { width:auto; }
-  .crl-bos-js { display:none; }
-  .crl-bos-js.gorunur { display:table-row; }
-
+  .crl-pasif-rozet { display:inline-block; margin-left:.4rem; font-size:.68rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#fde7ea; color:#b1122c; vertical-align:middle; }
+  #crl-tablo th a { color:inherit; text-decoration:none; white-space:nowrap; }
+  #crl-tablo th a:hover { color:var(--turuncu-koyu); }
   #crl-tablo td:nth-child(2) .rozet { white-space:normal; text-align:left; line-height:1.3; }
+  .bk-b { color:#0b6b3f; font-weight:650; }          /* borç bakiye: cari bize borçlu */
+  .bk-a { color:#b1122c; font-weight:650; }          /* alacak bakiye: biz cariye borçluyuz */
+  .crl-dvz div { white-space:nowrap; }
+  .crl-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem; margin-top:1rem; flex-wrap:wrap; }
+  .crl-sayfalama a, .crl-sayfalama span.simdiki { display:inline-flex; align-items:center; justify-content:center; min-width:2.3rem; height:2.3rem; padding:0 .5rem;
+    border-radius:10px; text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .crl-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .crl-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
 </style>
 
 <div class="crl-ust">
   <h1 class="ust-baslik"><span class="emoji">🧑‍💼</span>Cariler</h1>
-  <a class="dugme" href="{% url 'core:cari_ekle' %}">+ Yeni Cari</a>
+  <div class="crl-aksiyon">
+    <a class="dugme-ikincil" href="{{ xlsx_url }}" title="Filtrelenmiş listenin tamamı">⬇ Excel</a>
+    <a class="dugme" href="{% url 'core:cari_ekle' %}">+ Yeni Cari</a>
+  </div>
 </div>
 
 <form method="get" id="crl-arama-form">
   <div class="crl-arama-cubuk">
     <div class="crl-arama-kutu">
       <span class="crl-arama-ikon">🔍</span>
-      <input type="text" id="crl-arama" name="ara" value="{{ ara }}"
-             placeholder="Unvan, kod veya VKN/TCKN ara…" autocomplete="off">
+      <input type="text" id="crl-arama" name="ara" value="{{ ara }}" placeholder="Ünvan, kod, VKN/TCKN, telefon, yetkili, e-posta veya şehir ara…" autocomplete="off">
     </div>
+    {% if sirala != "cari" or yon != "asc" %}<input type="hidden" name="sirala" value="{{ sirala }}"><input type="hidden" name="yon" value="{{ yon }}">{% endif %}
     <button type="submit" class="birincil">Ara</button>
-    <a class="iptal-bag crl-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke or pasif_goster %} gorunur{% endif %}"
-       id="crl-arama-temizle" href="{% url 'core:cariler' %}">Temizle</a>
+    {% if aktif_filtre or sirala != "cari" or yon != "asc" %}<a class="iptal-bag" href="{% url 'core:cariler' %}">Temizle</a>{% endif %}
   </div>
   <div class="crl-filtre-satir">
+    <select name="bakiye" onchange="this.form.submit()" title="Bakiye durumu">
+      {% for k, v in bakiye_secenekleri %}<option value="{{ k }}"{% if bakiye == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+    <select name="tur" onchange="this.form.submit()" title="Ticari / Diğer">
+      {% for k, v in tur_secenekleri %}<option value="{{ k }}"{% if tur == k %} selected{% endif %}>{% if not k %}Ticari + Diğer{% else %}{{ v }}{% endif %}</option>{% endfor %}
+    </select>
     <select name="kategori" onchange="this.form.submit()">
       <option value="">Tüm Kategoriler</option>
-      {% for k in kategoriler %}
-        <option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ad }}</option>
-      {% endfor %}
+      {% for k in kategoriler %}<option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ad }}</option>{% endfor %}
     </select>
     <select name="sehir" onchange="this.form.submit()">
       <option value="">Tüm Şehirler</option>
-      {% for s in sehirler %}
-        <option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>
-      {% endfor %}
+      {% for s in sehirler %}<option value="{{ s.pk }}" {% if secili_sehir == s.pk|stringformat:"s" %}selected{% endif %}>{{ s.ad }}</option>{% endfor %}
     </select>
     <select name="ulke" onchange="this.form.submit()">
       <option value="">Tüm Ülkeler</option>
-      {% for u in ulkeler %}
-        <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
-      {% endfor %}
+      {% for u in ulkeler %}<option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>{% endfor %}
     </select>
-    <label class="crl-pasif-sec"><input type="checkbox" name="pasif" value="1" {% if pasif_goster %}checked{% endif %} onchange="this.form.submit()"> Pasifleri göster{% if pasif_sayisi %} ({{ pasif_sayisi }}){% endif %}</label>
+    <label class="crl-onay"><input type="checkbox" name="doviz" value="1" {% if doviz %}checked{% endif %} onchange="this.form.submit()"> Dövizli</label>
+    <label class="crl-onay"><input type="checkbox" name="pasif" value="1" {% if pasif_goster %}checked{% endif %} onchange="this.form.submit()"> Pasif dahil{% if pasif_sayisi %} ({{ pasif_sayisi }}){% endif %}</label>
   </div>
 </form>
 
-<p class="sayfa-alt"><span id="crl-sayac-sayi">{{ cariler|length }}</span> cari kayıtlı.</p>
+<p class="sayfa-alt">{{ toplam_adet }} cari{% if sayfa.paginator.num_pages > 1 %} · sayfa {{ sayfa.number }} / {{ sayfa.paginator.num_pages }}{% endif %}.
+  <span class="yardim">Bakiye: <span class="bk-b">B</span> = Borç (cari bize borçlu), <span class="bk-a">A</span> = Alacak (biz cariye borçluyuz).</span></p>
 
 <div class="tablo-kapsayici genis">
 <table id="crl-tablo">
   <thead>
-    <tr><th>Cari</th><th>Kategori</th><th>Şehir / Ülke</th></tr>
+    <tr>
+      <th><a href="{{ siralama.cari.url }}">Cari{{ siralama.cari.isaret }}</a></th>
+      <th><a href="{{ siralama.kategori.url }}">Kategori{{ siralama.kategori.isaret }}</a></th>
+      <th><a href="{{ siralama.sehir.url }}">Şehir / Ülke{{ siralama.sehir.isaret }}</a></th>
+      <th class="sag"><a href="{{ siralama.bakiye.url }}">Bakiye TL{{ siralama.bakiye.isaret }}</a></th>
+      <th class="sag">Bakiye Döviz</th>
+      <th><a href="{{ siralama.hareket.url }}">Son Hareket{{ siralama.hareket.isaret }}</a></th>
+    </tr>
   </thead>
   <tbody>
-    {% for c in cariler %}
+    {% for s in satirlar %}{% with c=s.cari %}
       <tr class="crl-satir{% if not c.aktif %} pasif-satir{% endif %}" data-href="{% url 'core:cari_detay' c.pk %}">
         <td>
           <div class="crl-hucre">
             <span class="crl-ikon">🧑‍💼</span>
             <div>
-              <div class="ad"><a href="{% url 'core:cari_detay' c.pk %}">{{ c.unvan }}</a>{% if not c.aktif %}<span class="crl-pasif-rozet">PASİF</span>{% endif %}</div>
+              <div class="ad"><a class="satir-bag" href="{% url 'core:cari_detay' c.pk %}">{{ c.unvan }}</a>{% if not c.aktif %}<span class="crl-pasif-rozet">PASİF</span>{% endif %}</div>
               <div class="kod">{{ c.kod }}</div>
             </div>
           </div>
         </td>
         <td>{% if c.kategori %}<span class="rozet rozet-notr">{{ c.kategori.ad }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td>{% if c.sehir %}{{ c.sehir.ad }}{% endif %}{% if c.ulke %} <span class="mono yardim">({{ c.ulke.kod }})</span>{% endif %}{% if not c.sehir and not c.ulke %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="sag mono">{% if s.tl > 0 %}<span class="bk-b">{{ s.tl|tr_bakiye }}</span>{% elif s.tl < 0 %}<span class="bk-a">{{ s.tl|tr_bakiye }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="sag mono crl-dvz">{% for m in s.doviz_metin %}<div>{{ m }}</div>{% empty %}<span class="pasif">—</span>{% endfor %}</td>
+        <td class="mono">{% if s.son %}{{ s.son|date:"d.m.Y" }}{% else %}<span class="pasif">—</span>{% endif %}</td>
       </tr>
-    {% empty %}
-      <tr><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or secili_kategori or secili_sehir or secili_ulke or pasif_goster %}🔍 Eşleşen cari yok.
-        {% else %}🧑‍💼 Henüz cari yok. “+ Yeni Cari” ile ekleyin.{% endif %}</td></tr>
+    {% endwith %}{% empty %}
+      <tr><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
+        {% if aktif_filtre %}🔍 Eşleşen cari yok.{% else %}🧑‍💼 Henüz cari yok. “+ Yeni Cari” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
-    <tr class="crl-bos-js"><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">
-      🔍 Eşleşen cari yok.</td></tr>
   </tbody>
 </table>
 </div>
 
-<script>
-(function(){
-  var girdi = document.getElementById('crl-arama');
-  var satirlar = Array.prototype.slice.call(document.querySelectorAll('.crl-satir'));
-  var bosSatir = document.querySelector('.crl-bos-js');
-  var sayacSayi = document.getElementById('crl-sayac-sayi');
-  var temizle = document.getElementById('crl-arama-temizle');
-  if(!girdi || !satirlar.length) return;
-
-  // Aranabilir metin satırın kendi görünen içeriğinden türetilir (TR-uyumlu küçük harf,
-  // sunucudan gelen |lower filtresine güvenilmez -- Python .lower() İ/I harflerini
-  // yanlış çevirir, arama sorgusundaki toLocaleLowerCase('tr') ile eşleşmeyebilir).
-  satirlar.forEach(function(tr){
-    tr.dataset.arama = tr.textContent.toLocaleLowerCase('tr');
-  });
-
-  function filtrele(){
-    var q = girdi.value.trim().toLocaleLowerCase('tr');
-    var n = 0;
-    satirlar.forEach(function(tr){
-      var gorunsun = !q || tr.dataset.arama.indexOf(q) > -1;
-      tr.hidden = !gorunsun;
-      if(gorunsun) n++;
-    });
-    if(bosSatir) bosSatir.classList.toggle('gorunur', n === 0 && !!q);
-    if(sayacSayi) sayacSayi.textContent = n;
-    if(temizle) temizle.classList.toggle('gorunur', !!q || temizle.classList.contains('gorunur'));
-  }
-  girdi.addEventListener('input', filtrele);
-  if(girdi.value) filtrele();
-})();
-</script>
+{% if sayfa.has_other_pages %}
+<nav class="crl-sayfalama">
+  {% if sayfa.has_previous %}<a href="?{% if sabit_qs %}{{ sabit_qs }}&{% endif %}sayfa={{ sayfa.previous_page_number }}">‹</a>{% endif %}
+  <span class="simdiki">{{ sayfa.number }} / {{ sayfa.paginator.num_pages }}</span>
+  {% if sayfa.has_next %}<a href="?{% if sabit_qs %}{{ sabit_qs }}&{% endif %}sayfa={{ sayfa.next_page_number }}">›</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}

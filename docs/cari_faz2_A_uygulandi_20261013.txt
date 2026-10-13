@@ -1,0 +1,43 @@
+CARİLER FAZ 2 / A — UYGULAMA KAYDI (2026-10-13, kullanıcı onaylı; canlı)
+================================================================
+Eski değerler aşağıdaki çıktıda kayıtlıdır (geri dönüş için).
+
+== A1) silinmiş 3 kartın kod + muhasebe kodu boşaltılır
+   pk=18 KREZ: ESKİ kod='120-20-0001' muhasebe_kodu='120.20.0001'
+      YENİ kod='' muhasebe_kodu='' | hesap 120.20.0001 aktif karta bağlı, bakiye 0.00 aynı
+   pk=7 KKB KREDİ KAYIT BÜROSU A.Ş.: ESKİ kod='320-60-0001' muhasebe_kodu='320.60.0001'
+      YENİ kod='' muhasebe_kodu='' | hesap 320.60.0001 aktif karta bağlı, bakiye -0.01 aynı
+   pk=21 MUHTELİF MÜŞTERİ: ESKİ kod='120-10-0004-IPTAL' muhasebe_kodu='120.10.0004'
+      YENİ kod='' muhasebe_kodu='' | hesap 120.10.0004 aktif karta bağlı, bakiye 21666.54 aynı
+== A2) SST-2026-0011 iptal
+   ESKİ durum=GONDERILDI silindi=False kalem=11
+   YENİ durum=IPTAL silindi=False
+== A3) VERİ VERDE
+   vkn_tckn: ESKİ '9240450089' -> YENİ '9240459089'
+   vergi_dairesi: ESKİ 'ERCİYES' -> YENİ 'ERCİYES'
+   adres: ESKİ 'YILDIRIM BEYAZIT MAH. AŞIK VEYSEL BULVARI ERCİYES TEKNOLOJİ GELİŞTİRME VE İNKÜBATÖR MERKEZİ NO:2 BİNA KAPI NO:65/4 MELİKGAZİ 38140' -> YENİ 'YILDIRIM BEYAZIT MAH. AŞIK VEYSEL BULVARI ERCİYES TEKNOLOJİ GELİŞTİRME VE İNKÜBATÖR MERKEZİ NO:2 BİNA KAPI NO:65/4, 38140 MELİKGAZİ / KAYSERİ / TÜRKİYE'
+   telefon: ESKİ '+90 352 224 11 01' -> YENİ '+90 352 224 11 01'
+   eposta: ESKİ 'info@veriverde.com.tr' -> YENİ 'info@veriverde.com.tr'
+   web: ESKİ 'https://www.veriverde.com.tr' -> YENİ 'https://www.veriverde.com.tr'
+   MERKEZ ADRES sevk: ESKİ 'YILDIRIM BEYAZIT MAH. AŞIK VEYSEL BULVARI ERCİYES TEKNOLOJİ GELİŞTİRME VE İNKÜBATÖR MERKEZİ NO:2 BİNA KAPI NO:65/4 MELİKGAZİ 38140'
+   MERKEZ ADRES sevk: YENİ 'YILDIRIM BEYAZIT MAH. AŞIK VEYSEL BULVARI ERCİYES TEKNOLOJİ GELİŞTİRME VE İNKÜBATÖR MERKEZİ NO:2 BİNA KAPI NO:65/4, 38140 MELİKGAZİ / KAYSERİ / TÜRKİYE' (varsayılan=True)
+== B-ek) ülke adı düzeltmesi (yalnız ad)
+   pk=44 kod=TR: ESKİ ad='TÜRKIYE' | bağlı cari/şehir: (113, 81)
+   YENİ ad='TÜRKİYE' (pk/kod/bağlantılar aynı)
+== COMMIT EDİLDİ
+
+---- Ülke/şehir adı denetimi (salt-okunur; DOKUNULMADI) ----
+ülke: 54 | şehir: 374
+-- ÜLKE: kural/karakter sorunları
+-- ÜLKE: 'I' içeren adlar (İ/I kontrolü için gözle bakılacak):
+   [('US', 'AMERIKA BIRLEŞIK DEVLETLERI'), ('BE', 'BELÇIKA'), ('GB', 'BIRLEŞIK KRALLIK'), ('BR', 'BREZILYA'), ('BG', 'BULGARISTAN'), ('DZ', 'CEZAYIR'), ('CN', 'ÇIN'), ('GE', 'GÜRCISTAN'), ('IN', 'HINDISTAN'), ('IQ', 'IRAK'), ('IL', 'İSRAIL'), ('CH', 'İSVIÇRE'), ('KZ', 'KAZAKISTAN'), ('LY', 'LIBYA'), ('MX', 'MEKSIKA'), ('EG', 'MISIR'), ('UZ', 'ÖZBEKISTAN'), ('PK', 'PAKISTAN'), ('SG', 'SINGAPUR'), ('RS', 'SIRBİSTAN'), ('SY', 'SURIYE'), ('SA', 'SUUDI ARABISTAN'), ('TM', 'TÜRKMENISTAN'), ('GR', 'YUNANISTAN')]
+-- ŞEHİR: kural/karakter sorunları
+   37 AZ 'SUMQAYIT' ['beklenmeyen karakter Q']
+   47 BE 'LİÈGE' ['beklenmeyen karakter È']
+   65 BR 'SÃO PAULO' ['beklenmeyen karakter Ã', 'bozuk kodlama (mojibake) şüphesi']
+   176 CA 'QUEBEC' ['beklenmeyen karakter Q']
+   77 CN 'ÇONGQİNG' ['beklenmeyen karakter Q']
+-- ŞEHİR (TR): 81 il listesindeki doğru yazımdan FARKLI olanlar (kaba eşleşme var ama yazım farklı):
+  toplam: 0
+-- ŞEHİR (TR): 81 il dışındaki adlar (ilçe/başka yazım olabilir): []
+-- ŞEHİR: 'I' içeren, TR dışı adlar: [('AT', 'INNSBRUCK'), ('AZ', 'SUMQAYIT'), ('KR', 'INCHEON'), ('KZ', 'ALMATI'), ('KZ', 'ŞIMKENT'), ('RO', 'IAŞİ')]

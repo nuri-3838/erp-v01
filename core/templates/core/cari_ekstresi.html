@@ -21,6 +21,16 @@
   {% if form.non_field_errors %}<div class="hata">{% for e in form.non_field_errors %}{{ e }}{% endfor %}</div>{% endif %}
 </form>
 
+<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.4rem 0 .8rem">
+  <a class="dugme-ikincil" href="{{ pdf_url }}" target="_blank">📄 PDF</a>
+  <a class="dugme-ikincil" href="{{ excel_url }}">⬇ Excel</a>
+  <form method="get" action="{{ mutabakat_url }}" target="_blank" style="display:inline-flex;gap:.4rem;align-items:center;margin:0">
+    <label for="mut-tarih" class="yardim" style="margin:0">Mutabakat mektubu, tarih itibarıyla:</label>
+    <input type="date" id="mut-tarih" name="tarih" value="{{ ekstre.bitis|date:'Y-m-d' }}" style="min-height:36px">
+    <button type="submit" class="dugme-ikincil">✉️ Mutabakat PDF</button>
+  </form>
+</div>
+
 <p class="yardim">Dönem: {{ ekstre.baslangic|date:"d.m.Y" }} – {{ ekstre.bitis|date:"d.m.Y" }}
   · Bakiyeler yevmiyeden hesaplanır{% if ekstre.cok_hesap %} · alt hesap hareketleri dahil{% endif %}.
   <br>Pozitif bakiye = <strong>borç</strong> (cari bize borçlu), negatif = <strong>alacak</strong> (biz cariye borçluyuz).</p>
