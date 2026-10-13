@@ -7670,6 +7670,7 @@ def uretim_emirleri(request):
             "tamamlandi": e.durum == UretimEmri.Durum.KAPALI and sip is None and not e.sevk_dusen,       # tamamlanmış stok ÜS'si: ayırmalar serbest
             "eksik_sayisi": sum(1 for x in eksikler if x["tur"] in ("SATINALMA", "STOKLU")),         # gerçek eksik; fason siparişinden beklenen sayılmaz
             "fason_bekleyen": sum(1 for x in eksikler if x["tur"] == "FASON_SIPARIS"),
+            "fason_emri_gerekli": sum(1 for x in eksikler if x["tur"] == "FASON_EMRI_GEREKLI"),
             "arama": " ".join([e.no, musteri, e.depo.kod, e.depo.ad, (sip.belge_no or "") if sip is not None else ""] + [f"{k.hedef_urun.kod} {k.hedef_urun.ad}" for k in kalemler])})
     return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum or "TUMU", "durumlar": UretimEmri.Durum.choices})
 
@@ -7773,10 +7774,11 @@ def uretim_emri_detay(request, pk):
         revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     tamamlandi = emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen   # stok ÜS'si %100: ayırmalar serbest
+    eksikler = uretim_servis.uretim_emri_eksikleri(emir)
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar, "tamamlandi": tamamlandi,
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
-        "eksikler": uretim_servis.uretim_emri_eksikleri(emir), "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
+        "eksikler": eksikler, "fason_emri_gerekli": sum(1 for x in eksikler if x["tur"] == "FASON_EMRI_GEREKLI"), "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
         "bugun": timezone.localdate().isoformat(),
         "revizyonlar": _revizyon_satirlari(emir), "silinebilir": uretim_servis.uretim_emri_silinebilir(emir), "revize_url": revize_url,
         "ilerleme": uretim_servis.uretim_emri_ilerleme(emir)})

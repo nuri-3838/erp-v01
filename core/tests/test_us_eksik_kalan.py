@@ -111,3 +111,21 @@ class ListeRozetTest(SiparisliUsTest):
         h = self.client.get(reverse("core:uretim_emirleri")).content.decode()               # hammadde 2 < 3 → gerçek eksik 1, fason yok
         self.assertIn("Eksik malzeme: 1<", h)
         self.assertNotIn("Fasondan bekleniyor:", h)
+
+    def test_fason_emri_gerekli_turuncu_rozet_liste_ve_detay(self):
+        from unittest import mock
+        eks = [{"tur": "FASON_EMRI_GEREKLI", "stok": self.stok, "varyant_etiketi": "", "gerekli": D("4"), "kullanilabilir": D("0"), "eksik": D("4")}] * 2
+        with mock.patch("core.services.uretim.uretim_emri_eksikleri", return_value=eks):
+            liste = self.client.get(reverse("core:uretim_emirleri")).content.decode()
+            detay = self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk])).content.decode()
+        self.assertIn("Fason emri gerekli: 2<", liste)
+        self.assertNotIn("Eksik malzeme:", liste)                                                       # gerçek eksik değil
+        self.assertIn("ue-fason-gerekli", liste)
+        self.assertIn("rozet-turuncu", detay)
+        self.assertIn("Fason emri gerekli: 2<", detay)
+
+    def test_fason_emri_gerekli_yoksa_rozet_yok(self):
+        liste = self.client.get(reverse("core:uretim_emirleri")).content.decode()
+        detay = self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk])).content.decode()
+        self.assertNotIn("Fason emri gerekli:", liste)
+        self.assertNotIn("Fason emri gerekli:", detay)

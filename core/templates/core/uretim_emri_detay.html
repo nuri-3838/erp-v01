@@ -8,6 +8,7 @@
   .ie-uret-form { display:inline-flex; gap:.3rem; align-items:center; margin:0 .4rem .2rem 0; flex-wrap:wrap; }
   .ie-uret-form input[type=text] { width:6.2rem; text-align:right; }
   .ie-hata { margin-top:.35rem; padding:.4rem .6rem; border-radius:8px; background:#fdecef; color:#b3253f; font-size:.82rem; max-width:34rem; }
+  .rozet-turuncu { background:#fff0dc; color:#b35a00; }
   .ie-baslik { display:flex; justify-content:space-between; align-items:center; gap:.8rem; flex-wrap:wrap; }
   .ie-baslik .bolum-baslik { margin:0; }
   .ie-grup { border:1px solid rgba(21,41,77,.12); border-radius:10px; margin:.6rem 0; background:rgba(255,255,255,.55); }
@@ -28,7 +29,8 @@
     <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ emir.no }}
       <span class="rozet {% if emir.durum == 'ACIK' %}rozet-aktif{% elif emir.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-kapali{% endif %}">{{ emir.get_durum_display }}</span>
       <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
-        {{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon bitti</span></h1>
+        {{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon bitti</span>
+      {% if emir.durum == 'ACIK' and fason_emri_gerekli %}<span class="rozet rozet-turuncu" title="Fason siparişi iptal/azaldı: bu parça için ÜS'de fason istasyon emri yok; ÜS'yi revize edin">⚠ Fason emri gerekli: {{ fason_emri_gerekli }}</span>{% endif %}</h1>
   </div>
   <span class="islem-bag">
     {% if revize_url %}<a class="dugme" href="{{ revize_url }}">✏️ Revize</a>{% endif %}
