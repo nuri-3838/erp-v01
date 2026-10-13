@@ -1010,6 +1010,9 @@ class Cari(TemelModel):
         "ödeme koşulu", max_length=20, choices=OdemeKosulu.choices, null=True, blank=True)
     odeme_gunu = models.PositiveSmallIntegerField("ödeme günü", null=True, blank=True)
     notlar = models.TextField("notlar", blank=True)
+    # PASİF cari (2026-10-13): yeni belge/harekette (fatura, teklif, sipariş, irsaliye, banka/kasa/kart hareketi, virman, fason…) seçilemez;
+    # geçmiş belgeler, ekstre ve raporlar etkilenmez. ``silindi`` (soft-delete) ayrıdır: hareketli cari silinemez, pasife alınır.
+    aktif = models.BooleanField("aktif", default=True)
 
     class Meta:
         db_table = "cari"
@@ -1020,10 +1023,8 @@ class Cari(TemelModel):
         constraints = [
             models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False),
                                     name="uq_cari_kod_aktif"),
-            models.UniqueConstraint(
-                fields=["vkn_tckn"],
-                condition=models.Q(silindi=False) & ~models.Q(vkn_tckn=""),
-                name="uq_cari_vkn_dolu"),
+            # VKN/TCKN benzersizliği artık SERVİS katmanında (aynı firma hem müşteri hem tedarikçi kartı olabilir): ikinci aktif cari
+            # uyarıyla engellenir, yönetici "yine de kaydet" diyebilir (services/cari._vergi_benzersiz). Eski kısıt kaldırıldı (0226).
             models.UniqueConstraint(
                 fields=["tax_id"],
                 condition=models.Q(silindi=False) & ~models.Q(tax_id=""),

@@ -470,6 +470,9 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise FaturaHatasi("Cari bulunamadı.")
+    from core.services.cari import pasif_kontrol
+    pasif_kontrol(cari, FaturaHatasi, ne="Yeni fatura",
+                  mevcut_cari_id=(Fatura.objects.filter(pk=fatura_pk).values_list("cari_id", flat=True).first() if fatura_pk else None))
     if not satirlar:
         raise FaturaHatasi("Faturada en az bir satır olmalı.")
 
@@ -659,6 +662,9 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise FaturaHatasi("Cari bulunamadı.")
+    from core.services.cari import pasif_kontrol
+    pasif_kontrol(cari, FaturaHatasi, ne="Yeni fatura",
+                  mevcut_cari_id=(Fatura.objects.filter(pk=fatura_pk).values_list("cari_id", flat=True).first() if fatura_pk else None))
     if not satirlar:
         raise FaturaHatasi("Faturada en az bir satır olmalı.")
     pb = (para_birimi or "TRY").strip().upper()

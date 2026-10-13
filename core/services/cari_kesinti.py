@@ -200,6 +200,9 @@ def havuz_bakiyeleri(cari):
 @transaction.atomic
 def kesinti_olustur(*, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
                     kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None, sayilan_pb=None) -> YevmiyeFisi:
+    from core.services.cari import pasif_kontrol
+    pasif_kontrol(cari, CariKesintiHatasi, ne="Yeni kesinti/masraf")
+    pasif_kontrol(karsi_cari, CariKesintiHatasi, ne="Yeni kesinti/masraf")
     karsi = karsi_cari_coz(cari, karsi_cari)
     tut = _tutar(tutar)
     pb, kur = pb_kur_coz(cari, para_birimi, kur, tarih)

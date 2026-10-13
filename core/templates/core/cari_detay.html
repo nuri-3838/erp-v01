@@ -62,17 +62,41 @@
 <div class="detay-kapsa">
   <div class="detay-ustbar">
     <a class="ust-link" href="{% url 'core:cariler' %}">← Cariler</a>
-    <div class="detay-aksiyon">
+    <div class="detay-aksiyon" style="flex-wrap:wrap">
       <a class="dugme" href="{% url 'core:cari_ekstresi' cari.pk %}">📄 Ekstre</a>
-      <a class="dugme" href="{% url 'core:cari_kesinti_ekle' cari.pk %}">✂️ Kesinti / Masraf</a>
-      <a class="dugme" href="{% url 'core:cari_virman_ekle' cari.pk %}">🔁 Virman</a>
+      {% if cari.aktif %}
+        <a class="dugme" href="{% url 'core:cari_kesinti_ekle' cari.pk %}">✂️ Kesinti / Masraf</a>
+        <a class="dugme" href="{% url 'core:cari_virman_ekle' cari.pk %}">🔁 Virman</a>
+      {% endif %}
       <a class="dugme" href="{% url 'core:cari_duzenle' cari.pk %}">✏️ Düzenle</a>
-      <form method="post" action="{% url 'core:cari_sil' cari.pk %}" style="margin:0"
-            onsubmit="return confirm('{{ cari.unvan }} silinsin mi?');">
-        {% csrf_token %}<button type="submit" class="sil">Sil</button>
-      </form>
+      {% if cari.aktif %}
+        <form method="post" action="{% url 'core:cari_pasife_al' cari.pk %}" style="margin:0"
+              onsubmit="return confirm('{{ cari.unvan|escapejs }} PASİFE alınsın mı? Yeni belge ve harekette seçilemez; geçmiş belge, ekstre ve raporlar etkilenmez.');">
+          {% csrf_token %}<button type="submit" class="dugme-ikincil">⏸ Pasife al</button>
+        </form>
+      {% else %}
+        <form method="post" action="{% url 'core:cari_aktiflestir' cari.pk %}" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme">▶ Aktifleştir</button>
+        </form>
+      {% endif %}
+      {% if silme_engelleri %}
+        <span class="yardim" style="align-self:center" title="Silinemez: {{ silme_engeli_metni }}">🔒 Silinemez</span>
+      {% else %}
+        <form method="post" action="{% url 'core:cari_sil' cari.pk %}" style="margin:0"
+              onsubmit="return confirm('{{ cari.unvan|escapejs }} silinsin mi?');">
+          {% csrf_token %}<button type="submit" class="sil">Sil</button>
+        </form>
+      {% endif %}
     </div>
   </div>
+
+  {% if not cari.aktif %}
+    <div class="uyari"><div>⏸ Bu cari <strong>PASİF</strong>: yeni fatura, teklif, sipariş, irsaliye, banka/kasa/kart hareketi, virman ve fasonda seçilemez. Geçmiş belgeler, ekstre ve raporlar etkilenmez. Banka, sevk adresi ve yetkili kişi değiştirilemez.</div></div>
+  {% endif %}
+  {% if silme_engelleri %}
+    <div class="uyari"><div>🔒 <strong>Silinemez:</strong>{% for etiket, adet in silme_engelleri %} {{ adet }} {{ etiket }}{% if not forloop.last %},{% endif %}{% endfor %}.
+      Silmek yerine <strong>“⏸ Pasife al”</strong> kullanın: kart korunur, yeni işlemde seçilemez.</div></div>
+  {% endif %}
 
   <div class="detay-baslik-kart">
     <span class="detay-ikon">🧑‍💼</span>
@@ -81,6 +105,7 @@
         <span class="d-rozet kod">{{ cari.kod }}</span>
         {% if cari.muhasebe_kodu %}<span class="d-rozet pb">Muh: {{ cari.muhasebe_kodu }}</span>{% endif %}
         <span class="d-rozet pb">{{ cari.para_birimi }}</span>
+        {% if not cari.aktif %}<span class="d-rozet" style="background:#b1122c;color:#fff">PASİF</span>{% endif %}
       </div>
       <div class="detay-ad">{{ cari.unvan }}</div>
       <div class="detay-alt">{% if cari.kategori %}{{ cari.kategori.kod_yolu }} · {{ cari.kategori.ad }}{% else %}Kategorisiz{% endif %}</div>
@@ -211,7 +236,7 @@
               <td>{% if s.varsayilan %}<span class="rozet rozet-aktif">Varsayılan</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
               <td><span class="islem-bag">
                 <a href="{% url 'core:sevk_adresi_duzenle' s.pk %}">Düzenle</a>
-                <form method="post" action="{% url 'core:sevk_adresi_sil' s.pk %}" onsubmit="return confirm('{{ s.ad }} silinsin mi?');">
+                <form method="post" action="{% url 'core:sevk_adresi_sil' s.pk %}" onsubmit="return confirm('{{ s.ad|escapejs }} silinsin mi?');">
                   {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
               </span></td>
             </tr>
@@ -269,7 +294,6 @@
           </span></div>
         {% endif %}
       </div>
-      <p class="yardim" style="margin-top:1rem">📦 Cari hesap hareketleri/ekstre Faz 4'te (finans) bu sayfaya eklenecek.</p>
     </div>
   </section>
 </div>

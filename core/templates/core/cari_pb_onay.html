@@ -1,0 +1,46 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Ana Para Birimi Değişikliği · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Ana Para Birimi Değişikliği{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:cari_duzenle' cari.pk %}">← {{ cari.kod }} {{ cari.unvan }}</a>
+    <h1 class="ust-baslik"><span class="emoji">💱</span>Ana para birimi: {{ eski }} → {{ yeni }}</h1>
+  </div>
+
+  <div class="uyari"><div>⚠️ Bu carinin muhasebe hareketi var. Ana para birimi değişince <strong>mevcut döviz havuz bakiyeleri yeni kura göre yeniden değerlenmez</strong>;
+    dönem sonu kur değerlemesi, kur farkı motoru ve ekstredeki döviz kolonları yeni ana PB'ye göre okunur. Belgelerde farklı para birimiyle çalışma (sayılan PB havuzları) aynen sürer.
+    Önce açık bakiyeleri kapatmanız (mahsup / ödeme) ve değerleme etkisini muhasebeyle gözden geçirmeniz önerilir.</div></div>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik">Mevcut PB havuz bakiyeleri</h2>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Para birimi</th><th class="sag">Borç (TL)</th><th class="sag">Alacak (TL)</th><th class="sag">Net (TL)</th><th class="sag">Döviz net</th></tr></thead>
+      <tbody>
+        {% for h in havuzlar %}
+          <tr><td class="mono">{{ h.pb }}</td><td class="sag mono">{{ h.borc_tl|tr_para }}</td><td class="sag mono">{{ h.alacak_tl|tr_para }}</td>
+              <td class="sag mono">{{ h.net_tl|tr_bakiye }}</td><td class="sag mono">{% if h.pb == "TRY" %}—{% else %}{{ h.doviz_net|tr_bakiye }} {{ h.pb }}{% endif %}</td></tr>
+        {% empty %}
+          <tr><td colspan="5" class="yardim">Havuz bakiyesi yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="yardim">Pozitif = borç (cari bize borçlu), negatif = alacak (biz cariye borçluyuz).</p>
+  </section>
+
+  <form method="post" action="{% url 'core:cari_duzenle' cari.pk %}" autocomplete="off">
+    {% csrf_token %}
+    {% for ad, deger in alanlar %}<input type="hidden" name="{{ ad }}" value="{{ deger }}">{% endfor %}
+    <input type="hidden" name="pb_onay" value="1">
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:cari_duzenle' cari.pk %}">Vazgeç</a>
+      <button type="submit" class="birincil">Onayla ve {{ yeni }} yap</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

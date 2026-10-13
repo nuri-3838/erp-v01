@@ -202,10 +202,12 @@ def _satir_yaz(siparis, stok, adet, vpk, sira, kullanici, mevcut=None):
     return mevcut
 
 
-def _cari_coz(cari_id):
+def _cari_coz(cari_id, mevcut_cari_id=None):
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise FasonHatasi("Fasoncu (cari) bulunamadı.")
+    from core.services.cari import pasif_kontrol
+    pasif_kontrol(cari, FasonHatasi, mevcut_cari_id=mevcut_cari_id, ne="Yeni fason siparişi")
     return cari
 
 
@@ -244,7 +246,7 @@ def siparis_guncelle(siparis: FasonSiparisi, *, cari_id, tarih, satirlar, termin
     Adet düşünce fazla rezerv serbest kalır. (sipariş, etkilenen ÜS listesi) döner."""
     if siparis.silindi or siparis.durum in (Durum.TAMAMLANDI, Durum.IPTAL):
         raise FasonHatasi("Tamamlanmış/iptal edilmiş fason siparişi düzenlenemez.")
-    cari = _cari_coz(cari_id)
+    cari = _cari_coz(cari_id, mevcut_cari_id=siparis.cari_id)
     coz = _satirlari_coz(satirlar)
     siparis.cari, siparis.tarih, siparis.termin, siparis.aciklama = cari, tarih, termin, (aciklama or "").strip()
     siparis.updated_by = kullanici

@@ -35,6 +35,45 @@ def tc_dogrula(deger):
         )
 
 
+# --- VKN / TCKN (cari) -----------------------------------------------------
+def vkn_gecerli(deger) -> bool:
+    """Vergi Kimlik No (10 hane) kontrol hanesi algoritması (GİB)."""
+    v = str(deger or "")
+    if len(v) != 10 or not v.isdigit():
+        return False
+    toplam = 0
+    for i in range(9):
+        a = (int(v[i]) + (9 - i)) % 10
+        p = (a * (2 ** (9 - i))) % 9
+        if a != 0 and p == 0:
+            p = 9
+        toplam += p
+    return (10 - toplam % 10) % 10 == int(v[9])
+
+
+def vkn_tckn_tipi(deger) -> str:
+    """'VKN' (10 hane geçerli) / 'TCKN' (11 hane geçerli) / '' (boş ya da geçersiz)."""
+    v = str(deger or "")
+    if vkn_gecerli(v):
+        return "VKN"
+    if tc_gecerli(v):
+        return "TCKN"
+    return ""
+
+
+def vkn_tckn_gecerli(deger) -> bool:
+    return bool(vkn_tckn_tipi(deger))
+
+
+VKN_TCKN_HATA = ("Geçersiz VKN/TCKN: 10 haneli vergi kimlik numarası ya da 11 haneli TC kimlik numarası olmalı; "
+                 "yalnız rakam ve geçerli kontrol hanesi.")
+
+
+def vkn_tckn_dogrula(deger):
+    if deger and not vkn_tckn_gecerli(deger):
+        raise ValidationError(VKN_TCKN_HATA)
+
+
 # --- IBAN (TR) -------------------------------------------------------------
 # Banka kodu (IBAN 5.–9. karakter) → banka adı (öneri; elle değiştirilebilir). Liste kapsamlı değil; bilinmeyen kod → öneri yok.
 TR_BANKA_KODLARI = {
@@ -75,6 +114,25 @@ IBAN_HATA = "Geçersiz IBAN: TR ile başlayan 26 karakterlik, kontrol haneleri d
 def iban_dogrula(deger):
     if deger and not iban_gecerli_tr(deger):
         raise ValidationError(IBAN_HATA)
+
+
+def iban_gecerli(deger) -> bool:
+    """Herhangi bir ülkenin IBAN'ı (yurtdışı tedarikçi): TR ise 26 hane + TR kuralı; diğerlerinde 15-34 karakter, ülke kodu + 2 kontrol rakamı +
+    alfanümerik gövde ve mod-97 == 1."""
+    iban = iban_kanonik(deger)
+    if iban.startswith("TR"):
+        return iban_gecerli_tr(iban)
+    if not (15 <= len(iban) <= 34) or not re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]+", iban):
+        return False
+    return _iban_mod97(iban) == 1
+
+
+IBAN_GENEL_HATA = "Geçersiz IBAN: ülke kodu ile başlayan, kontrol haneleri doğru bir IBAN girin (TR ise 26 karakter)."
+
+
+def iban_dogrula_genel(deger):
+    if deger and not iban_gecerli(deger):
+        raise ValidationError(IBAN_GENEL_HATA)
 
 
 def iban_bicimli(deger) -> str:

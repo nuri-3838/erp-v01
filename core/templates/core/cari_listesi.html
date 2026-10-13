@@ -33,6 +33,11 @@
   .crl-hucre .kod { font-size:.78rem; color:var(--metin-soluk); font-family:"Cascadia Mono",Consolas,monospace; }
 
   .crl-satir[hidden] { display:none; }
+  .crl-satir.pasif-satir { opacity:.6; }
+  .crl-pasif-rozet { display:inline-block; margin-left:.4rem; font-size:.68rem; font-weight:700; padding:.1rem .45rem; border-radius:999px;
+    background:#fde7ea; color:#b1122c; vertical-align:middle; }
+  .crl-pasif-sec { display:inline-flex; align-items:center; gap:.35rem; font-size:.86rem; font-weight:600; color:var(--metin-soluk); cursor:pointer; }
+  .crl-pasif-sec input { width:auto; }
   .crl-bos-js { display:none; }
   .crl-bos-js.gorunur { display:table-row; }
 
@@ -52,7 +57,7 @@
              placeholder="Unvan, kod veya VKN/TCKN ara…" autocomplete="off">
     </div>
     <button type="submit" class="birincil">Ara</button>
-    <a class="iptal-bag crl-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke %} gorunur{% endif %}"
+    <a class="iptal-bag crl-arama-temizle{% if ara or secili_kategori or secili_sehir or secili_ulke or pasif_goster %} gorunur{% endif %}"
        id="crl-arama-temizle" href="{% url 'core:cariler' %}">Temizle</a>
   </div>
   <div class="crl-filtre-satir">
@@ -74,6 +79,7 @@
         <option value="{{ u.pk }}" {% if secili_ulke == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.ad }}</option>
       {% endfor %}
     </select>
+    <label class="crl-pasif-sec"><input type="checkbox" name="pasif" value="1" {% if pasif_goster %}checked{% endif %} onchange="this.form.submit()"> Pasifleri göster{% if pasif_sayisi %} ({{ pasif_sayisi }}){% endif %}</label>
   </div>
 </form>
 
@@ -86,12 +92,12 @@
   </thead>
   <tbody>
     {% for c in cariler %}
-      <tr class="crl-satir" data-href="{% url 'core:cari_detay' c.pk %}">
+      <tr class="crl-satir{% if not c.aktif %} pasif-satir{% endif %}" data-href="{% url 'core:cari_detay' c.pk %}">
         <td>
           <div class="crl-hucre">
             <span class="crl-ikon">🧑‍💼</span>
             <div>
-              <div class="ad"><a href="{% url 'core:cari_detay' c.pk %}">{{ c.unvan }}</a></div>
+              <div class="ad"><a href="{% url 'core:cari_detay' c.pk %}">{{ c.unvan }}</a>{% if not c.aktif %}<span class="crl-pasif-rozet">PASİF</span>{% endif %}</div>
               <div class="kod">{{ c.kod }}</div>
             </div>
           </div>
@@ -101,7 +107,7 @@
       </tr>
     {% empty %}
       <tr><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or secili_kategori or secili_sehir or secili_ulke %}🔍 Eşleşen cari yok.
+        {% if ara or secili_kategori or secili_sehir or secili_ulke or pasif_goster %}🔍 Eşleşen cari yok.
         {% else %}🧑‍💼 Henüz cari yok. “+ Yeni Cari” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
     <tr class="crl-bos-js"><td colspan="3" class="yardim" style="text-align:center;padding:1.6rem 0">

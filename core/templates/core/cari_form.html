@@ -44,7 +44,15 @@
       <h2 class="bolum-baslik"><span class="emoji">🧾</span>Vergi</h2>
       <div class="izgara">
         <div class="alan tam"><label for="{{ form.vergi_dairesi.id_for_label }}">{{ form.vergi_dairesi.label }}</label>{{ form.vergi_dairesi }}</div>
-        <div class="alan"><label for="{{ form.vkn_tckn.id_for_label }}">{{ form.vkn_tckn.label }}</label>{{ form.vkn_tckn }}{% for e in form.vkn_tckn.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.vkn_tckn.id_for_label }}">{{ form.vkn_tckn.label }}</label>{{ form.vkn_tckn }}{% for e in form.vkn_tckn.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          {% if vkn_uyari %}<p class="yardim" style="color:#b1122c">⚠️ Kayıtlı VKN/TCKN'nin kontrol hanesi hatalı. Doğrusunu girin; alana dokunmazsanız kayıt engellenmez.</p>
+          {% else %}<p class="yardim">10 haneli VKN ya da 11 haneli TCKN; kontrol hanesi doğrulanır.</p>{% endif %}
+          {% if mukerrer %}
+            <div class="uyari" style="margin-top:.5rem"><div>👥 Aynı VKN/TCKN ile kayıtlı cari:
+              {% for c in mukerrer %}<a href="{% url 'core:cari_detay' c.pk %}" target="_blank">{{ c.kod }} — {{ c.unvan }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}.
+              {% if yonetici %}Gerçekten ikinci bir kart gerekiyorsa (ör. aynı firma hem müşteri hem tedarikçi) aşağıdaki <strong>“Yine de kaydet”</strong> düğmesini kullanın.
+              {% else %}Mevcut kartı kullanın; ikinci kart için yönetici onayı gerekir.{% endif %}</div></div>
+          {% endif %}</div>
         <div class="alan"><label for="{{ form.tax_id.id_for_label }}">{{ form.tax_id.label }}</label>{{ form.tax_id }}{% for e in form.tax_id.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
       </div>
     </section>
@@ -77,7 +85,9 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">💱</span>Ticari</h2>
       <div class="izgara">
-        <div class="alan"><label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}</div>
+        <div class="alan"><label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}
+          {% if pb_kilitli %}<p class="yardim">⚠️ Bu carinin yevmiye hareketi var; ana para birimini yalnız yönetici değiştirebilir.</p>
+          {% elif kategori_kilitli %}<p class="yardim">ℹ️ Hareketli cari: değiştirirseniz önce mevcut PB havuz bakiyelerini gösteren onay ekranı açılır.</p>{% endif %}</div>
         <div class="alan" id="kur-tipi-alan"><label for="{{ form.kur_tipi.id_for_label }}">{{ form.kur_tipi.label }}</label>{{ form.kur_tipi }}</div>
         <div class="alan"><label for="{{ form.kur_degerleme.id_for_label }}">{{ form.kur_degerleme.label }}</label>{{ form.kur_degerleme }}
           <p class="yardim">Dönem sonu kur değerlemesi: Otomatik'te verilen/alınan avans değerlenmez; parasal alacak/borç sayılan depozito gibi kalemlerde "Her zaman değerle" seçin.</p></div>
@@ -104,6 +114,7 @@
 
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:cariler' %}">İptal</a>
+      {% if mukerrer and yonetici %}<button type="submit" name="mukerrer_onay" value="1" class="dugme-ikincil">Yine de kaydet (aynı VKN/TCKN)</button>{% endif %}
       <button type="submit" class="birincil">Kaydet</button>
     </div>
   </form>

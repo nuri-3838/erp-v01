@@ -83,10 +83,13 @@ def _ayar_hesap(ayar, durum_oneki, tip):
     return hesap
 
 
-def _cari_coz(cari_id):
+def _cari_coz(cari_id, *, yeni=True):
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first() if cari_id else None
     if cari is None:
         raise CekHatasi("Cari (karşı taraf) seçilmedi.")
+    if yeni:
+        from core.services.cari import pasif_kontrol
+        pasif_kontrol(cari, CekHatasi, ne="Yeni çek/senet bordrosu")
     hesap = (HesapPlani.objects.filter(hesap_kodu=cari.muhasebe_kodu, silindi=False).first()
              if cari.muhasebe_kodu else None)
     if hesap is None:
@@ -361,7 +364,7 @@ def _cari_terminal_bordrosu(tan, *, tarih, cek_ids, aciklama="", kullanici=None)
         cari_nesne[c.cari_id] = c.cari
     cari_satir, cari_tl = [], Decimal("0")
     for cari_id, tutar in cari_toplam.items():
-        _, hesap = _cari_coz(cari_id)
+        _, hesap = _cari_coz(cari_id, yeni=False)                      # mevcut çekin kendi carisi (pasif olsa da) etkilenmez
         cari_satir.append((hesap.hesap_kodu, tutar))
         cari_tl += yuvarla(tutar * kur, 2)
     if ara_toplam > 0:

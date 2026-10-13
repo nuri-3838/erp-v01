@@ -82,7 +82,7 @@ def _yuzde(deger, etiket):
     return d
 
 
-def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar):
+def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar, mevcut_cari_id=None):
     """Ortak hazırlık (oluştur/güncelle): cari VEYA aday müşteri (karşılıklı dışlayıcı —
     ikisi birden ya da hiçbiri verilemez) + satırları doğrular. (cari, aday_musteri, hazir)
     döner — hazir = [(stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat,
@@ -98,6 +98,8 @@ def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar):
         cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
         if cari is None:
             raise TeklifSiparisHatasi("Cari bulunamadı.")
+        from core.services.cari import pasif_kontrol
+        pasif_kontrol(cari, TeklifSiparisHatasi, mevcut_cari_id=mevcut_cari_id, ne="Yeni teklif/sipariş/irsaliye")
     else:
         raise TeklifSiparisHatasi("Cari veya aday müşteri seçilmeli.")
     if not satirlar:
@@ -371,7 +373,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
         raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; düzenlenemez.")
     _aday_musteri_izin_kontrol(ts.belge_tur, ts.yon, aday_musteri_id)
     cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
-                                 satirlar=satirlar)
+                                 satirlar=satirlar, mevcut_cari_id=ts.cari_id)
     pb = _pb_dogrula(para_birimi)
     if pb == "TRY":
         kur = None

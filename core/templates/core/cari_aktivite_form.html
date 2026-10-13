@@ -42,7 +42,7 @@
             <span class="akt-ek-ad" title="{{ ek.orijinal_ad }}">{{ ek.orijinal_ad }}</span>
             {# Silme formu kasıtlı olarak aşağıdaki ana form'un dışında — form içinde form olmaz. #}
             <form method="post" action="{% url 'core:aktivite_ek_sil' ek.pk %}"
-                  onsubmit="return confirm('{{ ek.orijinal_ad }} silinsin mi?');">
+                  onsubmit="return confirm('{{ ek.orijinal_ad|escapejs }} silinsin mi?');">
               {% csrf_token %}<button type="submit" class="akt-ek-sil" title="Sil">✕</button>
             </form>
           </div>

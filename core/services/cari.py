@@ -7,7 +7,11 @@
 - Sevk (teslimat) adresleri artık ayrı ``CariSevkAdresi`` tablosunda (çoklu, banka
   hesapları/yetkili kişilerle aynı desen). ``cari_olustur`` cari'nin kendi adresi
   doluysa "Merkez Adres" adıyla otomatik + varsayılan bir sevk adresi de açar.
-- Silme: soft-delete.
+- Silme: soft-delete — AMA hareketli/belgeli cari SİLİNEMEZ (``silme_engelleri``); onun yerine PASİFE alınır (``Cari.aktif``).
+- PASİF cari: yeni belge/harekette seçilemez (``secilebilir_cariler`` + ``pasif_kontrol``), geçmiş belge/ekstre/rapor etkilenmez.
+- Silinmiş (soft-delete) carinin kodu ve muhasebe hesabı yeni cariye VERİLMEZ (``_kod_hesap_cakisma``; kod üretimi silinmişleri de sayar).
+- VKN/TCKN: aynı numarayla ikinci aktif cari uyarıyla engellenir, yönetici "yine de kaydet" der (``CariMukerrerVKN``).
+- Hareketli carinin ana para birimi yalnız yönetici + havuz bakiyesi onayıyla değişir (``CariPbOnayGerekli``).
 """
 from __future__ import annotations
 
@@ -15,8 +19,8 @@ import calendar
 import datetime
 import os
 
-from django.db import transaction
-from django.db.models import Prefetch
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Prefetch, Q, Sum
 from django.utils import timezone
 
 from core import gorsel
@@ -38,17 +42,62 @@ class CariHatasi(ValueError):
     """Cari kural ihlali (Türkçe mesaj)."""
 
 
+class CariSilmeEngeli(CariHatasi):
+    """Cari silinemez: ``nedenler`` = [(etiket, adet)] (muhasebe hareketi, fatura, teklif/sipariş, çek/senet, fason belgesi, numune, açık stok ayırması…)."""
+
+    def __init__(self, mesaj, nedenler):
+        super().__init__(mesaj)
+        self.nedenler = nedenler
+
+
+class CariMukerrerVKN(CariHatasi):
+    """Aynı VKN/TCKN ile başka aktif cari var: ``mevcutlar`` = o cariler (ekranda bağlantı); yönetici ``mukerrer_onayi`` ile yine de kaydedebilir."""
+
+    def __init__(self, mesaj, mevcutlar):
+        super().__init__(mesaj)
+        self.mevcutlar = mevcutlar
+
+
+class CariPbOnayGerekli(CariHatasi):
+    """Hareketli carinin ana para birimi değişiyor: yönetici onayı gerekir; ``havuzlar`` = mevcut PB havuz bakiyeleri (onay ekranında gösterilir)."""
+
+    def __init__(self, mesaj, havuzlar, eski, yeni):
+        super().__init__(mesaj)
+        self.havuzlar, self.eski, self.yeni = havuzlar, eski, yeni
+
+
 def aktif_cariler():
+    """Silinmemiş TÜM cariler (aktif + pasif) — liste/rapor/filtre/ekstre için."""
     return (Cari.objects.filter(silindi=False)
             .select_related("kategori", "ulke", "sehir").order_by("unvan"))
 
 
+def secilebilir_cariler(ek=()):
+    """Yeni belge/hareket ekranlarında SEÇİLEBİLEN cariler: silinmemiş ve AKTİF. ``ek`` = düzenlenen kaydın mevcut cari pk'ları (pasif olsa da
+    listede kalır — eski belge düzenlenirken seçim boşalmasın)."""
+    ek = [int(x) for x in ek if str(x).isdigit()]
+    return Cari.objects.filter(silindi=False).filter(Q(aktif=True) | Q(pk__in=ek)).order_by("unvan")
+
+
+def pasif_kontrol(cari, hata_sinifi, *, mevcut_cari_id=None, ne="Yeni belge/hareket"):
+    """PASİF cariye yeni belge/hareket girilemez (servis katmanı). ``mevcut_cari_id``: düzenlenen kaydın zaten bağlı olduğu cari (değişmediyse serbest)."""
+    if cari is not None and not cari.aktif and cari.pk != mevcut_cari_id:
+        raise hata_sinifi(f"{cari.kod} — {cari.unvan} carisi PASİF; {ne} girilemez. Önce cariyi aktifleştirin.")
+
+
 def sonraki_cari_kodu(kategori) -> str:
+    """Kategori kod yolundan sıradaki kod. Silinmiş (soft-delete) cariler ve hesap planındaki (silinmiş dahil) hesap kodları da sayılır —
+    kullanılmış bir kod/hesap bir daha verilmez."""
     if kategori is not None and kategori.kod_yolu:
         on = kategori.kod_yolu + "-"
         son = 0
-        for k in Cari.objects.filter(kategori=kategori).values_list("kod", flat=True):
-            p = k.rsplit("-", 1)[-1]
+        for k in Cari.objects.filter(kod__startswith=on).values_list("kod", flat=True):
+            p = k[len(on):]
+            if p.isdigit():
+                son = max(son, int(p))
+        noktali = on.replace("-", ".")
+        for k in HesapPlani.objects.filter(hesap_kodu__startswith=noktali).values_list("hesap_kodu", flat=True):
+            p = k[len(noktali):]
             if p.isdigit():
                 son = max(son, int(p))
         return f"{on}{str(son + 1).zfill(4)}"
@@ -56,6 +105,21 @@ def sonraki_cari_kodu(kategori) -> str:
     while Cari.objects.filter(kod=f"CAR-{str(n).zfill(4)}").exists():
         n += 1
     return f"CAR-{str(n).zfill(4)}"
+
+
+def _kod_hesap_cakisma(kod, *, haric_pk=None):
+    """Kod ya da muhasebe hesabı başka bir cariye (SİLİNMİŞ dahil) aitse yeniden verilmez."""
+    noktali = kod.replace("-", ".")
+    qs = Cari.objects.filter(Q(kod=kod) | Q(muhasebe_kodu=noktali))
+    if haric_pk is not None:
+        qs = qs.exclude(pk=haric_pk)
+    c = qs.order_by("silindi").first()
+    if c is None:
+        return
+    if not c.silindi and c.kod == kod:
+        raise CariHatasi(f"Cari kodu zaten kayıtlı: {kod}")
+    raise CariHatasi(f"{kod} kodu / {noktali} muhasebe hesabı daha önce {'silinmiş ' if c.silindi else ''}{c.kod} — {c.unvan} carisine ait; "
+                     "yeniden kullanılamaz.")
 
 
 def _ulke(ulke_id):
@@ -76,17 +140,27 @@ def _sehir(sehir_id):
     return s
 
 
-def _vergi_benzersiz(vkn_tckn, tax_id, *, haric_pk=None):
-    for alan, deger, etiket in (("vkn_tckn", vkn_tckn, "VKN/TCKN"),
-                                ("tax_id", tax_id, "Tax ID")):
-        d = (deger or "").strip()
-        if not d:
-            continue
-        qs = Cari.objects.filter(silindi=False, **{alan: d})
+def _vergi_benzersiz(vkn_tckn, tax_id, *, haric_pk=None, mukerrer_onayi=False, kullanici=None):
+    """Tax ID kesin benzersiz. VKN/TCKN: aynı numarayla başka AKTİF (silinmemiş) cari varsa ``CariMukerrerVKN`` (mevcutlarıyla); ``mukerrer_onayi``
+    + yönetici ise ikinci karta izin verilir (aynı firma hem müşteri hem tedarikçi)."""
+    d = (tax_id or "").strip()
+    if d:
+        qs = Cari.objects.filter(silindi=False, tax_id=d)
         if haric_pk is not None:
             qs = qs.exclude(pk=haric_pk)
         if qs.exists():
-            raise CariHatasi(f"Bu {etiket} zaten kayıtlı: {d}")
+            raise CariHatasi(f"Bu Tax ID zaten kayıtlı: {d}")
+    d = (vkn_tckn or "").strip()
+    if d:
+        qs = Cari.objects.filter(silindi=False, vkn_tckn=d)
+        if haric_pk is not None:
+            qs = qs.exclude(pk=haric_pk)
+        mevcut = list(qs.order_by("kod"))
+        if mevcut:
+            from core.yetki import yonetici_mi
+            if mukerrer_onayi and yonetici_mi(kullanici):
+                return
+            raise CariMukerrerVKN("Bu VKN/TCKN zaten kayıtlı: " + d + " (" + ", ".join(f"{c.kod} — {c.unvan}" for c in mevcut) + ")", mevcut)
 
 
 def _para_dogrula(deger, etiket):
@@ -201,9 +275,12 @@ def _alanlar(*, kisa_ad, vergi_dairesi, vkn_tckn, tax_id, telefon, telefon_2,
 
 
 def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> Cari:
+    """``mukerrer_onayi`` (kw): yönetici aynı VKN/TCKN'li ikinci karta onay verdi. Kod üretimi kategori satırı kilitlenerek sıraya girer;
+    eş zamanlı çakışmada (kod benzersizliği) birkaç kez yeniden denenir, olmazsa anlaşılır mesaj verilir."""
     unvan = buyuk_harf_tr((unvan or "").strip())
     if not unvan:
         raise CariHatasi("Unvan boş olamaz.")
+    mukerrer_onayi = bool(kw.pop("mukerrer_onayi", False))
     kategori = None
     if kategori_id:
         kategori = CariKategori.objects.filter(pk=kategori_id, silindi=False).first()
@@ -211,7 +288,7 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
             raise CariHatasi("Kategori bulunamadı.")
         if kategori.ust_id is None:
             raise CariHatasi("Cari yalnız alt kategoriye bağlanabilir; üst kategori seçilemez.")
-    _vergi_benzersiz(kw.get("vkn_tckn"), kw.get("tax_id"))
+    _vergi_benzersiz(kw.get("vkn_tckn"), kw.get("tax_id"), mukerrer_onayi=mukerrer_onayi, kullanici=kullanici)
     veri, uyarilar = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
@@ -219,28 +296,35 @@ def cari_olustur(*, unvan, kategori_id=None, kod=None, kullanici=None, **kw) -> 
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kur_degerleme", "kur_farki_hedefi", "kredi_limiti",
                         "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz")})
-    kod = (kod or "").strip() or sonraki_cari_kodu(kategori)
-    if Cari.objects.filter(silindi=False, kod=kod).exists():
-        raise CariHatasi(f"Cari kodu zaten kayıtlı: {kod}")
-    # Cari kaydı + muhasebe hesabı açma TEK transaction'da: hesap açılamazsa cari de
-    # sessizce hesapsız kalmasın diye tamamı geri alınır (bkz. ALTIN KURAL).
-    with transaction.atomic():
-        cari = Cari.objects.create(kod=kod, unvan=unvan, kategori=kategori,
-                                   created_by=kullanici, updated_by=kullanici, **veri)
-        cari.telefon_uyarilari = uyarilar
-        if cari.ulke_id or cari.sehir_id or cari.adres:
-            # Cari'nin kendi adresi doluysa, ilk sevk adresi olarak "Merkez Adres" adıyla
-            # otomatik + varsayılan eklenir (kullanıcı aynı adresi ikinci kez girmesin).
-            sevk_adresi_ekle(cari, ad="Merkez Adres", ulke_id=cari.ulke_id, sehir_id=cari.sehir_id,
-                             adres=cari.adres, varsayilan=True, kullanici=kullanici)
+    acik_kod = (kod or "").strip()
+    for _deneme in range(5):
         try:
-            muh = muhasebe_hesabi_ac(cari, kullanici=kullanici)   # hesap planında otomatik aç
-        except hp.HesapHatasi as e:
-            raise CariHatasi(f"Muhasebe hesabı açılamadı, cari kaydedilmedi: {e}")
-        if muh and cari.muhasebe_kodu != muh:
-            cari.muhasebe_kodu = muh
-            cari.save(update_fields=["muhasebe_kodu"])
-    return cari
+            # Cari kaydı + muhasebe hesabı açma TEK transaction'da: hesap açılamazsa cari de sessizce hesapsız kalmasın diye tamamı geri alınır.
+            with transaction.atomic():
+                if kategori is not None:
+                    list(CariKategori.objects.select_for_update().filter(pk=kategori.pk))      # kategori bazında kod üretimi sıraya girer
+                kod_ = acik_kod or sonraki_cari_kodu(kategori)
+                _kod_hesap_cakisma(kod_)
+                cari = Cari.objects.create(kod=kod_, unvan=unvan, kategori=kategori,
+                                           created_by=kullanici, updated_by=kullanici, **veri)
+                cari.telefon_uyarilari = uyarilar
+                if cari.ulke_id or cari.sehir_id or cari.adres:
+                    # Cari'nin kendi adresi doluysa, ilk sevk adresi olarak "Merkez Adres" adıyla otomatik + varsayılan eklenir.
+                    sevk_adresi_ekle(cari, ad="Merkez Adres", ulke_id=cari.ulke_id, sehir_id=cari.sehir_id,
+                                     adres=cari.adres, varsayilan=True, kullanici=kullanici)
+                try:
+                    muh = muhasebe_hesabi_ac(cari, kullanici=kullanici)   # hesap planında otomatik aç
+                except hp.HesapHatasi as e:
+                    raise CariHatasi(f"Muhasebe hesabı açılamadı, cari kaydedilmedi: {e}")
+                if muh and cari.muhasebe_kodu != muh:
+                    cari.muhasebe_kodu = muh
+                    cari.save(update_fields=["muhasebe_kodu"])
+            return cari
+        except IntegrityError:
+            if acik_kod:
+                raise CariHatasi(f"Cari kodu zaten kayıtlı: {acik_kod}")
+            continue                                                            # eş zamanlı çakışma: yeni kodla tekrar dene
+    raise CariHatasi("Cari kodu üretilemedi (eş zamanlı kayıt çakışması); lütfen birkaç saniye sonra tekrar deneyin.")
 
 
 def muhasebe_hesabi_ac(cari: Cari, kullanici=None) -> str:
@@ -294,6 +378,8 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
     kalıp tutarsızlık oluşturuyordu."""
     if cari.silindi:
         raise CariHatasi("Silinmiş cari düzenlenemez.")
+    mukerrer_onayi = bool(kw.pop("mukerrer_onayi", False))
+    pb_degisim_onayi = bool(kw.pop("pb_degisim_onayi", False))
     unvan = buyuk_harf_tr((unvan or "").strip())
     if not unvan:
         raise CariHatasi("Unvan boş olamaz.")
@@ -310,7 +396,10 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
     if kategori_degisti and cari_hareketli_mi(cari):
         raise CariHatasi("Hareketi olan carinin kategorisi değiştirilemez.")
 
-    _vergi_benzersiz(kw.get("vkn_tckn"), kw.get("tax_id"), haric_pk=cari.pk)
+    eski_vkn = (cari.vkn_tckn or "").strip()
+    if (kw.get("vkn_tckn") or "").strip() != eski_vkn:                  # VKN'ye dokunulmadıysa eski (olası ortak) kayıt engel değil
+        _vergi_benzersiz(kw.get("vkn_tckn"), None, haric_pk=cari.pk, mukerrer_onayi=mukerrer_onayi, kullanici=kullanici)
+    _vergi_benzersiz(None, kw.get("tax_id"), haric_pk=cari.pk)
     veri, uyarilar = _alanlar(ulke=_ulke(kw.get("ulke_id")), sehir=_sehir(kw.get("sehir_id")),
                     **{k: kw.get(k) for k in (
                         "kisa_ad", "vergi_dairesi", "vkn_tckn", "tax_id", "telefon",
@@ -318,6 +407,14 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
                         "eposta", "web", "ilgili_kisi", "kep_adresi", "adres",
                         "para_birimi", "kur_tipi", "kur_degerleme", "kur_farki_hedefi", "kredi_limiti",
                         "iskonto_yuzdesi", "odeme_kosulu", "odeme_gunu", "notlar", "fason_faturasiz")})
+    if veri["para_birimi"] != cari.para_birimi and cari_hareketli_mi(cari):
+        # Ana para birimi kilidi: hareketli carinin PB'si yalnız yönetici + mevcut havuz bakiyelerini gören onayla değişir.
+        from core.yetki import yonetici_mi
+        if not yonetici_mi(kullanici):
+            raise CariHatasi("Hareketi olan carinin ana para birimi yalnız yönetici tarafından değiştirilebilir.")
+        if not pb_degisim_onayi:
+            raise CariPbOnayGerekli(f"{cari.kod}: ana para birimi {cari.para_birimi} → {veri['para_birimi']} değişiyor; mevcut havuz bakiyelerini "
+                                    "kontrol edip onaylayın.", para_birimi_havuzlari(cari), cari.para_birimi, veri["para_birimi"])
 
     with transaction.atomic():
         eski_muhasebe_kodu = cari.muhasebe_kodu
@@ -355,24 +452,108 @@ def cari_guncelle(cari: Cari, *, unvan, kategori_id=None, kullanici=None, **kw) 
     return cari
 
 
+SILME_ETIKETLERI = {
+    "faturalar": "fatura", "teklif_siparisler": "teklif/sipariş/irsaliye", "numune_cikislari": "numune çıkışı",
+    "fason_depolari": "fason deposu bağlantısı", "fason_fiyatlari": "fason fiyatı", "fason_donusleri": "fason dönüşü",
+    "fason_siparisleri": "fason siparişi", "fason_operasyon_kayitlari": "fason operasyon kaydı", "tedarik_stoklari": "stok kartında tedarikçi",
+    "kesinti_fisleri": "kesinti/masraf/virman fişi", "virman_karsi_fisleri": "virman fişi (karşı cari)",
+}
+SILME_ATLANAN = {"banka_hesaplari", "sevk_adresleri", "yetkililer", "aktiviteler", "kaynak_adaylar"}   # cari ile birlikte gider / bilgi amaçlı
+
+
+def silme_engelleri(cari: Cari) -> list:
+    """Cari silinemez nedenleri: [(etiket, adet)]. Boş liste = silinebilir. Muhasebe hesabında (alt hesaplar dahil) yevmiye hareketi, ve Cari'ye
+    bağlı TÜM silinmemiş belge/kayıtlar (fatura, teklif/sipariş/irsaliye, çek/senet, fason belgeleri, numune, tedarikçi bağı…; modelin FK'lerinden
+    genel olarak türetilir) ile açık stok ayırması."""
+    from core.models import YevmiyeSatir
+    nedenler = []
+    if cari.muhasebe_kodu:
+        n = (YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False)
+             .filter(Q(hesap_id=cari.muhasebe_kodu) | Q(hesap__hesap_kodu__startswith=cari.muhasebe_kodu + ".")).count())
+        if n:
+            nedenler.append(("yevmiye hareketi (muhasebe hesabında)", n))
+    for r in Cari._meta.related_objects:
+        if not r.one_to_many:
+            continue
+        acc = r.get_accessor_name()
+        if acc is None or acc in SILME_ATLANAN:
+            continue
+        qs = getattr(cari, acc).all()
+        if any(f.name == "silindi" for f in r.related_model._meta.get_fields()):
+            qs = qs.filter(silindi=False)
+        n = qs.count()
+        if n:
+            nedenler.append((SILME_ETIKETLERI.get(acc) or str(r.related_model._meta.verbose_name), n))
+    from core.services import stok_ayirma
+    n = stok_ayirma.acik_ayirmalar().filter(uretim_emri__kaynak_siparis__cari=cari).count()
+    if n:
+        nedenler.append(("açık stok ayırması (carinin açık siparişine bağlı)", n))
+    return nedenler
+
+
+def silme_engeli_metni(nedenler) -> str:
+    return ", ".join(f"{n} {e}" for e, n in nedenler)
+
+
+@transaction.atomic
 def cari_sil(cari: Cari, kullanici=None) -> Cari:
+    """Soft-delete — yalnız HİÇ hareketi/belgesi olmayan cari. Engel varsa ``CariSilmeEngeli`` (nedenler listesiyle; "Pasife al" önerilir).
+    Muhasebe hesabı kapatılamazsa hata SESSİZCE yutulmaz: cari de silinmez (atomik)."""
     if cari.silindi:
         return cari
-    if cari.tedarik_stoklari.filter(silindi=False).exists():
-        raise CariHatasi(
-            "Bu cari stoklarda tedarikçi olarak kullanılıyor; önce ilgili stoklardan kaldırın.")
+    nedenler = silme_engelleri(cari)
+    if nedenler:
+        raise CariSilmeEngeli(f"{cari.kod} silinemez: {silme_engeli_metni(nedenler)}. Bunun yerine carisini PASİFE alın "
+                              "(geçmiş belge, ekstre ve raporlar etkilenmez).", nedenler)
+    if cari.muhasebe_kodu and HesapPlani.objects.filter(hesap_kodu=cari.muhasebe_kodu, silindi=False).exists():
+        try:
+            hp.hesap_sil(kod=cari.muhasebe_kodu, kullanici=kullanici)
+        except hp.HesapHatasi as e:
+            raise CariHatasi(f"Cari silinmedi: muhasebe hesabı ({cari.muhasebe_kodu}) kapatılamadı — {e}")
     cari.silindi = True
     cari.silindi_at = timezone.now()
     cari.updated_by = kullanici
     cari.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
-    # Hareketsizse cari'nin yaprak muhasebe hesabını da gizle. Yevmiye satırı
-    # varsa hesap_sil zaten reddeder (hesap korunur) — ara hesaba dokunulmaz.
-    if cari.muhasebe_kodu:
-        try:
-            hp.hesap_sil(kod=cari.muhasebe_kodu, kullanici=kullanici)
-        except hp.HesapHatasi:
-            pass
     return cari
+
+
+def cari_pasife_al(cari: Cari, kullanici=None) -> Cari:
+    if cari.silindi:
+        raise CariHatasi("Silinmiş cari pasife alınamaz.")
+    if cari.aktif:
+        cari.aktif = False
+        cari.updated_by = kullanici
+        cari.save(update_fields=["aktif", "updated_by", "updated_at"])
+    return cari
+
+
+def cari_aktiflestir(cari: Cari, kullanici=None) -> Cari:
+    if cari.silindi:
+        raise CariHatasi("Silinmiş cari aktifleştirilemez.")
+    if not cari.aktif:
+        cari.aktif = True
+        cari.updated_by = kullanici
+        cari.save(update_fields=["aktif", "updated_by", "updated_at"])
+    return cari
+
+
+def para_birimi_havuzlari(cari: Cari) -> list:
+    """Carinin muhasebe hesabındaki (alt hesaplar dahil) PB havuz bakiyeleri: [{pb, borc_tl, alacak_tl, net_tl, doviz_net}] (TRY, USD, EUR, GBP sırasıyla;
+    yalnız hareketli olanlar). doviz_net = o PB'deki (borç − alacak) işlem tutarı; TL havuzunda TL'nin kendisi."""
+    from core.models import YevmiyeSatir
+    if not cari.muhasebe_kodu:
+        return []
+    qs = (YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False)
+          .filter(Q(hesap_id=cari.muhasebe_kodu) | Q(hesap__hesap_kodu__startswith=cari.muhasebe_kodu + "."))
+          .values("islem_pb").annotate(tl_borc=Sum("borc"), tl_alacak=Sum("alacak"),
+                                       d_borc=Sum("islem_tutari", filter=Q(borc__gt=0)), d_alacak=Sum("islem_tutari", filter=Q(alacak__gt=0))))
+    sira = {"TRY": 0, "USD": 1, "EUR": 2, "GBP": 3}
+    sonuc = []
+    for r in qs:
+        b, a = r["tl_borc"] or 0, r["tl_alacak"] or 0
+        db, da = r["d_borc"] or 0, r["d_alacak"] or 0
+        sonuc.append({"pb": r["islem_pb"], "borc_tl": b, "alacak_tl": a, "net_tl": b - a, "doviz_net": db - da})
+    return sorted(sonuc, key=lambda x: sira.get(x["pb"], 9))
 
 
 # --- Banka hesapları ---------------------------------------------------------

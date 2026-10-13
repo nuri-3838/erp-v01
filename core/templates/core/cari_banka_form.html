@@ -34,4 +34,21 @@
     </div>
   </form>
 </div>
+{{ banka_kodlari|json_script:"banka-kodlari" }}
+<script>
+(function(){
+  // IBAN girilince (TR) banka adı önerilir; elle yazılmışsa dokunulmaz. Boşluklar temizlenir, 4'lü gruplanır.
+  var iban = document.getElementById("{{ form.iban.id_for_label }}"), banka = document.getElementById("{{ form.banka_adi.id_for_label }}");
+  if (!iban || !banka) return;
+  var kodlar = JSON.parse(document.getElementById("banka-kodlari").textContent), elleYazildi = !!banka.value;
+  banka.addEventListener("input", function(){ elleYazildi = !!banka.value; });
+  function oner(){
+    var k = iban.value.replace(/[\s-]/g, "").toUpperCase();
+    iban.value = k.replace(/(.{4})/g, "$1 ").trim();
+    var ad = k.indexOf("TR") === 0 ? (kodlar[k.substr(4, 5)] || "") : "";
+    if (ad && !elleYazildi) banka.value = ad;
+  }
+  iban.addEventListener("blur", oner); iban.addEventListener("change", oner);
+})();
+</script>
 {% endblock %}

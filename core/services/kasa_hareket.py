@@ -94,6 +94,8 @@ def _karsi_coz(tip, kasa, karsi):
     banka/virman'da para birimi kasayla aynı olmalı (tek-para fiş, ilk dilim)."""
     tur = HAREKET[tip]["karsi"]
     if tur == "cari":
+        from core.services.cari import pasif_kontrol
+        pasif_kontrol(karsi, KasaHareketHatasi, ne="Yeni kasa hareketi")
         return _cari_hesap(karsi).hesap_kodu, karsi.unvan
     if tur == "banka":
         if karsi.para_birimi != kasa.para_birimi:

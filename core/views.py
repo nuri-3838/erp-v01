@@ -1790,7 +1790,10 @@ def cariler(request):
     kategori_id = request.GET.get("kategori") or ""
     sehir_id = request.GET.get("sehir") or ""
     ulke_id = request.GET.get("ulke") or ""
+    pasif_goster = request.GET.get("pasif") == "1"
     qs = cari_servis.aktif_cariler()
+    if not pasif_goster:
+        qs = qs.filter(aktif=True)                      # PASİF cariler varsayılan gizli ("Pasifleri göster" ile görünür)
     if ara:
         qs = qs.filter(
             Q(unvan__contains=buyuk_harf_tr(ara)) | Q(kod__contains=ara)
@@ -1819,37 +1822,53 @@ def cariler(request):
         "cariler": qs, "ara": ara,
         "kategoriler": kategoriler, "sehirler": sehirler, "ulkeler": ulkeler,
         "secili_kategori": kategori_id, "secili_sehir": sehir_id, "secili_ulke": ulke_id,
+        "pasif_goster": pasif_goster, "pasif_sayisi": cari_servis.aktif_cariler().filter(aktif=False).count(),
     })
 
 
 @ekran_gerekli("cariler")
 def cari_ekle(request):
+    mukerrer = []
     if request.method == "POST":
         form = CariForm(request.POST)
         if form.is_valid():
             try:
-                c = cari_servis.cari_olustur(**_cari_form_kw(form.cleaned_data),
-                                             kullanici=request.user)
+                c = cari_servis.cari_olustur(**_cari_form_kw(form.cleaned_data), kullanici=request.user,
+                                             mukerrer_onayi=request.POST.get("mukerrer_onay") == "1")
                 for uyari in getattr(c, "telefon_uyarilari", []):
                     messages.error(request, uyari)
                 messages.success(request, f"Cari eklendi: {c.kod} — {c.unvan}")
                 return redirect("core:cari_detay", pk=c.pk)
+            except cari_servis.CariMukerrerVKN as e:
+                form.add_error("vkn_tckn", str(e))
+                mukerrer = e.mevcutlar
             except cari_servis.CariHatasi as e:
                 form.add_error(None, str(e))
     else:
         turkiye = Ulke.objects.filter(silindi=False, kod="TR").first()
         form = CariForm(initial={"ulke": turkiye})
-    return render(request, "core/cari_form.html", {"form": form, "baslik": "Yeni Cari"})
+    return render(request, "core/cari_form.html", {"form": form, "baslik": "Yeni Cari", "mukerrer": mukerrer,
+                                                   "yonetici": yonetici_mi(request.user)})
 
 
 @ekran_gerekli("cariler")
 def cari_duzenle(request, pk):
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
     kategori_kilitli = cari_servis.cari_hareketli_mi(cari)
+    yonetici = yonetici_mi(request.user)
+    pb_kilitli = kategori_kilitli and not yonetici                   # hareketli carinin ana PB'si yalnız yönetici (onay ekranıyla) değiştirir
+    mukerrer = []
+    from core.dogrulama import vkn_tckn_gecerli
+    vkn_uyari = bool(cari.vkn_tckn) and not vkn_tckn_gecerli(cari.vkn_tckn)
     if request.method == "POST":
-        form = CariForm(request.POST)
+        veri = request.POST.copy()
+        if pb_kilitli:
+            veri["para_birimi"] = cari.para_birimi                   # disabled alan tarayıcıdan gelmez; sunucu kilidi servis katmanında da var
+        form = CariForm(veri, mevcut_vkn=cari.vkn_tckn)
         if kategori_kilitli:
             form.fields["kategori"].widget.attrs["disabled"] = True
+        if pb_kilitli:
+            form.fields["para_birimi"].widget.attrs["disabled"] = True
         if form.is_valid():
             try:
                 kw = _cari_form_kw(form.cleaned_data)
@@ -1857,16 +1876,27 @@ def cari_duzenle(request, pk):
                     # Kilitli alan: tarayıcı disabled select'i hiç göndermez; servis
                     # katmanı da aynı kuralı zorluyor ama burada hiç denemiyoruz.
                     kw["kategori_id"] = cari.kategori_id
+                if pb_kilitli:
+                    kw["para_birimi"] = cari.para_birimi
                 guncellenen = cari_servis.cari_guncelle(
-                    cari, **kw, kullanici=request.user)
+                    cari, **kw, kullanici=request.user, mukerrer_onayi=request.POST.get("mukerrer_onay") == "1",
+                    pb_degisim_onayi=(yonetici and request.POST.get("pb_onay") == "1"))
                 for uyari in getattr(guncellenen, "telefon_uyarilari", []):
                     messages.error(request, uyari)
                 messages.success(request, "Cari güncellendi.")
                 return redirect("core:cari_detay", pk=cari.pk)
+            except cari_servis.CariPbOnayGerekli as e:
+                alanlar = [(k, v) for k, vals in request.POST.lists()
+                           if k not in ("csrfmiddlewaretoken", "pb_onay", "mukerrer_onay") for v in vals]
+                return render(request, "core/cari_pb_onay.html", {"cari": cari, "havuzlar": e.havuzlar, "eski": e.eski, "yeni": e.yeni,
+                                                                   "alanlar": alanlar})
+            except cari_servis.CariMukerrerVKN as e:
+                form.add_error("vkn_tckn", str(e))
+                mukerrer = e.mevcutlar
             except cari_servis.CariHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariForm(initial={
+        form = CariForm(mevcut_vkn=cari.vkn_tckn, initial={
             "unvan": cari.unvan, "kisa_ad": cari.kisa_ad, "kategori": cari.kategori_id,
             "vergi_dairesi": cari.vergi_dairesi, "vkn_tckn": cari.vkn_tckn,
             "tax_id": cari.tax_id, "telefon": cari.telefon,
@@ -1883,9 +1913,12 @@ def cari_duzenle(request, pk):
             "notlar": cari.notlar, "fason_faturasiz": cari.fason_faturasiz})
         if kategori_kilitli:
             form.fields["kategori"].widget.attrs["disabled"] = True
+        if pb_kilitli:
+            form.fields["para_birimi"].widget.attrs["disabled"] = True
     return render(request, "core/cari_form.html",
                   {"form": form, "baslik": "Cari Düzenle", "duzenlenen": cari,
-                   "kategori_kilitli": kategori_kilitli})
+                   "kategori_kilitli": kategori_kilitli, "pb_kilitli": pb_kilitli, "vkn_uyari": vkn_uyari,
+                   "mukerrer": mukerrer, "yonetici": yonetici})
 
 
 def _cari_kur_farki_projesi(cari):
@@ -1907,6 +1940,8 @@ def cari_detay(request, pk):
     return render(request, "core/cari_detay.html", {
         "cari": cari,
         "kur_farki_proje": _cari_kur_farki_projesi(cari),
+        "silme_engelleri": cari_servis.silme_engelleri(cari),
+        "silme_engeli_metni": cari_servis.silme_engeli_metni(cari_servis.silme_engelleri(cari)),
         "bankalar": cari_servis.aktif_bankalar(cari),
         "yetkililer": cari_servis.aktif_yetkililer(cari),
         "sevk_adresleri": cari_servis.aktif_sevk_adresleri(cari),
@@ -1920,6 +1955,9 @@ def cari_detay(request, pk):
 def cari_kesinti_ekle(request, pk):
     """Cari kartından Kesinti / Masraf hareketi (manuel fiş yerine)."""
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if not cari.aktif:
+        messages.error(request, f"{cari.kod} carisi PASİF; yeni kesinti/masraf girilemez. Önce cariyi aktifleştirin.")
+        return redirect("core:cari_detay", pk=cari.pk)
     try:
         yon = cari_kesinti_servis.yon_coz(cari)
     except cari_kesinti_servis.CariKesintiHatasi as e:
@@ -1992,6 +2030,9 @@ def cari_kesinti_duzenle(request, pk, fis_pk):
 def cari_virman_ekle(request, pk):
     """Cariler arası virman (bu cari ↔ karşı cari; manuel mahsup fişi yerine)."""
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if not cari.aktif:
+        messages.error(request, f"{cari.kod} carisi PASİF; yeni virman girilemez. Önce cariyi aktifleştirin.")
+        return redirect("core:cari_detay", pk=cari.pk)
     if request.method == "POST":
         form = CariVirmanForm(request.POST, cari=cari)
         if form.is_valid():
@@ -4960,14 +5001,37 @@ def cek_hesap_ayari(request):
 
 @ekran_gerekli("cariler")
 def cari_sil(request, pk):
+    """Yalnız hiç hareketi/belgesi olmayan cari silinir; engel varsa nedenleri listelenir ve "Pasife al" önerilir (detay ekranında düğme)."""
     cari = get_object_or_404(Cari, pk=pk, silindi=False)
     if request.method == "POST":
         try:
             cari_servis.cari_sil(cari, kullanici=request.user)
             messages.success(request, f"Cari silindi: {cari.kod}")
+        except cari_servis.CariSilmeEngeli as e:
+            messages.error(request, str(e))
+            return redirect("core:cari_detay", pk=cari.pk)
         except cari_servis.CariHatasi as e:
             messages.error(request, str(e))
+            return redirect("core:cari_detay", pk=cari.pk)
     return redirect("core:cariler")
+
+
+@ekran_gerekli("cariler")
+def cari_pasife_al(request, pk):
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.cari_pasife_al(cari, kullanici=request.user)
+        messages.success(request, f"{cari.kod} PASİFE alındı: yeni belge/harekette seçilemez; geçmiş belge, ekstre ve raporlar etkilenmedi.")
+    return redirect("core:cari_detay", pk=cari.pk)
+
+
+@ekran_gerekli("cariler")
+def cari_aktiflestir(request, pk):
+    cari = get_object_or_404(Cari, pk=pk, silindi=False)
+    if request.method == "POST":
+        cari_servis.cari_aktiflestir(cari, kullanici=request.user)
+        messages.success(request, f"{cari.kod} yeniden AKTİF.")
+    return redirect("core:cari_detay", pk=cari.pk)
 
 
 @ekran_gerekli("cariler")
@@ -4979,10 +5043,25 @@ def cari_kod_api(request):
     return JsonResponse({"kod": cari_servis.sonraki_cari_kodu(kategori)})
 
 
+def _alt_kayit_kilidi(request, cari, ne):
+    """PASİF cari: banka/sevk adresi/yetkili alt kayıtları eklenemez/değiştirilemez (silinmiş cari zaten 404). Kilit varsa yönlendirme döner."""
+    if cari.aktif:
+        return None
+    messages.error(request, f"{cari.kod} carisi PASİF; {ne} yapılamaz. Önce cariyi aktifleştirin.")
+    return redirect("core:cari_detay", pk=cari.pk)
+
+
 # --- Cari banka hesapları ---------------------------------------------------
+def _banka_baglam(form, baslik, cari):
+    from core.dogrulama import TR_BANKA_KODLARI
+    return {"form": form, "baslik": baslik, "cari": cari, "banka_kodlari": TR_BANKA_KODLARI}
+
+
 @ekran_gerekli("cariler")
 def banka_ekle(request, cari_pk):
     cari = get_object_or_404(Cari, pk=cari_pk, silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, cari, "banka hesabı eklenemez")):
+        return kilit
     if request.method == "POST":
         form = CariBankaForm(request.POST)
         if form.is_valid():
@@ -4994,13 +5073,14 @@ def banka_ekle(request, cari_pk):
                 form.add_error(None, str(e))
     else:
         form = CariBankaForm()
-    return render(request, "core/cari_banka_form.html",
-                  {"form": form, "baslik": "Yeni Banka Hesabı", "cari": cari})
+    return render(request, "core/cari_banka_form.html", _banka_baglam(form, "Yeni Banka Hesabı", cari))
 
 
 @ekran_gerekli("cariler")
 def banka_duzenle(request, pk):
-    banka = get_object_or_404(CariBanka, pk=pk, silindi=False)
+    banka = get_object_or_404(CariBanka, pk=pk, silindi=False, cari__silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, banka.cari, "banka hesabı düzenlenemez")):
+        return kilit
     if request.method == "POST":
         form = CariBankaForm(request.POST)
         if form.is_valid():
@@ -5015,13 +5095,14 @@ def banka_duzenle(request, pk):
             "banka_adi": banka.banka_adi, "hesap_sahibi": banka.hesap_sahibi,
             "iban": banka.iban, "swift": banka.swift, "para_birimi": banka.para_birimi,
             "aciklama": banka.aciklama, "varsayilan": banka.varsayilan})
-    return render(request, "core/cari_banka_form.html",
-                  {"form": form, "baslik": "Banka Hesabı Düzenle", "cari": banka.cari})
+    return render(request, "core/cari_banka_form.html", _banka_baglam(form, "Banka Hesabı Düzenle", banka.cari))
 
 
 @ekran_gerekli("cariler")
 def banka_sil(request, pk):
-    banka = get_object_or_404(CariBanka, pk=pk, silindi=False)
+    banka = get_object_or_404(CariBanka, pk=pk, silindi=False, cari__silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, banka.cari, "banka hesabı silinemez")):
+        return kilit
     if request.method == "POST":
         cari_servis.banka_sil(banka, kullanici=request.user)
         messages.success(request, "Banka hesabı silindi.")
@@ -5038,6 +5119,8 @@ def _sevk_form_kw(cd):
 @ekran_gerekli("cariler")
 def sevk_adresi_ekle(request, cari_pk):
     cari = get_object_or_404(Cari, pk=cari_pk, silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, cari, "sevk adresi eklenemez")):
+        return kilit
     if request.method == "POST":
         form = CariSevkAdresiForm(request.POST)
         if form.is_valid():
@@ -5056,7 +5139,9 @@ def sevk_adresi_ekle(request, cari_pk):
 
 @ekran_gerekli("cariler")
 def sevk_adresi_duzenle(request, pk):
-    sevk = get_object_or_404(CariSevkAdresi, pk=pk, silindi=False)
+    sevk = get_object_or_404(CariSevkAdresi, pk=pk, silindi=False, cari__silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, sevk.cari, "sevk adresi düzenlenemez")):
+        return kilit
     if request.method == "POST":
         form = CariSevkAdresiForm(request.POST)
         if form.is_valid():
@@ -5077,7 +5162,9 @@ def sevk_adresi_duzenle(request, pk):
 
 @ekran_gerekli("cariler")
 def sevk_adresi_sil(request, pk):
-    sevk = get_object_or_404(CariSevkAdresi, pk=pk, silindi=False)
+    sevk = get_object_or_404(CariSevkAdresi, pk=pk, silindi=False, cari__silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, sevk.cari, "sevk adresi silinemez")):
+        return kilit
     if request.method == "POST":
         cari_servis.sevk_adresi_sil(sevk, kullanici=request.user)
         messages.success(request, "Sevk adresi silindi.")
@@ -5088,6 +5175,8 @@ def sevk_adresi_sil(request, pk):
 @ekran_gerekli("cariler")
 def yetkili_ekle(request, cari_pk):
     cari = get_object_or_404(Cari, pk=cari_pk, silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, cari, "yetkili kişi eklenemez")):
+        return kilit
     if request.method == "POST":
         form = CariYetkiliForm(request.POST)
         if form.is_valid():
@@ -5104,7 +5193,9 @@ def yetkili_ekle(request, cari_pk):
 
 @ekran_gerekli("cariler")
 def yetkili_duzenle(request, pk):
-    yetkili = get_object_or_404(CariYetkili, pk=pk, silindi=False)
+    yetkili = get_object_or_404(CariYetkili, pk=pk, silindi=False, cari__silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, yetkili.cari, "yetkili kişi düzenlenemez")):
+        return kilit
     if request.method == "POST":
         form = CariYetkiliForm(request.POST)
         if form.is_valid():
@@ -5123,7 +5214,9 @@ def yetkili_duzenle(request, pk):
 
 @ekran_gerekli("cariler")
 def yetkili_sil(request, pk):
-    yetkili = get_object_or_404(CariYetkili, pk=pk, silindi=False)
+    yetkili = get_object_or_404(CariYetkili, pk=pk, silindi=False, cari__silindi=False)
+    if (kilit := _alt_kayit_kilidi(request, yetkili.cari, "yetkili kişi silinemez")):
+        return kilit
     if request.method == "POST":
         cari_servis.yetkili_sil(yetkili, kullanici=request.user)
         messages.success(request, "Yetkili kişi silindi.")
@@ -5161,7 +5254,7 @@ def aktivite_ekle(request, cari_pk):
 
 @ekran_gerekli("cariler")
 def aktivite_duzenle(request, pk):
-    aktivite = get_object_or_404(CariAktivite, pk=pk, silindi=False)
+    aktivite = get_object_or_404(CariAktivite, pk=pk, silindi=False, cari__silindi=False)
     if request.method == "POST":
         form = CariAktiviteForm(request.POST)
         if form.is_valid():
@@ -5183,7 +5276,7 @@ def aktivite_duzenle(request, pk):
 
 @ekran_gerekli("cariler")
 def aktivite_sil(request, pk):
-    aktivite = get_object_or_404(CariAktivite, pk=pk, silindi=False)
+    aktivite = get_object_or_404(CariAktivite, pk=pk, silindi=False, cari__silindi=False)
     if request.method == "POST":
         cari_servis.aktivite_sil(aktivite, kullanici=request.user)
         messages.success(request, "Aktivite silindi.")
@@ -5192,7 +5285,7 @@ def aktivite_sil(request, pk):
 
 @ekran_gerekli("cariler")
 def aktivite_ek_sil(request, pk):
-    ek = get_object_or_404(CariAktiviteEk, pk=pk, silindi=False)
+    ek = get_object_or_404(CariAktiviteEk, pk=pk, silindi=False, aktivite__silindi=False, aktivite__cari__silindi=False)
     if request.method == "POST":
         cari_servis.aktivite_ek_sil(ek, kullanici=request.user)
         messages.success(request, "Dosya silindi.")

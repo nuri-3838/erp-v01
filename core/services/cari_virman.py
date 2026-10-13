@@ -54,7 +54,11 @@ def _kur(deger):
     return d
 
 
-def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None):
+def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None, mevcut_idler=()):
+    from core.services.cari import pasif_kontrol
+    for c in (cari, karsi_cari):
+        if c is not None and c.pk not in mevcut_idler:
+            pasif_kontrol(c, CariVirmanHatasi, ne="Yeni virman")
     if bool(karsi_cari) == bool(karsi_hesap_kodu):
         raise CariVirmanHatasi("Karşı tarafı cari VEYA hesap olarak seçin (yalnız biri).")
     if karsi_cari is not None and karsi_cari.pk == cari.pk:
@@ -158,7 +162,8 @@ def duzenleme_bilgisi(fis, cari):
 def virman_guncelle(*, fis, cari, karsi_cari=None, tarih, tutar, yon, aciklama="", sayilan_pb=None, kullanici=None,
                     karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None) -> YevmiyeFisi:
     _fis_kontrol(fis, cari)
-    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id, kur)
+    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id, kur,
+                             mevcut_idler=(fis.cari_id, fis.karsi_cari_id))
     try:
         fis_guncelle(fis, tarih=tarih, satirlar=satirlar, aciklama=ack, kullanici=kullanici)
     except YevmiyeHatasi as e:

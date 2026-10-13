@@ -53,6 +53,8 @@ def donus_olustur(*, cari_id, depo_id, tarih, satirlar, irsaliye_no="", aciklama
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if cari is None:
         raise FasonHatasi("Fasoncu (cari) bulunamadı.")
+    from core.services.cari import pasif_kontrol
+    pasif_kontrol(cari, FasonHatasi, ne="Yeni fason dönüşü")
     if depo_servis.fason_deposu(cari) is None:
         raise FasonHatasi(f"{cari.unvan} için bağlı bir fason deposu yok (Depolar ekranında fasoncuyu bir depoya bağlayın).")
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()

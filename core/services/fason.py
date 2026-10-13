@@ -29,10 +29,12 @@ def gecerli_fiyat(cari, stok, tarih):
             .order_by("-gecerlilik_baslangic", "-pk").first())
 
 
-def _fiyat_dogrula(cari_id, stok_id, birim_fiyat, para_birimi):
+def _fiyat_dogrula(cari_id, stok_id, birim_fiyat, para_birimi, mevcut_cari_id=None):
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first()
     if not cari:
         raise FasonHatasi("Fasoncu (cari) bulunamadı.")
+    from core.services.cari import pasif_kontrol
+    pasif_kontrol(cari, FasonHatasi, mevcut_cari_id=mevcut_cari_id, ne="Yeni fason fiyatı")
     stok = Stok.objects.filter(pk=stok_id, silindi=False, uretim_urunu=True).first()
     if not stok:
         raise FasonHatasi("Kesilmiş parça bulunamadı (üretim ürünü olmalı).")
@@ -61,7 +63,7 @@ def fiyat_guncelle(f: FasonFiyat, *, cari_id, stok_id, birim_fiyat, para_birimi=
                    aktif=True, kullanici=None) -> FasonFiyat:
     if f.silindi:
         raise FasonHatasi("Silinmiş kayıt düzenlenemez.")
-    cari, stok, fiyat = _fiyat_dogrula(cari_id, stok_id, birim_fiyat, para_birimi)
+    cari, stok, fiyat = _fiyat_dogrula(cari_id, stok_id, birim_fiyat, para_birimi, mevcut_cari_id=f.cari_id)
     if (FasonFiyat.objects.filter(silindi=False, cari=cari, stok=stok, gecerlilik_baslangic=gecerlilik_baslangic)
             .exclude(pk=f.pk).exists()):
         raise FasonHatasi("Bu fasoncu + parça için aynı başlangıç tarihli bir fiyat zaten var.")

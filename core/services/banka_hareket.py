@@ -107,6 +107,8 @@ def _karsi_coz(tip, banka_hesap, karsi):
     banka/kasa karşı tarafı banka hesabıyla aynı para biriminde olmalı."""
     tur = HAREKET[tip]["karsi"]
     if tur == "cari":
+        from core.services.cari import pasif_kontrol
+        pasif_kontrol(karsi, BankaHareketHatasi, ne="Yeni banka hareketi")
         return _cari_hesap(karsi).hesap_kodu, karsi.unvan
     if tur == "banka":
         if karsi.pk == banka_hesap.pk:

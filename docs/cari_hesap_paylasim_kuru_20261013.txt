@@ -1,0 +1,39 @@
+CARİ KOD / MUHASEBE HESABI PAYLAŞIMI — KURU RAPOR (2026-10-13, canlı salt-okunur; HİÇBİR VERİYE DOKUNULMADI)
+=========================================================================================================
+Karar kullanıcıda. Önce kural eklendi: silinmiş carinin kodu ve hesabı yeni cariye verilmez (services.cari._kod_hesap_cakisma, sonraki_cari_kodu).
+Aşağıdaki 3 vaka kuraldan ÖNCE oluşmuş mevcut paylaşımlardır.
+
+ÖZET: 3 vakanın üçünde de hesaptaki TÜM hareketler AKTİF karta aittir (fatura/banka/kredi kartı açıklamaları ve fatura carileri aktif karta işaret eder).
+Silinmiş kartların kendi hareketi yoktur; yalnız silinmiş MUHTELİF MÜŞTERİ kartına bağlı 1 açık teklif vardır. Yani para/ekstre doğruluğu bozuk değil;
+sorun, silinmiş kartın aynı kod + muhasebe hesabını hâlâ taşıması (karışıklık / ileride yanlış eşleşme riski).
+
+1) 120-20-0001 / hesap 120.20.0001 (hesap adı: MR. MOP GMBH)
+   Aktif kart : 120-20-0001 MR. MOP GMBH  (EUR, oluşturma 15.09.2026) — 1 fatura (SMT2026000000007, onaylı satış), 1 sipariş (SSS-2026-0002)
+   Silinmiş   : 120-20-0001 KREZ          (EUR, oluşturma 07.09.2026, silinme 26.09.2026) — 0 fatura, 0 belge
+   Hareket (3 satır, net 0,00): 17.09 banka 2026/510 alacak 1.357 EUR (76.079,53 TL) MR. MOP döviz havalesi
+                                25.09 fatura 2026/1154 borç 2.714 EUR (151.385,57 TL) MR. MOP satış faturası
+                                05.10 banka 2026/955 alacak 1.357 EUR (75.306,04 TL) MR. MOP döviz havalesi
+   Öneri: hareket taşıma gerekmez (hepsi MR. MOP). Silinmiş KREZ kartının kodunu/muhasebe_kodunu temizle (ör. kod "120-20-0001-SILINMIS", muhasebe_kodu boş).
+
+2) 320-60-0001 / hesap 320.60.0001 (hesap adı: ALEYNA HROZAN)
+   Aktif kart : 320-60-0001 ALEYNA HROZAN (TRY, oluşturma 03.10.2026) — 1 fatura (EFA2026000000114, onaylı alış-gider)
+   Silinmiş   : 320-60-0001 KKB KREDİ KAYIT BÜROSU A.Ş. (TRY, oluşturma 07.06.2026, silinme 02.10.2026) — 0 fatura, 0 belge
+   Hareket (2 satır, net -0,01 TL): 02.09 kredi kartı 2026/601 borç 2.429,99 (Trendyol - Aleyna Hrozan harcaması)
+                                    04.09 fatura 2026/56 alacak 2.430,00 (Aleyna Hrozan alış-gider faturası)
+   Öneri: hareket taşıma gerekmez (ikisi de ALEYNA). -0,01 TL gerçek kuruş farkıdır (harcama 2.429,99 / fatura 2.430,00): kuruş kapatma fişiyle
+          kapatılabilir. Silinmiş KKB kartının kodu/muhasebe_kodu temizlenir ("320-60-0001-SILINMIS", muhasebe_kodu boş).
+
+3) 120-10-0004 / hesap 120.10.0004 (hesap adı: TRENDYOL SATIŞLARI (DSM GRUP DANIŞMANLIK İLETİŞİM VE SATIŞ TİC. A.Ş.))
+   Aktif kart : 120-10-0004 TRENDYOL SATIŞLARI (TRY, oluşturma 04.10.2026) — 9 fatura (8 satış, 1 alış-gider)
+   Silinmiş   : 120-10-0004-IPTAL MUHTELİF MÜŞTERİ (USD, oluşturma 11.09.2026, silinme 26.09.2026) — 0 fatura, 1 teklif (SST-2026-0011, satış,
+                11.09.2026, durum GÖNDERİLDİ, silinmemiş)
+   Hareket (9 satır, net 21.666,54 TL borç): 30.09 / 09.10 / 10.10 tarihli 8 satış faturası (toplam 22.842,06 TL borç) ve 07.10 alış-gider faturası
+                                             (1.175,52 TL alacak) — hepsi TRENDYOL kartının faturaları.
+   Öneri: hareket taşıma gerekmez. SST-2026-0011 için KARAR: (a) artık geçersizse teklifi iptal et, ya da (b) doğru aktif cariye (Trendyol ya da başka
+          bir müşteri) yeniden bağla — silinmiş karta bağlı açık belge kalmasın. Silinmiş kartın muhasebe_kodu temizlenir.
+
+GENEL ÖNERİ (onayınla uygulanır; tek seferlik, geri alınabilir, yedekli):
+ - 3 silinmiş kartın `muhasebe_kodu` alanı boşaltılır ve `kod`larına "-SILINMIS" eki verilir (120-10-0004-IPTAL zaten ekli → "-IPTAL" kalır).
+ - Hesapların adı/hareketleri aynen kalır.
+ - SST-2026-0011 kararı (iptal / yeniden bağla).
+ - 320-60-0001 ALEYNA -0,01 TL kuruş kapatma (isteğe bağlı).

@@ -78,13 +78,16 @@ def _satirlari_coz(satirlar):
     return sonuc
 
 
-def _baslik_dogrula(*, depo_id, cari_id, alici_adi, ulke_id):
+def _baslik_dogrula(*, depo_id, cari_id, alici_adi, ulke_id, mevcut_cari_id=None):
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if depo is None:
         raise NumuneHatasi("Depo bulunamadı.")
     cari = Cari.objects.filter(pk=cari_id, silindi=False).first() if cari_id else None
     if cari_id and cari is None:
         raise NumuneHatasi("Cari bulunamadı.")
+    if cari is not None:
+        from core.services.cari import pasif_kontrol
+        pasif_kontrol(cari, NumuneHatasi, mevcut_cari_id=mevcut_cari_id, ne="Yeni numune çıkışı")
     alici_adi = (alici_adi or "").strip()
     if cari is None and not alici_adi:
         raise NumuneHatasi("Alıcı için bir cari seçin ya da alıcı adı yazın.")
@@ -124,7 +127,8 @@ def numune_guncelle(nc: NumuneCikis, *, tarih, depo_id, satirlar, cari_id=None, 
         raise NumuneHatasi("Silinmiş belge düzenlenemez.")
     if nc.durum != NumuneCikis.Durum.TASLAK:
         raise NumuneHatasi("Onaylı numune çıkışı düzenlenemez; önce onayını geri alın.")
-    depo, cari, alici_adi, ulke = _baslik_dogrula(depo_id=depo_id, cari_id=cari_id, alici_adi=alici_adi, ulke_id=ulke_id)
+    depo, cari, alici_adi, ulke = _baslik_dogrula(depo_id=depo_id, cari_id=cari_id, alici_adi=alici_adi, ulke_id=ulke_id,
+                                                  mevcut_cari_id=nc.cari_id)
     coz = _satirlari_coz(satirlar)
     nc.tarih, nc.depo, nc.cari, nc.alici_adi, nc.ulke = tarih, depo, cari, buyuk_harf_tr(alici_adi), ulke
     nc.belge_no_gumruk, nc.aciklama, nc.updated_by = (belge_no_gumruk or "").strip(), (aciklama or "").strip(), kullanici

@@ -5,6 +5,8 @@ Sayı alanları İSTİSNASIZ tek parser/formatter'dan geçer (core.sayi).
 """
 from __future__ import annotations
 
+import re
+
 from datetime import timedelta
 from decimal import Decimal
 
@@ -17,7 +19,8 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
 
-from core.dogrulama import iban_dogrula, tc_dogrula, telefon_dogrula, telefon_kanonik
+from core.dogrulama import (VKN_TCKN_HATA, iban_dogrula, iban_dogrula_genel, tc_dogrula, telefon_dogrula, telefon_kanonik,
+                            vkn_tckn_gecerli)
 from core.metin import buyuk_harf_tr
 from core.models import (
     AdayAktivite, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori, AdayPotansiyelTanim,
@@ -467,7 +470,7 @@ class StokForm(forms.Form):
         self.fields["tevkifat"].label_from_instance = (
             lambda o: f"{o.pay}/{o.payda} {o.aciklama}".strip())
         self.fields["tedarikci"].queryset = (
-            Cari.objects.filter(silindi=False).order_by("unvan"))
+            _secilebilir_cariler(self))
         self.fields["tedarikci"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["tedarikci"].widget.attrs["class"] = "akilli-sec"
         if duzenle:
@@ -521,6 +524,22 @@ class CariKategoriForm(forms.Form):
         label="Ad", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
     kod = forms.CharField(
         label="Kod", max_length=10, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+
+def _secilebilir_cariler(form):
+    """Yeni belge/hareket formlarının cari seçenekleri: silinmemiş + AKTİF cariler; düzenlenen kaydın (initial ya da POST'taki) mevcut carisi pasif
+    olsa da listede kalır. Yeni belgede PASİF cari servis katmanında ayrıca reddedilir (services.cari.pasif_kontrol)."""
+    from core.services.cari import secilebilir_cariler
+    ek = []
+    for ad in ("cari", "karsi", "karsi_cari", "fasoncu", "fason_cari", "tedarikci"):
+        degerler = [form.initial.get(ad)]
+        if form.is_bound:
+            degerler.append(form.data.get(form.add_prefix(ad)))
+        for v in degerler:
+            v = getattr(v, "pk", v)
+            if v not in (None, "") and str(v).isdigit():
+                ek.append(int(v))
+    return secilebilir_cariler(ek)
 
 
 class CariForm(forms.Form):
@@ -592,8 +611,10 @@ class CariForm(forms.Form):
     notlar = forms.CharField(label="Notlar", required=False,
                              widget=forms.Textarea(attrs={"rows": 3, **_K}))
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mevcut_vkn=None, **kwargs):
+        """``mevcut_vkn``: düzenlenen carinin kayıtlı VKN/TCKN'si — hatalı olsa bile alana DOKUNULMADIYSA (aynı değer) kayıt engellenmez."""
         super().__init__(*args, **kwargs)
+        self.mevcut_vkn = (mevcut_vkn or "").strip() if mevcut_vkn is not None else None
         from core.services.cari_kategori import aktif_cari_kategoriler
         from core.services.lokasyon import aktif_sehirler, aktif_ulkeler
         # Cari yalnız ALT kategoriye bağlanır; üst (ana) kategoriler seçilemez.
@@ -604,6 +625,16 @@ class CariForm(forms.Form):
         self.fields["sehir"].label_from_instance = lambda o: f"{o.ad} ({o.ulke.kod})"
         for f in ("kategori", "ulke", "sehir"):
             self.fields[f].widget.attrs["class"] = "akilli-sec"
+
+    def clean_vkn_tckn(self):
+        v = re.sub(r"[\s.]", "", self.cleaned_data.get("vkn_tckn") or "")
+        if not v:
+            return ""
+        if self.mevcut_vkn is not None and v == self.mevcut_vkn:      # dokunulmamış (olası hatalı) eski kayıt: engel değil, ekranda uyarı
+            return v
+        if not vkn_tckn_gecerli(v):
+            raise forms.ValidationError(VKN_TCKN_HATA)
+        return v
 
 
 class AdayMusteriKategoriForm(forms.Form):
@@ -844,8 +875,7 @@ class AdayCariyeMevcutCariForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.cari import aktif_cariler
-        self.fields["cari"].queryset = aktif_cariler()
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
@@ -877,17 +907,22 @@ class CariBankaForm(forms.Form):
     """Cari banka hesabı ekle/düzenle. TR büyük harf serviste."""
 
     banka_adi = forms.CharField(label="Banka", max_length=100,
-                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+                                widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "TR IBAN girilince önerilir"}))
     hesap_sahibi = forms.CharField(label="Hesap Sahibi", max_length=200, required=False,
                                    widget=forms.TextInput(attrs={"autocomplete": "off"}))
-    iban = forms.CharField(label="IBAN", max_length=34, required=False,
-                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    iban = forms.CharField(label="IBAN", max_length=40, required=False, validators=[iban_dogrula_genel],
+                           widget=forms.TextInput(attrs={"autocomplete": "off", "class": "mono", "spellcheck": "false",
+                                                         "placeholder": "TR12 3456 7890 1234 5678 9012 34"}))
     swift = forms.CharField(label="SWIFT/BIC", max_length=15, required=False,
                             widget=forms.TextInput(attrs={"autocomplete": "off"}))
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
     varsayilan = forms.BooleanField(label="Varsayılan", required=False)
+
+    def clean_iban(self):
+        from core.dogrulama import iban_kanonik
+        return iban_kanonik(self.cleaned_data.get("iban"))
 
 
 class CariYetkiliForm(forms.Form):
@@ -1214,7 +1249,7 @@ class FasonFiyatForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         self.fields["stok"].queryset = Stok.objects.filter(silindi=False, uretim_urunu=True).order_by("kod")
@@ -1278,7 +1313,7 @@ class IsIstasyonuForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["fasoncu"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["fasoncu"].queryset = _secilebilir_cariler(self)
         self.fields["fasoncu"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["fasoncu"].widget.attrs["class"] = "akilli-sec"
 
@@ -1465,7 +1500,7 @@ class FasonDonusBaslikForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # yalnız fason deposu bağlı cariler; çıktı deposu fason deposu OLAMAZ
-        self.fields["cari"].queryset = (Cari.objects.filter(silindi=False, fason_depolari__silindi=False).distinct().order_by("unvan"))
+        self.fields["cari"].queryset = (_secilebilir_cariler(self).filter(fason_depolari__silindi=False).distinct().order_by("unvan"))
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         from core.models import FasonSiparisi
@@ -1665,7 +1700,7 @@ class BordroBaslikForm(forms.Form):
     def __init__(self, *args, cari_label="Cari", **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["cari"].label = cari_label
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
@@ -1686,7 +1721,7 @@ class CariCiroForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
@@ -1828,7 +1863,7 @@ class FaturaForm(forms.Form):
         if yon:
             tipler = tipler.filter(yon=yon)
         self.fields["tip"].queryset = tipler.order_by("sira", "ad")
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
@@ -2255,7 +2290,7 @@ class KasaHareketForm(forms.Form):
             f.label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
             f.label, f.empty_label = "Hedef Kasa", "— hedef kasa seç —"
         else:
-            f.queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+            f.queryset = _secilebilir_cariler(self)
             f.label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
             f.label, f.empty_label = "Cari (karşı taraf)", "— cari seç —"
             if tip == "cari_odeme":
@@ -2299,7 +2334,7 @@ class BankaHareketForm(forms.Form):
             f.label_from_instance = lambda o: f"{o.ad} ({o.para_birimi})"
             f.label, f.empty_label = "Kasa", "— kasa seç —"
         else:
-            f.queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+            f.queryset = _secilebilir_cariler(self)
             f.label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
             f.label, f.empty_label = "Cari (karşı taraf)", "— cari seç —"
             if tip == "cari_odeme":
@@ -2453,7 +2488,7 @@ class KrediKartiHareketForm(forms.Form):
         if "cari" in turler:
             self.fields["cari"] = forms.ModelChoiceField(
                 label="Cari", required=False, empty_label="— cari seç —",
-                queryset=Cari.objects.filter(silindi=False).order_by("unvan"),
+                queryset=_secilebilir_cariler(self),
                 widget=forms.Select(attrs={"class": "akilli-sec"}))
             self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
             self.fields["gider"] = forms.ModelChoiceField(
@@ -2623,7 +2658,7 @@ class TeklifSiparisForm(forms.Form):
 
     def __init__(self, *args, belge_tur=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
@@ -2783,7 +2818,7 @@ class SatisBelgeBaslikForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         # Cariye zaten dönüşmüş adaylar artık normal Cari akışıyla teklif alır — listeden
@@ -2938,7 +2973,7 @@ class DepoForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["fason_cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["fason_cari"].queryset = _secilebilir_cariler(self)
         self.fields["fason_cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["fason_cari"].widget.attrs["class"] = "akilli-sec"
 
@@ -3084,8 +3119,7 @@ class YemekSayimForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.cari import aktif_cariler
-        self.fields["cari"].queryset = aktif_cariler()
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
 
@@ -3470,7 +3504,7 @@ class CariVirmanForm(forms.Form):
         from core.services.doviz_cari import SECENEKLER
         self.fields["yon"].choices = list(YONLER)
         self.fields["sayilan_pb"].choices = SECENEKLER
-        qs = Cari.objects.filter(silindi=False).exclude(muhasebe_kodu="").order_by("unvan")
+        qs = _secilebilir_cariler(self).exclude(muhasebe_kodu="").order_by("unvan")
         if cari is not None:
             qs = qs.exclude(pk=cari.pk)
         self.fields["karsi_cari"].queryset = qs
@@ -3687,7 +3721,7 @@ class NumuneBaslikForm(forms.Form):
             vd = varsayilan_depo(depolar)
             if vd:
                 self.fields["depo"].initial = vd.pk
-        self.fields["cari"].queryset = Cari.objects.filter(silindi=False).order_by("unvan")
+        self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
         self.fields["ulke"].queryset = Ulke.objects.all().order_by("ad")
@@ -3753,7 +3787,7 @@ class FasonSiparisBaslikForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["cari"].queryset = (Cari.objects.filter(silindi=False).filter(Q(fason_depolari__silindi=False) | Q(fason_fiyatlari__silindi=False))
+        self.fields["cari"].queryset = (_secilebilir_cariler(self).filter(Q(fason_depolari__silindi=False) | Q(fason_fiyatlari__silindi=False))
                                         .distinct().order_by("unvan"))
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"

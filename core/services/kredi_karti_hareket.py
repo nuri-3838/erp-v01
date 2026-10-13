@@ -89,6 +89,8 @@ def _karsi_coz(tip, kart, karsi):
     if isinstance(karsi, Cari):
         if "cari" not in izin:
             raise KrediKartiHareketHatasi("Bu hareket için cari seçilemez.")
+        from core.services.cari import pasif_kontrol
+        pasif_kontrol(karsi, KrediKartiHareketHatasi, ne="Yeni kredi kartı hareketi")
         return _cari_hesap(karsi).hesap_kodu, karsi.unvan
     if isinstance(karsi, HesapPlani):
         if "gider" not in izin:
