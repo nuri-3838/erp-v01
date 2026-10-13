@@ -1,0 +1,15 @@
+ÖNCE: emir 43, kayıt 29
+DEĞİŞEN EMİRLER (ESKİ → YENİ planlanan | tamamlanan | durum):
+   IE-2026-0310 151-30-0002 (ist 15): planlanan 500 → 528 | tamamlanan 528 | BITTI → BITTI | ihtiyac {'116': '500'} → {'116': '500'}
+   IE-2026-0311 151-10-0044 (ist 12): planlanan 30 → 31 | tamamlanan 31 | BITTI → BITTI | ihtiyac {'123': '499'} → {'123': '499'}
+   IE-2026-0312 151-30-0004 (ist 15): planlanan 150 → 204 | tamamlanan 204 | BITTI → BITTI | ihtiyac {'118': '150'} → {'118': '150'}
+   IE-2026-0313 151-10-0046 (ist 12): planlanan 11 → 25 | tamamlanan 25 | BITTI → BITTI | ihtiyac {'125': '141'} → {'125': '141'}
+   IE-2026-0320 151-30-0005 (ist 15): planlanan 150 → 158 | tamamlanan 158 | BITTI → BITTI | ihtiyac {'119': '150'} → {'119': '150'}
+   IE-2026-0339 151-30-0007 (ist 15): planlanan 50 → 95 | tamamlanan 95 | BITTI → BITTI | ihtiyac {'121': '50'} → {'121': '50'}
+   IE-2026-0340 151-10-0049 (ist 12): planlanan 4 → 14 | tamamlanan 14 | BITTI → BITTI | ihtiyac {'128': '40'} → {'128': '40'}
+   YENİ EMİR IE-2026-0341 151-30-0003 (ist 15): planlanan 350 durum BEKLIYOR ihtiyac {'117': '350'}
+AYIRMA DEĞİŞİMLERİ:
+   150-20-0001: 0 → 22
+   151-10-0007: 184 → 186
+SONRA: emir 44, kayıt 29 (kayıt listesi birebir aynı)
+== COMMIT EDİLDİ
