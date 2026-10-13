@@ -472,18 +472,26 @@ def silme_engelleri(cari: Cari) -> list:
              .filter(Q(hesap_id=cari.muhasebe_kodu) | Q(hesap__hesap_kodu__startswith=cari.muhasebe_kodu + ".")).count())
         if n:
             nedenler.append(("yevmiye hareketi (muhasebe hesabında)", n))
+    # Cari'ye bağlı tüm ilişkiler TEK sorguda (her biri skaler alt sorgu sayımı) — detay sayfasında ~25 ayrı COUNT yerine.
+    from django.db.models import OuterRef, Subquery
+    iliskiler, ano = [], {}
     for r in Cari._meta.related_objects:
         if not r.one_to_many:
             continue
         acc = r.get_accessor_name()
         if acc is None or acc in SILME_ATLANAN:
             continue
-        qs = getattr(cari, acc).all()
+        qs = r.related_model._default_manager.filter(**{r.field.name: OuterRef("pk")})
         if any(f.name == "silindi" for f in r.related_model._meta.get_fields()):
             qs = qs.filter(silindi=False)
-        n = qs.count()
-        if n:
-            nedenler.append((SILME_ETIKETLERI.get(acc) or str(r.related_model._meta.verbose_name), n))
+        ano[f"n_{len(iliskiler)}"] = Subquery(qs.order_by().values(r.field.name).annotate(c=Count("pk")).values("c")[:1])
+        iliskiler.append((acc, r.related_model))
+    if ano:
+        sayimlar = Cari.objects.filter(pk=cari.pk).annotate(**ano).values(*ano.keys()).first() or {}
+        for i, (acc, model) in enumerate(iliskiler):
+            n = sayimlar.get(f"n_{i}") or 0
+            if n:
+                nedenler.append((SILME_ETIKETLERI.get(acc) or str(model._meta.verbose_name), n))
     from core.services import stok_ayirma
     n = stok_ayirma.acik_ayirmalar().filter(uretim_emri__kaynak_siparis__cari=cari).count()
     if n:

@@ -1947,11 +1947,12 @@ def cari_detay(request, pk):
         Cari.objects.select_related("kategori", "kategori__ust", "ulke", "sehir",
                                     "created_by", "updated_by"),
         pk=pk, silindi=False)
+    silme_engelleri = cari_servis.silme_engelleri(cari)
     return render(request, "core/cari_detay.html", {
         "cari": cari,
         "kur_farki_proje": _cari_kur_farki_projesi(cari),
-        "silme_engelleri": cari_servis.silme_engelleri(cari),
-        "silme_engeli_metni": cari_servis.silme_engeli_metni(cari_servis.silme_engelleri(cari)),
+        "silme_engelleri": silme_engelleri,
+        "silme_engeli_metni": cari_servis.silme_engeli_metni(silme_engelleri),
         "bankalar": cari_servis.aktif_bankalar(cari),
         "yetkililer": cari_servis.aktif_yetkililer(cari),
         "sevk_adresleri": cari_servis.aktif_sevk_adresleri(cari),

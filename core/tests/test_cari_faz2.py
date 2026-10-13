@@ -290,3 +290,17 @@ class DetayEkstreTest(FaturaTestTemel):
         self.assertIn("Bizim alacağımız", html2)
         self.assertIn("20,00", html2)
         self.assertIn("USD", html2)
+
+    def test_detay_sorgu_sayisi_sinirli(self):
+        """Silme engelleri tek sorgu (önceden ~25 ayrı COUNT, iki kez çağrılıyordu); detay belge/fatura sayısından bağımsız sınırlı sorgu."""
+        from core.services.cari import silme_engelleri
+        self._faturalar_ve_odeme()
+        with CaptureQueriesContext(connection) as q:
+            nedenler = silme_engelleri(self.tedarikci)
+        self.assertLessEqual(len(q), 3)
+        self.assertIn("fatura", dict(nedenler))
+        self.client.force_login(self.su)
+        with CaptureQueriesContext(connection) as q:
+            r = self.client.get(reverse("core:cari_detay", args=[self.tedarikci.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertLessEqual(len(q), 35, [x["sql"][:80] for x in q][:40])
