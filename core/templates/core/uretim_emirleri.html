@@ -45,6 +45,7 @@
   .ue-durum.acik { background:#fff1e0; color:#b45f00; }
   .ue-durum.tamam { background:#e7f7ec; color:#0a7d28; }
   .ue-durum.iptal { background:#eceef2; color:#6b7385; text-decoration:line-through; }
+  .ue-fason-bekl { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#eceff3; color:#5b6678; }
   .ue-eksik { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#fdecef; color:#b3253f; }
 
   /* ilerleme: ince çubuk + %X, altında küçük istasyon sayısı */
@@ -134,6 +135,7 @@
         <td data-et="Durum">
           <span class="ue-durum {% if e.durum == 'ACIK' %}acik{% elif e.durum == 'KAPALI' %}tamam{% else %}iptal{% endif %}">{% if e.durum == 'ACIK' %}Açık{% elif e.durum == 'KAPALI' %}Tamamlandı{% else %}İptal{% endif %}</span>
           {% if s.eksik_sayisi %}<br><span class="ue-eksik" title="Satınalma ihtiyacı olan malzeme">Eksik malzeme: {{ s.eksik_sayisi }}</span>{% endif %}
+          {% if s.fason_bekleyen %}<br><span class="ue-fason-bekl" title="Açık fason siparişinden gelmesi beklenen parça">Fasondan bekleniyor: {{ s.fason_bekleyen }}</span>{% endif %}
         </td>
         <td class="ue-ilerleme-td" data-et="İlerleme">
           <div class="ue-ilerleme{% if e.durum == 'KAPALI' %} tamam{% endif %}">

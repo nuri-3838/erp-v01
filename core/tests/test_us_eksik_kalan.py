@@ -81,3 +81,33 @@ class SiparisliUsTest(KapanisTaban):
         r = self.client.get(reverse("core:uretim_emirleri"))
         self.assertNotContains(r, "Eksik malzeme:")
         self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk])), "Eksik malzeme yok")
+
+
+
+class ListeRozetTest(SiparisliUsTest):
+    """Liste rozeti: "Eksik malzeme: N" yalnız gerçek eksik (SATINALMA/STOKLU); fason siparişinden beklenenler ayrı gri "Fasondan bekleniyor: N"."""
+
+    def liste(self, eksikler):
+        from unittest import mock
+        with mock.patch("core.services.uretim.uretim_emri_eksikleri", return_value=eksikler):
+            return self.client.get(reverse("core:uretim_emirleri")).content.decode()
+
+    def test_gercek_eksik_ve_fason_bekleyen_ayri(self):
+        h = self.liste([{"tur": "SATINALMA"}, {"tur": "STOKLU"}] + [{"tur": "FASON_SIPARIS"}] * 5)
+        self.assertIn("Eksik malzeme: 2<", h)
+        self.assertIn("Fasondan bekleniyor: 5<", h)
+
+    def test_yalniz_fason_bekleyen_eksik_rozeti_yok(self):
+        h = self.liste([{"tur": "FASON_SIPARIS"}] * 3)
+        self.assertNotIn("Eksik malzeme:", h)
+        self.assertIn("Fasondan bekleniyor: 3<", h)
+
+    def test_hicbiri_yoksa_rozet_yok(self):
+        h = self.liste([])
+        self.assertNotIn("Eksik malzeme:", h)
+        self.assertNotIn("Fasondan bekleniyor:", h)
+
+    def test_gercek_eksik_gercek_veri(self):
+        h = self.client.get(reverse("core:uretim_emirleri")).content.decode()               # hammadde 2 < 3 → gerçek eksik 1, fason yok
+        self.assertIn("Eksik malzeme: 1<", h)
+        self.assertNotIn("Fasondan bekleniyor:", h)

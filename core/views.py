@@ -7661,13 +7661,15 @@ def uretim_emirleri(request):
         musteri = sip.cari.unvan if sip is not None and sip.cari_id else ("Stok için üretim" if sip is None else (sip.aday_musteri.unvan if sip.aday_musteri_id else "—"))
         termin = sip.gecerlilik_teslim_tarihi if sip is not None else None
         o = ozet[e.pk]
+        eksikler = uretim_servis.uretim_emri_eksikleri(e, graf=graf)
         emirler.append({
             "e": e, "musteri": musteri, "siparisli": sip is not None, "sip_no": (sip.belge_no or f"#{sip.pk}") if sip is not None else "",
             "kalem_sayisi": len(kalemler), "toplam_miktar": sum((k.hedef_miktar for k in kalemler), Decimal("0")),
             "termin": termin, "termin_gecmis": bool(termin and termin < bugun and e.durum == UretimEmri.Durum.ACIK),
             "silinebilir": o["silinebilir"], "ilerleme": o["ilerleme"], "yuzde": o["yuzde"] if e.durum != UretimEmri.Durum.IPTAL else Decimal("0"),
             "tamamlandi": e.durum == UretimEmri.Durum.KAPALI and sip is None and not e.sevk_dusen,       # tamamlanmış stok ÜS'si: ayırmalar serbest
-            "eksik_sayisi": len(uretim_servis.uretim_emri_eksikleri(e, graf=graf)),
+            "eksik_sayisi": sum(1 for x in eksikler if x["tur"] in ("SATINALMA", "STOKLU")),         # gerçek eksik; fason siparişinden beklenen sayılmaz
+            "fason_bekleyen": sum(1 for x in eksikler if x["tur"] == "FASON_SIPARIS"),
             "arama": " ".join([e.no, musteri, e.depo.kod, e.depo.ad, (sip.belge_no or "") if sip is not None else ""] + [f"{k.hedef_urun.kod} {k.hedef_urun.ad}" for k in kalemler])})
     return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum or "TUMU", "durumlar": UretimEmri.Durum.choices})
 
