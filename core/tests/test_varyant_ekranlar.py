@@ -13,7 +13,8 @@ from core.services import numune as ns
 from core.services import varyant as vs
 from core.services.hareket import eldeki_miktar, hareket_ekle
 from core.services.stok import stok_olustur
-from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+from core.services.teklif_siparis import (irsaliyeyi_faturaya_cevir, siparisi_irsaliyeye_cevir, teklif_siparis_olustur, teklif_siparis_onayla,
+                                           teklifi_siparise_cevir)
 from core.tests.test_fatura import FaturaTestTemel
 
 D = Decimal
@@ -104,12 +105,11 @@ class IrsaliyeVeSiparisVaryantTest(VaryantEkranTaban):
         teklif = teklif_siparis_olustur(belge_tur="TEKLIF", yon="ALIS", cari_id=self.tedarikci.pk, tarih=date(2026, 3, 1),
                                         satirlar=self.satir(self.afis, "10", "1", varyant), kullanici=self.yon)
         teklif_siparis_onayla(teklif, kullanici=self.yon)
-        siparis = teklif.donusen_belgeler.get()
+        siparis = teklifi_siparise_cevir(teklif, tarih=teklif.tarih, kullanici=self.yon)
         teklif_siparis_onayla(siparis, kullanici=self.yon)
-        irsaliye = siparis.donusen_irsaliyeler.get()
-        irsaliye.depo = self.depo
-        irsaliye.save(update_fields=["depo"])
+        irsaliye = siparisi_irsaliyeye_cevir(siparis, tarih=siparis.tarih, depo_id=self.depo.pk, kullanici=self.yon)
         teklif_siparis_onayla(irsaliye, kullanici=self.yon)
+        irsaliyeyi_faturaya_cevir(irsaliye, kullanici=self.yon)
         irsaliye.refresh_from_db()
         return teklif, siparis, irsaliye
 

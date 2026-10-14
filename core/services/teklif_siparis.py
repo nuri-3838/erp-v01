@@ -332,11 +332,8 @@ def _uretim_siparisi_hedefi(ts):
 def _donusum_hedefi_manuel(ts):
     """_donusum_hedefi'nin İPTAL için kullanılan DAR sürümü — yalnız SATIŞ tarafındaki
     MANUEL (kullanıcının kendi seçtiği "Proformaya Çevir"/"Siparişe Çevir" tuşuyla yaptığı)
-    dönüşümleri kapsar: Teklif(SATIŞ)->Proforma, Proforma->Sipariş. ALIŞ tarafındaki OTOMATİK
-    zincir (onaylanınca anında sonraki taslağın açılması — Teklif->Sipariş->İrsaliye->Fatura)
-    KASITLI olarak kapsam dışı: o otomasyon her onaydan hemen sonra tetiklendiği için aynı
-    kısıtı iptale de uygulamak ALIŞ belgelerini onaydan sonra hiç iptal edilemez hale
-    getirirdi — kullanıcı isteği yalnız SATIŞ'taki manuel zinciri kapsıyor."""
+    dönüşümleri kapsar: Teklif(SATIŞ)->Proforma, Proforma->Sipariş. ALIŞ zinciri (Teklif->Sipariş->İrsaliye->Fatura; 2026-10-14'ten beri o da
+    yalnız düğmeyle) kapsam dışı kalmaya devam eder — kullanıcı isteği yalnız SATIŞ'taki zinciri kapsıyor."""
     if (ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS
             and ts.donusen_belgeler.filter(silindi=False).exists()):
         return "proformaya"
@@ -405,11 +402,9 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
 def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     """TASLAK → ONAYLI. İptal edilmiş belge onaylanamaz; zaten onaylıysa sessiz (idempotent).
 
-    ALIŞ yönünde onay, otomasyon ZİNCİRİNİ de tetikler (kullanıcı isteği: Teklif onaylanınca
-    Taslak Sipariş, Sipariş onaylanınca Taslak İrsaliye + gerçek stok girişi, İrsaliye
-    onaylanınca Taslak Alış Faturası — hepsi ARKA PLANDA SESSİZCE, yönlendirme yok). SATIŞ
-    yönünde hiçbir yan etkisi yok (yalnız durum flip). Tek atomik blok: zincirde bir yerde
-    hata olursa (örn. aktif depo yok) durum flip'i de geri alınır, belge TASLAK kalır.
+    Onay BAŞKA BİR BELGE AÇMAZ (2026-10-14 kuralı: bir sonraki ticari belge yalnız kullanıcı "… Çevir" düğmesine basınca açılır — ALIŞ'ta
+    Teklif→Sipariş ``teklifi_siparise_cevir``, Sipariş→İrsaliye ``siparisi_irsaliyeye_cevir``, İrsaliye→Fatura ``irsaliyeyi_faturaya_cevir``).
+    Tek yan etki: ALIŞ İRSALİYESİ onaylanınca gerçek stok girişi yazılır (``_irsaliye_stok_hareketi_yaz`` — belge değil, hareket; bilinçli istisna).
 
     Satış Teklifi (belge_tur=TEKLIF, yon=SATIS) BU FONKSİYONU KULLANMAZ — Gönderildi/Kabul/
     Red/Süresi Doldu/İptal akışı var (bkz. teklif_gonder/teklif_kabul_et), burada reddedilir;
@@ -425,24 +420,8 @@ def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     ts.updated_by = kullanici
     ts.save(update_fields=["durum", "updated_by", "updated_at"])
 
-    if ts.yon == TeklifSiparis.Yon.ALIS:
-        if ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF:
-            if not ts.donusen_belgeler.filter(silindi=False).exists():
-                teklifi_siparise_cevir(ts, tarih=ts.tarih, kullanici=kullanici)
-        elif ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS:
-            if not ts.donusen_irsaliyeler.filter(silindi=False).exists():
-                # FaturaForm ile aynı desen: önce ANA DEPO'yu dene, yoksa ilk aktif depo.
-                from core.services.depo import varsayilan_depo
-                depo = varsayilan_depo(Depo.objects.filter(silindi=False, aktif=True).order_by("kod"))
-                if depo is None:
-                    raise TeklifSiparisHatasi(
-                        "Aktif depo yok; sipariş irsaliyeye otomatik çevrilemedi. Önce "
-                        "Stoklar > Depolar'dan bir depo tanımlayın.")
-                siparisi_irsaliyeye_cevir(ts, tarih=ts.tarih, depo_id=depo.pk, kullanici=kullanici)
-        elif ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
-            _irsaliye_stok_hareketi_yaz(ts, kullanici)
-            if not ts.fatura_id:
-                irsaliyeyi_faturaya_cevir(ts, kullanici=kullanici)
+    if ts.yon == TeklifSiparis.Yon.ALIS and ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
+        _irsaliye_stok_hareketi_yaz(ts, kullanici)
     return ts
 
 
@@ -775,8 +754,8 @@ def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
 
 @transaction.atomic
 def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> TeklifSiparis:
-    """İrsaliye onaylanınca: TASLAK Alış Faturası açar (tip BİLİNMEZ — kullanıcı Faturalar
-    ekranından bulup tip seçip onaylar). KDV/tevkifat stoktan taze çekilir (siparis_faturaya_
+    """Onaylı alış irsaliyesinden TASLAK Alış Faturası açar — kullanıcı "Faturaya Çevir" düğmesine basınca (onay otomatik açmaz); tip BİLİNMEZ
+    (kullanıcı fatura ekranında tip seçip onaylar). KDV/tevkifat stoktan taze çekilir (siparis_faturaya_
     cevir'in bugün yaptığı gibi — yalnız stok_id/miktar/birim_fiyat geçirilir)."""
     from core.services import fatura as fatura_servis
 

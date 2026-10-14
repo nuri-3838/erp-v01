@@ -2106,6 +2106,27 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None) -> list:
                              "kullanilabilir": o["ayrilan"], "eksik": o["eksik"], "stoklu": bool(st.stoklu_uretim),
                              "tur": "STOKLU" if st.stoklu_uretim else "SATINALMA"})
     eksikler.sort(key=lambda x: (x["stok"].kod, x["varyant_etiketi"]))
+    # SATINALMA SİPARİŞİ (2026-10-14, core.services.satinalma — kritik stok / stok listesiyle AYNI varyantlı harita): açık alış siparişinden gelecek parça
+    # eksikten düşülür → "X adet satınalma siparişinden bekleniyor (SAS-…)". Rezerv yoktur: aynı sipariş birden çok ÜS'de bekleniyor görünebilir.
+    satinalma_idler = {e["stok"].pk for e in eksikler if e["tur"] == "SATINALMA"}
+    if satinalma_idler:
+        from core.services import satinalma
+        sat_harita = satinalma.acik_siparis_haritasi(satinalma_idler)
+        sat_satirlar = satinalma.acik_siparis_satirlari(satinalma_idler)
+        for e in eksikler:
+            if e["tur"] != "SATINALMA":
+                continue
+            vpk = e["varyant"].pk if e["varyant"] is not None else None
+            kalan = satinalma.kalan_icin(sat_harita, e["stok"].pk, vpk)
+            if kalan <= 0:
+                continue
+            bekleyen = min(e["eksik"], kalan)
+            e["siparis_bekleyen"] = bekleyen
+            e["siparisler"] = sorted({(s["siparis"].belge_no, s["siparis"].pk, s["termin"]) for s in sat_satirlar
+                                      if s["stok_id"] == e["stok"].pk and (vpk is None or s["varyant_id"] == vpk)})
+            e["eksik"] = e["eksik"] - bekleyen
+            if e["eksik"] <= 0:
+                e["tur"] = "SATINALMA_SIPARIS"
     # FASON SİPARİŞİ (2026-10-12): (a) bu ÜS'ye rezerve edilmiş FS satırları "fason siparişinden bekleniyor"; (b) planın fason istasyonunda çalıştırma
     # istediği ama ÜS'de (iptal olmayan) istasyon emri olmayan parçalar (FS iptal edildi / adet düştü) "fason emri gerekli — revize edin".
     from core.services import fason_siparis as fs_servis

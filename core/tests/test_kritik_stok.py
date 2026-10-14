@@ -10,7 +10,7 @@ from django.urls import reverse
 
 from core.models import IsIstasyonu, KdvOrani, Stok, TeklifSiparis
 from core.services import kritik_stok
-from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+from core.services.teklif_siparis import siparisi_irsaliyeye_cevir, teklif_siparis_olustur, teklif_siparis_onayla
 from core.tests.test_stok import _cari
 from core.tests.test_stoklu_uretim import StokluTaban
 
@@ -62,10 +62,11 @@ class HesapTest(KritikTaban):
         sip = teklif_siparis_olustur(belge_tur="SIPARIS", yon="ALIS", cari_id=cari.pk, tarih=date(2026, 1, 12),
                                      satirlar=[{"stok_id": self.profil.pk, "miktar": "50", "birim_fiyat": "10"}], kullanici=self.yon)
         self.assertEqual(self.satir(self.profil)["gelecek"], D("0"))                               # taslak sipariş sayılmaz
-        teklif_siparis_onayla(sip, kullanici=self.yon)                                             # onay: taslak irsaliye otomatik açılır
+        teklif_siparis_onayla(sip, kullanici=self.yon)                                             # onay belge açmaz (2026-10-14)
         p = self.satir(self.profil)
         self.assertEqual((p["gelecek"], p["kalan"]), (D("50"), D("145")))                          # 100 − fixture ÜS ayırması 5 + 50
-        irs = sip.donusen_irsaliyeler.get(silindi=False)
+        irs = siparisi_irsaliyeye_cevir(sip, tarih=date(2026, 1, 12), depo_id=self.depo.pk, kullanici=self.yon)
+        self.assertEqual(self.satir(self.profil)["gelecek"], D("50"))                              # TASLAK irsaliye: sipariş hâlâ gelecek
         TeklifSiparis.objects.filter(pk=irs.pk).update(durum=TeklifSiparis.Durum.ONAYLI)           # irsaliye onaylandı → artık gelecek değil
         self.assertEqual(self.satir(self.profil)["gelecek"], D("0"))
         self.assertEqual(sorted(r["stok"].pk for r in kritik_stok.kritik_kalemler()), sorted([self.mamul.pk, self.kesilmis.pk, self.profil.pk]))

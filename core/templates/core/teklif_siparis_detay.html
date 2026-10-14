@@ -69,10 +69,10 @@
         {% elif ts.durum == 'ONAYLI' %}<span class="d-rozet aktif">● Onaylı</span>
         {% else %}<span class="d-rozet notr">Taslak</span>{% endif %}
         <span class="d-rozet tip">{{ ts.get_yon_display }}</span>
-        {% if donusen_siparis %}<span class="d-rozet aktif">🔁 Siparişe Dönüştü</span>{% endif %}
-        {% if donusen_proforma %}<span class="d-rozet aktif">🔁 Proformaya Dönüştü</span>{% endif %}
-        {% if donusen_irsaliye %}<span class="d-rozet aktif">🔁 İrsaliyeye Dönüştü</span>{% endif %}
-        {% if donusen_fatura %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% endif %}
+        {% if donusen_siparis %}{% if donusen_siparis.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Siparişe Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak; onaylanana kadar bu belge açık sayılır">📝 Sipariş taslağı var</span>{% endif %}{% endif %}
+        {% if donusen_proforma %}{% if donusen_proforma.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Proformaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak">📝 Proforma taslağı var</span>{% endif %}{% endif %}
+        {% if donusen_irsaliye %}{% if donusen_irsaliye.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 İrsaliyeye Dönüştü</span>{% else %}<span class="d-rozet notr" title="İrsaliye henüz taslak; onaylanana kadar sipariş gelecek stok sayılır">📝 İrsaliye taslağı var</span>{% endif %}{% endif %}
+        {% if donusen_fatura %}{% if donusen_fatura.durum == "ONAYLI" %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Fatura henüz taslak">📝 Fatura taslağı var</span>{% endif %}{% endif %}
         {% if uretim_emri %}<span class="d-rozet aktif">🏭 Üretim Siparişine Dönüştü</span>{% endif %}
       </div>
       {% for r in uretim_rozetleri %}
@@ -122,6 +122,17 @@
         {% elif not donusen_siparis and not donusen_proforma and not donusen_irsaliye and not donusen_fatura and not uretim_emri %}
         <form method="post" action="{% url 'core:teklif_siparis_onayi_geri_al' ts.pk %}" onsubmit="return confirm('Onay geri alınsın mı? Belge tekrar taslağa döner.');" style="margin:0">
           {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">↩️ Onayı Geri Al</button></form>
+        {% endif %}
+        {% if ts.yon == "ALIS" and ts.durum == "ONAYLI" %}
+          {% if ts.belge_tur == "TEKLIF" and not donusen_siparis %}
+          <form method="post" action="{% url 'core:alis_teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif taslak alış siparişine çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
+            {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
+          {% elif ts.belge_tur == "SIPARIS" and not donusen_irsaliye %}
+          <a class="dugme" href="{% url 'core:siparis_irsaliyeye_cevir' ts.pk %}">🔁 İrsaliyeye Çevir</a>
+          {% elif ts.belge_tur == "IRSALIYE" and not donusen_fatura %}
+          <form method="post" action="{% url 'core:irsaliye_faturaya_cevir' ts.pk %}" onsubmit="return confirm('Bu irsaliyeden taslak alış faturası açılsın mı?');" style="margin:0">
+            {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🧾 Faturaya Çevir</button></form>
+          {% endif %}
         {% endif %}
         {% if ts.belge_tur == "PROFORMA" and ts.durum == "ONAYLI" and not donusen_siparis %}
         <form method="post" action="{% url 'core:proforma_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu proforma siparişe çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">

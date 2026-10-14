@@ -165,12 +165,15 @@
             {% if e.tur == "FASON_SIPARIS" %}
               <td><span class="rozet rozet-aktif" title="Fason siparişinden bekleniyor: parça gelince bu ÜS'ye ayrılır">📤 Fason siparişinden bekleniyor: <a href="{% url 'core:fason_siparis_detay' e.fs.pk %}">{{ e.fs.no }}</a> · {{ e.gerekli|tr_miktar_sade }} adet{% if e.termin %} · termin {{ e.termin|date:"d.m.Y" }}{% endif %}</span></td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">—</td><td class="sag mono">—</td>
+            {% elif e.tur == "SATINALMA_SIPARIS" %}
+              <td><span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor: irsaliye onaylanınca stoğa girer">🛒 Satınalma siparişinden bekleniyor: {% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if termin %} (termin {{ termin|date:"d.m.Y" }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %} · {{ e.siparis_bekleyen|tr_miktar_sade }} adet</span></td>
+              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td><td class="sag mono">—</td>
             {% elif e.tur == "FASON_EMRI_GEREKLI" %}
               <td><span class="rozet rozet-pasif" title="Fason siparişi iptal edildi/azaldı: bu parça için ÜS'de fason istasyon emri yok">⚠ fason emri gerekli — fason siparişi iptal/azaldı; ÜS'yi revize edin</span></td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
               <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
             {% else %}
-              <td>{% if e.stoklu %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu ara mamul</span>{% else %}satınalma{% endif %}</td>
+              <td>{% if e.stoklu %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu ara mamul</span>{% else %}satınalma{% if e.siparis_bekleyen %} <span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor">🛒 {{ e.siparis_bekleyen|tr_miktar_sade }} adet siparişte ({% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if not forloop.last %}, {% endif %}{% endfor %})</span>{% endif %}{% endif %}</td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
               <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
             {% endif %}</tr>

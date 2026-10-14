@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}İrsaliyeye Çevir · ERP v0.1{% endblock %}
+{% block sayfa_adi %}İrsaliyeye Çevir{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:teklif_siparis_detay' siparis.pk %}">← {{ siparis.belge_no }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🔁</span>Siparişi İrsaliyeye Çevir</h1>
+  </div>
+  <p class="sayfa-alt">{{ siparis.belge_no }} · {{ siparis.cari.unvan }} · {{ siparis.kalemler.count }} kalem. Kalemler (stok, miktar, fiyat, KDV) TASLAK alış irsaliyesine kopyalanır;
+    stok girişi irsaliye <strong>onaylanınca</strong> yazılır. Sipariş, irsaliye onaylanana kadar "gelecek stok" sayılmaya devam eder.</p>
+
+  <form method="post" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">İrsaliye</h2>
+      <div class="izgara">
+        <div class="alan"><label for="cv-depo">Depo <span class="zorunlu">*</span></label>
+          <select name="depo" id="cv-depo" required>
+            {% for d in depolar %}<option value="{{ d.pk }}"{% if d.pk == varsayilan_depo_id %} selected{% endif %}>{{ d.kod }}  {{ d.ad }}</option>{% endfor %}
+          </select>
+          {% if not depolar %}<p class="hata">Aktif depo yok; önce Stoklar › Depolar'dan bir depo tanımlayın.</p>{% endif %}</div>
+        <div class="alan"><label for="cv-tarih">İrsaliye tarihi <span class="zorunlu">*</span></label><input type="date" name="tarih" id="cv-tarih" value="{{ bugun|date:'Y-m-d' }}" required></div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:teklif_siparis_detay' siparis.pk %}">İptal</a>
+      <button type="submit" class="birincil"{% if not depolar %} disabled{% endif %}>Taslak irsaliye oluştur</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

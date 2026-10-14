@@ -25,24 +25,34 @@ SIFIR = Decimal("0")
 
 
 def acik_satinalma_haritasi(stok_idler) -> dict:
-    """{stok pk: açık satınalma siparişlerindeki miktar (üretim birimi)}."""
+    """{stok pk: açık satınalma siparişlerindeki miktar (üretim birimi)} — TEK kaynak ``core.services.satinalma`` (varyantlı harita, kart toplamı):
+    ONAYLI irsaliyesi ya da ONAYLI faturası olan sipariş düşer; TASLAK hedefli sipariş gelecek sayılmaya devam eder."""
+    from core.services import satinalma
     idler = list(stok_idler)
     if not idler:
         return {}
-    # ALIŞ sipariş onayı otomatik TASLAK irsaliye açar; stok girişi irsaliye ONAYLANINCA yazılır → onaylı irsaliyesi olan sipariş artık "gelecek" değil.
-    irsaliyeli = TeklifSiparis.objects.filter(silindi=False, belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, kaynak_siparis__isnull=False,
-                                              durum=TeklifSiparis.Durum.ONAYLI).values("kaynak_siparis_id")
-    qs = (TeklifSiparisKalem.objects.filter(silindi=False, stok_id__in=idler, teklif_siparis__silindi=False,
-                                            teklif_siparis__belge_tur=TeklifSiparis.BelgeTur.SIPARIS, teklif_siparis__yon=TeklifSiparis.Yon.ALIS,
-                                            teklif_siparis__durum=TeklifSiparis.Durum.ONAYLI, teklif_siparis__fatura__isnull=True)
-          .exclude(teklif_siparis_id__in=irsaliyeli).select_related("stok"))
+    return satinalma.kart_toplami(satinalma.acik_siparis_haritasi(idler))
+
+
+def gelecek_haritasi(stok_idler) -> dict:
+    """Stok listesi: HER kart için (kritik eşiği olmasa da) gelecek kırılımı — {pk: {"satinalma", "uretim", "fason", "toplam", "bekleyen", "siparisler"}};
+    ``siparisler`` = açık alış sipariş satırları (belge no, varyant, miktar) — ipucu için."""
+    from core.services import fason_siparis as fs_servis
+    from core.services import satinalma
+    idler = list(stok_idler)
+    if not idler:
+        return {}
+    sat, siparisler = {}, {}
+    for s in satinalma.acik_siparis_satirlari(idler):
+        sat[s["stok_id"]] = sat.get(s["stok_id"], SIFIR) + s["miktar"]
+        siparisler.setdefault(s["stok_id"], []).append(s)
+    gelecek_ie, bekleyen = gelecek_ve_bekleyen(idler)
+    fs = fs_servis.gelecek_haritasi(idler)
     sonuc = {}
-    for k in qs:
-        if k.uretim_miktar is not None:
-            m = k.uretim_miktar
-        else:
-            m = k.miktar / k.stok.cevirici if k.stok.cevirici else k.miktar
-        sonuc[k.stok_id] = sonuc.get(k.stok_id, SIFIR) + m
+    for pk in idler:
+        parcalar = (sat.get(pk, SIFIR), gelecek_ie.get(pk, SIFIR), fs.get(pk, SIFIR))
+        sonuc[pk] = {"satinalma": parcalar[0], "uretim": parcalar[1], "fason": parcalar[2], "toplam": sum(parcalar, SIFIR),
+                     "bekleyen": bekleyen.get(pk, SIFIR), "siparisler": siparisler.get(pk, [])}
     return sonuc
 
 

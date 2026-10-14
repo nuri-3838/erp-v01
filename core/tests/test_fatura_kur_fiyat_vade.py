@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from core.models import Cari, Depo, EkranYetki, Fatura
 from core.services.fatura import fatura_guncelle, fatura_onayla, fatura_taslak_olustur
-from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+from core.services.teklif_siparis import irsaliyeyi_faturaya_cevir, teklif_siparis_olustur, teklif_siparis_onayla
 from core.tests.test_fatura import FaturaTestTemel
 
 D = datetime.date
@@ -71,6 +71,7 @@ class IrsaliyeFiyatHassasiyetiTest(FaturaTestTemel):
             belge_tur="IRSALIYE", yon="ALIS", cari_id=self.tedarikci.pk, tarih=D(2026, 3, 10),
             depo_id=depo.pk, satirlar=[satir])
         teklif_siparis_onayla(irsaliye)
+        irsaliyeyi_faturaya_cevir(irsaliye)
         irsaliye.refresh_from_db()
         return irsaliye.fatura
 

@@ -14,7 +14,8 @@ from core.models import (Birim, Cari, Depo, Fatura, FaturaTipi, HesapPlani, Kate
 from core.services import stok_ortalama as so
 from core.services.fatura import fatura_guncelle, fatura_olustur, fatura_onayla, fatura_sil
 from core.services.hareket import hareket_ekle, sarf_cikis_ekle
-from core.services.teklif_siparis import teklif_siparis_olustur, teklif_siparis_onayla
+from core.services.teklif_siparis import (irsaliyeyi_faturaya_cevir, siparisi_irsaliyeye_cevir, teklif_siparis_olustur, teklif_siparis_onayla,
+                                           teklifi_siparise_cevir)
 
 D = datetime.date
 G, C = StokHareket.Tur.GIRIS, StokHareket.Tur.CIKIS
@@ -194,10 +195,11 @@ class IrsaliyeliFaturaTest(OrtalamaTemel):
             satirlar=satirlar or [{"stok_id": self.stok.pk, "miktar": "10", "birim_fiyat": "100"}],
             kullanici=self.u)
         teklif_siparis_onayla(teklif, kullanici=self.u)
-        siparis = teklif.donusen_belgeler.get()
+        siparis = teklifi_siparise_cevir(teklif, tarih=teklif.tarih, kullanici=self.u)
         teklif_siparis_onayla(siparis, kullanici=self.u)
-        irsaliye = siparis.donusen_irsaliyeler.get()
+        irsaliye = siparisi_irsaliyeye_cevir(siparis, tarih=siparis.tarih, depo_id=self.depo.pk, kullanici=self.u)
         teklif_siparis_onayla(irsaliye, kullanici=self.u)
+        irsaliyeyi_faturaya_cevir(irsaliye, kullanici=self.u)
         irsaliye.refresh_from_db()
         return irsaliye, irsaliye.fatura
 

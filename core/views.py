@@ -969,12 +969,14 @@ def stoklar(request):
     kul = stok_ayirma_servis.toplu_kullanilabilir(idler, eldeki=eldeki)         # mevcut ayırma/kullanılabilir hesabı (sabit sorgu)
     ayirma_detay = _ayirma_detaylari(idler)                                      # ÜS bazında dağılım: tek sorgu
     kritik_harita = kritik_stok_servis.hesapla(stok_listesi, kullanilabilir={pk: d["kullanilabilir"] for pk, d in kul.items()})
+    gelecek_harita = kritik_stok_servis.gelecek_haritasi(idler)                     # HER kart: satınalma (varyantlı, tek kaynak) + üretim + fason
     for s in stok_listesi:
         s.eldeki = eldeki.get(s.pk, hareket_servis.SIFIR)
         s.hizmet = s.kategori.hizmet_kategorisi
         s.ayrilan, s.kullanilabilir = kul[s.pk]["ayrilan"], kul[s.pk]["kullanilabilir"]
         s.ayirma_detay = ayirma_detay.get(s.pk, [])
         s.kritik = kritik_harita.get(s.pk)                                            # None: eşik yok / hizmet
+        s.gelecek = gelecek_harita.get(s.pk)
     if kritik:
         stok_listesi = [s for s in stok_listesi if s.kritik and s.kritik["kritik_mi"]]
     return render(request, "core/stok_listesi.html", {
@@ -2938,19 +2940,19 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     # Sipariş, SATIŞ+TEKLİF hedefi Proforma (bkz. TeklifSiparis docstring'i). İRSALİYE→Fatura
     # dönüşümü zaten şablonda ayrı (k.fatura_id — "🧾 Faturaya Dönüştü") gösteriliyor, burada
     # tekrar hesaplanmaz.
-    donustu_etiket = None
+    donustu_etiket = taslak_etiket = None                  # hedef ONAYLI → "Dönüştü"; hedef hâlâ TASLAK → "… taslağı var" (2026-10-14)
     if belge_tur == TeklifSiparis.BelgeTur.SIPARIS:
         donusen_var = TeklifSiparis.objects.filter(kaynak_siparis=OuterRef("pk"), silindi=False)
-        donustu_etiket = "🔁 İrsaliyeye Dönüştü"
+        donustu_etiket, taslak_etiket = "🔁 İrsaliyeye Dönüştü", "📝 İrsaliye taslağı var"
     elif belge_tur == TeklifSiparis.BelgeTur.PROFORMA:
         donusen_var = TeklifSiparis.objects.filter(kaynak_proforma=OuterRef("pk"), silindi=False)
-        donustu_etiket = "🔁 Siparişe Dönüştü"
+        donustu_etiket, taslak_etiket = "🔁 Siparişe Dönüştü", "📝 Sipariş taslağı var"
     elif belge_tur == TeklifSiparis.BelgeTur.TEKLIF and yon == TeklifSiparis.Yon.SATIS:
         donusen_var = TeklifSiparis.objects.filter(kaynak_teklif=OuterRef("pk"), silindi=False)
-        donustu_etiket = "🔁 Proformaya Dönüştü"
+        donustu_etiket, taslak_etiket = "🔁 Proformaya Dönüştü", "📝 Proforma taslağı var"
     elif belge_tur == TeklifSiparis.BelgeTur.TEKLIF:
         donusen_var = TeklifSiparis.objects.filter(kaynak_teklif=OuterRef("pk"), silindi=False)
-        donustu_etiket = "🔁 Siparişe Dönüştü"
+        donustu_etiket, taslak_etiket = "🔁 Siparişe Dönüştü", "📝 Sipariş taslağı var"
     else:
         donusen_var = TeklifSiparis.objects.filter(pk=-1)   # her zaman boş — geçerli pk asla negatif değil
     temel = teklif_siparis_servis.aktif_teklif_siparisler(belge_tur, yon)
@@ -2993,8 +2995,9 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
     # bu yüzden en yeni üstte kalsın diye burada AÇIKÇA tekrar belirtiliyor.
     kayitlar = (temel.filter(durum=durum) if durum else temel).annotate(
         donustu=Exists(donusen_var),
+        donustu_onayli=Exists(donusen_var.filter(durum=TeklifSiparis.Durum.ONAYLI)),
         kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)),
-    ).order_by("-tarih", "-id").prefetch_related("kalemler__kdv", "kalemler__tevkifat")
+    ).order_by("-tarih", "-id").select_related("fatura").prefetch_related("kalemler__kdv", "kalemler__tevkifat")
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
     if belge_tur == TeklifSiparis.BelgeTur.SIPARIS and yon == TeklifSiparis.Yon.SATIS:       # bağlı AKTİF (iptal olmayan) üretim siparişi rozeti
         aktif_us = {}
@@ -3018,7 +3021,7 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         "boyut": boyut, "sayfa_boyutlari": _TS_SAYFA_BOYUTLARI,
         "toplam": sum(sayimlar.values()), "durum_sekmeleri": durum_sekmeleri,
         "sabit_qs": sabit_qs.urlencode(), "sekme_qs": sekme_qs.urlencode(),
-        "donustu_etiket": donustu_etiket, "sat_teklif": sat_teklif,
+        "donustu_etiket": donustu_etiket, "taslak_etiket": taslak_etiket, "sat_teklif": sat_teklif,
         "ulkeler": ulkeler, "ulke_id": ulke_id,
         "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
 
@@ -3539,6 +3542,59 @@ def proforma_siparise_cevir(request, pk):
     return redirect("core:teklif_siparis_detay", pk=proforma.pk)
 
 
+@ekran_gerekli("satinalma_teklifleri")
+def alis_teklif_siparise_cevir(request, pk):
+    """ALIŞ Teklif (ONAYLI) → TASLAK Alış Siparişi — yalnız kullanıcı düğmesiyle (2026-10-14: onay otomatik çevirmez)."""
+    teklif = get_object_or_404(TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.ALIS)
+    if request.method == "POST":
+        try:
+            siparis = teklif_siparis_servis.teklifi_siparise_cevir(teklif, tarih=timezone.localdate(), kullanici=request.user)
+            messages.success(request, f"Taslak alış siparişi oluşturuldu ({teklif.belge_no} kaynaklı): {siparis.belge_no}. Kontrol edip onaylayın.")
+            return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=teklif.pk)
+
+
+@ekran_gerekli("satinalma_siparisleri")
+def siparis_irsaliyeye_cevir_gorunum(request, pk):
+    """ALIŞ Sipariş (ONAYLI) → TASLAK Alış İrsaliyesi: depo + tarih seçilir (küçük form), kalemler kopyalanır; stok girişi irsaliye ONAYLANINCA."""
+    from core.services.depo import varsayilan_depo
+    siparis = get_object_or_404(TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.SIPARIS, yon=TeklifSiparis.Yon.ALIS)
+    depolar = Depo.objects.filter(silindi=False, aktif=True).order_by("kod")
+    if request.method == "POST":
+        depo = depolar.filter(pk=(request.POST.get("depo") or 0)).first()
+        tarih = _iso_tarih(request.POST.get("tarih")) or timezone.localdate()
+        if depo is None:
+            messages.error(request, "Depo seçin.")
+        else:
+            try:
+                irsaliye = teklif_siparis_servis.siparisi_irsaliyeye_cevir(siparis, tarih=tarih, depo_id=depo.pk, kullanici=request.user)
+                messages.success(request, f"Taslak alış irsaliyesi oluşturuldu ({siparis.belge_no} kaynaklı): {irsaliye.belge_no}. Mal gelince kontrol edip onaylayın.")
+                return redirect("core:teklif_siparis_detay", pk=irsaliye.pk)
+            except teklif_siparis_servis.TeklifSiparisHatasi as e:
+                messages.error(request, str(e))
+                return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+    vd = varsayilan_depo(depolar)
+    return render(request, "core/siparis_irsaliyeye_cevir.html", {"siparis": siparis, "depolar": depolar, "varsayilan_depo_id": vd.pk if vd else None,
+                                                                   "bugun": timezone.localdate()})
+
+
+@ekran_gerekli("satinalma_irsaliyeleri")
+def irsaliye_faturaya_cevir_gorunum(request, pk):
+    """ALIŞ İrsaliye (ONAYLI) → TASLAK Alış Faturası (tip boş; kullanıcı fatura ekranında tip seçip onaylar) — yalnız düğmeyle."""
+    irsaliye = get_object_or_404(TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, yon=TeklifSiparis.Yon.ALIS)
+    if request.method == "POST":
+        try:
+            teklif_siparis_servis.irsaliyeyi_faturaya_cevir(irsaliye, kullanici=request.user)
+            irsaliye.refresh_from_db()
+            messages.success(request, f"Taslak alış faturası açıldı ({irsaliye.belge_no} kaynaklı); fatura tipini seçip onaylayın.")
+            return redirect("core:fatura_detay", pk=irsaliye.fatura_id)
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=irsaliye.pk)
+
+
 @ekran_gerekli_herhangi("satinalma_siparisleri", "satis_siparisleri")
 def siparis_faturaya_cevir(request, pk):
     """Siparişi faturaya çevir: Fatura ekle formunu (core/fatura_ekle.html — Fatura'nın KENDİ
@@ -3551,8 +3607,7 @@ def siparis_faturaya_cevir(request, pk):
         TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.SIPARIS)
     if siparis.yon == TeklifSiparis.Yon.ALIS:
         messages.error(
-            request, "Alış siparişleri artık onaylanınca otomatik irsaliyeye, oradan "
-                     "faturaya dönüşür; doğrudan çevrilemez.")
+            request, "Alış siparişi doğrudan faturaya çevrilemez: önce “İrsaliyeye Çevir”, irsaliye onaylanınca “Faturaya Çevir”.")
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
     if siparis.fatura_id:
         messages.info(request, "Bu sipariş zaten faturalandırılmış.")
@@ -7735,6 +7790,7 @@ def uretim_emirleri(request):
             "eksik_sayisi": sum(1 for x in eksikler if x["tur"] in ("SATINALMA", "STOKLU")),         # gerçek eksik; fason siparişinden beklenen sayılmaz
             "fason_bekleyen": sum(1 for x in eksikler if x["tur"] == "FASON_SIPARIS"),
             "fason_emri_gerekli": sum(1 for x in eksikler if x["tur"] == "FASON_EMRI_GEREKLI"),
+            "satinalma_bekleyen": sum(1 for x in eksikler if x["tur"] == "SATINALMA_SIPARIS"),
             "arama": " ".join([e.no, musteri, e.depo.kod, e.depo.ad, (sip.belge_no or "") if sip is not None else ""] + [f"{k.hedef_urun.kod} {k.hedef_urun.ad}" for k in kalemler])})
     return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum or "TUMU", "durumlar": UretimEmri.Durum.choices})
 
