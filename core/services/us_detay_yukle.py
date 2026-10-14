@@ -15,6 +15,7 @@ from django.db.models import Prefetch, Q
 from core.models import (IstasyonEmri, Operasyon, OperasyonCikti, OperasyonGirdi, OperasyonKaydi, StokVaryant, Varyant)
 from core.services import planlama_varyant as pv
 from core.services import uretim
+from core.services import urun_agaci as urun_agaci_servis
 from core.services import varyant as vs
 
 SIFIR = Decimal("0")
@@ -240,4 +241,6 @@ class Yukleme:
         return sira
 
     def eksikler(self) -> list:
-        return uretim.uretim_emri_eksikleri(self.emir, yukle=self)
+        """Eksik malzeme. Kapalı (kart bazlı) planda ürün ağacı grafı TEK seferde yüklenir (3 sorgu; liste ekranıyla aynı yol); varyantlı planda ``TopluCozucu``."""
+        graf = None if self.emir.varyantli_plan else urun_agaci_servis.graf_yukle()
+        return uretim.uretim_emri_eksikleri(self.emir, graf=graf, yukle=self)

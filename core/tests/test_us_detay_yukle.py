@@ -164,6 +164,21 @@ class SorguKilidiTest(YuklemeTaban):
         self.assertEqual(n_kucuk, n_buyuk, f"küçük ({ie_kucuk} emir) {n_kucuk} sorgu, büyük ({ie_buyuk} emir) {n_buyuk} sorgu")
         self.assertLess(n_buyuk, SORGU_UST, f"{n_buyuk} sorgu")
 
+    def test_kapali_plan_sorgu_sayisi_emir_sayisindan_bagimsiz(self):
+        """Eski (kart bazlı) planlı ÜS'ler (canlıda ÜS-2026-0002: 63 emir, eskiden 380 sorgu) da sabit sorguyla açılır."""
+        uretim.uretim_emri_iptal(self.emir, self.yon)
+        pv.anahtar_ayarla(False, self.yon)
+        self.client.force_login(self.yon)
+        kucuk = self.ac((self.mamul_a, "10"))
+        buyuk = self.ac((self.mamul_a, "10"), (self.mamul_cc, "10"))
+        self.assertFalse(buyuk.varyantli_plan)
+        for emir in (kucuk, buyuk):
+            self.uret(self.kesim_on, "2", None, emir)
+        self.assertGreater(buyuk.istasyon_emirleri.filter(silindi=False).count(), kucuk.istasyon_emirleri.filter(silindi=False).count())
+        n_kucuk, n_buyuk = self.sorgu(kucuk), self.sorgu(buyuk)
+        self.assertEqual(n_kucuk, n_buyuk)
+        self.assertLess(n_buyuk, SORGU_UST, f"{n_buyuk} sorgu")
+
     def test_kayit_sayisi_artinca_sorgu_artmaz(self):
         self.client.force_login(self.yon)
         self.uret(self.kesim_on, "1", "YOK")
