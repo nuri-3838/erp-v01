@@ -8,12 +8,10 @@
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{{ iptal_url }}">← Geri</a>
-    <h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emri Aç</h1>
+    <div class="ipucu-kap"><h1 class="ust-baslik"><span class="emoji">🏭</span>Üretim Emri Aç</h1>
+      {% include "core/_ipucu.html" with metin="Üretime uygun kalemlerden TEK bir üretim siparişi açılır. Eldeki stok ayrılır, kalan ihtiyaç için her iş istasyonuna ayrı bir istasyon emri açılır; bu ekran hiçbir stok hareketi üretmez. Termin, satış siparişinin teslim tarihidir (değiştirilebilir)." %}</div>
   </div>
-  <p class="yardim" style="margin-top:-.4rem">Sipariş {{ siparis.pk }}{% if siparis.belge_no %}
-    · {{ siparis.belge_no }}{% endif %} için, üretime uygun kalemlerden TEK bir Üretim Emri
-    açılır. Eldeki stok ayrılır, kalan ihtiyaç için her iş istasyonuna ayrı bir istasyon emri açılır —
-    bu ekran hiçbir stok hareketi üretmez.</p>
+  <p class="yardim" style="margin-top:-.4rem">Sipariş {{ siparis.pk }}{% if siparis.belge_no %} · {{ siparis.belge_no }}{% endif %}</p>
 
   {% if bform.non_field_errors %}
     <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>

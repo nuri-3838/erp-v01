@@ -119,12 +119,12 @@ def son_kaydim(user, ie: IstasyonEmri):
 def acik_emirler(istasyon, user=None) -> list:
     """İstasyonun açık emirleri (açık ÜS'ler, BEKLİYOR/BAŞLADI): ``uretim.istasyon_emri_satiri`` satırı + müşteri ("" = stok için üretim),
     varyant metni (standart dışı), tam sayı kalan, bugünkü kendi son kaydı, emrin açık iş oturumları (``oturumlar``: özet + ``benim``),
-    ``malzeme`` (``malzeme_durumu``) ve ``termin``. SIRALAMA: malzemesi hazır olanlar önce, sonra termin yakın olan; eşitlikte ÜS sırası,
-    derin seviye önce."""
+    ``malzeme`` (``malzeme_durumu``) ve ``termin``. SIRALAMA: ACİL ÜS önce; sonra malzemesi hazır olanlar, sonra termin yakın olan (boş termin sonda), ÜS tarihi/sırası, derin seviye önce
+    (Acil → termin → tarih, İstasyon Emirleri ile ortak ``uretim.siralama``; "malzemesi hazır önce" atölyeye özgü ikinci anahtardır)."""
     qs = (IstasyonEmri.objects.filter(silindi=False, istasyon=istasyon, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
                                       durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI])
           .select_related("uretim_emri__kaynak_siparis__cari", "operasyon__cikti", "istasyon", "cikti_varyant")
-          .order_by("uretim_emri__yil", "uretim_emri__sira", "-seviye", "pk"))
+          .order_by(*uretim.siralama("uretim_emri__"), "-seviye", "pk"))          # Acil → termin → tarih (İstasyon Emirleri ile ortak)
     p = personel_coz(user) if user is not None else None
     acik = {}
     for o in is_oturumu.acik_oturumlar():
@@ -139,7 +139,9 @@ def acik_emirler(istasyon, user=None) -> list:
         s = uretim.istasyon_emri_satiri(ie, ie.uretim_emri)
         sip = ie.uretim_emri.kaynak_siparis
         s["musteri"] = (sip.cari.kisa_ad or sip.cari.unvan) if (sip is not None and sip.cari_id) else ""
-        s["termin"] = (getattr(sip, "termin", None) if sip is not None else None) or ie.uretim_emri.tarih
+        s["termin_etkin"] = uretim.etkin_termin(ie.uretim_emri)                                  # boşsa None (sırada sonda)
+        s["acil"] = ie.uretim_emri.oncelik == UretimEmri.Oncelik.ACIL
+        s["termin"] = s["termin_etkin"] or ie.uretim_emri.tarih
         s["varyant_metni"] = varyant_servis.standart_disi_metin(ie.cikti_varyant_id, "tr") if ie.cikti_varyant_id else ""
         s["kalan_tam"] = _tam_metin(s["acik"])
         s["son_kaydim"] = son_kaydim(user, ie) if user is not None else None
@@ -150,7 +152,8 @@ def acik_emirler(istasyon, user=None) -> list:
                                if any(g.girdi_id == b["stok_id"] and (vpk is None or vpk == b["varyant_id"]) for g, vpk in satirlar)]
         sonuc.append(s)
     sira = {"HAZIR": 0, "KISMI": 1, "YOK": 2}
-    sonuc.sort(key=lambda s: (sira[s["malzeme"]["durum"]], s["termin"], s["ie"].uretim_emri.yil, s["ie"].uretim_emri.sira, -s["ie"].seviye, s["ie"].pk))
+    sonuc.sort(key=lambda s: (not s["acil"], sira[s["malzeme"]["durum"]], s["termin_etkin"] or datetime.date.max, s["ie"].uretim_emri.tarih,
+                              s["ie"].uretim_emri.yil, s["ie"].uretim_emri.sira, -s["ie"].seviye, s["ie"].pk))
     return sonuc
 
 

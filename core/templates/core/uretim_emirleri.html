@@ -45,6 +45,10 @@
   .ue-durum.acik { background:#fff1e0; color:#b45f00; }
   .ue-durum.tamam { background:#e7f7ec; color:#0a7d28; }
   .ue-durum.iptal { background:#eceef2; color:#6b7385; text-decoration:line-through; }
+  .ue-durum.sevk { background:#e8f0ff; color:#2457b8; }
+  .ue-acil { display:inline-block; margin-left:.4rem; padding:.08rem .45rem; border-radius:999px; font-size:.68rem; font-weight:800; background:#fdecef; color:#c11539; vertical-align:middle; }
+  .ue-yuzde.ue-is { margin-top:.4rem; }
+  .ue-bar.ue-bar-is i { background:linear-gradient(90deg, #2d6cdf, #5b8def); }
   .ue-fason-gerekli { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#fff0dc; color:#b35a00; }
   .ue-fason-bekl { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#eceff3; color:#5b6678; }
   .ue-eksik { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#fdecef; color:#b3253f; }
@@ -65,6 +69,8 @@
   @media (max-width: 760px) {
     #ue-tablo, #ue-tablo tbody, #ue-tablo tr, #ue-tablo td { display:block; width:100%; box-sizing:border-box; }
     #ue-tablo thead { display:none; }
+    /* dar ekranda "tr { display:block }" (kimlik seçicili) gizli satırı ezip "eşleşen yok" mesajını liste doluyken de gösteriyordu → gizleme kuralları aynı özgüllükte */
+    #ue-tablo tr[hidden], #ue-tablo tr.ue-bos-js:not(.gorunur) { display:none; }
     #ue-tablo tr.ue-satir { padding:.6rem .2rem; border-bottom:1px solid var(--cizgi-koyu); }
     #ue-tablo td { padding:.2rem .6rem; border:0; }
     #ue-tablo td[data-et]::before { content:attr(data-et) ": "; font-size:.72rem; font-weight:700; text-transform:uppercase; color:var(--metin-soluk); margin-right:.3rem; }
@@ -83,7 +89,7 @@
   </span>
 </div>
 
-<p class="yardim ue-ozet">Satış siparişinden açılan üretimler. Satıra tıkla, istasyon emirlerine git.</p>
+<p class="yardim ue-ozet">Satış siparişi ve stok için üretimler. Satıra tıkla, istasyon emirlerine git.</p>
 
 <div class="ue-panel">
   <form method="get" class="ue-arama-cubuk" id="ue-arama-form">
@@ -96,8 +102,7 @@
     <div class="ue-alan-grup">
       <label for="ue-durum">Durum</label>
       <select name="durum" id="ue-durum" onchange="this.form.submit()">
-        {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{% if k == 'KAPALI' %}Tamamlandı{% else %}{{ ad }}{% endif %}</option>{% endfor %}
-        <option value="TUMU"{% if durum == 'TUMU' %} selected{% endif %}>Tümü</option>
+        {% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}
       </select>
     </div>
     <div class="ue-btn-cubuk">
@@ -125,7 +130,7 @@
           <div class="ue-hucre">
             <span class="ue-ikon">🏭</span>
             <div>
-              <div class="baslik"><a class="satir-bag" href="{% url 'core:uretim_emri_detay' e.pk %}">{{ e.no }}</a></div>
+              <div class="baslik"><a class="satir-bag" href="{% url 'core:uretim_emri_detay' e.pk %}">{{ e.no }}</a>{% if s.acil %}<span class="ue-acil" title="Acil: listelerde ve atölyede öne alınır">ACİL</span>{% endif %}</div>
               <div class="musteri{% if not s.siparisli %} stok{% endif %}">{{ s.musteri }}</div>
               <div class="alt">{% if s.siparisli %}Sip. {{ s.sip_no }} · {% endif %}{{ s.kalem_sayisi }} ürün · {{ s.toplam_miktar|tr_miktar_sade:3 }} adet</div>
             </div>
@@ -134,7 +139,7 @@
         <td class="mono" data-et="Tarih">{{ e.tarih|date:"d.m.Y" }}</td>
         <td data-et="Termin">{% if s.termin %}<span class="mono ue-termin{% if s.termin_gecmis %} gecmis{% endif %}"{% if s.termin_gecmis %} title="Termin geçti"{% endif %}>{{ s.termin|date:"d.m.Y" }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
         <td data-et="Durum">
-          <span class="ue-durum {% if e.durum == 'ACIK' %}acik{% elif e.durum == 'KAPALI' %}tamam{% else %}iptal{% endif %}">{% if e.durum == 'ACIK' %}Açık{% elif e.durum == 'KAPALI' %}Tamamlandı{% else %}İptal{% endif %}</span>
+          <span class="ue-durum {% if s.sevk_bekliyor %}sevk{% elif e.durum == 'ACIK' %}acik{% elif e.durum == 'KAPALI' %}tamam{% else %}iptal{% endif %}"{% if s.sevk_bekliyor %} title="Üretim bitti; sevk (depolu satış faturası) bekleniyor"{% endif %}>{% if s.sevk_bekliyor %}Sevk bekliyor{% elif e.durum == 'ACIK' %}Açık{% elif e.durum == 'KAPALI' %}Tamamlandı{% else %}İptal{% endif %}</span>
           {% if s.eksik_sayisi %}<br><span class="ue-eksik" title="Satınalma ihtiyacı olan malzeme">Eksik malzeme: {{ s.eksik_sayisi }}</span>{% endif %}
           {% if s.fason_emri_gerekli %}<br><span class="ue-fason-gerekli" title="Fason siparişi iptal/azaldı: bu parça için ÜS'de fason istasyon emri yok; ÜS'yi revize edin">Fason emri gerekli: {{ s.fason_emri_gerekli }}</span>{% endif %}
           {% if s.satinalma_bekleyen %}<br><span class="ue-fason-bekl" title="Açık alış siparişinden gelmesi beklenen malzeme">Satınalmadan bekleniyor: {{ s.satinalma_bekleyen }}</span>{% endif %}
@@ -142,8 +147,10 @@
         </td>
         <td class="ue-ilerleme-td" data-et="İlerleme">
           <div class="ue-ilerleme{% if e.durum == 'KAPALI' %} tamam{% endif %}">
-            <div class="ue-yuzde"><span>%{{ s.yuzde|floatformat:0 }}</span></div>
+            <div class="ue-yuzde"><span title="Mamul %: (ayrılan + sevk edilen) ÷ hedef">Mamul %{{ s.yuzde|floatformat:0 }}</span></div>
             <div class="ue-bar"><i style="width:{{ s.yuzde|floatformat:'0u' }}%"></i></div>
+            <div class="ue-yuzde ue-is"><span title="İş %: tamamlanan ÷ planlanan (istasyon emirleri toplamı, çalıştırma ağırlıklı)">İş {% if s.is_yuzde is None %}—{% else %}%{{ s.is_yuzde|floatformat:0 }}{% endif %}</span></div>
+            <div class="ue-bar ue-bar-is"><i style="width:{% if s.is_yuzde is None %}0{% else %}{{ s.is_yuzde|floatformat:'0u' }}{% endif %}%"></i></div>
             <div class="ue-ist">{% if s.tamamlandi %}Tamamlandı · ayrılan serbest{% else %}{{ s.ilerleme.onayli }}/{{ s.ilerleme.toplam }} istasyon{% endif %}</div>
           </div>
         </td>
@@ -158,7 +165,7 @@
       {% endwith %}
     {% empty %}
       <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or durum != 'TUMU' %}🔍 Bu süzgeçle eşleşen üretim siparişi yok{% if durum == 'ACIK' and not ara %} — açık sipariş yok; tamamlananlar için durumu “Tamamlandı” ya da “Tümü” yapın{% endif %}.
+        {% if ara or durum != 'TUMU' %}🔍 Bu süzgeçle eşleşen üretim siparişi yok{% if durum == 'AKTIF' and not ara %} — açık sipariş yok; tamamlananlar için durumu “Tamamlandı” ya da “Tümü” yapın{% endif %}.
         {% else %}🏭 Henüz üretim siparişi yok. Bir satış siparişinden “Üretim Siparişi Aç” ile ya da “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
     <tr class="ue-bos-js" style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">

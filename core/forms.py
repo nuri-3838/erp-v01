@@ -30,7 +30,7 @@ from core.models import (
     CekSenet, Depo, DuranVarlik, FaturaSatir, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge, Varyant,
     PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
-    TevkifatOrani, Ulke, YatirimProjesi, YevmiyeSatir,
+    TevkifatOrani, Ulke, UretimEmri, YatirimProjesi, YevmiyeSatir,
 )
 from core.sayi import SayiHatasi, format_tr, parse_tr, yuvarla
 from core.tarih import tr_bugun
@@ -1640,13 +1640,15 @@ class UretimEmriBaslikForm(forms.Form):
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
+    termin = forms.DateField(label="Termin", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    oncelik = forms.ChoiceField(label="Öncelik", choices=UretimEmri.Oncelik.choices, initial=UretimEmri.Oncelik.NORMAL, required=False)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.depo import aktif_depolar
-        depolar = aktif_depolar()
+        depolar = aktif_depolar().filter(fason_cari__isnull=True)            # fason depolar ÜS deposu olamaz (servis de reddeder)
         self.fields["depo"].queryset = depolar
         self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
         self.fields["depo"].widget.attrs["class"] = "akilli-sec"
@@ -1663,6 +1665,8 @@ class UretimRevizeBaslikForm(forms.Form):
     tarih = forms.DateField(
         label="Revize Tarihi", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
+    termin = forms.DateField(label="Termin", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    oncelik = forms.ChoiceField(label="Öncelik", choices=UretimEmri.Oncelik.choices, initial=UretimEmri.Oncelik.NORMAL, required=False)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
 

@@ -63,6 +63,17 @@ def ilerleme(gruplar: list, kayit_sayisi: dict) -> dict:
     return {"toplam": kayit_sayisi["toplam"], "onayli": kayit_sayisi["onayli"]}
 
 
+def is_yuzdesi(gruplar: list):
+    """İş %: iptal olmayan istasyon emirlerinde Σ min(tamamlanan, planlanan) ÷ Σ planlanan × 100 (çalıştırma ağırlıklı; biten emir tam). Emir yoksa None.
+    ``uretim.uretim_emirleri_ozet`` ["is_yuzde"] ile AYNI sonuç (testle kilitli)."""
+    ieler = [s["ie"] for g in gruplar for s in g["satirlar"] if s["ie"].durum != IstasyonEmri.Durum.IPTAL]
+    plan = sum((ie.planlanan for ie in ieler), SIFIR)
+    if not plan:
+        return None
+    yapilan = sum((ie.planlanan if ie.durum == IstasyonEmri.Durum.BITTI else min(ie.tamamlanan, ie.planlanan) for ie in ieler), SIFIR)
+    return min(yapilan * 100 / plan, Decimal("100"))
+
+
 def genel_yuzde(kalemler: list, tamamlandi: bool) -> Decimal:
     """``uretim.uretim_emri_yuzde`` ile AYNI: Σ min(hedef, ayrılan+sevk) ÷ Σ hedef × 100; tamamlanmış stok ÜS'si %100."""
     if tamamlandi:
@@ -77,8 +88,9 @@ def genel_yuzde(kalemler: list, tamamlandi: bool) -> Decimal:
 
 def bant(emir: UretimEmri, bugun: datetime.date, eksikler: list) -> dict:
     """Üst bant: müşteri/kaynak, termin + kalan gün, rozet sayıları (liste ekranıyla aynı sayım)."""
+    from core.services import uretim as uretim_servis
     sip = emir.kaynak_siparis
-    termin = sip.gecerlilik_teslim_tarihi if sip is not None else None
+    termin = uretim_servis.etkin_termin(emir)                       # ÜS'nin kendi terminı; boşsa (eski ÜS) kaynak siparişin teslim tarihi
     acik = emir.durum == UretimEmri.Durum.ACIK
     kalan = (termin - bugun).days if termin else None
     return {

@@ -23,7 +23,8 @@ import re
 from decimal import ROUND_CEILING, Decimal
 
 from django.db import IntegrityError, connection, transaction
-from django.db.models import Count, Max, Prefetch, Q
+from django.db.models import Case, Count, DecimalField, F, IntegerField, Max, Prefetch, Q, Sum, When
+from django.db.models.functions import Coalesce, Least
 from django.utils import timezone
 
 from core.metin import buyuk_harf_tr
@@ -1049,9 +1050,65 @@ def _ds(x) -> str:
     return format(Decimal(x).normalize(), "f")
 
 
+# === Termin / öncelik / sıralama (2026-10-14, Üretim Siparişleri Faz 1) ===
+
+_VARSAYILAN = object()          # servis parametresi "verilmedi": siparişten açılışta sipariş teslim tarihi; revizede mevcut değer korunur
+
+
+def etkin_termin(emir):
+    """ÜS terminı: kendi alanı; boşsa (eski ÜS) kaynak siparişin teslim tarihi; ikisi de yoksa None."""
+    if emir.termin:
+        return emir.termin
+    sip = emir.kaynak_siparis if emir.kaynak_siparis_id else None
+    return sip.gecerlilik_teslim_tarihi if sip is not None else None
+
+
+def siralama(onek: str = "") -> list:
+    """Açık işlerin ORTAK sırası (ÜS listesi Açık/Sevk bekliyor, İstasyon Emirleri, atölye): ACİL önce, sonra termin (boş sonda; ÜS terminı yoksa kaynak siparişin
+    teslim tarihi), sonra ÜS tarihi ve numarası. ``onek``: ÜS alanına giden yol ('' ya da IstasyonEmri sorgusunda 'uretim_emri__')."""
+    return [Case(When(**{f"{onek}oncelik": UretimEmri.Oncelik.ACIL}, then=0), default=1, output_field=IntegerField()).asc(),
+            Coalesce(F(f"{onek}termin"), F(f"{onek}kaynak_siparis__gecerlilik_teslim_tarihi")).asc(nulls_last=True),
+            f"{onek}tarih", f"{onek}yil", f"{onek}sira"]
+
+
+
+
+def sevk_bekliyor_mu(emir: UretimEmri, ilerleme: dict) -> bool:
+    """Üretimi bitmiş ama sevk edilmemiş siparişli ÜS (yeni durum değeri YOK, türetilir): ACIK + siparişli + iptal olmayan istasyon emri var ve hepsi BITTI.
+    Stok için ÜS'ler bitince kendiliğinden KAPALI olur. ``ilerleme`` = {"toplam", "onayli"} (``uretim_emri_ilerleme`` / ``uretim_emirleri_ozet``)."""
+    return bool(emir.durum == UretimEmri.Durum.ACIK and emir.kaynak_siparis_id is not None and ilerleme["toplam"] > 0 and ilerleme["onayli"] == ilerleme["toplam"])
+
+
+def _oncelik_dogrula(oncelik):
+    if oncelik not in UretimEmri.Oncelik.values:
+        raise UretimHatasi("Öncelik geçersiz (Normal ya da Acil).")
+
+
+def _tarih_metni(d):
+    return d.isoformat() if d else None
+
+
+@transaction.atomic
+def termin_oncelik_guncelle(emir: UretimEmri, *, termin, oncelik, kullanici=None) -> bool:
+    """Revize açmadan termin/öncelik DEĞİŞTİRİR (plan/ayırma/istasyon emri dokunulmaz). Değişiklik varsa geçmişe DUZENLEME satırı yazılır (kim: ``created_by``, ne zaman:
+    ``created_at``, önce → sonra: ``detay``); değişiklik yoksa hiçbir şey yazılmaz. Yalnız ACIK ÜS. Değiştiyse True."""
+    _oncelik_dogrula(oncelik)
+    emir = UretimEmri.objects.select_for_update(of=("self",)).get(pk=emir.pk)
+    if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
+        raise UretimHatasi("Yalnız açık üretim siparişinin termin/önceliği değiştirilebilir.")
+    if termin == emir.termin and oncelik == emir.oncelik:
+        return False
+    once = {"termin": _tarih_metni(emir.termin), "oncelik": emir.oncelik}
+    UretimEmri.objects.filter(pk=emir.pk).update(termin=termin, oncelik=oncelik, updated_by=kullanici, updated_at=timezone.now())
+    emir.termin, emir.oncelik = termin, oncelik
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.DUZENLEME, timezone.localdate(), "Termin/öncelik düzenlendi",
+                  {"once": once, "sonra": {"termin": _tarih_metni(termin), "oncelik": oncelik}}, kullanici)
+    return True
+
+
 @transaction.atomic
 def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis=None,
-                        kullanici=None, siparis_kalemleri=None, stoktan=None) -> UretimEmri:
+                        kullanici=None, siparis_kalemleri=None, stoktan=None, termin=None, oncelik=UretimEmri.Oncelik.NORMAL) -> UretimEmri:
     """ÜRETİM SİPARİŞİ açar. kalemler: [{"hedef_urun_id": int, "hedef_miktar": Decimal|str}, ...] — en az 1 satır. ``siparis_kalemleri``
     (isteğe bağlı, ``kalemler`` ile aynı uzunlukta TeklifSiparisKalem listesi): siparişten açılışta kalem bağı; bu durumda aynı ürün birden çok
     satırda olabilir (netleme stok bazında toplanmış talepten yapılır).
@@ -1064,6 +1121,9 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if not depo:
         raise UretimHatasi("Depo bulunamadı.")
+    if depo.fason_cari_id:
+        raise UretimHatasi("Fason deposu üretim siparişi deposu olamaz; fabrika deposunu seçin.")
+    _oncelik_dogrula(oncelik)
     varyantli = planlama_varyant.acik()                                                     # E-6 anahtarı (açılış anında; ÜS'ye yazılır)
     coz = _kalemleri_coz(kalemler, siparis_kalemleri, varyantli)
     _planlama_kilidi()
@@ -1079,7 +1139,7 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
                 sira = _sonraki_emir_sira(yil)
                 emir = UretimEmri.objects.create(
                     yil=yil, sira=sira, no=f"ÜS-{yil}-{sira:04d}", depo=depo, tarih=tarih,      # üretim siparişi (eski UE- kayıtlar aynen)
-                    aciklama=(aciklama or "").strip(), kaynak_siparis=kaynak_siparis, varyantli_plan=varyantli,
+                    aciklama=(aciklama or "").strip(), kaynak_siparis=kaynak_siparis, varyantli_plan=varyantli, termin=termin, oncelik=oncelik,
                     created_by=kullanici, updated_by=kullanici)
             break
         except IntegrityError:
@@ -1397,7 +1457,7 @@ def siparis_uretilebilir_kalemleri(siparis):
 
 @transaction.atomic
 def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, aciklama="",
-                                   kullanici=None, stoktan=None) -> UretimEmri:
+                                   kullanici=None, stoktan=None, termin=_VARSAYILAN, oncelik=UretimEmri.Oncelik.NORMAL) -> UretimEmri:
     """SATIŞ+SIPARIS+ONAYLI bir belgeden TEK, çok kalemli bir Üretim Emri açar ('tek emir,
     çoklu kalem'). kalem_secimleri ZORUNLU: [{"kalem_id": int, "hedef_miktar": Decimal|str}, ...]
     — görüntüleme ekranından (kullanıcı satır çıkarmış/miktar düzeltmiş olabilir) gelir; boş
@@ -1436,9 +1496,11 @@ def siparisten_uretim_emri_olustur(*, siparis, depo_id, tarih, kalem_secimleri, 
         secim.append((kalem, miktar))
 
     kalemler = [{"hedef_urun_id": kalem.stok_id, "hedef_miktar": miktar} for kalem, miktar in secim]
+    if termin is _VARSAYILAN:                                       # verilmediyse satış siparişinin teslim tarihi (boş olabilir); sonra ÜS'nin kendi alanıdır
+        termin = siparis.gecerlilik_teslim_tarihi
     return uretim_emri_olustur(
         kalemler=kalemler, depo_id=depo_id, tarih=tarih, aciklama=aciklama,
-        kaynak_siparis=siparis, kullanici=kullanici, siparis_kalemleri=[kalem for kalem, _ in secim], stoktan=stoktan)
+        kaynak_siparis=siparis, kullanici=kullanici, siparis_kalemleri=[kalem for kalem, _ in secim], stoktan=stoktan, termin=termin, oncelik=oncelik)
 
 
 def siparisten_us_kalemleri(siparis, kalem_secimleri) -> tuple:
@@ -2201,13 +2263,15 @@ def _emir_ozeti(emir: UretimEmri) -> dict:
 
 
 @transaction.atomic
-def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", kullanici=None, siparis_kalemleri=None, stoktan=None) -> UretimEmri:
+def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", kullanici=None, siparis_kalemleri=None, stoktan=None,
+                       termin=_VARSAYILAN, oncelik=_VARSAYILAN) -> UretimEmri:
     """ÜS kalemlerini ``kalemler`` ile DEĞİŞTİRİR (adet ±, ekle/çıkar) ve ayırma + istasyon emirlerini yeniden planlar (docs/uretim-siparisi-plan.md):
     (1) sevk/fatura edilmiş miktarın altına düşürme reddedilir; (2) net plan, ÜS'nin kendi ayırmaları kullanılabilir sayılarak çözülür (kendi
     ürettiği/ayırdığı stok ona açık); (3) ayırmalar plana çekilir (azalan fark serbest); (4) her operasyon: planlanan = tamamlanan + yeni net çalıştırma,
     ihtiyaç = yeni net + daha önce onaylıdan ayrılan (kümülatif); yeni net 0 ve tamamlanan 0 ise IPTAL (taslak kayıtları iptal), tamamlanan varsa
     planlanan = tamamlanan (BITTI); gereken yeni/iptal edilmiş operasyona emir açılır/yeniden açılır; açık taslak kayıtlar yeni nete sığdırılır;
-    (5) REVIZE revizyonu (önce/sonra). Yalnız ACIK sipariş. Tamamen atomik: doğrulama hatası hiçbir şey değiştirmez."""
+    (5) REVIZE revizyonu (önce/sonra). Yalnız ACIK sipariş. Tamamen atomik: doğrulama hatası hiçbir şey değiştirmez.
+    ``termin`` / ``oncelik`` verilirse (revize formu) uygulanır ve değişiklik revizyon detayına (önce → sonra) yazılır; verilmezse mevcut değer korunur."""
     _planlama_kilidi()
     verilen = emir
     emir = UretimEmri.objects.select_for_update(of=("self",)).select_related("kaynak_siparis", "depo").get(pk=emir.pk)
@@ -2219,6 +2283,8 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
     for urun, miktar, varyant in coz:
         k = _kalem_anahtari(urun, varyant, varyantli)
         yeni_toplam[k] = yeni_toplam.get(k, Decimal("0")) + miktar
+    if oncelik is not _VARSAYILAN:
+        _oncelik_dogrula(oncelik)
     sevk_haritasi = sevk_edilen_haritasi(emir)
     for anahtar, sevk in sevk_haritasi.items():
         stok_pk, var_pk = _sevk_anahtar_coz(anahtar)
@@ -2284,15 +2350,22 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
         taslak_degisen += _taslaklari_sigdir(ie, Decimal("0"), kullanici)
         istasyon_emri_durum_guncelle(ie)
     sonra = _emir_ozeti(emir)
-    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.REVIZE, tarih or timezone.localdate(), aciklama or "Revize",
-                  {"once": once, "sonra": sonra, "taslak_kayitlar": taslak_degisen}, kullanici)
+    detay = {"once": once, "sonra": sonra, "taslak_kayitlar": taslak_degisen}
+    yeni_termin = emir.termin if termin is _VARSAYILAN else termin
+    yeni_oncelik = emir.oncelik if oncelik is _VARSAYILAN else oncelik
+    if (yeni_termin, yeni_oncelik) != (emir.termin, emir.oncelik):                          # termin/öncelik revizeyle birlikte değişti
+        detay["termin_oncelik"] = {"once": {"termin": _tarih_metni(emir.termin), "oncelik": emir.oncelik},
+                                   "sonra": {"termin": _tarih_metni(yeni_termin), "oncelik": yeni_oncelik}}
+        UretimEmri.objects.filter(pk=emir.pk).update(termin=yeni_termin, oncelik=yeni_oncelik)
+        emir.termin, emir.oncelik = yeni_termin, yeni_oncelik
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.REVIZE, tarih or timezone.localdate(), aciklama or "Revize", detay, kullanici)
     if verilen is not emir:
         verilen.refresh_from_db()                                         # çağıranın nesnesi de güncel (revizyon_no vb.)
     return emir
 
 
 @transaction.atomic
-def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None, stoktan=None) -> UretimEmri:
+def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None, stoktan=None, termin=_VARSAYILAN, oncelik=_VARSAYILAN) -> UretimEmri:
     """Onaylı SATIŞ siparişinin kalemlerini ``satirlar`` (teklif_siparis_olustur satır biçimi) ile DEĞİŞTİRİR ve aynı işlemde bağlı açık üretim
     siparişini revize eder (karar 6): ÜS kalemleri = siparişin üretime uygun kalemleri (miktar = sipariş kalem miktarı); üretime uygun kalem
     kalmazsa reddedilir (önce ÜS iptal edilmeli). Sipariş başlığı/fiyat mantığı teklif_siparis servisininkiyle aynıdır."""
@@ -2315,7 +2388,7 @@ def siparis_revize(siparis, *, satirlar, tarih=None, aciklama="", kullanici=None
         raise UretimHatasi("Revize sonrası üretime uygun kalem kalmıyor; önce üretim siparişini iptal edin.")
     return uretim_emri_revize(emir, kalemler=[{"hedef_urun_id": k.stok_id, "hedef_miktar": k.miktar} for k in uygun],
                               tarih=tarih, aciklama=aciklama or f"Sipariş {siparis.belge_no} revizesi", kullanici=kullanici, siparis_kalemleri=list(uygun),
-                              stoktan=stoktan)
+                              stoktan=stoktan, termin=termin, oncelik=oncelik)
 
 # === Üretim siparişi KAPANIŞ (adım 8): sevk = depolu satış faturası ===
 
@@ -2408,6 +2481,9 @@ def uretim_emirleri_ozet(emirler) -> dict:
     ie = {r["uretim_emri_id"]: r for r in IstasyonEmri.objects.filter(uretim_emri_id__in=idler, silindi=False).values("uretim_emri_id").annotate(
         toplam=Count("id", filter=~Q(durum=IstasyonEmri.Durum.IPTAL)),
         biten=Count("id", filter=Q(durum=IstasyonEmri.Durum.BITTI)),
+        plan=Sum("planlanan", filter=~Q(durum=IstasyonEmri.Durum.IPTAL)),                                       # İş %: çalıştırma ağırlıklı (biten emir tam sayılır)
+        yapilan=Sum(Case(When(durum=IstasyonEmri.Durum.BITTI, then=F("planlanan")), default=Least(F("tamamlanan"), F("planlanan")),
+                         output_field=DecimalField(max_digits=24, decimal_places=10)), filter=~Q(durum=IstasyonEmri.Durum.IPTAL)),
         baslamis=Count("id", filter=Q(durum__in=[IstasyonEmri.Durum.BASLADI, IstasyonEmri.Durum.BITTI]) | Q(tamamlanan__gt=0)))}
     kayit = {r["uretim_emri_id"]: r for r in OperasyonKaydi.objects.filter(uretim_emri_id__in=idler, silindi=False).values("uretim_emri_id").annotate(
         toplam=Count("id"), onayli=Count("id", filter=Q(durum=OperasyonKaydi.Durum.ONAYLI)),
@@ -2429,7 +2505,9 @@ def uretim_emirleri_ozet(emirler) -> dict:
             toplam += kl.hedef_miktar
             hazir += h
         tamam = e.durum == UretimEmri.Durum.KAPALI and e.kaynak_siparis_id is None and not e.sevk_dusen         # tamamlanmış stok ÜS'si
+        is_yuzde = (min(i["yapilan"] * 100 / i["plan"], Decimal("100")) if i and i["plan"] else None) if e.durum != UretimEmri.Durum.IPTAL else None
         sonuc[e.pk] = {"ilerleme": ilerleme, "yuzde": Decimal("100") if tamam else ((hazir * 100 / toplam) if toplam else Decimal("0")),
+                       "is_yuzde": is_yuzde, "sevk_bekliyor": sevk_bekliyor_mu(e, ilerleme),
                        "silinebilir": e.durum == UretimEmri.Durum.ACIK and not baslamis}
     return sonuc
 

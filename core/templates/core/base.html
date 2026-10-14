@@ -303,6 +303,16 @@
     .toplamlar .deger { font-weight:700; font-variant-numeric:tabular-nums; }
     .denge.dengeli { color:var(--ok); } .denge.dengesiz { color:var(--hata); }
     .yardim { color:var(--metin-soluk); font-size:.82rem; }
+    /* "?" ipucu (2026-10-14): uzun açıklamalar başlık yanında; üzerine gel / dokun-odakla aç (mobilde de çalışır). Kap: .ipucu-kap (başlık + ?) */
+    .ipucu-kap { position:relative; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .ipucu-kap > h1, .ipucu-kap > h2 { margin:0; }
+    .ipucu { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:1.25rem; height:1.25rem; border-radius:50%;
+             border:1.5px solid var(--metin-soluk); color:var(--metin-soluk); font-size:.75rem; font-weight:700; cursor:help; outline:none; }
+    .ipucu:hover, .ipucu:focus { border-color:var(--turuncu); color:var(--turuncu); }
+    .ipucu::after { content:attr(data-ipucu); display:none; position:absolute; left:0; right:0; top:100%; z-index:30; margin-top:.35rem; max-width:38rem;
+                    padding:.65rem .85rem; background:var(--lacivert); color:#fff; border-radius:10px; font-size:.82rem; font-weight:400; line-height:1.45;
+                    box-shadow:var(--golge-lg); text-align:left; text-transform:none; letter-spacing:0; }
+    .ipucu:hover::after, .ipucu:focus::after { display:block; }
     .pasif { color:#9aa3b2; }
     /* Başlık altı küçük gri bilgi satırı (X kayıt / kısa açıklama) */
     .sayfa-alt { color:var(--metin-soluk); font-size:.9rem; font-weight:500;

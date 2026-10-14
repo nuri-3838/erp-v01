@@ -26,12 +26,10 @@
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Siparişleri</a>
-    <h1 class="ust-baslik"><span class="emoji">🛠️</span>İstasyon Emirleri</h1>
+    <div class="ipucu-kap"><h1 class="ust-baslik"><span class="emoji">🛠️</span>İstasyon Emirleri</h1>
+      {% include "core/_ipucu.html" with metin="İstasyon sekmeleri açık (bekleyen + başlamış) emir sayısını gösterir. Miktarlar referans çıktı adedi cinsindendir; emir no kaydın Operasyon Kayıtları'na gider. “Üretildi” kaydı tek işlemde açıp onaylar; fason istasyonunda emir “Fason dönüş aç” ile kapanır. Sıralama: Acil üretim siparişi önce, sonra termin (boşsa sonda), sonra tarih." %}</div>
   </div>
 </div>
-
-<p class="yardim">İstasyon sekmeleri açık (bekleyen + başlamış) emir sayısını gösterir. Miktarlar referans çıktı adedi cinsindendir; emir no kaydın
-  Operasyon Kayıtları'na gider. “Üretildi” kaydı tek işlemde açıp onaylar; fason istasyonunda emir “Fason dönüş aç” ile kapanır.</p>
 
 <nav class="ie-sekmeler" aria-label="İstasyon">
   {% for s in sekmeler %}<a class="ie-sekme{% if s.aktif %} aktif{% endif %}" href="{{ s.url }}">{{ s.ad }} <span class="sayi{% if not s.sayi %} sifir{% endif %}">{{ s.sayi }}</span></a>{% endfor %}
@@ -70,7 +68,7 @@
     {% for s in satirlar %}
       <tr>
         <td class="mono ie-no"><a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}" title="Bu emrin operasyon kayıtları">{{ s.ie.no }}</a></td>
-        <td><a class="mono" href="{% url 'core:uretim_emri_detay' s.ie.uretim_emri_id %}">{{ s.ie.uretim_emri.no }}</a></td>
+        <td><a class="mono" href="{% url 'core:uretim_emri_detay' s.ie.uretim_emri_id %}">{{ s.ie.uretim_emri.no }}</a>{% if s.ie.uretim_emri.oncelik == "ACIL" %} <span class="rozet rozet-pasif">ACİL</span>{% endif %}</td>
         {% if not secili %}<td><span class="mono">{{ s.ie.istasyon.kod }}</span> {{ s.ie.istasyon.ad }}{% if s.ie.istasyon.fason %} <span class="rozet rozet-notr">fason</span>{% endif %}</td>{% endif %}
         <td><span class="mono">{{ s.ie.operasyon.cikti.kod }}</span> {{ s.ie.operasyon.cikti.ad }}{% if s.varyant %} <span class="rozet rozet-notr" title="Çıktı varyantı">{{ s.varyant }}</span>{% endif %}</td>
         <td class="sag mono">{{ s.planlanan|tr_kur:3 }}</td>

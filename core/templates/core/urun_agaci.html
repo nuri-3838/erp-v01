@@ -19,8 +19,8 @@
     {% endif %}
   </div>
   {% if baslik_yazdir %}<h2 class="ua-yazdir-baslik">{{ baslik_yazdir }}</h2>{% endif %}
-  <p class="yardim ua-ekran" style="margin-top:-.4rem">Operasyon zincirinden türetilen salt-okunur görünümler: hiçbir kayıt açmaz —
-    bir düğümün tanımını değiştirmek için yanındaki ✎ işaretini kullan. Birden çok ürünün toplanmış ihtiyacı için “İhtiyaç (çoklu ürün)” görünümü.</p>
+  <div class="ipucu-kap ua-ekran" style="margin:-.2rem 0 .6rem"><span class="yardim">Operasyon zincirinden türetilen salt-okunur görünümler.</span>
+    {% include "core/_ipucu.html" with metin="Hiçbir kayıt açmaz; bir düğümün tanımını değiştirmek için yanındaki ✎ işaretini kullan. Birden çok ürünün toplanmış ihtiyacı için “İhtiyaç (çoklu ürün)” görünümü." %}</div>
 
   <nav class="ua-segment ua-ekran" aria-label="Görünüm">
     {% for k, ad, u in segmentler %}<a href="{{ u }}" class="ua-seg{% if k == gorunum %} aktif{% endif %}">{{ ad }}</a>{% endfor %}

@@ -3548,6 +3548,10 @@ class UretimEmri(TemelModel):
         KAPALI = "KAPALI", "Kapalı"
         IPTAL = "IPTAL", "İptal"
 
+    class Oncelik(models.TextChoices):
+        NORMAL = "NORMAL", "Normal"
+        ACIL = "ACIL", "Acil"
+
     yil = models.PositiveSmallIntegerField("yıl", editable=False)
     sira = models.PositiveIntegerField("sıra", editable=False)
     no = models.CharField("emir no", max_length=20, editable=False)
@@ -3566,6 +3570,10 @@ class UretimEmri(TemelModel):
     # E-6: ÜS varyantlı planlama anahtarı AÇIKKEN açıldı — revize/eksik/sevk hesapları (stok, varyant) düğümleriyle sürer; kapalıda açılan ÜS kart
     # bazında kalır (anahtar sonradan değişse bile).
     varyantli_plan = models.BooleanField("varyantlı plan", default=False)
+    # 2026-10-14 (Üretim Siparişleri Faz 1): ÜS terminı (boş olabilir; siparişten açılışta satış siparişinin teslim tarihi varsayılan gelir, sonra bağımsızdır) ve
+    # öncelik (Acil önce → termin → tarih sıralaması: ÜS listesi, İstasyon Emirleri, atölye).
+    termin = models.DateField("termin", null=True, blank=True)
+    oncelik = models.CharField("öncelik", max_length=6, choices=Oncelik.choices, default=Oncelik.NORMAL)
 
     class Meta:
         db_table = "core_uretim_emri"
@@ -3719,6 +3727,7 @@ class UretimEmriRevizyon(TemelModel):
         KAPANIS = "KAPANIS", "Kapanış"
         YENIDEN_ACILIS = "YENIDEN_ACILIS", "Yeniden açılış"
         IPTAL = "IPTAL", "İptal"
+        DUZENLEME = "DUZENLEME", "Termin/öncelik düzenleme"
 
     uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="revizyonlar")
     no = models.PositiveSmallIntegerField("sıra no")

@@ -30,6 +30,12 @@
   .ud-meta .satir { margin:0; }
   .ud-termin.gecmis { color:var(--hata); font-weight:700; }
   .ud-yuzde-blok { min-width:0; }
+  .ud-yuzde-blok + .ud-yuzde-blok, .ud-is-blok { margin-top:.6rem; }
+  .ud-yuzde.kucuk { font-size:1.35rem; }
+  .ud-cubuk.mavi > i { background:#2d6cdf; }
+  .ud-hizli { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin:0; }
+  .ud-hizli .dg { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
+  .ud-hizli input[type=date], .ud-hizli select { min-height:2rem; padding:.2rem .5rem; }
   .ud-yuzde-ust { display:flex; align-items:baseline; justify-content:space-between; gap:.8rem; flex-wrap:wrap; }
   .ud-yuzde { font-size:2.1rem; font-weight:800; color:var(--lacivert); line-height:1; }
   .ud-cubuk { display:block; height:.8rem; border-radius:99px; background:#e8ecf3; overflow:hidden; margin:.45rem 0 .25rem; }
@@ -91,7 +97,9 @@
   <div>
     <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Siparişleri</a>
     <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ emir.no }}
-      <span class="rozet {% if emir.durum == 'ACIK' %}rozet-aktif{% elif emir.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-kapali{% endif %}">{{ emir.get_durum_display }}</span></h1>
+      <span class="rozet {% if emir.durum == 'ACIK' %}rozet-aktif{% elif emir.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-kapali{% endif %}">{{ emir.get_durum_display }}</span>
+      {% if emir.oncelik == 'ACIL' %}<span class="rozet rozet-pasif" title="Acil: listelerde ve atölyede öne alınır">🔥 ACİL</span>{% endif %}
+      {% if bant.sevk_bekliyor %}<span class="rozet" style="background:#e8f0ff;color:#2457b8" title="Üretim bitti; sevk (depolu satış faturası) bekleniyor">🚚 Sevk bekliyor</span>{% endif %}</h1>
   </div>
   <span class="islem-bag" style="flex-wrap:wrap;justify-content:flex-end">
     {% if toplu_uretilebilir and uret_yetkili %}
@@ -121,15 +129,29 @@
     <div class="satir"><span class="et">Termin</span>
       <span class="dg">{% if bant.termin %}<span class="mono ud-termin{% if bant.termin_gecmis %} gecmis{% endif %}">{{ bant.termin|date:"d.m.Y" }}</span>
         {% if bant.kalan_gun is not None %}<span class="{% if bant.termin_gecmis %}ud-termin gecmis{% else %}yardim{% endif %}">· {{ bant.kalan_metin }}</span>{% endif %}{% else %}<span class="yardim">—</span>{% endif %}</span></div>
+    {% if emir.durum == 'ACIK' %}
+    <form method="post" action="{% url 'core:uretim_emri_termin_oncelik' emir.pk %}" class="satir ud-hizli">
+      {% csrf_token %}<span class="et">Termin / öncelik</span>
+      <span class="dg"><input type="date" name="termin" value="{{ emir.termin|date:'Y-m-d' }}" title="Termin (boş olabilir)">
+        <select name="oncelik" title="Öncelik">{% for k, ad in oncelik_secenekleri %}<option value="{{ k }}"{% if emir.oncelik == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}</select>
+        <button type="submit" class="dugme-ikincil" title="Revize açmadan kaydeder; geçmişe yazılır">Kaydet</button></span>
+    </form>
+    {% else %}<div class="satir"><span class="et">Öncelik</span><span class="dg">{{ emir.get_oncelik_display }}</span></div>{% endif %}
     <div class="satir"><span class="et">Tarih · Depo</span>
       <span class="dg"><span class="mono">{{ emir.tarih|date:"d.m.Y" }}</span> · <span class="mono">{{ emir.depo.kod }}</span> {{ emir.depo.ad }}{% if emir.revizyon_no %} · rev. <span class="mono">{{ emir.revizyon_no }}</span>{% endif %}{% if emir.kapanis_tarihi %} · kapanış <span class="mono">{{ emir.kapanis_tarihi|date:"d.m.Y" }}</span>{% endif %}</span></div>
   </div>
   <div class="ud-yuzde-blok">
     <div class="ud-yuzde-ust">
-      <span class="ud-yuzde" title="(ayrılan + sevk edilen) ÷ hedef">% {{ yuzde|tr_kur:0 }}</span>
+      <span class="yardim">Mamul</span>
+      <span class="ud-yuzde" title="Mamul %: (ayrılan + sevk edilen) ÷ hedef">% {{ yuzde|tr_kur:0 }}</span>
       <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon bitti</span>
     </div>
     <span class="ud-cubuk buyuk" role="progressbar" aria-valuenow="{{ yuzde_css }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ yuzde_css }}%"></i></span>
+    <div class="ud-is-blok">
+      <div class="ud-yuzde-ust"><span class="yardim">İş</span>
+        <span class="ud-yuzde kucuk" title="İş %: tamamlanan ÷ planlanan (istasyon emirleri toplamı, çalıştırma ağırlıklı)">{% if is_yuzde is None %}—{% else %}% {{ is_yuzde|tr_kur:0 }}{% endif %}</span></div>
+      <span class="ud-cubuk mavi" role="progressbar" aria-valuenow="{{ is_yuzde_css }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ is_yuzde_css }}%"></i></span>
+    </div>
   </div>
   <div class="ud-rozetler">
     {% if emir.durum == 'ACIK' %}
@@ -344,17 +366,18 @@
     <summary>Revizyon Geçmişi ({{ revizyonlar|length }})</summary>
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>No</th><th>İşlem Zamanı</th><th>Olay</th><th>Açıklama / Değişiklik</th></tr></thead>
+      <thead><tr><th>No</th><th>İşlem Zamanı</th><th>Kullanıcı</th><th>Olay</th><th>Açıklama / Değişiklik</th></tr></thead>
       <tbody>
         {% for r, farklar in revizyonlar %}
           <tr>
             <td class="mono">{{ r.no }}</td>
             <td class="mono">{{ r.created_at|date:"d.m.Y H:i" }}</td>
+            <td>{% if r.created_by %}{{ r.created_by.get_full_name|default:r.created_by.username }}{% else %}—{% endif %}</td>
             <td>{{ r.get_tur_display }}</td>
             <td>{{ r.aciklama }}{% for f in farklar %}<div class="mono">{{ f }}</div>{% endfor %}</td>
           </tr>
         {% empty %}
-          <tr><td colspan="4" class="yardim">Revizyon kaydı yok (eski emir).</td></tr>
+          <tr><td colspan="5" class="yardim">Revizyon kaydı yok (eski emir).</td></tr>
         {% endfor %}
       </tbody>
     </table>

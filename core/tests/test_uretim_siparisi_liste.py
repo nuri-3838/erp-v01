@@ -37,7 +37,7 @@ class ListeTest(kt.KapanisTaban):
                          ["Üretim Siparişi", "Tarih", "Termin", "Durum", "İlerleme"])
         self.assertNotIn(f"{self.stok.kod} {self.stok.ad}", self.gorunen_satir(r, emir))               # ürün adı satırda görünmez (detayda var)
         self.assertNotIn("kalem daha", html)
-        self.assertContains(r, "Satış siparişinden açılan üretimler. Satıra tıkla, istasyon emirlerine git.")
+        self.assertContains(r, "Satış siparişi ve stok için üretimler. Satıra tıkla, istasyon emirlerine git.")
         self.assertContains(r, "müşteri")                                                              # arama placeholder'ı
 
     def test_kaynak_siparissiz_stok_icin_uretim(self):
@@ -88,8 +88,8 @@ class ListeTest(kt.KapanisTaban):
         """Adım 8: durum süzgeci varsayılan Açık; tamamlanmış stok ÜS'sinde (ayırmalar serbest) listede ve detayda 'Tamamlandı'."""
         emir = uretim.uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.stok.pk, "hedef_miktar": "2"}], depo_id=self.depo.pk, tarih=kt.GUN)
         r = self.liste()
-        self.assertEqual(r.context["durum"], "ACIK")
-        self.assertContains(r, '<option value="ACIK" selected>')
+        self.assertEqual(r.context["durum"], "AKTIF")                                                  # Faz 1: varsayılan Açık + Sevk bekliyor
+        self.assertContains(r, '<option value="AKTIF" selected>')
         self.assertContains(r, '<option value="TUMU">Tümü</option>')
         self.assertContains(r, emir.no)
         uretim.operasyon_kaydi_onayla(uretim.istasyon_emri_kayit_ac(emir.istasyon_emirleri.get(), tarih=kt.GUN))   # %100 → tamamlandı

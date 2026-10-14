@@ -1,7 +1,6 @@
 {% load core_extras %}
-<p class="yardim ua-ekran" style="margin:-.4rem 0 .8rem">Birden çok hedef ürün ve miktar gir; bitmiş üründen geriye doğru TÜM operasyon zinciri
-  toplanmış talep üzerinden hesaplanır (tam boy kuralı, ortak parçalar tek yuvarlama) — salt önizlemedir, hiçbir kayıt açmaz. Gerçekten üretim
-  başlatmak için Üretim Siparişleri'ni kullan.</p>
+<div class="ipucu-kap ua-ekran" style="margin:-.4rem 0 .8rem"><span class="yardim">Çoklu ürün ihtiyaç önizlemesi.</span>
+  {% include "core/_ipucu.html" with metin="Birden çok hedef ürün ve miktar gir; bitmiş üründen geriye doğru TÜM operasyon zinciri toplanmış talep üzerinden hesaplanır (tam boy kuralı, ortak parçalar tek yuvarlama). Salt önizlemedir, hiçbir kayıt açmaz. Gerçekten üretim başlatmak için Üretim Siparişleri'ni kullan." %}</div>
 
 {% if formset.non_form_errors %}
   <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
@@ -81,7 +80,7 @@
         </tbody>
       </table>
     </div>
-    {% if sonuc.net_mod %}<p class="yardim" style="margin:.6rem 0 0">Net ihtiyaç: her seviyede toplanmış talepten kullanılabilir stok (eldeki − açık üretim siparişlerine ayrılan; eksi ise 0) düşülür, çalıştırma ve alt seviye talebi net miktardan hesaplanır. Yaprakta "eksik" = satınalma ihtiyacı. Fazla (tam boy / parçala kardeşi) serbest stoktur.</p>{% endif %}
+    {% if sonuc.net_mod %}<div class="ipucu-kap" style="margin:.6rem 0 0"><span class="yardim">Net ihtiyaç hesabı.</span>{% include "core/_ipucu.html" with metin="Her seviyede toplanmış talepten kullanılabilir stok (eldeki − açık üretim siparişlerine ayrılan; eksi ise 0) düşülür, çalıştırma ve alt seviye talebi net miktardan hesaplanır. Yaprakta eksik = satınalma ihtiyacı. Fazla (tam boy / parçala kardeşi) serbest stoktur." %}</div>{% endif %}
   </section>
 {% endif %}
 

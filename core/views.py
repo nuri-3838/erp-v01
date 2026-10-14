@@ -3711,14 +3711,15 @@ def siparis_uretim_emrine_cevir(request, pk):
                     emir = uretim_servis.siparisten_uretim_emri_olustur(
                         siparis=siparis, depo_id=bform.cleaned_data["depo"].pk,
                         tarih=bform.cleaned_data["tarih"], kalem_secimleri=secimler,
-                        aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
+                        aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan,
+                        termin=bform.cleaned_data.get("termin"), oncelik=bform.cleaned_data.get("oncelik") or UretimEmri.Oncelik.NORMAL)
                     messages.success(
                         request, f"Üretim emri açıldı: {emir.no} — sipariş {siparis.pk} kaynaklı.")
                     return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
-        bform = UretimEmriBaslikForm(initial={"tarih": timezone.localdate()})
+        bform = UretimEmriBaslikForm(initial={"tarih": timezone.localdate(), "termin": siparis.gecerlilik_teslim_tarihi})     # termin: satış siparişinin teslim tarihi (değiştirilebilir)
         formset = SiparisUretimEmriSatirFormSet(initial=[
             {"kalem_id": k.pk, "hedef_miktar": k.miktar} for k in uygun])
     return render(request, "core/siparis_uretim_emri_ekle.html", {
@@ -7749,21 +7750,30 @@ def urun_agaci(request):
 
 
 # --- Üretim Siparişleri (ÜS; modeli UretimEmri — ekran kodu geçmişten `uretim_emirleri`) ---
+UTS_SUZGEC = (("AKTIF", "Açık + Sevk bekliyor"), ("ACIK", "Açık (üretimde)"), ("SEVK", "Sevk bekliyor"), ("KAPALI", "Tamamlandı"), ("IPTAL", "İptal"), ("TUMU", "Tümü"))
+
+
 @ekran_gerekli("uretim_emirleri")
 def uretim_emirleri(request):
-    """ÜS listesi: durum süzgeci varsayılan AÇIK (parametre yoksa); ``durum=TUMU`` hepsi."""
+    """ÜS listesi: süzgeç varsayılan AKTIF = Açık + Sevk bekliyor (``Sevk bekliyor`` türetilir: üretimi bitmiş, sevk edilmemiş siparişli ÜS). Açık/Sevk bekliyor listeleri
+    ``uretim.siralama`` ile (Acil → termin → tarih); Tamamlandı / İptal / Tümü yeni tarih önce."""
     ara = (request.GET.get("ara") or "").strip()
-    durum = (request.GET.get("durum") or "").strip() if "durum" in request.GET else UretimEmri.Durum.ACIK
-    if durum == "TUMU":
-        durum = ""
+    durum = (request.GET.get("durum") or "").strip().upper() if "durum" in request.GET else "AKTIF"
+    if durum == "":
+        durum = "TUMU"
+    if durum not in dict(UTS_SUZGEC):
+        durum = "AKTIF"
+    sql_durum = {"AKTIF": UretimEmri.Durum.ACIK, "ACIK": UretimEmri.Durum.ACIK, "SEVK": UretimEmri.Durum.ACIK,
+                 "KAPALI": UretimEmri.Durum.KAPALI, "IPTAL": UretimEmri.Durum.IPTAL}.get(durum)
+    siralama = uretim_servis.siralama() if durum in ("AKTIF", "ACIK", "SEVK") else ["-yil", "-sira"]
     qs = (UretimEmri.objects.filter(silindi=False)
          .select_related("depo", "kaynak_siparis__cari")
          .prefetch_related(Prefetch(
              "kalemler",
              queryset=UretimEmriKalemi.objects.filter(silindi=False).select_related("hedef_urun")))
-         .order_by("-yil", "-sira"))
-    if durum in UretimEmri.Durum.values:
-        qs = qs.filter(durum=durum)
+         .order_by(*siralama))
+    if sql_durum:
+        qs = qs.filter(durum=sql_durum)
     if ara:
         buyuk = buyuk_harf_tr(ara)
         qs = qs.filter(
@@ -7772,7 +7782,9 @@ def uretim_emirleri(request):
             | Q(depo__ad__contains=buyuk) | Q(kaynak_siparis__belge_no__icontains=ara)
             | Q(kaynak_siparis__cari__unvan__contains=buyuk) | Q(kaynak_siparis__cari__kod__icontains=ara)).distinct()
     liste = list(qs)
-    ozet = uretim_servis.uretim_emirleri_ozet(liste)                      # toplu: ilerleme / % / silinebilir (emir başına sorgu yok)
+    ozet = uretim_servis.uretim_emirleri_ozet(liste)                      # toplu: ilerleme / mamul % / iş % / sevk bekliyor / silinebilir (emir başına sorgu yok)
+    if durum in ("ACIK", "SEVK"):                                         # türetilmiş durum: SQL'de değil, özetten
+        liste = [e for e in liste if ozet[e.pk]["sevk_bekliyor"] == (durum == "SEVK")]
     graf = urun_agaci_servis.graf_yukle()
     bugun = timezone.localdate()
     emirler = []
@@ -7780,21 +7792,23 @@ def uretim_emirleri(request):
         kalemler = list(e.kalemler.all())
         sip = e.kaynak_siparis
         musteri = sip.cari.unvan if sip is not None and sip.cari_id else ("Stok için üretim" if sip is None else (sip.aday_musteri.unvan if sip.aday_musteri_id else "—"))
-        termin = sip.gecerlilik_teslim_tarihi if sip is not None else None
+        termin = uretim_servis.etkin_termin(e)
         o = ozet[e.pk]
         eksikler = uretim_servis.uretim_emri_eksikleri(e, graf=graf)
         emirler.append({
             "e": e, "musteri": musteri, "siparisli": sip is not None, "sip_no": (sip.belge_no or f"#{sip.pk}") if sip is not None else "",
             "kalem_sayisi": len(kalemler), "toplam_miktar": sum((k.hedef_miktar for k in kalemler), Decimal("0")),
             "termin": termin, "termin_gecmis": bool(termin and termin < bugun and e.durum == UretimEmri.Durum.ACIK),
+            "acil": e.oncelik == UretimEmri.Oncelik.ACIL, "sevk_bekliyor": o["sevk_bekliyor"],
             "silinebilir": o["silinebilir"], "ilerleme": o["ilerleme"], "yuzde": o["yuzde"] if e.durum != UretimEmri.Durum.IPTAL else Decimal("0"),
+            "is_yuzde": o["is_yuzde"],
             "tamamlandi": e.durum == UretimEmri.Durum.KAPALI and sip is None and not e.sevk_dusen,       # tamamlanmış stok ÜS'si: ayırmalar serbest
             "eksik_sayisi": sum(1 for x in eksikler if x["tur"] in ("SATINALMA", "STOKLU")),         # gerçek eksik; fason siparişinden beklenen sayılmaz
             "fason_bekleyen": sum(1 for x in eksikler if x["tur"] == "FASON_SIPARIS"),
             "fason_emri_gerekli": sum(1 for x in eksikler if x["tur"] == "FASON_EMRI_GEREKLI"),
             "satinalma_bekleyen": sum(1 for x in eksikler if x["tur"] == "SATINALMA_SIPARIS"),
             "arama": " ".join([e.no, musteri, e.depo.kod, e.depo.ad, (sip.belge_no or "") if sip is not None else ""] + [f"{k.hedef_urun.kod} {k.hedef_urun.ad}" for k in kalemler])})
-    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum or "TUMU", "durumlar": UretimEmri.Durum.choices})
+    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum, "durumlar": UTS_SUZGEC})
 
 
 # --- "Stoktan karşıla" sorusu (ÜS aç / siparişten aç / revize / sipariş revize): kaydetmeden önce kalem başına ön izleme + seçim onayı ---
@@ -7837,7 +7851,7 @@ def uretim_emri_ekle(request):
                 # Stok için ÜS: kök hedef kendi stoğundan karşılanmaz (soru yok) — bkz. uretim.stok_icin_tavan
                 emir = uretim_servis.uretim_emri_olustur(
                     kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
-                    aciklama=cd.get("aciklama", ""), kullanici=request.user)
+                    aciklama=cd.get("aciklama", ""), kullanici=request.user, termin=cd.get("termin"), oncelik=cd.get("oncelik") or UretimEmri.Oncelik.NORMAL)
                 messages.success(
                     request, f"Üretim siparişi açıldı: {emir.no} — hedefin tamamı üretilecek (stok için), alt bileşenler için stok ayrıldı, istasyon emirleri oluşturuldu.")
                 return redirect("core:uretim_emri_detay", pk=emir.pk)
@@ -7856,10 +7870,26 @@ def uretim_emri_ekle(request):
     return render(request, "core/uretim_emri_form.html", {"bform": bform, "formset": formset, "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Siparişi Aç"})
 
 
+def _tarih_goster(iso):
+    return datetime.date.fromisoformat(iso).strftime("%d.%m.%Y") if iso else "—"
+
+
+def _termin_oncelik_farklari(once, sonra) -> list:
+    """{"termin": iso|None, "oncelik": kod} önce/sonra → ["Termin: 12.11.2026 → 15.11.2026", "Öncelik: Normal → Acil"] (yalnız değişenler)."""
+    farklar = []
+    if (once or {}).get("termin") != (sonra or {}).get("termin"):
+        farklar.append(f"Termin: {_tarih_goster((once or {}).get('termin'))} → {_tarih_goster((sonra or {}).get('termin'))}")
+    if (once or {}).get("oncelik") != (sonra or {}).get("oncelik"):
+        etiket = dict(UretimEmri.Oncelik.choices)
+        farklar.append(f"Öncelik: {etiket.get((once or {}).get('oncelik'), '—')} → {etiket.get((sonra or {}).get('oncelik'), '—')}")
+    return farklar
+
+
 def _revizyon_satirlari(emir):
-    """Revize geçmişi: her olay için (revizyon, kalem değişim satırları). REVIZE'de önce/sonra kalem miktarları ("KOD: 3 → 5") çıkarılır."""
+    """Revize geçmişi: her olay için (revizyon, kalem/termin/öncelik değişim satırları). REVIZE'de önce/sonra kalem miktarları ("KOD: 3 → 5") çıkarılır; REVIZE ve
+    DUZENLEME'de termin/öncelik değişikliği ("Termin: a → b"). Kullanıcı ve zaman satırın ``created_by`` / ``created_at`` alanlarından."""
     sonuc = []
-    for r in emir.revizyonlar.all():
+    for r in emir.revizyonlar.select_related("created_by"):
         farklar = []
         if r.tur == "REVIZE":
             once = {k["stok"]: k["miktar"] for k in (r.detay.get("once") or {}).get("kalemler", [])}
@@ -7867,6 +7897,10 @@ def _revizyon_satirlari(emir):
             for kod in sorted(set(once) | set(sonra)):
                 if once.get(kod) != sonra.get(kod):
                     farklar.append(f"{kod}: {once.get(kod, '—')} → {sonra.get(kod, '—')}")
+            to = r.detay.get("termin_oncelik") or {}
+            farklar += _termin_oncelik_farklari(to.get("once"), to.get("sonra"))
+        elif r.tur == "DUZENLEME":
+            farklar += _termin_oncelik_farklari(r.detay.get("once"), r.detay.get("sonra"))
         sonuc.append((r, farklar))
     return sonuc
 
@@ -7904,6 +7938,8 @@ def uretim_emri_detay(request, pk):
     seritler = us_detay_servis.akis_seridi(gruplar, us_detay_servis.eksik_istasyonlari(gruplar, eksikler, yukle.ops))
     ilerleme = us_detay_servis.ilerleme(gruplar, kayit_sayisi)
     yuzde = us_detay_servis.genel_yuzde(kalem_satirlari, tamamlandi)
+    bant["sevk_bekliyor"] = uretim_servis.sevk_bekliyor_mu(emir, ilerleme)
+    is_yuzde = us_detay_servis.is_yuzdesi(gruplar)
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar, "tamamlandi": tamamlandi,
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
@@ -7914,7 +7950,29 @@ def uretim_emri_detay(request, pk):
         "sekme": us_detay_servis.sekme_sec(request.GET.get("sekme"), bool(hatalar)), "kayitlar": us_detay_servis.son_kayitlar(emir),
         "kayit_adet": us_detay_servis.KAYIT_ADET, "gruplar_sirali": sorted(gruplar, key=lambda g: g["tamam"]),         # açık gruplar üstte (sıra korunur)
         "acik_emir_sayisi": sum(1 for g in gruplar for s in g["satirlar"] if s["ie"].durum in ("BEKLIYOR", "BASLADI")),
-        "malzeme_sayisi": len(eksikler)})
+        "malzeme_sayisi": len(eksikler), "is_yuzde": is_yuzde, "is_yuzde_css": us_detay_servis.css_yuzde(is_yuzde or 0),
+        "oncelik_secenekleri": UretimEmri.Oncelik.choices})
+
+
+@ekran_gerekli("uretim_emirleri")
+def uretim_emri_termin_oncelik(request, pk):
+    """Detay sayfasından revize açmadan termin/öncelik değiştirir (plan dokunulmaz); değişiklik geçmişe kim/ne zaman/eski → yeni yazılır."""
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    geri = reverse("core:uretim_emri_detay", args=[emir.pk])
+    if request.method != "POST":
+        return redirect(geri)
+    ham = (request.POST.get("termin") or "").strip()
+    termin = _iso_tarih(ham) if ham else None
+    if ham and termin is None:
+        messages.error(request, "Termin geçerli bir tarih olmalı.")
+        return redirect(geri)
+    try:
+        degisti = uretim_servis.termin_oncelik_guncelle(emir, termin=termin, oncelik=request.POST.get("oncelik") or UretimEmri.Oncelik.NORMAL, kullanici=request.user)
+    except uretim_servis.UretimHatasi as e:
+        messages.error(request, str(e))
+        return redirect(geri)
+    messages.success(request, "Termin/öncelik güncellendi; geçmişe yazıldı." if degisti else "Değişiklik yok.")
+    return redirect(geri)
 
 
 @ekran_gerekli("operasyon_kayitlari")
@@ -7993,13 +8051,14 @@ def uretim_emri_revize_gorunum(request, pk):
             kalemler = [{"hedef_urun_id": f.cleaned_data["hedef_urun"].pk, "hedef_miktar": f.cleaned_data["hedef_miktar"]} for f in formset if f.dolu_mu()]
             try:
                 uretim_servis.uretim_emri_revize(emir, kalemler=kalemler, tarih=bform.cleaned_data["tarih"],
-                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user)   # stok için: kök stoktan karşılanmaz
+                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user,
+                                                 termin=bform.cleaned_data.get("termin"), oncelik=bform.cleaned_data.get("oncelik") or emir.oncelik)   # stok için: kök stoktan karşılanmaz
                 messages.success(request, f"{emir.no} revize edildi (revizyon {emir.revizyon_no}).")
                 return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
-        bform = UretimRevizeBaslikForm()
+        bform = UretimRevizeBaslikForm(initial={"termin": emir.termin, "oncelik": emir.oncelik})
         formset = UretimEmriKalemSatirFormSet(prefix="satir", initial=[
             {"hedef_urun": k.hedef_urun_id, "hedef_miktar": k.hedef_miktar} for k in emir.kalemler.filter(silindi=False).order_by("sira", "pk")])
     return render(request, "core/uretim_emri_form.html", {
@@ -8032,14 +8091,15 @@ def siparis_revize_gorunum(request, pk):
                 stoktan, onayli = _stoktan_coz(request, onizleme)
                 if onayli:
                     uretim_servis.siparis_revize(siparis, satirlar=satirlar, tarih=bform.cleaned_data["tarih"],
-                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan)
+                                                 aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user, stoktan=stoktan,
+                                                 termin=bform.cleaned_data.get("termin"), oncelik=bform.cleaned_data.get("oncelik") or emir.oncelik)
                     emir.refresh_from_db()
                     messages.success(request, f"Sipariş kalemleri güncellendi; {emir.no} revize edildi (revizyon {emir.revizyon_no}).")
                     return redirect("core:uretim_emri_detay", pk=emir.pk)
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
-        bform = UretimRevizeBaslikForm()
+        bform = UretimRevizeBaslikForm(initial={"termin": emir.termin, "oncelik": emir.oncelik})
         formset = TeklifSiparisKalemFormSet(form_kwargs={"yon": siparis.yon}, initial=[
             {"stok": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.birim_fiyat, "iskonto_yuzdesi": k.iskonto_yuzdesi, "uretim_miktar": k.uretim_miktar,
              "varyant": varyant_servis.secim_degeri(k.varyant_id)}
@@ -8078,6 +8138,7 @@ def istasyon_emirleri(request):
          .select_related("uretim_emri", "istasyon", "operasyon__cikti").order_by("-yil", "-sira"))
     if durum == "":
         qs = qs.filter(durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI], uretim_emri__durum=UretimEmri.Durum.ACIK)   # varsayılan: açık işler
+        qs = qs.order_by(*uretim_servis.siralama("uretim_emri__"), "-seviye", "pk")                 # Acil → termin → tarih (ÜS listesi ve atölye ile ortak)
     elif durum in IstasyonEmri.Durum.values:
         qs = qs.filter(durum=durum)
     if istasyon_p.isdigit():

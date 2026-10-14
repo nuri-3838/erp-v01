@@ -17,9 +17,8 @@
   <form method="post" autocomplete="off">
     {% csrf_token %}
     <section class="icerik-kart">
-      <h2 class="bolum-baslik">Üretim Siparişi</h2>
-      <p class="yardim" style="margin-top:0">{% if aciklama %}{{ aciklama }}{% else %}Eldeki kullanılabilir stok siparişe ayrılır; kalan ihtiyaç için zincirdeki HER iş
-        istasyonuna ayrı bir istasyon emri açılır — bu ekran hiçbir stok hareketi üretmez. Onaylama her istasyonun kendi işidir.{% endif %}</p>
+      <div class="ipucu-kap"><h2 class="bolum-baslik">Üretim Siparişi</h2>
+        {% if aciklama %}{% include "core/_ipucu.html" with metin=aciklama %}{% else %}{% include "core/_ipucu.html" with metin="Eldeki kullanılabilir stok siparişe ayrılır; kalan ihtiyaç için zincirdeki HER iş istasyonuna ayrı bir istasyon emri açılır; bu ekran hiçbir stok hareketi üretmez. Onaylama her istasyonun kendi işidir. Termin boş olabilir; öncelik Acil ise listelerde ve atölyede öne alınır." %}{% endif %}</div>
       <div class="izgara">
         {% for field in bform %}
           <div class="alan">
@@ -37,9 +36,8 @@
     {% endif %}
 
     <section class="icerik-kart">
-      <h2 class="bolum-baslik">Kalemler</h2>
-      <p class="yardim" style="margin-top:0">Yalnız tanımlı bir operasyonu olan ürünler
-        listelenir — bkz. Operasyon Tanımları.</p>
+      <div class="ipucu-kap"><h2 class="bolum-baslik">Kalemler</h2>
+        {% include "core/_ipucu.html" with metin="Yalnız tanımlı bir operasyonu olan ürünler listelenir; bkz. Operasyon Tanımları." %}</div>
       <div class="tablo-kapsayici">
         <table class="fh-tablo">
           <thead><tr><th>Hedef Ürün</th><th>Hedef Miktar</th><th></th></tr></thead>
