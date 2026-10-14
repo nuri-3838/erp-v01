@@ -13,7 +13,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
 
-from core.models import IsOturumuUyesi, IstasyonEmri, OperasyonGirdi, OperasyonKaydi, UretimEmri
+from core.models import IsOturumuUyesi, IstasyonEmri, OperasyonGirdi, OperasyonKaydi, StokHareket, UretimEmri
 
 SIFIR = Decimal("0")
 SEKMELER = ("urunler", "istasyonlar", "malzeme", "kayitlar")
@@ -37,8 +37,22 @@ def sekme_sec(istek_sekme, hata_var=False) -> str:
 
 
 def kayit_sayilari(emir: UretimEmri) -> dict:
-    a = emir.operasyon_kayitlari.filter(silindi=False).aggregate(toplam=Count("pk"), onayli=Count("pk", filter=Q(durum=OperasyonKaydi.Durum.ONAYLI)))
-    return {"toplam": a["toplam"], "onayli": a["onayli"], "taslak": a["toplam"] - a["onayli"]}
+    a = emir.operasyon_kayitlari.filter(silindi=False).aggregate(
+        toplam=Count("pk"), onayli=Count("pk", filter=Q(durum=OperasyonKaydi.Durum.ONAYLI)),
+        bagli=Count("pk", filter=Q(durum=OperasyonKaydi.Durum.ONAYLI) | Q(istasyon_emri__isnull=False)))
+    return {"toplam": a["toplam"], "onayli": a["onayli"], "taslak": a["toplam"] - a["onayli"], "bagli": a["bagli"]}
+
+
+def silinebilir(emir: UretimEmri, ieler: list, kayit_sayisi: dict) -> bool:
+    """``uretim.uretim_emri_silinebilir`` ile AYNI karar, yüklenmiş veriden: açık ve başlamamış (istasyon emri BASLADI/BITTI/tamamlanan>0, onaylı ya da emre bağlı kayıt,
+    ya da kayıt hareketi yok). Önceki koşullar yetiyorsa son (hareket) sorgusu atılmaz."""
+    if emir.durum != UretimEmri.Durum.ACIK:
+        return False
+    if any(ie.durum in (IstasyonEmri.Durum.BASLADI, IstasyonEmri.Durum.BITTI) or ie.tamamlanan > 0 for ie in ieler):
+        return False
+    if kayit_sayisi["bagli"] > 0:
+        return False
+    return not StokHareket.objects.filter(operasyon_kaydi__uretim_emri=emir).exists()
 
 
 def ilerleme(gruplar: list, kayit_sayisi: dict) -> dict:
@@ -78,7 +92,7 @@ def bant(emir: UretimEmri, bugun: datetime.date, eksikler: list) -> dict:
     }
 
 
-def eksik_istasyonlari(gruplar: list, eksikler: list) -> dict:
+def eksik_istasyonlari(gruplar: list, eksikler: list, operasyonlar=None) -> dict:
     """{istasyon pk: [eksik stok kodları]} — o istasyonun AÇIK (bitmemiş) emirlerinin operasyonu, gerçek eksik stoğu GİRDİ olarak kullanıyorsa. Eksik yoksa sorgusuz."""
     eksik_stok = {x["stok"].pk: x["stok"].kod for x in eksikler if x["tur"] in GERCEK_EKSIK and x.get("stok") is not None}
     if not eksik_stok:
@@ -87,9 +101,16 @@ def eksik_istasyonlari(gruplar: list, eksikler: list) -> dict:
     if not acik:
         return {}
     kullanan = {}
-    for op_id, girdi_id in (OperasyonGirdi.objects.filter(silindi=False, operasyon_id__in={ie.operasyon_id for ie in acik}, girdi_id__in=list(eksik_stok))
-                            .values_list("operasyon_id", "girdi_id")):
-        kullanan.setdefault(op_id, set()).add(girdi_id)
+    if operasyonlar is not None:                                  # yüklenmiş operasyonlar (ek sorgu yok)
+        for ie in acik:
+            op = operasyonlar[ie.operasyon_id]
+            for g in op.girdiler.all():
+                if not g.silindi and g.girdi_id in eksik_stok:
+                    kullanan.setdefault(op.pk, set()).add(g.girdi_id)
+    else:
+        for op_id, girdi_id in (OperasyonGirdi.objects.filter(silindi=False, operasyon_id__in={ie.operasyon_id for ie in acik}, girdi_id__in=list(eksik_stok))
+                                .values_list("operasyon_id", "girdi_id")):
+            kullanan.setdefault(op_id, set()).add(girdi_id)
     sonuc = {}
     for ie in acik:
         for stok_id in kullanan.get(ie.operasyon_id, ()):

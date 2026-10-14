@@ -81,6 +81,7 @@ from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import duran_hesap as duran_hesap_servis
 from core.services import varyant as varyant_servis
 from core.services import us_detay as us_detay_servis
+from core.services import us_detay_yukle as us_yukle_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import stok_ayirma as stok_ayirma_servis
@@ -7872,20 +7873,23 @@ def _revizyon_satirlari(emir):
 
 @ekran_gerekli("uretim_emirleri")
 def uretim_emri_detay(request, pk):
+    # 2026-10-14: sorgu sayısı emir/kalem/varyant sayısından BAĞIMSIZ (core.services.us_detay_yukle — toplu yükleyici); GET hiçbir kayıt oluşturmaz
     emir = get_object_or_404(
-        UretimEmri.objects.select_related("depo", "kaynak_siparis", "kaynak_siparis__cari"),
+        UretimEmri.objects.select_related("depo", "kaynak_siparis", "kaynak_siparis__cari")
+        .prefetch_related(Prefetch("kalemler", queryset=UretimEmriKalemi.objects.select_related("hedef_urun", *us_yukle_servis.derin("varyant")))),
         pk=pk, silindi=False)
-    ayirmalar = list(stok_ayirma_servis.emir_ayirmalari(emir))
+    ayirmalar = list(stok_ayirma_servis.emir_ayirmalari(emir).select_related(*us_yukle_servis.derin("varyant")))
     for a in ayirmalar:                                                   # varyantlı planda ayırma satırı varyantıyla gösterilir
-        a.varyant_etiketi = planlama_varyant_servis.etiket(a.varyant_id) if (emir.varyantli_plan and a.varyant_id) else ""
+        a.varyant_etiketi = varyant_servis.varyant_kisa(a.varyant) if (emir.varyantli_plan and a.varyant_id) else ""
     kalem_satirlari = []
     for k, ayrilan_k, sevk_k in uretim_servis.kalem_ayrilan_sevk(emir, ayirmalar):
         hazir = ayrilan_k + sevk_k
         yuzde = min(Decimal("100"), hazir * 100 / k.hedef_miktar) if k.hedef_miktar else Decimal("0")
-        kalem_satirlari.append({"k": k, "ayrilan": ayrilan_k, "sevk": sevk_k, "varyant": planlama_varyant_servis.etiket(k.varyant_id) if k.varyant_id else "",
+        kalem_satirlari.append({"k": k, "ayrilan": ayrilan_k, "sevk": sevk_k, "varyant": varyant_servis.varyant_kisa(k.varyant) if k.varyant_id else "",
                                 "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde)})
     hatalar = request.session.pop("uret_hata", {})
-    gruplar = uretim_servis.istasyon_emri_gruplari(emir, hatalar)                     # istasyon bazında katlanır gruplar (üretim sırası)
+    yukle = us_yukle_servis.Yukleme(emir, ayirmalar)
+    gruplar = yukle.gruplar(hatalar)                                                  # istasyon bazında katlanır gruplar (üretim sırası)
     emirler = [s for g in gruplar for s in g["satirlar"]]
     kayit_sayisi = us_detay_servis.kayit_sayilari(emir)                                 # tek aggregate (eski: 3 sayım)
     revize_url = None
@@ -7893,11 +7897,11 @@ def uretim_emri_detay(request, pk):
         revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     tamamlandi = emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen   # stok ÜS'si %100: ayırmalar serbest
-    eksikler = uretim_servis.uretim_emri_eksikleri(emir)
+    eksikler = yukle.eksikler()
     # 2026-10-14 yeniden tasarım: üst bant + akış şeridi + sekmeler (core.services.us_detay — yalnız görünüm verisi; sorgu sayısı eskisinden az)
     bugun_tarih = timezone.localdate()
     bant = us_detay_servis.bant(emir, bugun_tarih, eksikler)
-    seritler = us_detay_servis.akis_seridi(gruplar, us_detay_servis.eksik_istasyonlari(gruplar, eksikler))
+    seritler = us_detay_servis.akis_seridi(gruplar, us_detay_servis.eksik_istasyonlari(gruplar, eksikler, yukle.ops))
     ilerleme = us_detay_servis.ilerleme(gruplar, kayit_sayisi)
     yuzde = us_detay_servis.genel_yuzde(kalem_satirlari, tamamlandi)
     return render(request, "core/uretim_emri_detay.html", {
@@ -7905,7 +7909,7 @@ def uretim_emri_detay(request, pk):
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
         "eksikler": eksikler, "fason_emri_gerekli": bant["fason_emri_gerekli"], "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
         "bugun": bugun_tarih.isoformat(),
-        "revizyonlar": _revizyon_satirlari(emir), "silinebilir": uretim_servis.uretim_emri_silinebilir(emir), "revize_url": revize_url,
+        "revizyonlar": _revizyon_satirlari(emir), "silinebilir": us_detay_servis.silinebilir(emir, yukle.ieler, kayit_sayisi), "revize_url": revize_url,
         "ilerleme": ilerleme, "bant": bant, "seritler": seritler, "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde),
         "sekme": us_detay_servis.sekme_sec(request.GET.get("sekme"), bool(hatalar)), "kayitlar": us_detay_servis.son_kayitlar(emir),
         "kayit_adet": us_detay_servis.KAYIT_ADET, "gruplar_sirali": sorted(gruplar, key=lambda g: g["tamam"]),         # açık gruplar üstte (sıra korunur)

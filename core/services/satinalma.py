@@ -50,8 +50,13 @@ def acik_siparis_satirlari(stok_idler=None) -> list:
 
 def acik_siparis_haritasi(stok_idler=None) -> dict:
     """{(stok pk, varyant pk|None): açık alış siparişlerindeki miktar (üretim birimi)}."""
+    return harita_kur(acik_siparis_satirlari(stok_idler))
+
+
+def harita_kur(satirlar) -> dict:
+    """``acik_siparis_satirlari`` çıktısından {(stok pk, varyant pk|None): miktar} (aynı satırlardan ikinci sorgu atmadan)."""
     harita = {}
-    for s in acik_siparis_satirlari(stok_idler):
+    for s in satirlar:
         anahtar = (s["stok_id"], s["varyant_id"])
         harita[anahtar] = harita.get(anahtar, SIFIR) + s["miktar"]
     return harita
