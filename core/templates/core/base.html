@@ -101,6 +101,19 @@
                               width:3px; border-radius:3px; background:var(--turuncu);
                               box-shadow:0 0 10px rgba(240,124,0,.7); }
 
+    /* 3. seviye: modül altında açılır alt menü (Ekran.grup). Aynı <details> mantığı; mobilde de aynı kenar çubuğu. */
+    .alt-menu > summary { display:flex; align-items:center; gap:.4rem; cursor:pointer; list-style:none; user-select:none;
+                          color:#aab6cd; font-size:.875rem; padding:.45rem .7rem .45rem .85rem; border-radius:8px; margin:1px 0;
+                          transition:background .15s, color .15s; }
+    .alt-menu > summary::-webkit-details-marker { display:none; }
+    .alt-menu > summary .ad { flex:1 1 auto; }
+    .alt-menu > summary .ok { font-size:1.05rem; line-height:1; color:rgba(255,255,255,.4); transition:transform .2s ease; }
+    .alt-menu[open] > summary .ok { transform:rotate(90deg); }
+    .alt-menu > summary:hover { color:#fff; background:rgba(255,255,255,.07); }
+    .alt-menu[open] > summary, .alt-menu.icinde > summary { color:#fff; }
+    .alt-menu.icinde > summary .ad { font-weight:600; }
+    .alt-ekranlar { display:flex; flex-direction:column; margin-left:1rem; padding:.1rem 0 .3rem .25rem; border-left:1px solid rgba(255,255,255,.10); }
+
     .yan-alt { border-top:1px solid rgba(255,255,255,.10); padding:.8rem .85rem;
                display:flex; align-items:center; gap:.6rem; background:rgba(0,0,0,.12); }
     .avatar { flex:0 0 auto; width:38px; height:38px; border-radius:50%; display:grid; place-items:center;
@@ -422,9 +435,19 @@
               <span class="ok">›</span>
             </summary>
             <div class="modul-ekranlar">
-              {% for ekran in modul.ekranlar %}
-                <a href="{% url ekran.url_adi %}"
-                   class="{% if ekran.url_adi == aktif_view %}aktif{% endif %}">{{ ekran.ad }}</a>
+              {% for oge in modul.ogeler %}
+                {% if oge.alt_menu %}
+                <details class="alt-menu{% if oge.kod == aktif_grup_kod %} icinde{% endif %}"{% if oge.kod == aktif_grup_kod %} open{% endif %}>
+                  <summary><span class="ad">{{ oge.ad }}</span><span class="ok">›</span></summary>
+                  <div class="alt-ekranlar">
+                    {% for ekran in oge.ekranlar %}
+                      <a href="{% url ekran.url_adi %}" class="{% if ekran.url_adi == aktif_ekran %}aktif{% endif %}">{{ ekran.ad }}</a>
+                    {% endfor %}
+                  </div>
+                </details>
+                {% else %}
+                <a href="{% url oge.url_adi %}" class="{% if oge.url_adi == aktif_ekran %}aktif{% endif %}">{{ oge.ad }}</a>
+                {% endif %}
               {% endfor %}
             </div>
           </details>

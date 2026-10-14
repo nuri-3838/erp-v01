@@ -12,6 +12,27 @@ class Ekran:
     ad: str        # menüde görünen ad
     url_adi: str   # Django URL adı (namespace dahil)
     yonetici: bool = False   # True ise (modül herkese açık olsa da) yalnızca yöneticiye görünür; görünüm de yonetici_gerekli ile korunur
+    grup: str = ""           # 3. SEVİYE: doluysa ekran, modülün altında bu adlı açılır alt menünün içinde görünür (aynı ad = aynı alt menü; sırası ilk üyesinin yeri)
+    ilgili: tuple = ()       # bu ekranın alt sayfalarının (ekle/düzenle/sil…) URL adları: bunlardan birindeyken ekran + alt menü + modül açık/aktif işaretlenir
+
+    @property
+    def alt_menu(self) -> bool:
+        return False
+
+    def eslesir(self, view_adi: str) -> bool:
+        return bool(view_adi) and (self.url_adi == view_adi or view_adi in self.ilgili)
+
+
+@dataclass(frozen=True)
+class MenuGrup:
+    """Modül altında açılır alt menü (3. seviye). ``Modul.ogeler`` üretir; ``ekranlar`` YALNIZ yetkili üyelerdir (boş grup hiç üretilmez)."""
+    kod: str       # "<MODÜL>:<ad>" — açık/aktif eşlemesi için benzersiz
+    ad: str
+    ekranlar: tuple
+
+    @property
+    def alt_menu(self) -> bool:
+        return True
 
 
 @dataclass(frozen=True)
@@ -21,6 +42,21 @@ class Modul:
     ekranlar: tuple
     yonetici_modulu: bool = False   # True ise yalnızca yöneticiye görünür
     ana_url_adi: str = ""           # modül adına tıklayınca açılan özet/dashboard sayfası (boşsa yalnız menüyü açar)
+
+    @property
+    def ogeler(self) -> list:
+        """Menüde sırayla görünen öğeler: düz ``Ekran`` ya da ``MenuGrup`` (``Ekran.grup`` dolu olanlar tek grupta toplanır). ``ekranlar`` (düz liste) yetki/test
+        kullanımı için aynen kalır; yetkiye göre süzülmüş ``ekranlar`` üzerinden hesaplandığından yetkisiz öğe ve boş grup görünmez."""
+        ogeler, gruplar = [], {}
+        for e in self.ekranlar:
+            if not e.grup:
+                ogeler.append(e)
+            elif e.grup in gruplar:
+                gruplar[e.grup].append(e)
+            else:
+                gruplar[e.grup] = [e]
+                ogeler.append(e.grup)                      # yer tutucu; aşağıda MenuGrup'a çevrilir
+        return [MenuGrup(f"{self.kod}:{o}", o, tuple(gruplar[o])) if isinstance(o, str) else o for o in ogeler]
 
 
 MODULLER = (
@@ -71,9 +107,12 @@ MODULLER = (
     )),
     Modul("CARILER", "Cariler", (
         Ekran("cariler", "Cariler", "core:cariler"),
-        Ekran("cari_kategoriler", "Cari Kategorileri", "core:cari_kategoriler"),
-        Ekran("lokasyonlar", "Ülke / Şehir", "core:lokasyonlar"),
-        Ekran("vergi_daireleri", "Vergi Daireleri", "core:vergi_daireleri"),
+        Ekran("cari_kategoriler", "Cari Kategorileri", "core:cari_kategoriler", grup="Tanımlar",
+              ilgili=("core:cari_kategori_ekle", "core:cari_kategori_duzenle", "core:cari_kategori_sil")),
+        Ekran("lokasyonlar", "Ülke / Şehir", "core:lokasyonlar", grup="Tanımlar",
+              ilgili=("core:ulke_ekle", "core:ulke_duzenle", "core:ulke_sil", "core:sehir_ekle", "core:sehir_duzenle", "core:sehir_sil")),
+        Ekran("vergi_daireleri", "Vergi Daireleri", "core:vergi_daireleri", grup="Tanımlar",
+              ilgili=("core:vergi_dairesi_ekle", "core:vergi_dairesi_duzenle", "core:vergi_dairesi_sil")),
     )),
     Modul("FINANS", "Finans", (
         Ekran("kasa", "Kasa", "core:kasalar"),
