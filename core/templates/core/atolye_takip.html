@@ -8,40 +8,92 @@
   .pt-sekmeler { display:flex; gap:.3rem; margin-bottom:.8rem; border-bottom:1px solid var(--cizgi-koyu); }
   .pt-sekme { padding:.5rem 1rem; border-radius:10px 10px 0 0; font-weight:600; font-size:.9rem; color:var(--metin-soluk); text-decoration:none; }
   .pt-sekme.aktif { color:var(--turuncu-koyu); background:rgba(240,124,0,.1); box-shadow:inset 0 -2px 0 var(--turuncu); }
-  .pt-sure { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem; }
-  .pt-sure .alan { margin:0; }
-  .pt-sure .alan label { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
-  .pt-sure input, .pt-sure select { min-height:38px; }
-  .pt-ist { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; padding:.15rem .5rem; border-radius:8px; background:#eef1f7; color:#33415c; }
-  .pt-acik { color:#0b6b3f; font-weight:700; }
-  .pt-soluk { color:var(--metin-soluk); }
   .pt-cipler { display:flex; gap:.6rem; flex-wrap:wrap; margin:.2rem 0 1rem; }
   .pt-cip { display:inline-flex; align-items:baseline; gap:.45rem; padding:.45rem .85rem; border-radius:12px; background:rgba(33,56,95,.07);
     border:1px solid rgba(33,56,95,.1); font-size:.82rem; color:var(--metin-soluk); }
   .pt-cip b { font-size:1.15rem; color:var(--metin); font-variant-numeric:tabular-nums; }
-  .pt-kartlar { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.8rem; }
-  .pt-kart { background:#fff; border:1px solid var(--cizgi); border-radius:14px; padding:.8rem 1rem; }
-  .pt-kart .kisi { font-weight:750; font-size:1.05rem; }
-  .pt-kart .alt { font-size:.82rem; color:var(--metin-soluk); margin-top:.2rem; }
-  .pt-kart .sayac { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; color:#0b6b3f; }
-  .pt-dunku { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#fff0dc; color:#b35a00; }
+  .pt-cip.yesil b { color:#0b6b3f; } .pt-cip.turuncu b { color:#b35a00; } .pt-cip.gri b { color:#5b6678; }
+  .pt-ist { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; padding:.15rem .5rem; border-radius:8px; background:#eef1f7; color:#33415c; }
   .pt-rozet { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#eef1f7; color:#5b6678; }
+  .pt-dunku { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#fff0dc; color:#b35a00; }
+  .pt-soluk { color:var(--metin-soluk); }
+  .pt-acik { color:#0b6b3f; font-weight:700; }
+  .pt-ipucu { display:inline-grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:50%; border:1px solid var(--cizgi-koyu);
+    font-size:.75rem; font-weight:700; color:var(--metin-soluk); cursor:help; margin-left:.5rem; vertical-align:middle; }
+  /* Şu an: personel kartları */
+  .pk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.8rem; }
+  .pk-kart { position:relative; background:#fff; border:1px solid var(--cizgi); border-radius:14px; padding:.85rem 1rem .85rem 1.1rem; box-shadow:var(--golge-sm, 0 1px 3px rgba(0,0,0,.05)); overflow:hidden; }
+  .pk-kart::before { content:""; position:absolute; left:0; top:0; bottom:0; width:6px; background:#9aa3b2; }
+  .pk-kart.calisiyor::before { background:#0b6b3f; } .pk-kart.bosta::before { background:var(--turuncu); } .pk-kart.yok { opacity:.75; }
+  .pk-ust { display:flex; justify-content:space-between; align-items:flex-start; gap:.6rem; }
+  .pk-ad { font-weight:750; font-size:1.05rem; line-height:1.2; }
+  .pk-sayac { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; font-size:1.05rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .pk-kart.calisiyor .pk-sayac { color:#0b6b3f; } .pk-kart.bosta .pk-sayac { color:#b35a00; } .pk-kart.yok .pk-sayac { color:#5b6678; font-size:.8rem; font-weight:600; }
+  .pk-durum { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; margin-top:.15rem; }
+  .pk-kart.calisiyor .pk-durum { color:#0b6b3f; } .pk-kart.bosta .pk-durum { color:#b35a00; } .pk-kart.yok .pk-durum { color:#5b6678; }
+  .pk-satir { font-size:.86rem; margin-top:.35rem; }
+  .pk-satir .mono { font-size:.8rem; }
+  /* Geçmiş: hızlı tarih */
+  .pt-hizli { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; margin-bottom:.6rem; }
+  .pt-hizli a, .pt-hizli span.aktif { padding:.42rem .85rem; border-radius:10px; font-weight:650; font-size:.86rem; text-decoration:none; border:1px solid var(--cizgi-koyu); color:var(--metin); background:rgba(255,255,255,.8); }
+  .pt-hizli span.aktif { background:var(--turuncu); border-color:var(--turuncu); color:#fff; }
+  .pt-sure { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:.6rem; }
+  .pt-sure .alan { margin:0; }
+  .pt-sure .alan label { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .pt-sure input, .pt-sure select { min-height:38px; }
+  details.pt-daha summary { cursor:pointer; font-weight:650; font-size:.86rem; color:var(--metin-soluk); list-style:none; }
+  details.pt-daha summary::before { content:"▸ "; } details.pt-daha[open] summary::before { content:"▾ "; }
+  /* Kişi kartları + verimlilik çubuğu */
+  .kk-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:.8rem; }
+  .kk-kart { background:#fff; border:1px solid var(--cizgi); border-radius:14px; padding:.8rem 1rem; cursor:pointer; box-shadow:var(--golge-sm, 0 1px 3px rgba(0,0,0,.05)); }
+  .kk-kart.secili { border-color:var(--turuncu); box-shadow:0 0 0 2px rgba(240,124,0,.25); }
+  .kk-ad { font-weight:750; font-size:1.02rem; display:flex; justify-content:space-between; gap:.5rem; align-items:baseline; }
+  .kk-sayilar { display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem .8rem; margin-top:.4rem; font-size:.82rem; color:var(--metin-soluk); }
+  .kk-sayilar b { color:var(--metin); font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; }
+  .kk-cubuk { margin-top:.55rem; height:10px; border-radius:999px; background:#eef1f7; overflow:hidden; }
+  .kk-cubuk > span { display:block; height:100%; border-radius:999px; background:#9aa3b2; }
+  .kk-cubuk.iyi > span { background:#0b6b3f; } .kk-cubuk.orta > span { background:var(--turuncu); } .kk-cubuk.dusuk > span { background:#b3253f; }
+  .kk-verim { font-size:.78rem; margin-top:.25rem; display:flex; justify-content:space-between; color:var(--metin-soluk); }
+  /* Zaman çizelgesi */
+  .zc { margin-top:.8rem; padding:.8rem 1rem; background:#fff; border:1px solid var(--cizgi); border-radius:14px; }
+  .zc[hidden] { display:none; }
+  .zc-baslik { display:flex; justify-content:space-between; align-items:center; gap:.6rem; margin-bottom:.5rem; font-weight:700; }
+  .zc-gun { display:grid; grid-template-columns:7.2rem 1fr; gap:.4rem; align-items:center; margin:.35rem 0; }
+  .zc-tarih { font-family:"Cascadia Mono",Consolas,monospace; font-size:.8rem; font-weight:700; }
+  .zc-eksen { position:relative; height:34px; background:#eef1f7; border-radius:8px; }
+  .zc-mesai { position:absolute; top:0; bottom:0; background:#dbe3ee; border-radius:8px; }
+  .zc-mesai.acik { background:repeating-linear-gradient(90deg,#dbe3ee 0 6px,#e9eef5 6px 12px); }
+  .zc-blok { position:absolute; top:6px; bottom:6px; border-radius:6px; min-width:3px; opacity:.95; text-decoration:none; color:#fff; font-size:.68rem; font-weight:700; overflow:hidden; white-space:nowrap; padding:0 .25rem; line-height:22px; }
+  .zc-blok.iptal { background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.45) 0 4px,transparent 4px 8px); opacity:.8; }
+  .zc-blok:hover { outline:2px solid var(--turuncu); z-index:2; }
+  .zc-saatler { position:relative; height:14px; font-size:.66rem; color:var(--metin-soluk); }
+  .zc-saatler span { position:absolute; transform:translateX(-50%); }
+  .zc-lejant { display:flex; gap:.6rem; flex-wrap:wrap; font-size:.78rem; margin-top:.5rem; }
+  .zc-lejant i { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-1px; margin-right:.25rem; }
+  .zc-liste { margin-top:.6rem; font-size:.84rem; }
+  @media (max-width: 680px) { .zc-gun { grid-template-columns:1fr; gap:.15rem; } }
+  /* Ayrıntılı tablo: dar ekranda sütunlar alt alta */
+  details.pt-tablo summary { cursor:pointer; font-weight:700; padding:.5rem 0; }
   .pt-toplam td { font-weight:700; background:rgba(33,56,95,.05); }
-  .pt-ozet-baslik { margin:1.2rem 0 .5rem; }
+  @media (max-width: 900px) {
+    .pt-duyarli, .pt-duyarli tbody, .pt-duyarli tr, .pt-duyarli td { display:block; width:100%; box-sizing:border-box; }
+    .pt-duyarli thead, .pt-duyarli tfoot { display:none; }
+    .pt-duyarli tr { padding:.5rem .2rem; border-bottom:1px solid var(--cizgi-koyu); }
+    .pt-duyarli td { padding:.15rem .5rem; border:0; text-align:left !important; }
+    .pt-duyarli td[data-et]::before { content:attr(data-et) ": "; font-size:.7rem; font-weight:700; text-transform:uppercase; color:var(--metin-soluk); margin-right:.3rem; }
+  }
   .pt-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem; margin-top:1rem; flex-wrap:wrap; }
   .pt-sayfalama a, .pt-sayfalama span.simdiki { display:inline-flex; align-items:center; justify-content:center; min-width:2.3rem; height:2.3rem;
     padding:0 .5rem; border-radius:10px; text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
   .pt-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
   .pt-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
-  .pt-ipucu { display:inline-grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:50%; border:1px solid var(--cizgi-koyu);
-    font-size:.75rem; font-weight:700; color:var(--metin-soluk); cursor:help; margin-left:.5rem; vertical-align:middle; }
 </style>
 
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url 'core:atolye' %}">← Atölye</a>
     <h1 class="ust-baslik"><span class="emoji">👷</span>Personel İş Takibi
-      <span class="pt-ipucu" tabindex="0" title="Şu an: açık iş oturumları ve mesaide olup açık işi olmayanlar (boşta). Geçmiş: atölye oturumları + oturumsuz onaylı kayıtlar (ofis 'Üretildi'/toplu üretim ve emirsiz; fason dönüşleri hariç). Ekip işinde sağlam/fire ekipçe gösterilir; kişi özetinde 'pay' adam-saniye oranıyla bölünmüştür. Fire % = fire ÷ (sağlam + fire). Verimlilik = oturum süresi ÷ mesai süresi; açık oturum/mesai şimdiye kadar sayılır; iptal (iş yapılmadı) oturum süreye girmez; kaydı geri alınan oturumun süresi sayılır, adedi sayılmaz.">?</span></h1>
+      <span class="pt-ipucu" tabindex="0" title="Şu an: her personel bir kart (yeşil çalışıyor, turuncu mesaide boşta, gri mesaide değil; gri kartlar yalnız atölye/üretim personeli). Geçmiş: atölye oturumları + oturumsuz onaylı kayıtlar (ofis 'Üretildi'/toplu üretim ve emirsiz; fason hariç). Ekip işinde sağlam/fire ekipçe; kişi kartında 'pay' adam-saniye oranıyla bölünmüştür. Fire % = fire ÷ (sağlam + fire). Verimlilik = oturum süresi ÷ mesai süresi (< %30 kırmızı, %30–60 turuncu, > %60 yeşil); açık oturum/mesai şimdiye kadar sayılır; iptal oturum süreye girmez; kaydı geri alınan oturumun süresi sayılır, adedi sayılmaz.">?</span></h1>
   </div>
   {% if sekme == "gecmis" %}<a class="dugme" href="{{ xlsx_url }}">⬇ Excel</a>{% endif %}
 </div>
@@ -53,69 +105,89 @@
 
 {% if sekme == "simdi" %}
 <div class="pt-cipler">
-  <span class="pt-cip"><b>{{ simdi.oturumlar|length }}</b> açık iş</span>
-  <span class="pt-cip"><b>{{ simdi.mesaide }}</b> mesaide</span>
-  <span class="pt-cip"><b>{{ simdi.bosta|length }}</b> boşta</span>
-  <span class="pt-cip pt-soluk">30 sn'de bir yenilenir · {{ an|tr_zaman:"H:i" }}</span>
+  <span class="pt-cip yesil"><b>{{ simdi.sayac.calisiyor }}</b> çalışıyor</span>
+  <span class="pt-cip turuncu"><b>{{ simdi.sayac.bosta }}</b> boşta</span>
+  <span class="pt-cip gri"><b>{{ simdi.sayac.yok }}</b> mesaide değil</span>
+  <span class="pt-cip pt-soluk">canlı sayaç · sayfa 60 sn'de bir yenilenir · {{ an|tr_zaman:"H:i" }}</span>
 </div>
 
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Çalışıyor</h2>
-  <div class="tablo-kapsayici genis">
-  <table>
-    <thead><tr><th>Personel / Ekip</th><th>İstasyon</th><th>ÜS / İstasyon Emri</th><th>Operasyon / Çıktı</th><th>Başlama</th><th class="sag">Geçen süre</th></tr></thead>
-    <tbody>
-      {% for s in simdi.oturumlar %}{% with o=s.oturum %}
-        <tr data-href="{% url 'core:is_oturumlari' %}?ara={{ s.ie.no }}">
-          <td><a class="satir-bag" href="{% url 'core:is_oturumlari' %}?ara={{ s.ie.no }}"><strong>{{ o.baslatan.ad_soyad }}</strong></a>
-            {% if s.ozet.kisi > 1 %}<br><small>ekip: {{ s.ozet.ekip_metni }}</small>{% endif %}
-            {% if s.dunku %} <span class="pt-dunku" title="Önceki günden kalan açık iş">dünden kalan</span>{% endif %}</td>
-          <td><span class="pt-ist">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
-          <td><a href="{% url 'core:uretim_emri_detay' o.uretim_emri_id %}">{{ o.uretim_emri.no }}</a> / <span class="mono">{{ s.ie.no }}</span></td>
-          <td><span class="mono">{{ s.cikti.kod }}</span> {{ s.cikti.ad|truncatechars:34 }}{% if s.varyant %} <span class="pt-rozet">{{ s.varyant }}</span>{% endif %}</td>
-          <td class="mono">{{ o.baslangic_zamani|tr_zaman:"d.m H:i" }}</td>
-          <td class="sag mono pt-acik">{{ s.ozet.sure_metni }}</td>
-        </tr>
-      {% endwith %}{% empty %}
-        <tr><td colspan="6" class="bos">Şu an açık iş oturumu yok.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Boşta (mesaide, açık işi yok)</h2>
-  <div class="pt-kartlar">
-    {% for b in simdi.bosta %}
-      <div class="pt-kart"><div class="kisi">{{ b.personel.ad_soyad }}{% if b.dunku %} <span class="pt-dunku" title="Önceki günden kalan çıkışsız mesai">dünden kalan mesai</span>{% endif %}</div>
-        <div class="alt">mesai başlangıcı {{ b.mesai.giris_zamani|tr_zaman:"d.m H:i" }} · <span class="sayac">{{ b.sure_metni }}</span></div></div>
-    {% empty %}
-      <p class="bos">Mesaide olup işi olmayan personel yok.</p>
-    {% endfor %}
-  </div>
-</section>
-<script>setTimeout(function(){ window.location.reload(); }, 30000);</script>
+<div class="pk-grid">
+  {% for k in simdi.kartlar %}
+    <div class="pk-kart {{ k.durum }}">
+      <div class="pk-ust">
+        <div><div class="pk-ad">{{ k.personel.ad_soyad }}</div>
+          <div class="pk-durum">{% if k.durum == "calisiyor" %}Çalışıyor{% elif k.durum == "bosta" %}Mesaide · boşta{% else %}Mesaide değil{% endif %}
+            {% if k.dunku %} <span class="pt-dunku" title="Önceki günden kalan">dünden kalan</span>{% endif %}</div></div>
+        {% if k.baslangic_ms %}<span class="pk-sayac" data-baslangic="{{ k.baslangic_ms }}" title="{% if k.durum == 'calisiyor' %}işte geçen süre{% else %}mesaide geçen süre{% endif %}">{{ k.sure_metni }}</span>{% else %}<span class="pk-sayac">—</span>{% endif %}
+      </div>
+      {% if k.durum == "calisiyor" %}
+        <div class="pk-satir"><span class="pt-ist">{{ k.istasyon.kod }}</span> {{ k.istasyon.ad }}</div>
+        <div class="pk-satir"><span class="mono">{{ k.cikti.kod }}</span> {{ k.cikti.ad|truncatechars:38 }}{% if k.varyant %} <span class="pt-rozet">{{ k.varyant }}</span>{% endif %}</div>
+        <div class="pk-satir"><a href="{% url 'core:uretim_emri_detay' k.oturum.uretim_emri_id %}" class="mono">{{ k.oturum.uretim_emri.no }}</a> / <a href="{% url 'core:is_oturumlari' %}?ara={{ k.ie.no }}" class="mono">{{ k.ie.no }}</a></div>
+        {% if k.ekip %}<div class="pk-satir pt-soluk">ekip: {% for p in k.ekip %}{{ p.ad_soyad }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+      {% elif k.durum == "bosta" %}
+        <div class="pk-satir pt-soluk">açık iş yok · mesai başlangıcı {{ k.oturum|default:"" }}{% with k.baslangic_ms as ms %}{% endwith %}</div>
+      {% else %}
+        <div class="pk-satir pt-soluk">bugün mesai girişi yok</div>
+      {% endif %}
+    </div>
+  {% empty %}
+    <p class="bos">Gösterilecek personel yok.</p>
+  {% endfor %}
+</div>
+<script>
+(function(){
+  function p2(n){ return (n < 10 ? '0' : '') + n; }
+  var el = document.querySelectorAll('.pk-sayac[data-baslangic]');
+  function yaz(){
+    var simdi = Date.now();
+    el.forEach(function(e){
+      var sn = Math.max(0, Math.floor((simdi - Number(e.dataset.baslangic)) / 1000));
+      var sa = Math.floor(sn / 3600), dk = Math.floor((sn % 3600) / 60), s = sn % 60;
+      e.textContent = (sa ? sa + ' sa ' : '') + p2(dk) + ' dk ' + p2(s) + ' sn';
+    });
+  }
+  yaz(); setInterval(yaz, 1000);
+  setTimeout(function(){ window.location.reload(); }, 60000);
+})();
+</script>
 
 {% else %}
-<form method="get" class="pt-sure">
+<form method="get" class="pt-sure" id="pt-form">
   <input type="hidden" name="sekme" value="gecmis">
-  <div class="alan"><label for="pt-bas">Tarih (başlangıç)</label><input type="date" name="bas" id="pt-bas" value="{{ bas|date:'Y-m-d' }}"></div>
-  <div class="alan"><label for="pt-bit">Tarih (bitiş)</label><input type="date" name="bit" id="pt-bit" value="{{ bit|date:'Y-m-d' }}"></div>
+  <input type="hidden" name="aralik" value="{{ aralik }}" id="pt-aralik">
+  <div class="pt-hizli" style="flex-basis:100%">
+    {% for kod, ad in hizli %}{% endfor %}
+    {% if aralik == "bugun" %}<span class="aktif">Bugün</span>{% else %}<a href="?{{ hizli_url.bugun }}">Bugün</a>{% endif %}
+    {% if aralik == "dun" %}<span class="aktif">Dün</span>{% else %}<a href="?{{ hizli_url.dun }}">Dün</a>{% endif %}
+    {% if aralik == "hafta" %}<span class="aktif">Bu hafta</span>{% else %}<a href="?{{ hizli_url.hafta }}">Bu hafta</a>{% endif %}
+    {% if aralik == "ay" %}<span class="aktif">Bu ay</span>{% else %}<a href="?{{ hizli_url.ay }}">Bu ay</a>{% endif %}
+    {% if aralik == "ozel" %}<span class="aktif">Özel tarih</span>{% else %}<a href="?{{ hizli_url.ozel }}&bas={{ bas|date:'Y-m-d' }}&bit={{ bit|date:'Y-m-d' }}">Özel tarih</a>{% endif %}
+    <span class="pt-soluk" style="font-size:.82rem">{{ bas|date:"d.m.Y" }} – {{ bit|date:"d.m.Y" }}</span>
+  </div>
+  {% if aralik == "ozel" %}
+  <div class="alan"><label for="pt-bas">Başlangıç</label><input type="date" name="bas" id="pt-bas" value="{{ bas|date:'Y-m-d' }}"></div>
+  <div class="alan"><label for="pt-bit">Bitiş</label><input type="date" name="bit" id="pt-bit" value="{{ bit|date:'Y-m-d' }}"></div>
+  {% endif %}
   <div class="alan"><label for="pt-per">Personel</label>
-    <select name="personel" id="pt-per"><option value="">Tümü</option>
+    <select name="personel" id="pt-per" onchange="this.form.submit()"><option value="">Tümü</option>
       {% for p in personeller %}<option value="{{ p.pk }}"{% if personel == p.pk|stringformat:"s" %} selected{% endif %}>{{ p.ad_soyad }}</option>{% endfor %}
     </select></div>
-  <div class="alan"><label for="pt-ist">İstasyon</label>
-    <select name="istasyon" id="pt-ist"><option value="">Tümü</option>
-      {% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}
-    </select></div>
-  <div class="alan"><label for="pt-kaynak">Kaynak</label>
-    <select name="kaynak" id="pt-kaynak"><option value="">Tümü</option>
-      {% for k, v in kaynaklar %}<option value="{{ k }}"{% if kaynak == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
-    </select></div>
-  <button type="submit" class="birincil">Filtrele</button>
-  <a class="iptal-bag" href="?sekme=gecmis">Temizle</a>
+  <button type="submit" class="birincil">Uygula</button>
+  <details class="pt-daha" style="flex-basis:100%"{% if daha_fazla_acik %} open{% endif %}>
+    <summary>Daha fazla filtre{% if daha_fazla_acik %} (etkin){% endif %}</summary>
+    <div class="pt-sure" style="margin-top:.5rem">
+      <div class="alan"><label for="pt-ist">İstasyon</label>
+        <select name="istasyon" id="pt-ist"><option value="">Tümü</option>
+          {% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}
+        </select></div>
+      <div class="alan"><label for="pt-kaynak">Kaynak</label>
+        <select name="kaynak" id="pt-kaynak"><option value="">Tümü</option>
+          {% for k, v in kaynaklar %}<option value="{{ k }}"{% if kaynak == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+        </select></div>
+      <a class="iptal-bag" href="?sekme=gecmis&aralik={{ aralik }}{% if aralik == 'ozel' %}&bas={{ bas|date:'Y-m-d' }}&bit={{ bit|date:'Y-m-d' }}{% endif %}">Temizle</a>
+    </div>
+  </details>
 </form>
 
 <div class="pt-cipler">
@@ -123,51 +195,73 @@
   <span class="pt-cip"><b>{{ toplam.oturum }}</b> oturum</span>
   <span class="pt-cip"><b>{{ toplam.saglam|tr_miktar_sade }}</b> sağlam</span>
   <span class="pt-cip"><b>{{ toplam.fire|tr_miktar_sade }}</b> fire</span>
-  <span class="pt-cip" title="Oturumsuz (ofis / emirsiz) kayıt: personel ve süre bilgisi yok ya da yalnız personel var"><b>{{ toplam.suresiz }}</b> süresiz kayıt</span>
+  <span class="pt-cip" title="Oturumsuz (ofis / emirsiz) kayıt: süre bilgisi yok"><b>{{ toplam.suresiz }}</b> süresiz kayıt</span>
 </div>
 
-<h2 class="bolum-baslik pt-ozet-baslik">Kişi özeti</h2>
-<div class="tablo-kapsayici genis">
-<table>
-  <thead><tr><th>Personel</th><th class="sag" title="Üye olduğu işlerin toplamı (ekip işinde tam yazılır)">Katıldığı sağlam</th><th class="sag" title="Adam-saniye oranıyla bölünmüş sağlam">Pay</th><th class="sag">Fire</th><th class="sag">Fire %</th>
-      <th class="sag">Oturum</th><th class="sag">Süresiz kayıt</th><th class="sag">İş süresi</th><th class="sag">Mesai</th><th class="sag" title="Oturum süresi ÷ mesai süresi">Verimlilik</th></tr></thead>
-  <tbody>
-    {% for k in kisiler %}
-      <tr>
-        <td><strong>{{ k.personel.ad_soyad }}</strong></td>
-        <td class="sag mono">{{ k.saglam|tr_miktar_sade }}</td>
-        <td class="sag mono">{{ k.pay|tr_miktar_sade }}</td>
-        <td class="sag mono">{% if k.fire %}{{ k.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
-        <td class="sag mono">{% if k.fire_yuzde is not None %}%{{ k.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
-        <td class="sag mono">{{ k.oturum }}</td>
-        <td class="sag mono">{{ k.suresiz }}</td>
-        <td class="sag mono">{{ k.is_metni }}</td>
-        <td class="sag mono">{{ k.mesai_metni }}</td>
-        <td class="sag mono">{% if k.verimlilik is not None %}%{{ k.verimlilik|tr_kur:1 }}{% else %}—{% endif %}</td>
-      </tr>
+<h2 class="bolum-baslik">Kişi özeti <span class="pt-soluk" style="font-weight:500;font-size:.82rem">— karta tıklayınca zaman çizelgesi</span></h2>
+<div class="kk-grid">
+  {% for k in kisiler %}
+    <div class="kk-kart" data-kisi="{{ k.personel.pk }}" role="button" tabindex="0">
+      <div class="kk-ad"><span>{{ k.personel.ad_soyad }}</span>{% if k.suresiz %}<span class="pt-rozet" title="Süresiz (ofis / emirsiz) kayıt">{{ k.suresiz }} süresiz</span>{% endif %}</div>
+      <div class="kk-sayilar">
+        <span>sağlam (pay) <b>{{ k.pay|tr_miktar_sade }}</b></span>
+        <span>fire <b>{% if k.fire %}{{ k.fire|tr_miktar_sade }}{% else %}—{% endif %}</b>{% if k.fire_yuzde is not None and k.fire %} <small>%{{ k.fire_yuzde|tr_kur:1 }}</small>{% endif %}</span>
+        <span>çalışılan <b>{{ k.is_metni }}</b></span>
+        <span>mesai <b>{{ k.mesai_metni }}</b></span>
+      </div>
+      <div class="kk-cubuk {{ k.verim_sinif }}" title="oturum süresi ÷ mesai"><span style="width:{% if k.verimlilik is not None %}{% if k.verimlilik > 100 %}100{% else %}{{ k.verimlilik|floatformat:0 }}{% endif %}{% else %}0{% endif %}%"></span></div>
+      <div class="kk-verim"><span>verimlilik (oturum ÷ mesai)</span><b>{% if k.verimlilik is not None %}%{{ k.verimlilik|tr_kur:1 }}{% else %}—{% endif %}</b></div>
+    </div>
+  {% empty %}
+    <p class="bos">Bu aralıkta kayıt yok.</p>
+  {% endfor %}
+</div>
+
+{% for k in kisiler %}
+<div class="zc" id="zc-{{ k.personel.pk }}" hidden>
+  <div class="zc-baslik"><span>🕒 {{ k.personel.ad_soyad }} — zaman çizelgesi</span><button type="button" class="dugme-ikincil zc-kapat" data-kisi="{{ k.personel.pk }}">Kapat</button></div>
+  {% if k.cizelge.cok_uzun %}
+    <p class="yardim">Çizelge en çok {{ cizelge_azami }} günlük aralık için gösterilir; aralığı daraltın.</p>
+  {% else %}
+    {% for g in k.cizelge.gunler %}
+      <div class="zc-gun">
+        <div class="zc-tarih">{{ g.tarih|date:"d.m.Y D" }}</div>
+        <div>
+          <div class="zc-eksen">
+            {% for m in g.mesai %}<div class="zc-mesai{% if m.acik %} acik{% endif %}" style="left:{{ m.sol }}%;width:{{ m.en }}%" title="mesai{% if m.acik %} (açık){% endif %}"></div>{% endfor %}
+            {% for b in g.bloklar %}<a class="zc-blok{% if b.iptal %} iptal{% endif %}" href="{{ b.href }}" style="left:{{ b.sol }}%;width:{{ b.en }}%;background:{{ b.renk }}" title="{{ b.ipucu }}">{{ b.kod }}</a>{% endfor %}
+          </div>
+          <div class="zc-saatler">{% for s in g.saat_etiketleri %}<span style="left:{{ s.sol }}%">{{ s.metin }}</span>{% endfor %}</div>
+        </div>
+      </div>
     {% empty %}
-      <tr><td colspan="10" class="bos">Bu aralıkta kayıt yok.</td></tr>
+      <p class="yardim">Bu aralıkta mesai ya da oturum yok.</p>
     {% endfor %}
-  </tbody>
-</table>
+    {% if lejant %}<div class="zc-lejant">{% for l in lejant %}<span><i style="background:{{ l.renk }}"></i>{{ l.istasyon.kod }} {{ l.istasyon.ad }}</span>{% endfor %}<span><i style="background:#dbe3ee"></i>mesai</span></div>{% endif %}
+  {% endif %}
+  {% if k.cizelge.suresiz %}
+    <div class="zc-liste"><strong>Süresiz kayıtlar</strong> (ofis / emirsiz):
+      <ul>{% for s in k.cizelge.suresiz %}<li>{{ s.tarih|date:"d.m.Y" }} · <span class="pt-ist">{{ s.istasyon.kod }}</span> <span class="mono">{{ s.cikti.kod }}</span> · sağlam {{ s.saglam|tr_miktar_sade }}{% if s.fire %} / fire {{ s.fire|tr_miktar_sade }}{% endif %} · <a href="{{ s.href }}">{{ s.kaynak_metni }}</a></li>{% endfor %}</ul></div>
+  {% endif %}
 </div>
+{% endfor %}
 
-<h2 class="bolum-baslik pt-ozet-baslik">İstasyon özeti</h2>
-<div class="tablo-kapsayici genis">
-<table>
+<h2 class="bolum-baslik" style="margin-top:1.2rem">İstasyon özeti</h2>
+<div class="tablo-kapsayici">
+<table class="pt-duyarli">
   <thead><tr><th>İstasyon</th><th class="sag">Sağlam</th><th class="sag">Fire</th><th class="sag">Fire %</th><th class="sag">Oturum</th><th class="sag">Süresiz kayıt</th><th class="sag">Oturum süresi</th><th class="sag">Adam-saat</th><th class="sag">Adet/saat</th></tr></thead>
   <tbody>
     {% for k in istasyon_ozetleri %}
       <tr>
-        <td><span class="pt-ist">{{ k.istasyon.kod }}</span> {{ k.istasyon.ad }}</td>
-        <td class="sag mono">{{ k.saglam|tr_miktar_sade }}</td>
-        <td class="sag mono">{% if k.fire %}{{ k.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
-        <td class="sag mono">{% if k.fire_yuzde is not None %}%{{ k.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
-        <td class="sag mono">{{ k.oturum }}</td>
-        <td class="sag mono">{{ k.suresiz }}</td>
-        <td class="sag mono">{{ k.sure_metni }}</td>
-        <td class="sag mono">{{ k.adam_saat|tr_kur:2 }}</td>
-        <td class="sag mono">{% if k.adet_saat is not None %}{{ k.adet_saat|tr_kur:1 }}{% else %}—{% endif %}</td>
+        <td data-et="İstasyon"><span class="pt-ist">{{ k.istasyon.kod }}</span> {{ k.istasyon.ad }}</td>
+        <td class="sag mono" data-et="Sağlam">{{ k.saglam|tr_miktar_sade }}</td>
+        <td class="sag mono" data-et="Fire">{% if k.fire %}{{ k.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono" data-et="Fire %">{% if k.fire_yuzde is not None %}%{{ k.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
+        <td class="sag mono" data-et="Oturum">{{ k.oturum }}</td>
+        <td class="sag mono" data-et="Süresiz kayıt">{{ k.suresiz }}</td>
+        <td class="sag mono" data-et="Oturum süresi">{{ k.sure_metni }}</td>
+        <td class="sag mono" data-et="Adam-saat">{{ k.adam_saat|tr_kur:2 }}</td>
+        <td class="sag mono" data-et="Adet/saat">{% if k.adet_saat is not None %}{{ k.adet_saat|tr_kur:1 }}{% else %}—{% endif %}</td>
       </tr>
     {% empty %}
       <tr><td colspan="9" class="bos">Bu aralıkta kayıt yok.</td></tr>
@@ -176,37 +270,58 @@
 </table>
 </div>
 
-<h2 class="bolum-baslik pt-ozet-baslik">Geçmiş</h2>
-<div class="tablo-kapsayici genis">
-<table>
-  <thead><tr><th>Tarih</th><th>Personel / Ekip</th><th>İstasyon</th><th>Operasyon / Çıktı</th><th class="sag">Sağlam</th><th class="sag">Fire</th><th class="sag">Fire %</th><th class="sag">Süre</th><th>Kaynak</th><th>Durum</th></tr></thead>
-  <tbody>
-    {% for s in sayfa %}
-      <tr data-href="{{ s.href }}">
-        <td class="mono"><a class="satir-bag" href="{{ s.href }}">{{ s.tarih|date:"d.m.Y" }}</a>{% if s.tur == "oturum" %}<br><small>{{ s.oturum.baslangic_zamani|tr_zaman:"H:i" }}</small>{% endif %}</td>
-        <td>{{ s.personel_metni }}</td>
-        <td><span class="pt-ist">{{ s.istasyon.kod }}</span> {{ s.istasyon.ad }}</td>
-        <td><span class="mono">{{ s.cikti.kod }}</span> {{ s.cikti.ad|truncatechars:34 }}{% if s.varyant %} <span class="pt-rozet">{{ s.varyant }}</span>{% endif %}</td>
-        <td class="sag mono">{% if s.saglam %}{{ s.saglam|tr_miktar_sade }}{% else %}—{% endif %}</td>
-        <td class="sag mono">{% if s.fire %}{{ s.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
-        <td class="sag mono">{% if s.fire_yuzde is not None %}%{{ s.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
-        <td class="sag mono{% if s.acik %} pt-acik{% endif %}">{{ s.sure_metni }}</td>
-        <td>{% if s.kaynak == "emirsiz" %}<span class="pt-rozet">Emirsiz</span>{% else %}{% if s.us_pk %}<a href="{% url 'core:uretim_emri_detay' s.us_pk %}" class="mono">{{ s.kaynak_metni }}</a>{% else %}{{ s.kaynak_metni }}{% endif %}{% if s.kaynak == "ofis" %} <span class="pt-rozet" title="Ofisten açılan kayıt (oturumsuz)">ofis</span>{% endif %}{% endif %}</td>
-        <td>{% if s.acik %}<span class="pt-acik">Açık</span>{% elif s.iptal %}<span class="pt-soluk">İptal (iş yapılmadı)</span>{% else %}{{ s.durum }}{% endif %}{% if s.geri_alindi %}<br><small class="pt-soluk">kayıt geri alındı</small>{% endif %}</td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="10" class="bos">Bu aralıkta kayıt yok.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-</div>
-
-{% if sayfa.has_other_pages %}
-<nav class="pt-sayfalama">
-  {% if sayfa.has_previous %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.previous_page_number }}">‹</a>{% endif %}
-  <span class="simdiki">{{ sayfa.number }} / {{ sayfa.paginator.num_pages }}</span>
-  {% if sayfa.has_next %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.next_page_number }}">›</a>{% endif %}
-</nav>
-{% endif %}
+<details class="pt-tablo" style="margin-top:1.2rem">
+  <summary>Ayrıntılı tablo ({{ toplam.satir }} satır)</summary>
+  <div class="tablo-kapsayici">
+  <table class="pt-duyarli">
+    <thead><tr><th>Tarih</th><th>Personel / Ekip</th><th>İstasyon</th><th>Operasyon / Çıktı</th><th class="sag">Sağlam</th><th class="sag">Fire</th><th class="sag">Fire %</th><th class="sag">Süre</th><th>Kaynak</th><th>Durum</th></tr></thead>
+    <tbody>
+      {% for s in sayfa %}
+        <tr data-href="{{ s.href }}">
+          <td class="mono" data-et="Tarih"><a class="satir-bag" href="{{ s.href }}">{{ s.tarih|date:"d.m.Y" }}</a>{% if s.tur == "oturum" %} <small>{{ s.oturum.baslangic_zamani|tr_zaman:"H:i" }}</small>{% endif %}</td>
+          <td data-et="Personel">{{ s.personel_metni }}</td>
+          <td data-et="İstasyon"><span class="pt-ist">{{ s.istasyon.kod }}</span> {{ s.istasyon.ad }}</td>
+          <td data-et="Çıktı"><span class="mono">{{ s.cikti.kod }}</span> {{ s.cikti.ad|truncatechars:34 }}{% if s.varyant %} <span class="pt-rozet">{{ s.varyant }}</span>{% endif %}</td>
+          <td class="sag mono" data-et="Sağlam">{% if s.saglam %}{{ s.saglam|tr_miktar_sade }}{% else %}—{% endif %}</td>
+          <td class="sag mono" data-et="Fire">{% if s.fire %}{{ s.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
+          <td class="sag mono" data-et="Fire %">{% if s.fire_yuzde is not None %}%{{ s.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
+          <td class="sag mono{% if s.acik %} pt-acik{% endif %}" data-et="Süre">{{ s.sure_metni }}</td>
+          <td data-et="Kaynak">{% if s.kaynak == "emirsiz" %}<span class="pt-rozet">Emirsiz</span>{% else %}{% if s.us_pk %}<a href="{% url 'core:uretim_emri_detay' s.us_pk %}" class="mono">{{ s.kaynak_metni }}</a>{% else %}{{ s.kaynak_metni }}{% endif %}{% if s.kaynak == "ofis" %} <span class="pt-rozet" title="Ofisten açılan kayıt (oturumsuz)">ofis</span>{% endif %}{% endif %}</td>
+          <td data-et="Durum">{% if s.acik %}<span class="pt-acik">Açık</span>{% elif s.iptal %}<span class="pt-soluk">İptal (iş yapılmadı)</span>{% else %}{{ s.durum }}{% endif %}{% if s.geri_alindi %} <small class="pt-soluk">kayıt geri alındı</small>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10" class="bos">Bu aralıkta kayıt yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if sayfa.has_other_pages %}
+  <nav class="pt-sayfalama">
+    {% if sayfa.has_previous %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.previous_page_number }}#tablo">‹</a>{% endif %}
+    <span class="simdiki">{{ sayfa.number }} / {{ sayfa.paginator.num_pages }}</span>
+    {% if sayfa.has_next %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.next_page_number }}#tablo">›</a>{% endif %}
+  </nav>
+  {% endif %}
+</details>
+<script>
+(function(){
+  var acik = null;
+  function goster(pk){
+    document.querySelectorAll('.zc').forEach(function(z){ z.hidden = true; });
+    document.querySelectorAll('.kk-kart').forEach(function(k){ k.classList.remove('secili'); });
+    if (acik === pk) { acik = null; return; }
+    var z = document.getElementById('zc-' + pk), k = document.querySelector('.kk-kart[data-kisi="' + pk + '"]');
+    if (z) { z.hidden = false; z.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+    if (k) k.classList.add('secili');
+    acik = pk;
+  }
+  document.querySelectorAll('.kk-kart').forEach(function(k){
+    k.addEventListener('click', function(){ goster(k.dataset.kisi); });
+    k.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goster(k.dataset.kisi); } });
+  });
+  document.querySelectorAll('.zc-kapat').forEach(function(b){ b.addEventListener('click', function(){ goster(b.dataset.kisi); }); });
+  if (location.hash === '#tablo') { var d = document.querySelector('details.pt-tablo'); if (d) d.open = true; }
+})();
+</script>
 {% endif %}
 {% endblock %}

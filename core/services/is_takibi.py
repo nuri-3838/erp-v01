@@ -15,13 +15,16 @@ from decimal import Decimal
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 
-from core.models import IsOturumu, IsOturumuUyesi, MesaiKaydi, OperasyonKaydi, OperasyonKaydiCikti
+from core.models import EkranYetki, IsOturumu, IsOturumuUyesi, MesaiKaydi, OperasyonKaydi, OperasyonKaydiCikti, Personel
 from core.services import is_oturumu
 from core.services.varyant import varyant_kisa
 from core.tarih import _TR, tr_bugun
 
 SIFIR = Decimal("0")
 KAYNAKLAR = (("oturum", "Atölye oturumu"), ("ofis", "Ofis kaydı (istasyon emirli, oturumsuz)"), ("emirsiz", "Emirsiz"))
+URETIM_DEPARTMANI = "ÜRETİM"
+ISTASYON_RENKLERI = ("#2563eb", "#0b6b3f", "#b35a00", "#7c3aed", "#0e7490", "#b3253f", "#4d7c0f", "#9d174d", "#1d4ed8", "#92400e", "#334155")
+CIZELGE_AZAMI_GUN = 31
 VARYANT_SR = ("markalama", "kilavuz", "afis", "yan_etiket")
 
 
@@ -80,7 +83,8 @@ def _oturum_satiri(o, simdi):
     for u in uyeler:
         sn = u.katilim_saniye(o.bitis_zamani)
         oran = (Decimal(sn) / Decimal(toplam_sn)) if toplam_sn else (Decimal(1) / Decimal(len(uyeler)))
-        paylar.append({"personel": u.personel, "saniye": 0 if iptal else sn, "oran": oran})   # iptal (iş yapılmadı): süre sayılmaz
+        paylar.append({"personel": u.personel, "saniye": 0 if iptal else sn, "oran": oran,             # iptal (iş yapılmadı): süre sayılmaz
+                       "bas": u.katilim_zamani, "bit": u.ayrilma_zamani or o.bitis_zamani})
     return {"tur": "oturum", "tarih": o.is_tarihi, "zaman": o.baslangic_zamani, "oturum": o, "kayit": kayit, "ozet": oz, "istasyon": o.istasyon,
             "cikti": ie.operasyon.cikti, "varyant": _etiket(ie.cikti_varyant), "personeller": [u.personel for u in uyeler], "paylar": paylar,
             "personel_metni": oz["ekip_metni"] or "—", "saglam": saglam, "fire": fire, "fire_yuzde": _yuzde(fire, saglam),
@@ -98,7 +102,7 @@ def _kayit_satiri(k):
     emirsiz = k.istasyon_emri_id is None and k.uretim_emri_id is None
     return {"tur": "kayit", "tarih": k.tarih, "zaman": k.created_at, "oturum": None, "kayit": k, "ozet": None, "istasyon": k.operasyon.istasyon,
             "cikti": k.operasyon.cikti, "varyant": _etiket(k.cikti_varyant), "personeller": [k.personel] if k.personel_id else [],
-            "paylar": [{"personel": k.personel, "saniye": 0, "oran": Decimal(1)}] if k.personel_id else [],
+            "paylar": [{"personel": k.personel, "saniye": 0, "oran": Decimal(1), "bas": None, "bit": None}] if k.personel_id else [],
             "personel_metni": k.personel.ad_soyad if k.personel_id else "—", "saglam": saglam, "fire": fire, "fire_yuzde": _yuzde(fire, saglam),
             "sure_saniye": None, "sure_metni": "—", "adam_saniye": 0,
             "kaynak": "emirsiz" if emirsiz else "ofis",
@@ -138,20 +142,26 @@ def gecmis(*, baslangic, bitis, personel_id=None, istasyon_id=None, kaynak="", s
 
 # --- Özetler ---------------------------------------------------------------------------------------------------------------------------------
 
-def _mesai_saniyeleri(baslangic, bitis, simdi) -> dict:
-    """{personel pk: aralıktaki toplam mesai saniyesi} (açık mesai şimdiye kadar)."""
+def mesai_araliklari(baslangic, bitis, simdi=None) -> dict:
+    """{Personel: [(giriş, çıkış|şimdi, iş tarihi, açık mı)]} — tek sorgu; kişi özeti ve zaman çizelgesi aynı veriyi kullanır."""
+    simdi = simdi or timezone.now()
     sonuc = {}
-    for m in MesaiKaydi.objects.filter(silindi=False, is_tarihi__gte=baslangic, is_tarihi__lte=bitis).select_related("personel"):
-        sonuc.setdefault(m.personel, 0)
-        sonuc[m.personel] += _sure_sn(m.giris_zamani, m.cikis_zamani, simdi)
+    for m in MesaiKaydi.objects.filter(silindi=False, is_tarihi__gte=baslangic, is_tarihi__lte=bitis).select_related("personel").order_by("giris_zamani"):
+        sonuc.setdefault(m.personel, []).append((m.giris_zamani, m.cikis_zamani or simdi, m.is_tarihi, m.cikis_zamani is None))
     return sonuc
 
 
-def kisi_ozeti(satirlar, *, baslangic, bitis, simdi=None) -> list:
+def _mesai_saniyeleri(baslangic, bitis, simdi, mesai=None) -> dict:
+    """{personel: aralıktaki toplam mesai saniyesi} (açık mesai şimdiye kadar)."""
+    mesai = mesai if mesai is not None else mesai_araliklari(baslangic, bitis, simdi)
+    return {p: sum(_sure_sn(g, c, simdi) for g, c, _t, _a in ar) for p, ar in mesai.items()}
+
+
+def kisi_ozeti(satirlar, *, baslangic, bitis, simdi=None, mesai=None) -> list:
     """Personel bazında: katıldığı sağlam/fire (tam), pay sağlam (adam-saniye oranı), fire %, iş süresi (oturum katılımı), mesai süresi, verimlilik,
     süresiz kayıt sayısı. Mesaisi olup işi olmayanlar da listelenir (verimlilik 0). Verimlilik = iş süresi ÷ mesai süresi."""
     simdi = simdi or timezone.now()
-    mesai = _mesai_saniyeleri(baslangic, bitis, simdi)
+    mesai = _mesai_saniyeleri(baslangic, bitis, simdi, mesai)
     kisi = {}
 
     def kayit(p):
@@ -209,3 +219,108 @@ def istasyon_ozeti(satirlar) -> list:
 def toplamlar(satirlar) -> dict:
     return {"satir": len(satirlar), "saglam": sum((s["saglam"] for s in satirlar), SIFIR), "fire": sum((s["fire"] for s in satirlar), SIFIR),
             "suresiz": sum(1 for s in satirlar if s["sure_saniye"] is None and not s["iptal"]), "oturum": sum(1 for s in satirlar if s["tur"] == "oturum")}
+
+
+# --- Şu an: personel kartları ---------------------------------------------------------------------------------------------------------------
+
+def atolye_personeli():
+    """Gri ("mesaide değil") kartlarda gösterilecek aktif personel: atölye hesabı olan ya da ÜRETİM departmanındaki çalışanlar (tek sorgu).
+    Ofis personeli yalnız mesaideyse (sarı/yeşil) görünür."""
+    from core.services import personel as personel_servis
+    atolye = EkranYetki.objects.filter(ekran_kod="atolye", silindi=False).values("kullanici_id")
+    return list(personel_servis.calisan_personeller().filter(Q(departman=URETIM_DEPARTMANI) | Q(kullanici_id__in=atolye)).order_by("ad", "soyad"))
+
+
+def su_an_kartlar(simdi=None) -> dict:
+    """Kişi başına kart: {"durum": calisiyor|bosta|yok, "personel", "oturum", "ie", "cikti", "varyant", "ekip" [diğer üyeler], "baslangic_ms", "dunku"}.
+    Sıra: çalışanlar → boşta → mesaide değil; grup içinde ada göre. Sayaçlar ayrı. Toplam 4 sorgu (su_an 3 + personel listesi)."""
+    simdi = simdi or timezone.now()
+    d = su_an(simdi)
+    kartlar, gorulen = [], set()
+    for s in d["oturumlar"]:
+        o = s["oturum"]
+        uyeler = [u for u in s["ozet"]["uyeler"] if u.ayrilma_zamani is None]
+        for u in uyeler:
+            gorulen.add(u.personel_id)
+            kartlar.append({"durum": "calisiyor", "personel": u.personel, "oturum": o, "ie": s["ie"], "cikti": s["cikti"], "varyant": s["varyant"], "istasyon": o.istasyon,
+                            "ekip": [x.personel for x in uyeler if x.personel_id != u.personel_id], "baslangic_ms": int(u.katilim_zamani.timestamp() * 1000),
+                            "sure_metni": is_oturumu.sure_metni(u.katilim_saniye()), "dunku": s["dunku"]})
+    for b in d["bosta"]:
+        gorulen.add(b["personel"].pk)
+        kartlar.append({"durum": "bosta", "personel": b["personel"], "oturum": None, "ie": None, "cikti": None, "varyant": "", "istasyon": None, "ekip": [],
+                        "baslangic_ms": int(b["mesai"].giris_zamani.timestamp() * 1000), "sure_metni": b["sure_metni"], "dunku": b["dunku"]})
+    for p in atolye_personeli():
+        if p.pk not in gorulen:
+            kartlar.append({"durum": "yok", "personel": p, "oturum": None, "ie": None, "cikti": None, "varyant": "", "istasyon": None, "ekip": [],
+                            "baslangic_ms": None, "sure_metni": "", "dunku": False})
+    sira = {"calisiyor": 0, "bosta": 1, "yok": 2}
+    kartlar.sort(key=lambda k: (sira[k["durum"]], k["personel"].ad, k["personel"].soyad))
+    sayac = {d_: sum(1 for k in kartlar if k["durum"] == d_) for d_ in sira}
+    return {"kartlar": kartlar, "sayac": sayac, "mesaide": d["mesaide"]}
+
+
+# --- Geçmiş: zaman çizelgesi (sorgu yok; gecmis + mesai_araliklari verisinden) ---------------------------------------------------------------
+
+def istasyon_renkleri(satirlar) -> dict:
+    """{istasyon pk: renk} — satırlardaki istasyonlar sıra/koda göre sabit paletten."""
+    ist = {s["istasyon"].pk: s["istasyon"] for s in satirlar}
+    sirali = sorted(ist.values(), key=lambda i: (i.sira, i.kod))
+    return {i.pk: ISTASYON_RENKLERI[n % len(ISTASYON_RENKLERI)] for n, i in enumerate(sirali)}
+
+
+def _yuzde_konum(bas, bit, eksen_bas, eksen_bit):
+    toplam = (eksen_bit - eksen_bas).total_seconds() or 1
+    sol = max((bas - eksen_bas).total_seconds(), 0) / toplam * 100
+    sag = min((bit - eksen_bas).total_seconds(), toplam) / toplam * 100
+    return f"{sol:.2f}", f"{max(sag - sol, 0.3):.2f}"          # CSS için NOKTALI metin (şablon yerelleştirmesi sayıyı virgülle basardı)
+
+
+def zaman_cizelgesi(satirlar, mesai, *, baslangic, bitis, simdi=None) -> dict:
+    """{personel pk: {"personel", "gunler": [{"tarih", "saat_etiketleri", "mesai": [{sol, en, acik}], "bloklar": [{sol, en, renk, ipucu, href, iptal}]}],
+    "suresiz": [kayıt satırları], "cok_uzun": bool}}. Gün ekseni: o günkü mesai ve oturumların en erken/en geç saati (tam saate yuvarlı). Aralık
+    CIZELGE_AZAMI_GUN'den uzunsa günler boş, ``cok_uzun`` True."""
+    simdi = simdi or timezone.now()
+    renk = istasyon_renkleri(satirlar)
+    kisiler = {}
+
+    def kisi(p):
+        return kisiler.setdefault(p.pk, {"personel": p, "gunler": {}, "suresiz": [], "cok_uzun": (bitis - baslangic).days + 1 > CIZELGE_AZAMI_GUN})
+    for p, aralik in mesai.items():
+        for g, c, t, acik in aralik:
+            kisi(p)["gunler"].setdefault(t, {"mesai": [], "oturum": []})["mesai"].append((g, c, acik))
+    for s in satirlar:
+        if s["tur"] != "oturum":
+            for pay in s["paylar"]:
+                kisi(pay["personel"])["suresiz"].append(s)
+            continue
+        for pay in s["paylar"]:
+            if pay["bas"] is None:
+                continue
+            kisi(pay["personel"])["gunler"].setdefault(s["tarih"], {"mesai": [], "oturum": []})["oturum"].append((pay["bas"], pay["bit"] or simdi, s))
+    for k in kisiler.values():
+        gunler = []
+        if not k["cok_uzun"]:
+            for t in sorted(k["gunler"], reverse=True):
+                g = k["gunler"][t]
+                zamanlar = [z for m in g["mesai"] for z in m[:2]] + [z for o in g["oturum"] for z in o[:2]]
+                if not zamanlar:
+                    continue
+                en_erken = min(zamanlar).astimezone(_TR).replace(minute=0, second=0, microsecond=0)
+                en_gec = max(zamanlar).astimezone(_TR)
+                en_gec = (en_gec.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(hours=1)) if en_gec.minute or en_gec.second else en_gec
+                saat = int((en_gec - en_erken).total_seconds() // 3600) or 1
+                adim = 1 if saat <= 8 else (2 if saat <= 16 else 4)
+                etiketler = [{"sol": f"{i / saat * 100:.2f}", "metin": f"{(en_erken + datetime.timedelta(hours=i)).hour:02d}"} for i in range(0, saat + 1, adim)]
+                mesai_b = [dict(zip(("sol", "en"), _yuzde_konum(m[0], m[1], en_erken, en_gec)), acik=m[2]) for m in g["mesai"]]
+                bloklar = []
+                for b, c, s in sorted(g["oturum"], key=lambda x: x[0]):
+                    sol, en = _yuzde_konum(b, c, en_erken, en_gec)
+                    ipucu = (f"{s['istasyon'].kod} {s['istasyon'].ad} · {s['cikti'].kod}" + (f" [{s['varyant']}]" if s["varyant"] else "")
+                             + f" · {b.astimezone(_TR):%H:%M}–{c.astimezone(_TR):%H:%M}"
+                             + (" · iptal (iş yapılmadı)" if s["iptal"] else f" · sağlam {s['saglam'].normalize():f}" + (f" / fire {s['fire'].normalize():f}" if s["fire"] else ""))
+                             + (" · kayıt geri alındı" if s["geri_alindi"] else ""))
+                    bloklar.append({"sol": sol, "en": en, "renk": renk.get(s["istasyon"].pk, ISTASYON_RENKLERI[-1]), "ipucu": ipucu, "href": s["href"], "iptal": s["iptal"],
+                                    "acik": s["acik"], "kod": s["istasyon"].kod})
+                gunler.append({"tarih": t, "saat_etiketleri": etiketler, "mesai": mesai_b, "bloklar": bloklar})
+        k["gunler"] = gunler
+    return kisiler

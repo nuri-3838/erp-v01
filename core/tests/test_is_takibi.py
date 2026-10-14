@@ -60,18 +60,42 @@ class SuAnTest(TakipTaban):
         self.assertTrue(d["bosta"][0]["dunku"])
         self.assertEqual(d["mesaide"], 3)
         r = self.takip()
+        h = r.content.decode()
         self.assertContains(r, "ERRAHMAN OPERATOR")
-        self.assertContains(r, "ekip: ERRAHMAN OPERATOR, AYSE MESAİ")
+        self.assertContains(r, "ekip: AYSE MESAİ")                                                   # kişi kartı: ekip arkadaşları (kendisi hariç)
+        self.assertContains(r, "ekip: ERRAHMAN OPERATOR")
         self.assertContains(r, "MEHMET USTA")
         self.assertContains(r, "dünden kalan")
-        self.assertContains(r, "dünden kalan mesai")
-        self.assertContains(r, "30 sn")
+        self.assertContains(r, "60 sn")
         self.assertContains(r, self.ie_kesim.no)
+        self.assertEqual((h.count('class="pk-kart calisiyor"'), h.count('class="pk-kart bosta"'), h.count('class="pk-kart yok"')), (2, 1, 0))
+        self.assertContains(r, 'data-baslangic="')                                                    # canlı sayaç
+        k = is_takibi.su_an_kartlar()
+        self.assertEqual(k["sayac"], {"calisiyor": 2, "bosta": 1, "yok": 0})
+        self.assertEqual([(x["personel"].pk, x["durum"]) for x in k["kartlar"]], [(self.p2.pk, "calisiyor"), (self.p.pk, "calisiyor"), (self.p3.pk, "bosta")])
+        self.assertEqual([x.pk for x in k["kartlar"][1]["ekip"]], [self.p2.pk])
         # ayşe mesaisini bitirince oturumdan ayrılır: boşta değil (mesaide değil), ekip metninde kalır
         self.mesai_bitir(self.u2)
         d = is_takibi.su_an()
         self.assertEqual([b["personel"].pk for b in d["bosta"]], [self.p3.pk])
         self.assertEqual(d["mesaide"], 2)
+        k = is_takibi.su_an_kartlar()                                                                 # ayşe atölye hesaplı → gri (mesaide değil) kart
+        self.assertEqual([(x["personel"].pk, x["durum"]) for x in k["kartlar"]], [(self.p.pk, "calisiyor"), (self.p3.pk, "bosta"), (self.p2.pk, "yok")])
+        self.assertContains(self.takip(), 'class="pk-kart yok"')
+
+    def test_gri_kartlar_yalniz_atolye_veya_uretim_personeli(self):
+        from core.tests.ik_yardimci import personel_kur
+        ofis = personel_kur(ad="ofis", soyad="kisi", ise_giris_tarihi=datetime.date(2020, 1, 1))                  # hesapsız, departmansız
+        uretim = personel_kur(ad="uretim", soyad="isci", ise_giris_tarihi=datetime.date(2020, 1, 1), departman="üretim")
+        k = is_takibi.su_an_kartlar()
+        gri = {x["personel"].pk for x in k["kartlar"] if x["durum"] == "yok"}
+        self.assertIn(uretim.pk, gri)                                                                 # ÜRETİM departmanı
+        self.assertIn(self.p.pk, gri)                                                                 # atölye hesabı
+        self.assertNotIn(ofis.pk, gri)                                                                # ofis: yalnız mesaideyse
+        from core.services import mesai as mesai_servis
+        mesai_servis.manuel_ekle(ofis, giris_zamani=timezone.now() - datetime.timedelta(hours=1), duzeltme_notu="test")
+        k = is_takibi.su_an_kartlar()
+        self.assertEqual([x["durum"] for x in k["kartlar"] if x["personel"].pk == ofis.pk], ["bosta"])
 
     def test_sorgu_sayisi_sabit(self):
         self.baslat(self.u2)
@@ -80,10 +104,14 @@ class SuAnTest(TakipTaban):
         self.basla(self.ie_kesim, ekip=[self.p2.pk])
         with self.assertNumQueries(3):
             is_takibi.su_an()
+        with self.assertNumQueries(4):
+            is_takibi.su_an_kartlar()
         self.client.force_login(self.u3)
         self.basla(self.ie_bukum)                                                                     # mehmet ikinci oturum
         with self.assertNumQueries(3):
             is_takibi.su_an()
+        with self.assertNumQueries(4):
+            is_takibi.su_an_kartlar()
 
 
 class GecmisTest(TakipTaban):
@@ -166,10 +194,27 @@ class GecmisTest(TakipTaban):
         self.kur()
         r = self.takip(sekme="gecmis")
         self.assertEqual(r.status_code, 200)
-        for metin in ("Kişi özeti", "İstasyon özeti", "süresiz kayıt", "Verimlilik", "ERRAHMAN OPERATOR, AYSE MESAİ", "Emirsiz", "İptal (iş yapılmadı)", "oturum süresi ÷ mesai"):
+        h = r.content.decode()
+        for metin in ("Kişi özeti", "İstasyon özeti", "süresiz kayıt", "verimlilik", "ERRAHMAN OPERATOR, AYSE MESAİ", "Emirsiz", "İptal (iş yapılmadı)", "oturum süresi ÷ mesai",
+                      "Ayrıntılı tablo", "Daha fazla filtre", "Bu hafta", "Özel tarih", "zaman çizelgesi"):
             self.assertContains(r, metin)
         self.assertContains(r, 'data-href="/uretim/kayitlar/')
         self.assertContains(r, "%37,5")
+        self.assertIn('<span class="aktif">Bu hafta</span>', h)                                        # varsayılan aralık
+        self.assertNotIn('<details class="pt-daha" style="flex-basis:100%" open', h)                   # istasyon/kaynak seçilmeden kapalı
+        self.assertIn('<details class="pt-tablo" style="margin-top:1.2rem">', h)                      # ayrıntılı tablo varsayılan kapalı
+        self.assertIn('class="kk-cubuk orta"', h)                                                     # errahman %37,5 → turuncu
+        self.assertIn('class="kk-cubuk dusuk"', h)                                                    # ayşe %16,7 / mehmet %0 → kırmızı
+        self.assertIn(f'id="zc-{self.p.pk}" hidden', h)                                               # çizelge kapalı gelir
+        self.assertRegex(h, r'class="zc-blok" href="/uretim/kayitlar/\d+/" style="left:[\d.]+%;width:[\d.]+%;background:#')
+        self.assertIn('class="zc-blok iptal"', h)
+        self.assertIn('class="zc-mesai acik"', h)                                                     # errahman'ın açık mesaisi çizgili
+        self.assertContains(r, 'data-et="Sağlam"')                                                    # dar ekranda etiketli sütun
+        r = self.takip(sekme="gecmis", istasyon=self.lazer.pk)
+        self.assertIn('<details class="pt-daha" style="flex-basis:100%" open', r.content.decode())    # filtre etkinse açık
+        r = self.takip(sekme="gecmis", aralik="dun")
+        self.assertIn('<span class="aktif">Dün</span>', r.content.decode())
+        self.assertContains(r, "Bu aralıkta kayıt yok")
         r = self.takip(sekme="gecmis", kaynak="emirsiz")
         self.assertContains(r, "MEHMET USTA")
         self.assertNotContains(r, "ERRAHMAN OPERATOR, AYSE MESAİ")
@@ -201,6 +246,47 @@ class GecmisTest(TakipTaban):
             is_takibi.istasyon_ozeti(sat)
         self.assertEqual(len(q1), len(q2))
         self.assertLessEqual(len(q2), 6)
+        self.takip(sekme="gecmis")                                                                    # ısınma (oturum/giriş sorguları)
+        with CaptureQueriesContext(connection) as q3:
+            self.takip(sekme="gecmis")
+        for _ in range(3):
+            emirsiz_uret(operasyon_id=self.kesim_op.pk, depo_id=self.depo.pk, tarih=bugun, saglam="1", personel=self.p2)
+        with CaptureQueriesContext(connection) as q4:
+            self.takip(sekme="gecmis")
+        self.assertEqual(len(q3), len(q4))                                                            # sayfa sorgu sayısı satır sayısından bağımsız
+
+    def test_zaman_cizelgesi(self):
+        o1, o2, o3, ofis, emirsiz = self.kur()
+        bugun = tr_bugun()
+        sat = is_takibi.gecmis(baslangic=bugun, bitis=bugun)
+        mesai = is_takibi.mesai_araliklari(bugun, bugun)
+        self.assertEqual(sorted(p.pk for p in mesai), sorted([self.p.pk, self.p2.pk, self.p3.pk]))
+        c = is_takibi.zaman_cizelgesi(sat, mesai, baslangic=bugun, bitis=bugun)
+        e = c[self.p.pk]
+        self.assertFalse(e["cok_uzun"])
+        self.assertEqual(len(e["gunler"]), 1)
+        g = e["gunler"][0]
+        self.assertEqual(g["tarih"], bugun)
+        self.assertEqual(len(g["mesai"]), 1)
+        self.assertTrue(g["mesai"][0]["acik"])
+        self.assertEqual([b["kod"] for b in g["bloklar"]], [self.lazer.kod, self.lazer.kod])            # o1 (120→60 dk önce), o2 (50→20 dk önce)
+        b1, b2 = g["bloklar"]
+        self.assertLess(float(b1["sol"]), float(b2["sol"]))
+        self.assertTrue(0 <= float(b1["sol"]) < float(b1["sol"]) + float(b1["en"]) <= 100.01)
+        self.assertNotIn(",", b1["sol"] + b1["en"])                                                # CSS için noktalı
+        self.assertIn("sağlam 4 / fire 1", b1["ipucu"])
+        self.assertTrue(len(g["saat_etiketleri"]) >= 2)
+        m = c[self.p3.pk]
+        self.assertTrue(m["gunler"][0]["bloklar"][0]["iptal"])
+        self.assertEqual([s["kayit"].pk for s in m["suresiz"]], [emirsiz.pk])
+        # 31 günden uzun aralık: çizelge yok
+        c = is_takibi.zaman_cizelgesi(sat, mesai, baslangic=bugun - datetime.timedelta(days=40), bitis=bugun)
+        self.assertTrue(c[self.p.pk]["cok_uzun"])
+        self.assertEqual(c[self.p.pk]["gunler"], [])
+        # kişi özeti aynı mesai verisiyle aynı sonucu verir (ek sorgu yok)
+        with self.assertNumQueries(0):
+            k = is_takibi.kisi_ozeti(sat, baslangic=bugun, bitis=bugun, mesai=mesai)
+        self.assertEqual({x["personel"].pk: x["mesai_saniye"] // 60 for x in k}, {self.p.pk: 240, self.p2.pk: 180, self.p3.pk: 100})
 
 
 class YetkiTest(TakipTaban):
