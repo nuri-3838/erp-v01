@@ -1,0 +1,212 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Personel İş Takibi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Personel İş Takibi{% endblock %}
+
+{% block content %}
+<style>
+  .pt-sekmeler { display:flex; gap:.3rem; margin-bottom:.8rem; border-bottom:1px solid var(--cizgi-koyu); }
+  .pt-sekme { padding:.5rem 1rem; border-radius:10px 10px 0 0; font-weight:600; font-size:.9rem; color:var(--metin-soluk); text-decoration:none; }
+  .pt-sekme.aktif { color:var(--turuncu-koyu); background:rgba(240,124,0,.1); box-shadow:inset 0 -2px 0 var(--turuncu); }
+  .pt-sure { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem; }
+  .pt-sure .alan { margin:0; }
+  .pt-sure .alan label { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .pt-sure input, .pt-sure select { min-height:38px; }
+  .pt-ist { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; padding:.15rem .5rem; border-radius:8px; background:#eef1f7; color:#33415c; }
+  .pt-acik { color:#0b6b3f; font-weight:700; }
+  .pt-soluk { color:var(--metin-soluk); }
+  .pt-cipler { display:flex; gap:.6rem; flex-wrap:wrap; margin:.2rem 0 1rem; }
+  .pt-cip { display:inline-flex; align-items:baseline; gap:.45rem; padding:.45rem .85rem; border-radius:12px; background:rgba(33,56,95,.07);
+    border:1px solid rgba(33,56,95,.1); font-size:.82rem; color:var(--metin-soluk); }
+  .pt-cip b { font-size:1.15rem; color:var(--metin); font-variant-numeric:tabular-nums; }
+  .pt-kartlar { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.8rem; }
+  .pt-kart { background:#fff; border:1px solid var(--cizgi); border-radius:14px; padding:.8rem 1rem; }
+  .pt-kart .kisi { font-weight:750; font-size:1.05rem; }
+  .pt-kart .alt { font-size:.82rem; color:var(--metin-soluk); margin-top:.2rem; }
+  .pt-kart .sayac { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; color:#0b6b3f; }
+  .pt-dunku { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#fff0dc; color:#b35a00; }
+  .pt-rozet { display:inline-block; font-size:.7rem; font-weight:700; padding:.1rem .45rem; border-radius:999px; background:#eef1f7; color:#5b6678; }
+  .pt-toplam td { font-weight:700; background:rgba(33,56,95,.05); }
+  .pt-ozet-baslik { margin:1.2rem 0 .5rem; }
+  .pt-sayfalama { display:flex; align-items:center; justify-content:center; gap:.35rem; margin-top:1rem; flex-wrap:wrap; }
+  .pt-sayfalama a, .pt-sayfalama span.simdiki { display:inline-flex; align-items:center; justify-content:center; min-width:2.3rem; height:2.3rem;
+    padding:0 .5rem; border-radius:10px; text-decoration:none; font-size:.85rem; font-weight:650; color:var(--metin); }
+  .pt-sayfalama a { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .pt-sayfalama span.simdiki { background:var(--lacivert); color:#fff; }
+  .pt-ipucu { display:inline-grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:50%; border:1px solid var(--cizgi-koyu);
+    font-size:.75rem; font-weight:700; color:var(--metin-soluk); cursor:help; margin-left:.5rem; vertical-align:middle; }
+</style>
+
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:atolye' %}">← Atölye</a>
+    <h1 class="ust-baslik"><span class="emoji">👷</span>Personel İş Takibi
+      <span class="pt-ipucu" tabindex="0" title="Şu an: açık iş oturumları ve mesaide olup açık işi olmayanlar (boşta). Geçmiş: atölye oturumları + oturumsuz onaylı kayıtlar (ofis 'Üretildi'/toplu üretim ve emirsiz; fason dönüşleri hariç). Ekip işinde sağlam/fire ekipçe gösterilir; kişi özetinde 'pay' adam-saniye oranıyla bölünmüştür. Fire % = fire ÷ (sağlam + fire). Verimlilik = oturum süresi ÷ mesai süresi; açık oturum/mesai şimdiye kadar sayılır; iptal (iş yapılmadı) oturum süreye girmez; kaydı geri alınan oturumun süresi sayılır, adedi sayılmaz.">?</span></h1>
+  </div>
+  {% if sekme == "gecmis" %}<a class="dugme" href="{{ xlsx_url }}">⬇ Excel</a>{% endif %}
+</div>
+
+<nav class="pt-sekmeler">
+  <a class="pt-sekme{% if sekme == 'simdi' %} aktif{% endif %}" href="?sekme=simdi">Şu an</a>
+  <a class="pt-sekme{% if sekme == 'gecmis' %} aktif{% endif %}" href="?sekme=gecmis">Geçmiş</a>
+</nav>
+
+{% if sekme == "simdi" %}
+<div class="pt-cipler">
+  <span class="pt-cip"><b>{{ simdi.oturumlar|length }}</b> açık iş</span>
+  <span class="pt-cip"><b>{{ simdi.mesaide }}</b> mesaide</span>
+  <span class="pt-cip"><b>{{ simdi.bosta|length }}</b> boşta</span>
+  <span class="pt-cip pt-soluk">30 sn'de bir yenilenir · {{ an|tr_zaman:"H:i" }}</span>
+</div>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Çalışıyor</h2>
+  <div class="tablo-kapsayici genis">
+  <table>
+    <thead><tr><th>Personel / Ekip</th><th>İstasyon</th><th>ÜS / İstasyon Emri</th><th>Operasyon / Çıktı</th><th>Başlama</th><th class="sag">Geçen süre</th></tr></thead>
+    <tbody>
+      {% for s in simdi.oturumlar %}{% with o=s.oturum %}
+        <tr data-href="{% url 'core:is_oturumlari' %}?ara={{ s.ie.no }}">
+          <td><a class="satir-bag" href="{% url 'core:is_oturumlari' %}?ara={{ s.ie.no }}"><strong>{{ o.baslatan.ad_soyad }}</strong></a>
+            {% if s.ozet.kisi > 1 %}<br><small>ekip: {{ s.ozet.ekip_metni }}</small>{% endif %}
+            {% if s.dunku %} <span class="pt-dunku" title="Önceki günden kalan açık iş">dünden kalan</span>{% endif %}</td>
+          <td><span class="pt-ist">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
+          <td><a href="{% url 'core:uretim_emri_detay' o.uretim_emri_id %}">{{ o.uretim_emri.no }}</a> / <span class="mono">{{ s.ie.no }}</span></td>
+          <td><span class="mono">{{ s.cikti.kod }}</span> {{ s.cikti.ad|truncatechars:34 }}{% if s.varyant %} <span class="pt-rozet">{{ s.varyant }}</span>{% endif %}</td>
+          <td class="mono">{{ o.baslangic_zamani|tr_zaman:"d.m H:i" }}</td>
+          <td class="sag mono pt-acik">{{ s.ozet.sure_metni }}</td>
+        </tr>
+      {% endwith %}{% empty %}
+        <tr><td colspan="6" class="bos">Şu an açık iş oturumu yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Boşta (mesaide, açık işi yok)</h2>
+  <div class="pt-kartlar">
+    {% for b in simdi.bosta %}
+      <div class="pt-kart"><div class="kisi">{{ b.personel.ad_soyad }}{% if b.dunku %} <span class="pt-dunku" title="Önceki günden kalan çıkışsız mesai">dünden kalan mesai</span>{% endif %}</div>
+        <div class="alt">mesai başlangıcı {{ b.mesai.giris_zamani|tr_zaman:"d.m H:i" }} · <span class="sayac">{{ b.sure_metni }}</span></div></div>
+    {% empty %}
+      <p class="bos">Mesaide olup işi olmayan personel yok.</p>
+    {% endfor %}
+  </div>
+</section>
+<script>setTimeout(function(){ window.location.reload(); }, 30000);</script>
+
+{% else %}
+<form method="get" class="pt-sure">
+  <input type="hidden" name="sekme" value="gecmis">
+  <div class="alan"><label for="pt-bas">Tarih (başlangıç)</label><input type="date" name="bas" id="pt-bas" value="{{ bas|date:'Y-m-d' }}"></div>
+  <div class="alan"><label for="pt-bit">Tarih (bitiş)</label><input type="date" name="bit" id="pt-bit" value="{{ bit|date:'Y-m-d' }}"></div>
+  <div class="alan"><label for="pt-per">Personel</label>
+    <select name="personel" id="pt-per"><option value="">Tümü</option>
+      {% for p in personeller %}<option value="{{ p.pk }}"{% if personel == p.pk|stringformat:"s" %} selected{% endif %}>{{ p.ad_soyad }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="pt-ist">İstasyon</label>
+    <select name="istasyon" id="pt-ist"><option value="">Tümü</option>
+      {% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}
+    </select></div>
+  <div class="alan"><label for="pt-kaynak">Kaynak</label>
+    <select name="kaynak" id="pt-kaynak"><option value="">Tümü</option>
+      {% for k, v in kaynaklar %}<option value="{{ k }}"{% if kaynak == k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></div>
+  <button type="submit" class="birincil">Filtrele</button>
+  <a class="iptal-bag" href="?sekme=gecmis">Temizle</a>
+</form>
+
+<div class="pt-cipler">
+  <span class="pt-cip"><b>{{ toplam.satir }}</b> satır</span>
+  <span class="pt-cip"><b>{{ toplam.oturum }}</b> oturum</span>
+  <span class="pt-cip"><b>{{ toplam.saglam|tr_miktar_sade }}</b> sağlam</span>
+  <span class="pt-cip"><b>{{ toplam.fire|tr_miktar_sade }}</b> fire</span>
+  <span class="pt-cip" title="Oturumsuz (ofis / emirsiz) kayıt: personel ve süre bilgisi yok ya da yalnız personel var"><b>{{ toplam.suresiz }}</b> süresiz kayıt</span>
+</div>
+
+<h2 class="bolum-baslik pt-ozet-baslik">Kişi özeti</h2>
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr><th>Personel</th><th class="sag" title="Üye olduğu işlerin toplamı (ekip işinde tam yazılır)">Katıldığı sağlam</th><th class="sag" title="Adam-saniye oranıyla bölünmüş sağlam">Pay</th><th class="sag">Fire</th><th class="sag">Fire %</th>
+      <th class="sag">Oturum</th><th class="sag">Süresiz kayıt</th><th class="sag">İş süresi</th><th class="sag">Mesai</th><th class="sag" title="Oturum süresi ÷ mesai süresi">Verimlilik</th></tr></thead>
+  <tbody>
+    {% for k in kisiler %}
+      <tr>
+        <td><strong>{{ k.personel.ad_soyad }}</strong></td>
+        <td class="sag mono">{{ k.saglam|tr_miktar_sade }}</td>
+        <td class="sag mono">{{ k.pay|tr_miktar_sade }}</td>
+        <td class="sag mono">{% if k.fire %}{{ k.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if k.fire_yuzde is not None %}%{{ k.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{{ k.oturum }}</td>
+        <td class="sag mono">{{ k.suresiz }}</td>
+        <td class="sag mono">{{ k.is_metni }}</td>
+        <td class="sag mono">{{ k.mesai_metni }}</td>
+        <td class="sag mono">{% if k.verimlilik is not None %}%{{ k.verimlilik|tr_kur:1 }}{% else %}—{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10" class="bos">Bu aralıkta kayıt yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2 class="bolum-baslik pt-ozet-baslik">İstasyon özeti</h2>
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr><th>İstasyon</th><th class="sag">Sağlam</th><th class="sag">Fire</th><th class="sag">Fire %</th><th class="sag">Oturum</th><th class="sag">Süresiz kayıt</th><th class="sag">Oturum süresi</th><th class="sag">Adam-saat</th><th class="sag">Adet/saat</th></tr></thead>
+  <tbody>
+    {% for k in istasyon_ozetleri %}
+      <tr>
+        <td><span class="pt-ist">{{ k.istasyon.kod }}</span> {{ k.istasyon.ad }}</td>
+        <td class="sag mono">{{ k.saglam|tr_miktar_sade }}</td>
+        <td class="sag mono">{% if k.fire %}{{ k.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if k.fire_yuzde is not None %}%{{ k.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{{ k.oturum }}</td>
+        <td class="sag mono">{{ k.suresiz }}</td>
+        <td class="sag mono">{{ k.sure_metni }}</td>
+        <td class="sag mono">{{ k.adam_saat|tr_kur:2 }}</td>
+        <td class="sag mono">{% if k.adet_saat is not None %}{{ k.adet_saat|tr_kur:1 }}{% else %}—{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="9" class="bos">Bu aralıkta kayıt yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2 class="bolum-baslik pt-ozet-baslik">Geçmiş</h2>
+<div class="tablo-kapsayici genis">
+<table>
+  <thead><tr><th>Tarih</th><th>Personel / Ekip</th><th>İstasyon</th><th>Operasyon / Çıktı</th><th class="sag">Sağlam</th><th class="sag">Fire</th><th class="sag">Fire %</th><th class="sag">Süre</th><th>Kaynak</th><th>Durum</th></tr></thead>
+  <tbody>
+    {% for s in sayfa %}
+      <tr data-href="{{ s.href }}">
+        <td class="mono"><a class="satir-bag" href="{{ s.href }}">{{ s.tarih|date:"d.m.Y" }}</a>{% if s.tur == "oturum" %}<br><small>{{ s.oturum.baslangic_zamani|tr_zaman:"H:i" }}</small>{% endif %}</td>
+        <td>{{ s.personel_metni }}</td>
+        <td><span class="pt-ist">{{ s.istasyon.kod }}</span> {{ s.istasyon.ad }}</td>
+        <td><span class="mono">{{ s.cikti.kod }}</span> {{ s.cikti.ad|truncatechars:34 }}{% if s.varyant %} <span class="pt-rozet">{{ s.varyant }}</span>{% endif %}</td>
+        <td class="sag mono">{% if s.saglam %}{{ s.saglam|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if s.fire %}{{ s.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if s.fire_yuzde is not None %}%{{ s.fire_yuzde|tr_kur:1 }}{% else %}—{% endif %}</td>
+        <td class="sag mono{% if s.acik %} pt-acik{% endif %}">{{ s.sure_metni }}</td>
+        <td>{% if s.kaynak == "emirsiz" %}<span class="pt-rozet">Emirsiz</span>{% else %}{% if s.us_pk %}<a href="{% url 'core:uretim_emri_detay' s.us_pk %}" class="mono">{{ s.kaynak_metni }}</a>{% else %}{{ s.kaynak_metni }}{% endif %}{% if s.kaynak == "ofis" %} <span class="pt-rozet" title="Ofisten açılan kayıt (oturumsuz)">ofis</span>{% endif %}{% endif %}</td>
+        <td>{% if s.acik %}<span class="pt-acik">Açık</span>{% elif s.iptal %}<span class="pt-soluk">İptal (iş yapılmadı)</span>{% else %}{{ s.durum }}{% endif %}{% if s.geri_alindi %}<br><small class="pt-soluk">kayıt geri alındı</small>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10" class="bos">Bu aralıkta kayıt yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if sayfa.has_other_pages %}
+<nav class="pt-sayfalama">
+  {% if sayfa.has_previous %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.previous_page_number }}">‹</a>{% endif %}
+  <span class="simdiki">{{ sayfa.number }} / {{ sayfa.paginator.num_pages }}</span>
+  {% if sayfa.has_next %}<a href="?{{ sabit_qs }}&sayfa={{ sayfa.next_page_number }}">›</a>{% endif %}
+</nav>
+{% endif %}
+{% endif %}
+{% endblock %}

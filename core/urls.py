@@ -432,6 +432,7 @@ urlpatterns = [
     path("hesap/sifre/", views.sifre_degistir, name="sifre_degistir"),
     path("atolye/", views.atolye, name="atolye"),
     path("atolye/mesai/", views.atolye_mesai, name="atolye_mesai"),
+    path("atolye/takip/", views.atolye_takip, name="atolye_takip"),
     path("atolye/istasyon/<int:pk>/", views.atolye_istasyon, name="atolye_istasyon"),
     path("atolye/emir/<int:pk>/basla/", views.atolye_oturum_baslat, name="atolye_oturum_baslat"),
     path("atolye/oturum/<int:pk>/bitir/", views.atolye_oturum_bitir, name="atolye_oturum_bitir"),

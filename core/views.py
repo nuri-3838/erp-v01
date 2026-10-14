@@ -126,6 +126,8 @@ from core.services import atolye as atolye_servis
 from core.services import is_oturumu as is_oturumu_servis
 from core.services import kritik_stok as kritik_stok_servis
 from core.services import is_oturumu_xlsx
+from core.services import is_takibi as is_takibi_servis
+from core.services import is_takibi_xlsx
 from core.services import stok_maliyet
 from core.services import yemek_takibi as yemek_takibi_servis
 from core.services import aday as aday_servis
@@ -10304,6 +10306,45 @@ def is_oturumlari(request):
         "istasyonlar": IsIstasyonu.objects.filter(silindi=False, fason=False).order_by("sira", "kod"),
         "personeller": personel_servis.aktif_personeller(), "durumlar": IsOturumu.Durum.choices, "toplam": toplam,
         "sabit_qs": sabit_qs.urlencode(), "xlsx_url": f"?{sabit_qs.urlencode()}&xlsx=1" if sabit_qs else "?xlsx=1"})
+
+
+@yonetici_gerekli
+def atolye_takip(request):
+    """ATÖLYE › Personel İş Takibi (yalnız yönetici): Şu an (açık oturumlar + boşta) / Geçmiş (oturumlar + oturumsuz kayıtlar, kişi ve istasyon özeti,
+    ``?xlsx=1`` üç sayfalı Excel). Operatör ekranına dokunmaz."""
+    g = request.GET
+    sekme = "gecmis" if g.get("sekme") == "gecmis" else "simdi"
+    an = timezone.now()
+    if sekme == "simdi":
+        return render(request, "core/atolye_takip.html", {"sekme": sekme, "simdi": is_takibi_servis.su_an(an), "an": an})
+    bugun = tr_bugun()
+    bas = _iso_tarih(g.get("bas")) or (bugun - datetime.timedelta(days=6))
+    bit = _iso_tarih(g.get("bit")) or bugun
+    if bit < bas:
+        bas, bit = bit, bas
+    if (bit - bas).days > 366:
+        bas = bit - datetime.timedelta(days=366)
+    personel = (g.get("personel") or "").strip()
+    istasyon = (g.get("istasyon") or "").strip()
+    kaynak = g.get("kaynak") if g.get("kaynak") in dict(is_takibi_servis.KAYNAKLAR) else ""
+    satirlar = is_takibi_servis.gecmis(baslangic=bas, bitis=bit, personel_id=int(personel) if personel.isdigit() else None,
+                                       istasyon_id=int(istasyon) if istasyon.isdigit() else None, kaynak=kaynak, simdi=an)
+    kisiler = is_takibi_servis.kisi_ozeti(satirlar, baslangic=bas, bitis=bit, simdi=an)
+    if personel.isdigit():
+        kisiler = [k for k in kisiler if k["personel"].pk == int(personel)]
+    istasyon_ozetleri = is_takibi_servis.istasyon_ozeti(satirlar)
+    if g.get("xlsx") == "1":
+        return _xlsx_yanit(is_takibi_xlsx.takip_xlsx(satirlar, kisiler, istasyon_ozetleri, bas, bit), f"personel_is_takibi_{bas:%Y%m%d}_{bit:%Y%m%d}")
+    sayfa = Paginator(satirlar, 50).get_page(g.get("sayfa"))
+    sabit_qs = g.copy()
+    sabit_qs.pop("sayfa", None)
+    sabit_qs.pop("xlsx", None)
+    sabit_qs["sekme"] = "gecmis"
+    return render(request, "core/atolye_takip.html", {
+        "sekme": sekme, "an": an, "bas": bas, "bit": bit, "personel": personel, "istasyon": istasyon, "kaynak": kaynak, "kaynaklar": is_takibi_servis.KAYNAKLAR,
+        "sayfa": sayfa, "kisiler": kisiler, "istasyon_ozetleri": istasyon_ozetleri, "toplam": is_takibi_servis.toplamlar(satirlar),
+        "istasyonlar": IsIstasyonu.objects.filter(silindi=False, fason=False).order_by("sira", "kod"), "personeller": personel_servis.aktif_personeller(),
+        "sabit_qs": sabit_qs.urlencode(), "xlsx_url": f"?{sabit_qs.urlencode()}&xlsx=1"})
 
 
 @ekran_gerekli("mesai_kayitlari")

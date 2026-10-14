@@ -11,6 +11,7 @@ class Ekran:
     kod: str       # benzersiz anahtar (yetki sisteminin kullanacağı)
     ad: str        # menüde görünen ad
     url_adi: str   # Django URL adı (namespace dahil)
+    yonetici: bool = False   # True ise (modül herkese açık olsa da) yalnızca yöneticiye görünür; görünüm de yonetici_gerekli ile korunur
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,7 @@ MODULLER = (
     )),
     Modul("ATOLYE", "Atölye", (
         Ekran("atolye", "Atölye (Operatör Ekranı)", "core:atolye"),
+        Ekran("personel_is_takibi", "Personel İş Takibi", "core:atolye_takip", yonetici=True),
     )),
     Modul("AYARLAR", "Ayarlar", (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),

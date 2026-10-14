@@ -82,7 +82,7 @@ def kullanici_menusu(user):
         if yonetici or m.yonetici_modulu:
             ekranlar = m.ekranlar
         else:
-            ekranlar = tuple(e for e in m.ekranlar if e.kod in kodlar)
+            ekranlar = tuple(e for e in m.ekranlar if e.kod in kodlar and not e.yonetici)
         if ekranlar:
             menu.append(replace(m, ekranlar=ekranlar))
     return menu
