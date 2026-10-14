@@ -1843,6 +1843,98 @@ def cariler(request):
         "sabit_qs": sabit.urlencode(), "xlsx_url": "?" + (sabit.urlencode() + "&" if sabit else "") + "xlsx=1"})
 
 
+# --- CARİ RAPORLARI (salt-okunur; Cariler > Raporlar) ---------------------------------------------------------------------------------------------------
+def _cari_rapor_baglami(request):
+    """Cari raporlarının ortak parçası: kategori süzgeci (yalnız en az bir carinin kullandığı), Excel bağlantısı, bağlantı üretici (sekme/sıralama için)."""
+    g = request.GET
+    kategori_id = g.get("kategori") if (g.get("kategori") or "").isdigit() else ""
+    kategoriler = (CariKategori.objects.filter(silindi=False, pk__in=Cari.objects.filter(silindi=False).exclude(kategori=None).values("kategori_id"))
+                   .select_related("ust").order_by("ust__kod", "kod"))
+    sabit = g.copy()
+    sabit.pop("xlsx", None)
+
+    def baglanti(**degisen):
+        q = sabit.copy()
+        for k, v in degisen.items():
+            q[k] = v
+        return "?" + q.urlencode()
+    return {"kategori_id": kategori_id, "kategoriler": kategoriler, "baglanti": baglanti,
+            "xlsx_url": "?" + (sabit.urlencode() + "&" if sabit else "") + "xlsx=1"}
+
+
+def _pb_param(request):
+    pb = (request.GET.get("pb") or "").upper()
+    return pb if pb in ("TRY", "USD", "EUR", "GBP") else ""
+
+
+@ekran_gerekli("cari_yaslandirma")
+def cari_yaslandirma(request):
+    """Yaşlandırma: tarih itibarıyla açık fatura kalanları vade dilimlerine göre; Alacak (müşteri) / Borç (tedarikçi) sekmeleri; PB başına ayrı tablo."""
+    from core.services import cari_rapor, cari_rapor_cikti
+    b = _cari_rapor_baglami(request)
+    tarih = _tarih_param(request, "tarih") or tr_bugun()
+    rapor = cari_rapor.yaslandirma(tarih, request.GET.get("sekme") or "alacak", _pb_param(request), b["kategori_id"])
+    if request.GET.get("xlsx") == "1":
+        return _xlsx_yanit(cari_rapor_cikti.yaslandirma_xlsx(rapor), f"cari_yaslandirma_{rapor['sekme']}_{tarih:%Y%m%d}")
+    sekmeler = [{"kod": k, "ad": ad, "adet": rapor["sekme_adetleri"][k], "aktif": k == rapor["sekme"], "url": b["baglanti"](sekme=k, pb="")}
+                for k, ad in cari_rapor.SEKMELER]
+    return render(request, "core/cari_rapor_yaslandirma.html", {
+        "rapor": rapor, "tarih": tarih, "sekmeler": sekmeler, "dilimler": cari_rapor.DILIMLER, "pb": _pb_param(request),
+        "kategori_id": b["kategori_id"], "kategoriler": b["kategoriler"], "xlsx_url": b["xlsx_url"]})
+
+
+@ekran_gerekli("cari_vadesi_gecenler")
+def cari_vadesi_gecenler(request):
+    """Vadesi geçmiş açık faturalar (tarih itibarıyla; varsayılan bugün), gecikme gününe göre azalan."""
+    from core.services import cari_rapor, cari_rapor_cikti
+    b = _cari_rapor_baglami(request)
+    tarih = _tarih_param(request, "tarih") or tr_bugun()
+    sekme = request.GET.get("sekme") if request.GET.get("sekme") in cari_rapor.SEKME_ANAHTARLARI else ""
+    rapor = cari_rapor.vadesi_gecenler(tarih, sekme, _pb_param(request), b["kategori_id"])
+    if request.GET.get("xlsx") == "1":
+        return _xlsx_yanit(cari_rapor_cikti.vadesi_gecenler_xlsx(rapor), f"cari_vadesi_gecenler_{tarih:%Y%m%d}")
+    return render(request, "core/cari_rapor_vadesi_gecenler.html", {
+        "rapor": rapor, "tarih": tarih, "sekme": sekme, "sekmeler": cari_rapor.SEKMELER, "pb": _pb_param(request),
+        "kategori_id": b["kategori_id"], "kategoriler": b["kategoriler"], "xlsx_url": b["xlsx_url"]})
+
+
+@ekran_gerekli("cari_bakiye_tarih")
+def cari_bakiye_tarih(request):
+    """Seçilen tarih itibarıyla tüm cari bakiyeleri (TL + döviz havuzları); bakiyesizleri gizle (varsayılan açık), kategori ve tür süzgeci."""
+    from core.services import cari_rapor, cari_rapor_cikti
+    b = _cari_rapor_baglami(request)
+    g = request.GET
+    tarih = _tarih_param(request, "tarih") or tr_bugun()
+    tur = g.get("tur") if g.get("tur") in ("ticari", "diger") else ""
+    gizle = g.get("bakiyesiz") != "1"                                  # kutu işaretliyse bakiyesizler de gösterilir
+    rapor = cari_rapor.bakiye_listesi(tarih, b["kategori_id"], tur, gizle)
+    if g.get("xlsx") == "1":
+        return _xlsx_yanit(cari_rapor_cikti.bakiye_xlsx(rapor), f"cari_bakiyeler_{tarih:%Y%m%d}")
+    return render(request, "core/cari_rapor_bakiye.html", {
+        "rapor": rapor, "tarih": tarih, "tur": tur, "bakiyesiz_goster": not gizle, "tur_secenekleri": cari_rapor.cari_ozet.TUR_SECENEKLERI,
+        "kategori_id": b["kategori_id"], "kategoriler": b["kategoriler"], "xlsx_url": b["xlsx_url"]})
+
+
+@ekran_gerekli("cari_ciro")
+def cari_ciro(request):
+    """Cari ciro özeti: dönem içinde cari bazında satış / alış (KDV hariç TL; brüt, iade, net) ve belge sayıları; en yüksekten sıralı."""
+    from core.services import cari_rapor, cari_rapor_cikti
+    b = _cari_rapor_baglami(request)
+    g = request.GET
+    varsayilan_bas, varsayilan_bit = mali_yil_araligi()
+    bas, bit = _tarih_param(request, "bas") or varsayilan_bas, _tarih_param(request, "bit") or varsayilan_bit
+    if bas > bit:
+        bas, bit = bit, bas
+    tur = g.get("tur") if g.get("tur") in ("ticari", "diger") else ""
+    sirala = g.get("sirala") if g.get("sirala") in {k for k, _ in cari_rapor.SIRALAMALAR} else "toplam"
+    rapor = cari_rapor.ciro(bas, bit, b["kategori_id"], tur, sirala)
+    if g.get("xlsx") == "1":
+        return _xlsx_yanit(cari_rapor_cikti.ciro_xlsx(rapor), f"cari_ciro_{bas:%Y%m%d}_{bit:%Y%m%d}")
+    return render(request, "core/cari_rapor_ciro.html", {
+        "rapor": rapor, "bas": bas, "bit": bit, "tur": tur, "sirala": sirala, "siralamalar": cari_rapor.SIRALAMALAR, "tur_secenekleri": cari_rapor.cari_ozet.TUR_SECENEKLERI,
+        "kategori_id": b["kategori_id"], "kategoriler": b["kategoriler"], "xlsx_url": b["xlsx_url"]})
+
+
 @ekran_gerekli("cariler")
 def cari_ekle(request):
     mukerrer = []

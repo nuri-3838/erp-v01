@@ -107,6 +107,10 @@ MODULLER = (
     )),
     Modul("CARILER", "Cariler", (
         Ekran("cariler", "Cariler", "core:cariler"),
+        Ekran("cari_yaslandirma", "Yaşlandırma", "core:cari_yaslandirma", grup="Raporlar"),
+        Ekran("cari_vadesi_gecenler", "Vadesi Geçenler", "core:cari_vadesi_gecenler", grup="Raporlar"),
+        Ekran("cari_bakiye_tarih", "Tarih İtibarıyla Bakiye", "core:cari_bakiye_tarih", grup="Raporlar"),
+        Ekran("cari_ciro", "Cari Ciro Özeti", "core:cari_ciro", grup="Raporlar"),
         Ekran("cari_kategoriler", "Cari Kategorileri", "core:cari_kategoriler", grup="Tanımlar",
               ilgili=("core:cari_kategori_ekle", "core:cari_kategori_duzenle", "core:cari_kategori_sil")),
         Ekran("lokasyonlar", "Ülke / Şehir", "core:lokasyonlar", grup="Tanımlar",

@@ -32,14 +32,17 @@ SIRALAMA_ANAHTARLARI = ("cari", "kategori", "sehir", "bakiye", "hareket")
 
 
 # --------------------------------------------------------------------------------------------------- toplu bakiye
-def bakiyeler(cariler) -> dict:
-    """{cari pk: {"tl", "doviz": {pb: net}, "son", "adet"}} — TÜM cariler için TEK gruplu sorgu + döviz için bir sorgu (N+1 yok)."""
+def bakiyeler(cariler, tarih=None) -> dict:
+    """{cari pk: {"tl", "doviz": {pb: net}, "son", "adet"}} — TÜM cariler için TEK gruplu sorgu + döviz için bir sorgu (N+1 yok).
+    ``tarih`` verilirse yalnız fiş tarihi ≤ tarih olan hareketler (TARİH İTİBARIYLA bakiye; cari raporları)."""
     cariler = list(cariler)
     sonuc = {c.pk: {"tl": SIFIR, "doviz": {}, "son": None, "adet": 0} for c in cariler}
     kodlar = {c.muhasebe_kodu: c.pk for c in cariler if c.muhasebe_kodu}
     if not kodlar:
         return sonuc
     temel = YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id__in=list(kodlar))
+    if tarih is not None:
+        temel = temel.filter(fis__tarih__lte=tarih)
     for r in temel.values("hesap_id").annotate(tl_borc=Sum("borc"), tl_alacak=Sum("alacak"), son=Max("fis__tarih"), adet=Count("id")):
         d = sonuc[kodlar[r["hesap_id"]]]
         d["tl"] = (r["tl_borc"] or SIFIR) - (r["tl_alacak"] or SIFIR)

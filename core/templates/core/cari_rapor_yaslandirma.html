@@ -1,0 +1,60 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Yaşlandırma · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Cari Yaşlandırma{% endblock %}
+
+{% block content %}
+{% include "core/_cari_rapor_stil.html" %}
+<div class="rp-ust">
+  <h1 class="ust-baslik"><span class="emoji">⏳</span>Yaşlandırma</h1>
+  <a class="dugme-ikincil" href="{{ xlsx_url }}">⬇ Excel</a>
+</div>
+<p class="yardim"><strong>{{ tarih|date:"d.m.Y" }}</strong> itibarıyla açık fatura kalanları. Ödeme/tahsilat/mahsup/iadeler aynı para biriminde en eski faturadan düşülür.
+  Vade günü “vadesi gelmemiş” sayılır; para birimleri ayrı tablolardadır, toplanmaz.</p>
+
+<form method="get" class="rp-filtre">
+  <input type="hidden" name="sekme" value="{{ rapor.sekme }}">
+  <div class="rp-alan"><label for="rp-tarih">Tarih</label><input type="date" id="rp-tarih" name="tarih" value="{{ tarih|date:'Y-m-d' }}"></div>
+  <div class="rp-alan"><label for="rp-kat">Kategori</label>
+    <select id="rp-kat" name="kategori"><option value="">Tüm kategoriler</option>
+      {% for k in kategoriler %}<option value="{{ k.pk }}"{% if kategori_id == k.pk|stringformat:"s" %} selected{% endif %}>{{ k.ad }}</option>{% endfor %}</select></div>
+  <div class="rp-alan"><label for="rp-pb">Para birimi</label>
+    <select id="rp-pb" name="pb"><option value="">Tümü</option>
+      {% for p in rapor.pb_secenekleri %}<option value="{{ p }}"{% if pb == p %} selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
+  <button type="submit" class="birincil">Göster</button>
+</form>
+
+<nav class="rp-sekmeler">
+  {% for s in sekmeler %}<a href="{{ s.url }}" class="{% if s.aktif %}aktif{% endif %}">{{ s.ad }} <span class="adet">{{ s.adet }} fatura</span></a>{% endfor %}
+</nav>
+
+{% for t in rapor.tablolar %}
+<h2 class="rp-baslik">{{ t.pb }}</h2>
+<div class="tablo-kapsayici genis">
+<table class="rp-tablo">
+  <thead><tr>
+    <th>Cari</th>
+    {% for k, ad in dilimler %}<th class="sag">{{ ad }}</th>{% endfor %}
+    <th class="sag">Toplam</th><th class="sag">Açık fatura</th>
+  </tr></thead>
+  <tbody>
+    {% for s in t.satirlar %}
+    <tr data-href="{% url 'core:cari_detay' s.cari.pk %}">
+      <td class="ad"><a class="satir-bag" href="{% url 'core:cari_detay' s.cari.pk %}">{{ s.cari.unvan }}</a><span class="kod">{{ s.cari.kod }}</span></td>
+      {% for v in s.hucreler %}<td class="sag mono">{% if v %}{{ v|tr_para }}{% else %}<span class="sifir">—</span>{% endif %}</td>{% endfor %}
+      <td class="sag mono"><strong>{{ s.toplam|tr_para }}</strong></td>
+      <td class="sag mono">{{ s.adet }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot><tr>
+    <th>TOPLAM ({{ t.pb }})</th>
+    {% for v in t.toplam.hucreler %}<td class="sag mono">{{ v|tr_para }}</td>{% endfor %}
+    <td class="sag mono">{{ t.toplam.toplam|tr_para }}</td><td class="sag mono">{{ t.toplam.adet }}</td>
+  </tr></tfoot>
+</table>
+</div>
+{% empty %}
+<div class="uyari"><div>Bu tarihte {% if pb %}{{ pb }} para biriminde {% endif %}açık fatura yok.</div></div>
+{% endfor %}
+{% endblock %}

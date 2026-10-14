@@ -20,14 +20,16 @@ class MenuYapisiTest(TestCase):
     def test_cariler_tanimlar_alt_menusu(self):
         m = next(m for m in MODULLER if m.kod == "CARILER")
         ogeler = m.ogeler
-        self.assertEqual([o.ad for o in ogeler], ["Cariler", "Tanımlar"])
-        self.assertIsInstance(ogeler[1], MenuGrup)
-        self.assertEqual([e.kod for e in ogeler[1].ekranlar], ["cari_kategoriler", "lokasyonlar", "vergi_daireleri"])
-        self.assertEqual(ogeler[1].kod, "CARILER:Tanımlar")
+        self.assertEqual([o.ad for o in ogeler], ["Cariler", "Raporlar", "Tanımlar"])
+        self.assertIsInstance(ogeler[2], MenuGrup)
+        self.assertEqual([e.kod for e in ogeler[2].ekranlar], ["cari_kategoriler", "lokasyonlar", "vergi_daireleri"])
+        self.assertEqual([e.kod for e in ogeler[1].ekranlar], ["cari_yaslandirma", "cari_vadesi_gecenler", "cari_bakiye_tarih", "cari_ciro"])
+        self.assertEqual((ogeler[1].kod, ogeler[2].kod), ("CARILER:Raporlar", "CARILER:Tanımlar"))
         self.assertFalse(ogeler[0].alt_menu)
-        self.assertTrue(ogeler[1].alt_menu)
-        # düz liste (yetki ekranı / testler) aynen: 4 ekran
-        self.assertEqual([e.kod for e in m.ekranlar], ["cariler", "cari_kategoriler", "lokasyonlar", "vergi_daireleri"])
+        self.assertTrue(ogeler[1].alt_menu and ogeler[2].alt_menu)
+        # düz liste (yetki ekranı / testler) aynen: tüm ekranlar
+        self.assertEqual([e.kod for e in m.ekranlar], ["cariler", "cari_yaslandirma", "cari_vadesi_gecenler", "cari_bakiye_tarih", "cari_ciro",
+                                                       "cari_kategoriler", "lokasyonlar", "vergi_daireleri"])
 
     def test_genel_yapi_birden_cok_grup_sira_ve_bos_grup(self):
         m = Modul("X", "X", (Ekran("a", "A", "core:a"), Ekran("b", "B", "core:b", grup="G1"), Ekran("c", "C", "core:c"),
@@ -64,7 +66,7 @@ class MenuYetkiTest(TestCase):
             EkranYetki.objects.create(kullanici=cls.hepsi, ekran_kod=kod)
 
     def test_yonetici_hepsini_gorur(self):
-        self.assertEqual([o.ad for o in _cariler(self.yon).ogeler], ["Cariler", "Tanımlar"])
+        self.assertEqual([o.ad for o in _cariler(self.yon).ogeler], ["Cariler", "Raporlar", "Tanımlar"])
 
     def test_yetkisiz_oge_gorunmez_ve_bos_tanimlar_gorunmez(self):
         self.assertEqual([o.ad for o in _cariler(self.sadece_liste).ogeler], ["Cariler"])            # Tanımlar yok
@@ -90,8 +92,10 @@ class MenuRenderTest(TestCase):
         return h[h.index('<nav class="yan-menu">'):h.index("</nav>", h.index('<nav class="yan-menu">'))]
 
     def _alt(self, menu):
-        m = re.search(r'<details class="alt-menu[^"]*"[^>]*>.*?</details>', menu, re.S)
-        return m.group(0) if m else ""
+        for g in re.findall(r'<details class="alt-menu[^"]*"[^>]*>.*?</details>', menu, re.S):
+            if "Tanımlar" in g:                                                                          # (Raporlar alt menüsü ayrı testte)
+                return g
+        return ""
 
     def test_varsayilan_kapali_ve_uc_baglanti(self):
         alt = self._alt(self._menu(reverse("core:pano")))
@@ -127,4 +131,4 @@ class MenuRenderTest(TestCase):
     def test_diger_menu_ogeleri_bozulmadi(self):
         menu = self._menu(reverse("core:mizan"))
         self.assertRegex(menu, rf'<a href="{re.escape(reverse("core:mizan"))}" class="aktif">Mizan</a>')
-        self.assertEqual(menu.count('<details class="alt-menu'), 1)
+        self.assertEqual(menu.count('<details class="alt-menu'), 2)                                    # Raporlar + Tanımlar

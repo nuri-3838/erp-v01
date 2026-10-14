@@ -1,0 +1,51 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Tarih İtibarıyla Bakiye · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Tarih İtibarıyla Bakiye{% endblock %}
+
+{% block content %}
+{% include "core/_cari_rapor_stil.html" %}
+<div class="rp-ust">
+  <h1 class="ust-baslik"><span class="emoji">🗓️</span>Tarih İtibarıyla Bakiye</h1>
+  <a class="dugme-ikincil" href="{{ xlsx_url }}">⬇ Excel</a>
+</div>
+<p class="yardim"><strong>{{ tarih|date:"d.m.Y" }}</strong> itibarıyla cari bakiyeleri (fiş tarihi ≤ tarih; yevmiyeden hesaplanır). {{ rapor.satirlar|length }} cari.
+  <span class="bk-b">B</span> = Borç (cari bize borçlu), <span class="bk-a">A</span> = Alacak (biz cariye borçluyuz).</p>
+
+<form method="get" class="rp-filtre">
+  <div class="rp-alan"><label for="rp-tarih">Tarih</label><input type="date" id="rp-tarih" name="tarih" value="{{ tarih|date:'Y-m-d' }}"></div>
+  <div class="rp-alan"><label for="rp-tur">Tür</label>
+    <select id="rp-tur" name="tur">{% for k, v in tur_secenekleri %}<option value="{{ k }}"{% if tur == k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="rp-alan"><label for="rp-kat">Kategori</label>
+    <select id="rp-kat" name="kategori"><option value="">Tüm kategoriler</option>
+      {% for k in kategoriler %}<option value="{{ k.pk }}"{% if kategori_id == k.pk|stringformat:"s" %} selected{% endif %}>{{ k.ad }}</option>{% endfor %}</select></div>
+  <div class="rp-alan rp-onay"><input type="checkbox" id="rp-bks" name="bakiyesiz" value="1"{% if bakiyesiz_goster %} checked{% endif %}><label for="rp-bks">Bakiyesizleri de göster</label></div>
+  <button type="submit" class="birincil">Göster</button>
+</form>
+
+<div class="rp-ozet">
+  <span><span class="etiket">TL borç bakiyeler:</span> <span class="deger mono">{{ rapor.tl_borc|tr_para }}</span></span>
+  <span><span class="etiket">TL alacak bakiyeler:</span> <span class="deger mono">{{ rapor.tl_alacak|tr_para }}</span></span>
+  <span><span class="etiket">Net (TL):</span> <span class="deger mono">{{ rapor.tl_net|tr_bakiye }}</span></span>
+  {% for pb, borc, alacak, net in rapor.doviz_toplam %}<span><span class="etiket">{{ pb }} (borç / alacak / net):</span> <span class="deger mono">{{ borc|tr_para }} / {{ alacak|tr_para }} / {{ net|tr_bakiye }}</span></span>{% endfor %}
+</div>
+
+<div class="tablo-kapsayici genis">
+<table class="rp-tablo">
+  <thead><tr><th>Cari</th><th>Kategori</th><th class="sag">Bakiye TL</th><th class="sag">Bakiye döviz</th><th>Son hareket</th></tr></thead>
+  <tbody>
+    {% for s in rapor.satirlar %}
+    <tr data-href="{% url 'core:cari_detay' s.cari.pk %}">
+      <td class="ad"><a class="satir-bag" href="{% url 'core:cari_detay' s.cari.pk %}">{{ s.cari.unvan }}</a>{% if not s.cari.aktif %} <span class="rozet rozet-notr">PASİF</span>{% endif %}<span class="kod">{{ s.cari.kod }}</span></td>
+      <td>{% if s.cari.kategori %}<span class="rozet rozet-notr">{{ s.cari.kategori.ad }}</span>{% else %}<span class="sifir">—</span>{% endif %}</td>
+      <td class="sag mono">{% if s.tl > 0 %}<span class="bk-b">{{ s.tl|tr_bakiye }}</span>{% elif s.tl < 0 %}<span class="bk-a">{{ s.tl|tr_bakiye }}</span>{% else %}<span class="sifir">—</span>{% endif %}</td>
+      <td class="sag mono">{% for m in s.doviz_metin %}<div>{{ m }}</div>{% empty %}<span class="sifir">—</span>{% endfor %}</td>
+      <td class="mono">{% if s.son %}{{ s.son|date:"d.m.Y" }}{% else %}<span class="sifir">—</span>{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5" class="yardim" style="text-align:center;padding:1.6rem 0">Bu tarihte bakiyeli cari yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

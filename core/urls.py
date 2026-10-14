@@ -227,6 +227,10 @@ urlpatterns = [
     # CARİLER modülü
     path("cariler/liste/", views.cariler, name="cariler"),
     path("cariler/ekle/", views.cari_ekle, name="cari_ekle"),
+    path("cariler/raporlar/yaslandirma/", views.cari_yaslandirma, name="cari_yaslandirma"),
+    path("cariler/raporlar/vadesi-gecenler/", views.cari_vadesi_gecenler, name="cari_vadesi_gecenler"),
+    path("cariler/raporlar/bakiye/", views.cari_bakiye_tarih, name="cari_bakiye_tarih"),
+    path("cariler/raporlar/ciro/", views.cari_ciro, name="cari_ciro"),
     path("api/cari-kod/", views.cari_kod_api, name="cari_kod_api"),
     path("cariler/<int:pk>/", views.cari_detay, name="cari_detay"),
     path("cariler/<int:pk>/ekstre/", views.cari_ekstresi, name="cari_ekstresi"),
