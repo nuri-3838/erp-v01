@@ -6,6 +6,7 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from core.tests.kesinti_yardim import onayli_post
 
 from core.models import Cari, EkranYetki, Kur, YevmiyeSatir
 from core.services import cari_kesinti as ck
@@ -107,7 +108,7 @@ class KesintiDovizTest(TestCase):
         r = self.client.get(reverse("core:cari_kesinti_ekle", args=[self.formal.pk]))
         self.assertContains(r, "id_para_birimi")
         self.assertContains(r, "Açık bakiyeler")
-        r = self.client.post(reverse("core:cari_kesinti_ekle", args=[self.formal.pk]), {
+        r = onayli_post(self.client, reverse("core:cari_kesinti_ekle", args=[self.formal.pk]), {
             "tarih": "2026-09-07", "tutar": "400,00", "para_birimi": "USD", "kur": "45,000000", "gider": "770.03",
             "karsi_cari": self.nuri.pk, "aciklama": ""})
         self.assertRedirects(r, reverse("core:cari_ekstresi", args=[self.formal.pk]))

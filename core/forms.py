@@ -3601,6 +3601,7 @@ class CariKesintiForm(forms.Form):
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
     tutar = TRDecimalField(label="Tutar", basamak=2)
+    yon = forms.ChoiceField(label="Yön", required=False, initial="kapat", choices=[])
     # Yalnız döviz carilerinde (ekranda): cari satırının para birimi + kur (döviz seçilince; boşsa TCMB).
     para_birimi = forms.ChoiceField(label="Para birimi", required=False, initial="TRY",
                                     choices=[("TRY", "TRY (TL)"), ("USD", "USD"), ("EUR", "EUR"), ("GBP", "GBP")])
@@ -3624,6 +3625,11 @@ class CariKesintiForm(forms.Form):
 
     def __init__(self, *args, ortak_secenegi=True, doviz_secenegi=False, **kwargs):
         super().__init__(*args, **kwargs)
+        if ortak_secenegi:                                    # 500.xx ortak carisinde yön seçimi yok (eski kural)
+            from core.services.cari_kesinti import YON_SECENEKLERI
+            self.fields["yon"].choices = YON_SECENEKLERI
+        else:
+            del self.fields["yon"]
         if not doviz_secenegi:
             del self.fields["para_birimi"], self.fields["kur"], self.fields["sayilan_pb"]
         else:

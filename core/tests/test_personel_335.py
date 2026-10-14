@@ -10,6 +10,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
+from core.tests.kesinti_yardim import onayli_post
 
 from core.models import Cari, CariKategori, EkranYetki, HesapPlani, Kur, YevmiyeFisi, YevmiyeSatir
 from core.services import banka_hareket as bh
@@ -136,6 +137,6 @@ class PersonelEkranlarTest(PersonelBase):
         r = self.client.get(reverse("core:cari_kesinti_ekle", args=[self.errahman.pk]))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Karşı cari")
-        r = self.client.post(reverse("core:cari_kesinti_ekle", args=[self.errahman.pk]), {
+        r = onayli_post(self.client, reverse("core:cari_kesinti_ekle", args=[self.errahman.pk]), {
             "tarih": "2026-05-11", "tutar": "1.000,00", "gider": "", "karsi_cari": self.nuri.pk, "aciklama": ""})
         self.assertRedirects(r, reverse("core:cari_ekstresi", args=[self.errahman.pk]))

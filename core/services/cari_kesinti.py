@@ -5,7 +5,10 @@ kullanıcı) kalıcı Sil vardır.
 Hesap listesi: gider hesapları (7xx/65x/66x/68x), 258 YAPILMAKTA OLAN YATIRIMLAR (yatırım projesi ZORUNLU, proje "Devam
 Ediyor" olmalı; satır projeye yazılır — proje toplamı tutar kadar düşer/artar, karta maliyet olarak BAĞLANMAZ) ve gelir
 hesapları (64x / 67x yaprak, ör. 649; 679 pasif — birleştirildi).
-Yön cari hesabının türünden gelir (otomatik; hesap türünden bağımsız):
+YÖN SEÇİMİ (2026-10-14): formda "Yön" — Bakiyeyi kapat [varsayılan: o para birimi havuzunun MEVCUT bakiyesinin tersine yazar; bakiye 0 ise cari
+türünün varsayılanı] / Cari borç / Cari alacak. 500.xx ortak carisinde seçim yoktur (eski kural). Kaydetmeden önce ``onizle`` satırları + bakiye
+önce/sonra + uyarı (tutar bakiyeyi aşar / yön bakiyeyi büyütür) gösterir; kayıt, önizlemedeki satırlarla birebir aynı ``imza`` ile onaylanır.
+Cari türünden gelen varsayılan yön (``yon_secimi`` verilmediğinde ve bakiye 0 iken):
   120/121 (müşteri / alacak tarafı): Gider BORÇ / Cari ALACAK — müşteri ödemesinden kesilen gider (ör. güvenli ödeme
       masrafı) cari bakiyesini kapatır; kuruş farkları da böyle girilir.
   320/321 (tedarikçi / borç tarafı): Cari BORÇ / Gider ALACAK — tedarikçiden gelen kesinti/indirim.
@@ -52,6 +55,39 @@ def yon_coz(cari):
         return "tedarikci"
     raise CariKesintiHatasi(
         f"{cari.unvan} carisinin muhasebe hesabı ({kod or 'yok'}) 120/320/500 ailesinde değil; yön belirlenemedi.")
+
+
+YON_KAPAT, YON_CARI_BORC, YON_CARI_ALACAK = "kapat", "cari_borc", "cari_alacak"
+YON_SECENEKLERI = [(YON_KAPAT, "Bakiyeyi kapat (mevcut bakiyenin tersine yaz)"),
+                   (YON_CARI_BORC, "Cari BORÇ / Hesap ALACAK"),
+                   (YON_CARI_ALACAK, "Cari ALACAK / Hesap BORÇ")]
+
+
+def havuz_net(cari, pb="TRY", haric_fis=None) -> Decimal:
+    """Carinin ``pb`` havuzundaki net bakiyesi (işlem tutarı): + = cari BORÇ bakiyeli (cari bize borçlu), − = ALACAK bakiyeli (biz borçluyuz).
+    ``haric_fis``: düzenlenen fiş bakiyeden çıkarılır."""
+    from core.models import YevmiyeSatir
+    q = YevmiyeSatir.objects.filter(hesap_id=cari.muhasebe_kodu, silindi=False, fis__silindi=False, islem_pb=pb)
+    if haric_fis is not None:
+        q = q.exclude(fis_id=haric_fis.pk)
+    return sum((s.islem_tutari if s.borc else -s.islem_tutari for s in q), Decimal("0"))
+
+
+def etkin_yon(cari, yon_secimi, pb="TRY", haric_fis=None):
+    """Kesinti yönü: 'musteri' (Cari ALACAK / Hesap BORÇ) ya da 'tedarikci' (Cari BORÇ / Hesap ALACAK).
+    ``yon_secimi`` None/boş ya da cari 500.xx (ortak) → cari türünden gelen eski kural. 'kapat' → mevcut bakiyenin TERSİ
+    (cari borçlu → Cari ALACAK; biz borçluyuz → Cari BORÇ); bakiye 0 ise cari türünün varsayılanı."""
+    varsayilan = yon_coz(cari)
+    if (cari.muhasebe_kodu or "").startswith("500.") or yon_secimi in (None, ""):
+        return varsayilan
+    if yon_secimi == YON_CARI_ALACAK:
+        return "musteri"
+    if yon_secimi == YON_CARI_BORC:
+        return "tedarikci"
+    if yon_secimi == YON_KAPAT:
+        net = havuz_net(cari, pb, haric_fis)
+        return "musteri" if net > 0 else "tedarikci" if net < 0 else varsayilan
+    raise CariKesintiHatasi("Geçersiz yön seçimi.")
 
 
 def ortak_cariler():
@@ -197,23 +233,67 @@ def havuz_bakiyeleri(cari):
             for pb, (d, t) in sorted(h.items()) if d != 0 or t != 0]
 
 
-@transaction.atomic
-def kesinti_olustur(*, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
-                    kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None, sayilan_pb=None) -> YevmiyeFisi:
-    from core.services.cari import pasif_kontrol
-    pasif_kontrol(cari, CariKesintiHatasi, ne="Yeni kesinti/masraf")
-    pasif_kontrol(karsi_cari, CariKesintiHatasi, ne="Yeni kesinti/masraf")
+def _plan(*, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None, karsi_cari=None, para_birimi="TRY", kur=None,
+          sayilan_pb=None, yon_secimi=None, haric_fis=None):
+    """Kesinti/masraf fişinin satırları + açıklaması (kayıt ve ÖNİZLEME aynı yolu kullanır; hiçbir şey yazmaz). (satirlar, açıklama, yon)."""
     karsi = karsi_cari_coz(cari, karsi_cari)
     tut = _tutar(tutar)
     pb, kur = pb_kur_coz(cari, para_birimi, kur, tarih)
     if karsi is not None:                       # ortak, carinin borcunu ödedi
-        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut, pb, kur, sayilan_pb, tarih), (
-            buyuk_harf_tr((aciklama or "").strip()) or buyuk_harf_tr(f"ORTAK ÖDEMESİ - {cari.unvan} ({karsi.unvan})"))
-    else:
-        yon = yon_coz(cari)
-        gider = gider_hesabi_coz(gider_kodu)
-        proje_id = proje_coz(gider, yatirim_projesi_id)
-        satirlar, ack = _satirlar(cari, gider, tut, yon, proje_id, pb, kur), _ack(cari, aciklama, yon)
+        return (_satirlar_karsi_cari(cari, karsi, tut, pb, kur, sayilan_pb, tarih),
+                buyuk_harf_tr((aciklama or "").strip()) or buyuk_harf_tr(f"ORTAK ÖDEMESİ - {cari.unvan} ({karsi.unvan})"), "ortak")
+    yon = etkin_yon(cari, yon_secimi, pb, haric_fis)
+    gider = gider_hesabi_coz(gider_kodu)
+    proje_id = proje_coz(gider, yatirim_projesi_id)
+    return _satirlar(cari, gider, tut, yon, proje_id, pb, kur), _ack(cari, aciklama, yon), yon
+
+
+def _tl(s):
+    """Plan satırının TL karşılığı (``yevmiye`` ile aynı kural: tl_override, yoksa yuvarla(tutar × kur))."""
+    if s.tl_override is not None:
+        return yuvarla(Decimal(str(s.tl_override)), 2)
+    return yuvarla(Decimal(str(s.islem_tutari)) * Decimal(str(s.islem_kuru)), 2)
+
+
+def onizle(*, cari, haric_fis=None, **alanlar) -> dict:
+    """KAYDETMEDEN fiş önizlemesi: satırlar (hesap, B/A, tutar), toplamlar, cari bakiyesi önce/sonra ve uyarılar.
+    ``imza``: gösterilen satırların özeti — kayıt ancak kullanıcının gördüğü önizlemeyle birebir aynı satırlar yazılacaksa yapılır."""
+    import hashlib
+    satirlar, ack, yon = _plan(cari=cari, haric_fis=haric_fis, **alanlar)
+    adlar = dict(HesapPlani.objects.filter(hesap_kodu__in={s.hesap_kodu for s in satirlar}).values_list("hesap_kodu", "hesap_adi"))
+    rows = []
+    for s in satirlar:
+        tl = _tl(s)
+        rows.append({"hesap_kodu": s.hesap_kodu, "hesap_adi": adlar.get(s.hesap_kodu, ""), "taraf": s.taraf, "borc": tl if s.taraf == "B" else Decimal("0.00"),
+                     "alacak": tl if s.taraf == "A" else Decimal("0.00"), "pb": s.islem_pb, "doviz": Decimal(str(s.islem_tutari)), "kur": Decimal(str(s.islem_kuru)),
+                     "cari_satiri": s.hesap_kodu == cari.muhasebe_kodu})
+    cari_s = next(r for r in rows if r["cari_satiri"])
+    pb = cari_s["pb"]
+    once = havuz_net(cari, pb, haric_fis)
+    sonra = once + (cari_s["doviz"] if cari_s["taraf"] == "B" else -cari_s["doviz"])
+    uyarilar = []
+    taraf_ad = lambda n: "BORÇ" if n > 0 else "ALACAK"
+    if once != 0 and (sonra * once < 0):
+        uyarilar.append(f"Tutar mevcut bakiyeyi aşıyor: bakiye {abs(once)} {pb} {taraf_ad(once)} iken bu kayıttan sonra {abs(sonra)} {pb} {taraf_ad(sonra)} bakiye kalır.")
+    elif once != 0 and abs(sonra) > abs(once):
+        uyarilar.append(f"Bu yön mevcut {taraf_ad(once)} bakiyeyi kapatmaz, büyütür ({abs(once)} → {abs(sonra)} {pb}). Yönü kontrol edin.")
+    elif once == 0 and yon != "ortak":
+        uyarilar.append(f"{pb} havuzunda kapatılacak bakiye yok (bakiye 0); yön cari türüne göre belirlendi.")
+    ozet = repr([(r["hesap_kodu"], r["taraf"], str(r["doviz"]), str(r["borc"]), str(r["alacak"])) for r in rows] + [str(alanlar.get("tarih")), ack])
+    return {"yon": yon, "satirlar": rows, "aciklama": ack, "toplam_borc": sum((r["borc"] for r in rows), Decimal("0.00")),
+            "toplam_alacak": sum((r["alacak"] for r in rows), Decimal("0.00")), "pb": pb, "bakiye_once": once, "bakiye_sonra": sonra,
+            "bakiye_once_taraf": taraf_ad(once) if once else "", "bakiye_sonra_taraf": taraf_ad(sonra) if sonra else "",
+            "uyarilar": uyarilar, "imza": hashlib.sha256(ozet.encode()).hexdigest()}
+
+
+@transaction.atomic
+def kesinti_olustur(*, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
+                    kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None, sayilan_pb=None, yon_secimi=None) -> YevmiyeFisi:
+    from core.services.cari import pasif_kontrol
+    pasif_kontrol(cari, CariKesintiHatasi, ne="Yeni kesinti/masraf")
+    pasif_kontrol(karsi_cari, CariKesintiHatasi, ne="Yeni kesinti/masraf")
+    satirlar, ack, _yon = _plan(cari=cari, tarih=tarih, tutar=tutar, gider_kodu=gider_kodu, aciklama=aciklama, yatirim_projesi_id=yatirim_projesi_id,
+                                karsi_cari=karsi_cari, para_birimi=para_birimi, kur=kur, sayilan_pb=sayilan_pb, yon_secimi=yon_secimi)
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack,
                           kaynak=YevmiyeFisi.Kaynak.CARI_KESINTI, kullanici=kullanici)
@@ -245,25 +325,20 @@ def duzenleme_bilgisi(fis, cari):
     if ortak:
         return {"gider": None, "karsi_cari": karsi, "yon": "ortak", "yatirim_projesi_id": None, **ortak_alanlar}
     return {"gider": gider_s[0].hesap, "karsi_cari": None, "yon": yon_coz(cari),
+            "yon_secimi": YON_CARI_BORC if cari_s.borc > 0 else YON_CARI_ALACAK,       # fişin GERÇEK yönü (eski/ters kayıtlar yön değiştirmeden düzenlenir)
             "yatirim_projesi_id": gider_s[0].yatirim_projesi_id, **ortak_alanlar}
 
 
 @transaction.atomic
 def kesinti_guncelle(*, fis, cari, tarih, tutar, gider_kodu=None, aciklama="", yatirim_projesi_id=None,
-                     kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None, sayilan_pb=None) -> YevmiyeFisi:
-    """Tarih/tutar/para birimi/kur/hesap/proje/açıklama düzenlenir; fiş yeniden yazılır (kur farkı motoru da çalışır)."""
-    duzenleme_bilgisi(fis, cari)
-    karsi = karsi_cari_coz(cari, karsi_cari)
-    tut = _tutar(tutar)
-    pb, kur = pb_kur_coz(cari, para_birimi, kur, tarih)
-    if karsi is not None:
-        satirlar, ack = _satirlar_karsi_cari(cari, karsi, tut, pb, kur, sayilan_pb, tarih), (
-            buyuk_harf_tr((aciklama or "").strip()) or buyuk_harf_tr(f"ORTAK ÖDEMESİ - {cari.unvan} ({karsi.unvan})"))
-    else:
-        yon = yon_coz(cari)
-        gider = gider_hesabi_coz(gider_kodu)
-        proje_id = proje_coz(gider, yatirim_projesi_id)
-        satirlar, ack = _satirlar(cari, gider, tut, yon, proje_id, pb, kur), _ack(cari, aciklama, yon)
+                     kullanici=None, karsi_cari=None, para_birimi="TRY", kur=None, sayilan_pb=None, yon_secimi=None) -> YevmiyeFisi:
+    """Tarih/tutar/para birimi/kur/hesap/proje/açıklama düzenlenir; fiş yeniden yazılır (kur farkı motoru da çalışır).
+    ``yon_secimi`` verilmezse fişin MEVCUT yönü korunur."""
+    bilgi = duzenleme_bilgisi(fis, cari)
+    if yon_secimi in (None, "") and bilgi.get("yon_secimi"):
+        yon_secimi = bilgi["yon_secimi"]
+    satirlar, ack, _yon = _plan(cari=cari, tarih=tarih, tutar=tutar, gider_kodu=gider_kodu, aciklama=aciklama, yatirim_projesi_id=yatirim_projesi_id,
+                                karsi_cari=karsi_cari, para_birimi=para_birimi, kur=kur, sayilan_pb=sayilan_pb, yon_secimi=yon_secimi, haric_fis=fis)
     try:
         fis_guncelle(fis, tarih=tarih, satirlar=satirlar, aciklama=ack, kullanici=kullanici)
     except YevmiyeHatasi as e:

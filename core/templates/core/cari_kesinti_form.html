@@ -22,13 +22,13 @@
       <p class="yardim" style="margin-top:-.3rem">Cari hesap <span class="mono">{{ cari.muhasebe_kodu }}</span> ·
         {% if yon == "ortak" %}Fiş: <strong>Cari BORÇ / Ortak (500.10) ALACAK</strong> (ortak bu carinin borcunu ödedi).
         {% elif cari.muhasebe_kodu|slice:":4" == "500." %}Ortak sermaye carisi — Fiş: <strong>Gider BORÇ / Ortak ALACAK</strong> (ortak şirket adına ödeme/masraf yaptı).
-        {% elif yon == "musteri" %}Fiş: <strong>Gider BORÇ / Cari ALACAK</strong> (müşteri bakiyesinden düşer — ör. güvenli ödeme gideri, kuruş farkı).
-        {% else %}Fiş: <strong>Cari BORÇ / Hesap ALACAK</strong> (tedarikçi bakiyesinden düşer; 258'de proje maliyeti, gelir hesabında gelir tutar kadar artar/azalır).{% endif %}
-        Yön cari hesabından otomatik belirlenir.</p>
+        {% elif form.yon %}Fiş yönünü <strong>Yön</strong> alanı belirler: <strong>Bakiyeyi kapat</strong> (varsayılan) cari bakiyenin tersine yazar — cari bize borçluysa
+          <strong>Cari ALACAK / Hesap BORÇ</strong>, biz borçluysak <strong>Cari BORÇ / Hesap ALACAK</strong>. Kaydetmeden önce fiş satırları önizlenir.
+        {% endif %}</p>
       {% if havuzlar %}
-      <div class="uyari" style="margin-bottom:.6rem"><div><strong>Açık bakiyeler (para birimi havuzları):</strong>
+      <div class="uyari" style="margin-bottom:.6rem"><div><strong>{% if form.para_birimi %}Açık bakiyeler (para birimi havuzları){% else %}Mevcut bakiye{% endif %}:</strong>
         {% for h in havuzlar %}<span class="mono" style="margin-left:.8rem">{{ h.pb }}: {% if h.pb != "TRY" %}{{ h.doviz|tr_kur:2 }} {{ h.pb }} / {% endif %}{{ h.tl|tr_kur:2 }} TL {{ h.taraf|upper }}</span>{% endfor %}
-        <div class="yardim">Hangi havuzun kapanacağını para birimi seçimi belirler (ör. TRY → TL havuzu, USD → USD havuzu).</div></div></div>
+        {% if form.para_birimi %}<div class="yardim">Hangi havuzun kapanacağını para birimi seçimi belirler (ör. TRY → TL havuzu, USD → USD havuzu).</div>{% endif %}</div></div>
       {% endif %}
       <div class="izgara">
         <div class="alan">
@@ -39,6 +39,13 @@
           <label for="{{ form.tutar.id_for_label }}">{{ form.tutar.label }}</label>{{ form.tutar }}
           {% for e in form.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if form.yon %}
+        <div class="alan">
+          <label for="{{ form.yon.id_for_label }}">{{ form.yon.label }}</label>{{ form.yon }}
+          <p class="yardim">Bakiyeyi kapat: seçili para birimi havuzunun bakiyesinin tersine yazar (bakiye yoksa cari türünün varsayılanı).</p>
+          {% for e in form.yon.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% endif %}
         {% if form.para_birimi %}
         <div class="alan">
           <label for="{{ form.para_birimi.id_for_label }}">{{ form.para_birimi.label }}</label>{{ form.para_birimi }}
@@ -77,9 +84,33 @@
         </div>
       </div>
     </section>
+    {% if onizleme %}
+    <section class="icerik-kart" id="kesinti-onizleme">
+      <h2 class="bolum-baslik">Fiş önizlemesi <small class="yardim">(henüz KAYDEDİLMEDİ)</small></h2>
+      {% for u in onizleme.uyarilar %}<div class="uyari" style="margin-bottom:.5rem"><div>⚠️ {{ u }}</div></div>{% endfor %}
+      <div style="overflow-x:auto"><table class="liste">
+        <thead><tr><th>Hesap</th><th>Açıklama</th>{% if onizleme.pb != "TRY" %}<th class="sag">{{ onizleme.pb }}</th>{% endif %}<th class="sag">Borç (TL)</th><th class="sag">Alacak (TL)</th></tr></thead>
+        <tbody>
+        {% for r in onizleme.satirlar %}
+          <tr><td class="mono">{{ r.hesap_kodu }} {{ r.hesap_adi }}</td><td>{% if r.cari_satiri %}Cari{% else %}Hesap{% endif %} · {% if r.taraf == "B" %}BORÇ{% else %}ALACAK{% endif %}</td>
+            {% if onizleme.pb != "TRY" %}<td class="sag mono">{% if r.cari_satiri %}{{ r.doviz|tr_kur:2 }}{% endif %}</td>{% endif %}
+            <td class="sag mono">{% if r.borc %}{{ r.borc|tr_kur:2 }}{% endif %}</td><td class="sag mono">{% if r.alacak %}{{ r.alacak|tr_kur:2 }}{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="{% if onizleme.pb != 'TRY' %}3{% else %}2{% endif %}" class="sag">Toplam</th><th class="sag mono">{{ onizleme.toplam_borc|tr_kur:2 }}</th><th class="sag mono">{{ onizleme.toplam_alacak|tr_kur:2 }}</th></tr></tfoot>
+      </table></div>
+      <p class="yardim">Fiş açıklaması: <strong>{{ onizleme.aciklama }}</strong><br>
+        Cari bakiyesi ({{ onizleme.pb }}): <span class="mono">{% if onizleme.bakiye_once %}{{ onizleme.bakiye_once|tr_kur:2 }}{% else %}0,00{% endif %}</span> {{ onizleme.bakiye_once_taraf }}
+        → <strong class="mono">{% if onizleme.bakiye_sonra %}{{ onizleme.bakiye_sonra|tr_kur:2 }}{% else %}0,00{% endif %}</strong> {{ onizleme.bakiye_sonra_taraf }}</p>
+      <input type="hidden" name="imza" value="{{ onizleme.imza }}">
+      <p class="yardim">Bilgileri değiştirirseniz «Önizle»ye yeniden basın; onay yalnız gördüğünüz satırlar için geçerlidir.</p>
+    </section>
+    {% endif %}
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:cari_ekstresi' cari.pk %}">İptal</a>
-      <button type="submit" class="birincil">Kaydet</button>
+      {% if onizleme %}<button type="submit" class="ikincil">Yeniden önizle</button>
+      <button type="submit" name="onayla" value="1" class="birincil">Onayla ve Kaydet</button>
+      {% else %}<button type="submit" class="birincil">Önizle</button>{% endif %}
     </div>
   </form>
 </div>

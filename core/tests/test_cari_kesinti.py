@@ -12,6 +12,7 @@ from core.services import cari_kesinti as ck
 from core.services.raporlar import ekstre_devirli
 from core.services.yevmiye import SatirGirdi, fis_olustur
 from core.tests.test_banka_hesap_hareketi import _hesap
+from core.tests.kesinti_yardim import onayli_post
 
 D = datetime.date
 Dc = Decimal
@@ -100,10 +101,10 @@ class CariKesintiTest(TestCase):
         self.client.force_login(self.su)
         self.assertContains(self.client.get(reverse("core:cari_detay", args=[self.musteri.pk])), "Kesinti / Masraf")
         r = self.client.get(reverse("core:cari_kesinti_ekle", args=[self.musteri.pk]))
-        self.assertContains(r, "Gider BORÇ / Cari ALACAK")
+        self.assertContains(r, "Bakiyeyi kapat")
         self.assertContains(r, "770.03")                                                    # varsayılan gider
-        r = self.client.post(reverse("core:cari_kesinti_ekle", args=[self.musteri.pk]),
-                             {"tarih": "2026-09-01", "tutar": "243,84", "gider": "770.03", "aciklama": "x"})
+        r = onayli_post(self.client, reverse("core:cari_kesinti_ekle", args=[self.musteri.pk]),
+                        {"tarih": "2026-09-01", "tutar": "243,84", "gider": "770.03", "aciklama": "x"})
         self.assertRedirects(r, reverse("core:cari_ekstresi", args=[self.musteri.pk]))
         fis = YevmiyeFisi.objects.get(kaynak="CARI_KESINTI")
         e = self.client.get(reverse("core:cari_ekstresi", args=[self.musteri.pk]),
@@ -113,7 +114,7 @@ class CariKesintiTest(TestCase):
         # düzenle
         d_url = reverse("core:cari_kesinti_duzenle", args=[self.musteri.pk, fis.pk])
         self.assertContains(self.client.get(d_url), "Kesinti / Masraf Düzenle")
-        self.client.post(d_url, {"tarih": "2026-09-01", "tutar": "250,00", "gider": "770.03", "aciklama": ""})
+        onayli_post(self.client, d_url, {"tarih": "2026-09-01", "tutar": "250,00", "gider": "770.03", "aciklama": ""})
         self.assertEqual(self._s(YevmiyeFisi.objects.get(pk=fis.pk))[("770.03", "B")], Dc("250.00"))
         # ham fiş ekranları yönlendirir
         self.assertRedirects(self.client.get(reverse("core:fis_duzenle", args=[fis.pk])),
@@ -240,7 +241,7 @@ class KesintiHesapKumesiTest(TestCase):
         self.assertContains(r, "Yatırım projesi")
         r = self.client.post(url, {"tarih": "2026-04-10", "tutar": "2.770,00", "gider": "258"})
         self.assertContains(r, "258 hesabı için yatırım projesi seçilmelidir")
-        r = self.client.post(url, {"tarih": "2026-04-10", "tutar": "2.770,00", "gider": "258", "yatirim_projesi": p1.pk})
+        r = onayli_post(self.client, url, {"tarih": "2026-04-10", "tutar": "2.770,00", "gider": "258", "yatirim_projesi": p1.pk})
         self.assertRedirects(r, reverse("core:cari_ekstresi", args=[self.omer.pk]))
         yeni = YevmiyeFisi.objects.filter(kaynak="CARI_KESINTI").latest("pk")
         d = reverse("core:cari_kesinti_duzenle", args=[self.omer.pk, yeni.pk])
