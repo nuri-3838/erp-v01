@@ -28,13 +28,14 @@
 <div class="tablo-kapsayici genis">
 <table class="rp-tablo">
   <thead><tr>
-    <th>Cari</th><th class="sag">Satış (brüt)</th><th class="sag">Satış iade</th><th class="sag">Net satış</th><th class="sag">Satış belge</th>
-    <th class="sag">Alış (brüt)</th><th class="sag">Alış iade</th><th class="sag">Net alış</th><th class="sag">Alış belge</th><th class="sag">Toplam ciro</th>
+    <th>Cari</th><th class="sag">Toplam ciro</th><th class="sag">Satış (brüt)</th><th class="sag">Satış iade</th><th class="sag">Net satış</th><th class="sag">Satış belge</th>
+    <th class="sag">Alış (brüt)</th><th class="sag">Alış iade</th><th class="sag">Net alış</th><th class="sag">Alış belge</th>
   </tr></thead>
   <tbody>
     {% for s in rapor.satirlar %}
     <tr data-href="{% url 'core:cari_detay' s.cari.pk %}">
       <td class="ad"><a class="satir-bag" href="{% url 'core:cari_detay' s.cari.pk %}">{{ s.cari.unvan }}</a><span class="kod">{{ s.cari.kod }}{% if s.cari.kategori %} · {{ s.cari.kategori.ad }}{% endif %}</span></td>
+      <td class="sag mono"><strong>{{ s.toplam|tr_para }}</strong></td>
       <td class="sag mono">{% if s.satis %}{{ s.satis|tr_para }}{% else %}<span class="sifir">—</span>{% endif %}</td>
       <td class="sag mono">{% if s.satis_iade %}{{ s.satis_iade|tr_para }}{% else %}<span class="sifir">—</span>{% endif %}</td>
       <td class="sag mono">{% if s.satis_net %}<strong>{{ s.satis_net|tr_para }}</strong>{% else %}<span class="sifir">—</span>{% endif %}</td>
@@ -43,7 +44,6 @@
       <td class="sag mono">{% if s.alis_iade %}{{ s.alis_iade|tr_para }}{% else %}<span class="sifir">—</span>{% endif %}</td>
       <td class="sag mono">{% if s.alis_net %}<strong>{{ s.alis_net|tr_para }}</strong>{% else %}<span class="sifir">—</span>{% endif %}</td>
       <td class="sag mono">{{ s.alis_belge|default:"—" }}</td>
-      <td class="sag mono"><strong>{{ s.toplam|tr_para }}</strong></td>
     </tr>
     {% empty %}
     <tr><td colspan="10" class="yardim" style="text-align:center;padding:1.6rem 0">Bu dönemde onaylı fatura yok.</td></tr>
@@ -52,9 +52,9 @@
   {% if rapor.satirlar %}
   <tfoot><tr>
     <th>TOPLAM</th>
+    <td class="sag mono">{{ rapor.toplam.toplam|tr_para }}</td>
     <td class="sag mono">{{ rapor.toplam.satis|tr_para }}</td><td class="sag mono">{{ rapor.toplam.satis_iade|tr_para }}</td><td class="sag mono">{{ rapor.toplam.satis_net|tr_para }}</td><td class="sag mono">{{ rapor.toplam.satis_belge }}</td>
     <td class="sag mono">{{ rapor.toplam.alis|tr_para }}</td><td class="sag mono">{{ rapor.toplam.alis_iade|tr_para }}</td><td class="sag mono">{{ rapor.toplam.alis_net|tr_para }}</td><td class="sag mono">{{ rapor.toplam.alis_belge }}</td>
-    <td class="sag mono">{{ rapor.toplam.toplam|tr_para }}</td>
   </tr></tfoot>
   {% endif %}
 </table>
