@@ -37,12 +37,12 @@ def _anahtar(k) -> tuple:
     return (k.stok_id, k.varyant_id or (k.stok.varsayilan_varyant_id if k.stok.varyantli else None))
 
 
-def acik_siparis_satirlari(stok_idler=None) -> list:
+def acik_siparis_satirlari(stok_idler=None, etiketli=True) -> list:
     """[{"siparis", "kalem", "stok_id", "varyant_id", "miktar", "termin"}] — ekranlarda "SAS-… bekleniyor" ayrıntısı için."""
     sonuc = []
     for k in acik_siparis_kalemleri(stok_idler):
         vpk = _anahtar(k)[1]
-        etiket = varyant_kisa(k.varyant) if k.varyant_id else (varyant_kisa(vpk) if vpk else "")
+        etiket = (varyant_kisa(k.varyant) if k.varyant_id else (varyant_kisa(vpk) if vpk else "")) if etiketli else ""     # etiketsiz: satır başına varyant sorgusu yok (ÜS listesi)
         sonuc.append({"siparis": k.teklif_siparis, "kalem": k, "stok_id": k.stok_id, "varyant_id": vpk, "varyant_etiketi": etiket, "miktar": _miktar(k),
                       "termin": k.teklif_siparis.gecerlilik_teslim_tarihi})
     return sonuc

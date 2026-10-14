@@ -82,6 +82,7 @@ from core.services import duran_hesap as duran_hesap_servis
 from core.services import varyant as varyant_servis
 from core.services import us_detay as us_detay_servis
 from core.services import us_detay_yukle as us_yukle_servis
+from core.services import us_liste_yukle as us_liste_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import stok_ayirma as stok_ayirma_servis
@@ -7767,10 +7768,10 @@ def uretim_emirleri(request):
                  "KAPALI": UretimEmri.Durum.KAPALI, "IPTAL": UretimEmri.Durum.IPTAL}.get(durum)
     siralama = uretim_servis.siralama() if durum in ("AKTIF", "ACIK", "SEVK") else ["-yil", "-sira"]
     qs = (UretimEmri.objects.filter(silindi=False)
-         .select_related("depo", "kaynak_siparis__cari")
+         .select_related("depo", "kaynak_siparis__cari", "kaynak_siparis__aday_musteri")
          .prefetch_related(Prefetch(
              "kalemler",
-             queryset=UretimEmriKalemi.objects.filter(silindi=False).select_related("hedef_urun")))
+             queryset=UretimEmriKalemi.objects.filter(silindi=False).select_related("hedef_urun", *us_yukle_servis.derin("varyant"))))
          .order_by(*siralama))
     if sql_durum:
         qs = qs.filter(durum=sql_durum)
@@ -7785,7 +7786,10 @@ def uretim_emirleri(request):
     ozet = uretim_servis.uretim_emirleri_ozet(liste)                      # toplu: ilerleme / mamul % / iş % / sevk bekliyor / silinebilir (emir başına sorgu yok)
     if durum in ("ACIK", "SEVK"):                                         # türetilmiş durum: SQL'de değil, özetten
         liste = [e for e in liste if ozet[e.pk]["sevk_bekliyor"] == (durum == "SEVK")]
-    graf = urun_agaci_servis.graf_yukle()
+    # Rozet sayıları (eksik malzeme / satınalmadan / fasondan / fason emri gerekli): açık ÜS'lerin TOPLU yükleyicisi — sorgu sayısı ÜS sayısından bağımsız, GET yazmaz
+    acik_liste = [e for e in liste if e.durum == UretimEmri.Durum.ACIK]
+    toplu = us_liste_servis.ListeYukleme(acik_liste) if acik_liste else None
+    graf = urun_agaci_servis.graf_yukle() if any(not e.varyantli_plan for e in acik_liste) else None          # yalnız kart bazlı (eski) planlı açık ÜS varsa
     bugun = timezone.localdate()
     emirler = []
     for e in liste:
@@ -7794,7 +7798,7 @@ def uretim_emirleri(request):
         musteri = sip.cari.unvan if sip is not None and sip.cari_id else ("Stok için üretim" if sip is None else (sip.aday_musteri.unvan if sip.aday_musteri_id else "—"))
         termin = uretim_servis.etkin_termin(e)
         o = ozet[e.pk]
-        eksikler = uretim_servis.uretim_emri_eksikleri(e, graf=graf)
+        eksikler = uretim_servis.uretim_emri_eksikleri(e, graf=graf, yukle=toplu.icin(e) if toplu is not None else None)
         emirler.append({
             "e": e, "musteri": musteri, "siparisli": sip is not None, "sip_no": (sip.belge_no or f"#{sip.pk}") if sip is not None else "",
             "kalem_sayisi": len(kalemler), "toplam_miktar": sum((k.hedef_miktar for k in kalemler), Decimal("0")),

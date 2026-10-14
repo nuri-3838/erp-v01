@@ -1202,7 +1202,7 @@ def _kalemleri_coz(kalemler, siparis_kalemleri=None, varyantli=False):
     return coz
 
 
-def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, stoktan=None, stoklu_haric=None, cozucu=None):
+def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, stoktan=None, stoklu_haric=None, cozucu=None, kaynak=None):
     """NET plan (``ihtiyac_hesapla``): kapalıda kart bazında — bugünkü yol, birebir; varyantlı planlamada (stok, varyant) düğümleriyle
     (``planlama_varyant.Cozucu``). (sonuç, çözücü|None) döner.
 
@@ -1210,12 +1210,13 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
     kullanıcının seçtiği "stoktan karşılanacak" miktar. Kök düğümün kullanılabilir stoğu bu tavanla sınırlanır; böylece ayırma yalnız seçilen
     kadar olur, kalanı üretilir. Sözlükte olmayan düğümler (ara mamul 151, hammadde, soru sorulmayan kökler) bugünkü gibi otomatik düşülür.
 
-    ``cozucu`` (2026-10-14, yalnız ÜS detay ekranı): hazır bir çözücü (``us_detay_yukle.TopluCozucu`` — sorgusuz, varyant AÇMAZ); None ise eski ``Cozucu``."""
+    ``cozucu`` (2026-10-14, yalnız ÜS detay ekranı): hazır bir çözücü (``us_detay_yukle.TopluCozucu`` — sorgusuz, varyant AÇMAZ); None ise eski ``Cozucu``.
+    ``kaynak`` (yalnız ÜS listesi, ``us_liste_yukle.ListeYukleme``): kullanılabilir stok ve fason açık kalan okumaları önceden yüklenmiş veriden (sorgusuz, aynı sonuç)."""
     # FASON SİPARİŞİ "gelecek stok" (2026-10-12, core.services.fason_siparis): serbest stoktan karşılanmayan kesilmiş parça ihtiyacı açık FS satırlarının
     # rezerve edilmemiş kalanından karşılanır (fason emri açılmaz). Kullanılabilir = max(stok, 0) + FS kalanı; ``stok_kullanilabilir`` / ``fason_kalan``
     # sonuca eklenir, ayrılan ``_ayrilani_bol`` ile stok ayırması ve FS rezervine bölünür. Kök tavanı (stok için ÜS) FS'den sonra uygulanır (kök FS kullanmaz).
     from core.services import fason_siparis as fs_servis
-    fs_harita = fs_servis.acik_kalan_haritasi(haric_emir=haric_emir)
+    fs_harita = kaynak.fs_harita(haric_emir) if kaynak is not None else fs_servis.acik_kalan_haritasi(haric_emir=haric_emir)
     izler = {"stok": {}, "fason": {}}
 
     def _fs_ekle(h, anahtar, stok_pk, vpk):
@@ -1226,7 +1227,7 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
 
     if not varyantli:
         def kh(idler):
-            h = stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=haric_emir)
+            h = kaynak.kullanilabilir(idler, haric_emir) if kaynak is not None else stok_ayirma.kullanilabilir_haritasi(idler, haric_emir=haric_emir)
             izler["stok"] = dict(h)
             for pk in list(h):
                 _fs_ekle(h, pk, pk, None)
@@ -1241,7 +1242,7 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
     kalemler = [(cz.kalem_dugumu(u, v), m) for u, m, v in coz]
 
     def khv(d):
-        h = stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=haric_emir)
+        h = kaynak.kullanilabilir_varyant(d, haric_emir) if kaynak is not None else stok_ayirma.kullanilabilir_varyant_haritasi(d, haric_emir=haric_emir)
         izler["stok"] = dict(h)
         for (pk, vpk) in list(h):
             _fs_ekle(h, (pk, vpk), pk, vpk)
@@ -2141,6 +2142,7 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
     önceden yüklenmiş veriyle — sonuç AYNI (testle kilitli), sorgu sayısı sabit, görüntülemede varyant AÇILMAZ."""
     if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
         return []
+    kaynak = getattr(yukle, "kaynak", None)                       # ÜS listesi: ortak toplu kaynak (ListeYukleme); detay/eski yol: None
     coz = yukle.emir_kalemleri() if yukle is not None else _emir_kalemleri(emir)
     if not coz:
         return []
@@ -2162,8 +2164,9 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
             kok_ayrilan[anahtar] = kok_ayrilan.get(anahtar, Decimal("0")) + a.miktar
     for anahtar in stoktan:
         stoktan[anahtar] = max(stoktan[anahtar], kok_ayrilan.get(anahtar, Decimal("0")))
-    sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk_edilen_haritasi(emir), emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf,
-                                stoktan=stoktan, stoklu_haric=haric, cozucu=yukle.cozucu if yukle is not None else None)
+    sevk = kaynak.sevk_haritasi(emir) if kaynak is not None else sevk_edilen_haritasi(emir)
+    sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk, emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf,
+                                stoktan=stoktan, stoklu_haric=haric, cozucu=yukle.cozucu if yukle is not None else None, kaynak=kaynak)
     eksikler = []
     for o in sonuc["ozet"]:
         if o["yaprak"] and o["eksik"] is not None and o["eksik"] > 0:
@@ -2177,7 +2180,7 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
     satinalma_idler = {e["stok"].pk for e in eksikler if e["tur"] == "SATINALMA"}
     if satinalma_idler:
         from core.services import satinalma
-        sat_satirlar = satinalma.acik_siparis_satirlari(satinalma_idler)
+        sat_satirlar = kaynak.satinalma_satirlari(satinalma_idler) if kaynak is not None else satinalma.acik_siparis_satirlari(satinalma_idler)
         sat_harita = satinalma.harita_kur(sat_satirlar)                                  # aynı satırlardan (ikinci sorgu yok)
         for e in eksikler:
             if e["tur"] != "SATINALMA":
@@ -2196,7 +2199,7 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
     # FASON SİPARİŞİ (2026-10-12): (a) bu ÜS'ye rezerve edilmiş FS satırları "fason siparişinden bekleniyor"; (b) planın fason istasyonunda çalıştırma
     # istediği ama ÜS'de (iptal olmayan) istasyon emri olmayan parçalar (FS iptal edildi / adet düştü) "fason emri gerekli — revize edin".
     from core.services import fason_siparis as fs_servis
-    for r in fs_servis.emir_rezervleri(emir):
+    for r in (kaynak.fs_rezervleri(emir) if kaynak is not None else fs_servis.emir_rezervleri(emir)):
         s = r.satir
         eksikler.append({"stok": s.stok, "varyant": s.varyant, "varyant_etiketi": planlama_varyant.etiket(s.varyant) if s.varyant_id else "",
                          "gerekli": r.miktar, "kullanilabilir": Decimal("0"), "eksik": Decimal("0"), "stoklu": False, "tur": "FASON_SIPARIS",

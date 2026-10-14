@@ -125,24 +125,14 @@ class TopluCozucu(pv.Cozucu):
         return sonuc
 
 
-class Yukleme:
-    """Bir ÜS'nin detay ekranı için tüm veri; ``gruplar`` ve ``eksikler`` eski fonksiyonlarla AYNI biçimde sonuç verir."""
+class Paylasim:
+    """ÜS'ler ARASI ortak veri (detayda tek ÜS, listede tüm açık ÜS'ler için bir kez yüklenir): tüm aktif operasyonlar + girdi/çıktı satırları, varyantlar ve
+    sorgusuz/yazmayan ``TopluCozucu``. ``ek_operasyon_idleri``: silinmiş olsa bile emirlerin başvurduğu operasyonlar."""
 
-    def __init__(self, emir, ayirmalar=None):
-        self.emir = emir
-        self.ayirmalar = ayirmalar
+    def __init__(self, ek_operasyon_idleri=()):
         self._sahte = 0
-        # 1) istasyon emirleri (üretim sırasıyla; etiket için varyant derin yüklü) ve taslak kayıtlar
-        self.ieler = list(emir.istasyon_emirleri.filter(silindi=False)
-                          .select_related("istasyon__fasoncu", *derin("cikti_varyant"))
-                          .order_by("istasyon__sira", "istasyon__kod", "-seviye", "pk"))
-        self.taslak = {}
-        for k in OperasyonKaydi.objects.filter(istasyon_emri__uretim_emri=emir, silindi=False, durum=OperasyonKaydi.Durum.TASLAK):
-            self.taslak.setdefault(k.istasyon_emri_id, []).append(k)
-        # 2) tüm aktif operasyonlar (+ emirlerin silinmiş operasyonları) girdi/çıktı satırlarıyla
-        ids = {ie.operasyon_id for ie in self.ieler} | {k.operasyon_id for ks in self.taslak.values() for k in ks}
         self.ops = {op.pk: op for op in
-                    Operasyon.objects.filter(Q(silindi=False) | Q(pk__in=ids)).select_related("istasyon", "cikti", "cikti_sabit_varyant")
+                    Operasyon.objects.filter(Q(silindi=False) | Q(pk__in=list(ek_operasyon_idleri))).select_related("istasyon", "cikti", "cikti_sabit_varyant")
                     .prefetch_related(
                         Prefetch("girdiler", queryset=OperasyonGirdi.objects.filter(silindi=False).select_related("girdi__varsayilan_varyant", "sabit_varyant")
                                  .order_by("sira", "pk")),
@@ -159,12 +149,7 @@ class Yukleme:
                     self.ureten.setdefault(c.stok_id, op)
             if op.tur == Operasyon.Tur.DONUSTUR:
                 self.donustur.setdefault(op.cikti_id, op)
-        for ie in self.ieler:
-            ie.operasyon = self.ops[ie.operasyon_id]
-        for ks in self.taslak.values():
-            for k in ks:
-                k.operasyon = self.ops[k.operasyon_id]
-        # 3) varyantlar
+        # varyantlar
         self.varyantlar = {v.pk: v for v in Varyant.objects.filter(silindi=False)}
         self.yok_pk = next((v.pk for v in self.varyantlar.values() if v.kod == YOK), None)
         self.genel = next((v for v in self.varyantlar.values() if v.varsayilan), None)
@@ -190,7 +175,10 @@ class Yukleme:
             return None
         return ob.sv_bul(stok, {b: self.genel.pk for b in vs.stok_boyutlari(stok)})
 
-    # --- eski ``uretim_emri_eksikleri`` için girdiler (aynı veri, sorgusuz) ---
+
+class EmirVerisi:
+    """Bir ÜS'nin ``uretim_emri_eksikleri`` için girdileri (``self.emir`` ve ``self.ieler`` gerekir; aynı veri, sorgusuz)."""
+
     def kalem_listesi(self) -> list:
         return [k for k in self.emir.kalemler.all() if not k.silindi]
 
@@ -202,6 +190,28 @@ class Yukleme:
 
     def haric_ciktilar(self) -> set:
         return {ie.operasyon.cikti_id for ie in self.ie_aktif()}
+
+
+class Yukleme(EmirVerisi, Paylasim):
+    """Bir ÜS'nin detay ekranı için tüm veri; ``gruplar`` ve ``eksikler`` eski fonksiyonlarla AYNI biçimde sonuç verir."""
+
+    def __init__(self, emir, ayirmalar=None):
+        self.emir = emir
+        self.ayirmalar = ayirmalar
+        # 1) istasyon emirleri (üretim sırasıyla; etiket için varyant derin yüklü) ve taslak kayıtlar
+        self.ieler = list(emir.istasyon_emirleri.filter(silindi=False)
+                          .select_related("istasyon__fasoncu", *derin("cikti_varyant"))
+                          .order_by("istasyon__sira", "istasyon__kod", "-seviye", "pk"))
+        self.taslak = {}
+        for k in OperasyonKaydi.objects.filter(istasyon_emri__uretim_emri=emir, silindi=False, durum=OperasyonKaydi.Durum.TASLAK):
+            self.taslak.setdefault(k.istasyon_emri_id, []).append(k)
+        # 2) ortak veri (operasyonlar + varyantlar)
+        Paylasim.__init__(self, {ie.operasyon_id for ie in self.ieler} | {k.operasyon_id for ks in self.taslak.values() for k in ks})
+        for ie in self.ieler:
+            ie.operasyon = self.ops[ie.operasyon_id]
+        for ks in self.taslak.values():
+            for k in ks:
+                k.operasyon = self.ops[k.operasyon_id]
 
     # --- ÜS detayı istasyon emri grupları (uretim.istasyon_emri_gruplari ile aynı sonuç) ---
     def _acik_kalan(self, ie) -> Decimal:
