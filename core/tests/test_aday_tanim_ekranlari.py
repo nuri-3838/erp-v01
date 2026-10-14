@@ -7,6 +7,7 @@ migration 0132'nin tohum verisi + CharField->FK veri taşıması. Cariye Dönü�
 burada tekrar edilmez) — burada yalnız "değer TABLODAN geliyor, sabit değil" kanıtı var."""
 import importlib
 import json
+import re
 import tempfile
 from pathlib import Path
 from unittest import mock
@@ -336,9 +337,18 @@ class YeniTanimSecilebilirTest(TestCase):
         a = _aday(unvan="pasif tip adayi", tip_id=ozel.pk)
         tanim_servis.tanim_pasif_yap(ozel, aktif=False)
         r_ekle = self.client.get(reverse("core:aday_musteri_ekle"))
-        self.assertNotContains(r_ekle, f'value="{ozel.pk}"')
+        self.assertNotIn(str(ozel.pk), self._tip_secenek_degerleri(r_ekle))
         r_duzenle = self.client.get(reverse("core:aday_musteri_duzenle", args=[a.pk]))
-        self.assertContains(r_duzenle, f'value="{ozel.pk}"')
+        self.assertIn(str(ozel.pk), self._tip_secenek_degerleri(r_duzenle))
+
+    @staticmethod
+    def _tip_secenek_degerleri(response):
+        """Yalnız name="tip" <select>'inin <option> değerleri (sayfadaki başka value="<pk>"
+        eşleşmeleri paralel/keepdb koşuda pk çakışmasıyla testi bozmasın)."""
+        html = response.content.decode()
+        eslesme = re.search(r'<select[^>]*\bname="tip"[^>]*>(.*?)</select>', html, re.S)
+        assert eslesme, 'name="tip" select\'i sayfada bulunamadı'
+        return re.findall(r'<option[^>]*\bvalue="([^"]*)"', eslesme.group(1))
 
 
 # --- Ekranlar: liste/ekle/düzenle/sil/pasif-yap + yetki -----------------------------------
