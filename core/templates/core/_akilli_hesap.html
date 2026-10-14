@@ -16,11 +16,12 @@ eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) ça
   function ac(sel, inp, filt){
     aktifInp = inp; konumla(inp);
     filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
+    var kelimeler = filt.split(/\s+/).filter(Boolean);                       // sırasız çok kelimeli arama: TÜM kelimeler (kod/ad) geçmeli
     var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
     var sonGrup = null;
     Array.prototype.forEach.call(sel.options, function(o){
       var t = o.value ? o.textContent.trim() : bos;
-      if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(o.value && kelimeler.length){ var tl = t.toLocaleLowerCase('tr'); if(!kelimeler.every(function(k){ return tl.indexOf(k) > -1; })) return; }
       if(n++ > 80) return;
       if(o.parentNode && o.parentNode.tagName === 'OPTGROUP' && o.parentNode.label !== sonGrup){
         sonGrup = o.parentNode.label;

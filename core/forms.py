@@ -1678,13 +1678,15 @@ class UretimEmriKalemSatirForm(forms.Form):
         label="Hedef Ürün", queryset=Stok.objects.none(), required=False,
         empty_label="— ürün seç —")
     hedef_miktar = TRDecimalField(label="Hedef Miktar", basamak=3, required=False)
+    # Varyantlı üründe satırın varyantı (Faz 2): JS (core/_varyant_js.html) 'v:BOYUT=pk|…' yazar; boş = kartın standart varyantı.
+    varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from core.services.uretim import operasyonlu_stok_idler
         self.fields["hedef_urun"].queryset = (
             Stok.objects.filter(silindi=False, pk__in=operasyonlu_stok_idler()).order_by("kod"))
-        self.fields["hedef_urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["hedef_urun"].label_from_instance = lambda o: f"{o.kod}  {o.ad}" + (" 🔀" if o.varyantli else "")      # 🔀 = varyantlı kart
         self.fields["hedef_urun"].widget.attrs["class"] = "akilli-sec"
 
     def clean(self):

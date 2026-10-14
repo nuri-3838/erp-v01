@@ -83,6 +83,7 @@ from core.services import varyant as varyant_servis
 from core.services import us_detay as us_detay_servis
 from core.services import us_detay_yukle as us_yukle_servis
 from core.services import us_liste_yukle as us_liste_servis
+from core.services import us_onizleme as us_onizleme_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import stok_ayirma as stok_ayirma_servis
@@ -7757,13 +7758,17 @@ UTS_SUZGEC = (("AKTIF", "Açık + Sevk bekliyor"), ("ACIK", "Açık (üretimde)"
 @ekran_gerekli("uretim_emirleri")
 def uretim_emirleri(request):
     """ÜS listesi: süzgeç varsayılan AKTIF = Açık + Sevk bekliyor (``Sevk bekliyor`` türetilir: üretimi bitmiş, sevk edilmemiş siparişli ÜS). Açık/Sevk bekliyor listeleri
-    ``uretim.siralama`` ile (Acil → termin → tarih); Tamamlandı / İptal / Tümü yeni tarih önce."""
-    ara = (request.GET.get("ara") or "").strip()
-    durum = (request.GET.get("durum") or "").strip().upper() if "durum" in request.GET else "AKTIF"
+    ``uretim.siralama`` ile (Acil → termin → tarih); Tamamlandı / İptal / Tümü yeni tarih önce. Faz 2: süzgeç çipleri (Müşteri / Stok için, Termini geçen, Eksik malzeme,
+    Bekleyen malzeme, Acil) bellekte uygulanır (ek sorgu yok); satırda termin + kalan gün ve darboğaz istasyonu."""
+    g = request.GET
+    ara = (g.get("ara") or "").strip()
+    durum = (g.get("durum") or "").strip().upper() if "durum" in g else "AKTIF"
     if durum == "":
         durum = "TUMU"
     if durum not in dict(UTS_SUZGEC):
         durum = "AKTIF"
+    tur = g.get("tur") if g.get("tur") in ("musteri", "stok") else ""
+    f_gecen, f_eksik, f_bekleyen, f_acil = g.get("termin") == "gecen", g.get("eksik") == "1", g.get("bekleyen") == "1", g.get("acil") == "1"
     sql_durum = {"AKTIF": UretimEmri.Durum.ACIK, "ACIK": UretimEmri.Durum.ACIK, "SEVK": UretimEmri.Durum.ACIK,
                  "KAPALI": UretimEmri.Durum.KAPALI, "IPTAL": UretimEmri.Durum.IPTAL}.get(durum)
     siralama = uretim_servis.siralama() if durum in ("AKTIF", "ACIK", "SEVK") else ["-yil", "-sira"]
@@ -7786,7 +7791,7 @@ def uretim_emirleri(request):
     ozet = uretim_servis.uretim_emirleri_ozet(liste)                      # toplu: ilerleme / mamul % / iş % / sevk bekliyor / silinebilir (emir başına sorgu yok)
     if durum in ("ACIK", "SEVK"):                                         # türetilmiş durum: SQL'de değil, özetten
         liste = [e for e in liste if ozet[e.pk]["sevk_bekliyor"] == (durum == "SEVK")]
-    # Rozet sayıları (eksik malzeme / satınalmadan / fasondan / fason emri gerekli): açık ÜS'lerin TOPLU yükleyicisi — sorgu sayısı ÜS sayısından bağımsız, GET yazmaz
+    # Rozet sayıları (eksik malzeme / satınalmadan / fasondan / fason emri gerekli) + darboğaz: açık ÜS'lerin TOPLU yükleyicisi — sorgu sayısı ÜS sayısından bağımsız, GET yazmaz
     acik_liste = [e for e in liste if e.durum == UretimEmri.Durum.ACIK]
     toplu = us_liste_servis.ListeYukleme(acik_liste) if acik_liste else None
     graf = urun_agaci_servis.graf_yukle() if any(not e.varyantli_plan for e in acik_liste) else None          # yalnız kart bazlı (eski) planlı açık ÜS varsa
@@ -7799,20 +7804,48 @@ def uretim_emirleri(request):
         termin = uretim_servis.etkin_termin(e)
         o = ozet[e.pk]
         eksikler = uretim_servis.uretim_emri_eksikleri(e, graf=graf, yukle=toplu.icin(e) if toplu is not None else None)
+        acik = e.durum == UretimEmri.Durum.ACIK
+        kalan = (termin - bugun).days if (termin and acik) else None
+        eksik_sayisi = sum(1 for x in eksikler if x["tur"] in ("SATINALMA", "STOKLU"))            # gerçek eksik; fason siparişinden beklenen sayılmaz
+        fason_bekleyen = sum(1 for x in eksikler if x["tur"] == "FASON_SIPARIS")
+        satinalma_bekleyen = sum(1 for x in eksikler if x["tur"] == "SATINALMA_SIPARIS")
         emirler.append({
             "e": e, "musteri": musteri, "siparisli": sip is not None, "sip_no": (sip.belge_no or f"#{sip.pk}") if sip is not None else "",
             "kalem_sayisi": len(kalemler), "toplam_miktar": sum((k.hedef_miktar for k in kalemler), Decimal("0")),
-            "termin": termin, "termin_gecmis": bool(termin and termin < bugun and e.durum == UretimEmri.Durum.ACIK),
+            "termin": termin, "termin_gecmis": bool(termin and termin < bugun and acik),
+            "kalan_gun": kalan, "kalan_metin": ("" if kalan is None else f"{-kalan} gün geçti" if kalan < 0 else "bugün" if kalan == 0 else f"{kalan} gün kaldı"),
+            "darbogaz": toplu.darbogaz(e.pk) if (toplu is not None and acik) else None,
             "acil": e.oncelik == UretimEmri.Oncelik.ACIL, "sevk_bekliyor": o["sevk_bekliyor"],
             "silinebilir": o["silinebilir"], "ilerleme": o["ilerleme"], "yuzde": o["yuzde"] if e.durum != UretimEmri.Durum.IPTAL else Decimal("0"),
             "is_yuzde": o["is_yuzde"],
             "tamamlandi": e.durum == UretimEmri.Durum.KAPALI and sip is None and not e.sevk_dusen,       # tamamlanmış stok ÜS'si: ayırmalar serbest
-            "eksik_sayisi": sum(1 for x in eksikler if x["tur"] in ("SATINALMA", "STOKLU")),         # gerçek eksik; fason siparişinden beklenen sayılmaz
-            "fason_bekleyen": sum(1 for x in eksikler if x["tur"] == "FASON_SIPARIS"),
+            "eksik_sayisi": eksik_sayisi, "fason_bekleyen": fason_bekleyen, "satinalma_bekleyen": satinalma_bekleyen,
+            "bekleyen_var": bool(fason_bekleyen or satinalma_bekleyen),
             "fason_emri_gerekli": sum(1 for x in eksikler if x["tur"] == "FASON_EMRI_GEREKLI"),
-            "satinalma_bekleyen": sum(1 for x in eksikler if x["tur"] == "SATINALMA_SIPARIS"),
             "arama": " ".join([e.no, musteri, e.depo.kod, e.depo.ad, (sip.belge_no or "") if sip is not None else ""] + [f"{k.hedef_urun.kod} {k.hedef_urun.ad}" for k in kalemler])})
-    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum, "durumlar": UTS_SUZGEC})
+    # süzgeç çipleri: sayılar (çipler uygulanmadan önceki küme), sonra bellekte süzme
+    sayilar = {"musteri": sum(1 for s in emirler if s["siparisli"]), "stok": sum(1 for s in emirler if not s["siparisli"]), "gecen": sum(1 for s in emirler if s["termin_gecmis"]),
+               "eksik": sum(1 for s in emirler if s["eksik_sayisi"] > 0), "bekleyen": sum(1 for s in emirler if s["bekleyen_var"]), "acil": sum(1 for s in emirler if s["acil"])}
+    emirler = [s for s in emirler if (not tur or s["siparisli"] == (tur == "musteri")) and (not f_gecen or s["termin_gecmis"]) and (not f_eksik or s["eksik_sayisi"] > 0)
+               and (not f_bekleyen or s["bekleyen_var"]) and (not f_acil or s["acil"])]
+
+    def url(**ek):
+        d = {"ara": ara, "durum": durum, "tur": tur, "termin": "gecen" if f_gecen else "", "eksik": "1" if f_eksik else "", "bekleyen": "1" if f_bekleyen else "", "acil": "1" if f_acil else ""}
+        d.update(ek)
+        return "?" + urlencode({k: v for k, v in d.items() if v})
+
+    suzgecler = [
+        {"ad": "Müşteri", "sayi": sayilar["musteri"], "aktif": tur == "musteri", "url": url(tur="" if tur == "musteri" else "musteri"), "ipucu": "Satış siparişine bağlı üretimler"},
+        {"ad": "Stok için", "sayi": sayilar["stok"], "aktif": tur == "stok", "url": url(tur="" if tur == "stok" else "stok"), "ipucu": "Siparişsiz, stok için açılan üretimler"},
+        {"ad": "Termini geçen", "sayi": sayilar["gecen"], "aktif": f_gecen, "url": url(termin="" if f_gecen else "gecen"), "ipucu": "Açık, termini bugünden önce olan"},
+        {"ad": "Eksik malzeme", "sayi": sayilar["eksik"], "aktif": f_eksik, "url": url(eksik="" if f_eksik else "1"), "ipucu": "Satınalma ya da stoklu ara mamul eksiği olan (kırmızı rozet)"},
+        {"ad": "Bekleyen malzeme", "sayi": sayilar["bekleyen"], "aktif": f_bekleyen, "url": url(bekleyen="" if f_bekleyen else "1"), "ipucu": "Satınalmadan ya da fasondan bekleniyor"},
+        {"ad": "Acil", "sayi": sayilar["acil"], "aktif": f_acil, "url": url(acil="" if f_acil else "1"), "ipucu": "Önceliği Acil olan"},
+    ]
+    chip_gizli = {k: v for k, v in (("tur", tur), ("termin", "gecen" if f_gecen else ""), ("eksik", "1" if f_eksik else ""), ("bekleyen", "1" if f_bekleyen else ""),
+                                    ("acil", "1" if f_acil else "")) if v}
+    return render(request, "core/uretim_emirleri.html", {"emirler": emirler, "ara": ara, "durum": durum, "durumlar": UTS_SUZGEC, "suzgecler": suzgecler,
+                                                         "chip_gizli": chip_gizli, "chip_aktif": bool(chip_gizli)})
 
 
 # --- "Stoktan karşıla" sorusu (ÜS aç / siparişten aç / revize / sipariş revize): kaydetmeden önce kalem başına ön izleme + seçim onayı ---
@@ -7838,28 +7871,54 @@ def _stoktan_coz(request, onizleme):
     return uretim_servis.stoktan_secimleri_coz(onizleme, secimler), True
 
 
+def _us_varyant_meta(varyantli_plan: bool) -> dict:
+    """Satır JS'i (core/_varyant_js.html) için: varyantlı planlama KAPALIyken varyant seçimi gösterilmez (ÜS kart bazında planlanır, varyant yok sayılır)."""
+    return varyant_servis.varyant_meta() if varyantli_plan else {"etiket": {}, "degerler": [], "stoklar": {}}
+
+
+def _us_kalemleri(formset, *, kullanici, ham: bool, varyantli: bool) -> list:
+    """Formset → servis kalemleri. Varyantlı planda varyantlı kartın satır varyantı: ``ham`` (Önizle) 'v:…' metni olduğu gibi (HİÇBİR ŞEY YAZILMAZ), değilse ``secim_coz``
+    (kombinasyonu bulur ya da açar — yalnız kaydederken). Varyantsız kart / kapalı planda varyant yok sayılır."""
+    kalemler = []
+    for f in formset:
+        if not f.dolu_mu():
+            continue
+        urun = f.cleaned_data["hedef_urun"]
+        satir = {"hedef_urun_id": urun.pk, "hedef_miktar": f.cleaned_data["hedef_miktar"]}
+        deger = (f.cleaned_data.get("varyant") or "").strip()
+        if deger and varyantli and urun.varyantli:
+            if ham:
+                satir["varyant"] = deger
+            else:
+                satir["varyant_id"] = varyant_servis.secim_coz(urun, deger, kullanici)
+        kalemler.append(satir)
+    return kalemler
+
+
 @ekran_gerekli("uretim_emirleri")
 def uretim_emri_ekle(request):
     onizleme = None
+    plan_onizleme = None
+    varyantli = planlama_varyant_servis.acik()
     if request.method == "POST":
         bform = UretimEmriBaslikForm(request.POST)
         formset = UretimEmriKalemSatirFormSet(request.POST, prefix="satir")
         if bform.is_valid() and formset.is_valid():
-            kalemler = [
-                {"hedef_urun_id": f.cleaned_data["hedef_urun"].pk,
-                 "hedef_miktar": f.cleaned_data["hedef_miktar"]}
-                for f in formset if f.dolu_mu()
-            ]
             cd = bform.cleaned_data
             try:
-                # Stok için ÜS: kök hedef kendi stoğundan karşılanmaz (soru yok) — bkz. uretim.stok_icin_tavan
-                emir = uretim_servis.uretim_emri_olustur(
-                    kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
-                    aciklama=cd.get("aciklama", ""), kullanici=request.user, termin=cd.get("termin"), oncelik=cd.get("oncelik") or UretimEmri.Oncelik.NORMAL)
-                messages.success(
-                    request, f"Üretim siparişi açıldı: {emir.no} — hedefin tamamı üretilecek (stok için), alt bileşenler için stok ayrıldı, istasyon emirleri oluşturuldu.")
-                return redirect("core:uretim_emri_detay", pk=emir.pk)
-            except uretim_servis.UretimHatasi as e:
+                if request.POST.get("onizle"):
+                    # ÖNİZLE: açılacak istasyon emirleri / ayrılacak stok / eksik malzeme — HİÇBİR KAYIT YAZMAZ (core.services.us_onizleme)
+                    plan_onizleme = us_onizleme_servis.onizle(kalemler=_us_kalemleri(formset, kullanici=request.user, ham=True, varyantli=varyantli), kullanici=request.user)
+                else:
+                    kalemler = _us_kalemleri(formset, kullanici=request.user, ham=False, varyantli=varyantli)
+                    # Stok için ÜS: kök hedef kendi stoğundan karşılanmaz (soru yok) — bkz. uretim.stok_icin_tavan
+                    emir = uretim_servis.uretim_emri_olustur(
+                        kalemler=kalemler, depo_id=cd["depo"].pk, tarih=cd["tarih"],
+                        aciklama=cd.get("aciklama", ""), kullanici=request.user, termin=cd.get("termin"), oncelik=cd.get("oncelik") or UretimEmri.Oncelik.NORMAL)
+                    messages.success(
+                        request, f"Üretim siparişi açıldı: {emir.no} — hedefin tamamı üretilecek (stok için), alt bileşenler için stok ayrıldı, istasyon emirleri oluşturuldu.")
+                    return redirect("core:uretim_emri_detay", pk=emir.pk)
+            except (uretim_servis.UretimHatasi, varyant_servis.VaryantHatasi) as e:
                 bform.add_error(None, str(e))
     else:
         bform = UretimEmriBaslikForm()
@@ -7871,7 +7930,8 @@ def uretim_emri_ekle(request):
             except (InvalidOperation, ValueError):
                 ilk = [{"hedef_urun": int(urun)}]
         formset = UretimEmriKalemSatirFormSet(prefix="satir", initial=ilk)
-    return render(request, "core/uretim_emri_form.html", {"bform": bform, "formset": formset, "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Siparişi Aç"})
+    return render(request, "core/uretim_emri_form.html", {"bform": bform, "formset": formset, "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Siparişi Aç",
+                                                          "varyant_meta": _us_varyant_meta(varyantli), "plan_onizleme": plan_onizleme, "onizle_acik": True})
 
 
 def _tarih_goster(iso):
@@ -8052,22 +8112,23 @@ def uretim_emri_revize_gorunum(request, pk):
         bform = UretimRevizeBaslikForm(request.POST)
         formset = UretimEmriKalemSatirFormSet(request.POST, prefix="satir")
         if bform.is_valid() and formset.is_valid():
-            kalemler = [{"hedef_urun_id": f.cleaned_data["hedef_urun"].pk, "hedef_miktar": f.cleaned_data["hedef_miktar"]} for f in formset if f.dolu_mu()]
             try:
+                kalemler = _us_kalemleri(formset, kullanici=request.user, ham=False, varyantli=emir.varyantli_plan)      # kalem varyantı revizede korunur
                 uretim_servis.uretim_emri_revize(emir, kalemler=kalemler, tarih=bform.cleaned_data["tarih"],
                                                  aciklama=bform.cleaned_data.get("aciklama", ""), kullanici=request.user,
                                                  termin=bform.cleaned_data.get("termin"), oncelik=bform.cleaned_data.get("oncelik") or emir.oncelik)   # stok için: kök stoktan karşılanmaz
                 messages.success(request, f"{emir.no} revize edildi (revizyon {emir.revizyon_no}).")
                 return redirect("core:uretim_emri_detay", pk=emir.pk)
-            except uretim_servis.UretimHatasi as e:
+            except (uretim_servis.UretimHatasi, varyant_servis.VaryantHatasi) as e:
                 bform.add_error(None, str(e))
     else:
         bform = UretimRevizeBaslikForm(initial={"termin": emir.termin, "oncelik": emir.oncelik})
         formset = UretimEmriKalemSatirFormSet(prefix="satir", initial=[
-            {"hedef_urun": k.hedef_urun_id, "hedef_miktar": k.hedef_miktar} for k in emir.kalemler.filter(silindi=False).order_by("sira", "pk")])
+            {"hedef_urun": k.hedef_urun_id, "hedef_miktar": k.hedef_miktar, "varyant": varyant_servis.secim_degeri(k.varyant_id) if emir.varyantli_plan else ""}
+            for k in emir.kalemler.filter(silindi=False).order_by("sira", "pk")])
     return render(request, "core/uretim_emri_form.html", {
         "bform": bform, "formset": formset, "baslik": f"{emir.no} Revize", "geri_url": reverse("core:uretim_emri_detay", args=[emir.pk]),
-        "gonder_etiket": "Revize Et", "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Revize Et",
+        "gonder_etiket": "Revize Et", "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Revize Et", "varyant_meta": _us_varyant_meta(emir.varyantli_plan),
         "aciklama": "Kalem miktarını artırıp azaltabilir, kalem ekleyip çıkarabilirsiniz. Ayırma ve istasyon emirleri yeniden planlanır; "
                     "sevk/fatura edilmiş miktarın altına inilemez."})
 

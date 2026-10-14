@@ -31,7 +31,7 @@ class ListeYukleme(Paylasim):
         self.emirler = [e for e in emirler if e.durum == UretimEmri.Durum.ACIK and not e.silindi]
         idler = [e.pk for e in self.emirler]
         self.ies = {}
-        for ie in IstasyonEmri.objects.filter(uretim_emri_id__in=idler, silindi=False).order_by("uretim_emri_id", "pk"):
+        for ie in IstasyonEmri.objects.filter(uretim_emri_id__in=idler, silindi=False).select_related("istasyon").order_by("uretim_emri_id", "pk"):
             self.ies.setdefault(ie.uretim_emri_id, []).append(ie)
         super().__init__({ie.operasyon_id for liste in self.ies.values() for ie in liste})
         for liste in self.ies.values():
@@ -156,6 +156,30 @@ class ListeYukleme(Paylasim):
             self._sat = satinalma.acik_siparis_satirlari(None, etiketli=False)
         idler = set(stok_idler)
         return [s for s in self._sat if s["stok_id"] in idler]
+
+    # --- darboğaz (liste satırı): sorgusuz, yüklenmiş istasyon emirlerinden ---
+    def darbogaz(self, emir_pk):
+        """Başlamış ve bitmemiş istasyonlar arasında İş %'si en düşük olan: {"tur": "darbogaz", "istasyon", "yuzde"}; hiçbir istasyon başlamadıysa ilk açık istasyon
+        (üretim sırasıyla): {"tur": "siradaki", "istasyon", "yuzde": None}; açık istasyon yoksa None. İş % = Σ min(tamamlanan, planlanan) ÷ Σ planlanan (iptal hariç)."""
+        ist = {}
+        for ie in sorted(self.ies.get(emir_pk, []), key=lambda x: (x.istasyon.sira, x.istasyon.kod, x.pk)):
+            if ie.durum == IstasyonEmri.Durum.IPTAL:
+                continue
+            d = ist.setdefault(ie.istasyon_id, {"istasyon": ie.istasyon, "plan": SIFIR, "yapilan": SIFIR, "acik": False, "baslamis": False})
+            d["plan"] += ie.planlanan
+            d["yapilan"] += ie.planlanan if ie.durum == IstasyonEmri.Durum.BITTI else min(ie.tamamlanan, ie.planlanan)
+            if ie.durum != IstasyonEmri.Durum.BITTI:
+                d["acik"] = True
+            if ie.durum in (IstasyonEmri.Durum.BASLADI, IstasyonEmri.Durum.BITTI) or ie.tamamlanan > 0:
+                d["baslamis"] = True
+        acik = [d for d in ist.values() if d["acik"]]                    # ekleme sırası = üretim sırası
+        if not acik:
+            return None
+        baslamis = [d for d in acik if d["baslamis"]]
+        if baslamis:
+            en = min(baslamis, key=lambda d: (d["yapilan"] * 100 / d["plan"]) if d["plan"] else SIFIR)       # eşitlikte üretim sırasındaki ilk
+            return {"tur": "darbogaz", "istasyon": en["istasyon"], "yuzde": (en["yapilan"] * 100 / en["plan"]) if en["plan"] else SIFIR}
+        return {"tur": "siradaki", "istasyon": acik[0]["istasyon"], "yuzde": None}
 
     def icin(self, emir) -> "UsAdaptoru":
         return UsAdaptoru(self, emir)

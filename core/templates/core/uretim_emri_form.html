@@ -44,7 +44,7 @@
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="fh-satir">
-                <td>{{ f.hedef_urun }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td>{{ f.hedef_urun }}<div class="varyant-alan" hidden></div>{{ f.varyant }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
                 <td>{{ f.hedef_miktar }}</td>
                 <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
               </tr>
@@ -58,14 +58,16 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.hedef_urun }}</td>
+      <td>{{ formset.empty_form.hedef_urun }}<div class="varyant-alan" hidden></div>{{ formset.empty_form.varyant }}</td>
       <td>{{ formset.empty_form.hedef_miktar }}</td>
       <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
+    {% if plan_onizleme %}{% include "core/_us_onizleme.html" %}{% endif %}
     {% include "core/_stoktan_karsilama.html" %}
     <div class="form-altbar">
       <a class="iptal-bag" href="{{ geri_url|default:'/uretim/emirler/' }}">İptal</a>
+      {% if onizle_acik %}<button type="submit" name="onizle" value="1" class="dugme-ikincil" title="Kaydetmeden açılacak istasyon emirlerini, ayrılacak stoğu ve eksik malzemeyi göster">🔍 Önizle</button>{% endif %}
       <button type="submit" class="birincil">{% if onizleme %}{{ onay_etiket }}{% else %}{{ gonder_etiket|default:"Siparişi Aç" }}{% endif %}</button>
     </div>
   </form>
@@ -93,6 +95,7 @@
     document.getElementById('satir-govde').appendChild(tr);
     tf.value = i + 1;
     if(window.akilliSecKur) window.akilliSecKur(tr.querySelector('select.akilli-sec'));
+    if(window.varyantSatirKur) window.varyantSatirKur(tr);
   }
   document.getElementById('satir-ekle').addEventListener('click', satirEkle);
   document.getElementById('satir-govde').addEventListener('click', function(e){
@@ -101,4 +104,5 @@
 })();
 </script>
 {% include "core/_akilli_hesap.html" %}
+{% include "core/_varyant_js.html" %}
 {% endblock %}

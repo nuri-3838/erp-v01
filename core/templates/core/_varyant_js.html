@@ -63,18 +63,18 @@
       .catch(function(){ window.alert('Varyant eklenemedi.'); });
   }
   window.varyantSatirKur = function(row){
-    var sel = row.querySelector('select[name$="-stok"]'); var kap = row.querySelector('.varyant-alan');
+    var sel = row.querySelector('select[name$="-stok"], select[name$="-hedef_urun"]'); var kap = row.querySelector('.varyant-alan');
     var gizli = row.querySelector('input[name$="-varyant"]');
     if(sel && kap) window.varyantKur(kap, sel.value, gizli);
   };
   document.addEventListener('change', function(e){
-    if(!(e.target && e.target.matches && e.target.matches('select[name$="-stok"]'))) return;
+    if(!(e.target && e.target.matches && e.target.matches('select[name$="-stok"], select[name$="-hedef_urun"]'))) return;
     var row = e.target.closest('tr, .fk-satir, .satir-form');
     if(!row) return;
     var gizli = row.querySelector('input[name$="-varyant"]'); if(gizli) gizli.value = '';   // stok değişti: varsayılan varyant
     window.varyantSatirKur(row);
   });
-  document.querySelectorAll('select[name$="-stok"]').forEach(function(sel){ var row = sel.closest('tr, .fk-satir, .satir-form'); if(row) window.varyantSatirKur(row); });
+  document.querySelectorAll('select[name$="-stok"], select[name$="-hedef_urun"]').forEach(function(sel){ var row = sel.closest('tr, .fk-satir, .satir-form'); if(row) window.varyantSatirKur(row); });
   // Satış teklifi / proforma: ürün satırı sabit (data-stok), stok gizli alan — "Varyant" bölümü kart başına
   document.querySelectorAll('.fk-satir[data-stok]').forEach(function(card){
     var kap = card.querySelector('.varyant-alan'); var gizli = card.querySelector('input[name$="-varyant"]');

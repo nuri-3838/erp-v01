@@ -48,6 +48,17 @@
   .ue-durum.sevk { background:#e8f0ff; color:#2457b8; }
   .ue-acil { display:inline-block; margin-left:.4rem; padding:.08rem .45rem; border-radius:999px; font-size:.68rem; font-weight:800; background:#fdecef; color:#c11539; vertical-align:middle; }
   .ue-yuzde.ue-is { margin-top:.4rem; }
+  .ue-chipler { display:flex; gap:.45rem; flex-wrap:wrap; margin-top:.7rem; }
+  .ue-chip { display:inline-flex; align-items:center; gap:.4rem; padding:.3rem .75rem; border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8);
+             color:var(--metin); font-size:.82rem; font-weight:600; text-decoration:none; }
+  .ue-chip:hover { border-color:var(--turuncu); }
+  .ue-chip.aktif { background:var(--turuncu); border-color:var(--turuncu); color:#fff; }
+  .ue-chip .sayi { min-width:1.2rem; padding:0 .35rem; border-radius:999px; background:rgba(33,56,95,.12); font-size:.74rem; text-align:center; }
+  .ue-chip.aktif .sayi { background:rgba(255,255,255,.3); }
+  .ue-kalan { font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
+  .ue-kalan.gecmis { color:#c11539; font-weight:700; }
+  .ue-darbogaz { font-size:.74rem; color:var(--metin-soluk); margin-top:.25rem; }
+  .ue-darbogaz b { color:var(--metin); font-weight:700; }
   .ue-bar.ue-bar-is i { background:linear-gradient(90deg, #2d6cdf, #5b8def); }
   .ue-fason-gerekli { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#fff0dc; color:#b35a00; }
   .ue-fason-bekl { display:inline-block; margin-top:.25rem; padding:.12rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#eceff3; color:#5b6678; }
@@ -93,6 +104,7 @@
 
 <div class="ue-panel">
   <form method="get" class="ue-arama-cubuk" id="ue-arama-form">
+    {% for k, v in chip_gizli.items %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
     <div class="ue-alan-grup ue-arama-kutu">
       <label for="ue-arama">Ara</label>
       <span class="ue-arama-ikon">🔍</span>
@@ -111,6 +123,9 @@
          href="{% url 'core:uretim_emirleri' %}?durum={{ durum }}">Temizle</a>
     </div>
   </form>
+  <div class="ue-chipler" role="group" aria-label="Süzgeçler">
+    {% for c in suzgecler %}<a class="ue-chip{% if c.aktif %} aktif{% endif %}" href="{{ c.url }}" title="{{ c.ipucu }}">{{ c.ad }} <span class="sayi">{{ c.sayi }}</span></a>{% endfor %}
+  </div>
 </div>
 
 <p class="sayfa-alt"><span id="ue-sayac-sayi">{{ emirler|length }}</span> üretim siparişi.</p>
@@ -137,7 +152,7 @@
           </div>
         </td>
         <td class="mono" data-et="Tarih">{{ e.tarih|date:"d.m.Y" }}</td>
-        <td data-et="Termin">{% if s.termin %}<span class="mono ue-termin{% if s.termin_gecmis %} gecmis{% endif %}"{% if s.termin_gecmis %} title="Termin geçti"{% endif %}>{{ s.termin|date:"d.m.Y" }}</span>{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td data-et="Termin">{% if s.termin %}<span class="mono ue-termin{% if s.termin_gecmis %} gecmis{% endif %}"{% if s.termin_gecmis %} title="Termin geçti"{% endif %}>{{ s.termin|date:"d.m.Y" }}</span>{% else %}<span class="pasif">—</span>{% endif %}{% if s.kalan_metin %}<div class="ue-kalan{% if s.termin_gecmis %} gecmis{% endif %}">{{ s.kalan_metin }}</div>{% endif %}</td>
         <td data-et="Durum">
           <span class="ue-durum {% if s.sevk_bekliyor %}sevk{% elif e.durum == 'ACIK' %}acik{% elif e.durum == 'KAPALI' %}tamam{% else %}iptal{% endif %}"{% if s.sevk_bekliyor %} title="Üretim bitti; sevk (depolu satış faturası) bekleniyor"{% endif %}>{% if s.sevk_bekliyor %}Sevk bekliyor{% elif e.durum == 'ACIK' %}Açık{% elif e.durum == 'KAPALI' %}Tamamlandı{% else %}İptal{% endif %}</span>
           {% if s.eksik_sayisi %}<br><span class="ue-eksik" title="Satınalma ihtiyacı olan malzeme">Eksik malzeme: {{ s.eksik_sayisi }}</span>{% endif %}
@@ -152,6 +167,7 @@
             <div class="ue-yuzde ue-is"><span title="İş %: tamamlanan ÷ planlanan (istasyon emirleri toplamı, çalıştırma ağırlıklı)">İş {% if s.is_yuzde is None %}—{% else %}%{{ s.is_yuzde|floatformat:0 }}{% endif %}</span></div>
             <div class="ue-bar ue-bar-is"><i style="width:{% if s.is_yuzde is None %}0{% else %}{{ s.is_yuzde|floatformat:'0u' }}{% endif %}%"></i></div>
             <div class="ue-ist">{% if s.tamamlandi %}Tamamlandı · ayrılan serbest{% else %}{{ s.ilerleme.onayli }}/{{ s.ilerleme.toplam }} istasyon{% endif %}</div>
+            {% if s.darbogaz %}<div class="ue-darbogaz" title="{% if s.darbogaz.tur == 'darbogaz' %}Başlamış ve bitmemiş istasyonlar arasında İş %'si en düşük olan{% else %}Hiçbir istasyon başlamadı; üretim sırasındaki ilk açık istasyon{% endif %}">{% if s.darbogaz.tur == 'darbogaz' %}Darboğaz: <b>{{ s.darbogaz.istasyon.kod }} {{ s.darbogaz.istasyon.ad }}</b> %{{ s.darbogaz.yuzde|floatformat:0 }}{% else %}Sıradaki: <b>{{ s.darbogaz.istasyon.kod }} {{ s.darbogaz.istasyon.ad }}</b>{% endif %}</div>{% endif %}
           </div>
         </td>
         <td class="ue-ok" onclick="event.stopPropagation()">
@@ -165,7 +181,7 @@
       {% endwith %}
     {% empty %}
       <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or durum != 'TUMU' %}🔍 Bu süzgeçle eşleşen üretim siparişi yok{% if durum == 'AKTIF' and not ara %} — açık sipariş yok; tamamlananlar için durumu “Tamamlandı” ya da “Tümü” yapın{% endif %}.
+        {% if ara or chip_aktif or durum != 'TUMU' %}🔍 Bu süzgeçle eşleşen üretim siparişi yok{% if durum == 'AKTIF' and not ara %} — açık sipariş yok; tamamlananlar için durumu “Tamamlandı” ya da “Tümü” yapın{% endif %}.
         {% else %}🏭 Henüz üretim siparişi yok. Bir satış siparişinden “Üretim Siparişi Aç” ile ya da “+ Yeni” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
     <tr class="ue-bos-js" style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">

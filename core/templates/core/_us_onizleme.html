@@ -1,0 +1,70 @@
+{% load core_extras %}
+<section class="icerik-kart" id="onizleme-paneli">
+  <div class="ipucu-kap"><h2 class="bolum-baslik">Önizleme</h2>
+    {% include "core/_ipucu.html" with metin="Kayıt YAZILMADI. Açılışta kullanılan net plan hesabıyla gösterilir: açılacak istasyon emirleri, stoktan / fason siparişinden ayrılacaklar ve eksik malzeme. Stok durumu değişebilir; “Siparişi Aç” hesabı yeniden yapar." %}
+    <span class="rozet rozet-aktif">{{ plan_onizleme.ie_sayisi }} istasyon emri açılacak</span>
+    <span class="rozet rozet-notr">{{ plan_onizleme.ayirmalar|length }} stok kalemi ayrılacak</span>
+    {% if plan_onizleme.eksik_sayisi %}<span class="rozet rozet-pasif">Eksik malzeme: {{ plan_onizleme.eksik_sayisi }}</span>{% endif %}
+    {% if plan_onizleme.satinalma_bekleyen %}<span class="rozet rozet-notr">Satınalmadan bekleniyor: {{ plan_onizleme.satinalma_bekleyen }}</span>{% endif %}
+    {% if plan_onizleme.fason_bekleyen %}<span class="rozet rozet-notr">Fasondan bekleniyor: {{ plan_onizleme.fason_bekleyen }}</span>{% endif %}
+  </div>
+
+  <h3 style="margin:.9rem 0 .3rem">Açılacak istasyon emirleri</h3>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>İstasyon</th><th>Çıktı</th><th class="sag">Çalıştırma</th><th class="sag">Adet</th></tr></thead>
+    <tbody>
+      {% for g in plan_onizleme.istasyonlar %}
+        <tr><td colspan="2"><strong><span class="mono">{{ g.istasyon.kod }}</span> {{ g.istasyon.ad }}</strong>{% if g.fason %} <span class="rozet rozet-notr">fason</span>{% endif %}
+              <span class="yardim">· {{ g.emir_sayisi }} emir</span></td>
+            <td class="sag mono"></td><td class="sag mono"><strong>{{ g.adet|tr_kur:3 }}</strong></td></tr>
+        {% for e in g.emirler %}
+          <tr><td></td><td><span class="mono">{{ e.cikti.kod }}</span> {{ e.cikti.ad }}{% if e.varyant %} <span class="rozet rozet-notr">{{ e.varyant }}</span>{% endif %}</td>
+              <td class="sag mono">{{ e.calistirma|tr_kur:3 }}</td><td class="sag mono">{{ e.adet|tr_kur:3 }}</td></tr>
+        {% endfor %}
+      {% empty %}
+        <tr><td colspan="4" class="yardim">Açılacak istasyon emri yok (ihtiyacın tamamı stoktan karşılanıyor).</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <h3 style="margin:.9rem 0 .3rem">Stoktan ayrılacaklar</h3>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Stok</th><th class="sag">Stoktan</th><th class="sag">Fason siparişinden</th><th class="sag">Toplam</th></tr></thead>
+    <tbody>
+      {% for a in plan_onizleme.ayirmalar %}
+        <tr><td><a href="{% url 'core:stok_detay' a.stok.pk %}"><span class="mono">{{ a.stok.kod }}</span> {{ a.stok.ad }}</a>{% if a.varyant_etiketi %} <span class="rozet rozet-notr">{{ a.varyant_etiketi }}</span>{% endif %}</td>
+            <td class="sag mono">{{ a.stoktan|tr_kur:3 }}</td><td class="sag mono">{% if a.fasondan %}{{ a.fasondan|tr_kur:3 }}{% else %}—{% endif %}</td><td class="sag mono">{{ a.toplam|tr_kur:3 }}</td></tr>
+      {% empty %}
+        <tr><td colspan="4" class="yardim">Stoktan ayrılacak kalem yok: hedefin tamamı üretilecek ve bileşenler için kullanılabilir stok bulunmuyor.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <h3 style="margin:.9rem 0 .3rem">Eksik malzeme</h3>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Stok</th><th>Tür</th><th class="sag">Gerekli</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
+    <tbody>
+      {% for e in plan_onizleme.eksikler %}
+        <tr><td><a href="{% url 'core:stok_detay' e.stok.pk %}"><span class="mono">{{ e.stok.kod }}</span> {{ e.stok.ad }}</a>{% if e.varyant_etiketi %} <span class="rozet rozet-notr">{{ e.varyant_etiketi }}</span>{% endif %}</td>
+            {% if e.tur == "FASON_SIPARIS" %}
+              <td><span class="rozet rozet-aktif">📤 Fason siparişinden bekleniyor: <a href="{% url 'core:fason_siparis_detay' e.fs.pk %}">{{ e.fs.no }}</a> · {{ e.gerekli|tr_miktar_sade }} adet{% if e.termin %} · termin {{ e.termin|date:"d.m.Y" }}{% endif %}</span></td>
+              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">—</td><td class="sag mono">—</td>
+            {% elif e.tur == "SATINALMA_SIPARIS" %}
+              <td><span class="rozet rozet-aktif">🛒 Satınalma siparişinden bekleniyor: {% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if termin %} (termin {{ termin|date:"d.m.Y" }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %} · {{ e.siparis_bekleyen|tr_miktar_sade }} adet</span></td>
+              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td><td class="sag mono">—</td>
+            {% else %}
+              <td>{% if e.stoklu %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu ara mamul</span>{% else %}<span class="rozet rozet-pasif" title="Satınalma gerekiyor">satınalma</span>{% if e.siparis_bekleyen %} <span class="rozet rozet-aktif">🛒 {{ e.siparis_bekleyen|tr_miktar_sade }} adet siparişte ({% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if not forloop.last %}, {% endif %}{% endfor %})</span>{% endif %}{% endif %}</td>
+              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td><td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
+            {% endif %}</tr>
+      {% empty %}
+        <tr><td colspan="5" class="yardim">Eksik malzeme yok: gereken tüm ham madde ve stoklu ara mamul kullanılabilir stokta var.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
