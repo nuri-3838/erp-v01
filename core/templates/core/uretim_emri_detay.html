@@ -5,12 +5,13 @@
 
 {% block content %}
 <style>
+  /* ÜS detay (2026-10-14 yeniden tasarım): üst bant + akış şeridi + sekmeler. Yatay kaydırma yalnız şerit/tablo kapsayıcısında; sayfa taşmaz. */
   .ie-uret-form { display:inline-flex; gap:.3rem; align-items:center; margin:0 .4rem .2rem 0; flex-wrap:wrap; }
   .ie-uret-form input[type=text] { width:6.2rem; text-align:right; }
   .ie-hata { margin-top:.35rem; padding:.4rem .6rem; border-radius:8px; background:#fdecef; color:#b3253f; font-size:.82rem; max-width:34rem; }
   .rozet-turuncu { background:#fff0dc; color:#b35a00; }
-  .ie-baslik { display:flex; justify-content:space-between; align-items:center; gap:.8rem; flex-wrap:wrap; }
-  .ie-baslik .bolum-baslik { margin:0; }
+  a.rozet { text-decoration:none; }
+  a.rozet:hover { filter:brightness(.96); }
   .ie-grup { border:1px solid rgba(21,41,77,.12); border-radius:10px; margin:.6rem 0; background:rgba(255,255,255,.55); }
   .ie-grup > summary { cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:.8rem; flex-wrap:wrap;
                        padding:.55rem .8rem; font-weight:600; }
@@ -21,48 +22,155 @@
   .ie-grup-ozet { display:flex; gap:.5rem; align-items:center; font-weight:400; }
   .ie-grup-islem { padding:0 .8rem .4rem; }
   .ie-grup .tablo-kapsayici { margin:0 .4rem .4rem; }
-  .ie-kayit-sayac { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin:0; }
+  .ud-grup:target > .ie-grup { outline:2px solid var(--turuncu); }
+
+  .ud-ust-form { margin:0; }
+  .ud-bant { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); gap:1.2rem 2rem; align-items:center; }
+  .ud-meta { display:grid; gap:.35rem; min-width:0; }
+  .ud-meta .satir { margin:0; }
+  .ud-termin.gecmis { color:var(--hata); font-weight:700; }
+  .ud-yuzde-blok { min-width:0; }
+  .ud-yuzde-ust { display:flex; align-items:baseline; justify-content:space-between; gap:.8rem; flex-wrap:wrap; }
+  .ud-yuzde { font-size:2.1rem; font-weight:800; color:var(--lacivert); line-height:1; }
+  .ud-cubuk { display:block; height:.8rem; border-radius:99px; background:#e8ecf3; overflow:hidden; margin:.45rem 0 .25rem; }
+  .ud-cubuk > i { display:block; height:100%; border-radius:99px; background:var(--turuncu); }
+  .ud-cubuk.buyuk { height:1rem; }
+  .ud-cubuk.ince { height:.5rem; margin:.25rem 0 0; min-width:4.5rem; }
+  .ud-rozetler { grid-column:1 / -1; display:flex; gap:.45rem; flex-wrap:wrap; align-items:center; }
+  .ud-rozetler:empty { display:none; }
+  .ud-aciklama { grid-column:1 / -1; color:var(--metin-soluk); font-size:.88rem; }
+
+  .ud-serit-kart { padding-bottom:.7rem; }
+  .ud-serit { display:flex; align-items:stretch; gap:.35rem; overflow-x:auto; padding:.15rem .1rem .45rem; -webkit-overflow-scrolling:touch; max-width:100%; }
+  .ud-kutu { flex:0 0 9.6rem; display:flex; flex-direction:column; gap:.2rem; padding:.55rem .65rem; border-radius:10px; border:1.5px solid var(--cizgi-koyu);
+             background:#f3f5f9; color:var(--metin); text-decoration:none; min-width:0; }
+  .ud-kutu:hover { box-shadow:var(--golge-md); }
+  .ud-kutu-ad { font-weight:700; font-size:.86rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ud-kutu-sayi { font-size:.78rem; color:var(--metin-soluk); }
+  .ud-kutu-etiket { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.02em; }
+  .ud-ok { align-self:center; color:var(--metin-soluk); flex:0 0 auto; }
+  .ud-kutu.ud-tamam { background:#e7f7ec; border-color:#2e9e5b; } .ud-tamam .ud-kutu-etiket { color:#0a7d28; } .ud-tamam .ud-cubuk > i { background:#2e9e5b; }
+  .ud-kutu.ud-devam { background:#fff4e3; border-color:#e08a00; } .ud-devam .ud-kutu-etiket { color:#b35a00; }
+  .ud-kutu.ud-eksik { background:#fdecef; border-color:#c11539; } .ud-eksik .ud-kutu-etiket { color:#c11539; } .ud-eksik .ud-cubuk > i { background:#c11539; }
+  .ud-kutu.ud-fason { background:#f1eafd; border-color:#7a3fd1; } .ud-fason .ud-kutu-etiket { color:#6a3d9a; } .ud-fason .ud-cubuk > i { background:#7a3fd1; }
+  .ud-kutu.ud-bekliyor, .ud-kutu.ud-iptal { background:#eef1f7; } .ud-bekliyor .ud-kutu-etiket, .ud-iptal .ud-kutu-etiket { color:var(--metin-soluk); }
+  .ud-bekliyor .ud-cubuk > i, .ud-iptal .ud-cubuk > i { background:#9aa5b8; }
+
+  .ud-sekmeler { display:flex; gap:.2rem; overflow-x:auto; border-bottom:2px solid var(--cizgi); margin:1rem 0 .8rem; max-width:100%; -webkit-overflow-scrolling:touch; }
+  .ud-sekme { flex:0 0 auto; padding:.55rem 1rem; font-weight:700; color:var(--metin-soluk); text-decoration:none; border-bottom:3px solid transparent; margin-bottom:-2px;
+              white-space:nowrap; }
+  .ud-sekme:hover { color:var(--lacivert); }
+  .ud-sekme.aktif { color:var(--lacivert); border-bottom-color:var(--turuncu); }
+  .ud-sekme .ud-sayi { display:inline-block; min-width:1.35rem; padding:0 .4rem; margin-left:.3rem; border-radius:99px; background:#eef1f7; color:var(--metin-soluk);
+                       font-size:.76rem; text-align:center; }
+  .ud-sekme.aktif .ud-sayi { background:var(--turuncu); color:#fff; }
+  .ud-panel > .icerik-kart:first-child { margin-top:0; }
+
+  .ud-baslik { position:relative; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.4rem; }
+  .ud-baslik .bolum-baslik { margin:0; }
+  .ud-ipucu { display:inline-flex; align-items:center; justify-content:center; width:1.25rem; height:1.25rem; border-radius:50%; border:1.5px solid var(--metin-soluk);
+              color:var(--metin-soluk); font-size:.75rem; font-weight:700; cursor:help; outline:none; }
+  .ud-ipucu:hover, .ud-ipucu:focus { border-color:var(--turuncu); color:var(--turuncu); }
+  .ud-ipucu::after { content:attr(data-ipucu); display:none; position:absolute; left:0; right:0; top:100%; z-index:20; margin-top:.35rem; max-width:36rem; padding:.6rem .8rem;
+                     background:var(--lacivert); color:#fff; border-radius:10px; font-size:.82rem; font-weight:400; line-height:1.4; box-shadow:var(--golge-lg); text-align:left; }
+  .ud-ipucu:hover::after, .ud-ipucu:focus::after { display:block; }
+  .ud-kalem-yuzde { display:flex; align-items:center; gap:.5rem; justify-content:flex-end; }
+  .ud-kayit-cipler { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin:0 0 .6rem; }
+  .ud-alt { margin:.8rem 0 0; }
+  .ud-alt > summary { cursor:pointer; font-weight:700; color:var(--lacivert); padding:.3rem 0; }
+
+  @media (max-width: 760px) {
+    .ud-bant { grid-template-columns:minmax(0,1fr); }
+    .ud-yuzde { font-size:1.7rem; }
+    .ud-kutu { flex-basis:8.6rem; }
+    .ud-sekme { padding:.5rem .75rem; }
+  }
 </style>
+
 <div class="sayfa-ust">
   <div>
     <a class="ust-link" href="{% url 'core:uretim_emirleri' %}">← Üretim Siparişleri</a>
     <h1 class="ust-baslik"><span class="emoji">🏭</span>{{ emir.no }}
-      <span class="rozet {% if emir.durum == 'ACIK' %}rozet-aktif{% elif emir.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-kapali{% endif %}">{{ emir.get_durum_display }}</span>
-      <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">
-        {{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon bitti</span>
-      {% if emir.durum == 'ACIK' and fason_emri_gerekli %}<span class="rozet rozet-turuncu" title="Fason siparişi iptal/azaldı: bu parça için ÜS'de fason istasyon emri yok; ÜS'yi revize edin">⚠ Fason emri gerekli: {{ fason_emri_gerekli }}</span>{% endif %}</h1>
+      <span class="rozet {% if emir.durum == 'ACIK' %}rozet-aktif{% elif emir.durum == 'IPTAL' %}rozet-pasif{% else %}rozet-kapali{% endif %}">{{ emir.get_durum_display }}</span></h1>
   </div>
-  <span class="islem-bag">
+  <span class="islem-bag" style="flex-wrap:wrap;justify-content:flex-end">
+    {% if toplu_uretilebilir and uret_yetkili %}
+    <form method="post" action="{% url 'core:uretim_emri_toplu_uret' emir.pk %}" class="ie-uret-form ie-toplu ud-ust-form"
+          onsubmit="return confirm('Tüm istasyonların açık emirleri istasyon sırasıyla, bu tarihle üretilsin mi? Fason emirleri atlanır; bir emirde hata olursa hiçbiri yazılmaz.');">
+      {% csrf_token %}
+      <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (tüm emirler için tek tarih)">
+      <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶▶ Tümünü üret</button>
+    </form>
+    {% endif %}
     {% if revize_url %}<a class="dugme" href="{{ revize_url }}">✏️ Revize</a>{% endif %}
     {% if emir.durum == 'ACIK' %}
-    <form method="post" action="{% url 'core:uretim_emri_iptal' emir.pk %}" onsubmit="return confirm('Üretim siparişi İPTAL edilsin mi? Ayrılan stok serbest kalır, bitmemiş istasyon emirleri iptal olur; onaylı kayıtların ürettiği parçalar serbest stokta kalır.');">
+    <form method="post" action="{% url 'core:uretim_emri_iptal' emir.pk %}" class="ud-ust-form" onsubmit="return confirm('Üretim siparişi İPTAL edilsin mi? Ayrılan stok serbest kalır, bitmemiş istasyon emirleri iptal olur; onaylı kayıtların ürettiği parçalar serbest stokta kalır.');">
       {% csrf_token %}<button type="submit" class="dugme">⛔ İptal Et</button></form>
     {% endif %}
     {% if silinebilir %}
-    <form method="post" action="{% url 'core:uretim_emri_sil' emir.pk %}" onsubmit="return confirm('Bu üretim siparişi ve bağlı taslak kayıtlar KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
+    <form method="post" action="{% url 'core:uretim_emri_sil' emir.pk %}" class="ud-ust-form" onsubmit="return confirm('Bu üretim siparişi ve bağlı taslak kayıtlar KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
       {% csrf_token %}<button type="submit" class="sil">🗑️ Sil</button></form>
     {% endif %}
   </span>
 </div>
 
-<section class="icerik-kart">
-  <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ emir.tarih|date:"d.m.Y" }}</span></div>
-  <div class="satir"><span class="et">Depo</span>
-    <span class="dg"><span class="mono">{{ emir.depo.kod }}</span> {{ emir.depo.ad }}</span></div>
-  {% if emir.kaynak_siparis %}
-  <div class="satir"><span class="et">Kaynak Sipariş</span>
-    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' emir.kaynak_siparis.pk %}">{{ emir.kaynak_siparis.get_belge_tur_display }}{% if emir.kaynak_siparis.belge_no %} · {{ emir.kaynak_siparis.belge_no }}{% endif %}</a>
-      {% if emir.kaynak_siparis.cari %} · {{ emir.kaynak_siparis.cari.unvan }}{% endif %}</span></div>
-  {% endif %}
-  <div class="satir"><span class="et">Revizyon</span><span class="dg mono">{{ emir.revizyon_no }}</span></div>
-  {% if emir.kapanis_tarihi %}<div class="satir"><span class="et">Kapanış</span><span class="dg mono">{{ emir.kapanis_tarihi|date:"d.m.Y" }}</span></div>{% endif %}
-  {% if emir.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ emir.aciklama }}</span></div>{% endif %}
+<section class="icerik-kart ud-bant">
+  <div class="ud-meta">
+    <div class="satir"><span class="et">{% if bant.sip %}Kaynak Sipariş{% else %}Kaynak{% endif %}</span>
+      <span class="dg">{% if bant.sip %}<a href="{% url 'core:teklif_siparis_detay' bant.sip.pk %}">{{ bant.sip.get_belge_tur_display }}{% if bant.sip.belge_no %} · {{ bant.sip.belge_no }}{% endif %}</a>{% if bant.musteri %} · {{ bant.musteri }}{% endif %}{% else %}Stok için üretim{% endif %}</span></div>
+    <div class="satir"><span class="et">Termin</span>
+      <span class="dg">{% if bant.termin %}<span class="mono ud-termin{% if bant.termin_gecmis %} gecmis{% endif %}">{{ bant.termin|date:"d.m.Y" }}</span>
+        {% if bant.kalan_gun is not None %}<span class="{% if bant.termin_gecmis %}ud-termin gecmis{% else %}yardim{% endif %}">· {{ bant.kalan_metin }}</span>{% endif %}{% else %}<span class="yardim">—</span>{% endif %}</span></div>
+    <div class="satir"><span class="et">Tarih · Depo</span>
+      <span class="dg"><span class="mono">{{ emir.tarih|date:"d.m.Y" }}</span> · <span class="mono">{{ emir.depo.kod }}</span> {{ emir.depo.ad }}{% if emir.revizyon_no %} · rev. <span class="mono">{{ emir.revizyon_no }}</span>{% endif %}{% if emir.kapanis_tarihi %} · kapanış <span class="mono">{{ emir.kapanis_tarihi|date:"d.m.Y" }}</span>{% endif %}</span></div>
+  </div>
+  <div class="ud-yuzde-blok">
+    <div class="ud-yuzde-ust">
+      <span class="ud-yuzde" title="(ayrılan + sevk edilen) ÷ hedef">% {{ yuzde|tr_kur:0 }}</span>
+      <span class="rozet {% if ilerleme.onayli == ilerleme.toplam and ilerleme.toplam > 0 %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ ilerleme.onayli }}/{{ ilerleme.toplam }} istasyon bitti</span>
+    </div>
+    <span class="ud-cubuk buyuk" role="progressbar" aria-valuenow="{{ yuzde_css }}" aria-valuemin="0" aria-valuemax="100"><i style="width:{{ yuzde_css }}%"></i></span>
+  </div>
+  <div class="ud-rozetler">
+    {% if emir.durum == 'ACIK' %}
+      {% if bant.eksik %}<a class="rozet rozet-pasif" href="?sekme=malzeme" data-git="malzeme" title="Gerçek eksik: satınalma / stoklu ara mamul">Eksik malzeme: {{ bant.eksik }}</a>{% endif %}
+      {% if bant.satinalma_bekleyen %}<a class="rozet rozet-notr" href="?sekme=malzeme" data-git="malzeme" title="Açık alış siparişinden bekleniyor">Satınalmadan bekleniyor: {{ bant.satinalma_bekleyen }}</a>{% endif %}
+      {% if bant.fason_bekleyen %}<a class="rozet rozet-notr" href="?sekme=malzeme" data-git="malzeme" title="Fason siparişinden bekleniyor">Fasondan bekleniyor: {{ bant.fason_bekleyen }}</a>{% endif %}
+      {% if bant.fason_emri_gerekli %}<a class="rozet rozet-turuncu" href="?sekme=malzeme" data-git="malzeme" title="Fason siparişi iptal/azaldı: bu parça için ÜS'de fason istasyon emri yok; ÜS'yi revize edin">⚠ Fason emri gerekli: {{ bant.fason_emri_gerekli }}</a>{% endif %}
+    {% endif %}
+  </div>
+  {% if emir.aciklama %}<div class="ud-aciklama">{{ emir.aciklama }}</div>{% endif %}
 </section>
 
+{% if seritler %}
+<section class="icerik-kart ud-serit-kart">
+  <div class="ud-baslik"><h2 class="bolum-baslik">Akış</h2>
+    <span class="ud-ipucu" tabindex="0" role="note" aria-label="Akış açıklaması" data-ipucu="İstasyonlar üretim sırasıyla soldan sağa. Yeşil: bitti, turuncu: devam ediyor, gri: başlamadı, kırmızı: o istasyonda kullanılan bir malzeme eksik, mor: fason. Kutuya tıklayınca İstasyonlar sekmesinde o grup açılır.">?</span></div>
+  <div class="ud-serit">
+    {% for b in seritler %}
+      <a class="ud-kutu ud-{{ b.renk }}" href="?sekme=istasyonlar#{{ b.grup_id }}" data-git="istasyonlar" data-grup="{{ b.grup_id }}" title="{{ b.ipucu }}">
+        <span class="ud-kutu-ad"><span class="mono">{{ b.istasyon.kod }}</span> {{ b.istasyon.ad }}</span>
+        <span class="ud-kutu-sayi">{{ b.bitti }}/{{ b.toplam }} emir · % {{ b.yuzde|tr_kur:0 }}</span>
+        <span class="ud-cubuk ince"><i style="width:{{ b.yuzde_css }}%"></i></span>
+        <span class="ud-kutu-etiket">{{ b.etiket }}</span>
+      </a>
+      {% if not forloop.last %}<span class="ud-ok" aria-hidden="true">›</span>{% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<nav class="ud-sekmeler" role="tablist" aria-label="ÜS bölümleri">
+  <a class="ud-sekme{% if sekme == 'urunler' %} aktif{% endif %}" role="tab" href="?sekme=urunler" data-sekme="urunler" aria-selected="{% if sekme == 'urunler' %}true{% else %}false{% endif %}">Ürünler<span class="ud-sayi">{{ kalemler|length }}</span></a>
+  <a class="ud-sekme{% if sekme == 'istasyonlar' %} aktif{% endif %}" role="tab" href="?sekme=istasyonlar" data-sekme="istasyonlar" aria-selected="{% if sekme == 'istasyonlar' %}true{% else %}false{% endif %}">İstasyonlar<span class="ud-sayi">{{ acik_emir_sayisi }}</span></a>
+  <a class="ud-sekme{% if sekme == 'malzeme' %} aktif{% endif %}" role="tab" href="?sekme=malzeme" data-sekme="malzeme" aria-selected="{% if sekme == 'malzeme' %}true{% else %}false{% endif %}">Malzeme<span class="ud-sayi">{{ malzeme_sayisi }}</span></a>
+  <a class="ud-sekme{% if sekme == 'kayitlar' %} aktif{% endif %}" role="tab" href="?sekme=kayitlar" data-sekme="kayitlar" aria-selected="{% if sekme == 'kayitlar' %}true{% else %}false{% endif %}">Kayıtlar<span class="ud-sayi">{{ kayit_sayisi.toplam }}</span></a>
+</nav>
+
+<div class="ud-panel" id="sekme-urunler" data-sekme="urunler"{% if sekme != 'urunler' %} hidden{% endif %}>
 <section class="icerik-kart">
-  <h2 class="bolum-baslik">Kalemler</h2>
-  <p class="yardim">Ayrılan: şu an bu siparişe ayrılı mamul. Üretilecek: açılış/revizede eldekinden karşılanmayan, üretimle karşılanacak miktar.
-    İlerleme: (ayrılan + sevk edilen) ÷ hedef.</p>
+  <div class="ud-baslik"><h2 class="bolum-baslik">Kalemler</h2>
+    <span class="ud-ipucu" tabindex="0" role="note" aria-label="Kalemler açıklaması" data-ipucu="Ayrılan: şu an bu siparişe ayrılı mamul. Üretilecek: açılış/revizede eldekinden karşılanmayan, üretimle karşılanacak miktar. İlerleme: (ayrılan + sevk edilen) ÷ hedef.">?</span></div>
   <div class="tablo-kapsayici">
   <table>
     <thead><tr><th>Ürün</th><th class="sag">Hedef</th><th class="sag">Ayrılan</th><th class="sag">Üretilecek</th><th class="sag">Sevk edilen</th><th class="sag">İlerleme</th></tr></thead>
@@ -74,7 +182,7 @@
           <td class="sag mono">{% if tamamlandi %}<span class="rozet rozet-aktif" title="Stok için üretim tamamlandı: ayırma serbest bırakıldı, mamul serbest stokta">Tamamlandı</span>{% else %}{{ s.ayrilan|tr_kur:3 }}{% endif %}</td>
           <td class="sag mono">{{ s.uretilecek|tr_kur:3 }}</td>
           <td class="sag mono">{{ s.sevk|tr_kur:3 }}</td>
-          <td class="sag mono">% {{ s.yuzde|tr_kur:0 }}</td>
+          <td class="sag mono"><div class="ud-kalem-yuzde"><span class="ud-cubuk ince" style="width:6rem"><i style="width:{{ s.yuzde_css }}%"></i></span><span>% {{ s.yuzde|tr_kur:0 }}</span></div></td>
         </tr>
       {% empty %}
         <tr><td colspan="6" class="yardim">Bu siparişin hiç kalemi yok.</td></tr>
@@ -83,24 +191,14 @@
   </table>
   </div>
 </section>
+</div>
 
+<div class="ud-panel" id="sekme-istasyonlar" data-sekme="istasyonlar"{% if sekme != 'istasyonlar' %} hidden{% endif %}>
 <section class="icerik-kart">
-  <div class="ie-baslik">
-    <h2 class="bolum-baslik">İstasyon Emirleri</h2>
-    {% if toplu_uretilebilir and uret_yetkili %}
-    <form method="post" action="{% url 'core:uretim_emri_toplu_uret' emir.pk %}" class="ie-uret-form ie-toplu"
-          onsubmit="return confirm('Tüm istasyonların açık emirleri istasyon sırasıyla, bu tarihle üretilsin mi? Fason emirleri atlanır; bir emirde hata olursa hiçbiri yazılmaz.');">
-      {% csrf_token %}
-      <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (tüm emirler için tek tarih)">
-      <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶▶ Tümünü üret</button>
-    </form>
-    {% endif %}
-  </div>
-  <p class="yardim">Net plandaki her operasyon için bir emir, istasyon bazında (üretim sırasıyla) gruplanmış; tamamlanan gruplar kapalı başlar. “Üretildi” kaydı tek
-    işlemde açıp onaylar. “Bu istasyonu üret” / “Tümünü üret” açık emirleri istasyon sırasıyla tek tarihle üretir — tek atomik işlem: bir emirde hata olursa
-    (o tarihte stok yetersiz vb.) hiçbir şey yazılmaz, hangi emirde durduğu gösterilir; fason istasyonu emirleri atlanır (onlar “Fason dönüş aç” ile açılan
-    fason dönüş belgesiyle kapanır).</p>
-  {% for g in gruplar %}
+  <div class="ud-baslik"><h2 class="bolum-baslik">İstasyon Emirleri</h2>
+    <span class="ud-ipucu" tabindex="0" role="note" aria-label="İstasyon emirleri açıklaması" data-ipucu="Net plandaki her operasyon için bir emir, istasyon bazında gruplanır; açık gruplar üstte, tamamlananlar kapalıdır. “Üretildi” kaydı tek işlemde açıp onaylar. “Bu istasyonu üret” / “Tümünü üret” açık emirleri istasyon sırasıyla tek tarihle üretir; tek atomik işlemdir: bir emirde hata olursa (o tarihte stok yetersiz vb.) hiçbir şey yazılmaz. Fason emirleri atlanır; “Fason dönüş aç” ile açılan fason dönüş belgesiyle kapanır.">?</span></div>
+  {% for g in gruplar_sirali %}
+  <div class="ud-grup" id="ie-grup-{{ g.istasyon.pk }}">
   <details class="ie-grup"{% if not g.tamam %} open{% endif %}>
     <summary>
       <span class="ie-grup-ad"><span class="mono">{{ g.istasyon.kod }}</span> {{ g.istasyon.ad }}{% if g.fason %} <span class="rozet rozet-notr" title="Fason istasyonu: emirler fason dönüşle kapanır">fason</span>{% endif %}</span>
@@ -148,14 +246,18 @@
     </table>
     </div>
   </details>
+  </div>
   {% empty %}
-    <p class="yardim">Bu siparişte istasyon emri yok{% if kayit_sayisi.toplam %} (eski emir: kayıtlar aşağıdaki bağlantıda){% endif %}.</p>
+    <p class="yardim">Bu siparişte istasyon emri yok{% if kayit_sayisi.toplam %} (eski emir: kayıtlar “Kayıtlar” sekmesinde){% endif %}.</p>
   {% endfor %}
 </section>
+</div>
 
-{% if emir.durum == 'ACIK' %}
+<div class="ud-panel" id="sekme-malzeme" data-sekme="malzeme"{% if sekme != 'malzeme' %} hidden{% endif %}>
 <section class="icerik-kart">
-  <h2 class="bolum-baslik">Eksik Malzeme (satınalma ihtiyacı / stoklu ara mamul / fason siparişi)</h2>
+  <div class="ud-baslik"><h2 class="bolum-baslik">Eksik Malzeme</h2>
+    <span class="ud-ipucu" tabindex="0" role="note" aria-label="Eksik malzeme açıklaması" data-ipucu="Satınalma ihtiyacı / stoklu ara mamul / fason siparişi. Yalnız AÇIK kalan emirlerin kalan miktarı hesaplanır. Satınalma ve fason siparişinden beklenen parça eksikten düşülür ve kaynak belgesiyle gösterilir (rezerv yoktur: aynı sipariş birden çok ÜS'de bekleniyor görünebilir).">?</span></div>
+  {% if emir.durum == 'ACIK' %}
   <div class="tablo-kapsayici">
   <table>
     <thead><tr><th>Stok</th><th>Tür</th><th class="sag">Gerekli</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
@@ -169,11 +271,11 @@
               <td><span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor: irsaliye onaylanınca stoğa girer">🛒 Satınalma siparişinden bekleniyor: {% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if termin %} (termin {{ termin|date:"d.m.Y" }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %} · {{ e.siparis_bekleyen|tr_miktar_sade }} adet</span></td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td><td class="sag mono">—</td>
             {% elif e.tur == "FASON_EMRI_GEREKLI" %}
-              <td><span class="rozet rozet-pasif" title="Fason siparişi iptal edildi/azaldı: bu parça için ÜS'de fason istasyon emri yok">⚠ fason emri gerekli — fason siparişi iptal/azaldı; ÜS'yi revize edin</span></td>
+              <td><span class="rozet rozet-turuncu" title="Fason siparişi iptal edildi/azaldı: bu parça için ÜS'de fason istasyon emri yok">⚠ fason emri gerekli — fason siparişi iptal/azaldı; ÜS'yi revize edin</span></td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
               <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
             {% else %}
-              <td>{% if e.stoklu %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu ara mamul</span>{% else %}satınalma{% if e.siparis_bekleyen %} <span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor">🛒 {{ e.siparis_bekleyen|tr_miktar_sade }} adet siparişte ({% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if not forloop.last %}, {% endif %}{% endfor %})</span>{% endif %}{% endif %}</td>
+              <td>{% if e.stoklu %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu ara mamul</span>{% else %}<span class="rozet rozet-pasif" title="Satınalma gerekiyor">satınalma</span>{% if e.siparis_bekleyen %} <span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor">🛒 {{ e.siparis_bekleyen|tr_miktar_sade }} adet siparişte ({% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if termin %} (termin {{ termin|date:"d.m.Y" }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %})</span>{% endif %}{% endif %}</td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
               <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
             {% endif %}</tr>
@@ -183,29 +285,33 @@
     </tbody>
   </table>
   </div>
+  {% else %}
+  <p class="yardim">Bu üretim siparişi açık olmadığı için malzeme ihtiyacı hesaplanmaz.</p>
+  {% endif %}
+  <details class="ud-alt">
+    <summary>Ayrılan Stoklar ({{ ayirmalar|length }})</summary>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Stok</th><th class="sag">Ayrılan</th></tr></thead>
+      <tbody>
+        {% for a in ayirmalar %}
+          <tr><td><a href="{% url 'core:stok_detay' a.stok_id %}"><span class="mono">{{ a.stok.kod }}</span> {{ a.stok.ad }}</a>{% if a.varyant_etiketi %} <span class="rozet rozet-notr">{{ a.varyant_etiketi }}</span>{% endif %}</td>
+              <td class="sag mono">{{ a.miktar|tr_kur:3 }}</td></tr>
+        {% empty %}
+          <tr><td colspan="2" class="yardim">{% if tamamlandi %}Tamamlandı: stok için üretim bitti, ayrılan stoklar serbest bırakıldı.{% else %}Bu siparişe ayrılı stok yok.{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
 </section>
-{% endif %}
+</div>
 
+<div class="ud-panel" id="sekme-kayitlar" data-sekme="kayitlar"{% if sekme != 'kayitlar' %} hidden{% endif %}>
 <section class="icerik-kart">
-  <h2 class="bolum-baslik">Ayrılan Stoklar</h2>
-  <div class="tablo-kapsayici">
-  <table>
-    <thead><tr><th>Stok</th><th class="sag">Ayrılan</th></tr></thead>
-    <tbody>
-      {% for a in ayirmalar %}
-        <tr><td><a href="{% url 'core:stok_detay' a.stok_id %}"><span class="mono">{{ a.stok.kod }}</span> {{ a.stok.ad }}</a>{% if a.varyant_etiketi %} <span class="rozet rozet-notr">{{ a.varyant_etiketi }}</span>{% endif %}</td>
-            <td class="sag mono">{{ a.miktar|tr_kur:3 }}</td></tr>
-      {% empty %}
-        <tr><td colspan="2" class="yardim">{% if tamamlandi %}Tamamlandı: stok için üretim bitti, ayrılan stoklar serbest bırakıldı.{% else %}Bu siparişe ayrılı stok yok.{% endif %}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Operasyon Kayıtları</h2>
-  <p class="ie-kayit-sayac">
+  <div class="ud-baslik"><h2 class="bolum-baslik">Operasyon Kayıtları</h2>
+    <span class="ud-ipucu" tabindex="0" role="note" aria-label="Operasyon kayıtları açıklaması" data-ipucu="Bu üretim siparişinin son {{ kayit_adet }} operasyon kaydı (en yeni üstte). Satıra tıklayınca kayıt detayı açılır. Ekip işinde personel sütununda oturumdaki herkes yazar.">?</span></div>
+  <p class="ud-kayit-cipler">
     {% if kayit_sayisi.toplam %}
       <span class="rozet rozet-aktif">{{ kayit_sayisi.onayli }} onaylı</span>
       {% if kayit_sayisi.taslak %}<span class="rozet rozet-notr">{{ kayit_sayisi.taslak }} taslak</span>{% endif %}
@@ -215,26 +321,86 @@
     {% endif %}
     · <a href="{% url 'core:operasyon_kayitlari' %}?uretim_emri={{ emir.pk }}">Kayıtları gör →</a>
   </p>
-</section>
-
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Revizyon Geçmişi</h2>
+  {% if kayitlar %}
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>No</th><th>İşlem Zamanı</th><th>Olay</th><th>Açıklama / Değişiklik</th></tr></thead>
+    <thead><tr><th>Tarih · saat</th><th>Personel / ekip</th><th>İstasyon</th><th>Çıktı</th><th class="sag">Sağlam</th><th class="sag">Fire</th></tr></thead>
     <tbody>
-      {% for r, farklar in revizyonlar %}
-        <tr>
-          <td class="mono">{{ r.no }}</td>
-          <td class="mono">{{ r.created_at|date:"d.m.Y H:i" }}</td>
-          <td>{{ r.get_tur_display }}</td>
-          <td>{{ r.aciklama }}{% for f in farklar %}<div class="mono">{{ f }}</div>{% endfor %}</td>
+      {% for r in kayitlar %}
+        <tr data-href="{% url 'core:operasyon_kaydi_detay' r.k.pk %}">
+          <td class="mono"><a class="satir-bag" href="{% url 'core:operasyon_kaydi_detay' r.k.pk %}">{{ r.zaman|date:"d.m.Y H:i" }}</a>{% if r.taslak %} <span class="rozet rozet-notr">taslak</span>{% endif %}</td>
+          <td>{{ r.personel }}{% if r.ekip %} <span class="rozet rozet-notr" title="Ekip işi">ekip</span>{% endif %}</td>
+          <td><span class="mono">{{ r.istasyon.kod }}</span> {{ r.istasyon.ad }}</td>
+          <td><span class="mono">{{ r.cikti.kod }}</span> {{ r.cikti.ad|truncatechars:34 }}{% if r.varyant %} <span class="rozet rozet-notr">{{ r.varyant }}</span>{% endif %}</td>
+          <td class="sag mono">{{ r.saglam|tr_kur:3 }}</td>
+          <td class="sag mono">{% if r.fire %}<span class="rozet rozet-pasif">{{ r.fire|tr_kur:3 }}</span>{% else %}—{% endif %}</td>
         </tr>
-      {% empty %}
-        <tr><td colspan="4" class="yardim">Revizyon kaydı yok (eski emir).</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
+  {% endif %}
+  <details class="ud-alt">
+    <summary>Revizyon Geçmişi ({{ revizyonlar|length }})</summary>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>No</th><th>İşlem Zamanı</th><th>Olay</th><th>Açıklama / Değişiklik</th></tr></thead>
+      <tbody>
+        {% for r, farklar in revizyonlar %}
+          <tr>
+            <td class="mono">{{ r.no }}</td>
+            <td class="mono">{{ r.created_at|date:"d.m.Y H:i" }}</td>
+            <td>{{ r.get_tur_display }}</td>
+            <td>{{ r.aciklama }}{% for f in farklar %}<div class="mono">{{ f }}</div>{% endfor %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="yardim">Revizyon kaydı yok (eski emir).</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
 </section>
+</div>
+
+<script>
+(function () {
+  var paneller = document.querySelectorAll('.ud-panel');
+  var sekmeler = document.querySelectorAll('.ud-sekme');
+  function ac(ad, hedefId) {
+    paneller.forEach(function (p) { p.hidden = p.dataset.sekme !== ad; });
+    sekmeler.forEach(function (s) {
+      var aktif = s.dataset.sekme === ad;
+      s.classList.toggle('aktif', aktif);
+      s.setAttribute('aria-selected', aktif ? 'true' : 'false');
+    });
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('sekme', ad);
+      history.replaceState(null, '', u.pathname + u.search + (hedefId ? '#' + hedefId : ''));
+    } catch (e) { /* eski tarayıcı: adres çubuğu güncellenmez */ }
+    if (hedefId) {
+      var el = document.getElementById(hedefId);
+      if (el) {
+        var d = el.closest('details') || el.querySelector('details');
+        if (d) d.open = true;
+        el.scrollIntoView({ block: 'start' });
+      }
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-sekme], a[data-git]');
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    ac(a.dataset.sekme || a.dataset.git, a.dataset.grup || null);
+    if (!a.dataset.grup) window.scrollTo({ top: document.querySelector('.ud-sekmeler').offsetTop - 8, behavior: 'smooth' });
+  });
+  // Üretim sonrası dönüş (#ie-<pk> / #ie-grup-<pk>): İstasyonlar sekmesi + ilgili grup açık
+  var h = (window.location.hash || '').slice(1);
+  if (/^ie-(grup-)?\d+$/.test(h)) {
+    var hedef = document.getElementById(h);
+    if (hedef) { var p = hedef.closest('.ud-panel'); if (p) ac(p.dataset.sekme, h); }
+  }
+})();
+</script>
 {% endblock %}

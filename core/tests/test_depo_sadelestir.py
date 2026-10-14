@@ -99,7 +99,8 @@ class UsEkranDuzeltmeTest(kt.KapanisTaban):
         sip = self.siparis("150")                                                                  # 150 mamul → 150 ham gerekir, eldeki 100
         emir = self.emir_ac(sip)
         d = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
-        self.assertContains(d, "Eksik Malzeme (satınalma ihtiyacı / stoklu ara mamul / fason siparişi)")
+        self.assertContains(d, "Eksik Malzeme")
+        self.assertContains(d, "Satınalma ihtiyacı / stoklu ara mamul / fason siparişi")             # başlık yanındaki ? ipucu
         self.assertContains(d, "Sf-HAM")
         self.assertContains(d, "50,000")                                                           # eksik = 150 − 100
         self.assertContains(self.client.get(reverse("core:uretim_emirleri")), "Eksik malzeme: 1")

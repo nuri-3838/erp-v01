@@ -80,6 +80,7 @@ from core.services.yevmiye import (
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import duran_hesap as duran_hesap_servis
 from core.services import varyant as varyant_servis
+from core.services import us_detay as us_detay_servis
 from core.services import hesap_plani as hp
 from core.services import yedek as yedek_servis
 from core.services import stok_ayirma as stok_ayirma_servis
@@ -7882,26 +7883,34 @@ def uretim_emri_detay(request, pk):
         hazir = ayrilan_k + sevk_k
         yuzde = min(Decimal("100"), hazir * 100 / k.hedef_miktar) if k.hedef_miktar else Decimal("0")
         kalem_satirlari.append({"k": k, "ayrilan": ayrilan_k, "sevk": sevk_k, "varyant": planlama_varyant_servis.etiket(k.varyant_id) if k.varyant_id else "",
-                                "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde})
+                                "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde)})
     hatalar = request.session.pop("uret_hata", {})
     gruplar = uretim_servis.istasyon_emri_gruplari(emir, hatalar)                     # istasyon bazında katlanır gruplar (üretim sırası)
     emirler = [s for g in gruplar for s in g["satirlar"]]
-    kayitlar = emir.operasyon_kayitlari.filter(silindi=False)
-    kayit_sayisi = {"toplam": kayitlar.count(), "onayli": kayitlar.filter(durum=OperasyonKaydi.Durum.ONAYLI).count()}
-    kayit_sayisi["taslak"] = kayit_sayisi["toplam"] - kayit_sayisi["onayli"]
+    kayit_sayisi = us_detay_servis.kayit_sayilari(emir)                                 # tek aggregate (eski: 3 sayım)
     revize_url = None
     if emir.durum == UretimEmri.Durum.ACIK:
         revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     tamamlandi = emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen   # stok ÜS'si %100: ayırmalar serbest
     eksikler = uretim_servis.uretim_emri_eksikleri(emir)
+    # 2026-10-14 yeniden tasarım: üst bant + akış şeridi + sekmeler (core.services.us_detay — yalnız görünüm verisi; sorgu sayısı eskisinden az)
+    bugun_tarih = timezone.localdate()
+    bant = us_detay_servis.bant(emir, bugun_tarih, eksikler)
+    seritler = us_detay_servis.akis_seridi(gruplar, us_detay_servis.eksik_istasyonlari(gruplar, eksikler))
+    ilerleme = us_detay_servis.ilerleme(gruplar, kayit_sayisi)
+    yuzde = us_detay_servis.genel_yuzde(kalem_satirlari, tamamlandi)
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar, "tamamlandi": tamamlandi,
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
-        "eksikler": eksikler, "fason_emri_gerekli": sum(1 for x in eksikler if x["tur"] == "FASON_EMRI_GEREKLI"), "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
-        "bugun": timezone.localdate().isoformat(),
+        "eksikler": eksikler, "fason_emri_gerekli": bant["fason_emri_gerekli"], "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
+        "bugun": bugun_tarih.isoformat(),
         "revizyonlar": _revizyon_satirlari(emir), "silinebilir": uretim_servis.uretim_emri_silinebilir(emir), "revize_url": revize_url,
-        "ilerleme": uretim_servis.uretim_emri_ilerleme(emir)})
+        "ilerleme": ilerleme, "bant": bant, "seritler": seritler, "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde),
+        "sekme": us_detay_servis.sekme_sec(request.GET.get("sekme"), bool(hatalar)), "kayitlar": us_detay_servis.son_kayitlar(emir),
+        "kayit_adet": us_detay_servis.KAYIT_ADET, "gruplar_sirali": sorted(gruplar, key=lambda g: g["tamam"]),         # açık gruplar üstte (sıra korunur)
+        "acik_emir_sayisi": sum(1 for g in gruplar for s in g["satirlar"] if s["ie"].durum in ("BEKLIYOR", "BASLADI")),
+        "malzeme_sayisi": len(eksikler)})
 
 
 @ekran_gerekli("operasyon_kayitlari")
@@ -7909,7 +7918,7 @@ def uretim_emri_toplu_uret_gorunum(request, pk):
     """"Bu istasyonu üret" (``istasyon``=pk) / "Tümünü üret": ÜS'nin açık, fason olmayan istasyon emirlerini istasyon sırasıyla tek tarihle üretir —
     tek atomik işlem (ilk hatada hiçbir şey yazılmaz; hata hangi emir/stokta durduğunu söyler, ilgili satırda da gösterilir)."""
     emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
-    geri = reverse("core:uretim_emri_detay", args=[emir.pk])
+    geri = reverse("core:uretim_emri_detay", args=[emir.pk]) + "?sekme=istasyonlar"
     if request.method != "POST":
         return redirect(geri)
     istasyon = request.POST.get("istasyon") or None
@@ -8123,7 +8132,7 @@ def _guvenli_geri(request, varsayilan):
 def istasyon_emri_uret_gorunum(request, pk):
     """"Üretildi": istasyon emrinden kayıt açıp onaylar (tek işlem, bkz. uretim_servis.istasyon_emri_uret). Hata satırda gösterilir (oturumda taşınır)."""
     ie = get_object_or_404(IstasyonEmri, pk=pk, silindi=False)
-    geri = _guvenli_geri(request, reverse("core:uretim_emri_detay", args=[ie.uretim_emri_id]))
+    geri = _guvenli_geri(request, reverse("core:uretim_emri_detay", args=[ie.uretim_emri_id]) + "?sekme=istasyonlar")
     if request.method != "POST":
         return redirect(geri)
     hedef, tarih, hata = None, None, None
