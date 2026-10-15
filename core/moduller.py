@@ -75,6 +75,7 @@ MODULLER = (
         Ekran("mizan_usd", "Mizan (USD)", "core:mizan_usd"),
         Ekran("bilanco_usd", "Bilanço (USD)", "core:bilanco_usd"),
         Ekran("gelir_tablosu_usd", "Gelir Tablosu (USD)", "core:gelir_tablosu_usd"),
+        Ekran("kdv_listeleri", "KDV Listeleri", "core:kdv_listeleri", grup="Raporlar"),
     )),
     Modul("FATURALAR", "Faturalar", (
         Ekran("alis_faturalari", "Alış Faturaları", "core:alis_faturalari"),
@@ -124,6 +125,8 @@ MODULLER = (
         Ekran("kredi_karti", "Kredi Kartı", "core:kredi_kartlari"),
         Ekran("kredi", "Kredi", "core:krediler"),
         Ekran("cek_senet", "Çek-Senet", "core:cek_senetler"),
+        Ekran("odeme_takvimi", "Ödeme Takvimi", "core:odeme_takvimi", grup="Raporlar"),
+        Ekran("kk_nakit_akisi", "Kart Nakit Akışı", "core:kredi_karti_nakit_akisi", grup="Raporlar"),
     ), ana_url_adi="core:finans_ozet"),
     Modul("IK", "İnsan Kaynakları", (
         Ekran("personel", "Personel Kartları", "core:personeller"),

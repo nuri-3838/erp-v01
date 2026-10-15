@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 
 from core import views
 
@@ -8,6 +9,7 @@ urlpatterns = [
     path("", views.pano, name="pano"),
     path("fis-gir/", views.fis_ekle, name="fis_ekle"),
     path("fisler/", views.fis_listesi, name="fis_listesi"),
+    path("muhasebe/raporlar/kdv-listeleri/", views.kdv_listeleri, name="kdv_listeleri"),
     path("muhasebe/kdv-mahsup/", views.kdv_mahsup_listesi, name="kdv_mahsup_listesi"),
     path("muhasebe/kdv-mahsup/ekle/", views.kdv_mahsup_ekle, name="kdv_mahsup_ekle"),
     path("muhasebe/kdv-mahsup/<int:pk>/duzenle/", views.kdv_mahsup_duzenle, name="kdv_mahsup_duzenle"),
@@ -274,7 +276,9 @@ urlpatterns = [
     path("finans/banka-hesap/<int:pk>/duzenle/", views.banka_hesap_duzenle, name="banka_hesap_duzenle"),
     path("finans/banka-hesap/<int:pk>/sil/", views.banka_hesap_sil, name="banka_hesap_sil"),
     path("finans/kredi-karti/", views.kredi_kartlari, name="kredi_kartlari"),
-    path("finans/kredi-karti/nakit-akisi/", views.kredi_karti_nakit_akisi, name="kredi_karti_nakit_akisi"),
+    path("finans/raporlar/kart-nakit-akisi/", views.kredi_karti_nakit_akisi, name="kredi_karti_nakit_akisi"),
+    path("finans/kredi-karti/nakit-akisi/", RedirectView.as_view(pattern_name="core:kredi_karti_nakit_akisi", permanent=True), name="kredi_karti_nakit_akisi_eski"),      # eski adres Raporlar altına yönlenir
+    path("finans/raporlar/odeme-takvimi/", views.odeme_takvimi, name="odeme_takvimi"),
     path("finans/kredi-karti/taksit-onerileri/", views.kredi_karti_taksit_onerileri, name="kredi_karti_taksit_onerileri"),
     path("finans/kredi-karti/<int:pk>/", views.kredi_karti_detay, name="kredi_karti_detay"),
     path("finans/kredi-karti/<int:pk>/donem-ekstresi/", views.kredi_karti_donem_ekstresi, name="kredi_karti_donem_ekstresi"),

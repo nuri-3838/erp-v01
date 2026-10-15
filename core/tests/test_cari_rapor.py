@@ -363,15 +363,15 @@ class EkranExcelYetkiTest(RaporTemel):
             return h[h.index('<nav class="yan-menu">'):h.index("</nav>", h.index('<nav class="yan-menu">'))]
         m = menu(self.su, reverse("core:cari_ciro"))
         gruplar = re.findall(r'<details class="alt-menu[^"]*"[^>]*>.*?</details>', m, re.S)
-        self.assertEqual(len(gruplar), 2)                                                              # Raporlar + Tanımlar
-        raporlar = next(g for g in gruplar if "Raporlar" in g)
+        self.assertEqual(len(gruplar), 4)                                                              # Muhasebe Raporlar + Finans Raporlar + Cariler (Raporlar + Tanımlar)
+        raporlar = next(g for g in gruplar if "Yaşlandırma" in g)                                      # Cariler > Raporlar
         for ad in ("Yaşlandırma", "Vadesi Geçenler", "Tarih İtibarıyla Bakiye", "Cari Ciro Özeti"):
             self.assertIn(ad, raporlar)
         self.assertRegex(raporlar.split(">")[0] + ">", r"\bopen\b")                                    # içindeki sayfada AÇIK
         self.assertRegex(raporlar, rf'<a href="{re.escape(reverse("core:cari_ciro"))}" class="aktif">')
         self.assertNotRegex(next(g for g in gruplar if "Tanımlar" in g).split(">")[0] + ">", r"\bopen\b")
         m = menu(self.su, reverse("core:cariler"))
-        self.assertNotRegex(next(g for g in re.findall(r'<details class="alt-menu[^"]*"[^>]*>.*?</details>', m, re.S) if "Raporlar" in g).split(">")[0] + ">", r"\bopen\b")
+        self.assertNotRegex(next(g for g in re.findall(r'<details class="alt-menu[^"]*"[^>]*>.*?</details>', m, re.S) if "Yaşlandırma" in g).split(">")[0] + ">", r"\bopen\b")
         # yalnız 'cariler' yetkisi → Raporlar HİÇ görünmez; yalnız ciro yetkisi → Raporlar içinde yalnız Ciro
         k1 = User.objects.create_user("m1", password="x")
         EkranYetki.objects.create(kullanici=k1, ekran_kod="cariler")

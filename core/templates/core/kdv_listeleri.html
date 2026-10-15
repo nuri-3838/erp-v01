@@ -1,0 +1,171 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}KDV Listeleri · ERP v0.1{% endblock %}
+{% block sayfa_adi %}KDV Listeleri{% endblock %}
+{% block govde_sinif %}govde-tam{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .kl-ust { display:flex; align-items:flex-end; justify-content:space-between; gap:.8rem; flex-wrap:wrap; margin-bottom:.7rem; }
+  .kl-ust h1 { margin:.1rem 0 0; }
+  .kl-kart { background:rgba(255,255,255,.72); border:1px solid var(--cizgi-koyu); border-radius:16px; padding:.8rem 1rem .9rem; margin-bottom:.8rem; }
+  .kl-kart h2 { margin:0 0 .5rem; font-size:.74rem; letter-spacing:.07em; text-transform:uppercase; color:var(--metin-soluk); }
+  .kl-filtre { display:flex; gap:.6rem .9rem; flex-wrap:wrap; align-items:flex-end; }
+  .kl-alan { display:flex; flex-direction:column; gap:.2rem; }
+  .kl-alan label { font-size:.68rem; font-weight:700; letter-spacing:.03em; color:var(--metin-soluk); text-transform:uppercase; }
+  .kl-alan select { min-height:38px; padding:.3rem .6rem; border-radius:11px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.92); font-size:.86rem; }
+  .kl-sekmeler { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.8rem; }
+  .kl-sekme { padding:.4rem 1rem; border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.85); text-decoration:none; font-weight:650; font-size:.86rem; color:var(--metin); }
+  .kl-sekme.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; }
+  .kl-ozet { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.6rem; margin-bottom:.8rem; }
+  .kl-ozet div { background:rgba(255,255,255,.78); border:1px solid var(--cizgi-koyu); border-radius:14px; padding:.55rem .8rem; }
+  .kl-ozet small { display:block; font-size:.66rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--metin-soluk); }
+  .kl-ozet strong { font-size:1.1rem; } .kl-ozet em { display:block; font-style:normal; font-size:.72rem; color:var(--metin-soluk); }
+  .kl-kap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid rgba(255,255,255,.65); border-radius:12px; }
+  .kl-tablo { width:100%; border-collapse:collapse; min-width:0; }
+  @media (max-width:1300px) { .kl-tablo { min-width:1000px; } }
+  .kl-tablo th, .kl-tablo td { padding:.3rem .5rem; font-size:.8rem; line-height:1.3; vertical-align:top; border-bottom:1px solid rgba(120,130,160,.16); text-align:left; }
+  .kl-tablo th { font-size:.68rem; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); background:rgba(244,247,251,.95); white-space:nowrap; position:sticky; top:0; }
+  .kl-tablo td.sag, .kl-tablo th.sag { text-align:right; white-space:nowrap; } .kl-tablo td.taraf { min-width:250px; }
+  .kl-tablo tfoot td, .kl-tablo tfoot th { font-weight:750; background:#eef3fb; }
+  .kl-alt { display:block; font-size:.7rem; color:var(--metin-soluk); line-height:1.25; }
+  .kl-rozet { display:inline-block; margin:.05rem .15rem .05rem 0; padding:.03rem .45rem; border-radius:999px; font-size:.66rem; font-weight:700; background:#eef1f7; color:#5b6678; }
+  .kl-rozet.vkn, .kl-rozet.no { background:#fdecef; color:#b3253f; } .kl-rozet.gercek { background:#e7f7ec; color:#0a7d28; } .kl-rozet.tarih { background:#fff1dc; color:#b45f00; }
+  .kl-rozet.tevkifat, .kl-rozet.kdv, .kl-rozet.iade { background:#f1e9f9; color:#6a3d9a; } .kl-rozet.sahsi { background:#fdf3d8; color:#8a6100; } .kl-rozet.alici { background:#e8f0fe; color:#1f4fa8; }
+  .kl-mut { border-left:4px solid #0a7d28; } .kl-mut.fark { border-left-color:#b3253f; }
+  .kl-mut table { border-collapse:collapse; } .kl-mut td { padding:.2rem .8rem .2rem 0; font-size:.86rem; } .kl-mut td.sag { text-align:right; font-family:var(--mono, monospace); }
+  .kl-uyari { display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.6rem; }
+  .kl-uyari a { text-decoration:none; }
+  @media (max-width:700px) { .kl-kart { padding:.65rem .7rem; } }
+  @media print { aside, .ust-cubuk, .yan-perde, .kl-filtre-kart { display:none !important; } }
+</style>
+
+<div class="kl-ust">
+  <div><a class="ust-link" href="{% url 'core:fis_listesi' %}">← Muhasebe</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>KDV Listeleri</h1></div>
+  <a class="dugme" href="?{{ excel_sorgu }}&excel=1">⬇ Excel (GİB şablon sırası)</a>
+</div>
+
+<form method="get" class="kl-kart kl-filtre-kart">
+  <input type="hidden" name="sekme" value="{{ sekme }}">
+  <div class="kl-filtre">
+    <div class="kl-alan"><label>Yıl</label><select name="yil">{% for y in yillar %}<option value="{{ y }}" {% if y == yil %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></div>
+    <div class="kl-alan"><label>Ay</label><select name="ay">{% for n, ad in aylar %}<option value="{{ n }}" {% if n == ay %}selected{% endif %}>{{ ad }}</option>{% endfor %}</select></div>
+    <div class="kl-alan"><label>&nbsp;</label><button type="submit" class="dugme" style="border:0;cursor:pointer">Listele</button></div>
+  </div>
+  <p class="yardim" style="margin:.5rem 0 0">Dönem = fatura (yevmiye fişi) tarihinin yıl/ayı = KDV'nin indirildiği / hesaplandığı dönem. Belge tarihi: açıklamada “GERÇEK TARİH” varsa o, yoksa fatura tarihi. Tutarlar TL (döviz faturada fiş kuruyla).</p>
+</form>
+
+<div class="kl-sekmeler">
+  <a class="kl-sekme {% if sekme == 'indirilecek' %}aktif{% endif %}" href="?yil={{ yil }}&ay={{ ay }}&sekme=indirilecek">İndirilecek KDV Listesi (alışlar)</a>
+  <a class="kl-sekme {% if sekme == 'satis' %}aktif{% endif %}" href="?yil={{ yil }}&ay={{ ay }}&sekme=satis">Satışlara Ait Fatura Listesi (satışlar)</a>
+</div>
+
+{% with u=veri.uyarilar t=veri.toplam m=veri.mutabakat %}
+<div class="kl-ozet">
+  {% if sekme == "indirilecek" %}
+  <div><small>Fatura</small><strong>{{ t.adet }}</strong><em>{{ veri.bas|date:"d.m.Y" }} – {{ veri.bit|date:"d.m.Y" }}</em></div>
+  <div><small>KDV hariç tutar</small><strong>{{ t.matrah|tr_kur:2 }} ₺</strong></div>
+  <div><small>İndirilecek KDV</small><strong>{{ t.kdv|tr_kur:2 }} ₺</strong><em>191'e yazılan (tevkifatlı faturada KDV'nin tamamı)</em></div>
+  <div><small>Tevkifat (sorumlu sıfatıyla)</small><strong>{{ t.tevkifat|tr_kur:2 }} ₺</strong><em>360'a alacak; ayrı kolonda</em></div>
+  {% else %}
+  <div><small>Fatura</small><strong>{{ t.adet }}</strong><em>normal {{ veri.normal|length }} · iade {{ veri.iade|length }} · ihraç {{ veri.ihrac|length }}</em></div>
+  <div><small>KDV hariç tutar</small><strong>{{ t.matrah|tr_kur:2 }} ₺</strong></div>
+  <div><small>Hesaplanan KDV</small><strong>{{ t.kdv|tr_kur:2 }} ₺</strong><em>391'e yazılan (tevkifatlıda net)</em></div>
+  <div><small>İade KDV'si</small><strong>{{ t.iade_kdv|tr_kur:2 }} ₺</strong><em>ayrı tabloda</em></div>
+  {% endif %}
+</div>
+
+{% if u.adet or u.gercek_tarih %}
+<div class="kl-uyari">
+  {% if u.eksik_vkn %}<a class="kl-rozet vkn" href="#uyarilar">⚠ VKN/TCKN eksik: {{ u.eksik_vkn|length }}</a>{% endif %}
+  {% if u.eksik_no %}<a class="kl-rozet no" href="#uyarilar">⚠ Fatura no eksik: {{ u.eksik_no|length }}</a>{% endif %}
+  {% if u.mukerrer %}<a class="kl-rozet no" href="#uyarilar">⚠ Mükerrer belge no: {{ u.mukerrer|length }}</a>{% endif %}
+  {% if u.gercek_tarih %}<a class="kl-rozet gercek" href="#uyarilar">Gerçek tarih kullanıldı: {{ u.gercek_tarih|length }}</a>{% endif %}
+  {% if u.tarih_isaretli %}<a class="kl-rozet tarih" href="#uyarilar">⚠ 01.01 girişli, gerçek tarih yok: {{ u.tarih_isaretli|length }}</a>{% endif %}
+</div>
+{% endif %}
+
+{% if sekme == "indirilecek" %}
+<section class="kl-kart">
+  <h2>İndirilecek KDV Listesi — {{ veri.ay }}/{{ veri.yil }}</h2>
+  <div class="kl-kap"><table class="kl-tablo">
+    <thead><tr><th class="sag">Sıra</th><th>Belge tarihi</th><th>Belge seri / sıra no</th><th>Satıcı</th><th>VKN / TCKN</th><th>Mal / hizmet cinsi</th><th class="sag">Miktar</th>
+      <th class="sag">KDV hariç tutar</th><th class="sag">Tevkifat</th><th class="sag">İndirilecek KDV</th><th>Dönem</th></tr></thead>
+    <tbody>
+    {% for r in veri.satirlar %}
+      <tr><td class="sag mono">{{ r.sira }}</td>
+        <td class="mono">{{ r.belge_tarihi|date:"d.m.Y" }}{% if r.gercek_tarih %}<span class="kl-alt">kayıt {{ r.fatura.tarih|date:"d.m.Y" }}</span>{% endif %}</td>
+        <td class="mono"><a href="{% url 'core:fatura_detay' r.fatura.pk %}">{% if r.belge_no %}{{ r.seri }}{% if r.seri %} / {% endif %}{{ r.sira_no }}{% else %}<span class="pasif">(no yok)</span>{% endif %}</a><span class="kl-alt">{{ r.tip_adi }}</span></td>
+        <td class="taraf"><a href="{% url 'core:cari_detay' r.cari.pk %}">{{ r.satici|truncatechars:48 }}</a>{% for k, ad, kisa in r.rozetler %}<span class="kl-rozet {{ k }}" title="{{ ad }}">{{ kisa }}</span>{% endfor %}</td>
+        <td class="mono">{% if r.vkn %}{{ r.vkn }}{% else %}<span class="kl-rozet vkn">yok</span>{% endif %}</td>
+        <td>{{ r.cins|truncatechars:60 }}</td>
+        <td class="sag mono">{{ r.miktar }}</td>
+        <td class="sag mono">{{ r.matrah_tl|tr_kur:2 }}{% if r.pb != "TRY" %}<span class="kl-alt">{{ r.pb }} · kur {{ r.kur|tr_kur:4 }}</span>{% endif %}</td>
+        <td class="sag mono">{% if r.tevkifat_tl %}{{ r.tevkifat_tl|tr_kur:2 }}{% else %}—{% endif %}</td>
+        <td class="sag mono"><strong>{{ r.indirilecek_tl|tr_kur:2 }}</strong></td>
+        <td class="mono">{{ r.donem }}</td></tr>
+    {% empty %}<tr><td colspan="11" class="yardim">Bu dönemde onaylı alış faturası yok.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="7" class="sag">Toplam ({{ t.adet }} fatura)</th><th class="sag mono">{{ t.matrah|tr_kur:2 }}</th><th class="sag mono">{{ t.tevkifat|tr_kur:2 }}</th><th class="sag mono">{{ t.kdv|tr_kur:2 }}</th><th></th></tr></tfoot>
+  </table></div>
+</section>
+{% else %}
+<section class="kl-kart">
+  <h2>Satışlara Ait Fatura Listesi — {{ veri.ay }}/{{ veri.yil }}</h2>
+  {% include "core/_kdv_satis_tablosu.html" with rows=veri.normal bos="Bu dönemde normal satış faturası yok." matrah=t.normal_matrah kdv=t.normal_kdv %}
+</section>
+{% if veri.iade %}
+<section class="kl-kart"><h2>İade faturaları (ayrı)</h2>{% include "core/_kdv_satis_tablosu.html" with rows=veri.iade bos="" matrah=t.iade_matrah kdv=t.iade_kdv %}</section>
+{% endif %}
+{% if veri.ihrac %}
+<section class="kl-kart"><h2>İhraç kayıtlı satışlar (ayrı)</h2>{% include "core/_kdv_satis_tablosu.html" with rows=veri.ihrac bos="" matrah=t.ihrac_matrah kdv=t.ihrac_kdv %}</section>
+{% endif %}
+{% endif %}
+
+{% if veri.faturasiz %}
+<section class="kl-kart">
+  <h2>Faturaya bağlı olmayan {% if sekme == "indirilecek" %}191{% else %}391{% endif %} hareketleri</h2>
+  <div class="kl-kap"><table class="kl-tablo" style="min-width:640px">
+    <thead><tr><th>Tarih</th><th>Fiş</th><th>Kaynak</th><th>Açıklama</th><th class="sag">Borç</th><th class="sag">Alacak</th></tr></thead>
+    <tbody>
+    {% for x in veri.faturasiz %}
+      <tr><td class="mono">{{ x.tarih|date:"d.m.Y" }}</td><td><a class="mono" href="{% url 'core:fis_detay' x.fis.pk %}">{{ x.fis.yil }}/{{ x.fis.fis_no }}</a></td><td>{{ x.kaynak }}</td><td>{{ x.aciklama|truncatechars:90 }}</td>
+        <td class="sag mono">{% if x.borc %}{{ x.borc|tr_kur:2 }}{% else %}—{% endif %}</td><td class="sag mono">{% if x.alacak %}{{ x.alacak|tr_kur:2 }}{% else %}—{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="4" class="sag">Toplam</th><th class="sag mono">{{ t.faturasiz_borc|tr_kur:2 }}</th><th class="sag mono">{{ t.faturasiz_alacak|tr_kur:2 }}</th></tr></tfoot>
+  </table></div>
+</section>
+{% endif %}
+
+<section class="kl-kart kl-mut {% if not m.tamam %}fark{% endif %}" id="mutabakat">
+  <h2>Mutabakat — {{ m.hesap }} dönem {{ m.taraf }} hareketi</h2>
+  <table>
+    <tr><td>Liste KDV toplamı (faturalardan hesaplanan)</td><td class="sag">{{ m.liste|tr_kur:2 }}</td></tr>
+    <tr><td>+ Faturaya bağlı olmayan hareketler ({{ m.taraf }})</td><td class="sag">{{ m.faturasiz|tr_kur:2 }}</td></tr>
+    <tr><td><strong>= Toplam</strong></td><td class="sag"><strong>{{ m.toplam|tr_kur:2 }}</strong></td></tr>
+    <tr><td>{{ m.hesap }} dönem {{ m.taraf }} hareketi (yevmiye)</td><td class="sag">{{ m.hareket|tr_kur:2 }}</td></tr>
+    <tr><td><strong>Fark</strong></td><td class="sag"><strong>{{ m.fark|tr_kur:2 }}</strong> {% if m.tamam %}✔{% else %}⚠{% endif %}</td></tr>
+    <tr><td class="yardim">Bilgi: dönem {{ m.karsi_ad }} hareketi (mahsup / iade vb.)</td><td class="sag yardim">{{ m.karsi_taraf|tr_kur:2 }}</td></tr>
+  </table>
+  {% if m.kalemler %}
+  <h2 style="margin-top:.8rem">Fatura bazında fark (hesaplanan KDV ↔ fişteki)</h2>
+  <div class="kl-kap"><table class="kl-tablo" style="min-width:560px"><thead><tr><th>Fatura</th><th class="sag">Hesaplanan</th><th class="sag">Fişteki</th><th class="sag">Fark</th></tr></thead><tbody>
+    {% for k in m.kalemler %}<tr><td><a href="{% url 'core:fatura_detay' k.fatura.pk %}">{{ k.ad }}</a></td><td class="sag mono">{{ k.hesaplanan|tr_kur:2 }}</td><td class="sag mono">{{ k.fis|tr_kur:2 }}</td><td class="sag mono">{{ k.fark|tr_kur:2 }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% endif %}
+</section>
+
+<section class="kl-kart" id="uyarilar">
+  <h2>Uyarılar</h2>
+  {% if u.eksik_vkn %}<p><strong>VKN/TCKN eksik ({{ u.eksik_vkn|length }}):</strong> {% for r in u.eksik_vkn %}<a href="{% url 'core:fatura_detay' r.fatura.pk %}">{{ r.belge_no|default:"(no yok)" }}</a> {{ r.taraf|truncatechars:26 }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+  {% if u.eksik_no %}<p><strong>Fatura no eksik ({{ u.eksik_no|length }}):</strong> {% for r in u.eksik_no %}<a href="{% url 'core:fatura_detay' r.fatura.pk %}">#{{ r.fatura.pk }}</a> {{ r.taraf|truncatechars:26 }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+  {% if u.mukerrer %}<p><strong>Mükerrer belge no:</strong> {% for grup in u.mukerrer %}{{ grup.0.belge_no }} ({% for r in grup %}<a href="{% url 'core:fatura_detay' r.fatura.pk %}">#{{ r.fatura.pk }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}){% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+  {% if u.gercek_tarih %}<p><strong>Gerçek tarih kullanıldı ({{ u.gercek_tarih|length }}):</strong> {% for r in u.gercek_tarih %}<a href="{% url 'core:fatura_detay' r.fatura.pk %}">{{ r.belge_no|default:"(no yok)" }}</a> {{ r.belge_tarihi|date:"d.m.Y" }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+  {% if u.tarih_isaretli %}<p><strong>01.01 girişli, açıklamada gerçek tarih yok ({{ u.tarih_isaretli|length }}):</strong> {% for r in u.tarih_isaretli %}<a href="{% url 'core:fatura_detay' r.fatura.pk %}">{{ r.belge_no|default:"(no yok)" }}</a>{% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+  {% if not u.eksik_vkn and not u.eksik_no and not u.mukerrer and not u.gercek_tarih and not u.tarih_isaretli %}<p class="yardim">Uyarı yok.</p>{% endif %}
+</section>
+{% endwith %}
+{% endblock %}

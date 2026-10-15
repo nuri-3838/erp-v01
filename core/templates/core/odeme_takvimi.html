@@ -1,0 +1,147 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Ödeme Takvimi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Ödeme Takvimi{% endblock %}
+{% block govde_sinif %}govde-tam{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .ot-ust { display:flex; align-items:flex-end; justify-content:space-between; gap:.8rem; flex-wrap:wrap; margin-bottom:.7rem; }
+  .ot-ust h1 { margin:.1rem 0 0; }
+  .ot-kart { background:rgba(255,255,255,.72); border:1px solid var(--cizgi-koyu); border-radius:16px; padding:.8rem 1rem .9rem; margin-bottom:.8rem; }
+  .ot-kart h2 { margin:0 0 .5rem; font-size:.74rem; letter-spacing:.07em; text-transform:uppercase; color:var(--metin-soluk); }
+  .ot-filtre { display:flex; gap:.6rem .9rem; flex-wrap:wrap; align-items:flex-end; }
+  .ot-alan { display:flex; flex-direction:column; gap:.2rem; }
+  .ot-alan label { font-size:.68rem; font-weight:700; letter-spacing:.03em; color:var(--metin-soluk); text-transform:uppercase; }
+  .ot-alan input, .ot-alan select { min-height:38px; padding:.3rem .6rem; border-radius:11px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.92); font-size:.86rem; }
+  .ot-kaynaklar { display:flex; gap:.3rem .5rem; flex-wrap:wrap; }
+  .ot-kaynaklar label { display:inline-flex; align-items:center; gap:.3rem; padding:.2rem .6rem; border:1px solid var(--cizgi-koyu); border-radius:999px; font-size:.78rem; background:rgba(255,255,255,.85); cursor:pointer; }
+  .ot-ozet { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.6rem; margin-bottom:.8rem; }
+  .ot-ozet div { background:rgba(255,255,255,.78); border:1px solid var(--cizgi-koyu); border-radius:14px; padding:.55rem .8rem; }
+  .ot-ozet small { display:block; font-size:.66rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--metin-soluk); }
+  .ot-ozet strong { font-size:1.12rem; } .ot-ozet em { display:block; font-style:normal; font-size:.72rem; color:var(--metin-soluk); margin-top:.1rem; }
+  .ot-neg { color:#b3253f; }
+  .ot-kap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid rgba(255,255,255,.65); border-radius:12px; }
+  .ot-tablo { width:100%; border-collapse:collapse; min-width:860px; }
+  .ot-tablo th, .ot-tablo td { padding:.3rem .5rem; font-size:.82rem; line-height:1.3; vertical-align:top; border-bottom:1px solid rgba(120,130,160,.16); text-align:left; }
+  .ot-tablo th { font-size:.7rem; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); background:rgba(244,247,251,.95); white-space:nowrap; position:sticky; top:0; }
+  .ot-tablo td.sag, .ot-tablo th.sag { text-align:right; white-space:nowrap; }
+  .ot-grup td { background:#eef3fb; font-weight:750; border-top:2px solid rgba(120,130,160,.3); }
+  .ot-grup.neg td { background:#fdecef; } .ot-grup.gec td { background:#fff1de; }
+  .ot-alt { display:block; font-size:.72rem; color:var(--metin-soluk); line-height:1.25; }
+  .ot-rozet { display:inline-block; padding:.05rem .5rem; border-radius:999px; font-size:.7rem; font-weight:700; background:#eef1f7; color:#5b6678; white-space:nowrap; }
+  .ot-rozet.fatura { background:#e8f0fe; color:#1f4fa8; } .ot-rozet.cari { background:#f1e9f9; color:#6a3d9a; } .ot-rozet.kk { background:#e0f5f3; color:#0b6b66; }
+  .ot-rozet.cek { background:#fff1dc; color:#b45f00; } .ot-rozet.vergi { background:#fdecef; color:#b3253f; } .ot-rozet.emanet { background:#fdf3d8; color:#8a6100; }
+  .ot-rozet.kredi { background:#e7f7ec; color:#0a7d28; } .ot-rozet.pos { background:#e7f7ec; color:#0a7d28; }
+  .ot-kural { display:inline-block; margin-left:.3rem; padding:.02rem .4rem; border-radius:999px; font-size:.64rem; font-weight:700; background:#fff1dc; color:#b45f00; }
+  .ot-giris { color:#0a7d28; } .ot-cikis { color:#1a2240; }
+  .ot-mut details { margin:.35rem 0; } .ot-mut summary { cursor:pointer; font-weight:700; }
+  .ot-mut table { min-width:0; }
+  @media (max-width:700px) { .ot-kart { padding:.65rem .7rem; } .ot-ust .dugme { flex:1 1 auto; text-align:center; } }
+  @media print { aside, .ust-cubuk, .yan-perde, .ot-filtre-kart { display:none !important; } }
+</style>
+
+<div class="ot-ust">
+  <div><a class="ust-link" href="{% url 'core:finans_ozet' %}">← Finans</a>
+    <h1 class="ust-baslik"><span class="emoji">📆</span>Ödeme Takvimi</h1></div>
+  <a class="dugme" href="?{{ excel_sorgu }}{% if excel_sorgu %}&{% endif %}excel=1">⬇ Excel</a>
+</div>
+
+<p class="sayfa-alt" style="margin-top:0">Bugün {{ bugun|date:"d.m.Y" }} · TL karşılıkları <strong>bugünkü kurla</strong> ({% for pb, k in veri.kurlar.items %}{{ pb }} {{ k|tr_kur:4 }}{% if not forloop.last %} · {% endif %}{% empty %}kur yok{% endfor %}{% if veri.kur_tarihi %}, TCMB alış {{ veri.kur_tarihi|date:"d.m.Y" }}{% endif %}). Açılış bakiyesi = bugünkü banka + kasa (güncel kur).</p>
+
+<form method="get" class="ot-kart ot-filtre-kart">
+  <div class="ot-filtre">
+    <div class="ot-alan"><label>Başlangıç</label><input type="date" name="bas" value="{{ bas|date:'Y-m-d' }}"></div>
+    <div class="ot-alan"><label>Bitiş</label><input type="date" name="bit" value="{{ bit|date:'Y-m-d' }}"></div>
+    <div class="ot-alan"><label>Gruplama</label><select name="grup">{% for k, ad in gruplamalar %}<option value="{{ k }}" {% if k == grup %}selected{% endif %}>{{ ad }}</option>{% endfor %}</select></div>
+    <div class="ot-alan"><label>Yön</label><select name="yon"><option value="">Giriş + çıkış</option><option value="CIKIS" {% if yon == "CIKIS" %}selected{% endif %}>Yalnız çıkış</option><option value="GIRIS" {% if yon == "GIRIS" %}selected{% endif %}>Yalnız giriş</option></select></div>
+    <div class="ot-alan"><label>Cari</label><select name="cari"><option value="">Tüm cariler</option>{% for pk, ad in cariler %}<option value="{{ pk }}" {% if pk == cari_id %}selected{% endif %}>{{ ad|truncatechars:34 }}</option>{% endfor %}</select></div>
+    <div class="ot-alan"><label>&nbsp;</label><button type="submit" class="dugme" style="border:0;cursor:pointer">Uygula</button></div>
+  </div>
+  <details class="ot-kaynak-detay" open style="margin-top:.6rem"><summary style="cursor:pointer;font-size:.74rem;font-weight:700;letter-spacing:.03em;color:var(--metin-soluk);text-transform:uppercase">Kaynak türü (boş = hepsi){% if secili_kaynaklar %} · {{ secili_kaynaklar|length }} seçili{% endif %}</summary>
+    <div class="ot-kaynaklar" style="margin-top:.35rem">{% for k, ad, y, secili in kaynak_secenekleri %}<label><input type="checkbox" name="kaynak" value="{{ k }}" {% if secili %}checked{% endif %}> {{ ad }} <span class="ot-alt" style="display:inline">({% if y == "GIRIS" %}giriş{% else %}çıkış{% endif %})</span></label>{% endfor %}</div></details>
+</form>
+<script>(function(){var d=document.querySelector('.ot-kaynak-detay');if(d&&window.matchMedia&&window.matchMedia('(max-width:700px)').matches)d.open=false;})();</script>
+
+{% if veri.atlanan_kartlar %}<div class="uyari"><div>⚠️ Kesim / son ödeme günü tanımsız olduğu için kart nakit akışına girmeyen kart: {% for k in veri.atlanan_kartlar %}{{ k.ad }}{% if not forloop.last %}, {% endif %}{% endfor %}.</div></div>{% endif %}
+
+<div class="ot-ozet">
+  <div><small>Bugünkü banka + kasa</small><strong>{{ sonuc.acilis|tr_kur:2 }} ₺</strong><em>açılış bakiyesi</em></div>
+  <div><small>Dönem çıkışı</small><strong class="ot-cikis">{{ sonuc.cikis|tr_kur:2 }} ₺</strong><em>gecikmiş {{ sonuc.gecikmis_cikis|tr_kur:2 }} ₺ dahil{% if sonuc.vadesiz %} · vadesiz {{ sonuc.vadesiz.cikis|tr_kur:2 }} ₺ hariç{% endif %}</em></div>
+  <div><small>Dönem girişi</small><strong class="ot-giris">{{ sonuc.giris|tr_kur:2 }} ₺</strong><em>{{ bas|date:"d.m.Y" }} – {{ bit|date:"d.m.Y" }}</em></div>
+  <div><small>Net ihtiyaç</small><strong class="{% if sonuc.net_ihtiyac %}ot-neg{% endif %}">{{ sonuc.net_ihtiyac|tr_kur:2 }} ₺</strong><em>en düşük kümülatif bakiye · dönem sonu {{ sonuc.donem_sonu|tr_kur:2 }} ₺</em></div>
+</div>
+
+<section class="ot-kart">
+  <h2>Takvim · {{ toplam_satir }} kalem</h2>
+  <div class="ot-kap">
+  <table class="ot-tablo">
+    <thead><tr><th>Tarih</th><th>Kaynak</th><th>Cari / açıklama</th><th>Belge no</th><th class="sag">Döviz tutarı</th><th class="sag">TL</th></tr></thead>
+    {% for g in sonuc.gruplar %}
+    <tbody>
+      <tr class="ot-grup {% if g.gecikmis %}gec{% elif g.negatif %}neg{% endif %}"><td colspan="3">{{ g.ad }}{% if g.gecikmis %} <span class="ot-alt" style="display:inline">(vadesi bugünden önce)</span>{% endif %}</td>
+        <td class="sag">çıkış {{ g.cikis|tr_kur:2 }}</td><td class="sag">giriş {{ g.giris|tr_kur:2 }}</td>
+        <td class="sag {% if g.negatif %}ot-neg{% endif %}">kümülatif {{ g.kumulatif|tr_kur:2 }}</td></tr>
+      {% for r in g.satirlar %}
+      <tr>
+        <td class="mono">{{ r.tarih|date:"d.m.Y" }}</td>
+        <td><span class="ot-rozet {{ r.css }}">{{ r.kaynak_ad }}</span>{% if r.kural %}<span class="ot-kural" title="Kayıtlı vade yok; yasal vade kuralıyla türetildi">kural ile</span>{% endif %}</td>
+        <td>{% if r.url %}<a href="{% url r.url.0 r.url.1 %}">{{ r.baslik }}</a>{% else %}{{ r.baslik }}{% endif %}{% if r.cari_ad and r.cari_ad not in r.baslik %} <span class="ot-alt">{{ r.cari_ad }}</span>{% endif %}{% if r.aciklama or r.ek %}<span class="ot-alt">{{ r.aciklama }}{% if r.aciklama and r.ek %} · {% endif %}{% if r.kaynak == "FATURA_ALIS" or r.kaynak == "FATURA_SATIS" %}{{ r.ek }}{% endif %}</span>{% endif %}</td>
+        <td class="mono">{{ r.belge_no|default:"" }}</td>
+        <td class="sag mono">{% if r.pb != "TRY" %}{{ r.tutar|tr_kur:2 }} {{ r.pb }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="sag mono {% if r.yon == 'GIRIS' %}ot-giris{% endif %}">{% if r.yon == "GIRIS" %}+{% endif %}{{ r.tl|tr_kur:2 }}{% if r.tl_yok %} <span class="ot-alt" title="Bu para birimi için kur bulunamadı">kur yok</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% empty %}
+    <tbody><tr><td colspan="6" class="yardim">Seçilen aralık ve süzgeçlerde kalem yok.</td></tr></tbody>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+
+{% if sonuc.vadesiz %}
+<section class="ot-kart">
+  <h2>Vadesiz kalemler <span class="ot-alt" style="display:inline;text-transform:none;letter-spacing:0">— vadesi belirlenemeyen; kümülatif bakiyeye dahil değil</span></h2>
+  <div class="ot-kap">
+  <table class="ot-tablo">
+    <thead><tr><th>Tarih</th><th>Kaynak</th><th>Cari / açıklama</th><th>Belge no</th><th class="sag">Döviz tutarı</th><th class="sag">TL</th></tr></thead>
+    <tbody>
+      {% for r in sonuc.vadesiz.satirlar %}
+      <tr><td><span class="ot-rozet">Vadesiz</span></td>
+        <td><span class="ot-rozet {{ r.css }}">{{ r.kaynak_ad }}</span></td>
+        <td>{% if r.url %}<a href="{% url r.url.0 r.url.1 %}">{{ r.baslik }}</a>{% else %}{{ r.baslik }}{% endif %}{% if r.cari_ad %} <span class="ot-alt">{{ r.cari_ad }}</span>{% endif %}{% if r.aciklama %}<span class="ot-alt">{{ r.aciklama }}</span>{% endif %}</td>
+        <td class="mono">{{ r.belge_no|default:"" }}</td>
+        <td class="sag mono">{% if r.pb != "TRY" %}{{ r.tutar|tr_kur:2 }} {{ r.pb }}{% else %}<span class="pasif">—</span>{% endif %}</td>
+        <td class="sag mono">{% if r.yon == "GIRIS" %}+{% endif %}{{ r.tl|tr_kur:2 }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr class="ot-grup"><td colspan="5" class="sag">Vadesiz toplam (çıkış)</td><td class="sag mono">{{ sonuc.vadesiz.cikis|tr_kur:2 }}</td></tr></tfoot>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="ot-kart ot-mut" id="ot-mutabakat">
+  <h2>Mutabakat — takvim toplamı ↔ hesap bakiyeleri (tüm vadeler, süzgeçsiz)</h2>
+  <div class="ot-kap">
+  <table class="ot-tablo" style="min-width:640px">
+    <thead><tr><th>Hesap</th><th class="sag">Defter bakiyesi</th><th class="sag">Takvim</th><th class="sag">Fark</th></tr></thead>
+    <tbody>
+    {% for b in mutabakat %}
+      <tr><td><strong>{{ b.ad }}</strong><span class="ot-alt">{{ b.aciklama }}</span>
+          {% if b.farkli %}<details><summary>{{ b.farkli|length }} kalem fark</summary>
+            <table class="ot-tablo" style="min-width:0;margin-top:.3rem"><thead><tr><th>Kalem</th><th class="sag">Defter</th><th class="sag">Takvim</th><th class="sag">Fark</th><th>Neden</th></tr></thead><tbody>
+              {% for k in b.farkli %}<tr><td>{% if k.url %}<a href="{% url k.url.0 k.url.1 %}">{{ k.ad }}</a>{% else %}{{ k.ad }}{% endif %}</td><td class="sag mono">{{ k.defter|tr_kur:2 }}</td><td class="sag mono">{{ k.takvim|tr_kur:2 }}</td><td class="sag mono">{{ k.fark|tr_kur:2 }}</td><td>{{ k.not|default:"—" }}</td></tr>{% endfor %}
+            </tbody></table></details>{% endif %}</td>
+        <td class="sag mono">{{ b.defter|tr_kur:2 }}</td><td class="sag mono">{{ b.takvim|tr_kur:2 }}</td>
+        <td class="sag mono {% if b.fark != 0 %}ot-neg{% endif %}"><strong>{{ b.fark|tr_kur:2 }}</strong></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="yardim" style="margin:.5rem 0 0">Fark 0,00 olmayan bloklarda neden kalem kalem açıklanır: <em>cari lehine (borç) bakiye / avans</em> çıkış kalemi sayılmaz; <em>döviz</em> kalemlerinde defter TL'si kayıtlı kurla, takvim TL'si bugünkü kurla hesaplanır;
+    <em>taksit planı girilmemiş</em> kredilerde takvim kalemi yoktur. Kapsam dışı: 335 (personel), 500 (ortak), 136 (diğer alacaklar).</p>
+</section>
+{% endblock %}

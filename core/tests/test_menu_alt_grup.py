@@ -47,9 +47,12 @@ class MenuYapisiTest(TestCase):
         self.assertFalse(e.eslesir(""))
 
     def test_diger_moduller_alt_menusuz(self):
+        # Alt menü kullanan modüller: Cariler (Raporlar + Tanımlar), Finans ve Muhasebe (yalnız "Raporlar", 2026-10-16); diğerleri düz kalır
         for m in MODULLER:
-            if m.kod != "CARILER":
+            if m.kod not in ("CARILER", "FINANS", "MUHASEBE"):
                 self.assertFalse(any(o.alt_menu for o in m.ogeler), m.kod)
+        for kod in ("FINANS", "MUHASEBE"):
+            self.assertEqual([o.ad for o in next(m for m in MODULLER if m.kod == kod).ogeler if o.alt_menu], ["Raporlar"], kod)
 
 
 class MenuYetkiTest(TestCase):
@@ -131,4 +134,4 @@ class MenuRenderTest(TestCase):
     def test_diger_menu_ogeleri_bozulmadi(self):
         menu = self._menu(reverse("core:mizan"))
         self.assertRegex(menu, rf'<a href="{re.escape(reverse("core:mizan"))}" class="aktif">Mizan</a>')
-        self.assertEqual(menu.count('<details class="alt-menu'), 2)                                    # Raporlar + Tanımlar
+        self.assertEqual(menu.count('<details class="alt-menu'), 4)                                    # Muhasebe Raporlar + Finans Raporlar + Cariler (Raporlar + Tanımlar)

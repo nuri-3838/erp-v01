@@ -1,0 +1,16 @@
+{% load core_extras %}
+<div class="kl-kap"><table class="kl-tablo" style="min-width:820px">
+  <thead><tr><th class="sag">Sıra</th><th>Belge tarihi</th><th>Belge seri / sıra no</th><th>Alıcı</th><th>VKN / TCKN</th><th class="sag">KDV hariç tutar</th><th class="sag">KDV</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td class="sag mono">{{ r.sira }}</td>
+      <td class="mono">{{ r.belge_tarihi|date:"d.m.Y" }}{% if r.gercek_tarih %}<span class="kl-alt">kayıt {{ r.fatura.tarih|date:"d.m.Y" }}</span>{% endif %}</td>
+      <td class="mono"><a href="{% url 'core:fatura_detay' r.fatura.pk %}">{% if r.belge_no %}{{ r.seri }}{% if r.seri %} / {% endif %}{{ r.sira_no }}{% else %}<span class="pasif">(no yok)</span>{% endif %}</a><span class="kl-alt">{{ r.tip_adi }}</span></td>
+      <td class="taraf">{{ r.alici|truncatechars:48 }}{% for k, ad, kisa in r.rozetler %}<span class="kl-rozet {{ k }}" title="{{ ad }}">{{ kisa }}</span>{% endfor %}</td>
+      <td class="mono">{% if r.vkn %}{{ r.vkn }}{% else %}<span class="kl-rozet vkn">yok</span>{% endif %}</td>
+      <td class="sag mono">{{ r.matrah_tl|tr_kur:2 }}{% if r.pb != "TRY" %}<span class="kl-alt">{{ r.pb }} · kur {{ r.kur|tr_kur:4 }}</span>{% endif %}</td>
+      <td class="sag mono"><strong>{{ r.hesaplanan_tl|tr_kur:2 }}</strong></td></tr>
+  {% empty %}{% if bos %}<tr><td colspan="7" class="yardim">{{ bos }}</td></tr>{% endif %}{% endfor %}
+  </tbody>
+  <tfoot><tr><th colspan="5" class="sag">Toplam ({{ rows|length }} fatura)</th><th class="sag mono">{{ matrah|tr_kur:2 }}</th><th class="sag mono">{{ kdv|tr_kur:2 }}</th></tr></tfoot>
+</table></div>

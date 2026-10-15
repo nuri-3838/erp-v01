@@ -106,6 +106,10 @@ from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
 from core.services import fatura_ek as fatura_ek_servis
 from core.services import fatura_detay as fatura_detay_servis
+from core.services import odeme_takvimi as odeme_takvimi_servis
+from core.services import odeme_takvimi_cikti
+from core.services import kdv_listeleri as kdv_listeleri_servis
+from core.services import kdv_listeleri_cikti
 from core.services import irsaliye_ek as irsaliye_ek_servis
 from core.services import teklif_siparis as teklif_siparis_servis
 from core.services import depo as depo_servis
@@ -11152,10 +11156,73 @@ def kredi_karti_donem_ekstresi(request, pk):
     return render(request, "core/kredi_karti_donem_ekstresi.html", ctx)
 
 
-@ekran_gerekli("kredi_karti")
+@ekran_gerekli_herhangi("kk_nakit_akisi", "kredi_karti")
 def kredi_karti_nakit_akisi(request):
     """Tüm TL kartların gelecek son ödeme tarihleri ve tutarları (ay bazında özet + ayrıntı)."""
     return render(request, "core/kredi_karti_nakit_akisi.html", {"o": kk_donem_servis.nakit_akisi(timezone.localdate())})
+
+
+@ekran_gerekli("kdv_listeleri")
+def kdv_listeleri(request):
+    """MUHASEBE › Raporlar › KDV Listeleri (SALT-OKUNUR; bkz. core.services.kdv_listeleri). GET: yil, ay, sekme (indirilecek / satis), excel=1."""
+    bugun = tr_bugun()
+    try:
+        yil, ay = int(request.GET.get("yil") or bugun.year), int(request.GET.get("ay") or bugun.month)
+        if not (2000 <= yil <= 2100 and 1 <= ay <= 12):
+            raise ValueError
+    except ValueError:
+        yil, ay = bugun.year, bugun.month
+    sekme = "satis" if request.GET.get("sekme") == "satis" else "indirilecek"
+    veri = kdv_listeleri_servis.satislar(yil, ay) if sekme == "satis" else kdv_listeleri_servis.indirilecek(yil, ay)
+    if request.GET.get("excel"):
+        govde = kdv_listeleri_cikti.satis_xlsx(veri) if sekme == "satis" else kdv_listeleri_cikti.indirilecek_xlsx(veri)
+        ad = "satislara_ait_fatura_listesi" if sekme == "satis" else "indirilecek_kdv_listesi"
+        r = HttpResponse(govde, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        r["Content-Disposition"] = f'attachment; filename="{ad}_{yil}_{ay:02d}.xlsx"'
+        return r
+    yillar = list(range(min(2025, bugun.year), bugun.year + 1))
+    return render(request, "core/kdv_listeleri.html", {"veri": veri, "sekme": sekme, "yil": yil, "ay": ay, "yillar": yillar, "aylar": list(enumerate(kdv_listeleri_servis.AYLAR, start=1)),
+                                                      "excel_sorgu": f"yil={yil}&ay={ay}&sekme={sekme}"})
+
+
+def _odeme_takvimi_tarih(ham, varsayilan):
+    try:
+        return datetime.date.fromisoformat((ham or "").strip())
+    except ValueError:
+        return varsayilan
+
+
+@ekran_gerekli("odeme_takvimi")
+def odeme_takvimi(request):
+    """FİNANS › Raporlar › Ödeme Takvimi (SALT-OKUNUR; bkz. core.services.odeme_takvimi). GET süzgeçleri: bas, bit, grup (gun/hafta/ay), yon, kaynak (çoklu), cari; ?excel=1 Excel."""
+    ot = odeme_takvimi_servis
+    bugun = tr_bugun()
+    bas = _odeme_takvimi_tarih(request.GET.get("bas"), bugun)
+    bit = _odeme_takvimi_tarih(request.GET.get("bit"), ot.ay_ekle(bugun, 6))
+    if bit < bas:
+        bas, bit = bit, bas
+    grup = request.GET.get("grup") if request.GET.get("grup") in dict(ot.GRUPLAMALAR) else "gun"
+    yon = request.GET.get("yon") if request.GET.get("yon") in (ot.CIKIS, ot.GIRIS) else ""
+    kaynaklar = [k for k in request.GET.getlist("kaynak") if k in ot.KAYNAKLAR]
+    try:
+        cari_id = int(request.GET.get("cari") or 0) or None
+    except ValueError:
+        cari_id = None
+    veri = ot.tum_satirlar(bugun)
+    satirlar = ot.filtrele(veri["satirlar"], yon=yon, kaynaklar=kaynaklar, cari_id=cari_id)
+    sonuc = ot.grupla(satirlar, bugun=bugun, bas=bas, bit=bit, grup=grup, acilis=veri["nakit_tl"])
+    mutabakat = ot.mutabakat(veri, veri["atlanan_kartlar"])
+    if request.GET.get("excel"):
+        govde = odeme_takvimi_cikti.takvim_xlsx(veri, sonuc, mutabakat, bas=bas, bit=bit)
+        r = HttpResponse(govde, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        r["Content-Disposition"] = f'attachment; filename="odeme_takvimi_{bugun:%Y%m%d}.xlsx"'
+        return r
+    cariler = sorted({(x["cari_id"], x["cari_ad"]) for x in veri["satirlar"] if x["cari_id"]}, key=lambda c: c[1])
+    return render(request, "core/odeme_takvimi.html", {
+        "veri": veri, "sonuc": sonuc, "mutabakat": mutabakat, "bas": bas, "bit": bit, "grup": grup, "yon": yon, "cari_id": cari_id, "cariler": cariler,
+        "gruplamalar": ot.GRUPLAMALAR, "kaynak_secenekleri": [(k, v[0], v[1], (k in kaynaklar)) for k, v in ot.KAYNAKLAR.items()], "secili_kaynaklar": kaynaklar,
+        "excel_sorgu": request.GET.urlencode(), "bugun": bugun, "toplam_satir": len(satirlar)})
+
 
 
 @ekran_gerekli("kredi_karti")

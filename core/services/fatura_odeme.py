@@ -28,9 +28,12 @@ def dogal_yon(cari) -> str:
     return "borc" if kok in ALACAKLI_DOGAL_KOKLER else "alacak"
 
 
-def fifo_kalemler(cari, faturalar: dict, satirlar):
+def fifo_kalemler(cari, faturalar: dict, satirlar, iade_kaynaklari=()):
     """Çekirdek FIFO. ``faturalar``: {fiş pk: Fatura} (carinin ONAYLI, fişli faturaları); ``satirlar``: carinin hesabındaki yevmiye satırları
-    (``values("fis_id", "islem_pb", "borc", "alacak", "islem_tutari")``). Döner: ({fatura pk: {fatura, pb, tutar, tarih, vade, kalan}}, {pb: artan kredi (avans/fazla ödeme)})."""
+    (``values("fis_id", "islem_pb", "borc", "alacak", "islem_tutari")``). Döner: ({fatura pk: {fatura, pb, tutar, tarih, vade, kalan}}, {pb: artan kredi (avans/fazla ödeme)}).
+
+    ``iade_kaynaklari`` (varsayılan boş → davranış AYNEN): doluysa, carinin doğal yönündeki FATURA DIŞI satırlardan fişi bu kaynaklardan (ör. BANKA/KASA: cariden gelen para = ödemenin iadesi)
+    olanlar kredi havuzundan DÜŞÜLÜR — gidip gelen para faturaları kapatmış sayılmaz. Satırlarda ``fis__kaynak`` anahtarı gerekir. (Ödeme Takvimi kullanır; liste/ekstre varsayılanı kullanır.)"""
     dogal = dogal_yon(cari)
     kalemler, kredi = {}, {}
     for s in satirlar:
@@ -42,18 +45,22 @@ def fifo_kalemler(cari, faturalar: dict, satirlar):
             k["tutar"] += tutar
         elif yon != dogal:
             kredi[pb] = kredi.get(pb, SIFIR) + tutar                  # ödeme / tahsilat / mahsup / fatura iadesi
+        elif iade_kaynaklari and s.get("fis__kaynak") in iade_kaynaklari:
+            kredi[pb] = kredi.get(pb, SIFIR) - tutar                  # cariden gelen para = ödemenin iadesi (faturayı kapatmaz)
     for k in kalemler.values():
         f = k["fatura"]
         k["tarih"] = f.tarih
         k["vade"] = f.vade_tarihi or cari_servis.vade_hesapla(cari, f.tarih)
         k["kalan"] = k["tutar"]
     for pb in {k["pb"] for k in kalemler.values()}:
-        havuz = kredi.get(pb, SIFIR)
+        havuz = max(kredi.get(pb, SIFIR), SIFIR)
         for k in sorted((x for x in kalemler.values() if x["pb"] == pb), key=lambda x: (x["tarih"], x["fatura"].pk)):
             dus = min(k["kalan"], havuz)
             k["kalan"] -= dus
             havuz -= dus
         kredi[pb] = havuz
+    for pb in kredi:                                                  # faturası olmayan PB'de (ya da iade düşümüyle) eksiye inen havuz sıfırlanır
+        kredi[pb] = max(kredi[pb], SIFIR)
     return kalemler, kredi
 
 
