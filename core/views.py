@@ -8772,56 +8772,65 @@ def _fatura_gider_baglami(fform):
 
 
 def _fatura_listesi(request, yon, baslik):
-    # tip__yon DEĞİL — İrsaliye'den otomatik açılan taslağın tipi henüz boş olabilir
-    # (INNER JOIN tip=None satırları dışlar); Fatura'nın kendi yon alanı bunun için var.
-    ara = (request.GET.get("ara") or "").strip()
-    durum = request.GET.get("durum") or "hepsi"
-    tip_id = (request.GET.get("tip") or "").strip()
-    bas = (request.GET.get("bas") or "").strip()
-    bit = (request.GET.get("bit") or "").strip()
+    """Faturalar liste ekranı (alış/satış AYNI yapı): tarih/no/cari/tip/matrah/KDV/toplam(+TL)/vade/ödeme durumu(FIFO, hesaplanan)/PDF; hızlı filtre çipleri, cari + PB süzgeci,
+    sütun sıralaması, sayfa boyutu, filtrelenmiş toplam satırı, Excel (``?xlsx=1``). Tüm süzgeçler URL'de. Veri/hesap: core.services.fatura_liste (salt-okunur)."""
+    from core.services import fatura_liste as fl
+    from core.services import fatura_liste_cikti
+    g = request.GET
+    ara = (g.get("ara") or "").strip()
+    durum = g.get("durum") if g.get("durum") in (Fatura.Durum.TASLAK, Fatura.Durum.ONAYLI) else "hepsi"
+    tip_id = (g.get("tip") or "").strip()
+    tip_id = tip_id if tip_id.isdigit() else ""
+    cari_id = (g.get("cari") or "").strip()
+    cari_id = cari_id if cari_id.isdigit() else ""
+    pb = (g.get("pb") or "").strip().upper()
+    pb = pb if len(pb) == 3 and pb.isalpha() else ""
+    hizli = g.get("hizli") if g.get("hizli") in fl.HIZLI_ANAHTARLAR else "hepsi"
+    sirala = g.get("sirala") if g.get("sirala") in fl.SIRALAMA_ANAHTARLARI else "tarih"
+    yon_s = "asc" if g.get("dir") == "asc" else ("desc" if g.get("dir") == "desc" else ("desc" if sirala == "tarih" else "asc"))
+    try:
+        boyut = int(g.get("boyut") or fl.SAYFA_BOYUTLARI[0])
+    except ValueError:
+        boyut = fl.SAYFA_BOYUTLARI[0]
+    boyut = boyut if boyut in fl.SAYFA_BOYUTLARI else fl.SAYFA_BOYUTLARI[0]
 
-    faturalar = (fatura_servis.aktif_faturalar().filter(yon=yon)
-                 .prefetch_related("satirlar__kdv"))
-    if durum in (Fatura.Durum.TASLAK, Fatura.Durum.ONAYLI):
-        faturalar = faturalar.filter(durum=durum)
-    if tip_id.isdigit():
-        faturalar = faturalar.filter(tip_id=tip_id)
-    if bas:
+    def _tarih(anahtar):
         try:
-            faturalar = faturalar.filter(tarih__gte=datetime.date.fromisoformat(bas))
+            return datetime.date.fromisoformat((g.get(anahtar) or "").strip())
         except ValueError:
-            bas = ""
-    if bit:
-        try:
-            faturalar = faturalar.filter(tarih__lte=datetime.date.fromisoformat(bit))
-        except ValueError:
-            bit = ""
-    if ara:
-        faturalar = faturalar.filter(
-            Q(cari__unvan__contains=buyuk_harf_tr(ara)) | Q(fatura_no__icontains=ara))
+            return None
+    bas, bit = _tarih("bas"), _tarih("bit")
 
-    sayfa = Paginator(faturalar, 50).get_page(request.GET.get("sayfa"))
+    sonuc = fl.liste_getir(yon, hizli=hizli, sirala=sirala, yon_siralama=yon_s, ara=ara, durum=durum, tip_id=tip_id, bas=bas, bit=bit, cari_id=cari_id, pb=pb)
+    sabit = g.copy()
+    for k in ("sayfa", "xlsx"):
+        sabit.pop(k, None)
+    if g.get("xlsx") == "1":
+        return _xlsx_yanit(fatura_liste_cikti.liste_xlsx(sonuc["satirlar"], sonuc["toplamlar"], baslik=baslik), f"{'alis' if yon == FaturaTipi.Yon.ALIS else 'satis'}_faturalari_{tr_bugun():%Y%m%d}")
+    sayfa = Paginator(sonuc["satirlar"], boyut).get_page(g.get("sayfa"))
 
-    params = {}
-    if ara:
-        params["ara"] = ara
-    if durum != "hepsi":
-        params["durum"] = durum
-    if tip_id:
-        params["tip"] = tip_id
-    if bas:
-        params["bas"] = bas
-    if bit:
-        params["bit"] = bit
-    sorgu = urlencode(params) + "&" if params else ""
-
+    def url(**ek):
+        q = sabit.copy()
+        for k, v in ek.items():
+            if v in (None, ""):
+                q.pop(k, None)
+            else:
+                q[k] = v
+        q.pop("sayfa", None)
+        return "?" + q.urlencode() if q else "?"
+    cipler = [{"kod": k, "ad": ad, "sayi": sonuc["chip_sayilari"][k], "aktif": hizli == k, "url": url(hizli=(None if k == "hepsi" else k))} for k, ad in fl.HIZLI_FILTRELER]
+    siralama = {a: {"url": url(sirala=a, dir=("desc" if (sirala == a and yon_s == "asc") else "asc")), "isaret": (" ▲" if yon_s == "asc" else " ▼") if sirala == a else ""}
+                for a in fl.SIRALAMA_ANAHTARLARI}
+    secenek = fl.filtre_secenekleri(yon)
+    filtre_aktif = bool(ara or durum != "hepsi" or tip_id or bas or bit or cari_id or pb or hizli != "hepsi")
     return render(request, "core/fatura_listesi.html", {
-        "faturalar": sayfa, "baslik": baslik, "ekle_url": _fatura_ekle_url(yon),
-        "liste_url": _fatura_liste_url(yon),
-        "ara": ara, "durum": durum, "secili_tip": tip_id, "bas": bas, "bit": bit,
-        "tipler": FaturaTipi.objects.filter(yon=yon, silindi=False).order_by("sira", "ad"),
-        "sorgu": sorgu,
-        "filtre_aktif": bool(ara or durum != "hepsi" or tip_id or bas or bit)})
+        "sayfa": sayfa, "satirlar": list(sayfa), "toplam_adet": len(sonuc["satirlar"]), "genel_adet": sonuc["genel_adet"], "toplamlar": sonuc["toplamlar"],
+        "baslik": baslik, "ekle_url": _fatura_ekle_url(yon), "liste_url": _fatura_liste_url(yon), "yon": yon,
+        "ara": ara, "durum": durum, "secili_tip": tip_id, "bas": bas.isoformat() if bas else "", "bit": bit.isoformat() if bit else "", "secili_cari": cari_id, "secili_pb": pb,
+        "hizli": hizli, "cipler": cipler, "sirala": sirala, "dir": yon_s, "siralama": siralama, "boyut": boyut, "boyutlar": fl.SAYFA_BOYUTLARI,
+        "tipler": FaturaTipi.objects.filter(yon=yon, silindi=False).order_by("sira", "ad"), "cariler": secenek["cariler"], "pbler": secenek["pbler"],
+        "sabit_qs": sabit.urlencode(),
+        "xlsx_url": "?" + (sabit.urlencode() + "&" if sabit else "") + "xlsx=1", "filtre_aktif": filtre_aktif, "bugun": tr_bugun()})
 
 
 @ekran_gerekli("alis_faturalari")

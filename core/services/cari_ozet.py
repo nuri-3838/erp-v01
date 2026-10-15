@@ -19,6 +19,7 @@ from django.urls import reverse
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, CariYetkili, Fatura, FaturaSatir, TeklifSiparis, TeklifSiparisKalem, YevmiyeSatir)
 from core.services import cari as cari_servis
+from core.services import fatura_odeme
 from core.tarih import tr_bugun
 
 SIFIR = Decimal("0")
@@ -172,8 +173,7 @@ def liste_getir(*, ara="", kategori_id="", sehir_id="", ulke_id="", tur="", baki
 
 # --------------------------------------------------------------------------------------------------- açık faturalar
 def _dogal_yon(cari) -> str:
-    kok = (cari.muhasebe_kodu or "").split(".")[0]
-    return "borc" if kok in ALACAKLI_DOGAL_KOKLER else "alacak"
+    return fatura_odeme.dogal_yon(cari)
 
 
 def acik_faturalar(cari, bugun=None) -> dict:
@@ -183,32 +183,10 @@ def acik_faturalar(cari, bugun=None) -> dict:
     bos = {"satirlar": [], "toplam": {}, "vadesi_gecen": {}, "esitlenmemis": {}}
     if not cari.muhasebe_kodu:
         return bos
-    dogal = _dogal_yon(cari)
     faturalar = {f.fis_id: f for f in Fatura.objects.filter(cari=cari, silindi=False, durum=Fatura.Durum.ONAYLI, fis__isnull=False).select_related("tip")}
     satirlar = (YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id=cari.muhasebe_kodu)
                 .values("fis_id", "islem_pb", "borc", "alacak", "islem_tutari"))
-    kalemler, kredi = {}, {}
-    for s in satirlar:
-        yon = "borc" if s["borc"] > 0 else "alacak"
-        pb, tutar = s["islem_pb"], s["islem_tutari"] or (s["borc"] or s["alacak"])
-        f = faturalar.get(s["fis_id"])
-        if f is not None and yon == dogal:
-            k = kalemler.setdefault(f.pk, {"fatura": f, "pb": pb, "tutar": SIFIR})
-            k["tutar"] += tutar
-        elif yon != dogal:
-            kredi[pb] = kredi.get(pb, SIFIR) + tutar                  # ödeme / tahsilat / mahsup / fatura iadesi
-    for k in kalemler.values():
-        f = k["fatura"]
-        k["tarih"] = f.tarih
-        k["vade"] = f.vade_tarihi or cari_servis.vade_hesapla(cari, f.tarih)
-        k["kalan"] = k["tutar"]
-    for pb in {k["pb"] for k in kalemler.values()}:
-        havuz = kredi.get(pb, SIFIR)
-        for k in sorted((x for x in kalemler.values() if x["pb"] == pb), key=lambda x: (x["tarih"], x["fatura"].pk)):
-            dus = min(k["kalan"], havuz)
-            k["kalan"] -= dus
-            havuz -= dus
-        kredi[pb] = havuz
+    kalemler, kredi = fatura_odeme.fifo_kalemler(cari, faturalar, satirlar)           # FIFO çekirdeği tek yerde (fatura_odeme)
     acik = sorted((k for k in kalemler.values() if k["kalan"] >= ESIK), key=lambda x: (x["vade"] or x["tarih"], x["fatura"].pk))
     toplam, gecen = {}, {}
     for k in acik:

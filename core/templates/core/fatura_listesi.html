@@ -2,98 +2,187 @@
 {% load core_extras %}
 {% block baslik %}{{ baslik }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ baslik }}{% endblock %}
+{% block govde_sinif %}govde-tam{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-{% include "core/_ik_stil.html" %}
+<style>
+  .ft-ust { display:flex; align-items:center; justify-content:space-between; gap:.8rem; flex-wrap:wrap; margin-bottom:.8rem; }
+  .ft-ust-aksiyon { display:flex; gap:.5rem; flex-wrap:wrap; }
+  .ft-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu); border-radius:16px; padding:.7rem .9rem .8rem; margin-bottom:.7rem; }
+  .ft-filtre { display:flex; align-items:flex-end; gap:.55rem; flex-wrap:wrap; }
+  .ft-alan { display:flex; flex-direction:column; gap:.2rem; }
+  .ft-alan label { font-size:.68rem; font-weight:700; letter-spacing:.03em; color:var(--metin-soluk); }
+  .ft-alan input, .ft-alan select { min-height:38px; padding:.3rem .65rem; border-radius:11px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.92); font-size:.86rem; max-width:15rem; }
+  .ft-alan input:focus, .ft-alan select:focus { outline:none; border-color:var(--turuncu); }
+  .ft-alan.ara { flex:1 1 15rem; } .ft-alan.ara input { width:100%; max-width:none; box-sizing:border-box; }
+  .ft-cipler { display:flex; gap:.4rem; flex-wrap:wrap; margin:.1rem 0 .7rem; }
+  .ft-cip { display:inline-flex; align-items:center; gap:.4rem; padding:.3rem .8rem; border-radius:999px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.85);
+    font-size:.82rem; font-weight:650; text-decoration:none; color:var(--metin); }
+  .ft-cip small { font-weight:700; color:var(--metin-soluk); }
+  .ft-cip.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; } .ft-cip.aktif small { color:#cfd9ee; }
+  .ft-bilgi { color:var(--metin-soluk); font-size:.84rem; margin:.1rem 0 .4rem; display:flex; gap:.8rem; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+  .ft-kap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid rgba(255,255,255,.65); border-radius:14px; }
+  table.ft-tablo { min-width:1080px; border-radius:0; }
+  .ft-tablo th, .ft-tablo td { padding:.24rem .45rem; font-size:.82rem; white-space:nowrap; line-height:1.25; }
+  .ft-tablo th a { color:inherit; text-decoration:none; } .ft-tablo th a:hover { text-decoration:underline; }
+  .ft-tablo td.sag, .ft-tablo th.sag { text-align:right; }
+  .ft-no { font-weight:750; }
+  .ft-cari { display:inline-block; max-width:210px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
+  .ft-alt { display:block; font-size:.7rem; color:var(--metin-soluk); line-height:1.1; }
+  .ft-tip { display:inline-block; padding:.08rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#eef1f7; color:#5b6678; }
+  .ft-tip.normal { background:#e8f0fe; color:#1f4fa8; } .ft-tip.gider { background:#fff1dc; color:#b45f00; } .ft-tip.kdv { background:#f1e9f9; color:#6a3d9a; }
+  .ft-tip.iade { background:#fdecef; color:#b3253f; } .ft-tip.ihrac { background:#e0f5f3; color:#0b6b66; } .ft-tip.smm { background:#fdf3d8; color:#8a6100; }
+  .ft-odeme { display:inline-block; padding:.08rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; }
+  .ft-odeme.kapandi { background:#e7f7ec; color:#0a7d28; } .ft-odeme.kismi { background:#fff1dc; color:#b45f00; } .ft-odeme.acik { background:#e8f0fe; color:#1f4fa8; }
+  .ft-odeme.gecti { background:#fdecef; color:#b3253f; }
+  .ft-rozet-kucuk { display:inline-block; margin-left:.3rem; padding:.04rem .4rem; border-radius:999px; font-size:.66rem; font-weight:700; background:#eef1f7; color:#5b6678; vertical-align:middle; }
+  .ft-tablo tfoot td, .ft-tablo tfoot th { font-weight:750; background:rgba(244,247,251,.9); border-top:1px solid rgba(120,130,160,.3); border-bottom:none; position:static; }
+  .ft-tablo td.ft-pdf { text-align:center; } .ft-tablo td.ft-pdf a { text-decoration:none; }
+  .ft-sayfalama { display:flex; align-items:center; justify-content:center; gap:.7rem; margin-top:.8rem; flex-wrap:wrap; }
+  .ft-sayfalama a { padding:.3rem .8rem; border:1px solid var(--cizgi-koyu); border-radius:10px; text-decoration:none; font-weight:650; }
+  .ft-yukleniyor { opacity:.55; transition:opacity .15s; }
+  #ft-temizle[hidden] { display:none; }
+</style>
 
-<div class="ik-ust">
+<div class="ft-ust">
   <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik }}</h1>
-  <a class="dugme" href="{% url ekle_url %}">+ Yeni</a>
+  <div class="ft-ust-aksiyon">
+    <a class="dugme" href="{{ xlsx_url }}" style="background:#fff;color:var(--lacivert);border:1px solid var(--cizgi-koyu)">📥 Excel'e aktar</a>
+    <a class="dugme" href="{% url ekle_url %}">+ Yeni</a>
+  </div>
 </div>
 
-<div class="ik-panel">
-  <form method="get" class="ik-arama-cubuk">
-    <div class="ik-alan-grup ik-arama-kutu">
-      <label for="ft-ara">Ara</label>
-      <span class="ik-arama-ikon">🔍</span>
-      <input type="text" id="ft-ara" name="ara" value="{{ ara }}"
-             placeholder="Cari veya fatura no…" autocomplete="off">
-    </div>
-    <div class="ik-alan-grup">
-      <label for="ft-durum">Durum</label>
-      <select id="ft-durum" name="durum">
-        <option value="hepsi" {% if durum == "hepsi" %}selected{% endif %}>Tümü</option>
-        <option value="ONAYLI" {% if durum == "ONAYLI" %}selected{% endif %}>Onaylı</option>
-        <option value="TASLAK" {% if durum == "TASLAK" %}selected{% endif %}>Taslak</option>
-      </select>
-    </div>
+<div class="ft-panel">
+  <form method="get" class="ft-filtre" id="ft-form">
+    <div class="ft-alan ara"><label for="ft-ara">Ara</label>
+      <input type="text" id="ft-ara" name="ara" value="{{ ara }}" placeholder="🔍 Cari veya fatura no…" autocomplete="off"></div>
+    <div class="ft-alan"><label for="ft-cari">Cari</label>
+      <select id="ft-cari" name="cari"><option value="">Tüm cariler</option>
+        {% for c in cariler %}<option value="{{ c.pk }}"{% if secili_cari == c.pk|stringformat:"s" %} selected{% endif %}>{{ c.kisa_ad|default:c.unvan }}</option>{% endfor %}</select></div>
     {% if tipler %}
-    <div class="ik-alan-grup">
-      <label for="ft-tip">Tip</label>
-      <select id="ft-tip" name="tip">
-        <option value="">Tüm Tipler</option>
-        {% for t in tipler %}
-          <option value="{{ t.pk }}" {% if secili_tip == t.pk|stringformat:"s" %}selected{% endif %}>{{ t.ad }}</option>
-        {% endfor %}
-      </select>
-    </div>
+    <div class="ft-alan"><label for="ft-tip">Tip</label>
+      <select id="ft-tip" name="tip"><option value="">Tüm tipler</option>
+        {% for t in tipler %}<option value="{{ t.pk }}"{% if secili_tip == t.pk|stringformat:"s" %} selected{% endif %}>{{ t.ad }}</option>{% endfor %}</select></div>
     {% endif %}
-    <div class="ik-alan-grup">
-      <label for="ft-bas">Başlangıç</label>
-      <input type="date" id="ft-bas" name="bas" value="{{ bas }}">
-    </div>
-    <div class="ik-alan-grup">
-      <label for="ft-bit">Bitiş</label>
-      <input type="date" id="ft-bit" name="bit" value="{{ bit }}">
-    </div>
-    <div class="ik-btn-cubuk">
-      <button type="submit" class="birincil">Filtrele</button>
-      {% if filtre_aktif %}
-        <a class="iptal-bag" href="{% url liste_url %}">Temizle</a>
-      {% endif %}
-    </div>
+    <div class="ft-alan"><label for="ft-durum">Durum</label>
+      <select id="ft-durum" name="durum">
+        <option value="hepsi"{% if durum == "hepsi" %} selected{% endif %}>Tümü</option>
+        <option value="ONAYLI"{% if durum == "ONAYLI" %} selected{% endif %}>Onaylı</option>
+        <option value="TASLAK"{% if durum == "TASLAK" %} selected{% endif %}>Taslak</option></select></div>
+    {% if pbler|length > 1 %}
+    <div class="ft-alan"><label for="ft-pb">Para birimi</label>
+      <select id="ft-pb" name="pb"><option value="">Tümü</option>
+        {% for p in pbler %}<option value="{{ p }}"{% if secili_pb == p %} selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
+    {% endif %}
+    <div class="ft-alan"><label for="ft-bas">Başlangıç</label><input type="date" id="ft-bas" name="bas" value="{{ bas }}"></div>
+    <div class="ft-alan"><label for="ft-bit">Bitiş</label><input type="date" id="ft-bit" name="bit" value="{{ bit }}"></div>
+    <div class="ft-alan"><label for="ft-boyut">Sayfa başına</label>
+      <select id="ft-boyut" name="boyut">{% for b in boyutlar %}<option value="{{ b }}"{% if boyut == b %} selected{% endif %}>{{ b }}</option>{% endfor %}</select></div>
+    <input type="hidden" name="hizli" value="{% if hizli != 'hepsi' %}{{ hizli }}{% endif %}">
+    <input type="hidden" name="sirala" value="{{ sirala }}">
+    <input type="hidden" name="dir" value="{{ dir }}">
+    <a class="iptal-bag" href="{% url liste_url %}" id="ft-temizle"{% if not filtre_aktif %} hidden{% endif %}>Temizle</a>
+    <noscript><button type="submit" class="birincil">Filtrele</button></noscript>
   </form>
 </div>
 
-<p class="sayfa-alt">{{ faturalar.paginator.count }} fatura.</p>
+<div id="ft-sonuc">
+  <div class="ft-cipler">
+    {% for c in cipler %}<a class="ft-cip{% if c.aktif %} aktif{% endif %}" href="{{ c.url }}"{% if c.kod == "hafta" %} title="Bugünden bu haftanın pazarına kadar vadesi dolan açık faturalar"{% elif c.kod == "pdf_eksik" %} title="Onaylı ve PDF eki olmayan faturalar"{% elif c.kod == "acik" %} title="Açık ve kısmen ödenmiş (FIFO ile hesaplanır)"{% endif %}>{{ c.ad }} <small>{{ c.sayi }}</small></a>{% endfor %}
+  </div>
 
-<div class="tablo-kapsayici genis">
-<table class="ik-tablo">
-  <thead><tr>
-    <th>Tarih</th><th>Tip</th><th>Durum</th><th>Cari</th><th class="sag">Tutar</th><th></th>
-  </tr></thead>
-  <tbody>
-    {% for f in faturalar %}
-      <tr data-href="{% url 'core:fatura_detay' f.pk %}">
-        <td class="mono"><a class="satir-bag" href="{% url 'core:fatura_detay' f.pk %}">{{ f.tarih|date:"d.m.Y" }}</a></td>
-        <td>{% if f.tip %}{{ f.tip.ad }}{% else %}<span class="pasif">— seçilmedi</span>{% endif %}{% if f.satir_tipleri %}<div class="yardim" style="margin:.1rem 0 0">Satır: {{ f.satir_tipleri }}</div>{% endif %}
-          {% if f.sahsi_alis %}<span class="rozet rozet-pasif">👤 Şahsi</span>{% endif %}</td>
-        <td><span class="rozet {% if f.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ f.get_durum_display }}</span></td>
-        <td>
-          <div class="ad">{{ f.cari.unvan }}</div>
-          {% if f.fatura_no %}<div class="alt">{{ f.fatura_no }}</div>{% endif %}
-        </td>
-        <td class="sag mono">{{ f.genel_toplam|tr_kur:2 }} {{ f.para_birimi }}</td>
-        <td class="ik-ok">›</td>
+  <div class="ft-bilgi"><span>{{ toplam_adet }}{% if toplam_adet != genel_adet %} / {{ genel_adet }}{% endif %} fatura{% if filtre_aktif %} (süzülmüş){% endif %}</span>
+    <span>Ödeme durumu hesaplanır (cari bakiyesi en eski faturadan başlayarak FIFO ile dağıtılır); kayıt yazılmaz.</span></div>
+
+  <div class="ft-kap">
+  <table class="ft-tablo">
+    <thead><tr>
+      <th><a href="{{ siralama.tarih.url }}">Tarih{{ siralama.tarih.isaret }}</a></th>
+      <th><a href="{{ siralama.no.url }}">Fatura no{{ siralama.no.isaret }}</a></th>
+      <th><a href="{{ siralama.cari.url }}">Cari{{ siralama.cari.isaret }}</a></th>
+      <th>Tip</th>
+      <th class="sag">Matrah (TL)</th><th class="sag">KDV (TL)</th>
+      <th class="sag"><a href="{{ siralama.toplam.url }}">Toplam{{ siralama.toplam.isaret }}</a></th>
+      <th><a href="{{ siralama.vade.url }}">Vade{{ siralama.vade.isaret }}</a></th>
+      <th>Ödeme durumu</th><th title="PDF eki">📎</th>
+    </tr></thead>
+    <tbody>
+      {% for s in satirlar %}
+      <tr data-href="{% url 'core:fatura_detay' s.pk %}">
+        <td class="mono"><a class="satir-bag" href="{% url 'core:fatura_detay' s.pk %}">{{ s.tarih|date:"d.m.Y" }}</a></td>
+        <td class="ft-no mono">{{ s.fatura_no|default:"—" }}{% if s.taslak %}<span class="ft-rozet-kucuk">Taslak</span>{% endif %}</td>
+        <td><span class="ft-cari" title="{{ s.cari_unvan }}">{{ s.cari_kisa }}</span></td>
+        <td><span class="ft-tip {{ s.tip_css }}" title="{{ s.tip_ad }}">{{ s.tip_etiket }}</span>{% if s.sahsi %}<span class="ft-rozet-kucuk">👤 Şahsi</span>{% endif %}{% if s.satir_alt %}<span class="ft-alt">{{ s.satir_alt }}</span>{% endif %}</td>
+        <td class="sag mono">{% if s.matrah_tl is not None %}{{ s.matrah_tl|tr_kur:2 }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if s.kdv_tl is not None %}{{ s.kdv_tl|tr_kur:2 }}{% else %}—{% endif %}</td>
+        <td class="sag mono">
+          {% if s.pb != "TRY" %}{{ s.toplam|tr_kur:2 }} {{ s.pb }}{% if s.toplam_tl is not None %}<span class="ft-alt">≈ {{ s.toplam_tl|tr_kur:2 }} TL (kur {{ s.kur|tr_kur:4 }})</span>{% else %}<span class="ft-alt">TL karşılığı için kur gerekli</span>{% endif %}
+          {% else %}{{ s.toplam|tr_kur:2 }}{% endif %}{% if s.yalniz_kdv %}<span class="ft-rozet-kucuk">Yalnız KDV</span>{% endif %}</td>
+        <td class="mono">{{ s.vade|date:"d.m.Y"|default:"—" }}</td>
+        <td>{% if s.taslak or not s.odeme %}<span class="pasif" title="{% if s.taslak %}Taslak faturada ödeme durumu yok{% else %}Ödeme durumu hesaplanamaz (iade / cari hesabı yok){% endif %}">—</span>
+          {% elif s.odeme.durum == "KAPANDI" %}<span class="ft-odeme kapandi">Kapandı</span>
+          {% else %}{% if s.odeme.gecikme > 0 %}<span class="ft-odeme gecti">Vadesi geçti ({{ s.odeme.gecikme }} gün)</span>{% elif s.odeme.durum == "KISMI" %}<span class="ft-odeme kismi">Kısmi</span>{% else %}<span class="ft-odeme acik">Açık</span>{% endif %}
+            {% if s.odeme.durum == "KISMI" %}<span class="ft-alt">kalan {{ s.odeme.kalan|tr_kur:2 }} {{ s.odeme.pb }}</span>{% endif %}{% endif %}</td>
+        <td class="ft-pdf">{% if s.pdf_ek_pk %}<a href="{% url 'core:fatura_ek_indir' s.pdf_ek_pk %}" target="_blank" rel="noopener" title="PDF eki — yeni sekmede aç">📎</a>{% endif %}</td>
       </tr>
-    {% empty %}
-      <tr style="cursor:default"><td colspan="6" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if filtre_aktif %}🔍 Bu süzgeçle eşleşen fatura yok.
-        {% else %}🧾 Henüz fatura yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+      {% empty %}
+      <tr style="cursor:default"><td colspan="10" class="yardim" style="text-align:center;padding:1.4rem 0">
+        {% if filtre_aktif %}🔍 Bu süzgeçle eşleşen fatura yok.{% else %}🧾 Henüz fatura yok. “+ Yeni” ile ekleyin.{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if toplam_adet %}
+    <tfoot>
+      <tr><th colspan="4">Toplam (TL) · {{ toplam_adet }} fatura{% if toplam_adet > satirlar|length %} — tüm süzülmüş liste{% endif %}</th>
+        <th class="sag mono">{{ toplamlar.tl.matrah|tr_kur:2 }}</th><th class="sag mono">{{ toplamlar.tl.kdv|tr_kur:2 }}</th><th class="sag mono">{{ toplamlar.tl.toplam|tr_kur:2 }}</th><th colspan="3"></th></tr>
+      {% for pb, d in toplamlar.doviz %}
+      <tr><td colspan="4">{{ pb }} alt toplam (fatura para birimi)</td>
+        <td class="sag mono">{{ d.matrah|tr_kur:2 }}</td><td class="sag mono">{{ d.kdv|tr_kur:2 }}</td><td class="sag mono">{{ d.toplam|tr_kur:2 }} {{ pb }}</td><td colspan="3"></td></tr>
+      {% endfor %}
+      <tr><td colspan="4">Açık bakiye (ödenmemiş kısım)</td><td colspan="2"></td>
+        <td class="sag mono">{% for pb, t in toplamlar.acik %}{{ t|tr_kur:2 }} {% if pb == "TRY" %}TL{% else %}{{ pb }}{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}0,00 TL{% endfor %}</td><td colspan="3"></td></tr>
+      {% if toplamlar.belirsiz_kur %}<tr><td colspan="10" class="yardim" style="font-weight:500">⚠️ {{ toplamlar.belirsiz_kur }} faturanın TL karşılığı belirsiz (taslakta kur girilmemiş); TL toplamlara dahil değil.</td></tr>{% endif %}
+    </tfoot>
+    {% endif %}
+  </table>
+  </div>
+
+  {% if sayfa.paginator.num_pages > 1 %}
+  <nav class="ft-sayfalama">
+    {% if sayfa.has_previous %}<a href="?{% if sabit_qs %}{{ sabit_qs }}&amp;{% endif %}sayfa={{ sayfa.previous_page_number }}">‹ Önceki</a>{% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+    <span>Sayfa {{ sayfa.number }} / {{ sayfa.paginator.num_pages }}</span>
+    {% if sayfa.has_next %}<a href="?{% if sabit_qs %}{{ sabit_qs }}&amp;{% endif %}sayfa={{ sayfa.next_page_number }}">Sonraki ›</a>{% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+  </nav>
+  {% endif %}
 </div>
 
-{% if faturalar.paginator.num_pages > 1 %}
-<nav class="sayfalama">
-  {% if faturalar.has_previous %}
-    <a href="?{{ sorgu }}sayfa={{ faturalar.previous_page_number }}">‹ Önceki</a>
-  {% else %}<span class="pasif">‹ Önceki</span>{% endif %}
-  <span class="sayfalama-bilgi">Sayfa {{ faturalar.number }} / {{ faturalar.paginator.num_pages }}</span>
-  {% if faturalar.has_next %}
-    <a href="?{{ sorgu }}sayfa={{ faturalar.next_page_number }}">Sonraki ›</a>
-  {% else %}<span class="pasif">Sonraki ›</span>{% endif %}
-</nav>
-{% endif %}
+<script>
+(function () {
+  // Arama yazarken (300 ms debounce) ve seçim değişince listeyi yeniler; süzgeçler URL'de tutulur. JS yoksa Enter / noscript düğmesiyle normal GET çalışır.
+  var form = document.getElementById('ft-form'), sonuc = document.getElementById('ft-sonuc'), zamanlayici = null, istek = 0;
+  if (!form || !sonuc || !window.fetch) return;
+  function adres() {
+    var q = new URLSearchParams();
+    new FormData(form).forEach(function (v, k) { if (v !== '') q.append(k, v); });
+    var s = q.toString();
+    return location.pathname + (s ? '?' + s : '');
+  }
+  function yenile() {
+    var url = adres(), no = ++istek;
+    sonuc.classList.add('ft-yukleniyor');
+    fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } }).then(function (r) { return r.text(); }).then(function (html) {
+      if (no !== istek) return;
+      var d = new DOMParser().parseFromString(html, 'text/html'), yeni = d.getElementById('ft-sonuc');
+      if (yeni) { sonuc.innerHTML = yeni.innerHTML; history.replaceState(null, '', url); }
+      var tz = document.getElementById('ft-temizle'); if (tz) tz.hidden = (url.indexOf('?') < 0);
+      var ex = document.querySelector('a[href*="xlsx=1"]'), ye = d.querySelector('a[href*="xlsx=1"]');
+      if (ex && ye) ex.setAttribute('href', ye.getAttribute('href'));
+      sonuc.classList.remove('ft-yukleniyor');
+    }).catch(function () { location.href = url; });
+  }
+  form.addEventListener('submit', function (e) { e.preventDefault(); clearTimeout(zamanlayici); yenile(); });
+  form.querySelector('#ft-ara').addEventListener('input', function () { clearTimeout(zamanlayici); zamanlayici = setTimeout(yenile, 300); });
+  form.querySelectorAll('select, input[type=date]').forEach(function (el) { el.addEventListener('change', function () { clearTimeout(zamanlayici); yenile(); }); });
+})();
+</script>
 {% endblock %}

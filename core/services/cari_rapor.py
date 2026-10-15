@@ -22,6 +22,7 @@ from django.db.models.functions import Round
 from core.models import Cari, Fatura, FaturaSatir, FaturaTipi, YevmiyeSatir
 from core.services import cari as cari_servis
 from core.services import cari_ozet
+from core.services import fatura_odeme
 from core.services.cari_ozet import ESIK, SIFIR, TICARI_KOKLER, tr_anahtar
 from core.tarih import tr_bugun
 
@@ -70,28 +71,7 @@ def acik_faturalar_toplu(tarih=None, kategori_id="") -> list:
         hesap_satirlari.setdefault(s["hesap_id"], []).append(s)
     sonuc = []
     for cari, faturalar in cari_faturalari.values():
-        dogal = cari_ozet._dogal_yon(cari)
-        kalemler, kredi = {}, {}
-        for s in hesap_satirlari.get(cari.muhasebe_kodu, ()):
-            yon = "borc" if s["borc"] > 0 else "alacak"
-            pb, tutar = s["islem_pb"], s["islem_tutari"] or (s["borc"] or s["alacak"])
-            f = faturalar.get(s["fis_id"])
-            if f is not None and yon == dogal:
-                k = kalemler.setdefault(f.pk, {"fatura": f, "pb": pb, "tutar": SIFIR})
-                k["tutar"] += tutar
-            elif yon != dogal:
-                kredi[pb] = kredi.get(pb, SIFIR) + tutar                  # ödeme / tahsilat / mahsup / fatura iadesi
-        for k in kalemler.values():
-            f = k["fatura"]
-            k["tarih"] = f.tarih
-            k["vade"] = f.vade_tarihi or cari_servis.vade_hesapla(cari, f.tarih)
-            k["kalan"] = k["tutar"]
-        for pb in {k["pb"] for k in kalemler.values()}:
-            havuz = kredi.get(pb, SIFIR)
-            for k in sorted((x for x in kalemler.values() if x["pb"] == pb), key=lambda x: (x["tarih"], x["fatura"].pk)):
-                dus = min(k["kalan"], havuz)
-                k["kalan"] -= dus
-                havuz -= dus
+        kalemler, _kredi = fatura_odeme.fifo_kalemler(cari, faturalar, hesap_satirlari.get(cari.muhasebe_kodu, ()))      # FIFO çekirdeği tek yerde (fatura_odeme)
         sekme = sekme_of(cari)
         for k in kalemler.values():
             if k["kalan"] < ESIK:
