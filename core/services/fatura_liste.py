@@ -140,6 +140,11 @@ def siralama(satirlar, sirala, yon):
     if sirala == "vade":
         var = sorted((s for s in satirlar if s["vade"] is not None), key=lambda s: (s["vade"], s["pk"]), reverse=(yon == "desc"))
         return var + [s for s in satirlar if s["vade"] is None]
+    if sirala == "no":                                                          # numarasız ve "Faturasız" işaretliler artan/azalan iki yönde de SONDA (kendi aralarında tarih azalan)
+        var = [s for s in satirlar if s["fatura_no"].strip() and not s["faturasiz"]]
+        yok = [s for s in satirlar if not (s["fatura_no"].strip() and not s["faturasiz"])]
+        var = sorted(var, key=lambda s: (tr_anahtar(s["fatura_no"]), s["pk"]), reverse=(yon == "desc"))
+        return var + sorted(yok, key=lambda s: (s["tarih"], s["pk"]), reverse=True)
     return sorted(satirlar, key=_siralama_anahtari(sirala), reverse=(yon == "desc"))
 
 

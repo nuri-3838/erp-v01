@@ -139,6 +139,34 @@
   .ft-s.alt { font-size:.8rem; color:var(--metin-soluk); padding-left:.8rem; }
   .ft-s.genel { border-top:1px solid var(--cizgi-koyu); margin-top:.3rem; padding-top:.45rem; font-size:1.05rem; font-weight:800; color:var(--turuncu-koyu); }
   .ft-tl { text-align:right; font-size:.8rem; color:var(--metin-soluk); min-height:.9rem; }
+
+  /* --- Hata özeti + alan vurgusu --- */
+  .hata-ozeti { background:#fdf2f4; border:2px solid #e8a3b2; color:#8f1230; border-radius:12px; padding:.8rem 1rem; margin:.4rem 0 .9rem; outline:none; scroll-margin-top:5rem; }
+  .hata-ozeti ul { margin:.4rem 0 0; padding-left:1.2rem; font-size:.88rem; } .hata-ozeti li { margin:.15rem 0; } .hata-ozeti a { color:inherit; }
+  .fb-alan.hatali { border-color:#e8a3b2; border-top-color:var(--hata); background:#fff7f8; }
+  .fb-alan.hatali input, .fb-alan.hatali select, .fb-alan.hatali textarea, .fb-alan.hatali .akilli-girdi { border-color:var(--hata); box-shadow:0 0 0 2px rgba(193,21,57,.14); }
+  tr.satir-hata td { background:#fff7f8; }
+  tr.satir-hata td.hatali input, tr.satir-hata td.hatali select, tr.satir-hata td.hatali .akilli-girdi { border-color:var(--hata); box-shadow:0 0 0 2px rgba(193,21,57,.14); }
+  .satir-hata-mesaj { color:var(--hata); font-size:.76rem; font-weight:600; margin-top:.2rem; }
+
+  /* --- Sabit kaydet çubuğu: solda genel toplam (+TL), sağda Geri/İptal + Kaydet; hiçbir genişlikte üst üste binmez --- */
+  .fb-altbar { grid-column:1 / -1; position:sticky; bottom:.5rem; z-index:20; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem 1rem;
+    margin-top:.8rem; padding:.55rem .9rem; background:rgba(255,255,255,.97); border:1px solid var(--cizgi-koyu); border-radius:14px; box-shadow:0 -4px 18px rgba(16,24,40,.12); }
+  .fb-altbar-toplam { flex:1 1 220px; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:.2rem .6rem; }
+  .fb-altbar-et { font-size:.72rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--metin-soluk); }
+  .fb-altbar-toplam b { font-family:"Cascadia Mono",Consolas,monospace; font-size:1.15rem; color:var(--turuncu-koyu); }
+  .fb-altbar-tl { font-size:.8rem; color:var(--metin-soluk); }
+  .fb-altbar-dugme { flex:0 1 auto; display:flex; flex-wrap:nowrap; gap:.6rem; align-items:center; }
+  .fb-altbar-dugme .iptal-bag, .fb-altbar-dugme .birincil { white-space:nowrap; }
+  @media (max-width:560px) {
+    .fb-altbar-toplam { flex:1 1 100%; }
+    .fb-altbar-dugme { flex:1 1 100%; }
+    .fb-altbar-dugme .iptal-bag, .fb-altbar-dugme .birincil { flex:1 1 0; justify-content:center; min-width:0; padding-left:.6rem; padding-right:.6rem; }
+  }
+  /* silinmek üzere işaretli mevcut ek (kayıtla silinir; vazgeçilirse yerinde kalır) */
+  #silinecek-kap { display:none; }
+  .fb-ek.silinecek { opacity:.65; border-style:dashed; } .fb-ek.silinecek span { text-decoration:line-through; }
+  .fb-ek button.geri-al { font-size:.74rem; font-weight:700; opacity:1; text-decoration:none; }
 </style>
 <div class="form-kapsa fb-genis">
   <div class="form-ust">
@@ -146,8 +174,19 @@
     <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik|default:"Yeni Fatura" }}</h1>
   </div>
 
-  {% if fform.non_field_errors %}
-    <div class="uyari">{% for e in fform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% if fform.errors or formset.total_error_count %}
+  <div class="hata-ozeti" id="hata-ozeti" role="alert" tabindex="-1">
+    <b>⚠ Fatura kaydedilemedi — aşağıdaki hataları düzeltip tekrar kaydedin. Girdiğiniz bilgiler korundu.</b>
+    <ul>
+      {% for e in fform.non_field_errors %}<li>{{ e }}</li>{% endfor %}
+      {% for f in fform %}{% for e in f.errors %}<li><a href="#{{ f.id_for_label }}">{{ f.label }}: {{ e }}</a></li>{% endfor %}{% endfor %}
+      {% for e in formset.non_form_errors %}<li>{{ e }}</li>{% endfor %}
+      {% for fr in formset %}{% if fr.errors %}{% with n=forloop.counter %}
+        {% for e in fr.non_field_errors %}<li><a href="#satir-{{ forloop.parentloop.counter0 }}">Kalem {{ n }}: {{ e }}</a></li>{% endfor %}
+        {% for fld in fr %}{% for e in fld.errors %}<li><a href="#satir-{{ forloop.parentloop.parentloop.counter0 }}">Kalem {{ n }} — {{ fld.label }}: {{ e }}</a></li>{% endfor %}{% endfor %}
+      {% endwith %}{% endif %}{% endfor %}
+    </ul>
+  </div>
   {% endif %}
   {% if dosya_uyari %}
     <div class="uyari"><div>📎 Kayıt yapılamadığı için dosya seçiminiz sayfa yenilenirken temizlendi — <b>ek dosyaları tekrar seçin</b>.</div></div>
@@ -159,18 +198,18 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Fatura Bilgileri</h2>
       <div class="fb-grid">
-        <div class="fb-alan vurgu fb-c4">
+        <div class="fb-alan vurgu fb-c4{% if fform.tip.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.tip.id_for_label }}">{{ fform.tip.label }}</label>
           {{ fform.tip }}
           {% for e in fform.tip.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan vurgu fb-c4">
+        <div class="fb-alan vurgu fb-c4{% if fform.cari.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.cari.id_for_label }}">{{ fform.cari.label }}</label>
           {{ fform.cari }}
           <div class="cari-bilgi" id="cari-bilgi"></div>
           {% for e in fform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan vurgu fb-c4">
+        <div class="fb-alan vurgu fb-c4{% if fform.fatura_no.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.fatura_no.id_for_label }}">{{ fform.fatura_no.label }} *</label>
           {{ fform.fatura_no }}
           <label class="faturasiz-etiket">{{ fform.faturasiz }} {{ fform.faturasiz.label }}</label>
@@ -180,49 +219,49 @@
             <label>{{ fform.mukerrer_onay }} Yine de kaydet</label>
           </div>
         </div>
-        <div class="fb-alan fb-c4">
+        <div class="fb-alan fb-c4{% if fform.tarih.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.tarih.id_for_label }}">{{ fform.tarih.label }}</label>
           {{ fform.tarih }}
           {% for e in fform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan fb-c4">
+        <div class="fb-alan fb-c4{% if fform.vade_tarihi.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.vade_tarihi.id_for_label }}">{{ fform.vade_tarihi.label }}</label>
           {{ fform.vade_tarihi }}
           <span class="yardim" id="vade-oto-etiket"></span>
           {% for e in fform.vade_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan alan fb-c4">
+        <div class="fb-alan alan fb-c4{% if fform.depo.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.depo.id_for_label }}">{{ fform.depo.label }}</label>
           {{ fform.depo }}
           {% for e in fform.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           <p class="yardim" style="margin:.25rem 0 0;font-size:.72rem">Hizmet kalemleri depoya girmez; yalnız hizmet varsa boş bırakılabilir.</p>
         </div>
-        <div class="fb-alan fb-c3">
+        <div class="fb-alan fb-c3{% if fform.para_birimi.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.para_birimi.id_for_label }}">{{ fform.para_birimi.label }}</label>
           {{ fform.para_birimi }}
           {% for e in fform.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan alan fb-c3">
+        <div class="fb-alan alan fb-c3{% if fform.kur.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.kur.id_for_label }}">{{ fform.kur.label }}</label>
           {{ fform.kur }}
           <span class="kur-etiket" id="kur-etiket"></span>
           {% for e in fform.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan fb-c6">
+        <div class="fb-alan fb-c6{% if fform.aciklama.errors %} hatali{% endif %}">
           <label class="fb-et" for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
           {{ fform.aciklama }}
           {% for e in fform.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan fb-c4" id="stopaj-blok" style="display:none">
+        <div class="fb-alan fb-c4{% if fform.gv_stopaj_orani.errors %} hatali{% endif %}" id="stopaj-blok" style="display:none">
           <label class="fb-et" for="{{ fform.gv_stopaj_orani.id_for_label }}">{{ fform.gv_stopaj_orani.label }}</label>
           {{ fform.gv_stopaj_orani }}
           {% for e in fform.gv_stopaj_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan fb-c4" id="sahsi-blok">
+        <div class="fb-alan fb-c4{% if fform.sahsi_alis.errors %} hatali{% endif %}" id="sahsi-blok">
           <label class="fb-et" for="{{ fform.sahsi_alis.id_for_label }}">{{ fform.sahsi_alis }} {{ fform.sahsi_alis.label }}</label>
           {% for e in fform.sahsi_alis.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="fb-alan fb-c4" id="sahsi-ortak-alan">
+        <div class="fb-alan fb-c4{% if fform.sahsi_ortak.errors %} hatali{% endif %}" id="sahsi-ortak-alan">
           <label class="fb-et" for="{{ fform.sahsi_ortak.id_for_label }}">{{ fform.sahsi_ortak.label }}</label>
           {{ fform.sahsi_ortak }}
           {% for e in fform.sahsi_ortak.errors %}<div class="hata">{{ e }}</div>{% endfor %}
@@ -255,7 +294,7 @@
         </tr></thead>
         <tbody id="satir-govde">
           {% for f in formset %}
-            <tr class="satir-form">{% include "core/_fatura_satir_hucreler.html" with f=f %}</tr>
+            <tr class="satir-form{% if f.errors %} satir-hata{% endif %}" id="satir-{{ forloop.counter0 }}">{% include "core/_fatura_satir_hucreler.html" with f=f %}</tr>
           {% endfor %}
         </tbody>
       </table>
@@ -283,10 +322,6 @@
       {% include "core/_fatura_satir_hucreler.html" with f=formset.empty_form %}
     </template>
 
-    <div class="form-altbar">
-      <a class="iptal-bag" href="{{ iptal_url|default:'/faturalar/' }}">İptal</a>
-      <button type="submit" class="birincil">Faturayı kaydet</button>
-    </div>
     </div>
 
     <details class="fb-sag" id="pdf-panel" open>
@@ -294,6 +329,15 @@
       <div class="fb-ek-liste" id="pdf-liste"></div>
       <div class="fb-onizleme" id="pdf-onizleme"><div class="yardim">Önizlemek için bir dosya seçin.</div></div>
     </details>
+
+    <div id="silinecek-kap"></div>
+    <div class="fb-altbar" id="fb-altbar">
+      <div class="fb-altbar-toplam"><span class="fb-altbar-et">Genel toplam</span> <b id="bar-genel">0,00</b> <span class="fb-altbar-tl" id="bar-tl"></span></div>
+      <div class="fb-altbar-dugme">
+        <a class="iptal-bag" href="{{ iptal_url|default:'/faturalar/' }}">← Geri / İptal</a>
+        <button type="submit" class="birincil" id="kaydet-dugme">Kaydet</button>
+      </div>
+    </div>
   </form>
 </div>
 
@@ -516,6 +560,8 @@
     var yn = document.getElementById('yalniz-kdv-not'); if(yn) yn.style.display = yk ? '' : 'none';
     var tlEt = document.getElementById('tGenelTl');
     if(tlEt) tlEt.textContent = tlAcik ? ('≈ ' + fmtC(tl(genelC)) + ' TL (kur ' + fmtKur(Number(kurX) / 1e6) + ')') : '';
+    var bg = document.getElementById('bar-genel'); if(bg) bg.textContent = fmtC(genelC) + (pb !== 'TRY' ? ' ' + pb : '');
+    var bt = document.getElementById('bar-tl'); if(bt) bt.textContent = tlAcik ? ('≈ ' + fmtC(tl(genelC)) + ' TL') : '';
     projeKolonGuncelle();
   }
   function projeKolonGuncelle(){
@@ -799,8 +845,14 @@
   // ---------------- PDF / ek önizleme paneli (seçilen dosyalar + düzenlemede mevcut ekler)
   var dosyaInp = document.getElementById('ek-dosya'), liste = document.getElementById('pdf-liste'), onizleme = document.getElementById('pdf-onizleme');
   var seciliEk = null, blobUrller = {};
+  var SILINECEK = {{ silinecek_ek_idleri|default:"[]"|safe }};          // düzenlemede "sil" işaretlenen mevcut ek id'leri (kayıtla silinir)
+  var silKap = document.getElementById('silinecek-kap');
+  function silinecekYaz(){
+    silKap.innerHTML = '';
+    SILINECEK.forEach(function(id){ var h = document.createElement('input'); h.type = 'hidden'; h.name = 'silinecek_ek'; h.value = String(id); silKap.appendChild(h); });
+  }
   function dosyaOgeleri(){
-    var ogeler = MEVCUT_EKLER.map(function(e){ return {tur:'mevcut', ad:e.ad, url:e.url, pdf:e.pdf, resim:e.resim, sil:e.sil, id:'m'+e.id}; });
+    var ogeler = MEVCUT_EKLER.map(function(e){ return {tur:'mevcut', ad:e.ad, url:e.url, pdf:e.pdf, resim:e.resim, sil:e.sil, id:'m'+e.id, ekId:e.id, silinecek:SILINECEK.indexOf(e.id) > -1}; });
     Array.prototype.forEach.call(dosyaInp ? dosyaInp.files : [], function(f, i){
       var anahtar = f.name + '|' + f.size + '|' + f.lastModified;
       if(!blobUrller[anahtar]) blobUrller[anahtar] = URL.createObjectURL(f);
@@ -821,9 +873,11 @@
     form.classList.toggle('pdf-var', ogeler.length > 0);
     liste.innerHTML = '';
     ogeler.forEach(function(o){
-      var d = document.createElement('div'); d.className = 'fb-ek' + (o.id === seciliEk ? ' aktif' : ''); d.title = o.ad;
+      var d = document.createElement('div'); d.className = 'fb-ek' + (o.id === seciliEk ? ' aktif' : '') + (o.silinecek ? ' silinecek' : ''); d.title = o.ad + (o.silinecek ? ' — Kaydet ile silinecek' : '');
       var s = document.createElement('span'); s.textContent = (o.tur === 'yeni' ? '🆕 ' : '📎 ') + o.ad; d.appendChild(s);
-      var b = document.createElement('button'); b.type = 'button'; b.title = o.tur === 'yeni' ? 'Seçimden çıkar' : 'Eki sil'; b.textContent = '✕';
+      var b = document.createElement('button'); b.type = 'button';
+      if(o.silinecek){ b.className = 'geri-al'; b.title = 'Silmekten vazgeç'; b.textContent = '↩ Geri al'; }
+      else { b.title = o.tur === 'yeni' ? 'Seçimden çıkar' : 'Eki sil (Kaydet ile silinir)'; b.textContent = '✕'; }
       b.addEventListener('click', function(ev){ ev.stopPropagation(); ekCikar(o); });
       d.appendChild(b);
       d.addEventListener('click', function(){ onizlemeGoster(o); ekPaneliYenile(); });
@@ -842,15 +896,14 @@
       dosyaInp.files = dt.files;
       if(seciliEk === o.id) seciliEk = null;
       ekPaneliYenile();
+    } else if(o.silinecek){                                                    // silmekten vazgeç
+      SILINECEK = SILINECEK.filter(function(x){ return x !== o.ekId; });
+      silinecekYaz(); ekPaneliYenile();
     } else {
-      if(!window.confirm('Bu ek faturadan silinsin mi?')) return;
-      var csrf = document.querySelector('input[name="csrfmiddlewaretoken"]');
-      var fd = new FormData(); if(csrf) fd.append('csrfmiddlewaretoken', csrf.value);
-      fetch(o.sil, {method:'POST', body:fd, credentials:'same-origin'}).then(function(){
-        MEVCUT_EKLER = MEVCUT_EKLER.filter(function(e){ return 'm'+e.id !== o.id; });
-        if(seciliEk === o.id) seciliEk = null;
-        ekPaneliYenile();
-      }).catch(function(){ window.alert('Ek silinemedi.'); });
+      // Kalıcı silme KAYITLA yapılır: burada yalnız işaretlenir (formdan vazgeçilirse ek yerinde kalır).
+      if(!window.confirm('Bu ek kalıcı olarak silinecek.\n\nSilme, faturayı KAYDETTİĞİNİZDE uygulanır; kaydetmeden çıkarsanız ek yerinde kalır.\n\nDevam edilsin mi?')) return;
+      SILINECEK.push(o.ekId);
+      silinecekYaz(); ekPaneliYenile();
     }
   }
   if(dosyaInp) dosyaInp.addEventListener('change', function(){
@@ -874,8 +927,11 @@
   document.querySelectorAll('.satir-form').forEach(function(r){ turUygula(r, false); });
   faturasizUygula();
   cariBilgiGuncelle();
+  silinecekYaz();
   ekPaneliYenile();
   kurCek();
+  var ozet = document.getElementById('hata-ozeti');                              // sunucu hatası: sayfa hata özetine kayar
+  if(ozet){ ozet.scrollIntoView({block:'start'}); try { ozet.focus({preventScroll:true}); } catch(e) {} }
 })();
 </script>
 {% include "core/_varyant_js.html" %}

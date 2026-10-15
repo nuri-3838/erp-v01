@@ -3785,7 +3785,8 @@ def siparis_faturaya_cevir(request, pk):
     if request.method == "POST":
         fform = FaturaForm(request.POST, yon=yon)
         formset = FaturaSatirFormSet(request.POST, form_kwargs={"yon": yon})
-        if fform.is_valid() and formset.is_valid():
+        form_tamam, satirlar_tamam = fform.is_valid(), formset.is_valid()
+        if form_tamam and satirlar_tamam:
             dosyalar = _fatura_dosyalari_dogrula(request, fform)
             mukerrer = _mukerrer_engeli(fform, yon)
             if not fform.errors:
@@ -8924,9 +8925,26 @@ def _mevcut_ekler(fatura):
              "resim": e.resim_mi, "pdf": e.dosya.name.lower().endswith(".pdf")} for e in fatura_ek_servis.ek_listele(fatura)]
 
 
+def _silinecek_ek_idleri(request, fatura):
+    """Düzenle formunda "sil" işaretlenen mevcut eklerin id'leri (POST ``silinecek_ek``); YALNIZ bu faturanın silinmemiş ekleri sayılır. Kayıt olmazsa ek yerinde kalır."""
+    if request.method != "POST" or fatura is None:
+        return []
+    ham = {int(x) for x in request.POST.getlist("silinecek_ek") if str(x).isdigit()}
+    return sorted(fatura_ek_servis.ek_listele(fatura).filter(pk__in=ham).values_list("pk", flat=True))
+
+
+def _silinecek_ekleri_sil(request, fatura):
+    n = 0
+    for ek in fatura_ek_servis.ek_listele(fatura).filter(pk__in=_silinecek_ek_idleri(request, fatura)):
+        fatura_ek_servis.ek_sil(ek, kullanici=request.user)
+        n += 1
+    return n
+
+
 def _fatura_form_baglami(fform, formset, yon, **ek):
     """Ekle / düzenle / siparişten fatura ekranlarının ORTAK şablon bağlamı (core/fatura_ekle.html)."""
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
+    ek.setdefault("silinecek_ek_idleri", [])
     return {"fform": fform, "formset": formset, "stok_kdv": stok_kdv, "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
             **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(), "yon": yon, **ek}
 
@@ -8945,7 +8963,8 @@ def _fatura_ekle(request, yon, baslik):
     if request.method == "POST":
         fform = FaturaForm(request.POST, yon=yon)
         formset = FaturaSatirFormSet(request.POST, form_kwargs={"yon": yon})
-        if fform.is_valid() and formset.is_valid():
+        form_tamam, satirlar_tamam = fform.is_valid(), formset.is_valid()           # İKİSİ de doğrulanır: hata özeti tüm hataları gösterir
+        if form_tamam and satirlar_tamam:
             dosyalar = _fatura_dosyalari_dogrula(request, fform)
             mukerrer = _mukerrer_engeli(fform, yon)
             if not fform.errors:
@@ -9000,7 +9019,8 @@ def fatura_duzenle(request, pk):
     if request.method == "POST":
         fform = FaturaForm(request.POST, yon=yon, mevcut_no=fatura.fatura_no)
         formset = FaturaSatirDuzenleFormSet(request.POST, form_kwargs={"yon": yon, "fatura_pk": fatura.pk})
-        if fform.is_valid() and formset.is_valid():
+        form_tamam, satirlar_tamam = fform.is_valid(), formset.is_valid()
+        if form_tamam and satirlar_tamam:
             dosyalar = _fatura_dosyalari_dogrula(request, fform)
             mukerrer = _mukerrer_engeli(fform, yon, haric_pk=fatura.pk)
             if not fform.errors:
@@ -9018,6 +9038,7 @@ def fatura_duzenle(request, pk):
                             satirlar=satirlar, kullanici=request.user,
                             faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")))
                         dosya_sayisi = _fatura_dosyalari_yaz(request, fatura, dosyalar)
+                        silinen = _silinecek_ekleri_sil(request, fatura)                      # onaylı fatura da dahil; detay sayfasındaki ek silmeyle AYNI yetki (alış/satış faturaları ekranı)
                     if fatura.durum == Fatura.Durum.TASLAK:
                         mesaj = "Taslak fatura güncellendi."
                     else:
@@ -9026,6 +9047,8 @@ def fatura_duzenle(request, pk):
                             mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
                     if dosya_sayisi:
                         mesaj += f" {dosya_sayisi} dosya eklendi."
+                    if silinen:
+                        mesaj += f" {silinen} ek silindi."
                     messages.success(request, mesaj)
                     for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
                         messages.warning(request, "⚠ Birim çevrimi: " + u)
@@ -9057,7 +9080,8 @@ def fatura_duzenle(request, pk):
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon, "fatura_pk": fatura.pk})
     return render(request, "core/fatura_ekle.html", _fatura_form_baglami(
         fform, formset, yon, baslik="Fatura Düzenle", iptal_url=reverse("core:fatura_detay", args=[fatura.pk]),
-        mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=_mevcut_ekler(fatura), duzenlenen=fatura))
+        mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=_mevcut_ekler(fatura), duzenlenen=fatura,
+        silinecek_ek_idleri=_silinecek_ek_idleri(request, fatura)))
 
 
 @ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
