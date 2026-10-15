@@ -133,6 +133,29 @@ class YuklemeKomutuTest(TestCase):
         self.assertEqual(VergiDairesi.objects.count(), 1)
         self.assertEqual(Cari.objects.get(unvan="Y LTD").vergi_dairesi, "MİMARSİNAN")
 
+    def test_bagla_haric_adi_aynen_eslesen_kaydi_baglamaz_onay_bekleyene_alir(self):
+        v = VergiDairesi.objects.create(ad="KOZYATAĞI")
+        e = VergiDairesi.objects.create(ad="ERCİYES")
+        yol = mini_csv([("34", "İSTANBUL", "34246", "Kozyatağı Vergi Dairesi Müdürlüğü"), ("38", "KAYSERİ", "38252", "Erciyes Vergi Dairesi Müdürlüğü")])
+        cikti = calistir("--uygula", "--bagla-haric", "kozyatağı", csv_yolu=yol)
+        self.assertIn("Mevcut kayda bağlanan  : 1", cikti)                                             # yalnız ERCİYES
+        self.assertIn("Onay bekleyen eşleşme  : 1", cikti)
+        self.assertIn("[--bagla-haric ile bağlanmadı]", cikti)
+        v.refresh_from_db()
+        e.refresh_from_db()
+        self.assertEqual((v.kod, v.il), ("", ""))                                                      # dokunulmadı, resmî daire de eklenmedi
+        self.assertEqual((e.kod, e.il), ("38252", "KAYSERİ"))
+        self.assertEqual(VergiDairesi.objects.count(), 2)
+        self.assertIn("TOPLAM DEĞİŞİKLİK      : 0", calistir("--bagla-haric", "KOZYATAĞI", csv_yolu=yol))     # aynı bayraklarla ikinci çalıştırma: 0
+
+    def test_onayli_eslestirme_dosyasi_mimarsinan(self):
+        v = VergiDairesi.objects.create(ad="MİMARSİNAN")
+        yol = mini_csv([("38", "KAYSERİ", "38251", "Mimar Sinan Vergi Dairesi Müdürlüğü")])
+        calistir("--uygula", "--eslestirme", str(cmd.Path(cmd.settings.BASE_DIR) / "docs" / "vergi_daireleri_eslestirme_onayli.csv"), csv_yolu=yol)
+        v.refresh_from_db()
+        self.assertEqual((v.ad, v.kod, v.il), ("MİMARSİNAN", "38251", "KAYSERİ"))
+        self.assertEqual(VergiDairesi.objects.count(), 1)
+
     def test_listede_olmayan_eski_kayit_silinmez_pasife_alinmaz(self):
         v = VergiDairesi.objects.create(ad="OLMAYAN DAİRE")
         yol = mini_csv([("34", "İSTANBUL", "34224", "Yenikapı Vergi Dairesi Müdürlüğü")])

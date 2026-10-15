@@ -65,6 +65,7 @@ class Command(BaseCommand):
         parser.add_argument("--csv", default=str(VARSAYILAN_CSV), help="Veri dosyası (varsayılan docs/vergi_daireleri_gib.csv).")
         parser.add_argument("--uygula", action="store_true", help="Yaz (yoksa önizleme).")
         parser.add_argument("--eslestirme", default=None, help="Onaylanan ad-farkı eşleşmeleri CSV'si (eski_ad,kod).")
+        parser.add_argument("--bagla-haric", default="", help="Ad AYNEN eşleşse de BAĞLANMAYACAK eski kayıt adları (virgülle; ör. şehir uyuşmazlığı kararı bekleyenler). Onay bekleyen olarak raporlanır.")
 
     def handle(self, *args, **o):
         try:
@@ -87,7 +88,8 @@ class Command(BaseCommand):
         w(self.style.WARNING("UYGULAMA MODU" if uygula else "ÖNİZLEME (hiçbir şey yazılmaz; --uygula ile yazılır)"))
         for y in yorumlar[:6]:
             w("  " + y.rstrip("\n"))
-        r = self._isle(resmi, onayli, uygula)
+        haric = {buyuk_harf_tr(a.strip()) for a in o["bagla_haric"].split(",") if a.strip()}
+        r = self._isle(resmi, onayli, uygula, haric)
 
         w(f"\nResmî liste            : {len(resmi)} daire, {len({v['il'] for v in resmi.values()})} il")
         w(f"Eklenen                : {len(r['eklenen'])}")
@@ -105,7 +107,7 @@ class Command(BaseCommand):
         if r["bekleyen"]:
             w("\n== ONAY BEKLEYEN EŞLEŞME (ad farkı) — onaylanırsa --eslestirme ile uygulanır")
             for m, kod, d, n in r["bekleyen"]:
-                w(f"  #{m.pk:<4} {m.ad:22} ↔ {d['il']:12} {kod}  {d['resmi_ad']}  | cari: {n}")
+                w(f"  #{m.pk:<4} {m.ad:22} ↔ {d['il']:12} {kod}  {d['resmi_ad']}  | cari: {n}" + ("  [--bagla-haric ile bağlanmadı]" if m.ad in haric else ""))
         if r["eski"]:
             w("\n== LİSTEDE OLMAYAN ESKİ KAYITLAR")
             for m, n in r["eski"]:
@@ -126,7 +128,7 @@ class Command(BaseCommand):
             w("  " + " · ".join(satir))
         w("\n" + (self.style.SUCCESS("UYGULANDI (commit).") if uygula else "Önizleme bitti — hiçbir kayıt değişmedi."))
 
-    def _isle(self, resmi, onayli, uygula):
+    def _isle(self, resmi, onayli, uygula, haric=frozenset()):
         eklenen, baglanan, guncellenen, bekleyen, ad_farki = [], [], [], [], []
         degismeyen = 0
         with transaction.atomic():
@@ -158,7 +160,7 @@ class Command(BaseCommand):
                 if kod in onayli_kodlar:                                         # kullanıcının onayladığı ad-farkı eşleşmesi
                     aday = next((e for e in eski if e.pk not in sahipli and onayli.get(e.ad) == kod), None)
                 if aday is None:                                                 # ad AYNEN: kısa ad listede tekse; ya da (ad, il) birebir
-                    aday = next((e for e in eski if e.pk not in sahipli and ((e.ad == d["kisa"] and say[d["kisa"]] == 1 and e.il in ("", d["il"]))
+                    aday = next((e for e in eski if e.pk not in sahipli and e.ad not in haric and ((e.ad == d["kisa"] and say[d["kisa"]] == 1 and e.il in ("", d["il"]))
                                                                              or (e.ad == d["ad"] and e.il == d["il"]))), None)
                 if aday is not None:
                     sahipli.add(aday.pk)
