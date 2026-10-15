@@ -13,6 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied, SuspiciousFileOperation
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Replace
 from django.forms import formset_factory
@@ -26,6 +27,7 @@ from django.utils.html import format_html
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 
 from core.forms import (
     AdayAktiviteForm, AdayAsamaTanimForm, AdayCariyeMevcutCariForm, AdayCariyeYeniCariForm,
@@ -570,6 +572,33 @@ def cari_vade_api(request, pk):
         if t is not None:
             vade = cari_servis.vade_hesapla(cari, t)
     return JsonResponse({"vade_tarihi": vade.isoformat() if vade else None})
+
+
+@login_required
+def cari_fatura_bilgi_api(request, pk):
+    """Fatura formu: cari seçilince kartın altındaki bilgi satırı — ödeme koşulu, güncel bakiye (ekstreyle aynı: pozitif Borç / negatif Alacak), varsayılan para birimi."""
+    from core.services import cari_cikti, cari_ozet
+    from core.templatetags.core_extras import tr_para
+    cari = Cari.objects.filter(pk=pk, silindi=False).first()
+    if cari is None:
+        return JsonResponse({"var": False})
+    b = cari_ozet.bakiyeler([cari])[cari.pk]
+    bakiye = f"{tr_para(abs(b['tl']))} TL {cari_cikti.yon_metni(b['tl'])}".strip() if b["tl"] else "0,00 TL"
+    doviz = cari_cikti.doviz_metni(sorted(b["doviz"].items()))
+    return JsonResponse({"var": True, "kosul": cari.odeme_kosulu_metni or "Tanımlı değil", "bakiye": bakiye, "doviz": doviz, "pb": cari.para_birimi})
+
+
+@ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
+def fatura_no_kontrol_api(request):
+    """Fatura formu: aynı cari + aynı fatura no başka faturada var mı (kayıt ÖNCESİ uyarı için; engel değil)."""
+    cari = Cari.objects.filter(pk=request.GET.get("cari") or 0, silindi=False).first()
+    yon = request.GET.get("yon") if request.GET.get("yon") in FaturaTipi.Yon.values else FaturaTipi.Yon.ALIS
+    from core.templatetags.core_extras import tr_para
+    haric = request.GET.get("haric") if (request.GET.get("haric") or "").isdigit() else None
+    f = fatura_servis.mukerrer_bul(cari=cari, fatura_no=request.GET.get("no", ""), yon=yon, haric_pk=haric) if cari else None
+    if f is None:
+        return JsonResponse({"var": False})
+    return JsonResponse({"var": True, "url": reverse("core:fatura_detay", args=[f.pk]), "tarih": f"{f.tarih:%d.%m.%Y}", "tutar": f"{tr_para(f.genel_toplam)} {f.para_birimi}"})
 
 
 @ekran_gerekli("kurlar")
@@ -3752,33 +3781,37 @@ def siparis_faturaya_cevir(request, pk):
         messages.error(request, "Yalnız onaylı sipariş faturaya çevrilebilir.")
         return redirect("core:teklif_siparis_detay", pk=siparis.pk)
     yon = FaturaTipi.Yon.SATIS
+    mukerrer, dosya_uyari = None, False
     if request.method == "POST":
         fform = FaturaForm(request.POST, yon=yon)
         formset = FaturaSatirFormSet(request.POST, form_kwargs={"yon": yon})
         if fform.is_valid() and formset.is_valid():
-            satirlar = _fatura_satir_girdileri(formset)
-            try:
-                fatura = fatura_servis.fatura_olustur(
-                    tip_id=fform.cleaned_data["tip"].pk,
-                    cari_id=fform.cleaned_data["cari"].pk,
-                    tarih=fform.cleaned_data["tarih"],
-                    fatura_no=fform.cleaned_data.get("fatura_no", ""),
-                    para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
-                    depo_id=(fform.cleaned_data["depo"].pk
-                             if fform.cleaned_data.get("depo") else None),
-                    satirlar=satirlar, kullanici=request.user)
-                siparis.fatura = fatura
-                siparis.updated_by = request.user
-                siparis.save(update_fields=["fatura", "updated_by", "updated_at"])
-                messages.success(
-                    request, f"Fatura oluşturuldu (sipariş {siparis.pk} kaynaklı); "
-                             f"fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu.")
-                sevk_notu = uretim_servis.siparis_sevk_edildi(siparis, kullanici=request.user)       # üretim siparişi varsa kapanış / uyarı
-                if sevk_notu:
-                    messages.warning(request, sevk_notu)
-                return redirect("core:fatura_detay", pk=fatura.pk)
-            except fatura_servis.FaturaHatasi as e:
-                _fatura_hatasi_ekle(fform, e)
+            dosyalar = _fatura_dosyalari_dogrula(request, fform)
+            mukerrer = _mukerrer_engeli(fform, yon)
+            if not fform.errors:
+                satirlar = _fatura_satir_girdileri(formset)
+                cd = fform.cleaned_data
+                try:
+                    with transaction.atomic():
+                        fatura = fatura_servis.fatura_olustur(
+                            tip_id=cd["tip"].pk, cari_id=cd["cari"].pk, tarih=cd["tarih"], fatura_no=cd.get("fatura_no", ""),
+                            para_birimi=cd.get("para_birimi", "TRY"), depo_id=(cd["depo"].pk if cd.get("depo") else None),
+                            satirlar=satirlar, kullanici=request.user,
+                            faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")))
+                        siparis.fatura = fatura
+                        siparis.updated_by = request.user
+                        siparis.save(update_fields=["fatura", "updated_by", "updated_at"])
+                        dosya_sayisi = _fatura_dosyalari_yaz(request, fatura, dosyalar)
+                    messages.success(
+                        request, f"Fatura oluşturuldu (sipariş {siparis.pk} kaynaklı); "
+                                 f"fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu." + (f" {dosya_sayisi} dosya eklendi." if dosya_sayisi else ""))
+                    sevk_notu = uretim_servis.siparis_sevk_edildi(siparis, kullanici=request.user)       # üretim siparişi varsa kapanış / uyarı
+                    if sevk_notu:
+                        messages.warning(request, sevk_notu)
+                    return redirect("core:fatura_detay", pk=fatura.pk)
+                except (fatura_servis.FaturaHatasi, fatura_ek_servis.FaturaEkHatasi) as e:
+                    _fatura_hatasi_ekle(fform, e)
+        dosya_uyari = bool(request.FILES.getlist("dosyalar"))
     else:
         fform = FaturaForm(yon=yon, initial={
             "cari": siparis.cari_id, "tarih": timezone.localdate(),
@@ -3789,13 +3822,9 @@ def siparis_faturaya_cevir(request, pk):
                 "varyant": varyant_servis.secim_degeri(k.varyant_id)}
                for k in siparis.kalemler.filter(silindi=False).select_related("stok")]
         formset = FaturaSatirFormSet(initial=ilk, form_kwargs={"yon": yon})
-    stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
-    return render(request, "core/fatura_ekle.html",
-                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
-                   "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
-                   **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(),
-                   "baslik": f"Fatura Oluştur (Sipariş {siparis.pk} kaynaklı)",
-                   "iptal_url": reverse("core:teklif_siparis_detay", args=[siparis.pk])})
+    return render(request, "core/fatura_ekle.html", _fatura_form_baglami(
+        fform, formset, yon, baslik=f"Fatura Oluştur (Sipariş {siparis.pk} kaynaklı)", iptal_url=reverse("core:teklif_siparis_detay", args=[siparis.pk]),
+        mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=[]))
 
 
 @ekran_gerekli_herhangi("satis_siparisleri", "uretim_emirleri")
@@ -8761,6 +8790,9 @@ def _fatura_gider_baglami(fform):
             "tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
             "tip_karma": {str(t.pk): fatura_servis.karma_alis_tipi_mi(t) for t in fform.fields["tip"].queryset},      # ALIŞ FATURASI / İHRAÇ KAYITLI: stok + hesap satırı
             "tip_stopajli": {str(t.pk): bool(t.stopajli) for t in fform.fields["tip"].queryset},
+            "tip_yalniz_kdv": {str(t.pk): bool(t.yalniz_kdv) for t in fform.fields["tip"].queryset},               # "Yalnız KDV": matrah "—", toplam = KDV (liste ile aynı mantık)
+            "stok_birim": {str(s.pk): s.fatura_birimi.kisa_ad for s in Stok.objects.filter(silindi=False).select_related("fatura_birimi")},      # satırda birim: stok kartının fatura birimi
+            "tevkifat_pp": {str(t.pk): [t.pay, t.payda] for t in TevkifatOrani.objects.filter(silindi=False) if t.payda},           # canlı hesap sunucuyla AYNI kuruş yuvarlaması için pay/payda tam sayı
             "duran_varlik_hesap": {str(h.pk): True for h in (
                 hp.duran_varlik_hesaplari() | duran_hesap_servis.grup_hesaplari(duran_hesap_servis.KART_AILELERI))},
             "demirbas_bilgi": {str(d.pk): {"maliyet": float(d.maliyet), "amortisman": float(d.birikmis_amortisman)}
@@ -8854,51 +8886,97 @@ def _fatura_hatasi_ekle(fform, hata):
         fform.add_error(None, str(hata))
 
 
+def _mukerrer_engeli(fform, yon, haric_pk=None):
+    """Aynı cari + aynı fatura no başka faturada varsa ve kullanıcı "yine de kaydet" demediyse forma LİNKLİ uyarı ekler ve mevcut faturayı döner (kayıt yapılmaz);
+    onay varsa ya da mükerrer yoksa None. Engel DEĞİL, onay adımıdır (yön fark etmez: alış + satış)."""
+    cd = fform.cleaned_data
+    f = fatura_servis.mukerrer_bul(cari=cd["cari"], fatura_no=cd.get("fatura_no", ""), yon=yon, haric_pk=haric_pk)
+    if f is None or cd.get("mukerrer_onay"):
+        return None
+    fform.add_error(None, format_html(
+        '{} — <a href="{}" target="_blank" rel="noopener">faturayı aç</a>. Yine de kaydetmek için “Yine de kaydet” kutusunu işaretleyip tekrar kaydedin.',
+        str(fatura_servis.MukerrerFaturaHatasi(f)), reverse("core:fatura_detay", args=[f.pk])))
+    return f
+
+
+def _fatura_dosyalari_dogrula(request, fform):
+    """Forma eklenen dosyaları (PDF/resim; XML reddedilir — mevcut ek kuralları) KAYIT ÖNCESİ doğrular; hata forma eklenir. Dosyalar listesini döner."""
+    dosyalar = request.FILES.getlist("dosyalar")
+    for d in dosyalar:
+        try:
+            fatura_ek_servis.dosya_kontrol(d)
+        except fatura_ek_servis.FaturaEkHatasi as e:
+            fform.add_error(None, str(e))
+    return dosyalar
+
+
+def _fatura_dosyalari_yaz(request, fatura, dosyalar):
+    for d in dosyalar:
+        fatura_ek_servis.ek_ekle(fatura, dosya=d, kullanici=request.user)
+    return len(dosyalar)
+
+
+def _mevcut_ekler(fatura):
+    """Düzenle ekranı sağ paneli: faturanın mevcut ekleri (önizleme + silme bağlantıları)."""
+    if fatura is None:
+        return []
+    return [{"id": e.pk, "ad": e.orijinal_ad or "dosya", "url": reverse("core:fatura_ek_indir", args=[e.pk]), "sil": reverse("core:fatura_ek_sil", args=[e.pk]),
+             "resim": e.resim_mi, "pdf": e.dosya.name.lower().endswith(".pdf")} for e in fatura_ek_servis.ek_listele(fatura)]
+
+
+def _fatura_form_baglami(fform, formset, yon, **ek):
+    """Ekle / düzenle / siparişten fatura ekranlarının ORTAK şablon bağlamı (core/fatura_ekle.html)."""
+    stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
+    return {"fform": fform, "formset": formset, "stok_kdv": stok_kdv, "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
+            **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(), "yon": yon, **ek}
+
+
+def _fatura_kayit_mesaji(fatura, tip, depo, satirlar, dosya_sayisi):
+    mesaj = f"Fatura kaydedildi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu."
+    if depo is None and not tip.gider and any(g.get("stok_id") for g in satirlar):
+        mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
+    if dosya_sayisi:
+        mesaj += f" {dosya_sayisi} dosya eklendi."
+    return mesaj
+
+
 def _fatura_ekle(request, yon, baslik):
+    mukerrer, dosya_uyari = None, False
     if request.method == "POST":
         fform = FaturaForm(request.POST, yon=yon)
         formset = FaturaSatirFormSet(request.POST, form_kwargs={"yon": yon})
         if fform.is_valid() and formset.is_valid():
-            satirlar = _fatura_satir_girdileri(formset)
-            try:
-                # fatura_olustur = taslak + hemen onay (tip formda zaten seçili) — günlük
-                # fatura girişi tek tıkla kalır, tam atomik (eskisi gibi ya hepsi ya hiçbiri).
-                fatura = fatura_servis.fatura_olustur(
-                    tip_id=fform.cleaned_data["tip"].pk,
-                    cari_id=fform.cleaned_data["cari"].pk,
-                    tarih=fform.cleaned_data["tarih"],
-                    fatura_no=fform.cleaned_data.get("fatura_no", ""),
-                    para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
-                    kur=fform.cleaned_data.get("kur"),
-                    depo_id=(fform.cleaned_data["depo"].pk
-                             if fform.cleaned_data.get("depo") else None),
-                    aciklama=fform.cleaned_data.get("aciklama", ""),
-                    vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
-                    sahsi_alis=fform.cleaned_data.get("sahsi_alis", False),
-                    gv_stopaj_orani=fform.cleaned_data.get("gv_stopaj_orani"),
-                    sahsi_ortak_id=(fform.cleaned_data["sahsi_ortak"].pk
-                                   if fform.cleaned_data.get("sahsi_ortak") else None),
-                    satirlar=satirlar,
-                    kullanici=request.user,
-                )
-                mesaj = f"Fatura kaydedildi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu."
-                if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider and any(g.get("stok_id") for g in satirlar):
-                    mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
-                messages.success(request, mesaj)
-                for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
-                    messages.warning(request, "⚠ Birim çevrimi: " + u)
-                return redirect("core:fatura_detay", pk=fatura.pk)
-            except fatura_servis.FaturaHatasi as e:
-                _fatura_hatasi_ekle(fform, e)
+            dosyalar = _fatura_dosyalari_dogrula(request, fform)
+            mukerrer = _mukerrer_engeli(fform, yon)
+            if not fform.errors:
+                satirlar = _fatura_satir_girdileri(formset)
+                cd = fform.cleaned_data
+                try:
+                    # fatura_olustur = taslak + hemen onay (tip formda zaten seçili) — günlük
+                    # fatura girişi tek tıkla kalır, tam atomik (eskisi gibi ya hepsi ya hiçbiri; ekler dahil).
+                    with transaction.atomic():
+                        fatura = fatura_servis.fatura_olustur(
+                            tip_id=cd["tip"].pk, cari_id=cd["cari"].pk, tarih=cd["tarih"], fatura_no=cd.get("fatura_no", ""),
+                            para_birimi=cd.get("para_birimi", "TRY"), kur=cd.get("kur"),
+                            depo_id=(cd["depo"].pk if cd.get("depo") else None), aciklama=cd.get("aciklama", ""),
+                            vade_tarihi=cd.get("vade_tarihi"), sahsi_alis=cd.get("sahsi_alis", False),
+                            gv_stopaj_orani=cd.get("gv_stopaj_orani"),
+                            sahsi_ortak_id=(cd["sahsi_ortak"].pk if cd.get("sahsi_ortak") else None),
+                            satirlar=satirlar, kullanici=request.user,
+                            faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")))
+                        dosya_sayisi = _fatura_dosyalari_yaz(request, fatura, dosyalar)
+                    messages.success(request, _fatura_kayit_mesaji(fatura, cd["tip"], cd.get("depo"), satirlar, dosya_sayisi))
+                    for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
+                        messages.warning(request, "⚠ Birim çevrimi: " + u)
+                    return redirect("core:fatura_detay", pk=fatura.pk)
+                except (fatura_servis.FaturaHatasi, fatura_ek_servis.FaturaEkHatasi) as e:
+                    _fatura_hatasi_ekle(fform, e)
+        dosya_uyari = bool(request.FILES.getlist("dosyalar"))                      # kayıt olmadı: tarayıcı dosya seçimini sayfa yenilenince tutmaz → kullanıcıya açıkça söylenir
     else:
         fform = FaturaForm(yon=yon)
         formset = FaturaSatirFormSet(form_kwargs={"yon": yon})
-    stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
-    return render(request, "core/fatura_ekle.html",
-                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
-                   "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
-                   **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(),
-                   "baslik": baslik, "yon": yon, "iptal_url": reverse(_fatura_liste_url(yon))})
+    return render(request, "core/fatura_ekle.html", _fatura_form_baglami(
+        fform, formset, yon, baslik=baslik, iptal_url=reverse(_fatura_liste_url(yon)), mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=[]))
 
 
 @ekran_gerekli("alis_faturalari")
@@ -8918,46 +8996,47 @@ FaturaSatirDuzenleFormSet = formset_factory(FaturaSatirForm, extra=0, min_num=1,
 def fatura_duzenle(request, pk):
     fatura = get_object_or_404(Fatura, pk=pk, silindi=False)
     yon = fatura.yon
+    mukerrer, dosya_uyari = None, False
     if request.method == "POST":
-        fform = FaturaForm(request.POST, yon=yon)
+        fform = FaturaForm(request.POST, yon=yon, mevcut_no=fatura.fatura_no)
         formset = FaturaSatirDuzenleFormSet(request.POST, form_kwargs={"yon": yon, "fatura_pk": fatura.pk})
         if fform.is_valid() and formset.is_valid():
-            satirlar = _fatura_satir_girdileri(formset)
-            try:
-                fatura_servis.fatura_guncelle(
-                    fatura,
-                    tip_id=fform.cleaned_data["tip"].pk,
-                    cari_id=fform.cleaned_data["cari"].pk,
-                    tarih=fform.cleaned_data["tarih"],
-                    fatura_no=fform.cleaned_data.get("fatura_no", ""),
-                    para_birimi=fform.cleaned_data.get("para_birimi", "TRY"),
-                    kur=fform.cleaned_data.get("kur"),
-                    depo_id=fform.cleaned_data["depo"].pk if fform.cleaned_data.get("depo") else None,
-                    aciklama=fform.cleaned_data.get("aciklama", ""),
-                    vade_tarihi=fform.cleaned_data.get("vade_tarihi"),
-                    sahsi_alis=fform.cleaned_data.get("sahsi_alis", False),
-                    gv_stopaj_orani=fform.cleaned_data.get("gv_stopaj_orani"),
-                    sahsi_ortak_id=(fform.cleaned_data["sahsi_ortak"].pk
-                                   if fform.cleaned_data.get("sahsi_ortak") else None),
-                    satirlar=satirlar,
-                    kullanici=request.user,
-                )
-                if fatura.durum == Fatura.Durum.TASLAK:
-                    mesaj = "Taslak fatura güncellendi."
-                else:
-                    mesaj = f"Fatura güncellendi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} yenilendi."
-                    if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider and any(g.get("stok_id") for g in satirlar):
-                        mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
-                messages.success(request, mesaj)
-                for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
-                    messages.warning(request, "⚠ Birim çevrimi: " + u)
-                return redirect("core:fatura_detay", pk=fatura.pk)
-            except fatura_servis.FaturaHatasi as e:
-                _fatura_hatasi_ekle(fform, e)
+            dosyalar = _fatura_dosyalari_dogrula(request, fform)
+            mukerrer = _mukerrer_engeli(fform, yon, haric_pk=fatura.pk)
+            if not fform.errors:
+                satirlar = _fatura_satir_girdileri(formset)
+                cd = fform.cleaned_data
+                try:
+                    with transaction.atomic():
+                        fatura_servis.fatura_guncelle(
+                            fatura, tip_id=cd["tip"].pk, cari_id=cd["cari"].pk, tarih=cd["tarih"], fatura_no=cd.get("fatura_no", ""),
+                            para_birimi=cd.get("para_birimi", "TRY"), kur=cd.get("kur"),
+                            depo_id=cd["depo"].pk if cd.get("depo") else None, aciklama=cd.get("aciklama", ""),
+                            vade_tarihi=cd.get("vade_tarihi"), sahsi_alis=cd.get("sahsi_alis", False),
+                            gv_stopaj_orani=cd.get("gv_stopaj_orani"),
+                            sahsi_ortak_id=(cd["sahsi_ortak"].pk if cd.get("sahsi_ortak") else None),
+                            satirlar=satirlar, kullanici=request.user,
+                            faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")))
+                        dosya_sayisi = _fatura_dosyalari_yaz(request, fatura, dosyalar)
+                    if fatura.durum == Fatura.Durum.TASLAK:
+                        mesaj = "Taslak fatura güncellendi."
+                    else:
+                        mesaj = f"Fatura güncellendi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} yenilendi."
+                        if cd.get("depo") is None and not cd["tip"].gider and any(g.get("stok_id") for g in satirlar):
+                            mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
+                    if dosya_sayisi:
+                        mesaj += f" {dosya_sayisi} dosya eklendi."
+                    messages.success(request, mesaj)
+                    for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
+                        messages.warning(request, "⚠ Birim çevrimi: " + u)
+                    return redirect("core:fatura_detay", pk=fatura.pk)
+                except (fatura_servis.FaturaHatasi, fatura_ek_servis.FaturaEkHatasi) as e:
+                    _fatura_hatasi_ekle(fform, e)
+        dosya_uyari = bool(request.FILES.getlist("dosyalar"))
     else:
-        fform = FaturaForm(yon=yon, initial={
+        fform = FaturaForm(yon=yon, mevcut_no=fatura.fatura_no, initial={
             "tip": fatura.tip_id, "cari": fatura.cari_id, "tarih": fatura.tarih,
-            "fatura_no": fatura.fatura_no, "para_birimi": fatura.para_birimi,
+            "fatura_no": fatura.fatura_no, "faturasiz": fatura.faturasiz, "para_birimi": fatura.para_birimi,
             # TASLAK'ta fatura.kur hep "1" yer tutucusudur (henüz gerçek hesaplanmadı) —
             # forma taşınırsa yanıltıcı olur; JS zaten taze bir önizleme dolduracak.
             "kur": (fatura.kur if fatura.durum == Fatura.Durum.ONAYLI else fatura.taslak_kur),
@@ -8976,13 +9055,9 @@ def fatura_duzenle(request, pk):
                for s in fatura.satirlar.filter(silindi=False)
                .select_related("stok__tevkifat", "hesap")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon, "fatura_pk": fatura.pk})
-    stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
-    return render(request, "core/fatura_ekle.html",
-                  {"fform": fform, "formset": formset, "stok_kdv": stok_kdv,
-                   "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
-                   **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(),
-                   "baslik": "Fatura Düzenle", "yon": yon,
-                   "iptal_url": reverse("core:fatura_detay", args=[fatura.pk])})
+    return render(request, "core/fatura_ekle.html", _fatura_form_baglami(
+        fform, formset, yon, baslik="Fatura Düzenle", iptal_url=reverse("core:fatura_detay", args=[fatura.pk]),
+        mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=_mevcut_ekler(fatura), duzenlenen=fatura))
 
 
 @ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
@@ -9041,6 +9116,7 @@ def fatura_ek_sil(request, pk):
 
 
 @never_cache
+@xframe_options_sameorigin                       # fatura formundaki PDF önizleme paneli aynı sitede iframe ile gösterir
 @ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
 def fatura_ek_indir(request, pk):
     """Fatura ekini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""

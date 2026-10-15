@@ -120,7 +120,7 @@ class FaturayaCevirGelirHesapTest(kt.KapanisTaban):
         sip = self.siparis("3")
         h601 = HesapPlani.objects.get(hesap_kodu="601.10")
         r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
-            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "depo": "",
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "faturasiz": "on", "depo": "",
             "form-TOTAL_FORMS": "2", "form-INITIAL_FORMS": "0", "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50", "form-0-kdv": self.kdv.pk,
             "form-1-tur": "HESAP", "form-1-hesap": h601.pk, "form-1-miktar": "1", "form-1-birim_fiyat": "40", "form-1-kdv": self.kdv.pk}, follow=True)

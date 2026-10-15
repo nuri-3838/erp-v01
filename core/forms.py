@@ -1884,9 +1884,14 @@ class FaturaForm(forms.Form):
         label="Fatura tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
         initial=timezone.localdate)
+    # Fatura no ZORUNLU (yeni kayıt) — numarası olmayan belge için "faturasız" işaretlenir. Zorunluluk clean()'de: düzenlemede yalnız no DEĞİŞTİRİLİRKEN (kayıtlı no silinirken)
+    # çalışır; eskiden numarasız kaydedilmiş fatura (mevcut_no == "") numarasız kalarak düzenlenebilir.
     fatura_no = forms.CharField(
         label="Fatura No", max_length=50, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    faturasiz = forms.BooleanField(label="Faturasız / belge no yok", required=False)
+    # Aynı cari + aynı fatura no başka faturada varsa kayıt öncesi UYARI (engel değil): "yine de kaydet" onayı bu alanla gelir (bkz. core.views._mukerrer_engeli).
+    mukerrer_onay = forms.BooleanField(label="Yine de kaydet (aynı numaralı fatura var)", required=False)
     # Yalnız ALIŞ ekranında gösterilir (bkz. fatura_ekle.html); SATIŞ'ta hiç render edilmez.
     vade_tarihi = forms.DateField(
         label="Vade Tarihi", required=False,
@@ -1914,8 +1919,10 @@ class FaturaForm(forms.Form):
         label="Ortak Hesabı", queryset=HesapPlani.objects.none(), required=False,
         empty_label="— ortak seç —")
 
-    def __init__(self, *args, yon=None, **kwargs):
+    def __init__(self, *args, yon=None, mevcut_no=None, **kwargs):
+        """``mevcut_no``: düzenlenen faturanın KAYITLI no'su (None = yeni kayıt) — fatura no zorunluluğu buna göre (bkz. clean)."""
         super().__init__(*args, **kwargs)
+        self.mevcut_no = mevcut_no
         tipler = FaturaTipi.objects.filter(silindi=False)
         if yon:
             tipler = tipler.filter(yon=yon)
@@ -1942,6 +1949,13 @@ class FaturaForm(forms.Form):
         cd = super().clean()
         if cd.get("sahsi_alis") and not cd.get("sahsi_ortak"):
             self.add_error("sahsi_ortak", "Ortak adına şahsi alış için bir ortak hesabı seçin.")
+        no = (cd.get("fatura_no") or "").strip()
+        cd["fatura_no"] = no
+        if no:
+            cd["faturasiz"] = False                                   # numara girildiyse "faturasız" anlamsız
+        elif not cd.get("faturasiz"):
+            if self.mevcut_no is None or self.mevcut_no.strip():      # yeni kayıt ya da kayıtlı no silinmeye çalışılıyor
+                self.add_error("fatura_no", "Fatura no zorunlu. Belgenin numarası yoksa “Faturasız / belge no yok” kutusunu işaretleyin.")
         return cd
 
 

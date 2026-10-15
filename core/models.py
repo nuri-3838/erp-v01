@@ -1783,6 +1783,9 @@ class Fatura(TemelModel):
     # Yalnız tip.stopajli faturada dolu: brüt ücret (ara toplam) × oran/100 = GV stopajı.
     gv_stopaj_orani = models.DecimalField(
         "GV stopaj oranı (%)", max_digits=5, decimal_places=2, null=True, blank=True)
+    # Fatura no ZORUNLU (yeni kayıt); gerçekten numarası olmayan belge için "faturasız / belge no yok" işaretlenir (no boş kalabilir; listede rozetle görünür).
+    # Eski numarasız kayıtlarda False kalır (düzenlerken zorunluluk yalnız no DEĞİŞTİRİLİRKEN çalışır). Yalnız bilgi amaçlı; muhasebeyi etkilemez.
+    faturasiz = models.BooleanField("faturasız / belge no yok", default=False)
     sahsi_ortak = models.ForeignKey(
         HesapPlani, verbose_name="ortak hesabı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="sahsi_alis_faturalari")

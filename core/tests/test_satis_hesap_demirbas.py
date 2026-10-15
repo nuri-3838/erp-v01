@@ -226,7 +226,7 @@ class DemirbasSatisiTest(SatisHesapDemirbasTestBase):
 
 class SatisFaturaEkranTest(SatisHesapDemirbasTestBase):
     def _post(self, satirlar_post):
-        veri = {"tip": self.iade.pk, "cari": self.cari.pk, "tarih": "2026-03-10", "para_birimi": "TRY",
+        veri = {"tip": self.iade.pk, "cari": self.cari.pk, "tarih": "2026-03-10", "para_birimi": "TRY", "faturasiz": "on",
                 "form-TOTAL_FORMS": str(len(satirlar_post)), "form-INITIAL_FORMS": "0",
                 "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000"}
         for i, sat in enumerate(satirlar_post):

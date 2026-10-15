@@ -156,7 +156,7 @@ class PlanlamaAcikSiparisTest(SatisVaryantTaban):
 
     def fatura_kes_v(self, sip, sv, miktar="3"):
         r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
-            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "depo": self.depo.pk,
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "faturasiz": "on", "depo": self.depo.pk,
             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0", "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.stok.pk, "form-0-miktar": miktar, "form-0-birim_fiyat": "50", "form-0-varyant": vs.secim_degeri(sv)}, follow=True)
         sip.refresh_from_db()

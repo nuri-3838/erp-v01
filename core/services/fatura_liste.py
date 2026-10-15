@@ -97,7 +97,7 @@ def _satir_olustur(f, bugun, odeme) -> dict:
     else:
         satir_alt = ""
     return {
-        "fatura": f, "pk": f.pk, "tarih": f.tarih, "fatura_no": f.fatura_no, "cari": f.cari, "cari_kisa": f.cari.kisa_ad or f.cari.unvan, "cari_unvan": f.cari.unvan,
+        "fatura": f, "pk": f.pk, "tarih": f.tarih, "fatura_no": f.fatura_no, "faturasiz": f.faturasiz, "cari": f.cari, "cari_kisa": f.cari.kisa_ad or f.cari.unvan, "cari_unvan": f.cari.unvan,
         "tip_ad": tip.ad if tip else "", "tip_etiket": etiket, "tip_css": css, "yalniz_kdv": yalniz_kdv, "karma": o["karma"], "satir_alt": satir_alt, "sahsi": bool(f.sahsi_alis),
         "pb": f.para_birimi, "kur": kur, "taslak": f.durum == Fatura.Durum.TASLAK, "durum_adi": f.get_durum_display(),
         "matrah": matrah, "kdv": o["kdv"], "toplam": toplam, "matrah_tl": matrah_tl, "kdv_tl": kdv_tl, "toplam_tl": toplam_tl,

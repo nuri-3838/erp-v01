@@ -1,0 +1,13 @@
+{# Fatura kalem satırı hücreleri (fatura_ekle.html: gerçek satırlar + boş şablon satırı AYNI hücreleri kullanır). Bağlam: f = FaturaSatirForm. #}
+<td class="c-tur"><div class="tur-alani">{{ f.tur }}</div><span class="tur-sabit">Stok</span></td>
+<td class="c-kalem"><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span><div class="varyant-alan" hidden></div>{{ f.varyant }}</div><div class="hesap-alani">{{ f.hesap }}</div><div class="demirbas-alani">{{ f.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="donem-alani"><label class="donem-etiket">{{ f.donemsel }} Dönemsel gider (180)</label><div class="donem-alanlar">{{ f.donem_grup }}<div class="donem-tarih"><span>Başlangıç</span>{{ f.donem_baslangic }}<span>Bitiş</span>{{ f.donem_bitis }}</div>{{ f.donem_aciklama }}{{ f.donem_hesap }}</div></div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+<td class="c-proje"><div class="proje-alani">{{ f.yatirim_projesi }}{{ f.varlik_adi }}</div></td>
+<td class="c-miktar sag">{{ f.miktar }}<span class="birim-etiket cevrim-etiket"></span></td>
+<td class="c-birim"><span class="birim-goster">—</span></td>
+<td class="c-fiyat sag">{{ f.birim_fiyat }}</td>
+<td class="c-kdv"><div class="kdv-secim">{{ f.kdv }}</div><span class="kdv-oto mono">—</span></td>
+<td class="c-tev">{{ f.tevkifat }}</td>
+<td class="c-matrah sag mono"><span class="sat-matrah">—</span></td>
+<td class="c-skdv sag mono"><span class="sat-kdv">—</span></td>
+<td class="c-stoplam sag mono"><span class="sat-toplam">—</span><span class="birim-etiket sat-tl"></span></td>
+<td class="c-islem"><button type="button" class="satir-kopya" title="Satırı kopyala">⧉</button><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>

@@ -111,7 +111,7 @@
       {% for s in satirlar %}
       <tr data-href="{% url 'core:fatura_detay' s.pk %}">
         <td class="mono"><a class="satir-bag" href="{% url 'core:fatura_detay' s.pk %}">{{ s.tarih|date:"d.m.Y" }}</a></td>
-        <td class="ft-no mono">{{ s.fatura_no|default:"—" }}{% if s.taslak %}<span class="ft-rozet-kucuk">Taslak</span>{% endif %}</td>
+        <td class="ft-no mono">{% if s.faturasiz %}<span class="ft-rozet-kucuk" style="margin-left:0" title="Belge no yok (faturasız)">Faturasız</span>{% else %}{{ s.fatura_no|default:"—" }}{% endif %}{% if s.taslak %}<span class="ft-rozet-kucuk">Taslak</span>{% endif %}</td>
         <td><span class="ft-cari" title="{{ s.cari_unvan }}">{{ s.cari_kisa }}</span></td>
         <td><span class="ft-tip {{ s.tip_css }}" title="{{ s.tip_ad }}">{{ s.tip_etiket }}</span>{% if s.sahsi %}<span class="ft-rozet-kucuk">👤 Şahsi</span>{% endif %}{% if s.satir_alt %}<span class="ft-alt">{{ s.satir_alt }}</span>{% endif %}</td>
         <td class="sag mono">{% if s.matrah_tl is not None %}{{ s.matrah_tl|tr_kur:2 }}{% else %}—{% endif %}</td>

@@ -247,6 +247,8 @@ urlpatterns = [
     path("cariler/<int:pk>/kesinti/<int:fis_pk>/duzenle/", views.cari_kesinti_duzenle, name="cari_kesinti_duzenle"),
     path("cariler/<int:pk>/kesinti/<int:fis_pk>/sil/", views.cari_kesinti_sil, name="cari_kesinti_sil"),
     path("cariler/<int:pk>/vade/", views.cari_vade_api, name="cari_vade_api"),
+    path("cariler/<int:pk>/fatura-bilgi/", views.cari_fatura_bilgi_api, name="cari_fatura_bilgi_api"),
+    path("faturalar/no-kontrol/", views.fatura_no_kontrol_api, name="fatura_no_kontrol_api"),
     # FİNANS modülü
     path("finans/", views.finans_ozeti, name="finans_ozet"),
     path("finans/kasa/", views.kasalar, name="kasalar"),

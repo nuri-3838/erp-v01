@@ -1282,7 +1282,7 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
             "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28",
-            "para_birimi": "TRY", "depo": "",
+            "para_birimi": "TRY", "faturasiz": "on", "depo": "",
             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
             "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50",
@@ -1297,6 +1297,35 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         self.assertContains(d, "Faturaya Dönüştü")                 # hero rozeti
         rl = self.client.get(reverse("core:satis_siparisleri"))
         self.assertContains(rl, "Faturaya Dönüştü")                # liste rozeti
+
+    def test_post_dosya_ek_ve_mukerrer_onayi_ayni_formdan(self):
+        """Sipariş→fatura formu ekle/düzenle ile AYNI şablon/akış: PDF eki faturaya yazılır, XML reddedilir; mükerrer no uyarı + onayla geçer."""
+        import shutil
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from core.models import Fatura, FaturaEk
+        from core.tests.ik_yardimci import PDF_BAYT
+        ozel = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, ozel, True)
+        sip = self._siparis()
+        self.client.force_login(self.yon)
+        veri = {"tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "fatura_no": "SF-1", "depo": "",
+                "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0", "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
+                "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50"}
+        with override_settings(IK_OZEL_DIR=ozel):
+            r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]),
+                                 {**veri, "dosyalar": [SimpleUploadedFile("x.xml", b"<x/>")]})
+            self.assertContains(r, "XML dosyaları ek olarak kabul edilmiyor")
+            self.assertContains(r, "ek dosyaları tekrar seçin")
+            self.assertEqual(Fatura.objects.count(), 0)
+            r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {**veri, "dosyalar": [SimpleUploadedFile("f.pdf", PDF_BAYT)]})
+            fatura = Fatura.objects.get(cari=self.musteri, tip=self.satis_tip)
+            self.assertRedirects(r, reverse("core:fatura_detay", args=[fatura.pk]))
+            self.assertEqual([e.orijinal_ad for e in FaturaEk.objects.filter(fatura=fatura)], ["f.pdf"])
+            sip2 = self._siparis()                                                                       # aynı no ile ikinci fatura: uyarı + onay
+            r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip2.pk]), veri)
+            self.assertContains(r, "Bu fatura zaten kayıtlı")
+            r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip2.pk]), {**veri, "mukerrer_onay": "on"})
+            self.assertEqual(r.status_code, 302)
 
     def test_taslak_siparis_faturaya_cevrilemez(self):
         import datetime
@@ -1316,7 +1345,7 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         self.client.force_login(self.yon)
         self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
             "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28",
-            "para_birimi": "TRY", "depo": "",
+            "para_birimi": "TRY", "faturasiz": "on", "depo": "",
             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
             "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50",
@@ -1363,7 +1392,7 @@ class TeklifSiparisFaturayaCevirTest(TestCase):
         self.assertContains(d0, reverse("core:siparis_faturaya_cevir", args=[sip.pk]))
         self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
             "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28",
-            "para_birimi": "TRY", "depo": "",
+            "para_birimi": "TRY", "faturasiz": "on", "depo": "",
             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
             "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.stok.pk, "form-0-miktar": "3", "form-0-birim_fiyat": "50",

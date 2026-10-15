@@ -55,7 +55,7 @@ class KapanisTaban(TestCase):
 
     def fatura_kes(self, sip, miktar="3", depo=True):
         r = self.client.post(reverse("core:siparis_faturaya_cevir", args=[sip.pk]), {
-            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "depo": self.depo.pk if depo else "",
+            "tip": self.satis_tip.pk, "cari": self.musteri.pk, "tarih": "2026-06-28", "para_birimi": "TRY", "faturasiz": "on", "depo": self.depo.pk if depo else "",
             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0", "form-MIN_NUM_FORMS": "1", "form-MAX_NUM_FORMS": "1000",
             "form-0-stok": self.stok.pk, "form-0-miktar": miktar, "form-0-birim_fiyat": "50"}, follow=True)
         sip.refresh_from_db()

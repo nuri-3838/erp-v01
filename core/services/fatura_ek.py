@@ -32,9 +32,9 @@ def ek_listele(fatura: Fatura):
     return FaturaEk.objects.filter(fatura=fatura, silindi=False)
 
 
-def dosya_hazirla(dosya):
-    """Yüklenen dosyayı doğrular ve saklanacak hale getirir -> (saklanan dosya, özgün ad). Fatura ve irsaliye ekleri ortak kullanır:
-    uzantı beyaz listesi (XML reddedilir) + 10 MB + içerik imzası; resim WebP'ye küçültülür, PDF aynen. Hata: FaturaEkHatasi."""
+def dosya_kontrol(dosya):
+    """Yüklenen dosyayı YALNIZ doğrular (dönüştürmez; kayıt öncesi form kontrolü için) -> (özgün ad, uzantı). Kurallar ``dosya_hazirla`` ile aynı: uzantı beyaz listesi
+    (XML reddedilir) + 10 MB + içerik imzası (PDF ``%PDF-``, resim Pillow ile çözülebilir). Hata: FaturaEkHatasi."""
     if dosya is None:
         raise FaturaEkHatasi("Dosya seçilmedi.")
     ad = os.path.basename(getattr(dosya, "name", "") or "dosya")
@@ -52,19 +52,30 @@ def dosya_hazirla(dosya):
         dosya.seek(0)
         if b"%PDF-" not in bas:
             raise FaturaEkHatasi(f"Geçersiz PDF dosyası: {ad}")
-        saklanan = dosya
     else:
         try:
             with Image.open(dosya) as im:
                 if im.format not in _RESIM_FORMATLARI:
                     raise ValueError("izinsiz resim biçimi")
                 im.verify()
-            dosya.seek(0)
-            saklanan = gorsel.kucult_webp(
-                dosya, max_kenar=RESIM_MAKS_KENAR, kalite=RESIM_KALITE, ad="fatura_ek",
-                duzelt_yon=True)
         except Exception:
             raise FaturaEkHatasi(f"Geçersiz resim dosyası: {ad}")
+        finally:
+            dosya.seek(0)
+    return ad, uz
+
+
+def dosya_hazirla(dosya):
+    """Yüklenen dosyayı doğrular (``dosya_kontrol``) ve saklanacak hale getirir -> (saklanan dosya, özgün ad). Fatura ve irsaliye ekleri ortak kullanır:
+    resim WebP'ye küçültülür, PDF aynen saklanır. Hata: FaturaEkHatasi."""
+    ad, uz = dosya_kontrol(dosya)
+    if uz == ".pdf":
+        return dosya, ad
+    try:
+        saklanan = gorsel.kucult_webp(
+            dosya, max_kenar=RESIM_MAKS_KENAR, kalite=RESIM_KALITE, ad="fatura_ek", duzelt_yon=True)
+    except Exception:
+        raise FaturaEkHatasi(f"Geçersiz resim dosyası: {ad}")
     return saklanan, ad
 
 

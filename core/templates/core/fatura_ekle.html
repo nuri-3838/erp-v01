@@ -1,6 +1,7 @@
 {% extends "core/base.html" %}
 {% block baslik %}{{ baslik|default:"Yeni Fatura" }} · ERP v0.1{% endblock %}
 {% block sayfa_adi %}{{ baslik|default:"Yeni Fatura" }}{% endblock %}
+{% block govde_sinif %}govde-tam{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
@@ -10,23 +11,78 @@
 {{ tip_gider|json_script:"tip-gider" }}
 {{ tip_stopajli|json_script:"tip-stopajli" }}
 {{ tip_karma|json_script:"tip-karma" }}
+{{ tip_yalniz_kdv|json_script:"tip-yalniz-kdv" }}
 {{ stok_cevrim|json_script:"stok-cevrim" }}
+{{ stok_birim|json_script:"stok-birim" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
 {{ yon|json_script:"fatura-yon" }}
 {{ demirbas_bilgi|json_script:"demirbas-bilgi" }}
 {{ tevkifat_oran|json_script:"tevkifat-oran" }}
+{{ tevkifat_pp|json_script:"tevkifat-pp" }}
+{{ mevcut_ekler|json_script:"mevcut-ekler" }}
 <style>
-  .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
+  .birim-etiket { display:block; font-size:.72rem; color:var(--metin-soluk); margin-top:.12rem; }
   .cevrim-etiket.asiri { color:var(--hata); font-weight:700; }
-  .satir-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
-    font-size:.95rem; padding:.2rem .5rem; border-radius:8px; transition:background .12s,color .12s; }
+  .satir-sil, .satir-kopya { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
+    font-size:.95rem; padding:.2rem .4rem; border-radius:8px; transition:background .12s,color .12s; }
   .satir-sil:hover { color:var(--hata); background:rgba(200,40,60,.08); }
+  .satir-kopya:hover { color:var(--lacivert); background:rgba(20,40,80,.08); }
   .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
   .kur-etiket.hata { color:var(--hata); }
-  .tl-etiket { display:block; font-size:.72rem; font-weight:400; color:var(--metin-soluk);
-    text-transform:none; letter-spacing:0; margin-top:.15rem; }
-  .tablo-kapsayici.genis > table#fatura-satir-tablo { min-width:700px; }
+
+  /* --- Sayfa düzeni: PDF eki varsa (seçildi / mevcut) geniş ekranda form solda, önizleme sağda; dar ekranda önizleme altta, katlanabilir --- */
+  .fb-genis { max-width:none; }
+  .fb-form { display:block; }
+  .fb-form.pdf-var { display:grid; grid-template-columns:minmax(0,1fr); gap:1rem; align-items:start; }
+  @media (min-width:1280px) { .fb-form.pdf-var { grid-template-columns:minmax(0,2fr) minmax(340px,1fr); } .fb-form.pdf-var .fb-sag { position:sticky; top:.8rem; } }
+  .fb-sol { display:flex; flex-direction:column; gap:1.1rem; min-width:0; }
+  .fb-sag { display:none; background:rgba(255,255,255,.75); border:1px solid var(--cizgi-koyu); border-radius:16px; padding:.5rem .8rem .8rem; }
+  .fb-form.pdf-var .fb-sag { display:block; }
+  .fb-sag summary { font-weight:700; cursor:pointer; color:var(--lacivert); padding:.35rem 0; }
+  .fb-ek-liste { display:flex; flex-wrap:wrap; gap:.35rem; margin:.3rem 0 .5rem; }
+  .fb-ek { display:inline-flex; align-items:center; gap:.35rem; max-width:100%; padding:.2rem .3rem .2rem .6rem; border:1px solid var(--cizgi-koyu); border-radius:999px; background:#fff; font-size:.8rem; cursor:pointer; }
+  .fb-ek.aktif { background:var(--lacivert); color:#fff; border-color:var(--lacivert); }
+  .fb-ek span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:16rem; }
+  .fb-ek button { border:none; background:none; color:inherit; cursor:pointer; opacity:.7; padding:0 .25rem; font-size:.85rem; }
+  .fb-ek button:hover { opacity:1; }
+  .fb-onizleme iframe { width:100%; height:78vh; min-height:420px; border:1px solid var(--cizgi-koyu); border-radius:10px; background:#fff; }
+  .fb-onizleme img { max-width:100%; border-radius:10px; border:1px solid var(--cizgi-koyu); }
+  @media (max-width:1279px) { .fb-onizleme iframe { height:60vh; } }
+  .ek-hata { color:var(--hata); font-size:.84rem; margin-top:.3rem; }
+
+  /* --- Başlık alanı: 12 kolonlu kompakt ızgara (mobilde tek kolon) --- */
+  .fb-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:.7rem .8rem; }
+  .fb-c3 { grid-column:span 3; } .fb-c4 { grid-column:span 4; } .fb-c6 { grid-column:span 6; } .fb-c12 { grid-column:1 / -1; }
+  @media (max-width:900px) { .fb-c3, .fb-c4 { grid-column:span 6; } .fb-c6 { grid-column:1 / -1; } }
+  @media (max-width:600px) { .fb-c3, .fb-c4, .fb-c6 { grid-column:1 / -1; } }
+  .fb-alan { background:rgba(255,255,255,.6); border:1px solid var(--cizgi); border-top:3px solid var(--lacivert); border-radius:12px; padding:.5rem .75rem .65rem; min-width:0; }
+  .fb-alan.vurgu { border-top-color:var(--turuncu); }
+  .fb-alan.alan { margin:0; }
+  .fb-alan label.fb-et { display:block; font-size:.68rem; margin-bottom:.25rem; color:var(--metin-soluk); font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+  .fb-alan input[type=text], .fb-alan input[type=date], .fb-alan select, .fb-alan textarea { background:#fff; width:100%; box-sizing:border-box; }
+  .fb-alan textarea { resize:vertical; min-height:2.3rem; }
+  .cari-bilgi { margin-top:.3rem; font-size:.76rem; color:var(--metin-soluk); line-height:1.35; min-height:1rem; }
+  .cari-bilgi b { color:var(--metin); }
+  .faturasiz-etiket { display:inline-flex; align-items:center; gap:.35rem; margin-top:.35rem; font-size:.78rem; color:var(--metin-soluk); text-transform:none; letter-spacing:0; font-weight:600; cursor:pointer; }
+  .mukerrer-uyari { margin-top:.45rem; padding:.4rem .6rem; border-radius:10px; background:#fff1dc; border:1px solid #f3c27f; color:#8a4b00; font-size:.8rem; display:flex; flex-wrap:wrap; gap:.4rem .8rem; align-items:center; }
+  .mukerrer-uyari[hidden] { display:none; }
+  .mukerrer-uyari label { display:inline-flex; align-items:center; gap:.3rem; font-weight:700; cursor:pointer; text-transform:none; letter-spacing:0; }
+
+  /* --- Kalemler tablosu --- */
+  .tablo-kapsayici.genis > table#fatura-satir-tablo { min-width:980px; table-layout:auto; }
+  #fatura-satir-tablo th, #fatura-satir-tablo td { padding:.4rem .45rem; vertical-align:top; font-size:.84rem; }
+  #fatura-satir-tablo th { font-size:.68rem; white-space:nowrap; }
+  #fatura-satir-tablo td input[type=text], #fatura-satir-tablo td select { font-size:.84rem; }
+  #fatura-satir-tablo .c-tur { width:70px; min-width:70px; } #fatura-satir-tablo .c-kalem { min-width:210px; } #fatura-satir-tablo .c-miktar { width:92px; min-width:92px; } #fatura-satir-tablo .c-birim { width:52px; min-width:46px; white-space:nowrap; }
+  #fatura-satir-tablo .c-fiyat { width:108px; min-width:108px; } #fatura-satir-tablo .c-kdv { width:76px; min-width:76px; } #fatura-satir-tablo .c-tev { width:120px; min-width:120px; }
+  #fatura-satir-tablo .c-matrah, #fatura-satir-tablo .c-skdv { width:92px; min-width:92px; white-space:nowrap; } #fatura-satir-tablo .c-stoplam { width:112px; min-width:112px; white-space:nowrap; } #fatura-satir-tablo .c-islem { width:64px; min-width:64px; white-space:nowrap; }
+  #fatura-satir-tablo .c-proje, #fatura-satir-tablo .th-proje { display:none; width:170px; }
+  #fatura-satir-tablo.proje-var .c-proje, #fatura-satir-tablo.proje-var .th-proje { display:table-cell; }
+  .tur-sabit { display:inline-block; padding:.1rem .45rem; border-radius:999px; background:#eef1f7; color:#5b6678; font-size:.74rem; font-weight:700; margin-top:.3rem; }
+  .kdv-oto { display:inline-block; margin-top:.35rem; font-size:.84rem; }
+  .sat-tl { text-align:right; }
+  #fatura-satir-tablo tbody tr:hover { background:rgba(10,40,70,.035); }
   /* GİDER faturası modu (fatura tipi "gider" işaretliyse JS tabloya .gider-modu ekler):
      Stok kutusu yerine gider hesabı kutusu + satırda KDV seçimi görünür. Görünürlük CLASS ile
      yönetilir ([hidden] özniteliği display'i olan sınıflarca ezilebildiği için). */
@@ -35,31 +91,29 @@
   #fatura-satir-tablo.gider-modu .stok-alani, #fatura-satir-tablo.gider-modu .th-stok { display:none; }
   #fatura-satir-tablo.gider-modu .hesap-alani, #fatura-satir-tablo.gider-modu .kdv-secim { display:block; }
   #fatura-satir-tablo.gider-modu .th-hesap { display:inline; }
-  /* SATIŞ faturası: satır türü (Stok / Hesap satırı / Demirbaş satışı) — satır başına; JS tabloya .satis-modu ekler. */
+  #fatura-satir-tablo.gider-modu .kdv-oto { display:none; }
+  /* SATIŞ faturası: satır türü (Stok / Hesap satırı / Demirbaş satışı) — satır başına; JS tabloya .satis-modu ekler (karma ALIŞ'ta da). */
   .tur-alani, .demirbas-alani, .th-satis { display:none; }
   #fatura-satir-tablo.satis-modu:not(.gider-modu) .tur-alani { display:block; margin-bottom:.3rem; }
+  #fatura-satir-tablo.satis-modu:not(.gider-modu) .tur-sabit { display:none; }
   #fatura-satir-tablo.satis-modu:not(.gider-modu) .th-satis { display:inline; }
   #fatura-satir-tablo.satis-modu:not(.gider-modu) .th-stok { display:none; }
-  .tur-alani select { width:100%; font-size:.82rem; }
+  .tur-alani select { width:100%; font-size:.8rem; }
   #fatura-satir-tablo tr.satir-form.tur-hesap .stok-alani, #fatura-satir-tablo tr.satir-form.tur-demirbas .stok-alani { display:none; }
   #fatura-satir-tablo tr.satir-form.tur-hesap .hesap-alani { display:block; }
   #fatura-satir-tablo tr.satir-form.tur-demirbas .hesap-alani { display:none; }
   #fatura-satir-tablo tr.satir-form.tur-demirbas .demirbas-alani { display:block; }
   #fatura-satir-tablo tr.satir-form.tur-hesap .kdv-secim, #fatura-satir-tablo tr.satir-form.tur-demirbas .kdv-secim { display:block; }
+  #fatura-satir-tablo tr.satir-form.tur-hesap .kdv-oto, #fatura-satir-tablo tr.satir-form.tur-demirbas .kdv-oto { display:none; }
   /* KARMA ALIŞ (ALIŞ FATURASI / İHRAÇ KAYITLI): satır türü seçicisi (Stok / Hesap satırı) satış faturasıyla aynı mekanikle; hesap satırında dönemsel gider de açılır. */
   #fatura-satir-tablo.karma-modu:not(.gider-modu) tr.satir-form.tur-hesap .donem-alani { display:block; }
-  .kdv-secim { margin-bottom:.3rem; }
-  .kdv-secim select { width:100%; font-size:.82rem; }
-  /* Tevkifat seçici her iki modda da (stoklu + gider) görünür — stokluda stok kartından
-     ön-dolar ama değiştirilebilir; gider/duran varlık kaleminde elle seçilir. */
-  .tevkifat-secim { margin-bottom:.3rem; }
-  .tevkifat-secim select { width:100%; font-size:.82rem; }
-  /* Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa görünür (JS: satır
-     class'ına .duran-varlik eklenir) — 258'de zorunlu, 253/254/255/260'ta opsiyonel. */
-  .proje-alani { display:none; margin-top:.3rem; }
+  .kdv-secim select { width:100%; font-size:.8rem; }
+  .c-tev select { width:100%; font-size:.8rem; }
+  /* Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa görünür (JS: satır class'ına .duran-varlik eklenir) — 258'de zorunlu, 253/254/255/260'ta opsiyonel. */
+  .proje-alani { display:none; }
   tr.satir-form.duran-varlik .proje-alani { display:block; }
-  .proje-alani select { width:100%; font-size:.82rem; }
-  .proje-alani input[type=text] { width:100%; font-size:.82rem; margin-top:.25rem; }
+  .proje-alani select { width:100%; font-size:.8rem; }
+  .proje-alani input[type=text] { width:100%; font-size:.8rem; margin-top:.25rem; }
   /* Dönemsel gider (180): yalnız GİDER modunda (şahsi alış hariç) onay kutusu; işaretlenince grup + dönem + açıklama alanları açılır. */
   .donem-alani { display:none; margin-top:.35rem; font-size:.8rem; }
   #fatura-satir-tablo.gider-modu:not(.sahsi-modu) .donem-alani { display:block; }
@@ -69,34 +123,24 @@
   .donem-tarih { display:flex; gap:.3rem; align-items:center; margin-top:.2rem; flex-wrap:wrap; }
   .donem-tarih input { width:auto; font-size:.8rem; }
   .donem-etiket { cursor:pointer; }
-  /* Ortak adına (şahsi) alış: yalnız GİDER modunda görünür (bkz. #sahsi-blok JS toggle).
-     İşaretlenince kalemlerde "Gider Hesabı" sütunu gizlenir, yerine sabit not gösterilir. */
+  /* Ortak adına (şahsi) alış: yalnız GİDER modunda görünür (bkz. #sahsi-blok JS toggle). */
   #sahsi-blok { display:none; }
   #fatura-satir-tablo.gider-modu.sahsi-modu .hesap-alani { display:none; }
   .sahsi-not { display:none; font-size:.78rem; color:var(--metin-soluk); }
   #fatura-satir-tablo.sahsi-modu .sahsi-not { display:block; }
+  .satir-alt { margin-top:.7rem; display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
+  .satir-alt .yardim { margin:0; }
 
-  /* Fatura Bilgileri — kart tabanlı düzen (bkz. satis_teklif_ekle.html .bb-* deseni) */
-  .bb-blok { display:flex; flex-direction:column; gap:.85rem; }
-  .bb-satir { display:flex; gap:.9rem; flex-wrap:wrap; }
-  .bb-alan { flex:1 1 0; min-width:190px; background:rgba(255,255,255,.6);
-    border:1px solid var(--cizgi); border-top:3px solid var(--lacivert); border-radius:14px;
-    padding:.7rem .95rem .85rem; }
-  .bb-alan.bb-vurgu { border-top-color:var(--turuncu); }
-  .bb-alan.bb-tam { flex:1 1 100%; }
-  .bb-alan label { display:block; font-size:.7rem; margin-bottom:.35rem; color:var(--metin-soluk);
-    font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
-  .bb-alan input, .bb-alan select, .bb-alan textarea { background:#fff; }
-  .bb-alan textarea { resize:vertical; min-height:2.3rem; }
-  @media (max-width:680px){ .bb-alan { min-width:100%; } }
-
-  /* Kalemler tablosu — hover + okunabilirlik */
-  #fatura-satir-tablo tbody tr:hover { background:rgba(10,40,70,.035); }
-  #fatura-satir-tablo tfoot th.deger { font-weight:800; color:var(--lacivert); }
-  #fatura-satir-tablo tfoot tr:last-child th { font-size:1.02rem; color:var(--turuncu-koyu); }
-  .satir-alt { margin-top:.7rem; }
+  /* --- Alt toplam kutusu (sağda, hizalı) --- */
+  .fb-toplam-kap { display:flex; justify-content:flex-end; margin-top:.9rem; }
+  .fb-toplam { width:min(100%,360px); background:rgba(255,255,255,.85); border:1px solid var(--cizgi-koyu); border-radius:14px; padding:.6rem .9rem; }
+  .ft-s { display:flex; justify-content:space-between; gap:1rem; padding:.18rem 0; font-size:.9rem; }
+  .ft-s b { font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; }
+  .ft-s.alt { font-size:.8rem; color:var(--metin-soluk); padding-left:.8rem; }
+  .ft-s.genel { border-top:1px solid var(--cizgi-koyu); margin-top:.3rem; padding-top:.45rem; font-size:1.05rem; font-weight:800; color:var(--turuncu-koyu); }
+  .ft-tl { text-align:right; font-size:.8rem; color:var(--metin-soluk); min-height:.9rem; }
 </style>
-<div class="form-kapsa">
+<div class="form-kapsa fb-genis">
   <div class="form-ust">
     <a class="ust-link" href="{{ iptal_url|default:'/faturalar/' }}">← Geri</a>
     <h1 class="ust-baslik"><span class="emoji">🧾</span>{{ baslik|default:"Yeni Fatura" }}</h1>
@@ -105,87 +149,92 @@
   {% if fform.non_field_errors %}
     <div class="uyari">{% for e in fform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
   {% endif %}
+  {% if dosya_uyari %}
+    <div class="uyari"><div>📎 Kayıt yapılamadığı için dosya seçiminiz sayfa yenilenirken temizlendi — <b>ek dosyaları tekrar seçin</b>.</div></div>
+  {% endif %}
 
-  <form method="post" id="fatura-form" autocomplete="off">
+  <form method="post" id="fatura-form" class="fb-form{% if mevcut_ekler %} pdf-var{% endif %}" enctype="multipart/form-data" autocomplete="off" data-haric="{{ duzenlenen.pk|default:'' }}">
     {% csrf_token %}
+    <div class="fb-sol">
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Fatura Bilgileri</h2>
-      <div class="bb-blok">
-        <div class="bb-satir">
-          <div class="bb-alan bb-vurgu">
-            <label for="{{ fform.tip.id_for_label }}">{{ fform.tip.label }}</label>
-            {{ fform.tip }}
-            {% for e in fform.tip.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          <div class="bb-alan bb-vurgu">
-            <label for="{{ fform.cari.id_for_label }}">{{ fform.cari.label }}</label>
-            {{ fform.cari }}
-            {% for e in fform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+      <div class="fb-grid">
+        <div class="fb-alan vurgu fb-c4">
+          <label class="fb-et" for="{{ fform.tip.id_for_label }}">{{ fform.tip.label }}</label>
+          {{ fform.tip }}
+          {% for e in fform.tip.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="fb-alan vurgu fb-c4">
+          <label class="fb-et" for="{{ fform.cari.id_for_label }}">{{ fform.cari.label }}</label>
+          {{ fform.cari }}
+          <div class="cari-bilgi" id="cari-bilgi"></div>
+          {% for e in fform.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="fb-alan vurgu fb-c4">
+          <label class="fb-et" for="{{ fform.fatura_no.id_for_label }}">{{ fform.fatura_no.label }} *</label>
+          {{ fform.fatura_no }}
+          <label class="faturasiz-etiket">{{ fform.faturasiz }} {{ fform.faturasiz.label }}</label>
+          {% for e in fform.fatura_no.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <div class="mukerrer-uyari" id="mukerrer-uyari"{% if not mukerrer_fatura %} hidden{% endif %}>
+            <span>⚠ Bu cari için aynı numaralı fatura zaten kayıtlı — <a id="mukerrer-link" href="{% if mukerrer_fatura %}{% url 'core:fatura_detay' mukerrer_fatura.pk %}{% endif %}" target="_blank" rel="noopener">faturayı aç</a></span>
+            <label>{{ fform.mukerrer_onay }} Yine de kaydet</label>
           </div>
         </div>
-        <div class="bb-satir">
-          <div class="bb-alan">
-            <label for="{{ fform.tarih.id_for_label }}">{{ fform.tarih.label }}</label>
-            {{ fform.tarih }}
-            {% for e in fform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          <div class="bb-alan">
-            <label for="{{ fform.fatura_no.id_for_label }}">{{ fform.fatura_no.label }}</label>
-            {{ fform.fatura_no }}
-            {% for e in fform.fatura_no.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          <div class="bb-alan alan">
-            <label for="{{ fform.depo.id_for_label }}">{{ fform.depo.label }}</label>
-            {{ fform.depo }}
-            {% for e in fform.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-            <p class="yardim" style="margin:.25rem 0 0">Hizmet kategorisindeki kalemler depoya girmez; faturada yalnız hizmet kalemi varsa depo yok sayılır (boş bırakılabilir).</p>
-          </div>
+        <div class="fb-alan fb-c4">
+          <label class="fb-et" for="{{ fform.tarih.id_for_label }}">{{ fform.tarih.label }}</label>
+          {{ fform.tarih }}
+          {% for e in fform.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="bb-satir">
-          <div class="bb-alan">
-            <label for="{{ fform.vade_tarihi.id_for_label }}">{{ fform.vade_tarihi.label }}</label>
-            {{ fform.vade_tarihi }}
-            <span class="yardim" id="vade-oto-etiket"></span>
-            {% for e in fform.vade_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          <div class="bb-alan">
-            <label for="{{ fform.para_birimi.id_for_label }}">{{ fform.para_birimi.label }}</label>
-            {{ fform.para_birimi }}
-            {% for e in fform.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          <div class="bb-alan alan">
-            <label for="{{ fform.kur.id_for_label }}">{{ fform.kur.label }}</label>
-            {{ fform.kur }}
-            <span class="kur-etiket" id="kur-etiket"></span>
-            {% for e in fform.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
+        <div class="fb-alan fb-c4">
+          <label class="fb-et" for="{{ fform.vade_tarihi.id_for_label }}">{{ fform.vade_tarihi.label }}</label>
+          {{ fform.vade_tarihi }}
+          <span class="yardim" id="vade-oto-etiket"></span>
+          {% for e in fform.vade_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="bb-satir">
-          <div class="bb-alan bb-tam">
-            <label for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
-            {{ fform.aciklama }}
-            {% for e in fform.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
+        <div class="fb-alan alan fb-c4">
+          <label class="fb-et" for="{{ fform.depo.id_for_label }}">{{ fform.depo.label }}</label>
+          {{ fform.depo }}
+          {% for e in fform.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" style="margin:.25rem 0 0;font-size:.72rem">Hizmet kalemleri depoya girmez; yalnız hizmet varsa boş bırakılabilir.</p>
         </div>
-        <div class="bb-satir" id="stopaj-blok" style="display:none">
-          <div class="bb-alan">
-            <label for="{{ fform.gv_stopaj_orani.id_for_label }}">{{ fform.gv_stopaj_orani.label }}</label>
-            {{ fform.gv_stopaj_orani }}
-            {% for e in fform.gv_stopaj_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
+        <div class="fb-alan fb-c3">
+          <label class="fb-et" for="{{ fform.para_birimi.id_for_label }}">{{ fform.para_birimi.label }}</label>
+          {{ fform.para_birimi }}
+          {% for e in fform.para_birimi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
-        <div class="bb-satir" id="sahsi-blok">
-          <div class="bb-alan">
-            <label for="{{ fform.sahsi_alis.id_for_label }}">{{ fform.sahsi_alis }} {{ fform.sahsi_alis.label }}</label>
-            {% for e in fform.sahsi_alis.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          <div class="bb-alan" id="sahsi-ortak-alan">
-            <label for="{{ fform.sahsi_ortak.id_for_label }}">{{ fform.sahsi_ortak.label }}</label>
-            {{ fform.sahsi_ortak }}
-            {% for e in fform.sahsi_ortak.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
+        <div class="fb-alan alan fb-c3">
+          <label class="fb-et" for="{{ fform.kur.id_for_label }}">{{ fform.kur.label }}</label>
+          {{ fform.kur }}
+          <span class="kur-etiket" id="kur-etiket"></span>
+          {% for e in fform.kur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="fb-alan fb-c6">
+          <label class="fb-et" for="{{ fform.aciklama.id_for_label }}">{{ fform.aciklama.label }}</label>
+          {{ fform.aciklama }}
+          {% for e in fform.aciklama.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="fb-alan fb-c4" id="stopaj-blok" style="display:none">
+          <label class="fb-et" for="{{ fform.gv_stopaj_orani.id_for_label }}">{{ fform.gv_stopaj_orani.label }}</label>
+          {{ fform.gv_stopaj_orani }}
+          {% for e in fform.gv_stopaj_orani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="fb-alan fb-c4" id="sahsi-blok">
+          <label class="fb-et" for="{{ fform.sahsi_alis.id_for_label }}">{{ fform.sahsi_alis }} {{ fform.sahsi_alis.label }}</label>
+          {% for e in fform.sahsi_alis.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="fb-alan fb-c4" id="sahsi-ortak-alan">
+          <label class="fb-et" for="{{ fform.sahsi_ortak.id_for_label }}">{{ fform.sahsi_ortak.label }}</label>
+          {{ fform.sahsi_ortak }}
+          {% for e in fform.sahsi_ortak.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
       </div>
+    </section>
+
+    <section class="icerik-kart" id="ek-bolum">
+      <h2 class="bolum-baslik">📎 Fatura PDF'i / ekler</h2>
+      <input type="file" id="ek-dosya" name="dosyalar" multiple accept="application/pdf,image/*">
+      <div class="yardim">Yalnız PDF veya resim (XML kabul edilmez), dosya başına en fazla 10 MB; birden fazla seçilebilir. Seçilen PDF yanda önizlenir — faturayı PDF'e bakarak girebilirsiniz. Kayıtta dosyalar faturaya ek olarak eklenir.</div>
+      <div class="ek-hata" id="ek-hata"></div>
     </section>
 
     {{ formset.management_form }}
@@ -197,51 +246,54 @@
       <h2 class="bolum-baslik">Kalemler</h2>
       <div class="tablo-kapsayici genis">
       <table class="satir-tablo" id="fatura-satir-tablo">
-        <colgroup><col style="width:41%"><col style="width:15%"><col style="width:18%">
-          <col style="width:19%"><col style="width:7%"></colgroup>
         <thead><tr>
+          <th>Tür</th>
           <th><span class="th-stok">Stok</span><span class="th-hesap">Gider Hesabı</span><span class="th-satis">{% if yon == "SATIS" %}Kalem (stok · hesap · demirbaş){% else %}Kalem (stok · hesap){% endif %}</span></th>
-          <th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
-          <th class="sag">Tutar</th><th></th>
+          <th class="th-proje">Yatırım projesi</th>
+          <th class="sag">Miktar</th><th>Birim</th><th class="sag">Birim fiyat</th><th>KDV %</th><th>Tevkifat</th>
+          <th class="sag">Matrah</th><th class="sag">KDV</th><th class="sag">Satır toplamı</th><th></th>
         </tr></thead>
         <tbody id="satir-govde">
           {% for f in formset %}
-            <tr class="satir-form">
-              <td><div class="tur-alani">{{ f.tur }}</div><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span><div class="varyant-alan" hidden></div>{{ f.varyant }}</div><div class="hesap-alani">{{ f.hesap }}</div><div class="demirbas-alani">{{ f.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ f.yatirim_projesi }}{{ f.varlik_adi }}</div><div class="donem-alani"><label class="donem-etiket">{{ f.donemsel }} Dönemsel gider (180)</label><div class="donem-alanlar">{{ f.donem_grup }}<div class="donem-tarih"><span>Başlangıç</span>{{ f.donem_baslangic }}<span>Bitiş</span>{{ f.donem_bitis }}</div>{{ f.donem_aciklama }}{{ f.donem_hesap }}</div></div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
-              <td class="sag">{{ f.miktar }}<span class="birim-etiket cevrim-etiket"></span></td>
-              <td class="sag">{{ f.birim_fiyat }}</td>
-              <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tevkifat-secim">{{ f.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
-              <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
-            </tr>
+            <tr class="satir-form">{% include "core/_fatura_satir_hucreler.html" with f=f %}</tr>
           {% endfor %}
         </tbody>
-        <tfoot>
-          <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag deger" id="tMal">0,00</th><th></th></tr>
-          <tr><th colspan="3" class="sag">KDV</th><th class="sag deger" id="tKdv">0,00</th><th></th></tr>
-          <tr><th colspan="3" class="sag">Tevkifat (−)</th><th class="sag deger" id="tTev">0,00</th><th></th></tr>
-          <tr id="stopaj-satir" style="display:none"><th colspan="3" class="sag">GV Stopajı (−)</th><th class="sag deger" id="tStopaj">0,00</th><th></th></tr>
-          <tr><th colspan="3" class="sag">Ödenecek</th>
-            <th class="sag deger" id="tGenel"><span id="tGenelDeger">0,00</span><span class="birim-etiket tl-etiket" id="tGenelTl"></span></th><th></th></tr>
-        </tfoot>
       </table>
       </div>
       <div class="satir-alt">
         <button type="button" id="satir-ekle" class="dugme-ikincil">+ Kalem ekle</button>
+        <span class="yardim">İpucu: bir kalem alanındayken <b>Enter</b> yeni satır açar; ⧉ satırı kopyalar.</span>
+      </div>
+
+      <div class="fb-toplam-kap">
+        <div class="fb-toplam" id="fb-toplam">
+          <div class="ft-s"><span>Matrah</span><b id="tMal">0,00</b></div>
+          <div id="kdv-kirilim"></div>
+          <div class="ft-s"><span>KDV toplamı</span><b id="tKdv">0,00</b></div>
+          <div class="ft-s"><span>Tevkifat (−)</span><b id="tTev">0,00</b></div>
+          <div class="ft-s" id="stopaj-satir" style="display:none"><span>GV Stopajı (−)</span><b id="tStopaj">0,00</b></div>
+          <div class="ft-s genel"><span id="genel-etiket">Genel toplam (ödenecek)</span><b id="tGenelDeger">0,00</b></div>
+          <div class="ft-tl" id="tGenelTl"></div>
+          <div class="yardim" id="yalniz-kdv-not" style="display:none;margin:.3rem 0 0">“Yalnız KDV” tipi: matrah faturaya/fişe yazılmaz; toplam = KDV.</div>
+        </div>
       </div>
     </section>
 
     <template id="bos-satir">
-      <td><div class="tur-alani">{{ formset.empty_form.tur }}</div><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span><div class="varyant-alan" hidden></div>{{ formset.empty_form.varyant }}</div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="demirbas-alani">{{ formset.empty_form.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}{{ formset.empty_form.varlik_adi }}</div><div class="donem-alani"><label class="donem-etiket">{{ formset.empty_form.donemsel }} Dönemsel gider (180)</label><div class="donem-alanlar">{{ formset.empty_form.donem_grup }}<div class="donem-tarih"><span>Başlangıç</span>{{ formset.empty_form.donem_baslangic }}<span>Bitiş</span>{{ formset.empty_form.donem_bitis }}</div>{{ formset.empty_form.donem_aciklama }}{{ formset.empty_form.donem_hesap }}</div></div></td>
-      <td class="sag">{{ formset.empty_form.miktar }}<span class="birim-etiket cevrim-etiket"></span></td>
-      <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
-      <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tevkifat-secim">{{ formset.empty_form.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
-      <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
+      {% include "core/_fatura_satir_hucreler.html" with f=formset.empty_form %}
     </template>
 
     <div class="form-altbar">
       <a class="iptal-bag" href="{{ iptal_url|default:'/faturalar/' }}">İptal</a>
       <button type="submit" class="birincil">Faturayı kaydet</button>
     </div>
+    </div>
+
+    <details class="fb-sag" id="pdf-panel" open>
+      <summary>📎 PDF / ek önizleme</summary>
+      <div class="fb-ek-liste" id="pdf-liste"></div>
+      <div class="fb-onizleme" id="pdf-onizleme"><div class="yardim">Önizlemek için bir dosya seçin.</div></div>
+    </details>
   </form>
 </div>
 
@@ -253,17 +305,46 @@
   var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
   var TIP_STOPAJLI = JSON.parse(document.getElementById('tip-stopajli').textContent) || {};
   var TIP_KARMA = JSON.parse(document.getElementById('tip-karma').textContent) || {};
+  var TIP_YKDV = JSON.parse(document.getElementById('tip-yalniz-kdv').textContent) || {};
   var CEVRIM = JSON.parse(document.getElementById('stok-cevrim').textContent) || {};      // stok_id -> {cevirici, uretim, fatura, asiri} (yalnız çevirici != 1 kartlar)
+  var STOK_BIRIM = JSON.parse(document.getElementById('stok-birim').textContent) || {};   // stok_id -> fatura birimi (kısa ad)
   var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
-  var TEVORAN = JSON.parse(document.getElementById('tevkifat-oran').textContent) || {};   // tevkifat_id -> pay/payda
+  var TEVPP = JSON.parse(document.getElementById('tevkifat-pp').textContent) || {};       // tevkifat_id -> [pay, payda]
   var YON = JSON.parse(document.getElementById('fatura-yon').textContent);
   var DEMBILGI = JSON.parse(document.getElementById('demirbas-bilgi').textContent) || {};
+  var MEVCUT_EKLER = JSON.parse(document.getElementById('mevcut-ekler').textContent) || [];
   var KUR_API = '{% url "core:kur_usd_api" %}';
   var VADE_API_TMPL = '{% url "core:cari_vade_api" 999999 %}';   // 999999 -> gerçek cari id
+  var CARI_BILGI_TMPL = '{% url "core:cari_fatura_bilgi_api" 999999 %}';
+  var NO_KONTROL_API = '{% url "core:fatura_no_kontrol_api" %}';
   var kurElleDegisti = false;
   var vadeElleDegisti = false;
   var tablo = document.getElementById('fatura-satir-tablo');
+  var form = document.getElementById('fatura-form');
+
+  // ---------------- Sayı biçimi / TAM TAMSAYI aritmetiği: sunucuyla BİREBİR aynı kuruş yuvarlaması (ROUND_HALF_UP) — kayıtta sunucu yine tek doğru kaynaktır.
+  function bigParse(s, dp){          // TR biçimli metin -> 10^dp ile ölçeklenmiş BigInt (dp'den fazla ondalık varsa yarım yukarı yuvarlanır)
+    s = String(s == null ? '' : s).trim();
+    if(!s) return 0n;
+    if(s.indexOf(',') >= 0){ s = s.replace(/\./g, '').replace(',', '.'); }
+    else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s = s.replace(/\./g, ''); }
+    if(!/^\d*\.?\d*$/.test(s) || s === '' || s === '.') return 0n;
+    var p = s.split('.'), ip = p[0] || '0', fp = p[1] || '';
+    var fazla = fp.length > dp ? fp.charAt(dp) : '';
+    fp = (fp + '000000000000').slice(0, dp);
+    var v = BigInt(ip + fp);
+    if(fazla && fazla >= '5') v += 1n;
+    return v;
+  }
+  function bolYuvarla(n, d){ return (2n * n + d) / (2n * d); }       // n >= 0, d > 0: yarım yukarı bölme
+  function fmtC(c){                  // kuruş (BigInt) -> "1.234,56"
+    var neg = c < 0n; if(neg) c = -c;
+    var s = c.toString(); while(s.length < 3) s = '0' + s;
+    var ip = s.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (neg ? '-' : '') + ip + ',' + s.slice(-2);
+  }
+  function fmtOran(o100){ var v = Number(o100) / 100; return v === Math.floor(v) ? String(v) : v.toLocaleString('tr-TR', {minimumFractionDigits: 1, maximumFractionDigits: 2}); }
   function parseTR(s){ if(!s) return 0; s=String(s).trim();
     if(s.indexOf(',')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
     else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); }
@@ -273,6 +354,7 @@
   function giderMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_GIDER[t.value]); }
   function stopajliMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_STOPAJLI[t.value]); }
   function karmaMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_KARMA[t.value]); }
+  function yalnizKdvMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_YKDV[t.value]); }
   // Satır türü: gider faturasında hep HESAP; satış faturasında ve KARMA ALIŞ tipinde satırdaki seçici (STOK/HESAP[/DEMIRBAS]); diğer alış tiplerinde STOK.
   function satirTuru(r){
     if(giderMi()) return 'HESAP';
@@ -288,6 +370,7 @@
     var tur=satirTuru(r); var gider=giderMi();
     r.classList.toggle('tur-hesap', !gider && tur==='HESAP');
     r.classList.toggle('tur-demirbas', !gider && tur==='DEMIRBAS');
+    var ts=r.querySelector('.tur-sabit'); if(ts) ts.textContent = tur==='HESAP' ? 'Hesap' : (tur==='DEMIRBAS' ? 'Demirbaş' : 'Stok');
     if(temizle && !gider){
       if(tur!=='STOK') alanTemizle(r.querySelector('.stok-alani'));
       if(tur!=='HESAP') alanTemizle(r.querySelector('.hesap-alani'));
@@ -339,11 +422,7 @@
     document.querySelectorAll('.satir-form').forEach(function(r){ turUygula(r, false); });
     hesapla();
   }
-  // Ortak adına (şahsi) alış işaretlenince: kalemlerde "Gider Hesabı" sütunu gizlenir
-  // (yerine sabit not), gizli <select> ise seçilen ORTAK hesabına otomatik set edilir
-  // (form/DB kısıtı "stok veya hesap dolu olmalı" şartını sunucu tarafında da karşılasın
-  // — bkz. core.forms.FaturaSatirForm.hesap queryset'ine eklenen ortak_hesaplari()).
-  // Duran varlık/proje alanları anlamsız kalır (sahsi hesap 131 ailesidir) — temizlenir.
+  // Ortak adına (şahsi) alış işaretlenince: kalemlerde "Gider Hesabı" sütunu gizlenir (yerine sabit not), gizli <select> ortak hesabına otomatik set edilir.
   function sahsiSatirGuncelle(row){
     var hesapSel=el(row,'-hesap'); var ortakSel=document.getElementById('id_sahsi_ortak');
     if(!hesapSel || !ortakSel) return;
@@ -360,70 +439,88 @@
       projeAlaniGuncelle(r);
     });
   }
+  // ---------------- Satır + toplam hesabı (canlı; sunucu ile aynı yuvarlama)
   function hesapla(){
-    var mal=0, kdv=0, tev=0;
-    var gider=giderMi();
+    var malC = 0n, kdvC = 0n, tevC = 0n, malTl = 0n;
+    var kirilim = {};                       // oran*100 -> kuruş
+    var gider = giderMi();
+    var kurInp = document.getElementById('id_kur');
+    var pbSec = document.getElementById('id_para_birimi'); var pb = pbSec ? pbSec.value : 'TRY';
+    var kurX = (pb !== 'TRY' && kurInp) ? bigParse(kurInp.value, 6) : 0n;      // kur, 10^6 ölçekli
+    var tlAcik = pb !== 'TRY' && kurX > 0n;
+    var tl = function(c){ return c < 0n ? -bolYuvarla(-c * kurX, 1000000n) : bolYuvarla(c * kurX, 1000000n); };        // TL karşılığı = tutar × kur (6 hane), kuruşa yarım yukarı
+    var yk = yalnizKdvMi();
     document.querySelectorAll('.satir-form').forEach(function(r){
-      var m=parseTR(el(r,'-miktar')?el(r,'-miktar').value:'');
-      var f=parseTR(el(r,'-birim_fiyat')?el(r,'-birim_fiyat').value:'');
-      var oran;
-      if(gider || satirTuru(r)!=='STOK'){
-        var ks=el(r,'-kdv');
-        oran=(ks&&ks.value&&KDVORAN[ks.value]!=null)?KDVORAN[ks.value]:0;
+      var tur = satirTuru(r);
+      var m = bigParse(el(r,'-miktar') ? el(r,'-miktar').value : '', 3);
+      var f = bigParse(el(r,'-birim_fiyat') ? el(r,'-birim_fiyat').value : '', 6);
+      var oranX100 = 0, stokSel = el(r,'-stok');
+      if(gider || tur !== 'STOK'){
+        var ks = el(r,'-kdv');
+        oranX100 = (ks && ks.value && KDVORAN[ks.value] != null) ? Math.round(KDVORAN[ks.value] * 100) : 0;
       } else {
-        var sel=el(r,'-stok');
-        oran=(sel&&sel.value&&KDV[sel.value]!=null)?KDV[sel.value]:0;
+        oranX100 = (stokSel && stokSel.value && KDV[stokSel.value] != null) ? Math.round(KDV[stokSel.value] * 100) : 0;
       }
-      // Tevkifat oranı — satırın KENDİ tevkifat seçiminden. Üç durum: belirli bir oran
-      // seçiliyse o; "YOK" açıkça seçiliyse 0 (stok kartında tanımlı olsa bile); BOŞ
-      // bırakıldıysa (yalnız stoklu modda anlamlı) stok kartının GÜNCEL oranı önizlenir
-      // — sunucudaki "inherit" davranışıyla aynı (bkz. core.services.fatura._tevkifat_coz).
-      var tevSel=el(r,'-tevkifat');
-      var tevVal=tevSel?tevSel.value:'';
-      var ratio=0;
-      if(tevVal && tevVal!=='YOK' && TEVORAN[tevVal]!=null){
-        ratio=TEVORAN[tevVal];
-      } else if(!tevVal && !gider && satirTuru(r)==='STOK'){
-        var stokSel2=el(r,'-stok');
-        var stokTevId=(stokSel2&&stokSel2.value)?STOK_TEV[stokSel2.value]:null;
-        if(stokTevId!=null && TEVORAN[String(stokTevId)]!=null) ratio=TEVORAN[String(stokTevId)];
+      // Tevkifat — satırın KENDİ seçimi: belirli oran → o; "YOK" → 0; BOŞ (yalnız stoklu satırda) → stok kartının GÜNCEL tevkifatı (sunucudaki "inherit" ile aynı).
+      var tevSel = el(r,'-tevkifat'), tevVal = tevSel ? tevSel.value : '', tevId = null;
+      if(tevVal && tevVal !== 'YOK') tevId = tevVal;
+      else if(!tevVal && !gider && tur === 'STOK'){
+        var sid = (stokSel && stokSel.value) ? STOK_TEV[stokSel.value] : null;
+        if(sid != null) tevId = String(sid);
       }
       // Birim çevrimi notu: kart fatura birimi ≠ üretim birimi ise stoğa girecek üretim miktarı açıkça yazılır; katsayı 1.000 katı aşıyorsa kırmızı uyarı (SAI-2026-0015).
-      var cvEt=r.querySelector('.cevrim-etiket');
+      var cvEt = r.querySelector('.cevrim-etiket');
       if(cvEt){
-        var stokSelC=el(r,'-stok'); var cv=(satirTuru(r)==='STOK' && stokSelC && stokSelC.value)?CEVRIM[stokSelC.value]:null;
-        if(cv && m>0){
-          var uretimM=m/cv.cevirici;
-          cvEt.textContent=(cv.asiri?'⚠ ':'')+fmt(m)+' '+cv.fatura+' = '+uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+cv.uretim+' stoğa girer (çevirici '+cv.cevirici+')'+(cv.asiri?' — birim doğru mu?':'');
+        var cv = (tur === 'STOK' && stokSel && stokSel.value) ? CEVRIM[stokSel.value] : null;
+        var mf = parseTR(el(r,'-miktar') ? el(r,'-miktar').value : '');
+        if(cv && mf > 0){
+          var uretimM = mf / cv.cevirici;
+          cvEt.textContent = (cv.asiri ? '⚠ ' : '') + fmt(mf) + ' ' + cv.fatura + ' = ' + uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3}) + ' ' + cv.uretim + ' stoğa girer (çevirici ' + cv.cevirici + ')' + (cv.asiri ? ' — birim doğru mu?' : '');
           cvEt.classList.toggle('asiri', !!cv.asiri);
-        } else { cvEt.textContent=''; cvEt.classList.remove('asiri'); }
+        } else { cvEt.textContent = ''; cvEt.classList.remove('asiri'); }
       }
-      var tutar=Math.round(m*f*100)/100;
-      var skdv=Math.round(tutar*oran)/100;
-      var stev=Math.round(skdv*ratio*100)/100;
-      var ct=r.querySelector('.tutar'), ck=r.querySelector('.kdv-etiket');
-      if(ct) ct.textContent = tutar>0?fmt(tutar):'—';
-      if(ck) ck.textContent = skdv>0?('KDV: '+fmt(skdv)):'';
-      mal+=tutar; kdv+=skdv; tev+=stev;
+      var tutarC = bolYuvarla(m * f, 10000000n);                                  // miktar(3 hane) × fiyat(6 hane) = 9 hane → kuruş (7 hane at)
+      var skdvC = bolYuvarla(tutarC * BigInt(oranX100), 10000n);
+      var stevC = 0n;
+      if(tevId != null && TEVPP[tevId]) stevC = bolYuvarla(skdvC * BigInt(TEVPP[tevId][0]), BigInt(TEVPP[tevId][1]));
+      var set = function(sel, t){ var e = r.querySelector(sel); if(e) e.textContent = t; };
+      var dolu = (m > 0n && f >= 0n && (el(r,'-birim_fiyat') && el(r,'-birim_fiyat').value.trim() !== ''));
+      set('.sat-matrah', dolu ? fmtC(tutarC) : '—');
+      set('.sat-kdv', dolu ? fmtC(skdvC) : '—');
+      set('.sat-toplam', dolu ? fmtC(tutarC + skdvC) : '—');
+      set('.sat-tl', (dolu && tlAcik) ? ('≈ ' + fmtC(tl(tutarC + skdvC)) + ' TL') : '');
+      set('.kdv-oto', (tur === 'STOK' && stokSel && stokSel.value) ? ('%' + fmtOran(oranX100)) : '—');
+      var bg = r.querySelector('.birim-goster'); if(bg) bg.textContent = (tur === 'STOK' && stokSel && stokSel.value && STOK_BIRIM[stokSel.value]) ? STOK_BIRIM[stokSel.value] : '—';
+      malC += tutarC; kdvC += skdvC; tevC += stevC; malTl += (tlAcik ? tl(tutarC) : 0n);
+      if(skdvC > 0n || oranX100 > 0) kirilim[oranX100] = (kirilim[oranX100] || 0n) + skdvC;
     });
-    var stopaj=0;
+    var stopajC = 0n;
     if(stopajliMi()){
-      var oranInp=document.getElementById('id_gv_stopaj_orani');
-      stopaj=Math.round(mal*parseTR(oranInp?oranInp.value:'')) / 100;
-      stopaj=Math.round(stopaj*100)/100;
+      var oranInp = document.getElementById('id_gv_stopaj_orani');
+      stopajC = bolYuvarla(malC * bigParse(oranInp ? oranInp.value : '', 2), 10000n);
     }
-    var genel=mal+kdv-tev-stopaj;
-    var tSt=document.getElementById('tStopaj'); if(tSt) tSt.textContent=fmt(stopaj);
-    document.getElementById('tMal').textContent=fmt(mal);
-    document.getElementById('tKdv').textContent=fmt(kdv);
-    document.getElementById('tTev').textContent=fmt(tev);
-    document.getElementById('tGenelDeger').textContent=fmt(genel);
-    var pbSec=document.getElementById('id_para_birimi');
-    var pb=pbSec?pbSec.value:'TRY';
-    var kurInp=document.getElementById('id_kur');
-    var kd=kurInp?parseTR(kurInp.value):0;
-    var tl=document.getElementById('tGenelTl');
-    if(tl) tl.textContent = (pb!=='TRY'&&kd) ? ('≈ '+fmt(genel*kd)+' TL') : '';
+    var genelC = yk ? (kdvC - tevC) : (malC + kdvC - tevC - stopajC);
+    document.getElementById('tMal').textContent = yk ? '—' : fmtC(malC);
+    document.getElementById('tKdv').textContent = fmtC(kdvC);
+    document.getElementById('tTev').textContent = fmtC(tevC);
+    var tSt = document.getElementById('tStopaj'); if(tSt) tSt.textContent = fmtC(stopajC);
+    document.getElementById('tGenelDeger').textContent = fmtC(genelC) + (pb !== 'TRY' ? ' ' + pb : '');
+    var kk = document.getElementById('kdv-kirilim');
+    kk.innerHTML = '';
+    Object.keys(kirilim).map(Number).sort(function(a, b){ return a - b; }).forEach(function(o){
+      var d = document.createElement('div'); d.className = 'ft-s alt';
+      d.innerHTML = '<span>KDV %' + fmtOran(o) + '</span><b>' + fmtC(kirilim[o]) + '</b>';
+      kk.appendChild(d);
+    });
+    var gl = document.getElementById('genel-etiket'); if(gl) gl.textContent = yk ? 'Toplam (yalnız KDV)' : 'Genel toplam (ödenecek)';
+    var yn = document.getElementById('yalniz-kdv-not'); if(yn) yn.style.display = yk ? '' : 'none';
+    var tlEt = document.getElementById('tGenelTl');
+    if(tlEt) tlEt.textContent = tlAcik ? ('≈ ' + fmtC(tl(genelC)) + ' TL (kur ' + fmtKur(Number(kurX) / 1e6) + ')') : '';
+    projeKolonGuncelle();
+  }
+  function projeKolonGuncelle(){
+    var var_ = !!document.querySelector('#satir-govde tr.satir-form.duran-varlik');
+    tablo.classList.toggle('proje-var', var_);
   }
   function fmtKur(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:4,maximumFractionDigits:6}); }
   function kurCek(){
@@ -450,7 +547,7 @@
         if(kurInp && !kurElleDegisti) kurInp.value = kurDeger ? fmtKur(kurDeger) : '';
         if(etiket){
           if(kurDeger){
-            etiket.textContent = '1 '+pb+' = '+fmtKur(kurDeger)+' TL (carinin kur tipine göre)';
+            etiket.textContent = '1 '+pb+' = '+fmtKur(kurDeger)+' TL (kurlar ekranındaki '+tarihInp.value.split('-').reverse().join('.')+' kuru, carinin kur tipine göre; elle değiştirilebilir)';
             etiket.classList.remove('hata');
           } else {
             etiket.textContent = '⚠ '+tarihInp.value.split('-').reverse().join('.')+' için '+pb+' kuru bulunamadı — Kurlar ekranından çekin.';
@@ -462,13 +559,10 @@
       .catch(function(){ if(etiket) etiket.textContent=''; hesapla(); });
   }
   // Cari ya da fatura tarihi değişince vade tarihini carinin ödeme koşuluna göre doldurur.
-  // Kullanıcı vadeyi elle değiştirdiyse (vadeElleDegisti) bir daha ÜZERİNE YAZMAZ. Sayfa açılışında
-  // vade zaten DOLU geldiyse (düzenleme/irsaliyeden açılan taslak) özel bir vade olabileceğinden
-  // temkinli olarak "elle" sayılır; yalnız carinin koşulundan hesaplananla AYNIYSA otomatik sayılır
-  // (aşağıdaki başlangıç bölümü).
-  // Vade HER ZAMAN fatura tarihine göre hesaplanır (bugüne göre DEĞİL). Tarih elle yazılırken
-  // (ör. yıl 0002 → 0020 → 0202 → 2026) araya giren geçersiz/eski istekler yok sayılır:
-  // yalnız en son isteğin yanıtı uygulanır.
+  // Kullanıcı vadeyi elle değiştirdiyse (vadeElleDegisti) bir daha ÜZERİNE YAZMAZ (uyarı vermeden kabul edilir). Sayfa açılışında
+  // vade zaten DOLU geldiyse (düzenleme/irsaliyeden açılan taslak) özel bir vade olabileceğinden temkinli olarak "elle" sayılır; yalnız
+  // carinin koşulundan hesaplananla AYNIYSA otomatik sayılır. Vade HER ZAMAN fatura tarihine göre hesaplanır; tarih elle yazılırken araya
+  // giren eski istekler yok sayılır (yalnız en son isteğin yanıtı uygulanır).
   var vadeIstekNo = 0;
   function vadeUrl(){
     var cariSec=document.getElementById('id_cari');
@@ -496,15 +590,58 @@
       })
       .catch(function(){});
   }
+  // ---------------- Cari bilgi satırı (ödeme koşulu · güncel bakiye · varsayılan PB)
+  var cariBilgiNo = 0;
+  function cariBilgiGuncelle(){
+    var cariSec=document.getElementById('id_cari'); var kap=document.getElementById('cari-bilgi');
+    if(!kap) return;
+    if(!cariSec || !cariSec.value){ kap.textContent=''; return; }
+    var no = ++cariBilgiNo;
+    fetch(CARI_BILGI_TMPL.replace('999999', encodeURIComponent(cariSec.value)), {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(no !== cariBilgiNo || !j.var) return;
+        kap.innerHTML = '';
+        function parca(et, deger){ var s=document.createElement('span'); s.innerHTML = et + ' <b></b>'; s.querySelector('b').textContent = deger; kap.appendChild(s); kap.appendChild(document.createTextNode('  ·  ')); }
+        parca('Ödeme koşulu:', j.kosul);
+        parca('Bakiye:', j.bakiye + (j.doviz ? ' (' + j.doviz + ')' : ''));
+        parca('Varsayılan PB:', j.pb);
+        if(kap.lastChild) kap.removeChild(kap.lastChild);
+      })
+      .catch(function(){});
+  }
+  // ---------------- Fatura no: zorunlu / faturasız + mükerrer UYARISI (engel değil: "yine de kaydet" onayı)
+  function faturasizUygula(){
+    var kutu=document.getElementById('id_faturasiz'), no=document.getElementById('id_fatura_no');
+    if(!kutu || !no) return;
+    if(kutu.checked){ no.value=''; no.readOnly=true; no.placeholder='Belge no yok'; } else { no.readOnly=false; no.placeholder=''; }
+    mukerrerKontrol();
+  }
+  var mukerrerNo = 0, mukerrerZamanlayici = null;
+  function mukerrerKontrol(){
+    clearTimeout(mukerrerZamanlayici);
+    mukerrerZamanlayici = setTimeout(function(){
+      var no=document.getElementById('id_fatura_no'), cari=document.getElementById('id_cari'), kutu=document.getElementById('mukerrer-uyari');
+      if(!no || !cari || !kutu) return;
+      var v=(no.value||'').trim();
+      if(!v || !cari.value){ kutu.hidden=true; return; }
+      var istek=++mukerrerNo;
+      var url=NO_KONTROL_API+'?cari='+encodeURIComponent(cari.value)+'&no='+encodeURIComponent(v)+'&yon='+encodeURIComponent(YON)+(form.dataset.haric?('&haric='+encodeURIComponent(form.dataset.haric)):'');
+      fetch(url, {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(j){
+        if(istek !== mukerrerNo) return;
+        kutu.hidden = !j.var;
+        if(j.var){ var a=document.getElementById('mukerrer-link'); if(a){ a.href=j.url; a.textContent='faturayı aç ('+j.tarih+', '+j.tutar+')'; } }
+        else { var cb=document.getElementById('id_mukerrer_onay'); if(cb) cb.checked=false; }
+      }).catch(function(){});
+    }, 400);
+  }
   function tedarikciGuncelle(row){
     var sel=el(row,'-stok'); var etiket=row.querySelector('.tedarikci-etiket');
     if(!etiket) return;
     var ad=(sel&&sel.value)?TED[sel.value]:null;
     etiket.textContent = ad ? 'Tedarikçi ürün adı: '+ad : '';
   }
-  // Stok seçilince tevkifat seçiciyi stok kartındaki varsayılana ön-doldurur (kullanıcı
-  // sonra elle değiştirebilir — bu yalnız bir VARSAYILAN, sunucu her zaman seçicinin o
-  // andaki değerini kullanır).
+  // Stok seçilince tevkifat seçiciyi stok kartındaki varsayılana ön-doldurur (kullanıcı sonra elle değiştirebilir — yalnız VARSAYILAN, sunucu seçicinin o anki değerini kullanır).
   function tevkifatOnDoldur(row){
     var stokSel=el(row,'-stok'); var tevSel=el(row,'-tevkifat');
     if(!stokSel || !tevSel) return;
@@ -516,8 +653,6 @@
       girdi.value = (secili && secili.value) ? secili.textContent.trim() : '';
     }
   }
-  // Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa gösterilir; hesap
-  // değişip artık uygun değilse seçili proje temizlenir (yanlış alan gönderilmesin).
   // Dönemsel gider onay kutusu: satıra .donemsel sınıfı (alanları açar/kapatır).
   function donemselUygula(row){
     var cb=row.querySelector('input[type=checkbox][name$="-donemsel"]');
@@ -527,6 +662,7 @@
     if(e.target && e.target.matches && e.target.matches('input[type=checkbox][name$="-donemsel"]')) donemselUygula(e.target.closest('tr'));
   });
   document.querySelectorAll('#satir-govde tr.satir-form').forEach(donemselUygula);
+  // Yatırım projesi alanı yalnız seçilen hesap DURAN VARLIK hesabıysa gösterilir; hesap değişip artık uygun değilse seçili proje temizlenir.
   function projeAlaniGuncelle(row){
     var hesapSec=el(row,'-hesap');
     var gerekli = !!(hesapSec && hesapSec.value && DURAN_VARLIK[hesapSec.value]);
@@ -535,22 +671,63 @@
       var projeKap=row.querySelector('.proje-alani');
       if(projeKap) projeKap.querySelectorAll('select, .akilli-girdi').forEach(function(el){ el.value=''; });
     }
+    projeKolonGuncelle();
   }
-  function satirEkle(){
+  // ---------------- Satır ekle / kopyala / sil / Enter
+  function satirEkle(sonra){
     var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);
     var tr=document.createElement('tr'); tr.className='satir-form';
     tr.innerHTML=document.getElementById('bos-satir').innerHTML.replace(/__prefix__/g,i);
-    document.getElementById('satir-govde').appendChild(tr); tf.value=i+1;
+    var govde=document.getElementById('satir-govde');
+    if(sonra && sonra.parentNode===govde) govde.insertBefore(tr, sonra.nextSibling); else govde.appendChild(tr);
+    tf.value=i+1;
     if(sahsiMi()) sahsiSatirGuncelle(tr);
     turUygula(tr, false);
     hesapla();
     if(window.akilliSecKur) tr.querySelectorAll('select.akilli-sec').forEach(window.akilliSecKur);
+    return tr;
   }
-  document.getElementById('satir-ekle').addEventListener('click', satirEkle);
+  function alanSonek(ad){ return ad.replace(/^form-(\d+|__prefix__)-/, ''); }
+  function satirKopyala(kaynak){
+    var yeni = satirEkle(kaynak);
+    kaynak.querySelectorAll('input[name], select[name], textarea[name]').forEach(function(a){
+      var h = yeni.querySelector('[name$="-' + alanSonek(a.name) + '"]');
+      if(!h) return;
+      if(a.type === 'checkbox'){ h.checked = a.checked; } else { h.value = a.value; }
+      if(h.tagName === 'SELECT'){                                              // akıllı-seç görünen metni
+        var g = h.parentNode.querySelector('.akilli-girdi');
+        if(g){ var o = h.options[h.selectedIndex]; g.value = (o && o.value) ? o.textContent.trim() : ''; }
+      }
+    });
+    donemselUygula(yeni); turUygula(yeni, false); projeAlaniGuncelle(yeni); tedarikciGuncelle(yeni);
+    if(window.varyantSatirKur) window.varyantSatirKur(yeni);                   // gizli varyant değerinden seçicileri kurar
+    hesapla();
+    return yeni;
+  }
+  function ilkAlanaOdak(tr){
+    var a = tr.querySelector('.akilli-girdi') || tr.querySelector('input[type=text]');
+    var gorunen = Array.prototype.find.call(tr.querySelectorAll('.akilli-girdi, input[type=text]'), function(x){ return x.offsetParent !== null; });
+    (gorunen || a || {focus:function(){}}).focus();
+  }
+  document.getElementById('satir-ekle').addEventListener('click', function(){ ilkAlanaOdak(satirEkle()); });
   document.getElementById('satir-govde').addEventListener('click', function(e){
-    if(e.target.classList.contains('satir-sil')){ e.target.closest('tr').remove(); hesapla(); }
+    var sil = e.target.closest('.satir-sil'), kopya = e.target.closest('.satir-kopya');
+    if(sil){ sil.closest('tr').remove(); hesapla(); }
+    else if(kopya){ ilkAlanaOdak(satirKopyala(kopya.closest('tr'))); }
   });
-  var form=document.getElementById('fatura-form');
+  // Enter: kalem alanındayken yeni satır açar (son satırdaysa) ya da bir alttaki satırın aynı alanına geçer; formu GÖNDERMEZ. (Akıllı-seç kutusu kendi Enter'ını yönetir.)
+  document.getElementById('satir-govde').addEventListener('keydown', function(e){
+    if(e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target;
+    if(!t.matches('input[type=text]') || t.classList.contains('akilli-girdi')) return;
+    e.preventDefault();
+    var tr = t.closest('tr.satir-form'); if(!tr) return;
+    var sonek = t.name ? alanSonek(t.name) : '';
+    var sonraki = tr.nextElementSibling;
+    if(!sonraki){ sonraki = satirEkle(); ilkAlanaOdak(sonraki); return; }
+    var h = sonek ? sonraki.querySelector('[name$="-' + sonek + '"]') : null;
+    if(h && h.offsetParent !== null) h.focus(); else ilkAlanaOdak(sonraki);
+  });
   form.addEventListener('input', hesapla);
   form.addEventListener('change', function(e){
     var row=e.target.closest('.satir-form');
@@ -583,9 +760,8 @@
   if(vadeInp){
     var vadeKullaniciYazdi = false;
     if(vadeInp.value){
-      // Düzenlemede/irsaliyeden açılan taslakta vade önceden dolu: temkinli olarak ELLE sayılır, AMA
-      // carinin koşulundan o tarihe göre hesaplananla AYNIYSA (kullanıcı özel bir vade vermemiş)
-      // otomatik sayılır ve sonraki cari/tarih değişiminde yeniden hesaplanır.
+      // Düzenlemede/irsaliyeden açılan taslakta vade önceden dolu: temkinli olarak ELLE sayılır, AMA carinin koşulundan o tarihe göre hesaplananla AYNIYSA
+      // (kullanıcı özel bir vade vermemiş) otomatik sayılır ve sonraki cari/tarih değişiminde yeniden hesaplanır.
       vadeElleDegisti = true;
       var ilkUrl = vadeUrl();
       if(ilkUrl){
@@ -598,11 +774,107 @@
   }
   if(cariSec) cariSec.addEventListener('change', vadeDoldur);
   if(tarihInp) tarihInp.addEventListener('change', vadeDoldur);
+  if(cariSec) cariSec.addEventListener('change', cariBilgiGuncelle);
+  if(cariSec) cariSec.addEventListener('change', mukerrerKontrol);
+  var noInp=document.getElementById('id_fatura_no');
+  if(noInp) noInp.addEventListener('input', mukerrerKontrol);
+  var fsKutu=document.getElementById('id_faturasiz');
+  if(fsKutu) fsKutu.addEventListener('change', faturasizUygula);
+  // Kayıt öncesi: mükerrer uyarısı açıksa "yine de kaydet" işaretli olmalı; satır indeksleri EKRAN SIRASINA göre yeniden numaralanır (kopyalanan/silinen satırlar sıralı gitsin).
+  form.addEventListener('submit', function(e){
+    var kutu=document.getElementById('mukerrer-uyari'), cb=document.getElementById('id_mukerrer_onay');
+    if(kutu && !kutu.hidden && cb && !cb.checked){
+      e.preventDefault(); kutu.scrollIntoView({block:'center'}); cb.focus();
+      kutu.style.outline='2px solid var(--hata)'; setTimeout(function(){ kutu.style.outline=''; }, 1600);
+      return;
+    }
+    var satirlar=document.querySelectorAll('#satir-govde tr.satir-form');
+    satirlar.forEach(function(r, i){
+      r.querySelectorAll('[name^="form-"]').forEach(function(a){ a.name = a.name.replace(/^form-\d+-/, 'form-' + i + '-'); });
+    });
+    var tf=document.getElementById('id_form-TOTAL_FORMS'); if(tf) tf.value=satirlar.length;
+    var inif=document.getElementById('id_form-INITIAL_FORMS'); if(inif) inif.value=0;        // tüm satırlar "yeni" gönderilir (sıralama/silme sonrası boş satır serbest)
+  });
+
+  // ---------------- PDF / ek önizleme paneli (seçilen dosyalar + düzenlemede mevcut ekler)
+  var dosyaInp = document.getElementById('ek-dosya'), liste = document.getElementById('pdf-liste'), onizleme = document.getElementById('pdf-onizleme');
+  var seciliEk = null, blobUrller = {};
+  function dosyaOgeleri(){
+    var ogeler = MEVCUT_EKLER.map(function(e){ return {tur:'mevcut', ad:e.ad, url:e.url, pdf:e.pdf, resim:e.resim, sil:e.sil, id:'m'+e.id}; });
+    Array.prototype.forEach.call(dosyaInp ? dosyaInp.files : [], function(f, i){
+      var anahtar = f.name + '|' + f.size + '|' + f.lastModified;
+      if(!blobUrller[anahtar]) blobUrller[anahtar] = URL.createObjectURL(f);
+      var uz = f.name.toLowerCase();
+      ogeler.push({tur:'yeni', ad:f.name, url:blobUrller[anahtar], pdf:/\.pdf$/.test(uz), resim:!/\.pdf$/.test(uz), idx:i, id:'y'+anahtar});
+    });
+    return ogeler;
+  }
+  function onizlemeGoster(o){
+    seciliEk = o ? o.id : null;
+    onizleme.innerHTML = '';
+    if(!o){ onizleme.innerHTML = '<div class="yardim">Önizlemek için bir dosya seçin.</div>'; return; }
+    if(o.pdf){ var f = document.createElement('iframe'); f.src = o.url; f.title = o.ad; onizleme.appendChild(f); }
+    else { var im = document.createElement('img'); im.src = o.url; im.alt = o.ad; onizleme.appendChild(im); }
+  }
+  function ekPaneliYenile(){
+    var ogeler = dosyaOgeleri();
+    form.classList.toggle('pdf-var', ogeler.length > 0);
+    liste.innerHTML = '';
+    ogeler.forEach(function(o){
+      var d = document.createElement('div'); d.className = 'fb-ek' + (o.id === seciliEk ? ' aktif' : ''); d.title = o.ad;
+      var s = document.createElement('span'); s.textContent = (o.tur === 'yeni' ? '🆕 ' : '📎 ') + o.ad; d.appendChild(s);
+      var b = document.createElement('button'); b.type = 'button'; b.title = o.tur === 'yeni' ? 'Seçimden çıkar' : 'Eki sil'; b.textContent = '✕';
+      b.addEventListener('click', function(ev){ ev.stopPropagation(); ekCikar(o); });
+      d.appendChild(b);
+      d.addEventListener('click', function(){ onizlemeGoster(o); ekPaneliYenile(); });
+      liste.appendChild(d);
+    });
+    if(ogeler.length && !ogeler.some(function(o){ return o.id === seciliEk; })){
+      var ilk = ogeler.find(function(o){ return o.pdf; }) || ogeler[0];
+      onizlemeGoster(ilk); ekPaneliYenile(); return;
+    }
+    if(!ogeler.length) onizlemeGoster(null);
+  }
+  function ekCikar(o){
+    if(o.tur === 'yeni'){
+      var dt = new DataTransfer();
+      Array.prototype.forEach.call(dosyaInp.files, function(f, i){ if(i !== o.idx) dt.items.add(f); });
+      dosyaInp.files = dt.files;
+      if(seciliEk === o.id) seciliEk = null;
+      ekPaneliYenile();
+    } else {
+      if(!window.confirm('Bu ek faturadan silinsin mi?')) return;
+      var csrf = document.querySelector('input[name="csrfmiddlewaretoken"]');
+      var fd = new FormData(); if(csrf) fd.append('csrfmiddlewaretoken', csrf.value);
+      fetch(o.sil, {method:'POST', body:fd, credentials:'same-origin'}).then(function(){
+        MEVCUT_EKLER = MEVCUT_EKLER.filter(function(e){ return 'm'+e.id !== o.id; });
+        if(seciliEk === o.id) seciliEk = null;
+        ekPaneliYenile();
+      }).catch(function(){ window.alert('Ek silinemedi.'); });
+    }
+  }
+  if(dosyaInp) dosyaInp.addEventListener('change', function(){
+    // XML ve 10 MB üstü dosyalar istemcide de ayıklanır (sunucu yine reddeder; XML'in e-fatura PDF görüntüsü yüklenmeli).
+    var hata = [], dt = new DataTransfer();
+    Array.prototype.forEach.call(dosyaInp.files, function(f){
+      var ad = f.name.toLowerCase();
+      if(/\.xml$/.test(ad)) hata.push('XML kabul edilmiyor (yalnız PDF/görsel): ' + f.name);
+      else if(f.size > 10 * 1024 * 1024) hata.push('Dosya 10 MB üstü: ' + f.name);
+      else if(!/\.(pdf|jpe?g|png|webp|gif)$/.test(ad)) hata.push('Desteklenmeyen dosya türü: ' + f.name);
+      else dt.items.add(f);
+    });
+    if(hata.length) dosyaInp.files = dt.files;
+    document.getElementById('ek-hata').textContent = hata.join(' · ');
+    ekPaneliYenile();
+  });
   document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
   document.querySelectorAll('.satir-form').forEach(projeAlaniGuncelle);
   modUygula();
   sahsiUygula();
   document.querySelectorAll('.satir-form').forEach(function(r){ turUygula(r, false); });
+  faturasizUygula();
+  cariBilgiGuncelle();
+  ekPaneliYenile();
   kurCek();
 })();
 </script>
