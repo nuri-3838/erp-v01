@@ -8730,6 +8730,7 @@ def _fatura_gider_baglami(fform):
     = gider hesabı) + KDV oran haritası (gider kaleminin KDV önizlemesi) + hangi gider hesabı
     seçenekleri DURAN VARLIK hesabı (proje alanı yalnız bunlarda gösterilir)."""
     return {"tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
+            "tip_karma": {str(t.pk): fatura_servis.karma_alis_tipi_mi(t) for t in fform.fields["tip"].queryset},      # ALIŞ FATURASI / İHRAÇ KAYITLI: stok + hesap satırı
             "tip_stopajli": {str(t.pk): bool(t.stopajli) for t in fform.fields["tip"].queryset},
             "duran_varlik_hesap": {str(h.pk): True for h in (
                 hp.duran_varlik_hesaplari() | duran_hesap_servis.grup_hesaplari(duran_hesap_servis.KART_AILELERI))},
@@ -8843,7 +8844,7 @@ def _fatura_ekle(request, yon, baslik):
                     kullanici=request.user,
                 )
                 mesaj = f"Fatura kaydedildi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu."
-                if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider:
+                if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider and any(g.get("stok_id") for g in satirlar):
                     mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
                 messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
@@ -8905,7 +8906,7 @@ def fatura_duzenle(request, pk):
                     mesaj = "Taslak fatura güncellendi."
                 else:
                     mesaj = f"Fatura güncellendi; fiş {fatura.fis.yil}/{fatura.fis.fis_no} yenilendi."
-                    if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider:
+                    if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider and any(g.get("stok_id") for g in satirlar):
                         mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
                 messages.success(request, mesaj)
                 return redirect("core:fatura_detay", pk=fatura.pk)
@@ -8956,6 +8957,7 @@ def fatura_detay(request, pk):
         s.varyant_etiketi = varyant_servis.varyant_kisa(s.varyant) if s.varyant_id else ""
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
+                   "karma_satir": fatura.yon == "ALIS" and not (fatura.tip and fatura.tip.gider) and any(s.hesap_id for s in satirlar),      # ALIŞ'ta stok yanında hesap satırı var
                    "donemsel_tablolar": donemsel_servis.fatura_tablolari(fatura),
                    "irsaliye_farklari": fatura_servis.irsaliye_miktar_farklari(fatura),
                    "liste_url": _fatura_liste_url(fatura.yon),

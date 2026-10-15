@@ -61,7 +61,7 @@
   <h2 class="bolum-baslik">Kalemler</h2>
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>{% if fatura.tip and fatura.tip.gider %}Gider Hesabı{% elif fatura.yon == "SATIS" %}Kalem (stok · hesap · demirbaş){% else %}Stok{% endif %}</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
+    <thead><tr><th>{% if fatura.tip and fatura.tip.gider %}Gider Hesabı{% elif fatura.yon == "SATIS" %}Kalem (stok · hesap · demirbaş){% elif karma_satir %}Kalem (stok · hesap){% else %}Stok{% endif %}</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
       <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
     <tbody>
       {% for s in satirlar %}

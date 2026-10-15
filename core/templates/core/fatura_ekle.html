@@ -9,6 +9,7 @@
 {{ stok_tedarikci|json_script:"stok-tedarikci" }}
 {{ tip_gider|json_script:"tip-gider" }}
 {{ tip_stopajli|json_script:"tip-stopajli" }}
+{{ tip_karma|json_script:"tip-karma" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
 {{ yon|json_script:"fatura-yon" }}
@@ -43,6 +44,8 @@
   #fatura-satir-tablo tr.satir-form.tur-demirbas .hesap-alani { display:none; }
   #fatura-satir-tablo tr.satir-form.tur-demirbas .demirbas-alani { display:block; }
   #fatura-satir-tablo tr.satir-form.tur-hesap .kdv-secim, #fatura-satir-tablo tr.satir-form.tur-demirbas .kdv-secim { display:block; }
+  /* KARMA ALIŞ (ALIŞ FATURASI / İHRAÇ KAYITLI): satır türü seçicisi (Stok / Hesap satırı) satış faturasıyla aynı mekanikle; hesap satırında dönemsel gider de açılır. */
+  #fatura-satir-tablo.karma-modu:not(.gider-modu) tr.satir-form.tur-hesap .donem-alani { display:block; }
   .kdv-secim { margin-bottom:.3rem; }
   .kdv-secim select { width:100%; font-size:.82rem; }
   /* Tevkifat seçici her iki modda da (stoklu + gider) görünür — stokluda stok kartından
@@ -195,7 +198,7 @@
         <colgroup><col style="width:41%"><col style="width:15%"><col style="width:18%">
           <col style="width:19%"><col style="width:7%"></colgroup>
         <thead><tr>
-          <th><span class="th-stok">Stok</span><span class="th-hesap">Gider Hesabı</span><span class="th-satis">Kalem (stok · hesap · demirbaş)</span></th>
+          <th><span class="th-stok">Stok</span><span class="th-hesap">Gider Hesabı</span><span class="th-satis">{% if yon == "SATIS" %}Kalem (stok · hesap · demirbaş){% else %}Kalem (stok · hesap){% endif %}</span></th>
           <th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
           <th class="sag">Tutar</th><th></th>
         </tr></thead>
@@ -247,6 +250,7 @@
   var TED = JSON.parse(document.getElementById('stok-tedarikci').textContent);
   var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
   var TIP_STOPAJLI = JSON.parse(document.getElementById('tip-stopajli').textContent) || {};
+  var TIP_KARMA = JSON.parse(document.getElementById('tip-karma').textContent) || {};
   var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
   var TEVORAN = JSON.parse(document.getElementById('tevkifat-oran').textContent) || {};   // tevkifat_id -> pay/payda
@@ -265,10 +269,11 @@
   function el(row,suf){ return row.querySelector('[name$="'+suf+'"]'); }
   function giderMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_GIDER[t.value]); }
   function stopajliMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_STOPAJLI[t.value]); }
-  // Satır türü: gider faturasında hep HESAP; satış faturasında satırdaki seçici (STOK/HESAP/DEMIRBAS); alışta STOK.
+  function karmaMi(){ var t=document.getElementById('id_tip'); return !!(t && t.value && TIP_KARMA[t.value]); }
+  // Satır türü: gider faturasında hep HESAP; satış faturasında ve KARMA ALIŞ tipinde satırdaki seçici (STOK/HESAP[/DEMIRBAS]); diğer alış tiplerinde STOK.
   function satirTuru(r){
     if(giderMi()) return 'HESAP';
-    if(YON!=='SATIS') return 'STOK';
+    if(YON!=='SATIS' && !karmaMi()) return 'STOK';
     var t=el(r,'-tur'); return (t && t.value) ? t.value : 'STOK';
   }
   function demirbasEtiketGuncelle(r){
@@ -298,7 +303,16 @@
   function modUygula(){
     var g=giderMi(); var onceki=tablo.classList.contains('gider-modu');
     tablo.classList.toggle('gider-modu', g);
-    tablo.classList.toggle('satis-modu', YON==='SATIS');
+    tablo.classList.toggle('satis-modu', YON==='SATIS' || karmaMi());          // satır türü seçicisi görünür
+    tablo.classList.toggle('karma-modu', karmaMi());
+    var karmaOnceki = tablo.dataset.karma === '1';
+    tablo.dataset.karma = karmaMi() ? '1' : '0';
+    if(karmaOnceki && !karmaMi() && !g){                                        // karma tipten (gider DEĞİL) çıkıldı: hesap satırı seçimleri temizlenir (normal ALIŞ'ta hesap satırı yok)
+      document.querySelectorAll('.satir-form').forEach(function(r){
+        var t=el(r,'-tur'); if(t) t.value='STOK';
+        alanTemizle(r.querySelector('.hesap-alani')); projeAlaniGuncelle(r);
+      });
+    }
     var depo=document.getElementById('id_depo'); var depoAlan=depo?depo.closest('.alan'):null;
     if(depoAlan) depoAlan.style.display = g ? 'none' : '';
     if(g && depo) depo.value='';

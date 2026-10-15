@@ -153,9 +153,11 @@ class GiderFaturaServisTest(GiderTemel):
         self.assertEqual(Fatura.objects.count(), 0)
         self.assertEqual(YevmiyeFisi.objects.count(), 0)
 
-    def test_gider_hesabi_normal_tipte_reddedilir(self):
+    def test_gider_hesabi_karma_olmayan_alis_tipinde_reddedilir(self):
+        # ALIŞ FATURASI / İHRAÇ KAYITLI artık KARMA (stok + hesap satırı, bkz. test_fatura_karma); iade tipleri (maliyet fişi) hâlâ hesap satırı kabul etmez.
+        iade = FaturaTipi.objects.create(ad="ALIŞ FATURASI-SATIŞ İADE", yon=FaturaTipi.Yon.ALIS, maliyet_fisi=FaturaTipi.MaliyetFisi.SATIS_IADE)
         with self.assertRaisesMessage(FaturaHatasi, "yalnız gider faturası tipinde"):
-            self._kes([self._sat()], tip_id=self.alis.pk)
+            self._kes([self._sat()], tip_id=iade.pk)
         self.assertEqual(Fatura.objects.count(), 0)
 
     def test_gider_kumesinde_olmayan_hesaplar_reddedilir(self):
@@ -519,8 +521,9 @@ class GiderFaturaEkranTest(GiderTemel):
         # gider tipi + gider kümesinde olmayan hesap
         r = self.client.post(reverse("core:alis_fatura_ekle"), self._veri(hesap="153.10"))
         self.assertEqual(r.status_code, 200)
-        # normal tip + gider hesabı
-        r2 = self.client.post(reverse("core:alis_fatura_ekle"), self._veri(tip=self.alis))
+        # karma olmayan alış tipi (iade) + gider hesabı
+        iade = FaturaTipi.objects.create(ad="ALIŞ FATURASI-SATIŞ İADE", yon=FaturaTipi.Yon.ALIS, maliyet_fisi=FaturaTipi.MaliyetFisi.SATIS_IADE)
+        r2 = self.client.post(reverse("core:alis_fatura_ekle"), self._veri(tip=iade))
         self.assertEqual(r2.status_code, 200)
         self.assertContains(r2, "yalnız gider faturası tipinde")
         # aynı satırda hem stok hem hesap

@@ -2031,6 +2031,8 @@ class FaturaSatirForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.yon = yon
         self.fields["tur"].widget.attrs["class"] = "tur-secim"
+        if yon != "SATIS":                                   # ALIŞ (karma tipler): satır türü yalnız Stok / Hesap satırı; demirbaş satışı yalnız satışta
+            self.fields["tur"].choices = [("STOK", "Stok"), ("HESAP", "Hesap satırı")]
         # Yalnız AKTİF (satılmamış) kartlar; düzenlenen faturanın kendi sattığı kart da listede kalır.
         dq = Q(durum=DuranVarlik.Durum.AKTIF)
         if fatura_pk:

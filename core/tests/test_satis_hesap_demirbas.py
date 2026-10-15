@@ -120,8 +120,9 @@ class HesapSatiriTest(SatisHesapDemirbasTestBase):
     def test_gecersiz_hesap_ve_yon_kurallari(self):
         with self.assertRaises(fs.FaturaHatasi):                       # 253 hesap satırı olamaz (demirbaş satırı kullan)
             self._fatura([self._hesap_satir("253", "100")], tip=self.iade)
-        with self.assertRaises(fs.FaturaHatasi):                       # alış (gider olmayan) faturada hesap satırı
-            self._fatura([self._hesap_satir("770.01", "100")], tip=self.alis, cari=self.satici)
+        iade_alis = FaturaTipi.objects.create(ad="ALIŞ FATURASI-SATIŞ İADE", yon=FaturaTipi.Yon.ALIS, maliyet_fisi=FaturaTipi.MaliyetFisi.SATIS_IADE)
+        with self.assertRaises(fs.FaturaHatasi):                       # karma OLMAYAN alış tipinde (iade) hesap satırı (ALIŞ FATURASI artık karma: test_fatura_karma)
+            self._fatura([self._hesap_satir("770.01", "100")], tip=iade_alis, cari=self.satici)
 
     def test_silinince_fis_gider(self):
         f = self._fatura([self._hesap_satir("770.01", "1000", self.kdv20)], tip=self.iade)
