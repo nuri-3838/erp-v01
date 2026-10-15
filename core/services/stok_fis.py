@@ -151,6 +151,23 @@ def uretim_senkronla(kayit, *, kullanici=None):
 
 # === Satış / satış iadesi ==============================================================
 
+def satis_fisi_aciklamasi_yenile(fatura, *, kullanici=None):
+    """Satış / satış iadesi maliyet fişinin YALNIZ başlık açıklamasını (fatura no) yeniler — satırlar/tutarlar/hareketler ``satis_senkronla`` gibi yeniden yazılmaz
+    (fatura no tek başına değiştiğinde: bkz. fatura._basligi_guncelle). Maliyet fişi yoksa None."""
+    mod = fatura.tip.maliyet_fisi if fatura.tip_id else ""
+    if mod not in (FaturaTipi.MaliyetFisi.SATIS, FaturaTipi.MaliyetFisi.SATIS_IADE):
+        return None
+    iade = mod == FaturaTipi.MaliyetFisi.SATIS_IADE
+    fis = next((h.fis for h in StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False).select_related("fis") if h.fis_id and not h.fis.silindi), None)
+    if fis is None:
+        return None
+    from core.metin import buyuk_harf_tr
+    fis.aciklama = buyuk_harf_tr(f"{fatura.fatura_no or fatura.pk} {'satış iadesi' if iade else 'satış'} maliyeti")
+    fis.updated_by = kullanici
+    fis.save(update_fields=["aciklama", "updated_by", "updated_at"])
+    return fis
+
+
 def satis_senkronla(fatura, *, kullanici=None):
     """Satış faturasının (tip.maliyet_fisi) maliyet fişi — fatura hareketlerinin ağırlıklı
     ortalama tutarlarından. Maliyeti hâlâ bilinmeyen satır fişe girmez; sonradan bilinince

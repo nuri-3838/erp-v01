@@ -311,14 +311,36 @@ def fis_guncelle(fis: YevmiyeFisi, *, tarih, satirlar, aciklama="",
     # Eski satırlar SOFT-DELETE ile gizlenir (iz/denetim korunur), yenileri yazılır.
     # Raporlar/ekstre/detay zaten silindi=False filtreler -> gizli satır toplama girmez.
     eski_havuzlar = kur_farki.etkilenen_havuzlar(fis)
+    eski_hedefler = _kur_farki_hedefleri(fis)            # eski kur farkı satırları silinmeden ÖNCE: hedefleri (258 + proje / 646-656) korunur
     fis.satirlar.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
-    for s in hazir:
-        YevmiyeSatir.objects.create(
-            fis=fis, created_by=kullanici, updated_by=kullanici, **s
-        )
-    kur_farki.havuzlari_yeniden_hesapla(eski_havuzlar | kur_farki.etkilenen_havuzlar(fis))
+    yeniler = [YevmiyeSatir.objects.create(fis=fis, created_by=kullanici, updated_by=kullanici, **s) for s in hazir]
+    kur_farki.havuzlari_yeniden_hesapla(eski_havuzlar | kur_farki.etkilenen_havuzlar(fis), _kur_farki_ipucu(eski_hedefler, yeniler))
     return fis
+
+
+def _kur_farki_hedefleri(fis) -> dict:
+    """{(ana satır hesabı, işlem pb, borç mu): [(kur farkı hesabı, proje id), ...]} — fişin SİLİNMEMİŞ kur farkı çocuk satırları (pk sırasıyla)."""
+    hedefler = {}
+    for k in (fis.satirlar.filter(silindi=False, ana_satir__isnull=False).select_related("ana_satir").order_by("pk")):
+        a = k.ana_satir
+        hedefler.setdefault((a.hesap_id, a.islem_pb, a.borc > 0), []).append((k.hesap_id, k.yatirim_projesi_id))
+    return hedefler
+
+
+def _kur_farki_ipucu(eski_hedefler: dict, yeniler) -> dict:
+    """Yeni yazılan ana satırlara eski hedefleri sırayla eşler: {yeni ana satır pk: (hesap, proje id)}."""
+    if not eski_hedefler:
+        return {}
+    ipucu = {}
+    sirada = {k: list(v) for k, v in eski_hedefler.items()}
+    for y in yeniler:
+        if y.ana_satir_id is not None or y.islem_pb == "TRY":
+            continue
+        liste = sirada.get((y.hesap_id, y.islem_pb, y.borc > 0))
+        if liste:
+            ipucu[y.pk] = liste.pop(0)
+    return ipucu
 
 
 @transaction.atomic

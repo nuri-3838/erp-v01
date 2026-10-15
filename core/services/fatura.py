@@ -1285,6 +1285,124 @@ def _uretim_siparisi_kilidi(fatura: Fatura, *, depo_id, satirlar) -> None:
         raise FaturaHatasi("Bu fatura bir üretim siparişine bağlı; depo, stok ve miktar değiştirilemez. Faturayı silip yeniden kesin.")
 
 
+# ---------------------------------------------------------------- değişmediyse fişe dokunma (2026-10-15)
+def _kayit_satir_imzasi(s, *, sahsi):
+    """Kayıtlı FaturaSatir'ın imzası — Düzenle formunun ön-doldurduğu değerlerle AYNI anahtarlar (bkz. ``_girdi_satir_imzasi``)."""
+    from core.services import varyant as varyant_servis
+    if s.donem_baslangic:                                  # dönemsel gider: kalem hesabı = faturaya özel 180.xx; gider hesabı + dönem ayrı alanlarda
+        return (None, s.donem_gider_id, None, None, s.kdv_id, s.tevkifat_id, s.miktar, s.birim_fiyat, None,
+                s.hesap_id, s.donem_baslangic, s.donem_bitis, (s.donem_aciklama or "").strip())
+    hesap = None if (sahsi or s.stok_id or s.demirbas_id) else s.hesap_id
+    return (s.stok_id, hesap, s.demirbas_id, s.yatirim_projesi_id, s.kdv_id, s.tevkifat_id, s.miktar, s.birim_fiyat,
+            varyant_servis.secim_degeri(s.varyant_id) or None, None, None, None, None)
+
+
+def _girdi_satir_imzasi(g, i, tip, *, sahsi):
+    """Form girdisi satırının imzası; ``_satir_coz`` ile aynı çözümleme (KDV/tevkifat varsayılanları) ama DOĞRULAMASIZ. Çözülemezse None."""
+    if g.get("donemsel"):                                  # dönemsel gider: 180 hesabı formda gizli alanla taşınır (düzenlemede mevcut hesap korunur); yoksa (yeni açılacak) → değişmiş sayılır
+        if not g.get("donem_hesap_id") or not g.get("hesap_id"):
+            return None
+        try:
+            tevkifat = _tevkifat_coz(g, i)
+            miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
+            birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
+        except FaturaHatasi:
+            return None
+        kdv = KdvOrani.objects.filter(pk=g["kdv_id"], silindi=False).first() if g.get("kdv_id") else None
+        return (None, g["hesap_id"], None, None, kdv.pk if kdv is not None else None, tevkifat.pk if tevkifat is not None else None, miktar, birim, None,
+                g["donem_hesap_id"], g.get("donem_baslangic"), g.get("donem_bitis"), (g.get("donem_aciklama") or "").strip()[:200])
+    stok = None
+    if g.get("stok_id"):
+        stok = Stok.objects.filter(pk=g["stok_id"], silindi=False).select_related("kdv", "tevkifat").first()
+        if stok is None:
+            return None
+    dv_id = g["demirbas_id"] if g.get("demirbas_id") else None
+    try:
+        tevkifat = _tevkifat_coz(g, i, stok_varsayilani=(stok.tevkifat if stok is not None else None))
+        if stok is not None:
+            kdv = _stok_kdv_coz(g, i, stok, ihracat=ihracat_tipi_mi(tip))
+        else:
+            kdv = KdvOrani.objects.filter(pk=g["kdv_id"], silindi=False).first() if g.get("kdv_id") else None
+            if g.get("kdv_id") and kdv is None:
+                return None
+        miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
+        birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
+    except FaturaHatasi:
+        return None
+    if dv_id is not None:
+        miktar = Decimal("1")
+    hesap = None if (sahsi or stok is not None or dv_id is not None) else (g["hesap_id"] if g.get("hesap_id") else None)       # hesap pk'si hesap kodudur (metin)
+    proje = g["yatirim_projesi_id"] if (g.get("yatirim_projesi_id") and stok is None and dv_id is None) else None
+    return (stok.pk if stok is not None else None, hesap, dv_id, proje, kdv.pk if kdv is not None else None,
+            tevkifat.pk if tevkifat is not None else None, miktar, birim, (g.get("varyant") or None), None, None, None, None)
+
+
+def fis_girdileri_ayni_mi(fatura, *, tip_id, cari_id, tarih, satirlar, para_birimi, kur, depo_id, sahsi_ortak_id, gv_stopaj_orani, fatura_no=None) -> bool:
+    """ONAYLI faturada formdan gelen FİŞİ/STOĞU/KUR FARKINI etkileyen girdiler kayıtlı olanla AYNI mı?
+
+    İmza = tip, cari, tarih, para birimi, kur (döviz), depo, GV stopajı, şahsi alış ortak hesabı + her kalemin
+    (stok, hesap, demirbaş, proje, KDV, tevkifat, miktar, birim fiyat, varyant). Sıra önemsizdir. Fatura no, vade, açıklama,
+    faturasız işareti ve ekler imzada YOK (fişi etkilemez). Dönemsel giderde (180.xx hesabı + dönem alanları imzada) fatura no değişirse (hesap adı/dağıtım fişi metni etkilenir)
+    ve çözülemeyen herhangi bir girdi → False (tam yeniden yazma yoluna düşer; bugünkü davranış). Bu fonksiyon HİÇBİR ŞEY YAZMAZ ve doğrulama hatası fırlatmaz."""
+    tip = FaturaTipi.objects.filter(pk=tip_id, silindi=False).first() if tip_id else None
+    if tip is None or fatura.tip_id != tip.pk or not cari_id or str(fatura.cari_id) != str(cari_id) or fatura.tarih != tarih:
+        return False
+    pb = (para_birimi or "TRY").strip().upper()
+    if pb != fatura.para_birimi:
+        return False
+    if pb != "TRY" and (kur in (None, "") or yuvarla(_sayi(kur, "kur"), 6) != yuvarla(fatura.kur, 6)):
+        return False
+    sahsi_kayit = fatura.sahsi_ortak_id if fatura.sahsi_alis else None
+    if (str(sahsi_ortak_id) if sahsi_ortak_id else None) != (str(sahsi_kayit) if sahsi_kayit else None):
+        return False
+    try:
+        if _stopaj_orani_coz(tip, gv_stopaj_orani) != fatura.gv_stopaj_orani:
+            return False
+    except FaturaHatasi:
+        return False
+    depo_girdi = None if (tip.gider or tip.yalniz_kdv) else (str(depo_id) if depo_id not in (None, "") else None)
+    if depo_girdi != (str(fatura.depo_id) if fatura.depo_id else None):
+        return False
+    kayit = list(fatura.satirlar.filter(silindi=False))
+    if len(kayit) != len(satirlar):
+        return False
+    if fatura_no is not None and (fatura_no or "").strip() != fatura.fatura_no and any(s.donem_baslangic for s in kayit):
+        return False
+    sahsi = sahsi_kayit is not None
+    girdi = [_girdi_satir_imzasi(g, i, tip, sahsi=sahsi) for i, g in enumerate(satirlar, 1)]
+    if any(x is None for x in girdi):
+        return False
+    anahtar = lambda t: tuple("" if x is None else (format(x.normalize(), "f") if isinstance(x, Decimal) else str(x)) for x in t)       # Decimal: 1 ile 1.000 aynı
+    return sorted(map(anahtar, girdi)) == sorted(anahtar(_kayit_satir_imzasi(s, sahsi=sahsi)) for s in kayit)
+
+
+def _basligi_guncelle(fatura, *, fatura_no, aciklama, vade_tarihi, faturasiz, mukerrer_onayli, kullanici):
+    """Fişi etkileyen girdi DEĞİŞMEDİYSE: yalnız fatura başlığı (fatura no, vade, açıklama, faturasız) güncellenir.
+    Fiş satırları, fatura kalemleri, stok hareketleri, kur farkı satırları ve demirbaş/dönemsel kayıtları YENİDEN ÜRETİLMEZ; proje/kart doğrulaması çalışmaz.
+    Fatura no değiştiyse fiş BAŞLIK açıklaması (``_aciklama``), stok hareketi açıklama metni ve (satış tiplerinde) maliyet fişinin başlık metni de aynı no ile yenilenir
+    (satır tutar/hesaplarına KESİNLİKLE dokunulmaz)."""
+    fatura_no = (fatura_no or "").strip()
+    if not mukerrer_onayli:
+        _mukerrer_alis_kontrol(cari=fatura.cari, fatura_no=fatura_no, yon=fatura.tip.yon, haric_pk=fatura.pk)
+    no_degisti = fatura_no != fatura.fatura_no
+    fatura.fatura_no = fatura_no
+    fatura.faturasiz = bool(faturasiz) and not fatura_no
+    fatura.aciklama = (aciklama or "").strip()
+    fatura.vade_tarihi = vade_tarihi
+    fatura.updated_by = kullanici
+    fatura.save(update_fields=["fatura_no", "faturasiz", "aciklama", "vade_tarihi", "updated_by", "updated_at"])
+    if no_degisti:
+        ack = buyuk_harf_tr(_aciklama(fatura.tip, fatura.cari, fatura_no))
+        fis = fatura.fis
+        fis.aciklama, fis.updated_by = ack, kullanici
+        fis.save(update_fields=["aciklama", "updated_by", "updated_at"])
+        StokHareket.objects.filter(fatura_satir__fatura=fatura, silindi=False).update(aciklama=ack)
+        if fatura.tip.maliyet_fisi:
+            from core.services import stok_fis
+            stok_fis.satis_fisi_aciklamasi_yenile(fatura, kullanici=kullanici)               # satış / satış iadesi maliyet fişi: yalnız başlık metni
+    return fatura
+
+
 @transaction.atomic
 def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                     fatura_no="", para_birimi="TRY", depo_id=None, aciklama="",
@@ -1293,6 +1411,8 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     """Faturayı günceller. TASLAK ise hafif düzenleme (fiş/hareket yok — tip dahil her şey
     serbestçe değişebilir). ONAYLI ise bugünkü mevcut davranış AYNEN (bağlı fiş+stok
     hareketleri de reverse+rewrite edilir); yalnız koşul `fis_id`'den `durum`'a çevrilir.
+    İSTİSNA (2026-10-15): fişi etkileyen girdiler kayıtlıyla AYNIYSA (``fis_girdileri_ayni_mi``) fişe/kalemlere/stoğa/kur farkına dokunulmaz,
+    yalnız başlık güncellenir (``_basligi_guncelle``).
     ``vade_tarihi`` burada OTOMATİK HESAPLANMAZ (bkz. fatura_taslak_olustur) — boş gelirse
     boş kalır; mevcut faturalar düzenlenirken beklenmedik bir vade yazılmasın diye kasıtlı.
     ``sahsi_alis``/``sahsi_ortak_id``: Ortak adına şahsi alış — sonradan kaldırılırsa (False/
@@ -1345,6 +1465,11 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     # ONAYLI — bugünkü mevcut mantık aynen.
     if fatura.fis_id is None or fatura.fis.silindi:
         raise FaturaHatasi("Faturanın aktif yevmiye fişi yok; düzenlenemez.")
+    # Fişi etkileyen girdi (kalemler, tarih, tip, cari, PB, kur, depo, stopaj, ortak) DEĞİŞMEDİYSE fişe/stoğa/kur farkına dokunulmaz; yalnız başlık güncellenir.
+    if (fis_girdileri_ayni_mi(fatura, tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar, para_birimi=para_birimi, kur=kur,
+                                      depo_id=depo_id, sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None), gv_stopaj_orani=gv_stopaj_orani, fatura_no=fatura_no)):
+        return _basligi_guncelle(fatura, fatura_no=fatura_no, aciklama=aciklama, vade_tarihi=vade_tarihi, faturasiz=faturasiz,
+                                 mukerrer_onayli=mukerrer_onayli, kullanici=kullanici)
     tip, cari, pb, kur, yevmiye_satirlari, hazir = _hazirla(
         tip_id=tip_id, cari_id=cari_id, tarih=tarih, satirlar=satirlar,
         para_birimi=para_birimi, kur_override=kur,

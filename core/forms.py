@@ -2043,6 +2043,7 @@ class FaturaSatirForm(forms.Form):
     def __init__(self, *args, yon=None, fatura_pk=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.yon = yon
+        self.fatura_pk = fatura_pk
         self.fields["tur"].widget.attrs["class"] = "tur-secim"
         if yon != "SATIS":                                   # ALIŞ (karma tipler): satır türü yalnız Stok / Hesap satırı; demirbaş satışı yalnız satışta
             self.fields["tur"].choices = [("STOK", "Stok"), ("HESAP", "Hesap satırı")]
@@ -2178,7 +2179,8 @@ class FaturaSatirForm(forms.Form):
             if hesap_kodu_258_mi(hesap.hesap_kodu) and not cd.get("yatirim_projesi"):
                 raise forms.ValidationError(
                     f"{hesap.hesap_kodu} hesabı için yatırım projesi seçimi zorunludur.")
-            if cd.get("yatirim_projesi") and cd["yatirim_projesi"].durum != YatirimProjesi.Durum.DEVAM:
+            if (cd.get("yatirim_projesi") and cd["yatirim_projesi"].durum != YatirimProjesi.Durum.DEVAM
+                    and not self._proje_faturada_mevcut(cd["yatirim_projesi"])):
                 durum_ad = "kapanmış" if cd["yatirim_projesi"].durum == YatirimProjesi.Durum.KAPANDI else "aktifleşmiş"
                 raise forms.ValidationError(
                     f"{cd['yatirim_projesi'].kod} projesi {durum_ad}; yeni kalem eklenemez.")
@@ -2187,6 +2189,13 @@ class FaturaSatirForm(forms.Form):
             cd["varlik_adi"] = ""
         cd["dolu"] = True
         return cd
+
+    def _proje_faturada_mevcut(self, proje) -> bool:
+        """Düzenlenen faturanın KENDİ kayıtlı kaleminde zaten bu proje varsa (aktifleşmiş/kapanmış olsa da) form engellemez: başlık
+        (açıklama, vade, ek…) değişikliği kaydedilebilsin. Kalem/tutar değişirse servis (``fatura.fis_girdileri_ayni_mi`` → tam yol)
+        proje korumasını AYNEN uygular: yeni kalem eklenemez."""
+        return bool(self.fatura_pk) and FaturaSatir.objects.filter(
+            fatura_id=self.fatura_pk, yatirim_projesi=proje, silindi=False).exists()
 
     def dolu_mu(self) -> bool:
         return bool(getattr(self, "cleaned_data", {}).get("dolu"))

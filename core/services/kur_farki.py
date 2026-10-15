@@ -179,9 +179,11 @@ def havuz_plani(hesap_kodu, pb):
 
 
 @transaction.atomic
-def havuz_yeniden_hesapla(hesap_kodu, pb):
+def havuz_yeniden_hesapla(hesap_kodu, pb, ipucu=None):
     """Havuzu baştan hesaplar; değişen satır TL'lerini ve kur farkı satırlarını yazar.
-    Rapor için {degisen, kur_farki_kar, kur_farki_zarar, q, v} döner."""
+    Rapor için {degisen, kur_farki_kar, kur_farki_zarar, q, v} döner.
+    ``ipucu`` ({ana satır pk: (hesap kodu, proje id ya da None)}): fiş yeniden yazılırken (``yevmiye.fis_guncelle``) silinen eski kur farkı
+    satırının hedefi — yeni ana satırın henüz kur farkı satırı yoksa "geçmişte üretilmiş hedef DEĞİŞMEZ" kuralı bununla uygulanır."""
     satirlar, sonuclar, q, v = havuz_plani(hesap_kodu, pb)
     degisen = 0
     kar = zarar = SIFIR
@@ -225,6 +227,13 @@ def havuz_yeniden_hesapla(hesap_kodu, pb):
                 eski = YatirimProjesi.objects.filter(pk=mevcut[0].yatirim_projesi_id).first()
                 hedef_kod, hedef_proje_id = mevcut[0].hesap_id, mevcut[0].yatirim_projesi_id
                 hedef_proje_kod = eski.kod if eski is not None else None
+        elif ipucu and s.pk in ipucu:
+            # Fiş yeniden yazıldı (eski kur farkı satırı silindi): önceki hedef korunur — 258 + proje'deyse orada, 646/656'daysa orada kalır.
+            eski_hesap, eski_proje_id = ipucu[s.pk]
+            if eski_proje_id:
+                eski = YatirimProjesi.objects.filter(pk=eski_proje_id).first()
+                hedef_kod, hedef_proje_id = eski_hesap, eski_proje_id
+                hedef_proje_kod = eski.kod if eski is not None else None
         elif proje is not None:
             hedef_kod, hedef_proje_id, hedef_proje_kod = (proje.hesap_id or YATIRIM_HESABI), proje.pk, proje.kod
         if hedef_proje_kod:
@@ -258,9 +267,9 @@ def etkilenen_havuzlar(fis):
     return {c for c in cift if k.uygun_mu(*c)}
 
 
-def havuzlari_yeniden_hesapla(ciftler):
+def havuzlari_yeniden_hesapla(ciftler, ipucu=None):
     for hesap_kodu, pb in sorted(ciftler):
-        havuz_yeniden_hesapla(hesap_kodu, pb)
+        havuz_yeniden_hesapla(hesap_kodu, pb, ipucu)
 
 
 def tum_havuzlar():
