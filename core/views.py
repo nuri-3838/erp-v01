@@ -2081,7 +2081,30 @@ def cari_son_temas(request, pk):
 # --- CARİLER modülü — Vergi Daireleri (aranabilir liste tanımı) --------------
 @ekran_gerekli("vergi_daireleri")
 def vergi_daireleri(request):
-    return render(request, "core/vergi_dairesi_listesi.html", {"daireler": vergi_dairesi_servis.aktif_vergi_daireleri()})
+    """Tanımlar > Vergi Daireleri: il filtresi + arama (ad / resmî ad / kod / il) + durum süzgeci, sayfalı (GİB listesiyle ~860 kayıt)."""
+    from core.services.cari_ozet import tr_anahtar
+    g = request.GET
+    tum = vergi_dairesi_servis.tum_vergi_daireleri()
+    iller = sorted(set(tum.exclude(il="").values_list("il", flat=True)), key=tr_anahtar)
+    il = g.get("il") if g.get("il") in iller or g.get("il") == "-" else ""
+    ara = (g.get("ara") or "").strip()
+    durum = g.get("durum") if g.get("durum") in ("aktif", "pasif") else ""
+    qs = tum
+    if il == "-":
+        qs = qs.filter(il="")                                       # il bilgisi olmayan (eski/elle) kayıtlar
+    elif il:
+        qs = qs.filter(il=il)
+    if durum:
+        qs = qs.filter(aktif=(durum == "aktif"))
+    for kelime in ara.split():                                      # sırasız çok kelimeli arama: her kelime ad / resmî ad / kod / ilde geçmeli
+        b = buyuk_harf_tr(kelime)
+        qs = qs.filter(Q(ad__contains=b) | Q(resmi_ad__icontains=kelime) | Q(kod__contains=kelime) | Q(il__contains=b))
+    sayfa = Paginator(qs, 100).get_page(g.get("sayfa"))
+    sabit = g.copy()
+    sabit.pop("sayfa", None)
+    return render(request, "core/vergi_dairesi_listesi.html", {
+        "daireler": sayfa, "toplam": qs.count(), "genel_toplam": tum.count(), "iller": iller, "il": il, "ara": ara, "durum": durum,
+        "etiket": vergi_dairesi_servis.etiket, "sabit_qs": sabit.urlencode()})
 
 
 @ekran_gerekli("vergi_daireleri")
@@ -2113,7 +2136,7 @@ def vergi_dairesi_duzenle(request, pk):
             except vergi_dairesi_servis.VergiDairesiHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = VergiDairesiForm(initial={"ad": vd.ad, "il": vd.il})
+        form = VergiDairesiForm(initial={"ad": vd.ad, "il": vd.il, "kod": vd.kod, "aktif": vd.aktif})
     return render(request, "core/vergi_dairesi_form.html", {"form": form, "baslik": "Vergi Dairesi Düzenle", "duzenlenen": vd})
 
 

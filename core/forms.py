@@ -501,6 +501,8 @@ class VergiDairesiForm(forms.Form):
 
     ad = forms.CharField(label="Vergi Dairesi", max_length=100, widget=forms.TextInput(attrs={"autocomplete": "off"}))
     il = forms.CharField(label="İl (isteğe bağlı)", max_length=60, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kod = forms.CharField(label="GİB kodu (5 hane, isteğe bağlı)", max_length=5, required=False, widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "numeric"}))
+    aktif = forms.BooleanField(label="Aktif (cari formunda seçilebilir)", required=False, initial=True)
 
 
 class SehirForm(forms.Form):
@@ -621,11 +623,8 @@ class CariForm(forms.Form):
         """``mevcut_vkn``: düzenlenen carinin kayıtlı VKN/TCKN'si — hatalı olsa bile alana DOKUNULMADIYSA (aynı değer) kayıt engellenmez.
         ``mevcut_vergi_dairesi``: kartta kayıtlı ama tanım listesinde olmayan değer — seçenek olarak korunur ("listede yok"), alana dokunulmazsa kayıt engellenmez."""
         super().__init__(*args, **kwargs)
-        from core.services.vergi_dairesi import aktif_vergi_daireleri
-        secenekler = [("", "— vergi dairesi seç —")] + [(v.ad, str(v)) for v in aktif_vergi_daireleri()]
-        mevcut_vd = (mevcut_vergi_dairesi or "").strip()
-        if mevcut_vd and mevcut_vd not in {a for a, _ in secenekler}:
-            secenekler.append((mevcut_vd, f"{mevcut_vd} (listede yok)"))
+        from core.services.vergi_dairesi import secenekler as vergi_dairesi_secenekleri
+        secenekler = vergi_dairesi_secenekleri(mevcut_vergi_dairesi)               # "İL – AD (KOD)" etiketli, aranabilir; kartta kayıtlı ama listede olmayan değer korunur
         self.fields["vergi_dairesi"].choices = secenekler
         self.fields["vergi_dairesi"].widget.attrs["class"] = "akilli-sec"
         self.mevcut_vkn = (mevcut_vkn or "").strip() if mevcut_vkn is not None else None

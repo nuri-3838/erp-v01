@@ -161,7 +161,7 @@ class VergiDairesiTest(Taban):
         vds.vergi_dairesi_olustur(ad="erciyes", il="kayseri")
         self.client.force_login(self.sade)
         r = self.client.get(reverse("core:cari_ekle"))
-        self.assertContains(r, "ERCİYES (KAYSERİ)")
+        self.assertContains(r, "KAYSERİ – ERCİYES")
         r = self.client.post(reverse("core:cari_ekle"), self.veri(vergi_dairesi="LİSTEDE YOK"))
         self.assertEqual(r.status_code, 200)
         self.assertFalse(Cari.objects.filter(unvan="DENEME FİRMA").exists())

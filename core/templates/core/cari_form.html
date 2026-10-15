@@ -178,11 +178,17 @@
   function ac(sel, inp, filt){
     aktifInp = inp; konumla(inp);
     filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
+    var kelimeler = filt.split(/\s+/).filter(Boolean);                       // sırasız çok kelimeli arama: TÜM kelimeler (il / ad / kod) geçmeli (ör. "istanbul yenikapı", "34224")
     var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
+    var sonGrup = null;
     Array.prototype.forEach.call(sel.options, function(o){
       var t = o.value ? o.textContent.trim() : bos;
-      if(o.value && filt && t.toLocaleLowerCase('tr').indexOf(filt) < 0) return;
+      if(o.value && kelimeler.length){ var tl = t.toLocaleLowerCase('tr'); if(!kelimeler.every(function(k){ return tl.indexOf(k) > -1; })) return; }
       if(n++ > 80) return;
+      if(o.parentNode && o.parentNode.tagName === 'OPTGROUP' && o.parentNode.label !== sonGrup){      // il öne çıkarma grupları ("KAYSERİ vergi daireleri" / "Diğer iller")
+        sonGrup = o.parentNode.label;
+        var gb = document.createElement('div'); gb.className = 'akilli-grup'; gb.textContent = sonGrup; gListe.appendChild(gb);
+      }
       var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t;
       d.addEventListener('mousedown', function(ev){ ev.preventDefault();
         sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
@@ -220,6 +226,35 @@
     katSel.addEventListener('change', kodCek);
     kodCek();
   }
+})();
+</script>
+<script>
+(function(){
+  // Vergi dairesi seçeneklerinde İL ÖNE ÇIKARMA: cari formunda İL (şehir) seçilince o ilin daireleri "<İL> vergi daireleri" grubunda en üste gelir, diğerleri "Diğer iller" altında kalır.
+  // Etiketler "İL – AD (KOD)" biçimindedir (sunucu üretir); seçili değer korunur; il eşleşmezse liste düz kalır.
+  var sehirSel = document.getElementById('{{ form.sehir.id_for_label }}');
+  var vdSel = document.getElementById('{{ form.vergi_dairesi.id_for_label }}');
+  if(!sehirSel || !vdSel) return;
+  var bosSecenek = vdSel.options[0] && !vdSel.options[0].value ? vdSel.options[0] : null;
+  var tum = Array.prototype.slice.call(vdSel.options).filter(function(o){ return o.value; });
+  function ilAdi(){
+    var o = sehirSel.options[sehirSel.selectedIndex];
+    return (o && o.value) ? o.textContent.trim().replace(/\s*\([^)]*\)\s*$/, '').toLocaleUpperCase('tr') : '';
+  }
+  function sirala(){
+    var il = ilAdi(), secili = vdSel.value;
+    var g1 = document.createElement('optgroup'), g2 = document.createElement('optgroup');
+    g1.label = il + ' vergi daireleri'; g2.label = 'Diğer iller';
+    var eslesen = 0;
+    tum.forEach(function(o){ if(il && o.textContent.trim().indexOf(il + ' \u2013 ') === 0){ g1.appendChild(o); eslesen++; } else { g2.appendChild(o); } });
+    while(vdSel.firstChild) vdSel.removeChild(vdSel.firstChild);
+    if(bosSecenek) vdSel.appendChild(bosSecenek);
+    if(eslesen){ vdSel.appendChild(g1); vdSel.appendChild(g2); }
+    else { tum.forEach(function(o){ vdSel.appendChild(o); }); }
+    vdSel.value = secili;
+  }
+  sehirSel.addEventListener('change', sirala);
+  sirala();
 })();
 </script>
 {% endblock %}

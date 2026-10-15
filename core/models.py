@@ -929,6 +929,11 @@ class VergiDairesi(TemelModel):
 
     ad = models.CharField("vergi dairesi", max_length=100)
     il = models.CharField("il", max_length=60, blank=True, default="")
+    # GİB resmî listesinden yükleme (2026-10-15, ``vergi_daireleri_yukle``): kod = GİB listesindeki 5 haneli muhasebe birimi (vergi dairesi) kodu — yüklemede kodla eşleşir;
+    # resmi_ad = GİB'deki tam ad; aktif = cari formu seçiminde görünür mü. Elle eklenen/eski kayıtlarda kod boş olabilir.
+    kod = models.CharField("GİB kodu", max_length=5, blank=True, default="")
+    resmi_ad = models.CharField("resmî ad (GİB)", max_length=150, blank=True, default="")
+    aktif = models.BooleanField("aktif", default=True)
 
     class Meta:
         db_table = "vergi_dairesi"
@@ -937,6 +942,7 @@ class VergiDairesi(TemelModel):
         ordering = ["ad", "il"]
         constraints = [
             models.UniqueConstraint(fields=["ad", "il"], condition=models.Q(silindi=False), name="uq_vergi_dairesi_ad_il_aktif"),
+            models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False) & ~models.Q(kod=""), name="uq_vergi_dairesi_kod_aktif"),
         ]
 
     def __str__(self):

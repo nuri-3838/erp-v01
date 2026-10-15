@@ -4,42 +4,77 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
+<style>
+  .vd-filtre { display:flex; align-items:flex-end; gap:.6rem; flex-wrap:wrap; margin:.2rem 0 .9rem; }
+  .vd-filtre .vd-alan { display:flex; flex-direction:column; gap:.2rem; }
+  .vd-filtre label { font-size:.72rem; font-weight:700; color:var(--metin-soluk); text-transform:uppercase; letter-spacing:.04em; }
+  .vd-filtre input, .vd-filtre select { min-height:40px; padding:.4rem .8rem; border-radius:12px; border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.88rem; max-width:16rem; }
+  .vd-sayfalama { display:flex; align-items:center; justify-content:center; gap:.5rem; margin-top:.9rem; flex-wrap:wrap; }
+  .vd-sayfalama a { padding:.35rem .8rem; border:1px solid var(--cizgi-koyu); border-radius:10px; text-decoration:none; font-weight:650; }
+  td.kod { font-family:"Cascadia Mono",Consolas,monospace; }
+</style>
 <div class="form-kapsa">
   <div class="form-ust">
     <h1 class="ust-baslik"><span class="emoji">🏛️</span>Vergi Daireleri</h1>
   </div>
-  <p class="sayfa-alt">Cari formundaki vergi dairesi listesi. Listede olmayan daireyi buradan ekleyin; kartlarda yine yalnız ad saklanır.
-    {{ daireler|length }} kayıt.</p>
+  <p class="sayfa-alt">Cari formundaki vergi dairesi listesi (GİB resmî listesi + elle eklenenler). Kartlarda yine yalnız ad saklanır.
+    {{ toplam }}{% if toplam != genel_toplam %} / {{ genel_toplam }}{% endif %} kayıt.</p>
 
   <section class="icerik-kart">
     <div class="sayfa-ust">
       <h2 class="bolum-baslik"><span class="emoji">🏛️</span>Tanımlı Vergi Daireleri</h2>
       <a class="dugme" href="{% url 'core:vergi_dairesi_ekle' %}">+ Yeni Vergi Dairesi</a>
     </div>
+    <form method="get" class="vd-filtre">
+      <div class="vd-alan"><label for="vd-ara">Ara</label>
+        <input type="text" id="vd-ara" name="ara" value="{{ ara }}" placeholder="ad, kod veya il (ör. yenikapı, 34224)" autocomplete="off"></div>
+      <div class="vd-alan"><label for="vd-il">İl</label>
+        <select id="vd-il" name="il" onchange="this.form.submit()">
+          <option value="">Tüm iller</option>
+          {% for i in iller %}<option value="{{ i }}"{% if il == i %} selected{% endif %}>{{ i }}</option>{% endfor %}
+          <option value="-"{% if il == "-" %} selected{% endif %}>(il bilgisi yok)</option>
+        </select></div>
+      <div class="vd-alan"><label for="vd-durum">Durum</label>
+        <select id="vd-durum" name="durum" onchange="this.form.submit()">
+          <option value="">Tümü</option><option value="aktif"{% if durum == "aktif" %} selected{% endif %}>Aktif</option><option value="pasif"{% if durum == "pasif" %} selected{% endif %}>Pasif</option>
+        </select></div>
+      <button type="submit" class="birincil">Ara</button>
+      {% if ara or il or durum %}<a class="iptal-bag" href="{% url 'core:vergi_daireleri' %}">Temizle</a>{% endif %}
+    </form>
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Vergi Dairesi</th><th>İl</th><th>İşlem</th></tr></thead>
+      <thead><tr><th>Kod</th><th>İl</th><th>Vergi Dairesi</th><th>Resmî ad (GİB)</th><th>Durum</th><th>İşlem</th></tr></thead>
       <tbody>
         {% for v in daireler %}
-          <tr>
-            <td>{{ v.ad }}</td>
+          <tr{% if not v.aktif %} class="pasif-satir"{% endif %}>
+            <td class="kod">{{ v.kod|default:"—" }}</td>
             <td>{{ v.il|default:"—" }}</td>
+            <td>{{ v.ad }}</td>
+            <td>{{ v.resmi_ad|default:"—" }}</td>
+            <td>{% if v.aktif %}<span class="rozet rozet-aktif">Aktif</span>{% else %}<span class="rozet rozet-notr">Pasif</span>{% endif %}</td>
             <td>
               <span class="islem-bag">
                 <a href="{% url 'core:vergi_dairesi_duzenle' v.pk %}">Düzenle</a>
                 <form method="post" action="{% url 'core:vergi_dairesi_sil' v.pk %}"
-                      onsubmit="return confirm('{{ v.ad }} silinsin mi?');">
+                      onsubmit="return confirm('{{ v.ad|escapejs }} silinsin mi?');">
                   {% csrf_token %}<button type="submit" class="sil">Sil</button>
                 </form>
               </span>
             </td>
           </tr>
         {% empty %}
-          <tr><td colspan="3" class="yardim">Henüz vergi dairesi yok.</td></tr>
+          <tr><td colspan="6" class="yardim">{% if ara or il or durum %}Eşleşen vergi dairesi yok.{% else %}Henüz vergi dairesi yok.{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
     </div>
+    {% if daireler.has_other_pages %}
+    <nav class="vd-sayfalama">
+      {% if daireler.has_previous %}<a href="?{% if sabit_qs %}{{ sabit_qs }}&amp;{% endif %}sayfa={{ daireler.previous_page_number }}">‹ Önceki</a>{% endif %}
+      <span>Sayfa {{ daireler.number }} / {{ daireler.paginator.num_pages }}</span>
+      {% if daireler.has_next %}<a href="?{% if sabit_qs %}{{ sabit_qs }}&amp;{% endif %}sayfa={{ daireler.next_page_number }}">Sonraki ›</a>{% endif %}
+    </nav>
+    {% endif %}
   </section>
 </div>
 {% endblock %}
