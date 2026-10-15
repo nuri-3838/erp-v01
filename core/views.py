@@ -105,6 +105,7 @@ from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
 from core.services import fatura_ek as fatura_ek_servis
+from core.services import fatura_detay as fatura_detay_servis
 from core.services import irsaliye_ek as irsaliye_ek_servis
 from core.services import teklif_siparis as teklif_siparis_servis
 from core.services import depo as depo_servis
@@ -9089,7 +9090,7 @@ def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
     satirlar = fatura.satirlar.filter(silindi=False).select_related(
-        "stok", "hesap", "kdv", "yatirim_projesi", "demirbas").prefetch_related(
+        "stok__fatura_birimi", "hesap", "kdv", "tevkifat", "yatirim_projesi", "demirbas").prefetch_related(
         Prefetch("duran_varliklar", queryset=DuranVarlik.objects.filter(silindi=False)))
     kart_acilabilir_hesap = set(
         hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))
@@ -9098,8 +9099,9 @@ def fatura_detay(request, pk):
         s.varyant_etiketi = varyant_servis.varyant_kisa(s.varyant) if s.varyant_id else ""
     kaynak_irsaliyeler = list(fatura.kaynak_siparisler.filter(belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).order_by("tarih", "id").prefetch_related(
         Prefetch("ekler", queryset=IrsaliyeEk.objects.filter(silindi=False), to_attr="ekler_aktif")))      # kaynak irsaliyenin ekleri (kopyalanmaz, irsaliyede durur)
+    detay = fatura_detay_servis.baglam(fatura, satirlar, kaynak_irsaliyeler=kaynak_irsaliyeler, kaynak_siparisler=list(fatura.kaynak_siparisler.filter(silindi=False).order_by("pk")))
     return render(request, "core/fatura_detay.html",
-                  {"fatura": fatura, "satirlar": satirlar,
+                  {"fatura": fatura, "satirlar": satirlar, "d": detay,
                    "kaynak_irsaliyeler": kaynak_irsaliyeler, "irsaliye_ek_gorebilir": ekran_gorebilir(request.user, "satinalma_irsaliyeleri"),
                    "karma_satir": fatura.yon == "ALIS" and not (fatura.tip and fatura.tip.gider) and any(s.hesap_id for s in satirlar),      # ALIŞ'ta stok yanında hesap satırı var
                    "donemsel_tablolar": donemsel_servis.fatura_tablolari(fatura),

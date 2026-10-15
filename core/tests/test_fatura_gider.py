@@ -568,10 +568,10 @@ class GiderFaturaEkranTest(GiderTemel):
         f = self._kes([self._sat("730.01", "1", "1000")])
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
-        self.assertContains(r, "Gider Hesabı")
+        self.assertContains(r, "Stok / Hesap")                                                   # yeni detay: tek kalem tablosu (tür + stok/hesap)
         self.assertContains(r, "730.01")
         self.assertContains(r, "ELEKTRİK GİDERİ")
-        self.assertContains(r, "gider faturası; stok hareketi yok")
+        self.assertNotContains(r, "<dt>Depo</dt>")                                               # depo yoksa boş alan gösterilmez (gider faturasında stok hareketi yok)
         self.assertNotContains(r, "<th>Stok</th>")
 
     def test_normal_fatura_detayi_degismedi(self):
@@ -579,7 +579,7 @@ class GiderFaturaEkranTest(GiderTemel):
                                   satirlar=self._stok_satiri())
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:fatura_detay", args=[f.pk]))
-        self.assertContains(r, "<th>Stok</th>")
+        self.assertContains(r, "<th>Stok / Hesap</th>")
         self.assertContains(r, "153-10-0003")
 
     def _stok_satiri(self):

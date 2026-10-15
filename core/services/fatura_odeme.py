@@ -84,3 +84,77 @@ def odeme_durumlari(cariler, bugun=None) -> dict:
             gecikme = (bugun - k["vade"]).days if (kalan > SIFIR and k["vade"] and bugun > k["vade"]) else 0
             sonuc[pk] = {"durum": durum, "tutar": k["tutar"], "kalan": kalan, "pb": k["pb"], "vade": k["vade"], "gecikme": gecikme}
     return sonuc
+
+
+# ------------------------------------------------------------------ FATURA DETAYI: bu faturayı kapatan hareketler
+KAYNAK_ADLARI = {"BANKA": "Banka", "KREDI_KARTI": "Kredi kartı", "CARI_VIRMAN": "Cari virman", "CEK_SENET": "Çek / senet", "KASA": "Kasa",
+                 "CARI_KESINTI": "Cari kesinti / masraf", "MANUEL": "Mahsup (manuel fiş)", "FATURA": "Karşı fatura (mahsup / iade)", "KREDI": "Kredi"}
+
+
+def _kaynak_baglantisi(s):
+    """Hareketin kaynak belgesine (banka hesabı / kredi kartı / çek bordrosu / kasa) giden (rota adı, pk) ya da None."""
+    kaynak = s["fis__kaynak"]
+    if kaynak == "BANKA" and s["fis__banka_hesap_id"]:
+        return "core:banka_hesap_detay", s["fis__banka_hesap_id"]
+    if kaynak == "KREDI_KARTI" and s["fis__kredi_karti_id"]:
+        return "core:kredi_karti_detay", s["fis__kredi_karti_id"]
+    if kaynak == "CEK_SENET" and s["fis__cek_bordrosu_id"]:
+        return "core:cek_bordro_detay", s["fis__cek_bordrosu_id"]
+    if kaynak == "KASA" and s["fis__kasa_id"]:
+        return "core:kasa_detay", s["fis__kasa_id"]
+    return None
+
+
+def fatura_odemeleri(fatura, bugun=None):
+    """FATURA DETAYI için: bu faturayı FIFO ile kapatan hareketler. KAYIT YAZMAZ. Rakamlar (durum, tutar, kalan, gecikme) ``odeme_durumlari`` ile BİREBİR aynıdır (aynı fonksiyon çağrılır);
+    hareket dağılımı aynı sırayla (en eski ödeme en eski faturadan başlar) hesaplanır ve toplamı ``tutar - kalan`` ile tutmak ZORUNDADIR (testle kilitli).
+    Taslak / fişsiz / iade (ters yönlü) fatura ya da carinin muhasebe hesabı yoksa None döner (kart gösterilmez).
+
+    Döner: {"durum", "tutar", "odenen", "kalan", "pb", "vade", "gecikme", "hareketler": [{"tarih", "kaynak", "kaynak_ad", "aciklama", "tutar" (bu faturaya düşen), "hareket_tutari" (hareketin tamamı),
+    "kismi", "tl", "fis_pk", "fis_no", "kaynak_url_adi", "kaynak_pk"}]}."""
+    if fatura.silindi or fatura.durum != Fatura.Durum.ONAYLI or not fatura.fis_id:
+        return None
+    cari = fatura.cari
+    if not cari.muhasebe_kodu:
+        return None
+    durum = odeme_durumlari([cari], bugun).get(fatura.pk)
+    if durum is None:
+        return None
+    faturalar = {f.fis_id: f for f in Fatura.objects.filter(cari_id=cari.pk, silindi=False, durum=Fatura.Durum.ONAYLI, fis__isnull=False)}
+    satirlar = list(YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id=cari.muhasebe_kodu)
+                    .values("pk", "fis_id", "islem_pb", "borc", "alacak", "islem_tutari", "fis__tarih", "fis__kaynak", "fis__yil", "fis__fis_no", "fis__aciklama",
+                            "fis__banka_hesap_id", "fis__kredi_karti_id", "fis__cek_bordrosu_id", "fis__kasa_id"))
+    kalemler, _kredi = fifo_kalemler(cari, faturalar, satirlar)
+    k = kalemler.get(fatura.pk)
+    if k is None:
+        return None
+    dogal = dogal_yon(cari)
+    pb = k["pb"]
+    krediler = sorted(((s, s["islem_tutari"] or (s["borc"] or s["alacak"])) for s in satirlar
+                       if ("borc" if s["borc"] > 0 else "alacak") != dogal and s["islem_pb"] == pb),
+                      key=lambda x: (x[0]["fis__tarih"], x[0]["fis_id"], x[0]["pk"]))
+    kalan_kredi = [[s, t] for s, t in krediler]
+    hareketler = []
+    for kalem in sorted((x for x in kalemler.values() if x["pb"] == pb), key=lambda x: (x["tarih"], x["fatura"].pk)):
+        ihtiyac = kalem["tutar"]
+        for kr in kalan_kredi:
+            if ihtiyac <= SIFIR:
+                break
+            if kr[1] <= SIFIR:
+                continue
+            al = min(ihtiyac, kr[1])
+            kr[1] -= al
+            ihtiyac -= al
+            if kalem["fatura"].pk == fatura.pk:
+                s = kr[0]
+                tam = s["islem_tutari"] or (s["borc"] or s["alacak"])
+                baglanti = _kaynak_baglantisi(s)
+                if baglanti is None and s["fis__kaynak"] == "FATURA" and s["fis_id"] in faturalar:
+                    baglanti = ("core:fatura_detay", faturalar[s["fis_id"]].pk)                   # mahsup eden karşı faturanın kendisi
+                hareketler.append({
+                    "tarih": s["fis__tarih"], "kaynak": s["fis__kaynak"], "kaynak_ad": KAYNAK_ADLARI.get(s["fis__kaynak"], s["fis__kaynak"].replace("_", " ").title()),
+                    "aciklama": s["fis__aciklama"], "tutar": al, "hareket_tutari": tam, "kismi": al < tam - ESIK,
+                    "tl": (s["borc"] or s["alacak"]), "fis_pk": s["fis_id"], "fis_no": f"{s['fis__yil']}/{s['fis__fis_no']}",
+                    "kaynak_url_adi": baglanti[0] if baglanti else None, "kaynak_pk": baglanti[1] if baglanti else None})
+    return {"durum": durum["durum"], "tutar": durum["tutar"], "odenen": durum["tutar"] - durum["kalan"], "kalan": durum["kalan"], "pb": durum["pb"], "vade": durum["vade"],
+            "gecikme": durum["gecikme"], "hareketler": hareketler}

@@ -2,25 +2,116 @@
 {% load core_extras %}
 {% block baslik %}Fatura · ERP v0.1{% endblock %}
 {% block sayfa_adi %}Fatura{% endblock %}
+{% block govde_sinif %}govde-tam{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="sayfa-ust">
+<style>
+  .fd-ust { display:flex; align-items:flex-end; justify-content:space-between; gap:.8rem; flex-wrap:wrap; margin-bottom:.8rem; }
+  .fd-ust h1 { margin:.1rem 0 0; display:flex; align-items:center; gap:.45rem; flex-wrap:nowrap; }
+  .fd-islemler { display:flex; gap:.45rem; flex-wrap:wrap; align-items:center; }
+  .fd-islemler form { margin:0; }
+  .fd-islemler .dugme, .fd-islemler .sil { min-height:38px; display:inline-flex; align-items:center; gap:.3rem; box-sizing:border-box; }
+  .fd-izgara { display:grid; grid-template-columns:minmax(0,1fr); gap:.9rem; align-items:start; }
+  @media (min-width:1100px) { .fd-izgara.pdf-var { grid-template-columns:minmax(0,1fr) minmax(380px,44%); } }
+  .fd-sol, .fd-sag { min-width:0; }
+  .fd-kart { background:rgba(255,255,255,.72); border:1px solid var(--cizgi-koyu); border-radius:16px; padding:.85rem 1rem .95rem; margin-bottom:.8rem; }
+  .fd-kart h2 { margin:0 0 .6rem; font-size:.74rem; letter-spacing:.07em; text-transform:uppercase; color:var(--metin-soluk); }
+  .fd-kart h3 { margin:.9rem 0 .35rem; font-size:.82rem; color:var(--lacivert); }
+  .fd-baslik-ust { display:flex; justify-content:space-between; align-items:flex-start; gap:.8rem; flex-wrap:wrap; margin-bottom:.7rem; }
+  .fd-no { font-size:1.25rem; font-weight:800; letter-spacing:.01em; }
+  .fd-odeme-kutu { text-align:right; } .fd-odeme-kutu small { display:block; margin-top:.2rem; color:var(--metin-soluk); font-size:.78rem; }
+  .fd-alanlar { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:.55rem 1.2rem; margin:0; }
+  .fd-alanlar > div { min-width:0; } .fd-alanlar .genis { grid-column:1 / -1; }
+  .fd-alanlar dt { font-size:.68rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); margin:0 0 .1rem; }
+  .fd-alanlar dd { margin:0; overflow-wrap:anywhere; }
+  .ft-tip { display:inline-block; padding:.1rem .55rem; border-radius:999px; font-size:.74rem; font-weight:700; background:#eef1f7; color:#5b6678; }
+  .ft-tip.normal { background:#e8f0fe; color:#1f4fa8; } .ft-tip.gider { background:#fff1dc; color:#b45f00; } .ft-tip.kdv { background:#f1e9f9; color:#6a3d9a; }
+  .ft-tip.iade { background:#fdecef; color:#b3253f; } .ft-tip.ihrac { background:#e0f5f3; color:#0b6b66; } .ft-tip.smm { background:#fdf3d8; color:#8a6100; }
+  .ft-odeme { display:inline-block; padding:.12rem .65rem; border-radius:999px; font-size:.8rem; font-weight:700; }
+  .ft-odeme.kapandi { background:#e7f7ec; color:#0a7d28; } .ft-odeme.kismi { background:#fff1dc; color:#b45f00; } .ft-odeme.acik { background:#e8f0fe; color:#1f4fa8; }
+  .ft-odeme.gecti { background:#fdecef; color:#b3253f; }
+  .ft-rozet-kucuk { display:inline-block; padding:.05rem .45rem; border-radius:999px; font-size:.7rem; font-weight:700; background:#eef1f7; color:#5b6678; vertical-align:middle; }
+  .fd-kap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid rgba(255,255,255,.65); border-radius:12px; }
+  .fd-tablo { width:100%; border-collapse:collapse; }
+  .fd-tablo th, .fd-tablo td { padding:.32rem .5rem; font-size:.82rem; line-height:1.3; vertical-align:top; border-bottom:1px solid rgba(120,130,160,.18); text-align:left; }
+  .fd-tablo th { font-size:.7rem; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); white-space:nowrap; background:rgba(244,247,251,.9); }
+  .fd-tablo td.sag, .fd-tablo th.sag { text-align:right; } .fd-tablo td.sag { white-space:nowrap; }
+  .fd-tablo tfoot td, .fd-tablo tfoot th { font-weight:750; background:rgba(244,247,251,.9); }
+  .fd-kalem { min-width:900px; }
+  .fd-kap { container-type:inline-size; }
+  @container (max-width: 900px) {        /* dar kolon / mobil: kalem satırı kart olur — 11 sütunun HEPSİ yatay kaydırma olmadan görünür */
+    .fd-kalem { min-width:0; } .fd-kalem thead { display:none; }
+    .fd-kalem, .fd-kalem tbody { display:block; }
+    .fd-kalem tr { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.35rem .7rem; padding:.6rem .65rem; border-bottom:1px solid rgba(120,130,160,.28); }
+    .fd-kalem td { display:block; border:none; padding:0; text-align:left; white-space:normal; min-width:0; overflow-wrap:anywhere; }
+    .fd-kalem td::before { content:attr(data-label); display:block; font-size:.62rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); font-family:inherit; }
+    .fd-kalem td.k-tur::before { display:none; } .fd-kalem td.k-ad { grid-column:2 / -1; font-weight:600; } .fd-kalem td.k-ad::before { display:none; }
+    .fd-kalem td.k-top { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:baseline; border-top:1px dashed rgba(120,130,160,.3); padding-top:.3rem; }
+    .fd-kalem td.k-top::before { display:inline; }
+  }
+  .fd-alt { display:block; font-size:.72rem; color:var(--metin-soluk); line-height:1.25; }
+  @container (max-width: 480px) {        /* mobil: diğer tablolar da kart satırı olur (yatay kaydırma yok) */
+    .dar-kart thead { display:none; } .dar-kart, .dar-kart tbody, .dar-kart tfoot { display:block; }
+    .dar-kart tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.3rem .7rem; padding:.5rem .6rem; border-bottom:1px solid rgba(120,130,160,.25); }
+    .dar-kart td, .dar-kart th { display:block; border:none; padding:0; text-align:left !important; white-space:normal !important; overflow-wrap:anywhere; min-width:0; }
+    .dar-kart td::before { content:attr(data-label); display:block; font-size:.62rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); }
+    .dar-kart td.k-genis { grid-column:1 / -1; }
+    .dar-kart tfoot tr { display:flex; justify-content:space-between; gap:.6rem; } .dar-kart tfoot th:empty { display:none; }
+  }
+  .fd-kutu-sar { display:flex; justify-content:flex-end; margin-top:.7rem; }
+  .fd-kutu { width:100%; max-width:430px; border:1px solid var(--cizgi-koyu); border-radius:12px; background:rgba(255,255,255,.85); border-collapse:separate; border-spacing:0; overflow:hidden; }
+  .fd-kutu td { padding:.3rem .7rem; font-size:.85rem; border-bottom:1px solid rgba(120,130,160,.15); }
+  .fd-kutu td.sag { text-align:right; white-space:nowrap; } .fd-kutu tr:last-child td { border-bottom:none; }
+  .fd-kutu tr.alt td:first-child { padding-left:1.4rem; color:var(--metin-soluk); }
+  .fd-kutu tr.kalin td { font-weight:750; } .fd-kutu tr.vurgu td { background:#eef3fb; font-size:.92rem; }
+  .fd-kutu .tl { color:var(--metin-soluk); font-weight:600; }
+  .fd-ozet { display:flex; gap:1.4rem; flex-wrap:wrap; margin-bottom:.6rem; }
+  .fd-ozet div { min-width:0; } .fd-ozet small { display:block; font-size:.68rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); }
+  .fd-ozet strong { font-size:1rem; }
+  .fd-baglar { display:flex; gap:.4rem .9rem; flex-wrap:wrap; font-size:.85rem; }
+  .fd-sag { position:sticky; top:.6rem; }
+  .fd-pdf { background:rgba(255,255,255,.72); border:1px solid var(--cizgi-koyu); border-radius:16px; overflow:hidden; }
+  .fd-pdf > summary { cursor:pointer; padding:.65rem 1rem; font-weight:700; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
+  .fd-pdf > summary::-webkit-details-marker { display:none; }
+  .fd-pdf > summary::after { content:"▾"; color:var(--metin-soluk); } .fd-pdf:not([open]) > summary::after { content:"▸"; }
+  .fd-sekmeler { display:flex; gap:.3rem; flex-wrap:wrap; padding:0 .8rem .4rem; }
+  .fd-sekme { border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); border-radius:10px; padding:.25rem .65rem; font-size:.78rem; font-weight:650; cursor:pointer; max-width:15rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fd-sekme.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; }
+  .fd-panel[hidden] { display:none; }
+  .fd-panel iframe, .fd-panel img { display:block; width:100%; border:0; background:#fff; }
+  .fd-panel iframe { height:calc(100vh - 14rem); min-height:520px; } .fd-panel img { height:auto; max-height:calc(100vh - 14rem); object-fit:contain; }
+  .fd-panel-ust { display:flex; justify-content:space-between; align-items:center; gap:.6rem; flex-wrap:wrap; padding:.2rem .9rem .5rem; font-size:.8rem; }
+  .fd-panel-ust form { margin:0; display:inline; }
+  .fd-ek-ekle { padding:.7rem .9rem .9rem; border-top:1px solid rgba(120,130,160,.2); }
+  .fd-ek-ekle.bos { border:2px dashed var(--cizgi-koyu); border-radius:14px; margin:.2rem .9rem .9rem; padding:1.4rem 1rem; text-align:center; }
+  .fd-ek-ekle input[type=file] { max-width:100%; }
+  @media (max-width:700px) {
+    .fd-islemler { width:100%; } .fd-islemler .dugme, .fd-islemler .sil { flex:1 1 calc(50% - .45rem); justify-content:center; }
+    .fd-islemler form { flex:1 1 calc(50% - .45rem); } .fd-islemler form .dugme, .fd-islemler form .sil { width:100%; }
+    .fd-kart { padding:.7rem .75rem .8rem; } .fd-no { font-size:1.1rem; } .fd-odeme-kutu { text-align:left; }
+    .fd-panel iframe { height:70vh; min-height:360px; } .fd-sag { position:static; }
+  }
+  @media print { aside, .ust-cubuk, .yan-perde, .fd-islemler, .fd-sag, .ust-link { display:none !important; } .fd-izgara { display:block; } .fd-kart { break-inside:avoid; box-shadow:none; } }
+</style>
+
+<div class="fd-ust">
   <div>
     <a class="ust-link" href="{% url liste_url %}">← Faturalar</a>
-    <h1 class="ust-baslik"><span class="emoji">🧾</span>{% if fatura.tip %}{{ fatura.tip.ad }}{% else %}Taslak Fatura{% endif %}{% if fatura.fatura_no %} · {{ fatura.fatura_no }}{% endif %}
-      <span class="rozet {% if fatura.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ fatura.get_durum_display }}</span>
-      {% if fatura.sahsi_alis %}<span class="rozet rozet-pasif">👤 Şahsi</span>{% endif %}</h1>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>{% if fatura.tip %}{{ fatura.tip.ad }}{% else %}Taslak Fatura{% endif %}</h1>
   </div>
   {% if not fatura.silindi %}
-  <span class="islem-bag">
+  <div class="fd-islemler">
     {% if fatura.durum == "TASLAK" %}
-    <form method="post" action="{% url 'core:fatura_onayla' fatura.pk %}" style="margin:0">
+    <form method="post" action="{% url 'core:fatura_onayla' fatura.pk %}">
       {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
     {% endif %}
-    <a class="dugme" href="{% url 'core:fatura_duzenle' fatura.pk %}">Düzenle</a>
+    <a class="dugme" href="{% url 'core:fatura_duzenle' fatura.pk %}">✏️ Düzenle</a>
+    <button type="button" class="dugme" id="fd-ek-dugme" style="border:0;cursor:pointer">📎 PDF / Ek ekle</button>
+    <button type="button" class="dugme" onclick="window.print()" style="border:0;cursor:pointer">🖨️ Yazdır</button>
     <form method="post" action="{% url 'core:fatura_sil' fatura.pk %}" onsubmit="return confirm('Fatura ve bağlı yevmiye kaydı KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.');">
       {% csrf_token %}<button type="submit" class="sil">🗑️ Sil</button></form>
-  </span>
+  </div>
   {% endif %}
 </div>
 
@@ -31,66 +122,187 @@
 {% endif %}
 {% if fatura.durum == "TASLAK" and not fatura.tip %}<div class="uyari"><div>⚠️ Bu taslağın fatura tipi henüz seçilmedi — Düzenle'den seçip Onayla'ya basın.</div></div>{% endif %}
 
-<section class="icerik-kart">
-  <div class="satir"><span class="et">Cari</span>
-    <span class="dg"><span class="mono">{{ fatura.cari.kod }}</span> {{ fatura.cari.unvan }}</span></div>
-  <div class="satir"><span class="et">Tarih</span><span class="dg mono">{{ fatura.tarih|date:"d.m.Y" }}</span></div>
-  {% if fatura.vade_tarihi %}
-  <div class="satir"><span class="et">Vade Tarihi</span><span class="dg mono">{{ fatura.vade_tarihi|date:"d.m.Y" }}</span></div>
-  {% endif %}
-  <div class="satir"><span class="et">Para Birimi</span><span class="dg">{{ fatura.para_birimi }}{% if fatura.para_birimi != "TRY" %} (kur {{ fatura.kur|tr_kur:4 }}){% endif %}</span></div>
-  <div class="satir"><span class="et">Depo</span><span class="dg">{% if fatura.depo %}<span class="mono">{{ fatura.depo.kod }}</span> {{ fatura.depo.ad }}{% elif fatura.tip and fatura.tip.gider %}<span class="pasif">— (gider faturası; stok hareketi yok)</span>{% else %}<span class="pasif">— (stok hareketi yok)</span>{% endif %}</span></div>
-  <div class="satir"><span class="et">Yevmiye Fişi</span>
-    <span class="dg">{% if fatura.fis %}<a class="mono" href="{% url 'core:fis_detay' fatura.fis.pk %}">{{ fatura.fis.yil }}/{{ fatura.fis.fis_no }}</a>{% else %}—{% endif %}</span></div>
-  {% if fatura.sahsi_alis %}
-  <div class="satir"><span class="et">Ortak Adına Şahsi Alış</span>
-    <span class="dg"><span class="mono">{{ fatura.sahsi_ortak.hesap_kodu }}</span> {{ fatura.sahsi_ortak.hesap_adi }}</span></div>
-  {% endif %}
-  {% if fatura.aciklama %}
-  <div class="satir"><span class="et">Açıklama</span><span class="dg">{{ fatura.aciklama|linebreaksbr }}</span></div>
-  {% endif %}
-  {% with kaynak_siparis=fatura.kaynak_siparisler.first %}
-  {% if kaynak_siparis %}
-  <div class="satir"><span class="et">Kaynak {{ kaynak_siparis.get_belge_tur_display }}</span>
-    <span class="dg"><a href="{% url 'core:teklif_siparis_detay' kaynak_siparis.pk %}">{{ kaynak_siparis.get_belge_tur_display }}{% if kaynak_siparis.belge_no %} · {{ kaynak_siparis.belge_no }}{% endif %}</a></span></div>
-  {% endif %}
-  {% endwith %}
-</section>
+<div class="fd-izgara{% if not fatura.silindi %} pdf-var{% endif %}">
+<div class="fd-sol">
 
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Kalemler</h2>
-  <div class="tablo-kapsayici">
-  <table>
-    <thead><tr><th>{% if fatura.tip and fatura.tip.gider %}Gider Hesabı{% elif fatura.yon == "SATIS" %}Kalem (stok · hesap · demirbaş){% elif karma_satir %}Kalem (stok · hesap){% else %}Stok{% endif %}</th><th class="sag">Miktar</th><th class="sag">Birim Fiyat</th>
-      <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
-    <tbody>
-      {% for s in satirlar %}
+  {# ---------------- 2) BAŞLIK KARTI ---------------- #}
+  <section class="fd-kart" id="fd-baslik">
+    <div class="fd-baslik-ust">
+      <div>
+        <span class="ft-tip {{ d.tip_css }}">{{ d.tip_etiket }}</span>
+        {% if fatura.durum == "TASLAK" %}<span class="ft-rozet-kucuk">Taslak</span>{% endif %}
+        {% if fatura.sahsi_alis %}<span class="ft-rozet-kucuk">👤 Şahsi alış</span>{% endif %}
+        <div class="fd-no">{% if fatura.faturasiz %}<span class="ft-rozet-kucuk" title="Belge no yok (faturasız)">Faturasız</span>{% elif fatura.fatura_no %}{{ fatura.fatura_no }}{% else %}<span class="pasif">Fatura no girilmemiş</span>{% endif %}</div>
+      </div>
+      {% if d.odeme %}
+      <div class="fd-odeme-kutu">
+        {% if d.odeme.durum == "KAPANDI" %}<span class="ft-odeme kapandi">Kapandı</span>
+        {% elif d.odeme.gecikme > 0 %}<span class="ft-odeme gecti">Vadesi geçti ({{ d.odeme.gecikme }} gün)</span>
+        {% elif d.odeme.durum == "KISMI" %}<span class="ft-odeme kismi">Kısmi</span>
+        {% else %}<span class="ft-odeme acik">Açık</span>{% endif %}
+        {% if d.odeme.durum != "KAPANDI" %}<small>kalan {{ d.odeme.kalan|tr_kur:2 }} {{ d.odeme.pb }}</small>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <dl class="fd-alanlar">
+      <div><dt>Cari</dt><dd><a href="{% url 'core:cari_detay' fatura.cari.pk %}">{{ fatura.cari.unvan }}</a><span class="fd-alt mono">{{ fatura.cari.kod }}</span></dd></div>
+      <div><dt>Fatura Tarihi</dt><dd class="mono">{{ fatura.tarih|date:"d.m.Y" }}</dd></div>
+      {% if fatura.vade_tarihi %}<div><dt>Vade Tarihi</dt><dd class="mono">{{ fatura.vade_tarihi|date:"d.m.Y" }}</dd></div>{% endif %}
+      <div><dt>Para Birimi{% if fatura.para_birimi != "TRY" %} / Kur{% endif %}</dt><dd>{{ fatura.para_birimi }}{% if fatura.para_birimi != "TRY" %} <span class="mono">· kur {% if d.kur %}{{ d.kur|tr_kur:4 }}{% else %}—{% endif %}</span>{% endif %}</dd></div>
+      {% if fatura.depo %}<div><dt>Depo</dt><dd><span class="mono">{{ fatura.depo.kod }}</span> {{ fatura.depo.ad }}</dd></div>{% endif %}
+      {% if fatura.sahsi_alis and fatura.sahsi_ortak %}<div><dt>Ortak hesabı</dt><dd><span class="mono">{{ fatura.sahsi_ortak.hesap_kodu }}</span> {{ fatura.sahsi_ortak.hesap_adi }}</dd></div>{% endif %}
+      {% for k in d.siparisler %}<div><dt>Kaynak {{ k.get_belge_tur_display }}</dt><dd><a href="{% url 'core:teklif_siparis_detay' k.pk %}">{% if k.belge_no %}{{ k.belge_no }}{% else %}Belge{% endif %}</a></dd></div>{% endfor %}
+      {% if fatura.aciklama %}<div class="genis"><dt>Açıklama</dt><dd>{{ fatura.aciklama|linebreaksbr }}</dd></div>{% endif %}
+    </dl>
+  </section>
+
+  {# ---------------- 3) KALEMLER VE TOPLAMLAR ---------------- #}
+  <section class="fd-kart" id="fd-kalemler">
+    <h2>Kalemler</h2>
+    <div class="fd-kap">
+    <table class="fd-tablo fd-kalem">
+      <thead><tr><th>Tür</th><th>Stok / Hesap</th><th>Proje</th><th class="sag">Miktar</th><th>Birim</th><th class="sag">Birim fiyat</th><th class="sag">KDV %</th><th class="sag">Tevkifat</th>
+        <th class="sag">Matrah</th><th class="sag">KDV</th><th class="sag">Satır toplamı</th></tr></thead>
+      <tbody>
+      {% for k in d.kalemler %}{% with s=k.satir %}
         <tr>
-          <td><span class="rozet rozet-notr" style="margin-right:.4rem">{{ s.satir_tipi_ad }}</span>{% if s.demirbas %}<span class="mono">{{ s.demirbas.demirbas_kodu }}</span> <a href="{% url 'core:duran_varlik_detay' s.demirbas.pk %}">{{ s.demirbas.ad }}</a><div class="yardim">Kart maliyeti {{ s.demirbas.maliyet|tr_kur:2 }} TL · birikmiş amortisman {{ s.demirbas.birikmis_amortisman|tr_kur:2 }} TL · hesap {{ s.demirbas.hesap_id }}</div>{% elif s.hesap %}<span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}{% if s.yatirim_projesi %}<div class="yardim">Proje: <a href="{% url 'core:yatirim_projesi_detay' s.yatirim_projesi.pk %}">{{ s.yatirim_projesi.kod }} — {{ s.yatirim_projesi.ad }}</a></div>{% endif %}{% with dv=s.duran_varliklar.all|first %}{% if dv %}<div class="yardim">Duran varlık: <a href="{% url 'core:duran_varlik_detay' dv.pk %}">{{ dv.demirbas_kodu }} — {{ dv.ad }}</a></div>{% elif s.hesap_id in kart_acilabilir_hesap and fatura.yon == "ALIS" %}<div class="yardim"><a href="{% url 'core:duran_varlik_ekle' %}?satir={{ s.pk }}">+ Duran varlık kartı oluştur</a></div>{% endif %}{% endwith %}{% else %}<span class="mono">{{ s.stok.kod }}</span> {% if fatura.yon == "ALIS" %}{{ s.stok.ad_satinalma }}{% else %}{{ s.stok.ad }}{% endif %}{% if s.varyant_etiketi %} <span class="rozet rozet-notr" title="Varyant">🔀 {{ s.varyant_etiketi }}</span>{% endif %}{% endif %}</td>
-          <td class="sag mono">{{ s.miktar|tr_kur:3 }}</td>
-          <td class="sag mono">{{ s.birim_fiyat|tr_kur:4 }}</td>
-          <td class="sag mono">{{ s.tutar|tr_kur:2 }}</td>
-          <td class="sag mono">{% if s.kdv %}%{{ s.kdv.oran|tr_kur:0 }} · {{ s.kdv_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
-          <td class="sag mono">{% if s.tevkifat %}{{ s.tevkifat.kod }} · {{ s.tevkifat_tutari|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td class="k-tur" data-label="Tür"><span class="ft-rozet-kucuk">{{ k.tur }}</span></td>
+          <td class="k-ad" data-label="Stok / Hesap">{% if s.demirbas %}<span class="mono">{{ s.demirbas.demirbas_kodu }}</span> <a href="{% url 'core:duran_varlik_detay' s.demirbas.pk %}">{{ s.demirbas.ad }}</a><span class="fd-alt">Kart maliyeti {{ s.demirbas.maliyet|tr_kur:2 }} TL · birikmiş amortisman {{ s.demirbas.birikmis_amortisman|tr_kur:2 }} TL · hesap {{ s.demirbas.hesap_id }}</span>
+            {% elif s.hesap %}<span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}{% with dv=s.duran_varliklar.all|first %}{% if dv %}<span class="fd-alt">Duran varlık: <a href="{% url 'core:duran_varlik_detay' dv.pk %}">{{ dv.demirbas_kodu }} — {{ dv.ad }}</a></span>{% elif s.hesap_id in kart_acilabilir_hesap and fatura.yon == "ALIS" %}<span class="fd-alt"><a href="{% url 'core:duran_varlik_ekle' %}?satir={{ s.pk }}">+ Duran varlık kartı oluştur</a></span>{% endif %}{% endwith %}
+            {% else %}<span class="mono">{{ s.stok.kod }}</span> {% if fatura.yon == "ALIS" %}{{ s.stok.ad_satinalma }}{% else %}{{ s.stok.ad }}{% endif %}{% if s.varyant_etiketi %} <span class="ft-rozet-kucuk" title="Varyant">🔀 {{ s.varyant_etiketi }}</span>{% endif %}{% endif %}</td>
+          <td data-label="Proje">{% if s.yatirim_projesi %}<a href="{% url 'core:yatirim_projesi_detay' s.yatirim_projesi.pk %}" title="{{ s.yatirim_projesi.ad }}">{{ s.yatirim_projesi.kod }}</a>{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td class="sag mono" data-label="Miktar">{{ s.miktar|tr_kur:3 }}</td>
+          <td data-label="Birim">{{ k.birim }}</td>
+          <td class="sag mono" data-label="Birim fiyat">{{ s.birim_fiyat|tr_kur:4 }}</td>
+          <td class="sag mono" data-label="KDV %">{% if k.kdv_oran != None %}%{{ k.kdv_oran|tr_kur:0 }}{% else %}—{% endif %}</td>
+          <td class="sag mono" data-label="Tevkifat">{% if k.tevkifat_kod %}{{ k.tevkifat_kod }} · {{ k.tevkifat|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td class="sag mono" data-label="Matrah">{% if k.matrah != None %}{{ k.matrah|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td class="sag mono" data-label="KDV">{{ k.kdv|tr_kur:2 }}</td>
+          <td class="sag mono k-top" data-label="Satır toplamı"><strong>{{ k.toplam|tr_kur:2 }}</strong></td>
+        </tr>
+      {% endwith %}{% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if d.kutu.doviz %}<p class="yardim" style="margin:.4rem 0 0">Kalem tutarları {{ fatura.para_birimi }} cinsindendir; TL karşılıkları toplam kutusunda{% if d.kutu.kur %} (fatura kuru {{ d.kutu.kur|tr_kur:4 }}){% endif %}.</p>{% endif %}
+    {% if d.yalniz_kdv %}<p class="yardim" style="margin:.4rem 0 0">“Yalnız KDV” tipi: matrah fişe yazılmaz; yalnız KDV carinin hesabına işlenir.</p>{% endif %}
+    <div class="fd-kutu-sar">
+      <table class="fd-kutu">
+        {% if d.kutu.doviz %}<tr><td></td><td class="sag tl">{{ d.kutu.pb }}</td><td class="sag tl">TL karşılığı</td></tr>{% endif %}
+        {% for r in d.kutu.satirlar %}
+        <tr class="{% if r.alt %}alt{% endif %} {% if r.kalin %}kalin{% endif %} {% if r.vurgu %}vurgu{% endif %}">
+          <td>{{ r.etiket }}</td>
+          <td class="sag mono">{% if r.tutar == None %}—{% else %}{% if r.eksi %}−{% endif %}{{ r.tutar|tr_kur:2 }}{% endif %}</td>
+          {% if d.kutu.doviz %}<td class="sag mono tl">{% if r.tl == None %}—{% else %}{% if r.eksi %}−{% endif %}{{ r.tl|tr_kur:2 }}{% endif %}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% if d.kutu.fis_cari_tl %}<p class="yardim" style="margin:.4rem 0 0;text-align:right">Fişteki cari tutarı <strong class="mono">{{ d.kutu.fis_cari_tl|tr_kur:2 }} TL</strong> — tutar × kurdan {{ d.kutu.fis_cari_fark|tr_kur:2 }} TL farklı (kur farkı satırları; aşağıda Muhasebe kartında).</p>{% endif %}
+    {% if d.kutu.tl_belirsiz %}<p class="yardim" style="margin:.4rem 0 0;text-align:right">TL karşılığı faturanın kuru belirlenince (onayda) görünür.</p>{% endif %}
+  </section>
+
+  {# ---------------- 4) ÖDEMELER KARTI ---------------- #}
+  {% if d.odeme %}
+  <section class="fd-kart" id="fd-odemeler">
+    <h2>Ödemeler</h2>
+    <div class="fd-ozet">
+      <div><small>Fatura tutarı</small><strong class="mono">{{ d.odeme.tutar|tr_kur:2 }} {{ d.odeme.pb }}</strong></div>
+      <div><small>Ödenen</small><strong class="mono">{{ d.odeme.odenen|tr_kur:2 }} {{ d.odeme.pb }}</strong></div>
+      <div><small>Kalan</small><strong class="mono">{% if d.odeme.durum == "KAPANDI" %}0,00{% else %}{{ d.odeme.kalan|tr_kur:2 }}{% endif %} {{ d.odeme.pb }}</strong></div>
+    </div>
+    {% if d.odeme.hareketler %}
+    <div class="fd-kap">
+    <table class="fd-tablo dar-kart">
+      <thead><tr><th>Tarih</th><th>Belge türü</th><th>Açıklama</th><th class="sag">Bu faturaya düşen</th><th>Fiş / belge</th></tr></thead>
+      <tbody>
+      {% for h in d.odeme.hareketler %}
+        <tr>
+          <td class="mono" data-label="Tarih">{{ h.tarih|date:"d.m.Y" }}</td>
+          <td data-label="Belge türü">{{ h.kaynak_ad }}</td>
+          <td class="k-genis" data-label="Açıklama">{{ h.aciklama|default:"—" }}{% if h.kismi %}<span class="fd-alt">hareketin toplamı {{ h.hareket_tutari|tr_kur:2 }} {{ d.odeme.pb }}; kalanı diğer faturalara düştü</span>{% endif %}</td>
+          <td class="sag mono" data-label="Bu faturaya düşen">{{ h.tutar|tr_kur:2 }} {{ d.odeme.pb }}</td>
+          <td data-label="Fiş / belge"><a class="mono" href="{% url 'core:fis_detay' h.fis_pk %}">{{ h.fis_no }}</a>{% if h.kaynak_url_adi %} · <a href="{% url h.kaynak_url_adi h.kaynak_pk %}">belge</a>{% endif %}</td>
         </tr>
       {% endfor %}
-    </tbody>
-    <tfoot>
-      <tr><th colspan="3" class="sag">Ara Toplam</th><th class="sag mono">{{ fatura.ara_toplam|tr_kur:2 }}</th><th></th><th></th></tr>
-      <tr><th colspan="3" class="sag">KDV</th><th></th><th class="sag mono">{{ fatura.kdv_toplam|tr_kur:2 }}</th><th></th></tr>
-      {% if fatura.tevkifat_toplam %}<tr><th colspan="3" class="sag">Tevkifat (−)</th><th></th><th></th><th class="sag mono">{{ fatura.tevkifat_toplam|tr_kur:2 }}</th></tr>{% endif %}
-      {% if fatura.gv_stopaj_orani %}<tr><th colspan="3" class="sag">GV Stopajı (−) %{{ fatura.gv_stopaj_orani|tr_kur:2 }}</th><th></th><th></th><th class="sag mono">{{ fatura.gv_stopaj_tutari|tr_kur:2 }}</th></tr>{% endif %}
-      <tr><th colspan="3" class="sag">Ödenecek</th><th colspan="3" class="sag mono">{{ fatura.odenecek|tr_kur:2 }} {{ fatura.para_birimi }}</th></tr>
-    </tfoot>
-  </table>
-  </div>
-</section>
+      </tbody>
+      <tfoot><tr><th colspan="3" class="sag">Kalan tutar</th><th class="sag mono">{% if d.odeme.durum == "KAPANDI" %}0,00{% else %}{{ d.odeme.kalan|tr_kur:2 }}{% endif %} {{ d.odeme.pb }}</th><th></th></tr></tfoot>
+    </table>
+    </div>
+    {% else %}
+    <p class="yardim" style="margin:0">Bu faturaya düşen ödeme / tahsilat yok.</p>
+    {% endif %}
+    <p class="yardim" style="margin:.5rem 0 0">Ödemeler cari hesabındaki ödeme / tahsilat / mahsup / iade hareketlerinden en eski faturadan başlayarak (FIFO) düşülür — Faturalar listesi ve cari ekstresiyle aynı kural.</p>
+  </section>
+  {% endif %}
+
+  {# ---------------- 5) MUHASEBE KARTI ---------------- #}
+  {% if d.muh %}
+  <section class="fd-kart" id="fd-muhasebe">
+    <h2>Muhasebe</h2>
+    <p style="margin:0 0 .5rem">Yevmiye fişi: <a class="mono" href="{% url 'core:fis_detay' d.muh.fis.pk %}">{{ d.muh.fis.yil }}/{{ d.muh.fis.fis_no }}</a> <span class="yardim">· {{ d.muh.fis.tarih|date:"d.m.Y" }}</span></p>
+    <div class="fd-kap">
+    <table class="fd-tablo dar-kart">
+      <thead><tr><th>Hesap kodu</th><th>Hesap adı</th><th class="sag">Borç</th><th class="sag">Alacak</th>{% if d.muh.doviz_var %}<th class="sag">Döviz tutarı</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for s in d.muh.satirlar %}
+        <tr><td class="mono" data-label="Hesap kodu">{{ s.hesap_id }}</td><td class="k-genis" data-label="Hesap adı">{{ s.hesap.hesap_adi }}</td>
+          <td class="sag mono" data-label="Borç">{% if s.borc %}{{ s.borc|tr_kur:2 }}{% else %}—{% endif %}</td><td class="sag mono" data-label="Alacak">{% if s.alacak %}{{ s.alacak|tr_kur:2 }}{% else %}—{% endif %}</td>
+          {% if d.muh.doviz_var %}<td class="sag mono" data-label="Döviz tutarı">{% if s.islem_pb != "TRY" %}{{ s.islem_tutari|tr_kur:2 }} {{ s.islem_pb }}{% else %}—{% endif %}</td>{% endif %}</tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><th colspan="2" class="sag">Toplam (TL)</th><th class="sag mono">{{ d.muh.borc|tr_kur:2 }}</th><th class="sag mono">{{ d.muh.alacak|tr_kur:2 }}</th>{% if d.muh.doviz_var %}<th></th>{% endif %}</tr></tfoot>
+    </table>
+    </div>
+
+    {% if d.muh.kur_farki %}
+    <h3>Kur farkı satırları</h3>
+    <div class="fd-kap">
+    <table class="fd-tablo dar-kart">
+      <thead><tr><th>Hesap kodu</th><th>Hesap adı</th><th>Proje</th><th class="sag">Borç</th><th class="sag">Alacak</th></tr></thead>
+      <tbody>
+      {% for s in d.muh.kur_farki %}
+        <tr><td class="mono" data-label="Hesap kodu">{{ s.hesap_id }}</td><td class="k-genis" data-label="Hesap adı">{{ s.hesap.hesap_adi }}</td>
+          <td data-label="Proje">{% if s.yatirim_projesi %}<a href="{% url 'core:yatirim_projesi_detay' s.yatirim_projesi.pk %}">{{ s.yatirim_projesi.kod }}</a>{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td class="sag mono" data-label="Borç">{% if s.borc %}{{ s.borc|tr_kur:2 }}{% else %}—{% endif %}</td><td class="sag mono" data-label="Alacak">{% if s.alacak %}{{ s.alacak|tr_kur:2 }}{% else %}—{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="yardim" style="margin:.35rem 0 0">Kur farkı, cari hesabının döviz havuzundaki ortalama kurdan hesaplanır (646 kâr / 656 zarar; yatırım carisinde 258 + proje).</p>
+    {% endif %}
+
+    {% for m in d.muh.maliyet_fisleri %}
+    <h3>{{ m.baslik }} · <a class="mono" href="{% url 'core:fis_detay' m.fis.pk %}">{{ m.fis.yil }}/{{ m.fis.fis_no }}</a></h3>
+    <div class="fd-kap">
+    <table class="fd-tablo dar-kart">
+      <thead><tr><th>Hesap kodu</th><th>Hesap adı</th><th class="sag">Borç</th><th class="sag">Alacak</th></tr></thead>
+      <tbody>
+      {% for s in m.satirlar %}
+        <tr><td class="mono" data-label="Hesap kodu">{{ s.hesap_id }}</td><td class="k-genis" data-label="Hesap adı">{{ s.hesap.hesap_adi }}</td>
+          <td class="sag mono" data-label="Borç">{% if s.borc %}{{ s.borc|tr_kur:2 }}{% else %}—{% endif %}</td><td class="sag mono" data-label="Alacak">{% if s.alacak %}{{ s.alacak|tr_kur:2 }}{% else %}—{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endfor %}
+
+    {% if d.muh.irsaliyeler or d.muh.projeler or d.muh.kartlar %}
+    <h3>Bağlı kayıtlar</h3>
+    <div class="fd-baglar">
+      {% for t in d.muh.irsaliyeler %}<span>🚚 İrsaliye: <a href="{% url 'core:teklif_siparis_detay' t.pk %}">{{ t.belge_no|default:"Belge" }}</a>{% if t.irsaliye_no %} <span class="mono">({{ t.irsaliye_no }})</span>{% endif %}</span>{% endfor %}
+      {% for p in d.muh.projeler %}<span>🏗️ Proje: <a href="{% url 'core:yatirim_projesi_detay' p.pk %}">{{ p.kod }} — {{ p.ad }}</a></span>{% endfor %}
+      {% for dv in d.muh.kartlar %}<span>🏷️ Duran varlık: <a href="{% url 'core:duran_varlik_detay' dv.pk %}">{{ dv.demirbas_kodu }} — {{ dv.ad }}</a></span>{% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
 
 {% if fason_kar %}
-<section class="icerik-kart">
-  <h2 class="bolum-baslik"><span class="emoji">✂️</span>Fason dönüşler</h2>
+<section class="fd-kart">
+  <h2>✂️ Fason dönüşler</h2>
   <p class="yardim">Bu fatura şu fason dönüş belgelerine bağlı:
-    {% for d in fason_kar.donusler %}<a class="mono" href="{% url 'core:fason_donus_detay' d.pk %}">{{ d.no }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% for dn in fason_kar.donusler %}<a class="mono" href="{% url 'core:fason_donus_detay' dn.pk %}">{{ dn.no }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>
   <div class="satir"><span class="et">Beklenen fason bedeli</span><span class="dg mono">{{ fason_kar.beklenen_try|tr_para }} TL · {{ fason_kar.beklenen_usd|tr_para }} USD</span></div>
   <div class="satir"><span class="et">Fatura (KDV hariç)</span><span class="dg mono">{{ fason_kar.fatura_try|tr_para }} TL</span></div>
   {% if fason_kar.fark_var %}
@@ -109,16 +321,16 @@
 {% endif %}
 
 {% for t in donemsel_tablolar %}
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Dönemsel Dağıtım · <span class="mono">{{ t.hesap.hesap_kodu }}</span> {{ t.hesap.hesap_adi }}</h2>
+<section class="fd-kart">
+  <h2>Dönemsel Dağıtım · <span class="mono">{{ t.hesap.hesap_kodu }}</span> {{ t.hesap.hesap_adi }}</h2>
   <p class="yardim">Her ay sonu 180 ALACAK / gider BORÇ (kaynak: Dönemsel dağıtım). Fişler "Muhasebe → Dönemsel Dağıtım" ekranından vadesi gelen aylar için üretilir.</p>
-  <div class="tablo-kapsayici"><table>
+  <div class="fd-kap"><table class="fd-tablo dar-kart">
     <thead><tr><th>Ay</th><th class="sag">Tutar ({{ t.pb }})</th><th class="sag">TL</th><th>Fiş</th><th class="sag">Kalan 180 ({{ t.pb }})</th><th class="sag">Kalan 180 (TL)</th></tr></thead>
     <tbody>
     {% for r in t.satirlar %}
-      <tr><td class="mono">{{ r.ay_sonu|date:"m.Y" }}</td><td class="sag mono">{{ r.doviz|tr_kur:2 }}</td><td class="sag mono">{{ r.tl|tr_kur:2 }}</td>
-        <td>{% if r.fis %}<a href="{% url 'core:fis_detay' r.fis.pk %}">{{ r.fis.yil }}/{{ r.fis.fis_no }}</a>{% else %}<span class="yardim">henüz üretilmedi</span>{% endif %}</td>
-        <td class="sag mono">{{ r.kalan_doviz|tr_kur:2 }}</td><td class="sag mono">{{ r.kalan_tl|tr_kur:2 }}</td></tr>
+      <tr><td class="mono" data-label="Ay">{{ r.ay_sonu|date:"m.Y" }}</td><td class="sag mono" data-label="Tutar ({{ t.pb }})">{{ r.doviz|tr_kur:2 }}</td><td class="sag mono" data-label="TL">{{ r.tl|tr_kur:2 }}</td>
+        <td data-label="Fiş">{% if r.fis %}<a href="{% url 'core:fis_detay' r.fis.pk %}">{{ r.fis.yil }}/{{ r.fis.fis_no }}</a>{% else %}<span class="yardim">henüz üretilmedi</span>{% endif %}</td>
+        <td class="sag mono" data-label="Kalan 180 ({{ t.pb }})">{{ r.kalan_doviz|tr_kur:2 }}</td><td class="sag mono" data-label="Kalan 180 (TL)">{{ r.kalan_tl|tr_kur:2 }}</td></tr>
     {% endfor %}
     </tbody>
     <tfoot><tr><th>Toplam</th><th class="sag mono">{{ t.toplam_doviz|tr_kur:2 }}</th><th class="sag mono">{{ t.toplam_tl|tr_kur:2 }}</th><th colspan="3"></th></tr></tfoot>
@@ -127,8 +339,8 @@
 {% endfor %}
 
 {% if kaynak_irsaliyeler %}
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Kaynak irsaliye ekleri</h2>
+<section class="fd-kart">
+  <h2>Kaynak irsaliye ekleri</h2>
   {% for t in kaynak_irsaliyeler %}
   <div class="satir"><span class="et">🚚</span>
     <span class="dg">{% if irsaliye_ek_gorebilir %}<a href="{% url 'core:teklif_siparis_detay' t.pk %}#ekler">{{ t.belge_no }}</a>{% else %}{{ t.belge_no }}{% endif %}{% if t.irsaliye_no %} · <span class="mono">{{ t.irsaliye_no }}</span>{% endif %}
@@ -143,24 +355,74 @@
 </section>
 {% endif %}
 
+</div>{# /fd-sol #}
+
+{# ---------------- 1) SAĞ KOLON: PDF ÖNİZLEME / PDF EKLE ---------------- #}
 {% if not fatura.silindi %}
-<section class="icerik-kart">
-  <h2 class="bolum-baslik">Ekler</h2>
-  {% for ek in ekler %}
-  <div class="satir"><span class="et">📎</span>
-    <span class="dg"><a href="{% url 'core:fatura_ek_indir' ek.pk %}" target="_blank" rel="noopener">{{ ek.orijinal_ad|default:"dosya" }}</a>
-      <span class="yardim">{{ ek.created_at|date:"d.m.Y H:i" }}</span>
-      <form method="post" action="{% url 'core:fatura_ek_sil' ek.pk %}" style="display:inline" onsubmit="return confirm('Bu dosya silinsin mi?');">
-        {% csrf_token %}<button type="submit" class="sil">Sil</button></form></span></div>
-  {% empty %}
-  <div class="yardim">Henüz ek yok.</div>
-  {% endfor %}
-  <form method="post" action="{% url 'core:fatura_ek_ekle' fatura.pk %}" enctype="multipart/form-data" style="margin-top:.75rem">
-    {% csrf_token %}
-    <input type="file" name="dosyalar" multiple accept="image/*,application/pdf" required>
-    <button type="submit" class="dugme" style="border:0;cursor:pointer">Dosya ekle</button>
-    <div class="yardim">Yalnız PDF veya resim (XML kabul edilmez), dosya başına en fazla 10 MB.</div>
-  </form>
-</section>
+<aside class="fd-sag" id="ekler">
+  <details class="fd-pdf" id="fd-pdf" open>
+    <summary><span>📄 Fatura PDF'i{% if ekler|length %} <span class="ft-rozet-kucuk">{{ ekler|length }} ek</span>{% endif %}</span></summary>
+    {% if ekler %}
+      {% if ekler|length > 1 %}
+      <div class="fd-sekmeler" role="tablist">
+        {% for ek in ekler %}<button type="button" class="fd-sekme{% if forloop.first %} aktif{% endif %}" role="tab" data-hedef="fd-panel-{{ ek.pk }}" title="{{ ek.orijinal_ad }}">{{ ek.orijinal_ad|default:"dosya" }}</button>{% endfor %}
+      </div>
+      {% endif %}
+      {% for ek in ekler %}
+      <div class="fd-panel" id="fd-panel-{{ ek.pk }}" {% if not forloop.first %}hidden{% endif %}>
+        <div class="fd-panel-ust">
+          <span>{{ ek.orijinal_ad|default:"dosya" }} <span class="yardim">· {{ ek.created_at|date:"d.m.Y H:i" }}</span></span>
+          <span>
+            <a href="{% url 'core:fatura_ek_indir' ek.pk %}" target="_blank" rel="noopener">Yeni sekmede aç</a>
+            <form method="post" action="{% url 'core:fatura_ek_sil' ek.pk %}" onsubmit="return confirm('Bu dosya silinsin mi?');">
+              {% csrf_token %}<button type="submit" class="sil">Sil</button></form>
+          </span>
+        </div>
+        {% if ek.resim_mi %}
+          <img {% if forloop.first %}src="{% url 'core:fatura_ek_indir' ek.pk %}"{% else %}data-src="{% url 'core:fatura_ek_indir' ek.pk %}"{% endif %} alt="{{ ek.orijinal_ad }}">
+        {% else %}
+          <iframe title="{{ ek.orijinal_ad }}" {% if forloop.first %}src="{% url 'core:fatura_ek_indir' ek.pk %}"{% else %}data-src="{% url 'core:fatura_ek_indir' ek.pk %}"{% endif %}></iframe>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% endif %}
+    <div class="fd-ek-ekle{% if not ekler %} bos{% endif %}" id="ek-ekle">
+      <form method="post" action="{% url 'core:fatura_ek_ekle' fatura.pk %}" enctype="multipart/form-data">
+        {% csrf_token %}
+        {% if not ekler %}<div style="font-weight:700;margin-bottom:.5rem">📎 PDF ekle</div><div class="yardim" style="margin-bottom:.6rem">Bu faturaya henüz PDF / görsel eklenmemiş.</div>{% endif %}
+        <input type="file" name="dosyalar" id="fd-dosya" multiple accept="image/*,application/pdf" required>
+        <button type="submit" class="dugme" style="border:0;cursor:pointer">{% if ekler %}Dosya ekle{% else %}PDF ekle{% endif %}</button>
+        <div class="yardim">Yalnız PDF veya resim (XML kabul edilmez), dosya başına en fazla 10 MB.</div>
+      </form>
+    </div>
+  </details>
+</aside>
 {% endif %}
+</div>{# /fd-izgara #}
+
+<script>
+(function () {
+  var det = document.getElementById('fd-pdf');
+  if (!det) return;
+  if (window.matchMedia && window.matchMedia('(max-width:1099px)').matches) det.open = false;      // dar ekranda PDF katlanmış başlar
+  function yukle(panel) {
+    var hedef = panel.querySelector('iframe, img');
+    if (hedef && !hedef.getAttribute('src') && hedef.getAttribute('data-src')) hedef.setAttribute('src', hedef.getAttribute('data-src'));
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.fd-sekme'), function (d) {
+    d.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.fd-sekme'), function (x) { x.classList.toggle('aktif', x === d); });
+      Array.prototype.forEach.call(document.querySelectorAll('.fd-panel'), function (p) { p.hidden = p.id !== d.getAttribute('data-hedef'); });
+      yukle(document.getElementById(d.getAttribute('data-hedef')));
+    });
+  });
+  var dugme = document.getElementById('fd-ek-dugme');
+  if (dugme) dugme.addEventListener('click', function () {
+    det.open = true;
+    var kutu = document.getElementById('ek-ekle'), dosya = document.getElementById('fd-dosya');
+    if (kutu) kutu.scrollIntoView({behavior: 'smooth', block: 'center'});
+    if (dosya) dosya.click();
+  });
+})();
+</script>
 {% endblock %}

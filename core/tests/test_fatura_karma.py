@@ -369,8 +369,8 @@ class KarmaEkranTest(KarmaTemel):
         f = self._kes([self._stok("10", "100"), self._hesap_satir("730.09", "500")])
         self.client.force_login(self.su)
         h = self.client.get(reverse("core:fatura_detay", args=[f.pk])).content.decode()
-        self.assertIn("Kalem (stok · hesap)", h)
-        rozetler = re.findall(r'<span class="rozet rozet-notr" style="margin-right:.4rem">([^<]+)</span>', h)
+        self.assertIn("Stok / Hesap", h)
+        rozetler = re.findall(r'data-label="Tür"><span class="ft-rozet-kucuk">([^<]+)</span>', h)
         self.assertEqual(rozetler, ["Stok", "Hesap"])
         self.assertIn("730.09", h)
         # yalnız stok alış faturasında başlık eskisi gibi
