@@ -8,7 +8,8 @@ Tutar/tarih farkı olan eşleşmelere de yükleme yapılır, raporda işaretleni
 ek zaten varsa atlanır (komut tekrar çalıştırılabilir). Hiçbir fatura kaydı DEĞİŞTİRİLMEZ;
 yalnız FaturaEk eklenir.
 
-Varsayılan DRY-RUN (hiçbir şey yazmaz). ``--uygula`` ekleri yükler.
+Varsayılan DRY-RUN (hiçbir şey yazmaz). ``--uygula`` ekleri yükler. XML dosyaları EK OLARAK YÜKLENMEZ (ek alanı yalnız PDF/görsel kabul eder, 2026-10-15); XML yalnız
+eşleştirme/doğrulama için okunur, faturaya yalnız PDF eklenir.
 
     python manage.py fatura_ek_luca_yukle --zip A.zip --zip B.zip [--uygula]
 
@@ -120,7 +121,7 @@ class Command(BaseCommand):
             if tur == "YALNIZ NO":
                 farklar.insert(0, f"VKN uyuşmuyor: ERP cari '{f.cari.vkn_tckn or '-'}' / dosya "
                                   f"'{xml['vkn'] if xml else '?'}'")
-            for uz in ("xml", "pdf"):
+            for uz in ("pdf",):                                   # XML EK OLARAK YÜKLENMEZ (yalnız PDF/görsel); XML yalnız eşleştirme için okunur
                 if uz not in dosyalar:
                     continue
                 ad, bayt = dosyalar[uz]

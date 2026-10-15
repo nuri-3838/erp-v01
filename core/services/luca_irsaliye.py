@@ -128,7 +128,7 @@ def eslestir(fatura_zipleri, irsaliye_zipleri, *, haric=(), uygula=False) -> dic
         f = e["fatura"]
         mevcut = set(FaturaEk.objects.filter(fatura=f, silindi=False).values_list("orijinal_ad", flat=True))
         yuk, atl = [], []
-        for uz in ("xml", "pdf"):
+        for uz in ("pdf",):                                       # XML EK OLARAK YÜKLENMEZ (yalnız PDF/görsel); XML yalnız eşleştirme için okunur
             if uz not in e["dosyalar"]:
                 continue
             ad, bayt = e["dosyalar"][uz]

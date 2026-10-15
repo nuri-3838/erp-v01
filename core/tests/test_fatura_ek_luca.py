@@ -10,6 +10,7 @@ from decimal import Decimal
 from io import StringIO
 
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.urls import reverse
 
@@ -85,16 +86,35 @@ class UblOkuTest(OzelDizinTestTemel):
             with self.assertRaises(UblHatasi):
                 ubl_oku(bayt)
 
-    def test_xml_ek_olarak_yuklenir_gecersizi_reddedilir(self):
+    def test_xml_ek_olarak_kabul_edilmez_acik_hata_yalniz_pdf_ve_gorsel(self):
+        # 2026-10-15 kararı: ek olarak yalnız PDF/görsel. Geçerli UBL XML de, geçersiz XML de AÇIK hata ile reddedilir; kayıt/dosya oluşmaz.
         f = _fatura_yap("EK-X", _cari("1234567890"))
-        ek = ek_servis.ek_ekle(f, dosya=yuklenen("a.xml", ubl("EK-X")))
-        self.assertTrue(ek.dosya.name.endswith(".xml"))
-        with self.assertRaises(ek_servis.FaturaEkHatasi):
-            ek_servis.ek_ekle(f, dosya=yuklenen("b.xml", b"<html/>"))
+        for ad, bayt in (("a.xml", ubl("EK-X")), ("b.XML", b"<html/>")):
+            with self.assertRaises(ek_servis.FaturaEkHatasi) as cm:
+                ek_servis.ek_ekle(f, dosya=yuklenen(ad, bayt))
+            self.assertIn("XML dosyaları ek olarak kabul edilmiyor (yalnız PDF ve görsel)", str(cm.exception))
+            self.assertIn(ad, str(cm.exception))
+        self.assertEqual(FaturaEk.objects.count(), 0)
+        self.assertEqual(sorted(ek_servis.IZINLI_UZANTI), [".gif", ".jpeg", ".jpg", ".pdf", ".png", ".webp"])
+        ek = ek_servis.ek_ekle(f, dosya=yuklenen("a.pdf", PDF_BAYT))                         # PDF hâlâ kabul
+        self.assertTrue(ek.dosya.name.endswith(".pdf"))
+
+    def test_ekran_xml_yukleme_hata_mesaji_ve_secici_filtresi(self):
+        f = _fatura_yap("EK-E", _cari("1234567890"))
+        u = User.objects.create_superuser("xe", password="x")
+        EkranYetki.objects.create(kullanici=u, ekran_kod="alis_faturalari")
+        self.client.force_login(u)
+        detay = self.client.get(reverse("core:fatura_detay", args=[f.pk])).content.decode()
+        self.assertIn('accept="image/*,application/pdf"', detay)                              # seçici XML önermez
+        self.assertNotIn(".xml", detay.split('name="dosyalar"')[1].split(">")[0])
+        self.assertIn("Yalnız PDF veya resim (XML kabul edilmez)", detay)
+        r = self.client.post(reverse("core:fatura_ek_ekle", args=[f.pk]), {"dosyalar": [yuklenen("a.xml", ubl("EK-E")), yuklenen("b.pdf", PDF_BAYT)]}, follow=True)
+        self.assertContains(r, "XML dosyaları ek olarak kabul edilmiyor")
+        self.assertEqual(list(f.ekler.values_list("orijinal_ad", flat=True)), ["b.pdf"])       # XML reddedildi, PDF yüklendi
 
     def test_xml_indirme_olarak_sunulur(self):
         f = _fatura_yap("EK-Y", _cari("1234567890"))
-        ek = ek_servis.ek_ekle(f, dosya=yuklenen("a.xml", ubl("EK-Y")))
+        ek = FaturaEk.objects.create(fatura=f, dosya=ContentFile(ubl("EK-Y"), name="a.xml"), orijinal_ad="a.xml")     # eski kayıt (yükleme artık XML almaz)
         u = User.objects.create_superuser("y", password="x")
         EkranYetki.objects.create(kullanici=u, ekran_kod="alis_faturalari")
         self.client.force_login(u)
@@ -168,13 +188,14 @@ class LucaYukleTest(OzelDizinTestTemel):
                   for f in Fatura.objects.all()}
         self._calistir("--uygula")
         ekler = FaturaEk.objects.filter(silindi=False)
-        # f1: xml+pdf, f2: xml, f3: xml+pdf (tutar farkına rağmen), f6: xml
-        self.assertEqual(ekler.count(), 6)
-        self.assertEqual(ekler.filter(fatura=self.f3).count(), 2)
+        # XML EK OLARAK YÜKLENMEZ (yalnız eşleştirme için okunur): yalnız PDF'i olan f1 ve f3 (tutar farkına rağmen) ek alır
+        self.assertEqual(ekler.count(), 2)
+        self.assertEqual(ekler.filter(dosya__endswith=".xml").count(), 0)
+        self.assertEqual(ekler.filter(fatura=self.f3).count(), 1)
         self.assertEqual(ekler.filter(fatura__in=[self.f4, self.f5]).count(), 0)
         c2 = self._calistir("--uygula")
-        self.assertEqual(FaturaEk.objects.filter(silindi=False).count(), 6)   # tekrarda eklenmedi
-        self.assertIn("atlanan: 6", c2)
+        self.assertEqual(FaturaEk.objects.filter(silindi=False).count(), 2)   # tekrarda eklenmedi
+        self.assertIn("atlanan: 2", c2)
         sonra = {f.pk: (f.tarih, f.aciklama, f.fatura_no, f.fis_id, f.genel_toplam)
                  for f in Fatura.objects.all()}
         self.assertEqual(onceki, sonra)

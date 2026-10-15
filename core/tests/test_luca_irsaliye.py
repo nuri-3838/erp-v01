@@ -111,22 +111,23 @@ class IrsaliyeEkTest(OzelDizinTestTemel, FaturaTestTemel):
         self.assertIn("ERP İRSALİYE", c)
         self.assertIn("YAZIM HATALI", c)
         self.assertIn("'IRS-002' — doğrusu 'IRS-0002'", c)
-        self.assertIn("Yüklenecek dosya : 4", c)
+        self.assertIn("Yüklenecek dosya : 2", c)                      # yalnız PDF'ler (XML ek olarak yüklenmez)
 
     def test_uygula_yukler_tekrarda_atlar_fatura_ve_stok_degismez(self):
         onceki = {f.pk: (f.tarih, f.fatura_no, f.fis_id, f.genel_toplam) for f in Fatura.objects.all()}
         hareket = StokHareket.objects.count()
         self._calistir("--uygula")
-        self.assertEqual(FaturaEk.objects.filter(fatura=self.f1, silindi=False).count(), 2)
-        self.assertEqual(FaturaEk.objects.filter(fatura=self.f2, silindi=False).count(), 2)
+        self.assertEqual(FaturaEk.objects.filter(fatura=self.f1, silindi=False).count(), 1)
+        self.assertEqual(FaturaEk.objects.filter(fatura=self.f2, silindi=False).count(), 1)
         adlar = set(FaturaEk.objects.values_list("orijinal_ad", flat=True))
-        self.assertIn("IRS-0001_1234567890_ACME.xml", adlar)
+        self.assertIn("IRS-0001_1234567890_ACME.pdf", adlar)
+        self.assertFalse(any(a.lower().endswith(".xml") for a in adlar))     # XML ek olarak yüklenmez
         self.assertNotIn("IRS-0003_1234567890_ACME.pdf", adlar)      # eşleşmeyen
         self.assertNotIn("IRS-0004_1234567890_ACME.pdf", adlar)      # hariç
         self.assertNotIn("IRS-0005_1234567890_ACME.pdf", adlar)      # çok adaylı
         c2 = self._calistir("--uygula")
-        self.assertEqual(FaturaEk.objects.count(), 4)                # tekrarda eklenmedi
-        self.assertIn("atlanan: 4", c2)
+        self.assertEqual(FaturaEk.objects.count(), 2)                # tekrarda eklenmedi
+        self.assertIn("atlanan: 2", c2)
         sonra = {f.pk: (f.tarih, f.fatura_no, f.fis_id, f.genel_toplam) for f in Fatura.objects.all()}
         self.assertEqual(onceki, sonra)
         self.assertEqual(StokHareket.objects.count(), hareket)
