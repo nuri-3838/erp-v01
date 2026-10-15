@@ -12,7 +12,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.storage import (
-    aday_ek_yolu, bordro_dosya_yolu, cari_ek_yolu, kdv_mahsup_dosya_yolu, cek_gorsel_yolu, fatura_ek_yolu, ik_ozel_depo, ozel_depo,
+    aday_ek_yolu, bordro_dosya_yolu, cari_ek_yolu, kdv_mahsup_dosya_yolu, cek_gorsel_yolu, fatura_ek_yolu, irsaliye_ek_yolu, ik_ozel_depo, ozel_depo,
     personel_belge_yolu, personel_foto_yolu,
 )
 
@@ -2296,6 +2296,29 @@ class TeklifSiparis(TemelModel):
             birim = k.stok.fatura_birimi.kisa_ad
             toplam[birim] = toplam.get(birim, Decimal("0")) + k.miktar
         return toplam
+
+
+class IrsaliyeEk(TemelModel):
+    """İrsaliyeye eklenen belge (çoklu; yalnız PDF/görsel): tedarikçinin e-irsaliye PDF'i vb. Gizli: özel depoda (MEDIA_ROOT dışı), yalnız yetkili görünümle sunulur.
+    Fatura ekinden farklı olarak silme KALICIDIR (kayıt fiziksel silinir + dosya diskten kalkar; ``silindi`` alanı kullanılmaz). Faturaya dönüşümde irsaliyede KALIR,
+    faturaya kopyalanmaz. ``dosya`` yolu, taşıma komutuyla fatura ekinden gelenlerde ``fatura_ek/…`` öneklidir (aynı dosya, yeniden yükleme yok)."""
+
+    irsaliye = models.ForeignKey("TeklifSiparis", verbose_name="irsaliye", related_name="ekler", on_delete=models.CASCADE)
+    dosya = models.FileField("dosya", storage=ozel_depo, upload_to=irsaliye_ek_yolu)
+    orijinal_ad = models.CharField("orijinal dosya adı", max_length=255, blank=True)
+
+    class Meta:
+        db_table = "irsaliye_ek"
+        verbose_name = "irsaliye eki"
+        verbose_name_plural = "irsaliye ekleri"
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.orijinal_ad or self.dosya.name
+
+    @property
+    def resim_mi(self):
+        return self.dosya.name.lower().endswith(".webp")
 
 
 class TeklifSiparisKalem(TemelModel):

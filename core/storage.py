@@ -91,6 +91,10 @@ def fatura_ek_yolu(instance, ad):
     return _uuid_yolu("fatura_ek", ad)
 
 
+def irsaliye_ek_yolu(instance, ad):
+    return _uuid_yolu("irsaliye_ek", ad)
+
+
 def bordro_dosya_yolu(instance, ad):
     return _uuid_yolu("personel_bordro", ad)
 

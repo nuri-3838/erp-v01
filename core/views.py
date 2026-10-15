@@ -55,7 +55,7 @@ from core.forms import (
 from core.models import (
     AdayAktivite, AdayAktiviteEk, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori,
     AdayPotansiyelTanim, AdayTipTanim, AdayYetkili,
-    Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, CariBanka, CariKategori, CariSevkAdresi,
+    Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, IrsaliyeEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat, FasonSiparisi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
     KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, VergiDairesi, YatirimProjesi,
@@ -103,6 +103,7 @@ from core.services import tanim as tanim_servis
 from core.services import stok as stok_servis
 from core.services import fatura as fatura_servis
 from core.services import fatura_ek as fatura_ek_servis
+from core.services import irsaliye_ek as irsaliye_ek_servis
 from core.services import teklif_siparis as teklif_siparis_servis
 from core.services import depo as depo_servis
 from core.services import hareket as hareket_servis
@@ -3636,7 +3637,9 @@ def teklif_siparis_detay(request, pk):
                    "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura,
                    "uretim_emri": uretim_emri, "uretim_emri_acilabilir": uretim_emri_acilabilir, "uretim_rozetleri": uretim_rozetleri,
                    "ozel_varyant": ozel_varyant, "ozel_varyant_mesaji": uretim_servis.OZEL_VARYANT_MESAJI,
-                   "donusum_kilitli": donusum_kilitli})
+                   "donusum_kilitli": donusum_kilitli,
+                   "ek_bolumu": ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE,                     # Ekler yalnız irsaliyede
+                   "ekler": irsaliye_ek_servis.ek_listele(ts) if ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE else []})
 
 
 @ekran_gerekli("satis_teklifleri")
@@ -8985,8 +8988,11 @@ def fatura_detay(request, pk):
     satirlar = list(satirlar.select_related("varyant"))
     for s in satirlar:                                            # varyantlı kartta satır varyantı rozeti (E-3)
         s.varyant_etiketi = varyant_servis.varyant_kisa(s.varyant) if s.varyant_id else ""
+    kaynak_irsaliyeler = list(fatura.kaynak_siparisler.filter(belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).order_by("tarih", "id").prefetch_related(
+        Prefetch("ekler", queryset=IrsaliyeEk.objects.filter(silindi=False), to_attr="ekler_aktif")))      # kaynak irsaliyenin ekleri (kopyalanmaz, irsaliyede durur)
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar,
+                   "kaynak_irsaliyeler": kaynak_irsaliyeler, "irsaliye_ek_gorebilir": ekran_gorebilir(request.user, "satinalma_irsaliyeleri"),
                    "karma_satir": fatura.yon == "ALIS" and not (fatura.tip and fatura.tip.gider) and any(s.hesap_id for s in satirlar),      # ALIŞ'ta stok yanında hesap satırı var
                    "donemsel_tablolar": donemsel_servis.fatura_tablolari(fatura),
                    "irsaliye_farklari": fatura_servis.irsaliye_miktar_farklari(fatura),
@@ -9030,6 +9036,44 @@ def fatura_ek_sil(request, pk):
 def fatura_ek_indir(request, pk):
     """Fatura ekini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""
     ek = get_object_or_404(FaturaEk, pk=pk, silindi=False, fatura__silindi=False)
+    return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
+
+
+@ekran_gerekli("satinalma_irsaliyeleri")
+def irsaliye_ek_ekle(request, pk):
+    irsaliye = get_object_or_404(TeklifSiparis, pk=pk, belge_tur=TeklifSiparis.BelgeTur.IRSALIYE)
+    if request.method == "POST":
+        dosyalar = request.FILES.getlist("dosyalar")
+        if not dosyalar:
+            messages.error(request, "Dosya seçilmedi.")
+        eklenen = 0
+        for d in dosyalar:
+            try:
+                irsaliye_ek_servis.ek_ekle(irsaliye, dosya=d, kullanici=request.user)
+                eklenen += 1
+            except irsaliye_ek_servis.IrsaliyeEkHatasi as e:
+                messages.error(request, str(e))
+        if eklenen:
+            messages.success(request, f"{eklenen} dosya eklendi.")
+    return redirect("core:teklif_siparis_detay", pk=irsaliye.pk)
+
+
+@ekran_gerekli("satinalma_irsaliyeleri")
+def irsaliye_ek_sil(request, pk):
+    """KALICI silme (soft-delete değil): ek kaydı ve dosya diskten kalkar."""
+    ek = get_object_or_404(IrsaliyeEk, pk=pk, silindi=False)
+    irsaliye_id = ek.irsaliye_id
+    if request.method == "POST":
+        irsaliye_ek_servis.ek_sil(ek, kullanici=request.user)
+        messages.success(request, "Dosya kalıcı olarak silindi.")
+    return redirect("core:teklif_siparis_detay", pk=irsaliye_id)
+
+
+@never_cache
+@ekran_gerekli("satinalma_irsaliyeleri")
+def irsaliye_ek_indir(request, pk):
+    """İrsaliye ekini (özel depoda) yetkili görünümden sunar — /media/ üzerinden DEĞİL."""
+    ek = get_object_or_404(IrsaliyeEk, pk=pk, silindi=False, irsaliye__silindi=False)
     return _ozel_dosya_yanit(ek.dosya, ek.orijinal_ad)
 
 

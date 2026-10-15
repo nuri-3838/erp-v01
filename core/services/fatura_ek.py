@@ -32,10 +32,9 @@ def ek_listele(fatura: Fatura):
     return FaturaEk.objects.filter(fatura=fatura, silindi=False)
 
 
-def ek_ekle(fatura: Fatura, *, dosya, kullanici=None) -> FaturaEk:
-    """Faturaya tek dosya ekler (çoklu yükleme view katmanında döngüyle çağırır)."""
-    if fatura.silindi:
-        raise FaturaEkHatasi("Silinmiş faturaya dosya eklenemez.")
+def dosya_hazirla(dosya):
+    """Yüklenen dosyayı doğrular ve saklanacak hale getirir -> (saklanan dosya, özgün ad). Fatura ve irsaliye ekleri ortak kullanır:
+    uzantı beyaz listesi (XML reddedilir) + 10 MB + içerik imzası; resim WebP'ye küçültülür, PDF aynen. Hata: FaturaEkHatasi."""
     if dosya is None:
         raise FaturaEkHatasi("Dosya seçilmedi.")
     ad = os.path.basename(getattr(dosya, "name", "") or "dosya")
@@ -66,6 +65,14 @@ def ek_ekle(fatura: Fatura, *, dosya, kullanici=None) -> FaturaEk:
                 duzelt_yon=True)
         except Exception:
             raise FaturaEkHatasi(f"Geçersiz resim dosyası: {ad}")
+    return saklanan, ad
+
+
+def ek_ekle(fatura: Fatura, *, dosya, kullanici=None) -> FaturaEk:
+    """Faturaya tek dosya ekler (çoklu yükleme view katmanında döngüyle çağırır)."""
+    if fatura.silindi:
+        raise FaturaEkHatasi("Silinmiş faturaya dosya eklenemez.")
+    saklanan, ad = dosya_hazirla(dosya)
     return FaturaEk.objects.create(
         fatura=fatura, dosya=saklanan, orijinal_ad=ad[:255],
         created_by=kullanici, updated_by=kullanici)

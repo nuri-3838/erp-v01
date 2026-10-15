@@ -126,6 +126,23 @@
 </section>
 {% endfor %}
 
+{% if kaynak_irsaliyeler %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Kaynak irsaliye ekleri</h2>
+  {% for t in kaynak_irsaliyeler %}
+  <div class="satir"><span class="et">🚚</span>
+    <span class="dg">{% if irsaliye_ek_gorebilir %}<a href="{% url 'core:teklif_siparis_detay' t.pk %}#ekler">{{ t.belge_no }}</a>{% else %}{{ t.belge_no }}{% endif %}{% if t.irsaliye_no %} · <span class="mono">{{ t.irsaliye_no }}</span>{% endif %}
+      {% for ek in t.ekler_aktif %}
+        <div>{% if irsaliye_ek_gorebilir %}📎 <a href="{% url 'core:irsaliye_ek_indir' ek.pk %}" target="_blank" rel="noopener">{{ ek.orijinal_ad|default:"dosya" }}</a>{% else %}📎 {{ ek.orijinal_ad|default:"dosya" }}{% endif %}</div>
+      {% empty %}
+        <div class="yardim">Bu irsaliyenin eki yok.</div>
+      {% endfor %}
+    </span></div>
+  {% endfor %}
+  <div class="yardim">İrsaliye ekleri irsaliyede durur; faturaya kopyalanmaz.</div>
+</section>
+{% endif %}
+
 {% if not fatura.silindi %}
 <section class="icerik-kart">
   <h2 class="bolum-baslik">Ekler</h2>
