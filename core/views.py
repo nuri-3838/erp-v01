@@ -8729,7 +8729,10 @@ def _fatura_gider_baglami(fform):
     """fatura_ekle.html JS'i için: hangi fatura tipleri GİDER faturası (depo gizlenir, kalem
     = gider hesabı) + KDV oran haritası (gider kaleminin KDV önizlemesi) + hangi gider hesabı
     seçenekleri DURAN VARLIK hesabı (proje alanı yalnız bunlarda gösterilir)."""
-    return {"tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
+    from core.services import birim_cevrim
+    return {"stok_cevrim": {str(s.pk): {"cevirici": float(s.cevirici), "uretim": s.uretim_birimi.kisa_ad, "fatura": s.fatura_birimi.kisa_ad, "asiri": birim_cevrim.asiri_mi(s)}
+                            for s in Stok.objects.filter(silindi=False).exclude(cevirici=1).select_related("uretim_birimi", "fatura_birimi")},     # miktar altında canlı çevrim notu
+            "tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
             "tip_karma": {str(t.pk): fatura_servis.karma_alis_tipi_mi(t) for t in fform.fields["tip"].queryset},      # ALIŞ FATURASI / İHRAÇ KAYITLI: stok + hesap satırı
             "tip_stopajli": {str(t.pk): bool(t.stopajli) for t in fform.fields["tip"].queryset},
             "duran_varlik_hesap": {str(h.pk): True for h in (
@@ -8847,6 +8850,8 @@ def _fatura_ekle(request, yon, baslik):
                 if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider and any(g.get("stok_id") for g in satirlar):
                     mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
                 messages.success(request, mesaj)
+                for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
+                    messages.warning(request, "⚠ Birim çevrimi: " + u)
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
                 _fatura_hatasi_ekle(fform, e)
@@ -8909,6 +8914,8 @@ def fatura_duzenle(request, pk):
                     if fform.cleaned_data.get("depo") is None and not fform.cleaned_data["tip"].gider and any(g.get("stok_id") for g in satirlar):
                         mesaj += " (Depo seçilmedi; stok hareketi oluşmadı.)"
                 messages.success(request, mesaj)
+                for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
+                    messages.warning(request, "⚠ Birim çevrimi: " + u)
                 return redirect("core:fatura_detay", pk=fatura.pk)
             except fatura_servis.FaturaHatasi as e:
                 _fatura_hatasi_ekle(fform, e)
@@ -9434,6 +9441,8 @@ def fatura_onayla(request, pk):
             fatura_servis.fatura_onayla(fatura, kullanici=request.user)
             messages.success(
                 request, f"Fatura onaylandı; fiş {fatura.fis.yil}/{fatura.fis.fis_no} oluştu.")
+            for u in fatura_servis.asiri_cevrim_uyarilari(fatura):
+                messages.warning(request, "⚠ Birim çevrimi: " + u)
         except fatura_servis.FaturaHatasi as e:
             messages.error(request, str(e))
     return redirect("core:fatura_detay", pk=fatura.pk)

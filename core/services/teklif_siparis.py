@@ -82,9 +82,9 @@ def _yuzde(deger, etiket):
     return d
 
 
-def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar, mevcut_cari_id=None):
+def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar, mevcut_cari_id=None, irsaliye=False):
     """Ortak hazırlık (oluştur/güncelle): cari VEYA aday müşteri (karşılıklı dışlayıcı —
-    ikisi birden ya da hiçbiri verilemez) + satırları doğrular. (cari, aday_musteri, hazir)
+    ikisi birden ya da hiçbiri verilemez) + satırları doğrular. ``irsaliye``: stok girişi yazacak belge — aşırı birim çevrimi koruması (bkz. core.services.birim_cevrim). (cari, aday_musteri, hazir)
     döner — hazir = [(stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat,
     uretim_miktar), ...]."""
     if cari_id and aday_musteri_id:
@@ -105,7 +105,7 @@ def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar, mevcut_cari_id=Non
     if not satirlar:
         raise TeklifSiparisHatasi("En az bir kalem olmalı.")
     hazir = []
-    for s in satirlar:
+    for sira, s in enumerate(satirlar, start=1):
         stok = (Stok.objects.filter(pk=s["stok_id"], silindi=False)
                 .select_related("kdv", "tevkifat").first())
         if stok is None:
@@ -115,6 +115,11 @@ def _hazirla(*, cari_id=None, aday_musteri_id=None, satirlar, mevcut_cari_id=Non
         iskonto_yuzdesi = _yuzde(s.get("iskonto_yuzdesi"), "İskonto %")
         uretim_miktar = (_sayi(s["uretim_miktar"], "Üretim miktarı", pozitif=True)
                          if s.get("uretim_miktar") not in (None, "") else None)
+        if irsaliye:                                                  # SAI-2026-0015: yanlış birimle girilen miktar sessizce 1.000+ kat stok yazmasın
+            from core.services import birim_cevrim
+            hata = birim_cevrim.irsaliye_kalem_hatasi(stok, miktar, uretim_miktar, satir=sira)
+            if hata:
+                raise TeklifSiparisHatasi(hata)
         hazir.append((stok, miktar, birim_fiyat, iskonto_yuzdesi, stok.kdv, stok.tevkifat,
                      uretim_miktar, _kalem_varyanti(stok, s.get("varyant"))))
     return cari, aday, hazir
@@ -275,7 +280,7 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
         raise TeklifSiparisHatasi("Geçersiz yön.")
     _aday_musteri_izin_kontrol(belge_tur, yon, aday_musteri_id)
     cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
-                                 satirlar=satirlar)
+                                 satirlar=satirlar, irsaliye=(belge_tur == TeklifSiparis.BelgeTur.IRSALIYE))
     pb = _pb_dogrula(para_birimi)
     if pb == "TRY":
         kur = None
@@ -370,7 +375,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
         raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; düzenlenemez.")
     _aday_musteri_izin_kontrol(ts.belge_tur, ts.yon, aday_musteri_id)
     cari, aday, hazir = _hazirla(cari_id=cari_id, aday_musteri_id=aday_musteri_id,
-                                 satirlar=satirlar, mevcut_cari_id=ts.cari_id)
+                                 satirlar=satirlar, mevcut_cari_id=ts.cari_id, irsaliye=(ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE))
     pb = _pb_dogrula(para_birimi)
     if pb == "TRY":
         kur = None
@@ -735,6 +740,10 @@ def _irsaliye_stok_hareketi_yaz(irsaliye: TeklifSiparis, kullanici):
     for k in irsaliye.kalemler.filter(silindi=False).select_related("stok__kategori"):
         if k.stok.kategori.hizmet_kategorisi:            # hizmet kartı: stok girişi YOK
             continue
+        from core.services import birim_cevrim                       # son kapı (siparişten/eski kayıtlardan gelen kalem de aynı korumadan geçer)
+        hata = birim_cevrim.irsaliye_kalem_hatasi(k.stok, k.miktar, k.uretim_miktar)
+        if hata:
+            raise TeklifSiparisHatasi(hata)
         cevirici = k.stok.cevirici or Decimal("1")
         uretim_miktar = (k.uretim_miktar if k.uretim_miktar is not None
                         else yuvarla(k.miktar / cevirici, 3))

@@ -913,6 +913,17 @@ def _kartlari_yenile(fatura, kullanici):
             dv_servis.kart_maliyetini_yenile(kod, kullanici=kullanici)
 
 
+def asiri_cevrim_uyarilari(fatura) -> list:
+    """Faturanın stok satırlarında aşırı birim çevrimi (bkz. core.services.birim_cevrim) — stoğa FATURA satırından girecekse (irsaliyeli değil, depo var) açık uyarı metinleri.
+    Faturada üretim miktarı alanı olmadığından ENGEL değil UYARI (irsaliyeli faturada stoğu irsaliye yazdı; uyarı gerekmez)."""
+    from core.services import birim_cevrim
+    if not fatura.depo_id or irsaliyeden_mi(fatura):
+        return []
+    return [f"{s.stok.kod} {s.stok.ad}: {birim_cevrim.aciklama(s.stok, s.miktar)} stoğa girdi — birim doğru mu? Değilse faturayı düzeltin."
+            for s in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok__uretim_birimi", "stok__fatura_birimi", "stok__kategori")
+            if not hizmet_mi(s.stok) and birim_cevrim.asiri_mi(s.stok)]
+
+
 def _hizmetsiz_depo(hazir, depo):
     """Faturada stok kalemi VAR ve hepsi hizmet kartıysa depo YOK SAYILIR (None). Karışık faturada depo diğer (stoklu) kalemler için geçerlidir."""
     stoklar = [h[0] for h in hazir if h[0] is not None]

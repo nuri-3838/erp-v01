@@ -7,6 +7,7 @@
 {{ stok_meta|json_script:"stok-meta" }}
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
+  .cevrim-etiket.asiri { color:var(--hata); font-weight:700; }
   .uretim-miktar-yardimci { background:rgba(240,124,0,.06); border-style:dashed; }
   .satir-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
     font-size:.95rem; padding:.2rem .5rem; }
@@ -72,7 +73,7 @@
                 {{ f.uretim_miktar }}
                 <span class="birim-etiket birim-uretim"></span>
               </td>
-              <td class="sag">{{ f.miktar }}<span class="birim-etiket birim-fatura"></span></td>
+              <td class="sag">{{ f.miktar }}<span class="birim-etiket birim-fatura"></span><span class="birim-etiket cevrim-etiket"></span></td>
               <td class="sag">{{ f.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
               {% if iskonto_sutunu %}<td class="sag">{{ f.iskonto_yuzdesi }}<span class="birim-etiket net-etiket"></span></td>{% else %}{{ f.iskonto_yuzdesi.as_hidden }}{% endif %}
               <td class="sag"><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -101,7 +102,7 @@
         {{ formset.empty_form.uretim_miktar }}
         <span class="birim-etiket birim-uretim"></span>
       </td>
-      <td class="sag">{{ formset.empty_form.miktar }}<span class="birim-etiket birim-fatura"></span></td>
+      <td class="sag">{{ formset.empty_form.miktar }}<span class="birim-etiket birim-fatura"></span><span class="birim-etiket cevrim-etiket"></span></td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}<span class="birim-etiket birim-fiyat-etiket"></span></td>
       {% if iskonto_sutunu %}<td class="sag">{{ formset.empty_form.iskonto_yuzdesi }}<span class="birim-etiket net-etiket"></span></td>{% else %}{{ formset.empty_form.iskonto_yuzdesi.as_hidden }}{% endif %}
       <td class="sag"><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
@@ -205,6 +206,18 @@
     var eu=row.querySelector('.birim-uretim'), ef=row.querySelector('.birim-fatura');
     if(eu) eu.textContent = meta ? meta.uretim : '';
     if(ef) ef.textContent = meta ? meta.fatura : '';
+    cevrimNotu(row);
+  }
+  // Birim çevrimi notu (SAI-2026-0015): kart fatura birimi ≠ üretim birimi ise stoğa girecek üretim miktarı açıkça yazılır; çevrim katsayısı 1.000 katı aşıyorsa kırmızı uyarı.
+  function cevrimNotu(row){
+    var et=row.querySelector('.cevrim-etiket'); if(!et) return;
+    var meta=stokMeta(row); var mi=el(row,'-miktar'); var m=mi?parseTR(mi.value):0;
+    if(!meta || !meta.cevirici || meta.cevirici===1 || !(m>0)){ et.textContent=''; et.classList.remove('asiri'); return; }
+    var um=row.querySelector('.uretim-miktar-yardimci'); var acik=!!(um && um.value);     // Üretim miktarı açıkça yazıldıysa (doğru yol) uyarı kırmızı olmaz
+    var k=1/meta.cevirici, asiri=(k>=1000 || k<=0.001) && !acik;
+    var uretimM=m/meta.cevirici;
+    et.textContent=(asiri?'⚠ ':'')+m.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.fatura+' = '+uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.uretim+' stoğa girer (çevirici '+meta.cevirici+')'+(asiri?' — birim doğru mu? Üretim miktarını AD cinsinden girin.':'');
+    et.classList.toggle('asiri', asiri);
   }
   function alisFiyatiOner(row){
     var meta=stokMeta(row);
@@ -249,6 +262,7 @@
   form.addEventListener('input', function(e){
     var row=e.target.closest('.satir-form');
     if(row && e.target.classList.contains('uretim-miktar-yardimci')) uretimdenMiktarHesapla(row);
+    if(row) cevrimNotu(row);
     hesapla();
   });
   form.addEventListener('change', function(e){

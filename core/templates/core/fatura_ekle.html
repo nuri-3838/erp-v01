@@ -10,6 +10,7 @@
 {{ tip_gider|json_script:"tip-gider" }}
 {{ tip_stopajli|json_script:"tip-stopajli" }}
 {{ tip_karma|json_script:"tip-karma" }}
+{{ stok_cevrim|json_script:"stok-cevrim" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
 {{ yon|json_script:"fatura-yon" }}
@@ -17,6 +18,7 @@
 {{ tevkifat_oran|json_script:"tevkifat-oran" }}
 <style>
   .birim-etiket { display:block; font-size:.74rem; color:var(--metin-soluk); margin-top:.15rem; }
+  .cevrim-etiket.asiri { color:var(--hata); font-weight:700; }
   .satir-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
     font-size:.95rem; padding:.2rem .5rem; border-radius:8px; transition:background .12s,color .12s; }
   .satir-sil:hover { color:var(--hata); background:rgba(200,40,60,.08); }
@@ -206,7 +208,7 @@
           {% for f in formset %}
             <tr class="satir-form">
               <td><div class="tur-alani">{{ f.tur }}</div><div class="stok-alani">{{ f.stok }}<span class="birim-etiket tedarikci-etiket"></span><div class="varyant-alan" hidden></div>{{ f.varyant }}</div><div class="hesap-alani">{{ f.hesap }}</div><div class="demirbas-alani">{{ f.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ f.yatirim_projesi }}{{ f.varlik_adi }}</div><div class="donem-alani"><label class="donem-etiket">{{ f.donemsel }} Dönemsel gider (180)</label><div class="donem-alanlar">{{ f.donem_grup }}<div class="donem-tarih"><span>Başlangıç</span>{{ f.donem_baslangic }}<span>Bitiş</span>{{ f.donem_bitis }}</div>{{ f.donem_aciklama }}{{ f.donem_hesap }}</div></div>{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
-              <td class="sag">{{ f.miktar }}</td>
+              <td class="sag">{{ f.miktar }}<span class="birim-etiket cevrim-etiket"></span></td>
               <td class="sag">{{ f.birim_fiyat }}</td>
               <td class="sag"><div class="kdv-secim">{{ f.kdv }}</div><div class="tevkifat-secim">{{ f.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
               <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
@@ -230,7 +232,7 @@
 
     <template id="bos-satir">
       <td><div class="tur-alani">{{ formset.empty_form.tur }}</div><div class="stok-alani">{{ formset.empty_form.stok }}<span class="birim-etiket tedarikci-etiket"></span><div class="varyant-alan" hidden></div>{{ formset.empty_form.varyant }}</div><div class="hesap-alani">{{ formset.empty_form.hesap }}</div><div class="demirbas-alani">{{ formset.empty_form.demirbas }}<span class="birim-etiket demirbas-etiket"></span></div><div class="sahsi-not">Ortak hesabına işlenecek</div><div class="proje-alani">{{ formset.empty_form.yatirim_projesi }}{{ formset.empty_form.varlik_adi }}</div><div class="donem-alani"><label class="donem-etiket">{{ formset.empty_form.donemsel }} Dönemsel gider (180)</label><div class="donem-alanlar">{{ formset.empty_form.donem_grup }}<div class="donem-tarih"><span>Başlangıç</span>{{ formset.empty_form.donem_baslangic }}<span>Bitiş</span>{{ formset.empty_form.donem_bitis }}</div>{{ formset.empty_form.donem_aciklama }}{{ formset.empty_form.donem_hesap }}</div></div></td>
-      <td class="sag">{{ formset.empty_form.miktar }}</td>
+      <td class="sag">{{ formset.empty_form.miktar }}<span class="birim-etiket cevrim-etiket"></span></td>
       <td class="sag">{{ formset.empty_form.birim_fiyat }}</td>
       <td class="sag"><div class="kdv-secim">{{ formset.empty_form.kdv }}</div><div class="tevkifat-secim">{{ formset.empty_form.tevkifat }}</div><div class="tutar mono">—</div><span class="birim-etiket kdv-etiket"></span></td>
       <td class="sag"><button type="button" class="satir-sil" title="Satırı kaldır">✕</button></td>
@@ -251,6 +253,7 @@
   var TIP_GIDER = JSON.parse(document.getElementById('tip-gider').textContent) || {};
   var TIP_STOPAJLI = JSON.parse(document.getElementById('tip-stopajli').textContent) || {};
   var TIP_KARMA = JSON.parse(document.getElementById('tip-karma').textContent) || {};
+  var CEVRIM = JSON.parse(document.getElementById('stok-cevrim').textContent) || {};      // stok_id -> {cevirici, uretim, fatura, asiri} (yalnız çevirici != 1 kartlar)
   var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
   var TEVORAN = JSON.parse(document.getElementById('tevkifat-oran').textContent) || {};   // tevkifat_id -> pay/payda
@@ -384,6 +387,16 @@
         var stokSel2=el(r,'-stok');
         var stokTevId=(stokSel2&&stokSel2.value)?STOK_TEV[stokSel2.value]:null;
         if(stokTevId!=null && TEVORAN[String(stokTevId)]!=null) ratio=TEVORAN[String(stokTevId)];
+      }
+      // Birim çevrimi notu: kart fatura birimi ≠ üretim birimi ise stoğa girecek üretim miktarı açıkça yazılır; katsayı 1.000 katı aşıyorsa kırmızı uyarı (SAI-2026-0015).
+      var cvEt=r.querySelector('.cevrim-etiket');
+      if(cvEt){
+        var stokSelC=el(r,'-stok'); var cv=(satirTuru(r)==='STOK' && stokSelC && stokSelC.value)?CEVRIM[stokSelC.value]:null;
+        if(cv && m>0){
+          var uretimM=m/cv.cevirici;
+          cvEt.textContent=(cv.asiri?'⚠ ':'')+fmt(m)+' '+cv.fatura+' = '+uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+cv.uretim+' stoğa girer (çevirici '+cv.cevirici+')'+(cv.asiri?' — birim doğru mu?':'');
+          cvEt.classList.toggle('asiri', !!cv.asiri);
+        } else { cvEt.textContent=''; cvEt.classList.remove('asiri'); }
       }
       var tutar=Math.round(m*f*100)/100;
       var skdv=Math.round(tutar*oran)/100;
