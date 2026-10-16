@@ -191,6 +191,7 @@ class YevmiyeFisi(TemelModel):
         FASON_TAHAKKUK = "FASON_TAHAKKUK", "Fason Tahakkuku (otomatik)"
         NUMUNE = "NUMUNE", "Numune Çıkışı (otomatik)"
         STOK_DUZELTME = "STOK_DUZELTME", "Stok Maliyet Düzeltme (otomatik)"
+        STOK_SAYIM = "STOK_SAYIM", "Stok Sayımı Farkı (otomatik)"
 
     yil = models.IntegerField("mali yıl")
     fis_no = models.PositiveIntegerField("fiş no")
@@ -2502,6 +2503,7 @@ class StokHareket(TemelModel):
         # Reçete eksik sarf / maliyet düzeltmesi (core.services.recete_sarf): ÇIKIŞ sabit tutarlı; GİRİŞ 0 ADETLİK yalnız değer (kart ortalaması
         # yükselir, eldeki değişmez). Her ikisi de STOK_DUZELTME fişine bağlı (``fis``); tek tek silinemez.
         DUZELTME = "DUZELTME", "Maliyet düzeltmesi"
+        SAYIM = "SAYIM", "Sayım"
 
     stok = models.ForeignKey(
         Stok, verbose_name="stok", related_name="hareketler", on_delete=models.PROTECT)
@@ -2568,6 +2570,8 @@ class StokHareket(TemelModel):
     maliyet_fatura_satir = models.ForeignKey(
         "FaturaSatir", verbose_name="maliyeti belirleyen fatura satırı", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="maliyet_hareketleri")
+    # Stok sayımı farkı (kaynak=SAYIM): onaylı sayım satırı; hareketler tek başına silinmez, sayım geri alınır (core.services.stok_sayim).
+    sayim_satir = models.ForeignKey("StokSayimSatiri", verbose_name="sayım satırı", null=True, blank=True, on_delete=models.PROTECT, related_name="hareketler")
     # SONUÇ (motor yazar, elle düzenlenmez): bu hareketin değeri ve hareket sonrası durum.
     class MaliyetDurumu(models.TextChoices):
         KESIN = "KESIN", "Kesin"
@@ -4409,8 +4413,10 @@ class StokSayimSatiri(TemelModel):
     karar = models.CharField("karar", max_length=8, choices=Karar.choices, default=Karar.BEKLIYOR)
     karar_notu = models.CharField("karar notu", max_length=300, blank=True, default="")
     karar_veren = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="karar veren", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
-    onay_fark = models.DecimalField("onaydaki fark", max_digits=18, decimal_places=6, null=True, blank=True)
-    onay_tutar_try = models.DecimalField("onaydaki fark tutarı (TL)", max_digits=18, decimal_places=2, null=True, blank=True)
+    onay_referans = models.DecimalField("onaydaki sistem referansı", max_digits=18, decimal_places=6, null=True, blank=True)
+    onay_sayilan = models.DecimalField("onaydaki sayılan", max_digits=18, decimal_places=6, null=True, blank=True)
+    onay_fark = models.DecimalField("onaydaki fark (sayılan − referans; yalnız sayılan satırlar)", max_digits=18, decimal_places=6, null=True, blank=True)
+    onay_tutar_try = models.DecimalField("düzeltme hareketinin tutarı (TL; fazla +, eksik −; yalnız Düzelt satırları)", max_digits=18, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "stok_sayim_satiri"

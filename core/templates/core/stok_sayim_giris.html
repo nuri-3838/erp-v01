@@ -33,6 +33,18 @@
   <p class="yardim" style="margin:.4rem 0 0">Saydığınız miktarı yazıp en alttaki <b>Kaydet</b>'e basın. Girişler <b>toplanır</b>: aynı ürünü farklı raflarda sayarsanız her seferinde o rafın miktarını girin.</p>
 </div>
 
+<section class="sg-ekle" style="margin:.2rem 0 .8rem">
+  <b>Excel ile giriş</b>
+  <div style="display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-top:.4rem">
+    <a class="dugme ikincil" href="{% url 'core:stok_sayim_excel_indir' sayim.pk %}">⬇ Şablonu indir</a>
+    <form method="post" action="{% url 'core:stok_sayim_excel_yukle' sayim.pk %}" enctype="multipart/form-data" style="display:flex; gap:.4rem; align-items:center; flex-wrap:wrap">{% csrf_token %}
+      <input type="file" name="dosya" accept=".xlsx" required>
+      <button class="dugme" type="submit">Yükle (önizleme)</button>
+    </form>
+  </div>
+  <div class="yardim" style="margin-top:.3rem">“Sayılan” sütununu doldurup yükleyin; önce önizleme gösterilir. Girişler toplanır.</div>
+</section>
+
 <form method="get" class="sg-ara">
   <input type="search" name="ara" value="{{ ara }}" placeholder="Ürün ara (kod veya ad)" autocomplete="off">
   <button class="dugme" type="submit">Ara</button>

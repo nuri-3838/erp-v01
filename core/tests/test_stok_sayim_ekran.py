@@ -39,9 +39,9 @@ class MenuTest(EkranTaban):
     def test_stoklar_menusu_sayim_ve_tanimlar_alt_menusu(self):
         stoklar = next(m for m in MODULLER if m.kod == "STOKLAR")
         kodlar = [e.kod for e in stoklar.ekranlar]
-        self.assertEqual(kodlar, ["stoklar", "stok_sayim", "kategoriler", "fatura_tipleri", "birimler", "depolar"])
+        self.assertEqual(kodlar, ["stoklar", "stok_sayim", "stok_sayim_raporlari", "kategoriler", "fatura_tipleri", "birimler", "depolar"])
         ogeler = stoklar.ogeler
-        self.assertEqual([getattr(o, "kod", None) for o in ogeler if not o.alt_menu], ["stoklar", "stok_sayim"])
+        self.assertEqual([getattr(o, "kod", None) for o in ogeler if not o.alt_menu], ["stoklar", "stok_sayim", "stok_sayim_raporlari"])
         (grup,) = [o for o in ogeler if o.alt_menu]
         self.assertEqual((grup.ad, [e.kod for e in grup.ekranlar]), ("Tanımlar", ["kategoriler", "fatura_tipleri", "birimler", "depolar"]))
         for e in grup.ekranlar:                                      # alt sayfalar (ekle/düzenle/sil) da grubu açık/aktif işaretler

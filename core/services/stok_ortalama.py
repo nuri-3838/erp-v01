@@ -225,16 +225,23 @@ def _degisenleri_isle(degisen, derinlik):
     from core.services import stok_fis
     if derinlik > 10:
         raise MaliyetHatasi("Maliyet zinciri çok derin (döngü olabilir); işlem durduruldu.")
-    kayitlar, faturalar, numune_hareketleri = {}, {}, []
+    kayitlar, faturalar, numune_hareketleri, sayimlar = {}, {}, [], set()
     for h in degisen:
         if h.kaynak == StokHareket.Kaynak.SARF and h.fis_id:
             _cikis_fisini_guncelle(h)
+        elif h.kaynak == StokHareket.Kaynak.SAYIM and h.sayim_satir_id:
+            sayimlar.add(h.sayim_satir.sayim_id)                      # sayım farkı fişi yerinde yenilenir (aşağıda)
         elif h.operasyon_kaydi_id:
             kayitlar[h.operasyon_kaydi_id] = h.operasyon_kaydi
         elif h.fatura_satir_id:
             faturalar[h.fatura_satir.fatura_id] = h.fatura_satir.fatura
         elif h.kaynak == StokHareket.Kaynak.NUMUNE:
             numune_hareketleri.append(h.pk)
+    if sayimlar:
+        from core.models import StokSayimi
+        from core.services import stok_sayim
+        for sayim in StokSayimi.objects.filter(pk__in=sayimlar):
+            stok_sayim.fis_senkronla(sayim)
     for kayit in kayitlar.values():
         for cikti_stok in stok_fis.uretim_senkronla(kayit):          # ana + yan çıktılar
             yeniden_hesapla(cikti_stok, _derinlik=derinlik + 1)

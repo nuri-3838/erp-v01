@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Stok Fark Geçmişi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Stok Bazında Sayım Farkı{% endblock %}
+
+{% block content %}
+<style>
+  .sr-ara { display:flex; gap:.5rem; margin:.6rem 0 1rem; max-width:34rem; }
+  .sr-ara input { flex:1; padding:.45rem .6rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; }
+  .sr-fazla { color:#0a7d28; } .sr-eksik { color:#c1121f; }
+</style>
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">📊</span>Stok Bazında Sayım Farkı</h1>
+  <a class="dugme ikincil" href="{% url 'core:stok_sayim_raporlari' %}">← Sayım geçmişi</a>
+</div>
+<form method="get" class="sr-ara">
+  <input type="search" name="ara" value="{{ ara }}" placeholder="Stok kodu veya adı (en az 2 harf)" autocomplete="off">
+  <button class="dugme" type="submit">Bul</button>
+</form>
+
+{% if adaylar and not stok %}
+  <div class="tablo-kapsayici"><table><thead><tr><th>Kod</th><th>Ürün</th></tr></thead><tbody>
+  {% for s in adaylar %}<tr><td class="mono"><a href="?stok={{ s.pk }}">{{ s.kod }}</a></td><td>{{ s.ad }}</td></tr>{% endfor %}
+  </tbody></table></div>
+{% elif ara and not stok %}
+  <p class="yardim">Eşleşen stok bulunamadı.</p>
+{% endif %}
+
+{% if stok %}
+  <h2 class="bolum-baslik">{{ stok.kod }} — {{ stok.ad }}
+    <a class="dugme ikincil" style="margin-left:.6rem" href="?stok={{ stok.pk }}&excel=1">⬇ Excel</a></h2>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Sayım</th><th>Tarih</th><th>Depo</th><th>Varyant</th><th>Belge</th><th class="sag">Sistem (referans)</th><th class="sag">Sayılan</th><th class="sag">Fark</th><th>Karar</th><th class="sag">Düzeltme tutarı (₺)</th></tr></thead>
+    <tbody>
+    {% for r in satirlar %}
+      <tr>
+        <td class="mono"><a href="{% url 'core:stok_sayim_belge' r.sayim.pk %}"><b>{{ r.sayim.no }}</b></a></td>
+        <td class="mono">{{ r.sayim.tarih|date:"d.m.Y" }}</td>
+        <td>{{ r.sayim.depo.kod }}</td>
+        <td>{{ r.etiket|default:"—" }}</td>
+        <td>{{ r.sayim.get_durum_display }}{% if r.devam %} <span class="yardim">(devam ediyor)</span>{% endif %}</td>
+        <td class="sag mono">{% if r.referans is not None %}{{ r.referans|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono">{% if r.sayilan is not None %}{{ r.sayilan|tr_miktar_sade }}{% else %}<span class="yardim">sayılmadı</span>{% endif %}</td>
+        <td class="sag mono {% if r.fark %}{% if r.fark > 0 %}sr-fazla{% else %}sr-eksik{% endif %}{% endif %}">{% if r.fark is not None %}{% if r.fark > 0 %}+{% endif %}{{ r.fark|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td>{{ r.satir.get_karar_display }}</td>
+        <td class="sag mono">{% if r.tutar is not None %}{{ r.tutar|tr_para }}{% else %}—{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="10" class="yardim">Bu stok hiçbir sayım belgesinde yok.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% endif %}
+{% endblock %}

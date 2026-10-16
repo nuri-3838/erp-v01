@@ -117,6 +117,13 @@
         <div class="ozet-not{% if kritik_alti %} uyari-metin{% endif %}">{% if kritik_alti %}⚠️ {% endif %}Kritik seviye:
           <span class="mono">{{ stok.kritik_stok|tr_kur:3 }}</span> {{ stok.uretim_birimi.kisa_ad }}</div>
       {% endif %}
+      {% if son_sayim %}
+        <div class="ozet-not">Son sayım: <b>{{ son_sayim.tarih|date:"d.m.Y" }}</b> ·
+          {% if sayim_yonetici %}<a href="{% url 'core:stok_sayim_belge' son_sayim.sayim.pk %}">{{ son_sayim.sayim.no }}</a>{% else %}{{ son_sayim.sayim.no }}{% endif %}
+          · sayılan <span class="mono">{{ son_sayim.sayilan|tr_miktar6 }}</span>{% if son_sayim.fark %} · fark <span class="mono">{% if son_sayim.fark > 0 %}+{% endif %}{{ son_sayim.fark|tr_miktar6 }}</span>{% endif %}{% if son_sayim.duzeltildi %} · düzeltildi{% endif %}</div>
+      {% else %}
+        <div class="ozet-not">Son sayım: henüz sayılmadı</div>
+      {% endif %}
     </section>
     {% endif %}
 
@@ -197,7 +204,9 @@
             <td class="sag mono {% if h.tur == 'GIRIS' %}giris{% else %}cikis{% endif %}">{% if h.tur == 'GIRIS' %}+{% else %}−{% endif %}{{ h.miktar|tr_miktar6 }}</td>
             <td class="sag mono">{% if h.maliyet_durumu == 'YOK' %}<span class="pasif" title="Maliyet belli değil (fatura bekleniyor)">—</span>{% else %}{{ h.birim_maliyet_try|tr_kur:4 }}{% endif %}</td>
             <td class="sag mono">{% if h.maliyet_durumu != 'YOK' %}{{ h.tutar_try|tr_kur:2 }}{% if h.maliyet_durumu == 'GECICI' %} <span class="rozet rozet-pasif" title="Fiyatsız giriş var: ortalama geçici">geçici</span>{% endif %}{% endif %}</td>
-            <td class="hareket-kaynak">{{ h.get_kaynak_display }}
+            <td class="hareket-kaynak">{% if h.kaynak == 'SAYIM' and h.sayim_satir_id %}{% if sayim_yonetici %}<a href="{% url 'core:stok_sayim_belge' h.sayim_satir.sayim_id %}">Sayım {{ h.sayim_satir.sayim.no }}</a>{% else %}Sayım {{ h.sayim_satir.sayim.no }}{% endif %}
+                {% if h.fis_id %}<br><a href="{% url 'core:fis_detay' h.fis_id %}" style="font-size:.78rem">Fiş {{ h.fis.yil }}/{{ h.fis.fis_no }}</a>{% endif %}
+              {% else %}{{ h.get_kaynak_display }}{% endif %}
               {% if h.kaynak == 'DUZELTME' and h.fis_id %}
                 <br><a href="{% url 'core:fis_detay' h.fis_id %}" style="font-size:.78rem">Fiş {{ h.fis.yil }}/{{ h.fis.fis_no }}</a>
               {% endif %}

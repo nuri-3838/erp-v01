@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ sayim.no }} · Excel Önizleme · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Excel Önizleme{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">📥</span>{{ sayim.no }} · Excel yükleme önizlemesi</h1>
+</div>
+<p class="yardim">Aşağıdaki girişler <b>mevcut sayımlara eklenecek</b> (toplamsal). Hatalı satırlar atlanır; henüz hiçbir şey yazılmadı.</p>
+{% if tekrar %}<div class="uyari">⚠️ Bu dosya bu sayıma daha önce yüklenmiş görünüyor; yeniden uygularsanız “Uygula” reddedilir.</div>{% endif %}
+
+{% if hatalar %}
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Hatalar ({{ hatalar|length }})</h2>
+  <ul>{% for no, mesaj in hatalar %}<li>Excel satır {{ no }}: {{ mesaj }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Stok kodu</th><th>Ürün</th><th class="sag">Eklenecek miktar</th></tr></thead>
+  <tbody>
+  {% for r in satirlar %}
+    <tr><td class="mono">{{ r.kod }}</td><td>{{ r.ad }}{% if r.etiket %} <span class="yardim">[{{ r.etiket }}]</span>{% endif %}</td><td class="sag mono">{{ r.miktar|tr_miktar_sade }}</td></tr>
+  {% empty %}
+    <tr><td colspan="3" class="yardim">Uygulanacak satır yok (Sayılan sütunu boş ya da tüm satırlar hatalı).</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div style="display:flex; gap:.6rem; margin:1rem 0; flex-wrap:wrap">
+  {% if satirlar %}
+  <form method="post" action="{% url 'core:stok_sayim_excel_yukle' sayim.pk %}">{% csrf_token %}
+    <input type="hidden" name="token" value="{{ token }}">
+    <button type="submit" class="birincil">{{ satirlar|length }} satırı uygula</button></form>
+  {% endif %}
+  <a class="dugme ikincil" href="{% url 'core:stok_sayim_giris' sayim.pk %}">Vazgeç</a>
+</div>
+{% endblock %}

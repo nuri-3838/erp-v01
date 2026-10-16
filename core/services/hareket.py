@@ -122,7 +122,7 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
                  teklif_siparis_kalem=None, operasyon_kaydi_girdi=None, kullanici=None,
                  tahmini=False, giris_tutar_try=None, giris_tutar_usd=None,
                  maliyet_fatura_satir=None, operasyon_kaydi=None, giris_ortalama=False,
-                 transfer_grubu=None, varyant=None) -> StokHareket:
+                 transfer_grubu=None, varyant=None, sayim_satir=None) -> StokHareket:
     """Miktar hareketi yazar. ``varyant``: varyantlı kartta hareketin varyantı (StokVaryant|pk); verilmezse kartın varsayılan
     varyantı (bkz. core.services.varyant.hareket_varyanti); varyantsız kartta boş kalır. Hareketli ağırlıklı ortalama maliyet (bkz. core.services.
     stok_ortalama): ``giris_tutar_try`` (+``giris_tutar_usd``) GİRİŞ'in fatura tutarıdır;
@@ -159,7 +159,7 @@ def hareket_ekle(*, stok_id, depo_id, tarih, tur, miktar, aciklama="",
         maliyet_fatura_satir=maliyet_fatura_satir,
         giris_tahmini=bool(tahmini) and tur == StokHareket.Tur.GIRIS,
         giris_ortalama=bool(giris_ortalama) and tur == StokHareket.Tur.GIRIS,
-        operasyon_kaydi=operasyon_kaydi, transfer_grubu=transfer_grubu,
+        operasyon_kaydi=operasyon_kaydi, transfer_grubu=transfer_grubu, sayim_satir=sayim_satir,
         created_by=kullanici, updated_by=kullanici)
     _ortalamayi_hesapla(stok)
     hareket.refresh_from_db()
@@ -308,7 +308,7 @@ def sarf_onizleme(*, stok_id, depo_id, miktar) -> dict:
 
 
 @transaction.atomic
-def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False, _numune_icinden=False) -> StokHareket:
+def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False, _numune_icinden=False, _sayim_icinden=False) -> StokHareket:
     """Soft-delete. Giriş silinince eldeki azalır; negatife düşürmemeli. Silinen hareketin
     kartı yeniden hesaplanır (sonraki çıkışların maliyeti ve sarf/üretim/satış fişleri
     güncellenir); bağlı otomatik muhasebe fişi iptal edilir (bkz. core.services.yevmiye.
@@ -320,6 +320,8 @@ def hareket_sil(hareket: StokHareket, kullanici=None, *, _transfer_icinden=False
         raise HareketHatasi("Depo transferinin tek bacağı silinemez; Depo Transferi'ni silin.")
     if hareket.kaynak == StokHareket.Kaynak.NUMUNE and not _numune_icinden:
         raise HareketHatasi("Numune çıkışı hareketi tek başına silinemez; Numune Çıkışı belgesinin onayını geri alın.")
+    if hareket.kaynak == StokHareket.Kaynak.SAYIM and not _sayim_icinden:
+        raise HareketHatasi("Sayım hareketi tek başına silinemez; Stok Sayımı belgesinin onayını geri alın.")
     if hareket.kaynak == StokHareket.Kaynak.DUZELTME:
         raise HareketHatasi("Maliyet düzeltmesi hareketi tek başına silinemez; düzeltme fişiyle birlikte (recete_sarf_duzelt) yönetilir.")
     if hareket.tur == StokHareket.Tur.GIRIS:

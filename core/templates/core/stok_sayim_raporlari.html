@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Sayım Geçmişi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Sayım Raporları{% endblock %}
+
+{% block content %}
+<style>
+  .sr-filtre { display:flex; flex-wrap:wrap; gap:.5rem; align-items:end; margin-bottom:1rem; }
+  .sr-filtre label { display:flex; flex-direction:column; gap:.15rem; font-size:.74rem; font-weight:700; color:#5b6678; }
+  .sr-filtre select { padding:.35rem .5rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; }
+  .sr-fazla { color:#0a7d28; } .sr-eksik { color:#c1121f; }
+  .sr-rozet { display:inline-block; padding:.05rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#e8f0fe; color:#1f4fa8; }
+  .sr-rozet.kapali { background:#fff1dc; color:#b45f00; } .sr-rozet.onayli { background:#e7f7ec; color:#0a7d28; } .sr-rozet.geri { background:#f0e8f7; color:#6a2f96; }
+</style>
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">📊</span>Sayım Geçmişi</h1>
+  <div style="display:flex; gap:.5rem; flex-wrap:wrap">
+    <a class="dugme ikincil" href="{% url 'core:stok_sayim_rapor_stok' %}">Stok bazında fark geçmişi</a>
+    <a class="dugme ikincil" href="?{% if yil %}yil={{ yil }}&{% endif %}{% if depo_id %}depo={{ depo_id }}&{% endif %}{% if durum %}durum={{ durum }}&{% endif %}excel=1">⬇ Excel</a>
+  </div>
+</div>
+<form method="get" class="sr-filtre">
+  <label>Yıl<select name="yil"><option value="">Tümü</option>{% for y in yillar %}<option value="{{ y }}"{% if yil == y|stringformat:"s" %} selected{% endif %}>{{ y }}</option>{% endfor %}</select></label>
+  <label>Depo<select name="depo"><option value="">Tümü</option>{% for d in depolar %}<option value="{{ d.pk }}"{% if depo_id == d.pk|stringformat:"s" %} selected{% endif %}>{{ d.kod }} · {{ d.ad }}</option>{% endfor %}</select></label>
+  <label>Durum<select name="durum"><option value="">Tümü</option>{% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}</select></label>
+  <button type="submit" class="dugme">Listele</button>
+</form>
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Sayım</th><th>Tarih</th><th>Depo</th><th>Kapsam</th><th>Durum</th><th class="sag">Satır</th><th class="sag">Sayılan</th><th class="sag">Düzelt</th><th class="sag">Araştır</th><th class="sag">Fazla (₺)</th><th class="sag">Eksik (₺)</th><th>Fiş</th></tr></thead>
+  <tbody>
+  {% for r in satirlar %}
+    <tr>
+      <td class="mono"><a href="{% url 'core:stok_sayim_belge' r.sayim.pk %}"><b>{{ r.sayim.no }}</b></a></td>
+      <td class="mono">{{ r.sayim.tarih|date:"d.m.Y" }}</td>
+      <td>{{ r.sayim.depo.kod }} · {{ r.sayim.depo.ad }}</td>
+      <td>{% if r.sayim.kategori %}{{ r.sayim.kategori.ad }}{% else %}Tümü{% endif %}</td>
+      <td><span class="sr-rozet {% if r.sayim.durum == 'KAPALI' %}kapali{% elif r.sayim.durum == 'ONAYLI' %}onayli{% elif r.sayim.durum == 'GERI_ALINDI' %}geri{% endif %}">{{ r.sayim.get_durum_display }}</span>{% if r.sayim.kor %} <span class="sr-rozet">KÖR</span>{% endif %}</td>
+      <td class="sag mono">{{ r.satir }}</td><td class="sag mono">{{ r.sayilan }}</td><td class="sag mono">{{ r.duzelt }}</td><td class="sag mono">{{ r.arastir }}</td>
+      <td class="sag mono sr-fazla">{% if r.fazla_tutar is not None %}{{ r.fazla_tutar|tr_para }}{% else %}—{% endif %}</td>
+      <td class="sag mono sr-eksik">{% if r.eksik_tutar is not None %}{{ r.eksik_tutar|tr_para }}{% else %}—{% endif %}</td>
+      <td class="mono">{% if r.fis %}<a href="{% url 'core:fis_detay' r.fis.pk %}">{{ r.fis.yil }}/{{ r.fis.fis_no }}</a>{% else %}—{% endif %}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="12" class="yardim">Sayım belgesi yok.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

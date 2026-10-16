@@ -283,3 +283,214 @@ def karar_ver(satir, karar, *, kullanici, not_="") -> StokSayimSatiri:
     satir.updated_by = kullanici
     satir.save(update_fields=["karar", "karar_notu", "karar_veren", "updated_by", "updated_at"])
     return satir
+
+
+# ----------------------------------------------------------------------------------------------------------------------- ONAY / GERİ ALMA (dilim 3)
+# Onay: YALNIZ karar=Düzelt satırları — eksik → ÇIKIŞ, fazla → GİRİŞ (ortalama maliyetle, tarih = sayım tarihi, kaynak SAYIM) + TEK muhasebe fişi (STOK_SAYIM):
+#   eksik: 62x BORÇ / stok hesabı ALACAK · fazla: stok hesabı BORÇ / 62x ALACAK. 62x = satış maliyeti kuralıyla aynı (152→620, 153→621, 150/151→623; ara hesap 197/397 YOK).
+#   Stok hesabı satırları STOK BAZINDA, 62x tarafı her hesap için YÖNDE TEK satır. Maliyet sonradan değişirse (geç gelen fatura) fiş yerinde yenilenir (stok_ortalama kancası → fis_senkronla).
+def _hesaplar(stok):
+    """(stok hesabı kodu, maliyet hesabı kodu) — çözülemezse SayimHatasi."""
+    from core.services import stok_fis
+    try:
+        stok_kodu = stok_fis.stok_hesabi_kodu(stok)
+        return stok_kodu, stok_fis.maliyet_hesabi_kodu(stok_kodu)
+    except stok_ortalama.MaliyetHatasi as e:
+        raise SayimHatasi(str(e))
+
+
+def _etiket(h) -> str:
+    from core.services.varyant import varyant_kisa
+    return f" [{varyant_kisa(h.varyant)}]" if h.varyant_id else ""
+
+
+def _fis_satirlari(sayim, hareketler):
+    """Fiş satırları: stok bazında stok hesabı satırları + her 62x hesabı için yönde tek satır. ``hareketler``: sayım hareketleri (tutar_try dolu)."""
+    from core.services.yevmiye import SatirGirdi
+    stok_satirlari, maliyet = [], defaultdict(lambda: {"B": SIFIR, "A": SIFIR})
+    for h in sorted(hareketler, key=lambda x: (x.stok.kod, x.varyant_id or 0, x.pk)):
+        tutar = h.tutar_try or SIFIR
+        if tutar <= 0:
+            raise stok_ortalama.MaliyetHatasi(f"{h.stok.kod}: sayım hareketinin maliyeti hesaplanamıyor ({sayim.no}).")
+        stok_kodu, maliyet_kodu = _hesaplar(h.stok)
+        fazla = h.tur == StokHareket.Tur.GIRIS
+        isaret = "+" if fazla else "−"
+        aciklama = f"{sayim.no} {h.stok.kod} {h.stok.ad[:48]}{_etiket(h)} {isaret}{format(h.miktar.normalize(), 'f')}"[:190]
+        stok_satirlari.append(SatirGirdi(stok_kodu, "B" if fazla else "A", tutar, aciklama=aciklama))
+        maliyet[maliyet_kodu]["A" if fazla else "B"] += tutar
+    satirlar = list(stok_satirlari)
+    for kod in sorted(maliyet):
+        for taraf in ("B", "A"):
+            if maliyet[kod][taraf] > 0:
+                satirlar.append(SatirGirdi(kod, taraf, maliyet[kod][taraf], aciklama=f"{sayim.no} sayım {'eksiği' if taraf == 'B' else 'fazlası'} ({kod})"))
+    return satirlar
+
+
+def _sayim_hareketleri(sayim):
+    return list(StokHareket.objects.filter(sayim_satir__sayim=sayim, silindi=False, kaynak=StokHareket.Kaynak.SAYIM).select_related("stok", "varyant", "sayim_satir").order_by("id"))
+
+
+def _imzali_tutar(h) -> Decimal:
+    return (h.tutar_try or SIFIR) * (1 if h.tur == StokHareket.Tur.GIRIS else -1)
+
+
+@transaction.atomic
+def onayla(sayim, kullanici) -> StokSayimi:
+    """Girişi kapanmış sayımı onaylar: yalnız Düzelt satırları için stok düzeltme hareketi + tek muhasebe fişi. Hata olursa HİÇBİR ŞEY yazılmaz."""
+    from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle
+    from core.services.yevmiye import YevmiyeHatasi, fis_olustur
+    from core.models import YevmiyeFisi
+    sayim = StokSayimi.objects.select_for_update().select_related("depo").get(pk=sayim.pk)
+    if sayim.silindi or sayim.durum != Durum.KAPALI:
+        raise SayimHatasi("Yalnız girişi kapatılmış sayım onaylanabilir (önce girişi kapatın).")
+    veri = fark_satirlari(sayim)["satirlar"]
+    duzelt = [d for d in veri if d["karar"] == Karar.DUZELT]
+    if not duzelt:
+        raise SayimHatasi("Onaylanacak satır yok: karar \"Düzelt\" olan satır bulunmuyor.")
+    hatalar = []
+    for d in duzelt:
+        kod = d["stok"].kod
+        if d["fark"] is None or abs(d["fark"]) < ESIK:
+            hatalar.append(f"{kod}: artık fark yok / sayılmadı")
+        elif d["belirsiz"]:
+            hatalar.append(f"{kod}: {d['neden']}")
+        else:
+            try:
+                _hesaplar(d["stok"])
+            except SayimHatasi as e:
+                hatalar.append(str(e))
+    if hatalar:
+        raise SayimHatasi("Onaylanamadı: " + "; ".join(hatalar[:15]) + (" …" if len(hatalar) > 15 else ""))
+    hareketler = []
+    for d in duzelt:
+        sat, fark = d["satir"], d["fark"]
+        try:
+            h = hareket_ekle(stok_id=sat.stok_id, depo_id=sayim.depo_id, tarih=sayim.tarih, tur=StokHareket.Tur.GIRIS if fark > 0 else StokHareket.Tur.CIKIS, miktar=abs(fark),
+                             aciklama=f"Sayım {sayim.no}", kaynak=StokHareket.Kaynak.SAYIM, kullanici=kullanici, varyant=sat.varyant_id, giris_ortalama=fark > 0, sayim_satir=sat)
+        except HareketHatasi as e:
+            raise SayimHatasi(f"{d['stok'].kod}: {e}")
+        hareketler.append(h)
+    hareketler = [StokHareket.objects.select_related("stok", "varyant", "sayim_satir").get(pk=h.pk) for h in hareketler]       # sonraki hareketler ortalamayı kaydırmış olabilir → taze oku
+    for h in hareketler:
+        if h.tur == StokHareket.Tur.CIKIS and eldeki_miktar(h.stok, sayim.depo, varyant=h.varyant_id) < 0:
+            raise SayimHatasi(f"{h.stok.kod}: eksik düzeltmesi, sayım tarihinden sonraki hareketleri negatif stoğa düşürür; önce o hareketleri düzeltin.")
+    try:
+        satirlar = _fis_satirlari(sayim, hareketler)
+        fis = fis_olustur(tarih=sayim.tarih, satirlar=satirlar, aciklama=f"Stok sayımı {sayim.no} — {sayim.depo.kod} {sayim.depo.ad}"[:300],
+                          kaynak=YevmiyeFisi.Kaynak.STOK_SAYIM, kullanici=kullanici)
+    except (YevmiyeHatasi, stok_ortalama.MaliyetHatasi) as e:
+        raise SayimHatasi(str(e))
+    StokHareket.objects.filter(pk__in=[h.pk for h in hareketler]).update(fis=fis)
+    tutarlar = {h.sayim_satir_id: _imzali_tutar(h) for h in hareketler}
+    toplu = []
+    for d in veri:
+        sat = d["satir"]
+        if d["fark"] is not None:
+            sat.onay_referans, sat.onay_sayilan, sat.onay_fark = d["referans"], d["sayilan"], d["fark"]
+        if sat.pk in tutarlar:
+            sat.onay_tutar_try = tutarlar[sat.pk]
+        toplu.append(sat)
+    StokSayimSatiri.objects.bulk_update(toplu, ["onay_referans", "onay_sayilan", "onay_fark", "onay_tutar_try"])
+    sayim.durum, sayim.onaylayan, sayim.onay_zamani, sayim.fis, sayim.updated_by = Durum.ONAYLI, kullanici, timezone.now(), fis, kullanici
+    sayim.save(update_fields=["durum", "onaylayan", "onay_zamani", "fis", "updated_by", "updated_at"])
+    return sayim
+
+
+def fis_senkronla(sayim) -> None:
+    """Maliyet sonradan değiştiğinde (geç gelen fatura / geriye tarihli hareket) onaylı sayımın fişini hareket tutarlarına göre yerinde yeniler (stok_ortalama kancası)."""
+    from core.services.yevmiye import YevmiyeHatasi, fis_guncelle
+    sayim = StokSayimi.objects.select_related("fis").get(pk=sayim.pk)
+    if sayim.durum != Durum.ONAYLI or sayim.fis is None or sayim.fis.silindi:
+        return                                                         # onay sürerken (fiş henüz yok) ya da geri alınmış
+    hareketler = _sayim_hareketleri(sayim)
+    if not hareketler:
+        return
+    try:
+        fis_guncelle(sayim.fis, tarih=sayim.fis.tarih, satirlar=_fis_satirlari(sayim, hareketler), aciklama=sayim.fis.aciklama, kur_usd=sayim.fis.kur_usd)
+    except YevmiyeHatasi as e:
+        raise stok_ortalama.MaliyetHatasi(str(e))
+    tutarlar = {h.sayim_satir_id: _imzali_tutar(h) for h in hareketler}
+    for sat in StokSayimSatiri.objects.filter(pk__in=tutarlar):
+        sat.onay_tutar_try = tutarlar[sat.pk]
+        sat.save(update_fields=["onay_tutar_try", "updated_at"])
+
+
+@transaction.atomic
+def geri_al(sayim, kullanici) -> StokSayimi:
+    """Onaylı sayımı geri alır: sayım hareketleri silinir (soft), muhasebe fişi iptal edilir. Fazla girişi sonradan tüketilmişse reddedilir (hiçbir şey değişmez)."""
+    from core.services.hareket import HareketHatasi, hareket_sil
+    sayim = StokSayimi.objects.select_for_update().get(pk=sayim.pk)
+    if sayim.silindi or sayim.durum != Durum.ONAYLI:
+        raise SayimHatasi("Yalnız onaylı sayım geri alınabilir.")
+    hareketler = _sayim_hareketleri(sayim)
+    sirali = [h for h in hareketler if h.tur == StokHareket.Tur.CIKIS] + [h for h in hareketler if h.tur == StokHareket.Tur.GIRIS]      # önce eksik çıkışlar, sonra fazla girişler
+    for h in sirali:
+        try:
+            hareket_sil(h, kullanici=kullanici, _sayim_icinden=True)
+        except HareketHatasi as e:
+            raise SayimHatasi(f"Geri alınamadı — {h.stok.kod}: {e}")
+    fis = sayim.fis
+    if fis is not None and not fis.silindi:
+        from core.services.yevmiye import fis_iptal
+        fis_iptal(fis, kullanici=kullanici)
+    sayim.durum, sayim.geri_alan, sayim.geri_alma_zamani, sayim.updated_by = Durum.GERI_ALINDI, kullanici, timezone.now(), kullanici
+    sayim.save(update_fields=["durum", "geri_alan", "geri_alma_zamani", "updated_by", "updated_at"])
+    return sayim
+
+
+# ----------------------------------------------------------------------------------------------------------------------- stok kartı / rapor (dilim 4)
+def son_sayim(stok):
+    """Stok kartı "Son sayım": kartın en son ONAYLI sayımı (sayım tarihine göre) — o belgedeki tüm (varyant) satırlarının toplamı. Yoksa None."""
+    satir = (StokSayimSatiri.objects.filter(stok=stok, silindi=False, sayim__durum=Durum.ONAYLI, sayim__silindi=False, onay_sayilan__isnull=False)
+             .select_related("sayim__depo").order_by("-sayim__tarih", "-sayim__onay_zamani", "-id").first())
+    if satir is None:
+        return None
+    satirlar = list(StokSayimSatiri.objects.filter(sayim=satir.sayim, stok=stok, silindi=False, onay_sayilan__isnull=False))
+
+    def topla(alan):
+        return sum((getattr(s, alan) or SIFIR for s in satirlar), SIFIR)
+    return {"sayim": satir.sayim, "tarih": satir.sayim.tarih, "depo": satir.sayim.depo, "sayilan": topla("onay_sayilan"), "referans": topla("onay_referans"), "fark": topla("onay_fark"),
+            "duzeltildi": any(s.karar == Karar.DUZELT for s in satirlar), "tutar": topla("onay_tutar_try")}
+
+
+def sayim_gecmisi(*, yil=None, depo_id=None, durum=None) -> list:
+    """Sayım geçmişi (belge bazlı): satır / sayılan adedi, Düzelt adedi ve (onaylıda) fazla-eksik tutarı, fiş."""
+    qs = StokSayimi.objects.filter(silindi=False).select_related("depo", "fis").order_by("-tarih", "-sira")
+    if yil:
+        qs = qs.filter(yil=int(yil))
+    if depo_id:
+        qs = qs.filter(depo_id=int(depo_id))
+    if durum in StokSayimi.Durum.values:
+        qs = qs.filter(durum=durum)
+    sayimlar = list(qs)
+    satirlar = defaultdict(list)
+    for s in StokSayimSatiri.objects.filter(sayim__in=sayimlar, silindi=False):
+        satirlar[s.sayim_id].append(s)
+    sayilan_satirlar = defaultdict(set)
+    for g in StokSayimGirdisi.objects.filter(satir__sayim__in=sayimlar, silindi=False, gecersiz=False).values("satir__sayim_id", "satir_id"):
+        sayilan_satirlar[g["satir__sayim_id"]].add(g["satir_id"])
+    sonuc = []
+    for sy in sayimlar:
+        ss_ = satirlar.get(sy.pk, [])
+        duzelt = [s for s in ss_ if s.karar == Karar.DUZELT]
+        fazla = sum((s.onay_tutar_try for s in duzelt if s.onay_tutar_try and s.onay_tutar_try > 0), SIFIR)
+        eksik = sum((-s.onay_tutar_try for s in duzelt if s.onay_tutar_try and s.onay_tutar_try < 0), SIFIR)
+        sonuc.append({"sayim": sy, "satir": len(ss_), "sayilan": len(sayilan_satirlar.get(sy.pk, ())), "duzelt": len(duzelt), "arastir": sum(1 for s in ss_ if s.karar == Karar.ARASTIR),
+                      "fazla_tutar": fazla if sy.durum == Durum.ONAYLI else None, "eksik_tutar": eksik if sy.durum == Durum.ONAYLI else None, "fis": sy.fis})
+    return sonuc
+
+
+def stok_fark_gecmisi(stok) -> list:
+    """Bir stokun tüm sayım satırları (tarihe göre yeni → eski): referans, sayılan, fark, karar, düzeltme tutarı. Onaylı/geri alınmış belgelerde onay anındaki değerler; açık belgelerde güncel sayılan."""
+    satirlar = list(StokSayimSatiri.objects.filter(stok=stok, silindi=False, sayim__silindi=False).select_related("sayim__depo", "varyant").order_by("-sayim__tarih", "-sayim__sira", "varyant_id"))
+    canli = {}
+    acik_idler = [s.pk for s in satirlar if s.sayim.durum in (Durum.ACIK, Durum.KAPALI)]
+    for g in StokSayimGirdisi.objects.filter(satir_id__in=acik_idler, silindi=False, gecersiz=False).values("satir_id").annotate(t=Sum("miktar")):
+        canli[g["satir_id"]] = g["t"]
+    sonuc = []
+    for s in satirlar:
+        onayli = s.sayim.durum in (Durum.ONAYLI, Durum.GERI_ALINDI)
+        sonuc.append({"satir": s, "sayim": s.sayim, "varyant": s.varyant,
+                      "referans": s.onay_referans if onayli else None, "sayilan": s.onay_sayilan if onayli else canli.get(s.pk), "fark": s.onay_fark if onayli else None,
+                      "karar": s.karar, "tutar": s.onay_tutar_try if s.sayim.durum == Durum.ONAYLI else None, "devam": not onayli})
+    return sonuc

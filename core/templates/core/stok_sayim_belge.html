@@ -20,6 +20,7 @@
   .sb-tablo .belirsiz { color:#b45f00; font-size:.74rem; }
   .sb-tablo select { padding:.25rem .3rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; }
   .sb-tablo input[type=text] { width:9rem; padding:.25rem .4rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; font-size:.8rem; }
+  .sb-onay { border:1px solid #dfe5f0; border-left:4px solid #e8590c; border-radius:10px; padding:.7rem .9rem; margin:.4rem 0 .9rem; background:#fff; font-size:.9rem; line-height:1.5; }
   .sb-gir { font-size:.76rem; color:#5b6678; }
   .sb-gir .gecersiz { text-decoration:line-through; opacity:.6; }
   .sb-gir form { display:inline; }
@@ -31,6 +32,7 @@
     <h1 class="ust-baslik"><span class="emoji">📋</span>{{ sayim.no }}
       <span class="sb-rozet {% if sayim.durum == 'KAPALI' %}kapali{% elif sayim.durum == 'ONAYLI' %}onayli{% elif sayim.durum == 'GERI_ALINDI' %}geri{% endif %}">{{ sayim.get_durum_display }}</span>{% if sayim.kor %} <span class="sb-rozet kor">KÖR</span>{% endif %}</h1>
     <div class="yardim">{{ sayim.depo.kod }} · {{ sayim.depo.ad }} · sayım tarihi {{ sayim.tarih|date:"d.m.Y" }} · kesme {{ sayim.kesme_zamani|date:"d.m.Y H:i" }}{% if sayim.kategori %} · {{ sayim.kategori.ad }}{% endif %}{% if sayim.aciklama %} · {{ sayim.aciklama }}{% endif %}</div>
+    <div style="margin-top:.4rem"><a class="dugme ikincil" href="{% url 'core:stok_sayim_excel_indir' sayim.pk %}?tur=fark">⬇ Fark Excel</a></div>
   </div>
   {% if duzenlenebilir %}
   <div style="display:flex; gap:.4rem; flex-wrap:wrap">
@@ -50,6 +52,23 @@
   <div class="sb-kart"><small>Düzelt kararı: {{ ozet.duzelt_adet }} satır</small><b><span class="sb-fazla">+{{ ozet.duzelt_fazla_tutar|tr_para }}</span> / <span class="sb-eksik">−{{ ozet.duzelt_eksik_tutar|tr_para }}</span> ₺</b></div>
   {% if ozet.belirsiz_adet %}<div class="sb-kart"><small>Maliyeti belirsiz</small><b style="color:#b45f00">{{ ozet.belirsiz_adet }} satır</b></div>{% endif %}
 </div>
+<section class="sb-onay">
+  {% if sayim.durum == 'ACIK' %}
+    <b>Onay</b> — Önce sayım girişini kapatın; sonra kararları verip onaylayın. Onaylanmadıkça stok ve muhasebe değişmez.
+  {% elif sayim.durum == 'KAPALI' %}
+    <b>Onay</b> — Yalnızca <b>Düzelt</b> kararlı satırlar işlenir: {{ ozet.duzelt_adet }} satır, fazla <b class="sb-fazla">{{ ozet.duzelt_fazla_tutar|tr_para }} ₺</b>, eksik <b class="sb-eksik">{{ ozet.duzelt_eksik_tutar|tr_para }} ₺</b>.
+    Eksikler ortalama maliyetle <b>çıkış</b>, fazlalar <b>giriş</b> olarak {{ sayim.tarih|date:"d.m.Y" }} tarihine yazılır; tek muhasebe fişi kesilir (62x ↔ stok hesabı; 152→620, 153→621, 150/151→623). “Araştır” ve “Bekliyor” satırlar işlenmez.
+    <form method="post" action="{% url 'core:stok_sayim_onay' sayim.pk %}" style="display:inline;margin-left:.6rem">{% csrf_token %}
+      <button type="submit" class="birincil" onclick="return confirm('Sayım onaylansın mı? Düzelt kararlı satırlar için stok hareketi ve muhasebe fişi oluşacak.')">Sayımı onayla</button></form>
+  {% elif sayim.durum == 'ONAYLI' %}
+    <b>Onaylandı</b> — {{ sayim.onay_zamani|date:"d.m.Y H:i" }} · {{ sayim.onaylayan.get_full_name|default:sayim.onaylayan.username }}{% if sayim.fis %} · muhasebe fişi <a href="{% url 'core:fis_detay' sayim.fis_id %}"><b>{{ sayim.fis.yil }}/{{ sayim.fis.fis_no }}</b></a>{% endif %}.
+    Aşağıdaki değerler onay anındaki değerlerdir.
+    <form method="post" action="{% url 'core:stok_sayim_geri_al' sayim.pk %}" style="display:inline;margin-left:.6rem">{% csrf_token %}
+      <button type="submit" class="dugme ikincil" onclick="return confirm('Sayım geri alınsın mı? Sayım hareketleri silinir, muhasebe fişi iptal edilir.')">Onayı geri al</button></form>
+  {% else %}
+    <b>Geri alındı</b> — {{ sayim.geri_alma_zamani|date:"d.m.Y H:i" }} · {{ sayim.geri_alan.get_full_name|default:sayim.geri_alan.username }}. Sayım hareketleri silindi ve muhasebe fişi iptal edildi; belge yeniden onaylanamaz (gerekirse yeni sayım açın).
+  {% endif %}
+</section>
 <p class="yardim">Tutar = fark × kartın güncel ağırlıklı ortalama maliyeti (varyantlıda varyantın kendi ortalaması). Onayda hareketin gerçek tutarı yazılır. Maliyeti belirsiz (fiyatsız giriş / ortalama yok) kartlarda <b>Düzelt</b> verilemez.
   Sistem sütunu: <b>referans</b> = sayım tarihi itibarıyla sistem (geç girilen geriye tarihli hareketler dahil); <b>kesme</b> = açılıştaki anlık görüntü. Girilmeyen satırlar “sayılmadı”dır, 0 sayılmaz.</p>
 
@@ -98,5 +117,4 @@
   </div>
   {% if duzenlenebilir and satirlar %}<div style="margin:.8rem 0"><button type="submit" class="birincil">Kararları kaydet</button></div>{% endif %}
 </form>
-<p class="yardim">Onay (stok düzeltme hareketi + muhasebe fişi) ve geri alma bir sonraki dilimde eklenecek; bu aşamada kararlar yalnızca kaydedilir, stok ve muhasebe değişmez.</p>
 {% endblock %}

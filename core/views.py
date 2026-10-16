@@ -314,6 +314,9 @@ def fis_duzenle(request, pk):
         nc = fis.numune_cikislari.filter(silindi=False).first()
         messages.info(request, "Bu fiş bir numune çıkışından oluştu; elle düzenlenemez (belgeyle birlikte yönetilir).")
         return redirect("core:numune_detay", pk=nc.pk) if nc else redirect("core:fis_detay", pk=fis.pk)
+    if fis.kaynak == YevmiyeFisi.Kaynak.STOK_SAYIM:
+        messages.info(request, "Bu fiş bir stok sayımı farkından oluştu; elle düzenlenemez (sayımı geri alarak iptal edin).")
+        return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak in (YevmiyeFisi.Kaynak.STOK_SARF, YevmiyeFisi.Kaynak.URETIM,
                       YevmiyeFisi.Kaynak.STOK_SATIS):
         messages.info(request, "Bu fiş stok maliyetinden otomatik üretilir; elle düzenlenemez "
@@ -461,6 +464,9 @@ def fis_sil_gorunum(request, pk):
     if fis.kaynak == YevmiyeFisi.Kaynak.KREDI and fis.kredi_id:
         messages.info(request, "Bu fiş bir kredi hareketinden oluştu; silmek için kredi detayını kullanın.")
         return redirect("core:kredi_detay", pk=fis.kredi_id)
+    if fis.kaynak == YevmiyeFisi.Kaynak.STOK_SAYIM and not fis.silindi:
+        messages.info(request, "Bu fiş bir stok sayımı farkından oluştu; iptal için sayım belgesinde onayı geri alın.")
+        return redirect("core:fis_detay", pk=fis.pk)
     if fis.kaynak == YevmiyeFisi.Kaynak.STOK_SARF and not fis.silindi:
         hareket = fis.stok_sarf_hareketleri.filter(silindi=False).first()
         if hareket:
@@ -1242,7 +1248,7 @@ def stok_detay(request, pk):
     kul = stok_ayirma_servis.toplu_kullanilabilir([stok.pk], eldeki={stok.pk: eldeki})[stok.pk]
     from core.services import varyant as varyant_servis
     varyant_satirlari = varyant_servis.varyant_ozeti(stok) if stok.varyantli else []
-    son_hareketler = list(hareketler.select_related("varyant")[:100])
+    son_hareketler = list(hareketler.select_related("varyant", "sayim_satir__sayim")[:100])
     if stok.varyantli:                                    # hareket defterinde varyant sütunu (kısa etiket)
         etiketler = {s["varyant"].pk: varyant_servis.varyant_kisa(s["varyant"]) for s in varyant_satirlari}
         for h in son_hareketler:
@@ -1257,6 +1263,7 @@ def stok_detay(request, pk):
         # (geçmişi hareket defterinde zaten görünür).
         "depo_bakiye": [(d, m) for d, m in hareket_servis.depo_bazinda_eldeki(stok) if m != 0],
         "hareketler": son_hareketler, "hareket_sayisi": hareketler.count(),
+        "son_sayim": None if hizmet else sayim_servis.son_sayim(stok), "sayim_yonetici": yonetici_mi(request.user),
         "fiyatlar": stok.fiyatlar.filter(silindi=False).order_by("para_birimi"),
     })
 
@@ -11756,7 +11763,11 @@ def stok_sayim_belge(request, pk):
     """Belge özeti + FARK / KARAR ekranı (yalnız yönetici): sistem / sayım / fark / birim maliyet / tutar / karar, girişler (geçersiz işaretleme), toplam fazla-eksik tutarı."""
     sayim = _sayim_getir(pk)
     goster = (request.GET.get("goster") or "hepsi").strip()
-    sonuc = sayim_servis.fark_satirlari(sayim)
+    donmus = sayim.durum in (StokSayimi.Durum.ONAYLI, StokSayimi.Durum.GERI_ALINDI)
+    if donmus:                                                           # onay sonrası canlı fark anlamsızdır (referans düzeltme hareketlerini içerir): onay anındaki değerler gösterilir
+        sonuc = _sayim_donmus_sonuc(sayim)
+    else:
+        sonuc = sayim_servis.fark_satirlari(sayim)
     girdiler = _sy_defaultdict(list)
     for g in StokSayimGirdisi.objects.filter(satir__sayim=sayim, silindi=False).select_related("kullanici").order_by("created_at", "id"):
         girdiler[g.satir_id].append(g)
@@ -11773,8 +11784,25 @@ def stok_sayim_belge(request, pk):
     else:
         goster = "hepsi"
     return render(request, "core/stok_sayim_belge.html", {
-        "sayim": sayim, "satirlar": satirlar, "ozet": sonuc["ozet"], "goster": goster, "toplam_satir": len(sonuc["satirlar"]),
+        "sayim": sayim, "satirlar": satirlar, "ozet": sonuc["ozet"], "goster": goster, "toplam_satir": len(sonuc["satirlar"]), "donmus": donmus,
         "duzenlenebilir": sayim.durum in (StokSayimi.Durum.ACIK, StokSayimi.Durum.KAPALI)})
+
+
+def _sayim_donmus_sonuc(sayim) -> dict:
+    """Onaylı / geri alınmış sayım için satır verisi: onay anında kaydedilen referans, sayılan, fark ve (Düzelt satırlarında) düzeltme tutarı."""
+    satirlar, ozet = [], {"sayilan_adet": 0, "fazla_tutar": Decimal("0"), "eksik_tutar": Decimal("0"), "duzelt_adet": 0, "duzelt_fazla_tutar": Decimal("0"), "duzelt_eksik_tutar": Decimal("0"), "belirsiz_adet": 0}
+    for s in sayim.satirlar.filter(silindi=False).select_related("stok", "varyant").order_by("stok__kod", "varyant_id", "id"):
+        referans = s.onay_referans if s.onay_referans is not None else s.sistem_snapshot
+        satirlar.append({"satir": s, "stok": s.stok, "varyant": s.varyant, "snapshot": s.sistem_snapshot, "referans": referans, "degisen": referans - s.sistem_snapshot, "sayilan": s.onay_sayilan,
+                         "fark": s.onay_fark, "birim_maliyet": None, "tutar": s.onay_tutar_try, "belirsiz": False, "neden": "", "karar": s.karar})
+        if s.onay_fark is not None:
+            ozet["sayilan_adet"] += 1
+        if s.karar == "DUZELT" and s.onay_tutar_try is not None:
+            ozet["duzelt_adet"] += 1
+            yon = "fazla_tutar" if s.onay_tutar_try > 0 else "eksik_tutar"
+            ozet[yon] += abs(s.onay_tutar_try)
+            ozet["duzelt_" + yon] += abs(s.onay_tutar_try)
+    return {"satirlar": satirlar, "ozet": ozet}
 
 
 @yonetici_gerekli
@@ -11908,3 +11936,160 @@ def stok_sayim_satir_ekle(request, pk):
         except (sayim_servis.SayimHatasi, ValueError) as e:
             messages.error(request, str(e))
     return redirect("core:stok_sayim_giris", pk=sayim.pk)
+
+
+# --- Stok Sayımları dilim 3 + 4: onay / geri alma, Excel, raporlar -------------------------------------------------------------------------------
+import hashlib as _sy_hashlib  # noqa: E402
+import uuid as _sy_uuid  # noqa: E402
+
+from django.http import HttpResponse as _SyHttpResponse  # noqa: E402
+
+from core.services import stok_sayim_excel as sayim_excel  # noqa: E402
+
+_XLSX_TURU = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@yonetici_gerekli
+def stok_sayim_onay(request, pk):
+    sayim = _sayim_getir(pk)
+    if request.method == "POST":
+        try:
+            sayim = sayim_servis.onayla(sayim, request.user)
+            messages.success(request, f"{sayim.no} onaylandı: stok düzeltme hareketleri ve muhasebe fişi {sayim.fis.yil}/{sayim.fis.fis_no} oluştu.")
+        except sayim_servis.SayimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:stok_sayim_belge", pk=sayim.pk)
+
+
+@yonetici_gerekli
+def stok_sayim_geri_al(request, pk):
+    sayim = _sayim_getir(pk)
+    if request.method == "POST":
+        try:
+            sayim_servis.geri_al(sayim, request.user)
+            messages.success(request, f"{sayim.no} geri alındı: sayım hareketleri silindi, muhasebe fişi iptal edildi.")
+        except sayim_servis.SayimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:stok_sayim_belge", pk=sayim.pk)
+
+
+def _giris_satirlari(sayim):
+    satirlar = list(sayim.satirlar.filter(silindi=False).select_related("stok__uretim_birimi", "varyant").order_by("stok__kod", "varyant_id", "id"))
+    return [{"satir": s, "etiket": _varyant_etiketi(s), "birim": s.stok.uretim_birimi.kisa_ad if s.stok.uretim_birimi_id else ""} for s in satirlar]
+
+
+@ekran_gerekli("stok_sayim")
+def stok_sayim_excel_indir(request, pk):
+    """``?tur=giris`` (varsayılan; giriş yetkilisi, yalnız açık belge; KÖR belgede sistem sütunu yok) · ``?tur=fark`` (yalnız yönetici: fark/karar Excel'i)."""
+    sayim = _sayim_getir(pk)
+    tur = request.GET.get("tur") or "giris"
+    if tur == "fark":
+        if not yonetici_mi(request.user):
+            raise PermissionDenied("Fark Excel'i yalnızca yöneticiler içindir.")
+        sonuc = sayim_servis.fark_satirlari(sayim)
+        satirlar = sonuc["satirlar"]
+        for d in satirlar:
+            d["etiket"] = _varyant_etiketi(d["varyant"])
+        veri, ad = sayim_excel.fark_raporu(sayim, satirlar, sonuc["ozet"]), f"{sayim.no}-fark.xlsx"
+    else:
+        if sayim.durum != StokSayimi.Durum.ACIK:
+            messages.warning(request, f"{sayim.no}: sayım girişi kapalı; şablon indirilemez.")
+            return redirect("core:stok_sayimlari")
+        veri, ad = sayim_excel.giris_sablonu(sayim, _giris_satirlari(sayim), sistem_goster=not sayim.kor), f"{sayim.no}-sayim-sablonu.xlsx"
+    yanit = _SyHttpResponse(veri, content_type=_XLSX_TURU)
+    yanit["Content-Disposition"] = f'attachment; filename="{ad}"'
+    return yanit
+
+
+@ekran_gerekli("stok_sayim")
+def stok_sayim_excel_yukle(request, pk):
+    """Excel yükleme: 1) dosya → çözümlenir, ÖNİZLEME (satırlar + hatalar) · 2) onay → girişler (kaynak EXCEL) yazılır. Aynı içerik aynı belgeye iki kez yazılmaz."""
+    sayim = _sayim_getir(pk)
+    if sayim.durum != StokSayimi.Durum.ACIK:
+        messages.warning(request, f"{sayim.no}: sayım girişi kapalı.")
+        return redirect("core:stok_sayimlari")
+    if request.method != "POST":
+        return redirect("core:stok_sayim_giris", pk=sayim.pk)
+    anahtar = f"sayim_excel_{sayim.pk}"
+    token = request.POST.get("token")
+    if token:                                                                                     # 2. aşama: uygula
+        bekleyen = request.session.get(anahtar)
+        if not bekleyen or bekleyen.get("token") != token:
+            messages.error(request, "Yükleme oturumu bulunamadı ya da süresi doldu; dosyayı yeniden yükleyin.")
+            return redirect("core:stok_sayim_giris", pk=sayim.pk)
+        etiket = f"Excel {bekleyen['ozet']}"
+        if StokSayimGirdisi.objects.filter(satir__sayim=sayim, silindi=False, aciklama=etiket).exists():
+            request.session.pop(anahtar, None)
+            messages.error(request, "Bu dosya bu sayıma daha önce yüklenmiş; tekrar yüklenmedi.")
+            return redirect("core:stok_sayim_giris", pk=sayim.pk)
+        satirlar = {s.pk: s for s in sayim.satirlar.filter(silindi=False)}
+        yazilan = 0
+        try:
+            with transaction.atomic():
+                for satir_id, miktar in bekleyen["satirlar"]:
+                    sayim_servis.girdi_ekle(satirlar[int(satir_id)], kullanici=request.user, miktar=miktar, kaynak=StokSayimGirdisi.Kaynak.EXCEL, not_=etiket)
+                    yazilan += 1
+        except (sayim_servis.SayimHatasi, KeyError) as e:
+            messages.error(request, f"Yükleme uygulanamadı, hiçbir giriş yazılmadı: {e}")
+            return redirect("core:stok_sayim_giris", pk=sayim.pk)
+        request.session.pop(anahtar, None)
+        messages.success(request, f"Excel'den {yazilan} satıra sayım girişi kaydedildi.")
+        return redirect("core:stok_sayim_giris", pk=sayim.pk)
+    dosya = request.FILES.get("dosya")                                                            # 1. aşama: önizleme
+    if dosya is None:
+        messages.error(request, "Bir .xlsx dosyası seçin.")
+        return redirect("core:stok_sayim_giris", pk=sayim.pk)
+    try:
+        sonuc = sayim_excel.oku(dosya.read(sayim_excel.MAKS_BOYUT + 1), sayim, {s.pk: s for s in sayim.satirlar.filter(silindi=False).select_related("stok")})
+    except sayim_excel.ExcelHatasi as e:
+        messages.error(request, str(e))
+        return redirect("core:stok_sayim_giris", pk=sayim.pk)
+    tekrar = StokSayimGirdisi.objects.filter(satir__sayim=sayim, silindi=False, aciklama=f"Excel {sonuc['ozet']}").exists() and bool(sonuc["satirlar"])
+    token = _sy_uuid.uuid4().hex
+    request.session[anahtar] = {"token": token, "ozet": sonuc["ozet"], "satirlar": [[sid, str(m)] for sid, _kod, m in sonuc["satirlar"]]}
+    satir_ad = {s.pk: s for s in sayim.satirlar.filter(silindi=False).select_related("stok", "varyant")}
+    return render(request, "core/stok_sayim_excel_onizle.html", {
+        "sayim": sayim, "token": token, "tekrar": tekrar, "hatalar": sonuc["hatalar"],
+        "satirlar": [{"kod": kod, "ad": satir_ad[sid].stok.ad, "etiket": _varyant_etiketi(satir_ad[sid]), "miktar": m} for sid, kod, m in sonuc["satirlar"]]})
+
+
+@yonetici_gerekli
+def stok_sayim_raporlari(request):
+    """Sayım geçmişi (belge bazlı) — yıl / depo / durum süzgeci + Excel."""
+    yil = (request.GET.get("yil") or "").strip()
+    depo_id = (request.GET.get("depo") or "").strip()
+    durum = (request.GET.get("durum") or "").strip()
+    satirlar = sayim_servis.sayim_gecmisi(yil=int(yil) if yil.isdigit() else None, depo_id=int(depo_id) if depo_id.isdigit() else None, durum=durum or None)
+    if request.GET.get("excel"):
+        yanit = _SyHttpResponse(sayim_excel.gecmis_raporu(satirlar), content_type=_XLSX_TURU)
+        yanit["Content-Disposition"] = 'attachment; filename="stok-sayim-gecmisi.xlsx"'
+        return yanit
+    return render(request, "core/stok_sayim_raporlari.html", {
+        "satirlar": satirlar, "yil": yil, "depo_id": depo_id, "durum": durum, "durumlar": StokSayimi.Durum.choices, "depolar": Depo.objects.filter(silindi=False).order_by("kod"),
+        "yillar": sorted(set(StokSayimi.objects.filter(silindi=False).values_list("yil", flat=True)), reverse=True)})
+
+
+@yonetici_gerekli
+def stok_sayim_rapor_stok(request):
+    """Stok bazında sayım fark geçmişi: ``?ara=`` (kod/ad) → eşleşenler; ``?stok=<pk>`` → o stokun tüm sayım satırları (+ Excel)."""
+    ara = (request.GET.get("ara") or "").strip()
+    stok_id = (request.GET.get("stok") or "").strip()
+    stok, adaylar, satirlar = None, [], []
+    if stok_id.isdigit():
+        stok = Stok.objects.filter(pk=int(stok_id), silindi=False).first()
+    elif len(ara) >= 2:
+        qs = Stok.objects.filter(silindi=False)
+        for terim in ara.split():
+            qs = qs.filter(Q(kod__icontains=terim) | Q(ad__contains=buyuk_harf_tr(terim)))
+        adaylar = list(qs.order_by("kod")[:30])
+        if len(adaylar) == 1:
+            stok = adaylar[0]
+    if stok is not None:
+        satirlar = sayim_servis.stok_fark_gecmisi(stok)
+        for r in satirlar:
+            r["etiket"] = _varyant_etiketi(r["varyant"])
+        if request.GET.get("excel"):
+            yanit = _SyHttpResponse(sayim_excel.stok_gecmisi_raporu(stok, satirlar), content_type=_XLSX_TURU)
+            yanit["Content-Disposition"] = f'attachment; filename="sayim-{stok.kod}.xlsx"'
+            return yanit
+    return render(request, "core/stok_sayim_rapor_stok.html", {"ara": ara, "stok": stok, "adaylar": adaylar, "satirlar": satirlar})
