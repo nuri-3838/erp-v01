@@ -289,6 +289,16 @@ def karar_ver(satir, karar, *, kullanici, not_="") -> StokSayimSatiri:
 # Onay: YALNIZ karar=Düzelt satırları — eksik → ÇIKIŞ, fazla → GİRİŞ (ortalama maliyetle, tarih = sayım tarihi, kaynak SAYIM) + TEK muhasebe fişi (STOK_SAYIM):
 #   eksik: 62x BORÇ / stok hesabı ALACAK · fazla: stok hesabı BORÇ / 62x ALACAK. 62x = satış maliyeti kuralıyla aynı (152→620, 153→621, 150/151→623; ara hesap 197/397 YOK).
 #   Stok hesabı satırları STOK BAZINDA, 62x tarafı her hesap için YÖNDE TEK satır. Maliyet sonradan değişirse (geç gelen fatura) fiş yerinde yenilenir (stok_ortalama kancası → fis_senkronla).
+KUR_BEKLENIYOR_MESAJI = ("{tarih:%d.%m.%Y} tarihli USD kuru henüz yok (TCMB kuru ertesi iş günü yayınlanır). Kur yayınlanınca Kurlar ekranından çekip sayımı yeniden onaylayın; "
+                         "şimdilik stok ve muhasebede hiçbir şey değişmedi.")
+
+
+def kur_bekleniyor_mu(sayim) -> bool:
+    """Sayım tarihinin USD kuru KUR tablosunda yoksa True — her fişin USD karşılığı zorunlu olduğundan onay kur yayınlanana dek yapılamaz (D+1 kuralı)."""
+    from core.services.yevmiye import kur_usd_birebir
+    return kur_usd_birebir(sayim.tarih) is None
+
+
 def _hesaplar(stok):
     """(stok hesabı kodu, maliyet hesabı kodu) — çözülemezse SayimHatasi."""
     from core.services import stok_fis
@@ -343,6 +353,8 @@ def onayla(sayim, kullanici) -> StokSayimi:
     sayim = StokSayimi.objects.select_for_update().select_related("depo").get(pk=sayim.pk)
     if sayim.silindi or sayim.durum != Durum.KAPALI:
         raise SayimHatasi("Yalnız girişi kapatılmış sayım onaylanabilir (önce girişi kapatın).")
+    if kur_bekleniyor_mu(sayim):
+        raise SayimHatasi(KUR_BEKLENIYOR_MESAJI.format(tarih=sayim.tarih))
     veri = fark_satirlari(sayim)["satirlar"]
     duzelt = [d for d in veri if d["karar"] == Karar.DUZELT]
     if not duzelt:

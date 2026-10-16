@@ -271,3 +271,33 @@ class KartVeRaporTest(Taban):
             self.assertNotIn("stok_sayim_raporlari", [e.kod for e in stoklar.ekranlar])
         (yon_menu,) = [m for m in kullanici_menusu(self.yon) if m.kod == "STOKLAR"]
         self.assertIn("stok_sayim_raporlari", [e.kod for e in yon_menu.ekranlar])
+
+
+class KurBeklemeTest(Taban):
+    def test_kur_yoksa_onay_net_mesaj_ve_ekranda_uyari(self):
+        import datetime
+        from core.models import Kur, StokSayimi
+        from core.services.hareket import eldeki_miktar
+        a, b, s = self.hazir()
+        sat = s.satirlar.get(stok=a)
+        ss.girdi_ekle(sat, kullanici=self.personel, miktar="8")
+        ss.karar_ver(sat, "DUZELT", kullanici=self.yon)
+        ss.giris_kapat(s, self.yon)
+        Kur.objects.filter(tarih=s.tarih).delete()                                                          # bugünün kuru henüz yayınlanmadı (D+1)
+        self.assertTrue(ss.kur_bekleniyor_mu(s))
+        with self.assertRaisesMessage(ss.SayimHatasi, "Kur yayınlanınca"):
+            ss.onayla(s, self.yon)
+        self.assertEqual((StokHareket.objects.filter(kaynak="SAYIM").count(), eldeki_miktar(a)), (0, D("10")))
+        self.client.force_login(self.yon)
+        belge = reverse("core:stok_sayim_belge", args=[s.pk])
+        r = self.client.get(belge)
+        self.assertContains(r, "Kur yayınlanınca")
+        self.assertNotContains(r, "Sayımı onayla")
+        r = self.client.post(reverse("core:stok_sayim_onay", args=[s.pk]), follow=True)
+        self.assertContains(r, "USD kuru henüz yok")
+        Kur.objects.create(tarih=s.tarih, usd_alis=D("30"))                                                  # kur yayınlandı
+        self.assertContains(self.client.get(belge), "Sayımı onayla")
+        r = self.client.post(reverse("core:stok_sayim_onay", args=[s.pk]), follow=True)
+        self.assertContains(r, "onaylandı")
+        s.refresh_from_db()
+        self.assertEqual(s.durum, "ONAYLI")

@@ -58,8 +58,12 @@
   {% elif sayim.durum == 'KAPALI' %}
     <b>Onay</b> — Yalnızca <b>Düzelt</b> kararlı satırlar işlenir: {{ ozet.duzelt_adet }} satır, fazla <b class="sb-fazla">{{ ozet.duzelt_fazla_tutar|tr_para }} ₺</b>, eksik <b class="sb-eksik">{{ ozet.duzelt_eksik_tutar|tr_para }} ₺</b>.
     Eksikler ortalama maliyetle <b>çıkış</b>, fazlalar <b>giriş</b> olarak {{ sayim.tarih|date:"d.m.Y" }} tarihine yazılır; tek muhasebe fişi kesilir (62x ↔ stok hesabı; 152→620, 153→621, 150/151→623). “Araştır” ve “Bekliyor” satırlar işlenmez.
+    {% if kur_bekleniyor %}
+      <div class="uyari" style="margin-top:.6rem">⏳ {{ sayim.tarih|date:"d.m.Y" }} tarihli USD kuru henüz yok (TCMB kuru ertesi iş günü yayınlanır). <b>Kur yayınlanınca</b> Kurlar ekranından çekip sayımı onaylayın; kararlarınız korunur.</div>
+    {% else %}
     <form method="post" action="{% url 'core:stok_sayim_onay' sayim.pk %}" style="display:inline;margin-left:.6rem">{% csrf_token %}
       <button type="submit" class="birincil" onclick="return confirm('Sayım onaylansın mı? Düzelt kararlı satırlar için stok hareketi ve muhasebe fişi oluşacak.')">Sayımı onayla</button></form>
+    {% endif %}
   {% elif sayim.durum == 'ONAYLI' %}
     <b>Onaylandı</b> — {{ sayim.onay_zamani|date:"d.m.Y H:i" }} · {{ sayim.onaylayan.get_full_name|default:sayim.onaylayan.username }}{% if sayim.fis %} · muhasebe fişi <a href="{% url 'core:fis_detay' sayim.fis_id %}"><b>{{ sayim.fis.yil }}/{{ sayim.fis.fis_no }}</b></a>{% endif %}.
     Aşağıdaki değerler onay anındaki değerlerdir.

@@ -11785,6 +11785,7 @@ def stok_sayim_belge(request, pk):
         goster = "hepsi"
     return render(request, "core/stok_sayim_belge.html", {
         "sayim": sayim, "satirlar": satirlar, "ozet": sonuc["ozet"], "goster": goster, "toplam_satir": len(sonuc["satirlar"]), "donmus": donmus,
+        "kur_bekleniyor": sayim.durum == StokSayimi.Durum.KAPALI and sayim_servis.kur_bekleniyor_mu(sayim),
         "duzenlenebilir": sayim.durum in (StokSayimi.Durum.ACIK, StokSayimi.Durum.KAPALI)})
 
 
