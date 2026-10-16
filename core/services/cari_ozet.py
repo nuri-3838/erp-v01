@@ -185,7 +185,7 @@ def acik_faturalar(cari, bugun=None) -> dict:
         return bos
     faturalar = {f.fis_id: f for f in Fatura.objects.filter(cari=cari, silindi=False, durum=Fatura.Durum.ONAYLI, fis__isnull=False).select_related("tip")}
     satirlar = (YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id=cari.muhasebe_kodu)
-                .values("fis_id", "islem_pb", "borc", "alacak", "islem_tutari"))
+                .values("fis_id", "islem_pb", "borc", "alacak", "islem_tutari", "fis__kaynak"))
     kalemler, kredi = fatura_odeme.fifo_kalemler(cari, faturalar, satirlar)           # FIFO çekirdeği tek yerde (fatura_odeme)
     acik = sorted((k for k in kalemler.values() if k["kalan"] >= ESIK), key=lambda x: (x["vade"] or x["tarih"], x["fatura"].pk))
     toplam, gecen = {}, {}

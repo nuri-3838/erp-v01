@@ -73,20 +73,18 @@ def _tl(tutar, pb, kurlar):
     return (tutar * kur).quantize(SIFIR) if kur else None
 
 
-def _satir(kaynak, *, tarih, bugun, tutar, pb, kurlar, baslik, aciklama="", belge_no="", cari=None, url=None, kural=False, ek=""):
+def _satir(kaynak, *, tarih, bugun, tutar, pb, kurlar, baslik, aciklama="", belge_no="", cari=None, url=None, kural=False, ek="", tahmini=False):
     etiket, yon, css = KAYNAKLAR[kaynak]
     tl = _tl(tutar, pb, kurlar)
     return {"tarih": tarih, "yon": yon, "kaynak": kaynak, "kaynak_ad": etiket, "css": css, "baslik": baslik, "aciklama": aciklama, "belge_no": belge_no,
             "cari_id": cari.pk if cari is not None else None, "cari_ad": (cari.kisa_ad or cari.unvan) if cari is not None else "", "pb": pb, "tutar": tutar,
-            "tl": tl if tl is not None else SIFIR, "tl_yok": tl is None, "url": url, "kural": kural, "ek": ek, "gecikmis": bool(tarih is not None and tarih < bugun)}
+            "tl": tl if tl is not None else SIFIR, "tl_yok": tl is None, "url": url, "kural": kural, "tahmini": tahmini, "ek": ek, "gecikmis": bool(tarih is not None and tarih < bugun)}
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
-IADE_KAYNAKLARI = ("BANKA", "KASA", "KREDI_KARTI", "CEK_SENET")      # cariden gelen para (ödemenin iadesi): faturaları kapatmış sayılmaz
-
 
 def _cari_satirlari(bugun, kurlar) -> list:
-    """Cari bazında tek FIFO geçişi (``fatura_odeme.fifo_kalemler``, iade kuralıyla): alış faturası açık kalanı (çıkış, vadeye göre), satış faturası açık kalanı (giriş) ve
+    """Cari bazında tek FIFO geçişi (``fatura_odeme.fifo_kalemler``): alış faturası açık kalanı (çıkış, vadeye göre), satış faturası açık kalanı (giriş) ve
     — doğal yönü alacak olan 320 tipi carilerde — faturaya bağlanamayan bakiye (vadesiz çıkış; ör. fason tahakkuku). Faturasız bakiye = faturasız alacak hareketleri − artan ödeme/avans."""
     faturali = defaultdict(dict)
     for f in Fatura.objects.filter(silindi=False, durum=Fatura.Durum.ONAYLI, fis__isnull=False).select_related("tip"):
@@ -102,8 +100,7 @@ def _cari_satirlari(bugun, kurlar) -> list:
         if not hareket:
             continue
         faturalar = faturali.get(cari.pk, {})
-        ozel = cari.muhasebe_kodu.split(".")[0] in ATLANAN_CARI_KOKLERI           # ortak / personel / emanet carileri: banka hareketleri sermaye/avans olabilir → iade kuralı UYGULANMAZ (liste FIFO'su)
-        kalemler, kredi = fatura_odeme.fifo_kalemler(cari, faturalar, hareket, () if ozel else IADE_KAYNAKLARI)
+        kalemler, kredi = fatura_odeme.fifo_kalemler(cari, faturalar, hareket)       # nakit iade kuralı fifo_kalemler'in kendisinde (ticari kökler); liste/özet/rapor/detayla AYNI sonuç
         for k in sorted(kalemler.values(), key=lambda x: (x["tarih"], x["fatura"].pk)):
             if k["kalan"] < ESIK:
                 continue
@@ -115,8 +112,9 @@ def _cari_satirlari(bugun, kurlar) -> list:
                                    belge_no=f.fatura_no or ("Faturasız" if f.faturasiz else "—"), cari=cari, url=("core:fatura_detay", f.pk), ek=f"{f.tarih:%d.%m.%Y} tarihli"))
         if fatura_odeme.dogal_yon(cari) == "alacak" and cari.muhasebe_kodu.split(".")[0] not in ATLANAN_CARI_KOKLERI:
             faturasiz, kaynaklar = defaultdict(lambda: SIFIR), defaultdict(Counter)
+            iade_kurali = fatura_odeme.ticari_mi(cari)                                # cariden gelen nakit: yukarıda havuzdan düşüldü, "faturasız alacak" sayılmaz
             for s in hareket:
-                if s["alacak"] > 0 and s["fis_id"] not in faturalar and s["fis__kaynak"] not in IADE_KAYNAKLARI:
+                if s["alacak"] > 0 and s["fis_id"] not in faturalar and not (iade_kurali and s["fis__kaynak"] in fatura_odeme.NAKIT_KAYNAKLARI):
                     pb = s["islem_pb"]
                     faturasiz[pb] += s["islem_tutari"] or s["alacak"]
                     kaynaklar[pb][s["fis__kaynak"]] += 1
@@ -206,6 +204,45 @@ def vergi_satirlari(bugun, kurlar) -> list:
     return satirlar
 
 
+DAMGA_HESABI = "770.11"                                                   # damga vergisi gideri: tahakkuk hesabı YOK, ödeme günü doğrudan buraya yazılır
+DAMGA_TURLERI = {"MUHTASAR": ("Damga vergisi — muhtasar", "muhtasar"), "KDV1": ("Damga vergisi — KDV beyannamesi", "kdv")}   # tür: (başlık, yasal vade kuralı)
+_DAMGA_DESENI = re.compile(r"DAMGA\s+VERG\w*\s+(MUHTASAR|KDV1)\s+(\d{1,2})\s*/\s*(\d{4})", re.IGNORECASE)
+DAMGA_UFUK_AY = 12                                                        # tahmini satırlar bugünden en fazla bu kadar ay ilerisine kadar
+DAMGA_ESKI_GUN = 60                                                       # bundan eski (kayıt girilmemiş) dönemler tahmin edilmez
+
+
+def damga_satirlari(bugun, kurlar) -> list:
+    """Damga vergisi TAHMİNİ satırları (tahakkuk defterde yok; ödeme günü 770.11'e yazılır). Tür başına (muhtasar → 26'sı, KDV → 28'i, tatil kaydırmalı): açıklaması
+    "DAMGA VERGİSİ MUHTASAR|KDV1 AA/YYYY" olan 770.11 ödemelerinin EN SON ödenen dönemi bulunur; sonraki dönemden başlayarak her ay için, tutar = o son ödenen dönemin tutarı olan
+    "tahmini" satır üretilir. O dönemin gerçek ödemesi 770.11'e yazılınca son ödenen dönem ilerler ve tahmini satır kendiliğinden düşer. KDV2 (yalnız tevkifatlı aylarda verilir) tahmin edilmez."""
+    odenen = {}                                                           # tür → {(yıl, ay): tutar}
+    for s in YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id=DAMGA_HESABI, borc__gt=0, aciklama__icontains="damga"):
+        m = _DAMGA_DESENI.search(s.aciklama or "")
+        if m:
+            odenen.setdefault(m.group(1).upper(), defaultdict(lambda: SIFIR))[(int(m.group(3)), int(m.group(2)))] += s.borc
+    satirlar = []
+    sinir = bugun - datetime.timedelta(days=DAMGA_ESKI_GUN)
+    ufuk = ay_ekle(bugun, DAMGA_UFUK_AY)
+    for tur, (baslik, kural) in DAMGA_TURLERI.items():
+        donemler = odenen.get(tur)
+        if not donemler:
+            continue
+        son = max(donemler)
+        tutar = donemler[son]
+        yil, ay = son
+        while True:
+            yil, ay = (yil + ay // 12, ay % 12 + 1)
+            vade = yasal_vade(kural, yil, ay)
+            if vade > ufuk:
+                break
+            if vade < sinir:
+                continue
+            satirlar.append(_satir("VERGI", tarih=vade, bugun=bugun, tutar=tutar, pb="TRY", kurlar=kurlar, baslik=f"{baslik} (tahmini)",
+                                   aciklama=f"{ay:02d}/{yil} dönemi · son ödenen {son[1]:02d}/{son[0]} dönemi tutarı tekrarlandı; gerçek ödeme {DAMGA_HESABI}'e yazılınca düşer",
+                                   kural=True, tahmini=True, url=("core:hesap_ekstresi", DAMGA_HESABI), ek="Damga vergisi (tahmini)"))
+    return satirlar
+
+
 _VADE_DESENI = re.compile(r"VADE\w*\s*[:：]\s*(\d{1,2})[./](\d{1,2})[./](\d{4})", re.IGNORECASE)
 
 
@@ -264,6 +301,7 @@ def tum_satirlar(bugun=None) -> dict:
     satirlar += kk
     satirlar += _cek_satirlari(bugun, kurlar)
     satirlar += vergi_satirlari(bugun, kurlar)
+    satirlar += damga_satirlari(bugun, kurlar)
     satirlar += _emanet_satirlari(bugun, kurlar)
     satirlar += _kredi_satirlari(bugun, kurlar)
     satirlar += _pos_satirlari(bugun, kurlar)

@@ -50,7 +50,7 @@ def takvim_xlsx(veri, grup_sonucu, mutabakat, *, bas, bit, aciklama="") -> bytes
         r += 1
         for x in rows:
             ws.append([ad, x["tarih"], "Çıkış" if x["yon"] == "CIKIS" else "Giriş", x["kaynak_ad"], f"{x['baslik']}" + (f" — {x['cari_ad']}" if x["cari_ad"] and x["cari_ad"] not in x["baslik"] else "") + (f" · {x['aciklama']}" if x["aciklama"] else ""),
-                       x["belge_no"], _num(x["tutar"]), x["pb"], _num(x["tl"]), "kural ile" if x["kural"] else "", "TL karşılığı için kur yok" if x["tl_yok"] else ""])
+                       x["belge_no"], _num(x["tutar"]), x["pb"], _num(x["tl"]), "tahmini" if x.get("tahmini") else ("kural ile" if x["kural"] else ""), "TL karşılığı için kur yok" if x["tl_yok"] else ""])
             ws.cell(row=r, column=2).number_format = "DD.MM.YYYY"
             for col in (7, 9):
                 ws.cell(row=r, column=col).number_format = PARA

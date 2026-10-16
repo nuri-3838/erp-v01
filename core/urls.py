@@ -111,6 +111,7 @@ urlpatterns = [
     path("kullanicilar/<int:pk>/duzenle/", views.kullanici_duzenle, name="kullanici_duzenle"),
     path("ayarlar/kullanici-yetkileri/", views.kullanici_yetkileri, name="kullanici_yetkileri"),
     path("ayarlar/yedek/", views.yedek_yonetim, name="yedek"),
+    path("ayarlar/silme-kayitlari/", views.silme_kayitlari, name="silme_kayitlari"),
     path("ayarlar/yedek/indir/<str:ad>/", views.yedek_indir, name="yedek_indir"),
     path("ayarlar/firma-bilgileri/", views.firma_bilgileri, name="firma_bilgileri"),
     # FASON

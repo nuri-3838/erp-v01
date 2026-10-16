@@ -4323,11 +4323,13 @@ class IsOturumuUyesi(TemelModel):
 class SilmeKaydi(TemelModel):
     """Kalıcı (fiziksel) silme denetim kaydı — her fiş/bordro silmesi için BİR kayıt; silinen
     kaydın özeti (no, tarih, tutar, açıklama) + satırları JSON olarak burada kalır. Bu kaydın
-    kendisi silinmez/güncellenmez (bkz. core.services.fis_sil)."""
+    kendisi silinmez/güncellenmez (bkz. core.services.fis_sil, core.services.silme_kaydi — fatura/irsaliye)."""
 
     class Tur(models.TextChoices):
         FIS = "FIS", "Yevmiye fişi"
         CEK_BORDRO = "CEK_BORDRO", "Çek/senet bordrosu"
+        FATURA = "FATURA", "Fatura"
+        IRSALIYE = "IRSALIYE", "İrsaliye"
 
     tur = models.CharField("tür", max_length=12, choices=Tur.choices)
     kayit_no = models.CharField("kayıt no", max_length=40)   # fiş: "2026/189"; bordro: "#12"
@@ -4338,6 +4340,7 @@ class SilmeKaydi(TemelModel):
     silen = models.ForeignKey(
         settings.AUTH_USER_MODEL, verbose_name="silen", null=True, blank=True,
         on_delete=models.PROTECT, related_name="+")
+    ip_adresi = models.GenericIPAddressField("IP adresi", null=True, blank=True)    # silmeyi yapan isteğin IP'si (core.istek_baglami; istek dışı → boş)
     veri = models.JSONField("silinen veri", default=dict)
 
     class Meta:

@@ -168,6 +168,7 @@ MODULLER = (
         Ekran("varyantlar", "Varyantlar", "core:varyantlar"),
         Ekran("uretim_ayarlari", "Üretim Ayarları", "core:uretim_ayarlari"),
         Ekran("yedek", "Yedek", "core:yedek"),
+        Ekran("silme_kayitlari", "Silme Kayıtları", "core:silme_kayitlari"),
         Ekran("mesai_ayarlari", "Mesai Ayarları", "core:mesai_ayarlari"),
     ), yonetici_modulu=True),
 )

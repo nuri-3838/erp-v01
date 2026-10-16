@@ -969,6 +969,33 @@ def yedek_yonetim(request):
 
 
 @yonetici_gerekli
+def silme_kayitlari(request):
+    """AYARLAR > Silme Kayıtları: kalıcı silmelerin (fatura, irsaliye, fiş/banka/kasa/kart/virman/kesinti hareketleri, çek bordrosu) denetim kayıtları — SALT OKUNUR, yalnız yönetici.
+    Kim / ne zaman / hangi IP / silinen belgenin özeti + JSON dökümü (core.services.silme_kaydi, fis_sil)."""
+    from core.models import SilmeKaydi
+    tur = request.GET.get("tur") or ""
+    ara = (request.GET.get("ara") or "").strip()
+    bas, bit = _iso_tarih(request.GET.get("bas")), _iso_tarih(request.GET.get("bit"))
+    qs = SilmeKaydi.objects.select_related("silen")
+    if tur in SilmeKaydi.Tur.values:
+        qs = qs.filter(tur=tur)
+    if bas:
+        qs = qs.filter(created_at__date__gte=bas)
+    if bit:
+        qs = qs.filter(created_at__date__lte=bit)
+    if ara:
+        qs = qs.filter(Q(kayit_no__icontains=ara) | Q(aciklama__icontains=ara) | Q(silen__username__icontains=ara) | Q(silen__first_name__icontains=ara)
+                       | Q(silen__last_name__icontains=ara) | Q(ip_adresi__startswith=ara))
+    toplam = qs.count()
+    kayitlar = list(qs.order_by("-created_at", "-id")[:300])
+    for k in kayitlar:
+        k.veri_json = json.dumps(k.veri, ensure_ascii=False, indent=2, default=str)
+    return render(request, "core/silme_kayitlari.html", {
+        "kayitlar": kayitlar, "toplam": toplam, "turler": SilmeKaydi.Tur.choices, "tur": tur, "ara": ara,
+        "bas": bas.isoformat() if bas else "", "bit": bit.isoformat() if bit else ""})
+
+
+@yonetici_gerekli
 def yedek_indir(request, ad):
     """Bir yedek dosyasını tarayıcıdan indir (offsite kopya). Geçersiz ad => 404."""
     yol = yedek_servis.yedek_yolu(ad)

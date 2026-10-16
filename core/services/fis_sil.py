@@ -101,10 +101,9 @@ def fis_kalici_sil(fis):
 
 
 def _denetim(tur, ozet, veri, kullanici, kaynak=""):
-    return SilmeKaydi.objects.create(
-        tur=tur, kayit_no=ozet["no"], tarih=ozet["tarih"], tutar=ozet["tutar"],
-        aciklama=(ozet["aciklama"] or "")[:500], kaynak=kaynak or ozet.get("kaynak", ""),
-        silen=kullanici, created_by=kullanici, updated_by=kullanici, veri=veri)
+    from core.services import silme_kaydi
+    return silme_kaydi.yaz(tur, kayit_no=ozet["no"], tarih=ozet["tarih"], tutar=ozet["tutar"], aciklama=ozet["aciklama"],
+                           kaynak=kaynak or ozet.get("kaynak", ""), kullanici=kullanici, veri=veri)
 
 
 @transaction.atomic

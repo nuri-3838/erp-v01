@@ -67,7 +67,7 @@ def acik_faturalar_toplu(tarih=None, kategori_id="") -> list:
     kodlar = {c.muhasebe_kodu for c, _f in cari_faturalari.values()}
     hesap_satirlari: dict = {}
     for s in (YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, fis__tarih__lte=tarih, hesap_id__in=kodlar)
-              .values("hesap_id", "fis_id", "islem_pb", "borc", "alacak", "islem_tutari")):
+              .values("hesap_id", "fis_id", "islem_pb", "borc", "alacak", "islem_tutari", "fis__kaynak")):
         hesap_satirlari.setdefault(s["hesap_id"], []).append(s)
     sonuc = []
     for cari, faturalar in cari_faturalari.values():

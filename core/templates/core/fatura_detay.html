@@ -220,7 +220,7 @@
         <tr>
           <td class="mono" data-label="Tarih">{{ h.tarih|date:"d.m.Y" }}</td>
           <td data-label="Belge türü">{{ h.kaynak_ad }}</td>
-          <td class="k-genis" data-label="Açıklama">{{ h.aciklama|default:"—" }}{% if h.kismi %}<span class="fd-alt">hareketin toplamı {{ h.hareket_tutari|tr_kur:2 }} {{ d.odeme.pb }}; kalanı diğer faturalara düştü</span>{% endif %}</td>
+          <td class="k-genis" data-label="Açıklama">{{ h.aciklama|default:"—" }}{% if h.iade_dusulen %}<span class="fd-alt">hareketin toplamı {{ h.hareket_tutari|tr_kur:2 }} {{ d.odeme.pb }}; cariden gelen {{ h.iade_dusulen|tr_kur:2 }} {{ d.odeme.pb }} iade olarak düşüldü</span>{% elif h.kismi %}<span class="fd-alt">hareketin toplamı {{ h.hareket_tutari|tr_kur:2 }} {{ d.odeme.pb }}; kalanı diğer faturalara düştü</span>{% endif %}</td>
           <td class="sag mono" data-label="Bu faturaya düşen">{{ h.tutar|tr_kur:2 }} {{ d.odeme.pb }}</td>
           <td data-label="Fiş / belge"><a class="mono" href="{% url 'core:fis_detay' h.fis_pk %}">{{ h.fis_no }}</a>{% if h.kaynak_url_adi %} · <a href="{% url h.kaynak_url_adi h.kaynak_pk %}">belge</a>{% endif %}</td>
         </tr>
@@ -232,7 +232,7 @@
     {% else %}
     <p class="yardim" style="margin:0">Bu faturaya düşen ödeme / tahsilat yok.</p>
     {% endif %}
-    <p class="yardim" style="margin:.5rem 0 0">Ödemeler cari hesabındaki ödeme / tahsilat / mahsup / iade hareketlerinden en eski faturadan başlayarak (FIFO) düşülür — Faturalar listesi ve cari ekstresiyle aynı kural.</p>
+    <p class="yardim" style="margin:.5rem 0 0">Ödemeler cari hesabındaki ödeme / tahsilat / mahsup / iade hareketlerinden en eski faturadan başlayarak (FIFO) düşülür — Faturalar listesi ve cari ekstresiyle aynı kural.{% if d.odeme.iade_toplam %} Cariden gelen {{ d.odeme.iade_toplam|tr_kur:2 }} {{ d.odeme.pb }} (ödemenin iadesi) ödeme havuzundan düşüldü.{% endif %}</p>
   </section>
   {% endif %}
 

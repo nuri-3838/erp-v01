@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Silme Kayıtları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Silme Kayıtları{% endblock %}
+
+{% block content %}
+<style>
+  .sk-filtre { display:flex; flex-wrap:wrap; gap:.6rem; align-items:end; margin-bottom:1rem; }
+  .sk-filtre label { display:flex; flex-direction:column; gap:.15rem; font-size:.74rem; font-weight:700; color:#5b6678; }
+  .sk-filtre input, .sk-filtre select { padding:.35rem .5rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; }
+  .sk-json { max-height:340px; overflow:auto; margin:.4rem 0 0; padding:.6rem .8rem; background:#f6f8fc; border:1px solid #e1e6f0; border-radius:8px; font-size:.74rem; white-space:pre-wrap; word-break:break-word; }
+  .sk-tablo td, .sk-tablo th { vertical-align:top; }
+  .sk-ip { font-family:ui-monospace, Consolas, monospace; font-size:.8rem; }
+  @media (max-width:700px) { .sk-tablo { min-width:760px; } }
+</style>
+<div class="sayfa-ust">
+  <h1 class="ust-baslik"><span class="emoji">🗂️</span>Silme Kayıtları</h1>
+</div>
+<p class="yardim">Kalıcı silmelerin denetim kaydı — <strong>salt okunur</strong>, yalnız yöneticiye açık. Her kayıtta silen kullanıcı, tarih-saat, IP adresi, belgenin özeti (no, cari/açıklama, tarih, tutar)
+  ve silinen belgenin satırları ile muhasebe fişi satırlarının JSON dökümü tutulur. Kapsam: fatura, irsaliye, manuel fiş, banka / kasa / kredi kartı / kredi hareketi, cari virman, cari kesinti, çek-senet bordrosu.</p>
+
+<form method="get" class="sk-filtre">
+  <label>Tür
+    <select name="tur"><option value="">Tümü</option>{% for k, ad in turler %}<option value="{{ k }}"{% if tur == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}</select></label>
+  <label>Silme tarihi (başlangıç)<input type="date" name="bas" value="{{ bas }}"></label>
+  <label>Silme tarihi (bitiş)<input type="date" name="bit" value="{{ bit }}"></label>
+  <label>Ara (no, açıklama, kullanıcı, IP)<input type="search" name="ara" value="{{ ara }}" autocomplete="off"></label>
+  <button type="submit" class="dugme">Listele</button>
+</form>
+
+<p class="yardim">{{ toplam }} kayıt{% if toplam > 300 %} — en yeni 300'ü gösteriliyor; süzgeçle daraltın{% endif %}.</p>
+<div class="tablo-kapsayici">
+<table class="sk-tablo">
+  <thead><tr><th>Silme zamanı</th><th>Silen</th><th>IP</th><th>Tür</th><th>Kayıt no</th><th>Kayıt tarihi</th><th class="sag">Tutar (TL)</th><th>Açıklama / döküm</th></tr></thead>
+  <tbody>
+  {% for k in kayitlar %}
+    <tr>
+      <td class="mono">{{ k.created_at|date:"d.m.Y H:i:s" }}</td>
+      <td>{% if k.silen %}{{ k.silen.get_full_name|default:k.silen.username }}{% else %}<span class="yardim">sistem / komut</span>{% endif %}</td>
+      <td class="sk-ip">{{ k.ip_adresi|default:"—" }}</td>
+      <td>{{ k.get_tur_display }}</td>
+      <td class="mono">{{ k.kayit_no }}</td>
+      <td class="mono">{{ k.tarih|date:"d.m.Y"|default:"—" }}</td>
+      <td class="sag mono">{% if k.tutar is not None %}{{ k.tutar|tr_kur:2 }}{% else %}—{% endif %}</td>
+      <td>{{ k.aciklama|default:"—" }}
+        <details><summary class="yardim" style="cursor:pointer">JSON dökümü</summary><pre class="sk-json">{{ k.veri_json }}</pre></details></td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="8" class="yardim">Kayıt yok.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

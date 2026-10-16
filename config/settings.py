@@ -52,6 +52,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.istek_baglami.IstekBaglamiMiddleware',   # istek IP'si → silme denetim kaydı (servis katmanı request görmez)
     'django.contrib.messages.middleware.MessageMiddleware',
     'core.middleware.SifreDegistirmeMiddleware',   # ilk girişte şifre değiştirme zorunluluğu (personel hesapları)
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

@@ -86,7 +86,7 @@
       {% for r in g.satirlar %}
       <tr>
         <td class="mono">{{ r.tarih|date:"d.m.Y" }}</td>
-        <td><span class="ot-rozet {{ r.css }}">{{ r.kaynak_ad }}</span>{% if r.kural %}<span class="ot-kural" title="Kayıtlı vade yok; yasal vade kuralıyla türetildi">kural ile</span>{% endif %}</td>
+        <td><span class="ot-rozet {{ r.css }}">{{ r.kaynak_ad }}</span>{% if r.tahmini %}<span class="ot-kural" title="Defterde tahakkuk yok; son ödenen dönemin tutarı yasal vadeyle tekrarlandı">tahmini</span>{% elif r.kural %}<span class="ot-kural" title="Kayıtlı vade yok; yasal vade kuralıyla türetildi">kural ile</span>{% endif %}</td>
         <td>{% if r.url %}<a href="{% url r.url.0 r.url.1 %}">{{ r.baslik }}</a>{% else %}{{ r.baslik }}{% endif %}{% if r.cari_ad and r.cari_ad not in r.baslik %} <span class="ot-alt">{{ r.cari_ad }}</span>{% endif %}{% if r.aciklama or r.ek %}<span class="ot-alt">{{ r.aciklama }}{% if r.aciklama and r.ek %} · {% endif %}{% if r.kaynak == "FATURA_ALIS" or r.kaynak == "FATURA_SATIS" %}{{ r.ek }}{% endif %}</span>{% endif %}</td>
         <td class="mono">{{ r.belge_no|default:"" }}</td>
         <td class="sag mono">{% if r.pb != "TRY" %}{{ r.tutar|tr_kur:2 }} {{ r.pb }}{% else %}<span class="pasif">—</span>{% endif %}</td>

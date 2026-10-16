@@ -715,10 +715,10 @@ def _bordro_kalici_sil(bordro, kullanici):
         kalici_sil(c)
     kalici_sil(bordro)
     aciklama = bordro.aciklama
-    return SilmeKaydi.objects.create(
-        tur=SilmeKaydi.Tur.CEK_BORDRO, kayit_no=f"{bordro.get_tur_display()} #{veri['bordro_pk']}",
-        tarih=bordro.tarih, tutar=toplam, aciklama=(aciklama or "")[:500], kaynak=bordro.tur,
-        silen=kullanici, created_by=kullanici, updated_by=kullanici, veri=veri)
+    from core.services import silme_kaydi
+    return silme_kaydi.yaz(
+        SilmeKaydi.Tur.CEK_BORDRO, kayit_no=f"{bordro.get_tur_display()} #{veri['bordro_pk']}",
+        tarih=bordro.tarih, tutar=toplam, aciklama=aciklama, kaynak=bordro.tur, kullanici=kullanici, veri=veri)       # IP dahil merkezi yazım
 
 
 def aktif_bordrolar():

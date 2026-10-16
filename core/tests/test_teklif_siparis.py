@@ -1959,6 +1959,32 @@ class SatinalmaZinciriTest(TestCase):
         self.assertFalse(StokHareket.objects.filter(
             teklif_siparis_kalem__teklif_siparis_id=irsaliye_id).exists())
 
+    def test_irsaliye_silme_denetim_kaydi_yazar(self):
+        """Silme kaydı: silen kullanıcı + özet (no, cari, tarih, toplam) + kalem/stok hareketi JSON dökümü; silme geri alınırsa kayıt da geri alınır."""
+        from unittest import mock
+        from core.models import SilmeKaydi, TeklifSiparis
+        from core.services import silme_kaydi
+        from core.services.fatura import fatura_sil
+        from core.services.teklif_siparis import irsaliye_sil
+        irsaliye = self._onayli_irsaliye()
+        fatura_sil(irsaliye.fatura)
+        irsaliye.refresh_from_db()
+        no, pk = irsaliye.belge_no, irsaliye.pk
+        with mock.patch.object(silme_kaydi, "irsaliye_yaz", side_effect=RuntimeError("yazim hatasi")):
+            with self.assertRaises(RuntimeError):
+                irsaliye_sil(irsaliye, kullanici=self.yon)
+        self.assertTrue(TeklifSiparis.objects.filter(pk=pk).exists())                                  # kayıt yazılamadı → silme de geri alındı
+        self.assertFalse(SilmeKaydi.objects.filter(tur="IRSALIYE").exists())
+        irsaliye_sil(TeklifSiparis.objects.get(pk=pk), kullanici=self.yon)
+        k = SilmeKaydi.objects.get(tur="IRSALIYE")
+        self.assertEqual((k.kayit_no, k.silen_id, k.kaynak, k.tarih), (no, self.yon.pk, "IRSALIYE", self.tarih))
+        self.assertEqual(k.tutar, Decimal("120.00"))                                                    # 10 × 10 + %20 KDV
+        self.assertIn(self.cari.unvan, k.aciklama)
+        self.assertEqual(len(k.veri["kalemler"]), 1)
+        self.assertEqual(k.veri["kalemler"][0]["miktar"], "10.000")
+        self.assertEqual(len(k.veri["stok_hareketleri"]), 1)
+        self.assertEqual(k.veri["irsaliye"]["belge_no"], no)
+
     def test_irsaliye_sil_tuketilmis_stok_engellenir(self):
         from core.models import TeklifSiparis
         from core.services.fatura import fatura_sil

@@ -847,6 +847,8 @@ def irsaliye_sil(irsaliye: TeklifSiparis, kullanici=None) -> None:
     if irsaliye.fatura_id and not irsaliye.fatura.silindi:
         raise TeklifSiparisHatasi(
             "Bu irsaliye bir faturaya dönüştürülmüş; önce o faturayı silin.")
+    from core.services import silme_kaydi
+    denetim = silme_kaydi.irsaliye_verisi(irsaliye)       # silmeden ÖNCE topla; kayıt sonda aynı transaction'da yazılır
     hareketler = list(StokHareket.objects.filter(
         teklif_siparis_kalem__teklif_siparis=irsaliye, silindi=False))
     for h in hareketler:
@@ -861,3 +863,4 @@ def irsaliye_sil(irsaliye: TeklifSiparis, kullanici=None) -> None:
     StokHareket.objects.filter(id__in=[h.pk for h in hareketler]).delete()
     irsaliye.kalemler.all().delete()
     irsaliye.delete()
+    silme_kaydi.irsaliye_yaz(denetim, kullanici)

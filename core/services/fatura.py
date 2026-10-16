@@ -1529,6 +1529,8 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     İrsaliye SİLİNMEZ, "Faturaya Dönüştü" rozetini kaybedip yeniden düzenlenebilir hale
     gelir (bkz. teklif_siparis.teklif_siparis_onayi_geri_al)."""
     from core.models import FasonDonus
+    from core.services import silme_kaydi
+    denetim = silme_kaydi.fatura_verisi(fatura)       # silmeden ÖNCE topla; kayıt aşağıda aynı transaction'da yazılır (kim/ne zaman/IP + JSON döküm)
     bagli_fason_donusleri = list(FasonDonus.objects.filter(fatura=fatura, silindi=False).values_list("pk", flat=True))   # silinince bağ kopar → bedel yeniden tahmini
     _demirbas_geri_al(fatura, kullanici)             # satılan demirbaş kartları eski durumuna döner
     kart_hesaplari = set(fatura.satirlar.values_list("hesap_id", flat=True))
@@ -1572,3 +1574,4 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
     for kod in kart_hesaplari:                           # kart maliyeti hesaba eşitlenir; boş kalan kart silinir (hesap KALIR)
         if kod and duran_hesap.varlik_hesabi_mi(kod) and not duran_hesap.proje_hesabi_mi(kod):
             dv_servis.kart_maliyetini_yenile(kod, kullanici=kullanici)
+    silme_kaydi.fatura_yaz(denetim, kullanici)           # denetim kaydı: kim / ne zaman / IP + fatura-satır-fiş-hareket dökümü (silmeyle aynı transaction)

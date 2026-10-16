@@ -92,8 +92,8 @@ class BesGKuraliTest(TakvimTaban):
         hareket_olustur(kasa=self.kasa, tip="cari_tahsilat", karsi=self.tedarikci, tutar="1200", tarih=D(2026, 3, 11))          # cariden gelen
         self.odeme("1200", D(2026, 3, 12))                                                                                       # geri giden
         liste = fatura_odeme.odeme_durumlari([self.tedarikci], BUGUN)[f.pk]
-        self.assertEqual(liste["durum"], "KAPANDI")                                                                              # liste FIFO'su (değişmedi)
-        # kasa hareketi KASA kaynaklı → iade kuralı (BANKA/KASA/KREDI_KARTI/CEK_SENET) uygulanır: takvimde fatura açık
+        self.assertEqual(liste["durum"], "ACIK")                                                                                 # liste FIFO'su ile takvim AYNI (kural fatura_odeme.fifo_kalemler içinde)
+        # kasa hareketi KASA kaynaklı → nakit iade kuralı (BANKA/KASA/KREDI_KARTI/CEK_SENET): takvimde de fatura açık
         (r,) = _bul(_satirlar(), kaynak="FATURA_ALIS")
         self.assertEqual((r["tutar"], r["tarih"]), (Dc("1200.00"), D(2026, 11, 30)))
         self.assertEqual(_bul(_satirlar(), kaynak="CARI_BORC"), [])
@@ -251,3 +251,69 @@ class EkranTest(TakvimTaban):
         u = User.objects.create_user("yetkisiz", password="x")
         self.client.force_login(u)
         self.assertEqual(self.client.get(reverse("core:odeme_takvimi")).status_code, 403)
+
+
+class DamgaTahminiTest(TakvimTaban):
+    """Damga vergisi: tahakkuk hesabı YOK, ödeme günü 770.11'e yazılır → son ödenen dönemin tutarı sonraki aylar için "tahmini" satır olur; gerçek ödeme girilince kendiliğinden düşer."""
+
+    BUGUN = D(2026, 10, 16)
+
+    def setUp(self):
+        _hesap("770.11", "DAMGA VERGİSİ")
+        for g in (D(2026, 2, 20), D(2026, 8, 18), D(2026, 9, 22), D(2026, 9, 23), D(2026, 10, 15), D(2026, 10, 16)):
+            Kur.objects.get_or_create(tarih=g, defaults={"usd_alis": Dc("30")})
+
+    def damga(self, tur, donem, tutar, tarih=D(2026, 9, 22)):
+        fis_olustur(tarih=tarih, satirlar=[SatirGirdi(hesap_kodu="770.11", taraf="B", islem_tutari=str(tutar), aciklama=f"BEYANNAME DAMGA VERGİSİ {tur} {donem}"),
+                                           SatirGirdi(hesap_kodu="100.01", taraf="A", islem_tutari=str(tutar))])
+
+    def damgalar(self):
+        return [r for r in ot.tum_satirlar(self.BUGUN)["satirlar"] if r["ek"] == "Damga vergisi (tahmini)"]
+
+    def test_muhtasar_26sinda_kdv_28inde_son_odenen_tutarla(self):
+        self.damga("MUHTASAR", "07/2026", "900.00", D(2026, 8, 18))
+        self.damga("MUHTASAR", "08/2026", "939.70")
+        self.damga("KDV1", "08/2026", "791.00", D(2026, 9, 23))
+        s = self.damgalar()
+        muh = [r for r in s if r["baslik"].startswith("Damga vergisi — muhtasar")]
+        kdv = [r for r in s if r["baslik"].startswith("Damga vergisi — KDV")]
+        self.assertEqual(muh[0]["tarih"], D(2026, 10, 26))                                   # 09/2026 dönemi, ayın 26'sı (pazartesi)
+        self.assertEqual(muh[0]["tutar"], Dc("939.70"))                                      # EN SON ödenen dönem (08/2026), 07/2026 değil
+        self.assertEqual(kdv[0]["tarih"], D(2026, 10, 28))
+        self.assertEqual(kdv[0]["tutar"], Dc("791.00"))
+        self.assertTrue(all(r["tahmini"] and r["kural"] and r["kaynak"] == "VERGI" and r["yon"] == "CIKIS" for r in s))
+        self.assertEqual((muh[1]["tarih"], kdv[1]["tarih"]), (D(2026, 11, 26), D(2026, 11, 30)))   # 28.11 cumartesi → pazartesi; her ay bir satır
+        self.assertEqual(len(muh), 12)
+
+    def test_gercek_odeme_girilince_tahmini_satir_kendiliginden_duser(self):
+        self.damga("MUHTASAR", "08/2026", "939.70")
+        self.assertEqual(self.damgalar()[0]["aciklama"].split(" · ")[0], "09/2026 dönemi")
+        self.damga("MUHTASAR", "09/2026", "960.00", D(2026, 10, 15))                         # Eylül muhtasar damgası ödendi
+        s = self.damgalar()
+        self.assertEqual((s[0]["aciklama"].split(" · ")[0], s[0]["tarih"], s[0]["tutar"]), ("10/2026 dönemi", D(2026, 11, 26), Dc("960.00")))   # sonraki dönem, yeni tutar
+        self.assertFalse([r for r in s if r["tarih"] == D(2026, 10, 26)])
+
+    def test_odeme_yoksa_veya_kdv2_ise_tahmin_yok(self):
+        self.assertEqual(self.damgalar(), [])                                                # hiç ödeme yok
+        self.damga("KDV2", "08/2026", "790.22")                                              # KDV2 yalnız tevkifatlı aylarda — tahmin edilmez
+        self.assertEqual(self.damgalar(), [])
+
+    def test_cok_eski_donem_tahmin_edilmez(self):
+        self.damga("MUHTASAR", "01/2026", "939.70", D(2026, 2, 20))                          # 02-07/2026 kayıt girilmemiş: 60 günden eski vadeler atlanır
+        s = self.damgalar()
+        self.assertGreaterEqual(min(r["tarih"] for r in s), self.BUGUN - datetime.timedelta(days=60))
+
+    def test_mutabakat_360_361_etkilenmez_ve_ekranda_etiket(self):
+        self.damga("MUHTASAR", "08/2026", "939.70")
+        veri = ot.tum_satirlar(self.BUGUN)
+        for b in ot.mutabakat(veri, veri["atlanan_kartlar"]):
+            if b["ad"].startswith("360"):
+                self.assertEqual(b["fark"], Dc("0.00"))
+        self.client.force_login(self.su)
+        r = self.client.get(reverse("core:odeme_takvimi"), {"bas": "2026-10-16", "bit": "2027-03-31"})
+        self.assertContains(r, "Damga vergisi — muhtasar (tahmini)")
+        self.assertContains(r, ">tahmini<")
+        x = self.client.get(reverse("core:odeme_takvimi"), {"bas": "2026-10-16", "bit": "2027-03-31", "excel": "1"})
+        ws = load_workbook(BytesIO(x.content))["Ödeme Takvimi"]
+        etiketler = [c.value for row in ws.iter_rows(min_row=5) for c in row if c.value == "tahmini"]
+        self.assertTrue(etiketler)

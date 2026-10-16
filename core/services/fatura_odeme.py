@@ -6,7 +6,9 @@ bakiyesi kadar en YENİ faturalar açık kalır. Cari hesabın doğal yönü kö
 (tevkifat/stopaj sonrası, ekstreyle aynı; "yalnız KDV" tipinde net KDV).
 
 Durum: ``KAPANDI`` (kalan = 0) · ``KISMI`` (0 < kalan < tutar) · ``ACIK`` (hiç düşülmemiş). Vadesi geçmiş (gecikme > 0) açık/kısmi faturada ``gecikme`` gün sayısı dolu. TASLAK faturada, fişsiz faturada, carinin
-muhasebe hesabı olmayan faturada ve cari hesabın doğal yönünün tersi yazan faturada (iade) durum YOK (sözlükte yer almaz)."""
+muhasebe hesabı olmayan faturada ve cari hesabın doğal yönünün tersi yazan faturada (iade) durum YOK (sözlükte yer almaz).
+
+NAKİT İADE KURALI (2026-10-16; yalnız TİCARİ kökler 120/121/320/321): cari hesabın doğal yönünde olup faturadan gelmeyen BANKA/KASA/KREDI_KARTI/CEK_SENET hareketi (cariden bize gelen para / ödemenin iadesi) ödeme havuzundan DÜŞÜLÜR — gidip gelen para faturaları kapatmış sayılmaz (5G: alınan 900k + gönderilen 900k net 0). Değişmez: Σ kalan − artan avans = cari defter bakiyesi (doğal yönde; fatura-dışı DİĞER kaynaklar — fason tahakkuku, cari kesinti, virman, manuel — gerçek yükümlülüktür, havuza dokunmaz). Ortak/personel/emanet carilerinde (335/336/500) kural UYGULANMAZ. Satırlarda ``fis__kaynak`` anahtarı gerekir."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -18,6 +20,8 @@ from core.tarih import tr_bugun
 SIFIR = Decimal("0")
 ESIK = Decimal("0.005")
 ALACAKLI_DOGAL_KOKLER = ("120", "121", "136")          # borç yönü doğal (cari bize borçlanır): müşteri / diğer alacaklar
+TICARI_KOKLER = ("120", "121", "320", "321")             # nakit iade kuralı yalnız bunlara uygulanır (ortak/personel/emanet hariç)
+NAKIT_KAYNAKLARI = ("BANKA", "KASA", "KREDI_KARTI", "CEK_SENET")   # cariden gelen para (ödemenin iadesi): faturaları kapatmış sayılmaz
 
 KAPANDI, KISMI, ACIK = "KAPANDI", "KISMI", "ACIK"
 DURUM_ADLARI = {KAPANDI: "Kapandı", KISMI: "Kısmi", ACIK: "Açık"}
@@ -28,13 +32,20 @@ def dogal_yon(cari) -> str:
     return "borc" if kok in ALACAKLI_DOGAL_KOKLER else "alacak"
 
 
-def fifo_kalemler(cari, faturalar: dict, satirlar, iade_kaynaklari=()):
-    """Çekirdek FIFO. ``faturalar``: {fiş pk: Fatura} (carinin ONAYLI, fişli faturaları); ``satirlar``: carinin hesabındaki yevmiye satırları
-    (``values("fis_id", "islem_pb", "borc", "alacak", "islem_tutari")``). Döner: ({fatura pk: {fatura, pb, tutar, tarih, vade, kalan}}, {pb: artan kredi (avans/fazla ödeme)}).
+def ticari_mi(cari) -> bool:
+    return (cari.muhasebe_kodu or "").split(".")[0] in TICARI_KOKLER
 
-    ``iade_kaynaklari`` (varsayılan boş → davranış AYNEN): doluysa, carinin doğal yönündeki FATURA DIŞI satırlardan fişi bu kaynaklardan (ör. BANKA/KASA: cariden gelen para = ödemenin iadesi)
-    olanlar kredi havuzundan DÜŞÜLÜR — gidip gelen para faturaları kapatmış sayılmaz. Satırlarda ``fis__kaynak`` anahtarı gerekir. (Ödeme Takvimi kullanır; liste/ekstre varsayılanı kullanır.)"""
+
+def nakit_iadesi_mi(s, dogal, faturalar) -> bool:
+    """Satır: doğal yönde, faturadan gelmeyen nakit hareketi (cariden gelen para) mi? (``fis__kaynak`` yoksa hayır.)"""
+    yon = "borc" if s["borc"] > 0 else "alacak"
+    return yon == dogal and s["fis_id"] not in faturalar and s.get("fis__kaynak") in NAKIT_KAYNAKLARI
+
+
+def fifo_kalemler(cari, faturalar: dict, satirlar):
+    """Çekirdek FIFO. ``faturalar``: {fiş pk: Fatura} (carinin ONAYLI, fişli faturaları); ``satirlar``: carinin hesabındaki yevmiye satırları (``values("fis_id", "islem_pb", "borc", "alacak", "islem_tutari", "fis__kaynak")``). Döner: ({fatura pk: {fatura, pb, tutar, tarih, vade, kalan}}, {pb: artan kredi (avans/fazla ödeme)}). Ticari carilerde doğal yöndeki fatura-dışı NAKİT hareketi (cariden gelen para) kredi havuzundan düşülür (modül başlığındaki kural)."""
     dogal = dogal_yon(cari)
+    iade_kurali = ticari_mi(cari)
     kalemler, kredi = {}, {}
     for s in satirlar:
         yon = "borc" if s["borc"] > 0 else "alacak"
@@ -45,7 +56,7 @@ def fifo_kalemler(cari, faturalar: dict, satirlar, iade_kaynaklari=()):
             k["tutar"] += tutar
         elif yon != dogal:
             kredi[pb] = kredi.get(pb, SIFIR) + tutar                  # ödeme / tahsilat / mahsup / fatura iadesi
-        elif iade_kaynaklari and s.get("fis__kaynak") in iade_kaynaklari:
+        elif iade_kurali and nakit_iadesi_mi(s, dogal, faturalar):
             kredi[pb] = kredi.get(pb, SIFIR) - tutar                  # cariden gelen para = ödemenin iadesi (faturayı kapatmaz)
     for k in kalemler.values():
         f = k["fatura"]
@@ -79,7 +90,7 @@ def odeme_durumlari(cariler, bugun=None) -> dict:
     kodlar = {cariler[pk].muhasebe_kodu for pk in faturalar_cari}
     hesap_satirlari: dict = {}
     for s in (YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id__in=kodlar)
-              .values("hesap_id", "fis_id", "islem_pb", "borc", "alacak", "islem_tutari")):
+              .values("hesap_id", "fis_id", "islem_pb", "borc", "alacak", "islem_tutari", "fis__kaynak")):
         hesap_satirlari.setdefault(s["hesap_id"], []).append(s)
     sonuc = {}
     for cari_pk, faturalar in faturalar_cari.items():
@@ -118,7 +129,7 @@ def fatura_odemeleri(fatura, bugun=None):
     Taslak / fişsiz / iade (ters yönlü) fatura ya da carinin muhasebe hesabı yoksa None döner (kart gösterilmez).
 
     Döner: {"durum", "tutar", "odenen", "kalan", "pb", "vade", "gecikme", "hareketler": [{"tarih", "kaynak", "kaynak_ad", "aciklama", "tutar" (bu faturaya düşen), "hareket_tutari" (hareketin tamamı),
-    "kismi", "tl", "fis_pk", "fis_no", "kaynak_url_adi", "kaynak_pk"}]}."""
+    "kismi", "iade_dusulen", "tl", "fis_pk", "fis_no", "kaynak_url_adi", "kaynak_pk"}], "iade_toplam" (cariden gelip ödemelerden düşülen nakit, ticari cariler)}."""
     if fatura.silindi or fatura.durum != Fatura.Durum.ONAYLI or not fatura.fis_id:
         return None
     cari = fatura.cari
@@ -140,7 +151,20 @@ def fatura_odemeleri(fatura, bugun=None):
     krediler = sorted(((s, s["islem_tutari"] or (s["borc"] or s["alacak"])) for s in satirlar
                        if ("borc" if s["borc"] > 0 else "alacak") != dogal and s["islem_pb"] == pb),
                       key=lambda x: (x[0]["fis__tarih"], x[0]["fis_id"], x[0]["pk"]))
-    kalan_kredi = [[s, t] for s, t in krediler]
+    kalan_kredi = [[s, t, SIFIR] for s, t in krediler]               # [satır, kalan tutar, iadeyle düşülen]
+    iade_toplam = SIFIR
+    if ticari_mi(cari):                                              # nakit iade kuralı (modül başlığı): cariden gelen para en SON ödemelerden düşülür (LIFO) — Σ dağılım = fifo_kalemler havuzu
+        for s in satirlar:
+            if s["islem_pb"] == pb and nakit_iadesi_mi(s, dogal, faturalar):
+                dusulecek = s["islem_tutari"] or (s["borc"] or s["alacak"])
+                iade_toplam += dusulecek
+                for kr in reversed(kalan_kredi):
+                    if dusulecek <= SIFIR:
+                        break
+                    al = min(dusulecek, kr[1])
+                    kr[1] -= al
+                    kr[2] += al
+                    dusulecek -= al
     hareketler = []
     for kalem in sorted((x for x in kalemler.values() if x["pb"] == pb), key=lambda x: (x["tarih"], x["fatura"].pk)):
         ihtiyac = kalem["tutar"]
@@ -160,8 +184,8 @@ def fatura_odemeleri(fatura, bugun=None):
                     baglanti = ("core:fatura_detay", faturalar[s["fis_id"]].pk)                   # mahsup eden karşı faturanın kendisi
                 hareketler.append({
                     "tarih": s["fis__tarih"], "kaynak": s["fis__kaynak"], "kaynak_ad": KAYNAK_ADLARI.get(s["fis__kaynak"], s["fis__kaynak"].replace("_", " ").title()),
-                    "aciklama": s["fis__aciklama"], "tutar": al, "hareket_tutari": tam, "kismi": al < tam - ESIK,
+                    "aciklama": s["fis__aciklama"], "tutar": al, "hareket_tutari": tam, "kismi": al < tam - ESIK, "iade_dusulen": kr[2],
                     "tl": (s["borc"] or s["alacak"]), "fis_pk": s["fis_id"], "fis_no": f"{s['fis__yil']}/{s['fis__fis_no']}",
                     "kaynak_url_adi": baglanti[0] if baglanti else None, "kaynak_pk": baglanti[1] if baglanti else None})
     return {"durum": durum["durum"], "tutar": durum["tutar"], "odenen": durum["tutar"] - durum["kalan"], "kalan": durum["kalan"], "pb": durum["pb"], "vade": durum["vade"],
-            "gecikme": durum["gecikme"], "hareketler": hareketler}
+            "gecikme": durum["gecikme"], "hareketler": hareketler, "iade_toplam": iade_toplam}
