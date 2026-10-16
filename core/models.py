@@ -4353,6 +4353,102 @@ class SilmeKaydi(TemelModel):
         return f"{self.get_tur_display()} {self.kayit_no} silindi"
 
 
+class StokSayimi(TemelModel):
+    """STOK SAYIMI belgesi (SY-YYYY-NNNN, 2026-10-16; bkz. core.services.stok_sayim): TEK depo için sayım tarihi + kesme zamanı (açılışta sistem miktarlarının anlık görüntüsü
+    ``StokSayimSatiri.sistem_snapshot``'ta tutulur). Durum: ACIK (giriş sürer) → KAPALI (giriş kapandı; yönetici fark/karar verir) → ONAYLI (yalnız karar=Düzelt satırları için stok
+    düzeltme hareketi + muhasebe fişi) → GERI_ALINDI. ``kor``: sayım girenlere sistem miktarı HİÇ gösterilmez (sunucu tarafında gizlenir)."""
+
+    class Durum(models.TextChoices):
+        ACIK = "ACIK", "Açık"
+        KAPALI = "KAPALI", "Giriş kapandı"
+        ONAYLI = "ONAYLI", "Onaylı"
+        GERI_ALINDI = "GERI_ALINDI", "Geri alındı"
+
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("sayım no", max_length=20, editable=False)
+    depo = models.ForeignKey("Depo", verbose_name="depo", on_delete=models.PROTECT, related_name="sayimlar")
+    kategori = models.ForeignKey("Kategori", verbose_name="kategori süzgeci", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    tarih = models.DateField("sayım tarihi")
+    kesme_zamani = models.DateTimeField("kesme zamanı (snapshot)")
+    kor = models.BooleanField("kör sayım (sistem miktarı gizli)", default=False)
+    durum = models.CharField("durum", max_length=12, choices=Durum.choices, default=Durum.ACIK)
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+    onaylayan = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="onaylayan", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    onay_zamani = models.DateTimeField("onay zamanı", null=True, blank=True)
+    fis = models.ForeignKey("YevmiyeFisi", verbose_name="sayım fişi", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    geri_alan = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="geri alan", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    geri_alma_zamani = models.DateTimeField("geri alma zamanı", null=True, blank=True)
+
+    class Meta:
+        db_table = "stok_sayim"
+        verbose_name = "stok sayımı"
+        verbose_name_plural = "stok sayımları"
+        ordering = ["-yil", "-sira"]
+        constraints = [models.UniqueConstraint(fields=["yil", "sira"], name="stok_sayim_yil_sira_uniq")]
+
+    def __str__(self):
+        return self.no
+
+
+class StokSayimSatiri(TemelModel):
+    """Sayım satırı = (stok, varyant) — varyantsız kartta varyant boş. ``sistem_snapshot``: kesme anındaki depo eldekisi (değişmez). ``karar``: Bekliyor / Düzelt / Araştır
+    (Araştır satırlar onayda işlenmez). Onayda ``onay_fark`` / ``onay_tutar_try`` / ``hareket`` dolar."""
+
+    class Karar(models.TextChoices):
+        BEKLIYOR = "BEKLIYOR", "Bekliyor"
+        DUZELT = "DUZELT", "Düzelt"
+        ARASTIR = "ARASTIR", "Araştır"
+
+    sayim = models.ForeignKey(StokSayimi, verbose_name="sayım", on_delete=models.CASCADE, related_name="satirlar")
+    stok = models.ForeignKey("Stok", verbose_name="stok", on_delete=models.PROTECT, related_name="sayim_satirlari")
+    varyant = models.ForeignKey("StokVaryant", verbose_name="varyant", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    sistem_snapshot = models.DecimalField("sistem miktarı (kesme anı)", max_digits=18, decimal_places=6, default=0)
+    ort_maliyet_snapshot = models.DecimalField("ortalama maliyet (kesme anı, TL)", max_digits=18, decimal_places=6, null=True, blank=True)
+    eklenen = models.BooleanField("sayım sırasında eklenen satır", default=False)
+    karar = models.CharField("karar", max_length=8, choices=Karar.choices, default=Karar.BEKLIYOR)
+    karar_notu = models.CharField("karar notu", max_length=300, blank=True, default="")
+    karar_veren = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="karar veren", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    onay_fark = models.DecimalField("onaydaki fark", max_digits=18, decimal_places=6, null=True, blank=True)
+    onay_tutar_try = models.DecimalField("onaydaki fark tutarı (TL)", max_digits=18, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        db_table = "stok_sayim_satiri"
+        verbose_name = "sayım satırı"
+        verbose_name_plural = "sayım satırları"
+        ordering = ["stok__kod", "varyant_id", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["sayim", "stok", "varyant"], condition=models.Q(varyant__isnull=False), name="stok_sayim_satir_varyantli_uniq"),
+            models.UniqueConstraint(fields=["sayim", "stok"], condition=models.Q(varyant__isnull=True), name="stok_sayim_satir_varyantsiz_uniq"),
+        ]
+
+    def __str__(self):
+        return f"{self.sayim.no} · {self.stok.kod}"
+
+
+class StokSayimGirdisi(TemelModel):
+    """Bir kişinin bir satır için girdiği sayılan miktar. Girişler TOPLAMSAL (satırın sayılanı = geçerli girişlerin toplamı); yönetici bir girişi ``gecersiz`` işaretleyebilir."""
+
+    class Kaynak(models.TextChoices):
+        EKRAN = "EKRAN", "Ekran"
+        EXCEL = "EXCEL", "Excel"
+
+    satir = models.ForeignKey(StokSayimSatiri, verbose_name="sayım satırı", on_delete=models.CASCADE, related_name="girdiler")
+    kullanici = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="giren", on_delete=models.PROTECT, related_name="+")
+    miktar = models.DecimalField("sayılan miktar", max_digits=18, decimal_places=6)
+    kaynak = models.CharField("kaynak", max_length=5, choices=Kaynak.choices, default=Kaynak.EKRAN)
+    aciklama = models.CharField("not", max_length=200, blank=True, default="")
+    gecersiz = models.BooleanField("geçersiz", default=False)
+    gecersiz_yapan = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="geçersiz yapan", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    gecersiz_zamani = models.DateTimeField("geçersiz yapıldığı zaman", null=True, blank=True)
+
+    class Meta:
+        db_table = "stok_sayim_girdisi"
+        verbose_name = "sayım girdisi"
+        verbose_name_plural = "sayım girdileri"
+        ordering = ["created_at", "id"]
+
+
 class FisNoSayaci(models.Model):
     """Mali yıl başına fiş numarası sayacı — numara GERİ DÖNMEZ: fiş silinse bile (en son fiş dahil)
     sıradaki yeni fiş silinen numarayı almaz. Değer her zaman ≥ o yıldaki en yüksek fiş no'dur
