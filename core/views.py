@@ -3831,8 +3831,8 @@ def siparis_faturaya_cevir(request, pk):
             dosyalar = _fatura_dosyalari_dogrula(request, fform)
             mukerrer = _mukerrer_engeli(fform, yon)
             if not fform.errors:
-                satirlar = _fatura_satir_girdileri(formset)
                 cd = fform.cleaned_data
+                satirlar = _fatura_satir_girdileri(formset, faturasiz=bool(cd.get("faturasiz")) and not cd.get("fatura_no"))
                 try:
                     with transaction.atomic():
                         fatura = fatura_servis.fatura_olustur(
@@ -8785,14 +8785,17 @@ def _tevkifat_initial(satir):
     return ""
 
 
-def _fatura_satir_girdileri(formset):
+def _fatura_satir_girdileri(formset, faturasiz=False):
     """Fatura kalem formlarından servis girdisi: stok kalemi ya da (gider faturasında) gider
     hesabı + satırda seçilen KDV oranı. Tip × kalem türü tutarlılığı serviste doğrulanır.
     Tevkifat seçicisi üç değerli (bkz. core.forms.TEVKIFAT_YOK): "" (boş) -> stoklu kalemde
     stok kartının güncel tevkifatı kullanılır (`tevkifat_id`/`tevkifat_yok` ikisi de boş/
     False); TEVKIFAT_YOK -> `tevkifat_yok=True` (stok kartında tanımlı olsa bile
-    uygulanmaz); <pk> -> `tevkifat_id` o orana işaret eder."""
+    uygulanmaz); <pk> -> `tevkifat_id` o orana işaret eder.
+    KDV: satırda seçilen oran AYNEN servise gider (stok kartı yalnız forma varsayılan olarak gelir); stoklu satırda hiç gelmediyse
+    ``faturasiz`` faturada %0 varsayılır, aksi halde servis stok kartının KDV'sini kullanır."""
     girdiler = []
+    sifir_kdv = KdvOrani.objects.filter(oran=0, silindi=False).order_by("pk").first() if faturasiz else None
     for f in formset:
         if not f.dolu_mu():
             continue
@@ -8808,7 +8811,7 @@ def _fatura_satir_girdileri(formset):
             "stok_id": cd["stok"].pk if cd.get("stok") else None,
             "hesap_id": cd["hesap"].pk if cd.get("hesap") else None,
             "demirbas_id": cd["demirbas"].pk if cd.get("demirbas") else None,
-            "kdv_id": cd["kdv"].pk if cd.get("kdv") else None,
+            "kdv_id": cd["kdv"].pk if cd.get("kdv") else (sifir_kdv.pk if (sifir_kdv and cd.get("stok")) else None),
             "tevkifat_id": tevkifat_id, "tevkifat_yok": tevkifat_yok,
             "yatirim_projesi_id": cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
             "varlik_adi": (cd.get("varlik_adi") or "").strip(),
@@ -8841,6 +8844,8 @@ def _fatura_gider_baglami(fform):
                                for d in DuranVarlik.objects.filter(silindi=False)},
             "kdv_oran": {str(k.pk): float(k.oran)
                          for k in KdvOrani.objects.filter(silindi=False)},
+            "stok_kdv_id": {str(sid): kid for sid, kid in Stok.objects.filter(silindi=False, kdv__isnull=False).values_list("pk", "kdv_id")},
+            "kdv_sifir_id": next(iter(KdvOrani.objects.filter(oran=0, silindi=False).order_by("pk").values_list("pk", flat=True)), None),
             "tevkifat_oran": {str(t.pk): float(t.pay) / float(t.payda)
                               for t in TevkifatOrani.objects.filter(silindi=False) if t.payda}}
 
@@ -9009,8 +9014,8 @@ def _fatura_ekle(request, yon, baslik):
             dosyalar = _fatura_dosyalari_dogrula(request, fform)
             mukerrer = _mukerrer_engeli(fform, yon)
             if not fform.errors:
-                satirlar = _fatura_satir_girdileri(formset)
                 cd = fform.cleaned_data
+                satirlar = _fatura_satir_girdileri(formset, faturasiz=bool(cd.get("faturasiz")) and not cd.get("fatura_no"))
                 try:
                     # fatura_olustur = taslak + hemen onay (tip formda zaten seçili) — günlük
                     # fatura girişi tek tıkla kalır, tam atomik (eskisi gibi ya hepsi ya hiçbiri; ekler dahil).
@@ -9065,8 +9070,8 @@ def fatura_duzenle(request, pk):
             dosyalar = _fatura_dosyalari_dogrula(request, fform)
             mukerrer = _mukerrer_engeli(fform, yon, haric_pk=fatura.pk)
             if not fform.errors:
-                satirlar = _fatura_satir_girdileri(formset)
                 cd = fform.cleaned_data
+                satirlar = _fatura_satir_girdileri(formset, faturasiz=bool(cd.get("faturasiz")) and not cd.get("fatura_no"))
                 try:
                     with transaction.atomic():
                         fatura_servis.fatura_guncelle(

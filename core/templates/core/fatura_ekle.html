@@ -16,6 +16,8 @@
 {{ stok_birim|json_script:"stok-birim" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
+{{ stok_kdv_id|json_script:"stok-kdv-id" }}
+{{ kdv_sifir_id|json_script:"kdv-sifir-id" }}
 {{ yon|json_script:"fatura-yon" }}
 {{ demirbas_bilgi|json_script:"demirbas-bilgi" }}
 {{ tevkifat_oran|json_script:"tevkifat-oran" }}
@@ -80,14 +82,15 @@
   #fatura-satir-tablo .c-proje, #fatura-satir-tablo .th-proje { display:none; width:170px; }
   #fatura-satir-tablo.proje-var .c-proje, #fatura-satir-tablo.proje-var .th-proje { display:table-cell; }
   .tur-sabit { display:inline-block; padding:.1rem .45rem; border-radius:999px; background:#eef1f7; color:#5b6678; font-size:.74rem; font-weight:700; margin-top:.3rem; }
-  .kdv-oto { display:inline-block; margin-top:.35rem; font-size:.84rem; }
+  .kdv-oto { display:none; }                                   /* KDV artık her satırda seçilebilir (stok kartı yalnız varsayılan) */
   .sat-tl { text-align:right; }
   #fatura-satir-tablo tbody tr:hover { background:rgba(10,40,70,.035); }
   /* GİDER faturası modu (fatura tipi "gider" işaretliyse JS tabloya .gider-modu ekler):
      Stok kutusu yerine gider hesabı kutusu + satırda KDV seçimi görünür. Görünürlük CLASS ile
      yönetilir ([hidden] özniteliği display'i olan sınıflarca ezilebildiği için). */
-  #fatura-satir-tablo .hesap-alani, #fatura-satir-tablo .kdv-secim,
+  #fatura-satir-tablo .hesap-alani,
   #fatura-satir-tablo .th-hesap { display:none; }
+  #fatura-satir-tablo .kdv-secim { display:block; }
   #fatura-satir-tablo.gider-modu .stok-alani, #fatura-satir-tablo.gider-modu .th-stok { display:none; }
   #fatura-satir-tablo.gider-modu .hesap-alani, #fatura-satir-tablo.gider-modu .kdv-secim { display:block; }
   #fatura-satir-tablo.gider-modu .th-hesap { display:inline; }
@@ -354,6 +357,8 @@
   var STOK_BIRIM = JSON.parse(document.getElementById('stok-birim').textContent) || {};   // stok_id -> fatura birimi (kısa ad)
   var DURAN_VARLIK = JSON.parse(document.getElementById('duran-varlik-hesap').textContent) || {};
   var KDVORAN = JSON.parse(document.getElementById('kdv-oran').textContent) || {};
+  var STOK_KDV_ID = JSON.parse(document.getElementById('stok-kdv-id').textContent) || {};   // stok_id -> kdv_id (satır ilk seçilirken varsayılan)
+  var KDV_SIFIR = JSON.parse(document.getElementById('kdv-sifir-id').textContent);          // %0 oranının id'si (faturasız varsayılanı)
   var TEVPP = JSON.parse(document.getElementById('tevkifat-pp').textContent) || {};       // tevkifat_id -> [pay, payda]
   var YON = JSON.parse(document.getElementById('fatura-yon').textContent);
   var DEMBILGI = JSON.parse(document.getElementById('demirbas-bilgi').textContent) || {};
@@ -499,8 +504,8 @@
       var m = bigParse(el(r,'-miktar') ? el(r,'-miktar').value : '', 3);
       var f = bigParse(el(r,'-birim_fiyat') ? el(r,'-birim_fiyat').value : '', 6);
       var oranX100 = 0, stokSel = el(r,'-stok');
-      if(gider || tur !== 'STOK'){
-        var ks = el(r,'-kdv');
+      var ks = el(r,'-kdv');
+      if(gider || tur !== 'STOK' || (ks && ks.value)){
         oranX100 = (ks && ks.value && KDVORAN[ks.value] != null) ? Math.round(KDVORAN[ks.value] * 100) : 0;
       } else {
         oranX100 = (stokSel && stokSel.value && KDV[stokSel.value] != null) ? Math.round(KDV[stokSel.value] * 100) : 0;
@@ -699,6 +704,15 @@
       girdi.value = (secili && secili.value) ? secili.textContent.trim() : '';
     }
   }
+  // KDV varsayılanı: stok seçilince satırın KDV seçicisi stok kartındaki orana (faturasız faturada %0'a) ön-doldurulur; kullanıcı elle değiştirirse
+  // (row.dataset.kdvElle) artık dokunulmaz — sunucu seçicinin o anki değerini AYNEN kaydeder.
+  function faturasizMi(){ var k=document.getElementById('id_faturasiz'); return !!(k && k.checked); }
+  function kdvOnDoldur(row){
+    var stokSel=el(row,'-stok'); var ks=el(row,'-kdv');
+    if(!stokSel || !ks || !stokSel.value) return;
+    var id = faturasizMi() && KDV_SIFIR != null ? KDV_SIFIR : STOK_KDV_ID[stokSel.value];
+    if(id != null) ks.value = String(id);
+  }
   // Dönemsel gider onay kutusu: satıra .donemsel sınıfı (alanları açar/kapatır).
   function donemselUygula(row){
     var cb=row.querySelector('input[type=checkbox][name$="-donemsel"]');
@@ -780,7 +794,10 @@
     if(row && e.target.name && e.target.name.indexOf('-stok')>-1){
       tedarikciGuncelle(row);
       tevkifatOnDoldur(row);
+      row.dataset.kdvElle = '';
+      kdvOnDoldur(row);
     }
+    if(row && e.target.name && /-kdv$/.test(e.target.name)) row.dataset.kdvElle = '1';
     if(row && e.target.name && e.target.name.indexOf('-tur')>-1) turUygula(row, true);
     if(row && e.target.name && e.target.name.indexOf('-demirbas')>-1) demirbasEtiketGuncelle(row);
     if(row && e.target.name && e.target.name.indexOf('-hesap')>-1) projeAlaniGuncelle(row);
@@ -826,6 +843,10 @@
   if(noInp) noInp.addEventListener('input', mukerrerKontrol);
   var fsKutu=document.getElementById('id_faturasiz');
   if(fsKutu) fsKutu.addEventListener('change', faturasizUygula);
+  if(fsKutu) fsKutu.addEventListener('change', function(){          // faturasız işaretlenince/kalkınca, elle dokunulmamış stoklu satırların KDV varsayılanı yenilenir
+    document.querySelectorAll('.satir-form').forEach(function(r){ if(!r.dataset.kdvElle) kdvOnDoldur(r); });
+    hesapla();
+  });
   // Kayıt öncesi: mükerrer uyarısı açıksa "yine de kaydet" işaretli olmalı; satır indeksleri EKRAN SIRASINA göre yeniden numaralanır (kopyalanan/silinen satırlar sıralı gitsin).
   form.addEventListener('submit', function(e){
     var kutu=document.getElementById('mukerrer-uyari'), cb=document.getElementById('id_mukerrer_onay');
@@ -920,6 +941,7 @@
     document.getElementById('ek-hata').textContent = hata.join(' · ');
     ekPaneliYenile();
   });
+  document.querySelectorAll('.satir-form').forEach(function(r){ var s=el(r,'-stok'); if(s && s.value) r.dataset.kdvElle='1'; });     // kayıtlı/yeniden gelen satırların KDV'si kullanıcınındır
   document.querySelectorAll('.satir-form').forEach(tedarikciGuncelle);
   document.querySelectorAll('.satir-form').forEach(projeAlaniGuncelle);
   modUygula();

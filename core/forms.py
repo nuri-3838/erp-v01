@@ -2170,7 +2170,8 @@ class FaturaSatirForm(forms.Form):
             cd["dolu"] = True
             return cd
         if stok:
-            cd["kdv"] = None                       # stok kaleminde KDV stoktan gelir
+            # Satırda seçilen KDV AYNEN korunur (stok kartının KDV'si yalnız satır ilk seçilirken formda varsayılan olarak gelir — JS);
+            # boş gelirse servis varsayılanı uygular (faturasız -> %0, değilse stok kartı).
             cd["yatirim_projesi"] = None
         elif dv is not None:
             cd["yatirim_projesi"] = None
