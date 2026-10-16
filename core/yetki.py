@@ -39,6 +39,14 @@ def atolye_kullanicisi_mi(user) -> bool:
     return bool(kodlar) and kodlar <= {"atolye"}
 
 
+def sayim_kullanicisi_mi(user) -> bool:
+    """Telefonla SAYIM GİRİŞİ yapan personel: yönetici olmayan ve ekran yetkileri yalnız ``stok_sayim`` olan hesap — giriş sonrası doğrudan Stok Sayımları listesine düşer."""
+    if not getattr(user, "is_authenticated", False) or yonetici_mi(user):
+        return False
+    kodlar = _izinli_kodlar(user)
+    return bool(kodlar) and kodlar <= {"stok_sayim"}
+
+
 def kullanici_telefon(user) -> str:
     """Kullanıcının profil.telefon'u (Profil satırı yoksa boş döner)."""
     try:

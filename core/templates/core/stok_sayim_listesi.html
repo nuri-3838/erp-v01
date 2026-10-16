@@ -1,0 +1,77 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Stok Sayımları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Stok Sayımları{% endblock %}
+
+{% block content %}
+<style>
+  .sy-ust { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; justify-content:space-between; margin-bottom:.8rem; }
+  .sy-filtre { display:flex; flex-wrap:wrap; gap:.5rem; align-items:end; margin-bottom:1rem; }
+  .sy-filtre label { display:flex; flex-direction:column; gap:.15rem; font-size:.74rem; font-weight:700; color:#5b6678; }
+  .sy-filtre select { padding:.35rem .5rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; }
+  .sy-rozet { display:inline-block; padding:.05rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#e8f0fe; color:#1f4fa8; }
+  .sy-rozet.kapali { background:#fff1dc; color:#b45f00; } .sy-rozet.onayli { background:#e7f7ec; color:#0a7d28; } .sy-rozet.geri { background:#f0e8f7; color:#6a2f96; }
+  .sy-rozet.kor { background:#1f2937; color:#fff; margin-left:.3rem; }
+  .sy-kart-liste { display:none; }
+  @media (max-width:700px) {
+    .sy-tablo-kap { display:none; }
+    .sy-kart-liste { display:grid; gap:.7rem; }
+    .sy-kart { border:1px solid #dfe5f0; border-radius:12px; padding:.8rem .9rem; background:#fff; }
+    .sy-kart .no { font-weight:800; font-size:1.05rem; }
+    .sy-kart .alt { font-size:.82rem; color:#5b6678; margin:.2rem 0 .6rem; }
+    .sy-kart .dugme { width:100%; text-align:center; display:block; }
+  }
+</style>
+<div class="sy-ust">
+  <h1 class="ust-baslik"><span class="emoji">📋</span>Stok Sayımları</h1>
+  {% if yonetici %}<a class="dugme" href="{% url 'core:stok_sayim_yeni' %}">+ Yeni sayım</a>{% endif %}
+</div>
+{% if not yonetici %}<p class="yardim">Girişi açık sayım belgeleri listelenir. Bir belgeyi açıp saydığınız miktarı girin; sistem miktarı kör sayımlarda gösterilmez.</p>{% endif %}
+
+{% if yonetici %}
+<form method="get" class="sy-filtre">
+  <label>Durum
+    <select name="durum"><option value="">Tümü</option>{% for k, ad in durumlar %}<option value="{{ k }}"{% if durum == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}</select></label>
+  <label>Depo
+    <select name="depo"><option value="">Tümü</option>{% for d in depolar %}<option value="{{ d.pk }}"{% if depo_id == d.pk|stringformat:"s" %} selected{% endif %}>{{ d.kod }} · {{ d.ad }}</option>{% endfor %}</select></label>
+  <button type="submit" class="dugme">Listele</button>
+</form>
+{% endif %}
+
+{% if sayimlar %}
+<div class="tablo-kapsayici sy-tablo-kap">
+<table>
+  <thead><tr><th>Sayım no</th><th>Tarih</th><th>Depo</th><th>Kapsam</th><th class="sag">Satır</th><th class="sag">Sayılan</th><th>Durum</th><th></th></tr></thead>
+  <tbody>
+  {% for s in sayimlar %}
+    <tr>
+      <td class="mono"><b>{{ s.no }}</b></td>
+      <td class="mono">{{ s.tarih|date:"d.m.Y" }}</td>
+      <td>{{ s.depo.kod }} · {{ s.depo.ad }}</td>
+      <td>{% if s.kategori %}{{ s.kategori.ad }}{% else %}Tümü{% endif %}{% if s.aciklama %}<div class="yardim">{{ s.aciklama }}</div>{% endif %}</td>
+      <td class="sag mono">{{ s.satir_adet }}</td>
+      <td class="sag mono">{{ s.sayilan_adet }}</td>
+      <td><span class="sy-rozet {% if s.durum == 'KAPALI' %}kapali{% elif s.durum == 'ONAYLI' %}onayli{% elif s.durum == 'GERI_ALINDI' %}geri{% endif %}">{{ s.get_durum_display }}</span>{% if s.kor %}<span class="sy-rozet kor">KÖR</span>{% endif %}</td>
+      <td class="sag">
+        {% if s.durum == 'ACIK' %}<a class="dugme" href="{% url 'core:stok_sayim_giris' s.pk %}">Giriş</a>{% endif %}
+        {% if yonetici %}<a class="dugme ikincil" href="{% url 'core:stok_sayim_belge' s.pk %}">Fark / Karar</a>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="sy-kart-liste">
+  {% for s in sayimlar %}
+  <div class="sy-kart">
+    <div class="no">{{ s.no }} <span class="sy-rozet {% if s.durum == 'KAPALI' %}kapali{% elif s.durum == 'ONAYLI' %}onayli{% elif s.durum == 'GERI_ALINDI' %}geri{% endif %}">{{ s.get_durum_display }}</span>{% if s.kor %}<span class="sy-rozet kor">KÖR</span>{% endif %}</div>
+    <div class="alt">{{ s.tarih|date:"d.m.Y" }} · {{ s.depo.kod }} · {{ s.depo.ad }} · {% if s.kategori %}{{ s.kategori.ad }}{% else %}tüm kategoriler{% endif %}<br>{{ s.satir_adet }} satır, {{ s.sayilan_adet }} sayıldı</div>
+    {% if s.durum == 'ACIK' %}<a class="dugme" href="{% url 'core:stok_sayim_giris' s.pk %}">Sayım girişine git</a>{% endif %}
+    {% if yonetici %}<a class="dugme ikincil" style="margin-top:.4rem" href="{% url 'core:stok_sayim_belge' s.pk %}">Fark / Karar</a>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="yardim">{% if yonetici %}Sayım belgesi yok. “Yeni sayım” ile başlayın.{% else %}Şu an girişe açık sayım yok.{% endif %}</p>
+{% endif %}
+{% endblock %}

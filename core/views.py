@@ -162,7 +162,7 @@ from core.ip import istemci_ip
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir,
-    atolye_kullanicisi_mi, kullanici_telefon, mesai_kullanicisi_mi, yonetici_gerekli, yonetici_mi,
+    atolye_kullanicisi_mi, kullanici_telefon, mesai_kullanicisi_mi, sayim_kullanicisi_mi, yonetici_gerekli, yonetici_mi,
 )
 
 SatirFormSet = formset_factory(SatirForm, extra=0, min_num=2, validate_min=True)
@@ -189,6 +189,8 @@ def pano(request):
     doğrudan kendi /mesai/ sayfasına yönlendirilir — LOGIN_REDIRECT_URL hep buraya düştüğü için."""
     if atolye_kullanicisi_mi(request.user):
         return redirect("core:atolye")
+    if sayim_kullanicisi_mi(request.user):
+        return redirect("core:stok_sayimlari")
     if mesai_kullanicisi_mi(request.user):
         return redirect("core:mesaim")
     kur_uyarisi, acik_oturumlar, kritik_stok = 0, [], None
@@ -11688,3 +11690,221 @@ def fason_siparis_pdf(request, pk):
     resp = HttpResponse(HTML(string=html).write_pdf(), content_type="application/pdf")
     resp["Content-Disposition"] = f'inline; filename="fason-siparisi-{fs.no}.pdf"'
     return resp
+
+
+# === STOKLAR > Stok Sayımları (2026-10-16, dilim 2: liste / yeni / giriş / fark-karar) =======================================================
+from collections import defaultdict as _sy_defaultdict  # noqa: E402
+from urllib.parse import quote as _sy_quote  # noqa: E402
+
+from core.forms import StokSayimAcForm  # noqa: E402
+from core.models import StokSayimGirdisi, StokSayimi, StokSayimSatiri, StokVaryant  # noqa: E402
+from core.services import stok_sayim as sayim_servis  # noqa: E402
+
+
+def _sayim_getir(pk):
+    return get_object_or_404(StokSayimi.objects.select_related("depo", "kategori"), pk=pk, silindi=False)
+
+
+def _varyant_etiketi(satir_veya_varyant) -> str:
+    v = getattr(satir_veya_varyant, "varyant", satir_veya_varyant)
+    return varyant_servis.varyant_kisa(v) if v is not None else ""
+
+
+@ekran_gerekli("stok_sayim")
+def stok_sayimlari(request):
+    """Sayım belgeleri. Yönetici: tüm belgeler (durum/depo süzgeci) + Yeni sayım + fark/karar; yalnız ``stok_sayim`` yetkili personel: yalnız GİRİŞİ AÇIK belgeler ve Giriş düğmesi."""
+    yonetici = yonetici_mi(request.user)
+    durum = (request.GET.get("durum") or "").strip()
+    depo_id = (request.GET.get("depo") or "").strip()
+    qs = StokSayimi.objects.filter(silindi=False).select_related("depo", "kategori")
+    if not yonetici:
+        qs = qs.filter(durum=StokSayimi.Durum.ACIK)
+    else:
+        if durum in StokSayimi.Durum.values:
+            qs = qs.filter(durum=durum)
+        if depo_id.isdigit():
+            qs = qs.filter(depo_id=int(depo_id))
+    qs = qs.annotate(
+        satir_adet=Count("satirlar", filter=Q(satirlar__silindi=False), distinct=True),
+        sayilan_adet=Count("satirlar", filter=Q(satirlar__silindi=False, satirlar__girdiler__silindi=False, satirlar__girdiler__gecersiz=False), distinct=True)).order_by("-yil", "-sira")
+    return render(request, "core/stok_sayim_listesi.html", {
+        "sayimlar": list(qs), "yonetici": yonetici, "durum": durum, "depo_id": depo_id, "durumlar": StokSayimi.Durum.choices,
+        "depolar": Depo.objects.filter(silindi=False).order_by("kod")})
+
+
+@yonetici_gerekli
+def stok_sayim_yeni(request):
+    if request.method == "POST":
+        form = StokSayimAcForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                sayim = sayim_servis.sayim_ac(depo_id=cd["depo"].pk, tarih=cd["tarih"], kategori_id=cd["kategori"].pk if cd["kategori"] else None, kor=cd["kor"],
+                                              sifirlar_dahil=cd["sifirlar_dahil"], aciklama=cd["aciklama"], kullanici=request.user)
+            except sayim_servis.SayimHatasi as e:
+                form.add_error(None, str(e))
+            else:
+                messages.success(request, f"{sayim.no} açıldı: {sayim.satirlar.count()} satır (kesme anı sistem miktarları kaydedildi).")
+                return redirect("core:stok_sayim_belge", pk=sayim.pk)
+    else:
+        form = StokSayimAcForm()
+    return render(request, "core/stok_sayim_form.html", {"form": form})
+
+
+@yonetici_gerekli
+def stok_sayim_belge(request, pk):
+    """Belge özeti + FARK / KARAR ekranı (yalnız yönetici): sistem / sayım / fark / birim maliyet / tutar / karar, girişler (geçersiz işaretleme), toplam fazla-eksik tutarı."""
+    sayim = _sayim_getir(pk)
+    goster = (request.GET.get("goster") or "hepsi").strip()
+    sonuc = sayim_servis.fark_satirlari(sayim)
+    girdiler = _sy_defaultdict(list)
+    for g in StokSayimGirdisi.objects.filter(satir__sayim=sayim, silindi=False).select_related("kullanici").order_by("created_at", "id"):
+        girdiler[g.satir_id].append(g)
+    satirlar = []
+    for d in sonuc["satirlar"]:
+        d["girdiler"] = girdiler.get(d["satir"].pk, [])
+        d["etiket"] = _varyant_etiketi(d["varyant"])
+        d["fark_var"] = d["fark"] is not None and abs(d["fark"]) >= sayim_servis.ESIK
+        satirlar.append(d)
+    suzgecler = {
+        "fark": lambda d: d["fark_var"], "sayilmadi": lambda d: d["fark"] is None, "duzelt": lambda d: d["karar"] == "DUZELT", "arastir": lambda d: d["karar"] == "ARASTIR"}
+    if goster in suzgecler:
+        satirlar = [d for d in satirlar if suzgecler[goster](d)]
+    else:
+        goster = "hepsi"
+    return render(request, "core/stok_sayim_belge.html", {
+        "sayim": sayim, "satirlar": satirlar, "ozet": sonuc["ozet"], "goster": goster, "toplam_satir": len(sonuc["satirlar"]),
+        "duzenlenebilir": sayim.durum in (StokSayimi.Durum.ACIK, StokSayimi.Durum.KAPALI)})
+
+
+@yonetici_gerekli
+def stok_sayim_karar(request, pk):
+    sayim = _sayim_getir(pk)
+    if request.method == "POST":
+        degisen, hatalar = 0, []
+        for satir in sayim.satirlar.filter(silindi=False).select_related("stok"):
+            yeni = request.POST.get(f"karar_{satir.pk}")
+            if yeni is None:
+                continue
+            notu = (request.POST.get(f"not_{satir.pk}") or "").strip()
+            if yeni == satir.karar and notu == satir.karar_notu:
+                continue
+            try:
+                sayim_servis.karar_ver(satir, yeni, kullanici=request.user, not_=notu)
+                degisen += 1
+            except sayim_servis.SayimHatasi as e:
+                hatalar.append(str(e))
+        if degisen:
+            messages.success(request, f"{degisen} satırın kararı kaydedildi.")
+        for h in hatalar[:10]:
+            messages.error(request, h)
+    return redirect(f"{reverse('core:stok_sayim_belge', args=[sayim.pk])}?goster={_sy_quote(request.POST.get('goster') or 'hepsi')}")
+
+
+@yonetici_gerekli
+def stok_sayim_durum(request, pk):
+    sayim = _sayim_getir(pk)
+    if request.method == "POST":
+        islem = request.POST.get("islem")
+        try:
+            if islem == "kapat":
+                sayim_servis.giris_kapat(sayim, request.user)
+                messages.success(request, f"{sayim.no}: sayım girişi kapatıldı.")
+            elif islem == "ac":
+                sayim_servis.giris_ac(sayim, request.user)
+                messages.success(request, f"{sayim.no}: sayım girişi yeniden açıldı.")
+            elif islem == "sil":
+                sayim_servis.sayim_sil(sayim, request.user)
+                messages.success(request, f"{sayim.no} silindi (stok/muhasebe etkisi yoktu).")
+                return redirect("core:stok_sayimlari")
+        except sayim_servis.SayimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:stok_sayim_belge", pk=sayim.pk)
+
+
+@yonetici_gerekli
+def stok_sayim_girdi_gecersiz(request, pk):
+    girdi = get_object_or_404(StokSayimGirdisi.objects.select_related("satir__sayim"), pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            sayim_servis.girdi_gecersiz(girdi, kullanici=request.user, gecersiz=request.POST.get("gecersiz") != "0")
+        except sayim_servis.SayimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:stok_sayim_belge", pk=girdi.satir.sayim_id)
+
+
+@ekran_gerekli("stok_sayim")
+def stok_sayim_giris(request, pk):
+    """SAYIM GİRİŞİ (mobil uyumlu; ``stok_sayim`` yetkili personel + yönetici). Satır başına "bu kez saydığım" miktarı girilir (toplamsal). KÖR belgede sistem miktarı HİÇ gönderilmez."""
+    sayim = _sayim_getir(pk)
+    if sayim.durum != StokSayimi.Durum.ACIK:
+        messages.warning(request, f"{sayim.no}: sayım girişi kapalı.")
+        return redirect("core:stok_sayimlari")
+    ara = (request.GET.get("ara") or "").strip()
+    qs = sayim.satirlar.filter(silindi=False).select_related("stok__uretim_birimi", "varyant")
+    for terim in ara.split():
+        qs = qs.filter(Q(stok__kod__icontains=terim) | Q(stok__ad__contains=buyuk_harf_tr(terim)))
+    satirlar = list(qs.order_by("stok__kod", "varyant_id", "id"))
+    toplamlar = sayim_servis.sayilanlar(sayim)
+    benim = {g["satir_id"]: g["t"] for g in StokSayimGirdisi.objects.filter(satir__sayim=sayim, kullanici=request.user, silindi=False, gecersiz=False)
+             .values("satir_id").annotate(t=Sum("miktar"))}
+    satir_veri = [{"satir": s, "etiket": _varyant_etiketi(s), "birim": s.stok.uretim_birimi.kisa_ad if s.stok.uretim_birimi_id else "",
+                   "sistem": None if sayim.kor else s.sistem_snapshot, "benim": benim.get(s.pk), "toplam": toplamlar.get(s.pk)} for s in satirlar]
+    ekle_ara = (request.GET.get("ekle_ara") or "").strip()
+    ekle_sonuc = []
+    if len(ekle_ara) >= 2:
+        mevcut = {(x.stok_id, x.varyant_id) for x in sayim.satirlar.filter(silindi=False)}
+        adaylar = Stok.objects.filter(silindi=False).exclude(kategori__hizmet_kategorisi=True).select_related("kategori")
+        for terim in ekle_ara.split():
+            adaylar = adaylar.filter(Q(kod__icontains=terim) | Q(ad__contains=buyuk_harf_tr(terim)))
+        for st in adaylar.order_by("kod")[:12]:
+            if st.varyantli:
+                secenekler = [(v.pk, varyant_servis.varyant_kisa(v), (st.pk, v.pk) in mevcut) for v in StokVaryant.objects.filter(stok=st, silindi=False).order_by("-standart", "id")]
+            else:
+                secenekler = [("", "", (st.pk, None) in mevcut)]
+            ekle_sonuc.append({"stok": st, "secenekler": secenekler})
+    return render(request, "core/stok_sayim_giris.html", {
+        "sayim": sayim, "satirlar": satir_veri, "ara": ara, "ekle_ara": ekle_ara, "ekle_sonuc": ekle_sonuc, "toplam_satir": sayim.satirlar.filter(silindi=False).count(),
+        "yonetici": yonetici_mi(request.user)})
+
+
+@ekran_gerekli("stok_sayim")
+def stok_sayim_giris_kaydet(request, pk):
+    sayim = _sayim_getir(pk)
+    ara = request.POST.get("ara", "")
+    if request.method == "POST":
+        satirlar = {s.pk: s for s in sayim.satirlar.filter(silindi=False).select_related("stok")}
+        yazilan, hatalar = 0, []
+        for anahtar, deger in request.POST.items():
+            if not anahtar.startswith("m_") or not deger.strip():
+                continue
+            try:
+                satir = satirlar[int(anahtar[2:])]
+            except (ValueError, KeyError):
+                continue
+            try:
+                sayim_servis.girdi_ekle(satir, kullanici=request.user, miktar=deger.strip())
+                yazilan += 1
+            except sayim_servis.SayimHatasi as e:
+                hatalar.append(f"{satir.stok.kod}: {e}")
+        if yazilan:
+            messages.success(request, f"{yazilan} satıra sayım girişi kaydedildi.")
+        elif not hatalar:
+            messages.info(request, "Girilen miktar yok.")
+        for h in hatalar[:10]:
+            messages.error(request, h)
+    hedef = reverse("core:stok_sayim_giris", args=[sayim.pk])
+    return redirect(f"{hedef}?ara={_sy_quote(ara)}" if ara else hedef)
+
+
+@ekran_gerekli("stok_sayim")
+def stok_sayim_satir_ekle(request, pk):
+    sayim = _sayim_getir(pk)
+    if request.method == "POST":
+        try:
+            vid = request.POST.get("varyant_id") or None
+            satir = sayim_servis.satir_ekle(sayim, stok_id=int(request.POST.get("stok_id") or 0), varyant_id=int(vid) if vid else None, kullanici=request.user)
+            messages.success(request, f"{satir.stok.kod} sayıma eklendi." + ("" if sayim.kor else f" (sistem miktarı {satir.sistem_snapshot.normalize():f})"))
+        except (sayim_servis.SayimHatasi, ValueError) as e:
+            messages.error(request, str(e))
+    return redirect("core:stok_sayim_giris", pk=sayim.pk)

@@ -1,0 +1,43 @@
+{% extends "core/base.html" %}
+{% block baslik %}Yeni Stok Sayımı · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Yeni Stok Sayımı{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:stok_sayimlari' %}">← Stok Sayımları</a>
+    <h1 class="ust-baslik"><span class="emoji">📋</span>Yeni Stok Sayımı</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Sayım Bilgileri</h2>
+      <div class="izgara">
+        {% for field in form %}
+          <div class="alan">
+            {% if field.field.widget.input_type == "checkbox" %}
+              <label for="{{ field.id_for_label }}" style="display:flex;gap:.5rem;align-items:center">{{ field }} {{ field.label }}</label>
+            {% else %}
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            {% endif %}
+            {% for e in field.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      <p class="yardim">Her depo için ayrı belge açılır (fason deposu dahil: fasoncudaki stok sayılıp düzeltilebilir). Açılışta o deponun sistem miktarları (varyant bazında) <b>anlık görüntü</b>
+        olarak kaydedilir. <b>Kör sayımda</b> sayım girenlere sistem miktarı hiç gösterilmez; fark ekranını yalnız yönetici görür.</p>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:stok_sayimlari' %}">İptal</a>
+      <button type="submit" class="birincil">Sayımı Aç</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

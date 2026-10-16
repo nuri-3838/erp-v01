@@ -1,0 +1,102 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ sayim.no }} · Fark / Karar · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Sayım Fark / Karar{% endblock %}
+
+{% block content %}
+<style>
+  .sb-ust { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; justify-content:space-between; margin-bottom:.8rem; }
+  .sb-rozet { display:inline-block; padding:.05rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#e8f0fe; color:#1f4fa8; }
+  .sb-rozet.kapali { background:#fff1dc; color:#b45f00; } .sb-rozet.onayli { background:#e7f7ec; color:#0a7d28; } .sb-rozet.geri { background:#f0e8f7; color:#6a2f96; } .sb-rozet.kor { background:#1f2937; color:#fff; }
+  .sb-kartlar { display:grid; grid-template-columns:repeat(auto-fit, minmax(11rem,1fr)); gap:.6rem; margin:.8rem 0; }
+  .sb-kart { border:1px solid #dfe5f0; border-radius:12px; padding:.6rem .8rem; background:#fff; }
+  .sb-kart small { display:block; font-size:.7rem; font-weight:700; color:#5b6678; text-transform:uppercase; }
+  .sb-kart b { font-size:1.15rem; }
+  .sb-fazla { color:#0a7d28; } .sb-eksik { color:#c1121f; }
+  .sb-suzgec { display:flex; flex-wrap:wrap; gap:.4rem; margin:.4rem 0 .8rem; }
+  .sb-suzgec a { padding:.25rem .7rem; border-radius:999px; border:1px solid #c9d1e0; font-size:.82rem; text-decoration:none; color:inherit; }
+  .sb-suzgec a.aktif { background:#1f2937; color:#fff; border-color:#1f2937; }
+  .sb-tablo td, .sb-tablo th { vertical-align:top; }
+  .sb-tablo .belirsiz { color:#b45f00; font-size:.74rem; }
+  .sb-tablo select { padding:.25rem .3rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; }
+  .sb-tablo input[type=text] { width:9rem; padding:.25rem .4rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; font-size:.8rem; }
+  .sb-gir { font-size:.76rem; color:#5b6678; }
+  .sb-gir .gecersiz { text-decoration:line-through; opacity:.6; }
+  .sb-gir form { display:inline; }
+  .sb-gir button { border:0; background:none; color:#1f4fa8; cursor:pointer; padding:0 .3rem; font-size:.74rem; }
+</style>
+<div class="sb-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:stok_sayimlari' %}">← Stok Sayımları</a>
+    <h1 class="ust-baslik"><span class="emoji">📋</span>{{ sayim.no }}
+      <span class="sb-rozet {% if sayim.durum == 'KAPALI' %}kapali{% elif sayim.durum == 'ONAYLI' %}onayli{% elif sayim.durum == 'GERI_ALINDI' %}geri{% endif %}">{{ sayim.get_durum_display }}</span>{% if sayim.kor %} <span class="sb-rozet kor">KÖR</span>{% endif %}</h1>
+    <div class="yardim">{{ sayim.depo.kod }} · {{ sayim.depo.ad }} · sayım tarihi {{ sayim.tarih|date:"d.m.Y" }} · kesme {{ sayim.kesme_zamani|date:"d.m.Y H:i" }}{% if sayim.kategori %} · {{ sayim.kategori.ad }}{% endif %}{% if sayim.aciklama %} · {{ sayim.aciklama }}{% endif %}</div>
+  </div>
+  {% if duzenlenebilir %}
+  <div style="display:flex; gap:.4rem; flex-wrap:wrap">
+    {% if sayim.durum == 'ACIK' %}<a class="dugme ikincil" href="{% url 'core:stok_sayim_giris' sayim.pk %}">Sayım girişi</a>{% endif %}
+    <form method="post" action="{% url 'core:stok_sayim_durum' sayim.pk %}" style="display:inline">{% csrf_token %}
+      {% if sayim.durum == 'ACIK' %}<button class="dugme ikincil" name="islem" value="kapat">Girişi kapat</button>{% else %}<button class="dugme ikincil" name="islem" value="ac">Girişi yeniden aç</button>{% endif %}
+      <button class="dugme ikincil" name="islem" value="sil" onclick="return confirm('Sayım belgesi silinsin mi? (stok/muhasebe etkisi yok)')">Sil</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="sb-kartlar">
+  <div class="sb-kart"><small>Satır / sayılan</small><b>{{ toplam_satir }} / {{ ozet.sayilan_adet }}</b></div>
+  <div class="sb-kart"><small>Fazla tutarı (sayılanlar)</small><b class="sb-fazla">{{ ozet.fazla_tutar|tr_para }} ₺</b></div>
+  <div class="sb-kart"><small>Eksik tutarı (sayılanlar)</small><b class="sb-eksik">{{ ozet.eksik_tutar|tr_para }} ₺</b></div>
+  <div class="sb-kart"><small>Düzelt kararı: {{ ozet.duzelt_adet }} satır</small><b><span class="sb-fazla">+{{ ozet.duzelt_fazla_tutar|tr_para }}</span> / <span class="sb-eksik">−{{ ozet.duzelt_eksik_tutar|tr_para }}</span> ₺</b></div>
+  {% if ozet.belirsiz_adet %}<div class="sb-kart"><small>Maliyeti belirsiz</small><b style="color:#b45f00">{{ ozet.belirsiz_adet }} satır</b></div>{% endif %}
+</div>
+<p class="yardim">Tutar = fark × kartın güncel ağırlıklı ortalama maliyeti (varyantlıda varyantın kendi ortalaması). Onayda hareketin gerçek tutarı yazılır. Maliyeti belirsiz (fiyatsız giriş / ortalama yok) kartlarda <b>Düzelt</b> verilemez.
+  Sistem sütunu: <b>referans</b> = sayım tarihi itibarıyla sistem (geç girilen geriye tarihli hareketler dahil); <b>kesme</b> = açılıştaki anlık görüntü. Girilmeyen satırlar “sayılmadı”dır, 0 sayılmaz.</p>
+
+<div class="sb-suzgec">
+  <a href="?goster=hepsi" class="{% if goster == 'hepsi' %}aktif{% endif %}">Hepsi ({{ toplam_satir }})</a>
+  <a href="?goster=fark" class="{% if goster == 'fark' %}aktif{% endif %}">Farklı olanlar</a>
+  <a href="?goster=sayilmadi" class="{% if goster == 'sayilmadi' %}aktif{% endif %}">Sayılmayanlar</a>
+  <a href="?goster=duzelt" class="{% if goster == 'duzelt' %}aktif{% endif %}">Düzelt</a>
+  <a href="?goster=arastir" class="{% if goster == 'arastir' %}aktif{% endif %}">Araştır</a>
+</div>
+
+<form method="post" action="{% url 'core:stok_sayim_karar' sayim.pk %}">
+  {% csrf_token %}
+  <input type="hidden" name="goster" value="{{ goster }}">
+  <div class="tablo-kapsayici">
+  <table class="sb-tablo">
+    <thead><tr><th>Ürün</th><th class="sag">Sistem (kesme)</th><th class="sag">Sistem (referans)</th><th class="sag">Sayılan</th><th class="sag">Fark</th><th class="sag">Birim maliyet</th><th class="sag">Fark tutarı</th><th>Karar</th></tr></thead>
+    <tbody>
+    {% for d in satirlar %}
+      <tr>
+        <td><b>{{ d.stok.ad }}</b>{% if d.etiket %} <span class="sb-rozet">{{ d.etiket }}</span>{% endif %}<div class="mono yardim">{{ d.stok.kod }}{% if d.satir.eklenen %} · sayımda eklendi{% endif %}</div>
+          {% if d.girdiler %}<details class="sb-gir"><summary>{{ d.girdiler|length }} giriş</summary>
+            {% for g in d.girdiler %}<div class="{% if g.gecersiz %}gecersiz{% endif %}"><span class="{% if g.gecersiz %}gecersiz{% endif %}">{{ g.created_at|date:"d.m H:i" }} · {{ g.kullanici.get_full_name|default:g.kullanici.username }} · {{ g.miktar|tr_miktar_sade }} ({{ g.get_kaynak_display }})</span>
+              {% if duzenlenebilir %}<form method="post" action="{% url 'core:stok_sayim_girdi_gecersiz' g.pk %}">{% csrf_token %}<input type="hidden" name="gecersiz" value="{% if g.gecersiz %}0{% else %}1{% endif %}"><button type="submit">{% if g.gecersiz %}geçerli yap{% else %}geçersiz yap{% endif %}</button></form>{% endif %}</div>{% endfor %}
+          </details>{% endif %}</td>
+        <td class="sag mono">{{ d.snapshot|tr_miktar_sade }}</td>
+        <td class="sag mono">{{ d.referans|tr_miktar_sade }}{% if d.degisen %}<div class="yardim">{% if d.degisen > 0 %}+{% endif %}{{ d.degisen|tr_miktar_sade }} sonradan</div>{% endif %}</td>
+        <td class="sag mono">{% if d.sayilan is None %}<span class="yardim">sayılmadı</span>{% else %}{{ d.sayilan|tr_miktar_sade }}{% endif %}</td>
+        <td class="sag mono {% if d.fark_var %}{% if d.fark > 0 %}sb-fazla{% else %}sb-eksik{% endif %}{% endif %}">{% if d.fark is None %}—{% else %}{% if d.fark > 0 %}+{% endif %}{{ d.fark|tr_miktar_sade }}{% endif %}</td>
+        <td class="sag mono">{% if d.birim_maliyet is not None %}{{ d.birim_maliyet|tr_kur:4 }}{% else %}—{% endif %}{% if d.belirsiz %}<div class="belirsiz" title="{{ d.neden }}">⚠ maliyet belirsiz</div>{% endif %}</td>
+        <td class="sag mono {% if d.fark_var and d.tutar is not None %}{% if d.fark > 0 %}sb-fazla{% else %}sb-eksik{% endif %}{% endif %}">{% if d.tutar is not None and d.fark_var %}{{ d.tutar|tr_para }}{% else %}—{% endif %}</td>
+        <td>{% if duzenlenebilir %}
+          <select name="karar_{{ d.satir.pk }}">
+            <option value="BEKLIYOR"{% if d.karar == 'BEKLIYOR' %} selected{% endif %}>Bekliyor</option>
+            <option value="DUZELT"{% if d.karar == 'DUZELT' %} selected{% endif %}>Düzelt</option>
+            <option value="ARASTIR"{% if d.karar == 'ARASTIR' %} selected{% endif %}>Araştır</option>
+          </select>
+          <input type="text" name="not_{{ d.satir.pk }}" value="{{ d.satir.karar_notu }}" placeholder="not" maxlength="300">
+        {% else %}{{ d.satir.get_karar_display }}{% if d.satir.karar_notu %}<div class="yardim">{{ d.satir.karar_notu }}</div>{% endif %}{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8" class="yardim">Bu süzgeçle satır yok.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if duzenlenebilir and satirlar %}<div style="margin:.8rem 0"><button type="submit" class="birincil">Kararları kaydet</button></div>{% endif %}
+</form>
+<p class="yardim">Onay (stok düzeltme hareketi + muhasebe fişi) ve geri alma bir sonraki dilimde eklenecek; bu aşamada kararlar yalnızca kaydedilir, stok ve muhasebe değişmez.</p>
+{% endblock %}

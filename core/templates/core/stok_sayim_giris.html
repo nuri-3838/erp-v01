@@ -1,0 +1,87 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ sayim.no }} · Sayım Girişi · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Sayım Girişi{% endblock %}
+
+{% block content %}
+<style>
+  .sg-ust { margin-bottom:.8rem; }
+  .sg-ust h1 { margin:.2rem 0; }
+  .sg-bilgi { font-size:.85rem; color:#5b6678; }
+  .sg-rozet { display:inline-block; padding:.05rem .5rem; border-radius:999px; font-size:.72rem; font-weight:700; background:#1f2937; color:#fff; margin-left:.3rem; }
+  .sg-ara { display:flex; gap:.5rem; margin:.7rem 0; }
+  .sg-ara input[type=search] { flex:1; padding:.55rem .7rem; font-size:1rem; border:1px solid #c9d1e0; border-radius:10px; }
+  .sg-liste { display:grid; gap:.6rem; margin-bottom:5rem; }
+  .sg-kart { border:1px solid #dfe5f0; border-radius:12px; padding:.7rem .85rem; background:#fff; display:grid; grid-template-columns:1fr 7.2rem; gap:.4rem .8rem; align-items:center; }
+  .sg-kart .ad { font-weight:700; line-height:1.25; }
+  .sg-kart .kod { font-family:ui-monospace,Consolas,monospace; font-size:.78rem; color:#5b6678; }
+  .sg-kart .var { display:inline-block; font-size:.7rem; font-weight:700; background:#e8f0fe; color:#1f4fa8; padding:0 .4rem; border-radius:6px; margin-left:.3rem; }
+  .sg-kart .say { font-size:.78rem; color:#5b6678; grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:.3rem .9rem; }
+  .sg-kart .say b { color:#111; }
+  .sg-kart input[type=text] { width:100%; padding:.6rem .5rem; font-size:1.15rem; text-align:right; border:2px solid #c9d1e0; border-radius:10px; }
+  .sg-kart input[type=text]:focus { border-color:#e8590c; outline:none; }
+  .sg-altbar { position:fixed; left:0; right:0; bottom:0; padding:.6rem 1rem calc(.6rem + env(safe-area-inset-bottom)); background:rgba(255,255,255,.96); border-top:1px solid #dfe5f0; display:flex; gap:.6rem; justify-content:center; z-index:20; }
+  .sg-altbar .birincil { flex:1; max-width:30rem; padding:.8rem; font-size:1.05rem; }
+  .sg-ekle { border:1px dashed #c9d1e0; border-radius:12px; padding:.7rem .85rem; margin:1rem 0; }
+  .sg-ekle .sonuc { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem .7rem; padding:.35rem 0; border-top:1px solid #eef1f7; font-size:.88rem; }
+  @media (min-width:900px) { .sg-liste { grid-template-columns:repeat(2, 1fr); } }
+</style>
+<div class="sg-ust">
+  <a class="ust-link" href="{% url 'core:stok_sayimlari' %}">← Stok Sayımları</a>
+  <h1 class="ust-baslik"><span class="emoji">📋</span>{{ sayim.no }}{% if sayim.kor %}<span class="sg-rozet">KÖR</span>{% endif %}</h1>
+  <div class="sg-bilgi">{{ sayim.depo.kod }} · {{ sayim.depo.ad }} · {{ sayim.tarih|date:"d.m.Y" }}{% if sayim.kategori %} · {{ sayim.kategori.ad }}{% endif %} · {{ toplam_satir }} satır{% if sayim.aciklama %}<br>{{ sayim.aciklama }}{% endif %}</div>
+  <p class="yardim" style="margin:.4rem 0 0">Saydığınız miktarı yazıp en alttaki <b>Kaydet</b>'e basın. Girişler <b>toplanır</b>: aynı ürünü farklı raflarda sayarsanız her seferinde o rafın miktarını girin.</p>
+</div>
+
+<form method="get" class="sg-ara">
+  <input type="search" name="ara" value="{{ ara }}" placeholder="Ürün ara (kod veya ad)" autocomplete="off">
+  <button class="dugme" type="submit">Ara</button>
+  {% if ara %}<a class="dugme ikincil" href="{% url 'core:stok_sayim_giris' sayim.pk %}">Temizle</a>{% endif %}
+</form>
+
+<form method="post" action="{% url 'core:stok_sayim_giris_kaydet' sayim.pk %}" autocomplete="off">
+  {% csrf_token %}
+  <input type="hidden" name="ara" value="{{ ara }}">
+  <div class="sg-liste">
+  {% for r in satirlar %}
+    <div class="sg-kart">
+      <div>
+        <div class="ad">{{ r.satir.stok.ad }}{% if r.etiket %}<span class="var">{{ r.etiket }}</span>{% endif %}</div>
+        <div class="kod">{{ r.satir.stok.kod }}{% if r.birim %} · {{ r.birim }}{% endif %}{% if r.satir.eklenen %} · eklendi{% endif %}</div>
+      </div>
+      <input type="text" inputmode="decimal" name="m_{{ r.satir.pk }}" placeholder="Say" aria-label="{{ r.satir.stok.kod }} sayılan miktar">
+      <div class="say">
+        {% if r.sistem is not None %}<span>Sistem: <b>{{ r.sistem|tr_miktar_sade }}</b></span>{% endif %}
+        {% if r.benim is not None %}<span>Benim girdiğim: <b>{{ r.benim|tr_miktar_sade }}</b></span>{% endif %}
+        {% if r.toplam is not None %}<span>Toplam sayılan: <b>{{ r.toplam|tr_miktar_sade }}</b></span>{% else %}<span>henüz sayılmadı</span>{% endif %}
+      </div>
+    </div>
+  {% empty %}
+    <p class="yardim">{% if ara %}“{{ ara }}” ile eşleşen satır yok. Aşağıdan listede olmayan ürünü ekleyebilirsiniz.{% else %}Sayım listesi boş. Aşağıdan ürün ekleyin.{% endif %}</p>
+  {% endfor %}
+  </div>
+  <div class="sg-altbar"><button type="submit" class="birincil">Kaydet</button></div>
+</form>
+
+<section class="sg-ekle">
+  <b>Listede olmayan ürün (sistemde 0 görünen)</b>
+  <form method="get" class="sg-ara" style="margin:.5rem 0">
+    <input type="hidden" name="ara" value="{{ ara }}">
+    <input type="search" name="ekle_ara" value="{{ ekle_ara }}" placeholder="Ürün kodu / adı (en az 2 harf)" autocomplete="off">
+    <button class="dugme" type="submit">Bul</button>
+  </form>
+  {% for e in ekle_sonuc %}
+    <div class="sonuc"><span class="kod">{{ e.stok.kod }}</span> <span>{{ e.stok.ad }}</span>
+    {% for vid, etiket, var in e.secenekler %}
+      {% if var %}<span class="yardim">{{ etiket|default:"listede var" }} (listede)</span>
+      {% else %}
+        <form method="post" action="{% url 'core:stok_sayim_satir_ekle' sayim.pk %}" style="display:inline">{% csrf_token %}
+          <input type="hidden" name="stok_id" value="{{ e.stok.pk }}"><input type="hidden" name="varyant_id" value="{{ vid }}">
+          <button class="dugme ikincil" type="submit">{% if etiket %}Ekle: {{ etiket }}{% else %}Ekle{% endif %}</button></form>
+      {% endif %}
+    {% endfor %}</div>
+  {% empty %}
+    {% if ekle_ara %}<p class="yardim">Eşleşen ürün bulunamadı.</p>{% endif %}
+  {% endfor %}
+</section>
+{% endblock %}

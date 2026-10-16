@@ -3917,3 +3917,20 @@ class FasonSiparisSatirForm(forms.Form):
 
     def dolu_mu(self):
         return bool(self.cleaned_data.get("stok"))
+
+
+class StokSayimAcForm(forms.Form):
+    """Yeni stok sayımı: tek depo + sayım tarihi + (isteğe bağlı) kategori; kör sayım / sıfır stoklar dahil seçenekleri."""
+    depo = forms.ModelChoiceField(label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
+    tarih = forms.DateField(label="Sayım tarihi", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=tr_bugun)
+    kategori = forms.ModelChoiceField(label="Kategori süzgeci (boş = hepsi)", queryset=Kategori.objects.none(), required=False, empty_label="— tüm kategoriler —")
+    kor = forms.BooleanField(label="Kör sayım (sayanlara sistem miktarı gösterilmez)", required=False)
+    sifirlar_dahil = forms.BooleanField(label="Sistemde 0 görünen (hareketi olan) ürünler de listelensin", required=False)
+    aciklama = forms.CharField(label="Açıklama", max_length=300, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["depo"].queryset = Depo.objects.filter(silindi=False).order_by("kod")
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod} · {o.ad}" + (" (fasoncuda)" if o.fason_cari_id else "") + ("" if o.aktif else " (pasif)")
+        self.fields["kategori"].queryset = Kategori.objects.filter(silindi=False).select_related("ust").order_by("ust__ad", "ad")
+        self.fields["kategori"].label_from_instance = lambda o: (f"{o.ust.ad} › {o.ad}" if o.ust_id else o.ad)
