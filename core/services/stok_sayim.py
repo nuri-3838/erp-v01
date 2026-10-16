@@ -7,7 +7,7 @@ Kurallar (kullanıcı kararları):
 - Girişler TOPLAMSAL: satırın sayılanı = geçerli girişlerin toplamı; hiç giriş yoksa "sayılmadı" (fark yok — 0 sayılmaz). Yönetici girişi geçersiz işaretleyebilir.
 - FARK referansı: ``sayim.tarih`` itibarıyla sistem eldekisi (geriye tarihli GEÇ girilmiş hareketler dahil); sayım tarihi = kesme günü ise, o gün kesmeden SONRA girilen hareketler sayımdan
   sonrası sayılıp referanstan düşülür. fark = sayılan − referans. Tutar = fark × stok kartının güncel ağırlıklı ortalama maliyeti (bilgi; onayda hareketin gerçek tutarı).
-- Maliyeti belirsiz kart (fiyatsız/geçici giriş var ya da ortalama yok): fark gösterilir ama karar ``Düzelt`` verilemez.
+- Maliyeti belirsiz kart (kullanılabilir ortalama yok): fark gösterilir; FAZLA için yönetici elle / önerilen birim maliyet girerse (``maliyet_kaydet``) Düzelt verilebilir, EKSİK için verilemez ("önce faturayı bağlayın").
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from django.utils import timezone
 from core.models import Depo, Kategori, Stok, StokHareket, StokSayimGirdisi, StokSayimi, StokSayimSatiri, StokVaryant
 from core.sayi import SayiHatasi, parse_tr
 from core.services import stok_ortalama
+from core.services.yevmiye import kur_usd_birebir
 from core.tarih import tr_bugun
 
 SIFIR = Decimal("0")
@@ -231,22 +232,26 @@ def fark_satirlari(sayim, *, satir_idleri=None) -> dict:
     satirlar = list(qs.order_by("stok__kod", "varyant_id", "id"))
     referans = referans_sistem(sayim)
     sayilan = sayilanlar(sayim)
-    stok_idler = {s.stok_id for s in satirlar}
-    fiyatsiz = stok_ortalama.fiyatsiz_girisli_stoklar(stok_idler)
     cikti, ozet = [], {"sayilan_adet": 0, "fazla_tutar": SIFIR, "eksik_tutar": SIFIR, "duzelt_adet": 0, "duzelt_fazla_tutar": SIFIR, "duzelt_eksik_tutar": SIFIR, "belirsiz_adet": 0}
     for s in satirlar:
         ref = referans.get((s.stok_id, s.varyant_id), SIFIR)
         sayim_m = sayilan.get(s.pk)
         fark = None if sayim_m is None else sayim_m - ref
         birim = birim_maliyet(s.stok, s.varyant)
-        neden = ""
-        if s.stok_id in fiyatsiz:
-            neden = "Fiyatsız (geçici) girişi olan kart: maliyeti belirsiz"
-        elif birim is None or birim <= 0:
-            neden = "Ortalama maliyet yok"
+        neden, elle = "", False
+        if birim is None or birim <= 0:                                  # kullanılabilir ortalama yok → maliyeti belirsiz
+            if fark is not None and fark < 0:
+                neden = "Maliyeti belirsiz kartta eksik düzeltilemez: önce faturayı bağlayın"
+            elif fark is not None and fark > 0 and s.manuel_birim_maliyet_try is not None:
+                birim, elle = s.manuel_birim_maliyet_try, True            # elle / önerilen maliyetle FAZLA düzeltilebilir
+            elif fark is not None and fark > 0:
+                neden = "Ortalama maliyet yok: elle maliyet girerek Düzelt'e açabilirsiniz"
+            else:
+                neden = "Ortalama maliyet yok"
         tutar = None if (fark is None or birim is None) else (fark * birim).quantize(Decimal("0.01"))
         satir_sonuc = {"satir": s, "stok": s.stok, "varyant": s.varyant, "snapshot": s.sistem_snapshot, "referans": ref, "degisen": ref - s.sistem_snapshot, "sayilan": sayim_m, "fark": fark,
-                       "birim_maliyet": birim, "tutar": tutar, "belirsiz": bool(neden), "neden": neden, "karar": s.karar}
+                       "birim_maliyet": birim, "tutar": tutar, "belirsiz": bool(neden), "neden": neden, "karar": s.karar,
+                       "elle": elle, "manuel_kaynak": s.maliyet_kaynagi if elle else ""}
         cikti.append(satir_sonuc)
         if fark is None:
             continue
@@ -276,7 +281,7 @@ def karar_ver(satir, karar, *, kullanici, not_="") -> StokSayimSatiri:
         if abs(d["fark"]) < ESIK:
             raise SayimHatasi(f"{satir.stok.kod}: fark yok; düzeltme gerekmez.")
         if d["belirsiz"]:
-            raise SayimHatasi(f"{satir.stok.kod}: {d['neden']} — Düzelt verilemez (önce faturayı bağlayın / maliyeti netleştirin).")
+            raise SayimHatasi(f"{satir.stok.kod}: {d['neden']} — Düzelt verilemez" + (" (elle maliyet girin)." if d["fark"] > 0 else " (önce faturayı bağlayın)."))
     satir.karar = karar
     satir.karar_notu = (not_ or "").strip()[:300]
     satir.karar_veren = kullanici if karar != Karar.BEKLIYOR else None
@@ -295,7 +300,6 @@ KUR_BEKLENIYOR_MESAJI = ("{tarih:%d.%m.%Y} tarihli USD kuru henüz yok (TCMB kur
 
 def kur_bekleniyor_mu(sayim) -> bool:
     """Sayım tarihinin USD kuru KUR tablosunda yoksa True — her fişin USD karşılığı zorunlu olduğundan onay kur yayınlanana dek yapılamaz (D+1 kuralı)."""
-    from core.services.yevmiye import kur_usd_birebir
     return kur_usd_birebir(sayim.tarih) is None
 
 
@@ -325,7 +329,11 @@ def _fis_satirlari(sayim, hareketler):
         stok_kodu, maliyet_kodu = _hesaplar(h.stok)
         fazla = h.tur == StokHareket.Tur.GIRIS
         isaret = "+" if fazla else "−"
-        aciklama = f"{sayim.no} {h.stok.kod} {h.stok.ad[:48]}{_etiket(h)} {isaret}{format(h.miktar.normalize(), 'f')}"[:190]
+        elle = h.tur == StokHareket.Tur.GIRIS and h.sayim_satir.manuel_birim_maliyet_try is not None and not h.giris_ortalama and h.giris_tutar_try is not None
+        aciklama = f"{sayim.no} {h.stok.kod} {h.stok.ad[:40]}{_etiket(h)} {isaret}{format(h.miktar.normalize(), 'f')}"
+        if elle:
+            aciklama += f" · SAYIM – tahmini maliyet {format(h.sayim_satir.manuel_birim_maliyet_try.normalize(), 'f')} (kaynak: {h.sayim_satir.maliyet_kaynagi})"
+        aciklama = aciklama[:190]
         stok_satirlari.append(SatirGirdi(stok_kodu, "B" if fazla else "A", tutar, aciklama=aciklama))
         maliyet[maliyet_kodu]["A" if fazla else "B"] += tutar
     satirlar = list(stok_satirlari)
@@ -376,9 +384,17 @@ def onayla(sayim, kullanici) -> StokSayimi:
     hareketler = []
     for d in duzelt:
         sat, fark = d["satir"], d["fark"]
+        ek = {"giris_ortalama": fark > 0}
+        aciklama = f"Sayım {sayim.no}"
+        if d["elle"]:                                                   # maliyeti belirsiz kartta FAZLA: elle / önerilen birim maliyetle KESİN giriş (tahmini/geçici işareti YOK)
+            tutar = (fark * sat.manuel_birim_maliyet_try).quantize(Decimal("0.01"))
+            if tutar <= 0:
+                raise SayimHatasi(f"{d['stok'].kod}: elle birim maliyet × fark tutarı sıfır; maliyeti yeniden girin.")
+            ek = {"giris_ortalama": False, "giris_tutar_try": tutar, "giris_tutar_usd": (tutar / kur_usd_birebir(sayim.tarih)).quantize(Decimal("0.01"))}
+            aciklama = f"SAYIM – tahmini maliyet (kaynak: {sat.maliyet_kaynagi}) {sayim.no}"[:290]
         try:
             h = hareket_ekle(stok_id=sat.stok_id, depo_id=sayim.depo_id, tarih=sayim.tarih, tur=StokHareket.Tur.GIRIS if fark > 0 else StokHareket.Tur.CIKIS, miktar=abs(fark),
-                             aciklama=f"Sayım {sayim.no}", kaynak=StokHareket.Kaynak.SAYIM, kullanici=kullanici, varyant=sat.varyant_id, giris_ortalama=fark > 0, sayim_satir=sat)
+                             aciklama=aciklama, kaynak=StokHareket.Kaynak.SAYIM, kullanici=kullanici, varyant=sat.varyant_id, sayim_satir=sat, **ek)
         except HareketHatasi as e:
             raise SayimHatasi(f"{d['stok'].kod}: {e}")
         hareketler.append(h)
@@ -506,3 +522,86 @@ def stok_fark_gecmisi(stok) -> list:
                       "referans": s.onay_referans if onayli else None, "sayilan": s.onay_sayilan if onayli else canli.get(s.pk), "fark": s.onay_fark if onayli else None,
                       "karar": s.karar, "tutar": s.onay_tutar_try if s.sayim.durum == Durum.ONAYLI else None, "devam": not onayli})
     return sonuc
+
+
+# ----------------------------------------------------------------------------------------------------------------------- MALİYET ÖNERİSİ / ELLE MALİYET (yalnız FAZLA, maliyeti belirsiz kart)
+def _son_hareket_maliyeti(stok, varyant_id):
+    """(a) (stok, varyant) zincirinde en son maliyeti BELLİ hareketin birim maliyeti; varyantta yoksa kartın son hareketi. (değer, kaynak) ya da None."""
+    base = StokHareket.objects.filter(stok=stok, silindi=False, birim_maliyet_try__gt=0).exclude(maliyet_durumu=StokHareket.MaliyetDurumu.YOK)
+    adaylar = [(base.filter(varyant_id=varyant_id), "")] if varyant_id else []
+    adaylar.append((base, " (kart geneli)" if varyant_id else ""))
+    for qs, ek in adaylar:
+        h = qs.order_by("-tarih", "-id").first()
+        if h is not None:
+            yon = "giriş" if h.tur == StokHareket.Tur.GIRIS else "çıkış"
+            return h.birim_maliyet_try, f"Son hareket {h.tarih:%d.%m.%Y} ({yon}, {h.get_kaynak_display().lower()}){ek}"
+    return None
+
+
+def maliyet_onerisi(stok, varyant_id=None, graf_getir=None) -> dict:
+    """Birim maliyet ÖNERİSİ: (a) kartın son bilinen birim maliyeti, (b) reçeteden (girdi ortalamaları, operasyon zinciri; işçilik/GÜG yok), (c) yoksa boş.
+    Döner: {"deger": Decimal|None, "kaynak": str, "kismi": bool}. ``graf_getir`` (çağrılabilir) verilirse ürün ağacı grafiği onunla alınır (toplu ekranda bir kez yüklenir)."""
+    a = _son_hareket_maliyeti(stok, varyant_id)
+    if a is not None:
+        return {"deger": a[0], "kaynak": a[1], "kismi": False}
+    from core.services import urun_agaci
+    graf = graf_getir() if graf_getir else urun_agaci.graf_yukle()
+    r = urun_agaci.malzeme_birim_maliyeti(graf, stok)
+    if r["toplam_try"] and r["toplam_try"] > 0:
+        kismi = r["maliyetsiz"] > 0
+        kaynak = "Reçete (malzeme)" + (f" — KISMİ: {r['maliyetsiz']} girdinin maliyeti yok" if kismi else "")
+        return {"deger": r["toplam_try"].quantize(Decimal("0.000001")), "kaynak": kaynak, "kismi": kismi}
+    return {"deger": None, "kaynak": "", "kismi": False}
+
+
+@transaction.atomic
+def maliyet_kaydet(satir, *, kullanici, birim, kaynak="Elle giriş", oneri=None) -> StokSayimSatiri:
+    """Yönetici satıra birim maliyet yazar (önerilen ya da elle). YALNIZ maliyeti belirsiz kartın FAZLA satırı; kaydedilince satır Düzelt'e açılır. LOGLU (StokSayimMaliyetLogu)."""
+    from core import istek_baglami
+    from core.models import StokSayimMaliyetLogu
+    satir = StokSayimSatiri.objects.select_related("sayim", "stok", "varyant").get(pk=satir.pk)
+    _duzenlenebilir(satir.sayim, kapali_dahil=True)
+    try:
+        d = _miktar(birim)
+    except SayimHatasi:
+        raise SayimHatasi("Birim maliyet geçerli bir sayı olmalı.")
+    if d <= 0:
+        raise SayimHatasi("Birim maliyet sıfırdan büyük olmalı.")
+    (satir_sonuc,) = fark_satirlari(satir.sayim, satir_idleri=[satir.pk])["satirlar"]
+    if satir_sonuc["fark"] is None:
+        raise SayimHatasi(f"{satir.stok.kod}: satır sayılmadı; maliyet girilemez.")
+    if satir_sonuc["fark"] < 0:
+        raise SayimHatasi(f"{satir.stok.kod}: eksik için elle maliyet girilemez; önce faturayı bağlayın.")
+    if satir_sonuc["fark"] == 0:
+        raise SayimHatasi(f"{satir.stok.kod}: fark yok.")
+    ort = birim_maliyet(satir.stok, satir.varyant)
+    if ort is not None and ort > 0:
+        raise SayimHatasi(f"{satir.stok.kod}: kartın ortalama maliyeti var ({ort.normalize():f}); elle maliyet girilmez.")
+    eski = satir.manuel_birim_maliyet_try
+    satir.manuel_birim_maliyet_try, satir.maliyet_kaynagi = d, (kaynak or "Elle giriş")[:160]
+    satir.maliyet_giren, satir.maliyet_zamani, satir.updated_by = kullanici, timezone.now(), kullanici
+    satir.save(update_fields=["manuel_birim_maliyet_try", "maliyet_kaynagi", "maliyet_giren", "maliyet_zamani", "updated_by", "updated_at"])
+    StokSayimMaliyetLogu.objects.create(satir=satir, kullanici=kullanici, ip_adresi=istek_baglami.ip(), eski=eski, yeni=d, kaynak=satir.maliyet_kaynagi,
+                                        oneri=(oneri or {}).get("deger"), oneri_kaynagi=((oneri or {}).get("kaynak") or "")[:160], created_by=kullanici, updated_by=kullanici)
+    return satir
+
+
+@transaction.atomic
+def maliyet_kaldir(satir, *, kullanici) -> StokSayimSatiri:
+    """Elle maliyeti kaldırır (loglu); satır Düzelt'teyse Bekliyor'a döner (maliyetsiz Düzelt olamaz)."""
+    from core import istek_baglami
+    from core.models import StokSayimMaliyetLogu
+    satir = StokSayimSatiri.objects.select_related("sayim", "stok").get(pk=satir.pk)
+    _duzenlenebilir(satir.sayim, kapali_dahil=True)
+    if satir.manuel_birim_maliyet_try is None:
+        return satir
+    eski = satir.manuel_birim_maliyet_try
+    satir.manuel_birim_maliyet_try, satir.maliyet_kaynagi, satir.maliyet_giren, satir.maliyet_zamani, satir.updated_by = None, "", None, None, kullanici
+    alanlar = ["manuel_birim_maliyet_try", "maliyet_kaynagi", "maliyet_giren", "maliyet_zamani", "updated_by", "updated_at"]
+    if satir.karar == Karar.DUZELT:
+        satir.karar, satir.karar_veren = Karar.BEKLIYOR, None
+        satir.karar_notu = ("Elle maliyet kaldırıldı; karar sıfırlandı. " + satir.karar_notu)[:300]
+        alanlar += ["karar", "karar_veren", "karar_notu"]
+    satir.save(update_fields=alanlar)
+    StokSayimMaliyetLogu.objects.create(satir=satir, kullanici=kullanici, ip_adresi=istek_baglami.ip(), eski=eski, yeni=None, kaynak="Kaldırıldı", created_by=kullanici, updated_by=kullanici)
+    return satir

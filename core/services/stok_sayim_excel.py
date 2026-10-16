@@ -173,10 +173,11 @@ def fark_raporu(sayim, satirlar, ozet) -> bytes:
     ws["A1"].font = KALIN
     ws["A2"] = (f"Sayılan satır {ozet.get('sayilan_adet', 0)} · fazla tutarı {ozet.get('fazla_tutar', 0)} · eksik tutarı {ozet.get('eksik_tutar', 0)} · "
                 f"Düzelt: {ozet.get('duzelt_adet', 0)} satır")
-    _basliklar(ws, 4, ["Stok Kodu", "Ürün", "Varyant", "Sistem (kesme)", "Sistem (referans)", "Sayılan", "Fark", "Birim maliyet (TL)", "Fark tutarı (TL)", "Karar", "Not", "Maliyet uyarısı"])
+    _basliklar(ws, 4, ["Stok Kodu", "Ürün", "Varyant", "Sistem (kesme)", "Sistem (referans)", "Sayılan", "Fark", "Birim maliyet (TL)", "Fark tutarı (TL)", "Karar", "Not", "Maliyet notu"])
     for i, d in enumerate(satirlar, start=5):
         ws.append([guvenli(d["stok"].kod), guvenli(d["stok"].ad), guvenli(d.get("etiket") or ""), _sayi(d["snapshot"]), _sayi(d["referans"]), _sayi(d["sayilan"]), _sayi(d["fark"]),
-                   _sayi(d["birim_maliyet"]), _sayi(d["tutar"]), d["satir"].get_karar_display(), guvenli(d["satir"].karar_notu), guvenli(d["neden"])])
+                   _sayi(d["birim_maliyet"]), _sayi(d["tutar"]), d["satir"].get_karar_display(), guvenli(d["satir"].karar_notu),
+                   guvenli(d["neden"] or (f"elle/önerilen maliyet: {d['manuel_kaynak']}" if d.get("elle") else ""))])
     _genislik(ws, [16, 44, 18, 14, 14, 12, 10, 16, 16, 12, 28, 30])
     ws.freeze_panes = "A5"
     return _bayt(wb)

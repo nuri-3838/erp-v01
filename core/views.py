@@ -11771,12 +11771,29 @@ def stok_sayim_belge(request, pk):
     girdiler = _sy_defaultdict(list)
     for g in StokSayimGirdisi.objects.filter(satir__sayim=sayim, silindi=False).select_related("kullanici").order_by("created_at", "id"):
         girdiler[g.satir_id].append(g)
+    from core.models import StokSayimMaliyetLogu
+    loglar = _sy_defaultdict(list)
+    for lg in StokSayimMaliyetLogu.objects.filter(satir__sayim=sayim, silindi=False).select_related("kullanici").order_by("created_at", "id"):
+        loglar[lg.satir_id].append(lg)
+    graf_onbellek = {}
+
+    def graf_getir():
+        if "g" not in graf_onbellek:
+            from core.services import urun_agaci
+            graf_onbellek["g"] = urun_agaci.graf_yukle()
+        return graf_onbellek["g"]
+    duzenlenebilir = sayim.durum in (StokSayimi.Durum.ACIK, StokSayimi.Durum.KAPALI)
     satirlar = []
     for d in sonuc["satirlar"]:
         d["girdiler"] = girdiler.get(d["satir"].pk, [])
+        d["maliyet_log"] = loglar.get(d["satir"].pk, [])
         d["etiket"] = _varyant_etiketi(d["varyant"])
         d["fark_var"] = d["fark"] is not None and abs(d["fark"]) >= sayim_servis.ESIK
+        d["oneri"] = None
+        if duzenlenebilir and not donmus and d["belirsiz"] and d["fark"] is not None and d["fark"] > 0:            # elle/önerilen maliyetle FAZLA düzeltilebilir
+            d["oneri"] = sayim_servis.maliyet_onerisi(d["stok"], d["satir"].varyant_id, graf_getir)
         satirlar.append(d)
+    elle_adet = sum(1 for d in satirlar if d["elle"] and d["karar"] == "DUZELT")
     suzgecler = {
         "fark": lambda d: d["fark_var"], "sayilmadi": lambda d: d["fark"] is None, "duzelt": lambda d: d["karar"] == "DUZELT", "arastir": lambda d: d["karar"] == "ARASTIR"}
     if goster in suzgecler:
@@ -11784,7 +11801,7 @@ def stok_sayim_belge(request, pk):
     else:
         goster = "hepsi"
     return render(request, "core/stok_sayim_belge.html", {
-        "sayim": sayim, "satirlar": satirlar, "ozet": sonuc["ozet"], "goster": goster, "toplam_satir": len(sonuc["satirlar"]), "donmus": donmus,
+        "sayim": sayim, "satirlar": satirlar, "ozet": sonuc["ozet"], "goster": goster, "toplam_satir": len(sonuc["satirlar"]), "donmus": donmus, "elle_adet": elle_adet,
         "kur_bekleniyor": sayim.durum == StokSayimi.Durum.KAPALI and sayim_servis.kur_bekleniyor_mu(sayim),
         "duzenlenebilir": sayim.durum in (StokSayimi.Durum.ACIK, StokSayimi.Durum.KAPALI)})
 
@@ -11794,8 +11811,10 @@ def _sayim_donmus_sonuc(sayim) -> dict:
     satirlar, ozet = [], {"sayilan_adet": 0, "fazla_tutar": Decimal("0"), "eksik_tutar": Decimal("0"), "duzelt_adet": 0, "duzelt_fazla_tutar": Decimal("0"), "duzelt_eksik_tutar": Decimal("0"), "belirsiz_adet": 0}
     for s in sayim.satirlar.filter(silindi=False).select_related("stok", "varyant").order_by("stok__kod", "varyant_id", "id"):
         referans = s.onay_referans if s.onay_referans is not None else s.sistem_snapshot
+        elle = s.manuel_birim_maliyet_try is not None and s.onay_tutar_try is not None and s.onay_tutar_try > 0
         satirlar.append({"satir": s, "stok": s.stok, "varyant": s.varyant, "snapshot": s.sistem_snapshot, "referans": referans, "degisen": referans - s.sistem_snapshot, "sayilan": s.onay_sayilan,
-                         "fark": s.onay_fark, "birim_maliyet": None, "tutar": s.onay_tutar_try, "belirsiz": False, "neden": "", "karar": s.karar})
+                         "fark": s.onay_fark, "birim_maliyet": s.manuel_birim_maliyet_try if elle else None, "tutar": s.onay_tutar_try, "belirsiz": False, "neden": "", "karar": s.karar,
+                         "elle": elle, "manuel_kaynak": s.maliyet_kaynagi if elle else ""})
         if s.onay_fark is not None:
             ozet["sayilan_adet"] += 1
         if s.karar == "DUZELT" and s.onay_tutar_try is not None:
@@ -12094,3 +12113,31 @@ def stok_sayim_rapor_stok(request):
             yanit["Content-Disposition"] = f'attachment; filename="sayim-{stok.kod}.xlsx"'
             return yanit
     return render(request, "core/stok_sayim_rapor_stok.html", {"ara": ara, "stok": stok, "adaylar": adaylar, "satirlar": satirlar})
+
+
+@yonetici_gerekli
+def stok_sayim_maliyet(request, pk):
+    """Maliyeti belirsiz kartın FAZLA satırı için birim maliyet: kabul (sistem önerisi) / elle / kaldır — yalnız yönetici, loglu."""
+    sayim = _sayim_getir(pk)
+    if request.method == "POST":
+        try:
+            satir = get_object_or_404(StokSayimSatiri.objects.select_related("stok"), pk=int(request.POST.get("satir") or 0), sayim=sayim, silindi=False)
+        except ValueError:
+            raise Http404("Satır bulunamadı.")
+        islem = request.POST.get("islem")
+        try:
+            if islem == "kaldir":
+                sayim_servis.maliyet_kaldir(satir, kullanici=request.user)
+                messages.success(request, f"{satir.stok.kod}: elle maliyet kaldırıldı.")
+            else:
+                oneri = sayim_servis.maliyet_onerisi(satir.stok, satir.varyant_id)
+                if islem == "kabul":
+                    if oneri["deger"] is None:
+                        raise sayim_servis.SayimHatasi("Öneri yok; elle birim maliyet girin.")
+                    sayim_servis.maliyet_kaydet(satir, kullanici=request.user, birim=oneri["deger"], kaynak=oneri["kaynak"], oneri=oneri)
+                else:
+                    sayim_servis.maliyet_kaydet(satir, kullanici=request.user, birim=request.POST.get("birim", ""), kaynak="Elle giriş", oneri=oneri)
+                messages.success(request, f"{satir.stok.kod}: birim maliyet kaydedildi; satır artık Düzelt kararına açık.")
+        except sayim_servis.SayimHatasi as e:
+            messages.error(request, str(e))
+    return redirect(f"{reverse('core:stok_sayim_belge', args=[sayim.pk])}?goster={_sy_quote(request.POST.get('goster') or 'hepsi')}")

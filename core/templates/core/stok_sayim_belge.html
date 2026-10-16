@@ -21,6 +21,11 @@
   .sb-tablo select { padding:.25rem .3rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; }
   .sb-tablo input[type=text] { width:9rem; padding:.25rem .4rem; border:1px solid #c9d1e0; border-radius:8px; font:inherit; font-size:.8rem; }
   .sb-onay { border:1px solid #dfe5f0; border-left:4px solid #e8590c; border-radius:10px; padding:.7rem .9rem; margin:.4rem 0 .9rem; background:#fff; font-size:.9rem; line-height:1.5; }
+  .sb-oneri { margin-top:.3rem; font-size:.76rem; line-height:1.35; }
+  .sb-oneri .kaynak { color:#5b6678; display:block; }
+  .sb-oneri input { width:7rem; padding:.2rem .35rem; border:1px solid #c9d1e0; border-radius:6px; font:inherit; font-size:.78rem; }
+  .sb-oneri button, .sb-elle button { border:1px solid #c9d1e0; background:#fff; border-radius:6px; padding:.15rem .5rem; font-size:.74rem; cursor:pointer; }
+  .sb-elle { font-size:.74rem; color:#6a2f96; margin-top:.2rem; }
   .sb-gir { font-size:.76rem; color:#5b6678; }
   .sb-gir .gecersiz { text-decoration:line-through; opacity:.6; }
   .sb-gir form { display:inline; }
@@ -57,7 +62,7 @@
     <b>Onay</b> — Önce sayım girişini kapatın; sonra kararları verip onaylayın. Onaylanmadıkça stok ve muhasebe değişmez.
   {% elif sayim.durum == 'KAPALI' %}
     <b>Onay</b> — Yalnızca <b>Düzelt</b> kararlı satırlar işlenir: {{ ozet.duzelt_adet }} satır, fazla <b class="sb-fazla">{{ ozet.duzelt_fazla_tutar|tr_para }} ₺</b>, eksik <b class="sb-eksik">{{ ozet.duzelt_eksik_tutar|tr_para }} ₺</b>.
-    Eksikler ortalama maliyetle <b>çıkış</b>, fazlalar <b>giriş</b> olarak {{ sayim.tarih|date:"d.m.Y" }} tarihine yazılır; tek muhasebe fişi kesilir (62x ↔ stok hesabı; 152→620, 153→621, 150/151→623). “Araştır” ve “Bekliyor” satırlar işlenmez.
+    {% if elle_adet %}<b>{{ elle_adet }} fazla satır</b> elle/önerilen birim maliyetle <b>kesin giriş</b> olur (hareket ve fiş açıklamasında “SAYIM – tahmini maliyet (kaynak: …)”). {% endif %}Eksikler ortalama maliyetle <b>çıkış</b>, fazlalar <b>giriş</b> olarak {{ sayim.tarih|date:"d.m.Y" }} tarihine yazılır; tek muhasebe fişi kesilir (62x ↔ stok hesabı; 152→620, 153→621, 150/151→623). “Araştır” ve “Bekliyor” satırlar işlenmez.
     {% if kur_bekleniyor %}
       <div class="uyari" style="margin-top:.6rem">⏳ {{ sayim.tarih|date:"d.m.Y" }} tarihli USD kuru henüz yok (TCMB kuru ertesi iş günü yayınlanır). <b>Kur yayınlanınca</b> Kurlar ekranından çekip sayımı onaylayın; kararlarınız korunur.</div>
     {% else %}
@@ -102,7 +107,17 @@
         <td class="sag mono">{{ d.referans|tr_miktar_sade }}{% if d.degisen %}<div class="yardim">{% if d.degisen > 0 %}+{% endif %}{{ d.degisen|tr_miktar_sade }} sonradan</div>{% endif %}</td>
         <td class="sag mono">{% if d.sayilan is None %}<span class="yardim">sayılmadı</span>{% else %}{{ d.sayilan|tr_miktar_sade }}{% endif %}</td>
         <td class="sag mono {% if d.fark_var %}{% if d.fark > 0 %}sb-fazla{% else %}sb-eksik{% endif %}{% endif %}">{% if d.fark is None %}—{% else %}{% if d.fark > 0 %}+{% endif %}{{ d.fark|tr_miktar_sade }}{% endif %}</td>
-        <td class="sag mono">{% if d.birim_maliyet is not None %}{{ d.birim_maliyet|tr_kur:4 }}{% else %}—{% endif %}{% if d.belirsiz %}<div class="belirsiz" title="{{ d.neden }}">⚠ maliyet belirsiz</div>{% endif %}</td>
+        <td class="sag mono">{% if d.birim_maliyet is not None %}{{ d.birim_maliyet|tr_kur:4 }}{% else %}—{% endif %}
+          {% if d.elle %}<div class="sb-elle">elle/önerilen · {{ d.manuel_kaynak }}{% if duzenlenebilir %} <button type="submit" form="mf-{{ d.satir.pk }}" name="islem" value="kaldir">kaldır</button>{% endif %}</div>{% endif %}
+          {% if d.belirsiz %}<div class="belirsiz" title="{{ d.neden }}">⚠ maliyet belirsiz — {{ d.neden }}</div>{% endif %}
+          {% if d.oneri %}<div class="sb-oneri">
+            {% if d.oneri.deger %}Öneri: <b>{{ d.oneri.deger|tr_kur:4 }}</b><span class="kaynak">{{ d.oneri.kaynak }}</span>
+              <button type="submit" form="mf-{{ d.satir.pk }}" name="islem" value="kabul">Kabul et</button>
+            {% else %}Öneri yok{% endif %}
+            <div style="margin-top:.2rem"><input type="text" form="mf-{{ d.satir.pk }}" name="birim" inputmode="decimal" placeholder="elle birim maliyet"> <button type="submit" form="mf-{{ d.satir.pk }}" name="islem" value="elle">Elle kaydet</button></div>
+          </div>{% endif %}
+          {% if d.maliyet_log %}<details class="sb-gir"><summary>maliyet geçmişi ({{ d.maliyet_log|length }})</summary>
+            {% for lg in d.maliyet_log %}<div>{{ lg.created_at|date:"d.m H:i" }} · {{ lg.kullanici.get_full_name|default:lg.kullanici.username }} · {% if lg.yeni %}{{ lg.yeni|tr_kur:4 }}{% else %}kaldırıldı{% endif %} ({{ lg.kaynak }}){% if lg.ip_adresi %} · {{ lg.ip_adresi }}{% endif %}</div>{% endfor %}</details>{% endif %}</td>
         <td class="sag mono {% if d.fark_var and d.tutar is not None %}{% if d.fark > 0 %}sb-fazla{% else %}sb-eksik{% endif %}{% endif %}">{% if d.tutar is not None and d.fark_var %}{{ d.tutar|tr_para }}{% else %}—{% endif %}</td>
         <td>{% if duzenlenebilir %}
           <select name="karar_{{ d.satir.pk }}">
@@ -121,4 +136,7 @@
   </div>
   {% if duzenlenebilir and satirlar %}<div style="margin:.8rem 0"><button type="submit" class="birincil">Kararları kaydet</button></div>{% endif %}
 </form>
+{% if duzenlenebilir %}{% for d in satirlar %}{% if d.oneri or d.elle %}
+<form id="mf-{{ d.satir.pk }}" method="post" action="{% url 'core:stok_sayim_maliyet' sayim.pk %}">{% csrf_token %}<input type="hidden" name="satir" value="{{ d.satir.pk }}"><input type="hidden" name="goster" value="{{ goster }}"></form>
+{% endif %}{% endfor %}{% endif %}
 {% endblock %}

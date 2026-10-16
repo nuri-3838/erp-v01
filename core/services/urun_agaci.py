@@ -272,6 +272,13 @@ def _toplam(satirlar, alan):
     return sum((s[alan] for s in satirlar if s[alan] is not None), SIFIR)
 
 
+def malzeme_birim_maliyeti(graf: Graf, urun) -> dict:
+    """1 ADET ``urun`` için yalnız MALZEME maliyeti (girdi stoklarının güncel ortalaması / kart alış fiyatı; operasyon zinciri yapraklara kadar iner; işçilik-GÜG-fason YOK) —
+    ``urun_maliyet`` ile aynı satır kuralı, fason sorguları olmadan. Döner: {"toplam_try", "maliyetsiz" (maliyeti olmayan girdi sayısı), "satir_sayisi"}."""
+    satirlar = [_maliyet_satiri(stok, m, graf.kurlar, graf.fiyatsiz_girisli) for stok, m in graf.yapraklar(urun).values()]
+    return {"toplam_try": _toplam(satirlar, "tutar_try"), "maliyetsiz": sum(1 for s in satirlar if s["maliyet_yok"]), "satir_sayisi": len(satirlar)}
+
+
 def urun_maliyet(graf: Graf, urun, miktar, *, tarih=None, fasoncu_id=None) -> dict:
     """1 ADET için KESİRLİ malzeme maliyeti (TL ve USD ayrı) + seçilen miktar toplamları (kalem, kategori ara toplamı ve malzeme toplamı
     için de). Birim maliyet: ``birim_maliyet`` (ortalama > kart alış fiyatı > yok). Maliyeti olmayan kalem toplama girmez.

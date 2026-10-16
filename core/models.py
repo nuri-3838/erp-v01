@@ -4413,6 +4413,10 @@ class StokSayimSatiri(TemelModel):
     karar = models.CharField("karar", max_length=8, choices=Karar.choices, default=Karar.BEKLIYOR)
     karar_notu = models.CharField("karar notu", max_length=300, blank=True, default="")
     karar_veren = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="karar veren", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    manuel_birim_maliyet_try = models.DecimalField("elle / önerilen birim maliyet (TL; yalnız maliyeti belirsiz kartta FAZLA için)", max_digits=18, decimal_places=6, null=True, blank=True)
+    maliyet_kaynagi = models.CharField("birim maliyet kaynağı", max_length=160, blank=True, default="")
+    maliyet_giren = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="maliyeti giren", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    maliyet_zamani = models.DateTimeField("maliyet giriş zamanı", null=True, blank=True)
     onay_referans = models.DecimalField("onaydaki sistem referansı", max_digits=18, decimal_places=6, null=True, blank=True)
     onay_sayilan = models.DecimalField("onaydaki sayılan", max_digits=18, decimal_places=6, null=True, blank=True)
     onay_fark = models.DecimalField("onaydaki fark (sayılan − referans; yalnız sayılan satırlar)", max_digits=18, decimal_places=6, null=True, blank=True)
@@ -4430,6 +4434,25 @@ class StokSayimSatiri(TemelModel):
 
     def __str__(self):
         return f"{self.sayim.no} · {self.stok.kod}"
+
+
+class StokSayimMaliyetLogu(TemelModel):
+    """Sayım satırına elle / önerilen birim maliyet girişlerinin DENETİM kaydı (kim, ne zaman, hangi IP, eski → yeni, kaynak, o anki sistem önerisi). Silinmez/güncellenmez."""
+
+    satir = models.ForeignKey(StokSayimSatiri, verbose_name="sayım satırı", on_delete=models.CASCADE, related_name="maliyet_loglari")
+    kullanici = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="giren", on_delete=models.PROTECT, related_name="+")
+    ip_adresi = models.GenericIPAddressField("IP adresi", null=True, blank=True)
+    eski = models.DecimalField("eski birim maliyet", max_digits=18, decimal_places=6, null=True, blank=True)
+    yeni = models.DecimalField("yeni birim maliyet", max_digits=18, decimal_places=6, null=True, blank=True)
+    kaynak = models.CharField("kaynak", max_length=160, blank=True, default="")
+    oneri = models.DecimalField("o anki sistem önerisi", max_digits=18, decimal_places=6, null=True, blank=True)
+    oneri_kaynagi = models.CharField("öneri kaynağı", max_length=160, blank=True, default="")
+
+    class Meta:
+        db_table = "stok_sayim_maliyet_logu"
+        verbose_name = "sayım maliyet kaydı"
+        verbose_name_plural = "sayım maliyet kayıtları"
+        ordering = ["created_at", "id"]
 
 
 class StokSayimGirdisi(TemelModel):

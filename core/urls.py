@@ -220,6 +220,7 @@ urlpatterns = [
     path("stoklar/sayim/<int:pk>/satir-ekle/", views.stok_sayim_satir_ekle, name="stok_sayim_satir_ekle"),
     path("stoklar/sayim/<int:pk>/durum/", views.stok_sayim_durum, name="stok_sayim_durum"),
     path("stoklar/sayim/<int:pk>/onay/", views.stok_sayim_onay, name="stok_sayim_onay"),
+    path("stoklar/sayim/<int:pk>/maliyet/", views.stok_sayim_maliyet, name="stok_sayim_maliyet"),
     path("stoklar/sayim/<int:pk>/geri-al/", views.stok_sayim_geri_al, name="stok_sayim_geri_al"),
     path("stoklar/sayim/<int:pk>/excel/", views.stok_sayim_excel_indir, name="stok_sayim_excel_indir"),
     path("stoklar/sayim/<int:pk>/excel/yukle/", views.stok_sayim_excel_yukle, name="stok_sayim_excel_yukle"),

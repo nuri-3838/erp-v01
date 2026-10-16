@@ -96,7 +96,7 @@ MODULLER = (
         Ekran("stoklar", "Stoklar", "core:stoklar"),
         Ekran("stok_sayim", "Stok Sayımları", "core:stok_sayimlari",
               ilgili=("core:stok_sayim_yeni", "core:stok_sayim_belge", "core:stok_sayim_giris", "core:stok_sayim_giris_kaydet", "core:stok_sayim_satir_ekle", "core:stok_sayim_durum", "core:stok_sayim_karar", "core:stok_sayim_girdi_gecersiz",
-                      "core:stok_sayim_onay", "core:stok_sayim_geri_al", "core:stok_sayim_excel_indir", "core:stok_sayim_excel_yukle")),
+                      "core:stok_sayim_onay", "core:stok_sayim_maliyet", "core:stok_sayim_geri_al", "core:stok_sayim_excel_indir", "core:stok_sayim_excel_yukle")),
         Ekran("stok_sayim_raporlari", "Sayım Raporları", "core:stok_sayim_raporlari", yonetici=True, ilgili=("core:stok_sayim_rapor_stok",)),
         Ekran("kategoriler", "Kategoriler", "core:kategoriler", grup="Tanımlar",
               ilgili=("core:kategori_ekle", "core:kategori_duzenle", "core:kategori_sil")),
