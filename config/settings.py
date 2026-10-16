@@ -55,6 +55,7 @@ MIDDLEWARE = [
     'core.istek_baglami.IstekBaglamiMiddleware',   # istek IP'si → silme denetim kaydı (servis katmanı request görmez)
     'django.contrib.messages.middleware.MessageMiddleware',
     'core.middleware.SifreDegistirmeMiddleware',   # ilk girişte şifre değiştirme zorunluluğu (personel hesapları)
+    'core.fabrika_kapisi.FabrikaKapisiMiddleware',  # operatör hesaplar fabrika ağı dışında /atolye/ ve /mesai/'ye giremez; dışarıda açık mesai otomatik kapanır
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'axes.middleware.AxesMiddleware',  # EN SON: kilit kontrolu
 ]

@@ -28,6 +28,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.clickjacking import xframe_options_sameorigin
+from django.views.decorators.http import require_POST
 
 from core.forms import (
     AdayAktiviteForm, AdayAsamaTanimForm, AdayCariyeMevcutCariForm, AdayCariyeYeniCariForm,
@@ -10640,6 +10641,14 @@ def atolye(request):
                                                 "acik_islerim": atolye_servis.acik_islerim(request.user) if d["acik_kayit"] else []})
 
 
+@login_required
+@require_POST
+def atolye_ping(request):
+    """Heartbeat (2 dk'da bir): fabrika IP'sinden gelen istek ``FabrikaKapisiMiddleware``'de açık mesainin son görülmesini günceller; fabrika dışıysa
+    middleware 403 döner. Görünüm kendi başına bir şey yapmaz."""
+    return HttpResponse(status=204)
+
+
 @ekran_gerekli("atolye")
 def atolye_mesai(request):
     if request.method == "POST":
@@ -10987,7 +10996,8 @@ def mesai_ayarlari(request):
     from core.forms import IkAyariForm
     return render(request, "core/mesai_ayarlari.html", {
         "aglar": list(mesai_ag_servis.aktif_aglar()),
-        "ik_form": IkAyariForm(initial={"gunluk_calisma_saati": izin_servis.gunluk_saat()}), "gunluk_saat": izin_servis.gunluk_saat()})
+        "ik_form": IkAyariForm(initial={"gunluk_calisma_saati": izin_servis.gunluk_saat()}), "gunluk_saat": izin_servis.gunluk_saat(),
+        "otomatik_ayar": _mesai_otomatik_ayar_baglami()})
 
 
 @yonetici_gerekli
@@ -11004,6 +11014,35 @@ def ik_ayari_kaydet(request):
                 messages.error(request, str(e))
         else:
             messages.error(request, "Günlük çalışma süresi geçerli bir sayı olmalı (örn. 7,5).")
+    return redirect("core:mesai_ayarlari")
+
+
+def _mesai_otomatik_ayar_baglami():
+    from core.forms import MesaiOtomatikAyarForm
+    from core.services import mesai_otomatik as otomatik_servis
+    a = otomatik_servis.ayar()
+    return {"form": MesaiOtomatikAyarForm(initial={"acik": a.fabrika_kisiti_acik, "tolerans_dk": a.dis_ip_tolerans_dk,
+                                                   "heartbeat_sn": a.heartbeat_sn, "gece_saati": a.gece_kapanis_saati.strftime("%H:%M")}),
+            "devrede": otomatik_servis.devrede_mi()}
+
+
+@yonetici_gerekli
+def mesai_otomatik_ayari_kaydet(request):
+    """Fabrika kısıtı + otomatik mesai kapatma ayarları (tolerans, heartbeat, gece saati, açık/kapalı)."""
+    from core.forms import MesaiOtomatikAyarForm
+    from core.services import mesai_otomatik as otomatik_servis
+    if request.method == "POST":
+        form = MesaiOtomatikAyarForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                otomatik_servis.ayar_kaydet(acik=cd["acik"], tolerans_dk=cd["tolerans_dk"], heartbeat_sn=cd["heartbeat_sn"],
+                                            gece_saati=cd["gece_saati"], kullanici=request.user)
+                messages.success(request, "Fabrika kısıtı / otomatik mesai kapatma ayarları kaydedildi.")
+            except otomatik_servis.MesaiOtomatikHatasi as e:
+                messages.error(request, str(e))
+        else:
+            messages.error(request, "Ayarlar geçersiz: tolerans (dk), heartbeat (sn) ve gece saati (SS:DD) girin.")
     return redirect("core:mesai_ayarlari")
 
 

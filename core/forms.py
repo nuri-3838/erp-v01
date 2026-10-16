@@ -3468,6 +3468,14 @@ class SifreDegistirForm(forms.Form):
     yeni_tekrar = forms.CharField(label="Yeni şifre (tekrar)", widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
 
 
+class MesaiOtomatikAyarForm(forms.Form):
+    """AYARLAR > Mesai Ayarları — fabrika kısıtı + otomatik mesai kapatma eşikleri (bkz. core.services.mesai_otomatik)."""
+    acik = forms.BooleanField(label="Fabrika kısıtı + otomatik kapatma açık", required=False)
+    tolerans_dk = forms.IntegerField(label="Fabrika dışı tolerans (dk)", min_value=0, max_value=60)
+    heartbeat_sn = forms.IntegerField(label="Heartbeat aralığı (sn)", min_value=30, max_value=600)
+    gece_saati = forms.TimeField(label="Gece kapanış saati (TR)", input_formats=["%H:%M", "%H:%M:%S"])
+
+
 class MesaiIzinliAgForm(forms.Form):
     """AYARLAR > Mesai Ayarları — izinli IP/CIDR ekle. Geçerlilik/benzersizlik serviste
     (core.services.mesai_ag) doğrulanır."""

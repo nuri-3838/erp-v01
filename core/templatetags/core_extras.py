@@ -12,6 +12,19 @@ register = template.Library()
 _TR = ZoneInfo("Europe/Istanbul")
 
 
+@register.simple_tag(takes_context=True)
+def mesai_ping(context):
+    """Heartbeat ayarı: fabrika kısıtlı (operatör) hesapta ve kapı devredeyken {"url", "sn"}, aksi halde None (bkz. core.fabrika_kapisi)."""
+    from django.urls import reverse
+    from core.services import mesai_otomatik
+    from core.yetki import fabrika_kisitli_mi
+    request = context.get("request")
+    user = getattr(request, "user", None)
+    if user is None or not fabrika_kisitli_mi(user) or not mesai_otomatik.devrede_mi():
+        return None
+    return {"url": reverse("core:atolye_ping"), "sn": mesai_otomatik.ayar().heartbeat_sn}
+
+
 @register.filter
 def tr_zaman(value, fmt="d.m.Y H:i"):
     """UTC saklanan datetime'ı TR yerel saatine çevirip biçimlendirir. Django şablonunun kendi

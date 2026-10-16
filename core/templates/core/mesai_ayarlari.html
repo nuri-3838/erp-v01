@@ -24,6 +24,22 @@
   </form>
 </section>
 
+<section class="icerik-kart" id="otomatik-ayar">
+  <h2 class="bolum-baslik">Fabrika Kısıtı ve Otomatik Mesai Kapatma</h2>
+  <p class="yardim" style="margin:0 0 .6rem">Operatör hesaplar (yalnız atölye yetkili personel) fabrika ağı dışında <code>/atolye/</code> ve <code>/mesai/</code> ekranlarına giremez.
+    Açık mesai, fabrika dışından <strong>tolerans</strong> süresi boyunca görülürse <em>fabrikada en son görüldüğü an</em>la, ayrıca her gün <strong>gece kapanış saatinde</strong>
+    (fabrikada son görülme yoksa o saatle) otomatik kapanır. Yönetici ve ofis kullanıcıları etkilenmez. Heartbeat yalnız “son görülme” zamanını günceller.</p>
+  {% if not otomatik_ayar.devrede %}<div class="uyari" style="margin-bottom:.6rem">⚠️ Şu an devre dışı: ayar kapalı ya da izinli ağ listesi boş.</div>{% endif %}
+  <form method="post" action="{% url 'core:mesai_otomatik_ayari_kaydet' %}" style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end">
+    {% csrf_token %}
+    <label class="faturasiz-etiket" style="display:inline-flex;gap:.4rem;align-items:center;font-weight:650">{{ otomatik_ayar.form.acik }} {{ otomatik_ayar.form.acik.label }}</label>
+    <div class="alan" style="margin:0"><label for="{{ otomatik_ayar.form.tolerans_dk.id_for_label }}">{{ otomatik_ayar.form.tolerans_dk.label }}</label>{{ otomatik_ayar.form.tolerans_dk }}</div>
+    <div class="alan" style="margin:0"><label for="{{ otomatik_ayar.form.heartbeat_sn.id_for_label }}">{{ otomatik_ayar.form.heartbeat_sn.label }}</label>{{ otomatik_ayar.form.heartbeat_sn }}</div>
+    <div class="alan" style="margin:0"><label for="{{ otomatik_ayar.form.gece_saati.id_for_label }}">{{ otomatik_ayar.form.gece_saati.label }}</label>{{ otomatik_ayar.form.gece_saati }}</div>
+    <button type="submit" class="birincil">Kaydet</button>
+  </form>
+</section>
+
 <section class="icerik-kart">
   <h2 class="bolum-baslik">İzinli Ağ Ekle</h2>
   <form method="post" action="{% url 'core:mesai_ag_ekle' %}" style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end">

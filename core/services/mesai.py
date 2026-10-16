@@ -62,7 +62,7 @@ def baslat(personel: Personel, *, ip, kullanici=None) -> MesaiKaydi:
     simdi = timezone.now()
     is_tarihi = simdi.astimezone(_TR).date()
     kayit = MesaiKaydi.objects.create(
-        personel=p, is_tarihi=is_tarihi, giris_zamani=simdi, giris_ip=ip or None,
+        personel=p, is_tarihi=is_tarihi, giris_zamani=simdi, giris_ip=ip or None, son_fabrika_gorulme=simdi,
         kaynak=MesaiKaydi.Kaynak.PERSONEL, created_by=kullanici, updated_by=kullanici)
     if not PersonelDevam.objects.filter(personel=p, tarih=is_tarihi, silindi=False).exists():
         PersonelDevam.objects.create(
@@ -138,9 +138,11 @@ def duzelt(kayit: MesaiKaydi, *, giris_zamani, cikis_zamani=None, duzeltme_notu,
     kayit.cikis_zamani = veri["cikis_zamani"]
     kayit.duzeltme_notu = veri["duzeltme_notu"]
     kayit.kaynak = MesaiKaydi.Kaynak.YONETICI
+    kayit.otomatik_kapandi = False                  # elle düzeltildi: "Otomatik" rozeti kalkar (otomatik_sebep denetim için kalır)
+    kayit.dis_ip_ilk_gorulme = None
     kayit.updated_by = kullanici
     kayit.save(update_fields=["is_tarihi", "giris_zamani", "cikis_zamani", "duzeltme_notu",
-                              "kaynak", "updated_by", "updated_at"])
+                              "kaynak", "otomatik_kapandi", "dis_ip_ilk_gorulme", "updated_by", "updated_at"])
     return kayit
 
 

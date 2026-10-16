@@ -1,0 +1,14 @@
+{% extends "core/atolye_base.html" %}
+{% block baslik %}Fabrika dışı · SEMTA{% endblock %}
+{% block icerik %}
+<div class="at-kart">
+  <h1 class="at-baslik">📵 Fabrika Wi-Fi'ında değilsiniz</h1>
+  <p style="font-size:1.1rem;font-weight:700;line-height:1.4;margin:.3rem 0">Bu ekran yalnızca fabrika Wi-Fi'ına bağlıyken kullanılabilir.</p>
+  {% if kapandi %}
+    <div class="at-mesaj warning">⏹ Fabrikadan ayrıldığınız anlaşıldı: mesainiz <strong>otomatik bitirildi</strong> (bitiş: fabrikada en son görüldüğünüz zaman). Yanlışsa yöneticinize bildirin.</div>
+  {% else %}
+    <p class="at-yardim">Fabrika Wi-Fi'ına bağlanıp sayfayı yenileyin. Fabrika dışında {{ tolerans_dk }} dakikadan uzun kalırsanız açık mesainiz otomatik bitirilir.</p>
+  {% endif %}
+  <a class="at-buton ikincil" style="display:flex;align-items:center;justify-content:center;text-decoration:none;margin-top:.8rem" href="{% url 'core:atolye' %}">↻ Yeniden dene</a>
+</div>
+{% endblock %}

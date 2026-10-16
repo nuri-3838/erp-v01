@@ -245,6 +245,24 @@ def mesai_bitiriliyor(personel, simdi, kullanici=None) -> None:
     u.save(update_fields=["ayrilma_zamani", "updated_by", "updated_at"])
 
 
+@transaction.atomic
+def mesai_otomatik_kapaniyor(personel, bitis) -> None:
+    """Mesai OTOMATİK kapanırken (core.services.mesai_otomatik): kişi açık bir oturumdaysa ve ekipte başkası kaldıysa yalnız üyeliği bitiste kapanır;
+    tek kişiyse oturum "İptal (iş yapılmadı)" olur (adet bilinmediği için kayıt açılmaz, süre raporda kalır). Elle bitirmedeki engel burada YOKTUR."""
+    u = aktif_uyelik(personel)
+    if u is None:
+        return
+    oturum = IsOturumu.objects.select_for_update().get(pk=u.oturum_id)
+    baska = IsOturumuUyesi.objects.filter(oturum=oturum, silindi=False, ayrilma_zamani__isnull=True).exclude(pk=u.pk).exists()
+    if baska:
+        u.ayrilma_zamani = max(bitis, u.katilim_zamani)
+        u.save(update_fields=["ayrilma_zamani", "updated_at"])
+        return
+    oturum.aciklama = "Mesai otomatik kapandı — iş yapılmadı olarak kapatıldı."
+    _kapat(oturum, durum=IsOturumu.Durum.IPTAL, bitis=max(bitis, oturum.baslangic_zamani), bitiren=personel, ip=None, kullanici=None)
+    oturum.save(update_fields=["aciklama", "updated_at"])
+
+
 # --- ofis listesi ---
 
 def listele(*, baslangic=None, bitis=None, istasyon_id=None, personel_id=None, durum=None, ara=""):

@@ -1,0 +1,15 @@
+<script>
+(function(){
+  // Heartbeat: fabrika IP'sinden gelen istek açık mesainin "son fabrika görülme" zamanını günceller (kapanış kararı sunucuda). Tek işi budur.
+  var URL = '{{ ping.url|escapejs }}', SN = {{ ping.sn|default:120 }}, TOKEN = '{{ csrf_token|escapejs }}';
+  function ping(){
+    try {
+      fetch(URL, {method: 'POST', credentials: 'same-origin', keepalive: true, headers: {'X-CSRFToken': TOKEN}})
+        .then(function(r){ if (r.status === 403) { return r.json().then(function(j){ if (j && j.fabrika_disi) location.reload(); }).catch(function(){}); } })
+        .catch(function(){});
+    } catch (e) {}
+  }
+  setInterval(ping, Math.max(30, SN) * 1000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) ping(); });
+})();
+</script>

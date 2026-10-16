@@ -5,6 +5,7 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
+{% mesai_ping as ping %}{% if ping %}{% include "core/_mesai_ping.html" %}{% endif %}
 <style>
   .ms-kapsa { max-width:480px; margin:0 auto; display:flex; flex-direction:column; gap:1.1rem; }
   .ms-kisi { text-align:center; }

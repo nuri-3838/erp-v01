@@ -131,6 +131,7 @@
     return confirm(m + ' sağlam' + (f && f !== '0' ? ' + ' + f + ' fire' : '') + ' yazılsın ve iş bitirilsin mi?');
   };
   </script>
+  {% mesai_ping as ping %}{% if ping %}{% include "core/_mesai_ping.html" %}{% endif %}
   {% block js %}{% endblock %}
 </body>
 </html>

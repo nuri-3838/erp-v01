@@ -3,6 +3,7 @@
 Burada yalnızca tüm tabloların paylaştığı invariant taban (audit + soft delete,
 spec 0b-g) ile v0.1 veri modelinin ilk tablosu HESAP_PLANI (spec bölüm 2) var.
 """
+import datetime
 from decimal import Decimal
 
 from django.conf import settings
@@ -4207,6 +4208,13 @@ class MesaiKaydi(TemelModel):
     kaynak = models.CharField("kaynak", max_length=10, choices=Kaynak.choices,
                               default=Kaynak.PERSONEL)
     duzeltme_notu = models.CharField("düzeltme notu", max_length=300, blank=True)
+    # Fabrika ağı takibi (bkz. core.services.mesai_otomatik): operatörün fabrika IP'sinden son görüldüğü an; fabrika DIŞI ilk görüldüğü an
+    # (tolerans sayacı, fabrika IP'sinden görülünce sıfırlanır); otomatik kapanış izi (elle düzeltilince otomatik_kapandi kalkar, sebep kalır).
+    son_fabrika_gorulme = models.DateTimeField("son fabrika görülme", null=True, blank=True)
+    dis_ip_ilk_gorulme = models.DateTimeField("fabrika dışı ilk görülme", null=True, blank=True)
+    otomatik_kapandi = models.BooleanField("otomatik kapandı", default=False)
+    otomatik_sebep = models.CharField("otomatik kapanış sebebi", max_length=10, blank=True, default="",
+                                      choices=[("dis_ip", "Fabrika dışı"), ("gece", "Gece kapanışı")])
 
     class Meta:
         db_table = "core_mesai_kaydi"
@@ -4655,6 +4663,12 @@ class IkAyari(TemelModel):
     AYARLAR › Mesai Ayarları ekranından değiştirilir."""
 
     gunluk_calisma_saati = models.DecimalField("günlük çalışma süresi (saat)", max_digits=4, decimal_places=2, default=Decimal("7.5"))
+    # Fabrika kısıtı + otomatik mesai kapatma (bkz. core.services.mesai_otomatik): operatör hesaplar fabrika ağı dışında /atolye/ ve /mesai/'ye giremez;
+    # açık mesai, fabrika dışında ``dis_ip_tolerans_dk`` dakika görülürse (son fabrika görülmeyle) ve her gece ``gece_kapanis_saati``'nde kapanır.
+    fabrika_kisiti_acik = models.BooleanField("fabrika kısıtı + otomatik kapatma açık", default=True)
+    dis_ip_tolerans_dk = models.PositiveSmallIntegerField("fabrika dışı tolerans (dk)", default=3)
+    heartbeat_sn = models.PositiveSmallIntegerField("heartbeat aralığı (sn)", default=120)
+    gece_kapanis_saati = models.TimeField("gece kapanış saati (TR)", default=datetime.time(23, 59))
 
     class Meta:
         db_table = "core_ik_ayari"

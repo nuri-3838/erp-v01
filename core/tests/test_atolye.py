@@ -33,6 +33,10 @@ class AtolyeTaban(Taban):
         cls.u2 = hesap_olustur(cls.p2, kullanici_adi="aysem", sifre="cokGizli!2026", ilk_giris_sifre=False)          # yalnız mesai hesabı (atölye yetkisi yok)
         cls.yon = User.objects.create_superuser("atyon", password="x")
 
+    def setUp(self):
+        super().setUp()
+        self.client.defaults["HTTP_X_REAL_IP"] = IZINLI          # fabrika kapısı: GET istekleri de fabrika IP'sinden gelir (dış IP testleri başlığı kendisi verir)
+
     def baslat(self, user=None):
         self.client.force_login(user or self.u)
         return self.client.post(reverse("core:atolye_mesai"), {"eylem": "baslat"}, HTTP_X_REAL_IP=IZINLI)
@@ -145,7 +149,8 @@ class AkisTest(AtolyeTaban):
         r = self.bitir(o, "2,5")
         self.assertTrue(any("tam sayı" in m for m in self.mesajlar(r)))
         r = self.bitir(o, "4", ip=IZINSIZ)
-        self.assertTrue(any("fabrika Wi-Fi" in m for m in self.mesajlar(r)))
+        self.assertEqual(r.status_code, 403)                                                          # fabrika kapısı (core.fabrika_kapisi): operatör dışarıdan giremez
+        self.assertContains(r, "Fabrika Wi-Fi", status_code=403)
         self.assertFalse(OperasyonKaydi.objects.filter(istasyon_emri=self.ie_kesim).exists())
         o.refresh_from_db()
         self.assertEqual(o.durum, "ACIK")                                                             # hata: oturum açık kaldı

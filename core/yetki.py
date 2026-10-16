@@ -39,6 +39,14 @@ def atolye_kullanicisi_mi(user) -> bool:
     return bool(kodlar) and kodlar <= {"atolye"}
 
 
+def fabrika_kisitli_mi(user) -> bool:
+    """Fabrika ağı kısıtına tabi hesap ("operatör"): personel kartına bağlı, yönetici olmayan ve ekran yetkileri yalnız ``atolye`` olan (hiç yetkisi
+    olmayan salt-mesai hesabı da dahil) hesap. Yönetici ve başka ekran yetkisi olan ofis kullanıcıları muaf (bkz. core.services.mesai_otomatik)."""
+    if not mesai_kullanicisi_mi(user):
+        return False
+    return _izinli_kodlar(user) <= {"atolye"}
+
+
 def sayim_kullanicisi_mi(user) -> bool:
     """Telefonla SAYIM GİRİŞİ yapan personel: yönetici olmayan ve ekran yetkileri yalnız ``stok_sayim`` olan hesap — giriş sonrası doğrudan Stok Sayımları listesine düşer."""
     if not getattr(user, "is_authenticated", False) or yonetici_mi(user):

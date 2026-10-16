@@ -282,6 +282,7 @@ class KayitlariListeleTest(TestCase):
 class MesaimViewTest(TestCase):
     def setUp(self):
         _ag_ac()
+        self.client.defaults["HTTP_X_REAL_IP"] = TR_IZINLI       # fabrika kapısı: GET istekleri de fabrika IP'sinden gelir
         self.p = personel_kur(ad="mehmet", soyad="calisan", ise_giris_tarihi=date(2020, 1, 1))
         self.u = hesap_olustur(self.p, kullanici_adi="mehmetc", sifre="cokGizli!2026", ilk_giris_sifre=False)
 
@@ -309,6 +310,7 @@ class MesaimViewTest(TestCase):
         """X-Forwarded-For istemci tarafından tamamen kontrol edilir (nginx yalnız ekler,
         REMOTE_ADDR'ı değiştirmez) — bu yüzden mesai kontrolü ASLA X-Forwarded-For'a bakmaz."""
         self.client.force_login(self.u)
+        self.client.defaults.pop("HTTP_X_REAL_IP", None)                  # X-Real-IP YOK: yalnız REMOTE_ADDR sayılır
         self.client.post(
             reverse("core:mesaim"), {"eylem": "baslat"},
             HTTP_X_FORWARDED_FOR=TR_IZINLI, REMOTE_ADDR=TR_IZINSIZ)

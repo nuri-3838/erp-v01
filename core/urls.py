@@ -467,6 +467,7 @@ urlpatterns = [
     path("hesap/sifre/", views.sifre_degistir, name="sifre_degistir"),
     path("atolye/", views.atolye, name="atolye"),
     path("atolye/mesai/", views.atolye_mesai, name="atolye_mesai"),
+    path("atolye/ping/", views.atolye_ping, name="atolye_ping"),
     path("atolye/takip/", views.atolye_takip, name="atolye_takip"),
     path("atolye/istasyon/<int:pk>/", views.atolye_istasyon, name="atolye_istasyon"),
     path("atolye/emir/<int:pk>/basla/", views.atolye_oturum_baslat, name="atolye_oturum_baslat"),
@@ -484,6 +485,7 @@ urlpatterns = [
     path("ik/mesai-kayitlari/<int:pk>/sil/", views.mesai_kaydi_sil, name="mesai_kaydi_sil"),
     path("ayarlar/mesai/", views.mesai_ayarlari, name="mesai_ayarlari"),
     path("ayarlar/mesai/ag/ekle/", views.mesai_ag_ekle, name="mesai_ag_ekle"),
+    path("ayarlar/mesai/otomatik/", views.mesai_otomatik_ayari_kaydet, name="mesai_otomatik_ayari_kaydet"),
     path("ayarlar/mesai/ag/<int:pk>/sil/", views.mesai_ag_sil, name="mesai_ag_sil"),
     # Yemek Takibi artık İK menüsünde; URL öneki tarihsel olarak "diger/" kaldı (yer imleri/PDF)
     path("diger/yemek-takibi/", views.yemek_takibi, name="yemek_takibi"),
