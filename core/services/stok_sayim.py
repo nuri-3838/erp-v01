@@ -23,7 +23,7 @@ from core.models import Depo, Kategori, Stok, StokHareket, StokSayimGirdisi, Sto
 from core.sayi import SayiHatasi, parse_tr
 from core.services import stok_ortalama
 from core.services.yevmiye import kur_usd_birebir
-from core.tarih import tr_bugun
+from core.tarih import _TR, tr_bugun
 
 SIFIR = Decimal("0")
 ESIK = Decimal("0.0000005")
@@ -211,7 +211,7 @@ def referans_sistem(sayim) -> dict:
     """{(stok_id, varyant_id): sayım tarihi itibarıyla sistem eldekisi} — geç girilmiş geriye tarihli hareketler DAHİL; sayım tarihi = kesme günü ise o gün kesmeden sonra girilenler HARİÇ."""
     stok_idler = list(sayim.satirlar.filter(silindi=False).values_list("stok_id", flat=True).distinct())
     kosul = Q(tarih__lt=sayim.tarih)
-    if sayim.tarih == timezone.localtime(sayim.kesme_zamani).date():
+    if sayim.tarih == sayim.kesme_zamani.astimezone(_TR).date():                     # Türkiye günü (UTC değil: 00:00-03:00 TR arası gün farkı)
         kosul |= Q(tarih=sayim.tarih, created_at__lte=sayim.kesme_zamani)
     else:
         kosul |= Q(tarih=sayim.tarih)

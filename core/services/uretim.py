@@ -33,6 +33,7 @@ from core.models import (
     Stok, StokHareket, TeklifSiparis, UretimEmri, UretimEmriKalemi, UretimEmriRevizyon,
 )
 from core.sayi import SayiHatasi, parse_tr, yuvarla
+from core.tarih import tr_bugun
 from core.services import planlama_varyant, stok_ayirma
 from core.services.hareket import HareketHatasi, hareket_ekle
 
@@ -1718,7 +1719,7 @@ def _emirsiz_taslak(*, operasyon, cikti_varyant, depo_id, tarih, saglam, fire, p
     """Doğrulamalar + TASLAK kayıt (ÜS/IE/fason boş; fire varsa ``gelen`` = sağlam adet — atölye 'Bitir' ile aynı mantık). Çağıranın transaction'ı içinde."""
     if operasyon.istasyon.fason:
         raise UretimHatasi("Fason istasyonunda emirsiz üretim yapılamaz; fason işi fason dönüş belgesiyle yapılır.")
-    if tarih is None or tarih > timezone.localdate():
+    if tarih is None or tarih > tr_bugun():                                        # Türkiye günü (UTC değil: 00:00-03:00 TR arası "bugün" reddedilmesin)
         raise UretimHatasi("Tarih bugünden ileri olamaz.")
     saglam = _sayi_coz(saglam, "Sağlam adet geçerli bir sayı olmalı.")
     fire_m = _sayi_coz(fire, "Fire adedi geçerli bir sayı olmalı.") if fire not in (None, "") else Decimal("0")
@@ -1780,7 +1781,7 @@ def emirsiz_onizleme(*, operasyon_id, saglam, fire=None, cikti_varyant_id=None, 
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first() if depo_id else Depo.objects.filter(silindi=False).order_by("pk").first()
     try:
         with transaction.atomic():
-            kayit = _emirsiz_taslak(operasyon=operasyon, cikti_varyant=varyant, depo_id=depo.pk if depo else None, tarih=timezone.localdate(), saglam=saglam, fire=fire,
+            kayit = _emirsiz_taslak(operasyon=operasyon, cikti_varyant=varyant, depo_id=depo.pk if depo else None, tarih=tr_bugun(), saglam=saglam, fire=fire,
                                     personel=None, aciklama="", kullanici=None)
             sonuc["girdiler"] = _emirsiz_girdi_durumu(kayit)
             transaction.set_rollback(True)

@@ -21,11 +21,12 @@ from core.services.uretim import (
     AyrilmisStokOnayGerekli, UretimHatasi, emirsiz_planli_uyari, emirsiz_uret, emirsiz_varyant_kontrol, istasyon_emri_uret, operasyon_kaydi_olustur,
     operasyon_kaydi_sil, operasyon_olustur, uretim_emri_ilerleme, uretim_emri_olustur,
 )
+from core.tarih import tr_bugun
 from core.tests.test_istasyon_emri_kayit import Taban
 from core.tests.test_uretim import _stok
 
 D = Decimal
-BUGUN = timezone.localdate()
+BUGUN = tr_bugun()                      # Türkiye günü (UTC değil)
 
 
 class EmirsizServisTest(Taban):
