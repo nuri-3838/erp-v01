@@ -3204,6 +3204,15 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         kalem_sayisi=Count("kalemler", filter=Q(kalemler__silindi=False)),
     ).order_by("-tarih", "-id").select_related("fatura").prefetch_related("kalemler__kdv", "kalemler__tevkifat")
     sayfa = Paginator(kayitlar, boyut).get_page(request.GET.get("sayfa"))
+    if belge_tur == TeklifSiparis.BelgeTur.SIPARIS and yon == TeklifSiparis.Yon.ALIS:         # kısmi teslim rozetleri (bkz. core.services.siparis_teslim)
+        from core.services import siparis_teslim
+        sayfa_idler = [k.pk for k in sayfa]
+        teslim_durum = siparis_teslim.durumlar(sayfa_idler)
+        taslakli = set(TeklifSiparis.objects.filter(silindi=False, belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, durum=TeklifSiparis.Durum.TASLAK,
+                                                    kaynak_siparis_id__in=sayfa_idler).values_list("kaynak_siparis_id", flat=True))
+        for k in sayfa:
+            k.teslim_durumu = teslim_durum[k.pk]["durum"] if k.durum == TeklifSiparis.Durum.ONAYLI else ""
+            k.irsaliye_taslagi = k.pk in taslakli
     if belge_tur == TeklifSiparis.BelgeTur.SIPARIS and yon == TeklifSiparis.Yon.SATIS:       # bağlı AKTİF (iptal olmayan) üretim siparişi rozeti
         aktif_us = {}
         for e in (UretimEmri.objects.filter(silindi=False, kaynak_siparis_id__in=[k.pk for k in sayfa]).exclude(durum=UretimEmri.Durum.IPTAL).order_by("pk")):
@@ -3679,6 +3688,19 @@ def teklif_siparis_detay(request, pk):
         donusen_siparis = ts.donusen_siparisler.filter(silindi=False).first()
     donusen_irsaliye = (ts.donusen_irsaliyeler.filter(silindi=False).first()
                        if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS else None)
+    teslim, siparis_irsaliyeleri, irsaliye_taslagi, irsaliyeye_cevrilebilir = None, [], None, False          # ALIŞ siparişi KISMİ TESLİM (sipariş / teslim / kalan)
+    if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS and ts.yon == TeklifSiparis.Yon.ALIS and not ts.silindi and ts.durum == TeklifSiparis.Durum.ONAYLI:
+        from core.services import siparis_teslim
+        teslim = siparis_teslim.durumlar([ts.pk], kalemler=kalemler)[ts.pk]
+        satir_haritasi = {s["kalem"].pk: s for s in teslim["kalemler"]}
+        for k in kalemler:
+            k.teslim_satir = satir_haritasi.get(k.pk)
+        stok_haritasi = {k.stok_id: k.stok for k in kalemler}
+        for s in teslim["siparissiz"]:
+            s["stok"] = stok_haritasi.get(s["stok_id"]) or Stok.objects.filter(pk=s["stok_id"]).first()
+        siparis_irsaliyeleri = list(ts.donusen_irsaliyeler.filter(silindi=False).order_by("tarih", "pk"))
+        irsaliye_taslagi = siparis_teslim.taslak_irsaliye(ts)
+        irsaliyeye_cevrilebilir = teslim["kalan_var"] and irsaliye_taslagi is None
     uretim_emri = None
     uretim_emri_acilabilir = False
     ozel_varyant = False
@@ -3703,7 +3725,8 @@ def teklif_siparis_detay(request, pk):
         or uretim_emri)
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
-                   "iskonto_sutunu": _iskonto_sutunu(ts.belge_tur, ts.yon), "kalem_sutun": 5 if _iskonto_sutunu(ts.belge_tur, ts.yon) else 3,
+                   "iskonto_sutunu": _iskonto_sutunu(ts.belge_tur, ts.yon), "kalem_sutun": (5 if _iskonto_sutunu(ts.belge_tur, ts.yon) else 3) + (2 if teslim else 0),
+                   "teslim": teslim, "siparis_irsaliyeleri": siparis_irsaliyeleri, "irsaliye_taslagi": irsaliye_taslagi, "irsaliyeye_cevrilebilir": irsaliyeye_cevrilebilir,
                    "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis,
                    "donusen_proforma": donusen_proforma,
                    "donusen_irsaliye": donusen_irsaliye, "donusen_fatura": ts.fatura,
@@ -3784,8 +3807,11 @@ def siparis_irsaliyeye_cevir_gorunum(request, pk):
                 messages.error(request, str(e))
                 return redirect("core:teklif_siparis_detay", pk=siparis.pk)
     vd = varsayilan_depo(depolar)
+    from core.services import siparis_teslim
+    kalemler = list(siparis.kalemler.filter(silindi=False).select_related("stok", "varyant"))
+    teslim = siparis_teslim.durumlar([siparis.pk], kalemler=kalemler)[siparis.pk]
     return render(request, "core/siparis_irsaliyeye_cevir.html", {"siparis": siparis, "depolar": depolar, "varsayilan_depo_id": vd.pk if vd else None,
-                                                                   "bugun": timezone.localdate()})
+                                                                   "bugun": timezone.localdate(), "teslim": teslim, "kalan_satirlari": [s for s in teslim["kalemler"] if s["kalan"] > 0]})
 
 
 @ekran_gerekli("satinalma_irsaliyeleri")

@@ -1,7 +1,8 @@
 """SATINALMA — açık alış siparişlerinden GELECEK STOK (2026-10-14): TEK kaynak, VARYANTLI. Kritik stok, stok listesi ve ÜS eksik malzeme aynı haritayı kullanır.
 
-Açık sipariş = ALIŞ + SIPARIS + ONAYLI + silinmemiş. Sipariş artık "gelecek" DEĞİLDİR eğer: ONAYLI (silinmemiş) irsaliyesi varsa (mal depoya girdi — stok girişi irsaliye
-onayında yazılır) ya da ONAYLI (silinmemiş) faturaya bağlıysa. TASLAK irsaliye / TASLAK fatura kaynağı açık tutar: hedef onaylanana kadar sipariş gelecek stoktur.
+Açık sipariş = ALIŞ + SIPARIS + ONAYLI + silinmemiş. Gelecek stok = KALAN miktar (KISMİ TESLİM, 2026-10-20 — bkz. core.services.siparis_teslim): ONAYLI (silinmemiş) irsaliyelerle
+teslim alınan miktar sipariş kaleminden düşer (mal depoya girdi — stok girişi irsaliye onayında yazılır); kalanı kalmayan kalem gelecek değildir; ONAYLI faturaya bağlı sipariş de değildir.
+TASLAK irsaliye / TASLAK fatura kaynağı açık tutar: hedef onaylanana kadar sipariş gelecek stoktur.
 Anahtar (stok pk, varyant pk|None): kalemin varyantı; varyantlı kartta boşsa kartın varsayılan varyantı (hareket/ayırma ile aynı anlam). Miktar üretim birimindedir
 (``uretim_miktar`` varsa o, yoksa miktar ÷ çevirici)."""
 from __future__ import annotations
@@ -15,22 +16,32 @@ SIFIR = Decimal("0")
 
 
 def acik_siparis_kalemleri(stok_idler=None):
-    onayli_irsaliyeli = TeklifSiparis.objects.filter(silindi=False, belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, kaynak_siparis__isnull=False,
-                                                     durum=TeklifSiparis.Durum.ONAYLI).values("kaynak_siparis_id")
+    """Kalanı olan açık alış siparişi kalemleri (liste; her kalemde ``kalan_miktar`` = fatura birimi cinsinden kalan)."""
+    from core.services import siparis_teslim
     onayli_faturali = Fatura.objects.filter(silindi=False, durum=Fatura.Durum.ONAYLI).values("pk")
     qs = (TeklifSiparisKalem.objects.filter(silindi=False, teklif_siparis__silindi=False, teklif_siparis__belge_tur=TeklifSiparis.BelgeTur.SIPARIS,
                                             teklif_siparis__yon=TeklifSiparis.Yon.ALIS, teklif_siparis__durum=TeklifSiparis.Durum.ONAYLI)
-          .exclude(teklif_siparis_id__in=onayli_irsaliyeli).exclude(teklif_siparis__fatura_id__in=onayli_faturali))
+          .exclude(teklif_siparis__fatura_id__in=onayli_faturali))
     if stok_idler is not None:
         qs = qs.filter(stok_id__in=list(stok_idler))
-    return (qs.select_related("stok", "teklif_siparis", "varyant__stok", "varyant__markalama", "varyant__kilavuz", "varyant__afis", "varyant__yan_etiket")
-            .order_by("teklif_siparis__tarih", "teklif_siparis_id", "pk"))
+    kalemler = list(qs.select_related("stok", "teklif_siparis", "varyant__stok", "varyant__markalama", "varyant__kilavuz", "varyant__afis", "varyant__yan_etiket")
+                    .order_by("teklif_siparis__tarih", "teklif_siparis_id", "pk"))
+    durum = siparis_teslim.durumlar({k.teklif_siparis_id for k in kalemler}, kalemler=kalemler) if kalemler else {}
+    sonuc = []
+    for k in kalemler:
+        kalan = durum[k.teklif_siparis_id]["kalan_by_kalem"].get(k.pk, k.miktar)
+        if kalan > 0:
+            k.kalan_miktar = kalan
+            sonuc.append(k)
+    return sonuc
 
 
 def _miktar(k) -> Decimal:
+    """Kalem kalanı, üretim biriminde (``uretim_miktar`` varsa onun kalan oranı, yoksa kalan ÷ çevirici)."""
+    kalan = getattr(k, "kalan_miktar", k.miktar)
     if k.uretim_miktar is not None:
-        return k.uretim_miktar
-    return k.miktar / k.stok.cevirici if k.stok.cevirici else k.miktar
+        return k.uretim_miktar if kalan >= k.miktar else k.uretim_miktar * kalan / k.miktar
+    return kalan / k.stok.cevirici if k.stok.cevirici else kalan
 
 
 def _anahtar(k) -> tuple:

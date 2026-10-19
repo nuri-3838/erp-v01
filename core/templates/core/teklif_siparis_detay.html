@@ -71,7 +71,8 @@
         <span class="d-rozet tip">{{ ts.get_yon_display }}</span>
         {% if donusen_siparis %}{% if donusen_siparis.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Siparişe Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak; onaylanana kadar bu belge açık sayılır">📝 Sipariş taslağı var</span>{% endif %}{% endif %}
         {% if donusen_proforma %}{% if donusen_proforma.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Proformaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak">📝 Proforma taslağı var</span>{% endif %}{% endif %}
-        {% if donusen_irsaliye %}{% if donusen_irsaliye.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 İrsaliyeye Dönüştü</span>{% else %}<span class="d-rozet notr" title="İrsaliye henüz taslak; onaylanana kadar sipariş gelecek stok sayılır">📝 İrsaliye taslağı var</span>{% endif %}{% endif %}
+        {% if teslim %}{% if teslim.durum == "KISMI" %}<span class="d-rozet notr" title="Siparişin bir kısmı teslim alındı">📦 Kısmi teslim</span>{% elif teslim.durum == "TAMAM" %}<span class="d-rozet aktif">✅ Tamamlandı</span>{% endif %}{% if irsaliye_taslagi %}<span class="d-rozet notr" title="Onaylanana kadar bu irsaliyenin miktarı hâlâ kalan sayılır">📝 İrsaliye taslağı var</span>{% endif %}
+        {% elif donusen_irsaliye %}{% if donusen_irsaliye.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 İrsaliyeye Dönüştü</span>{% else %}<span class="d-rozet notr" title="İrsaliye henüz taslak; onaylanana kadar sipariş gelecek stok sayılır">📝 İrsaliye taslağı var</span>{% endif %}{% endif %}
         {% if donusen_fatura %}{% if donusen_fatura.durum == "ONAYLI" %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Fatura henüz taslak">📝 Fatura taslağı var</span>{% endif %}{% endif %}
         {% if uretim_emri %}<span class="d-rozet aktif">🏭 Üretim Siparişine Dönüştü</span>{% endif %}
       </div>
@@ -127,7 +128,9 @@
           {% if ts.belge_tur == "TEKLIF" and not donusen_siparis %}
           <form method="post" action="{% url 'core:alis_teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif taslak alış siparişine çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
             {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🔁 Siparişe Çevir</button></form>
-          {% elif ts.belge_tur == "SIPARIS" and not donusen_irsaliye %}
+          {% elif ts.belge_tur == "SIPARIS" and irsaliyeye_cevrilebilir %}
+          <a class="dugme" href="{% url 'core:siparis_irsaliyeye_cevir' ts.pk %}">🔁 {% if teslim.teslim_var %}Kalanı {% endif %}İrsaliyeye Çevir</a>
+          {% elif ts.belge_tur == "SIPARIS" and not teslim and not donusen_irsaliye %}
           <a class="dugme" href="{% url 'core:siparis_irsaliyeye_cevir' ts.pk %}">🔁 İrsaliyeye Çevir</a>
           {% elif ts.belge_tur == "IRSALIYE" and not donusen_fatura %}
           <form method="post" action="{% url 'core:irsaliye_faturaya_cevir' ts.pk %}" onsubmit="return confirm('Bu irsaliyeden taslak alış faturası açılsın mı?');" style="margin:0">
@@ -216,7 +219,10 @@
       <div class="satir"><span class="et">Dönüştüğü Sipariş</span>
         <span class="dg"><a href="{% url 'core:teklif_siparis_detay' donusen_siparis.pk %}">{{ donusen_siparis.get_belge_tur_display }}{% if donusen_siparis.belge_no %} · {{ donusen_siparis.belge_no }}{% endif %}</a></span></div>
       {% endif %}
-      {% if donusen_irsaliye %}
+      {% if teslim and siparis_irsaliyeleri %}
+      <div class="satir"><span class="et">İrsaliyeler</span>
+        <span class="dg">{% for i in siparis_irsaliyeleri %}<a href="{% url 'core:teklif_siparis_detay' i.pk %}">{{ i.belge_no|default:"Belge" }}</a> <span class="pasif">({{ i.tarih|date:"d.m.Y" }}, {% if i.durum == "ONAYLI" %}onaylı{% else %}taslak{% endif %})</span>{% if not forloop.last %} · {% endif %}{% endfor %}</span></div>
+      {% elif donusen_irsaliye %}
       <div class="satir"><span class="et">Dönüştüğü İrsaliye</span>
         <span class="dg"><a href="{% url 'core:teklif_siparis_detay' donusen_irsaliye.pk %}">{{ donusen_irsaliye.get_belge_tur_display }}{% if donusen_irsaliye.belge_no %} · {{ donusen_irsaliye.belge_no }}{% endif %}</a></span></div>
       {% endif %}
@@ -320,7 +326,7 @@
     {% endif %}
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Stok</th><th class="sag">Miktar</th><th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
+      <thead><tr><th>Stok</th><th class="sag">{% if teslim %}Sipariş{% else %}Miktar{% endif %}</th>{% if teslim %}<th class="sag">Teslim</th><th class="sag">Kalan</th>{% endif %}<th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
         {% if iskonto_sutunu %}<th class="sag">İskonto</th><th class="sag">Net Fiyat</th>{% endif %}
         <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
       <tbody>
@@ -328,6 +334,8 @@
           <tr>
             <td><span class="mono">{{ k.stok.kod }}</span> {% if ts.yon == "ALIS" %}{{ k.stok.ad_satinalma }}{% else %}{{ k.stok.ad }}{% endif %}{% if k.varyant_metni %}<div class="yardim">🔀 {{ k.varyant_metni }}</div>{% endif %}</td>
             <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
+            {% if teslim %}<td class="sag mono">{{ k.teslim_satir.teslim|tr_kur:3 }}{% if k.teslim_satir.fazla %}<div class="yardim" title="Sipariş üstü teslim">+{{ k.teslim_satir.fazla|tr_kur:3 }} fazla</div>{% endif %}</td>
+            <td class="sag mono"><strong{% if k.teslim_satir.kalan %} style="color:#b35c00"{% endif %}>{{ k.teslim_satir.kalan|tr_kur:3 }}</strong></td>{% endif %}
             <td class="sag mono">{{ k.birim_fiyat|tr_kur:4 }}</td>
             {% if iskonto_sutunu %}<td class="sag mono">{% if k.iskonto_yuzdesi %}%{{ k.iskonto_yuzdesi|tr_kur:2 }}{% else %}—{% endif %}</td>
             <td class="sag mono">{{ k.net_birim_fiyat|tr_kur:4 }}</td>{% endif %}
@@ -345,6 +353,10 @@
       </tfoot>
     </table>
     </div>
+    {% if teslim and teslim.siparissiz %}
+    <p class="yardim" style="margin-top:.6rem">📎 Siparişte olmayan teslimler (irsaliyede yazılı, sipariş kalanından düşmez):
+      {% for s in teslim.siparissiz %}{{ s.stok.kod }} {{ s.stok.ad_satinalma }} — {{ s.miktar|tr_kur:3 }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+    {% endif %}
   </section>
   {% endif %}
   {% if ek_bolumu %}

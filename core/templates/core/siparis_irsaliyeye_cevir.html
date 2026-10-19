@@ -10,8 +10,17 @@
     <a class="ust-link" href="{% url 'core:teklif_siparis_detay' siparis.pk %}">← {{ siparis.belge_no }}</a>
     <h1 class="ust-baslik"><span class="emoji">🔁</span>Siparişi İrsaliyeye Çevir</h1>
   </div>
-  <p class="sayfa-alt">{{ siparis.belge_no }} · {{ siparis.cari.unvan }} · {{ siparis.kalemler.count }} kalem. Kalemler (stok, miktar, fiyat, KDV) TASLAK alış irsaliyesine kopyalanır;
-    stok girişi irsaliye <strong>onaylanınca</strong> yazılır. Sipariş, irsaliye onaylanana kadar "gelecek stok" sayılmaya devam eder.</p>
+  <p class="sayfa-alt">{{ siparis.belge_no }} · {{ siparis.cari.unvan }} · {{ kalan_satirlari|length }} kalemde kalan var. {% if teslim.teslim_var %}Daha önce teslim alınan miktarlar düşülür; yalnız <strong>kalan</strong> miktarlar{% else %}Kalemler (stok, miktar, fiyat, KDV){% endif %}
+    TASLAK alış irsaliyesine kopyalanır (gelen miktara göre taslakta azaltabilir, kalem ekleyebilirsiniz); stok girişi irsaliye <strong>onaylanınca</strong> yazılır. Onaylanan miktar sipariş kalanından düşer; kalan sonraki irsaliyeye çevrilebilir.</p>
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik">İrsaliyeye kopyalanacak kalan miktarlar</h2>
+    <div class="tablo-kapsayici"><table>
+      <thead><tr><th>Stok</th><th class="sag">Sipariş</th><th class="sag">Teslim</th><th class="sag">Kalan (irsaliyeye)</th></tr></thead>
+      <tbody>{% for s in kalan_satirlari %}
+        <tr><td><span class="mono">{{ s.kalem.stok.kod }}</span> {{ s.kalem.stok.ad_satinalma }}{% if s.kalem.varyant_id %} <span class="yardim">🔀 varyant</span>{% endif %}</td>
+          <td class="sag mono">{{ s.siparis|tr_kur:3 }}</td><td class="sag mono">{{ s.teslim|tr_kur:3 }}</td><td class="sag mono"><strong>{{ s.kalan|tr_kur:3 }}</strong></td></tr>
+      {% endfor %}</tbody></table></div>
+  </section>
 
   <form method="post" style="display:contents">
     {% csrf_token %}

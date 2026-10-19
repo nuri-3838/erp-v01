@@ -676,8 +676,9 @@ def proformayi_siparise_cevir(proforma: TeklifSiparis, *, tarih, kullanici=None)
 def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
                               kullanici=None) -> TeklifSiparis:
     """Siparişi irsaliyeye çevirir: aynı cari/yön/para birimi, kalemler (stok/miktar/fiyat/
-    KDV/tevkifat snapshot) kopyalanır. Yalnız aktif + ONAYLI SİPARİŞ + henüz dönüştürülmemiş
-    sipariş çevrilebilir (tek seferlik). Gerçek stok hareketi burada DEĞİL — irsaliyenin
+    KDV/tevkifat snapshot) kopyalanır. Yalnız aktif + ONAYLI SİPARİŞ çevrilebilir. ALIŞ siparişinde KISMİ TESLİM (2026-10-20, bkz. core.services.siparis_teslim): sipariş
+    birden çok irsaliyeye çevrilebilir; irsaliyeye yalnız KALAN miktarlar kopyalanır (kalan 0 olan kalem alınmaz) ve henüz onaylanmamış (taslak) bir irsaliyesi varken yenisi
+    açılamaz. SATIŞ siparişi eskisi gibi tek seferliktir. Gerçek stok hareketi burada DEĞİL — irsaliyenin
     KENDİSİ onaylanınca yazılır (bkz. _irsaliye_stok_hareketi_yaz)."""
     if siparis.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş sipariş irsaliyeye çevrilemez.")
@@ -685,11 +686,21 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
         raise TeklifSiparisHatasi("Yalnız sipariş irsaliyeye çevrilebilir.")
     if siparis.durum != TeklifSiparis.Durum.ONAYLI:
         raise TeklifSiparisHatasi("Yalnız onaylı sipariş irsaliyeye çevrilebilir.")
-    if siparis.donusen_irsaliyeler.filter(silindi=False).exists():
-        raise TeklifSiparisHatasi("Bu sipariş zaten bir irsaliyeye dönüştürülmüş.")
-    kalemler = list(siparis.kalemler.filter(silindi=False))
+    kalemler = list(siparis.kalemler.filter(silindi=False).select_related("stok"))
     if not kalemler:
         raise TeklifSiparisHatasi("Siparişte kalem yok; irsaliye oluşturulamaz.")
+    kalanlar = {k.pk: k.miktar for k in kalemler}
+    if siparis.yon == TeklifSiparis.Yon.ALIS:
+        from core.services import siparis_teslim
+        taslak = siparis_teslim.taslak_irsaliye(siparis)
+        if taslak is not None:
+            raise TeklifSiparisHatasi(f"Bu siparişin onaylanmamış bir irsaliye taslağı var ({taslak.belge_no}); önce onaylayın ya da silin.")
+        kalanlar = siparis_teslim.durumlar([siparis.pk], kalemler=kalemler)[siparis.pk]["kalan_by_kalem"]
+        kalemler = [k for k in kalemler if kalanlar.get(k.pk, Decimal("0")) > 0]
+        if not kalemler:
+            raise TeklifSiparisHatasi("Siparişin tüm kalemleri teslim alınmış (kalan yok); irsaliyeye çevrilecek miktar kalmadı.")
+    elif siparis.donusen_irsaliyeler.filter(silindi=False).exists():
+        raise TeklifSiparisHatasi("Bu sipariş zaten bir irsaliyeye dönüştürülmüş.")
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if depo is None:
         raise TeklifSiparisHatasi("Depo bulunamadı.")
@@ -700,11 +711,17 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
                               yukleme_sekli=siparis.yukleme_sekli, odeme_kosulu=siparis.odeme_kosulu,
                               yukleme_tipi=siparis.yukleme_tipi, navlun_tutari=siparis.navlun_tutari,
                               kaynak_siparis=siparis, depo=depo, kullanici=kullanici)
+    from core.sayi import yuvarla
     for k in kalemler:
+        miktar = kalanlar[k.pk]
+        uretim = k.uretim_miktar
+        if uretim is not None and miktar != k.miktar:                       # kısmi: onaylanmış üretim miktarı kalan oranında
+            uretim = yuvarla(uretim * miktar / k.miktar, 3)
+            uretim = uretim if uretim > 0 else None
         TeklifSiparisKalem.objects.create(
-            teklif_siparis=irsaliye, stok=k.stok, varyant=k.varyant, miktar=k.miktar, birim_fiyat=k.birim_fiyat,
+            teklif_siparis=irsaliye, stok=k.stok, varyant=k.varyant, miktar=miktar, birim_fiyat=k.birim_fiyat,
             iskonto_yuzdesi=k.iskonto_yuzdesi, kdv=k.kdv, tevkifat=k.tevkifat,
-            uretim_miktar=k.uretim_miktar, created_by=kullanici, updated_by=kullanici)
+            uretim_miktar=uretim, created_by=kullanici, updated_by=kullanici)
     return irsaliye
 
 

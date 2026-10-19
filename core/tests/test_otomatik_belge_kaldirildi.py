@@ -61,7 +61,7 @@ class OnayBelgeAcmazTest(SatinalmaZinciriTest):
         self.assertEqual((irsaliye.durum, irsaliye.depo_id, irsaliye.tarih), ("TASLAK", self.depo.pk, date(2026, 6, 29)))
         self.assertContains(self.client.get(reverse("core:satinalma_siparisleri")), "İrsaliye taslağı var")
         teklif_siparis_onayla(irsaliye, kullanici=self.yon)
-        self.assertContains(self.client.get(reverse("core:satinalma_siparisleri")), "İrsaliyeye Dönüştü")
+        self.assertContains(self.client.get(reverse("core:satinalma_siparisleri")), "Tamamlandı")             # kısmi teslim (2026-10-20): tüm kalan teslim alındı → Tamamlandı
         r = self.client.get(reverse("core:teklif_siparis_detay", args=[irsaliye.pk]))
         self.assertContains(r, "Faturaya Çevir")
         r = self.client.post(reverse("core:irsaliye_faturaya_cevir", args=[irsaliye.pk]), follow=True)
