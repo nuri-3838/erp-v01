@@ -1973,6 +1973,12 @@ class FaturaSatir(TemelModel):
         HesapPlani, verbose_name="dönemsel gider hesabı", null=True, blank=True,
         on_delete=models.PROTECT, related_name="donemsel_satirlar")
     donem_aciklama = models.CharField("dönemsel gider açıklaması", max_length=200, blank=True)
+    # ÇOKLU İRSALİYE → TEK FATURA (2026-10-20): satırın geldiği irsaliye kalemi. Doluysa stok ve varyant kilitlidir (kalemle aynı olmalı); miktar/fiyat düzenlenebilir.
+    # Maliyet bu bağa göre dağıtılır: kalemin stok girişi (irsaliye miktarı) satırın tutarıyla fiyatlanır (bkz. stok_ortalama.irsaliye_girislerini_fiyatla).
+    # Boşsa (tek irsaliyeden açılan/eski/elle eklenen satır) eski davranış: stok bazında dağıtım.
+    irsaliye_kalem = models.ForeignKey(
+        "TeklifSiparisKalem", verbose_name="kaynak irsaliye kalemi", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="fatura_satirlari")
 
     class Meta:
         db_table = "fatura_satir"

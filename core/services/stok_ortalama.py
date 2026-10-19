@@ -341,17 +341,26 @@ def irsaliye_girislerini_fiyatla(fatura) -> int:
     kartlar yeniden hesaplanır. Dönüş: fiyatlanan hareket sayısı."""
     etkilenen = irsaliye_girislerini_sifirla(fatura)
     kur_usd = _fatura_usd_kuru(fatura)
-    satirlar = {}
-    for s in fatura.satirlar.filter(silindi=False, stok__isnull=False).order_by("id"):
-        satirlar.setdefault(s.stok_id, []).append(s)
-    girisler = {}
+    tum_satirlar = list(fatura.satirlar.filter(silindi=False, stok__isnull=False).order_by("id"))
+    # Çoklu irsaliye → tek fatura: irsaliye kalemine BAĞLI satır yalnız o kalemin girişini fiyatlar (satır tutarı kalemin girişlerine miktar oranında);
+    # bağsız satır/giriş (tek irsaliyeden açılan, eski, elle eklenen) eski davranışla stok bazında dağıtılır.
+    bagli = {}
+    for s in tum_satirlar:
+        if s.irsaliye_kalem_id:
+            bagli.setdefault(s.irsaliye_kalem_id, s)
+    bagli_girisler, serbest_girisler = {}, {}
     for h in irsaliye_girisleri(fatura):
-        girisler.setdefault(h.stok_id, []).append(h)
+        if h.teklif_siparis_kalem_id in bagli:
+            bagli_girisler.setdefault(h.teklif_siparis_kalem_id, []).append(h)
+        else:
+            serbest_girisler.setdefault(h.stok_id, []).append(h)
+    satirlar = {}
+    for s in tum_satirlar:
+        if not s.irsaliye_kalem_id:
+            satirlar.setdefault(s.stok_id, []).append(s)
     fiyatlanan = 0
-    for stok_id, hs in girisler.items():
-        ss = satirlar.get(stok_id)
-        if not ss:
-            continue
+
+    def dagit(hs, ss):
         toplam = sum((s.tutar_tl for s in ss), SIFIR)
         toplam_usd = _usd(toplam, kur_usd)
         miktar = sum((h.miktar for h in hs), SIFIR)
@@ -365,7 +374,15 @@ def irsaliye_girislerini_fiyatla(fatura) -> int:
             h.giris_tutar_try, h.giris_tutar_usd, h.maliyet_fatura_satir = t, tu, ss[0]
             h.save(update_fields=["giris_tutar_try", "giris_tutar_usd",
                                   "maliyet_fatura_satir", "updated_at"])
-            fiyatlanan += 1
+        return len(hs)
+
+    for kalem_id, hs in bagli_girisler.items():
+        fiyatlanan += dagit(hs, [bagli[kalem_id]])
+    for stok_id, hs in serbest_girisler.items():
+        ss = satirlar.get(stok_id)
+        if not ss:
+            continue
+        fiyatlanan += dagit(hs, ss)
     for stok in Stok.objects.filter(pk__in=etkilenen):
         yeniden_hesapla(stok)
     return fiyatlanan

@@ -67,6 +67,7 @@ urlpatterns = [
     path("satinalma/siparisler/ekle/", views.satinalma_siparis_ekle, name="satinalma_siparis_ekle"),
     path("satinalma/irsaliyeler/", views.satinalma_irsaliyeleri, name="satinalma_irsaliyeleri"),
     path("satinalma/irsaliyeler/ekle/", views.satinalma_irsaliye_ekle, name="satinalma_irsaliye_ekle"),
+    path("satinalma/irsaliyeler/faturaya-cevir/", views.irsaliyeleri_faturaya_cevir_gorunum, name="irsaliyeleri_faturaya_cevir"),
     path("satis/teklifler/", views.satis_teklifleri, name="satis_teklifleri"),
     path("satis/teklifler/ekle/", views.satis_teklif_ekle, name="satis_teklif_ekle"),
     path("satis/teklifler/<int:pk>/duzenle/", views.satis_teklif_duzenle,

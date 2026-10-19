@@ -3228,6 +3228,7 @@ def _ts_liste(request, belge_tur, yon, baslik, emoji):
         "sabit_qs": sabit_qs.urlencode(), "sekme_qs": sekme_qs.urlencode(),
         "donustu_etiket": donustu_etiket, "taslak_etiket": taslak_etiket, "sat_teklif": sat_teklif,
         "ulkeler": ulkeler, "ulke_id": ulke_id,
+        "coklu_fatura": belge_tur == TeklifSiparis.BelgeTur.IRSALIYE and yon == TeklifSiparis.Yon.ALIS,        # "Seçilenleri Faturaya Çevir"
         "ekle_url": "core:" + _TS_EKLE[(belge_tur, yon)]})
 
 
@@ -3800,6 +3801,25 @@ def irsaliye_faturaya_cevir_gorunum(request, pk):
         except teklif_siparis_servis.TeklifSiparisHatasi as e:
             messages.error(request, str(e))
     return redirect("core:teklif_siparis_detay", pk=irsaliye.pk)
+
+
+@ekran_gerekli("satinalma_irsaliyeleri")
+def irsaliyeleri_faturaya_cevir_gorunum(request):
+    """Satınalma İrsaliyeleri listesinden seçilen (aynı cari, onaylı, faturalanmamış) BİRDEN ÇOK irsaliyeyi TEK taslak alış faturasına çevirir; tek seçim eski akışla aynıdır."""
+    if request.method != "POST":
+        return redirect("core:satinalma_irsaliyeleri")
+    ids = [int(x) for x in request.POST.getlist("irsaliye") if x.isdigit()]
+    try:
+        irsaliyeler = list(TeklifSiparis.objects.filter(pk__in=ids, belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, yon=TeklifSiparis.Yon.ALIS))
+        if not ids or len(irsaliyeler) != len(set(ids)):
+            raise teklif_siparis_servis.TeklifSiparisHatasi("Faturaya çevrilecek irsaliyeleri listeden seçin." if not ids else "Seçilen irsaliyelerden biri bulunamadı.")
+        fatura, kaynaklar = teklif_siparis_servis.irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=request.user)
+    except teklif_siparis_servis.TeklifSiparisHatasi as e:
+        messages.error(request, str(e))
+        return redirect("core:satinalma_irsaliyeleri")
+    nolar = ", ".join(i.belge_no for i in kaynaklar)
+    messages.success(request, f"Taslak alış faturası açıldı ({nolar} kaynaklı); fatura tipini seçip onaylayın.")
+    return redirect("core:fatura_detay", pk=fatura.pk)
 
 
 @ekran_gerekli_herhangi("satinalma_siparisleri", "satis_siparisleri")
@@ -8812,6 +8832,7 @@ def _fatura_satir_girdileri(formset, faturasiz=False):
             "stok_id": cd["stok"].pk if cd.get("stok") else None,
             "hesap_id": cd["hesap"].pk if cd.get("hesap") else None,
             "demirbas_id": cd["demirbas"].pk if cd.get("demirbas") else None,
+            "irsaliye_kalem_id": cd.get("irsaliye_kalem") or None,
             "kdv_id": cd["kdv"].pk if cd.get("kdv") else (sifir_kdv.pk if (sifir_kdv and cd.get("stok")) else None),
             "tevkifat_id": tevkifat_id, "tevkifat_yok": tevkifat_yok,
             "yatirim_projesi_id": cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
@@ -8992,6 +9013,11 @@ def _fatura_form_baglami(fform, formset, yon, **ek):
     """Ekle / düzenle / siparişten fatura ekranlarının ORTAK şablon bağlamı (core/fatura_ekle.html)."""
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
     ek.setdefault("silinecek_ek_idleri", [])
+    from core.models import TeklifSiparisKalem
+    duzenlenen = ek.get("duzenlenen")                          # çoklu irsaliye: bağlı satırda "🚚 SAI-…" etiketi (kalem id → irsaliye belge no)
+    ek.setdefault("irsaliye_kalem_etiket", {str(kid): no for kid, no in TeklifSiparisKalem.objects.filter(
+        silindi=False, teklif_siparis__fatura=duzenlenen, teklif_siparis__belge_tur=TeklifSiparis.BelgeTur.IRSALIYE).values_list("pk", "teklif_siparis__belge_no")}
+        if duzenlenen is not None else {})
     return {"fform": fform, "formset": formset, "stok_kdv": stok_kdv, "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
             **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(), "yon": yon, **ek}
 
@@ -9121,7 +9147,7 @@ def fatura_duzenle(request, pk):
                 "donem_baslangic": s.donem_baslangic, "donem_bitis": s.donem_bitis, "donem_aciklama": s.donem_aciklama,
                 "tur": s.satir_tipi, "demirbas": s.demirbas_id,
                 "yatirim_projesi": s.yatirim_projesi_id, "varyant": varyant_servis.secim_degeri(s.varyant_id),
-                "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat}
+                "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat, "irsaliye_kalem": s.irsaliye_kalem_id}
                for s in fatura.satirlar.filter(silindi=False)
                .select_related("stok__tevkifat", "hesap")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon, "fatura_pk": fatura.pk})
@@ -9136,7 +9162,7 @@ def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
     satirlar = fatura.satirlar.filter(silindi=False).select_related(
-        "stok__fatura_birimi", "hesap", "kdv", "tevkifat", "yatirim_projesi", "demirbas").prefetch_related(
+        "stok__fatura_birimi", "hesap", "kdv", "tevkifat", "yatirim_projesi", "demirbas", "irsaliye_kalem__teklif_siparis").prefetch_related(
         Prefetch("duran_varliklar", queryset=DuranVarlik.objects.filter(silindi=False)))
     kart_acilabilir_hesap = set(
         hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))

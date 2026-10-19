@@ -143,13 +143,21 @@
   </form>
 </div>
 
+{% if coklu_fatura %}
+<form method="post" id="coklu-fatura-form" action="{% url 'core:irsaliyeleri_faturaya_cevir' %}" class="ts-coklu-cubuk" style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;margin:.2rem 0 .6rem"
+      onsubmit="return confirm(document.querySelectorAll('.coklu-sec:checked').length + ' irsaliye tek taslak faturaya çevrilsin mi?');">
+  {% csrf_token %}
+  <button type="submit" id="coklu-fatura-dugme" class="birincil" disabled>🧾 Seçilenleri Faturaya Çevir</button>
+  <span class="yardim" id="coklu-fatura-not">Aynı cariye ait, onaylı ve faturalanmamış irsaliyeleri işaretleyin (birden fazla seçilebilir).</span>
+</form>
+{% endif %}
 <div class="tablo-kapsayici">
 <table id="ts-tablo"{% if sat_teklif %} class="ts-sade"{% endif %}>
   <thead><tr>
     {% if sat_teklif %}
     <th>Belge No</th><th>Tarih</th><th>Cari</th><th>Ülke</th><th>Durum</th><th></th>
     {% else %}
-    <th>Cari</th><th>Tarih</th><th>Belge No</th><th>Durum</th><th class="sag">Ödenecek</th><th>İşlem</th>
+    {% if coklu_fatura %}<th style="width:2rem"></th>{% endif %}<th>Cari</th><th>Tarih</th><th>Belge No</th><th>Durum</th><th class="sag">Ödenecek</th><th>İşlem</th>
     {% endif %}
   </tr></thead>
   <tbody>
@@ -170,6 +178,7 @@
           {% if k.donustu %}<span class="rozet rozet-notr">{% if k.donustu_onayli %}{{ donustu_etiket }}{% else %}{{ taslak_etiket }}{% endif %}</span>{% endif %}</td>
         <td class="ts-ok">›</td>
         {% else %}
+        {% if coklu_fatura %}<td>{% if k.durum == "ONAYLI" and not k.fatura_id %}<input type="checkbox" class="coklu-sec" name="irsaliye" value="{{ k.pk }}" form="coklu-fatura-form" data-cari="{{ k.cari_id }}" data-pb="{{ k.para_birimi }}" aria-label="{{ k.belge_no }} seç">{% endif %}</td>{% endif %}
         <td>
           <div class="ts-hucre">
             <span class="ts-ikon">{% if k.aday_musteri %}🧲{% else %}🧑‍💼{% endif %}</span>
@@ -259,4 +268,25 @@
   if(girdi.value) filtrele();
 })();
 </script>
+{% if coklu_fatura %}
+<script>
+(function(){
+  var dugme = document.getElementById('coklu-fatura-dugme'), not = document.getElementById('coklu-fatura-not');
+  if(!dugme) return;
+  var ilk = not.textContent;
+  function guncelle(){
+    var sec = Array.prototype.slice.call(document.querySelectorAll('.coklu-sec:checked'));
+    var cariler = {}, pbler = {};
+    sec.forEach(function(c){ cariler[c.dataset.cari] = 1; pbler[c.dataset.pb] = 1; });
+    var sorun = Object.keys(cariler).length > 1 ? 'Farklı carilere ait irsaliyeler seçildi; tek faturaya yalnız aynı cari çevrilebilir.'
+              : (Object.keys(pbler).length > 1 ? 'Farklı para birimleri seçildi; tek faturaya yalnız aynı para birimi çevrilebilir.' : '');
+    dugme.disabled = sec.length === 0;
+    not.textContent = sorun || (sec.length ? sec.length + ' irsaliye seçildi.' : ilk);
+    not.style.color = sorun ? 'var(--hata, #b1122c)' : '';
+  }
+  document.addEventListener('change', function(e){ if(e.target.classList && e.target.classList.contains('coklu-sec')) guncelle(); });
+  guncelle();
+})();
+</script>
+{% endif %}
 {% endblock %}

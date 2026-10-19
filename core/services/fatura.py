@@ -27,7 +27,7 @@ from django.utils import timezone
 from core.metin import buyuk_harf_tr
 from core.models import (Cari, Depo, DuranVarlik, Fatura, FaturaSatir, FaturaTipi, HesapPlani,
                          KategoriHesap, KdvOrani, Kur, Stok, StokHareket, StokMaliyetKatmani,
-                         StokMaliyetTuketimi, TeklifSiparis, TevkifatOrani, YatirimProjesi,
+                         StokMaliyetTuketimi, TeklifSiparis, TeklifSiparisKalem, TevkifatOrani, YatirimProjesi,
                          YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
@@ -121,17 +121,21 @@ def irsaliye_miktar_farklari(fatura) -> list:
     [(stok, irsaliye_miktar, fatura_miktar)] döner (boşsa fark yok ya da irsaliyeli değil).
     Stok irsaliyeden girdiği için fatura miktarı stoğu ETKİLEMEZ — yalnız bilgi/uyarıdır."""
     from collections import defaultdict
-    irsaliye = fatura.kaynak_siparisler.filter(
-        belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).first()
-    if irsaliye is None:
+    irsaliyeler = list(fatura.kaynak_siparisler.filter(belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).order_by("tarih", "id"))
+    if not irsaliyeler:
         return []
+    satirlar = list(fatura.satirlar.filter(silindi=False, stok__isnull=False, stok__kategori__hizmet_kategorisi=False).select_related("stok"))
+    bagli_kalemler = {s.irsaliye_kalem_id for s in satirlar if s.irsaliye_kalem_id}
     ir, fa, stoklar = defaultdict(Decimal), defaultdict(Decimal), {}
-    for k in irsaliye.kalemler.filter(silindi=False, stok__kategori__hizmet_kategorisi=False).select_related("stok"):
-        ir[k.stok_id] += k.miktar
-        stoklar[k.stok_id] = k.stok
-    for s in fatura.satirlar.filter(silindi=False, stok__isnull=False, stok__kategori__hizmet_kategorisi=False).select_related("stok"):
-        fa[s.stok_id] += s.miktar
-        stoklar[s.stok_id] = s.stok
+    for irsaliye in irsaliyeler:
+        for k in irsaliye.kalemler.filter(silindi=False, stok__kategori__hizmet_kategorisi=False).select_related("stok"):
+            anahtar = ("k", k.pk) if k.pk in bagli_kalemler else ("s", k.stok_id)       # bağlı satır: kalem bazında (satır bazında uyarı); bağsız: stok bazında (eski davranış)
+            ir[anahtar] += k.miktar
+            stoklar[anahtar] = k.stok
+    for s in satirlar:
+        anahtar = ("k", s.irsaliye_kalem_id) if s.irsaliye_kalem_id in bagli_kalemler and ("k", s.irsaliye_kalem_id) in ir else ("s", s.stok_id)
+        fa[anahtar] += s.miktar
+        stoklar[anahtar] = s.stok
     return [(stoklar[i], ir[i], fa[i]) for i in stoklar
             if abs(ir[i] - fa[i]) > Decimal("0.0005")]
 
@@ -688,6 +692,7 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
         islem_tutari=cari_pb, islem_pb=pb, islem_kuru=kur, aciklama=cari.unvan,
         tl_override=cari_tl))
 
+    _irsaliye_baglarini_dogrula(satirlar, hazir, fatura_pk)
     return tip, cari, pb, kur, yevmiye_satirlari, hazir
 
 
@@ -725,6 +730,7 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_
         if dv is not None:
             miktar = Decimal("1")
         hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv, _satir_varyanti(stok, g.get("varyant"), i, kullanici)))
+    _irsaliye_baglarini_dogrula(satirlar, hazir, fatura_pk)
     return cari, pb, hazir
 
 
@@ -943,12 +949,34 @@ def _hizmetsiz_depo(hazir, depo):
     return depo
 
 
-def _satirlari_yaz(fatura, hazir, kullanici):
-    for stok, hesap, miktar, birim, kdv, tevkifat, proje, demirbas, varyant in hazir:
+def _irsaliye_baglarini_dogrula(satirlar, hazir, fatura_pk):
+    """Satırdaki irsaliye bağı (``irsaliye_kalem_id``): yalnız BU faturaya bağlı (silinmemiş) bir irsaliyenin kalemi olabilir; stok ve varyant kilitlidir
+    (kalemle aynı olmalı — miktar/fiyat/KDV serbest); aynı kaleme birden çok satır bağlanamaz. ``hazir`` = ``satirlar`` ile aynı sırada çözülmüş satırlar."""
+    gorulen = set()
+    for i, (g, h) in enumerate(zip(satirlar, hazir), start=1):
+        kid = g.get("irsaliye_kalem_id")
+        if not kid:
+            continue
+        k = TeklifSiparisKalem.objects.filter(pk=kid, silindi=False).select_related("teklif_siparis").first()
+        if (k is None or fatura_pk is None or k.teklif_siparis.silindi or k.teklif_siparis.fatura_id != fatura_pk
+                or k.teklif_siparis.belge_tur != TeklifSiparis.BelgeTur.IRSALIYE):
+            raise FaturaHatasi(f"Satır {i}: irsaliye bağı geçersiz (kalem bu faturanın irsaliyesine ait değil).")
+        if h[0] is None or h[0].pk != k.stok_id:
+            raise FaturaHatasi(f"Satır {i}: irsaliyeye bağlı satırda stok değiştirilemez ({k.teklif_siparis.belge_no}).")
+        if (h[8].pk if h[8] is not None else None) != k.varyant_id:
+            raise FaturaHatasi(f"Satır {i}: irsaliyeye bağlı satırda varyant değiştirilemez ({k.teklif_siparis.belge_no}).")
+        if k.pk in gorulen:
+            raise FaturaHatasi(f"Satır {i}: aynı irsaliye kalemine ({k.teklif_siparis.belge_no}) birden çok satır bağlanamaz.")
+        gorulen.add(k.pk)
+
+
+def _satirlari_yaz(fatura, hazir, kullanici, girdiler=None):
+    for idx, (stok, hesap, miktar, birim, kdv, tevkifat, proje, demirbas, varyant) in enumerate(hazir):
         donem = getattr(hesap, "_donem", None) or {}       # dönemsel gider: gider hesabı + dönem (bkz. _donemsel_satir_coz)
+        kalem_id = (girdiler[idx].get("irsaliye_kalem_id") or None) if girdiler is not None and idx < len(girdiler) else None
         satir = FaturaSatir.objects.create(
             fatura=fatura, stok=stok, varyant=varyant, hesap=hesap, miktar=miktar, birim_fiyat=birim, kdv=kdv,
-            tevkifat=tevkifat, yatirim_projesi=proje, demirbas=demirbas,
+            tevkifat=tevkifat, yatirim_projesi=proje, demirbas=demirbas, irsaliye_kalem_id=kalem_id,
             donem_baslangic=donem.get("baslangic"), donem_bitis=donem.get("bitis"), donem_gider=donem.get("gider"),
             donem_aciklama=donem.get("aciklama", ""),
             created_by=kullanici, updated_by=kullanici)
@@ -1459,7 +1487,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "faturasiz", "para_birimi",
                                    "depo", "aciklama", "vade_tarihi", "sahsi_alis", "sahsi_ortak",
                                    "gv_stopaj_orani", "taslak_kur", "updated_by", "updated_at"])
-        _satirlari_yaz(fatura, hazir, kullanici)
+        _satirlari_yaz(fatura, hazir, kullanici, girdiler=satirlar)
         return fatura
 
     # ONAYLI — bugünkü mevcut mantık aynen.
@@ -1506,7 +1534,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     fatura.save(update_fields=["tip", "yon", "cari", "tarih", "fatura_no", "faturasiz", "para_birimi",
                                "kur", "depo", "aciklama", "vade_tarihi", "sahsi_alis",
                                "sahsi_ortak", "gv_stopaj_orani", "updated_by", "updated_at"])
-    _satirlari_yaz(fatura, hazir, kullanici)
+    _satirlari_yaz(fatura, hazir, kullanici, girdiler=satirlar)
     _demirbas_satildi_yaz(fatura, kullanici)
     _donemsel_senkronla(fatura, kullanici)
     if irsaliyeden_mi(fatura):

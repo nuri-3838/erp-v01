@@ -1989,6 +1989,8 @@ class FaturaSatirForm(forms.Form):
     kaybına yol açardı (`prepare_value` initial'ı basamak sayısına göre biçimlendirir)."""
     stok = forms.ModelChoiceField(
         label="Stok", queryset=Stok.objects.none(), required=False, empty_label="— stok seç —")
+    # Çoklu irsaliye → tek fatura: satırın geldiği irsaliye kalemi (gizli; doluysa stok/varyant kilitli, serviste de zorlanır — bkz. fatura._irsaliye_baglarini_dogrula).
+    irsaliye_kalem = forms.IntegerField(required=False, min_value=1, widget=forms.HiddenInput(attrs={"class": "irsaliye-kalem-deger"}))
     # GİDER faturasında (FaturaTipi.gider) stok yerine kullanılır: yaprak gider hesabı
     # (önce 730.x/770.x) + satırda seçilen KDV oranı. Şablon JS'i fatura tipine göre
     # stok ↔ hesap alanlarını değiştirir; kesin doğrulama serviste (tip × kalem türü).

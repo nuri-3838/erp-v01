@@ -16,6 +16,7 @@
 {{ stok_birim|json_script:"stok-birim" }}
 {{ duran_varlik_hesap|json_script:"duran-varlik-hesap" }}
 {{ kdv_oran|json_script:"kdv-oran" }}
+{{ irsaliye_kalem_etiket|json_script:"irsaliye-kalem-etiket" }}
 {{ stok_kdv_id|json_script:"stok-kdv-id" }}
 {{ kdv_sifir_id|json_script:"kdv-sifir-id" }}
 {{ yon|json_script:"fatura-yon" }}
@@ -30,6 +31,9 @@
     font-size:.95rem; padding:.2rem .4rem; border-radius:8px; transition:background .12s,color .12s; }
   .satir-sil:hover { color:var(--hata); background:rgba(200,40,60,.08); }
   .satir-kopya:hover { color:var(--lacivert); background:rgba(20,40,80,.08); }
+  /* Çoklu irsaliye → tek fatura: irsaliye kalemine bağlı satırda stok / varyant / tür kilitli (miktar, fiyat, KDV serbest) */
+  .irsaliye-etiket { display:inline-block; margin-top:.25rem; padding:.1rem .5rem; border-radius:999px; background:#eef2ff; color:#2b3a8f; font-size:.74rem; font-weight:700; }
+  tr.satir-form.irsaliye-bagli .stok-alani .akilli-girdi, tr.satir-form.irsaliye-bagli .varyant-alan, tr.satir-form.irsaliye-bagli .tur-alani { pointer-events:none; background:rgba(20,40,80,.05); }
   .kur-etiket { display:block; font-size:.78rem; color:var(--metin-soluk); margin-top:.35rem; }
   .kur-etiket.hata { color:var(--hata); }
 
@@ -748,6 +752,15 @@
     return tr;
   }
   function alanSonek(ad){ return ad.replace(/^form-(\d+|__prefix__)-/, ''); }
+  // Çoklu irsaliye → tek fatura: bağlı satırda etiketi yaz, stok/varyant/tür alanlarını kilitle (sunucu da zorlar).
+  var IRS_ETIKET = JSON.parse(document.getElementById('irsaliye-kalem-etiket').textContent) || {};
+  function irsaliyeKilitle(tr){
+    var ik = el(tr, '-irsaliye_kalem'); if(!ik || !ik.value) return;
+    tr.classList.add('irsaliye-bagli');
+    var et = tr.querySelector('.irsaliye-etiket');
+    if(et) et.textContent = '🚚 ' + (IRS_ETIKET[ik.value] || 'irsaliye');
+    tr.querySelectorAll('.stok-alani .akilli-girdi, .tur-alani select').forEach(function(a){ a.tabIndex = -1; if(a.classList.contains('akilli-girdi')) a.readOnly = true; });
+  }
   function satirKopyala(kaynak){
     var yeni = satirEkle(kaynak);
     kaynak.querySelectorAll('input[name], select[name], textarea[name]').forEach(function(a){
@@ -759,6 +772,8 @@
         if(g){ var o = h.options[h.selectedIndex]; g.value = (o && o.value) ? o.textContent.trim() : ''; }
       }
     });
+    var ikopya = yeni.querySelector('[name$="-irsaliye_kalem"]'); if(ikopya) ikopya.value = '';       // kopya satır irsaliyeye BAĞLI değildir
+    var ietk = yeni.querySelector('.irsaliye-etiket'); if(ietk) ietk.remove();
     donemselUygula(yeni); turUygula(yeni, false); projeAlaniGuncelle(yeni); tedarikciGuncelle(yeni);
     if(window.varyantSatirKur) window.varyantSatirKur(yeni);                   // gizli varyant değerinden seçicileri kurar
     hesapla();
@@ -947,6 +962,8 @@
   modUygula();
   sahsiUygula();
   document.querySelectorAll('.satir-form').forEach(function(r){ turUygula(r, false); });
+  document.querySelectorAll('.satir-form').forEach(irsaliyeKilitle);
+  window.addEventListener('load', function(){ document.querySelectorAll('.satir-form').forEach(irsaliyeKilitle); });         // akıllı-seç kutuları kurulduktan sonra tekrar
   faturasizUygula();
   cariBilgiGuncelle();
   silinecekYaz();

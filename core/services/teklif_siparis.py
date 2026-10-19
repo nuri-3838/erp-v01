@@ -793,6 +793,66 @@ def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> Teklif
     return irsaliye
 
 
+@transaction.atomic
+def irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=None):
+    """Aynı cariye ait, onaylı ve henüz faturalanmamış BİRDEN ÇOK alış irsaliyesinden TEK taslak Alış Faturası açar (tip bilinmez; kullanıcı fatura ekranında tip seçip
+    onaylar). Tek irsaliye seçilmişse eski akış (``irsaliyeyi_faturaya_cevir``) AYNEN çalışır. Her irsaliye kalemi bir fatura satırı olur ve satır kalemine BAĞLANIR
+    (``FaturaSatir.irsaliye_kalem``: stok/varyant kilitli, miktar/fiyat düzenlenebilir; maliyet o kaleme göre dağıtılır); her irsaliye faturaya bağlanır (``irsaliye.fatura``).
+    Farklı cari / farklı para birimi / faturalanmış / onaysız / iptal edilmiş irsaliye açık hatayla reddedilir. (fatura, irsaliyeler) döner."""
+    from core.models import FaturaSatir
+    from core.services import fatura as fatura_servis
+
+    irsaliyeler = list(irsaliyeler)
+    if not irsaliyeler:
+        raise TeklifSiparisHatasi("Faturaya çevrilecek irsaliye seçilmedi.")
+    if len({i.pk for i in irsaliyeler}) != len(irsaliyeler):
+        raise TeklifSiparisHatasi("Aynı irsaliye birden çok kez seçilmiş.")
+    if len(irsaliyeler) == 1:
+        i = irsaliyeyi_faturaya_cevir(irsaliyeler[0], kullanici=kullanici)
+        return i.fatura, [i]
+    # taze satırlar + kilit (aynı irsaliye iki isteğe aynı anda faturalanmasın)
+    kilitli = {t.pk: t for t in TeklifSiparis.objects.select_for_update(of=("self",)).select_related("cari").filter(pk__in=[i.pk for i in irsaliyeler])}
+    irsaliyeler = [kilitli[i.pk] for i in irsaliyeler if i.pk in kilitli]
+    for i in irsaliyeler:
+        ad = i.belge_no or f"#{i.pk}"
+        if i.silindi:
+            raise TeklifSiparisHatasi(f"{ad}: iptal edilmiş irsaliye faturaya çevrilemez.")
+        if i.belge_tur != TeklifSiparis.BelgeTur.IRSALIYE or i.yon != TeklifSiparis.Yon.ALIS:
+            raise TeklifSiparisHatasi(f"{ad}: yalnız alış irsaliyesi faturaya çevrilebilir.")
+        if i.durum != TeklifSiparis.Durum.ONAYLI:
+            raise TeklifSiparisHatasi(f"{ad}: yalnız onaylı irsaliye faturaya çevrilebilir (bu irsaliye onaylı değil).")
+        if i.fatura_id:
+            raise TeklifSiparisHatasi(f"{ad}: bu irsaliye zaten bir faturaya dönüştürülmüş.")
+    cariler = {i.cari_id for i in irsaliyeler}
+    if len(cariler) != 1:
+        unvanlar = ", ".join(sorted({i.cari.unvan for i in irsaliyeler if i.cari_id}))
+        raise TeklifSiparisHatasi(f"Seçilen irsaliyeler farklı carilere ait ({unvanlar}); tek faturaya yalnız aynı carinin irsaliyeleri çevrilebilir.")
+    pbler = {i.para_birimi for i in irsaliyeler}
+    if len(pbler) != 1:
+        raise TeklifSiparisHatasi(f"Seçilen irsaliyelerin para birimi farklı ({', '.join(sorted(pbler))}); tek faturaya yalnız aynı para birimindeki irsaliyeler çevrilebilir.")
+    irsaliyeler.sort(key=lambda t: (t.tarih, t.pk))
+    satirlar, kaynaklar = [], []
+    for i in irsaliyeler:
+        kalemler = list(i.kalemler.filter(silindi=False).order_by("id"))
+        if not kalemler:
+            raise TeklifSiparisHatasi(f"{i.belge_no or '#' + str(i.pk)}: irsaliyede kalem yok; fatura oluşturulamaz.")
+        for k in kalemler:
+            # NET (iskontolu) birim fiyat, TAM hassasiyetle (bkz. irsaliyeyi_faturaya_cevir)
+            satirlar.append({"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam, "varyant": k.varyant_id})
+            kaynaklar.append(k)
+    fatura = fatura_servis.fatura_taslak_olustur(
+        cari_id=irsaliyeler[0].cari_id, tarih=max(i.tarih for i in irsaliyeler), satirlar=satirlar,
+        tip_id=None, yon=TeklifSiparis.Yon.ALIS, para_birimi=irsaliyeler[0].para_birimi,
+        depo_id=irsaliyeler[0].depo_id, kullanici=kullanici)
+    for i in irsaliyeler:
+        i.fatura = fatura
+        i.updated_by = kullanici
+        i.save(update_fields=["fatura", "updated_by", "updated_at"])
+    for satir, kalem in zip(fatura.satirlar.filter(silindi=False).order_by("id"), kaynaklar):      # satır sırası = kalem sırası
+        FaturaSatir.objects.filter(pk=satir.pk).update(irsaliye_kalem_id=kalem.pk)
+    return fatura, irsaliyeler
+
+
 def _irsaliye_hareketleri_iptal(irsaliye: TeklifSiparis, kullanici):
     """İrsaliye iptal edilince onun onaylanınca yazdığı GERÇEK stok girişini de geri alır
     (hareket_sil'in kendi negatif-eldeki koruması aynen geçerli — bir stok+depoda eldeki
