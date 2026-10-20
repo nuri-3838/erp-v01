@@ -390,4 +390,7 @@ def stok_varyantlarini_esitle(stok: Stok, kullanici=None) -> None:
         if (sv.anahtar, sv.standart) != (anahtar, standart):
             sv.anahtar, sv.standart, sv.updated_by = anahtar, standart, kullanici
             sv.save(update_fields=["anahtar", "standart", "updated_by", "updated_at"])
+    varsayilan = next((sv for sv in satirlar if sv.pk == stok.varsayilan_varyant_id and not sv.silindi), None)
+    if varsayilan is not None and not _standart_mi(stok, {b: getattr(varsayilan, _BOYUT_ALANI[b]) for b in stok_boyutlari(stok)}):
+        return                                              # kartın varsayılan varyantı standart DEĞİL (ör. markasız YOK): boş standart satır yeniden açılmaz; kapatılmışsa kapalı kalır
     standart_varyant(stok, kullanici)

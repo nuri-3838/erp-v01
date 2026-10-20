@@ -137,3 +137,46 @@ class GuvenlikTest(BirlestirTaban):
         tek = self.kart("151-10-0001", boyutlar=["MARKALAMA", "AFIS"])
         with self.assertRaisesMessage(CommandError, "TEK boyutlu"):
             call_command("varyant_birlestir", "--stok", tek.kod, "--kaynak", "SEMTA", "--hedef", "YOK", stdout=StringIO())
+
+
+class KartKaydiTest(BirlestirTaban):
+    """Kart kaydedilince (stok_varyantlarini_esitle) varsayılan olmayan boş standart (SEMTA) satır yeniden AÇILMAZ; kapatılmış kapalı kalır."""
+
+    def aktif(self):
+        return sorted(StokVaryant.objects.filter(stok=self.yan, silindi=False).values_list("anahtar", flat=True))
+
+    def test_varsayilani_yok_olan_kartta_kapali_semta_satiri_yeniden_acilmaz(self):
+        self.giris(self.sv_yok, "5", "7.5", 5)
+        self.calistir("--uygula")                                                             # SEMTA satırı kapanır, varsayılan YOK
+        self.yan.refresh_from_db()
+        self.assertEqual(self.aktif(), [self.sv_yok.anahtar])
+        vs.stok_varyantlarini_esitle(self.yan)                                                # kart kaydı
+        self.assertEqual(self.aktif(), [self.sv_yok.anahtar])
+        self.assertEqual(StokVaryant.objects.filter(stok=self.yan).count(), 2)                # yeni satır AÇILMADI
+        self.assertEqual(eldeki_miktar(self.yan.pk), D("5"))
+
+    def test_varsayilani_yok_olup_hic_standart_satiri_olmayan_kartta_da_acilmaz(self):
+        StokVaryant.objects.filter(pk=self.sv_semta.pk).delete()                              # hiç standart satır yok
+        Stok = type(self.yan)
+        Stok.objects.filter(pk=self.yan.pk).update(varsayilan_varyant=self.sv_yok)
+        self.yan.refresh_from_db()
+        vs.stok_varyantlarini_esitle(self.yan)
+        self.assertEqual(self.aktif(), [self.sv_yok.anahtar])
+
+    def test_acik_bos_standart_satir_olan_kartta_dokunulmaz(self):
+        Stok = type(self.yan)
+        Stok.objects.filter(pk=self.yan.pk).update(varsayilan_varyant=self.sv_yok)            # kesilmiş parça kartlarındaki gibi: varsayılan YOK + boş SEMTA* satırı açık
+        self.yan.refresh_from_db()
+        vs.stok_varyantlarini_esitle(self.yan)
+        self.assertEqual(self.aktif(), sorted([self.sv_semta.anahtar, self.sv_yok.anahtar]))   # kapatılmaz, silinmez
+
+    def test_normal_kartta_standart_satir_hala_garanti_edilir(self):
+        urun = self.kart("151-10-0001", boyutlar=["MARKALAMA"])                               # varsayılan = standart (SEMTA)
+        std = StokVaryant.objects.get(stok=urun, silindi=False)
+        StokVaryant.objects.filter(pk=std.pk).update(silindi=True)                            # standart satır kapanmış
+        Stok = type(urun)
+        Stok.objects.filter(pk=urun.pk).update(varsayilan_varyant=None)
+        urun.refresh_from_db()
+        vs.stok_varyantlarini_esitle(urun)
+        yeni = StokVaryant.objects.filter(stok=urun, silindi=False)
+        self.assertEqual([(v.standart, v.anahtar) for v in yeni], [(True, std.anahtar)])
