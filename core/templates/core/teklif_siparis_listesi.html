@@ -89,10 +89,12 @@
     {% for s in durum_sekmeleri %}
       <a class="ts-sekme{% if durum == s.kod %} aktif{% endif %}" href="?durum={{ s.kod }}&{{ sekme_qs }}">{{ s.ad }} <span class="n">{{ s.n }}</span></a>
     {% endfor %}
+    {% if irsaliye_listesi %}<a class="ts-sekme{% if faturalanmamis %} aktif{% endif %}" id="faturalanmamis-sekme" href="?{% if not faturalanmamis %}faturalanmamis=1&{% endif %}{{ fat_qs }}" title="Onaylı ama henüz faturaya çevrilmemiş irsaliyeler">🧾 Faturalanmamış</a>{% endif %}
   </div>
 
   <form method="get" class="ts-arama-cubuk" id="ts-arama-form">
     {% if durum %}<input type="hidden" name="durum" value="{{ durum }}">{% endif %}
+    {% if faturalanmamis %}<input type="hidden" name="faturalanmamis" value="1">{% endif %}
     <div class="ts-alan-grup ts-arama-kutu">
       <label for="ts-arama">Ara</label>
       <span class="ts-arama-ikon">🔍</span>
@@ -144,7 +146,7 @@
 </div>
 
 {% if coklu_fatura %}
-<form method="post" id="coklu-fatura-form" action="{% url 'core:irsaliyeleri_faturaya_cevir' %}" class="ts-coklu-cubuk" style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;margin:.2rem 0 .6rem"
+<form method="post" id="coklu-fatura-form" action="{% url coklu_fatura_url %}" class="ts-coklu-cubuk" style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;margin:.2rem 0 .6rem"
       onsubmit="return confirm(document.querySelectorAll('.coklu-sec:checked').length + ' irsaliye tek taslak faturaya çevrilsin mi?');">
   {% csrf_token %}
   <button type="submit" id="coklu-fatura-dugme" class="birincil" disabled>🧾 Seçilenleri Faturaya Çevir</button>
@@ -192,10 +194,10 @@
         <td>{% if k.belge_no %}<span class="ts-belge-no">{{ k.belge_no }}</span>{% else %}<span class="pasif">—</span>{% endif %}
           {% if k.irsaliye_no %}<br><span class="pasif ts-belge-no">{{ k.irsaliye_no }}</span>{% endif %}</td>
         <td><span class="rozet {% if k.durum == 'ONAYLI' %}rozet-aktif{% else %}rozet-notr{% endif %}">{{ k.get_durum_display }}</span>
-          {% if k.teslim_durumu == "KISMI" %}<span class="rozet rozet-turuncu" title="Siparişin bir kısmı teslim alındı; kalan irsaliyeye çevrilebilir">📦 Kısmi teslim</span>{% if k.irsaliye_taslagi %}<span class="rozet rozet-notr">📝 İrsaliye taslağı var</span>{% endif %}
-          {% elif k.teslim_durumu == "TAMAM" %}<span class="rozet rozet-aktif">✅ Tamamlandı</span>
+          {% if k.teslim_durumu == "KISMI" %}<span class="rozet rozet-turuncu" title="Siparişin bir kısmı teslim alındı/sevk edildi; kalan irsaliyeye çevrilebilir">{{ kismi_etiket }}</span>{% if k.irsaliye_taslagi %}<span class="rozet rozet-notr">📝 İrsaliye taslağı var</span>{% endif %}
+          {% elif k.teslim_durumu == "TAMAM" %}<span class="rozet rozet-aktif">{{ tamam_etiket }}</span>
           {% elif k.donustu %}<span class="rozet rozet-notr">{% if k.donustu_onayli %}{{ donustu_etiket }}{% else %}{{ taslak_etiket }}{% endif %}</span>{% endif %}
-          {% if k.fatura_id %}<span class="rozet rozet-notr">{% if k.fatura.durum == "ONAYLI" %}🧾 Faturaya Dönüştü{% else %}📝 Fatura taslağı var{% endif %}</span>{% endif %}
+          {% if k.fatura_id %}<span class="rozet rozet-notr">{% if k.fatura.durum == "ONAYLI" %}🧾 Faturaya Dönüştü{% else %}📝 Fatura taslağı var{% endif %}</span>{% elif irsaliye_listesi and k.durum == "ONAYLI" %}<span class="rozet rozet-turuncu" title="Onaylı irsaliye; henüz faturaya çevrilmedi">🧾 Faturalanmadı</span>{% endif %}
           {% if k.us %}<a class="rozet rozet-aktif" href="{% url 'core:uretim_emri_detay' k.us.pk %}" title="Bağlı üretim siparişi ({{ k.us.get_durum_display }})">🏭 {{ k.us.no }}</a>{% endif %}</td>
         <td class="sag mono">{{ k.odenecek|tr_kur:2 }} {{ k.para_birimi }}</td>
         <td><span class="islem-bag">

@@ -25,7 +25,7 @@ from core.metin import buyuk_harf_tr
 from core.models import (
     AdayAktivite, AdayAsamaTanim, AdayMusteri, AdayMusteriKategori, AdayPotansiyelTanim,
     AdayTipTanim, Banka,
-    BankaHesap, Birim, Cari,
+    BankaHesap, Birim, Cari, CariSevkAdresi,
     CariAktivite, CariKategori, KapanisNedeni,
     CekSenet, Depo, DuranVarlik, FaturaSatir, FaturaTipi, FirmaBanka,
     HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge, Varyant,
@@ -2741,7 +2741,7 @@ class TeklifSiparisForm(forms.Form):
         label="Açıklama", max_length=500, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
-    def __init__(self, *args, belge_tur=None, **kwargs):
+    def __init__(self, *args, belge_tur=None, yon=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["cari"].queryset = _secilebilir_cariler(self)
         self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
@@ -2769,6 +2769,32 @@ class TeklifSiparisForm(forms.Form):
                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
             self.order_fields(["cari", "tarih", "irsaliye_no", "depo", "para_birimi", "kur",
                                "aciklama"])
+            if yon == "SATIS":                                                # SATIŞ İRSALİYESİ: e-irsaliye no + sevk bloğu (adres/plaka/şoför)
+                self.fields["tarih"].label = "İrsaliye / sevk tarihi (stok düşüş günü)"
+                self.fields["irsaliye_no"].label = "e-İrsaliye No"
+                self.fields["sevk_adresi"] = forms.ModelChoiceField(
+                    label="Sevk adresi", required=False, empty_label="— sevk adresi (opsiyonel) —",
+                    queryset=CariSevkAdresi.objects.filter(silindi=False, cari__silindi=False).select_related("cari").order_by("cari__unvan", "-varsayilan", "ad"))
+                self.fields["sevk_adresi"].label_from_instance = lambda o: f"{o.ad}" + (" (varsayılan)" if o.varsayilan else "")
+                self.fields["plaka"] = forms.CharField(label="Plaka", max_length=20, required=False, widget=forms.TextInput(attrs={"autocomplete": "off", "style": "text-transform:uppercase"}))
+                self.fields["sofor_adi"] = forms.CharField(label="Şoför ad soyad", max_length=100, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+                self.fields["sofor_tckn"] = forms.CharField(label="Şoför TCKN", max_length=11, required=False, widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "numeric"}))
+                self.order_fields(["cari", "tarih", "irsaliye_no", "depo", "sevk_adresi", "plaka", "sofor_adi", "sofor_tckn", "para_birimi", "kur", "aciklama"])
+
+    def clean_sofor_tckn(self):
+        deger = "".join(c for c in (self.cleaned_data.get("sofor_tckn") or "") if c.isdigit())
+        if deger:
+            from core.dogrulama import tc_gecerli
+            if not tc_gecerli(deger):
+                raise forms.ValidationError("Geçersiz TCKN (11 hane, geçerli kontrol hanesi).")
+        return deger
+
+    def clean(self):
+        cd = super().clean()
+        adres, cari = cd.get("sevk_adresi"), cd.get("cari")
+        if adres is not None and cari is not None and adres.cari_id != cari.pk:
+            self.add_error("sevk_adresi", "Bu sevk adresi seçilen cariye ait değil.")
+        return cd
 
 
 class TeklifSiparisKalemForm(forms.Form):
@@ -2788,8 +2814,9 @@ class TeklifSiparisKalemForm(forms.Form):
     # Varyantlı kartta kalemin varyantı (E-3; JS core/_varyant_js.html); boş = kartın varsayılanı.
     varyant = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"class": "varyant-deger"}))
 
-    def __init__(self, *args, yon=None, **kwargs):
+    def __init__(self, *args, yon=None, fiyat_opsiyonel=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fiyat_opsiyonel = fiyat_opsiyonel                     # SATIŞ İRSALİYESİ: fiyat boş bırakılabilir (faturada doldurulur)
         self.fields["iskonto_yuzdesi"].widget.attrs.update({"inputmode": "decimal", "autocomplete": "off", "class": "iskonto-girdi"})
         self.fields["stok"].queryset = (
             Stok.objects.filter(silindi=False).select_related("kategori", "kdv").order_by("kod"))
@@ -2817,6 +2844,8 @@ class TeklifSiparisKalemForm(forms.Form):
             raise forms.ValidationError("Stok seçin.")
         if miktar is None or miktar <= 0:
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        if fiyat is None and self.fiyat_opsiyonel:
+            fiyat = cd["birim_fiyat"] = Decimal("0")
         if fiyat is None or fiyat < 0:
             raise forms.ValidationError("Birim fiyat girin.")
         if uretim_miktar is not None and uretim_miktar <= 0:

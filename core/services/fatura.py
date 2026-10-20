@@ -116,6 +116,17 @@ def irsaliyeden_mi(fatura) -> bool:
         belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, silindi=False).exists()
 
 
+def irsaliyeli_satis_mi(fatura) -> bool:
+    """Fatura bir SATIŞ İRSALİYESİNE (stok çıkışı + satış maliyeti fişi irsaliyede yazılı) bağlı mı? Öyleyse fatura yalnız gelir/KDV/cari fişi yazar: stok hareketi ve maliyet fişi YAZMAZ.
+    (Alış irsaliyeli faturadaki "irsaliye girişlerini fiyatla" adımı satışta YOKTUR.)"""
+    return fatura.yon == FaturaTipi.Yon.SATIS and irsaliyeden_mi(fatura)
+
+
+def _irsaliyeli_satis_tip_kontrol(fatura, tip):
+    if irsaliyeli_satis_mi(fatura) and tip.maliyet_fisi != FaturaTipi.MaliyetFisi.SATIS:
+        raise FaturaHatasi("Satış irsaliyesine bağlı faturada tip, satış maliyeti fişli bir SATIŞ tipi olmalı (iade/alış iadesi tipleri irsaliyeli kullanılamaz).")
+
+
 def irsaliye_miktar_farklari(fatura) -> list:
     """İrsaliyeye bağlı faturada stok başına irsaliye miktarı ile fatura miktarı farklıysa
     [(stok, irsaliye_miktar, fatura_miktar)] döner (boşsa fark yok ya da irsaliyeli değil).
@@ -1249,6 +1260,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
     if fatura.tip.yon != fatura.yon:
         raise FaturaHatasi("Fatura tipi, faturanın yönüyle uyuşmuyor.")
     tip, cari = fatura.tip, fatura.cari
+    _irsaliyeli_satis_tip_kontrol(fatura, tip)
     kur = (Decimal("1") if fatura.para_birimi == "TRY"
           else (kur_override or _kur_coz(fatura.para_birimi, fatura.tarih, cari=cari)))
     yevmiye_satirlari = _muhasebe_satirlari(fatura, tip, cari, fatura.para_birimi, kur)
@@ -1269,7 +1281,8 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
     _kartlari_yenile(fatura, kullanici)
     _donemsel_senkronla(fatura, kullanici)
     if irsaliyeden_mi(fatura):
-        _irsaliye_girislerini_fiyatla(fatura)
+        if not irsaliyeli_satis_mi(fatura):                      # satışta stok çıkışı + maliyet fişi irsaliyede yazıldı: burada stok/maliyet YOK
+            _irsaliye_girislerini_fiyatla(fatura)
     elif fatura.depo_id:
         _hareketleri_yaz(fatura, fatura.depo, kur=kur, kullanici=kullanici)
     from core.services import fason_donus
@@ -1503,6 +1516,7 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
         para_birimi=para_birimi, kur_override=kur,
         sahsi_ortak_id=(sahsi_ortak.pk if sahsi_ortak else None),
         gv_stopaj_orani=gv_stopaj_orani, fatura_pk=fatura.pk, kullanici=kullanici, fatura_no=fatura_no)
+    _irsaliyeli_satis_tip_kontrol(fatura, tip)
     depo = None if (tip.gider or tip.yalniz_kdv) else _hizmetsiz_depo(hazir, _depo_coz(depo_id))    # gider / yalnız KDV faturasında depo yok; yalnız hizmet kalemi varsa depo yok sayılır
     _hazir_depo_kontrol(tip, hazir, depo, irsaliyeli=irsaliyeden_mi(fatura))                          # karma ALIŞ: stok + hesap birlikteyse depo zorunlu (irsaliyeli hariç)
     fatura_no = (fatura_no or "").strip()
@@ -1538,7 +1552,8 @@ def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
     _demirbas_satildi_yaz(fatura, kullanici)
     _donemsel_senkronla(fatura, kullanici)
     if irsaliyeden_mi(fatura):
-        _irsaliye_girislerini_fiyatla(fatura)
+        if not irsaliyeli_satis_mi(fatura):
+            _irsaliye_girislerini_fiyatla(fatura)
     elif yerinde is not None:
         _hareketleri_yerinde_guncelle(fatura, yerinde, kullanici=kullanici)
     elif depo is not None:
@@ -1571,8 +1586,8 @@ def fatura_sil(fatura: Fatura, kullanici=None) -> None:
             raise FaturaHatasi(str(e))
     if fatura.fis_id and not fatura.fis.silindi:
         fis_iptal(fatura.fis, kullanici=kullanici)
-    if irsaliyeden_mi(fatura):
-        _irsaliye_girislerini_fiyatsiz_yap(fatura)    # maliyeti fatura belirlemişti; geri al
+    if irsaliyeden_mi(fatura) and not irsaliyeli_satis_mi(fatura):
+        _irsaliye_girislerini_fiyatsiz_yap(fatura)    # maliyeti fatura belirlemişti; geri al (satış irsaliyesinde maliyeti irsaliye belirledi: dokunulmaz)
     bagli_siparisler = list(TeklifSiparis.objects.filter(fatura=fatura))
     TeklifSiparis.objects.filter(fatura=fatura).update(fatura=None)
     if bagli_siparisler:                                  # üretim siparişi: sevk nedeniyle düşen ayırma geri gelir, kapalı ÜS yeniden açılır

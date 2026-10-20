@@ -2233,6 +2233,13 @@ class TeklifSiparis(TemelModel):
     # IRSALIYE ise: tedarikçinin KENDİ (kağıt) irsaliye numarası — bizim otomatik belge_no'muzdan
     # ayrı, serbest metin, opsiyonel (Fatura.fatura_no ile aynı desen).
     irsaliye_no = models.CharField("irsaliye no", max_length=50, blank=True)
+    # SATIŞ İRSALİYESİ (2026-10-20) sevk bilgileri: carinin sevk adresi + araç/şoför. Alış irsaliyesinde boş kalır.
+    sevk_adresi = models.ForeignKey(
+        "CariSevkAdresi", verbose_name="sevk adresi", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="irsaliyeler")
+    plaka = models.CharField("plaka", max_length=20, blank=True)
+    sofor_adi = models.CharField("şoför ad soyad", max_length=100, blank=True)
+    sofor_tckn = models.CharField("şoför TCKN", max_length=11, blank=True)
     # SIPARIS/IRSALIYE ise: hangi Fatura'ya dönüştürüldüğü. Fatura modülü TeklifSiparis'i BİLMEZ —
     # bağlantı burada, sipariş/irsaliye tarafında kurulur (Fatura oluştuktan SONRA set edilir).
     fatura = models.ForeignKey(

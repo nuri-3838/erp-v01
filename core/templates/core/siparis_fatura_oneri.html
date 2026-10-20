@@ -1,0 +1,36 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Faturaya Çevir · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Faturaya Çevir{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa form-dar">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:teklif_siparis_detay' siparis.pk %}">← {{ siparis.belge_no }}</a>
+    <h1 class="ust-baslik"><span class="emoji">🧾</span>Sevk Edilmiş İrsaliyeler Var</h1>
+  </div>
+  <p class="sayfa-alt">{{ siparis.belge_no }} · {{ siparis.cari.unvan }} siparişinden sevk edilmiş, <strong>henüz faturalanmamış</strong> irsaliyeler var. Stok çıkışı ve satış maliyeti irsaliye gününde yazıldı; faturayı bu irsaliyelerden oluşturun (fatura yalnız gelir/KDV/cari fişi yazar, stok ikinci kez düşmez).</p>
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik">Faturalanmamış irsaliyeler</h2>
+    <form method="post" action="{% url 'core:irsaliyeleri_faturaya_cevir' %}" id="oneri-form">
+      {% csrf_token %}
+      <div class="tablo-kapsayici"><table>
+        <thead><tr><th></th><th>İrsaliye</th><th>Tarih</th><th>e-İrsaliye No</th><th class="sag">Tutar</th></tr></thead>
+        <tbody>{% for i in irsaliyeler %}
+          <tr><td><input type="checkbox" name="irsaliye" value="{{ i.pk }}" checked aria-label="{{ i.belge_no }}"></td>
+            <td><a href="{% url 'core:teklif_siparis_detay' i.pk %}" class="mono">{{ i.belge_no }}</a></td>
+            <td class="mono">{{ i.tarih|date:"d.m.Y" }}</td><td class="mono">{{ i.irsaliye_no|default:"—" }}</td>
+            <td class="sag mono">{{ i.odenecek|tr_kur:2 }} {{ i.para_birimi }}</td></tr>
+        {% endfor %}</tbody></table></div>
+      <div class="form-altbar">
+        <a class="iptal-bag" href="{% url 'core:teklif_siparis_detay' siparis.pk %}">Vazgeç</a>
+        <button type="submit" class="birincil" id="oneri-fatura">🧾 Seçili irsaliyelerden fatura oluştur</button>
+      </div>
+    </form>
+  </section>
+  {% if kalan_var %}
+  <p class="yardim">Sevk edilmemiş kalan miktar için ayrıca fatura kesmek isterseniz: <a href="?irsaliyesiz=1" id="irsaliyesiz-devam">Kalan (sevk edilmemiş) miktar için faturaya devam</a>. Bu fatura stoğu kendisi düşer.</p>
+  {% endif %}
+</div>
+{% endblock %}

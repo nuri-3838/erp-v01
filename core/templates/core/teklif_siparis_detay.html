@@ -71,7 +71,7 @@
         <span class="d-rozet tip">{{ ts.get_yon_display }}</span>
         {% if donusen_siparis %}{% if donusen_siparis.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Siparişe Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak; onaylanana kadar bu belge açık sayılır">📝 Sipariş taslağı var</span>{% endif %}{% endif %}
         {% if donusen_proforma %}{% if donusen_proforma.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Proformaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak">📝 Proforma taslağı var</span>{% endif %}{% endif %}
-        {% if teslim %}{% if teslim.durum == "KISMI" %}<span class="d-rozet notr" title="Siparişin bir kısmı teslim alındı">📦 Kısmi teslim</span>{% elif teslim.durum == "TAMAM" %}<span class="d-rozet aktif"{% if teslim.kapatma_var %} title="Kalan miktar kapatıldı (gelmeyecek)"{% endif %}>✅ Tamamlandı</span>{% endif %}{% if irsaliye_taslagi %}<span class="d-rozet notr" title="Onaylanana kadar bu irsaliyenin miktarı hâlâ kalan sayılır">📝 İrsaliye taslağı var</span>{% endif %}
+        {% if teslim %}{% if teslim.durum == "KISMI" %}<span class="d-rozet notr" title="Siparişin bir kısmı {% if ts.yon == 'SATIS' %}sevk edildi{% else %}teslim alındı{% endif %}">{% if ts.yon == "SATIS" %}🚚 Kısmi sevk{% else %}📦 Kısmi teslim{% endif %}</span>{% elif teslim.durum == "TAMAM" %}<span class="d-rozet aktif"{% if teslim.kapatma_var %} title="Kalan miktar kapatıldı (gelmeyecek)"{% endif %}>{% if ts.yon == "SATIS" %}✅ Sevk edildi{% else %}✅ Tamamlandı{% endif %}</span>{% endif %}{% if irsaliye_taslagi %}<span class="d-rozet notr" title="Onaylanana kadar bu irsaliyenin miktarı hâlâ kalan sayılır">📝 İrsaliye taslağı var</span>{% endif %}
         {% elif donusen_irsaliye %}{% if donusen_irsaliye.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 İrsaliyeye Dönüştü</span>{% else %}<span class="d-rozet notr" title="İrsaliye henüz taslak; onaylanana kadar sipariş gelecek stok sayılır">📝 İrsaliye taslağı var</span>{% endif %}{% endif %}
         {% if donusen_fatura %}{% if donusen_fatura.durum == "ONAYLI" %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Fatura henüz taslak">📝 Fatura taslağı var</span>{% endif %}{% endif %}
         {% if uretim_emri %}<span class="d-rozet aktif">🏭 Üretim Siparişine Dönüştü</span>{% endif %}
@@ -124,6 +124,12 @@
         <form method="post" action="{% url 'core:teklif_siparis_onayi_geri_al' ts.pk %}" onsubmit="return confirm('Onay geri alınsın mı? Belge tekrar taslağa döner.');" style="margin:0">
           {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">↩️ Onayı Geri Al</button></form>
         {% endif %}
+        {% if ts.yon == "SATIS" and ts.durum == "ONAYLI" and ts.belge_tur == "SIPARIS" and irsaliyeye_cevrilebilir %}
+          <a class="dugme" href="{% url 'core:siparis_irsaliyeye_cevir' ts.pk %}">🚛 {% if teslim.teslim_var %}Kalanı {% endif %}İrsaliyeye Çevir</a>
+        {% elif ts.yon == "SATIS" and ts.durum == "ONAYLI" and ts.belge_tur == "IRSALIYE" and not donusen_fatura %}
+          <form method="post" action="{% url 'core:irsaliye_faturaya_cevir' ts.pk %}" onsubmit="return confirm('Bu irsaliyeden taslak satış faturası açılsın mı? Stok çıkışı ve maliyet irsaliyede yazılıdır; fatura yalnız gelir/KDV/cari fişi yazar.');" style="margin:0">
+            {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">🧾 Faturaya Çevir</button></form>
+        {% endif %}
         {% if ts.yon == "ALIS" and ts.durum == "ONAYLI" %}
           {% if ts.belge_tur == "TEKLIF" and not donusen_siparis %}
           <form method="post" action="{% url 'core:alis_teklif_siparise_cevir' ts.pk %}" onsubmit="return confirm('Bu teklif taslak alış siparişine çevrilsin mi? Kalemler kopyalanır.');" style="margin:0">
@@ -161,7 +167,7 @@
           {% endif %}
         {% endif %}
         {% if not donusum_kilitli %}
-        <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{% if ts.belge_tur == "IRSALIYE" %}Bu irsaliye ve yazdığı stok girişi KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.{% else %}{{ ts.get_belge_tur_display }} iptal edilsin mi?{% endif %}');" style="margin:0">
+        <form method="post" action="{% url 'core:teklif_siparis_iptal' ts.pk %}" onsubmit="return confirm('{% if ts.belge_tur == "IRSALIYE" %}Bu irsaliye ve yazdığı stok {% if ts.yon == "SATIS" %}çıkışı ile satış maliyeti fişi{% else %}girişi{% endif %} KALICI OLARAK silinsin mi? Bu işlem GERİ ALINAMAZ.{% else %}{{ ts.get_belge_tur_display }} iptal edilsin mi?{% endif %}');" style="margin:0">
           {% csrf_token %}<button type="submit" class="sil">{% if ts.belge_tur == "IRSALIYE" %}🗑️ Sil{% else %}İptal Et{% endif %}</button></form>
         {% endif %}
       {% endif %}
@@ -183,8 +189,14 @@
       {% if ts.belge_tur == "IRSALIYE" %}
       <div class="satir"><span class="et">Depo</span>
         <span class="dg">{% if ts.depo %}<span class="mono">{{ ts.depo.kod }}</span> {{ ts.depo.ad }}{% else %}—{% endif %}</span></div>
-      <div class="satir"><span class="et">İrsaliye No</span>
+      <div class="satir"><span class="et">{% if ts.yon == "SATIS" %}e-İrsaliye No{% else %}İrsaliye No{% endif %}</span>
         <span class="dg">{% if ts.irsaliye_no %}{{ ts.irsaliye_no }}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
+      {% if ts.yon == "SATIS" %}
+      <div class="satir" id="sevk-bilgisi"><span class="et">Sevk adresi</span>
+        <span class="dg">{% if ts.sevk_adresi %}{{ ts.sevk_adresi.ad }}{% if ts.sevk_adresi.adres %} — {{ ts.sevk_adresi.adres }}{% endif %}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
+      <div class="satir"><span class="et">Plaka</span><span class="dg mono">{% if ts.plaka %}{{ ts.plaka }}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
+      <div class="satir"><span class="et">Şoför</span><span class="dg">{% if ts.sofor_adi or ts.sofor_tckn %}{{ ts.sofor_adi }}{% if ts.sofor_tckn %} <span class="mono pasif">({{ ts.sofor_tckn }})</span>{% endif %}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
+      {% endif %}
       {% endif %}
       {% if ts.yukleme_sekli %}
       <div class="satir"><span class="et">Yükleme Şekli</span><span class="dg">{{ ts.yukleme_sekli.ad }}</span></div>
@@ -225,6 +237,10 @@
       {% elif donusen_irsaliye %}
       <div class="satir"><span class="et">Dönüştüğü İrsaliye</span>
         <span class="dg"><a href="{% url 'core:teklif_siparis_detay' donusen_irsaliye.pk %}">{{ donusen_irsaliye.get_belge_tur_display }}{% if donusen_irsaliye.belge_no %} · {{ donusen_irsaliye.belge_no }}{% endif %}</a></span></div>
+      {% endif %}
+      {% if faturalanmamis_irsaliyeler %}
+      <div class="satir" id="faturalanmamis-irsaliyeler"><span class="et">Faturalanmamış sevk</span>
+        <span class="dg">{% for i in faturalanmamis_irsaliyeler %}<a href="{% url 'core:teklif_siparis_detay' i.pk %}">{{ i.belge_no }}</a>{% if not forloop.last %} · {% endif %}{% endfor %} <span class="pasif">— "Faturaya Çevir" bunları önerir</span></span></div>
       {% endif %}
       {% if donusen_fatura %}
       <div class="satir"><span class="et">Fatura</span>
@@ -326,7 +342,7 @@
     {% endif %}
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Stok</th><th class="sag">{% if teslim %}Sipariş{% else %}Miktar{% endif %}</th>{% if teslim %}<th class="sag">Teslim</th>{% if teslim.kapatma_var %}<th class="sag">Kapatılan</th>{% endif %}<th class="sag">Kalan</th>{% endif %}<th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
+      <thead><tr><th>Stok</th><th class="sag">{% if teslim %}Sipariş{% else %}Miktar{% endif %}</th>{% if teslim %}<th class="sag">{% if ts.yon == "SATIS" %}Sevk{% else %}Teslim{% endif %}</th>{% if teslim.kapatma_var %}<th class="sag">Kapatılan</th>{% endif %}<th class="sag">Kalan</th>{% endif %}<th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
         {% if iskonto_sutunu %}<th class="sag">İskonto</th><th class="sag">Net Fiyat</th>{% endif %}
         <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
       <tbody>

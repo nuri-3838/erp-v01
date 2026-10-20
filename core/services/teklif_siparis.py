@@ -17,9 +17,9 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
-from core.models import (AdayMusteri, BankaHesap, Cari, Depo, KdvOrani, Kur, Stok, StokHareket,
+from core.models import (AdayMusteri, BankaHesap, Cari, CariSevkAdresi, Depo, KdvOrani, Kur, Stok, StokHareket,
                          StokMaliyetKatmani, StokMaliyetTuketimi, TanimSecenegi, TeklifSiparis,
-                         TeklifSiparisKalem, UretimEmri)
+                         TeklifSiparisKalem, UretimEmri, YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr
 from core.services import aday_donustur
 from core.services.hareket import HareketHatasi, hareket_ekle, hareket_sil
@@ -30,13 +30,13 @@ class TeklifSiparisHatasi(ValueError):
     """Teklif/Sipariş kural ihlali (Türkçe mesaj)."""
 
 
-# Belge no öneki, belge_tur × yon'a göre (SAT-2026-0001 gibi). (IRSALIYE, SATIS) bilinçli
-# olarak YOK — otomasyon zinciri yalnız ALIŞ yönünde çalışır, bu kombinasyon hiç üretilmez.
-# PROFORMA da yalnız SATIŞ'ta var (bkz. TeklifSiparis docstring'i, Teklif→Proforma→Sipariş).
+# Belge no öneki, belge_tur × yon'a göre (SAT-2026-0001 gibi). (IRSALIYE, SATIS) = SATIŞ İRSALİYESİ (2026-10-20): onayda stok ÇIKIŞI + satış maliyeti fişi yazar,
+# faturaya çevrilince fatura stok/maliyet yazmaz (bkz. _satis_irsaliye_cikis_yaz). PROFORMA yalnız SATIŞ'ta var (bkz. TeklifSiparis docstring'i, Teklif→Proforma→Sipariş).
 _BELGE_ONEK = {
     (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.ALIS): "SAT",
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.ALIS): "SAS",
     (TeklifSiparis.BelgeTur.IRSALIYE, TeklifSiparis.Yon.ALIS): "SAI",
+    (TeklifSiparis.BelgeTur.IRSALIYE, TeklifSiparis.Yon.SATIS): "SSI",
     (TeklifSiparis.BelgeTur.TEKLIF, TeklifSiparis.Yon.SATIS): "SST",
     (TeklifSiparis.BelgeTur.PROFORMA, TeklifSiparis.Yon.SATIS): "SSP",
     (TeklifSiparis.BelgeTur.SIPARIS, TeklifSiparis.Yon.SATIS): "SSS",
@@ -199,6 +199,28 @@ def _depo_coz_irsaliye(belge_tur, depo_id):
     return depo
 
 
+def satis_irsaliyesi_mi(ts) -> bool:
+    return ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE and ts.yon == TeklifSiparis.Yon.SATIS
+
+
+def _sevk_bilgisi(belge_tur, yon, cari, sevk_adresi_id, plaka, sofor_adi, sofor_tckn) -> dict:
+    """SATIŞ İRSALİYESİ sevk bloğu: carinin sevk adresi + plaka + şoför ad/TCKN (hepsi opsiyonel). Diğer belge türlerinde hep boş döner."""
+    bos = {"sevk_adresi": None, "plaka": "", "sofor_adi": "", "sofor_tckn": ""}
+    if not (belge_tur == TeklifSiparis.BelgeTur.IRSALIYE and yon == TeklifSiparis.Yon.SATIS):
+        return bos
+    adres = None
+    if sevk_adresi_id:
+        adres = CariSevkAdresi.objects.filter(pk=sevk_adresi_id, silindi=False, cari=cari).first()
+        if adres is None:
+            raise TeklifSiparisHatasi("Sevk adresi bu cariye ait değil.")
+    tckn = "".join(c for c in str(sofor_tckn or "") if c.isdigit())
+    if tckn:
+        from core.dogrulama import tc_gecerli
+        if not tc_gecerli(tckn):
+            raise TeklifSiparisHatasi("Şoför TCKN geçersiz (11 hane, geçerli kontrol hanesi).")
+    return {"sevk_adresi": adres, "plaka": "".join(str(plaka or "").upper().split()), "sofor_adi": (sofor_adi or "").strip(), "sofor_tckn": tckn}
+
+
 def _kalemleri_yaz(ts, hazir, kullanici):
     for stok, miktar, birim_fiyat, iskonto_yuzdesi, kdv, tevkifat, uretim_miktar, varyant in hazir:
         TeklifSiparisKalem.objects.create(
@@ -219,7 +241,8 @@ def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
                    aciklama, kaynak_teklif=None, kaynak_proforma=None, kaynak_siparis=None,
                    depo=None, banka_hesabi=None, kur=None,
                    irsaliye_no="", yukleme_sekli=None, odeme_kosulu=None, yukleme_tipi=None,
-                   teslim_suresi=None, navlun_tutari=None, kullanici=None) -> TeklifSiparis:
+                   teslim_suresi=None, navlun_tutari=None, kullanici=None,
+                   sevk_adresi=None, plaka="", sofor_adi="", sofor_tckn="") -> TeklifSiparis:
     """Numaralı başlık oluşturur: belge_no = ÖNEK-yıl-sıra (müteselsil/boşluksuz — fiş no ile
     aynı invariant, kullanıcı giremez/değiştiremez). Numara çakışırsa (eşzamanlı oluşturma)
     savepoint geri alınır, bir sonraki sırayla yeniden denenir (fis_olustur ile aynı desen)."""
@@ -241,6 +264,7 @@ def _belge_olustur(*, belge_tur, yon, cari=None, aday_musteri=None, tarih,
                     yukleme_sekli=yukleme_sekli, odeme_kosulu=odeme_kosulu,
                     yukleme_tipi=yukleme_tipi, teslim_suresi=teslim_suresi,
                     navlun_tutari=navlun_tutari,
+                    sevk_adresi=sevk_adresi, plaka=plaka, sofor_adi=sofor_adi, sofor_tckn=sofor_tckn,
                     created_by=kullanici, updated_by=kullanici)
         except IntegrityError as e:
             if "uq_teklif_siparis_tur_yon_yil_sira" not in str(e):
@@ -265,7 +289,7 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
                            yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
                            teslim_suresi_id=None, banka_hesabi_id=None, kur=None,
                            navlun_tutari=None, taslak_olarak_kaydet=False,
-                           kullanici=None) -> TeklifSiparis:
+                           kullanici=None, sevk_adresi_id=None, plaka="", sofor_adi="", sofor_tckn="") -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini oluşturur. Yevmiye ÜRETMEZ; İRSALİYE
     stok hareketi de ÜRETMEZ (o yalnız onaylanınca — bkz. teklif_siparis_onayla). Durum
     TASLAK başlar; belge_no otomatik (müteselsil) üretilir.
@@ -288,9 +312,10 @@ def teklif_siparis_olustur(*, belge_tur, yon, cari_id=None, aday_musteri_id=None
     depo = _depo_coz_irsaliye(belge_tur, depo_id)
     secenekler = _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
                                      navlun_tutari, teslim_suresi_id)
+    sevk = _sevk_bilgisi(belge_tur, yon, cari, sevk_adresi_id, plaka, sofor_adi, sofor_tckn)
     ts = _belge_olustur(belge_tur=belge_tur, yon=yon, cari=cari, aday_musteri=aday, tarih=tarih,
                         gecerlilik_teslim_tarihi=gecerlilik_teslim_tarihi,
-                        irsaliye_no=irsaliye_no, **secenekler,
+                        irsaliye_no=irsaliye_no, **secenekler, **sevk,
                         para_birimi=pb, kur=kur, aciklama=aciklama, depo=depo,
                         banka_hesabi=banka, kullanici=kullanici)
     _kalemleri_yaz(ts, hazir, kullanici)
@@ -354,7 +379,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
                             aciklama="", depo_id=None, irsaliye_no="",
                             yukleme_sekli_id=None, odeme_kosulu_id=None, yukleme_tipi_id=None,
                             teslim_suresi_id=None, banka_hesabi_id=None, kur=None,
-                            navlun_tutari=None, kullanici=None) -> TeklifSiparis:
+                            navlun_tutari=None, kullanici=None, sevk_adresi_id=None, plaka="", sofor_adi="", sofor_tckn="") -> TeklifSiparis:
     """Teklif/Sipariş/İrsaliye başlığı + kalemlerini günceller (belge_tur/yon/belge_no SABİT —
     hangi ekrana ait olduğunu ve numarasını belirler, değişmez). Onaylı belge düzenlenemez
     (önce onayı geri alın); bir sonraki aşamaya dönüştürülmüş belge de düzenlenemez (bkz.
@@ -381,6 +406,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
         kur = None
     banka = _banka_coz(banka_hesabi_id, pb)
     depo = _depo_coz_irsaliye(ts.belge_tur, depo_id)
+    sevk = _sevk_bilgisi(ts.belge_tur, ts.yon, cari, sevk_adresi_id, plaka, sofor_adi, sofor_tckn)
     ts.kalemler.filter(silindi=False).update(
         silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     ts.cari, ts.aday_musteri, ts.tarih = cari, aday, tarih
@@ -391,6 +417,8 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
     ts.depo = depo
     ts.banka_hesabi = banka
     ts.irsaliye_no = (irsaliye_no or "").strip()
+    for alan, deger in sevk.items():
+        setattr(ts, alan, deger)
     for alan, deger in _teklif_secenekleri(yukleme_sekli_id, odeme_kosulu_id, yukleme_tipi_id,
                                            navlun_tutari, teslim_suresi_id).items():
         setattr(ts, alan, deger)
@@ -398,7 +426,7 @@ def teklif_siparis_guncelle(ts: TeklifSiparis, *, cari_id=None, aday_musteri_id=
     ts.save(update_fields=["cari", "aday_musteri", "tarih", "gecerlilik_teslim_tarihi",
                            "para_birimi", "kur", "aciklama", "depo", "banka_hesabi",
                            "irsaliye_no", "yukleme_sekli", "odeme_kosulu", "yukleme_tipi",
-                           "teslim_suresi", "navlun_tutari", "updated_by", "updated_at"])
+                           "teslim_suresi", "navlun_tutari", "sevk_adresi", "plaka", "sofor_adi", "sofor_tckn", "updated_by", "updated_at"])
     _kalemleri_yaz(ts, hazir, kullanici)
     return ts
 
@@ -427,6 +455,9 @@ def teklif_siparis_onayla(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
 
     if ts.yon == TeklifSiparis.Yon.ALIS and ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
         _irsaliye_stok_hareketi_yaz(ts, kullanici)
+    elif satis_irsaliyesi_mi(ts):
+        _satis_irsaliye_cikis_yaz(ts, kullanici)
+        ts.sevk_notu = _satis_sevk_senkronla(ts, kullanici)          # ÜS "Sevk bekliyor" kapanışı / mamul ayırması düşümü (uyarı metni ekranda gösterilir)
     return ts
 
 
@@ -454,6 +485,8 @@ def teklif_siparis_onayi_geri_al(ts: TeklifSiparis, kullanici=None) -> TeklifSip
     ts.durum = TeklifSiparis.Durum.TASLAK
     ts.updated_by = kullanici
     ts.save(update_fields=["durum", "updated_by", "updated_at"])
+    if satis_irsaliyesi_mi(ts):
+        ts.sevk_notu = _satis_sevk_senkronla(ts, kullanici)
     return ts
 
 
@@ -674,11 +707,11 @@ def proformayi_siparise_cevir(proforma: TeklifSiparis, *, tarih, kullanici=None)
 
 @transaction.atomic
 def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
-                              kullanici=None) -> TeklifSiparis:
+                              kullanici=None, sevk_adresi_id=None, plaka="", sofor_adi="", sofor_tckn="", irsaliye_no="") -> TeklifSiparis:
     """Siparişi irsaliyeye çevirir: aynı cari/yön/para birimi, kalemler (stok/miktar/fiyat/
-    KDV/tevkifat snapshot) kopyalanır. Yalnız aktif + ONAYLI SİPARİŞ çevrilebilir. ALIŞ siparişinde KISMİ TESLİM (2026-10-20, bkz. core.services.siparis_teslim): sipariş
+    KDV/tevkifat snapshot) kopyalanır. Yalnız aktif + ONAYLI SİPARİŞ çevrilebilir. KISMİ TESLİM/SEVK (alış 2026-10-20, satış aynı gün; bkz. core.services.siparis_teslim): sipariş
     birden çok irsaliyeye çevrilebilir; irsaliyeye yalnız KALAN miktarlar kopyalanır (kalan 0 olan kalem alınmaz) ve henüz onaylanmamış (taslak) bir irsaliyesi varken yenisi
-    açılamaz. SATIŞ siparişi eskisi gibi tek seferliktir. Gerçek stok hareketi burada DEĞİL — irsaliyenin
+    açılamaz. SATIŞ siparişinde irsaliye = SATIŞ İRSALİYESİ (sevk bilgileri opsiyonel; üretim miktarı kopyalanmaz). Gerçek stok hareketi burada DEĞİL — irsaliyenin
     KENDİSİ onaylanınca yazılır (bkz. _irsaliye_stok_hareketi_yaz)."""
     if siparis.silindi:
         raise TeklifSiparisHatasi("İptal edilmiş sipariş irsaliyeye çevrilemez.")
@@ -689,21 +722,19 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
     kalemler = list(siparis.kalemler.filter(silindi=False).select_related("stok"))
     if not kalemler:
         raise TeklifSiparisHatasi("Siparişte kalem yok; irsaliye oluşturulamaz.")
-    kalanlar = {k.pk: k.miktar for k in kalemler}
-    if siparis.yon == TeklifSiparis.Yon.ALIS:
-        from core.services import siparis_teslim
-        taslak = siparis_teslim.taslak_irsaliye(siparis)
-        if taslak is not None:
-            raise TeklifSiparisHatasi(f"Bu siparişin onaylanmamış bir irsaliye taslağı var ({taslak.belge_no}); önce onaylayın ya da silin.")
-        durum_bilgisi = siparis_teslim.durumlar([siparis.pk], kalemler=kalemler)[siparis.pk]
-        kalanlar = durum_bilgisi["kalan_by_kalem"]
-        kalemler = [k for k in kalemler if kalanlar.get(k.pk, Decimal("0")) > 0]
-        if not kalemler:
-            if durum_bilgisi["kapatma_var"]:
-                raise TeklifSiparisHatasi("Siparişin kalanı kapatılmış (gelmeyecek); irsaliyeye çevrilecek miktar yok. Gerekirse önce kapatmayı geri alın.")
-            raise TeklifSiparisHatasi("Siparişin tüm kalemleri teslim alınmış (kalan yok); irsaliyeye çevrilecek miktar kalmadı.")
-    elif siparis.donusen_irsaliyeler.filter(silindi=False).exists():
-        raise TeklifSiparisHatasi("Bu sipariş zaten bir irsaliyeye dönüştürülmüş.")
+    satis = siparis.yon == TeklifSiparis.Yon.SATIS
+    from core.services import siparis_teslim
+    taslak = siparis_teslim.taslak_irsaliye(siparis)
+    if taslak is not None:
+        raise TeklifSiparisHatasi(f"Bu siparişin onaylanmamış bir irsaliye taslağı var ({taslak.belge_no}); önce onaylayın ya da silin.")
+    durum_bilgisi = siparis_teslim.durumlar([siparis.pk], kalemler=kalemler)[siparis.pk]
+    kalanlar = durum_bilgisi["kalan_by_kalem"]
+    kalemler = [k for k in kalemler if kalanlar.get(k.pk, Decimal("0")) > 0]
+    if not kalemler:
+        if durum_bilgisi["kapatma_var"]:
+            raise TeklifSiparisHatasi("Siparişin kalanı kapatılmış (gelmeyecek); irsaliyeye çevrilecek miktar yok. Gerekirse önce kapatmayı geri alın.")
+        raise TeklifSiparisHatasi("Siparişin tüm kalemleri sevk edilmiş (kalan yok); irsaliyeye çevrilecek miktar kalmadı." if satis
+                                  else "Siparişin tüm kalemleri teslim alınmış (kalan yok); irsaliyeye çevrilecek miktar kalmadı.")
     depo = Depo.objects.filter(pk=depo_id, silindi=False).first()
     if depo is None:
         raise TeklifSiparisHatasi("Depo bulunamadı.")
@@ -713,11 +744,12 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
                               aciklama=siparis.aciklama,
                               yukleme_sekli=siparis.yukleme_sekli, odeme_kosulu=siparis.odeme_kosulu,
                               yukleme_tipi=siparis.yukleme_tipi, navlun_tutari=siparis.navlun_tutari,
-                              kaynak_siparis=siparis, depo=depo, kullanici=kullanici)
+                              kaynak_siparis=siparis, depo=depo, kullanici=kullanici, irsaliye_no=irsaliye_no,
+                              **_sevk_bilgisi(TeklifSiparis.BelgeTur.IRSALIYE, siparis.yon, siparis.cari, sevk_adresi_id, plaka, sofor_adi, sofor_tckn))
     from core.sayi import yuvarla
     for k in kalemler:
         miktar = kalanlar[k.pk]
-        uretim = k.uretim_miktar
+        uretim = None if satis else k.uretim_miktar                    # satış irsaliyesi stoğu fatura birimi/çeviriciyle düşer; sipariş üretim miktarı taşınmaz
         if uretim is not None and miktar != k.miktar:                       # kısmi: onaylanmış üretim miktarı kalan oranında
             uretim = yuvarla(uretim * miktar / k.miktar, 3)
             uretim = uretim if uretim > 0 else None
@@ -796,6 +828,8 @@ def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> Teklif
         raise TeklifSiparisHatasi("Yalnız onaylı irsaliye faturaya çevrilebilir.")
     if irsaliye.fatura_id:
         raise TeklifSiparisHatasi("Bu irsaliye zaten bir faturaya dönüştürülmüş.")
+    if irsaliye.yon == TeklifSiparis.Yon.SATIS:                                    # satış irsaliyesi: satır-kalem bağı + irsaliyeli fatura kuralları ortak yolda
+        return irsaliyeleri_faturaya_cevir([irsaliye], kullanici=kullanici)[1][0]
     kalemler = list(irsaliye.kalemler.filter(silindi=False))
     if not kalemler:
         raise TeklifSiparisHatasi("İrsaliyede kalem yok; fatura oluşturulamaz.")
@@ -815,7 +849,7 @@ def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> Teklif
 
 @transaction.atomic
 def irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=None):
-    """Aynı cariye ait, onaylı ve henüz faturalanmamış BİRDEN ÇOK alış irsaliyesinden TEK taslak Alış Faturası açar (tip bilinmez; kullanıcı fatura ekranında tip seçip
+    """Aynı cariye ait, onaylı ve henüz faturalanmamış BİRDEN ÇOK irsaliyeden (alış YA DA satış) TEK taslak fatura açar (tip bilinmez; kullanıcı fatura ekranında tip seçip
     onaylar). Tek irsaliye seçilmişse eski akış (``irsaliyeyi_faturaya_cevir``) AYNEN çalışır. Her irsaliye kalemi bir fatura satırı olur ve satır kalemine BAĞLANIR
     (``FaturaSatir.irsaliye_kalem``: stok/varyant kilitli, miktar/fiyat düzenlenebilir; maliyet o kaleme göre dağıtılır); her irsaliye faturaya bağlanır (``irsaliye.fatura``).
     Farklı cari / farklı para birimi / faturalanmış / onaysız / iptal edilmiş irsaliye açık hatayla reddedilir. (fatura, irsaliyeler) döner."""
@@ -827,7 +861,7 @@ def irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=None):
         raise TeklifSiparisHatasi("Faturaya çevrilecek irsaliye seçilmedi.")
     if len({i.pk for i in irsaliyeler}) != len(irsaliyeler):
         raise TeklifSiparisHatasi("Aynı irsaliye birden çok kez seçilmiş.")
-    if len(irsaliyeler) == 1:
+    if len(irsaliyeler) == 1 and irsaliyeler[0].yon == TeklifSiparis.Yon.ALIS:
         i = irsaliyeyi_faturaya_cevir(irsaliyeler[0], kullanici=kullanici)
         return i.fatura, [i]
     # taze satırlar + kilit (aynı irsaliye iki isteğe aynı anda faturalanmasın)
@@ -837,8 +871,10 @@ def irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=None):
         ad = i.belge_no or f"#{i.pk}"
         if i.silindi:
             raise TeklifSiparisHatasi(f"{ad}: iptal edilmiş irsaliye faturaya çevrilemez.")
-        if i.belge_tur != TeklifSiparis.BelgeTur.IRSALIYE or i.yon != TeklifSiparis.Yon.ALIS:
-            raise TeklifSiparisHatasi(f"{ad}: yalnız alış irsaliyesi faturaya çevrilebilir.")
+        if i.belge_tur != TeklifSiparis.BelgeTur.IRSALIYE:
+            raise TeklifSiparisHatasi(f"{ad}: yalnız irsaliye faturaya çevrilebilir.")
+        if i.yon != irsaliyeler[0].yon:
+            raise TeklifSiparisHatasi("Alış ve satış irsaliyeleri aynı faturaya çevrilemez.")
         if i.durum != TeklifSiparis.Durum.ONAYLI:
             raise TeklifSiparisHatasi(f"{ad}: yalnız onaylı irsaliye faturaya çevrilebilir (bu irsaliye onaylı değil).")
         if i.fatura_id:
@@ -860,9 +896,11 @@ def irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=None):
             # NET (iskontolu) birim fiyat, TAM hassasiyetle (bkz. irsaliyeyi_faturaya_cevir)
             satirlar.append({"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam, "varyant": k.varyant_id})
             kaynaklar.append(k)
+    yon = irsaliyeler[0].yon
+    son_irsaliye = max(i.tarih for i in irsaliyeler)
     fatura = fatura_servis.fatura_taslak_olustur(
-        cari_id=irsaliyeler[0].cari_id, tarih=max(i.tarih for i in irsaliyeler), satirlar=satirlar,
-        tip_id=None, yon=TeklifSiparis.Yon.ALIS, para_birimi=irsaliyeler[0].para_birimi,
+        cari_id=irsaliyeler[0].cari_id, tarih=(son_irsaliye if yon == TeklifSiparis.Yon.ALIS else max(son_irsaliye, tr_bugun())), satirlar=satirlar,   # satış faturası genelde irsaliyeden sonra kesilir: taslak bugünle açılır (formdan değişir)
+        tip_id=None, yon=yon, para_birimi=irsaliyeler[0].para_birimi,
         depo_id=irsaliyeler[0].depo_id, kullanici=kullanici)
     for i in irsaliyeler:
         i.fatura = fatura
@@ -871,6 +909,42 @@ def irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=None):
     for satir, kalem in zip(fatura.satirlar.filter(silindi=False).order_by("id"), kaynaklar):      # satır sırası = kalem sırası
         FaturaSatir.objects.filter(pk=satir.pk).update(irsaliye_kalem_id=kalem.pk)
     return fatura, irsaliyeler
+
+
+def _satis_irsaliye_cikis_yaz(irsaliye: TeklifSiparis, kullanici):
+    """SATIŞ İRSALİYESİ onaylanınca: kalemler için GERÇEK stok ÇIKIŞI (irsaliye tarihi, irsaliye deposu, kalem varyantı) + satış maliyeti fişi (620/621/623 borç, stok alacak —
+    ``stok_fis.irsaliye_satis_senkronla``). Miktar fatura biriminden üretim birimine çevirici ile çevrilir (fatura ``_uretim_miktari`` ile aynı). Hizmet kartı: hareket yok.
+    Tarih bazlı yetersiz stok kontrolü ``hareket_ekle``'de çalışır. Çıkış maliyeti o günkü ağırlıklı ortalamadır; irsaliyeli faturada stok/maliyet TEKRAR yazılmaz."""
+    from core.sayi import yuvarla
+    from core.services import stok_fis
+    from core.services.stok_ortalama import MaliyetHatasi
+    for k in irsaliye.kalemler.filter(silindi=False).select_related("stok__kategori"):
+        if k.stok.kategori.hizmet_kategorisi:
+            continue
+        cevirici = k.stok.cevirici or Decimal("1")
+        miktar = yuvarla(k.miktar / cevirici, 3)
+        if miktar <= 0:
+            raise TeklifSiparisHatasi(f"{k.stok.kod}: çevirici ({cevirici}) ile dönüştürülen miktar sıfır oluyor; miktarı veya çeviriciyi düzeltin.")
+        try:
+            hareket_ekle(
+                stok_id=k.stok_id, depo_id=irsaliye.depo_id, tarih=irsaliye.tarih, tur=StokHareket.Tur.CIKIS, miktar=miktar, varyant=k.varyant_id,
+                aciklama=f"{irsaliye.belge_no} satış irsaliyesi — {irsaliye.cari.unvan}",
+                kaynak=StokHareket.Kaynak.IRSALIYE, teklif_siparis_kalem=k, kullanici=kullanici)
+        except HareketHatasi as e:
+            raise TeklifSiparisHatasi(str(e))
+    try:
+        stok_fis.irsaliye_satis_senkronla(irsaliye, kullanici=kullanici)
+    except MaliyetHatasi as e:
+        raise TeklifSiparisHatasi(str(e))
+
+
+def _satis_sevk_senkronla(irsaliye: TeklifSiparis, kullanici) -> str:
+    """Satış irsaliyesi onaylandı / geri alındı / iptal edildi / silindi: kaynak satış siparişinin ÜS sevk durumunu (mamul ayırması + KAPALI/yeniden AÇIK) yeniden uzlaştırır.
+    Uyarı metni ('' = yok) döner. Siparişsiz (elle) irsaliye ÜS'ye dokunmaz."""
+    if irsaliye.kaynak_siparis_id is None:
+        return ""
+    from core.services import uretim as uretim_servis
+    return uretim_servis.sevk_senkronla(irsaliye.kaynak_siparis, kullanici=kullanici, tarih=irsaliye.tarih)
 
 
 def _irsaliye_hareketleri_iptal(irsaliye: TeklifSiparis, kullanici):
@@ -905,12 +979,16 @@ def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     hedef = _donusum_hedefi_manuel(ts)
     if hedef:
         raise TeklifSiparisHatasi(f"Bu belge {hedef} dönüştürülmüş; iptal edilemez.")
+    if satis_irsaliyesi_mi(ts) and ts.fatura_id and not ts.fatura.silindi:
+        raise TeklifSiparisHatasi("Bu irsaliye bir faturaya bağlı; önce faturayı silin.")
     if ts.belge_tur == TeklifSiparis.BelgeTur.IRSALIYE:
         _irsaliye_hareketleri_iptal(ts, kullanici)
     ts.silindi = True
     ts.silindi_at = timezone.now()
     ts.updated_by = kullanici
     ts.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    if satis_irsaliyesi_mi(ts):
+        ts.sevk_notu = _satis_sevk_senkronla(ts, kullanici)
     return ts
 
 
@@ -929,8 +1007,10 @@ def irsaliye_sil(irsaliye: TeklifSiparis, kullanici=None) -> None:
             "Bu irsaliye bir faturaya dönüştürülmüş; önce o faturayı silin.")
     from core.services import silme_kaydi
     denetim = silme_kaydi.irsaliye_verisi(irsaliye)       # silmeden ÖNCE topla; kayıt sonda aynı transaction'da yazılır
+    siparis_sevk = irsaliye.kaynak_siparis if satis_irsaliyesi_mi(irsaliye) else None
     hareketler = list(StokHareket.objects.filter(
         teklif_siparis_kalem__teklif_siparis=irsaliye, silindi=False))
+    maliyet_fis_idler = {h.fis_id for h in hareketler if h.fis_id}                 # satış irsaliyesi maliyet fişi (alışta boş)
     for h in hareketler:
         try:
             hareket_sil(h, kullanici=kullanici)
@@ -941,6 +1021,14 @@ def irsaliye_sil(irsaliye: TeklifSiparis, kullanici=None) -> None:
     StokMaliyetTuketimi.objects.filter(katman_id__in=katman_ids).delete()
     StokMaliyetKatmani.objects.filter(id__in=katman_ids).delete()
     StokHareket.objects.filter(id__in=[h.pk for h in hareketler]).delete()
+    if maliyet_fis_idler:                                                          # satış maliyet fişi KALICI silinir; numarası bir daha verilmez
+        from core.services.yevmiye import fis_no_sayacini_koru
+        for yil in set(YevmiyeFisi.objects.filter(pk__in=maliyet_fis_idler).values_list("yil", flat=True)):
+            fis_no_sayacini_koru(yil)
+        YevmiyeFisi.objects.filter(pk__in=maliyet_fis_idler, kaynak=YevmiyeFisi.Kaynak.STOK_SATIS).delete()
     irsaliye.kalemler.all().delete()
     irsaliye.delete()
     silme_kaydi.irsaliye_yaz(denetim, kullanici)
+    if siparis_sevk is not None:
+        from core.services import uretim as uretim_servis
+        irsaliye.sevk_notu = uretim_servis.sevk_senkronla(siparis_sevk, kullanici=kullanici, tarih=irsaliye.tarih)

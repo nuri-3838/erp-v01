@@ -2083,17 +2083,31 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
 
 # === Üretim siparişi REVİZE (adım 7) ===
 
+def sevk_irsaliye_kalemleri(siparis):
+    """Kaynak satış siparişinden doğan ONAYLI, silinmemiş SATIŞ İRSALİYELERİNİN kalemleri (SEVK edilmiş mamul — stok çıkışı irsaliye gününde yazılıdır)."""
+    from core.models import TeklifSiparis, TeklifSiparisKalem
+    return list(TeklifSiparisKalem.objects.filter(
+        silindi=False, teklif_siparis__silindi=False, teklif_siparis__belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, teklif_siparis__yon=TeklifSiparis.Yon.SATIS,
+        teklif_siparis__durum=TeklifSiparis.Durum.ONAYLI, teklif_siparis__kaynak_siparis=siparis).order_by("id"))
+
+
 def sevk_edilen_haritasi(emir: UretimEmri, siparis=None) -> dict:
-    """{stok pk: sevk/faturalanmış miktar} — siparişli ÜS'de kaynak siparişin bağlı (silinmemiş) satış faturası satırlarından; manuel ÜS'de boş.
+    """{stok pk: sevk/faturalanmış miktar} — siparişli ÜS'de kaynak siparişin bağlı (silinmemiş) satış faturası satırlarından (irsaliyeye bağlı olmayanlar) + onaylı SATIŞ İRSALİYELERİ kalemlerinden; manuel ÜS'de boş.
     Varyantlı planlanmış ÜS'de anahtar (stok pk, varyant pk) (fatura satırının varyantı); kart bazlı (kapalı) planda düz stok pk — eski biçim.
     Revize bunun altına düşürmeyi reddeder (adım 8 kapanışı aynı kaynağı kullanır)."""
     sip = siparis if siparis is not None else emir.kaynak_siparis
-    if sip is None or not sip.fatura_id or sip.fatura.silindi:
+    if sip is None:
         return {}
     h = {}
-    for sat in sip.fatura.satirlar.filter(silindi=False, stok__isnull=False):
-        k = (sat.stok_id, sat.varyant_id) if emir.varyantli_plan else sat.stok_id
-        h[k] = h.get(k, Decimal("0")) + sat.miktar
+
+    def ekle(stok_id, varyant_id, miktar):
+        k = (stok_id, varyant_id) if emir.varyantli_plan else stok_id
+        h[k] = h.get(k, Decimal("0")) + miktar
+    if sip.fatura_id and not sip.fatura.silindi:
+        for sat in sip.fatura.satirlar.filter(silindi=False, stok__isnull=False, irsaliye_kalem__isnull=True):       # irsaliyeye bağlı satır irsaliye kalemi olarak aşağıda sayılır (çifte sayım yok)
+            ekle(sat.stok_id, sat.varyant_id, sat.miktar)
+    for k in sevk_irsaliye_kalemleri(sip):
+        ekle(k.stok_id, k.varyant_id, k.miktar)
     return h
 
 
@@ -2409,14 +2423,79 @@ def _kapanis_kontrol(emir: UretimEmri, kullanici=None, tarih=None) -> bool:
         return False
     if emir.istasyon_emirleri.filter(silindi=False).exclude(durum__in=[IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL]).exists():
         return False
+    if emir.kaynak_siparis_id and sevk_irsaliye_kalemleri(emir.kaynak_siparis) and not _tam_sevk(emir):          # kısmi irsaliye sevki: kalan sevk edilene dek ÜS "Sevk bekliyor" kalır
+        return False
     from core.services import fason_siparis as fs_servis
     fs_servis.rezervleri_sil(emir, kullanici)
     emir.durum = UretimEmri.Durum.KAPALI
     emir.kapanis_tarihi = tarih or timezone.localdate()
     emir.updated_by = kullanici
     emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
-    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.KAPANIS, emir.kapanis_tarihi, "Kapanış (sevk: satış faturası)", {"sevk_dusen": emir.sevk_dusen}, kullanici)
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.KAPANIS, emir.kapanis_tarihi, "Kapanış (sevk: satış irsaliyesi)" if emir.kaynak_siparis_id and sevk_irsaliye_kalemleri(emir.kaynak_siparis) else "Kapanış (sevk: satış faturası)",
+                  {"sevk_dusen": emir.sevk_dusen}, kullanici)
     return True
+
+
+def _tam_sevk(emir: UretimEmri) -> bool:
+    """ÜS'nin HER kalemi (kart bazında toplam) sevk edilmiş mi? sevk = fatura (irsaliyesiz satırlar) + onaylı satış irsaliyeleri."""
+    sevk = {}
+    for anahtar, miktar in sevk_edilen_haritasi(emir).items():
+        stok_pk, _ = _sevk_anahtar_coz(anahtar)
+        sevk[stok_pk] = sevk.get(stok_pk, Decimal("0")) + miktar
+    hedef = {}
+    for k in emir.kalemler.all():
+        if not k.silindi:
+            hedef[k.hedef_urun_id] = hedef.get(k.hedef_urun_id, Decimal("0")) + k.hedef_miktar
+    return bool(hedef) and all(sevk.get(stok_pk, Decimal("0")) >= miktar for stok_pk, miktar in hedef.items())
+
+
+@transaction.atomic
+def sevk_senkronla(siparis, kullanici=None, tarih=None) -> str:
+    """SATIŞ İRSALİYESİ sevk uzlaştırması (onay / onay geri alma / iptal / silme sonrası çağrılır; idempotent): kaynak siparişin AÇIK ya da KAPALI ÜS'sinde mamul ayırması, sevk edilen miktar
+    kadar düşer (``sevk_dusen``) — sevk azalmışsa (irsaliye geri alındı/silindi) aynen geri eklenir. Tam sevk + tüm istasyon emirleri bitmişse ÜS KAPALI; sevk azalınca KAPALI ÜS yeniden AÇILIR
+    (revizyon YENIDEN_ACILIS). Kısmi sevkte ÜS açık ('Sevk bekliyor') kalır. Uyarı metni ('' = yok) döner. ÜS yoksa sessiz ''."""
+    emir = (siparis.uretim_emirleri.select_for_update().filter(silindi=False, durum__in=[UretimEmri.Durum.ACIK, UretimEmri.Durum.KAPALI]).order_by("-pk").first())
+    if emir is None:
+        return ""
+    hedef = {}
+    for anahtar, miktar in sevk_edilen_haritasi(emir, siparis).items():
+        a = _sevk_anahtar_coz(anahtar)
+        hedef[a] = hedef.get(a, Decimal("0")) + miktar
+    dusen = {planlama_varyant.anahtar_coz(k): Decimal(str(v)) for k, v in (emir.sevk_dusen or {}).items()}
+    geri_verilen = False
+    for a, d in list(dusen.items()):                                         # sevk azaldı: düşen ayırma geri eklenir
+        fark = d - hedef.get(a, Decimal("0"))
+        if fark > 0:
+            stok_ayirma.ayirma_ekle(emir, a[0], fark, kullanici, varyant=a[1])
+            dusen[a] = d - fark
+            geri_verilen = True
+    for a, miktar in hedef.items():                                          # sevk arttı: ayırma düşer (yalnız ayrılı olan kadar)
+        dus = min(stok_ayirma.ayrilan_miktar(emir, a[0], varyant=a[1]), max(Decimal("0"), miktar - dusen.get(a, Decimal("0"))))
+        if dus > 0:
+            stok_ayirma.ayirma_ekle(emir, a[0], -dus, kullanici, varyant=a[1])
+            dusen[a] = dusen.get(a, Decimal("0")) + dus
+    dusen = {a: v for a, v in dusen.items() if v > 0}
+    yeni = {planlama_varyant.ihtiyac_anahtari(k[0], k[1]): _ds(v) for k, v in dusen.items()}
+    if yeni != (emir.sevk_dusen or {}):
+        emir.sevk_dusen = yeni
+        emir.updated_by = kullanici
+        emir.save(update_fields=["sevk_dusen", "updated_by", "updated_at"])
+    tam = _tam_sevk(emir)
+    if emir.durum == UretimEmri.Durum.KAPALI:
+        if yeni and tam and not geri_verilen:
+            return ""
+        emir.durum = UretimEmri.Durum.ACIK                                   # sevk azaldı / tam değil: yeniden açılır
+        emir.kapanis_tarihi = None
+        emir.updated_by = kullanici
+        emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
+        _revizyon_yaz(emir, UretimEmriRevizyon.Tur.YENIDEN_ACILIS, tarih or tr_bugun(), "Yeniden açıldı (satış irsaliyesi geri alındı/silindi)", {"sevk_dusen": yeni}, kullanici)
+    if not yeni:
+        return ""
+    if not tam:
+        return "Kısmi sevk edildi; kalan miktar sevk edilince üretim siparişi kapanacak."
+    if not _kapanis_kontrol(emir, kullanici, tarih):
+        return "Sevk edildi; üretim siparişinin bitmemiş istasyon emirleri var, tamamlanınca kapanacak."
+    return ""
 
 
 @transaction.atomic
@@ -2450,6 +2529,9 @@ def siparis_sevk_edildi(siparis, kullanici=None, tarih=None) -> str:
 def siparis_fatura_silindi(siparis, kullanici=None, tarih=None) -> None:
     """Satış faturası silinince (sipariş bağı kopmuş olarak) çağrılır: sevk nedeniyle düşen ayırmalar aynen geri eklenir; ÜS KAPALI ise yeniden AÇILIR
     (revizyon YENIDEN_ACILIS). Sevkten etkilenmemiş ÜS'ye dokunmaz."""
+    if sevk_irsaliye_kalemleri(siparis):                                  # sipariş ayrıca satış irsaliyesiyle de sevk edilmiş: yalnız faturanın payı geri alınır (uzlaştırma)
+        sevk_senkronla(siparis, kullanici=kullanici, tarih=tarih)
+        return
     emir = (siparis.uretim_emirleri.select_for_update().filter(silindi=False, durum__in=[UretimEmri.Durum.ACIK, UretimEmri.Durum.KAPALI])
             .order_by("-pk").first())
     if emir is None or (emir.durum == UretimEmri.Durum.ACIK and not emir.sevk_dusen):

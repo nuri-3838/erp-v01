@@ -77,14 +77,15 @@ MODULLER = (
         Ekran("gelir_tablosu_usd", "Gelir Tablosu (USD)", "core:gelir_tablosu_usd"),
         Ekran("kdv_listeleri", "KDV Listeleri", "core:kdv_listeleri", grup="Raporlar"),
     )),
-    Modul("FATURALAR", "Faturalar", (
-        Ekran("alis_faturalari", "Alış Faturaları", "core:alis_faturalari"),
+    Modul("FATURALAR", "Faturalar ve İrsaliyeler", (
         Ekran("satis_faturalari", "Satış Faturaları", "core:satis_faturalari"),
+        Ekran("alis_faturalari", "Alış Faturaları", "core:alis_faturalari"),
+        Ekran("satis_irsaliyeleri", "Satış İrsaliyeleri", "core:satis_irsaliyeleri"),
+        Ekran("satinalma_irsaliyeleri", "Alış İrsaliyeleri", "core:satinalma_irsaliyeleri"),
     )),
     Modul("SATINALMA", "Satınalma", (
         Ekran("satinalma_teklifleri", "Satınalma Teklifleri", "core:satinalma_teklifleri"),
         Ekran("satinalma_siparisleri", "Satınalma Siparişleri", "core:satinalma_siparisleri"),
-        Ekran("satinalma_irsaliyeleri", "Satınalma İrsaliyeleri", "core:satinalma_irsaliyeleri"),
     )),
     Modul("SATIS", "Satış", (
         Ekran("satis_teklifleri", "Satış Teklifleri", "core:satis_teklifleri"),

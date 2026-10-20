@@ -225,7 +225,7 @@ def _degisenleri_isle(degisen, derinlik):
     from core.services import stok_fis
     if derinlik > 10:
         raise MaliyetHatasi("Maliyet zinciri çok derin (döngü olabilir); işlem durduruldu.")
-    kayitlar, faturalar, numune_hareketleri, sayimlar = {}, {}, [], set()
+    kayitlar, faturalar, numune_hareketleri, sayimlar, irsaliyeler = {}, {}, [], set(), {}
     for h in degisen:
         if h.kaynak == StokHareket.Kaynak.SARF and h.fis_id:
             _cikis_fisini_guncelle(h)
@@ -235,6 +235,8 @@ def _degisenleri_isle(degisen, derinlik):
             kayitlar[h.operasyon_kaydi_id] = h.operasyon_kaydi
         elif h.fatura_satir_id:
             faturalar[h.fatura_satir.fatura_id] = h.fatura_satir.fatura
+        elif h.teklif_siparis_kalem_id and h.tur == StokHareket.Tur.CIKIS:                  # satış irsaliyesi çıkışı: maliyet fişi irsaliye tarihli
+            irsaliyeler[h.teklif_siparis_kalem.teklif_siparis_id] = h.teklif_siparis_kalem.teklif_siparis
         elif h.kaynak == StokHareket.Kaynak.NUMUNE:
             numune_hareketleri.append(h.pk)
     if sayimlar:
@@ -247,6 +249,8 @@ def _degisenleri_isle(degisen, derinlik):
             yeniden_hesapla(cikti_stok, _derinlik=derinlik + 1)
     for fatura in faturalar.values():
         stok_fis.satis_senkronla(fatura)
+    for irsaliye in irsaliyeler.values():
+        stok_fis.irsaliye_satis_senkronla(irsaliye)
     if numune_hareketleri:                                           # numune gider fişi (760.06) satır maliyetiyle birlikte yerinde güncellenir
         from core.models import NumuneCikisSatir
         from core.services import numune as numune_servis

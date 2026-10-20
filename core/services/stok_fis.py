@@ -195,3 +195,24 @@ def satis_senkronla(fatura, *, kullanici=None):
     if fis is not None:
         StokHareket.objects.filter(pk__in=[h.pk for h in hs if h.fis_id != fis.pk]).update(fis=fis)
     return fis
+
+
+def irsaliye_satis_senkronla(irsaliye, *, kullanici=None):
+    """SATIŞ İRSALİYESİ maliyet fişi (2026-10-20): irsaliyenin stok ÇIKIŞ hareketlerinin ağırlıklı ortalama tutarlarından — ``satis_senkronla`` ile AYNI hesaplar/yönler (620/621/623 borç,
+    stok alacak), fiş tarihi IRSALIYE tarihidir. Maliyeti hâlâ bilinmeyen satır fişe girmez; sonradan bilinince ``stok_ortalama.yeniden_hesapla`` bunu yeniden çağırır.
+    İrsaliyeli satış faturasında maliyet fişi YOKTUR (çifte maliyet olmaz); fatura sadece gelir/KDV/cari yazar."""
+    hs = list(StokHareket.objects.filter(teklif_siparis_kalem__teklif_siparis=irsaliye, silindi=False, tur=CIKIS).select_related("stok"))
+    net = defaultdict(lambda: SIFIR)
+    for h in hs:
+        if h.maliyet_durumu == YOK or not h.tutar_try or h.tutar_try <= 0:
+            continue
+        stok_kod = stok_hesabi_kodu(h.stok)
+        mal_kod = maliyet_hesabi_kodu(stok_kod)
+        net[mal_kod] += h.tutar_try
+        net[stok_kod] -= h.tutar_try
+    mevcut = next((h.fis for h in hs if h.fis_id and not h.fis.silindi), None)
+    fis = _fis_senkronla(mevcut, _satirlar(net), tarih=irsaliye.tarih, aciklama=f"{irsaliye.belge_no} satış irsaliyesi maliyeti",
+                         kaynak=YevmiyeFisi.Kaynak.STOK_SATIS, kullanici=kullanici)
+    if fis is not None:
+        StokHareket.objects.filter(pk__in=[h.pk for h in hs if h.fis_id != fis.pk]).update(fis=fis)
+    return fis

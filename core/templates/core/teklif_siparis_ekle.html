@@ -17,6 +17,7 @@
   .tl-etiket { display:block; font-size:.72rem; font-weight:400; color:var(--metin-soluk);
     text-transform:none; letter-spacing:0; margin-top:.15rem; }
   .tablo-kapsayici.genis > table#ts-satir-tablo { min-width:800px; }
+  #ts-satir-tablo.uretim-gizli th:nth-child(2), #ts-satir-tablo.uretim-gizli td:nth-child(2) { display:none; }
 </style>
 <div class="form-kapsa">
   <div class="form-ust">
@@ -52,7 +53,7 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik">Kalemler</h2>
       <div class="tablo-kapsayici genis">
-      <table class="satir-tablo" id="ts-satir-tablo">
+      <table class="satir-tablo{% if satis_irsaliyesi %} uretim-gizli{% endif %}" id="ts-satir-tablo">
         {% if iskonto_sutunu %}
         <colgroup><col style="width:30%"><col style="width:13%"><col style="width:11%"><col style="width:14%"><col style="width:10%">
           <col style="width:16%"><col style="width:6%"></colgroup>
@@ -61,7 +62,7 @@
           <col style="width:18%"><col style="width:6%"></colgroup>
         {% endif %}
         <thead><tr>
-          <th>Stok</th><th class="sag">Üretim Miktarı</th><th class="sag">Miktar</th><th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
+          <th>Stok</th><th class="sag">Üretim Miktarı</th><th class="sag">Miktar</th><th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% elif satis_irsaliyesi %}Birim Fiyat (ops.){% else %}Birim Fiyat{% endif %}</th>
           {% if iskonto_sutunu %}<th class="sag">İskonto %</th>{% endif %}
           <th class="sag">Tutar</th><th></th>
         </tr></thead>
@@ -290,4 +291,27 @@
 </script>
 {% include "core/_varyant_js.html" %}
 {% include "core/_akilli_hesap.html" %}
+{% if satis_irsaliyesi %}
+{{ sevk_meta|json_script:"sevk-meta" }}
+<script>
+(function(){
+  var cari = document.getElementById('id_cari'), adres = document.getElementById('id_sevk_adresi');
+  if(!cari || !adres) return;
+  var META = JSON.parse(document.getElementById('sevk-meta').textContent);
+  var tum = Array.prototype.slice.call(adres.options).map(function(o){ return {v:o.value, t:o.text}; });
+  function yenile(){
+    var secili = adres.value, c = cari.value;
+    adres.innerHTML = '';
+    tum.forEach(function(o){
+      if(o.v === '' || String(META[o.v]) === String(c)){
+        var e = document.createElement('option'); e.value = o.v; e.textContent = o.t; if(o.v === secili) e.selected = true; adres.appendChild(e);
+      }
+    });
+    if(!adres.value && adres.options.length > 1){ adres.selectedIndex = 1; }
+  }
+  cari.addEventListener('change', function(){ adres.value = ''; yenile(); });
+  yenile();
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -18,7 +18,7 @@ import uuid
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import SiparisKalanKapatma, TeklifSiparis, TeklifSiparisKalem
+from core.models import FaturaSatir, SiparisKalanKapatma, TeklifSiparis, TeklifSiparisKalem
 
 SIFIR = Decimal("0")
 BEKLIYOR, KISMI, TAMAM = "BEKLIYOR", "KISMI", "TAMAM"
@@ -42,6 +42,12 @@ def _teslim_havuzu(siparis_idler) -> dict:
     for k in qs:
         h = havuz.setdefault(k.teklif_siparis.kaynak_siparis_id, {})
         h[anahtar(k)] = h.get(anahtar(k), SIFIR) + k.miktar
+    # SATIŞ siparişi: irsaliyesiz kesilen DEPOLU faturanın (siparis.fatura) irsaliyeye bağlı OLMAYAN satırları da sevk sayılır (stok çıkışını fatura yazmıştır)
+    for sip in TeklifSiparis.objects.filter(pk__in=list(siparis_idler), yon=TeklifSiparis.Yon.SATIS, fatura__isnull=False, fatura__silindi=False, fatura__depo__isnull=False):
+        for sat in FaturaSatir.objects.filter(fatura_id=sip.fatura_id, silindi=False, stok__isnull=False, irsaliye_kalem__isnull=True).select_related("stok"):
+            a = (sat.stok_id, sat.varyant_id or (sat.stok.varsayilan_varyant_id if sat.stok.varyantli else None))
+            h = havuz.setdefault(sip.pk, {})
+            h[a] = h.get(a, SIFIR) + sat.miktar
     return havuz
 
 

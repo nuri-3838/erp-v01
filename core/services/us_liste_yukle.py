@@ -136,16 +136,28 @@ class ListeYukleme(Paylasim):
         self.fatura_silindi, self.fatura_satirlari = {}, {}
         if fatura_idler:
             self.fatura_silindi = {f.pk: f.silindi for f in Fatura.objects.filter(pk__in=fatura_idler)}
-            for sat in FaturaSatir.objects.filter(fatura_id__in=fatura_idler, silindi=False, stok__isnull=False):
+            for sat in FaturaSatir.objects.filter(fatura_id__in=fatura_idler, silindi=False, stok__isnull=False, irsaliye_kalem__isnull=True):      # irsaliyeye bağlı satır irsaliye kalemi olarak sayılır
                 self.fatura_satirlari.setdefault(sat.fatura_id, []).append(sat)
+        siparis_idler = {e.kaynak_siparis_id for e in self.emirler if e.kaynak_siparis_id}
+        self.irsaliye_kalemleri = {}                                   # {sipariş pk: onaylı satış irsaliyesi kalemleri} (uretim.sevk_irsaliye_kalemleri ile aynı)
+        if siparis_idler:
+            from core.models import TeklifSiparis, TeklifSiparisKalem
+            for k in TeklifSiparisKalem.objects.filter(
+                    silindi=False, teklif_siparis__silindi=False, teklif_siparis__belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, teklif_siparis__yon=TeklifSiparis.Yon.SATIS,
+                    teklif_siparis__durum=TeklifSiparis.Durum.ONAYLI, teklif_siparis__kaynak_siparis_id__in=siparis_idler).select_related("teklif_siparis").order_by("id"):
+                self.irsaliye_kalemleri.setdefault(k.teklif_siparis.kaynak_siparis_id, []).append(k)
 
     def sevk_haritasi(self, emir) -> dict:
         """``uretim.sevk_edilen_haritasi`` ile aynı, sorgusuz."""
         sip = emir.kaynak_siparis
-        if sip is None or not sip.fatura_id or self.fatura_silindi.get(sip.fatura_id, True):
+        if sip is None:
             return {}
         h = {}
-        for sat in self.fatura_satirlari.get(sip.fatura_id, []):
+        if sip.fatura_id and not self.fatura_silindi.get(sip.fatura_id, True):
+            for sat in self.fatura_satirlari.get(sip.fatura_id, []):
+                k = (sat.stok_id, sat.varyant_id) if emir.varyantli_plan else sat.stok_id
+                h[k] = h.get(k, SIFIR) + sat.miktar
+        for sat in self.irsaliye_kalemleri.get(sip.pk, []):
             k = (sat.stok_id, sat.varyant_id) if emir.varyantli_plan else sat.stok_id
             h[k] = h.get(k, SIFIR) + sat.miktar
         return h
