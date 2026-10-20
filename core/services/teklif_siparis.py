@@ -695,9 +695,12 @@ def siparisi_irsaliyeye_cevir(siparis: TeklifSiparis, *, tarih, depo_id,
         taslak = siparis_teslim.taslak_irsaliye(siparis)
         if taslak is not None:
             raise TeklifSiparisHatasi(f"Bu siparişin onaylanmamış bir irsaliye taslağı var ({taslak.belge_no}); önce onaylayın ya da silin.")
-        kalanlar = siparis_teslim.durumlar([siparis.pk], kalemler=kalemler)[siparis.pk]["kalan_by_kalem"]
+        durum_bilgisi = siparis_teslim.durumlar([siparis.pk], kalemler=kalemler)[siparis.pk]
+        kalanlar = durum_bilgisi["kalan_by_kalem"]
         kalemler = [k for k in kalemler if kalanlar.get(k.pk, Decimal("0")) > 0]
         if not kalemler:
+            if durum_bilgisi["kapatma_var"]:
+                raise TeklifSiparisHatasi("Siparişin kalanı kapatılmış (gelmeyecek); irsaliyeye çevrilecek miktar yok. Gerekirse önce kapatmayı geri alın.")
             raise TeklifSiparisHatasi("Siparişin tüm kalemleri teslim alınmış (kalan yok); irsaliyeye çevrilecek miktar kalmadı.")
     elif siparis.donusen_irsaliyeler.filter(silindi=False).exists():
         raise TeklifSiparisHatasi("Bu sipariş zaten bir irsaliyeye dönüştürülmüş.")

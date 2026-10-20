@@ -2459,6 +2459,35 @@ class TeklifSiparisKalem(TemelModel):
 
 
 # === STOKLAR Faz B — Depo (çok depo) ===
+
+class SiparisKalanKapatma(TemelModel):
+    """SATINALMA SİPARİŞİ — "Kalanı kapat (gelmeyecek)" kaydı (2026-10-20): kısmen teslim alınmış alış siparişinin bir kaleminde tedarikçinin göndermeyeceği miktar.
+    Kapatılan miktar TESLİM EDİLMİŞ sayılmaz; kalan hesabında (core.services.siparis_teslim) ayrıca düşülür: kalan = sipariş − teslim − kapatılan. Kayıt silinmez; "Kapatmayı geri al"
+    ``geri_alindi_at`` doldurur (geçmiş kalır), kalan o kadar geri açılır. ``created_by`` = kapatan kullanıcı, ``created_at`` = kapatma zamanı; ``aciklama`` zorunlu.
+    Aynı işlemle (toplu "tüm kalanı kapat") yazılan kayıtlar ``grup`` ile ilişkilidir."""
+
+    siparis = models.ForeignKey(TeklifSiparis, verbose_name="sipariş", on_delete=models.CASCADE, related_name="kalan_kapatmalari")
+    kalem = models.ForeignKey(TeklifSiparisKalem, verbose_name="sipariş kalemi", on_delete=models.CASCADE, related_name="kalan_kapatmalari")
+    miktar = models.DecimalField("kapatılan miktar", max_digits=18, decimal_places=3)
+    aciklama = models.CharField("açıklama", max_length=300)
+    grup = models.CharField("işlem grubu", max_length=32, blank=True, default="")
+    geri_alindi_at = models.DateTimeField("geri alınma zamanı", null=True, blank=True)
+    geri_alan = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="geri alan", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        db_table = "siparis_kalan_kapatma"
+        verbose_name = "sipariş kalan kapatma"
+        verbose_name_plural = "sipariş kalan kapatmaları"
+        ordering = ["siparis", "id"]
+        constraints = [models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_siparis_kalan_kapatma_miktar_gt0")]
+
+    def __str__(self):
+        return f"{self.siparis_id} kalem {self.kalem_id} kapatılan {self.miktar}"
+
+    @property
+    def aktif(self) -> bool:
+        return self.geri_alindi_at is None and not self.silindi
+
 class Depo(TemelModel):
     """Stok deposu. Çok depo destekli; eldeki miktar depo bazında hareketlerden
     HESAPLANIR (saklanmaz). Kod elle, ad+kod silinmemişler arasında benzersiz."""

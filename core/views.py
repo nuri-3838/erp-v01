@@ -61,7 +61,7 @@ from core.models import (
     Birim, Cari, CariAktivite, CariAktiviteEk, FaturaEk, IrsaliyeEk, CariBanka, CariKategori, CariSevkAdresi,
     CariYetkili, Depo, EkranYetki, Fatura, FaturaSatir, FasonDonus, FasonFiyat, FasonSiparisi,
     Banka, BankaHesap, CekBordrosu, CekSenet, DuranVarlik, FaturaTipi, FirmaBanka, HesapPlani, Kasa, Kategori, KdvOrani, Kredi, KrediKarti,
-    KrediTaksit, Kur, KurDegerleme, Sehir, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, VergiDairesi, YatirimProjesi,
+    KrediTaksit, Kur, KurDegerleme, Sehir, SiparisKalanKapatma, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, VergiDairesi, YatirimProjesi,
     YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, KdvMahsup, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, IstasyonEmri, OperasyonKaydi,
     Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
@@ -3689,6 +3689,7 @@ def teklif_siparis_detay(request, pk):
     donusen_irsaliye = (ts.donusen_irsaliyeler.filter(silindi=False).first()
                        if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS else None)
     teslim, siparis_irsaliyeleri, irsaliye_taslagi, irsaliyeye_cevrilebilir = None, [], None, False          # ALIŞ siparişi KISMİ TESLİM (sipariş / teslim / kalan)
+    kalan_kapatilabilir = False
     if ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS and ts.yon == TeklifSiparis.Yon.ALIS and not ts.silindi and ts.durum == TeklifSiparis.Durum.ONAYLI:
         from core.services import siparis_teslim
         teslim = siparis_teslim.durumlar([ts.pk], kalemler=kalemler)[ts.pk]
@@ -3701,6 +3702,7 @@ def teklif_siparis_detay(request, pk):
         siparis_irsaliyeleri = list(ts.donusen_irsaliyeler.filter(silindi=False).order_by("tarih", "pk"))
         irsaliye_taslagi = siparis_teslim.taslak_irsaliye(ts)
         irsaliyeye_cevrilebilir = teslim["kalan_var"] and irsaliye_taslagi is None
+        kalan_kapatilabilir = teslim["teslim_var"] and teslim["kalan_var"] and irsaliye_taslagi is None
     uretim_emri = None
     uretim_emri_acilabilir = False
     ozel_varyant = False
@@ -3725,7 +3727,8 @@ def teklif_siparis_detay(request, pk):
         or uretim_emri)
     return render(request, "core/teklif_siparis_detay.html",
                   {"ts": ts, "kalemler": kalemler, "emoji": emoji,
-                   "iskonto_sutunu": _iskonto_sutunu(ts.belge_tur, ts.yon), "kalem_sutun": (5 if _iskonto_sutunu(ts.belge_tur, ts.yon) else 3) + (2 if teslim else 0),
+                   "iskonto_sutunu": _iskonto_sutunu(ts.belge_tur, ts.yon), "kalem_sutun": (5 if _iskonto_sutunu(ts.belge_tur, ts.yon) else 3) + (2 if teslim else 0) + (1 if teslim and teslim["kapatma_var"] else 0),
+                   "kalan_kapatilabilir": kalan_kapatilabilir,
                    "teslim": teslim, "siparis_irsaliyeleri": siparis_irsaliyeleri, "irsaliye_taslagi": irsaliye_taslagi, "irsaliyeye_cevrilebilir": irsaliyeye_cevrilebilir,
                    "liste_url": "core:" + ekran, "donusen_siparis": donusen_siparis,
                    "donusen_proforma": donusen_proforma,
@@ -3785,6 +3788,39 @@ def alis_teklif_siparise_cevir(request, pk):
         except teklif_siparis_servis.TeklifSiparisHatasi as e:
             messages.error(request, str(e))
     return redirect("core:teklif_siparis_detay", pk=teklif.pk)
+
+
+@ekran_gerekli("satinalma_siparisleri")
+def siparis_kalan_kapat_gorunum(request, pk):
+    """Kısmen teslim alınmış satınalma siparişinin KALANINI kapatır (gelmeyecek): tüm kalan (``tumu=1``) ya da kalem bazında (``miktar_<kalem id>``); açıklama zorunlu."""
+    from core.services import siparis_teslim
+    siparis = get_object_or_404(TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.SIPARIS, yon=TeklifSiparis.Yon.ALIS)
+    if request.method == "POST":
+        aciklama = request.POST.get("aciklama", "")
+        secim = None
+        if not request.POST.get("tumu"):
+            secim = {int(k[len("miktar_"):]): v for k, v in request.POST.items() if k.startswith("miktar_") and k[len("miktar_"):].isdigit() and v.strip()}
+        try:
+            kayitlar = siparis_teslim.kalani_kapat(siparis, aciklama=aciklama, kullanici=request.user, kalem_miktarlari=secim)
+            ozet = " · ".join(f"{k.kalem.stok.kod} {k.miktar.normalize():f}" for k in kayitlar)
+            messages.success(request, f"Kalan kapatıldı (gelmeyecek): {ozet}. Kapatılan miktar teslim edilmiş sayılmaz; gerekirse sipariş detayından geri alınabilir.")
+        except (siparis_teslim.KalanKapatmaHatasi, SayiHatasi) as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=siparis.pk)
+
+
+@ekran_gerekli("satinalma_siparisleri")
+def siparis_kalan_kapatma_geri_al(request, pk):
+    """Bir kalan kapatma kaydını geri alır (kalan geri açılır)."""
+    from core.services import siparis_teslim
+    kayit = get_object_or_404(SiparisKalanKapatma.objects.select_related("siparis"), pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            siparis_teslim.kapatmayi_geri_al(kayit, kullanici=request.user)
+            messages.success(request, "Kapatma geri alındı; kapatılan miktar tekrar kalan olarak göründü.")
+        except siparis_teslim.KalanKapatmaHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=kayit.siparis_id)
 
 
 @ekran_gerekli("satinalma_siparisleri")

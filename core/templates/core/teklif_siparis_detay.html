@@ -71,7 +71,7 @@
         <span class="d-rozet tip">{{ ts.get_yon_display }}</span>
         {% if donusen_siparis %}{% if donusen_siparis.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Siparişe Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak; onaylanana kadar bu belge açık sayılır">📝 Sipariş taslağı var</span>{% endif %}{% endif %}
         {% if donusen_proforma %}{% if donusen_proforma.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 Proformaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Hedef belge henüz taslak">📝 Proforma taslağı var</span>{% endif %}{% endif %}
-        {% if teslim %}{% if teslim.durum == "KISMI" %}<span class="d-rozet notr" title="Siparişin bir kısmı teslim alındı">📦 Kısmi teslim</span>{% elif teslim.durum == "TAMAM" %}<span class="d-rozet aktif">✅ Tamamlandı</span>{% endif %}{% if irsaliye_taslagi %}<span class="d-rozet notr" title="Onaylanana kadar bu irsaliyenin miktarı hâlâ kalan sayılır">📝 İrsaliye taslağı var</span>{% endif %}
+        {% if teslim %}{% if teslim.durum == "KISMI" %}<span class="d-rozet notr" title="Siparişin bir kısmı teslim alındı">📦 Kısmi teslim</span>{% elif teslim.durum == "TAMAM" %}<span class="d-rozet aktif"{% if teslim.kapatma_var %} title="Kalan miktar kapatıldı (gelmeyecek)"{% endif %}>✅ Tamamlandı</span>{% endif %}{% if irsaliye_taslagi %}<span class="d-rozet notr" title="Onaylanana kadar bu irsaliyenin miktarı hâlâ kalan sayılır">📝 İrsaliye taslağı var</span>{% endif %}
         {% elif donusen_irsaliye %}{% if donusen_irsaliye.durum == "ONAYLI" %}<span class="d-rozet aktif">🔁 İrsaliyeye Dönüştü</span>{% else %}<span class="d-rozet notr" title="İrsaliye henüz taslak; onaylanana kadar sipariş gelecek stok sayılır">📝 İrsaliye taslağı var</span>{% endif %}{% endif %}
         {% if donusen_fatura %}{% if donusen_fatura.durum == "ONAYLI" %}<span class="d-rozet aktif">🧾 Faturaya Dönüştü</span>{% else %}<span class="d-rozet notr" title="Fatura henüz taslak">📝 Fatura taslağı var</span>{% endif %}{% endif %}
         {% if uretim_emri %}<span class="d-rozet aktif">🏭 Üretim Siparişine Dönüştü</span>{% endif %}
@@ -326,7 +326,7 @@
     {% endif %}
     <div class="tablo-kapsayici">
     <table>
-      <thead><tr><th>Stok</th><th class="sag">{% if teslim %}Sipariş{% else %}Miktar{% endif %}</th>{% if teslim %}<th class="sag">Teslim</th><th class="sag">Kalan</th>{% endif %}<th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
+      <thead><tr><th>Stok</th><th class="sag">{% if teslim %}Sipariş{% else %}Miktar{% endif %}</th>{% if teslim %}<th class="sag">Teslim</th>{% if teslim.kapatma_var %}<th class="sag">Kapatılan</th>{% endif %}<th class="sag">Kalan</th>{% endif %}<th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% else %}Birim Fiyat{% endif %}</th>
         {% if iskonto_sutunu %}<th class="sag">İskonto</th><th class="sag">Net Fiyat</th>{% endif %}
         <th class="sag">Tutar</th><th class="sag">KDV</th><th class="sag">Tevkifat</th></tr></thead>
       <tbody>
@@ -335,6 +335,7 @@
             <td><span class="mono">{{ k.stok.kod }}</span> {% if ts.yon == "ALIS" %}{{ k.stok.ad_satinalma }}{% else %}{{ k.stok.ad }}{% endif %}{% if k.varyant_metni %}<div class="yardim">🔀 {{ k.varyant_metni }}</div>{% endif %}</td>
             <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
             {% if teslim %}<td class="sag mono">{{ k.teslim_satir.teslim|tr_kur:3 }}{% if k.teslim_satir.fazla %}<div class="yardim" title="Sipariş üstü teslim">+{{ k.teslim_satir.fazla|tr_kur:3 }} fazla</div>{% endif %}</td>
+            {% if teslim.kapatma_var %}<td class="sag mono">{% if k.teslim_satir.kapatilan %}{{ k.teslim_satir.kapatilan|tr_kur:3 }}{% else %}—{% endif %}</td>{% endif %}
             <td class="sag mono"><strong{% if k.teslim_satir.kalan %} style="color:#b35c00"{% endif %}>{{ k.teslim_satir.kalan|tr_kur:3 }}</strong></td>{% endif %}
             <td class="sag mono">{{ k.birim_fiyat|tr_kur:4 }}</td>
             {% if iskonto_sutunu %}<td class="sag mono">{% if k.iskonto_yuzdesi %}%{{ k.iskonto_yuzdesi|tr_kur:2 }}{% else %}—{% endif %}</td>
@@ -353,6 +354,42 @@
       </tfoot>
     </table>
     </div>
+    {% if teslim and teslim.kapatmalar %}
+    <div class="yardim" style="margin-top:.7rem" id="kalan-kapatmalar">
+      {% for kk in teslim.kapatmalar %}
+        <div style="{% if not kk.aktif %}opacity:.6{% endif %}">
+          {% if kk.aktif %}🔒 <strong>Kapatılan:</strong>{% else %}↩ <span>Geri alınan kapatma:</span>{% endif %}
+          {{ kk.miktar|tr_miktar_sade }} {{ kk.kalem.stok.kod }} {{ kk.kalem.stok.ad_satinalma }}
+          ({{ kk.created_at|tr_zaman:"d.m.Y H:i" }}, {{ kk.created_by.get_full_name|default:kk.created_by.username }}, “{{ kk.aciklama }}”)
+          {% if not kk.aktif %}— geri alındı {{ kk.geri_alindi_at|tr_zaman:"d.m.Y H:i" }}{% if kk.geri_alan %}, {{ kk.geri_alan.get_full_name|default:kk.geri_alan.username }}{% endif %}{% endif %}
+          {% if kk.aktif %}
+          <form method="post" action="{% url 'core:siparis_kalan_kapatma_geri_al' kk.pk %}" style="display:inline" onsubmit="return confirm('Kapatma geri alınsın mı? Kapatılan miktar tekrar kalan olur.');">
+            {% csrf_token %}<button type="submit" class="dugme-ikincil" style="padding:.1rem .5rem">Kapatmayı geri al</button></form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if kalan_kapatilabilir %}
+    <details style="margin-top:.7rem" id="kalan-kapat">
+      <summary style="cursor:pointer;font-weight:650">Kalanı kapat (gelmeyecek)</summary>
+      <form method="post" action="{% url 'core:siparis_kalan_kapat' ts.pk %}" style="margin-top:.5rem">
+        {% csrf_token %}
+        <p class="yardim" style="margin:.2rem 0">Tedarikçinin göndermeyeceği miktarı kapatın: kapatılan miktar <strong>teslim edilmiş sayılmaz</strong>, kalandan düşer ve gelecek stokta sayılmaz. Gerekirse geri alınabilir. Kalem bazında miktar girin ya da tüm kalanı kapatın.</p>
+        <div class="tablo-kapsayici"><table>
+          <thead><tr><th>Stok</th><th class="sag">Kalan</th><th class="sag">Kapatılacak</th></tr></thead>
+          <tbody>{% for k in kalemler %}{% if k.teslim_satir.kalan > 0 %}
+            <tr><td><span class="mono">{{ k.stok.kod }}</span> {{ k.stok.ad_satinalma }}{% if k.varyant_metni %} <span class="yardim">🔀 {{ k.varyant_metni }}</span>{% endif %}</td>
+              <td class="sag mono">{{ k.teslim_satir.kalan|tr_kur:3 }}</td>
+              <td class="sag"><input type="text" name="miktar_{{ k.pk }}" inputmode="decimal" autocomplete="off" placeholder="0" style="width:7rem;text-align:right"></td></tr>
+          {% endif %}{% endfor %}</tbody></table></div>
+        <div class="alan" style="margin:.5rem 0"><label for="kk-aciklama">Açıklama <span class="zorunlu">*</span></label>
+          <input type="text" id="kk-aciklama" name="aciklama" maxlength="300" required placeholder="ör. tedarikçi göndermeyecek" style="width:100%"></div>
+        <button type="submit" class="dugme" style="border:0;cursor:pointer">Seçilen miktarları kapat</button>
+        <button type="submit" name="tumu" value="1" class="dugme" style="border:0;cursor:pointer" onclick="if(!document.getElementById('kk-aciklama').value.trim()){alert('Açıklama zorunlu.');return false;} return confirm('Tüm kalan kapatılsın mı? (gelmeyecek)');">Tüm kalanı kapat</button>
+      </form>
+    </details>
+    {% endif %}
     {% if teslim and teslim.siparissiz %}
     <p class="yardim" style="margin-top:.6rem">📎 Siparişte olmayan teslimler (irsaliyede yazılı, sipariş kalanından düşmez):
       {% for s in teslim.siparissiz %}{{ s.stok.kod }} {{ s.stok.ad_satinalma }} — {{ s.miktar|tr_kur:3 }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>

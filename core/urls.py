@@ -96,6 +96,8 @@ urlpatterns = [
     path("teklif-siparis/<int:pk>/faturaya-cevir/", views.siparis_faturaya_cevir, name="siparis_faturaya_cevir"),
     path("teklif-siparis/<int:pk>/siparise-cevir/", views.alis_teklif_siparise_cevir, name="alis_teklif_siparise_cevir"),
     path("teklif-siparis/<int:pk>/irsaliyeye-cevir/", views.siparis_irsaliyeye_cevir_gorunum, name="siparis_irsaliyeye_cevir"),
+    path("teklif-siparis/<int:pk>/kalan-kapat/", views.siparis_kalan_kapat_gorunum, name="siparis_kalan_kapat"),
+    path("teklif-siparis/kalan-kapatma/<int:pk>/geri-al/", views.siparis_kalan_kapatma_geri_al, name="siparis_kalan_kapatma_geri_al"),
     path("teklif-siparis/<int:pk>/irsaliye-faturaya-cevir/", views.irsaliye_faturaya_cevir_gorunum, name="irsaliye_faturaya_cevir"),
     path("teklif-siparis/<int:pk>/uretim-emrine-cevir/", views.siparis_uretim_emrine_cevir,
          name="siparis_uretim_emrine_cevir"),
