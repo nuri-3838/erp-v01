@@ -325,3 +325,27 @@ class YedekMedyaEkranTest(YedekTestTemel):
         for kotu in (MEDYA_AD + ".part", "erp_v01_medya_20260609_030000.tar.gz"):
             self.assertEqual(self.client.get(reverse("core:yedek_indir", args=[kotu])).status_code,
                              404, kotu)
+
+
+class DriveKartiTest(YedekTestTemel):
+    """Yedek ekranındaki salt-okunur Google Drive durum kartı (durum dosyası yoksa görünmez)."""
+
+    def _ac(self):
+        self.client.force_login(self.yon)
+        return self.client.get(reverse("core:yedek"))
+
+    def test_durum_dosyasi_yoksa_kart_yok(self):
+        with mock.patch.dict("os.environ", {"DRIVE_YEDEK_DURUM": str(Path(self.tmp) / "yok.json")}):
+            self.assertNotContains(self._ac(), "drive-yedek-durum")
+
+    def test_durum_dosyasi_varsa_kart_ve_hata_gorunur(self):
+        import json
+        d = Path(self.tmp) / "durum.json"
+        d.write_text(json.dumps({"son_basarili": "2026-10-20T00:30:00", "son_calisma": "2026-10-20T12:30:00",
+                                 "son_hata": {"zaman": "2026-10-20T12:30:00", "hatalar": ["yükleme koptu"]},
+                                 "dosyalar": {"erp_v01_20261020_000001.sql.gz.gpg": {"boyut": 1234}}}), encoding="utf-8")
+        with mock.patch.dict("os.environ", {"DRIVE_YEDEK_DURUM": str(d)}):
+            r = self._ac()
+        self.assertContains(r, "drive-yedek-durum")
+        self.assertContains(r, "yükleme koptu")
+        self.assertContains(r, "1 günün yedeği")

@@ -976,9 +976,12 @@ def yedek_yonetim(request):
         (messages.success if basari else messages.error)(request, mesaj)
         return redirect("core:yedek")
     yedekler = yedek_servis.yedekleri_listele()
+    from django.conf import settings
+    from core.services import drive_yedek
     return render(request, "core/yedek.html", {
         "yedekler": yedekler,
         "son_yedek": yedek_servis.son_yedek(),      # yalnız VERİTABANI yedeği (evrak arşivi değil)
+        "drive": drive_yedek.ozet(drive_yedek.Ayar.ortamdan(settings.BASE_DIR)),      # Google Drive yedeği durumu (salt-okunur; durum dosyası yoksa None)
     })
 
 

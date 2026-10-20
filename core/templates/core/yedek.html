@@ -22,6 +22,18 @@
   {{ son_yedek.tarih|date:"d.m.Y H:i" }} ({{ son_yedek.boyut_h }}).
   {% else %}· Henüz yedek yok.{% endif %}</p>
 
+{% if drive %}
+<div class="icerik-kart" style="margin:.6rem 0" id="drive-yedek-durum">
+  <strong>☁️ Google Drive yedeği (şifreli, ERP_YEDEK klasörü):</strong>
+  {% if drive.son_hata %}<span class="rozet rozet-uyari">⚠️ Son çalışmada hata var — sonraki çalışmada tekrar denenecek</span>{% else %}<span class="rozet rozet-aktif">✅ Güncel</span>{% endif %}
+  <div class="yardim" style="margin-top:.3rem">
+    {% if drive.son_basarili %}Son başarılı çalışma: {{ drive.son_basarili|slice:":16"|cut:"T" }}.{% else %}Henüz başarılı yükleme yok.{% endif %}
+    Drive'da {{ drive.takim_gun_sayisi }} günün yedeği ({{ drive.dosya_sayisi }} dosya, {{ drive.toplam_boyut|filesizeformat }}){% if drive.en_eski %}; {{ drive.en_eski }} – {{ drive.en_yeni }}{% endif %}.
+    Saklama: son 30 gün günlük + son 12 hafta haftalık. Dosyalar sunucuda şifrelenip yüklenir; şifre çözme parolası sunucu dışında kullanıcıdadır.
+    {% if drive.son_hata %}<br><strong>Hata:</strong> {{ drive.son_hata.hatalar|join:" · " }}{% endif %}
+  </div>
+</div>
+{% endif %}
 <div class="tablo-kapsayici">
 <table>
   <thead>
