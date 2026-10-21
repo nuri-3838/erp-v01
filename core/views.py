@@ -194,13 +194,14 @@ def pano(request):
         return redirect("core:stok_sayimlari")
     if mesai_kullanicisi_mi(request.user):
         return redirect("core:mesaim")
-    kur_uyarisi, acik_oturumlar, kritik_stok = 0, [], None
+    kur_uyarisi, acik_oturumlar, kritik_stok, adet_bekleyenler = 0, [], None, []
     if yonetici_mi(request.user):
         from core.models import KurUyarisi
         kur_uyarisi = KurUyarisi.objects.filter(silindi=False, gorulme_zamani__isnull=True).count()
         acik_oturumlar = [is_oturumu_servis.ozet(o) for o in is_oturumu_servis.unutulanlar()]   # 18:00 sonrası bugünküler + dünden kalanlar
+        adet_bekleyenler = [is_oturumu_servis.ozet(o) for o in is_oturumu_servis.adet_bekleyenler()]      # adedi girilmemiş (mesai kapanışında) işler
         kritik_stok = kritik_stok_servis.kritik_kalemler()
-    return render(request, "core/pano.html", {"kur_uyarisi": kur_uyarisi, "acik_oturumlar": acik_oturumlar, "kritik_stok": kritik_stok})
+    return render(request, "core/pano.html", {"kur_uyarisi": kur_uyarisi, "acik_oturumlar": acik_oturumlar, "kritik_stok": kritik_stok, "adet_bekleyenler": adet_bekleyenler})
 
 
 def _satir_girdileri(formset):
@@ -8423,7 +8424,7 @@ def uretim_emri_toplu_uret_gorunum(request, pk):
         return redirect(geri)
     try:
         tarih = datetime.date.fromisoformat((request.POST.get("tarih") or "").strip()) if (request.POST.get("tarih") or "").strip() else None
-        yapilan = uretim_servis.uretim_emri_toplu_uret(emir, istasyon=int(istasyon) if istasyon else None, tarih=tarih, kullanici=request.user)
+        yapilan = uretim_servis.uretim_emri_toplu_uret(emir, istasyon=int(istasyon) if istasyon else None, tarih=tarih, kullanici=request.user, oturum_asma=_oturum_asma(request))
     except uretim_servis.TopluUretimHatasi as e:
         hatalar = request.session.get("uret_hata", {})
         hatalar[str(e.istasyon_emri.pk)] = str(e)
@@ -8605,7 +8606,7 @@ def istasyon_toplu_uret_gorunum(request, pk):
     try:
         ham = (request.POST.get("tarih") or "").strip()
         tarih = datetime.date.fromisoformat(ham) if ham else None
-        yapilan = uretim_servis.istasyon_toplu_uret(istasyon, tarih=tarih, kullanici=request.user)
+        yapilan = uretim_servis.istasyon_toplu_uret(istasyon, tarih=tarih, kullanici=request.user, oturum_asma=_oturum_asma(request))
     except uretim_servis.TopluUretimHatasi as e:
         hatalar = request.session.get("uret_hata", {})
         hatalar[str(e.istasyon_emri.pk)] = str(e)
@@ -8621,6 +8622,13 @@ def istasyon_toplu_uret_gorunum(request, pk):
     messages.success(request, f"{istasyon.kod} {istasyon.ad}: {len(yapilan)} istasyon emri üretildi — "
                      + ", ".join(f"{ie.uretim_emri.no}/{ie.no} → {k.no}" for ie, k in yapilan) + "; kayıtlar onaylandı, stok hareketleri yazıldı.")
     return redirect(geri)
+
+
+def _oturum_asma(request):
+    """Ofis üretim kaydı engelini (emirde açık iş oturumu) aşma: YALNIZ süper kullanıcı + dolu not (``asma_notu``); diğer yönetici hesapları aşamaz (servis de kontrol eder)."""
+    if request.user.is_superuser and (request.POST.get("asma_notu") or "").strip():
+        return (request.user, request.POST["asma_notu"].strip())
+    return None
 
 
 def _guvenli_geri(request, varsayilan):
@@ -8642,7 +8650,7 @@ def istasyon_emri_uret_gorunum(request, pk):
             hedef = parse_tr(ham)
         if (request.POST.get("tarih") or "").strip():
             tarih = datetime.date.fromisoformat(request.POST["tarih"].strip())
-        kayit, uyari = uretim_servis.istasyon_emri_uret(ie, miktar=hedef, tarih=tarih, kullanici=request.user)
+        kayit, uyari = uretim_servis.istasyon_emri_uret(ie, miktar=hedef, tarih=tarih, kullanici=request.user, oturum_asma=_oturum_asma(request))
     except uretim_servis.UretimHatasi as e:
         hata = str(e)
     except SayiHatasi:
@@ -8803,7 +8811,7 @@ def emirsiz_uretim(request):
 def operasyon_kaydi_detay(request, pk):
     """Kayıt detayı; GERİ ALINMIŞ (soft-silinmiş, ``geri_alan`` dolu) kayıt da salt-okunur görünür (kim/ne zaman geri aldı)."""
     kayit = get_object_or_404(OperasyonKaydi.objects.filter(Q(silindi=False) | Q(geri_alan__isnull=False)), pk=pk)
-    oturum = IsOturumu.objects.filter(kayit=kayit, silindi=False).select_related("baslatan", "bitiren").prefetch_related("uyeler__personel").first()
+    oturum = IsOturumu.objects.filter(kayit=kayit, silindi=False).select_related("baslatan", "sorumlu", "bitiren").prefetch_related("uyeler__personel").first()
     is_oturumu = is_oturumu_servis.ozet(oturum) if oturum is not None else None
     satirlar = list(uretim_servis.kaydi_girdi_satirlari(kayit))
     for satir in satirlar:                                                # E-6: girdi varyantı (varyantlı planda dolu)
@@ -10810,8 +10818,9 @@ def _atolye_baglam(request):
 @never_cache
 def atolye(request):
     d = _atolye_baglam(request)
-    return render(request, "core/atolye.html", {**d, "istasyon_kartlari": atolye_servis.istasyon_kartlari(),
-                                                "acik_islerim": atolye_servis.acik_islerim(request.user) if d["acik_kayit"] else []})
+    acik_islerim = atolye_servis.acik_islerim(request.user) if not d["izleme"] else []           # mesai açık/kapalı fark etmez; emir tamamlanmış olsa da kart görünür
+    return render(request, "core/atolye.html", {**d, "istasyon_kartlari": atolye_servis.istasyon_kartlari(), "acik_islerim": acik_islerim,
+                                                "mesai_bitir_adet_gerekli": bool(atolye_servis.mesai_bitir_bilgisi(request.user)["tek_sorumlu"]) if d["acik_kayit"] else False})
 
 
 @login_required
@@ -10831,11 +10840,30 @@ def atolye_mesai(request):
                 atolye_servis.mesai_baslat(request.user, ip)
                 messages.success(request, "Mesai başlatıldı. İstasyonunuzu seçin.")
             elif request.POST.get("eylem") == "bitir":
-                atolye_servis.mesai_bitir(request.user, ip)
+                atolye_servis.mesai_bitir(request.user, ip, request.POST.get("miktar"), request.POST.get("fire"), request.POST.get("bekle"))
                 messages.success(request, "Mesai bitirildi. İyi günler.")
         except atolye_servis.AtolyeHatasi as e:
             messages.error(request, str(e))
+            if request.POST.get("eylem") == "bitir" and atolye_servis.mesai_bitir_bilgisi(request.user)["tek_sorumlu"]:
+                return redirect("core:atolye_mesai_bitir")                                  # tek başına sorumlu: adet/fire ya da "Adet bekliyor" seçimi
     return redirect(f"{reverse('core:atolye')}?sec=1")
+
+
+@ekran_gerekli("atolye")
+@never_cache
+def atolye_mesai_bitir(request):
+    """Mesai bitir ekranı: tek başına SORUMLU açık iş varsa adet/fire kutusu (doldurursa iş normal Bitir ile kapanır) ya da onay kutusuyla "Adet bekliyor"."""
+    d = _atolye_baglam(request)
+    if d["izleme"] or d["acik_kayit"] is None:
+        return redirect("core:atolye")
+    if request.method == "POST":
+        try:
+            atolye_servis.mesai_bitir(request.user, istemci_ip(request), request.POST.get("miktar"), request.POST.get("fire"), request.POST.get("bekle"))
+            messages.success(request, "Mesai bitirildi. İyi günler.")
+            return redirect(f"{reverse('core:atolye')}?sec=1")
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, str(e))
+    return render(request, "core/atolye_mesai_bitir.html", {**d, "bilgi": atolye_servis.mesai_bitir_bilgisi(request.user), "acik_islerim": atolye_servis.acik_islerim(request.user)})
 
 
 @ekran_gerekli("atolye")
@@ -10850,6 +10878,7 @@ def atolye_istasyon(request, pk):
     emirler = atolye_servis.acik_emirler(istasyon, request.user)
     return render(request, "core/atolye_istasyon.html", {
         **d, "istasyon": istasyon, "emirler": emirler, "acik_islerim": acik_islerim,
+        "mesai_bitir_adet_gerekli": bool(atolye_servis.mesai_bitir_bilgisi(request.user)["tek_sorumlu"]) if not d["izleme"] else False,
         "ekip_adaylari": atolye_servis.ekip_adaylari(request.user) if not d["izleme"] else [],
         "baslatabilir": not d["izleme"] and not acik_islerim,
         "fazla_yasak_not": any(s["fazla_yasak"] for s in emirler)})        # LAZER MARKALAMA / PAKETLEME: not kartta değil, başlıkta bir kez
@@ -10905,6 +10934,63 @@ def atolye_oturum_iptal(request, pk):
         except atolye_servis.AtolyeHatasi as e:
             messages.error(request, f"❌ {kod}: {e}")
     return _oturum_yonlendir(o)
+
+
+@ekran_gerekli("atolye")
+def atolye_oturum_katil(request, pk):
+    """"Ekibe katıl": emirdeki açık oturuma üye olur (adet giremez; süresi işçiliğe sayılır)."""
+    o = get_object_or_404(IsOturumu.objects.select_related("istasyon_emri__operasyon__cikti", "baslatan", "sorumlu"), pk=pk, silindi=False)
+    kod = o.istasyon_emri.operasyon.cikti.kod
+    if request.method == "POST":
+        try:
+            atolye_servis.oturum_katil(request.user, o, istemci_ip(request))
+            messages.success(request, f"🤝 {kod}: ekibe katıldınız · sorumlu {o.sorumlu_kisi.ad_soyad}")
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, f"❌ {kod}: {e}")
+    return _oturum_yonlendir(o)
+
+
+@ekran_gerekli("atolye")
+def atolye_oturum_ayril(request, pk):
+    o = get_object_or_404(IsOturumu.objects.select_related("istasyon_emri__operasyon__cikti"), pk=pk, silindi=False)
+    kod = o.istasyon_emri.operasyon.cikti.kod
+    if request.method == "POST":
+        try:
+            atolye_servis.oturum_ayril(request.user, o, istemci_ip(request))
+            messages.success(request, f"👋 {kod}: ekipten ayrıldınız.")
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, f"❌ {kod}: {e}")
+    return _oturum_yonlendir(o)
+
+
+@ekran_gerekli("atolye")
+def atolye_oturum_devret(request, pk):
+    """Sorumlu "Sorumluluğu devret": ekipten birini seçer (``ayril=1``: devrettikten sonra ekipten ayrıl)."""
+    o = get_object_or_404(IsOturumu.objects.select_related("istasyon_emri__operasyon__cikti"), pk=pk, silindi=False)
+    kod = o.istasyon_emri.operasyon.cikti.kod
+    if request.method == "POST":
+        try:
+            yeni = atolye_servis.oturum_devret(request.user, o, request.POST.get("yeni"), request.POST.get("ayril"), istemci_ip(request)).sorumlu_kisi
+            messages.success(request, f"🔁 {kod}: sorumluluk {yeni.ad_soyad} kişisine devredildi.")
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, f"❌ {kod}: {e}")
+    return _oturum_yonlendir(o)
+
+
+@ekran_gerekli("atolye")
+def atolye_oturum_adet_gir(request, pk):
+    """"Adet bekliyor" oturuma sorumlunun adet/fire girişi (mesai açık + fabrika ağı); normal üretim kaydı oluşur."""
+    o = get_object_or_404(IsOturumu.objects.select_related("istasyon_emri__operasyon__cikti"), pk=pk, silindi=False)
+    kod = o.istasyon_emri.operasyon.cikti.kod
+    if request.method == "POST":
+        try:
+            kayit, uyari, miktar, fire = atolye_servis.oturum_adet_gir(request.user, o, request.POST.get("miktar"), request.POST.get("fire"), istemci_ip(request))
+            messages.success(request, f"✅ {kod}: {miktar.normalize():f} sağlam" + (f" + {fire.normalize():f} fire" if fire else "") + f" yazıldı · {kayit.no}")
+            if uyari:
+                messages.warning(request, uyari)
+        except atolye_servis.AtolyeHatasi as e:
+            messages.error(request, f"❌ {kod}: {e} — iş adet bekliyor durumunda kaldı; düzeltip tekrar deneyin.")
+    return redirect("core:atolye") if o.istasyon_emri_id is None else _oturum_yonlendir(o)
 
 
 @ekran_gerekli("atolye")
@@ -10995,6 +11081,44 @@ def _mesai_tarih_araligi(request):
     return bas, bit
 
 
+@yonetici_gerekli
+def is_oturumu_yonetici_islem(request, pk):
+    """Yönetici işlemleri (İş Takibi kartları + İş Oturumları listesi, POST): ``eylem`` = sorumlu (sorumluyu değiştir) | adet_bekliyor (adet bekliyor olarak kapat) |
+    iptal (iş yapılmadı; not ZORUNLU) | adet_gir ("Adet bekliyor" oturuma adet/fire). Hepsi ``IsOturumuOlay`` denetim kaydı yazar."""
+    o = get_object_or_404(IsOturumu.objects.select_related("istasyon_emri__operasyon__cikti"), pk=pk, silindi=False)
+    geri = _guvenli_geri(request, reverse("core:is_oturumlari"))
+    ip = istemci_ip(request)
+    g = request.POST
+    kod = o.istasyon_emri.operasyon.cikti.kod
+    try:
+        eylem = g.get("eylem")
+        if request.method != "POST":
+            return redirect(geri)
+        if eylem == "sorumlu":
+            yeni = Personel.objects.filter(pk=g.get("yeni"), silindi=False).first() if (g.get("yeni") or "").isdigit() else None
+            is_oturumu_servis.yonetici_sorumlu_degistir(o, yeni, kullanici=request.user, ip=ip, aciklama=g.get("aciklama", ""))
+            messages.success(request, f"🔁 {kod}: sorumlu {yeni.ad_soyad} olarak değiştirildi.")
+        elif eylem in ("adet_bekliyor", "iptal") and o.durum == IsOturumu.Durum.ACIK:
+            bitis = atolye_servis._bitis_coz(g.get("bitis"))
+            is_oturumu_servis.yonetici_kapat(o, adet_bekliyor=(eylem == "adet_bekliyor"), aciklama=g.get("aciklama", ""), kullanici=request.user, ip=ip, bitis=bitis)
+            messages.success(request, f"{kod}: iş " + ("adet bekliyor olarak kapatıldı (süre işçiliğe sayılır)." if eylem == "adet_bekliyor" else "iptal edildi (iş yapılmadı)."))
+        elif eylem == "iptal" and o.durum == IsOturumu.Durum.ADET:
+            is_oturumu_servis.yonetici_adet_bekleyen_iptal(o, aciklama=g.get("aciklama", ""), kullanici=request.user, ip=ip)
+            messages.success(request, f"{kod}: adet bekleyen iş iptal edildi.")
+        elif eylem == "adet_gir":
+            miktar = atolye_servis._miktar_coz(g.get("miktar"), ad="Sağlam adet")
+            fire = atolye_servis._miktar_coz(g.get("fire"), ad="Fire", zorunlu=False)
+            kayit, uyari = is_oturumu_servis.adet_gir(o, miktar, fire=fire, personel=None, kullanici=request.user, ip=ip)
+            messages.success(request, f"✅ {kod}: {miktar.normalize():f} sağlam" + (f" + {fire.normalize():f} fire" if fire else "") + f" yazıldı · {kayit.no}")
+            if uyari:
+                messages.warning(request, uyari)
+        else:
+            messages.error(request, "İşlem anlaşılamadı ya da bu durumda yapılamaz.")
+    except (is_oturumu_servis.OturumHatasi, atolye_servis.AtolyeHatasi) as e:
+        messages.error(request, f"❌ {kod}: {e}")
+    return redirect(geri)
+
+
 @ekran_gerekli("is_oturumlari")
 def is_oturumlari(request):
     """ÜRETİM › İş Oturumları: atölye Başla/Bitir oturumları (tarih, istasyon, ürün, ekip, süre, adet, adet/saat, adam-saat); ``?xlsx=1`` Excel."""
@@ -11013,6 +11137,8 @@ def is_oturumlari(request):
         return _xlsx_yanit(is_oturumu_xlsx.oturumlar_xlsx(satirlar, bas, bit), f"is_oturumlari_{bas:%Y%m%d}_{bit:%Y%m%d}")
     sayfa = Paginator(qs, 50).get_page(g.get("sayfa"))
     satirlar = [is_oturumu_servis.ozet(o) for o in sayfa]
+    for r in satirlar:                                           # yönetici "sorumluyu değiştir" adayları: açık oturumda açık üyeler, adet bekleyende oturumun üyeleri
+        r["yonetici_adaylari"] = [u.personel for u in (r["acik_uyeler"] if r["oturum"].durum == IsOturumu.Durum.ACIK else r["uyeler"]) if u.personel_id != r["sorumlu"].pk]
     sabit_qs = g.copy()
     sabit_qs.pop("sayfa", None)
     sabit_qs.pop("xlsx", None)
@@ -11021,7 +11147,7 @@ def is_oturumlari(request):
     return render(request, "core/is_oturumlari.html", {
         "sayfa": sayfa, "satirlar": satirlar, "bas": bas, "bit": bit, "istasyon": istasyon, "personel": personel, "durum": durum, "ara": ara,
         "istasyonlar": IsIstasyonu.objects.filter(silindi=False, fason=False).order_by("sira", "kod"),
-        "personeller": personel_servis.aktif_personeller(), "durumlar": IsOturumu.Durum.choices, "toplam": toplam,
+        "personeller": personel_servis.aktif_personeller(), "durumlar": IsOturumu.Durum.choices, "toplam": toplam, "yonetici": yonetici_mi(request.user),
         "sabit_qs": sabit_qs.urlencode(), "xlsx_url": f"?{sabit_qs.urlencode()}&xlsx=1" if sabit_qs else "?xlsx=1"})
 
 

@@ -93,7 +93,7 @@
         <td class="mono">{{ k.sure_dakika|sure_metni }}</td>
         <td class="mono">{{ k.giris_ip|default:"—" }}</td>
         <td><span class="rozet {% if k.kaynak == 'YONETICI' %}rozet-notr{% else %}rozet-aktif{% endif %}">{{ k.get_kaynak_display }}</span>
-          {% if k.otomatik_kapandi %}<span class="rozet rozet-uyari" title="Mesai otomatik kapatıldı ({{ k.get_otomatik_sebep_display }}); çıkış saati fabrikada son görülme zamanıdır. Yanlışsa Düzelt.">⏱ Otomatik · {{ k.get_otomatik_sebep_display }}</span>{% endif %}</td>
+          {% if k.otomatik_kapandi %}<span class="rozet rozet-uyari" title="Mesai otomatik kapatıldı ({{ k.get_otomatik_sebep_display }}); çıkış saati fabrikada son görülme zamanıdır.{% if k.dis_ip_ilk_ip %} İlk fabrika dışı görülme IP: {{ k.dis_ip_ilk_ip }}{% endif %} Yanlışsa Düzelt.">⏱ Otomatik · {{ k.get_otomatik_sebep_display }}</span>{% endif %}</td>
         <td class="islem-bag">
           <a class="dugme-ikincil" href="{% url 'core:mesai_kaydi_duzenle' k.pk %}">Düzelt</a>
           <form method="post" action="{% url 'core:mesai_kaydi_sil' k.pk %}" style="margin:0"

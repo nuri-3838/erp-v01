@@ -1,0 +1,37 @@
+{% extends "core/atolye_base.html" %}
+{% load core_extras %}
+{% block baslik %}Mesai Bitir · Atölye{% endblock %}
+{% block ust_sag %}<a href="{% url 'core:atolye' %}">← Geri</a>{% endblock %}
+{% block icerik %}
+  <section class="at-kart">
+    <h2 class="at-baslik">Mesaiyi bitirmeden önce</h2>
+    {% if bilgi.tek_sorumlu %}
+      {% with o=bilgi.tek_sorumlu %}
+      <p class="at-ekip">Açık işiniz: <b>{{ o.oturum.istasyon.kod }} {{ o.oturum.istasyon.ad }}</b> › {{ o.oturum.uretim_emri.no }} · {{ o.oturum.istasyon_emri.operasyon.cikti.kod }} — tek başınasınız ve sorumlusunuz.</p>
+      <form method="post" action="{% url 'core:atolye_mesai_bitir' %}" class="at-bitir" id="mesai-bitir-form" onsubmit="return atMesaiBitirOnay(this);">
+        {% csrf_token %}
+        <p class="at-yardim" style="text-align:left">Adedi şimdi girerseniz iş normal <b>Bitir</b> ile kapanır ve mesainiz biter. Girmezseniz aşağıdaki kutuyla işi <b>"Adet bekliyor"</b> olarak bırakabilirsiniz: süreniz işçiliğe sayılır, sonraki girişinizde (ya da yönetici) adedi girer.</p>
+        <div class="at-form">
+          <label class="at-alan"><span>Sağlam adet</span><input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" placeholder="Kalan: {{ o.kalan_tam }}" autocomplete="off" aria-label="Sağlam adet"></label>
+          <label class="at-alan"><span>Fire adet</span><input type="text" name="fire" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off" aria-label="Fire adet"></label>
+          <label style="grid-column:1 / -1;display:flex;gap:.5rem;align-items:center;font-size:1rem;font-weight:700;text-transform:none;color:#1c2433"><input type="checkbox" name="bekle" value="1" style="width:auto;font-size:1rem"> Adet girmeden bırak — "Adet bekliyor" olsun</label>
+          <button type="submit">⏹ MESAİYİ BİTİR</button>
+        </div>
+      </form>
+      {% endwith %}
+    {% else %}
+      <p class="at-yardim">Tek başına sorumlu olduğunuz açık iş yok; mesai doğrudan bitirilir.</p>
+      <form method="post" action="{% url 'core:atolye_mesai_bitir' %}">{% csrf_token %}<button type="submit" class="at-buton bitir">⏹ MESAİYİ BİTİR</button></form>
+    {% endif %}
+    {% if bilgi.diger %}<p class="at-yardim">Açık işiniz: {{ bilgi.diger.oturum.istasyon.kod }} › {{ bilgi.diger.oturum.uretim_emri.no }} — {% if bilgi.diger.sorumlu_benim %}sorumluluğunuz ekipte en uzun süredir olan arkadaşınıza geçecek.{% else %}ekipten ayrılacaksınız.{% endif %}</p>{% endif %}
+  </section>
+{% endblock %}
+{% block js %}
+<script>
+  window.atMesaiBitirOnay = function(form){
+    var m = (form.miktar.value || '').trim(), b = form.bekle.checked;
+    if (!m && !b) { alert('Adet girin ya da "Adet girmeden bırak" kutusunu işaretleyin.'); form.miktar.focus(); return false; }
+    return confirm(m ? (m + ' sağlam yazılsın, iş bitirilsin ve mesai kapatılsın mı?') : 'İş "Adet bekliyor" olarak bırakılsın ve mesai kapatılsın mı?');
+  };
+</script>
+{% endblock %}

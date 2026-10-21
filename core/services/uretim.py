@@ -1651,21 +1651,32 @@ def _eksik_mesaji(mesaj: str) -> str:
 
 
 @transaction.atomic
-def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=None, personel=None, mesai_kaydi=None, fire=None):
+def istasyon_emri_uret(ie: IstasyonEmri, *, miktar=None, tarih=None, kullanici=None, personel=None, mesai_kaydi=None, fire=None, oturum_kontrol=True, oturum_asma=None):
     """TEK TIKLA ÜRETİM ("Üretildi"): istasyon emrinden operasyon kaydı açar (girdi/çıktı operasyon tanımından, miktar oranlı) ve MEVCUT onay servisiyle
     hemen ONAYLAR — hepsi tek işlemde; stok yetersizliği vb. bir hata olursa kayıt da dahil hiçbir şey kalmaz. ``miktar`` referans çıktı adedidir
     (boş = açık kalan); açık kalandan fazlası yazılabilir (fazlası serbest stok). Fason istasyonunda üretim fason dönüşle yapılır, burada reddedilir.
     ``fire`` (atölye): ``miktar`` sağlam adet, fire kadar ek çalıştırma girdisi tüketilir, stoğa yalnız sağlam girer (``istasyon_emri_kayit_ac``).
-    (onaylı kayıt, uyarı metni) döner; uyarı = kalanı aşıyor ('' = aşmıyor)."""
+    (onaylı kayıt, uyarı metni) döner; uyarı = kalanı aşıyor ('' = aşmıyor).
+    OFİS ENGELİ (2026-10-21, tek ekip + sorumlu): ``oturum_kontrol=True`` (varsayılan: ofis "Üretildi", ÜS/istasyon toplu üretim) iken emirde AÇIK ya da ADET BEKLEYEN iş oturumu varsa
+    "Bu işte X'in ekibi çalışıyor" ile reddedilir; yalnız SÜPER KULLANICI notla aşabilir (``oturum_asma=(kullanıcı, not)``; olay kaydı, kayıt açıklamasına not, emir tamamlanırsa açık oturum
+    otomatik İptal). Atölye Bitir / Adet gir oturumun kendisi olduğu için ``oturum_kontrol=False`` çağırır."""
     ie = IstasyonEmri.objects.select_related("istasyon", "uretim_emri").get(pk=ie.pk)
     if ie.istasyon.fason:
         raise UretimHatasi("Fason istasyonunda üretim, fason dönüş belgesiyle yapılır (\"Fason dönüş aç\").")
-    kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, kullanici=kullanici, personel=personel, mesai_kaydi=mesai_kaydi, fire=fire)
+    asma_kullanildi = False
+    if oturum_kontrol:
+        from core.services import is_oturumu
+        asma_kullanildi = is_oturumu.ofis_engeli_kontrol(ie, oturum_asma)
+    aciklama = f"Oturum engeli aşıldı (süper kullanıcı): {oturum_asma[1].strip()}"[:300] if asma_kullanildi else ""
+    kayit = istasyon_emri_kayit_ac(ie, hedef=miktar, tarih=tarih, aciklama=aciklama, kullanici=kullanici, personel=personel, mesai_kaydi=mesai_kaydi, fire=fire)
     uyari = kayit_fazla_uyarisi(kayit)                           # onaydan ÖNCE: onay sonrası tamamlanan zaten artmış olur
     try:
         operasyon_kaydi_onayla(kayit, kullanici=kullanici)
     except UretimHatasi as e:
         raise UretimHatasi(_eksik_mesaji(str(e)))
+    if asma_kullanildi:
+        from core.services import is_oturumu
+        is_oturumu.ofis_asma_sonrasi(ie, oturum_asma)
     return OperasyonKaydi.objects.get(pk=kayit.pk), uyari
 
 
@@ -1850,12 +1861,12 @@ def toplu_uretilecek_emirler(emir: UretimEmri, istasyon=None) -> list:
             if ie.durum not in (IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL) and not ie.istasyon.fason and istasyon_emri_acik_kalan(ie) > 0]
 
 
-def _sirayla_uret(sira, tarih, kullanici, us_goster=False) -> list:
+def _sirayla_uret(sira, tarih, kullanici, us_goster=False, oturum_asma=None) -> list:
     """Verilen emirleri sırayla ``istasyon_emri_uret`` ile üretir; ilk hatada ``TopluUretimHatasi`` (çağıranın transaction'ı geri sarar)."""
     yapilan = []
     for ie in sira:
         try:
-            kayit, _uyari = istasyon_emri_uret(ie, tarih=tarih, kullanici=kullanici)
+            kayit, _uyari = istasyon_emri_uret(ie, tarih=tarih, kullanici=kullanici, oturum_asma=oturum_asma)
         except UretimHatasi as e:
             ek = f" ({len(yapilan)} emir üretilmişti; hepsi geri alındı)" if yapilan else ""
             us = f"{ie.uretim_emri.no} · " if us_goster else ""
@@ -1866,7 +1877,7 @@ def _sirayla_uret(sira, tarih, kullanici, us_goster=False) -> list:
 
 
 @transaction.atomic
-def uretim_emri_toplu_uret(emir: UretimEmri, *, istasyon=None, tarih=None, kullanici=None) -> list:
+def uretim_emri_toplu_uret(emir: UretimEmri, *, istasyon=None, tarih=None, kullanici=None, oturum_asma=None) -> list:
     """"Bu istasyonu üret" / "Tümünü üret": ÜS'nin üretilecek istasyon emirlerini (``toplu_uretilecek_emirler``) istasyon sırasıyla, TEK tarihle,
     her birini açık kalan kadar ``istasyon_emri_uret`` ile (kayıt aç + onayla; tarih bazlı stok kontrolü dahil) üretir — TEK ATOMİK İŞLEM: herhangi
     bir emir hata verirse (stok yetersiz vb.) daha önce üretilenler dahil HİÇBİR ŞEY yazılmaz; ``TopluUretimHatasi`` hangi emirde/stokta durduğunu
@@ -1877,7 +1888,7 @@ def uretim_emri_toplu_uret(emir: UretimEmri, *, istasyon=None, tarih=None, kulla
     sira = toplu_uretilecek_emirler(emir, istasyon)
     if not sira:
         raise UretimHatasi("Üretilecek açık istasyon emri yok (fason emirleri fason dönüş belgesiyle kapanır).")
-    return _sirayla_uret(sira, tarih, kullanici)
+    return _sirayla_uret(sira, tarih, kullanici, oturum_asma=oturum_asma)
 
 
 def istasyon_acik_emir_sayilari() -> dict:
@@ -1899,7 +1910,7 @@ def istasyon_toplu_uretilecek_emirler(istasyon) -> list:
 
 
 @transaction.atomic
-def istasyon_toplu_uret(istasyon, *, tarih=None, kullanici=None) -> list:
+def istasyon_toplu_uret(istasyon, *, tarih=None, kullanici=None, oturum_asma=None) -> list:
     """İstasyon Emirleri ekranı "Bu istasyondaki açık emirlerin tümünü üret": istasyonun tüm açık ÜS'lerdeki üretilebilir emirlerini
     (``istasyon_toplu_uretilecek_emirler``) tek tarihle, tek atomik işlemde üretir — ilk hatada hiçbir şey yazılmaz (``TopluUretimHatasi``,
     mesajda ÜS no da var). Fason istasyonu reddedilir."""
@@ -1908,7 +1919,7 @@ def istasyon_toplu_uret(istasyon, *, tarih=None, kullanici=None) -> list:
     sira = istasyon_toplu_uretilecek_emirler(istasyon)
     if not sira:
         raise UretimHatasi(f"{istasyon.kod} {istasyon.ad}: üretilecek açık istasyon emri yok.")
-    return _sirayla_uret(sira, tarih, kullanici, us_goster=True)
+    return _sirayla_uret(sira, tarih, kullanici, us_goster=True, oturum_asma=oturum_asma)
 
 
 def istasyon_emri_satiri(ie: IstasyonEmri, emir: UretimEmri, hatalar=None) -> dict:

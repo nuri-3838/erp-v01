@@ -1,0 +1,36 @@
+{# Yönetici işlemleri (İş Takibi kartı + İş Oturumları listesi): o = IsOturumu; aday = sorumlu olabilecek personel listesi; geri = dönülecek adres #}
+<details class="pk-yonet" style="margin-top:.5rem">
+  <summary style="cursor:pointer;font-weight:700;font-size:.85rem">⚙ Yönet</summary>
+  {% if o.durum == "ACIK" %}
+  <form method="post" action="{% url 'core:is_oturumu_yonetici_islem' o.pk %}" style="margin:.4rem 0">
+    {% csrf_token %}<input type="hidden" name="geri" value="{{ geri }}"><input type="hidden" name="eylem" value="sorumlu">
+    {% if aday %}<select name="yeni" required>{% for p in aday %}<option value="{{ p.pk }}">{{ p.ad_soyad }}</option>{% endfor %}</select>
+    <input type="text" name="aciklama" placeholder="not (isteğe bağlı)" maxlength="200" style="min-width:8rem">
+    <button type="submit" class="dugme-ikincil">🔁 Sorumluyu değiştir</button>
+    {% else %}<span class="pt-soluk">Sorumluyu değiştirmek için ekipte başka kişi olmalı.</span>{% endif %}
+  </form>
+  <form method="post" action="{% url 'core:is_oturumu_yonetici_islem' o.pk %}" style="margin:.4rem 0" onsubmit="return confirm('İş kapatılsın mı? Tüm ekibin işi kapanır.');">
+    {% csrf_token %}<input type="hidden" name="geri" value="{{ geri }}">
+    <input type="text" name="aciklama" placeholder="not (ZORUNLU)" maxlength="250" required style="min-width:10rem">
+    <button type="submit" name="eylem" value="adet_bekliyor" class="dugme-ikincil" title="Süre işçiliğe sayılır; adet sonra girilir">⏳ Adet bekliyor olarak kapat</button>
+    <button type="submit" name="eylem" value="iptal" class="dugme-ikincil" title="İş yapılmadı; süre sayılmaz">✕ İptal et</button>
+  </form>
+  {% else %}
+  <form method="post" action="{% url 'core:is_oturumu_yonetici_islem' o.pk %}" style="margin:.4rem 0">
+    {% csrf_token %}<input type="hidden" name="geri" value="{{ geri }}"><input type="hidden" name="eylem" value="adet_gir">
+    <input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" placeholder="sağlam adet" required style="width:7rem">
+    <input type="text" name="fire" inputmode="numeric" pattern="[0-9]*" placeholder="fire" style="width:5rem">
+    <button type="submit" class="dugme-ikincil">✅ Adet gir</button>
+  </form>
+  <form method="post" action="{% url 'core:is_oturumu_yonetici_islem' o.pk %}" style="margin:.4rem 0">
+    {% csrf_token %}<input type="hidden" name="geri" value="{{ geri }}"><input type="hidden" name="eylem" value="sorumlu">
+    {% if aday %}<select name="yeni" required>{% for p in aday %}<option value="{{ p.pk }}">{{ p.ad_soyad }}</option>{% endfor %}</select>
+    <button type="submit" class="dugme-ikincil">🔁 Sorumluyu değiştir</button>{% endif %}
+  </form>
+  <form method="post" action="{% url 'core:is_oturumu_yonetici_islem' o.pk %}" style="margin:.4rem 0" onsubmit="return confirm('Adet bekleyen iş iptal edilsin mi? Süre artık sayılmaz.');">
+    {% csrf_token %}<input type="hidden" name="geri" value="{{ geri }}"><input type="hidden" name="eylem" value="iptal">
+    <input type="text" name="aciklama" placeholder="not (ZORUNLU)" maxlength="250" required style="min-width:10rem">
+    <button type="submit" class="dugme-ikincil">✕ İptal et</button>
+  </form>
+  {% endif %}
+</details>

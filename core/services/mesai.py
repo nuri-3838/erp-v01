@@ -72,16 +72,18 @@ def baslat(personel: Personel, *, ip, kullanici=None) -> MesaiKaydi:
 
 
 @transaction.atomic
-def bitir(personel: Personel, *, ip, kullanici=None) -> MesaiKaydi:
+def bitir(personel: Personel, *, ip, kullanici=None, adet=None, fire=None, bekle_onay=False) -> MesaiKaydi:
+    """Personelin KENDİSİ mesai bitirir. Açık iş oturumu varsa (core.services.is_oturumu.mesai_kapaniyor): üyeyse ayrılır; sorumluysa ekipte biri varsa sorumluluk ona geçer;
+    tek başına sorumluysa ``adet`` (+``fire``) girerse oturum normal Bitir ile kapanır, girmezse ``bekle_onay`` ile "Adet bekliyor" olur (ikisi de yoksa mesai bitmez)."""
     p = _kilitle(personel.pk)
     kayit = acik_kayit(p)
     if kayit is None:
         raise MesaiHatasi("Açık bir mesai kaydınız yok.")
     simdi = timezone.now()
-    # ATÖLYE iş oturumu: kişi açık bir oturumdaysa üyeliği kapanır (oturum diğerleriyle sürer); oturumda tek kişiyse mesai bitirilemez.
+    # ATÖLYE iş oturumu (tek ekip + sorumlu): üye ayrılır / sorumluluk ekipte en uzun süredir olana geçer / tek başına sorumlu adet girer ya da "Adet bekliyor".
     from core.services import is_oturumu
     try:
-        is_oturumu.mesai_bitiriliyor(p, simdi, kullanici=kullanici)
+        is_oturumu.mesai_kapaniyor(p, simdi, neden="elle", kullanici=kullanici, ip=ip, miktar=adet, fire=fire, bekle_onay=bekle_onay)
     except is_oturumu.OturumHatasi as e:
         raise MesaiHatasi(str(e))
     kayit.cikis_zamani = simdi
@@ -143,6 +145,9 @@ def duzelt(kayit: MesaiKaydi, *, giris_zamani, cikis_zamani=None, duzeltme_notu,
     kayit.updated_by = kullanici
     kayit.save(update_fields=["is_tarihi", "giris_zamani", "cikis_zamani", "duzeltme_notu",
                               "kaynak", "otomatik_kapandi", "dis_ip_ilk_gorulme", "updated_by", "updated_at"])
+    if kayit.cikis_zamani is not None:                                              # ofis kapattı: bu mesaiye bağlı açık iş üyeliği de aynı anda kapanır (sorumluysa devir / adet bekliyor)
+        from core.services import is_oturumu
+        is_oturumu.mesai_kaydi_kapandi(kayit, kullanici=kullanici)
     return kayit
 
 
@@ -153,6 +158,8 @@ def sil(kayit: MesaiKaydi, kullanici=None) -> MesaiKaydi:
     kayit.silindi_at = timezone.now()
     kayit.updated_by = kullanici
     kayit.save(update_fields=["silindi", "silindi_at", "updated_by", "updated_at"])
+    from core.services import is_oturumu
+    is_oturumu.mesai_kaydi_kapandi(kayit, kullanici=kullanici)                    # silinen mesaiye bağlı açık iş üyeliği de kapanır
     return kayit
 
 

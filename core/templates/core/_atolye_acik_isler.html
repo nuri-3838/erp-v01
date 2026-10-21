@@ -1,13 +1,69 @@
 {% load core_extras %}{% if acik_islerim %}
+<style>
+  .at-acik-is .at-uyari-emir { background:#fff1dd; border:2px solid var(--turuncu); border-radius:12px; padding:.5rem .7rem; margin:.4rem 0; font-weight:700; color:#8a4b00; }
+  .at-acik-is .at-adet-rozet { display:inline-block; background:#fff7d6; border:2px solid #e9c93a; color:#6b5500; border-radius:10px; padding:.15rem .5rem; font-weight:800; font-size:.85rem; }
+  .at-acik-is .at-devret { margin:.6rem 0 0; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; font-size:.9rem; font-weight:700; }
+  .at-acik-is .at-devret select { min-height:2.6rem; border:2px solid var(--cizgi); border-radius:12px; padding:.3rem .5rem; font-size:1rem; max-width:100%; }
+  .at-acik-is .at-devret button, .at-acik-is .at-ayril button { background:#fff; color:var(--lacivert); border:2px solid var(--cizgi); border-radius:12px; padding:.45rem .8rem; font-weight:800; cursor:pointer; }
+  .at-acik-is .at-ayril { margin:.6rem 0 0; }
+</style>
 <section class="at-kart at-acik-isler">
   <h2 class="at-baslik">Açık işiniz var</h2>
   {% for o in acik_islerim %}
-    <div class="at-acik-is{% if o.dunku %} dunku{% endif %}">
+    <div class="at-acik-is{% if o.dunku %} dunku{% endif %}" id="acik-{{ o.oturum.pk }}">
       <div><b>{{ o.oturum.istasyon.kod }} {{ o.oturum.istasyon.ad }}</b> › {{ o.oturum.uretim_emri.no }} · {{ o.oturum.istasyon_emri.operasyon.cikti.kod }}</div>
-      <div class="at-ekip">{% if o.dunku %}⚠️ DÜNKÜ AÇIK İŞ · {{ o.oturum.baslangic_zamani|tr_zaman:"d.m.Y H:i" }}{% else %}⏱ <span class="at-sayac" data-baslangic="{{ o.baslangic_ms }}">{{ o.sure_metni }}</span> · {{ o.oturum.baslangic_zamani|tr_zaman:"H:i" }}'den beri{% endif %} · 👥 {{ o.ekip_metni }}</div>
+      <div class="at-ekip">👤 Sorumlu: <b>{{ o.sorumlu.ad_soyad }}</b>{% if o.sorumlu_benim %} (siz){% endif %} · 👥 {{ o.ekip_metni }}</div>
+      <div class="at-ekip">
+        {% if o.adet_bekliyor %}<span class="at-adet-rozet">⏳ ADET BEKLİYOR</span> {{ o.oturum.baslangic_zamani|tr_zaman:"d.m H:i" }} – {{ o.oturum.bitis_zamani|tr_zaman:"d.m H:i" }} · süre işçiliğe sayıldı ({{ o.sure_metni }})
+        {% elif o.dunku %}⚠️ DÜNKÜ AÇIK İŞ · {{ o.oturum.baslangic_zamani|tr_zaman:"d.m.Y H:i" }}
+        {% else %}⏱ <span class="at-sayac" data-baslangic="{{ o.baslangic_ms }}">{{ o.sure_metni }}</span> · {{ o.oturum.baslangic_zamani|tr_zaman:"H:i" }}'den beri{% endif %}
+      </div>
+      {% if o.emir_kapali and not o.adet_bekliyor %}<div class="at-uyari-emir">⚠️ Bu emir tamamlandı / kapandı; adet girilemez. İşi "İptal (iş yapılmadı)" ile kapatın.</div>{% endif %}
+      {% if o.adet_bekliyor %}
+        {% if o.sorumlu_benim %}
+          <form method="post" action="{% url 'core:atolye_oturum_adet_gir' o.oturum.pk %}" class="at-bitir" onsubmit="return atBitirOnay(this);">
+            {% csrf_token %}
+            <div class="at-form">
+              <label class="at-alan"><span>Sağlam adet</span><input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" placeholder="Kalan: {{ o.kalan_tam }}" autocomplete="off" aria-label="Sağlam adet"></label>
+              <label class="at-alan"><span>Fire adet</span><input type="text" name="fire" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off" aria-label="Fire adet"></label>
+              <button type="submit">✅ ADEDİ GİR</button>
+            </div>
+          </form>
+        {% endif %}
+      {% elif o.sorumlu_benim %}
+        {% if not o.emir_kapali %}
+          <form method="post" action="{% url 'core:atolye_oturum_bitir' o.oturum.pk %}" class="at-bitir" onsubmit="return atBitirOnay(this);">
+            {% csrf_token %}
+            {% if o.dunku %}<label class="at-bitis-saat">Bitiş saati <input type="datetime-local" name="bitis" value="{{ o.bitis_varsayilan }}" required></label>{% endif %}
+            <div class="at-form">
+              <label class="at-alan"><span>Sağlam adet</span><input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" placeholder="Kalan: {{ o.kalan_tam }}" autocomplete="off" aria-label="Sağlam adet"></label>
+              <label class="at-alan"><span>Fire adet</span><input type="text" name="fire" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off" aria-label="Fire adet"></label>
+              <button type="submit">⏹ BİTİR</button>
+            </div>
+          </form>
+        {% endif %}
+        <form method="post" action="{% url 'core:atolye_oturum_iptal' o.oturum.pk %}" class="at-iptal-form" onsubmit="return confirm('İş yapılmadı olarak iptal edilsin mi? Üretim kaydı açılmaz; ekipteki herkesin işi kapanır.');">
+          {% csrf_token %}{% if o.dunku %}<input type="hidden" name="bitis" value="{{ o.bitis_varsayilan }}">{% endif %}
+          <button type="submit" class="at-iptal">✕ İptal (iş yapılmadı)</button>
+        </form>
+        {% if o.devir_adaylari %}
+          <form method="post" action="{% url 'core:atolye_oturum_devret' o.oturum.pk %}" class="at-devret" onsubmit="return confirm('Sorumluluk devredilsin mi?');">
+            {% csrf_token %}
+            <label>Sorumluluğu devret:
+              <select name="yeni" required>{% for p in o.devir_adaylari %}<option value="{{ p.pk }}">{{ p.ad_soyad }}</option>{% endfor %}</select></label>
+            <label><input type="checkbox" name="ayril" value="1"> Devrettikten sonra ayrıl</label>
+            <button type="submit">🔁 Devret</button>
+          </form>
+        {% endif %}
+      {% elif o.uye_benim %}
+        <p class="at-yardim" style="text-align:left">Bu işin ekibindesiniz: çalışırsınız, süreniz işçiliğe sayılır. Adedi ve Bitir/İptal'i sorumlu ({{ o.sorumlu.ad_soyad }}) yapar.</p>
+        <form method="post" action="{% url 'core:atolye_oturum_ayril' o.oturum.pk %}" class="at-ayril" onsubmit="return confirm('Ekipten ayrılmak istiyor musunuz?');">
+          {% csrf_token %}<button type="submit">👋 Ekipten ayrıl</button>
+        </form>
+      {% endif %}
       {% if o.oturum.istasyon_id != istasyon_pk %}<a class="at-git" href="{% url 'core:atolye_istasyon' o.oturum.istasyon_id %}#ie-{{ o.oturum.istasyon_emri_id }}">Bu işe git →</a>{% endif %}
     </div>
   {% endfor %}
-  <p class="at-yardim">Yeni iş başlatmak için önce açık işinizi bitirin (ya da iş yapılmadıysa iptal edin).</p>
+  <p class="at-yardim">Yeni iş başlatmak için önce açık işinizi kapatın (sorumluysanız Bitir ya da iptal; ekip üyesiyseniz ekipten ayrılın).</p>
 </section>
 {% endif %}

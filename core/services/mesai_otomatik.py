@@ -81,11 +81,11 @@ def fabrika_gorulde(personel: Personel, simdi=None) -> None:
         return
     if k.dis_ip_ilk_gorulme is None and k.son_fabrika_gorulme is not None and simdi - k.son_fabrika_gorulme < YAZMA_ARALIGI:
         return
-    MesaiKaydi.objects.filter(pk=k.pk, cikis_zamani__isnull=True).update(son_fabrika_gorulme=simdi, dis_ip_ilk_gorulme=None)
+    MesaiKaydi.objects.filter(pk=k.pk, cikis_zamani__isnull=True).update(son_fabrika_gorulme=simdi, dis_ip_ilk_gorulme=None, dis_ip_ilk_ip=None)
 
 
-def dis_ip_gorulde(personel: Personel, simdi=None) -> bool:
-    """Fabrika DIŞINDAN görüldü: ilk görülme işaretlenir; tolerans dolmuşsa mesai kapanır. Mesai bu istekle kapandıysa True."""
+def dis_ip_gorulde(personel: Personel, simdi=None, ip=None) -> bool:
+    """Fabrika DIŞINDAN görüldü: ilk görülme (+ o isteğin IP'si) işaretlenir; tolerans dolmuşsa mesai kapanır. Mesai bu istekle kapandıysa True."""
     simdi = simdi or timezone.now()
     with transaction.atomic():
         k = (MesaiKaydi.objects.select_for_update().filter(personel=personel, silindi=False, cikis_zamani__isnull=True).first())
@@ -93,7 +93,7 @@ def dis_ip_gorulde(personel: Personel, simdi=None) -> bool:
             return False
         if k.dis_ip_ilk_gorulme is None:
             k.dis_ip_ilk_gorulme = simdi
-            MesaiKaydi.objects.filter(pk=k.pk).update(dis_ip_ilk_gorulme=simdi)
+            MesaiKaydi.objects.filter(pk=k.pk).update(dis_ip_ilk_gorulme=simdi, dis_ip_ilk_ip=ip or None)
         if simdi - k.dis_ip_ilk_gorulme >= datetime.timedelta(minutes=ayar().dis_ip_tolerans_dk):
             return kapat(k, sebep=SEBEP_DIS_IP, simdi=simdi) is not None
     return False
@@ -129,10 +129,10 @@ def kapat(kayit: MesaiKaydi, *, sebep: str, simdi=None):
     if p is None or k is None:
         return None
     bitis = bitis_hesapla(k, sebep, simdi, ayar().gece_kapanis_saati)
-    is_oturumu.mesai_otomatik_kapaniyor(p, bitis)
+    is_oturumu.mesai_kapaniyor(p, bitis, neden="otomatik")                  # üye ayrılır / sorumluluk devredilir / ekip boşsa "Adet bekliyor" (iptal DEĞİL)
     k.cikis_zamani, k.cikis_ip = bitis, None
-    k.otomatik_kapandi, k.otomatik_sebep, k.dis_ip_ilk_gorulme = True, sebep, None
-    k.save(update_fields=["cikis_zamani", "cikis_ip", "otomatik_kapandi", "otomatik_sebep", "dis_ip_ilk_gorulme", "updated_at"])
+    k.otomatik_kapandi, k.otomatik_sebep = True, sebep                      # fabrika dışı ilk görülme + IP kapanışta SİLİNMEZ (denetim: yanlış pozitif incelemesi)
+    k.save(update_fields=["cikis_zamani", "cikis_ip", "otomatik_kapandi", "otomatik_sebep", "updated_at"])
     return k
 
 

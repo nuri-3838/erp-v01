@@ -4254,6 +4254,8 @@ class MesaiKaydi(TemelModel):
     # (tolerans sayacı, fabrika IP'sinden görülünce sıfırlanır); otomatik kapanış izi (elle düzeltilince otomatik_kapandi kalkar, sebep kalır).
     son_fabrika_gorulme = models.DateTimeField("son fabrika görülme", null=True, blank=True)
     dis_ip_ilk_gorulme = models.DateTimeField("fabrika dışı ilk görülme", null=True, blank=True)
+    # Fabrika dışı ilk görülmedeki istemci IP'si (2026-10-21): otomatik kapanışta (ve sonrasında) denetim için kalır — yanlış pozitif incelemesi.
+    dis_ip_ilk_ip = models.GenericIPAddressField("fabrika dışı ilk IP", null=True, blank=True)
     otomatik_kapandi = models.BooleanField("otomatik kapandı", default=False)
     otomatik_sebep = models.CharField("otomatik kapanış sebebi", max_length=10, blank=True, default="",
                                       choices=[("dis_ip", "Fabrika dışı"), ("gece", "Gece kapanışı")])
@@ -4301,11 +4303,15 @@ class IsOturumu(TemelModel):
         ACIK = "ACIK", "Açık"
         BITTI = "BITTI", "Bitti"
         IPTAL = "IPTAL", "İptal (iş yapılmadı)"
+        ADET = "ADET", "Adet bekliyor"          # iş yapıldı, süre işçiliğe sayılır; adet sonradan (sorumlu ya da yönetici) girilir
 
     istasyon_emri = models.ForeignKey("IstasyonEmri", verbose_name="istasyon emri", on_delete=models.PROTECT, related_name="is_oturumlari")
     uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.PROTECT, related_name="is_oturumlari")
     istasyon = models.ForeignKey(IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT, related_name="is_oturumlari")
     baslatan = models.ForeignKey(Personel, verbose_name="başlatan", on_delete=models.PROTECT, related_name="baslattigi_is_oturumlari")
+    # TEK EKİP + SORUMLU (2026-10-21): bir emirde aynı anda en çok BİR açık oturum; adet/fire, Bitir, İptal, Devret yalnız SORUMLU'da. İlk başlatan sorumlu doğar;
+    # devirle / yönetici değişikliğiyle / mesai kapanışında otomatik devirle değişir. Boşsa (eski kayıt) ``baslatan`` sorumlu sayılır.
+    sorumlu = models.ForeignKey(Personel, verbose_name="sorumlu", null=True, blank=True, on_delete=models.PROTECT, related_name="sorumlu_is_oturumlari")
     bitiren = models.ForeignKey(Personel, verbose_name="bitiren", null=True, blank=True, on_delete=models.PROTECT,
                                 related_name="bitirdigi_is_oturumlari")
     is_tarihi = models.DateField("iş tarihi")                        # başlangıcın TR tarihi
@@ -4332,16 +4338,58 @@ class IsOturumu(TemelModel):
         constraints = [
             models.CheckConstraint(condition=(models.Q(bitis_zamani__isnull=True) | models.Q(bitis_zamani__gte=models.F("baslangic_zamani"))),
                                    name="ck_is_oturumu_bitis_gte_baslangic"),
+            models.UniqueConstraint(fields=["istasyon_emri"], condition=models.Q(durum="ACIK", silindi=False), name="uq_is_oturumu_emirde_tek_acik"),
         ]
 
     def __str__(self):
         return f"{self.istasyon_emri.no} — {self.baslatan.ad_soyad} {self.baslangic_zamani:%d.%m.%Y %H:%M}"
 
     @property
+    def sorumlu_kisi(self):
+        """Geçerli sorumlu (alan boşsa — eski kayıt — ilk başlatan)."""
+        return self.sorumlu or self.baslatan
+
+    @property
     def sure_saniye(self):
         """Başlangıçtan bitişe (açıksa şimdiye) geçen süre (saniye)."""
         bitis = self.bitis_zamani or timezone.now()
         return max(int((bitis - self.baslangic_zamani).total_seconds()), 0)
+
+
+class IsOturumuOlay(TemelModel):
+    """İş oturumunun denetim izi (2026-10-21): kim, ne zaman, ne yaptı — katıldı/ayrıldı/devretti, otomatik devir (mesai kapanışı), adet bekliyor, adet girildi,
+    yönetici işlemleri (sorumlu değiştir / kapat / iptal, NOT zorunlu), ofis kayıt engelinin süper kullanıcı tarafından aşılması. Salt-ekleme: kayıt değiştirilmez."""
+
+    class Tur(models.TextChoices):
+        KATILDI = "KATILDI", "Ekibe katıldı"
+        AYRILDI = "AYRILDI", "Ekipten ayrıldı"
+        DEVIR = "DEVIR", "Sorumluluk devredildi"
+        OTOMATIK_DEVIR = "OTOMATIK_DEVIR", "Otomatik devir (mesai kapandı)"
+        ADET_BEKLIYOR = "ADET_BEKLIYOR", "Adet bekliyor"
+        ADET_GIRILDI = "ADET_GIRILDI", "Adet girildi"
+        YONETICI_SORUMLU = "YONETICI_SORUMLU", "Yönetici sorumluyu değiştirdi"
+        YONETICI_ADET_BEKLIYOR = "YONETICI_ADET_BEKLIYOR", "Yönetici adet bekliyor olarak kapattı"
+        YONETICI_IPTAL = "YONETICI_IPTAL", "Yönetici iptal etti"
+        OFIS_ASILDI = "OFIS_ASILDI", "Ofis kaydı engeli aşıldı"
+        OFIS_ASMA_IPTAL = "OFIS_ASMA_IPTAL", "Ofis kaydı sonrası otomatik iptal"
+        SUPURME = "SUPURME", "Mesaisiz üyelik kapatıldı (süpürme)"
+
+    oturum = models.ForeignKey(IsOturumu, verbose_name="iş oturumu", on_delete=models.PROTECT, related_name="olaylar")
+    tur = models.CharField("tür", max_length=24, choices=Tur.choices)
+    personel = models.ForeignKey(Personel, verbose_name="personel", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    hedef = models.ForeignKey(Personel, verbose_name="hedef personel", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    kullanici = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="işlemi yapan", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    ip = models.GenericIPAddressField("IP", null=True, blank=True)
+    aciklama = models.CharField("açıklama / not", max_length=500, blank=True, default="")
+
+    class Meta:
+        db_table = "core_is_oturumu_olay"
+        verbose_name = "iş oturumu olayı"
+        verbose_name_plural = "iş oturumu olayları"
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.oturum_id} {self.tur}"
 
 
 class IsOturumuUyesi(TemelModel):

@@ -1,5 +1,5 @@
 {% extends "core/atolye_base.html" %}
-{% block ust_sag %}{% if acik_kayit %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
+{% block ust_sag %}{% if acik_kayit and mesai_bitir_adet_gerekli %}<a href="{% url 'core:atolye_mesai_bitir' %}" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto;display:inline-flex;align-items:center;text-decoration:none">⏹ Mesaiyi Bitir</a>{% elif acik_kayit %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.9rem;padding:0 .7rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
 
 {% block icerik %}
 {% if izleme %}
@@ -17,6 +17,7 @@
 {% elif not calisiyor %}
   <div class="at-mesaj error">Artık çalışmıyorsunuz; mesai başlatamazsınız.</div>
 {% elif not acik_kayit %}
+  {% include "core/_atolye_acik_isler.html" with istasyon_pk=0 %}
   <form method="post" action="{% url 'core:atolye_mesai' %}">
     {% csrf_token %}<input type="hidden" name="eylem" value="baslat">
     <button type="submit" class="at-buton baslat">▶ MESAİYİ BAŞLAT</button>

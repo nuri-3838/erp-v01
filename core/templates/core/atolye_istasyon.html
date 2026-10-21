@@ -2,7 +2,7 @@
 {% load core_extras %}
 {% block baslik %}{{ istasyon.kod }} {{ istasyon.ad }} · Atölye{% endblock %}
 {% block ust_alt %} · <b>{{ istasyon.kod }} {{ istasyon.ad }}</b>{% endblock %}
-{% block ust_sag %}<a href="{% url 'core:atolye' %}?sec=1">İstasyon değiştir</a>{% if not izleme %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.85rem;padding:0 .6rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
+{% block ust_sag %}<a href="{% url 'core:atolye' %}?sec=1">İstasyon değiştir</a>{% if not izleme and mesai_bitir_adet_gerekli %}<a href="{% url 'core:atolye_mesai_bitir' %}" class="at-buton bitir" style="min-height:2.6rem;font-size:.85rem;padding:0 .6rem;width:auto;display:inline-flex;align-items:center;text-decoration:none">⏹ Mesaiyi Bitir</a>{% elif not izleme %}<form method="post" action="{% url 'core:atolye_mesai' %}" style="margin:0" onsubmit="return confirm('Mesai bitirilsin mi?');">{% csrf_token %}<input type="hidden" name="eylem" value="bitir"><button type="submit" class="at-buton bitir" style="min-height:2.6rem;font-size:.85rem;padding:0 .6rem;width:auto">⏹ Mesaiyi Bitir</button></form>{% endif %}{% endblock %}
 
 {% block icerik %}
   {% include "core/_atolye_acik_isler.html" with istasyon_pk=istasyon.pk %}
@@ -20,30 +20,29 @@
         <div class="kalan"><div class="et">Kalan</div><div class="dg">{{ s.acik|tr_miktar_sade }}</div></div>
       </div>
       {% for o in s.oturumlar %}
-        <div class="at-oturum{% if o.benim %} benim{% endif %}{% if o.dunku %} dunku{% endif %}" id="oturum-{{ o.oturum.pk }}">
+        <div class="at-oturum{% if o.uye_benim %} benim{% endif %}{% if o.dunku %} dunku{% endif %}" id="oturum-{{ o.oturum.pk }}">
           <div class="at-oturum-ust">
             <span class="at-sayac" data-baslangic="{{ o.baslangic_ms }}">{{ o.sure_metni }}</span>
             <span>{% if o.dunku %}⚠️ DÜNKÜ AÇIK İŞ · {{ o.oturum.baslangic_zamani|tr_zaman:"d.m.Y H:i" }}{% else %}⏱ Çalışıyor · {{ o.oturum.baslangic_zamani|tr_zaman:"H:i" }}'den beri{% endif %}</span>
           </div>
-          <div class="at-ekip">👥 {{ o.ekip_metni }}</div>
-          {% if o.benim %}
-            <form method="post" action="{% url 'core:atolye_oturum_bitir' o.oturum.pk %}" class="at-bitir" onsubmit="return atBitirOnay(this);">
+          <div class="at-ekip">👤 Sorumlu: <b>{{ o.sorumlu.ad_soyad }}</b> · 👥 {{ o.ekip_metni }}</div>
+          {% if o.uye_benim %}
+            <p class="at-yardim" style="text-align:left">Bu işte siz de varsınız — Bitir / İptal / Devret / Ayrıl düğmeleri sayfanın en üstündeki "Açık işiniz var" kartındadır.</p>
+          {% elif baslatabilir %}
+            <form method="post" action="{% url 'core:atolye_oturum_katil' o.oturum.pk %}">
               {% csrf_token %}
-              {% if o.dunku %}<label class="at-bitis-saat">Bitiş saati <input type="datetime-local" name="bitis" value="{{ o.bitis_varsayilan }}" required></label>{% endif %}
-              <div class="at-form">
-                <label class="at-alan"><span>Sağlam adet</span><input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" placeholder="Kalan: {{ s.kalan_tam }}" autocomplete="off" aria-label="Sağlam adet"></label>
-                <label class="at-alan"><span>Fire adet</span><input type="text" name="fire" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off" aria-label="Fire adet"></label>
-                <button type="submit">⏹ BİTİR</button>
-              </div>
-            </form>
-            <form method="post" action="{% url 'core:atolye_oturum_iptal' o.oturum.pk %}" class="at-iptal-form" onsubmit="return confirm('İş yapılmadı olarak iptal edilsin mi? Üretim kaydı açılmaz.');">
-              {% csrf_token %}{% if o.dunku %}<input type="hidden" name="bitis" value="{{ o.bitis_varsayilan }}">{% endif %}
-              <button type="submit" class="at-iptal">✕ İptal (iş yapılmadı)</button>
+              <p class="at-yardim" style="text-align:left">Bu emirde {{ o.sorumlu.ad_soyad }} sorumluluğunda bir ekip çalışıyor. Katılırsanız çalışırsınız, süreniz işçiliğe sayılır; adedi sorumlu girer.</p>
+              <button type="submit" class="at-basla-buton">🤝 EKİBE KATIL</button>
             </form>
           {% endif %}
         </div>
       {% endfor %}
-      {% if baslatabilir %}
+      {% for b in s.adet_bekleyenler %}
+        <div class="at-oturum dunku" id="adet-{{ b.oturum.pk }}"><div class="at-oturum-ust"><span>⏳ Adet bekliyor · {{ b.oturum.bitis_zamani|tr_zaman:"d.m H:i" }}'de kapandı</span></div>
+          <div class="at-ekip">👤 Sorumlu: <b>{{ b.sorumlu.ad_soyad }}</b> · 👥 {{ b.ekip_metni }}</div>
+          <p class="at-yardim" style="text-align:left">Bu işin adedi henüz girilmedi (sorumlu girecek). Yeni iş açabilirsiniz.</p></div>
+      {% endfor %}
+      {% if baslatabilir and not s.oturumlar %}
         <details class="at-basla">
           <summary>▶ BAŞLA</summary>
           <form method="post" action="{% url 'core:atolye_oturum_baslat' s.ie.pk %}"{% if s.malzeme.yok %} onsubmit="return confirm('{{ s.malzeme.metin|escapejs }}. Yine de başlansın mı?');"{% endif %}>

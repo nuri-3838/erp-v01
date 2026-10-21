@@ -102,15 +102,15 @@ class SuAnTest(TakipTaban):
         self.baslat(self.u3)
         self.baslat()
         self.basla(self.ie_kesim, ekip=[self.p2.pk])
-        with self.assertNumQueries(3):
-            is_takibi.su_an()
         with self.assertNumQueries(4):
+            is_takibi.su_an()
+        with self.assertNumQueries(5):
             is_takibi.su_an_kartlar()
         self.client.force_login(self.u3)
         self.basla(self.ie_bukum)                                                                     # mehmet ikinci oturum
-        with self.assertNumQueries(3):
-            is_takibi.su_an()
         with self.assertNumQueries(4):
+            is_takibi.su_an()
+        with self.assertNumQueries(5):
             is_takibi.su_an_kartlar()
 
 

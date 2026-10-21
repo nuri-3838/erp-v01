@@ -66,12 +66,12 @@
         <td class="mono">{{ o.is_tarihi|date:"d.m.Y" }}</td>
         <td><span class="io-ist">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
         <td><a href="{% url 'core:uretim_emri_detay' o.uretim_emri_id %}">{{ o.uretim_emri.no }}</a> · <span class="mono">{{ o.istasyon_emri.operasyon.cikti.kod }}</span><br><small>{{ o.istasyon_emri.operasyon.cikti.ad }}</small></td>
-        <td class="io-ekip">{{ r.ekip_metni }}{% if o.bitiren_id and o.bitiren_id != o.baslatan_id %}<br><small>bitiren: {{ o.bitiren.ad_soyad }}</small>{% endif %}</td>
+        <td class="io-ekip"><small>sorumlu:</small> <b>{{ r.sorumlu.ad_soyad }}</b>{% if r.kisi > 1 %}<br>{{ r.ekip_metni }}{% endif %}{% if o.bitiren_id and o.bitiren_id != r.sorumlu.pk %}<br><small>bitiren: {{ o.bitiren.ad_soyad }}</small>{% endif %}</td>
         <td class="mono">{{ o.baslangic_zamani|tr_zaman:"H:i" }}–{% if o.bitis_zamani %}{{ o.bitis_zamani|tr_zaman:"H:i" }}{% else %}<span class="io-acik">açık</span>{% endif %}</td>
         <td class="sag mono">{{ r.sure_metni }}</td>
         <td class="sag mono">{{ r.kisi }}</td>
         <td class="sag mono">{{ r.adam_saat|tr_kur:2 }}</td>
-        <td>{% if o.durum == "ACIK" %}<span class="io-acik">Açık</span>{% elif o.durum == "IPTAL" %}<span class="io-iptal">İptal (iş yapılmadı)</span>{% else %}Bitti{% endif %}{% if o.kayit_id and o.kayit.silindi %}<br><small class="io-iptal">kayıt geri alındı</small>{% endif %}</td>
+        <td>{% if o.durum == "ACIK" %}<span class="io-acik">Açık</span>{% elif o.durum == "ADET" %}<span class="io-acik" style="background:#fff7d6;color:#6b5500">⏳ Adet bekliyor</span>{% elif o.durum == "IPTAL" %}<span class="io-iptal">İptal (iş yapılmadı)</span>{% else %}Bitti{% endif %}{% if yonetici and o.durum == "ACIK" or yonetici and o.durum == "ADET" %}{% include "core/_is_oturumu_yonetim.html" with o=o aday=r.yonetici_adaylari geri=request.get_full_path %}{% endif %}{% if o.kayit_id and o.kayit.silindi %}<br><small class="io-iptal">kayıt geri alındı</small>{% endif %}</td>
         <td class="sag mono">{% if r.adet %}{{ r.adet|tr_miktar_sade }}{% else %}—{% endif %}</td>
         <td class="sag mono">{% if r.fire %}{{ r.fire|tr_miktar_sade }}{% else %}—{% endif %}</td>
         <td class="sag mono">{% if r.adet_saat %}{{ r.adet_saat|tr_kur:1 }}{% else %}—{% endif %}</td>

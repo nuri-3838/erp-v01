@@ -52,7 +52,7 @@ def su_an(simdi=None) -> dict:
     simdi = simdi or timezone.now()
     bugun = tr_bugun()
     oturumlar = (IsOturumu.objects.filter(silindi=False, durum=IsOturumu.Durum.ACIK)
-                 .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan",
+                 .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu",
                                  *_sr("istasyon_emri__cikti_varyant"))
                  .prefetch_related(is_oturumu._uyeler_prefetch()).order_by("baslangic_zamani", "pk"))
     satirlar, mesgul = [], set()
@@ -61,10 +61,15 @@ def su_an(simdi=None) -> dict:
         mesgul.update(u.personel_id for u in oz["uyeler"] if u.ayrilma_zamani is None)
         satirlar.append({"oturum": o, "ozet": oz, "ie": o.istasyon_emri, "cikti": o.istasyon_emri.operasyon.cikti,
                          "varyant": _etiket(o.istasyon_emri.cikti_varyant), "dunku": o.is_tarihi < bugun})
+    adet = [{"oturum": o, "ozet": is_oturumu.ozet(o), "ie": o.istasyon_emri, "cikti": o.istasyon_emri.operasyon.cikti, "varyant": _etiket(o.istasyon_emri.cikti_varyant)}
+            for o in (IsOturumu.objects.filter(silindi=False, durum=IsOturumu.Durum.ADET)
+                      .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu",
+                                      *_sr("istasyon_emri__cikti_varyant"))
+                      .prefetch_related(is_oturumu._uyeler_prefetch()).order_by("bitis_zamani", "pk"))]
     mesailer = list(MesaiKaydi.objects.filter(silindi=False, cikis_zamani__isnull=True).select_related("personel").order_by("personel__ad", "personel__soyad"))
     bosta = [{"personel": m.personel, "mesai": m, "sure_saniye": _sure_sn(m.giris_zamani, None, simdi), "sure_metni": is_oturumu.sure_metni(_sure_sn(m.giris_zamani, None, simdi)),
               "dunku": m.is_tarihi < bugun} for m in mesailer if m.personel_id not in mesgul]
-    return {"oturumlar": satirlar, "bosta": bosta, "mesaide": len(mesailer)}
+    return {"oturumlar": satirlar, "bosta": bosta, "mesaide": len(mesailer), "adet": adet}
 
 
 # --- Geçmiş ----------------------------------------------------------------------------------------------------------------------------------
@@ -115,7 +120,7 @@ def gecmis(*, baslangic, bitis, personel_id=None, istasyon_id=None, kaynak="", s
     """Tarih aralığındaki satırlar (en yeni üstte). Oturumsuz satır = oturumu olmayan onaylı, fasonsuz kayıt."""
     simdi = simdi or timezone.now()
     oq = (IsOturumu.objects.filter(silindi=False, is_tarihi__gte=baslangic, is_tarihi__lte=bitis)
-          .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "bitiren", "kayit",
+          .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu", "bitiren", "kayit",
                           *_sr("istasyon_emri__cikti_varyant"))
           .prefetch_related(is_oturumu._uyeler_prefetch()))
     kq = (OperasyonKaydi.objects.filter(silindi=False, durum=OperasyonKaydi.Durum.ONAYLI, tarih__gte=baslangic, tarih__lte=bitis, is_oturumu__isnull=True,
@@ -242,7 +247,9 @@ def su_an_kartlar(simdi=None) -> dict:
         uyeler = [u for u in s["ozet"]["uyeler"] if u.ayrilma_zamani is None]
         for u in uyeler:
             gorulen.add(u.personel_id)
+            sorumlu = s["ozet"]["sorumlu"]
             kartlar.append({"durum": "calisiyor", "personel": u.personel, "oturum": o, "ie": s["ie"], "cikti": s["cikti"], "varyant": s["varyant"], "istasyon": o.istasyon,
+                            "sorumlu": sorumlu, "sorumlu_mu": u.personel_id == sorumlu.pk, "devir_adaylari": [x.personel for x in uyeler if x.personel_id != sorumlu.pk],
                             "ekip": [x.personel for x in uyeler if x.personel_id != u.personel_id], "baslangic_ms": int(u.katilim_zamani.timestamp() * 1000),
                             "sure_metni": is_oturumu.sure_metni(u.katilim_saniye()), "dunku": s["dunku"]})
     for b in d["bosta"]:
@@ -256,7 +263,11 @@ def su_an_kartlar(simdi=None) -> dict:
     sira = {"calisiyor": 0, "bosta": 1, "yok": 2}
     kartlar.sort(key=lambda k: (sira[k["durum"]], k["personel"].ad, k["personel"].soyad))
     sayac = {d_: sum(1 for k in kartlar if k["durum"] == d_) for d_ in sira}
-    return {"kartlar": kartlar, "sayac": sayac, "mesaide": d["mesaide"]}
+    adet = []
+    for a in d["adet"]:                                                 # "Adet bekliyor" işler: yöneticinin adet girmesi / sorumlu değiştirmesi için
+        gecmis_uyeler = {x.personel_id: x.personel for x in a["ozet"]["uyeler"]}
+        adet.append({**a, "sorumlu": a["ozet"]["sorumlu"], "uye_adaylari": [p for pk, p in gecmis_uyeler.items() if pk != a["ozet"]["sorumlu"].pk]})
+    return {"kartlar": kartlar, "sayac": sayac, "mesaide": d["mesaide"], "adet": adet}
 
 
 # --- Geçmiş: zaman çizelgesi (sorgu yok; gecmis + mesai_araliklari verisinden) ---------------------------------------------------------------

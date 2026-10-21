@@ -1,52 +1,71 @@
-"""ATÖLYE > İş Oturumları — "Başla / Bitir" mantığı (kullanıcı kararları, 2026-10-12):
+"""ATÖLYE > İş Oturumları — TEK EKİP + SORUMLU modeli (kullanıcı kararları, 2026-10-12; 2026-10-21 yeniden düzenlendi):
 
-* Operatör emir kartında **Başla** der; mesaisi açık ve atölye yetkili arkadaşlarını ekibe seçebilir. Bir personel aynı anda yalnız BİR açık
-  oturumda olabilir (başlatan ya da üye). Zaman hep sunucu saati.
-* **Bitir** (SAĞLAM adet, tam sayı > 0; FİRE adet isteğe bağlı — girdiler sağlam+fire için tüketilir, stoğa yalnız sağlam girer, maliyet
-  sağlam adetlere yayılır; fason dönüşündeki gelen/fire mantığı): ``uretim.istasyon_emri_uret`` aynen çalışır (tarih bazlı stok kontrolü, LAZER/PAKETLEME fazla üretim yasağı,
-  hata mesajları); hata olursa oturum AÇIK kalır, operatör adedi düzeltip tekrar dener. Ekipteki herkes bitirebilir; kaydın ``personel``'i =
-  BAŞLATAN, bitiren ``bitiren`` alanında. **İptal (iş yapılmadı)**: kayıt yok, süre raporda kalır. Kayıt geri alınsa da oturum BITTI kalır.
-* Mesai bitirilirken üyelik o anda kapanır (oturum diğerleriyle sürer) — başlatan için de; oturumda tek kişi kaldıysa mesai bitirme ENGELLENİR.
-* Unutulan açık oturum otomatik İPTAL edilmez: 18:00'den sonra pano uyarısı; ertesi gün operatörün ekranında "DÜNKÜ AÇIK İŞ" en üstte; önceki
-  günden kalan oturum bitirilirken bitiş saati sorulur (varsayılan: o kişinin o günkü mesai çıkışı), kayıt tarihi = bitişin tarihi.
+* Bir istasyon emrinde aynı anda en çok **BİR açık oturum** olur (kodda + veritabanı kısmi benzersizliği). İlk başlatan **sorumlu**dur; **adet/fire girme, Bitir, İptal,
+  Devret yalnız sorumluda**. Emirde açık oturum varken başkası "Başla" yerine **"Ekibe katıl"** der (sorumlu adı + ekip görünür): çalışır, süresi işçiliğe (adam-saat)
+  sayılır, adet giremez, yalnız "Ekipten ayrıl" görür. Sorumlu Bitir/İptal deyince ekipteki herkesin üyeliği AYNI ANDA kapanır.
+* **Devret**: sorumlu ekipten birini seçer (devreden isterse aynı anda ayrılır). Ekipte başkası varken sorumlu devretmeden ayrılamaz (ayrılamaz: "Ekipten ayrıl" yok);
+  tek başınaysa Bitir/İptal yapar.
+* **Otomatik devir** (``mesai_kapaniyor`` — elle / ofis düzeltmesi / fabrika dışı / gece / süpürme): sorumlunun mesaisi kapanırsa sorumluluk ekipte EN UZUN SÜREDİR olan,
+  mesaisi hâlâ açık kişiye geçer. Ekipte kimse yoksa oturum "İptal" OLMAZ → **"Adet bekliyor"** (süre işçiliğe sayılır): sorumlu sonraki girişinde ana ekranda kart olarak
+  görür ve adedi girer, ya da yönetici girer; adet girilince normal üretim kaydı oluşur (kayıt tarihi = oturumun bitiş günü). Elle (kendi) mesai bitirmede tek başına sorumlu
+  adet/fire girerse oturum normal Bitir ile kapanır, girmezse onay kutusuyla "Adet bekliyor" olur. Adet bekleyen oturum varken aynı emre yeni oturum açılabilir.
+* **Yönetici**: sorumluyu değiştirir; işi "Adet bekliyor" olarak kapatır ya da İPTAL eder (NOT ZORUNLU); "Adet bekliyor" oturuma adet girer. Her işlem ``IsOturumuOlay`` denetim kaydı.
+* Bir personel aynı anda yalnız BİR açık oturumda olabilir (sorumlu ya da üye). Zaman hep sunucu saati.
+* **Bitir** (SAĞLAM adet, tam sayı > 0; FİRE isteğe bağlı — girdiler sağlam+fire için tüketilir, stoğa yalnız sağlam girer): ``uretim.istasyon_emri_uret`` aynen çalışır (tarih bazlı
+  stok kontrolü, LAZER/PAKETLEME fazla üretim yasağı); hata olursa oturum AÇIK kalır. Kayıt personeli = SORUMLU, bitiren ayrı iz. **İptal (iş yapılmadı)**: kayıt yok, süre raporda kalır.
+* Önceki günden kalan oturum bitirilirken bitiş saati sorulur (varsayılan: kişinin o günkü mesai çıkışı), kayıt tarihi = bitişin tarihi.
+* Mesaisi kapalı kişide açık üyelik KALAMAZ: ofis mesaiyi elle kapatınca/silince üyelik de kapanır (sorumluysa devir/adet bekliyor); cron süpürmesi kalanları toplar.
 * Adam-saat = üyelerin kendi katılım sürelerinin toplamı; işçilik/GÜG dağıtımı AYRI adım, burada yalnız veri birikir."""
 from __future__ import annotations
 
 import datetime
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 
-from core.models import EkranYetki, IsOturumu, IsOturumuUyesi, IstasyonEmri, MesaiKaydi, Personel, UretimEmri
+from core.models import EkranYetki, IsOturumu, IsOturumuOlay, IsOturumuUyesi, IstasyonEmri, MesaiKaydi, Personel, UretimEmri
 from core.services import uretim
 from core.tarih import _TR, tr_bugun
 
 UNUTULMA_SAATI = datetime.time(18, 0)
 ATOLYE_EKRAN_KODU = "atolye"
+T = IsOturumuOlay.Tur
 
 
 class OturumHatasi(ValueError):
     """İş oturumu kural ihlali (Türkçe mesaj)."""
 
 
+# --- denetim izi ---
+
+def olay(oturum, tur, *, personel=None, hedef=None, kullanici=None, ip=None, aciklama="") -> IsOturumuOlay:
+    k = kullanici if getattr(kullanici, "pk", None) else None
+    return IsOturumuOlay.objects.create(oturum=oturum, tur=tur, personel=personel, hedef=hedef, kullanici=k, ip=ip or None, aciklama=(aciklama or "")[:500],
+                                        created_by=k, updated_by=k)
+
+
 # --- sorgular ---
 
 def _uyeler_prefetch():
-    return Prefetch("uyeler", queryset=IsOturumuUyesi.objects.filter(silindi=False).select_related("personel").order_by("-baslatan", "id"))
+    return Prefetch("uyeler", queryset=IsOturumuUyesi.objects.filter(silindi=False).select_related("personel", "mesai_kaydi").order_by("-baslatan", "id"))
+
+
+def _qs(durum):
+    return (IsOturumu.objects.filter(silindi=False, durum=durum)
+            .select_related("istasyon_emri__operasyon__cikti", "uretim_emri", "istasyon", "baslatan", "sorumlu").prefetch_related(_uyeler_prefetch()))
 
 
 def _acik_qs():
-    return (IsOturumu.objects.filter(silindi=False, durum=IsOturumu.Durum.ACIK)
-            .select_related("istasyon_emri__operasyon__cikti", "uretim_emri", "istasyon", "baslatan").prefetch_related(_uyeler_prefetch()))
+    return _qs(IsOturumu.Durum.ACIK)
 
 
 def aktif_uyelik(personel) -> IsOturumuUyesi | None:
     """Personelin şu an içinde olduğu açık oturum üyeliği (kural: en çok bir)."""
     return (IsOturumuUyesi.objects.filter(personel=personel, silindi=False, ayrilma_zamani__isnull=True, oturum__silindi=False,
                                           oturum__durum=IsOturumu.Durum.ACIK)
-            .select_related("oturum__istasyon", "oturum__uretim_emri", "oturum__istasyon_emri__operasyon__cikti").order_by("-pk").first())
+            .select_related("oturum__istasyon", "oturum__uretim_emri", "oturum__istasyon_emri__operasyon__cikti", "oturum__sorumlu", "oturum__baslatan").order_by("-pk").first())
 
 
 def acik_oturumlar(ie: IstasyonEmri | None = None) -> list:
@@ -56,10 +75,26 @@ def acik_oturumlar(ie: IstasyonEmri | None = None) -> list:
     return list(qs.order_by("baslangic_zamani", "pk"))
 
 
+def emirde_acik_oturum(ie: IstasyonEmri) -> IsOturumu | None:
+    return _acik_qs().filter(istasyon_emri=ie).order_by("pk").first()
+
+
+def adet_bekleyenler(ie: IstasyonEmri | None = None) -> list:
+    qs = _qs(IsOturumu.Durum.ADET)
+    if ie is not None:
+        qs = qs.filter(istasyon_emri=ie)
+    return list(qs.order_by("bitis_zamani", "pk"))
+
+
 def kisinin_acik_oturumlari(personel) -> list:
     """Personelin aktif üye olduğu açık oturumlar (dünden kalanlar dahil; ekranda en üstte)."""
     pks = IsOturumuUyesi.objects.filter(personel=personel, silindi=False, ayrilma_zamani__isnull=True).values("oturum_id")
     return list(_acik_qs().filter(pk__in=pks).order_by("baslangic_zamani", "pk"))
+
+
+def kisinin_adet_bekleyenleri(personel) -> list:
+    """Sorumlusu bu personel olan "Adet bekliyor" oturumlar (ana ekranda kart; sonraki girişinde adedi girer)."""
+    return list(_qs(IsOturumu.Durum.ADET).filter(Q(sorumlu=personel) | Q(sorumlu__isnull=True, baslatan=personel)).order_by("bitis_zamani", "pk"))
 
 
 def unutulanlar(simdi=None) -> list:
@@ -95,8 +130,9 @@ def sure_metni(saniye) -> str:
 
 
 def ozet(oturum: IsOturumu) -> dict:
-    """Ekip + süre + adam-saat + adet/saat + adet başı süre (rapor ve ekran satırı)."""
-    uyeler = [u for u in oturum.uyeler.all() if not u.silindi]
+    """Ekip + sorumlu + süre + adam-saat + adet/saat + adet başı süre (rapor ve ekran satırı). Ekip metni sorumlu önde."""
+    sorumlu = oturum.sorumlu_kisi
+    uyeler = sorted((u for u in oturum.uyeler.all() if not u.silindi), key=lambda u: (u.personel_id != sorumlu.pk, -int(u.baslatan), u.pk))
     bitis = oturum.bitis_zamani
     sure = oturum.sure_saniye
     adam_sn = sum(u.katilim_saniye(bitis) for u in uyeler)
@@ -105,17 +141,19 @@ def ozet(oturum: IsOturumu) -> dict:
     if adet and oturum.durum == IsOturumu.Durum.BITTI:
         adet_saat = (adet / Decimal(sure) * 3600).quantize(Decimal("0.1")) if sure else None
         adet_basi_sn = int(Decimal(adam_sn) / adet)
-    return {"oturum": oturum, "uyeler": uyeler, "kisi": len(uyeler), "ekip_metni": ", ".join(u.personel.ad_soyad for u in uyeler),
+    return {"oturum": oturum, "uyeler": uyeler, "kisi": len(uyeler), "sorumlu": sorumlu, "ekip_metni": ", ".join(u.personel.ad_soyad for u in uyeler),
+            "acik_uyeler": [u for u in uyeler if u.ayrilma_zamani is None],
             "sure_saniye": sure, "sure_metni": sure_metni(sure), "adam_saniye": adam_sn,
             "adam_saat": (Decimal(adam_sn) / 3600).quantize(Decimal("0.01")), "adam_saat_metni": sure_metni(adam_sn),
             "adet": adet, "fire": oturum.fire, "adet_saat": adet_saat, "adet_basi_saniye": adet_basi_sn,
+            "adet_bekliyor": oturum.durum == IsOturumu.Durum.ADET,
             "adet_basi_metni": sure_metni(adet_basi_sn) if adet_basi_sn is not None else "",
             "baslangic_ms": int(oturum.baslangic_zamani.timestamp() * 1000), "dunku": oturum.is_tarihi < tr_bugun()}
 
 
 def varsayilan_bitis(oturum: IsOturumu, personel):
-    """Önceki günden kalan oturum için önerilen bitiş: kişinin o günkü (son) mesai çıkışı, yoksa başlatanınki, yoksa None."""
-    for p in (personel, oturum.baslatan):
+    """Önceki günden kalan oturum için önerilen bitiş: kişinin o günkü (son) mesai çıkışı, yoksa sorumlunun/başlatanınki, yoksa None."""
+    for p in (personel, oturum.sorumlu_kisi, oturum.baslatan):
         m = (MesaiKaydi.objects.filter(personel=p, silindi=False, is_tarihi=oturum.is_tarihi, cikis_zamani__isnull=False,
                                        cikis_zamani__gt=oturum.baslangic_zamani).order_by("-cikis_zamani").first())
         if m is not None:
@@ -128,6 +166,12 @@ def _uyelik(personel, oturum: IsOturumu) -> IsOturumuUyesi:
     if u is None:
         raise OturumHatasi("Bu iş oturumunun ekibinde değilsiniz.")
     return u
+
+
+def _sorumlu_sart(personel, oturum: IsOturumu) -> None:
+    s = oturum.sorumlu_kisi
+    if s.pk != personel.pk:
+        raise OturumHatasi(f"Adet girme, Bitir ve İptal yalnızca sorumlu kişiye aittir: {s.ad_soyad}. Siz ekip üyesisiniz (çalışıyorsunuz; süreniz işçiliğe sayılır).")
 
 
 def _mesgul_metni(uyelik: IsOturumuUyesi) -> str:
@@ -148,26 +192,38 @@ def _bitis_coz(oturum: IsOturumu, bitis, simdi):
     return bitis
 
 
-# --- işlemler ---
+def _kilitle(oturum) -> IsOturumu:
+    return (IsOturumu.objects.select_for_update(of=("self",)).select_related("istasyon_emri", "baslatan", "sorumlu", "istasyon", "uretim_emri").get(pk=oturum.pk))
+
+
+# --- işlemler: başlat / katıl / ayrıl / devret ---
 
 @transaction.atomic
 def baslat(personel, ie: IstasyonEmri, ekip, *, ip=None, kullanici=None) -> IsOturumu:
-    """Oturum açar: emir açık ÜS'de ve bekliyor/başladı, fason değil; başlatan + ekip mesaisi açık, atölye yetkili ve başka açık oturumda değil
-    (kişi satırları kilitlenir: aynı kişi iki oturuma eş zamanlı giremesin)."""
-    ie = IstasyonEmri.objects.select_related("istasyon", "uretim_emri", "operasyon__cikti").get(pk=ie.pk)
+    """Oturum açar: emir açık ÜS'de ve bekliyor/başladı, fason değil; EMİRDE AÇIK OTURUM YOK (varsa "Ekibe katıl"); başlatan + ekip mesaisi açık, atölye yetkili ve
+    başka açık oturumda değil (kişi satırları kilitlenir). Başlatan sorumlu doğar."""
+    ie = IstasyonEmri.objects.select_for_update(of=("self",)).select_related("istasyon", "uretim_emri", "operasyon__cikti").get(pk=ie.pk)
     if ie.silindi or ie.istasyon.fason:
         raise OturumHatasi("Bu emirde atölyeden iş başlatılamaz (fason istasyonu).")
     if (ie.uretim_emri.silindi or ie.uretim_emri.durum != UretimEmri.Durum.ACIK
             or ie.durum not in (IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI)):
         raise OturumHatasi("Bu emir açık değil; iş başlatılamaz.")
+    mevcut = emirde_acik_oturum(ie)
+    if mevcut is not None:
+        oz = ozet(mevcut)
+        raise OturumHatasi(f"Bu emirde {oz['sorumlu'].ad_soyad} sorumluluğunda bir ekip çalışıyor ({oz['ekip_metni']}); yeni iş açılamaz — \"Ekibe katıl\" deyin.")
     kisiler = [personel] + [p for p in ekip if p.pk != personel.pk]
     if len({p.pk for p in kisiler}) != len(kisiler):
         raise OturumHatasi("Ekipte aynı kişi iki kez seçilmiş.")
     kilitli = {p.pk: p for p in Personel.objects.select_for_update().filter(pk__in=[p.pk for p in kisiler], silindi=False).order_by("pk")}
     simdi = timezone.now()
-    oturum = IsOturumu.objects.create(istasyon_emri=ie, uretim_emri=ie.uretim_emri, istasyon=ie.istasyon, baslatan=personel,
-                                      is_tarihi=simdi.astimezone(_TR).date(), baslangic_zamani=simdi, baslangic_ip=ip or None,
-                                      created_by=kullanici, updated_by=kullanici)
+    try:
+        with transaction.atomic():
+            oturum = IsOturumu.objects.create(istasyon_emri=ie, uretim_emri=ie.uretim_emri, istasyon=ie.istasyon, baslatan=personel, sorumlu=personel,
+                                              is_tarihi=simdi.astimezone(_TR).date(), baslangic_zamani=simdi, baslangic_ip=ip or None,
+                                              created_by=kullanici, updated_by=kullanici)
+    except IntegrityError:
+        raise OturumHatasi("Bu emirde az önce başka bir iş başlatıldı; \"Ekibe katıl\" deyin.")
     for p in kisiler:
         kp = kilitli.get(p.pk)
         if kp is None:
@@ -186,6 +242,67 @@ def baslat(personel, ie: IstasyonEmri, ekip, *, ip=None, kullanici=None) -> IsOt
     return oturum
 
 
+@transaction.atomic
+def katil(personel, oturum: IsOturumu, *, ip=None, kullanici=None) -> IsOturumuUyesi:
+    """"Ekibe katıl": emirdeki açık oturuma üye olur — çalışır, süresi işçiliğe sayılır; adet giremez. Mesai açık, başka açık oturumda değil; emir hâlâ açık olmalı."""
+    oturum = _kilitle(oturum)
+    if oturum.durum != IsOturumu.Durum.ACIK:
+        raise OturumHatasi("Bu iş oturumu artık açık değil.")
+    ie = oturum.istasyon_emri
+    if (ie.silindi or oturum.uretim_emri.silindi or oturum.uretim_emri.durum != UretimEmri.Durum.ACIK
+            or ie.durum not in (IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI)):
+        raise OturumHatasi("Bu emir açık değil; ekibe katılınamaz.")
+    p = Personel.objects.select_for_update().get(pk=personel.pk)
+    mesai = MesaiKaydi.objects.filter(personel=p, silindi=False, cikis_zamani__isnull=True).first()
+    if mesai is None:
+        raise OturumHatasi("Önce mesainizi başlatın; mesai açık değilken ekibe katılınamaz.")
+    u = aktif_uyelik(p)
+    if u is not None:
+        raise OturumHatasi(f"Şu an başka bir işte olduğunuz için ekibe katılamazsınız: {_mesgul_metni(u)}." if u.oturum_id != oturum.pk else "Bu işin ekibindesiniz.")
+    uye = IsOturumuUyesi.objects.create(oturum=oturum, personel=p, mesai_kaydi=mesai, baslatan=False, katilim_zamani=timezone.now(), created_by=kullanici, updated_by=kullanici)
+    olay(oturum, T.KATILDI, personel=p, kullanici=kullanici, ip=ip)
+    return uye
+
+
+@transaction.atomic
+def ayril(personel, oturum: IsOturumu, *, ip=None, kullanici=None) -> IsOturumu:
+    """"Ekipten ayrıl": üye (sorumlu DEĞİL) ekipten çıkar; süresi o ana kadar işçiliğe sayılır. Sorumlu ayrılamaz: devretmeli ya da Bitir/İptal yapmalı."""
+    oturum = _kilitle(oturum)
+    if oturum.durum != IsOturumu.Durum.ACIK:
+        raise OturumHatasi("Bu iş oturumu artık açık değil.")
+    u = _uyelik(personel, oturum)
+    if oturum.sorumlu_kisi.pk == personel.pk:
+        raise OturumHatasi("Sorumlu ekipten ayrılamaz: önce sorumluluğu devredin; tek başınaysanız Bitir ya da İptal yapın.")
+    u.ayrilma_zamani, u.updated_by = timezone.now(), kullanici
+    u.save(update_fields=["ayrilma_zamani", "updated_by", "updated_at"])
+    olay(oturum, T.AYRILDI, personel=personel, kullanici=kullanici, ip=ip)
+    return oturum
+
+
+@transaction.atomic
+def devret(personel, oturum: IsOturumu, yeni, *, ayril_=False, ip=None, kullanici=None) -> IsOturumu:
+    """Sorumlu, sorumluluğu ekipten (açık üye) birine devreder; ``ayril_=True`` ise devreden aynı anda ekipten ayrılır (varsayılan: ekipte katılan olarak kalır)."""
+    oturum = _kilitle(oturum)
+    if oturum.durum != IsOturumu.Durum.ACIK:
+        raise OturumHatasi("Bu iş oturumu artık açık değil.")
+    _sorumlu_sart(personel, oturum)
+    if yeni is None or yeni.pk == personel.pk:
+        raise OturumHatasi("Sorumluluğu devredeceğiniz ekip arkadaşını seçin.")
+    hedef_uye = IsOturumuUyesi.objects.filter(oturum=oturum, personel=yeni, silindi=False, ayrilma_zamani__isnull=True).first()
+    if hedef_uye is None:
+        raise OturumHatasi(f"{yeni.ad_soyad} bu işin ekibinde değil; yalnız ekipten birine devredilebilir.")
+    oturum.sorumlu, oturum.updated_by = yeni, kullanici
+    oturum.save(update_fields=["sorumlu", "updated_by", "updated_at"])
+    if ayril_:
+        u = _uyelik(personel, oturum)
+        u.ayrilma_zamani, u.updated_by = timezone.now(), kullanici
+        u.save(update_fields=["ayrilma_zamani", "updated_by", "updated_at"])
+    olay(oturum, T.DEVIR, personel=personel, hedef=yeni, kullanici=kullanici, ip=ip, aciklama="devreden ayrıldı" if ayril_ else "")
+    return oturum
+
+
+# --- işlemler: bitir / iptal / adet ---
+
 def _kapat(oturum: IsOturumu, *, durum, bitis, bitiren, ip, kullanici, miktar=None, kayit=None, fire=None):
     oturum.durum, oturum.bitis_zamani, oturum.bitiren, oturum.bitis_ip = durum, bitis, bitiren, ip or None
     oturum.miktar, oturum.fire, oturum.kayit, oturum.updated_by = miktar, fire, kayit, kullanici
@@ -194,27 +311,33 @@ def _kapat(oturum: IsOturumu, *, durum, bitis, bitiren, ip, kullanici, miktar=No
         ayrilma_zamani=bitis, updated_by=kullanici, updated_at=timezone.now())
 
 
-@transaction.atomic
-def bitir(personel, oturum: IsOturumu, miktar, *, fire=None, bitis=None, ip=None, kullanici=None):
-    """Adetle üretim: ``istasyon_emri_uret`` (kayıt personeli = başlatan, mesai = başlatanın oturumdaki mesaisi, tarih = bitişin TR tarihi)
-    başarılıysa oturum BITTI + kayıt bağlı; üretim hatasında (stok, fazla üretim yasağı…) hiçbir şey değişmez — oturum açık kalır.
-    ``miktar`` = SAĞLAM adet; ``fire`` (≥ 0, isteğe bağlı) = fire adet (girdisi tüketilir, stoğa girmez). (kayıt, uyarı) döner."""
-    oturum = IsOturumu.objects.select_for_update().select_related("istasyon_emri", "baslatan").get(pk=oturum.pk)
-    if oturum.durum != IsOturumu.Durum.ACIK:
-        raise OturumHatasi("Bu iş oturumu zaten kapatılmış.")
-    _uyelik(personel, oturum)
+def _adet_dogrula(miktar, fire):
     if miktar is None or miktar <= 0:
         raise OturumHatasi("Adet girilmeli (0 adetle bitirilemez; iş yapılmadıysa \"İptal\" kullanın).")
     fire = Decimal(fire or 0)
     if fire < 0:
         raise OturumHatasi("Fire adedi negatif olamaz.")
+    return fire
+
+
+@transaction.atomic
+def bitir(personel, oturum: IsOturumu, miktar, *, fire=None, bitis=None, ip=None, kullanici=None):
+    """Adetle üretim — YALNIZ SORUMLU: ``istasyon_emri_uret`` (kayıt personeli = sorumlu, mesai = sorumlunun oturumdaki mesaisi, tarih = bitişin TR tarihi) başarılıysa oturum BITTI +
+    kayıt bağlı + tüm ekibin üyeliği aynı anda kapanır; üretim hatasında (stok, fazla üretim yasağı…) hiçbir şey değişmez — oturum açık kalır. ``miktar`` = SAĞLAM adet;
+    ``fire`` (≥ 0, isteğe bağlı) = fire adet. (kayıt, uyarı) döner."""
+    oturum = _kilitle(oturum)
+    if oturum.durum != IsOturumu.Durum.ACIK:
+        raise OturumHatasi("Bu iş oturumu zaten kapatılmış.")
+    _uyelik(personel, oturum)
+    _sorumlu_sart(personel, oturum)
+    fire = _adet_dogrula(miktar, fire)
     simdi = timezone.now()
     bitis = _bitis_coz(oturum, bitis, simdi)
-    baslatan_uye = IsOturumuUyesi.objects.filter(oturum=oturum, baslatan=True, silindi=False).first()
+    sorumlu_uye = IsOturumuUyesi.objects.filter(oturum=oturum, personel=personel, silindi=False).order_by("-pk").first()
     try:
         kayit, uyari = uretim.istasyon_emri_uret(oturum.istasyon_emri, miktar=miktar, tarih=bitis.astimezone(_TR).date(), kullanici=kullanici,
-                                                 personel=oturum.baslatan, mesai_kaydi=baslatan_uye.mesai_kaydi if baslatan_uye else None,
-                                                 fire=fire if fire > 0 else None)
+                                                 personel=personel, mesai_kaydi=sorumlu_uye.mesai_kaydi if sorumlu_uye else None,
+                                                 fire=fire if fire > 0 else None, oturum_kontrol=False)
     except uretim.UretimHatasi as e:
         raise OturumHatasi(str(e))
     _kapat(oturum, durum=IsOturumu.Durum.BITTI, bitis=bitis, bitiren=personel, ip=ip, kullanici=kullanici, miktar=miktar, kayit=kayit, fire=fire)
@@ -223,51 +346,242 @@ def bitir(personel, oturum: IsOturumu, miktar, *, fire=None, bitis=None, ip=None
 
 @transaction.atomic
 def iptal(personel, oturum: IsOturumu, *, bitis=None, ip=None, kullanici=None) -> IsOturumu:
-    """İş yapılmadı: kayıt açılmaz, süre raporda kalır (verimsiz saat)."""
-    oturum = IsOturumu.objects.select_for_update().get(pk=oturum.pk)
+    """İş yapılmadı — YALNIZ SORUMLU: kayıt açılmaz, süre raporda kalır; tüm ekibin üyeliği kapanır."""
+    oturum = _kilitle(oturum)
     if oturum.durum != IsOturumu.Durum.ACIK:
         raise OturumHatasi("Bu iş oturumu zaten kapatılmış.")
     _uyelik(personel, oturum)
+    _sorumlu_sart(personel, oturum)
     bitis = _bitis_coz(oturum, bitis, timezone.now())
     _kapat(oturum, durum=IsOturumu.Durum.IPTAL, bitis=bitis, bitiren=personel, ip=ip, kullanici=kullanici)
     return oturum
 
 
-def mesai_bitiriliyor(personel, simdi, kullanici=None) -> None:
-    """``mesai.bitir`` kancası: kişi açık bir oturumdaysa ve ekipte başkası kaldıysa üyeliği kapanır (oturum sürer); tek kişiyse ENGEL."""
+@transaction.atomic
+def adet_gir(oturum: IsOturumu, miktar, *, fire=None, personel=None, kullanici=None, ip=None):
+    """"Adet bekliyor" oturuma adet/fire girer (sorumlu kendisi ``personel=`` ile, yönetici ``personel=None``): normal üretim kaydı (kayıt tarihi = oturumun bitiş günü, personel =
+    sorumlu) oluşur, oturum BITTI olur; bitiş zamanı/süre DEĞİŞMEZ. Üretim hatasında (fazla üretim yasağı, stok…) hiçbir şey değişmez. (kayıt, uyarı) döner."""
+    oturum = _kilitle(oturum)
+    if oturum.durum != IsOturumu.Durum.ADET:
+        raise OturumHatasi("Bu iş oturumu adet beklemiyor.")
+    s = oturum.sorumlu_kisi
+    if personel is not None and s.pk != personel.pk:
+        raise OturumHatasi(f"Adedi yalnızca sorumlu ({s.ad_soyad}) ya da yönetici girebilir.")
+    fire = _adet_dogrula(miktar, fire)
+    uye = IsOturumuUyesi.objects.filter(oturum=oturum, personel=s, silindi=False).order_by("-pk").first()
+    try:
+        kayit, uyari = uretim.istasyon_emri_uret(oturum.istasyon_emri, miktar=miktar, tarih=oturum.bitis_zamani.astimezone(_TR).date(), kullanici=kullanici,
+                                                 personel=s, mesai_kaydi=uye.mesai_kaydi if uye else None, fire=fire if fire > 0 else None, oturum_kontrol=False)
+    except uretim.UretimHatasi as e:
+        raise OturumHatasi(str(e))
+    oturum.durum, oturum.miktar, oturum.fire, oturum.kayit, oturum.bitiren, oturum.updated_by = IsOturumu.Durum.BITTI, miktar, fire, kayit, personel, kullanici
+    oturum.save(update_fields=["durum", "miktar", "fire", "kayit", "bitiren", "updated_by", "updated_at"])
+    olay(oturum, T.ADET_GIRILDI, personel=personel, kullanici=kullanici, ip=ip, aciklama=f"{miktar.normalize():f} sağlam" + (f" + {fire.normalize():f} fire" if fire else "") + (" (yönetici)" if personel is None else ""))
+    return kayit, uyari
+
+
+def _adete_bagla(oturum: IsOturumu, bitis, kullanici=None, ip=None):
+    """Açık oturumu "Adet bekliyor"a çevirir: süre korunur (bitiş = verilen an), kalan açık üyelikler kapanır."""
+    bitis = max(bitis, oturum.baslangic_zamani)
+    oturum.durum, oturum.bitis_zamani, oturum.bitiren, oturum.bitis_ip = IsOturumu.Durum.ADET, bitis, None, ip or None
+    oturum.miktar = oturum.fire = oturum.kayit = None
+    oturum.updated_by = kullanici if getattr(kullanici, "pk", None) else None
+    oturum.save(update_fields=["durum", "bitis_zamani", "bitiren", "bitis_ip", "miktar", "fire", "kayit", "updated_by", "updated_at"])
+    for u in IsOturumuUyesi.objects.filter(oturum=oturum, silindi=False, ayrilma_zamani__isnull=True):
+        u.ayrilma_zamani = max(bitis, u.katilim_zamani)
+        u.save(update_fields=["ayrilma_zamani", "updated_at"])
+
+
+# --- mesai kapanışı: otomatik devir / adet bekliyor ---
+
+@transaction.atomic
+def mesai_kapaniyor(personel, bitis, *, neden, kullanici=None, ip=None, miktar=None, fire=None, bekle_onay=False):
+    """Tek giriş: kişinin MESAİSİ kapanıyor (``neden``: 'elle' kendisi, 'yonetici' ofis düzeltme/silme, 'otomatik' fabrika dışı/gece, 'supurme' cron süpürmesi).
+    * Kişi sorumlu DEĞİLSE: üyeliği ``bitis``te kapanır, oturum sürer.
+    * SORUMLUYSA ve ekipte mesaisi açık biri varsa: sorumluluk ekipte EN UZUN SÜREDİR olana geçer, üyeliği kapanır (oturum sürer).
+    * Ekipte kimse yoksa: oturum "İptal" OLMAZ → "Adet bekliyor" (süre korunur). 'elle'de tek başına sorumlu adet/fire girerse oturum normal Bitir ile kapanır (``miktar``),
+      girmezse ``bekle_onay`` ile "Adet bekliyor" olur, onay da yoksa OturumHatasi (mesai bitmez).
+    Açık oturumu yoksa None; aksi halde sonucu ('AYRILDI' | 'DEVIR' | 'ADET' | 'BITTI') döner."""
     u = aktif_uyelik(personel)
     if u is None:
-        return
-    baska = IsOturumuUyesi.objects.filter(oturum=u.oturum, silindi=False, ayrilma_zamani__isnull=True).exclude(pk=u.pk).exists()
-    if not baska:
-        raise OturumHatasi(f"Önce açık işinizi bitirin: {_mesgul_metni(u)}.")
-    u.ayrilma_zamani, u.updated_by = simdi, kullanici
-    u.save(update_fields=["ayrilma_zamani", "updated_by", "updated_at"])
+        return None
+    oturum = _kilitle(u.oturum)
+    if oturum.durum != IsOturumu.Durum.ACIK:
+        return None
+    ayr = max(bitis, u.katilim_zamani)
+    if oturum.sorumlu_kisi.pk != personel.pk:
+        u.ayrilma_zamani, u.updated_by = ayr, kullanici if getattr(kullanici, "pk", None) else None
+        u.save(update_fields=["ayrilma_zamani", "updated_by", "updated_at"])
+        olay(oturum, T.AYRILDI, personel=personel, kullanici=kullanici, ip=ip, aciklama=f"mesai kapandı ({neden})")
+        return "AYRILDI"
+    if neden == "elle" and miktar is not None:                                                      # sorumlu mesai bitirirken adedi girdi: normal Bitir (tüm ekip kapanır)
+        bitir(personel, oturum, miktar, fire=fire, ip=ip, kullanici=kullanici)
+        return "BITTI"
+    digerleri = [x for x in IsOturumuUyesi.objects.filter(oturum=oturum, silindi=False, ayrilma_zamani__isnull=True).exclude(pk=u.pk)
+                 .select_related("personel", "mesai_kaydi").order_by("katilim_zamani", "pk")
+                 if x.mesai_kaydi is not None and x.mesai_kaydi.cikis_zamani is None]
+    if digerleri:
+        yeni = digerleri[0].personel
+        oturum.sorumlu, oturum.updated_by = yeni, kullanici if getattr(kullanici, "pk", None) else None
+        oturum.save(update_fields=["sorumlu", "updated_by", "updated_at"])
+        u.ayrilma_zamani = ayr
+        u.save(update_fields=["ayrilma_zamani", "updated_at"])
+        olay(oturum, T.OTOMATIK_DEVIR, personel=personel, hedef=yeni, kullanici=kullanici, ip=ip, aciklama=f"mesai kapandı ({neden})")
+        return "DEVIR"
+    if neden == "elle" and not bekle_onay:
+        raise OturumHatasi(f"Açık işiniz var: {_mesgul_metni(u)}. Adet/fire girin ya da \"Adet bekliyor olarak bırak\" kutusunu işaretleyin.")
+    _adete_bagla(oturum, ayr, kullanici=kullanici, ip=ip)
+    olay(oturum, T.ADET_BEKLIYOR, personel=personel, kullanici=kullanici, ip=ip, aciklama=f"mesai kapandı ({neden})")
+    return "ADET"
+
+
+def supurme(simdi=None, kuru=False) -> list:
+    """Cron: üyeliği HÂLÂ açık ama bağlı olduğu mesai kaydı kapanmış üyelikleri kapatır (``mesai_kapaniyor``, neden 'supurme'; bitiş = o mesainin çıkışı). Kapatılanların
+    [{uye, bitis}] listesi döner (``kuru=True`` yalnız listeler)."""
+    simdi = simdi or timezone.now()
+    sonuc = []
+    qs = (IsOturumuUyesi.objects.filter(silindi=False, ayrilma_zamani__isnull=True, oturum__silindi=False, oturum__durum=IsOturumu.Durum.ACIK, mesai_kaydi__cikis_zamani__isnull=False)
+          .select_related("personel", "mesai_kaydi", "oturum").order_by("mesai_kaydi__cikis_zamani", "pk"))
+    for u in list(qs):
+        bitis = u.mesai_kaydi.cikis_zamani
+        if not kuru:
+            if mesai_kapaniyor(u.personel, bitis, neden="supurme") is None:
+                continue
+        sonuc.append({"uye": u, "bitis": bitis})
+    return sonuc
+
+
+def mesai_kaydi_kapandi(kayit: MesaiKaydi, *, kullanici=None) -> None:
+    """Ofis bir mesai kaydını elle kapattı / düzeltti / sildi: o kayda bağlı açık üyelik varsa aynı anda kapanır (sorumluysa devir / adet bekliyor)."""
+    simdi = timezone.now()
+    bitis = kayit.cikis_zamani or simdi
+    for u in list(IsOturumuUyesi.objects.filter(mesai_kaydi=kayit, silindi=False, ayrilma_zamani__isnull=True, oturum__silindi=False, oturum__durum=IsOturumu.Durum.ACIK)
+                  .select_related("personel").order_by("katilim_zamani")):
+        mesai_kapaniyor(u.personel, bitis, neden="yonetici", kullanici=kullanici)
+
+
+# --- yönetici işlemleri ---
+
+def _not_zorunlu(aciklama) -> str:
+    aciklama = (aciklama or "").strip()
+    if not aciklama:
+        raise OturumHatasi("Not zorunlu (denetim kaydı için nedeni yazın).")
+    return aciklama[:280]
 
 
 @transaction.atomic
-def mesai_otomatik_kapaniyor(personel, bitis) -> None:
-    """Mesai OTOMATİK kapanırken (core.services.mesai_otomatik): kişi açık bir oturumdaysa ve ekipte başkası kaldıysa yalnız üyeliği bitiste kapanır;
-    tek kişiyse oturum "İptal (iş yapılmadı)" olur (adet bilinmediği için kayıt açılmaz, süre raporda kalır). Elle bitirmedeki engel burada YOKTUR."""
-    u = aktif_uyelik(personel)
-    if u is None:
+def yonetici_sorumlu_degistir(oturum: IsOturumu, yeni: Personel, *, kullanici, ip=None, aciklama="") -> IsOturumu:
+    """Yönetici sorumluyu değiştirir (otomatik devirden bağımsız, istediği an): açık oturumda ekipten (açık üye), "Adet bekliyor" oturumda oturumun geçmiş üyelerinden."""
+    oturum = _kilitle(oturum)
+    if oturum.durum not in (IsOturumu.Durum.ACIK, IsOturumu.Durum.ADET):
+        raise OturumHatasi("Yalnız açık ya da adet bekleyen oturumun sorumlusu değiştirilebilir.")
+    if yeni is None:
+        raise OturumHatasi("Yeni sorumluyu seçin.")
+    uyelikler = IsOturumuUyesi.objects.filter(oturum=oturum, personel=yeni, silindi=False)
+    if oturum.durum == IsOturumu.Durum.ACIK:
+        uyelikler = uyelikler.filter(ayrilma_zamani__isnull=True)
+    if not uyelikler.exists():
+        raise OturumHatasi(f"{yeni.ad_soyad} bu işin {'ekibinde değil' if oturum.durum == IsOturumu.Durum.ACIK else 'üyeleri arasında yok'}; yeni sorumlu ekipten seçilmeli.")
+    eski = oturum.sorumlu_kisi
+    if eski.pk == yeni.pk:
+        raise OturumHatasi(f"{yeni.ad_soyad} zaten sorumlu.")
+    oturum.sorumlu, oturum.updated_by = yeni, kullanici
+    oturum.save(update_fields=["sorumlu", "updated_by", "updated_at"])
+    olay(oturum, T.YONETICI_SORUMLU, personel=eski, hedef=yeni, kullanici=kullanici, ip=ip, aciklama=(aciklama or "").strip())
+    return oturum
+
+
+@transaction.atomic
+def yonetici_kapat(oturum: IsOturumu, *, adet_bekliyor: bool, aciklama, kullanici, ip=None, bitis=None) -> IsOturumu:
+    """Yönetici açık işi kapatır — NOT ZORUNLU: ``adet_bekliyor=True`` → "Adet bekliyor" (süre işçiliğe sayılır, adet sonra girilir); ``False`` → İPTAL (iş yapılmadı, süre sayılmaz).
+    ``bitis`` boşsa şimdi (verilirse başlangıçtan sonra, şimdiden önce olmalı). Tüm ekibin üyeliği aynı anda kapanır."""
+    aciklama = _not_zorunlu(aciklama)
+    oturum = _kilitle(oturum)
+    if oturum.durum != IsOturumu.Durum.ACIK:
+        raise OturumHatasi("Bu iş oturumu zaten kapatılmış.")
+    simdi = timezone.now()
+    if bitis is not None:
+        if bitis <= oturum.baslangic_zamani:
+            raise OturumHatasi("Bitiş saati başlangıçtan sonra olmalı.")
+        if bitis > simdi:
+            raise OturumHatasi("Bitiş saati ileri bir zaman olamaz.")
+    else:
+        bitis = max(simdi, oturum.baslangic_zamani)
+    if adet_bekliyor:
+        _adete_bagla(oturum, bitis, kullanici=kullanici, ip=ip)
+        oturum.aciklama = f"Yönetici adet bekliyor olarak kapattı: {aciklama}"[:300]
+        oturum.save(update_fields=["aciklama", "updated_at"])
+        olay(oturum, T.YONETICI_ADET_BEKLIYOR, kullanici=kullanici, ip=ip, aciklama=aciklama)
+    else:
+        oturum.aciklama = f"Yönetici iptal etti: {aciklama}"[:300]
+        _kapat(oturum, durum=IsOturumu.Durum.IPTAL, bitis=bitis, bitiren=None, ip=ip, kullanici=kullanici)
+        oturum.save(update_fields=["aciklama", "updated_at"])
+        olay(oturum, T.YONETICI_IPTAL, kullanici=kullanici, ip=ip, aciklama=aciklama)
+    return oturum
+
+
+@transaction.atomic
+def yonetici_adet_bekleyen_iptal(oturum: IsOturumu, *, aciklama, kullanici, ip=None) -> IsOturumu:
+    """"Adet bekliyor" oturumu yönetici iptal eder (adet hiç girilemiyorsa — ör. emir başka yoldan tamamlandı): süre artık sayılmaz. Not zorunlu."""
+    aciklama = _not_zorunlu(aciklama)
+    oturum = _kilitle(oturum)
+    if oturum.durum != IsOturumu.Durum.ADET:
+        raise OturumHatasi("Bu iş oturumu adet beklemiyor.")
+    oturum.durum, oturum.updated_by = IsOturumu.Durum.IPTAL, kullanici
+    oturum.aciklama = f"Yönetici iptal etti (adet bekliyordu): {aciklama}"[:300]
+    oturum.save(update_fields=["durum", "aciklama", "updated_by", "updated_at"])
+    olay(oturum, T.YONETICI_IPTAL, kullanici=kullanici, ip=ip, aciklama=aciklama)
+    return oturum
+
+
+# --- ofis kaydı engeli (kural 9) ---
+
+def ofis_engeli_oturumlari(ie: IstasyonEmri) -> list:
+    """Emirde ofis kaydını engelleyen oturumlar: AÇIK (ekip çalışıyor) ve "Adet bekliyor" (adet o oturuma girilecek)."""
+    return list(IsOturumu.objects.filter(istasyon_emri=ie, silindi=False, durum__in=[IsOturumu.Durum.ACIK, IsOturumu.Durum.ADET])
+                .select_related("baslatan", "sorumlu").prefetch_related(_uyeler_prefetch()).order_by("pk"))
+
+
+def ofis_asma_gecerli(asma) -> bool:
+    """``asma`` = (kullanıcı, not): yalnız SÜPER KULLANICI ve dolu not geçerlidir (diğer yönetici hesapları aşamaz)."""
+    return bool(asma) and bool(getattr(asma[0], "is_superuser", False)) and bool((asma[1] or "").strip())
+
+
+def ofis_engeli_kontrol(ie: IstasyonEmri, asma=None) -> bool:
+    """Ofis üretim kaydı / ÜS "Üretildi" / toplu üretim giriş kapısı: emirde açık ya da adet bekleyen oturum varsa ``UretimHatasi`` ("Bu işte X'in ekibi çalışıyor").
+    Süper kullanıcı notla aşabilir (olay kaydı yazılır, True döner); engel yoksa False."""
+    oturumlar = ofis_engeli_oturumlari(ie)
+    if not oturumlar:
+        return False
+    if ofis_asma_gecerli(asma):
+        for o in oturumlar:
+            olay(o, T.OFIS_ASILDI, kullanici=asma[0], aciklama=asma[1].strip())
+        return True
+    o = oturumlar[0]
+    oz = ozet(o)
+    if o.durum == IsOturumu.Durum.ACIK:
+        raise uretim.UretimHatasi(f"Bu işte {oz['sorumlu'].ad_soyad}'in ekibi çalışıyor ({oz['ekip_metni']}); kayıt girilemez. İşi o ekip bitirmeli ya da yönetici İş Oturumları'ndan kapatmalı (süper kullanıcı notla aşabilir).")
+    raise uretim.UretimHatasi(f"Bu işte {oz['sorumlu'].ad_soyad}'in oturumu adet bekliyor; kayıt girilemez. Adedi İş Oturumları ekranından \"Adet gir\" ile girin (süper kullanıcı notla aşabilir).")
+
+
+def ofis_asma_sonrasi(ie: IstasyonEmri, asma) -> None:
+    """Süper kullanıcı engeli aştı ve kayıt yazıldı: emir TAMAMLANDIYSA üzerindeki AÇIK oturumlar otomatik İptal (iş yapılmadı) olur (olay kaydı + not); adet bekleyenlere dokunulmaz."""
+    ie.refresh_from_db()
+    if ie.durum != IstasyonEmri.Durum.BITTI:
         return
-    oturum = IsOturumu.objects.select_for_update().get(pk=u.oturum_id)
-    baska = IsOturumuUyesi.objects.filter(oturum=oturum, silindi=False, ayrilma_zamani__isnull=True).exclude(pk=u.pk).exists()
-    if baska:
-        u.ayrilma_zamani = max(bitis, u.katilim_zamani)
-        u.save(update_fields=["ayrilma_zamani", "updated_at"])
-        return
-    oturum.aciklama = "Mesai otomatik kapandı — iş yapılmadı olarak kapatıldı."
-    _kapat(oturum, durum=IsOturumu.Durum.IPTAL, bitis=max(bitis, oturum.baslangic_zamani), bitiren=personel, ip=None, kullanici=None)
-    oturum.save(update_fields=["aciklama", "updated_at"])
+    simdi = timezone.now()
+    for o in IsOturumu.objects.select_for_update().filter(istasyon_emri=ie, silindi=False, durum=IsOturumu.Durum.ACIK):
+        o.aciklama = f"Emir ofis kaydıyla tamamlandı (süper kullanıcı engeli aştı): {asma[1].strip()}"[:300]
+        _kapat(o, durum=IsOturumu.Durum.IPTAL, bitis=max(simdi, o.baslangic_zamani), bitiren=None, ip=None, kullanici=asma[0])
+        o.save(update_fields=["aciklama", "updated_at"])
+        olay(o, T.OFIS_ASMA_IPTAL, kullanici=asma[0], aciklama=asma[1].strip())
 
 
 # --- ofis listesi ---
 
 def listele(*, baslangic=None, bitis=None, istasyon_id=None, personel_id=None, durum=None, ara=""):
     qs = (IsOturumu.objects.filter(silindi=False)
-          .select_related("istasyon_emri__operasyon__cikti", "uretim_emri__kaynak_siparis__cari", "istasyon", "baslatan", "bitiren", "kayit")
+          .select_related("istasyon_emri__operasyon__cikti", "uretim_emri__kaynak_siparis__cari", "istasyon", "baslatan", "sorumlu", "bitiren", "kayit")
           .prefetch_related(_uyeler_prefetch()))
     if baslangic:
         qs = qs.filter(is_tarihi__gte=baslangic)

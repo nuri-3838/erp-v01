@@ -132,7 +132,7 @@ class DisIpToleransTest(OtoTaban):
         self.assertTrue(mesai_otomatik.dis_ip_gorulde(self.p, simdi=tr(16, 13, 3)))              # doldu
         k.refresh_from_db()
         self.assertEqual((k.cikis_zamani, k.otomatik_kapandi, k.otomatik_sebep, k.cikis_ip), (tr(16, 12, 40), True, "dis_ip", None))
-        self.assertIsNone(k.dis_ip_ilk_gorulme)
+        self.assertEqual(k.dis_ip_ilk_gorulme, tr(16, 13, 0))                                  # kapanışta SİLİNMEZ (denetim: yanlış pozitif incelemesi)
 
     def test_son_gorulme_yoksa_giris_saati(self):
         k = self.mesai_ac(giris=tr(16, 8, 0), son=None)
@@ -226,7 +226,7 @@ class GeceKapanisTest(OtoTaban):
 
 
 class IsOturumuTest(OtoTaban):
-    def test_tek_kisilik_oturum_iptal_olur_sure_kalir(self):
+    def test_tek_kisilik_oturum_adet_bekliyor_olur_sure_kalir(self):
         self.baslat()
         self.basla(self.ie_kesim)
         o = self.acik_oturum(self.ie_kesim)
@@ -237,8 +237,8 @@ class IsOturumuTest(OtoTaban):
         self.assertTrue(mesai_otomatik.dis_ip_gorulde(self.p, simdi=k.giris_zamani + datetime.timedelta(minutes=34)))
         o.refresh_from_db()
         k.refresh_from_db()
-        self.assertEqual((o.durum, o.bitis_zamani, o.kayit_id), ("IPTAL", k.cikis_zamani, None))
-        self.assertIn("otomatik", o.aciklama)
+        self.assertEqual((o.durum, o.bitis_zamani, o.kayit_id), ("ADET", k.cikis_zamani, None))                  # İPTAL OLMAZ: süre işçiliğe sayılır, adet sonra girilir
+        self.assertEqual(o.sorumlu_kisi.pk, self.p.pk)
         self.assertEqual(o.bitis_zamani, k.giris_zamani + datetime.timedelta(minutes=20))
         self.assertFalse(IsOturumuUyesi.objects.filter(oturum=o, ayrilma_zamani__isnull=True).exists())
 

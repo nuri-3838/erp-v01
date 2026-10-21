@@ -125,6 +125,8 @@
         <div class="pk-satir"><span class="mono">{{ k.cikti.kod }}</span> {{ k.cikti.ad|truncatechars:38 }}{% if k.varyant %} <span class="pt-rozet">{{ k.varyant }}</span>{% endif %}</div>
         <div class="pk-satir"><a href="{% url 'core:uretim_emri_detay' k.oturum.uretim_emri_id %}" class="mono">{{ k.oturum.uretim_emri.no }}</a> / <a href="{% url 'core:is_oturumlari' %}?ara={{ k.ie.no }}" class="mono">{{ k.ie.no }}</a></div>
         {% if k.ekip %}<div class="pk-satir pt-soluk">ekip: {% for p in k.ekip %}{{ p.ad_soyad }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+        <div class="pk-satir">👤 Sorumlu: <b>{{ k.sorumlu.ad_soyad }}</b>{% if not k.sorumlu_mu %} <span class="pt-soluk">· bu kişi katılan</span>{% endif %}</div>
+        {% if k.sorumlu_mu %}{% include "core/_is_oturumu_yonetim.html" with o=k.oturum aday=k.devir_adaylari geri=request.get_full_path %}{% endif %}
       {% elif k.durum == "bosta" %}
         <div class="pk-satir pt-soluk">açık iş yok · mesai başlangıcı {{ k.oturum|default:"" }}{% with k.baslangic_ms as ms %}{% endwith %}</div>
       {% else %}
@@ -135,6 +137,22 @@
     <p class="bos">Gösterilecek personel yok.</p>
   {% endfor %}
 </div>
+{% if simdi.adet %}
+<h3 class="pt-baslik" style="margin:1rem 0 .4rem">⏳ Adet bekleyen işler <span class="pt-soluk" style="font-weight:400;font-size:.85rem">(süre işçiliğe sayıldı; adet sorumlu ya da yönetici tarafından girilir)</span></h3>
+<div class="pk-grid">
+  {% for a in simdi.adet %}
+  <div class="pk-kart bosta">
+    <div class="pk-ust"><div><div class="pk-ad">{{ a.sorumlu.ad_soyad }}</div><div class="pk-durum">Adet bekliyor</div></div>
+      <span class="pk-sayac" style="animation:none">{{ a.ozet.sure_metni }}</span></div>
+    <div class="pk-satir"><span class="pt-ist">{{ a.oturum.istasyon.kod }}</span> {{ a.oturum.istasyon.ad }}</div>
+    <div class="pk-satir"><span class="mono">{{ a.cikti.kod }}</span> {{ a.cikti.ad|truncatechars:38 }}{% if a.varyant %} <span class="pt-rozet">{{ a.varyant }}</span>{% endif %}</div>
+    <div class="pk-satir"><a href="{% url 'core:uretim_emri_detay' a.oturum.uretim_emri_id %}" class="mono">{{ a.oturum.uretim_emri.no }}</a> / <span class="mono">{{ a.ie.no }}</span> · {{ a.oturum.baslangic_zamani|tr_zaman:"d.m H:i" }}–{{ a.oturum.bitis_zamani|tr_zaman:"H:i" }}</div>
+    <div class="pk-satir pt-soluk">ekip: {{ a.ozet.ekip_metni }}</div>
+    {% include "core/_is_oturumu_yonetim.html" with o=a.oturum aday=a.uye_adaylari geri=request.get_full_path %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 <script>
 (function(){
   function p2(n){ return (n < 10 ? '0' : '') + n; }
@@ -148,7 +166,11 @@
     });
   }
   yaz(); setInterval(yaz, 1000);
-  setTimeout(function(){ window.location.reload(); }, 60000);
+  // 60 sn'de bir yenile — ama bir "Yönet" paneli açıkken / form alanındayken yenileme (yazılan not kaybolmasın)
+  (function tazele(){ setTimeout(function(){
+    var a = document.activeElement, yaziyor = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+    if (document.querySelector('details[open]') || yaziyor) { tazele(); } else { window.location.reload(); }
+  }, 60000); })();
 })();
 </script>
 

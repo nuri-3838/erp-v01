@@ -57,10 +57,12 @@ class BaslaBitirTest(OturumTaban):
         self.assertContains(r, "Açık işiniz var")
         r = self.basla(self.ie_bukum)
         self.assertTrue(any("şu an başka bir işte: LAZER" in m for m in self.mesajlar(r)), self.mesajlar(r))
-        # ayşe (üye) de aynı oturumu görür ve bitirebilir; başka iş başlatamaz; mehmet'e ayşe/errahman meşgul görünür
+        # ayşe (üye) aynı oturumu görür ama BİTİR göremez (yalnız sorumlu bitirir); "Ekipten ayrıl" görür; başka iş başlatamaz; mehmet'e ayşe/errahman meşgul görünür
         self.client.force_login(self.u2)
         r = self.client.get(reverse("core:atolye_istasyon", args=[self.lazer.pk]))
-        self.assertContains(r, "BİTİR")
+        self.assertNotContains(r, "BİTİR")
+        self.assertContains(r, "Ekipten ayrıl")
+        self.assertContains(r, "Sorumlu: <b>ERRAHMAN OPERATOR</b>")
         r = self.basla(self.ie_bukum)
         self.assertTrue(any("başka bir işte" in m for m in self.mesajlar(r)))
         self.baslat(self.u3)
@@ -73,19 +75,26 @@ class BaslaBitirTest(OturumTaban):
         self.assertContains(r, "(LAZER")                                                               # aday listesinde meşgul notu
         self.assertContains(r, "disabled")
 
-    def test_herkes_bitirebilir_kayit_baslatana_bitiren_izi(self):
+    def test_yalniz_sorumlu_bitirir_uye_bitiremez(self):
         self.baslat(self.u2)
         self.baslat()
         self.basla(self.ie_kesim, ekip=[self.p2.pk])
         o = self.acik_oturum(self.ie_kesim)
         IsOturumu.objects.filter(pk=o.pk).update(baslangic_zamani=timezone.now() - datetime.timedelta(minutes=30))
         IsOturumuUyesi.objects.filter(oturum=o).update(katilim_zamani=timezone.now() - datetime.timedelta(minutes=30))
-        self.client.force_login(self.u2)                                                              # ÜYE bitiriyor
+        self.client.force_login(self.u2)                                                              # ÜYE bitiremez / iptal edemez
+        r = self.bitir(o, "4")
+        self.assertTrue(any("yalnızca sorumlu kişiye aittir" in m for m in self.mesajlar(r)), self.mesajlar(r))
+        r = self.client.post(reverse("core:atolye_oturum_iptal", args=[o.pk]), HTTP_X_REAL_IP=IZINLI, follow=True)
+        self.assertTrue(any("yalnızca sorumlu kişiye aittir" in m for m in self.mesajlar(r)), self.mesajlar(r))
+        o.refresh_from_db()
+        self.assertEqual(o.durum, "ACIK")
+        self.client.force_login(self.u)                                                               # SORUMLU bitirir → tüm ekip aynı anda kapanır
         r = self.bitir(o, "4")
         self.assertTrue(any("4 adet yazıldı" in m for m in self.mesajlar(r)), self.mesajlar(r))
         o.refresh_from_db()
         k = o.kayit
-        self.assertEqual((o.durum, o.bitiren_id, o.miktar, k.personel_id, k.mesai_kaydi_id, k.created_by_id), ("BITTI", self.p2.pk, D("4"), self.p.pk, acik_kayit(self.p).pk, self.u2.pk))
+        self.assertEqual((o.durum, o.bitiren_id, o.miktar, k.personel_id, k.mesai_kaydi_id, k.created_by_id), ("BITTI", self.p.pk, D("4"), self.p.pk, acik_kayit(self.p).pk, self.u.pk))
         self.assertTrue(all(u.ayrilma_zamani == o.bitis_zamani for u in o.uyeler.all()))
         oz = is_oturumu.ozet(IsOturumu.objects.prefetch_related("uyeler__personel").get(pk=o.pk))
         self.assertEqual((oz["kisi"], oz["adet"]), (2, D("4")))
@@ -147,8 +156,9 @@ class BaslaBitirTest(OturumTaban):
         self.assertIsNotNone(u2.ayrilma_zamani)
         o.refresh_from_db()
         self.assertEqual(o.durum, "ACIK")
-        r = self.mesai_bitir(self.u)                                                                  # tek kişi kaldı: engel
-        self.assertTrue(any("Önce açık işinizi bitirin: LAZER" in m for m in self.mesajlar(r)), self.mesajlar(r))
+        r = self.mesai_bitir(self.u)                                                                  # tek başına sorumlu: adet ya da "Adet bekliyor" onayı gerekir
+        self.assertTrue(any("Açık işiniz var: LAZER" in m for m in self.mesajlar(r)), self.mesajlar(r))
+        self.assertTemplateUsed(r, "core/atolye_mesai_bitir.html")                                    # adet/fire kutusu çıkar
         self.assertIsNotNone(acik_kayit(self.p))
         self.client.force_login(self.u)
         self.bitir(o, "4")

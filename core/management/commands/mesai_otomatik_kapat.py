@@ -20,12 +20,20 @@ class Command(BaseCommand):
         kuru = opts["kuru"]
         simdi = timezone.now()
         etiket = f"[{simdi.astimezone(_TR):%d.%m.%Y %H:%M} TR] mesai_otomatik_kapat{' (KURU)' if kuru else ''}"
-        if not mesai_otomatik.devrede_mi():
-            self.stdout.write(f"{etiket}: devre dışı (ayar kapalı ya da izinli ağ listesi boş).")
+        devrede = mesai_otomatik.devrede_mi()
+        sonuc = mesai_otomatik.toplu_kapat(simdi=simdi, kuru=kuru) if devrede else []
+        from core.services import is_oturumu
+        supurulen = is_oturumu.supurme(simdi=simdi, kuru=kuru)                  # mesaisi kapanmış ama açık kalan iş üyelikleri (ofis düzeltmesi vb.) — otomatik kapanış ayarından bağımsız
+        for r in supurulen:
+            self.stdout.write(f"{etiket}: süpürme — {r['uye'].personel.ad_soyad} üyeliği {r['uye'].oturum.istasyon_emri.no} oturumundan "
+                              f"{'çıkarılacak' if kuru else 'çıkarıldı'} (bitiş {r['bitis'].astimezone(_TR):%d.%m %H:%M}).")
+        if not devrede:
+            if not supurulen:
+                self.stdout.write(f"{etiket}: devre dışı (ayar kapalı ya da izinli ağ listesi boş).")
             return
-        sonuc = mesai_otomatik.toplu_kapat(simdi=simdi, kuru=kuru)
         if not sonuc:
-            self.stdout.write(f"{etiket}: kapanacak mesai yok.")
+            if not supurulen:
+                self.stdout.write(f"{etiket}: kapanacak mesai yok.")
             return
         self.stdout.write(f"{etiket}: {len(sonuc)} mesai {'kapanacak' if kuru else 'kapatıldı'}:")
         for r in sonuc:

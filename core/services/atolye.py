@@ -92,12 +92,33 @@ def mesai_baslat(user, ip) -> None:
         raise AtolyeHatasi(str(e))
 
 
-def mesai_bitir(user, ip) -> None:
+def mesai_bitir(user, ip, adet_ham=None, fire_ham=None, bekle=False) -> None:
+    """Mesai bitir. Tek başına SORUMLU olduğu açık işi varsa: adet (+fire) girerse iş normal Bitir ile kapanır, girmezse ``bekle`` onayıyla "Adet bekliyor" olur
+    (ikisi de yoksa mesai bitmez). Ekipte başkası varsa sorumluluk en uzun süredir ekipte olana geçer; üyeyse ayrılır."""
     p = _personel(user)
+    adet = _miktar_coz(adet_ham, ad="Sağlam adet") if (adet_ham or "").strip() else None
+    fire = _miktar_coz(fire_ham, ad="Fire", zorunlu=False) if adet is not None else None
     try:
-        mesai_servis.bitir(p, ip=ip, kullanici=user)
+        mesai_servis.bitir(p, ip=ip, kullanici=user, adet=adet, fire=fire, bekle_onay=bool(bekle))
     except mesai_servis.MesaiHatasi as e:
         raise AtolyeHatasi(str(e))
+
+
+def mesai_bitir_bilgisi(user) -> dict:
+    """Mesai bitir ekranı: kişinin tek başına SORUMLU olduğu açık işi (adet/fire kutusu gösterilir) ve diğer açık işi (üye / ekipli sorumlu: bilgi)."""
+    p = personel_coz(user)
+    sonuc = {"tek_sorumlu": None, "diger": None}
+    if p is None:
+        return sonuc
+    u = is_oturumu.aktif_uyelik(p)
+    if u is None:
+        return sonuc
+    satir = oturum_satiri(u.oturum, p)
+    if satir["sorumlu_benim"] and len(satir["acik_uyeler"]) == 1:
+        sonuc["tek_sorumlu"] = satir
+    else:
+        sonuc["diger"] = satir
+    return sonuc
 
 
 def _acik_mesai(user):
@@ -126,9 +147,11 @@ def acik_emirler(istasyon, user=None) -> list:
           .select_related("uretim_emri__kaynak_siparis__cari", "operasyon__cikti", "istasyon", "cikti_varyant")
           .order_by(*uretim.siralama("uretim_emri__"), "-seviye", "pk"))          # Acil → termin → tarih (İstasyon Emirleri ile ortak)
     p = personel_coz(user) if user is not None else None
-    acik = {}
+    acik, bekleyen = {}, {}
     for o in is_oturumu.acik_oturumlar():
         acik.setdefault(o.istasyon_emri_id, []).append(o)
+    for o in is_oturumu.adet_bekleyenler():
+        bekleyen.setdefault(o.istasyon_emri_id, []).append(o)
     emirler = list(qs)
     girdiler = _girdi_satirlari(emirler, user)
     kullanilabilir = _kullanilabilir_haritalari(emirler, girdiler)
@@ -145,7 +168,8 @@ def acik_emirler(istasyon, user=None) -> list:
         s["varyant_metni"] = varyant_servis.standart_disi_metin(ie.cikti_varyant_id, "tr") if ie.cikti_varyant_id else ""
         s["kalan_tam"] = _tam_metin(s["acik"])
         s["son_kaydim"] = son_kaydim(user, ie) if user is not None else None
-        s["oturumlar"] = [oturum_satiri(o, p) for o in acik.get(ie.pk, [])]
+        s["oturumlar"] = [oturum_satiri(o, p) for o in acik.get(ie.pk, [])]                 # tek ekip kuralı: en çok BİR açık oturum
+        s["adet_bekleyenler"] = [oturum_satiri(o, p) for o in bekleyen.get(ie.pk, [])]
         satirlar = girdiler[(ie.operasyon_id, ie.cikti_varyant_id)]
         s["malzeme"] = malzeme_durumu(ie, s["acik"], satirlar, kullanilabilir[ie.uretim_emri_id], kaynaklar)
         s["fason_bekleyen"] = [b["metin"] for b in fason.get(ie.uretim_emri_id, [])
@@ -281,7 +305,13 @@ def malzeme_durumu(ie, kalan, girdi_satirlari, kullanilabilir, kaynaklar=None) -
 def oturum_satiri(oturum, personel=None) -> dict:
     """Ekran satırı: ``is_oturumu.ozet`` + ``benim`` (kişi aktif üye) + dünkü oturum için önerilen bitiş (datetime-local değeri, TR)."""
     s = is_oturumu.ozet(oturum)
-    s["benim"] = personel is not None and any(u.personel_id == personel.pk and u.ayrilma_zamani is None for u in s["uyeler"])
+    s["sorumlu_benim"] = personel is not None and s["sorumlu"].pk == personel.pk
+    s["uye_benim"] = personel is not None and any(u.personel_id == personel.pk and u.ayrilma_zamani is None for u in s["uyeler"])
+    s["benim"] = s["uye_benim"] or (s["adet_bekliyor"] and s["sorumlu_benim"])
+    s["devir_adaylari"] = [u.personel for u in s["acik_uyeler"] if personel is not None and u.personel_id != personel.pk]
+    ie, us = oturum.istasyon_emri, oturum.uretim_emri
+    s["emir_kapali"] = bool(ie.silindi or ie.durum in (IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL) or us.silindi or us.durum != UretimEmri.Durum.ACIK)
+    s["kalan_tam"] = _tam_metin(uretim.istasyon_emri_satiri(ie, us)["acik"])
     s["bitis_varsayilan"] = ""
     if s["dunku"] and personel is not None:
         vb = is_oturumu.varsayilan_bitis(oturum, personel)
@@ -290,11 +320,12 @@ def oturum_satiri(oturum, personel=None) -> dict:
 
 
 def acik_islerim(user) -> list:
-    """Kişinin açık iş oturumları (dünden kalanlar dahil) — ekranın en üstünde; yönetici izlemede boş."""
+    """Kişinin "Açık işin" kartları — mesai açık/kapalı, emir açık/tamamlanmış FARK ETMEZ: üyesi olduğu açık oturumlar (dünden kalanlar dahil) + sorumlusu olduğu
+    "Adet bekliyor" oturumlar. Ekranın en üstünde; yönetici izlemede boş."""
     p = personel_coz(user)
     if p is None:
         return []
-    return [oturum_satiri(o, p) for o in is_oturumu.kisinin_acik_oturumlari(p)]
+    return [oturum_satiri(o, p) for o in is_oturumu.kisinin_acik_oturumlari(p) + is_oturumu.kisinin_adet_bekleyenleri(p)]
 
 
 def ekip_adaylari(user) -> list:
@@ -364,12 +395,53 @@ def oturum_bitir(user, oturum, miktar_ham, bitis_ham, ip, fire_ham=None):
 
 
 def oturum_iptal(user, oturum, bitis_ham, ip):
-    p, _m = _acik_mesai(user)
+    p = _personel(user)                                                   # mesai şartı yok: açık iş hiçbir zaman "kilitli" kalmasın
     _ag_kontrol(ip, "İptal")
     try:
         return is_oturumu.iptal(p, oturum, bitis=_bitis_coz(bitis_ham), ip=ip, kullanici=user)
     except is_oturumu.OturumHatasi as e:
         raise AtolyeHatasi(str(e))
+
+
+def oturum_katil(user, oturum, ip):
+    """"Ekibe katıl": mesai açık + fabrika ağı; çalışır, süresi işçiliğe sayılır, adet giremez."""
+    p, _m = _acik_mesai(user)
+    _ag_kontrol(ip, "Ekibe katılma")
+    try:
+        return is_oturumu.katil(p, oturum, ip=ip, kullanici=user)
+    except is_oturumu.OturumHatasi as e:
+        raise AtolyeHatasi(str(e))
+
+
+def oturum_ayril(user, oturum, ip):
+    p = _personel(user)
+    try:
+        return is_oturumu.ayril(p, oturum, ip=ip, kullanici=user)
+    except is_oturumu.OturumHatasi as e:
+        raise AtolyeHatasi(str(e))
+
+
+def oturum_devret(user, oturum, yeni_pk, ayril, ip):
+    """Sorumlu "Sorumluluğu devret": ekipten birini seçer; ``ayril`` ise devreden aynı anda ekipten ayrılır."""
+    p = _personel(user)
+    yeni = Personel.objects.filter(pk=yeni_pk, silindi=False).first() if str(yeni_pk or "").isdigit() else None
+    try:
+        return is_oturumu.devret(p, oturum, yeni, ayril_=bool(ayril), ip=ip, kullanici=user)
+    except is_oturumu.OturumHatasi as e:
+        raise AtolyeHatasi(str(e))
+
+
+def oturum_adet_gir(user, oturum, miktar_ham, fire_ham, ip):
+    """Sorumlu, "Adet bekliyor" oturuma adet/fire girer (mesai açık + fabrika ağı): normal üretim kaydı oluşur."""
+    p, _m = _acik_mesai(user)
+    _ag_kontrol(ip, "Üretim girişi")
+    miktar = _miktar_coz(miktar_ham, ad="Sağlam adet")
+    fire = _miktar_coz(fire_ham, ad="Fire", zorunlu=False)
+    try:
+        kayit, uyari = is_oturumu.adet_gir(oturum, miktar, fire=fire, personel=p, kullanici=user, ip=ip)
+    except is_oturumu.OturumHatasi as e:
+        raise AtolyeHatasi(str(e))
+    return kayit, uyari, miktar, fire
 
 
 @transaction.atomic

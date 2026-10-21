@@ -39,7 +39,7 @@ class FabrikaKapisiMiddleware:
             if personel is not None:
                 mesai_otomatik.fabrika_gorulde(personel)
             return None
-        kapandi = mesai_otomatik.dis_ip_gorulde(personel) if personel is not None else False
+        kapandi = mesai_otomatik.dis_ip_gorulde(personel, ip=istemci_ip(request)) if personel is not None else False
         if request.path == PING_YOLU:
             yanit = JsonResponse({"fabrika_disi": True, "mesai_kapandi": kapandi}, status=403)
         else:

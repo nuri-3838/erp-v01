@@ -54,7 +54,7 @@
   <span><strong>{{ secili.kod }} {{ secili.ad }}</strong> — açık emirlerin tümü, üretim siparişi sırasıyla tek tarihle üretilir; bir emirde hata olursa hiçbiri yazılmaz.</span>
   <form method="post" action="{% url 'core:istasyon_toplu_uret' secili.pk %}" class="ie-uret-form"
         onsubmit="return confirm('{{ secili.kod }} {{ secili.ad }} istasyonundaki TÜM açık emirler bu tarihle üretilsin mi? Bir emirde hata olursa hiçbiri yazılmaz.');">
-    {% csrf_token %}
+    {% csrf_token %}{% if user.is_superuser %}<input type="text" name="asma_notu" class="ie-asma-notu" placeholder="oturum engeli aşma notu (yalnız süper kullanıcı)" maxlength="200" style="min-width:12rem;font-size:.8rem" title="Emirde açık iş oturumu varsa kayıt engellenir; süper kullanıcı not yazarak aşabilir (denetim kaydı tutulur).">{% endif %}
     <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (tüm emirler için tek tarih)">
     <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶▶ Bu istasyondaki açık emirlerin tümünü üret</button>
   </form>
@@ -80,7 +80,7 @@
             {% elif s.fason_acilabilir %}<a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>
             {% elif s.uretilebilir and uret_yetkili %}
             <form method="post" action="{% url 'core:istasyon_emri_uret' s.ie.pk %}" class="ie-uret-form">
-              {% csrf_token %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
+              {% csrf_token %}{% if user.is_superuser %}<input type="text" name="asma_notu" class="ie-asma-notu" placeholder="oturum engeli aşma notu (yalnız süper kullanıcı)" maxlength="200" style="min-width:12rem;font-size:.8rem" title="Emirde açık iş oturumu varsa kayıt engellenir; süper kullanıcı not yazarak aşabilir (denetim kaydı tutulur).">{% endif %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
               <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="{% if s.fazla_yasak %}Üretilen miktar (referans çıktı adedi); bu emirde açık kalandan fazlası yazılamaz (varyantlı markalama/mamul emri){% else %}Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer{% endif %}" autocomplete="off">
               <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi">
               <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">Üretildi</button></form>
