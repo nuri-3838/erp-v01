@@ -993,6 +993,72 @@ def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
 
 
 @transaction.atomic
+def irsaliye_miktar_duzelt(irsaliye: TeklifSiparis, duzeltmeler, *, kullanici=None, aciklama="") -> list:
+    """ONAYLI ALIŞ irsaliyesinde kalem miktarlarını YERİNDE düzeltir — FATURAYA BAĞLI olsa da (ekrandan düzenleme "faturaya dönüştürülmüş" diye kapalıdır; kalem silinip yeniden
+    yazılsaydı fatura satırlarının ``irsaliye_kalem`` bağı kopardı). Kalem satırı (pk) ve fatura satırı bağı KORUNUR; fatura satırları/fişi/muhasebe DEĞİŞMEZ ("fatura miktarı irsaliyeden
+    farklı" uyarısı normaldir). ``duzeltmeler`` = [(kalem pk, yeni miktar)]. Giriş hareketi miktarı çeviriciyle güncellenir; faturalıysa girişin maliyeti = bağlı satır tutarı + faturasız FARK
+    (fark × kalem net birim fiyatı; bkz. stok_ortalama.faturasiz_fark_tutari), kart yeniden hesaplanır (sonraki çıkışların/üretim fişlerinin maliyeti kendiliğinden güncellenir). Düzeltme
+    herhangi bir (stok, varyant) zincirini NEGATİFE düşürürse hiçbir şey yazılmaz. Döner: [{kalem, eski, yeni, hareket, ...}]."""
+    from core.sayi import yuvarla
+    from core.services import stok_ortalama
+    irsaliye = TeklifSiparis.objects.select_for_update(of=("self",)).select_related("fatura", "cari").get(pk=irsaliye.pk)
+    if irsaliye.silindi or irsaliye.belge_tur != TeklifSiparis.BelgeTur.IRSALIYE or irsaliye.yon != TeklifSiparis.Yon.ALIS:
+        raise TeklifSiparisHatasi("Yalnız aktif ALIŞ irsaliyesinin miktarı düzeltilebilir.")
+    if irsaliye.durum != TeklifSiparis.Durum.ONAYLI:
+        raise TeklifSiparisHatasi("Taslak irsaliye ekrandan düzenlenir; bu işlem onaylı irsaliye içindir.")
+    if not duzeltmeler:
+        raise TeklifSiparisHatasi("Düzeltilecek kalem verilmedi.")
+    sonuc, stoklar, gorulen = [], {}, set()
+    for kalem_id, yeni in duzeltmeler:
+        if kalem_id in gorulen:
+            raise TeklifSiparisHatasi("Aynı kalem birden çok kez verilmiş.")
+        gorulen.add(kalem_id)
+        k = irsaliye.kalemler.select_for_update().select_related("stok").filter(pk=kalem_id, silindi=False).first()
+        if k is None:
+            raise TeklifSiparisHatasi(f"Kalem #{kalem_id} bu irsaliyede yok.")
+        yeni = _sayi(yeni, "Yeni miktar", pozitif=True)
+        hs = list(StokHareket.objects.filter(teklif_siparis_kalem=k, silindi=False, tur=StokHareket.Tur.GIRIS))
+        if len(hs) != 1:
+            raise TeklifSiparisHatasi(f"{k.stok.kod}: kalemin tek bir giriş hareketi olmalı ({len(hs)} bulundu).")
+        h = hs[0]
+        eski, eski_hareket = k.miktar, h.miktar
+        if k.uretim_miktar is not None:                                  # onayda girilen üretim miktarı hareketi belirlemişti: yalnız tutarlıysa oranla ölçeklenir
+            if k.uretim_miktar != h.miktar:
+                raise TeklifSiparisHatasi(f"{k.stok.kod}: kalemdeki üretim miktarı ({k.uretim_miktar.normalize():f}) giriş hareketiyle ({h.miktar.normalize():f}) tutarsız; bu işlemle düzeltilemez.")
+            yeni_hareket = yuvarla(k.uretim_miktar * yeni / eski, 3)
+            k.uretim_miktar = yeni_hareket
+        else:
+            yeni_hareket = yuvarla(yeni / (k.stok.cevirici or Decimal("1")), 3)
+        if yeni_hareket <= 0:
+            raise TeklifSiparisHatasi(f"{k.stok.kod}: çevirici ile dönüştürülen miktar sıfır oluyor.")
+        k.miktar, k.updated_by = yeni, kullanici
+        k.save(update_fields=["miktar", "uretim_miktar", "updated_by", "updated_at"])
+        h.miktar, h.updated_by = yeni_hareket, kullanici
+        h.save(update_fields=["miktar", "updated_by", "updated_at"])
+        stoklar[k.stok_id] = k.stok
+        sonuc.append({"kalem": k, "hareket": h, "eski": eski, "yeni": yeni, "eski_hareket": eski_hareket, "yeni_hareket": yeni_hareket})
+    if irsaliye.fatura_id and not irsaliye.fatura.silindi:
+        # Satır kalemine BAĞLI ise (çoklu irsaliyeden açılan fatura): giriş = satır tutarı + faturasız fark (kalem fiyatıyla). Bağsız eski/tek-irsaliye faturasında genel kural
+        # (stok bazında dağıtım, maliyet = fatura tutarı) uygulanır.
+        if not all(stok_ortalama.bagli_giris_fiyatla(r["hareket"]) for r in sonuc):
+            stok_ortalama.irsaliye_girislerini_fiyatla(irsaliye.fatura)
+    for stok in stoklar.values():
+        try:
+            stok_ortalama.yeniden_hesapla(stok)
+        except stok_ortalama.MaliyetHatasi as e:
+            raise TeklifSiparisHatasi(str(e))
+        negatif = StokHareket.objects.filter(stok=stok, silindi=False, sonrasi_miktar__lt=0).order_by("tarih", "id").first()
+        if negatif is not None:
+            raise TeklifSiparisHatasi(f"{stok.kod}: düzeltme stoğu negatife düşürüyor ({negatif.tarih:%d.%m.%Y} hareketinden sonra {negatif.sonrasi_miktar.normalize():f}); hiçbir şey yazılmadı.")
+    if aciklama:
+        irsaliye.aciklama = f"{irsaliye.aciklama} | " if irsaliye.aciklama else ""
+        irsaliye.aciklama = (irsaliye.aciklama + aciklama.strip())[:500]
+        irsaliye.updated_by = kullanici
+        irsaliye.save(update_fields=["aciklama", "updated_by", "updated_at"])
+    return sonuc
+
+
+@transaction.atomic
 def irsaliye_sil(irsaliye: TeklifSiparis, kullanici=None) -> None:
     """İrsaliyeyi KALICI olarak siler — yazdığı gerçek stok girişi (+ varsa FIFO maliyet
     katmanı) dahil hiçbir iz kalmaz (CLAUDE.md'nin bu ekrana özel BİLİNÇLİ istisnası —

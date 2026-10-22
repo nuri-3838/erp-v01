@@ -336,6 +336,35 @@ def irsaliye_girislerini_sifirla(fatura) -> set:
     return stoklar
 
 
+def faturasiz_fark_tutari(kalem, satir) -> Decimal:
+    """İrsaliye kalemi fatura satırından FAZLA miktar teslim edilmişse (ör. irsaliye 550, fatura 500) fazla miktarın (fark) **irsaliye kaleminin net birim fiyatıyla** değeri.
+    Yalnız ``bagli_giris_fiyatla`` (faturalı irsaliyede miktar düzeltmesi, 2026-10-22) kullanır; GENEL fiyatlama (``irsaliye_girislerini_fiyatla``) bilinçli olarak eskisi gibidir:
+    maliyet = fatura satırı tutarı (fark seyrelir, bkz. 8bbfc11). Yalnız TL irsaliyede (döviz irsaliyede kur belirsiz → 0)."""
+    irsaliye = kalem.teklif_siparis
+    if irsaliye.para_birimi != "TRY":
+        return SIFIR
+    fark = kalem.miktar - satir.miktar
+    return yuvarla(fark * kalem.net_birim_fiyat_tam, 2) if fark > 0 else SIFIR
+
+
+def bagli_giris_fiyatla(h) -> bool:
+    """TEK bir irsaliye girişinin (faturaya BAĞLI kalem) maliyetini yeniden verir: bağlı fatura satırı tutarı + faturasız fark (``faturasiz_fark_tutari``). Satır yoksa dokunmaz (False).
+    Kartı yeniden hesaplamak ÇAĞIRANIN işidir. (Miktarı düzeltilen faturalı irsaliye girişi için — core.services.teklif_siparis.irsaliye_miktar_duzelt.) DİKKAT: fatura sonradan
+    yeniden fiyatlanırsa (``irsaliye_girislerini_fiyatla``: fatura düzenleme/silme) bu giriş de genel kurala (fatura tutarı, fark seyrelir) döner."""
+    kalem = h.teklif_siparis_kalem
+    fatura = kalem.teklif_siparis.fatura if kalem is not None else None
+    if fatura is None:
+        return False
+    satir = fatura.satirlar.filter(silindi=False, irsaliye_kalem=kalem).first()
+    if satir is None:
+        return False
+    toplam = satir.tutar_tl + faturasiz_fark_tutari(kalem, satir)
+    kur_usd = _fatura_usd_kuru(fatura)
+    h.giris_tutar_try, h.giris_tutar_usd, h.maliyet_fatura_satir = toplam, _usd(toplam, kur_usd), satir
+    h.save(update_fields=["giris_tutar_try", "giris_tutar_usd", "maliyet_fatura_satir", "updated_at"])
+    return True
+
+
 @transaction.atomic
 def irsaliye_girislerini_fiyatla(fatura) -> int:
     """İRSALİYELİ faturada maliyeti FATURA belirler: önce irsaliye girişleri fiyatsıza
