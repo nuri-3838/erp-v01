@@ -996,8 +996,8 @@ def teklif_siparis_iptal(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
 def irsaliye_miktar_duzelt(irsaliye: TeklifSiparis, duzeltmeler, *, kullanici=None, aciklama="") -> list:
     """ONAYLI ALIŞ irsaliyesinde kalem miktarlarını YERİNDE düzeltir — FATURAYA BAĞLI olsa da (ekrandan düzenleme "faturaya dönüştürülmüş" diye kapalıdır; kalem silinip yeniden
     yazılsaydı fatura satırlarının ``irsaliye_kalem`` bağı kopardı). Kalem satırı (pk) ve fatura satırı bağı KORUNUR; fatura satırları/fişi/muhasebe DEĞİŞMEZ ("fatura miktarı irsaliyeden
-    farklı" uyarısı normaldir). ``duzeltmeler`` = [(kalem pk, yeni miktar)]. Giriş hareketi miktarı çeviriciyle güncellenir; faturalıysa girişin maliyeti = bağlı satır tutarı + faturasız FARK
-    (fark × kalem net birim fiyatı; bkz. stok_ortalama.faturasiz_fark_tutari), kart yeniden hesaplanır (sonraki çıkışların/üretim fişlerinin maliyeti kendiliğinden güncellenir). Düzeltme
+    farklı" uyarısı normaldir). ``duzeltmeler`` = [(kalem pk, yeni miktar)]. Giriş hareketi miktarı çeviriciyle güncellenir; faturalıysa maliyet GENEL kuralla yeniden verilir (stok_ortalama.irsaliye_girislerini_fiyatla: fatura
+    satırı tutarı irsaliyedeki TÜM miktara yayılır; faturasız fazla teslim bedelsizdir), kart yeniden hesaplanır (sonraki çıkışların/üretim fişlerinin maliyeti kendiliğinden güncellenir). Düzeltme
     herhangi bir (stok, varyant) zincirini NEGATİFE düşürürse hiçbir şey yazılmaz. Döner: [{kalem, eski, yeni, hareket, ...}]."""
     from core.sayi import yuvarla
     from core.services import stok_ortalama
@@ -1038,10 +1038,7 @@ def irsaliye_miktar_duzelt(irsaliye: TeklifSiparis, duzeltmeler, *, kullanici=No
         stoklar[k.stok_id] = k.stok
         sonuc.append({"kalem": k, "hareket": h, "eski": eski, "yeni": yeni, "eski_hareket": eski_hareket, "yeni_hareket": yeni_hareket})
     if irsaliye.fatura_id and not irsaliye.fatura.silindi:
-        # Satır kalemine BAĞLI ise (çoklu irsaliyeden açılan fatura): giriş = satır tutarı + faturasız fark (kalem fiyatıyla). Bağsız eski/tek-irsaliye faturasında genel kural
-        # (stok bazında dağıtım, maliyet = fatura tutarı) uygulanır.
-        if not all(stok_ortalama.bagli_giris_fiyatla(r["hareket"]) for r in sonuc):
-            stok_ortalama.irsaliye_girislerini_fiyatla(irsaliye.fatura)
+        stok_ortalama.irsaliye_girislerini_fiyatla(irsaliye.fatura)                  # GENEL kural (8bbfc11): maliyet = fatura satırı tutarı, irsaliyedeki tüm miktara yayılır (faturasız fazla teslim bedelsiz)
     for stok in stoklar.values():
         try:
             stok_ortalama.yeniden_hesapla(stok)

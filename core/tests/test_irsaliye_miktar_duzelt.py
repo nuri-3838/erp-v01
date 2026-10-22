@@ -1,6 +1,6 @@
 """Faturaya BAĞLI onaylı alış irsaliyesinde miktar düzeltmesi (2026-10-22, Karakuş SAI-2026-0016): kalem pk'si ve fatura satırı bağı korunur (ekran düzenlemesi kapalıdır),
-fatura satırları/fişi DEĞİŞMEZ, giriş hareketi miktarı güncellenir, faturalıysa maliyet = bağlı satır tutarı + faturasız fark × kalem fiyatı, kart yeniden hesaplanır, negatife
-düşüren düzeltme hiçbir şey yazmaz; genel fiyatlama (irsaliye_girislerini_fiyatla) eskisi gibi kalır (fark seyrelir)."""
+fatura satırları/fişi DEĞİŞMEZ, giriş hareketi miktarı güncellenir, faturalıysa genel fiyatlama (fatura tutarı tüm miktara yayılır), kart yeniden hesaplanır, negatife
+düşüren düzeltme hiçbir şey yazmaz; maliyet GENEL kuralla (8bbfc11) verilir: fatura satırı tutarı irsaliyedeki TÜM miktara yayılır (faturasız fazla teslim bedelsiz)."""
 import datetime
 from decimal import Decimal
 
@@ -31,7 +31,7 @@ class MiktarDuzeltTest(CokluTaban):
     def hareket(self, kalem):
         return StokHareket.objects.get(teklif_siparis_kalem=kalem, silindi=False)
 
-    def test_faturali_irsaliyede_yerinde_duzeltme_bag_ve_fatura_korunur_fark_kalem_fiyatiyla(self):
+    def test_faturali_irsaliyede_yerinde_duzeltme_bag_ve_fatura_korunur_maliyet_fatura_tutari(self):
         i, fatura = self.faturali()
         kalem = i.kalemler.get()
         satir_once = list(fatura.satirlar.filter(silindi=False).values_list("pk", "miktar", "birim_fiyat", "irsaliye_kalem_id"))
@@ -43,7 +43,7 @@ class MiktarDuzeltTest(CokluTaban):
         kalem.refresh_from_db()
         h = self.hareket(kalem)
         self.assertEqual((kalem.pk, kalem.miktar, h.miktar), (kalem.pk, Dc("550"), Dc("550")))
-        self.assertEqual(h.giris_tutar_try, Dc("1100.00"))                                        # 500×2 (fatura satırı) + 50×2 (faturasız fark, kalem fiyatı)
+        self.assertEqual(h.giris_tutar_try, Dc("1000.00"))                                        # genel kural: maliyet = fatura satırı tutarı (500×2), 550 adede yayılır; faturasız 50 adet bedelsiz
         self.assertEqual(h.maliyet_fatura_satir_id, fatura.satirlar.filter(silindi=False, irsaliye_kalem=kalem).get().pk)
         self.assertEqual(eldeki_miktar(self.stok), Dc("550"))
         fatura.refresh_from_db()
@@ -53,13 +53,6 @@ class MiktarDuzeltTest(CokluTaban):
         i.refresh_from_db()
         self.assertIn("teslimat belgesine göre", i.aciklama)
         self.assertEqual(i.fatura_id, fatura.pk)
-
-    def test_genel_fiyatlama_eskisi_gibi_fark_seyrelir(self):
-        i, fatura = self.faturali()
-        irsaliye_miktar_duzelt(i, [(i.kalemler.get().pk, "550")], kullanici=self.u)
-        so.irsaliye_girislerini_fiyatla(fatura)                                                   # fatura sonradan yeniden fiyatlanırsa genel kural (8bbfc11): maliyet = fatura tutarı
-        self.assertEqual(self.hareket(i.kalemler.get()).giris_tutar_try, Dc("1000.00"))
-        self.assertEqual(self.hareket(i.kalemler.get()).miktar, Dc("550"))
 
     def test_azaltma_ve_negatif_stok_korumasi_hicbir_sey_yazilmaz(self):
         i, fatura = self.faturali()
