@@ -3770,6 +3770,9 @@ class IstasyonEmri(TemelModel):
     # Açılış/revize anı snapshot'ı: bu emrin sürücü çıktıları için ÜS'nin ÜRETİMLE karşılaması gereken NET miktar {stok pk: miktar}. Kayıt onayında
     # üretilen parça bu miktara kadar ÜS'ye ayrılır (fazlası serbest stok — karar 8).
     ihtiyac = models.JSONField("net ihtiyaç ({stok pk: miktar})", default=dict, blank=True)
+    # FİRE KAYNAKLI EK PLAN (2026-10-22, core.services.uretim_fire): fire yüzünden bu emre eklenen, henüz geri alınmamış/revizeyle yenilenmemiş çalıştırma toplamı
+    # {"ek": "N"}; boş = yok. Yalnız görünüm (fason emri gerekli rozeti) içindir; plan hesabını etkilemez.
+    fire_ek = models.JSONField("fire ek planı", default=dict, blank=True)
 
     class Meta:
         db_table = "core_istasyon_emri"
@@ -3807,6 +3810,8 @@ class UretimEmriRevizyon(TemelModel):
         YENIDEN_ACILIS = "YENIDEN_ACILIS", "Yeniden açılış"
         IPTAL = "IPTAL", "İptal"
         DUZENLEME = "DUZENLEME", "Termin/öncelik düzenleme"
+        FIRE_EK_PLAN = "FIRE_EK_PLAN", "Fire kaynaklı ek plan"
+        FIRE_GERI_ALMA = "FIRE_GERI_ALMA", "Fire ek planı geri alındı"
 
     uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="revizyonlar")
     no = models.PositiveSmallIntegerField("sıra no")
@@ -3877,6 +3882,9 @@ class OperasyonKaydi(TemelModel):
     geri_alan = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="geri alan", null=True, blank=True, on_delete=models.PROTECT,
                                   related_name="geri_aldigi_operasyon_kayitlari")
     geri_alma_zamani = models.DateTimeField("geri alma zamanı", null=True, blank=True)
+    # FİRE KAYNAKLI EK PLAN izi (core.services.uretim_fire): bu kayıt onaylanırken fire yüzünden ÜS'ye eklenen ayırma / fason rezervi / istasyon emri artışları;
+    # kayıt geri alınırken yalnız bu ek geri sarılır. Boş = fire yok ya da ek gerekmedi.
+    fire_ek = models.JSONField("fire ek planı izi", default=dict, blank=True)
     # ATÖLYE / işçilik: kaydı giren personel ve o anki açık mesai kaydı (atölye ekranından hep dolu; ofisten açılan kayıtta kullanıcıya bağlı
     # personel varsa dolar). İleride işçilik/GÜG dağıtımının kaynağı.
     personel = models.ForeignKey("Personel", verbose_name="giren personel", null=True, blank=True, on_delete=models.PROTECT,

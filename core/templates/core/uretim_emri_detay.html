@@ -292,6 +292,10 @@
             {% elif e.tur == "SATINALMA_SIPARIS" %}
               <td><span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor: irsaliye onaylanınca stoğa girer">🛒 Satınalma siparişinden bekleniyor: {% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if termin %} (termin {{ termin|date:"d.m.Y" }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %} · {{ e.siparis_bekleyen|tr_miktar_sade }} adet</span></td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td><td class="sag mono">—</td>
+            {% elif e.tur == "FASON_EMRI_GEREKLI" and e.fire %}
+              <td><span class="rozet rozet-turuncu" title="Fire yüzünden fason istasyon emri arttı ({{ e.ie.no }}): fason siparişi verip ÜS'yi revize edin ya da parça fason dönüşle gelince kalkar">⚠ fason emri gerekli — fire kaynaklı +{{ e.eksik|tr_miktar_sade }} adet ({{ e.ie.no }}); fason siparişi açın</span></td>
+              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
+              <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
             {% elif e.tur == "FASON_EMRI_GEREKLI" %}
               <td><span class="rozet rozet-turuncu" title="Fason siparişi iptal edildi/azaldı: bu parça için ÜS'de fason istasyon emri yok">⚠ fason emri gerekli — fason siparişi iptal/azaldı; ÜS'yi revize edin</span></td>
               <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
@@ -309,6 +313,25 @@
   </div>
   {% else %}
   <p class="yardim">Bu üretim siparişi açık olmadığı için malzeme ihtiyacı hesaplanmaz.</p>
+  {% endif %}
+  {% if fire_notlari %}
+  <div class="ud-baslik"><h2 class="bolum-baslik">Fire Kaynaklı Ek Plan</h2>
+    <span class="ud-ipucu" tabindex="0" role="note" aria-label="Fire kaynaklı ek plan açıklaması" data-ipucu="Fire girilen kayıtta fazladan tüketilen girdi için ÜS'nin açık kalan ihtiyacı kadar: önce serbest stoktan ayrıldı, yetmeyen için girdiyi üreten istasyon emri artırıldı. Kayıt geri alınırsa bu ek de geri sarılır.">?</span></div>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>Kayıt</th><th class="sag">Fire</th><th>Ek ayırma</th><th>Artırılan istasyon emri</th></tr></thead>
+    <tbody>
+      {% for n in fire_notlari %}
+        <tr>
+          <td class="mono"><a href="{% url 'core:operasyon_kaydi_detay' n.kayit.pk %}">{{ n.kayit.no }}</a> <span class="yardim">· {{ n.ek.ie }}</span>{% if n.geriye_donuk %} <span class="rozet rozet-notr" title="Fire sonradan, geriye dönük uygulandı">geriye dönük</span>{% endif %}{% if n.yenilendi %} <span class="rozet rozet-notr" title="ÜS revize edildi: plan baştan kuruldu">revizeyle yenilendi</span>{% endif %}</td>
+          <td class="sag mono">{{ n.ek.fire|tr_miktar_sade }}</td>
+          <td>{% if n.hata %}<span class="rozet rozet-turuncu">otomatik ek plan yapılamadı: {{ n.hata }}</span>{% endif %}{% for a in n.ek.ayirma %}<div><span class="mono">{{ a.kod }}</span>{% if a.varyant %} <span class="rozet rozet-notr">{{ a.varyant }}</span>{% endif %} +{{ a.miktar|tr_miktar_sade }} ayrıldı</div>{% endfor %}{% for f in n.ek.fason_siparis %}<div><span class="mono">{{ f.kod }}</span> +{{ f.miktar|tr_miktar_sade }} fason siparişi rezervi</div>{% endfor %}{% if not n.ek.ayirma and not n.ek.fason_siparis and not n.hata %}—{% endif %}</td>
+          <td>{% for x in n.ek.istasyon_emirleri %}<div><span class="mono">{{ x.no }}</span> {{ x.operasyon }} +{{ x.ek|tr_miktar_sade }}{% if x.yeni %} (yeni emir){% elif x.durum_once == 'BITTI' %} (yeniden açıldı){% endif %}{% if x.fason %} <span class="rozet rozet-turuncu">fason</span>{% endif %}</div>{% empty %}—{% endfor %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
   {% endif %}
   <details class="ud-alt">
     <summary>Ayrılan Stoklar ({{ ayirmalar|length }})</summary>

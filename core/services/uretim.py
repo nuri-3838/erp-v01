@@ -2025,6 +2025,8 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
     ie.tamamlanan = ie.tamamlanan + kayit_calistirma(kayit)
     ie.save(update_fields=["tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
+    from core.services import uretim_fire
+    uretim_fire.fire_ek_planla(kayit, kullanici)                  # fire'lı kayıt: ÜS'nin açık kalan ihtiyacı için ek ayırma / girdi emri artışı (kapanış kontrolünden ÖNCE)
     emir.refresh_from_db()
     if not _kapanis_kontrol(emir, kullanici):                  # sevk edilmiş sipariş: son emir bitince kapanır
         stok_us_tamamla(emir, kullanici)                       # kaynak siparişsiz ("stok için üretim") ÜS: %100 olunca tamamlanır, ayırmalar serbest
@@ -2072,6 +2074,8 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
         return
     ie = IstasyonEmri.objects.select_for_update().get(pk=ie.pk)
     emir.refresh_from_db()
+    from core.services import uretim_fire
+    uretim_fire.fire_ek_geri_al(kayit, kullanici)                  # fire kaynaklı ek plan (ayırma / FS rezervi / girdi emri artışı) yalnız kendi eklediği kadar geri sarılır
     yeniden_ac = emir.durum == UretimEmri.Durum.KAPALI and stok_us_mu(emir) and not emir.sevk_dusen      # tamamlanmış stok ÜS'si
     if emir.durum == UretimEmri.Durum.ACIK or yeniden_ac:
         if not yeniden_ac:                                  # tamamlanmış ÜS'de mamul ayırması GERİ GELMEZ (serbest kalır)
@@ -2230,8 +2234,8 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
         eksikler.append({"stok": s.stok, "varyant": s.varyant, "varyant_etiketi": planlama_varyant.etiket(s.varyant) if s.varyant_id else "",
                          "gerekli": r.miktar, "kullanilabilir": Decimal("0"), "eksik": Decimal("0"), "stoklu": False, "tur": "FASON_SIPARIS",
                          "fs": s.siparis, "termin": s.siparis.termin})
-    mevcut_ie = {(ie.operasyon_id, ie.cikti_varyant_id) for ie in
-                 (yukle.ie_aktif() if yukle is not None else emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.IPTAL))}
+    aktif_ieler = list(yukle.ie_aktif() if yukle is not None else emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.IPTAL))
+    mevcut_ie = {(ie.operasyon_id, ie.cikti_varyant_id) for ie in aktif_ieler}
     for p in sonuc["plan"]:
         op, sv = planlama_varyant.kosum_coz(p["operasyon"])
         if not op.istasyon.fason or p["calistirma"] <= 0 or (op.pk, sv.pk if sv is not None else None) in mevcut_ie:
@@ -2239,6 +2243,9 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
         st, csv = planlama_varyant.dugum_coz(p["stok"])
         eksikler.append({"stok": st, "varyant": csv, "varyant_etiketi": planlama_varyant.etiket(csv) if csv is not None else "",
                          "gerekli": p["ihtiyac"], "kullanilabilir": p["ayrilan"], "eksik": p["net"], "stoklu": False, "tur": "FASON_EMRI_GEREKLI"})
+    if any(ie.fire_ek for ie in aktif_ieler):                      # fire yüzünden artmış fason emri (2026-10-22): fason siparişi gerekli
+        from core.services import uretim_fire
+        eksikler += uretim_fire.fason_rozetleri(aktif_ieler)
     return eksikler
 
 
@@ -2378,6 +2385,8 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
         ie.save()
         taslak_degisen += _taslaklari_sigdir(ie, Decimal("0"), kullanici)
         istasyon_emri_durum_guncelle(ie)
+    from core.services import uretim_fire
+    uretim_fire.revize_yenilendi(emir)                              # plan baştan kuruldu: fire ek izleri 'yenilendi' (artık geri sarılmaz), fason fire işaretleri temizlenir
     sonra = _emir_ozeti(emir)
     detay = {"once": once, "sonra": sonra, "taslak_kayitlar": taslak_degisen}
     yeni_termin = emir.termin if termin is _VARSAYILAN else termin

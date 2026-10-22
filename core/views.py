@@ -134,6 +134,7 @@ from core.services import cek as cek_servis
 from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import uretim as uretim_servis
+from core.services import uretim_fire as uretim_fire_servis
 from core.services import planlama_varyant as planlama_varyant_servis
 from core.services import atolye as atolye_servis
 from core.services import is_oturumu as is_oturumu_servis
@@ -8336,6 +8337,15 @@ def _revizyon_satirlari(emir):
             farklar += _termin_oncelik_farklari(to.get("once"), to.get("sonra"))
         elif r.tur == "DUZENLEME":
             farklar += _termin_oncelik_farklari(r.detay.get("once"), r.detay.get("sonra"))
+        elif r.tur in ("FIRE_EK_PLAN", "FIRE_GERI_ALMA"):
+            if r.detay.get("hata"):
+                farklar.append(f"Yapılamadı: {r.detay['hata']}")
+            for a in r.detay.get("ayirma", []):
+                farklar.append(f"Ayırma {'−' if r.tur == 'FIRE_GERI_ALMA' else '+'}{a['miktar']}: {a['kod']}{' [' + a['varyant'] + ']' if a.get('varyant') else ''}")
+            for f in r.detay.get("fason_siparis", []):
+                farklar.append(f"Fason siparişi rezervi {'−' if r.tur == 'FIRE_GERI_ALMA' else '+'}{f['miktar']}: {f['kod']}")
+            for x in r.detay.get("istasyon_emirleri", []):
+                farklar.append(f"{x['no']}: planlanan {x['once']} → {x['sonra']}")
         sonuc.append((r, farklar))
     return sonuc
 
@@ -8378,7 +8388,7 @@ def uretim_emri_detay(request, pk):
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar, "tamamlandi": tamamlandi,
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
-        "eksikler": eksikler, "fason_emri_gerekli": bant["fason_emri_gerekli"], "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
+        "eksikler": eksikler, "fire_notlari": uretim_fire_servis.fire_notlari(emir), "fason_emri_gerekli": bant["fason_emri_gerekli"], "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
         "bugun": bugun_tarih.isoformat(),
         "revizyonlar": _revizyon_satirlari(emir), "silinebilir": us_detay_servis.silinebilir(emir, yukle.ieler, kayit_sayisi), "revize_url": revize_url,
         "ilerleme": ilerleme, "bant": bant, "seritler": seritler, "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde),
