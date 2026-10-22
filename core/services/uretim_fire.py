@@ -305,6 +305,7 @@ def fire_ek_geri_al(kayit: OperasyonKaydi, kullanici=None, *, yeniden=False):
             stok_pk, vpk = planlama_varyant.anahtar_coz(key)
             taban = u._onceki_ayrilan(ie, stok_pk, vpk)
             ihtiyac[key] = _ds(max(taban, _d(ihtiyac.get(key)) - _d(m)))
+        onceki_plan = ie.planlanan
         ie.planlanan, ie.ihtiyac = yeni_plan, ihtiyac
         kalan_ek = max(S, _d((ie.fire_ek or {}).get("ek")) - ek_run)
         ie.fire_ek = {"ek": _ds(kalan_ek)} if kalan_ek > 0 else {}
@@ -314,7 +315,7 @@ def fire_ek_geri_al(kayit: OperasyonKaydi, kullanici=None, *, yeniden=False):
         ie.updated_by = kullanici
         ie.save()
         u.istasyon_emri_durum_guncelle(ie)
-        geri.append({"no": ie.no, "once": x["sonra"], "sonra": _ds(ie.planlanan), "uretilmis_ek_kaldi": ie.planlanan > _d(x["once"])})
+        geri.append({"no": ie.no, "once": _ds(onceki_plan), "sonra": _ds(ie.planlanan), "uretilmis_ek_kaldi": ie.planlanan > _d(x["once"])})
     ozet = {"kayit": kayit.no, "ayirma": ek.get("ayirma", []), "fason_siparis": ek.get("fason_siparis", []), "istasyon_emirleri": geri}
     yeni_ek = {} if yeniden else dict(ek, geri_alindi=True)
     OperasyonKaydi.objects.filter(pk=kayit.pk).update(fire_ek=yeni_ek)
