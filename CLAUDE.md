@@ -60,20 +60,12 @@ Sunucu: Hetzner `nuri@159.69.218.128` (SSH, WSL'deki `~/.ssh/id_ed25519`), klas�
 ```bash
 # 0) Local: tam test paketi OK, commit atılmış, çalışma ağacı temiz.
 
-# 1) WSL → sunucuya geçici dal (worktree/feature dalı: önce origin/main üstüne rebase, yoksa ff-only reddeder)
-cd ~/erp-v01 && git fetch origin && git push nuri@159.69.218.128:erp_v01 main:refs/heads/wsl-X
-#    feature dalı için: git push nuri@159.69.218.128:erp_v01 feature/<dal>:refs/heads/wsl-<ad>
-
-# 2) Sunucuda TEK ssh betiği: yedek → pull(ff-merge)+GitHub push → migrate → restart
-ssh nuri@159.69.218.128 "bash -s" <<'EOF'
-set -e
-cd ~/erp_v01
-bash scripts/db_backup.sh
-git merge --ff-only wsl-X && git push origin main && git branch -d wsl-X
-.venv/bin/python manage.py migrate core
-sudo systemctl restart erp_v01
-systemctl is-active erp_v01
-EOF
+# 1+2) TEK komut: scripts/deploy.sh <yerel-dal>   (örn. main veya feature/<dal>; dal önce origin/main üstüne rebase edilmiş olmalı)
+cd ~/erp-v01 && bash scripts/deploy.sh feature/<dal>
+#    Betik: yerel kontrol (cdfc735 içeren dal reddedilir) → sunucu main ⊂ dal ön kontrolü → sunucuya geçici dal push →
+#    sunucuda [dal sha doğrula → yedek → ff-merge → HEAD==yerel HEAD (migrate'ten ÖNCE) → GitHub push → dal sil → migrate → restart → is-active].
+#    Herhangi bir adım düşerse DURUR ve "başarısız adım: ..." yazar (set -Eeuo pipefail; hiçbir adım && zincirine bağlı değil).
+#    Betiği değiştirirsen: bash scripts/deploy_test.sh (yalıtılmış sandbox; canlıya dokunmaz) hepsi geçmeli.
 #    yedek: DB + ozel_dosyalar + media → backups/ (çıktı yok, logs/backup.log'a yazar) — deploy öncesi geri dönüş noktası
 #    restart: sudoers NOPASSWD (/etc/sudoers.d/90-erp-restart). Sudo bozulursa şifresiz eşdeğer:
 #    ssh nuri@159.69.218.128 'kill -HUP $(systemctl show erp_v01 -p MainPID --value)'
