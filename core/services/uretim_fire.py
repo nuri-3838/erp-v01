@@ -123,14 +123,16 @@ def _hesapla_ve_uygula(kayit: OperasyonKaydi, kullanici, geriye_donuk: bool):
     for (stok_id, vpk), e in ek_girdi.items():
         key = planlama_varyant.ihtiyac_anahtari(stok_id, vpk)
         uretici = next((ie for ie in aktif if key in (ie.ihtiyac or {})), None)
-        bekleyen = S
+        bekleyen = fazla = S
         if uretici is not None:
-            kalan_ihtiyac = _d(uretici.ihtiyac.get(key)) - u._onceki_ayrilan(uretici, stok_id, vpk)
-            bekleyen = min(max(kalan_ihtiyac, S), uretici.kalan * _cikti_miktari(uretici.operasyon, stok_id))
+            kalan_ihtiyac = max(S, _d(uretici.ihtiyac.get(key)) - u._onceki_ayrilan(uretici, stok_id, vpk))
+            fiziksel = uretici.kalan * _cikti_miktari(uretici.operasyon, stok_id)          # emrin kalan koşumlarının üreteceği
+            bekleyen = min(kalan_ihtiyac, fiziksel)
+            fazla = max(S, fiziksel - kalan_ihtiyac)                                         # tam boy yuvarlamasından kalan plan fazlası: ihtiyaç artırılarak kullanılabilir
         ust = stok_ayirma.ayrilan_miktar(emir, stok_id, varyant=vpk)
         acik = min(e, max(S, tuketim.get((stok_id, vpk), S) - ust - bekleyen))
         if acik > 0:
-            acik_dugum[(stok_id, vpk)] = acik
+            acik_dugum[(stok_id, vpk)] = (acik, uretici, fazla, key)
     if not acik_dugum:
         return None
 
@@ -145,14 +147,24 @@ def _hesapla_ve_uygula(kayit: OperasyonKaydi, kullanici, geriye_donuk: bool):
     # yaprak / stoklu ara mamul: yalnız serbest stoktan (ve FS kalanından) ayrılır
     planlanacak = []
     fs_harita = None
-    for (stok_id, vpk), acik in sorted(acik_dugum.items(), key=lambda x: (x[0][0], x[0][1] or 0)):
+    ihtiyac_fazla = {}                                          # IstasyonEmri → {ihtiyac anahtarı: mevcut plan fazlasından kullanılan}
+    for (stok_id, vpk), (acik, uretici, fazla, key) in sorted(acik_dugum.items(), key=lambda x: (x[0][0], x[0][1] or 0)):
         stok = Stok.objects.get(pk=stok_id)
         if varyantli:
             op_var = cz.op_bul(cz.kalem_dugumu(stok, vpk))[0] is not None
         else:
             op_var = u.ureten_operasyon(stok) is not None
         if op_var and not (stok.stoklu_uretim and stok.pk not in haric):
-            planlanacak.append((stok, acik, vpk))
+            serbest = max(S, stok_ayirma.kullanilabilir_varyant_haritasi([(stok_id, vpk)])[(stok_id, vpk)])
+            a = min(acik, serbest)                               # 1) serbest stok
+            ayirma_yaz(stok_id, vpk, a)
+            acik -= a
+            kullan = min(acik, fazla) if uretici is not None else S
+            if kullan > 0:                                       # 2) üreten emrin plan fazlası: yeni koşum açmadan ihtiyaç artar
+                ihtiyac_fazla.setdefault(uretici, {})[key] = ihtiyac_fazla.get(uretici, {}).get(key, S) + kullan
+                acik -= kullan
+            if acik > 0:                                         # 3) emir artışı (zincirleme)
+                planlanacak.append((stok, acik, vpk))
             continue
         serbest = max(S, stok_ayirma.kullanilabilir_varyant_haritasi([(stok_id, vpk)])[(stok_id, vpk)])
         a = min(acik, serbest)
@@ -168,6 +180,16 @@ def _hesapla_ve_uygula(kayit: OperasyonKaydi, kullanici, geriye_donuk: bool):
                 yaprak_eksik.append({"stok": stok.kod, "varyant": _etiket(stok_id, vpk), "eksik": _ds(kalan - f)})
 
     ie_log = []
+    for ie, anahtarlar in ihtiyac_fazla.items():
+        yeni_ihtiyac = dict(ie.ihtiyac or {})
+        for key, m in anahtarlar.items():
+            yeni_ihtiyac[key] = _ds(_d(yeni_ihtiyac.get(key)) + m)
+        ie.ihtiyac = yeni_ihtiyac
+        ie.updated_by = kullanici
+        ie.save(update_fields=["ihtiyac", "updated_by", "updated_at"])
+        ie_log.append({"ie_id": ie.pk, "no": ie.no, "operasyon": ie.operasyon.cikti.kod, "varyant": _etiket(None, ie.cikti_varyant_id), "once": _ds(ie.planlanan),
+                       "sonra": _ds(ie.planlanan), "ek": "0", "ihtiyac_ek": {k: _ds(v) for k, v in anahtarlar.items()}, "yeni": False, "durum_once": ie.durum,
+                       "durum_sonra": ie.durum, "fason": bool(ie.istasyon.fason), "sadece_ihtiyac": True})
     if planlanacak:
         sonuc, _cz = u._plani_hesapla(planlanacak, varyantli, kullanici, haric_emir=None, stoklu_haric=haric, cozucu=cz)
         stok_pay, fason_pay = u._ayrilani_bol(sonuc, varyantli)
@@ -227,7 +249,8 @@ def _hesapla_ve_uygula(kayit: OperasyonKaydi, kullanici, geriye_donuk: bool):
     kayit.fire_ek = ek
     ozet = ", ".join(
         [f"{a['kod']}{' [' + a['varyant'] + ']' if a['varyant'] else ''} +{a['miktar']} ayrıldı" for a in ayirma_kayit]
-        + [f"{x['no']} +{x['ek']} planlandı" for x in ie_log]) or "ek yok"
+        + [f"{x['no']} ihtiyaç +{_ds(sum(_d(v) for v in x['ihtiyac_ek'].values()))} (plan fazlası)" if x.get("sadece_ihtiyac") else f"{x['no']} +{x['ek']} planlandı"
+           for x in ie_log]) or "ek yok"
     u._revizyon_yaz(emir, UretimEmriRevizyon.Tur.FIRE_EK_PLAN, None,
                     f"{kayit.no} fire {_ds(fire)}{' (geriye dönük)' if geriye_donuk else ''}: {ozet}", ek, kullanici)
     return ek
@@ -253,10 +276,11 @@ def fire_ek_planla(kayit: OperasyonKaydi, kullanici=None, *, geriye_donuk=False,
 
 
 @transaction.atomic
-def fire_ek_geri_al(kayit: OperasyonKaydi, kullanici=None):
+def fire_ek_geri_al(kayit: OperasyonKaydi, kullanici=None, *, yeniden=False):
     """Kayıt geri alınırken (``operasyon_kaydi_sil(onayli_geri_al=True)``) fire ek planının YALNIZ kendi eklediğini geri sarar: ayırma ve FS rezervi düşer, istasyon emri
     planlananı ek kadar iner (tamamlananın altına inmez: ek üretildiyse o kısım kalır; bu kayıtla açılmış ve hiç üretilmemiş emir İPTAL olur). ÜS açık değilse ya da ek
-    revizeyle yenilenmişse dokunmaz. Yapılan işin özetini döner (yoksa None)."""
+    revizeyle yenilenmişse dokunmaz. Yapılan işin özetini döner (yoksa None). ``yeniden=True`` (düzeltme komutu): kayıt 'geri alındı' işaretlenmez, ``fire_ek`` temizlenir
+    ve ek yeniden hesaplanabilir."""
     kayit.refresh_from_db(fields=["fire_ek"])
     ek = kayit.fire_ek or {}
     if not ek or ek.get("geri_alindi") or ek.get("yenilendi") or "hata" in ek or ek.get("uygulanmadi"):
@@ -291,11 +315,12 @@ def fire_ek_geri_al(kayit: OperasyonKaydi, kullanici=None):
         ie.save()
         u.istasyon_emri_durum_guncelle(ie)
         geri.append({"no": ie.no, "once": x["sonra"], "sonra": _ds(ie.planlanan), "uretilmis_ek_kaldi": ie.planlanan > _d(x["once"])})
-    ek = dict(ek, geri_alindi=True)
-    OperasyonKaydi.objects.filter(pk=kayit.pk).update(fire_ek=ek)
-    kayit.fire_ek = ek
     ozet = {"kayit": kayit.no, "ayirma": ek.get("ayirma", []), "fason_siparis": ek.get("fason_siparis", []), "istasyon_emirleri": geri}
-    u._revizyon_yaz(emir, UretimEmriRevizyon.Tur.FIRE_GERI_ALMA, None, f"{kayit.no} geri alındı: fire ek planı geri sarıldı", ozet, kullanici)
+    yeni_ek = {} if yeniden else dict(ek, geri_alindi=True)
+    OperasyonKaydi.objects.filter(pk=kayit.pk).update(fire_ek=yeni_ek)
+    kayit.fire_ek = yeni_ek
+    u._revizyon_yaz(emir, UretimEmriRevizyon.Tur.FIRE_GERI_ALMA, None,
+                    f"{kayit.no} fire ek planı geri sarıldı" + (" (yeniden hesaplanmak üzere)" if yeniden else ""), ozet, kullanici)
     return ozet
 
 

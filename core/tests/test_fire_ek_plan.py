@@ -9,7 +9,7 @@ from unittest import mock
 from django.core.management import call_command
 from django.urls import reverse
 
-from core.models import IsIstasyonu, IstasyonEmri, OperasyonKaydi, StokHareket, UretimEmriRevizyon
+from core.models import IsIstasyonu, IstasyonEmri, Operasyon, OperasyonKaydi, StokHareket, UretimEmriRevizyon
 from core.services import stok_ayirma as sa
 from core.services import uretim, uretim_fire
 from core.services.hareket import hareket_ekle
@@ -273,3 +273,82 @@ class GeriyeDonukKomutTest(FireTaban):
         from django.core.management.base import CommandError
         with self.assertRaises(CommandError):
             self.komut("OP-2026-9999")
+
+
+class PlanFazlasiTest(FireTaban):
+    """Tam boy yuvarlaması (4,5 → 5 koşum) planda fazlalık bırakır: fire için yeni koşum açmadan ÜRETEN emrin ihtiyacı artar (canlıda IE-0375 fason +2 koşum hatası)."""
+
+    def setUp(self):
+        super().setUp()
+        uretim.uretim_emri_iptal(self.us)
+        Operasyon.objects.filter(pk=self.kesim_op.pk).update(tam_calistirma=True)
+        self.us = self.ac("9")
+        self.ie_kesim, self.ie_bukum, self.ie_pak = self.ie(self.kesim_op), self.ie(self.bukum_op), self.ie(self.pak_op)
+
+    def hazirla(self):
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.ihtiyac), (D("5"), {str(self.kesilmis.pk): "9"}))        # 5 koşum = 10 parça, ihtiyaç 9 → fazla 1
+        self.uret(self.ie_kesim, miktar="8")                                                                              # 4 koşum üretildi, 1 koşum kaldı
+        return self.uret(self.ie_bukum, miktar="7", fire="1")                                                             # 8 kesilmiş tüketildi, ayırma 0, büküm kalan 2
+
+    def test_plan_fazlasi_kullanilir_yeni_kosum_acilmaz(self):
+        kayit = self.hazirla()
+        self.yenile(self.ie_kesim)
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.ihtiyac, self.ie_kesim.fire_ek), (D("5"), {str(self.kesilmis.pk): "10"}, {}))
+        kayit.refresh_from_db()
+        x = kayit.fire_ek["istasyon_emirleri"][0]
+        self.assertEqual((x["no"], x["ek"], x["sadece_ihtiyac"], x["ihtiyac_ek"]), (self.ie_kesim.no, "0", True, {str(self.kesilmis.pk): "1"}))
+        self.assertEqual(self.ayr(self.profil), D("0.5") * 0 + self.ayr(self.profil))
+        self.uret(self.ie_kesim)                                                                                          # kalan koşum: 2 parça, ihtiyaç 10 → ÜSye
+
+
+class PlanFazlasiTest(FireTaban):
+    """Tam boy yuvarlaması (4,5 → 5 koşum) planda fazlalık bırakır: fire için yeni koşum açmadan ÜRETEN emrin ihtiyacı artar (canlıda IE-0375 fason +2 koşum hatası)."""
+
+    def setUp(self):
+        super().setUp()
+        uretim.uretim_emri_iptal(self.us)
+        Operasyon.objects.filter(pk=self.kesim_op.pk).update(tam_calistirma=True)
+        self.us = self.ac("9")
+        self.ie_kesim, self.ie_bukum, self.ie_pak = self.ie(self.kesim_op), self.ie(self.bukum_op), self.ie(self.pak_op)
+
+    def hazirla(self):
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.ihtiyac), (D("5"), {str(self.kesilmis.pk): "9"}))        # 5 koşum = 10 parça, ihtiyaç 9 → fazla 1
+        self.uret(self.ie_kesim, miktar="8")                                                                              # 4 koşum üretildi, 1 koşum kaldı
+        return self.uret(self.ie_bukum, miktar="7", fire="1")                                                             # 8 kesilmiş tüketildi, ayırma 0, büküm kalan 2
+
+    def test_plan_fazlasi_kullanilir_yeni_kosum_acilmaz(self):
+        kayit = self.hazirla()
+        self.yenile(self.ie_kesim)
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.ihtiyac, self.ie_kesim.fire_ek), (D("5"), {str(self.kesilmis.pk): "10"}, {}))
+        kayit.refresh_from_db()
+        x = kayit.fire_ek["istasyon_emirleri"][0]
+        self.assertEqual((x["no"], x["ek"], x["sadece_ihtiyac"], x["ihtiyac_ek"]), (self.ie_kesim.no, "0", True, {str(self.kesilmis.pk): "1"}))
+        self.uret(self.ie_kesim)                                                                                          # kalan koşum: 2 parça, ihtiyaç 10 → ÜS'ye 2 ayrılır
+        self.assertEqual(self.ayr(self.kesilmis), D("2"))
+        self.uret(self.ie_bukum)
+        self.yenile(self.ie_bukum)
+        self.assertEqual((self.ie_bukum.durum, self.ie_bukum.tamamlanan), ("BITTI", D("9")))
+        r = self.us.revizyonlar.get(tur=UretimEmriRevizyon.Tur.FIRE_EK_PLAN)
+        self.assertIn("plan fazlası", r.aciklama)
+
+    def test_geri_alinca_ihtiyac_eski_haline_doner(self):
+        kayit = self.hazirla()
+        uretim.operasyon_kaydi_sil(kayit, kullanici=self.yon, onayli_geri_al=True)
+        self.yenile(self.ie_kesim)
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.ihtiyac), (D("5"), {str(self.kesilmis.pk): "9"}))
+
+    def test_fason_rozeti_cikmaz(self):
+        self.hazirla()
+        IsIstasyonu.objects.filter(pk=self.lazer.pk).update(fason=True)
+        self.assertEqual([e for e in uretim.uretim_emri_eksikleri(self.us) if e["tur"] == "FASON_EMRI_GEREKLI"], [])
+
+    def test_yeniden_komutu_ekle_gunceller(self):
+        kayit = self.hazirla()
+        cikti = StringIO()
+        call_command("fire_ek_uygula", kayit.no, "--yeniden", "--uygula", stdout=cikti)
+        self.assertIn("geri sarıldı", cikti.getvalue())
+        self.yenile(self.ie_kesim)
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.ihtiyac), (D("5"), {str(self.kesilmis.pk): "10"}))
+        kayit.refresh_from_db()
+        self.assertTrue(kayit.fire_ek and not kayit.fire_ek.get("geri_alindi"))
+        self.assertEqual(self.us.revizyonlar.filter(tur=UretimEmriRevizyon.Tur.FIRE_GERI_ALMA).count(), 1)

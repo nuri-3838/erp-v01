@@ -24,6 +24,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("kayitlar", nargs="+", help="operasyon kaydı numaraları (OP-2026-0761 …)")
         parser.add_argument("--uygula", action="store_true")
+        parser.add_argument("--yeniden", action="store_true", help="zaten ek plan uygulanmış kaydın ekini geri sarıp güncel kuralla yeniden hesaplar")
 
     def handle(self, *args, **opts):
         kullanici = get_user_model().objects.filter(is_superuser=True).order_by("pk").first()
@@ -35,6 +36,13 @@ class Command(BaseCommand):
                     raise CommandError(f"{no}: onaylı, silinmemiş kayıt bulunamadı.")
                 self.stdout.write(f"\n### {kayit.no} — {kayit.uretim_emri.no if kayit.uretim_emri_id else '-'} / {kayit.istasyon_emri.no if kayit.istasyon_emri_id else '-'} "
                                   f"{kayit.operasyon.cikti.kod} | fire {_ds(uretim_fire.kayit_fire(kayit))}")
+                if kayit.fire_ek and opts["yeniden"] and not kayit.fire_ek.get("yenilendi") and not kayit.fire_ek.get("geri_alindi"):
+                    onceki_ek = uretim_fire.fire_ek_geri_al(kayit, kullanici, yeniden=True)
+                    for a in (onceki_ek or {}).get("ayirma", []):
+                        self.stdout.write(f"   (geri sarıldı) AYIRMA {a['kod']} [{a['varyant']}]: −{a['miktar']}")
+                    for x in (onceki_ek or {}).get("istasyon_emirleri", []):
+                        self.stdout.write(f"   (geri sarıldı) {x['no']}: planlanan {x['once']} → {x['sonra']}")
+                    kayit.refresh_from_db()
                 if kayit.fire_ek:
                     self.stdout.write("   zaten uygulanmış / işaretli — atlandı")
                     continue
@@ -42,7 +50,7 @@ class Command(BaseCommand):
                     self.stdout.write("   ÜS/istasyon emrine bağlı fasonsuz ÜRET kaydı değil — kapsam dışı")
                     continue
                 once = {(a.stok.kod, a.varyant_id): a.miktar for a in stok_ayirma.emir_ayirmalari(kayit.uretim_emri)}
-                sonuc = uretim_fire.fire_ek_planla(kayit, kullanici, geriye_donuk=True, hata_yut=False)
+                sonuc = uretim_fire.fire_ek_planla(kayit, kullanici, geriye_donuk=not opts["yeniden"], hata_yut=False)
                 if not sonuc or sonuc.get("uygulanmadi"):
                     self.stdout.write("   ek gerekmiyor (ÜS'nin açık kalan ihtiyacı ayırmayla karşılanıyor / emir tamam)")
                     if sonuc:
@@ -55,6 +63,9 @@ class Command(BaseCommand):
                 for f in sonuc["fason_siparis"]:
                     self.stdout.write(f"   FS REZERV {f['kod']} [{f['varyant']}]: +{f['miktar']}")
                 for x in sonuc["istasyon_emirleri"]:
+                    if x.get("sadece_ihtiyac"):
+                        self.stdout.write(f"   İSTASYON EMRİ {x['no']} {x['operasyon']}: planlanan {x['once']} DEĞİŞMEZ, ihtiyaç +{x['ihtiyac_ek']} (mevcut plan fazlasından)")
+                        continue
                     self.stdout.write(f"   İSTASYON EMRİ {x['no']} {x['operasyon']}: planlanan {x['once']} → {x['sonra']} (+{x['ek']}){' YENİ' if x['yeni'] else ''}"
                                       f" {x['durum_once'] or '-'} → {x['durum_sonra']}{' FASON' if x['fason'] else ''}")
                 for y in sonuc.get("yaprak_eksik", []):
