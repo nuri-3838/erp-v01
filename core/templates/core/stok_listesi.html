@@ -4,204 +4,233 @@
 {% block sayfa_adi %}Stoklar{% endblock %}
 
 {% block content %}
+{% comment %}2026-10-22 kullanılabilirlik düzenlemesi (yalnız görünüm): kompakt satır, 7 sütun, sabit sekme/süzgeç çubuğu + sabit başlık, sunucu tarafı süzgeç/sıralama/sayfalama (URL'de), dar ekranda kart görünümü.{% endcomment %}
 <style>
-  .stk-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  :root { --stk-ust-yuk: 60px; --stk-sabit-yuk: 0px; }
+  .stk-ust { display:flex; align-items:center; justify-content:space-between; gap:.8rem; flex-wrap:wrap; margin-bottom:.7rem; }
+  .stk-ust .ust-baslik { margin:0; }
+  .stk-ust-dugmeler { display:flex; gap:.5rem; flex-wrap:wrap; }
 
-  .stk-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);
-    border-radius:18px; padding:1rem 1.1rem 1.1rem; margin-bottom:1.2rem; }
+  /* ---- sabit çubuk: sekmeler + süzgeçler ---- */
+  .stk-sabit { position:sticky; top:var(--stk-ust-yuk); z-index:25; padding:.5rem .1rem .55rem; margin:0 0 .5rem;
+    background:rgba(243,246,251,.96); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border-bottom:1px solid var(--cizgi); }
+  .stk-r1 { display:flex; align-items:center; justify-content:space-between; gap:.4rem 1rem; flex-wrap:wrap; margin-bottom:.5rem; }
+  .stk-sekmeler { display:flex; gap:.3rem; flex-wrap:wrap; }
+  .stk-secenekler { display:flex; gap:.3rem 1rem; flex-wrap:wrap; align-items:center; }
+  .stk-secenekler .secenek { display:inline-flex; align-items:center; gap:.35rem; font-size:.84rem; font-weight:600; color:var(--metin); text-transform:none; white-space:nowrap; cursor:pointer; }
+  .stk-sekmeler a { display:inline-flex; align-items:center; gap:.4rem; padding:.34rem .8rem; border-radius:999px; text-decoration:none; font-size:.86rem; font-weight:650;
+    color:var(--lacivert-acik); border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .stk-sekmeler a:hover { border-color:var(--turuncu); }
+  .stk-sekmeler a.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; }
+  .stk-sekmeler .sayi { font-size:.74rem; font-weight:700; opacity:.75; }
+  .stk-filtre { display:flex; align-items:center; gap:.5rem .8rem; flex-wrap:wrap; }
+  .stk-filtre input[type=text], .stk-filtre select { min-height:36px; padding:.25rem .65rem; border-radius:10px; border:1px solid var(--cizgi-koyu);
+    background:rgba(255,255,255,.92); font-size:.86rem; color:var(--metin); box-sizing:border-box; }
+  .stk-filtre input[type=text] { flex:1 1 14rem; min-width:10rem; max-width:26rem; }
+  .stk-filtre select { max-width:17rem; }
+  .stk-filtre input:focus, .stk-filtre select:focus { outline:none; border-color:var(--turuncu); }
+  .stk-filtre .btn { min-height:36px; padding:.25rem .9rem; font-size:.86rem; }
+  .stk-mobil-sirala { display:none; }
+  .stk-sayac { font-size:.82rem; color:var(--metin-soluk); margin:.1rem 0 .4rem; }
 
-  .stk-arama-cubuk { display:flex; align-items:flex-end; gap:.7rem; flex-wrap:wrap; }
-  .stk-alan-grup { display:flex; flex-direction:column; gap:.3rem; }
-  .stk-alan-grup label { font-size:.72rem; font-weight:700; letter-spacing:.03em;
-    text-transform:uppercase; color:var(--metin-soluk); }
-  .stk-alan-grup select { min-height:46px; padding:.4rem .85rem; border-radius:14px;
-    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.9); font-size:.9rem;
-    color:var(--metin); max-width:18rem; }
-  .stk-alan-grup select:focus { outline:none; border-color:var(--turuncu); }
-
-  .stk-arama-kutu { position:relative; flex:1 1 18rem; }
-  .stk-arama-kutu input { width:100%; min-height:46px; padding:.6rem 1rem .6rem 2.5rem;
-    border:1px solid var(--cizgi-koyu); border-radius:14px; background:rgba(255,255,255,.9);
-    font-size:.95rem; transition:border-color .15s, box-shadow .15s; box-sizing:border-box; }
-  .stk-arama-kutu input:focus { outline:none; border-color:var(--turuncu);
-    box-shadow:0 0 0 3.5px rgba(240,124,0,.16); }
-  .stk-arama-ikon { position:absolute; left:.85rem; bottom:.72rem; font-size:1rem; opacity:.55;
-    pointer-events:none; }
-  .stk-arama-temizle { display:none; }
-  .stk-arama-temizle.gorunur { display:inline-flex; }
-  .stk-btn-cubuk { display:flex; gap:.6rem; margin-left:auto; }
-
-  .stk-hucre { display:flex; align-items:center; gap:.75rem; }
-  .stk-ikon { width:40px; height:40px; border-radius:12px; flex:0 0 auto; display:grid; place-items:center;
-    font-size:1.1rem; background:linear-gradient(135deg, rgba(33,56,95,.14), rgba(33,56,95,.06));
-    border:1px solid rgba(33,56,95,.08); overflow:hidden; }
-  .stk-ikon.gorsel-var { background:#fff; padding:3px; }
-  .stk-ikon img { max-width:100%; max-height:100%; object-fit:contain; }
-  .stk-hucre .ad { font-weight:650; line-height:1.25; color:var(--metin); }
-  .stk-hucre .ad a { color:inherit; text-decoration:none; }
-  .stk-hucre .kod { font-size:.78rem; color:var(--metin-soluk); font-family:"Cascadia Mono",Consolas,monospace; margin-top:.1rem; }
-
-  #stk-tablo td { padding-top:.85rem; padding-bottom:.85rem; }
+  /* ---- tablo (yatay kaydırma yok; sticky başlık için kapsayıcı overflow'suz) ---- */
+  #stk-tablo { overflow:visible; border-radius:0; table-layout:fixed; }
+  #stk-tablo thead th { top:calc(var(--stk-ust-yuk) + var(--stk-sabit-yuk)); z-index:15; padding:.5rem .7rem; white-space:nowrap; background:rgba(238,242,249,.98);
+    box-shadow:0 1px 0 rgba(120,130,160,.25); }
+  #stk-tablo thead a { color:inherit; text-decoration:none; }
+  #stk-tablo thead a:hover { color:var(--turuncu-koyu); }
+  #stk-tablo thead a.aktif { color:var(--turuncu-koyu); }
+  #stk-tablo .alt-sirala { font-weight:600; letter-spacing:0; margin-left:.3rem; opacity:.85; }
+  #stk-tablo td { padding:.34rem .7rem; font-size:.88rem; height:38px; }
   #stk-tablo tbody tr { cursor:pointer; }
   #stk-tablo tbody tr:hover td { background:rgba(240,124,0,.06); }
-  #stk-tablo tbody tr:active td { background:rgba(240,124,0,.1); }
-  .stk-ok { color:var(--metin-soluk); font-size:1.1rem; opacity:.6; text-align:right; }
-  #stk-tablo tbody tr:hover .stk-ok { color:var(--turuncu-koyu); opacity:1; }
-
-  .stk-satir[hidden] { display:none; }
+  .stk-ad { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; color:var(--metin); text-decoration:none; }
+  .stk-kod { font-family:"Cascadia Mono",Consolas,monospace; font-size:.78rem; font-weight:500; color:var(--metin-soluk); margin-right:.5rem; }
+  .stk-ik { font-size:.72rem; margin-right:.35rem; opacity:.8; }
+  td.c-kat { color:var(--metin-soluk); font-size:.8rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  td.c-birim { white-space:nowrap; color:var(--metin-soluk); }
   .stk-eksi { color:var(--hata); font-weight:700; }
-  .stk-ayr { position:relative; }
-  .stk-ayr-dugme { border:none; background:none; font:inherit; color:var(--turuncu-koyu); cursor:pointer; text-decoration:underline dotted; }
-  .stk-ayr-pop { position:absolute; right:0; top:100%; z-index:20; min-width:16rem; text-align:left; font-family:inherit; font-size:.82rem;
-    background:var(--kart, #fff); border:1px solid rgba(0,0,0,.15); border-radius:8px; padding:.5rem .7rem; box-shadow:0 6px 18px rgba(0,0,0,.18); }
-  .stk-ayr-pop[hidden] { display:none; }
-  .stk-ayr-pop div { padding:.15rem 0; }
-  .stk-mamul-etiket { display:flex; align-items:center; gap:.4rem; font-weight:600; padding:.55rem 0; }
+  .stk-durum { display:flex; gap:.25rem .3rem; flex-wrap:wrap; align-items:center; }
+  .stk-durum .rozet { font-size:.74rem; white-space:nowrap; }
   .stk-kritik-rozet { background:#b1122c; color:#fff; }
-  .stk-oneri { white-space:nowrap; font-size:.8rem; }
-  .stk-bos-js { display:none; }
-  .stk-bos-js.gorunur { display:table-row; }
+  .stk-oneri { white-space:nowrap; font-size:.76rem; padding:.12rem .55rem; min-height:auto; }
+
+  /* ---- açılır kırılım (mevcut: varyant, ayrılan: ÜS) ---- */
+  .stk-pop-kap { position:relative; display:inline-block; }
+  .stk-pop-dugme { border:none; background:none; box-shadow:none; border-radius:0; min-height:0; height:auto; margin:0; font:inherit; color:var(--turuncu-koyu); cursor:pointer;
+    text-decoration:underline dotted; padding:0; }
+  .stk-pop { position:absolute; right:0; top:100%; z-index:40; min-width:16rem; text-align:left; font-family:inherit; font-size:.82rem; font-weight:500; white-space:normal;
+    background:var(--kart, #fff); border:1px solid rgba(0,0,0,.15); border-radius:8px; padding:.5rem .7rem; box-shadow:0 6px 18px rgba(0,0,0,.18); }
+  .stk-pop[hidden] { display:none; }
+  .stk-pop div { padding:.15rem 0; display:flex; justify-content:space-between; gap:.8rem; }
+
+  .stk-bos { text-align:center; padding:1.6rem 0; }
+
+  /* ---- dar ekran: kart görünümü, yatay kaydırma yok ---- */
+  @media (max-width: 760px) {
+    :root { --stk-ust-yuk: 0px; }
+    .stk-sabit { position:static; backdrop-filter:none; background:transparent; border-bottom:none; padding-top:0; }
+    .stk-sekmeler { flex-wrap:nowrap; overflow-x:auto; padding-bottom:.2rem; -webkit-overflow-scrolling:touch; }
+    .stk-sekmeler a { flex:0 0 auto; }
+    .stk-filtre input[type=text], .stk-filtre select[name=kategori] { flex:1 1 100%; max-width:none; }
+    .stk-filtre select { flex:1 1 calc(50% - .3rem); max-width:none; min-width:0; }
+    .stk-ust-dugmeler .dugme { padding:.4rem .85rem; font-size:.85rem; min-height:auto; }
+    .stk-mobil-sirala { display:contents; }
+    .stk-secenekler { gap:.3rem .9rem; }
+    #stk-tablo, #stk-tablo tbody { display:block; background:transparent; }
+    #stk-tablo thead { display:none; }
+    #stk-tablo tr.stk-satir { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.15rem .6rem; padding:.6rem .75rem; margin:0 0 .55rem;
+      background:#fff; border:1px solid var(--cizgi); border-radius:12px; box-shadow:var(--golge-sm); }
+    #stk-tablo td { display:block; padding:0; border:none; height:auto; background:transparent !important; min-width:0; }
+    #stk-tablo td.c-stok { grid-column:1 / -1; width:auto; max-width:none; }
+    .stk-ad { white-space:normal; font-size:.95rem; }
+    .stk-kod { display:block; margin:0 0 .1rem; }
+    #stk-tablo td.c-kat { grid-column:1 / span 2; }
+    #stk-tablo td.c-birim { grid-column:3; text-align:right; }
+    #stk-tablo td.sag { text-align:left; padding-top:.35rem; }
+    #stk-tablo td[data-e]::before { content:attr(data-e); display:block; font-family:inherit; font-size:.64rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); }
+    #stk-tablo td.c-durum { grid-column:1 / -1; padding-top:.35rem; }
+    #stk-tablo colgroup { display:none; }
+    #stk-tablo td.c-durum:empty { display:none; }
+    .stk-pop { right:auto; left:0; min-width:14rem; max-width:80vw; }
+    #stk-tablo tr.stk-bos-satir { display:block; border:none; box-shadow:none; background:transparent; }
+  }
 </style>
 
 <div class="stk-ust">
   <h1 class="ust-baslik"><span class="emoji">📦</span>Stoklar</h1>
-  <a class="dugme" href="{% url 'core:stok_degerleme_raporu' %}">Değerleme Raporu</a>
-  <a class="dugme" href="{% url 'core:stok_ekle' %}">+ Yeni Stok</a>
+  <div class="stk-ust-dugmeler">
+    <a class="dugme" href="{% url 'core:stok_degerleme_raporu' %}">Değerleme Raporu</a>
+    <a class="dugme" href="{% url 'core:stok_ekle' %}">+ Yeni Stok</a>
+  </div>
 </div>
 
-<div class="stk-panel">
-  <form method="get" class="stk-arama-cubuk" id="stk-arama-form">
-    <div class="stk-alan-grup stk-arama-kutu">
-      <label for="stk-arama">Ara</label>
-      <span class="stk-arama-ikon">🔍</span>
-      <input type="text" id="stk-arama" name="ara" value="{{ ara }}"
-             placeholder="Kod, ad veya kategori ara…" autocomplete="off">
+<div class="stk-sabit" id="stk-sabit">
+  <div class="stk-r1">
+    <nav class="stk-sekmeler" aria-label="Stok grupları">
+      {% for t in sekmeler %}<a href="{{ t.url }}" class="{% if t.aktif %}aktif{% endif %}"{% if t.aktif %} aria-current="page"{% endif %}>{{ t.ad }} <span class="sayi">{{ t.sayi }}</span></a>{% endfor %}
+    </nav>
+    <div class="stk-secenekler">
+      <label class="secenek"><input type="checkbox" name="kritik" value="1" form="stk-form" class="stk-oto" {% if kritik %}checked{% endif %}> Yalnız kritik{% if kritik %} ({{ kritik_sayisi }}){% endif %}</label>
+      <label class="secenek"><input type="checkbox" name="sifir" value="1" form="stk-form" class="stk-oto" {% if sifir_gizle %}checked{% endif %}> Stoku sıfır olanları gizle</label>
+      <label class="secenek"><input type="checkbox" name="hareketli" value="1" form="stk-form" class="stk-oto" {% if hareketli %}checked{% endif %}> Son 30 günde hareket görenler</label>
     </div>
-    <div class="stk-alan-grup">
-      <label for="stk-kategori">Kategori</label>
-      <select id="stk-kategori" name="kategori">
-        <option value="">Tüm Kategoriler</option>
-        {% for k in kategoriler %}
-          <option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ust.ad }} › {{ k.ad }}</option>
-        {% endfor %}
+  </div>
+  <form method="get" class="stk-filtre" id="stk-form">
+    {% if secili_grup %}<input type="hidden" name="grup" value="{{ secili_grup }}">{% endif %}
+    {% if mamul %}<input type="hidden" name="mamul" value="1">{% endif %}
+    <input type="text" id="stk-arama" name="ara" value="{{ ara }}" placeholder="🔍 Kod, ad veya kategori ara…" autocomplete="off" aria-label="Ara">
+    <select name="kategori" class="stk-oto" aria-label="Kategori">
+      <option value="">Tüm kategoriler</option>
+      {% for k in kategoriler %}<option value="{{ k.pk }}" {% if secili_kategori == k.pk|stringformat:"s" %}selected{% endif %}>{{ k.ust.ad }} › {{ k.ad }}</option>{% endfor %}
+    </select>
+    <span class="stk-mobil-sirala">
+      <select name="sirala" class="stk-oto" aria-label="Sırala">
+        {% for k, ad in sirala_secenekleri %}<option value="{{ k }}" {% if sirala == k %}selected{% endif %}>Sırala: {{ ad }}</option>{% endfor %}
       </select>
-    </div>
-    <div class="stk-alan-grup">
-      <label for="stk-mamul">Hızlı filtre</label>
-      <label class="stk-mamul-etiket"><input type="checkbox" id="stk-mamul" name="mamul" value="1" {% if mamul %}checked{% endif %} onchange="this.form.submit()"> Yalnız mamuller (152)</label>
-      <label class="stk-mamul-etiket"><input type="checkbox" id="stk-kritik" name="kritik" value="1" {% if kritik %}checked{% endif %} onchange="this.form.submit()"> Yalnız kritik{% if kritik %} ({{ kritik_sayisi }}){% endif %}</label>
-    </div>
-    <div class="stk-btn-cubuk">
-      <button type="submit" class="birincil">Filtrele</button>
-      <a class="iptal-bag stk-arama-temizle{% if ara or secili_kategori or mamul or kritik %} gorunur{% endif %}" id="stk-arama-temizle"
-         href="{% url 'core:stoklar' %}">Temizle</a>
-    </div>
+      <select name="yon" class="stk-oto" aria-label="Sıralama yönü">
+        <option value="asc" {% if yon == "asc" %}selected{% endif %}>Artan ▲</option><option value="desc" {% if yon == "desc" %}selected{% endif %}>Azalan ▼</option>
+      </select>
+    </span>
+    <select name="boyut" class="stk-oto" aria-label="Sayfa başına kayıt">
+      {% for b in boyutlar %}<option value="{{ b }}" {% if boyut == b %}selected{% endif %}>{{ b }} / sayfa</option>{% endfor %}
+    </select>
+    <button type="submit" class="birincil btn">Filtrele</button>
+    {% if filtre_aktif %}<a class="iptal-bag" href="{% url 'core:stoklar' %}{% if secili_grup %}?grup={{ secili_grup }}{% endif %}">Temizle</a>{% endif %}
   </form>
 </div>
 
-<p class="sayfa-alt"><span id="stk-sayac-sayi">{{ stoklar|length }}</span> stok kartı · kod otomatik (ÜST-ALT-sıra).
-  Muhasebe hesapları bağlı kategorinin fatura-tipi haritasından gelir.
-  Mevcut miktar tüm depoların toplamıdır (üretim birimi cinsinden).</p>
+<p class="stk-sayac"><strong>{{ toplam }}</strong> stok kartı{% if sayfa.paginator.num_pages > 1 %} · sayfa {{ sayfa.number }} / {{ sayfa.paginator.num_pages }}{% endif %}
+  · mevcut miktar tüm depoların toplamıdır (üretim birimi cinsinden). Gelecek/bekleyen tüketim ve kritik ayrıntısı Durum rozetlerinin üzerine gelince görünür.</p>
 
-<div class="tablo-kapsayici genis">
 <table id="stk-tablo">
+  <colgroup><col><col style="width:9rem"><col style="width:3.2rem"><col style="width:5.8rem"><col style="width:5.8rem"><col style="width:7rem"><col style="width:15rem"></colgroup>
   <thead>
     <tr>
-      <th>Stok</th><th>Kategori</th><th>Üretim Br.</th><th class="sag">Mevcut Miktar</th><th class="sag">Ayrılan</th><th class="sag">Kullanılabilir</th>
-      <th class="sag" title="Açık satınalma siparişleri + açık istasyon emirlerinin kalan çıktısı">Gelecek</th>
-      <th class="sag" title="Açık istasyon emirlerinin henüz tüketmediği, ayrılmamış ihtiyacı">Bekleyen Tük.</th>
-      <th class="sag">Kritik</th><th class="sag" title="kritik − (kullanılabilir + gelecek − bekleyen)">Eksik</th><th>Öneri</th><th></th>
+      <th class="c-stok">Stok <span class="alt-sirala"><a href="{{ sutunlar.kod.url }}" class="{% if sutunlar.kod.aktif %}aktif{% endif %}">Kod {{ sutunlar.kod.ok }}</a> ·
+        <a href="{{ sutunlar.ad.url }}" class="{% if sutunlar.ad.aktif %}aktif{% endif %}">Ad {{ sutunlar.ad.ok }}</a></span></th>
+      <th>Kategori</th><th>Birim</th>
+      <th class="sag"><a href="{{ sutunlar.mevcut.url }}" class="{% if sutunlar.mevcut.aktif %}aktif{% endif %}">Mevcut {{ sutunlar.mevcut.ok }}</a></th>
+      <th class="sag">Ayrılan</th>
+      <th class="sag"><a href="{{ sutunlar.kullanilabilir.url }}" class="{% if sutunlar.kullanilabilir.aktif %}aktif{% endif %}">Kullanılabilir {{ sutunlar.kullanilabilir.ok }}</a></th>
+      <th>Durum</th>
     </tr>
   </thead>
   <tbody>
     {% for s in stoklar %}
-      <tr class="stk-satir" data-kategori="{{ s.kategori_id }}" data-href="{% url 'core:stok_detay' s.pk %}">
-        <td>
-          <div class="stk-hucre">
-            <span class="stk-ikon {% if s.gorsel %}gorsel-var{% endif %}">{% if s.gorsel %}<img src="{{ s.gorsel.url }}" alt="">{% else %}📦{% endif %}</span>
-            <div>
-              <div class="ad"><a href="{% url 'core:stok_detay' s.pk %}">{{ s.ad }}</a>{% if s.varyantli %} <span class="rozet rozet-notr" title="Varyantlı kart: stok/maliyet varyant bazında (kart detayında kırılım)">🔀 varyantlı</span>{% endif %}{% if s.kritik and s.kritik.kritik_mi %} <span class="rozet rozet-pasif stk-kritik-rozet" title="Kalan ({{ s.kritik.kalan|tr_kur:3 }}) kritik seviyenin ({{ s.kritik.kritik|tr_kur:3 }}) altında">⚠ kritik</span>{% endif %}{% if s.stoklu_uretim %} <span class="rozet rozet-notr" title="Stoklu üretim: başka ÜS'nin zincirinde planlanmaz, stoktan ayrılır">📦 stoklu</span>{% endif %}</div>
-              <div class="kod">{{ s.kod }}</div>
-            </div>
-          </div>
-        </td>
-        <td><span class="rozet rozet-notr">{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}</span></td>
-        <td>{{ s.uretim_birimi.kisa_ad }}</td>
-        <td class="sag mono" data-arama-disi>{% if s.hizmet %}<span class="rozet rozet-notr" title="Hizmet kartı — stok tutulmaz">Hizmet</span>{% else %}{{ s.eldeki|tr_kur:3 }}{% endif %}</td>
-        <td class="sag mono stk-ayr" data-arama-disi>{% if s.hizmet or not s.ayrilan %}<span class="pasif">—</span>{% else %}
-          <button type="button" class="stk-ayr-dugme" onclick="event.stopPropagation();var p=this.nextElementSibling;var ac=p.hidden;document.querySelectorAll('.stk-ayr-pop').forEach(function(x){x.hidden=true});p.hidden=!ac;">{{ s.ayrilan|tr_kur:3 }} ▾</button>
-          <div class="stk-ayr-pop" hidden onclick="event.stopPropagation()">
-            {% for d in s.ayirma_detay %}<div><a href="{% url 'core:uretim_emri_detay' d.emir.pk %}">{{ d.emir.no }}</a> · {{ d.musteri }} · <strong>{{ d.miktar|tr_kur:3 }}</strong></div>{% endfor %}
-          </div>{% endif %}</td>
-        <td class="sag mono{% if not s.hizmet and s.kullanilabilir < 0 %} stk-eksi{% endif %}" data-arama-disi>{% if s.hizmet %}<span class="pasif">—</span>{% else %}{{ s.kullanilabilir|tr_kur:3 }}{% endif %}</td>
-        {% if s.hizmet or not s.gelecek %}
-          <td class="sag" data-arama-disi><span class="pasif">—</span></td><td class="sag" data-arama-disi><span class="pasif">—</span></td>
-        {% else %}
-          <td class="sag mono" data-arama-disi title="satınalma {{ s.gelecek.satinalma|tr_kur:3 }} · üretim {{ s.gelecek.uretim|tr_kur:3 }} · fason {{ s.gelecek.fason|tr_kur:3 }}{% for sp in s.gelecek.siparisler %} · {{ sp.siparis.belge_no }} {{ sp.miktar|tr_kur:3 }}{% if sp.varyant_etiketi %} [{{ sp.varyant_etiketi }}]{% endif %}{% endfor %}">{% if s.gelecek.toplam %}{{ s.gelecek.toplam|tr_kur:3 }}{% else %}<span class="pasif">—</span>{% endif %}</td>
-          <td class="sag mono" data-arama-disi>{% if s.gelecek.bekleyen %}{{ s.gelecek.bekleyen|tr_kur:3 }}{% else %}<span class="pasif">—</span>{% endif %}</td>
-        {% endif %}
-        {% if s.kritik %}
-          <td class="sag mono" data-arama-disi>{{ s.kritik.kritik|tr_kur:3 }}</td>
-          <td class="sag mono{% if s.kritik.kritik_mi %} stk-eksi{% endif %}" data-arama-disi>{% if s.kritik.kritik_mi %}{{ s.kritik.eksik|tr_kur:3 }}{% else %}<span class="pasif">—</span>{% endif %}</td>
-          <td data-arama-disi onclick="event.stopPropagation()">{% if s.kritik.kritik_mi and s.kritik.oneri.tur %}{% if s.kritik.oneri.url %}<a class="dugme-ikincil stk-oneri" href="{{ s.kritik.oneri.url }}">{{ s.kritik.oneri.metin }}{% if s.kritik.oneri.tur == "URETIM" %} ({{ s.kritik.oneri.miktar|tr_kur:3 }}){% endif %}</a>{% else %}{{ s.kritik.oneri.metin }}{% endif %}{% else %}<span class="pasif">—</span>{% endif %}</td>
-        {% else %}
-          <td class="sag" data-arama-disi><span class="pasif">—</span></td><td class="sag" data-arama-disi><span class="pasif">—</span></td><td data-arama-disi><span class="pasif">—</span></td>
-        {% endif %}
-        <td class="stk-ok">›</td>
+      <tr class="stk-satir" data-href="{% url 'core:stok_detay' s.pk %}">
+        <td class="c-stok"><a class="satir-bag stk-ad" href="{% url 'core:stok_detay' s.pk %}" title="{{ s.kod }} — {{ s.ad }}"><span class="stk-kod">{{ s.kod }}</span>{% if s.varyantli %}<span class="stk-ik" title="Varyantlı kart: stok/maliyet varyant bazında">🔀</span>{% endif %}{% if s.stoklu_uretim %}<span class="stk-ik" title="Stoklu üretim: başka ÜS zincirinde planlanmaz, stoktan ayrılır">📦 stoklu</span>{% endif %}{{ s.ad }}</a></td>
+        <td class="c-kat" title="{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}">{{ s.kategori.ad }}</td>
+        <td class="c-birim">{{ s.uretim_birimi.kisa_ad }}</td>
+        <td class="sag mono" data-e="Mevcut">{% if s.hizmet %}<span class="rozet rozet-notr" title="Hizmet kartı — stok tutulmaz">Hizmet</span>
+          {% elif s.eldeki_varyantlar %}<span class="stk-pop-kap"><button type="button" class="stk-pop-dugme" aria-expanded="false" title="Varyant kırılımı">{{ s.eldeki|tr_kur:3 }} ▾</button>
+            <span class="stk-pop" hidden>{% for v in s.eldeki_varyantlar %}<div><span>{{ v.etiket }}</span><strong>{{ v.miktar|tr_kur:3 }}</strong></div>{% endfor %}</span></span>
+          {% else %}{{ s.eldeki|tr_kur:3 }}{% endif %}</td>
+        <td class="sag mono" data-e="Ayrılan">{% if s.hizmet or not s.ayrilan %}<span class="pasif">—</span>{% else %}
+          <span class="stk-pop-kap"><button type="button" class="stk-pop-dugme" aria-expanded="false" title="Açık üretim siparişlerine ayrılan">{{ s.ayrilan|tr_kur:3 }} ▾</button>
+            <span class="stk-pop" hidden>{% for d in s.ayirma_detay %}<div><span><a href="{% url 'core:uretim_emri_detay' d.emir.pk %}">{{ d.emir.no }}</a> · {{ d.musteri }}</span><strong>{{ d.miktar|tr_kur:3 }}</strong></div>{% endfor %}</span></span>{% endif %}</td>
+        <td class="sag mono{% if not s.hizmet and s.kullanilabilir < 0 %} stk-eksi{% endif %}" data-e="Kullanılabilir">{% if s.hizmet %}<span class="pasif">—</span>{% else %}{{ s.kullanilabilir|tr_kur:3 }}{% endif %}</td>
+        <td class="c-durum" onclick="event.stopPropagation()"><div class="stk-durum">
+          {% if s.kritik and s.kritik.kritik_mi %}<span class="rozet stk-kritik-rozet" title="Kalan ({{ s.kritik.kalan|tr_kur:3 }}) kritik seviyenin ({{ s.kritik.kritik|tr_kur:3 }}) altında — kalan = kullanılabilir + gelecek − bekleyen tüketim">⚠ Kritik</span>
+            <span class="rozet rozet-pasif" title="kritik − (kullanılabilir + gelecek − bekleyen tüketim)">Eksik {{ s.kritik.eksik|tr_kur:3 }}</span>{% endif %}
+          {% if not s.hizmet and s.gelecek and s.gelecek.toplam %}<span class="rozet rozet-aktif" title="Açık satınalma siparişleri + açık istasyon emirleri + fason: satınalma {{ s.gelecek.satinalma|tr_kur:3 }} · üretim {{ s.gelecek.uretim|tr_kur:3 }} · fason {{ s.gelecek.fason|tr_kur:3 }}{% if s.gelecek.bekleyen %} · bekleyen tüketim {{ s.gelecek.bekleyen|tr_kur:3 }}{% endif %}{% for sp in s.gelecek.siparisler %} · {{ sp.siparis.belge_no }} {{ sp.miktar|tr_kur:3 }}{% if sp.varyant_etiketi %} [{{ sp.varyant_etiketi }}]{% endif %}{% endfor %}">Gelecek {{ s.gelecek.toplam|tr_miktar_sade }}</span>{% endif %}
+          {% if s.kritik and s.kritik.kritik_mi and s.kritik.oneri.tur %}{% if s.kritik.oneri.url %}<a class="dugme-ikincil stk-oneri" href="{{ s.kritik.oneri.url }}">Öneri: {{ s.kritik.oneri.metin }}{% if s.kritik.oneri.tur == "URETIM" %} ({{ s.kritik.oneri.miktar|tr_kur:3 }}){% endif %}</a>{% else %}<span class="rozet rozet-notr">Öneri: {{ s.kritik.oneri.metin }}</span>{% endif %}{% endif %}
+        </div></td>
       </tr>
     {% empty %}
-      <tr style="cursor:default"><td colspan="12" class="yardim" style="text-align:center;padding:1.6rem 0">
+      <tr class="stk-bos-satir" style="cursor:default"><td colspan="7" class="yardim stk-bos">
         {% if kritik %}✅ Kritik seviyenin altında stok yok.
-        {% elif ara or secili_kategori %}🔍 Bu süzgeçle eşleşen stok yok.
+        {% elif filtre_aktif %}🔍 Bu süzgeçle eşleşen stok yok.
         {% else %}📦 Henüz stok yok. “+ Yeni Stok” ile ekleyin.
           (Önce en az bir <strong>alt kategori</strong> tanımlı olmalı.){% endif %}</td></tr>
     {% endfor %}
-    <tr class="stk-bos-js" style="cursor:default"><td colspan="12" class="yardim" style="text-align:center;padding:1.6rem 0">
-      🔍 Bu süzgeçle eşleşen stok yok.</td></tr>
   </tbody>
 </table>
+
+{% if sayfa.paginator.num_pages > 1 %}
+<div class="sayfalama" aria-label="Sayfalama">
+  {% if sayfa.has_previous %}<a href="{{ onceki_url }}">‹ Önceki</a>{% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  {% for n in sayfa_numaralari %}{% if n %}{% if n.simdiki %}<span class="sayfalama-bilgi"><strong>{{ n.no }}</strong></span>{% else %}<a href="{{ n.url }}">{{ n.no }}</a>{% endif %}{% else %}<span class="pasif">…</span>{% endif %}{% endfor %}
+  {% if sayfa.has_next %}<a href="{{ sonraki_url }}">Sonraki ›</a>{% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+  <span class="sayfalama-bilgi">{{ sayfa.start_index }}–{{ sayfa.end_index }} / {{ toplam }}</span>
 </div>
+{% endif %}
 
 <script>
 (function(){
-  var girdi = document.getElementById('stk-arama');
-  var kategoriSecim = document.getElementById('stk-kategori');
-  var satirlar = Array.prototype.slice.call(document.querySelectorAll('.stk-satir'));
-  var bosSatir = document.querySelector('.stk-bos-js');
-  var sayacSayi = document.getElementById('stk-sayac-sayi');
-  var temizle = document.getElementById('stk-arama-temizle');
-  if(!satirlar.length) return;
-
-  // Aranabilir metin satırın kendi görünen içeriğinden türetilir (TR-uyumlu küçük harf,
-  // sunucudan gelen |lower filtresine güvenilmez -- Python .lower() İ/I harflerini
-  // yanlış çevirir, arama sorgusundaki toLocaleLowerCase('tr') ile eşleşmeyebilir).
-  // data-arama-disi hücreler (mevcut miktar) hariç: rakam yazan kod aramasına miktar
-  // metni karışmasın.
-  satirlar.forEach(function(tr){
-    tr.dataset.arama = Array.prototype.slice.call(tr.cells)
-      .filter(function(td){ return !td.hasAttribute('data-arama-disi'); })
-      .map(function(td){ return td.textContent; })
-      .join(' ').toLocaleLowerCase('tr');
-  });
-
-  function filtrele(){
-    var q = (girdi ? girdi.value : '').trim().toLocaleLowerCase('tr');
-    var kat = kategoriSecim ? kategoriSecim.value : '';
-    var n = 0;
-    satirlar.forEach(function(tr){
-      var metinUyumlu = !q || tr.dataset.arama.indexOf(q) > -1;
-      var katUyumlu = !kat || tr.dataset.kategori === kat;
-      var gorunsun = metinUyumlu && katUyumlu;
-      tr.hidden = !gorunsun;
-      if(gorunsun) n++;
-    });
-    if(bosSatir) bosSatir.classList.toggle('gorunur', n === 0 && !!(q || kat));
-    if(sayacSayi) sayacSayi.textContent = n;
-    if(temizle) temizle.classList.toggle('gorunur', !!(q || kat));
+  var form = document.getElementById('stk-form');
+  var sabit = document.getElementById('stk-sabit');
+  var kok = document.documentElement;
+  // sabit çubuk yüksekliklerini CSS değişkenine yaz: üst çubuk + süzgeç çubuğu → sabit tablo başlığının konumu
+  function olc(){
+    var ust = document.querySelector('.ust-cubuk');
+    var mobil = window.matchMedia('(max-width: 760px)').matches;
+    kok.style.setProperty('--stk-ust-yuk', mobil ? '0px' : ((ust ? ust.offsetHeight : 60) + 'px'));
+    kok.style.setProperty('--stk-sabit-yuk', mobil || !sabit ? '0px' : (sabit.offsetHeight + 'px'));
   }
-  if(girdi) girdi.addEventListener('input', filtrele);
-  if(kategoriSecim) kategoriSecim.addEventListener('change', filtrele);
-  if((girdi && girdi.value) || (kategoriSecim && kategoriSecim.value)) filtrele();
+  olc();
+  window.addEventListener('resize', olc);
+  if(window.ResizeObserver && sabit){ new ResizeObserver(olc).observe(sabit); }
+  // süzgeç değişince hemen uygula (sayfa 1'e döner)
+  Array.prototype.forEach.call(document.querySelectorAll('.stk-oto'), function(el){
+    el.addEventListener('change', function(){ form.submit(); });
+  });
+  // açılır kırılım (mevcut: varyant, ayrılan: ÜS): tek açık, dışarı tıklayınca kapanır
+  document.addEventListener('click', function(e){
+    var d = e.target.closest ? e.target.closest('.stk-pop-dugme') : null;
+    var acik = document.querySelectorAll('.stk-pop:not([hidden])');
+    if(d){
+      e.stopPropagation();
+      var pop = d.nextElementSibling;
+      var ac = pop.hidden;
+      Array.prototype.forEach.call(acik, function(x){ x.hidden = true; x.previousElementSibling.setAttribute('aria-expanded', 'false'); });
+      pop.hidden = !ac;
+      d.setAttribute('aria-expanded', ac ? 'true' : 'false');
+      return;
+    }
+    if(e.target.closest && e.target.closest('.stk-pop')){ e.stopPropagation(); return; }
+    Array.prototype.forEach.call(acik, function(x){ x.hidden = true; x.previousElementSibling.setAttribute('aria-expanded', 'false'); });
+  }, true);
 })();
 </script>
 {% endblock %}

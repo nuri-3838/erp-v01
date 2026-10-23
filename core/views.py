@@ -1019,11 +1019,54 @@ def yedek_indir(request, ad):
 
 
 # --- STOKLAR modülü --------------------------------------------------------
+STOK_SIRALAR = ("kod", "ad", "mevcut", "kullanilabilir")
+STOK_SAYFA_BOYUTLARI = (25, 50, 100)
+STOK_GRUP_ETIKET = (("HAMMADDE", "Hammadde"), ("YARI MAMUL", "Yarı mamul"), ("MAMUL", "Mamul"), ("SARF", "Sarf"))      # üst kategori adı (öneki) → sekme adı; sıra da bu
+
+
+def _stok_grup_sirasi(ad: str) -> tuple:
+    """Üst kategori adı → (sıra, sekme adı): bilinen gruplar (HAMMADDE, YARI MAMULLER, MAMULLER, SARF) sırayla ve düzgün yazımla; başka üst kategori sona, adıyla."""
+    buyuk = buyuk_harf_tr(ad or "")
+    for i, (onek, etiket) in enumerate(STOK_GRUP_ETIKET):
+        if buyuk.startswith(onek):
+            return i, etiket
+    return len(STOK_GRUP_ETIKET), (ad or "").capitalize()
+_TR_SIRA = {c: i for i, c in enumerate("ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ")}
+
+
+def _tr_anahtar(metin: str) -> list:
+    """Türkçe alfabe sırası için sıralama anahtarı (C < Ç, S < Ş …); bilinmeyen karakterler (rakam, işaret) önce."""
+    return [_TR_SIRA.get(c, -1) for c in buyuk_harf_tr(metin or "")]
+
+
+def _stok_sorgu_dizgesi(g, **ek) -> str:
+    """Stok listesi bağlantıları: mevcut süzgeç/sekme/sıralama/sayfa parametrelerini korur, ``ek`` ile değiştirir (boş değer parametreyi kaldırır)."""
+    d = {k: g.get(k) for k in ("ara", "kategori", "grup", "kritik", "sifir", "hareketli", "sirala", "yon", "boyut", "sayfa", "mamul") if g.get(k)}
+    for k, v in ek.items():
+        if v in (None, ""):
+            d.pop(k, None)
+        else:
+            d[k] = v
+    return "?" + urlencode(d) if d else "?"
+
+
 @ekran_gerekli("stoklar")
 def stoklar(request):
-    ara = (request.GET.get("ara") or "").strip()
-    kategori_id = request.GET.get("kategori") or ""
-    qs = stok_servis.aktif_stoklar()
+    """STOKLAR > Liste (2026-10-22 kullanılabilirlik düzenlemesi — yalnız görünüm): kompakt satır, Stok|Kategori|Birim|Mevcut|Ayrılan|Kullanılabilir|Durum, üst kategori
+    sekmeleri, süzgeçler (kritik, stoku sıfır olanları gizle, son 30 günde hareket), sütun başlığıyla sıralama, sayfalama (25/50/100) — hepsi URL'de. Sorgular sabit (yükleyici):
+    eldeki + varyant kırılımı TEK gruplu sorgu, ayırma tek sorgu; gelecek/ayırma dağılımı/kritik yalnız görünen sayfa için."""
+    g = request.GET
+    ara = (g.get("ara") or "").strip()
+    kategori_id = g.get("kategori") if (g.get("kategori") or "").isdigit() else ""
+    grup_id = g.get("grup") if (g.get("grup") or "").isdigit() else ""
+    mamul = g.get("mamul") == "1"
+    kritik = g.get("kritik") == "1"
+    sifir_gizle = g.get("sifir") == "1"
+    hareketli = g.get("hareketli") == "1"
+    sirala = g.get("sirala") if g.get("sirala") in STOK_SIRALAR else "kod"
+    yon = "desc" if g.get("yon") == "desc" else "asc"
+    boyut = int(g["boyut"]) if (g.get("boyut") or "").isdigit() and int(g["boyut"]) in STOK_SAYFA_BOYUTLARI else 50
+    qs = Stok.objects.filter(silindi=False).select_related("kategori", "kategori__ust", "uretim_birimi").order_by("kod")
     if ara:
         buyuk = buyuk_harf_tr(ara)
         qs = qs.filter(
@@ -1031,38 +1074,95 @@ def stoklar(request):
             | Q(kategori__ad__contains=buyuk) | Q(kategori__ust__ad__contains=buyuk))
     if kategori_id:
         qs = qs.filter(kategori_id=kategori_id)
-    mamul = request.GET.get("mamul") == "1"
     if mamul:
-        qs = qs.filter(kod__startswith="152-")               # yalnız mamuller (152 stok hesabı ailesi)
-    kritik = request.GET.get("kritik") == "1"
+        qs = qs.filter(kod__startswith="152-")               # eski bağlantılar (?mamul=1): yalnız mamuller (152 stok hesabı ailesi)
     if kritik:
         qs = qs.filter(kritik_stok__gt=0)                    # yalnız kritik eşiği olanlar; kalan < kritik süzgeci aşağıda (hesap sonrası)
-    # Filtre seçenekleri yalnız en az bir stokta fiilen kullanılan ALT kategorilerden
-    # oluşur (bkz. aday müşteri listesindeki aynı desen) — tüm kategori master verisini
-    # değil, ekrandaki gerçek veriyi yansıtır.
-    kategoriler = Kategori.objects.filter(
-        silindi=False, pk__in=stok_servis.aktif_stoklar().exclude(kategori=None).values("kategori_id")
-    ).select_related("ust").order_by("ust__ad", "ad")
-    stok_listesi = list(qs)
-    idler = [s.pk for s in stok_listesi]
-    eldeki = hareket_servis.toplu_eldeki(idler)
-    kul = stok_ayirma_servis.toplu_kullanilabilir(idler, eldeki=eldeki)         # mevcut ayırma/kullanılabilir hesabı (sabit sorgu)
-    ayirma_detay = _ayirma_detaylari(idler)                                      # ÜS bazında dağılım: tek sorgu
-    kritik_harita = kritik_stok_servis.hesapla(stok_listesi, kullanilabilir={pk: d["kullanilabilir"] for pk, d in kul.items()})
-    gelecek_harita = kritik_stok_servis.gelecek_haritasi(idler)                     # HER kart: satınalma (varyantlı, tek kaynak) + üretim + fason
-    for s in stok_listesi:
+    liste = list(qs)
+    idler = [s.pk for s in liste]
+    ev = hareket_servis.toplu_eldeki_varyant(idler)                                     # TEK gruplu sorgu: kart toplamı + varyant kırılımı birlikte
+    eldeki = {}
+    for (spk, _vpk), m in ev.items():
+        eldeki[spk] = eldeki.get(spk, hareket_servis.SIFIR) + m
+    kul = stok_ayirma_servis.toplu_kullanilabilir(idler, eldeki=eldeki)                  # mevcut ayırma/kullanılabilir hesabı (tek sorgu)
+    for s in liste:
         s.eldeki = eldeki.get(s.pk, hareket_servis.SIFIR)
         s.hizmet = s.kategori.hizmet_kategorisi
         s.ayrilan, s.kullanilabilir = kul[s.pk]["ayrilan"], kul[s.pk]["kullanilabilir"]
+    if sifir_gizle:
+        liste = [s for s in liste if s.eldeki != 0]
+    if hareketli and liste:
+        from core.models import StokHareket
+        sinir = tr_bugun() - datetime.timedelta(days=30)
+        hareketli_idler = set(StokHareket.objects.filter(silindi=False, tarih__gte=sinir, stok_id__in=[s.pk for s in liste]).values_list("stok_id", flat=True).distinct())
+        liste = [s for s in liste if s.pk in hareketli_idler]
+    # üst kategori sekmeleri: yalnız fiilen stok içeren üst kategoriler; sayılar diğer süzgeçler uygulanmış küme üzerinden
+    ust_sayilari = {}
+    for s in liste:
+        ust_sayilari[s.kategori.ust_id] = ust_sayilari.get(s.kategori.ust_id, 0) + 1
+    ustler = {k.pk: k for k in Kategori.objects.filter(silindi=False, ust__isnull=True, pk__in=stok_servis.aktif_stoklar().exclude(kategori=None).values("kategori__ust_id"))}
+    sekmeler = [{"ad": "Tümü", "sayi": len(liste), "aktif": not grup_id, "url": _stok_sorgu_dizgesi(g, grup="", sayfa="")}]
+    for k in sorted(ustler.values(), key=lambda k: (_stok_grup_sirasi(k.ad)[0], k.ad)):
+        sekmeler.append({"ad": _stok_grup_sirasi(k.ad)[1], "sayi": ust_sayilari.get(k.pk, 0), "aktif": grup_id == str(k.pk),
+                         "url": _stok_sorgu_dizgesi(g, grup=str(k.pk), sayfa="")})
+    if grup_id:
+        liste = [s for s in liste if str(s.kategori.ust_id) == grup_id]
+    # filtre seçenekleri: yalnız en az bir stokta fiilen kullanılan ALT kategoriler (seçili sekmeyle sınırlı)
+    kat_qs = Kategori.objects.filter(silindi=False, pk__in=stok_servis.aktif_stoklar().exclude(kategori=None).values("kategori_id")).select_related("ust").order_by("ust__ad", "ad")
+    if grup_id:
+        kat_qs = kat_qs.filter(ust_id=grup_id)
+    kategoriler = list(kat_qs)
+    if kritik:                                                                          # süzgeç tüm kümeye bakar → kritik hesabı tüm küme için
+        kritik_harita = kritik_stok_servis.hesapla(liste, kullanilabilir={s.pk: s.kullanilabilir for s in liste})
+        liste = [s for s in liste if kritik_harita.get(s.pk) and kritik_harita[s.pk]["kritik_mi"]]
+    if sirala == "kod":
+        liste.sort(key=lambda s: s.kod, reverse=yon == "desc")
+    elif sirala == "ad":
+        liste.sort(key=lambda s: _tr_anahtar(s.ad), reverse=yon == "desc")
+    else:
+        alan = "eldeki" if sirala == "mevcut" else "kullanilabilir"
+        liste.sort(key=lambda s: (getattr(s, alan) if not s.hizmet else hareket_servis.SIFIR, s.kod), reverse=yon == "desc")
+    sayfa = Paginator(liste, boyut).get_page(g.get("sayfa"))
+    gorunen = list(sayfa.object_list)
+    gid = [s.pk for s in gorunen]
+    ayirma_detay = _ayirma_detaylari(gid)                                                # ÜS bazında dağılım: yalnız görünen sayfa, tek sorgu
+    gelecek_harita = kritik_stok_servis.gelecek_haritasi(gid)                             # satınalma (varyantlı, tek kaynak) + üretim + fason
+    if not kritik:
+        kritik_harita = kritik_stok_servis.hesapla(gorunen, kullanilabilir={s.pk: s.kullanilabilir for s in gorunen})
+    varyantli_idler = [s.pk for s in gorunen if s.varyantli]
+    varyant_nesneleri = {}
+    if varyantli_idler:
+        gerekli = {vpk for (spk, vpk), m in ev.items() if spk in varyantli_idler and vpk and m != 0}
+        if gerekli:
+            varyant_nesneleri = {v.pk: v for v in StokVaryant.objects.filter(pk__in=gerekli).select_related(*planlama_varyant_servis._SV_ILISKI)}
+    for s in gorunen:
         s.ayirma_detay = ayirma_detay.get(s.pk, [])
-        s.kritik = kritik_harita.get(s.pk)                                            # None: eşik yok / hizmet
+        s.kritik = kritik_harita.get(s.pk)                                                # None: eşik yok / hizmet
         s.gelecek = gelecek_harita.get(s.pk)
-    if kritik:
-        stok_listesi = [s for s in stok_listesi if s.kritik and s.kritik["kritik_mi"]]
+        s.eldeki_varyantlar = []
+        if s.varyantli and not s.hizmet:
+            parcalar = [(vpk, m) for (spk, vpk), m in ev.items() if spk == s.pk and vpk and m != 0 and vpk in varyant_nesneleri]
+            if len(parcalar) > 1:                                                         # tek varyantlıda kırılım toplamla aynı → ▾ gösterilmez
+                s.eldeki_varyantlar = [{"etiket": varyant_servis.varyant_kisa(varyant_nesneleri[vpk]), "miktar": m}
+                                       for vpk, m in sorted(parcalar, key=lambda x: -x[1])]
+    # başlık sıralama bağlantıları
+    sutunlar = {}
+    for alan in STOK_SIRALAR:
+        aktif = sirala == alan
+        yeni_yon = "desc" if (aktif and yon == "asc") else "asc"
+        sutunlar[alan] = {"url": _stok_sorgu_dizgesi(g, sirala=alan, yon=yeni_yon, sayfa=""), "aktif": aktif, "ok": ("▲" if yon == "asc" else "▼") if aktif else ""}
+    sayfa_numaralari = [{"no": n, "url": _stok_sorgu_dizgesi(g, sayfa=str(n) if n != 1 else ""), "simdiki": n == sayfa.number} if n != Paginator.ELLIPSIS else None
+                        for n in sayfa.paginator.get_elided_page_range(sayfa.number, on_each_side=2, on_ends=1)]
+    filtre_aktif = bool(ara or kategori_id or grup_id or mamul or kritik or sifir_gizle or hareketli)
     return render(request, "core/stok_listesi.html", {
-        "stoklar": stok_listesi, "ara": ara, "secili_kategori": kategori_id,
-        "kategoriler": kategoriler, "mamul": mamul, "kritik": kritik,
-        "kritik_sayisi": sum(1 for s in stok_listesi if s.kritik and s.kritik["kritik_mi"]),
+        "sayfa": sayfa, "stoklar": gorunen, "toplam": sayfa.paginator.count, "ara": ara, "secili_kategori": kategori_id, "secili_grup": grup_id,
+        "kategoriler": kategoriler, "mamul": mamul, "kritik": kritik, "sifir_gizle": sifir_gizle, "hareketli": hareketli,
+        "sekmeler": sekmeler, "sutunlar": sutunlar, "sirala": sirala, "yon": yon, "boyut": boyut, "boyutlar": STOK_SAYFA_BOYUTLARI,
+        "sayfa_numaralari": sayfa_numaralari, "filtre_aktif": filtre_aktif,
+        "onceki_url": _stok_sorgu_dizgesi(g, sayfa=str(sayfa.previous_page_number()) if sayfa.has_previous() else ""),
+        "sonraki_url": _stok_sorgu_dizgesi(g, sayfa=str(sayfa.next_page_number())) if sayfa.has_next() else "",
+        "sirala_secenekleri": [("kod", "Kod"), ("ad", "Ad"), ("mevcut", "Mevcut"), ("kullanilabilir", "Kullanılabilir")],
+        "kritik_sayisi": sum(1 for s in gorunen if s.kritik and s.kritik["kritik_mi"]) if not kritik else sayfa.paginator.count,
     })
 
 

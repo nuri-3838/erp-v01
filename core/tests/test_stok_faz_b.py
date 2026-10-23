@@ -213,7 +213,7 @@ class FazBViewTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.get(reverse("core:stoklar"))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Mevcut Miktar")
+        self.assertContains(r, "Mevcut")
         self.assertContains(r, "290,000")                    # 250 + 40, tüm depolar
         self.assertNotContains(r, ">Grup<")
         self.assertNotContains(r, "stk-grup-ikon")

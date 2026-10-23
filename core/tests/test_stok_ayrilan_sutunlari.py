@@ -22,7 +22,7 @@ class AyrilanSutunTest(kt.KapanisTaban):
 
     def satir(self, yanit, stok):
         h = yanit.content.decode()
-        return h.split(f'<div class="kod">{stok.kod}</div>', 1)[1].split("</tr>", 1)[0]
+        return h.split(f'<span class="stk-kod">{stok.kod}</span>', 1)[1].split("</tr>", 1)[0]
 
     def test_ayirma_varken_ayrilan_ve_kullanilabilir_dogru_acilir_liste_us_musteri_miktar(self):
         emir = self.emir_ac(self.siparis("3"))                                     # ham 3 ayrılır; ham eldeki 100
@@ -62,8 +62,8 @@ class AyrilanSutunTest(kt.KapanisTaban):
                                     fatura_birimi=self.ham.fatura_birimi)
         r = self.liste(mamul="1")
         self.assertContains(r, "152-10-0999")
-        self.assertNotContains(r, f'<div class="kod">{self.ham.kod}</div>')
-        self.assertContains(self.liste(), f'<div class="kod">{self.ham.kod}</div>')
+        self.assertNotContains(r, f'<span class="stk-kod">{self.ham.kod}</span>')
+        self.assertContains(self.liste(), f'<span class="stk-kod">{self.ham.kod}</span>')
         self.assertTrue(mamul.pk)
 
     def test_sabit_sorgu_sayisi(self):

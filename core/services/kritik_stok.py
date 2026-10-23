@@ -67,14 +67,17 @@ def gelecek_ve_bekleyen(stok_idler) -> tuple:
     idler = set(stok_idler)
     gelecek, tuketim = {}, {}                                   # tuketim: {(ÜS pk, stok pk): kalan girdi ihtiyacı}
     cikti_onbellek, girdi_onbellek = {}, {}
-    for ie in acik_istasyon_emirleri():
+    ieler = list(acik_istasyon_emirleri().prefetch_related("operasyon__ciktilar"))             # çıktı satırları TEK sorgu (operasyon başına değil)
+    girdiler = {}
+    for op_pk, girdi_pk, miktar in OperasyonGirdi.objects.filter(operasyon_id__in={ie.operasyon_id for ie in ieler}, silindi=False).values_list("operasyon_id", "girdi_id", "miktar"):
+        girdiler.setdefault(op_pk, []).append((girdi_pk, miktar))                               # girdi satırları da TEK sorgu
+    for ie in ieler:
         kalan = max(ie.planlanan - ie.tamamlanan, SIFIR)
         if kalan <= 0:
             continue
         if ie.operasyon_id not in cikti_onbellek:
             cikti_onbellek[ie.operasyon_id] = [(c.stok_id, c.miktar) for c in uretim.tanim_ciktilari(ie.operasyon) if c.surucu]
-            girdi_onbellek[ie.operasyon_id] = list(OperasyonGirdi.objects.filter(operasyon_id=ie.operasyon_id, silindi=False)
-                                                   .values_list("girdi_id", "miktar"))
+            girdi_onbellek[ie.operasyon_id] = girdiler.get(ie.operasyon_id, [])
         for stok_pk, miktar in cikti_onbellek[ie.operasyon_id]:
             if stok_pk in idler:
                 gelecek[stok_pk] = gelecek.get(stok_pk, SIFIR) + kalan * miktar
