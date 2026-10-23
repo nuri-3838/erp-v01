@@ -8437,6 +8437,9 @@ def _revizyon_satirlari(emir):
             farklar += _termin_oncelik_farklari(to.get("once"), to.get("sonra"))
         elif r.tur == "DUZENLEME":
             farklar += _termin_oncelik_farklari(r.detay.get("once"), r.detay.get("sonra"))
+        elif r.tur == "FASON_EMRI":
+            d = r.detay or {}
+            farklar.append(f"{d.get('ie', '')}: planlanan {d.get('once', '—')} → {d.get('sonra', '—')} ({d.get('durum_once') or 'yeni'} → {d.get('durum_sonra', '')})")
         elif r.tur in ("FIRE_EK_PLAN", "FIRE_GERI_ALMA"):
             if r.detay.get("hata"):
                 farklar.append(f"Yapılamadı: {r.detay['hata']}")
@@ -8476,7 +8479,7 @@ def uretim_emri_detay(request, pk):
         revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     tamamlandi = emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen   # stok ÜS'si %100: ayırmalar serbest
-    eksikler = yukle.eksikler()
+    eksikler, eksik_tablosu = yukle.eksik_ve_tablo()
     # 2026-10-14 yeniden tasarım: üst bant + akış şeridi + sekmeler (core.services.us_detay — yalnız görünüm verisi; sorgu sayısı eskisinden az)
     bugun_tarih = timezone.localdate()
     bant = us_detay_servis.bant(emir, bugun_tarih, eksikler)
@@ -8488,7 +8491,9 @@ def uretim_emri_detay(request, pk):
     return render(request, "core/uretim_emri_detay.html", {
         "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar, "tamamlandi": tamamlandi,
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
-        "eksikler": eksikler, "fire_notlari": uretim_fire_servis.fire_notlari(emir), "fason_emri_gerekli": bant["fason_emri_gerekli"], "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
+        "eksikler": eksikler, "eksik_tablosu": eksik_tablosu, "eksiksiz_sayisi": sum(1 for r in eksik_tablosu if r["eksik"] <= 0 and r["fazla"] <= 0),
+        "eksikli_sayisi": sum(1 for r in eksik_tablosu if r["eksik"] > 0 or r["fazla"] > 0),
+        "yonetici": yonetici_mi(request.user), "fire_notlari": uretim_fire_servis.fire_notlari(emir), "fason_emri_gerekli": bant["fason_emri_gerekli"], "uret_yetkili": ekran_gorebilir(request.user, "operasyon_kayitlari"),
         "bugun": bugun_tarih.isoformat(),
         "revizyonlar": _revizyon_satirlari(emir), "silinebilir": us_detay_servis.silinebilir(emir, yukle.ieler, kayit_sayisi), "revize_url": revize_url,
         "ilerleme": ilerleme, "bant": bant, "seritler": seritler, "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde),
@@ -8497,6 +8502,24 @@ def uretim_emri_detay(request, pk):
         "acik_emir_sayisi": sum(1 for g in gruplar for s in g["satirlar"] if s["ie"].durum in ("BEKLIYOR", "BASLADI")),
         "malzeme_sayisi": len(eksikler), "is_yuzde": is_yuzde, "is_yuzde_css": us_detay_servis.css_yuzde(is_yuzde or 0),
         "oncelik_secenekleri": UretimEmri.Oncelik.choices})
+
+
+@yonetici_gerekli
+def uretim_emri_fason_emri(request, pk):
+    """Eksik tablosundaki "Fason emri aç / güncelle" (yalnız yönetici, POST): fason istasyon emrini o anki ÜS ihtiyacı kadar açar/günceller (``uretim.fason_emri_ac``);
+    fason emri ÜS açılış/revize/fire ile KENDİLİĞİNDEN açılmaz ya da değişmez. Satınalma/fason BELGESİ açmaz."""
+    emir = get_object_or_404(UretimEmri, pk=pk, silindi=False)
+    geri = reverse("core:uretim_emri_detay", args=[emir.pk]) + "?sekme=malzeme"
+    if request.method != "POST":
+        return redirect(geri)
+    try:
+        ie = uretim_servis.fason_emri_ac(emir, operasyon_id=request.POST.get("operasyon"), cikti_varyant_id=request.POST.get("varyant"), kullanici=request.user)
+    except (uretim_servis.UretimHatasi, ValueError, TypeError) as e:
+        messages.error(request, str(e) or "Fason emri açılamadı.")
+        return redirect(geri)
+    messages.success(request, f"Fason emri {ie.no} ({ie.operasyon.cikti.kod}): planlanan {ie.planlanan.normalize():f} çalıştırma"
+                              f"{' — iptal edildi (ihtiyaç kalmadı)' if ie.durum == 'IPTAL' else ''}. ÜS geçmişine yazıldı.")
+    return redirect(geri)
 
 
 @ekran_gerekli("uretim_emirleri")

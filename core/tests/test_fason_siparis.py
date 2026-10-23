@@ -14,7 +14,7 @@ from core.services import kritik_stok, planlama_varyant
 from core.services import stok_ayirma as sa
 from core.services.fason import FasonHatasi
 from core.services.hareket import hareket_ekle
-from core.services.uretim import istasyon_guncelle, operasyon_olustur, uretim_emri_iptal, uretim_emri_olustur, uretim_emri_revize, uretim_emri_eksikleri
+from core.services.uretim import istasyon_guncelle, operasyon_olustur, uretim_emri_iptal, uretim_emri_olustur, uretim_emri_revize, uretim_emri_eksikleri, uretim_emri_eksik_tablosu, fason_emri_ac
 from core.tests.test_fason_donus import TARIH, FasonBase
 from core.tests.test_uretim import _istasyon
 
@@ -95,8 +95,10 @@ class PlanlamaTest(FSBase):
         self.assertEqual((self.rezerv(e1, s), sa.ayrilan_miktar(e1, self.ana)), (D("6"), D("0")))        # FS rezervi 6, stok ayırması 0
         self.assertEqual(fss.satir_kalan(s.satirlar.get()), D("4"))
         self.assertEqual(e1.revizyonlar.get().detay["fason_rezervleri"], [{"fs": s.no, "stok": "AYAK66", "varyant": None, "miktar": "6"}])
-        e2 = self.us("6")                                                                                 # kalan 4 FS'den, 2 fason emriyle (tam boy → 1 boy = 3 adet)
-        ie = self.fason_ie(e2)
+        e2 = self.us("6")                                                                                 # kalan 4 FS'den, 2 fason ihtiyacı (tam boy → 1 boy = 3 adet)
+        self.assertIsNone(self.fason_ie(e2))                                                              # 2026-10-23: fason emri KENDİLİĞİNDEN açılmaz
+        self.assertEqual([(r["tur"], r["eksik"]) for r in uretim_emri_eksik_tablosu(e2) if r["tur"] == "FASON"], [("FASON", D("2"))])
+        ie = fason_emri_ac(e2, operasyon_id=self.op.pk, kullanici=self.yon)                               # yönetici düğmesi
         self.assertEqual((self.rezerv(e2, s), ie.planlanan, ie.ihtiyac), (D("4"), D("1"), {str(self.ana.pk): "2"}))
         self.assertEqual(fss.satir_kalan(s.satirlar.get()), D("0"))
         eks = uretim_emri_eksikleri(e1)
@@ -128,7 +130,9 @@ class PlanlamaTest(FSBase):
         self.assertEqual([(x["tur"], x["stok"].kod, x["eksik"]) for x in eks if x["tur"] != "SATINALMA"],
                          [("FASON_EMRI_GEREKLI", "AYAK66", D("6"))])                                      # plan değişmedi, uyarı (profil satınalma satırı ayrıca)
         self.assertIsNone(self.fason_ie(e))
-        uretim_emri_revize(e, kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": "6"}], tarih=GUN)                     # revize → fason emri açılır
+        uretim_emri_revize(e, kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": "6"}], tarih=GUN)                     # revize fason emri AÇMAZ
+        self.assertIsNone(self.fason_ie(e))
+        fason_emri_ac(e, operasyon_id=self.op.pk, kullanici=self.yon)                                                          # yönetici açar
         self.assertEqual(self.fason_ie(e).planlanan, D("2"))
 
     def test_adet_dusurme_fazla_rezervi_salar_gelenin_altina_inemez(self):
@@ -242,8 +246,9 @@ class EkranTest(FSBase):
         self.assertNotContains(r, s.no)
 
     def test_detay_fason_emri_notu_ve_iptal_uyarisi(self):
-        e = self.us("6")                                                                                  # FS yokken: fason emri açılır
-        ie = self.fason_ie(e)
+        e = self.us("6")                                                                                  # FS yokken bile fason emri otomatik açılmaz; yönetici açar
+        self.assertIsNone(self.fason_ie(e))
+        ie = fason_emri_ac(e, operasyon_id=self.op.pk, kullanici=self.yon)
         self.assertIsNotNone(ie)
         r = self.client.get(reverse("core:fason_siparis_ekle"), {"stok": self.ana.pk, "adet": "6"})
         self.assertContains(r, f"{e.no} / {ie.no} fason emri zaten açık")
@@ -252,4 +257,4 @@ class EkranTest(FSBase):
         r = self.client.post(reverse("core:fason_siparis_iptal", args=[s.pk]), follow=True)
         self.assertContains(r, f"Rezervi düşen üretim siparişleri: {e2.no}")
         r = self.client.get(reverse("core:uretim_emri_detay", args=[e2.pk]))
-        self.assertContains(r, "fason emri gerekli")
+        self.assertContains(r, "Eksik — fason gerekli")

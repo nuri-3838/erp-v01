@@ -158,7 +158,7 @@
       {% if bant.eksik %}<a class="rozet rozet-pasif" href="?sekme=malzeme" data-git="malzeme" title="Gerçek eksik: satınalma / stoklu ara mamul">Eksik malzeme: {{ bant.eksik }}</a>{% endif %}
       {% if bant.satinalma_bekleyen %}<a class="rozet rozet-notr" href="?sekme=malzeme" data-git="malzeme" title="Açık alış siparişinden bekleniyor">Satınalmadan bekleniyor: {{ bant.satinalma_bekleyen }}</a>{% endif %}
       {% if bant.fason_bekleyen %}<a class="rozet rozet-notr" href="?sekme=malzeme" data-git="malzeme" title="Fason siparişinden bekleniyor">Fasondan bekleniyor: {{ bant.fason_bekleyen }}</a>{% endif %}
-      {% if bant.fason_emri_gerekli %}<a class="rozet rozet-turuncu" href="?sekme=malzeme" data-git="malzeme" title="Fason siparişi iptal/azaldı: bu parça için ÜS'de fason istasyon emri yok; ÜS'yi revize edin">⚠ Fason emri gerekli: {{ bant.fason_emri_gerekli }}</a>{% endif %}
+      {% if bant.fason_emri_gerekli %}<a class="rozet rozet-turuncu" href="?sekme=malzeme" data-git="malzeme" title="Fason istasyon emri açılmamış ya da ihtiyaçtan az: Malzeme sekmesinde yönetici açar/günceller">⚠ Fason gerekli: {{ bant.fason_emri_gerekli }}</a>{% endif %}
     {% endif %}
   </div>
   {% if emir.aciklama %}<div class="ud-aciklama">{{ emir.aciklama }}</div>{% endif %}
@@ -280,37 +280,69 @@
   <div class="ud-baslik"><h2 class="bolum-baslik">Eksik Malzeme</h2>
     <span class="ud-ipucu" tabindex="0" role="note" aria-label="Eksik malzeme açıklaması" data-ipucu="Satınalma ihtiyacı / stoklu ara mamul / fason siparişi. Yalnız AÇIK kalan emirlerin kalan miktarı hesaplanır. Satınalma ve fason siparişinden beklenen parça eksikten düşülür ve kaynak belgesiyle gösterilir (rezerv yoktur: aynı sipariş birden çok ÜS'de bekleniyor görünebilir).">?</span></div>
   {% if emir.durum == 'ACIK' %}
+  <style>
+    .ud-eksik-ust { display:flex; align-items:center; justify-content:space-between; gap:.6rem; flex-wrap:wrap; margin:.1rem 0 .4rem; }
+    .ud-eksik-ust label { text-transform:none; font-size:.84rem; font-weight:600; display:inline-flex; gap:.4rem; align-items:center; cursor:pointer; }
+    .ud-eksiksiz[hidden] { display:none; }
+    th.ud-eksik-baslik { color:#b1122c; }
+    .ud-eksik-rakam { display:inline-block; min-width:2.2rem; text-align:center; background:#b1122c; color:#fff; font-weight:800; border-radius:8px; padding:.15rem .5rem; font-size:.95rem; }
+    .ud-eksik-fazla { display:inline-block; background:#fff4d6; color:#8a5a00; font-weight:700; border-radius:8px; padding:.15rem .5rem; }
+    .ud-fason-islem { margin-top:.35rem; display:flex; flex-direction:column; gap:.3rem; align-items:flex-end; font-size:.8rem; }
+    .ud-fason-islem form { margin:0; }
+    .ud-fason-islem .dugme-ikincil, .ud-fason-islem button { font-size:.8rem; padding:.25rem .65rem; min-height:auto; }
+    .ud-yolda div { white-space:nowrap; font-size:.84rem; }
+  </style>
+  <div class="ud-eksik-ust">
+    <span class="yardim">EKSİK = ihtiyaç − stokta ayrılan − yolda. ÜS açılış/revize/fire fason emri AÇMAZ; fason ihtiyacı burada görünür, yönetici emri açar/günceller.</span>
+    {% if eksiksiz_sayisi %}<label><input type="checkbox" id="ud-eksiksiz-goster"> Eksiği olmayan parçaları göster ({{ eksiksiz_sayisi }})</label>{% endif %}
+  </div>
+  {% if not eksikli_sayisi %}<p class="yardim"><strong>Eksik malzeme yok:</strong> kalan üretim için gereken tüm parça ve ham madde stokta var ya da yolda.</p>{% endif %}
   <div class="tablo-kapsayici">
   <table>
-    <thead><tr><th>Stok</th><th>Tür</th><th class="sag">Gerekli</th><th class="sag">Kullanılabilir</th><th class="sag">Eksik</th></tr></thead>
+    <thead><tr><th>Parça</th><th class="sag">İhtiyaç</th><th class="sag">Stokta ayrılan</th><th>Yolda</th><th class="sag ud-eksik-baslik">EKSİK</th></tr></thead>
     <tbody>
-      {% for e in eksikler %}
-        <tr><td><a href="{% url 'core:stok_detay' e.stok.pk %}"><span class="mono">{{ e.stok.kod }}</span> {{ e.stok.ad }}</a>{% if e.varyant_etiketi %} <span class="rozet rozet-notr">{{ e.varyant_etiketi }}</span>{% endif %}</td>
-            {% if e.tur == "FASON_SIPARIS" %}
-              <td><span class="rozet rozet-aktif" title="Fason siparişinden bekleniyor: parça gelince bu ÜS'ye ayrılır">📤 Fason siparişinden bekleniyor: <a href="{% url 'core:fason_siparis_detay' e.fs.pk %}">{{ e.fs.no }}</a> · {{ e.gerekli|tr_miktar_sade }} adet{% if e.termin %} · termin {{ e.termin|date:"d.m.Y" }}{% endif %}</span></td>
-              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">—</td><td class="sag mono">—</td>
-            {% elif e.tur == "SATINALMA_SIPARIS" %}
-              <td><span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor: irsaliye onaylanınca stoğa girer">🛒 Satınalma siparişinden bekleniyor: {% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if termin %} (termin {{ termin|date:"d.m.Y" }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %} · {{ e.siparis_bekleyen|tr_miktar_sade }} adet</span></td>
-              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td><td class="sag mono">—</td>
-            {% elif e.tur == "FASON_EMRI_GEREKLI" and e.fire %}
-              <td><span class="rozet rozet-turuncu" title="Fire yüzünden fason istasyon emri arttı ({{ e.ie.no }}): fason siparişi verip ÜS'yi revize edin ya da parça fason dönüşle gelince kalkar">⚠ fason emri gerekli — fire kaynaklı +{{ e.eksik|tr_miktar_sade }} adet ({{ e.ie.no }}); fason siparişi açın</span></td>
-              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
-              <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
-            {% elif e.tur == "FASON_EMRI_GEREKLI" %}
-              <td><span class="rozet rozet-turuncu" title="Fason siparişi iptal edildi/azaldı: bu parça için ÜS'de fason istasyon emri yok">⚠ fason emri gerekli — fason siparişi iptal/azaldı; ÜS'yi revize edin</span></td>
-              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
-              <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
-            {% else %}
-              <td>{% if e.stoklu %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu ara mamul</span>{% else %}<span class="rozet rozet-pasif" title="Satınalma gerekiyor">satınalma</span>{% if e.siparis_bekleyen %} <span class="rozet rozet-aktif" title="Açık alış siparişinden bekleniyor">🛒 {{ e.siparis_bekleyen|tr_miktar_sade }} adet siparişte ({% for no, spk, termin in e.siparisler %}<a href="{% url 'core:teklif_siparis_detay' spk %}">{{ no }}</a>{% if termin %} (termin {{ termin|date:"d.m.Y" }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %})</span>{% endif %}{% endif %}</td>
-              <td class="sag mono">{{ e.gerekli|tr_kur:3 }}</td><td class="sag mono">{{ e.kullanilabilir|tr_kur:3 }}</td>
-              <td class="sag mono"><span class="rozet rozet-pasif">{{ e.eksik|tr_kur:3 }}</span></td>
-            {% endif %}</tr>
+      {% for r in eksik_tablosu %}
+        <tr{% if r.eksik <= 0 and r.fazla <= 0 %} class="ud-eksiksiz" hidden{% endif %}>
+          <td><a href="{% url 'core:stok_detay' r.stok.pk %}"><span class="mono">{{ r.stok.kod }}</span> {{ r.stok.ad }}</a>{% if r.varyant_etiketi %} <span class="rozet rozet-notr">{{ r.varyant_etiketi }}</span>{% endif %}
+            {% if r.tur == "FASON" %}<span class="rozet rozet-notr" title="Fason istasyonda üretilen parça">✂ fason</span>{% elif r.tur == "STOKLU" %}<span class="rozet rozet-notr" title="Stoklu üretim: bu ÜS'de planlanmaz, stok için ayrı ÜS ile üretilir">📦 stoklu</span>{% else %}<span class="rozet rozet-notr">satınalma</span>{% endif %}</td>
+          <td class="sag mono">{{ r.ihtiyac|tr_kur:3 }}</td>
+          <td class="sag mono">{{ r.ayrilan|tr_kur:3 }}</td>
+          <td class="ud-yolda">{% for y in r.yolda %}
+            {% if y.tur == "SATINALMA" %}<div>🛒 <a href="{% url 'core:teklif_siparis_detay' y.pk %}">{{ y.belge }}</a>{% if y.termin %} <span class="yardim">(termin {{ y.termin|date:"d.m.Y" }})</span>{% endif %}</div>
+            {% elif y.tur == "FASON_SIPARIS" %}<div>📤 <a href="{% url 'core:fason_siparis_detay' y.pk %}">{{ y.belge }}</a> · {{ y.miktar|tr_miktar_sade }}{% if y.termin %} <span class="yardim">(termin {{ y.termin|date:"d.m.Y" }})</span>{% endif %}</div>
+            {% else %}<div>✂ fason emri <a href="?sekme=istasyonlar#ie-{{ y.pk }}">{{ y.belge }}</a> · {{ y.miktar|tr_miktar_sade }}</div>{% endif %}
+          {% endfor %}{% if r.yolda_toplam %}<div class="mono" style="font-weight:700">= {{ r.yolda_toplam|tr_miktar_sade }}</div>{% else %}<span class="pasif">—</span>{% endif %}</td>
+          <td class="sag">
+            {% if r.eksik > 0 %}
+              {% if r.tur == "FASON" %}<div><span class="ud-eksik-rakam" title="Eksik — fason gerekli">{{ r.eksik|tr_miktar_sade }}</span></div><div class="yardim" style="font-size:.78rem">Eksik — fason gerekli: {{ r.eksik|tr_miktar_sade }} adet</div>
+              {% else %}<span class="ud-eksik-rakam">{{ r.eksik|tr_miktar_sade }}</span>{% endif %}
+            {% elif r.fazla > 0 %}<span class="ud-eksik-fazla" title="Fason emri ihtiyaçtan fazla">fazla {{ r.fazla|tr_miktar_sade }}</span>
+            {% else %}<span class="pasif">0</span>{% endif %}
+            {% if r.fason and r.fason.buton %}<div class="ud-fason-islem">
+              {% if r.fason.ie %}<span class="yardim">emir {{ r.fason.emir_birim|tr_miktar_sade }}, ihtiyaç {{ r.fason.gereken_birim|tr_miktar_sade }}</span>{% endif %}
+              {% if yonetici %}<form method="post" action="{% url 'core:uretim_emri_fason_emri' emir.pk %}">{% csrf_token %}
+                <input type="hidden" name="operasyon" value="{{ r.fason.operasyon_id }}"><input type="hidden" name="varyant" value="{{ r.fason.cikti_varyant_id|default_if_none:'' }}">
+                <button type="submit" class="birincil" title="Fason istasyon emrini o anki ÜS ihtiyacı kadar {% if r.fason.ie %}günceller{% else %}açar{% endif %}">{% if r.fason.ie %}Fason emrini güncelle{% else %}Fason emri aç ({{ r.fason.gereken_birim|tr_miktar_sade }}){% endif %}</button>
+              </form>{% endif %}
+              {% if r.fason_siparis_adet > 0 %}<a class="dugme-ikincil" href="{% url 'core:fason_siparis_ekle' %}?satir={{ r.stok.pk }}:{{ r.fason_siparis_adet|ham_miktar }}" title="Eksik adet kadar ön dolu fason siparişi formu açar (belge KAYDEDİLMEZ)">Fason siparişi hazırla</a>{% endif %}
+            </div>{% endif %}
+          </td>
+        </tr>
       {% empty %}
-        <tr><td colspan="5" class="yardim">Eksik malzeme yok: kalan üretim için gereken tüm ham madde ve stoklu ara mamul kullanılabilir stokta var.</td></tr>
+        <tr><td colspan="5" class="yardim">Eksik malzeme yok: kalan üretim için gereken tüm parça ve ham madde stokta var ya da yolda.</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
+  <script>
+    (function(){
+      var k = document.getElementById('ud-eksiksiz-goster');
+      if(!k) return;
+      k.addEventListener('change', function(){
+        Array.prototype.forEach.call(document.querySelectorAll('tr.ud-eksiksiz'), function(tr){ tr.hidden = !k.checked; });
+      });
+    })();
+  </script>
   {% else %}
   <p class="yardim">Bu üretim siparişi açık olmadığı için malzeme ihtiyacı hesaplanmaz.</p>
   {% endif %}

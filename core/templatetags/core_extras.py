@@ -97,6 +97,15 @@ def tr_kur(value, basamak=6):
 
 
 @register.filter
+def ham_miktar(value):
+    """Adres/form önerisi için sade ondalık metin (nokta ayraçlı, gereksiz sıfırsız): 12.5, 16."""
+    if value is None or value == "":
+        return ""
+    d = value if isinstance(value, Decimal) else Decimal(str(value))
+    return format(d.normalize(), "f")
+
+
+@register.filter
 def tr_miktar_sade(value, basamak=3):
     """Miktar gösterimi (ÜRETİM > Ürün Ağacı): tam sayı ondalıksız ("1", "1.250"), kesirli
     ``basamak`` ondalıkla (0,056). Tam sayı kontrolü YUVARLAMADAN SONRA yapılır: zincir

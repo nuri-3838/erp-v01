@@ -90,12 +90,16 @@ def onizle(*, kalemler, kullanici=None) -> dict:
     stok_pay, fason_pay = uretim._ayrilani_bol(sonuc, varyantli)
 
     # 1) açılacak istasyon emirleri (uretim_emri_olustur: çalıştırması > 0 olan her plan satırı), istasyon bazında
-    gruplar = {}
+    gruplar, fason_gerekli = {}, []
     for p in sonuc["plan"]:
         if p["calistirma"] <= 0:
             continue
         op, sv = planlama_varyant.kosum_coz(p["operasyon"])
         ref = uretim._referans_miktar(op)
+        if uretim._fason_op_mu(op):                                # FASON: emir açılışta AÇILMAZ; ÜS detayında "Eksik — fason gerekli", yönetici açar
+            fason_gerekli.append({"cikti": op.cikti, "varyant": vs.varyant_kisa(sv) if sv is not None else "", "calistirma": p["calistirma"], "adet": p["calistirma"] * ref,
+                                  "istasyon": op.istasyon})
+            continue
         g = gruplar.setdefault(op.istasyon_id, {"istasyon": op.istasyon, "emirler": [], "fason": bool(op.istasyon.fason)})
         g["emirler"].append({"cikti": op.cikti, "varyant": vs.varyant_kisa(sv) if sv is not None else "", "calistirma": p["calistirma"], "adet": p["calistirma"] * ref,
                              "seviye": p["seviye"], "op_pk": op.pk, "varyant_pk": sv.pk if sv is not None else None})
@@ -146,6 +150,6 @@ def onizle(*, kalemler, kullanici=None) -> dict:
         eksikler.append({"stok": r["stok"], "varyant": None, "varyant_etiketi": r["varyant_etiketi"], "gerekli": r["miktar"], "kullanilabilir": SIFIR, "eksik": SIFIR,
                          "stoklu": False, "tur": "FASON_SIPARIS", "fs": r["siparis"], "termin": r["termin"]})
     return {"varyantli": varyantli, "kalemler": [(u, m, vs.varyant_kisa(v) if v is not None else "") for u, m, v in coz], "istasyonlar": istasyonlar,
-            "ie_sayisi": sum(g["emir_sayisi"] for g in istasyonlar), "ayirmalar": ayirmalar, "eksikler": eksikler,
+            "ie_sayisi": sum(g["emir_sayisi"] for g in istasyonlar), "ayirmalar": ayirmalar, "eksikler": eksikler, "fason_gerekli": fason_gerekli,
             "eksik_sayisi": sum(1 for e in eksikler if e["tur"] in ("SATINALMA", "STOKLU")), "satinalma_bekleyen": sum(1 for e in eksikler if e["tur"] == "SATINALMA_SIPARIS"),
             "fason_bekleyen": sum(1 for e in eksikler if e["tur"] == "FASON_SIPARIS")}

@@ -141,7 +141,8 @@ class GelecekStokTekKaynakTest(KritikTaban):
         self.assertContains(r, "Satınalmadan bekleniyor: 1")
         self.assertNotContains(r, "Eksik malzeme:")
         r = self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk]))
-        self.assertContains(r, "Satınalma siparişinden bekleniyor")
+        self.assertContains(r, "🛒")                                                                         # eksik tablosu: Yolda sütununda açık satınalma siparişi (belge no)
+        self.assertContains(r, e["siparisler"][0][0])
         # sipariş 3 adet olsaydı: 3 beklenir, 2 gerçek eksik
         TeklifSiparis.objects.filter(belge_tur="SIPARIS").update(silindi=True)
         self.siparis("3")
@@ -149,7 +150,7 @@ class GelecekStokTekKaynakTest(KritikTaban):
         self.assertEqual((e["tur"], e["siparis_bekleyen"], e["eksik"]), ("SATINALMA", D("3"), D("2")))
         r = self.client.get(reverse("core:uretim_emirleri"))
         self.assertContains(r, "Eksik malzeme: 1")
-        self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk])), "3 adet siparişte")
+        self.assertContains(self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk])), "= 3")                  # Yolda toplamı (açık satınalma siparişi)
 
 
 class VaryantliGelecekTest(VaryantEkranTaban):

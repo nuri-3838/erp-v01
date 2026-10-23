@@ -156,7 +156,7 @@
         <td data-et="Durum">
           <span class="ue-durum {% if s.sevk_bekliyor %}sevk{% elif e.durum == 'ACIK' %}acik{% elif e.durum == 'KAPALI' %}tamam{% else %}iptal{% endif %}"{% if s.sevk_bekliyor %} title="Üretim bitti; sevk (depolu satış faturası) bekleniyor"{% endif %}>{% if s.sevk_bekliyor %}Sevk bekliyor{% elif e.durum == 'ACIK' %}Açık{% elif e.durum == 'KAPALI' %}Tamamlandı{% else %}İptal{% endif %}</span>
           {% if s.eksik_sayisi %}<br><span class="ue-eksik" title="Satınalma ihtiyacı olan malzeme">Eksik malzeme: {{ s.eksik_sayisi }}</span>{% endif %}
-          {% if s.fason_emri_gerekli %}<br><span class="ue-fason-gerekli" title="Fason siparişi iptal/azaldı: bu parça için ÜS'de fason istasyon emri yok; ÜS'yi revize edin">Fason emri gerekli: {{ s.fason_emri_gerekli }}</span>{% endif %}
+          {% if s.fason_emri_gerekli %}<br><span class="ue-fason-gerekli" title="Fason istasyon emri açılmamış ya da ihtiyaçtan az: ÜS detayı › Malzeme'de yönetici açar/günceller">⚠ Fason gerekli: {{ s.fason_emri_gerekli }}</span>{% endif %}
           {% if s.satinalma_bekleyen %}<br><span class="ue-fason-bekl" title="Açık alış siparişinden gelmesi beklenen malzeme">Satınalmadan bekleniyor: {{ s.satinalma_bekleyen }}</span>{% endif %}
           {% if s.fason_bekleyen %}<br><span class="ue-fason-bekl" title="Açık fason siparişinden gelmesi beklenen parça">Fasondan bekleniyor: {{ s.fason_bekleyen }}</span>{% endif %}
         </td>

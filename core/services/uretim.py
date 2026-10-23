@@ -1158,6 +1158,8 @@ def uretim_emri_olustur(*, kalemler, depo_id, tarih, aciklama="", kaynak_siparis
     for p in sonuc["plan"]:
         if p["calistirma"] <= 0:                    # net ihtiyaç 0: tamamı stoktan karşılandı, istasyon emri gerekmez
             continue
+        if _fason_op_mu(planlama_varyant.kosum_coz(p["operasyon"])[0]):
+            continue                                # FASON: emir KENDİLİĞİNDEN açılmaz — ÜS detayında "Eksik — fason gerekli", yönetici açar (fason_emri_ac)
         ie = _istasyon_emri_ac(emir, p, kullanici)
         d = {"no": ie.no, "operasyon": p["operasyon"].cikti.kod, "planlanan": _ds(ie.planlanan)}
         if ie.cikti_varyant_id:
@@ -2053,6 +2055,8 @@ def stok_us_tamamla(emir: UretimEmri, kullanici=None) -> bool:
     ilerleme = uretim_emri_ilerleme(emir)
     if not ilerleme["toplam"] or ilerleme["onayli"] < ilerleme["toplam"]:
         return False
+    if any(e["tur"] == "FASON_EMRI_GEREKLI" for e in uretim_emri_eksikleri(emir)):          # açılmamış/yetersiz fason emri varken ÜS tamamlanmış sayılmaz
+        return False
     serbest = {_ayirma_etiketi(a, emir): _ds(a.miktar) for a in stok_ayirma.emir_ayirmalari(emir)}
     for a in list(stok_ayirma.emir_ayirmalari(emir)):
         stok_ayirma.ayirma_ayarla(emir, a.stok_id, 0, kullanici, varyant=a.varyant_id)
@@ -2164,18 +2168,26 @@ def _emir_kalemleri(emir: UretimEmri) -> list:
             for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun", "varyant").order_by("sira", "pk")]
 
 
-def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
-    """Açık ÜS'nin SATINALMA ihtiyacı: kalan net planda eksik > 0 olan yaprak stoklar → [{"stok", "varyant", "varyant_etiketi", "gerekli",
-    "kullanilabilir", "eksik"}] (stok koduna göre; varyantlı planda düğüm = (stok, varyant)). Revizenin kullandığı hesapla aynı: ÜS'nin kendi ayırmaları
-    ona açık, başkalarının ayırmaları düşülmüş kullanılabilir; sevk edilen mamul plan dışı. Kapalı/iptal ÜS için boş. ``graf``
-    (urun_agaci.graf_yukle()) verilirse (kapalı planda) liste ekranında sorgu sayısı düşer. ``yukle`` (``us_detay_yukle.Yukleme``, yalnız ÜS detay ekranı): aynı hesap
-    önceden yüklenmiş veriyle — sonuç AYNI (testle kilitli), sorgu sayısı sabit, görüntülemede varyant AÇILMAZ."""
-    if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
-        return []
+def _fason_op_mu(op) -> bool:
+    """Operasyon fason istasyonda mı (ÜS bu operasyon için istasyon emrini KENDİLİĞİNDEN açmaz; yönetici "Fason emri aç" ile açar)."""
+    return bool(op.istasyon.fason)
+
+
+def _cikti_miktari_op(op: Operasyon, stok_id) -> Decimal:
+    """Operasyonun bir çalıştırmada verdiği, bu stoğa ait çıktı miktarı (yoksa referans çıktı)."""
+    for c in tanim_ciktilari(op):
+        if c.stok_id == stok_id:
+            return c.miktar
+    return _referans_miktar(op)
+
+
+def _guncel_plan(emir: UretimEmri, graf=None, yukle=None):
+    """Açık ÜS'nin KALAN net planı (``_plani_hesapla``): ÜS'nin kendi ayırmaları ona açık, başkalarınınki düşülmüş; sevk edilen mamul plan dışı. Kalem yoksa None.
+    ``uretim_emri_eksikleri`` ve ``fason_emri_ac`` AYNI planı kullanır."""
     kaynak = getattr(yukle, "kaynak", None)                       # ÜS listesi: ortak toplu kaynak (ListeYukleme); detay/eski yol: None
     coz = yukle.emir_kalemleri() if yukle is not None else _emir_kalemleri(emir)
     if not coz:
-        return []
+        return None
     # Açık ÜS'nin planı değişmesin: halihazırda (iptal olmayan) istasyon emri olan parçalar stoklu işaretlense de zincirle hesaplanır.
     haric = (yukle.haric_ciktilar() if yukle is not None
              else set(emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.IPTAL).values_list("operasyon__cikti_id", flat=True)))
@@ -2185,8 +2197,7 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
         anahtar = (k.hedef_urun_id, k.varyant_id if emir.varyantli_plan else None)
         stoktan[anahtar] = stoktan.get(anahtar, Decimal("0")) + k.eldeki_ayrilan
     # ÜRETİLMİŞ KISIM (2026-10-13): biten istasyon emirlerinin ürettiği kök mamul ÜS'ye AYRILMIŞTIR (sevk edilene kadar ayrılı kalır). Kalan ihtiyaç
-    # = hedef − sevk − ÜS'nin bu kök üründeki ayırması; yoksa bitmiş emirlerin girdi ihtiyacı da "eksik" görünürdü. Tavan = ÜS'nin kendi ayırması
-    # (başkasının serbest stoğu kök için yine kullanılmaz): tümü bittiyse kalan 0 → eksik yok; kısmen bittiyse yalnız AÇIK kalan çalıştırmalar sayılır.
+    # = hedef − sevk − ÜS'nin bu kök üründeki ayırması; tavan = ÜS'nin kendi ayırması.
     kok_ayrilan = {}
     for a in (yukle.ayirmalar if yukle is not None and yukle.ayirmalar is not None else stok_ayirma.emir_ayirmalari(emir)):
         if any(a.stok_id == k[0] for k in stoktan):
@@ -2197,6 +2208,27 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
     sevk = kaynak.sevk_haritasi(emir) if kaynak is not None else sevk_edilen_haritasi(emir)
     sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk, emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf,
                                 stoktan=stoktan, stoklu_haric=haric, cozucu=yukle.cozucu if yukle is not None else None, kaynak=kaynak)
+    return sonuc
+
+
+def uretim_emri_eksik_hesabi(emir: UretimEmri, graf=None, yukle=None) -> tuple:
+    """Açık ÜS'nin eksik hesabı → (eksikler, tablo) — AYNI planlama çağrısından.
+
+    ``eksikler`` (eski biçim; liste rozetleri, bant sayıları): kalan net planda eksik > 0 olan yaprak stoklar (SATINALMA / STOKLU), açık alış siparişinden beklenen
+    (SATINALMA_SIPARIS), ÜS'ye rezerve fason siparişi (FASON_SIPARIS), FASON İSTASYON EMRİ FARKI (FASON_EMRI_GEREKLI: emir yok ya da ihtiyaçtan az; FASON_EMRI_FAZLA: emir
+    ihtiyaçtan fazla). ``tablo`` (ÜS detay "Eksik malzeme"): her satınalma/stoklu/fason parça için {"ihtiyac", "ayrilan" (stok), "yolda" (belge no ile), "eksik" = ihtiyaç −
+    ayrılan − yolda}; eksiği olmayanlar da döner (ekran varsayılan gizler).
+
+    FASON KURALI (2026-10-23): ÜS açılışı / revize / fire ek planı fason istasyon emrini KENDİLİĞİNDEN açmaz, artırmaz, iptal etmez; ihtiyaç burada "Eksik — fason gerekli"
+    olarak görünür, yönetici ``fason_emri_ac`` ile açar/günceller. Açık fason emrinin kalanı "yolda" sayılır. Fason OLMAYAN istasyonlar eskisi gibi otomatik açılır.
+    Kapalı/iptal ÜS için boş. ``graf`` (kapalı planda) / ``yukle`` (detay ve liste toplu yükleyicileri) için bkz. ``_guncel_plan``."""
+    if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
+        return [], []
+    kaynak = getattr(yukle, "kaynak", None)
+    sonuc = _guncel_plan(emir, graf=graf, yukle=yukle)
+    if sonuc is None:
+        return [], []
+    varyantli = emir.varyantli_plan
     eksikler = []
     for o in sonuc["ozet"]:
         if o["yaprak"] and o["eksik"] is not None and o["eksik"] > 0:
@@ -2205,9 +2237,10 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
                              "kullanilabilir": o["ayrilan"], "eksik": o["eksik"], "stoklu": bool(st.stoklu_uretim),
                              "tur": "STOKLU" if st.stoklu_uretim else "SATINALMA"})
     eksikler.sort(key=lambda x: (x["stok"].kod, x["varyant_etiketi"]))
-    # SATINALMA SİPARİŞİ (2026-10-14, core.services.satinalma — kritik stok / stok listesiyle AYNI varyantlı harita): açık alış siparişinden gelecek parça
-    # eksikten düşülür → "X adet satınalma siparişinden bekleniyor (SAS-…)". Rezerv yoktur: aynı sipariş birden çok ÜS'de bekleniyor görünebilir.
+    # SATINALMA SİPARİŞİ (core.services.satinalma — kritik stok / stok listesiyle AYNI varyantlı harita): açık alış siparişinden gelecek parça eksikten düşülür.
+    # Rezerv yoktur: aynı sipariş birden çok ÜS'de bekleniyor görünebilir.
     satinalma_idler = {e["stok"].pk for e in eksikler if e["tur"] == "SATINALMA"}
+    sat_satirlar, sat_harita = [], {}
     if satinalma_idler:
         from core.services import satinalma
         sat_satirlar = kaynak.satinalma_satirlari(satinalma_idler) if kaynak is not None else satinalma.acik_siparis_satirlari(satinalma_idler)
@@ -2226,27 +2259,169 @@ def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
             e["eksik"] = e["eksik"] - bekleyen
             if e["eksik"] <= 0:
                 e["tur"] = "SATINALMA_SIPARIS"
-    # FASON SİPARİŞİ (2026-10-12): (a) bu ÜS'ye rezerve edilmiş FS satırları "fason siparişinden bekleniyor"; (b) planın fason istasyonunda çalıştırma
-    # istediği ama ÜS'de (iptal olmayan) istasyon emri olmayan parçalar (FS iptal edildi / adet düştü) "fason emri gerekli — revize edin".
+    # FASON SİPARİŞİ: bu ÜS'ye rezerve edilmiş FS satırları "fason siparişinden bekleniyor".
     from core.services import fason_siparis as fs_servis
-    for r in (kaynak.fs_rezervleri(emir) if kaynak is not None else fs_servis.emir_rezervleri(emir)):
+    rezervler = list(kaynak.fs_rezervleri(emir) if kaynak is not None else fs_servis.emir_rezervleri(emir))
+    for r in rezervler:
         s = r.satir
         eksikler.append({"stok": s.stok, "varyant": s.varyant, "varyant_etiketi": planlama_varyant.etiket(s.varyant) if s.varyant_id else "",
                          "gerekli": r.miktar, "kullanilabilir": Decimal("0"), "eksik": Decimal("0"), "stoklu": False, "tur": "FASON_SIPARIS",
                          "fs": s.siparis, "termin": s.siparis.termin})
+    # ---- yeni eksik tablosu + fason emri farkı
     aktif_ieler = list(yukle.ie_aktif() if yukle is not None else emir.istasyon_emirleri.filter(silindi=False).exclude(durum=IstasyonEmri.Durum.IPTAL))
-    mevcut_ie = {(ie.operasyon_id, ie.cikti_varyant_id) for ie in aktif_ieler}
+    ie_harita = {(ie.operasyon_id, ie.cikti_varyant_id): ie for ie in aktif_ieler}
+    stok_pay, _fason_pay = _ayrilani_bol(sonuc, varyantli)
+    plan_kosum = {}
     for p in sonuc["plan"]:
-        op, sv = planlama_varyant.kosum_coz(p["operasyon"])
-        if not op.istasyon.fason or p["calistirma"] <= 0 or (op.pk, sv.pk if sv is not None else None) in mevcut_ie:
+        op, osv = planlama_varyant.kosum_coz(p["operasyon"])
+        plan_kosum[(op.pk, osv.pk if osv is not None else None)] = p
+    tablo, rez_gorulen = [], set()
+    for o in sonuc["ozet"]:
+        st, sv = planlama_varyant.dugum_coz(o["stok"])
+        vpk = sv.pk if sv is not None else None
+        ihtiyac, ayr = o["ihtiyac"], stok_pay.get(o["stok"].pk, Decimal("0"))
+        satir = {"stok": st, "varyant": sv, "varyant_etiketi": planlama_varyant.etiket(sv), "ihtiyac": ihtiyac, "ayrilan": ayr, "yolda": [], "yolda_toplam": Decimal("0"),
+                 "eksik": Decimal("0"), "fazla": Decimal("0"), "fason": None, "fason_siparis_adet": Decimal("0")}
+        if o["yaprak"]:
+            if ihtiyac <= 0:
+                continue
+            satir["tur"] = "STOKLU" if st.stoklu_uretim else "SATINALMA"
+            on = max(Decimal("0"), ihtiyac - ayr)
+            if satir["tur"] == "SATINALMA" and on > 0 and sat_harita:
+                from core.services import satinalma
+                kalan = satinalma.kalan_icin(sat_harita, st.pk, vpk)
+                satir["yolda_toplam"] = min(on, kalan) if kalan > 0 else Decimal("0")
+                if satir["yolda_toplam"] > 0:
+                    for no, pk, termin in sorted({(x["siparis"].belge_no, x["siparis"].pk, x["termin"]) for x in sat_satirlar
+                                                  if x["stok_id"] == st.pk and (vpk is None or x["varyant_id"] == vpk)}):
+                        satir["yolda"].append({"tur": "SATINALMA", "belge": no, "pk": pk, "termin": termin})
+            satir["eksik"] = max(Decimal("0"), on - satir["yolda_toplam"])
+        else:
+            op, osv = planlama_varyant.kosum_coz(o["operasyon"])
+            if not _fason_op_mu(op):
+                continue                                           # fason olmayan istasyon: emir otomatik açılır → eksik değil
+            anahtar = (op.pk, osv.pk if osv is not None else None)
+            ie, p = ie_harita.get(anahtar), plan_kosum.get(anahtar)
+            cikti_m = _cikti_miktari_op(op, st.pk)
+            rezs = [r for r in rezervler if r.satir.stok_id == st.pk and (vpk is None or r.satir.varyant_id == vpk)]
+            if ihtiyac <= 0 and not ie and not rezs:
+                continue
+            for r in rezs:
+                rez_gorulen.add(r.pk)
+                satir["yolda"].append({"tur": "FASON_SIPARIS", "belge": r.satir.siparis.no, "pk": r.satir.siparis_id, "miktar": r.miktar, "termin": r.satir.siparis.termin})
+                satir["yolda_toplam"] += r.miktar
+            ie_birim = ie.kalan * cikti_m if ie is not None else Decimal("0")
+            if ie_birim > 0:
+                satir["yolda"].append({"tur": "FASON_EMRI", "belge": ie.no, "pk": ie.pk, "miktar": ie_birim})
+                satir["yolda_toplam"] += ie_birim
+            gereken = p["calistirma"] if p is not None else Decimal("0")
+            satir["tur"] = "FASON"
+            satir["eksik"] = max(Decimal("0"), ihtiyac - ayr - satir["yolda_toplam"])
+            satir["fazla"] = max(Decimal("0"), ie.kalan - gereken) * cikti_m if ie is not None else Decimal("0")
+            buton = None
+            if ie is None and gereken > 0:
+                buton = "ac"
+            elif ie is not None and (satir["eksik"] > 0 or satir["fazla"] > 0 or gereken > ie.kalan):
+                buton = "guncelle"
+            satir["fason"] = {"operasyon_id": op.pk, "cikti_varyant_id": osv.pk if osv is not None else None, "ie": ie, "gereken_kosum": gereken,
+                              "emir_kosum": ie.kalan if ie is not None else Decimal("0"), "buton": buton,
+                              "emir_birim": ie_birim, "gereken_birim": gereken * cikti_m}              # emir kalanı / ihtiyaç: çıktı adedi ("emir 15, ihtiyaç 16")
+            satir["fason_siparis_adet"] = satir["eksik"]
+            if buton and (satir["eksik"] > 0 or buton == "ac"):
+                eksikler.append({"stok": st, "varyant": sv, "varyant_etiketi": satir["varyant_etiketi"], "gerekli": ihtiyac, "kullanilabilir": ayr,
+                                 "eksik": satir["eksik"] if satir["eksik"] > 0 else max(o["net"], Decimal("0")), "stoklu": False, "tur": "FASON_EMRI_GEREKLI", "ie": ie})
+            elif satir["fazla"] > 0:
+                eksikler.append({"stok": st, "varyant": sv, "varyant_etiketi": satir["varyant_etiketi"], "gerekli": ihtiyac, "kullanilabilir": ayr,
+                                 "eksik": Decimal("0"), "fazla": satir["fazla"], "stoklu": False, "tur": "FASON_EMRI_FAZLA", "ie": ie})
+        tablo.append(satir)
+    for r in rezervler:                                              # planda artık görünmeyen parçanın rezervi: görünür kalsın (eksik 0)
+        if r.pk in rez_gorulen:
             continue
-        st, csv = planlama_varyant.dugum_coz(p["stok"])
-        eksikler.append({"stok": st, "varyant": csv, "varyant_etiketi": planlama_varyant.etiket(csv) if csv is not None else "",
-                         "gerekli": p["ihtiyac"], "kullanilabilir": p["ayrilan"], "eksik": p["net"], "stoklu": False, "tur": "FASON_EMRI_GEREKLI"})
-    if any(ie.fire_ek for ie in aktif_ieler):                      # fire yüzünden artmış fason emri (2026-10-22): fason siparişi gerekli
-        from core.services import uretim_fire
-        eksikler += uretim_fire.fason_rozetleri(aktif_ieler)
-    return eksikler
+        s = r.satir
+        tablo.append({"stok": s.stok, "varyant": s.varyant, "varyant_etiketi": planlama_varyant.etiket(s.varyant) if s.varyant_id else "", "tur": "FASON",
+                      "ihtiyac": Decimal("0"), "ayrilan": Decimal("0"), "yolda": [{"tur": "FASON_SIPARIS", "belge": s.siparis.no, "pk": s.siparis_id, "miktar": r.miktar,
+                                                                                    "termin": s.siparis.termin}], "yolda_toplam": r.miktar, "eksik": Decimal("0"),
+                      "fazla": Decimal("0"), "fason": None, "fason_siparis_adet": Decimal("0")})
+    tablo.sort(key=lambda x: (x["eksik"] <= 0 and x["fazla"] <= 0, x["stok"].kod, x["varyant_etiketi"]))
+    return eksikler, tablo
+
+
+def uretim_emri_eksikleri(emir: UretimEmri, graf=None, yukle=None) -> list:
+    """Açık ÜS'nin eksik/bekleyen listesi (eski biçim) — bkz. ``uretim_emri_eksik_hesabi``."""
+    return uretim_emri_eksik_hesabi(emir, graf=graf, yukle=yukle)[0]
+
+
+def uretim_emri_eksik_tablosu(emir: UretimEmri, graf=None, yukle=None) -> list:
+    """ÜS detay "Eksik malzeme" tablosu satırları — bkz. ``uretim_emri_eksik_hesabi``."""
+    return uretim_emri_eksik_hesabi(emir, graf=graf, yukle=yukle)[1]
+
+
+@transaction.atomic
+def fason_emri_ac(emir: UretimEmri, *, operasyon_id, cikti_varyant_id=None, kullanici=None) -> IstasyonEmri:
+    """YÖNETİCİ düğmesi "Fason emri aç / güncelle": o anki ÜS ihtiyacı kadar fason istasyon emrini AÇAR (yoksa) ya da GÜNCELLER (planlanan = tamamlanan + gereken koşum; ihtiyaç
+    anlık görüntüsü revizeyle aynı: yeni net + önceden ayrılan; ihtiyaç kalmadıysa ve üretilmemişse İPTAL; açık taslak kayıtlar sığdırılır). Emir bundan sonra revize/fire ile
+    KENDİLİĞİNDEN değişmez; fark eksik/fazla olarak görünür. ÜS geçmişine FASON_EMRI satırı yazılır (önce → sonra). Fason olmayan istasyon için reddedilir (onlar otomatik açılır)."""
+    _planlama_kilidi()
+    emir = UretimEmri.objects.select_for_update(of=("self",)).select_related("kaynak_siparis", "depo").get(pk=emir.pk)
+    if emir.silindi or emir.durum != UretimEmri.Durum.ACIK:
+        raise UretimHatasi("Yalnız açık üretim siparişinde fason emri açılabilir/güncellenebilir.")
+    sonuc = _guncel_plan(emir)
+    if sonuc is None:
+        raise UretimHatasi("Bu üretim siparişinde güncel plan yok.")
+    hedef_var = int(cikti_varyant_id) if cikti_varyant_id not in (None, "") else None
+    p = op = sv = None
+    for x in sonuc["plan"]:
+        o, osv = planlama_varyant.kosum_coz(x["operasyon"])
+        if o.pk == int(operasyon_id) and (osv.pk if osv is not None else None) == hedef_var:
+            p, op, sv = x, o, osv
+            break
+    if p is None:
+        raise UretimHatasi("Bu operasyon için ÜS planında ihtiyaç yok.")
+    if not _fason_op_mu(op):
+        raise UretimHatasi("Yalnız fason istasyon emri buradan açılır/güncellenir; diğer istasyonların emirleri otomatik açılır.")
+    gereken = max(p["calistirma"], Decimal("0"))
+    ie = (IstasyonEmri.objects.select_for_update(of=("self",)).select_related("operasyon__cikti")
+          .filter(uretim_emri=emir, operasyon=op, cikti_varyant_id=hedef_var, silindi=False).first())
+    yeni = ie is None
+    if yeni:
+        if gereken <= 0:
+            raise UretimHatasi("Açılacak fason ihtiyacı yok.")
+        once, durum_once = Decimal("0"), None
+        ie = _istasyon_emri_ac(emir, p, kullanici)
+        ie = IstasyonEmri.objects.select_related("operasyon__cikti").get(pk=ie.pk)
+        taslak = []
+    else:
+        once, durum_once = ie.planlanan, ie.durum
+        ie.planlanan = ie.tamamlanan + gereken
+        ihtiyac = {}
+        for c in p["ciktilar"]:
+            if not c["surucu"]:
+                continue
+            st, sdv = planlama_varyant.dugum_coz(c["stok"])
+            vp = sdv.pk if sdv is not None else None
+            toplam = c["net"] + _onceki_ayrilan(ie, st.pk, vp)
+            if toplam > 0:
+                ihtiyac[planlama_varyant.ihtiyac_anahtari(st.pk, vp)] = _ds(toplam)
+        ie.ihtiyac = ihtiyac
+        ie.updated_by = kullanici
+        if gereken <= 0 and ie.tamamlanan <= 0:
+            ie.durum = IstasyonEmri.Durum.IPTAL
+            ie.save()
+            taslak = _taslaklari_sigdir(ie, Decimal("0"), kullanici)
+        else:
+            if ie.durum == IstasyonEmri.Durum.IPTAL:
+                ie.durum = IstasyonEmri.Durum.BEKLIYOR
+            ie.save()
+            taslak = _taslaklari_sigdir(ie, gereken, kullanici)
+            istasyon_emri_durum_guncelle(ie)
+        ie.refresh_from_db()
+    detay = {"ie": ie.no, "operasyon": ie.operasyon.cikti.kod, "once": _ds(once), "sonra": _ds(ie.planlanan), "durum_once": durum_once, "durum_sonra": ie.durum,
+             "yeni": yeni, "taslak_kayitlar": taslak}
+    if sv is not None:
+        detay["varyant"] = planlama_varyant.etiket(sv)
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.FASON_EMRI, None,
+                  f"Fason emri {'açıldı' if yeni else 'güncellendi'}: {ie.no} {ie.operasyon.cikti.kod} planlanan {_ds(once)} → {_ds(ie.planlanan)}", detay, kullanici)
+    return ie
 
 
 def _onceki_ayrilan(ie: IstasyonEmri, stok_id, varyant_id=None) -> Decimal:
@@ -2344,9 +2519,11 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
         op, sv = planlama_varyant.kosum_coz(p["operasyon"])
         plan[(op.pk, sv.pk if sv is not None else None)] = p
     mevcut = {(ie.operasyon_id, ie.cikti_varyant_id): ie
-              for ie in IstasyonEmri.objects.select_for_update().filter(uretim_emri=emir, silindi=False).select_related("operasyon")}
+              for ie in IstasyonEmri.objects.select_for_update(of=("self",)).filter(uretim_emri=emir, silindi=False).select_related("operasyon__istasyon")}
     for opk, p in plan.items():
         ie = mevcut.get(opk)
+        if _fason_op_mu(planlama_varyant.kosum_coz(p["operasyon"])[0]):
+            continue                                # FASON: açılmaz / artmaz / azalmaz / iptal olmaz; fark ÜS detayında eksik/fazla görünür, yönetici günceller
         net = p["calistirma"]
         if ie is None:
             if net > 0:
@@ -2376,7 +2553,7 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
         taslak_degisen += _taslaklari_sigdir(ie, net, kullanici)
         istasyon_emri_durum_guncelle(ie)
     for opk, ie in mevcut.items():
-        if opk in plan or ie.durum == IstasyonEmri.Durum.IPTAL:
+        if opk in plan or ie.durum == IstasyonEmri.Durum.IPTAL or _fason_op_mu(ie.operasyon):
             continue
         ie.planlanan = ie.tamamlanan                                     # artık gerekmiyor
         if ie.tamamlanan <= 0:

@@ -4,6 +4,7 @@
     {% include "core/_ipucu.html" with metin="Kayıt YAZILMADI. Açılışta kullanılan net plan hesabıyla gösterilir: açılacak istasyon emirleri, stoktan / fason siparişinden ayrılacaklar ve eksik malzeme. Stok durumu değişebilir; “Siparişi Aç” hesabı yeniden yapar." %}
     <span class="rozet rozet-aktif">{{ plan_onizleme.ie_sayisi }} istasyon emri açılacak</span>
     <span class="rozet rozet-notr">{{ plan_onizleme.ayirmalar|length }} stok kalemi ayrılacak</span>
+    {% if plan_onizleme.fason_gerekli %}<span class="rozet rozet-turuncu" title="Fason istasyon emri açılışta KENDİLİĞİNDEN açılmaz; ÜS detayında yönetici açar">Fason gerekli: {{ plan_onizleme.fason_gerekli|length }}</span>{% endif %}
     {% if plan_onizleme.eksik_sayisi %}<span class="rozet rozet-pasif">Eksik malzeme: {{ plan_onizleme.eksik_sayisi }}</span>{% endif %}
     {% if plan_onizleme.satinalma_bekleyen %}<span class="rozet rozet-notr">Satınalmadan bekleniyor: {{ plan_onizleme.satinalma_bekleyen }}</span>{% endif %}
     {% if plan_onizleme.fason_bekleyen %}<span class="rozet rozet-notr">Fasondan bekleniyor: {{ plan_onizleme.fason_bekleyen }}</span>{% endif %}
@@ -28,6 +29,21 @@
     </tbody>
   </table>
   </div>
+
+  {% if plan_onizleme.fason_gerekli %}
+  <h3 style="margin:.9rem 0 .3rem">Fason gerekli <span class="yardim">(emir otomatik açılmaz — ÜS açıldıktan sonra ÜS detayında yönetici "Fason emri aç" ile açar)</span></h3>
+  <div class="tablo-kapsayici">
+  <table>
+    <thead><tr><th>İstasyon</th><th>Çıktı</th><th class="sag">Çalıştırma</th><th class="sag">Adet</th></tr></thead>
+    <tbody>
+      {% for f in plan_onizleme.fason_gerekli %}
+        <tr><td><span class="mono">{{ f.istasyon.kod }}</span> {{ f.istasyon.ad }}</td><td><span class="mono">{{ f.cikti.kod }}</span> {{ f.cikti.ad }}{% if f.varyant %} <span class="rozet rozet-notr">{{ f.varyant }}</span>{% endif %}</td>
+            <td class="sag mono">{{ f.calistirma|tr_kur:3 }}</td><td class="sag mono"><strong>{{ f.adet|tr_kur:3 }}</strong></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
 
   <h3 style="margin:.9rem 0 .3rem">Stoktan ayrılacaklar</h3>
   <div class="tablo-kapsayici">

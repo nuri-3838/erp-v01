@@ -3812,6 +3812,7 @@ class UretimEmriRevizyon(TemelModel):
         DUZENLEME = "DUZENLEME", "Termin/öncelik düzenleme"
         FIRE_EK_PLAN = "FIRE_EK_PLAN", "Fire kaynaklı ek plan"
         FIRE_GERI_ALMA = "FIRE_GERI_ALMA", "Fire ek planı geri alındı"
+        FASON_EMRI = "FASON_EMRI", "Fason emri açıldı/güncellendi"
 
     uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.CASCADE, related_name="revizyonlar")
     no = models.PositiveSmallIntegerField("sıra no")

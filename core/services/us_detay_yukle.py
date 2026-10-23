@@ -252,5 +252,11 @@ class Yukleme(EmirVerisi, Paylasim):
 
     def eksikler(self) -> list:
         """Eksik malzeme. Kapalı (kart bazlı) planda ürün ağacı grafı TEK seferde yüklenir (3 sorgu; liste ekranıyla aynı yol); varyantlı planda ``TopluCozucu``."""
-        graf = None if self.emir.varyantli_plan else urun_agaci_servis.graf_yukle()
-        return uretim.uretim_emri_eksikleri(self.emir, graf=graf, yukle=self)
+        return self.eksik_ve_tablo()[0]
+
+    def eksik_ve_tablo(self) -> tuple:
+        """(eksikler, tablo) — TEK planlama çağrısı (``uretim.uretim_emri_eksik_hesabi``); ikinci çağrıda önbellekten."""
+        if getattr(self, "_eksik_tablo", None) is None:
+            graf = None if self.emir.varyantli_plan else urun_agaci_servis.graf_yukle()
+            self._eksik_tablo = uretim.uretim_emri_eksik_hesabi(self.emir, graf=graf, yukle=self)
+        return self._eksik_tablo

@@ -204,6 +204,8 @@ def _hesapla_ve_uygula(kayit: OperasyonKaydi, kullanici, geriye_donuk: bool):
             if calistirma <= 0:
                 continue
             op, sv = planlama_varyant.kosum_coz(p["operasyon"])
+            if u._fason_op_mu(op):
+                continue                                           # FASON: fire de emri açmaz/artırmaz — ihtiyaç ÜS detayında "Eksik — fason gerekli" görünür
             ihtiyac_ek = {}
             for c in p["ciktilar"]:
                 if c["surucu"] and c["net"] > 0:
@@ -224,7 +226,6 @@ def _hesapla_ve_uygula(kayit: OperasyonKaydi, kullanici, geriye_donuk: bool):
                 ie.ihtiyac = yeni_ihtiyac
                 if ie.durum == IstasyonEmri.Durum.IPTAL:
                     ie.durum = IstasyonEmri.Durum.BEKLIYOR
-            ie.fire_ek = {"ek": _ds(_d((ie.fire_ek or {}).get("ek")) + calistirma)}
             ie.updated_by = kullanici
             ie.save()
             u.istasyon_emri_durum_guncelle(ie)
@@ -341,22 +342,4 @@ def fire_notlari(emir: UretimEmri) -> list:
         if ek.get("geri_alindi") or ek.get("uygulanmadi"):
             continue
         sonuc.append({"kayit": k, "ek": ek, "hata": ek.get("hata"), "yenilendi": bool(ek.get("yenilendi")), "geriye_donuk": bool(ek.get("geriye_donuk"))})
-    return sonuc
-
-
-def fason_rozetleri(ieler) -> list:
-    """Fire yüzünden artmış FASON istasyon emirleri → ``uretim_emri_eksikleri`` satırları (tür FASON_EMRI_GEREKLI, ``fire``=True). Tutar = min(ek, emrin kalanı) × referans;
-    fason dönüşle parça gelince (kalan düşer) ya da ÜS'ye fason rezervi yapılıp ÜS revize edilince (plan baştan kurulur, ek temizlenir) kalkar."""
-    sonuc = []
-    for ie in ieler:
-        if not ie.fire_ek or ie.durum == IstasyonEmri.Durum.IPTAL:
-            continue
-        ek = _d(ie.fire_ek.get("ek"))
-        if ek <= 0 or not ie.istasyon.fason:
-            continue
-        miktar = min(ek, ie.kalan) * u._referans_miktar(ie.operasyon)
-        if miktar <= 0:
-            continue
-        sonuc.append({"stok": ie.operasyon.cikti, "varyant": ie.cikti_varyant, "varyant_etiketi": planlama_varyant.etiket(ie.cikti_varyant) if ie.cikti_varyant_id else "",
-                      "gerekli": miktar, "kullanilabilir": S, "eksik": miktar, "stoklu": False, "tur": "FASON_EMRI_GEREKLI", "fire": True, "ie": ie})
     return sonuc

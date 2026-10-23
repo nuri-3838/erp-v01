@@ -189,7 +189,8 @@ class HazirlikKomutuTest(OperasyonVaryantTaban):
         emir = uretim.uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.mamul_a.pk, "hedef_miktar": "10"}], depo_id=self.depo.pk,
                                           tarih=__import__("datetime").date(2026, 10, 12))
         self.assertFalse(emir.istasyon_emirleri.filter(istasyon__kod="11").exists())                   # lazer emri AÇILMAZ (E-6'ya kadar)
-        self.assertTrue(emir.istasyon_emirleri.filter(istasyon__kod="10").exists())
+        self.assertFalse(emir.istasyon_emirleri.filter(istasyon__kod="10").exists())                   # fason (10 BORU LAZER) emri KENDİLİĞİNDEN açılmaz (2026-10-23): eksik tablosunda fason gerekli
+        self.assertTrue([r for r in uretim.uretim_emri_eksik_tablosu(emir) if r["tur"] == "FASON"])
         out2 = StringIO()
         call_command("varyant_operasyon_hazirla", stdout=out2)                                         # idempotent: ikinci koşu değişiklik yok
         m2 = out2.getvalue()

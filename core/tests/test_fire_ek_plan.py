@@ -119,7 +119,7 @@ class EmirArtisiTest(FireTaban):
         IstasyonEmri.objects.filter(pk=self.ie_kesim.pk).update(silindi=True)
         kayit = self.uret(self.ie_bukum, miktar="9", fire="1")
         yeni = IstasyonEmri.objects.get(uretim_emri=self.us, operasyon=self.kesim_op, silindi=False)
-        self.assertEqual((yeni.planlanan, yeni.tamamlanan, yeni.fire_ek), (D("0.5"), D("0"), {"ek": "0.5"}))
+        self.assertEqual((yeni.planlanan, yeni.tamamlanan), (D("0.5"), D("0")))
         kayit.refresh_from_db()
         self.assertTrue(kayit.fire_ek["istasyon_emirleri"][0]["yeni"])
         uretim.operasyon_kaydi_sil(kayit, kullanici=self.yon, onayli_geri_al=True)
@@ -148,38 +148,33 @@ class TamamlanmisEmirTest(FireTaban):
 
 
 class FasonRozetTest(FireTaban):
-    def test_fason_istasyon_emri_artarsa_rozet_cikar_ve_fason_donusle_kalkar(self):
+    def test_fire_fason_emrini_artirmaz_eksik_gorunur_yonetici_gunceller(self):
         self.kesimi_uret()
         IsIstasyonu.objects.filter(pk=self.lazer.pk).update(fason=True)        # kesim istasyonu fason
         kayit = self.uret(self.ie_bukum, miktar="9", fire="1")
         self.yenile(self.ie_kesim)
-        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.fire_ek), (D("5.5"), {"ek": "0.5"}))
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.durum, self.ie_kesim.fire_ek), (D("5"), "BITTI", {}))      # emir DEĞİŞMEDİ
         kayit.refresh_from_db()
-        self.assertTrue(kayit.fire_ek["istasyon_emirleri"][0]["fason"])
-        satirlar = [e for e in uretim.uretim_emri_eksikleri(self.us) if e["tur"] == "FASON_EMRI_GEREKLI"]
-        self.assertEqual([(e["stok"].pk, e["eksik"], e.get("fire")) for e in satirlar], [(self.kesilmis.pk, D("1"), True)])       # 0,5 çalıştırma × 2
+        self.assertEqual(kayit.fire_ek.get("istasyon_emirleri", []), [])                                                    # fire ek planı fason emri yazmadı
+        satirlar = [r for r in uretim.uretim_emri_eksik_tablosu(self.us) if r["tur"] == "FASON"]
+        self.assertEqual([(r["stok"].pk, r["eksik"], r["fason"]["buton"]) for r in satirlar if r["eksik"] > 0], [(self.kesilmis.pk, D("1"), "guncelle")])
+        self.assertIn("FASON_EMRI_GEREKLI", [e["tur"] for e in uretim.uretim_emri_eksikleri(self.us)])
         self.client.force_login(self.yon)
         html = self.client.get(reverse("core:uretim_emri_detay", args=[self.us.pk]) + "?sekme=malzeme").content.decode()
-        self.assertIn("fason emri gerekli — fire kaynaklı", html)
+        self.assertIn("Eksik — fason gerekli", html)
+        self.assertIn("Fason emrini güncelle", html)
         self.assertIn("Fire Kaynaklı Ek Plan", html)
-        self.assertIn(kayit.no, html)
-        # parça fason dönüşle gelince (kalan düşer) rozet kalkar
-        IstasyonEmri.objects.filter(pk=self.ie_kesim.pk).update(tamamlanan=D("5.5"))
+        ie = uretim.fason_emri_ac(self.us, operasyon_id=self.kesim_op.pk, kullanici=self.yon)                              # yönetici düğmesi
+        self.assertEqual((ie.pk, ie.planlanan, ie.durum), (self.ie_kesim.pk, D("5.5"), "BASLADI"))
         self.assertEqual([e for e in uretim.uretim_emri_eksikleri(self.us) if e["tur"] == "FASON_EMRI_GEREKLI"], [])
 
-    def test_revize_plani_bastan_kurar_rozet_ve_geri_alma_izi_temizlenir(self):
+    def test_revize_fason_emrine_dokunmaz(self):
         self.kesimi_uret()
         IsIstasyonu.objects.filter(pk=self.lazer.pk).update(fason=True)
-        kayit = self.uret(self.ie_bukum, miktar="9", fire="1")
+        self.uret(self.ie_bukum, miktar="9", fire="1")
         uretim.uretim_emri_revize(self.us, kalemler=[{"hedef_urun_id": self.mamul.pk, "hedef_miktar": "10"}], kullanici=self.yon)
         self.yenile(self.ie_kesim)
-        self.assertEqual(self.ie_kesim.fire_ek, {})
-        kayit.refresh_from_db()
-        self.assertTrue(kayit.fire_ek["yenilendi"])
-        self.assertEqual([e for e in uretim.uretim_emri_eksikleri(self.us) if e.get("fire")], [])
-        uretim.operasyon_kaydi_sil(kayit, kullanici=self.yon, onayli_geri_al=True)      # yenilenmiş ek geri sarılmaz (revize planı zaten baştan kurdu)
-        self.yenile(self.ie_kesim)
-        self.assertFalse(self.us.revizyonlar.filter(tur=UretimEmriRevizyon.Tur.FIRE_GERI_ALMA).exists())
+        self.assertEqual((self.ie_kesim.planlanan, self.ie_kesim.durum), (D("5"), "BITTI"))
 
 
 class GeriAlmaTest(FireTaban):
