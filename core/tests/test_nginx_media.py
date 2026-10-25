@@ -29,7 +29,7 @@ CANLI_ORNEK = """\
 server {
     listen 80;
     listen [::]:80;
-    server_name test.semtahome.com;
+    server_name ornek.example.com;
     return 404;
 }
 
