@@ -2026,12 +2026,32 @@ def _istasyon_emri_onay_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None:
             c.save(update_fields=["ayrilan", "updated_at"])
     ie.tamamlanan = ie.tamamlanan + kayit_calistirma(kayit)
     ie.save(update_fields=["tamamlanan", "updated_at"])
+    if kayit.karma_id:
+        _karma_emir_daralt(kayit, ie, ihtiyac)
     istasyon_emri_durum_guncelle(ie)
     from core.services import uretim_fire
     uretim_fire.fire_ek_planla(kayit, kullanici)                  # fire'lı kayıt: ÜS'nin açık kalan ihtiyacı için ek ayırma / girdi emri artışı (kapanış kontrolünden ÖNCE)
     emir.refresh_from_db()
     if not _kapanis_kontrol(emir, kullanici):                  # sevk edilmiş sipariş: son emir bitince kapanır
         stok_us_tamamla(emir, kullanici)                       # kaynak siparişsiz ("stok için üretim") ÜS: %100 olunca tamamlanır, ayırmalar serbest
+
+
+def _karma_emir_daralt(kayit: OperasyonKaydi, ie: IstasyonEmri, ihtiyac: dict) -> None:
+    """Karma kesim satırı onaylandı: emrin NET ihtiyacı (ÜS'ye ayrılan toplamı ≥ ihtiyaç) karşılandıysa ``planlanan`` ``tamamlanan``a çekilir — operatör yalnız
+    ihtiyaç kadar kestiği için tam boy planı (ör. 16 parça) hiç dolmaz, emir açık kalıp ÜS kapanışını kilitlerdi. Eski planlanan ``kayit.karma_iz``de saklanır,
+    kayıt geri alınınca ``_istasyon_emri_geri_al_etkisi`` geri yükler."""
+    ana = kayit.ciktilar.filter(ana_mi=True, silindi=False).first()
+    if ana is None:
+        return
+    anahtar = (ana.stok_id, ana.varyant_id)
+    if anahtar not in ihtiyac or ie.tamamlanan >= ie.planlanan:
+        return
+    if _onceki_ayrilan(ie, ana.stok_id, ana.varyant_id) < ihtiyac[anahtar]:
+        return
+    kayit.karma_iz = {"ie": ie.pk, "onceki_planlanan": _ds(ie.planlanan)}
+    kayit.save(update_fields=["karma_iz", "updated_at"])
+    ie.planlanan = ie.tamamlanan
+    ie.save(update_fields=["planlanan", "updated_at"])
 
 
 def _ayirma_etiketi(a, emir) -> str:
@@ -2090,7 +2110,10 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
             if satir.ayrilan_dusen > 0:
                 stok_ayirma.ayirma_ekle(emir, satir.girdi_id, satir.ayrilan_dusen, kullanici, varyant=satir.varyant_id)
     ie.tamamlanan = max(Decimal("0"), ie.tamamlanan - kayit_calistirma(kayit))
-    ie.save(update_fields=["tamamlanan", "updated_at"])
+    iz = kayit.karma_iz or {}
+    if iz.get("ie") == ie.pk:                                  # karma kesim: onayda daraltılan planlanan eski değerine döner
+        ie.planlanan = Decimal(iz["onceki_planlanan"])
+    ie.save(update_fields=["planlanan", "tamamlanan", "updated_at"])
     istasyon_emri_durum_guncelle(ie)
     if yeniden_ac:
         emir.durum = UretimEmri.Durum.ACIK
@@ -2858,8 +2881,9 @@ def kaydi_girdi_satirlari(kayit: OperasyonKaydi):
 @transaction.atomic
 def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari,
                             uretim_emri=None, aciklama="", kullanici=None, fason_cari=None, fason_donus=None,
-                            istasyon_emri=None, cikti_varyant=None, personel=None, mesai_kaydi=None) -> OperasyonKaydi:
-    """``cikti_varyant`` (E-6, istasyon emrinden): kaydın ürettiği ana çıktı varyantı; girdi satırlarının varyantı tanım kuralından türetilir
+                            istasyon_emri=None, cikti_varyant=None, personel=None, mesai_kaydi=None, karma=None) -> OperasyonKaydi:
+    """``karma`` (KarmaKesim): kayıt bir karma kesimin satırıdır — tam boy yukarı yuvarlaması UYGULANMAZ (hedef olduğu gibi kalır; profil payını karma servisi yazar).
+    ``cikti_varyant`` (E-6, istasyon emrinden): kaydın ürettiği ana çıktı varyantı; girdi satırlarının varyantı tanım kuralından türetilir
     (``planlama_varyant.girdi_varyanti``), atlanan (tüm boyutları YOK, satın alınan) girdi satırı yazılmaz. Boşsa bugünkü davranış (varyant boş →
     kartın varsayılanı). ``personel``/``mesai_kaydi`` (atölye): kaydı giren personel ve açık mesai kaydı; personel verilmezse kullanıcıya bağlı
     personel kartı (varsa) yazılır."""
@@ -2889,7 +2913,7 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
         girdi_satirlari = secilen
         if not girdi_satirlari:
             raise UretimHatasi("Bu varyant için tüketilecek girdi kalmıyor (tüm girdiler YOK).")
-    if operasyon.tam_calistirma:                       # tam boy: çalıştırma sayısı tam sayı (hedef çıktı çıktı miktarının katına yükseltilir)
+    if operasyon.tam_calistirma and karma is None:     # tam boy: çalıştırma sayısı tam sayı (hedef çıktı çıktı miktarının katına yükseltilir)
         miktar = _yukari_yuvarla(miktar / operasyon.cikti_miktar) * operasyon.cikti_miktar
 
     yil = tarih.year
@@ -2901,7 +2925,7 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
                 kayit = OperasyonKaydi.objects.create(
                     yil=yil, sira=sira, no=f"OP-{yil}-{sira:04d}",
                     operasyon=operasyon, uretim_emri=uretim_emri, istasyon_emri=istasyon_emri, cikti_varyant=cikti_varyant, depo=depo,
-                    personel=personel, mesai_kaydi=mesai_kaydi,
+                    personel=personel, mesai_kaydi=mesai_kaydi, karma=karma,
                     tarih=tarih, hedef_cikti_miktari=miktar, aciklama=(aciklama or "").strip(),
                     durum=OperasyonKaydi.Durum.TASLAK, fason_cari=fason_cari, fason_donus=fason_donus,
                     created_by=kullanici, updated_by=kullanici)
@@ -2921,8 +2945,9 @@ def operasyon_kaydi_olustur(*, operasyon_id, depo_id, tarih, hedef_cikti_miktari
 
 
 def _tam_boy_kontrol(kayit: OperasyonKaydi, satir: OperasyonKaydiGirdi, miktar: Decimal):
-    """Tam boy zorunlu operasyonda BOY birimli girdinin gerçekleşen miktarı tam sayı olmalı."""
-    if kayit.operasyon.tam_calistirma and _boy_birimli_mi(satir.girdi) and miktar != miktar.to_integral_value():
+    """Tam boy zorunlu operasyonda BOY birimli girdinin gerçekleşen miktarı tam sayı olmalı. Karma kesim satırı muaftır: boy sayısı karma servisinde
+    tam sayı doğrulanır, kayıtlara dağılan pay uzunluk oranıyla kesirlidir."""
+    if kayit.karma_id is None and kayit.operasyon.tam_calistirma and _boy_birimli_mi(satir.girdi) and miktar != miktar.to_integral_value():
         raise UretimHatasi(TAM_BOY_HATASI)
 
 

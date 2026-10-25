@@ -659,6 +659,8 @@ class Stok(TemelModel):
     stoklu_uretim = models.BooleanField("stoklu üretim", default=False)
     # Kritik stok önerisinde "Stok için ÜS aç" miktarının tabanı: max(parti miktarı, kritik − kalan).
     parti_miktari = models.DecimalField("parti miktarı", max_digits=18, decimal_places=3, default=0)
+    # PROFİL BOYU (mm): BOY birimli profil kartında bir boyun uzunluğu (ör. 6000). Karma kesimde uzunluk bütçesinin kaynağıdır; boşsa karma kesim yapılamaz.
+    boy_uzunluk_mm = models.DecimalField("profil boy uzunluğu (mm)", max_digits=12, decimal_places=2, null=True, blank=True)
     # Tedarikçi: Cari modülüne FK (opsiyonel). Eski serbest metin kaldırıldı.
     tedarikci = models.ForeignKey(
         "Cari", verbose_name="tedarikçi (cari)", null=True, blank=True,
@@ -780,6 +782,9 @@ class Stok(TemelModel):
             models.CheckConstraint(
                 condition=models.Q(cbm__isnull=True) | models.Q(cbm__gte=0),
                 name="ck_stok_cbm_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(boy_uzunluk_mm__isnull=True) | models.Q(boy_uzunluk_mm__gt=0),
+                name="ck_stok_boy_uzunluk_mm_gt0"),
             models.CheckConstraint(
                 condition=(models.Q(satinalma_urunu=True) | models.Q(uretim_urunu=True)
                           | models.Q(satis_urunu=True)),
@@ -3892,6 +3897,10 @@ class OperasyonKaydi(TemelModel):
                                  related_name="operasyon_kayitlari")
     mesai_kaydi = models.ForeignKey("MesaiKaydi", verbose_name="mesai kaydı", null=True, blank=True, on_delete=models.PROTECT,
                                     related_name="operasyon_kayitlari")
+    # KARMA KESİM: doluysa kayıt bir karma kesimin parça × emir satırıdır — profil girdisi tam boy kuralından muaftır (uzunluk oranıyla kesirli pay),
+    # onay/geri alma grupla yapılır. ``karma_iz``: onayda emrin planlananı daraltıldıysa {"ie": pk, "onceki_planlanan": "…"}; geri almada eski değer döner.
+    karma = models.ForeignKey("KarmaKesim", verbose_name="karma kesim", null=True, blank=True, on_delete=models.PROTECT, related_name="kayitlar")
+    karma_iz = models.JSONField("karma kesim izi", default=dict, blank=True)
 
     class Meta:
         db_table = "core_operasyon_kaydi"
@@ -3948,6 +3957,72 @@ class OperasyonKaydiGirdi(TemelModel):
 
     def __str__(self):
         return f"{self.kayit.no} — {self.girdi.kod} × {self.gerceklesen_miktar}"
+
+
+class KarmaKesim(TemelModel):
+    """ÜRETİM > Karma kesim (KK-yyyy-nnnn): aynı profilin N boyundan, aynı istasyonda FARKLI parçaların birlikte kesilmesi. Başlık; her parça × emir
+    ayrımı normal bir ``OperasyonKaydi``dır (``OperasyonKaydi.karma``) — onay, stok, maliyet, ayırma ve geri alma mevcut akışla aynıdır, grup birlikte geri alınır.
+    Uzunluk bütçesi: Σ(adet × parça mm) + toplam adet × testere payı ≤ boy sayısı × (boy mm − çene payı). FİRE = boy sayısı × boy mm − Σ(adet × parça mm)
+    = testere + çene + uç; stoğa GİRMEZ ve ayrıca maliyetlenmez (profilin toplam maliyeti parçalara kesilen uzunluk oranıyla dağılır). Ayar değerleri
+    (boy, testere, çene) kayıt anında buraya KOPYALANIR; sonradan ayar değişse de geçmiş kayıt etkilenmez."""
+
+    yil = models.PositiveSmallIntegerField("yıl", editable=False)
+    sira = models.PositiveIntegerField("sıra", editable=False)
+    no = models.CharField("karma kesim no", max_length=20, editable=False)
+    istasyon = models.ForeignKey(IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT, related_name="karma_kesimler")
+    profil = models.ForeignKey(Stok, verbose_name="profil", on_delete=models.PROTECT, related_name="karma_kesimler")
+    depo = models.ForeignKey(Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="karma_kesimler")
+    tarih = models.DateField("tarih")
+    boy_sayisi = models.PositiveIntegerField("kullanılan boy sayısı")
+    boy_mm = models.DecimalField("profil boyu (mm)", max_digits=12, decimal_places=2)
+    testere_payi_mm = models.DecimalField("testere payı (mm/parça)", max_digits=8, decimal_places=2)
+    cene_payi_mm = models.DecimalField("çene payı (mm/boy)", max_digits=8, decimal_places=2)
+    toplam_adet = models.PositiveIntegerField("toplam parça adedi")
+    parca_mm = models.DecimalField("kesilen parça uzunluğu toplamı (mm)", max_digits=16, decimal_places=2)
+    testere_mm = models.DecimalField("testere fire (mm)", max_digits=16, decimal_places=2)
+    cene_mm = models.DecimalField("çene fire (mm)", max_digits=16, decimal_places=2)
+    uc_mm = models.DecimalField("uç fire (mm)", max_digits=16, decimal_places=2)
+    fire_mm = models.DecimalField("toplam fire (mm)", max_digits=16, decimal_places=2)
+    fire_orani = models.DecimalField("fire oranı (0-1)", max_digits=10, decimal_places=8)
+    personel = models.ForeignKey("Personel", verbose_name="giren personel", null=True, blank=True, on_delete=models.PROTECT, related_name="karma_kesimler")
+    mesai_kaydi = models.ForeignKey("MesaiKaydi", verbose_name="mesai kaydı", null=True, blank=True, on_delete=models.PROTECT, related_name="karma_kesimler")
+    aciklama = models.CharField("açıklama", max_length=300, blank=True, default="")
+
+    class Meta:
+        db_table = "core_karma_kesim"
+        verbose_name = "karma kesim"
+        verbose_name_plural = "karma kesimler"
+        ordering = ["-yil", "-sira"]
+        constraints = [
+            models.UniqueConstraint(fields=["yil", "sira"], name="uq_karma_kesim_yil_sira"),
+            models.CheckConstraint(condition=models.Q(boy_sayisi__gt=0), name="ck_karma_kesim_boy_sayisi_gt0"),
+            models.CheckConstraint(condition=models.Q(fire_mm__gte=0), name="ck_karma_kesim_fire_gte0"),
+        ]
+
+    def __str__(self):
+        return self.no
+
+
+class KarmaKesimSatir(TemelModel):
+    """Karma kesimin parça satırı: hangi parçadan kaç adet kesildi (kayıt anındaki parça mm ile). Emirlere dağılım ``OperasyonKaydi``larda tutulur."""
+
+    karma = models.ForeignKey(KarmaKesim, on_delete=models.CASCADE, related_name="satirlar")
+    stok = models.ForeignKey(Stok, verbose_name="parça", on_delete=models.PROTECT, related_name="karma_kesim_satirlari")
+    adet = models.PositiveIntegerField("adet")
+    parca_mm = models.DecimalField("parça uzunluğu (mm)", max_digits=12, decimal_places=2)
+
+    class Meta:
+        db_table = "core_karma_kesim_satir"
+        verbose_name = "karma kesim satırı"
+        verbose_name_plural = "karma kesim satırları"
+        ordering = ["pk"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(adet__gt=0), name="ck_karma_kesim_satir_adet_gt0"),
+            models.UniqueConstraint(fields=["karma", "stok"], condition=models.Q(silindi=False), name="uq_karma_kesim_satir_aktif"),
+        ]
+
+    def __str__(self):
+        return f"{self.karma.no} — {self.stok.kod} × {self.adet}"
 
 
 class Personel(TemelModel):
@@ -4745,6 +4820,9 @@ class UretimAyari(TemelModel):
     (stok, varyant) düğümleriyle kurulur (kesim/lazer seçimi, TAŞI/SABİT girdiler, lazer emirleri, standart dışı mamul 152'den karşılanmaz)."""
 
     varyantli_planlama = models.BooleanField("varyantlı planlama", default=False)
+    # KARMA KESİM (bkz. KarmaKesim): testere payı parça başına, çene payı (tutma payı) her boyda kullanılamayan uzunluk — mm.
+    testere_payi_mm = models.DecimalField("testere payı (mm / parça)", max_digits=8, decimal_places=2, default=Decimal("3"))
+    cene_payi_mm = models.DecimalField("çene payı (mm / boy)", max_digits=8, decimal_places=2, default=Decimal("75"))
 
     class Meta:
         db_table = "core_uretim_ayari"
