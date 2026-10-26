@@ -12,12 +12,17 @@
   .em-ayrilmis { color:#b35a00; font-weight:700; }
   .ad-inline-checkbox { display:inline-flex; align-items:center; gap:.45rem; font-size:.88rem; font-weight:600; cursor:pointer; }
   .ad-inline-checkbox input { width:auto; }
+  .em-sekmeler { display:flex; gap:.3rem; margin:.2rem 0 .8rem; border-bottom:1px solid var(--cizgi-koyu); }
+  .em-sekme { padding:.5rem 1rem; border-radius:10px 10px 0 0; font-weight:600; font-size:.9rem; color:var(--metin-soluk); text-decoration:none; }
+  .em-sekme:hover { color:var(--metin); background:rgba(240,124,0,.06); }
+  .em-sekme.aktif { color:var(--turuncu-koyu); background:rgba(240,124,0,.1); box-shadow:inset 0 -2px 0 var(--turuncu); }
 </style>
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:operasyon_kayitlari' %}">← Operasyon Kayıtları</a>
     <h1 class="ust-baslik"><span class="emoji">🛠️</span>Emirsiz Üretim</h1>
   </div>
+  <nav class="em-sekmeler"><a class="em-sekme aktif" href="{% url 'core:emirsiz_uretim' %}">Üretim kaydı</a><a class="em-sekme" href="{% url 'core:emirsiz_karma' %}">✂️ Karma kesim</a></nav>
   <p class="sayfa-alt">İş emrine / üretim siparişine bağlı olmayan üretim: girdiler stoktan düşer, üretilen parça <strong>serbest stoğa</strong> girer ve kayıt hemen onaylanır
     (malzeme kontrolü, maliyet ve fire hesabı istasyon emriyle yapılan üretimle aynıdır). Fason istasyonlarında emirsiz kayıt yapılamaz.</p>
 

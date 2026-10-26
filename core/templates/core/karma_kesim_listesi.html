@@ -1,0 +1,65 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Karma Kesimler · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Karma Kesimler{% endblock %}
+
+{% block content %}
+<style>
+  .kk-sure { display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem; }
+  .kk-sure .alan { margin:0; }
+  .kk-sure .alan label { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--metin-soluk); }
+  .kk-sure input, .kk-sure select { min-height:38px; }
+</style>
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:operasyon_kayitlari' %}">← Operasyon Kayıtları</a>
+    <h1 class="ust-baslik"><span class="emoji">✂️</span>Karma Kesimler</h1>
+  </div>
+  {% if emirsiz_yetkili %}<span class="islem-bag"><a class="dugme" href="{% url 'core:emirsiz_karma' %}">+ Ofis Karma Kesim</a></span>{% endif %}
+</div>
+<p class="sayfa-alt">Aynı profilin boylarından farklı parçaların birlikte kesilmesi. <b>Kaynak</b>: atölye (iş oturumundan, işçilik süresiyle) ya da ofis (Emirsiz Üretim › Karma kesim). Fire = testere + çene + uç; stoğa girmez.</p>
+
+<form method="get" class="kk-sure">
+  <div class="alan"><label for="kk-kaynak">Kaynak</label>
+    <select name="kaynak" id="kk-kaynak"><option value="">Tümü</option>{% for k, ad in kaynaklar %}<option value="{{ k }}"{% if kaynak == k %} selected{% endif %}>{{ ad }}</option>{% endfor %}</select></div>
+  <div class="alan"><label for="kk-ist">İstasyon</label>
+    <select name="istasyon" id="kk-ist"><option value="">Tümü</option>{% for i in istasyonlar %}<option value="{{ i.pk }}"{% if istasyon == i.pk|stringformat:"s" %} selected{% endif %}>{{ i.kod }} {{ i.ad }}</option>{% endfor %}</select></div>
+  <div class="alan"><label for="kk-bas">Tarih (başlangıç)</label><input type="date" name="bas" id="kk-bas" value="{{ bas }}"></div>
+  <div class="alan"><label for="kk-bit">Tarih (bitiş)</label><input type="date" name="bit" id="kk-bit" value="{{ bit }}"></div>
+  <div class="alan"><label for="kk-ara">Ara</label><input type="text" name="ara" id="kk-ara" value="{{ ara }}" placeholder="KK no, profil, parça…" size="22" autocomplete="off"></div>
+  <div class="alan"><label class="ad-inline-checkbox" style="text-transform:none"><input type="checkbox" name="geri" value="1"{% if geri %} checked{% endif %}> geri alınanlar da</label></div>
+  <button type="submit" class="birincil">Filtrele</button>
+  <a class="iptal-bag" href="{% url 'core:karma_kesimler' %}">Temizle</a>
+</form>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>No</th><th>Tarih</th><th>Kaynak</th><th>İstasyon</th><th>Profil</th><th class="sag">Boy</th><th class="sag">Parça</th><th class="sag">Fire (mm)</th><th class="sag">Fire %</th><th>Giren</th><th>Durum</th></tr></thead>
+  <tbody>
+    {% for k in kesimler %}
+      <tr>
+        <td><a class="mono" href="{% url 'core:karma_kesim_detay' k.pk %}">{{ k.no }}</a></td>
+        <td class="mono">{{ k.tarih|date:"d.m.Y" }}</td>
+        <td>{% if k.kaynak == "OFIS" %}<span class="rozet rozet-notr">Ofis</span>{% else %}<span class="rozet rozet-aktif">Atölye</span>{% endif %}</td>
+        <td><span class="mono" title="{{ k.istasyon.ad }}">{{ k.istasyon.kod }}</span></td>
+        <td class="mono" title="{{ k.profil.ad }}">{{ k.profil.kod }}</td>
+        <td class="sag mono">{{ k.boy_sayisi }}</td>
+        <td class="sag mono">{{ k.toplam_adet }}</td>
+        <td class="sag mono">{{ k.fire_mm|tr_kur:2 }}</td>
+        <td class="sag mono">%{{ k.fire_yuzde|tr_kur:2 }}</td>
+        <td>{% if k.personel_id %}{{ k.personel.ad }} {{ k.personel.soyad }}{% elif k.created_by %}{{ k.created_by.username }}{% else %}—{% endif %}</td>
+        <td>{% if k.silindi %}<span class="rozet rozet-pasif">Geri alındı</span>{% else %}<span class="rozet rozet-aktif">Onaylı</span>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="11" class="yardim" style="text-align:center;padding:1.4rem 0">Bu süzgeçle eşleşen karma kesim yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<nav class="sayfalama">
+  {% if kesimler.has_previous %}<a href="?{{ sorgu }}{% if sorgu %}&amp;{% endif %}sayfa={{ kesimler.previous_page_number }}">‹ Önceki</a>{% else %}<span class="pasif">‹ Önceki</span>{% endif %}
+  <span class="sayfalama-bilgi">Sayfa {{ kesimler.number }} / {{ kesimler.paginator.num_pages }} · {{ kesimler.paginator.count }} kayıt</span>
+  {% if kesimler.has_next %}<a href="?{{ sorgu }}{% if sorgu %}&amp;{% endif %}sayfa={{ kesimler.next_page_number }}">Sonraki ›</a>{% else %}<span class="pasif">Sonraki ›</span>{% endif %}
+</nav>
+{% endblock %}

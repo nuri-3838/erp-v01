@@ -705,6 +705,44 @@ def ofis_engeli_kontrol(ie: IstasyonEmri, asma=None) -> bool:
     raise uretim.UretimHatasi(f"Bu işte {oz['sorumlu'].ad_soyad}'in oturumu adet bekliyor; kayıt girilemez. Adedi İş Oturumları ekranından \"Adet gir\" ile girin (süper kullanıcı notla aşabilir).")
 
 
+def ofis_karma_engelleri(istasyon_id, profil_id) -> list:
+    """Ofis KARMA KESİM kaydını engelleyen oturumlar (AÇIK ya da "Adet bekliyor"): aynı istasyonda bu profil için karma oturum, ya da bu profili tüketen bir emirde tekil oturum."""
+    karma = Q(karma=True, karma_profil_id=profil_id)
+    tekil = Q(karma=False, istasyon_emri__operasyon__girdiler__girdi_id=profil_id, istasyon_emri__operasyon__girdiler__silindi=False)
+    return list(IsOturumu.objects.filter(karma | tekil, silindi=False, istasyon_id=istasyon_id, durum__in=[IsOturumu.Durum.ACIK, IsOturumu.Durum.ADET])
+                .select_related("baslatan", "sorumlu", "karma_profil", "istasyon_emri").prefetch_related(_uyeler_prefetch()).distinct().order_by("pk"))
+
+
+def ofis_karma_engel_mesaji(oturumlar) -> str:
+    """Engelleyen oturumlardan ilkinin açıklayıcı mesajı ('' = engel yok)."""
+    if not oturumlar:
+        return ""
+    o = oturumlar[0]
+    oz = ozet(o)
+    ad = oz["sorumlu"].ad_soyad
+    if o.karma and o.durum == IsOturumu.Durum.ACIK:
+        return (f"Bu istasyonda {ad}'in ekibi karma kesim yapıyor ({oz['ekip_metni']}); ofis karma kesim kaydı girilemez. Karma kesimi o ekip bitirmeli ya da yönetici "
+                "İş Oturumları'ndan kapatmalı (süper kullanıcı notla aşabilir).")
+    if o.karma:
+        return (f"Bu istasyonda {ad}'in karma kesimi adet bekliyor; ofis karma kesim kaydı girilemez. Önce atölyeden adetler girilmeli ya da yönetici İş Oturumları'ndan "
+                "kapatmalı (süper kullanıcı notla aşabilir).")
+    return (f"Bu istasyonda bu profili kullanan bir işte ({o.emir_no}) {ad}'in ekibi çalışıyor; ofis karma kesim kaydı girilemez. İşi o ekip bitirmeli ya da yönetici "
+            "İş Oturumları'ndan kapatmalı (süper kullanıcı notla aşabilir).")
+
+
+def ofis_karma_engeli_kontrol(istasyon_id, profil_id, asma=None) -> bool:
+    """Ofis karma kesim giriş kapısı: engel varsa ``KarmaKesimHatasi``; süper kullanıcı + not (``asma=(kullanıcı, not)``) aşarsa her oturuma OFIS_ASILDI olayı yazılır ve True döner
+    (atölye oturumu AÇIK kalır). Engel yoksa False."""
+    oturumlar = ofis_karma_engelleri(istasyon_id, profil_id)
+    if not oturumlar:
+        return False
+    if ofis_asma_gecerli(asma):
+        for o in oturumlar:
+            olay(o, T.OFIS_ASILDI, kullanici=asma[0], aciklama="Ofis karma kesim kaydı: " + asma[1].strip())
+        return True
+    raise karma_kesim.KarmaKesimHatasi(ofis_karma_engel_mesaji(oturumlar))
+
+
 def ofis_asma_sonrasi(ie: IstasyonEmri, asma) -> None:
     """Süper kullanıcı engeli aştı ve kayıt yazıldı: emir TAMAMLANDIYSA üzerindeki AÇIK oturumlar otomatik İptal (iş yapılmadı) olur (olay kaydı + not); adet bekleyenlere dokunulmaz."""
     ie.refresh_from_db()

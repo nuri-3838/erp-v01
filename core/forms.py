@@ -688,6 +688,34 @@ class OperasyonEmirsizForm(forms.Form):
         self.fields["personel"].label_from_instance = lambda p: f"{p.ad} {p.soyad}"
 
 
+class OfisKarmaKesimForm(forms.Form):
+    """ÜRETİM > Emirsiz Üretim > Karma kesim (ofis): istasyon, profil, kullanılan boy sayısı, tarih, depo, personel, not. Parça adetleri ``a_<parça stok pk>`` alanlarıyla
+    ayrı gelir (şablon profilin aday parçalarından çizer); doğrulama ``core.services.karma_kesim``de."""
+
+    istasyon = forms.ModelChoiceField(label="İş istasyonu", queryset=None, empty_label="— istasyon seç —")
+    profil = forms.ModelChoiceField(label="Profil", queryset=None, empty_label="— profil seç —")
+    boy_sayisi = forms.IntegerField(label="Kullanılan boy sayısı", min_value=1, widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}))
+    depo = forms.ModelChoiceField(label="Depo", queryset=None, empty_label="— depo seç —")
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    personel = forms.ModelChoiceField(label="Personel", queryset=None, required=False, empty_label="— personel —")
+    aciklama = forms.CharField(label="Not", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ayrilmis_onay = forms.BooleanField(label="Açık üretim siparişlerine ayrılmış profil stoğundan kullanmayı onaylıyorum", required=False)
+    asma_notu = forms.CharField(label="Süper kullanıcı: atölye engelini aşma notu", max_length=200, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.models import IsIstasyonu, Personel, Stok
+        from core.services.depo import aktif_depolar
+        self.fields["istasyon"].queryset = IsIstasyonu.objects.filter(silindi=False, fason=False).order_by("sira", "kod")
+        self.fields["istasyon"].label_from_instance = lambda i: f"{i.kod} {i.ad}"
+        self.fields["profil"].queryset = Stok.objects.filter(silindi=False, boy_uzunluk_mm__isnull=False).order_by("kod")
+        self.fields["profil"].label_from_instance = lambda s: f"{s.kod} {s.ad}"
+        self.fields["depo"].queryset = aktif_depolar()
+        self.fields["depo"].label_from_instance = lambda o: f"{o.kod}  {o.ad}"
+        self.fields["personel"].queryset = Personel.objects.filter(silindi=False).order_by("ad", "soyad")
+        self.fields["personel"].label_from_instance = lambda p: f"{p.ad} {p.soyad}"
+
+
 class AdayMusteriKategoriForm(forms.Form):
     """Aday müşteri kategorisi ekle/düzenle (CRM). Ad+Kod TR büyük harf + benzersizlik
     serviste. Üst kategori formda değil — ekleme giriş noktasıyla belirlenir (kök / +Alt)."""

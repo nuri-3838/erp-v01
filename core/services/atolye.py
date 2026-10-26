@@ -465,7 +465,6 @@ def oturum_karma_bitir(user, oturum, boy_ham, adetler, bitis_ham, ip):
 
 def karma_onizleme(istasyon_id, profil_id, boy_ham, adetler) -> dict:
     """Formun canlı önizlemesi (hiçbir şey yazılmaz): {"ok", "hata"} + ok ise uzunluk/fire dökümü ve parça × emir dağılımı (metin olarak biçimli)."""
-    from core.sayi import format_tr
     try:
         satirlar = _karma_satirlari(adetler)
         if not satirlar:
@@ -476,12 +475,7 @@ def karma_onizleme(istasyon_id, profil_id, boy_ham, adetler) -> dict:
         o = karma_kesim.onizleme(istasyon_id=istasyon_id, profil_id=profil_id, boy_sayisi=boy, satirlar=satirlar)
     except (AtolyeHatasi, uretim.UretimHatasi) as e:
         return {"ok": False, "hata": str(e)}
-    b = o["butce"]
-    mm = lambda d: format_tr(d, 2)
-    return {"ok": True, "hata": "", "toplam_adet": b["toplam_adet"], "parca_mm": mm(b["parca_mm"]), "testere_mm": mm(b["testere_mm"]), "cene_mm": mm(b["cene_mm"]),
-            "uc_mm": mm(b["uc_mm"]), "fire_mm": mm(b["fire_mm"]), "fire_yuzde": format_tr(b["fire_orani"] * 100, 2), "kullanilabilir_mm": mm(b["kullanilabilir_mm"]),
-            "gerekli_mm": mm(b["gerekli_mm"]),
-            "dagilim": [{"kod": x["aday"]["stok"].kod, "adet": x["adet"], "emir": (x["ie"].uretim_emri.no + " / " + x["ie"].no) if x["ie"] else "serbest stok"} for x in o["ayrimlar"]]}
+    return karma_kesim.onizleme_ozeti(o)
 
 
 def oturum_iptal(user, oturum, bitis_ham, ip):

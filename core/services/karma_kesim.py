@@ -220,10 +220,98 @@ def _planla(istasyon_id, profil: Stok, boy_sayisi: int, satirlar, kilitle: bool)
     return {"butce": b, "satirlar": cozulen, "ayrimlar": ayrimlar, "ayar": a, "boy_mm": boy_mm}
 
 
+def profil_stok_durumu(profil: Stok, boy_sayisi: int, plan: dict) -> dict:
+    """Profil stoğu (tüm depolar): gerekli = boy sayısı; eldeki; ayrilan = açık ÜS'lere ayrılan; kullanilabilir = eldeki − başkalarının ayırması (karma kesimin parça
+    aldığı ÜS'lerin kendi profil ayırması, kesimin o ÜS'ye düşen payı kadar tüketilebilir sayılır); ``onay_gerekli`` = eldeki yeterli ama kullanılabilir yetmiyor
+    (başka ÜS'lere ayrılmış profil tüketilecek)."""
+    from core.services import stok_ayirma
+    from core.services.hareket import toplu_eldeki
+    eldeki = toplu_eldeki({profil.pk}).get(profil.pk, S)
+    kullanilabilir = stok_ayirma.kullanilabilir_varyant_haritasi({(profil.pk, None)})[(profil.pk, None)]
+    pay = {}
+    emirler = {}
+    for x in plan["ayrimlar"]:
+        if x["ie"] is not None:
+            emirler[x["ie"].uretim_emri_id] = x["ie"].uretim_emri
+            pay[x["ie"].uretim_emri_id] = pay.get(x["ie"].uretim_emri_id, S) + x["profil_payi"]
+    kendi = sum((min(stok_ayirma.ayrilan_miktar(emirler[pk], profil.pk), p) for pk, p in pay.items()), S)
+    gerekli = Decimal(boy_sayisi)
+    kullanilabilir += kendi
+    return {"gerekli": gerekli, "eldeki": eldeki, "ayrilan": eldeki - (kullanilabilir - kendi), "kullanilabilir": kullanilabilir,
+            "onay_gerekli": bool(eldeki >= gerekli > kullanilabilir)}
+
+
 def onizleme(*, istasyon_id, profil_id, boy_sayisi, satirlar) -> dict:
-    """KURU çalıştırma (hiçbir şey yazılmaz): bütçe/fire dökümü + parça × emir dağılımı + her ayrımın profil payı. Kural ihlalinde ``KarmaKesimHatasi``."""
+    """KURU çalıştırma (hiçbir şey yazılmaz): bütçe/fire dökümü + parça × emir dağılımı + her ayrımın profil payı + profil stok durumu (``profil_stok``).
+    Kural ihlalinde ``KarmaKesimHatasi``."""
     profil = _profil_coz(profil_id)
-    return _planla(istasyon_id, profil, _tam_sayi(boy_sayisi, "Kullanılan boy sayısı"), satirlar, kilitle=False) | {"profil": profil}
+    n = _tam_sayi(boy_sayisi, "Kullanılan boy sayısı")
+    plan = _planla(istasyon_id, profil, n, satirlar, kilitle=False)
+    return plan | {"profil": profil, "profil_stok": profil_stok_durumu(profil, n, plan)}
+
+
+def satirlari_ham_coz(adetler) -> list:
+    """Form/GET'ten gelen {parça stok pk: ham adet} → [(pk, adet)]: boş ve 0 satırlar atlanır, tam sayı olmayan hata verir (TR biçimi: nokta binlik)."""
+    sonuc = []
+    for pk, ham in (adetler or {}).items():
+        if not str(pk).isdigit() or not (ham or "").strip():
+            continue
+        s = (ham or "").strip().replace(".", "").replace(" ", "")
+        if not s.isdigit():
+            raise KarmaKesimHatasi("Parça adedi tam sayı olmalı (ör. 12).")
+        if int(s) > 0:
+            sonuc.append((int(pk), int(s)))
+    return sonuc
+
+
+def onizleme_ozeti(o: dict) -> dict:
+    """``onizleme`` sonucunun ekran/JSON özeti (biçimli metinler): uzunluk + fire dökümü, parça × emir dağılımı, profil stok durumu."""
+    b = o["butce"]
+    mm = lambda d: format_tr(d, 2)
+    ps = o["profil_stok"]
+    return {"ok": True, "hata": "", "toplam_adet": b["toplam_adet"], "parca_mm": mm(b["parca_mm"]), "testere_mm": mm(b["testere_mm"]), "cene_mm": mm(b["cene_mm"]),
+            "uc_mm": mm(b["uc_mm"]), "fire_mm": mm(b["fire_mm"]), "fire_yuzde": format_tr(b["fire_orani"] * 100, 2), "kullanilabilir_mm": mm(b["kullanilabilir_mm"]),
+            "gerekli_mm": mm(b["gerekli_mm"]),
+            "dagilim": [{"kod": x["aday"]["stok"].kod, "adet": x["adet"], "emir": (x["ie"].uretim_emri.no + " / " + x["ie"].no) if x["ie"] else "serbest stok"} for x in o["ayrimlar"]],
+            "profil_stok": {"gerekli": format_tr(ps["gerekli"], 0), "eldeki": format_tr(ps["eldeki"], 3), "ayrilan": format_tr(ps["ayrilan"], 3),
+                            "kullanilabilir": format_tr(ps["kullanilabilir"], 3), "onay_gerekli": ps["onay_gerekli"]}}
+
+
+def ofis_onizleme(istasyon_id, profil_id, boy_ham, adetler) -> dict:
+    """Ofis formunun canlı önizlemesi (hiçbir şey yazılmaz): ``onizleme_ozeti`` + ``engel`` (açık atölye karma oturumu / aynı profilli tekil oturum varsa mesajı; önizleme yine
+    de gösterilir — kayıt aşamasında engellenir) ya da ``{"ok": False, "hata"}``."""
+    from core.services import is_oturumu
+    engel = is_oturumu.ofis_karma_engel_mesaji(is_oturumu.ofis_karma_engelleri(istasyon_id, profil_id)) if istasyon_id and profil_id else ""
+    try:
+        satirlar = satirlari_ham_coz(adetler)
+        if not satirlar:
+            return {"ok": False, "hata": "", "engel": engel}
+        if not (boy_ham or "").strip():
+            return {"ok": False, "hata": "Kullanılan boy sayısını girin.", "engel": engel}
+        o = onizleme(istasyon_id=istasyon_id, profil_id=profil_id, boy_sayisi=boy_ham, satirlar=satirlar)
+    except UretimHatasi as e:
+        return {"ok": False, "hata": str(e), "engel": engel}
+    return {**onizleme_ozeti(o), "engel": engel}
+
+
+def harita() -> list:
+    """Ofis formu için: karma kesim yapılabilen istasyonlar → profiller → aday parçalar [{"istasyon", "kod", "ad", "profiller": [{"pk", "kod", "ad", "boy_mm", "adaylar": [{"pk",
+    "kod", "ad", "mm", "ihtiyac"}]}]}]. ``ihtiyac`` = açık emirlerin toplam net kalan ihtiyacı (yalnız ipucu)."""
+    sonuc = []
+    for ist in IsIstasyonu.objects.filter(silindi=False, fason=False).order_by("sira", "kod"):
+        profiller = []
+        for s in profil_secenekleri(ist.pk):
+            p = s["profil"]
+            adaylar = []
+            for a in parca_adaylari(ist.pk, p.pk):
+                ihtiyac = sum((_net_kalan(ie) for ie in _acik_emirler(a["operasyon"], False)), S)
+                adaylar.append({"pk": a["stok"].pk, "kod": a["stok"].kod, "ad": a["stok"].ad, "mm": format(a["parca_mm"], "f") if a["parca_mm"] else None,
+                                "ihtiyac": int(ihtiyac.to_integral_value(rounding=ROUND_CEILING))})
+            depo = varsayilan_depo(ist.pk, p.pk)
+            profiller.append({"pk": p.pk, "kod": p.kod, "ad": p.ad, "boy_mm": format(p.boy_uzunluk_mm, "f"), "depo": depo.pk if depo else None, "adaylar": adaylar})
+        if profiller:
+            sonuc.append({"istasyon": ist.pk, "kod": ist.kod, "ad": ist.ad, "profiller": profiller})
+    return sonuc
 
 
 # --- kayıt ---
@@ -233,9 +321,11 @@ def _sonraki_sira(yil) -> int:
 
 
 @transaction.atomic
-def karma_kes(*, istasyon_id, profil_id, depo_id, boy_sayisi, satirlar, tarih=None, aciklama="", kullanici=None, personel=None, mesai_kaydi=None) -> KarmaKesim:
+def karma_kes(*, istasyon_id, profil_id, depo_id, boy_sayisi, satirlar, tarih=None, aciklama="", kullanici=None, personel=None, mesai_kaydi=None,
+              kaynak=KarmaKesim.Kaynak.ATOLYE, ayrilmis_kontrol=False, ayrilmis_onay=False) -> KarmaKesim:
     """Karma kesimi tek işlemde yazar ve ONAYLAR (herhangi bir hata — bütçe, stok yetersizliği… — hiçbir şey bırakmaz). ``satirlar``: [(parça stok pk, adet)].
-    Boy sayısı tam sayı olmalıdır; profil girdisi kayıtlara uzunluk oranıyla dağılır (toplam = boy sayısı)."""
+    Boy sayısı tam sayı olmalıdır; profil girdisi kayıtlara uzunluk oranıyla dağılır (toplam = boy sayısı). ``kaynak``: ATOLYE (oturumdan) / OFIS (Emirsiz Üretim ekranı).
+    ``ayrilmis_kontrol=True`` (ofis): profil başka açık ÜS'lere AYRILMIŞ stoktan tüketilecekse ``ayrilmis_onay`` olmadan ``uretim.AyrilmisStokOnayGerekli``."""
     istasyon = IsIstasyonu.objects.filter(pk=istasyon_id, silindi=False).first()
     if istasyon is None:
         raise KarmaKesimHatasi("İstasyon bulunamadı.")
@@ -256,6 +346,13 @@ def karma_kes(*, istasyon_id, profil_id, depo_id, boy_sayisi, satirlar, tarih=No
         personel = Personel.objects.filter(kullanici_id=kullanici.pk, silindi=False).first()
     plan = _planla(istasyon.pk, profil, n, satirlar, kilitle=True)
     b = plan["butce"]
+    if ayrilmis_kontrol and not ayrilmis_onay:
+        d = profil_stok_durumu(profil, n, plan)
+        if d["onay_gerekli"]:
+            raise uretim.AyrilmisStokOnayGerekli(
+                f"Bu karma kesim açık üretim siparişlerine AYRILMIŞ profil stoğundan tüketecek ({profil.kod}: gerekli {d['gerekli'].normalize():f} boy, eldeki "
+                f"{d['eldeki'].normalize():f}, kullanılabilir {d['kullanilabilir'].normalize():f}). Devam etmek için onay kutusunu işaretleyin.",
+                [{"stok": profil, "varyant": "", **{k: d[k] for k in ("gerekli", "eldeki", "ayrilan", "kullanilabilir")}}])
 
     karma = None
     for _ in range(10):
@@ -263,7 +360,7 @@ def karma_kes(*, istasyon_id, profil_id, depo_id, boy_sayisi, satirlar, tarih=No
             with transaction.atomic():
                 sira = _sonraki_sira(tarih.year)
                 karma = KarmaKesim.objects.create(
-                    yil=tarih.year, sira=sira, no=f"KK-{tarih.year}-{sira:04d}", istasyon=istasyon, profil=profil, depo=depo, tarih=tarih, boy_sayisi=n,
+                    yil=tarih.year, sira=sira, no=f"KK-{tarih.year}-{sira:04d}", kaynak=kaynak, istasyon=istasyon, profil=profil, depo=depo, tarih=tarih, boy_sayisi=n,
                     boy_mm=plan["boy_mm"], testere_payi_mm=plan["ayar"]["testere_payi_mm"], cene_payi_mm=plan["ayar"]["cene_payi_mm"], toplam_adet=b["toplam_adet"],
                     parca_mm=b["parca_mm"].quantize(MM), testere_mm=b["testere_mm"].quantize(MM), cene_mm=b["cene_mm"].quantize(MM), uc_mm=b["uc_mm"].quantize(MM),
                     fire_mm=b["fire_mm"].quantize(MM), fire_orani=b["fire_orani"].quantize(Decimal("0.00000001")), personel=personel, mesai_kaydi=mesai_kaydi,
@@ -281,7 +378,8 @@ def karma_kes(*, istasyon_id, profil_id, depo_id, boy_sayisi, satirlar, tarih=No
         kayit = uretim.operasyon_kaydi_olustur(
             operasyon_id=aday["operasyon"].pk, depo_id=depo.pk, tarih=tarih, hedef_cikti_miktari=Decimal(x["adet"]),
             uretim_emri=ie.uretim_emri if ie else None, istasyon_emri=ie, cikti_varyant=ie.cikti_varyant if ie else None,
-            aciklama=f"Karma kesim {karma.no}", kullanici=kullanici, personel=personel, mesai_kaydi=mesai_kaydi, karma=karma)
+            aciklama=("Ofis karma kesim " if kaynak == KarmaKesim.Kaynak.OFIS else "Karma kesim ") + karma.no, kullanici=kullanici, personel=personel,
+            mesai_kaydi=mesai_kaydi, karma=karma)
         satir = next((g for g in uretim.kaydi_girdi_satirlari(kayit) if g.girdi_id == profil.pk), None)
         if satir is None:
             raise KarmaKesimHatasi(f"{aday['stok'].kod}: kaydın profil girdisi bulunamadı.")
@@ -293,6 +391,19 @@ def karma_kes(*, istasyon_id, profil_id, depo_id, boy_sayisi, satirlar, tarih=No
         except UretimHatasi as e:
             raise KarmaKesimHatasi(uretim._eksik_mesaji(str(e)))
     return KarmaKesim.objects.get(pk=karma.pk)
+
+
+@transaction.atomic
+def ofis_karma_kes(*, istasyon_id, profil_id, depo_id, boy_sayisi, satirlar, tarih=None, aciklama="", kullanici=None, personel=None, ayrilmis_onay=False,
+                   oturum_asma=None) -> KarmaKesim:
+    """OFİS karma kesimi (Emirsiz Üretim ekranı): atölyeyle AYNI servis (``karma_kes``), ancak kaynak OFIS, iş oturumu / mesai / işçilik süresi YOK. Önce istasyon satırı
+    kilitlenir (``is_oturumu.baslat_karma`` ile aynı kilit: eşzamanlı oturum açılışıyla yarışmaz) ve açık atölye karma oturumu / aynı profili tüketen açık tekil oturum
+    denetlenir (``is_oturumu.ofis_karma_engeli_kontrol``; süper kullanıcı notla aşar). Profil başka ÜS'lere ayrılmış stoktan tüketilecekse ``ayrilmis_onay`` gerekir."""
+    from core.services import is_oturumu
+    IsIstasyonu.objects.select_for_update().filter(pk=istasyon_id).first()
+    is_oturumu.ofis_karma_engeli_kontrol(istasyon_id, profil_id, oturum_asma)
+    return karma_kes(istasyon_id=istasyon_id, profil_id=profil_id, depo_id=depo_id, boy_sayisi=boy_sayisi, satirlar=satirlar, tarih=tarih, aciklama=aciklama,
+                     kullanici=kullanici, personel=personel, mesai_kaydi=None, kaynak=KarmaKesim.Kaynak.OFIS, ayrilmis_kontrol=True, ayrilmis_onay=ayrilmis_onay)
 
 
 @transaction.atomic

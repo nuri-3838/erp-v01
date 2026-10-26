@@ -18,6 +18,8 @@
       {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Onayla</button></form>
     <form method="post" action="{% url 'core:operasyon_kaydi_sil' kayit.pk %}" onsubmit="return confirm('Kayıt iptal edilsin mi?');">
       {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
+    {% elif kayit.durum == "ONAYLI" and kayit.karma_id %}
+    <a class="dugme-ikincil" href="{% url 'core:karma_kesim_detay' kayit.karma_id %}">✂️ Karma kesimi aç (geri alma burada)</a>
     {% elif kayit.durum == "ONAYLI" %}
     <form method="post" action="{% url 'core:operasyon_kaydi_geri_al_sil' kayit.pk %}" style="margin:0"
           onsubmit="return confirm('Bu kaydın tüm stok hareketleri ve maliyet fişi geri alınıp kayıt kalıcı silinecek. Devam edilsin mi?');">
@@ -31,6 +33,9 @@
   <div class="uyari"><div>⟲ Bu kayıt <b>geri alındı</b>: stok hareketleri ve maliyet fişi geri sarıldı, kayıt silindi.
     Geri alan: <b>{{ kayit.geri_alan.get_full_name|default:kayit.geri_alan.username }}</b> · {{ kayit.geri_alma_zamani|date:"d.m.Y H:i" }}.
     Aşağıdaki bilgiler kaydın geri alınmadan önceki hâlidir (salt-okunur).</div></div>
+{% elif kayit.durum == "ONAYLI" and kayit.karma_id %}
+  <div class="uyari"><div>✅ Bu kayıt onaylanmış ve bir karma kesimin parçasıdır; tek başına geri alınamaz — karma kesim sayfasından bütün olarak geri alınır
+    (geri alan kullanıcı ve zaman kaydedilir).</div></div>
 {% elif kayit.durum == "ONAYLI" %}
   <div class="uyari"><div>✅ Bu kayıt onaylanmış; girdi çıkış + çıktı giriş stok hareketleri
     oluşturuldu. Bir daha değiştirilemez. “Geri al ve sil” hareketleri ve fişi geri sarar; geri alan kullanıcı ve zaman kaydedilir.</div></div>
@@ -52,6 +57,8 @@
   {% endif %}
   <div class="satir"><span class="et">Üretim Siparişi</span>
     <span class="dg">{% if kayit.uretim_emri %}<a href="{% url 'core:uretim_emri_detay' kayit.uretim_emri.pk %}">{{ kayit.uretim_emri.no }}</a>{% if kayit.istasyon_emri %} · istasyon emri <span class="mono">{{ kayit.istasyon_emri.no }}</span>{% endif %}{% else %}{% if kayit.emirsiz %}<span class="rozet rozet-notr" title="İş emrine / üretim siparişine bağlı değil; üretilen parça serbest stoğa girdi">Emirsiz</span>{% else %}<span class="pasif">—</span>{% endif %}{% endif %}</span></div>
+  {% if kayit.karma_id %}<div class="satir"><span class="et">Karma Kesim</span>
+    <span class="dg"><a class="rozet rozet-aktif" href="{% url 'core:karma_kesim_detay' kayit.karma_id %}">✂️ {{ kayit.karma.no }}</a> · kaynak: <b>{{ kayit.karma.get_kaynak_display }}</b> · bu kayıt kesimin bir parçasıdır, tek başına geri alınamaz</span></div>{% endif %}
   <div class="satir"><span class="et">Giren</span>
     <span class="dg">{% if kayit.personel_id %}{{ kayit.personel.ad }} {{ kayit.personel.soyad }}{% if kayit.mesai_kaydi_id %} · mesai {{ kayit.mesai_kaydi.giris_zamani|tr_zaman:"d.m.Y H:i" }}{% endif %}{% elif kayit.created_by %}{{ kayit.created_by.username }}{% else %}<span class="pasif">—</span>{% endif %}</span></div>
   {% if is_oturumu %}<div class="satir"><span class="et">İş Oturumu</span>

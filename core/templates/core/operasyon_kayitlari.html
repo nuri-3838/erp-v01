@@ -29,7 +29,7 @@
     <h1 class="ust-baslik"><span class="emoji">📋</span>Operasyon Kayıtları
       <span class="ok-ipucu" tabindex="0" title="Kayıtlar istasyon emirlerinden (“Üretildi” / toplu üretim), fason dönüşlerden ve yetkili kullanıcının “+ Yeni Kayıt” ile açtığı EMİRSİZ üretimden gelir. “Kaynak” sütunu kaydın geldiği üretim siparişi / istasyon emri, fason dönüşü ya da “Emirsiz” rozetidir. Taslak sekmesi yalnız açık taslak (fason dönüş) varken görünür; Tümü sekmesi geri alınan kayıtları da listeler.">?</span></h1>
   </div>
-  {% if emirsiz_yetkili %}<span class="islem-bag"><a class="dugme" href="{% url 'core:emirsiz_uretim' %}">+ Yeni Kayıt</a></span>{% endif %}
+  <span class="islem-bag"><a class="dugme-ikincil" href="{% url 'core:karma_kesimler' %}">✂️ Karma Kesimler</a>{% if emirsiz_yetkili %} <a class="dugme" href="{% url 'core:emirsiz_uretim' %}">+ Yeni Kayıt</a>{% endif %}</span>
 </div>
 
 <div class="ok-cipler">
@@ -59,6 +59,9 @@
       <option value="ie"{% if emir == "ie" %} selected{% endif %}>İstasyon emirli</option>
       <option value="emirsiz"{% if emir == "emirsiz" %} selected{% endif %}>Emirsiz</option>
       <option value="fason"{% if emir == "fason" %} selected{% endif %}>Fason</option>
+      <option value="karma"{% if emir == "karma" %} selected{% endif %}>Karma kesim (tümü)</option>
+      <option value="karma_atolye"{% if emir == "karma_atolye" %} selected{% endif %}>Karma kesim · Atölye</option>
+      <option value="karma_ofis"{% if emir == "karma_ofis" %} selected{% endif %}>Karma kesim · Ofis</option>
     </select></div>
   <div class="alan"><label for="ok-bas">Tarih (başlangıç)</label><input type="date" name="bas" id="ok-bas" value="{{ bas }}"></div>
   <div class="alan"><label for="ok-bit">Tarih (bitiş)</label><input type="date" name="bit" id="ok-bit" value="{{ bit }}"></div>
@@ -87,6 +90,7 @@
           {% elif k.uretim_emri %}<a class="mono" href="{% url 'core:uretim_emri_detay' k.uretim_emri_id %}">{{ k.uretim_emri.no }}</a>{% endif %}
           {% if k.fason_donus %}{% if k.uretim_emri %}· {% endif %}Fason <a class="mono" href="{% url 'core:fason_donus_detay' k.fason_donus_id %}">{{ k.fason_donus.no }}</a>{% endif %}
           {% if k.emirsiz %}<span class="rozet rozet-notr" title="İş emrine / üretim siparişine bağlı değil; üretilen parça serbest stoğa girdi">Emirsiz</span>{% endif %}
+          {% if k.karma_id %}<a class="rozet rozet-aktif" href="{% url 'core:karma_kesim_detay' k.karma_id %}" title="Karma kesimin parçası — kaynak: {{ k.karma.get_kaynak_display }}">✂️ {{ k.karma.no }} · {% if k.karma.kaynak == "OFIS" %}Ofis{% else %}Atölye{% endif %}</a>{% endif %}
         </td>
         <td>{% if k.personel_id %}{{ k.personel.ad }} {{ k.personel.soyad }}{% elif k.created_by %}{{ k.created_by.username }}{% else %}—{% endif %}</td>
         <td>{% if k.silindi %}<span class="rozet rozet-pasif" title="Geri alan: {{ k.geri_alan.username }} · {{ k.geri_alma_zamani|date:'d.m.Y H:i' }}">Geri alındı</span>

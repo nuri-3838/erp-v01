@@ -1,0 +1,165 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}Karma Kesim (Ofis) · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Emirsiz Üretim › Karma Kesim{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<style>
+  .em-sekmeler { display:flex; gap:.3rem; margin:.2rem 0 .8rem; border-bottom:1px solid var(--cizgi-koyu); }
+  .em-sekme { padding:.5rem 1rem; border-radius:10px 10px 0 0; font-weight:600; font-size:.9rem; color:var(--metin-soluk); text-decoration:none; }
+  .em-sekme:hover { color:var(--metin); background:rgba(240,124,0,.06); }
+  .em-sekme.aktif { color:var(--turuncu-koyu); background:rgba(240,124,0,.1); box-shadow:inset 0 -2px 0 var(--turuncu); }
+  .em-uyari { margin:.2rem 0 .8rem; padding:.6rem .85rem; border-radius:12px; font-size:.86rem; background:#fff6e5; border:1px solid #f1d49b; color:#7a4a00; }
+  .em-hata { margin:.2rem 0 .8rem; padding:.6rem .85rem; border-radius:12px; font-size:.86rem; background:#fdecef; border:1px solid #f3b5c0; color:#b3253f; }
+  .em-uyari[hidden], .em-hata[hidden], #km-onizleme[hidden], #km-onay-alan[hidden], #km-asma-alan[hidden], #km-parcalar-kart[hidden] { display:none; }
+  .km-parcalar { display:grid; grid-template-columns:repeat(auto-fill, minmax(15rem, 1fr)); gap:.6rem .9rem; }
+  .km-parca label { display:block; font-size:.82rem; font-weight:600; }
+  .km-parca small { color:var(--metin-soluk); font-weight:400; }
+  .km-fire { font-variant-numeric:tabular-nums; }
+  .ad-inline-checkbox { display:inline-flex; align-items:center; gap:.45rem; font-size:.88rem; font-weight:600; cursor:pointer; }
+  .ad-inline-checkbox input { width:auto; }
+</style>
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:operasyon_kayitlari' %}">← Operasyon Kayıtları</a>
+    <h1 class="ust-baslik"><span class="emoji">✂️</span>Karma Kesim (Ofis)</h1>
+  </div>
+  <nav class="em-sekmeler"><a class="em-sekme" href="{% url 'core:emirsiz_uretim' %}">Üretim kaydı</a><a class="em-sekme aktif" href="{% url 'core:emirsiz_karma' %}">✂️ Karma kesim</a></nav>
+  <p class="sayfa-alt">Aynı profilin boylarından farklı parçaların birlikte kesilmesi (atölyedeki karma kesimle aynı hesap). Parçalar açık üretim siparişlerine net ihtiyaç kadar (Acil → termin → ÜS tarihi)
+    dağıtılır, artan serbest stoğa girer; fire (testere + çene + uç) stoğa girmez, profilin toplam maliyeti parçalara kesilen uzunluk oranıyla dağılır. Ofis kaydında iş oturumu ve işçilik süresi yazılmaz.
+    <a href="{% url 'core:karma_kesimler' %}">Karma Kesimler listesi →</a></p>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents" id="km-form">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kesim</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.istasyon.id_for_label }}">{{ form.istasyon.label }} <span class="zorunlu">*</span></label>{{ form.istasyon }}{% for e in form.istasyon.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.profil.id_for_label }}">{{ form.profil.label }} <span class="zorunlu">*</span></label>{{ form.profil }}{% for e in form.profil.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim" id="km-profil-bilgi">İstasyonda karma kesilebilen profiller listelenir.</p></div>
+        <div class="alan"><label for="{{ form.boy_sayisi.id_for_label }}">{{ form.boy_sayisi.label }} <span class="zorunlu">*</span></label>{{ form.boy_sayisi }}{% for e in form.boy_sayisi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.tarih.id_for_label }}">{{ form.tarih.label }} <span class="zorunlu">*</span></label>{{ form.tarih }}{% for e in form.tarih.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.depo.id_for_label }}">{{ form.depo.label }} <span class="zorunlu">*</span></label>{{ form.depo }}{% for e in form.depo.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          <p class="yardim">Profil çıkışı ve parça girişi bu depoda yapılır.</p></div>
+      </div>
+    </section>
+
+    <section class="icerik-kart" id="km-parcalar-kart" hidden>
+      <h2 class="bolum-baslik">Kesilen parçalar</h2>
+      <p class="yardim">Yalnız kestiğiniz parçaların adedini yazın (boş = 0). "İhtiyaç" açık üretim siparişlerinin toplam net kalan ihtiyacıdır.</p>
+      <div class="km-parcalar" id="km-parcalar"></div>
+    </section>
+
+    <section class="icerik-kart" id="km-onizleme" hidden>
+      <h2 class="bolum-baslik">Önizleme <small style="font-weight:400">(hiçbir şey yazılmaz)</small></h2>
+      <div class="em-hata" id="km-hata" hidden></div>
+      <div class="em-uyari" id="km-engel" hidden></div>
+      <div id="km-ozet" class="km-fire"></div>
+      <div class="tablo-kapsayici" id="km-dagilim-kapsa" hidden>
+        <table><thead><tr><th>Parça</th><th class="sag">Adet</th><th>Hedef</th></tr></thead><tbody id="km-dagilim"></tbody></table>
+      </div>
+      <div class="alan" id="km-onay-alan"{% if not onay_gerekli %} hidden{% endif %} style="margin-top:.7rem">
+        <label class="ad-inline-checkbox" for="{{ form.ayrilmis_onay.id_for_label }}">{{ form.ayrilmis_onay }} {{ form.ayrilmis_onay.label }}</label>
+        <p class="yardim">Bu kesim başka açık üretim siparişlerine ayrılmış profil stoğunu tüketecek; o siparişler sonra eksik kalabilir.</p>
+      </div>
+    </section>
+
+    <section class="icerik-kart">
+      <h2 class="bolum-baslik">Kayıt bilgisi</h2>
+      <div class="izgara">
+        <div class="alan"><label for="{{ form.personel.id_for_label }}">{{ form.personel.label }}</label>{{ form.personel }}
+          <p class="yardim">Giren: boşsa giriş yapan kullanıcıya bağlı personel yazılır (yoksa kullanıcı adı görünür). Mesai / işçilik süresi bağlanmaz.</p></div>
+        <div class="alan tam"><label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>{{ form.aciklama }}</div>
+        {% if super_kullanici %}
+        <div class="alan tam" id="km-asma-alan"{% if not form.asma_notu.value %} hidden{% endif %}><label for="{{ form.asma_notu.id_for_label }}">{{ form.asma_notu.label }}</label>{{ form.asma_notu }}
+          <p class="yardim">İstasyonda açık atölye karma kesimi varsa yalnız süper kullanıcı not yazarak aşabilir (denetim kaydı tutulur; atölye oturumu açık kalır).</p></div>
+        {% endif %}
+      </div>
+    </section>
+
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:operasyon_kayitlari' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet ve stoğa işle</button>
+    </div>
+  </form>
+</div>
+
+{{ harita|json_script:"km-harita" }}
+{{ adetler|json_script:"km-adetler" }}
+<script>
+(function(){
+  var HARITA = JSON.parse(document.getElementById('km-harita').textContent);
+  var ADETLER = JSON.parse(document.getElementById('km-adetler').textContent);
+  var ONIZLEME = '{% url "core:emirsiz_karma_onizleme" %}';
+  var f = document.getElementById('km-form');
+  var ist = document.getElementById('{{ form.istasyon.id_for_label }}'), prof = document.getElementById('{{ form.profil.id_for_label }}');
+  var boy = document.getElementById('{{ form.boy_sayisi.id_for_label }}'), depo = document.getElementById('{{ form.depo.id_for_label }}');
+  var kart = document.getElementById('km-parcalar-kart'), kap = document.getElementById('km-parcalar'), bilgi = document.getElementById('km-profil-bilgi');
+  var onizKart = document.getElementById('km-onizleme'), hata = document.getElementById('km-hata'), engel = document.getElementById('km-engel');
+  var ozet = document.getElementById('km-ozet'), dagKapsa = document.getElementById('km-dagilim-kapsa'), dag = document.getElementById('km-dagilim');
+  var onay = document.getElementById('km-onay-alan'), asma = document.getElementById('km-asma-alan');
+  var zaman = null, depoSecildi = !!depo.value;
+  function istasyonlar(){ return HARITA.filter(function(x){ return String(x.istasyon) === ist.value; })[0]; }
+  function profil(){ var i = istasyonlar(); return i ? i.profiller.filter(function(p){ return String(p.pk) === prof.value; })[0] : null; }
+  function profilSecenekleri(){
+    var secili = prof.value, i = istasyonlar();
+    Array.prototype.forEach.call(prof.options, function(o){ if (!o.value) return; var var_mi = !!(i && i.profiller.some(function(p){ return String(p.pk) === o.value; })); o.hidden = !var_mi; o.disabled = !var_mi; });
+    if (i && !i.profiller.some(function(p){ return String(p.pk) === secili; })) prof.value = (i.profiller.length === 1 ? String(i.profiller[0].pk) : '');
+    if (!i) prof.value = '';
+    bilgi.textContent = !ist.value ? 'Önce istasyonu seçin; yalnız karma kesilebilen profiller açılır.' : (i ? '' : 'Bu istasyonda karma kesim tanımlı değil (profil boyu ve parça boyları tanımlı olmalı).');
+  }
+  function parcalar(){
+    var p = profil(); kap.innerHTML = '';
+    if (!p) { kart.hidden = true; return; }
+    kart.hidden = false;
+    p.adaylar.forEach(function(a){
+      var d = document.createElement('div'); d.className = 'km-parca';
+      var l = document.createElement('label'); l.setAttribute('for', 'km-a-' + a.pk);
+      l.innerHTML = a.kod + ' <small>(' + (a.mm ? Number(a.mm).toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' mm' : 'boy tanımsız') + (a.ihtiyac ? ' · ihtiyaç ' + a.ihtiyac : '') + ')</small>';
+      var i = document.createElement('input'); i.type = 'text'; i.inputMode = 'numeric'; i.id = 'km-a-' + a.pk; i.name = 'a_' + a.pk; i.autocomplete = 'off'; i.placeholder = '0';
+      if (!a.mm) i.disabled = true;
+      if (ADETLER[a.pk]) i.value = ADETLER[a.pk];
+      d.appendChild(l); d.appendChild(i); kap.appendChild(d);
+    });
+    if (!depoSecildi && p.depo) depo.value = String(p.depo);
+  }
+  function sor(){
+    var p = profil();
+    if (!p) { onizKart.hidden = true; return; }
+    var q = new URLSearchParams({istasyon: ist.value, profil: prof.value, boy: boy.value});
+    Array.prototype.forEach.call(kap.querySelectorAll('input'), function(e){ if (e.value) q.set(e.name, e.value); });
+    fetch(ONIZLEME + '?' + q.toString(), {credentials: 'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+      var goster = d.ok || d.hata || d.engel;
+      onizKart.hidden = !goster;
+      engel.hidden = !d.engel; engel.textContent = d.engel ? '⛔ ' + d.engel : '';
+      if (asma && d.engel) asma.hidden = false;
+      hata.hidden = !d.hata; hata.textContent = d.hata || '';
+      ozet.innerHTML = ''; dagKapsa.hidden = true; dag.innerHTML = '';
+      if (!d.ok) return;
+      ozet.innerHTML = '✅ <b>' + d.toplam_adet + '</b> parça · kesilen ' + d.parca_mm + ' mm + testere ' + d.testere_mm + ' mm = gerekli ' + d.gerekli_mm + ' mm (kullanılabilir ' + d.kullanilabilir_mm + ' mm)<br>' +
+        '🔥 <b>Fire ' + d.fire_mm + ' mm (%' + d.fire_yuzde + ')</b> = testere ' + d.testere_mm + ' + çene ' + d.cene_mm + ' + uç ' + d.uc_mm + ' mm — stoğa girmez, ayrıca maliyetlenmez<br>' +
+        '📦 Profil: gerekli ' + d.profil_stok.gerekli + ' boy · eldeki ' + d.profil_stok.eldeki + ' · açık ÜS\'lere ayrılan ' + d.profil_stok.ayrilan + ' · kullanılabilir ' + d.profil_stok.kullanilabilir;
+      d.dagilim.forEach(function(x){
+        var tr = document.createElement('tr');
+        [x.kod, x.adet, x.emir].forEach(function(v, i){ var td = document.createElement('td'); td.textContent = v; if (i === 1) td.className = 'sag mono'; tr.appendChild(td); });
+        dag.appendChild(tr);
+      });
+      dagKapsa.hidden = false;
+      if (d.profil_stok.onay_gerekli) onay.hidden = false;
+    }).catch(function(){});
+  }
+  function gecik(){ clearTimeout(zaman); zaman = setTimeout(sor, 350); }
+  ist.addEventListener('change', function(){ profilSecenekleri(); parcalar(); sor(); });
+  prof.addEventListener('change', function(){ parcalar(); sor(); });
+  depo.addEventListener('change', function(){ depoSecildi = true; });
+  boy.addEventListener('input', gecik);
+  kap.addEventListener('input', gecik);
+  profilSecenekleri(); if (prof.value) parcalar(); if (profil()) sor();
+})();
+</script>
+{% endblock %}

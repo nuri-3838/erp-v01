@@ -24,6 +24,16 @@ Sorun: 40 BASAMAK KESİM'de kayıt tam boy zorunlu ve bir boydan tek basamak öl
    Yönetici karma adedini girmez (sorumlu atölyeden girer); sorumlu değiştirme / iptal yönetici işlemidir.
 3. Fire raporu (karma kesim kayıtları: fire mm / oranı, testere-çene-uç ayrımı).
 
+## Ofis karma kesim (Emirsiz Üretim › Karma kesim) — onaylanan kararlar D1–D5
+- **D1** `KarmaKesim.kaynak` (ATOLYE / OFIS, migration 0247). Ofis kaydı: iş oturumu, mesai ve işçilik süresi YOK; "Giren" = personel alanı (boşsa kullanıcıya bağlı personel, yoksa kullanıcı adı).
+- **D2** "Karma Kesimler" listesi (`/uretim/karma-kesim/`: kaynak / istasyon / tarih / ara süzgeci) + detay (kaynak, uzunluk ve fire dökümü testere / çene / uç, parçalar, kayıtlar, geri al).
+  Operasyon Kayıtları'nda karma rozeti (KK no · Atölye/Ofis) ve "Kaynak" süzgecinde Karma kesim (tümü / atölye / ofis).
+- **D3** Karma kaydı tek başına "Geri al ve sil" ile geri alınamaz (gruba yönlendirir); geri alma karma kesim sayfasından "Tümünü geri al" (atölye ve ofis kaynaklı için).
+- **D4** Parça girişi: profilin aday parçaları liste halinde (kod, mm, ihtiyaç ipucu, adet kutusu); canlı önizleme `emirsiz_karma_onizleme` (yazmaz).
+- **D5** Ofiste profil, başka açık ÜS'lere ayrılmış stoktan tüketilecekse onay kutusu (kesimin parça verdiği ÜS'lerin kendi profil ayırması, o ÜS'ye düşen pay kadar kullanılabilir sayılır). Atölye aynen kalır.
+- **Çakışma:** istasyonda aynı profil için açık / "Adet bekliyor" atölye karma oturumu ya da aynı profili tüketen açık tekil oturum varsa ofis kaydı engellenir ("Bu istasyonda X'in ekibi karma kesim
+  yapıyor"); yalnız süper kullanıcı notla aşar (`IsOturumuOlay.OFIS_ASILDI`; atölye oturumu açık kalır). Servis: `karma_kesim.ofis_karma_kes` (istasyon satırı kilitlenir).
+
 ## Bilinen sınırlar (Dilim 1)
 - Emirsiz (serbest) satırın profil tüketimi için "açık ÜS'lere ayrılmış stok" onay sorusu (emirsiz üretimdeki `AyrilmisStokOnayGerekli`) henüz yok.
 - Kayıt başına ayrı 15x→15x maliyet aktarım fişi oluşur (hesaplar aynıysa fiş yazılmaz).

@@ -3966,9 +3966,15 @@ class KarmaKesim(TemelModel):
     = testere + çene + uç; stoğa GİRMEZ ve ayrıca maliyetlenmez (profilin toplam maliyeti parçalara kesilen uzunluk oranıyla dağılır). Ayar değerleri
     (boy, testere, çene) kayıt anında buraya KOPYALANIR; sonradan ayar değişse de geçmiş kayıt etkilenmez."""
 
+    class Kaynak(models.TextChoices):
+        ATOLYE = "ATOLYE", "Atölye"
+        OFIS = "OFIS", "Ofis karma kesim"
+
     yil = models.PositiveSmallIntegerField("yıl", editable=False)
     sira = models.PositiveIntegerField("sıra", editable=False)
     no = models.CharField("karma kesim no", max_length=20, editable=False)
+    # Kayıt kaynağı: ATOLYE = atölye karma kesim oturumu (işçilik süresi oturumda), OFIS = Emirsiz Üretim ekranından ofis girişi (oturum / süre YOK).
+    kaynak = models.CharField("kaynak", max_length=6, choices=Kaynak.choices, default=Kaynak.ATOLYE)
     istasyon = models.ForeignKey(IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT, related_name="karma_kesimler")
     profil = models.ForeignKey(Stok, verbose_name="profil", on_delete=models.PROTECT, related_name="karma_kesimler")
     depo = models.ForeignKey(Depo, verbose_name="depo", on_delete=models.PROTECT, related_name="karma_kesimler")

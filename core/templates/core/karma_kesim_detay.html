@@ -1,0 +1,91 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% block baslik %}{{ karma.no }} · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Karma Kesim{% endblock %}
+
+{% block content %}
+<div class="sayfa-ust">
+  <div>
+    <a class="ust-link" href="{% url 'core:karma_kesimler' %}">← Karma Kesimler</a>
+    <h1 class="ust-baslik"><span class="emoji">✂️</span>{{ karma.no }}
+      {% if geri_alindi %}<span class="rozet rozet-pasif">Geri alındı</span>{% else %}<span class="rozet rozet-aktif">Onaylı</span>{% endif %}
+      {% if karma.kaynak == "OFIS" %}<span class="rozet rozet-notr">Ofis karma kesim</span>{% else %}<span class="rozet rozet-aktif">Atölye</span>{% endif %}</h1>
+  </div>
+  {% if not geri_alindi %}
+  <span class="islem-bag">
+    <form method="post" action="{% url 'core:karma_kesim_geri_al' karma.pk %}" style="margin:0"
+          onsubmit="return confirm('Karma kesimin TÜM kayıtlarının stok hareketleri ve maliyet fişleri geri alınıp kayıtlar silinecek. Devam edilsin mi?');">
+      {% csrf_token %}<button type="submit" class="sil">Tümünü geri al</button></form>
+  </span>
+  {% endif %}
+</div>
+
+{% if geri_alindi %}
+  <div class="uyari"><div>⟲ Bu karma kesim <b>geri alındı</b>: tüm kayıtlarının stok hareketleri ve maliyet fişleri geri sarıldı. Geri alan: <b>{{ karma.updated_by.get_full_name|default:karma.updated_by.username }}</b> · {{ karma.silindi_at|date:"d.m.Y H:i" }}.
+    Aşağıdaki bilgiler geri alınmadan önceki hâlidir (salt-okunur).</div></div>
+{% endif %}
+
+<section class="icerik-kart">
+  <div class="satir"><span class="et">Kaynak</span><span class="dg">{{ karma.get_kaynak_display }}{% if karma.kaynak == "OFIS" %} · iş oturumu ve işçilik süresi yok{% endif %}</span></div>
+  <div class="satir"><span class="et">İş İstasyonu</span><span class="dg"><span class="mono">{{ karma.istasyon.kod }}</span> {{ karma.istasyon.ad }}</span></div>
+  <div class="satir"><span class="et">Profil</span><span class="dg"><span class="mono">{{ karma.profil.kod }}</span> {{ karma.profil.ad }} · boy {{ karma.boy_mm|tr_kur:2 }} mm</span></div>
+  <div class="satir"><span class="et">Kullanılan boy</span><span class="dg mono">{{ karma.boy_sayisi }} boy · toplam {{ toplam_mm|tr_kur:2 }} mm</span></div>
+  <div class="satir"><span class="et">Tarih / Depo</span><span class="dg">{{ karma.tarih|date:"d.m.Y" }} · <span class="mono">{{ karma.depo.kod }}</span> {{ karma.depo.ad }}</span></div>
+  <div class="satir"><span class="et">Giren</span><span class="dg">{% if karma.personel_id %}{{ karma.personel.ad }} {{ karma.personel.soyad }}{% elif karma.created_by %}{{ karma.created_by.username }}{% else %}—{% endif %}</span></div>
+  {% if is_oturumu %}<div class="satir"><span class="et">İş Oturumu</span>
+    <span class="dg">👥 {{ is_oturumu.ekip_metni }} · {{ is_oturumu.oturum.baslangic_zamani|tr_zaman:"d.m.Y H:i" }} – {{ is_oturumu.oturum.bitis_zamani|tr_zaman:"H:i" }} · süre {{ is_oturumu.sure_metni }} · {{ is_oturumu.kisi }} kişi · adam-saat {{ is_oturumu.adam_saat|tr_kur:2 }}
+      · <a href="{% url 'core:is_oturumlari' %}?ara={{ karma.no }}">listede</a></span></div>{% endif %}
+  {% if karma.aciklama %}<div class="satir"><span class="et">Açıklama</span><span class="dg">{{ karma.aciklama }}</span></div>{% endif %}
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Uzunluk ve fire <small style="font-weight:400">(ayarlar kayıt anında saklanır: testere {{ karma.testere_payi_mm|tr_kur:2 }} mm/parça · çene {{ karma.cene_payi_mm|tr_kur:2 }} mm/boy)</small></h2>
+  <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Kalem</th><th class="sag">mm</th><th class="sag">Toplam uzunluğa oran</th></tr></thead>
+      <tbody>
+        <tr><td>Kesilen parçalar ({{ karma.toplam_adet }} adet)</td><td class="sag mono">{{ karma.parca_mm|tr_kur:2 }}</td><td class="sag mono">%{{ parca_yuzde|tr_kur:2 }}</td></tr>
+        <tr><td>Fire · testere payı</td><td class="sag mono">{{ karma.testere_mm|tr_kur:2 }}</td><td class="sag mono">—</td></tr>
+        <tr><td>Fire · çene payı</td><td class="sag mono">{{ karma.cene_mm|tr_kur:2 }}</td><td class="sag mono">—</td></tr>
+        <tr><td>Fire · uç</td><td class="sag mono">{{ karma.uc_mm|tr_kur:2 }}</td><td class="sag mono">—</td></tr>
+        <tr><td><b>Toplam fire</b> <small>(stoğa girmez, ayrıca maliyetlenmez)</small></td><td class="sag mono"><b>{{ karma.fire_mm|tr_kur:2 }}</b></td><td class="sag mono"><b>%{{ karma.fire_yuzde|tr_kur:2 }}</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Parça satırları</h2>
+  <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Parça</th><th class="sag">Parça (mm)</th><th class="sag">Adet</th><th class="sag">Toplam (mm)</th></tr></thead>
+      <tbody>
+        {% for s in satirlar %}<tr><td><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }}</td><td class="sag mono">{{ s.parca_mm|tr_kur:2 }}</td><td class="sag mono">{{ s.adet }}</td><td class="sag mono">{{ s.toplam_mm|tr_kur:2 }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="icerik-kart">
+  <h2 class="bolum-baslik">Kayıtlar <small style="font-weight:400">(parça × emir; profilin toplam maliyeti kesilen uzunluk oranıyla dağılır)</small></h2>
+  <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Kayıt</th><th>Parça</th><th class="sag">Adet</th><th>Emir</th><th class="sag">Profil payı (boy)</th><th class="sag">Çıktı maliyeti (TL)</th><th>Durum</th></tr></thead>
+      <tbody>
+        {% for r in kayitlar %}{% with k=r.kayit %}
+        <tr>
+          <td><a class="mono" href="{% url 'core:operasyon_kaydi_detay' k.pk %}">{{ k.no }}</a></td>
+          <td><span class="mono">{{ k.operasyon.cikti.kod }}</span></td>
+          <td class="sag mono">{{ k.hedef_cikti_miktari|tr_miktar_sade }}</td>
+          <td>{% if k.istasyon_emri_id %}<a class="mono" href="{% url 'core:uretim_emri_detay' k.uretim_emri_id %}">{{ k.uretim_emri.no }}</a> / <span class="mono">{{ k.istasyon_emri.no }}</span>{% else %}<span class="rozet rozet-notr">Serbest stok</span>{% endif %}</td>
+          <td class="sag mono">{% if r.profil_payi is not None %}{{ r.profil_payi|tr_miktar6 }}{% else %}—{% endif %}</td>
+          <td class="sag mono">{% if r.tutar is not None %}{{ r.tutar|tr_kur:2 }}{% else %}—{% endif %}</td>
+          <td>{% if k.silindi %}<span class="rozet rozet-pasif">Geri alındı</span>{% else %}<span class="rozet rozet-aktif">{{ k.get_durum_display }}</span>{% endif %}</td>
+        </tr>
+        {% endwith %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="yardim">Bir karma kesim kaydı tek başına geri alınamaz; geri alma bu sayfadaki "Tümünü geri al" ile bütün olarak yapılır.</p>
+</section>
+{% endblock %}

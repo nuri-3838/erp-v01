@@ -47,7 +47,7 @@ from core.forms import (
     TanimSecenegiForm, VaryantForm,
     KullaniciDuzenleForm, KullaniciEkleForm,
     BankaHesapHareketForm, BankaHesapSatirForm, DepoTransferForm, MizanFiltreForm, SarfCikisForm, SatirForm, SehirForm, StokForm, StokHareketForm, TevkifatOraniForm,
-    OperasyonEmirsizForm, UlkeForm, VergiDairesiForm, YemekSayimForm, YemekTakibiFiltreForm,
+    OperasyonEmirsizForm, OfisKarmaKesimForm, UlkeForm, VergiDairesiForm, YemekSayimForm, YemekTakibiFiltreForm,
     IsIstasyonuForm, OperasyonBaslikForm, OperasyonGirdiSatirForm, OperasyonYanCiktiSatirForm, OperasyonParcaCiktiSatirForm, IhtiyacHesaplaSatirForm, UretimRevizeBaslikForm,
     UrunAgaciForm,
     UretimEmriBaslikForm, UretimEmriKalemSatirForm, SiparisUretimEmriSatirForm,
@@ -138,6 +138,7 @@ from core.services import uretim_fire as uretim_fire_servis
 from core.services import planlama_varyant as planlama_varyant_servis
 from core.services import atolye as atolye_servis
 from core.services import is_oturumu as is_oturumu_servis
+from core.services import karma_kesim as karma_servis
 from core.services import kritik_stok as kritik_stok_servis
 from core.services import is_oturumu_xlsx
 from core.services import is_takibi as is_takibi_servis
@@ -8833,7 +8834,7 @@ def operasyon_kayitlari(request):
         sekme = "onayli"
     taban = OperasyonKaydi.objects.filter(Q(silindi=False) | Q(geri_alan__isnull=False))        # Tümü: geri alınan (soft-silinmiş) kayıtlar da
     kayitlar = (taban.select_related("operasyon__istasyon", "operasyon__cikti", "uretim_emri", "istasyon_emri", "fason_donus", "geri_alan",
-                                     "personel", "created_by")
+                                     "personel", "created_by", "karma")
                 .order_by("-yil", "-sira"))
     if sekme == "taslak":
         kayitlar = kayitlar.filter(silindi=False, durum=OperasyonKaydi.Durum.TASLAK)
@@ -8871,6 +8872,10 @@ def operasyon_kayitlari(request):
         kayitlar = kayitlar.filter(uretim_emri__isnull=True, istasyon_emri__isnull=True, fason_cari__isnull=True, fason_donus__isnull=True)
     elif emir == "fason":
         kayitlar = kayitlar.filter(Q(fason_cari__isnull=False) | Q(fason_donus__isnull=False))
+    elif emir in ("karma", "karma_atolye", "karma_ofis"):                  # karma kesim kayıtları (atölye / ofis kaynaklı)
+        kayitlar = kayitlar.filter(karma__isnull=False)
+        if emir != "karma":
+            kayitlar = kayitlar.filter(karma__kaynak=KarmaKesim.Kaynak.ATOLYE if emir == "karma_atolye" else KarmaKesim.Kaynak.OFIS)
     else:
         emir = ""
     sayfa = Paginator(kayitlar, 50).get_page(g.get("sayfa"))
@@ -8941,6 +8946,113 @@ def emirsiz_uretim(request):
     return render(request, "core/operasyon_emirsiz_form.html", {
         "form": form, "ayrilmis_satirlar": ayrilmis, "varyant_secenekleri": uretim_servis.emirsiz_varyant_secenekleri(secili_op.cikti_id) if secili_op else [],
         "secili_varyant": (form.data.get("varyant") or "") if form.is_bound else ""})
+
+
+@ekran_gerekli("emirsiz_uretim")
+def emirsiz_karma_onizleme(request):
+    """Ofis karma kesim formunun canlı önizlemesi (JSON; hiçbir şey yazılmaz): uzunluk + fire dökümü (testere / çene / uç), parça × emir dağılımı, profil stok durumu,
+    açık atölye karma oturumu / tekil oturum engeli. GET: ``istasyon``, ``profil``, ``boy``, ``a_<parça stok pk>``."""
+    g = request.GET
+    if not (g.get("istasyon") or "").isdigit() or not (g.get("profil") or "").isdigit():
+        return JsonResponse({"ok": False, "hata": "", "engel": ""})
+    adetler = {k[2:]: v for k, v in g.items() if k.startswith("a_")}
+    return JsonResponse(karma_servis.ofis_onizleme(int(g["istasyon"]), int(g["profil"]), g.get("boy"), adetler))
+
+
+@ekran_gerekli("emirsiz_uretim")
+def emirsiz_karma(request):
+    """Emirsiz Üretim › Karma kesim (ofis): atölyedekiyle AYNI servis (``karma_kesim``), kaynak OFIS; iş oturumu / işçilik süresi yazılmaz. Açık atölye karma oturumu varken
+    engellenir (süper kullanıcı notla aşar); başka ÜS'lere ayrılmış profil stoğu için onay kutusu."""
+    adetler = {k[2:]: v for k, v in request.POST.items() if k.startswith("a_")} if request.method == "POST" else {}
+    onay_gerekli = False
+    if request.method == "POST":
+        form = OfisKarmaKesimForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            not_ = (cd.get("asma_notu") or "").strip()
+            try:
+                karma = karma_servis.ofis_karma_kes(
+                    istasyon_id=cd["istasyon"].pk, profil_id=cd["profil"].pk, depo_id=cd["depo"].pk, boy_sayisi=cd["boy_sayisi"],
+                    satirlar=karma_servis.satirlari_ham_coz(adetler), tarih=cd["tarih"], aciklama=cd.get("aciklama", ""), kullanici=request.user,
+                    personel=cd.get("personel"), ayrilmis_onay=bool(cd.get("ayrilmis_onay")),
+                    oturum_asma=(request.user, not_) if (not_ and request.user.is_superuser) else None)
+                messages.success(request, f"Ofis karma kesim kaydedildi ve stoğa işlendi: {karma.no} · {karma.boy_sayisi} boy, {karma.toplam_adet} parça · "
+                                          f"fire {format_tr(karma.fire_mm, 2)} mm (%{format_tr(karma.fire_orani * 100, 2)})")
+                return redirect("core:karma_kesim_detay", pk=karma.pk)
+            except uretim_servis.AyrilmisStokOnayGerekli as e:
+                form.add_error(None, str(e))
+                onay_gerekli = True
+            except uretim_servis.UretimHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = OfisKarmaKesimForm()
+    return render(request, "core/operasyon_karma_form.html", {
+        "form": form, "harita": karma_servis.harita(), "adetler": adetler, "onay_gerekli": onay_gerekli or bool(form.data.get("ayrilmis_onay")) if form.is_bound else False,
+        "super_kullanici": request.user.is_superuser})
+
+
+@ekran_gerekli("operasyon_kayitlari")
+def karma_kesim_listesi(request):
+    """ÜRETİM › Karma Kesimler: atölye / ofis karma kesim kayıtları (kaynak, istasyon, profil, boy, parça, fire mm / oranı, giren, durum). Süzgeç: kaynak, istasyon, tarih, ara; ``?geri=1`` geri alınanlar da."""
+    g = request.GET
+    qs = (KarmaKesim.objects.select_related("istasyon", "profil", "personel", "created_by").order_by("-yil", "-sira"))
+    if g.get("geri") != "1":
+        qs = qs.filter(silindi=False)
+    kaynak = g.get("kaynak") if g.get("kaynak") in KarmaKesim.Kaynak.values else ""
+    if kaynak:
+        qs = qs.filter(kaynak=kaynak)
+    istasyon = (g.get("istasyon") or "").strip()
+    if istasyon.isdigit():
+        qs = qs.filter(istasyon_id=int(istasyon))
+    bas, bit = _iso_tarih(g.get("bas")), _iso_tarih(g.get("bit"))
+    if bas:
+        qs = qs.filter(tarih__gte=bas)
+    if bit:
+        qs = qs.filter(tarih__lte=bit)
+    ara = (g.get("ara") or "").strip()
+    if ara:
+        qs = qs.filter(Q(no__icontains=ara) | Q(profil__kod__icontains=ara) | Q(satirlar__stok__kod__icontains=ara)).distinct()
+    sayfa = Paginator(qs, 50).get_page(g.get("sayfa"))
+    sorgu = {k: v for k, v in g.items() if k != "sayfa" and v}
+    return render(request, "core/karma_kesim_listesi.html", {
+        "kesimler": sayfa, "kaynak": kaynak, "istasyon": istasyon, "bas": g.get("bas", ""), "bit": g.get("bit", ""), "ara": ara, "geri": g.get("geri") == "1",
+        "kaynaklar": KarmaKesim.Kaynak.choices, "istasyonlar": uretim_servis.aktif_istasyonlar(), "sorgu": urlencode(sorgu),
+        "emirsiz_yetkili": ekran_gorebilir(request.user, "emirsiz_uretim")})
+
+
+@ekran_gerekli("operasyon_kayitlari")
+def karma_kesim_detay(request, pk):
+    """Karma kesim detayı: başlık (kaynak, boy, ayarlar), uzunluk / fire dökümü (testere + çene + uç — stoğa girmez), parça satırları, kayıtlar (parça × emir, profil payı, çıktı
+    maliyeti), iş oturumu (atölye) ve "Tümünü geri al"."""
+    from core.models import StokHareket
+    karma = get_object_or_404(KarmaKesim.objects.select_related("istasyon", "profil", "depo", "personel", "created_by", "updated_by"), pk=pk)
+    satirlar = list(karma.satirlar.filter(silindi=False).select_related("stok"))
+    for s in satirlar:
+        s.toplam_mm = s.adet * s.parca_mm
+    kayitlar = []
+    for k in karma.kayitlar.select_related("operasyon__cikti", "uretim_emri", "istasyon_emri", "geri_alan").order_by("pk"):
+        profil_payi = next((g.gerceklesen_miktar for g in uretim_servis.kaydi_girdi_satirlari(k) if g.girdi_id == karma.profil_id), None)
+        tutar = StokHareket.objects.filter(operasyon_kaydi=k, tur=StokHareket.Tur.GIRIS, silindi=False).aggregate(t=Sum("tutar_try"))["t"]
+        kayitlar.append({"kayit": k, "profil_payi": profil_payi, "tutar": tutar})
+    oturum = IsOturumu.objects.filter(karma_kesim=karma, silindi=False).select_related("baslatan", "sorumlu", "bitiren").first()
+    return render(request, "core/karma_kesim_detay.html", {
+        "karma": karma, "satirlar": satirlar, "kayitlar": kayitlar, "geri_alindi": karma.silindi,
+        "is_oturumu": is_oturumu_servis.ozet(oturum) if oturum is not None else None,
+        "toplam_mm": karma.boy_sayisi * karma.boy_mm, "parca_yuzde": (karma.parca_mm * 100 / (karma.boy_sayisi * karma.boy_mm)) if karma.boy_mm else 0})
+
+
+@ekran_gerekli("operasyon_kayitlari")
+def karma_kesim_geri_al(request, pk):
+    """Karma kesimi (atölye ya da ofis kaynaklı) BÜTÜN olarak geri alır: tüm kayıtların stok hareketleri, maliyet fişleri, ÜS ayırma / tamamlananı, daraltılan emir planlananı.
+    Biri alınamazsa (çıktı başka üretimde kullanıldıysa) hiçbir şey değişmez; hata mesajı gösterilir."""
+    karma = get_object_or_404(KarmaKesim, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            karma_servis.karma_geri_al(karma, kullanici=request.user)
+            messages.success(request, f"{karma.no}: karma kesimin tüm kayıtları geri alındı (stok hareketleri ve maliyet fişleri geri sarıldı).")
+        except uretim_servis.UretimHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:karma_kesim_detay", pk=karma.pk)
 
 
 @ekran_gerekli("operasyon_kayitlari")
@@ -9023,9 +9135,12 @@ def operasyon_kaydi_geri_al_sil(request, pk):
     """Operasyon Kayıtları ekran yetkisi olan herkes (yalnız yönetici değil): ONAYLI kaydın tüm stok hareketlerini (girdi çıkışları + ana/yan çıktı
     girişleri) ve maliyet aktarım fişini geri alıp kaydı siler; geri alan kullanıcı + zaman kayda yazılır (detayda görünür). Çıktı başka yerde
     tüketildiyse servisin hata mesajı gösterilir, hiçbir şey değişmez."""
-    kayit = get_object_or_404(OperasyonKaydi, pk=pk, silindi=False)
+    kayit = get_object_or_404(OperasyonKaydi.objects.select_related("karma"), pk=pk, silindi=False)
     if request.method != "POST":
         return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
+    if kayit.karma_id:                                                      # karma kesim kaydı tek başına geri alınamaz: grup (profil payı, fire özeti, emir daralması) bütündür
+        messages.error(request, f"{kayit.no}, {kayit.karma.no} karma kesiminin bir parçasıdır; tek başına geri alınamaz. Karma kesimi bütün olarak geri alın.")
+        return redirect("core:karma_kesim_detay", pk=kayit.karma_id)
     if kayit.durum != OperasyonKaydi.Durum.ONAYLI:
         messages.error(request, "Yalnız onaylı kayıt geri alınıp silinebilir (taslak için 'İptal Et').")
         return redirect("core:operasyon_kaydi_detay", pk=kayit.pk)
