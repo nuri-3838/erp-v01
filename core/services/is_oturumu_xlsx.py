@@ -38,8 +38,7 @@ def oturumlar_xlsx(satirlar, bas, bit) -> bytes:
     r = 5
     for s in satirlar:
         o = s["oturum"]
-        ie = o.istasyon_emri
-        ws.append([o.is_tarihi, f"{o.istasyon.kod} {o.istasyon.ad}", o.uretim_emri.no, ie.no, ie.operasyon.cikti.kod, ie.operasyon.cikti.ad,
+        ws.append([o.is_tarihi, f"{o.istasyon.kod} {o.istasyon.ad}", o.us_no, o.emir_no, o.is_kodu, o.is_adi,        # karma kesim: ÜS yerine "Karma kesim", emir no yerine KK no
                    s["ekip_metni"], s["kisi"], _saat(o.baslangic_zamani), _saat(o.bitis_zamani), s["sure_saniye"] // 60, s["adam_saat"],
                    o.get_durum_display(), s["adet"], s["fire"], s["adet_saat"], s["adet_basi_saniye"], o.kayit.no if o.kayit_id else "",
                    o.baslatan.ad_soyad, o.bitiren.ad_soyad if o.bitiren_id else ""])

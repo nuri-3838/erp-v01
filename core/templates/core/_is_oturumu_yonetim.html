@@ -16,12 +16,16 @@
     <button type="submit" name="eylem" value="iptal" class="dugme-ikincil" title="İş yapılmadı; süre sayılmaz">✕ İptal et</button>
   </form>
   {% else %}
+  {% if o.karma %}
+  <p class="pt-soluk" style="margin:.4rem 0">Karma kesimin boy sayısı ve parça adetlerini sorumlu atölye ekranından (istasyon sayfası › Karma kesim) girer; gerekirse sorumluyu değiştirin ya da işi iptal edin.</p>
+  {% else %}
   <form method="post" action="{% url 'core:is_oturumu_yonetici_islem' o.pk %}" style="margin:.4rem 0">
     {% csrf_token %}<input type="hidden" name="geri" value="{{ geri }}"><input type="hidden" name="eylem" value="adet_gir">
     <input type="text" name="miktar" inputmode="numeric" pattern="[0-9]*" placeholder="sağlam adet" required style="width:7rem">
     <input type="text" name="fire" inputmode="numeric" pattern="[0-9]*" placeholder="fire" style="width:5rem">
     <button type="submit" class="dugme-ikincil">✅ Adet gir</button>
   </form>
+  {% endif %}
   <form method="post" action="{% url 'core:is_oturumu_yonetici_islem' o.pk %}" style="margin:.4rem 0">
     {% csrf_token %}<input type="hidden" name="geri" value="{{ geri }}"><input type="hidden" name="eylem" value="sorumlu">
     {% if aday %}<select name="yeni" required>{% for p in aday %}<option value="{{ p.pk }}">{{ p.ad_soyad }}</option>{% endfor %}</select>

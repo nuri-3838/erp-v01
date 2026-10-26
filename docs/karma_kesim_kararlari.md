@@ -19,7 +19,9 @@ Sorun: 40 BASAMAK KESİM'de kayıt tam boy zorunlu ve bir boydan tek basamak öl
 
 ## Dilimler
 1. Veri alanları + ayar + servis (`core/services/karma_kesim.py`) + testler. ✔
-2. Atölye karma kesim ekranı + karma oturum (istasyon başına tek açık).
+2. Atölye karma kesim ekranı + karma oturum (istasyon başına tek açık). ✔ (`IsOturumu.karma`, `is_oturumu.baslat_karma / bitir_karma / adet_gir_karma`, istasyon sayfasında "Karma kesim"
+   bölümü, canlı önizleme, bugünkü son karma kesimi geri alma). Oturum kuralları: tek ekip + sorumlu aynen; aynı istasyonda aynı profili tüketen emirle çakışma iki yönde engellenir.
+   Yönetici karma adedini girmez (sorumlu atölyeden girer); sorumlu değiştirme / iptal yönetici işlemidir.
 3. Fire raporu (karma kesim kayıtları: fire mm / oranı, testere-çene-uç ayrımı).
 
 ## Bilinen sınırlar (Dilim 1)

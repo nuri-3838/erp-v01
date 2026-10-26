@@ -72,6 +72,33 @@ def parca_adaylari(istasyon_id, profil_id) -> list:
     return sonuc
 
 
+def profil_secenekleri(istasyon_id) -> list:
+    """İstasyonda karma kesim yapılabilen profiller: [{"profil": Stok, "parca_sayisi": n}] — BOY birimli, kartında boy uzunluğu tanımlı ve boyu bilinen en az bir
+    tek girdili (bu profil) ÜRET parçası olan profiller (stok koduna göre)."""
+    sayilar = {}
+    qs = Operasyon.objects.filter(silindi=False, istasyon_id=istasyon_id, istasyon__fason=False, tur=Operasyon.Tur.URET)
+    for op in qs:
+        girdiler = list(uretim.operasyon_girdileri(op))
+        tanim = uretim.tanim_ciktilari(op)
+        boy = tanim[0].boy_mm if tanim else op.boy_mm
+        if len(girdiler) == 1 and boy:
+            sayilar[girdiler[0].girdi_id] = sayilar.get(girdiler[0].girdi_id, 0) + 1
+    profiller = (Stok.objects.filter(pk__in=list(sayilar), silindi=False, boy_uzunluk_mm__isnull=False).select_related("uretim_birimi").order_by("kod"))
+    return [{"profil": p, "parca_sayisi": sayilar[p.pk]} for p in profiller if uretim._boy_birimli_mi(p)]
+
+
+def varsayilan_depo(istasyon_id, profil_id):
+    """Karma kesim kayıtlarının deposu (operatör seçmez): adaylardan açık emri olanların EN ÖNCELİKLİ ÜS'sinin deposu (siralama: Acil → termin → ÜS tarihi/no); emir yoksa
+    ilk fabrika (fason olmayan) deposu. Hiç depo yoksa None."""
+    ops = [a["operasyon"].pk for a in parca_adaylari(istasyon_id, profil_id)]
+    ie = (IstasyonEmri.objects.filter(silindi=False, operasyon_id__in=ops, uretim_emri__silindi=False, uretim_emri__durum=UretimEmri.Durum.ACIK,
+                                      durum__in=[IstasyonEmri.Durum.BEKLIYOR, IstasyonEmri.Durum.BASLADI], istasyon__fason=False)
+          .select_related("uretim_emri__depo").order_by(*uretim.siralama("uretim_emri__"), "pk").first())
+    if ie is not None and not ie.uretim_emri.depo.fason_cari_id:
+        return ie.uretim_emri.depo
+    return Depo.objects.filter(silindi=False, fason_cari__isnull=True).order_by("pk").first()
+
+
 # --- uzunluk bütçesi (saf hesap) ---
 
 def butce(boy_sayisi: int, boy_mm: Decimal, testere_mm: Decimal, cene_mm: Decimal, parcalar) -> dict:

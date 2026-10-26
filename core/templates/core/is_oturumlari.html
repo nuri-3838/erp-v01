@@ -65,7 +65,7 @@
       <tr>
         <td class="mono">{{ o.is_tarihi|date:"d.m.Y" }}</td>
         <td><span class="io-ist">{{ o.istasyon.kod }}</span> {{ o.istasyon.ad }}</td>
-        <td><a href="{% url 'core:uretim_emri_detay' o.uretim_emri_id %}">{{ o.uretim_emri.no }}</a> · <span class="mono">{{ o.istasyon_emri.operasyon.cikti.kod }}</span><br><small>{{ o.istasyon_emri.operasyon.cikti.ad }}</small></td>
+        <td>{% if o.uretim_emri_id %}<a href="{% url 'core:uretim_emri_detay' o.uretim_emri_id %}">{{ o.uretim_emri.no }}</a>{% else %}<b>Karma kesim</b>{% if o.karma_kesim_id %} {{ o.karma_kesim.no }}{% endif %}{% endif %} · <span class="mono">{{ o.is_kodu }}</span><br><small>{{ o.is_adi }}</small></td>
         <td class="io-ekip"><small>sorumlu:</small> <b>{{ r.sorumlu.ad_soyad }}</b>{% if r.kisi > 1 %}<br>{{ r.ekip_metni }}{% endif %}{% if o.bitiren_id and o.bitiren_id != r.sorumlu.pk %}<br><small>bitiren: {{ o.bitiren.ad_soyad }}</small>{% endif %}</td>
         <td class="mono">{{ o.baslangic_zamani|tr_zaman:"H:i" }}–{% if o.bitis_zamani %}{{ o.bitis_zamani|tr_zaman:"H:i" }}{% else %}<span class="io-acik">açık</span>{% endif %}</td>
         <td class="sag mono">{{ r.sure_metni }}</td>

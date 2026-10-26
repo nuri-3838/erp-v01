@@ -4002,6 +4002,11 @@ class KarmaKesim(TemelModel):
     def __str__(self):
         return self.no
 
+    @property
+    def fire_yuzde(self):
+        """Fire oranı yüzde olarak (2 ondalık)."""
+        return (self.fire_orani * 100).quantize(Decimal("0.01"))
+
 
 class KarmaKesimSatir(TemelModel):
     """Karma kesimin parça satırı: hangi parçadan kaç adet kesildi (kayıt anındaki parça mm ile). Emirlere dağılım ``OperasyonKaydi``larda tutulur."""
@@ -4389,9 +4394,14 @@ class IsOturumu(TemelModel):
         IPTAL = "IPTAL", "İptal (iş yapılmadı)"
         ADET = "ADET", "Adet bekliyor"          # iş yapıldı, süre işçiliğe sayılır; adet sonradan (sorumlu ya da yönetici) girilir
 
-    istasyon_emri = models.ForeignKey("IstasyonEmri", verbose_name="istasyon emri", on_delete=models.PROTECT, related_name="is_oturumlari")
-    uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", on_delete=models.PROTECT, related_name="is_oturumlari")
+    # KARMA KESİM oturumu (``karma=True``): istasyon başına tek açık oturum, tek bir PROFİL için; emire bağlı DEĞİLDİR (istasyon_emri / uretim_emri boş), Bitir'de parça
+    # listesiyle ``karma_kesim.karma_kes`` çalışır ve sonuç ``karma_kesim``e bağlanır. Diğer tüm kurallar (tek ekip + sorumlu, devir, mesai kapanışı) aynıdır.
+    istasyon_emri = models.ForeignKey("IstasyonEmri", verbose_name="istasyon emri", null=True, blank=True, on_delete=models.PROTECT, related_name="is_oturumlari")
+    uretim_emri = models.ForeignKey(UretimEmri, verbose_name="üretim siparişi", null=True, blank=True, on_delete=models.PROTECT, related_name="is_oturumlari")
     istasyon = models.ForeignKey(IsIstasyonu, verbose_name="iş istasyonu", on_delete=models.PROTECT, related_name="is_oturumlari")
+    karma = models.BooleanField("karma kesim oturumu", default=False)
+    karma_profil = models.ForeignKey(Stok, verbose_name="karma kesim profili", null=True, blank=True, on_delete=models.PROTECT, related_name="karma_oturumlari")
+    karma_kesim = models.OneToOneField(KarmaKesim, verbose_name="karma kesim", null=True, blank=True, on_delete=models.PROTECT, related_name="is_oturumu")
     baslatan = models.ForeignKey(Personel, verbose_name="başlatan", on_delete=models.PROTECT, related_name="baslattigi_is_oturumlari")
     # TEK EKİP + SORUMLU (2026-10-21): bir emirde aynı anda en çok BİR açık oturum; adet/fire, Bitir, İptal, Devret yalnız SORUMLU'da. İlk başlatan sorumlu doğar;
     # devirle / yönetici değişikliğiyle / mesai kapanışında otomatik devirle değişir. Boşsa (eski kayıt) ``baslatan`` sorumlu sayılır.
@@ -4423,10 +4433,38 @@ class IsOturumu(TemelModel):
             models.CheckConstraint(condition=(models.Q(bitis_zamani__isnull=True) | models.Q(bitis_zamani__gte=models.F("baslangic_zamani"))),
                                    name="ck_is_oturumu_bitis_gte_baslangic"),
             models.UniqueConstraint(fields=["istasyon_emri"], condition=models.Q(durum="ACIK", silindi=False), name="uq_is_oturumu_emirde_tek_acik"),
+            models.UniqueConstraint(fields=["istasyon"], condition=models.Q(karma=True, durum="ACIK", silindi=False), name="uq_is_oturumu_karma_istasyonda_tek_acik"),
+            models.CheckConstraint(condition=models.Q(karma=True) | (models.Q(istasyon_emri__isnull=False) & models.Q(uretim_emri__isnull=False)),
+                                   name="ck_is_oturumu_emir_ya_da_karma"),
         ]
 
     def __str__(self):
-        return f"{self.istasyon_emri.no} — {self.baslatan.ad_soyad} {self.baslangic_zamani:%d.%m.%Y %H:%M}"
+        return f"{self.emir_no or 'Karma kesim'} — {self.baslatan.ad_soyad} {self.baslangic_zamani:%d.%m.%Y %H:%M}"
+
+    @property
+    def us_no(self) -> str:
+        """Ekranlarda ÜS yerine gösterilen etiket: emirli oturumda ÜS no, karma kesimde 'Karma kesim'."""
+        return self.uretim_emri.no if self.uretim_emri_id else "Karma kesim"
+
+    @property
+    def emir_no(self) -> str:
+        """Emirli oturumda istasyon emri no; karma kesimde (bittiyse) karma kesim no, aksi halde boş."""
+        if self.istasyon_emri_id:
+            return self.istasyon_emri.no
+        return self.karma_kesim.no if self.karma_kesim_id else ""
+
+    @property
+    def is_kodu(self) -> str:
+        """İşin stok kodu: emirli oturumda çıktı kartı, karma kesimde profil kartı."""
+        if self.istasyon_emri_id:
+            return self.istasyon_emri.operasyon.cikti.kod
+        return self.karma_profil.kod if self.karma_profil_id else ""
+
+    @property
+    def is_adi(self) -> str:
+        if self.istasyon_emri_id:
+            return self.istasyon_emri.operasyon.cikti.ad
+        return self.karma_profil.ad if self.karma_profil_id else ""
 
     @property
     def sorumlu_kisi(self):

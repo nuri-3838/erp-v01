@@ -36,6 +36,12 @@ def _etiket(sv):
     return varyant_kisa(sv) if sv is not None else ""
 
 
+def _cikti_varyant(o):
+    """Oturumun işi: (stok kartı, varyant etiketi) — emirli oturumda çıktı kartı, karma kesimde profil kartı (varyantsız)."""
+    ie = o.istasyon_emri
+    return (o.karma_profil, "") if ie is None else (ie.operasyon.cikti, _etiket(ie.cikti_varyant))
+
+
 def _yuzde(fire, saglam):
     toplam = (saglam or SIFIR) + (fire or SIFIR)
     return (Decimal(fire or 0) * 100 / toplam).quantize(Decimal("0.1")) if toplam else None
@@ -52,18 +58,18 @@ def su_an(simdi=None) -> dict:
     simdi = simdi or timezone.now()
     bugun = tr_bugun()
     oturumlar = (IsOturumu.objects.filter(silindi=False, durum=IsOturumu.Durum.ACIK)
-                 .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu",
+                 .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu", "karma_profil",
                                  *_sr("istasyon_emri__cikti_varyant"))
                  .prefetch_related(is_oturumu._uyeler_prefetch()).order_by("baslangic_zamani", "pk"))
     satirlar, mesgul = [], set()
     for o in oturumlar:
         oz = is_oturumu.ozet(o)
         mesgul.update(u.personel_id for u in oz["uyeler"] if u.ayrilma_zamani is None)
-        satirlar.append({"oturum": o, "ozet": oz, "ie": o.istasyon_emri, "cikti": o.istasyon_emri.operasyon.cikti,
-                         "varyant": _etiket(o.istasyon_emri.cikti_varyant), "dunku": o.is_tarihi < bugun})
-    adet = [{"oturum": o, "ozet": is_oturumu.ozet(o), "ie": o.istasyon_emri, "cikti": o.istasyon_emri.operasyon.cikti, "varyant": _etiket(o.istasyon_emri.cikti_varyant)}
+        cikti, varyant = _cikti_varyant(o)
+        satirlar.append({"oturum": o, "ozet": oz, "ie": o.istasyon_emri, "cikti": cikti, "varyant": varyant, "dunku": o.is_tarihi < bugun})
+    adet = [{"oturum": o, "ozet": is_oturumu.ozet(o), "ie": o.istasyon_emri, "cikti": _cikti_varyant(o)[0], "varyant": _cikti_varyant(o)[1]}
             for o in (IsOturumu.objects.filter(silindi=False, durum=IsOturumu.Durum.ADET)
-                      .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu",
+                      .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu", "karma_profil",
                                       *_sr("istasyon_emri__cikti_varyant"))
                       .prefetch_related(is_oturumu._uyeler_prefetch()).order_by("bitis_zamani", "pk"))]
     mesailer = list(MesaiKaydi.objects.filter(silindi=False, cikis_zamani__isnull=True).select_related("personel").order_by("personel__ad", "personel__soyad"))
@@ -77,6 +83,7 @@ def su_an(simdi=None) -> dict:
 def _oturum_satiri(o, simdi):
     oz = is_oturumu.ozet(o)
     ie = o.istasyon_emri
+    cikti, varyant = _cikti_varyant(o)
     kayit = o.kayit if o.kayit_id else None
     geri_alindi = bool(kayit is not None and kayit.silindi)
     iptal = o.durum == IsOturumu.Durum.IPTAL
@@ -91,12 +98,13 @@ def _oturum_satiri(o, simdi):
         paylar.append({"personel": u.personel, "saniye": 0 if iptal else sn, "oran": oran,             # iptal (iş yapılmadı): süre sayılmaz
                        "bas": u.katilim_zamani, "bit": u.ayrilma_zamani or o.bitis_zamani})
     return {"tur": "oturum", "tarih": o.is_tarihi, "zaman": o.baslangic_zamani, "oturum": o, "kayit": kayit, "ozet": oz, "istasyon": o.istasyon,
-            "cikti": ie.operasyon.cikti, "varyant": _etiket(ie.cikti_varyant), "personeller": [u.personel for u in uyeler], "paylar": paylar,
+            "cikti": cikti, "varyant": varyant, "personeller": [u.personel for u in uyeler], "paylar": paylar,
             "personel_metni": oz["ekip_metni"] or "—", "saglam": saglam, "fire": fire, "fire_yuzde": _yuzde(fire, saglam),
             "sure_saniye": None if iptal else oz["sure_saniye"], "sure_metni": "—" if iptal else oz["sure_metni"], "adam_saniye": 0 if iptal else oz["adam_saniye"],
-            "kaynak": "oturum", "kaynak_metni": f"{o.uretim_emri.no} / {ie.no}", "us_pk": o.uretim_emri_id, "ie_pk": ie.pk,
+            "kaynak": "oturum", "kaynak_metni": f"{o.uretim_emri.no} / {ie.no}" if ie is not None else (f"Karma kesim {o.karma_kesim.no}" if o.karma_kesim_id else "Karma kesim"),
+            "us_pk": o.uretim_emri_id, "ie_pk": ie.pk if ie is not None else None,
             "durum": o.get_durum_display(), "acik": o.durum == IsOturumu.Durum.ACIK, "iptal": iptal, "geri_alindi": geri_alindi,
-            "href": f"/uretim/kayitlar/{kayit.pk}/" if kayit is not None else f"/uretim/is-oturumlari/?ara={ie.no}"}
+            "href": f"/uretim/kayitlar/{kayit.pk}/" if kayit is not None else f"/uretim/is-oturumlari/?ara={ie.no if ie is not None else (o.karma_kesim.no if o.karma_kesim_id else o.karma_profil.kod)}"}
 
 
 def _kayit_satiri(k):
@@ -121,10 +129,11 @@ def gecmis(*, baslangic, bitis, personel_id=None, istasyon_id=None, kaynak="", s
     simdi = simdi or timezone.now()
     oq = (IsOturumu.objects.filter(silindi=False, is_tarihi__gte=baslangic, is_tarihi__lte=bitis)
           .select_related("istasyon_emri__operasyon__cikti", "istasyon_emri__cikti_varyant__stok", "uretim_emri", "istasyon", "baslatan", "sorumlu", "bitiren", "kayit",
-                          *_sr("istasyon_emri__cikti_varyant"))
+                          "karma_profil", "karma_kesim", *_sr("istasyon_emri__cikti_varyant"))
           .prefetch_related(is_oturumu._uyeler_prefetch()))
     kq = (OperasyonKaydi.objects.filter(silindi=False, durum=OperasyonKaydi.Durum.ONAYLI, tarih__gte=baslangic, tarih__lte=bitis, is_oturumu__isnull=True,
                                         fason_cari__isnull=True, fason_donus__isnull=True)
+          .exclude(karma__is_oturumu__isnull=False)                                    # atölye karma kesim oturumunun kayıtları oturum satırıyla birlikte gösterilir
           .select_related("operasyon__istasyon", "operasyon__cikti", "cikti_varyant__stok", "uretim_emri", "istasyon_emri", "personel", *_sr("cikti_varyant"))
           .prefetch_related(Prefetch("ciktilar", queryset=OperasyonKaydiCikti.objects.filter(silindi=False, ana_mi=True))))
     if personel_id:

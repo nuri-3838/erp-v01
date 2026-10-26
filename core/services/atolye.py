@@ -18,15 +18,15 @@ Kurallar (kullanıcı kararları, 2026-10-11/12):
 from __future__ import annotations
 
 import datetime
-from decimal import ROUND_FLOOR, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
 from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
 
-from core.models import EkranYetki, IsIstasyonu, IstasyonEmri, OperasyonKaydi, Personel, UretimEmri
+from core.models import EkranYetki, IsIstasyonu, IsOturumu, IstasyonEmri, KarmaKesim, OperasyonKaydi, Personel, Stok, UretimEmri
 from core.services import fason_siparis as fs_servis
-from core.services import is_oturumu, planlama_varyant, stok_ayirma
+from core.services import is_oturumu, karma_kesim, planlama_varyant, stok_ayirma
 from core.services import mesai as mesai_servis
 from core.services import mesai_ag, uretim
 from core.services import varyant as varyant_servis
@@ -309,14 +309,37 @@ def oturum_satiri(oturum, personel=None) -> dict:
     s["uye_benim"] = personel is not None and any(u.personel_id == personel.pk and u.ayrilma_zamani is None for u in s["uyeler"])
     s["benim"] = s["uye_benim"] or (s["adet_bekliyor"] and s["sorumlu_benim"])
     s["devir_adaylari"] = [u.personel for u in s["acik_uyeler"] if personel is not None and u.personel_id != personel.pk]
-    ie, us = oturum.istasyon_emri, oturum.uretim_emri
-    s["emir_kapali"] = bool(ie.silindi or ie.durum in (IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL) or us.silindi or us.durum != UretimEmri.Durum.ACIK)
-    s["kalan_tam"] = _tam_metin(uretim.istasyon_emri_satiri(ie, us)["acik"])
+    if oturum.karma:                                       # karma kesim: emire bağlı değil; parça listesi formu
+        s["emir_kapali"], s["kalan_tam"], s["karma_form"] = False, "", karma_formu(oturum)
+    else:
+        ie, us = oturum.istasyon_emri, oturum.uretim_emri
+        s["emir_kapali"] = bool(ie.silindi or ie.durum in (IstasyonEmri.Durum.BITTI, IstasyonEmri.Durum.IPTAL) or us.silindi or us.durum != UretimEmri.Durum.ACIK)
+        s["kalan_tam"] = _tam_metin(uretim.istasyon_emri_satiri(ie, us)["acik"])
     s["bitis_varsayilan"] = ""
     if s["dunku"] and personel is not None:
         vb = is_oturumu.varsayilan_bitis(oturum, personel)
         s["bitis_varsayilan"] = vb.astimezone(_TR).strftime("%Y-%m-%dT%H:%M") if vb else ""
     return s
+
+
+def karma_formu(oturum) -> dict:
+    """Karma kesim Bitir/Adet gir formu: profil + boy + ayarlar ve her aday parça için {stok, parca_mm, ihtiyac} (``ihtiyac`` = açık emirlerin toplam net kalan ihtiyacı — yalnız ipucu)."""
+    profil = oturum.karma_profil
+    adaylar = []
+    for a in karma_kesim.parca_adaylari(oturum.istasyon_id, profil.pk):
+        ihtiyac = sum((karma_kesim._net_kalan(ie) for ie in karma_kesim._acik_emirler(a["operasyon"], False)), Decimal("0"))
+        adaylar.append({"stok": a["stok"], "parca_mm": a["parca_mm"], "ihtiyac": ihtiyac.to_integral_value(rounding=ROUND_CEILING), "ihtiyac_tam": _tam_metin(ihtiyac)})
+    return {"profil": profil, "boy_mm": profil.boy_uzunluk_mm, "adaylar": adaylar, **karma_kesim.ayarlar()}
+
+
+def karma_istasyon(istasyon, user=None) -> dict:
+    """İstasyon sayfasındaki KARMA KESİM bölümü: {profiller (başlatılabilir profil seçenekleri), acik (açık oturum satırları), adet_bekleyen}."""
+    p = personel_coz(user) if user is not None else None
+    son = (KarmaKesim.objects.filter(silindi=False, istasyon=istasyon, created_by=user, tarih=tr_bugun()).order_by("-pk").first()
+           if getattr(user, "pk", None) else None)                                               # bugünkü kendi son karma kesimi (geri alınabilir)
+    return {"profiller": karma_kesim.profil_secenekleri(istasyon.pk), "son_kesim": son,
+            "acik": [oturum_satiri(o, p) for o in is_oturumu.karma_oturumlari(istasyon.pk)],
+            "adet_bekleyen": [oturum_satiri(o, p) for o in is_oturumu.karma_oturumlari(istasyon.pk, IsOturumu.Durum.ADET)]}
 
 
 def acik_islerim(user) -> list:
@@ -394,6 +417,73 @@ def oturum_bitir(user, oturum, miktar_ham, bitis_ham, ip, fire_ham=None):
     return kayit, uyari, miktar, fire
 
 
+def oturum_baslat_karma(user, istasyon, profil_id, ekip_pks, ip):
+    """Operatör "Karma kesim başlat": mesai açık + fabrika ağı; istasyon başına tek açık karma oturum (``is_oturumu.baslat_karma`` kuralları)."""
+    p, _m = _acik_mesai(user)
+    _ag_kontrol(ip, "Karma kesim başlatma")
+    profil = Stok.objects.filter(pk=int(profil_id), silindi=False).first() if str(profil_id or "").isdigit() else None
+    if profil is None:
+        raise AtolyeHatasi("Profili seçin.")
+    pks = [int(x) for x in (ekip_pks or []) if str(x).isdigit()]
+    ekip = list(Personel.objects.filter(pk__in=pks, silindi=False)) if pks else []
+    if len(ekip) != len(set(pks)):
+        raise AtolyeHatasi("Ekipteki bir personel bulunamadı.")
+    try:
+        return is_oturumu.baslat_karma(p, istasyon, profil, ekip, ip=ip, kullanici=user)
+    except is_oturumu.OturumHatasi as e:
+        raise AtolyeHatasi(str(e))
+
+
+def _karma_satirlari(adetler) -> list:
+    """{parça stok pk: ham adet} → [(pk, adet)]: boş ve 0 satırlar atlanır; tam sayı olmayan hata verir."""
+    sonuc = []
+    for pk, ham in (adetler or {}).items():
+        if not str(pk).isdigit() or not (ham or "").strip():
+            continue
+        m = _miktar_coz(ham, ad="Parça adedi")
+        if m > 0:
+            sonuc.append((int(pk), int(m)))
+    return sonuc
+
+
+def oturum_karma_bitir(user, oturum, boy_ham, adetler, bitis_ham, ip):
+    """Sorumlu karma kesimi Bitir (açık oturum) ya da Adet gir ("Adet bekliyor" oturum): kullanılan boy sayısı + parça adetleri. Mesai açık + fabrika ağı. Hatada (bütçe aşımı,
+    yetersiz stok…) oturum olduğu gibi kalır; dönen: ``KarmaKesim``."""
+    p, _m = _acik_mesai(user)
+    _ag_kontrol(ip, "Üretim girişi")
+    if not (boy_ham or "").strip():
+        raise AtolyeHatasi("Kullanılan boy sayısını girin.")
+    boy = _miktar_coz(boy_ham, ad="Kullanılan boy sayısı")
+    satirlar = _karma_satirlari(adetler)
+    try:
+        if oturum.durum == IsOturumu.Durum.ADET:
+            return is_oturumu.adet_gir_karma(oturum, boy, satirlar, personel=p, kullanici=user, ip=ip)
+        return is_oturumu.bitir_karma(p, oturum, boy, satirlar, bitis=_bitis_coz(bitis_ham), ip=ip, kullanici=user)
+    except is_oturumu.OturumHatasi as e:
+        raise AtolyeHatasi(str(e))
+
+
+def karma_onizleme(istasyon_id, profil_id, boy_ham, adetler) -> dict:
+    """Formun canlı önizlemesi (hiçbir şey yazılmaz): {"ok", "hata"} + ok ise uzunluk/fire dökümü ve parça × emir dağılımı (metin olarak biçimli)."""
+    from core.sayi import format_tr
+    try:
+        satirlar = _karma_satirlari(adetler)
+        if not satirlar:
+            return {"ok": False, "hata": ""}
+        if not (boy_ham or "").strip():
+            return {"ok": False, "hata": "Kullanılan boy sayısını girin."}
+        boy = _miktar_coz(boy_ham, ad="Kullanılan boy sayısı")
+        o = karma_kesim.onizleme(istasyon_id=istasyon_id, profil_id=profil_id, boy_sayisi=boy, satirlar=satirlar)
+    except (AtolyeHatasi, uretim.UretimHatasi) as e:
+        return {"ok": False, "hata": str(e)}
+    b = o["butce"]
+    mm = lambda d: format_tr(d, 2)
+    return {"ok": True, "hata": "", "toplam_adet": b["toplam_adet"], "parca_mm": mm(b["parca_mm"]), "testere_mm": mm(b["testere_mm"]), "cene_mm": mm(b["cene_mm"]),
+            "uc_mm": mm(b["uc_mm"]), "fire_mm": mm(b["fire_mm"]), "fire_yuzde": format_tr(b["fire_orani"] * 100, 2), "kullanilabilir_mm": mm(b["kullanilabilir_mm"]),
+            "gerekli_mm": mm(b["gerekli_mm"]),
+            "dagilim": [{"kod": x["aday"]["stok"].kod, "adet": x["adet"], "emir": (x["ie"].uretim_emri.no + " / " + x["ie"].no) if x["ie"] else "serbest stok"} for x in o["ayrimlar"]]}
+
+
 def oturum_iptal(user, oturum, bitis_ham, ip):
     p = _personel(user)                                                   # mesai şartı yok: açık iş hiçbir zaman "kilitli" kalmasın
     _ag_kontrol(ip, "İptal")
@@ -445,8 +535,27 @@ def oturum_adet_gir(user, oturum, miktar_ham, fire_ham, ip):
 
 
 @transaction.atomic
+def karma_geri_al(user, karma, ip):
+    """Bugünkü KENDİ SON karma kesimini bütün olarak geri alır (tüm kayıtların stok hareketleri, maliyet fişleri, ÜS ayırması/tamamlananı, daraltılan emir planlananı)."""
+    _acik_mesai(user)
+    if not mesai_ag.ip_izinli_mi(ip):
+        raise AtolyeHatasi("Geri alma yalnızca fabrika Wi-Fi'ına bağlıyken yapılabilir.")
+    son = KarmaKesim.objects.filter(silindi=False, istasyon_id=karma.istasyon_id, created_by=user, tarih=tr_bugun()).order_by("-pk").first()
+    if karma.silindi or son is None or son.pk != karma.pk:
+        raise AtolyeHatasi("Yalnız bugünkü kendi SON karma kesiminizi geri alabilirsiniz.")
+    try:
+        return karma_kesim.karma_geri_al(karma, kullanici=user)
+    except uretim.UretimHatasi as e:
+        raise AtolyeHatasi(str(e))
+
+
+@transaction.atomic
 def geri_al(user, kayit: OperasyonKaydi, ip) -> OperasyonKaydi:
-    """Bugünkü KENDİ SON kaydını geri alır (stok hareketleri + maliyet fişi geri sarılır, ``geri_alan`` izi); başka bir kayıt reddedilir."""
+    """Bugünkü KENDİ SON kaydını geri alır (stok hareketleri + maliyet fişi geri sarılır, ``geri_alan`` izi); başka bir kayıt reddedilir. Karma kesim kaydıysa kesimin
+    TÜM kayıtları birlikte geri alınır (``karma_geri_al``)."""
+    if kayit.karma_id:
+        karma_geri_al(user, kayit.karma, ip)
+        return kayit
     _acik_mesai(user)
     if not mesai_ag.ip_izinli_mi(ip):
         raise AtolyeHatasi("Geri alma yalnızca fabrika Wi-Fi'ına bağlıyken yapılabilir.")

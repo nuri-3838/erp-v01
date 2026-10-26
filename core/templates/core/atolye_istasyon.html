@@ -7,6 +7,65 @@
 {% block icerik %}
   {% include "core/_atolye_acik_isler.html" with istasyon_pk=istasyon.pk %}
   {% if fazla_yasak_not %}<p class="at-yardim" style="margin:0">ℹ️ Bu istasyonda kalandan fazlası yazılamaz (varyantlı emirler).</p>{% endif %}
+  {% if karma.profiller or karma.acik or karma.adet_bekleyen or karma.son_kesim %}
+  <section class="at-kart at-emir{% if karma.acik %} calisiyor{% endif %}" id="karma">
+    <div class="ust"><span>✂️ KARMA KESİM</span><span><span class="rozet-stok">Emire bağlı değil</span></span></div>
+    <p class="at-yardim" style="text-align:left">Aynı profilin boylarından farklı basamakları birlikte kesmek için. Bitirirken boy sayısını ve parça adetlerini girersiniz; parçalar açık emirlere dağıtılır, artan serbest stoğa girer.</p>
+    {% for o in karma.acik %}
+      <div class="at-oturum{% if o.uye_benim %} benim{% endif %}{% if o.dunku %} dunku{% endif %}" id="oturum-{{ o.oturum.pk }}">
+        <div class="at-oturum-ust">
+          <span class="at-sayac" data-baslangic="{{ o.baslangic_ms }}">{{ o.sure_metni }}</span>
+          <span>{% if o.dunku %}⚠️ DÜNKÜ AÇIK İŞ · {{ o.oturum.baslangic_zamani|tr_zaman:"d.m.Y H:i" }}{% else %}⏱ Çalışıyor · {{ o.oturum.baslangic_zamani|tr_zaman:"H:i" }}'den beri{% endif %} · {{ o.oturum.karma_profil.kod }}</span>
+        </div>
+        <div class="at-ekip">👤 Sorumlu: <b>{{ o.sorumlu.ad_soyad }}</b> · 👥 {{ o.ekip_metni }}</div>
+        {% if o.uye_benim %}
+          <p class="at-yardim" style="text-align:left">Bu işte siz de varsınız — Bitir / İptal / Devret / Ayrıl düğmeleri sayfanın en üstündeki "Açık işiniz var" kartındadır.</p>
+        {% elif baslatabilir %}
+          <form method="post" action="{% url 'core:atolye_oturum_katil' o.oturum.pk %}">
+            {% csrf_token %}
+            <p class="at-yardim" style="text-align:left">Bu istasyonda {{ o.sorumlu.ad_soyad }} sorumluluğunda bir karma kesim çalışıyor. Katılırsanız çalışırsınız, süreniz işçiliğe sayılır; parça adetlerini sorumlu girer.</p>
+            <button type="submit" class="at-basla-buton">🤝 EKİBE KATIL</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+    {% for b in karma.adet_bekleyen %}
+      <div class="at-oturum dunku" id="adet-{{ b.oturum.pk }}"><div class="at-oturum-ust"><span>⏳ Adet bekliyor · {{ b.oturum.bitis_zamani|tr_zaman:"d.m H:i" }}'de kapandı · {{ b.oturum.karma_profil.kod }}</span></div>
+        <div class="at-ekip">👤 Sorumlu: <b>{{ b.sorumlu.ad_soyad }}</b> · 👥 {{ b.ekip_metni }}</div>
+        <p class="at-yardim" style="text-align:left">Bu karma kesimin boy sayısı ve parça adetleri henüz girilmedi (sorumlu girecek). Yeni karma kesim açabilirsiniz.</p></div>
+    {% endfor %}
+    {% if baslatabilir and not karma.acik and karma.profiller %}
+      <details class="at-basla">
+        <summary>▶ KARMA KESİM BAŞLA</summary>
+        <form method="post" action="{% url 'core:atolye_karma_basla' istasyon.pk %}">
+          {% csrf_token %}
+          {% if karma.profiller|length == 1 %}
+            {% with p=karma.profiller.0 %}<input type="hidden" name="profil" value="{{ p.profil.pk }}"><p class="at-yardim" style="text-align:left">Profil: <b>{{ p.profil.kod }}</b> · {{ p.profil.boy_uzunluk_mm|tr_miktar_sade }} mm · {{ p.parca_sayisi }} parça</p>{% endwith %}
+          {% else %}
+            <label class="at-alan"><span>Profil</span><select name="profil" required>{% for p in karma.profiller %}<option value="{{ p.profil.pk }}">{{ p.profil.kod }} · {{ p.profil.boy_uzunluk_mm|tr_miktar_sade }} mm · {{ p.parca_sayisi }} parça</option>{% endfor %}</select></label>
+          {% endif %}
+          {% if ekip_adaylari %}
+            <p class="at-yardim" style="text-align:left">Birlikte çalışacağınız arkadaşlarınızı seçin (isteğe bağlı):</p>
+            {% for a in ekip_adaylari %}
+              <label class="at-aday{% if a.mesgul %} mesgul{% endif %}"><input type="checkbox" name="ekip" value="{{ a.personel.pk }}"{% if a.mesgul %} disabled{% endif %}> {{ a.personel.ad_soyad }}{% if a.mesgul %} <small>({{ a.mesgul.istasyon.kod }} › {{ a.mesgul.us_no }} işinde)</small>{% endif %}</label>
+            {% endfor %}
+          {% else %}
+            <p class="at-yardim">Mesaisi açık başka operatör yok; tek başınıza başlıyorsunuz.</p>
+          {% endif %}
+          <button type="submit" class="at-basla-buton">▶ KARMA KESİMİ BAŞLAT</button>
+        </form>
+      </details>
+    {% endif %}
+    {% if karma.son_kesim and not izleme %}
+      <div class="at-geri">
+        <span>Son karma kesimim: <b>{{ karma.son_kesim.no }}</b> · {{ karma.son_kesim.boy_sayisi }} boy · {{ karma.son_kesim.toplam_adet }} parça · fire {{ karma.son_kesim.fire_mm|tr_miktar_sade }} mm (%{{ karma.son_kesim.fire_yuzde|tr_miktar_sade }}) · {{ karma.son_kesim.created_at|tr_zaman:"H:i" }}</span>
+        <form method="post" action="{% url 'core:atolye_karma_geri_al' karma.son_kesim.pk %}" style="margin:0" onsubmit="return confirm('{{ karma.son_kesim.no }} geri alınsın mı? Tüm parça kayıtları ve stok hareketleri geri sarılır.');">
+          {% csrf_token %}<button type="submit">↶ Geri al</button>
+        </form>
+      </div>
+    {% endif %}
+  </section>
+  {% endif %}
   {% for s in emirler %}
     <section class="at-kart at-emir{% if s.oturumlar %} calisiyor{% endif %}{% if s.malzeme.durum == "YOK" %} malzeme-yok{% elif s.malzeme.durum == "KISMI" %} malzeme-kismi{% endif %}" id="ie-{{ s.ie.pk }}">
       <div class="ust"><span>{{ s.ie.uretim_emri.no }} <span class="ie-no">{{ s.ie.no }}</span></span><span>{% if s.musteri %}{{ s.musteri }}{% else %}<span class="rozet-stok">Stok</span>{% endif %}</span></div>
@@ -50,7 +109,7 @@
             {% if ekip_adaylari %}
               <p class="at-yardim" style="text-align:left">Birlikte çalışacağınız arkadaşlarınızı seçin (isteğe bağlı):</p>
               {% for a in ekip_adaylari %}
-                <label class="at-aday{% if a.mesgul %} mesgul{% endif %}"><input type="checkbox" name="ekip" value="{{ a.personel.pk }}"{% if a.mesgul %} disabled{% endif %}> {{ a.personel.ad_soyad }}{% if a.mesgul %} <small>({{ a.mesgul.istasyon.kod }} › {{ a.mesgul.uretim_emri.no }} işinde)</small>{% endif %}</label>
+                <label class="at-aday{% if a.mesgul %} mesgul{% endif %}"><input type="checkbox" name="ekip" value="{{ a.personel.pk }}"{% if a.mesgul %} disabled{% endif %}> {{ a.personel.ad_soyad }}{% if a.mesgul %} <small>({{ a.mesgul.istasyon.kod }} › {{ a.mesgul.us_no }} işinde)</small>{% endif %}</label>
               {% endfor %}
             {% else %}
               <p class="at-yardim">Mesaisi açık başka operatör yok; tek başınıza başlıyorsunuz.</p>

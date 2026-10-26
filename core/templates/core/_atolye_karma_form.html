@@ -1,0 +1,37 @@
+{# Karma kesim Bitir / Adet gir formu: o = atolye.oturum_satiri (karma_form dolu). Önizleme: canlı fetch (hiçbir şey yazılmaz). #}
+{% load core_extras %}{% with f=o.karma_form %}
+<form method="post" action="{% url 'core:atolye_karma_bitir' o.oturum.pk %}" class="at-bitir at-karma-form" id="karma-form-{{ o.oturum.pk }}"
+      data-onizleme="{% url 'core:atolye_karma_onizleme' o.oturum.istasyon_id %}" data-profil="{{ f.profil.pk }}" onsubmit="return confirm('Karma kesim yazılsın mı? Stok hareketleri ve maliyet kaydı oluşur.');">
+  {% csrf_token %}
+  <p class="at-yardim" style="text-align:left">✂️ <b>{{ f.profil.kod }}</b> · boy {{ f.boy_mm|tr_miktar_sade }} mm · testere {{ f.testere_payi_mm|tr_miktar_sade }} mm/parça · çene {{ f.cene_payi_mm|tr_miktar_sade }} mm/boy. Kullanılan boy sayısını ve kestiğiniz parça adetlerini girin; fire otomatik hesaplanır.</p>
+  {% if o.dunku and not o.adet_bekliyor %}<label class="at-bitis-saat">Bitiş saati <input type="datetime-local" name="bitis" value="{{ o.bitis_varsayilan }}" required></label>{% endif %}
+  <div class="at-form">
+    <label class="at-alan"><span>Kullanılan boy sayısı</span><input type="text" name="boy" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Kullanılan boy sayısı"></label>
+    {% for a in f.adaylar %}
+      <label class="at-alan"><span>{{ a.stok.kod }} <small>({{ a.parca_mm|tr_miktar_sade }} mm){% if a.ihtiyac %} · ihtiyaç {{ a.ihtiyac_tam }}{% endif %}</small></span>
+        <input type="text" name="a_{{ a.stok.pk }}" inputmode="numeric" pattern="[0-9]*" placeholder="0" autocomplete="off" aria-label="{{ a.stok.kod }} adedi"{% if not a.parca_mm %} disabled title="Parça boyu tanımsız"{% endif %}></label>
+    {% endfor %}
+    <div class="at-karma-onizleme at-yardim" style="grid-column:1 / -1;text-align:left" aria-live="polite"></div>
+    <button type="submit">{% if o.adet_bekliyor %}✅ KARMA KESİMİ GİR{% else %}⏹ KARMA KESİMİ BİTİR{% endif %}</button>
+  </div>
+</form>
+<script>
+(function(){
+  var f = document.getElementById('karma-form-{{ o.oturum.pk }}'); if (!f || f.dataset.hazir) return; f.dataset.hazir = '1';
+  var kutu = f.querySelector('.at-karma-onizleme'), zaman = null;
+  function guncelle(){
+    var q = new URLSearchParams(); q.set('profil', f.dataset.profil); q.set('boy', f.elements['boy'].value);
+    Array.prototype.forEach.call(f.elements, function(e){ if (e.name && e.name.indexOf('a_') === 0 && e.value) q.set(e.name, e.value); });
+    fetch(f.dataset.onizleme + '?' + q.toString(), {credentials: 'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+      if (d.ok) {
+        var s = '✅ ' + d.toplam_adet + ' parça · kesilen ' + d.parca_mm + ' mm + testere ' + d.testere_mm + ' mm = ' + d.gerekli_mm + ' mm (kullanılabilir ' + d.kullanilabilir_mm + ' mm)<br>' +
+                '🔥 Fire ' + d.fire_mm + ' mm (%' + d.fire_yuzde + '): testere ' + d.testere_mm + ' + çene ' + d.cene_mm + ' + uç ' + d.uc_mm + ' mm — stoğa girmez' + '<br>';
+        s += d.dagilim.map(function(x){ return x.kod + ' × ' + x.adet + ' → ' + x.emir; }).join('<br>');
+        kutu.style.color = ''; kutu.innerHTML = s;
+      } else { kutu.style.color = d.hata ? '#b1122c' : ''; kutu.textContent = d.hata || ''; }
+    }).catch(function(){ kutu.textContent = ''; });
+  }
+  f.addEventListener('input', function(){ clearTimeout(zaman); zaman = setTimeout(guncelle, 350); });
+})();
+</script>
+{% endwith %}
