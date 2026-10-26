@@ -180,7 +180,7 @@ def son_kayitlar(emir: UretimEmri, adet: int = KAYIT_ADET) -> list:
         except ObjectDoesNotExist:
             oturum = None
         if oturum is not None:
-            ekip = [u.personel.ad_soyad for u in oturum.uyeler.all() if not u.silindi]
+            ekip = list(dict.fromkeys(u.personel.ad_soyad for u in oturum.uyeler.all() if not u.silindi))       # ayrılıp tekrar katılan bir kez
             if oturum.miktar is not None:
                 saglam = oturum.miktar
             fire = oturum.fire or SIFIR

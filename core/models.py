@@ -4532,7 +4532,8 @@ class IsOturumuUyesi(TemelModel):
         verbose_name_plural = "iş oturumu üyeleri"
         ordering = ["-baslatan", "id"]
         constraints = [
-            models.UniqueConstraint(fields=["oturum", "personel"], condition=models.Q(silindi=False), name="uq_is_oturumu_uyesi_aktif"),
+            # Kişi aynı oturumda ayrılıp tekrar katılabilir: her katılım AYRI satırdır (süre = satırların katılım aralıklarının toplamı); kısıt yalnız AÇIK (ayrılmamış) üyeliği tekil tutar.
+            models.UniqueConstraint(fields=["oturum", "personel"], condition=models.Q(silindi=False, ayrilma_zamani__isnull=True), name="uq_is_oturumu_uyesi_aktif"),
         ]
 
     def __str__(self):

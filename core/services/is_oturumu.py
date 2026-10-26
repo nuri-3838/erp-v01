@@ -16,6 +16,8 @@
 * Önceki günden kalan oturum bitirilirken bitiş saati sorulur (varsayılan: kişinin o günkü mesai çıkışı), kayıt tarihi = bitişin tarihi.
 * Mesaisi kapalı kişide açık üyelik KALAMAZ: ofis mesaiyi elle kapatınca/silince üyelik de kapanır (sorumluysa devir/adet bekliyor); cron süpürmesi kalanları toplar.
 * Adam-saat = üyelerin kendi katılım sürelerinin toplamı; işçilik/GÜG dağıtımı AYRI adım, burada yalnız veri birikir.
+* Ekipten AYRILIP aynı açık oturuma TEKRAR KATILMA serbesttir (birden çok kez): her katılım ayrı ``IsOturumuUyesi`` satırıdır, kapalı satırlar kalır (``uq_is_oturumu_uyesi_aktif`` yalnız
+  AÇIK üyeliği tekil tutar). Süre = satırların aralıkları toplamı; ekip/kişi sayısı ve İş Takibi payları KİŞİ bazında tekildir.
 * KARMA KESİM oturumu (``karma=True``, bkz. core.services.karma_kesim): emire bağlı DEĞİL, istasyon başına en çok BİR açık oturum, tek profil için. Aynı istasyonda bu profili tüketen
   bir emirde açık tekil oturum varken karma açılamaz (ve tersi); ofis "Üretildi" de aynı profil için engellenir. Bitir = kullanılan boy sayısı + parça adetleri
   (``bitir_karma`` / "Adet bekliyor"da ``adet_gir_karma``); hatada oturum açık kalır. Katıl / ayrıl / devret / iptal / mesai kapanışı kuralları aynıdır. Yönetici karma adedini
@@ -154,7 +156,9 @@ def ozet(oturum: IsOturumu) -> dict:
     if adet and oturum.durum == IsOturumu.Durum.BITTI:
         adet_saat = (adet / Decimal(sure) * 3600).quantize(Decimal("0.1")) if sure else None
         adet_basi_sn = int(Decimal(adam_sn) / adet)
-    return {"oturum": oturum, "uyeler": uyeler, "kisi": len(uyeler), "sorumlu": sorumlu, "ekip_metni": ", ".join(u.personel.ad_soyad for u in uyeler),
+    kisiler = list(dict.fromkeys(u.personel_id for u in uyeler))                       # ayrılıp tekrar katılan kişi birden çok satırdır: kişi/ekip metni TEKİL, süre satırların toplamı
+    adlar = list(dict.fromkeys(u.personel.ad_soyad for u in uyeler))
+    return {"oturum": oturum, "uyeler": uyeler, "kisi": len(kisiler), "sorumlu": sorumlu, "ekip_metni": ", ".join(adlar),
             "acik_uyeler": [u for u in uyeler if u.ayrilma_zamani is None],
             "sure_saniye": sure, "sure_metni": sure_metni(sure), "adam_saniye": adam_sn,
             "adam_saat": (Decimal(adam_sn) / 3600).quantize(Decimal("0.01")), "adam_saat_metni": sure_metni(adam_sn),

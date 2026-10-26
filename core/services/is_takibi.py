@@ -91,14 +91,17 @@ def _oturum_satiri(o, simdi):
     fire = SIFIR if (iptal or geri_alindi) else (o.fire or SIFIR)
     uyeler = oz["uyeler"]
     toplam_sn = sum(u.katilim_saniye(o.bitis_zamani) for u in uyeler) or 0
-    paylar = []
+    pay_kisi = {}                                          # KİŞİ başına tek pay: ayrılıp tekrar katılan kişinin tüm katılım aralıkları (araliklar) toplanır
     for u in uyeler:
         sn = u.katilim_saniye(o.bitis_zamani)
         oran = (Decimal(sn) / Decimal(toplam_sn)) if toplam_sn else (Decimal(1) / Decimal(len(uyeler)))
-        paylar.append({"personel": u.personel, "saniye": 0 if iptal else sn, "oran": oran,             # iptal (iş yapılmadı): süre sayılmaz
-                       "bas": u.katilim_zamani, "bit": u.ayrilma_zamani or o.bitis_zamani})
+        p = pay_kisi.setdefault(u.personel_id, {"personel": u.personel, "saniye": 0, "oran": Decimal(0), "araliklar": []})
+        p["saniye"] += 0 if iptal else sn                  # iptal (iş yapılmadı): süre sayılmaz
+        p["oran"] += oran
+        p["araliklar"].append((u.katilim_zamani, u.ayrilma_zamani or o.bitis_zamani))
+    paylar = [{**p, "bas": p["araliklar"][0][0], "bit": p["araliklar"][-1][1]} for p in pay_kisi.values()]
     return {"tur": "oturum", "tarih": o.is_tarihi, "zaman": o.baslangic_zamani, "oturum": o, "kayit": kayit, "ozet": oz, "istasyon": o.istasyon,
-            "cikti": cikti, "varyant": varyant, "personeller": [u.personel for u in uyeler], "paylar": paylar,
+            "cikti": cikti, "varyant": varyant, "personeller": [p["personel"] for p in paylar], "paylar": paylar,
             "personel_metni": oz["ekip_metni"] or "—", "saglam": saglam, "fire": fire, "fire_yuzde": _yuzde(fire, saglam),
             "sure_saniye": None if iptal else oz["sure_saniye"], "sure_metni": "—" if iptal else oz["sure_metni"], "adam_saniye": 0 if iptal else oz["adam_saniye"],
             "kaynak": "oturum", "kaynak_metni": f"{o.uretim_emri.no} / {ie.no}" if ie is not None else (f"Karma kesim {o.karma_kesim.no}" if o.karma_kesim_id else "Karma kesim"),
@@ -115,7 +118,7 @@ def _kayit_satiri(k):
     emirsiz = k.istasyon_emri_id is None and k.uretim_emri_id is None
     return {"tur": "kayit", "tarih": k.tarih, "zaman": k.created_at, "oturum": None, "kayit": k, "ozet": None, "istasyon": k.operasyon.istasyon,
             "cikti": k.operasyon.cikti, "varyant": _etiket(k.cikti_varyant), "personeller": [k.personel] if k.personel_id else [],
-            "paylar": [{"personel": k.personel, "saniye": 0, "oran": Decimal(1), "bas": None, "bit": None}] if k.personel_id else [],
+            "paylar": [{"personel": k.personel, "saniye": 0, "oran": Decimal(1), "bas": None, "bit": None, "araliklar": []}] if k.personel_id else [],
             "personel_metni": k.personel.ad_soyad if k.personel_id else "—", "saglam": saglam, "fire": fire, "fire_yuzde": _yuzde(fire, saglam),
             "sure_saniye": None, "sure_metni": "—", "adam_saniye": 0,
             "kaynak": "emirsiz" if emirsiz else "ofis",
@@ -314,9 +317,8 @@ def zaman_cizelgesi(satirlar, mesai, *, baslangic, bitis, simdi=None) -> dict:
                 kisi(pay["personel"])["suresiz"].append(s)
             continue
         for pay in s["paylar"]:
-            if pay["bas"] is None:
-                continue
-            kisi(pay["personel"])["gunler"].setdefault(s["tarih"], {"mesai": [], "oturum": []})["oturum"].append((pay["bas"], pay["bit"] or simdi, s))
+            for bas, bit in pay["araliklar"]:               # ayrılıp tekrar katılan kişi: her katılım aralığı ayrı blok
+                kisi(pay["personel"])["gunler"].setdefault(s["tarih"], {"mesai": [], "oturum": []})["oturum"].append((bas, bit or simdi, s))
     for k in kisiler.values():
         gunler = []
         if not k["cok_uzun"]:

@@ -11327,7 +11327,8 @@ def is_oturumlari(request):
     sayfa = Paginator(qs, 50).get_page(g.get("sayfa"))
     satirlar = [is_oturumu_servis.ozet(o) for o in sayfa]
     for r in satirlar:                                           # yönetici "sorumluyu değiştir" adayları: açık oturumda açık üyeler, adet bekleyende oturumun üyeleri
-        r["yonetici_adaylari"] = [u.personel for u in (r["acik_uyeler"] if r["oturum"].durum == IsOturumu.Durum.ACIK else r["uyeler"]) if u.personel_id != r["sorumlu"].pk]
+        r["yonetici_adaylari"] = list({u.personel_id: u.personel for u in (r["acik_uyeler"] if r["oturum"].durum == IsOturumu.Durum.ACIK else r["uyeler"])
+                                       if u.personel_id != r["sorumlu"].pk}.values())          # ayrılıp tekrar katılan kişi listede bir kez
     sabit_qs = g.copy()
     sabit_qs.pop("sayfa", None)
     sabit_qs.pop("xlsx", None)
