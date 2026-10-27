@@ -2521,25 +2521,14 @@ def _yatirim_projesi_alani():
     return f
 
 
-def _yatirim_projesi_denetle(form, gider, proje):
-    """Gider hesabı 258 ailesindeyse proje zorunlu; değilse proje seçilemez."""
-    from core.services.hesap_plani import hesap_kodu_258_mi
-    if gider is not None and hesap_kodu_258_mi(gider.hesap_kodu):
-        if not proje:
-            form.add_error("yatirim_projesi", "258 hesabı için yatırım projesi seçilmelidir.")
-    elif proje:
-        form.add_error("yatirim_projesi", "Yatırım projesi yalnız 258 hesabında seçilebilir.")
-
-
 class KrediKartiHareketDuzenleForm(forms.Form):
-    """Kredi kartı hareketi düzenleme: açıklama + (karşı taraf gider hesabıysa) gider hesabı + yatırım
-    projesi (258'de zorunlu). Tutar/tarih/kur değişmez."""
+    """Kredi kartı hareketi düzenleme: açıklama (+ taksit/döviz alanları). Karşı taraf gider hesabıysa karşı hesap satırları
+    (hesap + tutar + yatırım projesi + açıklama, bölünebilir) formset'tedir (views.KartGiderSatirFormSet). Kart tutarı/tarih/kur değişmez."""
     aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
     def __init__(self, *args, gider_duzenlenebilir=False, doviz_alanlari=False, taksit_alanlari=False, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.hesap_plani import yaprak_hesaplar
         self.gider_duzenlenebilir = gider_duzenlenebilir
         if taksit_alanlari:                                         # TL kart harcaması: taksit planı düzenlenir (fiş/muhasebe değişmez)
             self.fields["taksit_adedi"] = forms.IntegerField(label="Taksit Sayısı", min_value=1, max_value=60, required=False, initial=1)
@@ -2547,18 +2536,12 @@ class KrediKartiHareketDuzenleForm(forms.Form):
         if doviz_alanlari:                                          # karşı taraf cari + TL kart: döviz karşılığı düzenlenir
             self.fields["sayilan_pb"] = _sayilan_pb_alani()
             self.fields["sayilan_doviz"] = _sayilan_doviz_alani()
-        if gider_duzenlenebilir:
-            self.fields["gider"] = forms.ModelChoiceField(
-                label="Gider Hesabı", required=True, empty_label="— gider hesabı seç —",
-                queryset=yaprak_hesaplar(), widget=forms.Select(attrs={"class": "akilli-sec"}))
-            self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
-        self.fields["yatirim_projesi"] = _yatirim_projesi_alani()
+        if not gider_duzenlenebilir:                                # gider hesapları düzenlenebilirse karşı satırlar formset'te (hesap/tutar/proje/açıklama)
+            self.fields["yatirim_projesi"] = _yatirim_projesi_alani()
 
     def clean(self):
         cd = super().clean()
-        if self.gider_duzenlenebilir:
-            _yatirim_projesi_denetle(self, cd.get("gider"), cd.get("yatirim_projesi"))
-        elif cd.get("yatirim_projesi"):
+        if not self.gider_duzenlenebilir and cd.get("yatirim_projesi"):
             self.add_error("yatirim_projesi", "Bu hareketin karşı tarafı gider hesabı değil; proje seçilemez.")
         return cd
 
@@ -2594,7 +2577,6 @@ class KrediKartiHareketForm(forms.Form):
 
     def __init__(self, *args, tip=None, kart=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.hesap_plani import yaprak_hesaplar
         from core.services.kredi_karti_hareket import HAREKET
         self.fields["kur"].widget.attrs.update({"class": "kur-girdi", "autocomplete": "off"})
         turler = HAREKET.get(tip, {}).get("karsi", ())
@@ -2604,12 +2586,7 @@ class KrediKartiHareketForm(forms.Form):
                 queryset=_secilebilir_cariler(self),
                 widget=forms.Select(attrs={"class": "akilli-sec"}))
             self.fields["cari"].label_from_instance = lambda o: f"{o.kod}  {o.unvan}"
-            self.fields["gider"] = forms.ModelChoiceField(
-                label="Gider Hesabı", required=False, empty_label="— gider hesabı seç —",
-                queryset=yaprak_hesaplar(),
-                widget=forms.Select(attrs={"class": "akilli-sec"}))
-            self.fields["gider"].label_from_instance = lambda o: f"{o.hesap_kodu}  {o.hesap_adi}"
-            self.fields["yatirim_projesi"] = _yatirim_projesi_alani()
+            self.gider_satirli = True                               # gider karşı hesapları formset'te (hesap/tutar/proje/açıklama; bölünebilir)
             if tip == "harcama":
                 self.fields["sayilan_pb"] = _sayilan_pb_alani()
                 self.fields["sayilan_doviz"] = _sayilan_doviz_alani()
@@ -2638,12 +2615,13 @@ class KrediKartiHareketForm(forms.Form):
 
     def clean(self):
         cd = super().clean()
-        secili = [cd[k] for k in ("cari", "gider", "banka_hesap", "kasa") if cd.get(k)]
-        if len(secili) != 1:
+        secili = [cd[k] for k in ("cari", "banka_hesap", "kasa") if cd.get(k)]
+        if getattr(self, "gider_satirli", False):
+            if len(secili) > 1:
+                raise forms.ValidationError("Tam olarak bir karşı taraf seçin.")      # cari VEYA gider satırları (formset; view denetler)
+        elif len(secili) != 1:
             raise forms.ValidationError("Tam olarak bir karşı taraf seçin.")
-        cd["karsi"] = secili[0]
-        if "yatirim_projesi" in self.fields:
-            _yatirim_projesi_denetle(self, cd.get("gider"), cd.get("yatirim_projesi"))
+        cd["karsi"] = secili[0] if secili else None
         adet = cd.get("taksit_adedi") or 1
         kart = getattr(self, "_kart", None)
         if int(adet) > 1 and not cd.get("ilk_vade") and not (kart and kart.kesim_gunu and kart.son_odeme_gunu):

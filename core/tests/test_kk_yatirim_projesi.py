@@ -110,10 +110,11 @@ class KkYatirimProjesiTest(TestCase):
         self.client.force_login(self.su)
         url = reverse("core:kredi_karti_hareket_ekle", args=[self.kart.pk, "harcama"])
         self.assertContains(self.client.get(url), "Yatırım projesi")
-        veri = {"gider": "258", "tutar": "7.000,00", "tarih": "2026-04-03", "taksit_adedi": "1"}
+        veri = {"tutar": "7.000,00", "tarih": "2026-04-03", "taksit_adedi": "1", "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0",
+                "form-0-hesap": "258", "form-0-tutar": "", "form-0-yatirim_projesi": "", "form-0-aciklama": ""}
         r = self.client.post(url, veri)
-        self.assertContains(r, "258 hesabı için yatırım projesi seçilmelidir")             # form düzeyinde zorunlu
-        veri["yatirim_projesi"] = self.proje.pk
+        self.assertContains(r, "258 hesabı için yatırım projesi seçilmelidir")             # satır düzeyinde zorunlu
+        veri["form-0-yatirim_projesi"] = self.proje.pk
         r = self.client.post(url, veri)
         self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
         fis = YevmiyeFisi.objects.filter(kredi_karti=self.kart).get()
@@ -123,13 +124,15 @@ class KkYatirimProjesiTest(TestCase):
         self.assertContains(self.client.get(d_url), "Kart Hareketini Düzenle")
         self.assertContains(self.client.get(reverse("core:kredi_karti_detay", args=[self.kart.pk]),
                                             {"baslangic": "2026-01-01", "bitis": "2026-12-31"}), d_url)
-        r = self.client.post(d_url, {"aciklama": "düzeltildi", "gider": "258", "yatirim_projesi": self.proje2.pk})
+        duz = {"aciklama": "düzeltildi", "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1", "form-0-hesap": "258",
+               "form-0-tutar": "7.000,00", "form-0-yatirim_projesi": self.proje2.pk, "form-0-aciklama": ""}
+        r = self.client.post(d_url, duz)
         self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
         fis.refresh_from_db()
         self.assertEqual(fis.aciklama, "DÜZELTİLDİ")
         self.assertEqual(fis.satirlar.get(silindi=False, hesap_id="258").yatirim_projesi_id, self.proje2.pk)
         # proje olmadan 258 → ekranda hata, fiş değişmez
-        r = self.client.post(d_url, {"aciklama": "x", "gider": "258"})
+        r = self.client.post(d_url, {**duz, "aciklama": "x", "form-0-yatirim_projesi": ""})
         self.assertContains(r, "258 hesabı için yatırım projesi seçilmelidir")
 
 

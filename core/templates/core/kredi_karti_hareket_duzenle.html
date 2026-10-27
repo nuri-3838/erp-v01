@@ -5,7 +5,7 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="form-kapsa form-dar">
+<div class="form-kapsa{% if not formset %} form-dar{% endif %}">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:kredi_karti_detay' kart.pk %}">← {{ kart.ad }}</a>
     <h1 class="ust-baslik"><span class="emoji">✏️</span>Kart Hareketini Düzenle</h1>
@@ -20,9 +20,11 @@
     <section class="icerik-kart">
       <h2 class="bolum-baslik"><span class="emoji">💳</span>Fiş {{ fis.yil }}/{{ fis.fis_no }} · {{ fis.tarih|date:"d.m.Y" }}</h2>
       <p class="yardim" style="margin-top:-.3rem">Tutar <strong>{{ tutar|tr_para }} {{ kart.para_birimi }}</strong> ·
-        Karşı hesap <span class="mono">{{ bilgi.gider_hesap.hesap_kodu }}</span> {{ bilgi.gider_hesap.hesap_adi }}.
-        Tutar, tarih ve kur değişmez; açıklama, gider hesabı ve yatırım projesi düzenlenebilir. Kaydedince fiş otomatik güncellenir
-        (döviz hesaplarda kur farkı yeniden hesaplanır).</p>
+        Karşı hesap{% if bilgi.karsi_satirlari|length > 1 %}lar{% endif %}:
+        {% for s in bilgi.karsi_satirlari %}<span class="mono">{{ s.hesap.hesap_kodu }}</span> {{ s.hesap.hesap_adi }}{% if not forloop.last %}; {% endif %}{% endfor %}.
+        {% if formset %}Kart tutarı, tarih ve kur değişmez; açıklama ve karşı hesap satırları (hesap, tutar, yatırım projesi — bölünebilir) düzenlenebilir.
+        Satırların toplamı kart tutarına eşit olmalı.{% else %}Tutar, tarih ve kur değişmez; açıklama düzenlenebilir.{% endif %}
+        Kaydedince fiş otomatik güncellenir (kart hesabı bakiyesi ve taksit planı değişmez; döviz hesaplarda kur farkı yeniden hesaplanır).</p>
       <div class="izgara">
         <div class="alan tam">
           <label for="{{ form.aciklama.id_for_label }}">{{ form.aciklama.label }}</label>
@@ -51,20 +53,16 @@
         <p class="yardim tam">Taksit planı yalnız ödeme takvimi içindir; <strong>fiş ve 309 bakiyesi değişmez</strong>. 1 yazarsanız plan kalkar (tek çekim).
           {% if plan %}Mevcut plan: {{ plan.taksit_adedi }} taksit.{% endif %}</p>
         {% endif %}
-        {% if form.gider %}
-        <div class="alan tam">
-          <label for="{{ form.gider.id_for_label }}">{{ form.gider.label }}</label>
-          {{ form.gider }}
-          {% for e in form.gider.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-        </div>
-        {% endif %}
+        {% if form.yatirim_projesi %}
         <div class="alan tam">
           <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label>
           {{ form.yatirim_projesi }}
           <p class="yardim">Gider hesabı <strong>258</strong> ise proje zorunludur; 258 değilse boş bırakılır.</p>
           {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% endif %}
       </div>
+      {% if formset %}{% include "core/_kart_gider_satirlari.html" with pb=kart.para_birimi toplam_sabit=tutar %}{% endif %}
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:kredi_karti_detay' kart.pk %}">İptal</a>

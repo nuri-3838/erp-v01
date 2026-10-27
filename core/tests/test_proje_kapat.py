@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from core.forms import KrediKartiHareketForm
+from core.forms import BankaHesapSatirForm
 from core.models import EkranYetki, HesapPlani, Kur, YatirimProjesi, YevmiyeFisi
 from core.services import cari_kesinti as ck
 from core.services import hesap_plani as hp
@@ -94,7 +94,7 @@ class ProjeKapatServisTest(ProjeKapatBase):
             ck.proje_coz(h258, self.proje.pk)
         self.assertEqual(YevmiyeFisi.objects.count(), n)
         # seçim listesinde görünmez
-        f = KrediKartiHareketForm(tip="harcama", kart=self.kart)
+        f = BankaHesapSatirForm()                                                          # kart gider satırı formu da bu satır formunu kullanır
         self.assertNotIn(self.proje, f.fields["yatirim_projesi"].queryset)
 
     def test_aktiflestir_akisi_kapali_projede_calismaz_acik_projede_degismez(self):

@@ -5,7 +5,7 @@
 {% block kart_sinif %}kart-yok{% endblock %}
 
 {% block content %}
-<div class="form-kapsa form-dar">
+<div class="form-kapsa{% if not formset %} form-dar{% endif %}">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:kredi_karti_detay' kart.pk %}">← {{ kart.ad }}</a>
     <h1 class="ust-baslik"><span class="emoji">{{ tan.ikon }}</span>{{ tan.ad }}</h1>
@@ -23,18 +23,13 @@
         Hesap <span class="mono">{{ kart.muhasebe.hesap_kodu }}</span> {{ kart.muhasebe.hesap_adi }} ·
         {{ tan.aciklama }}</p>
 
-      {% if form.cari or form.gider %}
-        <p class="yardim">Karşı taraf: <strong>Cari</strong> veya <strong>Gider hesabı</strong> — yalnız birini seçin.</p>
+      {% if form.cari %}
+        <p class="yardim">Karşı taraf: <strong>Cari</strong> veya aşağıdaki <strong>Gider hesabı satırları</strong> — yalnız birini girin.</p>
         <div class="izgara">
           <div class="alan tam">
             <label for="{{ form.cari.id_for_label }}">{{ form.cari.label }}</label>
             {{ form.cari }}
             {% for e in form.cari.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          <div class="alan tam">
-            <label for="{{ form.gider.id_for_label }}">{{ form.gider.label }}</label>
-            {{ form.gider }}
-            {% for e in form.gider.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>
           {% if form.sayilan_pb %}<div class="alan tam">
             <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
@@ -45,16 +40,9 @@
             <p class="yardim">{{ form.sayilan_doviz.help_text }}</p>
             {% for e in form.sayilan_doviz.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           </div>{% endif %}
-          {% if form.yatirim_projesi %}
-          <div class="alan tam">
-            <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label>
-            {{ form.yatirim_projesi }}
-            <p class="yardim">Gider hesabı <strong>258 Yapılmakta Olan Yatırımlar</strong> ise proje zorunludur (fişin 258 satırına yazılır).</p>
-            {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
-          </div>
-          {% endif %}
         </div>
       {% endif %}
+      {% if formset %}{% include "core/_kart_gider_satirlari.html" with pb=kart.para_birimi cari_alani_var=form.cari %}{% endif %}
 
       {% if form.taksit_adedi %}
         <div class="izgara">

@@ -4932,40 +4932,65 @@ def kredi_karti_detay(request, pk):
                    "kk_fis_pks": kk_fis_pks, "taksitler": taksitler})
 
 
+KartGiderSatirFormSet = formset_factory(BankaHesapSatirForm, extra=0, min_num=1, validate_min=False)
+
+
+def _kart_gider_satirlari(formset):
+    """Karşı gider hesabı satırları (hesap + tutar + proje + açıklama) — boş satırlar atlanır."""
+    return [{"hesap_kodu": f.cleaned_data["hesap"].hesap_kodu,
+             "tutar": f.cleaned_data.get("tutar"),
+             "aciklama": f.cleaned_data.get("aciklama", ""),
+             "yatirim_projesi_id": (f.cleaned_data["yatirim_projesi"].pk
+                                    if f.cleaned_data.get("yatirim_projesi") else None)}
+            for f in formset if f.cleaned_data.get("hesap")]
+
+
 def _kredi_karti_hareket_form(request, kart, tip):
     tan = kredi_karti_hareket_servis.HAREKET[tip]
+    gider_satirli = "gider" in tan["karsi"]                      # Harcama/İade: karşı taraf Cari VEYA gider hesap satırları (bölünebilir)
     if request.method == "POST":
         form = KrediKartiHareketForm(request.POST, tip=tip, kart=kart)
-        if form.is_valid():
+        formset = KartGiderSatirFormSet(request.POST) if gider_satirli and "form-TOTAL_FORMS" in request.POST else None   # satır verisi yoksa (yalnız cari) boş sayılır
+        if form.is_valid() and (formset is None or formset.is_valid()):
+            satirlar = _kart_gider_satirlari(formset) if formset is not None else []
+            karsi = form.cleaned_data.get("karsi")
             try:
+                if gider_satirli and karsi is not None and satirlar:
+                    raise kredi_karti_hareket_servis.KrediKartiHareketHatasi(
+                        "Karşı taraf olarak Cari veya gider hesabı satırlarından yalnız birini girin.")
+                if gider_satirli and karsi is None and not satirlar:
+                    raise kredi_karti_hareket_servis.KrediKartiHareketHatasi(
+                        "Karşı taraf seçin: Cari ya da en az bir gider hesabı satırı.")
+                gider_kw = {"gider_satirlari": satirlar} if satirlar else {}
                 if tip == "harcama":
                     fis = kredi_karti_hareket_servis.harcama_olustur(
-                        kart=kart, karsi=form.cleaned_data["karsi"],
+                        kart=kart, karsi=karsi,
                         tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                         taksit_adedi=form.cleaned_data.get("taksit_adedi") or 1,
                         ilk_vade=form.cleaned_data.get("ilk_vade"),
                         aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
                         kur_override=form.cleaned_data.get("kur"), sayilan_pb=form.cleaned_data.get("sayilan_pb"),
                         sayilan_doviz=form.cleaned_data.get("sayilan_doviz"), ilk_donem=form.cleaned_data.get("ilk_donem") or 0,
-                        yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
-                                            if form.cleaned_data.get("yatirim_projesi") else None))
+                        **gider_kw)
                 else:
                     fis = kredi_karti_hareket_servis.hareket_olustur(
-                        kart=kart, tip=tip, karsi=form.cleaned_data["karsi"],
+                        kart=kart, tip=tip, karsi=karsi,
                         tutar=form.cleaned_data["tutar"], tarih=form.cleaned_data["tarih"],
                         aciklama=form.cleaned_data["aciklama"], kullanici=request.user,
-                        kur_override=form.cleaned_data.get("kur"),
-                        yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
-                                            if form.cleaned_data.get("yatirim_projesi") else None))
+                        kur_override=form.cleaned_data.get("kur"), **gider_kw)
                 messages.success(request, tan["ad"] + f" kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:kredi_karti_detay", pk=kart.pk)
             except kredi_karti_hareket_servis.KrediKartiHareketHatasi as e:
                 form.add_error(None, str(e))
     else:
-        ilk = {k: request.GET[k] for k in ("gider", "tarih", "aciklama") if request.GET.get(k)}      # dönem ekstresi kısayolları (faiz/masraf)
+        ilk = {k: request.GET[k] for k in ("tarih", "aciklama") if request.GET.get(k)}      # dönem ekstresi kısayolları (faiz/masraf)
         form = KrediKartiHareketForm(tip=tip, kart=kart, initial=ilk)
+        formset = (KartGiderSatirFormSet(initial=[{"hesap": request.GET["gider"]}] if request.GET.get("gider") else None)
+                   if gider_satirli else None)
+    if gider_satirli and formset is None:
+        formset = KartGiderSatirFormSet()                          # hata ile dönen/satırsız gönderilen formda satır bölümü yine görünür
     return render(request, "core/kredi_karti_hareket_form.html",
-                  {"kart": kart, "form": form, "tip": tip, "tan": tan})
+                  {"kart": kart, "form": form, "formset": formset, "tip": tip, "tan": tan})
 
 
 @ekran_gerekli("kredi_karti")
@@ -4992,11 +5017,12 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
     if request.method == "POST":
         form = KrediKartiHareketDuzenleForm(request.POST, gider_duzenlenebilir=duzenlenebilir,
                                             doviz_alanlari=bilgi["doviz_duzenlenebilir"], taksit_alanlari=taksit_duzenlenebilir)
-        if form.is_valid():
+        formset = KartGiderSatirFormSet(request.POST) if duzenlenebilir and "form-TOTAL_FORMS" in request.POST else None   # satır verisi yoksa hesaplar aynen kalır
+        if form.is_valid() and (formset is None or formset.is_valid()):
             try:
                 kredi_karti_hareket_servis.hareket_guncelle(
                     fis=fis, kart=kart, aciklama=form.cleaned_data["aciklama"],
-                    gider=form.cleaned_data.get("gider") if duzenlenebilir else None,
+                    gider_satirlari=_kart_gider_satirlari(formset) if formset is not None else None,
                     yatirim_projesi_id=(form.cleaned_data["yatirim_projesi"].pk
                                         if form.cleaned_data.get("yatirim_projesi") else None),
                     sayilan_pb=form.cleaned_data.get("sayilan_pb"), sayilan_doviz=form.cleaned_data.get("sayilan_doviz"),
@@ -5009,9 +5035,14 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
                 form.add_error(None, str(e))
     else:
         karsi = bilgi["karsi_satiri"]
-        ilk = {"aciklama": fis.aciklama, "yatirim_projesi": karsi.yatirim_projesi_id}
-        if duzenlenebilir:
-            ilk["gider"] = karsi.hesap_id
+        ilk = {"aciklama": fis.aciklama}
+        formset = None
+        if duzenlenebilir:                                                       # mevcut kayıt: tek satır tek satır, bölünmüş N satır olarak açılır
+            formset = KartGiderSatirFormSet(initial=[
+                {"hesap": s.hesap_id, "tutar": s.islem_tutari, "yatirim_projesi": s.yatirim_projesi_id, "aciklama": s.aciklama}
+                for s in bilgi["karsi_satirlari"]])
+        else:
+            ilk["yatirim_projesi"] = karsi.yatirim_projesi_id
         if bilgi["doviz_duzenlenebilir"] and karsi.islem_pb != "TRY":
             ilk["sayilan_pb"], ilk["sayilan_doviz"] = karsi.islem_pb, karsi.islem_tutari
         if taksit_duzenlenebilir:
@@ -5020,8 +5051,12 @@ def kredi_karti_hareket_duzenle(request, pk, fis_pk):
             ilk["ilk_donem"] = kk_donem_servis.mevcut_kaydirma(kart, fis, plan)
         form = KrediKartiHareketDuzenleForm(initial=ilk, gider_duzenlenebilir=duzenlenebilir,
                                             doviz_alanlari=bilgi["doviz_duzenlenebilir"], taksit_alanlari=taksit_duzenlenebilir)
+    if duzenlenebilir and formset is None:                           # satırsız gönderilip hata ile dönen form: mevcut satırlar gösterilir
+        formset = KartGiderSatirFormSet(initial=[
+            {"hesap": s.hesap_id, "tutar": s.islem_tutari, "yatirim_projesi": s.yatirim_projesi_id, "aciklama": s.aciklama}
+            for s in bilgi["karsi_satirlari"]])
     return render(request, "core/kredi_karti_hareket_duzenle.html", {
-        "kart": kart, "fis": fis, "form": form, "bilgi": bilgi, "tutar": bilgi["kart_satiri"].islem_tutari,
+        "kart": kart, "fis": fis, "form": form, "formset": formset, "bilgi": bilgi, "tutar": bilgi["kart_satiri"].islem_tutari,
         "plan": kk_donem_servis.aktif_plan(fis) if taksit_duzenlenebilir else None})
 
 

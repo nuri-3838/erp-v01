@@ -835,13 +835,15 @@ class KrediKartiHareketTest(TestCase):
     def test_form_tam_bir_karsi(self):
         from core.forms import KrediKartiHareketForm
         ortak = {"tutar": "100", "tarih": "2026-06-28"}
-        f0 = KrediKartiHareketForm(ortak, tip="harcama", kart=self.kart)
-        self.assertFalse(f0.is_valid())                        # 0 karşı
-        f2 = KrediKartiHareketForm({**ortak, "cari": self.cari.pk, "gider": self.gider.pk},
-                                   tip="harcama", kart=self.kart)
-        self.assertFalse(f2.is_valid())                        # 2 karşı
+        # Harcama/İade: karşı taraf Cari VEYA gider satırları (formset) — "hiçbiri/ikisi" denetimi view'dadır (bkz. test_kart_gider_satirlari)
         f1 = KrediKartiHareketForm({**ortak, "cari": self.cari.pk}, tip="harcama", kart=self.kart)
-        self.assertTrue(f1.is_valid())                         # tam 1 karşı
+        self.assertTrue(f1.is_valid())
+        self.assertEqual(f1.cleaned_data["karsi"], self.cari)
+        # Ödeme: tam bir nakit kaynağı (banka VEYA kasa)
+        f0 = KrediKartiHareketForm(ortak, tip="odeme", kart=self.kart)
+        self.assertFalse(f0.is_valid())                        # 0 karşı
+        f2 = KrediKartiHareketForm({**ortak, "banka_hesap": self.bh.pk, "kasa": self.kasa.pk}, tip="odeme", kart=self.kart)
+        self.assertFalse(f2.is_valid())                        # 2 karşı
 
     def test_view_ekle_ve_sil(self):
         from core.models import YevmiyeFisi
@@ -925,7 +927,7 @@ class KrediKartiHareketTest(TestCase):
 
     def test_form_taksit_vade_zorunlu(self):
         from core.forms import KrediKartiHareketForm
-        base = {"tutar": "1200", "tarih": "2026-06-28", "gider": self.gider.pk}
+        base = {"tutar": "1200", "tarih": "2026-06-28", "cari": self.cari.pk}
         fbad = KrediKartiHareketForm({**base, "taksit_adedi": "3"}, tip="harcama", kart=self.kart)
         self.assertFalse(fbad.is_valid())                      # vade yok -> geçersiz
         fok = KrediKartiHareketForm({**base, "taksit_adedi": "3", "ilk_vade": "2026-07-28"},
@@ -937,8 +939,9 @@ class KrediKartiHareketTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.post(
             reverse("core:kredi_karti_hareket_ekle", args=[self.kart.pk, "harcama"]),
-            {"gider": self.gider.pk, "tutar": "9000", "tarih": "2026-06-28",
-             "taksit_adedi": "3", "ilk_vade": "2026-07-28"})
+            {"tutar": "9000", "tarih": "2026-06-28", "taksit_adedi": "3", "ilk_vade": "2026-07-28",
+             "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0", "form-0-hesap": self.gider.pk, "form-0-tutar": "",
+             "form-0-yatirim_projesi": "", "form-0-aciklama": ""})
         self.assertRedirects(r, reverse("core:kredi_karti_detay", args=[self.kart.pk]))
         self.assertEqual(KrediKartiTaksit.objects.filter(kart=self.kart, silindi=False).count(), 1)
         d = self.client.get(reverse("core:kredi_karti_detay", args=[self.kart.pk]))

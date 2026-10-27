@@ -1,0 +1,83 @@
+{% load l10n %}{% comment %}Kredi kartı Harcama/İade karşı gider hesabı satırları (formset: hesap, tutar, yatırım projesi, açıklama; "+ Satır ekle", toplam/kart tutarı karşılaştırması). Banka "Hesaba Ödeme" ekranıyla aynı desen.
+Bağlam: formset, pb (kart para birimi), toplam_sabit (düzenlemede kart tutarı; yoksa #id_tutar alanı okunur), cari_alani_var (ekle ekranında cari seçildiyse satırlar boş bırakılır).{% endcomment %}
+<section class="kg-bolum" id="kg-bolum" data-toplam="{% if toplam_sabit is not None %}{{ toplam_sabit|unlocalize }}{% endif %}">
+  {{ formset.management_form }}
+  {% if formset.non_form_errors %}
+    <div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  <h3 class="bolum-baslik" style="margin-top:1rem">Karşı Hesap Satırları (Gider)</h3>
+  <p class="yardim" style="margin-top:-.3rem">Harcamayı birden çok gider hesabına bölebilirsiniz (örn. 360.10.0210 + 0510 + 0710): satırların toplamı
+    kart tutarına eşit olmalı. Tek satırda tutar boş bırakılırsa tamamı o satıra yazılır. 258 hesabında yatırım projesi satır bazında zorunludur.
+    {% if cari_alani_var %}Cari seçtiyseniz bu satırları boş bırakın.{% endif %}</p>
+  <div class="tablo-kapsayici">
+  <table class="satir-tablo">
+    <thead><tr><th style="width:34%">Karşı hesap</th><th class="sag" style="width:16%">Tutar ({{ pb }})</th>
+      <th style="width:20%">Yatırım projesi</th><th>Açıklama</th></tr></thead>
+    <tbody id="kg-satirlar">
+      {% for f in formset %}
+      <tr class="kg-satir">
+        <td>{{ f.hesap }}{% for e in f.hesap.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+          {% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+        <td class="sag">{{ f.tutar }}{% for e in f.tutar.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+        <td>{{ f.yatirim_projesi }}{% for e in f.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+        <td>{{ f.aciklama }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <button type="button" id="kg-satir-ekle" class="dugme-ikincil" style="margin-top:.6rem">+ Satır ekle</button>
+  <p class="yardim" id="kg-toplam" style="margin-top:.5rem"></p>
+</section>
+
+<template id="kg-bos-satir">
+  <tr class="kg-satir">
+    <td>{{ formset.empty_form.hesap }}</td>
+    <td class="sag">{{ formset.empty_form.tutar }}</td>
+    <td>{{ formset.empty_form.yatirim_projesi }}</td>
+    <td>{{ formset.empty_form.aciklama }}</td>
+  </tr>
+</template>
+
+<script>
+(function(){
+  // Satır ekle (formset __prefix__ şablonu) + satırlar toplamı / kart tutarı karşılaştırması.
+  var tf = document.getElementById('id_form-TOTAL_FORMS');
+  var govde = document.getElementById('kg-satirlar');
+  var bolum = document.getElementById('kg-bolum');
+  function sayi(s){ s=(s||'').toString().trim().replace(/\./g,'').replace(',','.'); var n=parseFloat(s); return isNaN(n)?0:n; }
+  function fmt(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function kartTutari(){
+    var sabit = bolum.getAttribute('data-toplam');
+    if(sabit) return parseFloat(sabit);
+    return sayi((document.getElementById('id_tutar')||{}).value);
+  }
+  function toplamGuncelle(){
+    var tutar = kartTutari(), top = 0, dolu = 0;
+    govde.querySelectorAll('.kg-satir').forEach(function(tr){
+      var h = tr.querySelector('select[name$="-hesap"]'), t = tr.querySelector('input[name$="-tutar"]');
+      if(h && h.value){ dolu++; top += sayi(t && t.value); }
+    });
+    var e = document.getElementById('kg-toplam');
+    if(dolu === 0){ e.textContent = ''; return; }
+    if(dolu === 1 && top === 0){ e.textContent = 'Tek satır: tutar boş — tamamı ' + fmt(tutar) + ' yazılacak.'; e.style.color=''; return; }
+    var fark = tutar - top;
+    e.textContent = 'Satırlar toplamı ' + fmt(top) + ' / kart tutarı ' + fmt(tutar) +
+      (Math.abs(fark) < 0.005 ? ' ✓' : ' — fark ' + fmt(fark));
+    e.style.color = Math.abs(fark) < 0.005 ? '' : 'var(--hata)';
+  }
+  function baglaSatir(tr){
+    var sel = tr.querySelector('select.akilli-sec'); if(sel && window.akilliSecKur) window.akilliSecKur(sel);
+    tr.querySelectorAll('input,select').forEach(function(i){ i.addEventListener('input', toplamGuncelle); i.addEventListener('change', toplamGuncelle); });
+  }
+  document.getElementById('kg-satir-ekle').addEventListener('click', function(){
+    var i = parseInt(tf.value, 10);
+    var kok = document.createElement('tbody');
+    kok.innerHTML = document.getElementById('kg-bos-satir').innerHTML.replace(/__prefix__/g, i);
+    var tr = kok.firstElementChild;
+    govde.appendChild(tr); tf.value = i + 1; baglaSatir(tr); toplamGuncelle();
+  });
+  var tutarInp = document.getElementById('id_tutar'); if(tutarInp) tutarInp.addEventListener('input', toplamGuncelle);
+  window.addEventListener('load', function(){ govde.querySelectorAll('.kg-satir').forEach(baglaSatir); toplamGuncelle(); });
+})();
+</script>

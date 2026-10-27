@@ -294,8 +294,10 @@ class EkranTest(KkDonemBase):
     def test_harcama_formu_ve_duzenle_ekrani_taksit_alanlari(self):
         url = reverse("core:kredi_karti_hareket_ekle", args=[self.halk.pk, "harcama"])
         self.assertContains(self.client.get(url), "İlk taksit dönemi")
-        r = self.client.post(url, {"gider": "770.01", "tutar": "3.000,00", "tarih": "2026-08-14", "aciklama": "DENEME - 3 TAKSİT",
-                                   "taksit_adedi": "3", "ilk_donem": "1", "ilk_vade": "", "kur": ""})
+        r = self.client.post(url, {"tutar": "3.000,00", "tarih": "2026-08-14", "aciklama": "DENEME - 3 TAKSİT",
+                                   "taksit_adedi": "3", "ilk_donem": "1", "ilk_vade": "", "kur": "",
+                                   "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "0", "form-0-hesap": "770.01", "form-0-tutar": "",
+                                   "form-0-yatirim_projesi": "", "form-0-aciklama": ""})
         self.assertEqual(r.status_code, 302)
         f = YevmiyeFisi.objects.filter(kaynak="KREDI_KARTI").latest("pk")
         self.assertEqual(kd.aktif_plan(f).ilk_vade, D(2026, 10, 2))
@@ -304,7 +306,9 @@ class EkranTest(KkDonemBase):
         self.assertContains(r, "Taksit Sayısı")
         self.assertContains(r, "Mevcut plan: 3 taksit")
         once = self.snapshot()
-        r = self.client.post(duz, {"aciklama": "DENEME - 3 TAKSİT", "gider": "770.01", "taksit_adedi": "5", "ilk_donem": "0", "yatirim_projesi": ""})
+        r = self.client.post(duz, {"aciklama": "DENEME - 3 TAKSİT", "taksit_adedi": "5", "ilk_donem": "0",
+                                   "form-TOTAL_FORMS": "1", "form-INITIAL_FORMS": "1", "form-0-hesap": "770.01", "form-0-tutar": "3.000,00",
+                                   "form-0-yatirim_projesi": "", "form-0-aciklama": ""})
         self.assertEqual(r.status_code, 302)
         plan = kd.aktif_plan(f)
         self.assertEqual((plan.taksit_adedi, plan.ilk_vade), (5, D(2026, 9, 2)))
