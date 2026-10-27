@@ -216,3 +216,58 @@ class MesaiHesapViewTest(TestCase):
         self.client.force_login(self.yon)
         r2 = self.client.get(reverse("core:personel_detay", args=[p.pk]))
         self.assertContains(r2, "Mesai Hesabı Oluştur")
+
+
+class ZayifSifreHataMesajiTest(TestCase):
+    """Yönetici şifre sıfırlama / hesap oluşturma: şifre kurallarına uymayan şifre 500 değil, formda Türkçe uyarı verir (2026-10-27 canlı hata)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.yon = User.objects.create_superuser("zsyon", password="x")
+
+    def test_servis_zayif_sifreyi_mesai_hesap_hatasi_olarak_reddeder(self):
+        p = personel_kur()
+        with self.assertRaises(MesaiHesapHatasi):
+            hesap_olustur(p, kullanici_adi="zs1", sifre="123")
+        hesap_olustur(p, kullanici_adi="zs1", sifre="cokGizli!2026")
+        for zayif in ("12345678", "abcdefgh", "Abcdefgh", "Abcdefg1", "sifre123", "Ab1!"):
+            with self.assertRaises(MesaiHesapHatasi, msg=zayif):
+                sifre_sifirla(p, sifre=zayif)
+        p.kullanici.refresh_from_db()
+        self.assertTrue(p.kullanici.check_password("cokGizli!2026"))                 # reddedilen şifre yazılmadı
+
+    def test_sifre_sifirlama_formu_zayif_sifrede_500_vermez(self):
+        p = personel_kur()
+        hesap_olustur(p, kullanici_adi="zs2", sifre="cokGizli!2026", ilk_giris_sifre=False)
+        self.client.force_login(self.yon)
+        url = reverse("core:mesai_sifre_sifirla", args=[p.pk])
+        for zayif, parca in (("1234", "en az 8"), ("abcdefgh", "büyük harf"), ("Abcdefgh1", "sembol")):
+            r = self.client.post(url, {"sifre": zayif})
+            self.assertEqual(r.status_code, 200, zayif)
+            self.assertContains(r, "⚠️")
+            self.assertContains(r, parca, msg_prefix=zayif)
+        p.kullanici.refresh_from_db()
+        self.assertTrue(p.kullanici.check_password("cokGizli!2026"))
+        p.refresh_from_db()
+        self.assertFalse(p.sifre_degistirilmeli)                                      # başarısız deneme işareti değiştirmedi
+        r = self.client.post(url, {"sifre": "yeniSifre!2027"})                        # kurala uyan şifre hâlâ çalışır
+        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]))
+        p.refresh_from_db(); p.kullanici.refresh_from_db()
+        self.assertTrue(p.kullanici.check_password("yeniSifre!2027"))
+        self.assertTrue(p.sifre_degistirilmeli)
+
+    def test_hesap_olusturma_formu_zayif_sifrede_500_vermez(self):
+        p = personel_kur()
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:mesai_hesap_olustur", args=[p.pk]), {"kullanici_adi": "zs3", "sifre": "12345678"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "⚠️")
+        p.refresh_from_db()
+        self.assertFalse(p.kullanici_id)
+        self.assertFalse(User.objects.filter(username="zs3").exists())
+
+    def test_form_sifre_kuralini_gosterir(self):
+        p = personel_kur()
+        self.client.force_login(self.yon)
+        for ad in ("core:mesai_sifre_sifirla", "core:mesai_hesap_olustur"):
+            self.assertContains(self.client.get(reverse(ad, args=[p.pk])), "en az 8 karakter")

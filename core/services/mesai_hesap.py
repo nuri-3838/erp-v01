@@ -32,6 +32,14 @@ def _kullanici_adi_dogrula(kullanici_adi: str) -> str:
     return kullanici_adi
 
 
+def _sifre_dogrula(sifre, user=None) -> None:
+    """Django parola doğrulayıcıları (settings.AUTH_PASSWORD_VALIDATORS); kural ihlali ``MesaiHesapHatasi`` (Türkçe, tek metin) olur — ekran 500 yerine formda gösterir."""
+    try:
+        password_validation.validate_password(sifre, user)
+    except ValidationError as e:
+        raise MesaiHesapHatasi(" ".join(e.messages))
+
+
 def hesap_olustur(personel: Personel, *, kullanici_adi, sifre, yapan=None, ilk_giris_sifre=True) -> User:
     """``ilk_giris_sifre``: personel ilk girişte şifresini değiştirmek zorunda (varsayılan; testlerde kapatılabilir)."""
     if personel.silindi:
@@ -39,7 +47,7 @@ def hesap_olustur(personel: Personel, *, kullanici_adi, sifre, yapan=None, ilk_g
     if personel.kullanici_id:
         raise MesaiHesapHatasi("Bu personelin zaten bir mesai hesabı var.")
     kullanici_adi = _kullanici_adi_dogrula(kullanici_adi)
-    password_validation.validate_password(sifre)
+    _sifre_dogrula(sifre)
     u = User(username=kullanici_adi, first_name=personel.ad, last_name=personel.soyad,
             is_active=True)
     u.set_password(sifre)
@@ -56,7 +64,7 @@ def sifre_sifirla(personel: Personel, *, sifre, yapan=None, ilk_giris_sifre=True
     """Yönetici şifre sıfırlar → hesap "ilk girişte şifre değiştirilmeli" olur."""
     if not personel.kullanici_id:
         raise MesaiHesapHatasi("Bu personelin mesai hesabı yok.")
-    password_validation.validate_password(sifre, personel.kullanici)
+    _sifre_dogrula(sifre, personel.kullanici)
     personel.kullanici.set_password(sifre)
     personel.kullanici.save(update_fields=["password"])
     personel.sifre_degistirilmeli = bool(ilk_giris_sifre)
@@ -81,10 +89,7 @@ def sifre_degistir(personel: Personel, *, mevcut, yeni, yeni_tekrar, yapan=None)
         raise MesaiHesapHatasi("Yeni şifreler birbiriyle aynı değil.")
     if yeni == mevcut:
         raise MesaiHesapHatasi("Yeni şifre mevcut şifreyle aynı olamaz.")
-    try:
-        password_validation.validate_password(yeni, u)
-    except ValidationError as e:
-        raise MesaiHesapHatasi(" ".join(e.messages))
+    _sifre_dogrula(yeni, u)
     u.set_password(yeni)
     u.save(update_fields=["password"])
     personel.sifre_degistirilmeli = False
