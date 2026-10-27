@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block baslik %}Stoklar · ERP v0.1{% endblock %}
 {% block sayfa_adi %}Stoklar{% endblock %}
+{% block govde_sinif %}govde-tam{% endblock %}
 
 {% block content %}
 {% comment %}2026-10-22 kullanılabilirlik düzenlemesi (yalnız görünüm): kompakt satır, 7 sütun, sabit sekme/süzgeç çubuğu + sabit başlık, sunucu tarafı süzgeç/sıralama/sayfalama (URL'de), dar ekranda kart görünümü.{% endcomment %}
@@ -44,7 +45,7 @@
   #stk-tablo td { padding:.34rem .7rem; font-size:.88rem; height:38px; }
   #stk-tablo tbody tr { cursor:pointer; }
   #stk-tablo tbody tr:hover td { background:rgba(240,124,0,.06); }
-  .stk-ad { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; color:var(--metin); text-decoration:none; }
+  .stk-ad { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; white-space:normal; line-height:1.25; font-weight:600; color:var(--metin); text-decoration:none; }
   .stk-kod { font-family:"Cascadia Mono",Consolas,monospace; font-size:.78rem; font-weight:500; color:var(--metin-soluk); margin-right:.5rem; }
   .stk-ik { font-size:.72rem; margin-right:.35rem; opacity:.8; }
   td.c-kat { color:var(--metin-soluk); font-size:.8rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -66,8 +67,14 @@
 
   .stk-bos { text-align:center; padding:1.6rem 0; }
 
+  /* ---- orta genişlik: Stok adına yer kalsın diye Kategori sütunu gizlenir (kategori ad ipucunda); <=1100 px kart görünümü ---- */
+  @media (min-width: 1101px) and (max-width: 1280px) {
+    #stk-tablo col:nth-child(2), #stk-tablo thead th:nth-child(2), #stk-tablo td.c-kat { display:none; }
+    #stk-tablo col:nth-child(7) { width:10rem !important; }
+  }
+
   /* ---- dar ekran: kart görünümü, yatay kaydırma yok ---- */
-  @media (max-width: 760px) {
+  @media (max-width: 1100px) {
     :root { --stk-ust-yuk: 0px; }
     .stk-sabit { position:static; backdrop-filter:none; background:transparent; border-bottom:none; padding-top:0; }
     .stk-sekmeler { flex-wrap:nowrap; overflow-x:auto; padding-bottom:.2rem; -webkit-overflow-scrolling:touch; }
@@ -83,7 +90,7 @@
       background:#fff; border:1px solid var(--cizgi); border-radius:12px; box-shadow:var(--golge-sm); }
     #stk-tablo td { display:block; padding:0; border:none; height:auto; background:transparent !important; min-width:0; }
     #stk-tablo td.c-stok { grid-column:1 / -1; width:auto; max-width:none; }
-    .stk-ad { white-space:normal; font-size:.95rem; }
+    .stk-ad { display:block; -webkit-line-clamp:unset; line-clamp:unset; font-size:.95rem; }
     .stk-kod { display:block; margin:0 0 .1rem; }
     #stk-tablo td.c-kat { grid-column:1 / span 2; }
     #stk-tablo td.c-birim { grid-column:3; text-align:right; }
@@ -144,7 +151,7 @@
   · mevcut miktar tüm depoların toplamıdır (üretim birimi cinsinden). Gelecek/bekleyen tüketim ve kritik ayrıntısı Durum rozetlerinin üzerine gelince görünür.</p>
 
 <table id="stk-tablo">
-  <colgroup><col><col style="width:9rem"><col style="width:3.2rem"><col style="width:5.8rem"><col style="width:5.8rem"><col style="width:7rem"><col style="width:15rem"></colgroup>
+  <colgroup><col><col style="width:8rem"><col style="width:3.2rem"><col style="width:5.8rem"><col style="width:5.8rem"><col style="width:7rem"><col style="width:12rem"></colgroup>
   <thead>
     <tr>
       <th class="c-stok">Stok <span class="alt-sirala"><a href="{{ sutunlar.kod.url }}" class="{% if sutunlar.kod.aktif %}aktif{% endif %}">Kod {{ sutunlar.kod.ok }}</a> ·
@@ -159,7 +166,7 @@
   <tbody>
     {% for s in stoklar %}
       <tr class="stk-satir" data-href="{% url 'core:stok_detay' s.pk %}">
-        <td class="c-stok"><a class="satir-bag stk-ad" href="{% url 'core:stok_detay' s.pk %}" title="{{ s.kod }} — {{ s.ad }}"><span class="stk-kod">{{ s.kod }}</span>{% if s.varyantli %}<span class="stk-ik" title="Varyantlı kart: stok/maliyet varyant bazında">🔀</span>{% endif %}{% if s.stoklu_uretim %}<span class="stk-ik" title="Stoklu üretim: başka ÜS zincirinde planlanmaz, stoktan ayrılır">📦 stoklu</span>{% endif %}{{ s.ad }}</a></td>
+        <td class="c-stok"><a class="satir-bag stk-ad" href="{% url 'core:stok_detay' s.pk %}" title="{{ s.kod }} — {{ s.ad }} · {{ s.kategori.ad }}"><span class="stk-kod">{{ s.kod }}</span>{% if s.varyantli %}<span class="stk-ik" title="Varyantlı kart: stok/maliyet varyant bazında">🔀</span>{% endif %}{% if s.stoklu_uretim %}<span class="stk-ik" title="Stoklu üretim: başka ÜS zincirinde planlanmaz, stoktan ayrılır">📦 stoklu</span>{% endif %}{{ s.ad }}</a></td>
         <td class="c-kat" title="{{ s.kategori.ust.ad }} › {{ s.kategori.ad }}">{{ s.kategori.ad }}</td>
         <td class="c-birim">{{ s.uretim_birimi.kisa_ad }}</td>
         <td class="sag mono" data-e="Mevcut">{% if s.hizmet %}<span class="rozet rozet-notr" title="Hizmet kartı — stok tutulmaz">Hizmet</span>
@@ -204,7 +211,7 @@
   // sabit çubuk yüksekliklerini CSS değişkenine yaz: üst çubuk + süzgeç çubuğu → sabit tablo başlığının konumu
   function olc(){
     var ust = document.querySelector('.ust-cubuk');
-    var mobil = window.matchMedia('(max-width: 760px)').matches;
+    var mobil = window.matchMedia('(max-width: 1100px)').matches;
     kok.style.setProperty('--stk-ust-yuk', mobil ? '0px' : ((ust ? ust.offsetHeight : 60) + 'px'));
     kok.style.setProperty('--stk-sabit-yuk', mobil || !sabit ? '0px' : (sabit.offsetHeight + 'px'));
   }

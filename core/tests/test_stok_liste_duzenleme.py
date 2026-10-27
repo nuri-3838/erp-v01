@@ -183,10 +183,18 @@ class GorunumTest(StokListeTaban):
         self.assertIn('id="stk-sabit"', html)                                                    # sabit sekme/süzgeç çubuğu
         self.assertIn("position:sticky", html)
         self.assertIn('data-e="Kullanılabilir"', html)                                           # dar ekran kart etiketi
-        self.assertIn("@media (max-width: 760px)", html)
+        self.assertIn("@media (max-width: 1100px)", html)
         self.assertNotIn('<div class="tablo-kapsayici', html)                                    # yatay kaydırma kapsayıcısı yok (sticky başlık için)
         self.assertIn('data-href="', html)                                                       # tıklanabilir satır deseni korunur
         self.assertIn('class="satir-bag stk-ad"', html)
+
+    def test_stok_adi_kesilmez_iki_satira_sarar_ve_sayfa_tam_genislik(self):
+        # Kullanıcı şikâyeti: ad tek satırda "…" ile kesiliyordu, ayırt edici kısım görünmüyordu.
+        self.kartlar()
+        html = self.liste().content.decode()
+        self.assertIn("govde govde-tam", html)                                                    # 1200 px sınırı yok
+        self.assertIn("-webkit-line-clamp:2", html)                                               # ad en çok 2 satır
+        self.assertNotRegex(html, r"\.stk-ad \{[^}]*white-space:nowrap")                          # tek satıra zorlama yok
 
     def test_bos_durum_mesaji(self):
         self.assertContains(self.liste(), "Henüz stok yok")
