@@ -82,6 +82,12 @@ def ekran_gorebilir(user, ekran_kod) -> bool:
     return kodlar is None or ekran_kod in kodlar
 
 
+def ekranlar_gorebilir(user, *ekran_kodlari) -> dict:
+    """Birden çok ekran için TEK sorguyla {kod: görebilir mi}. Aynı istekte ``ekran_gorebilir`` tekrarlarının yerine (her çağrı ayrı sorgudur)."""
+    kodlar = _izinli_kodlar(user)
+    return {k: (kodlar is None or k in kodlar) for k in ekran_kodlari}
+
+
 def kullanici_menusu(user):
     """Kullanıcının görebildiği ekranlarla menü modüllerini üretir.
 
@@ -99,6 +105,7 @@ def kullanici_menusu(user):
             ekranlar = m.ekranlar
         else:
             ekranlar = tuple(e for e in m.ekranlar if e.kod in kodlar and not e.yonetici)
+        ekranlar = tuple(e for e in ekranlar if e.menude)                  # menude=False: yetki kodu kalır, menüde görünmez
         if ekranlar:
             menu.append(replace(m, ekranlar=ekranlar))
     return menu

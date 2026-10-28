@@ -164,7 +164,7 @@ from core.services import duran_varlik as dv_servis
 from core.ip import istemci_ip
 from core.tarih import ay_araligi, kidem_metni, tr_bugun
 from core.yetki import (
-    ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir,
+    ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir, ekranlar_gorebilir,
     atolye_kullanicisi_mi, kullanici_telefon, mesai_kullanicisi_mi, sayim_kullanicisi_mi, yonetici_gerekli, yonetici_mi,
 )
 
@@ -10300,7 +10300,16 @@ def personeller(request):
     bugun = tr_bugun()
     liste = list(personel_servis.personel_listele(
         ara=ara, durum=durum, departman=departman, bugun=bugun))
-    ucret_gorebilir = ekran_gorebilir(request.user, "personel_ucret")
+    yetkiler = ekranlar_gorebilir(request.user, "personel_belgeleri", "personel_ucret")       # tek sorgu
+    belge_gorebilir = yetkiler["personel_belgeleri"]                           # belge bilgisi yalnız belge yetkisi olana (rozet + süzgeç)
+    belge_uyari = belge_gorebilir and request.GET.get("belge") == "uyari"
+    if belge_gorebilir:
+        uyarili = {u.belge.personel_id for u in belge_servis.suresi_dolacaklar(bugun=bugun)}
+        for p in liste:
+            p.belge_uyari = p.pk in uyarili
+        if belge_uyari:
+            liste = [p for p in liste if p.belge_uyari]
+    ucret_gorebilir = yetkiler["personel_ucret"]
     if ucret_gorebilir:
         ucretler_map = ucret_servis.gecerli_ucretler(liste, tarih=bugun)
         for p in liste:
@@ -10308,7 +10317,7 @@ def personeller(request):
     return render(request, "core/personel_listesi.html", {
         "personeller": liste, "ara": ara, "durum": durum, "secili_departman": departman,
         "departmanlar": personel_servis.departmanlar(), "bugun": bugun,
-        "ucret_gorebilir": ucret_gorebilir})
+        "ucret_gorebilir": ucret_gorebilir, "belge_gorebilir": belge_gorebilir, "belge_uyari": belge_uyari})
 
 
 @never_cache
@@ -10357,36 +10366,69 @@ def personel_duzenle(request, pk):
                   _personel_form_context(form, "Personel Düzenle", **ek))
 
 
+_PERSONEL_SEKMELERI = (("genel", "Genel"), ("ucret", "Ücret"), ("izin", "İzin"), ("belgeler", "Belgeler"),
+                       ("devam", "Devam"), ("mesai", "Mesai Hesabı"))
+
+
+def _personel_sekme_url(personel_id, sekme="genel"):
+    """Personel kartının sekmesi (genel = sekmesiz adres). Kayıt ekle/düzenle/sil sonrası ilgili sekmeye dönüş."""
+    url = reverse("core:personel_detay", args=[personel_id])
+    return url if sekme == "genel" else f"{url}?sekme={sekme}"
+
+
+def _personel_gorunur_sekmeler(user):
+    """Kullanıcının görebildiği sekmeler (bölümlerin ayrı ekran yetkileri korunur): ücret/izin/belge/devam yetkileri, mesai hesabı yalnız yönetici."""
+    y = ekranlar_gorebilir(user, "personel_ucret", "personel_izinleri", "personel_belgeleri", "personel_devam")        # tek sorgu
+    izinli = {"genel": True, "ucret": y["personel_ucret"], "izin": y["personel_izinleri"], "belgeler": y["personel_belgeleri"],
+              "devam": y["personel_devam"], "mesai": yonetici_mi(user)}
+    return [(k, ad) for k, ad in _PERSONEL_SEKMELERI if izinli[k]]
+
+
 @never_cache
 @ekran_gerekli("personel")
 def personel_detay(request, pk):
-    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    """Personel kartı: sabit başlık + sekmeler (?sekme=genel|ucret|izin|belgeler|devam|mesai). YALNIZ açık sekmenin verisi yüklenir; diğer sekmeler
+    için başlıktaki sayı rozetleri ucuz sayım sorgularıyla gelir. Yetkisiz/geçersiz sekme Genel'e düşer."""
+    p = get_object_or_404(Personel.objects.select_related("kullanici"), pk=pk, silindi=False)
     bugun = tr_bugun()
-    bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun
-    ctx = {"p": p, "calisiyor": personel_servis.aktif_mi(p, bugun),
-           "kidem": kidem_metni(p.ise_giris_tarihi, bitis)}
-    if ekran_gorebilir(request.user, "personel_ucret"):
-        ctx["ucret_gorebilir"] = True
-        ctx["guncel_ucret"] = ucret_servis.gecerli_ucret(p, bugun)
-        ctx["ucret_gecmisi"] = list(ucret_servis.ucretler(p))
-    if ekran_gorebilir(request.user, "personel_izinleri"):
-        ctx["izin_gorebilir"] = True
-        ctx["bakiye"] = izin_servis.bakiye(p, bugun=bugun)
-        ctx["son_izinler"] = list(
-            PersonelIzin.objects.filter(personel=p, silindi=False).select_related("imzali_belge")
-            .order_by("-baslangic", "-id")[:10])
-    if ekran_gorebilir(request.user, "personel_belgeleri"):
-        ctx["belge_gorebilir"] = True
-        ctx["belgeler"] = belge_servis.belge_durumlari(p, bugun=bugun)
-    if ekran_gorebilir(request.user, "personel_devam"):
-        ctx["devam_gorebilir"] = True
+    gorunur = _personel_gorunur_sekmeler(request.user)
+    kodlar = [k for k, _ in gorunur]
+    sekme = request.GET.get("sekme")
+    if sekme not in kodlar:
+        sekme = "genel"
+    ctx = {"p": p, "calisiyor": personel_servis.aktif_mi(p, bugun), "sekme": sekme}
+    rozet = {}                                                              # sekme -> (sayı, uyarı mı)
+    if "ucret" in kodlar:
+        if sekme == "ucret":
+            ctx["guncel_ucret"] = ucret_servis.gecerli_ucret(p, bugun)
+            ctx["ucret_gecmisi"] = list(ucret_servis.ucretler(p))
+            rozet["ucret"] = (len(ctx["ucret_gecmisi"]), False)
+        else:
+            rozet["ucret"] = (PersonelUcret.objects.filter(personel=p, silindi=False).count(), False)
+    if "izin" in kodlar:
+        rozet["izin"] = (PersonelIzin.objects.filter(personel=p, silindi=False).count(), False)
+        if sekme == "izin":
+            ctx["bakiye"] = izin_servis.bakiye(p, bugun=bugun)
+            ctx["son_izinler"] = list(
+                PersonelIzin.objects.filter(personel=p, silindi=False).select_related("imzali_belge")
+                .order_by("-baslangic", "-id")[:10])
+    if "belgeler" in kodlar:
+        belgeler = belge_servis.belge_durumlari(p, bugun=bugun)
+        rozet["belgeler"] = (len(belgeler), any(d in ("SURESI_DOLDU", "YAKLASIYOR") for _b, d, _k in belgeler))
+        if sekme == "belgeler":
+            ctx["belgeler"] = belgeler
+    if sekme == "genel":
+        bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun
+        ctx["kidem"] = kidem_metni(p.ise_giris_tarihi, bitis)
+    if sekme == "devam":
         ozet = devam_servis.aylik_ozet(bugun.year, bugun.month, bugun=bugun, personel_ids=[p.pk])
         ctx["devam_ozet"] = ozet[0] if ozet else None
         ctx["devam_ay"] = bugun.replace(day=1)
         ctx["devam_ay_param"] = f"{bugun.year:04d}-{bugun.month:02d}"
-    if yonetici_mi(request.user):
-        ctx["mesai_hesap_gorebilir"] = True
+    if sekme == "mesai":
         ctx["atolye_operator"] = atolye_servis.operator_mu(p)
+    ctx["sekmeler"] = [{"kod": k, "ad": ad, "url": _personel_sekme_url(p.pk, k), "aktif": k == sekme,
+                        "sayi": rozet.get(k, (None, False))[0], "uyari": rozet.get(k, (None, False))[1]} for k, ad in gorunur]
     return render(request, "core/personel_detay.html", ctx)
 
 
@@ -10419,7 +10461,7 @@ def ucret_ekle(request):
                     tip=cd["tip"], net_tutar=cd.get("net_tutar"),
                     aciklama=cd.get("aciklama", ""), kullanici=request.user)
                 messages.success(request, f"Ücret kaydedildi: {u.personel.ad_soyad}.")
-                return redirect("core:personel_detay", pk=u.personel_id)
+                return redirect(_personel_sekme_url(u.personel_id, "ucret"))
             except ucret_servis.PersonelUcretHatasi as e:
                 form.add_error(None, str(e))
     else:
@@ -10443,7 +10485,7 @@ def ucret_duzenle(request, pk):
                     net_tutar=cd.get("net_tutar"), aciklama=cd.get("aciklama", ""),
                     kullanici=request.user)
                 messages.success(request, "Ücret kaydı güncellendi.")
-                return redirect("core:personel_detay", pk=ucret.personel_id)
+                return redirect(_personel_sekme_url(ucret.personel_id, "ucret"))
             except ucret_servis.PersonelUcretHatasi as e:
                 form.add_error(None, str(e))
     else:
@@ -10462,7 +10504,7 @@ def ucret_sil(request, pk):
     if request.method == "POST":
         ucret_servis.ucret_sil(ucret, kullanici=request.user)
         messages.success(request, f"Ücret kaydı silindi: {ucret.personel.ad_soyad}")
-    return redirect("core:personel_detay", pk=ucret.personel_id)
+    return redirect(_personel_sekme_url(ucret.personel_id, "ucret"))
 
 
 # --- İzinler ---
@@ -10679,7 +10721,7 @@ def _izin_donus_url(request, personel_id):
     kullanıcı personel ekranını görebiliyorsa karta, aksi halde izin listesine."""
     if (request.POST.get("sonraki") or request.GET.get("sonraki")) == "personel" \
             and ekran_gorebilir(request.user, "personel"):
-        return reverse("core:personel_detay", args=[personel_id])
+        return _personel_sekme_url(personel_id, "izin")
     return reverse("core:izinler")
 
 
@@ -10746,7 +10788,7 @@ def belge_uyarilari(request):
 def _belge_donus_url(request, personel_id):
     if (request.POST.get("sonraki") or request.GET.get("sonraki")) == "personel" \
             and ekran_gorebilir(request.user, "personel"):
-        return reverse("core:personel_detay", args=[personel_id])
+        return _personel_sekme_url(personel_id, "belgeler")
     return reverse("core:belgeler")
 
 
@@ -11033,7 +11075,7 @@ def mesai_hesap_olustur(request, pk):
                 mesai_hesap_servis.hesap_olustur(
                     p, kullanici_adi=cd["kullanici_adi"], sifre=cd["sifre"], yapan=request.user)
                 messages.success(request, f"Mesai hesabı oluşturuldu: {cd['kullanici_adi']}")
-                return redirect("core:personel_detay", pk=p.pk)
+                return redirect(_personel_sekme_url(p.pk, "mesai"))
             except mesai_hesap_servis.MesaiHesapHatasi as e:
                 form.add_error(None, str(e))
     else:
@@ -11052,7 +11094,7 @@ def mesai_sifre_sifirla(request, pk):
                 mesai_hesap_servis.sifre_sifirla(
                     p, sifre=form.cleaned_data["sifre"], yapan=request.user)
                 messages.success(request, "Mesai hesabının şifresi sıfırlandı.")
-                return redirect("core:personel_detay", pk=p.pk)
+                return redirect(_personel_sekme_url(p.pk, "mesai"))
             except mesai_hesap_servis.MesaiHesapHatasi as e:
                 form.add_error(None, str(e))
     else:
@@ -11075,7 +11117,7 @@ def mesai_hesap_durum(request, pk):
                 messages.success(request, "Mesai hesabı yeniden açıldı.")
         except mesai_hesap_servis.MesaiHesapHatasi as e:
             messages.error(request, str(e))
-    return redirect("core:personel_detay", pk=p.pk)
+    return redirect(_personel_sekme_url(p.pk, "mesai"))
 
 
 @yonetici_gerekli
@@ -11088,7 +11130,7 @@ def mesai_hesap_atolye(request, pk):
             messages.success(request, "Atölye operatörü yetkisi verildi." if acik else "Atölye operatörü yetkisi kaldırıldı.")
         except atolye_servis.AtolyeHatasi as e:
             messages.error(request, str(e))
-    return redirect("core:personel_detay", pk=p.pk)
+    return redirect(_personel_sekme_url(p.pk, "mesai"))
 
 
 # --- ATÖLYE (operatör ekranı: mesai → istasyon → Üretildi; bkz. core.services.atolye) ---

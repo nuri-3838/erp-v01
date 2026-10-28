@@ -81,7 +81,7 @@
           <div class="ik-hucre">
             <span class="ik-avatar">{{ i.personel.ad|first }}{{ i.personel.soyad|first }}</span>
             <div>
-              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' i.personel_id %}">{{ i.personel.ad_soyad }}</a>{% else %}{{ i.personel.ad_soyad }}{% endif %}</div>
+              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' i.personel_id %}?sekme=izin">{{ i.personel.ad_soyad }}</a>{% else %}{{ i.personel.ad_soyad }}{% endif %}</div>
               <div class="alt">{{ i.personel.gorev|default:"" }}</div>
             </div>
           </div>

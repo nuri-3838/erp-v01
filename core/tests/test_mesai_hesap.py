@@ -180,7 +180,7 @@ class MesaiHesapViewTest(TestCase):
         self.assertEqual(self.client.get(url).status_code, 403)
         self.client.force_login(self.yon)
         r = self.client.post(url, {"kullanici_adi": "yenitest", "sifre": "cokGizli!2026"})
-        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]) + "?sekme=mesai")
         p.refresh_from_db()
         self.assertTrue(p.kullanici_id)
 
@@ -190,7 +190,7 @@ class MesaiHesapViewTest(TestCase):
         self.client.force_login(self.yon)
         r = self.client.post(
             reverse("core:mesai_sifre_sifirla", args=[p.pk]), {"sifre": "yeniSifre!2027"})
-        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]) + "?sekme=mesai")
         p.kullanici.refresh_from_db()
         self.assertTrue(p.kullanici.check_password("yeniSifre!2027"))
 
@@ -211,10 +211,10 @@ class MesaiHesapViewTest(TestCase):
         yetkili = User.objects.create_user("mhyetkili", password="x")
         EkranYetki.objects.create(kullanici=yetkili, ekran_kod="personel")
         self.client.force_login(yetkili)
-        r = self.client.get(reverse("core:personel_detay", args=[p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "mesai"})   # yönetici değil: sekme Genel'e düşer
         self.assertNotContains(r, "Mesai Hesabı Oluştur")
         self.client.force_login(self.yon)
-        r2 = self.client.get(reverse("core:personel_detay", args=[p.pk]))
+        r2 = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "mesai"})
         self.assertContains(r2, "Mesai Hesabı Oluştur")
 
 
@@ -251,7 +251,7 @@ class ZayifSifreHataMesajiTest(TestCase):
         p.refresh_from_db()
         self.assertFalse(p.sifre_degistirilmeli)                                      # başarısız deneme işareti değiştirmedi
         r = self.client.post(url, {"sifre": "yeniSifre!2027"})                        # kurala uyan şifre hâlâ çalışır
-        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]) + "?sekme=mesai")
         p.refresh_from_db(); p.kullanici.refresh_from_db()
         self.assertTrue(p.kullanici.check_password("yeniSifre!2027"))
         self.assertTrue(p.sifre_degistirilmeli)

@@ -69,7 +69,7 @@
           <div class="ik-hucre">
             <span class="ik-avatar">{{ b.personel.ad|first }}{{ b.personel.soyad|first }}</span>
             <div>
-              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' b.personel_id %}">{{ b.personel.ad_soyad }}</a>{% else %}{{ b.personel.ad_soyad }}{% endif %}</div>
+              <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' b.personel_id %}?sekme=belgeler">{{ b.personel.ad_soyad }}</a>{% else %}{{ b.personel.ad_soyad }}{% endif %}</div>
               <div class="alt">{{ b.personel.gorev|default:"" }}</div>
             </div>
           </div>

@@ -14,6 +14,7 @@ class Ekran:
     yonetici: bool = False   # True ise (modül herkese açık olsa da) yalnızca yöneticiye görünür; görünüm de yonetici_gerekli ile korunur
     grup: str = ""           # 3. SEVİYE: doluysa ekran, modülün altında bu adlı açılır alt menünün içinde görünür (aynı ad = aynı alt menü; sırası ilk üyesinin yeri)
     ilgili: tuple = ()       # bu ekranın alt sayfalarının (ekle/düzenle/sil…) URL adları: bunlardan birindeyken ekran + alt menü + modül açık/aktif işaretlenir
+    menude: bool = True      # False ise menüde GÖRÜNMEZ ama yetki kodu (Kullanıcı Yetkileri, ekran_gerekli) ve URL aynen çalışır (örn. personel kartı sekmesine taşınan ekranlar)
 
     @property
     def alt_menu(self) -> bool:
@@ -138,13 +139,16 @@ MODULLER = (
         Ekran("kk_nakit_akisi", "Kart Nakit Akışı", "core:kredi_karti_nakit_akisi", grup="Raporlar"),
     ), ana_url_adi="core:finans_ozet"),
     Modul("IK", "İnsan Kaynakları", (
-        Ekran("personel", "Personel Kartları", "core:personeller"),
+        Ekran("personel", "Personel Kartları", "core:personeller",
+              ilgili=("core:personel_ekle", "core:personel_detay", "core:personel_duzenle", "core:personel_sil", "core:ucret_ekle", "core:ucret_duzenle",
+                      "core:ucret_sil", "core:belgeler", "core:belge_uyarilari", "core:belge_ekle", "core:belge_duzenle", "core:belge_sil",
+                      "core:mesai_hesap_olustur", "core:mesai_sifre_sifirla")),
         Ekran("personel_izinleri", "İzinler", "core:izinler"),
-        Ekran("personel_belgeleri", "Özlük Belgeleri", "core:belgeler"),
+        Ekran("personel_belgeleri", "Özlük Belgeleri", "core:belgeler", menude=False),   # artık Personel Kartı > Belgeler sekmesi; yetki kodu + URL duruyor
         Ekran("personel_devam", "Devam / Yoklama", "core:yoklama"),
         Ekran("resmi_tatil", "Resmî Tatiller", "core:resmi_tatiller"),
         Ekran("mesai_kayitlari", "Mesai Kayıtları", "core:mesai_kayitlari"),
-        Ekran("personel_ucret", "Personel Ücretleri", "core:personeller"),
+        Ekran("personel_ucret", "Personel Ücretleri", "core:personeller", menude=False),   # artık Personel Kartı > Ücret sekmesi; yetki kodu duruyor
         Ekran("bordro", "Aylık Bordro", "core:bordro_listesi"),
         Ekran("yemek_takibi", "Yemek Takibi", "core:yemek_takibi"),
     )),

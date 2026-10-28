@@ -356,7 +356,7 @@ class BelgeViewTest(OzelDizinTestTemel):
         r = self.client.post(reverse("core:belge_ekle"), {
             "personel": self.p.pk, "tur": "KIMLIK", "sonraki": "personel",
             "dosya": yuklenen("k.pdf", PDF_BAYT)})
-        self.assertRedirects(r, reverse("core:personel_detay", args=[self.p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=belgeler")   # kartın Belgeler sekmesine
         self.client.force_login(self.belgeci)                    # personel ekranı yetkisi yok
         r2 = self.client.post(reverse("core:belge_ekle"), {
             "personel": self.p.pk, "tur": "KIMLIK", "sonraki": "personel",
@@ -453,11 +453,11 @@ class BelgeViewTest(OzelDizinTestTemel):
         belge_ekle(self.p, tur="KIMLIK", aciklama="ON-YUZ", dosya=yuklenen("k.pdf", PDF_BAYT))
         url = reverse("core:personel_detay", args=[self.p.pk])
         self.client.force_login(self.personelci)                  # yalnız personel yetkisi
-        r = self.client.get(url)
+        r = self.client.get(url, {"sekme": "belgeler"})           # yetkisiz: sekme Genel'e düşer
         self.assertNotContains(r, "Özlük Belgeleri")
         self.assertNotContains(r, "ON-YUZ")
         self.client.force_login(self.ikisi)
-        r2 = self.client.get(url)
+        r2 = self.client.get(url, {"sekme": "belgeler"})
         self.assertContains(r2, "Özlük Belgeleri")
         self.assertContains(r2, "ON-YUZ")
 

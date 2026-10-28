@@ -99,11 +99,11 @@ class SifreEkraniTest(AtolyeTaban):
         self.assertFalse(self.p.sifre_degistirilmeli)
         # personel kartı: son şifre değişikliği + rozet
         self.client.force_login(self.yon)
-        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]), {"sekme": "mesai"})
         self.assertContains(r, "Son şifre değişikliği")
         self.assertContains(r, self.p.sifre_degisiklik_zamani.astimezone().strftime("%d.%m.%Y"))
         self.assertNotContains(r, "ilk girişte değiştirilmeli")
         sifre_sifirla(self.p, sifre=SIFRE, yapan=self.yon)
-        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]), {"sekme": "mesai"})
         self.assertContains(r, "ilk girişte değiştirilmeli")
         self.assertTrue(atolye.operator_mu(self.p))

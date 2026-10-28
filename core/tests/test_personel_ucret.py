@@ -212,7 +212,7 @@ class UcretViewTest(TestCase):
         p = _kur()
         ucret_ekle(p, gecerlilik_baslangic=date(2026, 1, 1), tip="NET", net_tutar=Decimal("40000"))
         self.client.force_login(self.personelci)
-        r = self.client.get(reverse("core:personel_detay", args=[p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "ucret"})
         self.assertEqual(r.status_code, 200)
         self.assertNotContains(r, "40.000,00")
         self.assertNotContains(r, "Ücret Ekle")
@@ -223,7 +223,7 @@ class UcretViewTest(TestCase):
         p = _kur()
         ucret_ekle(p, gecerlilik_baslangic=date(2026, 1, 1), tip="NET", net_tutar=Decimal("40000"))
         self.client.force_login(self.ikisi)
-        r = self.client.get(reverse("core:personel_detay", args=[p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "ucret"})
         self.assertContains(r, "40.000,00 TL net")
         r2 = self.client.get(reverse("core:personeller"))
         self.assertContains(r2, "40.000,00 TL")
@@ -232,7 +232,7 @@ class UcretViewTest(TestCase):
         p = _kur()
         ucret_ekle(p, gecerlilik_baslangic=date(2026, 1, 1), tip="ASGARI")
         self.client.force_login(self.yon)
-        r = self.client.get(reverse("core:personel_detay", args=[p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "ucret"})
         self.assertContains(r, "Asgari Ücret")
 
     def test_ekle_post_ve_duzenle(self):
@@ -240,13 +240,13 @@ class UcretViewTest(TestCase):
         p = _kur()
         self.client.force_login(self.ikisi)
         r = self.client.post(reverse("core:ucret_ekle"), self._govde(p))
-        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]) + "?sekme=ucret")
         u = PersonelUcret.objects.get(personel=p)
         self.assertEqual((u.tip, u.created_by), ("ASGARI", self.ikisi))
         r2 = self.client.post(reverse("core:ucret_duzenle", args=[u.pk]), {
             "gecerlilik_baslangic": "2026-06-01", "tip": "NET", "net_tutar": "35.000,00",
             "aciklama": "zam"})
-        self.assertRedirects(r2, reverse("core:personel_detay", args=[p.pk]))
+        self.assertRedirects(r2, reverse("core:personel_detay", args=[p.pk]) + "?sekme=ucret")
         u.refresh_from_db()
         self.assertEqual((u.tip, u.net_tutar, u.updated_by), ("NET", Decimal("35000.00"), self.ikisi))
 
@@ -275,6 +275,6 @@ class UcretViewTest(TestCase):
         u.refresh_from_db()
         self.assertFalse(u.silindi)
         r = self.client.post(reverse("core:ucret_sil", args=[u.pk]))
-        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]) + "?sekme=ucret")
         u.refresh_from_db()
         self.assertTrue(u.silindi)

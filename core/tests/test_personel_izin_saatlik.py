@@ -184,7 +184,7 @@ class EkranTest(SaatlikTaban):
         r = self.client.get(reverse("core:izinler"))
         self.assertContains(r, "09:00–11:30")
         self.assertContains(r, "2 sa 30 dk")
-        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]), {"sekme": "izin"})
         self.assertContains(r, "09:00–11:30")
         self.assertContains(r, "2 sa 30 dk")
         self.assertContains(r, "gün 5 sa")                                                 # kalan: … gün 5 sa (7,5 − 2,5)

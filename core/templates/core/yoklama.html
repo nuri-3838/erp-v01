@@ -95,7 +95,7 @@
         <div class="ik-hucre">
           <span class="ik-avatar">{{ s.personel.ad|first }}{{ s.personel.soyad|first }}</span>
           <div>
-            <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' s.personel.pk %}">{{ s.personel.ad_soyad }}</a>{% else %}{{ s.personel.ad_soyad }}{% endif %}</div>
+            <div class="ad">{% if personel_link %}<a href="{% url 'core:personel_detay' s.personel.pk %}?sekme=devam">{{ s.personel.ad_soyad }}</a>{% else %}{{ s.personel.ad_soyad }}{% endif %}</div>
             <div class="alt">{{ s.personel.gorev|default:"" }}
               {% if s.saatlik_dakika %}<span class="rozet rozet-uyari" title="Saatlik izin: gün Geldi sayılır">⏱ {{ s.saatlik_metni }} izin</span>{% endif %}
               {% if mesai_bilgisi|get_item:s.personel.pk %}

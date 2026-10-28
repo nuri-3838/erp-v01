@@ -460,7 +460,7 @@ class IzinViewTest(TestCase):
         p = _kur()
         self.client.force_login(self.ikisi)
         r = self.client.post(reverse("core:izin_ekle"), self._govde(p, sonraki="personel"))
-        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[p.pk]) + "?sekme=izin")
         q = _kur(ad="ikinci")
         self.client.force_login(self.izinci)                       # personel yetkisi yok
         r2 = self.client.post(reverse("core:izin_ekle"), self._govde(q, sonraki="personel"))
@@ -508,12 +508,12 @@ class IzinViewTest(TestCase):
         p = _kur()
         izin_ekle(p, tur="YILLIK", baslangic=date(2026, 6, 1), bitis=date(2026, 6, 5))
         self.client.force_login(self.ikisi)
-        r = self.client.get(reverse("core:personel_detay", args=[p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "izin"})
         self.assertContains(r, "Yıllık İzin")
         self.assertContains(r, "+ İzin Ekle")
         self.assertContains(r, "Kalan")
         self.client.force_login(self.personelci)
-        r2 = self.client.get(reverse("core:personel_detay", args=[p.pk]))
+        r2 = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "izin"})   # yetkisiz: sekme Genel'e düşer
         self.assertEqual(r2.status_code, 200)
         self.assertNotContains(r2, "Yıllık İzin")
         self.assertNotContains(r2, "+ İzin Ekle")

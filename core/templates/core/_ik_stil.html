@@ -35,6 +35,24 @@
   .ik-foto-aksiyon input[type=file] { max-width:12rem; font-size:.78rem; color:#dbe6ff; }
   .ik-foto-aksiyon button { font-size:.75rem; padding:.3rem .7rem; }
   .ik-buyuk-say { font-size:1.6rem; font-weight:750; color:var(--lacivert); line-height:1.1; }
+  .icerik-kart .ik-foto-aksiyon input[type=file] { color:var(--metin); }
+  .ik-onay { display:inline-flex; align-items:center; gap:.45rem; min-height:46px; font-size:.88rem; font-weight:600; color:var(--metin); cursor:pointer; white-space:nowrap; }
+
+  /* ---- Personel kartı sekmeleri: sabit başlık altında, mobilde yatay kaydırmalı (sayfa yana taşmaz) ---- */
+  .detay-kapsa { min-width:0; width:100%; }
+  .detay-kapsa > * { min-width:0; }
+  .ik-sekmeler { display:flex; gap:.3rem; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:thin;
+    padding:.1rem .1rem .35rem; border-bottom:1px solid var(--cizgi-koyu); }
+  .ik-sekmeler a { flex:0 0 auto; display:inline-flex; align-items:center; gap:.45rem; padding:.55rem 1rem; border-radius:12px;
+    text-decoration:none; font-weight:650; font-size:.9rem; color:var(--lacivert-acik); white-space:nowrap;
+    border:1px solid var(--cizgi-koyu); background:rgba(255,255,255,.8); }
+  .ik-sekmeler a:hover { border-color:var(--turuncu); }
+  .ik-sekmeler a.aktif { background:var(--lacivert); border-color:var(--lacivert); color:#fff; }
+  .ik-sekmeler .sayi { font-size:.72rem; font-weight:700; min-width:1.35rem; text-align:center; padding:.08rem .4rem; border-radius:999px;
+    background:rgba(33,56,95,.12); color:var(--lacivert); }
+  .ik-sekmeler a.aktif .sayi { background:rgba(255,255,255,.22); color:#fff; }
+  .ik-sekmeler .sayi.uyari { background:#ffe1e5; color:#b1122c; }
+  .ik-sekmeler a.aktif .sayi.uyari { background:#ffd9df; color:#b1122c; }
 
   .ik-ust { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
   .ik-panel { background:rgba(255,255,255,.65); border:1px solid var(--cizgi-koyu);

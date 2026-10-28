@@ -6,7 +6,7 @@
 {% block content %}
 <div class="form-kapsa form-dar">
   <div class="form-ust">
-    <a class="ust-link" href="{% url 'core:personel_detay' personel.pk %}">← {{ personel.ad_soyad }}</a>
+    <a class="ust-link" href="{% url 'core:personel_detay' personel.pk %}?sekme=mesai">← {{ personel.ad_soyad }}</a>
     <h1 class="ust-baslik"><span class="emoji">📱</span>{{ baslik }}</h1>
   </div>
 
@@ -29,7 +29,7 @@
       </div>
     </section>
     <div class="form-altbar">
-      <a class="iptal-bag" href="{% url 'core:personel_detay' personel.pk %}">İptal</a>
+      <a class="iptal-bag" href="{% url 'core:personel_detay' personel.pk %}?sekme=mesai">İptal</a>
       <button type="submit" class="birincil">Kaydet</button>
     </div>
   </form>

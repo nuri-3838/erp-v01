@@ -589,11 +589,11 @@ class PersonelKartiDevamTest(BugunSabitTemel):
 
     def test_kart_yalniz_devam_yetkilisine(self):
         self.client.force_login(self.personelci)
-        r = self.client.get(self.url)
+        r = self.client.get(self.url, {"sekme": "devam"})                                 # yetkisiz: sekme Genel'e düşer
         self.assertNotContains(r, "Devam · ")
         self.assertNotIn("devam_ozet", r.context)
         self.client.force_login(self.ikisi)
-        r2 = self.client.get(self.url)
+        r2 = self.client.get(self.url, {"sekme": "devam"})
         self.assertContains(r2, "Devam · Eylül 2026")
         self.assertContains(r2, reverse("core:yoklama_aylik") + "?ay=2026-09")
         o = r2.context["devam_ozet"]
@@ -603,7 +603,7 @@ class PersonelKartiDevamTest(BugunSabitTemel):
         ayrilan = personel_kur(ad="eski", ise_giris_tarihi=date(2020, 1, 1),
                                isten_cikis_tarihi=date(2026, 8, 20))
         self.client.force_login(self.ikisi)
-        r = self.client.get(reverse("core:personel_detay", args=[ayrilan.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[ayrilan.pk]), {"sekme": "devam"})
         self.assertIsNone(r.context["devam_ozet"])
         self.assertContains(r, "Bu ay için devam bilgisi yok")
 

@@ -80,10 +80,10 @@ class IzinFormuTest(OzelDizinTestTemel):
             self.assertNotIn(metin, html)
         self.assertEqual(self.client.get(reverse("core:izin_formu_pdf", args=[m.pk])).status_code, 200)
         # düğmeler
-        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]), {"sekme": "izin"})
         self.assertNotContains(r, "Form (PDF)")                                                                       # izin bölümü izin yetkisi ister
         EkranYetki.objects.create(kullanici=self.ik, ekran_kod="personel_izinleri")
-        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]))
+        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]), {"sekme": "izin"})
         self.assertContains(r, url)
         self.assertContains(r, "🖨 Form (PDF)")
         self.assertContains(r, "İmzalı formu yükle")
@@ -105,7 +105,7 @@ class IzinFormuTest(OzelDizinTestTemel):
         EkranYetki.objects.create(kullanici=self.ik, ekran_kod="personel_izinleri")
         url = reverse("core:izin_imzali_yukle", args=[i.pk])
         r = self.client.post(url, {"dosya": yuklenen("imzali.pdf", PDF_BAYT), "sonraki": "personel"}, follow=True)
-        self.assertRedirects(r, reverse("core:personel_detay", args=[self.p.pk]))
+        self.assertRedirects(r, reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=izin")
         i.refresh_from_db()
         b1 = i.imzali_belge
         self.assertEqual((b1.personel_id, b1.tur, b1.aciklama, b1.orijinal_ad, b1.silindi), (self.p.pk, "DIGER", "İzin formu – 13.07.2026", "imzali.pdf", False))

@@ -30,23 +30,30 @@
       </div>
       <div class="detay-ad">{{ p.ad_soyad }}</div>
       <div class="detay-alt">{{ p.gorev|default:"Görev girilmemiş" }}</div>
-      <div class="ik-foto-aksiyon">
-        <form method="post" action="{% url 'core:personel_foto_yukle' p.pk %}" enctype="multipart/form-data">
-          {% csrf_token %}<input type="file" name="dosya" accept="image/*" required>
-          <button type="submit" class="dugme-ikincil">📷 {% if p.foto %}Fotoğrafı Değiştir{% else %}Fotoğraf Yükle{% endif %}</button>
-        </form>
-        {% if p.foto %}
-        <form method="post" action="{% url 'core:personel_foto_kaldir' p.pk %}"
-              onsubmit="return confirm('Fotoğraf kaldırılsın mı?');">
-          {% csrf_token %}<button type="submit" class="dugme-ikincil">Kaldır</button>
-        </form>
-        {% endif %}
-      </div>
     </div>
   </div>
 
+  <nav class="ik-sekmeler" aria-label="Personel kartı sekmeleri">
+    {% for t in sekmeler %}
+      <a href="{{ t.url }}" class="{% if t.aktif %}aktif{% endif %}"{% if t.aktif %} aria-current="page"{% endif %}>{{ t.ad }}{% if t.sayi is not None %}<span class="sayi{% if t.uyari %} uyari{% endif %}">{{ t.sayi }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+
+  {% if sekme == "genel" %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">🪪</span>Kimlik</h2>
+    <div class="ik-foto-aksiyon" style="margin:0 0 .9rem">
+      <form method="post" action="{% url 'core:personel_foto_yukle' p.pk %}" enctype="multipart/form-data">
+        {% csrf_token %}<input type="file" name="dosya" accept="image/*" required>
+        <button type="submit" class="dugme-ikincil">📷 {% if p.foto %}Fotoğrafı Değiştir{% else %}Fotoğraf Yükle{% endif %}</button>
+      </form>
+      {% if p.foto %}
+      <form method="post" action="{% url 'core:personel_foto_kaldir' p.pk %}"
+            onsubmit="return confirm('Fotoğraf kaldırılsın mı?');">
+        {% csrf_token %}<button type="submit" class="dugme-ikincil">Kaldır</button>
+      </form>
+      {% endif %}
+    </div>
     <div class="kv">
       <div class="satir"><span class="et">TC Kimlik No</span>
         <span class="dg mono">{{ p.tc_kimlik_no|default:"—" }}</span></div>
@@ -111,7 +118,13 @@
     </div>
   </section>
 
-  {% if ucret_gorebilir %}
+  {% if p.notlar %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
+    <div class="kv"><div class="satir tam"><span class="dg uzun">{{ p.notlar }}</span></div></div>
+  </section>
+  {% endif %}
+  {% elif sekme == "ucret" %}
   <section class="icerik-kart">
     <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">💰</span>Ücret</h2>
@@ -151,9 +164,7 @@
     </div>
     {% endif %}
   </section>
-  {% endif %}
-
-  {% if izin_gorebilir %}
+  {% elif sekme == "izin" %}
   <section class="icerik-kart">
     <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">🌴</span>Yıllık İzin</h2>
@@ -209,9 +220,7 @@
     <p class="yardim" style="margin:.8rem 0 0">Bu personel için henüz izin kaydı yok.</p>
     {% endif %}
   </section>
-  {% endif %}
-
-  {% if belge_gorebilir %}
+  {% elif sekme == "belgeler" %}
   <section class="icerik-kart">
     <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">🗂️</span>Özlük Belgeleri</h2>
@@ -245,9 +254,7 @@
     <p class="yardim" style="margin:.2rem 0 0">Bu personel için henüz belge yüklenmemiş (kimlik, sağlık raporu, sözleşme, İSG eğitimi…).</p>
     {% endif %}
   </section>
-  {% endif %}
-
-  {% if devam_gorebilir %}
+  {% elif sekme == "devam" %}
   <section class="icerik-kart">
     <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">📋</span>Devam · {{ devam_ay|date:"F Y" }}</h2>
@@ -266,9 +273,7 @@
     <p class="yardim" style="margin:.2rem 0 0">Bu ay için devam bilgisi yok (işe giriş henüz olmadı ya da ay başında ayrılmış).</p>
     {% endif %}
   </section>
-  {% endif %}
-
-  {% if mesai_hesap_gorebilir %}
+  {% elif sekme == "mesai" %}
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📱</span>Mesai Hesabı</h2>
     {% if p.kullanici_id %}
@@ -299,13 +304,6 @@
       <p class="yardim" style="margin:.2rem 0 .8rem">Bu personelin mesai hesabı yok — kendi telefonundan mesai başlatıp bitiremez.</p>
       <a class="dugme" href="{% url 'core:mesai_hesap_olustur' p.pk %}">+ Mesai Hesabı Oluştur</a>
     {% endif %}
-  </section>
-  {% endif %}
-
-  {% if p.notlar %}
-  <section class="icerik-kart">
-    <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
-    <div class="kv"><div class="satir tam"><span class="dg uzun">{{ p.notlar }}</span></div></div>
   </section>
   {% endif %}
 

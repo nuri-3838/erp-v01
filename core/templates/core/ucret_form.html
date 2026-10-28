@@ -13,9 +13,9 @@
 <div class="form-kapsa form-dar">
   <div class="form-ust">
     {% if duzenlenen %}
-      <a class="ust-link" href="{% url 'core:personel_detay' duzenlenen.personel_id %}">← {{ duzenlenen.personel.ad_soyad }}</a>
+      <a class="ust-link" href="{% url 'core:personel_detay' duzenlenen.personel_id %}?sekme=ucret">← {{ duzenlenen.personel.ad_soyad }}</a>
     {% elif donus_pk %}
-      <a class="ust-link" href="{% url 'core:personel_detay' donus_pk %}">← Personel Kartı</a>
+      <a class="ust-link" href="{% url 'core:personel_detay' donus_pk %}?sekme=ucret">← Personel Kartı</a>
     {% else %}
       <a class="ust-link" href="{% url 'core:personeller' %}">← Personel Kartları</a>
     {% endif %}
@@ -44,9 +44,9 @@
     </section>
     <div class="form-altbar">
       {% if duzenlenen %}
-        <a class="iptal-bag" href="{% url 'core:personel_detay' duzenlenen.personel_id %}">İptal</a>
+        <a class="iptal-bag" href="{% url 'core:personel_detay' duzenlenen.personel_id %}?sekme=ucret">İptal</a>
       {% elif donus_pk %}
-        <a class="iptal-bag" href="{% url 'core:personel_detay' donus_pk %}">İptal</a>
+        <a class="iptal-bag" href="{% url 'core:personel_detay' donus_pk %}?sekme=ucret">İptal</a>
       {% else %}
         <a class="iptal-bag" href="{% url 'core:personeller' %}">İptal</a>
       {% endif %}

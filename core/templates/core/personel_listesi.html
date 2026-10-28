@@ -36,9 +36,12 @@
         {% endfor %}
       </select>
     </div>
+    {% if belge_gorebilir %}
+    <label class="ik-onay"><input type="checkbox" name="belge" value="uyari" {% if belge_uyari %}checked{% endif %}> Süresi dolacak belge var</label>
+    {% endif %}
     <div class="ik-btn-cubuk">
       <button type="submit" class="birincil">Filtrele</button>
-      {% if ara or secili_departman or durum != "aktif" %}
+      {% if ara or secili_departman or durum != "aktif" or belge_uyari %}
         <a class="iptal-bag" href="{% url 'core:personeller' %}">Temizle</a>
       {% endif %}
     </div>
@@ -72,6 +75,7 @@
           {% else %}
             <span class="rozet rozet-aktif">Çalışıyor</span>
           {% endif %}
+          {% if p.belge_uyari %}<a class="rozet rozet-uyari" href="{% url 'core:personel_detay' p.pk %}?sekme=belgeler" title="Süresi dolmuş ya da 30 gün içinde dolacak belge var">⚠ Belge</a>{% endif %}
         </td>
         {% if ucret_gorebilir %}
         <td class="mono">
@@ -82,7 +86,7 @@
       </tr>
     {% empty %}
       <tr style="cursor:default"><td colspan="{% if ucret_gorebilir %}6{% else %}5{% endif %}" class="yardim" style="text-align:center;padding:1.6rem 0">
-        {% if ara or secili_departman or durum != "aktif" %}🔍 Bu süzgeçle eşleşen personel yok.
+        {% if ara or secili_departman or durum != "aktif" or belge_uyari %}🔍 Bu süzgeçle eşleşen personel yok.
         {% else %}👥 Henüz personel kartı yok. “+ Yeni Personel” ile ekleyin.{% endif %}</td></tr>
     {% endfor %}
   </tbody>
