@@ -10558,7 +10558,7 @@ def personel_detay(request, pk):
             ctx["ise_giris_duzenlenebilir"] = ekran_gorebilir(request.user, "personel")
             ucret_gorebilir = ekran_gorebilir(request.user, "personel_ucret")
             firma = firma_servis.firma_bilgisi_getir()
-            ctx["paket_belgeleri"] = [{"kod": ise_giris_servis.BILGI_FORMU_KODU, "baslik": "Personel bilgi formu (personel kartından otomatik dolar)", "aktif": True},
+            ctx["paket_belgeleri"] = [{"kod": ise_giris_servis.BILGI_FORMU_KODU, "baslik": "PERSONEL BİLGİ FORMU (PERSONEL KARTINDAN OTOMATİK DOLAR)", "aktif": True},
                                       *[s for s in belge_sablon_servis.gorunum_listesi() if s["aktif"]]]
             ctx["eksik_bilgiler"] = ise_giris_servis.eksik_bilgiler(
                 p, firma, ctx["ise_giris_kaydi"], ucret_gorebilir=ucret_gorebilir, ayar=ayar,
