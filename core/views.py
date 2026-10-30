@@ -4336,6 +4336,20 @@ def teklif_gonder_gorunum(request, pk):
 
 
 @ekran_gerekli("satis_teklifleri")
+def teklif_duzelt_gorunum(request, pk):
+    """Gönderilmiş satış teklifini taslağa alır (POST) ve düzenleme ekranına götürür; olmazsa mesajla detaya döner."""
+    ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
+    if request.method == "POST":
+        try:
+            teklif_siparis_servis.teklif_duzeltmeye_ac(ts, kullanici=request.user)
+            messages.success(request, "Teklif taslağa alındı. Düzenleyip yeniden göndermeyi unutmayın.")
+            return redirect("core:satis_teklif_duzenle", pk=ts.pk)
+        except teklif_siparis_servis.TeklifSiparisHatasi as e:
+            messages.error(request, str(e))
+    return redirect("core:teklif_siparis_detay", pk=ts.pk)
+
+
+@ekran_gerekli("satis_teklifleri")
 def teklif_kabul_gorunum(request, pk):
     ts = get_object_or_404(TeklifSiparis, pk=pk, silindi=False)
     if request.method == "POST":

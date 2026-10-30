@@ -531,6 +531,58 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         self.assertContains(d2, "Kabul Edildi")
         self.assertContains(d2, reverse("core:teklif_proformaya_cevir", args=[t.pk]))
 
+    def test_duzelt_gonderilmis_teklifi_taslaga_alir_ve_yeniden_gonderilir(self):
+        from core.services.teklif_siparis import teklif_gonder
+        self.client.force_login(self.yon)
+        t = self._teklif()                                                                       # varsayılan: GONDERILDI
+        belge_no = t.belge_no
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
+        self.assertContains(d, reverse("core:teklif_duzelt", args=[t.pk]))                       # Gönderildi iken "Düzelt" var
+        self.assertEqual(self.client.get(reverse("core:teklif_duzelt", args=[t.pk])).status_code, 302)
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "GONDERILDI")                                                  # GET durum değiştirmez
+        r = self.client.post(reverse("core:teklif_duzelt", args=[t.pk]))
+        self.assertRedirects(r, reverse("core:satis_teklif_duzenle", args=[t.pk]))               # doğrudan düzenleme ekranına
+        t.refresh_from_db()
+        self.assertEqual((t.durum, t.belge_no, t.updated_by), ("TASLAK", belge_no, self.yon))
+        self.assertContains(self.client.get(reverse("core:satis_teklif_duzenle", args=[t.pk])), "Satış Teklifi")
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[t.pk]))
+        self.assertNotContains(d, reverse("core:teklif_duzelt", args=[t.pk]))                    # taslakta "Düzelt" yok, "Düzenle" var
+        self.assertContains(d, reverse("core:satis_teklif_duzenle", args=[t.pk]))
+        teklif_gonder(t, kullanici=self.yon)
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "GONDERILDI")
+
+    def test_duzelt_kabul_red_ve_donusmus_teklifte_reddedilir(self):
+        from core.services.teklif_siparis import (TeklifSiparisHatasi, teklif_duzeltmeye_ac, teklif_kabul_et, teklifi_proformaya_cevir)
+        import datetime
+        t = self._teklif()
+        teklif_kabul_et(t, kullanici=self.yon)
+        with self.assertRaises(TeklifSiparisHatasi):                                             # kabul edilmiş teklif düzeltilemez
+            teklif_duzeltmeye_ac(t, kullanici=self.yon)
+        teklifi_proformaya_cevir(t, tarih=datetime.date(2026, 7, 20), kullanici=self.yon)
+        t.durum = "GONDERILDI"                                                                   # (zorla) proformaya dönüşmüşse yine de reddedilir
+        t.save(update_fields=["durum"])
+        with self.assertRaisesMessage(TeklifSiparisHatasi, "proformaya dönüştürülmüş"):
+            teklif_duzeltmeye_ac(t, kullanici=self.yon)
+        self.client.force_login(self.yon)
+        r = self.client.post(reverse("core:teklif_duzelt", args=[t.pk]), follow=True)
+        self.assertContains(r, "proformaya dönüştürülmüş")
+        t.refresh_from_db()
+        self.assertEqual(t.durum, "GONDERILDI")
+
+    def test_duzelt_alis_teklifi_ve_siparis_icin_gecersiz(self):
+        from core.services.teklif_siparis import TeklifSiparisHatasi, teklif_duzeltmeye_ac
+        with self.assertRaises(TeklifSiparisHatasi):
+            teklif_duzeltmeye_ac(self._teklif(yon="ALIS"), kullanici=self.yon)
+
+    def test_duzelt_suresi_dolmus_teklifte_calisir(self):
+        from core.services.teklif_siparis import teklif_duzeltmeye_ac
+        t = self._teklif()
+        t.durum = "SURESI_DOLDU"
+        t.save(update_fields=["durum"])
+        self.assertEqual(teklif_duzeltmeye_ac(t, kullanici=self.yon).durum, "TASLAK")
+
     def test_view_teklif_red_nedeni_kaydedilir(self):
         from core.services.teklif_siparis import teklif_siparis_olustur
         self.client.force_login(self.yon)

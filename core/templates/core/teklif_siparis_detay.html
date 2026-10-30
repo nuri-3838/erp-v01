@@ -107,6 +107,10 @@
         <form method="post" action="{% url 'core:teklif_iptal' ts.pk %}" onsubmit="return confirm('Teklif iptal edilsin mi?');" style="margin:0">
           {% csrf_token %}<button type="submit" class="sil">İptal Et</button></form>
         {% elif ts.durum == "GONDERILDI" or ts.durum == "SURESI_DOLDU" %}
+        {% if not donusen_proforma %}
+        <form method="post" action="{% url 'core:teklif_duzelt' ts.pk %}" onsubmit="return confirm('Teklif düzeltilmek üzere taslağa alınsın mı? Düzenledikten sonra yeniden göndermeniz gerekir.');" style="margin:0">
+          {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✏️ Düzelt</button></form>
+        {% endif %}
         <form method="post" action="{% url 'core:teklif_kabul' ts.pk %}" style="margin:0">
           {% csrf_token %}<button type="submit" class="dugme" style="border:0;cursor:pointer">✅ Kabul Edildi</button></form>
         <a class="dugme" href="{% url 'core:teklif_red' ts.pk %}">❌ Reddedildi</a>

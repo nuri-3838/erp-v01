@@ -519,6 +519,25 @@ def teklif_gonder(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
 
 
 @transaction.atomic
+def teklif_duzeltmeye_ac(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
+    """{GONDERILDI, SURESI_DOLDU} → TASLAK ("Düzelt"): gönderilmiş teklifin kalem/fiyat/koşulunu değiştirebilmek için taslağa geri alır; belge no
+    AYNI kalır, düzenlenince yeniden "Gönder" gerekir (müşteriye giden PDF değişeceği için bilinçli adım). Kabul/Red/İptal edilmiş teklif ya da
+    proformaya dönüşmüş teklif düzeltilemez. CRM aşaması geri alınmaz (yeniden gönderimde aynı aşamaya zaten ilerlemiş olur)."""
+    _satis_teklif_dogrula(ts)
+    if ts.durum == TeklifSiparis.Durum.TASLAK:
+        return ts
+    if ts.durum not in (TeklifSiparis.Durum.GONDERILDI, TeklifSiparis.Durum.SURESI_DOLDU):
+        raise TeklifSiparisHatasi("Yalnız gönderilmiş (ya da süresi dolmuş) teklif düzeltilebilir.")
+    hedef = _donusum_hedefi(ts)
+    if hedef:
+        raise TeklifSiparisHatasi(f"Bu teklif {hedef} dönüştürülmüş; düzeltilemez.")
+    ts.durum = TeklifSiparis.Durum.TASLAK
+    ts.updated_by = kullanici
+    ts.save(update_fields=["durum", "updated_by", "updated_at"])
+    return ts
+
+
+@transaction.atomic
 def teklif_kabul_et(ts: TeklifSiparis, kullanici=None) -> TeklifSiparis:
     """{GONDERILDI, SURESI_DOLDU} → KABUL (geç gelen müşteri cevabı için süresi dolmuş
     teklif de kabul edilebilir — bkz. teklif_suresi_dolanlari_isaretle). Aday müşteriye
