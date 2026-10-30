@@ -9,12 +9,18 @@ eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) ça
   if(!gListe){ gListe = document.createElement('div'); gListe.className = 'akilli-liste';
     document.body.appendChild(gListe); }
   var aktifInp = null;
-  function konumla(inp){ var r = inp.getBoundingClientRect();
-    gListe.style.left = r.left+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = r.width+'px'; }
+  var aktifGenis = false;
+  function konumla(inp){ var r = inp.getBoundingClientRect(); var w = r.width, l = r.left;
+    if(aktifGenis){                                          // geniş liste: girdiden geniş (≤720px, ekrana sığar), sağa taşarsa sola kaydırılır
+      w = Math.min(Math.max(r.width, 640), 720, window.innerWidth - 16);
+      l = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    }
+    gListe.style.left = l+'px'; gListe.style.top = r.bottom+'px'; gListe.style.width = w+'px'; }
   function metin(sel, v){ var o = v ? sel.querySelector('option[value="'+CSS.escape(v)+'"]') : null;
     return o && o.value ? o.textContent.trim() : ''; }
   function ac(sel, inp, filt){
-    aktifInp = inp; konumla(inp);
+    aktifInp = inp; aktifGenis = sel.getAttribute('data-liste') === 'genis';
+    gListe.className = 'akilli-liste' + (aktifGenis ? ' genis' : ''); konumla(inp);
     filt = (filt||'').toLocaleLowerCase('tr'); gListe.innerHTML=''; var n=0;
     var kelimeler = filt.split(/\s+/).filter(Boolean);                       // sırasız çok kelimeli arama: TÜM kelimeler (kod/ad) geçmeli
     var bos = sel.options[0] && !sel.options[0].value ? sel.options[0].textContent.trim() : '— seç —';
@@ -28,7 +34,12 @@ eklenen satırlar (örn. "+ Kalem ekle") için window.akilliSecKur(selectEl) ça
         var gb = document.createElement('div'); gb.className = 'akilli-grup'; gb.textContent = sonGrup;
         gListe.appendChild(gb);
       }
-      var d = document.createElement('div'); d.className='akilli-secenek'; d.textContent=t; d.dataset.deger = o.value;
+      var d = document.createElement('div'); d.className='akilli-secenek'; d.dataset.deger = o.value;
+      var parca = aktifGenis && o.value ? /^(\S+)\s{2,}(.*?)\s{2,}\[([^\]]*)\]\s*$/.exec(t) : null;
+      if(parca){                                                         // geniş liste: kod (kalın) · ad (kırılır) · [etiket] rozeti
+        [['sk', parca[1]], ['sa', parca[2]], ['si', parca[3]]].forEach(function(p){
+          var sp = document.createElement('span'); sp.className = p[0]; sp.textContent = p[1]; d.appendChild(sp); });
+      } else { d.textContent = t; }
       d.addEventListener('mousedown', function(ev){ ev.preventDefault();
         sel.value=o.value; inp.value=o.value?t:''; gListe.style.display='none';
         sel.dispatchEvent(new Event('change', {bubbles:true})); });

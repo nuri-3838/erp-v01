@@ -1607,10 +1607,12 @@ class FasonDonusBaslikForm(forms.Form):
 
 
 class FasonDonusSatirForm(forms.Form):
-    """Fason dönüş satırı: operasyon + dönen ana çıktı adedi. Boş satır atlanır."""
+    """Fason dönüş satırı: operasyon + GELEN adet (ekranda tek miktar alanı). Boş satır atlanır.
+    ``adet`` (beklenen) ekranda GİZLİDİR: istasyon emri / fason siparişi ön doldurmasında beklenen kalan taşınır (gelen daha azsa fark fire olur, emrin
+    kalanı açık kalır); elle girilen satırda beklenen = gelen. Gelen = beklenen ise ``gelen`` None döner (eski "boş = beklenen gelmiş" davranışı)."""
     operasyon = forms.ModelChoiceField(label="Operasyon (çıktı)", queryset=Operasyon.objects.none(), required=False,
                                        empty_label="— operasyon seç —")
-    adet = TRDecimalField(label="Beklenen adet", basamak=3, required=False)
+    adet = TRDecimalField(label="Beklenen adet", basamak=3, required=False, widget=forms.HiddenInput())
     gelen = TRDecimalField(label="Gelen adet", basamak=3, required=False)
     istasyon_emri = forms.IntegerField(required=False, widget=forms.HiddenInput())      # üretim siparişi istasyon emrinden açılan satır
 
@@ -1621,19 +1623,27 @@ class FasonDonusSatirForm(forms.Form):
                                              .order_by("cikti__kod"))
         self.fields["operasyon"].label_from_instance = lambda o: f"{o.cikti.kod}  {o.cikti.ad}  [{o.istasyon.kod}]"
         self.fields["operasyon"].widget.attrs["class"] = "akilli-sec"
+        self.fields["operasyon"].widget.attrs["data-liste"] = "genis"                 # akıllı-seç: geniş, satır kıran, kod/ad/istasyon düzenli liste
 
     def clean(self):
         cd = super().clean()
-        op, adet = cd.get("operasyon"), cd.get("adet")
-        if not op and adet is None:
+        op, adet, gelen = cd.get("operasyon"), cd.get("adet"), cd.get("gelen")
+        if not op and adet is None and gelen is None:
             return cd
         if not op:
             raise forms.ValidationError("Operasyon seçin.")
-        if adet is None or adet <= 0:
-            raise forms.ValidationError("Adet sıfırdan büyük olmalı.")
-        gelen = cd.get("gelen")
+        if gelen is None and adet is None:
+            raise forms.ValidationError("Gelen adedi girin.")
         if gelen is not None and gelen <= 0:
-            raise forms.ValidationError("Gelen adet sıfırdan büyük olmalı (boş bırakılırsa beklenen adet gelmiş sayılır).")
+            raise forms.ValidationError("Gelen adet sıfırdan büyük olmalı.")
+        if adet is None:                                                              # elle satır: beklenen = gelen
+            adet = gelen
+        if gelen is None:                                                             # yalnız ön doldurulmuş beklenen var: tamamı gelmiş sayılır
+            gelen = adet
+        if adet <= 0:
+            raise forms.ValidationError("Adet sıfırdan büyük olmalı.")
+        cd["adet"] = adet
+        cd["gelen"] = None if gelen == adet else gelen                                 # tam gelen = "boş" (eski davranış, fire yok)
         cd["dolu"] = True
         return cd
 

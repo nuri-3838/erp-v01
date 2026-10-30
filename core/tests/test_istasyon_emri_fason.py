@@ -82,6 +82,7 @@ class UretFasonTest(FasonParcalaBase):
         r = self.client.get(reverse("core:fason_donus_ekle"), {"istasyon_emri": self.ie.pk})
         ilk = r.context["formset"].initial[0]
         self.assertEqual((ilk["operasyon"], ilk["istasyon_emri"], ilk["adet"]), (self.op.pk, self.ie.pk, D("6.000")))
+        self.assertEqual(ilk["gelen"], D("6.000"))                                              # görünür "Gelen adet" ön dolu (beklenen gizli taşınır)
         self.assertContains(r, f'name="satir-0-istasyon_emri" value="{self.ie.pk}"')
         r = self.client.post(reverse("core:fason_donus_ekle"), {
             "cari": self.salim.pk, "depo": self.depo.pk, "tarih": "2026-10-09", "irsaliye_no": "", "aciklama": "",

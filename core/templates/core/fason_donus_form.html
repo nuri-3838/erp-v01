@@ -9,10 +9,10 @@
     <a class="ust-link" href="{% url 'core:fason_donusleri' %}">← Fason Dönüşler</a>
     <h1 class="ust-baslik"><span class="emoji">📥</span>Yeni Fason Dönüş</h1>
   </div>
-  <p class="yardim" style="margin-top:-.4rem">Fasoncudan gelen irsaliyedeki her parça için bir satır girin (operasyon + dönen ana çıktı adedi). Yan çıktılar (sağ/sol) operasyon
-    tanımından otomatik gelir. <strong>Beklenen adet</strong> tam boya yükseltilir (girdi tüketimi buna göre); <strong>gelen adet</strong> fasoncudan fiilen gelendir (boş = beklenen gelmiş sayılır) — stoğa giren adet ve fason bedeli gelen adet üzerinden, aradaki fark <strong>fire</strong> olarak kaydedilir. Yan çıktıların gelen adedi belge detayında ayrı girilir.
-    <strong>Parçala</strong> (1 boy → N çıktı) tanımında girilen adet <strong>referans çıktının gelen adedidir</strong>; diğer çıktıların gelen adedi belge detayında girilir (boş = 0),
-    beklenen ve fire gelen adetlerden türetilir.</p>
+  <p class="yardim" style="margin-top:-.4rem">Fasoncudan gelen irsaliyedeki her parça için bir satır girin: <strong>operasyonu seçin, gelen adedi yazın</strong>.
+    Yan çıktılar (sağ/sol) operasyon tanımından otomatik gelir; stoğa giren adet ve fason bedeli <strong>gelen adet</strong> üzerinden hesaplanır.
+    Üretim siparişi emrinden açıldıysa gelen adedi eksik girerseniz fark <strong>fire</strong> olur ve emrin kalanı açık kalır.
+    Yan çıktıların gelen adedi belge detayında ayrı girilir; <strong>Parçala</strong> (1 boy → N çıktı) tanımında girilen adet referans çıktının gelen adedidir.</p>
 
   {% if baslik.non_field_errors %}<div class="uyari">{% for e in baslik.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
   {% if formset.non_form_errors %}<div class="uyari">{% for e in formset.non_form_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>{% endif %}
@@ -39,14 +39,13 @@
       <h2 class="bolum-baslik">Dönen parçalar</h2>
       <div class="tablo-kapsayici">
         <table class="fh-tablo">
-          <thead><tr><th>Operasyon (çıktı parça)</th><th>Beklenen adet</th><th>Gelen adet</th><th></th></tr></thead>
+          <thead><tr><th>Operasyon (çıktı parça)</th><th class="fh-adet-th">Gelen adet</th><th></th></tr></thead>
           <tbody id="satir-govde">
             {% for f in formset %}
               <tr class="fh-satir">
-                <td>{{ f.operasyon }}{{ f.istasyon_emri }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
-                <td>{{ f.adet }}</td>
-                <td>{{ f.gelen }}</td>
-                <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+                <td class="fh-op">{{ f.operasyon }}{{ f.istasyon_emri }}{% for e in f.non_field_errors %}<div class="hata">{{ e }}</div>{% endfor %}{% for e in f.operasyon.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td class="fh-adet" data-et="Gelen adet">{{ f.gelen }}{{ f.adet }}{% for e in f.gelen.errors %}<div class="hata">{{ e }}</div>{% endfor %}</td>
+                <td class="fh-x"><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
               </tr>
             {% endfor %}
           </tbody>
@@ -56,10 +55,9 @@
     </section>
 
     <template id="bos-satir">
-      <td>{{ formset.empty_form.operasyon }}{{ formset.empty_form.istasyon_emri }}</td>
-      <td>{{ formset.empty_form.adet }}</td>
-      <td>{{ formset.empty_form.gelen }}</td>
-      <td><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
+      <td class="fh-op">{{ formset.empty_form.operasyon }}{{ formset.empty_form.istasyon_emri }}</td>
+      <td class="fh-adet" data-et="Gelen adet">{{ formset.empty_form.gelen }}{{ formset.empty_form.adet }}</td>
+      <td class="fh-x"><button type="button" class="fh-sil" title="Satırı kaldır">✕</button></td>
     </template>
 
     <div class="form-altbar">
@@ -74,7 +72,23 @@
   .fh-tablo { width:100%; border-collapse:collapse; }
   .fh-tablo th { text-align:left; font-size:.74rem; letter-spacing:.04em; text-transform:uppercase; color:var(--metin-soluk); padding:0 .5rem .3rem; }
   .fh-tablo td { padding:.25rem .5rem; }
-  .fh-tablo input, .fh-tablo select { min-width:12rem; }
+  .fh-tablo td.fh-op { width:100%; }
+  .fh-tablo td.fh-op .akilli-girdi, .fh-tablo td.fh-op select { width:100%; min-width:16rem; }
+  .fh-tablo td.fh-adet, .fh-tablo th.fh-adet-th { width:9.5rem; min-width:9.5rem; }
+  .fh-tablo td.fh-adet input[type=text] { width:100%; text-align:right; font-variant-numeric:tabular-nums; }
+  .fh-tablo td.fh-x { width:2.2rem; text-align:center; }
+  .fh-tablo td { vertical-align:top; }
+  @media (max-width:640px) {            /* telefon: her satır kart — operasyon üstte tam genişlik, altında gelen adet */
+    .fh-tablo thead { display:none; }
+    .fh-tablo, .fh-tablo tbody { display:block; }
+    .fh-tablo tr.fh-satir { display:grid; grid-template-columns:1fr auto; gap:.3rem .5rem; padding:.6rem 0; border-bottom:1px solid var(--cizgi); }
+    .fh-tablo tr.fh-satir td { display:block; width:auto; min-width:0; padding:0; }
+    .fh-tablo td.fh-op { grid-column:1 / -1; }
+    .fh-tablo td.fh-op .akilli-girdi, .fh-tablo td.fh-op select { min-width:0; }
+    .fh-tablo td.fh-adet::before { content:attr(data-et); display:block; font-size:.72rem; color:var(--metin-soluk); text-transform:uppercase; letter-spacing:.04em; }
+    .fh-tablo td.fh-adet { width:auto; min-width:0; }
+    .fh-tablo td.fh-x { align-self:end; }
+  }
   .fh-sil { border:none; background:none; color:var(--metin-soluk); cursor:pointer; font-size:.95rem; padding:.2rem .5rem; }
   .fh-sil:hover { color:var(--hata); }
   .satir-alt { margin-top:.7rem; }

@@ -220,6 +220,14 @@
     .akilli-secenek { padding:.5rem .7rem; cursor:pointer; font-size:.88rem; white-space:nowrap;
                       overflow:hidden; text-overflow:ellipsis; }
     .akilli-secenek:hover, .akilli-secenek.vurgulu { background:rgba(240,124,0,.13); color:var(--turuncu-koyu); }
+    /* geniş liste (select data-liste="genis"): uzun seçenekler kesilmez, satır kırılır; "kod  ad  [etiket]" biçimi kod / ad / rozet olarak dizilir */
+    .akilli-liste.genis { max-height:min(420px, 62vh); }
+    .akilli-liste.genis .akilli-secenek { white-space:normal; overflow:visible; display:flex; gap:.7rem; align-items:baseline; line-height:1.35;
+                                          border-bottom:1px solid rgba(21,41,77,.06); }
+    .akilli-secenek .sk { flex:0 0 auto; font-weight:700; color:var(--lacivert-acik); white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .akilli-secenek .sa { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+    .akilli-secenek .si { flex:0 0 auto; font-size:.72rem; padding:.05rem .5rem; border-radius:999px; background:rgba(21,41,77,.08);
+                          color:var(--metin-soluk); white-space:nowrap; }
     .akilli-grup { padding:.35rem .7rem; font-size:.7rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
                    color:var(--metin-soluk); background:rgba(21,41,77,.06); position:sticky; top:0; }
     .para { display:flex; align-items:center; gap:.35rem; }

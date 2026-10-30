@@ -7620,8 +7620,8 @@ def fason_donus_ekle(request):
               if (request.GET.get("istasyon_emri") or "").isdigit() else None)
         if ie is not None:                                             # istasyon emrinden "Fason dönüş aç": operasyon + açık kalan adet hazır gelir
             kalan = uretim_servis.istasyon_emri_acik_kalan(ie)
-            ilk = [{"operasyon": ie.operasyon_id, "istasyon_emri": ie.pk,
-                    "adet": (max(kalan, 0) * uretim_servis._referans_miktar(ie.operasyon)).quantize(Decimal("0.001")) or None}]
+            beklenen = (max(kalan, 0) * uretim_servis._referans_miktar(ie.operasyon)).quantize(Decimal("0.001")) or None
+            ilk = [{"operasyon": ie.operasyon_id, "istasyon_emri": ie.pk, "adet": beklenen, "gelen": beklenen}]
             if ie.istasyon.fasoncu_id:                                 # istasyonun varsayılan fasoncusu hazır seçili gelir
                 bas_ilk["cari"] = ie.istasyon.fasoncu_id
         fs = (FasonSiparisi.objects.filter(pk=request.GET["fason_siparis"], silindi=False).first()
@@ -7629,7 +7629,7 @@ def fason_donus_ekle(request):
         if fs is not None:                                             # fason siparişinden "Dönüş aç": fasoncu + sipariş + kalan satırlar hazır gelir
             from core.services import fason_siparis as fason_siparis_servis
             bas_ilk.update({"cari": fs.cari_id, "fason_siparis": fs.pk})
-            ilk = fason_siparis_servis.fd_satir_onerisi(fs) or ilk
+            ilk = [{**s, "gelen": s["adet"]} for s in fason_siparis_servis.fd_satir_onerisi(fs)] or ilk
         baslik = FasonDonusBaslikForm(initial=bas_ilk)
         formset = FasonDonusSatirFormSet(prefix="satir", initial=ilk)
     return render(request, "core/fason_donus_form.html", {"baslik": baslik, "formset": formset})

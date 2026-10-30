@@ -271,6 +271,57 @@ class DonusEkranTest(FasonBase):
         self.client.force_login(User.objects.create_superuser("fdu_y", password="x"))
         IsIstasyonu.objects.filter(pk=self.op.istasyon_id).update(fason=True)          # dönüş formu yalnız FASON işaretli istasyonun operasyonlarını listeler
 
+    def test_form_tek_miktar_alani_gelen_adet_ve_genis_liste(self):
+        """Tasarım: "Beklenen adet" sütunu yok (gizli alan), tek görünür miktar "Gelen adet"; operasyon seçici geniş/satır kıran akıllı liste."""
+        from django.urls import reverse
+        r = self.client.get(reverse("core:fason_donus_ekle"))
+        self.assertNotContains(r, "Beklenen adet</th>")
+        self.assertNotContains(r, "<th>Beklenen")
+        self.assertContains(r, "Gelen adet</th>")
+        self.assertContains(r, 'data-liste="genis"')                                   # operasyon select'i geniş liste modunda
+        self.assertContains(r, 'type="hidden" name="satir-0-adet"')                    # beklenen adet gizli taşınır
+        self.assertContains(r, "aktifGenis")                                           # akıllı-seç geniş liste kodu yüklü
+
+    def test_yalniz_gelen_adet_girilince_beklenen_gelene_esit(self):
+        from django.urls import reverse
+        self.fason_profil(10, 1000, 25)
+        self.fiyatlar()
+        v = self.post_veri("taslak")
+        v.pop("satir-0-adet")
+        v["satir-0-gelen"] = "3"
+        r = self.client.post(reverse("core:fason_donus_ekle"), v)
+        d = FasonDonus.objects.get()
+        self.assertRedirects(r, reverse("core:fason_donus_detay", args=[d.pk]))
+        k = d.kayitlar.get()
+        self.assertEqual(k.hedef_cikti_miktari, D("3"))                                # beklenen = gelen, fire yok
+        self.assertFalse(k.gelen)                                                      # tam gelen = "boş" (eski davranış)
+
+    def test_gelen_eksik_olursa_beklenen_gizli_alandan_fire_olusur(self):
+        from django.urls import reverse
+        self.fason_profil(10, 1000, 25)
+        self.fiyatlar()
+        v = self.post_veri("taslak", adet="3")                                         # gizli beklenen 3 (ör. emirden ön doldurulmuş)
+        v["satir-0-gelen"] = "2"
+        self.client.post(reverse("core:fason_donus_ekle"), v)
+        k = FasonDonus.objects.get().kayitlar.get()
+        self.assertEqual((k.hedef_cikti_miktari, k.gelen[str(self.ana.pk)]), (D("3"), "2"))
+
+    def test_operasyon_secili_ama_miktar_yok_hata(self):
+        from django.urls import reverse
+        v = self.post_veri("taslak")
+        v["satir-0-adet"] = ""
+        v["satir-0-gelen"] = ""
+        r = self.client.post(reverse("core:fason_donus_ekle"), v)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Gelen adedi girin")
+        self.assertEqual(FasonDonus.objects.count(), 0)
+
+    def test_bos_form_uc_bos_satirla_acilir(self):
+        from django.urls import reverse
+        r = self.client.get(reverse("core:fason_donus_ekle"))
+        self.assertEqual(len(r.context["formset"].forms), 3)                           # boş 3 satır
+        self.assertIsNone(r.context["formset"].forms[0].initial.get("gelen"))
+
     def test_operasyon_listesi_yalniz_fason_istasyonlari(self):
         """Aynı çıktının fason olmayan operasyonu (ör. lazer markalama) listede çıkmaz ve POST'ta da reddedilir; mevcut fason operasyon kalır."""
         from django.urls import reverse
