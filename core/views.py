@@ -10371,8 +10371,7 @@ def personeller(request):
     bugun = tr_bugun()
     liste = list(personel_servis.personel_listele(
         ara=ara, durum=durum, departman=departman, bugun=bugun))
-    yetkiler = ekranlar_gorebilir(request.user, "personel_belgeleri", "personel_ucret")       # tek sorgu
-    belge_gorebilir = yetkiler["personel_belgeleri"]                           # belge bilgisi yalnız belge yetkisi olana (rozet + süzgeç)
+    belge_gorebilir = ekran_gorebilir(request.user, "personel_belgeleri")      # belge bilgisi yalnız belge yetkisi olana (rozet + süzgeç)
     belge_uyari = belge_gorebilir and request.GET.get("belge") == "uyari"
     if belge_gorebilir:
         uyarili = {u.belge.personel_id for u in belge_servis.suresi_dolacaklar(bugun=bugun)}
@@ -10380,15 +10379,11 @@ def personeller(request):
             p.belge_uyari = p.pk in uyarili
         if belge_uyari:
             liste = [p for p in liste if p.belge_uyari]
-    ucret_gorebilir = yetkiler["personel_ucret"]
-    if ucret_gorebilir:
-        ucretler_map = ucret_servis.gecerli_ucretler(liste, tarih=bugun)
-        for p in liste:
-            p.guncel_ucret = ucretler_map.get(p.pk)
+    # Ücret listede GÖSTERİLMEZ (yetkisi olana da): yalnız personel kartı > Ücret sekmesinde görünür.
     return render(request, "core/personel_listesi.html", {
         "personeller": liste, "ara": ara, "durum": durum, "secili_departman": departman,
         "departmanlar": personel_servis.departmanlar(), "bugun": bugun,
-        "ucret_gorebilir": ucret_gorebilir, "belge_gorebilir": belge_gorebilir, "belge_uyari": belge_uyari})
+        "belge_gorebilir": belge_gorebilir, "belge_uyari": belge_uyari})
 
 
 @never_cache

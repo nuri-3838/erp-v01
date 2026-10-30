@@ -219,14 +219,19 @@ class UcretViewTest(TestCase):
         r2 = self.client.get(reverse("core:personeller"))
         self.assertNotContains(r2, "40.000,00")
 
-    def test_yetkili_detayda_ve_listede_ucreti_gorur(self):
+    def test_yetkili_detayda_gorur_listede_ucret_yok(self):
         p = _kur()
         ucret_ekle(p, gecerlilik_baslangic=date(2026, 1, 1), tip="NET", net_tutar=Decimal("40000"))
-        self.client.force_login(self.ikisi)
-        r = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "ucret"})
-        self.assertContains(r, "40.000,00 TL net")
-        r2 = self.client.get(reverse("core:personeller"))
-        self.assertContains(r2, "40.000,00 TL")
+        ucret_ekle(_kur(ad="asgari", soyad="kisi"), gecerlilik_baslangic=date(2026, 1, 1), tip="ASGARI")
+        for kisi in (self.ikisi, self.yon):                                                      # ücret yetkisi olana ve yöneticiye de liste ücret göstermez
+            self.client.force_login(kisi)
+            r = self.client.get(reverse("core:personel_detay", args=[p.pk]), {"sekme": "ucret"})
+            self.assertContains(r, "40.000,00 TL net")                                           # ücret yalnız kartın Ücret sekmesinde
+            r2 = self.client.get(reverse("core:personeller"))
+            self.assertEqual(r2.status_code, 200)
+            self.assertNotContains(r2, "40.000")
+            self.assertNotContains(r2, "Asgari Ücret")
+            self.assertNotContains(r2, "<th>Ücret</th>")
 
     def test_yonetici_de_gorur(self):
         p = _kur()
