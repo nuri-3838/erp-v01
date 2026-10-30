@@ -3402,11 +3402,34 @@ class IseGirisKaydiForm(forms.Form):
                                             help_text="En çok 45; fazla çalışma muvafakatnamesiyle ayrıca yazılır.")
     calisma_gunleri = forms.CharField(label="Çalışma günleri", max_length=80, required=False,
                                       widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Pazartesi – Cuma"}))
-    calisma_saatleri = forms.CharField(label="Günlük çalışma saatleri", max_length=80, required=False,
-                                       widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "08:00 – 17:30 (1 saat ara)"}))
+    calisma_saatleri = forms.CharField(label="Günlük çalışma saatleri", required=False, widget=forms.Textarea(attrs={"rows": 4}))
     ucret_odeme = forms.CharField(label="Ücret ödeme şekli / günü", max_length=120, required=False,
-                                  widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Her ayın 5'i, banka hesabına"}))
+                                  widget=forms.TextInput(attrs={"autocomplete": "off"}))
     notlar = forms.CharField(label="Not", required=False, widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, varsayilan=None, **kwargs):
+        """``varsayilan`` = firma varsayılanları (IkAyari): boş bırakılan alanda hangi değerin kullanılacağı ipucu (placeholder) olarak gösterilir."""
+        super().__init__(*args, **kwargs)
+        if varsayilan is not None:
+            self.fields["deneme_suresi_ay"].widget.attrs["placeholder"] = f"Varsayılan: {varsayilan.sozlesme_deneme_suresi_ay}"
+            self.fields["haftalik_calisma_saati"].widget.attrs["placeholder"] = f"Varsayılan: {varsayilan.sozlesme_haftalik_saat:g}"
+            self.fields["calisma_gunleri"].widget.attrs["placeholder"] = f"Varsayılan: {varsayilan.sozlesme_calisma_gunleri}"
+            self.fields["calisma_saatleri"].widget.attrs["placeholder"] = "Boşsa firma varsayılan çalışma saatleri kullanılır (Ayarlar > Belge Şablonları)"
+            self.fields["ucret_odeme"].widget.attrs["placeholder"] = f"Varsayılan: {varsayilan.sozlesme_ucret_odeme}"
+
+
+class SozlesmeVarsayilanForm(forms.Form):
+    """AYARLAR > Belge Şablonları: firma geneli VARSAYILAN sözleşme çalışma düzeni (kişiye özel değeri olmayan herkes için). Kurallar serviste."""
+    sozlesme_deneme_suresi_ay = forms.IntegerField(label="Deneme süresi (ay)", required=False, min_value=0, max_value=4,
+                                                   help_text="Yasal üst sınır 2 ay (toplu iş sözleşmesiyle 4 ay).")
+    sozlesme_haftalik_saat = TRDecimalField(label="Haftalık çalışma saati", basamak=1, required=False, help_text="En çok 45.")
+    sozlesme_calisma_gunleri = forms.CharField(label="Çalışma günleri", max_length=80, required=False,
+                                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    sozlesme_calisma_saatleri = forms.CharField(label="Günlük çalışma saatleri", required=False,
+                                                widget=forms.Textarea(attrs={"rows": 16}),
+                                                help_text="Her satır sözleşmede ayrı satır olarak basılır (gün başlıkları, çalışma ve mola aralıkları).")
+    sozlesme_ucret_odeme = forms.CharField(label="Ücret ödeme şekli / günü", max_length=120, required=False,
+                                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
 
 class BelgeSablonuForm(forms.Form):

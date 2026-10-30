@@ -4269,7 +4269,7 @@ class IseGirisKaydi(TemelModel):
     deneme_suresi_ay = models.PositiveSmallIntegerField("deneme süresi (ay)", null=True, blank=True)
     haftalik_calisma_saati = models.DecimalField("haftalık çalışma saati", max_digits=4, decimal_places=1, null=True, blank=True)
     calisma_gunleri = models.CharField("çalışma günleri", max_length=80, blank=True)
-    calisma_saatleri = models.CharField("günlük çalışma saatleri", max_length=80, blank=True)
+    calisma_saatleri = models.TextField("günlük çalışma saatleri", blank=True)
     ucret_odeme = models.CharField("ücret ödeme şekli/günü", max_length=120, blank=True)
     paket_basim_zamani = models.DateTimeField("evrak paketi basım zamanı", null=True, blank=True)
     muhasebe_gonderim_tarihi = models.DateField("muhasebeye gönderim tarihi", null=True, blank=True)
@@ -4966,6 +4966,15 @@ class UretimAyari(TemelModel):
         return obj
 
 
+SOZLESME_CALISMA_SAATLERI = (
+    "Pazartesi – Perşembe:\n"
+    "08:00 – 10:00 Çalışma\n10:00 – 10:15 Çay molası\n10:15 – 12:30 Çalışma\n12:30 – 13:00 Öğle arası\n"
+    "13:00 – 15:30 Çalışma\n15:30 – 15:45 Çay molası\n15:45 – 18:00 Çalışma\n"
+    "Cuma:\n"
+    "08:00 – 10:00 Çalışma\n10:00 – 10:15 Çay molası\n10:15 – 12:00 Çalışma\n12:00 – 13:00 Öğle arası\n"
+    "13:00 – 15:30 Çalışma\n15:30 – 15:45 Çay molası\n15:45 – 18:30 Çalışma")
+
+
 class IkAyari(TemelModel):
     """İK ayarları — TEKİL kayıt (pk=1). ``gunluk_calisma_saati``: saatlik izinde saat → gün çevriminin paydası (varsayılan 7,5 saat);
     AYARLAR › Mesai Ayarları ekranından değiştirilir."""
@@ -4977,6 +4986,13 @@ class IkAyari(TemelModel):
     dis_ip_tolerans_dk = models.PositiveSmallIntegerField("fabrika dışı tolerans (dk)", default=3)
     heartbeat_sn = models.PositiveSmallIntegerField("heartbeat aralığı (sn)", default=120)
     gece_kapanis_saati = models.TimeField("gece kapanış saati (TR)", default=datetime.time(23, 59))
+    # İşe giriş evrakları (iş sözleşmesi) için firma geneli VARSAYILAN çalışma düzeni; personel kartı > İşe Giriş'te kişiye özel değer varsa o geçer
+    # (bkz. core.services.ise_giris.etkin_sozlesme). AYARLAR › Belge Şablonları ekranından düzenlenir.
+    sozlesme_deneme_suresi_ay = models.PositiveSmallIntegerField("sözleşme: deneme süresi (ay)", default=2)
+    sozlesme_haftalik_saat = models.DecimalField("sözleşme: haftalık çalışma saati", max_digits=4, decimal_places=1, default=Decimal("45"))
+    sozlesme_calisma_gunleri = models.CharField("sözleşme: çalışma günleri", max_length=80, default="Pazartesi – Cuma")
+    sozlesme_calisma_saatleri = models.TextField("sözleşme: günlük çalışma saatleri", default=SOZLESME_CALISMA_SAATLERI)
+    sozlesme_ucret_odeme = models.CharField("sözleşme: ücret ödeme şekli/günü", max_length=120, default="Bir sonraki ayın 10. iş günü")
 
     class Meta:
         db_table = "core_ik_ayari"

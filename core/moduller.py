@@ -178,7 +178,7 @@ MODULLER = (
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),
         Ekran("firma_bilgileri", "Firma Bilgileri", "core:firma_bilgileri"),
         Ekran("belge_sablonlari", "Belge Şablonları", "core:belge_sablonlari",
-              ilgili=("core:belge_sablonu_duzenle", "core:belge_sablonu_varsayilan")),
+              ilgili=("core:belge_sablonu_duzenle", "core:belge_sablonu_varsayilan", "core:sozlesme_varsayilan_kaydet")),
         Ekran("tanim_listeleri", "Tanım Listeleri", "core:tanim_listeleri"),
         Ekran("varyantlar", "Varyantlar", "core:varyantlar"),
         Ekran("uretim_ayarlari", "Üretim Ayarları", "core:uretim_ayarlari"),

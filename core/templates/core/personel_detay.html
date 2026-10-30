@@ -211,12 +211,19 @@
   {% if ise_giris_duzenlenebilir %}
   <section class="icerik-kart" id="sozlesme-bilgileri">
     <h2 class="bolum-baslik"><span class="emoji">⚙️</span>Sözleşme Bilgileri</h2>
-    <p class="yardim" style="margin-top:-.3rem">İş sözleşmesi çıktısında kullanılır; boş bırakılan alan çıktıda elle doldurulacak noktalı çizgi olur.</p>
+    <p class="yardim" style="margin-top:-.3rem">İş sözleşmesine otomatik gelen değerler firma varsayılanlarıdır (Ayarlar &gt; Belge Şablonları). Bu personel için farklıysa aşağıya yazın;
+      boş bırakılan alan varsayılanı kullanır.</p>
+    <div class="kv" style="margin-bottom:.9rem">
+      <div class="satir"><span class="et">Geçerli deneme süresi</span><span class="dg">{% if etkin_sozlesme.deneme_suresi_ay %}{{ etkin_sozlesme.deneme_suresi_ay }} ay{% else %}—{% endif %}</span></div>
+      <div class="satir"><span class="et">Geçerli haftalık süre</span><span class="dg">{{ etkin_sozlesme.haftalik_calisma_saati|default_if_none:"—" }} saat</span></div>
+      <div class="satir"><span class="et">Geçerli çalışma günleri</span><span class="dg">{{ etkin_sozlesme.calisma_gunleri|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Geçerli ücret ödeme</span><span class="dg">{{ etkin_sozlesme.ucret_odeme|default:"—" }}</span></div>
+    </div>
     <form method="post" action="{% url 'core:ise_giris_kaydet' p.pk %}" autocomplete="off">
       {% csrf_token %}
       <div class="izgara">
         {% for f in ise_giris_form %}
-          <div class="alan{% if f.name == 'notlar' %} tam{% endif %}">
+          <div class="alan{% if f.name == 'notlar' or f.name == 'calisma_saatleri' or f.name == 'calisma_gunleri' or f.name == 'ucret_odeme' %} tam{% endif %}">
             <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
             {% if f.help_text %}<p class="yardim">{{ f.help_text }}</p>{% endif %}
           </div>

@@ -315,6 +315,7 @@ class SorguSayisiTest(SekmeTaban):
         self.client.get(self.url)                                                             # ısınma
         sonuc = {}
         for kod in ("genel", "ise_giris", "ucret", "izin", "belgeler", "devam", "mesai"):
+            self.client.get(self.url, {"sekme": kod})                                            # ısınma: tekil ayar kayıtları (firma/İK ayarı) ilk kullanımda oluşur
             with CaptureQueriesContext(connection) as c:
                 self.assertEqual(self.client.get(self.url, {"sekme": kod}).status_code, 200)
             sonuc[kod] = len(c)

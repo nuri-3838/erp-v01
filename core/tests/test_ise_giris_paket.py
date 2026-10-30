@@ -10,7 +10,7 @@ from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import BelgeSablonu, EkranYetki, IseGirisKaydi
+from core.models import BelgeSablonu, EkranYetki, IkAyari, IseGirisKaydi
 from core.services import belge_sablon as bs
 from core.services import ise_giris as ig
 from core.services.firma import firma_bilgisi_getir, firma_bilgisi_kaydet
@@ -71,9 +71,14 @@ class DegerlerTest(OzelDizinTestTemel):
         bos = personel_kur(ad="boş", soyad="kişi")
         eksik = ig.eksik_bilgiler(bos, firma_bilgisi_getir(), ig.kayit_oku(bos), ucret_gorebilir=True)
         alanlar = {(e["nerede"], e["alan"]) for e in eksik}
-        for beklenen in (("personel", "TC kimlik no"), ("personel", "Doğum yeri"), ("personel", "IBAN"), ("sozlesme", "Deneme süresi"),
-                         ("sozlesme", "Haftalık çalışma saati"), ("ucret", "Ücret kaydı")):
+        for beklenen in (("personel", "TC kimlik no"), ("personel", "Doğum yeri"), ("personel", "IBAN"), ("ucret", "Ücret kaydı")):
             self.assertIn(beklenen, alanlar)
+        self.assertFalse([e for e in eksik if e["nerede"] == "sozlesme"])                       # sözleşme bilgileri firma varsayılanından gelir
+        a = IkAyari.get()                                                                       # varsayılan da boşsa eksik sayılır
+        a.sozlesme_calisma_gunleri, a.sozlesme_calisma_saatleri = "", ""
+        a.save()
+        eksik = ig.eksik_bilgiler(bos, firma_bilgisi_getir(), ig.kayit_oku(bos), ucret_gorebilir=False)
+        self.assertEqual({e["alan"] for e in eksik if e["nerede"] == "sozlesme"}, {"Çalışma günleri", "Günlük çalışma saatleri"})
         tam = ig.eksik_bilgiler(self.p, self.firma, ig.kayit_oku(self.p), ucret_gorebilir=False)
         self.assertEqual(tam, [])                                                              # ücret yetkisi yoksa ücret eksiği listelenmez
 
@@ -231,7 +236,7 @@ class PaketGorunumTest(OzelDizinTestTemel):
         self.assertContains(r, 'name="belge" value="SOZLESME" checked')
         self.assertContains(r, 'name="sozlesme_nusha"')
         self.assertContains(r, "Ücret görme yetkiniz olmadığı")
-        self.assertContains(r, "Deneme süresi")                                                 # henüz girilmemiş sözleşme bilgisi eksik
+        self.assertNotContains(r, "Eksik bilgiler")                                              # kişi/firma dolu; sözleşme bilgileri firma varsayılanından
         self.assertNotContains(r, "Son basım")
         self.post()
         self.assertContains(self.client.get(self.sekme), "Son basım")

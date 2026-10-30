@@ -36,6 +36,23 @@
 </table>
 </div>
 
+<section class="icerik-kart" style="margin-top:1.4rem" id="sozlesme-varsayilanlari">
+  <h2 class="bolum-baslik"><span class="emoji">⚙️</span>Varsayılan Sözleşme Bilgileri</h2>
+  <p class="yardim" style="margin-top:-.3rem">Her yeni personelin iş sözleşmesine otomatik yazılır. Personel kartı &gt; İşe Giriş'te o kişi için ayrı bir değer girilirse o geçer.</p>
+  <form method="post" action="{% url 'core:sozlesme_varsayilan_kaydet' %}" autocomplete="off">
+    {% csrf_token %}
+    <div class="izgara">
+      {% for f in varsayilan_form %}
+        <div class="alan{% if f.name == 'sozlesme_calisma_saatleri' or f.name == 'sozlesme_calisma_gunleri' or f.name == 'sozlesme_ucret_odeme' %} tam{% endif %}">
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<p class="yardim">{{ f.help_text }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:.9rem"><button type="submit" class="birincil">Kaydet</button></div>
+  </form>
+</section>
+
 <h2 class="bolum-baslik" style="margin-top:1.4rem">Kullanılabilir yer tutucular</h2>
 <div class="tablo-kapsayici">
 <table>

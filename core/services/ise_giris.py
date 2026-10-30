@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 
-from core.models import IseGirisKaydi, Personel, PersonelBelge
+from core.models import IkAyari, IseGirisKaydi, Personel, PersonelBelge
 from core.services import personel_belge as belge_servis
 from core.tarih import tr_bugun
 
@@ -97,12 +97,13 @@ def _ondalik(deger, ad):
         raise IseGirisHatasi(f"{ad} sayı olmalı.")
 
 
-@transaction.atomic
-def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_saati=None, calisma_gunleri="", calisma_saatleri="",
-                 ucret_odeme="", notlar="", kullanici=None) -> IseGirisKaydi:
-    """Sözleşme parametrelerini (basımda yer tutucu olarak kullanılır) kaydeder. Evrak basım ve muhasebe gönderim alanlarına DOKUNMAZ."""
-    if personel.silindi:
-        raise IseGirisHatasi("Silinmiş personel için işe giriş kaydı tutulamaz.")
+def _satirlar(metin) -> str:
+    """Çok satırlı metin: her satırın baş/son boşluğu ve iç çoklu boşlukları sadeleşir, boş satırlar atılır (satır sonları KORUNUR)."""
+    return "\n".join(" ".join(l.split()) for l in (metin or "").replace("\r\n", "\n").split("\n") if l.strip())
+
+
+def _parametreleri_dogrula(deneme_suresi_ay, haftalik_calisma_saati):
+    """(deneme_suresi_ay | None, haftalik_calisma_saati | None) — boş = None. Hukuki sınırlar: deneme ≤ 4 ay (yasal üst sınır 2; TİS ile 4), haftalık ≤ 45."""
     if deneme_suresi_ay in (None, ""):
         deneme = None
     else:
@@ -115,11 +116,53 @@ def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_
     saat = _ondalik(haftalik_calisma_saati, "Haftalık çalışma saati")
     if saat is not None and not 0 < saat <= 45:
         raise IseGirisHatasi("Haftalık çalışma saati 0'dan büyük ve en çok 45 olmalı (fazla çalışma ayrıca yazılır).")
+    return deneme, saat
+
+
+def sozlesme_ayari() -> IkAyari:
+    """Firma geneli sözleşme varsayılanları (AYARLAR › Belge Şablonları)."""
+    return IkAyari.get()
+
+
+@transaction.atomic
+def sozlesme_ayar_kaydet(*, deneme_suresi_ay, haftalik_calisma_saati, calisma_gunleri, calisma_saatleri, ucret_odeme, kullanici=None) -> IkAyari:
+    """Varsayılan sözleşme çalışma düzenini kaydeder; kişiye özel değeri olmayan her personel için basımda bu değerler kullanılır."""
+    deneme, saat = _parametreleri_dogrula(deneme_suresi_ay, haftalik_calisma_saati)
+    ayar = IkAyari.get()
+    ayar.sozlesme_deneme_suresi_ay = deneme if deneme is not None else ayar.sozlesme_deneme_suresi_ay
+    ayar.sozlesme_haftalik_saat = saat if saat is not None else ayar.sozlesme_haftalik_saat
+    ayar.sozlesme_calisma_gunleri = " ".join((calisma_gunleri or "").split())
+    ayar.sozlesme_calisma_saatleri = _satirlar(calisma_saatleri)
+    ayar.sozlesme_ucret_odeme = " ".join((ucret_odeme or "").split())
+    ayar.updated_by = kullanici
+    ayar.save()
+    return ayar
+
+
+def etkin_sozlesme(kayit: IseGirisKaydi, ayar: IkAyari) -> dict:
+    """Basımda geçerli değerler: personele özel (işe giriş kaydı) doluysa o, boşsa firma varsayılanı (``IkAyari.sozlesme_*``)."""
+    return {
+        "deneme_suresi_ay": kayit.deneme_suresi_ay if kayit.deneme_suresi_ay is not None else ayar.sozlesme_deneme_suresi_ay,
+        "haftalik_calisma_saati": kayit.haftalik_calisma_saati if kayit.haftalik_calisma_saati is not None else ayar.sozlesme_haftalik_saat,
+        "calisma_gunleri": kayit.calisma_gunleri or ayar.sozlesme_calisma_gunleri,
+        "calisma_saatleri": kayit.calisma_saatleri or ayar.sozlesme_calisma_saatleri,
+        "ucret_odeme": kayit.ucret_odeme or ayar.sozlesme_ucret_odeme,
+    }
+
+
+@transaction.atomic
+def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_saati=None, calisma_gunleri="", calisma_saatleri="",
+                 ucret_odeme="", notlar="", kullanici=None) -> IseGirisKaydi:
+    """Personele ÖZEL sözleşme parametrelerini kaydeder (boş alan = firma varsayılanı kullanılır; bkz. ``etkin_sozlesme``). Evrak basım ve muhasebe
+    gönderim alanlarına DOKUNMAZ."""
+    if personel.silindi:
+        raise IseGirisHatasi("Silinmiş personel için işe giriş kaydı tutulamaz.")
+    deneme, saat = _parametreleri_dogrula(deneme_suresi_ay, haftalik_calisma_saati)
     kayit = kayit_oku(personel)
     kayit.deneme_suresi_ay = deneme
     kayit.haftalik_calisma_saati = saat
     kayit.calisma_gunleri = " ".join((calisma_gunleri or "").split())
-    kayit.calisma_saatleri = " ".join((calisma_saatleri or "").split())
+    kayit.calisma_saatleri = _satirlar(calisma_saatleri)
     kayit.ucret_odeme = " ".join((ucret_odeme or "").split())
     kayit.notlar = (notlar or "").strip()
     kayit.updated_by = kullanici
@@ -156,13 +199,14 @@ def ucret_metni(personel: Personel, *, bugun=None) -> str:
     return "asgari ücret" if u.tip == "ASGARI" else f"{format_tr(u.net_tutar)} TL"
 
 
-def yer_tutucu_degerleri(personel: Personel, firma, kayit, *, ucret="", bugun=None) -> dict:
+def yer_tutucu_degerleri(personel: Personel, firma, kayit, *, ucret="", bugun=None, ayar=None) -> dict:
     """``belge_sablon.doldur`` için {yer_tutucu: değer}. Boş/bilinmeyen değerler çıktıda noktalı çizgi olur."""
     from core.dogrulama import iban_bicimli
     from core.sayi import format_tr
     bugun = bugun or tr_bugun()
     gun = lambda d: d.strftime("%d.%m.%Y") if d else ""
-    saat = kayit.haftalik_calisma_saati
+    e = etkin_sozlesme(kayit, ayar or IkAyari.get())
+    saat = e["haftalik_calisma_saati"]
     return {
         "firma_unvan": firma.unvan, "firma_adres": " ".join((firma.adres or "").split()), "firma_vergi_dairesi": firma.vergi_dairesi,
         "firma_vergi_no": firma.vergi_no, "firma_eposta": firma.eposta, "mersis_no": firma.mersis_no, "sgk_sicil_no": firma.sgk_isyeri_sicil_no,
@@ -171,14 +215,14 @@ def yer_tutucu_degerleri(personel: Personel, firma, kayit, *, ucret="", bugun=No
         "baba_adi": personel.baba_adi, "ana_adi": personel.ana_adi, "adres": " ".join((personel.adres or "").split()),
         "telefon": personel.telefon, "iban": iban_bicimli(personel.iban) if personel.iban else "",
         "gorev": personel.gorev, "departman": personel.departman, "ise_giris": gun(personel.ise_giris_tarihi),
-        "deneme_suresi": f"{kayit.deneme_suresi_ay} ay" if kayit.deneme_suresi_ay else "",
+        "deneme_suresi": f"{e['deneme_suresi_ay']} ay" if e["deneme_suresi_ay"] else "",
         "haftalik_saat": format_tr(saat, 1).replace(",0", "") if saat else "",
-        "calisma_gunleri": kayit.calisma_gunleri, "calisma_saatleri": kayit.calisma_saatleri,
-        "ucret": ucret, "ucret_odeme": kayit.ucret_odeme, "bugun": gun(bugun),
+        "calisma_gunleri": e["calisma_gunleri"], "calisma_saatleri": e["calisma_saatleri"],
+        "ucret": ucret, "ucret_odeme": e["ucret_odeme"], "bugun": gun(bugun),
     }
 
 
-def eksik_bilgiler(personel: Personel, firma, kayit, *, ucret_gorebilir=False, ucret="") -> list:
+def eksik_bilgiler(personel: Personel, firma, kayit, *, ucret_gorebilir=False, ucret="", ayar=None) -> list:
     """Evrak basılmadan önce kullanıcıya gösterilen eksikler: [{"alan", "nerede": personel|firma|sozlesme|ucret}]. Basımı ENGELLEMEZ
     (eksik değer çıktıda elle doldurulacak noktalı çizgi olur)."""
     out = []
@@ -189,20 +233,21 @@ def eksik_bilgiler(personel: Personel, firma, kayit, *, ucret_gorebilir=False, u
     for alan, ad in (("unvan", "Firma unvanı"), ("adres", "Firma adresi"), ("isveren_vekili_adi", "İşveren vekili adı")):
         if not getattr(firma, alan):
             out.append({"alan": ad, "nerede": "firma"})
+    e = etkin_sozlesme(kayit, ayar or IkAyari.get())                  # kişiye özel boşsa firma varsayılanı geçerli: eksik sayılır yalnız ikisi de boşsa
     for alan, ad in (("deneme_suresi_ay", "Deneme süresi"), ("haftalik_calisma_saati", "Haftalık çalışma saati"),
-                     ("calisma_gunleri", "Çalışma günleri"), ("calisma_saatleri", "Günlük çalışma saatleri")):
-        if getattr(kayit, alan) in (None, ""):
+                     ("calisma_gunleri", "Çalışma günleri"), ("calisma_saatleri", "Günlük çalışma saatleri"), ("ucret_odeme", "Ücret ödeme şekli")):
+        if e[alan] in (None, ""):
             out.append({"alan": ad, "nerede": "sozlesme"})
     if ucret_gorebilir and not ucret:
         out.append({"alan": "Ücret kaydı", "nerede": "ucret"})
     return out
 
 
-def paket_hazirla(personel: Personel, firma, kayit, sablonlar, *, nusha=1, ucret="", bugun=None) -> list:
+def paket_hazirla(personel: Personel, firma, kayit, sablonlar, *, nusha=1, ucret="", bugun=None, ayar=None) -> list:
     """Basılacak belgeler: [{kod, baslik, paragraflar, imza, imza_notu, nusha_no, nusha_adet}] — şablon sırasıyla; iş sözleşmesi ``nusha`` kez
     (varsayılan 1; sözleşme metni "iki nüsha" der → ekran 2 önerir). Yer tutucular güvenli düz yazı değiştirmeyle doldurulur."""
     from core.services import belge_sablon as bs
-    degerler = yer_tutucu_degerleri(personel, firma, kayit, ucret=ucret, bugun=bugun)
+    degerler = yer_tutucu_degerleri(personel, firma, kayit, ucret=ucret, bugun=bugun, ayar=ayar)
     belgeler = []
     for s in sablonlar:
         metin = bs.doldur(s.metin, degerler)

@@ -54,7 +54,9 @@ MADDE 4 – DENEME SÜRESİ
 Taraflar arasında {deneme_suresi} deneme süresi öngörülmüştür. Deneme süresi içinde taraflar sözleşmeyi bildirim süresi vermeksizin ve tazminatsız feshedebilir (4857 sayılı İş Kanunu m. 15).
 
 MADDE 5 – ÇALIŞMA SÜRESİ
-Haftalık çalışma süresi {haftalik_saat} saattir. Çalışma günleri: {calisma_gunleri}. Günlük çalışma saatleri: {calisma_saatleri}. Ara dinlenmesi, hafta tatili, ulusal bayram ve genel tatil günleri ile yıllık ücretli izin hakları ilgili kanun hükümlerine göre kullandırılır.
+Haftalık çalışma süresi {haftalik_saat} saattir. Çalışma günleri: {calisma_gunleri}. Günlük çalışma saatleri ve ara dinlenmeleri:
+{calisma_saatleri}
+Hafta tatili, ulusal bayram ve genel tatil günleri ile yıllık ücretli izin hakları ilgili kanun hükümlerine göre kullandırılır.
 
 MADDE 6 – ÜCRET
 İşçiye aylık net {ucret} tutarında ücret ödenir. Ödeme şekli/günü: {ucret_odeme}. Ücret, işçinin bildirdiği banka hesabına (IBAN: {iban}) yatırılır. Yasal kesintiler işverence yapılır.
@@ -167,14 +169,32 @@ def doldur(metin: str, degerler: dict) -> str:
     return _YER_TUTUCU_RE.sub(degistir, metin or "")
 
 
+def _yukselt(sablon: BelgeSablonu) -> bool:
+    """Metni ESKİ bir varsayılanla birebir aynı (kullanıcı hiç düzenlememiş) şablonu güncel varsayılana yükseltir; düzenlenmişe dokunmaz.
+    Başlık ancak eski varsayılan başlıktan biriyse güncellenir. Döner: değişti mi."""
+    from core.services.belge_sablon_eski import ESKI_BASLIKLAR, ESKI_METINLER
+    v = VARSAYILAN[sablon.kod]
+    mevcut = sablon.metin.strip()
+    if mevcut == v["metin"].strip() or mevcut not in {m.strip() for m in ESKI_METINLER.get(sablon.kod, [])}:
+        return False
+    sablon.metin = v["metin"].strip()
+    if sablon.baslik in ESKI_BASLIKLAR.get(sablon.kod, []):
+        sablon.baslik = v["baslik"]
+    sablon.save(update_fields=["metin", "baslik", "updated_at"])
+    return True
+
+
 @transaction.atomic
 def hazirla(kullanici=None) -> list:
-    """Eksik varsayılan şablonları oluşturur (var olanlara dokunmaz); sıralı aktif/pasif tüm şablonları döndürür."""
-    var = set(BelgeSablonu.objects.filter(silindi=False).values_list("kod", flat=True))
+    """Eksik varsayılan şablonları oluşturur; düzenlenmemiş eski varsayılanları güncele yükseltir (düzenlenmişe dokunmaz);
+    sıralı aktif/pasif tüm şablonları döndürür."""
+    var = {s.kod: s for s in BelgeSablonu.objects.filter(silindi=False)}
     for kod, v in VARSAYILAN.items():
         if kod not in var:
             BelgeSablonu.objects.create(kod=kod, baslik=v["baslik"], metin=v["metin"], sira=v["sira"], aktif=True,
                                         created_by=kullanici, updated_by=kullanici)
+        else:
+            _yukselt(var[kod])
     return list(BelgeSablonu.objects.filter(silindi=False).order_by("sira", "id"))
 
 

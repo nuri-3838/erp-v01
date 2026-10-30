@@ -40,7 +40,7 @@ from core.forms import (
     BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonDonusBaslikForm, FasonDonusSatirForm, FasonFiyatForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
-    BelgeSablonuForm, IseGirisKaydiForm, KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
+    BelgeSablonuForm, IseGirisKaydiForm, SozlesmeVarsayilanForm, KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
     TeklifSiparisForm, TeklifSiparisKalemForm, SatisBelgeBaslikForm, SatisTeklifKalemForm,
     TeklifRedForm,
     SatisProformaBaslikForm, SatisProformaKalemForm,
@@ -7503,10 +7503,37 @@ def firma_bilgileri(request):
 
 
 # === AYARLAR > Belge Şablonları (işe giriş evrakları: sözleşme, KVKK, fazla çalışma) ===
+def _sozlesme_varsayilan_baslangic(ayar):
+    return {"sozlesme_deneme_suresi_ay": ayar.sozlesme_deneme_suresi_ay, "sozlesme_haftalik_saat": ayar.sozlesme_haftalik_saat,
+            "sozlesme_calisma_gunleri": ayar.sozlesme_calisma_gunleri, "sozlesme_calisma_saatleri": ayar.sozlesme_calisma_saatleri,
+            "sozlesme_ucret_odeme": ayar.sozlesme_ucret_odeme}
+
+
 @yonetici_gerekli
 def belge_sablonlari(request):
     return render(request, "core/belge_sablon_listesi.html", {
-        "sablonlar": belge_sablon_servis.hazirla(request.user), "yer_tutucular": belge_sablon_servis.YER_TUTUCULAR})
+        "sablonlar": belge_sablon_servis.hazirla(request.user), "yer_tutucular": belge_sablon_servis.YER_TUTUCULAR,
+        "varsayilan_form": SozlesmeVarsayilanForm(initial=_sozlesme_varsayilan_baslangic(ise_giris_servis.sozlesme_ayari()))})
+
+
+@yonetici_gerekli
+def sozlesme_varsayilan_kaydet(request):
+    """Firma geneli varsayılan sözleşme çalışma düzenini kaydeder (POST); hata varsa mesajla listeye döner."""
+    if request.method == "POST":
+        form = SozlesmeVarsayilanForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                ise_giris_servis.sozlesme_ayar_kaydet(
+                    deneme_suresi_ay=cd.get("sozlesme_deneme_suresi_ay"), haftalik_calisma_saati=cd.get("sozlesme_haftalik_saat"),
+                    calisma_gunleri=cd.get("sozlesme_calisma_gunleri", ""), calisma_saatleri=cd.get("sozlesme_calisma_saatleri", ""),
+                    ucret_odeme=cd.get("sozlesme_ucret_odeme", ""), kullanici=request.user)
+                messages.success(request, "Varsayılan sözleşme bilgileri kaydedildi.")
+            except ise_giris_servis.IseGirisHatasi as e:
+                messages.error(request, str(e))
+        else:
+            messages.error(request, "Kayıt yapılamadı: " + "; ".join(f"{form.fields[k].label}: {' '.join(v)}" for k, v in form.errors.items()))
+    return redirect("core:belge_sablonlari")
 
 
 @yonetici_gerekli
@@ -10476,7 +10503,8 @@ def ise_giris_paket_pdf(request, pk):
     ctx = _pdf_firma_baglami()
     bugun = tr_bugun()
     ucret = ise_giris_servis.ucret_metni(p, bugun=bugun) if ekran_gorebilir(request.user, "personel_ucret") else ""
-    ctx.update({"belgeler": ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, nusha=nusha, ucret=ucret, bugun=bugun),
+    ctx.update({"belgeler": ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, nusha=nusha, ucret=ucret, bugun=bugun,
+                                                           ayar=ise_giris_servis.sozlesme_ayari()),
                 "belge_tarihi": bugun, "personel": p})
     pdf = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf()
     ise_giris_servis.paket_basildi(p, kullanici=request.user)
@@ -10524,14 +10552,17 @@ def personel_detay(request, pk):
         if sekme == "ise_giris":
             ctx["kontrol"] = kl
             ctx["ise_giris_kaydi"] = ise_giris_servis.kayit_oku(p)
-            ctx["ise_giris_form"] = IseGirisKaydiForm(initial=_ise_giris_baslangic(ctx["ise_giris_kaydi"]))
+            ayar = ise_giris_servis.sozlesme_ayari()
+            ctx["ise_giris_form"] = IseGirisKaydiForm(initial=_ise_giris_baslangic(ctx["ise_giris_kaydi"]), varsayilan=ayar)
+            ctx["sozlesme_ayari"] = ayar
             ctx["ise_giris_duzenlenebilir"] = ekran_gorebilir(request.user, "personel")
             ucret_gorebilir = ekran_gorebilir(request.user, "personel_ucret")
             firma = firma_servis.firma_bilgisi_getir()
             ctx["paket_belgeleri"] = [s for s in belge_sablon_servis.gorunum_listesi() if s["aktif"]]
             ctx["eksik_bilgiler"] = ise_giris_servis.eksik_bilgiler(
-                p, firma, ctx["ise_giris_kaydi"], ucret_gorebilir=ucret_gorebilir,
+                p, firma, ctx["ise_giris_kaydi"], ucret_gorebilir=ucret_gorebilir, ayar=ayar,
                 ucret=ise_giris_servis.ucret_metni(p, bugun=bugun) if ucret_gorebilir else "")
+            ctx["etkin_sozlesme"] = ise_giris_servis.etkin_sozlesme(ctx["ise_giris_kaydi"], ayar)
             ctx["ucret_gorebilir"] = ucret_gorebilir
     if sekme == "genel":
         bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun
