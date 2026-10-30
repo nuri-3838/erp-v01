@@ -155,6 +155,7 @@ from core.services import personel_belge as belge_servis
 from core.services import personel_devam as devam_servis
 from core.services import belge_sablon as belge_sablon_servis
 from core.services import ise_giris as ise_giris_servis
+from core.services import ise_giris_muhasebe as ise_giris_muhasebe_servis
 from core.services import personel_ucret as ucret_servis
 from core.services import personel_dokum as dokum_servis
 from core.services import resmi_tatil as tatil_servis
@@ -10514,6 +10515,52 @@ def ise_giris_paket_pdf(request, pk):
     return resp
 
 
+@ekran_gerekli_hepsi("personel", "personel_belgeleri")
+def ise_giris_muhasebe_indir(request, pk, bicim):
+    """Muhasebe paketi indirme (GET, hiçbir şey yazmaz): ``muhasebe.xlsx`` (iki sütunlu bilgi listesi) / ``muhasebe.pdf`` (imzasız bilgi formu).
+    Eksik bilgi indirmeyi engellemez (Excel'de zorunlu eksikler kırmızı). Ücret yalnız `personel_ucret` yetkisi olana dahil edilir."""
+    if bicim not in ("xlsx", "pdf"):
+        raise Http404
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    bugun = tr_bugun()
+    firma = firma_servis.firma_bilgisi_getir()
+    kayit = ise_giris_servis.kayit_oku(p)
+    ayar = ise_giris_servis.sozlesme_ayari()
+    ucret_gorebilir = ekran_gorebilir(request.user, "personel_ucret")
+    ad = ise_giris_muhasebe_servis.dosya_adi(p, bicim, bugun)
+    if bicim == "xlsx":
+        veri = ise_giris_muhasebe_servis.excel(p, firma, kayit, ucret_gorebilir=ucret_gorebilir, bugun=bugun, ayar=ayar)
+        resp = HttpResponse(veri, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = _pdf_content_disposition(ad, ek="attachment")
+    else:
+        from weasyprint import HTML
+        ctx = _pdf_firma_baglami()
+        ctx.update({"belgeler": [ise_giris_muhasebe_servis.pdf_belgesi(p, firma, kayit, ucret_gorebilir=ucret_gorebilir, bugun=bugun, ayar=ayar)],
+                    "belge_tarihi": bugun, "personel": p})
+        resp = HttpResponse(HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf(), content_type="application/pdf")
+        resp["Content-Disposition"] = _pdf_content_disposition(ad)
+    resp["Cache-Control"] = "private, no-store"
+    return resp
+
+
+@ekran_gerekli_hepsi("personel", "personel_belgeleri")
+def ise_giris_muhasebe_gonderildi(request, pk):
+    """"Muhasebeye gönderildi" işareti (POST): tarih (boşsa bugün) yazılır; ``geri_al=1`` temizler. Paketi indirmek gönderim sayılmaz."""
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        geri_al = request.POST.get("geri_al") == "1"
+        tarih = None
+        ham = (request.POST.get("tarih") or "").strip()
+        try:
+            if ham and not geri_al:
+                tarih = datetime.date.fromisoformat(ham)
+            ise_giris_muhasebe_servis.gonderildi_isaretle(p, tarih=tarih, geri_al=geri_al, kullanici=request.user)
+            messages.success(request, "Muhasebe gönderim işareti kaldırıldı." if geri_al else "Muhasebeye gönderildi olarak işaretlendi.")
+        except ValueError as e:                                      # IseGirisHatasi ve geçersiz tarih (ikisi de ValueError)
+            messages.error(request, str(e) if isinstance(e, ise_giris_servis.IseGirisHatasi) else "Geçersiz tarih.")
+    return redirect(_personel_sekme_url(p.pk, "ise_giris") + "#muhasebe-paketi")
+
+
 @never_cache
 @ekran_gerekli("personel")
 def personel_detay(request, pk):
@@ -10564,6 +10611,8 @@ def personel_detay(request, pk):
                 p, firma, ctx["ise_giris_kaydi"], ucret_gorebilir=ucret_gorebilir, ayar=ayar,
                 ucret=ise_giris_servis.ucret_metni(p, bugun=bugun) if ucret_gorebilir else "")
             ctx["etkin_sozlesme"] = ise_giris_servis.etkin_sozlesme(ctx["ise_giris_kaydi"], ayar)
+            ctx["muhasebe"] = ise_giris_muhasebe_servis.hazirlik(p, ctx["ise_giris_kaydi"], bugun=bugun)
+            ctx["bugun_iso"] = bugun.isoformat()
             ctx["ucret_gorebilir"] = ucret_gorebilir
     if sekme == "genel":
         bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun

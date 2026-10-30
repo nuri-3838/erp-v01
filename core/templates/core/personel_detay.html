@@ -176,6 +176,40 @@
     {% endif %}
   </section>
 
+  <section class="icerik-kart" id="muhasebe-paketi">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">🧾</span>Muhasebe Paketi</h2>
+      {% if muhasebe.gonderildi %}<span class="rozet rozet-aktif">Muhasebeye gönderildi: {{ muhasebe.gonderildi|date:"d.m.Y" }}</span>
+      {% elif muhasebe.hazir %}<span class="rozet rozet-aktif">Hazır</span>
+      {% else %}<span class="rozet rozet-uyari">Eksik bilgi var</span>{% endif %}
+    </div>
+    <p class="yardim" style="margin:-.2rem 0 .8rem">Resmî işe girişi (SGK işe giriş bildirgesi) muhasebe/mali müşavir yapar; ERP onu göndermez. Aşağıdaki Excel/PDF personel kartından otomatik
+      hazırlanır, indirip muhasebeye iletin, ardından "gönderildi" olarak işaretleyin.{% if not ucret_gorebilir %} Ücret görme yetkiniz olmadığı için pakete ücret girmez.{% endif %}</p>
+    {% if muhasebe.uyari %}<div class="uyari" style="margin-bottom:.8rem">⏰ {{ muhasebe.uyari }}</div>{% endif %}
+    {% if muhasebe.eksikler %}
+    <div class="uyari" style="margin-bottom:.8rem">
+      <strong>Muhasebe için eksik bilgiler:</strong> {{ muhasebe.eksikler|join:", " }}.
+      <a href="{% url 'core:personel_duzenle' p.pk %}">Personel kartını düzenle</a> (indirme yine de yapılabilir; Excel'de eksikler kırmızı işaretlenir).
+    </div>
+    {% endif %}
+    {% if muhasebe.onerilen_eksikler %}<p class="yardim">Önerilen eksikler: {{ muhasebe.onerilen_eksikler|join:", " }}.</p>{% endif %}
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.9rem">
+      <a class="birincil" href="{% url 'core:ise_giris_muhasebe_indir' p.pk 'xlsx' %}">📊 Excel indir</a>
+      <a class="dugme" href="{% url 'core:ise_giris_muhasebe_indir' p.pk 'pdf' %}" target="_blank" rel="noopener">📄 Bilgi formu (PDF)</a>
+    </div>
+    <form method="post" action="{% url 'core:ise_giris_muhasebe_gonderildi' p.pk %}" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+      {% csrf_token %}
+      {% if muhasebe.gonderildi %}
+        <input type="hidden" name="geri_al" value="1">
+        <button type="submit" class="dugme-ikincil" onclick="return confirm('Muhasebeye gönderildi işareti kaldırılsın mı?');">Gönderildi işaretini kaldır</button>
+      {% else %}
+        <div class="alan" style="max-width:12rem;margin:0"><label for="muhasebe-tarih">Gönderim tarihi</label>
+          <input type="date" id="muhasebe-tarih" name="tarih" value="{{ bugun_iso }}" max="{{ bugun_iso }}"></div>
+        <button type="submit" class="dugme">Muhasebeye gönderildi olarak işaretle</button>
+      {% endif %}
+    </form>
+  </section>
+
   <section class="icerik-kart">
     <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">📋</span>Özlük Kontrol Listesi</h2>

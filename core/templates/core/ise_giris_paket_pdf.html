@@ -51,7 +51,7 @@
   {% endfor %}
   {% for p in b.paragraflar %}<p>{{ p }}</p>{% endfor %}
 
-  <div class="imza">
+  {% if b.imza != "yok" %}<div class="imza">
     {% if b.imza == "iki_taraf" %}
     <div class="kol">
       <div class="rol">İŞVEREN</div>
@@ -68,7 +68,7 @@
       <div class="satir"><span>Tarih</span><span class="bos"></span></div>
       <div class="satir imza-alani"><span>İmza</span><span class="bos"></span></div>
     </div>
-  </div>
+  </div>{% endif %}
 </section>
 {% endfor %}
 </body>
