@@ -10894,7 +10894,7 @@ def _gri_png_b64(bayt):
 
 @ekran_gerekli("personel")
 def izin_imzali_yukle(request, pk):
-    """İmzalı formu (PDF/JPG/PNG ≤ 10 MB) izne bağlar + Özlük Belgeleri'ne "İzin formu – tarih"; yeniden yükleme eskisini değiştirir (onay ekranda)."""
+    """İmzalı formu (PDF/JPG/PNG ≤ 15 MB) izne bağlar + Özlük Belgeleri'ne "İzin formu – tarih"; yeniden yükleme eskisini değiştirir (onay ekranda)."""
     izin = get_object_or_404(PersonelIzin.objects.select_related("personel"), pk=pk, silindi=False, personel__silindi=False)
     if request.method == "POST":
         try:

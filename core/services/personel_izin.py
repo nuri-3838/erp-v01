@@ -377,7 +377,7 @@ def izin_formu_baglam(izin: PersonelIzin) -> dict:
 
 @transaction.atomic
 def imzali_form_yukle(izin: PersonelIzin, dosya, kullanici=None) -> PersonelBelge:
-    """İmzalı İzin Talep ve Onay Formu'nu (PDF/JPG/PNG, ≤10 MB — personel_belge kuralları) Özlük Belgeleri'ne "İzin formu – dd.mm.yyyy" adıyla
+    """İmzalı İzin Talep ve Onay Formu'nu (PDF/JPG/PNG, ≤15 MB — personel_belge kuralları) Özlük Belgeleri'ne "İzin formu – dd.mm.yyyy" adıyla
     ekler ve izne bağlar; önceki imzalı form varsa soft-silinir (ekranda onay sorulur)."""
     from core.services import personel_belge as belge_servis
     if izin.silindi:

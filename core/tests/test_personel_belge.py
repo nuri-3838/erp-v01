@@ -85,6 +85,13 @@ class DosyaKabulTest(OzelDizinTestTemel):
         with self.assertRaisesMessage(PersonelBelgeHatasi, "çok büyük"):
             belge_ekle(self.p, tur="DIGER", dosya=buyuk)
 
+    def test_sinir_15_mb(self):
+        self.assertEqual(MAKS_BOYUT, 15 * 1024 * 1024)
+        orta = yuklenen("orta.pdf", b"%PDF-" + b"0" * (12 * 1024 * 1024))        # 10 MB üstü, 15 MB altı
+        self.assertIsNotNone(belge_ekle(self.p, tur="DIGER", dosya=orta))
+        with self.assertRaisesMessage(PersonelBelgeHatasi, "en fazla 15 MB"):
+            belge_ekle(self.p, tur="DIGER", dosya=yuklenen("buyuk.pdf", b"%PDF-" + b"0" * MAKS_BOYUT))
+
     def test_gecersiz_tur_ve_bos_dosya(self):
         with self.assertRaises(PersonelBelgeHatasi):
             belge_ekle(self.p, tur="SACMA", dosya=yuklenen("a.pdf", PDF_BAYT))

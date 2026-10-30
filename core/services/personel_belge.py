@@ -28,7 +28,7 @@ from core.tarih import tr_bugun
 
 RESIM_UZANTI = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 IZINLI_UZANTI = RESIM_UZANTI | {".pdf"}
-MAKS_BOYUT = 10 * 1024 * 1024            # 10 MB (nginx client_max_body_size ile aynı)
+MAKS_BOYUT = 15 * 1024 * 1024            # 15 MB (nginx client_max_body_size bundan az olmamalı)
 _RESIM_FORMATLARI = {"JPEG", "PNG", "WEBP", "GIF"}
 
 
@@ -45,7 +45,7 @@ def _dosya_hazirla(dosya, *, yalniz_resim=False):
         raise PersonelBelgeHatasi(
             f"Desteklenmeyen dosya türü: {ad} (izinli: {', '.join(sorted(izinli))}).")
     if dosya.size > MAKS_BOYUT:
-        raise PersonelBelgeHatasi(f"Dosya çok büyük (en fazla 10 MB): {ad}")
+        raise PersonelBelgeHatasi(f"Dosya çok büyük (en fazla 15 MB): {ad}")
     if uz == ".pdf":
         bas = dosya.read(1024)
         dosya.seek(0)

@@ -3464,7 +3464,7 @@ class PersonelBelgeForm(forms.Form):
         label="Geçerlilik Bitiş Tarihi", required=False,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     dosya = forms.FileField(
-        label="Dosya (PDF veya resim, en fazla 10 MB)",
+        label="Dosya (PDF veya resim, en fazla 15 MB)",
         widget=forms.ClearableFileInput(attrs={"accept": "image/*,application/pdf"}))
 
     def __init__(self, *args, personel_sabit=False, dosya_alani=True, **kwargs):

@@ -3,5 +3,5 @@
   {% csrf_token %}<input type="hidden" name="sonraki" value="{{ sonraki }}">
   <input type="file" name="dosya" accept="application/pdf,.pdf,image/jpeg,.jpg,.jpeg,image/png,.png" hidden
          onchange="if(this.files.length){var f=this.form; if(f.dataset.var==='1' &amp;&amp; !confirm('Bu izin için zaten imzalı form var. Yeni dosya eskisinin yerine geçecek; eski dosya Özlük Belgeleri\'nden kaldırılacak. Devam edilsin mi?')){this.value=''; return;} f.submit();}">
-  <button type="button" class="dugme-ikincil" title="İmzalı formu yükle (PDF/JPG/PNG, en fazla 10 MB)" onclick="this.form.dosya.click()">📎 {% if i.imzali_belge_id and not i.imzali_belge.silindi %}Yeniden yükle{% else %}İmzalı formu yükle{% endif %}</button>
+  <button type="button" class="dugme-ikincil" title="İmzalı formu yükle (PDF/JPG/PNG, en fazla 15 MB)" onclick="this.form.dosya.click()">📎 {% if i.imzali_belge_id and not i.imzali_belge.silindi %}Yeniden yükle{% else %}İmzalı formu yükle{% endif %}</button>
 </form>
