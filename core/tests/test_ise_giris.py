@@ -223,9 +223,20 @@ class KontrolListesiTest(OzelDizinTestTemel):
 
     def test_esdeger_turler(self):
         self.yukle(T.ISG_EGITIMI)                                                              # eski tür yeni "İSG tutanağı" satırını da karşılar
-        self.yukle(T.OPERATOR_BELGESI)
         durum = {s["tur"]: s["durum"] for s in ig.kontrol_listesi(self.p)["satirlar"]}
-        self.assertEqual((durum["ISG_TUTANAK"], durum["MYK_BELGESI"]), ("YUKLU", "YUKLU"))
+        self.assertEqual(durum["ISG_TUTANAK"], "YUKLU")
+
+    def test_liste_icerigi_zorunlular_ustte_parantezsiz(self):
+        """Kaldırılan satırlar listede yok; zorunlular üstte, isteğe bağlılar altta; görünen adlarda gereksiz parantez açıklaması yok."""
+        turler = [t.value for _k, t, _a, _z in ig.KONTROL_LISTESI]
+        for kaldirilan in ("IC_DUZEN_TESLIM", "ZIMMET", "IBAN_BILDIRIMI", "DIPLOMA", "MYK_BELGESI", "ASKERLIK", "HIZMET_DOKUMU", "ENGELLI_RAPORU"):
+            self.assertNotIn(kaldirilan, turler)
+        z = [zorunlu for _k, _t, _a, zorunlu in ig.KONTROL_LISTESI]
+        self.assertEqual(z, sorted(z, reverse=True))                                           # önce tüm zorunlular (True), sonra False
+        self.assertEqual((sum(z), len(z) - sum(z)), (10, 3))
+        self.assertTrue(all("(" not in ad for _k, _t, ad, _z in ig.KONTROL_LISTESI))
+        kl = ig.kontrol_listesi(self.p)
+        self.assertEqual([s["zorunlu"] for s in kl["satirlar"]], z)
 
     def test_belgeler_disaridan_verilirse_sorgu_yok(self):
         from django.db import connection
@@ -293,7 +304,9 @@ class IseGirisSekmesiTest(OzelDizinTestTemel):
     def test_icerik_kontrol_listesi_ve_parametre_formu(self):
         r = self.sekme()
         self.assertContains(r, "Özlük Kontrol Listesi")
-        self.assertContains(r, "Belirsiz süreli iş sözleşmesi (imzalı)")
+        self.assertContains(r, "Belirsiz süreli iş sözleşmesi")
+        self.assertNotContains(r, "(imzalı)")
+        self.assertNotContains(r, "Zimmet tutanağı")
         self.assertContains(r, "İSG işe giriş eğitimi tutanağı")
         self.assertContains(r, "Sözleşme Bilgileri")
         self.assertContains(r, 'name="deneme_suresi_ay"')

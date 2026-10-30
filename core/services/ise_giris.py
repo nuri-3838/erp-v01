@@ -22,35 +22,26 @@ KAYNAKLAR = {
     "MUHASEBE": "Muhasebe / SGK",
 }
 
-# (kaynak, belge türü, görünen ad, zorunlu mu). Zorunlu = işe başlamadan/başlarken özlükte bulunması beklenen temel evrak.
+# (kaynak, belge türü, görünen ad, zorunlu mu). Zorunlu = işe başlamadan/başlarken özlükte bulunması beklenen temel evrak; listede ZORUNLULAR ÜSTTE, sonra isteğe bağlılar.
 KONTROL_LISTESI = (
-    ("IMZALI", T.SOZLESME, "Belirsiz süreli iş sözleşmesi (imzalı)", True),
-    ("IMZALI", T.KVKK, "KVKK aydınlatma + açık rıza (imzalı)", True),
-    ("IMZALI", T.FAZLA_MESAI_ONAYI, "Fazla çalışma muvafakatnamesi (imzalı)", True),
-    ("IMZALI", T.IC_DUZEN_TESLIM, "İç düzen yönetmeliği teslim tutanağı", False),
-    ("IMZALI", T.ZIMMET, "Zimmet tutanağı", False),
+    ("IMZALI", T.SOZLESME, "Belirsiz süreli iş sözleşmesi", True),
+    ("IMZALI", T.KVKK, "KVKK aydınlatma + açık rıza", True),
+    ("IMZALI", T.FAZLA_MESAI_ONAYI, "Fazla çalışma muvafakatnamesi", True),
     ("PERSONEL", T.KIMLIK, "Kimlik fotokopisi", True),
-    ("PERSONEL", T.IKAMETGAH, "İkametgâh belgesi (e-Devlet)", True),
+    ("PERSONEL", T.IKAMETGAH, "İkametgâh belgesi", True),
     ("PERSONEL", T.VESIKALIK, "Vesikalık fotoğraf", True),
     ("PERSONEL", T.ADLI_SICIL, "Adli sicil kaydı", True),
-    ("PERSONEL", T.IBAN_BILDIRIMI, "IBAN bildirimi", True),
-    ("PERSONEL", T.DIPLOMA, "Diploma / sertifika", False),
-    ("PERSONEL", T.MYK_BELGESI, "Mesleki yeterlilik (MYK) belgesi — ilgili meslekte", False),
-    ("PERSONEL", T.ASKERLIK, "Askerlik durum belgesi (erkek personel)", False),
-    ("PERSONEL", T.EHLIYET, "Ehliyet (araç/forklift kullanacaksa)", False),
-    ("PERSONEL", T.HIZMET_DOKUMU, "Önceki işyeri hizmet belgesi (yıllık izin kıdemi için)", False),
-    ("PERSONEL", T.ENGELLI_RAPORU, "Engelli sağlık kurulu raporu (varsa)", False),
-    ("PERSONEL", T.IS_BASVURU, "İş başvuru formu / CV", False),
     ("ISG", T.SAGLIK_RAPORU, "İşe giriş sağlık muayenesi / raporu", True),
     ("ISG", T.ISG_TUTANAK, "İSG işe giriş eğitimi tutanağı", True),
+    ("MUHASEBE", T.SGK_GIRIS, "SGK işe giriş bildirgesi", True),
+    ("PERSONEL", T.EHLIYET, "Ehliyet", False),
+    ("PERSONEL", T.IS_BASVURU, "İş başvuru formu / CV", False),
     ("ISG", T.KKD_TESLIM, "KKD teslim tutanağı", False),
-    ("MUHASEBE", T.SGK_GIRIS, "SGK işe giriş bildirgesi (kopya)", True),
 )
 
 # Eski/benzer türler aynı satırı karşılar (ör. eskiden yüklenmiş "İSG Eğitim Belgesi" yeni "İSG tutanağı" satırını da doldurur).
 _ESDEGER = {
     T.ISG_TUTANAK: (T.ISG_TUTANAK, T.ISG_EGITIMI),
-    T.MYK_BELGESI: (T.MYK_BELGESI, T.OPERATOR_BELGESI),
 }
 
 DURUM_ADLARI = {"EKSIK": "Eksik", "YUKLU": "Yüklü", "YAKLASIYOR": "Süresi yaklaşıyor", "SURESI_DOLDU": "Süresi doldu"}
