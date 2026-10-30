@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<style>
+  /* İşe giriş evrak paketi: A4 dikey, siyah-beyaz; her belge yeni sayfada; imza alanları elle doldurulur (Ad/Tarih/İmza boş). */
+  @page { size: A4 portrait; margin: 16mm 16mm 16mm; @bottom-center { content: "Sayfa " counter(page) " / " counter(pages); font-size: 8px; color: #000; } }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; color: #000; font-size: 10px; line-height: 1.45; margin: 0; }
+  .belge { page-break-after: always; }
+  .belge.son { page-break-after: auto; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 5px; border-bottom: 1.2px solid #000; }
+  .brand { display: flex; align-items: center; gap: 8px; max-width: 68%; }
+  .brand img { height: 30px; filter: grayscale(100%); }
+  .brand .ad { font-size: 10.5px; font-weight: 700; }
+  .brand .ad small { display: block; font-size: 7.6px; font-weight: 400; white-space: pre-line; }
+  .meta { text-align: right; font-size: 8.4px; }
+  h1.baslik { text-align: center; font-size: 12.5px; text-transform: uppercase; letter-spacing: .3px; margin: 14px 0 12px; line-height: 1.35; }
+  p { margin: 0 0 7px; text-align: justify; white-space: pre-line; orphans: 3; widows: 3; }
+  .imza { display: flex; gap: 12px; margin-top: 16px; page-break-inside: avoid; }
+  .imza .kol { flex: 1; border: 0.7px solid #000; padding: 7px 9px 9px; min-height: 118px; }
+  .imza .rol { font-weight: 700; font-size: 9px; border-bottom: 0.8px solid #000; padding-bottom: 3px; margin-bottom: 6px; }
+  .imza .not { font-size: 8.2px; margin-bottom: 6px; }
+  .imza .satir { display: flex; gap: 6px; margin-top: 9px; font-size: 8.4px; align-items: flex-end; }
+  .imza .satir span:first-child { min-width: 52px; }
+  .imza .satir .bos { flex: 1; border-bottom: 0.8px dotted #000; height: 11px; }
+  .imza .satir.imza-alani .bos { height: 34px; }
+  .nusha { text-align: right; font-size: 8px; margin-top: 3px; }
+</style>
+</head>
+<body>
+{% for b in belgeler %}
+<section class="belge{% if forloop.last %} son{% endif %}">
+  <div class="header">
+    <div class="brand">
+      {% if logo_b64 %}<img src="data:image/png;base64,{{ logo_b64 }}" alt="">{% endif %}
+      <div class="ad">{{ firma.unvan|default:"SEMTA" }}{% if firma.adres %}<small>{{ firma.adres }}</small>{% endif %}</div>
+    </div>
+    <div class="meta">Belge tarihi: {{ belge_tarihi|date:"d.m.Y" }}{% if b.nusha_adet > 1 %}<div class="nusha">Nüsha {{ b.nusha_no }} / {{ b.nusha_adet }}</div>{% endif %}</div>
+  </div>
+
+  <h1 class="baslik">{{ b.baslik }}</h1>
+  {% for p in b.paragraflar %}<p>{{ p }}</p>{% endfor %}
+
+  <div class="imza">
+    {% if b.imza == "iki_taraf" %}
+    <div class="kol">
+      <div class="rol">İŞVEREN</div>
+      <div class="not">{{ firma.unvan }}{% if firma.isveren_vekili_adi %}<br>Temsilcisi: {{ firma.isveren_vekili_adi }}{% if firma.isveren_vekili_unvani %} ({{ firma.isveren_vekili_unvani }}){% endif %}{% endif %}</div>
+      <div class="satir"><span>Ad Soyad</span><span class="bos"></span></div>
+      <div class="satir"><span>Tarih</span><span class="bos"></span></div>
+      <div class="satir imza-alani"><span>İmza / Kaşe</span><span class="bos"></span></div>
+    </div>
+    {% endif %}
+    <div class="kol">
+      <div class="rol">İŞÇİ</div>
+      <div class="not">{{ b.imza_notu }}</div>
+      <div class="satir"><span>Ad Soyad</span><span class="bos"></span></div>
+      <div class="satir"><span>Tarih</span><span class="bos"></span></div>
+      <div class="satir imza-alani"><span>İmza</span><span class="bos"></span></div>
+    </div>
+  </div>
+</section>
+{% endfor %}
+</body>
+</html>

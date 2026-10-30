@@ -440,6 +440,7 @@ urlpatterns = [
     path("ik/personel/ekle/", views.personel_ekle, name="personel_ekle"),
     path("ik/personel/<int:pk>/", views.personel_detay, name="personel_detay"),
     path("ik/personel/<int:pk>/ise-giris/", views.ise_giris_kaydet, name="ise_giris_kaydet"),
+    path("ik/personel/<int:pk>/ise-giris/paket.pdf", views.ise_giris_paket_pdf, name="ise_giris_paket_pdf"),
     path("ik/personel/<int:pk>/duzenle/", views.personel_duzenle, name="personel_duzenle"),
     path("ik/personel/<int:pk>/sil/", views.personel_sil, name="personel_sil"),
     path("ik/bordro/", views.bordro_listesi, name="bordro_listesi"),

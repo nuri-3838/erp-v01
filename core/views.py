@@ -10456,6 +10456,36 @@ def ise_giris_kaydet(request, pk):
     return redirect(_personel_sekme_url(p.pk, "ise_giris"))
 
 
+@ekran_gerekli_hepsi("personel", "personel_belgeleri")
+def ise_giris_paket_pdf(request, pk):
+    """İşe giriş evrak paketi (iş sözleşmesi, KVKK, fazla çalışma muvafakatnamesi…): seçilen şablonlar personel/firma bilgisiyle doldurulur,
+    tek A4 PDF olarak döner. POST (basım zamanı kaydedilir; GET yazmaz). Ücret yalnız `personel_ucret` yetkisi olana basılır, yoksa noktalı çizgi.
+    Eksik bilgi basımı engellemez (çıktıda elle doldurulacak noktalı çizgi olur)."""
+    from weasyprint import HTML
+
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    donus = _personel_sekme_url(p.pk, "ise_giris")
+    if request.method != "POST":
+        return redirect(donus)
+    secilen = set(request.POST.getlist("belge"))
+    sablonlar = [s for s in belge_sablon_servis.hazirla(request.user) if s.aktif and s.kod in secilen]
+    if not sablonlar:
+        messages.error(request, "Basılacak belge seçilmedi. (Pakete dahil olan şablonlar Ayarlar > Belge Şablonları'ndan belirlenir.)")
+        return redirect(donus)
+    nusha = 2 if request.POST.get("sozlesme_nusha") == "2" else 1
+    ctx = _pdf_firma_baglami()
+    bugun = tr_bugun()
+    ucret = ise_giris_servis.ucret_metni(p, bugun=bugun) if ekran_gorebilir(request.user, "personel_ucret") else ""
+    ctx.update({"belgeler": ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, nusha=nusha, ucret=ucret, bugun=bugun),
+                "belge_tarihi": bugun, "personel": p})
+    pdf = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf()
+    ise_giris_servis.paket_basildi(p, kullanici=request.user)
+    resp = HttpResponse(pdf, content_type="application/pdf")
+    resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("ise-giris-evraklari", p.ad_soyad, bugun.isoformat()))
+    resp["Cache-Control"] = "private, no-store"
+    return resp
+
+
 @never_cache
 @ekran_gerekli("personel")
 def personel_detay(request, pk):
@@ -10496,6 +10526,13 @@ def personel_detay(request, pk):
             ctx["ise_giris_kaydi"] = ise_giris_servis.kayit_oku(p)
             ctx["ise_giris_form"] = IseGirisKaydiForm(initial=_ise_giris_baslangic(ctx["ise_giris_kaydi"]))
             ctx["ise_giris_duzenlenebilir"] = ekran_gorebilir(request.user, "personel")
+            ucret_gorebilir = ekran_gorebilir(request.user, "personel_ucret")
+            firma = firma_servis.firma_bilgisi_getir()
+            ctx["paket_belgeleri"] = [s for s in belge_sablon_servis.gorunum_listesi() if s["aktif"]]
+            ctx["eksik_bilgiler"] = ise_giris_servis.eksik_bilgiler(
+                p, firma, ctx["ise_giris_kaydi"], ucret_gorebilir=ucret_gorebilir,
+                ucret=ise_giris_servis.ucret_metni(p, bugun=bugun) if ucret_gorebilir else "")
+            ctx["ucret_gorebilir"] = ucret_gorebilir
     if sekme == "genel":
         bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun
         ctx["kidem"] = kidem_metni(p.ise_giris_tarihi, bitis)

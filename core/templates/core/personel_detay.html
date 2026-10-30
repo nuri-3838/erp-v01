@@ -143,6 +143,45 @@
   {% elif sekme == "ise_giris" %}
   <section class="icerik-kart">
     <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">🖨️</span>Evrak Paketi</h2>
+      {% if ise_giris_kaydi.paket_basim_zamani %}<span class="yardim">Son basım: {{ ise_giris_kaydi.paket_basim_zamani|tr_zaman:"d.m.Y H:i" }}</span>{% endif %}
+    </div>
+    <p class="yardim" style="margin:-.2rem 0 .8rem">İş sözleşmesi, KVKK ve fazla çalışma muvafakatnamesi bu personelin bilgileriyle doldurulur; çıktıyı alıp işe başlamadan önce imzalatın,
+      imzalı nüshaları aşağıdaki listeden yükleyin. Metinler Ayarlar &gt; Belge Şablonları'ndan düzenlenir.</p>
+    {% if eksik_bilgiler %}
+    <div class="uyari" style="margin-bottom:.8rem">
+      <strong>Eksik bilgiler</strong> (basılabilir; eksik yerler çıktıda elle doldurulacak noktalı çizgi olur):
+      <ul style="margin:.3rem 0 0 1.1rem">
+        {% for e in eksik_bilgiler %}<li>{{ e.alan }} —
+          {% if e.nerede == "personel" %}<a href="{% url 'core:personel_duzenle' p.pk %}">personel kartı</a>
+          {% elif e.nerede == "firma" %}{% if kullanici_yonetici %}<a href="{% url 'core:firma_bilgileri' %}">firma bilgileri</a>{% else %}firma bilgileri (yönetici){% endif %}
+          {% elif e.nerede == "sozlesme" %}<a href="#sozlesme-bilgileri">aşağıdaki sözleşme bilgileri</a>
+          {% else %}<a href="?sekme=ucret">ücret sekmesi</a>{% endif %}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if not ucret_gorebilir %}<p class="yardim">Ücret görme yetkiniz olmadığı için sözleşmede ücret satırı noktalı çizgi basılır.</p>{% endif %}
+    {% if paket_belgeleri %}
+    <form method="post" action="{% url 'core:ise_giris_paket_pdf' p.pk %}" target="_blank">
+      {% csrf_token %}
+      <div style="display:flex;flex-direction:column;gap:.35rem;margin-bottom:.8rem">
+        {% for b in paket_belgeleri %}
+          <label class="secenek" style="text-transform:none;letter-spacing:0"><input type="checkbox" name="belge" value="{{ b.kod }}" checked> {{ b.baslik }}</label>
+        {% endfor %}
+      </div>
+      <div class="alan" style="max-width:20rem;margin-bottom:.8rem">
+        <label for="sozlesme-nusha">İş sözleşmesi nüsha sayısı</label>
+        <select id="sozlesme-nusha" name="sozlesme_nusha"><option value="2" selected>2 nüsha (işveren + işçi)</option><option value="1">1 nüsha</option></select>
+      </div>
+      <button type="submit" class="birincil">🖨️ Evrak Paketini Hazırla (PDF)</button>
+    </form>
+    {% else %}
+    <p class="yardim">Pakete dahil şablon yok. Yönetici, Ayarlar &gt; Belge Şablonları'ndan şablonları açabilir.</p>
+    {% endif %}
+  </section>
+
+  <section class="icerik-kart">
+    <div class="bolum-ust">
       <h2 class="bolum-baslik"><span class="emoji">📋</span>Özlük Kontrol Listesi</h2>
       <span class="yardim">{{ kontrol.yuklu }} / {{ kontrol.toplam }} yüklü · eksik zorunlu belge:
         <strong class="{% if kontrol.eksik_zorunlu %}ik-eksi{% endif %}">{{ kontrol.eksik_zorunlu }}</strong></span>
@@ -170,7 +209,7 @@
   </section>
 
   {% if ise_giris_duzenlenebilir %}
-  <section class="icerik-kart">
+  <section class="icerik-kart" id="sozlesme-bilgileri">
     <h2 class="bolum-baslik"><span class="emoji">⚙️</span>Sözleşme Bilgileri</h2>
     <p class="yardim" style="margin-top:-.3rem">İş sözleşmesi çıktısında kullanılır; boş bırakılan alan çıktıda elle doldurulacak noktalı çizgi olur.</p>
     <form method="post" action="{% url 'core:ise_giris_kaydet' p.pk %}" autocomplete="off">

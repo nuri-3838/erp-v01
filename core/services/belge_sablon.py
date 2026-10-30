@@ -24,14 +24,12 @@ YER_TUTUCULAR = {
     "baba_adi": "Baba adı", "ana_adi": "Ana adı", "adres": "Personel adresi", "telefon": "Personel telefonu", "iban": "IBAN",
     "gorev": "Görev", "departman": "Departman", "ise_giris": "İşe giriş tarihi", "deneme_suresi": "Deneme süresi (örn. 2 ay)",
     "haftalik_saat": "Haftalık çalışma saati", "calisma_gunleri": "Çalışma günleri", "calisma_saatleri": "Günlük çalışma saatleri",
-    "ucret": "Ücret (net tutar / asgari ücret; ücret yetkisi yoksa boş çizgi)", "ucret_odeme": "Ücret ödeme şekli/günü", "bugun": "Belge tarihi (basım günü)",
+    "ucret": "Ücret (net tutar ya da \"asgari ücret\"; ücret yetkisi yoksa boş çizgi)", "ucret_odeme": "Ücret ödeme şekli/günü", "bugun": "Belge tarihi (basım günü)",
 }
 
 _YER_TUTUCU_RE = re.compile(r"\{([a-z_0-9]+)\}")
 
 _SOZLESME = """\
-BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ
-
 MADDE 1 – TARAFLAR
 İŞVEREN: {firma_unvan}
 Adres: {firma_adres}
@@ -59,7 +57,7 @@ MADDE 5 – ÇALIŞMA SÜRESİ
 Haftalık çalışma süresi {haftalik_saat} saattir. Çalışma günleri: {calisma_gunleri}. Günlük çalışma saatleri: {calisma_saatleri}. Ara dinlenmesi, hafta tatili, ulusal bayram ve genel tatil günleri ile yıllık ücretli izin hakları ilgili kanun hükümlerine göre kullandırılır.
 
 MADDE 6 – ÜCRET
-İşçiye aylık net {ucret} ücret ödenir. Ödeme şekli/günü: {ucret_odeme}. Ücret, işçinin bildirdiği banka hesabına (IBAN: {iban}) yatırılır. Yasal kesintiler işverence yapılır.
+İşçiye aylık net {ucret} tutarında ücret ödenir. Ödeme şekli/günü: {ucret_odeme}. Ücret, işçinin bildirdiği banka hesabına (IBAN: {iban}) yatırılır. Yasal kesintiler işverence yapılır.
 
 MADDE 7 – FAZLA ÇALIŞMA
 Fazla çalışma, işçinin yazılı onayı ile ve yıllık yasal sınırlar içinde yapılır; ayrıca imzalanan "Fazla Çalışma Muvafakatnamesi" bu sözleşmenin ekidir. Fazla çalışmanın karşılığı 4857 sayılı Kanun m. 41 hükümlerine göre ödenir veya serbest zaman olarak kullandırılır.
@@ -84,8 +82,6 @@ MADDE 13 – YÜRÜRLÜK
 """
 
 _KVKK_AYDINLATMA = """\
-KİŞİSEL VERİLERİN KORUNMASI KANUNU KAPSAMINDA ÇALIŞAN AYDINLATMA METNİ
-
 1. Veri Sorumlusu
 6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK") uyarınca kişisel verileriniz, veri sorumlusu sıfatıyla {firma_unvan} ({firma_adres}) tarafından aşağıda açıklanan kapsamda işlenmektedir.
 
@@ -114,8 +110,6 @@ Yukarıdaki aydınlatma metnini okudum, bir nüshasını teslim aldım.
 """
 
 _KVKK_ACIK_RIZA = """\
-KİŞİSEL VERİLERİN İŞLENMESİNE İLİŞKİN AÇIK RIZA METNİ
-
 {firma_unvan} tarafından tarafıma verilen Aydınlatma Metni'ni okudum ve anladım. Aşağıdaki hususlarda, ilgili işlemlerle sınırlı olmak üzere, özgür irademle açık rıza veriyorum:
 
 • Fotoğrafımın personel kartında, işyeri yönetim sistemi içinde ve işyeri kimlik/yetki uygulamalarında kullanılması,
@@ -129,8 +123,6 @@ Ad Soyad: {ad_soyad}   —   T.C. Kimlik No: {tc}   —   Tarih: {bugun}
 """
 
 _FAZLA_CALISMA = """\
-FAZLA ÇALIŞMA MUVAFAKATNAMESİ
-
 {firma_unvan} işyerinde {ise_giris} tarihinden itibaren "{gorev}" olarak çalışmaya başlayan ben {ad_soyad} (T.C. Kimlik No: {tc});
 
 4857 sayılı İş Kanunu m. 41 ve Fazla Çalışma ve Fazla Sürelerle Çalışma Yönetmeliği uyarınca, işin gereklerinin ve işyerinin ihtiyaçlarının gerektirdiği hâllerde, haftalık yasal çalışma süresini aşan fazla çalışma yapmayı, yıllık yasal sınırı aşmamak kaydıyla, yazılı olarak kabul ediyorum.
@@ -144,8 +136,8 @@ Tarih: {bugun}
 
 VARSAYILAN = {
     BelgeSablonu.Kod.SOZLESME: {"baslik": "BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ", "metin": _SOZLESME, "sira": 1},
-    BelgeSablonu.Kod.KVKK_AYDINLATMA: {"baslik": "KVKK AYDINLATMA METNİ", "metin": _KVKK_AYDINLATMA, "sira": 2},
-    BelgeSablonu.Kod.KVKK_ACIK_RIZA: {"baslik": "KVKK AÇIK RIZA METNİ", "metin": _KVKK_ACIK_RIZA, "sira": 3},
+    BelgeSablonu.Kod.KVKK_AYDINLATMA: {"baslik": "KİŞİSEL VERİLERİN KORUNMASI KANUNU KAPSAMINDA ÇALIŞAN AYDINLATMA METNİ", "metin": _KVKK_AYDINLATMA, "sira": 2},
+    BelgeSablonu.Kod.KVKK_ACIK_RIZA: {"baslik": "KİŞİSEL VERİLERİN İŞLENMESİNE İLİŞKİN AÇIK RIZA METNİ", "metin": _KVKK_ACIK_RIZA, "sira": 3},
     BelgeSablonu.Kod.FAZLA_CALISMA: {"baslik": "FAZLA ÇALIŞMA MUVAFAKATNAMESİ", "metin": _FAZLA_CALISMA, "sira": 4},
 }
 
@@ -184,6 +176,17 @@ def hazirla(kullanici=None) -> list:
             BelgeSablonu.objects.create(kod=kod, baslik=v["baslik"], metin=v["metin"], sira=v["sira"], aktif=True,
                                         created_by=kullanici, updated_by=kullanici)
     return list(BelgeSablonu.objects.filter(silindi=False).order_by("sira", "id"))
+
+
+def gorunum_listesi() -> list:
+    """Kart ekranı için SALT-OKUNUR liste [{kod, baslik, aktif}]: kayıtlı şablonlar; henüz oluşmamış olanlar varsayılanıyla (aktif) gösterilir.
+    Kayıt oluşturmaz (GET yazmaz); basım sırasında ``hazirla()`` eksikleri oluşturur."""
+    var = {s.kod: s for s in BelgeSablonu.objects.filter(silindi=False)}
+    out = []
+    for kod, v in sorted(VARSAYILAN.items(), key=lambda kv: kv[1]["sira"]):
+        s = var.get(kod)
+        out.append({"kod": kod, "baslik": s.baslik if s else v["baslik"], "aktif": s.aktif if s else True, "sira": s.sira if s else v["sira"]})
+    return sorted(out, key=lambda x: x["sira"])
 
 
 def getir(kod: str) -> BelgeSablonu:

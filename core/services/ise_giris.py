@@ -130,3 +130,101 @@ def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_
         kayit.save(update_fields=["deneme_suresi_ay", "haftalik_calisma_saati", "calisma_gunleri", "calisma_saatleri", "ucret_odeme",
                                   "notlar", "updated_by", "updated_at"])
     return kayit
+
+
+# === Evrak paketi (Dilim 2): şablon yer tutucu değerleri, eksik bilgi uyarıları, paket bağlamı ===========================================
+
+# Şablon kodu -> imza düzeni: iki_taraf (işveren + işçi) / isci (yalnız işçi) ve işçi imzasının üstüne basılan beyan.
+IMZA = {
+    "SOZLESME": ("iki_taraf", "Bu sözleşmeyi okudum, anladım, bir nüshasını teslim aldım."),
+    "KVKK_AYDINLATMA": ("isci", "Aydınlatma metnini okudum, bir nüshasını teslim aldım."),
+    "KVKK_ACIK_RIZA": ("isci", "Açık rızamı özgür irademle veriyorum."),
+    "FAZLA_CALISMA": ("iki_taraf", "Fazla çalışmaya yazılı olarak muvafakat ediyorum."),
+}
+
+
+def ucret_metni(personel: Personel, *, bugun=None) -> str:
+    """Sözleşmedeki ücret ifadesi: net tutar ("40.000,00 TL") ya da "asgari ücret"; kayıt yoksa boş (çıktıda noktalı çizgi).
+    İşe giriş tarihi ileride ise o tarihteki geçerli kayıt alınır."""
+    from core.sayi import format_tr
+    from core.services import personel_ucret as ucret_servis
+    bugun = bugun or tr_bugun()
+    tarih = max(bugun, personel.ise_giris_tarihi) if personel.ise_giris_tarihi else bugun
+    u = ucret_servis.gecerli_ucret(personel, tarih)
+    if u is None:
+        return ""
+    return "asgari ücret" if u.tip == "ASGARI" else f"{format_tr(u.net_tutar)} TL"
+
+
+def yer_tutucu_degerleri(personel: Personel, firma, kayit, *, ucret="", bugun=None) -> dict:
+    """``belge_sablon.doldur`` için {yer_tutucu: değer}. Boş/bilinmeyen değerler çıktıda noktalı çizgi olur."""
+    from core.dogrulama import iban_bicimli
+    from core.sayi import format_tr
+    bugun = bugun or tr_bugun()
+    gun = lambda d: d.strftime("%d.%m.%Y") if d else ""
+    saat = kayit.haftalik_calisma_saati
+    return {
+        "firma_unvan": firma.unvan, "firma_adres": " ".join((firma.adres or "").split()), "firma_vergi_dairesi": firma.vergi_dairesi,
+        "firma_vergi_no": firma.vergi_no, "firma_eposta": firma.eposta, "mersis_no": firma.mersis_no, "sgk_sicil_no": firma.sgk_isyeri_sicil_no,
+        "vekil_ad": firma.isveren_vekili_adi, "vekil_unvan": firma.isveren_vekili_unvani,
+        "ad_soyad": personel.ad_soyad, "tc": personel.tc_kimlik_no, "dogum_tarihi": gun(personel.dogum_tarihi), "dogum_yeri": personel.dogum_yeri,
+        "baba_adi": personel.baba_adi, "ana_adi": personel.ana_adi, "adres": " ".join((personel.adres or "").split()),
+        "telefon": personel.telefon, "iban": iban_bicimli(personel.iban) if personel.iban else "",
+        "gorev": personel.gorev, "departman": personel.departman, "ise_giris": gun(personel.ise_giris_tarihi),
+        "deneme_suresi": f"{kayit.deneme_suresi_ay} ay" if kayit.deneme_suresi_ay else "",
+        "haftalik_saat": format_tr(saat, 1).replace(",0", "") if saat else "",
+        "calisma_gunleri": kayit.calisma_gunleri, "calisma_saatleri": kayit.calisma_saatleri,
+        "ucret": ucret, "ucret_odeme": kayit.ucret_odeme, "bugun": gun(bugun),
+    }
+
+
+def eksik_bilgiler(personel: Personel, firma, kayit, *, ucret_gorebilir=False, ucret="") -> list:
+    """Evrak basılmadan önce kullanıcıya gösterilen eksikler: [{"alan", "nerede": personel|firma|sozlesme|ucret}]. Basımı ENGELLEMEZ
+    (eksik değer çıktıda elle doldurulacak noktalı çizgi olur)."""
+    out = []
+    for alan, ad in (("tc_kimlik_no", "TC kimlik no"), ("dogum_tarihi", "Doğum tarihi"), ("dogum_yeri", "Doğum yeri"), ("baba_adi", "Baba adı"),
+                     ("ana_adi", "Ana adı"), ("adres", "Adres"), ("gorev", "Görev"), ("iban", "IBAN")):
+        if not getattr(personel, alan):
+            out.append({"alan": ad, "nerede": "personel"})
+    for alan, ad in (("unvan", "Firma unvanı"), ("adres", "Firma adresi"), ("isveren_vekili_adi", "İşveren vekili adı")):
+        if not getattr(firma, alan):
+            out.append({"alan": ad, "nerede": "firma"})
+    for alan, ad in (("deneme_suresi_ay", "Deneme süresi"), ("haftalik_calisma_saati", "Haftalık çalışma saati"),
+                     ("calisma_gunleri", "Çalışma günleri"), ("calisma_saatleri", "Günlük çalışma saatleri")):
+        if getattr(kayit, alan) in (None, ""):
+            out.append({"alan": ad, "nerede": "sozlesme"})
+    if ucret_gorebilir and not ucret:
+        out.append({"alan": "Ücret kaydı", "nerede": "ucret"})
+    return out
+
+
+def paket_hazirla(personel: Personel, firma, kayit, sablonlar, *, nusha=1, ucret="", bugun=None) -> list:
+    """Basılacak belgeler: [{kod, baslik, paragraflar, imza, imza_notu, nusha_no, nusha_adet}] — şablon sırasıyla; iş sözleşmesi ``nusha`` kez
+    (varsayılan 1; sözleşme metni "iki nüsha" der → ekran 2 önerir). Yer tutucular güvenli düz yazı değiştirmeyle doldurulur."""
+    from core.services import belge_sablon as bs
+    degerler = yer_tutucu_degerleri(personel, firma, kayit, ucret=ucret, bugun=bugun)
+    belgeler = []
+    for s in sablonlar:
+        metin = bs.doldur(s.metin, degerler)
+        paragraflar = [p.strip() for p in metin.replace("\r\n", "\n").split("\n\n") if p.strip()]
+        imza, imza_notu = IMZA.get(s.kod, ("isci", ""))
+        adet = nusha if s.kod == "SOZLESME" else 1
+        for no in range(1, adet + 1):
+            belgeler.append({"kod": s.kod, "baslik": bs.doldur(s.baslik, degerler), "paragraflar": paragraflar, "imza": imza,
+                             "imza_notu": imza_notu, "nusha_no": no, "nusha_adet": adet})
+    return belgeler
+
+
+@transaction.atomic
+def paket_basildi(personel: Personel, *, kullanici=None) -> IseGirisKaydi:
+    """Evrak paketi basım zamanını kaydeder (yalnız o alan; sözleşme parametrelerine/muhasebe alanına dokunmaz)."""
+    from django.utils import timezone
+    kayit = kayit_oku(personel)
+    kayit.paket_basim_zamani = timezone.now()
+    kayit.updated_by = kullanici
+    if kayit.pk is None:
+        kayit.created_by = kullanici
+        kayit.save()
+    else:
+        kayit.save(update_fields=["paket_basim_zamani", "updated_by", "updated_at"])
+    return kayit
