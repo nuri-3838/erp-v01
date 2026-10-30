@@ -3189,6 +3189,11 @@ class FirmaBilgisi(TemelModel):
     eposta = models.EmailField("e-posta", blank=True)
     web = models.CharField("web sitesi", max_length=200, blank=True)
     logo = models.ImageField("logo", upload_to="firma_logo/", blank=True, null=True)
+    # İşe giriş evrakları (sözleşme/KVKK/muvafakat) için işveren bilgileri
+    isveren_vekili_adi = models.CharField("işveren vekili adı soyadı", max_length=120, blank=True)
+    isveren_vekili_unvani = models.CharField("işveren vekili unvanı", max_length=120, blank=True)
+    mersis_no = models.CharField("MERSİS no", max_length=20, blank=True)
+    sgk_isyeri_sicil_no = models.CharField("SGK işyeri sicil no", max_length=40, blank=True)
 
     class Meta:
         db_table = "core_firma_bilgisi"
@@ -4043,11 +4048,22 @@ class Personel(TemelModel):
     bugün/gelecekteyse aktif). TC kimlik no doluysa silinmemişler arası benzersiz."""
 
     KAN_GRUPLARI = [(k, k) for k in ("0+", "0-", "A+", "A-", "B+", "B-", "AB+", "AB-")]
+    CINSIYETLER = [("ERKEK", "Erkek"), ("KADIN", "Kadın")]
+    MEDENI_DURUMLAR = [("BEKAR", "Bekâr"), ("EVLI", "Evli"), ("BOSANMIS", "Boşanmış"), ("DUL", "Dul")]
+    OGRENIM_DURUMLARI = [("ILKOKUL", "İlkokul"), ("ORTAOKUL", "Ortaokul"), ("LISE", "Lise"), ("ONLISANS", "Önlisans"),
+                         ("LISANS", "Lisans"), ("YUKSEK_LISANS", "Yüksek Lisans / Doktora")]
 
     ad = models.CharField("ad", max_length=100)
     soyad = models.CharField("soyad", max_length=100)
     tc_kimlik_no = models.CharField("TC kimlik no", max_length=11, blank=True)
     dogum_tarihi = models.DateField("doğum tarihi", null=True, blank=True)
+    dogum_yeri = models.CharField("doğum yeri", max_length=80, blank=True)
+    baba_adi = models.CharField("baba adı", max_length=80, blank=True)
+    ana_adi = models.CharField("ana adı", max_length=80, blank=True)
+    cinsiyet = models.CharField("cinsiyet", max_length=6, blank=True, choices=CINSIYETLER)
+    medeni_durum = models.CharField("medeni durum", max_length=10, blank=True, choices=MEDENI_DURUMLAR)
+    cocuk_sayisi = models.PositiveSmallIntegerField("çocuk sayısı", null=True, blank=True)
+    ogrenim_durumu = models.CharField("öğrenim durumu", max_length=14, blank=True, choices=OGRENIM_DURUMLARI)
     kan_grubu = models.CharField("kan grubu", max_length=3, blank=True, choices=KAN_GRUPLARI)
     telefon = models.CharField("telefon", max_length=20, blank=True)
     eposta = models.EmailField("e-posta", blank=True)
@@ -4179,6 +4195,22 @@ class PersonelBelge(TemelModel):
         EHLIYET = "EHLIYET", "Ehliyet"
         DIPLOMA = "DIPLOMA", "Diploma / Sertifika"
         DIGER = "DIGER", "Diğer"
+        # İşe giriş / özlük kontrol listesi (bkz. core.services.ise_giris)
+        KVKK = "KVKK", "KVKK Aydınlatma + Açık Rıza"
+        FAZLA_MESAI_ONAYI = "FAZLA_MESAI_ONAYI", "Fazla Çalışma Muvafakatnamesi"
+        ADLI_SICIL = "ADLI_SICIL", "Adli Sicil Kaydı"
+        IKAMETGAH = "IKAMETGAH", "İkametgâh Belgesi"
+        VESIKALIK = "VESIKALIK", "Vesikalık Fotoğraf"
+        ASKERLIK = "ASKERLIK", "Askerlik Durum Belgesi"
+        IBAN_BILDIRIMI = "IBAN_BILDIRIMI", "IBAN Bildirimi"
+        IS_BASVURU = "IS_BASVURU", "İş Başvuru Formu / CV"
+        HIZMET_DOKUMU = "HIZMET_DOKUMU", "Önceki İşyeri Hizmet Belgesi"
+        ENGELLI_RAPORU = "ENGELLI_RAPORU", "Engelli Sağlık Kurulu Raporu"
+        MYK_BELGESI = "MYK_BELGESI", "Mesleki Yeterlilik (MYK) Belgesi"
+        IC_DUZEN_TESLIM = "IC_DUZEN_TESLIM", "İç Düzen Yönetmeliği Teslim Tutanağı"
+        ZIMMET = "ZIMMET", "Zimmet Tutanağı"
+        ISG_TUTANAK = "ISG_TUTANAK", "İSG İşe Giriş Eğitim Tutanağı"
+        KKD_TESLIM = "KKD_TESLIM", "KKD Teslim Tutanağı"
 
     personel = models.ForeignKey(
         Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="belgeler")
@@ -4198,6 +4230,58 @@ class PersonelBelge(TemelModel):
 
     def __str__(self):
         return f"{self.personel.ad_soyad} — {self.get_tur_display()}"
+
+
+class BelgeSablonu(TemelModel):
+    """AYARLAR > Belge Şablonları — işe giriş evrakları (belirsiz süreli iş sözleşmesi, KVKK aydınlatma/açık rıza, fazla çalışma
+    muvafakatnamesi) için DÜZENLENEBİLİR metin. Metin düz yazıdır (boş satır = paragraf); ``{ad_soyad}`` gibi yer tutucular
+    basımda personel/firma bilgisiyle doldurulur (bkz. core.services.belge_sablon). Her ``kod`` için tek aktif kayıt.
+    Varsayılan metinler genel TASLAKTIR; kullanmadan önce hukuk danışmanı/mali müşavir onayı gerekir."""
+
+    class Kod(models.TextChoices):
+        SOZLESME = "SOZLESME", "Belirsiz Süreli İş Sözleşmesi"
+        KVKK_AYDINLATMA = "KVKK_AYDINLATMA", "KVKK Aydınlatma Metni"
+        KVKK_ACIK_RIZA = "KVKK_ACIK_RIZA", "KVKK Açık Rıza Metni"
+        FAZLA_CALISMA = "FAZLA_CALISMA", "Fazla Çalışma Muvafakatnamesi"
+
+    kod = models.CharField("kod", max_length=20, choices=Kod.choices)
+    baslik = models.CharField("başlık", max_length=200)
+    metin = models.TextField("metin")
+    aktif = models.BooleanField("pakete dahil", default=True)
+    sira = models.PositiveSmallIntegerField("sıra", default=0)
+
+    class Meta:
+        db_table = "core_belge_sablonu"
+        verbose_name = "belge şablonu"
+        verbose_name_plural = "belge şablonları"
+        ordering = ["sira", "id"]
+        constraints = [models.UniqueConstraint(fields=["kod"], condition=models.Q(silindi=False), name="uq_belge_sablonu_kod_aktif")]
+
+    def __str__(self):
+        return self.baslik
+
+
+class IseGirisKaydi(TemelModel):
+    """İNSAN KAYNAKLARI > İşe giriş (personel kartı sekmesi) — personel başına tek kayıt: sözleşme parametreleri (basımda kullanılır),
+    evrak paketi basım zamanı ve muhasebeye bilgi gönderim tarihi. Resmî SGK bildirimini ERP yapmaz; yalnız muhasebeye veri ihracı."""
+
+    personel = models.OneToOneField(Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="ise_giris")
+    deneme_suresi_ay = models.PositiveSmallIntegerField("deneme süresi (ay)", null=True, blank=True)
+    haftalik_calisma_saati = models.DecimalField("haftalık çalışma saati", max_digits=4, decimal_places=1, null=True, blank=True)
+    calisma_gunleri = models.CharField("çalışma günleri", max_length=80, blank=True)
+    calisma_saatleri = models.CharField("günlük çalışma saatleri", max_length=80, blank=True)
+    ucret_odeme = models.CharField("ücret ödeme şekli/günü", max_length=120, blank=True)
+    paket_basim_zamani = models.DateTimeField("evrak paketi basım zamanı", null=True, blank=True)
+    muhasebe_gonderim_tarihi = models.DateField("muhasebeye gönderim tarihi", null=True, blank=True)
+    notlar = models.TextField("notlar", blank=True)
+
+    class Meta:
+        db_table = "core_ise_giris_kaydi"
+        verbose_name = "işe giriş kaydı"
+        verbose_name_plural = "işe giriş kayıtları"
+
+    def __str__(self):
+        return f"{self.personel.ad_soyad} — işe giriş"
 
 
 class PersonelDevam(TemelModel):

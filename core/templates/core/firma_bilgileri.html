@@ -62,6 +62,31 @@
         </div>
       </div>
 
+      <h3 class="bolum-baslik" style="margin-top:1.3rem"><span class="emoji">📝</span>İşe Giriş Evrakları İçin</h3>
+      <p class="yardim" style="margin-top:-.3rem">İş sözleşmesi, KVKK ve fazla çalışma muvafakatnamesi çıktılarında işveren bilgisi olarak basılır.</p>
+      <div class="izgara">
+        <div class="alan">
+          <label for="{{ form.isveren_vekili_adi.id_for_label }}">{{ form.isveren_vekili_adi.label }}</label>
+          {{ form.isveren_vekili_adi }}
+          {% for e in form.isveren_vekili_adi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.isveren_vekili_unvani.id_for_label }}">{{ form.isveren_vekili_unvani.label }}</label>
+          {{ form.isveren_vekili_unvani }}
+          {% for e in form.isveren_vekili_unvani.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.mersis_no.id_for_label }}">{{ form.mersis_no.label }}</label>
+          {{ form.mersis_no }}
+          {% for e in form.mersis_no.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.sgk_isyeri_sicil_no.id_for_label }}">{{ form.sgk_isyeri_sicil_no.label }}</label>
+          {{ form.sgk_isyeri_sicil_no }}
+          {% for e in form.sgk_isyeri_sicil_no.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
+
       <h3 class="bolum-baslik" style="margin-top:1.3rem">
         <span class="emoji">🖼️</span>Logo</h3>
       <div class="gorsel-alan">

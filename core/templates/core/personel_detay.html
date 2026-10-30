@@ -61,6 +61,18 @@
         <span class="dg mono">{% if p.dogum_tarihi %}{{ p.dogum_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</span></div>
       <div class="satir"><span class="et">Kan Grubu</span>
         <span class="dg">{{ p.kan_grubu|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Doğum Yeri</span>
+        <span class="dg">{{ p.dogum_yeri|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Baba Adı</span>
+        <span class="dg">{{ p.baba_adi|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Ana Adı</span>
+        <span class="dg">{{ p.ana_adi|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Cinsiyet</span>
+        <span class="dg">{{ p.get_cinsiyet_display|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Medeni Durum</span>
+        <span class="dg">{{ p.get_medeni_durum_display|default:"—" }}{% if p.cocuk_sayisi is not None %} · {{ p.cocuk_sayisi }} çocuk{% endif %}</span></div>
+      <div class="satir"><span class="et">Öğrenim Durumu</span>
+        <span class="dg">{{ p.get_ogrenim_durumu_display|default:"—" }}</span></div>
     </div>
   </section>
 
@@ -126,6 +138,53 @@
   <section class="icerik-kart">
     <h2 class="bolum-baslik"><span class="emoji">📝</span>Notlar</h2>
     <div class="kv"><div class="satir tam"><span class="dg uzun">{{ p.notlar }}</span></div></div>
+  </section>
+  {% endif %}
+  {% elif sekme == "ise_giris" %}
+  <section class="icerik-kart">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">📋</span>Özlük Kontrol Listesi</h2>
+      <span class="yardim">{{ kontrol.yuklu }} / {{ kontrol.toplam }} yüklü · eksik zorunlu belge:
+        <strong class="{% if kontrol.eksik_zorunlu %}ik-eksi{% endif %}">{{ kontrol.eksik_zorunlu }}</strong></span>
+    </div>
+    <p class="yardim" style="margin:-.2rem 0 .8rem">İşe başlamadan önce personelden alınacak, imzalatılacak ve İSG/muhasebe tarafından hazırlanacak evraklar. İSG evrakları İSG uzmanı tarafından hazırlanır; burada yalnız teslim alındı mı takip edilir.</p>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Belge</th><th>Kimden</th><th>Durum</th><th></th></tr></thead>
+      <tbody>
+        {% for s in kontrol.satirlar %}
+          <tr>
+            <td><strong>{{ s.ad }}</strong>{% if s.zorunlu %} <span class="rozet rozet-notr">zorunlu</span>{% endif %}
+              {% if s.belge and s.belge.bitis_tarihi %}<div class="yardim">Geçerlilik: {{ s.belge.bitis_tarihi|date:"d.m.Y" }}</div>{% endif %}</td>
+            <td class="yardim">{{ s.kaynak_ad }}</td>
+            <td><span class="rozet {% if s.durum == 'YUKLU' %}rozet-aktif{% elif s.durum == 'YAKLASIYOR' %}rozet-uyari{% else %}rozet-pasif{% endif %}">{{ s.durum_ad }}</span></td>
+            <td class="islem-bag">
+              {% if s.belge %}<a class="dugme-ikincil" href="{% url 'core:belge_indir' s.belge.pk %}" target="_blank" rel="noopener">Aç</a>{% endif %}
+              <a class="dugme-ikincil" href="{% url 'core:belge_ekle' %}?personel={{ p.pk }}&amp;tur={{ s.tur }}&amp;sonraki=ise_giris">{% if s.belge %}Yenile{% else %}Yükle{% endif %}</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  {% if ise_giris_duzenlenebilir %}
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik"><span class="emoji">⚙️</span>Sözleşme Bilgileri</h2>
+    <p class="yardim" style="margin-top:-.3rem">İş sözleşmesi çıktısında kullanılır; boş bırakılan alan çıktıda elle doldurulacak noktalı çizgi olur.</p>
+    <form method="post" action="{% url 'core:ise_giris_kaydet' p.pk %}" autocomplete="off">
+      {% csrf_token %}
+      <div class="izgara">
+        {% for f in ise_giris_form %}
+          <div class="alan{% if f.name == 'notlar' %} tam{% endif %}">
+            <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<p class="yardim">{{ f.help_text }}</p>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:.9rem"><button type="submit" class="birincil">Kaydet</button></div>
+    </form>
   </section>
   {% endif %}
   {% elif sekme == "ucret" %}

@@ -142,7 +142,7 @@ MODULLER = (
         Ekran("personel", "Personel Kartları", "core:personeller",
               ilgili=("core:personel_ekle", "core:personel_detay", "core:personel_duzenle", "core:personel_sil", "core:ucret_ekle", "core:ucret_duzenle",
                       "core:ucret_sil", "core:belgeler", "core:belge_uyarilari", "core:belge_ekle", "core:belge_duzenle", "core:belge_sil",
-                      "core:mesai_hesap_olustur", "core:mesai_sifre_sifirla")),
+                      "core:mesai_hesap_olustur", "core:mesai_sifre_sifirla", "core:ise_giris_kaydet")),
         Ekran("personel_izinleri", "İzinler", "core:izinler"),
         Ekran("personel_belgeleri", "Özlük Belgeleri", "core:belgeler", menude=False),   # artık Personel Kartı > Belgeler sekmesi; yetki kodu + URL duruyor
         Ekran("personel_devam", "Devam / Yoklama", "core:yoklama"),
@@ -177,6 +177,8 @@ MODULLER = (
         Ekran("kullanicilar", "Kullanıcılar", "core:kullanici_listesi"),
         Ekran("kullanici_yetkileri", "Kullanıcı Yetkileri", "core:kullanici_yetkileri"),
         Ekran("firma_bilgileri", "Firma Bilgileri", "core:firma_bilgileri"),
+        Ekran("belge_sablonlari", "Belge Şablonları", "core:belge_sablonlari",
+              ilgili=("core:belge_sablonu_duzenle", "core:belge_sablonu_varsayilan")),
         Ekran("tanim_listeleri", "Tanım Listeleri", "core:tanim_listeleri"),
         Ekran("varyantlar", "Varyantlar", "core:varyantlar"),
         Ekran("uretim_ayarlari", "Üretim Ayarları", "core:uretim_ayarlari"),

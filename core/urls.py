@@ -119,6 +119,9 @@ urlpatterns = [
     path("ayarlar/silme-kayitlari/", views.silme_kayitlari, name="silme_kayitlari"),
     path("ayarlar/yedek/indir/<str:ad>/", views.yedek_indir, name="yedek_indir"),
     path("ayarlar/firma-bilgileri/", views.firma_bilgileri, name="firma_bilgileri"),
+    path("ayarlar/belge-sablonlari/", views.belge_sablonlari, name="belge_sablonlari"),
+    path("ayarlar/belge-sablonlari/<int:pk>/", views.belge_sablonu_duzenle, name="belge_sablonu_duzenle"),
+    path("ayarlar/belge-sablonlari/<int:pk>/varsayilan/", views.belge_sablonu_varsayilan, name="belge_sablonu_varsayilan"),
     # FASON
     path("fason/hesapla/", views.fason_hesapla, name="fason_hesapla"),
     path("fason/siparisler/", views.fason_siparisleri, name="fason_siparisleri"),
@@ -436,6 +439,7 @@ urlpatterns = [
     path("ik/personel/", views.personeller, name="personeller"),
     path("ik/personel/ekle/", views.personel_ekle, name="personel_ekle"),
     path("ik/personel/<int:pk>/", views.personel_detay, name="personel_detay"),
+    path("ik/personel/<int:pk>/ise-giris/", views.ise_giris_kaydet, name="ise_giris_kaydet"),
     path("ik/personel/<int:pk>/duzenle/", views.personel_duzenle, name="personel_duzenle"),
     path("ik/personel/<int:pk>/sil/", views.personel_sil, name="personel_sil"),
     path("ik/bordro/", views.bordro_listesi, name="bordro_listesi"),

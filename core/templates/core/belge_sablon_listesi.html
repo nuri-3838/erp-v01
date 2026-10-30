@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% block baslik %}Belge Şablonları · ERP v0.1{% endblock %}
+{% block sayfa_adi %}Belge Şablonları{% endblock %}
+
+{% block content %}
+<div class="ik-ust" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+  <h1 class="ust-baslik"><span class="emoji">📝</span>Belge Şablonları</h1>
+</div>
+
+<div class="uyari">⚠️ Varsayılan metinler genel birer <strong>taslaktır</strong>. İşe giriş evrakı olarak kullanmadan önce hukuk danışmanınıza / mali müşavirinize onaylatın,
+  gerekli düzeltmeleri aşağıdan yapın. Metinler sistem tarafından hukuki geçerlilik açısından denetlenmez.</div>
+
+<p class="yardim">Personel kartı &gt; İşe Giriş sekmesinden basılan evrak paketi bu metinlerle hazırlanır. Metindeki <code>{yer_tutucu}</code> alanları
+  personel ve firma bilgileriyle otomatik doldurulur.</p>
+
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Sıra</th><th>Belge</th><th>Pakete dahil</th><th>Son güncelleme</th><th></th></tr></thead>
+  <tbody>
+    {% for s in sablonlar %}
+      <tr>
+        <td class="mono">{{ s.sira }}</td>
+        <td><strong>{{ s.baslik }}</strong><div class="yardim">{{ s.get_kod_display }}</div></td>
+        <td>{% if s.aktif %}<span class="rozet rozet-aktif">Evet</span>{% else %}<span class="rozet rozet-pasif">Hayır</span>{% endif %}</td>
+        <td class="mono">{{ s.updated_at|date:"d.m.Y H:i" }}</td>
+        <td class="islem-bag">
+          <a class="dugme" href="{% url 'core:belge_sablonu_duzenle' s.pk %}">Düzenle</a>
+          <form method="post" action="{% url 'core:belge_sablonu_varsayilan' s.pk %}" style="margin:0"
+                onsubmit="return confirm('{{ s.baslik|escapejs }} varsayılan metne döndürülsün mü? Yaptığınız düzenleme kaybolur.');">
+            {% csrf_token %}<button type="submit" class="dugme-ikincil">Varsayılana dön</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2 class="bolum-baslik" style="margin-top:1.4rem">Kullanılabilir yer tutucular</h2>
+<div class="tablo-kapsayici">
+<table>
+  <thead><tr><th>Yer tutucu</th><th>Yerine yazılan</th></tr></thead>
+  <tbody>
+    {% for ad, aciklama in yer_tutucular.items %}
+      <tr><td class="mono">{{ '{' }}{{ ad }}{{ '}' }}</td><td>{{ aciklama }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -110,7 +110,8 @@ def _tc_benzersiz(tc, *, haric_pk=None):
 
 
 def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", telefon="",
-             eposta="", adres="", acil_durum_kisi="", acil_durum_telefon="", acil_durum_kisi_2="", acil_durum_telefon_2="", departman="",
+             eposta="", adres="", acil_durum_kisi="", acil_durum_telefon="", acil_durum_kisi_2="", acil_durum_telefon_2="", dogum_yeri="", baba_adi="", ana_adi="", cinsiyet="",
+             medeni_durum="", cocuk_sayisi=None, ogrenim_durumu="", departman="",
              gorev="", ise_giris_tarihi=None, isten_cikis_tarihi=None, cikis_nedeni="",
              notlar="", izin_onceki_kullanilan=None, iban="", banka_adi="", hesap_sahibi="", haric_pk=None) -> dict:
     ad, soyad = _buyuk(ad), _buyuk(soyad)
@@ -133,6 +134,20 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
             raise PersonelHatasi("Doğum tarihi geçersiz.")
 
     kan_grubu = (kan_grubu or "").strip()
+    cinsiyet, medeni_durum, ogrenim_durumu = (cinsiyet or "").strip(), (medeni_durum or "").strip(), (ogrenim_durumu or "").strip()
+    for deger, secenekler, alan_adi in ((cinsiyet, Personel.CINSIYETLER, "Cinsiyet"), (medeni_durum, Personel.MEDENI_DURUMLAR, "Medeni durum"),
+                                        (ogrenim_durumu, Personel.OGRENIM_DURUMLARI, "Öğrenim durumu")):
+        if deger and deger not in {k for k, _ in secenekler}:
+            raise PersonelHatasi(f"{alan_adi} geçersiz.")
+    if cocuk_sayisi in ("", None):
+        cocuk_sayisi = None
+    else:
+        try:
+            cocuk_sayisi = int(cocuk_sayisi)
+        except (TypeError, ValueError):
+            raise PersonelHatasi("Çocuk sayısı sayı olmalı.")
+        if not 0 <= cocuk_sayisi <= 30:
+            raise PersonelHatasi("Çocuk sayısı 0 ile 30 arasında olmalı.")
     if kan_grubu and kan_grubu not in _KAN_GRUPLARI:
         raise PersonelHatasi("Geçersiz kan grubu.")
 
@@ -167,6 +182,8 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
         "acil_durum_telefon": _telefon(acil_durum_telefon),
         "acil_durum_kisi_2": _buyuk(acil_durum_kisi_2),
         "acil_durum_telefon_2": _telefon(acil_durum_telefon_2),
+        "dogum_yeri": _buyuk(dogum_yeri), "baba_adi": _buyuk(baba_adi), "ana_adi": _buyuk(ana_adi),
+        "cinsiyet": cinsiyet, "medeni_durum": medeni_durum, "cocuk_sayisi": cocuk_sayisi, "ogrenim_durumu": ogrenim_durumu,
         "departman": _buyuk(departman), "gorev": _buyuk(gorev),
         "ise_giris_tarihi": ise_giris_tarihi, "isten_cikis_tarihi": isten_cikis_tarihi,
         "cikis_nedeni": (cikis_nedeni or "").strip(), "notlar": (notlar or "").strip(),

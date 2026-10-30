@@ -49,7 +49,7 @@ class SekmeIcerikTest(SekmeTaban):
     def test_yonetici_alti_sekme_gorur_varsayilan_genel(self):
         r = self.sekme()
         self.assertEqual(r.context["sekme"], "genel")
-        self.assertEqual(self.tab_adlari(r), ["Genel", "Ücret", "İzin", "Belgeler", "Devam", "Mesai Hesabı"])
+        self.assertEqual(self.tab_adlari(r), ["Genel", "İşe Giriş", "Ücret", "İzin", "Belgeler", "Devam", "Mesai Hesabı"])
         self.assertContains(r, 'class="ik-sekmeler"')
         self.assertContains(r, 'aria-current="page"')
 
@@ -89,11 +89,11 @@ class SekmeIcerikTest(SekmeTaban):
     def test_yetkisiz_sekme_gizli_ve_genele_duser(self):
         r = self.sekme(kisi=self.sade)
         self.assertEqual(self.tab_adlari(r), ["Genel"])
-        for kod in ("ucret", "izin", "belgeler", "devam", "mesai"):
+        for kod in ("ise_giris", "ucret", "izin", "belgeler", "devam", "mesai"):
             r = self.sekme(kod, kisi=self.sade)
             self.assertEqual(r.context["sekme"], "genel", kod)
         r = self.sekme(kisi=self.tam)                                                         # yönetici değil: mesai hesabı sekmesi yok
-        self.assertEqual(self.tab_adlari(r), ["Genel", "Ücret", "İzin", "Belgeler", "Devam"])
+        self.assertEqual(self.tab_adlari(r), ["Genel", "İşe Giriş", "Ücret", "İzin", "Belgeler", "Devam"])
         self.assertEqual(self.sekme("mesai", kisi=self.tam).context["sekme"], "genel")
         kismi = kullanici("skkismi", "personel", "personel_izinleri")
         self.assertEqual(self.tab_adlari(self.sekme(kisi=kismi)), ["Genel", "İzin"])
@@ -314,7 +314,7 @@ class SorguSayisiTest(SekmeTaban):
         self.client.force_login(self.yon)
         self.client.get(self.url)                                                             # ısınma
         sonuc = {}
-        for kod in ("genel", "ucret", "izin", "belgeler", "devam", "mesai"):
+        for kod in ("genel", "ise_giris", "ucret", "izin", "belgeler", "devam", "mesai"):
             with CaptureQueriesContext(connection) as c:
                 self.assertEqual(self.client.get(self.url, {"sekme": kod}).status_code, 200)
             sonuc[kod] = len(c)

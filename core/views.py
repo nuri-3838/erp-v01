@@ -40,7 +40,7 @@ from core.forms import (
     BankaForm, KdvMahsupForm, PersonelBordroForm, PersonelBordroSatirForm, YatirimProjesiKapatForm, BankaHareketDuzenleForm, BankaHareketForm, CariKesintiForm, CariVirmanForm, DovizIslemForm, KrediKartiHareketDuzenleForm, BankaHesapForm, BankaIslemForm, BordroBaslikForm, CariCiroForm, CariYetkiliForm, CekHesapAyariForm, CekKalemForm, CekNakitForm, DepoForm, DuranVarlikDuzenleForm, DuranVarlikForm, FaturaForm, FaturaSatirForm, FasonDonusBaslikForm, FasonDonusSatirForm, FasonFiyatForm, FasonSatirForm, FirmaBankaForm, FirmaBilgisiForm, IslemTarihForm,
     FaturaTipiForm, FisForm,
     KasaForm, KasaHareketForm, KategoriForm, KdvOraniForm, KrediForm, KrediKartiForm,
-    KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
+    BelgeSablonuForm, IseGirisKaydiForm, KrediKartiHareketForm, KrediHareketForm, KrediTaksitForm, KrediTaksitOdemeForm,
     TeklifSiparisForm, TeklifSiparisKalemForm, SatisBelgeBaslikForm, SatisTeklifKalemForm,
     TeklifRedForm,
     SatisProformaBaslikForm, SatisProformaKalemForm,
@@ -64,7 +64,7 @@ from core.models import (
     KrediTaksit, Kur, KurDegerleme, Sehir, SiparisKalanKapatma, Stok, TanimSecenegi, TeklifSiparis, TevkifatOrani, Ulke, Varyant, VergiDairesi, YatirimProjesi,
     YemekSayimi,
     YevmiyeFisi, YevmiyeSatir, KdvMahsup, PersonelBordro, IsIstasyonu, Operasyon, UretimEmri, UretimEmriKalemi, IstasyonEmri, OperasyonKaydi,
-    Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
+    BelgeSablonu, Personel, PersonelBelge, PersonelIzin, PersonelUcret, ResmiTatil,
     MesaiKaydi, MesaiIzinliAg, IsOturumu, KarmaKesim,
 )
 from core.moduller import MODULLER
@@ -153,6 +153,8 @@ from core.services import personel as personel_servis
 from core.services import personel_izin as izin_servis
 from core.services import personel_belge as belge_servis
 from core.services import personel_devam as devam_servis
+from core.services import belge_sablon as belge_sablon_servis
+from core.services import ise_giris as ise_giris_servis
 from core.services import personel_ucret as ucret_servis
 from core.services import personel_dokum as dokum_servis
 from core.services import resmi_tatil as tatil_servis
@@ -7479,7 +7481,9 @@ def firma_bilgileri(request):
                 firma_servis.firma_bilgisi_kaydet(
                     unvan=cd["unvan"], vergi_dairesi=cd["vergi_dairesi"], vergi_no=cd["vergi_no"],
                     adres=cd["adres"], telefon=cd["telefon"], eposta=cd["eposta"], web=cd["web"],
-                    logo=logo_dosya, bankalar=bankalar, kullanici=request.user)
+                    logo=logo_dosya, bankalar=bankalar, kullanici=request.user,
+                    isveren_vekili_adi=cd["isveren_vekili_adi"], isveren_vekili_unvani=cd["isveren_vekili_unvani"],
+                    mersis_no=cd["mersis_no"], sgk_isyeri_sicil_no=cd["sgk_isyeri_sicil_no"])
                 messages.success(request, "Firma bilgileri kaydedildi.")
                 return redirect("core:firma_bilgileri")
             except firma_servis.FirmaHatasi as e:
@@ -7488,13 +7492,51 @@ def firma_bilgileri(request):
         form = FirmaBilgisiForm(initial={
             "unvan": firma.unvan, "vergi_dairesi": firma.vergi_dairesi, "vergi_no": firma.vergi_no,
             "adres": firma.adres, "telefon": firma.telefon, "eposta": firma.eposta,
-            "web": firma.web})
+            "web": firma.web, "isveren_vekili_adi": firma.isveren_vekili_adi, "isveren_vekili_unvani": firma.isveren_vekili_unvani,
+            "mersis_no": firma.mersis_no, "sgk_isyeri_sicil_no": firma.sgk_isyeri_sicil_no})
         ilk = [{"banka_adi": b.banka_adi, "sube": b.sube, "hesap_sahibi": b.hesap_sahibi,
                 "iban": b.iban, "para_birimi": b.para_birimi}
                for b in firma.bankalar.filter(silindi=False)]
         formset = FirmaBankaFormSet(initial=ilk, prefix="banka")
     return render(request, "core/firma_bilgileri.html",
                   {"form": form, "formset": formset, "firma": firma})
+
+
+# === AYARLAR > Belge Şablonları (işe giriş evrakları: sözleşme, KVKK, fazla çalışma) ===
+@yonetici_gerekli
+def belge_sablonlari(request):
+    return render(request, "core/belge_sablon_listesi.html", {
+        "sablonlar": belge_sablon_servis.hazirla(request.user), "yer_tutucular": belge_sablon_servis.YER_TUTUCULAR})
+
+
+@yonetici_gerekli
+def belge_sablonu_duzenle(request, pk):
+    belge_sablon_servis.hazirla(request.user)
+    sablon = get_object_or_404(BelgeSablonu, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = BelgeSablonuForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                belge_sablon_servis.kaydet(sablon, baslik=cd["baslik"], metin=cd["metin"], aktif=cd["aktif"], kullanici=request.user)
+                messages.success(request, f"Şablon kaydedildi: {sablon.baslik}")
+                return redirect("core:belge_sablonlari")
+            except belge_sablon_servis.SablonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BelgeSablonuForm(initial={"baslik": sablon.baslik, "metin": sablon.metin, "aktif": sablon.aktif})
+    return render(request, "core/belge_sablonu_form.html", {
+        "form": form, "sablon": sablon, "yer_tutucular": belge_sablon_servis.YER_TUTUCULAR})
+
+
+@yonetici_gerekli
+def belge_sablonu_varsayilan(request, pk):
+    """Şablonu varsayılan taslağa döndürür (POST; yapılan düzenleme kaybolur)."""
+    sablon = get_object_or_404(BelgeSablonu, pk=pk, silindi=False)
+    if request.method == "POST":
+        belge_sablon_servis.varsayilana_don(sablon, kullanici=request.user)
+        messages.success(request, f"Varsayılan metne dönüldü: {sablon.baslik}")
+    return redirect("core:belge_sablonlari")
 
 
 # === FASON — Kesim Listesi Hesapla (+ PDF), Fason Fiyatları, Dönüşler, Mutabakat ===
@@ -10272,7 +10314,8 @@ def yemek_sayimi_sil(request, pk):
 # === İNSAN KAYNAKLARI ===
 _PERSONEL_ALANLARI = (
     "ad", "soyad", "tc_kimlik_no", "dogum_tarihi", "kan_grubu", "telefon", "eposta", "adres",
-    "acil_durum_kisi", "acil_durum_telefon", "acil_durum_kisi_2", "acil_durum_telefon_2", "departman", "gorev", "ise_giris_tarihi",
+    "acil_durum_kisi", "acil_durum_telefon", "acil_durum_kisi_2", "acil_durum_telefon_2", "dogum_yeri", "baba_adi", "ana_adi", "cinsiyet", "medeni_durum",
+    "cocuk_sayisi", "ogrenim_durumu", "departman", "gorev", "ise_giris_tarihi",
     "isten_cikis_tarihi", "cikis_nedeni", "notlar", "iban", "banka_adi", "hesap_sahibi")
 
 
@@ -10331,6 +10374,8 @@ def personel_ekle(request):
                 p = personel_servis.personel_olustur(
                     **_personel_form_kw(form.cleaned_data), kullanici=request.user)
                 messages.success(request, f"Personel kartı eklendi: {p.ad_soyad}")
+                if ekran_gorebilir(request.user, "personel_belgeleri"):                  # yeni işe giriş: evrak/kontrol listesi açılır
+                    return redirect(_personel_sekme_url(p.pk, "ise_giris"))
                 return redirect("core:personel_detay", pk=p.pk)
             except personel_servis.PersonelHatasi as e:
                 form.add_error(None, str(e))
@@ -10366,8 +10411,8 @@ def personel_duzenle(request, pk):
                   _personel_form_context(form, "Personel Düzenle", **ek))
 
 
-_PERSONEL_SEKMELERI = (("genel", "Genel"), ("ucret", "Ücret"), ("izin", "İzin"), ("belgeler", "Belgeler"),
-                       ("devam", "Devam"), ("mesai", "Mesai Hesabı"))
+_PERSONEL_SEKMELERI = (("genel", "Genel"), ("ise_giris", "İşe Giriş"), ("ucret", "Ücret"), ("izin", "İzin"),
+                       ("belgeler", "Belgeler"), ("devam", "Devam"), ("mesai", "Mesai Hesabı"))
 
 
 def _personel_sekme_url(personel_id, sekme="genel"):
@@ -10379,9 +10424,36 @@ def _personel_sekme_url(personel_id, sekme="genel"):
 def _personel_gorunur_sekmeler(user):
     """Kullanıcının görebildiği sekmeler (bölümlerin ayrı ekran yetkileri korunur): ücret/izin/belge/devam yetkileri, mesai hesabı yalnız yönetici."""
     y = ekranlar_gorebilir(user, "personel_ucret", "personel_izinleri", "personel_belgeleri", "personel_devam")        # tek sorgu
-    izinli = {"genel": True, "ucret": y["personel_ucret"], "izin": y["personel_izinleri"], "belgeler": y["personel_belgeleri"],
-              "devam": y["personel_devam"], "mesai": yonetici_mi(user)}
+    izinli = {"genel": True, "ise_giris": y["personel_belgeleri"], "ucret": y["personel_ucret"], "izin": y["personel_izinleri"],
+              "belgeler": y["personel_belgeleri"], "devam": y["personel_devam"], "mesai": yonetici_mi(user)}
     return [(k, ad) for k, ad in _PERSONEL_SEKMELERI if izinli[k]]
+
+
+def _ise_giris_baslangic(kayit):
+    return {"deneme_suresi_ay": kayit.deneme_suresi_ay, "haftalik_calisma_saati": kayit.haftalik_calisma_saati,
+            "calisma_gunleri": kayit.calisma_gunleri, "calisma_saatleri": kayit.calisma_saatleri,
+            "ucret_odeme": kayit.ucret_odeme, "notlar": kayit.notlar}
+
+
+@ekran_gerekli_hepsi("personel", "personel_belgeleri")
+def ise_giris_kaydet(request, pk):
+    """Personel kartı > İşe Giriş: sözleşme parametrelerini kaydeder (POST); hata varsa sekmede mesajla döner."""
+    p = get_object_or_404(Personel, pk=pk, silindi=False)
+    if request.method == "POST":
+        form = IseGirisKaydiForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                ise_giris_servis.kayit_kaydet(
+                    p, deneme_suresi_ay=cd.get("deneme_suresi_ay"), haftalik_calisma_saati=cd.get("haftalik_calisma_saati"),
+                    calisma_gunleri=cd.get("calisma_gunleri", ""), calisma_saatleri=cd.get("calisma_saatleri", ""),
+                    ucret_odeme=cd.get("ucret_odeme", ""), notlar=cd.get("notlar", ""), kullanici=request.user)
+                messages.success(request, "İşe giriş bilgileri kaydedildi.")
+            except ise_giris_servis.IseGirisHatasi as e:
+                messages.error(request, str(e))
+        else:
+            messages.error(request, "Kayıt yapılamadı: " + "; ".join(f"{form.fields[k].label}: {' '.join(v)}" for k, v in form.errors.items()))
+    return redirect(_personel_sekme_url(p.pk, "ise_giris"))
 
 
 @never_cache
@@ -10417,6 +10489,13 @@ def personel_detay(request, pk):
         rozet["belgeler"] = (len(belgeler), any(d in ("SURESI_DOLDU", "YAKLASIYOR") for _b, d, _k in belgeler))
         if sekme == "belgeler":
             ctx["belgeler"] = belgeler
+        kl = ise_giris_servis.kontrol_listesi(p, belgeler=belgeler, bugun=bugun)                 # aynı belge listesinden, ek sorgu yok
+        rozet["ise_giris"] = (kl["eksik_zorunlu"], kl["eksik_zorunlu"] > 0 or kl["uyari"])
+        if sekme == "ise_giris":
+            ctx["kontrol"] = kl
+            ctx["ise_giris_kaydi"] = ise_giris_servis.kayit_oku(p)
+            ctx["ise_giris_form"] = IseGirisKaydiForm(initial=_ise_giris_baslangic(ctx["ise_giris_kaydi"]))
+            ctx["ise_giris_duzenlenebilir"] = ekran_gorebilir(request.user, "personel")
     if sekme == "genel":
         bitis = p.isten_cikis_tarihi if (p.isten_cikis_tarihi and p.isten_cikis_tarihi < bugun) else bugun
         ctx["kidem"] = kidem_metni(p.ise_giris_tarihi, bitis)
@@ -10786,9 +10865,11 @@ def belge_uyarilari(request):
 
 
 def _belge_donus_url(request, personel_id):
-    if (request.POST.get("sonraki") or request.GET.get("sonraki")) == "personel" \
-            and ekran_gorebilir(request.user, "personel"):
-        return _personel_sekme_url(personel_id, "belgeler")
+    """Belge ekle/düzenle/sil sonrası dönüş: kartın Belgeler sekmesinden gelindiyse (sonraki=personel) oraya, İşe Giriş
+    kontrol listesinden gelindiyse (sonraki=ise_giris) İşe Giriş sekmesine; yetki yoksa/başka yerden gelindiyse belge listesine."""
+    sonraki = request.POST.get("sonraki") or request.GET.get("sonraki")
+    if sonraki in ("personel", "ise_giris") and ekran_gorebilir(request.user, "personel"):
+        return _personel_sekme_url(personel_id, "belgeler" if sonraki == "personel" else "ise_giris")
     return reverse("core:belgeler")
 
 
@@ -10813,6 +10894,8 @@ def belge_ekle(request):
         pid = request.GET.get("personel")
         if pid and pid.isdigit():
             baslangic["personel"] = int(pid)
+        if request.GET.get("tur") in PersonelBelge.Tur.values:                       # İşe Giriş kontrol listesinden: tür hazır gelir
+            baslangic["tur"] = request.GET["tur"]
         form = PersonelBelgeForm(initial=baslangic)
     return render(request, "core/belge_form.html", {
         "form": form, "baslik": "Yeni Belge", "sonraki": request.GET.get("sonraki", "")})

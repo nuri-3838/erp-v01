@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% block baslik %}{{ sablon.baslik }} · Belge Şablonu{% endblock %}
+{% block sayfa_adi %}Belge Şablonu{% endblock %}
+{% block kart_sinif %}kart-yok{% endblock %}
+
+{% block content %}
+<div class="form-kapsa">
+  <div class="form-ust">
+    <a class="ust-link" href="{% url 'core:belge_sablonlari' %}">← Belge Şablonları</a>
+    <h1 class="ust-baslik"><span class="emoji">📝</span>{{ sablon.get_kod_display }}</h1>
+  </div>
+
+  {% if form.non_field_errors %}
+    <div class="uyari">{% for e in form.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off" style="display:contents">
+    {% csrf_token %}
+    <section class="icerik-kart">
+      <p class="yardim" style="margin-top:0">Boş satır yeni paragraf başlatır. <code>{ad_soyad}</code> gibi yer tutucular basımda doldurulur
+        (listesi sayfanın altında). Metin hukuk danışmanınızca onaylanmalıdır.</p>
+      <div class="izgara">
+        <div class="alan tam">
+          <label for="{{ form.baslik.id_for_label }}">{{ form.baslik.label }}</label>{{ form.baslik }}
+          {% for e in form.baslik.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label for="{{ form.metin.id_for_label }}">{{ form.metin.label }}</label>{{ form.metin }}
+          {% for e in form.metin.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan tam">
+          <label class="secenek" for="{{ form.aktif.id_for_label }}">{{ form.aktif }} {{ form.aktif.label }}</label>
+        </div>
+      </div>
+    </section>
+    <div class="form-altbar">
+      <a class="iptal-bag" href="{% url 'core:belge_sablonlari' %}">İptal</a>
+      <button type="submit" class="birincil">Kaydet</button>
+    </div>
+  </form>
+
+  <section class="icerik-kart">
+    <h2 class="bolum-baslik">Kullanılabilir yer tutucular</h2>
+    <div class="tablo-kapsayici">
+    <table>
+      <thead><tr><th>Yer tutucu</th><th>Yerine yazılan</th></tr></thead>
+      <tbody>
+        {% for ad, aciklama in yer_tutucular.items %}
+          <tr><td class="mono">{{ '{' }}{{ ad }}{{ '}' }}</td><td>{{ aciklama }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

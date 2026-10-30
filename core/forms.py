@@ -1284,6 +1284,14 @@ class FirmaBilgisiForm(forms.Form):
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 2}))
     logo = forms.ImageField(label="Logo", required=False)
+    isveren_vekili_adi = forms.CharField(label="İşveren Vekili (Ad Soyad)", max_length=120, required=False,
+                                         widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    isveren_vekili_unvani = forms.CharField(label="İşveren Vekili Unvanı", max_length=120, required=False,
+                                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    mersis_no = forms.CharField(label="MERSİS No", max_length=20, required=False,
+                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    sgk_isyeri_sicil_no = forms.CharField(label="SGK İşyeri Sicil No", max_length=40, required=False,
+                                          widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
 
 class FirmaBankaForm(forms.Form):
@@ -3275,6 +3283,16 @@ class PersonelForm(forms.Form):
     acil_durum_telefon = forms.CharField(
         label="Acil Durum Telefonu", max_length=20, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
+    dogum_yeri = forms.CharField(label="Doğum Yeri", max_length=80, required=False,
+                                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    baba_adi = forms.CharField(label="Baba Adı", max_length=80, required=False,
+                               widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    ana_adi = forms.CharField(label="Ana Adı", max_length=80, required=False,
+                              widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    cinsiyet = forms.ChoiceField(label="Cinsiyet", required=False, choices=[("", "—")] + list(Personel.CINSIYETLER))
+    medeni_durum = forms.ChoiceField(label="Medeni Durum", required=False, choices=[("", "—")] + list(Personel.MEDENI_DURUMLAR))
+    cocuk_sayisi = forms.IntegerField(label="Çocuk Sayısı", required=False, min_value=0, max_value=30)
+    ogrenim_durumu = forms.ChoiceField(label="Öğrenim Durumu", required=False, choices=[("", "—")] + list(Personel.OGRENIM_DURUMLARI))
     acil_durum_kisi_2 = forms.CharField(
         label="2. Acil Durumda Aranacak Kişi", max_length=120, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
@@ -3374,6 +3392,28 @@ class PersonelIzinForm(forms.Form):
 
 class IkAyariForm(forms.Form):
     gunluk_calisma_saati = TRDecimalField(label="Günlük çalışma süresi (saat)", basamak=2)
+
+
+class IseGirisKaydiForm(forms.Form):
+    """Personel kartı > İşe Giriş: sözleşme parametreleri (evrak basımında yer tutucu olarak kullanılır). Kurallar serviste (core.services.ise_giris)."""
+    deneme_suresi_ay = forms.IntegerField(label="Deneme süresi (ay)", required=False, min_value=0, max_value=4,
+                                          help_text="Yasal üst sınır 2 ay (toplu iş sözleşmesiyle 4 ay).")
+    haftalik_calisma_saati = TRDecimalField(label="Haftalık çalışma saati", basamak=1, required=False,
+                                            help_text="En çok 45; fazla çalışma muvafakatnamesiyle ayrıca yazılır.")
+    calisma_gunleri = forms.CharField(label="Çalışma günleri", max_length=80, required=False,
+                                      widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Pazartesi – Cuma"}))
+    calisma_saatleri = forms.CharField(label="Günlük çalışma saatleri", max_length=80, required=False,
+                                       widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "08:00 – 17:30 (1 saat ara)"}))
+    ucret_odeme = forms.CharField(label="Ücret ödeme şekli / günü", max_length=120, required=False,
+                                  widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Her ayın 5'i, banka hesabına"}))
+    notlar = forms.CharField(label="Not", required=False, widget=forms.Textarea(attrs={"rows": 2}))
+
+
+class BelgeSablonuForm(forms.Form):
+    """AYARLAR > Belge Şablonları: başlık + metin + pakete dahil mi. Yer tutucu denetimi serviste (core.services.belge_sablon)."""
+    baslik = forms.CharField(label="Başlık", max_length=200, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    metin = forms.CharField(label="Metin", widget=forms.Textarea(attrs={"rows": 24, "style": "font-family:inherit;line-height:1.45"}))
+    aktif = forms.BooleanField(label="Evrak paketine dahil", required=False)
 
 
 class PersonelBelgeForm(forms.Form):
