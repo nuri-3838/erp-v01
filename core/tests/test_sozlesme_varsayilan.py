@@ -19,7 +19,7 @@ from core.tests.test_ise_giris_paket import dolu_firma, dolu_personel, kullanici
 
 def sozlesme_metni(personel, firma, ayar=None):
     bs.hazirla()
-    belgeler = ig.paket_hazirla(personel, firma, ig.kayit_oku(personel), [bs.getir("SOZLESME")], nusha=1, bugun=date(2026, 10, 30), ayar=ayar)
+    belgeler = ig.paket_hazirla(personel, firma, ig.kayit_oku(personel), [bs.getir("SOZLESME")], bugun=date(2026, 10, 30), ayar=ayar)
     return "\n\n".join(belgeler[0]["paragraflar"])
 
 
@@ -103,7 +103,7 @@ class CiktiyaYansimaTest(OzelDizinTestTemel):
     def test_pdf_sablonunda_cizelge_satirlari(self):
         p, firma = dolu_personel(), dolu_firma()
         bs.hazirla()
-        belgeler = ig.paket_hazirla(p, firma, ig.kayit_oku(p), [bs.getir("SOZLESME")], nusha=1, bugun=date(2026, 10, 30))
+        belgeler = ig.paket_hazirla(p, firma, ig.kayit_oku(p), [bs.getir("SOZLESME")], bugun=date(2026, 10, 30))
         html = render_to_string("core/ise_giris_paket_pdf.html", {"firma": firma, "logo_b64": None, "belgeler": belgeler,
                                                                  "belge_tarihi": date(2026, 10, 30), "personel": p})
         self.assertIn("15:45 – 18:30 Çalışma", html)
@@ -202,6 +202,18 @@ class SablonYukseltmeTest(TestCase):
         BelgeSablonu.objects.create(kod="SOZLESME", baslik="BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ", metin=self.eski("SOZLESME", 1), sira=1)
         bs.hazirla()
         self.assertEqual(BelgeSablonu.objects.get(kod="SOZLESME").metin.strip(), bs.VARSAYILAN["SOZLESME"]["metin"].strip())
+
+    def test_iki_nusha_ifadeli_onceki_surum_tek_surete_yukselir(self):
+        v3 = self.eski("SOZLESME", 2)                                                           # çalışma düzeni varsayılanı sürümü ("iki nüsha" ifadesi)
+        self.assertIn("iki nüsha olarak düzenlenmiş", v3)
+        BelgeSablonu.objects.create(kod="SOZLESME", baslik="BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ", metin=v3, sira=1)
+        bs.hazirla()
+        yeni = BelgeSablonu.objects.get(kod="SOZLESME").metin
+        self.assertNotIn("iki nüsha", yeni)
+        self.assertIn("bir sureti işçiye verilmiştir", yeni)
+
+    def test_guncel_sozlesme_eski_listede_degil(self):
+        self.assertNotIn(bs.VARSAYILAN["SOZLESME"]["metin"].strip(), {m.strip() for m in ESKI_METINLER["SOZLESME"]})
 
     def test_duzenlenmis_metne_ve_ozel_basliga_dokunulmaz(self):
         BelgeSablonu.objects.create(kod="SOZLESME", baslik="BENİM BAŞLIĞIM", metin=self.eski("SOZLESME", 0) + "\nEK MADDE: benim eklediğim.", sira=1)

@@ -80,7 +80,7 @@ MADDE 12 – TEBLİGAT
 Tarafların yukarıda yazılı adresleri tebligat adresidir. Adres değişikliği yazılı olarak bildirilmedikçe bu adrese yapılan tebligat geçerlidir.
 
 MADDE 13 – YÜRÜRLÜK
-İşbu sözleşme {bugun} tarihinde iki nüsha olarak düzenlenmiş, taraflarca okunup imzalanmış ve bir nüshası işçiye verilmiştir.
+İşbu sözleşme {bugun} tarihinde düzenlenmiş, taraflarca okunup imzalanmış ve bir sureti işçiye verilmiştir.
 """
 
 _KVKK_AYDINLATMA = """\

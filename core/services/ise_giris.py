@@ -179,7 +179,7 @@ def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_
 
 # Şablon kodu -> imza düzeni: iki_taraf (işveren + işçi) / isci (yalnız işçi) ve işçi imzasının üstüne basılan beyan.
 IMZA = {
-    "SOZLESME": ("iki_taraf", "Bu sözleşmeyi okudum, anladım, bir nüshasını teslim aldım."),
+    "SOZLESME": ("iki_taraf", "Bu sözleşmeyi okudum, anladım, bir suretini teslim aldım."),
     "KVKK_AYDINLATMA": ("isci", "Aydınlatma metnini okudum, bir nüshasını teslim aldım."),
     "KVKK_ACIK_RIZA": ("isci", "Açık rızamı özgür irademle veriyorum."),
     "FAZLA_CALISMA": ("iki_taraf", "Fazla çalışmaya yazılı olarak muvafakat ediyorum."),
@@ -243,20 +243,61 @@ def eksik_bilgiler(personel: Personel, firma, kayit, *, ucret_gorebilir=False, u
     return out
 
 
-def paket_hazirla(personel: Personel, firma, kayit, sablonlar, *, nusha=1, ucret="", bugun=None, ayar=None) -> list:
-    """Basılacak belgeler: [{kod, baslik, paragraflar, imza, imza_notu, nusha_no, nusha_adet}] — şablon sırasıyla; iş sözleşmesi ``nusha`` kez
-    (varsayılan 1; sözleşme metni "iki nüsha" der → ekran 2 önerir). Yer tutucular güvenli düz yazı değiştirmeyle doldurulur."""
+BILGI_FORMU_KODU = "PERSONEL_BILGI"                  # şablonu olmayan, sistemin kendi ürettiği belge (düzenlenebilir metin değil: personel kartından dolar)
+BILGI_FORMU_BASLIK = "PERSONEL BİLGİ FORMU"
+
+
+def bilgi_formu_bolumleri(personel: Personel, bugun=None) -> list:
+    """Personel bilgi formunun bölümleri: [(başlık, [(etiket, değer)])]. Değer boşsa çıktıda noktalı çizgi (elle doldurulur) basılır.
+    Ücret BURADA YOKTUR (ücret yetkisi ayrı; form personel imzasına gider)."""
+    from core.dogrulama import iban_bicimli
+    from core.services.belge_sablon import BOS
+    bugun = bugun or tr_bugun()
+    gun = lambda d: d.strftime("%d.%m.%Y") if d else ""
+    secenek = lambda alan: getattr(personel, f"get_{alan}_display")() if getattr(personel, alan) else ""
+    kisi = lambda ad, tel: " — ".join(x for x in (ad, tel) if x)
+    bolumler = [
+        ("Kimlik Bilgileri", [
+            ("Adı Soyadı", personel.ad_soyad), ("T.C. Kimlik No", personel.tc_kimlik_no),
+            ("Doğum Tarihi", gun(personel.dogum_tarihi)), ("Doğum Yeri", personel.dogum_yeri),
+            ("Baba Adı", personel.baba_adi), ("Ana Adı", personel.ana_adi),
+            ("Cinsiyet", secenek("cinsiyet")), ("Medeni Durum", secenek("medeni_durum")),
+            ("Çocuk Sayısı", "" if personel.cocuk_sayisi is None else str(personel.cocuk_sayisi)),
+            ("Öğrenim Durumu", secenek("ogrenim_durumu")), ("Kan Grubu", personel.kan_grubu),
+        ]),
+        ("İletişim Bilgileri", [
+            ("Adres", " ".join((personel.adres or "").split())), ("Telefon", personel.telefon), ("E-posta", personel.eposta),
+            ("Acil Durumda Aranacak Kişi 1", kisi(personel.acil_durum_kisi, personel.acil_durum_telefon)),
+            ("Acil Durumda Aranacak Kişi 2", kisi(personel.acil_durum_kisi_2, personel.acil_durum_telefon_2)),
+        ]),
+        ("Banka Bilgileri", [
+            ("IBAN", iban_bicimli(personel.iban) if personel.iban else ""), ("Banka", personel.banka_adi),
+            ("Hesap Sahibi", personel.hesap_sahibi or personel.ad_soyad),
+        ]),
+        ("İşe Giriş Bilgileri", [
+            ("İşe Giriş Tarihi", gun(personel.ise_giris_tarihi)), ("Departman", personel.departman), ("Görev", personel.gorev),
+        ]),
+    ]
+    return [(b, [(e, d if d else BOS) for e, d in satirlar]) for b, satirlar in bolumler]
+
+
+def paket_hazirla(personel: Personel, firma, kayit, sablonlar, *, bilgi_formu=False, ucret="", bugun=None, ayar=None) -> list:
+    """Basılacak belgeler: [{kod, baslik, paragraflar, bolumler, imza, imza_notu}]. Önce (``bilgi_formu`` ise) personel bilgi formu, sonra şablonlar
+    sıralarıyla; her belge BİR nüsha. Yer tutucular güvenli düz yazı değiştirmeyle doldurulur."""
     from core.services import belge_sablon as bs
     degerler = yer_tutucu_degerleri(personel, firma, kayit, ucret=ucret, bugun=bugun, ayar=ayar)
     belgeler = []
+    if bilgi_formu:
+        belgeler.append({"kod": BILGI_FORMU_KODU, "baslik": BILGI_FORMU_BASLIK, "bolumler": bilgi_formu_bolumleri(personel, bugun),
+                         "paragraflar": ["Yukarıdaki bilgilerin doğru ve eksiksiz olduğunu, bilgilerimde değişiklik olması hâlinde işverene yazılı olarak "
+                                         "bildireceğimi beyan ederim."],
+                         "imza": "isci", "imza_notu": "Bilgilerin doğruluğunu beyan ederim."})
     for s in sablonlar:
         metin = bs.doldur(s.metin, degerler)
         paragraflar = [p.strip() for p in metin.replace("\r\n", "\n").split("\n\n") if p.strip()]
         imza, imza_notu = IMZA.get(s.kod, ("isci", ""))
-        adet = nusha if s.kod == "SOZLESME" else 1
-        for no in range(1, adet + 1):
-            belgeler.append({"kod": s.kod, "baslik": bs.doldur(s.baslik, degerler), "paragraflar": paragraflar, "imza": imza,
-                             "imza_notu": imza_notu, "nusha_no": no, "nusha_adet": adet})
+        belgeler.append({"kod": s.kod, "baslik": bs.doldur(s.baslik, degerler), "paragraflar": paragraflar, "bolumler": [],
+                         "imza": imza, "imza_notu": imza_notu})
     return belgeler
 
 

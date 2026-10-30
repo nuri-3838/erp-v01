@@ -82,19 +82,18 @@ class DegerlerTest(OzelDizinTestTemel):
         tam = ig.eksik_bilgiler(self.p, self.firma, ig.kayit_oku(self.p), ucret_gorebilir=False)
         self.assertEqual(tam, [])                                                              # ücret yetkisi yoksa ücret eksiği listelenmez
 
-    def test_paket_hazirla_sozlesme_nusha_ve_doldurma(self):
+    def test_paket_hazirla_sozlesme_tek_nusha_ve_doldurma(self):
         bs.hazirla()
         sablonlar = list(BelgeSablonu.objects.filter(silindi=False).order_by("sira"))
-        belgeler = ig.paket_hazirla(self.p, self.firma, ig.kayit_oku(self.p), sablonlar, nusha=2, ucret="40.000,00 TL", bugun=date(2026, 10, 30))
-        self.assertEqual([(b["kod"], b["nusha_no"], b["nusha_adet"]) for b in belgeler],
-                         [("SOZLESME", 1, 2), ("SOZLESME", 2, 2), ("KVKK_AYDINLATMA", 1, 1), ("KVKK_ACIK_RIZA", 1, 1), ("FAZLA_CALISMA", 1, 1)])
+        belgeler = ig.paket_hazirla(self.p, self.firma, ig.kayit_oku(self.p), sablonlar, ucret="40.000,00 TL", bugun=date(2026, 10, 30))
+        self.assertEqual([b["kod"] for b in belgeler], ["SOZLESME", "KVKK_AYDINLATMA", "KVKK_ACIK_RIZA", "FAZLA_CALISMA"])      # her belge BİR nüsha
         soz = belgeler[0]
         metin = "\n\n".join(soz["paragraflar"])
         for parca in ("AYŞE DEMİR", "10000000146", "KAYSERİ / 12.04.1995", "2 ay deneme süresi", "40.000,00 TL tutarında ücret", "Pazartesi – Cuma",
                       "NURİ ÖZER (YÖNETİM KURULU BAŞKANI)", "30.10.2026"):
             self.assertIn(parca, metin)
         self.assertIsNone(re.search(r"\{[a-z_0-9]+\}", metin))                                  # doldurulmamış yer tutucu kalmadı
-        self.assertEqual([b["imza"] for b in belgeler], ["iki_taraf", "iki_taraf", "isci", "isci", "iki_taraf"])
+        self.assertEqual([b["imza"] for b in belgeler], ["iki_taraf", "isci", "isci", "iki_taraf"])
         self.assertGreater(len(soz["paragraflar"]), 10)                                         # boş satırlarla paragraflara bölündü
 
     def test_eksik_deger_noktali_cizgi_ve_enjeksiyon_yok(self):
@@ -107,11 +106,11 @@ class DegerlerTest(OzelDizinTestTemel):
 
 
 class PdfSablonuTest(OzelDizinTestTemel):
-    def render(self, nusha=2):
+    def render(self, bilgi_formu=False):
         p, firma = dolu_personel(), dolu_firma()
         bs.hazirla()
         sablonlar = list(BelgeSablonu.objects.filter(silindi=False).order_by("sira"))
-        belgeler = ig.paket_hazirla(p, firma, ig.kayit_oku(p), sablonlar, nusha=nusha, bugun=date(2026, 10, 30))
+        belgeler = ig.paket_hazirla(p, firma, ig.kayit_oku(p), sablonlar, bilgi_formu=bilgi_formu, bugun=date(2026, 10, 30))
         return render_to_string("core/ise_giris_paket_pdf.html", {"firma": firma, "logo_b64": None, "belgeler": belgeler,
                                                                  "belge_tarihi": date(2026, 10, 30), "personel": p}), belgeler
 
@@ -121,18 +120,42 @@ class PdfSablonuTest(OzelDizinTestTemel):
         self.assertIn("counter(pages)", html)
         self.assertNotRegex(re.search(r"<style>.*?</style>", html, re.S).group(0), r"#(?!000\b)[0-9a-fA-F]{3,6}\b")      # siyah-beyaz: #000 dışında renk yok
         self.assertEqual(html.count('class="belge'), len(belgeler))
-        self.assertEqual(html.count("İŞVEREN</div>"), 3)                                         # sözleşme ×2 + fazla çalışma
-        self.assertEqual(html.count("İŞÇİ</div>"), 5)
-        self.assertEqual(html.count("Nüsha 1 / 2") + html.count("Nüsha 2 / 2"), 2)
+        self.assertEqual(html.count("İŞVEREN</div>"), 2)                                         # sözleşme + fazla çalışma
+        self.assertEqual(html.count("İŞÇİ</div>"), 4)
+        self.assertNotIn("Nüsha", html)
         self.assertIn("Bu sözleşmeyi okudum", html)
         self.assertIn("Açık rızamı özgür irademle veriyorum.", html)
         for baslik in ("BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ", "MUVAFAKATNAMESİ"):
             self.assertIn(baslik, html)
 
-    def test_tek_nusha(self):
-        html, belgeler = self.render(nusha=1)
-        self.assertEqual(len(belgeler), 4)
-        self.assertNotIn("Nüsha", html)
+    def test_bilgi_formu_ilk_sayfa_ve_dolu(self):
+        html, belgeler = self.render(bilgi_formu=True)
+        self.assertEqual([b["kod"] for b in belgeler], ["PERSONEL_BILGI", "SOZLESME", "KVKK_AYDINLATMA", "KVKK_ACIK_RIZA", "FAZLA_CALISMA"])
+        self.assertEqual(html.count('class="belge'), 5)
+        self.assertEqual(html.count("İŞÇİ</div>"), 5)
+        self.assertEqual(html.count("İŞVEREN</div>"), 2)                                         # bilgi formunda işveren imzası yok
+        for parca in ("PERSONEL BİLGİ FORMU", "Kimlik Bilgileri", "İletişim Bilgileri", "Banka Bilgileri", "İşe Giriş Bilgileri", "AYŞE DEMİR",
+                      "10000000146", "12.04.1995", "KAYSERİ", "Bilgilerin doğruluğunu beyan ederim."):
+            self.assertIn(parca, html)
+        self.assertNotIn("ücret", belgeler[0]["bolumler"].__repr__().lower())                    # bilgi formunda ücret yok
+
+    def test_bilgi_formu_bos_alan_noktali_cizgi_ve_secenek_adlari(self):
+        p = personel_kur(ad="Veli", soyad="Kaya")
+        p.cinsiyet, p.medeni_durum, p.ogrenim_durumu, p.cocuk_sayisi = "ERKEK", "EVLI", "LISE", 0
+        p.save()
+        satir = {e: d for _b, ss in ig.bilgi_formu_bolumleri(p) for e, d in ss}
+        self.assertEqual((satir["Cinsiyet"], satir["Medeni Durum"], satir["Öğrenim Durumu"], satir["Çocuk Sayısı"]), ("Erkek", "Evli", "Lise", "0"))
+        self.assertEqual(satir["Adı Soyadı"], "VELİ KAYA")
+        self.assertEqual(satir["Hesap Sahibi"], "VELİ KAYA")                                     # hesap sahibi boşsa personelin adı
+        for etiket in ("Doğum Yeri", "Baba Adı", "IBAN", "Acil Durumda Aranacak Kişi 2"):
+            self.assertEqual(satir[etiket], bs.BOS)
+
+    def test_acil_durum_kisi_ve_telefon_birlikte(self):
+        p = dolu_personel()
+        p.acil_durum_kisi, p.acil_durum_telefon = "Fatma Demir", "0532 000 00 00"
+        p.save()
+        satir = {e: d for _b, ss in ig.bilgi_formu_bolumleri(p) for e, d in ss}
+        self.assertEqual(satir["Acil Durumda Aranacak Kişi 1"], "Fatma Demir — 0532 000 00 00")
 
 
 class PaketGorunumTest(OzelDizinTestTemel):
@@ -149,10 +172,10 @@ class PaketGorunumTest(OzelDizinTestTemel):
 
     def post(self, kisi=None, **veri):
         self.client.force_login(kisi or self.belgeci)
-        veri = {"belge": ["SOZLESME", "KVKK_AYDINLATMA", "KVKK_ACIK_RIZA", "FAZLA_CALISMA"], "sozlesme_nusha": "2", **veri}
+        veri = {"belge": ["SOZLESME", "KVKK_AYDINLATMA", "KVKK_ACIK_RIZA", "FAZLA_CALISMA"], **veri}
         return self.client.post(self.url, veri)
 
-    def yakala(self, kisi):
+    def yakala(self, kisi, **veri):
         """POST sırasında PDF şablonuna giden bağlamı yakalar."""
         from django.template.loader import render_to_string as gercek
         yakalanan = {}
@@ -162,7 +185,7 @@ class PaketGorunumTest(OzelDizinTestTemel):
                 yakalanan.update(ctx)
             return gercek(ad, ctx, *a, **kw)
         with mock.patch("core.views.render_to_string", side_effect=sahte):
-            r = self.post(kisi)
+            r = self.post(kisi, **veri)
         return r, yakalanan
 
     def test_pdf_uretilir_basim_zamani_yazilir(self):
@@ -198,7 +221,7 @@ class PaketGorunumTest(OzelDizinTestTemel):
 
     def test_secim_bos_pasif_ve_gecersiz(self):
         self.client.force_login(self.belgeci)
-        r = self.client.post(self.url, {"sozlesme_nusha": "2"}, follow=True)
+        r = self.client.post(self.url, {}, follow=True)
         self.assertRedirects(r, self.sekme)
         self.assertContains(r, "Basılacak belge seçilmedi")
         bs.hazirla()
@@ -208,7 +231,7 @@ class PaketGorunumTest(OzelDizinTestTemel):
         r, ctx = self.yakala(self.belgeci)
         kodlar = [b["kod"] for b in ctx["belgeler"]]
         self.assertNotIn("KVKK_ACIK_RIZA", kodlar)                                              # pasif şablon POST'ta olsa bile basılmaz
-        self.assertEqual(kodlar.count("SOZLESME"), 2)
+        self.assertEqual(kodlar.count("SOZLESME"), 1)
         r = self.client.post(self.url, {"belge": ["YOK_BOYLE"]}, follow=True)
         self.assertContains(r, "Basılacak belge seçilmedi")
 
@@ -228,13 +251,26 @@ class PaketGorunumTest(OzelDizinTestTemel):
         b = [x for x in ctx["belgeler"] if x["kod"] == "FAZLA_CALISMA"][0]
         self.assertEqual((b["baslik"], b["paragraflar"]), ("ÖZEL BAŞLIK", ["Ben AYŞE DEMİR, özel metin."]))
 
+    def test_bilgi_formu_pakete_girer_ve_tek_basina_basilabilir(self):
+        _r, ctx = self.yakala(self.belgeci, belge=["PERSONEL_BILGI", "SOZLESME"])
+        self.assertEqual([b["kod"] for b in ctx["belgeler"]], ["PERSONEL_BILGI", "SOZLESME"])
+        _r, ctx = self.yakala(self.belgeci, belge=["PERSONEL_BILGI"])                             # şablon seçilmese de bilgi formu yeter
+        self.assertEqual([b["kod"] for b in ctx["belgeler"]], ["PERSONEL_BILGI"])
+        self.assertEqual(self.post(belge=["PERSONEL_BILGI"]).status_code, 200)
+
+    def test_sozlesme_metni_tek_suret(self):
+        metin = bs.VARSAYILAN["SOZLESME"]["metin"]
+        self.assertNotIn("iki nüsha", metin)
+        self.assertIn("bir sureti işçiye verilmiştir", metin)
+
     def test_sekme_paket_formu_ve_eksikler(self):
         self.client.force_login(self.belgeci)
         r = self.client.get(self.sekme)
         self.assertContains(r, "Evrak Paketi")
         self.assertContains(r, self.url)
         self.assertContains(r, 'name="belge" value="SOZLESME" checked')
-        self.assertContains(r, 'name="sozlesme_nusha"')
+        self.assertNotContains(r, "nüsha sayısı")                                               # nüsha seçimi yok: her belge tek nüsha
+        self.assertContains(r, 'name="belge" value="PERSONEL_BILGI" checked')                    # bilgi formu varsayılan işaretli, listenin başında
         self.assertContains(r, "Ücret görme yetkiniz olmadığı")
         self.assertNotContains(r, "Eksik bilgiler")                                              # kişi/firma dolu; sözleşme bilgileri firma varsayılanından
         self.assertNotContains(r, "Son basım")

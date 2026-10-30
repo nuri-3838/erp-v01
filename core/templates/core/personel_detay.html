@@ -169,10 +169,6 @@
           <label class="secenek" style="text-transform:none;letter-spacing:0"><input type="checkbox" name="belge" value="{{ b.kod }}" checked> {{ b.baslik }}</label>
         {% endfor %}
       </div>
-      <div class="alan" style="max-width:20rem;margin-bottom:.8rem">
-        <label for="sozlesme-nusha">İş sözleşmesi nüsha sayısı</label>
-        <select id="sozlesme-nusha" name="sozlesme_nusha"><option value="2" selected>2 nüsha (işveren + işçi)</option><option value="1">1 nüsha</option></select>
-      </div>
       <button type="submit" class="birincil">🖨️ Evrak Paketini Hazırla (PDF)</button>
     </form>
     {% else %}

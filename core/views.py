@@ -10496,15 +10496,15 @@ def ise_giris_paket_pdf(request, pk):
         return redirect(donus)
     secilen = set(request.POST.getlist("belge"))
     sablonlar = [s for s in belge_sablon_servis.hazirla(request.user) if s.aktif and s.kod in secilen]
-    if not sablonlar:
+    bilgi_formu = ise_giris_servis.BILGI_FORMU_KODU in secilen
+    if not sablonlar and not bilgi_formu:
         messages.error(request, "Basılacak belge seçilmedi. (Pakete dahil olan şablonlar Ayarlar > Belge Şablonları'ndan belirlenir.)")
         return redirect(donus)
-    nusha = 2 if request.POST.get("sozlesme_nusha") == "2" else 1
     ctx = _pdf_firma_baglami()
     bugun = tr_bugun()
     ucret = ise_giris_servis.ucret_metni(p, bugun=bugun) if ekran_gorebilir(request.user, "personel_ucret") else ""
-    ctx.update({"belgeler": ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, nusha=nusha, ucret=ucret, bugun=bugun,
-                                                           ayar=ise_giris_servis.sozlesme_ayari()),
+    ctx.update({"belgeler": ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, bilgi_formu=bilgi_formu,
+                                                           ucret=ucret, bugun=bugun, ayar=ise_giris_servis.sozlesme_ayari()),
                 "belge_tarihi": bugun, "personel": p})
     pdf = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf()
     ise_giris_servis.paket_basildi(p, kullanici=request.user)
@@ -10558,7 +10558,8 @@ def personel_detay(request, pk):
             ctx["ise_giris_duzenlenebilir"] = ekran_gorebilir(request.user, "personel")
             ucret_gorebilir = ekran_gorebilir(request.user, "personel_ucret")
             firma = firma_servis.firma_bilgisi_getir()
-            ctx["paket_belgeleri"] = [s for s in belge_sablon_servis.gorunum_listesi() if s["aktif"]]
+            ctx["paket_belgeleri"] = [{"kod": ise_giris_servis.BILGI_FORMU_KODU, "baslik": "Personel bilgi formu (personel kartından otomatik dolar)", "aktif": True},
+                                      *[s for s in belge_sablon_servis.gorunum_listesi() if s["aktif"]]]
             ctx["eksik_bilgiler"] = ise_giris_servis.eksik_bilgiler(
                 p, firma, ctx["ise_giris_kaydi"], ucret_gorebilir=ucret_gorebilir, ayar=ayar,
                 ucret=ise_giris_servis.ucret_metni(p, bugun=bugun) if ucret_gorebilir else "")
