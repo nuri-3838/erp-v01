@@ -26,7 +26,9 @@
 
   .bilgi { display: flex; flex-direction: column; gap: 9px; margin-bottom: 13px; }
   .taraf-satir { display: flex; gap: 9px; }
-  .taraf-kolon { display: flex; flex-direction: column; gap: 9px; flex: 1 1 0; min-width: 0; }
+  /* düz blok sütunu: iç içe flex (satır > sütun) uzun adreste kutu yüksekliğini eksik hesaplayıp içeriği kutudan taşırıyordu (WeasyPrint) */
+  .taraf-kolon { display: block; flex: 1 1 0; min-width: 0; }
+  .taraf-kolon .kutu + .kutu { margin-top: 9px; }
   .kutu { background: #fbfcfe; border: 1px solid #e6eaf1; border-radius: 9px;
     padding: 8px 12px 9px; border-top: 3px solid #15294d; }
   .kutu.taraf { flex: 1 1 0; min-width: 0; }

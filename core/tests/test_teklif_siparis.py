@@ -583,6 +583,49 @@ class TeklifSiparisDurumBelgeNoPdfTest(TestCase):
         t.save(update_fields=["durum"])
         self.assertEqual(teklif_duzeltmeye_ac(t, kullanici=self.yon).durum, "TASLAK")
 
+    def test_pdf_alici_kutusu_uzun_unvan_ve_adreste_tasmaz(self):
+        """Satış teklif/proforma/sipariş PDF'inde uzun alıcı unvanı + adresi kutunun dışına taşıp alttaki SATICI kutusunun üstüne binmemeli
+        (iç içe flex satır>sütun kutu yüksekliğini eksik hesaplıyordu). WeasyPrint düzen ağacında her kutunun içeriği kutu sınırları içinde olmalı."""
+        from unittest import mock
+
+        from django.template.loader import render_to_string as gercek
+        from weasyprint import HTML
+
+        def kutular(kutu, sonuc):
+            cls = (getattr(kutu, "element", None).get("class") if getattr(kutu, "element", None) is not None else None) or ""
+            if "kutu" in cls.split() and "taraf" in cls.split():
+                def en_alt(b, m):
+                    for c in getattr(b, "children", []) or []:
+                        if hasattr(c, "position_y") and getattr(c, "height", None) is not None:
+                            m[0] = max(m[0], c.position_y + c.margin_top + c.height)
+                        en_alt(c, m)
+                    return m[0]
+                sonuc.append((kutu.position_y + kutu.margin_height() - kutu.margin_top, en_alt(kutu, [0])))
+            for c in getattr(kutu, "children", []) or []:
+                kutular(c, sonuc)
+            return sonuc
+
+        adres = "KÜÇÜKBAKKALKÖY MAH. DUDULLU CAD. BRANDİUM R3 BLOK NO:23-25 KAT:23 İÇ KAPI NO:157 ATAŞEHİR İSTANBUL"
+        Cari.objects.filter(pk=self.cari.pk).update(unvan="REM MARKET ÜRÜNLERİ ÜRETİM VE PAZ. TİC. LTD. ŞTİ.", adres=adres)
+        self.client.force_login(self.yon)
+        for tur in ("TEKLIF", "PROFORMA", "SIPARIS"):
+            t = self._teklif(belge_tur=tur)
+            yakala = {}
+
+            def sahte(ad, ctx=None, *a, **kw):
+                h = gercek(ad, ctx, *a, **kw)
+                if ad.endswith("_pdf.html") and "satis_" in ad:
+                    yakala["html"] = h
+                return h
+            with mock.patch("core.views.render_to_string", side_effect=sahte):
+                r = self.client.get(reverse("core:teklif_siparis_pdf", args=[t.pk]))
+            self.assertEqual(r.status_code, 200, tur)
+            self.assertIn("html", yakala, tur)
+            olculer = kutular(HTML(string=yakala["html"]).render().pages[0]._page_box, [])
+            self.assertEqual(len(olculer), 2, tur)                                             # ALICI + SATICI kutuları
+            for kutu_alt, icerik_alt in olculer:
+                self.assertLessEqual(icerik_alt, kutu_alt + 0.5, f"{tur}: içerik kutudan taşıyor")
+
     def test_view_teklif_red_nedeni_kaydedilir(self):
         from core.services.teklif_siparis import teklif_siparis_olustur
         self.client.force_login(self.yon)
