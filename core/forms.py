@@ -3275,6 +3275,12 @@ class PersonelForm(forms.Form):
     acil_durum_telefon = forms.CharField(
         label="Acil Durum Telefonu", max_length=20, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
+    acil_durum_kisi_2 = forms.CharField(
+        label="2. Acil Durumda Aranacak Kişi", max_length=120, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    acil_durum_telefon_2 = forms.CharField(
+        label="2. Acil Durum Telefonu", max_length=20, required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "tel"}))
     departman = forms.CharField(
         label="Departman", max_length=80, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "list": "dl-departman"}))

@@ -10272,7 +10272,7 @@ def yemek_sayimi_sil(request, pk):
 # === İNSAN KAYNAKLARI ===
 _PERSONEL_ALANLARI = (
     "ad", "soyad", "tc_kimlik_no", "dogum_tarihi", "kan_grubu", "telefon", "eposta", "adres",
-    "acil_durum_kisi", "acil_durum_telefon", "departman", "gorev", "ise_giris_tarihi",
+    "acil_durum_kisi", "acil_durum_telefon", "acil_durum_kisi_2", "acil_durum_telefon_2", "departman", "gorev", "ise_giris_tarihi",
     "isten_cikis_tarihi", "cikis_nedeni", "notlar", "iban", "banka_adi", "hesap_sahibi")
 
 

@@ -110,7 +110,7 @@ def _tc_benzersiz(tc, *, haric_pk=None):
 
 
 def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", telefon="",
-             eposta="", adres="", acil_durum_kisi="", acil_durum_telefon="", departman="",
+             eposta="", adres="", acil_durum_kisi="", acil_durum_telefon="", acil_durum_kisi_2="", acil_durum_telefon_2="", departman="",
              gorev="", ise_giris_tarihi=None, isten_cikis_tarihi=None, cikis_nedeni="",
              notlar="", izin_onceki_kullanilan=None, iban="", banka_adi="", hesap_sahibi="", haric_pk=None) -> dict:
     ad, soyad = _buyuk(ad), _buyuk(soyad)
@@ -165,6 +165,8 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
         "adres": buyuk_harf_tr((adres or "").strip()),
         "acil_durum_kisi": _buyuk(acil_durum_kisi),
         "acil_durum_telefon": _telefon(acil_durum_telefon),
+        "acil_durum_kisi_2": _buyuk(acil_durum_kisi_2),
+        "acil_durum_telefon_2": _telefon(acil_durum_telefon_2),
         "departman": _buyuk(departman), "gorev": _buyuk(gorev),
         "ise_giris_tarihi": ise_giris_tarihi, "isten_cikis_tarihi": isten_cikis_tarihi,
         "cikis_nedeni": (cikis_nedeni or "").strip(), "notlar": (notlar or "").strip(),

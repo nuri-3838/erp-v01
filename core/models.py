@@ -4054,6 +4054,8 @@ class Personel(TemelModel):
     adres = models.TextField("adres", blank=True)
     acil_durum_kisi = models.CharField("acil durumda aranacak kişi", max_length=120, blank=True)
     acil_durum_telefon = models.CharField("acil durum telefonu", max_length=20, blank=True)
+    acil_durum_kisi_2 = models.CharField("2. acil durumda aranacak kişi", max_length=120, blank=True)
+    acil_durum_telefon_2 = models.CharField("2. acil durum telefonu", max_length=20, blank=True)
     departman = models.CharField("departman", max_length=80, blank=True)
     gorev = models.CharField("görev", max_length=80, blank=True)
     ise_giris_tarihi = models.DateField("işe giriş tarihi")
