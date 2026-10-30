@@ -184,7 +184,9 @@ class GelenMutabakatTest(GelenBase):
 
 class GelenEkranTest(GelenBase):
     def setUp(self):
+        from core.models import IsIstasyonu
         self.client.force_login(User.objects.create_superuser("gl_y", password="x"))
+        IsIstasyonu.objects.filter(pk=self.op.istasyon_id).update(fason=True)          # dönüş formu yalnız FASON işaretli istasyonun operasyonlarını listeler
 
     def test_form_gelen_adet_ve_detay_duzenleme(self):
         self.hazir()

@@ -1616,7 +1616,8 @@ class FasonDonusSatirForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["operasyon"].queryset = (Operasyon.objects.filter(silindi=False).select_related("cikti", "istasyon")
+        # yalnız FASON işaretli istasyondaki operasyonlar (IsIstasyonu.fason): aynı çıktının fason olmayan operasyonları (ör. lazer markalama) listelenmez
+        self.fields["operasyon"].queryset = (Operasyon.objects.filter(silindi=False, istasyon__fason=True).select_related("cikti", "istasyon")
                                              .order_by("cikti__kod"))
         self.fields["operasyon"].label_from_instance = lambda o: f"{o.cikti.kod}  {o.cikti.ad}  [{o.istasyon.kod}]"
         self.fields["operasyon"].widget.attrs["class"] = "akilli-sec"

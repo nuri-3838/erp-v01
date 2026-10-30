@@ -76,6 +76,8 @@ class UretFasonTest(FasonParcalaBase):
         self.assertEqual(OperasyonKaydi.objects.filter(istasyon_emri=self.ie, silindi=False).count(), 1)
 
     def test_ekran_on_doldurma_ve_gizli_alan(self):
+        from core.models import IsIstasyonu
+        IsIstasyonu.objects.filter(pk=self.op.istasyon_id).update(fason=True)       # dönüş formu yalnız FASON işaretli istasyonun operasyonlarını listeler
         self.client.force_login(User.objects.create_superuser("fd_ie", password="x"))
         r = self.client.get(reverse("core:fason_donus_ekle"), {"istasyon_emri": self.ie.pk})
         ilk = r.context["formset"].initial[0]

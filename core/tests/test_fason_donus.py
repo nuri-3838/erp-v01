@@ -267,7 +267,29 @@ class DonusBelgeTest(FasonBase):
 class DonusEkranTest(FasonBase):
     def setUp(self):
         from django.contrib.auth.models import User
+        from core.models import IsIstasyonu
         self.client.force_login(User.objects.create_superuser("fdu_y", password="x"))
+        IsIstasyonu.objects.filter(pk=self.op.istasyon_id).update(fason=True)          # dönüş formu yalnız FASON işaretli istasyonun operasyonlarını listeler
+
+    def test_operasyon_listesi_yalniz_fason_istasyonlari(self):
+        """Aynı çıktının fason olmayan operasyonu (ör. lazer markalama) listede çıkmaz ve POST'ta da reddedilir; mevcut fason operasyon kalır."""
+        from django.urls import reverse
+        from core.models import IsIstasyonu, Operasyon
+        from core.services.uretim import operasyon_olustur
+        lazer = IsIstasyonu.objects.create(kod="LAZERX", ad="LAZER MARKALAMA", fason=False)
+        diger = operasyon_olustur(istasyon_id=lazer.pk, cikti_id=self._stok("MARKALI", self.kat_ana).pk, cikti_miktar=D("1"), satirlar=[(self.ana, D("1"))])
+        r = self.client.get(reverse("core:fason_donus_ekle"))
+        sec = list(r.context["formset"].empty_form.fields["operasyon"].queryset)
+        self.assertIn(self.op, sec)
+        self.assertNotIn(diger, sec)
+        self.fason_profil(10, 1000, 25)
+        self.fiyatlar()
+        v = self.post_veri("taslak")
+        v["satir-0-operasyon"] = diger.pk
+        r = self.client.post(reverse("core:fason_donus_ekle"), v)
+        self.assertEqual(r.status_code, 200)                                          # kayıt oluşmaz, form hatayla döner
+        self.assertEqual(FasonDonus.objects.count(), 0)
+        self.assertIn("operasyon", r.context["formset"].errors[0])                    # operasyon seçeneği listede olmadığı için form reddeder
 
     def post_veri(self, eylem, adet="3", **ek):
         v = {"cari": self.salim.pk, "depo": self.depo.pk, "irsaliye_no": "IRS-1", "tarih": "2026-10-09", "aciklama": "",
