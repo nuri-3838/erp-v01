@@ -3695,7 +3695,7 @@ class CariVirmanForm(forms.Form):
     yon = forms.ChoiceField(label="Yön", choices=[], widget=forms.RadioSelect)
     karsi_cari = forms.ModelChoiceField(label="Karşı cari", queryset=Cari.objects.none(), required=False, empty_label="— cari seç —")
     karsi_hesap = forms.ModelChoiceField(
-        label="veya Karşı HESAP (gider · gelir 64x/67x · 258)", queryset=HesapPlani.objects.none(), required=False,
+        label="veya Karşı HESAP (gider · gelir 64x/67x · 602.01 · 258)", queryset=HesapPlani.objects.none(), required=False,
         to_field_name="hesap_kodu", empty_label="— hesap seç —")
     yatirim_projesi = forms.ModelChoiceField(label="Yatırım projesi (yalnız 258 için)", queryset=YatirimProjesi.objects.none(),
                                              required=False, empty_label="— proje —")
@@ -3761,7 +3761,7 @@ class CariKesintiForm(forms.Form):
         help_text="Para birimi TRY seçiliyken, 'ortak ödedi' (karşı cari) hareketinde döviz carisinin borcundan düşülecek döviz: ödeme günü "
                   "TCMB alış kuruyla çevrilir (TL tutar aynı). Boş = carinin ana para birimi; 'TL (çevirme)' = TL havuzu.")
     gider = forms.ModelChoiceField(
-        label="Hesap (gider · 258 yatırım · gelir 64x/67x)", queryset=HesapPlani.objects.none(),
+        label="Hesap (gider · 258 yatırım · gelir 64x/67x · 602.01)", queryset=HesapPlani.objects.none(),
         to_field_name="hesap_kodu", empty_label=None)
     yatirim_projesi = forms.ModelChoiceField(
         label="Yatırım projesi", queryset=YatirimProjesi.objects.none(), required=False,

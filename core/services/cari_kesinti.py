@@ -4,7 +4,7 @@ kullanıcı) kalıcı Sil vardır.
 
 Hesap listesi: gider hesapları (7xx/65x/66x/68x), 258 YAPILMAKTA OLAN YATIRIMLAR (yatırım projesi ZORUNLU, proje "Devam
 Ediyor" olmalı; satır projeye yazılır — proje toplamı tutar kadar düşer/artar, karta maliyet olarak BAĞLANMAZ) ve gelir
-hesapları (64x / 67x yaprak, ör. 649; 679 pasif — birleştirildi).
+hesapları (64x / 67x yaprak, ör. 649; 679 pasif — birleştirildi; ayrıca 602.01 FAZLA KDV).
 YÖN SEÇİMİ (2026-10-14): formda "Yön" — Bakiyeyi kapat [varsayılan: o para birimi havuzunun MEVCUT bakiyesinin tersine yazar; bakiye 0 ise cari
 türünün varsayılanı] / Cari borç / Cari alacak. 500.xx ortak carisinde seçim yoktur (eski kural). Kaydetmeden önce ``onizle`` satırları + bakiye
 önce/sonra + uyarı (tutar bakiyeyi aşar / yön bakiyeyi büyütür) gösterir; kayıt, önizlemedeki satırlarla birebir aynı ``imza`` ile onaylanır.
@@ -110,7 +110,7 @@ def karsi_cari_coz(cari, karsi_cari):
 
 
 def kesinti_hesap_kumesi():
-    """Kesinti/masraf hesabı olarak seçilebilen TAM küme: gider hesapları + 258 ailesi + gelir hesapları (64x/67x yaprak)."""
+    """Kesinti/masraf hesabı olarak seçilebilen TAM küme: gider hesapları + 258 ailesi + gelir hesapları (64x/67x yaprak + 602.01 FAZLA KDV)."""
     from django.db.models import Q
     from core.services.hesap_plani import duran_varlik_hesaplari, gider_hesaplari, yaprak_hesaplar
     gider = gider_hesaplari()
@@ -119,14 +119,16 @@ def kesinti_hesap_kumesi():
     return (gider | yatirim | gelir).distinct()
 
 
-GELIR_KOD_DESENI = r"^(64\d|67\d)(\.|$)"
+# 64x/67x yaprak + yalnız 602.01 FAZLA KDV (2026-11-01: yalnız-KDV alış faturasında fazla kesilen cari alacağı Kesinti ile 602.01'e kapatılır;
+# 602'nin diğer alt hesapları listeye girmez).
+GELIR_KOD_DESENI = r"^((64\d|67\d)(\.|$)|602\.01$)"
 
 
 def gider_hesabi_coz(kod):
     h = kesinti_hesap_kumesi().filter(hesap_kodu=(kod or VARSAYILAN_GIDER)).first()
     if h is None:
         raise CariKesintiHatasi(
-            f"Geçerli bir hesap seçin (gider 7xx/65x/66x/68x, 258 yatırım ya da gelir 64x/67x yaprak hesap): {kod}")
+            f"Geçerli bir hesap seçin (gider 7xx/65x/66x/68x, 258 yatırım ya da gelir 64x/67x yaprak / 602.01 hesap): {kod}")
     return h
 
 

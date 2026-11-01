@@ -210,6 +210,35 @@ class KesintiHesapKumesiTest(TestCase):
         f2 = ck.kesinti_olustur(cari=self.omer, tarih=D(2026, 4, 10), tutar="1", gider_kodu="679")
         self.assertEqual(self._s(f2)[("679", "A")], Dc("1.00"))
 
+    def test_602_01_fazla_kdv_listede_cari_borc_602_01_alacak(self):
+        """Yalnız-KDV alış faturasında fazla kesilen cari alacağı: 320 cari B / 602.01 A. 602'nin üst ve kardeş hesapları listeye girmez."""
+        from core.models import EkranYetki
+        _hesap("602", "DİĞER GELİRLER", kalem="A", grup="GELIR_TABLOSU")
+        _hesap("602.01", "FAZLA KDV", kalem="A", grup="GELIR_TABLOSU")
+        _hesap("602.02", "BAŞKA GELİR", kalem="A", grup="GELIR_TABLOSU")
+        kodlar = set(ck.kesinti_hesap_kumesi().values_list("hesap_kodu", flat=True))
+        self.assertIn("602.01", kodlar)
+        self.assertTrue({"649", "679"} <= kodlar)                                   # mevcut gelir hesapları değişmedi
+        self.assertFalse({"602", "602.02"} & kodlar)
+        # servis
+        f = ck.kesinti_olustur(cari=self.omer, tarih=D(2026, 4, 10), tutar="771,17", gider_kodu="602.01",
+                               aciklama="fazla kesilen kdv", kullanici=self.su)
+        self.assertEqual(self._s(f), {("320.30.0024", "B"): Dc("771.17"), ("602.01", "A"): Dc("771.17")})
+        self.assertEqual((f.kaynak, f.cari_id), ("CARI_KESINTI", self.omer.pk))
+        self.assertIsNone(f.satirlar.get(hesap_id="602.01").yatirim_projesi_id)
+        with self.assertRaises(ck.CariKesintiHatasi):                               # 602.02 seçilemez
+            ck.kesinti_olustur(cari=self.omer, tarih=D(2026, 4, 10), tutar="1", gider_kodu="602.02")
+        # ekran: seçenek listede, "biz borçluyuz" (Cari BORÇ / Hesap ALACAK) yönüyle kayıt
+        EkranYetki.objects.get_or_create(kullanici=self.su, ekran_kod="cariler")
+        self.client.force_login(self.su)
+        url = reverse("core:cari_kesinti_ekle", args=[self.omer.pk])
+        self.assertContains(self.client.get(url), "602.01")
+        r = onayli_post(self.client, url, {"tarih": "2026-04-10", "tutar": "100,00", "gider": "602.01",
+                                           "yon": ck.YON_CARI_BORC, "aciklama": "x"})
+        self.assertRedirects(r, reverse("core:cari_ekstresi", args=[self.omer.pk]))
+        yeni = YevmiyeFisi.objects.filter(kaynak="CARI_KESINTI").latest("pk")
+        self.assertEqual(self._s(yeni), {("320.30.0024", "B"): Dc("100.00"), ("602.01", "A"): Dc("100.00")})
+
     def test_gelir_ve_gider_disindaki_hesaplar_reddedilir(self):
         with self.assertRaises(ck.CariKesintiHatasi):                               # banka seçilemez
             ck.kesinti_olustur(cari=self.omer, tarih=D(2026, 4, 10), tutar="1", gider_kodu="102.01")
