@@ -23,3 +23,6 @@ db.sqlite3
 
 # Ozel (KVKK hassas) IK evrak/fotograf dosyalari - repoya girmez, MEDIA disinda
 /ozel_dosyalar/
+
+# Gecici/tek seferlik betikler (repoya girmez)
+scratch_*

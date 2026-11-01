@@ -348,14 +348,25 @@ class SablonEkranTest(OzelDizinTestTemel):
         self.assertContains(r, "BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ")                              # kayıt yokken sabit şablonlar varsayılanla listelenir
         self.assertEqual(BelgeSablonu.objects.count(), 0)
 
-    def test_imzasiz_rozeti_ve_kontrol_listesi_ozel_durumu_yok(self):
-        b = pb.belge_ekle(self.p, tur="SOZLESME", dosya=yuklenen("a.pdf", PDF_BAYT), aciklama="eski kayıt (imzasız basım)")
-        PersonelBelge.objects.filter(pk=b.pk).update(imzasiz=True)                              # canlıdaki eski işaretli kayıt gibi
+    def test_imzasiz_ozelligi_tamamen_kaldirildi(self):
+        self.assertNotIn("imzasiz", [f.name for f in PersonelBelge._meta.get_fields()])         # kolon düşürüldü (migration 0254)
+        with self.assertRaises(TypeError):
+            pb.belge_ekle(self.p, tur="SOZLESME", dosya=yuklenen("a.pdf", PDF_BAYT), imzasiz=True)
+        pb.belge_ekle(self.p, tur="SOZLESME", dosya=yuklenen("a.pdf", PDF_BAYT), aciklama="normal belge")
         self.client.force_login(self.belgeci)
         r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=belgeler")
-        self.assertNotContains(r, "İmzasız basım")                                              # rozet yok
+        self.assertNotContains(r, "İmzasız basım")
         sat = next(x for x in ig.kontrol_listesi(self.p)["satirlar"] if x["tur"] == "SOZLESME")
-        self.assertEqual(sat["durum"], "YUKLU")                                                 # özel durum yok: normal belge sayılır
+        self.assertEqual(sat["durum"], "YUKLU")
+
+    def test_sablon_silme_ozelligi_yok(self):
+        from django.urls import get_resolver
+        adlar = {n for n in get_resolver().reverse_dict.keys() if isinstance(n, str)}
+        self.assertFalse([n for n in adlar if "sablon" in n and ("sil" in n or "kaldir" in n)])     # silme yalnız tek seferlik migration ile yapıldı
+        self.client.force_login(self.yon)
+        s = bs.hazirla()[0]
+        for ek in ("sil/", "kaldir/"):
+            self.assertEqual(self.client.post(reverse("core:belge_sablonu_duzenle", args=[s.pk]) + ek).status_code, 404)
 
     def test_firma_bilgileri_ekraninda_kep(self):
         self.client.force_login(self.yon)
@@ -378,3 +389,43 @@ class VeriMigrationTest(TestCase):
         self.assertEqual(sonuc['FAZLA_CALISMA'][:2], ('FAZLA_MESAI_ONAYI', 'iki_taraf'))
         self.assertEqual(sonuc['SOZLESME'][2:], ('S', 'eski metin SOZLESME'))                          # içerik aynen korunur
         self.assertEqual(sonuc['OZEL_0001'][:2], ('DIGER', 'isci'))                                    # sabit olmayana dokunulmaz
+
+
+class AcilDurumSablonSilmeMigrationTest(TestCase):
+    """0253: pasif OZEL_0004 «ACİL DURUM…» şablonu silinir; aktifse ya da başlığıyla üretilmiş belge varsa silinmez; diğerlerine dokunulmaz."""
+
+    BASLIK = "ACİL DURUM İLETİŞİM VE İLK MÜDAHALE BİLGİ FORMU"
+
+    def mig(self):
+        import importlib
+        return importlib.import_module("core.migrations.0253_belge_sablonu_acil_durum_sil_veri")
+
+    def calistir(self):
+        from django.apps import apps
+        self.mig().sil(apps, None)
+
+    def kur(self, aktif=False):
+        for i, (kod, baslik) in enumerate((("OZEL_0003", "KKD"), ("OZEL_0004", self.BASLIK), ("OZEL_0005", self.BASLIK + " (BAŞKA)"))):
+            BelgeSablonu.objects.create(kod=kod, baslik=baslik, metin="m", sira=10 + i, aktif=(aktif if kod == "OZEL_0004" else True))
+
+    def test_pasif_sablon_silinir_digerlerine_dokunulmaz(self):
+        self.kur()
+        self.calistir()
+        self.assertEqual(sorted(BelgeSablonu.objects.values_list("kod", flat=True)), ["OZEL_0003", "OZEL_0005"])
+
+    def test_bos_veritabaninda_hata_vermez(self):
+        self.calistir()
+        self.assertEqual(BelgeSablonu.objects.count(), 0)
+
+    def test_aktifse_silinmez(self):
+        self.kur(aktif=True)
+        self.calistir()
+        self.assertTrue(BelgeSablonu.objects.filter(kod="OZEL_0004").exists())
+
+    def test_basligiyla_uretilmis_belge_varsa_silinmez(self):
+        from core.tests.ik_yardimci import personel_kur
+        self.kur()
+        p = personel_kur()
+        PersonelBelge.objects.create(personel=p, tur="DIGER", aciklama=self.BASLIK + " — 01.11.2026", dosya="x.pdf", orijinal_ad="x.pdf")
+        self.calistir()
+        self.assertTrue(BelgeSablonu.objects.filter(kod="OZEL_0004").exists())
