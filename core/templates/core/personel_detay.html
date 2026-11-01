@@ -73,6 +73,12 @@
         <span class="dg">{{ p.get_medeni_durum_display|default:"—" }}{% if p.cocuk_sayisi is not None %} · {{ p.cocuk_sayisi }} çocuk{% endif %}</span></div>
       <div class="satir"><span class="et">Öğrenim Durumu</span>
         <span class="dg">{{ p.get_ogrenim_durumu_display|default:"—" }}</span></div>
+      <div class="satir"><span class="et">Uyruk</span>
+        <span class="dg">{{ p.uyruk|default:"T.C." }}</span></div>
+      <div class="satir"><span class="et">Meslek (SGK)</span>
+        <span class="dg">{% if p.meslek_kodu or p.meslek_adi %}<span class="mono">{{ p.meslek_kodu|default:"—" }}</span> {{ p.meslek_adi }}{% else %}—{% endif %}</span></div>
+      <div class="satir"><span class="et">Sigorta Kolu</span>
+        <span class="dg">{% if p.emekli_sgdp %}SGDP (02) — emekli{% else %}Tüm sigorta kolları (01){% endif %}</span></div>
     </div>
   </section>
 
@@ -188,8 +194,8 @@
       {% elif muhasebe.hazir %}<span class="rozet rozet-aktif">Hazır</span>
       {% else %}<span class="rozet rozet-uyari">Eksik bilgi var</span>{% endif %}
     </div>
-    <p class="yardim" style="margin:-.2rem 0 .8rem">Resmî işe girişi (SGK işe giriş bildirgesi) muhasebe/mali müşavir yapar; ERP onu göndermez. Aşağıdaki Excel/PDF personel kartından otomatik
-      hazırlanır, indirip muhasebeye iletin, ardından "gönderildi" olarak işaretleyin.{% if not ucret_gorebilir %} Ücret görme yetkiniz olmadığı için pakete ücret girmez.{% endif %}</p>
+    <p class="yardim" style="margin:-.2rem 0 .8rem">Resmî işe girişi (SGK 4/A işe giriş bildirgesi) muhasebe/mali müşavir yapar; ERP onu göndermez. Aşağıdaki Excel/PDF yalnız bildirgeyi düzenlemek için gereken
+      işveren, sigortalı ve işe giriş bilgilerini içerir; personel kartından otomatik hazırlanır, indirip muhasebeye iletin, ardından "gönderildi" olarak işaretleyin.{% if not ucret_gorebilir %} Ücret görme yetkiniz olmadığı için pakete ücret girmez.{% endif %}</p>
     {% if muhasebe.uyari %}<div class="uyari" style="margin-bottom:.8rem">⏰ {{ muhasebe.uyari }}</div>{% endif %}
     {% if muhasebe.eksikler %}
     <div class="uyari" style="margin-bottom:.8rem">

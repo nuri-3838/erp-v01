@@ -28,7 +28,7 @@ from core.models import (
     BankaHesap, Birim, Cari, CariSevkAdresi,
     CariAktivite, CariKategori, KapanisNedeni,
     CekSenet, Depo, DuranVarlik, FaturaSatir, FaturaTipi, FirmaBanka,
-    BelgeSablonu, HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge, Varyant,
+    BelgeSablonu, HesapPlani, IsIstasyonu, IseGirisKaydi, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge, Varyant,
     PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
     TevkifatOrani, Ulke, UretimEmri, YatirimProjesi, YevmiyeSatir,
 )
@@ -3306,6 +3306,14 @@ class PersonelForm(forms.Form):
     medeni_durum = forms.ChoiceField(label="Medeni Durum", required=False, choices=[("", "—")] + list(Personel.MEDENI_DURUMLAR))
     cocuk_sayisi = forms.IntegerField(label="Çocuk Sayısı", required=False, min_value=0, max_value=30)
     ogrenim_durumu = forms.ChoiceField(label="Öğrenim Durumu", required=False, choices=[("", "—")] + list(Personel.OGRENIM_DURUMLARI))
+    uyruk = forms.CharField(label="Uyruk", max_length=60, required=False, initial="T.C.",
+                            widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    meslek_kodu = forms.CharField(label="Meslek Kodu", max_length=12, required=False,
+                                  widget=forms.TextInput(attrs={"autocomplete": "off", "inputmode": "decimal", "placeholder": "örn. 7212.01"}),
+                                  help_text="SGK işe giriş bildirgesinde yazılacak meslek (ISCO) kodu.")
+    meslek_adi = forms.CharField(label="Meslek Adı", max_length=200, required=False,
+                                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    emekli_sgdp = forms.BooleanField(label="Emekli (SGDP — sosyal güvenlik destek primi)", required=False)
     acil_durum_kisi_2 = forms.CharField(
         label="2. Acil Durumda Aranacak Kişi", max_length=120, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))
@@ -3409,6 +3417,9 @@ class IkAyariForm(forms.Form):
 
 class IseGirisKaydiForm(forms.Form):
     """Personel kartı > İşe Giriş: sözleşme parametreleri (evrak basımında yer tutucu olarak kullanılır). Kurallar serviste (core.services.ise_giris)."""
+    calisma_sekli = forms.ChoiceField(label="Çalışma şekli", required=False, choices=IseGirisKaydi.CalismaSekli.choices,
+                                      initial=IseGirisKaydi.CalismaSekli.TAM,
+                                      help_text="Muhasebe formu (SGK 4/A) için. Kısmi süreliyse aşağıdaki «Haftalık çalışma saati»ni bu personel için yazın.")
     deneme_suresi_ay = forms.IntegerField(label="Deneme süresi (ay)", required=False, min_value=0, max_value=4,
                                           help_text="Yasal üst sınır 2 ay (toplu iş sözleşmesiyle 4 ay).")
     haftalik_calisma_saati = TRDecimalField(label="Haftalık çalışma saati", basamak=1, required=False,

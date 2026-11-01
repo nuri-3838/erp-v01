@@ -29,7 +29,7 @@ def kullanici(ad, *kodlar):
 def dolu_personel(**kw):
     veri = dict(ad="ayşe", soyad="demir", tc_kimlik_no="10000000146", dogum_tarihi=date(1995, 4, 12), dogum_yeri="kayseri", baba_adi="hasan",
                 ana_adi="fatma", adres="organize sanayi 5. cad.\nno:7 kayseri", telefon="05321112233", gorev="kaynakçı", departman="imalat",
-                iban="TR330006100519786457841326", ise_giris_tarihi=date(2026, 11, 2))
+                iban="TR330006100519786457841326", ise_giris_tarihi=date(2026, 11, 2), meslek_kodu="7212.01", meslek_adi="kaynakçı")
     veri.update(kw)
     return personel_kur(**veri)
 

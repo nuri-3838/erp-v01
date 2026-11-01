@@ -109,9 +109,12 @@ def _tc_benzersiz(tc, *, haric_pk=None):
         raise PersonelHatasi(f"Bu TC kimlik no zaten kayıtlı: {mevcut.ad_soyad}{ek}")
 
 
+_MESLEK_KODU_RE = re.compile(r"^\d{3,6}(\.\d{1,4})?$")
+
+
 def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", telefon="",
              eposta="", adres="", acil_durum_kisi="", acil_durum_telefon="", acil_durum_kisi_2="", acil_durum_telefon_2="", dogum_yeri="", baba_adi="", ana_adi="", cinsiyet="",
-             medeni_durum="", cocuk_sayisi=None, ogrenim_durumu="", departman="",
+             medeni_durum="", cocuk_sayisi=None, ogrenim_durumu="", departman="", uyruk="T.C.", meslek_kodu="", meslek_adi="", emekli_sgdp=False,
              gorev="", ise_giris_tarihi=None, isten_cikis_tarihi=None, cikis_nedeni="",
              notlar="", izin_onceki_kullanilan=None, iban="", banka_adi="", hesap_sahibi="", haric_pk=None) -> dict:
     ad, soyad = _buyuk(ad), _buyuk(soyad)
@@ -150,6 +153,9 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
             raise PersonelHatasi("Çocuk sayısı 0 ile 30 arasında olmalı.")
     if kan_grubu and kan_grubu not in _KAN_GRUPLARI:
         raise PersonelHatasi("Geçersiz kan grubu.")
+    meslek_kodu = "".join((meslek_kodu or "").split())
+    if meslek_kodu and not _MESLEK_KODU_RE.match(meslek_kodu):
+        raise PersonelHatasi("Meslek kodu yalnız rakam ve tek bir nokta içermeli (örn. 7212 veya 7212.01).")
 
     if ise_giris_tarihi is None:
         raise PersonelHatasi("İşe giriş tarihi zorunlu.")
@@ -185,6 +191,7 @@ def _alanlar(*, ad, soyad, tc_kimlik_no="", dogum_tarihi=None, kan_grubu="", tel
         "dogum_yeri": _buyuk(dogum_yeri), "baba_adi": _buyuk(baba_adi), "ana_adi": _buyuk(ana_adi),
         "cinsiyet": cinsiyet, "medeni_durum": medeni_durum, "cocuk_sayisi": cocuk_sayisi, "ogrenim_durumu": ogrenim_durumu,
         "departman": _buyuk(departman), "gorev": _buyuk(gorev),
+        "uyruk": _buyuk(uyruk) or "T.C.", "meslek_kodu": meslek_kodu, "meslek_adi": _buyuk(meslek_adi), "emekli_sgdp": bool(emekli_sgdp),
         "ise_giris_tarihi": ise_giris_tarihi, "isten_cikis_tarihi": isten_cikis_tarihi,
         "cikis_nedeni": (cikis_nedeni or "").strip(), "notlar": (notlar or "").strip(),
         "iban": iban, "banka_adi": banka_adi, "hesap_sahibi": hesap_sahibi,

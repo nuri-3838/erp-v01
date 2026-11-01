@@ -1,5 +1,5 @@
-"""İşe giriş Dilim 3: muhasebe paketi — hazır mı kontrolü (eksik zorunlu alan + işe girişe kalan gün), Excel/PDF bilgi paketi, ücret yetkisi,
-"muhasebeye gönderildi" işareti, GET yazmaz."""
+"""İşe giriş Dilim 3: muhasebe paketi — hazır mı kontrolü (eksik zorunlu alan + işe girişe kalan gün), SGK 4/A için SADE Excel (tek satır)/PDF bilgi
+paketi (işveren/sigortalı/işe giriş/ücret; brüt yok), SGDP ve kısmi süreli dalları, ücret yetkisi, "muhasebeye gönderildi" işareti, GET yazmaz."""
 from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -23,9 +23,17 @@ BUGUN = date(2026, 10, 30)
 
 
 def excel_hucreleri(veri: bytes) -> dict:
-    """{etiket: değer} (A sütunu → B sütunu)."""
+    """{alan başlığı: değer}: 5. satır başlıklar, 6. satır TEK veri satırı."""
     ws = load_workbook(BytesIO(veri)).active
-    return {ws.cell(row=r, column=1).value: ws.cell(row=r, column=2).value for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value}
+    return {ws.cell(row=5, column=c).value: ws.cell(row=6, column=c).value for c in range(1, ws.max_column + 1) if ws.cell(row=5, column=c).value}
+
+
+def excel_sayfa(veri: bytes):
+    return load_workbook(BytesIO(veri)).active
+
+
+KALDIRILAN = ("Cinsiyet", "Medeni durum", "Çocuk sayısı", "E-posta", "IBAN", "Banka", "Hesap sahibi", "Deneme süresi", "Çalışma günleri",
+              "Ücret geçerlilik başlangıcı", "Ücret ödeme şekli/günü", "Departman", "Haftalık çalışma saati", "Ücret")
 
 
 class HazirlikTest(TestCase):
@@ -33,12 +41,23 @@ class HazirlikTest(TestCase):
         bos = personel_kur(ad="a", soyad="b", ise_giris_tarihi=BUGUN + timedelta(days=10))
         h = mu.hazirlik(bos, ig.kayit_oku(bos), bugun=BUGUN)
         self.assertFalse(h["hazir"])
-        self.assertEqual(set(h["eksikler"]), {"TC kimlik no", "Doğum tarihi", "Doğum yeri", "Baba adı", "Ana adı", "Adres", "Görev"})
-        self.assertEqual(set(h["onerilen_eksikler"]), {"IBAN (maaş ödemesi için)", "Telefon"})
+        self.assertEqual(set(h["eksikler"]), {"TC kimlik no", "Doğum tarihi", "Doğum yeri", "Baba adı", "Ana adı", "Adres", "Görev", "Meslek kodu"})
+        self.assertEqual(set(h["onerilen_eksikler"]), {"Telefon"})                              # IBAN artık istenmez (bildirgeyle ilgisi yok)
         dolu = dolu_personel(ise_giris_tarihi=BUGUN + timedelta(days=10))
         h = mu.hazirlik(dolu, ig.kayit_oku(dolu), bugun=BUGUN)
         self.assertTrue(h["hazir"])
         self.assertEqual((h["eksikler"], h["onerilen_eksikler"]), ([], []))
+
+    def test_kismi_sureli_haftalik_saat_zorunlu(self):
+        p = dolu_personel(ise_giris_tarihi=BUGUN + timedelta(days=10), telefon="05321112233")
+        ig.kayit_kaydet(p, calisma_sekli="KISMI")                                               # saat girilmedi (firma varsayılanı 45 tam süreyi gösterir)
+        h = mu.hazirlik(p, ig.kayit_oku(p), bugun=BUGUN)
+        self.assertFalse(h["hazir"])
+        self.assertIn("Haftalık çalışma saati (kısmi süreli)", h["eksikler"])
+        ig.kayit_kaydet(p, calisma_sekli="KISMI", haftalik_calisma_saati="20")
+        self.assertTrue(mu.hazirlik(p, ig.kayit_oku(p), bugun=BUGUN)["hazir"])
+        ig.kayit_kaydet(p, calisma_sekli="TAM")
+        self.assertTrue(mu.hazirlik(p, ig.kayit_oku(p), bugun=BUGUN)["hazir"])
 
     def test_kalan_gun_durumlari(self):
         for fark, durum, parca in ((10, "normal", "10 gün var"), (1, "acil", "1 gün kaldı"), (0, "acil", "bugün"), (-3, "gecmis", "3 gün önce işe başladı")):
@@ -57,53 +76,132 @@ class HazirlikTest(TestCase):
 class PaketIcerigiTest(OzelDizinTestTemel):
     def setUp(self):
         super().setUp()
-        self.p = dolu_personel(cinsiyet="KADIN", medeni_durum="EVLI", telefon="05321112233")
+        self.p = dolu_personel(cinsiyet="KADIN", medeni_durum="EVLI", cocuk_sayisi=2, eposta="a@b.com", ogrenim_durumu="LISE",
+                               telefon="05321112233")
         dolu_firma()
         self.firma = firma_bilgisi_getir()
         self.kayit = ig.kayit_oku(self.p)
         ucret_ekle(self.p, gecerlilik_baslangic=date(2026, 11, 2), tip="NET", net_tutar=Decimal("40000"))
 
-    def test_ucret_yalniz_yetkiliye(self):
-        yok = {b for b, _ in mu.bolumler(self.p, self.firma, self.kayit, ucret_gorebilir=False, bugun=BUGUN)}
-        var = dict(mu.bolumler(self.p, self.firma, self.kayit, ucret_gorebilir=True, bugun=BUGUN))
-        self.assertNotIn("Ücret", yok)
-        self.assertEqual(var["Ücret"][0][:2], ("Ücret", "40.000,00 TL"))
-        self.assertEqual(var["Ücret"][1][:2], ("Ücret geçerlilik başlangıcı", "02.11.2026"))
-        self.assertEqual(var["Ücret"][2][:2], ("Ücret ödeme şekli/günü", "Bir sonraki ayın 10. iş günü"))
+    def bolum(self, **kw):
+        return {b: {e: d for e, d, _z in a} for b, a in mu.bolumler(self.p, self.firma, self.kayit, bugun=BUGUN, **kw)}
 
-    def test_excel_alanlar_ve_ucret_yetkisi(self):
+    def test_sade_bolumler_ve_alanlar(self):
+        b = mu.bolumler(self.p, self.firma, self.kayit, ucret_gorebilir=False, bugun=BUGUN)
+        self.assertEqual([x for x, _ in b], ["İşveren", "Sigortalı", "İşe Giriş"])              # ücret yetkisiz: Ücret bölümü yok
+        etiketler = {x: [e for e, _d, _z in a] for x, a in b}
+        self.assertEqual(etiketler["İşveren"], ["Unvan", "SGK işyeri sicil no", "Vergi dairesi", "Vergi no"])
+        self.assertEqual(etiketler["Sigortalı"], ["T.C. Kimlik No", "Adı", "Soyadı", "Doğum tarihi", "Doğum yeri", "Baba adı", "Ana adı", "Uyruk",
+                                                  "Öğrenim durumu", "Adres", "Telefon"])
+        self.assertEqual(etiketler["İşe Giriş"], ["İşe giriş tarihi", "Meslek kodu", "Meslek adı", "Görev / Departman", "Sigorta kolu", "Çalışma şekli",
+                                                  "Sözleşme türü"])
+        tum = {e for _x, a in b for e, _d, _z in a}
+        for kaldirilan in KALDIRILAN:
+            self.assertNotIn(kaldirilan, tum, kaldirilan)
+
+    def test_alan_degerleri(self):
+        b = self.bolum()
+        self.assertEqual((b["İşveren"]["Unvan"], b["İşveren"]["SGK işyeri sicil no"], b["İşveren"]["Vergi no"]), ("SEMTA ALÜMİNYUM A.Ş.", "1.2345.67", "1234567890"))
+        s = b["Sigortalı"]
+        self.assertEqual((s["T.C. Kimlik No"], s["Adı"], s["Soyadı"], s["Doğum tarihi"], s["Doğum yeri"]), ("10000000146", "AYŞE", "DEMİR", "12.04.1995", "KAYSERİ"))
+        self.assertEqual((s["Baba adı"], s["Ana adı"], s["Uyruk"], s["Öğrenim durumu"], s["Telefon"]), ("HASAN", "FATMA", "T.C.", "Lise", self.p.telefon))
+        self.assertTrue(s["Telefon"])
+        self.assertIn("ORGANİZE SANAYİ", s["Adres"])
+        i = b["İşe Giriş"]
+        self.assertEqual((i["İşe giriş tarihi"], i["Meslek kodu"], i["Meslek adı"], i["Görev / Departman"]), ("02.11.2026", "7212.01", "KAYNAKÇI", "KAYNAKÇI / İMALAT"))
+        self.assertEqual((i["Sigorta kolu"], i["Çalışma şekli"], i["Sözleşme türü"]), ("Tüm sigorta kolları (01)", "Tam süreli", "Belirsiz süreli"))
+
+    def test_uyruk_varsayilan_ve_ozel(self):
+        self.assertEqual(self.bolum()["Sigortalı"]["Uyruk"], "T.C.")
+        self.p.uyruk = ""
+        self.assertEqual(self.bolum()["Sigortalı"]["Uyruk"], "T.C.")                           # boşsa T.C.
+        self.p.uyruk = "ALMAN"
+        self.assertEqual(self.bolum()["Sigortalı"]["Uyruk"], "ALMAN")
+
+    def test_sgdp_dali(self):
+        self.assertEqual(self.bolum()["İşe Giriş"]["Sigorta kolu"], "Tüm sigorta kolları (01)")
+        self.p.emekli_sgdp = True
+        self.assertEqual(self.bolum()["İşe Giriş"]["Sigorta kolu"], "SGDP (02)")
+
+    def test_kismi_sureli_dali(self):
+        ig.kayit_kaydet(self.p, calisma_sekli="KISMI", haftalik_calisma_saati="20")
+        self.kayit = ig.kayit_oku(self.p)
+        self.assertEqual(self.bolum()["İşe Giriş"]["Çalışma şekli"], "Kısmi süreli (haftalık 20 saat)")
+        ig.kayit_kaydet(self.p, calisma_sekli="KISMI", haftalik_calisma_saati="22,5")
+        self.kayit = ig.kayit_oku(self.p)
+        self.assertEqual(self.bolum()["İşe Giriş"]["Çalışma şekli"], "Kısmi süreli (haftalık 22,5 saat)")
+        ig.kayit_kaydet(self.p, calisma_sekli="KISMI")                                          # saat girilmedi: uyarı metni (hazırlıkta da eksik)
+        self.kayit = ig.kayit_oku(self.p)
+        self.assertEqual(self.bolum()["İşe Giriş"]["Çalışma şekli"], "Kısmi süreli (haftalık saat girilmedi)")
+        ig.kayit_kaydet(self.p, calisma_sekli="TAM", haftalik_calisma_saati="40")               # tam süreli: haftalık saat yazılmaz
+        self.kayit = ig.kayit_oku(self.p)
+        self.assertEqual(self.bolum()["İşe Giriş"]["Çalışma şekli"], "Tam süreli")
+        with self.assertRaises(ig.IseGirisHatasi):
+            ig.kayit_kaydet(self.p, calisma_sekli="YARIM")
+
+    def test_ucret_net_asgari_ve_kayitsiz_brut_yok(self):
+        u = self.bolum(ucret_gorebilir=True)["Ücret"]
+        self.assertEqual(u, {"Aylık net ücret": "40.000,00 TL", "Asgari ücret": "Hayır"})
+        ucret_ekle(self.p, gecerlilik_baslangic=date(2026, 12, 1), tip="ASGARI")
+        asgari = {b: {e: d for e, d, _z in a} for b, a in mu.bolumler(self.p, self.firma, self.kayit, ucret_gorebilir=True, bugun=date(2026, 12, 5))}["Ücret"]
+        self.assertEqual(asgari, {"Aylık net ücret": "Asgari ücret", "Asgari ücret": "Evet"})
+        yok = personel_kur(ad="u", soyad="yok")
+        kayitsiz = {b: {e: d for e, d, _z in a} for b, a in mu.bolumler(yok, self.firma, ig.kayit_oku(yok), ucret_gorebilir=True, bugun=BUGUN)}["Ücret"]
+        self.assertEqual(kayitsiz, {"Aylık net ücret": "", "Asgari ücret": ""})
+        for bolum in (u, asgari, kayitsiz):
+            self.assertFalse([k for k in bolum if "rüt" in k])                                  # brüt YOK
+
+    def test_excel_tek_satir_alanlar_bant_ve_alt_not(self):
+        ws = excel_sayfa(mu.excel(self.p, self.firma, self.kayit, ucret_gorebilir=False, bugun=BUGUN))
         h = excel_hucreleri(mu.excel(self.p, self.firma, self.kayit, ucret_gorebilir=False, bugun=BUGUN))
-        self.assertEqual((h["Adı"], h["Soyadı"], h["T.C. Kimlik No"]), ("AYŞE", "DEMİR", "10000000146"))
-        self.assertEqual((h["Doğum tarihi"], h["Doğum yeri"], h["Cinsiyet"], h["Medeni durum"]), ("12.04.1995", "KAYSERİ", "Kadın", "Evli"))
-        self.assertEqual((h["Görev"], h["İşe giriş tarihi"], h["Sözleşme türü"], h["Deneme süresi"]), ("KAYNAKÇI", "02.11.2026", "Belirsiz süreli", "2 ay"))
-        self.assertEqual((h["Unvan"], h["SGK işyeri sicil no"]), ("SEMTA ALÜMİNYUM A.Ş.", "1.2345.67"))
-        self.assertTrue(h["IBAN"].startswith("TR33 0006"))
-        self.assertNotIn("Ücret", h)                                                            # ücret yetkisi yok
+        self.assertEqual(list(h), ["Unvan", "SGK işyeri sicil no", "Vergi dairesi", "Vergi no", "T.C. Kimlik No", "Adı", "Soyadı", "Doğum tarihi", "Doğum yeri",
+                                   "Baba adı", "Ana adı", "Uyruk", "Öğrenim durumu", "Adres", "Telefon", "İşe giriş tarihi", "Meslek kodu", "Meslek adı",
+                                   "Görev / Departman", "Sigorta kolu", "Çalışma şekli", "Sözleşme türü"])
+        self.assertEqual((h["T.C. Kimlik No"], h["Adı"], h["Soyadı"], h["Uyruk"], h["Meslek kodu"]), ("10000000146", "AYŞE", "DEMİR", "T.C.", "7212.01"))
+        self.assertEqual((h["Sigorta kolu"], h["Çalışma şekli"], h["Görev / Departman"]), ("Tüm sigorta kolları (01)", "Tam süreli", "KAYNAKÇI / İMALAT"))
+        for kaldirilan in KALDIRILAN:
+            self.assertNotIn(kaldirilan, h, kaldirilan)
+        self.assertEqual(ws.max_row, 8)                                                         # başlık, tarih, bant, alan başlıkları, TEK veri satırı, alt not
+        self.assertFalse(any(ws.cell(row=7, column=c).value for c in range(1, ws.max_column + 1)))
+        self.assertEqual(ws.cell(row=8, column=1).value, "SGK işe giriş bildirgesi işe başlama tarihinden en geç 1 gün önce verilmelidir.")
+        bantlar = [ws.cell(row=4, column=c).value for c in range(1, ws.max_column + 1) if ws.cell(row=4, column=c).value]
+        self.assertEqual(bantlar, ["İŞVEREN", "SİGORTALI", "İŞE GİRİŞ"])
+
+    def test_excel_ucret_yetkisi(self):
         h = excel_hucreleri(mu.excel(self.p, self.firma, self.kayit, ucret_gorebilir=True, bugun=BUGUN))
-        self.assertEqual(h["Ücret"], "40.000,00 TL")
+        self.assertEqual((h["Aylık net ücret"], h["Asgari ücret"]), ("40.000,00 TL", "Hayır"))
+        self.assertEqual(list(h)[-2:], ["Aylık net ücret", "Asgari ücret"])
+        self.assertNotIn("Aylık net ücret", excel_hucreleri(mu.excel(self.p, self.firma, self.kayit, ucret_gorebilir=False, bugun=BUGUN)))
 
     def test_excel_eksik_zorunlu_alan_isaretlenir(self):
         bos = personel_kur(ad="Veli", soyad="Kaya")
         h = excel_hucreleri(mu.excel(bos, self.firma, ig.kayit_oku(bos), bugun=BUGUN))
-        for etiket in ("T.C. Kimlik No", "Doğum tarihi", "Doğum yeri", "Baba adı", "Ana adı", "Adres", "Görev"):
+        for etiket in ("T.C. Kimlik No", "Doğum tarihi", "Doğum yeri", "Baba adı", "Ana adı", "Adres", "Görev / Departman", "Meslek kodu"):
             self.assertEqual(h[etiket], "EKSİK", etiket)
-        self.assertEqual(h["E-posta"], None)                                                    # zorunlu olmayan boş alan boş kalır, EKSİK yazmaz
-        self.assertEqual(h["Hesap sahibi"], "VELİ KAYA")
+        self.assertEqual(h["Telefon"], None)                                                    # zorunlu olmayan boş alan boş kalır, EKSİK yazmaz
+        self.assertEqual((h["Adı"], h["Uyruk"]), ("VELİ", "T.C."))
 
     def test_excel_tc_metin_olarak_saklanir(self):
-        ws = load_workbook(BytesIO(mu.excel(self.p, self.firma, self.kayit, bugun=BUGUN))).active
-        hucre = next(ws.cell(row=r, column=2) for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == "T.C. Kimlik No")
+        ws = excel_sayfa(mu.excel(self.p, self.firma, self.kayit, bugun=BUGUN))
+        hucre = next(ws.cell(row=6, column=c) for c in range(1, ws.max_column + 1) if ws.cell(row=5, column=c).value == "T.C. Kimlik No")
         self.assertEqual((hucre.value, hucre.data_type), ("10000000146", "s"))
 
-    def test_pdf_belgesi_imzasiz_ve_ucret_kurali(self):
+    def test_pdf_belgesi_imzasiz_alt_not_ve_ucret_kurali(self):
         b = mu.pdf_belgesi(self.p, self.firma, self.kayit, ucret_gorebilir=False, bugun=BUGUN)
         html = render_to_string("core/ise_giris_paket_pdf.html", {"firma": self.firma, "logo_b64": None, "belgeler": [b], "belge_tarihi": BUGUN, "personel": self.p})
-        self.assertIn("İŞE GİRİŞ BİLGİ FORMU (MUHASEBE İÇİN)", html)
+        self.assertIn("İŞE GİRİŞ BİLGİ FORMU (SGK 4/A — MUHASEBE İÇİN)", html)
         self.assertIn("10000000146", html)
+        self.assertIn("7212.01", html)
+        self.assertIn("Tüm sigorta kolları (01)", html)
+        self.assertIn("SGK işe giriş bildirgesi işe başlama tarihinden en geç 1 gün önce verilmelidir.", html)
         self.assertNotIn('class="imza"', html)                                                  # imzasız: işçi/işveren kutuları yok
         self.assertNotIn("40.000", html)
+        for kaldirilan in ("Cinsiyet", "Medeni durum", "Çocuk sayısı", "E-posta", "IBAN", "Deneme süresi", "Çalışma günleri", "geçerlilik", "ödeme şekli", "a@b.com"):
+            self.assertNotIn(kaldirilan, html, kaldirilan)
         b = mu.pdf_belgesi(self.p, self.firma, self.kayit, ucret_gorebilir=True, bugun=BUGUN)
-        self.assertIn("40.000,00 TL", str([s for _b, s in b["bolumler"]]))
+        self.assertEqual([x for x, _ in b["bolumler"]], ["İşveren", "Sigortalı", "İşe Giriş", "Ücret"])
+        self.assertIn("40.000,00 TL", str(b["bolumler"][-1][1]))
+        self.assertNotIn("rüt", str(b["bolumler"]))
 
     def test_dosya_adi_turkce_karakter_temiz(self):
         p = personel_kur(ad="özgür", soyad="çağlayan şahin")
@@ -181,9 +279,10 @@ class MuhasebeGorunumTest(OzelDizinTestTemel):
     def test_excel_ucret_yalniz_ucret_yetkilisine(self):
         ucret_ekle(self.p, gecerlilik_baslangic=tr_bugun() + timedelta(days=5), tip="NET", net_tutar=Decimal("40000"))
         self.client.force_login(self.belgeci)
-        self.assertNotIn("Ücret", excel_hucreleri(self.client.get(self.xlsx).content))
+        self.assertNotIn("Aylık net ücret", excel_hucreleri(self.client.get(self.xlsx).content))
         self.client.force_login(self.ucretli)
-        self.assertEqual(excel_hucreleri(self.client.get(self.xlsx).content)["Ücret"], "40.000,00 TL")
+        h = excel_hucreleri(self.client.get(self.xlsx).content)
+        self.assertEqual((h["Aylık net ücret"], h["Asgari ücret"]), ("40.000,00 TL", "Hayır"))
 
     def test_gonderildi_isaretle_ve_geri_al(self):
         self.client.force_login(self.belgeci)

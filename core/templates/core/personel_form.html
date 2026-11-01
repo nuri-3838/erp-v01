@@ -34,6 +34,7 @@
         <div class="alan"><label for="{{ form.medeni_durum.id_for_label }}">{{ form.medeni_durum.label }}</label>{{ form.medeni_durum }}{% for e in form.medeni_durum.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.cocuk_sayisi.id_for_label }}">{{ form.cocuk_sayisi.label }}</label>{{ form.cocuk_sayisi }}{% for e in form.cocuk_sayisi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.ogrenim_durumu.id_for_label }}">{{ form.ogrenim_durumu.label }}</label>{{ form.ogrenim_durumu }}{% for e in form.ogrenim_durumu.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.uyruk.id_for_label }}">{{ form.uyruk.label }}</label>{{ form.uyruk }}{% for e in form.uyruk.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
       </div>
     </section>
 
@@ -89,6 +90,9 @@
       <div class="izgara">
         <div class="alan"><label for="{{ form.departman.id_for_label }}">{{ form.departman.label }}</label>{{ form.departman }}{% for e in form.departman.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.gorev.id_for_label }}">{{ form.gorev.label }}</label>{{ form.gorev }}{% for e in form.gorev.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.meslek_kodu.id_for_label }}">{{ form.meslek_kodu.label }}</label>{{ form.meslek_kodu }}{% if form.meslek_kodu.help_text %}<p class="yardim">{{ form.meslek_kodu.help_text }}</p>{% endif %}{% for e in form.meslek_kodu.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.meslek_adi.id_for_label }}">{{ form.meslek_adi.label }}</label>{{ form.meslek_adi }}{% for e in form.meslek_adi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan tam"><label class="secenek" for="{{ form.emekli_sgdp.id_for_label }}">{{ form.emekli_sgdp }} {{ form.emekli_sgdp.label }}</label><p class="yardim">İşaretliyse SGK bildirgesinde sigorta kolu «SGDP (02)», değilse «Tüm sigorta kolları (01)» yazılır.</p></div>
         <div class="alan"><label for="{{ form.ise_giris_tarihi.id_for_label }}">{{ form.ise_giris_tarihi.label }} <span class="zorunlu">*</span></label>{{ form.ise_giris_tarihi }}{% for e in form.ise_giris_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan"><label for="{{ form.isten_cikis_tarihi.id_for_label }}">{{ form.isten_cikis_tarihi.label }}</label>{{ form.isten_cikis_tarihi }}{% for e in form.isten_cikis_tarihi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
           <p class="yardim" style="margin:.3rem 0 0">İşten ayrılan personel için doldurun; boş bırakırsanız çalışıyor sayılır.</p></div>

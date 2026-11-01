@@ -10384,7 +10384,7 @@ def yemek_sayimi_sil(request, pk):
 _PERSONEL_ALANLARI = (
     "ad", "soyad", "tc_kimlik_no", "dogum_tarihi", "kan_grubu", "telefon", "eposta", "adres",
     "acil_durum_kisi", "acil_durum_telefon", "acil_durum_kisi_2", "acil_durum_telefon_2", "dogum_yeri", "baba_adi", "ana_adi", "cinsiyet", "medeni_durum",
-    "cocuk_sayisi", "ogrenim_durumu", "departman", "gorev", "ise_giris_tarihi",
+    "cocuk_sayisi", "ogrenim_durumu", "uyruk", "meslek_kodu", "meslek_adi", "emekli_sgdp", "departman", "gorev", "ise_giris_tarihi",
     "isten_cikis_tarihi", "cikis_nedeni", "notlar", "iban", "banka_adi", "hesap_sahibi")
 
 
@@ -10494,7 +10494,7 @@ def _personel_gorunur_sekmeler(user):
 
 
 def _ise_giris_baslangic(kayit):
-    return {"deneme_suresi_ay": kayit.deneme_suresi_ay, "haftalik_calisma_saati": kayit.haftalik_calisma_saati,
+    return {"calisma_sekli": kayit.calisma_sekli, "deneme_suresi_ay": kayit.deneme_suresi_ay, "haftalik_calisma_saati": kayit.haftalik_calisma_saati,
             "calisma_gunleri": kayit.calisma_gunleri, "calisma_saatleri": kayit.calisma_saatleri,
             "ucret_odeme": kayit.ucret_odeme, "notlar": kayit.notlar}
 
@@ -10509,7 +10509,7 @@ def ise_giris_kaydet(request, pk):
             cd = form.cleaned_data
             try:
                 ise_giris_servis.kayit_kaydet(
-                    p, deneme_suresi_ay=cd.get("deneme_suresi_ay"), haftalik_calisma_saati=cd.get("haftalik_calisma_saati"),
+                    p, calisma_sekli=cd.get("calisma_sekli") or "TAM", deneme_suresi_ay=cd.get("deneme_suresi_ay"), haftalik_calisma_saati=cd.get("haftalik_calisma_saati"),
                     calisma_gunleri=cd.get("calisma_gunleri", ""), calisma_saatleri=cd.get("calisma_saatleri", ""),
                     ucret_odeme=cd.get("ucret_odeme", ""), notlar=cd.get("notlar", ""), kullanici=request.user)
                 messages.success(request, "İşe giriş bilgileri kaydedildi.")

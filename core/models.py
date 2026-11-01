@@ -4065,6 +4065,11 @@ class Personel(TemelModel):
     medeni_durum = models.CharField("medeni durum", max_length=10, blank=True, choices=MEDENI_DURUMLAR)
     cocuk_sayisi = models.PositiveSmallIntegerField("çocuk sayısı", null=True, blank=True)
     ogrenim_durumu = models.CharField("öğrenim durumu", max_length=14, blank=True, choices=OGRENIM_DURUMLARI)
+    # SGK 4/A işe giriş bildirgesi (muhasebe paketi) alanları
+    uyruk = models.CharField("uyruk", max_length=60, blank=True, default="T.C.")
+    meslek_kodu = models.CharField("meslek kodu (SGK/ISCO)", max_length=12, blank=True)
+    meslek_adi = models.CharField("meslek adı", max_length=200, blank=True)
+    emekli_sgdp = models.BooleanField("emekli (SGDP)", default=False)
     kan_grubu = models.CharField("kan grubu", max_length=3, blank=True, choices=KAN_GRUPLARI)
     telefon = models.CharField("telefon", max_length=20, blank=True)
     eposta = models.EmailField("e-posta", blank=True)
@@ -4275,7 +4280,12 @@ class IseGirisKaydi(TemelModel):
     """İNSAN KAYNAKLARI > İşe giriş (personel kartı sekmesi) — personel başına tek kayıt: sözleşme parametreleri (basımda kullanılır),
     evrak paketi basım zamanı ve muhasebeye bilgi gönderim tarihi. Resmî SGK bildirimini ERP yapmaz; yalnız muhasebeye veri ihracı."""
 
+    class CalismaSekli(models.TextChoices):
+        TAM = "TAM", "Tam süreli"
+        KISMI = "KISMI", "Kısmi süreli"
+
     personel = models.OneToOneField(Personel, verbose_name="personel", on_delete=models.PROTECT, related_name="ise_giris")
+    calisma_sekli = models.CharField("çalışma şekli", max_length=5, choices=CalismaSekli.choices, default=CalismaSekli.TAM)
     deneme_suresi_ay = models.PositiveSmallIntegerField("deneme süresi (ay)", null=True, blank=True)
     haftalik_calisma_saati = models.DecimalField("haftalık çalışma saati", max_digits=4, decimal_places=1, null=True, blank=True)
     calisma_gunleri = models.CharField("çalışma günleri", max_length=80, blank=True)

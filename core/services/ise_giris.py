@@ -142,14 +142,17 @@ def etkin_sozlesme(kayit: IseGirisKaydi, ayar: IkAyari) -> dict:
 
 
 @transaction.atomic
-def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_saati=None, calisma_gunleri="", calisma_saatleri="",
+def kayit_kaydet(personel: Personel, *, calisma_sekli="TAM", deneme_suresi_ay=None, haftalik_calisma_saati=None, calisma_gunleri="", calisma_saatleri="",
                  ucret_odeme="", notlar="", kullanici=None) -> IseGirisKaydi:
     """Personele ÖZEL sözleşme parametrelerini kaydeder (boş alan = firma varsayılanı kullanılır; bkz. ``etkin_sozlesme``). Evrak basım ve muhasebe
     gönderim alanlarına DOKUNMAZ."""
     if personel.silindi:
         raise IseGirisHatasi("Silinmiş personel için işe giriş kaydı tutulamaz.")
     deneme, saat = _parametreleri_dogrula(deneme_suresi_ay, haftalik_calisma_saati)
+    if calisma_sekli not in IseGirisKaydi.CalismaSekli.values:
+        raise IseGirisHatasi("Geçersiz çalışma şekli.")
     kayit = kayit_oku(personel)
+    kayit.calisma_sekli = calisma_sekli
     kayit.deneme_suresi_ay = deneme
     kayit.haftalik_calisma_saati = saat
     kayit.calisma_gunleri = " ".join((calisma_gunleri or "").split())
@@ -161,7 +164,7 @@ def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_
         kayit.created_by = kullanici
         kayit.save()
     else:                                                               # yalnız parametre alanları: basım/muhasebe alanlarına dokunulmaz
-        kayit.save(update_fields=["deneme_suresi_ay", "haftalik_calisma_saati", "calisma_gunleri", "calisma_saatleri", "ucret_odeme",
+        kayit.save(update_fields=["calisma_sekli", "deneme_suresi_ay", "haftalik_calisma_saati", "calisma_gunleri", "calisma_saatleri", "ucret_odeme",
                                   "notlar", "updated_by", "updated_at"])
     return kayit
 
