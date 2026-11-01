@@ -12,7 +12,6 @@ from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied, SuspiciousFileOperation
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
@@ -10524,7 +10523,7 @@ def ise_giris_kaydet(request, pk):
 @ekran_gerekli_hepsi("personel", "personel_belgeleri")
 def ise_giris_paket_pdf(request, pk):
     """İşe giriş evrak paketi (iş sözleşmesi, KVKK, fazla çalışma muvafakatnamesi…): seçilen şablonlar personel/firma bilgisiyle doldurulur,
-    tek A4 PDF olarak döner. POST (basım zamanı kaydedilir; GET yazmaz). Ücret yalnız `personel_ucret` yetkisi olana basılır, yoksa noktalı çizgi.
+    tek A4 PDF olarak döner (yalnız indirilir). POST: zorunlu "belge_tarihi" ({bugun} ve PDF anteti bundan beslenir; basım zamanı kaydedilir; GET yazmaz). Ücret yalnız `personel_ucret` yetkisi olana basılır, yoksa noktalı çizgi.
     Eksik bilgi basımı engellemez (çıktıda elle doldurulacak noktalı çizgi olur)."""
     from weasyprint import HTML
 
@@ -10539,29 +10538,22 @@ def ise_giris_paket_pdf(request, pk):
         messages.error(request, "Basılacak belge seçilmedi. (Aktif şablonlar Ayarlar > Belge Şablonları'ndan belirlenir.)")
         return redirect(donus)
     ctx = _pdf_firma_baglami()
-    bugun = tr_bugun()
-    ucret = ise_giris_servis.ucret_metni(p, bugun=bugun) if ekran_gorebilir(request.user, "personel_ucret") else ""
+    tarih_ham = (request.POST.get("belge_tarihi") or "").strip()          # zorunlu; geçmiş/gelecek serbest ({bugun} + PDF anteti bu tarihten beslenir)
+    try:
+        belge_tarihi = datetime.date.fromisoformat(tarih_ham)
+        if not 2000 <= belge_tarihi.year <= 2100:
+            raise ValueError
+    except ValueError:
+        messages.error(request, "Belge tarihi boş bırakılamaz; geçerli bir tarih seçin.")
+        return redirect(donus)
+    ucret = ise_giris_servis.ucret_metni(p, bugun=belge_tarihi) if ekran_gorebilir(request.user, "personel_ucret") else ""
     belgeler = ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, bilgi_formu=bilgi_formu,
-                                              ucret=ucret, bugun=bugun, ayar=ise_giris_servis.sozlesme_ayari())
-    ctx.update({"belgeler": belgeler, "belge_tarihi": bugun, "personel": p})
-    pdf = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf()
-    if request.POST.get("kaydet") == "1" and sablonlar:
-        # İsteğe bağlı: her şablon belgesi AYRI PDF olarak, şablondaki türle, "imzasız basım" işaretiyle özlüğe kaydedilir (kontrol listesi "Yüklü" saymaz).
-        kaydedilen = 0
-        for s, b in zip(sablonlar, belgeler[len(belgeler) - len(sablonlar):]):
-            tek = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", {**ctx, "belgeler": [b]})).write_pdf()
-            try:
-                belge_servis.belge_ekle(
-                    p, tur=s.tur, dosya=SimpleUploadedFile(_pdf_dosya_adi(s.kod.lower().replace("_", "-"), p.ad_soyad, bugun.isoformat()), tek, "application/pdf"),
-                    aciklama=f"{b['baslik'][:140]} — {bugun:%d.%m.%Y} (imzasız basım)", imzasiz=True, kullanici=request.user)
-                kaydedilen += 1
-            except belge_servis.PersonelBelgeHatasi as e:
-                messages.error(request, f"{s.baslik} özlüğe kaydedilemedi: {e}")
-        if kaydedilen:
-            messages.success(request, f"{kaydedilen} belge özlük belgelerine «imzasız basım» olarak kaydedildi (imzalı taramayı ayrıca yükleyin).")
+                                              ucret=ucret, bugun=belge_tarihi, ayar=ise_giris_servis.sozlesme_ayari())
+    ctx.update({"belgeler": belgeler, "belge_tarihi": belge_tarihi, "personel": p})
+    pdf = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf()      # yalnız indirilir; özlüğe kayıt yapılmaz
     ise_giris_servis.paket_basildi(p, kullanici=request.user)
     resp = HttpResponse(pdf, content_type="application/pdf")
-    resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("ise-giris-evraklari", p.ad_soyad, bugun.isoformat()))
+    resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("ise-giris-evraklari", p.ad_soyad, belge_tarihi.isoformat()))
     resp["Cache-Control"] = "private, no-store"
     return resp
 
@@ -10646,6 +10638,7 @@ def personel_detay(request, pk):
         if sekme == "belgeler":
             ctx["belgeler"] = belgeler
             ctx["uretilebilir_sablonlar"] = [s for s in belge_sablon_servis.gorunum_listesi() if s["aktif"]]       # "Şablondan üret" (salt-okunur, GET yazmaz)
+            ctx["bugun_iso"] = bugun.isoformat()                                                                    # «Belge tarihi» varsayılanı
         kl = ise_giris_servis.kontrol_listesi(p, belgeler=belgeler, bugun=bugun)                 # aynı belge listesinden, ek sorgu yok
         rozet["ise_giris"] = (kl["eksik_zorunlu"], kl["eksik_zorunlu"] > 0 or kl["uyari"])
         if sekme == "ise_giris":

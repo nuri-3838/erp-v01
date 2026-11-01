@@ -1,8 +1,8 @@
 """Belge Şablonları dinamik yapı (2026-11-01): yeni şablon ekleme (ad/tür/sıra/aktif/imza/metin), 4 sabit şablonun korunması, silme yok + pasife alma,
-yeni yer tutucu adları ({tckn}, {firma_kep}…), sözleşme her zaman ilk, paket PDF sayfa sayısı, "Şablondan üret" listesi ve «özlük belgelerine kaydet»
-(imzasız basım işareti: kontrol listesi "Yüklü" saymaz)."""
+yeni yer tutucu adları ({tckn}, {firma_kep}…), sözleşme her zaman ilk, paket PDF sayfa sayısı, "Şablondan üret" listesi, zorunlu «Belge tarihi»
+({bugun} + PDF anteti; geçmiş tarih serbest) ve «özlüğe kaydet / imzasız basım» özelliğinin KALDIRILMIŞ olması (PDF yalnız indirilir)."""
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import date
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -11,7 +11,7 @@ from django.test import TestCase
 from django.urls import reverse
 from weasyprint.document import Document
 
-from core.models import BelgeSablonu, PersonelBelge
+from core.models import BelgeSablonu, IseGirisKaydi, PersonelBelge
 from core.services import belge_sablon as bs
 from core.services import ise_giris as ig
 from core.services import personel_belge as pb
@@ -144,7 +144,7 @@ class PaketVeKaydetTest(OzelDizinTestTemel):
 
     def post(self, belgeler, **ek):
         self.client.force_login(self.belgeci)
-        return self.client.post(self.url, {"belge": belgeler, **ek})
+        return self.client.post(self.url, {"belge": belgeler, "belge_tarihi": "2026-11-01", **ek})
 
     def test_paket_sayfa_sayisi_her_belge_yeni_sayfa(self):
         with sayfa_yakala() as iki:
@@ -191,37 +191,58 @@ class PaketVeKaydetTest(OzelDizinTestTemel):
                                                                 "belgeler": ig.paket_hazirla(self.p, firma_bilgisi_getir(), ig.kayit_oku(self.p), [yok])})
         self.assertNotIn('class="imza"', h2)
 
-    def test_kaydet_kapali_ise_belge_olusmaz(self):
-        self.post([self.zimmet.kod, self.kkd.kod])
+    def test_pdf_yalniz_indirilir_ozluge_kayit_yok(self):
+        for ek in ({}, {"kaydet": "1"}):                                                       # eski «kaydet» alanı gelse bile kayıt yolu yok
+            r = self.post(["SOZLESME", self.zimmet.kod, self.kkd.kod], **ek)
+            self.assertEqual((r.status_code, r["Content-Type"]), (200, "application/pdf"))
         self.assertEqual(PersonelBelge.objects.count(), 0)
+        self.assertEqual(self.ozel_dosyalar(), [])
 
-    def test_kaydet_acik_her_sablon_ayri_pdf_sablon_turuyle(self):
-        r = self.post(["SOZLESME", self.zimmet.kod, self.kkd.kod], kaydet="1")
+    def yakala(self, belgeler, **ek):
+        """POST sırasında PDF şablonuna giden bağlamı ve üretilen HTML'i yakalar."""
+        yakalanan = {}
+        gercek = render_to_string
+
+        def sahte(ad, ctx=None, *a, **kw):
+            html = gercek(ad, ctx, *a, **kw)
+            if ad == "core/ise_giris_paket_pdf.html":
+                yakalanan.update(ctx)
+                yakalanan["html"] = html
+            return html
+        with mock.patch("core.views.render_to_string", side_effect=sahte):
+            r = self.post(belgeler, **ek)
+        return r, yakalanan
+
+    def test_belge_tarihi_bugun_placeholder_ve_antet_gecmis_tarih_dahil(self):
+        ozel = bs.olustur(baslik="Tarihli belge", metin="Düzenleme tarihi: {bugun}. {ad_soyad}", tur="DIGER")
+        r, c = self.yakala([ozel.kod], belge_tarihi="2025-03-07")                              # geçmiş tarih
         self.assertEqual(r.status_code, 200)
-        belgeler = PersonelBelge.objects.filter(personel=self.p).order_by("id")
-        self.assertEqual([b.tur for b in belgeler], ["SOZLESME", "ZIMMET", "KKD_TESLIM"])
-        for b in belgeler:
-            self.assertTrue(b.imzasiz)
-            self.assertIn("imzasız basım", b.aciklama)
-            self.assertTrue(b.orijinal_ad.endswith(".pdf"))
-            with b.dosya.open("rb") as f:
-                self.assertTrue(f.read(5).startswith(b"%PDF"))
-        self.assertEqual(len(self.ozel_dosyalar()), 3)
+        self.assertEqual(c["belge_tarihi"], date(2025, 3, 7))
+        self.assertEqual(c["belgeler"][0]["paragraflar"], ["Düzenleme tarihi: 07.03.2025. AYŞE DEMİR"])
+        self.assertIn("Belge tarihi: 07.03.2025", c["html"])                                   # PDF anteti
+        self.assertIn("2025-03-07", r["Content-Disposition"])
+        r, c = self.yakala([ozel.kod], belge_tarihi="2027-01-15")                              # ileri tarih de serbest
+        self.assertIn("Düzenleme tarihi: 15.01.2027", c["belgeler"][0]["paragraflar"][0])
+        self.assertIn("Belge tarihi: 15.01.2027", c["html"])
 
-    def test_imzasiz_kayit_kontrol_listesinde_yuklu_sayilmaz(self):
-        self.post(["SOZLESME"], kaydet="1")
-        sat = lambda: next(s for s in ig.kontrol_listesi(self.p)["satirlar"] if s["tur"] == "SOZLESME")
-        self.assertEqual(sat()["durum"], "EKSIK")                                             # yalnız imzasız basım var
-        pb.belge_ekle(self.p, tur="SOZLESME", dosya=yuklenen("imzali.pdf", PDF_BAYT))      # imzalı tarama normal kayıt
-        self.assertEqual(sat()["durum"], "YUKLU")
+    def test_belge_tarihi_sozlesme_ve_bilgi_formuna_da_islenir(self):
+        r, c = self.yakala(["PERSONEL_BILGI", "SOZLESME", "FAZLA_CALISMA"], belge_tarihi="2026-02-02")
+        tum = "\n".join(p for b in c["belgeler"] for p in b["paragraflar"])
+        self.assertIn("02.02.2026", tum)                                                       # sözleşme/muvafakat {bugun}
+        self.assertNotIn(date.today().strftime("%d.%m.%Y") + " tarihinde düzenlenmiş", tum)
+        self.assertEqual(c["html"].count("Belge tarihi: 02.02.2026"), 3)                       # her belgenin anteti
 
-    def test_imzasiz_kayit_imzali_belgeyi_eski_yapmaz(self):
-        bitis = date.today() + timedelta(days=200)
-        pb.belge_ekle(self.p, tur="ZIMMET", dosya=yuklenen("imzali.pdf", PDF_BAYT), bitis_tarihi=bitis)
-        self.post([self.zimmet.kod], kaydet="1")                                              # daha yeni, süresiz imzasız kayıt
-        durumlar = {b.imzasiz: d for b, d, _ in pb.belge_durumlari(self.p)}
-        self.assertEqual(durumlar[False], "GECERLI")
-        self.assertEqual(pb.suresi_dolacaklar(gun=365)[0].belge.imzasiz, False)
+    def test_belge_tarihi_zorunlu_bos_veya_gecersiz_hata_verir(self):
+        sekme = reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=ise_giris"
+        for deger in ("", "   ", "abc", "2026-13-45", "1999-12-31", "2101-01-01"):
+            r = self.post([self.zimmet.kod], belge_tarihi=deger)
+            self.assertRedirects(r, sekme, fetch_redirect_response=False, msg_prefix=repr(deger))
+        r = self.client.post(self.url, {"belge": [self.zimmet.kod]})                           # alan hiç gelmedi
+        self.assertRedirects(r, sekme, fetch_redirect_response=False)
+        r = self.client.post(self.url, {"belge": [self.zimmet.kod], "donus": "belgeler"}, follow=True)
+        self.assertRedirects(r, reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=belgeler")
+        self.assertContains(r, "Belge tarihi boş bırakılamaz")
+        self.assertFalse(IseGirisKaydi.objects.filter(personel=self.p, paket_basim_zamani__isnull=False).exists())   # PDF üretilmedi, basım yazılmadı
 
     def test_donus_parametresi_ve_yetki(self):
         self.client.force_login(self.belgeci)
@@ -230,8 +251,7 @@ class PaketVeKaydetTest(OzelDizinTestTemel):
         r = self.client.post(self.url, {"donus": "http://kotu.example"})
         self.assertRedirects(r, reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=ise_giris", fetch_redirect_response=False)
         self.client.force_login(kullanici("dssade", "personel"))
-        self.assertEqual(self.client.post(self.url, {"belge": [self.zimmet.kod], "kaydet": "1"}).status_code, 403)
-        self.assertEqual(PersonelBelge.objects.count(), 0)
+        self.assertEqual(self.client.post(self.url, {"belge": [self.zimmet.kod], "belge_tarihi": "2026-11-01"}).status_code, 403)
 
 
 class SablonEkranTest(OzelDizinTestTemel):
@@ -308,7 +328,19 @@ class SablonEkranTest(OzelDizinTestTemel):
         self.assertNotContains(r, pasif.baslik)
         self.assertContains(r, 'name="belge" value="OZEL_0001"')
         self.assertContains(r, 'name="donus" value="belgeler"')
-        self.assertContains(r, "Özlük belgelerine de kaydet")
+        self.assertContains(r, 'name="belge_tarihi"')                                          # zorunlu Belge tarihi (date input)
+        self.assertContains(r, f'value="{date.today().isoformat()}" required')                 # varsayılan bugün
+        self.assertNotContains(r, "Özlük belgelerine de kaydet")                               # kaydet seçeneği kaldırıldı
+        self.assertNotContains(r, 'name="kaydet"')
+
+    def test_ise_giris_sekmesi_belge_tarihi_var_kaydet_yok(self):
+        self.client.force_login(self.belgeci)
+        r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=ise_giris")
+        self.assertContains(r, 'name="belge_tarihi"')
+        self.assertContains(r, f'value="{date.today().isoformat()}" required')
+        self.assertNotContains(r, "Özlük belgelerine de kaydet")
+        self.assertNotContains(r, 'name="kaydet"')
+        self.assertNotContains(r, "imzasız basım")
 
     def test_belgeler_sekmesi_get_sablon_olusturmaz(self):
         self.client.force_login(self.belgeci)
@@ -316,11 +348,14 @@ class SablonEkranTest(OzelDizinTestTemel):
         self.assertContains(r, "BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ")                              # kayıt yokken sabit şablonlar varsayılanla listelenir
         self.assertEqual(BelgeSablonu.objects.count(), 0)
 
-    def test_imzasiz_rozeti_belge_listesinde(self):
-        pb.belge_ekle(self.p, tur="ZIMMET", dosya=yuklenen("a.pdf", PDF_BAYT), imzasiz=True, aciklama="x (imzasız basım)")
+    def test_imzasiz_rozeti_ve_kontrol_listesi_ozel_durumu_yok(self):
+        b = pb.belge_ekle(self.p, tur="SOZLESME", dosya=yuklenen("a.pdf", PDF_BAYT), aciklama="eski kayıt (imzasız basım)")
+        PersonelBelge.objects.filter(pk=b.pk).update(imzasiz=True)                              # canlıdaki eski işaretli kayıt gibi
         self.client.force_login(self.belgeci)
         r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=belgeler")
-        self.assertContains(r, "İmzasız basım")
+        self.assertNotContains(r, "İmzasız basım")                                              # rozet yok
+        sat = next(x for x in ig.kontrol_listesi(self.p)["satirlar"] if x["tur"] == "SOZLESME")
+        self.assertEqual(sat["durum"], "YUKLU")                                                 # özel durum yok: normal belge sayılır
 
     def test_firma_bilgileri_ekraninda_kep(self):
         self.client.force_login(self.yon)

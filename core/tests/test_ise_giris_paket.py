@@ -172,7 +172,7 @@ class PaketGorunumTest(OzelDizinTestTemel):
 
     def post(self, kisi=None, **veri):
         self.client.force_login(kisi or self.belgeci)
-        veri = {"belge": ["SOZLESME", "KVKK_AYDINLATMA", "KVKK_ACIK_RIZA", "FAZLA_CALISMA"], **veri}
+        veri = {"belge": ["SOZLESME", "KVKK_AYDINLATMA", "KVKK_ACIK_RIZA", "FAZLA_CALISMA"], "belge_tarihi": "2026-11-01", **veri}
         return self.client.post(self.url, veri)
 
     def yakala(self, kisi, **veri):

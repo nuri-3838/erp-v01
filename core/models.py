@@ -4221,8 +4221,8 @@ class PersonelBelge(TemelModel):
                              max_length=100)
     orijinal_ad = models.CharField("özgün dosya adı", max_length=255)
     bitis_tarihi = models.DateField("geçerlilik bitiş tarihi", null=True, blank=True)
-    # Şablondan basılıp özlüğe kaydedilen İMZASIZ çıktı: özlük kontrol listesi bu kayıtları "Yüklü" saymaz, süre grubuna girmez
-    # (imzalı tarama normal kayıt olarak yüklenir).
+    # KULLANILMIYOR (2026-11-01: «özlüğe kaydet / imzasız basım» özelliği kaldırıldı). Canlıda bu işaretle kaydedilmiş 1 belge (pk 10) var; kullanıcı
+    # kararı beklendiği için kolon henüz düşürülmedi — karar sonrası ayrı bir şema migration'ıyla silinecek.
     imzasiz = models.BooleanField("imzasız basım", default=False)
 
     class Meta:

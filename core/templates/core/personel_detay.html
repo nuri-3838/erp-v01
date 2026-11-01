@@ -169,8 +169,11 @@
           <label class="secenek" style="text-transform:none;letter-spacing:0"><input type="checkbox" name="belge" value="{{ b.kod }}" checked> {{ b.baslik }}</label>
         {% endfor %}
       </div>
-      <label class="secenek" style="text-transform:none;letter-spacing:0;margin-bottom:.8rem" title="Her belge ayrı PDF olarak Özlük Belgeleri'ne «imzasız basım» işaretiyle eklenir; özlük kontrol listesinde «Yüklü» sayılmaz. İmzalı taramayı ayrıca yüklersiniz.">
-        <input type="checkbox" name="kaydet" value="1"> Özlük belgelerine de kaydet (imzasız basım)</label>
+      <div class="alan" style="max-width:14rem;margin-bottom:.8rem">
+        <label for="belge-tarihi-paket">Belge tarihi</label>
+        <input type="date" id="belge-tarihi-paket" name="belge_tarihi" value="{{ bugun_iso }}" required>
+        <p class="yardim">Belgelerdeki tarih (<code>{bugun}</code>) ve PDF anteti bu tarihle basılır; geçmiş tarih seçilebilir.</p>
+      </div>
       <div><button type="submit" class="birincil">🖨️ Evrak Paketini Hazırla (PDF)</button></div>
     </form>
     {% else %}
@@ -374,10 +377,10 @@
       <tbody>
         {% for b, durum, kalan in belgeler %}
           <tr>
-            <td><strong>{{ b.get_tur_display }}</strong>{% if b.imzasiz %} <span class="rozet rozet-uyari" title="Şablondan basılmış imzasız çıktı; imzalı taramayı ayrıca yükleyin">İmzasız basım</span>{% endif %}
+            <td><strong>{{ b.get_tur_display }}</strong>
               <div class="yardim">{% if b.aciklama %}{{ b.aciklama }} · {% endif %}{{ b.orijinal_ad }}</div></td>
             <td class="mono">{% if b.bitis_tarihi %}{{ b.bitis_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</td>
-            <td>{% if b.imzasiz %}<span class="yardim">—</span>{% else %}{% include "core/_belge_durum_rozeti.html" with durum=durum kalan=kalan %}{% endif %}</td>
+            <td>{% include "core/_belge_durum_rozeti.html" with durum=durum kalan=kalan %}</td>
             <td class="islem-bag">
               <a class="dugme-ikincil" href="{% url 'core:belge_indir' b.pk %}" target="_blank" rel="noopener">Aç</a>
               <a class="dugme-ikincil" href="{% url 'core:belge_duzenle' b.pk %}?sonraki=personel">Düzenle</a>
@@ -419,8 +422,11 @@
         </tbody>
       </table>
       </div>
-      <label class="secenek" style="text-transform:none;letter-spacing:0;margin-top:.7rem" title="Belge, şablondaki türle Özlük Belgeleri'ne «imzasız basım» işaretiyle eklenir; özlük kontrol listesinde «Yüklü» sayılmaz.">
-        <input type="checkbox" name="kaydet" value="1"> Özlük belgelerine de kaydet (imzasız basım)</label>
+      <div class="alan" style="max-width:14rem;margin-top:.7rem">
+        <label for="belge-tarihi-sablon">Belge tarihi</label>
+        <input type="date" id="belge-tarihi-sablon" name="belge_tarihi" value="{{ bugun_iso }}" required>
+        <p class="yardim">Belge ve PDF anteti bu tarihle basılır; geçmiş tarih seçilebilir.</p>
+      </div>
     </form>
     {% else %}
     <p class="yardim" style="margin:.2rem 0 0">Aktif şablon yok. Yönetici Ayarlar &gt; Belge Şablonları'ndan şablon ekleyebilir.</p>

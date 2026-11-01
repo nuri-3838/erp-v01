@@ -60,7 +60,7 @@ def kontrol_listesi(personel: Personel, *, belgeler=None, bugun=None) -> dict:
     satirlar = []
     for kaynak, tur, ad, zorunlu in KONTROL_LISTESI:
         turler = _ESDEGER.get(tur, (tur,))
-        aday = [(b, d, k) for b, d, k in belgeler if b.tur in turler and d != "ESKI" and not b.imzasiz]     # yeni → eski sıralı: ilk = en yeni; imzasız basım "Yüklü" sayılmaz
+        aday = [(b, d, k) for b, d, k in belgeler if b.tur in turler and d != "ESKI"]     # belgeler yeni → eski sıralı: ilk = en yeni
         if not aday:
             durum, belge, kalan = "EKSIK", None, None
         else:
