@@ -54,7 +54,7 @@
   {% if b.imza != "yok" %}<div class="imza">
     {% if b.imza == "iki_taraf" %}
     <div class="kol">
-      <div class="rol">İŞVEREN</div>
+      <div class="rol">{{ b.sol_rol|default:"İŞVEREN" }}</div>
       <div class="not">{{ firma.unvan }}{% if firma.isveren_vekili_adi %}<br>Temsilcisi: {{ firma.isveren_vekili_adi }}{% if firma.isveren_vekili_unvani %} ({{ firma.isveren_vekili_unvani }}){% endif %}{% endif %}</div>
       <div class="satir"><span>Ad Soyad</span><span class="bos"></span></div>
       <div class="satir"><span>Tarih</span><span class="bos"></span></div>
@@ -62,7 +62,7 @@
     </div>
     {% endif %}
     <div class="kol">
-      <div class="rol">İŞÇİ</div>
+      <div class="rol">{{ b.sag_rol|default:"İŞÇİ" }}</div>
       <div class="not">{{ b.imza_notu }}</div>
       <div class="satir"><span>Ad Soyad</span><span class="bos"></span></div>
       <div class="satir"><span>Tarih</span><span class="bos"></span></div>

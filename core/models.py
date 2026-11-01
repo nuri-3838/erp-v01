@@ -3194,6 +3194,7 @@ class FirmaBilgisi(TemelModel):
     isveren_vekili_unvani = models.CharField("işveren vekili unvanı", max_length=120, blank=True)
     mersis_no = models.CharField("MERSİS no", max_length=20, blank=True)
     sgk_isyeri_sicil_no = models.CharField("SGK işyeri sicil no", max_length=40, blank=True)
+    kep_adresi = models.CharField("KEP adresi", max_length=100, blank=True)
 
     class Meta:
         db_table = "core_firma_bilgisi"
@@ -4220,6 +4221,9 @@ class PersonelBelge(TemelModel):
                              max_length=100)
     orijinal_ad = models.CharField("özgün dosya adı", max_length=255)
     bitis_tarihi = models.DateField("geçerlilik bitiş tarihi", null=True, blank=True)
+    # Şablondan basılıp özlüğe kaydedilen İMZASIZ çıktı: özlük kontrol listesi bu kayıtları "Yüklü" saymaz, süre grubuna girmez
+    # (imzalı tarama normal kayıt olarak yüklenir).
+    imzasiz = models.BooleanField("imzasız basım", default=False)
 
     class Meta:
         db_table = "core_personel_belge"
@@ -4233,9 +4237,10 @@ class PersonelBelge(TemelModel):
 
 
 class BelgeSablonu(TemelModel):
-    """AYARLAR > Belge Şablonları — işe giriş evrakları (belirsiz süreli iş sözleşmesi, KVKK aydınlatma/açık rıza, fazla çalışma
-    muvafakatnamesi) için DÜZENLENEBİLİR metin. Metin düz yazıdır (boş satır = paragraf); ``{ad_soyad}`` gibi yer tutucular
-    basımda personel/firma bilgisiyle doldurulur (bkz. core.services.belge_sablon). Her ``kod`` için tek aktif kayıt.
+    """AYARLAR > Belge Şablonları — personel evrakları (iş sözleşmesi, KVKK, fazla çalışma muvafakatnamesi, zimmet/teslim tutanakları…) için
+    DÜZENLENEBİLİR metin. Metin düz yazıdır (boş satır = paragraf); ``{ad_soyad}`` gibi yer tutucular basımda personel/firma bilgisiyle
+    doldurulur (bkz. core.services.belge_sablon). Her ``kod`` için tek aktif kayıt. 4 sabit şablonun kodu ``Kod``'dadır; yöneticinin eklediği
+    şablonların kodu otomatik üretilir (``OZEL_0001``…). Silme yok, pasife alma var. ``tur`` = özlüğe kaydedilirken belgenin türü.
     Varsayılan metinler genel TASLAKTIR; kullanmadan önce hukuk danışmanı/mali müşavir onayı gerekir."""
 
     class Kod(models.TextChoices):
@@ -4244,11 +4249,19 @@ class BelgeSablonu(TemelModel):
         KVKK_ACIK_RIZA = "KVKK_ACIK_RIZA", "KVKK Açık Rıza Metni"
         FAZLA_CALISMA = "FAZLA_CALISMA", "Fazla Çalışma Muvafakatnamesi"
 
-    kod = models.CharField("kod", max_length=20, choices=Kod.choices)
+    class Imza(models.TextChoices):
+        IKI_TARAF = "iki_taraf", "İki taraf (işveren + işçi)"
+        ISCI = "isci", "Yalnız işçi"
+        YOK = "yok", "İmza alanı yok"
+
+    kod = models.CharField("kod", max_length=20)
     baslik = models.CharField("başlık", max_length=200)
     metin = models.TextField("metin")
     aktif = models.BooleanField("pakete dahil", default=True)
     sira = models.PositiveSmallIntegerField("sıra", default=0)
+    tur = models.CharField("belge türü", max_length=20, choices=PersonelBelge.Tur.choices, default=PersonelBelge.Tur.DIGER)
+    imza = models.CharField("imza düzeni", max_length=10, choices=Imza.choices, default=Imza.ISCI)
+    imza_notu = models.CharField("imza notu", max_length=200, blank=True)
 
     class Meta:
         db_table = "core_belge_sablonu"

@@ -28,7 +28,7 @@ from core.models import (
     BankaHesap, Birim, Cari, CariSevkAdresi,
     CariAktivite, CariKategori, KapanisNedeni,
     CekSenet, Depo, DuranVarlik, FaturaSatir, FaturaTipi, FirmaBanka,
-    HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge, Varyant,
+    BelgeSablonu, HesapPlani, IsIstasyonu, Kasa, Kategori, KdvOrani, Operasyon, Personel, PersonelBelge, Varyant,
     PersonelIzin, PersonelUcret, Profil, Sehir, Stok, StokHareket, TanimRenk, TanimSecenegi,
     TevkifatOrani, Ulke, UretimEmri, YatirimProjesi, YevmiyeSatir,
 )
@@ -1292,6 +1292,8 @@ class FirmaBilgisiForm(forms.Form):
                                 widget=forms.TextInput(attrs={"autocomplete": "off"}))
     sgk_isyeri_sicil_no = forms.CharField(label="SGK İşyeri Sicil No", max_length=40, required=False,
                                           widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    kep_adresi = forms.CharField(label="KEP Adresi", max_length=100, required=False,
+                                 widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "firma@hs01.kep.tr"}))
 
 
 class FirmaBankaForm(forms.Form):
@@ -3444,10 +3446,19 @@ class SozlesmeVarsayilanForm(forms.Form):
 
 
 class BelgeSablonuForm(forms.Form):
-    """AYARLAR > Belge Şablonları: başlık + metin + pakete dahil mi. Yer tutucu denetimi serviste (core.services.belge_sablon)."""
-    baslik = forms.CharField(label="Başlık", max_length=200, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    """AYARLAR > Belge Şablonları (ekle/düzenle): başlık (belge adı), belge türü (Özlük Belgeleri türleri), sıra, aktif, imza düzeni + notu, metin.
+    Yer tutucu denetimi serviste (core.services.belge_sablon)."""
+    baslik = forms.CharField(label="Ad (belge başlığı)", max_length=200, widget=forms.TextInput(attrs={"autocomplete": "off"}))
+    tur = forms.ChoiceField(label="Belge türü (özlüğe kaydedilirken)", choices=PersonelBelge.Tur.choices, initial=PersonelBelge.Tur.DIGER)
+    sira = forms.IntegerField(label="Sıra", min_value=0, max_value=32000, required=False,
+                              help_text="Boşsa en sona eklenir. İş sözleşmesi sıra ne olursa olsun pakette her zaman ilk sıradadır.")
+    aktif = forms.BooleanField(label="Aktif (evrak paketine ve «Şablondan üret» listesine dahil)", required=False, initial=True)
+    imza = forms.ChoiceField(label="İmza düzeni", choices=BelgeSablonu.Imza.choices, initial=BelgeSablonu.Imza.ISCI)
+    imza_notu = forms.CharField(label="İmza notu", max_length=200, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}),
+                                help_text="İşçi imza kutusunda basılan beyan (örn. «Metni okudum, bir nüshasını teslim aldım.»). "
+                                          "«İki taraf» düzeninde kısa bir «Sol / Sağ» yazarsanız (örn. «Teslim eden / Teslim alan») iki kutunun "
+                                          "başlığı olur, beyan basılmaz.")
     metin = forms.CharField(label="Metin", widget=forms.Textarea(attrs={"rows": 24, "style": "font-family:inherit;line-height:1.45"}))
-    aktif = forms.BooleanField(label="Evrak paketine dahil", required=False)
 
 
 class PersonelBelgeForm(forms.Form):

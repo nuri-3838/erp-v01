@@ -12,6 +12,7 @@ from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied, SuspiciousFileOperation
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery, Sum, Value
@@ -7498,7 +7499,7 @@ def firma_bilgileri(request):
                     adres=cd["adres"], telefon=cd["telefon"], eposta=cd["eposta"], web=cd["web"],
                     logo=logo_dosya, bankalar=bankalar, kullanici=request.user,
                     isveren_vekili_adi=cd["isveren_vekili_adi"], isveren_vekili_unvani=cd["isveren_vekili_unvani"],
-                    mersis_no=cd["mersis_no"], sgk_isyeri_sicil_no=cd["sgk_isyeri_sicil_no"])
+                    mersis_no=cd["mersis_no"], sgk_isyeri_sicil_no=cd["sgk_isyeri_sicil_no"], kep_adresi=cd["kep_adresi"])
                 messages.success(request, "Firma bilgileri kaydedildi.")
                 return redirect("core:firma_bilgileri")
             except firma_servis.FirmaHatasi as e:
@@ -7508,8 +7509,8 @@ def firma_bilgileri(request):
             "unvan": firma.unvan, "vergi_dairesi": firma.vergi_dairesi, "vergi_no": firma.vergi_no,
             "adres": firma.adres, "telefon": firma.telefon, "eposta": firma.eposta,
             "web": firma.web, "isveren_vekili_adi": firma.isveren_vekili_adi, "isveren_vekili_unvani": firma.isveren_vekili_unvani,
-            "mersis_no": firma.mersis_no, "sgk_isyeri_sicil_no": firma.sgk_isyeri_sicil_no})
-        ilk = [{"banka_adi": b.banka_adi, "sube": b.sube, "hesap_sahibi": b.hesap_sahibi,
+            "mersis_no": firma.mersis_no, "sgk_isyeri_sicil_no": firma.sgk_isyeri_sicil_no, "kep_adresi": firma.kep_adresi})
+        ilk =[{"banka_adi": b.banka_adi, "sube": b.sube, "hesap_sahibi": b.hesap_sahibi,
                 "iban": b.iban, "para_birimi": b.para_birimi}
                for b in firma.bankalar.filter(silindi=False)]
         formset = FirmaBankaFormSet(initial=ilk, prefix="banka")
@@ -7528,6 +7529,7 @@ def _sozlesme_varsayilan_baslangic(ayar):
 def belge_sablonlari(request):
     return render(request, "core/belge_sablon_listesi.html", {
         "sablonlar": belge_sablon_servis.hazirla(request.user), "yer_tutucular": belge_sablon_servis.YER_TUTUCULAR,
+        "sabit_kodlar": list(belge_sablon_servis.VARSAYILAN),
         "varsayilan_form": SozlesmeVarsayilanForm(initial=_sozlesme_varsayilan_baslangic(ise_giris_servis.sozlesme_ayari()))})
 
 
@@ -7552,6 +7554,27 @@ def sozlesme_varsayilan_kaydet(request):
 
 
 @yonetici_gerekli
+def belge_sablonu_ekle(request):
+    """Yeni belge şablonu (ad, belge türü, sıra, aktif, imza düzeni/notu, metin). Silme yok; pasife alma düzenleme ekranından."""
+    if request.method == "POST":
+        form = BelgeSablonuForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            try:
+                s = belge_sablon_servis.olustur(
+                    baslik=cd["baslik"], metin=cd["metin"], tur=cd["tur"], sira=cd["sira"], aktif=cd["aktif"],
+                    imza=cd["imza"], imza_notu=cd["imza_notu"], kullanici=request.user)
+                messages.success(request, f"Şablon eklendi: {s.baslik}")
+                return redirect("core:belge_sablonlari")
+            except belge_sablon_servis.SablonHatasi as e:
+                form.add_error(None, str(e))
+    else:
+        form = BelgeSablonuForm()
+    return render(request, "core/belge_sablonu_form.html", {
+        "form": form, "sablon": None, "yer_tutucular": belge_sablon_servis.YER_TUTUCULAR})
+
+
+@yonetici_gerekli
 def belge_sablonu_duzenle(request, pk):
     belge_sablon_servis.hazirla(request.user)
     sablon = get_object_or_404(BelgeSablonu, pk=pk, silindi=False)
@@ -7560,13 +7583,15 @@ def belge_sablonu_duzenle(request, pk):
         if form.is_valid():
             cd = form.cleaned_data
             try:
-                belge_sablon_servis.kaydet(sablon, baslik=cd["baslik"], metin=cd["metin"], aktif=cd["aktif"], kullanici=request.user)
+                belge_sablon_servis.kaydet(sablon, baslik=cd["baslik"], metin=cd["metin"], aktif=cd["aktif"], sira=cd["sira"], tur=cd["tur"],
+                                           imza=cd["imza"], imza_notu=cd["imza_notu"], kullanici=request.user)
                 messages.success(request, f"Şablon kaydedildi: {sablon.baslik}")
                 return redirect("core:belge_sablonlari")
             except belge_sablon_servis.SablonHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = BelgeSablonuForm(initial={"baslik": sablon.baslik, "metin": sablon.metin, "aktif": sablon.aktif})
+        form = BelgeSablonuForm(initial={"baslik": sablon.baslik, "metin": sablon.metin, "aktif": sablon.aktif, "sira": sablon.sira,
+                                         "tur": sablon.tur, "imza": sablon.imza, "imza_notu": sablon.imza_notu})
     return render(request, "core/belge_sablonu_form.html", {
         "form": form, "sablon": sablon, "yer_tutucular": belge_sablon_servis.YER_TUTUCULAR})
 
@@ -7576,8 +7601,11 @@ def belge_sablonu_varsayilan(request, pk):
     """Şablonu varsayılan taslağa döndürür (POST; yapılan düzenleme kaybolur)."""
     sablon = get_object_or_404(BelgeSablonu, pk=pk, silindi=False)
     if request.method == "POST":
-        belge_sablon_servis.varsayilana_don(sablon, kullanici=request.user)
-        messages.success(request, f"Varsayılan metne dönüldü: {sablon.baslik}")
+        try:
+            belge_sablon_servis.varsayilana_don(sablon, kullanici=request.user)
+            messages.success(request, f"Varsayılan metne dönüldü: {sablon.baslik}")
+        except belge_sablon_servis.SablonHatasi as e:
+            messages.error(request, str(e))
     return redirect("core:belge_sablonlari")
 
 
@@ -10501,22 +10529,36 @@ def ise_giris_paket_pdf(request, pk):
     from weasyprint import HTML
 
     p = get_object_or_404(Personel, pk=pk, silindi=False)
-    donus = _personel_sekme_url(p.pk, "ise_giris")
+    donus = _personel_sekme_url(p.pk, request.POST.get("donus") if request.POST.get("donus") in ("ise_giris", "belgeler") else "ise_giris")
     if request.method != "POST":
         return redirect(donus)
     secilen = set(request.POST.getlist("belge"))
-    sablonlar = [s for s in belge_sablon_servis.hazirla(request.user) if s.aktif and s.kod in secilen]
+    sablonlar = belge_sablon_servis.paket_sirala([s for s in belge_sablon_servis.hazirla(request.user) if s.aktif and s.kod in secilen])   # sözleşme en başta
     bilgi_formu = ise_giris_servis.BILGI_FORMU_KODU in secilen
     if not sablonlar and not bilgi_formu:
-        messages.error(request, "Basılacak belge seçilmedi. (Pakete dahil olan şablonlar Ayarlar > Belge Şablonları'ndan belirlenir.)")
+        messages.error(request, "Basılacak belge seçilmedi. (Aktif şablonlar Ayarlar > Belge Şablonları'ndan belirlenir.)")
         return redirect(donus)
     ctx = _pdf_firma_baglami()
     bugun = tr_bugun()
     ucret = ise_giris_servis.ucret_metni(p, bugun=bugun) if ekran_gorebilir(request.user, "personel_ucret") else ""
-    ctx.update({"belgeler": ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, bilgi_formu=bilgi_formu,
-                                                           ucret=ucret, bugun=bugun, ayar=ise_giris_servis.sozlesme_ayari()),
-                "belge_tarihi": bugun, "personel": p})
+    belgeler = ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, bilgi_formu=bilgi_formu,
+                                              ucret=ucret, bugun=bugun, ayar=ise_giris_servis.sozlesme_ayari())
+    ctx.update({"belgeler": belgeler, "belge_tarihi": bugun, "personel": p})
     pdf = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf()
+    if request.POST.get("kaydet") == "1" and sablonlar:
+        # İsteğe bağlı: her şablon belgesi AYRI PDF olarak, şablondaki türle, "imzasız basım" işaretiyle özlüğe kaydedilir (kontrol listesi "Yüklü" saymaz).
+        kaydedilen = 0
+        for s, b in zip(sablonlar, belgeler[len(belgeler) - len(sablonlar):]):
+            tek = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", {**ctx, "belgeler": [b]})).write_pdf()
+            try:
+                belge_servis.belge_ekle(
+                    p, tur=s.tur, dosya=SimpleUploadedFile(_pdf_dosya_adi(s.kod.lower().replace("_", "-"), p.ad_soyad, bugun.isoformat()), tek, "application/pdf"),
+                    aciklama=f"{b['baslik'][:140]} — {bugun:%d.%m.%Y} (imzasız basım)", imzasiz=True, kullanici=request.user)
+                kaydedilen += 1
+            except belge_servis.PersonelBelgeHatasi as e:
+                messages.error(request, f"{s.baslik} özlüğe kaydedilemedi: {e}")
+        if kaydedilen:
+            messages.success(request, f"{kaydedilen} belge özlük belgelerine «imzasız basım» olarak kaydedildi (imzalı taramayı ayrıca yükleyin).")
     ise_giris_servis.paket_basildi(p, kullanici=request.user)
     resp = HttpResponse(pdf, content_type="application/pdf")
     resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("ise-giris-evraklari", p.ad_soyad, bugun.isoformat()))
@@ -10603,6 +10645,7 @@ def personel_detay(request, pk):
         rozet["belgeler"] = (len(belgeler), any(d in ("SURESI_DOLDU", "YAKLASIYOR") for _b, d, _k in belgeler))
         if sekme == "belgeler":
             ctx["belgeler"] = belgeler
+            ctx["uretilebilir_sablonlar"] = [s for s in belge_sablon_servis.gorunum_listesi() if s["aktif"]]       # "Şablondan üret" (salt-okunur, GET yazmaz)
         kl = ise_giris_servis.kontrol_listesi(p, belgeler=belgeler, bugun=bugun)                 # aynı belge listesinden, ek sorgu yok
         rozet["ise_giris"] = (kl["eksik_zorunlu"], kl["eksik_zorunlu"] > 0 or kl["uyari"])
         if sekme == "ise_giris":

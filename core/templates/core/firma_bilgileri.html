@@ -85,6 +85,11 @@
           {{ form.sgk_isyeri_sicil_no }}
           {% for e in form.sgk_isyeri_sicil_no.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        <div class="alan">
+          <label for="{{ form.kep_adresi.id_for_label }}">{{ form.kep_adresi.label }}</label>
+          {{ form.kep_adresi }}
+          {% for e in form.kep_adresi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
       </div>
 
       <h3 class="bolum-baslik" style="margin-top:1.3rem">

@@ -60,7 +60,7 @@ def kontrol_listesi(personel: Personel, *, belgeler=None, bugun=None) -> dict:
     satirlar = []
     for kaynak, tur, ad, zorunlu in KONTROL_LISTESI:
         turler = _ESDEGER.get(tur, (tur,))
-        aday = [(b, d, k) for b, d, k in belgeler if b.tur in turler and d != "ESKI"]     # belgeler yeni → eski sıralı: ilk = en yeni
+        aday = [(b, d, k) for b, d, k in belgeler if b.tur in turler and d != "ESKI" and not b.imzasiz]     # yeni → eski sıralı: ilk = en yeni; imzasız basım "Yüklü" sayılmaz
         if not aday:
             durum, belge, kalan = "EKSIK", None, None
         else:
@@ -168,15 +168,6 @@ def kayit_kaydet(personel: Personel, *, deneme_suresi_ay=None, haftalik_calisma_
 
 # === Evrak paketi (Dilim 2): şablon yer tutucu değerleri, eksik bilgi uyarıları, paket bağlamı ===========================================
 
-# Şablon kodu -> imza düzeni: iki_taraf (işveren + işçi) / isci (yalnız işçi) ve işçi imzasının üstüne basılan beyan.
-IMZA = {
-    "SOZLESME": ("iki_taraf", "Bu sözleşmeyi okudum, anladım, bir suretini teslim aldım."),
-    "KVKK_AYDINLATMA": ("isci", "Aydınlatma metnini okudum, bir nüshasını teslim aldım."),
-    "KVKK_ACIK_RIZA": ("isci", "Açık rızamı özgür irademle veriyorum."),
-    "FAZLA_CALISMA": ("iki_taraf", "Fazla çalışmaya yazılı olarak muvafakat ediyorum."),
-}
-
-
 def ucret_metni(personel: Personel, *, bugun=None) -> str:
     """Sözleşmedeki ücret ifadesi: net tutar ("40.000,00 TL") ya da "asgari ücret"; kayıt yoksa boş (çıktıda noktalı çizgi).
     İşe giriş tarihi ileride ise o tarihteki geçerli kayıt alınır."""
@@ -198,8 +189,10 @@ def yer_tutucu_degerleri(personel: Personel, firma, kayit, *, ucret="", bugun=No
     gun = lambda d: d.strftime("%d.%m.%Y") if d else ""
     e = etkin_sozlesme(kayit, ayar or IkAyari.get())
     saat = e["haftalik_calisma_saati"]
-    return {
+    from core.services.belge_sablon import ALIASLAR
+    d = {
         "firma_unvan": firma.unvan, "firma_adres": " ".join((firma.adres or "").split()), "firma_vergi_dairesi": firma.vergi_dairesi,
+        "firma_kep": firma.kep_adresi,
         "firma_vergi_no": firma.vergi_no, "firma_eposta": firma.eposta, "mersis_no": firma.mersis_no, "sgk_sicil_no": firma.sgk_isyeri_sicil_no,
         "vekil_ad": firma.isveren_vekili_adi, "vekil_unvan": firma.isveren_vekili_unvani,
         "ad_soyad": personel.ad_soyad, "tc": personel.tc_kimlik_no, "dogum_tarihi": gun(personel.dogum_tarihi), "dogum_yeri": personel.dogum_yeri,
@@ -211,6 +204,8 @@ def yer_tutucu_degerleri(personel: Personel, firma, kayit, *, ucret="", bugun=No
         "calisma_gunleri": e["calisma_gunleri"], "calisma_saatleri": e["calisma_saatleri"],
         "ucret": ucret, "ucret_odeme": e["ucret_odeme"], "bugun": gun(bugun),
     }
+    d.update({alias: d[eski] for alias, eski in ALIASLAR.items()})          # eş anlamlı adlar (örn. {tckn} = {tc})
+    return d
 
 
 def eksik_bilgiler(personel: Personel, firma, kayit, *, ucret_gorebilir=False, ucret="", ayar=None) -> list:
@@ -286,9 +281,10 @@ def paket_hazirla(personel: Personel, firma, kayit, sablonlar, *, bilgi_formu=Fa
     for s in sablonlar:
         metin = bs.doldur(s.metin, degerler)
         paragraflar = [p.strip() for p in metin.replace("\r\n", "\n").split("\n\n") if p.strip()]
-        imza, imza_notu = IMZA.get(s.kod, ("isci", ""))
+        etiket = bs.imza_etiketleri(s.imza_notu) if s.imza == s.Imza.IKI_TARAF else None      # "Teslim eden / Teslim alan" → kutu başlıkları
         belgeler.append({"kod": s.kod, "baslik": bs.doldur(s.baslik, degerler), "paragraflar": paragraflar, "bolumler": [],
-                         "imza": imza, "imza_notu": imza_notu})
+                         "imza": s.imza, "imza_notu": "" if etiket else s.imza_notu,
+                         "sol_rol": etiket[0] if etiket else "İŞVEREN", "sag_rol": etiket[1] if etiket else "İŞÇİ"})
     return belgeler
 
 

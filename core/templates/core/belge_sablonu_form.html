@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% block baslik %}{{ sablon.baslik }} · Belge Şablonu{% endblock %}
+{% block baslik %}{% if sablon %}{{ sablon.baslik }}{% else %}Yeni Şablon{% endif %} · Belge Şablonu{% endblock %}
 {% block sayfa_adi %}Belge Şablonu{% endblock %}
 {% block kart_sinif %}kart-yok{% endblock %}
 
@@ -7,7 +7,7 @@
 <div class="form-kapsa">
   <div class="form-ust">
     <a class="ust-link" href="{% url 'core:belge_sablonlari' %}">← Belge Şablonları</a>
-    <h1 class="ust-baslik"><span class="emoji">📝</span>{{ sablon.get_kod_display }}</h1>
+    <h1 class="ust-baslik"><span class="emoji">📝</span>{% if sablon %}{{ sablon.baslik }}{% else %}Yeni Şablon{% endif %}</h1>
   </div>
 
   {% if form.non_field_errors %}
@@ -24,6 +24,24 @@
           <label for="{{ form.baslik.id_for_label }}">{{ form.baslik.label }}</label>{{ form.baslik }}
           {% for e in form.baslik.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        <div class="alan">
+          <label for="{{ form.tur.id_for_label }}">{{ form.tur.label }}</label>{{ form.tur }}
+          {% for e in form.tur.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.sira.id_for_label }}">{{ form.sira.label }}</label>{{ form.sira }}
+          {% if form.sira.help_text %}<p class="yardim">{{ form.sira.help_text }}</p>{% endif %}
+          {% for e in form.sira.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.imza.id_for_label }}">{{ form.imza.label }}</label>{{ form.imza }}
+          {% for e in form.imza.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="alan">
+          <label for="{{ form.imza_notu.id_for_label }}">{{ form.imza_notu.label }}</label>{{ form.imza_notu }}
+          {% if form.imza_notu.help_text %}<p class="yardim">{{ form.imza_notu.help_text }}</p>{% endif %}
+          {% for e in form.imza_notu.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
         <div class="alan tam">
           <label for="{{ form.metin.id_for_label }}">{{ form.metin.label }}</label>{{ form.metin }}
           {% for e in form.metin.errors %}<div class="hata">{{ e }}</div>{% endfor %}
@@ -35,7 +53,7 @@
     </section>
     <div class="form-altbar">
       <a class="iptal-bag" href="{% url 'core:belge_sablonlari' %}">İptal</a>
-      <button type="submit" class="birincil">Kaydet</button>
+      <button type="submit" class="birincil">{% if sablon %}Kaydet{% else %}Şablonu Ekle{% endif %}</button>
     </div>
   </form>
 

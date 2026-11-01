@@ -169,10 +169,12 @@
           <label class="secenek" style="text-transform:none;letter-spacing:0"><input type="checkbox" name="belge" value="{{ b.kod }}" checked> {{ b.baslik }}</label>
         {% endfor %}
       </div>
-      <button type="submit" class="birincil">🖨️ Evrak Paketini Hazırla (PDF)</button>
+      <label class="secenek" style="text-transform:none;letter-spacing:0;margin-bottom:.8rem" title="Her belge ayrı PDF olarak Özlük Belgeleri'ne «imzasız basım» işaretiyle eklenir; özlük kontrol listesinde «Yüklü» sayılmaz. İmzalı taramayı ayrıca yüklersiniz.">
+        <input type="checkbox" name="kaydet" value="1"> Özlük belgelerine de kaydet (imzasız basım)</label>
+      <div><button type="submit" class="birincil">🖨️ Evrak Paketini Hazırla (PDF)</button></div>
     </form>
     {% else %}
-    <p class="yardim">Pakete dahil şablon yok. Yönetici, Ayarlar &gt; Belge Şablonları'ndan şablonları açabilir.</p>
+    <p class="yardim">Aktif şablon yok. Yönetici, Ayarlar &gt; Belge Şablonları'ndan şablon ekleyebilir veya pasif olanı açabilir.</p>
     {% endif %}
   </section>
 
@@ -372,10 +374,10 @@
       <tbody>
         {% for b, durum, kalan in belgeler %}
           <tr>
-            <td><strong>{{ b.get_tur_display }}</strong>
+            <td><strong>{{ b.get_tur_display }}</strong>{% if b.imzasiz %} <span class="rozet rozet-uyari" title="Şablondan basılmış imzasız çıktı; imzalı taramayı ayrıca yükleyin">İmzasız basım</span>{% endif %}
               <div class="yardim">{% if b.aciklama %}{{ b.aciklama }} · {% endif %}{{ b.orijinal_ad }}</div></td>
             <td class="mono">{% if b.bitis_tarihi %}{{ b.bitis_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</td>
-            <td>{% include "core/_belge_durum_rozeti.html" with durum=durum kalan=kalan %}</td>
+            <td>{% if b.imzasiz %}<span class="yardim">—</span>{% else %}{% include "core/_belge_durum_rozeti.html" with durum=durum kalan=kalan %}{% endif %}</td>
             <td class="islem-bag">
               <a class="dugme-ikincil" href="{% url 'core:belge_indir' b.pk %}" target="_blank" rel="noopener">Aç</a>
               <a class="dugme-ikincil" href="{% url 'core:belge_duzenle' b.pk %}?sonraki=personel">Düzenle</a>
@@ -391,6 +393,37 @@
     </div>
     {% else %}
     <p class="yardim" style="margin:.2rem 0 0">Bu personel için henüz belge yüklenmemiş (kimlik, sağlık raporu, sözleşme, İSG eğitimi…).</p>
+    {% endif %}
+  </section>
+
+  <section class="icerik-kart" id="sablondan-uret">
+    <div class="bolum-ust">
+      <h2 class="bolum-baslik"><span class="emoji">📝</span>Şablondan Üret</h2>
+    </div>
+    {% if uretilebilir_sablonlar %}
+    <form method="post" action="{% url 'core:ise_giris_paket_pdf' p.pk %}" target="_blank">
+      {% csrf_token %}
+      <input type="hidden" name="donus" value="belgeler">
+      <p class="yardim" style="margin-top:0">Belge personel ve firma bilgisiyle doldurulup PDF olarak açılır. Birden fazla belgeyi tek PDF'te basmak için İşe Giriş sekmesindeki evrak paketini kullanın.</p>
+      <div class="tablo-kapsayici">
+      <table>
+        <thead><tr><th>Şablon</th><th>Özlük türü</th><th></th></tr></thead>
+        <tbody>
+          {% for s in uretilebilir_sablonlar %}
+          <tr>
+            <td><strong>{{ s.baslik }}</strong></td>
+            <td class="yardim">{{ s.tur_ad }}</td>
+            <td class="islem-bag"><button type="submit" name="belge" value="{{ s.kod }}" class="dugme-ikincil">🖨️ PDF üret</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <label class="secenek" style="text-transform:none;letter-spacing:0;margin-top:.7rem" title="Belge, şablondaki türle Özlük Belgeleri'ne «imzasız basım» işaretiyle eklenir; özlük kontrol listesinde «Yüklü» sayılmaz.">
+        <input type="checkbox" name="kaydet" value="1"> Özlük belgelerine de kaydet (imzasız basım)</label>
+    </form>
+    {% else %}
+    <p class="yardim" style="margin:.2rem 0 0">Aktif şablon yok. Yönetici Ayarlar &gt; Belge Şablonları'ndan şablon ekleyebilir.</p>
     {% endif %}
   </section>
   {% elif sekme == "devam" %}

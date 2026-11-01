@@ -122,6 +122,7 @@ urlpatterns = [
     path("ayarlar/firma-bilgileri/", views.firma_bilgileri, name="firma_bilgileri"),
     path("ayarlar/belge-sablonlari/", views.belge_sablonlari, name="belge_sablonlari"),
     path("ayarlar/belge-sablonlari/varsayilan-sozlesme/", views.sozlesme_varsayilan_kaydet, name="sozlesme_varsayilan_kaydet"),
+    path("ayarlar/belge-sablonlari/yeni/", views.belge_sablonu_ekle, name="belge_sablonu_ekle"),
     path("ayarlar/belge-sablonlari/<int:pk>/", views.belge_sablonu_duzenle, name="belge_sablonu_duzenle"),
     path("ayarlar/belge-sablonlari/<int:pk>/varsayilan/", views.belge_sablonu_varsayilan, name="belge_sablonu_varsayilan"),
     # FASON

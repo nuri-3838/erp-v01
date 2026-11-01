@@ -81,7 +81,7 @@ def belge_listele(*, personel_id=None, tur=""):
 
 
 def belge_ekle(personel: Personel, *, tur, dosya, aciklama="", bitis_tarihi=None,
-               kullanici=None) -> PersonelBelge:
+               kullanici=None, imzasiz=False) -> PersonelBelge:
     if personel.silindi:
         raise PersonelBelgeHatasi("Silinmiş personele belge eklenemez.")
     if tur not in PersonelBelge.Tur.values:
@@ -91,7 +91,7 @@ def belge_ekle(personel: Personel, *, tur, dosya, aciklama="", bitis_tarihi=None
     icerik, ozgun_ad = _dosya_hazirla(dosya)
     return PersonelBelge.objects.create(
         personel=personel, tur=tur, aciklama=(aciklama or "").strip(), dosya=icerik,
-        orijinal_ad=ozgun_ad[:255], bitis_tarihi=bitis_tarihi,
+        orijinal_ad=ozgun_ad[:255], bitis_tarihi=bitis_tarihi, imzasiz=bool(imzasiz),
         created_by=kullanici, updated_by=kullanici)
 
 
@@ -153,6 +153,8 @@ def _en_gec_belgeler(satirlar):
     süresiz yapar (yenilenen belge eskiyi susturur, süresiz kayıt hepsini)."""
     en_gec = {}
     for b in satirlar:
+        if b.imzasiz:                       # imzasız basım süre grubunu etkilemez (imzalı kaydı "eski"/"süresiz" yapmasın)
+            continue
         k = (b.personel_id, b.tur)
         if b.bitis_tarihi is None:
             en_gec[k] = _SINIRSIZ

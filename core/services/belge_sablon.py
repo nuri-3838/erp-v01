@@ -11,7 +11,7 @@ import re
 
 from django.db import transaction
 
-from core.models import BelgeSablonu
+from core.models import BelgeSablonu, PersonelBelge
 
 BOS = "……………………"                                       # boş/bilinmeyen değer: elle doldurulabilir noktalı çizgi
 
@@ -25,7 +25,13 @@ YER_TUTUCULAR = {
     "gorev": "Görev", "departman": "Departman", "ise_giris": "İşe giriş tarihi", "deneme_suresi": "Deneme süresi (örn. 2 ay)",
     "haftalik_saat": "Haftalık çalışma saati", "calisma_gunleri": "Çalışma günleri", "calisma_saatleri": "Günlük çalışma saatleri",
     "ucret": "Ücret (net tutar ya da \"asgari ücret\"; ücret yetkisi yoksa boş çizgi)", "ucret_odeme": "Ücret ödeme şekli/günü", "bugun": "Belge tarihi (basım günü)",
+    "firma_kep": "Firma KEP adresi",
 }
+
+# Eş anlamlı adlar: {yeni_ad: eski_ad} — İKİSİ DE KALICI olarak çalışır (mevcut şablon metinleri eski adları kullanır). Değer eski adınkiyle aynıdır
+# (core.services.ise_giris.yer_tutucu_degerleri doldurur).
+ALIASLAR = {"tckn": "tc", "ise_giris_tarihi": "ise_giris", "gorev_unvani": "gorev", "personel_adres": "adres", "personel_tel": "telefon"}
+YER_TUTUCULAR.update({a: f"{YER_TUTUCULAR[e]} — {{{e}}} ile aynı" for a, e in ALIASLAR.items()})
 
 _YER_TUTUCU_RE = re.compile(r"\{([a-z_0-9]+)\}")
 
@@ -136,11 +142,16 @@ Bu muvafakatnamenin iş sözleşmesinin eki olduğunu, hafta tatili ve ulusal ba
 Tarih: {bugun}
 """
 
+_I = BelgeSablonu.Imza
 VARSAYILAN = {
-    BelgeSablonu.Kod.SOZLESME: {"baslik": "BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ", "metin": _SOZLESME, "sira": 1},
-    BelgeSablonu.Kod.KVKK_AYDINLATMA: {"baslik": "KİŞİSEL VERİLERİN KORUNMASI KANUNU KAPSAMINDA ÇALIŞAN AYDINLATMA METNİ", "metin": _KVKK_AYDINLATMA, "sira": 2},
-    BelgeSablonu.Kod.KVKK_ACIK_RIZA: {"baslik": "KİŞİSEL VERİLERİN İŞLENMESİNE İLİŞKİN AÇIK RIZA METNİ", "metin": _KVKK_ACIK_RIZA, "sira": 3},
-    BelgeSablonu.Kod.FAZLA_CALISMA: {"baslik": "FAZLA ÇALIŞMA MUVAFAKATNAMESİ", "metin": _FAZLA_CALISMA, "sira": 4},
+    BelgeSablonu.Kod.SOZLESME: {"baslik": "BELİRSİZ SÜRELİ İŞ SÖZLEŞMESİ", "metin": _SOZLESME, "sira": 1, "tur": "SOZLESME", "imza": _I.IKI_TARAF,
+                                "imza_notu": "Bu sözleşmeyi okudum, anladım, bir suretini teslim aldım."},
+    BelgeSablonu.Kod.KVKK_AYDINLATMA: {"baslik": "KİŞİSEL VERİLERİN KORUNMASI KANUNU KAPSAMINDA ÇALIŞAN AYDINLATMA METNİ", "metin": _KVKK_AYDINLATMA, "sira": 2,
+                                       "tur": "KVKK", "imza": _I.ISCI, "imza_notu": "Aydınlatma metnini okudum, bir nüshasını teslim aldım."},
+    BelgeSablonu.Kod.KVKK_ACIK_RIZA: {"baslik": "KİŞİSEL VERİLERİN İŞLENMESİNE İLİŞKİN AÇIK RIZA METNİ", "metin": _KVKK_ACIK_RIZA, "sira": 3,
+                                      "tur": "KVKK", "imza": _I.ISCI, "imza_notu": "Açık rızamı özgür irademle veriyorum."},
+    BelgeSablonu.Kod.FAZLA_CALISMA: {"baslik": "FAZLA ÇALIŞMA MUVAFAKATNAMESİ", "metin": _FAZLA_CALISMA, "sira": 4, "tur": "FAZLA_MESAI_ONAYI",
+                                     "imza": _I.IKI_TARAF, "imza_notu": "Fazla çalışmaya yazılı olarak muvafakat ediyorum."},
 }
 
 
@@ -191,22 +202,34 @@ def hazirla(kullanici=None) -> list:
     var = {s.kod: s for s in BelgeSablonu.objects.filter(silindi=False)}
     for kod, v in VARSAYILAN.items():
         if kod not in var:
-            BelgeSablonu.objects.create(kod=kod, baslik=v["baslik"], metin=v["metin"], sira=v["sira"], aktif=True,
-                                        created_by=kullanici, updated_by=kullanici)
+            BelgeSablonu.objects.create(kod=kod, baslik=v["baslik"], metin=v["metin"], sira=v["sira"], aktif=True, tur=v["tur"], imza=v["imza"],
+                                        imza_notu=v["imza_notu"], created_by=kullanici, updated_by=kullanici)
         else:
             _yukselt(var[kod])
     return list(BelgeSablonu.objects.filter(silindi=False).order_by("sira", "id"))
 
 
+def _sira_anahtari(kod, sira, ayirt):
+    """Paket/liste sırası: SÖZLEŞME her zaman en başta (sıra ne girilmiş olursa olsun), sonra sıra no, sonra kayıt sırası."""
+    return (kod != BelgeSablonu.Kod.SOZLESME, sira, ayirt)
+
+
+def paket_sirala(sablonlar) -> list:
+    """``BelgeSablonu`` nesnelerini paket sırasına dizer (sözleşme en başta)."""
+    return sorted(sablonlar, key=lambda s: _sira_anahtari(s.kod, s.sira, s.pk))
+
+
 def gorunum_listesi() -> list:
-    """Kart ekranı için SALT-OKUNUR liste [{kod, baslik, aktif}]: kayıtlı şablonlar; henüz oluşmamış olanlar varsayılanıyla (aktif) gösterilir.
-    Kayıt oluşturmaz (GET yazmaz); basım sırasında ``hazirla()`` eksikleri oluşturur."""
-    var = {s.kod: s for s in BelgeSablonu.objects.filter(silindi=False)}
-    out = []
-    for kod, v in sorted(VARSAYILAN.items(), key=lambda kv: kv[1]["sira"]):
-        s = var.get(kod)
-        out.append({"kod": kod, "baslik": s.baslik if s else v["baslik"], "aktif": s.aktif if s else True, "sira": s.sira if s else v["sira"]})
-    return sorted(out, key=lambda x: x["sira"])
+    """Kart ekranı için SALT-OKUNUR liste [{kod, baslik, aktif, sira, tur}]: kayıtlı TÜM şablonlar (sabit + eklenenler); henüz oluşmamış sabit olanlar
+    varsayılanıyla (aktif) gösterilir. Kayıt oluşturmaz (GET yazmaz); basım sırasında ``hazirla()`` eksikleri oluşturur. Paket sırasıyla döner."""
+    kayitlar = list(BelgeSablonu.objects.filter(silindi=False))
+    var = {s.kod for s in kayitlar}
+    tur_ad = dict(PersonelBelge.Tur.choices)
+    out = [{"kod": s.kod, "baslik": s.baslik, "aktif": s.aktif, "sira": s.sira, "tur": s.tur, "tur_ad": tur_ad.get(s.tur, s.tur), "ayirt": s.pk} for s in kayitlar]
+    for kod, v in VARSAYILAN.items():
+        if kod not in var:
+            out.append({"kod": kod, "baslik": v["baslik"], "aktif": True, "sira": v["sira"], "tur": v["tur"], "tur_ad": tur_ad.get(v["tur"], v["tur"]), "ayirt": 0})
+    return sorted(out, key=lambda x: _sira_anahtari(x["kod"], x["sira"], x["ayirt"]))
 
 
 def getir(kod: str) -> BelgeSablonu:
@@ -214,18 +237,46 @@ def getir(kod: str) -> BelgeSablonu:
     return BelgeSablonu.objects.get(kod=kod, silindi=False)
 
 
-def kaydet(sablon: BelgeSablonu, *, baslik, metin, aktif=True, sira=None, kullanici=None) -> BelgeSablonu:
+_ETIKET_RE = re.compile(r"^\s*([^/]{2,24}?)\s*/\s*([^/]{2,24}?)\s*$")
+
+
+def imza_etiketleri(imza_notu: str):
+    """İmza notu kısa bir "Sol / Sağ" çiftiyse (ör. "Teslim eden / Teslim alan") iki tarafın kutu başlıkları olur: (SOL, SAĞ) büyük harf. Değilse None
+    (not, işçi kutusunda beyan metni olarak basılır). Yalnız "iki taraf" düzeninde kullanılır."""
+    from core.metin import buyuk_harf_tr
+    m = _ETIKET_RE.match(imza_notu or "")
+    return (buyuk_harf_tr(m.group(1)), buyuk_harf_tr(m.group(2))) if m else None
+
+
+def _temizle(baslik, metin, tur, imza, imza_notu) -> tuple:
     baslik = " ".join((baslik or "").split())
     metin = (metin or "").replace("\r\n", "\n").strip()
+    imza_notu = " ".join((imza_notu or "").split())
     if not baslik:
         raise SablonHatasi("Başlık boş olamaz.")
     if not metin:
         raise SablonHatasi("Metin boş olamaz.")
+    if tur not in PersonelBelge.Tur.values:
+        raise SablonHatasi("Geçersiz belge türü.")
+    if imza not in BelgeSablonu.Imza.values:
+        raise SablonHatasi("Geçersiz imza düzeni.")
+    if len(imza_notu) > 200:
+        raise SablonHatasi("İmza notu en fazla 200 karakter olabilir.")
     yanlis = bilinmeyen_yer_tutucular(metin)
     if yanlis:
         raise SablonHatasi("Tanımsız yer tutucu: " + ", ".join("{" + y + "}" for y in yanlis)
                            + ". Kullanılabilir yer tutucular ekranın altındaki listededir.")
+    return baslik, metin, imza_notu
+
+
+def kaydet(sablon: BelgeSablonu, *, baslik, metin, aktif=True, sira=None, tur=None, imza=None, imza_notu=None, kullanici=None) -> BelgeSablonu:
+    """Şablonu günceller. ``tur``/``imza``/``imza_notu`` verilmezse (None) mevcut değer korunur."""
+    tur = sablon.tur if tur is None else tur
+    imza = sablon.imza if imza is None else imza
+    imza_notu = sablon.imza_notu if imza_notu is None else imza_notu
+    baslik, metin, imza_notu = _temizle(baslik, metin, tur, imza, imza_notu)
     sablon.baslik, sablon.metin, sablon.aktif = baslik, metin, bool(aktif)
+    sablon.tur, sablon.imza, sablon.imza_notu = tur, imza, imza_notu
     if sira is not None:
         sablon.sira = sira
     sablon.updated_by = kullanici
@@ -233,6 +284,25 @@ def kaydet(sablon: BelgeSablonu, *, baslik, metin, aktif=True, sira=None, kullan
     return sablon
 
 
+def _yeni_kod() -> str:
+    """Eklenen şablonlar için ``OZEL_0001``… (silinmiş kayıtlar dahil sayılır: kod yeniden verilmez)."""
+    sayilar = [int(k[5:]) for k in BelgeSablonu.objects.filter(kod__startswith="OZEL_").values_list("kod", flat=True) if k[5:].isdigit()]
+    return f"OZEL_{max(sayilar, default=0) + 1:04d}"
+
+
+@transaction.atomic
+def olustur(*, baslik, metin, tur, sira=None, aktif=True, imza=BelgeSablonu.Imza.ISCI, imza_notu="", kullanici=None) -> BelgeSablonu:
+    """Yeni (sabit olmayan) şablon. ``sira`` boşsa en sona eklenir. Silme yok; pasife alma var (``kaydet(aktif=False)``)."""
+    baslik, metin, imza_notu = _temizle(baslik, metin, tur, imza, imza_notu)
+    hazirla(kullanici)                                        # sabit 4 şablon önce yerinde olsun (sıra hesabı ve kod için)
+    if sira is None:
+        sira = (max(BelgeSablonu.objects.filter(silindi=False).values_list("sira", flat=True), default=0)) + 1
+    return BelgeSablonu.objects.create(kod=_yeni_kod(), baslik=baslik, metin=metin, sira=sira, aktif=bool(aktif), tur=tur, imza=imza,
+                                       imza_notu=imza_notu, created_by=kullanici, updated_by=kullanici)
+
+
 def varsayilana_don(sablon: BelgeSablonu, kullanici=None) -> BelgeSablonu:
+    if sablon.kod not in VARSAYILAN:
+        raise SablonHatasi("Varsayılan metne yalnız sabit şablonlar döner.")
     v = VARSAYILAN[sablon.kod]
     return kaydet(sablon, baslik=v["baslik"], metin=v["metin"], aktif=sablon.aktif, sira=v["sira"], kullanici=kullanici)

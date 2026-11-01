@@ -24,7 +24,7 @@ def _metin(v):
 def firma_bilgisi_kaydet(*, unvan="", vergi_dairesi="", vergi_no="", adres="", telefon="",
                          eposta="", web="", logo=None, bankalar=None, kullanici=None,
                          isveren_vekili_adi=None, isveren_vekili_unvani=None, mersis_no=None,
-                         sgk_isyeri_sicil_no=None) -> FirmaBilgisi:
+                         sgk_isyeri_sicil_no=None, kep_adresi=None) -> FirmaBilgisi:
     """``bankalar``: [{"banka_adi", "sube", "hesap_sahibi", "iban", "para_birimi"}, ...].
     Var olan banka satırları soft-delete edilip liste sıfırdan yazılır — doğal bir
     upsert anahtarı yok (aynı bankada/para biriminde birden fazla hesap olabilir),
@@ -46,6 +46,8 @@ def firma_bilgisi_kaydet(*, unvan="", vergi_dairesi="", vergi_no="", adres="", t
         firma.mersis_no = _metin(mersis_no)
     if sgk_isyeri_sicil_no is not None:
         firma.sgk_isyeri_sicil_no = _metin(sgk_isyeri_sicil_no)
+    if kep_adresi is not None:                          # verilmediyse (eski çağrı) mevcut değer KORUNUR
+        firma.kep_adresi = _metin(kep_adresi).lower()
     if logo is not None:                   # yalnız yeni dosya yüklendiyse değiştir
         firma.logo = logo
     firma.updated_by = kullanici
