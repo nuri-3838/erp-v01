@@ -10520,13 +10520,22 @@ def ise_giris_kaydet(request, pk):
     return redirect(_personel_sekme_url(p.pk, "ise_giris"))
 
 
+def _belge_bazli_pdf(ctx, belgeler) -> bytes:
+    """İşe giriş paketi PDF'i: HER BELGE AYRI render edilir, böylece sayfa altlığı o belgenin kendi "Sayfa 1 / N"sidir (N = o belgenin sayfa sayısı;
+    paket için ortak numara yok); sayfalar WeasyPrint'in kendi birleştirmesiyle (``Document.copy``) tek PDF'e dizilir — ek kütüphane gerekmez. Her belge zaten
+    yeni sayfadan başlıyordu, bu yüzden toplam sayfa sayısı değişmez. Tek belgede çıktı eskisiyle aynıdır."""
+    from weasyprint import HTML
+    belgeler_render = [HTML(string=render_to_string("core/ise_giris_paket_pdf.html", {**ctx, "belgeler": [b]})).render() for b in belgeler]
+    if len(belgeler_render) == 1:
+        return belgeler_render[0].write_pdf()
+    return belgeler_render[0].copy([sayfa for d in belgeler_render for sayfa in d.pages]).write_pdf()
+
+
 @ekran_gerekli_hepsi("personel", "personel_belgeleri")
 def ise_giris_paket_pdf(request, pk):
     """İşe giriş evrak paketi (iş sözleşmesi, KVKK, fazla çalışma muvafakatnamesi…): seçilen şablonlar personel/firma bilgisiyle doldurulur,
     tek A4 PDF olarak döner (yalnız indirilir). POST: zorunlu "belge_tarihi" ({bugun} ve PDF anteti bundan beslenir; basım zamanı kaydedilir; GET yazmaz). Ücret yalnız `personel_ucret` yetkisi olana basılır, yoksa noktalı çizgi.
-    Eksik bilgi basımı engellemez (çıktıda elle doldurulacak noktalı çizgi olur)."""
-    from weasyprint import HTML
-
+    Eksik bilgi basımı engellemez (çıktıda elle doldurulacak noktalı çizgi olur). Sayfa numarası BELGE BAZLIDIR (bkz. ``_belge_bazli_pdf``)."""
     p = get_object_or_404(Personel, pk=pk, silindi=False)
     donus = _personel_sekme_url(p.pk, request.POST.get("donus") if request.POST.get("donus") in ("ise_giris", "belgeler") else "ise_giris")
     if request.method != "POST":
@@ -10550,7 +10559,7 @@ def ise_giris_paket_pdf(request, pk):
     belgeler = ise_giris_servis.paket_hazirla(p, ctx["firma"], ise_giris_servis.kayit_oku(p), sablonlar, bilgi_formu=bilgi_formu,
                                               ucret=ucret, bugun=belge_tarihi, ayar=ise_giris_servis.sozlesme_ayari())
     ctx.update({"belgeler": belgeler, "belge_tarihi": belge_tarihi, "personel": p})
-    pdf = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", ctx)).write_pdf()      # yalnız indirilir; özlüğe kayıt yapılmaz
+    pdf = _belge_bazli_pdf(ctx, belgeler)                                                      # yalnız indirilir; özlüğe kayıt yapılmaz
     ise_giris_servis.paket_basildi(p, kullanici=request.user)
     resp = HttpResponse(pdf, content_type="application/pdf")
     resp["Content-Disposition"] = _pdf_content_disposition(_pdf_dosya_adi("ise-giris-evraklari", p.ad_soyad, belge_tarihi.isoformat()))

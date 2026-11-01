@@ -33,6 +33,33 @@ def sayfa_yakala():
         yield sayilar
 
 
+def altlik(sayfa):
+    """Sayfanın alt bilgi kutusundaki "Sayfa i / N" metni (yoksa None)."""
+    bulunan = []
+
+    def gez(kutu):
+        t = getattr(kutu, "text", None)
+        if t and t.startswith("Sayfa "):
+            bulunan.append(t)
+        for c in getattr(kutu, "children", None) or []:
+            gez(c)
+    gez(sayfa._page_box)
+    return bulunan[0] if bulunan else None
+
+
+@contextmanager
+def altlik_yakala():
+    """PDF'e yazılan sayfaların altlık metinlerini sırayla listeye yazar (paket birleştirilmiş son belgeden okunur)."""
+    metinler = []
+    gercek = Document.write_pdf
+
+    def sarmal(self, *a, **kw):
+        metinler.extend(altlik(s) for s in self.pages)
+        return gercek(self, *a, **kw)
+    with mock.patch.object(Document, "write_pdf", sarmal):
+        yield metinler
+
+
 KISA = "{ad_soyad} adlı personele teslim edilmiştir."
 
 
@@ -162,6 +189,42 @@ class PaketVeKaydetTest(OzelDizinTestTemel):
             self.post(["SOZLESME"])
         self.assertEqual(hepsi[0], sozlesme[0] + 2)                                           # eklenen her belge tam 1 sayfa ekler
 
+    def test_sayfa_numarasi_belge_bazli_ortak_numara_yok(self):
+        from weasyprint import HTML
+        with altlik_yakala() as sozlesme:
+            self.post(["SOZLESME"])
+        with altlik_yakala() as zimmet:
+            self.post([self.zimmet.kod])
+        with altlik_yakala() as kkd:
+            self.post([self.kkd.kod])
+        n = len(sozlesme)
+        self.assertGreater(n, 1)                                                              # sözleşme çok sayfalı
+        self.assertEqual(sozlesme, [f"Sayfa {i} / {n}" for i in range(1, n + 1)])
+        self.assertEqual((zimmet, kkd), (["Sayfa 1 / 1"], ["Sayfa 1 / 1"]))                   # tek belge: davranış aynı
+        with altlik_yakala() as paket:
+            r = self.post(["SOZLESME", self.zimmet.kod, self.kkd.kod])
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(paket, sozlesme + zimmet + kkd)                                      # her belge kendi içinde "Sayfa 1 / N" ile başlar
+        self.assertEqual(sum(1 for x in paket if x.startswith("Sayfa 1 / ")), 3)              # 3 belge = 3 ilk sayfa
+        self.assertNotIn(f"/ {n + 2}", " ".join(paket))                                       # paket geneli toplam (N+2) yok
+        # toplam sayfa sayısı değişmedi: eski yöntem (tek HTML, sürekli numara) aynı sayıda sayfa üretir
+        belgeler = ig.paket_hazirla(self.p, firma_bilgisi_getir(), ig.kayit_oku(self.p),
+                                    bs.paket_sirala(BelgeSablonu.objects.filter(kod__in=["SOZLESME", self.zimmet.kod, self.kkd.kod])), bugun=date(2026, 11, 1))
+        eski = HTML(string=render_to_string("core/ise_giris_paket_pdf.html", {
+            "firma": firma_bilgisi_getir(), "logo_b64": None, "belgeler": belgeler, "belge_tarihi": date(2026, 11, 1)})).render()
+        self.assertEqual(len(eski.pages), len(paket))
+        self.assertEqual(altlik(eski.pages[-1]), f"Sayfa {len(paket)} / {len(paket)}")        # eski yöntem ortak numaralıydı (kanıt)
+
+    def test_bilgi_formu_dahil_pakette_de_belge_bazli(self):
+        with altlik_yakala() as bilgi:
+            self.post(["PERSONEL_BILGI"])
+        with altlik_yakala() as zimmet:
+            self.post([self.zimmet.kod])
+        with altlik_yakala() as paket:
+            self.post(["PERSONEL_BILGI", self.zimmet.kod])
+        self.assertEqual(paket, bilgi + zimmet)
+        self.assertEqual(paket[-1], "Sayfa 1 / 1")
+
     def test_paket_siralamasi_sozlesme_basta_ve_pasif_basilmaz(self):
         bs.kaydet(self.kkd, baslik=self.kkd.baslik, metin=self.kkd.metin, aktif=False, sira=0)
         bs.kaydet(self.zimmet, baslik=self.zimmet.baslik, metin=self.zimmet.metin, sira=0)
@@ -171,7 +234,7 @@ class PaketVeKaydetTest(OzelDizinTestTemel):
 
         def sahte(ad, ctx=None, *a, **kw):
             if ad == "core/ise_giris_paket_pdf.html":
-                gelen.setdefault("liste", [b["kod"] for b in ctx["belgeler"]])
+                gelen.setdefault("liste", []).extend(b["kod"] for b in ctx["belgeler"])         # belge başına ayrı render: biriktir
             return gercek(ad, ctx, *a, **kw)
         with mock.patch("core.views.render_to_string", side_effect=sahte):
             r = self.post(["SOZLESME", self.zimmet.kod, self.kkd.kod])                        # pasif şablon seçilse de basılmaz
@@ -205,9 +268,10 @@ class PaketVeKaydetTest(OzelDizinTestTemel):
 
         def sahte(ad, ctx=None, *a, **kw):
             html = gercek(ad, ctx, *a, **kw)
-            if ad == "core/ise_giris_paket_pdf.html":
-                yakalanan.update(ctx)
-                yakalanan["html"] = html
+            if ad == "core/ise_giris_paket_pdf.html":                      # PDF belge başına ayrı render edilir: belgeleri ve HTML'leri biriktir
+                yakalanan.update({k: v for k, v in ctx.items() if k != "belgeler"})
+                yakalanan.setdefault("belgeler", []).extend(ctx["belgeler"])
+                yakalanan["html"] = yakalanan.get("html", "") + html
             return html
         with mock.patch("core.views.render_to_string", side_effect=sahte):
             r = self.post(belgeler, **ek)

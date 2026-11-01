@@ -181,8 +181,9 @@ class PaketGorunumTest(OzelDizinTestTemel):
         yakalanan = {}
 
         def sahte(ad, ctx=None, *a, **kw):
-            if ad == "core/ise_giris_paket_pdf.html":
-                yakalanan.update(ctx)
+            if ad == "core/ise_giris_paket_pdf.html":                      # PDF belge başına ayrı render edilir: belgeleri biriktir
+                yakalanan.update({k: v for k, v in ctx.items() if k != "belgeler"})
+                yakalanan.setdefault("belgeler", []).extend(ctx["belgeler"])
             return gercek(ad, ctx, *a, **kw)
         with mock.patch("core.views.render_to_string", side_effect=sahte):
             r = self.post(kisi, **veri)
