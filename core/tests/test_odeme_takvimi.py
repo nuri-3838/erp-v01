@@ -9,7 +9,7 @@ from django.db import connection
 from django.urls import reverse
 from openpyxl import load_workbook
 
-from core.models import Cari, CekSenet, Kur
+from core.models import Cari, CekSenet, Kur, YevmiyeFisi
 from core.services import fatura_odeme, odeme_takvimi as ot
 from core.services.yevmiye import SatirGirdi, fis_olustur
 from core.tests import test_fatura_liste as tfl
@@ -317,3 +317,126 @@ class DamgaTahminiTest(TakvimTaban):
         ws = load_workbook(BytesIO(x.content))["Ödeme Takvimi"]
         etiketler = [c.value for row in ws.iter_rows(min_row=5) for c in row if c.value == "tahmini"]
         self.assertTrue(etiketler)
+
+
+class DamgaOdemeKaynagiTest(TakvimTaban):
+    """Ödendi eşleştirmesi KAYNAĞA bakmaz (banka / kredi kartı / kasa / manuel): 770.11 borç + açıklamadaki "DAMGA VERGİSİ <MUHTASAR|KDV1|KDV2> AA/YYYY". Açıklama banka hareketinde SATIRDA,
+    kredi kartı harcamasında FİŞ BAŞLIĞINDA (satır boş) olur — ikisi de tanınır. Yalnız ödenmemiş dönem takvimde çıkar. Canlı örnek: 09/2026 damgaları 20.10'da kartla ödendi (fiş 2026/1661-1664)."""
+
+    BUGUN = D(2026, 11, 2)
+
+    def setUp(self):
+        _hesap("770.11", "DAMGA VERGİSİ")
+        _hesap("309.01", "HALK KREDİ KARTI", kalem="KVYK")
+        for g in (D(2026, 9, 22), D(2026, 9, 23), D(2026, 10, 20), D(2026, 11, 2)):
+            Kur.objects.get_or_create(tarih=g, defaults={"usd_alis": Dc("30")})
+
+    def banka(self, tur, donem, tutar, tarih=D(2026, 9, 22)):
+        """Banka hareketi biçimi: açıklama SATIRDA; fiş başlığı başka (ör. "MUHTASAR (G.STOPAJ) 08/2026")."""
+        fis_olustur(tarih=tarih, kaynak=YevmiyeFisi.Kaynak.BANKA, aciklama=f"MUHTASAR (G.STOPAJ) {donem}",
+                    satirlar=[SatirGirdi(hesap_kodu="770.11", taraf="B", islem_tutari=str(tutar), aciklama=f"BEYANNAME DAMGA VERGİSİ {tur} {donem}"),
+                              SatirGirdi(hesap_kodu="100.01", taraf="A", islem_tutari=str(tutar))])
+
+    def kart(self, tur, donem, tutar, tarih=D(2026, 10, 20)):
+        """Kredi kartı biçimi: açıklama yalnız FİŞ BAŞLIĞINDA, satır açıklamaları BOŞ (309 alacak / 770.11 borç)."""
+        fis_olustur(tarih=tarih, kaynak=YevmiyeFisi.Kaynak.KREDI_KARTI, aciklama=f"BEYANNAME DAMGA VERGİSİ {tur} {donem}",
+                    satirlar=[SatirGirdi(hesap_kodu="770.11", taraf="B", islem_tutari=str(tutar)), SatirGirdi(hesap_kodu="309.01", taraf="A", islem_tutari=str(tutar))])
+
+    def tahmini(self, bugun=None):
+        return [r for r in ot.tum_satirlar(bugun or self.BUGUN)["satirlar"] if r["ek"] == "Damga vergisi (tahmini)"]
+
+    def donem_of(self, r):
+        return r["aciklama"].split(" · ")[0]
+
+    def test_a_bankadan_odenen_donem_tahmin_sonraki_donemden(self):
+        self.banka("MUHTASAR", "08/2026", "939.70")
+        self.banka("KDV1", "08/2026", "791.00", D(2026, 9, 23))
+        s = self.tahmini(D(2026, 10, 16))
+        self.assertEqual({self.donem_of(r) for r in s if self.donem_of(r).startswith("09/")}, {"09/2026 dönemi"})        # 08 ödendi → 09'dan başlar
+        self.assertFalse([r for r in s if self.donem_of(r) == "08/2026 dönemi"])
+        self.assertIn("son ödenen 08/2026 dönemi", s[0]["aciklama"])
+
+    def test_b_karttan_odenen_donem_satir_aciklamasi_bos_fis_basligi(self):
+        self.banka("MUHTASAR", "08/2026", "939.70")
+        self.banka("KDV1", "08/2026", "791.00", D(2026, 9, 23))
+        oncesi = self.tahmini()
+        self.assertEqual(self.donem_of(min(oncesi, key=lambda r: r["tarih"])), "09/2026 dönemi")                       # kart ödemesi girilmeden 09 görünür (bugünkü hata)
+        self.kart("KDV2", "09/2026", "791.00")
+        self.kart("MUHTASAR", "09/2026", "939.70")
+        self.kart("KDV1", "09/2026", "791.00")
+        s = self.tahmini()
+        self.assertEqual({r["baslik"] for r in s}, {"Damga vergisi — muhtasar (tahmini)", "Damga vergisi — KDV beyannamesi (tahmini)"})
+        self.assertFalse([r for r in s if self.donem_of(r) == "09/2026 dönemi"])                                         # 09/2026 artık yok
+        muh = sorted((r for r in s if "muhtasar" in r["baslik"]), key=lambda r: r["tarih"])
+        kdv = sorted((r for r in s if "KDV" in r["baslik"]), key=lambda r: r["tarih"])
+        self.assertEqual((self.donem_of(muh[0]), muh[0]["tarih"], muh[0]["tutar"]), ("10/2026 dönemi", D(2026, 11, 26), Dc("939.70")))      # 10/2026 kalır (Kasım takvimi)
+        self.assertEqual((self.donem_of(kdv[0]), kdv[0]["tarih"], kdv[0]["tutar"]), ("10/2026 dönemi", D(2026, 11, 30), Dc("791.00")))
+        self.assertIn("son ödenen 09/2026 dönemi", muh[0]["aciklama"])                                                    # "son ödenen" artık 09/2026
+        self.assertIn("son ödenen 09/2026 dönemi", kdv[0]["aciklama"])
+
+    def test_c_odenmemis_donem_cikar_odenen_tur_cikmaz(self):
+        self.banka("MUHTASAR", "08/2026", "939.70")
+        self.banka("KDV1", "08/2026", "791.00", D(2026, 9, 23))
+        self.kart("MUHTASAR", "09/2026", "939.70")                                                                        # yalnız muhtasar 09 ödendi; KDV1 09 ödenmedi
+        s = self.tahmini(D(2026, 10, 24))
+        ilk = lambda anahtar: sorted((r for r in s if anahtar in r["baslik"]), key=lambda r: r["tarih"])[0]
+        self.assertEqual(self.donem_of(ilk("muhtasar")), "10/2026 dönemi")
+        self.assertEqual(self.donem_of(ilk("KDV")), "09/2026 dönemi")                                                     # ödenmemiş dönem takvimde
+        self.assertEqual(ilk("KDV")["tarih"], D(2026, 10, 28))
+
+    def test_ayni_metin_satir_ve_fis_basliginda_tek_sayilir(self):
+        fis_olustur(tarih=D(2026, 10, 20), kaynak=YevmiyeFisi.Kaynak.MANUEL, aciklama="BEYANNAME DAMGA VERGİSİ MUHTASAR 09/2026",
+                    satirlar=[SatirGirdi(hesap_kodu="770.11", taraf="B", islem_tutari="939.70", aciklama="BEYANNAME DAMGA VERGİSİ MUHTASAR 09/2026"),
+                              SatirGirdi(hesap_kodu="100.01", taraf="A", islem_tutari="939.70")])
+        (ilk, *_), = [sorted((r for r in self.tahmini() if "muhtasar" in r["baslik"]), key=lambda r: r["tarih"])]
+        self.assertEqual((ilk["tutar"], self.donem_of(ilk)), (Dc("939.70"), "10/2026 dönemi"))                           # 1.879,40 değil
+
+    def test_kasa_ve_manuel_fis_de_taninir(self):
+        fis_olustur(tarih=D(2026, 10, 20), kaynak=YevmiyeFisi.Kaynak.KASA, aciklama="BEYANNAME DAMGA VERGİSİ KDV1 09/2026",
+                    satirlar=[SatirGirdi(hesap_kodu="770.11", taraf="B", islem_tutari="791.00"), SatirGirdi(hesap_kodu="100.01", taraf="A", islem_tutari="791.00")])
+        kdv = sorted((r for r in self.tahmini() if "KDV" in r["baslik"]), key=lambda r: r["tarih"])
+        self.assertEqual(self.donem_of(kdv[0]), "10/2026 dönemi")
+
+    def test_kdv2_odemesi_taninir_ama_tahmin_edilmez(self):
+        self.kart("KDV2", "09/2026", "791.00")
+        self.assertEqual(self.tahmini(), [])
+
+    def test_damga_aciklamasi_olmayan_770_11_borcu_dokunmaz(self):
+        fis_olustur(tarih=D(2026, 10, 20), kaynak=YevmiyeFisi.Kaynak.KREDI_KARTI, aciklama="BAŞKA MASRAF 09/2026",
+                    satirlar=[SatirGirdi(hesap_kodu="770.11", taraf="B", islem_tutari="50.00"), SatirGirdi(hesap_kodu="309.01", taraf="A", islem_tutari="50.00")])
+        self.assertEqual(self.tahmini(), [])
+
+
+class VergiKartlaOdenenTest(TakvimTaban):
+    """Ana vergi satırları (360.x tahakkuk − ödeme FIFO) kaynağa bakmaz: kredi kartından (309 alacak / 360 borç) ödenen dönem takvimde çıkmaz, ödenmemiş dönem çıkar."""
+
+    BUGUN = D(2026, 11, 2)
+
+    def setUp(self):
+        _hesap("309.01", "HALK KREDİ KARTI", kalem="KVYK")
+        for g in (D(2026, 8, 31), D(2026, 9, 22), D(2026, 9, 30), D(2026, 10, 20), D(2026, 10, 31), D(2026, 11, 2)):
+            Kur.objects.get_or_create(tarih=g, defaults={"usd_alis": Dc("30")})
+
+    def vergi(self, **kw):
+        return [r for r in ot.tum_satirlar(self.BUGUN)["satirlar"] if r["kaynak"] == "VERGI" and not r["tahmini"] and r["baslik"].startswith("Muhtasar")]
+
+    def odeme(self, tutar, kaynak, tarih=D(2026, 10, 20)):
+        fis_olustur(tarih=tarih, kaynak=kaynak, aciklama="MUHTASAR (G.STOPAJ) 09/2026",
+                    satirlar=[SatirGirdi(hesap_kodu="360.20", taraf="B", islem_tutari=str(tutar)), SatirGirdi(hesap_kodu="309.01" if kaynak == YevmiyeFisi.Kaynak.KREDI_KARTI else "100.01",
+                                                                                                            taraf="A", islem_tutari=str(tutar))])
+
+    def test_a_banka_b_kart_c_odenmemis(self):
+        self.vergi_fisi("360.20", "1000.00", D(2026, 8, 31))                                                              # 08/2026 tahakkuku
+        self.vergi_fisi("360.20", "3068.77", D(2026, 9, 30))                                                              # 09/2026 tahakkuku
+        self.vergi_fisi("360.20", "4000.00", D(2026, 10, 31))                                                             # 10/2026 tahakkuku (ödenmemiş)
+        self.odeme("1000.00", YevmiyeFisi.Kaynak.BANKA, D(2026, 9, 22))                                                    # (a) 08/2026 bankadan
+        self.odeme("3068.77", YevmiyeFisi.Kaynak.KREDI_KARTI)                                                              # (b) 09/2026 kartla
+        s = self.vergi()
+        self.assertEqual([(r["aciklama"], r["tutar"]) for r in s], [("10/2026 dönemi tahakkuku", Dc("4000.00"))])         # (c) yalnız ödenmemiş dönem
+        self.assertEqual(s[0]["tarih"], ot.yasal_vade("muhtasar", 2026, 10))
+
+    def test_karttan_odenmemisse_satir_kalir(self):
+        self.vergi_fisi("360.20", "3068.77", D(2026, 9, 30))
+        self.assertEqual([(r["aciklama"], r["tutar"]) for r in self.vergi()], [("09/2026 dönemi tahakkuku", Dc("3068.77"))])
+        self.odeme("3068.77", YevmiyeFisi.Kaynak.KREDI_KARTI)
+        self.assertEqual(self.vergi(), [])

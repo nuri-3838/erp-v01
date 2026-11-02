@@ -10,6 +10,7 @@ TL karşılığı BUGÜNKÜ kurla (son TCMB alış, ``finans_ozet``). Vadesi ge�
 VADE PLANI (2026-11-02): faturada vade planı varsa açık kalan plan satırlarına FIFO dağıtılır (ödeme en erken vadeden düşer); her satır KENDİ vadesinde ayrı kalem olur.
 VERİLEN ÇEK MAHSUBU (2026-11-02): döviz cariye verilen TL çek "ara hesapta" (159.x) bekler, cari borcunu düşürmez; çek zaten kendi vadesinde CEK_VERILEN çıkışıdır → aynı borç ikinci kez çıkış sayılmasın diye o carinin
 alış faturası açık kalanından çek toplamı (TL, bugünkü kur) en erken vadeden başlayarak düşülür (çek < borç ise yalnız fark kalır; çek ≥ borç ise fatura satırı çıkmaz). Mutabakatta ayrı neden satırı.
+DAMGA ödemesi eşleştirmesi (2026-11-02): kaynağa bakılmaz; "DAMGA VERGİSİ MUHTASAR|KDV1|KDV2 AA/YYYY" açıklaması satırda (banka) ya da fiş başlığında (kredi kartı) olabilir.
 Mutabakat: takvim toplamı ilgili hesap bakiyeleriyle (320, 309 KK, 103, 360/361, 336, 300) cari/kart/hesap bazında karşılaştırılır; fark kalem kalem listelenir."""
 from __future__ import annotations
 
@@ -257,7 +258,7 @@ def vergi_satirlari(bugun, kurlar) -> list:
 
 DAMGA_HESABI = "770.11"                                                   # damga vergisi gideri: tahakkuk hesabı YOK, ödeme günü doğrudan buraya yazılır
 DAMGA_TURLERI = {"MUHTASAR": ("Damga vergisi — muhtasar", "muhtasar"), "KDV1": ("Damga vergisi — KDV beyannamesi", "kdv")}   # tür: (başlık, yasal vade kuralı)
-_DAMGA_DESENI = re.compile(r"DAMGA\s+VERG\w*\s+(MUHTASAR|KDV1)\s+(\d{1,2})\s*/\s*(\d{4})", re.IGNORECASE)
+_DAMGA_DESENI = re.compile(r"DAMGA\s+VERG\w*\s+(MUHTASAR|KDV1|KDV2)\s+(\d{1,2})\s*/\s*(\d{4})", re.IGNORECASE)    # KDV2 ödemesi de TANINIR (tahmin edilmez, bkz. DAMGA_TURLERI)
 DAMGA_UFUK_AY = 12                                                        # tahmini satırlar bugünden en fazla bu kadar ay ilerisine kadar
 DAMGA_ESKI_GUN = 60                                                       # bundan eski (kayıt girilmemiş) dönemler tahmin edilmez
 
@@ -265,10 +266,13 @@ DAMGA_ESKI_GUN = 60                                                       # bund
 def damga_satirlari(bugun, kurlar) -> list:
     """Damga vergisi TAHMİNİ satırları (tahakkuk defterde yok; ödeme günü 770.11'e yazılır). Tür başına (muhtasar → 26'sı, KDV → 28'i, tatil kaydırmalı): açıklaması
     "DAMGA VERGİSİ MUHTASAR|KDV1 AA/YYYY" olan 770.11 ödemelerinin EN SON ödenen dönemi bulunur; sonraki dönemden başlayarak her ay için, tutar = o son ödenen dönemin tutarı olan
-    "tahmini" satır üretilir. O dönemin gerçek ödemesi 770.11'e yazılınca son ödenen dönem ilerler ve tahmini satır kendiliğinden düşer. KDV2 (yalnız tevkifatlı aylarda verilir) tahmin edilmez."""
+    "tahmini" satır üretilir. O dönemin gerçek ödemesi 770.11'e yazılınca son ödenen dönem ilerler ve tahmini satır kendiliğinden düşer. KDV2 (yalnız tevkifatlı aylarda verilir) tahmin edilmez.
+    ÖDEME KAYNAĞI fark etmez (banka, kasa, kredi kartı, manuel fiş): eşleştirme hesap (770.11 borç) üzerinden yapılır; "DAMGA VERGİSİ <tür> AA/YYYY" açıklaması SATIRDA (banka hareketi) ya da —
+    satır açıklaması boşsa— FİŞ BAŞLIĞINDA (kredi kartı harcaması) aranır; satırdaki varsa o, yoksa fiş başlığındaki geçerlidir (aynı metin ikisinde de olsa tek kez sayılır)."""
     odenen = {}                                                           # tür → {(yıl, ay): tutar}
-    for s in YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id=DAMGA_HESABI, borc__gt=0, aciklama__icontains="damga"):
-        m = _DAMGA_DESENI.search(s.aciklama or "")
+    for s in (YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap_id=DAMGA_HESABI, borc__gt=0).select_related("fis")
+              .filter(Q(aciklama__icontains="damga") | Q(fis__aciklama__icontains="damga"))):
+        m = _DAMGA_DESENI.search(s.aciklama or "") or _DAMGA_DESENI.search(s.fis.aciklama or "")
         if m:
             odenen.setdefault(m.group(1).upper(), defaultdict(lambda: SIFIR))[(int(m.group(3)), int(m.group(2)))] += s.borc
     satirlar = []
