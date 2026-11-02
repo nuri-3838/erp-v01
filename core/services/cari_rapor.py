@@ -76,6 +76,17 @@ def acik_faturalar_toplu(tarih=None, kategori_id="") -> list:
         for k in kalemler.values():
             if k["kalan"] < ESIK:
                 continue
+            if k.get("taksitler"):                                              # VADE PLANI: her açık plan satırı KENDİ vadesiyle ayrı satır (fatura adedi tekil sayılır)
+                n = len(k["taksitler"])
+                for t in k["taksitler"]:
+                    if t["kalan"] < ESIK:
+                        continue
+                    e = dict(k)
+                    e.update(kalan=t["kalan"], vade=t["vade"], taksit=(t["sira"], n), taksit_tutar=t["tutar"], cari=cari, sekme=sekme)
+                    e["gecikme"] = (tarih - t["vade"]).days if tarih > t["vade"] else 0
+                    e["dilim"] = dilim_anahtari(e["vade"], e["gecikme"])
+                    sonuc.append(e)
+                continue
             k["gecikme"] = (tarih - k["vade"]).days if k["vade"] and tarih > k["vade"] else 0
             k["dilim"] = dilim_anahtari(k["vade"], k["gecikme"])
             k["cari"], k["sekme"] = cari, sekme
@@ -102,10 +113,11 @@ def yaslandirma(tarih=None, sekme="alacak", pb="", kategori_id="") -> dict:
     tablolar = {}
     for s in secili:
         t = tablolar.setdefault(s["pb"], {})
-        r = t.setdefault(s["cari"].pk, {"cari": s["cari"], "dilimler": _bos_dilimler(), "toplam": SIFIR, "adet": 0})
+        r = t.setdefault(s["cari"].pk, {"cari": s["cari"], "dilimler": _bos_dilimler(), "toplam": SIFIR, "adet": 0, "faturalar": set()})
         r["dilimler"][s["dilim"]] += s["kalan"]
         r["toplam"] += s["kalan"]
-        r["adet"] += 1
+        r["faturalar"].add(s["fatura"].pk)                                      # planlı fatura birden çok satır olsa da TEK fatura sayılır
+        r["adet"] = len(r["faturalar"])
     cikti = []
     for p in sorted(tablolar, key=_pb_sirasi):
         satirlar = sorted(tablolar[p].values(), key=lambda r: (-r["toplam"], tr_anahtar(r["cari"].unvan)))

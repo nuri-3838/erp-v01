@@ -325,6 +325,27 @@
       </div>
     </section>
 
+    {% if vade_plani_goster %}
+    <section class="icerik-kart" id="vade-plani-bolum">
+      <h2 class="bolum-baslik">Vade planı <span class="yardim" style="font-weight:400">(isteğe bağlı — çoklu vade)</span></h2>
+      <input type="hidden" name="vp_var" value="1">
+      <p class="yardim" style="margin-top:0">Fatura birden çok vadede ödenecekse satırları girin; <b>toplam, faturanın ödenecek tutarına eşit olmalı</b>. Plan doluysa «Vade tarihi» yerine plan geçerlidir:
+        ödeme takvimi, yaşlandırma ve vadesi geçenler her satırı kendi vadesinde gösterir, ödemeler en erken vadeden düşer. Fiş/muhasebe değişmez. Boş bırakılırsa tek vade tarihi çalışır.</p>
+      <div class="tablo-kapsayici">
+      <table class="satir-tablo" id="vp-tablo">
+        <thead><tr><th>Vade tarihi</th><th class="sag">Tutar</th><th></th></tr></thead>
+        <tbody id="vp-govde">
+          {% for v in vade_plani_satirlari %}
+          <tr class="vp-satir"><td><input type="date" name="vp_tarih" value="{{ v.vade }}"></td><td><input type="text" name="vp_tutar" value="{{ v.tutar }}" inputmode="decimal" autocomplete="off" class="sag mono"></td><td><button type="button" class="vp-sil sil" title="Satırı sil">✕</button></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <div class="satir-alt"><button type="button" id="vp-ekle" class="dugme-ikincil">+ Vade satırı ekle</button> <span class="yardim" id="vp-ozet"></span></div>
+    </section>
+    <template id="vp-bos"><tr class="vp-satir"><td><input type="date" name="vp_tarih"></td><td><input type="text" name="vp_tutar" inputmode="decimal" autocomplete="off" class="sag mono"></td><td><button type="button" class="vp-sil sil" title="Satırı sil">✕</button></td></tr></template>
+    {% endif %}
+
     <template id="bos-satir">
       {% include "core/_fatura_satir_hucreler.html" with f=formset.empty_form %}
     </template>
@@ -971,6 +992,26 @@
   kurCek();
   var ozet = document.getElementById('hata-ozeti');                              // sunucu hatası: sayfa hata özetine kayar
   if(ozet){ ozet.scrollIntoView({block:'start'}); try { ozet.focus({preventScroll:true}); } catch(e) {} }
+})();
+</script>
+<script>
+(function(){                                                     // VADE PLANI satırları: ekle / sil + toplam ↔ ödenecek tutar göstergesi (kayıtta sunucu da doğrular)
+  var govde=document.getElementById('vp-govde'); if(!govde) return;
+  var tpl=document.getElementById('vp-bos'), ozet=document.getElementById('vp-ozet'), genel=document.getElementById('tGenelDeger');
+  function sayi(s){ s=(s||'').replace(/\s/g,''); if(!s) return NaN; if(s.indexOf(',')>-1){ s=s.replace(/\./g,'').replace(',','.'); } else if(/^\d{1,3}(\.\d{3})+$/.test(s)){ s=s.replace(/\./g,''); } return parseFloat(s); }
+  function bicim(n){ return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function guncelle(){
+    if(!govde.children.length){ ozet.textContent=''; return; }
+    var top=0; govde.querySelectorAll('input[name="vp_tutar"]').forEach(function(i){ var v=sayi(i.value); if(!isNaN(v)) top+=v; });
+    var g=sayi(genel?genel.textContent:''), fark=isNaN(g)?null:Math.round((g-top)*100)/100;
+    ozet.textContent='Plan toplamı: '+bicim(top)+(fark===null?'':(fark===0?' ✓ ödenecek tutara eşit':' · ödenecek '+bicim(g)+' · fark '+bicim(fark)));
+    ozet.style.color=(fark===0)?'var(--ok)':'var(--hata)';
+  }
+  document.getElementById('vp-ekle').addEventListener('click',function(){ govde.appendChild(tpl.content.cloneNode(true)); guncelle(); var i=govde.querySelectorAll('input[name="vp_tarih"]'); i[i.length-1].focus(); });
+  govde.addEventListener('click',function(e){ var b=e.target.closest('.vp-sil'); if(b){ b.closest('tr').remove(); guncelle(); } });
+  govde.addEventListener('input',guncelle);
+  if(genel){ new MutationObserver(guncelle).observe(genel,{childList:true,characterData:true,subtree:true}); }
+  guncelle();
 })();
 </script>
 {% include "core/_varyant_js.html" %}

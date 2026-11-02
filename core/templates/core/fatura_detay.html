@@ -147,7 +147,8 @@
     <dl class="fd-alanlar">
       <div><dt>Cari</dt><dd><a href="{% url 'core:cari_detay' fatura.cari.pk %}">{{ fatura.cari.unvan }}</a><span class="fd-alt mono">{{ fatura.cari.kod }}</span></dd></div>
       <div><dt>Fatura Tarihi</dt><dd class="mono">{{ fatura.tarih|date:"d.m.Y" }}</dd></div>
-      {% if fatura.vade_tarihi %}<div><dt>Vade Tarihi</dt><dd class="mono">{{ fatura.vade_tarihi|date:"d.m.Y" }}</dd></div>{% endif %}
+      {% if vade_plani %}<div><dt>Vade Planı</dt><dd class="mono">{% for v, t in vade_plani %}{{ v|date:"d.m.Y" }} — {{ t|tr_kur:2 }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</dd></div>
+      {% elif fatura.vade_tarihi %}<div><dt>Vade Tarihi</dt><dd class="mono">{{ fatura.vade_tarihi|date:"d.m.Y" }}</dd></div>{% endif %}
       <div><dt>Para Birimi{% if fatura.para_birimi != "TRY" %} / Kur{% endif %}</dt><dd>{{ fatura.para_birimi }}{% if fatura.para_birimi != "TRY" %} <span class="mono">· kur {% if d.kur %}{{ d.kur|tr_kur:4 }}{% else %}—{% endif %}</span>{% endif %}</dd></div>
       {% if fatura.depo %}<div><dt>Depo</dt><dd><span class="mono">{{ fatura.depo.kod }}</span> {{ fatura.depo.ad }}</dd></div>{% endif %}
       {% if fatura.sahsi_alis and fatura.sahsi_ortak %}<div><dt>Ortak hesabı</dt><dd><span class="mono">{{ fatura.sahsi_ortak.hesap_kodu }}</span> {{ fatura.sahsi_ortak.hesap_adi }}</dd></div>{% endif %}
@@ -211,6 +212,22 @@
       <div><small>Ödenen</small><strong class="mono">{{ d.odeme.odenen|tr_kur:2 }} {{ d.odeme.pb }}</strong></div>
       <div><small>Kalan</small><strong class="mono">{% if d.odeme.durum == "KAPANDI" %}0,00{% else %}{{ d.odeme.kalan|tr_kur:2 }}{% endif %} {{ d.odeme.pb }}</strong></div>
     </div>
+    {% if d.odeme.taksitler %}
+    <div class="fd-kap">
+    <table class="fd-tablo dar-kart">
+      <thead><tr><th>Vade planı</th><th>Vade</th><th class="sag">Taksit tutarı</th><th class="sag">Kalan</th></tr></thead>
+      <tbody>
+      {% for t in d.odeme.taksitler %}
+        <tr><td data-label="Vade planı">{{ t.sira }}/{{ d.odeme.taksitler|length }}</td><td class="mono" data-label="Vade">{{ t.vade|date:"d.m.Y" }}</td>
+          <td class="sag mono" data-label="Taksit tutarı">{{ t.tutar|tr_kur:2 }} {{ d.odeme.pb }}</td><td class="sag mono" data-label="Kalan">{% if t.kalan %}{{ t.kalan|tr_kur:2 }}{% else %}0,00 ✓{% endif %} {{ d.odeme.pb }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="yardim" style="margin:.3rem 0 .6rem">Ödemeler en erken vadeden başlayarak plan satırlarına düşülür.</p>
+    {% elif d.odeme.plan_uyumsuz %}
+    <div class="uyari">⚠️ Bu faturadaki vade planının toplamı fatura tutarıyla uyuşmuyor (fatura tutarı sonradan değişmiş olabilir); plan yok sayılıyor, tek vade tarihi kullanılıyor. Faturayı düzenleyip planı yeniden girin.</div>
+    {% endif %}
     {% if d.odeme.hareketler %}
     <div class="fd-kap">
     <table class="fd-tablo dar-kart">

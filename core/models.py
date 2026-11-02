@@ -1765,6 +1765,9 @@ class Fatura(TemelModel):
     # Yalnız ALIŞ ekleme/düzenleme ekranında gösterilir (bkz. fatura_ekle.html); hiçbir
     # otomasyonu (hatırlatma/rapor) yok, salt bilgi amaçlı serbest tarih alanı.
     vade_tarihi = models.DateField("vade tarihi", null=True, blank=True)
+    # Vade planı (isteğe bağlı çoklu vade): [{"vade": "YYYY-MM-DD", "tutar": "50000.00"}, ...]. Toplamı ödenecek tutara EŞİT olmalı (servis doğrular); boşsa tek vade_tarihi geçerli.
+    # YALNIZ vade bilgisi: fiş/muhasebe değişmez. Bkz. core.services.fatura_vade_plani (FIFO dağıtım: ödeme + takvim + yaşlandırma).
+    vade_plani = models.JSONField("vade planı", null=True, blank=True)
     fatura_no = models.CharField("fatura no", max_length=50, blank=True)
     para_birimi = models.CharField(
         "para birimi", max_length=3, choices=Cari.PARA_CHOICES, default="TRY")

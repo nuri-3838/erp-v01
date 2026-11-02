@@ -72,7 +72,8 @@ def vadesi_gecenler_xlsx(rapor) -> bytes:
     r = 5
     sekme_ad = dict(SEKMELER)
     for s in rapor["satirlar"]:
-        ws.append([s["cari"].kod, s["cari"].unvan, sekme_ad[s["sekme"]], s["fatura"].fatura_no, s["tarih"], s["vade"], s["gecikme"], s["pb"], float(s["kalan"])])
+        ws.append([s["cari"].kod, s["cari"].unvan, sekme_ad[s["sekme"]], s["fatura"].fatura_no + (f" (vade planı {s['taksit'][0]}/{s['taksit'][1]})" if s.get("taksit") else ""),
+                   s["tarih"], s["vade"], s["gecikme"], s["pb"], float(s["kalan"])])
         _bicim(ws, r, (5, 6), TARIH)
         _bicim(ws, r, (9,), PARA)
         r += 1

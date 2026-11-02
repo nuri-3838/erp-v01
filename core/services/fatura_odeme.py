@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from core.models import Fatura, YevmiyeSatir
 from core.services import cari as cari_servis
+from core.services import fatura_vade_plani
 from core.tarih import tr_bugun
 
 SIFIR = Decimal("0")
@@ -63,6 +64,7 @@ def fifo_kalemler(cari, faturalar: dict, satirlar):
         k["tarih"] = f.tarih
         k["vade"] = f.vade_tarihi or cari_servis.vade_hesapla(cari, f.tarih)
         k["kalan"] = k["tutar"]
+        k["plan"] = fatura_vade_plani.plan_oku(f)                                  # [] = plan yok
     for pb in {k["pb"] for k in kalemler.values()}:
         havuz = max(kredi.get(pb, SIFIR), SIFIR)
         for k in sorted((x for x in kalemler.values() if x["pb"] == pb), key=lambda x: (x["tarih"], x["fatura"].pk)):
@@ -72,6 +74,12 @@ def fifo_kalemler(cari, faturalar: dict, satirlar):
         kredi[pb] = havuz
     for pb in kredi:                                                  # faturası olmayan PB'de (ya da iade düşümüyle) eksiye inen havuz sıfırlanır
         kredi[pb] = max(kredi[pb], SIFIR)
+    for k in kalemler.values():                                       # VADE PLANI: kalan, plan satırlarına FIFO dağıtılır (ödeme en erken vadeden düşer)
+        k["taksitler"] = fatura_vade_plani.dagit(k["plan"], k["tutar"], k["kalan"])
+        k["plan_uyumsuz"] = bool(k["plan"]) and k["taksitler"] is None   # plan toplamı fatura tutarıyla tutmuyor → plan yok sayılır (tek vade)
+        if k["taksitler"]:
+            acik = [t for t in k["taksitler"] if t["kalan"] >= ESIK]
+            k["vade"] = (acik[0] if acik else k["taksitler"][-1])["vade"]       # fatura düzeyindeki vade = ilk ödenmemiş taksidin vadesi
     return kalemler, kredi
 
 
@@ -100,7 +108,8 @@ def odeme_durumlari(cariler, bugun=None) -> dict:
             kalan = k["kalan"] if k["kalan"] >= ESIK else SIFIR
             durum = KAPANDI if kalan == SIFIR else (KISMI if kalan < k["tutar"] - ESIK else ACIK)
             gecikme = (bugun - k["vade"]).days if (kalan > SIFIR and k["vade"] and bugun > k["vade"]) else 0
-            sonuc[pk] = {"durum": durum, "tutar": k["tutar"], "kalan": kalan, "pb": k["pb"], "vade": k["vade"], "gecikme": gecikme}
+            sonuc[pk] = {"durum": durum, "tutar": k["tutar"], "kalan": kalan, "pb": k["pb"], "vade": k["vade"], "gecikme": gecikme,
+                         "taksitler": k["taksitler"], "plan_uyumsuz": k["plan_uyumsuz"]}
     return sonuc
 
 
@@ -188,4 +197,5 @@ def fatura_odemeleri(fatura, bugun=None):
                     "tl": (s["borc"] or s["alacak"]), "fis_pk": s["fis_id"], "fis_no": f"{s['fis__yil']}/{s['fis__fis_no']}",
                     "kaynak_url_adi": baglanti[0] if baglanti else None, "kaynak_pk": baglanti[1] if baglanti else None})
     return {"durum": durum["durum"], "tutar": durum["tutar"], "odenen": durum["tutar"] - durum["kalan"], "kalan": durum["kalan"], "pb": durum["pb"], "vade": durum["vade"],
-            "gecikme": durum["gecikme"], "hareketler": hareketler, "iade_toplam": iade_toplam}
+            "gecikme": durum["gecikme"], "hareketler": hareketler, "iade_toplam": iade_toplam,
+            "taksitler": durum["taksitler"], "plan_uyumsuz": durum["plan_uyumsuz"]}

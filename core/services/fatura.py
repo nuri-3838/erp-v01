@@ -31,6 +31,7 @@ from core.models import (Cari, Depo, DuranVarlik, Fatura, FaturaSatir, FaturaTip
                          YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
+from core.services import fatura_vade_plani
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil, hizmet_mi
 from core.services import donemsel_gider
 from core.services import duran_hesap
@@ -1193,8 +1194,8 @@ def _negatif_eldeki_dogrula(ciftler):
 def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fatura_no="",
                           para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
                           sahsi_alis=False, sahsi_ortak_id=None, gv_stopaj_orani=None,
-                          kullanici=None, kur=None, faturasiz=False, mukerrer_onayli=False) -> Fatura:
-    """Faturayı TASLAK olarak oluşturur — fiş/stok hareketi ÜRETMEZ (bkz. fatura_onayla).
+                          kullanici=None, kur=None, faturasiz=False, mukerrer_onayli=False, vade_plani=None) -> Fatura:
+    """Faturayı TASLAK olarak oluşturur — fiş/stok hareketi ÜRETMEZ (bkz. fatura_onayla). ``vade_plani``: [{"vade", "tutar"}] (None = plan yok).
     tip_id verilirse yön ondan türetilir; verilmezse `yon` zorunludur (İrsaliye'den otomatik
     açılan, tipi henüz bilinmeyen taslaklar için). ``sahsi_alis``/``sahsi_ortak_id``: Ortak
     adına şahsi alış — yalnız alış-gider faturasında; kalemlerin hesabı ortak hesabına
@@ -1240,7 +1241,18 @@ def fatura_taslak_olustur(*, cari_id, tarih, satirlar, tip_id=None, yon=None, fa
         taslak_kur=_taslak_kur_coz(kur, pb),
         created_by=kullanici, updated_by=kullanici)
     _satirlari_yaz(fatura, hazir, kullanici)
+    vade_plani_yaz(fatura, vade_plani, kullanici)
     return fatura
+
+
+def vade_plani_yaz(fatura, vade_plani, kullanici=None) -> None:
+    """``vade_plani`` None → plana dokunulmaz; liste (boş dahil) → doğrulanıp yazılır/kaldırılır (toplam = ödenecek tutar). Kural ihlali FaturaHatasi (atomik blok geri alınır)."""
+    if vade_plani is None:
+        return
+    try:
+        fatura_vade_plani.ayarla(fatura, vade_plani, kullanici)
+    except fatura_vade_plani.VadePlaniHatasi as e:
+        raise FaturaHatasi(str(e))
 
 
 @transaction.atomic
@@ -1294,7 +1306,7 @@ def fatura_onayla(fatura: Fatura, kullanici=None, kur_override=None) -> Fatura:
 def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
                    para_birimi="TRY", depo_id=None, aciklama="", vade_tarihi=None,
                    sahsi_alis=False, sahsi_ortak_id=None, gv_stopaj_orani=None,
-                   kullanici=None, kur=None, faturasiz=False, mukerrer_onayli=False) -> Fatura:
+                   kullanici=None, kur=None, faturasiz=False, mukerrer_onayli=False, vade_plani=None) -> Fatura:
     """Kolaylık sarmalayıcısı: taslak oluşturur ve tip zaten bilindiği için HEMEN onaylar —
     tek atomik blok, onaylama başarısız olursa (eksik harita/kur/vb.) taslak da geri alınır
     (eskisi gibi tam atomik: ya hepsi ya hiçbiri). Tip'in önceden bilinmediği tek durum —
@@ -1306,7 +1318,7 @@ def fatura_olustur(*, tip_id, cari_id, tarih, satirlar, fatura_no="",
         fatura_no=fatura_no, para_birimi=para_birimi, depo_id=depo_id,
         aciklama=aciklama, vade_tarihi=vade_tarihi, sahsi_alis=sahsi_alis,
         sahsi_ortak_id=sahsi_ortak_id, gv_stopaj_orani=gv_stopaj_orani, kullanici=kullanici,
-        faturasiz=faturasiz, mukerrer_onayli=mukerrer_onayli)
+        faturasiz=faturasiz, mukerrer_onayli=mukerrer_onayli, vade_plani=vade_plani)
     return fatura_onayla(fatura, kullanici=kullanici, kur_override=kur)
 
 
@@ -1445,7 +1457,15 @@ def _basligi_guncelle(fatura, *, fatura_no, aciklama, vade_tarihi, faturasiz, mu
 
 
 @transaction.atomic
-def fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
+def fatura_guncelle(fatura: Fatura, *, vade_plani=None, **kw) -> Fatura:
+    """Faturayı günceller (gövde: ``_fatura_guncelle``) + ``vade_plani`` verildiyse (liste; boş = planı kaldır) kalemler yazıldıktan SONRA doğrulayıp yazar. None = plana dokunulmaz."""
+    sonuc = _fatura_guncelle(fatura, **kw)
+    vade_plani_yaz(sonuc, vade_plani, kw.get("kullanici"))
+    return sonuc
+
+
+@transaction.atomic
+def _fatura_guncelle(fatura: Fatura, *, tip_id=None, cari_id, tarih, satirlar,
                     fatura_no="", para_birimi="TRY", depo_id=None, aciklama="",
                     vade_tarihi=None, sahsi_alis=False, sahsi_ortak_id=None,
                     gv_stopaj_orani=None, kullanici=None, kur=None, faturasiz=False, mukerrer_onayli=False) -> Fatura:

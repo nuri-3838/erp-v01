@@ -9,7 +9,7 @@
   <h1 class="ust-baslik"><span class="emoji">⏰</span>Vadesi Geçenler</h1>
   <a class="dugme-ikincil" href="{{ xlsx_url }}">⬇ Excel</a>
 </div>
-<p class="yardim"><strong>{{ tarih|date:"d.m.Y" }}</strong> itibarıyla vadesi geçmiş açık faturalar (kalan tutar), gecikme gününe göre azalan. {{ rapor.satirlar|length }} fatura.</p>
+<p class="yardim"><strong>{{ tarih|date:"d.m.Y" }}</strong> itibarıyla vadesi geçmiş açık faturalar (kalan tutar), gecikme gününe göre azalan. {{ rapor.satirlar|length }} kalem (vade planlı faturada her plan satırı ayrı kalemdir).</p>
 
 <form method="get" class="rp-filtre">
   <div class="rp-alan"><label for="rp-tarih">Tarih</label><input type="date" id="rp-tarih" name="tarih" value="{{ tarih|date:'Y-m-d' }}"></div>
@@ -37,7 +37,7 @@
     <tr data-href="{% url 'core:cari_detay' s.cari.pk %}">
       <td class="ad"><a class="satir-bag" href="{% url 'core:cari_detay' s.cari.pk %}">{{ s.cari.unvan }}</a><span class="kod">{{ s.cari.kod }}</span></td>
       <td>{% if s.sekme == "alacak" %}Alacak{% else %}Borç{% endif %}</td>
-      <td><a href="{% url 'core:fatura_detay' s.fatura.pk %}">{{ s.fatura.fatura_no|default:"—" }}</a></td>
+      <td><a href="{% url 'core:fatura_detay' s.fatura.pk %}">{{ s.fatura.fatura_no|default:"—" }}</a>{% if s.taksit %} <span class="yardim" title="Faturanın vade planı satırı (taksit tutarı {{ s.taksit_tutar|tr_para }} {{ s.pb }})">· vade planı {{ s.taksit.0 }}/{{ s.taksit.1 }}</span>{% endif %}</td>
       <td class="mono">{{ s.tarih|date:"d.m.Y" }}</td>
       <td class="mono">{{ s.vade|date:"d.m.Y" }}</td>
       <td class="sag mono gec">{{ s.gecikme }} gün</td>

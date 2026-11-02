@@ -7,6 +7,9 @@ Her satır bir ÇIKIŞ ya da GİRİŞ kalemidir (tarih, kaynak türü, cari/aç�
 Vergi/SGK: 360.10.* = KDV (tevkifat / KDV-2) → sonraki ayın 28'i; 360.20 (muhtasar/GV stopajı) ve damga → sonraki ayın 26'sı; 361 (SGK) → sonraki ayın SON günü; hafta sonu/resmî tatilde sonraki iş günü. Tahakkuk
 AY'a göre (fiş tarihi) birikir, ödemeler (borç) en eski aydan düşülür (FIFO); alt hesaplar GRUP olarak birlikte alınır (ödeme tek alt hesaba yazılmış olabilir). Net KDV (391 − 191 − 190) pozitifse ayrıca "KDV (ödenecek)" satırı.
 TL karşılığı BUGÜNKÜ kurla (son TCMB alış, ``finans_ozet``). Vadesi geçmiş satırlar "Gecikmiş" grubundadır; vadesiz satırlar kümülatife dahil DEĞİL, ayrı gösterilir.
+VADE PLANI (2026-11-02): faturada vade planı varsa açık kalan plan satırlarına FIFO dağıtılır (ödeme en erken vadeden düşer); her satır KENDİ vadesinde ayrı kalem olur.
+VERİLEN ÇEK MAHSUBU (2026-11-02): döviz cariye verilen TL çek "ara hesapta" (159.x) bekler, cari borcunu düşürmez; çek zaten kendi vadesinde CEK_VERILEN çıkışıdır → aynı borç ikinci kez çıkış sayılmasın diye o carinin
+alış faturası açık kalanından çek toplamı (TL, bugünkü kur) en erken vadeden başlayarak düşülür (çek < borç ise yalnız fark kalır; çek ≥ borç ise fatura satırı çıkmaz). Mutabakatta ayrı neden satırı.
 Mutabakat: takvim toplamı ilgili hesap bakiyeleriyle (320, 309 KK, 103, 360/361, 336, 300) cari/kart/hesap bazında karşılaştırılır; fark kalem kalem listelenir."""
 from __future__ import annotations
 
@@ -107,9 +110,19 @@ def _cari_satirlari(bugun, kurlar) -> list:
             f = k["fatura"]
             kaynak = "FATURA_ALIS" if f.yon == "ALIS" else "FATURA_SATIS"
             kismi = k["kalan"] < k["tutar"] - ESIK
-            satirlar.append(_satir(kaynak, tarih=k["vade"], bugun=bugun, tutar=k["kalan"], pb=k["pb"], kurlar=kurlar, baslik=cari.kisa_ad or cari.unvan,
-                                   aciklama=(f.tip.ad if f.tip_id else "Fatura") + (f" · kısmi ödenmiş (fatura tutarı {k['tutar']:,.2f} {k['pb']})" if kismi else ""),
-                                   belge_no=f.fatura_no or ("Faturasız" if f.faturasiz else "—"), cari=cari, url=("core:fatura_detay", f.pk), ek=f"{f.tarih:%d.%m.%Y} tarihli"))
+            tip_ad = f.tip.ad if f.tip_id else "Fatura"
+            ortak = dict(pb=k["pb"], kurlar=kurlar, baslik=cari.kisa_ad or cari.unvan, belge_no=f.fatura_no or ("Faturasız" if f.faturasiz else "—"), cari=cari,
+                         url=("core:fatura_detay", f.pk), ek=f"{f.tarih:%d.%m.%Y} tarihli")
+            if k.get("taksitler"):                                                   # VADE PLANI: açık kalan, plan satırlarına FIFO dağıtıldı; her satır kendi vadesinde
+                n = len(k["taksitler"])
+                for t in k["taksitler"]:
+                    if t["kalan"] < ESIK:
+                        continue
+                    satirlar.append(_satir(kaynak, tarih=t["vade"], bugun=bugun, tutar=t["kalan"],
+                                           aciklama=f"{tip_ad} · vade planı {t['sira']}/{n} (taksit {t['tutar']:,.2f} {k['pb']}; fatura tutarı {k['tutar']:,.2f} {k['pb']})", **ortak))
+                continue
+            satirlar.append(_satir(kaynak, tarih=k["vade"], bugun=bugun, tutar=k["kalan"],
+                                   aciklama=tip_ad + (f" · kısmi ödenmiş (fatura tutarı {k['tutar']:,.2f} {k['pb']})" if kismi else ""), **ortak))
         if fatura_odeme.dogal_yon(cari) == "alacak" and cari.muhasebe_kodu.split(".")[0] not in ATLANAN_CARI_KOKLERI:
             faturasiz, kaynaklar = defaultdict(lambda: SIFIR), defaultdict(Counter)
             iade_kurali = fatura_odeme.ticari_mi(cari)                                # cariden gelen nakit: yukarıda havuzdan düşüldü, "faturasız alacak" sayılmaz
@@ -127,6 +140,44 @@ def _cari_satirlari(bugun, kurlar) -> list:
                                            aciklama=f"Faturaya bağlı olmayan bakiye — faturasız alacak hareketleri {tutar:,.2f} {pb}" + (f" − faturalara düşmeyen ödeme/avans {avans:,.2f}" if avans > 0 else "") + f" ({ozet})",
                                            cari=cari, url=("core:cari_detay", cari.pk)))
     return satirlar
+
+
+def _cek_mahsubu(satirlar, bugun, kurlar):
+    """Döviz cariye verilmiş, ARA HESAPTA (159.x) bekleyen ve henüz ödenmemiş (Verildi) TL çekler cari borcunu düşürmez (ödeme gününde düşülür); çekin kendisi zaten
+    ``CEK_VERILEN`` olarak kendi vadesinde çıkıştır. Aynı borcun çift görünmemesi için o carinin ALIŞ faturası açık kalanından çek toplamı (TL, bugünkü kur) EN ERKEN
+    vadeden başlayarak düşülür: çek < borç → yalnız fark kalır (satır tutarı orantılı azalır), çek ≥ borç → fatura satırı hiç çıkmaz. TL carisine verilen çek cari hesabına
+    yazıldığından FIFO'da zaten düşmüştür (``ara_hesapta`` değil) → burada ikinci kez düşülmez. Döner: (satırlar, [{cari, cek_adedi, cek_tl, fatura_tl, mahsup_tl}])."""
+    D, Y = CekSenet.Durum, CekSenet.Yon
+    cari_cekler = defaultdict(list)
+    for c in CekSenet.objects.filter(silindi=False, yon=Y.VERILEN, durum=D.VERILDI, ara_hesapta=True, cari__isnull=False).select_related("cari"):
+        cari_cekler[c.cari_id].append(c)
+    mahsuplar = []
+    for cari_id, cekler in cari_cekler.items():
+        cek_tl = SIFIR
+        for c in cekler:
+            tl = _tl(c.tutar, c.para_birimi, kurlar)
+            cek_tl += tl if tl is not None else SIFIR
+        rows = sorted((r for r in satirlar if r["cari_id"] == cari_id and r["kaynak"] == "FATURA_ALIS" and not r["tl_yok"]),
+                      key=lambda r: (r["tarih"] or datetime.date.max, r["belge_no"]))
+        fatura_tl = sum((r["tl"] for r in rows), SIFIR)
+        mahsup = min(cek_tl, fatura_tl)
+        if mahsup < ESIK:
+            continue
+        kalan_m = mahsup
+        for r in rows:
+            if kalan_m < ESIK:
+                break
+            dus = min(r["tl"], kalan_m)
+            kalan_m -= dus
+            if dus >= r["tl"] - ESIK:
+                r["_mahsup_silindi"] = True                                      # tamamı çekle karşılandı: fatura satırı çıkmaz
+                continue
+            yeni_tl = r["tl"] - dus
+            r["tutar"] = yeni_tl if r["pb"] == "TRY" else (r["tutar"] * yeni_tl / r["tl"]).quantize(SIFIR)
+            r["tl"] = yeni_tl
+            r["aciklama"] += f" · verilen çekle {dus:,.2f} TL karşılandı"
+        mahsuplar.append({"cari": cekler[0].cari, "cek_adedi": len(cekler), "cek_tl": cek_tl, "fatura_tl": fatura_tl, "mahsup_tl": mahsup})
+    return [r for r in satirlar if not r.get("_mahsup_silindi")], mahsuplar
 
 
 def kk_satirlari(bugun, kurlar, ay_sayisi=36):
@@ -296,7 +347,8 @@ def tum_satirlar(bugun=None) -> dict:
     fo = finans_ozet.ozet(bugun)
     kurlar = fo["kurlar"]
     satirlar = []
-    satirlar += _cari_satirlari(bugun, kurlar)
+    cari_satirlari, cek_mahsuplari = _cek_mahsubu(_cari_satirlari(bugun, kurlar), bugun, kurlar)
+    satirlar += cari_satirlari
     kk, atlanan_kartlar = kk_satirlari(bugun, kurlar)
     satirlar += kk
     satirlar += _cek_satirlari(bugun, kurlar)
@@ -307,7 +359,7 @@ def tum_satirlar(bugun=None) -> dict:
     satirlar += _pos_satirlari(bugun, kurlar)
     satirlar.sort(key=lambda r: (r["tarih"] is None, r["tarih"] or datetime.date.max, r["yon"] != CIKIS, r["kaynak"], r["baslik"]))
     return {"bugun": bugun, "satirlar": satirlar, "nakit_tl": fo["nakit_tl"], "kurlar": kurlar, "kur_tarihi": fo["kur_tarihi"], "atlanan_kartlar": atlanan_kartlar,
-            "nakit_hesaplari": [*fo["kasalar"], *fo["banka"]]}
+            "cek_mahsuplari": cek_mahsuplari, "nakit_hesaplari": [*fo["kasalar"], *fo["banka"]]}
 
 
 def filtrele(satirlar, *, yon="", kaynaklar=(), cari_id=None):
@@ -390,6 +442,7 @@ def mutabakat(tum, kk_atlanan=()) -> list:
 
     # 320 ticari borçlar: cari bazında
     cariler = {c.pk: c for c in Cari.objects.filter(silindi=False, muhasebe_kodu__startswith="320")}
+    mahsuplar = {m["cari"].pk: m for m in tum.get("cek_mahsuplari", ())}
     kal = []
     for c in sorted(cariler.values(), key=lambda c: c.kod):
         tl_defter, _dvz = finans_ozet._bakiye(c.muhasebe_kodu)
@@ -400,7 +453,15 @@ def mutabakat(tum, kk_atlanan=()) -> list:
             nt = "Cari lehine (borç) bakiye / avans — çıkış kalemi değil"
         elif c.para_birimi != "TRY" and abs(defter - takvim) > ESIK:
             nt = f"Döviz cari: defter TL (kayıtlı kur/kur farkı) ≠ bugünkü kur ({c.para_birimi})"
+        m = mahsuplar.get(c.pk)
+        if m:
+            nt = (nt + " · " if nt else "") + "verilen çekle karşılanan kısım aşağıda ayrı satırda"
         kal.append({"ad": f"{c.kod} {c.unvan[:40]}", "defter": defter, "takvim": takvim, "not": nt, "url": ("core:cari_detay", c.pk)})
+        if m:                                                                    # ayrı NEDEN satırı: çekler 159 ara hesapta (cari borcunu düşürmez), takvimde kendi vadesinde çıkış
+            kal.append({"ad": f"{c.kod} {c.unvan[:28]} — verilen çekle karşılanan", "defter": -m["cek_tl"], "takvim": SIFIR,
+                        "not": (f"{m['cek_adedi']} verilen çek ({m['cek_tl']:,.2f} TL) ara hesapta (159) ödeme bekliyor; fatura açık kalanından {m['mahsup_tl']:,.2f} TL düşüldü — "
+                                "çekler 'Verilen çek/senet' çıkışında kendi vadesinde görünür"),
+                        "url": ("core:cari_detay", c.pk)})
     blok("320 — Ticari borçlar (alış faturası açık kalanı + faturasız bakiye)", kal, "Takvim: alış faturalarının FIFO açık kalanı + faturaya bağlanamayan bakiye. Fark: avanslar ve döviz kur etkisi.")
 
     # 309 Kredi kartları

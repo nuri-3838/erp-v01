@@ -154,6 +154,7 @@ from core.services import personel_izin as izin_servis
 from core.services import personel_belge as belge_servis
 from core.services import personel_devam as devam_servis
 from core.services import belge_sablon as belge_sablon_servis
+from core.services import fatura_vade_plani as vade_plani_servis
 from core.services import ise_giris as ise_giris_servis
 from core.services import ise_giris_muhasebe as ise_giris_muhasebe_servis
 from core.services import personel_ucret as ucret_servis
@@ -9561,6 +9562,22 @@ def _silinecek_ekleri_sil(request, fatura):
     return n
 
 
+def _vade_plani_girdisi(post):
+    """Fatura formunun «Vade planı» satırları [{"vade", "tutar"}]: bölüm gönderilmediyse (``vp_var`` yok) None → plana dokunulmaz; gönderildiyse liste (boş = planı kaldır)."""
+    if "vp_var" not in post:
+        return None
+    return [{"vade": t, "tutar": u} for t, u in zip(post.getlist("vp_tarih"), post.getlist("vp_tutar"))]
+
+
+def _vade_plani_ekran(fatura=None, post=None):
+    """Şablondaki plan satırları: POST ise girilenler (hata varsa aynen geri gelir), değilse faturanın kayıtlı planı, yoksa boş."""
+    if post is not None and "vp_var" in post:
+        return [{"vade": t, "tutar": u} for t, u in zip(post.getlist("vp_tarih"), post.getlist("vp_tutar"))]
+    if fatura is not None:
+        return [{"vade": v.isoformat(), "tutar": format_tr(t)} for v, t in vade_plani_servis.plan_oku(fatura)]
+    return []
+
+
 def _fatura_form_baglami(fform, formset, yon, **ek):
     """Ekle / düzenle / siparişten fatura ekranlarının ORTAK şablon bağlamı (core/fatura_ekle.html)."""
     stok_kdv, stok_tevkifat, stok_tedarikci = _stok_kdv_tevkifat(yon)
@@ -9607,7 +9624,8 @@ def _fatura_ekle(request, yon, baslik):
                             gv_stopaj_orani=cd.get("gv_stopaj_orani"),
                             sahsi_ortak_id=(cd["sahsi_ortak"].pk if cd.get("sahsi_ortak") else None),
                             satirlar=satirlar, kullanici=request.user,
-                            faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")))
+                            faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")),
+                            vade_plani=_vade_plani_girdisi(request.POST))
                         dosya_sayisi = _fatura_dosyalari_yaz(request, fatura, dosyalar)
                     messages.success(request, _fatura_kayit_mesaji(fatura, cd["tip"], cd.get("depo"), satirlar, dosya_sayisi))
                     for u in fatura_servis.asiri_cevrim_uyarilari(fatura):          # SAI-2026-0015: aşırı birim çevrimi (1.000+ kat) açık uyarı
@@ -9620,7 +9638,8 @@ def _fatura_ekle(request, yon, baslik):
         fform = FaturaForm(yon=yon)
         formset = FaturaSatirFormSet(form_kwargs={"yon": yon})
     return render(request, "core/fatura_ekle.html", _fatura_form_baglami(
-        fform, formset, yon, baslik=baslik, iptal_url=reverse(_fatura_liste_url(yon)), mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=[]))
+        fform, formset, yon, baslik=baslik, iptal_url=reverse(_fatura_liste_url(yon)), mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=[],
+        vade_plani_goster=True, vade_plani_satirlari=_vade_plani_ekran(None, request.POST if request.method == "POST" else None)))
 
 
 @ekran_gerekli("alis_faturalari")
@@ -9661,7 +9680,8 @@ def fatura_duzenle(request, pk):
                             gv_stopaj_orani=cd.get("gv_stopaj_orani"),
                             sahsi_ortak_id=(cd["sahsi_ortak"].pk if cd.get("sahsi_ortak") else None),
                             satirlar=satirlar, kullanici=request.user,
-                            faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")))
+                            faturasiz=cd.get("faturasiz", False), mukerrer_onayli=bool(cd.get("mukerrer_onay")),
+                            vade_plani=_vade_plani_girdisi(request.POST))
                         dosya_sayisi = _fatura_dosyalari_yaz(request, fatura, dosyalar)
                         silinen = _silinecek_ekleri_sil(request, fatura)                      # onaylı fatura da dahil; detay sayfasındaki ek silmeyle AYNI yetki (alış/satış faturaları ekranı)
                     if fatura.durum == Fatura.Durum.TASLAK:
@@ -9706,7 +9726,8 @@ def fatura_duzenle(request, pk):
     return render(request, "core/fatura_ekle.html", _fatura_form_baglami(
         fform, formset, yon, baslik="Fatura Düzenle", iptal_url=reverse("core:fatura_detay", args=[fatura.pk]),
         mukerrer_fatura=mukerrer, dosya_uyari=dosya_uyari, mevcut_ekler=_mevcut_ekler(fatura), duzenlenen=fatura,
-        silinecek_ek_idleri=_silinecek_ek_idleri(request, fatura)))
+        silinecek_ek_idleri=_silinecek_ek_idleri(request, fatura),
+        vade_plani_goster=True, vade_plani_satirlari=_vade_plani_ekran(fatura, request.POST if request.method == "POST" else None)))
 
 
 @ekran_gerekli_herhangi("alis_faturalari", "satis_faturalari")
@@ -9727,6 +9748,7 @@ def fatura_detay(request, pk):
     return render(request, "core/fatura_detay.html",
                   {"fatura": fatura, "satirlar": satirlar, "d": detay,
                    "kaynak_irsaliyeler": kaynak_irsaliyeler, "irsaliye_ek_gorebilir": ekran_gorebilir(request.user, "satinalma_irsaliyeleri") or ekran_gorebilir(request.user, "satis_irsaliyeleri"),
+                   "vade_plani": vade_plani_servis.plan_oku(fatura),
                    "karma_satir": fatura.yon == "ALIS" and not (fatura.tip and fatura.tip.gider) and any(s.hesap_id for s in satirlar),      # ALIŞ'ta stok yanında hesap satırı var
                    "donemsel_tablolar": donemsel_servis.fatura_tablolari(fatura),
                    "irsaliye_farklari": fatura_servis.irsaliye_miktar_farklari(fatura),
