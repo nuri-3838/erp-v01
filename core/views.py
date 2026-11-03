@@ -4828,7 +4828,7 @@ def teklif_siparis_pdf(request, pk):
                         "satinalma_irsaliyeleri", "satis_irsaliyeleri", "satis_teklifleri",
                         "satis_proformalari", "satis_siparisleri")
 def teklif_siparis_xlsx(request, pk):
-    """Belgenin resimsiz Excel dökümü (?dil=tr|en) — PDF ile aynı yetki ve aynı veri kaynağı (PDF bağlamı + kalem property'leri)."""
+    """Belgenin sade, resimsiz Excel dökümü (?dil=tr|en; 6 sütun, toplam yok) — PDF ile aynı yetki ve aynı veri kaynağı (PDF bağlamı + kalem property'leri)."""
     from core.services.teklif_siparis_xlsx import teklif_siparis_xlsx as xlsx_uret
 
     ts = get_object_or_404(
@@ -4853,7 +4853,7 @@ def teklif_siparis_xlsx(request, pk):
             k.urun_ad = k.stok.ad_dil(dil)
             k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant_id, dil)
     veri = xlsx_uret(ts, kalemler, ctx, dil, firma_unvan=firma_servis.firma_bilgisi_getir().unvan,
-                     nakliye_dahil=bool(sat_teklif and ctx.get("navlun_var")))
+                     navlunlu=bool(sat_teklif and ctx.get("navlun_var")))
     onek = {"TEKLIF": "teklif", "PROFORMA": "proforma", "SIPARIS": "siparis", "IRSALIYE": "irsaliye"}[ts.belge_tur]
     no = str(ts.belge_no or ts.pk).translate(_DOSYA_GECERSIZ).replace(" ", "_")
     resp = _xlsx_yanit(veri, f"{onek}_{no}_{dil}")
