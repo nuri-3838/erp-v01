@@ -4824,6 +4824,43 @@ def teklif_siparis_pdf(request, pk):
     return resp
 
 
+@ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
+                        "satinalma_irsaliyeleri", "satis_irsaliyeleri", "satis_teklifleri",
+                        "satis_proformalari", "satis_siparisleri")
+def teklif_siparis_xlsx(request, pk):
+    """Belgenin resimsiz Excel dökümü (?dil=tr|en) — PDF ile aynı yetki ve aynı veri kaynağı (PDF bağlamı + kalem property'leri)."""
+    from core.services.teklif_siparis_xlsx import teklif_siparis_xlsx as xlsx_uret
+
+    ts = get_object_or_404(
+        TeklifSiparis.objects.select_related(
+            "cari", "cari__ulke", "cari__sehir",
+            "aday_musteri", "aday_musteri__ulke", "aday_musteri__sehir",
+            "banka_hesabi", "banka_hesabi__banka"), pk=pk)
+    kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "stok__fatura_birimi", "kdv", "tevkifat"))
+    dil = "en" if request.GET.get("dil") == "en" else "tr"
+    sat_teklif = ts.belge_tur == TeklifSiparis.BelgeTur.TEKLIF and ts.yon == TeklifSiparis.Yon.SATIS
+    sat_proforma = ts.belge_tur == TeklifSiparis.BelgeTur.PROFORMA
+    sat_siparis = ts.belge_tur == TeklifSiparis.BelgeTur.SIPARIS and ts.yon == TeklifSiparis.Yon.SATIS
+    if sat_teklif:
+        ctx = satis_teklif_pdf_baglam(ts, kalemler, dil, request.user)
+    elif sat_proforma:
+        ctx = satis_proforma_pdf_baglam(ts, kalemler, dil, request.user)
+    elif sat_siparis:
+        ctx = satis_siparis_pdf_baglam(ts, kalemler, dil, request.user)
+    else:
+        ctx = {}
+        for k in kalemler:
+            k.urun_ad = k.stok.ad_dil(dil)
+            k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant_id, dil)
+    veri = xlsx_uret(ts, kalemler, ctx, dil, firma_unvan=firma_servis.firma_bilgisi_getir().unvan,
+                     nakliye_dahil=bool(sat_teklif and ctx.get("navlun_var")))
+    onek = {"TEKLIF": "teklif", "PROFORMA": "proforma", "SIPARIS": "siparis", "IRSALIYE": "irsaliye"}[ts.belge_tur]
+    no = str(ts.belge_no or ts.pk).translate(_DOSYA_GECERSIZ).replace(" ", "_")
+    resp = _xlsx_yanit(veri, f"{onek}_{no}_{dil}")
+    resp["Cache-Control"] = "no-store"
+    return resp
+
+
 # Satış Teklifi PDF'i etiketleri — kullanıcı çıktıyı TR ya da EN seçer (?dil=).
 _PDF_ETIKET = {
     "tr": {
