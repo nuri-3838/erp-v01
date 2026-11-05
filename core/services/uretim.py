@@ -1911,6 +1911,35 @@ def istasyon_toplu_uretilecek_emirler(istasyon) -> list:
     return [ie for ie in qs if istasyon_emri_acik_kalan(ie) > 0]
 
 
+def bagli_taslak_irsaliyeler(emirler) -> dict:
+    """{ÜS pk: (belge_no, tarih)} — ÜS'nin kaynak satış siparişine bağlı, henüz ONAYLANMAMIŞ (TASLAK) satış irsaliyelerinden EN ERKEN tarihlisi (tek sorgu).
+    Siparişsiz ÜS / taslak irsaliyesi olmayan ÜS sonuçta yer almaz. Yalnız uyarı içindir: üretim tarihi bu irsaliyenin tarihinden SONRA seçilirse irsaliye o tarihte
+    stok yetersizliğinden onaylanamayabilir."""
+    siparis_emirleri = {}
+    for e in emirler:
+        if e.kaynak_siparis_id:
+            siparis_emirleri.setdefault(e.kaynak_siparis_id, []).append(e.pk)
+    if not siparis_emirleri:
+        return {}
+    sonuc = {}
+    for ts in (TeklifSiparis.objects.filter(
+            silindi=False, belge_tur=TeklifSiparis.BelgeTur.IRSALIYE, yon=TeklifSiparis.Yon.SATIS, durum=TeklifSiparis.Durum.TASLAK,
+            kaynak_siparis_id__in=list(siparis_emirleri)).order_by("tarih", "pk")):
+        for emir_pk in siparis_emirleri[ts.kaynak_siparis_id]:
+            sonuc.setdefault(emir_pk, (ts.belge_no, ts.tarih))
+    return sonuc
+
+
+def irsaliye_tarih_uyarisi(emir: UretimEmri, tarih) -> str:
+    """Üretim tarihi (``None`` = bugün) bağlı taslak irsaliyenin tarihinden SONRAysa uyarı metni, değilse ''. Üretimi ENGELLEMEZ."""
+    bilgi = bagli_taslak_irsaliyeler([emir]).get(emir.pk)
+    tarih = tarih or timezone.localdate()
+    if bilgi is None or tarih <= bilgi[1]:
+        return ""
+    return (f"Bağlı irsaliye {bilgi[0]} {bilgi[1]:%d.%m.%Y} tarihli; üretim tarihi sonrası seçildi ({tarih:%d.%m.%Y}). "
+            "İrsaliye o tarihte stok yetersizliği nedeniyle onaylanamayabilir.")
+
+
 @transaction.atomic
 def istasyon_toplu_uret(istasyon, *, tarih=None, kullanici=None, oturum_asma=None) -> list:
     """İstasyon Emirleri ekranı "Bu istasyondaki açık emirlerin tümünü üret": istasyonun tüm açık ÜS'lerdeki üretilebilir emirlerini

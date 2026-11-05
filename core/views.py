@@ -8676,7 +8676,9 @@ def uretim_emri_detay(request, pk):
     yuzde = us_detay_servis.genel_yuzde(kalem_satirlari, tamamlandi)
     bant["sevk_bekliyor"] = uretim_servis.sevk_bekliyor_mu(emir, ilerleme)
     is_yuzde = us_detay_servis.is_yuzdesi(gruplar)
+    irs = uretim_servis.bagli_taslak_irsaliyeler([emir]).get(emir.pk)          # tarih uyarısı: bağlı onaysız irsaliye (tarih seçicilerde veri özniteliği)
     return render(request, "core/uretim_emri_detay.html", {
+        "irs_no": irs[0] if irs else "", "irs_tarih": irs[1].isoformat() if irs else "", "irs_tarih_tr": f"{irs[1]:%d.%m.%Y}" if irs else "",
         "emir": emir, "kalemler": kalem_satirlari, "kayit_sayisi": kayit_sayisi, "istasyon_emirleri": emirler, "gruplar": gruplar, "tamamlandi": tamamlandi,
         "toplu_uretilebilir": emir.durum == UretimEmri.Durum.ACIK and any(g["uretilebilir"] for g in gruplar), "ayirmalar": ayirmalar,
         "eksikler": eksikler, "eksik_tablosu": eksik_tablosu, "eksiksiz_sayisi": sum(1 for r in eksik_tablosu if r["eksik"] <= 0 and r["fazla"] <= 0),
@@ -8761,6 +8763,9 @@ def uretim_emri_toplu_uret_gorunum(request, pk):
     kapsam = f"{yapilan[0][0].istasyon.kod} {yapilan[0][0].istasyon.ad}" if istasyon else "tüm istasyonlar"
     messages.success(request, f"{len(yapilan)} istasyon emri üretildi ({kapsam}): " + ", ".join(f"{ie.no} → {k.no}" for ie, k in yapilan)
                      + " — kayıtlar onaylandı, stok hareketleri yazıldı.")
+    irs_uyari = uretim_servis.irsaliye_tarih_uyarisi(emir, tarih)
+    if irs_uyari:
+        messages.warning(request, irs_uyari)
     return redirect(geri)
 
 
@@ -8907,10 +8912,19 @@ def istasyon_emirleri(request):
     sayfa = Paginator(qs, 50).get_page(g.get("sayfa"))
     hatalar = request.session.pop("uret_hata", {})
     satirlar = [uretim_servis.istasyon_emri_satiri(ie, ie.uretim_emri, hatalar) for ie in sayfa]
+    irsaliyeler = uretim_servis.bagli_taslak_irsaliyeler([ie.uretim_emri for ie in sayfa])               # tarih uyarısı: ÜS'nin bağlı onaysız irsaliyesi
+    for s in satirlar:
+        irs = irsaliyeler.get(s["ie"].uretim_emri_id)
+        s["irs_no"], s["irs_tarih"], s["irs_tarih_tr"] = (irs[0], irs[1].isoformat(), f"{irs[1]:%d.%m.%Y}") if irs else ("", "", "")
     uret_yetkili = ekran_gorebilir(request.user, "operasyon_kayitlari")
-    toplu = (secili is not None and not secili.fason and durum == "" and uret_yetkili
-             and bool(uretim_servis.istasyon_toplu_uretilecek_emirler(secili)))
+    toplu_emirler = (uretim_servis.istasyon_toplu_uretilecek_emirler(secili)
+                     if secili is not None and not secili.fason and durum == "" and uret_yetkili else [])
+    toplu = bool(toplu_emirler)
+    toplu_irs = sorted(uretim_servis.bagli_taslak_irsaliyeler([ie.uretim_emri for ie in toplu_emirler]).values(), key=lambda x: x[1])[:1]   # en erken
+    toplu_irs = toplu_irs[0] if toplu_irs else None
     return render(request, "core/istasyon_emirleri.html", {
+        "toplu_irs_no": toplu_irs[0] if toplu_irs else "", "toplu_irs_tarih": toplu_irs[1].isoformat() if toplu_irs else "",
+        "toplu_irs_tarih_tr": f"{toplu_irs[1]:%d.%m.%Y}" if toplu_irs else "",
         "satirlar": satirlar, "sayfa": sayfa, "us": us, "durum": durum, "istasyon": istasyon_p, "secili": secili, "sekmeler": sekmeler,
         "durumlar": IstasyonEmri.Durum.choices, "uretim_emri": uretim_emri, "uret_yetkili": uret_yetkili, "toplu_uretilebilir": toplu,
         "bugun": timezone.localdate().isoformat(), "geri": request.get_full_path(), "sayfa_url": url()})
@@ -8942,6 +8956,10 @@ def istasyon_toplu_uret_gorunum(request, pk):
         return redirect(geri)
     messages.success(request, f"{istasyon.kod} {istasyon.ad}: {len(yapilan)} istasyon emri üretildi — "
                      + ", ".join(f"{ie.uretim_emri.no}/{ie.no} → {k.no}" for ie, k in yapilan) + "; kayıtlar onaylandı, stok hareketleri yazıldı.")
+    for emir in {ie.uretim_emri_id: ie.uretim_emri for ie, _k in yapilan}.values():
+        irs_uyari = uretim_servis.irsaliye_tarih_uyarisi(emir, tarih)
+        if irs_uyari:
+            messages.warning(request, f"{emir.no}: {irs_uyari}")
     return redirect(geri)
 
 
@@ -8987,6 +9005,9 @@ def istasyon_emri_uret_gorunum(request, pk):
     messages.success(request, f"{ie.no}: üretildi — {kayit.no} oluşturuldu ve onaylandı; stok hareketleri yazıldı.")
     if uyari:
         messages.warning(request, uyari)
+    irs_uyari = uretim_servis.irsaliye_tarih_uyarisi(ie.uretim_emri, tarih)
+    if irs_uyari:
+        messages.warning(request, irs_uyari)
     return redirect(f"{geri}#ie-{ie.pk}")
 
 

@@ -4,6 +4,7 @@
 {% block sayfa_adi %}Üretim Siparişi{% endblock %}
 
 {% block content %}
+{% include 'core/_ie_uret_js.html' %}
 <style>
   /* ÜS detay (2026-10-14 yeniden tasarım): üst bant + akış şeridi + sekmeler. Yatay kaydırma yalnız şerit/tablo kapsayıcısında; sayfa taşmaz. */
   .ie-uret-form { display:inline-flex; gap:.3rem; align-items:center; margin:0 .4rem .2rem 0; flex-wrap:wrap; }
@@ -106,8 +107,8 @@
     <form method="post" action="{% url 'core:uretim_emri_toplu_uret' emir.pk %}" class="ie-uret-form ie-toplu ud-ust-form"
           onsubmit="return confirm('Tüm istasyonların açık emirleri istasyon sırasıyla, bu tarihle üretilsin mi? Fason emirleri atlanır; bir emirde hata olursa hiçbiri yazılmaz.');">
       {% csrf_token %}{% if user.is_superuser %}<input type="text" name="asma_notu" class="ie-asma-notu" placeholder="oturum engeli aşma notu (yalnız süper kullanıcı)" maxlength="200" style="min-width:12rem;font-size:.8rem" title="Emirde açık iş oturumu varsa kayıt engellenir; süper kullanıcı not yazarak aşabilir (denetim kaydı tutulur).">{% endif %}
-      <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (tüm emirler için tek tarih)">
-      <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶▶ Tümünü üret</button>
+      <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (tüm emirler için tek tarih)"{% include 'core/_irs_attr.html' with t=irs_tarih n=irs_no tr=irs_tarih_tr %}>
+      <button type="submit" class="birincil" onclick="return ieGonder(this);">▶▶ Tümünü üret</button>
     </form>
     {% endif %}
     {% if revize_url %}<a class="dugme" href="{{ revize_url }}">✏️ Revize</a>{% endif %}
@@ -232,8 +233,8 @@
       <form method="post" action="{% url 'core:uretim_emri_toplu_uret' emir.pk %}" class="ie-uret-form"
             onsubmit="return confirm('{{ g.istasyon.kod }} {{ g.istasyon.ad }} istasyonunun açık emirleri bu tarihle üretilsin mi? Bir emirde hata olursa hiçbiri yazılmaz.');">
         {% csrf_token %}{% if user.is_superuser %}<input type="text" name="asma_notu" class="ie-asma-notu" placeholder="oturum engeli aşma notu (yalnız süper kullanıcı)" maxlength="200" style="min-width:12rem;font-size:.8rem" title="Emirde açık iş oturumu varsa kayıt engellenir; süper kullanıcı not yazarak aşabilir (denetim kaydı tutulur).">{% endif %}<input type="hidden" name="istasyon" value="{{ g.istasyon.pk }}">
-        <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (bu istasyonun tüm açık emirleri için)">
-        <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">▶ Bu istasyonu üret</button>
+        <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi (bu istasyonun tüm açık emirleri için)"{% include 'core/_irs_attr.html' with t=irs_tarih n=irs_no tr=irs_tarih_tr %}>
+        <button type="submit" class="birincil" onclick="return ieGonder(this);">▶ Bu istasyonu üret</button>
       </form>
     </div>
     {% endif %}
@@ -255,8 +256,8 @@
               <form method="post" action="{% url 'core:istasyon_emri_uret' s.ie.pk %}" class="ie-uret-form">
                 {% csrf_token %}{% if user.is_superuser %}<input type="text" name="asma_notu" class="ie-asma-notu" placeholder="oturum engeli aşma notu (yalnız süper kullanıcı)" maxlength="200" style="min-width:12rem;font-size:.8rem" title="Emirde açık iş oturumu varsa kayıt engellenir; süper kullanıcı not yazarak aşabilir (denetim kaydı tutulur).">{% endif %}{% if geri %}<input type="hidden" name="geri" value="{{ geri }}">{% endif %}
                 <input type="text" name="miktar" inputmode="decimal" value="{{ s.acik|tr_miktar_sade:6 }}" size="8" title="{% if s.fazla_yasak %}Üretilen miktar (referans çıktı adedi); bu emirde açık kalandan fazlası yazılamaz (varyantlı markalama/mamul emri){% else %}Üretilen miktar (referans çıktı adedi); açık kalandan fazlası serbest stoğa girer{% endif %}" autocomplete="off">
-                <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi">
-                <button type="submit" class="birincil" onclick="this.disabled=true;this.form.submit();">Üretildi</button></form>
+                <input type="date" name="tarih" value="{{ bugun }}" title="Üretim tarihi"{% include 'core/_irs_attr.html' with t=irs_tarih n=irs_no tr=irs_tarih_tr %}>
+                <button type="submit" class="birincil" onclick="return ieGonder(this);">Üretildi</button></form>
               {% endif %}
               {% if s.fason_acilabilir %}<a class="dugme-ikincil" href="{% url 'core:fason_donus_ekle' %}?istasyon_emri={{ s.ie.pk }}">Fason dönüş aç</a>{% endif %}
               <a href="{% url 'core:operasyon_kayitlari' %}?istasyon_emri={{ s.ie.pk }}">Kayıtlar</a>

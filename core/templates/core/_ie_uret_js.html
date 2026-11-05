@@ -1,0 +1,8 @@
+<script>
+  // Üretildi / Bu istasyonu üret / Tümünü üret: tarih, bağlı ONAYSIZ satış irsaliyesinin tarihinden sonra seçildiyse onay iste (üretimi engellemez); sonra eskisi gibi gönder.
+  function ieGonder(btn) {
+    var f = btn.form, d = f.elements['tarih'];
+    if (d && d.dataset.irsTarih && d.value && d.value > d.dataset.irsTarih && !confirm(d.dataset.irsUyari)) { return false; }
+    btn.disabled = true; f.submit(); return false;
+  }
+</script>
