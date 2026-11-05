@@ -961,6 +961,39 @@ def _hizmetsiz_depo(hazir, depo):
     return depo
 
 
+def kalem_etkin_varyant_id(k):
+    """İrsaliye kaleminin GERÇEK varyantı: kalemde NULL "kartın varsayılanı" demektir (varyant verilmeyen satır/kalem standart yazılır — bkz. ``_kalem_varyanti``);
+    stok hareketi bunu yazılırken çözmüştür → önce kalemin kendi varyantı, yoksa hareketinki, yoksa kartın varsayılanı. Varyantsız kartta None."""
+    if not k.stok.varyantli:
+        return None
+    if k.varyant_id:
+        return k.varyant_id
+    h = StokHareket.objects.filter(teklif_siparis_kalem=k, silindi=False, varyant__isnull=False).values_list("varyant_id", flat=True).first()
+    return h or k.stok.varsayilan_varyant_id
+
+
+def satir_etkin_varyant_id(satir):
+    """FaturaSatir'ın GERÇEK varyantı (Düzenle ekranı ön-doldurma + 'değişmedi' imzası): satırda NULL ise bağlı irsaliye kaleminin, o da yoksa kartın varsayılanı.
+    Böylece sayfa JS'inin boş alana yazdığı varsayılan varyant, kaydedilmiş NULL ile 'farklı' sayılmaz. Varyantsız kart/stoksuz satırda None."""
+    if satir.stok_id is None or not satir.stok.varyantli:
+        return satir.varyant_id
+    if satir.varyant_id:
+        return satir.varyant_id
+    if satir.irsaliye_kalem_id:
+        v = kalem_etkin_varyant_id(satir.irsaliye_kalem)
+        if v:
+            return v
+    return satir.stok.varsayilan_varyant_id
+
+
+def _varyant_degisti_mi(kalem, form_varyanti) -> bool:
+    """İrsaliyeye bağlı satırda forma gelen varyant (çözülmüş StokVaryant ya da None) kalemin gerçek varyantından FARKLI mı?
+    Her iki taraf da NULL = 'kartın varsayılanı' anlamıyla karşılaştırılır; forma boş gelmesi (JS'siz POST) değişiklik talebi sayılmaz."""
+    if form_varyanti is None:
+        return kalem.varyant_id is not None          # boş gönderim: kalem varsayılan (NULL) ise değişiklik yok; özel varyantlı kalemde eskisi gibi reddedilir
+    return form_varyanti.pk != kalem_etkin_varyant_id(kalem)
+
+
 def _irsaliye_baglarini_dogrula(satirlar, hazir, fatura_pk):
     """Satırdaki irsaliye bağı (``irsaliye_kalem_id``): yalnız BU faturaya bağlı (silinmemiş) bir irsaliyenin kalemi olabilir; stok ve varyant kilitlidir
     (kalemle aynı olmalı — miktar/fiyat/KDV serbest); aynı kaleme birden çok satır bağlanamaz. ``hazir`` = ``satirlar`` ile aynı sırada çözülmüş satırlar."""
@@ -969,13 +1002,13 @@ def _irsaliye_baglarini_dogrula(satirlar, hazir, fatura_pk):
         kid = g.get("irsaliye_kalem_id")
         if not kid:
             continue
-        k = TeklifSiparisKalem.objects.filter(pk=kid, silindi=False).select_related("teklif_siparis").first()
+        k = TeklifSiparisKalem.objects.filter(pk=kid, silindi=False).select_related("teklif_siparis", "stok").first()
         if (k is None or fatura_pk is None or k.teklif_siparis.silindi or k.teklif_siparis.fatura_id != fatura_pk
                 or k.teklif_siparis.belge_tur != TeklifSiparis.BelgeTur.IRSALIYE):
             raise FaturaHatasi(f"Satır {i}: irsaliye bağı geçersiz (kalem bu faturanın irsaliyesine ait değil).")
         if h[0] is None or h[0].pk != k.stok_id:
             raise FaturaHatasi(f"Satır {i}: irsaliyeye bağlı satırda stok değiştirilemez ({k.teklif_siparis.belge_no}).")
-        if (h[8].pk if h[8] is not None else None) != k.varyant_id:
+        if _varyant_degisti_mi(k, h[8]):
             raise FaturaHatasi(f"Satır {i}: irsaliyeye bağlı satırda varyant değiştirilemez ({k.teklif_siparis.belge_no}).")
         if k.pk in gorulen:
             raise FaturaHatasi(f"Satır {i}: aynı irsaliye kalemine ({k.teklif_siparis.belge_no}) birden çok satır bağlanamaz.")
@@ -1347,7 +1380,7 @@ def _kayit_satir_imzasi(s, *, sahsi):
                 s.hesap_id, s.donem_baslangic, s.donem_bitis, (s.donem_aciklama or "").strip())
     hesap = None if (sahsi or s.stok_id or s.demirbas_id) else s.hesap_id
     return (s.stok_id, hesap, s.demirbas_id, s.yatirim_projesi_id, s.kdv_id, s.tevkifat_id, s.miktar, s.birim_fiyat,
-            varyant_servis.secim_degeri(s.varyant_id) or None, None, None, None, None)
+            varyant_servis.secim_degeri(satir_etkin_varyant_id(s)) or None, None, None, None, None)
 
 
 def _girdi_satir_imzasi(g, i, tip, *, sahsi):
@@ -1416,7 +1449,7 @@ def fis_girdileri_ayni_mi(fatura, *, tip_id, cari_id, tarih, satirlar, para_biri
     depo_girdi = None if (tip.gider or tip.yalniz_kdv) else (str(depo_id) if depo_id not in (None, "") else None)
     if depo_girdi != (str(fatura.depo_id) if fatura.depo_id else None):
         return False
-    kayit = list(fatura.satirlar.filter(silindi=False))
+    kayit = list(fatura.satirlar.filter(silindi=False).select_related("stok", "irsaliye_kalem__stok"))
     if len(kayit) != len(satirlar):
         return False
     if fatura_no is not None and (fatura_no or "").strip() != fatura.fatura_no and any(s.donem_baslangic for s in kayit):

@@ -9776,10 +9776,10 @@ def fatura_duzenle(request, pk):
                 "donemsel": bool(s.donem_baslangic), "donem_hesap": s.hesap_id if s.donem_baslangic else "",
                 "donem_baslangic": s.donem_baslangic, "donem_bitis": s.donem_bitis, "donem_aciklama": s.donem_aciklama,
                 "tur": s.satir_tipi, "demirbas": s.demirbas_id,
-                "yatirim_projesi": s.yatirim_projesi_id, "varyant": varyant_servis.secim_degeri(s.varyant_id),
+                "yatirim_projesi": s.yatirim_projesi_id, "varyant": varyant_servis.secim_degeri(fatura_servis.satir_etkin_varyant_id(s)),     # NULL = kartın varsayılanı → gizli alan dolu gelir (irsaliyeli satırda "değişti" sanılmasın)
                 "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat, "irsaliye_kalem": s.irsaliye_kalem_id}
                for s in fatura.satirlar.filter(silindi=False)
-               .select_related("stok__tevkifat", "hesap")]
+               .select_related("stok__tevkifat", "hesap", "irsaliye_kalem__stok")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon, "fatura_pk": fatura.pk})
     return render(request, "core/fatura_ekle.html", _fatura_form_baglami(
         fform, formset, yon, baslik="Fatura Düzenle", iptal_url=reverse("core:fatura_detay", args=[fatura.pk]),
