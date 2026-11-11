@@ -8655,8 +8655,15 @@ def uretim_emri_detay(request, pk):
     for k, ayrilan_k, sevk_k in uretim_servis.kalem_ayrilan_sevk(emir, ayirmalar):
         hazir = ayrilan_k + sevk_k
         yuzde = min(Decimal("100"), hazir * 100 / k.hedef_miktar) if k.hedef_miktar else Decimal("0")
+        # Üretilecek, İlerleme ile AYNI mantık (2026-11-11): açık ÜS'de hedef − hazır (ayrılan + sevk); kapanmış stok ÜS'si 0; kapalı/iptal diğerlerinde eski snapshot (hedef − eldeki ayrılan).
+        if emir.durum == UretimEmri.Durum.ACIK:
+            uretilecek = max(Decimal("0"), k.hedef_miktar - ayrilan_k - sevk_k)
+        elif emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen:
+            uretilecek = Decimal("0")
+        else:
+            uretilecek = max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan)
         kalem_satirlari.append({"k": k, "ayrilan": ayrilan_k, "sevk": sevk_k, "varyant": varyant_servis.varyant_kisa(k.varyant) if k.varyant_id else "",
-                                "uretilecek": max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan), "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde)})
+                                "uretilecek": uretilecek, "yuzde": yuzde, "yuzde_css": us_detay_servis.css_yuzde(yuzde)})
     hatalar = request.session.pop("uret_hata", {})
     yukle = us_yukle_servis.Yukleme(emir, ayirmalar)
     gruplar = yukle.gruplar(hatalar)                                                  # istasyon bazında katlanır gruplar (üretim sırası)
@@ -8827,7 +8834,9 @@ def uretim_emri_revize_gorunum(request, pk):
         "bform": bform, "formset": formset, "baslik": f"{emir.no} Revize", "geri_url": reverse("core:uretim_emri_detay", args=[emir.pk]),
         "gonder_etiket": "Revize Et", "onizleme": onizleme, "onay_etiket": "Seçimi Onayla ve Revize Et", "varyant_meta": _us_varyant_meta(emir.varyantli_plan),
         "aciklama": "Kalem miktarını artırıp azaltabilir, kalem ekleyip çıkarabilirsiniz. Ayırma ve istasyon emirleri yeniden planlanır; "
-                    "sevk/fatura edilmiş miktarın altına inilemez."})
+                    "sevk/fatura edilmiş miktarın altına inilemez. Bu ÜS'ten zaten üretilmiş mamul (onaylı kayıtlar) yeniden üretilmez, tamamlanmış istasyon emirleri büyütülmez. "
+                    "İhtiyaç, revize anındaki (bugünkü) serbest stok ve ayırmalara göre hesaplanır — ÜS'nin ilk açıldığı günkü stok durumuna göre değil. "
+                    "Geçmiş tarihli üretim kayıtları ise kayıt tarihindeki stoğa göre kontrol edilir (\"Bu tarihte yetersiz\" uyarısı bu yüzden çıkabilir)."})
 
 
 @ekran_gerekli_herhangi("satis_siparisleri", "uretim_emirleri")

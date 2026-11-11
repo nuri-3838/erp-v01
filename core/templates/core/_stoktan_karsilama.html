@@ -15,9 +15,9 @@
     <thead><tr><th>Ürün + varyant</th><th class="sag">Hedef</th><th class="sag">Serbest bitmiş stok</th><th>Stoktan karşılanacak</th><th class="sag">Üretilecek</th></tr></thead>
     <tbody>
     {% for r in onizleme %}
-      <tr class="sk-satir" data-sira="{{ r.sira }}" data-hedef="{{ r.hedef|stringformat:'f' }}" data-ust="{{ r.ust_sinir|stringformat:'f' }}">
+      <tr class="sk-satir" data-sira="{{ r.sira }}" data-hedef="{{ r.hedef|stringformat:'f' }}" data-ust="{{ r.ust_sinir|stringformat:'f' }}" data-uretilmis="{{ r.uretilmis|stringformat:'f' }}">
         <td><span class="mono">{{ r.urun.kod }}</span> {{ r.urun.ad }}{% if r.varyant_etiketi %}<br><small class="sk-varyant">🔀 {{ r.varyant_etiketi }}</small>{% endif %}</td>
-        <td class="sag mono">{{ r.hedef|tr_miktar_sade }}</td>
+        <td class="sag mono">{{ r.hedef|tr_miktar_sade }}{% if r.uretilmis > 0 %}<br><small class="sk-varyant" title="Bu üretim siparişinin onaylı kayıtlarından üretilmiş, sevk edilmemiş miktar: yeniden üretilmez">✔ üretilmiş {{ r.uretilmis|tr_miktar_sade }}</small>{% endif %}</td>
         <td class="sag mono">{{ r.serbest|tr_miktar_sade }}</td>
         <td>
           {% if r.soru %}
@@ -31,7 +31,7 @@
             <span class="sk-not">Ara mamul: stok bugünkü gibi otomatik düşülür</span>
           {% endif %}
         </td>
-        <td class="sag mono sk-uretilecek">{% if r.soru %}{% if r.secim_mod == "uret" %}{{ r.hedef|tr_miktar_sade }}{% else %}—{% endif %}{% elif r.ozel %}{{ r.hedef|tr_miktar_sade }}{% else %}—{% endif %}</td>
+        <td class="sag mono sk-uretilecek">{% if r.soru %}{% if r.secim_mod == "uret" %}{{ r.uret_hedef|tr_miktar_sade }}{% else %}{% if r.uretilmis > 0 %}{{ r.uret_hedef|tr_miktar_sade }}{% else %}—{% endif %}{% endif %}{% elif r.ozel %}{{ r.uret_hedef|tr_miktar_sade }}{% else %}—{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
@@ -62,13 +62,13 @@
   if (!kutu) return;
   function fmt(n){ return (Math.round(n * 1000) / 1000).toLocaleString('tr-TR'); }
   function guncelle(tr){
-    var hedef = parseFloat(tr.dataset.hedef), ust = parseFloat(tr.dataset.ust);
+    var hedef = parseFloat(tr.dataset.hedef), ust = parseFloat(tr.dataset.ust), uretilmis = parseFloat(tr.dataset.uretilmis || '0') || 0;
     var sec = tr.querySelector('input[type=radio]:checked');
     if (!sec) return;
     var stoktan = sec.value === 'stok' ? ust : sec.value === 'uret' ? 0 : parseFloat((tr.querySelector('.sk-elle').value || '0').replace(',', '.'));
     if (isNaN(stoktan) || stoktan < 0) stoktan = 0;
     if (stoktan > ust) stoktan = ust;
-    tr.querySelector('.sk-uretilecek').textContent = fmt(hedef - stoktan);
+    tr.querySelector('.sk-uretilecek').textContent = fmt(Math.max(0, hedef - Math.max(stoktan, uretilmis)));      // üretilmiş kısım yeniden üretilmez (stoktan karşılananla çakışmaz)
   }
   kutu.querySelectorAll('tr.sk-satir').forEach(function(tr){
     if (!tr.querySelector('input[type=radio]')) return;

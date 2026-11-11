@@ -11,7 +11,9 @@
     <h1 class="ust-baslik"><span class="emoji">✏️</span>Sipariş Revize — {{ siparis.belge_no|default:siparis.pk }}</h1>
   </div>
   <p class="yardim" style="margin-top:-.4rem">Sipariş kalemleri güncellenir ve aynı işlemde <a href="{% url 'core:uretim_emri_detay' emir.pk %}">{{ emir.no }}</a> üretim siparişi
-    revize edilir: ayırmalar ve istasyon emirleri yeniden planlanır. Sevk/fatura edilmiş miktarın altına inilemez.</p>
+    revize edilir: ayırmalar ve istasyon emirleri yeniden planlanır. Sevk/fatura edilmiş miktarın altına inilemez. Bu ÜS'ten zaten üretilmiş mamul (onaylı kayıtlar)
+    yeniden üretilmez, tamamlanmış istasyon emirleri büyütülmez. İhtiyaç, revize anındaki (bugünkü) serbest stok ve ayırmalara göre hesaplanır — ÜS'nin ilk açıldığı
+    günkü stok durumuna göre değil; geçmiş tarihli üretim kayıtları ise kayıt tarihindeki stoğa göre kontrol edilir ("Bu tarihte yetersiz" uyarısı bu yüzden çıkabilir).</p>
 
   {% if bform.non_field_errors %}
     <div class="uyari">{% for e in bform.non_field_errors %}<div>⚠️ {{ e }}</div>{% endfor %}</div>

@@ -1205,7 +1205,7 @@ def _kalemleri_coz(kalemler, siparis_kalemleri=None, varyantli=False):
     return coz
 
 
-def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, stoktan=None, stoklu_haric=None, cozucu=None, kaynak=None):
+def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, stoktan=None, stoklu_haric=None, cozucu=None, kaynak=None, kok_alt=None):
     """NET plan (``ihtiyac_hesapla``): kapalıda kart bazında — bugünkü yol, birebir; varyantlı planlamada (stok, varyant) düğümleriyle
     (``planlama_varyant.Cozucu``). (sonuç, çözücü|None) döner.
 
@@ -1213,6 +1213,9 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
     kullanıcının seçtiği "stoktan karşılanacak" miktar. Kök düğümün kullanılabilir stoğu bu tavanla sınırlanır; böylece ayırma yalnız seçilen
     kadar olur, kalanı üretilir. Sözlükte olmayan düğümler (ara mamul 151, hammadde, soru sorulmayan kökler) bugünkü gibi otomatik düşülür.
 
+    ``kok_alt`` (2026-11-11, revize/güncel plan): {(stok pk, varyant pk|None): Decimal} — BU ÜS'TEN ÜRETİLMİŞ (onaylı istasyon kaydı) kök mamul miktarı. Mamul serbest
+    stoğa geçmiş / başka yerde satılmış olsa bile ÜS'nin kendi ürettiği kısım "hazır" sayılır: kök düğümün kullanılabilir stoğu en az bu kadardır (``stoktan`` tavanı ve
+    fiziksel stok bunu aşağı çekemez); yeniden üretim yalnız gerçekten eksik kalan miktar için planlanır.
     ``cozucu`` (2026-10-14, yalnız ÜS detay ekranı): hazır bir çözücü (``us_detay_yukle.TopluCozucu`` — sorgusuz, varyant AÇMAZ); None ise eski ``Cozucu``.
     ``kaynak`` (yalnız ÜS listesi, ``us_liste_yukle.ListeYukleme``): kullanılabilir stok ve fason açık kalan okumaları önceden yüklenmiş veriden (sorgusuz, aynı sonuç)."""
     # FASON SİPARİŞİ "gelecek stok" (2026-10-12, core.services.fason_siparis): serbest stoktan karşılanmayan kesilmiş parça ihtiyacı açık FS satırlarının
@@ -1237,6 +1240,9 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
             for (pk, _vpk), tavan in (stoktan or {}).items():
                 if pk in h:
                     h[pk] = min(h[pk], tavan)
+            for (pk, _vpk), alt in (kok_alt or {}).items():
+                if pk in h and alt > 0:
+                    h[pk] = max(h[pk], alt)                                  # ÜS'nin kendi ürettiği kök: tavan/fiziksel stok altına düşürmez
             return h
         sonuc = ihtiyac_hesapla([(u, m) for u, m, _v in coz], graf=graf, kullanilabilir=kh, stoklu_uretim=True, stoklu_haric=stoklu_haric)
         sonuc["stok_kullanilabilir"], sonuc["fason_kalan"] = izler["stok"], izler["fason"]
@@ -1252,6 +1258,9 @@ def _plani_hesapla(coz, varyantli, kullanici=None, haric_emir=None, graf=None, s
         for anahtar, tavan in (stoktan or {}).items():
             if anahtar in h:
                 h[anahtar] = min(h[anahtar], tavan)
+        for anahtar, alt in (kok_alt or {}).items():
+            if anahtar in h and alt > 0:
+                h[anahtar] = max(h[anahtar], alt)
         return h
     sonuc = ihtiyac_hesapla(kalemler, cozucu=cz, kullanilabilir=khv, stoklu_uretim=True, stoklu_haric=stoklu_haric)
     sonuc["stok_kullanilabilir"], sonuc["fason_kalan"] = izler["stok"], izler["fason"]
@@ -1300,8 +1309,11 @@ def stoktan_karsilama_onizleme(kalemler, *, varyantli=None, haric_emir=None, sip
     else:
         h = stok_ayirma.kullanilabilir_haritasi({r["anahtar"][0] for r in satirlar}, haric_emir=haric_emir)
         harita = {(pk, None): v for pk, v in h.items()}
+    uretilmis = uretilen_kok_haritasi(haric_emir, varyantli, sevk_edilen_haritasi(haric_emir)) if haric_emir is not None else {}
     for r in satirlar:
         r["serbest"] = max(Decimal("0"), harita.get(r["anahtar"], Decimal("0")))
+        r["uretilmis"] = uretilmis.get(r["anahtar"], Decimal("0"))                  # revizede: bu ÜS'ten üretilmiş (sevk edilmemiş) kısım — yeniden üretilmez
+        r["uret_hedef"] = max(Decimal("0"), r["hedef"] - r["uretilmis"])
         r["soru"] = r["mamul"] and not r["ozel"]
         r["ust_sinir"] = min(r["hedef"], r["serbest"]) if r["soru"] else Decimal("0")
         r["varsayilan"] = r["ust_sinir"]
@@ -2187,6 +2199,35 @@ def _sevk_anahtar_coz(k) -> tuple:
     return k if isinstance(k, tuple) else (k, None)
 
 
+def uretilen_kok_haritasi(emir: UretimEmri, varyantli=None, sevk=None) -> dict:
+    """{(stok pk, varyant pk|None): Decimal} — BU ÜS'ten üretilmiş ve henüz sevk edilmemiş KÖK mamul miktarı = max(0, Σ onaylı istasyon kaydı çıktısı − sevk).
+    Kaynak: ÜS'ye bağlı, istasyon emrinden açılmış, ONAYLI/silinmemiş operasyon kayıtlarının kök kalem stoğundaki çıktı satırları (stok hareketinden BAĞIMSIZ: mamul sonradan
+    satılsa/serbest stoğa geçse de ÜS'ten üretilmiş sayılır). ``sevk`` (``sevk_edilen_haritasi``) verilirse üretilenden düşülür — sevk edilen zaten çıktı, çift sayılmaz.
+    Varyantsız (kapalı) planda varyant None (kart toplamı). Kalem yoksa {}."""
+    if varyantli is None:
+        varyantli = emir.varyantli_plan
+    kok = {k.hedef_urun_id: k.hedef_urun for k in emir.kalemler.filter(silindi=False).select_related("hedef_urun")}
+    if not kok:
+        return {}
+    ham = {}
+    for r in (OperasyonKaydiCikti.objects.filter(kayit__uretim_emri=emir, kayit__durum=OperasyonKaydi.Durum.ONAYLI, kayit__silindi=False,
+                                                 kayit__istasyon_emri__isnull=False, silindi=False, stok_id__in=list(kok))
+              .values("stok_id", "varyant_id").annotate(t=Sum("miktar"))):
+        ham[(r["stok_id"], r["varyant_id"])] = r["t"]
+    uretilen = {}
+    for (stok_pk, var_pk), t in ham.items():
+        if varyantli and kok[stok_pk].varyantli:
+            anahtar = _kalem_anahtari(kok[stok_pk], var_pk, True)                 # boş varyant = kartın standart varyantı (kalem anahtarıyla aynı kural)
+        else:
+            anahtar = (stok_pk, None)
+        uretilen[anahtar] = uretilen.get(anahtar, Decimal("0")) + t
+    gidenler = {}
+    for k, v in (sevk if sevk is not None else {}).items():
+        a = _sevk_anahtar_coz(k)
+        gidenler[a] = gidenler.get(a, Decimal("0")) + v
+    return {a: t - gidenler.get(a, Decimal("0")) for a, t in uretilen.items() if t - gidenler.get(a, Decimal("0")) > 0}
+
+
 def _kalem_anahtari(urun, varyant, varyantli) -> tuple:
     """(stok pk, varyant pk|None) — varyantlı planda kalemin varyantı (StokVaryant|pk|None: None = standart), kapalıda None."""
     if not varyantli or not urun.varyantli:
@@ -2258,8 +2299,11 @@ def _guncel_plan(emir: UretimEmri, graf=None, yukle=None):
     for anahtar in stoktan:
         stoktan[anahtar] = max(stoktan[anahtar], kok_ayrilan.get(anahtar, Decimal("0")))
     sevk = kaynak.sevk_haritasi(emir) if kaynak is not None else sevk_edilen_haritasi(emir)
+    # 2026-11-11: ÜS'nin kök ayırması (üretilmiş ve sevk edilmemiş mamul) fiziksel stok onun altına inse bile (mamul başka yerde satıldı) hazır sayılır; aksi halde
+    # üretilmiş kısım sürekli "eksik" görünür. Revize bu ayırmayı üretilmiş miktardan (``uretilen_kok_haritasi``) yazar, buradaki plan onunla tutarlıdır.
     sonuc, _cz = _plani_hesapla(plan_kalemleri(coz, sevk, emir.varyantli_plan), emir.varyantli_plan, haric_emir=emir, graf=graf,
-                                stoktan=stoktan, stoklu_haric=haric, cozucu=yukle.cozucu if yukle is not None else None, kaynak=kaynak)
+                                stoktan=stoktan, stoklu_haric=haric, cozucu=yukle.cozucu if yukle is not None else None, kaynak=kaynak,
+                                kok_alt=dict(kok_ayrilan))
     return sonuc
 
 
@@ -2556,7 +2600,10 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
     once = _emir_ozeti(emir)
     if not emir.kaynak_siparis_id:
         stoktan = stok_icin_tavan(coz, varyantli)                                           # stok için ÜS: revizede de kök stoktan karşılanmaz
-    sonuc, cz = _plani_hesapla(plan_kalemleri(coz, sevk_haritasi, varyantli), varyantli, kullanici, haric_emir=emir, stoktan=stoktan)
+    # ÜRETİLMİŞ KISIM (2026-11-11): ÜS'ten üretilmiş (onaylı istasyon kaydı) ve sevk edilmemiş kök mamul "hazır" sayılır — mamul stokta olmasa da (satıldı) ya da stok için ÜS'de kök
+    # stoktan karşılanmasa da yeniden üretilmez; tamamlanmış istasyon emirleri büyümez, yalnız gerçekten eksik kalan miktar için açık emir çıkar.
+    kok_alt = uretilen_kok_haritasi(emir, varyantli, sevk_haritasi)
+    sonuc, cz = _plani_hesapla(plan_kalemleri(coz, sevk_haritasi, varyantli), varyantli, kullanici, haric_emir=emir, stoktan=stoktan, kok_alt=kok_alt)
 
     emir.kalemler.filter(silindi=False).update(silindi=True, silindi_at=timezone.now(), updated_by=kullanici)
     stok_pay, fason_pay = _ayrilani_bol(sonuc, varyantli)
@@ -2618,6 +2665,9 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
     uretim_fire.revize_yenilendi(emir)                              # plan baştan kuruldu: fire ek izleri 'yenilendi' (artık geri sarılmaz), fason fire işaretleri temizlenir
     sonra = _emir_ozeti(emir)
     detay = {"once": once, "sonra": sonra, "taslak_kayitlar": taslak_degisen}
+    if kok_alt:                                                                       # bu ÜS'ten üretilmiş (sevk edilmemiş) kök mamul: yeniden planlanmadı
+        detay["uretilmis"] = [{"stok": Stok.objects.get(pk=pk).kod, "miktar": _ds(m), **({"varyant": planlama_varyant.etiket(vpk)} if vpk else {})}
+                              for (pk, vpk), m in sorted(kok_alt.items(), key=lambda x: (x[0][0], x[0][1] or 0))]
     yeni_termin = emir.termin if termin is _VARSAYILAN else termin
     yeni_oncelik = emir.oncelik if oncelik is _VARSAYILAN else oncelik
     if (yeni_termin, yeni_oncelik) != (emir.termin, emir.oncelik):                          # termin/öncelik revizeyle birlikte değişti
