@@ -26,16 +26,13 @@ SIFIR = Decimal("0")
 BIR = Decimal("1")
 KARSILASTIR_EN_FAZLA = 8
 
-SERI_ONEKI = {"A": "152-10-", "C": "152-22-"}
-SERI_AD = {"A": "A tipi", "C": "Çift çıkış", "DIGER": "Diğer"}
-SERI_SIRA = ("A", "C", "DIGER")
+# Seri tanımı TEK yerde: core.services.seri (SERILER defteri) — Operasyon Tanımları ile ortak; yeni seri orada bir satırdır.
+from core.services import seri as seri_defteri
 
-
-def seri_of(kod: str) -> str:
-    for seri, onek in SERI_ONEKI.items():
-        if (kod or "").startswith(onek):
-            return seri
-    return "DIGER"
+SERI_ONEKI = seri_defteri.ONEK
+SERI_AD = seri_defteri.URUN_AD
+SERI_SIRA = seri_defteri.URUN_SIRA
+seri_of = seri_defteri.seri_of_kod
 
 
 class Graf:
@@ -126,7 +123,7 @@ def _grupla(satirlar, anahtar_stok):
 
 
 def urun_secenekleri(graf: Graf):
-    """Ürün seçici için gruplu seçenekler: [(grup adı, [(pk, "kod  ad"), ...]), ...] — Bitmiş ürünler (A / Çift çıkış / Diğer), Ara parçalar."""
+    """Ürün seçici için gruplu seçenekler: [(grup adı, [(pk, "kod  ad"), ...]), ...] — Bitmiş ürünler (seri defterindeki her seri + Diğer), Ara parçalar."""
     kokler = graf.kokler()
     kok_idler = {s.pk for s in kokler}
     gruplar = []
@@ -491,7 +488,7 @@ def nerede_kullaniliyor(graf: Graf, stok) -> dict:
 # --- 3. KARŞILAŞTIR ---------------------------------------------------------------------------------------------------------
 
 def karsilastir_urunleri(graf: Graf, seri: str = "", urun_idler=()):
-    """(ürünler, uyarı): ``seri`` A/C ise o serinin bitmiş ürünleri; yoksa elle seçilen (en çok 8) operasyonlu stoklar."""
+    """(ürünler, uyarı): ``seri`` seri defterinde tanımlıysa (A/C/CS…) o serinin bitmiş ürünleri; yoksa elle seçilen (en çok 8) operasyonlu stoklar."""
     kokler = graf.kokler()
     uyari = ""
     if seri in SERI_ONEKI:

@@ -166,10 +166,12 @@ def aktif_operasyonlar():
             .order_by("istasyon__kod", "cikti__kod"))
 
 
-# === Operasyon Tanımları LİSTESİ: seri (A/C/ortak), bağlantı, filtre, sekme, özet — tek yükleme, bellekte, sabit sorgu sayısı ===
+# === Operasyon Tanımları LİSTESİ: seri (A/C/CS/ortak…), bağlantı, filtre, sekme, özet — tek yükleme, bellekte, sabit sorgu sayısı ===
+# Seri tanımı TEK yerde: core.services.seri (SERILER defteri) — yeni seri orada bir satırdır.
 
-SERI_ETIKET = {"A": "A tipi", "C": "C tipi", "ORTAK": "Ortak", "DIGER": "Diğer", "BAGLANTISIZ": "Bağlantısız"}
-SERI_KOK_ONEKI = {"A": "152-10-", "C": "152-22-"}      # bitmiş ürün (kök) kodu öneki → seri
+from core.services import seri as seri_defteri
+
+SERI_ETIKET = seri_defteri.LISTE_ETIKET        # {"A": "A tipi", "C": "C tipi", "CS": "CS tipi", "ORTAK": …, "DIGER": …, "BAGLANTISIZ": …}
 
 
 def operasyonlari_yukle() -> list:
@@ -201,9 +203,10 @@ def ureten_operasyon(stok) -> Operasyon | None:
 
 
 def operasyon_serileri(operasyonlar=None) -> dict:
-    """{operasyon.pk: "A" | "C" | "ORTAK" | "DIGER" | "BAGLANTISIZ"}. Her operasyonun çıktısından (ana + yan çıktılar) zincir YUKARI izlenir: bir stoğu
-    girdi ya da yan çıktı olarak kullanan operasyonların ana çıktısına geçilir → … → artık hiçbir operasyonun kullanmadığı uç stok. Uç stok kodu
-    152-10-* ise kök A, 152-22-* ise C; ulaşılan kökler arasında ikisi de varsa ORTAK, başka 152-* kök varsa DIGER, hiç kök yoksa BAGLANTISIZ.
+    """{operasyon.pk: seri kodu ("A" | "C" | "CS" | … | "ORTAK" | "DIGER" | "BAGLANTISIZ")}. Her operasyonun çıktısından (ana + yan çıktılar) zincir YUKARI
+    izlenir: bir stoğu girdi ya da yan çıktı olarak kullanan operasyonların ana çıktısına geçilir → … → artık hiçbir operasyonun kullanmadığı uç stok. Uç stok
+    kodunun serisi seri defterinden (core.services.seri) gelir; ulaşılan kökler tek seriyse o seri, iki ya da daha fazla seriyse ORTAK, serisi tanımsız başka
+    152-* kök varsa DIGER, hiç kök yoksa BAGLANTISIZ.
     Tüm aktif operasyonlar için TEK seferde, bellekte (``operasyonlar`` verilirse sorgu yok)."""
     operasyonlar = operasyonlari_yukle() if operasyonlar is None else operasyonlar
     kullanan = {}                                          # stok pk -> {operasyon pk} (girdi VEYA yan çıktı olarak kullanan)
@@ -239,10 +242,7 @@ def operasyon_serileri(operasyonlar=None) -> dict:
         anahtar = frozenset(baslar)
         if anahtar not in kok_memo:
             kok_memo[anahtar] = kokler(baslar)
-        k = kok_memo[anahtar]
-        a = any(x.startswith(SERI_KOK_ONEKI["A"]) for x in k)
-        c = any(x.startswith(SERI_KOK_ONEKI["C"]) for x in k)
-        sonuc[op.pk] = "ORTAK" if (a and c) else "A" if a else "C" if c else ("DIGER" if k else "BAGLANTISIZ")
+        sonuc[op.pk] = seri_defteri.sinifla(kok_memo[anahtar])
     return sonuc
 
 

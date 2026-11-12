@@ -134,6 +134,7 @@ from core.services import cek as cek_servis
 from core.services import firma as firma_servis
 from core.services import fason as fason_servis
 from core.services import uretim as uretim_servis
+from core.services import seri as seri_defteri
 from core.services import uretim_fire as uretim_fire_servis
 from core.services import planlama_varyant as planlama_varyant_servis
 from core.services import atolye as atolye_servis
@@ -8070,12 +8071,12 @@ def is_istasyonu_sil(request, pk):
 # --- Operasyon Tanımları ---
 @ekran_gerekli("operasyon_tanimlari")
 def operasyon_tanimlari(request):
-    """Operasyon Tanımları listesi: ?ara= (çıktı/girdi/yan çıktı kod-ad), ?istasyon=<pk> (sekme), ?seri=A|C|ORTAK|BAGLANTISIZ, ?tam_boy=1,
+    """Operasyon Tanımları listesi: ?ara= (çıktı/girdi/yan çıktı kod-ad), ?istasyon=<pk> (sekme), ?seri=<seri kodu: A|C|CS…|ORTAK|BAGLANTISIZ — core.services.seri>, ?tam_boy=1,
     ?yan_cikti=1, ?baglantisiz=1, ?kullanan=<operasyon pk> (bu operasyonun çıktısını girdi olarak kullananlar). Hepsi birlikte çalışır, URL'de kalır."""
     from urllib.parse import urlencode
     g = request.GET
     ara, istasyon, seri = (g.get("ara") or "").strip(), g.get("istasyon") or "", (g.get("seri") or "").upper()
-    seri = seri if seri in ("A", "C", "ORTAK", "BAGLANTISIZ") else ""
+    seri = seri if seri in seri_defteri.FILTRE_KODLARI else ""
     tam_boy, yan_cikti, baglantisiz = g.get("tam_boy") == "1", g.get("yan_cikti") == "1", g.get("baglantisiz") == "1"
     kullanan = g.get("kullanan") or ""
     veri = uretim_servis.operasyon_liste(ara=ara, istasyon=istasyon or None, seri=seri, tam_boy=tam_boy, yan_cikti=yan_cikti,
@@ -8093,7 +8094,7 @@ def operasyon_tanimlari(request):
         {"ad": x["ad"], "kod": x["kod"], "sayi": x["sayi"], "aktif": secili is not None and secili["pk"] == x["pk"], "url": url(istasyon=x["pk"])}
         for x in veri["sekmeler"]]
     ozet = veri["ozet"]
-    seri_secenekleri = [("", "Tüm seriler"), ("A", "A tipi"), ("C", "C tipi"), ("ORTAK", "Ortak"), ("BAGLANTISIZ", "Bağlantısız")]
+    seri_secenekleri = seri_defteri.filtre_secenekleri()
     return render(request, "core/operasyon_tanimlari.html", {
         **veri, "sekmeler_url": sekmeler, "ara": ara, "seri": seri, "seri_secenekleri": seri_secenekleri, "tam_boy": tam_boy, "yan_cikti": yan_cikti,
         "baglantisiz": baglantisiz, "istasyon": istasyon if secili else "", "filtre_var": bool(temel or secili),
@@ -8391,7 +8392,7 @@ def urun_agaci(request):
                     "baslik_yazdir": f"Nerede kullanılıyor: {stok.kod} {stok.ad}" if stok else ""})
 
     else:
-        seri = g.get("seri") if g.get("seri") in ("A", "C") else ""
+        seri = g.get("seri") if g.get("seri") in seri_defteri.KODLAR else ""
         mod = "maliyet" if g.get("mod") == "maliyet" else "miktar"
         pb = "USD" if g.get("pb") == "USD" else "TL"
         idler = [int(x) for x in g.getlist("urunler") if x.isdigit()]
@@ -8402,7 +8403,7 @@ def urun_agaci(request):
             sonuclar = [sonuc] if mod == "miktar" else [urun_agaci_servis.karsilastir(graf, urunler, mod, x, tarih=fason_tarih)
                                                         for x in ("TL", "USD")]
             return _xlsx_yanit(urun_agaci_xlsx.karsilastir_xlsx(sonuclar), f"karsilastir_{seri or 'secim'}_{mod}")
-        ctx.update({"seri": seri, "mod": mod, "pb": pb, "pb_url_tl": url(pb="TL"), "pb_url_usd": url(pb="USD"), "urunler_secili": {u.pk for u in urunler}, "uyari": uyari, "sonuc": sonuc,
+        ctx.update({"seri": seri, "seri_listesi": seri_defteri.karsilastir_secenekleri(), "mod": mod, "pb": pb, "pb_url_tl": url(pb="TL"), "pb_url_usd": url(pb="USD"), "urunler_secili": {u.pk for u in urunler}, "uyari": uyari, "sonuc": sonuc,
                     "kok_gruplar": kok_gruplar, "sonuc_var": bool(sonuc), "en_fazla": urun_agaci_servis.KARSILASTIR_EN_FAZLA,
                     "mod_url_miktar": url(mod="miktar"), "mod_url_maliyet": url(mod="maliyet"),
                     "xlsx_url": url(xlsx="1") if sonuc else None,

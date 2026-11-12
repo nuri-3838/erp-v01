@@ -146,7 +146,7 @@ class FiltreTest(ListeBase):
     def test_ozet(self):
         o = operasyon_liste()["ozet"]
         self.assertEqual(o, {"toplam": 9, "tam_boy": 5, "yan_cikti": 1, "baglantisiz": 1})
-        self.assertEqual(operasyon_liste()["seri_dagilimi"], {"A": 3, "C": 4, "ORTAK": 1, "DIGER": 0, "BAGLANTISIZ": 1})
+        self.assertEqual(operasyon_liste()["seri_dagilimi"], {"A": 3, "C": 4, "CS": 0, "ORTAK": 1, "DIGER": 0, "BAGLANTISIZ": 1})
 
     def test_girdi_ozeti(self):
         satir = {r["op"].cikti.kod: r for r in operasyon_liste()["satirlar"]}

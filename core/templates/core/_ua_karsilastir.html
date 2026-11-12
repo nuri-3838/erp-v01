@@ -8,8 +8,7 @@
         <label for="ua-seri">Seri</label>
         <select name="seri" id="ua-seri">
           <option value="">Elle seçim (en fazla {{ en_fazla }} ürün)</option>
-          <option value="A"{% if seri == "A" %} selected{% endif %}>A tipi (152-10)</option>
-          <option value="C"{% if seri == "C" %} selected{% endif %}>Çift çıkış (152-22)</option>
+          {% for kod, ad in seri_listesi %}<option value="{{ kod }}"{% if seri == kod %} selected{% endif %}>{{ ad }}</option>{% endfor %}
         </select>
       </div>
       <div class="ua-alan">
