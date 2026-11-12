@@ -429,25 +429,31 @@ def _mizan_bakiyesi(kod):
 
 
 def degerleme_raporu() -> dict:
-    """Kart bazında miktar/ortalama/değer + 150-153 mizan karşılaştırması. Geçici (fiyatsız)
-    girişlerin değeri mizan karşılaştırmasından DÜŞÜLÜR (henüz faturası/fişi yok). Muhasebe
-    hesabı kategori eşlemesinden bulunamayan kartlar 'TANIMSIZ' grubunda ayrı gösterilir."""
+    """Kart bazında miktar/ortalama/değer + 150-153 mizan karşılaştırması. Geçici = henüz MİZANA GİRMEMİŞ tahmini değerler (fiyatsız irsaliye / elle girişler ve
+    faturası gelmemiş fason bedeli); mizan karşılaştırmasından DÜŞÜLÜR. ÜRETİM girişlerinin 'tahmini' bayrağı GEÇİCİ SAYILMAZ: üretim girişi maliyet aktarım fişiyle
+    mizana yazılıdır, tahmin yalnız kaynağında (irsaliye/elle giriş/fason bedeli) kalır — aksi halde aynı tahmin zincirin her halkasında yeniden sayılır ve bayat
+    bayraklar (GEÇİCİ→KESİN olan girdiden sonra yenilenmemiş çıktı işareti) sahte fark üretir. Geçici tutar tüketildikçe DÜŞMEZ: tüketim fişi aynı tutarı hesaptan
+    zaten çıkarmıştır (orantılı düşülürse mizan farkı sahte çıkar); fatura gelince kendiliğinden kapanır. Muhasebe hesabı kategori eşlemesinden bulunamayan
+    kartlar 'TANIMSIZ' grubunda ayrı gösterilir."""
     from core.services import kategori as kategori_servis
     kartlar = (Stok.objects.filter(silindi=False, kategori__hizmet_kategorisi=False)         # hizmet kartları stok değerine girmez
                .filter(Q(hareketler__silindi=False) | ~Q(maliyet_miktar=0)).distinct()
                .select_related("uretim_birimi", "kategori").order_by("kod"))
+    # Fişi olmayan GİRİŞLER: fiyatsız irsaliye girişi (mevcut ortalamayla tahmini değerli) ve fiyatsız elle giriş. Üretim / transfer / iade / sayım / düzeltme
+    # girişleri fişlidir ya da net sıfırdır — GEÇİCİ işareti taşısalar da (yayılan ya da bayat bayrak) geçici sayılmaz.
     gecici = {r["stok_id"]: r["t"] for r in StokHareket.objects.filter(
-        silindi=False, tur=GIRIS, maliyet_durumu=GECICI).values("stok_id").annotate(t=Sum("tutar_try"))}
-    # FASON: faturası gelmemiş fason bedeli 'tahmini'dir; mizanda YOKTUR (fason faturası 151 alt hesabına borç yazar). Çıktı girişi tahmini
-    # sayıldığından tutarının TAMAMI 'geçici' düşer; oysa malzeme payı fişle mizana girmiştir → geçiciden yalnız fason payı düşülür (malzeme
-    # de tahminiyse eskisi gibi tamamı). Böylece stok değeri − mizan farkı (``ham_fark``) tam olarak bekleyen fason bedeline eşit olur.
+        silindi=False, tur=GIRIS, maliyet_durumu=GECICI, giris_ortalama=False,
+        kaynak__in=(StokHareket.Kaynak.IRSALIYE, StokHareket.Kaynak.MANUEL)).values("stok_id").annotate(t=Sum("tutar_try"))}
+    # FASON: faturası gelmemiş (tahakkuksuz) fason bedeli 'tahmini'dir; mizanda YOKTUR (fason faturası 151 alt hesabına borç yazar). Çıktı girişinin malzeme
+    # payı fişle mizana girmiştir → geçici yalnız fason payıdır (malzeme tahminli olsa bile). Faturasız fasoncuda tahakkuk fişi yazılmış dönüş
+    # ``bekleyen_ciktilar``a girmez (bedel kesin). Böylece stok değeri − mizan farkı (``ham_fark``) tam olarak bekleyen fason bedeline eşit olur.
     from core.services.fason_maliyet import bekleyen_ciktilar
     fason_bekleyen = {}                                   # stok_id -> bekleyen fason bedeli (TL)
     for b in bekleyen_ciktilar():
         c, h = b["cikti"], b["hareket"]
         fason_bekleyen[c.stok_id] = fason_bekleyen.get(c.stok_id, SIFIR) + c.fason_tutar
-        if h is not None and h.maliyet_durumu == GECICI and not b["malzeme_tahmini"]:
-            gecici[c.stok_id] = gecici.get(c.stok_id, SIFIR) - (h.tutar_try or SIFIR) + min(h.tutar_try or SIFIR, c.fason_tutar)
+        if h is not None:
+            gecici[c.stok_id] = gecici.get(c.stok_id, SIFIR) + min(h.tutar_try or SIFIR, c.fason_tutar)
     yok = {r["stok_id"]: r["n"] for r in StokHareket.objects.filter(
         silindi=False, maliyet_durumu=YOK).values("stok_id").annotate(n=Count("id"))}
     hesap_onbellek = {}
