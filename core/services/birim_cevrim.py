@@ -17,6 +17,13 @@ def katsayi(stok) -> Decimal:
     return Decimal("1") / cevirici
 
 
+def uretim_birim_fiyati(stok, fatura_birimi_fiyati) -> Decimal:
+    """FATURA birimindeki birim fiyatı (kart alış fiyatı, belge satırı birim fiyatı) ÜRETİM birimi fiyatına çevirir. ``cevirici`` = 1 üretim birimi kaç fatura birimi
+    olduğundan (1 ADET = 0,13469 KG) üretim birimi fiyatı = fatura birimi fiyatı × çevirici (2,30 USD/KG → 0,3098 USD/AD). İrsaliye girişinin maliyeti
+    (``tutar ÷ (miktar ÷ çevirici)``) ile aynı çevrimdir; yuvarlama çağıranındır (tam hassasiyet döner)."""
+    return Decimal(fatura_birimi_fiyati) * (stok.cevirici or Decimal("1"))
+
+
 def asiri_mi(stok) -> bool:
     """Çevrim katsayısı ``ASIRI_KATSAYI`` katını aşıyor mu (büyütme ya da küçültme yönünde)?"""
     k = katsayi(stok)

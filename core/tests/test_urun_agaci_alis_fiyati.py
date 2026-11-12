@@ -49,6 +49,22 @@ class BirimMaliyetTest(KullanimBase):
         b = ua.birim_maliyet(kart("X", 2, "TRY"), {"USD": (D("3"), date(2026, 10, 9))})
         self.assertEqual(b["usd"], D("0.666667"))
 
+    def test_kart_fiyati_fatura_birimindeyse_uretim_birimine_cevrilir(self):
+        """150-60-0003 NAYLON vakası: 2,30 USD/KG, çevirici 0,13469 (1 AD = 0,13469 KG) → 0,309787 USD/AD (2,30 USD/AD DEĞİL)."""
+        b = ua.birim_maliyet(kart("NYL", "2.30", "USD", cevirici=D("0.13469")), self.KURLAR)
+        self.assertEqual((b["kaynak"], b["usd"], b["try"]), ("KART", D("0.309787"), D("12.39148")))
+        b = ua.birim_maliyet(kart("BORU", 25, "TRY", cevirici=D("3")), self.KURLAR)                   # 25 TL/MT, 1 BOY = 3 MT → 75 TL/BOY
+        self.assertEqual((b["try"], b["usd"]), (D("75"), D("1.875")))
+        b = ua.birim_maliyet(kart("X", 10, "EUR", cevirici=D("0.5")), self.KURLAR)
+        self.assertEqual((b["try"], b["usd"]), (D("220"), D("5.5")))                                    # (10 × 0,5) EUR × 44
+        b = ua.birim_maliyet(kart("A", 7, "TRY", cevirici=D("1")), self.KURLAR)                        # çevirici 1: davranış aynı
+        self.assertEqual(b["try"], D("7"))
+
+    def test_ortalama_varsa_kart_fiyati_ve_cevirici_hic_kullanilmaz(self):
+        s = kart("NYL", "2.30", "USD", cevirici=D("0.13469"), ort_maliyet_try=D("14.26"), ort_maliyet_usd=D("0.29"))
+        b = ua.birim_maliyet(s, self.KURLAR)
+        self.assertEqual((b["kaynak"], b["try"], b["usd"]), ("ORTALAMA", D("14.26"), D("0.29")))
+
     def test_ikisi_de_yoksa_yok(self):
         for s in (kart("X", None), kart("X", 0)):
             b = ua.birim_maliyet(s, self.KURLAR)
@@ -102,6 +118,15 @@ class UrunMaliyetKaynakTest(KullanimBase):
         self.assertAlmostEqual(m["kart_pay"], D("10") / D("68") * 100, places=6)
         self.assertEqual(m["kur_notu"], "Alış fiyatı çevrimi: TCMB 10.10.2026, USD 40,0000")
         self.assertEqual(m["usd_eksik"], 0)
+
+    def test_kart_fiyati_ureten_birimine_cevrilir_maliyet_ekraninda(self):
+        """BOYA'nın kart fiyatı 10 TL FATURA biriminde, çevirici 0,5 (1 üretim birimi = 0,5 fatura birimi) → 1 adet tüketim 5 TL; toplam 50 + 8 + 5."""
+        Stok.objects.filter(pk=self.boya.pk).update(cevirici=D("0.5"))
+        m = self.maliyet()
+        s = self.satirlar(m)["BOYA"]
+        self.assertEqual((s["kaynak"], s["ort_try"], s["ort_usd"], s["tutar_try"]), ("KART", D("5"), D("0.125"), D("5")))
+        self.assertEqual(m["toplam_try"], D("63"))
+        self.assertEqual(m["kart_sayi"], 1)
 
     def test_tl_usd_ayri_toplamlar_ve_miktar(self):
         m = self.maliyet(miktar=D("10"))

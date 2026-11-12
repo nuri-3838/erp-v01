@@ -203,7 +203,8 @@ def birim_maliyet(stok, kurlar, fiyatsiz_girisli=frozenset()) -> dict:
          Ortalama yalnız fiyatlanmış girişlerden gelmişse geçerlidir: ortalama 0 ve kartta fiyatsız giriş varsa (irsaliye fatura bekliyor /
          manuel açılış — ``fiyatsiz_girisli``: fiyatsız girişi olan kart id kümesi, ``Graf.fiyatsiz_girisli``) ortalama SAYILMAZ, b)'ye
          düşülür ve ``ortalama_notu`` = "stokta maliyetsiz giriş var". Ortalama > 0 (fiyatlı + fiyatsız karışık) mevcut ortalamadır.
-      b) stok kartındaki alış fiyatı (+ para birimi), en güncel TCMB kuruyla çevrilir → "KART":
+      b) stok kartındaki alış fiyatı (+ para birimi), en güncel TCMB kuruyla çevrilir → "KART". Kart alış fiyatı FATURA BİRİMİ fiyatıdır; üretim birimi farklıysa önce
+         çeviriciyle ÜRETİM birimine çevrilir (``birim_cevrim.uretim_birim_fiyati``: 2,30 USD/KG × 0,13469 = 0,3098 USD/AD). Sonra para birimine göre:
            TRY: TL = fiyat, USD = fiyat / USD · USD: USD = fiyat, TL = fiyat × USD · EUR/GBP: TL = fiyat × kur, USD = TL / USD
          (gereken kur bulunamazsa yanlış rakam üretmek yerine "YOK" + uyarı)
       c) ikisi de yoksa → "YOK".
@@ -217,6 +218,8 @@ def birim_maliyet(stok, kurlar, fiyatsiz_girisli=frozenset()) -> dict:
         notu = ORTALAMA_NOTU
     fiyat = stok.alis_fiyati
     if fiyat:
+        from core.services import birim_cevrim
+        fiyat = birim_cevrim.uretim_birim_fiyati(stok, fiyat)          # kart fiyatı fatura birimindedir → üretim birimine
         pb = stok.alis_fiyati_pb or "TRY"
         tl, usd, gerekli, eksik = doviz_cevir(fiyat, pb, kurlar)
         if eksik:

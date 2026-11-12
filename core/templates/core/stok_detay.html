@@ -136,7 +136,7 @@
         <div class="ozet-not">Hareketli ağırlıklı ortalama (tüm depolar); maliyeti fatura belirler.</div>
       {% elif maliyet_belirsiz %}
         <div class="ozet-bos">Maliyet henüz belli değil (eldeki girişler fatura tutarıyla fiyatlanmamış: irsaliye fatura bekliyor / manuel açılış; sıfır ortalama gösterilmez).</div>
-        <div class="ozet-not">Ürün ağacı maliyetinde bu kart için ortalama yerine kart alış fiyatı kullanılır{% if stok.alis_fiyati %}: <span class="mono">{{ stok.alis_fiyati|tr_kur:4 }}</span> {{ stok.alis_fiyati_pb }}{% else %} — alış fiyatı da tanımlı değil{% endif %}.</div>
+        <div class="ozet-not">Ürün ağacı maliyetinde bu kart için ortalama yerine kart alış fiyatı kullanılır{% if stok.alis_fiyati %}: <span class="mono">{{ stok.alis_fiyati|tr_kur:4 }}</span> {{ stok.alis_fiyati_pb }}{% if stok.cevirici != 1 %} / {{ stok.fatura_birimi.kisa_ad }} (fatura birimi; üretim birimi {{ stok.uretim_birimi.kisa_ad }} fiyatına çeviriciyle çevrilir){% endif %}{% else %} — alış fiyatı da tanımlı değil{% endif %}.</div>
       {% else %}
         <div class="ozet-bos">Maliyet henüz belli değil (fatura tutarıyla fiyatlanmış giriş yok).</div>
       {% endif %}
