@@ -6,6 +6,9 @@ satış maliyet fişi [620/621/623] / sarf / numune [760.06] fişleri — ``stok
 BORÇ / karşı hesap (ör. 770.08 ofis gideri) ALACAK, tarih = giriş tarihi, kaynak STOK_DUZELTME (elle silinemez/düzenlenemez; giriş silinirse iptal
 olur). İRSALİYE girişine fiş KESİLMEZ: faturası gelince ``irsaliye_girislerini_fiyatla`` fiyatı yerinde fatura tutarıyla ezer ve fatura fişi oluşur.
 
+İRSALİYE girişi fiyatlanırken irsaliye KALEMİNİN birim fiyatı da (0 ise, TL belgede, çeviricisiz kalemde) aynı fiyata yazılır (satır fiyatı → giriş maliyeti
+tutarlı); irsaliye faturalanmamıştır, muhasebe kaydı yoktur → carinin bakiyesi DEĞİŞMEMELİDİR (kontrol edilir; değişirse işlem geri alınır).
+
 Varsayılan DRY-RUN: her şey bir transaction içinde gerçekten yapılır, fark raporu alınır ve GERİ ALINIR (kalıcı hiçbir şey yazılmaz). ``--uygula`` kalıcı
 uygular (kullanıcı onayıyla). Rapor: fiyatlanan girişler, yeni fişler, tutarı değişen çıkış/giriş hareketleri, ortalama maliyeti değişen kartlar,
 150/151/152/620/621/623/760/770 mizan farkları, 150-153 stok değeri farkları, değişen fiş sayısı ve uygulama sonrası stok değeri = mizan kontrolü
@@ -71,6 +74,30 @@ def _stok_degerleri():
     return {k["kod"]: k["toplam_deger"] for k in d["karsilastirma"]}
 
 
+def _cari_bakiye(cari):
+    """Carinin muhasebe hesabındaki ALACAK − BORÇ (silinmemiş fişler); muhasebe hesabı yoksa None."""
+    if not cari.muhasebe_kodu:
+        return None
+    t = YevmiyeSatir.objects.filter(silindi=False, fis__silindi=False, hesap__hesap_kodu=cari.muhasebe_kodu).aggregate(b=Sum("borc"), a=Sum("alacak"))
+    return (t["a"] or SIFIR) - (t["b"] or SIFIR)
+
+
+def _kalem_fiyatini_yaz(h, fiyat, stok):
+    """İrsaliye girişinin kalemi: birim_fiyat 0 ise ``fiyat``a yazılır (yalnız TL belge + çeviricisiz kart + miktar tutarlıysa — kalem fiyatı fatura birimindedir).
+    Döner: (kalem satırı bilgisi | None, atlanma nedeni | "")."""
+    k = h.teklif_siparis_kalem
+    ts = k.teklif_siparis
+    if k.birim_fiyat != 0:
+        return None, f"kalem fiyatı zaten {k.birim_fiyat.normalize():f} (dokunulmadı)"
+    if ts.para_birimi != "TRY":
+        return None, f"belge para birimi {ts.para_birimi}; TL fiyat kalem fiyatı olarak yazılmadı"
+    if (stok.cevirici or Decimal("1")) != 1 or (k.uretim_miktar is not None and k.uretim_miktar != k.miktar):
+        return None, "kalem miktarı/birimi üretim miktarından farklı (çevirici); kalem fiyatı yazılmadı"
+    k.birim_fiyat = fiyat
+    k.save(update_fields=["birim_fiyat", "updated_at"])
+    return {"belge": ts, "kalem": k, "stok": stok, "eski": SIFIR, "yeni": fiyat, "tutar": k.tutar}, ""
+
+
 def duzelt(ciftler, *, fisler=None, uygula=False) -> dict:
     """``ciftler``: [(stok kodu, birim fiyat TL)]; ``fisler``: {stok kodu: (karşı hesap kodu, açıklama)}.
     Transaction içinde uygular, raporu döner; ``uygula=False`` ise geri alır."""
@@ -112,12 +139,19 @@ def _isle(ciftler, fisler):
     karsi_hesaplar = {kod: (_karsi_hesap(hesap), aciklama) for kod, (hesap, aciklama) in fisler.items()}
 
     fiyatlanan, yeni_fisler, fissiz, hata = [], [], [], None
+    kalemler, kalem_atlanan, once_cari = [], [], {}
+    for kod, fiyat in ciftler:                                     # irsaliye girişlerinin carileri: bakiyeleri ÖNCE alınır
+        for h in StokHareket.objects.filter(stok__kod=kod, silindi=False, tur=StokHareket.Tur.GIRIS, giris_tutar_try__isnull=True,
+                                            kaynak=StokHareket.Kaynak.IRSALIYE, teklif_siparis_kalem__isnull=False).select_related("teklif_siparis_kalem__teklif_siparis__cari"):
+            c = h.teklif_siparis_kalem.teklif_siparis.cari
+            once_cari.setdefault(c.pk, (c, _cari_bakiye(c)))
     for kod, fiyat in ciftler:
         stok = Stok.objects.filter(kod=kod, silindi=False).first()
         if stok is None:
             raise CommandError(f"Stok bulunamadı: {kod}")
         girisler = list(StokHareket.objects.filter(stok=stok, silindi=False, tur=StokHareket.Tur.GIRIS, giris_tutar_try__isnull=True)
-                        .exclude(kaynak=StokHareket.Kaynak.TRANSFER).order_by("tarih", "pk"))
+                        .exclude(kaynak=StokHareket.Kaynak.TRANSFER).order_by("tarih", "pk")
+                        .select_related("teklif_siparis_kalem__teklif_siparis"))
         for h in girisler:
             tutar = yuvarla(h.miktar * fiyat, 2)
             kur = kur_usd_bul(h.tarih)
@@ -125,6 +159,12 @@ def _isle(ciftler, fisler):
             h.giris_tutar_usd = yuvarla(tutar / kur, 2) if kur else None
             h.save(update_fields=["giris_tutar_try", "giris_tutar_usd", "updated_at"])
             fiyatlanan.append({"stok": stok, "hareket": h, "fiyat": fiyat, "tutar": tutar})
+            if h.kaynak == StokHareket.Kaynak.IRSALIYE and h.teklif_siparis_kalem_id:
+                satir, neden = _kalem_fiyatini_yaz(h, fiyat, stok)
+                if satir:
+                    kalemler.append(satir)
+                else:
+                    kalem_atlanan.append({"hareket": h, "kalem": h.teklif_siparis_kalem, "neden": neden})
             if h.kaynak == StokHareket.Kaynak.IRSALIYE or h.fis_id:
                 fissiz.append({"stok": stok, "hareket": h, "tutar": tutar,
                                "neden": "irsaliye girişi: fatura gelince fiyat ve fiş faturadan" if h.kaynak == StokHareket.Kaynak.IRSALIYE else "fişi zaten var"})
@@ -164,7 +204,14 @@ def _isle(ciftler, fisler):
         toplam = sum((x["tutar"] for x in fissiz if x["stok"].pk == stok.pk), SIFIR)
         eldeki = stok.maliyet_deger_try or SIFIR
         aciklama_fissiz.append({"stok": stok, "toplam": toplam, "eldeki_miktar": stok.maliyet_miktar, "eldeki": eldeki, "tuketilen": toplam - eldeki})
+    cari = []
+    for c, once_b in once_cari.values():
+        sonra_b = _cari_bakiye(c)
+        cari.append({"cari": c, "once": once_b, "sonra": sonra_b})
+        if once_b != sonra_b:                                      # irsaliye faturalanmadı: muhasebe kaydı yok → bakiye sabit kalmalı; değişiyorsa durdur (atomik: geri alınır)
+            raise CommandError(f"{c.kod} {c.unvan}: cari bakiyesi değişiyor ({once_b} → {sonra_b}); irsaliye düzeltmesi bakiyeyi değiştirmemeli — işlem geri alındı.")
     return {"fiyatlanan": fiyatlanan, "yeni_fisler": yeni_fisler, "fissiz": fissiz, "degisen": degisen, "ort": ort, "hata": hata,
+            "kalemler": kalemler, "kalem_atlanan": kalem_atlanan, "cari": cari,
             "mizan": [(k, once_mizan[k], sonra_mizan[k], sonra_mizan[k] - once_mizan[k]) for k in MIZAN_HESAPLARI],
             "deger": [(k, once_deger.get(k, SIFIR), sonra_deger.get(k, SIFIR), sonra_deger.get(k, SIFIR) - once_deger.get(k, SIFIR))
                       for k in ("150", "151", "152", "153")],
@@ -204,6 +251,16 @@ class Command(BaseCommand):
         for x in r["fiyatlanan"]:
             h = x["hareket"]
             w(f"  hareket {h.pk} {h.tarih:%d.%m.%Y} {x['stok'].kod} {h.kaynak} {h.miktar.normalize():f} x {x['fiyat'].normalize():f} = {x['tutar']:,.2f} TL")
+        w(f"\nIRSALIYE KALEM FIYATLARI ({len(r['kalemler'])}; kalem birim fiyati 0 -> fiyat, KDV ayni)")
+        for x in r["kalemler"]:
+            w(f"  {x['belge'].belge_no} {x['belge'].tarih:%d.%m.%Y} {x['stok'].kod} kalem {x['kalem'].pk}: birim fiyat {x['eski'].normalize():f} -> {x['yeni'].normalize():f}"
+              f"  (kalem tutari {x['tutar']:,.2f} TL, KDV hariç)")
+        for x in r["kalem_atlanan"]:
+            w(f"  [atlandi] kalem {x['kalem'].pk}: {x['neden']}")
+        if r["cari"]:
+            w("\nCARI BAKIYESI (alacak - borc) — irsaliye faturalanmadi, degismemeli")
+            for x in r["cari"]:
+                w(f"  {x['cari'].kod} {x['cari'].unvan[:40]}: {x['once']} -> {x['sonra']}  {'= esit' if x['once'] == x['sonra'] else '<-- DEGISTI'}")
         w(f"\nYENI FISLER ({len(r['yeni_fisler'])}; giderden stoga aktarim, kaynak STOK_DUZELTME)")
         for x in r["yeni_fisler"]:
             f = x["fis"]
