@@ -8652,13 +8652,16 @@ def uretim_emri_detay(request, pk):
     for a in ayirmalar:                                                   # varyantlı planda ayırma satırı varyantıyla gösterilir
         a.varyant_etiketi = varyant_servis.varyant_kisa(a.varyant) if (emir.varyantli_plan and a.varyant_id) else ""
     kalem_satirlari = []
+    tamamlandi = emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen   # stok ÜS'si %100: ayırmalar serbest
     for k, ayrilan_k, sevk_k in uretim_servis.kalem_ayrilan_sevk(emir, ayirmalar):
         hazir = ayrilan_k + sevk_k
         yuzde = min(Decimal("100"), hazir * 100 / k.hedef_miktar) if k.hedef_miktar else Decimal("0")
+        if tamamlandi:
+            yuzde = Decimal("100")                                                    # kapanmış stok ÜS'sinde ayırmalar serbest bırakılır: satır ilerlemesi de genel %100 ile tutarlı
         # Üretilecek, İlerleme ile AYNI mantık (2026-11-11): açık ÜS'de hedef − hazır (ayrılan + sevk); kapanmış stok ÜS'si 0; kapalı/iptal diğerlerinde eski snapshot (hedef − eldeki ayrılan).
         if emir.durum == UretimEmri.Durum.ACIK:
             uretilecek = max(Decimal("0"), k.hedef_miktar - ayrilan_k - sevk_k)
-        elif emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen:
+        elif tamamlandi:
             uretilecek = Decimal("0")
         else:
             uretilecek = max(Decimal("0"), k.hedef_miktar - k.eldeki_ayrilan)
@@ -8673,7 +8676,6 @@ def uretim_emri_detay(request, pk):
     if emir.durum == UretimEmri.Durum.ACIK:
         revize_url = (reverse("core:siparis_revize", args=[emir.kaynak_siparis_id]) if emir.kaynak_siparis_id
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
-    tamamlandi = emir.durum == UretimEmri.Durum.KAPALI and uretim_servis.stok_us_mu(emir) and not emir.sevk_dusen   # stok ÜS'si %100: ayırmalar serbest
     eksikler, eksik_tablosu = yukle.eksik_ve_tablo()
     # 2026-10-14 yeniden tasarım: üst bant + akış şeridi + sekmeler (core.services.us_detay — yalnız görünüm verisi; sorgu sayısı eskisinden az)
     bugun_tarih = timezone.localdate()

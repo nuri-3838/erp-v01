@@ -230,3 +230,32 @@ class DetayKalemSutunlariTest(UretilmisTaban):
         self.assertEqual(uretim.uretim_emri_yuzde(self.us), D("50"))
         liste = uretim.uretim_emirleri_ozet([UretimEmri.objects.get(pk=self.us.pk)])[self.us.pk]
         self.assertEqual(liste["yuzde"], D("50"))
+
+    def test_kapanmis_stok_us_satir_ilerlemesi_yuzde_100(self):
+        """Tüm kalemleri üretilen stok ÜS'si kapanır, ayırmalar serbest kalır; satır İlerleme de genel %100 ile tutarlı, Üretilecek 0."""
+        from django.contrib.auth import get_user_model
+        self.client.force_login(get_user_model().objects.create_superuser("us_yon2", password="x"))
+        self.us_ac((self.bukulmus, "5"), (self.mamul2, "5"))
+        self.uret(self.kesim_op)
+        self.uret(self.bukum_op)
+        self.uret(self.op2)
+        self.us.refresh_from_db()
+        self.assertEqual(self.us.durum, UretimEmri.Durum.KAPALI)
+        yanit = self.client.get(reverse("core:uretim_emri_detay", args=[self.us.pk]))
+        self.assertEqual(yanit.status_code, 200)
+        satirlar = yanit.context["kalemler"]
+        self.assertEqual(len(satirlar), 2)
+        for s in satirlar:
+            self.assertEqual((s["ayrilan"], s["uretilecek"], s["yuzde"]), (D("0"), D("0"), D("100")))
+        self.assertTrue(yanit.context["tamamlandi"])
+
+    def test_acik_us_satir_ilerlemesi_degismez(self):
+        from django.contrib.auth import get_user_model
+        self.client.force_login(get_user_model().objects.create_superuser("us_yon3", password="x"))
+        self.us_ac((self.bukulmus, "5"), (self.mamul2, "5"))
+        self.uret(self.kesim_op)
+        self.uret(self.bukum_op)
+        yanit = self.client.get(reverse("core:uretim_emri_detay", args=[self.us.pk]))
+        satirlar = {s["k"].hedef_urun.kod: s for s in yanit.context["kalemler"]}
+        self.assertEqual(satirlar["IK-BUKULMUS"]["yuzde"], D("100"))
+        self.assertEqual((satirlar["IK-MAMUL2"]["yuzde"], satirlar["IK-MAMUL2"]["uretilecek"]), (D("0"), D("5")))
