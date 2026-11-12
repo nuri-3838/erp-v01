@@ -1,11 +1,10 @@
 """maliyet_bayrak_duzelt (2026-11-12): girdisi artık tamamen KESİN olduğu hâlde 'tahmini/GEÇİCİ' kalmış BAYAT üretim girişi bayrakları temizlenir; YALNIZ bayraklar değişir —
-hareket tutarları, fişler, mizan, kart değerleri aynı kalır (doğrulanır, tutmazsa geri alınır); kuru çalıştırma iz bırakmaz; ikinci çalıştırma iş çıkarmaz."""
+hareket tutarları, fişler, mizan, kart değerleri aynı kalır (doğrulanır, tutmazsa geri alınır; komut tutar/önbellek hiç yazmaz); kuru çalıştırma iz bırakmaz; ikinci çalıştırma iş çıkarmaz."""
 from datetime import date
 from decimal import Decimal
 from io import StringIO
 
 from django.core.management import call_command
-from django.core.management.base import CommandError
 
 from core.models import StokHareket, YevmiyeFisi, YevmiyeSatir
 from core.services import maliyet_bayrak
@@ -91,12 +90,12 @@ class UygulamaTest(BayatBayrakTaban):
         self.assertIn("DÜZELEN HAREKET: 0", cikti)
         self.assertEqual(self.bayraklar(), once)
 
-    def test_tutar_degisecekse_islem_durur_ve_hicbir_sey_yazilmaz(self):
-        """Saklanan bir tutar önbelleği bozuksa (sıfırdan hesapla eşit değil) komut bayrak dışı değişikliği yazmaz: doğrulama başarısız → geri alınır."""
+    def test_saklanan_tutar_bozuksa_bile_yalniz_bayrak_yazilir_tutara_dokunulmaz(self):
+        """Komut tutar/önbellek HİÇ yazmaz (saf hesapla ile yalnız durum/bayrak): saklanan bir tutar önbelleği sıfırdan hesaptan farklı olsa bile aynen kalır."""
         self.kur_bayat()
         cikis = StokHareket.objects.get(operasyon_kaydi=self.k, tur=StokHareket.Tur.CIKIS)
-        StokHareket.objects.filter(pk=cikis.pk).update(tutar_try=cikis.tutar_try + DEC("1"))
-        once = (self.bayraklar(), self.sabit())
-        with self.assertRaisesMessage(CommandError, "hiçbir hareketin miktar/tutar"):
-            self.calistir("--uygula")
-        self.assertEqual((self.bayraklar(), self.sabit()), once)
+        StokHareket.objects.filter(pk=cikis.pk).update(tutar_try=cikis.tutar_try + DEC("1"), tutar_usd=cikis.tutar_usd + DEC("0.01"))
+        sabit_once = self.sabit()
+        self.calistir("--uygula")
+        self.assertEqual(self.sabit(), sabit_once)                                                         # bozuk tutar bozuk haliyle: komut düzeltmeye çalışmaz
+        self.assertEqual(maliyet_bayrak.bayat_bayraklar(), [])

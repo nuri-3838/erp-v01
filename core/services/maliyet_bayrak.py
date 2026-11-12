@@ -2,8 +2,10 @@
 
 Girdi çıkışı GEÇİCİ→KESİN olduğunda (fasoncu tahakkuku, fiyat/fatura gelince; tutar aynı) motor eskiden sonraki üretimi yenilemiyordu: üretim girişlerinde ``giris_tahmini`` /
 ``maliyet_durumu`` bayat 'tahmini' işaretleri kaldı. Motor artık durum değişimini de yayıyor (stok_ortalama.yeniden_hesapla); bu komut GEÇMİŞTE kalmış bayatları temizler:
-tüm onaylı üretim kayıtları tarih sırasıyla ``uretim_senkronla`` ile (çıktı bayrağı girdi çıkışlarının güncel durumundan türer), ardından tüm kartlar ``yeniden_hesapla`` ile
-(değişen durum aşağı zincire yayılır); bayrak kümesi duruncaya kadar turlanır.
+iki adım turlanır (bayrak kümesi duruncaya kadar): (1) her onaylı üretim kaydının çıktı girişi ``giris_tahmini`` bayrağı, girdi çıkışlarının güncel durumundan
+(beklenen = girdi çıkışlarından biri KESİN değil VEYA faturasız/tahakkuksuz fason bedeli bekliyor) yazılır; (2) her kartın hareket DURUMLARI saf ``hesapla`` ile bellekte
+hesaplanır, yalnız ``maliyet_durumu`` farkı yazılır. Tutar/fiş/kart önbelleğine HİÇ yazılmaz (tam yeniden hesap, USD önbelleğinde ±0,01 yuvarlama farkı üretiyordu —
+canlı kuru çalıştırmada 83 hareket — bu yüzden kullanılmıyor).
 
 YALNIZ bayraklar değişir. Tek atomik işlem; ``uygula=False`` ise GERİ ALINIR. Doğrulama (biri tutmazsa MaliyetBayrakHatasi, hiçbir şey kaydedilmez): hiçbir hareketin miktar/tutar/
 giriş tutarı/sonrası alanı değişmedi, aktif fiş satırları (hesap/borç/alacak) ve fiş kümesi aynı, mizan aynı, kart miktar-değer-ortalama aynı, bayat bayrak kalmadı."""
@@ -16,12 +18,12 @@ from django.db import transaction
 from django.db.models import Max, Sum
 
 from core.models import OperasyonKaydi, Stok, StokHareket, YevmiyeFisi, YevmiyeSatir
-from core.services import stok_fis, stok_ortalama
+from core.services import stok_ortalama
 from core.services.fason_maliyet import fason_bekliyor
 
 SIFIR = Decimal("0")
 GIRIS, CIKIS, KESIN = StokHareket.Tur.GIRIS, StokHareket.Tur.CIKIS, StokHareket.MaliyetDurumu.KESIN
-EN_FAZLA_TUR = 8
+EN_FAZLA_TUR = 24                   # zincir derinliği kadar tur (ham → kesilmiş → boyalı → birleştirme → paketsiz → mamul …); her tur bir seviye yayar
 
 
 class MaliyetBayrakHatasi(ValueError):
@@ -71,9 +73,9 @@ def _kartlar():
     return {s.pk: (s.maliyet_miktar, s.maliyet_deger_try, s.ort_maliyet_try) for s in Stok.objects.filter(silindi=False)}
 
 
-def bayat_bayraklar() -> list:
-    """Onaylı üretim kayıtlarının çıktı girişlerinden bayrağı BEKLENENDEN farklı olanlar: beklenen = girdi çıkışlarından biri KESİN değil VEYA (fason bedeli faturasız/tahakkuksuz
-    bekliyor ve bu çıktının fason bedeli > 0). [(hareket pk, stok kodu, kayıt no, saklanan, beklenen)]."""
+def beklenen_bayraklar() -> list:
+    """Onaylı üretim kayıtlarının çıktı girişleri için [(hareket pk, stok kodu, kayıt no, saklanan giris_tahmini, beklenen)]; beklenen = girdi çıkışlarından biri KESİN değil
+    VEYA (fason bedeli faturasız/tahakkuksuz bekliyor ve bu çıktının fason bedeli > 0) — ``stok_fis.uretim_senkronla`` ile aynı kural."""
     sonuc = []
     kayitlar = (OperasyonKaydi.objects.filter(silindi=False, durum=OperasyonKaydi.Durum.ONAYLI)
                 .select_related("fason_donus__fatura", "fason_donus__tahakkuk_fis").order_by("tarih", "pk"))
@@ -86,9 +88,37 @@ def bayat_bayraklar() -> list:
             if h.tur != GIRIS:
                 continue
             beklenen = girdi_tahmini or (bekliyor and fason.get(h.stok_id, SIFIR) > 0)
-            if bool(h.giris_tahmini) != beklenen:
-                sonuc.append((h.pk, h.stok.kod, k.no, bool(h.giris_tahmini), beklenen))
+            sonuc.append((h.pk, h.stok.kod, k.no, bool(h.giris_tahmini), beklenen))
     return sonuc
+
+
+def bayat_bayraklar() -> list:
+    """Bayrağı BEKLENENDEN farklı üretim girişleri (bkz. ``beklenen_bayraklar``): [(hareket pk, stok kodu, kayıt no, saklanan, beklenen)]."""
+    return [x for x in beklenen_bayraklar() if x[3] != x[4]]
+
+
+def _bayraklari_yaz() -> int:
+    """Çıktı girişi ``giris_tahmini`` bayraklarını beklenene çeker (yalnız o alan; updated_at'e dokunmaz). Değişen sayısı."""
+    bayat = bayat_bayraklar()
+    for beklenen in (True, False):
+        idler = [x[0] for x in bayat if x[4] is beklenen]
+        if idler:
+            StokHareket.objects.filter(pk__in=idler).update(giris_tahmini=beklenen)
+    return len(bayat)
+
+
+def _durumlari_yaz() -> int:
+    """Her kartın hareket DURUMLARINI saf ``hesapla`` ile bellekte hesaplar; yalnız ``maliyet_durumu`` farkını yazar (tutar/önbellek yazılmaz). Değişen sayısı."""
+    hedef = defaultdict(list)                                # yeni durum -> [hareket pk]
+    for stok in Stok.objects.filter(silindi=False):
+        hareketler = stok_ortalama.kart_hareketleri(stok)
+        for _varyant, grup in stok_ortalama._varyant_gruplari(stok, hareketler):
+            for h, s in zip(grup, stok_ortalama.hesapla(grup)):
+                if h.maliyet_durumu != s.durum:
+                    hedef[s.durum].append(h.pk)
+    for durum, idler in hedef.items():
+        StokHareket.objects.filter(pk__in=idler).update(maliyet_durumu=durum)
+    return sum(len(v) for v in hedef.values())
 
 
 # ------------------------------------------------------------------------------------------------------------ işlem
@@ -101,10 +131,8 @@ def _isle() -> dict:
     deger_once = {k["kod"]: (k["toplam_deger"], k["gecici"], k["mizan"], k["fark"]) for k in degerleme_raporu()["karsilastirma"]}
     turlar, onceki = [], once_bayrak
     for tur in range(1, EN_FAZLA_TUR + 1):
-        for kayit in OperasyonKaydi.objects.filter(silindi=False, durum=OperasyonKaydi.Durum.ONAYLI).select_related("operasyon").order_by("tarih", "pk"):
-            for stok in stok_fis.uretim_senkronla(kayit):
-                stok_ortalama.yeniden_hesapla(stok)
-        stok_ortalama.tum_kartlari_yeniden_hesapla()
+        _bayraklari_yaz()                                   # 1) çıktı bayrağı ← girdi çıkışlarının güncel durumu
+        _durumlari_yaz()                                    # 2) kart durumları ← bayraklar (saf hesapla; yalnız durum yazılır)
         simdiki = _bayraklar()
         turlar.append(sum(1 for pk, v in simdiki.items() if onceki.get(pk) != v))
         if simdiki == onceki:
