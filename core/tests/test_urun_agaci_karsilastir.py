@@ -147,14 +147,14 @@ class MatrisEkranTest(KarsilastirBase):
         self.assertEqual(self.al(seri="Z", mod="x", urunler=["a", ""]).status_code, 200)
 
     def test_excel_miktar_ve_maliyet(self):
-        for mod, satir in (("miktar", 8), ("maliyet", 13)):
+        for mod, satir in (("miktar", 8), ("maliyet", 12)):
             r = self.al(seri="A", mod=mod, xlsx="1")
             self.assertIn("spreadsheetml", r["Content-Type"])
             ws = load_workbook(BytesIO(r.content)).active
             self.assertEqual(ws["A1"].value, "Karşılaştırma")
             self.assertEqual([c.value for c in ws[4]][:4], ["Kategori", "Kod", "Ad", "Birim"])
             self.assertEqual(len([c for c in ws[4] if c.value]), (4 if mod == "miktar" else 5) + 6)   # 6 ürün sütunu (+ Kaynak)
-            self.assertEqual(ws.max_row, satir)        # 4 malzeme (+ maliyette malzeme/işlem-fason/genel toplam + maliyetsiz notu + fiyatsız parça notu)
+            self.assertEqual(ws.max_row, satir)        # 4 malzeme (+ maliyette malzeme/işlem-fason/genel toplam + maliyetsiz notu; fasoncusuz istasyon fiyatsız sayılmadığından "fiyatsız parça" notu satırı yok)
 
     def test_sorgu_sayisi_sabit(self):
         sayi = {}

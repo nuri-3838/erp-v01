@@ -95,7 +95,8 @@ def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
     """``kalemler``: [(urun, miktar), ...]. Döner: {"ozet": [satır], "detay": [...], "toplam_tutar": {para birimi: tutar}, "cari": cari, "fiyat_eksikleri": [...]}.
     Özet satırı: {"profil", "boy" (ham profil adedi), "kesilmis_parca", "toplam_adet", "yan" (ÜRET yan çıktısı mı), "ihtiyac", "fazla", "fasoncu_kodu",
     "birim_fiyat", "para_birimi", "tutar"} — operasyon başına referans satır + diğer çıktılar (ÜRET: yan çıktılar; PARÇALA: aynı boydan çıkan eşit düzey
-    çıktılar, her biri kendi ihtiyacı/fazlasıyla). Fasoncu yoksa ya da fiyatı tanımsızsa fiyat alanları None."""
+    çıktılar, her biri kendi ihtiyacı/fazlasıyla). Fasoncu yoksa ya da fiyatı tanımsızsa fiyat alanları None. ``cari`` verilirse yalnız o fasoncunun istasyonlarının
+    (``IsIstasyonu.fasoncu`` = cari; fasoncusu tanımsız fason istasyonu da dahil) operasyonları listelenir; ``cari`` yoksa tüm fason istasyonlar (eski davranış)."""
     from core.services.uretim import UretimHatasi, ihtiyac_hesapla, operasyon_girdileri
     hedefler = [(u, Decimal(int(m))) for u, m in kalemler if m and int(m) > 0]
     tarih = tarih or timezone.localdate()
@@ -108,6 +109,8 @@ def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
         op = p["operasyon"]
         if not op.istasyon.fason:
             continue
+        if cari is not None and op.istasyon.fasoncu_id and op.istasyon.fasoncu_id != cari.pk:
+            continue                                  # başka fasoncunun istasyonu (örn. toz boya): bu fasoncunun kesim listesine girmez
         girdi = next(iter(operasyon_girdileri(op)), None)
         profil = girdi.girdi if girdi else None
         boy = (p["calistirma"] * girdi.miktar) if girdi else None

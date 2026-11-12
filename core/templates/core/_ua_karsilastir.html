@@ -31,14 +31,6 @@
         <label for="ua-tarih">Fason fiyat tarihi</label>
         <input type="date" name="tarih" id="ua-tarih" value="{{ fason_tarih }}">
       </div>
-      {% if sonuc and sonuc.fason.fasoncular|length > 1 %}
-      <div class="ua-alan">
-        <label for="ua-fasoncu">Fasoncu</label>
-        <select name="fasoncu" id="ua-fasoncu">
-          {% for s in sonuc.fason.fasoncular %}<option value="{{ s.cari.pk }}"{% if sonuc.fason.fasoncu.pk == s.cari.pk %} selected{% endif %}>{{ s.cari.unvan }} · {{ s.sayi }} parça fiyatlı</option>{% endfor %}
-        </select>
-      </div>
-      {% endif %}
       {% endif %}
       <button type="submit" class="birincil">Karşılaştır</button>
     </div>
@@ -85,8 +77,9 @@
             {% endfor %}
           {% endfor %}
           {% if mod == "maliyet" %}
-            <tr class="ua-kat"><td class="ua-ilk">İşlem / fason bedeli{% if sonuc.fason.fasoncu %} · {{ sonuc.fason.fasoncu.unvan }}{% endif %} · {{ sonuc.fason.tarih|date:"d.m.Y" }}</td>{% for u in sonuc.urunler %}<td></td>{% endfor %}</tr>
+            <tr class="ua-kat"><td class="ua-ilk">İşlem / fason bedeli · {{ sonuc.fason.tarih|date:"d.m.Y" }}</td>{% for u in sonuc.urunler %}<td></td>{% endfor %}</tr>
             {% for s in sonuc.fason.satirlar %}
+              {% ifchanged s.fasoncu.pk %}<tr class="ua-kat"><td class="ua-ilk">Fasoncu: {{ s.fasoncu.unvan }}</td>{% for u in sonuc.urunler %}<td></td>{% endfor %}</tr>{% endifchanged %}
               <tr>
                 <td class="ua-ilk"><span class="mono">{{ s.stok.kod }}</span> {{ s.stok.ad }} <span class="ua-yok">({{ s.birim }})</span></td>
                 {% for h in s.hucreler %}
@@ -102,7 +95,7 @@
             </tr>
             <tr class="ua-ara-m">
               <td class="ua-ilk">İŞLEM/FASON TOPLAMI ({{ pb }})</td>
-              {% for t in sonuc.toplamlar %}<td class="sag">{{ t.fason|tr_para }}<div class="ua-yok" style="font-weight:500;font-size:.72rem">fiyatsız üretilen parça: {{ t.fiyatsiz }}{% if t.fason_eksik %} · ⚠ {{ t.fason_eksik }} kur yok{% endif %}</div></td>{% endfor %}
+              {% for t in sonuc.toplamlar %}<td class="sag">{{ t.fason|tr_para }}<div class="ua-yok" style="font-weight:500;font-size:.72rem">fasoncusu olup fiyatsız parça: {{ t.fiyatsiz }} · kendi üretimimiz: {{ t.kendi }}{% if t.fason_eksik %} · ⚠ {{ t.fason_eksik }} kur yok{% endif %}</div></td>{% endfor %}
             </tr>
             <tr class="ua-toplam">
               <td class="ua-ilk">GENEL TOPLAM ({{ pb }})</td>
@@ -116,7 +109,7 @@
       {% for u in sonuc.kur_uyarilari %}<div class="uyari" style="margin-top:.6rem">{{ u }}</div>{% endfor %}
       {% for u in sonuc.fason.kur_uyarilari %}<div class="uyari" style="margin-top:.6rem">{{ u }}</div>{% endfor %}
       <p class="ua-not">Birim maliyet: hareketli ağırlıklı ortalama; yoksa stok kartındaki alış fiyatı (*); ikisi de yoksa "maliyet yok".{% if sonuc.kart_kalem %} {{ sonuc.kart_kalem }} malzeme alış fiyatından hesaplandı.{% endif %}{% if sonuc.kur_notu %} {{ sonuc.kur_notu }}{% endif %}
-        <br>İşlem/fason bedeli: üretilen her parça için birim ihtiyaç adedi × fasoncunun seçilen tarihte geçerli fason fiyatı; fiyatı olmayan üretilen parça listelenmez, sayısı verilir. Genel toplam = malzeme + işlem/fason.{% if sonuc.fason.kur_notu %} {{ sonuc.fason.kur_notu }}{% endif %}</p>
+        <br>İşlem/fason bedeli: üretilen her parça için birim ihtiyaç adedi × parçayı üreten istasyondaki fasoncunun seçilen tarihte geçerli fason fiyatı; fasoncusu olmayan istasyon kendi üretimimizdir (fiyat aranmaz), sayısı verilir. Genel toplam = malzeme + işlem/fason.{% if sonuc.fason.kur_notu %} {{ sonuc.fason.kur_notu }}{% endif %}</p>
     {% endif %}
   </section>
 {% elif not uyari %}

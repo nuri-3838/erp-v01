@@ -100,7 +100,7 @@ def graf_yukle(bugun=None) -> Graf:
     """3 sorgu: operasyonlar (+istasyon, çıktı stoku), girdiler (+stok/kategori/birim/ortalama maliyet), çıktı satırları (OperasyonCikti)."""
     ops = list(
         Operasyon.objects.filter(silindi=False)
-        .select_related("istasyon", "cikti__kategori__ust", "cikti__uretim_birimi")
+        .select_related("istasyon__fasoncu", "cikti__kategori__ust", "cikti__uretim_birimi")
         .prefetch_related(
             Prefetch("girdiler", queryset=OperasyonGirdi.objects.filter(silindi=False)
                      .select_related("girdi__kategori__ust", "girdi__uretim_birimi").order_by("sira", "pk")),
@@ -300,11 +300,12 @@ def urun_maliyet(graf: Graf, urun, miktar, *, tarih=None, fasoncu_id=None) -> di
     kart_try = _toplam(kart, "tutar_try")
     kullanilan = {pb for s in kart for pb in s["kurlar"]}
     fb = fason_bedeli(graf, [urun], tarih=tarih, fasoncu_id=fasoncu_id)
-    fason = {**fb["urunler"][urun.pk], "tarih": fb["tarih"], "fasoncular": fb["fasoncular"], "fasoncu": fb["fasoncu"],
-             "kur_notu": fb["kur_notu"], "kur_uyarilari": fb["kur_uyarilari"]}
+    fason = {**fb["urunler"][urun.pk], "tarih": fb["tarih"], "kur_notu": fb["kur_notu"], "kur_uyarilari": fb["kur_uyarilari"]}
     for s in fason["satirlar"]:
         s["tutar_try_n"] = None if s["tutar_try"] is None else s["tutar_try"] * miktar
         s["tutar_usd_n"] = None if s["tutar_usd"] is None else s["tutar_usd"] * miktar
+    for g in fason["gruplar"]:                                                     # fasoncu bazında alt toplamlar (satır nesneleri ``satirlar`` ile ortak)
+        g["toplam_try_n"], g["toplam_usd_n"] = g["toplam_try"] * miktar, g["toplam_usd"] * miktar
     fason["toplam_try_n"], fason["toplam_usd_n"] = fason["toplam_try"] * miktar, fason["toplam_usd"] * miktar
     genel_try, genel_usd = toplam_try + fason["toplam_try"], toplam_usd + fason["toplam_usd"]
     return {"gruplar": gruplar, "toplam_try": toplam_try, "toplam_usd": toplam_usd,
@@ -348,13 +349,11 @@ def fason_fiyat_haritasi(stok_idler, tarih) -> dict:
     return harita
 
 
-def fasoncu_sec(harita, fasoncu_id=None):
-    """(seçenekler, seçili fasoncu): fiyatı olan fasoncular — ağaçtaki en çok parçayı fiyatlayan önce (eşitlikte unvan); ``fasoncu_id``
-    listedeyse o, değilse ilk seçenek (tek fasoncu varsa o; hiç yoksa None). Seçenek: {"cari", "sayi"}."""
-    secenekler = sorted(({"cari": next(iter(f.values())).cari, "sayi": len(f)} for f in harita.values()),
-                        key=lambda s: (-s["sayi"], s["cari"].unvan, s["cari"].pk))
-    secili = next((s["cari"] for s in secenekler if s["cari"].pk == fasoncu_id), secenekler[0]["cari"] if secenekler else None)
-    return secenekler, secili
+def uretici_fasoncu(graf: Graf, stok):
+    """Parçayı ÜRETEN operasyon tanımının istasyonundaki fasoncu (``IsIstasyonu.fasoncu``, Cari) — istasyonun fasoncusu yoksa ya da parçanın üreten operasyonu yoksa
+    None (= kendi üretimimiz: fason fiyatı aranmaz). Ana (sürücü) çıktı ``op_of``, yan çıktı ``yan_ureten`` üzerinden bulunur."""
+    op = graf.op_of.get(stok.pk) or next(iter(graf.yan_ureten.get(stok.pk, [])), None)
+    return op.istasyon.fasoncu if op is not None and op.istasyon.fasoncu_id else None
 
 
 def _fason_satiri(stok, ihtiyac, fiyat, kurlar):
@@ -367,29 +366,59 @@ def _fason_satiri(stok, ihtiyac, fiyat, kurlar):
 
 
 def fason_bedeli(graf: Graf, urunler, *, tarih=None, fasoncu_id=None) -> dict:
-    """Ürün(ler) için işlem/fason bedeli (1 adet ürün başına). ``tarih`` yoksa grafın günü (bugün); ``fasoncu_id`` yoksa ``fasoncu_sec`` varsayılanı.
-    Döner: {"tarih", "fasoncular" (seçenekler), "fasoncu", "urunler": {ürün pk: {"satirlar" (fiyatı olan çıktılar), "toplam_try", "toplam_usd",
-    "uretilen" (üretilen çıktı sayısı), "fiyatli", "fiyatsiz" (fason fiyatı olmayan üretilen parça), "kursuz", "usd_eksik"}}, "kur_notu",
-    "kur_uyarilari"}. Kuru bulunamayan döviz fiyat listelenir ama toplama girmez (uyarı)."""
+    """Ürün(ler) için işlem/fason bedeli (1 adet ürün başına). Her üretilen parçanın fason fiyatı, parçayı üreten operasyon tanımının İSTASYONUNDAKİ fasoncu
+    cariye göre aranır (``uretici_fasoncu``); fasoncusu olmayan istasyon = kendi üretimimiz, fiyat aranmaz. ``tarih`` yoksa grafın günü (bugün).
+    ``fasoncu_id`` ESKİ parametre: artık fasoncu seçimi yok, yok sayılır (eski bağlantılar bozulmasın diye imzada duruyor).
+    Döner: {"tarih", "fasoncular" (tüm ürünlerde yer alan fasoncular: {"cari", "fiyatli", "fiyatsiz"} — parça sayıları, unvana göre),
+    "urunler": {ürün pk: {"satirlar" (fiyatı olan çıktılar; her satırda "fasoncu"), "gruplar" (fasoncu bazında: {"cari", "satirlar", "fiyatli", "fiyatsiz",
+    "toplam_try", "toplam_usd"}), "fasoncular" (ürünün fasoncuları, gruplarla aynı sıra: {"cari", "fiyatli", "fiyatsiz", "toplam_try", "toplam_usd"}),
+    "toplam_try", "toplam_usd", "uretilen" (üretilen çıktı sayısı), "fiyatli", "fiyatsiz" (FASONCUSU OLAN istasyonda üretilen ama fason fiyatı olmayan parça),
+    "kendi" (fasoncusuz istasyonda üretilen = kendi üretimimiz), "kursuz", "usd_eksik"}}, "kur_notu", "kur_uyarilari"}. Kuru bulunamayan döviz fiyat
+    listelenir ama toplama girmez (uyarı)."""
     tarih = tarih or graf.bugun or timezone.localdate()
     uretilen = {u.pk: uretilen_ciktilar(graf, u) for u in urunler}
-    harita = fason_fiyat_haritasi({s.pk for sat in uretilen.values() for s, _ in sat}, tarih)
-    secenekler, fasoncu = fasoncu_sec(harita, fasoncu_id)
-    fiyatlar = harita.get(fasoncu.pk, {}) if fasoncu else {}
+    fasoncu_of = {st.pk: uretici_fasoncu(graf, st) for sat in uretilen.values() for st, _ in sat}
+    harita = fason_fiyat_haritasi({pk for pk, c in fasoncu_of.items() if c is not None}, tarih)
     kurlar = {}
-    if fiyatlar:
+    if any(harita.values()):
         kurlar = graf.kurlar if tarih == (graf.bugun or timezone.localdate()) else kur_haritasi(tarih)
-    sonuc = {}
+    sonuc, tum_fasoncu = {}, {}
     for u in urunler:
-        satirlar = [_fason_satiri(s, m, fiyatlar[s.pk], kurlar) for s, m in uretilen[u.pk] if s.pk in fiyatlar]
-        sonuc[u.pk] = {"satirlar": satirlar, "toplam_try": _toplam(satirlar, "tutar_try"), "toplam_usd": _toplam(satirlar, "tutar_usd"),
-                       "uretilen": len(uretilen[u.pk]), "fiyatli": len(satirlar), "fiyatsiz": len(uretilen[u.pk]) - len(satirlar),
-                       "kursuz": sum(1 for s in satirlar if s["maliyet_yok"]),
-                       "usd_eksik": sum(1 for s in satirlar if not s["maliyet_yok"] and s["tutar_usd"] is None)}
-    tum = [s for v in sonuc.values() for s in v["satirlar"]]
-    return {"tarih": tarih, "fasoncular": secenekler, "fasoncu": fasoncu, "urunler": sonuc,
-            "kur_notu": kur_notu(kurlar, {pb for s in tum for pb in s["kurlar"]}, "Fason fiyatı çevrimi"),
-            "kur_uyarilari": sorted({s["uyari"] for s in tum if s["uyari"]})}
+        satirlar, kendi, ozet = [], 0, {}
+        for st, m in uretilen[u.pk]:
+            c = fasoncu_of[st.pk]
+            if c is None:
+                kendi += 1
+                continue
+            o = ozet.setdefault(c.pk, {"cari": c, "fiyatli": 0, "fiyatsiz": 0})
+            t = tum_fasoncu.setdefault(c.pk, {"cari": c, "fiyatli": set(), "fiyatsiz": set()})
+            f = harita.get(c.pk, {}).get(st.pk)
+            if f is None:
+                o["fiyatsiz"] += 1
+                t["fiyatsiz"].add(st.pk)
+                continue
+            satir = _fason_satiri(st, m, f, kurlar)
+            satir["fasoncu"] = c
+            satirlar.append(satir)
+            o["fiyatli"] += 1
+            t["fiyatli"].add(st.pk)
+        satirlar.sort(key=lambda x: (x["fasoncu"].unvan, x["fasoncu"].pk))                      # fasoncuya göre gruplu; grup içinde ağaç sırası
+        gruplar = []
+        for o in sorted(ozet.values(), key=lambda x: (x["cari"].unvan, x["cari"].pk)):
+            rows = [x for x in satirlar if x["fasoncu"].pk == o["cari"].pk]
+            o["toplam_try"], o["toplam_usd"] = _toplam(rows, "tutar_try"), _toplam(rows, "tutar_usd")
+            gruplar.append({**o, "satirlar": rows})
+        sonuc[u.pk] = {"satirlar": satirlar, "gruplar": gruplar, "fasoncular": [{k: v for k, v in g.items() if k != "satirlar"} for g in gruplar],
+                       "toplam_try": _toplam(satirlar, "tutar_try"), "toplam_usd": _toplam(satirlar, "tutar_usd"),
+                       "uretilen": len(uretilen[u.pk]), "fiyatli": len(satirlar), "fiyatsiz": sum(o["fiyatsiz"] for o in ozet.values()), "kendi": kendi,
+                       "kursuz": sum(1 for x in satirlar if x["maliyet_yok"]),
+                       "usd_eksik": sum(1 for x in satirlar if not x["maliyet_yok"] and x["tutar_usd"] is None)}
+    tum = [x for v in sonuc.values() for x in v["satirlar"]]
+    fasoncular = [{"cari": t["cari"], "fiyatli": len(t["fiyatli"]), "fiyatsiz": len(t["fiyatsiz"])}
+                  for t in sorted(tum_fasoncu.values(), key=lambda x: (x["cari"].unvan, x["cari"].pk))]
+    return {"tarih": tarih, "fasoncular": fasoncular, "urunler": sonuc,
+            "kur_notu": kur_notu(kurlar, {pb for x in tum for pb in x["kurlar"]}, "Fason fiyatı çevrimi"),
+            "kur_uyarilari": sorted({x["uyari"] for x in tum if x["uyari"]})}
 
 
 # --- 2. NEREDE KULLANILIYOR ---------------------------------------------------------------------------------------------------
@@ -524,13 +553,14 @@ def karsilastir(graf: Graf, urunler, mod="miktar", pb="TL", *, tarih=None, fason
         # işlem / fason bedeli: fiyatı olan üretilen çıktılar × ürünler (hücre = birim ihtiyaç × fason fiyatı, seçilen para biriminde)
         fb = fason_bedeli(graf, urunler, tarih=tarih, fasoncu_id=fasoncu_id)
         tutar_anahtar = "tutar_usd" if pb == "USD" else "tutar_try"
-        fason_stoklar, hucre = {}, {}
+        fason_stoklar, hucre, fasoncu_stok = {}, {}, {}
         for i, u in enumerate(urunler):
             for s in fb["urunler"][u.pk]["satirlar"]:
                 fason_stoklar[s["stok"].pk] = s["stok"]
+                fasoncu_stok[s["stok"].pk] = s["fasoncu"]
                 hucre[(s["stok"].pk, i)] = s
         fason_satirlar = []
-        for spk, stok in sorted(fason_stoklar.items(), key=lambda kv: kv[1].kod):
+        for spk, stok in sorted(fason_stoklar.items(), key=lambda kv: (fasoncu_stok[kv[0]].unvan, fasoncu_stok[kv[0]].pk, kv[1].kod)):      # fasoncuya göre gruplu
             hucreler = []
             for i in range(len(urunler)):
                 s = hucre.get((spk, i))
@@ -539,15 +569,16 @@ def karsilastir(graf: Graf, urunler, mod="miktar", pb="TL", *, tarih=None, fason
                     continue
                 hucreler.append({"miktar": s["tuketim"], "deger": s[tutar_anahtar], "maliyet_yok": s[tutar_anahtar] is None, "pb": s["pb"],
                                  "fiyat": s["fiyat"], "fasoncu_kodu": s["fasoncu_kodu"]})
-            fason_satirlar.append({"stok": stok, "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad, "hucreler": hucreler})
+            fason_satirlar.append({"stok": stok, "birim": stok.uretim_birimi.kisa_ad or stok.uretim_birimi.ad, "hucreler": hucreler, "fasoncu": fasoncu_stok[spk]})
         for i, u in enumerate(urunler):
             f = fb["urunler"][u.pk]
             toplamlar[i]["fason"] = f["toplam_usd"] if pb == "USD" else f["toplam_try"]
             toplamlar[i]["genel"] = toplamlar[i]["toplam"] + toplamlar[i]["fason"]
-            toplamlar[i]["fiyatsiz"] = f["fiyatsiz"]
+            toplamlar[i]["fiyatsiz"] = f["fiyatsiz"]                                    # fasoncusu olup fiyatı olmayan parça
+            toplamlar[i]["kendi"] = f["kendi"]                                          # fasoncusuz istasyon = kendi üretimimiz
             toplamlar[i]["fason_eksik"] = f["kursuz"] + (f["usd_eksik"] if pb == "USD" else 0)
         fason = {"satirlar": fason_satirlar, "satir_sayisi": len(fason_satirlar), "tarih": fb["tarih"], "fasoncular": fb["fasoncular"],
-                 "fasoncu": fb["fasoncu"], "kur_notu": fb["kur_notu"], "kur_uyarilari": fb["kur_uyarilari"]}
+                 "kur_notu": fb["kur_notu"], "kur_uyarilari": fb["kur_uyarilari"]}
     return {"urunler": urunler, "gruplar": _grupla(satirlar, lambda s: s["stok"]), "mod": "maliyet" if maliyet else "miktar",
             "pb": pb, "satir_sayisi": len(satirlar), "toplamlar": toplamlar, "kart_kalem": kart_kalem, "kur_notu": kur_n,
             "kur_uyarilari": sorted({b["uyari"] for b in birim.values() if b["uyari"]}), "fason": fason}
