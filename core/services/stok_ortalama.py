@@ -336,6 +336,27 @@ def irsaliye_girislerini_sifirla(fatura) -> set:
     return stoklar
 
 
+def irsaliye_girislerini_kalem_fiyatina_dondur(fatura) -> set:
+    """Fatura SİLİNİRKEN: faturanın irsaliye girişleri fiyatsıza (``irsaliye_girislerini_sifirla``) döner; ancak irsaliye KALEMİNİN birim fiyatı varsa (> 0) giriş
+    fiyatsız kalmaz, kalemin net tutarına (miktar × iskontolu birim fiyat, KDV hariç, TL) döner — fatura gelene kadar irsaliye fiyatı geçerlidir, fatura gelince
+    ``irsaliye_girislerini_fiyatla`` bunu yerinde ezer. Kalem fiyatı 0, belge TL değil ya da kalemin birden çok girişi varsa eskisi gibi fiyatsız kalır.
+    Etkilenen stok id'lerini döner; hesabı ÇAĞIRAN yapar."""
+    stoklar = irsaliye_girislerini_sifirla(fatura)
+    gruplar = {}
+    for h in irsaliye_girisleri(fatura):
+        gruplar.setdefault(h.teklif_siparis_kalem_id, []).append(h)
+    for hs in gruplar.values():
+        if len(hs) != 1:
+            continue
+        h = hs[0]
+        k = h.teklif_siparis_kalem
+        if k is None or k.silindi or k.birim_fiyat <= 0 or k.teklif_siparis.para_birimi != "TRY":
+            continue
+        h.giris_tutar_try, h.giris_tutar_usd = k.tutar, None                 # USD, yeniden_hesapla'da giriş tarihi kuruyla türer
+        h.save(update_fields=["giris_tutar_try", "giris_tutar_usd", "updated_at"])
+    return stoklar
+
+
 @transaction.atomic
 def irsaliye_girislerini_fiyatla(fatura) -> int:
     """İRSALİYELİ faturada maliyeti FATURA belirler: önce irsaliye girişleri fiyatsıza

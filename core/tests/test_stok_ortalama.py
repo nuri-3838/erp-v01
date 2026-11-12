@@ -230,7 +230,7 @@ class IrsaliyeliFaturaTest(OrtalamaTemel):
         gecici = StokHareket.objects.get(kaynak="IRSALIYE")
         self.assertEqual(gecici.maliyet_durumu, so.GECICI)
 
-    def test_fatura_duzenlenince_yeniden_fiyatlanir_silinince_fiyatsiz_olur(self):
+    def test_fatura_duzenlenince_yeniden_fiyatlanir_silinince_kalem_fiyatina_doner(self):
         irsaliye, fatura = self.irsaliye_ve_fatura()
         self.onayla(fatura)
         fatura_guncelle(
@@ -241,7 +241,8 @@ class IrsaliyeliFaturaTest(OrtalamaTemel):
         self.assertEqual(h.giris_tutar_try, Decimal("1100.00"))
         fatura_sil(fatura, kullanici=self.u)
         h, = self.hareketler()
-        self.assertEqual((h.giris_tutar_try, h.maliyet_durumu), (None, so.YOK))
+        self.assertEqual((h.giris_tutar_try, h.maliyet_durumu), (Decimal("1000.00"), so.KESIN))    # fiyatsıza değil irsaliye kaleminin fiyatına (10 × 100) döner;
+        # ayrıntılı koruma testleri: test_irsaliye_fatura_silme_fiyat.py
 
     def test_ayni_stok_iki_irsaliye_kalemi_fatura_tutari_miktar_oraninda_dagitilir(self):
         irsaliye, fatura = self.irsaliye_ve_fatura(satirlar=[

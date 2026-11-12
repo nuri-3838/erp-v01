@@ -161,7 +161,9 @@ class MaliyetStokTest(CokluTaban):
             i.refresh_from_db()
             self.assertIsNone(i.fatura_id)
         for h in StokHareket.objects.filter(silindi=False):
-            self.assertEqual((h.giris_tutar_try, h.maliyet_fatura_satir_id), (None, None))               # fiyat geri gitti (fatura bekliyor)
+            k = h.teklif_siparis_kalem
+            beklenen = k.tutar if k.birim_fiyat > 0 else None                                            # fatura bağı gitti: giriş irsaliye KALEM fiyatına döner (kalem fiyatı 0 ise fiyatsız)
+            self.assertEqual((h.giris_tutar_try, h.maliyet_fatura_satir_id), (beklenen, None))           # fatura satırı bağı kalmadı (fatura bekliyor)
         self.assertEqual(self.irsaliye_serbest_listesi(), 2)
         yeni = self.cevir(i1, i2)                                                       # yeniden çevrilebilir
         self.assertEqual(yeni.satirlar.filter(silindi=False).count(), 4)

@@ -1185,9 +1185,10 @@ def _irsaliye_girislerini_fiyatla(fatura):
 
 
 def _irsaliye_girislerini_fiyatsiz_yap(fatura):
+    """Fatura silinirken irsaliye girişlerinin maliyetini fatura belirlemişti; geri al: giriş irsaliye KALEMİNİN birim fiyatına döner (kalem fiyatı 0 ise fiyatsız)."""
     from core.models import Stok
     from core.services import stok_ortalama
-    for stok in Stok.objects.filter(pk__in=stok_ortalama.irsaliye_girislerini_sifirla(fatura)):
+    for stok in Stok.objects.filter(pk__in=stok_ortalama.irsaliye_girislerini_kalem_fiyatina_dondur(fatura)):
         try:
             stok_ortalama.yeniden_hesapla(stok)
         except stok_ortalama.MaliyetHatasi as e:
