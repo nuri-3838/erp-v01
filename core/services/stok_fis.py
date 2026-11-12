@@ -46,6 +46,20 @@ def _satirlar(net: dict) -> list:
             for kod, tutar in net.items() if tutar != 0]
 
 
+def _ayni_icerik(fis, satirlar, tarih, aciklama) -> bool:
+    """Fişin aktif satırları (hesap, taraf, TL tutar), tarihi ve açıklaması istenenle BİREBİR aynı mı? Satıra özel açıklama/döviz/proje taşıyan girdide
+    karşılaştırma yapılmaz (False → fiş eskisi gibi yeniden yazılır)."""
+    from core.metin import buyuk_harf_tr
+    from core.sayi import yuvarla
+    if any(s.aciklama or s.islem_pb != "TRY" or s.tl_override is not None or s.yatirim_projesi_id for s in satirlar):
+        return False
+    if fis.tarih != tarih or fis.aciklama != buyuk_harf_tr((aciklama or "").strip()):
+        return False
+    istenen = sorted((str(s.hesap_kodu), s.taraf, yuvarla(Decimal(str(s.islem_tutari)), 2)) for s in satirlar)
+    mevcut = sorted((l.hesap.hesap_kodu, "B" if l.borc > 0 else "A", l.borc if l.borc > 0 else l.alacak) for l in fis.satirlar.filter(silindi=False).select_related("hesap"))
+    return istenen == mevcut
+
+
 def _fis_senkronla(mevcut, satirlar, *, tarih, aciklama, kaynak, kullanici=None):
     """Mevcut fişi günceller / yoksa oluşturur / satır kalmadıysa iptal eder. Fişi (ya da None) döner."""
     if not satirlar:
@@ -54,6 +68,8 @@ def _fis_senkronla(mevcut, satirlar, *, tarih, aciklama, kaynak, kullanici=None)
         return None
     try:
         if mevcut is not None and not mevcut.silindi:
+            if _ayni_icerik(mevcut, satirlar, tarih, aciklama):
+                return mevcut                                   # içerik aynı: satırları silip yeniden yazmak gereksiz (iz kirliliği) — dokunma
             fis_guncelle(mevcut, tarih=tarih, satirlar=satirlar, aciklama=aciklama,
                          kur_usd=mevcut.kur_usd, kullanici=kullanici)
             return mevcut

@@ -160,7 +160,8 @@ def _varyant_gruplari(stok, hareketler) -> list:
 def yeniden_hesapla(stok, *, fis_guncelle=True, _derinlik=0) -> list:
     """Kartın TÜM hareketlerini baştan hesaplar, sonuçları hareketlere ve ``Stok`` önbelleğine
     yazar. Değeri değişen sarf çıkışlarının fişini günceller (``fis_guncelle=False`` ise
-    güncellemez, yalnız değişenleri döner). Dönüş: değeri değişen çıkış hareketleri.
+    güncellemez, yalnız değişenleri döner). Dönüş: değeri VEYA maliyet DURUMU (KESİN/GEÇİCİ/YOK) değişen çıkış hareketleri — durum yalnız değişince de
+    (tutar aynı) sonraki üretimin çıktı bayrağı (``giris_tahmini``) ve aşağı zincir yenilenir; fişler yalnız TUTAR değişince yeniden yazılır.
     VARYANTLI kartta (E-2) her varyant ayrı zincirdir: ``StokVaryant`` önbelleği varyant başına, ``Stok`` önbelleği toplam
     (tek varyant varsa bugünkü değerlerle birebir aynı)."""
     from core.models import StokVaryant
@@ -170,7 +171,7 @@ def yeniden_hesapla(stok, *, fis_guncelle=True, _derinlik=0) -> list:
     for varyant_id, grup in _varyant_gruplari(stok, hareketler):
         sonuclar = hesapla(grup)
         for h, s in zip(grup, sonuclar):
-            eski_tutar = h.tutar_try
+            eski_tutar, eski_durum = h.tutar_try, h.maliyet_durumu
             yeni = {"maliyet_durumu": s.durum, "tutar_try": s.tutar_try, "tutar_usd": s.tutar_usd,
                     "birim_maliyet_try": s.birim_try, "birim_maliyet_usd": s.birim_usd,
                     "sonrasi_miktar": s.sonrasi_miktar, "sonrasi_deger_try": s.sonrasi_deger_try,
@@ -180,9 +181,10 @@ def yeniden_hesapla(stok, *, fis_guncelle=True, _derinlik=0) -> list:
                 for a, y in yeni.items():
                     setattr(h, a, y)
                 guncellenecek.append(h)
-            if (eski_tutar is not None and eski_tutar != s.tutar_try
+            if (eski_tutar is not None and (eski_tutar != s.tutar_try or eski_durum != s.durum)
                     and (h.tur == CIKIS or h.giris_ortalama)
                     and h.kaynak != StokHareket.Kaynak.TRANSFER):
+                h._eski_tutar = eski_tutar                    # fiş yazan yollar yalnız TUTAR değişince çalışır; durum-yalnız değişim sadece üretim bayrağını yayar
                 degisen_cikislar.append(h)
         sonlar[varyant_id] = sonuclar[-1] if sonuclar else None
     if guncellenecek:
@@ -227,6 +229,8 @@ def _degisenleri_isle(degisen, derinlik):
         raise MaliyetHatasi("Maliyet zinciri çok derin (döngü olabilir); işlem durduruldu.")
     kayitlar, faturalar, numune_hareketleri, sayimlar, irsaliyeler = {}, {}, [], set(), {}
     for h in degisen:
+        if getattr(h, "_eski_tutar", None) == h.tutar_try and not (h.operasyon_kaydi_id and h.tur == CIKIS):
+            continue                                          # yalnız maliyet DURUMU değişti: fişler tutara bağlıdır (yeniden yazılmaz); yalnız üretim girdisi çıktı bayrağını yeniler
         if h.kaynak == StokHareket.Kaynak.SARF and h.fis_id:
             _cikis_fisini_guncelle(h)
         elif h.kaynak == StokHareket.Kaynak.SAYIM and h.sayim_satir_id:
