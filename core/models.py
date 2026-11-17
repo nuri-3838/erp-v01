@@ -723,6 +723,8 @@ class Stok(TemelModel):
         "40' HQ yükleme adedi", null=True, blank=True)
     yukleme_tir = models.PositiveIntegerField(
         "TIR yükleme adedi", null=True, blank=True)
+    # Bir pakette kaç adet ürün olduğu (satış teklifi çıktısında "Paket İçi Adet" / "Pcs/Pkg"); her kartta vardır (varsayılan 1), en az 1.
+    paket_ici_adet = models.PositiveIntegerField("paket içi adet", default=1)
     # Yalnız satis_urunu=True kartlarda anlamlı; kucult_webp ile küçültülüp WebP'ye
     # çevrilmiş halde saklanır (bkz. core/gorsel.py — banka logosuyla aynı desen,
     # burada max_kenar=1600 ile çağrılır).
@@ -757,6 +759,8 @@ class Stok(TemelModel):
                                    name="ck_stok_cevirici_gt0"),
             models.CheckConstraint(condition=models.Q(kritik_stok__gte=0),
                                    name="ck_stok_kritik_gte0"),
+            models.CheckConstraint(condition=models.Q(paket_ici_adet__gte=1),
+                                   name="ck_stok_paket_ici_adet_gte1"),
             models.CheckConstraint(
                 condition=models.Q(alis_fiyati__isnull=True) | models.Q(alis_fiyati__gte=0),
                 name="ck_stok_alis_fiyati_gte0"),

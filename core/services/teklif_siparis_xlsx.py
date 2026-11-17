@@ -1,6 +1,6 @@
 """Teklif / Proforma / Sipariş (ve diğer teklif-sipariş belgeleri) — sade, resimsiz Excel dökümü.
 
-Tablo yalnız 6 sütun: Model Kodu, Ürün Adı, Adet, Net Birim Fiyat, Birim Brüt KG, Birim CBM. Toplam satırı YOKTUR.
+Tablo yalnız 7 sütun: Model Kodu, Ürün Adı, Paket İçi Adet, Adet, Net Birim Fiyat, Birim Brüt KG, Birim CBM. Toplam satırı YOKTUR.
 PDF ile AYNI kaynaktan beslenir: dile göre ad (``Stok.ad_dil``), seçenek çevirileri, teslim notu ve not satırları PDF bağlamından
 (``core.views.satis_*_pdf_baglam``) gelir; fiyat kalem modelinin property'leriyle hesaplanır (``net_birim_fiyat``, navlunlu satış
 teklifinde PDF'teki gibi ``nakliye_dahil_fiyat``) — yeni bir hesap kuralı yoktur. Hiçbir değer saklanmaz; her indirmede canlı üretilir.
@@ -35,14 +35,14 @@ _NO_EN = {"TEKLIF": "Quotation No", "PROFORMA": "Proforma No", "SIPARIS": "Order
 
 _E = {
     "tr": {
-        "model": "Model Kodu", "urun": "Ürün Adı", "adet": "Adet", "net": "Net Birim Fiyat", "kg": "Birim Brüt KG", "cbm": "Birim CBM",
+        "model": "Model Kodu", "urun": "Ürün Adı", "paket": "Paket İçi Adet", "adet": "Adet", "net": "Net Birim Fiyat", "kg": "Birim Brüt KG", "cbm": "Birim CBM",
         "musteri": "Alıcı", "tedarikci": "Tedarikçi", "tarih": "Tarih", "gecerlilik": "Geçerlilik tarihi",
         "teslim_tarihi": "Teslim tarihi", "para": "Para birimi", "kur": "Kur (TL)", "odeme": "Ödeme koşulu",
         "sekil": "Teslim / yükleme şekli", "tip": "Yükleme tipi", "sure": "Teslim süresi", "navlun": "Navlun",
         "hazirlayan": "Hazırlayan", "teslim_notu": "Teslim notu", "not": "Not", "notlar": "Notlar", "varyant": "Varyant",
     },
     "en": {
-        "model": "Model Code", "urun": "Product Name", "adet": "Qty", "net": "Net Unit Price", "kg": "Unit Gross KG", "cbm": "Unit CBM",
+        "model": "Model Code", "urun": "Product Name", "paket": "Pcs/Pkg", "adet": "Qty", "net": "Net Unit Price", "kg": "Unit Gross KG", "cbm": "Unit CBM",
         "musteri": "To", "tedarikci": "Supplier", "tarih": "Date", "gecerlilik": "Valid until",
         "teslim_tarihi": "Delivery date", "para": "Currency", "kur": "Rate (TRY)", "odeme": "Payment term",
         "sekil": "Delivery term", "tip": "Transport mode", "sure": "Lead time", "navlun": "Freight",
@@ -50,8 +50,8 @@ _E = {
     },
 }
 
-NCOL = 6
-_GENISLIK = (24, 46, 10, 22, 18, 16)
+NCOL = 7
+_GENISLIK = (24, 46, 14, 10, 22, 18, 16)
 
 
 def _yaz(ws, satir, sutun, deger, *, bicim=None, kalin=False, hiza=None, dolgu=None, kenar=False, sar=False):
@@ -126,7 +126,7 @@ def teklif_siparis_xlsx(ts, kalemler, ctx, dil, *, firma_unvan="", navlunlu=Fals
 
     satir = 3
     for i in range(0, len(ogeler), 2):
-        for (et, dg), (e1, e2, d1, d2) in zip(ogeler[i:i + 2], ((1, 1, 2, 2), (3, 4, 5, 6))):
+        for (et, dg), (e1, e2, d1, d2) in zip(ogeler[i:i + 2], ((1, 1, 2, 2), (3, 4, 5, NCOL))):
             _birlestir_yaz(ws, satir, e1, e2, et, kalin=True, dolgu=_ALT_DOLGU)
             if isinstance(dg, date):
                 _birlestir_yaz(ws, satir, d1, d2, dg, bicim=_TARIH, hiza="left")
@@ -140,9 +140,9 @@ def teklif_siparis_xlsx(ts, kalemler, ctx, dil, *, firma_unvan="", navlunlu=Fals
         _birlestir_yaz(ws, satir, 2, NCOL, ctx["teslim_notu"], hiza="left")
         satir += 1
 
-    # --- satır tablosu (6 sütun; toplam satırı yok) ---
+    # --- satır tablosu (7 sütun; toplam satırı yok) ---
     baslik_satiri = satir
-    basliklar = (E["model"], E["urun"], E["adet"], f"{E['net']} ({ts.para_birimi})", E["kg"], E["cbm"])
+    basliklar = (E["model"], E["urun"], E["paket"], E["adet"], f"{E['net']} ({ts.para_birimi})", E["kg"], E["cbm"])
     for c, b in enumerate(basliklar, start=1):
         h = _yaz(ws, baslik_satiri, c, b, kenar=True)
         h.font, h.fill = _BASLIK_YAZI, _BASLIK_DOLGU
@@ -160,7 +160,7 @@ def teklif_siparis_xlsx(ts, kalemler, ctx, dil, *, firma_unvan="", navlunlu=Fals
             fiyat = k.net_birim_fiyat
         adet, adet_bicim = _adet(k.miktar)
         degerler = (
-            (k.stok.model_kodu or None, None), (ad, None), (adet, adet_bicim), (fiyat, _FIYAT),
+            (k.stok.model_kodu or None, None), (ad, None), (k.stok.paket_ici_adet, "#,##0"), (adet, adet_bicim), (fiyat, _FIYAT),
             (k.stok.agirlik, _KG), (k.stok.cbm, _CBM),
         )
         for c, (dg, bicim) in enumerate(degerler, start=1):

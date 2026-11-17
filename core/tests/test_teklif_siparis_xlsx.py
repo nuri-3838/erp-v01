@@ -1,5 +1,5 @@
-"""Teklif / Proforma / Sipariş Excel dökümü (core/services/teklif_siparis_xlsx.py, view teklif_siparis_xlsx): sade 6 sütun
-(Model Kodu, Ürün Adı, Adet, Net Birim Fiyat, Birim Brüt KG, Birim CBM), toplam satırı YOK, PDF ile aynı veri kaynağı, TR/EN, sayısal hücre tipleri, yetki."""
+"""Teklif / Proforma / Sipariş Excel dökümü (core/services/teklif_siparis_xlsx.py, view teklif_siparis_xlsx): sade 7 sütun
+(Model Kodu, Ürün Adı, Paket İçi Adet, Adet, Net Birim Fiyat, Birim Brüt KG, Birim CBM), toplam satırı YOK, PDF ile aynı veri kaynağı, TR/EN, sayısal hücre tipleri, yetki."""
 import datetime
 from decimal import Decimal
 from io import BytesIO
@@ -14,7 +14,7 @@ from core.models import (
 )
 from core.services.stok import stok_olustur
 
-_BASLIK_TR = ["Model Kodu", "Ürün Adı", "Adet", "Net Birim Fiyat (TRY)", "Birim Brüt KG", "Birim CBM"]
+_BASLIK_TR = ["Model Kodu", "Ürün Adı", "Paket İçi Adet", "Adet", "Net Birim Fiyat (TRY)", "Birim Brüt KG", "Birim CBM"]
 _TOPLAM_ETIKETLERI = {
     "Ara toplam", "Ara toplam (iskonto sonrası)", "İskonto toplamı", "KDV toplamı", "Genel toplam", "Tevkifat (−)", "Ödenecek",
     "Subtotal", "Subtotal (after discount)", "Discount total", "VAT total", "Grand total",
@@ -45,8 +45,8 @@ class TeklifSiparisXlsxTest(TestCase):
                                kdv_id=cls.kdv.pk, satis_urunu=True, model_kodu="a21", basamak_sayisi=3, yukseklik="58",
                                yukleme_40hq=1000, yukleme_20dc=400, fiyat_try="12000", fiyat_usd="350", kullanici=cls.yon)
         cls.a21.ad_en = "Aluminium Platform Stepladder 2+1"
-        cls.a21.agirlik, cls.a21.cbm = Decimal("6.5"), Decimal("0.012")
-        cls.a21.save(update_fields=["ad_en", "agirlik", "cbm"])
+        cls.a21.agirlik, cls.a21.cbm, cls.a21.paket_ici_adet = Decimal("6.5"), Decimal("0.012"), 6
+        cls.a21.save(update_fields=["ad_en", "agirlik", "cbm", "paket_ici_adet"])
         cls.c22 = stok_olustur(ad="cift cikisli merdiven", kategori_id=kat.pk, uretim_birimi_id=birim.pk, fatura_birimi_id=birim.pk,
                                kdv_id=cls.kdv.pk, satis_urunu=True, model_kodu="c22", basamak_sayisi=4, fiyat_try="15000", kullanici=cls.yon)
         cls.c22.ad_en = "Double-Sided Aluminium Stepladder 2+2"
@@ -85,47 +85,49 @@ class TeklifSiparisXlsxTest(TestCase):
         return self.client.get(reverse("core:teklif_siparis_xlsx", args=[ts.pk]) + (f"?dil={dil}" if dil else ""))
 
     def _sayfa(self, yanit):
-        """(sayfa, başlık satırı numarası, veri satırları [6'lı liste]) — veri satırları ürün adı dolu olduğu sürece."""
+        """(sayfa, başlık satırı numarası, veri satırları [7'li liste]) — veri satırları ürün adı dolu olduğu sürece."""
         ws = load_workbook(BytesIO(yanit.content)).active
         for r in range(1, ws.max_row + 1):
             if ws.cell(r, 1).value in ("Model Kodu", "Model Code") and ws.cell(r, 2).value in ("Ürün Adı", "Product Name"):
                 satirlar, i = [], r + 1
                 while ws.cell(i, 2).value is not None:
-                    satirlar.append([ws.cell(i, c).value for c in range(1, 7)])
+                    satirlar.append([ws.cell(i, c).value for c in range(1, 8)])
                     i += 1
                 return ws, r, satirlar
         self.fail("başlık satırı bulunamadı")
 
     # --- testler ---
-    def test_teklif_tr_alti_sutun_sira_tipler_ve_toplam_yok(self):
+    def test_teklif_tr_yedi_sutun_sira_tipler_ve_toplam_yok(self):
         ts = self._teklif_olustur()
         r = self._xlsx(ts, "tr")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         self.assertIn(f'filename="teklif_{ts.belge_no}_tr.xlsx"', r["Content-Disposition"])
         ws, baslik, satirlar = self._sayfa(r)
-        self.assertEqual(ws.max_column, 6)                                                                # tam 6 sütun (ws.cell okuması sütun yaratır; önce bak)
-        self.assertEqual([ws.cell(baslik, c).value for c in range(1, 7)], _BASLIK_TR)                     # bu sırada
+        self.assertEqual(ws.max_column, 7)                                                                # tam 7 sütun (ws.cell okuması sütun yaratır; önce bak)
+        self.assertEqual([ws.cell(baslik, c).value for c in range(1, 8)], _BASLIK_TR)                     # bu sırada
         self.assertEqual(len(satirlar), 2)
         a21, c22 = (next(s for s in satirlar if s[0] == m) for m in ("A21", "C22"))
         self.assertEqual(a21[1], self.a21.ad_dil("tr"))                                                   # ad_dil('tr') (kart adı büyük harfe normalize)
-        self.assertEqual(a21[2], 1)
-        self.assertIsInstance(a21[2], int)                                                                # adet tam sayı
-        self.assertEqual(Decimal(str(a21[3])), Decimal("10803"))                                          # navlunlu teklif: nakliye dahil (PDF fiyatı)
-        self.assertEqual(Decimal(str(c22[3])), Decimal("15000"))                                          # yükleme adedi yok -> PDF gibi net fiyat
-        self.assertEqual(Decimal(str(a21[4])), Decimal("6.5"))
-        self.assertEqual(Decimal(str(a21[5])), Decimal("0.012"))
+        self.assertEqual((a21[2], c22[2]), (6, 1))                                                        # Paket İçi Adet: kartın değeri (A21 = 6, varsayılan 1)
+        self.assertIsInstance(a21[2], int)
+        self.assertEqual(a21[3], 1)
+        self.assertIsInstance(a21[3], int)                                                                # adet tam sayı
+        self.assertEqual(Decimal(str(a21[4])), Decimal("10803"))                                          # navlunlu teklif: nakliye dahil (PDF fiyatı)
+        self.assertEqual(Decimal(str(c22[4])), Decimal("15000"))                                          # yükleme adedi yok -> PDF gibi net fiyat
+        self.assertEqual(Decimal(str(a21[5])), Decimal("6.5"))
+        self.assertEqual(Decimal(str(a21[6])), Decimal("0.012"))
         for s in satirlar:
-            for sutun in (2, 3):
+            for sutun in (2, 3, 4):
                 self.assertIsInstance(s[sutun], (int, float), f"sayı değil: {s[sutun]!r}")
-        self.assertIsNone(c22[4])                                                                         # boş değer = boş hücre
-        self.assertIsNone(c22[5])
+        self.assertIsNone(c22[5])                                                                         # boş değer = boş hücre
+        self.assertIsNone(c22[6])
         satir_a21 = baslik + 1 + satirlar.index(a21)
-        self.assertEqual([ws.cell(satir_a21, c).number_format for c in (3, 4, 5, 6)], ["#,##0", "#,##0.00##", "#,##0.00", "0.0000"])
-        self.assertTrue(all(ws.cell(baslik, c).font.bold for c in range(1, 7)))                            # başlık kalın
+        self.assertEqual([ws.cell(satir_a21, c).number_format for c in (3, 4, 5, 6, 7)], ["#,##0", "#,##0", "#,##0.00##", "#,##0.00", "0.0000"])
+        self.assertTrue(all(ws.cell(baslik, c).font.bold for c in range(1, 8)))                            # başlık kalın
         self.assertEqual(ws.freeze_panes, f"A{baslik + 1}")                                               # başlık dondurulmuş
-        # toplam satırı / ek sütun yok: 6 sütun, toplam etiketi yok, tablonun altında sayı yok
-        self.assertEqual(ws.max_column, 6)
+        # toplam satırı / ek sütun yok: 7 sütun, toplam etiketi yok, tablonun altında sayı yok
+        self.assertEqual(ws.max_column, 7)
         tum = [h.value for satir in ws.iter_rows() for h in satir if h.value is not None]
         self.assertFalse(_TOPLAM_ETIKETLERI & {v for v in tum if isinstance(v, str)})
         for satir in ws.iter_rows(min_row=baslik + 1 + len(satirlar)):
@@ -144,10 +146,11 @@ class TeklifSiparisXlsxTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn(f'filename="teklif_{ts.belge_no}_en.xlsx"', r["Content-Disposition"])
         ws, baslik, satirlar = self._sayfa(r)
-        self.assertEqual([ws.cell(baslik, c).value for c in range(1, 7)],
-                         ["Model Code", "Product Name", "Qty", "Net Unit Price (TRY)", "Unit Gross KG", "Unit CBM"])
+        self.assertEqual([ws.cell(baslik, c).value for c in range(1, 8)],
+                         ["Model Code", "Product Name", "Pcs/Pkg", "Qty", "Net Unit Price (TRY)", "Unit Gross KG", "Unit CBM"])
         self.assertEqual({s[1] for s in satirlar}, {"Aluminium Platform Stepladder 2+1", "Double-Sided Aluminium Stepladder 2+2"})
-        self.assertEqual(ws.max_column, 6)
+        self.assertEqual({s[0]: s[2] for s in satirlar}, {"A21": 6, "C22": 1})                            # EN çıktıda da Pcs/Pkg değeri
+        self.assertEqual(ws.max_column, 7)
         metin = " | ".join(str(h.value) for satir in ws.iter_rows() for h in satir if h.value is not None)
         self.assertIn(self.sekil.ad_dil("en"), metin)              # seçenekler PDF'teki gibi EN karşılıklarıyla
         self.assertIn(self.kosul.ad_dil("en"), metin)
@@ -158,8 +161,8 @@ class TeklifSiparisXlsxTest(TestCase):
         _, _, satirlar = self._sayfa(self._xlsx(ts, "tr"))
         kalemler = {k.stok.model_kodu.upper(): k for k in ts.kalemler.filter(silindi=False)}
         for s in satirlar:
-            self.assertEqual(Decimal(str(s[3])), kalemler[s[0]].net_birim_fiyat)
-        self.assertEqual(Decimal(str(next(s for s in satirlar if s[0] == "A21")[3])), Decimal("10800"))      # 12000 - %10
+            self.assertEqual(Decimal(str(s[4])), kalemler[s[0]].net_birim_fiyat)
+        self.assertEqual(Decimal(str(next(s for s in satirlar if s[0] == "A21")[4])), Decimal("10800"))      # 12000 - %10
 
     def test_dil_yoksa_turkce(self):
         ts = self._teklif_olustur()
@@ -182,14 +185,15 @@ class TeklifSiparisXlsxTest(TestCase):
     def test_proforma_miktarli_adet_tam_sayi_ve_ondalikli_fiyat_net(self):
         ts = self._belge("PROFORMA", "PRF-XL-1", [(self.a21, "3", "350", "10"), (self.c22, "2.5", "100.123456", "0")])
         ws, baslik, satirlar = self._sayfa(self._xlsx(ts, "tr"))
-        self.assertEqual([ws.cell(baslik, c).value for c in range(1, 7)],
-                         ["Model Kodu", "Ürün Adı", "Adet", "Net Birim Fiyat (USD)", "Birim Brüt KG", "Birim CBM"])      # para birimi başlıkta
+        self.assertEqual([ws.cell(baslik, c).value for c in range(1, 8)],
+                         ["Model Kodu", "Ürün Adı", "Paket İçi Adet", "Adet", "Net Birim Fiyat (USD)", "Birim Brüt KG", "Birim CBM"])      # para birimi başlıkta
         a21, c22 = (next(s for s in satirlar if s[0] == m) for m in ("A21", "C22"))
-        self.assertEqual((a21[2], type(a21[2])), (3, int))
-        self.assertEqual(c22[2], 2.5)                                                                     # ondalıklı adet kırpılmaz
-        self.assertEqual(Decimal(str(a21[3])), Decimal("315.0000"))                                       # 350 * 0,90 — proformada navlun dağıtılmaz
-        self.assertEqual(Decimal(str(c22[3])), Decimal("100.1235"))
-        self.assertEqual(ws.max_column, 6)
+        self.assertEqual((a21[3], type(a21[3])), (3, int))
+        self.assertEqual(c22[3], 2.5)                                                                     # ondalıklı adet kırpılmaz
+        self.assertEqual(Decimal(str(a21[4])), Decimal("315.0000"))                                       # 350 * 0,90 — proformada navlun dağıtılmaz
+        self.assertEqual(Decimal(str(c22[4])), Decimal("100.1235"))
+        self.assertEqual((a21[2], c22[2]), (6, 1))                                                        # Excel tüm belge türlerinde ortak: proformada da Paket İçi Adet
+        self.assertEqual(ws.max_column, 7)
 
     def test_siparis_ekraninda_da_calisir_dosya_adi_ve_teslim_tarihi(self):
         ts = self._belge("SIPARIS", "SIP-XL-1", [(self.a21, "4", "350", "5")])
@@ -198,7 +202,7 @@ class TeklifSiparisXlsxTest(TestCase):
         self.assertIn('filename="siparis_SIP-XL-1_en.xlsx"', r["Content-Disposition"])
         ws, baslik, satirlar = self._sayfa(r)
         self.assertEqual(len(satirlar), 1)
-        self.assertEqual(Decimal(str(satirlar[0][3])), Decimal("332.5"))
+        self.assertEqual(Decimal(str(satirlar[0][4])), Decimal("332.5"))
         metin = " | ".join(str(h.value) for satir in ws.iter_rows() for h in satir if h.value is not None)
         self.assertIn("Delivery date", metin)
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
@@ -209,6 +213,6 @@ class TeklifSiparisXlsxTest(TestCase):
         r = self._xlsx(ts)
         self.assertEqual(r.status_code, 200)
         ws, baslik, satirlar = self._sayfa(r)
-        self.assertEqual(Decimal(str(satirlar[0][3])), Decimal("100"))
+        self.assertEqual(Decimal(str(satirlar[0][4])), Decimal("100"))
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
         self.assertContains(d, "📊 Excel")

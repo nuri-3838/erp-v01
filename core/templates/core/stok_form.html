@@ -260,6 +260,13 @@
           {% for e in form.yukleme_tir.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
       </div>
+      <div class="izgara-3">
+        <div class="alan">
+          <label for="{{ form.paket_ici_adet.id_for_label }}">Paket İçi Adet</label>
+          {{ form.paket_ici_adet }}
+          {% for e in form.paket_ici_adet.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+      </div>
       <p class="yardim">Yalnız Satış işaretliyken doldurun — müşteri tekliflerinde ve
         konteyner/TIR yükleme hesaplarında kullanılır.</p>
 

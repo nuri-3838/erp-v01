@@ -172,6 +172,7 @@
           <div class="loj-info">
             <span class="loj-mini"><span class="et">{{ E.agirlik }}</span><span class="dg mono">{% if k.stok.agirlik is not None %}{{ k.stok.agirlik|tr_kur:2 }}{% else %}—{% endif %}</span></span>
             <span class="loj-mini"><span class="et">{{ E.cbm }}</span><span class="dg mono">{% if k.stok.cbm is not None %}{{ k.stok.cbm|tr_kur:3 }}{% else %}—{% endif %}</span></span>
+            <span class="loj-mini"><span class="et">{{ E.paket_ici }}</span><span class="dg mono">{{ k.stok.paket_ici_adet }}</span></span>
             {% if k.stok.yukleme_20dc is not None %}<span class="loj-tip"><span class="et">20'DC</span><span class="dg mono">{{ k.stok.yukleme_20dc }}</span></span>{% endif %}{% if k.stok.yukleme_40hq is not None %}<span class="loj-tip"><span class="et">40'HQ</span><span class="dg mono">{{ k.stok.yukleme_40hq }}</span></span>{% endif %}{% if k.stok.yukleme_tir is not None %}<span class="loj-tip"><span class="et">{{ E.tir }}</span><span class="dg mono">{{ k.stok.yukleme_tir }}</span></span>{% endif %}
           </div>
           {% if navlun_var and k.nakliye_dahil_fiyat is not None %}

@@ -174,6 +174,17 @@ _SATIS_ALAN_ADLARI = (
 _SATIS_METIN_ALAN_ADLARI = ("model_kodu", "ad_en", "hs_kodu", "materyal", "materyal_en")
 
 
+def _paket_ici_adet(deger, *, varsayilan):
+    """Paket içi adet: boş/None → ``varsayilan`` (oluşturmada 1; düzenlemede mevcut değer KORUNUR — fiyat silme tuzağındaki gibi çağıran vermezse sıfırlanmaz);
+    doluysa tam sayı ve en az 1."""
+    if deger in (None, ""):
+        return varsayilan
+    d = _tam_sayi_opsiyonel(deger, "Paket içi adet")
+    if d is None or d < 1:
+        raise StokHatasi("Paket içi adet en az 1 olmalı.")
+    return d
+
+
 def _satis_alanlarini_coz(satis_urunu, *, model_kodu="", ad_en="", hs_kodu="", materyal="",
                           materyal_en="", basamak_sayisi=None,
                           yukseklik=None, acik_derinlik=None, taban_genisligi=None,
@@ -260,7 +271,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
                  taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                  cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
                  gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
-                 varyantli=False, varyant_boyutlari=(), kullanici=None) -> Stok:
+                 varyantli=False, varyant_boyutlari=(), kullanici=None, paket_ici_adet=None) -> Stok:
     from core.services import varyant as varyant_servis
     ad = _ad_dogrula(ad)
     try:
@@ -297,6 +308,7 @@ def stok_olustur(*, ad, kategori_id, uretim_birimi_id, fatura_birimi_id,
         alis_fiyati_pb=_pb_dogrula(alis_fiyati_pb),
         satinalma_urunu=bool(satinalma_urunu), uretim_urunu=bool(uretim_urunu),
         satis_urunu=bool(satis_urunu),
+        paket_ici_adet=_paket_ici_adet(paket_ici_adet, varsayilan=1),
         gorsel=(gorsel if satis_urunu else None),
         varyantli=bool(varyantli), varyant_boyutlari=boyutlar,
         created_by=kullanici, updated_by=kullanici,
@@ -331,7 +343,7 @@ def stok_kopyala(stok: Stok, kullanici=None) -> Stok:
         taban_genisligi=stok.taban_genisligi, kapali_boy=stok.kapali_boy,
         agirlik=stok.agirlik, azami_yuk=stok.azami_yuk, cbm=stok.cbm,
         yukleme_20dc=stok.yukleme_20dc, yukleme_40hq=stok.yukleme_40hq,
-        yukleme_tir=stok.yukleme_tir, gorsel=(stok.gorsel if stok.gorsel else None),
+        yukleme_tir=stok.yukleme_tir, paket_ici_adet=stok.paket_ici_adet, gorsel=(stok.gorsel if stok.gorsel else None),
         fiyat_try=fiyatlar.get("TRY"), fiyat_usd=fiyatlar.get("USD"),
         fiyat_eur=fiyatlar.get("EUR"), fiyat_gbp=fiyatlar.get("GBP"),
         varyantli=stok.varyantli, varyant_boyutlari=list(stok.varyant_boyutlari or []),
@@ -350,7 +362,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
                   taban_genisligi=None, kapali_boy=None, agirlik=None, azami_yuk=None,
                   cbm=None, yukleme_20dc=None, yukleme_40hq=None, yukleme_tir=None,
                   gorsel=None, fiyat_try=None, fiyat_usd=None, fiyat_eur=None, fiyat_gbp=None,
-                  varyantli=False, varyant_boyutlari=(), kullanici=None) -> Stok:
+                  varyantli=False, varyant_boyutlari=(), kullanici=None, paket_ici_adet=None) -> Stok:
     """Ad, birimler, çevirici, vergi/stok/grup/teklif/görsel/fiyat listesi alanları
     güncellenir. KOD ve KATEGORİ DEĞİŞMEZ. ``gorsel=None`` + Satış işaretliyse mevcut
     görsel korunur (yeni dosya yüklenmedi demektir); Satış işareti kaldırılırsa görsel
@@ -389,6 +401,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.satinalma_urunu = bool(satinalma_urunu)
     stok.uretim_urunu = bool(uretim_urunu)
     stok.satis_urunu = bool(satis_urunu)
+    stok.paket_ici_adet = _paket_ici_adet(paket_ici_adet, varsayilan=stok.paket_ici_adet)
     for alan, deger in satis_alanlari.items():
         setattr(stok, alan, deger)
     if satis_urunu:
@@ -402,7 +415,7 @@ def stok_guncelle(stok: Stok, *, ad, uretim_birimi_id, fatura_birimi_id,
     stok.save(update_fields=[
         "ad", "uretim_birimi", "fatura_birimi", "cevirici", "kdv", "tevkifat",
         "kritik_stok", "stoklu_uretim", "parti_miktari", "tedarikci", "tedarikci_adi", "alis_fiyati", "alis_fiyati_pb",
-        "satinalma_urunu", "uretim_urunu", "satis_urunu",
+        "satinalma_urunu", "uretim_urunu", "satis_urunu", "paket_ici_adet",
         *_SATIS_ALAN_ADLARI, *_SATIS_METIN_ALAN_ADLARI,
         "gorsel", "varyantli", "varyant_boyutlari", "updated_by", "updated_at"])
     _fiyat_listesini_yaz(stok, fiyat_listesi, kullanici)

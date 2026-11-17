@@ -432,6 +432,8 @@ class StokForm(forms.Form):
         label="40' HQ Yükleme Adedi", required=False, min_value=0)
     yukleme_tir = forms.IntegerField(
         label="TIR Yükleme Adedi", required=False, min_value=0)
+    paket_ici_adet = forms.IntegerField(
+        label="Paket İçi Adet", required=False, min_value=1, initial=1)
     gorsel = forms.ImageField(label="Ürün Görseli", required=False)
 
     # Satış fiyat listesi — PB başına sabit 4 alan (StokFiyat, Satış Teklifi ekranının

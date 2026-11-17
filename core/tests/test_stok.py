@@ -686,6 +686,37 @@ class StokViewTest(TestCase):
         s = Stok.objects.get(ad="PROFİL")
         self.assertEqual(s.tedarikci_adi, "Supplier Part Name")
 
+    def test_paket_ici_adet_ekle_duzenle_ve_form(self):
+        """Paket İçi Adet: boş → 1; doluysa kaydedilir; düzenlemede gönderilirse güncellenir, GÖNDERİLMEZSE mevcut değer korunur (sıfırlanmaz); 0 reddedilir; formda görünür."""
+        k = _kdv("20")
+        self.client.force_login(self.yetkili)
+        temel = {"ad": "paketli", "kategori": str(self.alt.pk), "uretim_birimi": str(self.adet.pk), "fatura_birimi": str(self.kg.pk),
+                 "cevirici": "3", "kdv": str(k.pk), "uretim_urunu": "on"}
+        self.assertEqual(self.client.post(reverse("core:stok_ekle"), temel).status_code, 302)
+        self.assertEqual(Stok.objects.get(ad="PAKETLİ").paket_ici_adet, 1)                                     # alan boş: varsayılan 1
+        self.assertEqual(self.client.post(reverse("core:stok_ekle"), {**temel, "ad": "paketli iki", "paket_ici_adet": "6"}).status_code, 302)
+        s = Stok.objects.get(ad="PAKETLİ İKİ")
+        self.assertEqual(s.paket_ici_adet, 6)
+        duzen = {k_: v for k_, v in temel.items() if k_ != "kategori"}
+        duzen["ad"] = "paketli iki"
+        self.assertEqual(self.client.post(reverse("core:stok_duzenle", args=[s.pk]), {**duzen, "paket_ici_adet": "4"}).status_code, 302)
+        s.refresh_from_db()
+        self.assertEqual(s.paket_ici_adet, 4)
+        self.assertEqual(self.client.post(reverse("core:stok_duzenle", args=[s.pk]), duzen).status_code, 302)       # alan hiç gönderilmedi (eski çağıran)
+        s.refresh_from_db()
+        self.assertEqual(s.paket_ici_adet, 4)                                                                     # mevcut değer korundu
+        r = self.client.post(reverse("core:stok_duzenle", args=[s.pk]), {**duzen, "paket_ici_adet": "0"})
+        self.assertEqual(r.status_code, 200)                                                                      # form hatası, kayıt yok
+        s.refresh_from_db()
+        self.assertEqual(s.paket_ici_adet, 4)
+        r = self.client.get(reverse("core:stok_duzenle", args=[s.pk]))
+        self.assertContains(r, 'name="paket_ici_adet"')
+        self.assertContains(r, 'value="4"')
+        self.assertContains(r, "Paket İçi Adet")
+        self.assertIn(r.content.decode().index("TIR (adet)"), range(0, len(r.content.decode())))
+        self.assertLess(r.content.decode().index("TIR (adet)"), r.content.decode().index("Paket İçi Adet"))        # TIR (adet) alanının hemen altında
+        self.assertContains(self.client.get(reverse("core:stok_ekle")), 'name="paket_ici_adet"')
+
     def test_duzenle_post_tedarikci_adi_gorunur_formda(self):
         s = stok_olustur(ad="levha", kategori_id=self.alt.pk,
                          uretim_birimi_id=self.adet.pk, fatura_birimi_id=self.kg.pk,
