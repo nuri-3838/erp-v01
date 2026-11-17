@@ -1,4 +1,5 @@
 """Bilanço testleri (spec 5b) — Aktif=Pasif, gruplama, kontra, iptal hariç."""
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 
@@ -97,7 +98,7 @@ class BilancoTest(TestCase):
         self.assertEqual(gec.tarih, D(2026, 6, 30))
 
     def test_view(self):
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         fis_olustur(tarih=bugun, satirlar=[_s("100", "B", "5000"), _s("500", "A", "5000")])
         r = self.client.get(reverse("core:bilanco"))
         self.assertEqual(r.status_code, 200)

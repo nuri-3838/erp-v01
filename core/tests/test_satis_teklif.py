@@ -3,6 +3,7 @@ tüm satış ürünleri otomatik önceden dolu gelir, miktar YOK (hep 1), cari s
 iskonto otomatik context'e gelir, yükleme şekli / ödeme koşulu / yükleme tipi Tanım
 Listeleri'nden seçilir, navlun seçilen yükleme tipine sığan adede bölünerek ürün başına
 dağıtılır, eski paylaşımlı teklif_siparis_duzenle URL'i buraya yönlendirir."""
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 
@@ -90,7 +91,7 @@ class SatisTeklifTest(TestCase):
         bform = r.context["bform"]
         self.assertNotIn("aciklama", bform.fields)
         self.assertEqual(bform["gecerlilik_teslim_tarihi"].value(),
-                         timezone.localdate() + datetime.timedelta(days=15))
+                         tr_bugun() + datetime.timedelta(days=15))
         self.assertNotContains(r, "elle değiştirebilirsiniz")
         for alan in ("yukleme_sekli", "odeme_kosulu", "yukleme_tipi", "teslim_suresi",
                     "navlun_tutari"):

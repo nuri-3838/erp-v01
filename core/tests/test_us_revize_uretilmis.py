@@ -4,6 +4,7 @@ Vaka: stok için ÜS'te bir ürünün zinciri tamamen üretildi, mamul satıldı
 ürünün istasyon emirleri 5'ten 10'a çıktı, ara (kesim) emirleri bu fazlayı da içerecek şekilde büyüdü. Kural: üretilecek = hedef − sevk − bu ÜS'ten üretilmiş (onaylı istasyon
 kaydı çıktısı); tamamlanan emirler büyütülmez, kalan ihtiyaç kadar açık emir çıkar; kalem çıkarılınca / azalınca ara emirler güncel ihtiyaca iner.
 Bölümler: stok için (ürün zinciri üretildi + satıldı → değişiklik yok / azaltma / artış / kalem çıkarma), 3 ürün × 5, sipariş bağlantılı ÜS, detay "Üretilecek" sütunu."""
+from core.tarih import tr_bugun
 from datetime import date
 from decimal import Decimal
 
@@ -56,7 +57,7 @@ class UretilmisTaban(Taban):
 
     def sat(self, stok, miktar):
         """Serbest stoktan çıkış (ÜS'ten bağımsız satış): ayırma satırına dokunmaz, yalnız eldeki düşer."""
-        hareket_ekle(stok_id=stok.pk, depo_id=self.depo.pk, tarih=timezone.localdate(), tur=StokHareket.Tur.CIKIS, miktar=D(str(miktar)))
+        hareket_ekle(stok_id=stok.pk, depo_id=self.depo.pk, tarih=tr_bugun(), tur=StokHareket.Tur.CIKIS, miktar=D(str(miktar)))
 
     def ayr(self, stok):
         return sa.ayrilan_miktar(self.us, stok)
@@ -183,7 +184,7 @@ class SiparisUretilmisTest(SiparisUretimFixture, TestCase):
         sip, emir = self._ac()
         ie = emir.istasyon_emirleri.get()
         operasyon_kaydi_onayla(istasyon_emri_kayit_ac(ie))                                  # 5 üretildi → ÜS'ye ayrıldı
-        hareket_ekle(stok_id=self.uretilebilir.pk, depo_id=self.depo.pk, tarih=timezone.localdate(), tur=StokHareket.Tur.CIKIS, miktar=D("2"))   # ÜS dışı çıkış
+        hareket_ekle(stok_id=self.uretilebilir.pk, depo_id=self.depo.pk, tarih=tr_bugun(), tur=StokHareket.Tur.CIKIS, miktar=D("2"))   # ÜS dışı çıkış
         siparis_revize(sip, satirlar=self.satirlar("5"), kullanici=self.yon)
         ie.refresh_from_db()
         emir.refresh_from_db()
@@ -195,7 +196,7 @@ class SiparisUretilmisTest(SiparisUretimFixture, TestCase):
         sip, emir = self._ac()
         ie = emir.istasyon_emirleri.get()
         operasyon_kaydi_onayla(istasyon_emri_kayit_ac(ie))
-        hareket_ekle(stok_id=self.uretilebilir.pk, depo_id=self.depo.pk, tarih=timezone.localdate(), tur=StokHareket.Tur.CIKIS, miktar=D("5"))
+        hareket_ekle(stok_id=self.uretilebilir.pk, depo_id=self.depo.pk, tarih=tr_bugun(), tur=StokHareket.Tur.CIKIS, miktar=D("5"))
         siparis_revize(sip, satirlar=self.satirlar("7"), kullanici=self.yon)
         ie.refresh_from_db()
         self.assertEqual((ie.planlanan, ie.tamamlanan), (D("7"), D("5")))                   # 5 üretilmiş + 2 yeni

@@ -1,5 +1,6 @@
 """Kurlar (TCMB) testleri — XML parse, KAYDIRMALI + YOĞUN yazma (hafta sonu/tatil
 günlerine de önceki iş günü kuru), seed, kur_usd otomatik doldurma, ekran yetkisi."""
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 
@@ -177,7 +178,7 @@ class KurlarEkranYetkiTest(TestCase):
         self.assertNotContains(r, "45,631200")     # 6 ondalık DEĞİL
 
     def test_liste_varsayilan_son_30_gun(self):
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         Kur.objects.create(tarih=bugun, usd_alis=Decimal("50.0000"))
         Kur.objects.create(tarih=bugun - datetime.timedelta(days=60),
                            usd_alis=Decimal("40.0000"))
@@ -187,7 +188,7 @@ class KurlarEkranYetkiTest(TestCase):
         self.assertNotContains(r, "40,0000")    # 60 gün önce -> filtre dışı
 
     def test_cek_formu_varsayilan_son_7_gun(self):
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:kurlar"))
         self.assertContains(r, (bugun - datetime.timedelta(days=7)).isoformat())

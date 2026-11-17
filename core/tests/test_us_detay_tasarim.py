@@ -1,5 +1,6 @@
 """ÜS detay yeniden tasarım (2026-10-14): üst bant, akış şeridi renkleri, sekmeler (?sekme=), Kayıtlar sekmesi (son 50, data-href), ilerleme/yüzde eşitliği ve
 SORGU KİLİDİ (tasarım öncesi taban: 46 / 44 / 34 sorgu — yeni sayfa bunu aşmamalı)."""
+from core.tarih import tr_bugun
 from datetime import timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -178,7 +179,7 @@ class UsDetaySiparisliTest(tek.SiparisliUsTest):
         return self.client.get(reverse("core:uretim_emri_detay", args=[self.emir.pk]))
 
     def test_termin_kalan_gun_ve_gecmis_kirmizi(self):
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         sip = self.emir.kaynak_siparis
         TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=bugun + timedelta(days=5))
         r = self.detay()

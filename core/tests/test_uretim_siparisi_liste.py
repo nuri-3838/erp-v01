@@ -1,5 +1,6 @@
 """Üretim Siparişleri listesi (sade tasarım): ÜS no / müşteri / "Sip. … · N ürün · M adet", depo sütunu yok, Termin, durum rozeti, ilerleme çubuğu + "x/y istasyon",
 kaynak siparişsiz "Stok için üretim", arama (müşteri dahil), sabit sorgu sayısı."""
+from core.tarih import tr_bugun
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -66,12 +67,12 @@ class ListeTest(kt.KapanisTaban):
         self.assertContains(r, "0/1 istasyon")
         self.assertContains(r, 'class="ue-durum acik">Açık')
         self.assertContains(r, '<span class="pasif">—</span>')                                         # termin yok
-        TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=timezone.localdate() - timedelta(days=3))
+        TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=tr_bugun() - timedelta(days=3))
         r = self.liste()
         self.assertContains(r, "ue-termin gecmis")                                                     # geçmiş + açık → kırmızı
-        TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=timezone.localdate() + timedelta(days=3))
+        TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=tr_bugun() + timedelta(days=3))
         self.assertNotContains(self.liste(), "ue-termin gecmis")
-        self.assertContains(self.liste(), (timezone.localdate() + timedelta(days=3)).strftime("%d.%m.%Y"))
+        self.assertContains(self.liste(), (tr_bugun() + timedelta(days=3)).strftime("%d.%m.%Y"))
         uretim.operasyon_kaydi_onayla(uretim.istasyon_emri_kayit_ac(emir.istasyon_emirleri.get()))
         r = self.liste()
         self.assertContains(r, "%100")
@@ -81,7 +82,7 @@ class ListeTest(kt.KapanisTaban):
         self.assertNotContains(self.liste(), emir.no)                                                  # varsayılan süzgeç AÇIK: iptal görünmez (adım 8)
         r = self.liste(durum="TUMU")
         self.assertContains(r, 'class="ue-durum iptal">İptal')
-        TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=timezone.localdate() - timedelta(days=3))
+        TeklifSiparis.objects.filter(pk=sip.pk).update(gecerlilik_teslim_tarihi=tr_bugun() - timedelta(days=3))
         self.assertNotContains(self.liste(durum="TUMU"), "ue-termin gecmis")                           # açık değilse kırmızı değil
 
     def test_varsayilan_acik_ve_tamamlanmis_stok_us(self):

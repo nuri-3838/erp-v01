@@ -1,5 +1,6 @@
 """ÜRÜN AĞACI maliyeti: birim maliyet önceliği (ortalama > stok kartı alış fiyatı > yok), alış fiyatının TCMB kuruyla çevrimi, kaynak
 rozet/özet sayıları, TL ve USD'nin her yerde ayrı gösterimi (Ürün/Maliyet, Karşılaştır, Excel)."""
+from core.tarih import tr_bugun
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -175,7 +176,7 @@ class UrunMaliyetKaynakTest(KullanimBase):
 
 class AlisFiyatiEkranTest(KullanimBase):
     def setUp(self):
-        Kur.objects.get_or_create(tarih=timezone.localdate(), defaults={"usd_alis": D("40")})
+        Kur.objects.get_or_create(tarih=tr_bugun(), defaults={"usd_alis": D("40")})
         self.giris(self.profil, 2, 200, 5)
         self.giris(self.civata, 25, 50, 1.25)
         Stok.objects.filter(pk=self.boya.pk).update(alis_fiyati=D("10"), alis_fiyati_pb="TRY")

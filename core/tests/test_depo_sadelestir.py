@@ -1,5 +1,6 @@
 """Depo sadeleştirme (tek fabrika deposu "SEMTA DEPO"): ``depo_sadelestir`` komutu (--dry-run), pasif depo kuralı, formlarda pasif depoların çıkmaması ve
 varsayılan depo; ayrıca ÜS ekran düzeltmeleri (eksik malzeme bölümü/rozeti, fason düğmesi yalnız istasyon 10, revizyon işlem zamanı)."""
+from core.tarih import tr_bugun
 from datetime import date
 from decimal import Decimal
 from io import StringIO
@@ -66,7 +67,7 @@ class DepoSadelestirTest(DepoTaban):
         self.assertEqual(eldeki_miktar(self.stok, self.d999.pk), D("7"))                          # fason deposu aynen
         self.assertTrue(Depo.objects.get(pk=self.d999.pk).aktif)
         self.assertEqual([(k["kod"], k["stok_degeri"], k["mizan"], k["fark"]) for k in degerleme_raporu()["karsilastirma"]], deger_once)   # değerleme/mizan aynı
-        self.assertEqual(StokHareket.objects.filter(kaynak=StokHareket.Kaynak.TRANSFER, tarih=timezone.localdate()).count(), 4)    # 2 stok × (çıkış+giriş)
+        self.assertEqual(StokHareket.objects.filter(kaynak=StokHareket.Kaynak.TRANSFER, tarih=tr_bugun()).count(), 4)    # 2 stok × (çıkış+giriş)
         self.assertIn("Zaten tamam", self.calistir())                                              # tekrar: yapılacak bir şey yok
 
     def test_pasif_depo_secimde_cikmaz_varsayilan_semta_depo(self):
@@ -131,7 +132,7 @@ class UsEkranDuzeltmeTest(kt.KapanisTaban):
     def test_revizyon_tarihi_islem_ani(self):
         emir = self.emir_ac(self.siparis("3"))                                                     # ÜS tarihi geçmiş (GUN); revizyon işlem anı
         rev = emir.revizyonlar.get()
-        self.assertEqual((emir.tarih, rev.tarih), (kt.GUN, timezone.localdate()))
+        self.assertEqual((emir.tarih, rev.tarih), (kt.GUN, tr_bugun()))
         d = self.client.get(reverse("core:uretim_emri_detay", args=[emir.pk]))
         self.assertContains(d, "İşlem Zamanı")
         self.assertContains(d, timezone.localtime(rev.created_at).strftime("%d.%m.%Y %H:%M"))

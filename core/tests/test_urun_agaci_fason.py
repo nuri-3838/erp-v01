@@ -5,6 +5,7 @@ tarih seçimi; fiyatsız üretilen parça sayısı; Malzeme / İşlem-fason / GE
 istasyon = kendi üretimimiz (fiyat aranmaz); özet ve satırlar fasoncu bazında ayrı. Fason Hesapla seçilen fasoncunun istasyonlarıyla sınırlanır.
 Fixture canlı 152-22-0003 (4+4) zincirinin kopyası: malzeme 784,15 TL; Gürbüz fason 151-10-0017 ×2 ×16,06 + 151-10-0018 ×2 ×16,06 +
 151-20-0014 ×2 ×5,93 + 151-20-0015 ×2 ×5,93 = 87,96 TL → genel 872,11 TL."""
+from core.tarih import tr_bugun
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -227,7 +228,7 @@ class ServisTest(FasonMaliyetBase):
 class EkranTest(FasonMaliyetBase):
     def setUp(self):
         self.client.force_login(User.objects.create_superuser("uaf_y", password="x"))
-        Kur.objects.get_or_create(tarih=timezone.localdate(), defaults={"usd_alis": D("40")})
+        Kur.objects.get_or_create(tarih=tr_bugun(), defaults={"usd_alis": D("40")})
         self.url = reverse("core:urun_agaci")
 
     def test_maliyet_sekmesi_fason_grubu(self):
@@ -251,7 +252,7 @@ class EkranTest(FasonMaliyetBase):
         self.assertNotContains(r, 'name="fasoncu"')
         r = self.client.get(self.url, {"urun": self.urun.pk, "sekme": "maliyet", "tarih": "bozuk"})         # geçersiz tarih → bugün
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.context["fason_tarih"], timezone.localdate().isoformat())
+        self.assertEqual(r.context["fason_tarih"], tr_bugun().isoformat())
         r = self.client.get(self.url, {"urun": self.urun.pk, "sekme": "maliyet", "tarih": "2026-10-09", "miktar": "3", "xlsx": "1"})
         self.assertIn("spreadsheetml", r["Content-Type"])
         self.assertIn("kendi üretimimiz: 1", load_workbook(BytesIO(r.content)).active["A2"].value)

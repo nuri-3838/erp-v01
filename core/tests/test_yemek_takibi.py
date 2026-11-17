@@ -1,5 +1,6 @@
 """İNSAN KAYNAKLARI > Yemek Takibi testleri: servis (benzersizlik/doğrulama/aylık özet), view
 (cari filtresi + CRUD), yetki."""
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 
@@ -182,7 +183,7 @@ class YemekTakibiViewTest(TestCase):
         c2 = self.cari
         eski = kayit_ekle(cari=c2, tarih=datetime.date(2020, 1, 1), kisi_sayisi=5,
                           birim_fiyat=100)          # bu-ay aralığının dışında
-        guncel = kayit_ekle(cari=c2, tarih=datetime.date.today(), kisi_sayisi=9,
+        guncel = kayit_ekle(cari=c2, tarih=tr_bugun(), kisi_sayisi=9,
                             birim_fiyat=100)
         self.client.force_login(self.yetkili)
         r = self.client.get(reverse("core:yemek_takibi"), {"cari": c2.pk})

@@ -1,5 +1,6 @@
 """DONDURULMUŞ KOPYA — fatura formu yeniden tasarımından ÖNCEKİ (commit b2e6d01) ekle/düzenle POST akışı ve FaturaForm. YALNIZ test karşılaştırması içindir
 (core/tests/test_fatura_form_fis_karsilastirma.py): aynı girdiyle eski akışın ürettiği fiş ile yeni akışın ürettiği fişin birebir aynı olduğunu kanıtlar. DEĞİŞTİRMEYİN."""
+from core.tarih import tr_bugun
 from decimal import Decimal
 
 from django import forms
@@ -19,7 +20,7 @@ class EskiFaturaForm(forms.Form):
     tarih = forms.DateField(
         label="Fatura tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     fatura_no = forms.CharField(
         label="Fatura No", max_length=50, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off"}))

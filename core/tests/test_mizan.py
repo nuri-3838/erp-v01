@@ -1,4 +1,5 @@
 """Mizan testleri (spec 5a) — yalnızca yevmiyeden, iptal hariç, tarih aralığı."""
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 
@@ -80,7 +81,7 @@ class MizanTest(TestCase):
         self.assertEqual(len(mizan(D(2026, 1, 1), D(2026, 12, 31)).satirlar), 2)
 
     def test_view_varsayilan_yil(self):
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         fis_olustur(tarih=bugun, satirlar=[
             _satir("100", "B", "250"), _satir("600", "A", "250")])
         r = self.client.get(reverse("core:mizan"))

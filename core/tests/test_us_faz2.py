@@ -1,5 +1,6 @@
 """Üretim Siparişleri Faz 2 (2026-10-14): Yeni ÜS formunda satır varyantı + sırasız çok kelimeli ürün arama, "Önizle" (HİÇBİR kayıt yazmaz; açılışla birebir aynı), revize formunda kalem varyantı
 korunur, liste süzgeç çipleri (Müşteri / Stok için, Termini geçen, Eksik malzeme, Bekleyen malzeme, Acil), termin + kalan gün, darboğaz istasyonu ve liste sorgu kilidi (<30)."""
+from core.tarih import tr_bugun
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -211,7 +212,7 @@ class ListeSuzgecTest(f1.SiparisliTaban):
         alis = teklif_siparis_olustur(belge_tur="SIPARIS", yon="ALIS", cari_id=self.musteri.pk, tarih=GUN,
                                       satirlar=[{"stok_id": self.ham.pk, "miktar": "2", "birim_fiyat": "10"}], kullanici=self.yon)
         teklif_siparis_onayla(alis, kullanici=self.yon)                                                                       # 2 adet bekleniyor
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         _, self.f = self.yeni_us(termin=bugun + timedelta(days=5), miktar="2")                                                # eksik 1 ≤ sipariş 2 → Bekleyen malzeme
         _, self.e = self.yeni_us(termin=bugun - timedelta(days=3), miktar="5")                                                # eksik 5 > 2 → Eksik malzeme + termini geçti
         self.s = uretim.uretim_emri_olustur(kalemler=[{"hedef_urun_id": self.stok.pk, "hedef_miktar": "1"}], depo_id=self.depo.pk, tarih=GUN, kullanici=self.yon, oncelik="ACIL")  # stok için + acil

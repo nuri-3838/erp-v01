@@ -1,4 +1,5 @@
 """Gelir tablosu testleri (spec 5b) — yalnızca 6'lı, 7'liler hariç, harita doğru."""
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 
@@ -105,7 +106,7 @@ class GelirTablosuTest(TestCase):
         self.assertEqual(gt.donem_net_kari, Decimal("0.00"))
 
     def test_view(self):
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         fis_olustur(tarih=bugun, satirlar=[_s("100", "B", "1000"), _s("600", "A", "1000")])
         r = self.client.get(reverse("core:gelir_tablosu"))
         self.assertEqual(r.status_code, 200)

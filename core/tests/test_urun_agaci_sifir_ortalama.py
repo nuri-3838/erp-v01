@@ -2,6 +2,7 @@
 kart alış fiyatı (döviz çevrimi dahil) → o da yoksa "maliyet yok"; fiyatlı + maliyetsiz karışık → mevcut ortalama; hiç giriş yoksa eski kural.
 Kaynak notu "stokta maliyetsiz giriş var" (ekran rozeti, Excel kaynak sütunu, Karşılaştır), maliyetsiz sayacı; stok kartında "maliyet henüz belli
 değil" aynı kuralla. Ortalama motoru / değerleme raporu DEĞİŞMEZ (ort 0, değer 0 kalır)."""
+from core.tarih import tr_bugun
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -114,7 +115,7 @@ class ServisTest(SifirOrtalamaBase):
 class EkranTest(SifirOrtalamaBase):
     def setUp(self):
         super().setUp()
-        Kur.objects.get_or_create(tarih=timezone.localdate(), defaults={"usd_alis": D("40")})
+        Kur.objects.get_or_create(tarih=tr_bugun(), defaults={"usd_alis": D("40")})
         self.client.force_login(User.objects.create_superuser("ua_so", password="x"))
 
     def test_maliyet_sekmesi_rozet_ve_sayac(self):

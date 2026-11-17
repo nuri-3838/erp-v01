@@ -1,6 +1,7 @@
 """KARMA KESİM oturumu + atölye ekranı (Dilim 2): istasyon başına TEK açık karma oturum, tek ekip + sorumlu kuralları (katıl / ayrıl / devret / iptal, adedi yalnız sorumlu girer),
 Bitir → karma kesim yazılır ve oturum bağlanır (hata/bütçe aşımında oturum açık kalır), "Adet bekliyor" (mesai kapanışı) + sonradan adet girişi, emirli tekil oturumla çakışma
 (iki yönde), ofis "Üretildi" engeli, canlı önizleme, bugünkü son karma kesimi geri alma, ofis/takip/pano/Excel ekranlarının karma oturumla çalışması."""
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 from io import BytesIO
@@ -340,7 +341,7 @@ class EkranlarTest(KarmaOturumTaban):
         self.assertEqual(self.client.get(reverse("core:atolye_takip"), {"sekme": "gecmis", "aralik": "bugun", "xlsx": "1"}).status_code, 200)
         # karma kayıtları oturum satırıyla birlikte gösterilir: ayrıca "ofis" satırı olarak çıkmaz
         from core.services import is_takibi
-        satirlar = is_takibi.gecmis(baslangic=datetime.date.today() - datetime.timedelta(days=1), bitis=datetime.date.today() + datetime.timedelta(days=1))
+        satirlar = is_takibi.gecmis(baslangic=tr_bugun() - datetime.timedelta(days=1), bitis=tr_bugun() + datetime.timedelta(days=1))
         self.assertEqual([s["tur"] for s in satirlar].count("kayit"), 0)
 
     def test_pano_adet_bekleyen_karma_ve_acik_isler_karti(self):
