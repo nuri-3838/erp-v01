@@ -107,3 +107,42 @@ class PaketIciAdetTest(TestCase):
             self.assertEqual(ws.cell(satir, 2).value in ("Ürün Adı", "Product Name"), True)
             self.assertEqual(ws.cell(satir + 1, 3).value, 3)
             self.assertEqual(ws.cell(satir + 1, 4).value, 1)                                                         # Adet
+
+    def _belge(self, belge_tur, yon, no, stok):
+        ts = TeklifSiparis.objects.create(belge_tur=belge_tur, yon=yon, cari=self.cari, tarih=datetime.date(2026, 11, 18), para_birimi="USD",
+                                          belge_no=no, created_by=self.yon, updated_by=self.yon)
+        TeklifSiparisKalem.objects.create(teklif_siparis=ts, stok=stok, miktar=Decimal("2"), birim_fiyat=Decimal("100"), kdv=self.kdv,
+                                          created_by=self.yon, updated_by=self.yon)
+        return ts
+
+    def test_excel_paket_ici_adet_yalniz_satis_belgelerinde_alista_yok(self):
+        """Paket İçi Adet sütunu yalnız SATIŞ belgelerinde (teklif / proforma / sipariş); ALIŞ (satınalma) teklif ve sipariş Excel'inde YOK (6 sütun)."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+        stok = self.stok("G02", paket_ici_adet=6)
+        self.client.force_login(self.yon)
+
+        def oku(ts, dil):
+            r = self.client.get(reverse("core:teklif_siparis_xlsx", args=[ts.pk]) + f"?dil={dil}")
+            self.assertEqual(r.status_code, 200)
+            ws = load_workbook(BytesIO(r.content)).active
+            ncol = ws.max_column                                                     # ws.cell okuması sütun yaratır: önce bak
+            satir = next(i for i in range(1, ws.max_row + 1) if ws.cell(i, 1).value in ("Model Kodu", "Model Code"))
+            return ncol, [ws.cell(satir, c).value for c in range(1, ncol + 1)], [ws.cell(satir + 1, c).value for c in range(1, ncol + 1)]
+
+        for belge_tur, no in (("TEKLIF", "SST-X-1"), ("PROFORMA", "PRF-X-1"), ("SIPARIS", "SSP-X-1")):                # SATIŞ: 7 sütun
+            ts = self._belge(belge_tur, "SATIS", no, stok)
+            for dil, etiket in (("tr", "Paket İçi Adet"), ("en", "Pcs/Pkg")):
+                ncol, baslik, satir = oku(ts, dil)
+                self.assertEqual(ncol, 7, f"{belge_tur} {dil}")
+                self.assertEqual(baslik[2], etiket, f"{belge_tur} {dil}")
+                self.assertEqual((satir[2], satir[3]), (6, 2), f"{belge_tur} {dil}")                              # Paket İçi Adet, Adet
+        for belge_tur, no in (("TEKLIF", "AST-X-1"), ("SIPARIS", "ASP-X-1")):                                         # ALIŞ: 6 sütun, etiket yok
+            ts = self._belge(belge_tur, "ALIS", no, stok)
+            for dil, etiket, adet_basligi in (("tr", "Paket İçi Adet", "Adet"), ("en", "Pcs/Pkg", "Qty")):
+                ncol, baslik, satir = oku(ts, dil)
+                self.assertEqual(ncol, 6, f"ALIŞ {belge_tur} {dil}")
+                self.assertNotIn(etiket, baslik, f"ALIŞ {belge_tur} {dil}")
+                self.assertEqual(baslik[2], adet_basligi)                                                          # 3. sütun Adet
+                self.assertEqual(satir[2], 2)                                                                      # değerler kaymadı
+

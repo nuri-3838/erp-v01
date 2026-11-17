@@ -213,6 +213,9 @@ class TeklifSiparisXlsxTest(TestCase):
         r = self._xlsx(ts)
         self.assertEqual(r.status_code, 200)
         ws, baslik, satirlar = self._sayfa(r)
-        self.assertEqual(Decimal(str(satirlar[0][4])), Decimal("100"))
+        self.assertEqual([ws.cell(baslik, c).value for c in range(1, 7)],
+                         ["Model Kodu", "Ürün Adı", "Adet", "Net Birim Fiyat (USD)", "Birim Brüt KG", "Birim CBM"])      # ALIŞ: Paket İçi Adet sütunu YOK (6 sütun)
+        self.assertNotIn("Paket İçi Adet", [ws.cell(baslik, c).value for c in range(1, 8)])
+        self.assertEqual((satirlar[0][2], Decimal(str(satirlar[0][3]))), (2, Decimal("100")))                         # alışta: [model, ad, adet, net, kg, cbm]
         d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk]))
         self.assertContains(d, "📊 Excel")

@@ -1,6 +1,7 @@
 """Teklif / Proforma / Sipariş (ve diğer teklif-sipariş belgeleri) — sade, resimsiz Excel dökümü.
 
-Tablo yalnız 7 sütun: Model Kodu, Ürün Adı, Paket İçi Adet, Adet, Net Birim Fiyat, Birim Brüt KG, Birim CBM. Toplam satırı YOKTUR.
+Tablo SATIŞ belgelerinde (teklif, proforma, sipariş…; ``yon`` = SATIS) 7 sütun: Model Kodu, Ürün Adı, Paket İçi Adet, Adet, Net Birim Fiyat, Birim Brüt KG, Birim CBM;
+ALIŞ (satınalma) belgelerinde "Paket İçi Adet" sütunu YOKTUR (6 sütun). Toplam satırı YOKTUR.
 PDF ile AYNI kaynaktan beslenir: dile göre ad (``Stok.ad_dil``), seçenek çevirileri, teslim notu ve not satırları PDF bağlamından
 (``core.views.satis_*_pdf_baglam``) gelir; fiyat kalem modelinin property'leriyle hesaplanır (``net_birim_fiyat``, navlunlu satış
 teklifinde PDF'teki gibi ``nakliye_dahil_fiyat``) — yeni bir hesap kuralı yoktur. Hiçbir değer saklanmaz; her indirmede canlı üretilir.
@@ -50,8 +51,9 @@ _E = {
     },
 }
 
-NCOL = 7
-_GENISLIK = (24, 46, 14, 10, 22, 18, 16)
+NCOL_SATIS, NCOL_ALIS = 7, 6                                   # satış: + Paket İçi Adet
+_GENISLIK_SATIS = (24, 46, 14, 10, 22, 18, 16)
+_GENISLIK_ALIS = (24, 46, 10, 22, 18, 16)
 
 
 def _yaz(ws, satir, sutun, deger, *, bicim=None, kalin=False, hiza=None, dolgu=None, kenar=False, sar=False):
@@ -95,7 +97,8 @@ def teklif_siparis_xlsx(ts, kalemler, ctx, dil, *, firma_unvan="", navlunlu=Fals
     wb = Workbook()
     ws = wb.active
     ws.title = (_BASLIK_EN if dil == "en" else _BASLIK_TR).get(tur, "Belge")[:31]
-    for i, g in enumerate(_GENISLIK, start=1):
+    NCOL = NCOL_SATIS if satis else NCOL_ALIS                     # Paket İçi Adet yalnız satış belgelerinde
+    for i, g in enumerate(_GENISLIK_SATIS if satis else _GENISLIK_ALIS, start=1):
         ws.column_dimensions[get_column_letter(i)].width = g
 
     # --- üst blok ---
@@ -140,9 +143,9 @@ def teklif_siparis_xlsx(ts, kalemler, ctx, dil, *, firma_unvan="", navlunlu=Fals
         _birlestir_yaz(ws, satir, 2, NCOL, ctx["teslim_notu"], hiza="left")
         satir += 1
 
-    # --- satır tablosu (7 sütun; toplam satırı yok) ---
+    # --- satır tablosu (satışta 7, alışta 6 sütun; toplam satırı yok) ---
     baslik_satiri = satir
-    basliklar = (E["model"], E["urun"], E["paket"], E["adet"], f"{E['net']} ({ts.para_birimi})", E["kg"], E["cbm"])
+    basliklar = ((E["model"], E["urun"]) + ((E["paket"],) if satis else ()) + (E["adet"], f"{E['net']} ({ts.para_birimi})", E["kg"], E["cbm"]))
     for c, b in enumerate(basliklar, start=1):
         h = _yaz(ws, baslik_satiri, c, b, kenar=True)
         h.font, h.fill = _BASLIK_YAZI, _BASLIK_DOLGU
@@ -160,8 +163,9 @@ def teklif_siparis_xlsx(ts, kalemler, ctx, dil, *, firma_unvan="", navlunlu=Fals
             fiyat = k.net_birim_fiyat
         adet, adet_bicim = _adet(k.miktar)
         degerler = (
-            (k.stok.model_kodu or None, None), (ad, None), (k.stok.paket_ici_adet, "#,##0"), (adet, adet_bicim), (fiyat, _FIYAT),
-            (k.stok.agirlik, _KG), (k.stok.cbm, _CBM),
+            (k.stok.model_kodu or None, None), (ad, None),
+            *(((k.stok.paket_ici_adet, "#,##0"),) if satis else ()),
+            (adet, adet_bicim), (fiyat, _FIYAT), (k.stok.agirlik, _KG), (k.stok.cbm, _CBM),
         )
         for c, (dg, bicim) in enumerate(degerler, start=1):
             _yaz(ws, satir, c, dg, bicim=bicim, kenar=True, sar=(c == 2))
