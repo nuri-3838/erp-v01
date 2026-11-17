@@ -18,6 +18,7 @@ KARMA ALIŞ (``karma_alis_tipi_mi``: ALIŞ FATURASI / İHRAÇ KAYITLI): STOK sat
 """
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 from decimal import Decimal
 
 from django.db import transaction
@@ -292,7 +293,7 @@ def _hesap_satiri_coz(g, i, hesap_kumesi, *, kullanici=None, tarih=None):
         elif duran_hesap.grup_mu(hesap.hesap_kodu) and not hesap_kodu_258_mi(hesap.hesap_kodu):
             ad = (g.get("varlik_adi") or "").strip() or hesap.hesap_adi
             try:
-                hesap = dv_servis.kart_ac(hesap.hesap_kodu, ad, tarih=tarih or timezone.localdate(),
+                hesap = dv_servis.kart_ac(hesap.hesap_kodu, ad, tarih=tarih or tr_bugun(),
                                           kullanici=kullanici).hesap
             except dv_servis.DuranVarlikHatasi as e:
                 raise FaturaHatasi(f"Satır {i}: {e}")

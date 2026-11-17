@@ -167,7 +167,7 @@ from core.services import mesai_hesap as mesai_hesap_servis
 from core.services import yatirim_projesi as yp_servis
 from core.services import duran_varlik as dv_servis
 from core.ip import istemci_ip
-from core.tarih import ay_araligi, kidem_metni, tr_bugun
+from core.tarih import ay_araligi, kidem_metni, tr_bugun, tr_gun_araligi
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir, ekranlar_gorebilir,
     atolye_kullanicisi_mi, kullanici_telefon, mesai_kullanicisi_mi, sayim_kullanicisi_mi, yonetici_gerekli, yonetici_mi,
@@ -631,7 +631,7 @@ def kurlar(request):
     pb = (request.GET.get("pb") or "USD").upper()
     if pb not in ("USD", "EUR", "GBP"):
         pb = "USD"
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     # Çekme formu (POST) — varsayılan son 7 gün
     form = MizanFiltreForm(
         request.POST or None,
@@ -842,7 +842,7 @@ def _bilanco_tarihi(request):
     form = BilancoTarihForm(request.GET or None)
     if form.is_valid():
         return form, form.cleaned_data["tarih"]
-    t = timezone.localdate()
+    t = tr_bugun()
     if not request.GET:
         form = BilancoTarihForm(initial={"tarih": t})
     return form, t
@@ -1003,9 +1003,9 @@ def silme_kayitlari(request):
     if tur in SilmeKaydi.Tur.values:
         qs = qs.filter(tur=tur)
     if bas:
-        qs = qs.filter(created_at__date__gte=bas)
+        qs = qs.filter(created_at__gte=tr_gun_araligi(bas)[0])           # TR günü (``__date`` UTC gününe bakar: 00:00-03:00 TR arası bir önceki gün)
     if bit:
-        qs = qs.filter(created_at__date__lte=bit)
+        qs = qs.filter(created_at__lt=tr_gun_araligi(bit)[1])
     if ara:
         qs = qs.filter(Q(kayit_no__icontains=ara) | Q(aciklama__icontains=ara) | Q(silen__username__icontains=ara) | Q(silen__first_name__icontains=ara)
                        | Q(silen__last_name__icontains=ara) | Q(ip_adresi__startswith=ara))
@@ -2674,7 +2674,7 @@ def kasa_detay(request, pk):
     ekstre tüm dönem için hesaplanır, satırlar yalnız gösterimde süzülür."""
     kasa = get_object_or_404(Kasa, pk=pk, silindi=False)
 
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     form = MizanFiltreForm(request.GET) if request.GET else None
     if form and form.is_valid():
         b, s = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
@@ -2762,7 +2762,7 @@ def banka_hesap_detay(request, pk):
     varsayılan dönem SON 1 AY. Kasa detayıyla aynı desen, ekstre yeni→eski."""
     hesap = get_object_or_404(BankaHesap, pk=pk, silindi=False)
 
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     form = MizanFiltreForm(request.GET) if request.GET else None
     if form and form.is_valid():
         b, s = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
@@ -2886,9 +2886,9 @@ def kur_degerleme(request):
     için tek tuşla ters kayıt."""
     ham = request.GET.get("tarih") or request.POST.get("tarih")
     try:
-        tarih = datetime.date.fromisoformat(ham) if ham else timezone.localdate()
+        tarih = datetime.date.fromisoformat(ham) if ham else tr_bugun()
     except ValueError:
-        tarih = timezone.localdate()
+        tarih = tr_bugun()
     if request.method == "POST":
         eylem = request.POST.get("eylem")
         try:
@@ -2914,9 +2914,9 @@ def donemsel_dagitim(request):
     """Dönemsel gider (180) aylık dağıtım fişlerini "bu tarihe kadar" üretir (idempotent; gelecek aylar için fiş üretmez)."""
     ham = request.GET.get("tarih") or request.POST.get("tarih")
     try:
-        tarih = datetime.date.fromisoformat(ham) if ham else timezone.localdate()
+        tarih = datetime.date.fromisoformat(ham) if ham else tr_bugun()
     except ValueError:
-        tarih = timezone.localdate()
+        tarih = tr_bugun()
     if request.method == "POST":
         try:
             n = donemsel_servis.uret(tarih, kullanici=request.user)
@@ -3906,7 +3906,7 @@ def teklif_proformaya_cevir(request, pk):
     if request.method == "POST":
         try:
             proforma = teklif_siparis_servis.teklifi_proformaya_cevir(
-                teklif, tarih=timezone.localdate(), kullanici=request.user)
+                teklif, tarih=tr_bugun(), kullanici=request.user)
             messages.success(
                 request, f"Proforma oluşturuldu (teklif {teklif.pk} kaynaklı).")
             return redirect("core:teklif_siparis_detay", pk=proforma.pk)
@@ -3924,7 +3924,7 @@ def proforma_siparise_cevir(request, pk):
     if request.method == "POST":
         try:
             siparis = teklif_siparis_servis.proformayi_siparise_cevir(
-                proforma, tarih=timezone.localdate(), kullanici=request.user)
+                proforma, tarih=tr_bugun(), kullanici=request.user)
             messages.success(
                 request, f"Sipariş oluşturuldu (proforma {proforma.pk} kaynaklı).")
             return redirect("core:teklif_siparis_detay", pk=siparis.pk)
@@ -3939,7 +3939,7 @@ def alis_teklif_siparise_cevir(request, pk):
     teklif = get_object_or_404(TeklifSiparis, pk=pk, silindi=False, belge_tur=TeklifSiparis.BelgeTur.TEKLIF, yon=TeklifSiparis.Yon.ALIS)
     if request.method == "POST":
         try:
-            siparis = teklif_siparis_servis.teklifi_siparise_cevir(teklif, tarih=timezone.localdate(), kullanici=request.user)
+            siparis = teklif_siparis_servis.teklifi_siparise_cevir(teklif, tarih=tr_bugun(), kullanici=request.user)
             messages.success(request, f"Taslak alış siparişi oluşturuldu ({teklif.belge_no} kaynaklı): {siparis.belge_no}. Kontrol edip onaylayın.")
             return redirect("core:teklif_siparis_detay", pk=siparis.pk)
         except teklif_siparis_servis.TeklifSiparisHatasi as e:
@@ -4120,7 +4120,7 @@ def siparis_faturaya_cevir(request, pk):
         dosya_uyari = bool(request.FILES.getlist("dosyalar"))
     else:
         fform = FaturaForm(yon=yon, initial={
-            "cari": siparis.cari_id, "tarih": timezone.localdate(),
+            "cari": siparis.cari_id, "tarih": tr_bugun(),
             "para_birimi": siparis.para_birimi})
         # NET (iskontolu) birim fiyat, tam hassasiyet: fatura satırında iskonto alanı yok — liste fiyatı taşınırsa iskonto kaybolur, sipariş tutarı
         # ile fatura tutarı tutmaz (irsaliyeyi_faturaya_cevir ile aynı kural). Varyant: sipariş kalem varyantı faturaya taşınır (boş = standart).
@@ -4193,7 +4193,7 @@ def siparis_uretim_emrine_cevir(request, pk):
             except uretim_servis.UretimHatasi as e:
                 bform.add_error(None, str(e))
     else:
-        bform = UretimEmriBaslikForm(initial={"tarih": timezone.localdate(), "termin": siparis.gecerlilik_teslim_tarihi})     # termin: satış siparişinin teslim tarihi (değiştirilebilir)
+        bform = UretimEmriBaslikForm(initial={"tarih": tr_bugun(), "termin": siparis.gecerlilik_teslim_tarihi})     # termin: satış siparişinin teslim tarihi (değiştirilebilir)
         formset = SiparisUretimEmriSatirFormSet(initial=[
             {"kalem_id": k.pk, "hedef_miktar": k.miktar} for k in uygun])
     return render(request, "core/siparis_uretim_emri_ekle.html", {
@@ -4944,7 +4944,7 @@ def kredi_karti_detay(request, pk):
     Tarih + açıklama filtreli; varsayılan dönem SON 1 AY."""
     kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
 
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     form = MizanFiltreForm(request.GET) if request.GET else None
     if form and form.is_valid():
         b, s = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
@@ -5250,7 +5250,7 @@ def kredi_detay(request, pk):
     """Kredi detayı (Dilim 1): başlık + kredi özeti + Kullandırım + kredi ekstresi. Kredi
     YÜKÜMLÜLÜK: kalan borç = negatif kapanış bakiyesi. Tarih + açıklama filtreli; SON 1 AY."""
     kredi = get_object_or_404(Kredi, pk=pk, silindi=False)
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     form = MizanFiltreForm(request.GET) if request.GET else None
     if form and form.is_valid():
         b, s = form.cleaned_data["baslangic"], form.cleaned_data["bitis"]
@@ -7842,7 +7842,7 @@ def fason_mutabakat(request):
 
 @ekran_gerekli("fason_fiyatlari")
 def fason_fiyatlari(request):
-    return render(request, "core/fason_fiyat_listesi.html", {"fiyatlar": fason_servis.aktif_fiyatlar(), "bugun": timezone.localdate()})
+    return render(request, "core/fason_fiyat_listesi.html", {"fiyatlar": fason_servis.aktif_fiyatlar(), "bugun": tr_bugun()})
 
 
 def _fason_fiyat_kaydet(request, form, f=None):
@@ -7924,7 +7924,7 @@ def _fason_pdf_yanit(*, kalemler, sonuc, kullanici):
     html = render_to_string("core/fason_pdf.html", {
         "kalemler": kalemler, "sonuc": sonuc, "logo_b64": logo_b64,
         "hazirlayan": kullanici.get_full_name() or kullanici.username,
-        "tarih": timezone.localdate()})
+        "tarih": tr_bugun()})
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")
     dosya_adi = "fason-kesim-listesi.pdf"
@@ -8330,7 +8330,7 @@ def urun_agaci(request):
         "segmentler": [("urun", "Ürün", "?"), ("kullanim", "Nerede kullanılıyor", "?gorunum=kullanim"),
                        ("karsilastir", "Karşılaştır", "?gorunum=karsilastir"), ("ihtiyac", "İhtiyaç (çoklu ürün)", "?gorunum=ihtiyac")],
         "xlsx_url": None, "sonuc_var": False, "baslik_yazdir": "",
-        "fason_tarih": (fason_tarih or timezone.localdate()).isoformat(),
+        "fason_tarih": (fason_tarih or tr_bugun()).isoformat(),
         "duzenleyebilir": ekran_gorebilir(request.user, "operasyon_tanimlari"),      # ağaç düğümlerindeki ✎ (operasyon tanımını düzenle)
     }
 
@@ -8455,7 +8455,7 @@ def uretim_emirleri(request):
     acik_liste = [e for e in liste if e.durum == UretimEmri.Durum.ACIK]
     toplu = us_liste_servis.ListeYukleme(acik_liste) if acik_liste else None
     graf = urun_agaci_servis.graf_yukle() if any(not e.varyantli_plan for e in acik_liste) else None          # yalnız kart bazlı (eski) planlı açık ÜS varsa
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     emirler = []
     for e in liste:
         kalemler = list(e.kalemler.all())
@@ -8678,7 +8678,7 @@ def uretim_emri_detay(request, pk):
                       else reverse("core:uretim_emri_revize", args=[emir.pk]))
     eksikler, eksik_tablosu = yukle.eksik_ve_tablo()
     # 2026-10-14 yeniden tasarım: üst bant + akış şeridi + sekmeler (core.services.us_detay — yalnız görünüm verisi; sorgu sayısı eskisinden az)
-    bugun_tarih = timezone.localdate()
+    bugun_tarih = tr_bugun()
     bant = us_detay_servis.bant(emir, bugun_tarih, eksikler)
     seritler = us_detay_servis.akis_seridi(gruplar, us_detay_servis.eksik_istasyonlari(gruplar, eksikler, yukle.ops))
     ilerleme = us_detay_servis.ilerleme(gruplar, kayit_sayisi)
@@ -8938,7 +8938,7 @@ def istasyon_emirleri(request):
         "toplu_irs_tarih_tr": f"{toplu_irs[1]:%d.%m.%Y}" if toplu_irs else "",
         "satirlar": satirlar, "sayfa": sayfa, "us": us, "durum": durum, "istasyon": istasyon_p, "secili": secili, "sekmeler": sekmeler,
         "durumlar": IstasyonEmri.Durum.choices, "uretim_emri": uretim_emri, "uret_yetkili": uret_yetkili, "toplu_uretilebilir": toplu,
-        "bugun": timezone.localdate().isoformat(), "geri": request.get_full_path(), "sayfa_url": url()})
+        "bugun": tr_bugun().isoformat(), "geri": request.get_full_path(), "sayfa_url": url()})
 
 
 @ekran_gerekli("operasyon_kayitlari")
@@ -9037,12 +9037,12 @@ def operasyon_kayitlari(request):
     verilmediyse TÜMÜ gösterir. Bağımsız kayıt açma ekranı yok: kayıtlar istasyon emirlerinden ("Üretildi") ve fason dönüşlerden açılır."""
     g = request.GET
     aktif = OperasyonKaydi.objects.filter(silindi=False)
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     hafta_bas = bugun - datetime.timedelta(days=bugun.weekday())
     onayli = aktif.filter(durum=OperasyonKaydi.Durum.ONAYLI)            # onaylı kayıt kilitlidir: updated_at = onay anı
     cipler = {"taslak": aktif.filter(durum=OperasyonKaydi.Durum.TASLAK).count(),
-              "bugun": onayli.filter(updated_at__date=bugun).count(),
-              "hafta": onayli.filter(updated_at__date__gte=hafta_bas, updated_at__date__lte=bugun).count()}
+              "bugun": onayli.filter(updated_at__gte=tr_gun_araligi(bugun)[0], updated_at__lt=tr_gun_araligi(bugun)[1]).count(),      # TR günü (UTC ``__date`` değil)
+              "hafta": onayli.filter(updated_at__gte=tr_gun_araligi(hafta_bas)[0], updated_at__lt=tr_gun_araligi(bugun)[1]).count()}
     taslak_sekmesi = cipler["taslak"] > 0                                 # açık taslak yoksa sekme gizli
     emirden = bool(g.get("istasyon_emri", "").isdigit() or g.get("uretim_emri", "").isdigit())
     sekme = g.get("sekme") if g.get("sekme") in ("taslak", "onayli", "tumu") else ("tumu" if emirden else "onayli")
@@ -9927,7 +9927,7 @@ def yatirim_projeleri(request):
 
     sonuc = yp_servis.proje_listesi(
         arama=g.get("q", ""), grup=g.get("grup", ""), baslangic=_tarih("bas"), bitis=_tarih("bit"),
-        durum=g.get("durum", "DEVAM"), sirala=g.get("sirala", "son"), yon=g.get("yon", "azalan"), bugun=timezone.localdate())
+        durum=g.get("durum", "DEVAM"), sirala=g.get("sirala", "son"), yon=g.get("yon", "azalan"), bugun=tr_bugun())
     temel = {k: g.get(k) for k in ("q", "grup", "bas", "bit") if g.get(k)}
 
     def url(**ek):
@@ -9945,7 +9945,7 @@ def yatirim_projeleri(request):
     return render(request, "core/yatirim_projeleri.html", {
         **sonuc, "sekmeler": sekmeler, "kolonlar": kolonlar, "gruplar": duran_hesap_servis.grup_hesaplari(("258",)),
         "q": g.get("q", ""), "grup": g.get("grup", ""), "bas": g.get("bas", ""), "bit": g.get("bit", ""),
-        "filtre_var": bool(temel), "temizle_url": "?durum=" + sonuc["durum"], "bugun_yil": timezone.localdate().year})
+        "filtre_var": bool(temel), "temizle_url": "?durum=" + sonuc["durum"], "bugun_yil": tr_bugun().year})
 
 
 @ekran_gerekli("yatirim_projeleri")
@@ -10036,7 +10036,7 @@ def yatirim_projesi_aktiflestir(request, pk):
             except yp_servis.YatirimProjesiHatasi as e:
                 baslik.add_error(None, str(e))
     else:
-        baslik = AktiflestirmeBaslikForm(initial={"tarih": timezone.localdate()})
+        baslik = AktiflestirmeBaslikForm(initial={"tarih": tr_bugun()})
         formset = AktiflestirmeSatirFormSet()
     return render(request, "core/yatirim_projesi_aktiflestir.html", {
         "proje": proje, "toplam": toplam, "baslik": baslik, "formset": formset})
@@ -10343,7 +10343,7 @@ def fatura_onayla(request, pk):
 
 # === İNSAN KAYNAKLARI > Yemek Takibi ====================================================
 def _yemek_takibi_bu_ay():
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     return bugun.replace(day=1), bugun
 
 
@@ -12104,7 +12104,7 @@ def _bordro_form_baglam(request, bordro=None):
     if request.method == "POST":
         return PersonelBordroForm(request.POST, request.FILES), PersonelBordroSatirFormSet(request.POST)
     if bordro is None:
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         ay_sonu = (bugun.replace(day=1) - datetime.timedelta(days=1))          # varsayılan: geçen ay sonu
         return (PersonelBordroForm(initial={"yil": ay_sonu.year, "ay": ay_sonu.month, "tahakkuk_tarihi": ay_sonu}),
                 PersonelBordroSatirFormSet())
@@ -12222,7 +12222,7 @@ def bordro_dosya(request, pk):
 @ekran_gerekli_herhangi("kasa", "banka", "kredi_karti", "kredi", "cek_senet")
 def finans_ozeti(request):
     """FİNANS özeti (dashboard): kasa/banka bakiyeleri, kredi kartı + kredi borcu, çek/senet durumu ve yaklaşan vadeler (yalnız okur)."""
-    o = finans_ozet_servis.ozet(timezone.localdate())
+    o = finans_ozet_servis.ozet(tr_bugun())
     return render(request, "core/finans_ozet.html", {"o": o})
 
 
@@ -12233,7 +12233,7 @@ def kredi_karti_donem_ekstresi(request, pk):
     """Kart başına dönem ekstresi: kesim tarihi seç → devir + taksitler + tek çekimler − ödemeler = dönem borcu, son ödeme tarihi; banka ekstresiyle
     karşılaştırma (yalnız görüntü — kayıt yazmaz)."""
     kart = get_object_or_404(KrediKarti, pk=pk, silindi=False)
-    bugun = timezone.localdate()
+    bugun = tr_bugun()
     ctx = {"kart": kart, "bugun": bugun, "hata": ""}
     if kart.para_birimi != "TRY" or not kk_donem_servis.gunler_tanimli(kart):
         ctx["hata"] = ("Dönem ekstresi yalnız TL kartlar için hesaplanır." if kart.para_birimi != "TRY"
@@ -12266,7 +12266,7 @@ def kredi_karti_donem_ekstresi(request, pk):
 @ekran_gerekli_herhangi("kk_nakit_akisi", "kredi_karti")
 def kredi_karti_nakit_akisi(request):
     """Tüm TL kartların gelecek son ödeme tarihleri ve tutarları (ay bazında özet + ayrıntı)."""
-    return render(request, "core/kredi_karti_nakit_akisi.html", {"o": kk_donem_servis.nakit_akisi(timezone.localdate())})
+    return render(request, "core/kredi_karti_nakit_akisi.html", {"o": kk_donem_servis.nakit_akisi(tr_bugun())})
 
 
 @ekran_gerekli("kdv_listeleri")
@@ -12354,7 +12354,7 @@ def _kdv_baglam(request, m=None):
     if request.method == "POST":
         return KdvMahsupForm(request.POST, request.FILES, donem_sabit=m is not None, initial=({"yil": m.yil, "ay": m.ay} if m is not None else None))
     if m is None:
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         onceki = bugun.replace(day=1) - datetime.timedelta(days=1)
         return KdvMahsupForm(initial={"yil": onceki.year, "ay": onceki.month, "fark_hesap": "659"})
     return KdvMahsupForm(donem_sabit=True, initial={
@@ -12764,7 +12764,7 @@ def fason_siparis_pdf(request, pk):
             logo_b64 = base64.b64encode(f.read()).decode("ascii")
     html = render_to_string("core/fason_siparis_pdf.html", {
         "siparis": fs, "t": fason_siparis_servis.siparis_toplamlari(fs), "logo_b64": logo_b64,
-        "hazirlayan": request.user.get_full_name() or request.user.username, "tarih": timezone.localdate()})
+        "hazirlayan": request.user.get_full_name() or request.user.username, "tarih": tr_bugun()})
     resp = HttpResponse(HTML(string=html).write_pdf(), content_type="application/pdf")
     resp["Content-Disposition"] = f'inline; filename="fason-siparisi-{fs.no}.pdf"'
     return resp

@@ -6,6 +6,7 @@ gruplandığı proje kartı — CRUD + toplam hesaplama + aktifleştirme (FAZ 3:
 """
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 from decimal import Decimal
 
 from django.db import transaction
@@ -321,7 +322,7 @@ def proje_listesi(*, arama="", grup="", baslangic=None, bitis=None, durum="DEVAM
     from core.metin import buyuk_harf_tr
     from core.models import DuranVarlik
     from core.services import raporlar
-    bugun = bugun or datetime.date.today()
+    bugun = bugun or tr_bugun()
     durum = durum if durum in {d for d, _ in DURUM_SEKMELERI} else "DEVAM"
     sirala = sirala if sirala in SIRALAMA_ANAHTARLARI else "son"
     azalan = yon != "artan"

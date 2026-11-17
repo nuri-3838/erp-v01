@@ -5,6 +5,7 @@ dağıtır ve TEK fiş keser (kaynak STOK_DUZELTME). Varsayılan KURU çalışt�
     python manage.py recete_sarf_duzelt                                   # 151-10-0042 kayış, HAMMADDE modu 150-40-0006 (kesim reçetesi), bugün, kuru
     python manage.py recete_sarf_duzelt --girdi 151-10-0042 --hammadde - --operasyon 77 --tarih 12.10.2026 --aciklama "..." [--uygula]   # girdiden sarf
 """
+from core.tarih import tr_bugun
 import datetime
 
 from django.core.management.base import BaseCommand, CommandError
@@ -35,7 +36,7 @@ class Command(BaseCommand):
             except ValueError:
                 raise CommandError(f"--tarih gg.aa.yyyy olmalı: {opts['tarih']}")
         else:
-            tarih = datetime.date.today()
+            tarih = tr_bugun()
         try:
             hammadde = opts["hammadde"].strip()
             rapor = recete_sarf.duzelt(opts["girdi"], tarih=tarih, aciklama=opts["aciklama"], operasyon_idler=opts["operasyon"] or None,

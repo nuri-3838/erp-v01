@@ -8,6 +8,7 @@ korunur). Fason depoları (ör. 999) dokunulmaz.
 Tekrar çalıştırılabilir: iş zaten yapılmışsa "zaten tamam" der."""
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models import Sum
@@ -68,7 +69,7 @@ class Command(BaseCommand):
             self.stdout.write("DRY-RUN: hiçbir şey yazılmadı.")
             return
         onceki_deger, onceki_toplam = _degerleme_ozeti(), _stok_toplamlari()
-        bugun = timezone.localdate()
+        bugun = tr_bugun()
         with transaction.atomic():
             if yeniden_adlandir:
                 depo_servis.depo_guncelle(hedef, kod=hedef.kod, ad=depo_servis.VARSAYILAN_DEPO_ADI, fason_cari=None)

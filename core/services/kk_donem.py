@@ -14,6 +14,7 @@ bu tutar + kesimden sonraki tek çekim/taksitler − kesimden sonraki ödemeler 
 """
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import calendar
 import datetime
 import re
@@ -226,7 +227,7 @@ def donem_ekstresi(kart, c, bugun=None):
         raise KkDonemHatasi("Dönem ekstresi yalnız TL kartlar için hesaplanır.")
     if not gunler_tanimli(kart):
         raise KkDonemHatasi("Kartta hesap kesim günü ve son ödeme günü tanımlı olmalı (Kart Düzenle).")
-    bugun = bugun or datetime.date.today()
+    bugun = bugun or tr_bugun()
     p = kesim_ekle(kart, c, -1)
     v = _veri(kart)
     devir = _kapanis(v, p)
@@ -256,7 +257,7 @@ def donem_ekstresi(kart, c, bugun=None):
 # --- nakit akışı ------------------------------------------------------------------------------------------------------------
 def nakit_akisi(bugun=None, ay_sayisi=12):
     """Tüm TL kartların gelecek son ödeme tarihleri ve tutarları: kesilmiş (ödenmemiş kalan) ekstre + açık dönem + gelecek taksit dönemleri; ay bazında özet."""
-    bugun = bugun or datetime.date.today()
+    bugun = bugun or tr_bugun()
     satirlar, atlanan = [], []
     for kart in KrediKarti.objects.filter(silindi=False).order_by("ad"):
         if kart.para_birimi != "TRY":

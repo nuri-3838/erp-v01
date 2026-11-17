@@ -141,7 +141,7 @@
     <div class="ozet-kutu"><div class="et">Son temas</div>
       <div class="dg kucuk">{% if cari.son_temas_tarihi %}{{ cari.son_temas_tarihi|date:"d.m.Y" }}{% else %}—{% endif %}</div>
       <form method="post" action="{% url 'core:cari_son_temas' cari.pk %}" class="son-temas-form">{% csrf_token %}
-        <input type="date" name="tarih" value="{{ cari.son_temas_tarihi|date:'Y-m-d' }}" max="{% now 'Y-m-d' %}" aria-label="Son temas tarihi">
+        <input type="date" name="tarih" value="{{ cari.son_temas_tarihi|date:'Y-m-d' }}" max="{% tr_bugun_iso %}" aria-label="Son temas tarihi">
         <button type="submit" class="dugme-ikincil">Kaydet</button>
         {% if cari.son_temas_tarihi %}<button type="submit" name="temizle" value="1" class="dugme-ikincil">Temizle</button>{% endif %}
       </form></div>

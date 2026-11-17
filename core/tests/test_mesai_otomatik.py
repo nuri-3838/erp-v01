@@ -258,17 +258,22 @@ class IsOturumuTest(OtoTaban):
 
 
 class DuzeltmeVeRozetTest(OtoTaban):
+    def liste(self):
+        """Mesai kayıtları ekranı, saat SABİT (20.10.2026): varsayılan "son 30 gün" penceresi 16.10.2026 kayıtlarını kapsar — testin gerçek saate bağımlılığı yok."""
+        with mock.patch("django.utils.timezone.now", return_value=tr(20, 12, 0)):
+            return self.client.get(reverse("core:mesai_kayitlari"))
+
     def test_rozet_listede_ve_elle_duzeltince_kalkar(self):
         k = self.mesai_ac(giris=tr(16, 8, 0), son=tr(16, 17, 0))
         mesai_otomatik.toplu_kapat(simdi=tr(17, 0, 5))
         self.client.force_login(self.yon)
-        r = self.client.get(reverse("core:mesai_kayitlari"))
+        r = self.liste()
         self.assertContains(r, "Otomatik · Gece kapanışı")
         k.refresh_from_db()
         mesai_servis.duzelt(k, giris_zamani=k.giris_zamani, cikis_zamani=tr(16, 18, 30), duzeltme_notu="gerçek çıkış 18:30")
         k.refresh_from_db()
         self.assertEqual((k.otomatik_kapandi, k.otomatik_sebep, k.kaynak), (False, "gece", "YONETICI"))
-        self.assertNotContains(self.client.get(reverse("core:mesai_kayitlari")), "Otomatik ·")
+        self.assertNotContains(self.liste(), "Otomatik ·")
 
 
 class AyarVeKomutTest(OtoTaban):

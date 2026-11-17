@@ -8,6 +8,7 @@ YOKTUR. USD bilanço/gelir tablosu, USD mizandan TL ile AYNI mantıkla türetili
 """
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -22,7 +23,7 @@ SIFIR = Decimal("0.00")
 
 def mali_yil_araligi(tarih: datetime.date | None = None):
     """İçinde bulunulan mali yıl (takvim yılı) [1 Ocak .. 31 Aralık]."""
-    t = tarih or timezone.localdate()
+    t = tarih or tr_bugun()
     return datetime.date(t.year, 1, 1), datetime.date(t.year, 12, 31)
 
 
@@ -403,7 +404,7 @@ class Bilanco:
 def bilanco(tarih=None) -> Bilanco:
     """Canlı bilanço (TL) — BELİRLİ BİR TARİHTEKİ anlık durum (açılıştan o tarihe
     kümülatif). Aktif = Pasif; dönem sonucu Özkaynaklar'a eklenir."""
-    tarih = tarih or timezone.localdate()
+    tarih = tarih or tr_bugun()
     satirlar = [
         (o["kod"], o["ad"], o["grup"], o["kalem"], o["borc"] - o["alacak"])
         for o in _ana_topla(_hareketler(None, tarih))
@@ -579,7 +580,7 @@ def mizan_usd(baslangic=None, bitis=None, kumulatif=False) -> MizanUSD:
     """
     # kumulatif=True (bilanço): alt sınır yok, açılıştan `bitis` tarihine birikmiş.
     if kumulatif:
-        bitis = bitis or timezone.localdate()
+        bitis = bitis or tr_bugun()
         baslangic = None
     else:
         baslangic, bitis = _varsayilan(baslangic, bitis)
@@ -649,7 +650,7 @@ class BilancoUSD:
 def bilanco_usd(tarih=None) -> BilancoUSD:
     """USD bilanço — BELİRLİ TARİHTE (açılıştan kümülatif). USD mizandan türetilir;
     TL bilançoyla AYNI mantık, tutarlar USD."""
-    tarih = tarih or timezone.localdate()
+    tarih = tarih or tr_bugun()
     m = mizan_usd(bitis=tarih, kumulatif=True)
     satirlar = [
         (s.hesap_kodu, s.hesap_adi, s.grup, s.kalem, s.usd_borc - s.usd_alacak)

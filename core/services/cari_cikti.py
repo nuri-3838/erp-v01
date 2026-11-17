@@ -1,6 +1,7 @@
 """CARİLER Faz 2: Excel çıktıları (cari listesi, cari ekstresi) ve mutabakat mektubu verisi. Yalnız dizilim/biçim — hesaplar cari_ozet / raporlar'da."""
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 from io import BytesIO
@@ -47,7 +48,7 @@ def liste_xlsx(satirlar, aciklama="") -> bytes:
     ws.title = "Cariler"
     ws["A1"] = "Cari Listesi"
     ws["A1"].font = Font(bold=True, size=13, color="15294D")
-    ws["A2"] = f"{datetime.date.today():%d.%m.%Y}" + (f" · {aciklama}" if aciklama else "") + " · Bakiye: pozitif = Borç (cari bize borçlu), negatif = Alacak"
+    ws["A2"] = f"{tr_bugun():%d.%m.%Y}" + (f" · {aciklama}" if aciklama else "") + " · Bakiye: pozitif = Borç (cari bize borçlu), negatif = Alacak"
     ws["A2"].font = Font(color="5B6678")
     _baslik(ws, 4, LISTE_KOLONLAR, LISTE_GENISLIK)
     r = 5

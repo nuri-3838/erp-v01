@@ -406,7 +406,7 @@
     <tbody>
       {% for r in kayitlar %}
         <tr data-href="{% url 'core:operasyon_kaydi_detay' r.k.pk %}">
-          <td class="mono"><a class="satir-bag" href="{% url 'core:operasyon_kaydi_detay' r.k.pk %}">{{ r.zaman|date:"d.m.Y H:i" }}</a>{% if r.taslak %} <span class="rozet rozet-notr">taslak</span>{% endif %}</td>
+          <td class="mono"><a class="satir-bag" href="{% url 'core:operasyon_kaydi_detay' r.k.pk %}">{{ r.zaman|tr_zaman:"d.m.Y H:i" }}</a>{% if r.taslak %} <span class="rozet rozet-notr">taslak</span>{% endif %}</td>
           <td>{{ r.personel }}{% if r.ekip %} <span class="rozet rozet-notr" title="Ekip işi">ekip</span>{% endif %}</td>
           <td><span class="mono">{{ r.istasyon.kod }}</span> {{ r.istasyon.ad }}</td>
           <td><span class="mono">{{ r.cikti.kod }}</span> {{ r.cikti.ad|truncatechars:34 }}{% if r.varyant %} <span class="rozet rozet-notr">{{ r.varyant }}</span>{% endif %}</td>

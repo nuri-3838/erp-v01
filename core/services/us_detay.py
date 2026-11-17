@@ -186,7 +186,7 @@ def son_kayitlar(emir: UretimEmri, adet: int = KAYIT_ADET) -> list:
             fire = oturum.fire or SIFIR
         else:
             ekip = [k.personel.ad_soyad] if k.personel_id else []
-        satirlar.append({"k": k, "zaman": timezone.localtime(k.created_at), "personel": ", ".join(ekip) or "—", "ekip": len(ekip) > 1,
+        satirlar.append({"k": k, "zaman": k.created_at, "personel": ", ".join(ekip) or "—", "ekip": len(ekip) > 1,
                          "istasyon": k.operasyon.istasyon, "cikti": k.operasyon.cikti,
                          "varyant": planlama_varyant.etiket(k.cikti_varyant) if k.cikti_varyant_id else "",
                          "saglam": saglam, "fire": fire, "taslak": k.durum != OperasyonKaydi.Durum.ONAYLI, "ie_no": k.istasyon_emri.no if k.istasyon_emri_id else ""})

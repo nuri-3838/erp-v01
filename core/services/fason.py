@@ -1,5 +1,6 @@
 """FASON servis katmanı: fason fiyat listesi (FasonFiyat) ve Kesim Listesi hesabı (Operasyon Tanımları'ndan, FASON işaretli istasyonlar).
 Eski Kesim Tanımları / Kesim Kayıtları (FasonKesim*) ve Stok.kesildigi_profil kaldırıldı — liste yalnız operasyon zincirinden hesaplanır."""
+from core.tarih import tr_bugun
 from decimal import Decimal
 
 from django.utils import timezone
@@ -99,7 +100,7 @@ def fason_listesi_operasyondan(kalemler, cari=None, tarih=None) -> dict:
     (``IsIstasyonu.fasoncu`` = cari; fasoncusu tanımsız fason istasyonu da dahil) operasyonları listelenir; ``cari`` yoksa tüm fason istasyonlar (eski davranış)."""
     from core.services.uretim import UretimHatasi, ihtiyac_hesapla, operasyon_girdileri
     hedefler = [(u, Decimal(int(m))) for u, m in kalemler if m and int(m) > 0]
-    tarih = tarih or timezone.localdate()
+    tarih = tarih or tr_bugun()
     ozet, eksik, toplam = [], [], {}
     if not hedefler:
         return {"ozet": [], "detay": [], "toplam_tutar": {}, "cari": cari, "fiyat_eksikleri": []}

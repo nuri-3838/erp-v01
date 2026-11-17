@@ -6,6 +6,7 @@ kurla (kur yoksa defter değeriyle) TL'dir. Bu modül yalnız okur; hiçbir kayd
 """
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import calendar
 import datetime
 from decimal import Decimal
@@ -65,7 +66,7 @@ def _sonraki_tarih(gun, bugun):
 
 
 def ozet(bugun=None):
-    bugun = bugun or datetime.date.today()
+    bugun = bugun or tr_bugun()
     kurlar, kur_tarihi = _guncel_kurlar()
 
     # --- Kasalar ve banka hesapları -------------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 """Faturalar liste ekranı Excel çıktısı: FİLTRELENMİŞ listenin TAMAMI (sayfalama yok), ekrandaki kolonlar + TL karşılıkları + toplam satırları. Yalnız dizilim/biçim — hesaplar fatura_liste'de."""
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import datetime
 from io import BytesIO
 
@@ -26,7 +27,7 @@ def liste_xlsx(satirlar, toplam, baslik="Faturalar", aciklama="") -> bytes:
     ws.title = baslik[:31]
     ws["A1"] = baslik
     ws["A1"].font = Font(bold=True, size=13, color="15294D")
-    ws["A2"] = f"{datetime.date.today():%d.%m.%Y}" + (f" · {aciklama}" if aciklama else "") + f" · {len(satirlar)} fatura · Tutarlar: Matrah ve KDV TL karşılığıdır (fatura kuruyla)."
+    ws["A2"] = f"{tr_bugun():%d.%m.%Y}" + (f" · {aciklama}" if aciklama else "") + f" · {len(satirlar)} fatura · Tutarlar: Matrah ve KDV TL karşılığıdır (fatura kuruyla)."
     ws["A2"].font = Font(color="5B6678")
     for i, k in enumerate(KOLONLAR, start=1):
         c = ws.cell(row=4, column=i, value=k)

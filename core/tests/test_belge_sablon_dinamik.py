@@ -16,6 +16,7 @@ from core.services import belge_sablon as bs
 from core.services import ise_giris as ig
 from core.services import personel_belge as pb
 from core.services.firma import firma_bilgisi_getir, firma_bilgisi_kaydet
+from core.tarih import tr_bugun
 from core.tests.ik_yardimci import PDF_BAYT, OzelDizinTestTemel, yuklenen
 from core.tests.test_ise_giris_paket import dolu_firma, dolu_personel, kullanici
 
@@ -293,7 +294,7 @@ class PaketVeKaydetTest(OzelDizinTestTemel):
         r, c = self.yakala(["PERSONEL_BILGI", "SOZLESME", "FAZLA_CALISMA"], belge_tarihi="2026-02-02")
         tum = "\n".join(p for b in c["belgeler"] for p in b["paragraflar"])
         self.assertIn("02.02.2026", tum)                                                       # sözleşme/muvafakat {bugun}
-        self.assertNotIn(date.today().strftime("%d.%m.%Y") + " tarihinde düzenlenmiş", tum)
+        self.assertNotIn(tr_bugun().strftime("%d.%m.%Y") + " tarihinde düzenlenmiş", tum)
         self.assertEqual(c["html"].count("Belge tarihi: 02.02.2026"), 3)                       # her belgenin anteti
 
     def test_belge_tarihi_zorunlu_bos_veya_gecersiz_hata_verir(self):
@@ -393,7 +394,7 @@ class SablonEkranTest(OzelDizinTestTemel):
         self.assertContains(r, 'name="belge" value="OZEL_0001"')
         self.assertContains(r, 'name="donus" value="belgeler"')
         self.assertContains(r, 'name="belge_tarihi"')                                          # zorunlu Belge tarihi (date input)
-        self.assertContains(r, f'value="{date.today().isoformat()}" required')                 # varsayılan bugün
+        self.assertContains(r, f'value="{tr_bugun().isoformat()}" required')                 # varsayılan bugün
         self.assertNotContains(r, "Özlük belgelerine de kaydet")                               # kaydet seçeneği kaldırıldı
         self.assertNotContains(r, 'name="kaydet"')
 
@@ -401,7 +402,7 @@ class SablonEkranTest(OzelDizinTestTemel):
         self.client.force_login(self.belgeci)
         r = self.client.get(reverse("core:personel_detay", args=[self.p.pk]) + "?sekme=ise_giris")
         self.assertContains(r, 'name="belge_tarihi"')
-        self.assertContains(r, f'value="{date.today().isoformat()}" required')
+        self.assertContains(r, f'value="{tr_bugun().isoformat()}" required')
         self.assertNotContains(r, "Özlük belgelerine de kaydet")
         self.assertNotContains(r, 'name="kaydet"')
         self.assertNotContains(r, "imzasız basım")

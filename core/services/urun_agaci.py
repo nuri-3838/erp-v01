@@ -9,6 +9,7 @@ Maliyet görünümlerinde malzemenin yanına İŞLEM / FASON BEDELİ gelir (``fa
 fasoncunun seçilen tarihte geçerli ``FasonFiyat``ı — malzeme hesabına dokunmaz, ayrı grup + ayrı toplam, genel toplam ikisinin toplamıdır."""
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import datetime
 from collections import deque
 from decimal import Decimal
@@ -183,7 +184,7 @@ KAYNAK_AD = {"ORTALAMA": "Ortalama", "KART": "Alış fiyatı (kart)", "YOK": "Yo
 def kur_haritasi(bugun=None) -> dict:
     """{"USD": (kur, tarih), "EUR": ..., "GBP": ...}: ``bugun``e (yoksa en çok 7 gün önceye kadar en yakın güne) göre EN GÜNCEL TCMB döviz
     ALIŞ kuru (``kur_degerleme.kur_bul`` ile aynı kaydırmalı tarih mantığı; TEK sorgu). Kuru bulunamayan para birimi sözlükte yoktur."""
-    bugun = bugun or timezone.localdate()
+    bugun = bugun or tr_bugun()
     haritasi = {}
     for k in (Kur.objects.filter(silindi=False, tarih__lte=bugun, tarih__gte=bugun - datetime.timedelta(days=KUR_GERI_GUN))
               .order_by("-tarih")):
@@ -375,13 +376,13 @@ def fason_bedeli(graf: Graf, urunler, *, tarih=None, fasoncu_id=None) -> dict:
     "toplam_try", "toplam_usd", "uretilen" (üretilen çıktı sayısı), "fiyatli", "fiyatsiz" (FASONCUSU OLAN istasyonda üretilen ama fason fiyatı olmayan parça),
     "kendi" (fasoncusuz istasyonda üretilen = kendi üretimimiz), "kursuz", "usd_eksik"}}, "kur_notu", "kur_uyarilari"}. Kuru bulunamayan döviz fiyat
     listelenir ama toplama girmez (uyarı)."""
-    tarih = tarih or graf.bugun or timezone.localdate()
+    tarih = tarih or graf.bugun or tr_bugun()
     uretilen = {u.pk: uretilen_ciktilar(graf, u) for u in urunler}
     fasoncu_of = {st.pk: uretici_fasoncu(graf, st) for sat in uretilen.values() for st, _ in sat}
     harita = fason_fiyat_haritasi({pk for pk, c in fasoncu_of.items() if c is not None}, tarih)
     kurlar = {}
     if any(harita.values()):
-        kurlar = graf.kurlar if tarih == (graf.bugun or timezone.localdate()) else kur_haritasi(tarih)
+        kurlar = graf.kurlar if tarih == (graf.bugun or tr_bugun()) else kur_haritasi(tarih)
     sonuc, tum_fasoncu = {}, {}
     for u in urunler:
         satirlar, kendi, ozet = [], 0, {}

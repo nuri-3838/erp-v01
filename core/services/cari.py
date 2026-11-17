@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import calendar
 import datetime
 import os
@@ -330,7 +331,7 @@ def cari_son_temas_ayarla(cari: Cari, tarih, kullanici=None) -> Cari:
     """Elle girilen son temas tarihi (None = temizle). Gelecek tarih olamaz."""
     if cari.silindi:
         raise CariHatasi("Silinmiş cari düzenlenemez.")
-    if tarih is not None and tarih > timezone.localdate():
+    if tarih is not None and tarih > tr_bugun():
         raise CariHatasi("Son temas tarihi gelecekte olamaz.")
     cari.son_temas_tarihi = tarih
     cari.updated_by = kullanici

@@ -1040,7 +1040,7 @@ def _revizyon_yaz(emir: UretimEmri, tur, tarih, aciklama="", detay=None, kullani
     tarihi İŞLEM ANIDIR (bugün; ekranda ``created_at`` saatiyle) — sipariş/belge tarihi değil; ``tarih`` parametresi geriye uyumluluk içindir."""
     son = emir.revizyonlar.aggregate(m=Max("no"))["m"]
     no = 0 if son is None else son + 1
-    r = UretimEmriRevizyon.objects.create(uretim_emri=emir, no=no, tur=tur, tarih=timezone.localdate(), aciklama=(aciklama or "")[:300], detay=detay or {},
+    r = UretimEmriRevizyon.objects.create(uretim_emri=emir, no=no, tur=tur, tarih=tr_bugun(), aciklama=(aciklama or "")[:300], detay=detay or {},
                                           created_by=kullanici, updated_by=kullanici)
     UretimEmri.objects.filter(pk=emir.pk).update(revizyon_no=no)
     emir.revizyon_no = no
@@ -1102,7 +1102,7 @@ def termin_oncelik_guncelle(emir: UretimEmri, *, termin, oncelik, kullanici=None
     once = {"termin": _tarih_metni(emir.termin), "oncelik": emir.oncelik}
     UretimEmri.objects.filter(pk=emir.pk).update(termin=termin, oncelik=oncelik, updated_by=kullanici, updated_at=timezone.now())
     emir.termin, emir.oncelik = termin, oncelik
-    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.DUZENLEME, timezone.localdate(), "Termin/öncelik düzenlendi",
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.DUZENLEME, tr_bugun(), "Termin/öncelik düzenlendi",
                   {"once": once, "sonra": {"termin": _tarih_metni(termin), "oncelik": oncelik}}, kullanici)
     return True
 
@@ -1630,7 +1630,7 @@ def istasyon_emri_kayit_ac(ie: IstasyonEmri, *, hedef=None, depo_id=None, tarih=
                                    f"emri): en çok {izin.normalize():f} üretilebilir, {hedef.normalize():f} istendi.")
     saglam = hedef
     kayit = operasyon_kaydi_olustur(
-        operasyon_id=ie.operasyon_id, depo_id=depo_id or emir.depo_id, tarih=tarih or timezone.localdate(), hedef_cikti_miktari=saglam + fire_m,
+        operasyon_id=ie.operasyon_id, depo_id=depo_id or emir.depo_id, tarih=tarih or tr_bugun(), hedef_cikti_miktari=saglam + fire_m,
         uretim_emri=emir, istasyon_emri=ie, aciklama=aciklama, kullanici=kullanici, cikti_varyant=ie.cikti_varyant,
         personel=personel, mesai_kaydi=mesai_kaydi)
     if fire_m > 0:
@@ -1945,7 +1945,7 @@ def bagli_taslak_irsaliyeler(emirler) -> dict:
 def irsaliye_tarih_uyarisi(emir: UretimEmri, tarih) -> str:
     """Üretim tarihi (``None`` = bugün) bağlı taslak irsaliyenin tarihinden SONRAysa uyarı metni, değilse ''. Üretimi ENGELLEMEZ."""
     bilgi = bagli_taslak_irsaliyeler([emir]).get(emir.pk)
-    tarih = tarih or timezone.localdate()
+    tarih = tarih or tr_bugun()
     if bilgi is None or tarih <= bilgi[1]:
         return ""
     return (f"Bağlı irsaliye {bilgi[0]} {bilgi[1]:%d.%m.%Y} tarihli; üretim tarihi sonrası seçildi ({tarih:%d.%m.%Y}). "
@@ -2124,7 +2124,7 @@ def stok_us_tamamla(emir: UretimEmri, kullanici=None) -> bool:
     from core.services import fason_siparis as fs_servis
     fs_servis.rezervleri_sil(emir, kullanici)
     emir.durum = UretimEmri.Durum.KAPALI
-    emir.kapanis_tarihi = timezone.localdate()
+    emir.kapanis_tarihi = tr_bugun()
     emir.updated_by = kullanici
     emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
     _revizyon_yaz(emir, UretimEmriRevizyon.Tur.KAPANIS, emir.kapanis_tarihi, "Tamamlandı (stok için üretim %100): ayırmalar serbest bırakıldı",
@@ -2161,7 +2161,7 @@ def _istasyon_emri_geri_al_etkisi(kayit: OperasyonKaydi, kullanici=None) -> None
         emir.kapanis_tarihi = None
         emir.updated_by = kullanici
         emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
-        _revizyon_yaz(emir, UretimEmriRevizyon.Tur.YENIDEN_ACILIS, timezone.localdate(),
+        _revizyon_yaz(emir, UretimEmriRevizyon.Tur.YENIDEN_ACILIS, tr_bugun(),
                       "Yeniden açıldı (operasyon kaydı geri alındı); mamul ayırması geri gelmedi", {"kayit": kayit.no}, kullanici)
 
 # === Üretim siparişi REVİZE (adım 7) ===
@@ -2675,7 +2675,7 @@ def uretim_emri_revize(emir: UretimEmri, *, kalemler, tarih=None, aciklama="", k
                                    "sonra": {"termin": _tarih_metni(yeni_termin), "oncelik": yeni_oncelik}}
         UretimEmri.objects.filter(pk=emir.pk).update(termin=yeni_termin, oncelik=yeni_oncelik)
         emir.termin, emir.oncelik = yeni_termin, yeni_oncelik
-    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.REVIZE, tarih or timezone.localdate(), aciklama or "Revize", detay, kullanici)
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.REVIZE, tarih or tr_bugun(), aciklama or "Revize", detay, kullanici)
     if verilen is not emir:
         verilen.refresh_from_db()                                         # çağıranın nesnesi de güncel (revizyon_no vb.)
     return emir
@@ -2727,7 +2727,7 @@ def _kapanis_kontrol(emir: UretimEmri, kullanici=None, tarih=None) -> bool:
     from core.services import fason_siparis as fs_servis
     fs_servis.rezervleri_sil(emir, kullanici)
     emir.durum = UretimEmri.Durum.KAPALI
-    emir.kapanis_tarihi = tarih or timezone.localdate()
+    emir.kapanis_tarihi = tarih or tr_bugun()
     emir.updated_by = kullanici
     emir.save(update_fields=["durum", "kapanis_tarihi", "updated_by", "updated_at"])
     _revizyon_yaz(emir, UretimEmriRevizyon.Tur.KAPANIS, emir.kapanis_tarihi, "Kapanış (sevk: satış irsaliyesi)" if emir.kaynak_siparis_id and sevk_irsaliye_kalemleri(emir.kaynak_siparis) else "Kapanış (sevk: satış faturası)",
@@ -2845,7 +2845,7 @@ def siparis_fatura_silindi(siparis, kullanici=None, tarih=None) -> None:
     emir.kapanis_tarihi = None
     emir.updated_by = kullanici
     emir.save(update_fields=["sevk_dusen", "durum", "kapanis_tarihi", "updated_by", "updated_at"])
-    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.YENIDEN_ACILIS, tarih or timezone.localdate(),
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.YENIDEN_ACILIS, tarih or tr_bugun(),
                   "Yeniden açıldı (satış faturası silindi)" if yeniden else "Sevk geri alındı (satış faturası silindi)", detay, kullanici)
 
 
@@ -2941,7 +2941,7 @@ def uretim_emri_iptal(emir: UretimEmri, kullanici=None, tarih=None) -> UretimEmr
     emir.durum = UretimEmri.Durum.IPTAL
     emir.updated_by = kullanici
     emir.save(update_fields=["durum", "updated_by", "updated_at"])
-    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.IPTAL, tarih or timezone.localdate(), "İptal", {}, kullanici)
+    _revizyon_yaz(emir, UretimEmriRevizyon.Tur.IPTAL, tarih or tr_bugun(), "İptal", {}, kullanici)
     return emir
 
 

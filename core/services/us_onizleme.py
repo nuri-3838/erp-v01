@@ -6,6 +6,7 @@ gösterilir. HİÇBİR KAYIT YAZILMAZ: varyantlı planda ``us_detay_yukle.TopluC
 ÜS/ayırma/istasyon emri/rezerv oluşturulmaz. Eşdeğerlik testle kilitli: önizleme, hemen ardından gerçekten açılan ÜS'nin istasyon emirleri, ayırmaları ve eksikleriyle birebir aynı."""
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 from decimal import Decimal
 
 from django.utils import timezone
@@ -58,7 +59,7 @@ def _fason_dagit(fason_pay: dict) -> list:
                     .select_related("siparis").order_by("siparis__termin", "siparis__pk", "sira", "pk"))
         if vpk is not None:
             satirlar = satirlar.filter(varyant_id=vpk)
-        satirlar = sorted(satirlar, key=lambda s: (s.siparis.termin is None, s.siparis.termin or timezone.localdate(), s.siparis_id, s.sira, s.pk))
+        satirlar = sorted(satirlar, key=lambda s: (s.siparis.termin is None, s.siparis.termin or tr_bugun(), s.siparis_id, s.sira, s.pk))
         for s in satirlar:
             x = min(kalan, fs_servis.satir_kalan(s))
             kalan -= x

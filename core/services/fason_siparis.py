@@ -16,6 +16,7 @@ gibi Fason Dönüş belgesiyle oluşur).
 """
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -406,7 +407,7 @@ def rezervleri_esitle(emir, hedef: dict, kullanici=None) -> list:
                     .select_related("siparis").order_by("siparis__termin", "siparis__pk", "sira", "pk"))
         if vpk is not None:
             satirlar = satirlar.filter(varyant_id=vpk)
-        satirlar = sorted(satirlar, key=lambda s: (s.siparis.termin is None, s.siparis.termin or timezone.localdate(), s.siparis_id, s.sira, s.pk))
+        satirlar = sorted(satirlar, key=lambda s: (s.siparis.termin is None, s.siparis.termin or tr_bugun(), s.siparis_id, s.sira, s.pk))
         for s in satirlar:
             r = mevcut.pop(s.pk, None)
             kap = satir_kalan(s, haric_emir=emir_id)

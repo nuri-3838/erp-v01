@@ -19,6 +19,7 @@ Varsayılan DRY-RUN (transaction geri alınır). ``--uygula`` kalıcı yazar.
 
     python manage.py stok_hesap_tanimla [--virman [--virman-tarih 2026-10-03]] [--uygula]
 """
+from core.tarih import tr_bugun
 import datetime
 from decimal import Decimal
 
@@ -175,7 +176,7 @@ class Command(BaseCommand):
             return
         if tarih is None:
             son = Kur.objects.filter(silindi=False, usd_alis__isnull=False,
-                                     tarih__lte=datetime.date.today()).order_by("-tarih").first()
+                                     tarih__lte=tr_bugun()).order_by("-tarih").first()
             if son is None:
                 raise CommandError("USD kuru kaydı yok; --virman-tarih verin.")
             tarih = son.tarih

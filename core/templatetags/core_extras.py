@@ -12,6 +12,13 @@ register = template.Library()
 _TR = ZoneInfo("Europe/Istanbul")
 
 
+@register.simple_tag
+def tr_bugun_iso():
+    """Türkiye gününün ISO tarihi ("2026-11-18") — Django'nun yerleşik "now" şablon etiketi UTC gününü verir (TR 00:00-03:00 arası bir önceki gün); ``max=`` / varsayılan tarih için bunu kullan."""
+    from core.tarih import tr_bugun
+    return tr_bugun().isoformat()
+
+
 @register.simple_tag(takes_context=True)
 def mesai_ping(context):
     """Heartbeat ayarı: fabrika kısıtlı (operatör) hesapta ve kapı devredeyken {"url", "sn"}, aksi halde None (bkz. core.fabrika_kapisi)."""

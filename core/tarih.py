@@ -4,7 +4,7 @@ hesapları (python-dateutil kurulu DEĞİL; saf Python)."""
 from __future__ import annotations
 
 import calendar
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone
@@ -15,6 +15,14 @@ _TR = ZoneInfo("Europe/Istanbul")
 def tr_bugun():
     """Türkiye saatine göre bugünün tarihi. Form `initial` olarak callable de kullanılır."""
     return timezone.now().astimezone(_TR).date()
+
+
+def tr_gun_araligi(baslangic: date, bitis: date | None = None) -> tuple:
+    """TR günlerinin UTC saklanan zaman damgası sınırları: [``baslangic`` 00:00 TR, ``bitis`` + 1 gün 00:00 TR) — yarı açık. ``created_at`` / ``updated_at`` gibi aware
+    alanları TR gününe göre süzmek için (``alan__date`` araması TIME_ZONE=UTC olduğundan UTC gününe bakar: TR 00:00-03:00 arası bir önceki gün). Kullanım:
+    ``qs.filter(zaman__gte=ar[0], zaman__lt=ar[1])``."""
+    bitis = bitis or baslangic
+    return (datetime.combine(baslangic, time.min, tzinfo=_TR), datetime.combine(bitis + timedelta(days=1), time.min, tzinfo=_TR))
 
 
 def ay_araligi(yil: int, ay: int) -> tuple:

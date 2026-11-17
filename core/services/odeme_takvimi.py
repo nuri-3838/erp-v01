@@ -14,6 +14,7 @@ DAMGA ödemesi eşleştirmesi (2026-11-02): kaynağa bakılmaz; "DAMGA VERGİSİ
 Mutabakat: takvim toplamı ilgili hesap bakiyeleriyle (320, 309 KK, 103, 360/361, 336, 300) cari/kart/hesap bazında karşılaştırılır; fark kalem kalem listelenir."""
 from __future__ import annotations
 
+from core.tarih import tr_bugun
 import calendar
 import datetime
 import re
@@ -347,7 +348,7 @@ def _pos_satirlari(bugun, kurlar) -> list:
 # ----------------------------------------------------------------------------------------------------------------------------
 def tum_satirlar(bugun=None) -> dict:
     """Tüm kaynaklardan filtresiz satırlar + bugünkü nakit/kur + atlanan kartlar. Sıralı: tarih (vadesizler sonda), çıkış önce."""
-    bugun = bugun or datetime.date.today()
+    bugun = bugun or tr_bugun()
     fo = finans_ozet.ozet(bugun)
     kurlar = fo["kurlar"]
     satirlar = []

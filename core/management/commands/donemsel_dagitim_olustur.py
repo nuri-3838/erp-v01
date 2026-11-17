@@ -2,6 +2,7 @@
 
     python manage.py donemsel_dagitim_olustur [--tarih YYYY-MM-DD]
 """
+from core.tarih import tr_bugun
 import datetime
 
 from django.core.management.base import BaseCommand, CommandError
@@ -18,7 +19,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         try:
-            tarih = datetime.date.fromisoformat(opts["tarih"]) if opts.get("tarih") else timezone.localdate()
+            tarih = datetime.date.fromisoformat(opts["tarih"]) if opts.get("tarih") else tr_bugun()
         except ValueError:
             raise CommandError("Tarih YYYY-MM-DD olmalı.")
         try:

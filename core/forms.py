@@ -72,7 +72,7 @@ class FisForm(forms.Form):
     tarih = forms.DateField(
         label="Muhasebe tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate,
+        initial=tr_bugun,
     )
     aciklama = forms.CharField(
         label="Açıklama", required=False,
@@ -667,7 +667,7 @@ class OperasyonEmirsizForm(forms.Form):
     operasyon = forms.ModelChoiceField(label="Operasyon (reçete)", queryset=None, empty_label="— operasyon seç —")
     varyant = forms.ModelChoiceField(label="Varyant", queryset=None, required=False)
     depo = forms.ModelChoiceField(label="Çıktı deposu", queryset=None, empty_label="— depo seç —")
-    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=tr_bugun)
     saglam = TRDecimalField(label="Sağlam adet", basamak=3)
     fire = TRDecimalField(label="Fire adet", basamak=3, required=False)
     personel = forms.ModelChoiceField(label="Personel", queryset=None, required=False, empty_label="— personel —")
@@ -698,7 +698,7 @@ class OfisKarmaKesimForm(forms.Form):
     profil = forms.ModelChoiceField(label="Profil", queryset=None, empty_label="— profil seç —")
     boy_sayisi = forms.IntegerField(label="Kullanılan boy sayısı", min_value=1, widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}))
     depo = forms.ModelChoiceField(label="Depo", queryset=None, empty_label="— depo seç —")
-    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=tr_bugun)
     personel = forms.ModelChoiceField(label="Personel", queryset=None, required=False, empty_label="— personel —")
     aciklama = forms.CharField(label="Not", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
     ayrilmis_onay = forms.BooleanField(label="Açık üretim siparişlerine ayrılmış profil stoğundan kullanmayı onaylıyorum", required=False)
@@ -907,7 +907,7 @@ class AdayAktiviteForm(forms.Form):
     Cari aktivite formunda bu alanlar YOK (spec kararı, dokunulmayacaklar listesi)."""
 
     tarih = forms.DateField(
-        label="Tarih", initial=timezone.localdate,
+        label="Tarih", initial=tr_bugun,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     tur = forms.ChoiceField(label="Tür", choices=AdayAktivite.Tur.choices)
     aciklama = forms.CharField(label="Açıklama", widget=forms.Textarea(attrs={"rows": 4}))
@@ -1043,7 +1043,7 @@ class CariAktiviteForm(forms.Form):
     """Cari aktivite (görüşme/temas) ekle/düzenle. Dosya ekleri ayrı, çoklu işlenir (view'da)."""
 
     tarih = forms.DateField(
-        label="Tarih", initial=timezone.localdate,
+        label="Tarih", initial=tr_bugun,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     tur = forms.ChoiceField(label="Tür", choices=CariAktivite.Tur.choices)
     aciklama = forms.CharField(label="Açıklama", widget=forms.Textarea(attrs={"rows": 4}))
@@ -1335,7 +1335,7 @@ class FasonFiyatForm(forms.Form):
     birim_fiyat = TRDecimalField(label="Birim fiyat (adet başına)", basamak=4)
     para_birimi = forms.ChoiceField(label="Para birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     gecerlilik_baslangic = forms.DateField(
-        label="Geçerlilik başlangıcı", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+        label="Geçerlilik başlangıcı", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=tr_bugun)
     aktif = forms.BooleanField(label="Aktif", required=False, initial=True)
 
     def __init__(self, *args, **kwargs):
@@ -1585,7 +1585,7 @@ class FasonDonusBaslikForm(forms.Form):
     depo = forms.ModelChoiceField(label="Çıktıların gireceği depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
     irsaliye_no = forms.CharField(label="Fasoncunun irsaliye no", max_length=50, required=False,
                                   widget=forms.TextInput(attrs={"autocomplete": "off"}))
-    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=tr_bugun)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
     def __init__(self, *args, **kwargs):
@@ -1689,7 +1689,7 @@ class UretimEmriBaslikForm(forms.Form):
         label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     termin = forms.DateField(label="Termin", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     oncelik = forms.ChoiceField(label="Öncelik", choices=UretimEmri.Oncelik.choices, initial=UretimEmri.Oncelik.NORMAL, required=False)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
@@ -1714,7 +1714,7 @@ class UretimRevizeBaslikForm(forms.Form):
     """Üretim siparişi / sipariş revizesinde başlık: revizyonun tarihi ve açıklaması (depo değişmez)."""
     tarih = forms.DateField(
         label="Revize Tarihi", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     termin = forms.DateField(label="Termin", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     oncelik = forms.ChoiceField(label="Öncelik", choices=UretimEmri.Oncelik.choices, initial=UretimEmri.Oncelik.NORMAL, required=False)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
@@ -1799,7 +1799,7 @@ class BordroBaslikForm(forms.Form):
     tarih = forms.DateField(
         label="İşlem Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     para_birimi = forms.ChoiceField(label="Para Birimi", choices=Cari.PARA_CHOICES, initial="TRY")
     # TRY'de anlamsız (JS ile gizlenir). Doluysa carinin kur_tipi tercihine göre otomatik
     # hesaplanan kur YERİNE bu kullanılır.
@@ -1822,7 +1822,7 @@ class CariCiroForm(forms.Form):
     tarih = forms.DateField(
         label="İşlem Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     # Seçilen evrakın PB'si TRY değilse gösterilir (JS); ciro edilen carinin kur_tipi
     # tercihine göre otomatik doldurulur. Doluysa otomatik hesaplama YERİNE kullanılır.
     kur = TRDecimalField(label="Kur", basamak=6, required=False)
@@ -1843,7 +1843,7 @@ class BankaIslemForm(forms.Form):
     tarih = forms.DateField(
         label="İşlem Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1860,7 +1860,7 @@ class IslemTarihForm(forms.Form):
     tarih = forms.DateField(
         label="İşlem Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
 
 
 class CekNakitForm(forms.Form):
@@ -1874,7 +1874,7 @@ class CekNakitForm(forms.Form):
     tarih = forms.DateField(
         label="İşlem Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1934,7 +1934,7 @@ class FaturaForm(forms.Form):
     tarih = forms.DateField(
         label="Fatura tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     # Fatura no ZORUNLU (yeni kayıt) — numarası olmayan belge için "faturasız" işaretlenir. Zorunluluk clean()'de: düzenlemede yalnız no DEĞİŞTİRİLİRKEN (kayıtlı no silinirken)
     # çalışır; eskiden numarasız kaydedilmiş fatura (mevcut_no == "") numarasız kalarak düzenlenebilir.
     fatura_no = forms.CharField(
@@ -2397,7 +2397,7 @@ class KasaHareketForm(forms.Form):
     tarih = forms.DateField(
         label="Tarih",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     # Kasa döviz ise gösterilir (JS); karşı taraf Cari'yse onun kur_tipi tercihine göre
     # otomatik doldurulur (bkz. core.services.kasa_hareket.hareket_olustur). Doluysa
     # otomatik hesaplama YERİNE doğrudan kullanılır.
@@ -2443,7 +2443,7 @@ class BankaHareketForm(forms.Form):
     tarih = forms.DateField(
         label="Tarih",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     # Banka hesabı döviz ise gösterilir (JS); karşı taraf Cari'yse onun kur_tipi tercihine
     # göre otomatik doldurulur. Doluysa otomatik hesaplama YERİNE doğrudan kullanılır.
     kur = TRDecimalField(label="Kur", basamak=6, required=False)
@@ -2485,7 +2485,7 @@ class BankaHesapHareketForm(forms.Form):
     tutar = TRDecimalField(label="Tutar", basamak=2)
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     kur = TRDecimalField(label="Kur", basamak=6, required=False)
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
@@ -2589,7 +2589,7 @@ class KrediKartiHareketForm(forms.Form):
     tarih = forms.DateField(
         label="Tarih",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     # Kart döviz ise gösterilir (JS); karşı taraf Cari'yse onun kur_tipi tercihine göre
     # otomatik doldurulur. Doluysa otomatik hesaplama YERİNE doğrudan kullanılır.
     kur = TRDecimalField(label="Kur", basamak=6, required=False)
@@ -2659,7 +2659,7 @@ class KrediHareketForm(forms.Form):
     tarih = forms.DateField(
         label="Tarih",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off",
@@ -2722,7 +2722,7 @@ class KrediTaksitOdemeForm(forms.Form):
     tarih = forms.DateField(
         label="Ödeme Tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off",
@@ -2755,7 +2755,7 @@ class TeklifSiparisForm(forms.Form):
     tarih = forms.DateField(
         label="Belge tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     gecerlilik_teslim_tarihi = forms.DateField(
         label="Tarih", required=False,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
@@ -2892,7 +2892,7 @@ class TeklifSiparisKalemForm(forms.Form):
 
 
 def _gecerlilik_varsayilan():
-    return timezone.localdate() + timedelta(days=15)
+    return tr_bugun() + timedelta(days=15)
 
 
 def _secenek_varsayilan(kategori):
@@ -2927,7 +2927,7 @@ class SatisBelgeBaslikForm(forms.Form):
     tarih = forms.DateField(
         label="Belge tarihi",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     gecerlilik_teslim_tarihi = forms.DateField(
         label="Geçerlilik Tarihi", required=False, initial=_gecerlilik_varsayilan,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
@@ -3129,7 +3129,7 @@ class StokHareketForm(forms.Form):
     miktar = TRDecimalField(label="Miktar", basamak=3)
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
     varyant = forms.CharField(required=False, widget=forms.HiddenInput)          # E-3: varyantlı kartta (JS core/_varyant_js.html)
@@ -3151,7 +3151,7 @@ class DepoTransferForm(forms.Form):
     miktar = TRDecimalField(label="Miktar", basamak=3)
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     aciklama = forms.CharField(label="Açıklama", max_length=250, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off"}))
     varyant = forms.CharField(required=False, widget=forms.HiddenInput)          # E-3: varyantlı kartta
@@ -3180,7 +3180,7 @@ class SarfCikisForm(forms.Form):
     miktar = TRDecimalField(label="Miktar", basamak=3)
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     karsi_hesap = forms.ModelChoiceField(
         label="Karşı hesap", queryset=HesapPlani.objects.none(), empty_label="— hesap seç —")
     yatirim_projesi = forms.ModelChoiceField(
@@ -3251,7 +3251,7 @@ class YemekSayimForm(forms.Form):
     cari = forms.ModelChoiceField(label="Cari (Yemek Firması)", queryset=Cari.objects.none(),
                                   empty_label="— cari seç —")
     tarih = forms.DateField(
-        label="Tarih", initial=timezone.localdate,
+        label="Tarih", initial=tr_bugun,
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     kisi_sayisi = forms.IntegerField(
         label="Kişi Sayısı", min_value=0,
@@ -3666,7 +3666,7 @@ class DovizIslemForm(forms.Form):
     kur = TRDecimalField(label="Kur (TL)", basamak=6, required=False)
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     aciklama = forms.CharField(
         label="Açıklama", max_length=200, required=False,
         widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
@@ -3711,7 +3711,7 @@ class DovizIslemForm(forms.Form):
 class CariVirmanForm(forms.Form):
     """Cari virman: tarih, tutar (TL), yön, karşı cari (tüm cariler), (döviz carilerde) hangi dövize sayılacağı, açıklama."""
     tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-                            initial=timezone.localdate)
+                            initial=tr_bugun)
     tutar = TRDecimalField(label="Tutar (TL; kur girilirse DÖVİZ)", basamak=2)
     kur = TRDecimalField(label="Kur (opsiyonel)", basamak=6, required=False,
                          help_text="Yalnız döviz carilerde. Boşsa tutar TL'dir ve tarihin TCMB alış kuru kullanılır. Doluysa tutar DÖVİZ "
@@ -3773,7 +3773,7 @@ class CariKesintiForm(forms.Form):
     """Cari kartından Kesinti / Masraf hareketi: tarih, tutar, gider hesabı (varsayılan 770.03), açıklama."""
     tarih = forms.DateField(
         label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-        initial=timezone.localdate)
+        initial=tr_bugun)
     tutar = TRDecimalField(label="Tutar", basamak=2)
     yon = forms.ChoiceField(label="Yön", required=False, initial="kapat", choices=[])
     # Yalnız döviz carilerinde (ekranda): cari satırının para birimi + kur (döviz seçilince; boşsa TCMB).
@@ -3907,7 +3907,7 @@ class PersonelBordroSatirForm(forms.Form):
 class YatirimProjesiKapatForm(forms.Form):
     """Yatırım projesini kapat (258 bakiyesi 0): kapanış tarihi + neden (Satıldı / Diğer) + açıklama. Fiş üretmez."""
     kapanis_tarihi = forms.DateField(label="Kapanış tarihi", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-                                     initial=timezone.localdate)
+                                     initial=tr_bugun)
     kapanis_nedeni = forms.ChoiceField(label="Kapanış nedeni", choices=YatirimProjesi.KapanisNedeni.choices,
                                        initial=YatirimProjesi.KapanisNedeni.SATILDI)
     kapanis_aciklama = forms.CharField(label="Açıklama", required=False,
@@ -3940,7 +3940,7 @@ class KdvMahsupForm(forms.Form):
 
 class NumuneBaslikForm(forms.Form):
     """SATIŞ > Numune Çıkışı başlığı: alıcı cari (opsiyonel) VEYA serbest metin alıcı adı — biri zorunlu."""
-    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=tr_bugun)
     depo = forms.ModelChoiceField(label="Depo", queryset=Depo.objects.none(), empty_label="— depo seç —")
     cari = forms.ModelChoiceField(label="Cari (opsiyonel)", queryset=Cari.objects.none(), required=False, empty_label="— cari seç —")
     alici_adi = forms.CharField(label="Alıcı adı (cari yoksa)", max_length=200, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
@@ -4019,7 +4019,7 @@ class NumuneAyariForm(forms.Form):
 class FasonSiparisBaslikForm(forms.Form):
     """FASON > Fason Siparişleri başlığı (fasoncu + tarih + termin + açıklama); fasoncu = fason deposu bağlı ya da fason fiyatı tanımlı cariler."""
     cari = forms.ModelChoiceField(label="Fasoncu (cari)", queryset=Cari.objects.none(), empty_label="— fasoncu seç —")
-    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=timezone.localdate)
+    tarih = forms.DateField(label="Tarih", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"), initial=tr_bugun)
     termin = forms.DateField(label="Termin", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
     aciklama = forms.CharField(label="Açıklama", max_length=300, required=False, widget=forms.TextInput(attrs={"autocomplete": "off"}))
 
