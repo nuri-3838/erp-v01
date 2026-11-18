@@ -102,7 +102,7 @@ class TeklifSiparisXlsxTest(TestCase):
         r = self._xlsx(ts, "tr")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        self.assertIn(f'filename="teklif_{ts.belge_no}_tr.xlsx"', r["Content-Disposition"])
+        self.assertIn(f'filename="{ts.belge_no}_MUSTERI XLSX.xlsx"', r["Content-Disposition"])             # <BELGE NO>_<CARİ ADI>.xlsx (ASCII yedek)
         ws, baslik, satirlar = self._sayfa(r)
         self.assertEqual(ws.max_column, 7)                                                                # tam 7 sütun (ws.cell okuması sütun yaratır; önce bak)
         self.assertEqual([ws.cell(baslik, c).value for c in range(1, 8)], _BASLIK_TR)                     # bu sırada
@@ -144,7 +144,7 @@ class TeklifSiparisXlsxTest(TestCase):
         ts = self._teklif_olustur()
         r = self._xlsx(ts, "en")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(f'filename="teklif_{ts.belge_no}_en.xlsx"', r["Content-Disposition"])
+        self.assertIn(f'filename="{ts.belge_no}_MUSTERI XLSX.xlsx"', r["Content-Disposition"])
         ws, baslik, satirlar = self._sayfa(r)
         self.assertEqual([ws.cell(baslik, c).value for c in range(1, 8)],
                          ["Model Code", "Product Name", "Pcs/Pkg", "Qty", "Net Unit Price (TRY)", "Unit Gross KG", "Unit CBM"])
@@ -195,11 +195,125 @@ class TeklifSiparisXlsxTest(TestCase):
         self.assertEqual((a21[2], c22[2]), (6, 1))                                                        # Excel tüm belge türlerinde ortak: proformada da Paket İçi Adet
         self.assertEqual(ws.max_column, 7)
 
+    # --- PDF/Excel İNDİRME: attachment, dosya adı kuralı, görüntüleme, PDF Title ---
+    UNVAN_TR = "GÖKRAY PLASTİK İNŞAAT SAN. VE TİC. LTD. ŞTİ."
+    ASCII_UNVAN = "GOKRAY PLASTIK INSAAT SAN. VE TIC. LTD. STI"
+
+    def _unvanli(self, tur="TEKLIF", no="SST-2026-0045"):
+        """Cari unvanı Türkçe harfli + sonu 'ŞTİ.' (eskiden '..pdf' üreten durum) olan belge."""
+        if tur == "TEKLIF":
+            ts = self._teklif_olustur()
+        else:
+            ts = self._belge(tur, no, [(self.a21, "4", "350", "5")])
+        Cari.objects.filter(pk=ts.cari_id).update(unvan=self.UNVAN_TR)
+        return ts
+
+    @staticmethod
+    def _pdf_basligi(icerik: bytes) -> str:
+        """PDF bilgi sözlüğündeki /Title (WeasyPrint: <title> → Title; ASCII dışı metin UTF-16BE hex)."""
+        import re
+        import zlib
+        parcalar = [icerik]                                              # WeasyPrint nesneleri sıkıştırır (ObjStm): akışları aç, bilgi sözlüğünü orada ara
+        for akis in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", icerik, re.S):
+            try:
+                parcalar.append(zlib.decompress(akis.group(1)))
+            except zlib.error:
+                pass
+        m = None                                                         # /Title birden çok yerde olur (içindekiler/yer imi girdileri); belge bilgisi = /Producer ile aynı sözlükte
+        for p in parcalar:
+            for x in re.finditer(rb"/Title\s*(<([0-9A-Fa-f]+)>|\(([^)]*)\))", p):
+                if b"/Producer" in p[max(0, x.start() - 300): x.end() + 300] and b"/Parent" not in p[x.start(): x.end() + 60]:
+                    m = x
+        if not m:
+            return ""
+        if m.group(2):
+            ham = bytes.fromhex(m.group(2).decode())
+            return ham.decode("utf-16-be").lstrip("﻿")
+        return m.group(3).decode("latin-1")
+
+    def test_pdf_varsayilan_indirilir_dosya_adi_belge_no_ve_cari(self):
+        from urllib.parse import quote
+        ts = self._unvanli()
+        self.client.force_login(self.yon)
+        for dil in ("tr", "en"):
+            r = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]) + f"?dil={dil}")
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r["Content-Type"], "application/pdf")
+            cd = r["Content-Disposition"]
+            self.assertTrue(cd.startswith("attachment;"), cd)                                              # sekmede açılmaz, iner
+            self.assertIn(f'filename="{ts.belge_no}_{self.ASCII_UNVAN}.pdf"', cd)                          # Türkçe harf SİLİNMEZ, çevrilir: GOKRAY PLASTIK INSAAT
+            self.assertIn("GOKRAY PLASTIK INSAAT", cd)
+            self.assertNotIn("..pdf", cd)                                                                  # 'ŞTİ.' + '.pdf' → '..pdf' olmaz
+            self.assertIn(f"filename*=UTF-8''{quote(f'{ts.belge_no}_{self.UNVAN_TR[:-1]}.pdf', safe='')}", cd)   # Türkçe asıl ad (sondaki nokta atılmış)
+            cd.encode("latin-1")
+
+    def test_pdf_goruntule_inline_ayni_ad(self):
+        ts = self._unvanli()
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]) + "?dil=tr&goruntule=1")
+        self.assertTrue(r["Content-Disposition"].startswith("inline;"), r["Content-Disposition"])
+        self.assertIn(f'filename="{ts.belge_no}_{self.ASCII_UNVAN}.pdf"', r["Content-Disposition"])
+
+    def test_pdf_title_belge_no_cari_ve_tur(self):
+        self.client.force_login(self.yon)
+        for tur, no, etiket_tr, etiket_en in (("TEKLIF", None, "Teklif", "Quotation"), ("PROFORMA", "SSP-2026-0005", "Proforma", "Proforma Invoice"),
+                                              ("SIPARIS", "SSS-2026-0003", "Sipariş", "Order")):
+            ts = self._unvanli(tur, no) if no else self._unvanli(tur)
+            for dil, etiket in (("tr", etiket_tr), ("en", etiket_en)):
+                r = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]) + f"?dil={dil}")
+                self.assertEqual(r["Content-Type"], "application/pdf")
+                self.assertEqual(self._pdf_basligi(r.content), f"{ts.belge_no} – {self.UNVAN_TR} – {etiket}", f"{tur}/{dil}")
+
+    def test_pdf_title_alis_belgesi_sablonunda_da_var(self):
+        ts = self._belge("TEKLIF", "ST-ALIS-1", [(self.a21, "4", "350", "5")], yon="ALIS")
+        self.client.force_login(self.yon)
+        r = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
+        self.assertEqual(self._pdf_basligi(r.content), "ST-ALIS-1 – MÜŞTERİ XLSX – Teklif")
+        self.assertTrue(r["Content-Disposition"].startswith("attachment;"))
+
+    def test_excel_ayni_ad_kurali_attachment_ve_utf8_ad(self):
+        from urllib.parse import quote
+        ts = self._unvanli("PROFORMA", "SSP-2026-0005")
+        r = self._xlsx(ts, "tr")
+        cd = r["Content-Disposition"]
+        self.assertTrue(cd.startswith("attachment;"), cd)
+        self.assertIn(f'filename="SSP-2026-0005_{self.ASCII_UNVAN}.xlsx"', cd)
+        self.assertNotIn("..xlsx", cd)
+        self.assertIn(f"filename*=UTF-8''{quote(f'SSP-2026-0005_{self.UNVAN_TR[:-1]}.xlsx', safe='')}", cd)
+        cd.encode("latin-1")
+
+    def test_detay_ve_liste_pdf_baglantilari_indirir_goruntule_yeni_sekmede(self):
+        import re
+        ts = self._unvanli("PROFORMA", "SSP-2026-0005")
+        self.client.force_login(self.yon)
+        pdf_url = reverse("core:teklif_siparis_pdf", args=[ts.pk])
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk])).content.decode()
+        for dil in ("tr", "en"):
+            indir = re.search(rf'<a[^>]*href="{re.escape(pdf_url)}\?dil={dil}"[^>]*>', d)
+            self.assertIsNotNone(indir, dil)
+            self.assertNotIn("target=", indir.group(0))                                                    # indirme bağlantısı sekme açmaz
+            gor = re.search(rf'<a[^>]*href="{re.escape(pdf_url)}\?dil={dil}&amp;goruntule=1"[^>]*>', d)
+            self.assertIsNotNone(gor, f"Görüntüle ({dil}) yok")
+            self.assertIn('target="_blank"', gor.group(0))
+        self.assertIn("Görüntüle", d)
+        liste = self.client.get(reverse("core:satis_proformalari")).content.decode()
+        baglanti = re.search(rf'<a[^>]*href="{re.escape(pdf_url)}"[^>]*>PDF</a>', liste)
+        self.assertIsNotNone(baglanti)
+        self.assertNotIn("target=", baglanti.group(0))
+
+    def test_alis_belgesinde_detay_tek_pdf_indirir_ve_goruntule_var(self):
+        ts = self._belge("TEKLIF", "ST-ALIS-2", [(self.a21, "4", "350", "5")], yon="ALIS")
+        self.client.force_login(self.yon)
+        d = self.client.get(reverse("core:teklif_siparis_detay", args=[ts.pk])).content.decode()
+        pdf_url = reverse("core:teklif_siparis_pdf", args=[ts.pk])
+        self.assertIn(f'href="{pdf_url}?goruntule=1" target="_blank"', d)
+        self.assertNotIn(f'href="{pdf_url}" target="_blank"', d)
+
     def test_siparis_ekraninda_da_calisir_dosya_adi_ve_teslim_tarihi(self):
         ts = self._belge("SIPARIS", "SIP-XL-1", [(self.a21, "4", "350", "5")])
         r = self._xlsx(ts, "en")
         self.assertEqual(r.status_code, 200)
-        self.assertIn('filename="siparis_SIP-XL-1_en.xlsx"', r["Content-Disposition"])
+        self.assertIn('filename="SIP-XL-1_MUSTERI XLSX.xlsx"', r["Content-Disposition"])
         ws, baslik, satirlar = self._sayfa(r)
         self.assertEqual(len(satirlar), 1)
         self.assertEqual(Decimal(str(satirlar[0][4])), Decimal("332.5"))

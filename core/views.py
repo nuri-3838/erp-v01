@@ -167,6 +167,7 @@ from core.services import mesai_hesap as mesai_hesap_servis
 from core.services import yatirim_projesi as yp_servis
 from core.services import duran_varlik as dv_servis
 from core.ip import istemci_ip
+from core.dosya_adi import belge_dosya_adi, content_disposition
 from core.tarih import ay_araligi, kidem_metni, tr_bugun, tr_gun_araligi
 from core.yetki import (
     ekran_gerekli, ekran_gerekli_hepsi, ekran_gerekli_herhangi, ekran_gorebilir, ekranlar_gorebilir,
@@ -4805,7 +4806,8 @@ def teklif_siparis_pdf(request, pk):
         with open(logo_yol, "rb") as f:
             ctx["logo_b64"] = base64.b64encode(f.read()).decode("ascii")
     sablon = "core/teklif_siparis_pdf.html"
-    dosya_adi = _pdf_dosya_adi(ts.belge_no or ts.pk, ts.taraf.unvan)
+    dosya_adi = belge_dosya_adi(ts.belge_no or ts.pk, ts.taraf.unvan, "pdf")
+    ctx["belge_basligi"] = _belge_basligi(ts, "en" if request.GET.get("dil") == "en" else "tr")
     if sat_teklif:
         dil = "en" if request.GET.get("dil") == "en" else "tr"
         ctx.update(satis_teklif_pdf_baglam(ts, kalemler, dil, request.user))
@@ -4821,8 +4823,21 @@ def teklif_siparis_pdf(request, pk):
     html = render_to_string(sablon, ctx)
     pdf = HTML(string=html).write_pdf()
     resp = HttpResponse(pdf, content_type="application/pdf")
-    resp["Content-Disposition"] = _pdf_content_disposition(dosya_adi)
+    # Varsayılan: İNDİR (attachment; dosya adı belge no + cari). ?goruntule=1 → tarayıcıda göster (inline; detaydaki "Görüntüle" bağlantısı).
+    resp["Content-Disposition"] = content_disposition(dosya_adi, "inline" if request.GET.get("goruntule") == "1" else "attachment")
     return resp
+
+
+_BELGE_TUR_ETIKET = {
+    "tr": {"TEKLIF": "Teklif", "PROFORMA": "Proforma", "SIPARIS": "Sipariş", "IRSALIYE": "İrsaliye"},
+    "en": {"TEKLIF": "Quotation", "PROFORMA": "Proforma Invoice", "SIPARIS": "Order", "IRSALIYE": "Delivery Note"},
+}
+
+
+def _belge_basligi(ts, dil="tr") -> str:
+    """PDF meta başlığı (<title> → PDF Title; sekme başlığı + 'Farklı kaydet' adı): '<BELGE NO> – <CARİ ADI> – <Tür>'."""
+    tur = _BELGE_TUR_ETIKET.get(dil, _BELGE_TUR_ETIKET["tr"]).get(ts.belge_tur, "")
+    return " – ".join(str(p) for p in (ts.belge_no or ts.pk, ts.taraf.unvan, tur) if p)
 
 
 @ekran_gerekli_herhangi("satinalma_teklifleri", "satinalma_siparisleri",
@@ -4855,9 +4870,7 @@ def teklif_siparis_xlsx(request, pk):
             k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant_id, dil)
     veri = xlsx_uret(ts, kalemler, ctx, dil, firma_unvan=firma_servis.firma_bilgisi_getir().unvan,
                      navlunlu=bool(sat_teklif and ctx.get("navlun_var")))
-    onek = {"TEKLIF": "teklif", "PROFORMA": "proforma", "SIPARIS": "siparis", "IRSALIYE": "irsaliye"}[ts.belge_tur]
-    no = str(ts.belge_no or ts.pk).translate(_DOSYA_GECERSIZ).replace(" ", "_")
-    resp = _xlsx_yanit(veri, f"{onek}_{no}_{dil}")
+    resp = _xlsx_yanit(veri, "", dosya_adi=belge_dosya_adi(ts.belge_no or ts.pk, ts.taraf.unvan, "xlsx"))   # PDF ile aynı ad kuralı
     resp["Cache-Control"] = "no-store"
     return resp
 
@@ -8300,9 +8313,10 @@ URUN_AGACI_ACIK_SEVIYE = 2      # kök + bir alt seviye açık başlar; derindek
 URUN_AGACI_SEKMELER = (("agac", "Ağaç"), ("malzeme", "Malzeme ve Stok"), ("maliyet", "Maliyet"))
 
 
-def _xlsx_yanit(veri, ad):
+def _xlsx_yanit(veri, ad, *, dosya_adi=None):
+    """Excel indirme yanıtı. ``dosya_adi`` (uzantılı, Türkçe olabilir) verilirse ASCII yedek + UTF-8 asıl ad başlığı kurulur (core.dosya_adi)."""
     resp = HttpResponse(veri, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    resp["Content-Disposition"] = f'attachment; filename="{ad}.xlsx"'
+    resp["Content-Disposition"] = content_disposition(dosya_adi, "attachment") if dosya_adi else f'attachment; filename="{ad}.xlsx"'
     return resp
 
 

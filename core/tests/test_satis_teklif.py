@@ -322,11 +322,12 @@ class SatisTeklifTest(TestCase):
         self.assertContains(d, "PDF (TR)")
         self.assertContains(d, "PDF (EN)")
         from urllib.parse import quote
-        beklenen_ad = f"{ts.belge_no}-{self.cari.unvan}.pdf"
-        beklenen_parca = f"filename*=UTF-8''{quote(beklenen_ad)}"
+        beklenen_ad = f"{ts.belge_no}_{self.cari.unvan}.pdf"
+        beklenen_parca = f"filename*=UTF-8''{quote(beklenen_ad, safe='')}"
         pdf = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]))
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf["Content-Type"], "application/pdf")
+        self.assertTrue(pdf["Content-Disposition"].startswith("attachment;"))                            # indirilir (sekmede açılmaz)
         self.assertIn(beklenen_parca, pdf["Content-Disposition"])
         self.assertNotIn("-TR.pdf", pdf["Content-Disposition"])
         pdf_en = self.client.get(reverse("core:teklif_siparis_pdf", args=[ts.pk]) + "?dil=en")

@@ -202,7 +202,7 @@
         <td class="sag mono">{{ k.odenecek|tr_kur:2 }} {{ k.para_birimi }}</td>
         <td><span class="islem-bag">
           <a href="{% url 'core:teklif_siparis_detay' k.pk %}">Detay</a>
-          <a href="{% url 'core:teklif_siparis_pdf' k.pk %}" target="_blank">PDF</a>
+          <a href="{% url 'core:teklif_siparis_pdf' k.pk %}" title="PDF'i indir">PDF</a>
           {% if k.durum == "TASLAK" %}
             <a href="{% url 'core:teklif_siparis_duzenle' k.pk %}">Düzenle</a>
           {% endif %}
