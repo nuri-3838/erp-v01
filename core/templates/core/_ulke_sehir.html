@@ -1,0 +1,50 @@
+{% comment %}
+Ortak: ülke seçimine göre şehir listesini süzer. SehirSelect widget'lı (data-ulke-bagli, seçeneklerde data-ulke) her şehir alanı otomatik bağlanır;
+eşi aynı formdaki "...ulke" alanıdır (alan adı "sehir" -> "ulke", önek korunur). Her şablona ayrı kod yazılmaz: yalnız {% include "core/_ulke_sehir.html" %}.
+- Ülke boşken şehir alanı pasif ("önce ülke seçin"); ülke seçilince yalnız o ülkenin şehirleri listelenir.
+- Kullanıcı ülkeyi DEĞİŞTİRİRSE seçili şehir başka ülkeye aitse temizlenir.
+- Sayfa ilk açılışta (düzenleme) kayıtlı şehir olduğu gibi seçili kalır; uyuşmuyorsa da kaybolmaz (sunucu "Seçilen şehir bu ülkeye ait değil" der).
+- Akıllı-seç (akilli-girdi) varsa aramasını da süzülmüş listeden yapar (seçenekleri açılışta <option>'lardan okur); yoksa yerel <select> süzülür.
+{% endcomment %}
+<script>
+(function(){
+  function kur(sehirSel){
+    var form = sehirSel.form;
+    var ulkeSel = form && form.elements[sehirSel.name.replace(/sehir$/, 'ulke')];
+    if(!ulkeSel || ulkeSel === sehirSel || sehirSel.getAttribute('data-ulke-kuruldu')) return;
+    sehirSel.setAttribute('data-ulke-kuruldu', '1');
+    var tum = Array.prototype.slice.call(sehirSel.options);
+    var bos = tum.filter(function(o){ return !o.value; })[0] || null;
+    var girdi = function(){ var g = sehirSel.previousElementSibling;            // akıllı-seç'in eklediği arama kutusu (yoksa null)
+      return g && g.classList && g.classList.contains('akilli-girdi') ? g : null; };
+    function uygula(kullaniciDegistirdi){
+      var ulke = ulkeSel.value, once = sehirSel.value, secili = once;
+      var seciliOpt = tum.filter(function(o){ return o.value === secili; })[0];
+      if(kullaniciDegistirdi && seciliOpt && seciliOpt.getAttribute('data-ulke') !== ulke) secili = '';   // ülke değişti, şehir başka ülkenin -> temizle
+      while(sehirSel.firstChild) sehirSel.removeChild(sehirSel.firstChild);
+      if(bos) sehirSel.appendChild(bos);
+      tum.forEach(function(o){
+        if(!o.value) return;
+        if((ulke && o.getAttribute('data-ulke') === ulke) || o.value === secili) sehirSel.appendChild(o);
+      });
+      sehirSel.value = secili;
+      var g = girdi();
+      if(g){
+        g.disabled = !ulke;
+        g.placeholder = ulke ? 'ara / seç…' : 'önce ülke seçin';
+        var o = sehirSel.options[sehirSel.selectedIndex];
+        g.value = (o && o.value) ? o.textContent.trim() : '';
+      } else {
+        sehirSel.disabled = !ulke && !secili;                                  // yerel select: pasif sunucuya gitmez -> yalnız seçili şehir de yoksa kapat
+        if(bos) bos.textContent = ulke ? '— şehir seç —' : '— önce ülke seçin —';
+      }
+      if(secili !== once) sehirSel.dispatchEvent(new Event('change', {bubbles: true}));   // dinleyenler (ör. vergi dairesi il sıralaması) haberdar olsun
+    }
+    ulkeSel.addEventListener('change', function(){ uygula(true); });
+    uygula(false);
+  }
+  function hepsi(){ document.querySelectorAll('select[data-ulke-bagli]').forEach(kur); }
+  // akıllı-seç betikleri sayfa içinde senkron çalışıp arama kutusunu ekler -> biz DOM hazır olunca bağlanırız
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hepsi); else hepsi();
+})();
+</script>

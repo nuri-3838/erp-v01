@@ -53,8 +53,8 @@
           <label class="ad-inline-checkbox" for="{{ form.eposta_2_gecersiz.id_for_label }}">{{ form.eposta_2_gecersiz }} {{ form.eposta_2_gecersiz.label }}</label>
         </div>
         <div class="alan"><label for="{{ form.web.id_for_label }}">{{ form.web.label }}</label>{{ form.web }}{% for e in form.web.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-        <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
-        <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
+        <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div>{% for e in form.ulke.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div>{% for e in form.sehir.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}</div>
         <div class="alan"><label for="{{ form.kategori.id_for_label }}">{{ form.kategori.label }} <span class="zorunlu">*</span></label><div class="akilli">{{ form.kategori }}</div>{% for e in form.kategori.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         {% comment %}form.kategori.label zaten "Kaynak" (bkz. AdayMusteriForm) — alan adı model/servis tarihsel nedenle "kategori" kalır.{% endcomment %}
@@ -104,4 +104,5 @@
     uygula();
   })();
 </script>
+{% include "core/_ulke_sehir.html" %}
 {% endblock %}

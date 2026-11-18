@@ -20,8 +20,8 @@
       <h2 class="bolum-baslik">Sevk Adresi</h2>
       <div class="izgara">
         <div class="alan tam"><label for="{{ form.ad.id_for_label }}">{{ form.ad.label }} <span class="zorunlu">*</span></label>{{ form.ad }}{% for e in form.ad.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
-        <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div></div>
-        <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div></div>
+        <div class="alan"><label for="{{ form.ulke.id_for_label }}">{{ form.ulke.label }}</label><div class="akilli">{{ form.ulke }}</div>{% for e in form.ulke.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+        <div class="alan"><label for="{{ form.sehir.id_for_label }}">{{ form.sehir.label }}</label><div class="akilli">{{ form.sehir }}</div>{% for e in form.sehir.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
         <div class="alan tam"><label for="{{ form.adres.id_for_label }}">{{ form.adres.label }}</label>{{ form.adres }}</div>
         <div class="alan onay-alan">{{ form.varsayilan }} <label for="{{ form.varsayilan.id_for_label }}" style="display:inline">{{ form.varsayilan.label }}</label></div>
       </div>
@@ -72,4 +72,5 @@
   window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
 })();
 </script>
+{% include "core/_ulke_sehir.html" %}
 {% endblock %}

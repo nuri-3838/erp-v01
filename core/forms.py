@@ -553,7 +553,41 @@ def _secilebilir_cariler(form):
     return secilebilir_cariler(ek)
 
 
-class CariForm(forms.Form):
+class SehirSelect(forms.Select):
+    """Şehir <select>'i: her seçeneğe ``data-ulke`` (ülke pk) ekler ve ``data-ulke-bagli`` ile işaretlenir —
+    ortak JS (``_ulke_sehir.html``) ülke seçimine göre listeyi süzer. Alan adı ``...sehir`` ise eşi ``...ulke`` alanıdır."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.attrs["data-ulke-bagli"] = "1"
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        secenek = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        ornek = getattr(value, "instance", None)                       # ModelChoiceIteratorValue — boş seçenekte yok
+        if ornek is not None:
+            secenek["attrs"]["data-ulke"] = str(ornek.ulke_id)
+        return secenek
+
+
+class UlkeSehirKurali:
+    """Ülke + şehir alanı olan formların SUNUCU tarafı kuralı (JS süzmesi atlatılsa/devre dışı olsa da): şehir seçilen ülkeye ait olmalı."""
+
+    SEHIR_ULKE_UYUMSUZ = "Seçilen şehir bu ülkeye ait değil."
+    SEHIR_ULKE_YOK = "Şehir seçmek için önce ülke seçin."
+
+    def clean(self):
+        cleaned = super().clean()
+        ulke, sehir = cleaned.get("ulke"), cleaned.get("sehir")
+        if sehir is not None:
+            if ulke is None:
+                if "ulke" not in self.errors:
+                    self.add_error("sehir", self.SEHIR_ULKE_YOK)
+            elif sehir.ulke_id != ulke.pk:
+                self.add_error("sehir", self.SEHIR_ULKE_UYUMSUZ)
+        return cleaned
+
+
+class CariForm(UlkeSehirKurali, forms.Form):
     """Cari kartı ekle/düzenle (CARİLER). Kod OTOMATİK (formda yok).
     Büyük harf/benzersizlik/sevk temizliği serviste."""
 
@@ -595,7 +629,7 @@ class CariForm(forms.Form):
     ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
                                   required=False, empty_label="— ülke seç —")
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
-                                   required=False, empty_label="— şehir seç —")
+                                   required=False, empty_label="— şehir seç —", widget=SehirSelect)
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 7, **_K}))
     # Ticari
@@ -768,7 +802,7 @@ class AdayAsamaTanimForm(_AdayTanimFormTaban):
     rol = forms.ChoiceField(label="Rol", choices=AdayAsamaTanim.Rol.choices)
 
 
-class AdayMusteriForm(forms.Form):
+class AdayMusteriForm(UlkeSehirKurali, forms.Form):
     """Aday müşteri (CRM) ekle/düzenle. TR büyük harf serviste. Kasıtlı olarak Cari'nin
     Kimlik/İletişim + Kategori + Para Birimi + İskonto yapısını yansıtır."""
 
@@ -795,7 +829,7 @@ class AdayMusteriForm(forms.Form):
     ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
                                   required=False, empty_label="— ülke seç —")
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
-                                   required=False, empty_label="— şehir seç —")
+                                   required=False, empty_label="— şehir seç —", widget=SehirSelect)
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 5, **_K}))
     # required=True (varsayılan) — seçenekler (optgroup'lu, yalnız yaprak kaynaklar
@@ -961,7 +995,7 @@ class AdayCariyeMevcutCariForm(forms.Form):
         self.fields["cari"].widget.attrs["class"] = "akilli-sec"
 
 
-class CariSevkAdresiForm(forms.Form):
+class CariSevkAdresiForm(UlkeSehirKurali, forms.Form):
     """Cari sevk (teslimat) adresi ekle/düzenle (çoklu). TR büyük harf serviste."""
 
     ad = forms.CharField(label="Adres Adı", max_length=100,
@@ -969,7 +1003,7 @@ class CariSevkAdresiForm(forms.Form):
     ulke = forms.ModelChoiceField(label="Ülke", queryset=Ulke.objects.none(),
                                   required=False, empty_label="— ülke seç —")
     sehir = forms.ModelChoiceField(label="Şehir", queryset=Sehir.objects.none(),
-                                   required=False, empty_label="— şehir seç —")
+                                   required=False, empty_label="— şehir seç —", widget=SehirSelect)
     adres = forms.CharField(label="Adres", required=False,
                             widget=forms.Textarea(attrs={"rows": 5, "autocomplete": "off"}))
     varsayilan = forms.BooleanField(label="Varsayılan", required=False)

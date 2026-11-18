@@ -117,8 +117,8 @@
       <section class="icerik-kart">
         <h2 class="bolum-baslik"><span class="emoji">📍</span>Adres</h2>
         <div class="izgara">
-          <div class="alan"><label for="{{ form_a.ulke.id_for_label }}">{{ form_a.ulke.label }}</label><div class="akilli">{{ form_a.ulke }}</div></div>
-          <div class="alan"><label for="{{ form_a.sehir.id_for_label }}">{{ form_a.sehir.label }}</label><div class="akilli">{{ form_a.sehir }}</div></div>
+          <div class="alan"><label for="{{ form_a.ulke.id_for_label }}">{{ form_a.ulke.label }}</label><div class="akilli">{{ form_a.ulke }}</div>{% for e in form_a.ulke.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
+          <div class="alan"><label for="{{ form_a.sehir.id_for_label }}">{{ form_a.sehir.label }}</label><div class="akilli">{{ form_a.sehir }}</div>{% for e in form_a.sehir.errors %}<div class="hata">{{ e }}</div>{% endfor %}</div>
           <div class="alan tam"><label for="{{ form_a.adres.id_for_label }}">{{ form_a.adres.label }}</label>{{ form_a.adres }}
             <p class="yardim">Doluysa otomatik "Merkez Adres" sevk adresi açılır.</p></div>
         </div>
@@ -226,4 +226,5 @@
   window.addEventListener('resize', function(){ if(gListe.style.display==='block'&&aktifInp) konumla(aktifInp); });
 })();
 </script>
+{% include "core/_ulke_sehir.html" %}
 {% endblock %}
