@@ -1991,6 +1991,11 @@ class FaturaSatir(TemelModel):
     irsaliye_kalem = models.ForeignKey(
         "TeklifSiparisKalem", verbose_name="kaynak irsaliye kalemi", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="fatura_satirlari")
+    # BELGE BAZLI KG + ADET (2026-11-20): kart fatura birimi ≠ üretim (stok) birimi iken satırın stoğa GİREN gerçek miktarı (üretim biriminde, örn. AD).
+    # Miktar/tutar/KDV fatura biriminden (örn. KG × birim fiyat) kalır; stok hareketi bu miktarla yazılır → satırın gerçek oranı = miktar ÷ stok_miktar.
+    # Boş = eski davranış (stoğa miktar ÷ kart çeviricisi girer). Yalnız ALIŞ stok satırında anlamlı; irsaliyeli faturada irsaliye kaleminden devralınır (bilgi amaçlı —
+    # stok hareketini irsaliye yazmıştır, bkz. TeklifSiparisKalem.uretim_miktar).
+    stok_miktar = models.DecimalField("stoğa giren miktar", max_digits=18, decimal_places=3, null=True, blank=True)
 
     class Meta:
         db_table = "fatura_satir"
@@ -2000,6 +2005,8 @@ class FaturaSatir(TemelModel):
         constraints = [
             models.CheckConstraint(condition=models.Q(miktar__gt=0), name="ck_fatura_satir_miktar_gt0"),
             models.CheckConstraint(condition=models.Q(birim_fiyat__gte=0), name="ck_fatura_satir_fiyat_gte0"),
+            models.CheckConstraint(
+                condition=models.Q(stok_miktar__isnull=True) | models.Q(stok_miktar__gt=0), name="ck_fatura_satir_stok_miktar_gt0"),
             # Bir kalem ya stok ya gider hesabıdır (ikisi birden / hiçbiri olamaz).
             models.CheckConstraint(
                 condition=(models.Q(stok__isnull=False, hesap__isnull=True)

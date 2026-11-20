@@ -2125,6 +2125,9 @@ class FaturaSatirForm(forms.Form):
         label="Demirbaş", queryset=DuranVarlik.objects.none(), required=False,
         empty_label="— demirbaş seç —")
     miktar = TRDecimalField(label="Miktar", basamak=3, required=False)
+    # BELGE BAZLI KG + ADET: kart fatura birimi ≠ stok birimi iken stoğa giren GERÇEK miktar (üretim biriminde, örn. AD). Boş = kart çeviricisi (eski davranış).
+    # Yalnız ALIŞ stok satırında; JS yalnız birimleri farklı kartta gösterir, sunucu yine doğrular (bkz. fatura._stok_miktari_coz).
+    stok_miktar = TRDecimalField(label="Stoğa giren miktar", basamak=3, required=False)
     birim_fiyat = TRDecimalField(label="Birim Fiyat", basamak=4, required=False)
 
     def __init__(self, *args, yon=None, fatura_pk=None, **kwargs):
@@ -2132,6 +2135,7 @@ class FaturaSatirForm(forms.Form):
         self.yon = yon
         self.fatura_pk = fatura_pk
         self.fields["tur"].widget.attrs["class"] = "tur-secim"
+        self.fields["stok_miktar"].widget.attrs.update({"class": "stok-miktar-girdi", "inputmode": "decimal", "autocomplete": "off", "placeholder": "stoğa giren"})
         if yon != "SATIS":                                   # ALIŞ (karma tipler): satır türü yalnız Stok / Hesap satırı; demirbaş satışı yalnız satışta
             self.fields["tur"].choices = [("STOK", "Stok"), ("HESAP", "Hesap satırı")]
         # Yalnız AKTİF (satılmamış) kartlar; düzenlenen faturanın kendi sattığı kart da listede kalır.
@@ -2241,6 +2245,12 @@ class FaturaSatirForm(forms.Form):
             miktar = cd["miktar"] = _D("1")         # demirbaş tek birimdir
         if miktar is None or miktar <= 0:
             raise forms.ValidationError("Miktar sıfırdan büyük olmalı.")
+        stok_miktar = cd.get("stok_miktar")
+        if stok_miktar is not None:
+            if stok_miktar <= 0:
+                raise forms.ValidationError("Stoğa giren miktar girildiyse sıfırdan büyük olmalı.")
+            if self.yon == "SATIS" or not stok:
+                cd["stok_miktar"] = None                  # yalnız ALIŞ stok satırında anlamlı (JS gizler)
         if fiyat is None or fiyat < 0:
             raise forms.ValidationError("Birim fiyat girin." if dv is None else "Satış bedelini girin.")
         if cd.get("donemsel"):

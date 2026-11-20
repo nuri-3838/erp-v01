@@ -20,6 +20,7 @@
 {{ stok_kdv_id|json_script:"stok-kdv-id" }}
 {{ kdv_sifir_id|json_script:"kdv-sifir-id" }}
 {{ yon|json_script:"fatura-yon" }}
+{{ stok_miktar_kilitli|json_script:"stok-miktar-kilitli" }}
 {{ demirbas_bilgi|json_script:"demirbas-bilgi" }}
 {{ tevkifat_oran|json_script:"tevkifat-oran" }}
 {{ tevkifat_pp|json_script:"tevkifat-pp" }}
@@ -27,6 +28,9 @@
 <style>
   .birim-etiket { display:block; font-size:.72rem; color:var(--metin-soluk); margin-top:.12rem; }
   .cevrim-etiket.asiri { color:var(--hata); font-weight:700; }
+  .stok-miktar-alani { margin-top:.25rem; } .stok-miktar-alani[hidden] { display:none; }
+  .stok-miktar-alani .stok-miktar-girdi { width:100%; background:rgba(240,124,0,.06); border-style:dashed; }
+  .stok-miktar-alani .stok-miktar-girdi[readonly] { background:rgba(21,41,77,.05); border-style:solid; }
   .satir-sil, .satir-kopya { border:none; background:none; color:var(--metin-soluk); cursor:pointer;
     font-size:.95rem; padding:.2rem .4rem; border-radius:8px; transition:background .12s,color .12s; }
   .satir-sil:hover { color:var(--hata); background:rgba(200,40,60,.08); }
@@ -386,6 +390,7 @@
   var KDV_SIFIR = JSON.parse(document.getElementById('kdv-sifir-id').textContent);          // %0 oranının id'si (faturasız varsayılanı)
   var TEVPP = JSON.parse(document.getElementById('tevkifat-pp').textContent) || {};       // tevkifat_id -> [pay, payda]
   var YON = JSON.parse(document.getElementById('fatura-yon').textContent);
+  var SM_KILITLI = JSON.parse(document.getElementById('stok-miktar-kilitli').textContent);     // irsaliyeli fatura: stoğa giren miktar irsaliyeden devralındı, düzenlenmez
   var DEMBILGI = JSON.parse(document.getElementById('demirbas-bilgi').textContent) || {};
   var MEVCUT_EKLER = JSON.parse(document.getElementById('mevcut-ekler').textContent) || [];
   var KUR_API = '{% url "core:kur_usd_api" %}';
@@ -547,9 +552,25 @@
       if(cvEt){
         var cv = (tur === 'STOK' && stokSel && stokSel.value) ? CEVRIM[stokSel.value] : null;
         var mf = parseTR(el(r,'-miktar') ? el(r,'-miktar').value : '');
-        if(cv && mf > 0){
+        // BELGE BAZLI KG + ADET: birimleri farklı kartta (yalnız ALIŞ) "Stoğa giren" alanı açılır; doluysa satırın GERÇEK oranı gösterilir, boşsa kart çeviricisi.
+        var smAlan = r.querySelector('.stok-miktar-alani'), smInp = el(r,'-stok_miktar');
+        var smVar = !!(cv && YON !== 'SATIS' && tur === 'STOK');
+        if(smAlan){
+          smAlan.hidden = !smVar;
+          if(!smVar && smInp && smInp.value) smInp.value = '';
+          if(smInp){
+            smInp.readOnly = !!SM_KILITLI;
+            smInp.placeholder = (smVar && mf > 0) ? (mf / cv.cevirici).toLocaleString('tr-TR',{maximumFractionDigits:3}) : 'stoğa giren';
+          }
+          var sb = smAlan.querySelector('.stok-miktar-birim'); if(sb) sb.textContent = smVar ? cv.uretim : '';
+        }
+        var sm = (smVar && smInp && smInp.value) ? parseTR(smInp.value) : 0;
+        if(cv && mf > 0 && sm > 0){
+          cvEt.textContent = fmt(mf) + ' ' + cv.fatura + ' = ' + sm.toLocaleString('tr-TR',{maximumFractionDigits:3}) + ' ' + cv.uretim + ' (oran ' + (mf / sm).toLocaleString('tr-TR',{maximumFractionDigits:5}) + ')' + (SM_KILITLI ? ' · irsaliyeden' : '');
+          cvEt.classList.remove('asiri');
+        } else if(cv && mf > 0){
           var uretimM = mf / cv.cevirici;
-          cvEt.textContent = (cv.asiri ? '⚠ ' : '') + fmt(mf) + ' ' + cv.fatura + ' = ' + uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3}) + ' ' + cv.uretim + ' stoğa girer (çevirici ' + cv.cevirici + ')' + (cv.asiri ? ' — birim doğru mu?' : '');
+          cvEt.textContent = (cv.asiri ? '⚠ ' : '') + fmt(mf) + ' ' + cv.fatura + ' = ' + uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3}) + ' ' + cv.uretim + ' stoğa girer (kart çeviricisi ' + cv.cevirici + ')' + (cv.asiri ? ' — birim doğru mu?' : '');
           cvEt.classList.toggle('asiri', !!cv.asiri);
         } else { cvEt.textContent = ''; cvEt.classList.remove('asiri'); }
       }

@@ -82,6 +82,7 @@ from core.services.yevmiye import (
 )
 from core.services.tcmb import TcmbHatasi, kurlari_guncelle
 from core.services import duran_hesap as duran_hesap_servis
+from core.services import birim_cevrim as birim_cevrim_servis
 from core.services import varyant as varyant_servis
 from core.services import us_detay as us_detay_servis
 from core.services import us_detay_yukle as us_yukle_servis
@@ -1364,7 +1365,16 @@ def stok_detay(request, pk):
     kul = stok_ayirma_servis.toplu_kullanilabilir([stok.pk], eldeki={stok.pk: eldeki})[stok.pk]
     from core.services import varyant as varyant_servis
     varyant_satirlari = varyant_servis.varyant_ozeti(stok) if stok.varyantli else []
-    son_hareketler = list(hareketler.select_related("varyant", "sayim_satir__sayim")[:100])
+    son_hareketler = list(hareketler.select_related("varyant", "sayim_satir__sayim", "fatura_satir", "teklif_siparis_kalem")[:100])
+    farkli_birim = (not hizmet) and birim_cevrim_servis.farkli_birim_mi(stok)
+    for h in son_hareketler:                                 # BELGE BAZLI KG + ADET: belge satırının fatura miktarı ile stoğa giren miktar ("123,4 KG = 1.070 AD (oran 0,11533)")
+        h.kg_ad = None
+        if not farkli_birim:
+            continue
+        if h.fatura_satir_id and h.fatura_satir.stok_miktar is not None:
+            h.kg_ad = birim_cevrim_servis.satir_metni(stok, h.fatura_satir.miktar, h.fatura_satir.stok_miktar)
+        elif h.teklif_siparis_kalem_id and h.teklif_siparis_kalem.uretim_miktar is not None and h.kaynak == "IRSALIYE":
+            h.kg_ad = birim_cevrim_servis.satir_metni(stok, h.teklif_siparis_kalem.miktar, h.teklif_siparis_kalem.uretim_miktar)
     if stok.varyantli:                                    # hareket defterinde varyant sütunu (kısa etiket)
         etiketler = {s["varyant"].pk: varyant_servis.varyant_kisa(s["varyant"]) for s in varyant_satirlari}
         for h in son_hareketler:
@@ -3826,9 +3836,12 @@ def teklif_siparis_detay(request, pk):
             "cari", "aday_musteri", "kaynak_teklif", "kaynak_proforma", "kaynak_siparis",
             "depo", "banka_hesabi", "banka_hesabi__banka"),
         pk=pk)
-    kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok", "kdv", "tevkifat", "varyant"))
+    kalemler = list(ts.kalemler.filter(silindi=False).select_related("stok__fatura_birimi", "stok__uretim_birimi", "kdv", "tevkifat", "varyant"))
     for k in kalemler:                                                    # satırda standart dışı varyant metni (E-4)
         k.varyant_metni = varyant_servis.standart_disi_metin(k.varyant, "tr") if k.varyant_id else ""
+        # BELGE BAZLI KG + ADET: alış kaleminde stoğa giren miktar (uretim_miktar) yazılıysa "123,4 KG = 1.070 AD (oran 0,11533)"
+        k.kg_ad = (birim_cevrim_servis.satir_metni(k.stok, k.miktar, k.uretim_miktar)
+                   if (ts.yon == TeklifSiparis.Yon.ALIS and k.uretim_miktar is not None) else None)
     ekran = _TS_EKRAN[(ts.belge_tur, ts.yon)]
     emoji = _TS_EMOJI[ekran]
     # kaynak_teklif'in "donustugu belge" ALIŞ'ta Sipariş, SATIŞ'ta Proforma'dır (bkz.
@@ -9478,7 +9491,7 @@ def _fatura_satir_girdileri(formset, faturasiz=False):
             "donem_hesap_id": (cd.get("donem_hesap") or "").strip() or None,
             "donem_baslangic": cd.get("donem_baslangic"), "donem_bitis": cd.get("donem_bitis"),
             "donem_aciklama": (cd.get("donem_aciklama") or "").strip(),
-            "miktar": cd["miktar"], "birim_fiyat": cd["birim_fiyat"]})
+            "miktar": cd["miktar"], "stok_miktar": cd.get("stok_miktar"), "birim_fiyat": cd["birim_fiyat"]})
     return girdiler
 
 
@@ -9488,7 +9501,7 @@ def _fatura_gider_baglami(fform):
     seçenekleri DURAN VARLIK hesabı (proje alanı yalnız bunlarda gösterilir)."""
     from core.services import birim_cevrim
     return {"stok_cevrim": {str(s.pk): {"cevirici": float(s.cevirici), "uretim": s.uretim_birimi.kisa_ad, "fatura": s.fatura_birimi.kisa_ad, "asiri": birim_cevrim.asiri_mi(s)}
-                            for s in Stok.objects.filter(silindi=False).exclude(cevirici=1).select_related("uretim_birimi", "fatura_birimi")},     # miktar altında canlı çevrim notu
+                            for s in Stok.objects.filter(silindi=False).exclude(cevirici=1, fatura_birimi=F("uretim_birimi")).select_related("uretim_birimi", "fatura_birimi")},     # miktar altında canlı çevrim notu + "stoğa giren" alanı (birimleri farklı kartlar)
             "tip_gider": {str(t.pk): bool(t.gider) for t in fform.fields["tip"].queryset},
             "tip_karma": {str(t.pk): fatura_servis.karma_alis_tipi_mi(t) for t in fform.fields["tip"].queryset},      # ALIŞ FATURASI / İHRAÇ KAYITLI: stok + hesap satırı
             "tip_stopajli": {str(t.pk): bool(t.stopajli) for t in fform.fields["tip"].queryset},
@@ -9670,6 +9683,8 @@ def _fatura_form_baglami(fform, formset, yon, **ek):
     ek.setdefault("irsaliye_kalem_etiket", {str(kid): no for kid, no in TeklifSiparisKalem.objects.filter(
         silindi=False, teklif_siparis__fatura=duzenlenen, teklif_siparis__belge_tur=TeklifSiparis.BelgeTur.IRSALIYE).values_list("pk", "teklif_siparis__belge_no")}
         if duzenlenen is not None else {})
+    # İrsaliyeli faturada stoğa giren miktar irsaliye kaleminden DEVRALINIR (stok hareketini irsaliye yazmıştır): alan salt okunur gösterilir.
+    ek.setdefault("stok_miktar_kilitli", bool(duzenlenen is not None and fatura_servis.irsaliyeden_mi(duzenlenen)))
     return {"fform": fform, "formset": formset, "stok_kdv": stok_kdv, "stok_tevkifat": stok_tevkifat, "stok_tedarikci": stok_tedarikci,
             **_fatura_gider_baglami(fform), "varyant_meta": varyant_servis.varyant_meta(), "yon": yon, **ek}
 
@@ -9802,7 +9817,7 @@ def fatura_duzenle(request, pk):
                 "donem_baslangic": s.donem_baslangic, "donem_bitis": s.donem_bitis, "donem_aciklama": s.donem_aciklama,
                 "tur": s.satir_tipi, "demirbas": s.demirbas_id,
                 "yatirim_projesi": s.yatirim_projesi_id, "varyant": varyant_servis.secim_degeri(fatura_servis.satir_etkin_varyant_id(s)),     # NULL = kartın varsayılanı → gizli alan dolu gelir (irsaliyeli satırda "değişti" sanılmasın)
-                "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "birim_fiyat": s.birim_fiyat, "irsaliye_kalem": s.irsaliye_kalem_id}
+                "tevkifat": _tevkifat_initial(s), "miktar": s.miktar, "stok_miktar": s.stok_miktar, "birim_fiyat": s.birim_fiyat, "irsaliye_kalem": s.irsaliye_kalem_id}
                for s in fatura.satirlar.filter(silindi=False)
                .select_related("stok__tevkifat", "hesap", "irsaliye_kalem__stok")]
         formset = FaturaSatirDuzenleFormSet(initial=ilk, form_kwargs={"yon": yon, "fatura_pk": fatura.pk})
@@ -9818,7 +9833,7 @@ def fatura_detay(request, pk):
     fatura = get_object_or_404(
         Fatura.objects.select_related("tip", "cari", "fis"), pk=pk)
     satirlar = fatura.satirlar.filter(silindi=False).select_related(
-        "stok__fatura_birimi", "hesap", "kdv", "tevkifat", "yatirim_projesi", "demirbas", "irsaliye_kalem__teklif_siparis").prefetch_related(
+        "stok__fatura_birimi", "stok__uretim_birimi", "hesap", "kdv", "tevkifat", "yatirim_projesi", "demirbas", "irsaliye_kalem__teklif_siparis").prefetch_related(
         Prefetch("duran_varliklar", queryset=DuranVarlik.objects.filter(silindi=False)))
     kart_acilabilir_hesap = set(
         hp.duran_varlik_karti_hesaplari().values_list("pk", flat=True))

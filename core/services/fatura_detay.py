@@ -43,8 +43,12 @@ def kalem_satirlari(fatura, satirlar, yalniz_kdv) -> list:
         birim = "—"
         if s.stok_id and s.stok.fatura_birimi_id:
             birim = s.stok.fatura_birimi.kisa_ad
+        kg_ad = None                                           # BELGE BAZLI KG + ADET: "123,4 KG = 1.070 AD (oran 0,11533)" — yalnız satırda stoğa giren miktar yazılıysa
+        if s.stok_id and s.stok_miktar is not None:
+            from core.services import birim_cevrim
+            kg_ad = birim_cevrim.satir_metni(s.stok, s.miktar, s.stok_miktar)
         cikti.append({
-            "satir": s, "tur": s.satir_tipi_ad, "birim": birim,
+            "satir": s, "tur": s.satir_tipi_ad, "birim": birim, "kg_ad": kg_ad,
             "kdv_oran": (s.kdv.oran if s.kdv_id else None), "kdv": kdv,
             "tevkifat_kod": (s.tevkifat.kod if s.tevkifat_id else None), "tevkifat": s.tevkifat_tutari,
             "matrah": None if yalniz_kdv else matrah,

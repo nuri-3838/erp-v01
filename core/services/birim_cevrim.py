@@ -52,3 +52,31 @@ def irsaliye_kalem_hatasi(stok, miktar, uretim_miktar, *, satir=None):
     return (f"{yer}{stok.kod} {stok.ad} — {aciklama(stok, miktar)} stoğa girer. Bu çevrim katsayısı 1.000 katını aşıyor; miktar yanlış birimle "
             f"girilmiş olabilir. Stoğa girecek gerçek {stok.uretim_birimi.kisa_ad} miktarını 'Üretim miktarı' alanına yazın "
             f"(miktar kart birimine otomatik çevrilir) ya da kartın birimini/çeviricisini düzeltin.")
+
+
+# --- BELGE BAZLI KG + ADET (2026-11-20): kart sabit çeviricisi yerine satırın GERÇEK oranı ---------------------------------------------------------------------
+def farkli_birim_mi(stok) -> bool:
+    """Belge satırında iki miktar (fatura birimi + stoğa giren) girilebilir mi: kartın fatura birimi stok (üretim) biriminden farklı ya da çevirici 1 değil."""
+    return stok.fatura_birimi_id != stok.uretim_birimi_id or (stok.cevirici or Decimal("1")) != 1
+
+
+def oran(miktar, stok_miktar):
+    """Satırın gerçek oranı: 1 üretim birimi (AD) kaç fatura birimi (KG) — kartın ``cevirici`` alanıyla AYNI yönde (123,4 KG ÷ 1070 AD = 0,11533). Miktar boşsa/sıfırsa None."""
+    if miktar in (None, "") or stok_miktar in (None, "") or Decimal(stok_miktar) <= 0:
+        return None
+    return Decimal(miktar) / Decimal(stok_miktar)
+
+
+def satir_metni(stok, miktar, stok_miktar=None) -> str:
+    """Gösterim: '123,4 KG = 1.070 AD (oran 0,11533)'. ``stok_miktar`` boşsa kart çeviricisiyle hesaplanan miktar ve '(kart çeviricisi 0,1027)' yazılır."""
+    from core.sayi import format_tr
+    fb, ub = stok.fatura_birimi.kisa_ad, stok.uretim_birimi.kisa_ad
+
+    def kisa(d):                                      # 123,400 → 123,4 ; 1.070,000 → 1.070 (gereksiz sıfırlar atılır)
+        t = format_tr(Decimal(d), 3)
+        return t.rstrip("0").rstrip(",") if "," in t else t
+    if stok_miktar is not None:
+        o = oran(miktar, stok_miktar)
+        return f"{kisa(miktar)} {fb} = {kisa(stok_miktar)} {ub} (oran {format_tr(o, 5)})"
+    uretim = Decimal(miktar) / (stok.cevirici or Decimal("1"))
+    return f"{kisa(miktar)} {fb} = {kisa(uretim)} {ub} (kart çeviricisi {format_tr(stok.cevirici, 5)})"

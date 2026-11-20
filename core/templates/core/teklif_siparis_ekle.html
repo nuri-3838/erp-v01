@@ -62,7 +62,7 @@
           <col style="width:18%"><col style="width:6%"></colgroup>
         {% endif %}
         <thead><tr>
-          <th>Stok</th><th class="sag">Üretim Miktarı</th><th class="sag">Miktar</th><th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% elif satis_irsaliyesi %}Birim Fiyat (ops.){% else %}Birim Fiyat{% endif %}</th>
+          <th>Stok</th><th class="sag">Üretim Miktarı<br><small class="yardim">stoğa giren (AD)</small></th><th class="sag">Miktar<br><small class="yardim">fatura birimi (KG)</small></th><th class="sag">{% if iskonto_sutunu %}Liste Fiyatı{% elif satis_irsaliyesi %}Birim Fiyat (ops.){% else %}Birim Fiyat{% endif %}</th>
           {% if iskonto_sutunu %}<th class="sag">İskonto %</th>{% endif %}
           <th class="sag">Tutar</th><th></th>
         </tr></thead>
@@ -217,7 +217,12 @@
     var um=row.querySelector('.uretim-miktar-yardimci'); var acik=!!(um && um.value);     // Üretim miktarı açıkça yazıldıysa (doğru yol) uyarı kırmızı olmaz
     var k=1/meta.cevirici, asiri=(k>=1000 || k<=0.001) && !acik;
     var uretimM=m/meta.cevirici;
-    et.textContent=(asiri?'⚠ ':'')+m.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.fatura+' = '+uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.uretim+' stoğa girer (çevirici '+meta.cevirici+')'+(asiri?' — birim doğru mu? Üretim miktarını AD cinsinden girin.':'');
+    if(acik){                                                                          // iki miktar birlikte girildi: satırın GERÇEK oranı (KG ÷ AD)
+      var u=parseTR(um.value);
+      et.textContent=m.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.fatura+' = '+u.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.uretim+' (oran '+(u>0?(m/u).toLocaleString('tr-TR',{maximumFractionDigits:5}):'—')+')';
+      et.classList.remove('asiri'); return;
+    }
+    et.textContent=(asiri?'⚠ ':'')+m.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.fatura+' = '+uretimM.toLocaleString('tr-TR',{maximumFractionDigits:3})+' '+meta.uretim+' stoğa girer (kart çeviricisi '+meta.cevirici+')'+(asiri?' — birim doğru mu? Üretim miktarını AD cinsinden girin.':'');
     et.classList.toggle('asiri', asiri);
   }
   function alisFiyatiOner(row){
@@ -244,9 +249,13 @@
   function uretimdenMiktarHesapla(row){
     var meta=stokMeta(row); var um=row.querySelector('.uretim-miktar-yardimci'); var mi=el(row,'-miktar');
     if(!meta || !um || !mi || !um.value) return;
+    // BELGE BAZLI KG + ADET: fatura miktarı (KG) elle girildiyse ÜSTÜNE YAZILMAZ — iki miktar birlikte girilir, satırın gerçek oranı = KG ÷ AD.
+    // Yalnız KG boşken ya da kendimizin doldurduğu (otomatik) KG güncellenir (eski kısayol: AD yazınca KG kart çeviricisiyle önerilir).
+    if(mi.value && mi.dataset.otomatik !== '1') return;
     var uretimMiktar=parseTR(um.value);
     var faturaMiktar=uretimMiktar*meta.cevirici;
     mi.value=faturaMiktar.toLocaleString('tr-TR',{minimumFractionDigits:3,maximumFractionDigits:3});
+    mi.dataset.otomatik='1';
   }
   function satirEkle(){
     var tf=document.getElementById('id_form-TOTAL_FORMS'); var i=parseInt(tf.value,10);
@@ -262,6 +271,7 @@
   var form=document.getElementById('ts-form');
   form.addEventListener('input', function(e){
     var row=e.target.closest('.satir-form');
+    if(e.target.name && /-miktar$/.test(e.target.name)) delete e.target.dataset.otomatik;           // KG'yi kullanıcı yazdı: artık otomatik değil
     if(row && e.target.classList.contains('uretim-miktar-yardimci')) uretimdenMiktarHesapla(row);
     if(row) cevrimNotu(row);
     hesapla();

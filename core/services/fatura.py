@@ -32,7 +32,7 @@ from core.models import (Cari, Depo, DuranVarlik, Fatura, FaturaSatir, FaturaTip
                          YevmiyeFisi)
 from core.sayi import SayiHatasi, parse_tr, yuvarla
 from core.services.cari import vade_hesapla
-from core.services import fatura_vade_plani
+from core.services import birim_cevrim, fatura_vade_plani
 from core.services.hareket import HareketHatasi, eldeki_miktar, hareket_ekle, hareket_sil, hizmet_mi
 from core.services import donemsel_gider
 from core.services import duran_hesap
@@ -653,7 +653,8 @@ def _hazirla(*, tip_id, cari_id, tarih, satirlar, para_birimi, kur_override=None
 
         cari_pb += kdv_net if tip.yalniz_kdv else (satir_tutar + kdv_net)       # yalnız KDV: cariye yalnız net KDV
         matrah_toplam += satir_tutar
-        hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv, _satir_varyanti(stok, g.get("varyant"), i, kullanici)))
+        hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv, _satir_varyanti(stok, g.get("varyant"), i, kullanici),
+                      _stok_miktari_coz(g, i, stok, alis=alis)))
 
     for dv_, satis_tl in dv_satis.values():               # aynı kart birden çok satırda → maliyet/amortisman/kâr-zarar TEK kez
         dv_satirlar, dv_b, dv_a = _demirbas_satirlari(dv_, satis_tl)
@@ -742,7 +743,8 @@ def _hazirla_taslak(*, cari_id, satirlar, para_birimi, gider=False, sahsi_ortak_
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
         if dv is not None:
             miktar = Decimal("1")
-        hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv, _satir_varyanti(stok, g.get("varyant"), i, kullanici)))
+        hazir.append((stok, hesap, miktar, birim, kdv, tevkifat, proje, dv, _satir_varyanti(stok, g.get("varyant"), i, kullanici),
+                      _stok_miktari_coz(g, i, stok, alis=not satis)))
     _irsaliye_baglarini_dogrula(satirlar, hazir, fatura_pk)
     return cari, pb, hazir
 
@@ -951,7 +953,7 @@ def asiri_cevrim_uyarilari(fatura) -> list:
         return []
     return [f"{s.stok.kod} {s.stok.ad}: {birim_cevrim.aciklama(s.stok, s.miktar)} stoğa girdi — birim doğru mu? Değilse faturayı düzeltin."
             for s in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok__uretim_birimi", "stok__fatura_birimi", "stok__kategori")
-            if not hizmet_mi(s.stok) and birim_cevrim.asiri_mi(s.stok)]
+            if not hizmet_mi(s.stok) and s.stok_miktar is None and birim_cevrim.asiri_mi(s.stok)]
 
 
 def _hizmetsiz_depo(hazir, depo):
@@ -1017,14 +1019,14 @@ def _irsaliye_baglarini_dogrula(satirlar, hazir, fatura_pk):
 
 
 def _satirlari_yaz(fatura, hazir, kullanici, girdiler=None):
-    for idx, (stok, hesap, miktar, birim, kdv, tevkifat, proje, demirbas, varyant) in enumerate(hazir):
+    for idx, (stok, hesap, miktar, birim, kdv, tevkifat, proje, demirbas, varyant, stok_miktar) in enumerate(hazir):
         donem = getattr(hesap, "_donem", None) or {}       # dönemsel gider: gider hesabı + dönem (bkz. _donemsel_satir_coz)
         kalem_id = (girdiler[idx].get("irsaliye_kalem_id") or None) if girdiler is not None and idx < len(girdiler) else None
         satir = FaturaSatir.objects.create(
             fatura=fatura, stok=stok, varyant=varyant, hesap=hesap, miktar=miktar, birim_fiyat=birim, kdv=kdv,
             tevkifat=tevkifat, yatirim_projesi=proje, demirbas=demirbas, irsaliye_kalem_id=kalem_id,
             donem_baslangic=donem.get("baslangic"), donem_bitis=donem.get("bitis"), donem_gider=donem.get("gider"),
-            donem_aciklama=donem.get("aciklama", ""),
+            donem_aciklama=donem.get("aciklama", ""), stok_miktar=stok_miktar,
             created_by=kullanici, updated_by=kullanici)
         dv_servis.satiri_karta_bagla(satir, kullanici=kullanici)   # kalem = kart / mevcut karta ekle
     _kartlari_yenile(fatura, kullanici)
@@ -1051,8 +1053,24 @@ def _depo_coz(depo_id):
     return depo
 
 
-def _uretim_miktari(stok, miktar):
-    """Fatura birimindeki miktarın üretim birimi karşılığı (çevirici; bkz. Stok.cevirici)."""
+def _stok_miktari_coz(g, i, stok, *, alis):
+    """Satır girdisindeki ``stok_miktar`` (stoğa giren GERÇEK miktar, üretim biriminde — BELGE BAZLI KG + ADET): boşsa None (stok miktar ÷ kart çeviricisi girer).
+    Yalnız ALIŞ stok satırında kabul edilir (satışta hata); hizmet kartında ve fatura birimi = stok birimi olan kartta (iki miktar anlamsız) YOK SAYILIR."""
+    ham = g.get("stok_miktar")
+    if ham in (None, "") or stok is None:
+        return None
+    if not alis:
+        raise FaturaHatasi(f"Satır {i}: 'stoğa giren miktar' yalnız alış faturasında girilebilir.")
+    if hizmet_mi(stok) or not birim_cevrim.farkli_birim_mi(stok):
+        return None
+    return yuvarla(_sayi(ham, f"Satır {i} stoğa giren miktar", pozitif=True), 3)
+
+
+def _uretim_miktari(stok, miktar, stok_miktar=None):
+    """Satırın stoğa girecek/çıkacak miktarı (üretim birimi): ``stok_miktar`` (satırda açıkça girilen gerçek miktar) VARSA o; yoksa fatura birimindeki miktarın çevirici
+    karşılığı (bkz. Stok.cevirici)."""
+    if stok_miktar is not None:
+        return yuvarla(stok_miktar, 3)
     cevirici = stok.cevirici or Decimal("1")
     uretim_miktar = yuvarla(miktar / cevirici, 3)
     if uretim_miktar <= 0:
@@ -1093,7 +1111,7 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
     for satir in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok__kategori"):
         if hizmet_mi(satir.stok):                     # hizmet kartı: stok hareketi YOK (muhasebe fişi kategori haritasından normal oluşur)
             continue
-        uretim_miktar = _uretim_miktari(satir.stok, satir.miktar)
+        uretim_miktar = _uretim_miktari(satir.stok, satir.miktar, satir.stok_miktar)
         try:
             hareket_ekle(
                 stok_id=satir.stok_id, depo_id=depo.pk, tarih=fatura.tarih, tur=tur,
@@ -1106,8 +1124,8 @@ def _hareketleri_yaz(fatura, depo, *, kur, kullanici):
     _maliyet_fisi_senkronla(fatura, kullanici)
 
 
-def _hareket_anahtari(stok, miktar, varyant=None):
-    return (stok.pk, _uretim_miktari(stok, miktar), _hareket_varyant_id(stok, varyant))
+def _hareket_anahtari(stok, miktar, varyant=None, stok_miktar=None):
+    return (stok.pk, _uretim_miktari(stok, miktar, stok_miktar), _hareket_varyant_id(stok, varyant))
 
 
 def _yerinde_eslesme(fatura, *, tip, depo, tarih, hazir):
@@ -1122,12 +1140,12 @@ def _yerinde_eslesme(fatura, *, tip, depo, tarih, hazir):
                 .select_related("stok").order_by("id"))
     if not eski or any(h.depo_id != depo.pk or h.tarih != tarih for h in eski):
         return None
-    yeni = [(stok, miktar, varyant) for stok, _hesap, miktar, _b, _k, _t, _p, _d, varyant in hazir
+    yeni = [(stok, miktar, varyant, stok_miktar) for stok, _hesap, miktar, _b, _k, _t, _p, _d, varyant, stok_miktar in hazir
             if stok is not None and not hizmet_mi(stok)]
     if len(yeni) != len(eski):
         return None
     try:
-        if (sorted(_hareket_anahtari(s, m, v) for s, m, v in yeni)
+        if (sorted(_hareket_anahtari(s, m, v, sm) for s, m, v, sm in yeni)
                 != sorted((h.stok_id, h.miktar, h.varyant_id) for h in eski)):
             return None
     except FaturaHatasi:
@@ -1150,7 +1168,7 @@ def _hareketleri_yerinde_guncelle(fatura, eski, *, kullanici):
     for satir in fatura.satirlar.filter(silindi=False, stok__isnull=False).select_related("stok__kategori").order_by("id"):
         if hizmet_mi(satir.stok):
             continue
-        h = havuz[_hareket_anahtari(satir.stok, satir.miktar, satir.varyant_id)].pop(0)
+        h = havuz[_hareket_anahtari(satir.stok, satir.miktar, satir.varyant_id, satir.stok_miktar)].pop(0)
         h.fatura_satir, h.aciklama, h.updated_by = satir, aciklama, kullanici
         for alan, deger in _hareket_degerleri(fatura, satir).items():
             setattr(h, alan, deger)
@@ -1379,10 +1397,10 @@ def _kayit_satir_imzasi(s, *, sahsi):
     from core.services import varyant as varyant_servis
     if s.donem_baslangic:                                  # dönemsel gider: kalem hesabı = faturaya özel 180.xx; gider hesabı + dönem ayrı alanlarda
         return (None, s.donem_gider_id, None, None, s.kdv_id, s.tevkifat_id, s.miktar, s.birim_fiyat, None,
-                s.hesap_id, s.donem_baslangic, s.donem_bitis, (s.donem_aciklama or "").strip())
+                s.hesap_id, s.donem_baslangic, s.donem_bitis, (s.donem_aciklama or "").strip(), None)
     hesap = None if (sahsi or s.stok_id or s.demirbas_id) else s.hesap_id
     return (s.stok_id, hesap, s.demirbas_id, s.yatirim_projesi_id, s.kdv_id, s.tevkifat_id, s.miktar, s.birim_fiyat,
-            varyant_servis.secim_degeri(satir_etkin_varyant_id(s)) or None, None, None, None, None)
+            varyant_servis.secim_degeri(satir_etkin_varyant_id(s)) or None, None, None, None, None, s.stok_miktar)
 
 
 def _girdi_satir_imzasi(g, i, tip, *, sahsi):
@@ -1398,7 +1416,7 @@ def _girdi_satir_imzasi(g, i, tip, *, sahsi):
             return None
         kdv = KdvOrani.objects.filter(pk=g["kdv_id"], silindi=False).first() if g.get("kdv_id") else None
         return (None, g["hesap_id"], None, None, kdv.pk if kdv is not None else None, tevkifat.pk if tevkifat is not None else None, miktar, birim, None,
-                g["donem_hesap_id"], g.get("donem_baslangic"), g.get("donem_bitis"), (g.get("donem_aciklama") or "").strip()[:200])
+                g["donem_hesap_id"], g.get("donem_baslangic"), g.get("donem_bitis"), (g.get("donem_aciklama") or "").strip()[:200], None)
     stok = None
     if g.get("stok_id"):
         stok = Stok.objects.filter(pk=g["stok_id"], silindi=False).select_related("kdv", "tevkifat").first()
@@ -1415,6 +1433,7 @@ def _girdi_satir_imzasi(g, i, tip, *, sahsi):
                 return None
         miktar = _sayi(g.get("miktar"), f"Satır {i} miktar", pozitif=True)
         birim = _sayi(g.get("birim_fiyat"), f"Satır {i} birim fiyat")
+        stok_miktar = _stok_miktari_coz(g, i, stok, alis=(tip.yon == FaturaTipi.Yon.ALIS))
     except FaturaHatasi:
         return None
     if dv_id is not None:
@@ -1422,7 +1441,7 @@ def _girdi_satir_imzasi(g, i, tip, *, sahsi):
     hesap = None if (sahsi or stok is not None or dv_id is not None) else (g["hesap_id"] if g.get("hesap_id") else None)       # hesap pk'si hesap kodudur (metin)
     proje = g["yatirim_projesi_id"] if (g.get("yatirim_projesi_id") and stok is None and dv_id is None) else None
     return (stok.pk if stok is not None else None, hesap, dv_id, proje, kdv.pk if kdv is not None else None,
-            tevkifat.pk if tevkifat is not None else None, miktar, birim, (g.get("varyant") or None), None, None, None, None)
+            tevkifat.pk if tevkifat is not None else None, miktar, birim, (g.get("varyant") or None), None, None, None, None, stok_miktar)
 
 
 def fis_girdileri_ayni_mi(fatura, *, tip_id, cari_id, tarih, satirlar, para_birimi, kur, depo_id, sahsi_ortak_id, gv_stopaj_orani, fatura_no=None) -> bool:

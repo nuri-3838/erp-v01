@@ -360,7 +360,7 @@
         {% for k in kalemler %}
           <tr>
             <td><span class="mono">{{ k.stok.kod }}</span> {% if ts.yon == "ALIS" %}{{ k.stok.ad_satinalma }}{% else %}{{ k.stok.ad }}{% endif %}{% if k.varyant_metni %}<div class="yardim">🔀 {{ k.varyant_metni }}</div>{% endif %}</td>
-            <td class="sag mono">{{ k.miktar|tr_kur:3 }}</td>
+            <td class="sag mono">{{ k.miktar|tr_kur:3 }}{% if k.kg_ad %}<div class="yardim" title="Stoğa giren gerçek miktar ve satırın oranı">{{ k.kg_ad }}</div>{% endif %}</td>
             {% if teslim %}<td class="sag mono">{{ k.teslim_satir.teslim|tr_kur:3 }}{% if k.teslim_satir.fazla %}<div class="yardim" title="Sipariş üstü teslim">+{{ k.teslim_satir.fazla|tr_kur:3 }} fazla</div>{% endif %}</td>
             {% if teslim.kapatma_var %}<td class="sag mono">{% if k.teslim_satir.kapatilan %}{{ k.teslim_satir.kapatilan|tr_kur:3 }}{% else %}—{% endif %}</td>{% endif %}
             <td class="sag mono"><strong{% if k.teslim_satir.kalan %} style="color:#b35c00"{% endif %}>{{ k.teslim_satir.kalan|tr_kur:3 }}</strong></td>{% endif %}

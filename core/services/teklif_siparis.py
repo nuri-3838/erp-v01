@@ -854,7 +854,8 @@ def irsaliyeyi_faturaya_cevir(irsaliye: TeklifSiparis, kullanici=None) -> Teklif
         raise TeklifSiparisHatasi("İrsaliyede kalem yok; fatura oluşturulamaz.")
     # NET (iskontolu) birim fiyat, TAM hassasiyetle (6 hane): fatura satırında ayrı iskonto alanı yok;
     # liste fiyatı taşınırsa iskonto kaybolur, 4 haneye yuvarlanırsa toplam kayar.
-    satirlar = [{"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam, "varyant": k.varyant_id}
+    satirlar = [{"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam, "varyant": k.varyant_id,
+                "stok_miktar": k.uretim_miktar}
                 for k in kalemler]
     fatura = fatura_servis.fatura_taslak_olustur(
         cari_id=irsaliye.cari_id, tarih=irsaliye.tarih, satirlar=satirlar,
@@ -913,7 +914,10 @@ def irsaliyeleri_faturaya_cevir(irsaliyeler, kullanici=None):
             raise TeklifSiparisHatasi(f"{i.belge_no or '#' + str(i.pk)}: irsaliyede kalem yok; fatura oluşturulamaz.")
         for k in kalemler:
             # NET (iskontolu) birim fiyat, TAM hassasiyetle (bkz. irsaliyeyi_faturaya_cevir)
-            satirlar.append({"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam, "varyant": k.varyant_id})
+            # ALIŞ: irsaliye satırının KG'si (miktar) + AD'si (uretim_miktar) faturaya devralınır; stok hareketini irsaliye yazmıştır, maliyet AD başına = satır tutarı ÷ AD
+            # (stok_ortalama.irsaliye_girislerini_fiyatla). Satış irsaliyesinde uretim_miktar taşınmaz.
+            satirlar.append({"stok_id": k.stok_id, "miktar": k.miktar, "birim_fiyat": k.net_birim_fiyat_tam, "varyant": k.varyant_id,
+                             "stok_miktar": k.uretim_miktar if i.yon == TeklifSiparis.Yon.ALIS else None})
             kaynaklar.append(k)
     yon = irsaliyeler[0].yon
     son_irsaliye = max(i.tarih for i in irsaliyeler)

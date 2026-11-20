@@ -216,7 +216,7 @@
                 {% if h.fis_id %}<br><a href="{% url 'core:fis_detay' h.fis_id %}" style="font-size:.78rem">Fiş {{ h.fis.yil }}/{{ h.fis.fis_no }}</a>{% endif %}
               {% endif %}
             </td>
-            <td>{{ h.aciklama|default:"—" }}</td>
+            <td>{{ h.aciklama|default:"—" }}{% if h.kg_ad %}<div class="yardim" title="Belge satırı: fatura birimi miktarı ve stoğa giren miktar">{{ h.kg_ad }}</div>{% endif %}</td>
             <td><form method="post" action="{% url 'core:stok_hareket_sil' h.pk %}" style="margin:0"
                      onsubmit="return confirm('Hareket silinsin mi?');">
               {% csrf_token %}<button type="submit" class="sil" title="Sil">🗑️</button></form></td>
