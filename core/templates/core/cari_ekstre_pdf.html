@@ -57,8 +57,8 @@
           <td class="sag mono">{% if s.alacak %}{{ s.alacak|tr_para }}{% endif %}</td>
           <td class="sag mono">{{ s.yur_bakiye|tr_bakiye }}</td>
           <td>{{ s.pb }}</td>
-          <td class="sag mono">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% endif %}</td>
-          <td class="sag mono">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% endif %}</td>
+          <td class="sag mono">{% if s.dvz_borc %}{{ s.dvz_borc|tr_para }}{% elif s.yalniz_tl and s.borc %}0,00{% endif %}</td>
+          <td class="sag mono">{% if s.dvz_alacak %}{{ s.dvz_alacak|tr_para }}{% elif s.yalniz_tl and s.alacak %}0,00{% endif %}</td>
           <td class="sag mono">{{ s.dvz_yur_bakiye|tr_bakiye }}</td>
         </tr>
       {% empty %}

@@ -8,6 +8,11 @@ Fiş otomatik ve dengeli (kaynak=CARI_VIRMAN; fiş→cari ve fiş→karşı cari
 kullanıcı) kalıcı Sil vardır ("iptal" durumu yok). Döviz carilerde TL tutar ödeme günü TCMB alış kuruyla cari para birimine çevrilir (TL aynı;
 bkz. core.services.doviz_cari; ``sayilan_pb='TRY'`` = çevirme, TL havuzu).
 Örnek (Kaygun'dan elden iade): 320.30.0038 KAYGUN ALACAK 75.500 / 500.10.0001 NURİ ÖZER BORÇ 75.500.
+
+KUR FARKI VİRMANI (2026-11-25, BAREN PROJE 2026/2463 vakası): karşı hesap 646/656 iken ``kur_farki_pb`` (USD/EUR/GBP) seçilirse cari satırı o
+DÖVİZ havuzuna bağlanır ama döviz tutarı 0'dır (yalnız TL etkisi — dönem sonu kur değerleme satırlarıyla aynı yapı; bkz. kur_farki._girdi):
+havuzun döviz bakiyesi değişmez, TL karşılığı kapanır; TRY havuzu etkilenmez. Fiş TL'si aynıdır (cari ALACAK/BORÇ tutar TL, 646/656 karşı satır).
+Varsayılan havuz: carinin hesabında döviz bakiyesi 0 ama TL farkı kalmış TEK döviz havuzu (``varsayilan_kur_farki_pb``).
 """
 from __future__ import annotations
 
@@ -27,6 +32,56 @@ YONLER = (("alacak", "Bu cari ALACAK / karşı cari BORÇ"), ("borc", "Bu cari B
 
 class CariVirmanHatasi(ValueError):
     """Cari virman kural ihlali (Türkçe mesaj)."""
+
+
+def kur_farki_hesabi_mi(kod) -> bool:
+    """646 KAMBİYO KÂRLARI / 656 KAMBİYO ZARARLARI (ya da alt hesapları)."""
+    from core.services.kur_farki import KAR_HESABI, ZARAR_HESABI
+    kod = kod or ""
+    return any(kod == k or kod.startswith(k + ".") for k in (KAR_HESABI, ZARAR_HESABI))
+
+
+def kur_farki_havuzlari(cari) -> list:
+    """Carinin muhasebe hesabındaki DÖVİZ havuzları: [{pb, doviz (q, borç +), tl (v, borç +)}] — kur farkı virmanının bağlanabileceği havuzlar."""
+    from core.models import YevmiyeSatir
+    if not cari or not cari.muhasebe_kodu:
+        return []
+    h = {}
+    for s in YevmiyeSatir.objects.filter(hesap_id=cari.muhasebe_kodu, silindi=False, fis__silindi=False).exclude(islem_pb="TRY"):
+        t = h.setdefault(s.islem_pb, [Decimal("0"), Decimal("0")])
+        t[0] += (1 if s.borc > 0 else -1) * s.islem_tutari
+        t[1] += s.borc - s.alacak
+    return [{"pb": pb, "doviz": q, "tl": v} for pb, (q, v) in sorted(h.items())]
+
+
+def varsayilan_kur_farki_pb(cari):
+    """Döviz bakiyesi 0 ama TL farkı kalmış TEK döviz havuzunun para birimi (yoksa ya da birden çoksa None)."""
+    adaylar = [h["pb"] for h in kur_farki_havuzlari(cari) if h["doviz"] == 0 and h["tl"] != 0]
+    return adaylar[0] if len(adaylar) == 1 else None
+
+
+def _kur_farki_kuru(cari, pb, tarih):
+    """Döviz tutarı 0 olan satırın kaydı için kur (TL'yi ETKİLEMEZ, yalnız bilgi): tarihin (yoksa 7 gün öncesine kadar) TCMB alış kuru,
+    o da yoksa havuzun son satırının kuru, o da yoksa 1."""
+    from core.models import YevmiyeSatir
+    from core.services.kur_degerleme import kur_bul
+    kur = kur_bul(pb, tarih)[0]
+    if kur:
+        return yuvarla(kur, 6)
+    son = (YevmiyeSatir.objects.filter(hesap_id=cari.muhasebe_kodu, islem_pb=pb, silindi=False, fis__silindi=False, islem_tutari__gt=0)
+           .order_by("-fis__tarih", "-id").values_list("islem_kuru", flat=True).first())
+    return son or Decimal("1")
+
+
+def kur_farki_satiri(cari, tl_tutar, tarih, taraf, pb, aciklama=""):
+    """Kur farkı virmanının cari satırı: ``pb`` döviz havuzuna bağlı, döviz tutarı 0, TL = ``tl_tutar``."""
+    pb = (pb or "").strip().upper()
+    if pb not in doviz_cari.DOVIZLER:
+        raise CariVirmanHatasi("Kur farkı havuzu bir döviz olmalı (USD/EUR/GBP).")
+    if pb not in {h["pb"] for h in kur_farki_havuzlari(cari)}:
+        raise CariVirmanHatasi(f"{cari.unvan} carisinin hesabında {pb} havuzu yok; kur farkı bu havuza bağlanamaz.")
+    return SatirGirdi(hesap_kodu=cari.muhasebe_kodu, taraf=taraf, islem_tutari=Decimal("0"), islem_pb=pb,
+                      islem_kuru=_kur_farki_kuru(cari, pb, tarih), tl_override=tl_tutar, aciklama=aciklama)
 
 
 def _tutar(deger):
@@ -54,7 +109,8 @@ def _kur(deger):
     return d
 
 
-def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None, mevcut_idler=()):
+def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None, mevcut_idler=(),
+             kur_farki_pb=None):
     from core.services.cari import pasif_kontrol
     for c in (cari, karsi_cari):
         if c is not None and c.pk not in mevcut_idler:
@@ -73,6 +129,12 @@ def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_he
     kur_d = _kur(kur)
     taraf_cari = "A" if yon == "alacak" else "B"
     taraf_karsi = "B" if yon == "alacak" else "A"
+    kur_farki_pb = (kur_farki_pb or "").strip().upper()
+    if kur_farki_pb:
+        if karsi_cari is not None or not kur_farki_hesabi_mi(karsi_hesap_kodu):
+            raise CariVirmanHatasi("Kur farkı havuzu yalnız karşı hesap 646 KAMBİYO KÂRLARI / 656 KAMBİYO ZARARLARI iken seçilebilir.")
+        if kur_d is not None:
+            raise CariVirmanHatasi("Kur farkı virmanında elle kur girilmez; tutar TL'dir (döviz bakiyesi değişmez).")
     try:
         pb = doviz_cari.hedef_pb(cari, sayilan_pb)
         if kur_d is not None and pb == "TRY":
@@ -81,6 +143,10 @@ def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_he
             # ELLE KUR: tutar DÖVİZ cinsindendir (cari para biriminde); TL = tutar × kur; iki tarafta aynı döviz/TL (kur farkı doğmaz).
             tut_tl = yuvarla(tut * kur_d, 2)
             satirlar = [doviz_cari.elle_kur_satiri(cari, tut, kur_d, taraf_cari, pb, aciklama=cari.unvan)]
+        elif kur_farki_pb:
+            # KUR FARKI: cari satırı döviz havuzuna bağlı, döviz tutarı 0 → havuzun yalnız TL karşılığı değişir (TRY havuzu etkilenmez).
+            tut_tl = tut
+            satirlar = [kur_farki_satiri(cari, tut, tarih, taraf_cari, kur_farki_pb, aciklama=f"{cari.unvan} · {kur_farki_pb} KUR FARKI")]
         else:
             tut_tl = tut
             satirlar = [doviz_cari.cari_satiri(cari, tut, tarih, taraf_cari, sayilan_pb, aciklama=cari.unvan)]
@@ -114,9 +180,11 @@ def _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_he
 
 @transaction.atomic
 def virman_olustur(*, cari, karsi_cari=None, tarih, tutar, yon, aciklama="", sayilan_pb=None, kullanici=None,
-                   karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None) -> YevmiyeFisi:
-    """``kur`` (opsiyonel, elle): dolu ve cari döviz iken ``tutar`` DÖVİZ cinsindendir, TL = tutar × kur; boşsa tutar TL, tarihin TCMB kuru."""
-    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id, kur)
+                   karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None, kur_farki_pb=None) -> YevmiyeFisi:
+    """``kur`` (opsiyonel, elle): dolu ve cari döviz iken ``tutar`` DÖVİZ cinsindendir, TL = tutar × kur; boşsa tutar TL, tarihin TCMB kuru.
+    ``kur_farki_pb`` (yalnız karşı hesap 646/656): cari satırı o döviz havuzuna döviz tutarı 0 ile bağlanır (bkz. modül notu)."""
+    satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id, kur,
+                             kur_farki_pb=kur_farki_pb)
     try:
         fis = fis_olustur(tarih=tarih, satirlar=satirlar, aciklama=ack, kaynak=YevmiyeFisi.Kaynak.CARI_VIRMAN, kullanici=kullanici)
     except YevmiyeHatasi as e:
@@ -141,8 +209,10 @@ def duzenleme_bilgisi(fis, cari):
     s = s[0]
     tl = s.ham_tl if s.ham_tl is not None else (s.borc or s.alacak)       # kur farkı motoru satır TL'sini değiştirmiş olabilir
     out = {"karsi_cari": karsi, "karsi_hesap": None, "yatirim_projesi_id": None, "yon": "alacak" if s.alacak else "borc",
-           "tutar": tl, "sayilan_pb": (s.islem_pb if cari.para_birimi != "TRY" else ""), "kur": None}
-    if s.islem_pb != "TRY" and s.islem_kuru:                                # elle girilmiş kur mu? (tarihin TCMB alış kurundan farklıysa)
+           "tutar": tl, "sayilan_pb": (s.islem_pb if cari.para_birimi != "TRY" else ""), "kur": None, "kur_farki_pb": ""}
+    if s.islem_pb != "TRY" and s.islem_tutari == 0:                       # KUR FARKI virmanı: döviz havuzuna döviz 0 / yalnız TL bağlı satır
+        out["kur_farki_pb"], out["sayilan_pb"], out["tutar"] = s.islem_pb, "", (s.borc or s.alacak)
+    elif s.islem_pb != "TRY" and s.islem_kuru:                                # elle girilmiş kur mu? (tarihin TCMB alış kurundan farklıysa)
         try:
             tcmb = doviz_cari.alis_kuru(s.islem_pb, fis.tarih)
         except doviz_cari.DovizCariHatasi:
@@ -160,10 +230,10 @@ def duzenleme_bilgisi(fis, cari):
 
 @transaction.atomic
 def virman_guncelle(*, fis, cari, karsi_cari=None, tarih, tutar, yon, aciklama="", sayilan_pb=None, kullanici=None,
-                    karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None) -> YevmiyeFisi:
+                    karsi_hesap_kodu=None, yatirim_projesi_id=None, kur=None, kur_farki_pb=None) -> YevmiyeFisi:
     _fis_kontrol(fis, cari)
     satirlar, ack = _hazirla(cari, karsi_cari, tarih, tutar, yon, sayilan_pb, aciklama, karsi_hesap_kodu, yatirim_projesi_id, kur,
-                             mevcut_idler=(fis.cari_id, fis.karsi_cari_id))
+                             mevcut_idler=(fis.cari_id, fis.karsi_cari_id), kur_farki_pb=kur_farki_pb)
     try:
         fis_guncelle(fis, tarih=tarih, satirlar=satirlar, aciklama=ack, kullanici=kullanici)
     except YevmiyeHatasi as e:

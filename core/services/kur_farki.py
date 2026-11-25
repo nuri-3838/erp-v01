@@ -27,6 +27,7 @@ silme bu motoru tetikler (bkz. yevmiye.py, fis_sil.py). Dönem sonu kur değerle
 Uygun hesaplar: kendi para birimindeki döviz banka hesabı / döviz kasa muhasebe hesabı; cari
 (120/320/121/321) ve çek-senet hesaplarında döviz satırları. TL hesaplar ve gider/gelir hesapları
 havuz oluşturmaz.
+Döviz tutarı 0 olan her satır (kur değerleme + 646/656 kur farkı virmanı) değerleme gibi işlenir: q değişmez, yalnız v.
 """
 from __future__ import annotations
 
@@ -140,7 +141,9 @@ def _havuz_satirlari(hesap_kodu, pb):
 def _girdi(s):
     yon = 1 if s.borc > 0 else -1
     tl = s.borc if yon > 0 else s.alacak
-    degerleme = s.fis.kaynak == YevmiyeFisi.Kaynak.KUR_DEGERLEME and s.islem_tutari == 0
+    # Döviz tutarı 0 satır = yalnız TL etkisi (q değişmez, v değişir): dönem sonu kur değerleme satırları + 646/656 kur farkı virmanı
+    # (bkz. cari_virman.kur_farki_satiri). Böyle bir satır giriş/çıkış sayılmaz ve kendine kur farkı satırı üretmez.
+    degerleme = s.islem_tutari == 0
     ham = s.ham_tl if (s.ham_tl is not None and not degerleme) else tl
     return GirdiSatir(pk=s.pk, yon=yon, dvz=s.islem_tutari, ham=ham, degerleme=degerleme)
 

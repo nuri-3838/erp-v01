@@ -2452,13 +2452,13 @@ def cari_virman_ekle(request, pk):
                     aciklama=cd["aciklama"], sayilan_pb=cd.get("sayilan_pb"), kullanici=request.user,
                     karsi_hesap_kodu=cd["karsi_hesap"].hesap_kodu if cd.get("karsi_hesap") else None,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
-                    kur=cd.get("kur"))
+                    kur=cd.get("kur"), kur_farki_pb=cd.get("kur_farki_pb"))
                 messages.success(request, f"Virman kaydedildi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:cari_ekstresi", pk=cari.pk)
             except cari_virman_servis.CariVirmanHatasi as e:
                 form.add_error(None, str(e))
     else:
-        form = CariVirmanForm(cari=cari)
+        form = CariVirmanForm(cari=cari, initial={"kur_farki_pb": cari_virman_servis.varsayilan_kur_farki_pb(cari) or ""})
     return render(request, "core/cari_virman_form.html", {"cari": cari, "form": form, "duzenle": False})
 
 
@@ -2481,7 +2481,7 @@ def cari_virman_duzenle(request, pk, fis_pk):
                     aciklama=cd["aciklama"], sayilan_pb=cd.get("sayilan_pb"), kullanici=request.user,
                     karsi_hesap_kodu=cd["karsi_hesap"].hesap_kodu if cd.get("karsi_hesap") else None,
                     yatirim_projesi_id=cd["yatirim_projesi"].pk if cd.get("yatirim_projesi") else None,
-                    kur=cd.get("kur"))
+                    kur=cd.get("kur"), kur_farki_pb=cd.get("kur_farki_pb"))
                 messages.success(request, f"Virman güncellendi: fiş {fis.yil}/{fis.fis_no}.")
                 return redirect("core:cari_ekstresi", pk=cari.pk)
             except cari_virman_servis.CariVirmanHatasi as e:
@@ -2492,7 +2492,7 @@ def cari_virman_duzenle(request, pk, fis_pk):
             "karsi_cari": bilgi["karsi_cari"].pk if bilgi["karsi_cari"] else None,
             "karsi_hesap": bilgi["karsi_hesap"].hesap_kodu if bilgi["karsi_hesap"] else None,
             "yatirim_projesi": bilgi["yatirim_projesi_id"],
-            "sayilan_pb": bilgi["sayilan_pb"], "aciklama": fis.aciklama})
+            "sayilan_pb": bilgi["sayilan_pb"], "kur_farki_pb": bilgi.get("kur_farki_pb", ""), "aciklama": fis.aciklama})
     return render(request, "core/cari_virman_form.html", {"cari": cari, "form": form, "duzenle": True, "fis": fis})
 
 

@@ -84,7 +84,7 @@ def ekstre_xlsx(cari, ekstre) -> bytes:
     for s in ekstre.satirlar:
         ws.append([s.tarih, f"{s.fis_yil}/{s.fis_no}", (s.fis_aciklama or "") + (f" · {s.satir_aciklama}" if s.satir_aciklama else ""),
                    float(s.borc) or None, float(s.alacak) or None, float(s.yur_bakiye), yon_metni(s.yur_bakiye), s.pb,
-                   float(s.dvz_borc) or None, float(s.dvz_alacak) or None, float(s.dvz_yur_bakiye)])
+                   (float(s.dvz_borc) or (0.0 if (s.yalniz_tl and s.borc) else None)), (float(s.dvz_alacak) or (0.0 if (s.yalniz_tl and s.alacak) else None)), float(s.dvz_yur_bakiye)])
         ws.cell(row=r, column=1).number_format = "DD.MM.YYYY"
         for col in (4, 5, 6, 9, 10, 11):
             ws.cell(row=r, column=col).number_format = "#,##0.00;[Red]-#,##0.00"

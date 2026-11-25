@@ -208,6 +208,7 @@ class EkstreSatir:
     dvz_borc: Decimal
     dvz_alacak: Decimal
     dvz_yur_bakiye: Decimal
+    yalniz_tl: bool = False   # döviz havuzuna bağlı ama döviz tutarı 0 (kur farkı virmanı / kur değerleme): döviz sütununda 0,00, yalnız TL etkisi
 
 
 @dataclass
@@ -296,6 +297,7 @@ def ekstre(hesap_kodu: str, baslangic=None, bitis=None, acilis=None, acilis_dvz=
             dvz_borc=dvz_b,
             dvz_alacak=dvz_a,
             dvz_yur_bakiye=kum_dvz[ln.islem_pb],
+            yalniz_tl=(ln.islem_pb != "TRY" and ln.islem_tutari == 0),
         ))
     h = HesapPlani.objects.filter(hesap_kodu=hesap_kodu).first()
     hesap_adi = h.hesap_adi if h else hesap_kodu

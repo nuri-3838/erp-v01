@@ -3771,12 +3771,25 @@ class CariVirmanForm(forms.Form):
         label="Döviz carilerde hangi dövize sayılsın", required=False, choices=[],
         help_text="Taraflardan biri döviz carisiyse TL tutar, işlem günü TCMB alış kuruyla seçilen dövize çevrilir (TL aynı). "
                   "Boş = carinin ana para birimi; 'TL (çevirme)' = TL havuzu.")
+    # KUR FARKI (yalnız karşı hesap 646/656): fark hangi DÖVİZ havuzunun TL karşılığına ait — seçilirse cari satırı o havuza döviz 0 / yalnız TL
+    # yazılır (döviz bakiyesi değişmez, TRY havuzu etkilenmez). Boş = eski davranış (TL satırı). Seçenekler carinin döviz havuzlarıdır.
+    kur_farki_pb = forms.ChoiceField(
+        label="Kur farkı hangi döviz havuzuna ait", required=False, choices=[("", "— yok (TL satırı) —")],
+        help_text="Yalnız karşı hesap 646 / 656 iken. Seçilen havuzun döviz bakiyesi değişmez; yalnız TL karşılığı kapanır, TL (TRY) havuzu etkilenmez.")
     aciklama = forms.CharField(label="Açıklama", max_length=200, required=False,
                                widget=forms.TextInput(attrs={"autocomplete": "off", "placeholder": "Boş bırakılırsa otomatik"}))
 
     def __init__(self, *args, cari=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from core.services.cari_virman import YONLER
+        from core.sayi import format_tr
+        from core.services.cari_virman import YONLER, kur_farki_havuzlari
+        self.kur_farki_havuzlari = kur_farki_havuzlari(cari) if cari is not None else []
+
+        def _etiket(h):
+            v = h["tl"]
+            return (f"{h['pb']} havuzu — döviz {format_tr(abs(h['doviz']), 2)} · TL {format_tr(abs(v), 2)} "
+                    f"{'B' if v > 0 else ('A' if v < 0 else '')}").strip()
+        self.fields["kur_farki_pb"].choices = [("", "— yok (TL satırı) —")] + [(h["pb"], _etiket(h)) for h in self.kur_farki_havuzlari]
         from core.services.doviz_cari import SECENEKLER
         self.fields["yon"].choices = list(YONLER)
         self.fields["sayilan_pb"].choices = SECENEKLER
@@ -3810,6 +3823,9 @@ class CariVirmanForm(forms.Form):
                 self.add_error("yatirim_projesi", "Yatırım projesi yalnız 258 hesabında seçilebilir.")
         elif proje:
             self.add_error("yatirim_projesi", "Yatırım projesi yalnız karşı HESAP 258 iken seçilebilir.")
+        from core.services.cari_virman import kur_farki_hesabi_mi
+        if cd.get("kur_farki_pb") and not (hesap is not None and kur_farki_hesabi_mi(hesap.hesap_kodu)):
+            cd["kur_farki_pb"] = ""                      # alan yalnız 646/656'da görünür; gizliyken kalan varsayılan değer yok sayılır
         return cd
 
 

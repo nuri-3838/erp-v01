@@ -58,6 +58,13 @@
           <label for="{{ form.yatirim_projesi.id_for_label }}">{{ form.yatirim_projesi.label }}</label><div class="akilli">{{ form.yatirim_projesi }}</div>
           {% for e in form.yatirim_projesi.errors %}<div class="hata">{{ e }}</div>{% endfor %}
         </div>
+        {% if form.kur_farki_havuzlari %}
+        <div class="alan tam" id="kur-farki-alani">
+          <label for="{{ form.kur_farki_pb.id_for_label }}">{{ form.kur_farki_pb.label }}</label>{{ form.kur_farki_pb }}
+          <p class="yardim">{{ form.kur_farki_pb.help_text }}</p>
+          {% for e in form.kur_farki_pb.errors %}<div class="hata">{{ e }}</div>{% endfor %}
+        </div>
+        {% endif %}
         <div class="alan tam">
           <label for="{{ form.sayilan_pb.id_for_label }}">{{ form.sayilan_pb.label }}</label>{{ form.sayilan_pb }}
           <p class="yardim">{{ form.sayilan_pb.help_text }}</p>
@@ -96,6 +103,20 @@
     tutar.addEventListener("input", guncelle);
     kur.addEventListener("input", guncelle);
     guncelle();
+  })();
+</script>
+<script>
+  // Kur farkı havuzu seçimi yalnız karşı hesap 646 / 656 iken görünür (sunucu da yalnız o durumda kullanır).
+  (function () {
+    var alan = document.getElementById("kur-farki-alani");
+    var hesap = document.getElementById("{{ form.karsi_hesap.id_for_label }}");
+    if (!alan || !hesap) return;
+    function uygula() {
+      var k = hesap.value || "";
+      alan.hidden = !/^(646|656)(\.|$)/.test(k);
+    }
+    hesap.addEventListener("change", uygula);
+    uygula();
   })();
 </script>
 {% include "core/_akilli_hesap.html" %}
